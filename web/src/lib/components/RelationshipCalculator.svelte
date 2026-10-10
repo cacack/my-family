@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { api, type RelationshipResult, type Person, type SearchResult, formatPersonName } from '$lib/api/client';
 	import PersonSelector from './PersonSelector.svelte';
 	import {
@@ -10,9 +11,11 @@
 	interface Props {
 		initialPersonA?: Person | null;
 		initialPersonB?: Person | null;
+		/** Called when the user asks for a relationship, so the page can record the pair. */
+		onCalculate?: (personAId: string, personBId: string) => void;
 	}
 
-	let { initialPersonA = null, initialPersonB = null }: Props = $props();
+	let { initialPersonA = null, initialPersonB = null, onCalculate }: Props = $props();
 
 	let personA = $state<Person | SearchResult | null>(initialPersonA);
 	let personB = $state<Person | SearchResult | null>(initialPersonB);
@@ -59,6 +62,16 @@
 			loading = false;
 		}
 	}
+
+	function handleCalculateClick() {
+		if (personA && personB && personA.id !== personB.id) onCalculate?.(personA.id, personB.id);
+		calculateRelationship();
+	}
+
+	// Opened with both people (a shared link, Back, reload): show the answer.
+	onMount(() => {
+		if (personA && personB) calculateRelationship();
+	});
 
 	function handlePersonASelect(person: SearchResult | null) {
 		personA = person;
@@ -156,7 +169,7 @@
 			<button
 				type="button"
 				class="calculate-btn"
-				onclick={calculateRelationship}
+				onclick={handleCalculateClick}
 				disabled={loading || !personA || !personB}
 			>
 				{#if loading}

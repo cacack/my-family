@@ -1,48 +1,48 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { page } from '$app/stores';
-	import { onMount } from 'svelte';
 	import { api, type Person } from '$lib/api/client';
 	import RelationshipCalculator from '$lib/components/RelationshipCalculator.svelte';
+	import { setQuery } from '$lib/utils/urlState';
+
+	// The calculated pair lives in the URL (see urlState.ts), so a result can be
+	// shared, reloaded and reached again with Back.
+	const personIdA = $derived($page.url.searchParams.get('personA'));
+	const personIdB = $derived($page.url.searchParams.get('personB'));
 
 	let initialPersonA: Person | null = $state(null);
 	let initialPersonB: Person | null = $state(null);
 	let loading = $state(true);
+	// The pair the calculator is showing, and a key that remounts it for a new one.
+	let shownPair: string | null = null;
+	let mountKey = $state(0);
 
-	onMount(async () => {
-		// Check for query parameters to pre-populate the selectors
-		const params = $page.url.searchParams;
-		const personIdA = params.get('personA');
-		const personIdB = params.get('personB');
-
-		const loadPromises: Promise<void>[] = [];
-
-		if (personIdA) {
-			loadPromises.push(
-				api.getPerson(personIdA)
-					.then((person) => {
-						initialPersonA = person;
-					})
-					.catch(() => {
-						// Person not found, ignore
-					})
-			);
-		}
-
-		if (personIdB) {
-			loadPromises.push(
-				api.getPerson(personIdB)
-					.then((person) => {
-						initialPersonB = person;
-					})
-					.catch(() => {
-						// Person not found, ignore
-					})
-			);
-		}
-
-		await Promise.all(loadPromises);
-		loading = false;
+	$effect(() => {
+		const pair = `${personIdA ?? ''}|${personIdB ?? ''}`;
+		untrack(() => {
+			if (pair !== shownPair) loadPair(pair, personIdA, personIdB);
+		});
 	});
+
+	async function loadPair(pair: string, idA: string | null, idB: string | null) {
+		shownPair = pair;
+		loading = true;
+		const fetchPerson = (id: string | null) =>
+			id ? api.getPerson(id).catch(() => null) : Promise.resolve(null); // Unknown ids are ignored
+		const [a, b] = await Promise.all([fetchPerson(idA), fetchPerson(idB)]);
+		if (pair !== shownPair) return; // Superseded by a later navigation
+		initialPersonA = a;
+		initialPersonB = b;
+		mountKey++;
+		loading = false;
+	}
+
+	// Asking for a relationship is navigation-level, like submitting a search: push.
+	function handleCalculate(idA: string, idB: string) {
+		if (idA === personIdA && idB === personIdB) return; // Already the URL's pair
+		shownPair = `${idA}|${idB}`;
+		setQuery($page.url, { personA: idA, personB: idB }, { push: true });
+	}
 </script>
 
 <svelte:head>
@@ -67,7 +67,9 @@
 				<span>Loading...</span>
 			</div>
 		{:else}
-			<RelationshipCalculator {initialPersonA} {initialPersonB} />
+			{#key mountKey}
+				<RelationshipCalculator {initialPersonA} {initialPersonB} onCalculate={handleCalculate} />
+			{/key}
 		{/if}
 	</div>
 </div>
