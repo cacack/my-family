@@ -20,6 +20,7 @@
 		withQuery,
 		type QueryValues
 	} from '$lib/utils/urlState';
+	import ErrorState from '$lib/components/ErrorState.svelte';
 
 	const SORTS = ['relevance', 'name', 'birth_date', 'death_date'] as const;
 	const PAGE_SIZE = 20;
@@ -648,7 +649,7 @@
 				</div>
 
 				{#if error}
-					<div class="error-message" role="alert">{error}</div>
+					<ErrorState message={error} onRetry={performSearch} />
 				{:else if !loading && results.length === 0}
 					<div class="empty-state">
 						No results found. Try adjusting your search criteria.

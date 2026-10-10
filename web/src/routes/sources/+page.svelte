@@ -5,6 +5,7 @@
 	import FormRow from '$lib/components/FormRow.svelte';
 	import SourceCard from '$lib/components/SourceCard.svelte';
 	import { DEFAULT_SOURCE_TYPE, SOURCE_TYPES } from '$lib/utils/sourceTypes';
+	import ErrorState from '$lib/components/ErrorState.svelte';
 
 	let sources: Source[] = $state([]);
 	let total = $state(0);
@@ -287,10 +288,7 @@
 	{#if loading}
 		<div class="loading">Loading...</div>
 	{:else if loadError}
-		<div class="load-error" role="alert">
-			<p>{loadError}</p>
-			<Button variant="outline" onclick={loadSources}>Retry</Button>
-		</div>
+		<ErrorState message={loadError} onRetry={loadSources} />
 	{:else if sources.length === 0}
 		<div class="empty">
 			{#if searchQuery}
@@ -476,16 +474,6 @@
 	}
 
 	.empty p {
-		margin: 0 0 1rem;
-	}
-
-	.load-error {
-		text-align: center;
-		padding: 3rem;
-		color: #dc2626;
-	}
-
-	.load-error p {
 		margin: 0 0 1rem;
 	}
 

@@ -20,6 +20,7 @@
 	import { promotionSummary } from '$lib/utils/branchResearch';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
+	import ErrorState from '$lib/components/ErrorState.svelte';
 
 	const LOG_OUTCOME_LABELS: Record<string, string> = {
 		found: 'Found',
@@ -61,7 +62,8 @@
 		} catch (e) {
 			if (request !== loadRequest) return;
 			const apiError = e as ApiError;
-			if (apiError.status === 404) {
+			// A 400 is a malformed id in the URL, which no branch can have.
+			if (apiError.status === 404 || apiError.status === 400) {
 				notFound = true;
 			} else {
 				error = apiError.message || "Failed to load the branch's research";
@@ -125,7 +127,7 @@
 			<p>It may not exist, or the branch registry is not configured on this server.</p>
 		</div>
 	{:else if error}
-		<div class="state error" role="alert">{error}</div>
+		<ErrorState message={error} onRetry={() => load(branchId)} />
 	{:else if branch && archive}
 		<header class="page-header">
 			<div class="title-row">

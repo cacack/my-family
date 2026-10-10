@@ -8,6 +8,7 @@
 	import { getReducedMotion } from '$lib/stores/accessibilitySettings.svelte';
 	import { loadWorldAtlas } from '$lib/utils/worldAtlas';
 	import { clusterKind, clusterLabel, clusterPoints, type MapCluster } from '$lib/utils/mapClusters';
+	import ErrorState from './ErrorState.svelte';
 
 	// Markers closer than this on screen are drawn as one cluster
 	const CLUSTER_RADIUS = 18;
@@ -57,6 +58,12 @@
 			return observeChartResize(container, renderMap);
 		}
 	});
+
+	/** Retry from scratch: a failed world atlas load is cached, so drop it. */
+	function retry() {
+		worldAtlas = null;
+		loadData();
+	}
 
 	function worldOutline(): Promise<Topology> {
 		worldAtlas ??= loadWorldAtlas();
@@ -281,7 +288,7 @@
 	{#if loading}
 		<div class="loading">Loading map data...</div>
 	{:else if error}
-		<div class="error">{error}</div>
+		<ErrorState message={error} onRetry={retry} />
 	{:else if locations.length === 0}
 		<div class="empty">
 			<p>No geographic data available.</p>
@@ -636,15 +643,10 @@
 	}
 
 	.loading,
-	.error,
 	.empty {
 		text-align: center;
 		padding: 3rem 1rem;
 		color: var(--color-text-muted);
-	}
-
-	.error {
-		color: #dc2626;
 	}
 
 	.empty .hint {
