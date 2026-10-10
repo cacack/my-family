@@ -3102,6 +3102,57 @@ export interface components {
          * @enum {string}
          */
         ResearchStatus: "certain" | "probable" | "possible" | "unknown";
+        /** @enum {string} */
+        Gender: "male" | "female" | "unknown";
+        /**
+         * @description Relationship between a family's partners
+         * @enum {string}
+         */
+        RelationType: "marriage" | "partnership" | "unknown";
+        /**
+         * @description Relationship between a child and its family
+         * @enum {string}
+         */
+        ChildRelationType: "biological" | "adopted" | "foster";
+        /**
+         * @description Kind of source material
+         * @enum {string}
+         */
+        SourceType: "book" | "archive" | "webpage" | "census" | "vital_record" | "church_record" | "newspaper" | "photograph" | "interview" | "correspondence" | "other";
+        /**
+         * @description Quality of a source per GPS standards
+         * @enum {string}
+         */
+        SourceQuality: "original" | "derivative" | "authored";
+        /**
+         * @description Informant's relation to the event per GPS standards
+         * @enum {string}
+         */
+        InformantType: "primary" | "secondary" | "indeterminate";
+        /**
+         * @description How the evidence bears on the fact per GPS standards
+         * @enum {string}
+         */
+        EvidenceType: "direct" | "indirect" | "negative";
+        /**
+         * @description Category of media
+         * @enum {string}
+         */
+        MediaType: "photo" | "document" | "audio" | "video" | "certificate";
+        /** @enum {string} */
+        NameType: "birth" | "married" | "aka" | "immigrant" | "religious" | "professional";
+        /** @enum {string} */
+        ConflictStatus: "open" | "resolved" | "accepted";
+        /**
+         * @description Outcome of a research log entry
+         * @enum {string}
+         */
+        ResearchOutcome: "found" | "not_found" | "inconclusive";
+        /**
+         * @description The fact a citation, analysis, conflict or proof summary is about
+         * @enum {string}
+         */
+        FactType: "person_birth" | "person_death" | "person_name" | "person_gender" | "person_burial" | "person_cremation" | "person_baptism" | "person_christening" | "person_emigration" | "person_immigration" | "person_naturalization" | "person_census" | "person_generic_event" | "person_occupation" | "person_residence" | "person_education" | "person_religion" | "person_title" | "family_marriage" | "family_divorce" | "family_marriage_bann" | "family_marriage_contract" | "family_marriage_license" | "family_marriage_settlement" | "family_annulment" | "family_engagement";
         /** @description Genealogical date with flexible precision */
         GenDate: {
             /**
@@ -3138,8 +3189,7 @@ export interface components {
             id: string;
             given_name: string;
             surname: string;
-            /** @enum {string} */
-            gender?: "male" | "female" | "unknown";
+            gender?: components["schemas"]["Gender"];
             birth_date?: components["schemas"]["GenDate"];
             birth_place?: string;
             /** @description Latitude in GEDCOM format (e.g., "N42.3601") */
@@ -3168,8 +3218,7 @@ export interface components {
         PersonCreate: {
             given_name: string;
             surname?: string;
-            /** @enum {string} */
-            gender?: "male" | "female" | "unknown";
+            gender?: components["schemas"]["Gender"];
             /**
              * @description GEDCOM-format date string
              * @example 1 JAN 1850
@@ -3185,8 +3234,7 @@ export interface components {
         PersonUpdate: {
             given_name?: string;
             surname?: string;
-            /** @enum {string} */
-            gender?: "male" | "female" | "unknown";
+            gender?: components["schemas"]["Gender"];
             birth_date?: string;
             birth_place?: string;
             death_date?: string;
@@ -3251,8 +3299,7 @@ export interface components {
             partner1_id?: string;
             /** Format: uuid */
             partner2_id?: string;
-            /** @enum {string} */
-            relationship_type?: "marriage" | "partnership" | "unknown";
+            relationship_type?: components["schemas"]["RelationType"];
             marriage_date?: components["schemas"]["GenDate"];
             marriage_place?: string;
             /** @description Latitude in GEDCOM format (e.g., "N39.7817") */
@@ -3267,8 +3314,7 @@ export interface components {
             partner1_id?: string;
             /** Format: uuid */
             partner2_id?: string;
-            /** @enum {string} */
-            relationship_type?: "marriage" | "partnership" | "unknown";
+            relationship_type?: components["schemas"]["RelationType"];
             marriage_date?: string;
             marriage_place?: string;
         };
@@ -3293,8 +3339,7 @@ export interface components {
              * @default false
              */
             clear_partner2: boolean;
-            /** @enum {string} */
-            relationship_type?: "marriage" | "partnership" | "unknown";
+            relationship_type?: components["schemas"]["RelationType"];
             marriage_date?: string;
             marriage_place?: string;
             /** Format: int64 */
@@ -3314,24 +3359,19 @@ export interface components {
             id: string;
             partner1_name?: string;
             partner2_name?: string;
-            relationship_type?: string;
+            relationship_type?: components["schemas"]["RelationType"];
         };
         FamilyChild: {
             /** Format: uuid */
             person_id: string;
             person?: components["schemas"]["PersonSummary"];
-            /** @enum {string} */
-            relationship_type: "biological" | "adopted" | "foster";
+            relationship_type: components["schemas"]["ChildRelationType"];
             sequence?: number;
         };
         AddChild: {
             /** Format: uuid */
             person_id: string;
-            /**
-             * @default biological
-             * @enum {string}
-             */
-            relationship_type: "biological" | "adopted" | "foster";
+            relationship_type?: components["schemas"]["ChildRelationType"];
             sequence?: number;
         };
         FamilyList: {
@@ -3358,8 +3398,7 @@ export interface components {
             id: string;
             given_name: string;
             surname: string;
-            /** @enum {string} */
-            gender?: "male" | "female" | "unknown";
+            gender?: components["schemas"]["Gender"];
             birth?: components["schemas"]["GroupSheetEvent"];
             death?: components["schemas"]["GroupSheetEvent"];
             /** @description Name of father (if known) */
@@ -3389,10 +3428,8 @@ export interface components {
             id: string;
             given_name: string;
             surname: string;
-            /** @enum {string} */
-            gender?: "male" | "female" | "unknown";
-            /** @enum {string} */
-            relationship_type?: "biological" | "adopted" | "foster";
+            gender?: components["schemas"]["Gender"];
+            relationship_type?: components["schemas"]["ChildRelationType"];
             /** @description Birth order */
             sequence?: number;
             birth?: components["schemas"]["GroupSheetEvent"];
@@ -3429,7 +3466,7 @@ export interface components {
             surname?: string;
             birth_date?: components["schemas"]["GenDate"];
             death_date?: components["schemas"]["GenDate"];
-            gender?: string;
+            gender?: components["schemas"]["Gender"];
             /** @description Generation level (0 = subject, 1 = parents, 2 = grandparents, etc.) */
             generation?: number;
             father?: components["schemas"]["PedigreeNode"];
@@ -3453,7 +3490,7 @@ export interface components {
             surname?: string;
             birth_date?: components["schemas"]["GenDate"];
             death_date?: components["schemas"]["GenDate"];
-            gender?: string;
+            gender?: components["schemas"]["Gender"];
             /** @description Generation level (0 = root, 1 = children, 2 = grandchildren, etc.) */
             generation?: number;
             spouses?: components["schemas"]["SpouseInfo"][];
@@ -3518,11 +3555,7 @@ export interface components {
             given_name?: string;
             /** @description Surname (omitted if ancestor is unknown) */
             surname?: string;
-            /**
-             * @description Gender (omitted if ancestor is unknown)
-             * @enum {string}
-             */
-            gender?: "male" | "female" | "unknown";
+            gender?: components["schemas"]["Gender"];
             birth_date?: components["schemas"]["GenDate"];
             birth_place?: string;
             death_date?: components["schemas"]["GenDate"];
@@ -3744,8 +3777,7 @@ export interface components {
             description?: string;
             /** @example image/jpeg */
             mime_type: string;
-            /** @enum {string} */
-            media_type?: "photo" | "document" | "audio" | "video" | "certificate";
+            media_type?: components["schemas"]["MediaType"];
             filename: string;
             /**
              * Format: int64
@@ -3808,8 +3840,7 @@ export interface components {
         MediaUpdate: {
             title?: string;
             description?: string;
-            /** @enum {string} */
-            media_type?: "photo" | "document" | "audio" | "video" | "certificate";
+            media_type?: components["schemas"]["MediaType"];
             crop_left?: number;
             crop_top?: number;
             crop_width?: number;
@@ -3912,8 +3943,7 @@ export interface components {
         Source: {
             /** Format: uuid */
             id: string;
-            /** @description Type of source (e.g., vital_record, census, newspaper) */
-            source_type: string;
+            source_type: components["schemas"]["SourceType"];
             title: string;
             author?: string;
             publisher?: string;
@@ -3933,8 +3963,7 @@ export interface components {
             version: number;
         };
         SourceCreate: {
-            /** @description Type of source (e.g., vital_record, census, newspaper) */
-            source_type: string;
+            source_type: components["schemas"]["SourceType"];
             title: string;
             author?: string;
             publisher?: string;
@@ -3947,7 +3976,7 @@ export interface components {
             notes?: string;
         };
         SourceUpdate: {
-            source_type?: string;
+            source_type?: components["schemas"]["SourceType"];
             title?: string;
             author?: string;
             publisher?: string;
@@ -3992,8 +4021,7 @@ export interface components {
             name_suffix?: string;
             surname_prefix?: string;
             nickname?: string;
-            /** @enum {string} */
-            name_type: "birth" | "married" | "aka" | "immigrant" | "religious" | "professional";
+            name_type: components["schemas"]["NameType"];
             is_primary: boolean;
         };
         PersonNameCreate: {
@@ -4003,8 +4031,7 @@ export interface components {
             name_suffix?: string;
             surname_prefix?: string;
             nickname?: string;
-            /** @enum {string} */
-            name_type: "birth" | "married" | "aka" | "immigrant" | "religious" | "professional";
+            name_type: components["schemas"]["NameType"];
             /** @default false */
             is_primary: boolean;
         };
@@ -4015,8 +4042,7 @@ export interface components {
             name_suffix?: string;
             surname_prefix?: string;
             nickname?: string;
-            /** @enum {string} */
-            name_type?: "birth" | "married" | "aka" | "immigrant" | "religious" | "professional";
+            name_type?: components["schemas"]["NameType"];
             is_primary?: boolean;
         };
         PersonNameList: {
@@ -4030,8 +4056,7 @@ export interface components {
             source_id: string;
             /** @description Title of the referenced source */
             source_title: string;
-            /** @description Type of fact being cited (e.g., birth, death, marriage) */
-            fact_type: string;
+            fact_type: components["schemas"]["FactType"];
             /**
              * Format: uuid
              * @description ID of the person or family this citation applies to
@@ -4039,12 +4064,9 @@ export interface components {
             fact_owner_id: string;
             page?: string;
             volume?: string;
-            /** @description Quality assessment of the source */
-            source_quality?: string;
-            /** @description Type of informant (e.g., primary, secondary) */
-            informant_type?: string;
-            /** @description Type of evidence (e.g., direct, indirect) */
-            evidence_type?: string;
+            source_quality?: components["schemas"]["SourceQuality"];
+            informant_type?: components["schemas"]["InformantType"];
+            evidence_type?: components["schemas"]["EvidenceType"];
             /** @description Exact text quoted from the source */
             quoted_text?: string;
             /** @description Researcher's analysis of the citation */
@@ -4066,8 +4088,7 @@ export interface components {
         CitationCreate: {
             /** Format: uuid */
             source_id: string;
-            /** @description Type of fact being cited (e.g., birth, death, marriage) */
-            fact_type: string;
+            fact_type: components["schemas"]["FactType"];
             /**
              * Format: uuid
              * @description ID of the person or family this citation applies to
@@ -4075,9 +4096,9 @@ export interface components {
             fact_owner_id: string;
             page?: string;
             volume?: string;
-            source_quality?: string;
-            informant_type?: string;
-            evidence_type?: string;
+            source_quality?: components["schemas"]["SourceQuality"];
+            informant_type?: components["schemas"]["InformantType"];
+            evidence_type?: components["schemas"]["EvidenceType"];
             quoted_text?: string;
             analysis?: string;
             template_id?: string;
@@ -4091,9 +4112,9 @@ export interface components {
         CitationUpdate: {
             page?: string;
             volume?: string;
-            source_quality?: string;
-            informant_type?: string;
-            evidence_type?: string;
+            source_quality?: components["schemas"]["SourceQuality"];
+            informant_type?: components["schemas"]["InformantType"];
+            evidence_type?: components["schemas"]["EvidenceType"];
             quoted_text?: string;
             analysis?: string;
             template_id?: string;
@@ -4121,7 +4142,7 @@ export interface components {
             /** @description Brief help text */
             description?: string;
             /** @description Applicable source types */
-            source_types: string[];
+            source_types: components["schemas"]["SourceType"][];
             /** @description Ordered list of field definitions */
             fields: components["schemas"]["CitationTemplateField"][];
         };
@@ -4821,7 +4842,7 @@ export interface components {
         BranchProofSummaryRef: {
             /** Format: uuid */
             id: string;
-            fact_type: string;
+            fact_type: components["schemas"]["FactType"];
             conclusion: string;
         };
         BranchCreate: {
@@ -5264,8 +5285,7 @@ export interface components {
              * @enum {string}
              */
             kind: "fact" | "relationship" | "deletion";
-            /** @description The fact changed (e.g. `person_birth`); absent for a relationship or a deletion. */
-            fact_type?: string;
+            fact_type?: components["schemas"]["FactType"];
             /**
              * @description What the fact is about - the subject an analysis of it has.
              * @enum {string}
@@ -5932,8 +5952,7 @@ export interface components {
             owner_type: string;
             /** Format: uuid */
             owner_id: string;
-            /** @description Type of event (BIRTH, DEATH, CENSUS, etc.) */
-            fact_type: string;
+            fact_type: components["schemas"]["FactType"];
             /** @description Date in GEDCOM format */
             date?: string;
             place?: string;
@@ -5963,8 +5982,7 @@ export interface components {
             id: string;
             /** Format: uuid */
             person_id: string;
-            /** @description Type of attribute (OCCUPATION, RESIDENCE, etc.) */
-            fact_type: string;
+            fact_type: components["schemas"]["FactType"];
             value: string;
             /** @description Date in GEDCOM format */
             date?: string;
@@ -5981,8 +5999,7 @@ export interface components {
         EvidenceAnalysis: {
             /** Format: uuid */
             id: string;
-            /** @description Type of fact being analyzed (e.g., birth, death, marriage) */
-            fact_type: string;
+            fact_type: components["schemas"]["FactType"];
             /**
              * Format: uuid
              * @description ID of the person or family this analysis is about
@@ -6007,24 +6024,21 @@ export interface components {
             updated_at?: string;
         };
         EvidenceAnalysisCreate: {
-            /** @description Type of fact being analyzed */
-            fact_type: string;
+            fact_type: components["schemas"]["FactType"];
             /** Format: uuid */
             subject_id: string;
             citation_ids?: string[];
             conclusion: string;
-            /** @enum {string} */
-            research_status?: "certain" | "probable" | "possible" | "unknown";
+            research_status?: components["schemas"]["ResearchStatus"];
             notes?: string;
         };
         EvidenceAnalysisUpdate: {
-            fact_type?: string;
+            fact_type?: components["schemas"]["FactType"];
             /** Format: uuid */
             subject_id?: string;
             citation_ids?: string[];
             conclusion?: string;
-            /** @enum {string} */
-            research_status?: "certain" | "probable" | "possible" | "unknown";
+            research_status?: components["schemas"]["ResearchStatus"];
             notes?: string;
             /** Format: int64 */
             version: number;
@@ -6038,14 +6052,13 @@ export interface components {
         EvidenceConflict: {
             /** Format: uuid */
             id: string;
-            fact_type: string;
+            fact_type: components["schemas"]["FactType"];
             /** Format: uuid */
             subject_id: string;
             analysis_ids: string[];
             description: string;
             resolution?: string;
-            /** @enum {string} */
-            status: "open" | "resolved";
+            status: components["schemas"]["ConflictStatus"];
             /** Format: int64 */
             version: number;
             /** Format: date-time */
@@ -6076,8 +6089,7 @@ export interface components {
             repository: string;
             /** @description Description of the search performed */
             search_description: string;
-            /** @enum {string} */
-            outcome: "found" | "not_found" | "inconclusive";
+            outcome: components["schemas"]["ResearchOutcome"];
             notes?: string;
             /** Format: date-time */
             search_date: string;
@@ -6094,8 +6106,7 @@ export interface components {
             subject_type: string;
             repository: string;
             search_description: string;
-            /** @enum {string} */
-            outcome: "found" | "not_found" | "inconclusive";
+            outcome: components["schemas"]["ResearchOutcome"];
             notes?: string;
             /** Format: date-time */
             search_date: string;
@@ -6106,8 +6117,7 @@ export interface components {
             subject_type?: string;
             repository?: string;
             search_description?: string;
-            /** @enum {string} */
-            outcome?: "found" | "not_found" | "inconclusive";
+            outcome?: components["schemas"]["ResearchOutcome"];
             notes?: string;
             /** Format: date-time */
             search_date?: string;
@@ -6123,7 +6133,7 @@ export interface components {
         ProofSummary: {
             /** Format: uuid */
             id: string;
-            fact_type: string;
+            fact_type: components["schemas"]["FactType"];
             /** Format: uuid */
             subject_id: string;
             /** @description The proven conclusion */
@@ -6132,8 +6142,7 @@ export interface components {
             argument: string;
             /** @description IDs of evidence analyses used in this proof */
             analysis_ids?: string[];
-            /** @enum {string} */
-            research_status?: "certain" | "probable" | "possible" | "unknown";
+            research_status?: components["schemas"]["ResearchStatus"];
             /** Format: int64 */
             version: number;
             /** Format: date-time */
@@ -6142,24 +6151,22 @@ export interface components {
             updated_at?: string;
         };
         ProofSummaryCreate: {
-            fact_type: string;
+            fact_type: components["schemas"]["FactType"];
             /** Format: uuid */
             subject_id: string;
             conclusion: string;
             argument: string;
             analysis_ids?: string[];
-            /** @enum {string} */
-            research_status?: "certain" | "probable" | "possible" | "unknown";
+            research_status?: components["schemas"]["ResearchStatus"];
         };
         ProofSummaryUpdate: {
-            fact_type?: string;
+            fact_type?: components["schemas"]["FactType"];
             /** Format: uuid */
             subject_id?: string;
             conclusion?: string;
             argument?: string;
             analysis_ids?: string[];
-            /** @enum {string} */
-            research_status?: "certain" | "probable" | "possible" | "unknown";
+            research_status?: components["schemas"]["ResearchStatus"];
             /** Format: int64 */
             version: number;
         };
@@ -7858,7 +7865,7 @@ export interface operations {
         parameters: {
             query?: {
                 /** @description Filter templates by source type */
-                source_type?: string;
+                source_type?: components["schemas"]["SourceType"];
             };
             header?: never;
             path?: never;
@@ -8029,11 +8036,7 @@ export interface operations {
                     title: string;
                     /** @description Optional description */
                     description?: string;
-                    /**
-                     * @description Category of media
-                     * @enum {string}
-                     */
-                    media_type?: "photo" | "document" | "audio" | "video" | "certificate";
+                    media_type?: components["schemas"]["MediaType"];
                     /**
                      * Format: binary
                      * @description The file to upload (max 10MB)
@@ -11285,7 +11288,7 @@ export interface operations {
                  *     on archive and it therefore has no view to return.
                  */
                 branch?: components["parameters"]["branchScope"];
-                factType: string;
+                factType: components["schemas"]["FactType"];
                 subjectId: string;
             };
             header?: never;
@@ -11321,7 +11324,7 @@ export interface operations {
                 limit?: components["parameters"]["limitParam"];
                 offset?: components["parameters"]["offsetParam"];
                 /** @description Filter by conflict status */
-                status?: "open" | "resolved";
+                status?: components["schemas"]["ConflictStatus"];
             };
             header?: never;
             path?: never;
@@ -11851,7 +11854,7 @@ export interface operations {
                  *     on archive and it therefore has no view to return.
                  */
                 branch?: components["parameters"]["branchScope"];
-                factType: string;
+                factType: components["schemas"]["FactType"];
                 subjectId: string;
             };
             header?: never;

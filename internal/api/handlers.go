@@ -19,7 +19,7 @@ func convertQueryAhnentafelEntryToGenerated(entry query.AhnentafelEntry) Ahnenta
 		resp.Id = &id
 		resp.GivenName = &entry.GivenName
 		resp.Surname = &entry.Surname
-		gender := AhnentafelEntryGender(entry.Gender)
+		gender := Gender(entry.Gender)
 		resp.Gender = &gender
 
 		if entry.BirthDate != nil {

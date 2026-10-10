@@ -1444,7 +1444,7 @@ paths:
           in: query
           required: false
           schema:
-            type: string
+            $ref: '#/components/schemas/SourceType'
           description: Filter templates by source type
       responses:
         '200':
@@ -1599,9 +1599,7 @@ paths:
                   type: string
                   description: Optional description
                 media_type:
-                  type: string
-                  enum: [photo, document, audio, video, certificate]
-                  description: Category of media
+                  $ref: '#/components/schemas/MediaType'
                 file:
                   type: string
                   format: binary
@@ -4518,7 +4516,7 @@ paths:
           in: query
           required: true
           schema:
-            type: string
+            $ref: '#/components/schemas/FactType'
         - name: subjectId
           in: query
           required: true
@@ -4557,8 +4555,7 @@ paths:
           in: query
           description: Filter by conflict status
           schema:
-            type: string
-            enum: [open, resolved]
+            $ref: '#/components/schemas/ConflictStatus'
       responses:
         '200':
           description: List of evidence conflicts
@@ -4960,7 +4957,7 @@ paths:
           in: query
           required: true
           schema:
-            type: string
+            $ref: '#/components/schemas/FactType'
         - name: subjectId
           in: query
           required: true
@@ -5276,12 +5273,97 @@ components:
           description: True if export exceeds large threshold (>1000 records or >1MB)
           example: false
 
+    # Enumerations mirrored from internal/domain/enums.go. Each list must match
+    # its domain type exactly: enums_contract_test.go fails when they diverge.
     ResearchStatus:
       type: string
       description: Confidence level of genealogical data per GPS standards
       enum: [certain, probable, possible, unknown]
       default: unknown
       example: "probable"
+
+    Gender:
+      type: string
+      enum: [male, female, unknown]
+
+    RelationType:
+      type: string
+      description: Relationship between a family's partners
+      enum: [marriage, partnership, unknown]
+
+    ChildRelationType:
+      type: string
+      description: Relationship between a child and its family
+      enum: [biological, adopted, foster]
+
+    SourceType:
+      type: string
+      description: Kind of source material
+      enum: [book, archive, webpage, census, vital_record, church_record, newspaper, photograph, interview, correspondence, other]
+
+    SourceQuality:
+      type: string
+      description: Quality of a source per GPS standards
+      enum: [original, derivative, authored]
+
+    InformantType:
+      type: string
+      description: Informant's relation to the event per GPS standards
+      enum: [primary, secondary, indeterminate]
+
+    EvidenceType:
+      type: string
+      description: How the evidence bears on the fact per GPS standards
+      enum: [direct, indirect, negative]
+
+    MediaType:
+      type: string
+      description: Category of media
+      enum: [photo, document, audio, video, certificate]
+
+    NameType:
+      type: string
+      enum: [birth, married, aka, immigrant, religious, professional]
+
+    ConflictStatus:
+      type: string
+      enum: [open, resolved, accepted]
+
+    ResearchOutcome:
+      type: string
+      description: Outcome of a research log entry
+      enum: [found, not_found, inconclusive]
+
+    FactType:
+      type: string
+      description: The fact a citation, analysis, conflict or proof summary is about
+      enum:
+        - person_birth
+        - person_death
+        - person_name
+        - person_gender
+        - person_burial
+        - person_cremation
+        - person_baptism
+        - person_christening
+        - person_emigration
+        - person_immigration
+        - person_naturalization
+        - person_census
+        - person_generic_event
+        - person_occupation
+        - person_residence
+        - person_education
+        - person_religion
+        - person_title
+        - family_marriage
+        - family_divorce
+        - family_marriage_bann
+        - family_marriage_contract
+        - family_marriage_license
+        - family_marriage_settlement
+        - family_annulment
+        - family_engagement
 
     GenDate:
       type: object
@@ -5341,8 +5423,7 @@ components:
           type: string
           maxLength: 100
         gender:
-          type: string
-          enum: [male, female, unknown]
+          $ref: '#/components/schemas/Gender'
         birth_date:
           $ref: '#/components/schemas/GenDate'
         birth_place:
@@ -5399,8 +5480,7 @@ components:
           type: string
           maxLength: 100
         gender:
-          type: string
-          enum: [male, female, unknown]
+          $ref: '#/components/schemas/Gender'
         birth_date:
           type: string
           description: GEDCOM-format date string
@@ -5430,8 +5510,7 @@ components:
           minLength: 1
           maxLength: 100
         gender:
-          type: string
-          enum: [male, female, unknown]
+          $ref: '#/components/schemas/Gender'
         birth_date:
           type: string
         birth_place:
@@ -5546,8 +5625,7 @@ components:
           type: string
           format: uuid
         relationship_type:
-          type: string
-          enum: [marriage, partnership, unknown]
+          $ref: '#/components/schemas/RelationType'
         marriage_date:
           $ref: '#/components/schemas/GenDate'
         marriage_place:
@@ -5574,8 +5652,7 @@ components:
           type: string
           format: uuid
         relationship_type:
-          type: string
-          enum: [marriage, partnership, unknown]
+          $ref: '#/components/schemas/RelationType'
         marriage_date:
           type: string
         marriage_place:
@@ -5604,8 +5681,7 @@ components:
           description: >-
             Remove partner 2 from the family. Cannot be combined with partner2_id.
         relationship_type:
-          type: string
-          enum: [marriage, partnership, unknown]
+          $ref: '#/components/schemas/RelationType'
         marriage_date:
           type: string
         marriage_place:
@@ -5651,7 +5727,7 @@ components:
         partner2_name:
           type: string
         relationship_type:
-          type: string
+          $ref: '#/components/schemas/RelationType'
 
     FamilyChild:
       type: object
@@ -5663,8 +5739,7 @@ components:
         person:
           $ref: '#/components/schemas/PersonSummary'
         relationship_type:
-          type: string
-          enum: [biological, adopted, foster]
+          $ref: '#/components/schemas/ChildRelationType'
         sequence:
           type: integer
 
@@ -5676,9 +5751,7 @@ components:
           type: string
           format: uuid
         relationship_type:
-          type: string
-          enum: [biological, adopted, foster]
-          default: biological
+          $ref: '#/components/schemas/ChildRelationType'
         sequence:
           type: integer
 
@@ -5730,8 +5803,7 @@ components:
         surname:
           type: string
         gender:
-          type: string
-          enum: [male, female, unknown]
+          $ref: '#/components/schemas/Gender'
         birth:
           $ref: '#/components/schemas/GroupSheetEvent'
         death:
@@ -5780,11 +5852,9 @@ components:
         surname:
           type: string
         gender:
-          type: string
-          enum: [male, female, unknown]
+          $ref: '#/components/schemas/Gender'
         relationship_type:
-          type: string
-          enum: [biological, adopted, foster]
+          $ref: '#/components/schemas/ChildRelationType'
         sequence:
           type: integer
           description: Birth order
@@ -5850,7 +5920,7 @@ components:
         death_date:
           $ref: '#/components/schemas/GenDate'
         gender:
-          type: string
+          $ref: '#/components/schemas/Gender'
         generation:
           type: integer
           description: Generation level (0 = subject, 1 = parents, 2 = grandparents, etc.)
@@ -5893,7 +5963,7 @@ components:
         death_date:
           $ref: '#/components/schemas/GenDate'
         gender:
-          type: string
+          $ref: '#/components/schemas/Gender'
         generation:
           type: integer
           description: Generation level (0 = root, 1 = children, 2 = grandchildren, etc.)
@@ -5985,9 +6055,8 @@ components:
           type: string
           description: Surname (omitted if ancestor is unknown)
         gender:
-          type: string
-          enum: [male, female, unknown]
-          description: Gender (omitted if ancestor is unknown)
+          # Gender (omitted if ancestor is unknown)
+          $ref: '#/components/schemas/Gender'
         birth_date:
           $ref: '#/components/schemas/GenDate'
         birth_place:
@@ -6290,8 +6359,7 @@ components:
           type: string
           example: "image/jpeg"
         media_type:
-          type: string
-          enum: [photo, document, audio, video, certificate]
+          $ref: '#/components/schemas/MediaType'
         filename:
           type: string
         file_size:
@@ -6391,8 +6459,7 @@ components:
         description:
           type: string
         media_type:
-          type: string
-          enum: [photo, document, audio, video, certificate]
+          $ref: '#/components/schemas/MediaType'
         crop_left:
           type: integer
         crop_top:
@@ -6583,8 +6650,7 @@ components:
           type: string
           format: uuid
         source_type:
-          type: string
-          description: Type of source (e.g., vital_record, census, newspaper)
+          $ref: '#/components/schemas/SourceType'
         title:
           type: string
         author:
@@ -6617,8 +6683,7 @@ components:
       required: [source_type, title]
       properties:
         source_type:
-          type: string
-          description: Type of source (e.g., vital_record, census, newspaper)
+          $ref: '#/components/schemas/SourceType'
         title:
           type: string
         author:
@@ -6644,7 +6709,7 @@ components:
       required: [version]
       properties:
         source_type:
-          type: string
+          $ref: '#/components/schemas/SourceType'
         title:
           type: string
         author:
@@ -6743,8 +6808,7 @@ components:
         nickname:
           type: string
         name_type:
-          type: string
-          enum: [birth, married, aka, immigrant, religious, professional]
+          $ref: '#/components/schemas/NameType'
         is_primary:
           type: boolean
 
@@ -6768,8 +6832,7 @@ components:
         nickname:
           type: string
         name_type:
-          type: string
-          enum: [birth, married, aka, immigrant, religious, professional]
+          $ref: '#/components/schemas/NameType'
         is_primary:
           type: boolean
           default: false
@@ -6793,8 +6856,7 @@ components:
         nickname:
           type: string
         name_type:
-          type: string
-          enum: [birth, married, aka, immigrant, religious, professional]
+          $ref: '#/components/schemas/NameType'
         is_primary:
           type: boolean
 
@@ -6824,8 +6886,7 @@ components:
           type: string
           description: Title of the referenced source
         fact_type:
-          type: string
-          description: Type of fact being cited (e.g., birth, death, marriage)
+          $ref: '#/components/schemas/FactType'
         fact_owner_id:
           type: string
           format: uuid
@@ -6835,14 +6896,11 @@ components:
         volume:
           type: string
         source_quality:
-          type: string
-          description: Quality assessment of the source
+          $ref: '#/components/schemas/SourceQuality'
         informant_type:
-          type: string
-          description: Type of informant (e.g., primary, secondary)
+          $ref: '#/components/schemas/InformantType'
         evidence_type:
-          type: string
-          description: Type of evidence (e.g., direct, indirect)
+          $ref: '#/components/schemas/EvidenceType'
         quoted_text:
           type: string
           description: Exact text quoted from the source
@@ -6873,8 +6931,7 @@ components:
           type: string
           format: uuid
         fact_type:
-          type: string
-          description: Type of fact being cited (e.g., birth, death, marriage)
+          $ref: '#/components/schemas/FactType'
         fact_owner_id:
           type: string
           format: uuid
@@ -6884,11 +6941,11 @@ components:
         volume:
           type: string
         source_quality:
-          type: string
+          $ref: '#/components/schemas/SourceQuality'
         informant_type:
-          type: string
+          $ref: '#/components/schemas/InformantType'
         evidence_type:
-          type: string
+          $ref: '#/components/schemas/EvidenceType'
         quoted_text:
           type: string
         analysis:
@@ -6913,11 +6970,11 @@ components:
         volume:
           type: string
         source_quality:
-          type: string
+          $ref: '#/components/schemas/SourceQuality'
         informant_type:
-          type: string
+          $ref: '#/components/schemas/InformantType'
         evidence_type:
-          type: string
+          $ref: '#/components/schemas/EvidenceType'
         quoted_text:
           type: string
         analysis:
@@ -6964,7 +7021,7 @@ components:
         source_types:
           type: array
           items:
-            type: string
+            $ref: '#/components/schemas/SourceType'
           description: Applicable source types
         fields:
           type: array
@@ -8034,7 +8091,7 @@ components:
           type: string
           format: uuid
         fact_type:
-          type: string
+          $ref: '#/components/schemas/FactType'
         conclusion:
           type: string
 
@@ -8635,8 +8692,8 @@ components:
             `relationship` for a family's partners or children; `deletion` for
             a person or family the mainline has that the branch deleted.
         fact_type:
-          type: string
-          description: The fact changed (e.g. `person_birth`); absent for a relationship or a deletion.
+          # The fact changed (e.g. `person_birth`); absent for a relationship or a deletion.
+          $ref: '#/components/schemas/FactType'
         subject_type:
           type: string
           enum: [person, family]
@@ -9667,8 +9724,7 @@ components:
           type: string
           format: uuid
         fact_type:
-          type: string
-          description: Type of event (BIRTH, DEATH, CENSUS, etc.)
+          $ref: '#/components/schemas/FactType'
         date:
           type: string
           description: Date in GEDCOM format
@@ -9718,8 +9774,7 @@ components:
           type: string
           format: uuid
         fact_type:
-          type: string
-          description: Type of attribute (OCCUPATION, RESIDENCE, etc.)
+          $ref: '#/components/schemas/FactType'
         value:
           type: string
         date:
@@ -9754,8 +9809,7 @@ components:
           type: string
           format: uuid
         fact_type:
-          type: string
-          description: Type of fact being analyzed (e.g., birth, death, marriage)
+          $ref: '#/components/schemas/FactType'
         subject_id:
           type: string
           format: uuid
@@ -9792,8 +9846,7 @@ components:
       required: [fact_type, subject_id, conclusion]
       properties:
         fact_type:
-          type: string
-          description: Type of fact being analyzed
+          $ref: '#/components/schemas/FactType'
         subject_id:
           type: string
           format: uuid
@@ -9805,8 +9858,7 @@ components:
         conclusion:
           type: string
         research_status:
-          type: string
-          enum: [certain, probable, possible, unknown]
+          $ref: '#/components/schemas/ResearchStatus'
         notes:
           type: string
 
@@ -9815,7 +9867,7 @@ components:
       required: [version]
       properties:
         fact_type:
-          type: string
+          $ref: '#/components/schemas/FactType'
         subject_id:
           type: string
           format: uuid
@@ -9827,8 +9879,7 @@ components:
         conclusion:
           type: string
         research_status:
-          type: string
-          enum: [certain, probable, possible, unknown]
+          $ref: '#/components/schemas/ResearchStatus'
         notes:
           type: string
         version:
@@ -9859,7 +9910,7 @@ components:
           type: string
           format: uuid
         fact_type:
-          type: string
+          $ref: '#/components/schemas/FactType'
         subject_id:
           type: string
           format: uuid
@@ -9873,8 +9924,7 @@ components:
         resolution:
           type: string
         status:
-          type: string
-          enum: [open, resolved]
+          $ref: '#/components/schemas/ConflictStatus'
         version:
           type: integer
           format: int64
@@ -9932,8 +9982,7 @@ components:
           type: string
           description: Description of the search performed
         outcome:
-          type: string
-          enum: [found, not_found, inconclusive]
+          $ref: '#/components/schemas/ResearchOutcome'
         notes:
           type: string
         search_date:
@@ -9963,8 +10012,7 @@ components:
         search_description:
           type: string
         outcome:
-          type: string
-          enum: [found, not_found, inconclusive]
+          $ref: '#/components/schemas/ResearchOutcome'
         notes:
           type: string
         search_date:
@@ -9985,8 +10033,7 @@ components:
         search_description:
           type: string
         outcome:
-          type: string
-          enum: [found, not_found, inconclusive]
+          $ref: '#/components/schemas/ResearchOutcome'
         notes:
           type: string
         search_date:
@@ -10020,7 +10067,7 @@ components:
           type: string
           format: uuid
         fact_type:
-          type: string
+          $ref: '#/components/schemas/FactType'
         subject_id:
           type: string
           format: uuid
@@ -10037,8 +10084,7 @@ components:
             format: uuid
           description: IDs of evidence analyses used in this proof
         research_status:
-          type: string
-          enum: [certain, probable, possible, unknown]
+          $ref: '#/components/schemas/ResearchStatus'
         version:
           type: integer
           format: int64
@@ -10054,7 +10100,7 @@ components:
       required: [fact_type, subject_id, conclusion, argument]
       properties:
         fact_type:
-          type: string
+          $ref: '#/components/schemas/FactType'
         subject_id:
           type: string
           format: uuid
@@ -10068,15 +10114,14 @@ components:
             type: string
             format: uuid
         research_status:
-          type: string
-          enum: [certain, probable, possible, unknown]
+          $ref: '#/components/schemas/ResearchStatus'
 
     ProofSummaryUpdate:
       type: object
       required: [version]
       properties:
         fact_type:
-          type: string
+          $ref: '#/components/schemas/FactType'
         subject_id:
           type: string
           format: uuid
@@ -10090,8 +10135,7 @@ components:
             type: string
             format: uuid
         research_status:
-          type: string
-          enum: [certain, probable, possible, unknown]
+          $ref: '#/components/schemas/ResearchStatus'
         version:
           type: integer
           format: int64

@@ -78,7 +78,7 @@ func (ss *StrictServer) CreateEvidenceAnalysis(ctx context.Context, request Crea
 	}
 
 	input := command.CreateEvidenceAnalysisInput{
-		FactType:   request.Body.FactType,
+		FactType:   string(request.Body.FactType),
 		SubjectID:  request.Body.SubjectId,
 		Conclusion: request.Body.Conclusion,
 	}
@@ -150,7 +150,7 @@ func (ss *StrictServer) UpdateEvidenceAnalysis(ctx context.Context, request Upda
 		Version: request.Body.Version,
 	}
 	if request.Body.FactType != nil {
-		input.FactType = request.Body.FactType
+		input.FactType = (*string)(request.Body.FactType)
 	}
 	if request.Body.SubjectId != nil {
 		sid := *request.Body.SubjectId
@@ -241,7 +241,7 @@ func (ss *StrictServer) GetAnalysesByFact(ctx context.Context, request GetAnalys
 		return nil, err
 	}
 
-	analyses, err := ss.server.evidenceService.GetAnalysesForFact(ctx, branchScopeID(branch), request.Params.FactType, request.Params.SubjectId)
+	analyses, err := ss.server.evidenceService.GetAnalysesForFact(ctx, branchScopeID(branch), string(request.Params.FactType), request.Params.SubjectId)
 	if err != nil {
 		return nil, err
 	}
@@ -688,7 +688,7 @@ func (ss *StrictServer) CreateProofSummary(ctx context.Context, request CreatePr
 	}
 
 	input := command.CreateProofSummaryInput{
-		FactType:   request.Body.FactType,
+		FactType:   string(request.Body.FactType),
 		SubjectID:  request.Body.SubjectId,
 		Conclusion: request.Body.Conclusion,
 		Argument:   request.Body.Argument,
@@ -753,7 +753,7 @@ func (ss *StrictServer) UpdateProofSummary(ctx context.Context, request UpdatePr
 		Version: request.Body.Version,
 	}
 	if request.Body.FactType != nil {
-		input.FactType = request.Body.FactType
+		input.FactType = (*string)(request.Body.FactType)
 	}
 	if request.Body.SubjectId != nil {
 		sid := *request.Body.SubjectId
@@ -839,7 +839,7 @@ func (ss *StrictServer) GetProofSummaryByFact(ctx context.Context, request GetPr
 		return nil, err
 	}
 
-	summaries, err := ss.server.evidenceService.GetProofSummaryForFact(ctx, branchScopeID(branch), request.Params.FactType, request.Params.SubjectId)
+	summaries, err := ss.server.evidenceService.GetProofSummaryForFact(ctx, branchScopeID(branch), string(request.Params.FactType), request.Params.SubjectId)
 	if err != nil {
 		return nil, err
 	}
@@ -859,7 +859,7 @@ func (ss *StrictServer) GetProofSummaryByFact(ctx context.Context, request GetPr
 func convertQueryEvidenceAnalysisToGenerated(a query.EvidenceAnalysis) EvidenceAnalysis {
 	resp := EvidenceAnalysis{
 		Id:         a.ID,
-		FactType:   a.FactType,
+		FactType:   FactType(a.FactType),
 		SubjectId:  a.SubjectID,
 		Conclusion: a.Conclusion,
 		Version:    a.Version,
@@ -884,11 +884,11 @@ func convertQueryEvidenceAnalysisToGenerated(a query.EvidenceAnalysis) EvidenceA
 func convertQueryEvidenceConflictToGenerated(c query.EvidenceConflict) EvidenceConflict {
 	resp := EvidenceConflict{
 		Id:          c.ID,
-		FactType:    c.FactType,
+		FactType:    FactType(c.FactType),
 		SubjectId:   c.SubjectID,
 		AnalysisIds: c.AnalysisIDs,
 		Description: c.Description,
-		Status:      EvidenceConflictStatus(c.Status),
+		Status:      ConflictStatus(c.Status),
 		Version:     c.Version,
 		CreatedAt:   &c.CreatedAt,
 		UpdatedAt:   &c.UpdatedAt,
@@ -908,7 +908,7 @@ func convertQueryResearchLogToGenerated(l query.ResearchLogEntry) ResearchLog {
 		SubjectType:       l.SubjectType,
 		Repository:        l.Repository,
 		SearchDescription: l.SearchDescription,
-		Outcome:           ResearchLogOutcome(l.Outcome),
+		Outcome:           ResearchOutcome(l.Outcome),
 		SearchDate:        l.SearchDate,
 		Version:           l.Version,
 		CreatedAt:         &l.CreatedAt,
@@ -925,7 +925,7 @@ func convertQueryResearchLogToGenerated(l query.ResearchLogEntry) ResearchLog {
 func convertQueryProofSummaryToGenerated(s query.ProofSummaryResult) ProofSummary {
 	resp := ProofSummary{
 		Id:         s.ID,
-		FactType:   s.FactType,
+		FactType:   FactType(s.FactType),
 		SubjectId:  s.SubjectID,
 		Conclusion: s.Conclusion,
 		Argument:   s.Argument,
@@ -938,7 +938,7 @@ func convertQueryProofSummaryToGenerated(s query.ProofSummaryResult) ProofSummar
 		resp.AnalysisIds = &s.AnalysisIDs
 	}
 	if s.ResearchStatus != nil {
-		rs := ProofSummaryResearchStatus(*s.ResearchStatus)
+		rs := ResearchStatus(*s.ResearchStatus)
 		resp.ResearchStatus = &rs
 	}
 
