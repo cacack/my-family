@@ -20,6 +20,41 @@ func TestSearchPersonsTotal_Parity(t *testing.T) {
 	runSearchTotalScenario(t, readStore)
 }
 
+// TestSearchPersonsSoundex_TotalBeyondThousandCandidates guards against a
+// candidate cap: Soundex matches stored after the first 1000 people must still
+// be counted and reachable.
+func TestSearchPersonsSoundex_TotalBeyondThousandCandidates(t *testing.T) {
+	store, _, cleanup := setupBranchScenarioStores(t)
+	defer cleanup()
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+
+	save := func(given, surname string) {
+		t.Helper()
+		if err := store.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
+			ID: uuid.New(), GivenName: given, Surname: surname, FullName: given + " " + surname,
+			Version: 1, UpdatedAt: now,
+		}); err != nil {
+			t.Fatalf("save person: %v", err)
+		}
+	}
+	for i := range 1000 {
+		save(fmt.Sprintf("Filler%04d", i), "Zzyzx")
+	}
+	const matches = 3
+	for i := range matches {
+		save(fmt.Sprintf("Late%d", i), "Pagetest")
+	}
+
+	page, total, err := store.SearchPersons(ctx, repository.SearchOptions{Query: "Pagetest", Soundex: true, Limit: 10})
+	if err != nil {
+		t.Fatalf("SearchPersons: %v", err)
+	}
+	if total != matches || len(page) != matches {
+		t.Fatalf("total = %d, page = %d, want %d and %d", total, len(page), matches, matches)
+	}
+}
+
 // runSearchTotalScenario is the backend-agnostic body of the #902 search
 // total. Each backend package carries an identical copy (DB-001). It proves
 // that, for every match mode and sort, SearchPersons reports the full match

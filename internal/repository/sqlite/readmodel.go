@@ -1460,12 +1460,12 @@ func orderFuzzyMatches(matched []fuzzyMatch, opts repository.SearchOptions) []re
 	return results
 }
 
-// searchPersonsSoundex fetches candidates filtered by date/place, then post-filters using Soundex in Go.
+// searchPersonsSoundex fetches every candidate matching the date/place filters,
+// then post-filters using Soundex in Go. Candidates are not capped, so the
+// total counts every match (like searchPersonsFuzzy).
 func (s *ReadModelStore) searchPersonsSoundex(ctx context.Context, opts repository.SearchOptions, limit int) ([]repository.PersonReadModel, int, error) {
 	filterSQL, filterArgs := buildDatePlaceFilters(opts)
 
-	// Fetch a large candidate set (up to 1000) narrowed by date/place filters
-	candidateLimit := 1000
 	overlay, overlayArgs := personOverlaySubquery(opts.BranchID)
 
 	var sb strings.Builder
@@ -1484,9 +1484,6 @@ func (s *ReadModelStore) searchPersonsSoundex(ctx context.Context, opts reposito
 		sb.WriteString(" WHERE " + filterSQL)
 		args = append(args, filterArgs...)
 	}
-
-	sb.WriteString(" LIMIT ?")
-	args = append(args, candidateLimit)
 
 	rows, err := s.db.QueryContext(ctx, sb.String(), args...)
 	if err != nil {
