@@ -231,7 +231,7 @@
 </script>
 
 <svelte:head>
-	<title>{isNew ? 'New Proof Summary' : 'Proof Summary'} | My Family</title>
+	<title>{isNew ? 'New Proof Summary' : summary ? `${formatFactType(summary.fact_type)} Proof Summary` : 'Proof Summary'} | My Family</title>
 </svelte:head>
 
 <div class="mx-auto max-w-3xl p-6">

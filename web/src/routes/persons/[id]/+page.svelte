@@ -796,7 +796,7 @@
 		background: #f1f5f9;
 		border-radius: 4px;
 		font-size: 0.75rem;
-		color: #64748b;
+		color: #475569;
 		text-transform: capitalize;
 		margin-top: 0.25rem;
 	}

@@ -400,6 +400,35 @@ describe('Advanced Search Page', () => {
 			});
 		});
 
+		it('keeps one live region for the result count while loading finishes', async () => {
+			let resolveSearch!: (value: apiModule.SearchResults) => void;
+			vi.mocked(apiModule.api.searchPersons).mockReturnValue(
+				new Promise<apiModule.SearchResults>((resolve) => {
+					resolveSearch = resolve;
+				})
+			);
+
+			const { container } = render(SearchPage);
+			await vi.advanceTimersByTimeAsync(0);
+
+			const nameInput = screen.getByPlaceholderText('Name (e.g., Smith, John Smith)');
+			await fireEvent.input(nameInput, { target: { value: 'Smith' } });
+			await fireEvent.click(screen.getByText('Search').closest('button')!);
+			await vi.advanceTimersByTimeAsync(0);
+
+			const region = container.querySelector('.results-count[aria-live="polite"]');
+			expect(region?.textContent).toBe('Searching...');
+
+			resolveSearch(mockSearchResults);
+			await vi.advanceTimersByTimeAsync(0);
+
+			// Same element, new text - a replaced element would not be announced.
+			await waitFor(() => {
+				expect(container.querySelector('.results-count[aria-live="polite"]')).toBe(region);
+				expect(region?.textContent).toBe('Showing 3 of 3 results');
+			});
+		});
+
 		it('results displayed after search completes', async () => {
 			render(SearchPage);
 			await vi.advanceTimersByTimeAsync(0);

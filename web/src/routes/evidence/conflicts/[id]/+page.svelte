@@ -84,7 +84,7 @@
 </script>
 
 <svelte:head>
-	<title>Evidence Conflict | My Family</title>
+	<title>{conflict ? `${formatFactType(conflict.fact_type)} Conflict` : 'Evidence Conflict'} | My Family</title>
 </svelte:head>
 
 <div class="mx-auto max-w-3xl p-6">

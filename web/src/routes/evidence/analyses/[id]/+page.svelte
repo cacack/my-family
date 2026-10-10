@@ -219,7 +219,7 @@
 </script>
 
 <svelte:head>
-	<title>{isNew ? 'New Analysis' : analysis ? 'Analysis' : 'Evidence Analysis'} | My Family</title>
+	<title>{isNew ? 'New Analysis' : analysis ? `${formatFactType(analysis.fact_type)} Analysis` : 'Evidence Analysis'} | My Family</title>
 </svelte:head>
 
 <div class="mx-auto max-w-3xl p-6">

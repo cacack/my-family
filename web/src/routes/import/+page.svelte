@@ -368,7 +368,7 @@
 </script>
 
 <svelte:head>
-	<title>Import GEDCOM | My Family</title>
+	<title>Import & Export | My Family</title>
 </svelte:head>
 
 <div class="import-page">

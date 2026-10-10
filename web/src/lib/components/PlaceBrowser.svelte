@@ -252,11 +252,13 @@
 		display: flex;
 		flex-direction: column;
 		gap: 0.25rem;
+		min-width: 0;
 	}
 
 	.place-name {
 		font-weight: 500;
 		color: #1e293b;
+		overflow-wrap: anywhere;
 	}
 
 	.place-hint {

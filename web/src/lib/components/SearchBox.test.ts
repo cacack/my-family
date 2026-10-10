@@ -79,6 +79,17 @@ describe('SearchBox', () => {
 		expect(fuzzyButton.classList.contains('active')).toBe(true);
 	});
 
+	it('names the fuzzy toggle by purpose and exposes its state', async () => {
+		render(SearchBox);
+		const fuzzyButton = screen.getByRole('button', { name: 'Fuzzy search' });
+
+		expect(fuzzyButton.getAttribute('aria-pressed')).toBe('false');
+
+		await fireEvent.click(fuzzyButton);
+
+		expect(fuzzyButton.getAttribute('aria-pressed')).toBe('true');
+	});
+
 	it('debounces search input', async () => {
 		vi.mocked(apiModule.api.searchPersons).mockResolvedValue(mockSearchResults);
 

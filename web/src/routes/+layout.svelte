@@ -34,6 +34,31 @@
 		revalidateActiveBranch();
 	});
 
+	// `match` lists the path prefixes that count as being in a section; the chart
+	// pages belong to People. Import matches exactly so /import/... stays separate.
+	type NavLink = { href: string; label: string; match?: string[]; exact?: boolean };
+	const leadingLinks: NavLink[] = [
+		{ href: '/persons', label: 'People', match: ['/persons', '/pedigree', '/descendancy', '/ahnentafel'] },
+		{ href: '/families', label: 'Families' }
+	];
+	const trailingLinks: NavLink[] = [
+		{ href: '/sources', label: 'Sources' },
+		{ href: '/evidence', label: 'Evidence' },
+		{ href: '/history', label: 'History' },
+		{ href: '/branches', label: 'Branches' },
+		{ href: '/snapshots', label: 'Snapshots' },
+		{ href: '/map', label: 'Map' },
+		{ href: '/analytics', label: 'Analytics' },
+		{ href: '/quality', label: 'Quality' },
+		{ href: '/relationship', label: 'Relationship' },
+		{ href: '/import', label: 'Import', exact: true },
+		{ href: '/search', label: 'Search' }
+	];
+	function isActive(link: NavLink, pathname: string): boolean {
+		if (link.exact) return pathname === link.href;
+		return (link.match ?? [link.href]).some((prefix) => pathname.startsWith(prefix));
+	}
+
 	const browseLinks = [
 		{ href: '/browse/surnames', label: 'By Surname' },
 		{ href: '/browse/places', label: 'By Place' },
@@ -84,6 +109,11 @@
 	<link rel="icon" href={favicon} />
 </svelte:head>
 
+{#snippet navLink(link: NavLink)}
+	{@const active = isActive(link, $page.url.pathname)}
+	<a href={link.href} class:active aria-current={active ? 'page' : undefined}>{link.label}</a>
+{/snippet}
+
 <svelte:window onkeydown={handleKeydown} />
 
 <!-- Skip link for keyboard navigation -->
@@ -101,20 +131,21 @@
 <BranchBanner />
 
 <div class="app-layout">
-	<header class="app-header" role="banner">
+	<header class="app-header">
 		<a href="/" class="logo">
 			<span class="logo-mark">{@html logoMark}</span>
 			My Family
 		</a>
-		<nav class="nav" role="navigation" aria-label="Main navigation">
-			<a href="/persons" class:active={$page.url.pathname.startsWith('/persons')}>People</a>
-			<a href="/families" class:active={$page.url.pathname.startsWith('/families')}>Families</a>
+		<nav class="nav" aria-label="Main navigation">
+			{#each leadingLinks as link (link.href)}
+				{@render navLink(link)}
+			{/each}
 			<DropdownMenu.Root>
 				<!-- `child` on Trigger and Items for the reasons given in BranchSwitcher.svelte:
 				     no nested buttons, and Enter / whole-row clicks actually navigate. -->
 				<DropdownMenu.Trigger>
 					{#snippet child({ props })}
-						<Button {...props} variant="ghost" class="nav-dropdown-trigger gap-1 px-4 py-2 text-sm font-medium {browseActive ? 'bg-[#eff6ff] text-[#3b82f6]' : 'text-[#64748b] hover:bg-[#f1f5f9] hover:text-[#1e293b]'}">
+						<Button {...props} variant="ghost" class="nav-dropdown-trigger gap-1 px-4 py-2 text-sm font-medium {browseActive ? 'bg-[#eff6ff] text-[#1d4ed8]' : 'text-[#64748b] hover:bg-[#f1f5f9] hover:text-[#1e293b]'}">
 							Browse
 							<svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
 								<polyline points="6 9 12 15 18 9" />
@@ -132,17 +163,9 @@
 					{/each}
 				</DropdownMenu.Content>
 			</DropdownMenu.Root>
-			<a href="/sources" class:active={$page.url.pathname.startsWith('/sources')}>Sources</a>
-			<a href="/evidence" class:active={$page.url.pathname.startsWith('/evidence')}>Evidence</a>
-			<a href="/history" class:active={$page.url.pathname.startsWith('/history')}>History</a>
-			<a href="/branches" class:active={$page.url.pathname.startsWith('/branches')}>Branches</a>
-			<a href="/snapshots" class:active={$page.url.pathname.startsWith('/snapshots')}>Snapshots</a>
-			<a href="/map" class:active={$page.url.pathname.startsWith('/map')}>Map</a>
-			<a href="/analytics" class:active={$page.url.pathname.startsWith('/analytics')}>Analytics</a>
-			<a href="/quality" class:active={$page.url.pathname.startsWith('/quality')}>Quality</a>
-			<a href="/relationship" class:active={$page.url.pathname.startsWith('/relationship')}>Relationship</a>
-			<a href="/import" class:active={$page.url.pathname === '/import'}>Import</a>
-			<a href="/search" class:active={$page.url.pathname.startsWith('/search')}>Search</a>
+			{#each trailingLinks as link (link.href)}
+				{@render navLink(link)}
+			{/each}
 		</nav>
 		<div class="header-controls">
 			<BranchSwitcher />
@@ -165,7 +188,7 @@
 			</button>
 		</div>
 	</header>
-	<main id="main-content" class="app-main" role="main">
+	<main id="main-content" class="app-main" tabindex="-1">
 		<TooltipProvider>
 			{@render children()}
 		</TooltipProvider>
@@ -207,44 +230,12 @@
 		color: var(--color-text);
 	}
 
-	:global(body.font-large) {
-		font-size: 125%;
-	}
-
-	:global(body.font-larger) {
-		font-size: 150%;
-	}
-
 	:global(body.reduced-motion *),
 	:global(body.reduced-motion *::before),
 	:global(body.reduced-motion *::after) {
 		animation-duration: 0.01ms !important;
 		animation-iteration-count: 1 !important;
 		transition-duration: 0.01ms !important;
-	}
-
-	/* Skip link styles */
-	:global(.sr-only) {
-		position: absolute;
-		width: 1px;
-		height: 1px;
-		padding: 0;
-		margin: -1px;
-		overflow: hidden;
-		clip: rect(0, 0, 0, 0);
-		white-space: nowrap;
-		border-width: 0;
-	}
-
-	:global(.focus\:not-sr-only:focus) {
-		position: absolute;
-		width: auto;
-		height: auto;
-		padding: 0;
-		margin: 0;
-		overflow: visible;
-		clip: auto;
-		white-space: normal;
 	}
 
 	.app-layout {
@@ -344,7 +335,7 @@
 
 	.nav a.active {
 		background: #eff6ff;
-		color: #3b82f6;
+		color: #1d4ed8;
 	}
 
 	:global(body.high-contrast) .nav a.active {
@@ -424,6 +415,11 @@
 	.app-main {
 		flex: 1;
 		overflow: auto;
+	}
+
+	/* Focused only as the skip link's target; children keep their own outlines. */
+	.app-main:focus {
+		outline: none;
 	}
 
 	:global(body.high-contrast) .app-main {

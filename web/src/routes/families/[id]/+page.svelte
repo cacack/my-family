@@ -672,7 +672,7 @@
 		background: #f1f5f9;
 		border-radius: 4px;
 		font-size: 0.875rem;
-		color: #64748b;
+		color: #475569;
 		text-transform: capitalize;
 	}
 
