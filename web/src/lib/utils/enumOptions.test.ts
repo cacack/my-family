@@ -13,14 +13,24 @@ import {
 import { FACT_TYPES } from './evidence';
 import { SOURCE_TYPES } from './sourceTypes';
 
-/** The values of the named enum schema in openapi.yaml, inline or block list. */
+const unquote = (v: string) => v.replace(/#.*$/, '').trim().replace(/^(['"])(.*)\1$/, '$2');
+
+/**
+ * The values of the named enum schema in openapi.yaml, inline or block list.
+ * A light line scan, not a YAML parser (none is a dependency): it fails loudly
+ * on a shape it cannot read rather than returning an empty list.
+ */
 function specEnum(name: string): string[] {
 	const start = spec.indexOf(`\n    ${name}:\n`);
 	expect(start, `schema ${name}`).toBeGreaterThan(-1);
 	const block = spec.slice(start + 1).split(/\n(?=    \S)/)[0];
-	const inline = block.match(/enum: \[([^\]]+)\]/);
-	if (inline) return inline[1].split(',').map((v) => v.trim());
-	return [...block.matchAll(/^ {8}- (\S+)$/gm)].map((m) => m[1]);
+	const inline = block.match(/enum:\s*\[([^\]]+)\]/);
+	const found = inline
+		? inline[1].split(',').map(unquote)
+		: [...block.matchAll(/^ {8}- (.+)$/gm)].map((m) => unquote(m[1]));
+	const parsed = found.filter(Boolean);
+	expect(parsed.length, `could not read the enum values of ${name}`).toBeGreaterThan(0);
+	return parsed;
 }
 
 const values = (options: readonly { value: string }[]) => options.map((o) => o.value);
