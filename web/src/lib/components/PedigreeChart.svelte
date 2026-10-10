@@ -557,7 +557,7 @@
 			.attr('font-weight', '500')
 			.attr('fill', '#475569')
 			.text((d) => {
-				return truncateLabel(d.data.surname || '?', 16);
+				return truncateLabel(d.data.surname ?? '', 16);
 			});
 
 		// Birth-death dates (third line)

@@ -314,6 +314,15 @@ describe('DescendancyChart', () => {
 		);
 	});
 
+	it('leaves the surname line blank when there is no surname', () => {
+		const person: DescendancyNode = { id: '1', given_name: 'Ælfgifu', surname: '' };
+		const { container } = render(DescendancyChart, { props: { data: person } });
+		const texts = Array.from(container.querySelectorAll('.node text')).map((t) => t.textContent);
+		expect(texts).toContain('Ælfgifu');
+		expect(texts).not.toContain('?');
+		expect(container.querySelector('.node title')?.textContent).toBe('Ælfgifu');
+	});
+
 	it('handles missing dates gracefully', () => {
 		const noDatesPerson: DescendancyNode = {
 			id: '1',
