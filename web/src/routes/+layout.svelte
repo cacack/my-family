@@ -207,14 +207,6 @@
 		color: var(--color-text);
 	}
 
-	:global(body.font-large) {
-		font-size: 125%;
-	}
-
-	:global(body.font-larger) {
-		font-size: 150%;
-	}
-
 	:global(body.reduced-motion *),
 	:global(body.reduced-motion *::before),
 	:global(body.reduced-motion *::after) {

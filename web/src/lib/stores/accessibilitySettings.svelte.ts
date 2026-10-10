@@ -101,19 +101,20 @@ $effect.root(() => {
 		}
 	});
 
-	// Apply classes to document body when settings change
+	// Apply classes to the document when settings change
 	$effect(() => {
 		if (typeof document === 'undefined') return;
 
-		const body = document.body;
+		// Font size goes on <html>: rem units are relative to the root element
+		const root = document.documentElement;
 
 		// Remove all font size classes
-		body.classList.remove('font-large', 'font-larger');
+		root.classList.remove('font-large', 'font-larger');
 
 		// Add current font size class
 		const config = FONT_SIZE_CONFIG[accessibilityState.fontSize];
 		if (config.className) {
-			body.classList.add(config.className);
+			root.classList.add(config.className);
 		}
 
 		// Set CSS custom property for scale

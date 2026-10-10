@@ -70,15 +70,17 @@
  * Font Size Scaling Classes
  *
  * These classes scale text proportionally using the CSS custom property.
+ * They go on the root element because component sizes are in rem, which is
+ * relative to <html>, not <body>.
  * The scale multiplier is also set programmatically for use in calculations.
  */
 
-body.font-large {
+html.font-large {
 	--font-size-scale: 1.25;
 	font-size: calc(var(--font-size-base) * 1.25);
 }
 
-body.font-larger {
+html.font-larger {
 	--font-size-scale: 1.5;
 	font-size: calc(var(--font-size-base) * 1.5);
 }
