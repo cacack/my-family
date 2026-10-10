@@ -3,6 +3,7 @@
 	import { page } from '$app/stores';
 	import {
 		api,
+		recordLoadError,
 		type EvidenceConflictResponse,
 		type EvidenceAnalysisResponse
 	} from '$lib/api/client';
@@ -16,6 +17,7 @@
 		subjectRoute,
 		conflictBadgeProps
 	} from '$lib/utils/evidence';
+	import ErrorState from '$lib/components/ErrorState.svelte';
 
 	let conflict: EvidenceConflictResponse | null = $state(null);
 	let linkedAnalyses: EvidenceAnalysisResponse[] = $state([]);
@@ -40,7 +42,7 @@
 					.map((r) => r.value);
 			}
 		} catch (e) {
-			error = (e as { message?: string }).message || 'Failed to load conflict';
+			error = recordLoadError(e, 'conflict');
 			conflict = null;
 		} finally {
 			loading = false;
@@ -97,10 +99,7 @@
 	{#if loading}
 		<div class="p-12 text-center text-slate-500">Loading...</div>
 	{:else if error && !conflict}
-		<div class="p-12 text-center text-red-600">
-			<p class="m-0 mb-4">{error}</p>
-			<Button variant="outline" onclick={() => loadConflict($page.params.id!)}>Retry</Button>
-		</div>
+		<ErrorState message={error} onRetry={() => loadConflict($page.params.id!)} />
 	{:else if conflict}
 		{@const statusBadge = conflictBadgeProps(conflict.status)}
 		<div class="rounded-xl border border-slate-200 bg-white p-6">

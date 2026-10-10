@@ -18,7 +18,8 @@ const {
 	getPersonHistory,
 	listPersonMedia,
 	getPersonRestorePoints,
-	updatePerson
+	updatePerson,
+	deletePerson
 } = vi.hoisted(() => ({
 	// The real store exposes a read-only view, so the active branch is injected.
 	branchState: { id: null as string | null },
@@ -28,7 +29,8 @@ const {
 	getPersonHistory: vi.fn(async () => ({ items: [], total: 0 })),
 	listPersonMedia: vi.fn(async () => ({ items: [], total: 0 })),
 	getPersonRestorePoints: vi.fn(async () => ({ items: [], total: 0, has_more: false })),
-	updatePerson: vi.fn()
+	updatePerson: vi.fn(),
+	deletePerson: vi.fn()
 }));
 
 /**
@@ -59,6 +61,7 @@ vi.mock('$lib/api/client', async (importOriginal) => {
 		listPersonMedia,
 		getPersonRestorePoints,
 		updatePerson,
+		deletePerson,
 		// These two answer with a bare array rather than a wrapper object.
 		getConflictsBySubject: vi.fn(async () => []),
 		getResearchLogsBySubject: vi.fn(async () => [])
@@ -347,5 +350,126 @@ describe('Person detail delete', () => {
 		await waitFor(() =>
 			expect(goto).toHaveBeenCalledWith('/persons', { state: { notice: 'Ada Lovelace was deleted.' } })
 		);
+	});
+});
+
+describe('Person detail failed actions (#899)', () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		branchState.id = null;
+		getPerson.mockResolvedValue(person({ birth_place: 'London' }));
+	});
+
+	async function editBirthPlace(value: string) {
+		render(Page);
+		await fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+		await fireEvent.input(screen.getByLabelText('Birth Place'), { target: { value } });
+		await fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+	}
+
+	it('keeps the form and the typed edits when a save fails, showing why inline', async () => {
+		updatePerson.mockRejectedValueOnce({ status: 400, message: 'Invalid birth date' });
+		await editBirthPlace('Marylebone');
+
+		expect((await screen.findByRole('alert')).textContent).toContain('Invalid birth date');
+		expect((screen.getByLabelText('Birth Place') as HTMLInputElement).value).toBe('Marylebone');
+	});
+
+	it('compares the edits with the latest version on a 409', async () => {
+		updatePerson.mockRejectedValueOnce({ status: 409, message: 'Conflict' });
+		getPerson
+			.mockResolvedValueOnce(person({ birth_place: 'London' }))
+			.mockResolvedValueOnce(person({ birth_place: 'Westminster', version: 4 }));
+		await editBirthPlace('Marylebone');
+
+		expect(await screen.findByText(/changed elsewhere while you were editing/)).toBeTruthy();
+		const row = screen.getByRole('rowheader', { name: 'Birth Place' }).closest('tr')!;
+		expect(row.textContent).toContain('Marylebone');
+		expect(row.textContent).toContain('Westminster');
+		// Only the fields that differ are compared.
+		expect(screen.queryByRole('rowheader', { name: 'Surname' })).toBeNull();
+		expect((screen.getByLabelText('Birth Place') as HTMLInputElement).value).toBe('Marylebone');
+	});
+
+	it('saves the edits over the latest version when the user keeps them', async () => {
+		updatePerson.mockRejectedValueOnce({ status: 409, message: 'Conflict' }).mockResolvedValueOnce({});
+		getPerson
+			.mockResolvedValueOnce(person({ birth_place: 'London' }))
+			.mockResolvedValue(person({ birth_place: 'Westminster', version: 4 }));
+		await editBirthPlace('Marylebone');
+
+		await fireEvent.click(await screen.findByRole('button', { name: 'Save my edits' }));
+
+		await waitFor(() => expect(updatePerson).toHaveBeenCalledTimes(2));
+		expect(updatePerson.mock.calls[1][1]).toMatchObject({ birth_place: 'Marylebone', version: 4 });
+	});
+
+	it("keeps another writer's changes to the fields the user did not edit", async () => {
+		updatePerson.mockRejectedValueOnce({ status: 409, message: 'Conflict' }).mockResolvedValueOnce({});
+		getPerson
+			.mockResolvedValueOnce(person({ birth_place: 'London' }))
+			.mockResolvedValue(person({ birth_place: 'London', notes: 'Theirs', version: 4 }));
+		await editBirthPlace('Marylebone');
+
+		// Only the edited field is compared.
+		expect(await screen.findByRole('rowheader', { name: 'Birth Place' })).toBeTruthy();
+		expect(screen.queryByRole('rowheader', { name: 'Notes' })).toBeNull();
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Save my edits' }));
+
+		await waitFor(() => expect(updatePerson).toHaveBeenCalledTimes(2));
+		expect(updatePerson.mock.calls[1][1]).toMatchObject({ birth_place: 'Marylebone', notes: 'Theirs', version: 4 });
+	});
+
+	it('shows a 409 that is not a change elsewhere as it came', async () => {
+		updatePerson.mockRejectedValueOnce({ status: 409, message: 'Branch is merged and cannot be written to' });
+		await editBirthPlace('Marylebone');
+
+		expect((await screen.findByRole('alert')).textContent).toContain('Branch is merged');
+		expect(screen.queryByText(/changed elsewhere/)).toBeNull();
+		expect((screen.getByLabelText('Birth Place') as HTMLInputElement).value).toBe('Marylebone');
+	});
+
+	it('replaces the edits with the latest version when the user takes it', async () => {
+		updatePerson.mockRejectedValueOnce({ status: 409, message: 'Conflict' });
+		getPerson
+			.mockResolvedValueOnce(person({ birth_place: 'London' }))
+			.mockResolvedValueOnce(person({ birth_place: 'Westminster', version: 4 }));
+		await editBirthPlace('Marylebone');
+
+		await fireEvent.click(await screen.findByRole('button', { name: 'Use the latest version' }));
+
+		expect((screen.getByLabelText('Birth Place') as HTMLInputElement).value).toBe('Westminster');
+		expect(screen.queryByText(/changed elsewhere/)).toBeNull();
+		expect(updatePerson).toHaveBeenCalledTimes(1);
+	});
+
+	it('keeps the person, families included, when a delete is refused', async () => {
+		getPerson.mockResolvedValue(
+			person({ families_as_partner: [{ id: 'f1', partner1_name: 'Ada Lovelace', partner2_name: 'William King' }] })
+		);
+		deletePerson.mockRejectedValueOnce({ status: 409, message: 'Person is linked to families and cannot be deleted' });
+		vi.spyOn(window, 'confirm').mockReturnValue(true);
+		render(Page);
+		await fireEvent.click(await screen.findByRole('button', { name: 'Delete' }));
+
+		expect((await screen.findByRole('alert')).textContent).toContain('linked to families');
+		expect(screen.getByRole('heading', { name: 'Ada Lovelace' })).toBeTruthy();
+		expect(screen.getByRole('link', { name: /William King/ })).toBeTruthy();
+	});
+
+	it('says a malformed id is not found, never the raw binding error, and offers Retry', async () => {
+		getPerson.mockRejectedValueOnce({
+			status: 400,
+			message: "Invalid format for parameter id: error unmarshaling 'xyz' text as *uuid.UUID"
+		});
+		render(Page);
+
+		const alert = await screen.findByRole('alert');
+		expect(alert.textContent).toContain('This person could not be found');
+		expect(alert.textContent).not.toContain('unmarshaling');
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+		expect(await screen.findByRole('heading', { name: 'Ada Lovelace' })).toBeTruthy();
 	});
 });

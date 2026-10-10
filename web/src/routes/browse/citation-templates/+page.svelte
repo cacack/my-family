@@ -6,6 +6,7 @@
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import { Separator } from '$lib/components/ui/separator';
+	import ErrorState from '$lib/components/ErrorState.svelte';
 
 	let templates: CitationTemplate[] = $state([]);
 	let loading = $state(true);
@@ -84,10 +85,7 @@
 	{#if loading}
 		<div class="loading" role="status" aria-live="polite">Loading citation templates...</div>
 	{:else if error}
-		<div class="error" role="alert">
-			<p>{error}</p>
-			<Button variant="outline" onclick={loadTemplates}>Retry</Button>
-		</div>
+		<ErrorState message={error} onRetry={loadTemplates} />
 	{:else if templates.length === 0}
 		<div class="empty">No citation templates available.</div>
 	{:else}
@@ -223,12 +221,6 @@
 		text-align: center;
 		padding: 2rem;
 		color: #64748b;
-	}
-
-	.error {
-		text-align: center;
-		padding: 2rem;
-		color: #dc2626;
 	}
 
 	.filters {

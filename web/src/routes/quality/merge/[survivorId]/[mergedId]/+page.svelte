@@ -3,6 +3,7 @@
 	import { goto } from '$app/navigation';
 	import {
 		api,
+		recordLoadError,
 		formatGenDate,
 		formatPersonName,
 		type GenDate,
@@ -21,6 +22,7 @@
 	} from '$lib/components/ui/card';
 	import { RadioGroup, RadioGroupItem } from '$lib/components/ui/radio-group';
 	import { Label } from '$lib/components/ui/label';
+	import ErrorState from '$lib/components/ErrorState.svelte';
 
 	const MERGEABLE_FIELDS = [
 		'given_name',
@@ -122,7 +124,11 @@
 			routeMergedId = mergedId;
 			resolution = buildInitialResolution(s, m);
 		} catch (e) {
-			error = truncateError(e, 'Failed to load one or both persons.');
+			const status = (e as { status?: number })?.status;
+			error =
+				status === 400 || status === 404
+					? recordLoadError(e, 'person')
+					: truncateError(e, 'Failed to load one or both persons.');
 			survivor = null;
 			merged = null;
 		} finally {
@@ -278,7 +284,8 @@
 		</Card>
 	{/if}
 
-	{#if error}
+	<!-- A refused merge; a failed load shows in place of the form below. -->
+	{#if error && survivor && merged}
 		<div
 			role="alert"
 			class="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
@@ -289,6 +296,11 @@
 
 	{#if loading}
 		<div class="py-12 text-center text-sm text-muted-foreground">Loading persons&hellip;</div>
+	{:else if error && !result && !(survivor && merged)}
+		<ErrorState
+			message={error}
+			onRetry={() => loadPersons($page.params.survivorId ?? '', $page.params.mergedId ?? '')}
+		/>
 	{:else if result}
 		<Card class="border-green-300 bg-green-50">
 			<CardHeader>

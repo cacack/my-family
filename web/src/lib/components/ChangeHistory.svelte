@@ -11,6 +11,8 @@
 		changeEntryLink,
 		entityTypeLabel
 	} from '$lib/utils/changeEntries';
+	import ErrorState from './ErrorState.svelte';
+	import ActionError from './ActionError.svelte';
 
 	interface Props {
 		entityType?: string;
@@ -23,6 +25,8 @@
 	let loading = $state(true);
 	let loadingMore = $state(false);
 	let error: string | null = $state(null);
+	// A failed "Load more" keeps the entries already shown (#899).
+	let loadMoreError: string | null = $state(null);
 	let expandedEntries: Set<string> = $state(new Set());
 
 	// Filter state for global view
@@ -75,6 +79,7 @@
 	async function loadHistory() {
 		loading = true;
 		error = null;
+		loadMoreError = null;
 		try {
 			if (entityType && entityId) {
 				// Entity-specific history
@@ -105,6 +110,7 @@
 		if (!history || !history.has_more) return;
 
 		loadingMore = true;
+		loadMoreError = null;
 		try {
 			const nextOffset = (history.offset ?? 0) + (history.limit ?? history.items.length);
 			let moreHistory: ChangeHistoryResponse;
@@ -132,7 +138,7 @@
 				items: [...history.items, ...moreHistory.items]
 			};
 		} catch (e) {
-			error = (e as { message?: string }).message || 'Failed to load more';
+			loadMoreError = (e as { message?: string }).message || 'Failed to load more';
 		} finally {
 			loadingMore = false;
 		}
@@ -165,7 +171,7 @@
 	{#if loading}
 		<div class="loading" role="status" aria-live="polite">Loading history...</div>
 	{:else if error}
-		<div class="error" role="alert">{error}</div>
+		<ErrorState message={error} onRetry={loadHistory} />
 	{:else if history && history.items.length > 0}
 		<div class="timeline">
 			{#each history.items as entry (entry.id)}
@@ -216,6 +222,9 @@
 			{/each}
 		</div>
 
+		{#if loadMoreError}
+			<ActionError message={loadMoreError} />
+		{/if}
 		{#if history.has_more}
 			<div class="load-more">
 				<Button variant="outline" onclick={loadMore} disabled={loadingMore}>
@@ -263,15 +272,10 @@
 	}
 
 	.loading,
-	.error,
 	.empty {
 		text-align: center;
 		padding: 2rem;
 		color: #64748b;
-	}
-
-	.error {
-		color: #dc2626;
 	}
 
 	.timeline {

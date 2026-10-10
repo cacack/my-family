@@ -4,6 +4,7 @@
 	import { goto } from '$app/navigation';
 	import {
 		api,
+		recordLoadError,
 		type ResearchLogResponse,
 		type ResearchLogCreateRequest,
 		type ResearchOutcome
@@ -15,6 +16,7 @@
 	import { Textarea } from '$lib/components/ui/textarea';
 	import { toRFC3339, outcomeBadgeProps } from '$lib/utils/evidence';
 	import { nativeSelectClass } from '$lib/utils/forms';
+	import ErrorState from '$lib/components/ErrorState.svelte';
 
 	const outcomes: readonly ResearchOutcome[] = ['found', 'not_found', 'inconclusive'];
 
@@ -66,7 +68,7 @@
 			log = await api.getResearchLog(id);
 			resetForm();
 		} catch (e) {
-			error = (e as { message?: string }).message || 'Failed to load research log';
+			error = recordLoadError(e, 'research log');
 			log = null;
 		} finally {
 			loading = false;
@@ -201,10 +203,7 @@
 	{#if loading}
 		<div class="p-12 text-center text-slate-500">Loading...</div>
 	{:else if error && !log && !isNew}
-		<div class="p-12 text-center text-red-600">
-			<p class="m-0 mb-4">{error}</p>
-			<Button variant="outline" onclick={() => loadLog($page.params.id!)}>Retry</Button>
-		</div>
+		<ErrorState message={error} onRetry={() => loadLog($page.params.id!)} />
 	{:else if editing}
 		<form
 			class="rounded-xl border border-slate-200 bg-white p-6"

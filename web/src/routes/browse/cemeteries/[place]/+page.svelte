@@ -3,16 +3,19 @@
 	import { untrack } from 'svelte';
 	import { api, type Person } from '$lib/api/client';
 	import PersonCard from '$lib/components/PersonCard.svelte';
+	import ErrorState from '$lib/components/ErrorState.svelte';
 
 	let place = $derived(decodeURIComponent($page.params.place ?? ''));
 	let persons: Person[] = $state([]);
 	let total = $state(0);
 	let loading = $state(true);
+	let loadError: string | null = $state(null);
 	let currentPage = $state(1);
 	const pageSize = 20;
 
 	async function loadPersons() {
 		loading = true;
+		loadError = null;
 		try {
 			const result = await api.getPersonsByCemetery(place, {
 				limit: pageSize,
@@ -22,6 +25,7 @@
 			total = result.total;
 		} catch (e) {
 			console.error('Failed to load persons:', e);
+			loadError = 'Failed to load people. Please try again.';
 		} finally {
 			loading = false;
 		}
@@ -72,6 +76,8 @@
 
 	{#if loading}
 		<div class="loading" role="status" aria-live="polite">Loading...</div>
+	{:else if loadError}
+		<ErrorState message={loadError} onRetry={loadPersons} />
 	{:else if persons.length === 0}
 		<div class="empty">
 			<p>No people found at "{place}".</p>

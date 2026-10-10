@@ -1334,7 +1334,7 @@ func (ss *StrictServer) UpdateFamily(ctx context.Context, request UpdateFamilyRe
 	_, err = ss.branchWriter(branch).UpdateFamily(ctx, input)
 	if err != nil {
 		if errors.Is(err, repository.ErrConcurrencyConflict) {
-			return UpdateFamily400JSONResponse{BadRequestJSONResponse{
+			return UpdateFamily409JSONResponse{ConflictJSONResponse{
 				Code:    "conflict",
 				Message: "Version conflict - entity was modified",
 			}}, nil

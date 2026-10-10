@@ -2006,6 +2006,20 @@ export function isConflictError(error: unknown): boolean {
 }
 
 /**
+ * Why a record fetched by its id failed to load, in words (#899). A 404, and a
+ * 400 (the only 400 a fetch by id can give is a malformed id, which no record
+ * can have), read as "not found", never as the server's parameter-binding
+ * detail ("Invalid format for parameter id: error unmarshaling ...").
+ */
+export function recordLoadError(error: unknown, noun: string): string {
+	const apiError = error as ApiError;
+	if (apiError?.status === 404 || apiError?.status === 400) {
+		return `This ${noun} could not be found. It may have been deleted, or the link may be wrong.`;
+	}
+	return apiError?.message || `Failed to load the ${noun}.`;
+}
+
+/**
  * Every `code` `POST /branches/{id}/merge` refuses with. The first seven are the
  * 409 enum of the generated `BranchMergeConflictError`. The last three are not:
  * `merge_partially_applied` is the 500, and `invalid_resolution` /

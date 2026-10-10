@@ -1,11 +1,15 @@
 <script lang="ts">
 	import { page } from '$app/stores';
-	import { api, type AhnentafelResponse, type AhnentafelEntry, formatGenDate } from '$lib/api/client';
+	import { api, recordLoadError, type AhnentafelResponse, type AhnentafelEntry, formatGenDate } from '$lib/api/client';
 	import { Button } from '$lib/components/ui/button';
 	import { Card, CardHeader, CardContent } from '$lib/components/ui/card';
+	import ErrorState from '$lib/components/ErrorState.svelte';
+	import ActionError from '$lib/components/ActionError.svelte';
 
 	let report: AhnentafelResponse | null = $state(null);
 	let error: string | null = $state(null);
+	// A failed export is shown beside the report, never in place of it (#899).
+	let exportError: string | null = $state(null);
 	let loading = $state(true);
 	let generations = $state(4);
 	let exporting = $state(false);
@@ -16,7 +20,7 @@
 		try {
 			report = await api.getAhnentafel(personId, gens);
 		} catch (e) {
-			error = (e as { message?: string }).message || 'Failed to load Ahnentafel report';
+			error = recordLoadError(e, 'person');
 			report = null;
 		} finally {
 			loading = false;
@@ -41,6 +45,7 @@
 		if (!personId) return;
 
 		exporting = true;
+		exportError = null;
 		try {
 			const text = await api.getAhnentafelText(personId, generations);
 			const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
@@ -56,7 +61,7 @@
 			document.body.removeChild(link);
 			URL.revokeObjectURL(url);
 		} catch (e) {
-			error = (e as { message?: string }).message || 'Failed to export report';
+			exportError = (e as { message?: string }).message || 'Failed to export report';
 		} finally {
 			exporting = false;
 		}
@@ -144,10 +149,13 @@
 	</header>
 
 	<div class="report-container">
+		{#if exportError}
+			<div class="no-print"><ActionError message={exportError} /></div>
+		{/if}
 		{#if loading}
 			<div class="loading">Loading report...</div>
 		{:else if error}
-			<div class="error">{error}</div>
+			<ErrorState message={error} onRetry={() => loadReport($page.params.id ?? '', generations)} />
 		{:else if report}
 			<div class="report">
 				<div class="report-header">
@@ -347,7 +355,6 @@
 	}
 
 	.loading,
-	.error,
 	.empty {
 		display: flex;
 		align-items: center;
@@ -357,9 +364,6 @@
 		font-size: 1rem;
 	}
 
-	.error {
-		color: #dc2626;
-	}
 
 	.report {
 		background: white;

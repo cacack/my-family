@@ -4,6 +4,7 @@
 	import { goto } from '$app/navigation';
 	import {
 		api,
+		recordLoadError,
 		type EvidenceAnalysisResponse,
 		type EvidenceAnalysisCreateRequest,
 		type FactType,
@@ -17,6 +18,7 @@
 	import UncertaintyBadge from '$lib/components/UncertaintyBadge.svelte';
 	import { FACT_TYPES, formatFactType, isFactType, subjectRoute } from '$lib/utils/evidence';
 	import { nativeSelectClass } from '$lib/utils/forms';
+	import ErrorState from '$lib/components/ErrorState.svelte';
 
 	// Every fact type the API accepts, so a fact the merge review links here
 	// (#838) is always offered.
@@ -94,7 +96,7 @@
 			resetForm();
 		} catch (e) {
 			if (seq !== loadSeq) return;
-			error = (e as { message?: string }).message || 'Failed to load analysis';
+			error = recordLoadError(e, 'analysis');
 			analysis = null;
 		} finally {
 			if (seq === loadSeq) loading = false;
@@ -242,10 +244,7 @@
 	{#if loading}
 		<div class="p-12 text-center text-slate-500">Loading...</div>
 	{:else if error && !analysis && !isNew}
-		<div class="p-12 text-center text-red-600">
-			<p class="m-0 mb-4">{error}</p>
-			<Button variant="outline" onclick={() => loadAnalysis($page.params.id!)}>Retry</Button>
-		</div>
+		<ErrorState message={error} onRetry={() => loadAnalysis($page.params.id!)} />
 	{:else if editing}
 		<form
 			class="rounded-xl border border-slate-200 bg-white p-6"

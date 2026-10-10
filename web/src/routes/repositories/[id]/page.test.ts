@@ -90,3 +90,41 @@ describe('Repository detail page', () => {
 		expect(body).toMatchObject({ notes: '', gedcom_xref: '', address: {} });
 	});
 });
+
+describe('Repository detail page: failed actions (#899)', () => {
+	const api = apiModule.api;
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		branchState.id = null;
+		vi.mocked(api.getRepository).mockResolvedValue({
+			id: 'repo-1',
+			name: 'National Archives',
+			version: 1
+		} as apiModule.RepositoryDetail);
+	});
+
+	it('shows a refused delete beside the repository it kept', async () => {
+		vi.mocked(api.deleteRepository).mockRejectedValueOnce({ status: 500, message: 'Database unavailable' });
+		vi.spyOn(window, 'confirm').mockReturnValue(true);
+		render(RepositoryPage);
+		await fireEvent.click(await screen.findByRole('button', { name: 'Delete' }));
+
+		expect((await screen.findByRole('alert')).textContent).toContain('Database unavailable');
+		expect(screen.getByText('National Archives')).toBeTruthy();
+	});
+
+	it('says a malformed id is not found, and offers Retry', async () => {
+		vi.mocked(api.getRepository).mockRejectedValueOnce({
+			status: 400,
+			message: "Invalid format for parameter id: error unmarshaling 'xyz'"
+		});
+		render(RepositoryPage);
+
+		const alert = await screen.findByRole('alert');
+		expect(alert.textContent).toContain('This repository could not be found');
+		expect(alert.textContent).not.toContain('unmarshaling');
+		await fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+		expect(await screen.findByText('National Archives')).toBeTruthy();
+	});
+});

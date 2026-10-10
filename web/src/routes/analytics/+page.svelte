@@ -4,6 +4,7 @@
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import QualityChart from '$lib/components/QualityChart.svelte';
 	import UncertaintyBadge from '$lib/components/UncertaintyBadge.svelte';
+	import ErrorState from '$lib/components/ErrorState.svelte';
 
 	// Every figure here is aggregated by the server over the whole tree (#894);
 	// the page only lays it out.
@@ -70,7 +71,7 @@
 	{#if loading}
 		<div class="loading">Loading completeness metrics...</div>
 	{:else if error}
-		<div class="error">{error}</div>
+		<ErrorState message={error} onRetry={loadData} />
 	{:else if overview}
 		<!-- Overview Cards -->
 		<section class="stat-cards">
@@ -202,15 +203,10 @@
 		text-decoration: underline;
 	}
 
-	.loading,
-	.error {
+	.loading {
 		text-align: center;
 		padding: 3rem;
 		color: #64748b;
-	}
-
-	.error {
-		color: #ef4444;
 	}
 
 	/* Stat Cards */

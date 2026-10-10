@@ -4,6 +4,7 @@
 	import * as topojson from 'topojson-client';
 	import type { Topology, GeometryCollection as TopoGeometryCollection } from 'topojson-specification';
 	import { motionDuration, observeChartResize } from '$lib/utils/chart';
+	import ErrorState from './ErrorState.svelte';
 
 	const WORLD_ATLAS_URL = 'https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json';
 
@@ -45,6 +46,12 @@
 			return observeChartResize(container, renderMap);
 		}
 	});
+
+	/** Retry from scratch: a failed world atlas fetch is cached, so drop it. */
+	function retry() {
+		worldAtlas = null;
+		loadData();
+	}
 
 	function loadWorldAtlas(): Promise<Topology> {
 		worldAtlas ??= fetch(WORLD_ATLAS_URL).then((res) => {
@@ -196,7 +203,7 @@
 	{#if loading}
 		<div class="loading">Loading map data...</div>
 	{:else if error}
-		<div class="error">{error}</div>
+		<ErrorState message={error} onRetry={retry} />
 	{:else if locations.length === 0}
 		<div class="empty">
 			<p>No geographic data available.</p>
@@ -410,15 +417,10 @@
 	}
 
 	.loading,
-	.error,
 	.empty {
 		text-align: center;
 		padding: 3rem 1rem;
 		color: #64748b;
-	}
-
-	.error {
-		color: #dc2626;
 	}
 
 	.empty .hint {

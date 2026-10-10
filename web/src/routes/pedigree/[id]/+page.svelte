@@ -1,9 +1,10 @@
 <script lang="ts">
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
-	import { api, type Pedigree } from '$lib/api/client';
+	import { api, recordLoadError, type Pedigree } from '$lib/api/client';
 	import PedigreeChart, { type LayoutMode } from '$lib/components/PedigreeChart.svelte';
 	import { createShortcutHandler } from '$lib/keyboard/useShortcuts.svelte';
+	import ErrorState from '$lib/components/ErrorState.svelte';
 
 	let pedigree: Pedigree | null = $state(null);
 	let error: string | null = $state(null);
@@ -131,12 +132,7 @@
 				selectedPersonId = pedigree.root.id;
 			}
 		} catch (e) {
-			const apiError = e as { message?: string; status?: number };
-			// A malformed id (400) and an unknown one (404) both mean there is no such person
-			error =
-				apiError.status === 400 || apiError.status === 404
-					? 'Person not found'
-					: apiError.message || 'Failed to load pedigree';
+			error = recordLoadError(e, 'person');
 			pedigree = null;
 			selectedPersonId = null;
 		} finally {
@@ -228,7 +224,7 @@
 		{#if loading}
 			<div class="loading">Loading pedigree...</div>
 		{:else if error}
-			<div class="error">{error}</div>
+			<ErrorState message={error} onRetry={() => loadPedigree($page.params.id ?? '', generations)} />
 		{:else if pedigree}
 			<div class="chart-area">
 				<PedigreeChart bind:this={chart} data={pedigree.root} {layout} {selectedPersonId} onPersonClick={handlePersonClick} />
@@ -386,7 +382,6 @@
 	}
 
 	.loading,
-	.error,
 	.empty {
 		display: flex;
 		align-items: center;
@@ -394,10 +389,6 @@
 		height: 100%;
 		color: #64748b;
 		font-size: 1rem;
-	}
-
-	.error {
-		color: #dc2626;
 	}
 
 	.hint {

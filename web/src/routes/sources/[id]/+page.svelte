@@ -1,12 +1,14 @@
 <script lang="ts">
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
-	import { api, type SourceDetail, type SourceType, type Citation } from '$lib/api/client';
+	import { api, recordLoadError, type SourceDetail, type SourceType, type Citation } from '$lib/api/client';
 	import ExternalLinks from '$lib/components/ExternalLinks.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import FormRow from '$lib/components/FormRow.svelte';
 	import { Badge } from '$lib/components/ui/badge';
 	import { SOURCE_TYPES } from '$lib/utils/sourceTypes';
+	import ErrorState from '$lib/components/ErrorState.svelte';
+	import ActionError from '$lib/components/ActionError.svelte';
 
 	let source: SourceDetail | null = $state(null);
 	let loading = $state(true);
@@ -36,7 +38,7 @@
 			source = await api.getSource(id);
 			resetForm();
 		} catch (e) {
-			error = (e as { message?: string }).message || 'Failed to load source';
+			error = recordLoadError(e, 'source');
 			source = null;
 		} finally {
 			loading = false;
@@ -63,11 +65,13 @@
 	function startEdit() {
 		resetForm();
 		editing = true;
+		error = null;
 	}
 
 	function cancelEdit() {
 		resetForm();
 		editing = false;
+		error = null;
 	}
 
 	async function saveSource() {
@@ -109,6 +113,7 @@
 		if (!confirm(`Delete "${source.title}"? This cannot be undone.`)) return;
 
 		deleting = true;
+		error = null;
 		try {
 			await api.deleteSource(source.id, source.version);
 			goto('/sources');
@@ -159,8 +164,12 @@
 	{#if loading}
 		<div class="loading">Loading...</div>
 	{:else if error && !source}
-		<div class="error">{error}</div>
+		<ErrorState message={error} onRetry={() => loadSource($page.params.id ?? '')} />
 	{:else if source}
+		<!-- In the form, the error shows in it; out of it, a failed delete shows here. -->
+		{#if error && !editing}
+			<ActionError message={error} />
+		{/if}
 		{#if editing}
 			<form class="edit-form" onsubmit={(e) => { e.preventDefault(); saveSource(); }}>
 				{#if error}
@@ -397,15 +406,10 @@
 		gap: 0.5rem;
 	}
 
-	.loading,
-	.error {
+	.loading {
 		text-align: center;
 		padding: 3rem;
 		color: #64748b;
-	}
-
-	.error {
-		color: #dc2626;
 	}
 
 	.source-detail {

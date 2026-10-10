@@ -209,3 +209,24 @@ func TestCreateFamily_ValidationIs400(t *testing.T) {
 		})
 	}
 }
+
+// TestUpdateFamily_StaleVersionIsConflict pins the 409 the spec declares for a
+// stale version (#899): the UI tells a version conflict from a refused edit by
+// the status, so a 400 would hide it.
+func TestUpdateFamily_StaleVersionIsConflict(t *testing.T) {
+	server := setupFamilyTestServer(t)
+	p1 := createTestPerson(t, server, "Avery", "Placeholder")["id"].(string)
+	p2 := createTestPerson(t, server, "Blake", "Sample")["id"].(string)
+	familyID := createFamilyOf(t, server, p1, p2)
+
+	if rec := putFamily(t, server, familyID, map[string]any{"version": 1, "marriage_place": "Springfield"}); rec.Code != http.StatusOK {
+		t.Fatalf("first PUT: %d %s", rec.Code, rec.Body.String())
+	}
+	rec := putFamily(t, server, familyID, map[string]any{"version": 1, "marriage_place": "Evanston"})
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("stale PUT: got %d, want 409: %s", rec.Code, rec.Body.String())
+	}
+	if got := decodeBody(t, rec)["code"]; got != "conflict" {
+		t.Errorf("code = %v, want conflict", got)
+	}
+}

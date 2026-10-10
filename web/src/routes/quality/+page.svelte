@@ -12,6 +12,7 @@
 	import * as Tabs from '$lib/components/ui/tabs';
 	import SeverityBadge from '$lib/components/SeverityBadge.svelte';
 	import MainlineNotice from '$lib/components/MainlineNotice.svelte';
+	import ErrorState from '$lib/components/ErrorState.svelte';
 
 	const pageSize = 20;
 	const ERROR_MESSAGE_MAX_LEN = 200;
@@ -324,10 +325,7 @@
 			{#if validationLoading}
 				<div class="p-12 text-center text-slate-500">Loading validation issues...</div>
 			{:else if validationError}
-				<div class="p-12 text-center text-red-600">
-					<p class="m-0 mb-4">{validationError}</p>
-					<Button variant="outline" onclick={loadValidationIssues}>Retry</Button>
-				</div>
+				<ErrorState message={validationError} onRetry={loadValidationIssues} />
 			{:else if issues.length === 0}
 				<div class="p-12 text-center text-slate-500">
 					<p class="m-0 mb-2">No issues found at this severity.</p>
@@ -447,10 +445,7 @@
 			{#if duplicatesLoading}
 				<div class="p-12 text-center text-slate-500">Loading duplicates...</div>
 			{:else if duplicatesError}
-				<div class="p-12 text-center text-red-600">
-					<p class="m-0 mb-4">{duplicatesError}</p>
-					<Button variant="outline" onclick={loadDuplicates}>Retry</Button>
-				</div>
+				<ErrorState message={duplicatesError} onRetry={loadDuplicates} />
 			{:else if duplicates.length === 0}
 				<div class="p-12 text-center text-slate-500">
 					<p class="m-0 mb-2">No potential duplicates detected.</p>

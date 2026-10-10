@@ -1,8 +1,9 @@
 <script lang="ts">
 	import { page } from '$app/stores';
-	import { api, type FamilyGroupSheet } from '$lib/api/client';
+	import { api, recordLoadError, type FamilyGroupSheet } from '$lib/api/client';
 	import { Button } from '$lib/components/ui/button';
 	import FamilyGroupSheetComponent from '$lib/components/FamilyGroupSheet.svelte';
+	import ErrorState from '$lib/components/ErrorState.svelte';
 
 	let data: FamilyGroupSheet | null = $state(null);
 	let loading = $state(true);
@@ -14,7 +15,7 @@
 		try {
 			data = await api.getFamilyGroupSheet(id);
 		} catch (e) {
-			error = (e as { message?: string }).message || 'Failed to load family group sheet';
+			error = recordLoadError(e, 'family');
 			data = null;
 		} finally {
 			loading = false;
@@ -60,7 +61,7 @@
 	{#if loading}
 		<div class="loading">Loading family group sheet...</div>
 	{:else if error}
-		<div class="error">{error}</div>
+		<ErrorState message={error} onRetry={() => loadGroupSheet($page.params.id ?? '')} />
 	{:else if data}
 		<FamilyGroupSheetComponent {data} />
 	{/if}
@@ -95,15 +96,10 @@
 		gap: 0.5rem;
 	}
 
-	.loading,
-	.error {
+	.loading {
 		text-align: center;
 		padding: 3rem;
 		color: #64748b;
-	}
-
-	.error {
-		color: #dc2626;
 	}
 
 	@media print {
