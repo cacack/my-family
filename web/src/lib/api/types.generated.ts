@@ -3283,6 +3283,7 @@ export interface components {
             id: string;
             given_name: string;
             surname: string;
+            gender?: components["schemas"]["Gender"];
             birth_date?: components["schemas"]["GenDate"];
             death_date?: components["schemas"]["GenDate"];
         };

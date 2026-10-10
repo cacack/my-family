@@ -4789,6 +4789,7 @@ type PersonSummary struct {
 
 	// DeathDate Genealogical date with flexible precision
 	DeathDate *GenDate           `json:"death_date,omitempty"`
+	Gender    *Gender            `json:"gender,omitempty"`
 	GivenName string             `json:"given_name"`
 	Id        openapi_types.UUID `json:"id"`
 	Surname   string             `json:"surname"`
@@ -5286,6 +5287,7 @@ type SearchResult struct {
 
 	// DeathDate Genealogical date with flexible precision
 	DeathDate *GenDate           `json:"death_date,omitempty"`
+	Gender    *Gender            `json:"gender,omitempty"`
 	GivenName string             `json:"given_name"`
 	Id        openapi_types.UUID `json:"id"`
 

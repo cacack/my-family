@@ -3347,6 +3347,10 @@ func convertSearchResults(results []query.SearchResult) []SearchResult {
 			Surname:   r.Surname,
 			Score:     &score,
 		}
+		if r.Gender != nil {
+			g := Gender(*r.Gender)
+			items[i].Gender = &g
+		}
 		if r.BirthDate != nil {
 			items[i].BirthDate = convertDomainGenDateToGenerated(r.BirthDate)
 		}

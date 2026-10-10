@@ -5591,6 +5591,9 @@ components:
           type: string
         surname:
           type: string
+        gender:
+          # Set on search results; absent on a family's partner and child summaries.
+          $ref: '#/components/schemas/Gender'
         birth_date:
           $ref: '#/components/schemas/GenDate'
         death_date:
