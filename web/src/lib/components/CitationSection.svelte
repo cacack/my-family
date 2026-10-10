@@ -1,11 +1,21 @@
 <script lang="ts">
-	import { api, isConflictError, type Citation, type Source } from '$lib/api/client';
+	import {
+		api,
+		isConflictError,
+		type Citation,
+		type EvidenceType,
+		type FactType,
+		type InformantType,
+		type Source,
+		type SourceQuality
+	} from '$lib/api/client';
 	import { Button } from '$lib/components/ui/button';
 	import FormRow from '$lib/components/FormRow.svelte';
 	import * as Tabs from '$lib/components/ui/tabs';
 	import ConflictError from './ConflictError.svelte';
 	import CitationTemplateForm from './CitationTemplateForm.svelte';
 	import { PERSON_FACT_TYPES, formatFactTypeShort } from '$lib/utils/evidence';
+	import { EVIDENCE_TYPE_OPTIONS, INFORMANT_TYPE_OPTIONS, SOURCE_QUALITY_OPTIONS } from '$lib/utils/enumOptions';
 
 	interface Props {
 		personId: string;
@@ -45,12 +55,12 @@
 	// New citation form
 	let newCitation = $state({
 		source_id: '',
-		fact_type: 'person_birth',
+		fact_type: 'person_birth' as FactType,
 		page: '',
 		volume: '',
-		source_quality: '',
-		informant_type: '',
-		evidence_type: '',
+		source_quality: '' as SourceQuality | '',
+		informant_type: '' as InformantType | '',
+		evidence_type: '' as EvidenceType | '',
 		quoted_text: '',
 		analysis: ''
 	});
@@ -355,24 +365,27 @@
 						Source Quality
 						<select bind:value={newCitation.source_quality}>
 							<option value="">Not specified</option>
-							<option value="original">Original</option>
-							<option value="derivative">Derivative</option>
+							{#each SOURCE_QUALITY_OPTIONS as option (option.value)}
+								<option value={option.value}>{option.label}</option>
+							{/each}
 						</select>
 					</label>
 					<label>
 						Informant Type
 						<select bind:value={newCitation.informant_type}>
 							<option value="">Not specified</option>
-							<option value="primary">Primary</option>
-							<option value="secondary">Secondary</option>
+							{#each INFORMANT_TYPE_OPTIONS as option (option.value)}
+								<option value={option.value}>{option.label}</option>
+							{/each}
 						</select>
 					</label>
 					<label>
 						Evidence Type
 						<select bind:value={newCitation.evidence_type}>
 							<option value="">Not specified</option>
-							<option value="direct">Direct</option>
-							<option value="indirect">Indirect</option>
+							{#each EVIDENCE_TYPE_OPTIONS as option (option.value)}
+								<option value={option.value}>{option.label}</option>
+							{/each}
 						</select>
 					</label>
 				</FormRow>

@@ -4,6 +4,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import PersonCard from '$lib/components/PersonCard.svelte';
+	import { RESEARCH_STATUS_OPTIONS } from '$lib/utils/enumOptions';
 
 	let persons: Person[] = $state([]);
 	let total = $state(0);
@@ -109,10 +110,9 @@
 				Confidence:
 				<select value={researchStatusFilter} onchange={handleStatusFilterChange}>
 					<option value="">All</option>
-					<option value="certain">Certain</option>
-					<option value="probable">Probable</option>
-					<option value="possible">Possible</option>
-					<option value="unknown">Unknown</option>
+					{#each RESEARCH_STATUS_OPTIONS as option (option.value)}
+						<option value={option.value}>{option.label}</option>
+					{/each}
 					<option value="unset">Not assessed</option>
 				</select>
 			</label>

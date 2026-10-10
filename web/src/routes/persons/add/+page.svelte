@@ -4,6 +4,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import FormRow from '$lib/components/FormRow.svelte';
+	import { GENDER_OPTIONS } from '$lib/utils/enumOptions';
 
 	let saving = $state(false);
 	let error: string | null = $state(null);
@@ -95,8 +96,9 @@
 				Gender
 				<select bind:value={formData.gender}>
 					<option value={undefined}>Unknown</option>
-					<option value="male">Male</option>
-					<option value="female">Female</option>
+					{#each GENDER_OPTIONS.filter((o) => o.value !== 'unknown') as option (option.value)}
+						<option value={option.value}>{option.label}</option>
+					{/each}
 				</select>
 			</label>
 		</FormRow>

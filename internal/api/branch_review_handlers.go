@@ -42,7 +42,7 @@ func (ss *StrictServer) GetBranchEvidenceCoverage(ctx context.Context, request G
 			ChangeCount: fact.ChangeCount,
 		}
 		if fact.FactType != "" {
-			factType := string(fact.FactType)
+			factType := FactType(fact.FactType)
 			changed.FactType = &factType
 		}
 		out.Uncovered = append(out.Uncovered, changed)

@@ -545,7 +545,7 @@ func (ss *StrictServer) CreateCitation(ctx context.Context, request CreateCitati
 
 	input := command.CreateCitationInput{
 		SourceID:    request.Body.SourceId,
-		FactType:    request.Body.FactType,
+		FactType:    string(request.Body.FactType),
 		FactOwnerID: request.Body.FactOwnerId,
 	}
 
@@ -556,13 +556,13 @@ func (ss *StrictServer) CreateCitation(ctx context.Context, request CreateCitati
 		input.Volume = *request.Body.Volume
 	}
 	if request.Body.SourceQuality != nil {
-		input.SourceQuality = *request.Body.SourceQuality
+		input.SourceQuality = string(*request.Body.SourceQuality)
 	}
 	if request.Body.InformantType != nil {
-		input.InformantType = *request.Body.InformantType
+		input.InformantType = string(*request.Body.InformantType)
 	}
 	if request.Body.EvidenceType != nil {
-		input.EvidenceType = *request.Body.EvidenceType
+		input.EvidenceType = string(*request.Body.EvidenceType)
 	}
 	if request.Body.QuotedText != nil {
 		input.QuotedText = *request.Body.QuotedText
@@ -633,13 +633,13 @@ func (ss *StrictServer) UpdateCitation(ctx context.Context, request UpdateCitati
 		input.Volume = request.Body.Volume
 	}
 	if request.Body.SourceQuality != nil {
-		input.SourceQuality = request.Body.SourceQuality
+		input.SourceQuality = (*string)(request.Body.SourceQuality)
 	}
 	if request.Body.InformantType != nil {
-		input.InformantType = request.Body.InformantType
+		input.InformantType = (*string)(request.Body.InformantType)
 	}
 	if request.Body.EvidenceType != nil {
-		input.EvidenceType = request.Body.EvidenceType
+		input.EvidenceType = (*string)(request.Body.EvidenceType)
 	}
 	if request.Body.QuotedText != nil {
 		input.QuotedText = request.Body.QuotedText
@@ -856,9 +856,9 @@ func convertCitationTemplate(t citation.Template) CitationTemplate {
 		}
 	}
 
-	sourceTypes := make([]string, len(t.SourceTypes))
+	sourceTypes := make([]SourceType, len(t.SourceTypes))
 	for i, st := range t.SourceTypes {
-		sourceTypes[i] = string(st)
+		sourceTypes[i] = SourceType(st)
 	}
 
 	return CitationTemplate{
@@ -1140,7 +1140,7 @@ func convertEventToExport(e repository.EventReadModel) EventExport {
 		Id:        e.ID,
 		OwnerType: e.OwnerType,
 		OwnerId:   e.OwnerID,
-		FactType:  string(e.FactType),
+		FactType:  FactType(e.FactType),
 	}
 
 	if e.DateRaw != "" {
@@ -1173,7 +1173,7 @@ func convertAttributeToExport(a repository.AttributeReadModel) AttributeExport {
 	attr := AttributeExport{
 		Id:       a.ID,
 		PersonId: a.PersonID,
-		FactType: string(a.FactType),
+		FactType: FactType(a.FactType),
 		Value:    a.Value,
 	}
 
@@ -1423,9 +1423,9 @@ func (ss *StrictServer) AddChildToFamily(ctx context.Context, request AddChildTo
 	}
 
 	// Return the linked child info
-	relType := FamilyChildRelationshipType("biological")
+	relType := ChildRelationType(domain.ChildBiological)
 	if request.Body.RelationshipType != nil {
-		relType = FamilyChildRelationshipType(*request.Body.RelationshipType)
+		relType = *request.Body.RelationshipType
 	}
 
 	return AddChildToFamily201JSONResponse(FamilyChild{
@@ -3347,6 +3347,10 @@ func convertSearchResults(results []query.SearchResult) []SearchResult {
 			Surname:   r.Surname,
 			Score:     &score,
 		}
+		if r.Gender != nil {
+			g := Gender(*r.Gender)
+			items[i].Gender = &g
+		}
 		if r.BirthDate != nil {
 			items[i].BirthDate = convertDomainGenDateToGenerated(r.BirthDate)
 		}
@@ -3455,7 +3459,7 @@ func (ss *StrictServer) CreateSource(ctx context.Context, request CreateSourceRe
 	}
 
 	input := command.CreateSourceInput{
-		SourceType: request.Body.SourceType,
+		SourceType: string(request.Body.SourceType),
 		Title:      request.Body.Title,
 	}
 
@@ -3566,7 +3570,7 @@ func (ss *StrictServer) UpdateSource(ctx context.Context, request UpdateSourceRe
 	}
 
 	if request.Body.SourceType != nil {
-		input.SourceType = request.Body.SourceType
+		input.SourceType = (*string)(request.Body.SourceType)
 	}
 	if request.Body.Title != nil {
 		input.Title = request.Body.Title
@@ -3880,7 +3884,7 @@ func convertQueryPersonToGenerated(p query.Person) Person {
 	}
 
 	if p.Gender != nil {
-		g := PersonGender(*p.Gender)
+		g := Gender(*p.Gender)
 		resp.Gender = &g
 	}
 	if p.BirthDate != nil {
@@ -3925,7 +3929,7 @@ func convertQueryPersonDetailToGenerated(pd *query.PersonDetail) PersonDetail {
 	}
 
 	if pd.Gender != nil {
-		g := PersonDetailGender(*pd.Gender)
+		g := Gender(*pd.Gender)
 		resp.Gender = &g
 	}
 	if pd.BirthDate != nil {
@@ -3972,7 +3976,7 @@ func convertQueryPersonDetailToGenerated(pd *query.PersonDetail) PersonDetail {
 				Id:               f.ID,
 				Partner1Name:     f.Partner1Name,
 				Partner2Name:     f.Partner2Name,
-				RelationshipType: f.RelationshipType,
+				RelationshipType: (*RelationType)(f.RelationshipType),
 			}
 		}
 		resp.FamiliesAsPartner = &families
@@ -3983,7 +3987,7 @@ func convertQueryPersonDetailToGenerated(pd *query.PersonDetail) PersonDetail {
 			Id:               pd.FamilyAsChild.ID,
 			Partner1Name:     pd.FamilyAsChild.Partner1Name,
 			Partner2Name:     pd.FamilyAsChild.Partner2Name,
-			RelationshipType: pd.FamilyAsChild.RelationshipType,
+			RelationshipType: (*RelationType)(pd.FamilyAsChild.RelationshipType),
 		}
 		resp.FamilyAsChild = &fac
 	}
@@ -4026,7 +4030,7 @@ func convertQueryPersonNameToGenerated(n query.PersonName) PersonName {
 		NameSuffix:    &n.NameSuffix,
 		SurnamePrefix: &n.SurnamePrefix,
 		Nickname:      &n.Nickname,
-		NameType:      PersonNameNameType(n.NameType),
+		NameType:      NameType(n.NameType),
 		IsPrimary:     n.IsPrimary,
 	}
 }
@@ -4042,7 +4046,7 @@ func convertPersonNameReadModelToGenerated(n repository.PersonNameReadModel) Per
 		NameSuffix:    &n.NameSuffix,
 		SurnamePrefix: &n.SurnamePrefix,
 		Nickname:      &n.Nickname,
-		NameType:      PersonNameNameType(n.NameType),
+		NameType:      NameType(n.NameType),
 		IsPrimary:     n.IsPrimary,
 	}
 }
@@ -4063,7 +4067,7 @@ func convertQueryFamilyToGenerated(f query.Family) Family {
 		resp.Partner2Id = &id
 	}
 	if f.RelationshipType != nil {
-		rt := FamilyRelationshipType(*f.RelationshipType)
+		rt := RelationType(*f.RelationshipType)
 		resp.RelationshipType = &rt
 	}
 	if f.MarriageDate != nil {
@@ -4101,7 +4105,7 @@ func convertQueryFamilyDetailToGenerated(fd query.FamilyDetail) FamilyDetail {
 		resp.Partner2Id = &id
 	}
 	if fd.RelationshipType != nil {
-		rt := FamilyDetailRelationshipType(*fd.RelationshipType)
+		rt := RelationType(*fd.RelationshipType)
 		resp.RelationshipType = &rt
 	}
 	if fd.MarriageDate != nil {
@@ -4127,7 +4131,7 @@ func convertQueryFamilyDetailToGenerated(fd query.FamilyDetail) FamilyDetail {
 		for i, c := range fd.Children {
 			children[i] = FamilyChild{
 				PersonId:         c.ID,
-				RelationshipType: FamilyChildRelationshipType(c.RelationshipType),
+				RelationshipType: ChildRelationType(c.RelationshipType),
 				Person: &PersonSummary{
 					Id:        c.ID,
 					GivenName: c.GivenName,
@@ -4160,7 +4164,7 @@ func convertQueryFamilyToFamilyDetail(f query.Family) FamilyDetail {
 		resp.Partner2Id = &id
 	}
 	if f.RelationshipType != nil {
-		rt := FamilyDetailRelationshipType(*f.RelationshipType)
+		rt := RelationType(*f.RelationshipType)
 		resp.RelationshipType = &rt
 	}
 	if f.MarriageDate != nil {
@@ -4228,7 +4232,7 @@ func convertQueryGroupSheetPersonToGenerated(p *query.GroupSheetPerson) *GroupSh
 	}
 
 	if p.Gender != "" {
-		g := GroupSheetPersonGender(p.Gender)
+		g := Gender(p.Gender)
 		resp.Gender = &g
 	}
 	if p.Birth != nil {
@@ -4278,11 +4282,11 @@ func convertQueryGroupSheetChildToGenerated(c *query.GroupSheetChild) GroupSheet
 	}
 
 	if c.Gender != "" {
-		g := GroupSheetChildGender(c.Gender)
+		g := Gender(c.Gender)
 		resp.Gender = &g
 	}
 	if c.RelationshipType != "" {
-		rt := GroupSheetChildRelationshipType(c.RelationshipType)
+		rt := ChildRelationType(c.RelationshipType)
 		resp.RelationshipType = &rt
 	}
 	if c.Sequence != nil {
@@ -4308,7 +4312,7 @@ func convertQuerySourceToGenerated(s query.Source) Source {
 	citationCount := s.CitationCount
 	return Source{
 		Id:             s.ID,
-		SourceType:     s.SourceType,
+		SourceType:     SourceType(s.SourceType),
 		Title:          s.Title,
 		Author:         s.Author,
 		Publisher:      s.Publisher,
@@ -4328,7 +4332,7 @@ func convertQuerySourceDetailToGenerated(sd query.SourceDetail) SourceDetail {
 	citationCount := sd.CitationCount
 	resp := SourceDetail{
 		Id:             sd.ID,
-		SourceType:     sd.SourceType,
+		SourceType:     SourceType(sd.SourceType),
 		Title:          sd.Title,
 		Author:         sd.Author,
 		Publisher:      sd.Publisher,
@@ -4361,13 +4365,13 @@ func convertQueryCitationToGenerated(c query.Citation) Citation {
 		Id:            c.ID,
 		SourceId:      c.SourceID,
 		SourceTitle:   c.SourceTitle,
-		FactType:      c.FactType,
+		FactType:      FactType(c.FactType),
 		FactOwnerId:   c.FactOwnerID,
 		Page:          c.Page,
 		Volume:        c.Volume,
-		SourceQuality: c.SourceQuality,
-		InformantType: c.InformantType,
-		EvidenceType:  c.EvidenceType,
+		SourceQuality: (*SourceQuality)(c.SourceQuality),
+		InformantType: (*InformantType)(c.InformantType),
+		EvidenceType:  (*EvidenceType)(c.EvidenceType),
 		QuotedText:    c.QuotedText,
 		Analysis:      c.Analysis,
 		TemplateId:    c.TemplateID,
@@ -4412,7 +4416,8 @@ func convertQueryPedigreeNodeToGenerated(node *query.PedigreeNode) PedigreeNode 
 		resp.Surname = &node.Surname
 	}
 	if node.Gender != "" {
-		resp.Gender = &node.Gender
+		g := Gender(node.Gender)
+		resp.Gender = &g
 	}
 	if node.BirthDate != nil {
 		resp.BirthDate = convertDomainGenDateToGenerated(node.BirthDate)
@@ -4450,7 +4455,8 @@ func convertQueryDescendancyNodeToGenerated(node *query.DescendancyNode) Descend
 		resp.Surname = &node.Surname
 	}
 	if node.Gender != "" {
-		resp.Gender = &node.Gender
+		g := Gender(node.Gender)
+		resp.Gender = &g
 	}
 	if node.BirthDate != nil {
 		resp.BirthDate = convertDomainGenDateToGenerated(node.BirthDate)
@@ -4552,7 +4558,7 @@ func convertMediaReadModelToGenerated(m repository.MediaReadModel) Media {
 		resp.Description = &m.Description
 	}
 	if m.MediaType != "" {
-		mt := MediaMediaType(m.MediaType)
+		mt := MediaType(m.MediaType)
 		resp.MediaType = &mt
 	}
 	if m.CropLeft != nil {
@@ -5916,7 +5922,7 @@ func convertReadModelPersonToGenerated(rm repository.PersonReadModel) Person {
 		Version:   rm.Version,
 	}
 	if rm.Gender != "" {
-		g := PersonGender(rm.Gender)
+		g := Gender(rm.Gender)
 		resp.Gender = &g
 	}
 	if rm.BirthDateRaw != "" {
@@ -5956,7 +5962,7 @@ func convertReadModelFamilyToGenerated(rm repository.FamilyReadModel) Family {
 		resp.Partner2Id = rm.Partner2ID
 	}
 	if rm.RelationshipType != "" {
-		rt := FamilyRelationshipType(rm.RelationshipType)
+		rt := RelationType(rm.RelationshipType)
 		resp.RelationshipType = &rt
 	}
 	if rm.MarriageDateRaw != "" {
@@ -5974,7 +5980,7 @@ func convertReadModelSourceToGenerated(rm repository.SourceReadModel) Source {
 	resp := Source{
 		Id:         rm.ID,
 		Title:      rm.Title,
-		SourceType: string(rm.SourceType),
+		SourceType: SourceType(rm.SourceType),
 		Version:    rm.Version,
 	}
 	if rm.Author != "" {
@@ -5997,7 +6003,7 @@ func convertReadModelCitationToGenerated(rm repository.CitationReadModel) Citati
 		Id:          rm.ID,
 		SourceId:    rm.SourceID,
 		SourceTitle: rm.SourceTitle,
-		FactType:    string(rm.FactType),
+		FactType:    FactType(rm.FactType),
 		FactOwnerId: rm.FactOwnerID,
 		Version:     rm.Version,
 	}
@@ -6008,15 +6014,15 @@ func convertReadModelCitationToGenerated(rm repository.CitationReadModel) Citati
 		resp.Volume = &rm.Volume
 	}
 	if string(rm.SourceQuality) != "" {
-		sq := string(rm.SourceQuality)
+		sq := SourceQuality(rm.SourceQuality)
 		resp.SourceQuality = &sq
 	}
 	if string(rm.InformantType) != "" {
-		it := string(rm.InformantType)
+		it := InformantType(rm.InformantType)
 		resp.InformantType = &it
 	}
 	if string(rm.EvidenceType) != "" {
-		et := string(rm.EvidenceType)
+		et := EvidenceType(rm.EvidenceType)
 		resp.EvidenceType = &et
 	}
 	if rm.QuotedText != "" {

@@ -370,7 +370,7 @@ func (ss *StrictServer) branchWithLinks(ctx context.Context, b *domain.Branch) (
 	for i, summary := range links.ProofSummaries {
 		refs[i] = BranchProofSummaryRef{
 			Id:         summary.ID,
-			FactType:   string(summary.FactType),
+			FactType:   FactType(summary.FactType),
 			Conclusion: summary.Conclusion,
 		}
 	}

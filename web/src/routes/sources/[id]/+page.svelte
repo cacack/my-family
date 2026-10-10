@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
-	import { api, type SourceDetail, type Citation } from '$lib/api/client';
+	import { api, type SourceDetail, type SourceType, type Citation } from '$lib/api/client';
 	import ExternalLinks from '$lib/components/ExternalLinks.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import FormRow from '$lib/components/FormRow.svelte';
@@ -17,7 +17,7 @@
 
 	// Form state
 	let formData = $state({
-		source_type: '',
+		source_type: '' as SourceType | '',
 		title: '',
 		author: '',
 		publisher: '',
@@ -245,7 +245,7 @@
 					<div class="source-title">
 						<h1>{source.title}</h1>
 						<Badge variant="secondary">{formatSourceType(source.source_type)}</Badge>
-						{#if source.citation_count > 0}
+						{#if source.citation_count}
 							<span class="citation-badge">{source.citation_count} {source.citation_count === 1 ? 'citation' : 'citations'}</span>
 						{/if}
 					</div>

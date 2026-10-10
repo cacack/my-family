@@ -1,11 +1,11 @@
 <script lang="ts">
-	import { api, type PersonCreate } from '$lib/api/client';
+	import { api, type PersonCreate, type Gender } from '$lib/api/client';
 	import { Button } from '$lib/components/ui/button';
 	import { goto } from '$app/navigation';
 	import { parseName } from '$lib/utils/nameParse';
 
 	let nameInput = $state('');
-	let gender = $state<'male' | 'female' | 'unknown'>('unknown');
+	let gender = $state<Gender>('unknown');
 	let birthYear = $state('');
 	let notes = $state('');
 	let showNotes = $state(false);

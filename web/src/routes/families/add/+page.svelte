@@ -11,6 +11,7 @@
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import FormRow from '$lib/components/FormRow.svelte';
 	import PartnerPickers from '$lib/components/PartnerPickers.svelte';
+	import { RELATION_TYPE_OPTIONS } from '$lib/utils/enumOptions';
 
 	let saving = $state(false);
 	let error: string | null = $state(null);
@@ -159,9 +160,9 @@
 			<label>
 				Relationship Type
 				<select bind:value={formData.relationship_type}>
-					<option value="unknown">Unknown</option>
-					<option value="marriage">Marriage</option>
-					<option value="partnership">Partnership</option>
+					{#each RELATION_TYPE_OPTIONS as option (option.value)}
+						<option value={option.value}>{option.label}</option>
+					{/each}
 				</select>
 			</label>
 		</FormRow>

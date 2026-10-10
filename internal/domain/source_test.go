@@ -140,6 +140,15 @@ func TestCitation_Validate(t *testing.T) {
 			wantErr: true,
 		},
 		{
+			name: "empty fact_type",
+			citation: &Citation{
+				ID:          uuid.New(),
+				SourceID:    sourceID,
+				FactOwnerID: factOwnerID,
+			},
+			wantErr: true,
+		},
+		{
 			name: "invalid fact_type",
 			citation: &Citation{
 				ID:          uuid.New(),

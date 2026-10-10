@@ -3,7 +3,7 @@
 
 	export type ChildRelationship = NonNullable<AddChild['relationship_type']>;
 
-	/** The `AddChild.relationship_type` enum in openapi.yaml, with its labels. */
+	/** The `ChildRelationType` enum in openapi.yaml, with its labels. */
 	export const CHILD_RELATIONSHIPS: ReadonlyArray<{ value: ChildRelationship; label: string }> = [
 		{ value: 'biological', label: 'Birth (biological)' },
 		{ value: 'adopted', label: 'Adopted' },

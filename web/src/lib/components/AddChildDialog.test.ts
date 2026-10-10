@@ -44,7 +44,7 @@ describe('AddChildDialog', () => {
 	});
 
 	it('offers exactly the relationship types the API accepts', () => {
-		const block = spec.slice(spec.indexOf('    AddChild:'));
+		const block = spec.slice(spec.indexOf('    ChildRelationType:'));
 		const enumLine = block.match(/enum: \[([^\]]+)\]/);
 		expect(enumLine).not.toBeNull();
 		const values = enumLine![1].split(',').map((v) => v.trim());

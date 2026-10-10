@@ -2,7 +2,7 @@
 	import { tick } from 'svelte';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
-	import { api, type PersonDetail, type ChangeHistoryResponse, type Media, type ResearchStatus, type RollbackResponse, formatGenDate, formatPersonName } from '$lib/api/client';
+	import { api, type PersonDetail, type ChangeHistoryResponse, type Media, type ResearchStatus, type RollbackResponse, formatGenDate, formatPersonName, type Gender } from '$lib/api/client';
 	import ChangeHistory from '$lib/components/ChangeHistory.svelte';
 	import RestorePointBrowser from '$lib/components/RestorePointBrowser.svelte';
 	import RollbackConfirmDialog from '$lib/components/RollbackConfirmDialog.svelte';
@@ -19,6 +19,7 @@
 	import ExternalLinks from '$lib/components/ExternalLinks.svelte';
 	import { activeBranch } from '$lib/stores/activeBranch.svelte';
 	import { ROLLBACK_MAINLINE_ONLY } from '$lib/utils/rollbackScope';
+	import { GENDER_OPTIONS, RESEARCH_STATUS_OPTIONS } from '$lib/utils/enumOptions';
 
 	let person: PersonDetail | null = $state(null);
 	let loading = $state(true);
@@ -60,7 +61,7 @@
 	let formData = $state({
 		given_name: '',
 		surname: '',
-		gender: 'unknown' as 'male' | 'female' | 'unknown',
+		gender: 'unknown' as Gender,
 		birth_date: '',
 		birth_place: '',
 		death_date: '',
@@ -363,19 +364,18 @@
 					<label>
 						Gender
 						<select bind:value={formData.gender}>
-							<option value="unknown">Unknown</option>
-							<option value="male">Male</option>
-							<option value="female">Female</option>
+							{#each GENDER_OPTIONS as option (option.value)}
+								<option value={option.value}>{option.label}</option>
+							{/each}
 						</select>
 					</label>
 					<label>
 						Research Status
 						<select bind:value={formData.research_status}>
 							<option value="">Not assessed</option>
-							<option value="certain">Certain - Confirmed with strong evidence</option>
-							<option value="probable">Probable - Good supporting evidence</option>
-							<option value="possible">Possible - Limited evidence</option>
-							<option value="unknown">Unknown - Not yet assessed</option>
+							{#each RESEARCH_STATUS_OPTIONS as option (option.value)}
+								<option value={option.value}>{option.label} - {option.description}</option>
+							{/each}
 						</select>
 					</label>
 				</FormRow>

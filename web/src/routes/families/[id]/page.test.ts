@@ -48,12 +48,9 @@ vi.mock('$app/navigation', () => ({
 const mockFamilyWithChildren: apiModule.FamilyDetail = {
 	id: 'test-family-id',
 	partner1_id: 'partner1-id',
-	partner1_name: 'John Smith',
 	partner2_id: 'partner2-id',
-	partner2_name: 'Jane Smith',
 	relationship_type: 'marriage',
 	marriage_place: 'Chicago, IL',
-	child_count: 2,
 	version: 1,
 	partner1: {
 		id: 'partner1-id',
@@ -89,9 +86,10 @@ const mockFamilyWithChildren: apiModule.FamilyDetail = {
 
 const mockFamilyNoChildren: apiModule.FamilyDetail = {
 	id: 'test-family-id',
-	partner1_name: 'John Smith',
-	partner2_name: 'Jane Smith',
-	child_count: 0,
+	partner1_id: 'partner1-id',
+	partner2_id: 'partner2-id',
+	partner1: { id: 'partner1-id', given_name: 'John', surname: 'Smith' },
+	partner2: { id: 'partner2-id', given_name: 'Jane', surname: 'Smith' },
 	version: 1,
 	children: []
 };

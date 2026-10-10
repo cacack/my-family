@@ -19,48 +19,6 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
-// Defines values for AddChildRelationshipType.
-const (
-	AddChildRelationshipTypeAdopted    AddChildRelationshipType = "adopted"
-	AddChildRelationshipTypeBiological AddChildRelationshipType = "biological"
-	AddChildRelationshipTypeFoster     AddChildRelationshipType = "foster"
-)
-
-// Valid indicates whether the value is a known member of the AddChildRelationshipType enum.
-func (e AddChildRelationshipType) Valid() bool {
-	switch e {
-	case AddChildRelationshipTypeAdopted:
-		return true
-	case AddChildRelationshipTypeBiological:
-		return true
-	case AddChildRelationshipTypeFoster:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for AhnentafelEntryGender.
-const (
-	AhnentafelEntryGenderFemale  AhnentafelEntryGender = "female"
-	AhnentafelEntryGenderMale    AhnentafelEntryGender = "male"
-	AhnentafelEntryGenderUnknown AhnentafelEntryGender = "unknown"
-)
-
-// Valid indicates whether the value is a known member of the AhnentafelEntryGender enum.
-func (e AhnentafelEntryGender) Valid() bool {
-	switch e {
-	case AhnentafelEntryGenderFemale:
-		return true
-	case AhnentafelEntryGenderMale:
-		return true
-	case AhnentafelEntryGenderUnknown:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for BranchMergeState.
 const (
 	MergeStateComplete   BranchMergeState = "complete"
@@ -466,6 +424,27 @@ func (e ChangeEntryParentEntityType) Valid() bool {
 	}
 }
 
+// Defines values for ChildRelationType.
+const (
+	Adopted    ChildRelationType = "adopted"
+	Biological ChildRelationType = "biological"
+	Foster     ChildRelationType = "foster"
+)
+
+// Valid indicates whether the value is a known member of the ChildRelationType enum.
+func (e ChildRelationType) Valid() bool {
+	switch e {
+	case Adopted:
+		return true
+	case Biological:
+		return true
+	case Foster:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CitationValidationIssueLevel.
 const (
 	CitationValidationIssueLevelError   CitationValidationIssueLevel = "error"
@@ -478,6 +457,27 @@ func (e CitationValidationIssueLevel) Valid() bool {
 	case CitationValidationIssueLevelError:
 		return true
 	case CitationValidationIssueLevelWarning:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ConflictStatus.
+const (
+	ConflictStatusAccepted ConflictStatus = "accepted"
+	ConflictStatusOpen     ConflictStatus = "open"
+	ConflictStatusResolved ConflictStatus = "resolved"
+)
+
+// Valid indicates whether the value is a known member of the ConflictStatus enum.
+func (e ConflictStatus) Valid() bool {
+	switch e {
+	case ConflictStatusAccepted:
+		return true
+	case ConflictStatusOpen:
+		return true
+	case ConflictStatusResolved:
 		return true
 	default:
 		return false
@@ -511,171 +511,111 @@ func (e DiscoverySuggestionType) Valid() bool {
 	}
 }
 
-// Defines values for EvidenceAnalysisCreateResearchStatus.
+// Defines values for EvidenceType.
 const (
-	EvidenceAnalysisCreateResearchStatusCertain  EvidenceAnalysisCreateResearchStatus = "certain"
-	EvidenceAnalysisCreateResearchStatusPossible EvidenceAnalysisCreateResearchStatus = "possible"
-	EvidenceAnalysisCreateResearchStatusProbable EvidenceAnalysisCreateResearchStatus = "probable"
-	EvidenceAnalysisCreateResearchStatusUnknown  EvidenceAnalysisCreateResearchStatus = "unknown"
+	Direct   EvidenceType = "direct"
+	Indirect EvidenceType = "indirect"
+	Negative EvidenceType = "negative"
 )
 
-// Valid indicates whether the value is a known member of the EvidenceAnalysisCreateResearchStatus enum.
-func (e EvidenceAnalysisCreateResearchStatus) Valid() bool {
+// Valid indicates whether the value is a known member of the EvidenceType enum.
+func (e EvidenceType) Valid() bool {
 	switch e {
-	case EvidenceAnalysisCreateResearchStatusCertain:
+	case Direct:
 		return true
-	case EvidenceAnalysisCreateResearchStatusPossible:
+	case Indirect:
 		return true
-	case EvidenceAnalysisCreateResearchStatusProbable:
-		return true
-	case EvidenceAnalysisCreateResearchStatusUnknown:
+	case Negative:
 		return true
 	default:
 		return false
 	}
 }
 
-// Defines values for EvidenceAnalysisUpdateResearchStatus.
+// Defines values for FactType.
 const (
-	EvidenceAnalysisUpdateResearchStatusCertain  EvidenceAnalysisUpdateResearchStatus = "certain"
-	EvidenceAnalysisUpdateResearchStatusPossible EvidenceAnalysisUpdateResearchStatus = "possible"
-	EvidenceAnalysisUpdateResearchStatusProbable EvidenceAnalysisUpdateResearchStatus = "probable"
-	EvidenceAnalysisUpdateResearchStatusUnknown  EvidenceAnalysisUpdateResearchStatus = "unknown"
+	FactTypeFamilyAnnulment          FactType = "family_annulment"
+	FactTypeFamilyDivorce            FactType = "family_divorce"
+	FactTypeFamilyEngagement         FactType = "family_engagement"
+	FactTypeFamilyMarriage           FactType = "family_marriage"
+	FactTypeFamilyMarriageBann       FactType = "family_marriage_bann"
+	FactTypeFamilyMarriageContract   FactType = "family_marriage_contract"
+	FactTypeFamilyMarriageLicense    FactType = "family_marriage_license"
+	FactTypeFamilyMarriageSettlement FactType = "family_marriage_settlement"
+	FactTypePersonBaptism            FactType = "person_baptism"
+	FactTypePersonBirth              FactType = "person_birth"
+	FactTypePersonBurial             FactType = "person_burial"
+	FactTypePersonCensus             FactType = "person_census"
+	FactTypePersonChristening        FactType = "person_christening"
+	FactTypePersonCremation          FactType = "person_cremation"
+	FactTypePersonDeath              FactType = "person_death"
+	FactTypePersonEducation          FactType = "person_education"
+	FactTypePersonEmigration         FactType = "person_emigration"
+	FactTypePersonGender             FactType = "person_gender"
+	FactTypePersonGenericEvent       FactType = "person_generic_event"
+	FactTypePersonImmigration        FactType = "person_immigration"
+	FactTypePersonName               FactType = "person_name"
+	FactTypePersonNaturalization     FactType = "person_naturalization"
+	FactTypePersonOccupation         FactType = "person_occupation"
+	FactTypePersonReligion           FactType = "person_religion"
+	FactTypePersonResidence          FactType = "person_residence"
+	FactTypePersonTitle              FactType = "person_title"
 )
 
-// Valid indicates whether the value is a known member of the EvidenceAnalysisUpdateResearchStatus enum.
-func (e EvidenceAnalysisUpdateResearchStatus) Valid() bool {
+// Valid indicates whether the value is a known member of the FactType enum.
+func (e FactType) Valid() bool {
 	switch e {
-	case EvidenceAnalysisUpdateResearchStatusCertain:
+	case FactTypeFamilyAnnulment:
 		return true
-	case EvidenceAnalysisUpdateResearchStatusPossible:
+	case FactTypeFamilyDivorce:
 		return true
-	case EvidenceAnalysisUpdateResearchStatusProbable:
+	case FactTypeFamilyEngagement:
 		return true
-	case EvidenceAnalysisUpdateResearchStatusUnknown:
+	case FactTypeFamilyMarriage:
 		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for EvidenceConflictStatus.
-const (
-	EvidenceConflictStatusOpen     EvidenceConflictStatus = "open"
-	EvidenceConflictStatusResolved EvidenceConflictStatus = "resolved"
-)
-
-// Valid indicates whether the value is a known member of the EvidenceConflictStatus enum.
-func (e EvidenceConflictStatus) Valid() bool {
-	switch e {
-	case EvidenceConflictStatusOpen:
+	case FactTypeFamilyMarriageBann:
 		return true
-	case EvidenceConflictStatusResolved:
+	case FactTypeFamilyMarriageContract:
 		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for FamilyRelationshipType.
-const (
-	FamilyRelationshipTypeMarriage    FamilyRelationshipType = "marriage"
-	FamilyRelationshipTypePartnership FamilyRelationshipType = "partnership"
-	FamilyRelationshipTypeUnknown     FamilyRelationshipType = "unknown"
-)
-
-// Valid indicates whether the value is a known member of the FamilyRelationshipType enum.
-func (e FamilyRelationshipType) Valid() bool {
-	switch e {
-	case FamilyRelationshipTypeMarriage:
+	case FactTypeFamilyMarriageLicense:
 		return true
-	case FamilyRelationshipTypePartnership:
+	case FactTypeFamilyMarriageSettlement:
 		return true
-	case FamilyRelationshipTypeUnknown:
+	case FactTypePersonBaptism:
 		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for FamilyChildRelationshipType.
-const (
-	FamilyChildRelationshipTypeAdopted    FamilyChildRelationshipType = "adopted"
-	FamilyChildRelationshipTypeBiological FamilyChildRelationshipType = "biological"
-	FamilyChildRelationshipTypeFoster     FamilyChildRelationshipType = "foster"
-)
-
-// Valid indicates whether the value is a known member of the FamilyChildRelationshipType enum.
-func (e FamilyChildRelationshipType) Valid() bool {
-	switch e {
-	case FamilyChildRelationshipTypeAdopted:
+	case FactTypePersonBirth:
 		return true
-	case FamilyChildRelationshipTypeBiological:
+	case FactTypePersonBurial:
 		return true
-	case FamilyChildRelationshipTypeFoster:
+	case FactTypePersonCensus:
 		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for FamilyCreateRelationshipType.
-const (
-	FamilyCreateRelationshipTypeMarriage    FamilyCreateRelationshipType = "marriage"
-	FamilyCreateRelationshipTypePartnership FamilyCreateRelationshipType = "partnership"
-	FamilyCreateRelationshipTypeUnknown     FamilyCreateRelationshipType = "unknown"
-)
-
-// Valid indicates whether the value is a known member of the FamilyCreateRelationshipType enum.
-func (e FamilyCreateRelationshipType) Valid() bool {
-	switch e {
-	case FamilyCreateRelationshipTypeMarriage:
+	case FactTypePersonChristening:
 		return true
-	case FamilyCreateRelationshipTypePartnership:
+	case FactTypePersonCremation:
 		return true
-	case FamilyCreateRelationshipTypeUnknown:
+	case FactTypePersonDeath:
 		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for FamilyDetailRelationshipType.
-const (
-	FamilyDetailRelationshipTypeMarriage    FamilyDetailRelationshipType = "marriage"
-	FamilyDetailRelationshipTypePartnership FamilyDetailRelationshipType = "partnership"
-	FamilyDetailRelationshipTypeUnknown     FamilyDetailRelationshipType = "unknown"
-)
-
-// Valid indicates whether the value is a known member of the FamilyDetailRelationshipType enum.
-func (e FamilyDetailRelationshipType) Valid() bool {
-	switch e {
-	case FamilyDetailRelationshipTypeMarriage:
+	case FactTypePersonEducation:
 		return true
-	case FamilyDetailRelationshipTypePartnership:
+	case FactTypePersonEmigration:
 		return true
-	case FamilyDetailRelationshipTypeUnknown:
+	case FactTypePersonGender:
 		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for FamilyUpdateRelationshipType.
-const (
-	FamilyUpdateRelationshipTypeMarriage    FamilyUpdateRelationshipType = "marriage"
-	FamilyUpdateRelationshipTypePartnership FamilyUpdateRelationshipType = "partnership"
-	FamilyUpdateRelationshipTypeUnknown     FamilyUpdateRelationshipType = "unknown"
-)
-
-// Valid indicates whether the value is a known member of the FamilyUpdateRelationshipType enum.
-func (e FamilyUpdateRelationshipType) Valid() bool {
-	switch e {
-	case FamilyUpdateRelationshipTypeMarriage:
+	case FactTypePersonGenericEvent:
 		return true
-	case FamilyUpdateRelationshipTypePartnership:
+	case FactTypePersonImmigration:
 		return true
-	case FamilyUpdateRelationshipTypeUnknown:
+	case FactTypePersonName:
+		return true
+	case FactTypePersonNaturalization:
+		return true
+	case FactTypePersonOccupation:
+		return true
+	case FactTypePersonReligion:
+		return true
+	case FactTypePersonResidence:
+		return true
+	case FactTypePersonTitle:
 		return true
 	default:
 		return false
@@ -721,63 +661,42 @@ func (e GenDateQualifier) Valid() bool {
 	}
 }
 
-// Defines values for GroupSheetChildGender.
+// Defines values for Gender.
 const (
-	GroupSheetChildGenderFemale  GroupSheetChildGender = "female"
-	GroupSheetChildGenderMale    GroupSheetChildGender = "male"
-	GroupSheetChildGenderUnknown GroupSheetChildGender = "unknown"
+	GenderFemale  Gender = "female"
+	GenderMale    Gender = "male"
+	GenderUnknown Gender = "unknown"
 )
 
-// Valid indicates whether the value is a known member of the GroupSheetChildGender enum.
-func (e GroupSheetChildGender) Valid() bool {
+// Valid indicates whether the value is a known member of the Gender enum.
+func (e Gender) Valid() bool {
 	switch e {
-	case GroupSheetChildGenderFemale:
+	case GenderFemale:
 		return true
-	case GroupSheetChildGenderMale:
+	case GenderMale:
 		return true
-	case GroupSheetChildGenderUnknown:
+	case GenderUnknown:
 		return true
 	default:
 		return false
 	}
 }
 
-// Defines values for GroupSheetChildRelationshipType.
+// Defines values for InformantType.
 const (
-	GroupSheetChildRelationshipTypeAdopted    GroupSheetChildRelationshipType = "adopted"
-	GroupSheetChildRelationshipTypeBiological GroupSheetChildRelationshipType = "biological"
-	GroupSheetChildRelationshipTypeFoster     GroupSheetChildRelationshipType = "foster"
+	Indeterminate InformantType = "indeterminate"
+	Primary       InformantType = "primary"
+	Secondary     InformantType = "secondary"
 )
 
-// Valid indicates whether the value is a known member of the GroupSheetChildRelationshipType enum.
-func (e GroupSheetChildRelationshipType) Valid() bool {
+// Valid indicates whether the value is a known member of the InformantType enum.
+func (e InformantType) Valid() bool {
 	switch e {
-	case GroupSheetChildRelationshipTypeAdopted:
+	case Indeterminate:
 		return true
-	case GroupSheetChildRelationshipTypeBiological:
+	case Primary:
 		return true
-	case GroupSheetChildRelationshipTypeFoster:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for GroupSheetPersonGender.
-const (
-	GroupSheetPersonGenderFemale  GroupSheetPersonGender = "female"
-	GroupSheetPersonGenderMale    GroupSheetPersonGender = "male"
-	GroupSheetPersonGenderUnknown GroupSheetPersonGender = "unknown"
-)
-
-// Valid indicates whether the value is a known member of the GroupSheetPersonGender enum.
-func (e GroupSheetPersonGender) Valid() bool {
-	switch e {
-	case GroupSheetPersonGenderFemale:
-		return true
-	case GroupSheetPersonGenderMale:
-		return true
-	case GroupSheetPersonGenderUnknown:
+	case Secondary:
 		return true
 	default:
 		return false
@@ -850,54 +769,27 @@ func (e MediaEntityType) Valid() bool {
 	}
 }
 
-// Defines values for MediaMediaType.
+// Defines values for MediaType.
 const (
-	MediaMediaTypeAudio       MediaMediaType = "audio"
-	MediaMediaTypeCertificate MediaMediaType = "certificate"
-	MediaMediaTypeDocument    MediaMediaType = "document"
-	MediaMediaTypePhoto       MediaMediaType = "photo"
-	MediaMediaTypeVideo       MediaMediaType = "video"
+	Audio       MediaType = "audio"
+	Certificate MediaType = "certificate"
+	Document    MediaType = "document"
+	Photo       MediaType = "photo"
+	Video       MediaType = "video"
 )
 
-// Valid indicates whether the value is a known member of the MediaMediaType enum.
-func (e MediaMediaType) Valid() bool {
+// Valid indicates whether the value is a known member of the MediaType enum.
+func (e MediaType) Valid() bool {
 	switch e {
-	case MediaMediaTypeAudio:
+	case Audio:
 		return true
-	case MediaMediaTypeCertificate:
+	case Certificate:
 		return true
-	case MediaMediaTypeDocument:
+	case Document:
 		return true
-	case MediaMediaTypePhoto:
+	case Photo:
 		return true
-	case MediaMediaTypeVideo:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for MediaUpdateMediaType.
-const (
-	MediaUpdateMediaTypeAudio       MediaUpdateMediaType = "audio"
-	MediaUpdateMediaTypeCertificate MediaUpdateMediaType = "certificate"
-	MediaUpdateMediaTypeDocument    MediaUpdateMediaType = "document"
-	MediaUpdateMediaTypePhoto       MediaUpdateMediaType = "photo"
-	MediaUpdateMediaTypeVideo       MediaUpdateMediaType = "video"
-)
-
-// Valid indicates whether the value is a known member of the MediaUpdateMediaType enum.
-func (e MediaUpdateMediaType) Valid() bool {
-	switch e {
-	case MediaUpdateMediaTypeAudio:
-		return true
-	case MediaUpdateMediaTypeCertificate:
-		return true
-	case MediaUpdateMediaTypeDocument:
-		return true
-	case MediaUpdateMediaTypePhoto:
-		return true
-	case MediaUpdateMediaTypeVideo:
+	case Video:
 		return true
 	default:
 		return false
@@ -1177,174 +1069,30 @@ func (e MergeResolutionEntryResolution) Valid() bool {
 	}
 }
 
-// Defines values for PersonGender.
+// Defines values for NameType.
 const (
-	PersonGenderFemale  PersonGender = "female"
-	PersonGenderMale    PersonGender = "male"
-	PersonGenderUnknown PersonGender = "unknown"
+	NameTypeAka          NameType = "aka"
+	NameTypeBirth        NameType = "birth"
+	NameTypeImmigrant    NameType = "immigrant"
+	NameTypeMarried      NameType = "married"
+	NameTypeProfessional NameType = "professional"
+	NameTypeReligious    NameType = "religious"
 )
 
-// Valid indicates whether the value is a known member of the PersonGender enum.
-func (e PersonGender) Valid() bool {
+// Valid indicates whether the value is a known member of the NameType enum.
+func (e NameType) Valid() bool {
 	switch e {
-	case PersonGenderFemale:
+	case NameTypeAka:
 		return true
-	case PersonGenderMale:
+	case NameTypeBirth:
 		return true
-	case PersonGenderUnknown:
+	case NameTypeImmigrant:
 		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for PersonCreateGender.
-const (
-	PersonCreateGenderFemale  PersonCreateGender = "female"
-	PersonCreateGenderMale    PersonCreateGender = "male"
-	PersonCreateGenderUnknown PersonCreateGender = "unknown"
-)
-
-// Valid indicates whether the value is a known member of the PersonCreateGender enum.
-func (e PersonCreateGender) Valid() bool {
-	switch e {
-	case PersonCreateGenderFemale:
+	case NameTypeMarried:
 		return true
-	case PersonCreateGenderMale:
+	case NameTypeProfessional:
 		return true
-	case PersonCreateGenderUnknown:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for PersonDetailGender.
-const (
-	PersonDetailGenderFemale  PersonDetailGender = "female"
-	PersonDetailGenderMale    PersonDetailGender = "male"
-	PersonDetailGenderUnknown PersonDetailGender = "unknown"
-)
-
-// Valid indicates whether the value is a known member of the PersonDetailGender enum.
-func (e PersonDetailGender) Valid() bool {
-	switch e {
-	case PersonDetailGenderFemale:
-		return true
-	case PersonDetailGenderMale:
-		return true
-	case PersonDetailGenderUnknown:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for PersonNameNameType.
-const (
-	PersonNameNameTypeAka          PersonNameNameType = "aka"
-	PersonNameNameTypeBirth        PersonNameNameType = "birth"
-	PersonNameNameTypeImmigrant    PersonNameNameType = "immigrant"
-	PersonNameNameTypeMarried      PersonNameNameType = "married"
-	PersonNameNameTypeProfessional PersonNameNameType = "professional"
-	PersonNameNameTypeReligious    PersonNameNameType = "religious"
-)
-
-// Valid indicates whether the value is a known member of the PersonNameNameType enum.
-func (e PersonNameNameType) Valid() bool {
-	switch e {
-	case PersonNameNameTypeAka:
-		return true
-	case PersonNameNameTypeBirth:
-		return true
-	case PersonNameNameTypeImmigrant:
-		return true
-	case PersonNameNameTypeMarried:
-		return true
-	case PersonNameNameTypeProfessional:
-		return true
-	case PersonNameNameTypeReligious:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for PersonNameCreateNameType.
-const (
-	PersonNameCreateNameTypeAka          PersonNameCreateNameType = "aka"
-	PersonNameCreateNameTypeBirth        PersonNameCreateNameType = "birth"
-	PersonNameCreateNameTypeImmigrant    PersonNameCreateNameType = "immigrant"
-	PersonNameCreateNameTypeMarried      PersonNameCreateNameType = "married"
-	PersonNameCreateNameTypeProfessional PersonNameCreateNameType = "professional"
-	PersonNameCreateNameTypeReligious    PersonNameCreateNameType = "religious"
-)
-
-// Valid indicates whether the value is a known member of the PersonNameCreateNameType enum.
-func (e PersonNameCreateNameType) Valid() bool {
-	switch e {
-	case PersonNameCreateNameTypeAka:
-		return true
-	case PersonNameCreateNameTypeBirth:
-		return true
-	case PersonNameCreateNameTypeImmigrant:
-		return true
-	case PersonNameCreateNameTypeMarried:
-		return true
-	case PersonNameCreateNameTypeProfessional:
-		return true
-	case PersonNameCreateNameTypeReligious:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for PersonNameUpdateNameType.
-const (
-	PersonNameUpdateNameTypeAka          PersonNameUpdateNameType = "aka"
-	PersonNameUpdateNameTypeBirth        PersonNameUpdateNameType = "birth"
-	PersonNameUpdateNameTypeImmigrant    PersonNameUpdateNameType = "immigrant"
-	PersonNameUpdateNameTypeMarried      PersonNameUpdateNameType = "married"
-	PersonNameUpdateNameTypeProfessional PersonNameUpdateNameType = "professional"
-	PersonNameUpdateNameTypeReligious    PersonNameUpdateNameType = "religious"
-)
-
-// Valid indicates whether the value is a known member of the PersonNameUpdateNameType enum.
-func (e PersonNameUpdateNameType) Valid() bool {
-	switch e {
-	case PersonNameUpdateNameTypeAka:
-		return true
-	case PersonNameUpdateNameTypeBirth:
-		return true
-	case PersonNameUpdateNameTypeImmigrant:
-		return true
-	case PersonNameUpdateNameTypeMarried:
-		return true
-	case PersonNameUpdateNameTypeProfessional:
-		return true
-	case PersonNameUpdateNameTypeReligious:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for PersonUpdateGender.
-const (
-	PersonUpdateGenderFemale  PersonUpdateGender = "female"
-	PersonUpdateGenderMale    PersonUpdateGender = "male"
-	PersonUpdateGenderUnknown PersonUpdateGender = "unknown"
-)
-
-// Valid indicates whether the value is a known member of the PersonUpdateGender enum.
-func (e PersonUpdateGender) Valid() bool {
-	switch e {
-	case PersonUpdateGenderFemale:
-		return true
-	case PersonUpdateGenderMale:
-		return true
-	case PersonUpdateGenderUnknown:
+	case NameTypeReligious:
 		return true
 	default:
 		return false
@@ -1375,135 +1123,42 @@ func (e PromoteSkippedLogReason) Valid() bool {
 	}
 }
 
-// Defines values for ProofSummaryResearchStatus.
+// Defines values for RelationType.
 const (
-	ProofSummaryResearchStatusCertain  ProofSummaryResearchStatus = "certain"
-	ProofSummaryResearchStatusPossible ProofSummaryResearchStatus = "possible"
-	ProofSummaryResearchStatusProbable ProofSummaryResearchStatus = "probable"
-	ProofSummaryResearchStatusUnknown  ProofSummaryResearchStatus = "unknown"
+	RelationTypeMarriage    RelationType = "marriage"
+	RelationTypePartnership RelationType = "partnership"
+	RelationTypeUnknown     RelationType = "unknown"
 )
 
-// Valid indicates whether the value is a known member of the ProofSummaryResearchStatus enum.
-func (e ProofSummaryResearchStatus) Valid() bool {
+// Valid indicates whether the value is a known member of the RelationType enum.
+func (e RelationType) Valid() bool {
 	switch e {
-	case ProofSummaryResearchStatusCertain:
+	case RelationTypeMarriage:
 		return true
-	case ProofSummaryResearchStatusPossible:
+	case RelationTypePartnership:
 		return true
-	case ProofSummaryResearchStatusProbable:
-		return true
-	case ProofSummaryResearchStatusUnknown:
+	case RelationTypeUnknown:
 		return true
 	default:
 		return false
 	}
 }
 
-// Defines values for ProofSummaryCreateResearchStatus.
+// Defines values for ResearchOutcome.
 const (
-	ProofSummaryCreateResearchStatusCertain  ProofSummaryCreateResearchStatus = "certain"
-	ProofSummaryCreateResearchStatusPossible ProofSummaryCreateResearchStatus = "possible"
-	ProofSummaryCreateResearchStatusProbable ProofSummaryCreateResearchStatus = "probable"
-	ProofSummaryCreateResearchStatusUnknown  ProofSummaryCreateResearchStatus = "unknown"
+	ResearchOutcomeFound        ResearchOutcome = "found"
+	ResearchOutcomeInconclusive ResearchOutcome = "inconclusive"
+	ResearchOutcomeNotFound     ResearchOutcome = "not_found"
 )
 
-// Valid indicates whether the value is a known member of the ProofSummaryCreateResearchStatus enum.
-func (e ProofSummaryCreateResearchStatus) Valid() bool {
+// Valid indicates whether the value is a known member of the ResearchOutcome enum.
+func (e ResearchOutcome) Valid() bool {
 	switch e {
-	case ProofSummaryCreateResearchStatusCertain:
+	case ResearchOutcomeFound:
 		return true
-	case ProofSummaryCreateResearchStatusPossible:
+	case ResearchOutcomeInconclusive:
 		return true
-	case ProofSummaryCreateResearchStatusProbable:
-		return true
-	case ProofSummaryCreateResearchStatusUnknown:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for ProofSummaryUpdateResearchStatus.
-const (
-	ProofSummaryUpdateResearchStatusCertain  ProofSummaryUpdateResearchStatus = "certain"
-	ProofSummaryUpdateResearchStatusPossible ProofSummaryUpdateResearchStatus = "possible"
-	ProofSummaryUpdateResearchStatusProbable ProofSummaryUpdateResearchStatus = "probable"
-	ProofSummaryUpdateResearchStatusUnknown  ProofSummaryUpdateResearchStatus = "unknown"
-)
-
-// Valid indicates whether the value is a known member of the ProofSummaryUpdateResearchStatus enum.
-func (e ProofSummaryUpdateResearchStatus) Valid() bool {
-	switch e {
-	case ProofSummaryUpdateResearchStatusCertain:
-		return true
-	case ProofSummaryUpdateResearchStatusPossible:
-		return true
-	case ProofSummaryUpdateResearchStatusProbable:
-		return true
-	case ProofSummaryUpdateResearchStatusUnknown:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for ResearchLogOutcome.
-const (
-	ResearchLogOutcomeFound        ResearchLogOutcome = "found"
-	ResearchLogOutcomeInconclusive ResearchLogOutcome = "inconclusive"
-	ResearchLogOutcomeNotFound     ResearchLogOutcome = "not_found"
-)
-
-// Valid indicates whether the value is a known member of the ResearchLogOutcome enum.
-func (e ResearchLogOutcome) Valid() bool {
-	switch e {
-	case ResearchLogOutcomeFound:
-		return true
-	case ResearchLogOutcomeInconclusive:
-		return true
-	case ResearchLogOutcomeNotFound:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for ResearchLogCreateOutcome.
-const (
-	ResearchLogCreateOutcomeFound        ResearchLogCreateOutcome = "found"
-	ResearchLogCreateOutcomeInconclusive ResearchLogCreateOutcome = "inconclusive"
-	ResearchLogCreateOutcomeNotFound     ResearchLogCreateOutcome = "not_found"
-)
-
-// Valid indicates whether the value is a known member of the ResearchLogCreateOutcome enum.
-func (e ResearchLogCreateOutcome) Valid() bool {
-	switch e {
-	case ResearchLogCreateOutcomeFound:
-		return true
-	case ResearchLogCreateOutcomeInconclusive:
-		return true
-	case ResearchLogCreateOutcomeNotFound:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for ResearchLogUpdateOutcome.
-const (
-	ResearchLogUpdateOutcomeFound        ResearchLogUpdateOutcome = "found"
-	ResearchLogUpdateOutcomeInconclusive ResearchLogUpdateOutcome = "inconclusive"
-	ResearchLogUpdateOutcomeNotFound     ResearchLogUpdateOutcome = "not_found"
-)
-
-// Valid indicates whether the value is a known member of the ResearchLogUpdateOutcome enum.
-func (e ResearchLogUpdateOutcome) Valid() bool {
-	switch e {
-	case ResearchLogUpdateOutcomeFound:
-		return true
-	case ResearchLogUpdateOutcomeInconclusive:
-		return true
-	case ResearchLogUpdateOutcomeNotFound:
+	case ResearchOutcomeNotFound:
 		return true
 	default:
 		return false
@@ -1579,6 +1234,72 @@ func (e RollbackResponseEntityType) Valid() bool {
 	case RollbackResponseEntityTypePerson:
 		return true
 	case RollbackResponseEntityTypeSource:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SourceQuality.
+const (
+	Authored   SourceQuality = "authored"
+	Derivative SourceQuality = "derivative"
+	Original   SourceQuality = "original"
+)
+
+// Valid indicates whether the value is a known member of the SourceQuality enum.
+func (e SourceQuality) Valid() bool {
+	switch e {
+	case Authored:
+		return true
+	case Derivative:
+		return true
+	case Original:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SourceType.
+const (
+	Archive        SourceType = "archive"
+	Book           SourceType = "book"
+	Census         SourceType = "census"
+	ChurchRecord   SourceType = "church_record"
+	Correspondence SourceType = "correspondence"
+	Interview      SourceType = "interview"
+	Newspaper      SourceType = "newspaper"
+	Other          SourceType = "other"
+	Photograph     SourceType = "photograph"
+	VitalRecord    SourceType = "vital_record"
+	Webpage        SourceType = "webpage"
+)
+
+// Valid indicates whether the value is a known member of the SourceType enum.
+func (e SourceType) Valid() bool {
+	switch e {
+	case Archive:
+		return true
+	case Book:
+		return true
+	case Census:
+		return true
+	case ChurchRecord:
+		return true
+	case Correspondence:
+		return true
+	case Interview:
+		return true
+	case Newspaper:
+		return true
+	case Other:
+		return true
+	case Photograph:
+		return true
+	case VitalRecord:
+		return true
+	case Webpage:
 		return true
 	default:
 		return false
@@ -1693,24 +1414,6 @@ func (e ListEvidenceAnalysesParamsOrder) Valid() bool {
 	case ListEvidenceAnalysesParamsOrderAsc:
 		return true
 	case ListEvidenceAnalysesParamsOrderDesc:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for ListEvidenceConflictsParamsStatus.
-const (
-	ListEvidenceConflictsParamsStatusOpen     ListEvidenceConflictsParamsStatus = "open"
-	ListEvidenceConflictsParamsStatusResolved ListEvidenceConflictsParamsStatus = "resolved"
-)
-
-// Valid indicates whether the value is a known member of the ListEvidenceConflictsParamsStatus enum.
-func (e ListEvidenceConflictsParamsStatus) Valid() bool {
-	switch e {
-	case ListEvidenceConflictsParamsStatusOpen:
-		return true
-	case ListEvidenceConflictsParamsStatusResolved:
 		return true
 	default:
 		return false
@@ -1942,33 +1645,6 @@ func (e ListPersonsParamsResearchStatus) Valid() bool {
 	case ListPersonsParamsResearchStatusUnknown:
 		return true
 	case ListPersonsParamsResearchStatusUnset:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for UploadPersonMediaMultipartBodyMediaType.
-const (
-	UploadPersonMediaMultipartBodyMediaTypeAudio       UploadPersonMediaMultipartBodyMediaType = "audio"
-	UploadPersonMediaMultipartBodyMediaTypeCertificate UploadPersonMediaMultipartBodyMediaType = "certificate"
-	UploadPersonMediaMultipartBodyMediaTypeDocument    UploadPersonMediaMultipartBodyMediaType = "document"
-	UploadPersonMediaMultipartBodyMediaTypePhoto       UploadPersonMediaMultipartBodyMediaType = "photo"
-	UploadPersonMediaMultipartBodyMediaTypeVideo       UploadPersonMediaMultipartBodyMediaType = "video"
-)
-
-// Valid indicates whether the value is a known member of the UploadPersonMediaMultipartBodyMediaType enum.
-func (e UploadPersonMediaMultipartBodyMediaType) Valid() bool {
-	switch e {
-	case UploadPersonMediaMultipartBodyMediaTypeAudio:
-		return true
-	case UploadPersonMediaMultipartBodyMediaTypeCertificate:
-		return true
-	case UploadPersonMediaMultipartBodyMediaTypeDocument:
-		return true
-	case UploadPersonMediaMultipartBodyMediaTypePhoto:
-		return true
-	case UploadPersonMediaMultipartBodyMediaTypeVideo:
 		return true
 	default:
 		return false
@@ -2232,13 +1908,12 @@ func (e ListSubmittersParamsOrder) Valid() bool {
 
 // AddChild defines model for AddChild.
 type AddChild struct {
-	PersonId         openapi_types.UUID        `json:"person_id"`
-	RelationshipType *AddChildRelationshipType `json:"relationship_type,omitempty"`
-	Sequence         *int                      `json:"sequence,omitempty"`
-}
+	PersonId openapi_types.UUID `json:"person_id"`
 
-// AddChildRelationshipType defines model for AddChild.RelationshipType.
-type AddChildRelationshipType string
+	// RelationshipType Relationship between the child and the family; biological when omitted.
+	RelationshipType *ChildRelationType `json:"relationship_type,omitempty"`
+	Sequence         *int               `json:"sequence,omitempty"`
+}
 
 // Address Structured GEDCOM address (embedded in other entities)
 type Address struct {
@@ -2285,9 +1960,7 @@ type AhnentafelEntry struct {
 	// DeathDate Genealogical date with flexible precision
 	DeathDate  *GenDate `json:"death_date,omitempty"`
 	DeathPlace *string  `json:"death_place,omitempty"`
-
-	// Gender Gender (omitted if ancestor is unknown)
-	Gender *AhnentafelEntryGender `json:"gender,omitempty"`
+	Gender     *Gender  `json:"gender,omitempty"`
 
 	// Generation Generation number (0=subject, 1=parents, 2=grandparents, etc.)
 	//
@@ -2313,9 +1986,6 @@ type AhnentafelEntry struct {
 	// Surname Surname (omitted if ancestor is unknown)
 	Surname *string `json:"surname,omitempty"`
 }
-
-// AhnentafelEntryGender Gender (omitted if ancestor is unknown)
-type AhnentafelEntryGender string
 
 // AhnentafelResponse Ahnentafel (ancestor table) report using standard genealogical numbering.
 // This schema is shared between backend and frontend - changes require updates to both.
@@ -2467,8 +2137,8 @@ type AttributeExport struct {
 	// Date Date in GEDCOM format
 	Date *string `json:"date,omitempty"`
 
-	// FactType Type of attribute (OCCUPATION, RESIDENCE, etc.)
-	FactType string             `json:"fact_type"`
+	// FactType The fact a citation, analysis, conflict or proof summary is about
+	FactType FactType           `json:"fact_type"`
 	Id       openapi_types.UUID `json:"id"`
 	PersonId openapi_types.UUID `json:"person_id"`
 	Place    *string            `json:"place,omitempty"`
@@ -2692,8 +2362,8 @@ type BranchChangedFact struct {
 	// ChangeCount How many of the branch's changes touched the fact.
 	ChangeCount int `json:"change_count"`
 
-	// FactType The fact changed (e.g. `person_birth`); absent for a relationship or a deletion.
-	FactType *string `json:"fact_type,omitempty"`
+	// FactType The fact a citation, analysis, conflict or proof summary is about
+	FactType *FactType `json:"fact_type,omitempty"`
 
 	// Kind `fact` for a person's or family's fact (`fact_type` says which);
 	// `relationship` for a family's partners or children; `deletion` for
@@ -3066,9 +2736,11 @@ type BranchOutcome string
 
 // BranchProofSummaryRef defines model for BranchProofSummaryRef.
 type BranchProofSummaryRef struct {
-	Conclusion string             `json:"conclusion"`
-	FactType   string             `json:"fact_type"`
-	Id         openapi_types.UUID `json:"id"`
+	Conclusion string `json:"conclusion"`
+
+	// FactType The fact a citation, analysis, conflict or proof summary is about
+	FactType FactType           `json:"fact_type"`
+	Id       openapi_types.UUID `json:"id"`
 }
 
 // BranchQualityIssue A person's quality issue a branch introduces.
@@ -3281,19 +2953,22 @@ type ChangeHistoryResponse struct {
 	Total   int           `json:"total"`
 }
 
+// ChildRelationType Relationship between a child and its family
+type ChildRelationType string
+
 // Citation defines model for Citation.
 type Citation struct {
 	// Analysis Researcher's analysis of the citation
 	Analysis *string `json:"analysis,omitempty"`
 
-	// EvidenceType Type of evidence (e.g., direct, indirect)
-	EvidenceType *string `json:"evidence_type,omitempty"`
+	// EvidenceType How the evidence bears on the fact per GPS standards
+	EvidenceType *EvidenceType `json:"evidence_type,omitempty"`
 
 	// FactOwnerId ID of the person or family this citation applies to
 	FactOwnerId openapi_types.UUID `json:"fact_owner_id"`
 
-	// FactType Type of fact being cited (e.g., birth, death, marriage)
-	FactType string `json:"fact_type"`
+	// FactType The fact a citation, analysis, conflict or proof summary is about
+	FactType FactType `json:"fact_type"`
 
 	// Fields Template-specific field values
 	Fields *map[string]string `json:"fields,omitempty"`
@@ -3302,16 +2977,16 @@ type Citation struct {
 	GedcomXref *string            `json:"gedcom_xref,omitempty"`
 	Id         openapi_types.UUID `json:"id"`
 
-	// InformantType Type of informant (e.g., primary, secondary)
-	InformantType *string `json:"informant_type,omitempty"`
-	Page          *string `json:"page,omitempty"`
+	// InformantType Informant's relation to the event per GPS standards
+	InformantType *InformantType `json:"informant_type,omitempty"`
+	Page          *string        `json:"page,omitempty"`
 
 	// QuotedText Exact text quoted from the source
 	QuotedText *string            `json:"quoted_text,omitempty"`
 	SourceId   openapi_types.UUID `json:"source_id"`
 
-	// SourceQuality Quality assessment of the source
-	SourceQuality *string `json:"source_quality,omitempty"`
+	// SourceQuality Quality of a source per GPS standards
+	SourceQuality *SourceQuality `json:"source_quality,omitempty"`
 
 	// SourceTitle Title of the referenced source
 	SourceTitle string `json:"source_title"`
@@ -3326,27 +3001,33 @@ type Citation struct {
 
 // CitationCreate defines model for CitationCreate.
 type CitationCreate struct {
-	Analysis     *string `json:"analysis,omitempty"`
-	EvidenceType *string `json:"evidence_type,omitempty"`
+	Analysis *string `json:"analysis,omitempty"`
+
+	// EvidenceType How the evidence bears on the fact per GPS standards
+	EvidenceType *EvidenceType `json:"evidence_type,omitempty"`
 
 	// FactOwnerId ID of the person or family this citation applies to
 	FactOwnerId openapi_types.UUID `json:"fact_owner_id"`
 
-	// FactType Type of fact being cited (e.g., birth, death, marriage)
-	FactType string `json:"fact_type"`
+	// FactType The fact a citation, analysis, conflict or proof summary is about
+	FactType FactType `json:"fact_type"`
 
 	// Fields Template-specific field values
 	Fields *map[string]string `json:"fields,omitempty"`
 
 	// GedcomXref Optional GEDCOM cross-reference ID for import
-	GedcomXref    *string            `json:"gedcom_xref,omitempty"`
-	InformantType *string            `json:"informant_type,omitempty"`
+	GedcomXref *string `json:"gedcom_xref,omitempty"`
+
+	// InformantType Informant's relation to the event per GPS standards
+	InformantType *InformantType     `json:"informant_type,omitempty"`
 	Page          *string            `json:"page,omitempty"`
 	QuotedText    *string            `json:"quoted_text,omitempty"`
 	SourceId      openapi_types.UUID `json:"source_id"`
-	SourceQuality *string            `json:"source_quality,omitempty"`
-	TemplateId    *string            `json:"template_id,omitempty"`
-	Volume        *string            `json:"volume,omitempty"`
+
+	// SourceQuality Quality of a source per GPS standards
+	SourceQuality *SourceQuality `json:"source_quality,omitempty"`
+	TemplateId    *string        `json:"template_id,omitempty"`
+	Volume        *string        `json:"volume,omitempty"`
 }
 
 // CitationList defines model for CitationList.
@@ -3373,7 +3054,7 @@ type CitationTemplate struct {
 	Name string `json:"name"`
 
 	// SourceTypes Applicable source types
-	SourceTypes []string `json:"source_types"`
+	SourceTypes []SourceType `json:"source_types"`
 }
 
 // CitationTemplateField defines model for CitationTemplateField.
@@ -3398,16 +3079,22 @@ type CitationTemplateList struct {
 
 // CitationUpdate defines model for CitationUpdate.
 type CitationUpdate struct {
-	Analysis     *string `json:"analysis,omitempty"`
-	EvidenceType *string `json:"evidence_type,omitempty"`
+	Analysis *string `json:"analysis,omitempty"`
+
+	// EvidenceType How the evidence bears on the fact per GPS standards
+	EvidenceType *EvidenceType `json:"evidence_type,omitempty"`
 
 	// Fields Template-specific field values
-	Fields        *map[string]string `json:"fields,omitempty"`
-	InformantType *string            `json:"informant_type,omitempty"`
-	Page          *string            `json:"page,omitempty"`
-	QuotedText    *string            `json:"quoted_text,omitempty"`
-	SourceQuality *string            `json:"source_quality,omitempty"`
-	TemplateId    *string            `json:"template_id,omitempty"`
+	Fields *map[string]string `json:"fields,omitempty"`
+
+	// InformantType Informant's relation to the event per GPS standards
+	InformantType *InformantType `json:"informant_type,omitempty"`
+	Page          *string        `json:"page,omitempty"`
+	QuotedText    *string        `json:"quoted_text,omitempty"`
+
+	// SourceQuality Quality of a source per GPS standards
+	SourceQuality *SourceQuality `json:"source_quality,omitempty"`
+	TemplateId    *string        `json:"template_id,omitempty"`
 
 	// Version Current version for optimistic locking
 	Version int64   `json:"version"`
@@ -3423,6 +3110,9 @@ type CitationValidationIssue struct {
 
 // CitationValidationIssueLevel defines model for CitationValidationIssue.Level.
 type CitationValidationIssueLevel string
+
+// ConflictStatus defines model for ConflictStatus.
+type ConflictStatus string
 
 // DataLossItem defines model for DataLossItem.
 type DataLossItem struct {
@@ -3472,7 +3162,7 @@ type DescendancyNode struct {
 
 	// DeathDate Genealogical date with flexible precision
 	DeathDate *GenDate `json:"death_date,omitempty"`
-	Gender    *string  `json:"gender,omitempty"`
+	Gender    *Gender  `json:"gender,omitempty"`
 
 	// Generation Generation level (0 = root, 1 = children, 2 = grandchildren, etc.)
 	Generation *int               `json:"generation,omitempty"`
@@ -3579,8 +3269,8 @@ type EventExport struct {
 	Date        *string `json:"date,omitempty"`
 	Description *string `json:"description,omitempty"`
 
-	// FactType Type of event (BIRTH, DEATH, CENSUS, etc.)
-	FactType string             `json:"fact_type"`
+	// FactType The fact a citation, analysis, conflict or proof summary is about
+	FactType FactType           `json:"fact_type"`
 	Id       openapi_types.UUID `json:"id"`
 
 	// IsNegated Whether this is a negative assertion (event did NOT occur)
@@ -3616,8 +3306,8 @@ type EvidenceAnalysis struct {
 	ConflictId *openapi_types.UUID `json:"conflict_id,omitempty"`
 	CreatedAt  *time.Time          `json:"created_at,omitempty"`
 
-	// FactType Type of fact being analyzed (e.g., birth, death, marriage)
-	FactType string             `json:"fact_type"`
+	// FactType The fact a citation, analysis, conflict or proof summary is about
+	FactType FactType           `json:"fact_type"`
 	Id       openapi_types.UUID `json:"id"`
 	Notes    *string            `json:"notes,omitempty"`
 
@@ -3637,15 +3327,16 @@ type EvidenceAnalysisCreate struct {
 	CitationIds *[]openapi_types.UUID `json:"citation_ids,omitempty"`
 	Conclusion  string                `json:"conclusion"`
 
-	// FactType Type of fact being analyzed
-	FactType       string                                `json:"fact_type"`
-	Notes          *string                               `json:"notes,omitempty"`
-	ResearchStatus *EvidenceAnalysisCreateResearchStatus `json:"research_status,omitempty"`
-	SubjectId      openapi_types.UUID                    `json:"subject_id"`
-}
+	// FactType The fact a citation, analysis, conflict or proof summary is about
+	FactType FactType `json:"fact_type"`
+	Notes    *string  `json:"notes,omitempty"`
 
-// EvidenceAnalysisCreateResearchStatus defines model for EvidenceAnalysisCreate.ResearchStatus.
-type EvidenceAnalysisCreateResearchStatus string
+	// ResearchStatus Confidence level of genealogical data per GPS standards
+	//
+	// Example: probable
+	ResearchStatus *ResearchStatus    `json:"research_status,omitempty"`
+	SubjectId      openapi_types.UUID `json:"subject_id"`
+}
 
 // EvidenceAnalysisList defines model for EvidenceAnalysisList.
 type EvidenceAnalysisList struct {
@@ -3657,34 +3348,36 @@ type EvidenceAnalysisList struct {
 
 // EvidenceAnalysisUpdate defines model for EvidenceAnalysisUpdate.
 type EvidenceAnalysisUpdate struct {
-	CitationIds    *[]openapi_types.UUID                 `json:"citation_ids,omitempty"`
-	Conclusion     *string                               `json:"conclusion,omitempty"`
-	FactType       *string                               `json:"fact_type,omitempty"`
-	Notes          *string                               `json:"notes,omitempty"`
-	ResearchStatus *EvidenceAnalysisUpdateResearchStatus `json:"research_status,omitempty"`
-	SubjectId      *openapi_types.UUID                   `json:"subject_id,omitempty"`
-	Version        int64                                 `json:"version"`
-}
+	CitationIds *[]openapi_types.UUID `json:"citation_ids,omitempty"`
+	Conclusion  *string               `json:"conclusion,omitempty"`
 
-// EvidenceAnalysisUpdateResearchStatus defines model for EvidenceAnalysisUpdate.ResearchStatus.
-type EvidenceAnalysisUpdateResearchStatus string
+	// FactType The fact a citation, analysis, conflict or proof summary is about
+	FactType *FactType `json:"fact_type,omitempty"`
+	Notes    *string   `json:"notes,omitempty"`
+
+	// ResearchStatus Confidence level of genealogical data per GPS standards
+	//
+	// Example: probable
+	ResearchStatus *ResearchStatus     `json:"research_status,omitempty"`
+	SubjectId      *openapi_types.UUID `json:"subject_id,omitempty"`
+	Version        int64               `json:"version"`
+}
 
 // EvidenceConflict defines model for EvidenceConflict.
 type EvidenceConflict struct {
-	AnalysisIds []openapi_types.UUID   `json:"analysis_ids"`
-	CreatedAt   *time.Time             `json:"created_at,omitempty"`
-	Description string                 `json:"description"`
-	FactType    string                 `json:"fact_type"`
-	Id          openapi_types.UUID     `json:"id"`
-	Resolution  *string                `json:"resolution,omitempty"`
-	Status      EvidenceConflictStatus `json:"status"`
-	SubjectId   openapi_types.UUID     `json:"subject_id"`
-	UpdatedAt   *time.Time             `json:"updated_at,omitempty"`
-	Version     int64                  `json:"version"`
-}
+	AnalysisIds []openapi_types.UUID `json:"analysis_ids"`
+	CreatedAt   *time.Time           `json:"created_at,omitempty"`
+	Description string               `json:"description"`
 
-// EvidenceConflictStatus defines model for EvidenceConflict.Status.
-type EvidenceConflictStatus string
+	// FactType The fact a citation, analysis, conflict or proof summary is about
+	FactType   FactType           `json:"fact_type"`
+	Id         openapi_types.UUID `json:"id"`
+	Resolution *string            `json:"resolution,omitempty"`
+	Status     ConflictStatus     `json:"status"`
+	SubjectId  openapi_types.UUID `json:"subject_id"`
+	UpdatedAt  *time.Time         `json:"updated_at,omitempty"`
+	Version    int64              `json:"version"`
+}
 
 // EvidenceConflictList defines model for EvidenceConflictList.
 type EvidenceConflictList struct {
@@ -3700,6 +3393,9 @@ type EvidenceConflictResolve struct {
 	Resolution string `json:"resolution"`
 	Version    int64  `json:"version"`
 }
+
+// EvidenceType How the evidence bears on the fact per GPS standards
+type EvidenceType string
 
 // ExportEstimate defines model for ExportEstimate.
 type ExportEstimate struct {
@@ -3791,6 +3487,9 @@ type ExternalLink struct {
 	Value string `json:"value"`
 }
 
+// FactType The fact a citation, analysis, conflict or proof summary is about
+type FactType string
+
 // Family defines model for Family.
 type Family struct {
 	Id openapi_types.UUID `json:"id"`
@@ -3803,38 +3502,35 @@ type Family struct {
 	MarriagePlaceLatitude *string `json:"marriage_place_latitude,omitempty"`
 
 	// MarriagePlaceLongitude Longitude in GEDCOM format (e.g., "W89.6501")
-	MarriagePlaceLongitude *string                 `json:"marriage_place_longitude,omitempty"`
-	Partner1Id             *openapi_types.UUID     `json:"partner1_id,omitempty"`
-	Partner2Id             *openapi_types.UUID     `json:"partner2_id,omitempty"`
-	RelationshipType       *FamilyRelationshipType `json:"relationship_type,omitempty"`
-	Version                int64                   `json:"version"`
-}
+	MarriagePlaceLongitude *string             `json:"marriage_place_longitude,omitempty"`
+	Partner1Id             *openapi_types.UUID `json:"partner1_id,omitempty"`
+	Partner2Id             *openapi_types.UUID `json:"partner2_id,omitempty"`
 
-// FamilyRelationshipType defines model for Family.RelationshipType.
-type FamilyRelationshipType string
+	// RelationshipType Relationship between a family's partners
+	RelationshipType *RelationType `json:"relationship_type,omitempty"`
+	Version          int64         `json:"version"`
+}
 
 // FamilyChild defines model for FamilyChild.
 type FamilyChild struct {
-	Person           *PersonSummary              `json:"person,omitempty"`
-	PersonId         openapi_types.UUID          `json:"person_id"`
-	RelationshipType FamilyChildRelationshipType `json:"relationship_type"`
-	Sequence         *int                        `json:"sequence,omitempty"`
-}
+	Person   *PersonSummary     `json:"person,omitempty"`
+	PersonId openapi_types.UUID `json:"person_id"`
 
-// FamilyChildRelationshipType defines model for FamilyChild.RelationshipType.
-type FamilyChildRelationshipType string
+	// RelationshipType Relationship between a child and its family
+	RelationshipType ChildRelationType `json:"relationship_type"`
+	Sequence         *int              `json:"sequence,omitempty"`
+}
 
 // FamilyCreate defines model for FamilyCreate.
 type FamilyCreate struct {
-	MarriageDate     *string                       `json:"marriage_date,omitempty"`
-	MarriagePlace    *string                       `json:"marriage_place,omitempty"`
-	Partner1Id       *openapi_types.UUID           `json:"partner1_id,omitempty"`
-	Partner2Id       *openapi_types.UUID           `json:"partner2_id,omitempty"`
-	RelationshipType *FamilyCreateRelationshipType `json:"relationship_type,omitempty"`
-}
+	MarriageDate  *string             `json:"marriage_date,omitempty"`
+	MarriagePlace *string             `json:"marriage_place,omitempty"`
+	Partner1Id    *openapi_types.UUID `json:"partner1_id,omitempty"`
+	Partner2Id    *openapi_types.UUID `json:"partner2_id,omitempty"`
 
-// FamilyCreateRelationshipType defines model for FamilyCreate.RelationshipType.
-type FamilyCreateRelationshipType string
+	// RelationshipType Relationship between a family's partners
+	RelationshipType *RelationType `json:"relationship_type,omitempty"`
+}
 
 // FamilyDetail defines model for FamilyDetail.
 type FamilyDetail struct {
@@ -3859,14 +3555,13 @@ type FamilyDetail struct {
 	Partner1Id *openapi_types.UUID `json:"partner1_id,omitempty"`
 
 	// Partner2 Partner 2 summary. Present whenever partner2_id is set; given_name and surname may be empty strings if the partner has no recorded name.
-	Partner2         *PersonSummary                `json:"partner2,omitempty"`
-	Partner2Id       *openapi_types.UUID           `json:"partner2_id,omitempty"`
-	RelationshipType *FamilyDetailRelationshipType `json:"relationship_type,omitempty"`
-	Version          int64                         `json:"version"`
-}
+	Partner2   *PersonSummary      `json:"partner2,omitempty"`
+	Partner2Id *openapi_types.UUID `json:"partner2_id,omitempty"`
 
-// FamilyDetailRelationshipType defines model for FamilyDetail.RelationshipType.
-type FamilyDetailRelationshipType string
+	// RelationshipType Relationship between a family's partners
+	RelationshipType *RelationType `json:"relationship_type,omitempty"`
+	Version          int64         `json:"version"`
+}
 
 // FamilyGroupSheet Traditional family group sheet showing parents, children, and key events
 type FamilyGroupSheet struct {
@@ -3895,10 +3590,12 @@ type FamilyList struct {
 
 // FamilySummary defines model for FamilySummary.
 type FamilySummary struct {
-	Id               openapi_types.UUID `json:"id"`
-	Partner1Name     *string            `json:"partner1_name,omitempty"`
-	Partner2Name     *string            `json:"partner2_name,omitempty"`
-	RelationshipType *string            `json:"relationship_type,omitempty"`
+	Id           openapi_types.UUID `json:"id"`
+	Partner1Name *string            `json:"partner1_name,omitempty"`
+	Partner2Name *string            `json:"partner2_name,omitempty"`
+
+	// RelationshipType Relationship between a family's partners
+	RelationshipType *RelationType `json:"relationship_type,omitempty"`
 }
 
 // FamilyUpdate defines model for FamilyUpdate.
@@ -3915,13 +3612,12 @@ type FamilyUpdate struct {
 	Partner1Id *openapi_types.UUID `json:"partner1_id,omitempty"`
 
 	// Partner2Id Set partner 2 to this person. Omit to leave partner 2 unchanged.
-	Partner2Id       *openapi_types.UUID           `json:"partner2_id,omitempty"`
-	RelationshipType *FamilyUpdateRelationshipType `json:"relationship_type,omitempty"`
-	Version          int64                         `json:"version"`
-}
+	Partner2Id *openapi_types.UUID `json:"partner2_id,omitempty"`
 
-// FamilyUpdateRelationshipType defines model for FamilyUpdate.RelationshipType.
-type FamilyUpdateRelationshipType string
+	// RelationshipType Relationship between a family's partners
+	RelationshipType *RelationType `json:"relationship_type,omitempty"`
+	Version          int64         `json:"version"`
+}
 
 // FieldChange defines model for FieldChange.
 type FieldChange struct {
@@ -3978,6 +3674,9 @@ type GenDate struct {
 // GenDateQualifier Example: abt
 type GenDateQualifier string
 
+// Gender defines model for Gender.
+type Gender string
+
 // GenderDistribution defines model for GenderDistribution.
 type GenderDistribution struct {
 	Female  int `json:"female"`
@@ -3991,11 +3690,13 @@ type GroupSheetChild struct {
 	Birth *GroupSheetEvent `json:"birth,omitempty"`
 
 	// Death Event details for group sheet display
-	Death            *GroupSheetEvent                 `json:"death,omitempty"`
-	Gender           *GroupSheetChildGender           `json:"gender,omitempty"`
-	GivenName        string                           `json:"given_name"`
-	Id               openapi_types.UUID               `json:"id"`
-	RelationshipType *GroupSheetChildRelationshipType `json:"relationship_type,omitempty"`
+	Death     *GroupSheetEvent   `json:"death,omitempty"`
+	Gender    *Gender            `json:"gender,omitempty"`
+	GivenName string             `json:"given_name"`
+	Id        openapi_types.UUID `json:"id"`
+
+	// RelationshipType Relationship between a child and its family
+	RelationshipType *ChildRelationType `json:"relationship_type,omitempty"`
 
 	// Sequence Birth order
 	Sequence *int                `json:"sequence,omitempty"`
@@ -4005,12 +3706,6 @@ type GroupSheetChild struct {
 	SpouseName *string `json:"spouse_name,omitempty"`
 	Surname    string  `json:"surname"`
 }
-
-// GroupSheetChildGender defines model for GroupSheetChild.Gender.
-type GroupSheetChildGender string
-
-// GroupSheetChildRelationshipType defines model for GroupSheetChild.RelationshipType.
-type GroupSheetChildRelationshipType string
 
 // GroupSheetCitation Citation reference for group sheet
 type GroupSheetCitation struct {
@@ -4044,19 +3739,16 @@ type GroupSheetPerson struct {
 	FatherId *openapi_types.UUID `json:"father_id,omitempty"`
 
 	// FatherName Name of father (if known)
-	FatherName *string                 `json:"father_name,omitempty"`
-	Gender     *GroupSheetPersonGender `json:"gender,omitempty"`
-	GivenName  string                  `json:"given_name"`
-	Id         openapi_types.UUID      `json:"id"`
-	MotherId   *openapi_types.UUID     `json:"mother_id,omitempty"`
+	FatherName *string             `json:"father_name,omitempty"`
+	Gender     *Gender             `json:"gender,omitempty"`
+	GivenName  string              `json:"given_name"`
+	Id         openapi_types.UUID  `json:"id"`
+	MotherId   *openapi_types.UUID `json:"mother_id,omitempty"`
 
 	// MotherName Name of mother (if known)
 	MotherName *string `json:"mother_name,omitempty"`
 	Surname    string  `json:"surname"`
 }
-
-// GroupSheetPersonGender defines model for GroupSheetPerson.Gender.
-type GroupSheetPersonGender string
 
 // ImportError defines model for ImportError.
 type ImportError struct {
@@ -4082,6 +3774,9 @@ type ImportWarning struct {
 	// Record GEDCOM @XREF@ if available
 	Record *string `json:"record,omitempty"`
 }
+
+// InformantType Informant's relation to the event per GPS standards
+type InformantType string
 
 // LDSOrdinance defines model for LDSOrdinance.
 type LDSOrdinance struct {
@@ -4251,7 +3946,9 @@ type Media struct {
 	// HasThumbnail Whether a thumbnail is available
 	HasThumbnail *bool              `json:"has_thumbnail,omitempty"`
 	Id           openapi_types.UUID `json:"id"`
-	MediaType    *MediaMediaType    `json:"media_type,omitempty"`
+
+	// MediaType Category of media
+	MediaType *MediaType `json:"media_type,omitempty"`
 
 	// MimeType Example: image/jpeg
 	MimeType string `json:"mime_type"`
@@ -4265,9 +3962,6 @@ type Media struct {
 
 // MediaEntityType defines model for Media.EntityType.
 type MediaEntityType string
-
-// MediaMediaType defines model for Media.MediaType.
-type MediaMediaType string
 
 // MediaFile A single file reference within a media object (GEDCOM 7.0 FILE structure)
 type MediaFile struct {
@@ -4308,22 +4002,24 @@ type MediaTranslation struct {
 	Path *string `json:"path,omitempty"`
 }
 
+// MediaType Category of media
+type MediaType string
+
 // MediaUpdate defines model for MediaUpdate.
 type MediaUpdate struct {
-	CropHeight  *int                  `json:"crop_height,omitempty"`
-	CropLeft    *int                  `json:"crop_left,omitempty"`
-	CropTop     *int                  `json:"crop_top,omitempty"`
-	CropWidth   *int                  `json:"crop_width,omitempty"`
-	Description *string               `json:"description,omitempty"`
-	MediaType   *MediaUpdateMediaType `json:"media_type,omitempty"`
-	Title       *string               `json:"title,omitempty"`
+	CropHeight  *int    `json:"crop_height,omitempty"`
+	CropLeft    *int    `json:"crop_left,omitempty"`
+	CropTop     *int    `json:"crop_top,omitempty"`
+	CropWidth   *int    `json:"crop_width,omitempty"`
+	Description *string `json:"description,omitempty"`
+
+	// MediaType Category of media
+	MediaType *MediaType `json:"media_type,omitempty"`
+	Title     *string    `json:"title,omitempty"`
 
 	// Version Current version for optimistic locking
 	Version int64 `json:"version"`
 }
-
-// MediaUpdateMediaType defines model for MediaUpdate.MediaType.
-type MediaUpdateMediaType string
 
 // MergeBlocker One cross-entity reference a merge (or resume) would break (#831): the
 // entity whose branch changes break it, and the entity it references or
@@ -4806,6 +4502,9 @@ type MergeSummary struct {
 	NamesTransferred int `json:"names_transferred"`
 }
 
+// NameType defines model for NameType.
+type NameType string
+
 // Note A shared GEDCOM NOTE record that can be referenced by multiple entities
 type Note struct {
 	// GedcomXref GEDCOM cross-reference ID (e.g., "@N1@") for round-trip support
@@ -4890,7 +4589,7 @@ type PedigreeNode struct {
 	// DeathDate Genealogical date with flexible precision
 	DeathDate *GenDate      `json:"death_date,omitempty"`
 	Father    *PedigreeNode `json:"father,omitempty"`
-	Gender    *string       `json:"gender,omitempty"`
+	Gender    *Gender       `json:"gender,omitempty"`
 
 	// Generation Generation level (0 = subject, 1 = parents, 2 = grandparents, etc.)
 	Generation *int               `json:"generation,omitempty"`
@@ -4924,7 +4623,7 @@ type Person struct {
 
 	// DeathPlaceLongitude Longitude in GEDCOM format (e.g., "W71.0589")
 	DeathPlaceLongitude *string            `json:"death_place_longitude,omitempty"`
-	Gender              *PersonGender      `json:"gender,omitempty"`
+	Gender              *Gender            `json:"gender,omitempty"`
 	GivenName           string             `json:"given_name"`
 	Id                  openapi_types.UUID `json:"id"`
 	Notes               *string            `json:"notes,omitempty"`
@@ -4939,9 +4638,6 @@ type Person struct {
 	Version int64 `json:"version"`
 }
 
-// PersonGender defines model for Person.Gender.
-type PersonGender string
-
 // PersonCreate defines model for PersonCreate.
 type PersonCreate struct {
 	// BirthDate GEDCOM-format date string
@@ -4951,11 +4647,11 @@ type PersonCreate struct {
 	BirthPlace *string `json:"birth_place,omitempty"`
 
 	// DeathDate GEDCOM-format date string
-	DeathDate  *string             `json:"death_date,omitempty"`
-	DeathPlace *string             `json:"death_place,omitempty"`
-	Gender     *PersonCreateGender `json:"gender,omitempty"`
-	GivenName  string              `json:"given_name"`
-	Notes      *string             `json:"notes,omitempty"`
+	DeathDate  *string `json:"death_date,omitempty"`
+	DeathPlace *string `json:"death_place,omitempty"`
+	Gender     *Gender `json:"gender,omitempty"`
+	GivenName  string  `json:"given_name"`
+	Notes      *string `json:"notes,omitempty"`
 
 	// ResearchStatus Confidence level of genealogical data per GPS standards
 	//
@@ -4963,9 +4659,6 @@ type PersonCreate struct {
 	ResearchStatus *ResearchStatus `json:"research_status,omitempty"`
 	Surname        *string         `json:"surname,omitempty"`
 }
-
-// PersonCreateGender defines model for PersonCreate.Gender.
-type PersonCreateGender string
 
 // PersonDetail defines model for PersonDetail.
 type PersonDetail struct {
@@ -4993,12 +4686,12 @@ type PersonDetail struct {
 	DeathPlaceLongitude *string `json:"death_place_longitude,omitempty"`
 
 	// ExternalIds GEDCOM 7.0 external identifiers (EXID) with resolved display label and link. Read-only: populated from GEDCOM import; there is no direct-write endpoint.
-	ExternalIds       *[]ExternalLink     `json:"external_ids,omitempty"`
-	FamiliesAsPartner *[]FamilySummary    `json:"families_as_partner,omitempty"`
-	FamilyAsChild     *FamilySummary      `json:"family_as_child,omitempty"`
-	Gender            *PersonDetailGender `json:"gender,omitempty"`
-	GivenName         string              `json:"given_name"`
-	Id                openapi_types.UUID  `json:"id"`
+	ExternalIds       *[]ExternalLink    `json:"external_ids,omitempty"`
+	FamiliesAsPartner *[]FamilySummary   `json:"families_as_partner,omitempty"`
+	FamilyAsChild     *FamilySummary     `json:"family_as_child,omitempty"`
+	Gender            *Gender            `json:"gender,omitempty"`
+	GivenName         string             `json:"given_name"`
+	Id                openapi_types.UUID `json:"id"`
 
 	// Names All name variants for the person (birth, married, aliases, etc.)
 	Names *[]PersonName `json:"names,omitempty"`
@@ -5013,9 +4706,6 @@ type PersonDetail struct {
 	// Version Optimistic locking version
 	Version int64 `json:"version"`
 }
-
-// PersonDetailGender defines model for PersonDetail.Gender.
-type PersonDetailGender string
 
 // PersonList defines model for PersonList.
 type PersonList struct {
@@ -5033,30 +4723,24 @@ type PersonName struct {
 	IsPrimary     bool               `json:"is_primary"`
 	NamePrefix    *string            `json:"name_prefix,omitempty"`
 	NameSuffix    *string            `json:"name_suffix,omitempty"`
-	NameType      PersonNameNameType `json:"name_type"`
+	NameType      NameType           `json:"name_type"`
 	Nickname      *string            `json:"nickname,omitempty"`
 	PersonId      openapi_types.UUID `json:"person_id"`
 	Surname       string             `json:"surname"`
 	SurnamePrefix *string            `json:"surname_prefix,omitempty"`
 }
 
-// PersonNameNameType defines model for PersonName.NameType.
-type PersonNameNameType string
-
 // PersonNameCreate defines model for PersonNameCreate.
 type PersonNameCreate struct {
-	GivenName     string                   `json:"given_name"`
-	IsPrimary     *bool                    `json:"is_primary,omitempty"`
-	NamePrefix    *string                  `json:"name_prefix,omitempty"`
-	NameSuffix    *string                  `json:"name_suffix,omitempty"`
-	NameType      PersonNameCreateNameType `json:"name_type"`
-	Nickname      *string                  `json:"nickname,omitempty"`
-	Surname       string                   `json:"surname"`
-	SurnamePrefix *string                  `json:"surname_prefix,omitempty"`
+	GivenName     string   `json:"given_name"`
+	IsPrimary     *bool    `json:"is_primary,omitempty"`
+	NamePrefix    *string  `json:"name_prefix,omitempty"`
+	NameSuffix    *string  `json:"name_suffix,omitempty"`
+	NameType      NameType `json:"name_type"`
+	Nickname      *string  `json:"nickname,omitempty"`
+	Surname       string   `json:"surname"`
+	SurnamePrefix *string  `json:"surname_prefix,omitempty"`
 }
-
-// PersonNameCreateNameType defines model for PersonNameCreate.NameType.
-type PersonNameCreateNameType string
 
 // PersonNameList defines model for PersonNameList.
 type PersonNameList struct {
@@ -5066,18 +4750,15 @@ type PersonNameList struct {
 
 // PersonNameUpdate defines model for PersonNameUpdate.
 type PersonNameUpdate struct {
-	GivenName     *string                   `json:"given_name,omitempty"`
-	IsPrimary     *bool                     `json:"is_primary,omitempty"`
-	NamePrefix    *string                   `json:"name_prefix,omitempty"`
-	NameSuffix    *string                   `json:"name_suffix,omitempty"`
-	NameType      *PersonNameUpdateNameType `json:"name_type,omitempty"`
-	Nickname      *string                   `json:"nickname,omitempty"`
-	Surname       *string                   `json:"surname,omitempty"`
-	SurnamePrefix *string                   `json:"surname_prefix,omitempty"`
+	GivenName     *string   `json:"given_name,omitempty"`
+	IsPrimary     *bool     `json:"is_primary,omitempty"`
+	NamePrefix    *string   `json:"name_prefix,omitempty"`
+	NameSuffix    *string   `json:"name_suffix,omitempty"`
+	NameType      *NameType `json:"name_type,omitempty"`
+	Nickname      *string   `json:"nickname,omitempty"`
+	Surname       *string   `json:"surname,omitempty"`
+	SurnamePrefix *string   `json:"surname_prefix,omitempty"`
 }
-
-// PersonNameUpdateNameType defines model for PersonNameUpdate.NameType.
-type PersonNameUpdateNameType string
 
 // PersonQuality defines model for PersonQuality.
 type PersonQuality struct {
@@ -5108,6 +4789,7 @@ type PersonSummary struct {
 
 	// DeathDate Genealogical date with flexible precision
 	DeathDate *GenDate           `json:"death_date,omitempty"`
+	Gender    *Gender            `json:"gender,omitempty"`
 	GivenName string             `json:"given_name"`
 	Id        openapi_types.UUID `json:"id"`
 	Surname   string             `json:"surname"`
@@ -5115,13 +4797,13 @@ type PersonSummary struct {
 
 // PersonUpdate defines model for PersonUpdate.
 type PersonUpdate struct {
-	BirthDate  *string             `json:"birth_date,omitempty"`
-	BirthPlace *string             `json:"birth_place,omitempty"`
-	DeathDate  *string             `json:"death_date,omitempty"`
-	DeathPlace *string             `json:"death_place,omitempty"`
-	Gender     *PersonUpdateGender `json:"gender,omitempty"`
-	GivenName  *string             `json:"given_name,omitempty"`
-	Notes      *string             `json:"notes,omitempty"`
+	BirthDate  *string `json:"birth_date,omitempty"`
+	BirthPlace *string `json:"birth_place,omitempty"`
+	DeathDate  *string `json:"death_date,omitempty"`
+	DeathPlace *string `json:"death_place,omitempty"`
+	Gender     *Gender `json:"gender,omitempty"`
+	GivenName  *string `json:"given_name,omitempty"`
+	Notes      *string `json:"notes,omitempty"`
 
 	// ResearchStatus Confidence level of genealogical data per GPS standards
 	//
@@ -5132,9 +4814,6 @@ type PersonUpdate struct {
 	// Version Current version for optimistic locking
 	Version int64 `json:"version"`
 }
-
-// PersonUpdateGender defines model for PersonUpdate.Gender.
-type PersonUpdateGender string
 
 // PlaceEntry defines model for PlaceEntry.
 type PlaceEntry struct {
@@ -5206,31 +4885,37 @@ type ProofSummary struct {
 	Argument string `json:"argument"`
 
 	// Conclusion The proven conclusion
-	Conclusion     string                      `json:"conclusion"`
-	CreatedAt      *time.Time                  `json:"created_at,omitempty"`
-	FactType       string                      `json:"fact_type"`
-	Id             openapi_types.UUID          `json:"id"`
-	ResearchStatus *ProofSummaryResearchStatus `json:"research_status,omitempty"`
-	SubjectId      openapi_types.UUID          `json:"subject_id"`
-	UpdatedAt      *time.Time                  `json:"updated_at,omitempty"`
-	Version        int64                       `json:"version"`
-}
+	Conclusion string     `json:"conclusion"`
+	CreatedAt  *time.Time `json:"created_at,omitempty"`
 
-// ProofSummaryResearchStatus defines model for ProofSummary.ResearchStatus.
-type ProofSummaryResearchStatus string
+	// FactType The fact a citation, analysis, conflict or proof summary is about
+	FactType FactType           `json:"fact_type"`
+	Id       openapi_types.UUID `json:"id"`
+
+	// ResearchStatus Confidence level of genealogical data per GPS standards
+	//
+	// Example: probable
+	ResearchStatus *ResearchStatus    `json:"research_status,omitempty"`
+	SubjectId      openapi_types.UUID `json:"subject_id"`
+	UpdatedAt      *time.Time         `json:"updated_at,omitempty"`
+	Version        int64              `json:"version"`
+}
 
 // ProofSummaryCreate defines model for ProofSummaryCreate.
 type ProofSummaryCreate struct {
-	AnalysisIds    *[]openapi_types.UUID             `json:"analysis_ids,omitempty"`
-	Argument       string                            `json:"argument"`
-	Conclusion     string                            `json:"conclusion"`
-	FactType       string                            `json:"fact_type"`
-	ResearchStatus *ProofSummaryCreateResearchStatus `json:"research_status,omitempty"`
-	SubjectId      openapi_types.UUID                `json:"subject_id"`
-}
+	AnalysisIds *[]openapi_types.UUID `json:"analysis_ids,omitempty"`
+	Argument    string                `json:"argument"`
+	Conclusion  string                `json:"conclusion"`
 
-// ProofSummaryCreateResearchStatus defines model for ProofSummaryCreate.ResearchStatus.
-type ProofSummaryCreateResearchStatus string
+	// FactType The fact a citation, analysis, conflict or proof summary is about
+	FactType FactType `json:"fact_type"`
+
+	// ResearchStatus Confidence level of genealogical data per GPS standards
+	//
+	// Example: probable
+	ResearchStatus *ResearchStatus    `json:"research_status,omitempty"`
+	SubjectId      openapi_types.UUID `json:"subject_id"`
+}
 
 // ProofSummaryList defines model for ProofSummaryList.
 type ProofSummaryList struct {
@@ -5242,17 +4927,20 @@ type ProofSummaryList struct {
 
 // ProofSummaryUpdate defines model for ProofSummaryUpdate.
 type ProofSummaryUpdate struct {
-	AnalysisIds    *[]openapi_types.UUID             `json:"analysis_ids,omitempty"`
-	Argument       *string                           `json:"argument,omitempty"`
-	Conclusion     *string                           `json:"conclusion,omitempty"`
-	FactType       *string                           `json:"fact_type,omitempty"`
-	ResearchStatus *ProofSummaryUpdateResearchStatus `json:"research_status,omitempty"`
-	SubjectId      *openapi_types.UUID               `json:"subject_id,omitempty"`
-	Version        int64                             `json:"version"`
-}
+	AnalysisIds *[]openapi_types.UUID `json:"analysis_ids,omitempty"`
+	Argument    *string               `json:"argument,omitempty"`
+	Conclusion  *string               `json:"conclusion,omitempty"`
 
-// ProofSummaryUpdateResearchStatus defines model for ProofSummaryUpdate.ResearchStatus.
-type ProofSummaryUpdateResearchStatus string
+	// FactType The fact a citation, analysis, conflict or proof summary is about
+	FactType *FactType `json:"fact_type,omitempty"`
+
+	// ResearchStatus Confidence level of genealogical data per GPS standards
+	//
+	// Example: probable
+	ResearchStatus *ResearchStatus     `json:"research_status,omitempty"`
+	SubjectId      *openapi_types.UUID `json:"subject_id,omitempty"`
+	Version        int64               `json:"version"`
+}
 
 // QualityIssue defines model for QualityIssue.
 type QualityIssue struct {
@@ -5325,6 +5013,9 @@ type QualityReportIssue struct {
 	// Count Number of occurrences of this issue
 	Count int `json:"count"`
 }
+
+// RelationType Relationship between a family's partners
+type RelationType string
 
 // RelationshipPath defines model for RelationshipPath.
 type RelationshipPath struct {
@@ -5448,7 +5139,9 @@ type ResearchLog struct {
 	CreatedAt *time.Time         `json:"created_at,omitempty"`
 	Id        openapi_types.UUID `json:"id"`
 	Notes     *string            `json:"notes,omitempty"`
-	Outcome   ResearchLogOutcome `json:"outcome"`
+
+	// Outcome Outcome of a research log entry
+	Outcome ResearchOutcome `json:"outcome"`
 
 	// Repository Name of the repository searched
 	Repository string    `json:"repository"`
@@ -5464,22 +5157,18 @@ type ResearchLog struct {
 	Version     int64      `json:"version"`
 }
 
-// ResearchLogOutcome defines model for ResearchLog.Outcome.
-type ResearchLogOutcome string
-
 // ResearchLogCreate defines model for ResearchLogCreate.
 type ResearchLogCreate struct {
-	Notes             *string                  `json:"notes,omitempty"`
-	Outcome           ResearchLogCreateOutcome `json:"outcome"`
-	Repository        string                   `json:"repository"`
-	SearchDate        time.Time                `json:"search_date"`
-	SearchDescription string                   `json:"search_description"`
-	SubjectId         openapi_types.UUID       `json:"subject_id"`
-	SubjectType       string                   `json:"subject_type"`
-}
+	Notes *string `json:"notes,omitempty"`
 
-// ResearchLogCreateOutcome defines model for ResearchLogCreate.Outcome.
-type ResearchLogCreateOutcome string
+	// Outcome Outcome of a research log entry
+	Outcome           ResearchOutcome    `json:"outcome"`
+	Repository        string             `json:"repository"`
+	SearchDate        time.Time          `json:"search_date"`
+	SearchDescription string             `json:"search_description"`
+	SubjectId         openapi_types.UUID `json:"subject_id"`
+	SubjectType       string             `json:"subject_type"`
+}
 
 // ResearchLogList defines model for ResearchLogList.
 type ResearchLogList struct {
@@ -5491,18 +5180,20 @@ type ResearchLogList struct {
 
 // ResearchLogUpdate defines model for ResearchLogUpdate.
 type ResearchLogUpdate struct {
-	Notes             *string                   `json:"notes,omitempty"`
-	Outcome           *ResearchLogUpdateOutcome `json:"outcome,omitempty"`
-	Repository        *string                   `json:"repository,omitempty"`
-	SearchDate        *time.Time                `json:"search_date,omitempty"`
-	SearchDescription *string                   `json:"search_description,omitempty"`
-	SubjectId         *openapi_types.UUID       `json:"subject_id,omitempty"`
-	SubjectType       *string                   `json:"subject_type,omitempty"`
-	Version           int64                     `json:"version"`
+	Notes *string `json:"notes,omitempty"`
+
+	// Outcome Outcome of a research log entry
+	Outcome           *ResearchOutcome    `json:"outcome,omitempty"`
+	Repository        *string             `json:"repository,omitempty"`
+	SearchDate        *time.Time          `json:"search_date,omitempty"`
+	SearchDescription *string             `json:"search_description,omitempty"`
+	SubjectId         *openapi_types.UUID `json:"subject_id,omitempty"`
+	SubjectType       *string             `json:"subject_type,omitempty"`
+	Version           int64               `json:"version"`
 }
 
-// ResearchLogUpdateOutcome defines model for ResearchLogUpdate.Outcome.
-type ResearchLogUpdateOutcome string
+// ResearchOutcome Outcome of a research log entry
+type ResearchOutcome string
 
 // ResearchStatus Confidence level of genealogical data per GPS standards
 //
@@ -5596,6 +5287,7 @@ type SearchResult struct {
 
 	// DeathDate Genealogical date with flexible precision
 	DeathDate *GenDate           `json:"death_date,omitempty"`
+	Gender    *Gender            `json:"gender,omitempty"`
 	GivenName string             `json:"given_name"`
 	Id        openapi_types.UUID `json:"id"`
 
@@ -5706,10 +5398,10 @@ type Source struct {
 	Publisher      *string            `json:"publisher,omitempty"`
 	RepositoryName *string            `json:"repository_name,omitempty"`
 
-	// SourceType Type of source (e.g., vital_record, census, newspaper)
-	SourceType string  `json:"source_type"`
-	Title      string  `json:"title"`
-	Url        *string `json:"url,omitempty"`
+	// SourceType Kind of source material
+	SourceType SourceType `json:"source_type"`
+	Title      string     `json:"title"`
+	Url        *string    `json:"url,omitempty"`
 
 	// Version Optimistic locking version
 	Version int64 `json:"version"`
@@ -5725,10 +5417,10 @@ type SourceCreate struct {
 	Publisher      *string `json:"publisher,omitempty"`
 	RepositoryName *string `json:"repository_name,omitempty"`
 
-	// SourceType Type of source (e.g., vital_record, census, newspaper)
-	SourceType string  `json:"source_type"`
-	Title      string  `json:"title"`
-	Url        *string `json:"url,omitempty"`
+	// SourceType Kind of source material
+	SourceType SourceType `json:"source_type"`
+	Title      string     `json:"title"`
+	Url        *string    `json:"url,omitempty"`
 }
 
 // SourceDetail defines model for SourceDetail.
@@ -5749,10 +5441,10 @@ type SourceDetail struct {
 	Publisher      *string            `json:"publisher,omitempty"`
 	RepositoryName *string            `json:"repository_name,omitempty"`
 
-	// SourceType Type of source (e.g., vital_record, census, newspaper)
-	SourceType string  `json:"source_type"`
-	Title      string  `json:"title"`
-	Url        *string `json:"url,omitempty"`
+	// SourceType Kind of source material
+	SourceType SourceType `json:"source_type"`
+	Title      string     `json:"title"`
+	Url        *string    `json:"url,omitempty"`
 
 	// Version Optimistic locking version
 	Version int64 `json:"version"`
@@ -5766,12 +5458,18 @@ type SourceList struct {
 	Total   int      `json:"total"`
 }
 
+// SourceQuality Quality of a source per GPS standards
+type SourceQuality string
+
 // SourceSearchResults defines model for SourceSearchResults.
 type SourceSearchResults struct {
 	Query   string   `json:"query"`
 	Sources []Source `json:"sources"`
 	Total   int      `json:"total"`
 }
+
+// SourceType Kind of source material
+type SourceType string
 
 // SourceUpdate defines model for SourceUpdate.
 type SourceUpdate struct {
@@ -5782,9 +5480,11 @@ type SourceUpdate struct {
 	PublishDate    *string `json:"publish_date,omitempty"`
 	Publisher      *string `json:"publisher,omitempty"`
 	RepositoryName *string `json:"repository_name,omitempty"`
-	SourceType     *string `json:"source_type,omitempty"`
-	Title          *string `json:"title,omitempty"`
-	Url            *string `json:"url,omitempty"`
+
+	// SourceType Kind of source material
+	SourceType *SourceType `json:"source_type,omitempty"`
+	Title      *string     `json:"title,omitempty"`
+	Url        *string     `json:"url,omitempty"`
 
 	// Version Current version for optimistic locking
 	Version int64 `json:"version"`
@@ -6215,7 +5915,7 @@ type GetPersonsBySurnameParams struct {
 // ListCitationTemplatesParams defines parameters for ListCitationTemplates.
 type ListCitationTemplatesParams struct {
 	// SourceType Filter templates by source type
-	SourceType *string `form:"source_type,omitempty" json:"source_type,omitempty"`
+	SourceType *SourceType `form:"source_type,omitempty" json:"source_type,omitempty"`
 }
 
 // PreviewCitationTemplateJSONBody defines parameters for PreviewCitationTemplate.
@@ -6362,7 +6062,7 @@ type GetAnalysesByFactParams struct {
 	// return 409; reads of one return 404, because its overlay rows are purged
 	// on archive and it therefore has no view to return.
 	Branch    *BranchScope       `form:"branch,omitempty" json:"branch,omitempty"`
-	FactType  string             `form:"factType" json:"factType"`
+	FactType  FactType           `form:"factType" json:"factType"`
 	SubjectId openapi_types.UUID `form:"subjectId" json:"subjectId"`
 }
 
@@ -6415,11 +6115,8 @@ type ListEvidenceConflictsParams struct {
 	Offset *OffsetParam `form:"offset,omitempty" json:"offset,omitempty"`
 
 	// Status Filter by conflict status
-	Status *ListEvidenceConflictsParamsStatus `form:"status,omitempty" json:"status,omitempty"`
+	Status *ConflictStatus `form:"status,omitempty" json:"status,omitempty"`
 }
-
-// ListEvidenceConflictsParamsStatus defines parameters for ListEvidenceConflicts.
-type ListEvidenceConflictsParamsStatus string
 
 // GetConflictsBySubjectParams defines parameters for GetConflictsBySubject.
 type GetConflictsBySubjectParams struct {
@@ -6959,7 +6656,7 @@ type UploadPersonMediaMultipartBody struct {
 	File openapi_types.File `json:"file"`
 
 	// MediaType Category of media
-	MediaType *UploadPersonMediaMultipartBodyMediaType `json:"media_type,omitempty"`
+	MediaType *MediaType `json:"media_type,omitempty"`
 
 	// Title Display title for the media
 	Title string `json:"title"`
@@ -6975,9 +6672,6 @@ type UploadPersonMediaParams struct {
 	// on archive and it therefore has no view to return.
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
-
-// UploadPersonMediaMultipartBodyMediaType defines parameters for UploadPersonMedia.
-type UploadPersonMediaMultipartBodyMediaType string
 
 // GetPersonNamesParams defines parameters for GetPersonNames.
 type GetPersonNamesParams struct {
@@ -7089,7 +6783,7 @@ type GetProofSummaryByFactParams struct {
 	// return 409; reads of one return 404, because its overlay rows are purged
 	// on archive and it therefore has no view to return.
 	Branch    *BranchScope       `form:"branch,omitempty" json:"branch,omitempty"`
-	FactType  string             `form:"factType" json:"factType"`
+	FactType  FactType           `form:"factType" json:"factType"`
 	SubjectId openapi_types.UUID `form:"subjectId" json:"subjectId"`
 }
 

@@ -1,6 +1,8 @@
 // Package domain contains the core domain types for the genealogy application.
 package domain
 
+import "slices"
+
 // Gender represents the gender of a person.
 type Gender string
 
@@ -10,14 +12,14 @@ const (
 	GenderUnknown Gender = "unknown"
 )
 
-// IsValid checks if the gender value is valid.
+// AllGenders returns every valid Gender value.
+func AllGenders() []Gender {
+	return []Gender{GenderMale, GenderFemale, GenderUnknown}
+}
+
+// IsValid reports whether the value is empty (unset) or one of AllGenders.
 func (g Gender) IsValid() bool {
-	switch g {
-	case GenderMale, GenderFemale, GenderUnknown, "":
-		return true
-	default:
-		return false
-	}
+	return g == "" || slices.Contains(AllGenders(), g)
 }
 
 // RelationType represents the type of relationship between partners in a family.
@@ -29,14 +31,14 @@ const (
 	RelationUnknown     RelationType = "unknown"
 )
 
-// IsValid checks if the relation type value is valid.
+// AllRelationTypes returns every valid RelationType value.
+func AllRelationTypes() []RelationType {
+	return []RelationType{RelationMarriage, RelationPartnership, RelationUnknown}
+}
+
+// IsValid reports whether the value is empty (unset) or one of AllRelationTypes.
 func (r RelationType) IsValid() bool {
-	switch r {
-	case RelationMarriage, RelationPartnership, RelationUnknown, "":
-		return true
-	default:
-		return false
-	}
+	return r == "" || slices.Contains(AllRelationTypes(), r)
 }
 
 // ChildRelationType represents the type of relationship between a child and family.
@@ -48,14 +50,14 @@ const (
 	ChildFoster     ChildRelationType = "foster"
 )
 
-// IsValid checks if the child relation type value is valid.
+// AllChildRelationTypes returns every valid ChildRelationType value.
+func AllChildRelationTypes() []ChildRelationType {
+	return []ChildRelationType{ChildBiological, ChildAdopted, ChildFoster}
+}
+
+// IsValid reports whether the value is one of AllChildRelationTypes.
 func (c ChildRelationType) IsValid() bool {
-	switch c {
-	case ChildBiological, ChildAdopted, ChildFoster:
-		return true
-	default:
-		return false
-	}
+	return slices.Contains(AllChildRelationTypes(), c)
 }
 
 // SourceType represents the type of source material.
@@ -75,16 +77,18 @@ const (
 	SourceOther       SourceType = "other"
 )
 
-// IsValid checks if the source type value is valid.
-func (s SourceType) IsValid() bool {
-	switch s {
-	case SourceBook, SourceArchive, SourceWebpage, SourceCensus, SourceVitalRecord,
+// AllSourceTypes returns every valid SourceType value.
+func AllSourceTypes() []SourceType {
+	return []SourceType{
+		SourceBook, SourceArchive, SourceWebpage, SourceCensus, SourceVitalRecord,
 		SourceChurch, SourceNewspaper, SourcePhotograph, SourceInterview,
-		SourceCorrespond, SourceOther, "":
-		return true
-	default:
-		return false
+		SourceCorrespond, SourceOther,
 	}
+}
+
+// IsValid reports whether the value is empty (unset) or one of AllSourceTypes.
+func (s SourceType) IsValid() bool {
+	return s == "" || slices.Contains(AllSourceTypes(), s)
 }
 
 // SourceQuality represents the quality of a source per GPS standards.
@@ -96,14 +100,14 @@ const (
 	SourceAuthored   SourceQuality = "authored"   // Authored/compiled work
 )
 
-// IsValid checks if the source quality value is valid.
+// AllSourceQualities returns every valid SourceQuality value.
+func AllSourceQualities() []SourceQuality {
+	return []SourceQuality{SourceOriginal, SourceDerivative, SourceAuthored}
+}
+
+// IsValid reports whether the value is empty (unset) or one of AllSourceQualities.
 func (s SourceQuality) IsValid() bool {
-	switch s {
-	case SourceOriginal, SourceDerivative, SourceAuthored, "":
-		return true
-	default:
-		return false
-	}
+	return s == "" || slices.Contains(AllSourceQualities(), s)
 }
 
 // InformantType represents the type of informant per GPS standards.
@@ -115,14 +119,14 @@ const (
 	InformantIndeterminate InformantType = "indeterminate" // Cannot be determined
 )
 
-// IsValid checks if the informant type value is valid.
+// AllInformantTypes returns every valid InformantType value.
+func AllInformantTypes() []InformantType {
+	return []InformantType{InformantPrimary, InformantSecondary, InformantIndeterminate}
+}
+
+// IsValid reports whether the value is empty (unset) or one of AllInformantTypes.
 func (i InformantType) IsValid() bool {
-	switch i {
-	case InformantPrimary, InformantSecondary, InformantIndeterminate, "":
-		return true
-	default:
-		return false
-	}
+	return i == "" || slices.Contains(AllInformantTypes(), i)
 }
 
 // EvidenceType represents the type of evidence per GPS standards.
@@ -134,14 +138,14 @@ const (
 	EvidenceNegative EvidenceType = "negative" // Absence of evidence
 )
 
-// IsValid checks if the evidence type value is valid.
+// AllEvidenceTypes returns every valid EvidenceType value.
+func AllEvidenceTypes() []EvidenceType {
+	return []EvidenceType{EvidenceDirect, EvidenceIndirect, EvidenceNegative}
+}
+
+// IsValid reports whether the value is empty (unset) or one of AllEvidenceTypes.
 func (e EvidenceType) IsValid() bool {
-	switch e {
-	case EvidenceDirect, EvidenceIndirect, EvidenceNegative, "":
-		return true
-	default:
-		return false
-	}
+	return e == "" || slices.Contains(AllEvidenceTypes(), e)
 }
 
 // MediaType represents the type of media file.
@@ -155,14 +159,14 @@ const (
 	MediaCertificate MediaType = "certificate"
 )
 
-// IsValid checks if the media type value is valid.
+// AllMediaTypes returns every valid MediaType value.
+func AllMediaTypes() []MediaType {
+	return []MediaType{MediaPhoto, MediaDocument, MediaAudio, MediaVideo, MediaCertificate}
+}
+
+// IsValid reports whether the value is empty (unset) or one of AllMediaTypes.
 func (m MediaType) IsValid() bool {
-	switch m {
-	case MediaPhoto, MediaDocument, MediaAudio, MediaVideo, MediaCertificate, "":
-		return true
-	default:
-		return false
-	}
+	return m == "" || slices.Contains(AllMediaTypes(), m)
 }
 
 // NameType represents the type of name for a person.
@@ -177,14 +181,17 @@ const (
 	NameTypeProfessional NameType = "professional" // Professional/stage name
 )
 
-// IsValid checks if the name type value is valid.
-func (n NameType) IsValid() bool {
-	switch n {
-	case NameTypeBirth, NameTypeMarried, NameTypeAKA, NameTypeImmigrant, NameTypeReligious, NameTypeProfessional, "":
-		return true
-	default:
-		return false
+// AllNameTypes returns every valid NameType value.
+func AllNameTypes() []NameType {
+	return []NameType{
+		NameTypeBirth, NameTypeMarried, NameTypeAKA, NameTypeImmigrant, NameTypeReligious,
+		NameTypeProfessional,
 	}
+}
+
+// IsValid reports whether the value is empty (unset) or one of AllNameTypes.
+func (n NameType) IsValid() bool {
+	return n == "" || slices.Contains(AllNameTypes(), n)
 }
 
 // ResearchStatus represents the confidence level of genealogical data per GPS standards.
@@ -202,14 +209,14 @@ func (r ResearchStatus) String() string {
 	return string(r)
 }
 
-// IsValid checks if the research status value is valid.
+// AllResearchStatuses returns every valid ResearchStatus value.
+func AllResearchStatuses() []ResearchStatus {
+	return []ResearchStatus{ResearchStatusCertain, ResearchStatusProbable, ResearchStatusPossible, ResearchStatusUnknown}
+}
+
+// IsValid reports whether the value is empty (unset) or one of AllResearchStatuses.
 func (r ResearchStatus) IsValid() bool {
-	switch r {
-	case ResearchStatusCertain, ResearchStatusProbable, ResearchStatusPossible, ResearchStatusUnknown, "":
-		return true
-	default:
-		return false
-	}
+	return r == "" || slices.Contains(AllResearchStatuses(), r)
 }
 
 // ParseResearchStatus parses a string into a ResearchStatus value.
@@ -236,14 +243,9 @@ const (
 	ConflictStatusAccepted ConflictStatus = "accepted"
 )
 
-// IsValid checks if the conflict status value is valid.
+// IsValid reports whether the value is one of AllConflictStatuses.
 func (c ConflictStatus) IsValid() bool {
-	switch c {
-	case ConflictStatusOpen, ConflictStatusResolved, ConflictStatusAccepted:
-		return true
-	default:
-		return false
-	}
+	return slices.Contains(AllConflictStatuses(), c)
 }
 
 // AllConflictStatuses returns all valid ConflictStatus values.
@@ -260,14 +262,9 @@ const (
 	ResearchOutcomeInconclusive ResearchOutcome = "inconclusive"
 )
 
-// IsValid checks if the research outcome value is valid.
+// IsValid reports whether the value is one of AllResearchOutcomes.
 func (r ResearchOutcome) IsValid() bool {
-	switch r {
-	case ResearchOutcomeFound, ResearchOutcomeNotFound, ResearchOutcomeInconclusive:
-		return true
-	default:
-		return false
-	}
+	return slices.Contains(AllResearchOutcomes(), r)
 }
 
 // AllResearchOutcomes returns all valid ResearchOutcome values.
@@ -316,32 +313,27 @@ const (
 	FactFamilyEngagement         FactType = "family_engagement"          // ENGA
 )
 
-// IsValid checks if the fact type value is valid.
-func (f FactType) IsValid() bool {
-	switch f {
-	// Core person facts
-	case FactPersonBirth, FactPersonDeath, FactPersonName, FactPersonGender:
-		return true
-	// Individual life events
-	case FactPersonBurial, FactPersonCremation, FactPersonBaptism, FactPersonChristening,
+// AllFactTypes returns every valid FactType value.
+func AllFactTypes() []FactType {
+	return []FactType{
+		// Core person facts
+		FactPersonBirth, FactPersonDeath, FactPersonName, FactPersonGender,
+		// Individual life events
+		FactPersonBurial, FactPersonCremation, FactPersonBaptism, FactPersonChristening,
 		FactPersonEmigration, FactPersonImmigration, FactPersonNaturalization,
-		FactPersonCensus, FactPersonGenericEvent:
-		return true
-	// Individual attributes
-	case FactPersonOccupation, FactPersonResidence, FactPersonEducation,
-		FactPersonReligion, FactPersonTitle:
-		return true
-	// Core family facts
-	case FactFamilyMarriage, FactFamilyDivorce:
-		return true
-	// Family events
-	case FactFamilyMarriageBann, FactFamilyMarriageContract, FactFamilyMarriageLicense,
-		FactFamilyMarriageSettlement, FactFamilyAnnulment, FactFamilyEngagement:
-		return true
-	// Empty is valid (optional field)
-	case "":
-		return true
-	default:
-		return false
+		FactPersonCensus, FactPersonGenericEvent,
+		// Individual attributes
+		FactPersonOccupation, FactPersonResidence, FactPersonEducation,
+		FactPersonReligion, FactPersonTitle,
+		// Core family facts
+		FactFamilyMarriage, FactFamilyDivorce,
+		// Family events
+		FactFamilyMarriageBann, FactFamilyMarriageContract, FactFamilyMarriageLicense,
+		FactFamilyMarriageSettlement, FactFamilyAnnulment, FactFamilyEngagement,
 	}
+}
+
+// IsValid reports whether the value is empty (unset) or one of AllFactTypes.
+func (f FactType) IsValid() bool {
+	return f == "" || slices.Contains(AllFactTypes(), f)
 }

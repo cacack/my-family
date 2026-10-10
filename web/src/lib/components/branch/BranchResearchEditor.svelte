@@ -26,6 +26,7 @@
 		type BranchOutcome,
 		type BranchSubject,
 		type BranchUpdate,
+		type FactType,
 		type FamilySummary,
 		type ProofSummaryResponse,
 		type SearchResult
@@ -88,7 +89,7 @@
 
 	/** Proof summaries to offer: the branch's own, plus any linked one the list lacks. */
 	const proofOptions = $derived.by(() => {
-		const options = availableProofs.map((p) => ({
+		const options: { id: string; label: string; factType?: FactType }[] = availableProofs.map((p) => ({
 			id: p.id,
 			label: p.conclusion,
 			factType: p.fact_type
@@ -102,7 +103,7 @@
 		}
 		for (const id of proofIds) {
 			if (!known.has(id)) {
-				options.push({ id, label: 'Proof summary no longer available', factType: '' });
+				options.push({ id, label: 'Proof summary no longer available' });
 				known.add(id);
 			}
 		}

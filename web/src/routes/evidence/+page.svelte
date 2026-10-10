@@ -6,7 +6,8 @@
 		type EvidenceAnalysisResponse,
 		type EvidenceConflictResponse,
 		type ResearchLogResponse,
-		type ProofSummaryResponse
+		type ProofSummaryResponse,
+		type ConflictStatus
 	} from '$lib/api/client';
 	import { Button } from '$lib/components/ui/button';
 	import { Badge } from '$lib/components/ui/badge';
@@ -50,7 +51,7 @@
 	let conflictsPage = $state(1);
 	let conflictsLoading = $state(false);
 	let conflictsError: string | null = $state(null);
-	let conflictStatusFilter = $state<'all' | 'open' | 'resolved'>('all');
+	let conflictStatusFilter = $state<'all' | ConflictStatus>('all');
 	let openConflictsCount = $state(0);
 	let openConflictsLoaded = $state(false);
 
@@ -100,7 +101,7 @@
 			const result = await api.listEvidenceConflicts({
 				limit: pageSize,
 				offset: (conflictsPage - 1) * pageSize,
-				status: statusParam as 'open' | 'resolved' | undefined
+				status: statusParam as ConflictStatus | undefined
 			});
 			conflicts = result.conflicts;
 			conflictsTotal = result.total ?? 0;
@@ -378,7 +379,7 @@
 							size="sm"
 							aria-pressed={conflictStatusFilter === filter.key}
 							onclick={() => {
-								conflictStatusFilter = filter.key as 'all' | 'open' | 'resolved';
+								conflictStatusFilter = filter.key as 'all' | ConflictStatus;
 								conflictsPage = 1;
 								loadConflicts();
 							}}

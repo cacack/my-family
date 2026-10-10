@@ -298,6 +298,52 @@ func TestSearchPersons(t *testing.T) {
 	}
 }
 
+// TestSearchPersons_Gender verifies a hit carries the person's gender, which
+// the person picker colours its avatars by.
+func TestSearchPersons_Gender(t *testing.T) {
+	server := setupTestServer()
+
+	for _, body := range []string{
+		`{"given_name":"Ann","surname":"Hale","gender":"female"}`,
+		`{"given_name":"Bo","surname":"Hale"}`,
+	} {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/persons", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		server.Echo().ServeHTTP(rec, req)
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("create status = %d: %s", rec.Code, rec.Body.String())
+		}
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/search?q=Hale", http.NoBody)
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Status = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	var resp struct {
+		Items []struct {
+			GivenName string  `json:"given_name"`
+			Gender    *string `json:"gender"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+	got := map[string]*string{}
+	for _, item := range resp.Items {
+		got[item.GivenName] = item.Gender
+	}
+	if g := got["Ann"]; g == nil || *g != "female" {
+		t.Errorf("Ann gender = %v, want female", g)
+	}
+	if g, ok := got["Bo"]; !ok || g != nil {
+		t.Errorf("Bo gender = %v (found %v), want absent", g, ok)
+	}
+}
+
 func TestSearchPersons_QueryTooShort(t *testing.T) {
 	server := setupTestServer()
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/search?q=a", http.NoBody)

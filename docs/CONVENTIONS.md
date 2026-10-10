@@ -152,6 +152,9 @@ internal/
 - Go server code generated via `make generate-api` (oapi-codegen)
 - TypeScript types generated via `make generate-types`
 - Never hand-edit `internal/api/generated.go` or `web/src/lib/api/types.generated.ts`
+- Each enum in `internal/domain/enums.go` has a named schema of the same name that properties `$ref`; `internal/api/enums_contract_test.go` fails when the two value sets diverge
+- `web/src/lib/api/client.ts` exports aliases of the generated types, never hand-written request/response shapes
+- Option lists for enum-valued form controls are typed against the generated unions (`web/src/lib/utils/enumOptions.ts`), so an invalid option fails `svelte-check`
 
 ## Frontend (Svelte)
 

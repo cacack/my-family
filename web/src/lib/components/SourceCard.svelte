@@ -29,7 +29,7 @@
 				<span class="author">{source.author}</span>
 			{/if}
 			<Badge variant="secondary">{formatSourceType(source.source_type)}</Badge>
-			{#if source.citation_count > 0}
+			{#if source.citation_count}
 				<span class="citation-count">{source.citation_count} {source.citation_count === 1 ? 'citation' : 'citations'}</span>
 			{/if}
 		</div>

@@ -15,7 +15,7 @@
 	const partner1Name = formatPersonName(family.partner1);
 	const partner2Name = family.partner2 ? formatPersonName(family.partner2) : null;
 	const marriageDate = family.marriage_date ? formatGenDate(family.marriage_date) : null;
-	const childCount = family.child_count ?? family.children?.length ?? 0;
+	const childCount = family.children?.length ?? 0;
 </script>
 
 {#snippet cardInner()}
