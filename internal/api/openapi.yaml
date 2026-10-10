@@ -2368,8 +2368,12 @@ paths:
     get:
       operationId: getQualityOverview
       summary: Get aggregate quality metrics
-      description: Returns overall data quality metrics across all persons
+      description: |
+        Returns overall data quality metrics across all persons in the scoped
+        view of the tree, computed server-side over every person (never a page).
       tags: [quality]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
       responses:
         '200':
           description: Quality overview
@@ -7025,7 +7029,7 @@ components:
     # Quality and Statistics schemas
     QualityOverview:
       type: object
-      required: [total_persons, average_completeness, records_with_issues, top_issues]
+      required: [total_persons, average_completeness, records_with_issues, top_issues, research_status_counts, lowest_scoring]
       properties:
         total_persons:
           type: integer
@@ -7044,6 +7048,53 @@ components:
           items:
             $ref: '#/components/schemas/QualityIssue'
           description: Most common data quality issues
+        research_status_counts:
+          $ref: '#/components/schemas/ResearchStatusCounts'
+        lowest_scoring:
+          type: array
+          maxItems: 20
+          items:
+            $ref: '#/components/schemas/PersonScore'
+          description: Up to 20 persons with at least one issue, lowest completeness first
+
+    ResearchStatusCounts:
+      type: object
+      description: Persons counted by research status
+      required: [certain, probable, possible, unknown, unset]
+      properties:
+        certain:
+          type: integer
+        probable:
+          type: integer
+        possible:
+          type: integer
+        unknown:
+          type: integer
+        unset:
+          type: integer
+          description: Persons with no research status recorded
+
+    PersonScore:
+      type: object
+      description: One person's completeness score and the issues behind it
+      required: [person_id, given_name, surname, completeness_score, issues]
+      properties:
+        person_id:
+          type: string
+          format: uuid
+        given_name:
+          type: string
+        surname:
+          type: string
+        completeness_score:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 100
+        issues:
+          type: array
+          items:
+            type: string
 
     QualityIssue:
       type: object

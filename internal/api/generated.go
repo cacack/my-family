@@ -5092,6 +5092,15 @@ type PersonQuality struct {
 	Suggestions []string `json:"suggestions"`
 }
 
+// PersonScore One person's completeness score and the issues behind it
+type PersonScore struct {
+	CompletenessScore float32            `json:"completeness_score"`
+	GivenName         string             `json:"given_name"`
+	Issues            []string           `json:"issues"`
+	PersonId          openapi_types.UUID `json:"person_id"`
+	Surname           string             `json:"surname"`
+}
+
 // PersonSummary defines model for PersonSummary.
 type PersonSummary struct {
 	// BirthDate Genealogical date with flexible precision
@@ -5259,8 +5268,14 @@ type QualityOverview struct {
 	// AverageCompleteness Average completeness score across all persons (0-100)
 	AverageCompleteness float32 `json:"average_completeness"`
 
+	// LowestScoring Up to 20 persons with at least one issue, lowest completeness first
+	LowestScoring []PersonScore `json:"lowest_scoring"`
+
 	// RecordsWithIssues Number of persons with at least one data quality issue
 	RecordsWithIssues int `json:"records_with_issues"`
+
+	// ResearchStatusCounts Persons counted by research status
+	ResearchStatusCounts ResearchStatusCounts `json:"research_status_counts"`
 
 	// TopIssues Most common data quality issues
 	TopIssues []QualityIssue `json:"top_issues"`
@@ -5493,6 +5508,17 @@ type ResearchLogUpdateOutcome string
 //
 // Example: probable
 type ResearchStatus string
+
+// ResearchStatusCounts Persons counted by research status
+type ResearchStatusCounts struct {
+	Certain  int `json:"certain"`
+	Possible int `json:"possible"`
+	Probable int `json:"probable"`
+	Unknown  int `json:"unknown"`
+
+	// Unset Persons with no research status recorded
+	Unset int `json:"unset"`
+}
 
 // RestorePoint defines model for RestorePoint.
 type RestorePoint struct {
@@ -7103,6 +7129,17 @@ type UpdateProofSummaryParams struct {
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
+// GetQualityOverviewParams defines parameters for GetQualityOverview.
+type GetQualityOverviewParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+}
+
 // GetValidationIssuesParams defines parameters for GetValidationIssues.
 type GetValidationIssuesParams struct {
 	// Severity Filter by severity level
@@ -8010,7 +8047,7 @@ type ServerInterface interface {
 	UpdateProofSummary(ctx echo.Context, id ProofSummaryId, params UpdateProofSummaryParams) error
 	// GetQualityOverview Get aggregate quality metrics
 	// (GET /quality/overview)
-	GetQualityOverview(ctx echo.Context) error
+	GetQualityOverview(ctx echo.Context, params GetQualityOverviewParams) error
 	// GetPersonQuality Get quality score for a person
 	// (GET /quality/persons/{id})
 	GetPersonQuality(ctx echo.Context, id PersonId) error
@@ -11055,8 +11092,17 @@ func (w *ServerInterfaceWrapper) UpdateProofSummary(ctx echo.Context) error {
 func (w *ServerInterfaceWrapper) GetQualityOverview(ctx echo.Context) error {
 	var err error
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetQualityOverviewParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.GetQualityOverview(ctx)
+	err = w.Handler.GetQualityOverview(ctx, params)
 	return err
 }
 
@@ -17883,6 +17929,7 @@ func (response UpdateProofSummary409JSONResponse) VisitUpdateProofSummaryRespons
 }
 
 type GetQualityOverviewRequestObject struct {
+	Params GetQualityOverviewParams
 }
 
 type GetQualityOverviewResponseObject interface {
@@ -23738,8 +23785,10 @@ func (sh *strictHandler) UpdateProofSummary(ctx echo.Context, id ProofSummaryId,
 }
 
 // GetQualityOverview operation middleware
-func (sh *strictHandler) GetQualityOverview(ctx echo.Context) error {
+func (sh *strictHandler) GetQualityOverview(ctx echo.Context, params GetQualityOverviewParams) error {
 	var request GetQualityOverviewRequestObject
+
+	request.Params = params
 
 	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
 		return sh.ssi.GetQualityOverview(ctx.Request().Context(), request.(GetQualityOverviewRequestObject))

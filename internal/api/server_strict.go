@@ -2758,7 +2758,11 @@ func (ss *StrictServer) RollbackPerson(ctx context.Context, request RollbackPers
 
 // GetQualityOverview implements StrictServerInterface.
 func (ss *StrictServer) GetQualityOverview(ctx context.Context, request GetQualityOverviewRequestObject) (GetQualityOverviewResponseObject, error) {
-	result, err := ss.server.qualityService.GetQualityOverview(ctx)
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
+	result, err := ss.server.qualityService.GetQualityOverviewOn(ctx, branchScopeID(branch))
 	if err != nil {
 		return nil, err
 	}
@@ -2771,11 +2775,31 @@ func (ss *StrictServer) GetQualityOverview(ctx context.Context, request GetQuali
 		}
 	}
 
+	lowestScoring := make([]PersonScore, len(result.LowestScoring))
+	for i, p := range result.LowestScoring {
+		lowestScoring[i] = PersonScore{
+			PersonId:          p.PersonID,
+			GivenName:         p.GivenName,
+			Surname:           p.Surname,
+			CompletenessScore: float32(p.CompletenessScore),
+			Issues:            p.Issues,
+		}
+	}
+
+	rs := result.ResearchStatusCounts
 	return GetQualityOverview200JSONResponse{
 		TotalPersons:        result.TotalPersons,
 		AverageCompleteness: float32(result.AverageCompleteness),
 		RecordsWithIssues:   result.RecordsWithIssues,
 		TopIssues:           topIssues,
+		ResearchStatusCounts: ResearchStatusCounts{
+			Certain:  rs.Certain,
+			Probable: rs.Probable,
+			Possible: rs.Possible,
+			Unknown:  rs.Unknown,
+			Unset:    rs.Unset,
+		},
+		LowestScoring: lowestScoring,
 	}, nil
 }
 
