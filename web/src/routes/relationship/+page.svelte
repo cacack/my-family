@@ -16,9 +16,10 @@
 	// The pair the calculator is showing, and a key that remounts it for a new one.
 	let shownPair: string | null = null;
 	let mountKey = $state(0);
+	const pairKey = (idA: string | null, idB: string | null) => `${idA ?? ''}|${idB ?? ''}`;
 
 	$effect(() => {
-		const pair = `${personIdA ?? ''}|${personIdB ?? ''}`;
+		const pair = pairKey(personIdA, personIdB);
 		untrack(() => {
 			if (pair !== shownPair) loadPair(pair, personIdA, personIdB);
 		});
@@ -40,7 +41,7 @@
 	// Asking for a relationship is navigation-level, like submitting a search: push.
 	function handleCalculate(idA: string, idB: string) {
 		if (idA === personIdA && idB === personIdB) return; // Already the URL's pair
-		shownPair = `${idA}|${idB}`;
+		shownPair = pairKey(idA, idB); // So the effect does not reload the pair just calculated
 		setQuery($page.url, { personA: idA, personB: idB }, { push: true });
 	}
 </script>

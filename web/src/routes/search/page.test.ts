@@ -948,6 +948,32 @@ describe('Advanced Search Page', () => {
 			expect(historyLength()).toBe(2);
 		});
 
+		it('caps a hand-edited limit at the API maximum', async () => {
+			resetRouter('/search?q=Smith&limit=100000');
+			render(SearchPage);
+			await vi.advanceTimersByTimeAsync(0);
+			expect(apiModule.api.searchPersons).toHaveBeenCalledWith(expect.objectContaining({ limit: 100 }));
+		});
+
+		it('ignores a search that resolves after Back to a newer URL', async () => {
+			let resolveSlow: (r: apiModule.SearchResults) => void = () => {};
+			render(SearchPage);
+			await vi.advanceTimersByTimeAsync(0);
+			await search('Smith');
+			vi.mocked(apiModule.api.searchPersons).mockReturnValueOnce(
+				new Promise((r) => (resolveSlow = r))
+			);
+			await search('Jones');
+
+			back();
+			await vi.advanceTimersByTimeAsync(0);
+			await waitFor(() => expect(screen.getByText('Showing 3 of 3 results')).toBeDefined());
+			resolveSlow({ items: [mockSearchResults.items[0]], total: 1 });
+			await vi.advanceTimersByTimeAsync(0);
+			expect(nameInput().value).toBe('Smith');
+			expect(screen.getByText('Showing 3 of 3 results')).toBeDefined();
+		});
+
 		it('Clear All returns to a clean URL', async () => {
 			render(SearchPage);
 			await vi.advanceTimersByTimeAsync(0);

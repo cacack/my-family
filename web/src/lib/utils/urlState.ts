@@ -54,13 +54,18 @@ export function readEnum<T extends string>(
 	return value !== null && (allowed as readonly string[]).includes(value) ? (value as T) : fallback;
 }
 
-/** `params[key]` as a positive integer, else `fallback`. */
-export function readPositiveInt(params: URLSearchParams, key: string, fallback: number): number {
+/** `params[key]` as a positive integer capped at `max`, else `fallback`. */
+export function readPositiveInt(
+	params: URLSearchParams,
+	key: string,
+	fallback: number,
+	max = Number.MAX_SAFE_INTEGER
+): number {
 	const value = Number(params.get(key));
-	return Number.isInteger(value) && value > 0 ? value : fallback;
+	return Number.isInteger(value) && value > 0 ? Math.min(value, max) : fallback;
 }
 
-/** `params[key]` as a flag: present and not `0`/`false`. */
+/** `params[key]` as a flag: present and not `0`/`false` (`withQuery` writes `1` or omits it). */
 export function readFlag(params: URLSearchParams, key: string): boolean {
 	const value = params.get(key);
 	return value !== null && value !== '0' && value !== 'false';
@@ -69,14 +74,18 @@ export function readFlag(params: URLSearchParams, key: string): boolean {
 /** The pedigree and descendancy charts' toolbar options, shared by both pages. */
 export const CHART_GENERATIONS = ['2', '3', '4', '5', '6', '7', '8', '9', '10'] as const;
 export const CHART_LAYOUTS = ['compact', 'standard', 'wide'] as const;
-export const CHART_DEFAULTS = { gens: 4, layout: 'compact' };
+export const CHART_DEFAULTS = { gens: 4, layout: 'compact' } as const satisfies {
+	gens: number;
+	layout: (typeof CHART_LAYOUTS)[number];
+};
 
 export function readChartOptions(params: URLSearchParams): {
 	generations: number;
 	layout: (typeof CHART_LAYOUTS)[number];
 } {
+	const defaultGens = String(CHART_DEFAULTS.gens) as (typeof CHART_GENERATIONS)[number];
 	return {
-		generations: Number(readEnum(params, 'gens', CHART_GENERATIONS, '4')),
-		layout: readEnum(params, 'layout', CHART_LAYOUTS, 'compact')
+		generations: Number(readEnum(params, 'gens', CHART_GENERATIONS, defaultGens)),
+		layout: readEnum(params, 'layout', CHART_LAYOUTS, CHART_DEFAULTS.layout)
 	};
 }

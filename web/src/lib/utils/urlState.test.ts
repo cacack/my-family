@@ -71,6 +71,10 @@ describe('readers', () => {
 		expect(readPositiveInt(params, key, 1)).toBe(want);
 	});
 
+	it('readPositiveInt caps a value at max', () => {
+		expect(readPositiveInt(params, 'page', 1, 2)).toBe(2);
+	});
+
 	it.each([
 		['on', true],
 		['off', false],

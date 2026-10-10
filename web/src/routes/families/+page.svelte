@@ -14,7 +14,11 @@
 	// The page lives in the URL (see urlState.ts), so Back and reload restore it.
 	const currentPage = $derived(readPositiveInt($page.url.searchParams, 'page', 1));
 
+	// Back/Forward can start loads faster than they finish: only the latest one may land.
+	let loadSeq = 0;
+
 	async function loadFamilies() {
+		const seq = ++loadSeq;
 		loading = true;
 		loadError = null;
 		try {
@@ -22,13 +26,15 @@
 				limit: pageSize,
 				offset: (currentPage - 1) * pageSize
 			});
+			if (seq !== loadSeq) return;
 			families = result.items;
 			total = result.total;
 		} catch (e) {
+			if (seq !== loadSeq) return;
 			console.error('Failed to load families:', e);
 			loadError = 'Failed to load families. Please try again.';
 		} finally {
-			loading = false;
+			if (seq === loadSeq) loading = false;
 		}
 	}
 

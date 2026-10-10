@@ -76,6 +76,26 @@ describe('People list page: state in the URL (#901)', () => {
 		expect(lastListCall()).toMatchObject({ offset: 0 });
 	});
 
+	it('ignores a load that resolves after a newer page has loaded', async () => {
+		type ListResult = Awaited<ReturnType<typeof apiModule.api.listPersons>>;
+		let resolveSlow: (r: ListResult) => void = () => {};
+		resetRouter('/persons');
+		render(PersonsPage);
+		await screen.findByText('Page 1 of 5');
+
+		vi.mocked(apiModule.api.listPersons).mockReturnValueOnce(
+			new Promise<ListResult>((r) => (resolveSlow = r))
+		);
+		await fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+		back();
+		await screen.findByText('Page 1 of 5');
+
+		resolveSlow({ items: [persons[0]], total: 21 } as unknown as ListResult);
+		await new Promise((r) => setTimeout(r, 0));
+		expect(screen.getByText('Page 1 of 5')).toBeDefined();
+		expect(screen.getAllByText(/Given\d+/).length).toBe(20);
+	});
+
 	it('replaces on sort and filter changes, and returns to page 1', async () => {
 		resetRouter('/persons?page=3');
 		render(PersonsPage);

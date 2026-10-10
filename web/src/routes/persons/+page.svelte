@@ -17,15 +17,19 @@
 	// and a copied link restore the list.
 	const SORTS = ['surname', 'given_name', 'birth_date', 'updated_at'] as const;
 	const STATUSES = ['', 'unset', ...RESEARCH_STATUS_OPTIONS.map((o) => o.value)] as const;
-	const DEFAULTS = { sort: 'surname', order: 'asc', status: '', page: 1 };
+	const DEFAULTS = { sort: 'surname', order: 'asc', status: '', page: 1 } as const;
 
 	const params = $derived($page.url.searchParams);
-	const sort = $derived(readEnum(params, 'sort', SORTS, 'surname'));
-	const order = $derived(readEnum(params, 'order', ['asc', 'desc'] as const, 'asc'));
-	const researchStatusFilter = $derived(readEnum(params, 'status', STATUSES, ''));
-	const currentPage = $derived(readPositiveInt(params, 'page', 1));
+	const sort = $derived(readEnum(params, 'sort', SORTS, DEFAULTS.sort));
+	const order = $derived(readEnum(params, 'order', ['asc', 'desc'] as const, DEFAULTS.order));
+	const researchStatusFilter = $derived(readEnum(params, 'status', STATUSES, DEFAULTS.status));
+	const currentPage = $derived(readPositiveInt(params, 'page', DEFAULTS.page));
+
+	// Back/Forward can start loads faster than they finish: only the latest one may land.
+	let loadSeq = 0;
 
 	async function loadPersons() {
+		const seq = ++loadSeq;
 		loading = true;
 		loadError = null;
 		try {
@@ -36,13 +40,15 @@
 				order,
 				research_status: researchStatusFilter || undefined
 			});
+			if (seq !== loadSeq) return;
 			persons = result.items;
 			total = result.total;
 		} catch (e) {
+			if (seq !== loadSeq) return;
 			console.error('Failed to load persons:', e);
 			loadError = 'Failed to load people. Please try again.';
 		} finally {
-			loading = false;
+			if (seq === loadSeq) loading = false;
 		}
 	}
 

@@ -22,7 +22,9 @@
 	} from '$lib/utils/urlState';
 
 	const SORTS = ['relevance', 'name', 'birth_date', 'death_date'] as const;
-	const DEFAULTS = { sort: 'relevance', order: 'desc', limit: 20 };
+	const PAGE_SIZE = 20;
+	const MAX_LIMIT = 100; // The API's cap on `limit`
+	const DEFAULTS = { sort: 'relevance', order: 'desc', limit: PAGE_SIZE } as const;
 
 	// Form state
 	let query = $state('');
@@ -34,15 +36,15 @@
 	let deathYearTo = $state('');
 	let birthPlace = $state('');
 	let deathPlace = $state('');
-	let sort = $state<(typeof SORTS)[number]>('relevance');
-	let order = $state<'asc' | 'desc'>('desc');
+	let sort = $state<(typeof SORTS)[number]>(DEFAULTS.sort);
+	let order = $state<'asc' | 'desc'>(DEFAULTS.order);
 
 	// Results state
 	let results: SearchResult[] = $state([]);
 	let total = $state(0);
 	let loading = $state(false);
 	let searched = $state(false);
-	let limit = $state(20);
+	let limit = $state<number>(DEFAULTS.limit);
 	let error: string | null = $state(null);
 
 	// Place autocomplete state
@@ -84,12 +86,14 @@
 		deathYearTo = params.get('death_to') ?? '';
 		birthPlace = params.get('birth_place') ?? '';
 		deathPlace = params.get('death_place') ?? '';
-		sort = readEnum(params, 'sort', SORTS, 'relevance');
-		order = readEnum(params, 'order', ['asc', 'desc'] as const, 'desc');
-		limit = readPositiveInt(params, 'limit', 20);
+		sort = readEnum(params, 'sort', SORTS, DEFAULTS.sort);
+		order = readEnum(params, 'order', ['asc', 'desc'] as const, DEFAULTS.order);
+		limit = readPositiveInt(params, 'limit', DEFAULTS.limit, MAX_LIMIT);
 		if (hasAnyCriteria) {
 			performSearch();
 		} else {
+			searchSeq++; // Drop any search still in flight for the previous URL
+			loading = false;
 			results = [];
 			total = 0;
 			searched = false;
@@ -258,30 +262,36 @@
 		return params;
 	}
 
+	// Back/Forward can start searches faster than they finish: only the latest one may land.
+	let searchSeq = 0;
+
 	async function performSearch() {
 		if (!hasAnyCriteria) return;
 
+		const seq = ++searchSeq;
 		loading = true;
 		error = null;
 		searched = true;
 		try {
 			const params = buildSearchParams();
 			const result = await api.searchPersons(params);
+			if (seq !== searchSeq) return;
 			results = result.items;
 			total = result.total;
 		} catch (e) {
+			if (seq !== searchSeq) return;
 			const apiError = e as { message?: string };
 			error = apiError.message || 'Search failed. Please try again.';
 			results = [];
 			total = 0;
 		} finally {
-			loading = false;
+			if (seq === searchSeq) loading = false;
 		}
 	}
 
 	function newSearch() {
 		if (!hasAnyCriteria) return;
-		limit = 20;
+		limit = DEFAULTS.limit;
 		submit(true);
 	}
 
@@ -318,18 +328,18 @@
 		deathYearTo = '';
 		birthPlace = '';
 		deathPlace = '';
-		sort = 'relevance';
-		order = 'desc';
+		sort = DEFAULTS.sort;
+		order = DEFAULTS.order;
 		results = [];
 		total = 0;
 		searched = false;
-		limit = 20;
+		limit = DEFAULTS.limit;
 		error = null;
 		submit(false);
 	}
 
 	function loadMore() {
-		limit += 20;
+		limit = Math.min(limit + PAGE_SIZE, MAX_LIMIT);
 		submit(false);
 	}
 
