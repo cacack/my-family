@@ -179,7 +179,7 @@
 </script>
 
 <svelte:head>
-	<title>{isNew ? 'New Research Log' : 'Research Log'} | My Family</title>
+	<title>{isNew ? 'New Research Log' : log ? `${log.repository} | Research Log` : 'Research Log'} | My Family</title>
 </svelte:head>
 
 <div class="mx-auto max-w-3xl p-6">

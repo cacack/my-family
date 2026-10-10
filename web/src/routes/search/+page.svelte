@@ -512,13 +512,11 @@
 				<!-- Sort controls and result count -->
 				<div class="results-header">
 					<div class="results-info">
-						{#if loading}
-							<span class="results-count" aria-live="polite">Searching...</span>
-						{:else}
-							<span class="results-count" aria-live="polite"
-								>Showing {results.length} of {total} results</span
-							>
-						{/if}
+						<!-- One element whose text changes: a live region inserted together
+						     with its text is often not announced. -->
+						<span class="results-count" aria-live="polite"
+							>{loading ? 'Searching...' : `Showing ${results.length} of ${total} results`}</span
+						>
 						{#if soundex}
 							<span class="mode-badge">Phonetic</span>
 						{/if}

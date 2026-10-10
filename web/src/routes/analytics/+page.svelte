@@ -205,7 +205,7 @@
 </script>
 
 <svelte:head>
-	<title>Data Quality | My Family</title>
+	<title>Analytics | My Family</title>
 </svelte:head>
 
 <div class="analytics-page">

@@ -3,7 +3,7 @@
 </script>
 
 <svelte:head>
-	<title>Geographic Map | My Family</title>
+	<title>Family Map | My Family</title>
 </svelte:head>
 
 <div class="map-page">
