@@ -442,17 +442,6 @@
 		{/if}
 		{#if editing}
 			<form class="edit-form" bind:this={editForm} onsubmit={(e) => { e.preventDefault(); savePerson(); }}>
-				{#if conflict}
-					<SaveConflict
-						noun="person"
-						fields={conflictFields(conflict)}
-						onKeepMine={keepMyEdits}
-						onUseLatest={useLatestVersion}
-						busy={saving}
-					/>
-				{:else if saveError}
-					<ActionError message={saveError} />
-				{/if}
 				<FormRow>
 					<label>
 						Given Name
@@ -511,8 +500,17 @@
 					<textarea bind:value={formData.notes} rows="4"></textarea>
 				</label>
 
-				{#if saveError}
-					<p class="save-error" role="alert">{saveError}</p>
+				<!-- Beside the Save button, where the user is looking when it fails. -->
+				{#if conflict}
+					<SaveConflict
+						noun="person"
+						fields={conflictFields(conflict)}
+						onKeepMine={keepMyEdits}
+						onUseLatest={useLatestVersion}
+						busy={saving}
+					/>
+				{:else if saveError}
+					<ActionError message={saveError} />
 				{/if}
 
 				<div class="form-actions">
@@ -834,13 +832,6 @@
 		text-align: center;
 		padding: 3rem;
 		color: var(--color-text-muted);
-	}
-
-
-	.save-error {
-		margin: 0;
-		color: #dc2626;
-		overflow-wrap: anywhere;
 	}
 
 	.person-detail {

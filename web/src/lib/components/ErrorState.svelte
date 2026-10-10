@@ -26,11 +26,11 @@
 	.error-state {
 		text-align: center;
 		padding: 3rem 1rem;
-		color: #dc2626;
 		overflow-wrap: anywhere;
 	}
 
 	.error-state p {
 		margin: 0 0 1rem;
+		color: #dc2626;
 	}
 </style>
