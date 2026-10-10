@@ -47,4 +47,18 @@ describe('Sources page', () => {
 		const body = vi.mocked(apiModule.api.createSource).mock.calls[0][0];
 		expect(API_SOURCE_TYPES).toContain(body.source_type);
 	});
+
+	it('shows a load failure as an error with Retry, not as an empty list', async () => {
+		vi.mocked(apiModule.api.listSources).mockRejectedValueOnce(new Error('boom'));
+		const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+		render(SourcesPage);
+
+		const alert = await screen.findByRole('alert');
+		expect(alert.textContent).toContain('Failed to load sources');
+		expect(screen.queryByText('No sources found.')).toBeNull();
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+		await screen.findByText('No sources found.');
+		spy.mockRestore();
+	});
 });

@@ -6,6 +6,7 @@
 	let repositories: Repository[] = $state([]);
 	let total = $state(0);
 	let loading = $state(true);
+	let loadError: string | null = $state(null);
 	let currentPage = $state(1);
 	let sort = $state<'name' | 'updated_at'>('name');
 	let order = $state<'asc' | 'desc'>('asc');
@@ -33,6 +34,7 @@
 
 	async function loadRepositories() {
 		loading = true;
+		loadError = null;
 		try {
 			const result = await api.listRepositories({
 				limit: pageSize,
@@ -44,6 +46,7 @@
 			total = result.total;
 		} catch (e) {
 			console.error('Failed to load repositories:', e);
+			loadError = 'Failed to load repositories. Please try again.';
 		} finally {
 			loading = false;
 		}
@@ -258,6 +261,11 @@
 
 	{#if loading}
 		<div class="loading">Loading...</div>
+	{:else if loadError}
+		<div class="load-error" role="alert">
+			<p>{loadError}</p>
+			<Button variant="outline" onclick={loadRepositories}>Retry</Button>
+		</div>
 	{:else if repositories.length === 0}
 		<div class="empty">
 			<p>No repositories found.</p>
@@ -460,6 +468,16 @@
 	}
 
 	.empty p {
+		margin: 0 0 1rem;
+	}
+
+	.load-error {
+		text-align: center;
+		padding: 3rem;
+		color: #dc2626;
+	}
+
+	.load-error p {
 		margin: 0 0 1rem;
 	}
 

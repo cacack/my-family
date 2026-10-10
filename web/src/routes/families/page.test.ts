@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/svelte';
+import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import FamiliesPage from './+page.svelte';
 import * as apiModule from '$lib/api/client';
 
@@ -40,5 +40,19 @@ describe('Families list page', () => {
 			offset: 0
 		});
 		expect(screen.queryByRole('note')).toBeNull();
+	});
+
+	it('shows a load failure as an error with Retry, not as an empty list', async () => {
+		vi.mocked(apiModule.api.listFamilies).mockRejectedValueOnce(new Error('boom'));
+		const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+		render(FamiliesPage);
+
+		const alert = await screen.findByRole('alert');
+		expect(alert.textContent).toContain('Failed to load families');
+		expect(screen.queryByText('No families found.')).toBeNull();
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+		await waitFor(() => expect(screen.getByText('No families found.')).toBeTruthy());
+		spy.mockRestore();
 	});
 });
