@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
+	import { page } from '$app/stores';
 	import { Button } from '$lib/components/ui/button';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import { Card, CardContent } from '$lib/components/ui/card';
@@ -10,6 +12,17 @@
 		formatGenDate,
 		formatLifespan
 	} from '$lib/api/client';
+	import {
+		readEnum,
+		readFlag,
+		readPositiveInt,
+		setQuery,
+		withQuery,
+		type QueryValues
+	} from '$lib/utils/urlState';
+
+	const SORTS = ['relevance', 'name', 'birth_date', 'death_date'] as const;
+	const DEFAULTS = { sort: 'relevance', order: 'desc', limit: 20 };
 
 	// Form state
 	let query = $state('');
@@ -21,7 +34,7 @@
 	let deathYearTo = $state('');
 	let birthPlace = $state('');
 	let deathPlace = $state('');
-	let sort = $state<'relevance' | 'name' | 'birth_date' | 'death_date'>('relevance');
+	let sort = $state<(typeof SORTS)[number]>('relevance');
 	let order = $state<'asc' | 'desc'>('desc');
 
 	// Results state
@@ -51,6 +64,68 @@
 			birthPlace.trim().length > 0 ||
 			deathPlace.trim().length > 0
 	);
+
+	// The submitted search lives in the URL (see urlState.ts): the form is a
+	// draft until submitted, and the results always match the URL, so Back from a
+	// result, reload and a copied link all show the same search again.
+	const urlSearch = $derived($page.url.search);
+	$effect(() => {
+		const search = urlSearch;
+		untrack(() => applyUrl(new URLSearchParams(search)));
+	});
+
+	function applyUrl(params: URLSearchParams) {
+		query = params.get('q') ?? '';
+		fuzzy = readFlag(params, 'fuzzy');
+		soundex = readFlag(params, 'soundex');
+		birthYearFrom = params.get('birth_from') ?? '';
+		birthYearTo = params.get('birth_to') ?? '';
+		deathYearFrom = params.get('death_from') ?? '';
+		deathYearTo = params.get('death_to') ?? '';
+		birthPlace = params.get('birth_place') ?? '';
+		deathPlace = params.get('death_place') ?? '';
+		sort = readEnum(params, 'sort', SORTS, 'relevance');
+		order = readEnum(params, 'order', ['asc', 'desc'] as const, 'desc');
+		limit = readPositiveInt(params, 'limit', 20);
+		if (hasAnyCriteria) {
+			performSearch();
+		} else {
+			results = [];
+			total = 0;
+			searched = false;
+			error = null;
+		}
+	}
+
+	function formQuery(): QueryValues {
+		return {
+			q: query.trim(),
+			fuzzy,
+			soundex,
+			birth_from: birthYearFrom.trim(),
+			birth_to: birthYearTo.trim(),
+			death_from: deathYearFrom.trim(),
+			death_to: deathYearTo.trim(),
+			birth_place: birthPlace.trim(),
+			death_place: deathPlace.trim(),
+			sort,
+			order,
+			limit
+		};
+	}
+
+	// Writes the form to the URL, which runs the search. A new search is
+	// navigation-level (push); re-sorting or loading more refines it (replace).
+	function submit(push: boolean) {
+		const values = formQuery();
+		const url = $page.url;
+		if (withQuery(url, values, DEFAULTS) === url.pathname + url.search) {
+			// Nothing changed, so no navigation: run it again as asked.
+			if (hasAnyCriteria) performSearch();
+			return;
+		}
+		setQuery(url, values, { push, defaults: DEFAULTS });
+	}
 
 	// Load places on mount
 	$effect(() => {
@@ -204,29 +279,33 @@
 		}
 	}
 
+	function newSearch() {
+		if (!hasAnyCriteria) return;
+		limit = 20;
+		submit(true);
+	}
+
 	function handleFormSubmit(e: Event) {
 		e.preventDefault();
-		limit = 20;
-		performSearch();
+		newSearch();
 	}
 
 	function handleNameKeydown(e: KeyboardEvent) {
 		if (e.key === 'Enter') {
 			e.preventDefault();
-			limit = 20;
-			performSearch();
+			newSearch();
 		}
 	}
 
 	function handleSortChange(e: Event) {
 		const select = e.target as HTMLSelectElement;
 		sort = select.value as typeof sort;
-		if (searched) performSearch();
+		if (searched) submit(false);
 	}
 
 	function handleOrderToggle() {
 		order = order === 'asc' ? 'desc' : 'asc';
-		if (searched) performSearch();
+		if (searched) submit(false);
 	}
 
 	function clearAll() {
@@ -246,11 +325,12 @@
 		searched = false;
 		limit = 20;
 		error = null;
+		submit(false);
 	}
 
 	function loadMore() {
 		limit += 20;
-		performSearch();
+		submit(false);
 	}
 
 	function scoreColor(score: number | undefined): string {

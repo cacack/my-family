@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/svelte';
 import SearchPage from './+page.svelte';
 import * as apiModule from '$lib/api/client';
+import { resetRouter } from '$lib/test/fakeRouter';
 
 vi.mock('$lib/api/client', async (importOriginal) => {
 	const actual = await importOriginal<typeof apiModule>();
@@ -22,9 +23,13 @@ vi.mock('$lib/stores/activeBranch.svelte', () => ({
 	activeBranch: branchState
 }));
 
+vi.mock('$app/stores', async () => (await import('$lib/test/fakeRouter')).appStores);
+vi.mock('$app/navigation', async () => (await import('$lib/test/fakeRouter')).appNavigation);
+
 describe('Advanced Search page', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		resetRouter('/search');
 		branchState.id = null;
 		vi.mocked(apiModule.api.getPlaceHierarchy).mockResolvedValue({
 			items: []
