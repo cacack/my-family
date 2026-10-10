@@ -21,7 +21,7 @@
 			case 'probable':
 				return {
 					indicatorColor: 'bg-yellow-500',
-					badgeClass: 'bg-yellow-50 text-yellow-600 border-yellow-200 dark:bg-yellow-950 dark:text-yellow-400 dark:border-yellow-800',
+					badgeClass: 'bg-yellow-50 text-yellow-700 border-yellow-200 dark:bg-yellow-950 dark:text-yellow-400 dark:border-yellow-800',
 					label: 'Probable',
 					tooltip: 'Likely correct, good supporting evidence'
 				};

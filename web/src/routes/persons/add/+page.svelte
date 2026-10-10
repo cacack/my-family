@@ -241,11 +241,7 @@
 	}
 
 	.quick-capture-hint a {
-		color: #3b82f6;
-		text-decoration: none;
-	}
-
-	.quick-capture-hint a:hover {
+		color: #2563eb;
 		text-decoration: underline;
 	}
 </style>

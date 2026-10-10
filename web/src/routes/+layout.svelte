@@ -114,7 +114,7 @@
 				     no nested buttons, and Enter / whole-row clicks actually navigate. -->
 				<DropdownMenu.Trigger>
 					{#snippet child({ props })}
-						<Button {...props} variant="ghost" class="nav-dropdown-trigger gap-1 px-4 py-2 text-sm font-medium {browseActive ? 'bg-[#eff6ff] text-[#3b82f6]' : 'text-[#64748b] hover:bg-[#f1f5f9] hover:text-[#1e293b]'}">
+						<Button {...props} variant="ghost" class="nav-dropdown-trigger gap-1 px-4 py-2 text-sm font-medium {browseActive ? 'bg-[#eff6ff] text-[#1d4ed8]' : 'text-[#64748b] hover:bg-[#f1f5f9] hover:text-[#1e293b]'}">
 							Browse
 							<svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
 								<polyline points="6 9 12 15 18 9" />
@@ -336,7 +336,7 @@
 
 	.nav a.active {
 		background: #eff6ff;
-		color: #3b82f6;
+		color: #1d4ed8;
 	}
 
 	:global(body.high-contrast) .nav a.active {
