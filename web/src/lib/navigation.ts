@@ -32,7 +32,7 @@ export const mainNav: NavEntry[] = [
 			{ href: '/browse/citation-templates', label: 'Citation Templates' },
 			{ href: '/browse/brick-walls', label: 'Brick Walls' },
 			{ href: '/quality', label: 'Quality' },
-			{ href: '/analytics', label: 'Analytics' }
+			{ href: '/analytics', label: 'Completeness' }
 		]
 	},
 	{

@@ -1429,7 +1429,8 @@ export interface paths {
         };
         /**
          * Get aggregate quality metrics
-         * @description Returns overall data quality metrics across all persons
+         * @description Returns overall data quality metrics across all persons in the scoped
+         *     view of the tree, computed server-side over every person (never a page).
          */
         get: operations["getQualityOverview"];
         put?: never;
@@ -4163,6 +4164,28 @@ export interface components {
             records_with_issues: number;
             /** @description Most common data quality issues */
             top_issues: components["schemas"]["QualityIssue"][];
+            research_status_counts: components["schemas"]["ResearchStatusCounts"];
+            /** @description Up to 20 persons with at least one issue, lowest completeness first */
+            lowest_scoring: components["schemas"]["PersonScore"][];
+        };
+        /** @description Persons counted by research status */
+        ResearchStatusCounts: {
+            certain: number;
+            probable: number;
+            possible: number;
+            unknown: number;
+            /** @description Persons with no research status recorded */
+            unset: number;
+        };
+        /** @description One person's completeness score and the issues behind it */
+        PersonScore: {
+            /** Format: uuid */
+            person_id: string;
+            given_name: string;
+            surname: string;
+            /** Format: float */
+            completeness_score: number;
+            issues: string[];
         };
         QualityIssue: {
             /** @description Description of the issue */
@@ -8985,7 +9008,17 @@ export interface operations {
     };
     getQualityOverview: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
+            };
             header?: never;
             path?: never;
             cookie?: never;

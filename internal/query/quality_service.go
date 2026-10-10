@@ -29,11 +29,35 @@ func NewQualityService(readStore repository.ReadModelStore) *QualityService {
 
 // QualityOverview contains aggregate quality metrics.
 type QualityOverview struct {
-	TotalPersons        int            `json:"total_persons"`
-	AverageCompleteness float64        `json:"average_completeness"`
-	RecordsWithIssues   int            `json:"records_with_issues"`
-	TopIssues           []QualityIssue `json:"top_issues"`
+	TotalPersons         int                  `json:"total_persons"`
+	AverageCompleteness  float64              `json:"average_completeness"`
+	RecordsWithIssues    int                  `json:"records_with_issues"`
+	TopIssues            []QualityIssue       `json:"top_issues"`
+	ResearchStatusCounts ResearchStatusCounts `json:"research_status_counts"`
+	LowestScoring        []PersonScore        `json:"lowest_scoring"`
 }
+
+// ResearchStatusCounts counts persons by research status. Unset counts persons
+// whose status was never recorded, as distinct from an explicit "unknown".
+type ResearchStatusCounts struct {
+	Certain  int `json:"certain"`
+	Probable int `json:"probable"`
+	Possible int `json:"possible"`
+	Unknown  int `json:"unknown"`
+	Unset    int `json:"unset"`
+}
+
+// PersonScore is one person's completeness score and the issues behind it.
+type PersonScore struct {
+	PersonID          uuid.UUID `json:"person_id"`
+	GivenName         string    `json:"given_name"`
+	Surname           string    `json:"surname"`
+	CompletenessScore float64   `json:"completeness_score"`
+	Issues            []string  `json:"issues"`
+}
+
+// lowestScoringLimit caps QualityOverview.LowestScoring.
+const lowestScoringLimit = 20
 
 // QualityIssue represents a data quality issue with count.
 type QualityIssue struct {
@@ -332,6 +356,7 @@ func (s *QualityService) GetQualityOverviewOn(ctx context.Context, branchID doma
 			AverageCompleteness: 0,
 			RecordsWithIssues:   0,
 			TopIssues:           []QualityIssue{},
+			LowestScoring:       []PersonScore{},
 		}, nil
 	}
 
@@ -345,16 +370,26 @@ func (s *QualityService) GetQualityOverviewOn(ctx context.Context, branchID doma
 	var totalScore float64
 	recordsWithIssues := 0
 	issueCounts := make(map[string]int)
+	var statusCounts ResearchStatusCounts
+	withIssues := make([]PersonScore, 0)
 
 	for _, person := range persons {
 		score, issues := s.computePersonScoreBulk(person, conflicts)
 		totalScore += score
+		statusCounts.add(person.ResearchStatus)
 
 		if len(issues) > 0 {
 			recordsWithIssues++
 			for _, issue := range issues {
 				issueCounts[issue]++
 			}
+			withIssues = append(withIssues, PersonScore{
+				PersonID:          person.ID,
+				GivenName:         person.GivenName,
+				Surname:           person.Surname,
+				CompletenessScore: score,
+				Issues:            issues,
+			})
 		}
 	}
 
@@ -374,11 +409,51 @@ func (s *QualityService) GetQualityOverviewOn(ctx context.Context, branchID doma
 	}
 
 	return &QualityOverview{
-		TotalPersons:        total,
-		AverageCompleteness: avgCompleteness,
-		RecordsWithIssues:   recordsWithIssues,
-		TopIssues:           topIssues,
+		TotalPersons:         total,
+		AverageCompleteness:  avgCompleteness,
+		RecordsWithIssues:    recordsWithIssues,
+		TopIssues:            topIssues,
+		ResearchStatusCounts: statusCounts,
+		LowestScoring:        lowestScoring(withIssues, lowestScoringLimit),
 	}, nil
+}
+
+// add counts one person's research status.
+func (c *ResearchStatusCounts) add(status domain.ResearchStatus) {
+	switch status {
+	case domain.ResearchStatusCertain:
+		c.Certain++
+	case domain.ResearchStatusProbable:
+		c.Probable++
+	case domain.ResearchStatusPossible:
+		c.Possible++
+	case domain.ResearchStatusUnknown:
+		c.Unknown++
+	default:
+		c.Unset++
+	}
+}
+
+// lowestScoring returns up to limit scores, lowest first. Ties order by name
+// then id so the list is stable across requests.
+func lowestScoring(scores []PersonScore, limit int) []PersonScore {
+	sort.Slice(scores, func(i, j int) bool {
+		a, b := scores[i], scores[j]
+		if a.CompletenessScore != b.CompletenessScore {
+			return a.CompletenessScore < b.CompletenessScore
+		}
+		if a.Surname != b.Surname {
+			return a.Surname < b.Surname
+		}
+		if a.GivenName != b.GivenName {
+			return a.GivenName < b.GivenName
+		}
+		return a.PersonID.String() < b.PersonID.String()
+	})
+	if len(scores) > limit {
+		scores = scores[:limit]
+	}
+	return scores
 }
 
 // GetPersonQuality returns quality metrics for a specific person on the

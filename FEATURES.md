@@ -28,7 +28,7 @@ Completed features in my-family genealogy software.
 - **Uncertainty Indicators** - Visual badges showing research confidence (certain/probable/possible/unknown)
 - **Confidence Filtering** - Filter person lists by research status
 - **Research Status Analytics** - Dashboard showing distribution of confidence levels across the database
-- **Data Quality Scores** - Analytics page showing records needing attention with actionable issues
+- **Data Quality Scores** - Completeness page showing records needing attention with actionable issues
 - **Brick Wall Tracker** - Mark research dead ends, add notes, and celebrate breakthroughs with resolution tracking and browse page
 - **Discovery Feed** - Prioritized research suggestions on the dashboard identifying missing data, orphaned records, unassessed persons, and quality gaps
 - **Citation Template UI** - Browse 25 Evidence Explained citation templates by category, select templates when adding citations for dynamic field rendering with live-formatted preview

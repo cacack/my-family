@@ -2,6 +2,7 @@ package query_test
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"testing"
 	"time"
@@ -515,6 +516,75 @@ func TestGetQualityOverview_IssueAggregation(t *testing.T) {
 			}
 			break
 		}
+	}
+}
+
+// TestGetQualityOverview_LowestScoringCappedAndOrdered checks the list is
+// capped, lowest first, and stable on ties (by surname, then given name).
+func TestGetQualityOverview_LowestScoringCappedAndOrdered(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	service := query.NewQualityService(readStore)
+	ctx := context.Background()
+
+	// 25 bare records (all tie on score) plus one partial record that scores
+	// higher but still has an issue, plus one complete record.
+	for i := 0; i < 25; i++ {
+		p := createPersonReadModel(uuid.New(), "Person", fmt.Sprintf("S%02d", 24-i))
+		_ = readStore.SavePerson(ctx, domain.MainBranchID, &p)
+	}
+	birthYear := time.Now().Year() - 50
+	partial := createPersonReadModel(uuid.New(), "Partial", "A",
+		withBirthDate(strconv.Itoa(birthYear), birthYear))
+	_ = readStore.SavePerson(ctx, domain.MainBranchID, &partial)
+	full := createPersonReadModel(uuid.New(), "Full", "A",
+		withBirthDate(strconv.Itoa(birthYear), birthYear), withBirthPlace("Boston, MA"))
+	_ = readStore.SavePerson(ctx, domain.MainBranchID, &full)
+
+	result, err := service.GetQualityOverview(ctx)
+	if err != nil {
+		t.Fatalf("GetQualityOverview failed: %v", err)
+	}
+	if result.TotalPersons != 27 {
+		t.Errorf("TotalPersons = %d, want 27", result.TotalPersons)
+	}
+	if len(result.LowestScoring) != 20 {
+		t.Fatalf("LowestScoring length = %d, want 20", len(result.LowestScoring))
+	}
+	for i, p := range result.LowestScoring {
+		if want := fmt.Sprintf("S%02d", i); p.Surname != want {
+			t.Errorf("LowestScoring[%d].Surname = %q, want %q", i, p.Surname, want)
+		}
+		if len(p.Issues) == 0 {
+			t.Errorf("LowestScoring[%d] has no issues", i)
+		}
+	}
+}
+
+// TestGetQualityOverview_ResearchStatusCounts checks each status lands in its
+// own bucket, with a never-set status counted apart from explicit "unknown".
+func TestGetQualityOverview_ResearchStatusCounts(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	service := query.NewQualityService(readStore)
+	ctx := context.Background()
+
+	statuses := []domain.ResearchStatus{
+		domain.ResearchStatusCertain, domain.ResearchStatusCertain,
+		domain.ResearchStatusProbable, domain.ResearchStatusPossible,
+		domain.ResearchStatusUnknown, "", "",
+	}
+	for i, status := range statuses {
+		p := createPersonReadModel(uuid.New(), "Person", strconv.Itoa(i))
+		p.ResearchStatus = status
+		_ = readStore.SavePerson(ctx, domain.MainBranchID, &p)
+	}
+
+	result, err := service.GetQualityOverview(ctx)
+	if err != nil {
+		t.Fatalf("GetQualityOverview failed: %v", err)
+	}
+	want := query.ResearchStatusCounts{Certain: 2, Probable: 1, Possible: 1, Unknown: 1, Unset: 2}
+	if result.ResearchStatusCounts != want {
+		t.Errorf("ResearchStatusCounts = %+v, want %+v", result.ResearchStatusCounts, want)
 	}
 }
 

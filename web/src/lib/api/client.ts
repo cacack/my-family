@@ -27,6 +27,7 @@ export type RollbackResponse = components['schemas']['RollbackResponse'];
 // Re-export Quality/Validation types from generated file
 export type ValidationIssue = components['schemas']['ValidationIssue'];
 export type ValidationIssuesResponse = components['schemas']['ValidationIssuesResponse'];
+export type QualityOverview = components['schemas']['QualityOverview'];
 
 // Re-export Duplicate detection & merge types from generated file
 export type DuplicatePair = components['schemas']['DuplicatePair'];
@@ -178,7 +179,8 @@ const TEXT_SEGMENT = '[^/]+';
  * group sheet, the Ahnentafel, descendancy and the relationship calculator
  * follow the branch too (#829), and so do research snapshots (#839): a
  * snapshot marks a position in one branch's view, so the list, create,
- * delete and both comparisons carry the scope. The
+ * delete and both comparisons carry the scope. The quality overview behind
+ * `/analytics` follows the branch too (#894). The
  * aggregates own no `branch_id` of their own — they read the overlay — so
  * scoping them is exactly this parameter and nothing else.
  *
@@ -187,7 +189,7 @@ const TEXT_SEGMENT = '[^/]+';
  * whether they become event-sourced is #802), the entities that stay main-only
  * by decision (submitters, repositories, LDS ordinances — ADR-005), GEDCOM
  * import and export, the JSON/CSV exports, the global and source history, and
- * the quality, statistics and discovery checks computed over the mainline.
+ * the other quality, statistics and discovery checks computed over the mainline.
  * Pages showing them render `MainlineNotice.svelte` or withdraw the control. Grow this table one operation at a time as the spec
  * grows, and never by blanket-appending the parameter to every request.
  *
@@ -223,6 +225,8 @@ const BRANCH_SCOPED_OPERATIONS: ReadonlyArray<{
 	{ methods: ['GET'], pattern: new RegExp(`^/ahnentafel/${UUID_SEGMENT}$`) },
 	{ methods: ['GET'], pattern: new RegExp(`^/descendancy/${UUID_SEGMENT}$`) },
 	{ methods: ['GET'], pattern: new RegExp(`^/relationship/${UUID_SEGMENT}/${UUID_SEGMENT}$`) },
+	// The quality overview (#894): the analytics page's totals follow the branch.
+	{ methods: ['GET'], pattern: new RegExp('^/quality/overview$') },
 	// Person merge (#834): a merge made on a branch lands there only.
 	{ methods: ['POST'], pattern: new RegExp('^/persons/merge$') },
 	{ methods: ['POST'], pattern: new RegExp('^/persons/merge/batch$') },
@@ -2373,6 +2377,10 @@ class ApiClient {
 	}
 
 	// Quality / validation endpoints
+	async getQualityOverview(): Promise<QualityOverview> {
+		return this.request<QualityOverview>('GET', '/quality/overview');
+	}
+
 	async getValidationIssues(params?: {
 		severity?: 'error' | 'warning' | 'info';
 		limit?: number;

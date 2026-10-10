@@ -155,7 +155,7 @@ func TestGetQualityOverview_ResponseSchema(t *testing.T) {
 	}
 
 	// Check required fields exist
-	requiredFields := []string{"total_persons", "average_completeness", "records_with_issues", "top_issues"}
+	requiredFields := []string{"total_persons", "average_completeness", "records_with_issues", "top_issues", "research_status_counts", "lowest_scoring"}
 	for _, field := range requiredFields {
 		if _, ok := raw[field]; !ok {
 			t.Errorf("Missing required field: %s", field)
@@ -181,6 +181,85 @@ func TestGetQualityOverview_ResponseSchema(t *testing.T) {
 				t.Error("Issue should have 'count' field")
 			}
 		}
+	}
+}
+
+// TestGetQualityOverview_ResearchStatusAndLowestScoring checks the research
+// status counts and the lowest-scoring list the analytics page reads (#894).
+func TestGetQualityOverview_ResearchStatusAndLowestScoring(t *testing.T) {
+	server, _ := setupQualityTestServer()
+	birthYear := strconv.Itoa(time.Now().Year() - 50)
+
+	createQualityTestPerson(t, server, "Full", "Record",
+		"birth_date", birthYear, "birth_place", "Boston, MA", "research_status", "certain")
+	createQualityTestPerson(t, server, "No", "Place",
+		"birth_date", birthYear, "research_status", "probable")
+	createQualityTestPerson(t, server, "Bare", "Record")
+
+	rec := do(t, server, http.MethodGet, "/api/v1/quality/overview", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	var resp api.QualityOverview
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+
+	want := api.ResearchStatusCounts{Certain: 1, Probable: 1, Unset: 1}
+	if resp.ResearchStatusCounts != want {
+		t.Errorf("ResearchStatusCounts = %+v, want %+v", resp.ResearchStatusCounts, want)
+	}
+
+	// The complete record has no issues, so only the other two are listed,
+	// lowest score first.
+	if len(resp.LowestScoring) != 2 {
+		t.Fatalf("LowestScoring length = %d, want 2: %+v", len(resp.LowestScoring), resp.LowestScoring)
+	}
+	if got := resp.LowestScoring[0].GivenName; got != "Bare" {
+		t.Errorf("LowestScoring[0] = %q, want Bare", got)
+	}
+	if got := resp.LowestScoring[1].GivenName; got != "No" {
+		t.Errorf("LowestScoring[1] = %q, want No", got)
+	}
+	if len(resp.LowestScoring[1].Issues) == 0 {
+		t.Error("LowestScoring[1] should carry its issues")
+	}
+}
+
+// TestGetQualityOverview_BranchScope checks ?branch= reaches the overview: a
+// person created on a branch counts there and not on the mainline.
+func TestGetQualityOverview_BranchScope(t *testing.T) {
+	server := setupBranchTestServer()
+	createPerson(t, server, "Ada", "Lovelace")
+	branchID := createBranch(t, server, "Hopper theory")
+	if rec := do(t, server, http.MethodPost, "/api/v1/persons?branch="+branchID,
+		`{"given_name":"Grace","surname":"Hopper"}`); rec.Code != http.StatusCreated {
+		t.Fatalf("Create person on branch: status = %d. Body: %s", rec.Code, rec.Body.String())
+	}
+
+	tests := []struct {
+		name string
+		path string
+		code int
+		want int
+	}{
+		{"mainline", "/api/v1/quality/overview", http.StatusOK, 1},
+		{"branch", "/api/v1/quality/overview?branch=" + branchID, http.StatusOK, 2},
+		{"unknown branch", "/api/v1/quality/overview?branch=" + unknownUUID, http.StatusNotFound, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := do(t, server, http.MethodGet, tt.path, "")
+			if rec.Code != tt.code {
+				t.Fatalf("Status = %d, want %d. Body: %s", rec.Code, tt.code, rec.Body.String())
+			}
+			if tt.code != http.StatusOK {
+				return
+			}
+			if got, _ := decodeJSON(t, rec)["total_persons"].(float64); int(got) != tt.want {
+				t.Errorf("total_persons = %v, want %d", got, tt.want)
+			}
+		})
 	}
 }
 
