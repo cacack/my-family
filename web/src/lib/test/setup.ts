@@ -34,6 +34,8 @@ afterEach(async () => {
 // Mock ResizeObserver for D3/chart tests
 // Using a class-based mock to avoid flaky "is not a constructor" errors
 class MockResizeObserver {
+	// Match the real signature so callers can pass their callback
+	constructor(readonly callback: ResizeObserverCallback) {}
 	observe = vi.fn();
 	unobserve = vi.fn();
 	disconnect = vi.fn();
