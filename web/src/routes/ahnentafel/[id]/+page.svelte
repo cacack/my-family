@@ -143,7 +143,7 @@
 		</div>
 	</header>
 
-	<main class="report-container">
+	<div class="report-container">
 		{#if loading}
 			<div class="loading">Loading report...</div>
 		{:else if error}
@@ -280,7 +280,7 @@
 		{:else}
 			<div class="empty">No data available.</div>
 		{/if}
-	</main>
+	</div>
 </div>
 
 <style>
