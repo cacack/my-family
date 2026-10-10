@@ -345,6 +345,17 @@ describe('Family Detail Page: partners and children (#826)', () => {
 		expect(body).not.toHaveProperty('clear_partner2');
 	});
 
+	it('sends a cleared marriage place as an empty string, and no unchanged type', async () => {
+		await openEdit();
+		await fireEvent.input(screen.getByLabelText('Marriage Place'), { target: { value: '' } });
+		await fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+
+		await waitFor(() => expect(api.updateFamily).toHaveBeenCalled());
+		const body = vi.mocked(api.updateFamily).mock.calls[0][1];
+		expect(body.marriage_place).toBe('');
+		expect(body.relationship_type).toBeUndefined();
+	});
+
 	it('clears a removed partner and sets a newly picked one', async () => {
 		await openEdit();
 		await fireEvent.click(screen.getByRole('button', { name: 'Clear Partner 2: Jane Smith' }));

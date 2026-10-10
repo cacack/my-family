@@ -2,6 +2,7 @@
 	import { api, type Source } from '$lib/api/client';
 	import { Button } from '$lib/components/ui/button';
 	import SourceCard from '$lib/components/SourceCard.svelte';
+	import { DEFAULT_SOURCE_TYPE, SOURCE_TYPES } from '$lib/utils/sourceTypes';
 
 	let sources: Source[] = $state([]);
 	let total = $state(0);
@@ -17,7 +18,7 @@
 
 	// New source form state
 	let newSource = $state({
-		source_type: 'document',
+		source_type: DEFAULT_SOURCE_TYPE,
 		title: '',
 		author: '',
 		publisher: '',
@@ -91,7 +92,7 @@
 
 	function openAddForm() {
 		newSource = {
-			source_type: 'document',
+			source_type: DEFAULT_SOURCE_TYPE,
 			title: '',
 			author: '',
 			publisher: '',
@@ -205,20 +206,9 @@
 					<label>
 						Source Type
 						<select bind:value={newSource.source_type}>
-							<option value="document">Document</option>
-							<option value="book">Book</option>
-							<option value="newspaper">Newspaper</option>
-							<option value="census">Census</option>
-							<option value="vital_record">Vital Record</option>
-							<option value="church_record">Church Record</option>
-							<option value="military_record">Military Record</option>
-							<option value="immigration_record">Immigration Record</option>
-							<option value="land_record">Land Record</option>
-							<option value="court_record">Court Record</option>
-							<option value="photograph">Photograph</option>
-							<option value="oral_history">Oral History</option>
-							<option value="website">Website</option>
-							<option value="other">Other</option>
+							{#each SOURCE_TYPES as type (type.value)}
+								<option value={type.value}>{type.label}</option>
+							{/each}
 						</select>
 					</label>
 					<label>

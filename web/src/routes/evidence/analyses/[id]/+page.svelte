@@ -13,21 +13,12 @@
 	import { Label } from '$lib/components/ui/label';
 	import { Textarea } from '$lib/components/ui/textarea';
 	import UncertaintyBadge from '$lib/components/UncertaintyBadge.svelte';
-	import { formatFactType, subjectRoute } from '$lib/utils/evidence';
+	import { FACT_TYPES, formatFactType, subjectRoute } from '$lib/utils/evidence';
 	import { nativeSelectClass } from '$lib/utils/forms';
 
-	// Every fact type the API accepts (domain.FactType), so a fact the merge
-	// review links here (#838) is always offered.
-	const factTypes = [
-		'person_birth', 'person_death', 'person_name', 'person_gender',
-		'person_burial', 'person_cremation', 'person_baptism', 'person_christening',
-		'person_emigration', 'person_immigration', 'person_naturalization', 'person_census',
-		'person_generic_event', 'person_occupation', 'person_residence', 'person_education',
-		'person_religion', 'person_title',
-		'family_marriage', 'family_divorce', 'family_marriage_bann', 'family_marriage_contract',
-		'family_marriage_license', 'family_marriage_settlement', 'family_annulment',
-		'family_engagement'
-	];
+	// Every fact type the API accepts, so a fact the merge review links here
+	// (#838) is always offered.
+	const factTypes = FACT_TYPES;
 
 	const researchStatuses = ['certain', 'probable', 'possible', 'unknown'] as const;
 

@@ -58,7 +58,7 @@
 	let formData = $state({
 		given_name: '',
 		surname: '',
-		gender: '' as 'male' | 'female' | 'unknown' | '',
+		gender: 'unknown' as 'male' | 'female' | 'unknown',
 		birth_date: '',
 		birth_place: '',
 		death_date: '',
@@ -210,7 +210,7 @@
 			formData = {
 				given_name: person.given_name,
 				surname: person.surname,
-				gender: person.gender || '',
+				gender: person.gender || 'unknown',
 				birth_date: person.birth_date?.raw || '',
 				birth_place: person.birth_place || '',
 				death_date: person.death_date?.raw || '',
@@ -236,15 +236,21 @@
 		saving = true;
 		try {
 			await api.updatePerson(person.id, {
+				// The names are required, so an empty one is never sent.
 				given_name: formData.given_name || undefined,
 				surname: formData.surname || undefined,
-				gender: (formData.gender || undefined) as 'male' | 'female' | 'unknown' | undefined,
-				birth_date: formData.birth_date || undefined,
-				birth_place: formData.birth_place || undefined,
-				death_date: formData.death_date || undefined,
-				death_place: formData.death_place || undefined,
-				notes: formData.notes || undefined,
-				research_status: (formData.research_status || undefined) as ResearchStatus | undefined,
+				// Sent only when changed, so saving a person with no gender
+				// doesn't set one.
+				gender: formData.gender !== (person.gender || 'unknown') ? formData.gender : undefined,
+				// An empty string clears the field; an omitted one is left unchanged.
+				birth_date: formData.birth_date,
+				birth_place: formData.birth_place,
+				death_date: formData.death_date,
+				death_place: formData.death_place,
+				notes: formData.notes,
+				// "Not assessed" on an assessed person resets it to unknown, the
+				// API's unassessed status.
+				research_status: formData.research_status || (person.research_status ? 'unknown' : undefined),
 				version: person.version
 			});
 			await loadPerson(person.id);
@@ -336,7 +342,7 @@
 					<label>
 						Gender
 						<select bind:value={formData.gender}>
-							<option value="">Unknown</option>
+							<option value="unknown">Unknown</option>
 							<option value="male">Male</option>
 							<option value="female">Female</option>
 						</select>

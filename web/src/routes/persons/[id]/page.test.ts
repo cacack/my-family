@@ -14,7 +14,8 @@ const {
 	resolvePersonBrickWall,
 	getPersonHistory,
 	listPersonMedia,
-	getPersonRestorePoints
+	getPersonRestorePoints,
+	updatePerson
 } = vi.hoisted(() => ({
 	// The real store exposes a read-only view, so the active branch is injected.
 	branchState: { id: null as string | null },
@@ -23,7 +24,8 @@ const {
 	resolvePersonBrickWall: vi.fn(),
 	getPersonHistory: vi.fn(async () => ({ items: [], total: 0 })),
 	listPersonMedia: vi.fn(async () => ({ items: [], total: 0 })),
-	getPersonRestorePoints: vi.fn(async () => ({ items: [], total: 0, has_more: false }))
+	getPersonRestorePoints: vi.fn(async () => ({ items: [], total: 0, has_more: false })),
+	updatePerson: vi.fn()
 }));
 
 /**
@@ -53,6 +55,7 @@ vi.mock('$lib/api/client', async (importOriginal) => {
 		getPersonHistory,
 		listPersonMedia,
 		getPersonRestorePoints,
+		updatePerson,
 		// These two answer with a bare array rather than a wrapper object.
 		getConflictsBySubject: vi.fn(async () => []),
 		getResearchLogsBySubject: vi.fn(async () => [])
@@ -253,5 +256,56 @@ describe('Person detail family shortcuts (#826)', () => {
 
 		expect(await screen.findByRole('link', { name: 'Add family' })).toBeDefined();
 		expect(screen.getByRole('link', { name: 'Add parents' })).toBeDefined();
+	});
+});
+
+describe('Person detail edit form', () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		branchState.id = null;
+		updatePerson.mockResolvedValue({ id: PERSON_ID, version: 4 });
+	});
+
+	async function openEdit() {
+		render(Page);
+		await fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+	}
+
+	async function save() {
+		await fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+		await waitFor(() => expect(updatePerson).toHaveBeenCalled());
+		return updatePerson.mock.calls[0][1];
+	}
+
+	// An omitted field is left unchanged by the API, so a cleared field must be
+	// sent as an empty string or it can never be removed.
+	it('sends a cleared field as an empty string', async () => {
+		getPerson.mockResolvedValue(person({ birth_place: 'London', notes: 'A note' }));
+		await openEdit();
+
+		await fireEvent.input(screen.getByLabelText('Birth Place'), { target: { value: '' } });
+		await fireEvent.input(screen.getByLabelText('Notes'), { target: { value: '' } });
+		const body = await save();
+
+		expect(body).toMatchObject({ birth_place: '', notes: '', given_name: 'Ada', surname: 'Lovelace' });
+	});
+
+	it('sends gender unknown when a known gender is changed to Unknown', async () => {
+		getPerson.mockResolvedValue(person({ gender: 'female' }));
+		await openEdit();
+
+		await fireEvent.change(screen.getByLabelText('Gender'), { target: { value: 'unknown' } });
+		const body = await save();
+
+		expect(body.gender).toBe('unknown');
+	});
+
+	it('sends no gender when it is untouched', async () => {
+		getPerson.mockResolvedValue(person());
+		await openEdit();
+
+		const body = await save();
+
+		expect(body.gender).toBeUndefined();
 	});
 });

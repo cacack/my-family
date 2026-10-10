@@ -64,4 +64,29 @@ describe('Repository detail page', () => {
 		await fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
 		expect(screen.getByText(SHARED)).toBeTruthy();
 	});
+
+	it('sends cleared notes and address so the API clears them', async () => {
+		vi.mocked(apiModule.api.getRepository).mockResolvedValue({
+			id: 'repo-1',
+			name: 'National Archives',
+			notes: 'Old notes',
+			address: { city: 'Washington' },
+			version: 1
+		} as apiModule.RepositoryDetail);
+		vi.mocked(apiModule.api.updateRepository).mockResolvedValue({
+			id: 'repo-1',
+			name: 'National Archives',
+			version: 2
+		} as apiModule.Repository);
+		render(RepositoryPage);
+		await fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+
+		await fireEvent.input(screen.getByLabelText('City'), { target: { value: '' } });
+		await fireEvent.input(screen.getByLabelText('Notes'), { target: { value: '' } });
+		await fireEvent.click(screen.getByRole('button', { name: /Save/ }));
+
+		await waitFor(() => expect(apiModule.api.updateRepository).toHaveBeenCalled());
+		const body = vi.mocked(apiModule.api.updateRepository).mock.calls[0][1];
+		expect(body).toMatchObject({ notes: '', gedcom_xref: '', address: {} });
+	});
 });

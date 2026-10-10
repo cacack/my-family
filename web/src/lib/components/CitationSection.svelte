@@ -4,6 +4,7 @@
 	import * as Tabs from '$lib/components/ui/tabs';
 	import ConflictError from './ConflictError.svelte';
 	import CitationTemplateForm from './CitationTemplateForm.svelte';
+	import { PERSON_FACT_TYPES, formatFactTypeShort } from '$lib/utils/evidence';
 
 	interface Props {
 		personId: string;
@@ -43,7 +44,7 @@
 	// New citation form
 	let newCitation = $state({
 		source_id: '',
-		fact_type: 'general',
+		fact_type: 'person_birth',
 		page: '',
 		volume: '',
 		source_quality: '',
@@ -139,7 +140,7 @@
 	function openAddForm() {
 		newCitation = {
 			source_id: '',
-			fact_type: 'general',
+			fact_type: 'person_birth',
 			page: '',
 			volume: '',
 			source_quality: '',
@@ -320,17 +321,9 @@
 				<label>
 					Fact Type
 					<select bind:value={newCitation.fact_type}>
-						<option value="general">General</option>
-						<option value="birth">Birth</option>
-						<option value="death">Death</option>
-						<option value="marriage">Marriage</option>
-						<option value="baptism">Baptism</option>
-						<option value="burial">Burial</option>
-						<option value="residence">Residence</option>
-						<option value="occupation">Occupation</option>
-						<option value="immigration">Immigration</option>
-						<option value="military">Military</option>
-						<option value="education">Education</option>
+						{#each PERSON_FACT_TYPES as factType (factType)}
+							<option value={factType}>{formatFactTypeShort(factType)}</option>
+						{/each}
 					</select>
 				</label>
 			</div>
