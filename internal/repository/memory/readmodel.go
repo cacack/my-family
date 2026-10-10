@@ -2121,9 +2121,13 @@ func (s *ReadModelStore) GetPersonsByPlace(ctx context.Context, place string, op
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
+	// Match the SQL stores: compare with ", " collapsed to "," so a hierarchy
+	// full_name finds places stored without the space.
+	norm := func(v string) string { return strings.ReplaceAll(v, ", ", ",") }
+	want := norm(place)
 	var results []repository.PersonReadModel
 	for _, p := range resolveAllRows(s.persons, opts.BranchID) {
-		if strings.Contains(p.BirthPlace, place) || strings.Contains(p.DeathPlace, place) {
+		if strings.Contains(norm(p.BirthPlace), want) || strings.Contains(norm(p.DeathPlace), want) {
 			results = append(results, *p)
 		}
 	}

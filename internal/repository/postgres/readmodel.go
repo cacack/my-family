@@ -4481,13 +4481,16 @@ func (s *ReadModelStore) GetPersonsByPlace(ctx context.Context, place string, op
 	src, args, n := resolvedPersonsSrc(personSelectCols, opts.BranchID)
 	countArgs := append(args, place)
 
-	// Count total - match place at any position in birth_place or death_place
+	// Count total - match place at any position in birth_place or death_place.
+	// place is usually a GetPlaceHierarchy full_name (parts joined with ", "), so
+	// both sides compare with ", " collapsed to "," as the hierarchy does.
 	var total int
 	// #nosec G201 -- src/n are internal SQL fragments; place stays a bound parameter
 	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 	countQuery := fmt.Sprintf(`
 		SELECT COUNT(*) FROM %[1]s p
-		WHERE birth_place ILIKE '%%' || $%[2]d || '%%' OR death_place ILIKE '%%' || $%[2]d || '%%'
+		WHERE REPLACE(birth_place, ', ', ',') ILIKE '%%' || REPLACE($%[2]d, ', ', ',') || '%%'
+		   OR REPLACE(death_place, ', ', ',') ILIKE '%%' || REPLACE($%[2]d, ', ', ',') || '%%'
 	`, src, n)
 	err := s.db.QueryRowContext(ctx, countQuery, countArgs...).Scan(&total)
 	if err != nil {
@@ -4499,7 +4502,8 @@ func (s *ReadModelStore) GetPersonsByPlace(ctx context.Context, place string, op
 	query := fmt.Sprintf(`
 		SELECT `+personSelectCols+`
 		FROM %[1]s p
-		WHERE birth_place ILIKE '%%' || $%[2]d || '%%' OR death_place ILIKE '%%' || $%[2]d || '%%'
+		WHERE REPLACE(birth_place, ', ', ',') ILIKE '%%' || REPLACE($%[2]d, ', ', ',') || '%%'
+		   OR REPLACE(death_place, ', ', ',') ILIKE '%%' || REPLACE($%[2]d, ', ', ',') || '%%'
 		ORDER BY surname ASC, given_name ASC
 		LIMIT $%[3]d OFFSET $%[4]d
 	`, src, n, n+1, n+2)

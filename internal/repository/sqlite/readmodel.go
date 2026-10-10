@@ -4799,12 +4799,15 @@ func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, branchID domain.
 func (s *ReadModelStore) GetPersonsByPlace(ctx context.Context, place string, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
 	overlay, overlayArgs := personOverlaySubquery(opts.BranchID)
 
-	// Count total - match place at any position in birth_place or death_place
+	// Count total - match place at any position in birth_place or death_place.
+	// place is usually a GetPlaceHierarchy full_name (parts joined with ", "), so
+	// both sides compare with ", " collapsed to "," as the hierarchy does.
 	var total int
 	countArgs := append(append([]any{}, overlayArgs...), place, place)
 	err := s.db.QueryRowContext(ctx, `
 		SELECT COUNT(*) FROM `+overlay+`
-		WHERE birth_place LIKE '%' || ? || '%' OR death_place LIKE '%' || ? || '%'
+		WHERE REPLACE(birth_place, ', ', ',') LIKE '%' || REPLACE(?, ', ', ',') || '%'
+		   OR REPLACE(death_place, ', ', ',') LIKE '%' || REPLACE(?, ', ', ',') || '%'
 	`, countArgs...).Scan(&total)
 	if err != nil {
 		return nil, 0, fmt.Errorf("count persons by place: %w", err)
@@ -4819,7 +4822,8 @@ func (s *ReadModelStore) GetPersonsByPlace(ctx context.Context, place string, op
 			   notes, research_status, brick_wall_note, brick_wall_since, brick_wall_resolved_at,
 			   version, updated_at
 		FROM `+overlay+`
-		WHERE birth_place LIKE '%' || ? || '%' OR death_place LIKE '%' || ? || '%'
+		WHERE REPLACE(birth_place, ', ', ',') LIKE '%' || REPLACE(?, ', ', ',') || '%'
+		   OR REPLACE(death_place, ', ', ',') LIKE '%' || REPLACE(?, ', ', ',') || '%'
 		ORDER BY surname ASC, given_name ASC
 		LIMIT ? OFFSET ?
 	`, queryArgs...)

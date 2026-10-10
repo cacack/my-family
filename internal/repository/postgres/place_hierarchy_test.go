@@ -112,5 +112,19 @@ func runPlaceHierarchyScenario(t *testing.T, store repository.ReadModelStore) {
 		if !reflect.DeepEqual(got, tt.want) {
 			t.Errorf("GetPlaceHierarchy(%q) =\n  %+v\nwant\n  %+v", tt.parent, got, tt.want)
 		}
+		// Each child's full_name must find its persons, including places stored
+		// without a space after the commas (every place here is one person).
+		for _, e := range got {
+			if tt.parent == "" {
+				continue
+			}
+			_, total, err := store.GetPersonsByPlace(ctx, e.FullName, repository.ListOptions{Limit: 100})
+			if err != nil {
+				t.Fatalf("GetPersonsByPlace(%q): %v", e.FullName, err)
+			}
+			if total != e.Count {
+				t.Errorf("GetPersonsByPlace(%q) total = %d, want %d", e.FullName, total, e.Count)
+			}
+		}
 	}
 }
