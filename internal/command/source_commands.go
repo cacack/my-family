@@ -131,7 +131,8 @@ func (h *Handler) UpdateSource(ctx context.Context, input UpdateSourceInput) (*U
 		return nil, repository.ErrConcurrencyConflict
 	}
 
-	// Build changes map
+	// Build changes map. A field equal to its current value is not a change
+	// (the edit form sends every field), so only differing fields are recorded.
 	changes := make(map[string]any)
 
 	// Apply and validate changes
@@ -153,44 +154,44 @@ func (h *Handler) UpdateSource(ctx context.Context, input UpdateSourceInput) (*U
 		testSource.PublishDate = &pd
 	}
 
-	if input.SourceType != nil {
+	if input.SourceType != nil && domain.SourceType(*input.SourceType) != current.SourceType {
 		testSource.SourceType = domain.SourceType(*input.SourceType)
 		changes["source_type"] = *input.SourceType
 	}
-	if input.Title != nil {
+	if input.Title != nil && *input.Title != current.Title {
 		testSource.Title = *input.Title
 		changes["title"] = *input.Title
 	}
-	if input.Author != nil {
+	if input.Author != nil && *input.Author != current.Author {
 		testSource.Author = *input.Author
 		changes["author"] = *input.Author
 	}
-	if input.Publisher != nil {
+	if input.Publisher != nil && *input.Publisher != current.Publisher {
 		testSource.Publisher = *input.Publisher
 		changes["publisher"] = *input.Publisher
 	}
-	if input.PublishDate != nil {
+	if input.PublishDate != nil && *input.PublishDate != current.PublishDateRaw {
 		pd := domain.ParseGenDate(*input.PublishDate)
 		testSource.PublishDate = &pd
 		changes["publish_date"] = *input.PublishDate
 	}
-	if input.URL != nil {
+	if input.URL != nil && *input.URL != current.URL {
 		testSource.URL = *input.URL
 		changes["url"] = *input.URL
 	}
-	if input.RepositoryName != nil {
+	if input.RepositoryName != nil && *input.RepositoryName != current.RepositoryName {
 		testSource.RepositoryName = *input.RepositoryName
 		changes["repository_name"] = *input.RepositoryName
 	}
-	if input.CollectionName != nil {
+	if input.CollectionName != nil && *input.CollectionName != current.CollectionName {
 		testSource.CollectionName = *input.CollectionName
 		changes["collection_name"] = *input.CollectionName
 	}
-	if input.CallNumber != nil {
+	if input.CallNumber != nil && *input.CallNumber != current.CallNumber {
 		testSource.CallNumber = *input.CallNumber
 		changes["call_number"] = *input.CallNumber
 	}
-	if input.Notes != nil {
+	if input.Notes != nil && *input.Notes != current.Notes {
 		testSource.Notes = *input.Notes
 		changes["notes"] = *input.Notes
 	}

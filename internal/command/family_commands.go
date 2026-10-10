@@ -156,11 +156,13 @@ func (h *Handler) UpdateFamily(ctx context.Context, input UpdateFamilyInput) (*U
 	// clears it), matching how PersonUpdated carries birth_date.
 	// A cleared partner is written as nil, which the projection, the merge's
 	// reference check and the rollback state all read as "no partner".
+	// A field equal to its current value is not a change (the edit form sends
+	// every field), so only differing fields are recorded.
 	changes := make(map[string]any)
-	if input.Partner1ID != nil {
+	if input.Partner1ID != nil && !samePartner(family.Partner1ID, *input.Partner1ID) {
 		changes["partner1_id"] = input.Partner1ID.String()
 	}
-	if input.Partner2ID != nil {
+	if input.Partner2ID != nil && !samePartner(family.Partner2ID, *input.Partner2ID) {
 		changes["partner2_id"] = input.Partner2ID.String()
 	}
 	if input.ClearPartner1 && family.Partner1ID != nil {
@@ -169,17 +171,17 @@ func (h *Handler) UpdateFamily(ctx context.Context, input UpdateFamilyInput) (*U
 	if input.ClearPartner2 && family.Partner2ID != nil {
 		changes["partner2_id"] = nil
 	}
-	if input.RelationshipType != nil {
+	if input.RelationshipType != nil && domain.RelationType(*input.RelationshipType) != family.RelationshipType {
 		changes["relationship_type"] = *input.RelationshipType
 	}
-	if input.MarriageDate != nil {
+	if input.MarriageDate != nil && *input.MarriageDate != family.MarriageDateRaw {
 		if *input.MarriageDate == "" {
 			changes["marriage_date"] = nil
 		} else {
 			changes["marriage_date"] = *input.MarriageDate
 		}
 	}
-	if input.MarriagePlace != nil {
+	if input.MarriagePlace != nil && *input.MarriagePlace != family.MarriagePlace {
 		changes["marriage_place"] = *input.MarriagePlace
 	}
 
@@ -202,6 +204,11 @@ func (h *Handler) UpdateFamily(ctx context.Context, input UpdateFamilyInput) (*U
 	return &UpdateFamilyResult{
 		Version: version,
 	}, nil
+}
+
+// samePartner reports whether a family's current partner is id.
+func samePartner(current *uuid.UUID, id uuid.UUID) bool {
+	return current != nil && *current == id
 }
 
 // validateFamilyUpdate checks an update against the family it changes: a
