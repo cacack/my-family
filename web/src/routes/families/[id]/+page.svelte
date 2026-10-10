@@ -21,6 +21,7 @@
 	import ExternalLinks from '$lib/components/ExternalLinks.svelte';
 	import ErrorState from '$lib/components/ErrorState.svelte';
 	import SaveConflict, { type ConflictField } from '$lib/components/SaveConflict.svelte';
+	import ActionError from '$lib/components/ActionError.svelte';
 	import RestorePointBrowser from '$lib/components/RestorePointBrowser.svelte';
 	import RollbackConfirmDialog from '$lib/components/RollbackConfirmDialog.svelte';
 	import RollbackSuccessBanner from '$lib/components/RollbackSuccessBanner.svelte';
@@ -31,7 +32,7 @@
 	import { activeBranch } from '$lib/stores/activeBranch.svelte';
 	import { ROLLBACK_MAINLINE_ONLY } from '$lib/utils/rollbackScope';
 	import { RELATION_TYPE_OPTIONS } from '$lib/utils/enumOptions';
-	import ActionError from '$lib/components/ActionError.svelte';
+	import { rebaseEdits } from '$lib/utils/rebaseEdits';
 
 	let family: FamilyDetail | null = $state(null);
 	let loading = $state(true);
@@ -212,28 +213,50 @@
 		return RELATION_TYPE_OPTIONS.find((option) => option.value === value)?.label ?? value;
 	}
 
-	/** The user's edits beside the latest saved version, as display text. */
+	/**
+	 * The fields the user edited, beside the latest saved version, as display
+	 * text. `family` is still the version the form was opened on; the fields the
+	 * user left alone are not compared, as saving takes the latest for those.
+	 */
 	function conflictFields(latest: FamilyDetail): ConflictField[] {
+		if (!family) return [];
+		const base = formFrom(family);
 		const theirs = formFrom(latest);
-		return [
+		const fields: { edited: boolean; field: ConflictField }[] = [
 			{
-				label: 'Partner 1',
-				mine: partnerName(partner1),
-				latest: partnerName(partnerSummary(latest.partner1_id, latest.partner1))
+				edited: partner1?.id !== family.partner1_id,
+				field: {
+					label: 'Partner 1',
+					mine: partnerName(partner1),
+					latest: partnerName(partnerSummary(latest.partner1_id, latest.partner1))
+				}
 			},
 			{
-				label: 'Partner 2',
-				mine: partnerName(partner2),
-				latest: partnerName(partnerSummary(latest.partner2_id, latest.partner2))
+				edited: partner2?.id !== family.partner2_id,
+				field: {
+					label: 'Partner 2',
+					mine: partnerName(partner2),
+					latest: partnerName(partnerSummary(latest.partner2_id, latest.partner2))
+				}
 			},
 			{
-				label: 'Relationship Type',
-				mine: relationLabel(formData.relationship_type),
-				latest: relationLabel(theirs.relationship_type)
+				edited: formData.relationship_type !== base.relationship_type,
+				field: {
+					label: 'Relationship Type',
+					mine: relationLabel(formData.relationship_type),
+					latest: relationLabel(theirs.relationship_type)
+				}
 			},
-			{ label: 'Marriage Date', mine: formData.marriage_date, latest: theirs.marriage_date },
-			{ label: 'Marriage Place', mine: formData.marriage_place, latest: theirs.marriage_place }
+			{
+				edited: formData.marriage_date !== base.marriage_date,
+				field: { label: 'Marriage Date', mine: formData.marriage_date, latest: theirs.marriage_date }
+			},
+			{
+				edited: formData.marriage_place !== base.marriage_place,
+				field: { label: 'Marriage Place', mine: formData.marriage_place, latest: theirs.marriage_place }
+			}
 		];
+		return fields.filter(({ edited }) => edited).map(({ field }) => field);
 	}
 
 	// The Edit button and the form replace each other, so focus is moved
@@ -293,7 +316,7 @@
 			announce('Family saved');
 		} catch (e) {
 			if (isConflictError(e)) {
-				await loadConflict(family.id);
+				await loadConflict(family.id, family.version, e);
 			} else {
 				saveError = (e as { message?: string }).message || 'Failed to save';
 			}
@@ -302,20 +325,41 @@
 		}
 	}
 
-	/** Fetch the latest version to compare with, leaving the form as typed. */
-	async function loadConflict(id: string) {
+	/**
+	 * Fetch the latest version to compare with, leaving the form as typed. A 409
+	 * is not always a version conflict (circular ancestry, or a write to a merged
+	 * branch, is one too): when the family has not changed, or can't be re-read,
+	 * the refusal is shown as it came.
+	 */
+	async function loadConflict(id: string, sentVersion: number, refusal: unknown) {
+		const message = (refusal as { message?: string }).message || 'Failed to save';
 		try {
-			conflict = await api.getFamily(id);
-		} catch (e) {
-			saveError =
-				'This family was changed elsewhere, and the latest version could not be loaded: ' +
-				((e as { message?: string }).message || 'unknown error');
+			const latest = await api.getFamily(id);
+			if (latest.version === sentVersion) {
+				saveError = message;
+			} else {
+				conflict = latest;
+			}
+		} catch {
+			saveError = message;
 		}
 	}
 
-	/** Save the form's edits over the latest version. */
+	/**
+	 * Save the form's edits over the latest version. The fields the user left
+	 * alone take the latest values, so another writer's changes to them survive.
+	 * `family` is replaced before saving because `saveFamily` takes its version,
+	 * and its "sent only when changed" baseline, from it.
+	 */
 	function keepMyEdits() {
-		if (!conflict) return;
+		if (!family || !conflict) return;
+		formData = rebaseEdits(formData, formFrom(family), formFrom(conflict));
+		if (partner1?.id === family.partner1_id) {
+			partner1 = partnerSummary(conflict.partner1_id, conflict.partner1);
+		}
+		if (partner2?.id === family.partner2_id) {
+			partner2 = partnerSummary(conflict.partner2_id, conflict.partner2);
+		}
 		family = conflict;
 		saveFamily();
 	}

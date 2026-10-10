@@ -404,6 +404,32 @@ describe('Person detail failed actions (#899)', () => {
 		expect(updatePerson.mock.calls[1][1]).toMatchObject({ birth_place: 'Marylebone', version: 4 });
 	});
 
+	it("keeps another writer's changes to the fields the user did not edit", async () => {
+		updatePerson.mockRejectedValueOnce({ status: 409, message: 'Conflict' }).mockResolvedValueOnce({});
+		getPerson
+			.mockResolvedValueOnce(person({ birth_place: 'London' }))
+			.mockResolvedValue(person({ birth_place: 'London', notes: 'Theirs', version: 4 }));
+		await editBirthPlace('Marylebone');
+
+		// Only the edited field is compared.
+		expect(await screen.findByRole('rowheader', { name: 'Birth Place' })).toBeTruthy();
+		expect(screen.queryByRole('rowheader', { name: 'Notes' })).toBeNull();
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Save my edits' }));
+
+		await waitFor(() => expect(updatePerson).toHaveBeenCalledTimes(2));
+		expect(updatePerson.mock.calls[1][1]).toMatchObject({ birth_place: 'Marylebone', notes: 'Theirs', version: 4 });
+	});
+
+	it('shows a 409 that is not a change elsewhere as it came', async () => {
+		updatePerson.mockRejectedValueOnce({ status: 409, message: 'Branch is merged and cannot be written to' });
+		await editBirthPlace('Marylebone');
+
+		expect((await screen.findByRole('alert')).textContent).toContain('Branch is merged');
+		expect(screen.queryByText(/changed elsewhere/)).toBeNull();
+		expect((screen.getByLabelText('Birth Place') as HTMLInputElement).value).toBe('Marylebone');
+	});
+
 	it('replaces the edits with the latest version when the user takes it', async () => {
 		updatePerson.mockRejectedValueOnce({ status: 409, message: 'Conflict' });
 		getPerson

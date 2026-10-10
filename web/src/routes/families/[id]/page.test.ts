@@ -517,6 +517,47 @@ describe('Family Detail Page: failed actions (#899)', () => {
 		});
 	});
 
+	it("keeps another writer's changes to the fields the user did not edit", async () => {
+		vi.mocked(api.updateFamily)
+			.mockRejectedValueOnce({ status: 409, message: 'Conflict' })
+			.mockResolvedValueOnce({ id: 'test-family-id', version: 3 });
+		const theirs = {
+			...mockFamilyWithChildren,
+			marriage_date: { raw: '2 FEB 1902' },
+			partner2_id: 'partner3-id',
+			partner2: { id: 'partner3-id', given_name: 'Mary', surname: 'Jones' },
+			version: 2
+		};
+		vi.mocked(api.getFamily).mockResolvedValueOnce(mockFamilyWithChildren).mockResolvedValue(theirs);
+		await editMarriagePlace('Evanston, IL');
+
+		// Only the edited field is compared.
+		expect(await screen.findByRole('rowheader', { name: 'Marriage Place' })).toBeDefined();
+		expect(screen.queryByRole('rowheader', { name: 'Marriage Date' })).toBeNull();
+		expect(screen.queryByRole('rowheader', { name: 'Partner 2' })).toBeNull();
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Save my edits' }));
+
+		await waitFor(() => expect(api.updateFamily).toHaveBeenCalledTimes(2));
+		const sent = vi.mocked(api.updateFamily).mock.calls[1][1];
+		expect(sent).toMatchObject({ marriage_place: 'Evanston, IL', marriage_date: '2 FEB 1902', version: 2 });
+		expect(sent).not.toHaveProperty('partner2_id');
+		expect(sent).not.toHaveProperty('clear_partner2');
+	});
+
+	it('shows a 409 that is not a change elsewhere, such as circular ancestry, as it came', async () => {
+		vi.mocked(api.updateFamily).mockRejectedValueOnce({
+			status: 409,
+			message: 'Circular ancestry detected - this would create an impossible family tree'
+		});
+		await editMarriagePlace('Evanston, IL');
+
+		expect((await screen.findByRole('alert')).textContent).toContain('Circular ancestry detected');
+		expect(screen.queryByText(/changed elsewhere/)).toBeNull();
+		expect(screen.queryByRole('button', { name: 'Save my edits' })).toBeNull();
+		expect((screen.getByLabelText('Marriage Place') as HTMLInputElement).value).toBe('Evanston, IL');
+	});
+
 	it('keeps the family, children included, when a delete is refused', async () => {
 		vi.mocked(api.deleteFamily).mockRejectedValueOnce({
 			status: 409,

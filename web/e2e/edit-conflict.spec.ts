@@ -37,8 +37,12 @@ test('a family save that lost a race keeps the edits and re-applies them on requ
 	await page.locator('header.page-header').getByRole('button', { name: 'Edit', exact: true }).click();
 	await page.getByLabel('Marriage Place').fill('Evanston');
 
-	// Another tab saves first.
-	await put(request, `/families/${family.id}`, { marriage_place: 'Peoria', version: family.version });
+	// Another tab saves first, also setting a field this form did not edit.
+	await put(request, `/families/${family.id}`, {
+		marriage_place: 'Peoria',
+		marriage_date: '1 JAN 1900',
+		version: family.version
+	});
 
 	await page.getByRole('button', { name: 'Save Changes' }).click();
 	const row = page.getByRole('row', { name: /Marriage Place/ });
@@ -51,6 +55,8 @@ test('a family save that lost a race keeps the edits and re-applies them on requ
 
 	const saved = await (await request.get(`${API_BASE}/families/${family.id}`)).json();
 	expect(saved.marriage_place).toBe('Evanston');
+	// The other tab's change to a field this form left alone survives.
+	expect(saved.marriage_date?.raw).toBe('1 JAN 1900');
 });
 
 test('a malformed person id reads as not found and offers Retry', async ({ page }) => {

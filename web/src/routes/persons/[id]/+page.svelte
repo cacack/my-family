@@ -19,11 +19,12 @@
 	import ExternalLinks from '$lib/components/ExternalLinks.svelte';
 	import ErrorState from '$lib/components/ErrorState.svelte';
 	import SaveConflict, { type ConflictField } from '$lib/components/SaveConflict.svelte';
+	import ActionError from '$lib/components/ActionError.svelte';
 	import { activeBranch } from '$lib/stores/activeBranch.svelte';
 	import { ROLLBACK_MAINLINE_ONLY } from '$lib/utils/rollbackScope';
 	import { GENDER_OPTIONS, RESEARCH_STATUS_OPTIONS } from '$lib/utils/enumOptions';
-	import ActionError from '$lib/components/ActionError.svelte';
-
+	import { rebaseEdits } from '$lib/utils/rebaseEdits';
+	
 	let person: PersonDetail | null = $state(null);
 	let loading = $state(true);
 	// A failed load replaces the page; a failed save, delete or brick-wall
@@ -244,30 +245,43 @@
 		return options.find((option) => option.value === value)?.label ?? value;
 	}
 
-	/** The user's edits beside the latest saved version, as display text. */
+	/**
+	 * The fields the user edited, beside the latest saved version, as display
+	 * text. `person` is still the version the form was opened on; the fields the
+	 * user left alone are not compared, as saving takes the latest for those.
+	 */
 	function conflictFields(latest: PersonDetail): ConflictField[] {
+		if (!person) return [];
+		const base = formFrom(person);
 		const theirs = formFrom(latest);
 		const status = (value: string) =>
 			value ? optionLabel(RESEARCH_STATUS_OPTIONS, value) : 'Not assessed';
-		return [
-			{ label: 'Given Name', mine: formData.given_name, latest: theirs.given_name },
-			{ label: 'Surname', mine: formData.surname, latest: theirs.surname },
+		const fields: { key: keyof typeof formData; field: ConflictField }[] = [
+			{ key: 'given_name', field: { label: 'Given Name', mine: formData.given_name, latest: theirs.given_name } },
+			{ key: 'surname', field: { label: 'Surname', mine: formData.surname, latest: theirs.surname } },
 			{
-				label: 'Gender',
-				mine: optionLabel(GENDER_OPTIONS, formData.gender),
-				latest: optionLabel(GENDER_OPTIONS, theirs.gender)
+				key: 'gender',
+				field: {
+					label: 'Gender',
+					mine: optionLabel(GENDER_OPTIONS, formData.gender),
+					latest: optionLabel(GENDER_OPTIONS, theirs.gender)
+				}
 			},
 			{
-				label: 'Research Status',
-				mine: status(formData.research_status),
-				latest: status(theirs.research_status)
+				key: 'research_status',
+				field: {
+					label: 'Research Status',
+					mine: status(formData.research_status),
+					latest: status(theirs.research_status)
+				}
 			},
-			{ label: 'Birth Date', mine: formData.birth_date, latest: theirs.birth_date },
-			{ label: 'Birth Place', mine: formData.birth_place, latest: theirs.birth_place },
-			{ label: 'Death Date', mine: formData.death_date, latest: theirs.death_date },
-			{ label: 'Death Place', mine: formData.death_place, latest: theirs.death_place },
-			{ label: 'Notes', mine: formData.notes, latest: theirs.notes }
+			{ key: 'birth_date', field: { label: 'Birth Date', mine: formData.birth_date, latest: theirs.birth_date } },
+			{ key: 'birth_place', field: { label: 'Birth Place', mine: formData.birth_place, latest: theirs.birth_place } },
+			{ key: 'death_date', field: { label: 'Death Date', mine: formData.death_date, latest: theirs.death_date } },
+			{ key: 'death_place', field: { label: 'Death Place', mine: formData.death_place, latest: theirs.death_place } },
+			{ key: 'notes', field: { label: 'Notes', mine: formData.notes, latest: theirs.notes } }
 		];
+		return fields.filter(({ key }) => formData[key] !== base[key]).map(({ field }) => field);
 	}
 
 	// The Edit button and the form replace each other, so focus is moved
@@ -331,7 +345,7 @@
 			focusEditButton();
 		} catch (e) {
 			if (isConflictError(e)) {
-				await loadConflict(person.id);
+				await loadConflict(person.id, person.version, e);
 			} else {
 				saveError = (e as { message?: string }).message || 'Failed to save';
 			}
@@ -340,20 +354,35 @@
 		}
 	}
 
-	/** Fetch the latest version to compare with, leaving the form as typed. */
-	async function loadConflict(id: string) {
+	/**
+	 * Fetch the latest version to compare with, leaving the form as typed. A 409
+	 * is not always a version conflict (a write to a merged branch is one too):
+	 * when the person has not changed, or can't be re-read, the refusal is shown
+	 * as it came.
+	 */
+	async function loadConflict(id: string, sentVersion: number, refusal: unknown) {
+		const message = (refusal as { message?: string }).message || 'Failed to save';
 		try {
-			conflict = await api.getPerson(id);
-		} catch (e) {
-			saveError =
-				'This person was changed elsewhere, and the latest version could not be loaded: ' +
-				((e as { message?: string }).message || 'unknown error');
+			const latest = await api.getPerson(id);
+			if (latest.version === sentVersion) {
+				saveError = message;
+			} else {
+				conflict = latest;
+			}
+		} catch {
+			saveError = message;
 		}
 	}
 
-	/** Save the form's edits over the latest version. */
+	/**
+	 * Save the form's edits over the latest version. The fields the user left
+	 * alone take the latest values, so another writer's changes to them survive.
+	 * `person` is replaced before saving because `savePerson` takes its version,
+	 * and its "sent only when changed" baseline, from it.
+	 */
 	function keepMyEdits() {
-		if (!conflict) return;
+		if (!person || !conflict) return;
+		formData = rebaseEdits(formData, formFrom(person), formFrom(conflict));
 		person = conflict;
 		savePerson();
 	}

@@ -24,6 +24,10 @@
 	interface Props {
 		/** What was edited, for the message: "person", "family". */
 		noun: string;
+		/**
+		 * The fields the user edited. Saving keeps only these, and takes the
+		 * latest value for every other field, so untouched fields are not listed.
+		 */
 		fields: ConflictField[];
 		onKeepMine: () => void;
 		onUseLatest: () => void;
@@ -38,7 +42,7 @@
 <div class="save-conflict" role="alert">
 	<p class="message">
 		This {noun} was changed elsewhere while you were editing, so your changes were not saved. Your
-		edits are still in the form.
+		edits are still in the form. Saving them keeps the other changes to fields you did not edit.
 	</p>
 	{#if differing.length > 0}
 		<div class="values-scroll">
