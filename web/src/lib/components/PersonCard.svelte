@@ -13,16 +13,18 @@
 
 	let { person, variant = 'default', href, onclick }: Props = $props();
 
-	const fullName = formatPersonName(person);
-	const lifespan = formatLifespan(person);
-	const birthDate = person.birth_date ? formatGenDate(person.birth_date) : null;
-	const deathDate =
-		'death_date' in person && person.death_date ? formatGenDate(person.death_date) : null;
+	// Derived, so a reused card follows a new person or variant.
+	const fullName = $derived(formatPersonName(person));
+	const lifespan = $derived(formatLifespan(person));
+	const birthDate = $derived(person.birth_date ? formatGenDate(person.birth_date) : null);
+	const deathDate = $derived(
+		'death_date' in person && person.death_date ? formatGenDate(person.death_date) : null,
+	);
 
 	// Get research_status if available (Person has it, PersonSummary doesn't)
-	const researchStatus = 'research_status' in person ? person.research_status : undefined;
+	const researchStatus = $derived('research_status' in person ? person.research_status : undefined);
 
-	const cardSize = variant === 'compact' ? 'sm' : 'default';
+	const cardSize = $derived(variant === 'compact' ? 'sm' : 'default');
 </script>
 
 {#snippet cardInner()}
