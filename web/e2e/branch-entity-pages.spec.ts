@@ -25,7 +25,7 @@ async function switchTo(page: Page, branchName: string) {
 
 /** Opens the History panel and checks it is the branch's view, with no rollback. */
 async function expectBranchHistoryWithoutRollback(page: Page) {
-	await page.getByRole('button', { name: /History/ }).click();
+	await page.getByRole('main').getByRole('button', { name: /History/ }).click();
 	await expect(page.getByText(/Restore points and rollback work on the mainline only/)).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Restore', exact: true })).toHaveCount(0);
 	// The change log is the branch's own: both the create and the edit were
@@ -112,13 +112,13 @@ test('a mainline person on a branch shows inherited history and no rollback', as
 
 	// On the mainline, rollback is offered.
 	await page.goto(`/persons/${person.id}`);
-	await page.getByRole('button', { name: /History/ }).click();
+	await page.getByRole('main').getByRole('button', { name: /History/ }).click();
 	await expect(page.getByRole('button', { name: 'Restore', exact: true })).toBeVisible();
 
 	await switchTo(page, branchName);
 	await page.goto(`/persons/${person.id}`);
 	await expect(page.getByRole('heading', { level: 1, name: 'Mainline Elder' })).toBeVisible();
-	await page.getByRole('button', { name: /History/ }).click();
+	await page.getByRole('main').getByRole('button', { name: /History/ }).click();
 	await expect(page.getByText(/Restore points and rollback work on the mainline only/)).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Restore', exact: true })).toHaveCount(0);
 	await expect(page.getByText('Mainline', { exact: true }).first()).toBeVisible();

@@ -10,8 +10,7 @@
 	import DemoBanner from '$lib/components/DemoBanner.svelte';
 	import BranchBanner from '$lib/components/BranchBanner.svelte';
 	import BranchSwitcher from '$lib/components/BranchSwitcher.svelte';
-	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
-	import { Button } from '$lib/components/ui/button';
+	import MainNav from '$lib/components/MainNav.svelte';
 	import TooltipProvider from '$lib/components/ui/tooltip/tooltip-provider.svelte';
 	import { createShortcutHandler } from '$lib/keyboard/useShortcuts.svelte';
 	import { loadAppConfig, getAppConfig } from '$lib/stores/appConfig.svelte';
@@ -33,43 +32,6 @@
 	$effect(() => {
 		revalidateActiveBranch();
 	});
-
-	// `match` lists the path prefixes that count as being in a section; the chart
-	// pages belong to People. Import matches exactly so /import/... stays separate.
-	type NavLink = { href: string; label: string; match?: string[]; exact?: boolean };
-	const leadingLinks: NavLink[] = [
-		{ href: '/persons', label: 'People', match: ['/persons', '/pedigree', '/descendancy', '/ahnentafel'] },
-		{ href: '/families', label: 'Families' }
-	];
-	const trailingLinks: NavLink[] = [
-		{ href: '/sources', label: 'Sources' },
-		{ href: '/evidence', label: 'Evidence' },
-		{ href: '/history', label: 'History' },
-		{ href: '/branches', label: 'Branches' },
-		{ href: '/snapshots', label: 'Snapshots' },
-		{ href: '/map', label: 'Map' },
-		{ href: '/analytics', label: 'Analytics' },
-		{ href: '/quality', label: 'Quality' },
-		{ href: '/relationship', label: 'Relationship' },
-		{ href: '/import', label: 'Import', exact: true },
-		{ href: '/search', label: 'Search' }
-	];
-	function isActive(link: NavLink, pathname: string): boolean {
-		if (link.exact) return pathname === link.href;
-		return (link.match ?? [link.href]).some((prefix) => pathname.startsWith(prefix));
-	}
-
-	const browseLinks = [
-		{ href: '/browse/surnames', label: 'By Surname' },
-		{ href: '/browse/places', label: 'By Place' },
-		{ href: '/browse/cemeteries', label: 'By Cemetery' },
-		{ href: '/browse/brick-walls', label: 'Brick Walls' },
-		{ href: '/browse/citation-templates', label: 'Citation Templates' },
-		{ href: '/repositories', label: 'Repositories' }
-	];
-	let browseActive = $derived(
-		browseLinks.some((link) => $page.url.pathname.startsWith(link.href))
-	);
 
 	// Component refs
 	let searchBoxRef: SearchBox | undefined = $state();
@@ -109,11 +71,6 @@
 	<link rel="icon" href={favicon} />
 </svelte:head>
 
-{#snippet navLink(link: NavLink)}
-	{@const active = isActive(link, $page.url.pathname)}
-	<a href={link.href} class:active aria-current={active ? 'page' : undefined}>{link.label}</a>
-{/snippet}
-
 <svelte:window onkeydown={handleKeydown} />
 
 <!-- Skip link for keyboard navigation -->
@@ -134,46 +91,33 @@
 	<header class="app-header">
 		<a href="/" class="logo">
 			<span class="logo-mark">{@html logoMark}</span>
-			My Family
+			<span class="logo-text">My Family</span>
 		</a>
-		<nav class="nav" aria-label="Main navigation">
-			{#each leadingLinks as link (link.href)}
-				{@render navLink(link)}
-			{/each}
-			<DropdownMenu.Root>
-				<!-- `child` on Trigger and Items for the reasons given in BranchSwitcher.svelte:
-				     no nested buttons, and Enter / whole-row clicks actually navigate. -->
-				<DropdownMenu.Trigger>
-					{#snippet child({ props })}
-						<Button {...props} variant="ghost" class="nav-dropdown-trigger gap-1 px-4 py-2 text-sm font-medium {browseActive ? 'bg-[#eff6ff] text-[#1d4ed8]' : 'text-[#64748b] hover:bg-[#f1f5f9] hover:text-[#1e293b]'}">
-							Browse
-							<svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-								<polyline points="6 9 12 15 18 9" />
-							</svg>
-						</Button>
-					{/snippet}
-				</DropdownMenu.Trigger>
-				<DropdownMenu.Content>
-					{#each browseLinks as link (link.href)}
-						<DropdownMenu.Item>
-							{#snippet child({ props })}
-								<a href={link.href} {...props}>{link.label}</a>
-							{/snippet}
-						</DropdownMenu.Item>
-					{/each}
-				</DropdownMenu.Content>
-			</DropdownMenu.Root>
-			{#each trailingLinks as link (link.href)}
-				{@render navLink(link)}
-			{/each}
-		</nav>
+		<MainNav pathname={$page.url.pathname} />
 		<div class="header-controls">
 			<BranchSwitcher />
 			<div class="search-wrapper">
 				<SearchBox bind:this={searchBoxRef} onSelect={handleSearchSelect} placeholder="Search people..." />
 			</div>
+			<!-- The search box finds people by name; this is the one way into the
+			     full search, so it is not also a nav link. -->
+			<a
+				href="/search"
+				class="icon-btn"
+				class:active={$page.url.pathname === '/search'}
+				aria-current={$page.url.pathname === '/search' ? 'page' : undefined}
+				aria-label="Advanced search"
+				title="Advanced search"
+			>
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+					<path d="M4 6h3M11 6h9M4 12h9M17 12h3M4 18h2M10 18h10" />
+					<circle cx="9" cy="6" r="2" />
+					<circle cx="15" cy="12" r="2" />
+					<circle cx="8" cy="18" r="2" />
+				</svg>
+			</a>
 			<button
-				class="accessibility-btn"
+				class="icon-btn"
 				onclick={() => accessibilityPanelOpen = true}
 				aria-label="Accessibility settings"
 				title="Accessibility settings"
@@ -248,7 +192,7 @@
 		display: flex;
 		flex-wrap: wrap;
 		align-items: center;
-		gap: 0.5rem 2rem;
+		gap: 0.5rem 1rem;
 		padding: 0.75rem 1.5rem;
 		background: white;
 		border-bottom: 1px solid #e2e8f0;
@@ -281,75 +225,21 @@
 		height: 100%;
 	}
 
-	:global(body.high-contrast) .logo {
-		color: var(--color-text);
-	}
-
-	/* Stopgap until the nav is regrouped: below the width where everything fits
-	   on one line, the links take their own row and scroll sideways rather than
-	   pushing the header controls off-screen. */
-	.nav {
-		display: flex;
-		gap: 0.25rem;
-		order: 1;
-		flex: 1 0 100%;
-		min-width: 0;
-		overflow-x: auto;
-		scrollbar-width: thin;
-		/* Room for the links' focus outline, which overflow would otherwise clip. */
-		padding: 4px;
-		margin: -4px;
-	}
-
-	@media (min-width: 1800px) {
-		.nav {
-			order: 0;
-			flex: 0 1 auto;
+	/* Between the width where the grouped nav appears and the width where the
+	   wordmark fits beside it, the mark alone keeps the header on one row. */
+	@media (min-width: 1024px) and (max-width: 1279px) {
+		.logo-text {
+			position: absolute;
+			width: 1px;
+			height: 1px;
+			overflow: hidden;
+			clip: rect(0, 0, 0, 0);
+			white-space: nowrap;
 		}
 	}
 
-	.nav a {
-		padding: 0.5rem 1rem;
-		border-radius: 6px;
-		color: #64748b;
-		text-decoration: none;
-		font-size: 0.875rem;
-		font-weight: 500;
-		white-space: nowrap;
-		transition: all 0.15s;
-	}
-
-	:global(body.high-contrast) .nav a {
-		color: var(--color-text-muted);
-	}
-
-	.nav a:hover {
-		background: #f1f5f9;
-		color: #1e293b;
-	}
-
-	:global(body.high-contrast) .nav a:hover {
-		background: var(--a11y-color-border);
+	:global(body.high-contrast) .logo {
 		color: var(--color-text);
-	}
-
-	.nav a.active {
-		background: #eff6ff;
-		color: #1d4ed8;
-	}
-
-	:global(body.high-contrast) .nav a.active {
-		background: var(--color-focus-ring);
-		color: #000;
-	}
-
-	.nav a:focus {
-		outline: 2px solid #3b82f6;
-		outline-offset: 2px;
-	}
-
-	:global(body.high-contrast) .nav a:focus {
-		outline-color: var(--color-focus-ring);
 	}
 
 	.header-controls {
@@ -357,19 +247,48 @@
 		align-items: center;
 		gap: 0.75rem;
 		margin-left: auto;
-		/* Keeps the branch switcher reachable once the header runs out of room.
-		   Full responsive treatment of the header is #21. */
+		/* On narrow screens the controls wrap below the logo and menu. */
 		flex-wrap: wrap;
 	}
 
-	.search-wrapper {
-		/* Contained in header-controls now */
+	/* On a phone the search box takes a full row of its own under the other
+	   controls, rather than squeezing beside them. */
+	@media (max-width: 639px) {
+		.header-controls {
+			flex: 1 0 100%;
+		}
+
+		.search-wrapper {
+			order: 1;
+			flex: 1 0 100%;
+		}
 	}
 
-	.accessibility-btn {
+	/* From 1024px the header is one row: the search box gives up width rather
+	   than pushing the controls onto a second line. */
+	@media (min-width: 1024px) {
+		.app-header {
+			flex-wrap: nowrap;
+		}
+
+		.header-controls {
+			flex: 1 1 auto;
+			flex-wrap: nowrap;
+			justify-content: flex-end;
+			min-width: 0;
+		}
+
+		.search-wrapper {
+			flex: 0 1 15rem;
+			min-width: 6rem;
+		}
+	}
+
+	.icon-btn {
 		display: flex;
 		align-items: center;
 		justify-content: center;
+		flex-shrink: 0;
 		width: 2.25rem;
 		height: 2.25rem;
 		padding: 0;
@@ -381,33 +300,39 @@
 		transition: all 0.15s;
 	}
 
-	:global(body.high-contrast) .accessibility-btn {
+	:global(body.high-contrast) .icon-btn {
 		background: var(--color-bg-secondary);
 		border-color: var(--a11y-color-border);
 		color: var(--color-text-muted);
 	}
 
-	.accessibility-btn:hover {
+	.icon-btn:hover {
 		background: #f1f5f9;
 		color: #1e293b;
 		border-color: #cbd5e1;
 	}
 
-	:global(body.high-contrast) .accessibility-btn:hover {
+	:global(body.high-contrast) .icon-btn:hover {
 		background: var(--a11y-color-border);
 		color: var(--color-text);
 	}
 
-	.accessibility-btn:focus {
+	.icon-btn:focus {
 		outline: 2px solid #3b82f6;
 		outline-offset: 2px;
 	}
 
-	:global(body.high-contrast) .accessibility-btn:focus {
+	.icon-btn.active {
+		background: #eff6ff;
+		color: #1d4ed8;
+		border-color: #bfdbfe;
+	}
+
+	:global(body.high-contrast) .icon-btn:focus {
 		outline-color: var(--color-focus-ring);
 	}
 
-	.accessibility-btn svg {
+	.icon-btn svg {
 		width: 1.25rem;
 		height: 1.25rem;
 	}
