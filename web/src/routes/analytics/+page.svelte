@@ -1,193 +1,44 @@
 <script lang="ts">
-	import { api, type Person, type FamilyDetail, type ResearchStatus } from '$lib/api/client';
+	import { api, type QualityOverview, type ResearchStatus } from '$lib/api/client';
 	import QualityScore from '$lib/components/QualityScore.svelte';
 	import QualityChart from '$lib/components/QualityChart.svelte';
 	import UncertaintyBadge from '$lib/components/UncertaintyBadge.svelte';
 
-	interface PersonWithScore extends Person {
-		qualityScore: number;
-		issues: string[];
-	}
-
-	let persons: Person[] = $state([]);
-	let families: FamilyDetail[] = $state([]);
+	// Every figure here is aggregated by the server over the whole tree (#894);
+	// the page only lays it out.
+	let overview = $state<QualityOverview | null>(null);
+	let totalFamilies = $state(0);
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 
-	// Computed quality data
-	let personsWithScores: PersonWithScore[] = $state([]);
-	let overallScore = $state(0);
-	let issuesCounts = $state<{ label: string; value: number; color: string }[]>([]);
-	let researchStatusCounts = $state<{ status: ResearchStatus | 'unset'; label: string; count: number; color: string }[]>([]);
+	const totalPersons = $derived(overview?.total_persons ?? 0);
+	const issuesCounts = $derived(
+		(overview?.top_issues ?? []).map((i) => ({ label: i.issue, value: i.count }))
+	);
 
-	// Stats
-	let totalPersons = $derived(persons.length);
-	let totalFamilies = $derived(families.length);
-	let recordsNeedingAttention = $derived(personsWithScores.filter((p) => p.qualityScore < 50).length);
-
-	function computePersonScore(person: Person): { score: number; issues: string[] } {
-		let score = 0;
-		const issues: string[] = [];
-		const currentYear = new Date().getFullYear();
-
-		// Has birth date: +20 points
-		if (person.birth_date?.year) {
-			score += 20;
-		} else {
-			issues.push('Missing birth date');
-		}
-
-		// Has birth place: +15 points
-		if (person.birth_place) {
-			score += 15;
-		} else {
-			issues.push('Missing birth place');
-		}
-
-		// For death info, only score if person likely deceased
-		const likelyDeceased =
-			person.birth_date?.year && currentYear - person.birth_date.year > 100;
-
-		if (person.death_date?.year) {
-			score += 20;
-		} else if (!likelyDeceased) {
-			// Living person, no death expected
-			score += 20;
-		} else {
-			issues.push('Missing death date (likely deceased)');
-		}
-
-		if (person.death_place) {
-			score += 15;
-		} else if (person.death_date?.year) {
-			// Only mark as issue if they have a death date but no place
-			issues.push('Missing death place');
-		} else if (!likelyDeceased) {
-			// Living person, no death place expected
-			score += 15;
-		}
-
-		// Base score is out of 70, normalize to 100
-		return {
-			score: Math.round((score / 70) * 100),
-			issues
-		};
-	}
-
-	function isOrphaned(person: Person, allFamilies: FamilyDetail[]): boolean {
-		// Check if person appears in any family as partner or child
-		for (const family of allFamilies) {
-			if (family.partner1_id === person.id || family.partner2_id === person.id) {
-				return false;
-			}
-			if (family.children?.some((c) => c.person_id === person.id)) {
-				return false;
-			}
-		}
-		return true;
-	}
-
-	function computeAllScores() {
-		const currentYear = new Date().getFullYear();
-
-		personsWithScores = persons.map((person) => {
-			const { score, issues } = computePersonScore(person);
-
-			// Add orphan check
-			if (isOrphaned(person, families)) {
-				issues.push('No family connections');
-			}
-
-			return {
-				...person,
-				qualityScore: score,
-				issues
-			};
-		});
-
-		// Sort by score ascending (lowest first)
-		personsWithScores.sort((a, b) => a.qualityScore - b.qualityScore);
-
-		// Calculate overall average score
-		if (personsWithScores.length > 0) {
-			const totalScore = personsWithScores.reduce((sum, p) => sum + p.qualityScore, 0);
-			overallScore = Math.round(totalScore / personsWithScores.length);
-		}
-
-		// Calculate issue counts
-		let missingBirthDate = 0;
-		let missingBirthPlace = 0;
-		let missingDeathInfo = 0;
-		let orphanedPersons = 0;
-
-		for (const person of personsWithScores) {
-			if (person.issues.includes('Missing birth date')) missingBirthDate++;
-			if (person.issues.includes('Missing birth place')) missingBirthPlace++;
-			if (
-				person.issues.includes('Missing death date (likely deceased)') ||
-				person.issues.includes('Missing death place')
-			)
-				missingDeathInfo++;
-			if (person.issues.includes('No family connections')) orphanedPersons++;
-		}
-
-		issuesCounts = [
-			{ label: 'Missing birth date', value: missingBirthDate, color: '#ef4444' },
-			{ label: 'Missing birth place', value: missingBirthPlace, color: '#f97316' },
-			{ label: 'Missing death info', value: missingDeathInfo, color: '#eab308' },
-			{ label: 'No family connections', value: orphanedPersons, color: '#8b5cf6' }
-		].filter((item) => item.value > 0);
-
-		// Calculate research status distribution
-		let certainCount = 0;
-		let probableCount = 0;
-		let possibleCount = 0;
-		let unknownCount = 0;
-		let unsetCount = 0;
-
-		for (const person of persons) {
-			switch (person.research_status) {
-				case 'certain':
-					certainCount++;
-					break;
-				case 'probable':
-					probableCount++;
-					break;
-				case 'possible':
-					possibleCount++;
-					break;
-				case 'unknown':
-					unknownCount++;
-					break;
-				default:
-					unsetCount++;
-					break;
-			}
-		}
-
-		// Bar colours match UncertaintyBadge's dots (Tailwind green/yellow/orange-500, gray-400).
-		researchStatusCounts = [
-			{ status: 'certain', label: 'Certain', count: certainCount, color: '#22c55e' },
-			{ status: 'probable', label: 'Probable', count: probableCount, color: '#eab308' },
-			{ status: 'possible', label: 'Possible', count: possibleCount, color: '#f97316' },
-			{ status: 'unknown', label: 'Unknown', count: unknownCount, color: '#9ca3af' },
-			{ status: 'unset', label: 'Not assessed', count: unsetCount, color: '#94a3b8' }
-		];
-	}
+	// Bar colours match UncertaintyBadge's dots (Tailwind green/yellow/orange-500, gray-400).
+	const researchStatusCounts = $derived.by(() => {
+		const c = overview?.research_status_counts;
+		return [
+			{ status: 'certain', count: c?.certain ?? 0, color: '#22c55e' },
+			{ status: 'probable', count: c?.probable ?? 0, color: '#eab308' },
+			{ status: 'possible', count: c?.possible ?? 0, color: '#f97316' },
+			{ status: 'unknown', count: c?.unknown ?? 0, color: '#9ca3af' },
+			{ status: 'unset', count: c?.unset ?? 0, color: '#94a3b8' }
+		] satisfies { status: ResearchStatus | 'unset'; count: number; color: string }[];
+	});
 
 	async function loadData() {
 		loading = true;
 		error = null;
 		try {
-			// Fetch all persons (paginated if needed)
-			const personResult = await api.listPersons({ limit: 1000 });
-			persons = personResult.items;
-
-			// Fetch all families
-			const familyResult = await api.listFamilies({ limit: 1000 });
-			families = familyResult.items;
-
-			computeAllScores();
+			// The family count comes from the list total, as on the home page.
+			const [overviewResult, familyResult] = await Promise.all([
+				api.getQualityOverview(),
+				api.listFamilies({ limit: 1 })
+			]);
+			overview = overviewResult;
+			totalFamilies = familyResult.total;
 		} catch (e) {
 			console.error('Failed to load data:', e);
 			error = 'Failed to load data. Please try again.';
@@ -200,24 +51,27 @@
 		loadData();
 	});
 
-	// Get top 20 lowest scoring records
-	const lowestScoringRecords = $derived(personsWithScores.slice(0, 20));
+	const lowestScoringRecords = $derived(overview?.lowest_scoring ?? []);
 </script>
 
 <svelte:head>
-	<title>Analytics | My Family</title>
+	<title>Completeness | My Family</title>
 </svelte:head>
 
 <div class="analytics-page">
 	<header class="page-header">
-		<h1>Data Quality</h1>
+		<h1>Completeness</h1>
+		<p class="page-description">
+			How complete each record is across the whole tree. For date conflicts and possible
+			duplicates, see <a href="/quality">Quality</a>.
+		</p>
 	</header>
 
 	{#if loading}
-		<div class="loading">Loading data quality metrics...</div>
+		<div class="loading">Loading completeness metrics...</div>
 	{:else if error}
 		<div class="error">{error}</div>
-	{:else}
+	{:else if overview}
 		<!-- Overview Cards -->
 		<section class="stat-cards">
 			<div class="stat-card">
@@ -230,20 +84,20 @@
 			</div>
 			<div class="stat-card">
 				<div class="stat-value-with-score">
-					<QualityScore score={overallScore} size="large" />
+					<QualityScore score={Math.round(overview.average_completeness)} size="large" />
 				</div>
 				<div class="stat-label">Overall Completeness</div>
 			</div>
-			<div class="stat-card" class:attention={recordsNeedingAttention > 0}>
-				<div class="stat-value">{recordsNeedingAttention.toLocaleString()}</div>
-				<div class="stat-label">Records Needing Attention</div>
+			<div class="stat-card" class:attention={overview.records_with_issues > 0}>
+				<div class="stat-value">{overview.records_with_issues.toLocaleString()}</div>
+				<div class="stat-label">Records With Issues</div>
 			</div>
 		</section>
 
 		<!-- Quality Issues Chart -->
 		{#if issuesCounts.length > 0}
 			<section class="section">
-				<h2>Quality Issues</h2>
+				<h2>Most Common Issues</h2>
 				<div class="chart-container">
 					<QualityChart data={issuesCounts} />
 				</div>
@@ -270,7 +124,7 @@
 								style="width: {totalPersons > 0 ? (item.count / totalPersons) * 100 : 0}%; background-color: {item.color};"
 							></div>
 						</div>
-						<div class="status-count">{item.count}</div>
+						<div class="status-count">{item.count.toLocaleString()}</div>
 					</div>
 				{/each}
 			</div>
@@ -280,7 +134,7 @@
 		{#if lowestScoringRecords.length > 0}
 			<section class="section">
 				<h2>Records Needing Attention</h2>
-				<p class="section-description">Persons with lowest quality scores</p>
+				<p class="section-description">Persons with the lowest completeness scores</p>
 				<div class="table-container">
 					<table class="records-table">
 						<thead>
@@ -291,26 +145,22 @@
 							</tr>
 						</thead>
 						<tbody>
-							{#each lowestScoringRecords as person}
+							{#each lowestScoringRecords as person (person.person_id)}
 								<tr>
 									<td>
-										<a href="/persons/{person.id}" class="person-link">
+										<a href="/persons/{person.person_id}" class="person-link">
 											{person.given_name} {person.surname}
 										</a>
 									</td>
 									<td>
-										<QualityScore score={person.qualityScore} size="small" />
+										<QualityScore score={Math.round(person.completeness_score)} size="small" />
 									</td>
 									<td class="issues-cell">
-										{#if person.issues.length > 0}
-											<ul class="issues-list">
-												{#each person.issues as issue}
-													<li>{issue}</li>
-												{/each}
-											</ul>
-										{:else}
-											<span class="no-issues">No major issues</span>
-										{/if}
+										<ul class="issues-list">
+											{#each person.issues as issue}
+												<li>{issue}</li>
+											{/each}
+										</ul>
 									</td>
 								</tr>
 							{/each}
@@ -349,6 +199,17 @@
 		margin: 0;
 		font-size: 1.5rem;
 		color: #1e293b;
+	}
+
+	.page-description {
+		margin: 0.25rem 0 0;
+		color: #64748b;
+		font-size: 0.875rem;
+	}
+
+	.page-description a {
+		color: #1d4ed8;
+		text-decoration: underline;
 	}
 
 	.loading,
@@ -475,11 +336,6 @@
 
 	.issues-list li {
 		margin: 0.125rem 0;
-	}
-
-	.no-issues {
-		color: #22c55e;
-		font-size: 0.8125rem;
 	}
 
 	.empty-state {
