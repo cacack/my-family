@@ -2,7 +2,7 @@
 	import { tick } from 'svelte';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
-	import { api, type PersonDetail, type ChangeHistoryResponse, type Media, type ResearchStatus, type RollbackResponse, formatGenDate, formatPersonName, type Gender } from '$lib/api/client';
+	import { api, isConflictError, recordLoadError, type PersonDetail, type ChangeHistoryResponse, type Media, type ResearchStatus, type RollbackResponse, formatGenDate, formatPersonName, type Gender } from '$lib/api/client';
 	import ChangeHistory from '$lib/components/ChangeHistory.svelte';
 	import RestorePointBrowser from '$lib/components/RestorePointBrowser.svelte';
 	import RollbackConfirmDialog from '$lib/components/RollbackConfirmDialog.svelte';
@@ -17,13 +17,21 @@
 	import FormRow from '$lib/components/FormRow.svelte';
 	import { Badge } from '$lib/components/ui/badge';
 	import ExternalLinks from '$lib/components/ExternalLinks.svelte';
+	import ErrorState from '$lib/components/ErrorState.svelte';
+	import SaveConflict, { type ConflictField } from '$lib/components/SaveConflict.svelte';
 	import { activeBranch } from '$lib/stores/activeBranch.svelte';
 	import { ROLLBACK_MAINLINE_ONLY } from '$lib/utils/rollbackScope';
 	import { GENDER_OPTIONS, RESEARCH_STATUS_OPTIONS } from '$lib/utils/enumOptions';
 
 	let person: PersonDetail | null = $state(null);
 	let loading = $state(true);
-	let error: string | null = $state(null);
+	// A failed load replaces the page; a failed save, delete or brick-wall
+	// change is shown inline and leaves the page and the form intact (#899).
+	let loadError: string | null = $state(null);
+	let actionError: string | null = $state(null);
+	let saveError: string | null = $state(null);
+	// The latest saved version, after a save refused because it changed.
+	let conflict: PersonDetail | null = $state(null);
 	let editing = $state(false);
 	let saving = $state(false);
 	let historyExpanded = $state(false);
@@ -72,12 +80,12 @@
 
 	async function loadPerson(id: string) {
 		loading = true;
-		error = null;
+		loadError = null;
 		try {
 			person = await api.getPerson(id);
 			resetForm();
 		} catch (e) {
-			error = (e as { message?: string }).message || 'Failed to load person';
+			loadError = recordLoadError(e, 'person');
 			person = null;
 		} finally {
 			loading = false;
@@ -151,13 +159,14 @@
 		if (brickWallOnMainlineOnly) return;
 		if (!person || !brickWallNote.trim()) return;
 		brickWallSaving = true;
+		actionError = null;
 		try {
 			await api.setPersonBrickWall(person.id, brickWallNote.trim());
 			await loadPerson(person.id);
 			showBrickWallForm = false;
 			brickWallNote = '';
 		} catch (e) {
-			error = (e as { message?: string }).message || 'Failed to mark brick wall';
+			actionError = (e as { message?: string }).message || 'Failed to mark brick wall';
 		} finally {
 			brickWallSaving = false;
 		}
@@ -167,6 +176,7 @@
 		if (brickWallOnMainlineOnly) return;
 		if (!person) return;
 		brickWallSaving = true;
+		actionError = null;
 		try {
 			await api.resolvePersonBrickWall(person.id);
 			brickWallCelebrating = true;
@@ -177,7 +187,7 @@
 				brickWallToast = '';
 			}, 3000);
 		} catch (e) {
-			error = (e as { message?: string }).message || 'Failed to resolve brick wall';
+			actionError = (e as { message?: string }).message || 'Failed to resolve brick wall';
 		} finally {
 			brickWallSaving = false;
 		}
@@ -208,20 +218,55 @@
 		return `${diffYears} years ago`;
 	}
 
+	/** The edit form's values for a person as saved. */
+	function formFrom(saved: PersonDetail): typeof formData {
+		return {
+			given_name: saved.given_name,
+			surname: saved.surname,
+			gender: saved.gender || 'unknown',
+			birth_date: saved.birth_date?.raw || '',
+			birth_place: saved.birth_place || '',
+			death_date: saved.death_date?.raw || '',
+			death_place: saved.death_place || '',
+			notes: saved.notes || '',
+			research_status: saved.research_status || ''
+		};
+	}
+
 	function resetForm() {
 		if (person) {
-			formData = {
-				given_name: person.given_name,
-				surname: person.surname,
-				gender: person.gender || 'unknown',
-				birth_date: person.birth_date?.raw || '',
-				birth_place: person.birth_place || '',
-				death_date: person.death_date?.raw || '',
-				death_place: person.death_place || '',
-				notes: person.notes || '',
-				research_status: person.research_status || ''
-			};
+			formData = formFrom(person);
 		}
+	}
+
+	function optionLabel(options: readonly { value: string; label: string }[], value: string): string {
+		return options.find((option) => option.value === value)?.label ?? value;
+	}
+
+	/** The user's edits beside the latest saved version, as display text. */
+	function conflictFields(latest: PersonDetail): ConflictField[] {
+		const theirs = formFrom(latest);
+		const status = (value: string) =>
+			value ? optionLabel(RESEARCH_STATUS_OPTIONS, value) : 'Not assessed';
+		return [
+			{ label: 'Given Name', mine: formData.given_name, latest: theirs.given_name },
+			{ label: 'Surname', mine: formData.surname, latest: theirs.surname },
+			{
+				label: 'Gender',
+				mine: optionLabel(GENDER_OPTIONS, formData.gender),
+				latest: optionLabel(GENDER_OPTIONS, theirs.gender)
+			},
+			{
+				label: 'Research Status',
+				mine: status(formData.research_status),
+				latest: status(theirs.research_status)
+			},
+			{ label: 'Birth Date', mine: formData.birth_date, latest: theirs.birth_date },
+			{ label: 'Birth Place', mine: formData.birth_place, latest: theirs.birth_place },
+			{ label: 'Death Date', mine: formData.death_date, latest: theirs.death_date },
+			{ label: 'Death Place', mine: formData.death_place, latest: theirs.death_place },
+			{ label: 'Notes', mine: formData.notes, latest: theirs.notes }
+		];
 	}
 
 	// The Edit button and the form replace each other, so focus is moved
@@ -241,12 +286,17 @@
 
 	function startEdit() {
 		resetForm();
+		saveError = null;
+		conflict = null;
+		actionError = null;
 		editing = true;
 		focusFirstField();
 	}
 
 	function cancelEdit() {
 		resetForm();
+		saveError = null;
+		conflict = null;
 		editing = false;
 		focusEditButton();
 	}
@@ -254,6 +304,8 @@
 	async function savePerson() {
 		if (!person) return;
 		saving = true;
+		saveError = null;
+		conflict = null;
 		try {
 			await api.updatePerson(person.id, {
 				// The names are required, so an empty one is never sent.
@@ -277,21 +329,53 @@
 			editing = false;
 			focusEditButton();
 		} catch (e) {
-			error = (e as { message?: string }).message || 'Failed to save';
+			if (isConflictError(e)) {
+				await loadConflict(person.id);
+			} else {
+				saveError = (e as { message?: string }).message || 'Failed to save';
+			}
 		} finally {
 			saving = false;
 		}
+	}
+
+	/** Fetch the latest version to compare with, leaving the form as typed. */
+	async function loadConflict(id: string) {
+		try {
+			conflict = await api.getPerson(id);
+		} catch (e) {
+			saveError =
+				'This person was changed elsewhere, and the latest version could not be loaded: ' +
+				((e as { message?: string }).message || 'unknown error');
+		}
+	}
+
+	/** Save the form's edits over the latest version. */
+	function keepMyEdits() {
+		if (!conflict) return;
+		person = conflict;
+		savePerson();
+	}
+
+	/** Discard the form's edits for the latest version. */
+	function useLatestVersion() {
+		if (!conflict) return;
+		person = conflict;
+		conflict = null;
+		resetForm();
+		focusFirstField();
 	}
 
 	async function deletePerson() {
 		if (!person) return;
 		if (!confirm(`Delete ${formatPersonName(person)}? This cannot be undone.`)) return;
 
+		actionError = null;
 		try {
 			await api.deletePerson(person.id);
 			goto('/persons', { state: { notice: `${formatPersonName(person)} was deleted.` } });
 		} catch (e) {
-			error = (e as { message?: string }).message || 'Failed to delete';
+			actionError = (e as { message?: string }).message || 'Failed to delete';
 		}
 	}
 
@@ -344,11 +428,25 @@
 
 	{#if loading}
 		<div class="loading">Loading...</div>
-	{:else if error}
-		<div class="error">{error}</div>
+	{:else if loadError}
+		<ErrorState message={loadError} onRetry={() => loadPerson($page.params.id ?? '')} />
 	{:else if person}
+		{#if actionError}
+			<div class="action-error" role="alert">{actionError}</div>
+		{/if}
 		{#if editing}
 			<form class="edit-form" bind:this={editForm} onsubmit={(e) => { e.preventDefault(); savePerson(); }}>
+				{#if conflict}
+					<SaveConflict
+						noun="person"
+						fields={conflictFields(conflict)}
+						onKeepMine={keepMyEdits}
+						onUseLatest={useLatestVersion}
+						busy={saving}
+					/>
+				{:else if saveError}
+					<div class="action-error" role="alert">{saveError}</div>
+				{/if}
 				<FormRow>
 					<label>
 						Given Name
@@ -722,15 +820,21 @@
 		gap: 0.5rem;
 	}
 
-	.loading,
-	.error {
+	.loading {
 		text-align: center;
 		padding: 3rem;
 		color: #64748b;
 	}
 
-	.error {
+	.action-error {
+		padding: 0.75rem 1rem;
+		margin-bottom: 1rem;
+		background: #fef2f2;
+		border: 1px solid #fecaca;
+		border-radius: 8px;
 		color: #dc2626;
+		font-size: 0.875rem;
+		overflow-wrap: anywhere;
 	}
 
 	.person-detail {
