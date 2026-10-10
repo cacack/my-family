@@ -11,8 +11,7 @@
 	<PageHeader
 		title="Quick Capture"
 		description="Add people quickly with minimal info. Enrich details later."
-		backHref="/persons"
-		backLabel="People"
+		back={{ href: '/persons', label: 'People' }}
 	/>
 	<QuickCapture />
 </div>

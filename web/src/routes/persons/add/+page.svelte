@@ -68,7 +68,7 @@
 </svelte:head>
 
 <div class="person-page">
-	<PageHeader title="Add Person" backHref="/persons" backLabel="People" />
+	<PageHeader title="Add Person" back={{ href: '/persons', label: 'People' }} />
 
 	<div class="quick-capture-hint">
 		Need to add many people quickly? Try <a href="/persons/quick">Quick Capture mode</a>

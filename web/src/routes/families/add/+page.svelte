@@ -122,7 +122,7 @@
 </svelte:head>
 
 <div class="add-family-page">
-	<PageHeader title="Add Family" backHref="/families" backLabel="Families" />
+	<PageHeader title="Add Family" back={{ href: '/families', label: 'Families' }} />
 
 	{#if error}
 		<div class="error" role="alert">

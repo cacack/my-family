@@ -10,8 +10,14 @@
 	 */
 	import type { Snippet } from 'svelte';
 
-	let { minColumnWidth = '14rem', children }: { minColumnWidth?: string; children: Snippet } =
-		$props();
+	let {
+		minColumnWidth = '14rem',
+		children
+	}: {
+		/** A CSS length with a unit, e.g. `'10rem'`. */
+		minColumnWidth?: string;
+		children: Snippet;
+	} = $props();
 </script>
 
 <div class="form-row" style:--form-row-min={minColumnWidth}>

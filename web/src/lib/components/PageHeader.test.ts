@@ -20,12 +20,12 @@ describe('PageHeader', () => {
 		expect(screen.getByText('Where they lived.')).toBeDefined();
 	});
 
-	it('renders a back link only when both href and label are given', () => {
-		const { unmount } = render(PageHeader, { props: { title: 'Add', backHref: '/persons' } });
+	it('renders a back link only when given', () => {
+		const { unmount } = render(PageHeader, { props: { title: 'Add' } });
 		expect(screen.queryByRole('link')).toBeNull();
 		unmount();
 
-		render(PageHeader, { props: { title: 'Add', backHref: '/persons', backLabel: 'People' } });
+		render(PageHeader, { props: { title: 'Add', back: { href: '/persons', label: 'People' } } });
 		expect(screen.getByRole('link', { name: '← People' }).getAttribute('href')).toBe('/persons');
 	});
 
@@ -48,6 +48,7 @@ describe('PageHeader', () => {
 	});
 
 	it('exposes the h1 so a page can move focus to it', () => {
+		// The getter/setter pair stands in for `bind:headingEl`, so the $bindable write-back is observable.
 		let heading: HTMLHeadingElement | null = null;
 		render(PageHeader, {
 			props: {

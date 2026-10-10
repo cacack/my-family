@@ -13,17 +13,15 @@
 	let {
 		title,
 		description,
-		backHref,
-		backLabel,
+		back,
 		headingEl = $bindable(null),
 		actions,
 		children
 	}: {
 		title: string;
 		description?: string;
-		/** Where the back link goes; the link renders only with `backLabel`. */
-		backHref?: string;
-		backLabel?: string;
+		/** A back link above the title, e.g. `{ href: '/persons', label: 'People' }`. */
+		back?: { href: string; label: string };
 		/** The h1, for pages that move focus to it. */
 		headingEl?: HTMLHeadingElement | null;
 		actions?: Snippet;
@@ -33,8 +31,8 @@
 
 <header class="page-header">
 	<div class="page-header-text">
-		{#if backHref && backLabel}
-			<a href={backHref} class="back-link">&larr; {backLabel}</a>
+		{#if back}
+			<a href={back.href} class="back-link">&larr; {back.label}</a>
 		{/if}
 		<h1 bind:this={headingEl} tabindex="-1">{title}</h1>
 		{#if description}
