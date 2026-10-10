@@ -33,7 +33,7 @@ func (s *EventStore) GlobalHistoryPlan(q repository.GlobalHistoryQuery) (page, c
 // SearchPersonsPlan returns SQLite's query plan for a plain (substring) name
 // search, so a test can pin that alternate names are not rescanned per person.
 func (s *ReadModelStore) SearchPersonsPlan(opts repository.SearchOptions) ([]string, error) {
-	query, args := searchPersonsLikeSQL(opts, 20)
+	query, args := searchPersonsLikeSQL(opts)
 	rows, err := s.db.Query("EXPLAIN QUERY PLAN "+query, args...)
 	if err != nil {
 		return nil, err

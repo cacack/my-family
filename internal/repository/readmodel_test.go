@@ -3,8 +3,31 @@ package repository
 import (
 	"context"
 	"fmt"
+	"slices"
 	"testing"
 )
+
+func TestPage(t *testing.T) {
+	items := []int{0, 1, 2, 3, 4}
+	tests := []struct {
+		name          string
+		offset, limit int
+		want          []int
+	}{
+		{"first page", 0, 2, []int{0, 1}},
+		{"last partial page", 4, 2, []int{4}},
+		{"past the end", 9, 2, []int{}},
+		{"negative offset is zero", -3, 2, []int{0, 1}},
+		{"zero limit is empty", 1, 0, []int{}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := Page(items, tt.offset, tt.limit); !slices.Equal(got, tt.want) {
+				t.Errorf("Page(%d, %d) = %v, want %v", tt.offset, tt.limit, got, tt.want)
+			}
+		})
+	}
+}
 
 func TestListAll(t *testing.T) {
 	t.Run("zero records", func(t *testing.T) {

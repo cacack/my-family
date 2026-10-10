@@ -1205,13 +1205,14 @@ const personCols = `p.id, p.given_name, p.surname, p.full_name, p.gender,
 // SearchPersons searches for persons by name, date, and place using tsvector,
 // trigram similarity, and Soundex matching. Also searches person_names for alternate names.
 // All provided filters are ANDed together.
-func (s *ReadModelStore) SearchPersons(ctx context.Context, opts repository.SearchOptions) ([]repository.PersonReadModel, error) {
+func (s *ReadModelStore) SearchPersons(ctx context.Context, opts repository.SearchOptions) ([]repository.PersonReadModel, int, error) {
 	if opts.Limit <= 0 {
 		opts.Limit = 20
 	}
 	if opts.Limit > 100 {
 		opts.Limit = 100
 	}
+	opts.Offset = max(opts.Offset, 0)
 
 	hasQuery := strings.TrimSpace(opts.Query) != ""
 	hasDateFilter := opts.BirthDateFrom != nil || opts.BirthDateTo != nil ||
@@ -1219,7 +1220,7 @@ func (s *ReadModelStore) SearchPersons(ctx context.Context, opts repository.Sear
 	hasPlaceFilter := strings.TrimSpace(opts.BirthPlace) != "" || strings.TrimSpace(opts.DeathPlace) != ""
 
 	if !hasQuery && !hasDateFilter && !hasPlaceFilter {
-		return nil, nil
+		return nil, 0, nil
 	}
 
 	var qb strings.Builder
@@ -1248,13 +1249,22 @@ func (s *ReadModelStore) SearchPersons(ctx context.Context, opts repository.Sear
 	}
 
 	writeDatePlaceFilters(&qb, opts, params)
-	writeOrderBy(&qb, opts, hasQuery)
 
-	fmt.Fprintf(&qb, " LIMIT $%d", params.add(opts.Limit))
+	// The total counts every match, whatever the page (#902).
+	var total int
+	// #nosec G202 -- qb holds internal SQL fragments with $n placeholders, not user input
+	countQuery := "SELECT COUNT(*) FROM (" + qb.String() + ") matches"
+	if err := s.db.QueryRowContext(ctx, countQuery, params.args...).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("count search persons: %w", err)
+	}
+
+	writeOrderBy(&qb, opts, hasQuery)
+	limitN := params.add(opts.Limit)
+	fmt.Fprintf(&qb, " LIMIT $%d OFFSET $%d", limitN, params.add(opts.Offset))
 
 	rows, err := s.db.QueryContext(ctx, qb.String(), params.args...)
 	if err != nil {
-		return nil, fmt.Errorf("search persons: %w", err)
+		return nil, 0, fmt.Errorf("search persons: %w", err)
 	}
 	defer rows.Close()
 
@@ -1262,12 +1272,12 @@ func (s *ReadModelStore) SearchPersons(ctx context.Context, opts repository.Sear
 	for rows.Next() {
 		p, err := scanPersonRow(rows)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		persons = append(persons, *p)
 	}
 
-	return persons, rows.Err()
+	return persons, total, rows.Err()
 }
 
 // writeResolvedPersonCTEs writes the leading "WITH rp AS (...), rpn AS (...)"
@@ -1416,7 +1426,8 @@ func writeDatePlaceFilters(qb *strings.Builder, opts repository.SearchOptions, p
 	}
 }
 
-// writeOrderBy appends the ORDER BY clause based on sort options.
+// writeOrderBy appends the ORDER BY clause based on sort options. Every order
+// ends on id so offset pages never overlap or skip a match (#902).
 func writeOrderBy(qb *strings.Builder, opts repository.SearchOptions, hasQuery bool) {
 	orderDir := strings.ToUpper(opts.Order)
 	if orderDir != "ASC" && orderDir != "DESC" {
@@ -1428,17 +1439,17 @@ func writeOrderBy(qb *strings.Builder, opts repository.SearchOptions, hasQuery b
 		if orderDir == "" {
 			orderDir = "ASC"
 		}
-		fmt.Fprintf(qb, " ORDER BY p.surname %s, p.given_name %s", orderDir, orderDir)
+		fmt.Fprintf(qb, " ORDER BY p.surname %s, p.given_name %s, p.id %s", orderDir, orderDir, orderDir)
 	case "birth_date":
 		if orderDir == "" {
 			orderDir = "ASC"
 		}
-		fmt.Fprintf(qb, " ORDER BY p.birth_date_sort %s NULLS LAST", orderDir)
+		fmt.Fprintf(qb, " ORDER BY p.birth_date_sort %s NULLS LAST, p.id %s", orderDir, orderDir)
 	case "death_date":
 		if orderDir == "" {
 			orderDir = "ASC"
 		}
-		fmt.Fprintf(qb, " ORDER BY p.death_date_sort %s NULLS LAST", orderDir)
+		fmt.Fprintf(qb, " ORDER BY p.death_date_sort %s NULLS LAST, p.id %s", orderDir, orderDir)
 	default:
 		if hasQuery {
 			if orderDir == "" {
@@ -1452,7 +1463,7 @@ func writeOrderBy(qb *strings.Builder, opts repository.SearchOptions, hasQuery b
 			if orderDir == "" {
 				orderDir = "ASC"
 			}
-			fmt.Fprintf(qb, " ORDER BY p.surname %s, p.given_name %s", orderDir, orderDir)
+			fmt.Fprintf(qb, " ORDER BY p.surname %s, p.given_name %s, p.id %s", orderDir, orderDir, orderDir)
 		}
 	}
 }

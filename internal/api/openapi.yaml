@@ -588,6 +588,7 @@ paths:
             enum: [asc, desc]
             default: desc
         - $ref: '#/components/parameters/limitParam'
+        - $ref: '#/components/parameters/offsetParam'
       responses:
         '200':
           description: Search results
@@ -6085,6 +6086,7 @@ components:
             $ref: '#/components/schemas/SearchResult'
         total:
           type: integer
+          description: Number of people matching the search, independent of limit and offset
         query:
           type: string
 

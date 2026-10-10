@@ -475,7 +475,7 @@ func TestReadModelStore_SearchPersons(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			results, err := store.SearchPersons(ctx, repository.SearchOptions{Query: tt.query, Limit: tt.limit})
+			results, _, err := store.SearchPersons(ctx, repository.SearchOptions{Query: tt.query, Limit: tt.limit})
 			if err != nil {
 				t.Fatalf("SearchPersons() failed: %v", err)
 			}

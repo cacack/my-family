@@ -435,7 +435,9 @@ type ReadModelStore interface {
 	// ordered by id. An empty ids slice returns nil without touching the store.
 	GetPersonsByIDs(ctx context.Context, branchID domain.BranchID, ids []uuid.UUID) ([]PersonReadModel, error)
 	ListPersons(ctx context.Context, opts ListOptions) ([]PersonReadModel, int, error)
-	SearchPersons(ctx context.Context, opts SearchOptions) ([]PersonReadModel, error)
+	// SearchPersons returns one page of matches and the total number of matches,
+	// which does not depend on Limit or Offset (#902).
+	SearchPersons(ctx context.Context, opts SearchOptions) ([]PersonReadModel, int, error)
 	SavePerson(ctx context.Context, branchID domain.BranchID, person *PersonReadModel) error
 	DeletePerson(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error
 
@@ -912,6 +914,7 @@ type SearchOptions struct {
 	Sort          string // "relevance", "name", "birth_date", "death_date"
 	Order         string // "asc", "desc"
 	Limit         int
+	Offset        int
 	// BranchID scopes the search over the branch-aware person overlay (ADR-005).
 	// The zero value (domain.MainBranchID) searches the mainline only.
 	BranchID domain.BranchID
@@ -977,6 +980,14 @@ func DefaultListOptions() ListOptions {
 		Sort:   "surname",
 		Order:  "asc",
 	}
+}
+
+// Page returns items[offset:offset+limit], clamped to the slice, for stores
+// that match in Go and page the matches afterwards.
+func Page[T any](items []T, offset, limit int) []T {
+	start := min(max(offset, 0), len(items))
+	end := min(start+max(limit, 0), len(items))
+	return items[start:end]
 }
 
 // ListAll fetches all records using pagination to avoid truncation from hard-coded limits.

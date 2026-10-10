@@ -159,15 +159,15 @@ func TestBranchSearchPersonsScope(t *testing.T) {
 	_ = store.SavePerson(ctx, domain.MainBranchID, personRM(id, "Katherine", "Johnson"))
 	_ = store.SavePerson(ctx, branch, personRM(id, "Katherine", "Coleman"))
 
-	branchHits, _ := store.SearchPersons(ctx, repository.SearchOptions{Query: "Coleman", Limit: 10, BranchID: branch})
+	branchHits, _, _ := store.SearchPersons(ctx, repository.SearchOptions{Query: "Coleman", Limit: 10, BranchID: branch})
 	if len(branchHits) != 1 || branchHits[0].Surname != "Coleman" {
 		t.Fatalf("branch Search: want Coleman, got %+v", branchHits)
 	}
 	// The branch override should not surface under the main surname on the branch.
-	if hits, _ := store.SearchPersons(ctx, repository.SearchOptions{Query: "Johnson", Limit: 10, BranchID: branch}); len(hits) != 0 {
+	if hits, _, _ := store.SearchPersons(ctx, repository.SearchOptions{Query: "Johnson", Limit: 10, BranchID: branch}); len(hits) != 0 {
 		t.Fatalf("branch Search for main-only surname: want empty, got %+v", hits)
 	}
-	mainHits, _ := store.SearchPersons(ctx, repository.SearchOptions{Query: "Johnson", Limit: 10, BranchID: domain.MainBranchID})
+	mainHits, _, _ := store.SearchPersons(ctx, repository.SearchOptions{Query: "Johnson", Limit: 10, BranchID: domain.MainBranchID})
 	if len(mainHits) != 1 || mainHits[0].Surname != "Johnson" {
 		t.Fatalf("main Search: want Johnson, got %+v", mainHits)
 	}

@@ -63,7 +63,7 @@ func runSearchCases(t *testing.T, store *sqlite.ReadModelStore, cases []searchCa
 	ctx := context.Background()
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			results, err := store.SearchPersons(ctx, repository.SearchOptions{Query: tc.query, Fuzzy: tc.fuzzy, Limit: 100})
+			results, _, err := store.SearchPersons(ctx, repository.SearchOptions{Query: tc.query, Fuzzy: tc.fuzzy, Limit: 100})
 			if err != nil {
 				t.Fatalf("SearchPersons(%q, fuzzy=%v): %v", tc.query, tc.fuzzy, err)
 			}
@@ -169,7 +169,7 @@ func TestSearchPersons_FuzzyOrderAndLimit(t *testing.T) {
 	names := func(opts repository.SearchOptions) []string {
 		t.Helper()
 		opts.Query, opts.Fuzzy = "John", true
-		results, err := store.SearchPersons(ctx, opts)
+		results, _, err := store.SearchPersons(ctx, opts)
 		if err != nil {
 			t.Fatalf("SearchPersons: %v", err)
 		}
@@ -230,7 +230,7 @@ func TestSearchPersons_FuzzyFiltersAndBranches(t *testing.T) {
 	search := func(opts repository.SearchOptions) []uuid.UUID {
 		t.Helper()
 		opts.Query, opts.Fuzzy, opts.Limit = "Edmund", true, 10
-		results, err := store.SearchPersons(ctx, opts)
+		results, _, err := store.SearchPersons(ctx, opts)
 		if err != nil {
 			t.Fatalf("SearchPersons: %v", err)
 		}
@@ -328,7 +328,7 @@ func TestSearchPersons_WhitespaceQueryIsFiltersOnly(t *testing.T) {
 	}
 	for _, q := range []string{"", "  ", " \t "} {
 		for _, fuzzy := range []bool{false, true} {
-			results, err := store.SearchPersons(ctx, repository.SearchOptions{
+			results, _, err := store.SearchPersons(ctx, repository.SearchOptions{
 				Query: q, Fuzzy: fuzzy, BirthDateFrom: born(1850), Limit: 10,
 			})
 			if err != nil {
@@ -389,7 +389,7 @@ func TestSearchPersons_UnicodeCaseWildcardsAndPlaces(t *testing.T) {
 		{"padded place fuzzy", " london", true, []string{hans}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			results, err := store.SearchPersons(ctx, repository.SearchOptions{Query: "Müller", Fuzzy: tc.fuzzy, BirthPlace: tc.place, Limit: 100})
+			results, _, err := store.SearchPersons(ctx, repository.SearchOptions{Query: "Müller", Fuzzy: tc.fuzzy, BirthPlace: tc.place, Limit: 100})
 			if err != nil {
 				t.Fatalf("SearchPersons: %v", err)
 			}
@@ -405,7 +405,7 @@ func TestSearchPersons_UnicodeCaseWildcardsAndPlaces(t *testing.T) {
 	}
 
 	// A place filter alone (no query) is trimmed as well.
-	results, err := store.SearchPersons(ctx, repository.SearchOptions{DeathPlace: "  ", BirthPlace: " bayern ", Limit: 100})
+	results, _, err := store.SearchPersons(ctx, repository.SearchOptions{DeathPlace: "  ", BirthPlace: " bayern ", Limit: 100})
 	if err != nil {
 		t.Fatalf("SearchPersons: %v", err)
 	}
@@ -493,7 +493,7 @@ func TestSearchPersons_LargeTree(t *testing.T) {
 	ctx := context.Background()
 	for _, fuzzy := range []bool{false, true} {
 		start := time.Now()
-		results, err := store.SearchPersons(ctx, repository.SearchOptions{Query: "Smith", Fuzzy: fuzzy, Limit: 100})
+		results, _, err := store.SearchPersons(ctx, repository.SearchOptions{Query: "Smith", Fuzzy: fuzzy, Limit: 100})
 		elapsed := time.Since(start)
 		if err != nil {
 			t.Fatalf("search (fuzzy=%v): %v", fuzzy, err)
@@ -516,7 +516,7 @@ func BenchmarkSearchPersons(b *testing.B) {
 	for _, fuzzy := range []bool{false, true} {
 		b.Run(fmt.Sprintf("fuzzy=%v", fuzzy), func(b *testing.B) {
 			for b.Loop() {
-				if _, err := store.SearchPersons(ctx, repository.SearchOptions{Query: "Smith", Fuzzy: fuzzy, Limit: 20}); err != nil {
+				if _, _, err := store.SearchPersons(ctx, repository.SearchOptions{Query: "Smith", Fuzzy: fuzzy, Limit: 20}); err != nil {
 					b.Fatal(err)
 				}
 			}
