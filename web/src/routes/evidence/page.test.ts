@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/svelte';
+import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import Page from './+page.svelte';
 import * as apiModule from '$lib/api/client';
+import { back, currentPath, historyLength, resetRouter } from '$lib/test/fakeRouter';
 
 // Mock the API module
 vi.mock('$lib/api/client', async (importOriginal) => {
@@ -47,9 +48,13 @@ const emptyConflicts: apiModule.EvidenceConflictListResponse = { conflicts: [], 
 const emptyLogs: apiModule.ResearchLogListResponse = { logs: [], total: 0 };
 const emptySummaries: apiModule.ProofSummaryListResponse = { summaries: [], total: 0 };
 
+vi.mock('$app/stores', async () => (await import('$lib/test/fakeRouter')).appStores);
+vi.mock('$app/navigation', async () => (await import('$lib/test/fakeRouter')).appNavigation);
+
 describe('Evidence Hub Page', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		resetRouter('/evidence');
 		vi.mocked(apiModule.api.listEvidenceAnalyses).mockResolvedValue(mockAnalysesList);
 		vi.mocked(apiModule.api.listEvidenceConflicts).mockResolvedValue(emptyConflicts);
 		vi.mocked(apiModule.api.listResearchLogs).mockResolvedValue(emptyLogs);
@@ -108,5 +113,29 @@ describe('Evidence Hub Page', () => {
 			expect(screen.getByText('Network error')).toBeDefined();
 			expect(screen.getByText('Retry')).toBeDefined();
 		});
+	});
+
+	it('opens the tab the URL names (#901)', async () => {
+		resetRouter('/evidence?tab=logs');
+		render(Page);
+		await waitFor(() => expect(apiModule.api.listResearchLogs).toHaveBeenCalled());
+		expect(screen.getByRole('tab', { name: 'Research Logs' }).getAttribute('aria-selected')).toBe('true');
+		expect(apiModule.api.listEvidenceAnalyses).not.toHaveBeenCalled();
+	});
+
+	it('pushes a tab switch, so Back returns to the previous tab (#901)', async () => {
+		render(Page);
+		await waitFor(() => expect(apiModule.api.listEvidenceAnalyses).toHaveBeenCalled());
+
+		const summaries = screen.getByRole('tab', { name: 'Proof Summaries' });
+		await fireEvent.click(summaries);
+		await waitFor(() => expect(currentPath()).toBe('/evidence?tab=summaries'));
+		expect(historyLength()).toBe(2);
+		await waitFor(() => expect(apiModule.api.listProofSummaries).toHaveBeenCalled());
+
+		back();
+		await waitFor(() =>
+			expect(screen.getByRole('tab', { name: 'Analyses' }).getAttribute('aria-selected')).toBe('true')
+		);
 	});
 });

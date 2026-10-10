@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import { goto } from '$app/navigation';
+	import { page } from '$app/stores';
 	import {
 		api,
 		type EvidenceAnalysisResponse,
@@ -20,6 +21,7 @@
 		outcomeBadgeProps,
 		conflictBadgeProps
 	} from '$lib/utils/evidence';
+	import { readEnum, setQuery } from '$lib/utils/urlState';
 
 	const pageSize = 20;
 
@@ -35,8 +37,14 @@
 	const ROW_CLICKABLE = 'cursor-pointer transition-colors hover:bg-slate-50';
 	const SUBJECT_LINK = 'text-blue-500 no-underline hover:underline';
 
-	// Active tab
-	let activeTab = $state('analyses');
+	// The active tab lives in the URL (see urlState.ts), so Back and reload
+	// return to it. A tab is navigation-level, so switching pushes.
+	const TABS = ['analyses', 'conflicts', 'logs', 'summaries'] as const;
+	const activeTab = $derived(readEnum($page.url.searchParams, 'tab', TABS, 'analyses'));
+
+	function selectTab(tab: string) {
+		setQuery($page.url, { tab }, { push: true, defaults: { tab: 'analyses' } });
+	}
 
 	// Analyses state
 	let analyses: EvidenceAnalysisResponse[] = $state([]);
@@ -238,7 +246,7 @@
 		</div>
 	</header>
 
-	<Tabs.Root bind:value={activeTab}>
+	<Tabs.Root value={activeTab} onValueChange={selectTab}>
 		<Tabs.List class="max-w-full justify-start overflow-x-auto">
 			<Tabs.Trigger value="analyses">Analyses</Tabs.Trigger>
 			<Tabs.Trigger value="conflicts">
