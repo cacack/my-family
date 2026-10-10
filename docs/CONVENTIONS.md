@@ -179,6 +179,12 @@ web/src/
 - Use Svelte stores for shared state
 - Keep component state local when possible
 
+### Main Navigation
+
+- `web/src/lib/navigation.ts` is the single source for header destinations; `MainNav.svelte` renders it inline at ≥1024px and as one sectioned Menu below.
+- Add a new page to the group that matches its user intent (Browse, Research, History) rather than as a new top-level link; the header must stay one row at 1024px (`web/e2e/layout.spec.ts`).
+- Use `match` for nested routes that live outside a link's own path; highlighting follows the group, not the URL prefix.
+
 ## Testing
 
 ### Go Tests
