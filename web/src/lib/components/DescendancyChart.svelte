@@ -1,7 +1,16 @@
 <script lang="ts">
 	import * as d3 from 'd3';
 	import { onMount } from 'svelte';
-	import type { DescendancyNode, SpouseInfo } from '$lib/api/client';
+	import { formatGenDate, type DescendancyNode } from '$lib/api/client';
+	import {
+		fitTransform,
+		motionDuration,
+		observeChartResize,
+		scaleAbout,
+		truncateLabel,
+		wrapLabel,
+		type ScaleExtent
+	} from '$lib/utils/chart';
 
 	export type LayoutMode = 'compact' | 'standard' | 'wide';
 
@@ -45,6 +54,8 @@
 		}
 	};
 
+	const SCALE_EXTENT: ScaleExtent = [0.1, 4];
+
 	interface Props {
 		data: DescendancyNode;
 		layout?: LayoutMode;
@@ -65,6 +76,8 @@
 	let svg: d3.Selection<SVGSVGElement, unknown, null, undefined>;
 	let g: d3.Selection<SVGGElement, unknown, null, undefined>;
 	let zoom: d3.ZoomBehavior<SVGSVGElement, unknown>;
+	// Where the running animated zoom is heading, so quick +/- clicks chain
+	let zoomTarget: d3.ZoomTransform | null = null;
 
 	// Map of person ID to their node data for navigation
 	let nodeMap: Map<string, d3.HierarchyPointNode<DescendancyNode>> = new Map();
@@ -82,8 +95,8 @@
 		// Clear existing content
 		d3.select(container).selectAll('*').remove();
 
-		const width = container.clientWidth || 800;
-		const height = container.clientHeight || 600;
+		const [width, height] = viewportSize();
+		zoomTarget = null;
 
 		// Create SVG
 		svg = d3
@@ -99,9 +112,11 @@
 		// Setup zoom behavior
 		zoom = d3
 			.zoom<SVGSVGElement, unknown>()
-			.scaleExtent([0.1, 4])
+			.scaleExtent(SCALE_EXTENT)
 			.on('zoom', (event) => {
 				g.attr('transform', event.transform);
+				// A wheel or drag gesture replaces any pending button zoom
+				if (event.sourceEvent) zoomTarget = null;
 			});
 
 		svg.call(zoom);
@@ -180,17 +195,38 @@
 		});
 
 		// Initial zoom to fit
-		const bounds = g.node()?.getBBox();
-		if (bounds) {
-			const dx = bounds.width;
-			const dy = bounds.height;
-			const x = bounds.x + dx / 2;
-			const y = bounds.y + dy / 2;
-			const scale = 0.85 / Math.max(dx / width, dy / height);
-			const translate = [width / 2 - scale * x, height / 2 - scale * y];
+		const fit = fitToContent();
+		if (fit) svg.call(zoom.transform, fit);
+	}
 
-			svg.call(zoom.transform, d3.zoomIdentity.translate(translate[0], translate[1]).scale(scale));
-		}
+	function viewportSize(): [number, number] {
+		return [container.clientWidth || 800, container.clientHeight || 600];
+	}
+
+	// Keep one SVG unit per pixel when only the height changes, preserving zoom and pan
+	function updateViewBox() {
+		if (!svg) return;
+		const [width, height] = viewportSize();
+		svg.attr('viewBox', `0 0 ${width} ${height}`);
+	}
+
+	// The transform that fits the drawn tree, keeping the root in view
+	function fitToContent(): d3.ZoomTransform | null {
+		const bounds = g?.node()?.getBBox();
+		if (!bounds || treeNodes.length === 0) return null;
+		const [width, height] = viewportSize();
+		return fitTransform(bounds, width, height, SCALE_EXTENT, treeNodes[0]);
+	}
+
+	function animateZoomTo(target: d3.ZoomTransform) {
+		zoomTarget = target;
+		svg
+			.transition()
+			.duration(motionDuration(300))
+			.call(zoom.transform, target)
+			.on('end', () => {
+				zoomTarget = null;
+			});
 	}
 
 	function renderPersonCard(
@@ -240,6 +276,11 @@
 			.attr('stroke-width', 2)
 			.attr('stroke-dasharray', '4,2');
 
+		// Full name on hover, since the lines below may be truncated
+		nodeGroups
+			.append('title')
+			.text((d) => [d.data.given_name, d.data.surname].filter(Boolean).join(' ') || 'Unknown');
+
 		// Given name (first line)
 		nodeGroups
 			.append('text')
@@ -249,8 +290,7 @@
 			.attr('font-weight', '600')
 			.attr('fill', '#1e293b')
 			.text((d) => {
-				const given = d.data.given_name || '?';
-				return given.length > 16 ? given.substring(0, 14) + '...' : given;
+				return truncateLabel(d.data.given_name || '?', 16);
 			});
 
 		// Surname (second line)
@@ -262,8 +302,7 @@
 			.attr('font-weight', '500')
 			.attr('fill', '#475569')
 			.text((d) => {
-				const surname = d.data.surname || '?';
-				return surname.length > 16 ? surname.substring(0, 14) + '...' : surname;
+				return truncateLabel(d.data.surname || '?', 16);
 			});
 
 		// Birth-death dates (third line)
@@ -321,7 +360,7 @@
 				.attr('stroke-width', 2)
 				.attr('stroke-dasharray', '4,2');
 
-			// Spouse card background
+			// Spouse card background (neutral: the API gives no gender for spouses)
 			spouseGroup
 				.append('rect')
 				.attr('class', 'spouse-card')
@@ -330,17 +369,8 @@
 				.attr('width', spouseCardWidth)
 				.attr('height', spouseCardHeight)
 				.attr('rx', 6)
-				.attr('fill', () => {
-					if (spouse.gender === 'male') return '#dbeafe';
-					if (spouse.gender === 'female') return '#fce7f3';
-					return '#f1f5f9';
-				})
-				.attr('stroke', () => {
-					if (spouse.id === selectedPersonId) return '#f59e0b';
-					if (spouse.gender === 'male') return '#3b82f6';
-					if (spouse.gender === 'female') return '#ec4899';
-					return '#64748b';
-				})
+				.attr('fill', '#f1f5f9')
+				.attr('stroke', spouse.id === selectedPersonId ? '#f59e0b' : '#64748b')
 				.attr('stroke-width', spouse.id === selectedPersonId ? 3 : 1.5)
 				.attr('opacity', 0.95);
 
@@ -360,7 +390,11 @@
 					.attr('stroke-dasharray', '4,2');
 			}
 
-			// Spouse given name
+			// Full name on hover, since the lines below may be truncated
+			spouseGroup.append('title').text(spouse.name || 'Unknown');
+
+			// Spouse name, wrapped over two lines
+			const [nameLine1, nameLine2] = wrapLabel(spouse.name || '?', 18);
 			spouseGroup
 				.append('text')
 				.attr('y', -10)
@@ -368,61 +402,51 @@
 				.attr('font-size', '11px')
 				.attr('font-weight', '600')
 				.attr('fill', '#1e293b')
-				.text(() => {
-					const given = spouse.given_name || '?';
-					return given.length > 14 ? given.substring(0, 12) + '...' : given;
-				});
+				.text(nameLine1);
 
-			// Spouse surname
 			spouseGroup
 				.append('text')
 				.attr('y', 3)
 				.attr('text-anchor', 'middle')
 				.attr('font-size', '11px')
-				.attr('font-weight', '500')
-				.attr('fill', '#475569')
-				.text(() => {
-					const surname = spouse.surname || '?';
-					return surname.length > 14 ? surname.substring(0, 12) + '...' : surname;
-				});
+				.attr('font-weight', '600')
+				.attr('fill', '#1e293b')
+				.text(nameLine2);
 
-			// Spouse dates
+			// Marriage date
 			spouseGroup
 				.append('text')
 				.attr('y', 16)
 				.attr('text-anchor', 'middle')
 				.attr('font-size', '9px')
 				.attr('fill', '#64748b')
-				.text(() => {
-					const birth = spouse.birth_date?.year;
-					const death = spouse.death_date?.year;
-					if (!birth && !death) return '';
-					if (birth && !death) return `b. ${birth}`;
-					if (!birth && death) return `d. ${death}`;
-					return `${birth} - ${death}`;
-				});
+				.text(spouse.marriage_date
+						? `m. ${spouse.marriage_date.year ?? formatGenDate(spouse.marriage_date)}`
+						: '');
 		});
 	}
 
 	// Zoom control functions
+	// Each step starts from the previous step's target, so rapid clicks add up
+	function zoomBy(factor: number) {
+		if (!svg || !zoom) return;
+		const [width, height] = viewportSize();
+		const from = zoomTarget ?? d3.zoomTransform(svg.node()!);
+		animateZoomTo(scaleAbout(from, factor, [width / 2, height / 2], SCALE_EXTENT));
+	}
+
 	export function zoomIn() {
-		if (svg && zoom) {
-			svg.transition().duration(300).call(zoom.scaleBy, 1.2);
-		}
+		zoomBy(1.2);
 	}
 
 	export function zoomOut() {
-		if (svg && zoom) {
-			svg.transition().duration(300).call(zoom.scaleBy, 0.8);
-		}
+		zoomBy(0.8);
 	}
 
 	export function resetZoom() {
-		if (svg && zoom) {
-			svg.transition().duration(300).call(zoom.transform, d3.zoomIdentity);
-			// Re-fit after reset
-			setTimeout(renderChart, 350);
-		}
+		if (!svg || !zoom) return;
+		const fit = fitToContent();
+		if (fit) animateZoomTo(fit);
 	}
 
 	// Navigation helper functions
@@ -547,15 +571,8 @@
 	onMount(() => {
 		renderChart();
 
-		// Re-render on window resize
-		const resizeObserver = new ResizeObserver(() => {
-			renderChart();
-		});
-		resizeObserver.observe(container);
-
-		return () => {
-			resizeObserver.disconnect();
-		};
+		// Re-render when the width changes; a height-only change keeps the view
+		return observeChartResize(container, renderChart, updateViewBox);
 	});
 
 	// Re-render when data or layout changes
@@ -585,7 +602,7 @@
 	.descendancy-chart {
 		width: 100%;
 		height: 100%;
-		min-height: 400px;
+		min-height: 240px;
 		background: #fafafa;
 		border-radius: 8px;
 		overflow: hidden;

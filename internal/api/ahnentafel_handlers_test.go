@@ -205,10 +205,11 @@ func TestGetAhnentafel_JSONFormat_Success(t *testing.T) {
 		t.Errorf("entry[4].given_name = %v, want Mary", entry5["given_name"])
 	}
 
-	// Verify counts
+	// Verify counts: total_count is every slot in the generations shown,
+	// 2^(generations+1) - 1, not the number of known entries
 	totalCount := int(result["total_count"].(float64))
-	if totalCount != 5 {
-		t.Errorf("total_count = %d, want 5", totalCount)
+	if totalCount != 7 {
+		t.Errorf("total_count = %d, want 7", totalCount)
 	}
 
 	generations := int(result["generations"].(float64))

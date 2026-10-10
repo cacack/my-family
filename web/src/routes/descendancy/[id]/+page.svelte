@@ -109,9 +109,7 @@
 		if (node.spouses) {
 			for (const spouse of node.spouses) {
 				if (spouse.id === personId) {
-					const given = spouse.given_name || '';
-					const surname = spouse.surname || '';
-					return `${given} ${surname}`.trim() || null;
+					return spouse.name || null;
 				}
 			}
 		}
@@ -148,7 +146,12 @@
 				selectedPersonId = descendancy.root.id;
 			}
 		} catch (e) {
-			error = (e as { message?: string }).message || 'Failed to load descendancy';
+			const apiError = e as { message?: string; status?: number };
+			// A malformed id (400) and an unknown one (404) both mean there is no such person
+			error =
+				apiError.status === 400 || apiError.status === 404
+					? 'Person not found'
+					: apiError.message || 'Failed to load descendancy';
 			descendancy = null;
 			selectedPersonId = null;
 		} finally {
@@ -240,19 +243,21 @@
 		</div>
 	</header>
 
-	<main class="chart-container">
+	<div class="chart-container">
 		{#if loading}
 			<div class="loading">Loading descendancy...</div>
 		{:else if error}
 			<div class="error">{error}</div>
 		{:else if descendancy}
-			<DescendancyChart
-				bind:this={chart}
-				data={descendancy.root}
-				{layout}
-				{selectedPersonId}
-				onPersonClick={handlePersonClick}
-			/>
+			<div class="chart-area">
+				<DescendancyChart
+					bind:this={chart}
+					data={descendancy.root}
+					{layout}
+					{selectedPersonId}
+					onPersonClick={handlePersonClick}
+				/>
+			</div>
 			<div class="chart-info">
 				<span class="stat">
 					{descendancy.total_descendants} descendant{descendancy.total_descendants !== 1
@@ -268,14 +273,27 @@
 		{:else}
 			<div class="empty">No descendancy data available.</div>
 		{/if}
-	</main>
+	</div>
 </div>
 
 <style>
+	/* Size the chart page to the viewport left under the app header */
+	:global(.app-layout:has(.descendancy-page)) {
+		height: 100dvh;
+		min-height: 0;
+	}
+
+	:global(.app-main:has(.descendancy-page)) {
+		display: flex;
+		flex-direction: column;
+		min-height: 0;
+	}
+
 	.descendancy-page {
 		display: flex;
 		flex-direction: column;
-		height: 100vh;
+		flex: 1;
+		min-height: 0;
 		background: #f8fafc;
 	}
 
@@ -390,9 +408,17 @@
 	}
 
 	.chart-container {
+		display: flex;
+		flex-direction: column;
 		flex: 1;
+		min-height: 0;
 		padding: 1rem;
 		overflow: hidden;
+	}
+
+	.chart-area {
+		flex: 1;
+		min-height: 0;
 	}
 
 	.loading,

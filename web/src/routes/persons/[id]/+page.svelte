@@ -332,6 +332,7 @@
 		{#if person && !editing}
 			<div class="actions">
 				<Button variant="outline" href="/pedigree/{person.id}">Pedigree</Button>
+				<Button variant="outline" href="/descendancy/{person.id}">Descendants</Button>
 				<Button variant="outline" href="/ahnentafel/{person.id}">Ahnentafel</Button>
 				<Button variant="outline" onclick={startEdit} bind:ref={editButton}>Edit</Button>
 				<Button variant="destructive" onclick={deletePerson}>Delete</Button>

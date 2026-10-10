@@ -149,8 +149,9 @@ func (ss *StrictServer) GetAhnentafel(ctx context.Context, request GetAhnentafel
 		Subject:     subject,
 		Entries:     entries,
 		Generations: result.MaxGeneration,
-		TotalCount:  result.TotalEntries,
-		KnownCount:  knownCount,
+		// Every Ahnentafel slot in those generations, known or not
+		TotalCount: 1<<(result.MaxGeneration+1) - 1,
+		KnownCount: knownCount,
 	}, nil
 }
 

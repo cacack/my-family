@@ -22,10 +22,7 @@ const mockPersonWithSpouse: DescendancyNode = {
 	spouses: [
 		{
 			id: '2',
-			given_name: 'Jane',
-			surname: 'Smith',
-			gender: 'female',
-			birth_date: { year: 1955 },
+			name: 'Jane Smith',
 			marriage_date: { year: 1975 }
 		}
 	]
@@ -64,10 +61,7 @@ const mockThreeGenerations: DescendancyNode = {
 	spouses: [
 		{
 			id: '10',
-			given_name: 'Jane',
-			surname: 'Smith',
-			gender: 'female',
-			birth_date: { year: 1925 }
+			name: 'Jane Smith'
 		}
 	],
 	children: [
@@ -113,18 +107,12 @@ const mockMultipleSpouses: DescendancyNode = {
 	spouses: [
 		{
 			id: '2',
-			given_name: 'Jane',
-			surname: 'Smith',
-			gender: 'female',
-			birth_date: { year: 1955 },
+			name: 'Jane Smith',
 			marriage_date: { year: 1975 }
 		},
 		{
 			id: '3',
-			given_name: 'Sarah',
-			surname: 'Johnson',
-			gender: 'female',
-			birth_date: { year: 1960 },
+			name: 'Sarah Johnson',
 			marriage_date: { year: 1990 }
 		}
 	]
@@ -208,10 +196,10 @@ describe('DescendancyChart', () => {
 		expect(rect?.getAttribute('fill')).toBe('#fce7f3'); // Pink for female
 	});
 
-	it('uses correct fill color for spouse cards', () => {
+	it('uses a neutral fill for spouse cards (no gender in the API)', () => {
 		const { container } = render(DescendancyChart, { props: { data: mockPersonWithSpouse } });
 		const spouseCard = container.querySelector('.spouse-group rect.spouse-card');
-		expect(spouseCard?.getAttribute('fill')).toBe('#fce7f3'); // Pink for female spouse
+		expect(spouseCard?.getAttribute('fill')).toBe('#f1f5f9');
 	});
 
 	it('supports different layout modes', () => {
@@ -242,8 +230,23 @@ describe('DescendancyChart', () => {
 		const { container } = render(DescendancyChart, { props: { data: mockPersonWithSpouse } });
 		const spouseTexts = container.querySelectorAll('.spouse-group text');
 		const textContents = Array.from(spouseTexts).map((t) => t.textContent);
-		expect(textContents).toContain('Jane');
-		expect(textContents).toContain('Smith');
+		expect(textContents).toContain('Jane Smith');
+		expect(textContents).toContain('m. 1975');
+		expect(container.querySelector('.spouse-group title')?.textContent).toBe('Jane Smith');
+	});
+
+	it('wraps long spouse names over two lines without a space before the ellipsis', () => {
+		const data: DescendancyNode = {
+			...mockSinglePerson,
+			spouses: [{ id: '2', name: 'Louise Margaret Alexandra Victoria Agnes of_Prussia' }]
+		};
+		const { container } = render(DescendancyChart, { props: { data } });
+		const lines = Array.from(container.querySelectorAll('.spouse-group text')).map(
+			(t) => t.textContent
+		);
+		expect(lines[0]).toBe('Louise Margaret');
+		expect(lines[1]).toBe('Alexandra…');
+		expect(lines[2]).toBe('');
 	});
 
 	it('renders birth-death dates', () => {
@@ -292,9 +295,23 @@ describe('DescendancyChart', () => {
 		const { container } = render(DescendancyChart, { props: { data: longNamePerson } });
 		const texts = container.querySelectorAll('.node text');
 		const textContents = Array.from(texts).map((t) => t.textContent);
-		// Should be truncated with ...
-		const truncatedTexts = textContents.filter((t) => t?.includes('...'));
+		// Should be truncated with an ellipsis
+		const truncatedTexts = textContents.filter((t) => t?.endsWith('…'));
 		expect(truncatedTexts.length).toBeGreaterThan(0);
+	});
+
+	it('truncates at a word boundary and shows the full name as a tooltip', () => {
+		const person: DescendancyNode = {
+			id: '1',
+			given_name: 'Beatrice Mary Victoria',
+			surname: 'Saxe-Coburg'
+		};
+		const { container } = render(DescendancyChart, { props: { data: person } });
+		const texts = Array.from(container.querySelectorAll('.node text')).map((t) => t.textContent);
+		expect(texts).toContain('Beatrice Mary…');
+		expect(container.querySelector('.node title')?.textContent).toBe(
+			'Beatrice Mary Victoria Saxe-Coburg'
+		);
 	});
 
 	it('handles missing dates gracefully', () => {

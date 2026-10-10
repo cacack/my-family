@@ -61,6 +61,12 @@
 		}
 	});
 
+	// Bring the result list on-screen when it opens or grows (it can open below the fold)
+	$effect(() => {
+		results;
+		dropdownRef?.scrollIntoView?.({ block: 'nearest' });
+	});
+
 	async function search(searchQuery: string) {
 		if (searchQuery.length < 2) {
 			results = [];

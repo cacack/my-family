@@ -241,9 +241,22 @@ describe('PedigreeChart', () => {
 		const { container } = render(PedigreeChart, { props: { data: longNamePerson } });
 		const texts = container.querySelectorAll('.node text');
 		const textContents = Array.from(texts).map((t) => t.textContent);
-		// Should be truncated with ...
-		const truncatedTexts = textContents.filter((t) => t?.includes('...'));
+		// Should be truncated with an ellipsis
+		const truncatedTexts = textContents.filter((t) => t?.endsWith('…'));
 		expect(truncatedTexts.length).toBeGreaterThan(0);
+	});
+
+	it('truncates at a word boundary and shows the full name as a tooltip', () => {
+		const person: PedigreeNode = {
+			id: '1',
+			given_name: 'Beatrice Mary Victoria',
+			surname: 'Saxe-Coburg'
+		};
+		const { container } = render(PedigreeChart, { props: { data: person } });
+		expect(container.querySelector('.node text.given-name')?.textContent).toBe('Beatrice Mary…');
+		expect(container.querySelector('.node title')?.textContent).toBe(
+			'Beatrice Mary Victoria Saxe-Coburg'
+		);
 	});
 
 	it('handles missing dates gracefully', () => {

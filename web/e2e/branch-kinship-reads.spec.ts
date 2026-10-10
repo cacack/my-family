@@ -81,7 +81,7 @@ test('a person created on a branch is searchable and appears in descendancy and 
 
 	// The descendancy chart of her father shows her.
 	await page.goto(`/descendancy/${father.id}`);
-	await expect(page.getByText('Zenobia', { exact: false }).first()).toBeVisible();
+	await expect(page.locator('.descendancy-chart text', { hasText: 'Zenobia' }).first()).toBeVisible();
 
 	// The relationship calculator: pick her with the person picker (a search),
 	// against her father, and calculate.
@@ -91,7 +91,8 @@ test('a person created on a branch is searchable and appears in descendancy and 
 	await page.getByRole('option', { name: new RegExp(`Zenobia ${surname}`) }).click();
 	await page.getByRole('button', { name: 'Calculate Relationship' }).click();
 	const results = page.getByRole('region', { name: 'Relationship results' });
-	await expect(results.getByText('parent', { exact: true }).first()).toBeVisible();
+	// The label is what person B (her father) is to her, in his gender
+	await expect(results.getByText('father', { exact: true }).first()).toBeVisible();
 	await expect(results.getByRole('alert')).toHaveCount(0);
 
 	// None of it exists on the mainline.

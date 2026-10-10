@@ -34,11 +34,28 @@ afterEach(async () => {
 // Mock ResizeObserver for D3/chart tests
 // Using a class-based mock to avoid flaky "is not a constructor" errors
 class MockResizeObserver {
+	// Match the real signature so callers can pass their callback
+	constructor(readonly callback: ResizeObserverCallback) {}
 	observe = vi.fn();
 	unobserve = vi.fn();
 	disconnect = vi.fn();
 }
 globalThis.ResizeObserver = MockResizeObserver;
+
+// Mock matchMedia (jsdom lacks it); the accessibility store reads it on load
+if (typeof window !== 'undefined' && !window.matchMedia) {
+	window.matchMedia = (query: string) =>
+		({
+			matches: false,
+			media: query,
+			onchange: null,
+			addEventListener: vi.fn(),
+			removeEventListener: vi.fn(),
+			addListener: vi.fn(),
+			removeListener: vi.fn(),
+			dispatchEvent: vi.fn()
+		}) as MediaQueryList;
+}
 
 // Mock SVG getBBox for D3 tests
 if (typeof SVGElement !== 'undefined') {
