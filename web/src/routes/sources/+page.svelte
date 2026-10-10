@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { api, type Source } from '$lib/api/client';
 	import { Button } from '$lib/components/ui/button';
+	import PageHeader from '$lib/components/PageHeader.svelte';
+	import FormRow from '$lib/components/FormRow.svelte';
 	import SourceCard from '$lib/components/SourceCard.svelte';
 	import { DEFAULT_SOURCE_TYPE, SOURCE_TYPES } from '$lib/utils/sourceTypes';
 
@@ -157,50 +159,51 @@
 </svelte:head>
 
 <div class="sources-page">
-	<header class="page-header">
-		<h1>Sources</h1>
-		<div class="controls">
-			<div class="search-wrapper">
-				<svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-					<circle cx="11" cy="11" r="8" />
-					<path d="m21 21-4.35-4.35" />
-				</svg>
-				<input
-					type="text"
-					value={searchQuery}
-					oninput={handleSearchInput}
-					placeholder="Search sources..."
-					aria-label="Search sources"
-					class="search-input"
-				/>
+	<PageHeader title="Sources">
+		{#snippet actions()}
+			<div class="controls">
+				<div class="search-wrapper">
+					<svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+						<circle cx="11" cy="11" r="8" />
+						<path d="m21 21-4.35-4.35" />
+					</svg>
+					<input
+						type="text"
+						value={searchQuery}
+						oninput={handleSearchInput}
+						placeholder="Search sources..."
+						aria-label="Search sources"
+						class="search-input"
+					/>
+				</div>
+				<label>
+					Sort by:
+					<select value={sort} onchange={handleSortChange}>
+						<option value="title">Title</option>
+						<option value="author">Author</option>
+						<option value="citation_count">Citations</option>
+					</select>
+				</label>
+				<button
+					class="order-btn"
+					onclick={handleOrderChange}
+					title="Toggle sort order"
+					aria-label="Sort order: {order === 'asc' ? 'ascending' : 'descending'}"
+				>
+					{#if order === 'asc'}
+						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+							<path d="M12 5v14M5 12l7-7 7 7" />
+						</svg>
+					{:else}
+						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+							<path d="M12 19V5M5 12l7 7 7-7" />
+						</svg>
+					{/if}
+				</button>
+				<Button onclick={openAddForm}>Add Source</Button>
 			</div>
-			<label>
-				Sort by:
-				<select value={sort} onchange={handleSortChange}>
-					<option value="title">Title</option>
-					<option value="author">Author</option>
-					<option value="citation_count">Citations</option>
-				</select>
-			</label>
-			<button
-				class="order-btn"
-				onclick={handleOrderChange}
-				title="Toggle sort order"
-				aria-label="Sort order: {order === 'asc' ? 'ascending' : 'descending'}"
-			>
-				{#if order === 'asc'}
-					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-						<path d="M12 5v14M5 12l7-7 7 7" />
-					</svg>
-				{:else}
-					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-						<path d="M12 19V5M5 12l7 7 7-7" />
-					</svg>
-				{/if}
-			</button>
-			<Button onclick={openAddForm}>Add Source</Button>
-		</div>
-	</header>
+		{/snippet}
+	</PageHeader>
 
 	{#if showAddForm}
 		<div class="add-form-container">
@@ -211,7 +214,7 @@
 					<div class="form-error" role="alert">{error}</div>
 				{/if}
 
-				<div class="form-row">
+				<FormRow>
 					<label>
 						Source Type
 						<select bind:value={newSource.source_type}>
@@ -224,9 +227,9 @@
 						Title <span class="required">*</span>
 						<input type="text" bind:value={newSource.title} required />
 					</label>
-				</div>
+				</FormRow>
 
-				<div class="form-row">
+				<FormRow>
 					<label>
 						Author
 						<input type="text" bind:value={newSource.author} />
@@ -235,9 +238,9 @@
 						Publisher
 						<input type="text" bind:value={newSource.publisher} />
 					</label>
-				</div>
+				</FormRow>
 
-				<div class="form-row">
+				<FormRow>
 					<label>
 						Publish Date
 						<input type="text" bind:value={newSource.publish_date} placeholder="e.g., 1920 or 15 Mar 1920" />
@@ -246,9 +249,9 @@
 						URL
 						<input type="url" bind:value={newSource.url} />
 					</label>
-				</div>
+				</FormRow>
 
-				<div class="form-row">
+				<FormRow>
 					<label>
 						Repository Name
 						<input type="text" bind:value={newSource.repository_name} placeholder="e.g., National Archives" />
@@ -257,14 +260,14 @@
 						Collection Name
 						<input type="text" bind:value={newSource.collection_name} />
 					</label>
-				</div>
+				</FormRow>
 
-				<div class="form-row">
+				<FormRow>
 					<label>
 						Call Number
 						<input type="text" bind:value={newSource.call_number} />
 					</label>
-				</div>
+				</FormRow>
 
 				<label>
 					Notes
@@ -320,21 +323,6 @@
 		max-width: 1200px;
 		margin: 0 auto;
 		padding: 1.5rem;
-	}
-
-	.page-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		margin-bottom: 1.5rem;
-		flex-wrap: wrap;
-		gap: 1rem;
-	}
-
-	.page-header h1 {
-		margin: 0;
-		font-size: 1.5rem;
-		color: #1e293b;
 	}
 
 	.controls {
@@ -435,13 +423,6 @@
 		border-radius: 6px;
 		color: #dc2626;
 		font-size: 0.875rem;
-		margin-bottom: 1rem;
-	}
-
-	.form-row {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
-		gap: 1rem;
 		margin-bottom: 1rem;
 	}
 

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { api, type ApiError, type Branch, type BranchOutcome } from '$lib/api/client';
 	import BranchOutcomeBadge from '$lib/components/branch/BranchOutcomeBadge.svelte';
+	import PageHeader from '$lib/components/PageHeader.svelte';
 	import CloseBranchDialog, {
 		type BranchCloseResult
 	} from '$lib/components/branch/CloseBranchDialog.svelte';
@@ -290,25 +291,24 @@
 {/snippet}
 
 <div class="branches-page">
-	<header class="page-header">
-		<div>
-			<h1>Research Branches</h1>
-			<p class="description">
-				Explore a line of research in isolation, then compare it against the mainline. A branch
-				covers people, families, sources, citations, notes, media, associations and your evidence
-				and research, and search, browse, the map, charts and reports follow it. Brick walls,
-				repositories, quality checks and exports stay on the mainline, and those pages say so.
-			</p>
-			<p class="description">
-				A branch is a live view over the mainline, not a frozen copy: records you haven't edited
-				on it always show the mainline's current data, so there is nothing to rebase. Each active
-				branch below says how far the mainline has moved since it was created.
-			</p>
-		</div>
-		{#if !unavailable}
-			<Button onclick={openCreate}>New branch</Button>
-		{/if}
-	</header>
+	<PageHeader title="Research Branches">
+		<p class="description">
+			Explore a line of research in isolation, then compare it against the mainline. A branch
+			covers people, families, sources, citations, notes, media, associations and your evidence
+			and research, and search, browse, the map, charts and reports follow it. Brick walls,
+			repositories, quality checks and exports stay on the mainline, and those pages say so.
+		</p>
+		<p class="description">
+			A branch is a live view over the mainline, not a frozen copy: records you haven't edited
+			on it always show the mainline's current data, so there is nothing to rebase. Each active
+			branch below says how far the mainline has moved since it was created.
+		</p>
+		{#snippet actions()}
+			{#if !unavailable}
+				<Button onclick={openCreate}>New branch</Button>
+			{/if}
+		{/snippet}
+	</PageHeader>
 
 	{#if loading}
 		<div class="state" role="status" aria-live="polite">Loading branches...</div>
@@ -502,21 +502,6 @@
 		max-width: 1000px;
 		margin: 0 auto;
 		padding: 1.5rem;
-	}
-
-	.page-header {
-		display: flex;
-		align-items: flex-start;
-		justify-content: space-between;
-		gap: 1rem;
-		flex-wrap: wrap;
-		margin-bottom: 1.5rem;
-	}
-
-	.page-header h1 {
-		margin: 0;
-		font-size: 1.5rem;
-		color: #1e293b;
 	}
 
 	.description {

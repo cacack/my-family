@@ -14,6 +14,7 @@
 	import UncertaintyBadge from '$lib/components/UncertaintyBadge.svelte';
 	import { createShortcutHandler } from '$lib/keyboard/useShortcuts.svelte';
 	import { Button } from '$lib/components/ui/button';
+	import FormRow from '$lib/components/FormRow.svelte';
 	import { Badge } from '$lib/components/ui/badge';
 	import ExternalLinks from '$lib/components/ExternalLinks.svelte';
 	import { activeBranch } from '$lib/stores/activeBranch.svelte';
@@ -347,7 +348,7 @@
 	{:else if person}
 		{#if editing}
 			<form class="edit-form" bind:this={editForm} onsubmit={(e) => { e.preventDefault(); savePerson(); }}>
-				<div class="form-row">
+				<FormRow>
 					<label>
 						Given Name
 						<input type="text" bind:value={formData.given_name} required />
@@ -356,9 +357,9 @@
 						Surname
 						<input type="text" bind:value={formData.surname} required />
 					</label>
-				</div>
+				</FormRow>
 
-				<div class="form-row">
+				<FormRow>
 					<label>
 						Gender
 						<select bind:value={formData.gender}>
@@ -377,9 +378,9 @@
 							<option value="unknown">Unknown - Not yet assessed</option>
 						</select>
 					</label>
-				</div>
+				</FormRow>
 
-				<div class="form-row">
+				<FormRow>
 					<label>
 						Birth Date
 						<input type="text" bind:value={formData.birth_date} placeholder="e.g., 1 JAN 1850 or ABT 1850" />
@@ -388,9 +389,9 @@
 						Birth Place
 						<input type="text" bind:value={formData.birth_place} />
 					</label>
-				</div>
+				</FormRow>
 
-				<div class="form-row">
+				<FormRow>
 					<label>
 						Death Date
 						<input type="text" bind:value={formData.death_date} placeholder="e.g., 15 MAR 1920" />
@@ -399,7 +400,7 @@
 						Death Place
 						<input type="text" bind:value={formData.death_place} />
 					</label>
-				</div>
+				</FormRow>
 
 				<label>
 					Notes
@@ -949,13 +950,6 @@
 		border-radius: 12px;
 		border: 1px solid #e2e8f0;
 		padding: 1.5rem;
-	}
-
-	.form-row {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
-		gap: 1rem;
-		margin-bottom: 1rem;
 	}
 
 	label {

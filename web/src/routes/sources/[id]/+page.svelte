@@ -4,6 +4,7 @@
 	import { api, type SourceDetail, type Citation } from '$lib/api/client';
 	import ExternalLinks from '$lib/components/ExternalLinks.svelte';
 	import { Button } from '$lib/components/ui/button';
+	import FormRow from '$lib/components/FormRow.svelte';
 	import { Badge } from '$lib/components/ui/badge';
 	import { SOURCE_TYPES } from '$lib/utils/sourceTypes';
 
@@ -166,7 +167,7 @@
 					<div class="form-error">{error}</div>
 				{/if}
 
-				<div class="form-row">
+				<FormRow>
 					<label>
 						Source Type
 						<select bind:value={formData.source_type}>
@@ -179,9 +180,9 @@
 						Title <span class="required">*</span>
 						<input type="text" bind:value={formData.title} required />
 					</label>
-				</div>
+				</FormRow>
 
-				<div class="form-row">
+				<FormRow>
 					<label>
 						Author
 						<input type="text" bind:value={formData.author} />
@@ -190,9 +191,9 @@
 						Publisher
 						<input type="text" bind:value={formData.publisher} />
 					</label>
-				</div>
+				</FormRow>
 
-				<div class="form-row">
+				<FormRow>
 					<label>
 						Publish Date
 						<input type="text" bind:value={formData.publish_date} placeholder="e.g., 1920 or 15 Mar 1920" />
@@ -201,9 +202,9 @@
 						URL
 						<input type="url" bind:value={formData.url} />
 					</label>
-				</div>
+				</FormRow>
 
-				<div class="form-row">
+				<FormRow>
 					<label>
 						Repository Name
 						<input type="text" bind:value={formData.repository_name} placeholder="e.g., National Archives" />
@@ -212,14 +213,14 @@
 						Collection Name
 						<input type="text" bind:value={formData.collection_name} />
 					</label>
-				</div>
+				</FormRow>
 
-				<div class="form-row">
+				<FormRow>
 					<label>
 						Call Number
 						<input type="text" bind:value={formData.call_number} />
 					</label>
-				</div>
+				</FormRow>
 
 				<label>
 					Notes
@@ -623,13 +624,6 @@
 		border-radius: 6px;
 		color: #dc2626;
 		font-size: 0.875rem;
-		margin-bottom: 1rem;
-	}
-
-	.form-row {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
-		gap: 1rem;
 		margin-bottom: 1rem;
 	}
 

@@ -5,6 +5,7 @@
 	import { api, type RepositoryDetail, type Address } from '$lib/api/client';
 	import ExternalLinks from '$lib/components/ExternalLinks.svelte';
 	import { Button } from '$lib/components/ui/button';
+	import FormRow from '$lib/components/FormRow.svelte';
 
 	let repository: RepositoryDetail | null = $state(null);
 	let loading = $state(true);
@@ -197,7 +198,7 @@
 
 				<fieldset>
 					<legend>Address</legend>
-					<div class="form-row">
+					<FormRow>
 						<label>
 							Address Line 1
 							<input type="text" bind:value={formData.line1} />
@@ -206,8 +207,8 @@
 							Address Line 2
 							<input type="text" bind:value={formData.line2} />
 						</label>
-					</div>
-					<div class="form-row">
+					</FormRow>
+					<FormRow>
 						<label>
 							City
 							<input type="text" bind:value={formData.city} />
@@ -216,8 +217,8 @@
 							State/Province
 							<input type="text" bind:value={formData.state} />
 						</label>
-					</div>
-					<div class="form-row">
+					</FormRow>
+					<FormRow>
 						<label>
 							Postal Code
 							<input type="text" bind:value={formData.postal_code} />
@@ -226,8 +227,8 @@
 							Country
 							<input type="text" bind:value={formData.country} />
 						</label>
-					</div>
-					<div class="form-row">
+					</FormRow>
+					<FormRow>
 						<label>
 							Phone
 							<input type="tel" bind:value={formData.phone} />
@@ -236,13 +237,13 @@
 							Email
 							<input type="email" bind:value={formData.email} />
 						</label>
-					</div>
-					<div class="form-row">
+					</FormRow>
+					<FormRow>
 						<label>
 							Fax
 							<input type="tel" bind:value={formData.fax} />
 						</label>
-					</div>
+					</FormRow>
 				</fieldset>
 
 				<label>
@@ -440,14 +441,12 @@
 		font-size: 0.875rem;
 	}
 
+	/* Each FormRow spaces itself 1rem below, so the bottom padding is left to it. */
 	fieldset {
 		border: 1px solid #e2e8f0;
 		border-radius: 8px;
-		padding: 1rem;
+		padding: 1rem 1rem 0;
 		margin: 0;
-		display: flex;
-		flex-direction: column;
-		gap: 1rem;
 	}
 
 	legend {
@@ -457,12 +456,6 @@
 		padding: 0 0.375rem;
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
-	}
-
-	.form-row {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
-		gap: 1rem;
 	}
 
 	.entity-form label {

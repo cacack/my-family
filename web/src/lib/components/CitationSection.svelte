@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { api, isConflictError, type Citation, type Source } from '$lib/api/client';
 	import { Button } from '$lib/components/ui/button';
+	import FormRow from '$lib/components/FormRow.svelte';
 	import * as Tabs from '$lib/components/ui/tabs';
 	import ConflictError from './ConflictError.svelte';
 	import CitationTemplateForm from './CitationTemplateForm.svelte';
@@ -317,7 +318,7 @@
 				{/if}
 			</div>
 
-			<div class="form-row">
+			<FormRow>
 				<label>
 					Fact Type
 					<select bind:value={newCitation.fact_type}>
@@ -326,7 +327,7 @@
 						{/each}
 					</select>
 				</label>
-			</div>
+			</FormRow>
 
 			{#if citationMode === 'template'}
 				<!-- Template-driven citation fields -->
@@ -337,7 +338,7 @@
 				/>
 			{/if}
 
-			<div class="form-row">
+			<FormRow>
 				<label>
 					Page
 					<input type="text" bind:value={newCitation.page} placeholder="e.g., 42" />
@@ -346,10 +347,10 @@
 					Volume
 					<input type="text" bind:value={newCitation.volume} placeholder="e.g., Vol. 3" />
 				</label>
-			</div>
+			</FormRow>
 
 			{#if citationMode === 'freeform'}
-				<div class="form-row three-cols">
+				<FormRow minColumnWidth="10rem">
 					<label>
 						Source Quality
 						<select bind:value={newCitation.source_quality}>
@@ -374,7 +375,7 @@
 							<option value="indirect">Indirect</option>
 						</select>
 					</label>
-				</div>
+				</FormRow>
 			{/if}
 
 			<label>
@@ -635,17 +636,6 @@
 		border-radius: 4px;
 		font-size: 0.8125rem;
 		color: #166534;
-	}
-
-	.form-row {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
-		gap: 1rem;
-		margin-bottom: 1rem;
-	}
-
-	.form-row.three-cols {
-		grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
 	}
 
 	.add-form label {

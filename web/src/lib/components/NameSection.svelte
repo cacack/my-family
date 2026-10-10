@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { api, isConflictError, type PersonName, type NameType } from '$lib/api/client';
 	import { Button } from '$lib/components/ui/button';
+	import FormRow from '$lib/components/FormRow.svelte';
 	import ConflictError from './ConflictError.svelte';
 
 	interface Props {
@@ -259,7 +260,7 @@
 
 	{#if showAddForm}
 		<form class="add-form" onsubmit={(e) => { e.preventDefault(); saveNewName(); }}>
-			<div class="form-row">
+			<FormRow>
 				<label>
 					Given Name <span class="required">*</span>
 					<input type="text" bind:value={formData.given_name} placeholder="e.g., John" required />
@@ -268,9 +269,9 @@
 					Surname <span class="required">*</span>
 					<input type="text" bind:value={formData.surname} placeholder="e.g., Smith" required />
 				</label>
-			</div>
+			</FormRow>
 
-			<div class="form-row">
+			<FormRow>
 				<label>
 					Name Prefix
 					<input type="text" bind:value={formData.name_prefix} placeholder="e.g., Dr." />
@@ -279,9 +280,9 @@
 					Name Suffix
 					<input type="text" bind:value={formData.name_suffix} placeholder="e.g., Jr." />
 				</label>
-			</div>
+			</FormRow>
 
-			<div class="form-row">
+			<FormRow>
 				<label>
 					Surname Prefix
 					<input type="text" bind:value={formData.surname_prefix} placeholder="e.g., von" />
@@ -290,9 +291,9 @@
 					Nickname
 					<input type="text" bind:value={formData.nickname} placeholder="e.g., Bill" />
 				</label>
-			</div>
+			</FormRow>
 
-			<div class="form-row">
+			<FormRow>
 				<label>
 					Name Type <span class="required">*</span>
 					<select bind:value={formData.name_type} required>
@@ -304,7 +305,7 @@
 						<option value="professional">Professional</option>
 					</select>
 				</label>
-			</div>
+			</FormRow>
 
 			<div class="checkbox-row">
 				<label class="checkbox-label">
@@ -336,7 +337,7 @@
 				<li class="name-item">
 					{#if editingId === name.id}
 						<form class="add-form edit-form" onsubmit={(e) => { e.preventDefault(); saveEdit(); }}>
-							<div class="form-row">
+							<FormRow>
 								<label>
 									Given Name <span class="required">*</span>
 									<input type="text" bind:value={formData.given_name} required />
@@ -345,9 +346,9 @@
 									Surname <span class="required">*</span>
 									<input type="text" bind:value={formData.surname} required />
 								</label>
-							</div>
+							</FormRow>
 
-							<div class="form-row">
+							<FormRow>
 								<label>
 									Name Prefix
 									<input type="text" bind:value={formData.name_prefix} />
@@ -356,9 +357,9 @@
 									Name Suffix
 									<input type="text" bind:value={formData.name_suffix} />
 								</label>
-							</div>
+							</FormRow>
 
-							<div class="form-row">
+							<FormRow>
 								<label>
 									Surname Prefix
 									<input type="text" bind:value={formData.surname_prefix} />
@@ -367,9 +368,9 @@
 									Nickname
 									<input type="text" bind:value={formData.nickname} />
 								</label>
-							</div>
+							</FormRow>
 
-							<div class="form-row">
+							<FormRow>
 								<label>
 									Name Type <span class="required">*</span>
 									<select bind:value={formData.name_type} required>
@@ -381,7 +382,7 @@
 										<option value="professional">Professional</option>
 									</select>
 								</label>
-							</div>
+							</FormRow>
 
 							<div class="checkbox-row">
 								<label class="checkbox-label">
@@ -490,13 +491,6 @@
 
 	.edit-form {
 		margin-bottom: 0;
-	}
-
-	.form-row {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
-		gap: 1rem;
-		margin-bottom: 1rem;
 	}
 
 	.add-form label {
@@ -631,11 +625,5 @@
 	.delete-confirm {
 		font-size: 0.8125rem;
 		color: #dc2626;
-	}
-
-	@media (max-width: 640px) {
-		.form-row {
-			grid-template-columns: 1fr;
-		}
 	}
 </style>

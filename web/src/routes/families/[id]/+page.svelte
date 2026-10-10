@@ -21,6 +21,7 @@
 	import RollbackSuccessBanner from '$lib/components/RollbackSuccessBanner.svelte';
 	import { createShortcutHandler } from '$lib/keyboard/useShortcuts.svelte';
 	import { Button } from '$lib/components/ui/button';
+	import FormRow from '$lib/components/FormRow.svelte';
 	import { Badge } from '$lib/components/ui/badge';
 	import { activeBranch } from '$lib/stores/activeBranch.svelte';
 	import { ROLLBACK_MAINLINE_ONLY } from '$lib/utils/rollbackScope';
@@ -369,7 +370,7 @@
 					<div class="dialog-error" role="alert">{saveError}</div>
 				{/if}
 
-				<div class="form-row">
+				<FormRow>
 					<label>
 						Relationship Type
 						<select bind:value={formData.relationship_type}>
@@ -378,9 +379,9 @@
 							<option value="partnership">Partnership</option>
 						</select>
 					</label>
-				</div>
+				</FormRow>
 
-				<div class="form-row">
+				<FormRow>
 					<label>
 						Marriage Date
 						<input type="text" bind:value={formData.marriage_date} placeholder="e.g., 1 JAN 1850 or ABT 1850" />
@@ -389,7 +390,7 @@
 						Marriage Place
 						<input type="text" bind:value={formData.marriage_place} />
 					</label>
-				</div>
+				</FormRow>
 
 				<div class="form-actions">
 					<Button variant="outline" onclick={cancelEdit} disabled={saving}>Cancel</Button>
@@ -866,13 +867,6 @@
 		margin: 0 0 1.5rem;
 		font-size: 1.25rem;
 		color: #1e293b;
-	}
-
-	.form-row {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
-		gap: 1rem;
-		margin-bottom: 1rem;
 	}
 
 	label {

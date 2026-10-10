@@ -1,7 +1,9 @@
 <script lang="ts">
 	import MainlineNotice from '$lib/components/MainlineNotice.svelte';
+	import PageHeader from '$lib/components/PageHeader.svelte';
 	import { api, type Repository, type Address } from '$lib/api/client';
 	import { Button } from '$lib/components/ui/button';
+	import FormRow from '$lib/components/FormRow.svelte';
 
 	let repositories: Repository[] = $state([]);
 	let total = $state(0);
@@ -146,35 +148,36 @@
 </svelte:head>
 
 <div class="repositories-page">
-	<header class="page-header">
-		<h1>Repositories</h1>
-		<div class="controls">
-			<label>
-				Sort by:
-				<select value={sort} onchange={handleSortChange}>
-					<option value="name">Name</option>
-					<option value="updated_at">Last Updated</option>
-				</select>
-			</label>
-			<button
-				class="order-btn"
-				onclick={handleOrderChange}
-				title="Toggle sort order"
-				aria-label="Sort order: {order === 'asc' ? 'ascending' : 'descending'}"
-			>
-				{#if order === 'asc'}
-					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-						<path d="M12 5v14M5 12l7-7 7 7" />
-					</svg>
-				{:else}
-					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-						<path d="M12 19V5M5 12l7 7 7-7" />
-					</svg>
-				{/if}
-			</button>
-			<Button onclick={openAddForm}>Add Repository</Button>
-		</div>
-	</header>
+	<PageHeader title="Repositories">
+		{#snippet actions()}
+			<div class="controls">
+				<label>
+					Sort by:
+					<select value={sort} onchange={handleSortChange}>
+						<option value="name">Name</option>
+						<option value="updated_at">Last Updated</option>
+					</select>
+				</label>
+				<button
+					class="order-btn"
+					onclick={handleOrderChange}
+					title="Toggle sort order"
+					aria-label="Sort order: {order === 'asc' ? 'ascending' : 'descending'}"
+				>
+					{#if order === 'asc'}
+						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+							<path d="M12 5v14M5 12l7-7 7 7" />
+						</svg>
+					{:else}
+						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+							<path d="M12 19V5M5 12l7 7 7-7" />
+						</svg>
+					{/if}
+				</button>
+				<Button onclick={openAddForm}>Add Repository</Button>
+			</div>
+		{/snippet}
+	</PageHeader>
 
 	<MainlineNotice
 		message="Repositories are shared across all branches. Creating, editing or deleting a repository here changes the mainline, and every research branch sees the change."
@@ -196,7 +199,7 @@
 
 				<fieldset>
 					<legend>Address</legend>
-					<div class="form-row">
+					<FormRow>
 						<label>
 							Address Line 1
 							<input type="text" bind:value={newRepo.line1} />
@@ -205,8 +208,8 @@
 							Address Line 2
 							<input type="text" bind:value={newRepo.line2} />
 						</label>
-					</div>
-					<div class="form-row">
+					</FormRow>
+					<FormRow>
 						<label>
 							City
 							<input type="text" bind:value={newRepo.city} />
@@ -215,8 +218,8 @@
 							State/Province
 							<input type="text" bind:value={newRepo.state} />
 						</label>
-					</div>
-					<div class="form-row">
+					</FormRow>
+					<FormRow>
 						<label>
 							Postal Code
 							<input type="text" bind:value={newRepo.postal_code} />
@@ -225,8 +228,8 @@
 							Country
 							<input type="text" bind:value={newRepo.country} />
 						</label>
-					</div>
-					<div class="form-row">
+					</FormRow>
+					<FormRow>
 						<label>
 							Phone
 							<input type="tel" bind:value={newRepo.phone} />
@@ -235,13 +238,13 @@
 							Email
 							<input type="email" bind:value={newRepo.email} />
 						</label>
-					</div>
-					<div class="form-row">
+					</FormRow>
+					<FormRow>
 						<label>
 							Fax
 							<input type="tel" bind:value={newRepo.fax} />
 						</label>
-					</div>
+					</FormRow>
 				</fieldset>
 
 				<label>
@@ -309,21 +312,6 @@
 		max-width: 1000px;
 		margin: 0 auto;
 		padding: 1.5rem;
-	}
-
-	.page-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		margin-bottom: 1.5rem;
-		flex-wrap: wrap;
-		gap: 1rem;
-	}
-
-	.page-header h1 {
-		margin: 0;
-		font-size: 1.5rem;
-		color: #1e293b;
 	}
 
 	.controls {
@@ -400,14 +388,12 @@
 		font-size: 0.875rem;
 	}
 
+	/* Each FormRow spaces itself 1rem below, so the bottom padding is left to it. */
 	fieldset {
 		border: 1px solid #e2e8f0;
 		border-radius: 8px;
-		padding: 1rem;
+		padding: 1rem 1rem 0;
 		margin: 0;
-		display: flex;
-		flex-direction: column;
-		gap: 1rem;
 	}
 
 	legend {
@@ -417,12 +403,6 @@
 		padding: 0 0.375rem;
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
-	}
-
-	.form-row {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
-		gap: 1rem;
 	}
 
 	.entity-form label {

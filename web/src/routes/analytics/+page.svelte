@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { api, type QualityOverview, type ResearchStatus } from '$lib/api/client';
 	import QualityScore from '$lib/components/QualityScore.svelte';
+	import PageHeader from '$lib/components/PageHeader.svelte';
 	import QualityChart from '$lib/components/QualityChart.svelte';
 	import UncertaintyBadge from '$lib/components/UncertaintyBadge.svelte';
 
@@ -59,13 +60,12 @@
 </svelte:head>
 
 <div class="analytics-page">
-	<header class="page-header">
-		<h1>Completeness</h1>
+	<PageHeader title="Completeness">
 		<p class="page-description">
 			How complete each record is across the whole tree. For date conflicts and possible
 			duplicates, see <a href="/quality">Quality</a>.
 		</p>
-	</header>
+	</PageHeader>
 
 	{#if loading}
 		<div class="loading">Loading completeness metrics...</div>
@@ -189,16 +189,6 @@
 		max-width: 1200px;
 		margin: 0 auto;
 		padding: 1.5rem;
-	}
-
-	.page-header {
-		margin-bottom: 1.5rem;
-	}
-
-	.page-header h1 {
-		margin: 0;
-		font-size: 1.5rem;
-		color: #1e293b;
 	}
 
 	.page-description {
