@@ -125,7 +125,9 @@ func (c *Citation) Validate() error {
 	}
 
 	// Enum validation
-	if !c.FactType.IsValid() {
+	if c.FactType == "" {
+		errs = append(errs, CitationValidationError{Field: "fact_type", Message: "cannot be empty"})
+	} else if !c.FactType.IsValid() {
 		errs = append(errs, CitationValidationError{Field: "fact_type", Message: fmt.Sprintf("invalid value: %s", c.FactType)})
 	}
 	if !c.SourceQuality.IsValid() {
