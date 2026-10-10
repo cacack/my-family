@@ -60,7 +60,7 @@
 		</a>
 	</header>
 
-	<main class="page-content">
+	<div class="page-content">
 		{#if loading}
 			<div class="loading-container">
 				<div class="loading-spinner"></div>
@@ -69,7 +69,7 @@
 		{:else}
 			<RelationshipCalculator {initialPersonA} {initialPersonB} />
 		{/if}
-	</main>
+	</div>
 </div>
 
 <style>

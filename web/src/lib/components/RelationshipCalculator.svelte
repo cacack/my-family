@@ -1,6 +1,11 @@
 <script lang="ts">
-	import { api, type RelationshipResult, type RelationshipPath, type Person, type SearchResult, formatPersonName } from '$lib/api/client';
+	import { api, type RelationshipResult, type Person, type SearchResult, formatPersonName } from '$lib/api/client';
 	import PersonSelector from './PersonSelector.svelte';
+	import {
+		additionalRelationships,
+		genderedRelationship,
+		relationshipChain
+	} from '$lib/utils/relationship';
 
 	interface Props {
 		initialPersonA?: Person | null;
@@ -91,39 +96,21 @@
 		hasCalculated = false;
 	}
 
-	// Get the primary relationship name (first path)
-	function getPrimaryRelationship(paths?: RelationshipPath[]): string {
-		if (!paths || paths.length === 0) return 'No relationship found';
-		return paths[0].name || 'Related';
+	// Relationship names describe what person B is to person A, so they take B's gender
+	function relationshipLabels(r: RelationshipResult): string[] {
+		return (r.paths ?? []).map((path) =>
+			genderedRelationship(path.name || 'relative', r.personB?.gender)
+		);
 	}
 
-	// Get additional relationship paths (after the first)
-	function getAdditionalPaths(paths?: RelationshipPath[]): RelationshipPath[] {
-		if (!paths || paths.length <= 1) return [];
-		return paths.slice(1);
-	}
-
-	// Format the path as a visual chain
-	function formatPathChain(path: RelationshipPath, personA: Person | undefined, personB: Person | undefined): string[] {
-		const chain: string[] = [];
-
-		// Add person A's path to common ancestor
-		if (path.pathFromA && path.pathFromA.length > 0) {
-			chain.push(...path.pathFromA.map((node) => node.name));
-		}
-
-		// Add person B's path from common ancestor (reversed)
-		if (path.pathFromB && path.pathFromB.length > 0) {
-			chain.push(...path.pathFromB.slice().reverse().map((node) => node.name));
-		}
-
-		return chain;
+	function nameOf(person: Person | undefined, fallback: string): string {
+		return person ? formatPersonName(person) : fallback;
 	}
 </script>
 
 <div class="relationship-calculator">
 	<div class="calculator-header">
-		<h2 class="title">Relationship Calculator</h2>
+		<h1 class="title">Relationship Calculator</h1>
 		<p class="subtitle">Select two people to discover how they are related</p>
 	</div>
 
@@ -206,16 +193,17 @@
 				</div>
 			{:else if result}
 				{#if result.isRelated && result.paths && result.paths.length > 0}
+					{@const labels = relationshipLabels(result)}
+					{@const nameA = nameOf(result.personA, 'Person A')}
+					{@const nameB = nameOf(result.personB, 'Person B')}
 					<!-- Primary relationship result -->
 					<div class="primary-result">
 						<div class="relationship-badge">
 							<span class="relationship-label">Relationship</span>
-							<span class="relationship-name">{getPrimaryRelationship(result.paths)}</span>
+							<span class="relationship-name">{labels[0]}</span>
 						</div>
 
-						{#if result.summary}
-							<p class="relationship-summary">{result.summary}</p>
-						{/if}
+						<p class="relationship-summary">{nameB} is {nameA}'s {labels[0]}</p>
 					</div>
 
 					<!-- Relationship Path Visualization -->
@@ -223,71 +211,48 @@
 						<div class="path-visualization">
 							<h3 class="path-title">Relationship Path</h3>
 							<div class="path-chain">
-								<!-- Person A -->
-								<div class="path-node person-node" data-gender={result.personA?.gender}>
-									<div class="node-avatar">
-										<svg viewBox="0 0 24 24" fill="currentColor">
-											<path d="M12 4a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM6 8a6 6 0 1 1 12 0A6 6 0 0 1 6 8zm2 10a3 3 0 0 0-3 3 1 1 0 1 1-2 0 5 5 0 0 1 5-5h8a5 5 0 0 1 5 5 1 1 0 1 1-2 0 3 3 0 0 0-3-3H8z" />
-										</svg>
-									</div>
-									<span class="node-name">{result.personA ? formatPersonName(result.personA) : 'Person A'}</span>
-								</div>
-
-								<!-- Path from A to common ancestor -->
-								{#if result.paths[0].pathFromA && result.paths[0].pathFromA.length > 0}
-									{#each result.paths[0].pathFromA as step}
-										<div class="path-connector">
+								{#each relationshipChain(result.paths[0]) as step, index (step.id)}
+									{@const endpoint =
+										step.id === result.personA?.id
+											? result.personA
+											: step.id === result.personB?.id
+												? result.personB
+												: undefined}
+									{#if index > 0}
+										<div
+											class="path-connector"
+											class:common-ancestor-connector={step.isCommonAncestor}
+										>
 											<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 												<path d="M12 5v14m-7-7l7 7 7-7" />
 											</svg>
 										</div>
+									{/if}
+									{#if endpoint || step.isCommonAncestor}
+										<div
+											class="path-node"
+											class:person-node={endpoint}
+											class:common-ancestor-node={step.isCommonAncestor}
+											data-gender={endpoint?.gender}
+										>
+											{#if step.isCommonAncestor}
+												<span class="node-label">Common ancestor</span>
+											{/if}
+											{#if endpoint}
+												<div class="node-avatar">
+													<svg viewBox="0 0 24 24" fill="currentColor">
+														<path d="M12 4a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM6 8a6 6 0 1 1 12 0A6 6 0 0 1 6 8zm2 10a3 3 0 0 0-3 3 1 1 0 1 1-2 0 5 5 0 0 1 5-5h8a5 5 0 0 1 5 5 1 1 0 1 1-2 0 3 3 0 0 0-3-3H8z" />
+													</svg>
+												</div>
+											{/if}
+											<span class="node-name">{step.name}</span>
+										</div>
+									{:else}
 										<div class="path-step">
 											<span class="step-label">{step.name}</span>
 										</div>
-									{/each}
-								{/if}
-
-								<!-- Common ancestor indicator -->
-								{#if result.paths[0].commonAncestorId}
-									<div class="path-connector common-ancestor-connector">
-										<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-											<circle cx="12" cy="12" r="4" />
-										</svg>
-									</div>
-									<div class="path-node common-ancestor-node">
-										<span class="node-label">Common Ancestor</span>
-									</div>
-								{/if}
-
-								<!-- Path from common ancestor to B (reversed) -->
-								{#if result.paths[0].pathFromB && result.paths[0].pathFromB.length > 0}
-									{#each result.paths[0].pathFromB.slice().reverse() as step}
-										<div class="path-connector">
-											<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-												<path d="M12 5v14m-7-7l7 7 7-7" />
-											</svg>
-										</div>
-										<div class="path-step">
-											<span class="step-label">{step.name}</span>
-										</div>
-									{/each}
-								{/if}
-
-								<div class="path-connector">
-									<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-										<path d="M12 5v14m-7-7l7 7 7-7" />
-									</svg>
-								</div>
-
-								<!-- Person B -->
-								<div class="path-node person-node" data-gender={result.personB?.gender}>
-									<div class="node-avatar">
-										<svg viewBox="0 0 24 24" fill="currentColor">
-											<path d="M12 4a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM6 8a6 6 0 1 1 12 0A6 6 0 0 1 6 8zm2 10a3 3 0 0 0-3 3 1 1 0 1 1-2 0 5 5 0 0 1 5-5h8a5 5 0 0 1 5 5 1 1 0 1 1-2 0 3 3 0 0 0-3-3H8z" />
-										</svg>
-									</div>
-									<span class="node-name">{result.personB ? formatPersonName(result.personB) : 'Person B'}</span>
-								</div>
+									{/if}
+								{/each}
 							</div>
 
 							<!-- Generation distances -->
@@ -295,12 +260,12 @@
 								<div class="generation-info">
 									{#if result.paths[0].generationDistanceA !== undefined}
 										<span class="gen-distance">
-											{result.personA ? formatPersonName(result.personA) : 'Person A'}: {result.paths[0].generationDistanceA} generation{result.paths[0].generationDistanceA !== 1 ? 's' : ''} to common ancestor
+											{nameA}: {result.paths[0].generationDistanceA} generation{result.paths[0].generationDistanceA !== 1 ? 's' : ''} to common ancestor
 										</span>
 									{/if}
 									{#if result.paths[0].generationDistanceB !== undefined}
 										<span class="gen-distance">
-											{result.personB ? formatPersonName(result.personB) : 'Person B'}: {result.paths[0].generationDistanceB} generation{result.paths[0].generationDistanceB !== 1 ? 's' : ''} to common ancestor
+											{nameB}: {result.paths[0].generationDistanceB} generation{result.paths[0].generationDistanceB !== 1 ? 's' : ''} to common ancestor
 										</span>
 									{/if}
 								</div>
@@ -309,13 +274,14 @@
 					{/if}
 
 					<!-- Additional relationships -->
-					{#if getAdditionalPaths(result.paths).length > 0}
+					{@const additional = additionalRelationships(labels)}
+					{#if additional.length > 0}
 						<div class="additional-relationships">
 							<h3 class="additional-title">Also Related As</h3>
 							<ul class="additional-list">
-								{#each getAdditionalPaths(result.paths) as path}
+								{#each additional as label (label)}
 									<li class="additional-item">
-										<span class="additional-name">{path.name || 'Related'}</span>
+										<span class="additional-name">{label}</span>
 									</li>
 								{/each}
 							</ul>
