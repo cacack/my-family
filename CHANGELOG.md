@@ -1,5 +1,47 @@
 # Changelog
 
+## [0.13.0](https://github.com/cacack/my-family/compare/v0.12.0...v0.13.0) (2026-10-10)
+
+
+### Features
+
+* **api:** add research status counts, lowest scorers and branch scope to quality overview ([eb2ef47](https://github.com/cacack/my-family/commit/eb2ef4742c25b1901339dce80246523c04ab2e2e)), closes [#894](https://github.com/cacack/my-family/issues/894)
+* **api:** include gender in search results ([2410c3b](https://github.com/cacack/my-family/commit/2410c3b2001ae647c1a429e32290ced7a31d1fba)), closes [#898](https://github.com/cacack/my-family/issues/898)
+* **web:** keep list sort, filter, page and evidence tab in the URL ([3c3ba79](https://github.com/cacack/my-family/commit/3c3ba79f19e8151c62693e31279476bdcc48273b)), closes [#901](https://github.com/cacack/my-family/issues/901)
+* **web:** keep pedigree and descendancy chart options in the URL ([0afdb3d](https://github.com/cacack/my-family/commit/0afdb3d406becf4ba685c970b41083ff0b2d1feb)), closes [#901](https://github.com/cacack/my-family/issues/901)
+* **web:** keep the submitted search in the URL ([310cf5f](https://github.com/cacack/my-family/commit/310cf5f2ee2bcf54528245a11adc529f97ba1e89)), closes [#901](https://github.com/cacack/my-family/issues/901)
+* **web:** make relationship results shareable by URL ([89ba19b](https://github.com/cacack/my-family/commit/89ba19b973e019fe4302b884d5c1962e4131a837)), closes [#901](https://github.com/cacack/my-family/issues/901)
+
+
+### Bug Fixes
+
+* **api:** declare the domain enums in the OpenAPI spec ([f5c4ad6](https://github.com/cacack/my-family/commit/f5c4ad683b123f392088f85d9c76f291c1cea0ee)), closes [#898](https://github.com/cacack/my-family/issues/898)
+* **api:** reject a citation with no fact type ([695f153](https://github.com/cacack/my-family/commit/695f15397b7088c67b0c992afced4f89e6c9ae8b))
+* **api:** report ahnentafel total_count as all slots in the generations shown ([df2b2e4](https://github.com/cacack/my-family/commit/df2b2e4fc19fe195145c5a9e06d1db8d9450b738))
+* **command:** record only fields whose value changed on update ([cb96be2](https://github.com/cacack/my-family/commit/cb96be235d5c19eb105eef2464d92050ebc9ccb3)), closes [#900](https://github.com/cacack/my-family/issues/900)
+* **web:** align page titles with headings and announce search counts ([67718ec](https://github.com/cacack/my-family/commit/67718ec0f022d5d818704054f10c9512dfa31b17))
+* **web:** apply the font size setting to the root element ([9123543](https://github.com/cacack/my-family/commit/91235435016bd3ddcbfe58b1f43246eb001a31f5))
+* **web:** drop stale URL-driven loads and share one copy of each default ([20498f8](https://github.com/cacack/my-family/commit/20498f8eea60e06b58a2b4232c0118fb03f6b45e))
+* **web:** give the brick-wall control a real button style ([719d98b](https://github.com/cacack/my-family/commit/719d98b05ea57191f64da1df597a7a405c4bf945)), closes [#897](https://github.com/cacack/my-family/issues/897)
+* **web:** group the main navigation so the header fits on one row ([5215118](https://github.com/cacack/my-family/commit/52151183784d667b742ca93374bf5a150ae9c14f)), closes [#893](https://github.com/cacack/my-family/issues/893)
+* **web:** keep focus and announce form state for keyboard and screen readers ([1e9097c](https://github.com/cacack/my-family/commit/1e9097cc23ff753a3869c0bcd0ec7246eb11c3d3))
+* **web:** keep header controls on-screen and make Browse menu items work ([cd0e646](https://github.com/cacack/my-family/commit/cd0e646e2912e45d47dc00f45b5ef7df6495d01f))
+* **web:** keep the family map responsive and its markers and tooltip usable ([055c827](https://github.com/cacack/my-family/commit/055c827aab32b8cdd177f2848dbb9b8b51c278d4))
+* **web:** leave the chart surname line blank when there is no surname ([04ad58d](https://github.com/cacack/my-family/commit/04ad58d3c3f6199fb00adf7ca90b953d92f8341a)), closes [#897](https://github.com/cacack/my-family/issues/897)
+* **web:** let long place names wrap in the place browser ([7666428](https://github.com/cacack/my-family/commit/76664284eceb425289464a5b9762069f28aa4e70))
+* **web:** link to the descendancy chart and drop nested main on ahnentafel ([1ae4676](https://github.com/cacack/my-family/commit/1ae4676aca02f8575ce60d1710b1d21caedd916e))
+* **web:** make pedigree and descendancy charts fit, zoom and resize sanely ([7ced79f](https://github.com/cacack/my-family/commit/7ced79f700075226fda55c7c132f305784ec1e6f))
+* **web:** make the skip link usable and mark the current nav section ([c850e00](https://github.com/cacack/my-family/commit/c850e006dcbed62fa86f7c68389f09905f094d5d))
+* **web:** name settings toggles by purpose and restore focus on close ([42e0f68](https://github.com/cacack/my-family/commit/42e0f6869afc4f16f0db8221218d3518a9d7247e))
+* **web:** raise contrast on active nav, badges, destructive buttons and radios ([3417c2e](https://github.com/cacack/my-family/commit/3417c2eac1307c00fd6ea23a74095cbe0b2c86ad))
+* **web:** read analytics totals from the server and rename the page Completeness ([de90053](https://github.com/cacack/my-family/commit/de90053c0ba229f25a0e0a30bbb8a8378dc9156d)), closes [#894](https://github.com/cacack/my-family/issues/894)
+* **web:** send form values the API accepts and let edits clear fields ([b21fd5b](https://github.com/cacack/my-family/commit/b21fd5b41e09d61f99b4ca0f30f3067c704b7607))
+* **web:** show descendancy spouse names and marriage dates ([dc7b697](https://github.com/cacack/my-family/commit/dc7b6977695cb2a5f8465e5d07ee8b33f92b5618))
+* **web:** show load failures as errors, not as empty data ([c0231f0](https://github.com/cacack/my-family/commit/c0231f02fac25695c128a090930d968291be3fd5))
+* **web:** show one clear relationship path with named roles ([5480a92](https://github.com/cacack/my-family/commit/5480a92cf52974386709ecc53d17e37417c6264d))
+* **web:** stop pages overflowing the viewport on narrow screens ([e81778b](https://github.com/cacack/my-family/commit/e81778b5582ea4433b0376d664dbabcae2538ac0))
+* **web:** tidy error page, import feedback and small display defects ([57edffc](https://github.com/cacack/my-family/commit/57edffc06c8e0b8a17687696ea8b348a2c87f7d3))
+
 ## [0.12.0](https://github.com/cacack/my-family/compare/v0.11.0...v0.12.0) (2026-10-04)
 
 
