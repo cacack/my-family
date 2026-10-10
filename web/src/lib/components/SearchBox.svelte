@@ -188,6 +188,7 @@
 			class:active={fuzzy}
 			onclick={toggleFuzzy}
 			title={fuzzy ? 'Fuzzy search enabled' : 'Enable fuzzy search'}
+			aria-label="Fuzzy search"
 			aria-pressed={fuzzy}
 		>
 			~

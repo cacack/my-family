@@ -92,6 +92,20 @@
 	}
 
 	/**
+	 * Remember what had focus when the panel opened, and return focus there on close
+	 */
+	let returnFocusTo: HTMLElement | null = null;
+
+	$effect(() => {
+		if (open) {
+			returnFocusTo = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+		} else if (returnFocusTo) {
+			returnFocusTo.focus();
+			returnFocusTo = null;
+		}
+	});
+
+	/**
 	 * Focus the close button when modal opens
 	 */
 	$effect(() => {
@@ -178,6 +192,7 @@
 							checked={accessibilityState.highContrast}
 							onchange={(e) => setHighContrast(e.currentTarget.checked)}
 							class="toggle-input"
+							aria-label="High contrast"
 						/>
 						<span class="toggle-switch" aria-hidden="true"></span>
 						<span class="toggle-label">
@@ -210,9 +225,11 @@
 							checked={accessibilityState.reducedMotion}
 							onchange={(e) => setReducedMotion(e.currentTarget.checked)}
 							class="toggle-input"
+							aria-label="Reduced motion"
+							aria-describedby="reduced-motion-state"
 						/>
 						<span class="toggle-switch" aria-hidden="true"></span>
-						<span class="toggle-label">
+						<span class="toggle-label" id="reduced-motion-state">
 							{#if accessibilityState.reducedMotion}
 								Enabled
 								{#if systemPrefersReducedMotion}
@@ -249,6 +266,7 @@
 							checked={keyboardState.shortcutsEnabled}
 							onchange={(e) => setShortcutsEnabled(e.currentTarget.checked)}
 							class="toggle-input"
+							aria-label="Keyboard shortcuts"
 						/>
 						<span class="toggle-switch" aria-hidden="true"></span>
 						<span class="toggle-label">
