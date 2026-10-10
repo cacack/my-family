@@ -949,11 +949,53 @@ describe('Advanced Search Page', () => {
 			expect(historyLength()).toBe(2);
 		});
 
-		it('caps a hand-edited limit at the API maximum', async () => {
+		// Distinct people, ids `p<start>` onward, so pages can be told apart.
+		const people = (count: number, start = 0): apiModule.SearchResult[] =>
+			Array.from({ length: count }, (_, i) => ({
+				id: `p${start + i}`,
+				given_name: `Person${start + i}`,
+				surname: 'Pagetest'
+			}));
+
+		it('fetches a limit above the API maximum in pages', async () => {
+			vi.mocked(apiModule.api.searchPersons)
+				.mockResolvedValueOnce({ items: people(100), total: 150 })
+				.mockResolvedValueOnce({ items: people(50, 100), total: 150 });
 			resetRouter('/search?q=Smith&limit=100000');
 			render(SearchPage);
 			await vi.advanceTimersByTimeAsync(0);
-			expect(apiModule.api.searchPersons).toHaveBeenCalledWith(expect.objectContaining({ limit: 100 }));
+
+			const calls = vi.mocked(apiModule.api.searchPersons).mock.calls.map(([p]) => p);
+			expect(calls).toEqual([
+				expect.objectContaining({ limit: 100 }),
+				expect.objectContaining({ limit: 100, offset: 100 })
+			]);
+			await waitFor(() => expect(screen.getByText('Showing 150 of 150 results')).toBeDefined());
+			expect(screen.queryByText('Load more')).toBeNull();
+		});
+
+		it('Load more fetches only the next page, past the API maximum to the last match (#902)', async () => {
+			vi.mocked(apiModule.api.searchPersons).mockResolvedValueOnce({ items: people(100), total: 110 });
+			resetRouter('/search?q=Smith&limit=100');
+			render(SearchPage);
+			await vi.advanceTimersByTimeAsync(0);
+			await waitFor(() => expect(screen.getByText('Showing 100 of 110 results')).toBeDefined());
+
+			vi.mocked(apiModule.api.searchPersons).mockClear();
+			vi.mocked(apiModule.api.searchPersons).mockResolvedValueOnce({ items: people(10, 100), total: 110 });
+			await fireEvent.click(screen.getByText('Load more'));
+			await vi.advanceTimersByTimeAsync(0);
+
+			expect(currentPath()).toBe('/search?q=Smith&limit=120');
+			expect(apiModule.api.searchPersons).toHaveBeenCalledTimes(1);
+			expect(apiModule.api.searchPersons).toHaveBeenCalledWith(
+				expect.objectContaining({ q: 'Smith', limit: 20, offset: 100 })
+			);
+			await waitFor(() => expect(screen.getByText('Showing 110 of 110 results')).toBeDefined());
+			for (const name of ['Person0 Pagetest', 'Person109 Pagetest']) {
+				expect(screen.getAllByText(name).length).toBeGreaterThan(0);
+			}
+			expect(screen.queryByText('Load more')).toBeNull();
 		});
 
 		it('ignores a search that resolves after Back to a newer URL', async () => {

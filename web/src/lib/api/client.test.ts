@@ -279,6 +279,15 @@ describe('branch scope threading', () => {
 		expect(requestedUrl()).toBe('/api/v1/repositories');
 	});
 
+	it('sends a search offset only past the first page (#902)', async () => {
+		await api.searchPersons({ q: 'Ada', limit: 20, offset: 0 });
+		await api.searchPersons({ q: 'Ada', limit: 20, offset: 100 });
+		expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+			'/api/v1/search?q=Ada&limit=20',
+			'/api/v1/search?q=Ada&limit=20&offset=100'
+		]);
+	});
+
 	it('scopes search and the families list, which every search surface and list page share (#829)', async () => {
 		setClientBranch(BRANCH_ID);
 		await api.searchPersons({ q: 'Ada', limit: 10 });
