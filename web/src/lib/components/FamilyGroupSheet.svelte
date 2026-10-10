@@ -438,12 +438,15 @@
 
 	.events-grid {
 		display: grid;
-		grid-template-columns: repeat(2, 1fr);
+		grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
 		gap: 0.5rem 2rem;
 	}
 
 	.event-value {
 		color: #1e293b;
+		min-width: 0;
+		/* GEDCOM places are often comma-joined with no spaces to break on. */
+		overflow-wrap: anywhere;
 	}
 
 	.parents-info {
@@ -484,6 +487,8 @@
 
 	.children-section {
 		margin-bottom: 2rem;
+		/* Six columns can't fit a phone; scroll the table, not the page. */
+		overflow-x: auto;
 	}
 
 	.children-table {

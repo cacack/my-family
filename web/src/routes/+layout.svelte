@@ -34,6 +34,18 @@
 		revalidateActiveBranch();
 	});
 
+	const browseLinks = [
+		{ href: '/browse/surnames', label: 'By Surname' },
+		{ href: '/browse/places', label: 'By Place' },
+		{ href: '/browse/cemeteries', label: 'By Cemetery' },
+		{ href: '/browse/brick-walls', label: 'Brick Walls' },
+		{ href: '/browse/citation-templates', label: 'Citation Templates' },
+		{ href: '/repositories', label: 'Repositories' }
+	];
+	let browseActive = $derived(
+		browseLinks.some((link) => $page.url.pathname.startsWith(link.href))
+	);
+
 	// Component refs
 	let searchBoxRef: SearchBox | undefined = $state();
 
@@ -98,21 +110,26 @@
 			<a href="/persons" class:active={$page.url.pathname.startsWith('/persons')}>People</a>
 			<a href="/families" class:active={$page.url.pathname.startsWith('/families')}>Families</a>
 			<DropdownMenu.Root>
+				<!-- `child` on Trigger and Items for the reasons given in BranchSwitcher.svelte:
+				     no nested buttons, and Enter / whole-row clicks actually navigate. -->
 				<DropdownMenu.Trigger>
-					<Button variant="ghost" class="nav-dropdown-trigger gap-1 px-4 py-2 text-sm font-medium {$page.url.pathname.startsWith('/browse') ? 'bg-[#eff6ff] text-[#3b82f6]' : 'text-[#64748b] hover:bg-[#f1f5f9] hover:text-[#1e293b]'}">
-						Browse
-						<svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-							<polyline points="6 9 12 15 18 9" />
-						</svg>
-					</Button>
+					{#snippet child({ props })}
+						<Button {...props} variant="ghost" class="nav-dropdown-trigger gap-1 px-4 py-2 text-sm font-medium {browseActive ? 'bg-[#eff6ff] text-[#3b82f6]' : 'text-[#64748b] hover:bg-[#f1f5f9] hover:text-[#1e293b]'}">
+							Browse
+							<svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+								<polyline points="6 9 12 15 18 9" />
+							</svg>
+						</Button>
+					{/snippet}
 				</DropdownMenu.Trigger>
 				<DropdownMenu.Content>
-					<DropdownMenu.Item><a href="/browse/surnames">By Surname</a></DropdownMenu.Item>
-					<DropdownMenu.Item><a href="/browse/places">By Place</a></DropdownMenu.Item>
-					<DropdownMenu.Item><a href="/browse/cemeteries">By Cemetery</a></DropdownMenu.Item>
-					<DropdownMenu.Item><a href="/browse/brick-walls">Brick Walls</a></DropdownMenu.Item>
-					<DropdownMenu.Item><a href="/browse/citation-templates">Citation Templates</a></DropdownMenu.Item>
-					<DropdownMenu.Item><a href="/repositories">Repositories</a></DropdownMenu.Item>
+					{#each browseLinks as link (link.href)}
+						<DropdownMenu.Item>
+							{#snippet child({ props })}
+								<a href={link.href} {...props}>{link.label}</a>
+							{/snippet}
+						</DropdownMenu.Item>
+					{/each}
 				</DropdownMenu.Content>
 			</DropdownMenu.Root>
 			<a href="/sources" class:active={$page.url.pathname.startsWith('/sources')}>Sources</a>
@@ -238,8 +255,9 @@
 
 	.app-header {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
-		gap: 2rem;
+		gap: 0.5rem 2rem;
 		padding: 0.75rem 1.5rem;
 		background: white;
 		border-bottom: 1px solid #e2e8f0;
@@ -258,6 +276,7 @@
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
+		white-space: nowrap;
 	}
 
 	.logo-mark {
@@ -275,9 +294,27 @@
 		color: var(--color-text);
 	}
 
+	/* Stopgap until the nav is regrouped: below the width where everything fits
+	   on one line, the links take their own row and scroll sideways rather than
+	   pushing the header controls off-screen. */
 	.nav {
 		display: flex;
 		gap: 0.25rem;
+		order: 1;
+		flex: 1 0 100%;
+		min-width: 0;
+		overflow-x: auto;
+		scrollbar-width: thin;
+		/* Room for the links' focus outline, which overflow would otherwise clip. */
+		padding: 4px;
+		margin: -4px;
+	}
+
+	@media (min-width: 1800px) {
+		.nav {
+			order: 0;
+			flex: 0 1 auto;
+		}
 	}
 
 	.nav a {
@@ -287,6 +324,7 @@
 		text-decoration: none;
 		font-size: 0.875rem;
 		font-weight: 500;
+		white-space: nowrap;
 		transition: all 0.15s;
 	}
 

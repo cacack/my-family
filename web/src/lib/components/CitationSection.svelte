@@ -646,13 +646,13 @@
 
 	.form-row {
 		display: grid;
-		grid-template-columns: repeat(2, 1fr);
+		grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
 		gap: 1rem;
 		margin-bottom: 1rem;
 	}
 
 	.form-row.three-cols {
-		grid-template-columns: repeat(3, 1fr);
+		grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
 	}
 
 	.add-form label {

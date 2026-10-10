@@ -281,8 +281,10 @@
 
 	.page-header {
 		display: flex;
+		flex-wrap: wrap;
 		justify-content: space-between;
 		align-items: center;
+		gap: 0.75rem;
 		padding: 1rem 1.5rem;
 		background: white;
 		border-bottom: 1px solid #e2e8f0;
@@ -312,8 +314,9 @@
 
 	.controls {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
-		gap: 1.5rem;
+		gap: 0.75rem 1.5rem;
 	}
 
 	.controls label {
