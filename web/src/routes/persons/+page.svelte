@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { page } from '$app/stores';
 	import { api, type Person, type ResearchStatus } from '$lib/api/client';
 	import { Button } from '$lib/components/ui/button';
 	import PersonCard from '$lib/components/PersonCard.svelte';
@@ -6,6 +7,7 @@
 	let persons: Person[] = $state([]);
 	let total = $state(0);
 	let loading = $state(true);
+	let loadError: string | null = $state(null);
 	let currentPage = $state(1);
 	let sort = $state<'surname' | 'given_name' | 'birth_date' | 'updated_at'>('surname');
 	let order = $state<'asc' | 'desc'>('asc');
@@ -14,6 +16,7 @@
 
 	async function loadPersons() {
 		loading = true;
+		loadError = null;
 		try {
 			const result = await api.listPersons({
 				limit: pageSize,
@@ -26,6 +29,7 @@
 			total = result.total;
 		} catch (e) {
 			console.error('Failed to load persons:', e);
+			loadError = 'Failed to load people. Please try again.';
 		} finally {
 			loading = false;
 		}
@@ -84,6 +88,10 @@
 		</div>
 	</header>
 
+	{#if $page.state.notice}
+		<p class="notice" role="status">{$page.state.notice}</p>
+	{/if}
+
 	<div class="toolbar">
 		<button
 			class="chip"
@@ -117,7 +125,12 @@
 					<option value="updated_at">Last Updated</option>
 				</select>
 			</label>
-			<button class="order-btn" onclick={handleOrderChange} title="Toggle sort order">
+			<button
+				class="order-btn"
+				onclick={handleOrderChange}
+				title="Toggle sort order"
+				aria-label="Sort order: {order === 'asc' ? 'ascending' : 'descending'}"
+			>
 				{#if order === 'asc'}
 					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 						<path d="M12 5v14M5 12l7-7 7 7" />
@@ -133,6 +146,11 @@
 
 	{#if loading}
 		<div class="loading">Loading...</div>
+	{:else if loadError}
+		<div class="load-error" role="alert">
+			<p>{loadError}</p>
+			<Button variant="outline" onclick={loadPersons}>Retry</Button>
+		</div>
 	{:else if persons.length === 0}
 		<div class="empty">
 			<p>No people found.</p>
@@ -220,6 +238,16 @@
 		color: #64748b;
 	}
 
+	.notice {
+		margin: 0 0 1rem;
+		padding: 0.75rem 1rem;
+		background: #f0fdf4;
+		border: 1px solid #bbf7d0;
+		border-radius: 6px;
+		color: #166534;
+		font-size: 0.875rem;
+	}
+
 	.loading,
 	.empty {
 		text-align: center;
@@ -228,6 +256,16 @@
 	}
 
 	.empty p {
+		margin: 0 0 1rem;
+	}
+
+	.load-error {
+		text-align: center;
+		padding: 3rem;
+		color: #dc2626;
+	}
+
+	.load-error p {
 		margin: 0 0 1rem;
 	}
 

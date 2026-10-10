@@ -83,7 +83,7 @@
 
 	// Form state
 	let formData = $state({
-		relationship_type: '' as 'marriage' | 'partnership' | 'unknown' | '',
+		relationship_type: 'unknown' as 'marriage' | 'partnership' | 'unknown',
 		marriage_date: '',
 		marriage_place: ''
 	});
@@ -180,22 +180,39 @@
 			partner1 = partnerSummary(family.partner1_id, family.partner1, family.partner1_name);
 			partner2 = partnerSummary(family.partner2_id, family.partner2, family.partner2_name);
 			formData = {
-				relationship_type: family.relationship_type || '',
+				relationship_type: family.relationship_type || 'unknown',
 				marriage_date: family.marriage_date?.raw || '',
 				marriage_place: family.marriage_place || ''
 			};
 		}
 	}
 
+	// The Edit button and the form replace each other, so focus is moved
+	// explicitly or it falls to the page body.
+	let editButton: HTMLElement | null = $state(null);
+	let editForm: HTMLFormElement | null = $state(null);
+
+	async function focusFirstField() {
+		await tick();
+		editForm?.querySelector<HTMLElement>('input, select, textarea, button')?.focus();
+	}
+
+	async function focusEditButton() {
+		await tick();
+		editButton?.focus();
+	}
+
 	function startEdit() {
 		resetForm();
 		saveError = null;
 		editing = true;
+		focusFirstField();
 	}
 
 	function cancelEdit() {
 		resetForm();
 		editing = false;
+		focusEditButton();
 	}
 
 	async function saveFamily() {
@@ -204,18 +221,21 @@
 		saveError = null;
 		try {
 			await api.updateFamily(family.id, {
-				relationship_type: (formData.relationship_type || undefined) as
-					| 'marriage'
-					| 'partnership'
-					| 'unknown'
-					| undefined,
-				marriage_date: formData.marriage_date || undefined,
-				marriage_place: formData.marriage_place || undefined,
+				// Sent only when changed, so saving a family with no type
+				// doesn't set one.
+				relationship_type:
+					formData.relationship_type !== (family.relationship_type || 'unknown')
+						? formData.relationship_type
+						: undefined,
+				// An empty string clears the field; an omitted one is left unchanged.
+				marriage_date: formData.marriage_date,
+				marriage_place: formData.marriage_place,
 				...partnerChanges(family, partner1, partner2),
 				version: family.version
 			});
 			await refreshFamily(family.id);
 			editing = false;
+			focusEditButton();
 			announce('Family saved');
 		} catch (e) {
 			saveError = (e as { message?: string }).message || 'Failed to save';
@@ -328,7 +348,7 @@
 		{#if family && !editing}
 			<div class="actions">
 				<Button variant="outline" href="/families/{family.id}/group-sheet">Group Sheet</Button>
-				<Button variant="outline" onclick={startEdit}>Edit</Button>
+				<Button variant="outline" onclick={startEdit} bind:ref={editButton}>Edit</Button>
 				<Button variant="destructive" onclick={deleteFamily}>Delete</Button>
 			</div>
 		{/if}
@@ -340,7 +360,7 @@
 		<div class="error">{error}</div>
 	{:else if family}
 		{#if editing}
-			<form class="edit-form" onsubmit={(e) => { e.preventDefault(); saveFamily(); }}>
+			<form class="edit-form" bind:this={editForm} onsubmit={(e) => { e.preventDefault(); saveFamily(); }}>
 				<h2 class="edit-title">{getPartnerDisplay()}</h2>
 
 				<PartnerPickers bind:partner1 bind:partner2 excludeIds={childIds} disabled={saving} />
@@ -353,7 +373,7 @@
 					<label>
 						Relationship Type
 						<select bind:value={formData.relationship_type}>
-							<option value="">Unknown</option>
+							<option value="unknown">Unknown</option>
 							<option value="marriage">Marriage</option>
 							<option value="partnership">Partnership</option>
 						</select>

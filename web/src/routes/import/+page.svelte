@@ -20,6 +20,15 @@
 	let error: string | null = $state(null);
 	let dragOver = $state(false);
 	let progress: ImportProgress | null = $state(null);
+	// Bumped after each import so the export panel re-reads its record counts.
+	let importCount = $state(0);
+
+	const NOT_GEDCOM_FILE = 'Please select a GEDCOM file (.ged or .gedcom)';
+
+	/** The import accepts GEDCOM text files only (no zip or .gdz archives). */
+	function isGedcomFile(f: File): boolean {
+		return /\.(ged|gedcom)$/i.test(f.name);
+	}
 
 	// Export state
 	type EntityType = 'tree' | 'persons' | 'families' | 'sources' | 'citations' | 'events' | 'attributes';
@@ -222,9 +231,16 @@
 	function handleFileSelect(e: Event) {
 		const input = e.target as HTMLInputElement;
 		if (input.files && input.files.length > 0) {
-			file = input.files[0];
 			result = null;
-			error = null;
+			if (isGedcomFile(input.files[0])) {
+				file = input.files[0];
+				error = null;
+			} else {
+				file = null;
+				error = NOT_GEDCOM_FILE;
+			}
+			// Let the same file be picked again after a rejection.
+			input.value = '';
 		}
 	}
 
@@ -233,12 +249,12 @@
 		dragOver = false;
 		if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
 			const droppedFile = e.dataTransfer.files[0];
-			if (droppedFile.name.toLowerCase().endsWith('.ged')) {
+			if (isGedcomFile(droppedFile)) {
 				file = droppedFile;
 				result = null;
 				error = null;
 			} else {
-				error = 'Please select a GEDCOM file (.ged)';
+				error = NOT_GEDCOM_FILE;
 			}
 		}
 	}
@@ -263,8 +279,13 @@
 			result = await api.importGedcomStream(file, (p) => {
 				progress = p;
 			});
+			importCount++;
 		} catch (e) {
-			error = (e as { message?: string }).message || 'Import failed';
+			const message = (e as { message?: string }).message || 'Import failed';
+			// The parser's own wording means nothing to most people.
+			error = message.startsWith('failed to parse GEDCOM')
+				? `"${file.name}" could not be read as a GEDCOM file. Check that it is a GEDCOM export from your genealogy software.`
+				: message;
 		} finally {
 			importing = false;
 			progress = null;
@@ -489,7 +510,9 @@
 			<div class="export-option">
 				<h3>GEDCOM Format</h3>
 				<p class="option-description">Standard genealogy format compatible with most software.</p>
-				<ExportButton label="Export GEDCOM" showEstimate={true} />
+				{#key importCount}
+					<ExportButton label="Export GEDCOM" showEstimate={true} />
+				{/key}
 			</div>
 
 			<hr class="divider" />

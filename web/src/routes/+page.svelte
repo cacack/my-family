@@ -6,6 +6,7 @@
 	import { onboardingState } from '$lib/stores/onboardingSettings.svelte';
 	import OnboardingWizard from '$lib/components/onboarding/OnboardingWizard.svelte';
 	import { Card, CardHeader, CardContent } from '$lib/components/ui/card';
+	import { Button } from '$lib/components/ui/button';
 	import MainlineNotice from '$lib/components/MainlineNotice.svelte';
 	import { activeBranch } from '$lib/stores/activeBranch.svelte';
 
@@ -15,20 +16,22 @@
 	 * not, and the wizard's import step writes the mainline anyway — so it never
 	 * appears while a branch is active (#825).
 	 */
-	function shouldOnboard(personCount: number | null): boolean {
+	function shouldOnboard(personCount: number): boolean {
 		if (activeBranch.id !== null || onboardingState.completed) return false;
-		return personCount === null || personCount === 0;
+		return personCount === 0;
 	}
 
 	let recentPersons: Person[] = $state([]);
 	let recentFamilies: FamilyDetail[] = $state([]);
 	let stats = $state({ persons: 0, families: 0 });
 	let loading = $state(true);
+	let loadError: string | null = $state(null);
 	let showOnboarding = $state(false);
 	let hasSuggestions = $state(false);
 
 	async function loadDashboard() {
 		loading = true;
+		loadError = null;
 		try {
 			const [personsRes, familiesRes] = await Promise.all([
 				api.listPersons({ limit: 5, sort: 'updated_at', order: 'desc' }),
@@ -53,7 +56,9 @@
 			}
 		} catch (e) {
 			console.error('Failed to load dashboard:', e);
-			showOnboarding = shouldOnboard(null);
+			// A failed load says nothing about whether the database is empty, so
+			// it shows an error rather than the onboarding wizard.
+			loadError = 'Failed to load the dashboard. Please try again.';
 		} finally {
 			loading = false;
 		}
@@ -79,6 +84,11 @@
 
 	{#if loading}
 		<div class="loading">Loading...</div>
+	{:else if loadError}
+		<div class="load-error" role="alert">
+			<p>{loadError}</p>
+			<Button variant="outline" onclick={loadDashboard}>Retry</Button>
+		</div>
 	{:else}
 		<MainlineNotice
 			message="On a research branch, the people and family counts and the recent people and families follow your branch, but research suggestions still come from the mainline."
@@ -216,6 +226,16 @@
 		text-align: center;
 		padding: 3rem;
 		color: #64748b;
+	}
+
+	.load-error {
+		text-align: center;
+		padding: 3rem;
+		color: #dc2626;
+	}
+
+	.load-error p {
+		margin: 0 0 1rem;
 	}
 
 	.stats {

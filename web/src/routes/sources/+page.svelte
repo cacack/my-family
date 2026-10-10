@@ -2,10 +2,12 @@
 	import { api, type Source } from '$lib/api/client';
 	import { Button } from '$lib/components/ui/button';
 	import SourceCard from '$lib/components/SourceCard.svelte';
+	import { DEFAULT_SOURCE_TYPE, SOURCE_TYPES } from '$lib/utils/sourceTypes';
 
 	let sources: Source[] = $state([]);
 	let total = $state(0);
 	let loading = $state(true);
+	let loadError: string | null = $state(null);
 	let currentPage = $state(1);
 	let sort = $state<'title' | 'author' | 'citation_count'>('title');
 	let order = $state<'asc' | 'desc'>('asc');
@@ -17,7 +19,7 @@
 
 	// New source form state
 	let newSource = $state({
-		source_type: 'document',
+		source_type: DEFAULT_SOURCE_TYPE,
 		title: '',
 		author: '',
 		publisher: '',
@@ -33,6 +35,7 @@
 
 	async function loadSources() {
 		loading = true;
+		loadError = null;
 		try {
 			const result = await api.listSources({
 				limit: pageSize,
@@ -45,6 +48,7 @@
 			total = result.total;
 		} catch (e) {
 			console.error('Failed to load sources:', e);
+			loadError = 'Failed to load sources. Please try again.';
 		} finally {
 			loading = false;
 		}
@@ -91,7 +95,7 @@
 
 	function openAddForm() {
 		newSource = {
-			source_type: 'document',
+			source_type: DEFAULT_SOURCE_TYPE,
 			title: '',
 			author: '',
 			publisher: '',
@@ -166,6 +170,7 @@
 					value={searchQuery}
 					oninput={handleSearchInput}
 					placeholder="Search sources..."
+					aria-label="Search sources"
 					class="search-input"
 				/>
 			</div>
@@ -177,7 +182,12 @@
 					<option value="citation_count">Citations</option>
 				</select>
 			</label>
-			<button class="order-btn" onclick={handleOrderChange} title="Toggle sort order">
+			<button
+				class="order-btn"
+				onclick={handleOrderChange}
+				title="Toggle sort order"
+				aria-label="Sort order: {order === 'asc' ? 'ascending' : 'descending'}"
+			>
 				{#if order === 'asc'}
 					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 						<path d="M12 5v14M5 12l7-7 7 7" />
@@ -198,27 +208,16 @@
 				<h2>Add New Source</h2>
 
 				{#if error}
-					<div class="form-error">{error}</div>
+					<div class="form-error" role="alert">{error}</div>
 				{/if}
 
 				<div class="form-row">
 					<label>
 						Source Type
 						<select bind:value={newSource.source_type}>
-							<option value="document">Document</option>
-							<option value="book">Book</option>
-							<option value="newspaper">Newspaper</option>
-							<option value="census">Census</option>
-							<option value="vital_record">Vital Record</option>
-							<option value="church_record">Church Record</option>
-							<option value="military_record">Military Record</option>
-							<option value="immigration_record">Immigration Record</option>
-							<option value="land_record">Land Record</option>
-							<option value="court_record">Court Record</option>
-							<option value="photograph">Photograph</option>
-							<option value="oral_history">Oral History</option>
-							<option value="website">Website</option>
-							<option value="other">Other</option>
+							{#each SOURCE_TYPES as type (type.value)}
+								<option value={type.value}>{type.label}</option>
+							{/each}
 						</select>
 					</label>
 					<label>
@@ -284,6 +283,11 @@
 
 	{#if loading}
 		<div class="loading">Loading...</div>
+	{:else if loadError}
+		<div class="load-error" role="alert">
+			<p>{loadError}</p>
+			<Button variant="outline" onclick={loadSources}>Retry</Button>
+		</div>
 	{:else if sources.length === 0}
 		<div class="empty">
 			{#if searchQuery}
@@ -491,6 +495,16 @@
 	}
 
 	.empty p {
+		margin: 0 0 1rem;
+	}
+
+	.load-error {
+		text-align: center;
+		padding: 3rem;
+		color: #dc2626;
+	}
+
+	.load-error p {
 		margin: 0 0 1rem;
 	}
 

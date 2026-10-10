@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import Page from './+page.svelte';
 import type * as apiModule from '$lib/api/client';
 import type { PersonDetail } from '$lib/api/client';
+import { goto } from '$app/navigation';
 
 const PERSON_ID = '11111111-1111-1111-1111-111111111111';
 const BRANCH_ID = '44444444-4444-4444-4444-444444444444';
@@ -14,7 +15,8 @@ const {
 	resolvePersonBrickWall,
 	getPersonHistory,
 	listPersonMedia,
-	getPersonRestorePoints
+	getPersonRestorePoints,
+	updatePerson
 } = vi.hoisted(() => ({
 	// The real store exposes a read-only view, so the active branch is injected.
 	branchState: { id: null as string | null },
@@ -23,7 +25,8 @@ const {
 	resolvePersonBrickWall: vi.fn(),
 	getPersonHistory: vi.fn(async () => ({ items: [], total: 0 })),
 	listPersonMedia: vi.fn(async () => ({ items: [], total: 0 })),
-	getPersonRestorePoints: vi.fn(async () => ({ items: [], total: 0, has_more: false }))
+	getPersonRestorePoints: vi.fn(async () => ({ items: [], total: 0, has_more: false })),
+	updatePerson: vi.fn()
 }));
 
 /**
@@ -53,6 +56,7 @@ vi.mock('$lib/api/client', async (importOriginal) => {
 		getPersonHistory,
 		listPersonMedia,
 		getPersonRestorePoints,
+		updatePerson,
 		// These two answer with a bare array rather than a wrapper object.
 		getConflictsBySubject: vi.fn(async () => []),
 		getResearchLogsBySubject: vi.fn(async () => [])
@@ -253,5 +257,90 @@ describe('Person detail family shortcuts (#826)', () => {
 
 		expect(await screen.findByRole('link', { name: 'Add family' })).toBeDefined();
 		expect(screen.getByRole('link', { name: 'Add parents' })).toBeDefined();
+	});
+});
+
+describe('Person detail edit form', () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		branchState.id = null;
+		updatePerson.mockResolvedValue({ id: PERSON_ID, version: 4 });
+	});
+
+	async function openEdit() {
+		render(Page);
+		await fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+	}
+
+	async function save() {
+		await fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+		await waitFor(() => expect(updatePerson).toHaveBeenCalled());
+		return updatePerson.mock.calls[0][1];
+	}
+
+	// An omitted field is left unchanged by the API, so a cleared field must be
+	// sent as an empty string or it can never be removed.
+	it('sends a cleared field as an empty string', async () => {
+		getPerson.mockResolvedValue(person({ birth_place: 'London', notes: 'A note' }));
+		await openEdit();
+
+		await fireEvent.input(screen.getByLabelText('Birth Place'), { target: { value: '' } });
+		await fireEvent.input(screen.getByLabelText('Notes'), { target: { value: '' } });
+		const body = await save();
+
+		expect(body).toMatchObject({ birth_place: '', notes: '', given_name: 'Ada', surname: 'Lovelace' });
+	});
+
+	it('sends gender unknown when a known gender is changed to Unknown', async () => {
+		getPerson.mockResolvedValue(person({ gender: 'female' }));
+		await openEdit();
+
+		await fireEvent.change(screen.getByLabelText('Gender'), { target: { value: 'unknown' } });
+		const body = await save();
+
+		expect(body.gender).toBe('unknown');
+	});
+
+	it('moves focus into the form on Edit and back to Edit on Cancel', async () => {
+		getPerson.mockResolvedValue(person());
+		await openEdit();
+		await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText('Given Name')));
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+		await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Edit' })));
+	});
+
+	it('returns focus to Edit after a save', async () => {
+		getPerson.mockResolvedValue(person());
+		await openEdit();
+		await save();
+		await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Edit' })));
+	});
+
+	it('sends no gender when it is untouched', async () => {
+		getPerson.mockResolvedValue(person());
+		await openEdit();
+
+		const body = await save();
+
+		expect(body.gender).toBeUndefined();
+	});
+});
+
+describe('Person detail delete', () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		branchState.id = null;
+		getPerson.mockResolvedValue(person());
+	});
+
+	it('confirms a delete on the people list it returns to', async () => {
+		vi.spyOn(window, 'confirm').mockReturnValue(true);
+		render(Page);
+		await fireEvent.click(await screen.findByRole('button', { name: 'Delete' }));
+
+		await waitFor(() =>
+			expect(goto).toHaveBeenCalledWith('/persons', { state: { notice: 'Ada Lovelace was deleted.' } })
+		);
 	});
 });

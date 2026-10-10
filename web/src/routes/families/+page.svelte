@@ -6,11 +6,13 @@
 	let families: FamilyDetail[] = $state([]);
 	let total = $state(0);
 	let loading = $state(true);
+	let loadError: string | null = $state(null);
 	let currentPage = $state(1);
 	const pageSize = 20;
 
 	async function loadFamilies() {
 		loading = true;
+		loadError = null;
 		try {
 			const result = await api.listFamilies({
 				limit: pageSize,
@@ -20,6 +22,7 @@
 			total = result.total;
 		} catch (e) {
 			console.error('Failed to load families:', e);
+			loadError = 'Failed to load families. Please try again.';
 		} finally {
 			loading = false;
 		}
@@ -57,6 +60,11 @@
 
 	{#if loading}
 		<div class="loading">Loading...</div>
+	{:else if loadError}
+		<div class="load-error" role="alert">
+			<p>{loadError}</p>
+			<Button variant="outline" onclick={loadFamilies}>Retry</Button>
+		</div>
 	{:else if families.length === 0}
 		<div class="empty">
 			<p>No families found.</p>
@@ -107,6 +115,16 @@
 	}
 
 	.empty p {
+		margin: 0 0 1rem;
+	}
+
+	.load-error {
+		text-align: center;
+		padding: 3rem;
+		color: #dc2626;
+	}
+
+	.load-error p {
 		margin: 0 0 1rem;
 	}
 

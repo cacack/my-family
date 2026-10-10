@@ -7,17 +7,20 @@
 	let selectedLetter: string | null = $state(null);
 	let loading = $state(true);
 	let loadingSurnames = $state(false);
+	let error: string | null = $state(null);
 
 	const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
 
 	async function loadIndex() {
 		loading = true;
+		error = null;
 		try {
 			const result = await api.getSurnameIndex();
 			letterCounts = result.letter_counts || [];
 			surnames = result.items;
 		} catch (e) {
 			console.error('Failed to load surname index:', e);
+			error = 'Failed to load surnames. Please try again.';
 		} finally {
 			loading = false;
 		}
@@ -32,12 +35,18 @@
 		}
 
 		selectedLetter = letter;
+		await loadLetter(letter);
+	}
+
+	async function loadLetter(letter: string) {
 		loadingSurnames = true;
+		error = null;
 		try {
 			const result = await api.getSurnameIndex(letter);
 			surnames = result.items;
 		} catch (e) {
 			console.error('Failed to load surnames for letter:', e);
+			error = 'Failed to load surnames. Please try again.';
 		} finally {
 			loadingSurnames = false;
 		}
@@ -48,6 +57,14 @@
 		return found?.count || 0;
 	}
 
+	function retry() {
+		if (selectedLetter) {
+			loadLetter(selectedLetter);
+		} else {
+			loadIndex();
+		}
+	}
+
 	$effect(() => {
 		loadIndex();
 	});
@@ -56,6 +73,11 @@
 <div class="surname-browser">
 	{#if loading}
 		<div class="loading">Loading surnames...</div>
+	{:else if error && letterCounts.length === 0}
+		<div class="error" role="alert">
+			<p>{error}</p>
+			<button onclick={retry}>Retry</button>
+		</div>
 	{:else}
 		<!-- A-Z Letter Navigation -->
 		<div class="letter-nav">
@@ -81,6 +103,11 @@
 		<div class="surname-list">
 			{#if loadingSurnames}
 				<div class="loading">Loading...</div>
+			{:else if error}
+				<div class="error" role="alert">
+					<p>{error}</p>
+					<button onclick={retry}>Retry</button>
+				</div>
 			{:else if surnames.length === 0}
 				<div class="empty">No surnames found</div>
 			{:else}
@@ -107,6 +134,26 @@
 		text-align: center;
 		padding: 2rem;
 		color: #64748b;
+	}
+
+	.error {
+		text-align: center;
+		padding: 2rem;
+		color: #dc2626;
+	}
+
+	.error button {
+		margin-top: 1rem;
+		padding: 0.5rem 1rem;
+		border: 1px solid #cbd5e1;
+		border-radius: 6px;
+		background: white;
+		font-size: 0.875rem;
+		cursor: pointer;
+	}
+
+	.error button:hover {
+		background: #f1f5f9;
 	}
 
 	.letter-nav {

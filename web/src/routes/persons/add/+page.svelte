@@ -76,7 +76,7 @@
 	</div>
 
 	{#if error}
-		<div class="error">{error}</div>
+		<div class="error" role="alert">{error}</div>
 	{/if}
 
 	<form class="edit-form" onsubmit={(e) => { e.preventDefault(); createPerson(); }}>

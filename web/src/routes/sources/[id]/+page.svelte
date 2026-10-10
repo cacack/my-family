@@ -5,6 +5,7 @@
 	import ExternalLinks from '$lib/components/ExternalLinks.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { Badge } from '$lib/components/ui/badge';
+	import { SOURCE_TYPES } from '$lib/utils/sourceTypes';
 
 	let source: SourceDetail | null = $state(null);
 	let loading = $state(true);
@@ -80,15 +81,17 @@
 		try {
 			await api.updateSource(source.id, {
 				source_type: formData.source_type || undefined,
-				title: formData.title.trim() || undefined,
-				author: formData.author.trim() || undefined,
-				publisher: formData.publisher.trim() || undefined,
-				publish_date: formData.publish_date.trim() || undefined,
-				url: formData.url.trim() || undefined,
-				repository_name: formData.repository_name.trim() || undefined,
-				collection_name: formData.collection_name.trim() || undefined,
-				call_number: formData.call_number.trim() || undefined,
-				notes: formData.notes.trim() || undefined,
+				// Optional fields are always sent: an empty string clears the field,
+				// whereas an omitted one is left unchanged.
+				title: formData.title.trim(),
+				author: formData.author.trim(),
+				publisher: formData.publisher.trim(),
+				publish_date: formData.publish_date.trim(),
+				url: formData.url.trim(),
+				repository_name: formData.repository_name.trim(),
+				collection_name: formData.collection_name.trim(),
+				call_number: formData.call_number.trim(),
+				notes: formData.notes.trim(),
 				version: source.version
 			});
 			await loadSource(source.id);
@@ -167,20 +170,9 @@
 					<label>
 						Source Type
 						<select bind:value={formData.source_type}>
-							<option value="document">Document</option>
-							<option value="book">Book</option>
-							<option value="newspaper">Newspaper</option>
-							<option value="census">Census</option>
-							<option value="vital_record">Vital Record</option>
-							<option value="church_record">Church Record</option>
-							<option value="military_record">Military Record</option>
-							<option value="immigration_record">Immigration Record</option>
-							<option value="land_record">Land Record</option>
-							<option value="court_record">Court Record</option>
-							<option value="photograph">Photograph</option>
-							<option value="oral_history">Oral History</option>
-							<option value="website">Website</option>
-							<option value="other">Other</option>
+							{#each SOURCE_TYPES as type (type.value)}
+								<option value={type.value}>{type.label}</option>
+							{/each}
 						</select>
 					</label>
 					<label>

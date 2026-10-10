@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tick } from 'svelte';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 	import { api, type PersonDetail, type ChangeHistoryResponse, type Media, type ResearchStatus, type RollbackResponse, formatGenDate, formatPersonName } from '$lib/api/client';
@@ -58,7 +59,7 @@
 	let formData = $state({
 		given_name: '',
 		surname: '',
-		gender: '' as 'male' | 'female' | 'unknown' | '',
+		gender: 'unknown' as 'male' | 'female' | 'unknown',
 		birth_date: '',
 		birth_place: '',
 		death_date: '',
@@ -210,7 +211,7 @@
 			formData = {
 				given_name: person.given_name,
 				surname: person.surname,
-				gender: person.gender || '',
+				gender: person.gender || 'unknown',
 				birth_date: person.birth_date?.raw || '',
 				birth_place: person.birth_place || '',
 				death_date: person.death_date?.raw || '',
@@ -221,14 +222,31 @@
 		}
 	}
 
+	// The Edit button and the form replace each other, so focus is moved
+	// explicitly or it falls to the page body.
+	let editButton: HTMLElement | null = $state(null);
+	let editForm: HTMLFormElement | null = $state(null);
+
+	async function focusFirstField() {
+		await tick();
+		editForm?.querySelector<HTMLElement>('input, select, textarea, button')?.focus();
+	}
+
+	async function focusEditButton() {
+		await tick();
+		editButton?.focus();
+	}
+
 	function startEdit() {
 		resetForm();
 		editing = true;
+		focusFirstField();
 	}
 
 	function cancelEdit() {
 		resetForm();
 		editing = false;
+		focusEditButton();
 	}
 
 	async function savePerson() {
@@ -236,19 +254,26 @@
 		saving = true;
 		try {
 			await api.updatePerson(person.id, {
+				// The names are required, so an empty one is never sent.
 				given_name: formData.given_name || undefined,
 				surname: formData.surname || undefined,
-				gender: (formData.gender || undefined) as 'male' | 'female' | 'unknown' | undefined,
-				birth_date: formData.birth_date || undefined,
-				birth_place: formData.birth_place || undefined,
-				death_date: formData.death_date || undefined,
-				death_place: formData.death_place || undefined,
-				notes: formData.notes || undefined,
-				research_status: (formData.research_status || undefined) as ResearchStatus | undefined,
+				// Sent only when changed, so saving a person with no gender
+				// doesn't set one.
+				gender: formData.gender !== (person.gender || 'unknown') ? formData.gender : undefined,
+				// An empty string clears the field; an omitted one is left unchanged.
+				birth_date: formData.birth_date,
+				birth_place: formData.birth_place,
+				death_date: formData.death_date,
+				death_place: formData.death_place,
+				notes: formData.notes,
+				// "Not assessed" on an assessed person resets it to unknown, the
+				// API's unassessed status.
+				research_status: formData.research_status || (person.research_status ? 'unknown' : undefined),
 				version: person.version
 			});
 			await loadPerson(person.id);
 			editing = false;
+			focusEditButton();
 		} catch (e) {
 			error = (e as { message?: string }).message || 'Failed to save';
 		} finally {
@@ -262,7 +287,7 @@
 
 		try {
 			await api.deletePerson(person.id);
-			goto('/persons');
+			goto('/persons', { state: { notice: `${formatPersonName(person)} was deleted.` } });
 		} catch (e) {
 			error = (e as { message?: string }).message || 'Failed to delete';
 		}
@@ -308,7 +333,7 @@
 			<div class="actions">
 				<Button variant="outline" href="/pedigree/{person.id}">Pedigree</Button>
 				<Button variant="outline" href="/ahnentafel/{person.id}">Ahnentafel</Button>
-				<Button variant="outline" onclick={startEdit}>Edit</Button>
+				<Button variant="outline" onclick={startEdit} bind:ref={editButton}>Edit</Button>
 				<Button variant="destructive" onclick={deletePerson}>Delete</Button>
 			</div>
 		{/if}
@@ -320,7 +345,7 @@
 		<div class="error">{error}</div>
 	{:else if person}
 		{#if editing}
-			<form class="edit-form" onsubmit={(e) => { e.preventDefault(); savePerson(); }}>
+			<form class="edit-form" bind:this={editForm} onsubmit={(e) => { e.preventDefault(); savePerson(); }}>
 				<div class="form-row">
 					<label>
 						Given Name
@@ -336,7 +361,7 @@
 					<label>
 						Gender
 						<select bind:value={formData.gender}>
-							<option value="">Unknown</option>
+							<option value="unknown">Unknown</option>
 							<option value="male">Male</option>
 							<option value="female">Female</option>
 						</select>

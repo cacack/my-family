@@ -5,9 +5,13 @@
 	let breadcrumb: string[] = $state([]);
 	let currentParent = $state('');
 	let loading = $state(true);
+	let error: string | null = $state(null);
+	// The parent whose places failed to load, for Retry.
+	let failedParent = '';
 
 	async function loadPlaces(parent: string = '') {
 		loading = true;
+		error = null;
 		try {
 			const result = await api.getPlaceHierarchy(parent);
 			places = result.items;
@@ -15,6 +19,8 @@
 			currentParent = parent;
 		} catch (e) {
 			console.error('Failed to load places:', e);
+			error = 'Failed to load places. Please try again.';
+			failedParent = parent;
 		} finally {
 			loading = false;
 		}
@@ -48,6 +54,11 @@
 <div class="place-browser">
 	{#if loading}
 		<div class="loading" role="status" aria-live="polite">Loading places...</div>
+	{:else if error}
+		<div class="error" role="alert">
+			<p>{error}</p>
+			<button onclick={() => loadPlaces(failedParent)}>Retry</button>
+		</div>
 	{:else}
 		<!-- Breadcrumb Navigation -->
 		<nav class="breadcrumb" aria-label="Place hierarchy">
@@ -135,6 +146,26 @@
 		text-align: center;
 		padding: 2rem;
 		color: #64748b;
+	}
+
+	.error {
+		text-align: center;
+		padding: 2rem;
+		color: #dc2626;
+	}
+
+	.error button {
+		margin-top: 1rem;
+		padding: 0.5rem 1rem;
+		border: 1px solid #cbd5e1;
+		border-radius: 6px;
+		background: white;
+		font-size: 0.875rem;
+		cursor: pointer;
+	}
+
+	.error button:hover {
+		background: #f1f5f9;
 	}
 
 	.breadcrumb {

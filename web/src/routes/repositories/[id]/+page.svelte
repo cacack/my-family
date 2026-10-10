@@ -102,9 +102,11 @@
 		try {
 			await api.updateRepository(repository.id, {
 				name: formData.name.trim(),
-				address: buildAddress(formData),
-				notes: formData.notes.trim() || undefined,
-				gedcom_xref: formData.gedcom_xref.trim() || undefined,
+				// An empty address or string clears the field; an omitted one is
+				// left unchanged.
+				address: buildAddress(formData) ?? (repository.address ? {} : undefined),
+				notes: formData.notes.trim(),
+				gedcom_xref: formData.gedcom_xref.trim(),
 				version: repository.version
 			});
 			await loadRepository(repository.id);

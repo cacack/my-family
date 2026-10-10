@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/svelte';
+import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import DashboardPage from './+page.svelte';
 import * as apiModule from '$lib/api/client';
 
@@ -67,13 +67,28 @@ describe('Dashboard', () => {
 		expect(screen.queryByText('Welcome to My Family')).toBeNull();
 	});
 
-	it('does not show the onboarding wizard on a branch when loading fails', async () => {
-		branchState.id = 'b-1';
+	it.each([
+		['the mainline', null],
+		['a branch', 'b-1']
+	])('shows an error, not the onboarding wizard, when loading fails on %s', async (_, branchId) => {
+		branchState.id = branchId;
 		vi.mocked(apiModule.api.listPersons).mockRejectedValue(new Error('boom'));
 		const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
 		render(DashboardPage);
-		await waitFor(() => expect(screen.getByText('Recent People')).toBeTruthy());
+		const alert = await screen.findByRole('alert');
+		expect(alert.textContent).toContain('Failed to load the dashboard');
+		expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
 		expect(screen.queryByText('Welcome to My Family')).toBeNull();
+		spy.mockRestore();
+	});
+
+	it('loads the dashboard on Retry after a failure', async () => {
+		onboarding.completed = true;
+		vi.mocked(apiModule.api.listPersons).mockRejectedValueOnce(new Error('boom'));
+		const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+		render(DashboardPage);
+		await fireEvent.click(await screen.findByRole('button', { name: 'Retry' }));
+		await waitFor(() => expect(screen.getByText('Recent People')).toBeTruthy());
 		spy.mockRestore();
 	});
 
