@@ -2,6 +2,7 @@
 	import { page } from '$app/stores';
 	import { api, type Person, type ResearchStatus } from '$lib/api/client';
 	import { Button } from '$lib/components/ui/button';
+	import PageHeader from '$lib/components/PageHeader.svelte';
 	import PersonCard from '$lib/components/PersonCard.svelte';
 
 	let persons: Person[] = $state([]);
@@ -80,13 +81,12 @@
 </svelte:head>
 
 <div class="persons-page">
-	<header class="page-header">
-		<h1>People</h1>
-		<div class="header-actions">
+	<PageHeader title="People">
+		{#snippet actions()}
 			<Button variant="outline" href="/persons/add">Add Person</Button>
 			<Button variant="secondary" href="/persons/quick">Quick Capture</Button>
-		</div>
-	</header>
+		{/snippet}
+	</PageHeader>
 
 	{#if $page.state.notice}
 		<p class="notice" role="status">{$page.state.notice}</p>
@@ -178,19 +178,6 @@
 		max-width: 1200px;
 		margin: 0 auto;
 		padding: 1.5rem;
-	}
-
-	.page-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		margin-bottom: 1.5rem;
-	}
-
-	.page-header h1 {
-		margin: 0;
-		font-size: 1.5rem;
-		color: #1e293b;
 	}
 
 	.controls {
@@ -306,11 +293,6 @@
 	.pagination span {
 		font-size: 0.875rem;
 		color: #64748b;
-	}
-
-	.header-actions {
-		display: flex;
-		gap: 0.5rem;
 	}
 
 	.toolbar {

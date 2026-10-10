@@ -8,6 +8,8 @@
 		type PersonSummary
 	} from '$lib/api/client';
 	import { Button } from '$lib/components/ui/button';
+	import PageHeader from '$lib/components/PageHeader.svelte';
+	import FormRow from '$lib/components/FormRow.svelte';
 	import PartnerPickers from '$lib/components/PartnerPickers.svelte';
 
 	let saving = $state(false);
@@ -120,10 +122,7 @@
 </svelte:head>
 
 <div class="add-family-page">
-	<header class="page-header">
-		<a href="/families" class="back-link">&larr; Families</a>
-		<h1>Add Family</h1>
-	</header>
+	<PageHeader title="Add Family" back={{ href: '/families', label: 'Families' }} />
 
 	{#if error}
 		<div class="error" role="alert">
@@ -156,7 +155,7 @@
 			disabled={formLocked}
 		/>
 
-		<div class="form-row">
+		<FormRow>
 			<label>
 				Relationship Type
 				<select bind:value={formData.relationship_type}>
@@ -165,9 +164,9 @@
 					<option value="partnership">Partnership</option>
 				</select>
 			</label>
-		</div>
+		</FormRow>
 
-		<div class="form-row">
+		<FormRow>
 			<label>
 				Marriage Date
 				<input type="text" bind:value={formData.marriage_date} placeholder="e.g., 1 JAN 1850 or ABT 1850" />
@@ -176,7 +175,7 @@
 				Marriage Place
 				<input type="text" bind:value={formData.marriage_place} placeholder="e.g., London, England" />
 			</label>
-		</div>
+		</FormRow>
 
 		{#if !requestedChildId}
 			<p class="helper-text">
@@ -200,29 +199,6 @@
 		padding: 1.5rem;
 	}
 
-	.page-header {
-		display: flex;
-		align-items: center;
-		gap: 1rem;
-		margin-bottom: 1.5rem;
-	}
-
-	.page-header h1 {
-		margin: 0;
-		font-size: 1.5rem;
-		color: #1e293b;
-	}
-
-	.back-link {
-		color: #64748b;
-		text-decoration: none;
-		font-size: 0.875rem;
-	}
-
-	.back-link:hover {
-		color: #3b82f6;
-	}
-
 	.error {
 		text-align: center;
 		padding: 1rem;
@@ -239,17 +215,6 @@
 		border-radius: 12px;
 		border: 1px solid #e2e8f0;
 		padding: 1.5rem;
-	}
-
-	.form-row {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
-		gap: 1rem;
-		margin-bottom: 1rem;
-	}
-
-	.form-row:has(> :only-child) {
-		grid-template-columns: 1fr;
 	}
 
 	label {

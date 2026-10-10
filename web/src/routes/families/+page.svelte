@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { api, type FamilyDetail } from '$lib/api/client';
 	import { Button } from '$lib/components/ui/button';
+	import PageHeader from '$lib/components/PageHeader.svelte';
 	import FamilyCard from '$lib/components/FamilyCard.svelte';
 
 	let families: FamilyDetail[] = $state([]);
@@ -54,9 +55,7 @@
 </svelte:head>
 
 <div class="families-page">
-	<header class="page-header">
-		<h1>Families</h1>
-	</header>
+	<PageHeader title="Families" />
 
 	{#if loading}
 		<div class="loading">Loading...</div>
@@ -92,19 +91,6 @@
 		max-width: 1200px;
 		margin: 0 auto;
 		padding: 1.5rem;
-	}
-
-	.page-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		margin-bottom: 1.5rem;
-	}
-
-	.page-header h1 {
-		margin: 0;
-		font-size: 1.5rem;
-		color: #1e293b;
 	}
 
 	.loading,

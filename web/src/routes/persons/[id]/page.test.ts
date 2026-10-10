@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import Page from './+page.svelte';
+import { buttonVariants } from '$lib/components/ui/button';
+import { cn } from '$lib/utils.js';
 import type * as apiModule from '$lib/api/client';
 import type { PersonDetail } from '$lib/api/client';
 import { goto } from '$app/navigation';
@@ -110,7 +112,10 @@ describe('Person detail brick-wall controls', () => {
 
 	it('offers the brick-wall control on the mainline', async () => {
 		render(Page);
-		expect(await screen.findByRole('button', { name: 'Mark as Brick Wall' })).toBeDefined();
+		const button = await screen.findByRole('button', { name: 'Mark as Brick Wall' });
+		// A bordered (outline) button, not a ghost one that reads as plain text (#897).
+		expect(button.getAttribute('data-slot')).toBe('button');
+		expect(button.className).toBe(cn(buttonVariants({ variant: 'outline' })));
 	});
 
 	// `PUT`/`DELETE /persons/{id}/brick-wall` declare no `branch` parameter, so

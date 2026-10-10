@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { api, type BrickWallEntry } from '$lib/api/client';
 	import { Badge } from '$lib/components/ui/badge';
+	import PageHeader from '$lib/components/PageHeader.svelte';
 	import { Card, CardHeader, CardContent, CardFooter } from '$lib/components/ui/card';
 	import MainlineNotice from '$lib/components/MainlineNotice.svelte';
 
@@ -66,10 +67,7 @@
 		surface="Brick-wall tracking"
 		detail="Brick-wall flags are not event-sourced yet, so they are not part of a research branch."
 	/>
-	<header class="page-header">
-		<h1>Brick Walls</h1>
-		<p class="description">Track and celebrate research breakthroughs.</p>
-	</header>
+	<PageHeader title="Brick Walls" description="Track and celebrate research breakthroughs." />
 
 	{#if loading}
 		<div class="loading" role="status" aria-live="polite">Loading brick walls...</div>
@@ -155,22 +153,6 @@
 		max-width: 1200px;
 		margin: 0 auto;
 		padding: 1.5rem;
-	}
-
-	.page-header {
-		margin-bottom: 2rem;
-	}
-
-	.page-header h1 {
-		margin: 0 0 0.5rem;
-		font-size: 1.5rem;
-		color: #1e293b;
-	}
-
-	.description {
-		margin: 0;
-		color: #64748b;
-		font-size: 0.9375rem;
 	}
 
 	.loading,

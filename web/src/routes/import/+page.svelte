@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { api, type ImportResult, type ImportProgress } from '$lib/api/client';
 	import { ExportButton } from '$lib/components/export';
+	import PageHeader from '$lib/components/PageHeader.svelte';
 	import ImportProgressBar from '$lib/components/import/ImportProgress.svelte';
 	import BranchImportBlocked from '$lib/components/import/BranchImportBlocked.svelte';
 	import MainlineNotice from '$lib/components/MainlineNotice.svelte';
@@ -372,9 +373,7 @@
 </svelte:head>
 
 <div class="import-page">
-	<header class="page-header">
-		<h1>Import & Export</h1>
-	</header>
+	<PageHeader title="Import & Export" />
 
 	<div class="content">
 		<section class="import-section">
@@ -683,12 +682,6 @@
 		max-width: 800px;
 		margin: 0 auto;
 		padding: 1.5rem;
-	}
-
-	.page-header h1 {
-		margin: 0;
-		font-size: 1.5rem;
-		color: #1e293b;
 	}
 
 	.content {

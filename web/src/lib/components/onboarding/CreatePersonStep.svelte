@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { api, type PersonCreate } from '$lib/api/client';
 	import { Button } from '$lib/components/ui/button';
+	import FormRow from '$lib/components/FormRow.svelte';
 
 	interface Props {
 		onComplete: (data: { personId: string; personName: string }) => void;
@@ -63,7 +64,7 @@
 	{/if}
 
 	<form class="edit-form" onsubmit={(e) => { e.preventDefault(); createPerson(); }}>
-		<div class="form-row">
+		<FormRow>
 			<label>
 				Given Name
 				<input type="text" bind:value={formData.given_name} required placeholder="e.g., John" />
@@ -72,9 +73,9 @@
 				Surname
 				<input type="text" bind:value={formData.surname} required placeholder="e.g., Smith" />
 			</label>
-		</div>
+		</FormRow>
 
-		<div class="form-row">
+		<FormRow>
 			<label>
 				Gender
 				<select bind:value={formData.gender}>
@@ -83,9 +84,9 @@
 					<option value="female">Female</option>
 				</select>
 			</label>
-		</div>
+		</FormRow>
 
-		<div class="form-row">
+		<FormRow>
 			<label>
 				Birth Date <span class="optional">(optional)</span>
 				<input type="text" bind:value={formData.birth_date} placeholder="e.g., 1 JAN 1850 or ABT 1850" />
@@ -94,7 +95,7 @@
 				Birth Place <span class="optional">(optional)</span>
 				<input type="text" bind:value={formData.birth_place} placeholder="e.g., London, England" />
 			</label>
-		</div>
+		</FormRow>
 
 		<div class="form-actions">
 			<Button type="submit" disabled={saving}>
@@ -152,19 +153,6 @@
 		border-radius: 12px;
 		border: 1px solid #e2e8f0;
 		padding: 1.5rem;
-	}
-
-	.form-row {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
-		gap: 1rem;
-		margin-bottom: 1rem;
-	}
-
-	@media (max-width: 480px) {
-		.form-row {
-			grid-template-columns: 1fr;
-		}
 	}
 
 	label {

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { api, type CitationTemplate } from '$lib/api/client';
 	import * as Card from '$lib/components/ui/card';
+	import PageHeader from '$lib/components/PageHeader.svelte';
 	import * as Select from '$lib/components/ui/select';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
@@ -75,12 +76,10 @@
 </svelte:head>
 
 <div class="browse-page">
-	<header class="page-header">
-		<h1>Citation Templates</h1>
-		<p class="description">
-			Evidence Explained citation templates for documenting genealogical sources with precision.
-		</p>
-	</header>
+	<PageHeader
+		title="Citation Templates"
+		description="Evidence Explained citation templates for documenting genealogical sources with precision."
+	/>
 
 	{#if loading}
 		<div class="loading" role="status" aria-live="polite">Loading citation templates...</div>
@@ -217,22 +216,6 @@
 		max-width: 1200px;
 		margin: 0 auto;
 		padding: 1.5rem;
-	}
-
-	.page-header {
-		margin-bottom: 1.5rem;
-	}
-
-	.page-header h1 {
-		margin: 0 0 0.5rem;
-		font-size: 1.5rem;
-		color: #1e293b;
-	}
-
-	.description {
-		margin: 0;
-		color: #64748b;
-		font-size: 0.9375rem;
 	}
 
 	.loading,

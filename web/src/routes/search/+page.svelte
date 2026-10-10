@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button';
+	import PageHeader from '$lib/components/PageHeader.svelte';
 	import { Card, CardContent } from '$lib/components/ui/card';
 	import {
 		api,
@@ -270,10 +271,7 @@
 </svelte:head>
 
 <div class="search-page">
-	<header class="page-header">
-		<h1>Advanced Search</h1>
-		<p class="description">Search people by name, dates, and places</p>
-	</header>
+	<PageHeader title="Advanced Search" description="Search people by name, dates, and places" />
 
 	<Card class="mb-8">
 		<CardContent>
@@ -636,22 +634,6 @@
 		max-width: 1000px;
 		margin: 0 auto;
 		padding: 1.5rem;
-	}
-
-	.page-header {
-		margin-bottom: 1.5rem;
-	}
-
-	.page-header h1 {
-		margin: 0 0 0.5rem;
-		font-size: 1.5rem;
-		color: #1e293b;
-	}
-
-	.description {
-		margin: 0;
-		color: #64748b;
-		font-size: 0.9375rem;
 	}
 
 	.form-section {

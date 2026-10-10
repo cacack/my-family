@@ -2,6 +2,8 @@
 	import { goto } from '$app/navigation';
 	import { api, type PersonCreate } from '$lib/api/client';
 	import { Button } from '$lib/components/ui/button';
+	import PageHeader from '$lib/components/PageHeader.svelte';
+	import FormRow from '$lib/components/FormRow.svelte';
 
 	let saving = $state(false);
 	let error: string | null = $state(null);
@@ -66,10 +68,7 @@
 </svelte:head>
 
 <div class="person-page">
-	<header class="page-header">
-		<a href="/persons" class="back-link">&larr; People</a>
-		<h1>Add Person</h1>
-	</header>
+	<PageHeader title="Add Person" back={{ href: '/persons', label: 'People' }} />
 
 	<div class="quick-capture-hint">
 		Need to add many people quickly? Try <a href="/persons/quick">Quick Capture mode</a>
@@ -80,7 +79,7 @@
 	{/if}
 
 	<form class="edit-form" onsubmit={(e) => { e.preventDefault(); createPerson(); }}>
-		<div class="form-row">
+		<FormRow>
 			<label>
 				Given Name
 				<input type="text" bind:value={formData.given_name} required />
@@ -89,9 +88,9 @@
 				Surname
 				<input type="text" bind:value={formData.surname} required />
 			</label>
-		</div>
+		</FormRow>
 
-		<div class="form-row">
+		<FormRow>
 			<label>
 				Gender
 				<select bind:value={formData.gender}>
@@ -100,9 +99,9 @@
 					<option value="female">Female</option>
 				</select>
 			</label>
-		</div>
+		</FormRow>
 
-		<div class="form-row">
+		<FormRow>
 			<label>
 				Birth Date
 				<input type="text" bind:value={formData.birth_date} placeholder="e.g., 1 JAN 1850 or ABT 1850" />
@@ -111,9 +110,9 @@
 				Birth Place
 				<input type="text" bind:value={formData.birth_place} />
 			</label>
-		</div>
+		</FormRow>
 
-		<div class="form-row">
+		<FormRow>
 			<label>
 				Death Date
 				<input type="text" bind:value={formData.death_date} placeholder="e.g., 15 MAR 1920" />
@@ -122,7 +121,7 @@
 				Death Place
 				<input type="text" bind:value={formData.death_place} />
 			</label>
-		</div>
+		</FormRow>
 
 		<label>
 			Notes
@@ -145,29 +144,6 @@
 		padding: 1.5rem;
 	}
 
-	.page-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		margin-bottom: 1.5rem;
-	}
-
-	.page-header h1 {
-		margin: 0;
-		font-size: 1.5rem;
-		color: #1e293b;
-	}
-
-	.back-link {
-		color: #64748b;
-		text-decoration: none;
-		font-size: 0.875rem;
-	}
-
-	.back-link:hover {
-		color: #3b82f6;
-	}
-
 	.error {
 		background: #fef2f2;
 		border: 1px solid #fecaca;
@@ -184,13 +160,6 @@
 		border-radius: 12px;
 		border: 1px solid #e2e8f0;
 		padding: 1.5rem;
-	}
-
-	.form-row {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
-		gap: 1rem;
-		margin-bottom: 1rem;
 	}
 
 	label {

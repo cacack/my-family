@@ -17,6 +17,7 @@
 	import { api, type ApiError, type Snapshot } from '$lib/api/client';
 	import { activeBranch } from '$lib/stores/activeBranch.svelte';
 	import { Button } from '$lib/components/ui/button';
+	import PageHeader from '$lib/components/PageHeader.svelte';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import { Textarea } from '$lib/components/ui/textarea';
@@ -228,24 +229,22 @@
 </div>
 
 <div class="snapshots-page">
-	<header class="page-header">
-		<div>
-			<h1 bind:this={headingEl} tabindex="-1">Research Snapshots</h1>
-			<p class="description">
-				Mark milestones in your research, like "Pre-DNA results" or "After courthouse trip", then
-				compare two of them, or one with now, to see everything that changed in between. A snapshot
-				is only a marker: creating or deleting one never changes your data.
+	<PageHeader
+		title="Research Snapshots"
+		description={'Mark milestones in your research, like "Pre-DNA results" or "After courthouse trip", then compare two of them, or one with now, to see everything that changed in between. A snapshot is only a marker: creating or deleting one never changes your data.'}
+		bind:headingEl
+	>
+		{#if activeBranch.id}
+			<p class="scope-note" role="note">
+				Showing the snapshots taken on the research branch
+				{activeBranch.branch ? activeBranch.branch.name : ''}. New snapshots are taken on this
+				branch, and comparisons show the branch's view. Mainline snapshots are listed on the mainline.
 			</p>
-			{#if activeBranch.id}
-				<p class="scope-note" role="note">
-					Showing the snapshots taken on the research branch
-					{activeBranch.branch ? activeBranch.branch.name : ''}. New snapshots are taken on this
-					branch, and comparisons show the branch's view. Mainline snapshots are listed on the mainline.
-				</p>
-			{/if}
-		</div>
-		<Button onclick={openCreate}>New snapshot</Button>
-	</header>
+		{/if}
+		{#snippet actions()}
+			<Button onclick={openCreate}>New snapshot</Button>
+		{/snippet}
+	</PageHeader>
 
 	{#if loading}
 		<div class="state" role="status" aria-live="polite">Loading snapshots...</div>
@@ -456,28 +455,6 @@
 		max-width: 1000px;
 		margin: 0 auto;
 		padding: 1.5rem;
-	}
-
-	.page-header {
-		display: flex;
-		align-items: flex-start;
-		justify-content: space-between;
-		gap: 1rem;
-		flex-wrap: wrap;
-		margin-bottom: 1.5rem;
-	}
-
-	.page-header h1 {
-		margin: 0;
-		font-size: 1.5rem;
-		color: #1e293b;
-	}
-
-	.description {
-		margin: 0.25rem 0 0;
-		font-size: 0.875rem;
-		color: #64748b;
-		max-width: 46rem;
 	}
 
 	.scope-note {
