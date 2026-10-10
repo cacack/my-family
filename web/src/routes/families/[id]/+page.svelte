@@ -456,18 +456,6 @@
 
 				<PartnerPickers bind:partner1 bind:partner2 excludeIds={childIds} disabled={saving} />
 
-				{#if conflict}
-					<SaveConflict
-						noun="family"
-						fields={conflictFields(conflict)}
-						onKeepMine={keepMyEdits}
-						onUseLatest={useLatestVersion}
-						busy={saving}
-					/>
-				{:else if saveError}
-					<div class="dialog-error" role="alert">{saveError}</div>
-				{/if}
-
 				<FormRow>
 					<label>
 						Relationship Type
@@ -489,6 +477,19 @@
 						<input type="text" bind:value={formData.marriage_place} />
 					</label>
 				</FormRow>
+
+				<!-- Beside the Save button, where the user is looking when it fails. -->
+				{#if conflict}
+					<SaveConflict
+						noun="family"
+						fields={conflictFields(conflict)}
+						onKeepMine={keepMyEdits}
+						onUseLatest={useLatestVersion}
+						busy={saving}
+					/>
+				{:else if saveError}
+					<ActionError message={saveError} />
+				{/if}
 
 				<div class="form-actions">
 					<Button variant="outline" onclick={cancelEdit} disabled={saving}>Cancel</Button>
@@ -732,7 +733,6 @@
 		padding: 3rem;
 		color: #64748b;
 	}
-
 
 	.family-detail {
 		background: white;

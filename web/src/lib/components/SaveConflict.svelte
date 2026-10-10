@@ -37,8 +37,8 @@
 
 <div class="save-conflict" role="alert">
 	<p class="message">
-		This {noun} was changed elsewhere while you were editing, so your changes were not saved.
-		Your edits are still in the form below.
+		This {noun} was changed elsewhere while you were editing, so your changes were not saved. Your
+		edits are still in the form.
 	</p>
 	{#if differing.length > 0}
 		<div class="values-scroll">
@@ -80,12 +80,12 @@
 		background: #fffbeb;
 		border: 1px solid #fde68a;
 		border-radius: 8px;
-		color: #92400e;
 		font-size: 0.875rem;
 	}
 
 	.message {
 		margin: 0 0 0.5rem;
+		color: #92400e;
 	}
 
 	.values-scroll {
