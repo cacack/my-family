@@ -103,7 +103,20 @@ func (p *Person) Validate() error {
 
 // FullName returns the full name of the person.
 func (p *Person) FullName() string {
-	return p.GivenName + " " + p.Surname
+	return JoinFullName(p.GivenName, p.Surname)
+}
+
+// JoinFullName joins a given name and surname with a single space, leaving no
+// leading or trailing space when either part is empty.
+func JoinFullName(givenName, surname string) string {
+	switch {
+	case surname == "":
+		return givenName
+	case givenName == "":
+		return surname
+	default:
+		return givenName + " " + surname
+	}
 }
 
 // SetBirthDate sets the birth date from a string.

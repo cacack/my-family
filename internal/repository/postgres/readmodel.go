@@ -84,7 +84,7 @@ func (s *ReadModelStore) createTables() error {
 			branch_id UUID NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000',
 			given_name VARCHAR(100) NOT NULL,
 			surname VARCHAR(100) NOT NULL,
-			full_name VARCHAR(200) GENERATED ALWAYS AS (given_name || ' ' || surname) STORED,
+			full_name VARCHAR(200) GENERATED ALWAYS AS ` + personFullNameExpr + ` STORED,
 			gender VARCHAR(10),
 			birth_date_raw VARCHAR(100),
 			birth_date_sort DATE,
@@ -744,8 +744,42 @@ func (s *ReadModelStore) renameLegacyEventsTable() error {
 	return nil
 }
 
+// personFullNameExpr is the generated persons.full_name expression. It matches
+// domain.JoinFullName: the given name and surname joined by one space, with no
+// stray space when either is empty (#977).
+const personFullNameExpr = `(CASE WHEN surname = '' THEN given_name WHEN given_name = '' THEN surname ELSE given_name || ' ' || surname END)`
+
+// migratePersonFullName swaps an older persons.full_name expression (which always
+// joined with a space, leaving "Given " for a person with no surname) for
+// personFullNameExpr. Re-adding the generated column recomputes every existing
+// row, so no replay is needed. Postgres stores the expression in its own
+// normalized form, so the probe looks for the CASE rather than the exact text.
+// Logged, not swallowed: until it succeeds, full_name keeps the stray space.
+func (s *ReadModelStore) migratePersonFullName() {
+	var outdated bool
+	if err := s.db.QueryRow(`
+		SELECT EXISTS (
+			SELECT 1 FROM information_schema.columns
+			WHERE table_schema = CURRENT_SCHEMA() AND table_name = 'persons'
+			  AND column_name = 'full_name' AND generation_expression NOT LIKE '%CASE%'
+		)`).Scan(&outdated); err != nil {
+		slog.Warn("read model migration: cannot inspect persons.full_name (#977)", "error", err)
+		return
+	}
+	if !outdated {
+		return
+	}
+	if _, err := s.db.Exec(`ALTER TABLE persons DROP COLUMN full_name,
+		ADD COLUMN full_name VARCHAR(200) GENERATED ALWAYS AS ` + personFullNameExpr + ` STORED`); err != nil {
+		slog.Warn("read model migration: cannot update persons.full_name; names without a surname or given name keep a stray space (#977)",
+			"error", err)
+	}
+}
+
 // runMigrations applies schema changes for existing databases.
 func (s *ReadModelStore) runMigrations() {
+	s.migratePersonFullName()
+
 	// Add research_status column if it doesn't exist (for databases created before this column was added)
 	_, _ = s.db.Exec(`ALTER TABLE persons ADD COLUMN IF NOT EXISTS research_status VARCHAR(20)`)
 	_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_persons_research_status ON persons(research_status)`)

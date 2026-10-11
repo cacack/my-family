@@ -143,9 +143,24 @@ func TestPerson_Validate(t *testing.T) {
 }
 
 func TestPerson_FullName(t *testing.T) {
-	p := NewPerson("John", "Doe")
-	if got := p.FullName(); got != "John Doe" {
-		t.Errorf("FullName() = %v, want John Doe", got)
+	tests := []struct {
+		name      string
+		givenName string
+		surname   string
+		want      string
+	}{
+		{"both names", "John", "Doe", "John Doe"},
+		{"no surname", "John", "", "John"},
+		{"no given name", "", "Doe", "Doe"},
+		{"no names", "", "", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := NewPerson(tt.givenName, tt.surname)
+			if got := p.FullName(); got != tt.want {
+				t.Errorf("FullName() = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
 
