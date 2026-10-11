@@ -169,7 +169,9 @@
 	}
 
 	function viewportSize(): [number, number] {
-		return [container.clientWidth || 800, container.clientHeight || 600];
+		// Fractional size: a rounded viewBox would scale the chart slightly below 1:1
+		const { width, height } = container.getBoundingClientRect();
+		return [width || 800, height || 600];
 	}
 
 	// Keep one SVG unit per pixel when only the height changes, preserving zoom and pan
