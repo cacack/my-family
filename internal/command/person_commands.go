@@ -19,6 +19,16 @@ var (
 	ErrInvalidInput      = errors.New("invalid input")
 )
 
+// validateDateInput rejects a newly entered date that isn't a usable GEDCOM
+// date, naming the field. Only new input is checked, so a stored or imported
+// date the parser can't read never blocks an unrelated edit.
+func validateDateInput(field, value string) error {
+	if err := domain.ValidateDateInput(value); err != nil {
+		return fmt.Errorf("%w: %s: %v", ErrInvalidInput, field, err)
+	}
+	return nil
+}
+
 // CreatePersonInput contains the data for creating a new person.
 type CreatePersonInput struct {
 	GivenName      string
@@ -43,6 +53,12 @@ func (h *Handler) CreatePerson(ctx context.Context, input CreatePersonInput) (*C
 	// Validate required fields
 	if input.GivenName == "" {
 		return nil, fmt.Errorf("%w: given_name is required", ErrInvalidInput)
+	}
+	if err := validateDateInput("birth_date", input.BirthDate); err != nil {
+		return nil, err
+	}
+	if err := validateDateInput("death_date", input.DeathDate); err != nil {
+		return nil, err
 	}
 
 	// Create person entity
@@ -164,6 +180,9 @@ func (h *Handler) UpdatePerson(ctx context.Context, input UpdatePersonInput) (*U
 		changes["gender"] = *input.Gender
 	}
 	if input.BirthDate != nil && *input.BirthDate != current.BirthDateRaw {
+		if err := validateDateInput("birth_date", *input.BirthDate); err != nil {
+			return nil, err
+		}
 		testPerson.SetBirthDate(*input.BirthDate)
 		changes["birth_date"] = *input.BirthDate
 	}
@@ -172,6 +191,9 @@ func (h *Handler) UpdatePerson(ctx context.Context, input UpdatePersonInput) (*U
 		changes["birth_place"] = *input.BirthPlace
 	}
 	if input.DeathDate != nil && *input.DeathDate != current.DeathDateRaw {
+		if err := validateDateInput("death_date", *input.DeathDate); err != nil {
+			return nil, err
+		}
 		testPerson.SetDeathDate(*input.DeathDate)
 		changes["death_date"] = *input.DeathDate
 	}

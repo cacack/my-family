@@ -5,6 +5,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	gedcomlib "github.com/cacack/gedcom-go/v2/gedcom"
 )
 
 // DateQualifier represents the precision qualifier for a genealogical date.
@@ -216,6 +218,35 @@ func ParseGenDate(s string) GenDate {
 	// Parse simple date
 	parseSimpleDate(work, gd.Calendar, &gd.Year, &gd.Month, &gd.Day)
 	return gd
+}
+
+// ValidateDateInput checks a date as a person typed it. It rejects text that
+// isn't a GEDCOM date (e.g. "garbage", "1850-01-01", "31 FEB 19xx") and dates
+// that don't exist in the calendar (e.g. "31 FEB 1900"); a GEDCOM date phrase
+// in parentheses, such as "(about the time of the war)", is always accepted.
+// An empty string is valid: it means no date.
+//
+// ParseGenDate stays lenient so imported and already-stored dates keep loading;
+// this check is for new input only. Syntax and calendar rules come from
+// gedcom-go, which currently checks day counts for Gregorian dates only.
+func ValidateDateInput(s string) error {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil
+	}
+	d, err := gedcomlib.ParseDate(s)
+	if err != nil {
+		return fmt.Errorf("%q is not a recognized date; use a form like \"1 JAN 1850\", \"ABT 1850\" or \"BET 1850 AND 1860\", or put free text in parentheses to keep it as a date phrase", s)
+	}
+	for _, part := range []*gedcomlib.Date{d, d.EndDate} {
+		if part == nil {
+			continue
+		}
+		if err := part.Validate(); err != nil {
+			return fmt.Errorf("%q is not a real calendar date (%s)", s, strings.TrimPrefix(err.Error(), "invalid date: "))
+		}
+	}
+	return nil
 }
 
 // parseInterpretedGenDate parses an interpreted date of the form
