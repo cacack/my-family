@@ -1253,7 +1253,8 @@ func (s *ReadModelStore) SearchPersons(ctx context.Context, opts repository.Sear
 	// The total counts every match, whatever the page (#902).
 	var total int
 	// #nosec G202 -- qb holds internal SQL fragments with $n placeholders, not user input
-	countQuery := "SELECT COUNT(*) FROM (" + qb.String() + ") matches"
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	countQuery :="SELECT COUNT(*) FROM (" + qb.String() + ") matches"
 	if err := s.db.QueryRowContext(ctx, countQuery, params.args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count search persons: %w", err)
 	}
