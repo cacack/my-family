@@ -3244,7 +3244,10 @@ type DuplicatesResponse struct {
 
 // Error defines model for Error.
 type Error struct {
-	// Code Error code
+	// Code Error code. A 409 carries `VERSION_CONFLICT` for a stale version
+	// and `CONFLICT` for any other refusal; some operations document
+	// their own codes.
+	//
 	//
 	// Example: NOT_FOUND
 	Code    string                  `json:"code"`

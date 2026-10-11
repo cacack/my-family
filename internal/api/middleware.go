@@ -20,11 +20,14 @@ type APIError struct {
 
 // Error codes.
 const (
-	CodeBadRequest    = "BAD_REQUEST"
-	CodeNotFound      = "NOT_FOUND"
-	CodeConflict      = "CONFLICT"
-	CodeInternalError = "INTERNAL_ERROR"
-	CodeValidation    = "VALIDATION_ERROR"
+	CodeBadRequest = "BAD_REQUEST"
+	CodeNotFound   = "NOT_FOUND"
+	CodeConflict   = "CONFLICT"
+	// CodeVersionConflict marks a 409 for a stale version: the record changed
+	// since the client read it. Every other 409 refusal keeps CodeConflict.
+	CodeVersionConflict = "VERSION_CONFLICT"
+	CodeInternalError   = "INTERNAL_ERROR"
+	CodeValidation      = "VALIDATION_ERROR"
 )
 
 // customErrorHandler handles errors and returns consistent JSON responses.
@@ -52,7 +55,7 @@ func customErrorHandler(err error, c echo.Context) {
 	case errors.Is(err, repository.ErrConcurrencyConflict):
 		code = http.StatusConflict
 		apiErr = APIError{
-			Code:    CodeConflict,
+			Code:    CodeVersionConflict,
 			Message: "Resource was modified by another request. Please reload and try again.",
 		}
 	case errors.Is(err, command.ErrPersonHasFamilies):

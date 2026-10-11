@@ -3004,7 +3004,9 @@ export interface components {
     schemas: {
         Error: {
             /**
-             * @description Error code
+             * @description Error code. A 409 carries `VERSION_CONFLICT` for a stale version
+             *     and `CONFLICT` for any other refusal; some operations document
+             *     their own codes.
              * @example NOT_FOUND
              */
             code: string;
@@ -6204,7 +6206,12 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
-        /** @description Version conflict */
+        /**
+         * @description The change was refused. `code` is `VERSION_CONFLICT` when the record
+         *     changed since the client read it (a stale `version`): re-read it and
+         *     retry. Any other refusal (for example circular ancestry or a child
+         *     already in a family) carries `CONFLICT`.
+         */
         Conflict: {
             headers: {
                 [name: string]: unknown;
@@ -6713,7 +6720,7 @@ export interface operations {
                 content?: never;
             };
             404: components["responses"]["NotFound"];
-            /** @description Version conflict while unlinking the child */
+            /** @description Version conflict while unlinking the child (`VERSION_CONFLICT`) */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -9178,8 +9185,9 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             404: components["responses"]["NotFound"];
             /**
-             * @description Conflict - version mismatch, circular merge (ancestor/descendant relationship),
-             *     or both persons are children in different families
+             * @description Conflict - version mismatch (`VERSION_CONFLICT`), or a refused merge
+             *     (`conflict`): circular merge (ancestor/descendant relationship), or
+             *     both persons are children in different families
              */
             409: {
                 headers: {

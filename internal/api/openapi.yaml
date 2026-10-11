@@ -380,7 +380,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          description: Version conflict while unlinking the child
+          description: Version conflict while unlinking the child (`VERSION_CONFLICT`)
           content:
             application/json:
               schema:
@@ -2518,8 +2518,9 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           description: |
-            Conflict - version mismatch, circular merge (ancestor/descendant relationship),
-            or both persons are children in different families
+            Conflict - version mismatch (`VERSION_CONFLICT`), or a refused merge
+            (`conflict`): circular merge (ancestor/descendant relationship), or
+            both persons are children in different families
           content:
             application/json:
               schema:
@@ -5151,7 +5152,11 @@ components:
             $ref: '#/components/schemas/Error'
 
     Conflict:
-      description: Version conflict
+      description: |
+        The change was refused. `code` is `VERSION_CONFLICT` when the record
+        changed since the client read it (a stale `version`): re-read it and
+        retry. Any other refusal (for example circular ancestry or a child
+        already in a family) carries `CONFLICT`.
       content:
         application/json:
           schema:
@@ -5171,7 +5176,10 @@ components:
       properties:
         code:
           type: string
-          description: Error code
+          description: |
+            Error code. A 409 carries `VERSION_CONFLICT` for a stale version
+            and `CONFLICT` for any other refusal; some operations document
+            their own codes.
           example: "NOT_FOUND"
         message:
           type: string

@@ -210,23 +210,54 @@ func TestCreateFamily_ValidationIs400(t *testing.T) {
 	}
 }
 
-// TestUpdateFamily_StaleVersionIsConflict pins the 409 the spec declares for a
-// stale version (#899): the UI tells a version conflict from a refused edit by
-// the status, so a 400 would hide it.
-func TestUpdateFamily_StaleVersionIsConflict(t *testing.T) {
-	server := setupFamilyTestServer(t)
-	p1 := createTestPerson(t, server, "Avery", "Placeholder")["id"].(string)
-	p2 := createTestPerson(t, server, "Blake", "Sample")["id"].(string)
-	familyID := createFamilyOf(t, server, p1, p2)
+// TestUpdateFamily_ConflictCodes pins the two kinds of 409 a family PUT gives
+// (#899, #940): a stale version carries VERSION_CONFLICT, so the UI offers to
+// compare versions; a refusal such as circular ancestry keeps CONFLICT, so the
+// UI shows its message without re-reading the family.
+func TestUpdateFamily_ConflictCodes(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		body     func(child string, version float64) map[string]any
+		wantCode string
+	}{
+		{
+			name: "stale version",
+			body: func(_ string, version float64) map[string]any {
+				return map[string]any{"version": version - 1, "marriage_place": "Evanston"}
+			},
+			wantCode: "VERSION_CONFLICT",
+		},
+		{
+			name: "circular ancestry",
+			body: func(child string, version float64) map[string]any {
+				return map[string]any{"version": version, "partner1_id": child}
+			},
+			wantCode: "CONFLICT",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server := setupFamilyTestServer(t)
+			p1 := createTestPerson(t, server, "Avery", "Placeholder")["id"].(string)
+			p2 := createTestPerson(t, server, "Blake", "Sample")["id"].(string)
+			child := createTestPerson(t, server, "Casey", "Placeholder")["id"].(string)
+			familyID := createFamilyOf(t, server, p1, p2)
+			if rec := do(t, server, http.MethodPost, "/api/v1/families/"+familyID+"/children",
+				fmt.Sprintf(`{"person_id":%q}`, child)); rec.Code != http.StatusCreated {
+				t.Fatalf("link child: %d %s", rec.Code, rec.Body.String())
+			}
+			rec := do(t, server, http.MethodGet, "/api/v1/families/"+familyID, "")
+			if rec.Code != http.StatusOK {
+				t.Fatalf("get family: %d %s", rec.Code, rec.Body.String())
+			}
+			version := decodeBody(t, rec)["version"].(float64)
 
-	if rec := putFamily(t, server, familyID, map[string]any{"version": 1, "marriage_place": "Springfield"}); rec.Code != http.StatusOK {
-		t.Fatalf("first PUT: %d %s", rec.Code, rec.Body.String())
-	}
-	rec := putFamily(t, server, familyID, map[string]any{"version": 1, "marriage_place": "Evanston"})
-	if rec.Code != http.StatusConflict {
-		t.Fatalf("stale PUT: got %d, want 409: %s", rec.Code, rec.Body.String())
-	}
-	if got := decodeBody(t, rec)["code"]; got != "conflict" {
-		t.Errorf("code = %v, want conflict", got)
+			rec = putFamily(t, server, familyID, tc.body(child, version))
+			if rec.Code != http.StatusConflict {
+				t.Fatalf("PUT: got %d, want 409: %s", rec.Code, rec.Body.String())
+			}
+			if got := decodeBody(t, rec)["code"]; got != tc.wantCode {
+				t.Errorf("code = %v, want %s", got, tc.wantCode)
+			}
+		})
 	}
 }
