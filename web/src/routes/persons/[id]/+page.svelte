@@ -846,6 +846,10 @@
 		font-size: 0.8125rem;
 	}
 
+	:global(body.high-contrast) :is(.info-section dt, .empty-links, .brick-wall-since) {
+		color: var(--color-text-muted);
+	}
+
 	.info-section dd {
 		margin: 0;
 		/* GEDCOM places are often comma-joined with no spaces to break on. */
