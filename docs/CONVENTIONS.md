@@ -181,7 +181,7 @@ web/src/
 
 - Use Svelte stores for shared state
 - Keep component state local when possible
-- View state a user would expect Back, reload or a shared link to keep (search, list sort/filter/page, tabs, chart options) lives in URL search params: read it from `$page.url` with the `readEnum`/`readPositiveInt`/`readFlag` helpers in `web/src/lib/utils/urlState.ts` and change it only through `setQuery`. Pass `push: true` for navigation-level changes (page, tab, submitted search); the default replace is for refinements (sort, filters, options). Leave defaults out of the URL.
+- View state a user would expect Back, reload or a shared link to keep (search, list sort/filter/page, tabs, chart options) lives in URL search params: read it from `$page.url` with the `readEnum`/`readPositiveInt`/`readFlag` helpers in `web/src/lib/utils/urlState.ts` and change it only through `setQuery`. Pass `push: true` for navigation-level changes (page, tab, submitted search); the default replace is for refinements (sort, filters, options). Leave defaults out of the URL. When a form is a draft until submitted (search), a refinement changes only its own param and keeps the submitted criteria from the URL; it never reads the unsubmitted form fields.
 
 ### Main Navigation
 
