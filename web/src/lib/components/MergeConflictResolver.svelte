@@ -373,7 +373,7 @@
 
 	.optional {
 		font-weight: 400;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.conflict-list {
@@ -419,7 +419,7 @@
 	.entity-type {
 		font-size: 0.75rem;
 		font-weight: 400;
-		color: #94a3b8;
+		color: var(--color-text-muted);
 		text-transform: capitalize;
 		padding: 0.125rem 0.375rem;
 		background: #f1f5f9;
@@ -468,7 +468,7 @@
 
 	.option-help {
 		font-size: 0.8125rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 		overflow-wrap: anywhere;
 	}
 </style>

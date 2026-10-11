@@ -91,7 +91,7 @@
 	.progress-detail {
 		margin-top: 0.25rem;
 		font-size: 0.75rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 		text-align: right;
 		font-variant-numeric: tabular-nums;
 	}

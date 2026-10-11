@@ -91,7 +91,7 @@
 	.empty {
 		text-align: center;
 		padding: 2rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.error {
@@ -153,7 +153,7 @@
 
 	.filter-count {
 		font-size: 0.8125rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 		white-space: nowrap;
 	}
 

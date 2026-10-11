@@ -166,7 +166,7 @@
 	.description {
 		margin: 0 0 1rem;
 		font-size: 0.8125rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 		line-height: 1.5;
 	}
 
@@ -175,7 +175,7 @@
 	.empty {
 		text-align: center;
 		padding: 2rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.error {
@@ -227,12 +227,12 @@
 		border-radius: 9999px;
 		font-size: 0.6875rem;
 		font-weight: 600;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.current .version-number {
-		background: #3b82f6;
-		border-color: #3b82f6;
+		background: var(--color-action);
+		border-color: var(--color-action);
 		color: white;
 	}
 
@@ -260,7 +260,7 @@
 
 	.timestamp {
 		font-size: 0.8125rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.entry-summary {

@@ -303,12 +303,12 @@
 		display: inline-block;
 		margin-bottom: 1rem;
 		font-size: 0.875rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 		text-decoration: none;
 	}
 
 	.back-link:hover {
-		color: #3b82f6;
+		color: var(--color-link);
 	}
 
 	.page-header {
@@ -331,7 +331,7 @@
 	.lede {
 		margin: 0.375rem 0 0.75rem;
 		font-size: 0.875rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.record {
@@ -346,7 +346,7 @@
 		font-weight: 600;
 		text-transform: uppercase;
 		letter-spacing: 0.04em;
-		color: #94a3b8;
+		color: var(--color-text-muted);
 	}
 
 	section {
@@ -367,7 +367,7 @@
 		font-weight: 600;
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.entries {
@@ -415,7 +415,7 @@
 		font-size: 0.6875rem;
 		text-transform: uppercase;
 		letter-spacing: 0.04em;
-		color: #94a3b8;
+		color: var(--color-text-muted);
 	}
 
 	.entry-meta dd {
@@ -485,13 +485,13 @@
 	.empty-line {
 		margin: 0;
 		font-size: 0.875rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.state {
 		padding: 2rem;
 		text-align: center;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.state.error {

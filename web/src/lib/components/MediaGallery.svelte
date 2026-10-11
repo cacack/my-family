@@ -331,7 +331,7 @@
 		justify-content: center;
 		padding: 3rem;
 		text-align: center;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.empty-state svg {

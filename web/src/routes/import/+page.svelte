@@ -706,7 +706,7 @@
 
 	.description {
 		margin: 0 0 1.5rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 		font-size: 0.875rem;
 	}
 
@@ -736,7 +736,7 @@
 
 	.drop-zone p {
 		margin: 0 0 0.75rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 		font-size: 0.875rem;
 	}
 
@@ -776,7 +776,7 @@
 	}
 
 	.file-size {
-		color: #64748b;
+		color: var(--color-text-muted);
 		font-size: 0.875rem;
 	}
 
@@ -788,7 +788,7 @@
 		background: #f1f5f9;
 		border-radius: 50%;
 		font-size: 1rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 		cursor: pointer;
 		line-height: 1;
 	}
@@ -898,7 +898,7 @@
 
 	.more {
 		font-style: italic;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.result-actions {
@@ -928,7 +928,7 @@
 
 	.option-description {
 		margin: 0 0 0.75rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 		font-size: 0.8125rem;
 	}
 

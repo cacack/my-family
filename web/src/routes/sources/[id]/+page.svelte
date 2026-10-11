@@ -383,13 +383,13 @@
 	}
 
 	.back-link {
-		color: #64748b;
+		color: var(--color-text-muted);
 		text-decoration: none;
 		font-size: 0.875rem;
 	}
 
 	.back-link:hover {
-		color: #3b82f6;
+		color: var(--color-link);
 	}
 
 	.actions {
@@ -401,7 +401,7 @@
 	.error {
 		text-align: center;
 		padding: 3rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.error {
@@ -453,7 +453,7 @@
 		background: #dbeafe;
 		border-radius: 4px;
 		font-size: 0.75rem;
-		color: #3b82f6;
+		color: var(--color-link);
 		margin-top: 0.5rem;
 	}
 
@@ -472,7 +472,7 @@
 		margin: 0 0 0.75rem;
 		font-size: 0.875rem;
 		font-weight: 600;
-		color: #64748b;
+		color: var(--color-text-muted);
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
 	}
@@ -485,7 +485,7 @@
 	}
 
 	.info-section dt {
-		color: #94a3b8;
+		color: var(--color-text-muted);
 		font-size: 0.8125rem;
 	}
 
@@ -496,7 +496,7 @@
 	}
 
 	.source-url {
-		color: #3b82f6;
+		color: var(--color-link);
 		text-decoration: none;
 		font-size: 0.875rem;
 		word-break: break-all;
@@ -538,7 +538,7 @@
 	}
 
 	.person-link {
-		color: #3b82f6;
+		color: var(--color-link);
 		text-decoration: none;
 		font-size: 0.875rem;
 		font-weight: 500;
@@ -559,7 +559,7 @@
 
 	.citation-details {
 		font-size: 0.8125rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 		margin-bottom: 0.5rem;
 	}
 
@@ -582,7 +582,7 @@
 		text-transform: uppercase;
 		font-weight: 500;
 		background: #f1f5f9;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.quality-badge.original,

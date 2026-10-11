@@ -185,7 +185,7 @@
 
 <div class="mx-auto max-w-3xl p-6">
 	<header class="mb-6 flex items-center justify-between">
-		<a href="/evidence" class="text-sm text-slate-500 no-underline hover:text-blue-500">
+		<a href="/evidence" class="text-sm text-muted-foreground no-underline hover:text-link">
 			&larr; Evidence
 		</a>
 		{#if log && !editing}
@@ -199,7 +199,7 @@
 	</header>
 
 	{#if loading}
-		<div class="p-12 text-center text-slate-500">Loading...</div>
+		<div class="p-12 text-center text-muted-foreground">Loading...</div>
 	{:else if error && !log && !isNew}
 		<div class="p-12 text-center text-red-600">
 			<p class="m-0 mb-4">{error}</p>
@@ -325,38 +325,38 @@
 			>
 				<div class="mb-6">
 					<h2
-						class="m-0 mb-3 text-sm font-semibold uppercase tracking-wider text-slate-500"
+						class="m-0 mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground"
 					>
 						Details
 					</h2>
 					<dl class="m-0 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
-						<dt class="text-[0.8125rem] text-slate-400">Subject</dt>
+						<dt class="text-[0.8125rem] text-muted-foreground">Subject</dt>
 						<dd class="m-0 text-sm text-slate-800">
 							<a
 								href="/{log.subject_type === 'family' ? 'families' : 'persons'}/{log.subject_id}"
-								class="text-blue-500 no-underline hover:underline"
+								class="text-link no-underline hover:underline"
 							>
 								{log.subject_id}
 							</a>
 						</dd>
-						<dt class="text-[0.8125rem] text-slate-400">Subject Type</dt>
+						<dt class="text-[0.8125rem] text-muted-foreground">Subject Type</dt>
 						<dd class="m-0 text-sm text-slate-800">
 							{log.subject_type.charAt(0).toUpperCase() + log.subject_type.slice(1)}
 						</dd>
-						<dt class="text-[0.8125rem] text-slate-400">Repository</dt>
+						<dt class="text-[0.8125rem] text-muted-foreground">Repository</dt>
 						<dd class="m-0 text-sm text-slate-800">{log.repository}</dd>
-						<dt class="text-[0.8125rem] text-slate-400">Search Date</dt>
+						<dt class="text-[0.8125rem] text-muted-foreground">Search Date</dt>
 						<dd class="m-0 text-sm text-slate-800">
 							{new Date(log.search_date).toLocaleDateString()}
 						</dd>
-						<dt class="text-[0.8125rem] text-slate-400">Outcome</dt>
+						<dt class="text-[0.8125rem] text-muted-foreground">Outcome</dt>
 						<dd class="m-0 text-sm text-slate-800">{formatOutcome(log.outcome)}</dd>
 					</dl>
 				</div>
 			</div>
 
 			<div class="mb-6">
-				<h2 class="m-0 mb-3 text-sm font-semibold uppercase tracking-wider text-slate-500">
+				<h2 class="m-0 mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
 					Search Description
 				</h2>
 				<p class="m-0 whitespace-pre-wrap text-sm leading-relaxed text-slate-600">
@@ -366,7 +366,7 @@
 
 			{#if log.notes}
 				<div class="mb-6">
-					<h2 class="m-0 mb-3 text-sm font-semibold uppercase tracking-wider text-slate-500">
+					<h2 class="m-0 mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
 						Notes
 					</h2>
 					<p class="m-0 whitespace-pre-wrap text-sm leading-relaxed text-slate-600">
@@ -376,7 +376,7 @@
 			{/if}
 
 			<div
-				class="mt-6 flex flex-wrap gap-6 border-t border-slate-200 pt-4 text-xs text-slate-400"
+				class="mt-6 flex flex-wrap gap-6 border-t border-slate-200 pt-4 text-xs text-muted-foreground"
 			>
 				{#if log.created_at}
 					<span>Created: {new Date(log.created_at).toLocaleDateString()}</span>

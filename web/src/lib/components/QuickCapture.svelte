@@ -207,7 +207,7 @@
 	}
 
 	.optional {
-		color: #94a3b8;
+		color: var(--color-text-muted);
 		font-weight: normal;
 	}
 
@@ -234,7 +234,7 @@
 
 	.name-preview {
 		font-size: 0.8125rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 		padding: 0.375rem 0.75rem;
 		background: #f8fafc;
 		border-radius: 4px;
@@ -272,7 +272,7 @@
 .toggle-notes {
 		background: none;
 		border: none;
-		color: #64748b;
+		color: var(--color-text-muted);
 		font-size: 0.8125rem;
 		cursor: pointer;
 		padding: 0.25rem 0;
@@ -280,7 +280,7 @@
 	}
 
 	.toggle-notes:hover {
-		color: #3b82f6;
+		color: var(--color-link);
 	}
 
 	.form-actions {

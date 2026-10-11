@@ -222,7 +222,7 @@
 	.empty {
 		text-align: center;
 		padding: 2rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.error {
@@ -271,7 +271,7 @@
 
 	.field-count {
 		font-size: 0.8125rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.source-types {
@@ -294,7 +294,7 @@
 	}
 
 	.required-field {
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	:global(.template-footer) {
@@ -337,7 +337,7 @@
 	.field-help {
 		margin: 0;
 		font-size: 0.8125rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 		line-height: 1.4;
 	}
 

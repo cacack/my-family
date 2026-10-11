@@ -18,7 +18,7 @@
 
 	const triggerClass = 'gap-1 px-3 py-2 text-sm font-medium';
 	const activeClass = 'nav-active bg-[#eff6ff] text-[#1d4ed8]';
-	const idleClass = 'text-[#64748b] hover:bg-[#f1f5f9] hover:text-[#1e293b]';
+	const idleClass = 'text-muted-foreground hover:bg-[#f1f5f9] hover:text-[#1e293b]';
 </script>
 
 <!-- `child` on Triggers and Items for the reasons given in BranchSwitcher.svelte:
@@ -99,7 +99,7 @@
 					{/if}
 					{#if isGroup(entry)}
 						<DropdownMenu.Group>
-							<DropdownMenu.GroupHeading class="text-xs font-medium text-[#64748b]">{entry.label}</DropdownMenu.GroupHeading>
+							<DropdownMenu.GroupHeading class="text-xs font-medium text-muted-foreground">{entry.label}</DropdownMenu.GroupHeading>
 							{#each entry.links as link (link.href)}
 								{@render menuLink(link)}
 							{/each}

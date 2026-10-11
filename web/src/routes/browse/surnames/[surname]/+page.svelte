@@ -109,7 +109,7 @@
 	}
 
 	.breadcrumb a {
-		color: #3b82f6;
+		color: var(--color-link);
 		text-decoration: none;
 	}
 
@@ -118,11 +118,11 @@
 	}
 
 	.breadcrumb .separator {
-		color: #94a3b8;
+		color: var(--color-text-muted);
 	}
 
 	.breadcrumb .current {
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.page-header h1 {
@@ -133,7 +133,7 @@
 
 	.result-count {
 		margin: 0.5rem 0 0;
-		color: #64748b;
+		color: var(--color-text-muted);
 		font-size: 0.875rem;
 	}
 
@@ -141,7 +141,7 @@
 	.empty {
 		text-align: center;
 		padding: 3rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.empty p {
@@ -197,6 +197,6 @@
 
 	.pagination span {
 		font-size: 0.875rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 </style>

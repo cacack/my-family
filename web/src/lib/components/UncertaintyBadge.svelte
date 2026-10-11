@@ -15,7 +15,7 @@
 			case 'certain':
 				return {
 					indicatorColor: 'bg-green-500',
-					badgeClass: 'bg-green-50 text-green-600 border-green-200 dark:bg-green-950 dark:text-green-400 dark:border-green-800',
+					badgeClass: 'bg-green-50 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-400 dark:border-green-800',
 					label: 'Certain',
 					tooltip: 'Confirmed with strong evidence'
 				};
@@ -29,7 +29,7 @@
 			case 'possible':
 				return {
 					indicatorColor: 'bg-orange-500',
-					badgeClass: 'bg-orange-50 text-orange-600 border-orange-200 dark:bg-orange-950 dark:text-orange-400 dark:border-orange-800',
+					badgeClass: 'bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-950 dark:text-orange-400 dark:border-orange-800',
 					label: 'Possible',
 					tooltip: 'Speculative, limited evidence'
 				};

@@ -193,12 +193,12 @@
 
 	.page-description {
 		margin: 0.25rem 0 0;
-		color: #64748b;
+		color: var(--color-text-muted);
 		font-size: 0.875rem;
 	}
 
 	.page-description a {
-		color: #1d4ed8;
+		color: var(--color-link-hover);
 		text-decoration: underline;
 	}
 
@@ -206,7 +206,7 @@
 	.error {
 		text-align: center;
 		padding: 3rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.error {
@@ -245,7 +245,7 @@
 	}
 
 	.stat-label {
-		color: #64748b;
+		color: var(--color-text-muted);
 		font-size: 0.875rem;
 		margin-top: 0.25rem;
 	}
@@ -267,7 +267,7 @@
 
 	.section-description {
 		margin: 0 0 1rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 		font-size: 0.875rem;
 	}
 
@@ -304,7 +304,7 @@
 	}
 
 	.person-link {
-		color: #3b82f6;
+		color: var(--color-link);
 		text-decoration: none;
 		font-weight: 500;
 	}
@@ -320,7 +320,7 @@
 	.issues-list {
 		margin: 0;
 		padding-left: 1rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 		font-size: 0.8125rem;
 	}
 
@@ -331,7 +331,7 @@
 	.empty-state {
 		text-align: center;
 		padding: 2rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	/* Research Status Distribution */
@@ -354,7 +354,7 @@
 
 	.unset-label {
 		font-size: 0.75rem;
-		color: #94a3b8;
+		color: var(--color-text-muted);
 		font-weight: 500;
 	}
 

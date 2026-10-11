@@ -204,7 +204,7 @@
 
 	.quick-capture-hint {
 		font-size: 0.8125rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 		margin-bottom: 1rem;
 		padding: 0.5rem 0.75rem;
 		background: #f8fafc;
@@ -212,7 +212,7 @@
 	}
 
 	.quick-capture-hint a {
-		color: #2563eb;
+		color: var(--color-link);
 		text-decoration: underline;
 	}
 </style>

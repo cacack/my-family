@@ -159,7 +159,7 @@
 	.empty {
 		text-align: center;
 		padding: 2rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.error {
@@ -219,7 +219,7 @@
 	}
 
 	.person-link:hover {
-		color: #3b82f6;
+		color: var(--color-link);
 	}
 
 	.note {
@@ -231,7 +231,7 @@
 
 	.meta {
 		font-size: 0.75rem;
-		color: #94a3b8;
+		color: var(--color-text-muted);
 	}
 
 	@media (max-width: 640px) {

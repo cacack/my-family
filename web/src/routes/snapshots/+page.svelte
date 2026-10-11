@@ -478,7 +478,7 @@
 		font-weight: 600;
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.compare-form {
@@ -515,7 +515,7 @@
 	.compare-hint {
 		margin: 0.5rem 0 0;
 		font-size: 0.75rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.snapshot-list {
@@ -582,7 +582,7 @@
 		font-size: 0.6875rem;
 		text-transform: uppercase;
 		letter-spacing: 0.04em;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.snapshot-meta dd {
@@ -594,7 +594,7 @@
 	.state {
 		padding: 2rem;
 		text-align: center;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.state.error {
@@ -639,7 +639,7 @@
 	.field-hint {
 		margin-left: auto;
 		font-size: 0.6875rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.dialog-error {

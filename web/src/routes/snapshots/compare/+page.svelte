@@ -402,12 +402,12 @@
 		display: inline-block;
 		margin-bottom: 1rem;
 		font-size: 0.875rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 		text-decoration: none;
 	}
 
 	.back-link:hover {
-		color: #3b82f6;
+		color: var(--color-link);
 	}
 
 	h1 {
@@ -446,7 +446,7 @@
 		font-size: 0.6875rem;
 		text-transform: uppercase;
 		letter-spacing: 0.04em;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.endpoint-name {
@@ -463,12 +463,12 @@
 
 	.endpoint-meta {
 		font-size: 0.75rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.endpoint-arrow {
 		align-self: center;
-		color: #94a3b8;
+		color: var(--color-text-muted);
 		font-size: 1.25rem;
 	}
 
@@ -481,7 +481,7 @@
 	.note {
 		margin: 0 0 0.75rem;
 		font-size: 0.8125rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.truncated {
@@ -541,7 +541,7 @@
 
 	.change-time {
 		font-size: 0.75rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.change-body {
@@ -555,7 +555,7 @@
 		font-size: 0.6875rem;
 		text-transform: uppercase;
 		letter-spacing: 0.04em;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.entity-name {
@@ -566,12 +566,12 @@
 	}
 
 	a.entity-name:hover {
-		color: #3b82f6;
+		color: var(--color-link);
 		text-decoration: underline;
 	}
 
 	.entity-name.deleted {
-		color: #64748b;
+		color: var(--color-text-muted);
 		text-decoration: line-through;
 	}
 
@@ -582,7 +582,7 @@
 	.state {
 		padding: 2rem;
 		text-align: center;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.state.error {

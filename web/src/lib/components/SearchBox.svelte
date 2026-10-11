@@ -308,7 +308,7 @@
 		border: 1px solid #e2e8f0;
 		border-radius: 4px;
 		background: white;
-		color: #94a3b8;
+		color: var(--color-text-muted);
 		font-size: 0.875rem;
 		font-weight: 600;
 		cursor: pointer;
@@ -320,8 +320,8 @@
 	}
 
 	.fuzzy-toggle.active {
-		background: #3b82f6;
-		border-color: #3b82f6;
+		background: var(--color-action);
+		border-color: var(--color-action);
 		color: white;
 	}
 
@@ -341,7 +341,7 @@
 
 	.no-results {
 		padding: 0.75rem 1rem;
-		color: #94a3b8;
+		color: var(--color-text-muted);
 		font-size: 0.875rem;
 		text-align: center;
 	}
@@ -388,6 +388,6 @@
 
 	.lifespan {
 		font-size: 0.75rem;
-		color: #94a3b8;
+		color: var(--color-text-muted);
 	}
 </style>

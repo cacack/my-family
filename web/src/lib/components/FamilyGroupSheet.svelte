@@ -432,7 +432,7 @@
 	}
 
 	.person-link:hover {
-		color: #3b82f6;
+		color: var(--color-link);
 		text-decoration: underline;
 	}
 
@@ -461,11 +461,11 @@
 	}
 
 	.parent-row a:hover {
-		color: #3b82f6;
+		color: var(--color-link);
 	}
 
 	.citation-indicator {
-		color: #3b82f6;
+		color: var(--color-link);
 		font-size: 0.75rem;
 		font-weight: 500;
 		margin-left: 0.25rem;
@@ -523,7 +523,7 @@
 	}
 
 	.children-table a:hover {
-		color: #3b82f6;
+		color: var(--color-link);
 	}
 
 	.col-num {
@@ -537,7 +537,7 @@
 	}
 
 	.relationship-type {
-		color: #94a3b8;
+		color: var(--color-text-muted);
 		font-size: 0.75rem;
 		font-style: italic;
 		margin-left: 0.25rem;
@@ -560,7 +560,7 @@
 	}
 
 	.citations-list a {
-		color: #3b82f6;
+		color: var(--color-link);
 		text-decoration: none;
 	}
 
@@ -569,24 +569,24 @@
 	}
 
 	.cit-detail {
-		color: #64748b;
+		color: var(--color-text-muted);
 		font-size: 0.8125rem;
 	}
 
 	.cit-context {
-		color: #94a3b8;
+		color: var(--color-text-muted);
 		font-size: 0.8125rem;
 		font-style: italic;
 	}
 
 	.no-data {
-		color: #94a3b8;
+		color: var(--color-text-muted);
 		font-style: italic;
 		margin: 0;
 	}
 
 	.negated-event {
-		color: #94a3b8;
+		color: var(--color-text-muted);
 		font-style: italic;
 		font-size: 0.8125rem;
 	}

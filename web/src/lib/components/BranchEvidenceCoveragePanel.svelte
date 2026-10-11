@@ -199,18 +199,18 @@
 
 	.subject:hover,
 	.add-link:hover {
-		color: #2563eb;
+		color: var(--color-link);
 		text-decoration: underline;
 	}
 
 	.count {
 		font-size: 0.75rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.add-link {
 		font-size: 0.8125rem;
-		color: #1d4ed8;
+		color: var(--color-link-hover);
 		text-decoration: none;
 	}
 

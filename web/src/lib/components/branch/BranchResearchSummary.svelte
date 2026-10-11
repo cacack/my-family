@@ -97,7 +97,7 @@
 	.scope-note {
 		margin: 0.5rem 0 0;
 		font-size: 0.75rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.research {
@@ -121,7 +121,7 @@
 		font-weight: 600;
 		text-transform: uppercase;
 		letter-spacing: 0.04em;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.hypothesis {
@@ -134,7 +134,7 @@
 	.empty {
 		margin: 0.5rem 0 0;
 		font-size: 0.8125rem;
-		color: #94a3b8;
+		color: var(--color-text-muted);
 		font-style: italic;
 	}
 
@@ -149,7 +149,7 @@
 		font-size: 0.6875rem;
 		text-transform: uppercase;
 		letter-spacing: 0.04em;
-		color: #94a3b8;
+		color: var(--color-text-muted);
 	}
 
 	.research-meta dd {
@@ -178,7 +178,7 @@
 		margin-right: 0.375rem;
 		font-size: 0.6875rem;
 		text-transform: capitalize;
-		color: #94a3b8;
+		color: var(--color-text-muted);
 	}
 
 	.fact-type {
@@ -186,7 +186,7 @@
 	}
 
 	a {
-		color: #2563eb;
+		color: var(--color-link);
 		text-decoration: none;
 	}
 
@@ -195,7 +195,7 @@
 	}
 
 	.unresolved {
-		color: #94a3b8;
+		color: var(--color-text-muted);
 		font-style: italic;
 	}
 </style>

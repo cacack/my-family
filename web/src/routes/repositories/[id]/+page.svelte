@@ -329,13 +329,13 @@
 	}
 
 	.back-link {
-		color: #64748b;
+		color: var(--color-text-muted);
 		text-decoration: none;
 		font-size: 0.875rem;
 	}
 
 	.back-link:hover {
-		color: #3b82f6;
+		color: var(--color-link);
 	}
 
 	.actions {
@@ -347,7 +347,7 @@
 	.error {
 		text-align: center;
 		padding: 3rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.error {
@@ -385,7 +385,7 @@
 		margin: 0 0 0.75rem;
 		font-size: 0.875rem;
 		font-weight: 600;
-		color: #64748b;
+		color: var(--color-text-muted);
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
 	}
@@ -398,7 +398,7 @@
 	}
 
 	.info-section dt {
-		color: #94a3b8;
+		color: var(--color-text-muted);
 		font-size: 0.8125rem;
 	}
 
@@ -452,7 +452,7 @@
 	legend {
 		font-size: 0.8125rem;
 		font-weight: 600;
-		color: #64748b;
+		color: var(--color-text-muted);
 		padding: 0 0.375rem;
 		text-transform: uppercase;
 		letter-spacing: 0.05em;

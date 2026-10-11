@@ -64,7 +64,7 @@
 
 	.effect-link {
 		font-weight: 600;
-		color: #2563eb;
+		color: var(--color-link);
 	}
 
 	.effect-link:hover {
@@ -74,6 +74,6 @@
 	.effect-hint {
 		margin: 0.25rem 0 0;
 		font-size: 0.8125rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 </style>

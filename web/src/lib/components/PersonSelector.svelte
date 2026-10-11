@@ -178,7 +178,7 @@
 	function getGenderBgClass(gender?: string): string {
 		if (gender === 'male') return 'bg-blue-100 text-blue-600';
 		if (gender === 'female') return 'bg-pink-100 text-pink-600';
-		return 'bg-slate-100 text-slate-500';
+		return 'bg-slate-100 text-muted-foreground';
 	}
 </script>
 
@@ -345,7 +345,7 @@
 
 	.person-lifespan {
 		font-size: 0.8125rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.clear-btn {
@@ -354,14 +354,14 @@
 		border: none;
 		border-radius: 6px;
 		background: transparent;
-		color: #94a3b8;
+		color: var(--color-text-muted);
 		cursor: pointer;
 		transition: all 0.15s;
 	}
 
 	.clear-btn:hover:not(:disabled) {
 		background: #f1f5f9;
-		color: #64748b;
+		color: var(--color-text);
 	}
 
 	.clear-btn:disabled {
@@ -458,7 +458,7 @@
 
 	.no-results {
 		padding: 1rem;
-		color: #94a3b8;
+		color: var(--color-text-muted);
 		font-size: 0.875rem;
 		text-align: center;
 	}
@@ -531,7 +531,7 @@
 
 	.result-lifespan {
 		font-size: 0.75rem;
-		color: #94a3b8;
+		color: var(--color-text-muted);
 	}
 
 	/* Tailwind-like utility classes for avatar colors */
@@ -549,8 +549,5 @@
 	}
 	.bg-slate-100 {
 		background-color: #f1f5f9;
-	}
-	.text-slate-500 {
-		color: #64748b;
 	}
 </style>

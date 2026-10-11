@@ -137,7 +137,7 @@
 	.avatar[data-gender='unknown'],
 	.avatar:not([data-gender]) {
 		background: #f1f5f9;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.info {
@@ -168,13 +168,13 @@
 	.detail {
 		margin: 0.25rem 0 0;
 		font-size: 0.8125rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.lifespan {
 		margin: 0.125rem 0 0;
 		font-size: 0.75rem;
-		color: #94a3b8;
+		color: var(--color-text-muted);
 	}
 
 	:global(body.high-contrast) .lifespan {

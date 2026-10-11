@@ -399,7 +399,7 @@
 	legend {
 		font-size: 0.8125rem;
 		font-weight: 600;
-		color: #64748b;
+		color: var(--color-text-muted);
 		padding: 0 0.375rem;
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
@@ -449,7 +449,7 @@
 	.empty {
 		text-align: center;
 		padding: 3rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.empty p {
@@ -480,7 +480,7 @@
 		padding: 0.75rem 1rem;
 		font-size: 0.75rem;
 		font-weight: 600;
-		color: #64748b;
+		color: var(--color-text-muted);
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
 		background: #f8fafc;
@@ -499,7 +499,7 @@
 	}
 
 	.repo-link {
-		color: #3b82f6;
+		color: var(--color-link);
 		text-decoration: none;
 		font-weight: 500;
 	}
@@ -509,7 +509,7 @@
 	}
 
 	.location {
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.pagination {
@@ -542,6 +542,6 @@
 
 	.pagination span {
 		font-size: 0.875rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 </style>

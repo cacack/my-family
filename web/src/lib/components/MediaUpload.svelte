@@ -310,13 +310,13 @@
 
 	.dropzone-text {
 		margin: 0 0 0.5rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 		font-size: 0.875rem;
 	}
 
 	.dropzone-hint {
 		margin: 0.5rem 0 0;
-		color: #94a3b8;
+		color: var(--color-text-muted);
 		font-size: 0.75rem;
 	}
 
@@ -372,7 +372,7 @@
 	}
 
 	.file-size {
-		color: #64748b;
+		color: var(--color-text-muted);
 		font-size: 0.75rem;
 	}
 

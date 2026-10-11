@@ -498,7 +498,7 @@
 		margin: 0;
 		font-size: 0.875rem;
 		font-weight: 600;
-		color: #64748b;
+		color: var(--color-text-muted);
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
 		display: flex;
@@ -517,7 +517,7 @@
 		border-radius: 9999px;
 		font-size: 0.6875rem;
 		font-weight: 600;
-		color: #3b82f6;
+		color: var(--color-link);
 		text-transform: none;
 		letter-spacing: 0;
 	}
@@ -609,7 +609,7 @@
 
 	.no-results {
 		padding: 0.75rem 1rem;
-		color: #94a3b8;
+		color: var(--color-text-muted);
 		font-size: 0.875rem;
 		text-align: center;
 	}
@@ -638,7 +638,7 @@
 	.source-author {
 		display: block;
 		font-size: 0.75rem;
-		color: #94a3b8;
+		color: var(--color-text-muted);
 		margin-top: 0.125rem;
 	}
 
@@ -698,7 +698,7 @@
 	.empty-state {
 		text-align: center;
 		padding: 2rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 		font-size: 0.875rem;
 	}
 
@@ -732,7 +732,7 @@
 	}
 
 	.source-link {
-		color: #3b82f6;
+		color: var(--color-link);
 		text-decoration: none;
 		font-size: 0.9375rem;
 		font-weight: 500;
@@ -753,7 +753,7 @@
 
 	.citation-details {
 		font-size: 0.8125rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 		margin-bottom: 0.5rem;
 	}
 
@@ -776,7 +776,7 @@
 		text-transform: uppercase;
 		font-weight: 500;
 		background: #f1f5f9;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.quality-badge.original,
@@ -806,7 +806,7 @@
 	.analysis {
 		margin: 0.5rem 0 0;
 		font-size: 0.8125rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.citation-actions {

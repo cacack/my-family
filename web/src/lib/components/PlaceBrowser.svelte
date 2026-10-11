@@ -145,7 +145,7 @@
 	.empty {
 		text-align: center;
 		padding: 2rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.error {
@@ -196,12 +196,12 @@
 	.breadcrumb-item:hover {
 		background: #f1f5f9;
 		border-color: #3b82f6;
-		color: #3b82f6;
+		color: var(--color-link);
 	}
 
 	.breadcrumb-item.active {
-		background: #3b82f6;
-		border-color: #3b82f6;
+		background: var(--color-action);
+		border-color: var(--color-action);
 		color: white;
 		cursor: default;
 	}
@@ -212,7 +212,7 @@
 	}
 
 	.breadcrumb-separator {
-		color: #94a3b8;
+		color: var(--color-text-muted);
 	}
 
 	.place-grid {
@@ -263,7 +263,7 @@
 
 	.place-hint {
 		font-size: 0.75rem;
-		color: #94a3b8;
+		color: var(--color-text-muted);
 	}
 
 	.place-actions {
