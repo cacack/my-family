@@ -5,7 +5,8 @@
  * route plus the seeded detail pages and checks the one symptom that matters
  * most: content wider than the viewport. It also checks the header controls
  * stay on-screen, which is how the original defect showed (the nav pushed the
- * search box out of view even at 1440px).
+ * search box out of view even at 1440px). The phone width is swept a second
+ * time with the Larger font setting, where rem-sized layouts run out of room.
  *
  * Deliberately not a screenshot diff: those break on every intended change.
  */
@@ -56,6 +57,48 @@ for (const width of WIDTHS) {
 		});
 	});
 }
+
+// The Larger font setting (150% root size) is the narrowest a phone layout gets:
+// every rem-sized width, padding and grid floor grows with it. Seeding the
+// stored preference before the app boots is how a returning user arrives.
+test.describe('at 375px with the Larger font setting', () => {
+	test.use({ viewport: { width: 375, height: 900 } });
+
+	test.beforeEach(async ({ page }) => {
+		await page.addInitScript(() => {
+			localStorage.setItem('accessibility-settings', JSON.stringify({ fontSize: 'larger' }));
+		});
+	});
+
+	test('static routes do not overflow horizontally', async ({ page }) => {
+		for (const route of STATIC_ROUTES) {
+			await expectNoHorizontalOverflow(page, route);
+		}
+	});
+
+	test('detail routes do not overflow horizontally', async ({ page }) => {
+		const seed = readSeed();
+		for (const route of DETAIL_ROUTES.map((build) => build(seed))) {
+			await expectNoHorizontalOverflow(page, route);
+		}
+	});
+});
+
+// A flex item shrinks by default, so a long name next to the avatar squeezed
+// the circle into an oval once the font grew.
+test('the person avatar stays a circle at every font size', async ({ page }) => {
+	await page.setViewportSize({ width: 375, height: 900 });
+	await page.goto(`/persons/${readSeed().switcher.person.id}`);
+	for (const fontSize of ['normal', 'large', 'larger']) {
+		await page.evaluate((size) => {
+			localStorage.setItem('accessibility-settings', JSON.stringify({ fontSize: size }));
+		}, fontSize);
+		await page.reload();
+		const box = await page.locator('.person-header .avatar').boundingBox();
+		expect(box, `${fontSize}: person avatar is not rendered`).not.toBeNull();
+		expect(box!.width, `${fontSize}: avatar is not square`).toBeCloseTo(box!.height, 0);
+	}
+});
 
 // The grouped nav exists so the header fits on one row from 1024px up; a new
 // top-level link that breaks that should fail here, not in a screenshot review.
