@@ -33,6 +33,10 @@
 		revalidateActiveBranch();
 	});
 
+	// Chart pages fill the viewport under the header instead of growing with content
+	const FULL_HEIGHT_ROUTES = new Set(['/pedigree/[id]', '/descendancy/[id]']);
+	const fullHeight = $derived(FULL_HEIGHT_ROUTES.has($page.route.id ?? ''));
+
 	// Component refs
 	let searchBoxRef: SearchBox | undefined = $state();
 
@@ -87,7 +91,7 @@
 
 <BranchBanner />
 
-<div class="app-layout">
+<div class="app-layout" class:full-height={fullHeight}>
 	<header class="app-header">
 		<a href="/" class="logo">
 			<span class="logo-mark">{@html logoMark}</span>
@@ -174,6 +178,17 @@
 		min-height: 100vh;
 		display: flex;
 		flex-direction: column;
+	}
+
+	.app-layout.full-height {
+		height: 100dvh;
+		min-height: 0;
+	}
+
+	.full-height .app-main {
+		display: flex;
+		flex-direction: column;
+		min-height: 0;
 	}
 
 	.app-header {

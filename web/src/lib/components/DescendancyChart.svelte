@@ -7,6 +7,7 @@
 		motionDuration,
 		observeChartResize,
 		scaleAbout,
+		touchScrollsPage,
 		truncateLabel,
 		wrapLabel,
 		type ScaleExtent
@@ -120,6 +121,7 @@
 			});
 
 		svg.call(zoom);
+		touchScrollsPage(svg.node()!);
 
 		// Build hierarchy and create tree layout
 		const root = buildHierarchy(data);

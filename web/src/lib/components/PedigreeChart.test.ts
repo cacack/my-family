@@ -305,6 +305,15 @@ describe('PedigreeChart', () => {
 			expect(toggleButtons.length).toBe(1);
 		});
 
+		it('gives each toggle a touch target bigger than the drawn button', () => {
+			const { container } = render(PedigreeChart, { props: { data: mockPersonWithParents } });
+			const hit = container.querySelector('.collapse-toggle .toggle-hit-area');
+			const button = container.querySelector('.collapse-toggle .toggle-button');
+			// 28 chart units stay at least 24px across at the smallest initial zoom (10/11)
+			expect(Number(hit?.getAttribute('r')) * 2 * (10 / 11)).toBeGreaterThanOrEqual(24);
+			expect(Number(hit?.getAttribute('r'))).toBeGreaterThan(Number(button?.getAttribute('r')));
+		});
+
 		it('does not render collapse toggle on nodes without ancestors', () => {
 			const { container } = render(PedigreeChart, { props: { data: mockSinglePerson } });
 			const toggleButtons = container.querySelectorAll('.collapse-toggle');

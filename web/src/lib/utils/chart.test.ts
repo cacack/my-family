@@ -1,30 +1,80 @@
 import { describe, it, expect } from 'vitest';
 import * as d3 from 'd3';
-import { fitTransform, scaleAbout, truncateLabel, wrapLabel } from './chart';
+import {
+	FIT_SCALE_RANGE,
+	MIN_CARD_FONT_PX,
+	fitTransform,
+	scaleAbout,
+	touchScrollsPage,
+	truncateLabel,
+	wrapLabel
+} from './chart';
 
 describe('fitTransform', () => {
 	const extent: [number, number] = [0.1, 4];
+	const [minFit] = FIT_SCALE_RANGE;
 
 	it('fits and centres content that needs no clamping', () => {
-		const t = fitTransform({ x: 0, y: 0, width: 1000, height: 500 }, 1000, 500, extent);
-		expect(t.k).toBeCloseTo(0.85);
-		expect(t.apply([500, 250])).toEqual([500, 250]);
+		const t = fitTransform({ x: 0, y: 0, width: 850, height: 100 }, 950, 600, extent);
+		expect(t.k).toBeCloseTo(0.95);
+		const [cx, cy] = t.apply([425, 50]);
+		expect(cx).toBeCloseTo(475);
+		expect(cy).toBeCloseTo(300);
 	});
 
-	it('clamps a tiny tree to the maximum zoom', () => {
+	it('never zooms a tiny tree above 1x', () => {
 		const t = fitTransform({ x: -70, y: -40, width: 140, height: 80 }, 1280, 700, extent);
-		expect(t.k).toBe(4);
+		expect(t.k).toBe(1);
+		expect(t.apply([0, 0])).toEqual([640, 350]);
 	});
 
-	it('clamps a huge tree to the minimum zoom and centres the overflowing axis on the focus', () => {
+	it('keeps card text at least 10px on a huge tree', () => {
+		const t = fitTransform({ x: 0, y: 0, width: 30000, height: 3000 }, 375, 400, extent);
+		expect(t.k).toBe(minFit);
+		expect(MIN_CARD_FONT_PX * t.k).toBeGreaterThanOrEqual(10);
+	});
+
+	it('centres an overflowing axis on the focus', () => {
 		const focus = { x: 9000, y: 0 };
 		const t = fitTransform({ x: 0, y: 0, width: 30000, height: 300 }, 1000, 600, extent, focus);
-		expect(t.k).toBe(0.1);
 		const [fx, fy] = t.apply([focus.x, focus.y]);
 		expect(fx).toBeCloseTo(500);
 		// The height fits, so the vertical axis stays centred on the bounds
 		expect(t.apply([0, 150])[1]).toBeCloseTo(300);
-		expect(fy).toBeCloseTo(285);
+		expect(fy).toBeCloseTo(300 - 150 * minFit);
+	});
+
+	it('keeps the content edge at the viewport edge when the focus is near it', () => {
+		// A descendancy root at the top of a tall, wide tree
+		const focus = { x: 5000, y: 40 };
+		const t = fitTransform({ x: 0, y: 0, width: 10000, height: 4000 }, 375, 600, extent, focus);
+		expect(t.apply([focus.x, focus.y])[0]).toBeCloseTo(187.5);
+		// The top edge sits just inside the viewport instead of the root sitting mid-screen
+		expect(t.apply([0, 0])[1]).toBeCloseTo(16);
+	});
+});
+
+describe('touchScrollsPage', () => {
+	function touchMove(target: Element, touches: number): boolean {
+		const event = new Event('touchmove', { bubbles: true });
+		Object.defineProperty(event, 'touches', { value: { length: touches } });
+		let reached = false;
+		target.addEventListener('touchmove', () => (reached = true));
+		target.dispatchEvent(event);
+		return reached;
+	}
+
+	it('lets the browser scroll vertically and hides one-finger moves from zoom', () => {
+		const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+		touchScrollsPage(svg);
+		expect(svg.style.touchAction).toBe('pan-y');
+		expect(touchMove(svg, 1)).toBe(false);
+	});
+
+	it('passes two-finger moves through to zoom', () => {
+		const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+		touchScrollsPage(svg);
+		expect(touchMove(svg, 2)).toBe(true);
 	});
 });
 
