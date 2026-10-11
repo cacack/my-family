@@ -17,7 +17,7 @@
 	let { pathname }: Props = $props();
 
 	const triggerClass = 'gap-1 px-3 py-2 text-sm font-medium';
-	const activeClass = 'bg-[#eff6ff] text-[#1d4ed8]';
+	const activeClass = 'nav-active bg-[#eff6ff] text-[#1d4ed8]';
 	const idleClass = 'text-[#64748b] hover:bg-[#f1f5f9] hover:text-[#1e293b]';
 </script>
 
@@ -151,18 +151,21 @@
 		outline-offset: 2px;
 	}
 
-	:global(body.high-contrast) .nav-link {
+	/* Links and group menu triggers alike; the active entry is inverted. */
+	:global(body.high-contrast) .main-nav :global(:is(.nav-link, button)) {
 		color: var(--color-text-muted);
 	}
 
-	:global(body.high-contrast) .nav-link:hover {
-		background: var(--a11y-color-border);
+	:global(body.high-contrast) .main-nav :global(:is(.nav-link, button):hover) {
+		background: var(--color-bg);
 		color: var(--color-text);
+		text-decoration: underline;
 	}
 
-	:global(body.high-contrast) .nav-link[aria-current='page'] {
-		background: var(--color-focus-ring);
-		color: #000;
+	:global(body.high-contrast) .main-nav :global(.nav-active),
+	:global(body.high-contrast) .main-nav :global(.nav-active:hover) {
+		background: var(--color-text);
+		color: var(--color-bg);
 	}
 
 	:global(body.high-contrast) .nav-link:focus-visible {

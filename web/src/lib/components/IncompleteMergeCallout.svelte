@@ -52,12 +52,6 @@
 		color: #7c2d12;
 	}
 
-	:global(body.high-contrast) .incomplete-merge {
-		background: #431407;
-		border-color: #fdba74;
-		color: #ffedd5;
-	}
-
 	.text {
 		flex: 1;
 		min-width: 14rem;

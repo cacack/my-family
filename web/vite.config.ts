@@ -18,6 +18,9 @@ export default defineConfig({
 		include: ['src/**/*.{test,spec}.{js,ts}'],
 		environment: 'jsdom',
 		globals: true,
+		// Vitest blanks CSS by default, `?raw` imports included; the high-contrast
+		// test reads app.css as text.
+		css: { include: [/\/src\/app\.css/] },
 		setupFiles: ['./src/lib/test/setup.ts']
 	}
 });

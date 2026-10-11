@@ -124,12 +124,6 @@
 		color: #475569;
 	}
 
-	:global(body.high-contrast) .mainline-notice {
-		background: #1a1a1a;
-		border-color: #666;
-		color: #ccc;
-	}
-
 	.notice-icon {
 		width: 1rem;
 		height: 1rem;
