@@ -36,9 +36,6 @@
 	let conflict: PersonDetail | null = $state(null);
 	let editing = $state(false);
 	let saving = $state(false);
-	// Shown in the form, so a rejected save (e.g. an unrecognized date) keeps
-	// what was typed.
-	let saveError: string | null = $state(null);
 	let historyExpanded = $state(false);
 	let historyTab: 'history' | 'restore' = $state('history');
 	let historyCount: number | null = $state(null);
