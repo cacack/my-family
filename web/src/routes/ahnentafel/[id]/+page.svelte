@@ -488,7 +488,7 @@
 	}
 
 	.unknown-data {
-		color: #cbd5e1;
+		color: var(--color-text-muted);
 	}
 
 	tr.unknown {
