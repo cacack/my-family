@@ -3905,6 +3905,9 @@ type MapLocation struct {
 	// PersonIds IDs of persons at this location
 	PersonIds []openapi_types.UUID `json:"person_ids"`
 
+	// Persons Persons at this location, named so a client can list them without a lookup each
+	Persons []PersonSummary `json:"persons"`
+
 	// Place Place name
 	Place string `json:"place"`
 }

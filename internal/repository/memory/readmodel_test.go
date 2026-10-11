@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"reflect"
 	"testing"
 	"time"
 
@@ -3361,8 +3362,9 @@ func TestReadModelStore_GetMapLocations_BirthOnly(t *testing.T) {
 	if results[0].Count != 1 {
 		t.Errorf("Count = %d, want 1", results[0].Count)
 	}
-	if len(results[0].PersonIDs) != 1 || results[0].PersonIDs[0] != person.ID {
-		t.Errorf("PersonIDs = %v, want [%v]", results[0].PersonIDs, person.ID)
+	want := []repository.MapPerson{{ID: person.ID, GivenName: "John", Surname: "Smith"}}
+	if !reflect.DeepEqual(results[0].Persons, want) {
+		t.Errorf("Persons = %+v, want %+v", results[0].Persons, want)
 	}
 }
 
@@ -3454,8 +3456,8 @@ func TestReadModelStore_GetMapLocations_Aggregation(t *testing.T) {
 	if results[0].Count != 3 {
 		t.Errorf("Count = %d, want 3", results[0].Count)
 	}
-	if len(results[0].PersonIDs) != 3 {
-		t.Errorf("len(PersonIDs) = %d, want 3", len(results[0].PersonIDs))
+	if len(results[0].Persons) != 3 {
+		t.Errorf("len(Persons) = %d, want 3", len(results[0].Persons))
 	}
 }
 

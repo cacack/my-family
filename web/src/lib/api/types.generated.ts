@@ -3929,6 +3929,8 @@ export interface components {
             count: number;
             /** @description IDs of persons at this location */
             person_ids: string[];
+            /** @description Persons at this location, named so a client can list them without a lookup each */
+            persons: components["schemas"]["PersonSummary"][];
         };
         BrickWallsResponse: {
             items: components["schemas"]["BrickWallEntry"][];
