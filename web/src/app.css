@@ -18,15 +18,29 @@
 	--font-size-base: 1rem;
 	--font-size-scale: 1;
 
-	/* Accessibility colors (light theme) */
+	/*
+	 * Accessibility colors (light theme).
+	 *
+	 * Text tokens must reach 4.5:1 (WCAG AA) on every light surface they sit
+	 * on - white, the slate-50/100/200 panels and the blue-50/100 tints - so a
+	 * component can use them without checking its own background. Check a new
+	 * value against #e2e8f0 and #dbeafe, the darkest of those.
+	 *   --color-text-muted  secondary text: lifespans, hints, labels, metadata
+	 *   --color-link        accent text: links, active tabs, accent badges
+	 *   --color-action      accent fill behind white text: primary buttons,
+	 *                       selected toggles, count badges
+	 * Tailwind reaches them as text-muted-foreground and text-link.
+	 */
 	--color-text: #1e293b;
-	--color-text-muted: #64748b;
+	--color-text-muted: #475569;
 	--color-bg: #ffffff;
 	--color-bg-secondary: #f8fafc;
 	--a11y-color-border: #e2e8f0;
 	--color-focus-ring: #3b82f6;
-	--color-link: #2563eb;
-	--color-link-hover: #1d4ed8;
+	--color-link: #1d4ed8;
+	--color-link-hover: #1e40af;
+	--color-action: #1d4ed8;
+	--color-action-hover: #1e40af;
 
 	/* Transition timing (disabled for reduced motion) */
 	--transition-duration: 0.15s;
@@ -41,7 +55,7 @@
 	--secondary: oklch(0.97 0 0);
 	--secondary-foreground: oklch(0.205 0 0);
 	--muted: oklch(0.97 0 0);
-	--muted-foreground: oklch(0.556 0 0);
+	--muted-foreground: var(--color-text-muted);
 	--accent: oklch(0.97 0 0);
 	--accent-foreground: oklch(0.205 0 0);
 	--destructive: oklch(0.577 0.245 27.325);
@@ -105,6 +119,8 @@ body.high-contrast {
 	--color-focus-ring: #0000ff;
 	--color-link: #0000ee;
 	--color-link-hover: #0000aa;
+	--color-action: #0000ee;
+	--color-action-hover: #0000aa;
 
 	--background: #ffffff;
 	--foreground: #000000;
@@ -477,6 +493,14 @@ body.reduced-motion * {
 	&:where([data-orientation="vertical"]) {
 		@slot;
 	}
+}
+
+/*---break---
+ */
+
+/* --color-link as a Tailwind utility (hover:text-link etc. work too) */
+@utility text-link {
+	color: var(--color-link);
 }
 
 /*---break---
