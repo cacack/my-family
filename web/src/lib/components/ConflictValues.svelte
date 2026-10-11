@@ -104,7 +104,7 @@
 	.conflict-values thead th {
 		font-size: 0.75rem;
 		font-weight: 600;
-		color: #64748b;
+		color: var(--color-text-muted);
 		background: #f8fafc;
 	}
 
@@ -114,7 +114,7 @@
 	}
 
 	.conflict-values td.base {
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.conflict-values td.branch {
@@ -127,7 +127,7 @@
 
 	.missing {
 		font-style: italic;
-		color: #94a3b8;
+		color: var(--color-text-muted);
 	}
 
 	.sr-only {

@@ -404,7 +404,7 @@
 	.locked-note {
 		margin: 0 0 0.75rem;
 		font-size: 0.8125rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.field {
@@ -426,7 +426,7 @@
 	.field-hint {
 		align-self: flex-end;
 		font-size: 0.6875rem;
-		color: #94a3b8;
+		color: var(--color-text-muted);
 	}
 
 	.native-select {
@@ -442,7 +442,7 @@
 	.hint {
 		margin: 0;
 		font-size: 0.8125rem;
-		color: #94a3b8;
+		color: var(--color-text-muted);
 	}
 
 	.subject-list,
@@ -473,7 +473,7 @@
 	.chip-type {
 		font-size: 0.6875rem;
 		text-transform: capitalize;
-		color: #94a3b8;
+		color: var(--color-text-muted);
 	}
 
 	.remove {
@@ -483,7 +483,7 @@
 		border-radius: 4px;
 		background: white;
 		font-size: 0.75rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 		cursor: pointer;
 	}
 

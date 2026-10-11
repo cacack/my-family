@@ -35,7 +35,7 @@
 	const TD_TRUNCATE = `${TD_CLASS} max-w-xs overflow-hidden text-ellipsis whitespace-nowrap`;
 	const TD_CENTER = `${TD_CLASS} text-center`;
 	const ROW_CLICKABLE = 'cursor-pointer transition-colors hover:bg-slate-50';
-	const SUBJECT_LINK = 'text-blue-500 no-underline hover:underline';
+	const SUBJECT_LINK = 'text-link no-underline hover:underline';
 
 	// The active tab lives in the URL (see urlState.ts), so Back and reload
 	// return to it. A tab is navigation-level, so switching pushes.
@@ -206,7 +206,7 @@
 		>
 			Previous
 		</Button>
-		<span class="text-sm text-slate-500">Page {currentPage} of {totalPages}</span>
+		<span class="text-sm text-muted-foreground">Page {currentPage} of {totalPages}</span>
 		<Button
 			variant="outline"
 			size="sm"
@@ -231,7 +231,7 @@
 		</div>
 		<p class="m-0 text-[0.8125rem] leading-snug text-slate-600">{body}</p>
 		{#if meta}
-			<div class="mt-2 text-xs text-slate-400">{meta}</div>
+			<div class="mt-2 text-xs text-muted-foreground">{meta}</div>
 		{/if}
 	</a>
 {/snippet}
@@ -240,7 +240,7 @@
 	<header class="mb-6">
 		<div>
 			<h1 class="m-0 text-2xl text-slate-800">Evidence Analysis</h1>
-			<p class="mt-1 text-sm text-slate-500">
+			<p class="mt-1 text-sm text-muted-foreground">
 				GPS-compliant research tracking and proof management
 			</p>
 		</div>
@@ -264,23 +264,23 @@
 		<!-- Analyses Tab -->
 		<Tabs.Content value="analyses">
 			<div class="mb-4 flex flex-wrap items-center justify-between gap-2 pt-2">
-				<span class="text-sm text-slate-500">
+				<span class="text-sm text-muted-foreground">
 					{analysesTotal} {analysesTotal === 1 ? 'analysis' : 'analyses'}
 				</span>
 				<Button href="/evidence/analyses/new">New Analysis</Button>
 			</div>
 
 			{#if analysesLoading}
-				<div class="p-12 text-center text-slate-500">Loading analyses...</div>
+				<div class="p-12 text-center text-muted-foreground">Loading analyses...</div>
 			{:else if analysesError}
 				<div class="p-12 text-center text-red-600">
 					<p class="m-0 mb-4">{analysesError}</p>
 					<Button variant="outline" onclick={loadAnalyses}>Retry</Button>
 				</div>
 			{:else if analyses.length === 0}
-				<div class="p-12 text-center text-slate-500">
+				<div class="p-12 text-center text-muted-foreground">
 					<p class="m-0 mb-2">No evidence analyses yet.</p>
-					<p class="mb-4 text-[0.8125rem] text-slate-400">
+					<p class="mb-4 text-[0.8125rem] text-muted-foreground">
 						Create an analysis to evaluate evidence for a genealogical fact.
 					</p>
 					<Button href="/evidence/analyses/new">New Analysis</Button>
@@ -327,7 +327,7 @@
 										{#if analysis.research_status}
 											<UncertaintyBadge status={analysis.research_status} showLabel />
 										{:else}
-											<span class="text-slate-400">--</span>
+											<span class="text-muted-foreground">--</span>
 										{/if}
 									</td>
 									<td class={TD_CENTER}>{analysis.citation_ids?.length ?? 0}</td>
@@ -396,22 +396,22 @@
 						</Button>
 					{/each}
 				</div>
-				<span class="text-sm text-slate-500">
+				<span class="text-sm text-muted-foreground">
 					{conflictsTotal} {conflictsTotal === 1 ? 'conflict' : 'conflicts'}
 				</span>
 			</div>
 
 			{#if conflictsLoading}
-				<div class="p-12 text-center text-slate-500">Loading conflicts...</div>
+				<div class="p-12 text-center text-muted-foreground">Loading conflicts...</div>
 			{:else if conflictsError}
 				<div class="p-12 text-center text-red-600">
 					<p class="m-0 mb-4">{conflictsError}</p>
 					<Button variant="outline" onclick={loadConflicts}>Retry</Button>
 				</div>
 			{:else if conflicts.length === 0}
-				<div class="p-12 text-center text-slate-500">
+				<div class="p-12 text-center text-muted-foreground">
 					<p class="m-0 mb-2">No conflicts found.</p>
-					<p class="mb-4 text-[0.8125rem] text-slate-400">
+					<p class="mb-4 text-[0.8125rem] text-muted-foreground">
 						Conflicts are auto-detected when analyses for the same fact disagree.
 					</p>
 				</div>
@@ -504,23 +504,23 @@
 		<!-- Research Logs Tab -->
 		<Tabs.Content value="logs">
 			<div class="mb-4 flex flex-wrap items-center justify-between gap-2 pt-2">
-				<span class="text-sm text-slate-500">
+				<span class="text-sm text-muted-foreground">
 					{logsTotal} {logsTotal === 1 ? 'log entry' : 'log entries'}
 				</span>
 				<Button href="/evidence/research-logs/new">New Research Log</Button>
 			</div>
 
 			{#if logsLoading}
-				<div class="p-12 text-center text-slate-500">Loading research logs...</div>
+				<div class="p-12 text-center text-muted-foreground">Loading research logs...</div>
 			{:else if logsError}
 				<div class="p-12 text-center text-red-600">
 					<p class="m-0 mb-4">{logsError}</p>
 					<Button variant="outline" onclick={loadLogs}>Retry</Button>
 				</div>
 			{:else if logs.length === 0}
-				<div class="p-12 text-center text-slate-500">
+				<div class="p-12 text-center text-muted-foreground">
 					<p class="m-0 mb-2">No research logs yet.</p>
-					<p class="mb-4 text-[0.8125rem] text-slate-400">
+					<p class="mb-4 text-[0.8125rem] text-muted-foreground">
 						Log your research activities to track what repositories and records you have searched.
 					</p>
 					<Button href="/evidence/research-logs/new">New Research Log</Button>
@@ -618,23 +618,23 @@
 		<!-- Proof Summaries Tab -->
 		<Tabs.Content value="summaries">
 			<div class="mb-4 flex flex-wrap items-center justify-between gap-2 pt-2">
-				<span class="text-sm text-slate-500">
+				<span class="text-sm text-muted-foreground">
 					{summariesTotal} {summariesTotal === 1 ? 'summary' : 'summaries'}
 				</span>
 				<Button href="/evidence/proof-summaries/new">New Proof Summary</Button>
 			</div>
 
 			{#if summariesLoading}
-				<div class="p-12 text-center text-slate-500">Loading proof summaries...</div>
+				<div class="p-12 text-center text-muted-foreground">Loading proof summaries...</div>
 			{:else if summariesError}
 				<div class="p-12 text-center text-red-600">
 					<p class="m-0 mb-4">{summariesError}</p>
 					<Button variant="outline" onclick={loadSummaries}>Retry</Button>
 				</div>
 			{:else if summaries.length === 0}
-				<div class="p-12 text-center text-slate-500">
+				<div class="p-12 text-center text-muted-foreground">
 					<p class="m-0 mb-2">No proof summaries yet.</p>
-					<p class="mb-4 text-[0.8125rem] text-slate-400">
+					<p class="mb-4 text-[0.8125rem] text-muted-foreground">
 						Create a proof summary to document your conclusions about a genealogical fact.
 					</p>
 					<Button href="/evidence/proof-summaries/new">New Proof Summary</Button>
@@ -681,7 +681,7 @@
 										{#if summary.research_status}
 											<UncertaintyBadge status={summary.research_status} showLabel />
 										{:else}
-											<span class="text-slate-400">--</span>
+											<span class="text-muted-foreground">--</span>
 										{/if}
 									</td>
 									<td class={TD_CENTER}>{summary.analysis_ids?.length ?? 0}</td>

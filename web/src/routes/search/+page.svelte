@@ -767,7 +767,7 @@
 		border: 1px solid #e2e8f0;
 		border-radius: 9999px;
 		background: white;
-		color: #64748b;
+		color: var(--color-text-muted);
 		font-size: 0.8125rem;
 		font-weight: 500;
 		cursor: pointer;
@@ -780,8 +780,8 @@
 	}
 
 	.pill-toggle.active {
-		background: #3b82f6;
-		border-color: #3b82f6;
+		background: var(--color-action);
+		border-color: var(--color-action);
 		color: white;
 	}
 
@@ -813,7 +813,7 @@
 		align-items: center;
 		gap: 0.375rem;
 		font-size: 0.8125rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.year-input {
@@ -916,7 +916,7 @@
 	}
 
 	.place-count {
-		color: #94a3b8;
+		color: var(--color-text-muted);
 		font-size: 0.75rem;
 	}
 
@@ -947,7 +947,7 @@
 
 	.results-count {
 		font-size: 0.875rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.mode-badge {
@@ -960,7 +960,7 @@
 		text-transform: uppercase;
 		letter-spacing: 0.025em;
 		background: #eff6ff;
-		color: #3b82f6;
+		color: var(--color-link);
 	}
 
 	.sort-controls {
@@ -1012,14 +1012,14 @@
 		background: #fef2f2;
 		border: 1px solid #fecaca;
 		border-radius: 6px;
-		color: #dc2626;
+		color: #b91c1c;
 		font-size: 0.875rem;
 	}
 
 	.empty-state {
 		text-align: center;
 		padding: 2rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 		font-size: 0.875rem;
 	}
 
@@ -1039,7 +1039,7 @@
 		padding: 0.625rem 0.75rem;
 		font-size: 0.75rem;
 		font-weight: 600;
-		color: #64748b;
+		color: var(--color-text-muted);
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
 		border-bottom: 2px solid #e2e8f0;
@@ -1063,7 +1063,7 @@
 	}
 
 	.person-link:hover {
-		color: #3b82f6;
+		color: var(--color-link);
 	}
 
 	.date-cell {
@@ -1095,7 +1095,7 @@
 
 	.score-low {
 		background: #f1f5f9;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	/* Results cards (mobile) */
@@ -1132,7 +1132,7 @@
 
 	.result-card-lifespan {
 		font-size: 0.8125rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	/* Load more */

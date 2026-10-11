@@ -117,14 +117,14 @@
 		border: none;
 		padding: 0;
 		font-size: 0.875rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 		cursor: pointer;
 		margin-bottom: 1rem;
 		font-family: inherit;
 	}
 
 	.back-btn:hover {
-		color: #3b82f6;
+		color: var(--color-link);
 	}
 
 	h2 {
@@ -135,7 +135,7 @@
 
 	.description {
 		margin: 0 0 1.5rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 		font-size: 0.875rem;
 	}
 
@@ -165,7 +165,7 @@
 	}
 
 	.optional {
-		color: #94a3b8;
+		color: var(--color-text-muted);
 		font-weight: 400;
 	}
 

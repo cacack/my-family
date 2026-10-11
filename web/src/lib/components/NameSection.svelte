@@ -218,19 +218,19 @@
 	function nameTypeBadgeInfo(type: NameType): { label: string; bg: string; color: string } {
 		switch (type) {
 			case 'birth':
-				return { label: 'Birth', bg: '#dbeafe', color: '#3b82f6' };
+				return { label: 'Birth', bg: '#dbeafe', color: 'var(--color-link)' };
 			case 'married':
-				return { label: 'Married', bg: '#fce7f3', color: '#ec4899' };
+				return { label: 'Married', bg: '#fce7f3', color: '#be185d' };
 			case 'aka':
-				return { label: 'AKA', bg: '#f3e8ff', color: '#a855f7' };
+				return { label: 'AKA', bg: '#f3e8ff', color: '#7e22ce' };
 			case 'immigrant':
-				return { label: 'Immigrant', bg: '#dcfce7', color: '#16a34a' };
+				return { label: 'Immigrant', bg: '#dcfce7', color: '#15803d' };
 			case 'religious':
-				return { label: 'Religious', bg: '#fef9c3', color: '#d97706' };
+				return { label: 'Religious', bg: '#fef9c3', color: '#b45309' };
 			case 'professional':
-				return { label: 'Professional', bg: '#f1f5f9', color: '#64748b' };
+				return { label: 'Professional', bg: '#f1f5f9', color: 'var(--color-text-muted)' };
 			default:
-				return { label: type, bg: '#f1f5f9', color: '#64748b' };
+				return { label: type, bg: '#f1f5f9', color: 'var(--color-text-muted)' };
 		}
 	}
 
@@ -442,7 +442,7 @@
 		margin: 0;
 		font-size: 0.875rem;
 		font-weight: 600;
-		color: #64748b;
+		color: var(--color-text-muted);
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
 		display: flex;
@@ -461,7 +461,7 @@
 		border-radius: 9999px;
 		font-size: 0.6875rem;
 		font-weight: 600;
-		color: #3b82f6;
+		color: var(--color-link);
 		text-transform: none;
 		letter-spacing: 0;
 	}
@@ -534,7 +534,7 @@
 
 	.checkbox-note {
 		font-size: 0.75rem;
-		color: #94a3b8;
+		color: var(--color-text-muted);
 	}
 
 	.form-actions {
@@ -550,7 +550,7 @@
 	.empty-state {
 		text-align: center;
 		padding: 2rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 		font-size: 0.875rem;
 	}
 

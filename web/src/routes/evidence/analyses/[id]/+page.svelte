@@ -226,7 +226,7 @@
 
 <div class="mx-auto max-w-3xl p-6">
 	<header class="mb-6 flex items-center justify-between">
-		<a href="/evidence" class="text-sm text-slate-500 no-underline hover:text-blue-500">
+		<a href="/evidence" class="text-sm text-muted-foreground no-underline hover:text-link">
 			&larr; Evidence
 		</a>
 		{#if analysis && !editing}
@@ -240,7 +240,7 @@
 	</header>
 
 	{#if loading}
-		<div class="p-12 text-center text-slate-500">Loading...</div>
+		<div class="p-12 text-center text-muted-foreground">Loading...</div>
 	{:else if error && !analysis && !isNew}
 		<div class="p-12 text-center text-red-600">
 			<p class="m-0 mb-4">{error}</p>
@@ -402,28 +402,28 @@
 			>
 				<div class="mb-6">
 					<h2
-						class="m-0 mb-3 text-sm font-semibold uppercase tracking-wider text-slate-500"
+						class="m-0 mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground"
 					>
 						Details
 					</h2>
 					<dl class="m-0 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
-						<dt class="text-[0.8125rem] text-slate-400">Subject</dt>
+						<dt class="text-[0.8125rem] text-muted-foreground">Subject</dt>
 						<dd class="m-0 text-sm text-slate-800">
 							<a
 								href="/{subjectRoute(analysis.fact_type)}/{analysis.subject_id}"
-								class="text-blue-500 no-underline hover:underline"
+								class="text-link no-underline hover:underline"
 							>
 								{analysis.subject_id}
 							</a>
 						</dd>
-						<dt class="text-[0.8125rem] text-slate-400">Fact Type</dt>
+						<dt class="text-[0.8125rem] text-muted-foreground">Fact Type</dt>
 						<dd class="m-0 text-sm text-slate-800">{formatFactType(analysis.fact_type)}</dd>
 						{#if analysis.conflict_id}
-							<dt class="text-[0.8125rem] text-slate-400">Conflict</dt>
+							<dt class="text-[0.8125rem] text-muted-foreground">Conflict</dt>
 							<dd class="m-0 text-sm text-slate-800">
 								<a
 									href="/evidence/conflicts/{analysis.conflict_id}"
-									class="text-blue-500 no-underline hover:underline"
+									class="text-link no-underline hover:underline"
 								>
 									{analysis.conflict_id.slice(0, 8)}...
 								</a>
@@ -434,7 +434,7 @@
 			</div>
 
 			<div class="mb-6">
-				<h2 class="m-0 mb-3 text-sm font-semibold uppercase tracking-wider text-slate-500">
+				<h2 class="m-0 mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
 					Conclusion
 				</h2>
 				<p class="m-0 whitespace-pre-wrap text-sm leading-relaxed text-slate-600">
@@ -444,7 +444,7 @@
 
 			{#if analysis.notes}
 				<div class="mb-6">
-					<h2 class="m-0 mb-3 text-sm font-semibold uppercase tracking-wider text-slate-500">
+					<h2 class="m-0 mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
 						Notes
 					</h2>
 					<p class="m-0 whitespace-pre-wrap text-sm leading-relaxed text-slate-600">
@@ -455,7 +455,7 @@
 
 			{#if analysis.citation_ids && analysis.citation_ids.length > 0}
 				<div class="mb-6">
-					<h2 class="m-0 mb-3 text-sm font-semibold uppercase tracking-wider text-slate-500">
+					<h2 class="m-0 mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
 						Citations ({analysis.citation_ids.length})
 					</h2>
 					<ul class="m-0 flex list-none flex-col gap-1.5 p-0">
@@ -469,7 +469,7 @@
 			{/if}
 
 			<div
-				class="mt-6 flex flex-wrap gap-6 border-t border-slate-200 pt-4 text-xs text-slate-400"
+				class="mt-6 flex flex-wrap gap-6 border-t border-slate-200 pt-4 text-xs text-muted-foreground"
 			>
 				{#if analysis.created_at}
 					<span>Created: {new Date(analysis.created_at).toLocaleDateString()}</span>

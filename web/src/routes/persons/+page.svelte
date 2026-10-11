@@ -246,7 +246,7 @@
 	.empty {
 		text-align: center;
 		padding: 3rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.empty p {
@@ -299,7 +299,7 @@
 
 	.pagination span {
 		font-size: 0.875rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.toolbar {
@@ -317,7 +317,7 @@
 		background: white;
 		font-size: 0.8125rem;
 		cursor: pointer;
-		color: #64748b;
+		color: var(--color-text-muted);
 		transition: all 0.15s;
 	}
 

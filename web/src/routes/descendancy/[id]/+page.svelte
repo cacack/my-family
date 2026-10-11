@@ -319,13 +319,13 @@
 	}
 
 	.back-link {
-		color: #64748b;
+		color: var(--color-text-muted);
 		text-decoration: none;
 		font-size: 0.875rem;
 	}
 
 	.back-link:hover {
-		color: #3b82f6;
+		color: var(--color-link);
 	}
 
 	h1 {
@@ -368,7 +368,7 @@
 		background: white;
 		cursor: pointer;
 		font-size: 0.8125rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.layout-toggle button:first-child {
@@ -388,8 +388,8 @@
 	}
 
 	.layout-toggle button.active {
-		background: #3b82f6;
-		border-color: #3b82f6;
+		background: var(--color-action);
+		border-color: var(--color-action);
 		color: white;
 	}
 
@@ -432,7 +432,7 @@
 		align-items: center;
 		justify-content: center;
 		height: 100%;
-		color: #64748b;
+		color: var(--color-text-muted);
 		font-size: 1rem;
 	}
 
@@ -449,12 +449,12 @@
 
 	.stat {
 		font-size: 0.875rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.hint {
 		text-align: center;
-		color: #94a3b8;
+		color: var(--color-text-muted);
 		font-size: 0.75rem;
 		margin-top: 0.5rem;
 	}

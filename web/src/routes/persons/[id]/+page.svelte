@@ -716,13 +716,13 @@
 	}
 
 	.back-link {
-		color: #64748b;
+		color: var(--color-text-muted);
 		text-decoration: none;
 		font-size: 0.875rem;
 	}
 
 	.back-link:hover {
-		color: #3b82f6;
+		color: var(--color-link);
 	}
 
 	.actions {
@@ -735,7 +735,7 @@
 	.error {
 		text-align: center;
 		padding: 3rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.error {
@@ -791,7 +791,7 @@
 	[data-gender="unknown"] .avatar,
 	.person-header:not([data-gender]) .avatar {
 		background: #f1f5f9;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.name-row {
@@ -829,7 +829,7 @@
 		margin: 0 0 0.75rem;
 		font-size: 0.875rem;
 		font-weight: 600;
-		color: #64748b;
+		color: var(--color-text-muted);
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
 	}
@@ -842,7 +842,7 @@
 	}
 
 	.info-section dt {
-		color: #94a3b8;
+		color: var(--color-text-muted);
 		font-size: 0.8125rem;
 	}
 
@@ -879,7 +879,7 @@
 
 	.empty-links {
 		margin: 0;
-		color: #94a3b8;
+		color: var(--color-text-muted);
 		font-size: 0.875rem;
 		font-style: italic;
 	}
@@ -900,7 +900,7 @@
 	}
 
 	.family-list a:hover {
-		color: #3b82f6;
+		color: var(--color-link);
 	}
 
 	.parent-link {
@@ -909,7 +909,7 @@
 	}
 
 	.parent-link:hover {
-		color: #3b82f6;
+		color: var(--color-link);
 	}
 
 	.media-section {
@@ -948,7 +948,7 @@
 		margin: 0;
 		font-size: 0.875rem;
 		font-weight: 600;
-		color: #64748b;
+		color: var(--color-text-muted);
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
 	}
@@ -1024,7 +1024,7 @@
 		background: none;
 		font-size: 0.8125rem;
 		font-weight: 500;
-		color: #64748b;
+		color: var(--color-text-muted);
 		cursor: pointer;
 		border-bottom: 2px solid transparent;
 		margin-bottom: -2px;
@@ -1036,7 +1036,7 @@
 	}
 
 	.tab-btn.active {
-		color: #3b82f6;
+		color: var(--color-link);
 		border-bottom-color: #3b82f6;
 	}
 
@@ -1084,7 +1084,7 @@
 
 	.brick-wall-since {
 		font-size: 0.75rem;
-		color: #94a3b8;
+		color: var(--color-text-muted);
 	}
 
 	.brick-wall-note {
@@ -1098,7 +1098,7 @@
 		margin: 0 0 0.75rem;
 		font-size: 0.8125rem;
 		font-style: italic;
-		color: #64748b;
+		color: var(--color-text-muted);
 		line-height: 1.5;
 	}
 
@@ -1106,7 +1106,7 @@
 		margin: 0;
 		font-size: 0.8125rem;
 		font-style: italic;
-		color: #64748b;
+		color: var(--color-text-muted);
 		line-height: 1.5;
 	}
 

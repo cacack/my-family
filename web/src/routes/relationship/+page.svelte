@@ -91,7 +91,7 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 0.375rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 		text-decoration: none;
 		font-size: 0.875rem;
 		font-weight: 500;
@@ -99,7 +99,7 @@
 	}
 
 	.back-link:hover {
-		color: #3b82f6;
+		color: var(--color-link);
 	}
 
 	.back-link svg {
@@ -124,7 +124,7 @@
 		justify-content: center;
 		gap: 1rem;
 		padding: 4rem 2rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.loading-spinner {

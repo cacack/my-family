@@ -108,7 +108,7 @@
 
 	.subtitle {
 		margin: 0.75rem 0 0;
-		color: #64748b;
+		color: var(--color-text-muted);
 		font-size: 1.0625rem;
 		line-height: 1.6;
 	}
@@ -176,7 +176,7 @@
 	.action-card p {
 		margin: 0;
 		font-size: 0.8125rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 		line-height: 1.5;
 	}
 
@@ -214,7 +214,7 @@
 	.feature p {
 		margin: 0.125rem 0 0;
 		font-size: 0.8125rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.skip-setup {
@@ -222,14 +222,14 @@
 		border: none;
 		padding: 0.5rem;
 		font-size: 0.8125rem;
-		color: #94a3b8;
+		color: var(--color-text-muted);
 		cursor: pointer;
 		text-decoration: underline;
 		font-family: inherit;
 	}
 
 	.skip-setup:hover {
-		color: #64748b;
+		color: var(--color-text);
 	}
 
 	/* High contrast mode */

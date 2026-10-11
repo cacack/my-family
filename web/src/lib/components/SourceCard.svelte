@@ -105,11 +105,11 @@
 
 	.author {
 		font-size: 0.8125rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.citation-count {
 		font-size: 0.8125rem;
-		color: #94a3b8;
+		color: var(--color-text-muted);
 	}
 </style>

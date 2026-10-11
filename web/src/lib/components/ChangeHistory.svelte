@@ -267,7 +267,7 @@
 	.empty {
 		text-align: center;
 		padding: 2rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.error {
@@ -296,7 +296,7 @@
 
 	.timestamp {
 		font-size: 0.8125rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.entry-body {
@@ -307,7 +307,7 @@
 
 	.entity-type {
 		font-size: 0.75rem;
-		color: #94a3b8;
+		color: var(--color-text-muted);
 		text-transform: capitalize;
 		padding: 0.125rem 0.375rem;
 		background: #f1f5f9;
@@ -321,11 +321,11 @@
 	}
 
 	a.entity-name:hover {
-		color: #3b82f6;
+		color: var(--color-link);
 	}
 
 	.entity-name.deleted {
-		color: #94a3b8;
+		color: var(--color-text-muted);
 		text-decoration: line-through;
 	}
 
@@ -339,7 +339,7 @@
 		background: #f1f5f9;
 		border-radius: 4px;
 		font-size: 0.75rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 		cursor: pointer;
 		transition: background 0.15s;
 	}

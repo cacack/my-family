@@ -231,7 +231,7 @@
 									<Card size="sm" class="p-0 {!entry.id ? 'opacity-70 bg-muted' : ''} {entry.gender === 'male' ? 'border-l-[3px] border-l-blue-500' : ''} {entry.gender === 'female' ? 'border-l-[3px] border-l-pink-500' : ''}">
 										<CardHeader class="flex-row items-center justify-between gap-2 px-3 pt-3 pb-0">
 											<span class="text-[0.9375rem] font-bold text-muted-foreground">{entry.number}</span>
-											<span class="text-xs text-muted-foreground/70">{entry.relationship}</span>
+											<span class="text-xs text-muted-foreground">{entry.relationship}</span>
 										</CardHeader>
 										<CardContent class="px-3 pb-3 pt-1">
 											<div class="mb-1 text-base font-medium">
@@ -307,13 +307,13 @@
 	}
 
 	.back-link {
-		color: #64748b;
+		color: var(--color-text-muted);
 		text-decoration: none;
 		font-size: 0.875rem;
 	}
 
 	.back-link:hover {
-		color: #3b82f6;
+		color: var(--color-link);
 	}
 
 	.controls {
@@ -353,7 +353,7 @@
 		align-items: center;
 		justify-content: center;
 		height: 200px;
-		color: #64748b;
+		color: var(--color-text-muted);
 		font-size: 1rem;
 	}
 
@@ -392,7 +392,7 @@
 	.report-meta {
 		margin: 0;
 		font-size: 0.875rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.generation-group {
@@ -423,7 +423,7 @@
 	.generation-count {
 		font-size: 0.8125rem;
 		font-weight: 400;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.ahnentafel-table {
@@ -464,7 +464,7 @@
 
 	.col-relationship {
 		width: 180px;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.col-birth,
@@ -473,7 +473,7 @@
 	}
 
 	.person-link {
-		color: #2563eb;
+		color: var(--color-link);
 		text-decoration: none;
 		font-weight: 500;
 	}
@@ -483,12 +483,12 @@
 	}
 
 	.unknown-person {
-		color: #94a3b8;
+		color: var(--color-text-muted);
 		font-style: italic;
 	}
 
 	.unknown-data {
-		color: #cbd5e1;
+		color: var(--color-text-muted);
 	}
 
 	tr.unknown {
@@ -496,11 +496,11 @@
 	}
 
 	tr.male .col-number {
-		color: #3b82f6;
+		color: #1d4ed8;
 	}
 
 	tr.female .col-number {
-		color: #ec4899;
+		color: #be185d;
 	}
 
 	.date {
@@ -510,7 +510,7 @@
 	.place {
 		display: block;
 		font-size: 0.8125rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	/* Mobile card view */
@@ -532,7 +532,7 @@
 	}
 
 	.event-label {
-		color: #94a3b8;
+		color: var(--color-text-muted);
 		flex-shrink: 0;
 	}
 
@@ -544,7 +544,7 @@
 		padding: 1rem;
 		text-align: center;
 		font-size: 0.75rem;
-		color: #94a3b8;
+		color: var(--color-text-muted);
 		border-top: 1px solid #e2e8f0;
 	}
 

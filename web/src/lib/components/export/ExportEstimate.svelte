@@ -160,7 +160,7 @@
 	}
 
 	.estimate-records {
-		color: #64748b;
+		color: var(--color-text-muted);
 		font-size: 0.8125rem;
 		margin-left: 1.375rem;
 	}
@@ -170,7 +170,7 @@
 	}
 
 	.record-breakdown {
-		color: #94a3b8;
+		color: var(--color-text-muted);
 	}
 
 	.large-export-warning {

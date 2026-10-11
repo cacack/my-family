@@ -263,7 +263,7 @@
 	}
 
 	.record:hover {
-		color: #2563eb;
+		color: var(--color-link);
 		text-decoration: underline;
 	}
 
@@ -276,7 +276,7 @@
 
 	.muted {
 		font-size: 0.8125rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.duplicates-hint {

@@ -507,7 +507,7 @@
 	.description {
 		margin: 0.25rem 0 0;
 		font-size: 0.875rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 		max-width: 46rem;
 	}
 
@@ -521,7 +521,7 @@
 		font-weight: 600;
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.branch-card {
@@ -558,7 +558,7 @@
 	}
 
 	.branch-name:hover {
-		color: #3b82f6;
+		color: var(--color-link);
 	}
 
 	.branch-actions {
@@ -586,7 +586,7 @@
 		font-weight: 600;
 		text-transform: uppercase;
 		letter-spacing: 0.04em;
-		color: #94a3b8;
+		color: var(--color-text-muted);
 	}
 
 	.native-select {
@@ -615,7 +615,7 @@
 		font-size: 0.6875rem;
 		text-transform: uppercase;
 		letter-spacing: 0.04em;
-		color: #94a3b8;
+		color: var(--color-text-muted);
 	}
 
 	.branch-meta dd {
@@ -632,7 +632,7 @@
 	.dialog-note {
 		margin: 0;
 		font-size: 0.8125rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.merge-note {
@@ -645,7 +645,7 @@
 
 	.merge-note-label {
 		font-weight: 600;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.filters {
@@ -668,7 +668,7 @@
 		align-items: center;
 		gap: 0.5rem;
 		font-size: 0.8125rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.notice {
@@ -699,7 +699,7 @@
 	.state {
 		padding: 2rem;
 		text-align: center;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.state.error {
@@ -733,7 +733,7 @@
 	.field-hint {
 		align-self: flex-end;
 		font-size: 0.6875rem;
-		color: #94a3b8;
+		color: var(--color-text-muted);
 	}
 
 	.dialog-error {

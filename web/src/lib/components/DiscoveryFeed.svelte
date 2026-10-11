@@ -146,7 +146,7 @@
 	.empty {
 		text-align: center;
 		padding: 1.5rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 		font-size: 0.875rem;
 	}
 
@@ -171,7 +171,7 @@
 		background: white;
 		font-size: 0.75rem;
 		font-weight: 500;
-		color: #64748b;
+		color: var(--color-text-muted);
 		cursor: pointer;
 		transition: all 0.15s;
 	}
@@ -184,7 +184,7 @@
 	.chip.active {
 		background: #eff6ff;
 		border-color: #3b82f6;
-		color: #3b82f6;
+		color: var(--color-link);
 	}
 
 	.feed-grid {
@@ -252,7 +252,7 @@
 
 	.view-more-text {
 		font-size: 0.8125rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	@media (max-width: 640px) {

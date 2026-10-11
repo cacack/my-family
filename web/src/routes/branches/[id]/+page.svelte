@@ -1227,7 +1227,7 @@
 		display: inline-block;
 		margin-top: 0.375rem;
 		font-weight: 500;
-		color: #2563eb;
+		color: var(--color-link);
 	}
 
 	.close-notice {
@@ -1259,12 +1259,12 @@
 		display: inline-block;
 		margin-bottom: 1rem;
 		font-size: 0.875rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 		text-decoration: none;
 	}
 
 	.back-link:hover {
-		color: #3b82f6;
+		color: var(--color-link);
 	}
 
 	.page-header {
@@ -1307,7 +1307,7 @@
 	.anchor {
 		margin: 0.25rem 0 0;
 		font-size: 0.8125rem;
-		color: #94a3b8;
+		color: var(--color-text-muted);
 	}
 
 	/* Wraps under the heading at narrow widths rather than squeezing beside it. */
@@ -1328,7 +1328,7 @@
 	.undecided {
 		margin: 0;
 		font-size: 0.8125rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.truncation {
@@ -1354,7 +1354,7 @@
 	.section-hint {
 		margin: 0 0 0.75rem;
 		font-size: 0.8125rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 		max-width: 52rem;
 	}
 
@@ -1446,7 +1446,7 @@
 
 	.record-facts dt {
 		font-size: 0.75rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.record-facts dd {
@@ -1501,7 +1501,7 @@
 	.muted {
 		margin: 0.25rem 0 0;
 		font-size: 0.8125rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.overlap-name {
@@ -1542,13 +1542,13 @@
 	.side-count {
 		margin: 0 0 0.75rem;
 		font-size: 0.8125rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.side-hint {
 		margin: -0.5rem 0 0.75rem;
 		font-size: 0.75rem;
-		color: #94a3b8;
+		color: var(--color-text-muted);
 	}
 
 	#main-changes {
@@ -1558,7 +1558,7 @@
 	.side-empty {
 		margin: 0;
 		font-size: 0.875rem;
-		color: #94a3b8;
+		color: var(--color-text-muted);
 	}
 
 	.change-list {
@@ -1629,7 +1629,7 @@
 
 	.change-time {
 		font-size: 0.8125rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.change-body {
@@ -1641,7 +1641,7 @@
 
 	.entity-type {
 		font-size: 0.75rem;
-		color: #94a3b8;
+		color: var(--color-text-muted);
 		text-transform: capitalize;
 		padding: 0.125rem 0.375rem;
 		background: #f1f5f9;
@@ -1655,11 +1655,11 @@
 	}
 
 	a.entity-name:hover {
-		color: #3b82f6;
+		color: var(--color-link);
 	}
 
 	.entity-name.deleted {
-		color: #94a3b8;
+		color: var(--color-text-muted);
 		text-decoration: line-through;
 	}
 
@@ -1672,7 +1672,7 @@
 	.state {
 		padding: 2rem;
 		text-align: center;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.state.error {

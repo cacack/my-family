@@ -277,7 +277,7 @@
 		gap: 1.25rem;
 		margin-top: 0.75rem;
 		font-size: 0.8125rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.legend-item {
@@ -368,7 +368,7 @@
 		border: none;
 		font-size: 1.25rem;
 		cursor: pointer;
-		color: #94a3b8;
+		color: var(--color-text-muted);
 		padding: 0 0.25rem;
 	}
 
@@ -379,7 +379,7 @@
 	.panel-count {
 		margin: 0.5rem 0;
 		font-size: 0.875rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.person-list {
@@ -400,7 +400,7 @@
 	}
 
 	.person-list a {
-		color: #3b82f6;
+		color: var(--color-link);
 		text-decoration: none;
 		font-size: 0.875rem;
 	}
@@ -414,7 +414,7 @@
 	.empty {
 		text-align: center;
 		padding: 3rem 1rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.error {

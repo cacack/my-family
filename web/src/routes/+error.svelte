@@ -34,7 +34,7 @@
 		margin: 0;
 		font-size: 3rem;
 		font-weight: 700;
-		color: #94a3b8;
+		color: var(--color-text-muted);
 	}
 
 	h1 {
@@ -45,6 +45,6 @@
 
 	.message {
 		margin: 0 0 1.5rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 </style>

@@ -11,44 +11,9 @@
  */
 import { expect, test } from '@playwright/test';
 import { readSeed } from './seed';
+import { DETAIL_ROUTES, STATIC_ROUTES } from './routes';
 
 const WIDTHS = [375, 768, 1280, 1440];
-
-const STATIC_ROUTES = [
-	'/',
-	'/persons',
-	'/persons/add',
-	'/persons/quick',
-	'/families',
-	'/families/add',
-	'/browse/surnames',
-	'/browse/places',
-	'/browse/cemeteries',
-	'/browse/brick-walls',
-	'/browse/citation-templates',
-	'/repositories',
-	'/sources',
-	'/evidence',
-	'/history',
-	'/branches',
-	'/snapshots',
-	'/map',
-	'/analytics',
-	'/quality',
-	'/relationship',
-	'/import',
-	'/search'
-];
-
-// Detail routes need seeded ids, and the seed can only be read once global
-// setup has run - so they are built inside the test, not at collection time.
-const DETAIL_ROUTES = [
-	(s: ReturnType<typeof readSeed>) => `/persons/${s.switcher.person.id}`,
-	(s: ReturnType<typeof readSeed>) => `/pedigree/${s.switcher.person.id}`,
-	(s: ReturnType<typeof readSeed>) => `/descendancy/${s.switcher.person.id}`,
-	(s: ReturnType<typeof readSeed>) => `/families/${s.merge.familyId}`,
-	(s: ReturnType<typeof readSeed>) => `/families/${s.merge.familyId}/group-sheet`
-];
 
 async function expectNoHorizontalOverflow(page: import('@playwright/test').Page, route: string) {
 	const errors: string[] = [];

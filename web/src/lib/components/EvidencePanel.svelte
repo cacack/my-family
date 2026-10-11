@@ -99,10 +99,10 @@
 		aria-expanded={expanded}
 		aria-controls="evidence-panel-content"
 	>
-		<h2 class="m-0 flex items-center text-sm font-semibold uppercase tracking-wider text-slate-500">
+		<h2 class="m-0 flex items-center text-sm font-semibold uppercase tracking-wider text-muted-foreground">
 			Evidence &amp; Research
 			{#if !loading && hasData}
-				<span class="ml-3 text-xs font-normal normal-case tracking-normal text-slate-400">
+				<span class="ml-3 text-xs font-normal normal-case tracking-normal text-muted-foreground">
 					{summaryText()}
 				</span>
 			{/if}
@@ -110,13 +110,13 @@
 				<Badge variant="destructive" class="ml-1 text-[0.625rem]">{openConflictCount}</Badge>
 			{/if}
 		</h2>
-		<span class="text-xl font-semibold text-slate-500">{expanded ? '−' : '+'}</span>
+		<span class="text-xl font-semibold text-muted-foreground">{expanded ? '−' : '+'}</span>
 	</button>
 
 	{#if expanded}
 		<div class="mt-4" id="evidence-panel-content">
 			{#if loading}
-				<div class="p-6 text-center text-sm text-slate-500" role="status" aria-live="polite">
+				<div class="p-6 text-center text-sm text-muted-foreground" role="status" aria-live="polite">
 					Loading evidence data...
 				</div>
 			{:else if error}
@@ -127,20 +127,20 @@
 					{error}
 				</div>
 			{:else if !hasData}
-				<div class="p-6 text-center text-sm text-slate-500">
+				<div class="p-6 text-center text-sm text-muted-foreground">
 					<p class="m-0 mb-4">
 						No evidence data yet. Start by adding an analysis or logging your research.
 					</p>
 					<div class="flex justify-center gap-4">
 						<a
 							href="/evidence/analyses/new?subjectId={subjectId}"
-							class="rounded-md border border-slate-200 px-3 py-1.5 text-[0.8125rem] text-blue-500 no-underline hover:bg-slate-100"
+							class="rounded-md border border-slate-200 px-3 py-1.5 text-[0.8125rem] text-link no-underline hover:bg-slate-100"
 						>
 							Add Analysis
 						</a>
 						<a
 							href="/evidence/research-logs/new?subjectId={subjectId}"
-							class="rounded-md border border-slate-200 px-3 py-1.5 text-[0.8125rem] text-blue-500 no-underline hover:bg-slate-100"
+							class="rounded-md border border-slate-200 px-3 py-1.5 text-[0.8125rem] text-link no-underline hover:bg-slate-100"
 						>
 							Log Research
 						</a>
@@ -154,14 +154,14 @@
 							<h3 class="m-0 flex items-center gap-2 text-[0.8125rem] font-semibold text-slate-600">
 								Analyses
 								<span
-									class="inline-flex h-[1.125rem] min-w-[1.125rem] items-center justify-center rounded-full bg-blue-100 px-[0.3rem] text-[0.625rem] font-semibold text-blue-500"
+									class="inline-flex h-[1.125rem] min-w-[1.125rem] items-center justify-center rounded-full bg-blue-100 px-[0.3rem] text-[0.625rem] font-semibold text-link"
 								>
 									{analyses.length}
 								</span>
 							</h3>
 							<a
 								href="/evidence/analyses/new?subjectId={subjectId}"
-								class="text-xs text-blue-500 no-underline hover:underline"
+								class="text-xs text-link no-underline hover:underline"
 							>
 								Add Analysis
 							</a>
@@ -169,7 +169,7 @@
 						{#each [...analysesByFactType.entries()] as [factType, items]}
 							<div class="mb-3 last:mb-0">
 								<h4
-									class="m-0 mb-1 text-xs font-medium uppercase tracking-wide text-slate-400"
+									class="m-0 mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground"
 								>
 									{formatFactType(factType)}
 								</h4>
@@ -194,7 +194,7 @@
 														/>
 													{/if}
 													{#if analysis.citation_ids && analysis.citation_ids.length > 0}
-														<span class="text-[0.6875rem] text-slate-400">
+														<span class="text-[0.6875rem] text-muted-foreground">
 															{analysis.citation_ids.length}
 															{analysis.citation_ids.length === 1 ? 'citation' : 'citations'}
 														</span>
@@ -216,7 +216,7 @@
 							<h3 class="m-0 flex items-center gap-2 text-[0.8125rem] font-semibold text-slate-600">
 								Conflicts
 								<span
-									class="inline-flex h-[1.125rem] min-w-[1.125rem] items-center justify-center rounded-full bg-blue-100 px-[0.3rem] text-[0.625rem] font-semibold text-blue-500"
+									class="inline-flex h-[1.125rem] min-w-[1.125rem] items-center justify-center rounded-full bg-blue-100 px-[0.3rem] text-[0.625rem] font-semibold text-link"
 								>
 									{conflicts.length}
 								</span>
@@ -240,7 +240,7 @@
 											</Badge>
 										</div>
 										{#if conflict.analysis_ids && conflict.analysis_ids.length > 0}
-											<span class="mt-1 block text-[0.6875rem] text-slate-400">
+											<span class="mt-1 block text-[0.6875rem] text-muted-foreground">
 												{conflict.analysis_ids.length} linked
 												{conflict.analysis_ids.length === 1 ? 'analysis' : 'analyses'}
 											</span>
@@ -259,14 +259,14 @@
 							<h3 class="m-0 flex items-center gap-2 text-[0.8125rem] font-semibold text-slate-600">
 								Research Logs
 								<span
-									class="inline-flex h-[1.125rem] min-w-[1.125rem] items-center justify-center rounded-full bg-blue-100 px-[0.3rem] text-[0.625rem] font-semibold text-blue-500"
+									class="inline-flex h-[1.125rem] min-w-[1.125rem] items-center justify-center rounded-full bg-blue-100 px-[0.3rem] text-[0.625rem] font-semibold text-link"
 								>
 									{researchLogs.length}
 								</span>
 							</h3>
 							<a
 								href="/evidence/research-logs/new?subjectId={subjectId}"
-								class="text-xs text-blue-500 no-underline hover:underline"
+								class="text-xs text-link no-underline hover:underline"
 							>
 								Log Research
 							</a>
@@ -275,7 +275,7 @@
 							{#each researchLogs as log}
 								{@const outcomeBadge = outcomeBadgeProps(log.outcome)}
 								<li class="flex gap-3 border-b border-slate-100 py-2 last:border-b-0">
-									<div class="min-w-20 flex-shrink-0 pt-0.5 text-[0.6875rem] text-slate-400">
+									<div class="min-w-20 flex-shrink-0 pt-0.5 text-[0.6875rem] text-muted-foreground">
 										{formatDate(log.search_date)}
 									</div>
 									<div class="min-w-0 flex-1">
@@ -287,7 +287,7 @@
 												{outcomeBadge.label}
 											</Badge>
 										</div>
-										<span class="block text-xs text-slate-500">{log.search_description}</span>
+										<span class="block text-xs text-muted-foreground">{log.search_description}</span>
 									</div>
 								</li>
 							{/each}

@@ -582,13 +582,13 @@
 		font-weight: 600;
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.section-hint {
 		margin: 0 0 0.5rem;
 		font-size: 0.8125rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	/* Sits under the list rather than above it. */
@@ -622,7 +622,7 @@
 		font-size: 0.6875rem;
 		text-transform: uppercase;
 		letter-spacing: 0.04em;
-		color: #94a3b8;
+		color: var(--color-text-muted);
 	}
 
 	.entity-name {
@@ -652,7 +652,7 @@
 	.field-hint {
 		align-self: flex-end;
 		font-size: 0.6875rem;
-		color: #94a3b8;
+		color: var(--color-text-muted);
 	}
 
 	.field-hint.over {
@@ -685,11 +685,11 @@
 	.issue-link {
 		margin: 0;
 		font-size: 0.8125rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.issue-link a {
-		color: #3b82f6;
+		color: var(--color-link);
 	}
 
 	.summary {
@@ -709,7 +709,7 @@
 		font-size: 0.6875rem;
 		text-transform: uppercase;
 		letter-spacing: 0.04em;
-		color: #94a3b8;
+		color: var(--color-text-muted);
 	}
 
 	.summary dd {
@@ -722,6 +722,6 @@
 	.hint {
 		margin: 0;
 		font-size: 0.8125rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 </style>

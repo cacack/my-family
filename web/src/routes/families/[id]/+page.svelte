@@ -611,18 +611,18 @@
 		margin: 0 0 0.75rem;
 		font-size: 0.8125rem;
 		font-style: italic;
-		color: #64748b;
+		color: var(--color-text-muted);
 		line-height: 1.5;
 	}
 
 	.back-link {
-		color: #64748b;
+		color: var(--color-text-muted);
 		text-decoration: none;
 		font-size: 0.875rem;
 	}
 
 	.back-link:hover {
-		color: #3b82f6;
+		color: var(--color-link);
 	}
 
 	.actions {
@@ -634,7 +634,7 @@
 	.error {
 		text-align: center;
 		padding: 3rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.error {
@@ -678,7 +678,7 @@
 		margin: 0 0 0.75rem;
 		font-size: 0.875rem;
 		font-weight: 600;
-		color: #64748b;
+		color: var(--color-text-muted);
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
 	}
@@ -704,7 +704,7 @@
 	}
 
 	a.partner-card:hover .partner-name {
-		color: #3b82f6;
+		color: var(--color-link);
 	}
 
 	.partner-name {
@@ -725,7 +725,7 @@
 		margin: 0 0 0.75rem;
 		font-size: 0.875rem;
 		font-weight: 600;
-		color: #64748b;
+		color: var(--color-text-muted);
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
 	}
@@ -738,7 +738,7 @@
 	}
 
 	.info-section dt {
-		color: #94a3b8;
+		color: var(--color-text-muted);
 		font-size: 0.8125rem;
 	}
 
@@ -832,18 +832,18 @@
 	}
 
 	.children-list a:hover {
-		color: #3b82f6;
+		color: var(--color-link);
 	}
 
 	.child-type {
-		color: #94a3b8;
+		color: var(--color-text-muted);
 		font-size: 0.75rem;
 		margin-left: 0.5rem;
 	}
 
 	.empty-message {
 		margin: 0;
-		color: #94a3b8;
+		color: var(--color-text-muted);
 		font-size: 0.875rem;
 		font-style: italic;
 	}
@@ -919,7 +919,7 @@
 		margin: 0;
 		font-size: 0.875rem;
 		font-weight: 600;
-		color: #64748b;
+		color: var(--color-text-muted);
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
 	}
@@ -949,7 +949,7 @@
 		background: none;
 		font-size: 0.8125rem;
 		font-weight: 500;
-		color: #64748b;
+		color: var(--color-text-muted);
 		cursor: pointer;
 		border-bottom: 2px solid transparent;
 		margin-bottom: -2px;
@@ -961,7 +961,7 @@
 	}
 
 	.tab-btn.active {
-		color: #3b82f6;
+		color: var(--color-link);
 		border-bottom-color: #3b82f6;
 	}
 </style>

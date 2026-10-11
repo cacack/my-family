@@ -133,7 +133,7 @@
 	.empty {
 		text-align: center;
 		padding: 2rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.error {
@@ -173,7 +173,7 @@
 		min-width: 16px;
 		height: 16px;
 		padding: 0 4px;
-		background: #3b82f6;
+		background: var(--color-action);
 		color: white;
 		font-size: 0.625rem;
 		font-weight: 600;
@@ -185,7 +185,7 @@
 
 	.count-badge-active {
 		background: white;
-		color: #3b82f6;
+		color: var(--color-link);
 	}
 
 	.surname-grid {

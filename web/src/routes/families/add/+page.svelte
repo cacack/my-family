@@ -259,7 +259,7 @@
 
 	.helper-text {
 		font-size: 0.8125rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 		margin: 0.5rem 0 0;
 	}
 

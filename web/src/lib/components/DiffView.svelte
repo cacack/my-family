@@ -74,7 +74,7 @@
 	.field-name {
 		font-size: 0.75rem;
 		font-weight: 600;
-		color: #64748b;
+		color: var(--color-text-muted);
 		text-transform: uppercase;
 		letter-spacing: 0.025em;
 	}
@@ -104,13 +104,13 @@
 	}
 
 	.empty-value {
-		color: #94a3b8;
+		color: var(--color-text-muted);
 		font-size: 0.875rem;
 		font-style: italic;
 	}
 
 	.arrow {
-		color: #94a3b8;
+		color: var(--color-text-muted);
 		font-size: 0.875rem;
 	}
 </style>

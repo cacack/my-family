@@ -181,13 +181,13 @@
 	.field-hint {
 		align-self: flex-end;
 		font-size: 0.6875rem;
-		color: #94a3b8;
+		color: var(--color-text-muted);
 	}
 
 	.field-hint.left {
 		align-self: flex-start;
 		font-size: 0.75rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.native-select {
@@ -215,7 +215,7 @@
 	.promote-hint {
 		display: block;
 		font-size: 0.75rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.dialog-error {

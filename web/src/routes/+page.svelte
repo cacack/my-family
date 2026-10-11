@@ -218,14 +218,14 @@
 
 	.hero p {
 		margin: 0.5rem 0 0;
-		color: #64748b;
+		color: var(--color-text-muted);
 		font-size: 1.125rem;
 	}
 
 	.loading {
 		text-align: center;
 		padding: 3rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.load-error {
@@ -265,7 +265,7 @@
 	}
 
 	.empty {
-		color: #94a3b8;
+		color: var(--color-text-muted);
 		font-size: 0.875rem;
 		text-align: center;
 		padding: 1rem;
@@ -280,7 +280,7 @@
 	}
 
 	.empty a {
-		color: #3b82f6;
+		color: var(--color-link);
 	}
 
 	.action-buttons {
@@ -310,14 +310,14 @@
 	}
 
 	.action-btn.primary {
-		background: #3b82f6;
-		border-color: #3b82f6;
+		background: var(--color-action);
+		border-color: var(--color-action);
 		color: white;
 	}
 
 	.action-btn.primary:hover {
-		background: #2563eb;
-		border-color: #2563eb;
+		background: var(--color-action-hover);
+		border-color: var(--color-action-hover);
 	}
 
 	:global(body.high-contrast) .action-btn.primary {

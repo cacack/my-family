@@ -112,7 +112,7 @@
 
 	.summary {
 		margin: 0 0 2rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 		font-size: 1rem;
 	}
 
@@ -163,7 +163,7 @@
 	.feature-card p {
 		margin: 0;
 		font-size: 0.8125rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.actions {

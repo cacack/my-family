@@ -231,7 +231,7 @@
 
 <div class="mx-auto max-w-3xl p-6">
 	<header class="mb-6 flex items-center justify-between">
-		<a href="/evidence" class="text-sm text-slate-500 no-underline hover:text-blue-500">
+		<a href="/evidence" class="text-sm text-muted-foreground no-underline hover:text-link">
 			&larr; Evidence
 		</a>
 		{#if summary && !editing}
@@ -245,7 +245,7 @@
 	</header>
 
 	{#if loading}
-		<div class="p-12 text-center text-slate-500">Loading...</div>
+		<div class="p-12 text-center text-muted-foreground">Loading...</div>
 	{:else if error && !summary && !isNew}
 		<div class="p-12 text-center text-red-600">
 			<p class="m-0 mb-4">{error}</p>
@@ -410,28 +410,28 @@
 			>
 				<div class="mb-6">
 					<h2
-						class="m-0 mb-3 text-sm font-semibold uppercase tracking-wider text-slate-500"
+						class="m-0 mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground"
 					>
 						Details
 					</h2>
 					<dl class="m-0 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
-						<dt class="text-[0.8125rem] text-slate-400">Subject</dt>
+						<dt class="text-[0.8125rem] text-muted-foreground">Subject</dt>
 						<dd class="m-0 text-sm text-slate-800">
 							<a
 								href="/{subjectRoute(summary.fact_type)}/{summary.subject_id}"
-								class="text-blue-500 no-underline hover:underline"
+								class="text-link no-underline hover:underline"
 							>
 								{summary.subject_id}
 							</a>
 						</dd>
-						<dt class="text-[0.8125rem] text-slate-400">Fact Type</dt>
+						<dt class="text-[0.8125rem] text-muted-foreground">Fact Type</dt>
 						<dd class="m-0 text-sm text-slate-800">{formatFactType(summary.fact_type)}</dd>
 					</dl>
 				</div>
 			</div>
 
 			<div class="mb-6">
-				<h2 class="m-0 mb-3 text-sm font-semibold uppercase tracking-wider text-slate-500">
+				<h2 class="m-0 mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
 					Conclusion
 				</h2>
 				<p
@@ -442,7 +442,7 @@
 			</div>
 
 			<div class="mb-6 rounded-lg border border-slate-200 bg-slate-50 p-5">
-				<h2 class="m-0 mb-3 text-sm font-semibold uppercase tracking-wider text-slate-500">
+				<h2 class="m-0 mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
 					Argument
 				</h2>
 				<div class="m-0 whitespace-pre-wrap text-[0.9375rem] leading-loose text-slate-700">
@@ -452,7 +452,7 @@
 
 			{#if linkedAnalyses.length > 0}
 				<div class="mb-6">
-					<h2 class="m-0 mb-3 text-sm font-semibold uppercase tracking-wider text-slate-500">
+					<h2 class="m-0 mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
 						Supporting Analyses ({linkedAnalyses.length})
 					</h2>
 					<div class="flex flex-col gap-3">
@@ -471,7 +471,7 @@
 								</div>
 								<p class="m-0 text-[0.8125rem] leading-snug text-slate-600">{la.conclusion}</p>
 								{#if la.citation_ids && la.citation_ids.length > 0}
-									<span class="mt-2 inline-block text-xs text-slate-400">
+									<span class="mt-2 inline-block text-xs text-muted-foreground">
 										{la.citation_ids.length} citations
 									</span>
 								{/if}
@@ -481,7 +481,7 @@
 				</div>
 			{:else if summary.analysis_ids && summary.analysis_ids.length > 0}
 				<div class="mb-6">
-					<h2 class="m-0 mb-3 text-sm font-semibold uppercase tracking-wider text-slate-500">
+					<h2 class="m-0 mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
 						Linked Analysis IDs ({summary.analysis_ids.length})
 					</h2>
 					<ul class="m-0 flex list-none flex-col gap-1.5 p-0">
@@ -489,7 +489,7 @@
 							<li>
 								<a
 									href="/evidence/analyses/{aid}"
-									class="text-blue-500 no-underline hover:underline"
+									class="text-link no-underline hover:underline"
 								>
 									<code class="rounded bg-slate-100 px-2 py-1 text-[0.8125rem]">{aid}</code>
 								</a>
@@ -500,7 +500,7 @@
 			{/if}
 
 			<div
-				class="mt-6 flex flex-wrap gap-6 border-t border-slate-200 pt-4 text-xs text-slate-400"
+				class="mt-6 flex flex-wrap gap-6 border-t border-slate-200 pt-4 text-xs text-muted-foreground"
 			>
 				{#if summary.created_at}
 					<span>Created: {new Date(summary.created_at).toLocaleDateString()}</span>

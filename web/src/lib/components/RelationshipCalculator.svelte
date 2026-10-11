@@ -338,7 +338,7 @@
 	.subtitle {
 		margin: 0;
 		font-size: 1rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	/* Selector Section */
@@ -390,7 +390,7 @@
 		border: 1px solid #d1d5db;
 		border-radius: 50%;
 		background: white;
-		color: #64748b;
+		color: var(--color-text-muted);
 		cursor: pointer;
 		transition: all 0.15s;
 	}
@@ -426,7 +426,7 @@
 		padding: 0.75rem 1.5rem;
 		border: none;
 		border-radius: 8px;
-		background: #3b82f6;
+		background: var(--color-action);
 		color: white;
 		font-size: 1rem;
 		font-weight: 600;
@@ -436,7 +436,7 @@
 	}
 
 	.calculate-btn:hover:not(:disabled) {
-		background: #2563eb;
+		background: var(--color-action-hover);
 	}
 
 	.calculate-btn:disabled {
@@ -464,7 +464,7 @@
 		border: 1px solid #d1d5db;
 		border-radius: 8px;
 		background: white;
-		color: #64748b;
+		color: var(--color-text-muted);
 		font-size: 1rem;
 		font-weight: 500;
 		cursor: pointer;
@@ -525,7 +525,7 @@
 	.relationship-label {
 		font-size: 0.75rem;
 		font-weight: 500;
-		color: #64748b;
+		color: var(--color-text-muted);
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
 		margin-bottom: 0.25rem;
@@ -606,7 +606,7 @@
 		align-items: center;
 		justify-content: center;
 		background: #f1f5f9;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.path-node.person-node[data-gender="male"] .node-avatar {
@@ -634,7 +634,7 @@
 	.node-label {
 		font-size: 0.8125rem;
 		font-weight: 500;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.common-ancestor-node {
@@ -646,7 +646,7 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		color: #94a3b8;
+		color: var(--color-text-muted);
 	}
 
 	.path-connector svg {
@@ -685,7 +685,7 @@
 
 	.gen-distance {
 		font-size: 0.8125rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	/* Additional Relationships */
@@ -745,7 +745,7 @@
 	.not-related p {
 		margin: 0;
 		font-size: 0.9375rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 		max-width: 400px;
 		margin-inline: auto;
 	}

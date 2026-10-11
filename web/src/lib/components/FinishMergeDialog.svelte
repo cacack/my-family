@@ -421,7 +421,7 @@
 		font-weight: 600;
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.plan-list {
@@ -446,7 +446,7 @@
 		font-size: 0.6875rem;
 		text-transform: uppercase;
 		letter-spacing: 0.04em;
-		color: #94a3b8;
+		color: var(--color-text-muted);
 	}
 
 	.entity-name {
@@ -459,7 +459,7 @@
 	.section-hint {
 		margin: 0.5rem 0 0;
 		font-size: 0.8125rem;
-		color: #64748b;
+		color: var(--color-text-muted);
 	}
 
 	.notice {
@@ -519,7 +519,7 @@
 		font-size: 0.6875rem;
 		text-transform: uppercase;
 		letter-spacing: 0.04em;
-		color: #94a3b8;
+		color: var(--color-text-muted);
 	}
 
 	.summary dd {

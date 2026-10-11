@@ -29,7 +29,7 @@
 	const TD_NOWRAP = `${TD_CLASS} whitespace-nowrap font-medium`;
 	const TD_CENTER = `${TD_CLASS} text-center`;
 	const ROW_CLICKABLE = 'cursor-pointer transition-colors hover:bg-slate-50';
-	const SUBJECT_LINK = 'text-blue-500 no-underline hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500';
+	const SUBJECT_LINK = 'text-link no-underline hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500';
 
 	// Active tab
 	let activeTab = $state('validation');
@@ -259,7 +259,7 @@
 	<header class="mb-6">
 		<div>
 			<h1 class="m-0 text-2xl text-slate-800">Quality</h1>
-			<p class="mt-1 text-sm text-slate-500">
+			<p class="mt-1 text-sm text-muted-foreground">
 				Find and fix data quality issues and potential duplicate persons.
 			</p>
 		</div>
@@ -270,13 +270,13 @@
 			<Tabs.Trigger value="validation">
 				Validation Issues
 				{#if totalIssuesCount > 0}
-					<span class="ml-1 text-xs text-slate-500">({totalIssuesCount})</span>
+					<span class="ml-1 text-xs text-muted-foreground">({totalIssuesCount})</span>
 				{/if}
 			</Tabs.Trigger>
 			<Tabs.Trigger value="duplicates">
 				Duplicates
 				{#if duplicatesTotal > 0}
-					<span class="ml-1 text-xs text-slate-500">({duplicatesTotal})</span>
+					<span class="ml-1 text-xs text-muted-foreground">({duplicatesTotal})</span>
 				{/if}
 			</Tabs.Trigger>
 		</Tabs.List>
@@ -304,7 +304,7 @@
 					{#if validationLoading}
 						<div class="flex items-center gap-2" role="status" aria-live="polite">
 							<svg
-								class="size-4 animate-spin text-slate-500"
+								class="size-4 animate-spin text-muted-foreground"
 								viewBox="0 0 24 24"
 								fill="none"
 								aria-hidden="true"
@@ -312,7 +312,7 @@
 								<circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" stroke-opacity="0.25" />
 								<path d="M22 12a10 10 0 0 1-10 10" stroke="currentColor" stroke-width="3" stroke-linecap="round" />
 							</svg>
-							<span class="text-sm text-slate-500">Scanning…</span>
+							<span class="text-sm text-muted-foreground">Scanning…</span>
 						</div>
 					{/if}
 					<Button variant="outline" size="sm" onclick={loadValidationIssues} disabled={validationLoading}>
@@ -322,16 +322,16 @@
 			</div>
 
 			{#if validationLoading}
-				<div class="p-12 text-center text-slate-500">Loading validation issues...</div>
+				<div class="p-12 text-center text-muted-foreground">Loading validation issues...</div>
 			{:else if validationError}
 				<div class="p-12 text-center text-red-600">
 					<p class="m-0 mb-4">{validationError}</p>
 					<Button variant="outline" onclick={loadValidationIssues}>Retry</Button>
 				</div>
 			{:else if issues.length === 0}
-				<div class="p-12 text-center text-slate-500">
+				<div class="p-12 text-center text-muted-foreground">
 					<p class="m-0 mb-2">No issues found at this severity.</p>
-					<p class="text-[0.8125rem] text-slate-400">
+					<p class="text-[0.8125rem] text-muted-foreground">
 						Try a different severity filter or run a fresh scan.
 					</p>
 				</div>
@@ -352,7 +352,7 @@
 									<td class={TD_NOWRAP}>
 										<SeverityBadge severity={issue.severity} />
 									</td>
-									<td class="{TD_CLASS} hidden font-mono text-xs text-slate-500 sm:table-cell">
+									<td class="{TD_CLASS} hidden font-mono text-xs text-muted-foreground sm:table-cell">
 										{issue.code}
 									</td>
 									<td class={TD_CLASS}>{issue.message}</td>
@@ -362,7 +362,7 @@
 												{issue.record_id.slice(0, 8)}...
 											</a>
 										{:else}
-											<span class="text-slate-400">—</span>
+											<span class="text-muted-foreground">—</span>
 										{/if}
 									</td>
 								</tr>
@@ -388,7 +388,7 @@
 						>
 							Previous
 						</Button>
-						<span class="text-sm text-slate-500">
+						<span class="text-sm text-muted-foreground">
 							Page {validationPage} of {validationTotalPages}
 						</span>
 						<Button
@@ -412,7 +412,7 @@
 		<!-- Duplicates Tab -->
 		<Tabs.Content value="duplicates">
 			<div class="mb-4 flex flex-wrap items-center justify-between gap-2 pt-2">
-				<span class="text-sm text-slate-500">
+				<span class="text-sm text-muted-foreground">
 					{duplicatesTotal}
 					{duplicatesTotal === 1 ? 'potential duplicate' : 'potential duplicates'}
 				</span>
@@ -445,16 +445,16 @@
 			{/if}
 
 			{#if duplicatesLoading}
-				<div class="p-12 text-center text-slate-500">Loading duplicates...</div>
+				<div class="p-12 text-center text-muted-foreground">Loading duplicates...</div>
 			{:else if duplicatesError}
 				<div class="p-12 text-center text-red-600">
 					<p class="m-0 mb-4">{duplicatesError}</p>
 					<Button variant="outline" onclick={loadDuplicates}>Retry</Button>
 				</div>
 			{:else if duplicates.length === 0}
-				<div class="p-12 text-center text-slate-500">
+				<div class="p-12 text-center text-muted-foreground">
 					<p class="m-0 mb-2">No potential duplicates detected.</p>
-					<p class="text-[0.8125rem] text-slate-400">
+					<p class="text-[0.8125rem] text-muted-foreground">
 						The duplicate detector compares persons by name, dates, and places.
 					</p>
 				</div>
@@ -559,7 +559,7 @@
 						>
 							Previous
 						</Button>
-						<span class="text-sm text-slate-500">
+						<span class="text-sm text-muted-foreground">
 							Page {duplicatesPage} of {duplicatesTotalPages}
 						</span>
 						<Button
