@@ -3927,7 +3927,7 @@ export interface components {
             event_type: "birth" | "death";
             /** @description Number of persons at this location */
             count: number;
-            /** @description IDs of persons at this location */
+            /** @description IDs of the persons at this location, in the same order as `persons`. Kept for existing clients; `persons[].id` carries the same IDs. */
             person_ids: string[];
             /** @description Persons at this location, named so a client can list them without a lookup each */
             persons: components["schemas"]["PersonSummary"][];
