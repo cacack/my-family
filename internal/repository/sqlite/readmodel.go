@@ -983,7 +983,9 @@ const personFullNameExpr = `(CASE WHEN surname = '' THEN given_name WHEN given_n
 // personFullNameExpr. Every existing row is recomputed, so no replay is needed.
 // SQLite cannot ADD a STORED generated column, so an upgraded database gets a
 // VIRTUAL one; reads and the index behave the same. It is a no-op on a database
-// whose persons table already uses the current expression.
+// whose persons table already uses the current expression. Like dropLegacyFTS5,
+// it runs in one transaction, so a failure rolls back cleanly and fails the open;
+// Postgres' counterpart only warns (see its comment for why).
 func (s *ReadModelStore) migratePersonFullName() error {
 	var ddl string
 	if err := s.db.QueryRow(

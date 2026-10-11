@@ -754,7 +754,11 @@ const personFullNameExpr = `(CASE WHEN surname = '' THEN given_name WHEN given_n
 // personFullNameExpr. Re-adding the generated column recomputes every existing
 // row, so no replay is needed. Postgres stores the expression in its own
 // normalized form, so the probe looks for the CASE rather than the exact text.
+// The probe must change if personFullNameExpr ever drops its CASE.
 // Logged, not swallowed: until it succeeds, full_name keeps the stray space.
+// Unlike SQLite's transactional migration, which fails the open, this follows
+// runMigrations' degrade-and-warn policy: the ALTER rewrites the table under an
+// exclusive lock that can be blocked, and the old column is still readable.
 func (s *ReadModelStore) migratePersonFullName() {
 	var outdated bool
 	if err := s.db.QueryRow(`
