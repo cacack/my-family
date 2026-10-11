@@ -135,7 +135,11 @@ body.high-contrast {
 	--sidebar-border: #000000;
 	--sidebar-ring: #0000ff;
 
-	/* Tailwind palette colours used for secondary text and plain links. */
+	/*
+	 * Tailwind palette colours the app uses for secondary text and plain links.
+	 * This remaps every utility built on them (bg-, border-, outline-, ...), not
+	 * only text-; don't pair one of these backgrounds with muted text.
+	 */
 	--color-slate-400: var(--color-text-muted);
 	--color-slate-500: var(--color-text-muted);
 	--color-slate-600: var(--color-text-muted);
