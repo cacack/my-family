@@ -124,7 +124,7 @@
 			{/if}
 
 			<div
-				class="mb-6 grid grid-cols-[repeat(auto-fit,minmax(250px,1fr))] gap-6"
+				class="mb-6 grid grid-cols-[repeat(auto-fit,minmax(min(250px,100%),1fr))] gap-6"
 			>
 				<div class="mb-6">
 					<h2

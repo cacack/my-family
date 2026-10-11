@@ -441,8 +441,13 @@
 		height: 2rem;
 	}
 
+	.source-title {
+		min-width: 0;
+	}
+
 	.source-title h1 {
 		margin: 0;
+		overflow-wrap: anywhere;
 		font-size: 1.5rem;
 		color: #1e293b;
 	}

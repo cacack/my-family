@@ -415,7 +415,9 @@
 	{:else if citations.length === 0 && !showAddForm}
 		<div class="empty-state">
 			<p>No citations yet.</p>
-			<Button variant="outline" size="sm" onclick={openAddForm}>Add the first citation</Button>
+			<Button variant="outline" size="sm" class="h-auto min-h-8 whitespace-normal" onclick={openAddForm}
+				>Add the first citation</Button
+			>
 		</div>
 	{:else if citations.length > 0}
 		<ul class="citation-list">
@@ -489,8 +491,10 @@
 
 	.section-header {
 		display: flex;
+		flex-wrap: wrap;
 		justify-content: space-between;
 		align-items: center;
+		gap: 0.5rem;
 		margin-bottom: 1rem;
 	}
 

@@ -433,8 +433,10 @@
 
 	.section-header {
 		display: flex;
+		flex-wrap: wrap;
 		justify-content: space-between;
 		align-items: center;
+		gap: 0.5rem;
 		margin-bottom: 1rem;
 	}
 
@@ -583,6 +585,8 @@
 	}
 
 	.name-display {
+		min-width: 0;
+		overflow-wrap: anywhere;
 		font-size: 0.9375rem;
 		font-weight: 500;
 		color: #1e293b;

@@ -201,6 +201,7 @@
 
 	<Button
 		variant="outline"
+		class="h-auto min-h-9 whitespace-normal"
 		onclick={handleExportClick}
 		disabled={exporting}
 		aria-busy={exporting}

@@ -289,6 +289,7 @@
 
 	.entry-header {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
 		gap: 0.75rem;
 		margin-bottom: 0.5rem;
@@ -301,6 +302,7 @@
 
 	.entry-body {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
 		gap: 0.5rem;
 	}
@@ -315,6 +317,8 @@
 	}
 
 	.entity-name {
+		min-width: 0;
+		overflow-wrap: anywhere;
 		font-weight: 500;
 		color: #1e293b;
 		text-decoration: none;

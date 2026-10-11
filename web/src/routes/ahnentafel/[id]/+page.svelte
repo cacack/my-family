@@ -520,7 +520,7 @@
 
 	.card-list {
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+		grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr));
 		gap: 0.75rem;
 		padding: 0.75rem;
 	}
@@ -537,6 +537,9 @@
 	}
 
 	.event-value {
+		min-width: 0;
+		/* GEDCOM places are often comma-joined with no spaces to break on. */
+		overflow-wrap: anywhere;
 		color: #475569;
 	}
 

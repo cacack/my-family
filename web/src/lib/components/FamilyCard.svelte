@@ -74,6 +74,8 @@
 	}
 
 	.partner {
+		min-width: 0;
+		overflow-wrap: anywhere;
 		font-size: 0.9375rem;
 		font-weight: 600;
 		color: #1e293b;
@@ -86,6 +88,7 @@
 
 	.details {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
 		gap: 0.75rem;
 		margin-top: 0.5rem;

@@ -408,6 +408,9 @@ body.reduced-motion * {
 	}
 	body {
 		@apply bg-background text-foreground;
+		/* A word longer than its box (a long name, an unspaced GEDCOM place)
+		   breaks instead of running out of it, at any font size. */
+		overflow-wrap: break-word;
 	}
 	html {
 		@apply font-sans;

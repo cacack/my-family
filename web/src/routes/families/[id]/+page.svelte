@@ -602,8 +602,10 @@
 
 	.page-header {
 		display: flex;
+		flex-wrap: wrap;
 		justify-content: space-between;
 		align-items: center;
+		gap: 0.75rem;
 		margin-bottom: 1.5rem;
 	}
 
@@ -627,6 +629,7 @@
 
 	.actions {
 		display: flex;
+		flex-wrap: wrap;
 		gap: 0.5rem;
 	}
 
@@ -685,7 +688,7 @@
 
 	.partners-grid {
 		display: grid;
-		grid-template-columns: repeat(2, 1fr);
+		grid-template-columns: repeat(auto-fit, minmax(min(12rem, 100%), 1fr));
 		gap: 1rem;
 	}
 
@@ -750,6 +753,7 @@
 
 	.section-header {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
 		justify-content: space-between;
 		gap: 1rem;

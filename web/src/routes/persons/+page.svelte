@@ -196,6 +196,7 @@
 
 	.controls label {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
 		gap: 0.5rem;
 		font-size: 0.875rem;
@@ -265,12 +266,13 @@
 
 	.persons-grid {
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+		grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr));
 		gap: 1rem;
 	}
 
 	.pagination {
 		display: flex;
+		flex-wrap: wrap;
 		justify-content: center;
 		align-items: center;
 		gap: 1rem;

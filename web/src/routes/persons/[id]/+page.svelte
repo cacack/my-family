@@ -767,6 +767,8 @@
 	.avatar {
 		width: 4rem;
 		height: 4rem;
+		/* A long name must not squeeze the circle into an oval. */
+		flex-shrink: 0;
 		border-radius: 50%;
 		display: flex;
 		align-items: center;
@@ -801,8 +803,13 @@
 		flex-wrap: wrap;
 	}
 
+	.person-title {
+		min-width: 0;
+	}
+
 	.person-title h1 {
 		margin: 0;
+		overflow-wrap: anywhere;
 		font-size: 1.5rem;
 		color: #1e293b;
 	}
@@ -820,7 +827,7 @@
 
 	.info-grid {
 		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+		grid-template-columns: repeat(auto-fit, minmax(min(16rem, 100%), 1fr));
 		gap: 1.5rem;
 		margin-bottom: 1.5rem;
 	}
@@ -867,6 +874,7 @@
 
 	.section-header {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
 		justify-content: space-between;
 		gap: 1rem;
