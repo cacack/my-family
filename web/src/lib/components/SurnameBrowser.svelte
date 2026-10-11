@@ -108,7 +108,7 @@
 			{:else}
 				<div class="surname-grid">
 					{#each surnames as entry}
-						<a href="/browse/surnames/{encodeURIComponent(entry.surname)}" class="surname-item">
+						<a href="/browse/surnames/{encodeURIComponent(entry.surname)}" class="surname-item" data-slot="card-link">
 							<span class="surname-name">{entry.surname || '(Unknown)'}</span>
 							<span class="surname-count">{entry.count}</span>
 						</a>

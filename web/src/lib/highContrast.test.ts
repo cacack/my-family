@@ -38,6 +38,16 @@ describe('high-contrast definition', () => {
 		expect(themed.filter((t) => !highContrast.has(t))).toEqual([]);
 	});
 
+	it('styles links outside any cascade layer, so component-scoped link rules cannot beat it', () => {
+		// Unlayered styles beat layered ones whatever their specificity (#961).
+		const selector = 'body.high-contrast a:not([data-slot]) {';
+		const at = appCss.indexOf(selector);
+		expect(at, `no "${selector}" rule in app.css`).toBeGreaterThanOrEqual(0);
+		const before = appCss.slice(0, at).replace(/\/\*[\s\S]*?\*\//g, '');
+		const depth = (before.match(/\{/g) ?? []).length - (before.match(/\}/g) ?? []).length;
+		expect(depth).toBe(0);
+	});
+
 	it('is not redefined by any component', () => {
 		const offenders = Object.entries(svelteSources).flatMap(([file, source]) =>
 			[...source.matchAll(/body\.high-contrast\)?[^{]*\{([^}]*)\}/g)]

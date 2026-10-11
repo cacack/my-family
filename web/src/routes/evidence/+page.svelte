@@ -244,6 +244,7 @@
 	<a
 		href={href}
 		class="block rounded-lg border border-slate-200 bg-white p-4 text-inherit no-underline transition-shadow hover:border-slate-300 hover:shadow-sm"
+		data-slot="card-link"
 	>
 		<div class="mb-2 flex items-center justify-between">
 			<span class="text-sm font-semibold text-slate-800">{topLeft}</span>

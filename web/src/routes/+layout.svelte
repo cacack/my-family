@@ -93,7 +93,7 @@
 
 <div class="app-layout" class:full-height={fullHeight}>
 	<header class="app-header">
-		<a href="/" class="logo">
+		<a href="/" class="logo" data-slot="nav-link">
 			<span class="logo-mark">{@html logoMark}</span>
 			<span class="logo-text">My Family</span>
 		</a>
@@ -108,6 +108,7 @@
 			<a
 				href="/search"
 				class="icon-btn"
+				data-slot="action-link"
 				class:active={$page.url.pathname === '/search'}
 				aria-current={$page.url.pathname === '/search' ? 'page' : undefined}
 				aria-label="Advanced search"

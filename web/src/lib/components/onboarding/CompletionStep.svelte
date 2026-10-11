@@ -28,7 +28,7 @@
 	{/if}
 
 	<div class="feature-cards">
-		<a href="/persons" class="feature-card">
+		<a href="/persons" class="feature-card" data-slot="card-link">
 			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 				<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
 				<circle cx="9" cy="7" r="4" />
@@ -39,7 +39,7 @@
 			<p>View and manage all the people in your tree.</p>
 		</a>
 
-		<a href="/families" class="feature-card">
+		<a href="/families" class="feature-card" data-slot="card-link">
 			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 				<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
 				<circle cx="9" cy="7" r="4" />
@@ -50,7 +50,7 @@
 			<p>Create families and connect relationships.</p>
 		</a>
 
-		<a href="/import" class="feature-card">
+		<a href="/import" class="feature-card" data-slot="card-link">
 			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 				<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
 				<polyline points="17 8 12 3 7 8" />
@@ -60,7 +60,7 @@
 			<p>Import GEDCOM files or export your data.</p>
 		</a>
 
-		<a href="/sources" class="feature-card">
+		<a href="/sources" class="feature-card" data-slot="card-link">
 			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 				<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
 				<path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />

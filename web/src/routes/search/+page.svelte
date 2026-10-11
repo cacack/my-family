@@ -752,7 +752,7 @@
 					<!-- Mobile cards -->
 					<div class="results-cards">
 						{#each results as person}
-							<a href="/persons/{person.id}" class="result-card">
+							<a href="/persons/{person.id}" class="result-card" data-slot="card-link">
 								<div class="result-card-top">
 									<span class="result-card-name"
 										>{formatPersonName(person)}</span

@@ -459,6 +459,7 @@
 							<a
 								href="/evidence/analyses/{la.id}"
 								class="block rounded-lg border border-slate-200 p-4 text-inherit no-underline transition-colors hover:border-blue-500"
+								data-slot="card-link"
 							>
 								<div class="mb-2 flex items-center justify-between">
 									<span class="text-sm font-semibold text-slate-800">

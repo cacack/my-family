@@ -67,6 +67,7 @@
 						<a
 							href="/browse/cemeteries/{encodeURIComponent(entry.place)}"
 							class="cemetery-item"
+							data-slot="card-link"
 						>
 							<div class="cemetery-info">
 								<span class="cemetery-name">{entry.place}</span>

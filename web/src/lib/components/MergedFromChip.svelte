@@ -26,6 +26,7 @@
 <a
 	href="/branches/{origin.branch_id}"
 	class="merge-chip"
+	data-slot="chip"
 	title="Made on the branch {formatTimestamp(origin.original_timestamp)}; merged {formatTimestamp(
 		origin.merged_at
 	)}"

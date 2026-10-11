@@ -135,12 +135,14 @@
 						<a
 							href="/evidence/analyses/new?subjectId={subjectId}"
 							class="rounded-md border border-slate-200 px-3 py-1.5 text-[0.8125rem] text-link no-underline hover:bg-slate-100"
+							data-slot="action-link"
 						>
 							Add Analysis
 						</a>
 						<a
 							href="/evidence/research-logs/new?subjectId={subjectId}"
 							class="rounded-md border border-slate-200 px-3 py-1.5 text-[0.8125rem] text-link no-underline hover:bg-slate-100"
+							data-slot="action-link"
 						>
 							Log Research
 						</a>
@@ -179,6 +181,7 @@
 											<a
 												href="/evidence/analyses/{analysis.id}"
 												class="flex items-center justify-between gap-3 rounded-md px-2.5 py-2 text-slate-800 no-underline transition-colors hover:bg-slate-100"
+												data-slot="card-link"
 											>
 												<span
 													class="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-[0.8125rem]"
@@ -229,6 +232,7 @@
 									<a
 										href="/evidence/conflicts/{conflict.id}"
 										class="block px-3 py-2.5 text-slate-800 no-underline hover:opacity-85"
+										data-slot="card-link"
 									>
 										<div class="flex items-center justify-between gap-2">
 											<span class="flex-1 text-[0.8125rem]">{conflict.description}</span>

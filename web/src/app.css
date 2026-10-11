@@ -172,17 +172,20 @@ body.high-contrast * {
 	border-color: var(--a11y-color-border) !important;
 }
 
-/* In the base layer so a link styled as a button keeps its button colours. */
-@layer base {
-	body.high-contrast a {
-		color: var(--color-link);
-		text-decoration: underline;
-	}
+/*
+ * Every link is an underlined link-blue link. Unlayered, so it beats both a
+ * component's scoped `a { ... }` rule and Tailwind utilities (#961). A link
+ * that is a part of a component - a Button, a menu item, a card, a nav item -
+ * carries `data-slot` (shadcn parts already do) and keeps that part's colours.
+ */
+body.high-contrast a:not([data-slot]) {
+	color: var(--color-link);
+	text-decoration: underline;
+}
 
-	body.high-contrast a:hover,
-	body.high-contrast a:focus {
-		color: var(--color-link-hover);
-	}
+body.high-contrast a:not([data-slot]):hover,
+body.high-contrast a:not([data-slot]):focus {
+	color: var(--color-link-hover);
 }
 
 body.high-contrast button,

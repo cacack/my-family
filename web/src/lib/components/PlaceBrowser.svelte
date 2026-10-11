@@ -112,6 +112,7 @@
 							<a
 								href="/browse/places/{encodeURIComponent(place.full_name || place.name)}"
 								class="place-item"
+								data-slot="card-link"
 							>
 								<div class="place-info">
 									<span class="place-name">{place.name}</span>
@@ -126,7 +127,7 @@
 
 		{#if currentParent && places.length > 0}
 			<div class="view-all">
-				<a href="/browse/places/{encodeURIComponent(currentParent)}" class="view-all-link">
+				<a href="/browse/places/{encodeURIComponent(currentParent)}" class="view-all-link" data-slot="action-link">
 					View all people from {breadcrumb[breadcrumb.length - 1] || currentParent}
 				</a>
 			</div>
