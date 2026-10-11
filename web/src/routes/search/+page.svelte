@@ -61,14 +61,19 @@
 	let deathPlaceHighlight = $state(-1);
 
 	// Derived state
+	// The draft form has criteria by the same rule as the submitted search.
 	let hasAnyCriteria = $derived(
-		query.trim().length > 0 ||
-			birthYearFrom.trim().length > 0 ||
-			birthYearTo.trim().length > 0 ||
-			deathYearFrom.trim().length > 0 ||
-			deathYearTo.trim().length > 0 ||
-			birthPlace.trim().length > 0 ||
-			deathPlace.trim().length > 0
+		hasCriteria({
+			q: query,
+			fuzzy,
+			soundex,
+			birth_from: birthYearFrom,
+			birth_to: birthYearTo,
+			death_from: deathYearFrom,
+			death_to: deathYearTo,
+			birth_place: birthPlace,
+			death_place: deathPlace
+		})
 	);
 
 	// The submitted search lives in the URL (see urlState.ts): the form is a
@@ -80,20 +85,61 @@
 		untrack(() => applyUrl(new URLSearchParams(search)));
 	});
 
+	// The criteria of the submitted search, read from the URL. Searches use these,
+	// never the form, so sort, order and Load more refine what was submitted.
+	type Criteria = {
+		q: string;
+		fuzzy: boolean;
+		soundex: boolean;
+		birth_from: string;
+		birth_to: string;
+		death_from: string;
+		death_to: string;
+		birth_place: string;
+		death_place: string;
+	};
+	let submitted: Criteria | null = null;
+
+	function readCriteria(params: URLSearchParams): Criteria {
+		return {
+			q: params.get('q') ?? '',
+			fuzzy: readFlag(params, 'fuzzy'),
+			soundex: readFlag(params, 'soundex'),
+			birth_from: params.get('birth_from') ?? '',
+			birth_to: params.get('birth_to') ?? '',
+			death_from: params.get('death_from') ?? '',
+			death_to: params.get('death_to') ?? '',
+			birth_place: params.get('birth_place') ?? '',
+			death_place: params.get('death_place') ?? ''
+		};
+	}
+
+	function hasCriteria(c: Criteria): boolean {
+		return [c.q, c.birth_from, c.birth_to, c.death_from, c.death_to, c.birth_place, c.death_place].some(
+			(v) => v.trim().length > 0
+		);
+	}
+
 	function applyUrl(params: URLSearchParams) {
-		query = params.get('q') ?? '';
-		fuzzy = readFlag(params, 'fuzzy');
-		soundex = readFlag(params, 'soundex');
-		birthYearFrom = params.get('birth_from') ?? '';
-		birthYearTo = params.get('birth_to') ?? '';
-		deathYearFrom = params.get('death_from') ?? '';
-		deathYearTo = params.get('death_to') ?? '';
-		birthPlace = params.get('birth_place') ?? '';
-		deathPlace = params.get('death_place') ?? '';
+		const criteria = readCriteria(params);
+		// Fill the form only when the URL's criteria changed (load, a submitted
+		// search, Back/Forward), so refining keeps an unsubmitted draft as typed.
+		if (JSON.stringify(criteria) !== JSON.stringify(submitted)) {
+			query = criteria.q;
+			fuzzy = criteria.fuzzy;
+			soundex = criteria.soundex;
+			birthYearFrom = criteria.birth_from;
+			birthYearTo = criteria.birth_to;
+			deathYearFrom = criteria.death_from;
+			deathYearTo = criteria.death_to;
+			birthPlace = criteria.birth_place;
+			deathPlace = criteria.death_place;
+		}
+		submitted = criteria;
 		sort = readEnum(params, 'sort', SORTS, DEFAULTS.sort);
 		order = readEnum(params, 'order', ['asc', 'desc'] as const, DEFAULTS.order);
 		limit = readPositiveInt(params, 'limit', DEFAULTS.limit, MAX_URL_LIMIT);
-		if (hasAnyCriteria) {
+		if (hasCriteria(criteria)) {
 			performSearch();
 		} else {
 			searchSeq++; // Drop any search still in flight for the previous URL
@@ -122,14 +168,14 @@
 		};
 	}
 
-	// Writes the form to the URL, which runs the search. A new search is
-	// navigation-level (push); re-sorting or loading more refines it (replace).
-	function submit(push: boolean) {
-		const values = formQuery();
+	// Writes `values` to the URL, which runs the search. A new search writes the
+	// whole form and is navigation-level (push); re-sorting or loading more
+	// changes only those keys, keeping the submitted criteria (replace).
+	function navigate(values: QueryValues, push: boolean) {
 		const url = $page.url;
 		if (withQuery(url, values, DEFAULTS) === url.pathname + url.search) {
 			// Nothing changed, so no navigation: run it again as asked.
-			if (hasAnyCriteria) performSearch();
+			performSearch();
 			return;
 		}
 		setQuery(url, values, { push, defaults: DEFAULTS });
@@ -242,23 +288,19 @@
 		}
 	}
 
-	function buildSearchParams() {
+	function buildSearchParams(c: Criteria) {
 		const params: Parameters<typeof api.searchPersons>[0] = {};
 
-		if (query.trim()) params.q = query.trim();
-		if (fuzzy) params.fuzzy = true;
-		if (soundex) params.soundex = true;
+		if (c.q.trim()) params.q = c.q.trim();
+		if (c.fuzzy) params.fuzzy = true;
+		if (c.soundex) params.soundex = true;
 		const isYear = (v: string) => /^\d{1,4}$/.test(v);
-		if (birthYearFrom.trim() && isYear(birthYearFrom.trim()))
-			params.birth_date_from = `${birthYearFrom.trim()}-01-01`;
-		if (birthYearTo.trim() && isYear(birthYearTo.trim()))
-			params.birth_date_to = `${birthYearTo.trim()}-12-31`;
-		if (deathYearFrom.trim() && isYear(deathYearFrom.trim()))
-			params.death_date_from = `${deathYearFrom.trim()}-01-01`;
-		if (deathYearTo.trim() && isYear(deathYearTo.trim()))
-			params.death_date_to = `${deathYearTo.trim()}-12-31`;
-		if (birthPlace.trim()) params.birth_place = birthPlace.trim();
-		if (deathPlace.trim()) params.death_place = deathPlace.trim();
+		if (isYear(c.birth_from.trim())) params.birth_date_from = `${c.birth_from.trim()}-01-01`;
+		if (isYear(c.birth_to.trim())) params.birth_date_to = `${c.birth_to.trim()}-12-31`;
+		if (isYear(c.death_from.trim())) params.death_date_from = `${c.death_from.trim()}-01-01`;
+		if (isYear(c.death_to.trim())) params.death_date_to = `${c.death_to.trim()}-12-31`;
+		if (c.birth_place.trim()) params.birth_place = c.birth_place.trim();
+		if (c.death_place.trim()) params.death_place = c.death_place.trim();
 		params.sort = sort;
 		params.order = order;
 
@@ -273,13 +315,13 @@
 	// Fetches the first `limit` matches, in pages of at most API_MAX_LIMIT. When
 	// only `limit` grew (Load more), the results already shown are kept.
 	async function performSearch() {
-		if (!hasAnyCriteria) return;
+		if (!submitted || !hasCriteria(submitted)) return;
 
 		const seq = ++searchSeq;
 		loading = true;
 		error = null;
 		searched = true;
-		const params = buildSearchParams();
+		const params = buildSearchParams(submitted);
 		const key = JSON.stringify(params);
 		let items = key === resultsKey && results.length < Math.min(limit, total) ? results : [];
 		let matches = total;
@@ -313,7 +355,7 @@
 	function newSearch() {
 		if (!hasAnyCriteria) return;
 		limit = DEFAULTS.limit;
-		submit(true);
+		navigate(formQuery(), true);
 	}
 
 	function handleFormSubmit(e: Event) {
@@ -331,12 +373,12 @@
 	function handleSortChange(e: Event) {
 		const select = e.target as HTMLSelectElement;
 		sort = select.value as typeof sort;
-		if (searched) submit(false);
+		if (searched) navigate({ sort }, false);
 	}
 
 	function handleOrderToggle() {
 		order = order === 'asc' ? 'desc' : 'asc';
-		if (searched) submit(false);
+		if (searched) navigate({ order }, false);
 	}
 
 	function clearAll() {
@@ -356,12 +398,12 @@
 		searched = false;
 		limit = DEFAULTS.limit;
 		error = null;
-		submit(false);
+		navigate(formQuery(), false);
 	}
 
 	function loadMore() {
 		limit += PAGE_SIZE;
-		submit(false);
+		navigate({ limit }, false);
 	}
 
 	function scoreColor(score: number | undefined): string {

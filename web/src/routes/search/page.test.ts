@@ -937,6 +937,36 @@ describe('Advanced Search Page', () => {
 			expect(historyLength()).toBe(2);
 		});
 
+		it('sort, order and load more refine the submitted search, not the unsaved form (#949)', async () => {
+			vi.mocked(apiModule.api.searchPersons).mockResolvedValue({ ...mockSearchResults, total: 50 });
+			const { container } = render(SearchPage);
+			await vi.advanceTimersByTimeAsync(0);
+			await search('Smith');
+			const birthFrom = screen.getAllByPlaceholderText('YYYY')[0] as HTMLInputElement;
+			await fireEvent.input(nameInput(), { target: { value: 'Jones' } });
+			await fireEvent.input(birthFrom, { target: { value: '1900' } });
+			vi.mocked(apiModule.api.searchPersons).mockClear();
+
+			const sortSelect = container.querySelector('.sort-controls select') as HTMLSelectElement;
+			await fireEvent.change(sortSelect, { target: { value: 'name' } });
+			await vi.advanceTimersByTimeAsync(0);
+			await fireEvent.click(container.querySelector('.order-btn') as HTMLButtonElement);
+			await vi.advanceTimersByTimeAsync(0);
+			await fireEvent.click(screen.getByText('Load more'));
+			await vi.advanceTimersByTimeAsync(0);
+
+			expect(currentPath()).toBe('/search?q=Smith&sort=name&order=asc&limit=40');
+			expect(historyLength()).toBe(2);
+			const calls = vi.mocked(apiModule.api.searchPersons).mock.calls.map(([p]) => p);
+			expect(calls.length).toBeGreaterThan(0);
+			for (const params of calls) {
+				expect(params).toMatchObject({ q: 'Smith' });
+				expect(params).not.toHaveProperty('birth_date_from');
+			}
+			expect(nameInput().value).toBe('Jones');
+			expect(birthFrom.value).toBe('1900');
+		});
+
 		it('re-runs an unchanged search when submitted again', async () => {
 			render(SearchPage);
 			await vi.advanceTimersByTimeAsync(0);
