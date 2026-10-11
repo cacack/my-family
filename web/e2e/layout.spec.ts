@@ -85,7 +85,8 @@ test.describe('at 375px with the Larger font setting', () => {
 });
 
 // A flex item shrinks by default, so a long name next to the avatar squeezed
-// the circle into an oval once the font grew.
+// the circle into an oval once the font grew. The seeded name is short enough
+// to wrap, so the test swaps in an unbroken one to force the squeeze.
 test('the person avatar stays a circle at every font size', async ({ page }) => {
 	await page.setViewportSize({ width: 375, height: 900 });
 	await page.goto(`/persons/${readSeed().switcher.person.id}`);
@@ -94,7 +95,17 @@ test('the person avatar stays a circle at every font size', async ({ page }) => 
 			localStorage.setItem('accessibility-settings', JSON.stringify({ fontSize: size }));
 		}, fontSize);
 		await page.reload();
-		const box = await page.locator('.person-header .avatar').boundingBox();
+		const avatar = page.locator('.person-header .avatar');
+		await expect(avatar).toBeVisible();
+		if (fontSize === 'normal') {
+			await expect(page.locator('html')).not.toHaveClass(/font-large/);
+		} else {
+			await expect(page.locator('html')).toHaveClass(new RegExp(`font-${fontSize}\\b`));
+		}
+		await page.locator('.person-title h1').evaluate((h1) => {
+			h1.textContent = 'Wilhelmina'.repeat(6);
+		});
+		const box = await avatar.boundingBox();
 		expect(box, `${fontSize}: person avatar is not rendered`).not.toBeNull();
 		expect(box!.width, `${fontSize}: avatar is not square`).toBeCloseTo(box!.height, 0);
 	}
