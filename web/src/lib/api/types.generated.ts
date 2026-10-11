@@ -3573,6 +3573,7 @@ export interface components {
         };
         SearchResults: {
             items: components["schemas"]["SearchResult"][];
+            /** @description Number of people matching the search, independent of limit and offset */
             total: number;
             query?: string;
         };
@@ -6900,6 +6901,7 @@ export interface operations {
                 /** @description Sort order */
                 order?: "asc" | "desc";
                 limit?: components["parameters"]["limitParam"];
+                offset?: components["parameters"]["offsetParam"];
             };
             header?: never;
             path?: never;

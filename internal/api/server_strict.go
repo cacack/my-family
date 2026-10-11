@@ -3336,6 +3336,9 @@ func searchPersonsInput(params SearchPersonsParams) (query.SearchPersonsInput, *
 	if params.Limit != nil {
 		input.Limit = *params.Limit
 	}
+	if params.Offset != nil {
+		input.Offset = *params.Offset
+	}
 	return input, nil
 }
 

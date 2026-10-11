@@ -211,6 +211,7 @@ type SearchPersonsInput struct {
 	Sort          string
 	Order         string
 	Limit         int
+	Offset        int
 	BranchID      domain.BranchID // Branch scope; zero value = MainBranchID (main line)
 }
 
@@ -223,7 +224,7 @@ type SearchResult struct {
 // SearchPersonsResult contains search results.
 type SearchPersonsResult struct {
 	Items []SearchResult `json:"items"`
-	Total int            `json:"total"`
+	Total int            `json:"total"` // Every match, not just this page
 	Query string         `json:"query"`
 }
 
@@ -234,6 +235,9 @@ func (s *PersonService) SearchPersons(ctx context.Context, input SearchPersonsIn
 	}
 	if input.Limit > 100 {
 		input.Limit = 100
+	}
+	if input.Offset < 0 {
+		input.Offset = 0
 	}
 
 	opts := repository.SearchOptions{
@@ -249,10 +253,11 @@ func (s *PersonService) SearchPersons(ctx context.Context, input SearchPersonsIn
 		Sort:          input.Sort,
 		Order:         input.Order,
 		Limit:         input.Limit,
+		Offset:        input.Offset,
 		BranchID:      input.BranchID,
 	}
 
-	readModels, err := s.readStore.SearchPersons(ctx, opts)
+	readModels, total, err := s.readStore.SearchPersons(ctx, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -267,7 +272,7 @@ func (s *PersonService) SearchPersons(ctx context.Context, input SearchPersonsIn
 
 	return &SearchPersonsResult{
 		Items: results,
-		Total: len(results),
+		Total: total,
 		Query: input.Query,
 	}, nil
 }

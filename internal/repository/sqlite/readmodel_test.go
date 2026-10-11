@@ -274,7 +274,7 @@ func TestReadModelStore_SearchPersons(t *testing.T) {
 	}
 
 	// Search for "Doe"
-	results, err := store.SearchPersons(ctx, repository.SearchOptions{Query: "Doe", Limit: 10})
+	results, _, err := store.SearchPersons(ctx, repository.SearchOptions{Query: "Doe", Limit: 10})
 	if err != nil {
 		t.Fatalf("search persons: %v", err)
 	}
@@ -284,7 +284,7 @@ func TestReadModelStore_SearchPersons(t *testing.T) {
 	}
 
 	// Search for "John"
-	results, err = store.SearchPersons(ctx, repository.SearchOptions{Query: "John", Limit: 10})
+	results, _, err = store.SearchPersons(ctx, repository.SearchOptions{Query: "John", Limit: 10})
 	if err != nil {
 		t.Fatalf("search persons: %v", err)
 	}
@@ -295,7 +295,7 @@ func TestReadModelStore_SearchPersons(t *testing.T) {
 	}
 
 	// Fuzzy search (trigram similarity)
-	results, err = store.SearchPersons(ctx, repository.SearchOptions{Query: "Jo", Fuzzy: true, Limit: 10})
+	results, _, err = store.SearchPersons(ctx, repository.SearchOptions{Query: "Jo", Fuzzy: true, Limit: 10})
 	if err != nil {
 		t.Fatalf("fuzzy search persons: %v", err)
 	}
@@ -725,7 +725,7 @@ func TestReadModelStore_SearchPersons_OperatorSyntaxIsLiteral(t *testing.T) {
 	// Search-operator syntax in user input is searched literally (issue #762):
 	// the whole string is a substring no name contains, so the query neither
 	// errors nor matches.
-	results, err := store.SearchPersons(ctx, repository.SearchOptions{Query: `"John" AND "Doe"`, Limit: 10})
+	results, _, err := store.SearchPersons(ctx, repository.SearchOptions{Query: `"John" AND "Doe"`, Limit: 10})
 	if err != nil {
 		t.Fatalf("search persons: %v", err)
 	}
@@ -754,7 +754,7 @@ func TestReadModelStore_SearchPersons_NoFuzzyResults(t *testing.T) {
 
 	// Search for something that doesn't match but with fuzzy enabled
 	// This should trigger the fuzzy fallback at line 261-262
-	results, err := store.SearchPersons(ctx, repository.SearchOptions{Query: "xyz123notfound", Fuzzy: true, Limit: 10})
+	results, _, err := store.SearchPersons(ctx, repository.SearchOptions{Query: "xyz123notfound", Fuzzy: true, Limit: 10})
 	if err != nil {
 		t.Fatalf("fuzzy search persons: %v", err)
 	}
@@ -783,7 +783,7 @@ func TestReadModelStore_SearchPersons_FuzzyFallback(t *testing.T) {
 	store.SavePerson(ctx, domain.MainBranchID, person)
 
 	// A fuzzy prefix query matches by trigram similarity ("Zac" vs "Zachary").
-	results, err := store.SearchPersons(ctx, repository.SearchOptions{Query: "Zac", Fuzzy: true, Limit: 10})
+	results, _, err := store.SearchPersons(ctx, repository.SearchOptions{Query: "Zac", Fuzzy: true, Limit: 10})
 	if err != nil {
 		t.Fatalf("fuzzy search persons: %v", err)
 	}
@@ -926,7 +926,7 @@ func TestReadModelStore_SearchPersons_SpecialCharacters(t *testing.T) {
 	}
 
 	for _, tc := range testQueries {
-		results, err := store.SearchPersons(ctx, repository.SearchOptions{Query: tc.query, Limit: 10})
+		results, _, err := store.SearchPersons(ctx, repository.SearchOptions{Query: tc.query, Limit: 10})
 		if err != nil {
 			t.Fatalf("search with query %q failed: %v", tc.query, err)
 		}
@@ -1475,7 +1475,7 @@ func TestSearchPersons_DateRange(t *testing.T) {
 	t.Run("BirthDateFrom and BirthDateTo", func(t *testing.T) {
 		from := time.Date(1860, 1, 1, 0, 0, 0, 0, time.UTC)
 		to := time.Date(1900, 1, 1, 0, 0, 0, 0, time.UTC)
-		results, err := store.SearchPersons(ctx, repository.SearchOptions{
+		results, _, err := store.SearchPersons(ctx, repository.SearchOptions{
 			BirthDateFrom: &from,
 			BirthDateTo:   &to,
 			Limit:         10,
@@ -1493,7 +1493,7 @@ func TestSearchPersons_DateRange(t *testing.T) {
 
 	t.Run("BirthDateFrom only", func(t *testing.T) {
 		from := time.Date(1900, 1, 1, 0, 0, 0, 0, time.UTC)
-		results, err := store.SearchPersons(ctx, repository.SearchOptions{
+		results, _, err := store.SearchPersons(ctx, repository.SearchOptions{
 			BirthDateFrom: &from,
 			Limit:         10,
 		})
@@ -1510,7 +1510,7 @@ func TestSearchPersons_DateRange(t *testing.T) {
 
 	t.Run("BirthDateTo only", func(t *testing.T) {
 		to := time.Date(1860, 1, 1, 0, 0, 0, 0, time.UTC)
-		results, err := store.SearchPersons(ctx, repository.SearchOptions{
+		results, _, err := store.SearchPersons(ctx, repository.SearchOptions{
 			BirthDateTo: &to,
 			Limit:       10,
 		})
@@ -1546,7 +1546,7 @@ func TestSearchPersons_PlaceFilter(t *testing.T) {
 	}
 
 	t.Run("BirthPlace London matches two", func(t *testing.T) {
-		results, err := store.SearchPersons(ctx, repository.SearchOptions{
+		results, _, err := store.SearchPersons(ctx, repository.SearchOptions{
 			BirthPlace: "London",
 			Limit:      10,
 		})
@@ -1559,7 +1559,7 @@ func TestSearchPersons_PlaceFilter(t *testing.T) {
 	})
 
 	t.Run("DeathPlace London matches one", func(t *testing.T) {
-		results, err := store.SearchPersons(ctx, repository.SearchOptions{
+		results, _, err := store.SearchPersons(ctx, repository.SearchOptions{
 			DeathPlace: "London",
 			Limit:      10,
 		})
@@ -1575,7 +1575,7 @@ func TestSearchPersons_PlaceFilter(t *testing.T) {
 	})
 
 	t.Run("BirthPlace Paris matches one", func(t *testing.T) {
-		results, err := store.SearchPersons(ctx, repository.SearchOptions{
+		results, _, err := store.SearchPersons(ctx, repository.SearchOptions{
 			BirthPlace: "Paris",
 			Limit:      10,
 		})
@@ -1610,7 +1610,7 @@ func TestSearchPersons_Soundex(t *testing.T) {
 	}
 
 	t.Run("Soundex matches Smith and Smyth", func(t *testing.T) {
-		results, err := store.SearchPersons(ctx, repository.SearchOptions{
+		results, _, err := store.SearchPersons(ctx, repository.SearchOptions{
 			Query:   "Smith",
 			Soundex: true,
 			Limit:   10,
@@ -1626,7 +1626,7 @@ func TestSearchPersons_Soundex(t *testing.T) {
 
 	t.Run("Soundex Catherine does not match Katherine", func(t *testing.T) {
 		// Catherine (C365) vs Katherine (K365) differ in first letter
-		results, err := store.SearchPersons(ctx, repository.SearchOptions{
+		results, _, err := store.SearchPersons(ctx, repository.SearchOptions{
 			Query:   "Catherine",
 			Soundex: true,
 			Limit:   10,
@@ -1669,7 +1669,7 @@ func TestSearchPersons_Combined(t *testing.T) {
 	t.Run("Query + date range + place narrows results", func(t *testing.T) {
 		from := time.Date(1860, 1, 1, 0, 0, 0, 0, time.UTC)
 		to := time.Date(1900, 1, 1, 0, 0, 0, 0, time.UTC)
-		results, err := store.SearchPersons(ctx, repository.SearchOptions{
+		results, _, err := store.SearchPersons(ctx, repository.SearchOptions{
 			Query:         "Smith",
 			BirthDateFrom: &from,
 			BirthDateTo:   &to,
@@ -1690,7 +1690,7 @@ func TestSearchPersons_Combined(t *testing.T) {
 	t.Run("Query + date range matches subset", func(t *testing.T) {
 		from := time.Date(1840, 1, 1, 0, 0, 0, 0, time.UTC)
 		to := time.Date(1900, 1, 1, 0, 0, 0, 0, time.UTC)
-		results, err := store.SearchPersons(ctx, repository.SearchOptions{
+		results, _, err := store.SearchPersons(ctx, repository.SearchOptions{
 			Query:         "Smith",
 			BirthDateFrom: &from,
 			BirthDateTo:   &to,
@@ -1731,7 +1731,7 @@ func TestSearchPersons_NoQueryWithFilters(t *testing.T) {
 	t.Run("date range only", func(t *testing.T) {
 		from := time.Date(1860, 1, 1, 0, 0, 0, 0, time.UTC)
 		to := time.Date(1900, 1, 1, 0, 0, 0, 0, time.UTC)
-		results, err := store.SearchPersons(ctx, repository.SearchOptions{
+		results, _, err := store.SearchPersons(ctx, repository.SearchOptions{
 			BirthDateFrom: &from,
 			BirthDateTo:   &to,
 			Limit:         10,
@@ -1748,7 +1748,7 @@ func TestSearchPersons_NoQueryWithFilters(t *testing.T) {
 	})
 
 	t.Run("place only", func(t *testing.T) {
-		results, err := store.SearchPersons(ctx, repository.SearchOptions{
+		results, _, err := store.SearchPersons(ctx, repository.SearchOptions{
 			BirthPlace: "London",
 			Limit:      10,
 		})
@@ -1761,7 +1761,7 @@ func TestSearchPersons_NoQueryWithFilters(t *testing.T) {
 	})
 
 	t.Run("no criteria returns empty", func(t *testing.T) {
-		results, err := store.SearchPersons(ctx, repository.SearchOptions{
+		results, _, err := store.SearchPersons(ctx, repository.SearchOptions{
 			Limit: 10,
 		})
 		if err != nil {
@@ -1796,7 +1796,7 @@ func TestSearchPersons_SortOptions(t *testing.T) {
 	}
 
 	t.Run("sort by birth_date asc", func(t *testing.T) {
-		results, err := store.SearchPersons(ctx, repository.SearchOptions{
+		results, _, err := store.SearchPersons(ctx, repository.SearchOptions{
 			BirthPlace: "London",
 			Sort:       "birth_date",
 			Order:      "asc",
@@ -1817,7 +1817,7 @@ func TestSearchPersons_SortOptions(t *testing.T) {
 	})
 
 	t.Run("sort by name desc", func(t *testing.T) {
-		results, err := store.SearchPersons(ctx, repository.SearchOptions{
+		results, _, err := store.SearchPersons(ctx, repository.SearchOptions{
 			BirthPlace: "London",
 			Sort:       "name",
 			Order:      "desc",
@@ -1858,7 +1858,7 @@ func TestSearchPersons_BackwardCompatible(t *testing.T) {
 	}
 
 	t.Run("query only", func(t *testing.T) {
-		results, err := store.SearchPersons(ctx, repository.SearchOptions{
+		results, _, err := store.SearchPersons(ctx, repository.SearchOptions{
 			Query: "Doe",
 			Limit: 10,
 		})
@@ -1871,7 +1871,7 @@ func TestSearchPersons_BackwardCompatible(t *testing.T) {
 	})
 
 	t.Run("query with fuzzy", func(t *testing.T) {
-		results, err := store.SearchPersons(ctx, repository.SearchOptions{
+		results, _, err := store.SearchPersons(ctx, repository.SearchOptions{
 			Query: "Do",
 			Fuzzy: true,
 			Limit: 10,
@@ -2127,20 +2127,20 @@ func TestBranchSearchPersonsScope(t *testing.T) {
 	_ = store.SavePerson(ctx, domain.MainBranchID, branchPersonRM(id, "Katherine", "Johnson"))
 	_ = store.SavePerson(ctx, branch, branchPersonRM(id, "Katherine", "Coleman"))
 
-	branchHits, _ := store.SearchPersons(ctx, repository.SearchOptions{Query: "Coleman", Limit: 10, BranchID: branch})
+	branchHits, _, _ := store.SearchPersons(ctx, repository.SearchOptions{Query: "Coleman", Limit: 10, BranchID: branch})
 	if len(branchHits) != 1 || branchHits[0].Surname != "Coleman" {
 		t.Fatalf("branch Search: want Coleman, got %+v", branchHits)
 	}
 	// The main-only surname must not surface on the branch (branch overrode it).
-	if hits, _ := store.SearchPersons(ctx, repository.SearchOptions{Query: "Johnson", Limit: 10, BranchID: branch}); len(hits) != 0 {
+	if hits, _, _ := store.SearchPersons(ctx, repository.SearchOptions{Query: "Johnson", Limit: 10, BranchID: branch}); len(hits) != 0 {
 		t.Fatalf("branch Search for main-only surname: want empty, got %+v", hits)
 	}
-	mainHits, _ := store.SearchPersons(ctx, repository.SearchOptions{Query: "Johnson", Limit: 10, BranchID: domain.MainBranchID})
+	mainHits, _, _ := store.SearchPersons(ctx, repository.SearchOptions{Query: "Johnson", Limit: 10, BranchID: domain.MainBranchID})
 	if len(mainHits) != 1 || mainHits[0].Surname != "Johnson" {
 		t.Fatalf("main Search: want Johnson, got %+v", mainHits)
 	}
 	// And the branch override must not surface under the branch surname on main.
-	if hits, _ := store.SearchPersons(ctx, repository.SearchOptions{Query: "Coleman", Limit: 10, BranchID: domain.MainBranchID}); len(hits) != 0 {
+	if hits, _, _ := store.SearchPersons(ctx, repository.SearchOptions{Query: "Coleman", Limit: 10, BranchID: domain.MainBranchID}); len(hits) != 0 {
 		t.Fatalf("main Search for branch-only surname: want empty, got %+v", hits)
 	}
 }

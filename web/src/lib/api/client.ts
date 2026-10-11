@@ -768,6 +768,7 @@ class ApiClient {
 		sort?: 'relevance' | 'name' | 'birth_date' | 'death_date';
 		order?: 'asc' | 'desc';
 		limit?: number;
+		offset?: number;
 	}): Promise<SearchResults> {
 		const searchParams = new URLSearchParams();
 		if (params.q) searchParams.set('q', params.q);
@@ -782,6 +783,7 @@ class ApiClient {
 		if (params.sort) searchParams.set('sort', params.sort);
 		if (params.order) searchParams.set('order', params.order);
 		if (params.limit) searchParams.set('limit', params.limit.toString());
+		if (params.offset) searchParams.set('offset', params.offset.toString());
 
 		return this.request<SearchResults>('GET', `/search?${searchParams.toString()}`);
 	}

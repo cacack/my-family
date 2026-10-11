@@ -5303,7 +5303,9 @@ type SearchResult struct {
 type SearchResults struct {
 	Items []SearchResult `json:"items"`
 	Query *string        `json:"query,omitempty"`
-	Total int            `json:"total"`
+
+	// Total Number of people matching the search, independent of limit and offset
+	Total int `json:"total"`
 }
 
 // Snapshot defines model for Snapshot.
@@ -7003,8 +7005,9 @@ type SearchPersonsParams struct {
 	Sort *SearchPersonsParamsSort `form:"sort,omitempty" json:"sort,omitempty"`
 
 	// Order Sort order
-	Order *SearchPersonsParamsOrder `form:"order,omitempty" json:"order,omitempty"`
-	Limit *LimitParam               `form:"limit,omitempty" json:"limit,omitempty"`
+	Order  *SearchPersonsParamsOrder `form:"order,omitempty" json:"order,omitempty"`
+	Limit  *LimitParam               `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *OffsetParam              `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
 // SearchPersonsParamsSort defines parameters for SearchPersons.
@@ -11264,6 +11267,13 @@ func (w *ServerInterfaceWrapper) SearchPersons(ctx echo.Context) error {
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", ctx.QueryParams(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter limit: %s", err))
+	}
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "offset", ctx.QueryParams(), &params.Offset, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter offset: %s", err))
 	}
 
 	// Invoke the callback with all the unmarshaled arguments

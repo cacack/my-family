@@ -244,7 +244,9 @@ Known differences that remain:
 - **Soundex.** PostgreSQL uses `difference() >= 3`; SQLite and memory require
   equal Soundex codes.
 - **Which matches fill the limit.** Search returns at most `limit` people (20 by
-  default, at most 100). Plain searches order by relevance (`ts_rank`) on
+  default, at most 100) starting at `offset`, and `total` counts every match
+  regardless of either. Every search order ends on id, so offset pages are
+  stable. Plain searches order by relevance (`ts_rank`) on
   PostgreSQL and by name on SQLite, so when more people match than the limit,
   the two return different subsets of the same match set. Fuzzy searches order
   by similarity on both, scoring each person as PostgreSQL's `DISTINCT ON (id)
@@ -254,8 +256,8 @@ Known differences that remain:
   (`TestSearchParity_FuzzyPrimaryName`). Ties are broken by surname, given
   name and id, so both return the same people in the same order
   (`TestSearchParity_FuzzyLimit`) as long as PostgreSQL's collation orders names by code point, as the `C` and
-  `C.UTF-8` collations do. The in-memory demo store keeps relevance results in
-  the order it finds them.
+  `C.UTF-8` collations do. The in-memory demo store orders plain searches by
+  name and id, as SQLite does.
 
 ### Repository Interfaces
 

@@ -61,7 +61,7 @@ func searchNames(t *testing.T, store *memory.ReadModelStore, ids map[string]uuid
 	if opts.Limit == 0 {
 		opts.Limit = 20
 	}
-	results, err := store.SearchPersons(context.Background(), opts)
+	results, _, err := store.SearchPersons(context.Background(), opts)
 	if err != nil {
 		t.Fatalf("SearchPersons(%+v): %v", opts, err)
 	}

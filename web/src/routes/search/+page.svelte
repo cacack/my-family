@@ -24,7 +24,10 @@
 
 	const SORTS = ['relevance', 'name', 'birth_date', 'death_date'] as const;
 	const PAGE_SIZE = 20;
-	const MAX_LIMIT = 100; // The API's cap on `limit`
+	const API_MAX_LIMIT = 100; // The API's cap on `limit` per request
+	// Cap on a `limit` read from the URL, so a shared link fetches at most
+	// MAX_URL_LIMIT / API_MAX_LIMIT pages. Load more can still grow past it.
+	const MAX_URL_LIMIT = 1000;
 	const DEFAULTS = { sort: 'relevance', order: 'desc', limit: PAGE_SIZE } as const;
 
 	// Form state
@@ -89,7 +92,7 @@
 		deathPlace = params.get('death_place') ?? '';
 		sort = readEnum(params, 'sort', SORTS, DEFAULTS.sort);
 		order = readEnum(params, 'order', ['asc', 'desc'] as const, DEFAULTS.order);
-		limit = readPositiveInt(params, 'limit', DEFAULTS.limit, MAX_LIMIT);
+		limit = readPositiveInt(params, 'limit', DEFAULTS.limit, MAX_URL_LIMIT);
 		if (hasAnyCriteria) {
 			performSearch();
 		} else {
@@ -258,14 +261,17 @@
 		if (deathPlace.trim()) params.death_place = deathPlace.trim();
 		params.sort = sort;
 		params.order = order;
-		params.limit = limit;
 
 		return params;
 	}
 
 	// Back/Forward can start searches faster than they finish: only the latest one may land.
 	let searchSeq = 0;
+	// The criteria `results` were fetched for, so Load more fetches only the next page.
+	let resultsKey = '';
 
+	// Fetches the first `limit` matches, in pages of at most API_MAX_LIMIT. When
+	// only `limit` grew (Load more), the results already shown are kept.
 	async function performSearch() {
 		if (!hasAnyCriteria) return;
 
@@ -273,18 +279,32 @@
 		loading = true;
 		error = null;
 		searched = true;
+		const params = buildSearchParams();
+		const key = JSON.stringify(params);
+		let items = key === resultsKey && results.length < Math.min(limit, total) ? results : [];
+		let matches = total;
 		try {
-			const params = buildSearchParams();
-			const result = await api.searchPersons(params);
-			if (seq !== searchSeq) return;
-			results = result.items;
-			total = result.total;
+			while (true) {
+				const request = { ...params, limit: Math.min(limit - items.length, API_MAX_LIMIT) };
+				if (items.length > 0) request.offset = items.length;
+				const page = await api.searchPersons(request);
+				if (seq !== searchSeq) return;
+				items = [...items, ...page.items];
+				matches = page.total;
+				// Stop at a short page (no more matches) or once `limit` rows, or every
+				// match, are shown. Each full page adds rows, so the loop ends.
+				if (page.items.length < request.limit || items.length >= Math.min(limit, matches)) break;
+			}
+			results = items;
+			total = matches;
+			resultsKey = key;
 		} catch (e) {
 			if (seq !== searchSeq) return;
 			const apiError = e as { message?: string };
 			error = apiError.message || 'Search failed. Please try again.';
 			results = [];
 			total = 0;
+			resultsKey = '';
 		} finally {
 			if (seq === searchSeq) loading = false;
 		}
@@ -340,7 +360,7 @@
 	}
 
 	function loadMore() {
-		limit = Math.min(limit + PAGE_SIZE, MAX_LIMIT);
+		limit += PAGE_SIZE;
 		submit(false);
 	}
 

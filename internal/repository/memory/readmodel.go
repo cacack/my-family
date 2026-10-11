@@ -1,6 +1,7 @@
 package memory
 
 import (
+	"bytes"
 	"context"
 	"slices"
 	"sort"
@@ -332,7 +333,7 @@ func (s *ReadModelStore) ListPersons(ctx context.Context, opts repository.ListOp
 }
 
 // SearchPersons searches for persons by name, including alternate names.
-func (s *ReadModelStore) SearchPersons(ctx context.Context, opts repository.SearchOptions) ([]repository.PersonReadModel, error) {
+func (s *ReadModelStore) SearchPersons(ctx context.Context, opts repository.SearchOptions) ([]repository.PersonReadModel, int, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -346,7 +347,7 @@ func (s *ReadModelStore) SearchPersons(ctx context.Context, opts repository.Sear
 		opts.DeathDateFrom != nil || opts.DeathDateTo != nil
 	hasPlaceFilter := opts.BirthPlace != "" || opts.DeathPlace != ""
 	if !hasQuery && !hasDateFilter && !hasPlaceFilter {
-		return nil, nil
+		return nil, 0, nil
 	}
 
 	queryLower := strings.ToLower(opts.Query)
@@ -372,12 +373,12 @@ func (s *ReadModelStore) SearchPersons(ctx context.Context, opts repository.Sear
 	// Sort results to match postgres/sqlite behavior
 	sortSearchResults(results, opts)
 
-	// Apply limit after sorting
-	if opts.Limit > 0 && len(results) > opts.Limit {
-		results = results[:opts.Limit]
+	// Page after sorting; the total counts every match.
+	limit := opts.Limit
+	if limit <= 0 {
+		limit = len(results)
 	}
-
-	return results, nil
+	return repository.Page(results, opts.Offset, limit), len(results), nil
 }
 
 // sqlFullName is the full name the SQL stores search: their full_name columns
@@ -417,9 +418,6 @@ func (s *ReadModelStore) personMatchesQuery(p *repository.PersonReadModel, query
 // searchAlternateNames searches person_names for alternate name matches.
 func (s *ReadModelStore) searchAlternateNames(branchID domain.BranchID, queryLower string, opts repository.SearchOptions, foundIDs map[uuid.UUID]bool, results *[]repository.PersonReadModel) {
 	for personID, names := range resolveAllBuckets(s.personNames, branchID) {
-		if len(*results) >= opts.Limit {
-			break
-		}
 		if foundIDs[personID] {
 			continue
 		}
@@ -462,18 +460,10 @@ func altNameMatches(name repository.PersonNameReadModel, queryLower string, opts
 
 // sortSearchResults sorts results by the requested field and direction.
 func sortSearchResults(results []repository.PersonReadModel, opts repository.SearchOptions) {
-	if opts.Sort == "" || opts.Sort == "relevance" {
-		return // keep insertion order for relevance
-	}
 	desc := strings.EqualFold(opts.Order, "desc")
 	sort.SliceStable(results, func(i, j int) bool {
 		var cmp int
 		switch opts.Sort {
-		case "name":
-			cmp = strings.Compare(results[i].Surname, results[j].Surname)
-			if cmp == 0 {
-				cmp = strings.Compare(results[i].GivenName, results[j].GivenName)
-			}
 		case "birth_date", "death_date":
 			a, b := results[i].BirthDateSort, results[j].BirthDateSort
 			if opts.Sort == "death_date" {
@@ -485,8 +475,15 @@ func sortSearchResults(results []repository.PersonReadModel, opts repository.Sea
 				return b == nil
 			}
 			cmp = compareTimePtr(a, b)
-		default:
-			return false
+		default: // "name", "relevance" or empty: by name, as the SQLite store
+			cmp = strings.Compare(results[i].Surname, results[j].Surname)
+			if cmp == 0 {
+				cmp = strings.Compare(results[i].GivenName, results[j].GivenName)
+			}
+		}
+		// Ties break on id so pages never overlap or skip a match (#902).
+		if cmp == 0 {
+			cmp = bytes.Compare(results[i].ID[:], results[j].ID[:])
 		}
 		if desc {
 			return cmp > 0

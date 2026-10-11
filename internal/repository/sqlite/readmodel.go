@@ -1106,8 +1106,8 @@ func (s *ReadModelStore) ListPersons(ctx context.Context, opts repository.ListOp
 // people (DB-005, ADR-002): a plain query is a case-insensitive substring match,
 // and a fuzzy query is pg_trgm trigram similarity, computed in Go here because
 // SQLite has no trigram operator.
-func (s *ReadModelStore) SearchPersons(ctx context.Context, opts repository.SearchOptions) ([]repository.PersonReadModel, error) {
-	// Normalize limit
+func (s *ReadModelStore) SearchPersons(ctx context.Context, opts repository.SearchOptions) ([]repository.PersonReadModel, int, error) {
+	// Normalize limit and offset
 	limit := opts.Limit
 	if limit <= 0 {
 		limit = 20
@@ -1115,6 +1115,7 @@ func (s *ReadModelStore) SearchPersons(ctx context.Context, opts repository.Sear
 	if limit > 100 {
 		limit = 100
 	}
+	opts.Offset = max(opts.Offset, 0)
 
 	// Trim the query and places as the PostgreSQL store does: a whitespace-only
 	// query is "no query" (a filters-only search), a blank place is no filter, and
@@ -1149,7 +1150,7 @@ func (s *ReadModelStore) SearchPersons(ctx context.Context, opts repository.Sear
 	}
 
 	// No criteria at all — return empty
-	return nil, nil
+	return nil, 0, nil
 }
 
 // searchPersonsLike matches the query as a case-insensitive substring of a
@@ -1164,19 +1165,35 @@ func (s *ReadModelStore) SearchPersons(ctx context.Context, opts repository.Sear
 // Alternate names are matched in an uncorrelated IN subquery, which SQLite runs
 // once, rather than joined per person: a LEFT JOIN against the names overlay
 // scans every name for every person, which is quadratic in tree size.
-func (s *ReadModelStore) searchPersonsLike(ctx context.Context, opts repository.SearchOptions, limit int) ([]repository.PersonReadModel, error) {
-	query, args := searchPersonsLikeSQL(opts, limit)
-	rows, err := s.db.QueryContext(ctx, query, args...)
+func (s *ReadModelStore) searchPersonsLike(ctx context.Context, opts repository.SearchOptions, limit int) ([]repository.PersonReadModel, int, error) {
+	query, args := searchPersonsLikeSQL(opts)
+	persons, total, err := s.queryPersonPage(ctx, query, args, limit, opts.Offset)
 	if err != nil {
-		return nil, fmt.Errorf("search persons: %w", err)
+		return nil, 0, fmt.Errorf("search persons: %w", err)
 	}
-	defer rows.Close()
-
-	return scanPersonRows(rows)
+	return persons, total, nil
 }
 
-// searchPersonsLikeSQL builds searchPersonsLike's statement and arguments.
-func searchPersonsLikeSQL(opts repository.SearchOptions, limit int) (string, []any) {
+// queryPersonPage runs an ordered person query (personCols, no LIMIT) for one
+// page, and counts every row it matches for the total.
+func (s *ReadModelStore) queryPersonPage(ctx context.Context, query string, args []any, limit, offset int) ([]repository.PersonReadModel, int, error) {
+	var total int
+	// #nosec G202 -- query is built from internal SQL fragments with ? placeholders
+	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM ("+query+")", args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	rows, err := s.db.QueryContext(ctx, query+" LIMIT ? OFFSET ?", append(args, limit, offset)...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	persons, err := scanPersonRows(rows)
+	return persons, total, err
+}
+
+// searchPersonsLikeSQL builds searchPersonsLike's statement and arguments,
+// ordered but without a LIMIT.
+func searchPersonsLikeSQL(opts repository.SearchOptions) (string, []any) {
 	filterSQL, filterArgs := buildDatePlaceFilters(opts)
 	orderClause := searchOrderClause(opts, "p.")
 	overlay, overlayArgs := personOverlaySubquery(opts.BranchID)
@@ -1205,8 +1222,7 @@ func searchPersonsLikeSQL(opts repository.SearchOptions, limit int) (string, []a
 		args = append(args, filterArgs...)
 	}
 
-	sb.WriteString(" ORDER BY " + orderClause + " LIMIT ?")
-	args = append(args, limit)
+	sb.WriteString(" ORDER BY " + orderClause)
 	return sb.String(), args
 }
 
@@ -1240,14 +1256,14 @@ func personNamesOverlaySubquery(branchID domain.BranchID) (string, []any) {
 // name, surname or full name, or to the given name, surname, full name or
 // nickname of one of their alternate names. SQLite has no trigram operator, so
 // every person that passes the date/place filters is read and scored in Go;
-// unlike the Soundex path there is no candidate cap, so a match is never missed
+// as on the Soundex path there is no candidate cap, so a match is never missed
 // because it sorted late. The scan reads only the columns that are scored or
 // sorted on; the full rows are fetched for the people that make the limit.
 //
 // Results are ordered by best similarity (highest first, or lowest with
 // order=asc), ties broken by surname, given name and id as on PostgreSQL,
 // unless a name or date sort is requested.
-func (s *ReadModelStore) searchPersonsFuzzy(ctx context.Context, opts repository.SearchOptions, limit int) ([]repository.PersonReadModel, error) {
+func (s *ReadModelStore) searchPersonsFuzzy(ctx context.Context, opts repository.SearchOptions, limit int) ([]repository.PersonReadModel, int, error) {
 	filterSQL, filterArgs := buildDatePlaceFilters(opts)
 	overlay, overlayArgs := personOverlaySubquery(opts.BranchID)
 	namesOverlay, namesArgs := personNamesOverlaySubquery(opts.BranchID)
@@ -1266,19 +1282,17 @@ func (s *ReadModelStore) searchPersonsFuzzy(ctx context.Context, opts repository
 
 	rows, err := s.db.QueryContext(ctx, sb.String(), args...)
 	if err != nil {
-		return nil, fmt.Errorf("search persons fuzzy: %w", err)
+		return nil, 0, fmt.Errorf("search persons fuzzy: %w", err)
 	}
 	matched, err := scoreFuzzyRows(rows, repository.NewTrigramQuery(opts.Query))
 	rows.Close()
 	if err != nil {
-		return nil, fmt.Errorf("search persons fuzzy: %w", err)
+		return nil, 0, fmt.Errorf("search persons fuzzy: %w", err)
 	}
-	ranked := orderFuzzyMatches(matched, opts)
-	if len(ranked) > limit {
-		ranked = ranked[:limit]
-	}
+	all := orderFuzzyMatches(matched, opts)
+	ranked := repository.Page(all, opts.Offset, limit)
 	if len(ranked) == 0 {
-		return nil, nil
+		return nil, len(all), nil
 	}
 
 	ids := make([]uuid.UUID, len(ranked))
@@ -1287,7 +1301,7 @@ func (s *ReadModelStore) searchPersonsFuzzy(ctx context.Context, opts repository
 	}
 	full, err := s.GetPersonsByIDs(ctx, opts.BranchID, ids)
 	if err != nil {
-		return nil, fmt.Errorf("search persons fuzzy: %w", err)
+		return nil, 0, fmt.Errorf("search persons fuzzy: %w", err)
 	}
 	byID := make(map[uuid.UUID]repository.PersonReadModel, len(full))
 	for _, p := range full {
@@ -1299,7 +1313,7 @@ func (s *ReadModelStore) searchPersonsFuzzy(ctx context.Context, opts repository
 			results = append(results, p)
 		}
 	}
-	return results, nil
+	return results, len(all), nil
 }
 
 // fuzzyMatch is a person that matched a fuzzy search, with their best score.
@@ -1446,12 +1460,12 @@ func orderFuzzyMatches(matched []fuzzyMatch, opts repository.SearchOptions) []re
 	return results
 }
 
-// searchPersonsSoundex fetches candidates filtered by date/place, then post-filters using Soundex in Go.
-func (s *ReadModelStore) searchPersonsSoundex(ctx context.Context, opts repository.SearchOptions, limit int) ([]repository.PersonReadModel, error) {
+// searchPersonsSoundex fetches every candidate matching the date/place filters,
+// then post-filters using Soundex in Go. Candidates are not capped, so the
+// total counts every match (like searchPersonsFuzzy).
+func (s *ReadModelStore) searchPersonsSoundex(ctx context.Context, opts repository.SearchOptions, limit int) ([]repository.PersonReadModel, int, error) {
 	filterSQL, filterArgs := buildDatePlaceFilters(opts)
 
-	// Fetch a large candidate set (up to 1000) narrowed by date/place filters
-	candidateLimit := 1000
 	overlay, overlayArgs := personOverlaySubquery(opts.BranchID)
 
 	var sb strings.Builder
@@ -1471,18 +1485,15 @@ func (s *ReadModelStore) searchPersonsSoundex(ctx context.Context, opts reposito
 		args = append(args, filterArgs...)
 	}
 
-	sb.WriteString(" LIMIT ?")
-	args = append(args, candidateLimit)
-
 	rows, err := s.db.QueryContext(ctx, sb.String(), args...)
 	if err != nil {
-		return nil, fmt.Errorf("search persons soundex: %w", err)
+		return nil, 0, fmt.Errorf("search persons soundex: %w", err)
 	}
 	defer rows.Close()
 
 	candidates, err := scanPersonRows(rows)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	// Split query into words for soundex comparison
@@ -1494,7 +1505,7 @@ func (s *ReadModelStore) searchPersonsSoundex(ctx context.Context, opts reposito
 		var err error
 		namesByPerson, err = s.loadPersonNamesForSoundex(ctx, opts.BranchID, candidates)
 		if err != nil {
-			return nil, fmt.Errorf("load person names for soundex: %w", err)
+			return nil, 0, fmt.Errorf("load person names for soundex: %w", err)
 		}
 	}
 
@@ -1506,13 +1517,9 @@ func (s *ReadModelStore) searchPersonsSoundex(ctx context.Context, opts reposito
 		}
 	}
 
-	// Sort before applying limit
+	// Sort before paging; the total counts every match.
 	sortPersonResults(results, opts)
-	if len(results) > limit {
-		results = results[:limit]
-	}
-
-	return results, nil
+	return repository.Page(results, opts.Offset, limit), len(results), nil
 }
 
 // nameEntry holds name fields for Soundex comparison.
@@ -1598,7 +1605,7 @@ func personMatchesSoundex(p repository.PersonReadModel, queryWords []string, alt
 }
 
 // searchPersonsFiltersOnly searches using only date/place filters (no text query).
-func (s *ReadModelStore) searchPersonsFiltersOnly(ctx context.Context, opts repository.SearchOptions, limit int) ([]repository.PersonReadModel, error) {
+func (s *ReadModelStore) searchPersonsFiltersOnly(ctx context.Context, opts repository.SearchOptions, limit int) ([]repository.PersonReadModel, int, error) {
 	filterSQL, filterArgs := buildDatePlaceFilters(opts)
 	orderClause := searchOrderClause(opts, "p.")
 	overlay, overlayArgs := personOverlaySubquery(opts.BranchID)
@@ -1620,16 +1627,13 @@ func (s *ReadModelStore) searchPersonsFiltersOnly(ctx context.Context, opts repo
 		args = append(args, filterArgs...)
 	}
 
-	sb.WriteString(" ORDER BY " + orderClause + " LIMIT ?")
-	args = append(args, limit)
+	sb.WriteString(" ORDER BY " + orderClause)
 
-	rows, err := s.db.QueryContext(ctx, sb.String(), args...)
+	persons, total, err := s.queryPersonPage(ctx, sb.String(), args, limit, opts.Offset)
 	if err != nil {
-		return nil, fmt.Errorf("search persons filters: %w", err)
+		return nil, 0, fmt.Errorf("search persons filters: %w", err)
 	}
-	defer rows.Close()
-
-	return scanPersonRows(rows)
+	return persons, total, nil
 }
 
 // buildDatePlaceFilters builds SQL WHERE conditions for date range and place filters.
@@ -1680,15 +1684,15 @@ func searchOrderClause(opts repository.SearchOptions, prefix string) string {
 		dir = "DESC"
 	}
 
+	// Ties break on id so pages never overlap or skip a match (#902).
+	tiebreak := ", " + prefix + "id " + dir
 	switch opts.Sort {
-	case "name":
-		return prefix + "surname " + dir + ", " + prefix + "given_name " + dir
 	case "birth_date":
-		return prefix + "birth_date_sort " + dir
+		return prefix + "birth_date_sort " + dir + tiebreak
 	case "death_date":
-		return prefix + "death_date_sort " + dir
-	default: // "relevance" or empty
-		return prefix + "surname " + dir + ", " + prefix + "given_name " + dir
+		return prefix + "death_date_sort " + dir + tiebreak
+	default: // "name", "relevance" or empty
+		return prefix + "surname " + dir + ", " + prefix + "given_name " + dir + tiebreak
 	}
 }
 
@@ -1730,11 +1734,18 @@ func sortPersonResults(persons []repository.PersonReadModel, opts repository.Sea
 			return a.GivenName < b.GivenName
 		}
 	}
+	// Ties break on id so pages never overlap or skip a match (#902).
+	keyThenID := func(i, j int) bool {
+		if less(i, j) || less(j, i) {
+			return less(i, j)
+		}
+		return bytes.Compare(persons[i].ID[:], persons[j].ID[:]) < 0
+	}
 
 	if strings.EqualFold(opts.Order, "desc") {
-		sort.Slice(persons, func(i, j int) bool { return less(j, i) })
+		sort.Slice(persons, func(i, j int) bool { return keyThenID(j, i) })
 	} else {
-		sort.Slice(persons, less)
+		sort.Slice(persons, keyThenID)
 	}
 }
 

@@ -167,8 +167,8 @@ func extractChangesResolved(t *testing.T, service *HistoryService, evt repositor
 func (m *mockReadModelStore) ListPersons(ctx context.Context, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
 	return nil, 0, nil
 }
-func (m *mockReadModelStore) SearchPersons(ctx context.Context, opts repository.SearchOptions) ([]repository.PersonReadModel, error) {
-	return nil, nil
+func (m *mockReadModelStore) SearchPersons(ctx context.Context, opts repository.SearchOptions) ([]repository.PersonReadModel, int, error) {
+	return nil, 0, nil
 }
 func (m *mockReadModelStore) SavePerson(ctx context.Context, _ domain.BranchID, person *repository.PersonReadModel) error {
 	return nil

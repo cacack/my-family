@@ -2,8 +2,10 @@ package api_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 
@@ -295,6 +297,60 @@ func TestSearchPersons(t *testing.T) {
 	}
 	if resp["total"].(float64) != 2 {
 		t.Errorf("total = %v, want 2", resp["total"])
+	}
+}
+
+// TestSearchPersons_TotalIsEveryMatch verifies total counts every match, not
+// the page, and that limit/offset page through them (#902).
+func TestSearchPersons_TotalIsEveryMatch(t *testing.T) {
+	server := setupTestServer()
+	for i := range 3 {
+		body := fmt.Sprintf(`{"given_name":"Person%d","surname":"Pagetest"}`, i)
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/persons", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		server.Echo().ServeHTTP(rec, req)
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("create person: status %d", rec.Code)
+		}
+	}
+
+	tests := []struct {
+		query     string
+		wantNames []string
+	}{
+		{"limit=2", []string{"Person0", "Person1"}},
+		{"limit=2&offset=2", []string{"Person2"}},
+		{"limit=2&offset=5", nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.query, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/api/v1/search?q=Pagetest&sort=name&order=asc&"+tt.query, http.NoBody)
+			rec := httptest.NewRecorder()
+			server.Echo().ServeHTTP(rec, req)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("Status = %d, want %d", rec.Code, http.StatusOK)
+			}
+			var resp struct {
+				Items []struct {
+					GivenName string `json:"given_name"`
+				} `json:"items"`
+				Total int `json:"total"`
+			}
+			if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+				t.Fatalf("Failed to parse response: %v", err)
+			}
+			if resp.Total != 3 {
+				t.Errorf("total = %d, want 3", resp.Total)
+			}
+			var got []string
+			for _, item := range resp.Items {
+				got = append(got, item.GivenName)
+			}
+			if !slices.Equal(got, tt.wantNames) {
+				t.Errorf("items = %v, want %v", got, tt.wantNames)
+			}
+		})
 	}
 }
 
