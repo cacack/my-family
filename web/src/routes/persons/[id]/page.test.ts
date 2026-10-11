@@ -322,6 +322,22 @@ describe('Person detail edit form', () => {
 		await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Edit' })));
 	});
 
+	// A rejected date must not wipe the form (#904).
+	it('shows a rejected save in the form and keeps what was typed', async () => {
+		getPerson.mockResolvedValue(person());
+		updatePerson.mockRejectedValue({ message: 'invalid input: birth_date: "garbage" is not a recognized date' });
+		await openEdit();
+
+		await fireEvent.input(screen.getByLabelText('Birth Date'), { target: { value: 'garbage' } });
+		await save();
+
+		expect((await screen.findByRole('alert')).textContent).toContain('is not a recognized date');
+		expect((screen.getByLabelText('Birth Date') as HTMLInputElement).value).toBe('garbage');
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+		expect(screen.queryByText(/is not a recognized date/)).toBeNull();
+	});
+
 	it('sends no gender when it is untouched', async () => {
 		getPerson.mockResolvedValue(person());
 		await openEdit();
