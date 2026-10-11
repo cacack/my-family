@@ -127,21 +127,29 @@
 		'reset-view': handleResetView
 	});
 
+	// Re-rooting, a generations change or Back can start loads faster than they
+	// finish: only the latest one may land.
+	let loadSeq = 0;
+
 	async function loadPedigree(personId: string, gens: number) {
+		const seq = ++loadSeq;
 		loading = true;
 		error = null;
 		try {
-			pedigree = await api.getPedigree(personId, gens);
+			const result = await api.getPedigree(personId, gens);
+			if (seq !== loadSeq) return;
+			pedigree = result;
 			// Initialize selection to the root person
 			if (pedigree?.root?.id) {
 				selectedPersonId = pedigree.root.id;
 			}
 		} catch (e) {
+			if (seq !== loadSeq) return;
 			error = recordLoadError(e, 'person');
 			pedigree = null;
 			selectedPersonId = null;
 		} finally {
-			loading = false;
+			if (seq === loadSeq) loading = false;
 		}
 	}
 

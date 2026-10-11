@@ -138,4 +138,24 @@ describe('Evidence Hub Page', () => {
 			expect(screen.getByRole('tab', { name: 'Analyses' }).getAttribute('aria-selected')).toBe('true')
 		);
 	});
+	it('ignores a load that resolves after a newer one (#947)', async () => {
+		let resolveSlow: (r: apiModule.EvidenceAnalysisListResponse) => void = () => {};
+		const stale: apiModule.EvidenceAnalysisListResponse = {
+			analyses: [{ ...mockAnalysesList.analyses[0], id: 'ea-old', conclusion: 'Stale conclusion' }],
+			total: 1
+		};
+		vi.mocked(apiModule.api.listEvidenceAnalyses).mockReturnValueOnce(
+			new Promise((r) => (resolveSlow = r))
+		);
+		render(Page);
+		await fireEvent.click(screen.getByRole('tab', { name: 'Proof Summaries' }));
+		await waitFor(() => expect(currentPath()).toBe('/evidence?tab=summaries'));
+		back();
+		await waitFor(() => expect(screen.getAllByText('Born circa 1850 in Ohio').length).toBeGreaterThan(0));
+
+		resolveSlow(stale);
+		await new Promise((r) => setTimeout(r, 0));
+		expect(screen.getAllByText('Born circa 1850 in Ohio').length).toBeGreaterThan(0);
+		expect(screen.queryByText('Stale conclusion')).toBeNull();
+	});
 });

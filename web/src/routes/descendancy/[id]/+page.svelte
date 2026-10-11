@@ -142,21 +142,29 @@
 		'reset-view': handleResetView
 	});
 
+	// Re-rooting, a generations change or Back can start loads faster than they
+	// finish: only the latest one may land.
+	let loadSeq = 0;
+
 	async function loadDescendancy(personId: string, gens: number) {
+		const seq = ++loadSeq;
 		loading = true;
 		error = null;
 		try {
-			descendancy = await api.getDescendancy(personId, gens);
+			const result = await api.getDescendancy(personId, gens);
+			if (seq !== loadSeq) return;
+			descendancy = result;
 			// Initialize selection to the root person
 			if (descendancy?.root?.id) {
 				selectedPersonId = descendancy.root.id;
 			}
 		} catch (e) {
+			if (seq !== loadSeq) return;
 			error = recordLoadError(e, 'person');
 			descendancy = null;
 			selectedPersonId = null;
 		} finally {
-			loading = false;
+			if (seq === loadSeq) loading = false;
 		}
 	}
 

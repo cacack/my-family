@@ -85,7 +85,15 @@
 
 	// --- Data loading ---
 
+	// Tab switches, Back and paging can start loads faster than they finish:
+	// only each tab's latest load may land.
+	let analysesSeq = 0;
+	let conflictsSeq = 0;
+	let logsSeq = 0;
+	let summariesSeq = 0;
+
 	async function loadAnalyses() {
+		const seq = ++analysesSeq;
 		analysesLoading = true;
 		analysesError = null;
 		try {
@@ -93,16 +101,19 @@
 				limit: pageSize,
 				offset: (analysesPage - 1) * pageSize
 			});
+			if (seq !== analysesSeq) return;
 			analyses = result.analyses;
 			analysesTotal = result.total ?? 0;
 		} catch (e) {
+			if (seq !== analysesSeq) return;
 			analysesError = (e as { message?: string }).message || 'Failed to load analyses';
 		} finally {
-			analysesLoading = false;
+			if (seq === analysesSeq) analysesLoading = false;
 		}
 	}
 
 	async function loadConflicts() {
+		const seq = ++conflictsSeq;
 		conflictsLoading = true;
 		conflictsError = null;
 		try {
@@ -112,6 +123,7 @@
 				offset: (conflictsPage - 1) * pageSize,
 				status: statusParam as ConflictStatus | undefined
 			});
+			if (seq !== conflictsSeq) return;
 			conflicts = result.conflicts;
 			conflictsTotal = result.total ?? 0;
 
@@ -129,13 +141,15 @@
 				}
 			}
 		} catch (e) {
+			if (seq !== conflictsSeq) return;
 			conflictsError = (e as { message?: string }).message || 'Failed to load conflicts';
 		} finally {
-			conflictsLoading = false;
+			if (seq === conflictsSeq) conflictsLoading = false;
 		}
 	}
 
 	async function loadLogs() {
+		const seq = ++logsSeq;
 		logsLoading = true;
 		logsError = null;
 		try {
@@ -143,16 +157,19 @@
 				limit: pageSize,
 				offset: (logsPage - 1) * pageSize
 			});
+			if (seq !== logsSeq) return;
 			logs = result.logs;
 			logsTotal = result.total ?? 0;
 		} catch (e) {
+			if (seq !== logsSeq) return;
 			logsError = (e as { message?: string }).message || 'Failed to load research logs';
 		} finally {
-			logsLoading = false;
+			if (seq === logsSeq) logsLoading = false;
 		}
 	}
 
 	async function loadSummaries() {
+		const seq = ++summariesSeq;
 		summariesLoading = true;
 		summariesError = null;
 		try {
@@ -160,12 +177,14 @@
 				limit: pageSize,
 				offset: (summariesPage - 1) * pageSize
 			});
+			if (seq !== summariesSeq) return;
 			summaries = result.summaries;
 			summariesTotal = result.total ?? 0;
 		} catch (e) {
+			if (seq !== summariesSeq) return;
 			summariesError = (e as { message?: string }).message || 'Failed to load proof summaries';
 		} finally {
-			summariesLoading = false;
+			if (seq === summariesSeq) summariesLoading = false;
 		}
 	}
 
