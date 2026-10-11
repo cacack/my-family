@@ -86,7 +86,7 @@
 
 		<div class="feed-grid">
 			{#each displayedSuggestions as suggestion}
-				<a href={suggestion.action_url} class="feed-card-link" data-type={suggestion.type}>
+				<a href={suggestion.action_url} class="feed-card-link" data-slot="card-link" data-type={suggestion.type}>
 					<Card size="sm" class="h-full p-0 hover:ring-primary/30 hover:shadow-sm transition-all">
 						<CardContent class="flex gap-3 p-4">
 							<div class="feed-icon">

@@ -112,7 +112,7 @@
 	<div class="branch-notice" role="alert">
 		<span class="notice-text">{activeBranch.notice}</span>
 		{#if activeBranch.noticeHref}
-			<a class="notice-action" href={activeBranch.noticeHref} onclick={dismissBranchNotice}>
+			<a class="notice-action" data-slot="action-link" href={activeBranch.noticeHref} onclick={dismissBranchNotice}>
 				Finish merge
 			</a>
 		{/if}
@@ -176,7 +176,7 @@
 				</p>
 			</details>
 		</span>
-		<a class="branch-compare" href="/branches/{activeBranch.id}">Compare</a>
+		<a class="branch-compare" data-slot="action-link" href="/branches/{activeBranch.id}">Compare</a>
 		<button class="branch-exit" onclick={handleReturn} disabled={leaving}>
 			{leaving ? 'Returning...' : 'Return to Mainline'}
 		</button>

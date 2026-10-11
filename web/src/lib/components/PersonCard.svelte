@@ -70,7 +70,7 @@
 <Card size={cardSize} class="p-0 hover:ring-foreground/20 hover:shadow-sm transition-all">
 	<CardContent class="p-0">
 		{#if href}
-			<a {href} class="card-link" class:compact={variant === 'compact'}>
+			<a {href} class="card-link" data-slot="card-link" class:compact={variant === 'compact'}>
 				{@render cardInner()}
 			</a>
 		{:else}

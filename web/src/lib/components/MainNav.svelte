@@ -68,6 +68,7 @@
 				<a
 					href={entry.href}
 					class="nav-link {active ? activeClass : idleClass}"
+					data-slot="nav-link"
 					aria-current={active ? 'page' : undefined}>{entry.label}</a
 				>
 			{/if}

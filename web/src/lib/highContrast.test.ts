@@ -38,6 +38,37 @@ describe('high-contrast definition', () => {
 		expect(themed.filter((t) => !highContrast.has(t))).toEqual([]);
 	});
 
+	it('styles links outside any cascade layer, so component-scoped link rules cannot beat it', () => {
+		// Unlayered styles beat layered ones whatever their specificity (#961).
+		const selector = 'body.high-contrast a:not([data-slot]) {';
+		const at = appCss.indexOf(selector);
+		expect(at, `no "${selector}" rule in app.css`).toBeGreaterThanOrEqual(0);
+		const before = appCss.slice(0, at).replace(/\/\*[\s\S]*?\*\//g, '');
+		const depth = (before.match(/\{/g) ?? []).length - (before.match(/\}/g) ?? []).length;
+		expect(depth).toBe(0);
+	});
+
+	it('exempts component links only through data-slot, from the documented set', () => {
+		// app.css reads only the presence of `data-slot`; these values say why a
+		// link outside shadcn's own parts (src/lib/components/ui) is exempt.
+		const allowed = new Set(['card-link', 'action-link', 'nav-link', 'chip']);
+		// A class naming a card, button, chip or tile marks a component link.
+		const componentClass = /(^|[\s-])(card|btn|button|chip|tile)([\s-]|$)/;
+		const openTag = /<a(?=[\s>])((?:[^>{]|\{[^}]*\})*)>/g;
+		const offenders = Object.entries(svelteSources)
+			.filter(([file]) => !file.includes('/lib/components/ui/'))
+			.flatMap(([file, source]) =>
+				[...source.matchAll(openTag)].flatMap(([tag, attrs]) => {
+					const slot = attrs.match(/data-slot="([^"]*)"/)?.[1];
+					const cls = attrs.match(/class=["{]([^"}]*)/)?.[1] ?? '';
+					const untagged = slot === undefined && componentClass.test(cls);
+					const unknown = slot !== undefined && !allowed.has(slot);
+					return untagged || unknown ? [`${file}: ${tag}`] : [];
+				})
+			);
+		expect(offenders).toEqual([]);
+	});
+
 	it('is not redefined by any component', () => {
 		const offenders = Object.entries(svelteSources).flatMap(([file, source]) =>
 			[...source.matchAll(/body\.high-contrast\)?[^{]*\{([^}]*)\}/g)]

@@ -156,7 +156,7 @@
 			</CardHeader>
 			<CardContent>
 				<div class="action-buttons">
-				<a href="/import" class="action-btn primary">
+				<a href="/import" data-slot="action-link" class="action-btn primary">
 					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 						<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
 						<polyline points="17 8 12 3 7 8" />
@@ -164,7 +164,7 @@
 					</svg>
 					Import GEDCOM
 				</a>
-				<a href="/persons/add" class="action-btn">
+				<a href="/persons/add" data-slot="action-link" class="action-btn">
 					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 						<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
 						<circle cx="9" cy="7" r="4" />
@@ -173,7 +173,7 @@
 					</svg>
 					Add Person
 				</a>
-				<a href="/families/add" class="action-btn">
+				<a href="/families/add" data-slot="action-link" class="action-btn">
 					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 						<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
 						<circle cx="9" cy="7" r="4" />
@@ -182,7 +182,7 @@
 					</svg>
 					Add Family
 				</a>
-				<a href="/persons/quick" class="action-btn accent">
+				<a href="/persons/quick" data-slot="action-link" class="action-btn accent">
 					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 						<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
 					</svg>

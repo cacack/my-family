@@ -555,13 +555,13 @@
 					<h2>Partners</h2>
 					<div class="partners-grid">
 						{#if family.partner1}
-							<a href="/persons/{family.partner1.id}" class="partner-card">
+							<a href="/persons/{family.partner1.id}" class="partner-card" data-slot="card-link">
 								<div class="partner-name">{formatPersonName(family.partner1)}</div>
 							</a>
 						{/if}
 
 						{#if family.partner2}
-							<a href="/persons/{family.partner2.id}" class="partner-card">
+							<a href="/persons/{family.partner2.id}" class="partner-card" data-slot="card-link">
 								<div class="partner-name">{formatPersonName(family.partner2)}</div>
 							</a>
 						{/if}

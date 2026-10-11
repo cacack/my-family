@@ -41,7 +41,7 @@
 
 <Card class="p-0 hover:ring-foreground/20 hover:shadow-sm transition-all">
 	{#if href}
-		<a {href} class="card-link">
+		<a {href} class="card-link" data-slot="card-link">
 			<CardHeader class="pb-0">
 				{@render cardInner()}
 			</CardHeader>
