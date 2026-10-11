@@ -141,3 +141,27 @@ test('every nav destination is two taps away on a phone', async ({ page }) => {
 	await page.getByRole('menuitem', { name: 'Citation Templates' }).click();
 	await expect(page).toHaveURL(/\/browse\/citation-templates$/);
 });
+
+// A chart sized from its own SVG could grow with a taller window but never
+// shrink again, leaving the page scrolling after a rotation or resize.
+for (const chart of ['pedigree', 'descendancy']) {
+	test(`the ${chart} chart shrinks back when the window gets shorter`, async ({ page }) => {
+		const box = page.locator(`.${chart}-chart`);
+		const height = async () => (await box.boundingBox())!.height;
+		await page.setViewportSize({ width: 1280, height: 900 });
+		await page.goto(`/${chart}/${readSeed().switcher.person.id}`);
+		await expect(box.locator('svg g').first()).toBeAttached();
+		const initial = await height();
+
+		await page.setViewportSize({ width: 1280, height: 1300 });
+		const grown = initial + 400;
+		await expect.poll(height).toBeCloseTo(grown, 0);
+		// Wait for the chart to redraw at the new size: the redrawn SVG is what could pin it
+		const viewBoxHeight = () => box.locator('svg').evaluate((svg) => svg.viewBox.baseVal.height);
+		await expect.poll(viewBoxHeight).toBeCloseTo(grown, 0);
+		await page.setViewportSize({ width: 1280, height: 900 });
+		await expect.poll(height).toBeCloseTo(initial, 0);
+		const overflow = await page.locator('main').evaluate((m) => m.scrollHeight - m.clientHeight);
+		expect(overflow, 'page scrolls after shrinking the window').toBeLessThanOrEqual(0);
+	});
+}

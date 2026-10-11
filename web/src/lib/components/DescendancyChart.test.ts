@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render } from '@testing-library/svelte';
 import DescendancyChart from './DescendancyChart.svelte';
 import type { DescendancyNode } from '$lib/api/client';
+import { MIN_CARD_FONT_PX } from '$lib/utils/chart';
 
 // Mock data for tests
 const mockSinglePerson: DescendancyNode = {
@@ -177,6 +178,13 @@ describe('DescendancyChart', () => {
 		expect(positions[1].x).toBeGreaterThan(positions[0].x);
 		expect(positions[2].x).toBeGreaterThan(positions[1].x);
 		expect(container.querySelectorAll('.spouse-link')).toHaveLength(2);
+	});
+
+	it('draws no text smaller than the fit policy assumes', () => {
+		const { container } = render(DescendancyChart, { props: { data: mockMultipleSpouses } });
+		for (const text of container.querySelectorAll('text')) {
+			expect(parseFloat(text.getAttribute('font-size') ?? '')).toBeGreaterThanOrEqual(MIN_CARD_FONT_PX);
+		}
 	});
 
 	it('renders spouse connector lines', () => {

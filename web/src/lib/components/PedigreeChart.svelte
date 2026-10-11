@@ -667,7 +667,7 @@
 					.attr('y', 0)
 					.attr('text-anchor', 'middle')
 					.attr('dominant-baseline', 'central')
-					.attr('font-size', '10px')
+					.attr('font-size', '11px')
 					.attr('font-weight', '500')
 					.attr('fill', '#475569')
 					.text(badgeText);
@@ -719,7 +719,7 @@
 					.attr('y', 0)
 					.attr('text-anchor', 'middle')
 					.attr('dominant-baseline', 'central')
-					.attr('font-size', '10px')
+					.attr('font-size', '11px')
 					.attr('font-weight', '500')
 					.attr('fill', '#475569')
 					.text(badgeText);
@@ -896,6 +896,8 @@
 		width: 100%;
 		height: 100%;
 		min-height: 240px;
+		/* Size from the page, never from the drawn SVG, or the chart could grow but not shrink */
+		contain: size;
 		background: #fafafa;
 		border-radius: 8px;
 		overflow: hidden;

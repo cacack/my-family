@@ -291,11 +291,7 @@
 	}
 
 	function renderSpouseCards(spouses: SpouseCard[]) {
-		const { spouseGap } = LAYOUTS[layout];
-		spouses.forEach(({ spouse, x: spouseX, y: spouseY, width: spouseCardWidth, height: spouseCardHeight }) => {
-			// The connector spans the gap to the card before: the person's, or the previous spouse's
-			const previousRight = spouseX - spouseCardWidth / 2 - spouseGap;
-
+		spouses.forEach(({ spouse, linkFromX, x: spouseX, y: spouseY, width: spouseCardWidth, height: spouseCardHeight }) => {
 			// Create spouse group
 			const spouseGroup = g
 				.append('g')
@@ -311,7 +307,7 @@
 			// Draw horizontal connector line from the previous card to this spouse
 			g.append('line')
 				.attr('class', 'spouse-link')
-				.attr('x1', previousRight)
+				.attr('x1', linkFromX)
 				.attr('y1', spouseY)
 				.attr('x2', spouseX - spouseCardWidth / 2)
 				.attr('y2', spouseY)
@@ -562,6 +558,8 @@
 		width: 100%;
 		height: 100%;
 		min-height: 240px;
+		/* Size from the page, never from the drawn SVG, or the chart could grow but not shrink */
+		contain: size;
 		background: #fafafa;
 		border-radius: 8px;
 		overflow: hidden;

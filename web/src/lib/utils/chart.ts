@@ -25,7 +25,7 @@ function clamp(value: number, [min, max]: ScaleExtent): number {
 
 /** Text on screen should be at least this big, in CSS pixels. */
 const MIN_TEXT_PX = 10;
-/** The smallest font used on a chart card, in chart units. */
+/** The smallest font drawn on a chart, in chart units (the chart component tests check this). */
 export const MIN_CARD_FONT_PX = 11;
 /**
  * The initial fit stays within this range: never above 1x (a lone person would

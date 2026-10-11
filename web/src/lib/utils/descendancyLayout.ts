@@ -28,6 +28,8 @@ export interface SpouseCard extends CardBox {
 	node: d3.HierarchyPointNode<DescendancyNode>;
 	spouse: SpouseInfo;
 	index: number;
+	/** Right edge of the card before this one (the person's, or the previous spouse's), where its connector starts. */
+	linkFromX: number;
 }
 
 export interface DescendancyLayout {
@@ -76,15 +78,19 @@ export function layoutDescendancy(
 	}
 
 	const spouses: SpouseCard[] = nodes.flatMap((node) =>
-		(node.data.spouses ?? []).map((spouse, index) => ({
-			node,
-			spouse,
-			index,
-			x: node.x + cardWidth / 2 + spouseGap + spouseWidth / 2 + index * (spouseWidth + spouseGap),
-			y: node.y,
-			width: spouseWidth,
-			height: spouseHeight
-		}))
+		(node.data.spouses ?? []).map((spouse, index) => {
+			const linkFromX = node.x + cardWidth / 2 + index * (spouseGap + spouseWidth);
+			return {
+				node,
+				spouse,
+				index,
+				linkFromX,
+				x: linkFromX + spouseGap + spouseWidth / 2,
+				y: node.y,
+				width: spouseWidth,
+				height: spouseHeight
+			};
+		})
 	);
 
 	const cards: CardBox[] = [

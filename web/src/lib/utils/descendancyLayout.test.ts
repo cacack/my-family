@@ -72,6 +72,17 @@ describe('layoutDescendancy', () => {
 		expect(xs[2]).toBeGreaterThan(xs[1]);
 	});
 
+	it('starts each spouse connector at the right edge of the card before it', () => {
+		const config = CONFIGS.wide;
+		const layout = layoutDescendancy(person(3), config);
+		const [root] = layout.nodes;
+		const rightEdges = [root.x + config.cardWidth / 2, ...layout.spouses.map((s) => s.x + s.width / 2)];
+		layout.spouses.forEach((s, i) => {
+			expect(s.linkFromX).toBeCloseTo(rightEdges[i]);
+			expect(s.x - s.width / 2 - s.linkFromX).toBeCloseTo(config.spouseGap);
+		});
+	});
+
 	it('bounds every card', () => {
 		const layout = layoutDescendancy(person(2, [person(0), person(1)]), CONFIGS.wide);
 		const { x, y, width, height } = layout.bounds;
