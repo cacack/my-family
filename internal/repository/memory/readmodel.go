@@ -381,9 +381,10 @@ func (s *ReadModelStore) SearchPersons(ctx context.Context, opts repository.Sear
 	return repository.Page(results, opts.Offset, limit), len(results), nil
 }
 
-// sqlFullName is the full name the SQL stores search: their full_name columns
-// are generated as given_name || ' ' || surname, without the prefix, suffix and
-// surname prefix the projection folds into an alternate name's FullName.
+// sqlFullName is the alternate-name full name the SQL stores search: their
+// person_names.full_name column is generated as given_name || ' ' || surname,
+// without the prefix, suffix and surname prefix the projection folds into an
+// alternate name's FullName. persons.full_name is domain.JoinFullName instead.
 func sqlFullName(givenName, surname string) string {
 	return givenName + " " + surname
 }
@@ -395,7 +396,7 @@ func (s *ReadModelStore) personMatchesQuery(p *repository.PersonReadModel, query
 	if queryLower == "" {
 		return true
 	}
-	fullName := sqlFullName(p.GivenName, p.Surname)
+	fullName := domain.JoinFullName(p.GivenName, p.Surname)
 	if opts.Fuzzy {
 		return repository.TrigramMatch(queryLower, p.GivenName) ||
 			repository.TrigramMatch(queryLower, p.Surname) ||

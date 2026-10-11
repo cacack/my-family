@@ -103,7 +103,23 @@ func (p *Person) Validate() error {
 
 // FullName returns the full name of the person.
 func (p *Person) FullName() string {
-	return p.GivenName + " " + p.Surname
+	return JoinFullName(p.GivenName, p.Surname)
+}
+
+// JoinFullName joins a given name and surname with a single space, leaving no
+// leading or trailing space when either part is empty. It is the rule for
+// persons.full_name: the personFullNameExpr constants in repository/sqlite and
+// repository/postgres must change with it. person_names.full_name (alternate
+// names) still always joins with a space and does not follow this rule.
+func JoinFullName(givenName, surname string) string {
+	switch {
+	case surname == "":
+		return givenName
+	case givenName == "":
+		return surname
+	default:
+		return givenName + " " + surname
+	}
 }
 
 // SetBirthDate sets the birth date from a string.

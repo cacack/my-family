@@ -168,7 +168,7 @@ func (s *ReadModelStore) createTables() error {
 			id TEXT NOT NULL,
 			given_name TEXT NOT NULL,
 			surname TEXT NOT NULL,
-			full_name TEXT GENERATED ALWAYS AS (given_name || ' ' || surname) STORED,
+			full_name TEXT GENERATED ALWAYS AS ` + personFullNameExpr + ` STORED,
 			gender TEXT,
 			birth_date_raw TEXT,
 			birth_date_sort TEXT,
@@ -684,6 +684,10 @@ func (s *ReadModelStore) createTables() error {
 		return err
 	}
 
+	if err := s.migratePersonFullName(); err != nil {
+		return err
+	}
+
 	// Run schema migrations for existing databases
 	s.runMigrations()
 
@@ -967,6 +971,49 @@ func (s *ReadModelStore) dropLegacyFTS5() error {
 		}
 	}
 	return nil
+}
+
+// personFullNameExpr is the generated persons.full_name expression. It matches
+// domain.JoinFullName: the given name and surname joined by one space, with no
+// stray space when either is empty (#977).
+const personFullNameExpr = `(CASE WHEN surname = '' THEN given_name WHEN given_name = '' THEN surname ELSE given_name || ' ' || surname END)`
+
+// migratePersonFullName swaps an older persons.full_name expression (which always
+// joined with a space, leaving "Given " for a person with no surname) for
+// personFullNameExpr. Every existing row is recomputed, so no replay is needed.
+// SQLite cannot ADD a STORED generated column, so an upgraded database gets a
+// VIRTUAL one; reads and the index behave the same. It is a no-op on a database
+// whose persons table already uses the current expression. Like dropLegacyFTS5,
+// it runs in one transaction, so a failure rolls back cleanly and fails the open;
+// Postgres' counterpart only warns (see its comment for why).
+func (s *ReadModelStore) migratePersonFullName() error {
+	var ddl string
+	if err := s.db.QueryRow(
+		`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'persons'`,
+	).Scan(&ddl); err != nil {
+		return fmt.Errorf("inspect persons schema: %w", err)
+	}
+	if strings.Contains(ddl, personFullNameExpr) {
+		return nil
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin full_name migration: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	for _, stmt := range []string{
+		`DROP INDEX IF EXISTS idx_persons_full_name`,
+		`ALTER TABLE persons DROP COLUMN full_name`,
+		`ALTER TABLE persons ADD COLUMN full_name TEXT GENERATED ALWAYS AS ` + personFullNameExpr + ` VIRTUAL`,
+		`CREATE INDEX idx_persons_full_name ON persons(full_name)`,
+	} {
+		if _, err := tx.Exec(stmt); err != nil {
+			return fmt.Errorf("migrate persons.full_name (%s): %w", stmt, err)
+		}
+	}
+	return tx.Commit()
 }
 
 // personOverlaySubquery returns a parenthesized subquery that resolves the

@@ -330,7 +330,7 @@ func (p *Projector) projectPersonCreated(ctx context.Context, e domain.PersonCre
 		ID:             e.PersonID,
 		GivenName:      e.GivenName,
 		Surname:        e.Surname,
-		FullName:       e.GivenName + " " + e.Surname,
+		FullName:       domain.JoinFullName(e.GivenName, e.Surname),
 		Gender:         e.Gender,
 		BirthDateRaw:   birthDateRaw,
 		BirthDateSort:  birthDateSort,
@@ -362,12 +362,12 @@ func (p *Projector) projectPersonUpdated(ctx context.Context, e domain.PersonUpd
 		case "given_name":
 			if v, ok := value.(string); ok {
 				person.GivenName = v
-				person.FullName = v + " " + person.Surname
+				person.FullName = domain.JoinFullName(v, person.Surname)
 			}
 		case "surname":
 			if v, ok := value.(string); ok {
 				person.Surname = v
-				person.FullName = person.GivenName + " " + v
+				person.FullName = domain.JoinFullName(person.GivenName, v)
 			}
 		case "gender":
 			if v, ok := value.(string); ok {
@@ -1619,12 +1619,12 @@ func (p *Projector) projectPersonMerged(ctx context.Context, e domain.PersonMerg
 		case "given_name":
 			if v, ok := value.(string); ok {
 				survivor.GivenName = v
-				survivor.FullName = v + " " + survivor.Surname
+				survivor.FullName = domain.JoinFullName(v, survivor.Surname)
 			}
 		case "surname":
 			if v, ok := value.(string); ok {
 				survivor.Surname = v
-				survivor.FullName = survivor.GivenName + " " + v
+				survivor.FullName = domain.JoinFullName(survivor.GivenName, v)
 			}
 		case "gender":
 			if v, ok := value.(string); ok {
