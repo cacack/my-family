@@ -296,6 +296,30 @@ describe('Person detail edit form', () => {
 		expect(body).toMatchObject({ birth_place: '', notes: '', given_name: 'Ada', surname: 'Lovelace' });
 	});
 
+	// Many real records have no surname (#911); the form must not block saving them.
+	it('saves a person who has no surname', async () => {
+		getPerson.mockResolvedValue(person({ surname: '' }));
+		await openEdit();
+
+		// Constraint validation is what blocks the browser's submit.
+		const form = screen.getByLabelText('Surname').closest('form')!;
+		expect(form.checkValidity()).toBe(true);
+		await fireEvent.input(screen.getByLabelText('Notes'), { target: { value: 'Monarch' } });
+		const body = await save();
+
+		expect(body).toMatchObject({ given_name: 'Ada', surname: '', notes: 'Monarch' });
+	});
+
+	it('sends a cleared surname as an empty string', async () => {
+		getPerson.mockResolvedValue(person());
+		await openEdit();
+
+		await fireEvent.input(screen.getByLabelText('Surname'), { target: { value: '' } });
+		const body = await save();
+
+		expect(body.surname).toBe('');
+	});
+
 	it('sends gender unknown when a known gender is changed to Unknown', async () => {
 		getPerson.mockResolvedValue(person({ gender: 'female' }));
 		await openEdit();

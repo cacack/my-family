@@ -261,9 +261,10 @@
 		saveError = null;
 		try {
 			await api.updatePerson(person.id, {
-				// The names are required, so an empty one is never sent.
+				// The given name is required, so an empty one is never sent. The
+				// surname is optional: an empty string clears it.
 				given_name: formData.given_name || undefined,
-				surname: formData.surname || undefined,
+				surname: formData.surname,
 				// Sent only when changed, so saving a person with no gender
 				// doesn't set one.
 				gender: formData.gender !== (person.gender || 'unknown') ? formData.gender : undefined,
@@ -361,7 +362,7 @@
 					</label>
 					<label>
 						Surname
-						<input type="text" bind:value={formData.surname} required />
+						<input type="text" bind:value={formData.surname} />
 					</label>
 				</FormRow>
 
