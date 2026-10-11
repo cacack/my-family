@@ -87,7 +87,7 @@
 			</label>
 			<label>
 				Surname
-				<input type="text" bind:value={formData.surname} required />
+				<input type="text" bind:value={formData.surname} />
 			</label>
 		</FormRow>
 

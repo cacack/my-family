@@ -116,8 +116,8 @@
 	}
 
 	async function saveNewName() {
-		if (!formData.given_name.trim() || !formData.surname.trim()) {
-			error = 'Given name and surname are required';
+		if (!formData.given_name.trim()) {
+			error = 'Given name is required';
 			return;
 		}
 
@@ -151,8 +151,8 @@
 
 	async function saveEdit() {
 		if (!editingId) return;
-		if (!formData.given_name.trim() || !formData.surname.trim()) {
-			error = 'Given name and surname are required';
+		if (!formData.given_name.trim()) {
+			error = 'Given name is required';
 			return;
 		}
 
@@ -210,7 +210,7 @@
 		parts.push(name.given_name);
 		if (name.nickname) parts.push(`"${name.nickname}"`);
 		if (name.surname_prefix) parts.push(name.surname_prefix);
-		parts.push(name.surname);
+		if (name.surname) parts.push(name.surname);
 		if (name.name_suffix) parts.push(name.name_suffix);
 		return parts.join(' ');
 	}
@@ -267,8 +267,8 @@
 					<input type="text" bind:value={formData.given_name} placeholder="e.g., John" required />
 				</label>
 				<label>
-					Surname <span class="required">*</span>
-					<input type="text" bind:value={formData.surname} placeholder="e.g., Smith" required />
+					Surname
+					<input type="text" bind:value={formData.surname} placeholder="e.g., Smith" />
 				</label>
 			</FormRow>
 
@@ -341,8 +341,8 @@
 									<input type="text" bind:value={formData.given_name} required />
 								</label>
 								<label>
-									Surname <span class="required">*</span>
-									<input type="text" bind:value={formData.surname} required />
+									Surname
+									<input type="text" bind:value={formData.surname} />
 								</label>
 							</FormRow>
 

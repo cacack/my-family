@@ -127,6 +127,33 @@ func TestUpdatePerson(t *testing.T) {
 	}
 }
 
+// A surname is optional (#911), so an update can clear it.
+func TestUpdatePerson_ClearSurname(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	createResult, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "John",
+		Surname:   "Doe",
+	})
+
+	empty := ""
+	if _, err := handler.UpdatePerson(ctx, command.UpdatePersonInput{
+		ID:      createResult.ID,
+		Surname: &empty,
+		Version: createResult.Version,
+	}); err != nil {
+		t.Fatalf("UpdatePerson clearing surname failed: %v", err)
+	}
+
+	person, _ := readStore.GetPerson(ctx, domain.MainBranchID, createResult.ID)
+	if person.Surname != "" {
+		t.Errorf("Surname = %q, want empty", person.Surname)
+	}
+}
+
 func TestUpdatePerson_VersionConflict(t *testing.T) {
 	eventStore := memory.NewEventStore()
 	readStore := memory.NewReadModelStore()

@@ -5507,7 +5507,6 @@ components:
           maxLength: 100
         surname:
           type: string
-          minLength: 1
           maxLength: 100
         gender:
           $ref: '#/components/schemas/Gender'

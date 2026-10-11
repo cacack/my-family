@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { api, type PersonCreate } from '$lib/api/client';
+	import { api, formatPersonName, type PersonCreate } from '$lib/api/client';
 	import { Button } from '$lib/components/ui/button';
 	import FormRow from '$lib/components/FormRow.svelte';
 	import { GENDER_OPTIONS } from '$lib/utils/enumOptions';
@@ -44,7 +44,7 @@
 			const person = await api.createPerson(payload);
 			onComplete({
 				personId: person.id,
-				personName: `${person.given_name} ${person.surname}`
+				personName: formatPersonName(person)
 			});
 		} catch (e) {
 			error = (e as { message?: string }).message || 'Failed to create person';
@@ -72,7 +72,7 @@
 			</label>
 			<label>
 				Surname
-				<input type="text" bind:value={formData.surname} required placeholder="e.g., Smith" />
+				<input type="text" bind:value={formData.surname} placeholder="e.g., Smith" />
 			</label>
 		</FormRow>
 
