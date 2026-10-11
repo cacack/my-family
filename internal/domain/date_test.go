@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -281,6 +282,67 @@ func TestGenDate_Validate(t *testing.T) {
 			err := tt.date.Validate()
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestValidateDateInput(t *testing.T) {
+	tests := []struct {
+		input   string
+		wantErr string // substring of the error; empty means valid
+	}{
+		{input: ""},
+		{input: "   "},
+		{input: "1850"},
+		{input: "JAN 1850"},
+		{input: "1 jan 1850"},
+		{input: "ABT 1850"},
+		{input: "BEF 1 JAN 1850"},
+		{input: "BET 1850 AND 1860"},
+		{input: "FROM 1850 TO 1860"},
+		{input: "FROM 1850"},
+		{input: "AFT JAN 1850"},
+		{input: "EST 1850"},
+		{input: "CAL 1850"},
+		{input: "INT 1850 (about eighteen fifty)"},
+		{input: "(about the time of the war)"},
+		{input: "29 FEB 2000"},
+		{input: "@#DJULIAN@ 29 FEB 1700"},
+		{input: "@#DHEBREW@ 1 TSH 5600"},
+		{input: "@#DFRENCH R@ 1 VEND 10"},
+		{input: "garbage", wantErr: `"garbage" is not a recognized date`},
+		{input: "1850-01-01", wantErr: `"1850-01-01" is not a recognized date`},
+		{input: "31 FEB 19xx", wantErr: `"31 FEB 19xx" is not a recognized date`},
+		{input: "31 FEB", wantErr: "is not a recognized date"},
+		{input: "BET 1850", wantErr: "is not a recognized date"},
+		{input: "1 January 1850", wantErr: "is not a recognized date"},
+		{input: "31 FEB 1900", wantErr: `"31 FEB 1900" is not a real calendar date (February has 28 days in 1900, got day 31)`},
+		{input: "29 FEB 1900", wantErr: "is not a real calendar date"},
+		{input: "32 JAN 1850", wantErr: "is not a real calendar date"},
+		{input: "BET 1850 AND 30 FEB 1860", wantErr: "is not a real calendar date"},
+		{input: "1750/51", wantErr: `"1750/51" is not a supported date yet`},
+		{input: "1 JAN 1750/51", wantErr: "is not a supported date yet"},
+		{input: "1 JAN 1850 BC", wantErr: "is not a supported date yet"},
+		{input: "TO 1860", wantErr: "is not a supported date yet"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			err := ValidateDateInput(tt.input)
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Errorf("ValidateDateInput(%q) = %v, want nil", tt.input, err)
+				}
+				// An accepted date must be stored with a year (issue #904).
+				in := strings.TrimSpace(tt.input)
+				if in != "" && !strings.HasPrefix(in, "(") && ParseGenDate(tt.input).Year == nil {
+					t.Errorf("ParseGenDate(%q).Year = nil for an accepted date", tt.input)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("ValidateDateInput(%q) = %v, want error containing %q", tt.input, err, tt.wantErr)
 			}
 		})
 	}

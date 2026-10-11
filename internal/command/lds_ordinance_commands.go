@@ -45,6 +45,9 @@ func (h *Handler) CreateLDSOrdinance(ctx context.Context, input CreateLDSOrdinan
 		ordinance.SetFamilyID(*input.FamilyID)
 	}
 	if input.Date != "" {
+		if err := validateDateInput("date", input.Date); err != nil {
+			return nil, err
+		}
 		ordinance.SetDate(input.Date)
 	}
 	if input.Place != "" {
@@ -112,6 +115,9 @@ func (h *Handler) UpdateLDSOrdinance(ctx context.Context, input UpdateLDSOrdinan
 	changes := make(map[string]any)
 
 	if input.Date != nil && *input.Date != current.DateRaw {
+		if err := validateDateInput("date", *input.Date); err != nil {
+			return nil, err
+		}
 		changes["date"] = *input.Date
 	}
 	if input.Place != nil && *input.Place != current.Place {

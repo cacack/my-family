@@ -107,6 +107,20 @@ func TestPerson_Validate(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			// A year-less date can't be ordered, so it must not be reported as
+			// "cannot be before birth_date" (issue #904).
+			name: "year-less death date is not compared",
+			person: func() *Person {
+				p := NewPerson("John", "Doe")
+				birth := ParseGenDate("1 JAN 1850")
+				death := ParseGenDate("31 FEB 19xx")
+				p.BirthDate = &birth
+				p.DeathDate = &death
+				return p
+			}(),
+			wantErr: false,
+		},
+		{
 			name: "invalid birth date",
 			person: func() *Person {
 				p := NewPerson("John", "Doe")

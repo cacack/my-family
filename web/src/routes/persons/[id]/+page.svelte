@@ -26,6 +26,9 @@
 	let error: string | null = $state(null);
 	let editing = $state(false);
 	let saving = $state(false);
+	// Shown in the form, so a rejected save (e.g. an unrecognized date) keeps
+	// what was typed.
+	let saveError: string | null = $state(null);
 	let historyExpanded = $state(false);
 	let historyTab: 'history' | 'restore' = $state('history');
 	let historyCount: number | null = $state(null);
@@ -209,6 +212,7 @@
 	}
 
 	function resetForm() {
+		saveError = null;
 		if (person) {
 			formData = {
 				given_name: person.given_name,
@@ -254,6 +258,7 @@
 	async function savePerson() {
 		if (!person) return;
 		saving = true;
+		saveError = null;
 		try {
 			await api.updatePerson(person.id, {
 				// The names are required, so an empty one is never sent.
@@ -277,7 +282,7 @@
 			editing = false;
 			focusEditButton();
 		} catch (e) {
-			error = (e as { message?: string }).message || 'Failed to save';
+			saveError = (e as { message?: string }).message || 'Failed to save';
 		} finally {
 			saving = false;
 		}
@@ -406,6 +411,10 @@
 					Notes
 					<textarea bind:value={formData.notes} rows="4"></textarea>
 				</label>
+
+				{#if saveError}
+					<p class="save-error" role="alert">{saveError}</p>
+				{/if}
 
 				<div class="form-actions">
 					<Button variant="outline" onclick={cancelEdit} disabled={saving}>Cancel</Button>
@@ -731,6 +740,12 @@
 
 	.error {
 		color: #dc2626;
+	}
+
+	.save-error {
+		margin: 0;
+		color: #dc2626;
+		overflow-wrap: anywhere;
 	}
 
 	.person-detail {
