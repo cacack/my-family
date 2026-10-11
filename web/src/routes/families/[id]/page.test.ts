@@ -486,7 +486,7 @@ describe('Family Detail Page: failed actions (#899)', () => {
 	}
 
 	it('compares the edits with the latest version on a 409, keeping the form', async () => {
-		vi.mocked(api.updateFamily).mockRejectedValueOnce({ status: 409, message: 'Conflict' });
+		vi.mocked(api.updateFamily).mockRejectedValueOnce({ status: 409, code: 'VERSION_CONFLICT', message: 'Conflict' });
 		vi.mocked(api.getFamily)
 			.mockResolvedValueOnce(mockFamilyWithChildren)
 			.mockResolvedValueOnce({ ...mockFamilyWithChildren, marriage_place: 'Springfield, IL', version: 2 });
@@ -501,7 +501,7 @@ describe('Family Detail Page: failed actions (#899)', () => {
 
 	it('saves the edits over the latest version when the user keeps them', async () => {
 		vi.mocked(api.updateFamily)
-			.mockRejectedValueOnce({ status: 409, message: 'Conflict' })
+			.mockRejectedValueOnce({ status: 409, code: 'VERSION_CONFLICT', message: 'Conflict' })
 			.mockResolvedValueOnce({ id: 'test-family-id', version: 3 });
 		vi.mocked(api.getFamily)
 			.mockResolvedValueOnce(mockFamilyWithChildren)
@@ -519,7 +519,7 @@ describe('Family Detail Page: failed actions (#899)', () => {
 
 	it("keeps another writer's changes to the fields the user did not edit", async () => {
 		vi.mocked(api.updateFamily)
-			.mockRejectedValueOnce({ status: 409, message: 'Conflict' })
+			.mockRejectedValueOnce({ status: 409, code: 'VERSION_CONFLICT', message: 'Conflict' })
 			.mockResolvedValueOnce({ id: 'test-family-id', version: 3 });
 		const theirs = {
 			...mockFamilyWithChildren,
@@ -548,11 +548,14 @@ describe('Family Detail Page: failed actions (#899)', () => {
 	it('shows a 409 that is not a change elsewhere, such as circular ancestry, as it came', async () => {
 		vi.mocked(api.updateFamily).mockRejectedValueOnce({
 			status: 409,
+			code: 'CONFLICT',
 			message: 'Circular ancestry detected - this would create an impossible family tree'
 		});
 		await editMarriagePlace('Evanston, IL');
 
 		expect((await screen.findByRole('alert')).textContent).toContain('Circular ancestry detected');
+		// The code says it is a refusal, so the family is not re-read (#940).
+		expect(api.getFamily).toHaveBeenCalledTimes(1);
 		expect(screen.queryByText(/changed elsewhere/)).toBeNull();
 		expect(screen.queryByRole('button', { name: 'Save my edits' })).toBeNull();
 		expect((screen.getByLabelText('Marriage Place') as HTMLInputElement).value).toBe('Evanston, IL');

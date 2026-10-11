@@ -4,7 +4,7 @@
 	import { tick } from 'svelte';
 	import {
 		api,
-		isConflictError,
+		isVersionConflict,
 		recordLoadError,
 		type FamilyChild,
 		type FamilyDetail,
@@ -315,8 +315,8 @@
 			focusEditButton();
 			announce('Family saved');
 		} catch (e) {
-			if (isConflictError(e)) {
-				await loadConflict(family.id, family.version, e);
+			if (isVersionConflict(e)) {
+				await loadConflict(family.id, e);
 			} else {
 				saveError = (e as { message?: string }).message || 'Failed to save';
 			}
@@ -326,22 +326,15 @@
 	}
 
 	/**
-	 * Fetch the latest version to compare with, leaving the form as typed. A 409
-	 * is not always a version conflict (circular ancestry, or a write to a merged
-	 * branch, is one too): when the family has not changed, or can't be re-read,
-	 * the refusal is shown as it came.
+	 * Fetch the latest version to compare with, leaving the form as typed. Only
+	 * a stale version gets here (#940); other 409s are refusals and show their
+	 * message. If the family can't be re-read, the conflict is shown as it came.
 	 */
-	async function loadConflict(id: string, sentVersion: number, refusal: unknown) {
-		const message = (refusal as { message?: string }).message || 'Failed to save';
+	async function loadConflict(id: string, refusal: unknown) {
 		try {
-			const latest = await api.getFamily(id);
-			if (latest.version === sentVersion) {
-				saveError = message;
-			} else {
-				conflict = latest;
-			}
+			conflict = await api.getFamily(id);
 		} catch {
-			saveError = message;
+			saveError = (refusal as { message?: string }).message || 'Failed to save';
 		}
 	}
 

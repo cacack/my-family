@@ -416,7 +416,7 @@ describe('Person detail failed actions (#899)', () => {
 	});
 
 	it('compares the edits with the latest version on a 409', async () => {
-		updatePerson.mockRejectedValueOnce({ status: 409, message: 'Conflict' });
+		updatePerson.mockRejectedValueOnce({ status: 409, code: 'VERSION_CONFLICT', message: 'Conflict' });
 		getPerson
 			.mockResolvedValueOnce(person({ birth_place: 'London' }))
 			.mockResolvedValueOnce(person({ birth_place: 'Westminster', version: 4 }));
@@ -432,7 +432,7 @@ describe('Person detail failed actions (#899)', () => {
 	});
 
 	it('saves the edits over the latest version when the user keeps them', async () => {
-		updatePerson.mockRejectedValueOnce({ status: 409, message: 'Conflict' }).mockResolvedValueOnce({});
+		updatePerson.mockRejectedValueOnce({ status: 409, code: 'VERSION_CONFLICT', message: 'Conflict' }).mockResolvedValueOnce({});
 		getPerson
 			.mockResolvedValueOnce(person({ birth_place: 'London' }))
 			.mockResolvedValue(person({ birth_place: 'Westminster', version: 4 }));
@@ -445,7 +445,7 @@ describe('Person detail failed actions (#899)', () => {
 	});
 
 	it("keeps another writer's changes to the fields the user did not edit", async () => {
-		updatePerson.mockRejectedValueOnce({ status: 409, message: 'Conflict' }).mockResolvedValueOnce({});
+		updatePerson.mockRejectedValueOnce({ status: 409, code: 'VERSION_CONFLICT', message: 'Conflict' }).mockResolvedValueOnce({});
 		getPerson
 			.mockResolvedValueOnce(person({ birth_place: 'London' }))
 			.mockResolvedValue(person({ birth_place: 'London', notes: 'Theirs', version: 4 }));
@@ -462,16 +462,22 @@ describe('Person detail failed actions (#899)', () => {
 	});
 
 	it('shows a 409 that is not a change elsewhere as it came', async () => {
-		updatePerson.mockRejectedValueOnce({ status: 409, message: 'Branch is merged and cannot be written to' });
+		updatePerson.mockRejectedValueOnce({
+			status: 409,
+			code: 'CONFLICT',
+			message: 'Branch is merged and cannot be written to'
+		});
 		await editBirthPlace('Marylebone');
 
 		expect((await screen.findByRole('alert')).textContent).toContain('Branch is merged');
+		// The code says it is a refusal, so the person is not re-read (#940).
+		expect(getPerson).toHaveBeenCalledTimes(1);
 		expect(screen.queryByText(/changed elsewhere/)).toBeNull();
 		expect((screen.getByLabelText('Birth Place') as HTMLInputElement).value).toBe('Marylebone');
 	});
 
 	it('replaces the edits with the latest version when the user takes it', async () => {
-		updatePerson.mockRejectedValueOnce({ status: 409, message: 'Conflict' });
+		updatePerson.mockRejectedValueOnce({ status: 409, code: 'VERSION_CONFLICT', message: 'Conflict' });
 		getPerson
 			.mockResolvedValueOnce(person({ birth_place: 'London' }))
 			.mockResolvedValueOnce(person({ birth_place: 'Westminster', version: 4 }));

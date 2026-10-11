@@ -1,8 +1,8 @@
 /**
  * A save refused because the record changed elsewhere keeps the user's edits
  * and offers to compare and re-apply them (#899). It spans the stack: the page
- * recognises a version conflict by the server's 409, which the family update
- * used to answer with a 400.
+ * recognises a version conflict by the server's 409 `VERSION_CONFLICT` code
+ * (#940); the family update used to answer it with a 400.
  */
 import { expect, test, type APIRequestContext } from '@playwright/test';
 import { API_BASE } from './seed';

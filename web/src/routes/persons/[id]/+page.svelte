@@ -2,7 +2,7 @@
 	import { tick } from 'svelte';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
-	import { api, isConflictError, recordLoadError, type PersonDetail, type ChangeHistoryResponse, type Media, type ResearchStatus, type RollbackResponse, formatGenDate, formatPersonName, type Gender } from '$lib/api/client';
+	import { api, isVersionConflict, recordLoadError, type PersonDetail, type ChangeHistoryResponse, type Media, type ResearchStatus, type RollbackResponse, formatGenDate, formatPersonName, type Gender } from '$lib/api/client';
 	import ChangeHistory from '$lib/components/ChangeHistory.svelte';
 	import RestorePointBrowser from '$lib/components/RestorePointBrowser.svelte';
 	import RollbackConfirmDialog from '$lib/components/RollbackConfirmDialog.svelte';
@@ -346,8 +346,8 @@
 			editing = false;
 			focusEditButton();
 		} catch (e) {
-			if (isConflictError(e)) {
-				await loadConflict(person.id, person.version, e);
+			if (isVersionConflict(e)) {
+				await loadConflict(person.id, e);
 			} else {
 				saveError = (e as { message?: string }).message || 'Failed to save';
 			}
@@ -357,22 +357,15 @@
 	}
 
 	/**
-	 * Fetch the latest version to compare with, leaving the form as typed. A 409
-	 * is not always a version conflict (a write to a merged branch is one too):
-	 * when the person has not changed, or can't be re-read, the refusal is shown
-	 * as it came.
+	 * Fetch the latest version to compare with, leaving the form as typed. Only
+	 * a stale version gets here (#940); other 409s are refusals and show their
+	 * message. If the person can't be re-read, the conflict is shown as it came.
 	 */
-	async function loadConflict(id: string, sentVersion: number, refusal: unknown) {
-		const message = (refusal as { message?: string }).message || 'Failed to save';
+	async function loadConflict(id: string, refusal: unknown) {
 		try {
-			const latest = await api.getPerson(id);
-			if (latest.version === sentVersion) {
-				saveError = message;
-			} else {
-				conflict = latest;
-			}
+			conflict = await api.getPerson(id);
 		} catch {
-			saveError = message;
+			saveError = (refusal as { message?: string }).message || 'Failed to save';
 		}
 	}
 
