@@ -178,7 +178,7 @@ type MediaReadModel struct {
 	FileSize      int64            `json:"file_size"`
 	FileData      []byte           `json:"-"`             // Excluded from JSON by default
 	ThumbnailData []byte           `json:"-"`             // Excluded from JSON by default
-	HasThumbnail  bool             `json:"has_thumbnail"` // Set by every read, without loading bytes (#903); SaveMedia ignores it
+	HasThumbnail  bool             `json:"has_thumbnail"` // Derived on every read without loading bytes (#903); not stored, so SaveMedia ignores it
 	CropLeft      *int             `json:"crop_left,omitempty"`
 	CropTop       *int             `json:"crop_top,omitempty"`
 	CropWidth     *int             `json:"crop_width,omitempty"`

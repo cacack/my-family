@@ -3872,7 +3872,8 @@ func (s *ReadModelStore) ListMediaForEntity(ctx context.Context, entityType stri
 		return nil, 0, fmt.Errorf("count media: %w", err)
 	}
 
-	// $1 is the scope and $(n-1) main ($1 itself on main), per overlayArgs.
+	// mediaHasThumbnail binds its own (branch, main) pair after limit/offset, so
+	// it doesn't depend on where overlayArgs puts the scope and main ids.
 	// #nosec G201 G202 -- src and n are internal; limit/offset stay bound parameters
 	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 	query := fmt.Sprintf(`
@@ -3880,9 +3881,10 @@ func (s *ReadModelStore) ListMediaForEntity(ctx context.Context, entityType stri
 		FROM %s md
 		ORDER BY created_at DESC, id DESC
 		LIMIT $%d OFFSET $%d
-	`, fmt.Sprintf(mediaHasThumbnail, 1, n-1), src, n+2, n+3)
+	`, fmt.Sprintf(mediaHasThumbnail, n+4, n+5), src, n+2, n+3)
 
-	rows, err := s.db.QueryContext(ctx, query, append(args, opts.Limit, opts.Offset)...)
+	rows, err := s.db.QueryContext(ctx, query,
+		append(args, opts.Limit, opts.Offset, opts.BranchID.UUID(), domain.MainBranchID.UUID())...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("query media: %w", err)
 	}
