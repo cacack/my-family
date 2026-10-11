@@ -1216,3 +1216,102 @@ func TestGetRelationship_OrdinalEdgeCases(t *testing.T) {
 		t.Errorf("Expected to find '5th cousin' relationship, got paths: %v", result.Paths)
 	}
 }
+
+// TestGetRelationship_NoPathsThroughEndpoints guards #910: the search must not
+// walk past A or B, so no returned path holds either person except at its own
+// endpoint, and no two paths share a common ancestor and relationship.
+func TestGetRelationship_NoPathsThroughEndpoints(t *testing.T) {
+	store := memory.NewReadModelStore()
+	svc := query.NewRelationshipService(store)
+	ctx := context.Background()
+
+	// The Beatrice -> Victoria shape, including the pedigree collapse of a
+	// mother and father who are first cousins:
+	//
+	//   francis
+	//   ├── vSaxe ── edward          (vSaxe and edward: victoria's parents)
+	//   │      └── victoria ─┐
+	//   └── ernest           ├── beatrice, helena
+	//          └── albert ───┘
+	francis := createPerson(t, ctx, store, "Francis", "Saxe", domain.GenderMale)
+	edward := createPerson(t, ctx, store, "Edward", "Hanover", domain.GenderMale)
+	vSaxe := createPerson(t, ctx, store, "Victoria", "Saxe", domain.GenderFemale)
+	ernest := createPerson(t, ctx, store, "Ernest", "Saxe", domain.GenderMale)
+	victoria := createPerson(t, ctx, store, "Victoria", "Hanover", domain.GenderFemale)
+	albert := createPerson(t, ctx, store, "Albert", "Saxe", domain.GenderMale)
+	beatrice := createPerson(t, ctx, store, "Beatrice", "Saxe", domain.GenderFemale)
+	helena := createPerson(t, ctx, store, "Helena", "Saxe", domain.GenderFemale)
+
+	createParentChild(t, ctx, store, vSaxe, &francis, nil, "Francis Saxe", "")
+	createParentChild(t, ctx, store, ernest, &francis, nil, "Francis Saxe", "")
+	createParentChild(t, ctx, store, victoria, &edward, &vSaxe, "Edward Hanover", "Victoria Saxe")
+	createParentChild(t, ctx, store, albert, &ernest, nil, "Ernest Saxe", "")
+	createParentChild(t, ctx, store, beatrice, &albert, &victoria, "Albert Saxe", "Victoria Hanover")
+	createParentChild(t, ctx, store, helena, &albert, &victoria, "Albert Saxe", "Victoria Hanover")
+
+	tests := []struct {
+		name      string
+		a, b      uuid.UUID
+		wantNames []string // relationship names, one per expected path, any order
+	}{
+		{"child to parent", beatrice, victoria, []string{"parent"}},
+		{"parent to child", victoria, beatrice, []string{"child"}},
+		{"child to grandparent", beatrice, edward, []string{"grandparent"}},
+		{"siblings", beatrice, helena, []string{"sibling", "sibling"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := svc.GetRelationship(ctx, domain.MainBranchID, tt.a, tt.b)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			got := map[string]int{}
+			for _, p := range result.Paths {
+				got[p.Name]++
+			}
+			want := map[string]int{}
+			for _, n := range tt.wantNames {
+				want[n]++
+			}
+			if len(result.Paths) != len(tt.wantNames) || len(got) != len(want) {
+				t.Fatalf("paths = %v, want %v", got, want)
+			}
+			for n, c := range want {
+				if got[n] != c {
+					t.Fatalf("paths = %v, want %v", got, want)
+				}
+			}
+
+			type key struct {
+				ancestor uuid.UUID
+				name     string
+			}
+			seen := map[key]bool{}
+			for _, p := range result.Paths {
+				assertEndpointOnly(t, "PathFromA", p.PathFromA, tt.a, tt.b)
+				assertEndpointOnly(t, "PathFromB", p.PathFromB, tt.b, tt.a)
+				k := key{p.CommonAncestor.ID, p.Name}
+				if seen[k] {
+					t.Errorf("duplicate path: ancestor %v, %q", k.ancestor, k.name)
+				}
+				seen[k] = true
+			}
+		})
+	}
+}
+
+// assertEndpointOnly fails unless path starts at start and holds other at most
+// as its last node.
+func assertEndpointOnly(t *testing.T, label string, path []query.RelationshipPathNode, start, other uuid.UUID) {
+	t.Helper()
+	if len(path) == 0 || path[0].ID != start {
+		t.Errorf("%s does not start at its person: %v", label, path)
+		return
+	}
+	for i, node := range path[1:] {
+		if node.ID == start || (node.ID == other && i+1 != len(path)-1) {
+			t.Errorf("%s passes through an endpoint: %v", label, path)
+		}
+	}
+}
