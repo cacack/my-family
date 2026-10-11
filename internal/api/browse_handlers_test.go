@@ -744,3 +744,45 @@ func TestBrowseMainOnlyOperations_IgnoreBranch(t *testing.T) {
 		}
 	}
 }
+
+// TestGetMapLocations_NamesPersons checks each pin carries its persons' names, so
+// the map's detail panel can list them without a lookup per person (#909).
+func TestGetMapLocations_NamesPersons(t *testing.T) {
+	cfg := &config.Config{Port: 8080, LogFormat: "text"}
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	server := api.NewServer(cfg, eventStore, readStore, memory.NewSnapshotStore(eventStore), nil)
+
+	lat, lon := "N42.3601", "W71.0589"
+	id := uuid.New()
+	if err := readStore.SavePerson(context.Background(), domain.MainBranchID, &repository.PersonReadModel{
+		ID: id, GivenName: "John", Surname: "Smith", FullName: "John Smith",
+		BirthPlace: "Boston, MA", BirthPlaceLat: &lat, BirthPlaceLong: &lon,
+		Version: 1, UpdatedAt: time.Now(),
+	}); err != nil {
+		t.Fatalf("SavePerson: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/map/locations", http.NoBody)
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Status = %d, want %d: %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var resp api.MapLocationsResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp.Items) != 1 {
+		t.Fatalf("len(items) = %d, want 1", len(resp.Items))
+	}
+	item := resp.Items[0]
+	if len(item.PersonIds) != 1 || item.PersonIds[0] != id {
+		t.Errorf("person_ids = %v, want [%v]", item.PersonIds, id)
+	}
+	if len(item.Persons) != 1 || item.Persons[0].Id != id ||
+		item.Persons[0].GivenName != "John" || item.Persons[0].Surname != "Smith" {
+		t.Errorf("persons = %+v, want John Smith (%v)", item.Persons, id)
+	}
+}

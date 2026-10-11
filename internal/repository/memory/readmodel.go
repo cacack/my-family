@@ -2261,14 +2261,15 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 		eventType string
 	}
 	type locData struct {
-		lat       float64
-		lon       float64
-		personIDs []uuid.UUID
+		lat     float64
+		lon     float64
+		persons []repository.MapPerson
 	}
 
 	agg := make(map[locKey]*locData)
 
 	for _, p := range resolveAllRows(s.persons, branchID) {
+		person := repository.MapPerson{ID: p.ID, GivenName: p.GivenName, Surname: p.Surname}
 		// Birth location
 		if p.BirthPlaceLat != nil && p.BirthPlaceLong != nil && *p.BirthPlaceLat != "" && *p.BirthPlaceLong != "" {
 			lat, errLat := gedcom.ParseCoordinate(*p.BirthPlaceLat)
@@ -2276,9 +2277,9 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 			if errLat == nil && errLon == nil {
 				key := locKey{place: p.BirthPlace, eventType: "birth"}
 				if d, ok := agg[key]; ok {
-					d.personIDs = append(d.personIDs, p.ID)
+					d.persons = append(d.persons, person)
 				} else {
-					agg[key] = &locData{lat: lat, lon: lon, personIDs: []uuid.UUID{p.ID}}
+					agg[key] = &locData{lat: lat, lon: lon, persons: []repository.MapPerson{person}}
 				}
 			}
 		}
@@ -2289,9 +2290,9 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 			if errLat == nil && errLon == nil {
 				key := locKey{place: p.DeathPlace, eventType: "death"}
 				if d, ok := agg[key]; ok {
-					d.personIDs = append(d.personIDs, p.ID)
+					d.persons = append(d.persons, person)
 				} else {
-					agg[key] = &locData{lat: lat, lon: lon, personIDs: []uuid.UUID{p.ID}}
+					agg[key] = &locData{lat: lat, lon: lon, persons: []repository.MapPerson{person}}
 				}
 			}
 		}
@@ -2304,8 +2305,8 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 			Latitude:  data.lat,
 			Longitude: data.lon,
 			EventType: key.eventType,
-			Count:     len(data.personIDs),
-			PersonIDs: data.personIDs,
+			Count:     len(data.persons),
+			Persons:   data.persons,
 		})
 	}
 

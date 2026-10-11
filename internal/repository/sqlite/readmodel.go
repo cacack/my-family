@@ -4954,7 +4954,7 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 	// Query birth locations
 	// #nosec G202 -- overlay is one of two constant subquery literals returned by personOverlaySubquery; every value is a bound ? placeholder
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, birth_place, birth_place_lat, birth_place_long
+		SELECT id, given_name, surname, birth_place, birth_place_lat, birth_place_long
 		FROM `+overlay+`
 		WHERE birth_place_lat IS NOT NULL AND birth_place_long IS NOT NULL
 		  AND birth_place_lat != '' AND birth_place_long != ''
@@ -4970,15 +4970,15 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 		eventType string
 	}
 	type locData struct {
-		lat       float64
-		lon       float64
-		personIDs []uuid.UUID
+		lat     float64
+		lon     float64
+		persons []repository.MapPerson
 	}
 	agg := make(map[locKey]*locData)
 
 	for rows.Next() {
-		var idStr, place, latStr, lonStr string
-		if err := rows.Scan(&idStr, &place, &latStr, &lonStr); err != nil {
+		var idStr, givenName, surname, place, latStr, lonStr string
+		if err := rows.Scan(&idStr, &givenName, &surname, &place, &latStr, &lonStr); err != nil {
 			return nil, fmt.Errorf("scan birth map location: %w", err)
 		}
 		personID, err := uuid.Parse(idStr)
@@ -4990,11 +4990,12 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 		if errLat != nil || errLon != nil {
 			continue
 		}
+		person := repository.MapPerson{ID: personID, GivenName: givenName, Surname: surname}
 		key := locKey{place: place, eventType: "birth"}
 		if d, ok := agg[key]; ok {
-			d.personIDs = append(d.personIDs, personID)
+			d.persons = append(d.persons, person)
 		} else {
-			agg[key] = &locData{lat: lat, lon: lon, personIDs: []uuid.UUID{personID}}
+			agg[key] = &locData{lat: lat, lon: lon, persons: []repository.MapPerson{person}}
 		}
 	}
 	if err := rows.Err(); err != nil {
@@ -5004,7 +5005,7 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 	// Query death locations
 	// #nosec G202 -- overlay is one of two constant subquery literals returned by personOverlaySubquery; every value is a bound ? placeholder
 	rows2, err := s.db.QueryContext(ctx, `
-		SELECT id, death_place, death_place_lat, death_place_long
+		SELECT id, given_name, surname, death_place, death_place_lat, death_place_long
 		FROM `+overlay+`
 		WHERE death_place_lat IS NOT NULL AND death_place_long IS NOT NULL
 		  AND death_place_lat != '' AND death_place_long != ''
@@ -5016,8 +5017,8 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 	defer rows2.Close()
 
 	for rows2.Next() {
-		var idStr, place, latStr, lonStr string
-		if err := rows2.Scan(&idStr, &place, &latStr, &lonStr); err != nil {
+		var idStr, givenName, surname, place, latStr, lonStr string
+		if err := rows2.Scan(&idStr, &givenName, &surname, &place, &latStr, &lonStr); err != nil {
 			return nil, fmt.Errorf("scan death map location: %w", err)
 		}
 		personID, err := uuid.Parse(idStr)
@@ -5029,11 +5030,12 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 		if errLat != nil || errLon != nil {
 			continue
 		}
+		person := repository.MapPerson{ID: personID, GivenName: givenName, Surname: surname}
 		key := locKey{place: place, eventType: "death"}
 		if d, ok := agg[key]; ok {
-			d.personIDs = append(d.personIDs, personID)
+			d.persons = append(d.persons, person)
 		} else {
-			agg[key] = &locData{lat: lat, lon: lon, personIDs: []uuid.UUID{personID}}
+			agg[key] = &locData{lat: lat, lon: lon, persons: []repository.MapPerson{person}}
 		}
 	}
 	if err := rows2.Err(); err != nil {
@@ -5047,8 +5049,8 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 			Latitude:  data.lat,
 			Longitude: data.lon,
 			EventType: key.eventType,
-			Count:     len(data.personIDs),
-			PersonIDs: data.personIDs,
+			Count:     len(data.persons),
+			Persons:   data.persons,
 		})
 	}
 	sort.Slice(results, func(i, j int) bool {

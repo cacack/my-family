@@ -6589,7 +6589,7 @@ components:
 
     MapLocation:
       type: object
-      required: [place, latitude, longitude, event_type, count, person_ids]
+      required: [place, latitude, longitude, event_type, count, person_ids, persons]
       properties:
         place:
           type: string
@@ -6614,7 +6614,12 @@ components:
           items:
             type: string
             format: uuid
-          description: IDs of persons at this location
+          description: IDs of the persons at this location, in the same order as `persons`. Kept for existing clients; `persons[].id` carries the same IDs.
+        persons:
+          type: array
+          items:
+            $ref: '#/components/schemas/PersonSummary'
+          description: Persons at this location, named so a client can list them without a lookup each
 
     BrickWallsResponse:
       type: object

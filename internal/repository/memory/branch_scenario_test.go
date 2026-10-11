@@ -425,6 +425,11 @@ func runBranchAggregateScenario(t *testing.T, readStore repository.ReadModelStor
 		branchLocations[0].EventType != "birth" || branchLocations[0].Count != 1 {
 		t.Errorf("branch GetMapLocations = %+v, want one birth pin at Westland", branchLocations)
 	}
+	// The pin names the branch's shadow, so the map lists the overlay's name, not main's.
+	if want := []repository.MapPerson{{ID: shadow.ID, GivenName: "Robin", Surname: "Branchline"}}; len(branchLocations) == 1 &&
+		!reflect.DeepEqual(branchLocations[0].Persons, want) {
+		t.Errorf("branch GetMapLocations persons = %+v, want %+v", branchLocations[0].Persons, want)
+	}
 
 	for _, c := range []struct {
 		surname string

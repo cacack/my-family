@@ -783,7 +783,14 @@ type MapLocation struct {
 	Longitude float64     `json:"longitude"`
 	EventType string      `json:"event_type"` // "birth" or "death"
 	Count     int         `json:"count"`
-	PersonIDs []uuid.UUID `json:"person_ids"`
+	Persons   []MapPerson `json:"persons"`
+}
+
+// MapPerson is a person pinned at a MapLocation, named so the map can list them.
+type MapPerson struct {
+	ID        uuid.UUID `json:"id"`
+	GivenName string    `json:"given_name"`
+	Surname   string    `json:"surname"`
 }
 
 // BrickWallEntry represents a person with a brick wall status for browsing.

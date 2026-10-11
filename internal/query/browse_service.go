@@ -340,12 +340,19 @@ type MapLocationsResult struct {
 
 // MapLocation represents a geographic location for map display.
 type MapLocation struct {
-	Place     string   `json:"place"`
-	Latitude  float64  `json:"latitude"`
-	Longitude float64  `json:"longitude"`
-	EventType string   `json:"event_type"`
-	Count     int      `json:"count"`
-	PersonIDs []string `json:"person_ids"`
+	Place     string      `json:"place"`
+	Latitude  float64     `json:"latitude"`
+	Longitude float64     `json:"longitude"`
+	EventType string      `json:"event_type"`
+	Count     int         `json:"count"`
+	Persons   []MapPerson `json:"persons"`
+}
+
+// MapPerson is a person pinned at a MapLocation.
+type MapPerson struct {
+	ID        string `json:"id"`
+	GivenName string `json:"given_name"`
+	Surname   string `json:"surname"`
 }
 
 // GetMapLocations returns aggregated geographic locations for map visualization.
@@ -358,9 +365,9 @@ func (s *BrowseService) GetMapLocations(ctx context.Context, branchID domain.Bra
 
 	items := make([]MapLocation, len(locations))
 	for i, loc := range locations {
-		personIDs := make([]string, len(loc.PersonIDs))
-		for j, id := range loc.PersonIDs {
-			personIDs[j] = id.String()
+		persons := make([]MapPerson, len(loc.Persons))
+		for j, p := range loc.Persons {
+			persons[j] = MapPerson{ID: p.ID.String(), GivenName: p.GivenName, Surname: p.Surname}
 		}
 		items[i] = MapLocation{
 			Place:     loc.Place,
@@ -368,7 +375,7 @@ func (s *BrowseService) GetMapLocations(ctx context.Context, branchID domain.Bra
 			Longitude: loc.Longitude,
 			EventType: loc.EventType,
 			Count:     loc.Count,
-			PersonIDs: personIDs,
+			Persons:   persons,
 		}
 	}
 
