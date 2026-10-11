@@ -6,6 +6,7 @@
 	import PersonCard from '$lib/components/PersonCard.svelte';
 	import { RESEARCH_STATUS_OPTIONS } from '$lib/utils/enumOptions';
 	import { readEnum, readPositiveInt, setQuery } from '$lib/utils/urlState';
+	import ErrorState from '$lib/components/ErrorState.svelte';
 
 	let persons: Person[] = $state([]);
 	let total = $state(0);
@@ -154,10 +155,7 @@
 	{#if loading}
 		<div class="loading">Loading...</div>
 	{:else if loadError}
-		<div class="load-error" role="alert">
-			<p>{loadError}</p>
-			<Button variant="outline" onclick={loadPersons}>Retry</Button>
-		</div>
+		<ErrorState message={loadError} onRetry={loadPersons} />
 	{:else if persons.length === 0}
 		<div class="empty">
 			<p>No people found.</p>
@@ -251,16 +249,6 @@
 	}
 
 	.empty p {
-		margin: 0 0 1rem;
-	}
-
-	.load-error {
-		text-align: center;
-		padding: 3rem;
-		color: #dc2626;
-	}
-
-	.load-error p {
 		margin: 0 0 1rem;
 	}
 

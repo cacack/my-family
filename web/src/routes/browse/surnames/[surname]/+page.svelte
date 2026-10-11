@@ -2,16 +2,19 @@
 	import { page } from '$app/stores';
 	import { api, type Person } from '$lib/api/client';
 	import PersonCard from '$lib/components/PersonCard.svelte';
+	import ErrorState from '$lib/components/ErrorState.svelte';
 
 	let surname = $derived(decodeURIComponent($page.params.surname ?? ''));
 	let persons: Person[] = $state([]);
 	let total = $state(0);
 	let loading = $state(true);
+	let loadError: string | null = $state(null);
 	let currentPage = $state(1);
 	const pageSize = 20;
 
 	async function loadPersons() {
 		loading = true;
+		loadError = null;
 		try {
 			const result = await api.getPersonsBySurname(surname, {
 				limit: pageSize,
@@ -21,6 +24,7 @@
 			total = result.total;
 		} catch (e) {
 			console.error('Failed to load persons:', e);
+			loadError = 'Failed to load people. Please try again.';
 		} finally {
 			loading = false;
 		}
@@ -67,6 +71,8 @@
 
 	{#if loading}
 		<div class="loading">Loading...</div>
+	{:else if loadError}
+		<ErrorState message={loadError} onRetry={loadPersons} />
 	{:else if persons.length === 0}
 		<div class="empty">
 			<p>No people found with surname "{surname}".</p>

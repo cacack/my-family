@@ -12,6 +12,7 @@ import {
 	setClientBranch,
 	getClientBranch,
 	onBranchWrite,
+	recordLoadError,
 	type BranchMergeConflictError,
 	type BranchMergeResult,
 	type BranchMergeResumeResult,
@@ -857,5 +858,31 @@ describe('NOTE_MAX_LENGTH vs openapi.yaml', () => {
 
 	it('matches the spec cap the server enforces', () => {
 		expect(NOTE_MAX_LENGTH).toBe(specNoteMaxLength(openapiSpec));
+	});
+});
+
+describe('recordLoadError (#899)', () => {
+	it.each([
+		['a 404', { status: 404, message: 'Resource not found' }],
+		[
+			'a 400 from a malformed id',
+			{ status: 400, message: "Invalid format for parameter id: error unmarshaling 'xyz'" }
+		]
+	])('reads %s as not found', (_name, error) => {
+		const message = recordLoadError(error, 'source');
+		expect(message).toBe(
+			'This source could not be found. It may have been deleted, or the link may be wrong.'
+		);
+	});
+
+	it('passes any other error message through', () => {
+		expect(recordLoadError({ status: 500, message: 'Database unavailable' }, 'source')).toBe(
+			'Database unavailable'
+		);
+	});
+
+	it('falls back when the error carries no message', () => {
+		expect(recordLoadError(new TypeError(''), 'person')).toBe('Failed to load the person.');
+		expect(recordLoadError(undefined, 'person')).toBe('Failed to load the person.');
 	});
 });

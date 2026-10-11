@@ -22,6 +22,7 @@
 		conflictBadgeProps
 	} from '$lib/utils/evidence';
 	import { readEnum, setQuery } from '$lib/utils/urlState';
+	import ErrorState from '$lib/components/ErrorState.svelte';
 
 	const pageSize = 20;
 
@@ -273,10 +274,7 @@
 			{#if analysesLoading}
 				<div class="p-12 text-center text-muted-foreground">Loading analyses...</div>
 			{:else if analysesError}
-				<div class="p-12 text-center text-red-600">
-					<p class="m-0 mb-4">{analysesError}</p>
-					<Button variant="outline" onclick={loadAnalyses}>Retry</Button>
-				</div>
+				<ErrorState message={analysesError} onRetry={loadAnalyses} />
 			{:else if analyses.length === 0}
 				<div class="p-12 text-center text-muted-foreground">
 					<p class="m-0 mb-2">No evidence analyses yet.</p>
@@ -404,10 +402,7 @@
 			{#if conflictsLoading}
 				<div class="p-12 text-center text-muted-foreground">Loading conflicts...</div>
 			{:else if conflictsError}
-				<div class="p-12 text-center text-red-600">
-					<p class="m-0 mb-4">{conflictsError}</p>
-					<Button variant="outline" onclick={loadConflicts}>Retry</Button>
-				</div>
+				<ErrorState message={conflictsError} onRetry={loadConflicts} />
 			{:else if conflicts.length === 0}
 				<div class="p-12 text-center text-muted-foreground">
 					<p class="m-0 mb-2">No conflicts found.</p>
@@ -513,10 +508,7 @@
 			{#if logsLoading}
 				<div class="p-12 text-center text-muted-foreground">Loading research logs...</div>
 			{:else if logsError}
-				<div class="p-12 text-center text-red-600">
-					<p class="m-0 mb-4">{logsError}</p>
-					<Button variant="outline" onclick={loadLogs}>Retry</Button>
-				</div>
+				<ErrorState message={logsError} onRetry={loadLogs} />
 			{:else if logs.length === 0}
 				<div class="p-12 text-center text-muted-foreground">
 					<p class="m-0 mb-2">No research logs yet.</p>
@@ -627,10 +619,7 @@
 			{#if summariesLoading}
 				<div class="p-12 text-center text-muted-foreground">Loading proof summaries...</div>
 			{:else if summariesError}
-				<div class="p-12 text-center text-red-600">
-					<p class="m-0 mb-4">{summariesError}</p>
-					<Button variant="outline" onclick={loadSummaries}>Retry</Button>
-				</div>
+				<ErrorState message={summariesError} onRetry={loadSummaries} />
 			{:else if summaries.length === 0}
 				<div class="p-12 text-center text-muted-foreground">
 					<p class="m-0 mb-2">No proof summaries yet.</p>
