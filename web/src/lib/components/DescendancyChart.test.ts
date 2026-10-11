@@ -166,6 +166,19 @@ describe('DescendancyChart', () => {
 		expect(spouseGroups.length).toBe(2);
 	});
 
+	it('places multiple spouses side by side in the person\'s row', () => {
+		const { container } = render(DescendancyChart, { props: { data: mockMultipleSpouses } });
+		const positions = Array.from(container.querySelectorAll('.node, .spouse-group')).map((el) => {
+			const match = el.getAttribute('transform')?.match(/translate\(([^,]+),([^)]+)\)/);
+			return { x: Number(match?.[1]), y: Number(match?.[2]) };
+		});
+		expect(positions).toHaveLength(3);
+		expect(new Set(positions.map((p) => p.y)).size).toBe(1);
+		expect(positions[1].x).toBeGreaterThan(positions[0].x);
+		expect(positions[2].x).toBeGreaterThan(positions[1].x);
+		expect(container.querySelectorAll('.spouse-link')).toHaveLength(2);
+	});
+
 	it('renders spouse connector lines', () => {
 		const { container } = render(DescendancyChart, { props: { data: mockPersonWithSpouse } });
 		const spouseLinks = container.querySelectorAll('.spouse-link');

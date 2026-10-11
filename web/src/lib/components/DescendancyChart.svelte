@@ -12,26 +12,20 @@
 		wrapLabel,
 		type ScaleExtent
 	} from '$lib/utils/chart';
+	import {
+		layoutDescendancy,
+		type DescendancyLayoutConfig,
+		type SpouseCard
+	} from '$lib/utils/descendancyLayout';
 
 	export type LayoutMode = 'compact' | 'standard' | 'wide';
 
-	interface LayoutConfig {
-		cardWidth: number;
-		cardHeight: number;
-		horizontalGap: number;
-		verticalGap: number;
-		siblingSeparation: number; // Separation multiplier for siblings
-		spouseGap: number; // Gap between person and spouse cards
-		spouseCardScale: number; // Scale factor for spouse cards (slightly smaller)
-	}
-
-	const LAYOUTS: Record<LayoutMode, LayoutConfig> = {
+	const LAYOUTS: Record<LayoutMode, DescendancyLayoutConfig> = {
 		compact: {
 			cardWidth: 120,
 			cardHeight: 65,
 			horizontalGap: 8,
 			verticalGap: 25,
-			siblingSeparation: 1.0,
 			spouseGap: 8,
 			spouseCardScale: 0.9
 		},
@@ -40,7 +34,6 @@
 			cardHeight: 75,
 			horizontalGap: 20,
 			verticalGap: 40,
-			siblingSeparation: 1.0,
 			spouseGap: 12,
 			spouseCardScale: 0.9
 		},
@@ -49,7 +42,6 @@
 			cardHeight: 80,
 			horizontalGap: 40,
 			verticalGap: 50,
-			siblingSeparation: 1.0,
 			spouseGap: 16,
 			spouseCardScale: 0.9
 		}
@@ -84,11 +76,8 @@
 	let nodeMap: Map<string, d3.HierarchyPointNode<DescendancyNode>> = new Map();
 	// Store the tree data for navigation
 	let treeNodes: d3.HierarchyPointNode<DescendancyNode>[] = [];
-
-	// Convert descendancy data to D3 hierarchy format
-	function buildHierarchy(node: DescendancyNode): d3.HierarchyNode<DescendancyNode> {
-		return d3.hierarchy(node, (d) => d.children);
-	}
+	// Extent of every card, for fitting the view
+	let treeBounds: { x: number; y: number; width: number; height: number } | null = null;
 
 	function renderChart() {
 		if (!container || !data) return;
@@ -123,27 +112,10 @@
 		svg.call(zoom);
 		touchScrollsPage(svg.node()!);
 
-		// Build hierarchy and create tree layout
-		const root = buildHierarchy(data);
-
-		// Get layout config
 		const config = LAYOUTS[layout];
-		const cardWidth = config.cardWidth;
-		const cardHeight = config.cardHeight;
-		// Account for spouse cards in horizontal spacing
-		const spouseWidth = config.spouseCardScale * cardWidth + config.spouseGap;
-		const horizontalSpacing = cardWidth + spouseWidth + config.horizontalGap;
-		const verticalSpacing = cardHeight + config.verticalGap;
-
-		// Use nodeSize for consistent spacing regardless of tree size
-		const treeLayout = d3
-			.tree<DescendancyNode>()
-			.nodeSize([horizontalSpacing, verticalSpacing])
-			.separation((a, b) => (a.parent === b.parent ? config.siblingSeparation : 1.2));
-
-		const treeData = treeLayout(root);
-		const nodes = treeData.descendants();
-		const links = treeData.links();
+		const { cardWidth, cardHeight } = config;
+		const { nodes, links, spouses, bounds } = layoutDescendancy(data, config);
+		treeBounds = bounds;
 
 		// Store nodes for navigation and build the nodeMap
 		treeNodes = nodes;
@@ -189,12 +161,7 @@
 		// Render main person card
 		renderPersonCard(nodeGroups, cardWidth, cardHeight);
 
-		// Render spouse cards for each node
-		nodes.forEach((node) => {
-			if (node.data.spouses && node.data.spouses.length > 0) {
-				renderSpouseCards(node, config);
-			}
-		});
+		renderSpouseCards(spouses);
 
 		// Initial zoom to fit
 		const fit = fitToContent();
@@ -214,10 +181,9 @@
 
 	// The transform that fits the drawn tree, keeping the root in view
 	function fitToContent(): d3.ZoomTransform | null {
-		const bounds = g?.node()?.getBBox();
-		if (!bounds || treeNodes.length === 0) return null;
+		if (!treeBounds || treeNodes.length === 0) return null;
 		const [width, height] = viewportSize();
-		return fitTransform(bounds, width, height, SCALE_EXTENT, treeNodes[0]);
+		return fitTransform(treeBounds, width, height, SCALE_EXTENT, treeNodes[0]);
 	}
 
 	function animateZoomTo(target: d3.ZoomTransform) {
@@ -324,20 +290,11 @@
 			});
 	}
 
-	function renderSpouseCards(
-		node: d3.HierarchyPointNode<DescendancyNode>,
-		config: LayoutConfig
-	) {
-		const spouses = node.data.spouses || [];
-		const cardWidth = config.cardWidth;
-		const cardHeight = config.cardHeight;
-		const spouseCardWidth = cardWidth * config.spouseCardScale;
-		const spouseCardHeight = cardHeight * config.spouseCardScale;
-
-		spouses.forEach((spouse, index) => {
-			// Position spouse to the right of the person
-			const spouseX = node.x + cardWidth / 2 + config.spouseGap + spouseCardWidth / 2;
-			const spouseY = node.y + index * (spouseCardHeight + 4);
+	function renderSpouseCards(spouses: SpouseCard[]) {
+		const { spouseGap } = LAYOUTS[layout];
+		spouses.forEach(({ spouse, x: spouseX, y: spouseY, width: spouseCardWidth, height: spouseCardHeight }) => {
+			// The connector spans the gap to the card before: the person's, or the previous spouse's
+			const previousRight = spouseX - spouseCardWidth / 2 - spouseGap;
 
 			// Create spouse group
 			const spouseGroup = g
@@ -351,11 +308,11 @@
 					}
 				});
 
-			// Draw horizontal connector line from person to spouse
+			// Draw horizontal connector line from the previous card to this spouse
 			g.append('line')
 				.attr('class', 'spouse-link')
-				.attr('x1', node.x + cardWidth / 2)
-				.attr('y1', node.y)
+				.attr('x1', previousRight)
+				.attr('y1', spouseY)
 				.attr('x2', spouseX - spouseCardWidth / 2)
 				.attr('y2', spouseY)
 				.attr('stroke', '#94a3b8')
@@ -420,7 +377,7 @@
 				.append('text')
 				.attr('y', 16)
 				.attr('text-anchor', 'middle')
-				.attr('font-size', '9px')
+				.attr('font-size', '11px')
 				.attr('fill', '#64748b')
 				.text(spouse.marriage_date
 						? `m. ${spouse.marriage_date.year ?? formatGenDate(spouse.marriage_date)}`
