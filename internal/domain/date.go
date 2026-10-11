@@ -226,6 +226,7 @@ func ParseGenDate(s string) GenDate {
 // in parentheses, such as "(about the time of the war)", is always accepted.
 // An empty string is valid: it means no date.
 //
+// Accepted dates (other than phrases) always parse to a year with ParseGenDate.
 // ParseGenDate stays lenient so imported and already-stored dates keep loading;
 // this check is for new input only. Syntax and calendar rules come from
 // gedcom-go, which currently checks day counts for Gregorian dates only.
@@ -245,6 +246,12 @@ func ValidateDateInput(s string) error {
 		if err := part.Validate(); err != nil {
 			return fmt.Errorf("%q is not a real calendar date (%s)", s, strings.TrimPrefix(err.Error(), "invalid date: "))
 		}
+	}
+	// gedcom-go accepts forms ParseGenDate can't read a year from (dual years
+	// like "1750/51", BC years, a bare "TO 1860"). Storing those would leave the
+	// date without a year, so reject them unless they are a date phrase.
+	if !strings.HasPrefix(s, "(") && ParseGenDate(s).Year == nil {
+		return fmt.Errorf("%q is not a supported date yet (dual years, BC years and \"TO\" without \"FROM\" can't be stored with a year); use a single year such as \"1751\", or put it in parentheses to keep it as a date phrase", s)
 	}
 	return nil
 }
