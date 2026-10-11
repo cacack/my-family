@@ -23,11 +23,37 @@ function clamp(value: number, [min, max]: ScaleExtent): number {
 	return Math.min(max, Math.max(min, value));
 }
 
+/** Text on screen should be at least this big, in CSS pixels. */
+const MIN_TEXT_PX = 10;
+/** The smallest font drawn on a chart, in chart units (the chart component tests check this). */
+export const MIN_CARD_FONT_PX = 11;
+/**
+ * The initial fit stays within this range: never above 1x (a lone person would
+ * otherwise open as a giant card), and never so small that card text drops
+ * below MIN_TEXT_PX. A tree too big to fit at the minimum overflows instead.
+ */
+export const FIT_SCALE_RANGE: ScaleExtent = [MIN_TEXT_PX / MIN_CARD_FONT_PX, 1];
+/** Gap kept between an overflowing tree's edge and the viewport edge. */
+const FIT_EDGE_MARGIN = 16;
+
+/**
+ * Translation along one axis: centre the content when it fits, otherwise centre
+ * on `focus` but never leave a gap past the content's near edge.
+ */
+function fitAxis(start: number, size: number, view: number, scale: number, focus?: number): number {
+	if (focus === undefined || size * scale <= view) return view / 2 - scale * (start + size / 2);
+	const centred = view / 2 - scale * focus;
+	const min = view - FIT_EDGE_MARGIN - scale * (start + size);
+	const max = FIT_EDGE_MARGIN - scale * start;
+	return Math.min(max, Math.max(min, centred));
+}
+
 /**
  * The transform that fits `bounds` into a `width` x `height` viewport (with a
- * margin), clamped to the zoom extent. When the clamped content still overflows
- * an axis, that axis is centred on `focus` (the root person) instead of the
- * bounding box, so the root stays visible on very large trees.
+ * margin), clamped to FIT_SCALE_RANGE and the zoom extent. When the content
+ * still overflows an axis, that axis is centred on `focus` (the root person)
+ * and pushed back to the content's edge, so the root and its nearest relatives
+ * open readable on any tree size.
  */
 export function fitTransform(
 	bounds: Bounds,
@@ -37,12 +63,10 @@ export function fitTransform(
 	focus?: { x: number; y: number }
 ): d3.ZoomTransform {
 	const fit = 0.85 / Math.max(bounds.width / width, bounds.height / height);
-	const scale = clamp(fit, extent);
-	let cx = bounds.x + bounds.width / 2;
-	let cy = bounds.y + bounds.height / 2;
-	if (focus && bounds.width * scale > width) cx = focus.x;
-	if (focus && bounds.height * scale > height) cy = focus.y;
-	return d3.zoomIdentity.translate(width / 2 - scale * cx, height / 2 - scale * cy).scale(scale);
+	const scale = clamp(clamp(fit, FIT_SCALE_RANGE), extent);
+	const x = fitAxis(bounds.x, bounds.width, width, scale, focus?.x);
+	const y = fitAxis(bounds.y, bounds.height, height, scale, focus?.y);
+	return d3.zoomIdentity.translate(x, y).scale(scale);
 }
 
 /** `from` scaled by `factor` about the viewport point `center`, clamped to the extent. */
@@ -91,6 +115,24 @@ export function observeChartResize(
 		if (timer) clearTimeout(timer);
 		observer.disconnect();
 	};
+}
+
+/**
+ * Leaves one-finger touch gestures to the browser so the page can scroll past
+ * the chart; d3-zoom then pans and pinches only with two fingers. Call right
+ * after applying the zoom behaviour, which sets `touch-action: none`.
+ */
+export function touchScrollsPage(svg: SVGSVGElement): void {
+	svg.style.touchAction = 'pan-y';
+	// Capture listeners on the target run before d3-zoom's, so single-finger
+	// moves never reach it and the browser scrolls instead
+	svg.addEventListener(
+		'touchmove',
+		(event) => {
+			if (event.touches.length < 2) event.stopImmediatePropagation();
+		},
+		{ capture: true, passive: true }
+	);
 }
 
 /**

@@ -7,6 +7,7 @@
 		motionDuration,
 		observeChartResize,
 		scaleAbout,
+		touchScrollsPage,
 		truncateLabel,
 		type ScaleExtent
 	} from '$lib/utils/chart';
@@ -23,8 +24,9 @@
 
 	// cousinSeparation must be >= cardWidth/(cardWidth+horizontalGap) to avoid overlap
 	// compact: 120/128 = 0.94, standard: 140/160 = 0.88, wide: 160/200 = 0.80
+	// verticalGap must be >= TOGGLE_OFFSET + TOGGLE_HIT_RADIUS so a toggle never covers the card below
 	const LAYOUTS: Record<LayoutMode, LayoutConfig> = {
-		compact: { cardWidth: 120, cardHeight: 65, horizontalGap: 8, verticalGap: 25, cousinSeparation: 0.95 },
+		compact: { cardWidth: 120, cardHeight: 65, horizontalGap: 8, verticalGap: 32, cousinSeparation: 0.95 },
 		standard: { cardWidth: 140, cardHeight: 75, horizontalGap: 20, verticalGap: 40, cousinSeparation: 0.9 },
 		wide: { cardWidth: 160, cardHeight: 80, horizontalGap: 40, verticalGap: 50, cousinSeparation: 0.85 }
 	};
@@ -33,8 +35,13 @@
 	const ANIMATION_DURATION = 300;
 
 	const SCALE_EXTENT: ScaleExtent = [0.1, 4];
-	// Collapse toggles hang below each card (offset + radius)
-	const TOGGLE_EXTENT = 21;
+	// Collapse toggles hang below each card: centre offset from the card edge, the
+	// drawn radius, and a larger invisible radius that keeps the touch target at
+	// least 24px across at the smallest initial zoom (FIT_SCALE_RANGE)
+	const TOGGLE_OFFSET = 16;
+	const TOGGLE_RADIUS = 10;
+	const TOGGLE_HIT_RADIUS = 14;
+	const TOGGLE_EXTENT = TOGGLE_OFFSET + TOGGLE_HIT_RADIUS;
 
 	interface Props {
 		data: PedigreeNode;
@@ -206,6 +213,7 @@
 			});
 
 		svg.call(zoom);
+		touchScrollsPage(svg.node()!);
 
 		// Build hierarchy and create tree layout
 		const root = buildHierarchy(data);
@@ -296,7 +304,9 @@
 	}
 
 	function viewportSize(): [number, number] {
-		return [container.clientWidth || 800, container.clientHeight || 600];
+		// Fractional size: a rounded viewBox would scale the chart slightly below 1:1
+		const { width, height } = container.getBoundingClientRect();
+		return [width || 800, height || 600];
 	}
 
 	// Keep one SVG unit per pixel when only the height changes, preserving zoom and pan
@@ -590,7 +600,7 @@
 		const toggleGroups = nodesWithAncestors
 			.append('g')
 			.attr('class', 'collapse-toggle')
-			.attr('transform', `translate(0, ${cardHeight / 2 + 12})`)
+			.attr('transform', `translate(0, ${cardHeight / 2 + TOGGLE_OFFSET})`)
 			.style('cursor', 'pointer')
 			.on('click', (event, d) => {
 				event.stopPropagation(); // Prevent triggering person click
@@ -599,11 +609,18 @@
 				}
 			});
 
+		// Invisible touch target, larger than the drawn button
+		toggleGroups
+			.append('circle')
+			.attr('class', 'toggle-hit-area')
+			.attr('r', TOGGLE_HIT_RADIUS)
+			.attr('fill', 'transparent');
+
 		// Toggle button circle
 		toggleGroups
 			.append('circle')
 			.attr('class', 'toggle-button')
-			.attr('r', 9)
+			.attr('r', TOGGLE_RADIUS)
 			.attr('fill', '#f8fafc')
 			.attr('stroke', '#94a3b8')
 			.attr('stroke-width', 1.5);
@@ -652,7 +669,7 @@
 					.attr('y', 0)
 					.attr('text-anchor', 'middle')
 					.attr('dominant-baseline', 'central')
-					.attr('font-size', '10px')
+					.attr('font-size', '11px')
 					.attr('font-weight', '500')
 					.attr('fill', '#475569')
 					.text(badgeText);
@@ -704,7 +721,7 @@
 					.attr('y', 0)
 					.attr('text-anchor', 'middle')
 					.attr('dominant-baseline', 'central')
-					.attr('font-size', '10px')
+					.attr('font-size', '11px')
 					.attr('font-weight', '500')
 					.attr('fill', '#475569')
 					.text(badgeText);
@@ -881,6 +898,8 @@
 		width: 100%;
 		height: 100%;
 		min-height: 240px;
+		/* Size from the page, never from the drawn SVG, or the chart could grow but not shrink */
+		contain: size;
 		background: #fafafa;
 		border-radius: 8px;
 		overflow: hidden;

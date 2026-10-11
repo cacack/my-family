@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render } from '@testing-library/svelte';
 import DescendancyChart from './DescendancyChart.svelte';
 import type { DescendancyNode } from '$lib/api/client';
+import { MIN_CARD_FONT_PX } from '$lib/utils/chart';
 
 // Mock data for tests
 const mockSinglePerson: DescendancyNode = {
@@ -164,6 +165,26 @@ describe('DescendancyChart', () => {
 		const { container } = render(DescendancyChart, { props: { data: mockMultipleSpouses } });
 		const spouseGroups = container.querySelectorAll('.spouse-group');
 		expect(spouseGroups.length).toBe(2);
+	});
+
+	it('places multiple spouses side by side in the person\'s row', () => {
+		const { container } = render(DescendancyChart, { props: { data: mockMultipleSpouses } });
+		const positions = Array.from(container.querySelectorAll('.node, .spouse-group')).map((el) => {
+			const match = el.getAttribute('transform')?.match(/translate\(([^,]+),([^)]+)\)/);
+			return { x: Number(match?.[1]), y: Number(match?.[2]) };
+		});
+		expect(positions).toHaveLength(3);
+		expect(new Set(positions.map((p) => p.y)).size).toBe(1);
+		expect(positions[1].x).toBeGreaterThan(positions[0].x);
+		expect(positions[2].x).toBeGreaterThan(positions[1].x);
+		expect(container.querySelectorAll('.spouse-link')).toHaveLength(2);
+	});
+
+	it('draws no text smaller than the fit policy assumes', () => {
+		const { container } = render(DescendancyChart, { props: { data: mockMultipleSpouses } });
+		for (const text of container.querySelectorAll('text')) {
+			expect(parseFloat(text.getAttribute('font-size') ?? '')).toBeGreaterThanOrEqual(MIN_CARD_FONT_PX);
+		}
 	});
 
 	it('renders spouse connector lines', () => {

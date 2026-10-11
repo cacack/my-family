@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, cleanup } from '@testing-library/svelte';
 import PedigreeChart from './PedigreeChart.svelte';
 import type { PedigreeNode } from '$lib/api/client';
+import { FIT_SCALE_RANGE, MIN_CARD_FONT_PX } from '$lib/utils/chart';
 
 // Mock data for tests
 const mockSinglePerson: PedigreeNode = {
@@ -305,6 +306,16 @@ describe('PedigreeChart', () => {
 			expect(toggleButtons.length).toBe(1);
 		});
 
+		it('gives each toggle a touch target bigger than the drawn button', () => {
+			const { container } = render(PedigreeChart, { props: { data: mockPersonWithParents } });
+			const hit = container.querySelector('.collapse-toggle .toggle-hit-area');
+			const button = container.querySelector('.collapse-toggle .toggle-button');
+			// 28 chart units stay at least 24px across at the smallest initial zoom
+			const [minFit] = FIT_SCALE_RANGE;
+			expect(Number(hit?.getAttribute('r')) * 2 * minFit).toBeGreaterThanOrEqual(24);
+			expect(Number(hit?.getAttribute('r'))).toBeGreaterThan(Number(button?.getAttribute('r')));
+		});
+
 		it('does not render collapse toggle on nodes without ancestors', () => {
 			const { container } = render(PedigreeChart, { props: { data: mockSinglePerson } });
 			const toggleButtons = container.querySelectorAll('.collapse-toggle');
@@ -381,6 +392,11 @@ describe('PedigreeChart', () => {
 			// Badge should show +2 (William and Elizabeth)
 			const badgeText = badge?.querySelector('text');
 			expect(badgeText?.textContent).toBe('+2');
+
+			// The fit policy's minimum scale assumes no chart text is smaller than this
+			for (const text of container.querySelectorAll('text')) {
+				expect(parseFloat(text.getAttribute('font-size') ?? '')).toBeGreaterThanOrEqual(MIN_CARD_FONT_PX);
+			}
 		});
 
 		it('shows correct ancestor count for deeper trees', async () => {

@@ -237,7 +237,7 @@
 			<div class="chart-area">
 				<PedigreeChart bind:this={chart} data={pedigree.root} {layout} {selectedPersonId} onPersonClick={handlePersonClick} />
 			</div>
-			<p class="hint">Click on any person to view their pedigree. Scroll to zoom, drag to pan. Use arrow keys to navigate, +/- to zoom, R to reset.</p>
+			<p class="hint">Click on any person to view their pedigree. Scroll to zoom, drag to pan (two fingers on a touchscreen). Use arrow keys to navigate, +/- to zoom, R to reset.</p>
 		{:else}
 			<div class="empty">No pedigree data available.</div>
 		{/if}
@@ -245,23 +245,12 @@
 </div>
 
 <style>
-	/* Size the chart page to the viewport left under the app header */
-	:global(.app-layout:has(.pedigree-page)) {
-		height: 100dvh;
-		min-height: 0;
-	}
-
-	:global(.app-main:has(.pedigree-page)) {
-		display: flex;
-		flex-direction: column;
-		min-height: 0;
-	}
-
+	/* Fills the viewport under the app header (see +layout.svelte); on a short
+	   screen the page keeps its minimum height and scrolls instead. */
 	.pedigree-page {
 		display: flex;
 		flex-direction: column;
 		flex: 1;
-		min-height: 0;
 		background: #f8fafc;
 	}
 
@@ -283,6 +272,9 @@
 	}
 
 	.back-link {
+		display: inline-flex;
+		align-items: center;
+		min-height: 24px;
 		color: var(--color-text-muted);
 		text-decoration: none;
 		font-size: 0.875rem;
@@ -379,14 +371,11 @@
 		display: flex;
 		flex-direction: column;
 		flex: 1;
-		min-height: 0;
 		padding: 1rem;
-		overflow: hidden;
 	}
 
 	.chart-area {
 		flex: 1;
-		min-height: 0;
 	}
 
 	.loading,
