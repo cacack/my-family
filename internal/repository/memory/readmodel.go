@@ -1563,7 +1563,7 @@ func (s *ReadModelStore) GetMedia(ctx context.Context, branchID domain.BranchID,
 	if r == nil || r.deleted {
 		return nil, nil
 	}
-	return metadataOnly(r), nil
+	return s.mediaMetadata(r), nil
 }
 
 // sharedMediaBytes returns the bytes branch reads for the winning row w: w's
@@ -1581,6 +1581,16 @@ func (s *ReadModelStore) sharedMediaBytes(w *mediaRow, id uuid.UUID) (file, thum
 	return file, thumb
 }
 
+// mediaMetadata is what the metadata-only reads return for the winning row w:
+// its metadata without bytes, with HasThumbnail set from the shared bytes
+// (#903). Callers hold s.mu.
+func (s *ReadModelStore) mediaMetadata(w *mediaRow) *repository.MediaReadModel {
+	result := metadataOnly(w)
+	_, thumb := s.sharedMediaBytes(w, w.m.ID)
+	result.HasThumbnail = len(thumb) > 0
+	return result
+}
+
 // GetMediaWithData retrieves the full media record within the branch overlay:
 // the winning row's metadata and the shared bytes (#759).
 func (s *ReadModelStore) GetMediaWithData(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.MediaReadModel, error) {
@@ -1593,6 +1603,7 @@ func (s *ReadModelStore) GetMediaWithData(ctx context.Context, branchID domain.B
 	}
 	result := r.m
 	result.FileData, result.ThumbnailData = s.sharedMediaBytes(r, id)
+	result.HasThumbnail = len(result.ThumbnailData) > 0
 	return &result, nil
 }
 
@@ -1620,7 +1631,7 @@ func (s *ReadModelStore) ListMediaForEntity(ctx context.Context, entityType stri
 	var results []repository.MediaReadModel
 	for _, r := range s.visibleMedia(opts.BranchID) {
 		if r.m.EntityType == entityType && r.m.EntityID == entityID {
-			results = append(results, *metadataOnly(r))
+			results = append(results, *s.mediaMetadata(r))
 		}
 	}
 

@@ -114,8 +114,25 @@ func TestUploadPersonMedia(t *testing.T) {
 	if mediaResp["id"] == nil || mediaResp["id"] == "" {
 		t.Error("Expected non-empty id")
 	}
-	// Note: has_thumbnail requires checking via GetMediaWithData since GetMedia
-	// excludes binary data for efficiency. The thumbnail test verifies this separately.
+
+	// An uploaded image reports its thumbnail on upload, get and list (#903).
+	if mediaResp["has_thumbnail"] != true {
+		t.Errorf("upload has_thumbnail = %v, want true", mediaResp["has_thumbnail"])
+	}
+	getRec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(getRec, httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/media/%s", mediaResp["id"]), http.NoBody))
+	var getResp map[string]any
+	if err := json.Unmarshal(getRec.Body.Bytes(), &getResp); err != nil || getResp["has_thumbnail"] != true {
+		t.Errorf("get has_thumbnail = %v (status %d, err %v), want true", getResp["has_thumbnail"], getRec.Code, err)
+	}
+	listRec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(listRec, httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/persons/%s/media", personID), http.NoBody))
+	var listResp struct {
+		Items []map[string]any `json:"items"`
+	}
+	if err := json.Unmarshal(listRec.Body.Bytes(), &listResp); err != nil || len(listResp.Items) != 1 || listResp.Items[0]["has_thumbnail"] != true {
+		t.Errorf("list = %s (err %v), want one item with has_thumbnail true", listRec.Body.String(), err)
+	}
 }
 
 func TestUploadPersonMedia_MissingTitle(t *testing.T) {

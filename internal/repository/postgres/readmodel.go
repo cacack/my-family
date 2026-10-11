@@ -3780,6 +3780,13 @@ const (
 		LEFT JOIN media m ON m.id = o.id AND m.branch_id = $3 AND o.branch_id <> $3
 		WHERE NOT o.deleted`
 
+	// mediaHasThumbnail is the HasThumbnail column of the metadata reads: whether
+	// the winning row or main's row (where the shared bytes live) holds a
+	// thumbnail, tested for NULL rather than selected (#903). It correlates
+	// on the overlay alias md; %[1]d numbers the branch placeholder, %[2]d main's.
+	mediaHasThumbnail = `EXISTS (SELECT 1 FROM media t
+		WHERE t.id = md.id AND t.branch_id IN ($%[1]d, $%[2]d) AND t.thumbnail_data IS NOT NULL)`
+
 	// Per-owner media filters. %[1]d is the placeholder number of the owner id,
 	// which the caller binds after overlayArgs.
 	personMediaFilter = `entity_type = 'person' AND entity_id = $%[1]d`
@@ -3813,7 +3820,8 @@ const (
 func (s *ReadModelStore) GetMedia(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.MediaReadModel, error) {
 	// #nosec G202 -- the query is built by overlayGetQuery from package constants; every value is a bound placeholder
 	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
-	row := s.db.QueryRowContext(ctx, overlayGetQuery("media", mediaSelectCols),
+	row := s.db.QueryRowContext(ctx, "SELECT "+mediaSelectCols+", "+fmt.Sprintf(mediaHasThumbnail, 2, 3)+
+		" FROM ("+overlayGetQuery("media", mediaSelectCols)+") md",
 		id, branchID.UUID(), domain.MainBranchID.UUID())
 	return scanMediaRow(row, false)
 }
@@ -3864,14 +3872,15 @@ func (s *ReadModelStore) ListMediaForEntity(ctx context.Context, entityType stri
 		return nil, 0, fmt.Errorf("count media: %w", err)
 	}
 
+	// $1 is the scope and $(n-1) main ($1 itself on main), per overlayArgs.
 	// #nosec G201 G202 -- src and n are internal; limit/offset stay bound parameters
 	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 	query := fmt.Sprintf(`
-		SELECT `+mediaSelectCols+`
+		SELECT `+mediaSelectCols+`, %s
 		FROM %s md
 		ORDER BY created_at DESC, id DESC
 		LIMIT $%d OFFSET $%d
-	`, src, n+2, n+3)
+	`, fmt.Sprintf(mediaHasThumbnail, 1, n-1), src, n+2, n+3)
 
 	rows, err := s.db.QueryContext(ctx, query, append(args, opts.Limit, opts.Offset)...)
 	if err != nil {
@@ -4109,8 +4118,9 @@ func lockMediaBlobs(ctx context.Context, db sqlExecer) error {
 }
 
 // scanMediaRow scans one mediaSelectCols row, followed by the file and
-// thumbnail bytes when withData is set. It returns (nil, nil) for
-// sql.ErrNoRows so single-row lookups report absence as nil.
+// thumbnail bytes when withData is set, else by the mediaHasThumbnail flag. It
+// returns (nil, nil) for sql.ErrNoRows so single-row lookups report absence as
+// nil.
 func scanMediaRow(row rowScanner, withData bool) (*repository.MediaReadModel, error) {
 	var (
 		m                           repository.MediaReadModel
@@ -4129,6 +4139,8 @@ func scanMediaRow(row rowScanner, withData bool) (*repository.MediaReadModel, er
 		&filesJSON, &format, &translationsJSON}
 	if withData {
 		dest = append(dest, &m.FileData, &m.ThumbnailData)
+	} else {
+		dest = append(dest, &m.HasThumbnail)
 	}
 
 	err := row.Scan(dest...)
@@ -4137,6 +4149,9 @@ func scanMediaRow(row rowScanner, withData bool) (*repository.MediaReadModel, er
 	}
 	if err != nil {
 		return nil, fmt.Errorf("scan media: %w", err)
+	}
+	if withData {
+		m.HasThumbnail = len(m.ThumbnailData) > 0
 	}
 
 	// Deserialize JSONB fields

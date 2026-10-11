@@ -1207,6 +1207,9 @@ func runBranchMediaScenario(t *testing.T, readStore repository.ReadModelStore, b
 		m.FileSize = int64(len(file))
 		return m
 	}
+	// thumbless holds the items stored without a thumbnail; every other item
+	// must report HasThumbnail (#903).
+	thumbless := make(map[uuid.UUID]bool)
 	listIDs := func(branchID domain.BranchID, owner uuid.UUID) map[uuid.UUID]bool {
 		t.Helper()
 		got, total, err := readStore.ListMediaForEntity(ctx, "person", owner, repository.ListOptions{Limit: 100, BranchID: branchID})
@@ -1221,6 +1224,9 @@ func runBranchMediaScenario(t *testing.T, readStore repository.ReadModelStore, b
 			if m.FileData != nil || m.ThumbnailData != nil {
 				t.Errorf("ListMediaForEntity returned bytes for %s; it must read metadata only", m.ID)
 			}
+			if m.HasThumbnail == thumbless[m.ID] {
+				t.Errorf("ListMediaForEntity HasThumbnail for %s = %v, want %v", m.ID, m.HasThumbnail, !thumbless[m.ID])
+			}
 			ids[m.ID] = true
 		}
 		return ids
@@ -1233,6 +1239,12 @@ func runBranchMediaScenario(t *testing.T, readStore repository.ReadModelStore, b
 		}
 		if string(got.FileData) != file || string(got.ThumbnailData) != thumb {
 			t.Errorf("%s: GetMediaWithData bytes = %q/%q, want %q/%q", label, got.FileData, got.ThumbnailData, file, thumb)
+		}
+		if got.HasThumbnail != (thumb != "") {
+			t.Errorf("%s: GetMediaWithData HasThumbnail = %v, want %v", label, got.HasThumbnail, thumb != "")
+		}
+		if meta, err := readStore.GetMedia(ctx, branchID, id); err != nil || meta == nil || meta.HasThumbnail != (thumb != "") {
+			t.Errorf("%s: GetMedia = %+v (err=%v), want HasThumbnail %v", label, meta, err, thumb != "")
 		}
 		th, err := readStore.GetMediaThumbnail(ctx, branchID, id)
 		if err != nil || string(th) != thumb {
@@ -1349,6 +1361,22 @@ func runBranchMediaScenario(t *testing.T, readStore repository.ReadModelStore, b
 	}
 	if got := listIDs(main, alex.ID); len(got) != 2 || got[scan.ID] {
 		t.Errorf("main ListMediaForEntity(alex) after branch upload = %v, want portrait and letter only", got)
+	}
+
+	// --- Step 3b (#903): the metadata reads report HasThumbnail without reading
+	// the bytes — true for a shadow borrowing main's thumbnail (checked by
+	// wantBytes above), false for an item stored without one, on main and
+	// through a branch shadow alike. ---
+	casey := domain.NewPerson("Casey", "Original")
+	note := newMedia("note", casey.ID, "NOTE-FILE", "")
+	thumbless[note.ID] = true
+	project("seed thumbless note", main, domain.NewPersonCreated(casey), domain.NewMediaCreated(note))
+	project("branch retitle note", branchID, domain.NewMediaUpdated(note.ID, map[string]any{"title": "note (branch)"}))
+	for _, b := range []domain.BranchID{main, branchID} {
+		wantBytes("thumbless note", b, note.ID, "NOTE-FILE", "")
+		if got := listIDs(b, casey.ID); len(got) != 1 || !got[note.ID] {
+			t.Errorf("ListMediaForEntity(casey) on %s = %v, want the note", b, got)
+		}
 	}
 
 	// --- Step 4: re-link an item on the branch; the entity filter follows the
