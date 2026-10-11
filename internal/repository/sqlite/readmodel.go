@@ -4178,6 +4178,13 @@ const (
 		LEFT JOIN media m ON m.id = o.id AND m.branch_id = ? AND o.branch_id <> ?
 		WHERE o.rn = 1 AND o.deleted = 0`
 
+	// mediaHasThumbnail is the HasThumbnail column of the metadata reads: whether
+	// the winning row or main's row (where the shared bytes live) holds a
+	// thumbnail, tested for NULL rather than selected (#903). It correlates
+	// on the overlay alias md and binds mediaHasThumbnailArgs.
+	mediaHasThumbnail = `EXISTS (SELECT 1 FROM media t
+		WHERE t.id = md.id AND t.branch_id IN (?, ?) AND t.thumbnail_data IS NOT NULL)`
+
 	// Per-owner media filters; each binds the owner id once.
 	personMediaFilter = `entity_type = 'person' AND entity_id = ?`
 	familyMediaFilter = `entity_type = 'family' AND entity_id = ?`
@@ -4215,13 +4222,19 @@ func mediaWinnerArgs(branchID domain.BranchID, id uuid.UUID) []any {
 	return []any{branch, id.String(), branch, mainBranchID, mainBranchID, mainBranchID}
 }
 
+// mediaHasThumbnailArgs are the args mediaHasThumbnail binds.
+func mediaHasThumbnailArgs(branchID domain.BranchID) []any {
+	return []any{branchID.String(), mainBranchID}
+}
+
 // GetMedia retrieves media metadata by ID within the branch overlay (ADR-005,
 // #759). It never reads the file bytes.
 func (s *ReadModelStore) GetMedia(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.MediaReadModel, error) {
 	sub, args := overlayColsSubquery("media", mediaSelectCols, mediaIDFilter, []any{id.String()}, branchID)
 	// #nosec G202 -- sub is built from package constants; every value is a bound ? placeholder
 	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
-	row := s.db.QueryRowContext(ctx, "SELECT "+mediaSelectCols+" FROM "+sub+" md", args...)
+	row := s.db.QueryRowContext(ctx, "SELECT "+mediaSelectCols+", "+mediaHasThumbnail+" FROM "+sub+" md",
+		append(mediaHasThumbnailArgs(branchID), args...)...)
 	return scanMediaRow(row, false)
 }
 
@@ -4269,14 +4282,15 @@ func (s *ReadModelStore) ListMediaForEntity(ctx context.Context, entityType stri
 		return nil, 0, fmt.Errorf("count media: %w", err)
 	}
 
+	queryArgs := append(mediaHasThumbnailArgs(opts.BranchID), args...)
 	// #nosec G202 -- sub is built from package constants; every value is a bound ? placeholder
 	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT `+mediaSelectCols+`
+		SELECT `+mediaSelectCols+`, `+mediaHasThumbnail+`
 		FROM `+sub+` md
 		ORDER BY created_at DESC, id DESC
 		LIMIT ? OFFSET ?
-	`, append(args, opts.Limit, opts.Offset)...)
+	`, append(queryArgs, opts.Limit, opts.Offset)...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("query media: %w", err)
 	}
@@ -4471,8 +4485,9 @@ func gcMainMedia(ctx context.Context, db sqlExecer, stmt string, args ...any) er
 }
 
 // scanMediaRow scans one mediaSelectCols row, followed by the file and
-// thumbnail bytes when withData is set. It returns (nil, nil) for
-// sql.ErrNoRows so single-row lookups report absence as nil.
+// thumbnail bytes when withData is set, else by the mediaHasThumbnail flag. It
+// returns (nil, nil) for sql.ErrNoRows so single-row lookups report absence as
+// nil.
 func scanMediaRow(row rowScanner, withData bool) (*repository.MediaReadModel, error) {
 	var (
 		m                             repository.MediaReadModel
@@ -4492,6 +4507,8 @@ func scanMediaRow(row rowScanner, withData bool) (*repository.MediaReadModel, er
 		&filesJSON, &format, &translationsJSON}
 	if withData {
 		dest = append(dest, &m.FileData, &m.ThumbnailData)
+	} else {
+		dest = append(dest, &m.HasThumbnail)
 	}
 
 	err := row.Scan(dest...)
@@ -4500,6 +4517,9 @@ func scanMediaRow(row rowScanner, withData bool) (*repository.MediaReadModel, er
 	}
 	if err != nil {
 		return nil, fmt.Errorf("scan media: %w", err)
+	}
+	if withData {
+		m.HasThumbnail = len(m.ThumbnailData) > 0
 	}
 
 	if m.ID, err = uuid.Parse(idStr); err != nil {

@@ -176,8 +176,9 @@ type MediaReadModel struct {
 	MediaType     domain.MediaType `json:"media_type"`
 	Filename      string           `json:"filename"`
 	FileSize      int64            `json:"file_size"`
-	FileData      []byte           `json:"-"` // Excluded from JSON by default
-	ThumbnailData []byte           `json:"-"` // Excluded from JSON by default
+	FileData      []byte           `json:"-"`             // Excluded from JSON by default
+	ThumbnailData []byte           `json:"-"`             // Excluded from JSON by default
+	HasThumbnail  bool             `json:"has_thumbnail"` // Derived on every read without loading bytes (#903); not stored, so SaveMedia ignores it
 	CropLeft      *int             `json:"crop_left,omitempty"`
 	CropTop       *int             `json:"crop_top,omitempty"`
 	CropWidth     *int             `json:"crop_width,omitempty"`
@@ -582,7 +583,8 @@ type ReadModelStore interface {
 	//     a mainline SaveMedia clears, on every branch row of that id, each byte
 	//     column main's row now holds. The bytes are then stored once, on main,
 	//     and the branch reads them through the fallback below.
-	//   - GetMedia and ListMediaForEntity never read the byte columns.
+	//   - GetMedia and ListMediaForEntity never read the byte columns; they set
+	//     HasThumbnail by testing them for NULL on the winning and main rows.
 	//     GetMediaWithData and GetMediaThumbnail resolve the metadata through the
 	//     overlay (so a tombstone hides the bytes too) and read the bytes from the
 	//     winning row, else from the main row.

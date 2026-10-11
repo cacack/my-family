@@ -4541,7 +4541,7 @@ func convertRollbackResult(result *command.RollbackResult, message string) Rollb
 
 // convertMediaReadModelToGenerated converts a repository.MediaReadModel to the generated Media type.
 func convertMediaReadModelToGenerated(m repository.MediaReadModel) Media {
-	hasThumbnail := len(m.ThumbnailData) > 0
+	hasThumbnail := m.HasThumbnail
 	resp := Media{
 		Id:           m.ID,
 		EntityType:   MediaEntityType(m.EntityType),
