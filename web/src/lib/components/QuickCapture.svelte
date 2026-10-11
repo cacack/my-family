@@ -103,7 +103,7 @@
 					type="button"
 					variant={gender === 'male' ? 'default' : 'outline'}
 					size="sm"
-					class="min-h-12"
+					class="min-h-12 flex-1"
 					onclick={() => (gender = 'male')}
 				>
 					Male
@@ -112,7 +112,7 @@
 					type="button"
 					variant={gender === 'female' ? 'default' : 'outline'}
 					size="sm"
-					class="min-h-12"
+					class="min-h-12 flex-1"
 					onclick={() => (gender = 'female')}
 				>
 					Female
@@ -121,7 +121,7 @@
 					type="button"
 					variant={gender === 'unknown' ? 'default' : 'outline'}
 					size="sm"
-					class="min-h-12"
+					class="min-h-12 flex-1"
 					onclick={() => (gender = 'unknown')}
 				>
 					Unknown
@@ -263,9 +263,10 @@
 		margin-bottom: 0.375rem;
 	}
 
+	/* Equal widths while they fit; wrap rather than overflow at large font sizes. */
 	.gender-buttons {
-		display: grid;
-		grid-template-columns: repeat(3, 1fr);
+		display: flex;
+		flex-wrap: wrap;
 		gap: 0.5rem;
 	}
 
@@ -285,6 +286,7 @@
 
 	.form-actions {
 		display: flex;
+		flex-wrap: wrap;
 		gap: 0.75rem;
 		padding-top: 0.5rem;
 	}

@@ -426,6 +426,8 @@
 	}
 
 	.person-link {
+		min-width: 0;
+		overflow-wrap: anywhere;
 		color: #1e293b;
 		text-decoration: none;
 		font-weight: 500;
@@ -438,7 +440,7 @@
 
 	.events-grid {
 		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+		grid-template-columns: repeat(auto-fit, minmax(min(14rem, 100%), 1fr));
 		gap: 0.5rem 2rem;
 	}
 

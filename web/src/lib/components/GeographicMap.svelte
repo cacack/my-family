@@ -273,6 +273,7 @@
 
 	.legend {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
 		gap: 1.25rem;
 		margin-top: 0.75rem;

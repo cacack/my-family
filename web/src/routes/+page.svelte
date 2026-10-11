@@ -240,6 +240,7 @@
 
 	.stats {
 		display: flex;
+		flex-wrap: wrap;
 		gap: 1rem;
 		justify-content: center;
 		margin-bottom: 2rem;

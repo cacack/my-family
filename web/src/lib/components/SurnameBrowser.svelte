@@ -190,7 +190,7 @@
 
 	.surname-grid {
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+		grid-template-columns: repeat(auto-fill, minmax(min(200px, 100%), 1fr));
 		gap: 0.75rem;
 	}
 
@@ -198,6 +198,7 @@
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
+		gap: 0.5rem;
 		padding: 0.75rem 1rem;
 		background: white;
 		border: 1px solid #e2e8f0;
@@ -215,11 +216,14 @@
 	}
 
 	.surname-name {
+		min-width: 0;
+		overflow-wrap: anywhere;
 		font-weight: 500;
 		color: #1e293b;
 	}
 
 	.surname-count {
+		flex-shrink: 0;
 		display: flex;
 		align-items: center;
 		justify-content: center;

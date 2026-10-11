@@ -551,6 +551,8 @@
 	}
 
 	.branch-name {
+		min-width: 0;
+		overflow-wrap: anywhere;
 		font-size: 1rem;
 		font-weight: 600;
 		color: #1e293b;

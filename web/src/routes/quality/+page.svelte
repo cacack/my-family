@@ -266,7 +266,7 @@
 	</header>
 
 	<Tabs.Root bind:value={activeTab}>
-		<Tabs.List>
+		<Tabs.List class="max-w-full justify-start overflow-x-auto">
 			<Tabs.Trigger value="validation">
 				Validation Issues
 				{#if totalIssuesCount > 0}

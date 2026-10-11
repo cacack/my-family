@@ -107,6 +107,7 @@
 
 	.breadcrumb {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
 		gap: 0.5rem;
 		margin-bottom: 1rem;
@@ -127,11 +128,15 @@
 	}
 
 	.breadcrumb .current {
+		min-width: 0;
+		/* GEDCOM places are often comma-joined with no spaces to break on. */
+		overflow-wrap: anywhere;
 		color: var(--color-text-muted);
 	}
 
 	.page-header h1 {
 		margin: 0;
+		overflow-wrap: anywhere;
 		font-size: 1.5rem;
 		color: #1e293b;
 	}
@@ -168,12 +173,13 @@
 
 	.persons-grid {
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+		grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr));
 		gap: 1rem;
 	}
 
 	.pagination {
 		display: flex;
+		flex-wrap: wrap;
 		justify-content: center;
 		align-items: center;
 		gap: 1rem;

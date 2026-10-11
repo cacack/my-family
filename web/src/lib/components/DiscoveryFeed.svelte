@@ -117,7 +117,7 @@
 									</svg>
 								{/if}
 							</div>
-							<div class="min-w-0">
+							<div class="min-w-0 [overflow-wrap:anywhere]">
 								<h4 class="mb-1 text-[0.8125rem] font-semibold text-foreground">{suggestion.title}</h4>
 								<p class="m-0 text-xs leading-snug text-muted-foreground line-clamp-2">{suggestion.description}</p>
 							</div>
@@ -189,7 +189,7 @@
 
 	.feed-grid {
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+		grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr));
 		gap: 0.75rem;
 	}
 

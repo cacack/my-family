@@ -659,7 +659,7 @@
 					<p class="error-message" role="alert">{exportError}</p>
 				{/if}
 
-				<Button onclick={exportData} disabled={exporting}>
+				<Button class="h-auto min-h-9 whitespace-normal" onclick={exportData} disabled={exporting}>
 					{#if exporting}
 						<span class="spinner"></span>
 						Exporting...
@@ -989,7 +989,7 @@
 
 	.field-picker {
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+		grid-template-columns: repeat(auto-fill, minmax(min(140px, 100%), 1fr));
 		gap: 0.5rem;
 		padding: 1rem;
 		background: white;

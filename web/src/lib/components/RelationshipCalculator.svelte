@@ -432,7 +432,7 @@
 		font-weight: 600;
 		cursor: pointer;
 		transition: background 0.15s;
-		min-width: 200px;
+		min-width: min(200px, 100%);
 	}
 
 	.calculate-btn:hover:not(:disabled) {
