@@ -200,12 +200,6 @@
 		color: #5b21b6;
 	}
 
-	:global(body.high-contrast) .branch-banner {
-		background: #2e1065;
-		border-bottom-color: #a78bfa;
-		color: #ede9fe;
-	}
-
 	.branch-label {
 		font-weight: 700;
 		white-space: nowrap;
@@ -296,13 +290,6 @@
 		transition: background 0.15s;
 	}
 
-	:global(body.high-contrast) .branch-compare,
-	:global(body.high-contrast) .branch-exit {
-		background: #1e1b4b;
-		border-color: #a78bfa;
-		color: #ede9fe;
-	}
-
 	.branch-compare:hover,
 	.branch-exit:hover:not(:disabled) {
 		background: #ede9fe;
@@ -323,12 +310,6 @@
 		background: #fef3c7;
 		border-bottom: 1px solid #f59e0b;
 		color: #92400e;
-	}
-
-	:global(body.high-contrast) .branch-notice {
-		background: #78350f;
-		border-bottom-color: #f59e0b;
-		color: #fef3c7;
 	}
 
 	.notice-text {
@@ -352,13 +333,6 @@
 	.notice-action {
 		text-decoration: none;
 		font-weight: 600;
-	}
-
-	:global(body.high-contrast) .notice-dismiss,
-	:global(body.high-contrast) .notice-action {
-		background: #451a03;
-		border-color: #f59e0b;
-		color: #fef3c7;
 	}
 
 	.notice-dismiss:hover {

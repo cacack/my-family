@@ -196,6 +196,7 @@ web/src/
 - **Detail section**: a read-only block on a detail page is a `.info-section` with an `h2` label (small, uppercase, muted) over a `dl` of `dt`/`dd` pairs; empty values show `—`.
 - **Buttons**: use shadcn `Button` for every control that looks like a button. `default` is the page's main action, `outline` a secondary action, `destructive` deletes, `warning` brick-wall changes. Use `ghost` only where its surroundings mark it as a control (a toolbar or menu), never on its own between sections.
 - **Responsive**: toolbars and action rows `flex-wrap: wrap`; grids use `repeat(auto-fit, minmax(min(<width>, 100%), 1fr))`, not fixed `repeat(N, 1fr)`; long user text (names, titles, notes) gets `overflow-wrap: anywhere`. `web/e2e/layout.spec.ts` fails any page that scrolls sideways at 375–1440px.
+- **High contrast**: a light scheme (black on white, `#0000ee` links) defined once, in the `body.high-contrast` block of `web/src/app.css`; it must override every colour token `:root` declares, shadcn ones included. Don't set custom properties under `body.high-contrast` in a component (`web/src/lib/highContrast.test.ts` fails it); use the tokens instead of hard-coded colours. `web/e2e/high-contrast.spec.ts` runs axe `color-contrast` on the main pages.
 
 ## Testing
 

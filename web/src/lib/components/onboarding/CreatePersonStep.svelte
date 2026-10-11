@@ -221,7 +221,7 @@
 	:global(body.high-contrast) input:focus,
 	:global(body.high-contrast) select:focus {
 		border-color: var(--color-focus-ring);
-		box-shadow: 0 0 0 3px rgba(255, 255, 0, 0.3);
+		box-shadow: 0 0 0 3px rgba(0, 0, 255, 0.3);
 	}
 
 	:global(body.high-contrast) .back-btn {

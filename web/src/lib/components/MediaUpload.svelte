@@ -320,6 +320,10 @@
 		font-size: 0.75rem;
 	}
 
+	:global(body.high-contrast) .dropzone-hint {
+		color: var(--color-text-muted);
+	}
+
 	.file-label {
 		display: inline-block;
 		padding: 0.5rem 1rem;

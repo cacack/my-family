@@ -33,12 +33,6 @@
 		color: #92400e;
 	}
 
-	:global(body.high-contrast) .demo-banner {
-		background: #78350f;
-		border-bottom-color: #f59e0b;
-		color: #fef3c7;
-	}
-
 	.demo-label {
 		font-weight: 700;
 		white-space: nowrap;
@@ -59,12 +53,6 @@
 		cursor: pointer;
 		white-space: nowrap;
 		transition: background 0.15s;
-	}
-
-	:global(body.high-contrast) .demo-reset {
-		background: #451a03;
-		border-color: #f59e0b;
-		color: #fef3c7;
 	}
 
 	.demo-reset:hover:not(:disabled) {

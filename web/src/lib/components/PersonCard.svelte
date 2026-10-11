@@ -176,4 +176,8 @@
 		font-size: 0.75rem;
 		color: #94a3b8;
 	}
+
+	:global(body.high-contrast) .lifespan {
+		color: var(--color-text-muted);
+	}
 </style>

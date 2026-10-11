@@ -271,6 +271,14 @@
 		padding: 1rem;
 	}
 
+	:global(body.high-contrast) .empty {
+		color: var(--color-text-muted);
+	}
+
+	:global(body.high-contrast) .empty a {
+		color: var(--color-link);
+	}
+
 	.empty a {
 		color: #3b82f6;
 	}
@@ -310,6 +318,11 @@
 	.action-btn.primary:hover {
 		background: #2563eb;
 		border-color: #2563eb;
+	}
+
+	:global(body.high-contrast) .action-btn.primary {
+		background: var(--primary);
+		color: var(--primary-foreground);
 	}
 
 	.action-btn svg {

@@ -260,7 +260,7 @@
 	}
 
 	:global(body.high-contrast) .card-icon {
-		background: var(--a11y-color-border);
+		background: var(--color-bg-secondary);
 		color: var(--color-focus-ring);
 	}
 
