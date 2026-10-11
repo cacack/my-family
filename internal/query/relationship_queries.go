@@ -106,7 +106,9 @@ func (s *RelationshipService) GetRelationship(ctx context.Context, branchID doma
 		return result, nil
 	}
 
-	// Build ancestor maps for both persons with paths
+	// Build ancestor maps for both persons with paths. Each map holds its
+	// person at generation 0, so a direct line (one person an ancestor of the
+	// other) is just a common ancestor that is one of the two people.
 	ancestorsA, err := s.buildAncestorMap(ctx, branchID, personA)
 	if err != nil {
 		return nil, err
@@ -116,39 +118,11 @@ func (s *RelationshipService) GetRelationship(ctx context.Context, branchID doma
 		return nil, err
 	}
 
-	// Check if A is an ancestor of B (direct line down from A's perspective)
-	if info, ok := ancestorsB[personID1]; ok {
-		nodeA := RelationshipPathNode{ID: personID1, Name: personDisplayName(personA)}
-		path := RelationshipPath{
-			PathFromA:           []RelationshipPathNode{nodeA},
-			PathFromB:           info.path,
-			CommonAncestor:      &personA,
-			GenerationDistanceA: 0,
-			GenerationDistanceB: info.generation,
-		}
-		path.Name = s.getRelationshipName(0, info.generation)
-		result.Paths = append(result.Paths, path)
-	}
-
-	// Check if B is an ancestor of A (direct line up from A's perspective)
-	if info, ok := ancestorsA[personID2]; ok {
-		nodeB := RelationshipPathNode{ID: personID2, Name: personDisplayName(personB)}
-		path := RelationshipPath{
-			PathFromA:           info.path,
-			PathFromB:           []RelationshipPathNode{nodeB},
-			CommonAncestor:      &personB,
-			GenerationDistanceA: info.generation,
-			GenerationDistanceB: 0,
-		}
-		path.Name = s.getRelationshipName(info.generation, 0)
-		result.Paths = append(result.Paths, path)
-	}
-
-	// Find common ancestors (excluding the case where A or B are direct ancestors)
-	commonAncestors := s.findCommonAncestors(ancestorsA, ancestorsB)
-
-	// For each common ancestor, create a relationship path
-	for _, ca := range commonAncestors {
+	// One path per lowest common ancestor. Keying on the ancestor means no two
+	// paths share one, and because A or B count as common ancestors when on the
+	// other's line, every ancestor reached through them is filtered out as not
+	// lowest: no path passes through A or B except at its endpoints (#910).
+	for _, ca := range s.findCommonAncestors(ancestorsA, ancestorsB) {
 		infoA := ancestorsA[ca.person.ID]
 		infoB := ancestorsB[ca.person.ID]
 
@@ -183,8 +157,9 @@ func personDisplayName(p Person) string {
 	return name
 }
 
-// buildAncestorMap builds a map of all ancestors with their generation distance
-// and path, walking branchID's pedigree one generation at a time.
+// buildAncestorMap builds a map of the person (at generation 0) and all their
+// ancestors with their generation distance and path, walking branchID's
+// pedigree one generation at a time.
 //
 // Each generation costs two set-based reads whatever its size — the frontier's
 // pedigree edges, then the parents not yet seen (#829) — rather than two reads
@@ -193,14 +168,15 @@ func personDisplayName(p Person) string {
 // order, so where two equally short paths reach one ancestor (pedigree collapse)
 // the paternal one is kept.
 func (s *RelationshipService) buildAncestorMap(ctx context.Context, branchID domain.BranchID, person Person) (map[uuid.UUID]ancestorInfo, error) {
-	ancestors := make(map[uuid.UUID]ancestorInfo)
+	selfPath := []RelationshipPathNode{{ID: person.ID, Name: personDisplayName(person)}}
+	ancestors := map[uuid.UUID]ancestorInfo{person.ID: {person: person, generation: 0, path: selfPath}}
 	seen := map[uuid.UUID]bool{person.ID: true}
 
 	type frontierNode struct {
 		id   uuid.UUID
 		path []RelationshipPathNode
 	}
-	frontier := []frontierNode{{id: person.ID, path: []RelationshipPathNode{{ID: person.ID, Name: personDisplayName(person)}}}}
+	frontier := []frontierNode{{id: person.ID, path: selfPath}}
 
 	for generation := 0; generation < maxRelationshipGenerations && len(frontier) > 0; generation++ {
 		frontierIDs := make([]uuid.UUID, len(frontier))
