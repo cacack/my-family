@@ -1256,7 +1256,7 @@ func personNamesOverlaySubquery(branchID domain.BranchID) (string, []any) {
 // name, surname or full name, or to the given name, surname, full name or
 // nickname of one of their alternate names. SQLite has no trigram operator, so
 // every person that passes the date/place filters is read and scored in Go;
-// unlike the Soundex path there is no candidate cap, so a match is never missed
+// as on the Soundex path there is no candidate cap, so a match is never missed
 // because it sorted late. The scan reads only the columns that are scored or
 // sorted on; the full rows are fetched for the people that make the limit.
 //
