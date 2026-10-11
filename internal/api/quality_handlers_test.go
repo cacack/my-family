@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -210,19 +212,74 @@ func TestGetQualityOverview_ResearchStatusAndLowestScoring(t *testing.T) {
 		t.Errorf("ResearchStatusCounts = %+v, want %+v", resp.ResearchStatusCounts, want)
 	}
 
-	// The complete record has no issues, so only the other two are listed,
-	// lowest score first.
-	if len(resp.LowestScoring) != 2 {
-		t.Fatalf("LowestScoring length = %d, want 2: %+v", len(resp.LowestScoring), resp.LowestScoring)
+	// None of the three has a family, so even the complete record carries the
+	// "No family connections" issue and is listed, lowest score first.
+	if len(resp.LowestScoring) != 3 {
+		t.Fatalf("LowestScoring length = %d, want 3: %+v", len(resp.LowestScoring), resp.LowestScoring)
 	}
-	if got := resp.LowestScoring[0].GivenName; got != "Bare" {
-		t.Errorf("LowestScoring[0] = %q, want Bare", got)
+	for i, want := range []string{"Bare", "No", "Full"} {
+		if got := resp.LowestScoring[i].GivenName; got != want {
+			t.Errorf("LowestScoring[%d] = %q, want %s", i, got, want)
+		}
+		if len(resp.LowestScoring[i].Issues) == 0 {
+			t.Errorf("LowestScoring[%d] should carry its issues", i)
+		}
 	}
-	if got := resp.LowestScoring[1].GivenName; got != "No" {
-		t.Errorf("LowestScoring[1] = %q, want No", got)
+}
+
+// TestQualityScoresAgreeAcrossEndpoints checks a person with no family links
+// gets the same score and issues from GET /quality/persons/{id} as from the
+// overview's lowest_scoring list, and that top_issues counts the
+// family-connections issue (#921).
+func TestQualityScoresAgreeAcrossEndpoints(t *testing.T) {
+	server, _ := setupQualityTestServer()
+	deceasedBirthYear := strconv.Itoa(time.Now().Year() - 150)
+	id := createQualityTestPerson(t, server, "Adalberon", "Rheims", "birth_date", deceasedBirthYear)
+
+	rec := do(t, server, http.MethodGet, "/api/v1/quality/overview", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("overview status = %d, want 200: %s", rec.Code, rec.Body.String())
 	}
-	if len(resp.LowestScoring[1].Issues) == 0 {
-		t.Error("LowestScoring[1] should carry its issues")
+	var overview api.QualityOverview
+	if err := json.Unmarshal(rec.Body.Bytes(), &overview); err != nil {
+		t.Fatalf("Failed to parse overview: %v", err)
+	}
+
+	rec = do(t, server, http.MethodGet, "/api/v1/quality/persons/"+id, "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("person quality status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	var person api.PersonQuality
+	if err := json.Unmarshal(rec.Body.Bytes(), &person); err != nil {
+		t.Fatalf("Failed to parse person quality: %v", err)
+	}
+
+	if len(overview.LowestScoring) != 1 {
+		t.Fatalf("LowestScoring length = %d, want 1: %+v", len(overview.LowestScoring), overview.LowestScoring)
+	}
+	listed := overview.LowestScoring[0]
+	if listed.CompletenessScore != person.CompletenessScore {
+		t.Errorf("overview score = %v, person score = %v", listed.CompletenessScore, person.CompletenessScore)
+	}
+	if !reflect.DeepEqual(listed.Issues, person.Issues) {
+		t.Errorf("overview issues = %v, person issues = %v", listed.Issues, person.Issues)
+	}
+	if !slices.Contains(person.Issues, "No family connections") {
+		t.Errorf("person issues = %v, want them to include No family connections", person.Issues)
+	}
+
+	counted := make([]string, 0, len(overview.TopIssues))
+	for _, issue := range overview.TopIssues {
+		if issue.Count != 1 {
+			t.Errorf("top issue %q count = %d, want 1", issue.Issue, issue.Count)
+		}
+		counted = append(counted, issue.Issue)
+	}
+	slices.Sort(counted)
+	want := slices.Clone(person.Issues)
+	slices.Sort(want)
+	if !reflect.DeepEqual(counted, want) {
+		t.Errorf("top_issues = %v, want the person's issues %v", counted, want)
 	}
 }
 

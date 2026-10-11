@@ -3,6 +3,7 @@ package query
 import (
 	"context"
 	"fmt"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -220,7 +221,7 @@ func (s *QualityService) GetDiscoveryFeedOn(ctx context.Context, branchID domain
 		// Recently resolved brick walls (priority 1) depend on BrickWallResolvedAt
 		// from prompt 008, which may not exist yet. Skipped gracefully.
 
-		if suggestion := s.qualityGapSuggestionBulk(person, bulk); suggestion != nil {
+		if suggestion := s.qualityGapSuggestionBulk(person, bulk, connectedIDs[person.ID]); suggestion != nil {
 			items = append(items, *suggestion)
 		}
 
@@ -310,8 +311,8 @@ func (s *QualityService) unassessedSuggestion(person repository.PersonReadModel)
 }
 
 // qualityGapSuggestionBulk returns a quality_gap suggestion using pre-loaded evidence data.
-func (s *QualityService) qualityGapSuggestionBulk(person repository.PersonReadModel, bulk *bulkEvidenceData) *DiscoverySuggestion {
-	score, _ := s.computePersonScoreBulk(person, bulk.conflicts)
+func (s *QualityService) qualityGapSuggestionBulk(person repository.PersonReadModel, bulk *bulkEvidenceData, connected bool) *DiscoverySuggestion {
+	score, _ := s.computePersonScoreBulk(person, bulk.conflicts, connected)
 	return s.buildQualityGapSuggestion(person, score)
 }
 
@@ -325,8 +326,8 @@ func (s *QualityService) buildQualityGapSuggestion(person repository.PersonReadM
 	idStr := person.ID.String()
 	return &DiscoverySuggestion{
 		Type:        "quality_gap",
-		Title:       fmt.Sprintf("Improve record for %s (%d%% complete)", name, int(score)),
-		Description: fmt.Sprintf("%s has a low completeness score of %d%%. Consider adding missing dates, places, or other details.", name, int(score)),
+		Title:       fmt.Sprintf("Improve record for %s (%d%% complete)", name, completenessPercent(score)),
+		Description: fmt.Sprintf("%s has a low completeness score of %d%%. Consider adding missing dates, places, or other details.", name, completenessPercent(score)),
 		PersonID:    idStr,
 		PersonName:  name,
 		ActionURL:   "/persons/" + idStr,
@@ -365,6 +366,10 @@ func (s *QualityService) GetQualityOverviewOn(ctx context.Context, branchID doma
 	if err != nil {
 		return nil, fmt.Errorf("load unresolved conflicts: %w", err)
 	}
+	connectedIDs, err := s.buildConnectedPersonIDs(ctx, branchID)
+	if err != nil {
+		return nil, err
+	}
 
 	// Calculate quality for each person
 	var totalScore float64
@@ -374,7 +379,7 @@ func (s *QualityService) GetQualityOverviewOn(ctx context.Context, branchID doma
 	withIssues := make([]PersonScore, 0)
 
 	for _, person := range persons {
-		score, issues := s.computePersonScoreBulk(person, conflicts)
+		score, issues := s.computePersonScoreBulk(person, conflicts, connectedIDs[person.ID])
 		totalScore += score
 		statusCounts.add(person.ResearchStatus)
 
@@ -473,16 +478,11 @@ func (s *QualityService) GetPersonQualityOn(ctx context.Context, branchID domain
 		return nil, ErrNotFound
 	}
 
-	score, issues := s.computePersonScore(ctx, branchID, *person)
-
-	// Check for orphaned status
 	isOrphan, err := s.isOrphaned(ctx, branchID, id)
 	if err != nil {
 		return nil, err
 	}
-	if isOrphan {
-		issues = append(issues, issueNoFamilyConnections)
-	}
+	score, issues := s.computePersonScore(ctx, branchID, *person, !isOrphan)
 
 	// Generate suggestions based on issues
 	suggestions := s.generateSuggestions(issues)
@@ -586,26 +586,18 @@ func (s *QualityService) GetStatisticsOn(ctx context.Context, branchID domain.Br
 // computePersonScore calculates the quality score for a person (single-person path).
 // Loads conflicts from the store for the specific person.
 // Used by GetPersonQuality where per-call loading is acceptable.
-//
-// Scoring:
-// - Birth date present: +20 points
-// - Birth place present: +15 points
-// - Death date present: +20 points (or +20 if living, birth > 100 years ago)
-// - Death place present: +15 points (if deceased)
-// - Base score is out of 70, normalized to 100
-// - Unresolved evidence conflicts: -5 points each (floor at 0)
-func (s *QualityService) computePersonScore(ctx context.Context, branchID domain.BranchID, person repository.PersonReadModel) (float64, []string) {
+func (s *QualityService) computePersonScore(ctx context.Context, branchID domain.BranchID, person repository.PersonReadModel, connected bool) (float64, []string) {
 	conflicts, err := s.readStore.GetConflictsForSubject(ctx, branchID, person.ID)
 	if err != nil {
 		// For single-person path, return base score without conflict penalty
 		conflicts = nil
 	}
-	return computePersonScoreWithConflicts(person, conflicts)
+	return scorePerson(person, conflicts, connected)
 }
 
 // computePersonScoreBulk calculates the quality score using pre-loaded conflict data.
 // Used in bulk loops (GetDiscoveryFeed, GetQualityOverview) to avoid N+1 queries.
-func (s *QualityService) computePersonScoreBulk(person repository.PersonReadModel, allConflicts []repository.EvidenceConflictReadModel) (float64, []string) {
+func (s *QualityService) computePersonScoreBulk(person repository.PersonReadModel, allConflicts []repository.EvidenceConflictReadModel, connected bool) (float64, []string) {
 	// Filter conflicts for this person
 	var personConflicts []repository.EvidenceConflictReadModel
 	for _, c := range allConflicts {
@@ -613,12 +605,29 @@ func (s *QualityService) computePersonScoreBulk(person repository.PersonReadMode
 			personConflicts = append(personConflicts, c)
 		}
 	}
-	return computePersonScoreWithConflicts(person, personConflicts)
+	return scorePerson(person, personConflicts, connected)
 }
 
-// computePersonScoreWithConflicts is the shared scoring logic.
-// conflicts should already be filtered to the specific person's open conflicts.
-func computePersonScoreWithConflicts(person repository.PersonReadModel, conflicts []repository.EvidenceConflictReadModel) (float64, []string) {
+// scorePerson is the one completeness rule. Every quality surface (the
+// per-person endpoint, the overview, the discovery feed and branch health)
+// scores through it, so a person's score and issues are the same wherever
+// they are shown. conflicts should already be filtered to the person's open
+// conflicts; connected says whether the person has any family link.
+//
+// Scoring:
+//   - Birth date present: +20 points
+//   - Birth place present: +15 points
+//   - Death date present: +20 points (or +20 if living, birth > 100 years ago)
+//   - Death place present: +15 points (if deceased)
+//   - Base score is out of 70, normalized to 100
+//   - Unresolved evidence conflicts: -5 points each (floor at 0)
+//
+// The family-connections check is included: a person with no family link
+// gets issueNoFamilyConnections. It is an issue only and does not lower the
+// score. The score is returned unrounded; anything that shows it as a whole
+// percentage rounds to the nearest integer (completenessPercent here, and
+// Math.round in the web UI), never truncates.
+func scorePerson(person repository.PersonReadModel, conflicts []repository.EvidenceConflictReadModel, connected bool) (float64, []string) {
 	var score float64
 	var issues []string
 	currentYear := time.Now().Year()
@@ -682,7 +691,17 @@ func computePersonScoreWithConflicts(person repository.PersonReadModel, conflict
 		}
 	}
 
+	if !connected {
+		issues = append(issues, issueNoFamilyConnections)
+	}
+
 	return normalizedScore, issues
+}
+
+// completenessPercent is score as a whole percentage, rounded to the nearest
+// integer the way the web UI's Math.round shows it (see scorePerson).
+func completenessPercent(score float64) int {
+	return int(math.Round(score))
 }
 
 // unresolvedConflictIssuesFromData returns issue strings for each unresolved evidence conflict
@@ -884,10 +903,7 @@ func (s *QualityService) personIssuesOf(ctx context.Context, branchID domain.Bra
 
 	result := make(map[uuid.UUID]personQualityIssues, len(records.persons))
 	for _, person := range records.persons {
-		_, issues := computePersonScoreWithConflicts(person, conflictsBySubject[person.ID])
-		if !connected[person.ID] {
-			issues = append(issues, issueNoFamilyConnections)
-		}
+		_, issues := scorePerson(person, conflictsBySubject[person.ID], connected[person.ID])
 		if len(issues) > 0 {
 			result[person.ID] = personQualityIssues{name: person.FullName, issues: issues}
 		}

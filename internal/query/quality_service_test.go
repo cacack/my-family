@@ -3,7 +3,10 @@ package query_test
 import (
 	"context"
 	"fmt"
+	"reflect"
+	"slices"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -461,9 +464,9 @@ func TestGetQualityOverview_MultiplePersons(t *testing.T) {
 		t.Errorf("AverageCompleteness = %.2f, want ~%.2f", result.AverageCompleteness, expectedAvg)
 	}
 
-	// Person 2 has issues
-	if result.RecordsWithIssues != 1 {
-		t.Errorf("RecordsWithIssues = %d, want 1", result.RecordsWithIssues)
+	// No one has a family, so all three carry "No family connections".
+	if result.RecordsWithIssues != 3 {
+		t.Errorf("RecordsWithIssues = %d, want 3", result.RecordsWithIssues)
 	}
 
 	// Should have "Missing birth place" in top issues
@@ -1104,6 +1107,91 @@ func TestGetDiscoveryFeed_QualityGap(t *testing.T) {
 	}
 	if !foundQualityGap {
 		t.Error("Expected quality_gap suggestion for person with low completeness score")
+	}
+}
+
+// TestGetDiscoveryFeed_QualityGapRoundsPercent checks the feed shows the
+// score rounded, as the analytics page does: 20/70 = 28.57% reads "29%" (#921).
+func TestGetDiscoveryFeed_QualityGapRoundsPercent(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	service := query.NewQualityService(readStore)
+	ctx := context.Background()
+
+	deceasedBirthYear := time.Now().Year() - 150
+	personID := uuid.New()
+	person := createPersonReadModel(personID, "Adalberon", "Rheims",
+		withBirthDate(strconv.Itoa(deceasedBirthYear), deceasedBirthYear))
+	_ = readStore.SavePerson(ctx, domain.MainBranchID, &person)
+
+	result, err := service.GetDiscoveryFeed(ctx, 20)
+	if err != nil {
+		t.Fatalf("GetDiscoveryFeed failed: %v", err)
+	}
+	for _, item := range result.Items {
+		if item.Type != "quality_gap" {
+			continue
+		}
+		if want := "Improve record for Adalberon Rheims (29% complete)"; item.Title != want {
+			t.Errorf("Title = %q, want %q", item.Title, want)
+		}
+		if !strings.Contains(item.Description, "score of 29%") {
+			t.Errorf("Description = %q, want it to say 29%%", item.Description)
+		}
+		return
+	}
+	t.Fatal("Expected a quality_gap suggestion")
+}
+
+// TestPersonQualityMatchesOverview checks GetPersonQuality and
+// GetQualityOverview give the same score and issues for each person, with
+// and without family links (#921).
+func TestPersonQualityMatchesOverview(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	service := query.NewQualityService(readStore)
+	ctx := context.Background()
+
+	birthYear := time.Now().Year() - 150
+	orphan := createPersonReadModel(uuid.New(), "Lone", "Person",
+		withBirthDate(strconv.Itoa(birthYear), birthYear))
+	partner := createPersonReadModel(uuid.New(), "Wed", "Person")
+	child := createPersonReadModel(uuid.New(), "Kid", "Person")
+	for _, p := range []*repository.PersonReadModel{&orphan, &partner, &child} {
+		_ = readStore.SavePerson(ctx, domain.MainBranchID, p)
+	}
+	familyID := uuid.New()
+	_ = readStore.SaveFamily(ctx, domain.MainBranchID, &repository.FamilyReadModel{ID: familyID, Partner1ID: &partner.ID, Version: 1})
+	_ = readStore.SaveFamilyChild(ctx, domain.MainBranchID, &repository.FamilyChildReadModel{FamilyID: familyID, PersonID: child.ID})
+
+	overview, err := service.GetQualityOverview(ctx)
+	if err != nil {
+		t.Fatalf("GetQualityOverview failed: %v", err)
+	}
+	listed := make(map[uuid.UUID]query.PersonScore, len(overview.LowestScoring))
+	for _, p := range overview.LowestScoring {
+		listed[p.PersonID] = p
+	}
+
+	for _, p := range []repository.PersonReadModel{orphan, partner, child} {
+		t.Run(p.GivenName, func(t *testing.T) {
+			pq, err := service.GetPersonQuality(ctx, p.ID)
+			if err != nil {
+				t.Fatalf("GetPersonQuality failed: %v", err)
+			}
+			got, ok := listed[p.ID]
+			if !ok {
+				t.Fatalf("%s missing from LowestScoring", p.GivenName)
+			}
+			if got.CompletenessScore != pq.CompletenessScore {
+				t.Errorf("overview score = %v, person score = %v", got.CompletenessScore, pq.CompletenessScore)
+			}
+			if !reflect.DeepEqual(got.Issues, pq.Issues) {
+				t.Errorf("overview issues = %v, person issues = %v", got.Issues, pq.Issues)
+			}
+			wantOrphan := p.ID == orphan.ID
+			if slices.Contains(pq.Issues, "No family connections") != wantOrphan {
+				t.Errorf("issues = %v, want No family connections: %v", pq.Issues, wantOrphan)
+			}
+		})
 	}
 }
 
