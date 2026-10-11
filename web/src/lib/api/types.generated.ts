@@ -3004,9 +3004,9 @@ export interface components {
     schemas: {
         Error: {
             /**
-             * @description Error code. A 409 carries `VERSION_CONFLICT` for a stale version
-             *     and `CONFLICT` for any other refusal; some operations document
-             *     their own codes.
+             * @description Error code. A 409 carries `VERSION_CONFLICT` for a stale version;
+             *     any other refusal carries `CONFLICT` unless its operation
+             *     documents its own code (such as `conflict` or `branch_changed`).
              * @example NOT_FOUND
              */
             code: string;
@@ -6210,7 +6210,9 @@ export interface components {
          * @description The change was refused. `code` is `VERSION_CONFLICT` when the record
          *     changed since the client read it (a stale `version`): re-read it and
          *     retry. Any other refusal (for example circular ancestry or a child
-         *     already in a family) carries `CONFLICT`.
+         *     already in a family) carries `CONFLICT`, or the code its operation
+         *     documents (some use lowercase `conflict`; branch edits and closes use
+         *     `branch_changed`).
          */
         Conflict: {
             headers: {
