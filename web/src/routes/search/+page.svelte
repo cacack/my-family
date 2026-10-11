@@ -25,6 +25,9 @@
 	const SORTS = ['relevance', 'name', 'birth_date', 'death_date'] as const;
 	const PAGE_SIZE = 20;
 	const API_MAX_LIMIT = 100; // The API's cap on `limit` per request
+	// Cap on a `limit` read from the URL, so a shared link fetches at most
+	// MAX_URL_LIMIT / API_MAX_LIMIT pages. Load more can still grow past it.
+	const MAX_URL_LIMIT = 1000;
 	const DEFAULTS = { sort: 'relevance', order: 'desc', limit: PAGE_SIZE } as const;
 
 	// Form state
@@ -89,7 +92,7 @@
 		deathPlace = params.get('death_place') ?? '';
 		sort = readEnum(params, 'sort', SORTS, DEFAULTS.sort);
 		order = readEnum(params, 'order', ['asc', 'desc'] as const, DEFAULTS.order);
-		limit = readPositiveInt(params, 'limit', DEFAULTS.limit);
+		limit = readPositiveInt(params, 'limit', DEFAULTS.limit, MAX_URL_LIMIT);
 		if (hasAnyCriteria) {
 			performSearch();
 		} else {
@@ -288,7 +291,8 @@
 				if (seq !== searchSeq) return;
 				items = [...items, ...page.items];
 				matches = page.total;
-				// A short page is the last one.
+				// Stop at a short page (no more matches) or once `limit` rows, or every
+				// match, are shown. Each full page adds rows, so the loop ends.
 				if (page.items.length < request.limit || items.length >= Math.min(limit, matches)) break;
 			}
 			results = items;

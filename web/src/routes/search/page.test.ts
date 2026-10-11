@@ -974,6 +974,21 @@ describe('Advanced Search Page', () => {
 			expect(screen.queryByText('Load more')).toBeNull();
 		});
 
+		it('caps a limit read from the URL', async () => {
+			for (let i = 0; i < 10; i++) {
+				vi.mocked(apiModule.api.searchPersons).mockResolvedValueOnce({
+					items: people(100, i * 100),
+					total: 5000
+				});
+			}
+			resetRouter('/search?q=Smith&limit=100000');
+			render(SearchPage);
+			await vi.advanceTimersByTimeAsync(0);
+
+			await waitFor(() => expect(screen.getByText('Showing 1000 of 5000 results')).toBeDefined());
+			expect(apiModule.api.searchPersons).toHaveBeenCalledTimes(10);
+		});
+
 		it('Load more fetches only the next page, past the API maximum to the last match (#902)', async () => {
 			vi.mocked(apiModule.api.searchPersons).mockResolvedValueOnce({ items: people(100), total: 110 });
 			resetRouter('/search?q=Smith&limit=100');
