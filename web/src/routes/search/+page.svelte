@@ -61,14 +61,19 @@
 	let deathPlaceHighlight = $state(-1);
 
 	// Derived state
+	// The draft form has criteria by the same rule as the submitted search.
 	let hasAnyCriteria = $derived(
-		query.trim().length > 0 ||
-			birthYearFrom.trim().length > 0 ||
-			birthYearTo.trim().length > 0 ||
-			deathYearFrom.trim().length > 0 ||
-			deathYearTo.trim().length > 0 ||
-			birthPlace.trim().length > 0 ||
-			deathPlace.trim().length > 0
+		hasCriteria({
+			q: query,
+			fuzzy,
+			soundex,
+			birth_from: birthYearFrom,
+			birth_to: birthYearTo,
+			death_from: deathYearFrom,
+			death_to: deathYearTo,
+			birth_place: birthPlace,
+			death_place: deathPlace
+		})
 	);
 
 	// The submitted search lives in the URL (see urlState.ts): the form is a
