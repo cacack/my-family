@@ -180,7 +180,7 @@ func (ss *StrictServer) UpdateEvidenceAnalysis(ctx context.Context, request Upda
 		}
 		if errors.Is(err, repository.ErrConcurrencyConflict) {
 			return UpdateEvidenceAnalysis409JSONResponse{ConflictJSONResponse{
-				Code:    "conflict",
+				Code:    CodeVersionConflict,
 				Message: "Version conflict",
 			}}, nil
 		}
@@ -224,7 +224,7 @@ func (ss *StrictServer) DeleteEvidenceAnalysis(ctx context.Context, request Dele
 		}
 		if errors.Is(err, repository.ErrConcurrencyConflict) {
 			return DeleteEvidenceAnalysis409JSONResponse{ConflictJSONResponse{
-				Code:    "conflict",
+				Code:    CodeVersionConflict,
 				Message: "Version conflict",
 			}}, nil
 		}
@@ -342,7 +342,7 @@ func (ss *StrictServer) ResolveEvidenceConflict(ctx context.Context, request Res
 		}
 		if errors.Is(err, repository.ErrConcurrencyConflict) {
 			return ResolveEvidenceConflict409JSONResponse{ConflictJSONResponse{
-				Code:    "conflict",
+				Code:    CodeVersionConflict,
 				Message: "Version conflict",
 			}}, nil
 		}
@@ -550,7 +550,7 @@ func (ss *StrictServer) UpdateResearchLog(ctx context.Context, request UpdateRes
 		}
 		if errors.Is(err, repository.ErrConcurrencyConflict) {
 			return UpdateResearchLog409JSONResponse{ConflictJSONResponse{
-				Code:    "conflict",
+				Code:    CodeVersionConflict,
 				Message: "Version conflict",
 			}}, nil
 		}
@@ -589,7 +589,7 @@ func (ss *StrictServer) DeleteResearchLog(ctx context.Context, request DeleteRes
 		}
 		if errors.Is(err, repository.ErrConcurrencyConflict) {
 			return DeleteResearchLog409JSONResponse{ConflictJSONResponse{
-				Code:    "conflict",
+				Code:    CodeVersionConflict,
 				Message: "Version conflict",
 			}}, nil
 		}
@@ -783,7 +783,7 @@ func (ss *StrictServer) UpdateProofSummary(ctx context.Context, request UpdatePr
 		}
 		if errors.Is(err, repository.ErrConcurrencyConflict) {
 			return UpdateProofSummary409JSONResponse{ConflictJSONResponse{
-				Code:    "conflict",
+				Code:    CodeVersionConflict,
 				Message: "Version conflict",
 			}}, nil
 		}
@@ -822,7 +822,7 @@ func (ss *StrictServer) DeleteProofSummary(ctx context.Context, request DeletePr
 		}
 		if errors.Is(err, repository.ErrConcurrencyConflict) {
 			return DeleteProofSummary409JSONResponse{ConflictJSONResponse{
-				Code:    "conflict",
+				Code:    CodeVersionConflict,
 				Message: "Version conflict",
 			}}, nil
 		}

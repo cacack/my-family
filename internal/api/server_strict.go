@@ -661,7 +661,7 @@ func (ss *StrictServer) UpdateCitation(ctx context.Context, request UpdateCitati
 	if err != nil {
 		if errors.Is(err, repository.ErrConcurrencyConflict) {
 			return UpdateCitation409JSONResponse{ConflictJSONResponse{
-				Code:    "conflict",
+				Code:    CodeVersionConflict,
 				Message: "Version conflict - entity was modified",
 			}}, nil
 		}
@@ -1338,7 +1338,7 @@ func (ss *StrictServer) UpdateFamily(ctx context.Context, request UpdateFamilyRe
 	if err != nil {
 		if errors.Is(err, repository.ErrConcurrencyConflict) {
 			return UpdateFamily409JSONResponse{ConflictJSONResponse{
-				Code:    "conflict",
+				Code:    CodeVersionConflict,
 				Message: "Version conflict - entity was modified",
 			}}, nil
 		}
@@ -1832,7 +1832,7 @@ func (ss *StrictServer) DeleteMedia(ctx context.Context, request DeleteMediaRequ
 		}
 		if errors.Is(err, repository.ErrConcurrencyConflict) {
 			return DeleteMedia409JSONResponse{ConflictJSONResponse{
-				Code:    "conflict",
+				Code:    CodeVersionConflict,
 				Message: "Version conflict - entity was modified",
 			}}, nil
 		}
@@ -1899,7 +1899,7 @@ func (ss *StrictServer) UpdateMedia(ctx context.Context, request UpdateMediaRequ
 	if err != nil {
 		if errors.Is(err, repository.ErrConcurrencyConflict) {
 			return UpdateMedia409JSONResponse{ConflictJSONResponse{
-				Code:    "conflict",
+				Code:    CodeVersionConflict,
 				Message: "Version conflict - entity was modified",
 			}}, nil
 		}
@@ -2266,7 +2266,7 @@ func (ss *StrictServer) UpdatePerson(ctx context.Context, request UpdatePersonRe
 	if err != nil {
 		if errors.Is(err, repository.ErrConcurrencyConflict) {
 			return UpdatePerson409JSONResponse{ConflictJSONResponse{
-				Code:    "conflict",
+				Code:    CodeVersionConflict,
 				Message: "Version conflict - entity was modified",
 			}}, nil
 		}
@@ -3028,7 +3028,7 @@ func (ss *StrictServer) MergePersons(ctx context.Context, request MergePersonsRe
 		}
 		if errors.Is(err, repository.ErrConcurrencyConflict) {
 			return MergePersons409JSONResponse{
-				Code:    "conflict",
+				Code:    CodeVersionConflict,
 				Message: "Version conflict - one or both persons were modified",
 			}, nil
 		}
@@ -3610,7 +3610,7 @@ func (ss *StrictServer) UpdateSource(ctx context.Context, request UpdateSourceRe
 	if err != nil {
 		if errors.Is(err, repository.ErrConcurrencyConflict) {
 			return UpdateSource409JSONResponse{ConflictJSONResponse{
-				Code:    "conflict",
+				Code:    CodeVersionConflict,
 				Message: "Version conflict - entity was modified",
 			}}, nil
 		}
@@ -4792,7 +4792,7 @@ func (ss *StrictServer) UpdateNote(ctx context.Context, request UpdateNoteReques
 		}
 		if errors.Is(err, repository.ErrConcurrencyConflict) {
 			return UpdateNote409JSONResponse{ConflictJSONResponse{
-				Code:    "conflict",
+				Code:    CodeVersionConflict,
 				Message: "Version conflict",
 			}}, nil
 		}
@@ -4831,7 +4831,7 @@ func (ss *StrictServer) DeleteNote(ctx context.Context, request DeleteNoteReques
 		}
 		if errors.Is(err, repository.ErrConcurrencyConflict) {
 			return DeleteNote409JSONResponse{ConflictJSONResponse{
-				Code:    "conflict",
+				Code:    CodeVersionConflict,
 				Message: "Version conflict",
 			}}, nil
 		}
@@ -5030,7 +5030,7 @@ func (ss *StrictServer) UpdateSubmitter(ctx context.Context, request UpdateSubmi
 		}
 		if errors.Is(err, repository.ErrConcurrencyConflict) {
 			return UpdateSubmitter409JSONResponse{ConflictJSONResponse{
-				Code:    "conflict",
+				Code:    CodeVersionConflict,
 				Message: "Version conflict",
 			}}, nil
 		}
@@ -5065,7 +5065,7 @@ func (ss *StrictServer) DeleteSubmitter(ctx context.Context, request DeleteSubmi
 		}
 		if errors.Is(err, repository.ErrConcurrencyConflict) {
 			return DeleteSubmitter409JSONResponse{ConflictJSONResponse{
-				Code:    "conflict",
+				Code:    CodeVersionConflict,
 				Message: "Version conflict",
 			}}, nil
 		}
@@ -5261,7 +5261,7 @@ func (ss *StrictServer) UpdateRepository(ctx context.Context, request UpdateRepo
 		}
 		if errors.Is(err, repository.ErrConcurrencyConflict) {
 			return UpdateRepository409JSONResponse{ConflictJSONResponse{
-				Code:    "conflict",
+				Code:    CodeVersionConflict,
 				Message: "Version conflict",
 			}}, nil
 		}
@@ -5295,7 +5295,7 @@ func (ss *StrictServer) DeleteRepository(ctx context.Context, request DeleteRepo
 		}
 		if errors.Is(err, repository.ErrConcurrencyConflict) {
 			return DeleteRepository409JSONResponse{ConflictJSONResponse{
-				Code:    "conflict",
+				Code:    CodeVersionConflict,
 				Message: "Version conflict",
 			}}, nil
 		}
@@ -5497,7 +5497,7 @@ func (ss *StrictServer) UpdateAssociation(ctx context.Context, request UpdateAss
 		}
 		if errors.Is(err, repository.ErrConcurrencyConflict) {
 			return UpdateAssociation409JSONResponse{ConflictJSONResponse{
-				Code:    "conflict",
+				Code:    CodeVersionConflict,
 				Message: "Version conflict - association was modified by another request",
 			}}, nil
 		}
@@ -5538,7 +5538,7 @@ func (ss *StrictServer) DeleteAssociation(ctx context.Context, request DeleteAss
 		}
 		if errors.Is(err, repository.ErrConcurrencyConflict) {
 			return DeleteAssociation409JSONResponse{ConflictJSONResponse{
-				Code:    "conflict",
+				Code:    CodeVersionConflict,
 				Message: "Version conflict - association was modified by another request",
 			}}, nil
 		}
@@ -5797,7 +5797,7 @@ func (ss *StrictServer) UpdateLDSOrdinance(ctx context.Context, request UpdateLD
 		}
 		if errors.Is(err, repository.ErrConcurrencyConflict) {
 			return UpdateLDSOrdinance409JSONResponse{ConflictJSONResponse{
-				Code:    "conflict",
+				Code:    CodeVersionConflict,
 				Message: "Version conflict - LDS ordinance was modified by another request",
 			}}, nil
 		}
@@ -5830,7 +5830,7 @@ func (ss *StrictServer) DeleteLDSOrdinance(ctx context.Context, request DeleteLD
 		}
 		if errors.Is(err, repository.ErrConcurrencyConflict) {
 			return DeleteLDSOrdinance409JSONResponse{ConflictJSONResponse{
-				Code:    "conflict",
+				Code:    CodeVersionConflict,
 				Message: "Version conflict - LDS ordinance was modified by another request",
 			}}, nil
 		}

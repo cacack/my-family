@@ -2008,14 +2008,29 @@ export function isConflictError(error: unknown): boolean {
 }
 
 /**
+ * Whether a 409 says the record changed since it was read (`VERSION_CONFLICT`),
+ * as opposed to a refusal such as circular ancestry (`CONFLICT` or an
+ * operation's own code), whose message should be shown as it came (#940).
+ */
+export function isVersionConflict(error: unknown): boolean {
+	const apiError = error as ApiError;
+	return apiError?.status === 409 && apiError.code === 'VERSION_CONFLICT';
+}
+
+/** The prefix of the server's 400 for a path `{id}` that fails to parse. */
+const PATH_ID_BINDING_ERROR = 'Invalid format for parameter id:';
+
+/**
  * Why a record fetched by its id failed to load, in words (#899). A 404, and a
- * 400 (the only 400 a fetch by id can give is a malformed id, which no record
- * can have), read as "not found", never as the server's parameter-binding
- * detail ("Invalid format for parameter id: error unmarshaling ...").
+ * 400 for a malformed path id (which no record can have), read as "not found",
+ * never as the server's parameter-binding detail ("Invalid format for parameter
+ * id: error unmarshaling ..."). Any other 400 passes its message through (#940).
  */
 export function recordLoadError(error: unknown, noun: string): string {
 	const apiError = error as ApiError;
-	if (apiError?.status === 404 || apiError?.status === 400) {
+	const malformedId =
+		apiError?.status === 400 && (apiError.message ?? '').startsWith(PATH_ID_BINDING_ERROR);
+	if (apiError?.status === 404 || malformedId) {
 		return `This ${noun} could not be found. It may have been deleted, or the link may be wrong.`;
 	}
 	return apiError?.message || `Failed to load the ${noun}.`;

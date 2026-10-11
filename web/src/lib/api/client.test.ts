@@ -13,6 +13,7 @@ import {
 	getClientBranch,
 	onBranchWrite,
 	recordLoadError,
+	isVersionConflict,
 	type BranchMergeConflictError,
 	type BranchMergeResult,
 	type BranchMergeResumeResult,
@@ -884,14 +885,28 @@ describe('recordLoadError (#899)', () => {
 		);
 	});
 
-	it('passes any other error message through', () => {
-		expect(recordLoadError({ status: 500, message: 'Database unavailable' }, 'source')).toBe(
-			'Database unavailable'
-		);
+	it.each([
+		['a 500', { status: 500, message: 'Database unavailable' }],
+		['a 400 for another parameter (#940)', { status: 400, message: 'Invalid format for parameter branch: bad uuid' }],
+		['a 400 with no binding detail (#940)', { status: 400, message: 'Version is required' }]
+	])('passes %s message through', (_name, error) => {
+		expect(recordLoadError(error, 'source')).toBe(error.message);
 	});
 
 	it('falls back when the error carries no message', () => {
 		expect(recordLoadError(new TypeError(''), 'person')).toBe('Failed to load the person.');
 		expect(recordLoadError(undefined, 'person')).toBe('Failed to load the person.');
+	});
+});
+
+describe('isVersionConflict (#940)', () => {
+	it.each([
+		['a stale version', { status: 409, code: 'VERSION_CONFLICT' }, true],
+		['a refusal', { status: 409, code: 'CONFLICT' }, false],
+		['an operation-specific refusal', { status: 409, code: 'branch_not_active' }, false],
+		['another status with the code', { status: 400, code: 'VERSION_CONFLICT' }, false],
+		['no error', undefined, false]
+	])('reads %s', (_name, error, want) => {
+		expect(isVersionConflict(error)).toBe(want);
 	});
 });
