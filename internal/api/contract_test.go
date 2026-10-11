@@ -315,6 +315,34 @@ func TestContractPersons(t *testing.T) {
 			wantStatus:  http.StatusOK,
 		},
 		{
+			// Surname is optional (#911): an empty string clears it.
+			name:   "UpdatePerson_ClearSurname",
+			method: http.MethodPut,
+			path:   "/api/v1/persons/{id}",
+			setup: func(t *testing.T, server *api.Server) map[string]string {
+				id := createPerson(t, server, "John", "Doe")
+				return map[string]string{"{id}": id}
+			},
+			body:        `{"given_name":"John","surname":"","version":2}`,
+			contentType: "application/json",
+			wantStatus:  http.StatusOK,
+		},
+		{
+			// Given name is required, so the spec rejects an empty one and so
+			// does the handler.
+			name:   "UpdatePerson_EmptyGivenName",
+			method: http.MethodPut,
+			path:   "/api/v1/persons/{id}",
+			setup: func(t *testing.T, server *api.Server) map[string]string {
+				id := createPerson(t, server, "John", "Doe")
+				return map[string]string{"{id}": id}
+			},
+			body:           `{"given_name":"","version":2}`,
+			contentType:    "application/json",
+			wantStatus:     http.StatusBadRequest,
+			skipRequestVal: true,
+		},
+		{
 			name:   "UpdatePerson_Conflict",
 			method: http.MethodPut,
 			path:   "/api/v1/persons/{id}",
