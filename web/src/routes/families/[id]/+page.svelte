@@ -20,7 +20,7 @@
 	import ChangeHistory from '$lib/components/ChangeHistory.svelte';
 	import ExternalLinks from '$lib/components/ExternalLinks.svelte';
 	import ErrorState from '$lib/components/ErrorState.svelte';
-	import SaveConflict, { type ConflictField } from '$lib/components/SaveConflict.svelte';
+	import SaveConflict from '$lib/components/SaveConflict.svelte';
 	import ActionError from '$lib/components/ActionError.svelte';
 	import RestorePointBrowser from '$lib/components/RestorePointBrowser.svelte';
 	import RollbackConfirmDialog from '$lib/components/RollbackConfirmDialog.svelte';
@@ -32,7 +32,7 @@
 	import { activeBranch } from '$lib/stores/activeBranch.svelte';
 	import { ROLLBACK_MAINLINE_ONLY } from '$lib/utils/rollbackScope';
 	import { RELATION_TYPE_OPTIONS } from '$lib/utils/enumOptions';
-	import { rebaseEdits } from '$lib/utils/rebaseEdits';
+	import { SaveConflictFlow, type ConflictRow } from '$lib/utils/saveConflict.svelte';
 
 	let family: FamilyDetail | null = $state(null);
 	let loading = $state(true);
@@ -43,8 +43,33 @@
 	let editing = $state(false);
 	let saving = $state(false);
 	let saveError: string | null = $state(null);
-	// The latest saved version, after a save refused because it changed.
-	let conflict: FamilyDetail | null = $state(null);
+	// The edits a save conflict compares and carries over: the form's fields
+	// and the chosen partners, by id.
+	type FamilyEdits = typeof formData & { partner1_id: string; partner2_id: string };
+	// `family` is replaced before "Save my edits" saves because `saveFamily`
+	// takes its version, and its "sent only when changed" baseline, from it.
+	const saveConflict = new SaveConflictFlow<FamilyDetail, FamilyEdits>({
+		base: () => family,
+		formFrom: (saved) => ({
+			...formFrom(saved),
+			partner1_id: saved.partner1_id ?? '',
+			partner2_id: saved.partner2_id ?? ''
+		}),
+		form: () => ({ ...formData, partner1_id: partner1?.id ?? '', partner2_id: partner2?.id ?? '' }),
+		adopt: (latest, { partner1_id, partner2_id, ...fields }) => {
+			// A partner the edits don't change is the latest one; otherwise it is
+			// the one the user chose, still in the picker.
+			if (partner1_id === (latest.partner1_id ?? '')) {
+				partner1 = partnerSummary(latest.partner1_id, latest.partner1);
+			}
+			if (partner2_id === (latest.partner2_id ?? '')) {
+				partner2 = partnerSummary(latest.partner2_id, latest.partner2);
+			}
+			family = latest;
+			formData = fields;
+		},
+		save: () => saveFamily()
+	});
 	let historyExpanded = $state(false);
 	let historyTab: 'history' | 'restore' = $state('history');
 	let historyCount: number | null = $state(null);
@@ -213,51 +238,27 @@
 		return RELATION_TYPE_OPTIONS.find((option) => option.value === value)?.label ?? value;
 	}
 
-	/**
-	 * The fields the user edited, beside the latest saved version, as display
-	 * text. `family` is still the version the form was opened on; the fields the
-	 * user left alone are not compared, as saving takes the latest for those.
-	 */
-	function conflictFields(latest: FamilyDetail): ConflictField[] {
-		if (!family) return [];
-		const base = formFrom(family);
-		const theirs = formFrom(latest);
-		const fields: { edited: boolean; field: ConflictField }[] = [
-			{
-				edited: partner1?.id !== family.partner1_id,
-				field: {
-					label: 'Partner 1',
-					mine: partnerName(partner1),
-					latest: partnerName(partnerSummary(latest.partner1_id, latest.partner1))
-				}
-			},
-			{
-				edited: partner2?.id !== family.partner2_id,
-				field: {
-					label: 'Partner 2',
-					mine: partnerName(partner2),
-					latest: partnerName(partnerSummary(latest.partner2_id, latest.partner2))
-				}
-			},
-			{
-				edited: formData.relationship_type !== base.relationship_type,
-				field: {
-					label: 'Relationship Type',
-					mine: relationLabel(formData.relationship_type),
-					latest: relationLabel(theirs.relationship_type)
-				}
-			},
-			{
-				edited: formData.marriage_date !== base.marriage_date,
-				field: { label: 'Marriage Date', mine: formData.marriage_date, latest: theirs.marriage_date }
-			},
-			{
-				edited: formData.marriage_place !== base.marriage_place,
-				field: { label: 'Marriage Place', mine: formData.marriage_place, latest: theirs.marriage_place }
-			}
-		];
-		return fields.filter(({ edited }) => edited).map(({ field }) => field);
+	/** A partner's name by id, from the pickers or the latest saved version. */
+	function partnerNameById(id: unknown): string {
+		const latest = saveConflict.latest;
+		const known = [partner1, partner2];
+		if (latest) {
+			known.push(
+				partnerSummary(latest.partner1_id, latest.partner1),
+				partnerSummary(latest.partner2_id, latest.partner2)
+			);
+		}
+		return id ? partnerName(known.find((partner) => partner?.id === id) ?? null) : '';
 	}
+
+	// The edit form's fields, in its order, for comparing with the latest version.
+	const conflictRows: ConflictRow<FamilyEdits>[] = [
+		{ key: 'partner1_id', label: 'Partner 1', format: partnerNameById },
+		{ key: 'partner2_id', label: 'Partner 2', format: partnerNameById },
+		{ key: 'relationship_type', label: 'Relationship Type', format: (value) => relationLabel(String(value)) },
+		{ key: 'marriage_date', label: 'Marriage Date' },
+		{ key: 'marriage_place', label: 'Marriage Place' }
+	];
 
 	// The Edit button and the form replace each other, so focus is moved
 	// explicitly or it falls to the page body.
@@ -277,7 +278,7 @@
 	function startEdit() {
 		resetForm();
 		saveError = null;
-		conflict = null;
+		saveConflict.clear();
 		actionError = null;
 		editing = true;
 		focusFirstField();
@@ -286,7 +287,7 @@
 	function cancelEdit() {
 		resetForm();
 		saveError = null;
-		conflict = null;
+		saveConflict.clear();
 		editing = false;
 		focusEditButton();
 	}
@@ -295,7 +296,7 @@
 		if (!family || !hasPartner) return;
 		saving = true;
 		saveError = null;
-		conflict = null;
+		saveConflict.clear();
 		try {
 			await api.updateFamily(family.id, {
 				// Sent only when changed, so saving a family with no type
@@ -315,55 +316,15 @@
 			focusEditButton();
 			announce('Family saved');
 		} catch (e) {
-			if (isVersionConflict(e)) {
-				await loadConflict(family.id, e);
-			} else {
+			// Only a stale version is compared with the latest (#940); other 409s
+			// are refusals, and a family that can't be re-read shows the refusal.
+			const id = family.id;
+			if (!(isVersionConflict(e) && (await saveConflict.load(() => api.getFamily(id))))) {
 				saveError = (e as { message?: string }).message || 'Failed to save';
 			}
 		} finally {
 			saving = false;
 		}
-	}
-
-	/**
-	 * Fetch the latest version to compare with, leaving the form as typed. Only
-	 * a stale version gets here (#940); other 409s are refusals and show their
-	 * message. If the family can't be re-read, the conflict is shown as it came.
-	 */
-	async function loadConflict(id: string, refusal: unknown) {
-		try {
-			conflict = await api.getFamily(id);
-		} catch {
-			saveError = (refusal as { message?: string }).message || 'Failed to save';
-		}
-	}
-
-	/**
-	 * Save the form's edits over the latest version. The fields the user left
-	 * alone take the latest values, so another writer's changes to them survive.
-	 * `family` is replaced before saving because `saveFamily` takes its version,
-	 * and its "sent only when changed" baseline, from it.
-	 */
-	function keepMyEdits() {
-		if (!family || !conflict) return;
-		formData = rebaseEdits(formData, formFrom(family), formFrom(conflict));
-		if (partner1?.id === family.partner1_id) {
-			partner1 = partnerSummary(conflict.partner1_id, conflict.partner1);
-		}
-		if (partner2?.id === family.partner2_id) {
-			partner2 = partnerSummary(conflict.partner2_id, conflict.partner2);
-		}
-		family = conflict;
-		saveFamily();
-	}
-
-	/** Discard the form's edits for the latest version. */
-	function useLatestVersion() {
-		if (!conflict) return;
-		family = conflict;
-		conflict = null;
-		resetForm();
-		focusFirstField();
 	}
 
 	async function deleteFamily() {
@@ -516,12 +477,15 @@
 				</FormRow>
 
 				<!-- Beside the Save button, where the user is looking when it fails. -->
-				{#if conflict}
+				{#if saveConflict.latest}
 					<SaveConflict
 						noun="family"
-						fields={conflictFields(conflict)}
-						onKeepMine={keepMyEdits}
-						onUseLatest={useLatestVersion}
+						fields={saveConflict.fields(conflictRows)}
+						onKeepMine={saveConflict.keepMine}
+						onUseLatest={() => {
+							saveConflict.useLatest();
+							focusFirstField();
+						}}
 						busy={saving}
 					/>
 				{:else if saveError}

@@ -16,3 +16,19 @@ describe('rebaseEdits', () => {
 		expect(rebaseEdits(form, base, latest).place).toBe('');
 	});
 });
+
+describe('rebaseEdits with lists', () => {
+	it('treats a list with the same items as not edited', () => {
+		const base = { ids: ['a', 'b'], notes: '' };
+		const latest = { ids: ['a', 'b', 'c'], notes: '' };
+		expect(rebaseEdits({ ids: ['a', 'b'], notes: 'mine' }, base, latest)).toEqual({
+			ids: ['a', 'b', 'c'],
+			notes: 'mine'
+		});
+	});
+
+	it('keeps a list the user changed', () => {
+		const base = { ids: ['a', 'b'] };
+		expect(rebaseEdits({ ids: ['b', 'a'] }, base, { ids: ['c'] }).ids).toEqual(['b', 'a']);
+	});
+});
