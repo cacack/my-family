@@ -90,7 +90,7 @@
 		<FormRow>
 			<label>
 				Birth Date <span class="optional">(optional)</span>
-				<input type="text" bind:value={formData.birth_date} placeholder="e.g., 1 JAN 1850 or ABT 1850" />
+				<input type="text" bind:value={formData.birth_date} placeholder="e.g., 1 JAN 1850 or about 1850" />
 			</label>
 			<label>
 				Birth Place <span class="optional">(optional)</span>

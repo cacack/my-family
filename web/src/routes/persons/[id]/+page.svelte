@@ -473,7 +473,7 @@
 				<FormRow>
 					<label>
 						Birth Date
-						<input type="text" bind:value={formData.birth_date} placeholder="e.g., 1 JAN 1850 or ABT 1850" />
+						<input type="text" bind:value={formData.birth_date} placeholder="e.g., 1 JAN 1850 or about 1850" />
 					</label>
 					<label>
 						Birth Place
@@ -484,7 +484,7 @@
 				<FormRow>
 					<label>
 						Death Date
-						<input type="text" bind:value={formData.death_date} placeholder="e.g., 15 MAR 1920" />
+						<input type="text" bind:value={formData.death_date} placeholder="e.g., 15 MAR 1920 or before 1920" />
 					</label>
 					<label>
 						Death Place

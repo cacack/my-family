@@ -490,7 +490,7 @@
 				<FormRow>
 					<label>
 						Marriage Date
-						<input type="text" bind:value={formData.marriage_date} placeholder="e.g., 1 JAN 1850 or ABT 1850" />
+						<input type="text" bind:value={formData.marriage_date} placeholder="e.g., 1 JAN 1850 or about 1850" />
 					</label>
 					<label>
 						Marriage Place
