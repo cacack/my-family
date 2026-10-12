@@ -33,7 +33,7 @@
 	import { ROLLBACK_MAINLINE_ONLY } from '$lib/utils/rollbackScope';
 	import { RELATION_TYPE_OPTIONS } from '$lib/utils/enumOptions';
 	import { SaveConflictFlow, type ConflictRow } from '$lib/utils/saveConflict.svelte';
-	import { asDatePhrase, savedAsNotes, unreadableDateField, type SavedAs } from '$lib/utils/dateInput';
+	import { asDatePhrase, savedAsNotes, stillStored, unreadableDateField, type SavedAs } from '$lib/utils/dateInput';
 
 	let family: FamilyDetail | null = $state(null);
 	let loading = $state(true);
@@ -140,6 +140,7 @@
 		try {
 			family = await api.getFamily(id);
 			resetForm();
+			savedAs = stillStored(savedAs, formFrom(family).marriage_date);
 		} catch (e) {
 			loadError = recordLoadError(e, 'family');
 			family = null;
@@ -415,7 +416,8 @@
 	$effect(() => {
 		const id = $page.params.id;
 		if (id) {
-			savedAs = undefined;
+			// A create that stored the date in another form says so here (#996).
+			savedAs = $page.state.savedAs?.marriage_date;
 			loadFamily(id);
 		}
 	});
@@ -490,7 +492,7 @@
 				<FormRow>
 					<label>
 						Marriage Date
-						<input type="text" bind:value={formData.marriage_date} placeholder="e.g., 1 JAN 1850 or ABT 1850" />
+						<input type="text" bind:value={formData.marriage_date} placeholder="e.g., 1 JAN 1850 or about 1850" />
 					</label>
 					<label>
 						Marriage Place

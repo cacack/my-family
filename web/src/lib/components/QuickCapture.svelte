@@ -3,6 +3,8 @@
 	import { Button } from '$lib/components/ui/button';
 	import { goto } from '$app/navigation';
 	import { parseName } from '$lib/utils/nameParse';
+	import ActionError from '$lib/components/ActionError.svelte';
+	import { asDatePhrase, savedAsNotes, unreadableDateField, type SavedAs } from '$lib/utils/dateInput';
 
 	let nameInput = $state('');
 	let gender = $state<Gender>('unknown');
@@ -12,17 +14,29 @@
 	let sessionCount = $state(0);
 	let error = $state<string | null>(null);
 	let saving = $state(false);
+	// True when an add was refused because the birth year isn't a date, which
+	// the error offers to keep as text (#996).
+	let unreadableDate = $state(false);
+	// The last added person's birth year, when it was stored in another form
+	// than typed (#996).
+	let savedAs: SavedAs | undefined = $state();
+	// How the last add was submitted, so keeping its date as text repeats it.
+	let lastMode: 'next' | 'view' = 'next';
 
 	let parsed = $derived(parseName(nameInput));
 
 	async function submit(mode: 'next' | 'view') {
 		if (!parsed.givenName) {
 			error = 'Please enter at least a given name.';
+			unreadableDate = false;
 			return;
 		}
 
+		lastMode = mode;
 		saving = true;
 		error = null;
+		unreadableDate = false;
+		savedAs = undefined;
 
 		try {
 			const payload: PersonCreate = {
@@ -44,10 +58,12 @@
 
 			const person = await api.createPerson(payload);
 			sessionCount++;
+			const dateNotes = savedAsNotes({ birth_date: birthYear }, { birth_date: person.birth_date?.raw ?? '' });
 
 			if (mode === 'view') {
-				goto(`/persons/${person.id}`);
+				goto(`/persons/${person.id}`, { state: { savedAs: dateNotes } });
 			} else {
+				savedAs = dateNotes.birth_date;
 				// Reset form for next entry
 				nameInput = '';
 				gender = 'unknown';
@@ -57,9 +73,16 @@
 			}
 		} catch (e) {
 			error = (e as { message?: string }).message || 'Failed to create person';
+			unreadableDate = unreadableDateField(e, ['birth_date']) !== null;
 		} finally {
 			saving = false;
 		}
+	}
+
+	/** Add with an unreadable birth year as a date phrase, so it is kept as text (#996). */
+	function keepDateAsText() {
+		birthYear = asDatePhrase(birthYear);
+		submit(lastMode);
 	}
 </script>
 
@@ -70,8 +93,17 @@
 		</div>
 	{/if}
 
+	{#if savedAs}
+		<p class="saved-as" role="status">Birth year saved as {savedAs.stored} from “{savedAs.typed}”</p>
+	{/if}
+
 	{#if error}
-		<div class="error">{error}</div>
+		<ActionError
+			message={error}
+			action={unreadableDate
+				? { label: 'Keep as text', onclick: keepDateAsText, disabled: saving }
+				: undefined}
+		/>
 	{/if}
 
 	<form onsubmit={(e) => { e.preventDefault(); submit('next'); }}>
@@ -178,14 +210,12 @@
 		margin-bottom: 1rem;
 	}
 
-	.error {
-		background: #fef2f2;
-		border: 1px solid #fecaca;
-		color: #dc2626;
-		padding: 0.75rem 1rem;
-		border-radius: 6px;
-		margin-bottom: 1rem;
-		font-size: 0.875rem;
+	.saved-as {
+		margin: 0 0 1rem;
+		color: #64748b;
+		font-size: 0.8125rem;
+		text-align: center;
+		overflow-wrap: anywhere;
 	}
 
 	form {

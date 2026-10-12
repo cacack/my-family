@@ -70,7 +70,7 @@ describe('Add Family page (#826)', () => {
 			)
 		);
 		expect(addChildToFamily).not.toHaveBeenCalled();
-		await waitFor(() => expect(goto).toHaveBeenCalledWith('/families/new-fam'));
+		await waitFor(() => expect(goto).toHaveBeenCalledWith('/families/new-fam', { state: { savedAs: {} } }));
 	});
 
 	it('requires at least one partner before it can be created', async () => {
@@ -114,7 +114,7 @@ describe('Add Family page (#826)', () => {
 
 		await fireEvent.click(screen.getByRole('button', { name: 'Create Family' }));
 		await waitFor(() => expect(addChildToFamily).toHaveBeenCalledWith('new-fam', { person_id: 'mary-id' }));
-		await waitFor(() => expect(goto).toHaveBeenCalledWith('/families/new-fam'));
+		await waitFor(() => expect(goto).toHaveBeenCalledWith('/families/new-fam', { state: { savedAs: {} } }));
 	});
 
 	it('says the family exists when only the child link fails', async () => {
@@ -163,5 +163,60 @@ describe('Add Family page (#826)', () => {
 		await pick('Partner 1', 'Smith', /John Smith/);
 		await fireEvent.click(screen.getByRole('button', { name: 'Create Family' }));
 		await waitFor(() => expect(addChildToFamily).toHaveBeenCalledWith('new-fam', { person_id: 'mary-id' }));
+	});
+});
+
+// A date the server can't read had no way out but typing parentheses (#996).
+describe('Add Family page dates (#996)', () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		pageState.search = '?partner1=john-id';
+		getPerson.mockResolvedValue(john);
+	});
+
+	async function createWithDate(date: string) {
+		render(AddFamilyPage);
+		await screen.findByRole('button', { name: 'Clear Partner 1: John Smith' });
+		await fireEvent.input(screen.getByLabelText('Marriage Date'), { target: { value: date } });
+		await fireEvent.click(screen.getByRole('button', { name: 'Create Family' }));
+	}
+
+	it('offers to keep an unreadable date as text and creates the family with it as a phrase', async () => {
+		createFamily.mockRejectedValueOnce({
+			code: 'VALIDATION_ERROR',
+			message: 'invalid input: marriage_date: "spring 1875" is not a recognized date',
+			details: { field: 'marriage_date', unreadable: true }
+		});
+		createFamily.mockResolvedValueOnce({ id: 'new-fam', version: 1, marriage_date: { raw: '(spring 1875)' } });
+		await createWithDate('spring 1875');
+
+		await fireEvent.click(await screen.findByRole('button', { name: 'Keep as text' }));
+
+		await waitFor(() => expect(createFamily).toHaveBeenCalledTimes(2));
+		expect(createFamily.mock.calls[1][0].marriage_date).toBe('(spring 1875)');
+		await waitFor(() => expect(goto).toHaveBeenCalledWith('/families/new-fam', { state: { savedAs: {} } }));
+	});
+
+	it('offers no Keep as text for a date that reads but does not exist', async () => {
+		createFamily.mockRejectedValue({
+			code: 'VALIDATION_ERROR',
+			message: 'invalid input: marriage_date: "31 FEB 1900" is not a real calendar date',
+			details: { field: 'marriage_date', unreadable: false }
+		});
+		await createWithDate('31 FEB 1900');
+
+		expect((await screen.findByRole('alert')).textContent).toContain('is not a real calendar date');
+		expect(screen.queryByRole('button', { name: 'Keep as text' })).toBeNull();
+	});
+
+	it('hands the family page what a converted date was saved as', async () => {
+		createFamily.mockResolvedValue({ id: 'new-fam', version: 1, marriage_date: { raw: 'ABT 1875' } });
+		await createWithDate('circa 1875');
+
+		await waitFor(() =>
+			expect(goto).toHaveBeenCalledWith('/families/new-fam', {
+				state: { savedAs: { marriage_date: { typed: 'circa 1875', stored: 'ABT 1875' } } }
+			})
+		);
 	});
 });

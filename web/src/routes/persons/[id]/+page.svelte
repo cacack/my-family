@@ -24,7 +24,7 @@
 	import { ROLLBACK_MAINLINE_ONLY } from '$lib/utils/rollbackScope';
 	import { GENDER_OPTIONS, RESEARCH_STATUS_OPTIONS } from '$lib/utils/enumOptions';
 	import { SaveConflictFlow, type ConflictRow } from '$lib/utils/saveConflict.svelte';
-	import { asDatePhrase, savedAsNotes, unreadableDateField, type SavedAs } from '$lib/utils/dateInput';
+	import { asDatePhrase, savedAsNotes, stillStored, unreadableDateField, type SavedAs } from '$lib/utils/dateInput';
 	
 	const DATE_FIELDS = ['birth_date', 'death_date'] as const;
 	type DateField = (typeof DATE_FIELDS)[number];
@@ -105,6 +105,11 @@
 		try {
 			person = await api.getPerson(id);
 			resetForm();
+			const stored = formFrom(person);
+			savedAs = {
+				birth_date: stillStored(savedAs.birth_date, stored.birth_date),
+				death_date: stillStored(savedAs.death_date, stored.death_date)
+			};
 		} catch (e) {
 			loadError = recordLoadError(e, 'person');
 			person = null;
@@ -384,7 +389,8 @@
 	$effect(() => {
 		const id = $page.params.id;
 		if (id) {
-			savedAs = {};
+			// A create that stored a date in another form says so here (#996).
+			savedAs = $page.state.savedAs ?? {};
 			loadPerson(id);
 		}
 	});
@@ -473,7 +479,7 @@
 				<FormRow>
 					<label>
 						Birth Date
-						<input type="text" bind:value={formData.birth_date} placeholder="e.g., 1 JAN 1850 or ABT 1850" />
+						<input type="text" bind:value={formData.birth_date} placeholder="e.g., 1 JAN 1850 or about 1850" />
 					</label>
 					<label>
 						Birth Place
@@ -484,7 +490,7 @@
 				<FormRow>
 					<label>
 						Death Date
-						<input type="text" bind:value={formData.death_date} placeholder="e.g., 15 MAR 1920" />
+						<input type="text" bind:value={formData.death_date} placeholder="e.g., 15 MAR 1920 or before 1920" />
 					</label>
 					<label>
 						Death Place

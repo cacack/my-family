@@ -4,6 +4,7 @@
 	import ImportStep from './ImportStep.svelte';
 	import CreatePersonStep from './CreatePersonStep.svelte';
 	import CompletionStep from './CompletionStep.svelte';
+	import type { SavedAs } from '$lib/utils/dateInput';
 
 	interface Props {
 		onComplete: () => void;
@@ -13,7 +14,12 @@
 
 	type WizardStep = 'welcome' | 'import' | 'create-person' | 'completion';
 	let currentStep: WizardStep = $state('welcome');
-	let completionData = $state<{ personCount?: number; personId?: string; personName?: string }>({});
+	let completionData = $state<{
+		personCount?: number;
+		personId?: string;
+		personName?: string;
+		birthDateSavedAs?: SavedAs;
+	}>({});
 
 	function finishOnboarding() {
 		setOnboardingCompleted(true);
@@ -41,7 +47,7 @@
 		{:else if currentStep === 'create-person'}
 			<CreatePersonStep
 				onComplete={(data) => {
-					completionData = { personId: data.personId, personName: data.personName };
+					completionData = data;
 					setOnboardingCompleted(true);
 					currentStep = 'completion';
 				}}

@@ -19,7 +19,8 @@ const {
 	listPersonMedia,
 	getPersonRestorePoints,
 	updatePerson,
-	deletePerson
+	deletePerson,
+	pageState
 } = vi.hoisted(() => ({
 	// The real store exposes a read-only view, so the active branch is injected.
 	branchState: { id: null as string | null },
@@ -30,7 +31,9 @@ const {
 	listPersonMedia: vi.fn(async () => ({ items: [], total: 0 })),
 	getPersonRestorePoints: vi.fn(async () => ({ items: [], total: 0, has_more: false })),
 	updatePerson: vi.fn(),
-	deletePerson: vi.fn()
+	deletePerson: vi.fn(),
+	// The history state a navigation left, e.g. a create's converted dates.
+	pageState: {} as App.PageState
 }));
 
 /**
@@ -85,8 +88,8 @@ vi.mock('$lib/stores/activeBranch.svelte', () => ({
 
 vi.mock('$app/stores', () => ({
 	page: {
-		subscribe: (callback: (value: { params: { id: string } }) => void) => {
-			callback({ params: { id: PERSON_ID } });
+		subscribe: (callback: (value: { params: { id: string }; state: App.PageState }) => void) => {
+			callback({ params: { id: PERSON_ID }, state: pageState });
 			return () => {};
 		}
 	}
@@ -408,6 +411,31 @@ describe('Person detail edit form', () => {
 		await save();
 
 		expect((await screen.findByRole('status')).textContent).toContain('Saved as ABT 1850 from “about 1850”');
+	});
+
+	// A create that converted a date navigates here with what it stored (#996).
+	it('says what a create stored a converted date as', async () => {
+		getPerson.mockResolvedValue(person({ birth_date: { raw: 'ABT 1850' } }));
+		pageState.savedAs = { birth_date: { typed: 'about 1850', stored: 'ABT 1850' } };
+		try {
+			render(Page);
+			expect((await screen.findByRole('status')).textContent).toContain('Saved as ABT 1850 from “about 1850”');
+		} finally {
+			delete pageState.savedAs;
+		}
+	});
+
+	// Back/Forward replays that state after the date may have been edited (#996).
+	it('drops a create note the stored date no longer matches', async () => {
+		getPerson.mockResolvedValue(person({ birth_date: { raw: '1851' } }));
+		pageState.savedAs = { birth_date: { typed: 'about 1850', stored: 'ABT 1850' } };
+		try {
+			render(Page);
+			await screen.findByText('1851');
+			expect(screen.queryByText(/Saved as/)).toBeNull();
+		} finally {
+			delete pageState.savedAs;
+		}
 	});
 
 	it('sends no gender when it is untouched', async () => {

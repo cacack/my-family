@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { asDatePhrase, savedAsNotes, unreadableDateField } from './dateInput';
+import { asDatePhrase, savedAsNotes, stillStored, unreadableDateField } from './dateInput';
 
 describe('unreadableDateField', () => {
 	const fields = ['birth_date', 'death_date'] as const;
@@ -35,5 +35,21 @@ describe('savedAsNotes', () => {
 
 	it('ignores surrounding whitespace and empty dates', () => {
 		expect(savedAsNotes({ birth_date: ' 1850 ', death_date: '' }, { birth_date: '1850', death_date: '' })).toEqual({});
+	});
+});
+
+describe('stillStored', () => {
+	const note = { typed: 'about 1850', stored: 'ABT 1850' };
+
+	it('keeps a note that still matches the stored date', () => {
+		expect(stillStored(note, 'ABT 1850')).toBe(note);
+	});
+
+	it('drops a note for a date edited since', () => {
+		expect(stillStored(note, '1851')).toBeUndefined();
+	});
+
+	it('passes no note through as none', () => {
+		expect(stillStored(undefined, 'ABT 1850')).toBeUndefined();
 	});
 });
