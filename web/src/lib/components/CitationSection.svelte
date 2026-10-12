@@ -284,7 +284,7 @@
 
 			<div class="form-group">
 				<label for="source-search-input">
-					Source <span class="required">*</span>
+					<span>Source <span class="required">*</span></span>
 				</label>
 				<div class="source-search">
 					<input
