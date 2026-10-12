@@ -1,9 +1,10 @@
 <script lang="ts">
 	/**
-	 * The heading block at the top of a page: an optional back link, the h1, a
-	 * one-line description, any extra notes (`children`), and the page's
-	 * actions. The actions wrap below the title when the row runs out of room,
-	 * so no page needs its own breakpoint for them.
+	 * The heading block at the top of a page: an optional back link, the h1
+	 * with any status badges beside it (`badges`), a one-line description, any
+	 * extra notes (`children`), and the page's actions. The actions wrap below
+	 * the title when the row runs out of room, so no page needs its own
+	 * breakpoint for them.
 	 *
 	 * Rich description content (links, several paragraphs, notes) goes in
 	 * `children`, styled by the page. See docs/CONVENTIONS.md#ui-building-blocks.
@@ -15,6 +16,7 @@
 		description,
 		back,
 		headingEl = $bindable(null),
+		badges,
 		actions,
 		children
 	}: {
@@ -24,6 +26,8 @@
 		back?: { href: string; label: string };
 		/** The h1, for pages that move focus to it. */
 		headingEl?: HTMLHeadingElement | null;
+		/** Status badges on the title's line, wrapping under it when it is long. */
+		badges?: Snippet;
 		actions?: Snippet;
 		children?: Snippet;
 	} = $props();
@@ -34,7 +38,10 @@
 		{#if back}
 			<a href={back.href} class="back-link">&larr; {back.label}</a>
 		{/if}
-		<h1 bind:this={headingEl} tabindex="-1">{title}</h1>
+		<div class="title-row">
+			<h1 bind:this={headingEl} tabindex="-1">{title}</h1>
+			{@render badges?.()}
+		</div>
 		{#if description}
 			<p class="description">{description}</p>
 		{/if}
@@ -62,8 +69,11 @@
 		min-width: 0;
 	}
 
+	/* 24px tall, the minimum touch target (WCAG 2.5.8). */
 	.back-link {
-		display: inline-block;
+		display: inline-flex;
+		align-items: center;
+		min-height: 24px;
 		margin-bottom: 0.5rem;
 		color: var(--color-text-muted);
 		font-size: 0.875rem;
@@ -74,7 +84,15 @@
 		color: var(--color-link);
 	}
 
+	.title-row {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.5rem 0.625rem;
+	}
+
 	h1 {
+		min-width: 0;
 		margin: 0;
 		font-size: 1.5rem;
 		color: var(--color-text);
