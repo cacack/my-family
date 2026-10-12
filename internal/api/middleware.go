@@ -169,7 +169,7 @@ func invalidDateDetails(err error) map[string]any {
 }
 
 // optionalDetails adapts details to the generated Error type, omitting nil.
-func optionalDetails(details map[string]any) *map[string]any {
+func optionalDetails(details map[string]any) *map[string]any { //nolint:gocritic // matches generated API type
 	if details == nil {
 		return nil
 	}
