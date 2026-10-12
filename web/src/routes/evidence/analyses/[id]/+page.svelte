@@ -4,6 +4,7 @@
 	import { goto } from '$app/navigation';
 	import {
 		api,
+		isVersionConflict,
 		recordLoadError,
 		type EvidenceAnalysisResponse,
 		type EvidenceAnalysisCreateRequest,
@@ -19,6 +20,8 @@
 	import { FACT_TYPES, formatFactType, isFactType, subjectRoute } from '$lib/utils/evidence';
 	import { nativeSelectClass } from '$lib/utils/forms';
 	import ErrorState from '$lib/components/ErrorState.svelte';
+	import SaveConflict from '$lib/components/SaveConflict.svelte';
+	import { SaveConflictFlow, type ConflictRow } from '$lib/utils/saveConflict.svelte';
 
 	// Every fact type the API accepts, so a fact the merge review links here
 	// (#838) is always offered.
@@ -58,6 +61,31 @@
 	let formData = $state(emptyFormData());
 
 	let newCitationId = $state('');
+
+	const saveConflict = new SaveConflictFlow<EvidenceAnalysisResponse, typeof formData>({
+		base: () => analysis,
+		formFrom,
+		form: () => formData,
+		adopt: (latest, form) => {
+			analysis = latest;
+			formData = form;
+		},
+		save: () => saveAnalysis()
+	});
+
+	// The edit form's fields, in its order, for comparing with the latest version.
+	const conflictRows: ConflictRow<typeof formData>[] = [
+		{ key: 'fact_type', label: 'Fact Type', format: (value) => formatFactType(String(value)) },
+		{ key: 'subject_id', label: 'Subject ID' },
+		{ key: 'conclusion', label: 'Conclusion' },
+		{ key: 'research_status', label: 'Research Status', format: (value) => capitalize(String(value)) },
+		{ key: 'notes', label: 'Notes' },
+		{ key: 'citation_ids', label: 'Citation IDs' }
+	];
+
+	function capitalize(value: string): string {
+		return value.charAt(0).toUpperCase() + value.slice(1);
+	}
 
 	// Monotonic request id to guard against stale async completions on fast route changes.
 	let loadSeq = 0;
@@ -103,21 +131,27 @@
 		}
 	}
 
+	/** The edit form's values for an analysis as saved. */
+	function formFrom(saved: EvidenceAnalysisResponse): typeof formData {
+		return {
+			fact_type: saved.fact_type,
+			subject_id: saved.subject_id,
+			conclusion: saved.conclusion,
+			research_status: saved.research_status || 'unknown',
+			notes: saved.notes || '',
+			citation_ids: [...(saved.citation_ids || [])]
+		};
+	}
+
 	function resetForm() {
 		if (analysis) {
-			formData = {
-				fact_type: analysis.fact_type,
-				subject_id: analysis.subject_id,
-				conclusion: analysis.conclusion,
-				research_status: analysis.research_status || 'unknown',
-				notes: analysis.notes || '',
-				citation_ids: [...(analysis.citation_ids || [])]
-			};
+			formData = formFrom(analysis);
 		}
 	}
 
 	function startEdit() {
 		resetForm();
+		saveConflict.clear();
 		editing = true;
 	}
 
@@ -127,6 +161,7 @@
 			return;
 		}
 		resetForm();
+		saveConflict.clear();
 		editing = false;
 	}
 
@@ -154,6 +189,7 @@
 
 		saving = true;
 		error = null;
+		saveConflict.clear();
 		try {
 			if (isNew) {
 				const data: EvidenceAnalysisCreateRequest = {
@@ -181,10 +217,10 @@
 				editing = false;
 			}
 		} catch (e) {
-			const status = (e as { status?: number }).status;
-			if (status === 409) {
-				error = 'Version conflict: someone else modified this record. Please reload and try again.';
-			} else {
+			// Only a stale version is compared with the latest (#940); other 409s
+			// are refusals, and an analysis that can't be re-read shows the refusal.
+			const id = analysis?.id;
+			if (!(id && isVersionConflict(e) && (await saveConflict.load(() => api.getEvidenceAnalysis(id))))) {
 				error = (e as { message?: string }).message || 'Failed to save';
 			}
 		} finally {
@@ -367,6 +403,17 @@
 					<Button type="button" variant="outline" onclick={addCitation}>Add</Button>
 				</div>
 			</div>
+
+			<!-- Beside the Save button, where the user is looking when it fails. -->
+			{#if saveConflict.latest}
+				<SaveConflict
+					noun="analysis"
+					fields={saveConflict.fields(conflictRows)}
+					onKeepMine={saveConflict.keepMine}
+					onUseLatest={saveConflict.useLatest}
+					busy={saving}
+				/>
+			{/if}
 
 			<div class="mt-6 flex justify-end gap-3 border-t border-slate-200 pt-4">
 				<Button variant="outline" onclick={cancelEdit} disabled={saving}>Cancel</Button>

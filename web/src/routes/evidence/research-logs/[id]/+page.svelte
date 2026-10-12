@@ -4,6 +4,7 @@
 	import { goto } from '$app/navigation';
 	import {
 		api,
+		isVersionConflict,
 		recordLoadError,
 		type ResearchLogResponse,
 		type ResearchLogCreateRequest,
@@ -17,6 +18,8 @@
 	import { toRFC3339, outcomeBadgeProps } from '$lib/utils/evidence';
 	import { nativeSelectClass } from '$lib/utils/forms';
 	import ErrorState from '$lib/components/ErrorState.svelte';
+	import SaveConflict from '$lib/components/SaveConflict.svelte';
+	import { SaveConflictFlow, type ConflictRow } from '$lib/utils/saveConflict.svelte';
 
 	const outcomes: readonly ResearchOutcome[] = ['found', 'not_found', 'inconclusive'];
 
@@ -37,6 +40,28 @@
 		notes: '',
 		search_date: new Date().toISOString().split('T')[0]
 	});
+
+	const saveConflict = new SaveConflictFlow<ResearchLogResponse, typeof formData>({
+		base: () => log,
+		formFrom,
+		form: () => formData,
+		adopt: (latest, form) => {
+			log = latest;
+			formData = form;
+		},
+		save: () => saveLog()
+	});
+
+	// The edit form's fields, in its order, for comparing with the latest version.
+	const conflictRows: ConflictRow<typeof formData>[] = [
+		{ key: 'subject_id', label: 'Subject ID' },
+		{ key: 'subject_type', label: 'Subject Type' },
+		{ key: 'repository', label: 'Repository' },
+		{ key: 'search_date', label: 'Search Date' },
+		{ key: 'search_description', label: 'Search Description' },
+		{ key: 'outcome', label: 'Outcome', format: (value) => formatOutcome(String(value)) },
+		{ key: 'notes', label: 'Notes' }
+	];
 
 	function formatOutcome(outcome: string): string {
 		return outcome.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
@@ -75,22 +100,28 @@
 		}
 	}
 
+	/** The edit form's values for a research log as saved. */
+	function formFrom(saved: ResearchLogResponse): typeof formData {
+		return {
+			subject_id: saved.subject_id,
+			subject_type: saved.subject_type,
+			repository: saved.repository,
+			search_description: saved.search_description,
+			outcome: saved.outcome,
+			notes: saved.notes || '',
+			search_date: saved.search_date.split('T')[0]
+		};
+	}
+
 	function resetForm() {
 		if (log) {
-			formData = {
-				subject_id: log.subject_id,
-				subject_type: log.subject_type,
-				repository: log.repository,
-				search_description: log.search_description,
-				outcome: log.outcome,
-				notes: log.notes || '',
-				search_date: log.search_date.split('T')[0]
-			};
+			formData = formFrom(log);
 		}
 	}
 
 	function startEdit() {
 		resetForm();
+		saveConflict.clear();
 		editing = true;
 	}
 
@@ -100,6 +131,7 @@
 			return;
 		}
 		resetForm();
+		saveConflict.clear();
 		editing = false;
 	}
 
@@ -116,6 +148,7 @@
 
 		saving = true;
 		error = null;
+		saveConflict.clear();
 		try {
 			if (isNew) {
 				const data: ResearchLogCreateRequest = {
@@ -144,10 +177,10 @@
 				editing = false;
 			}
 		} catch (e) {
-			const status = (e as { status?: number }).status;
-			if (status === 409) {
-				error = 'Version conflict: someone else modified this record. Please reload and try again.';
-			} else {
+			// Only a stale version is compared with the latest (#940); other 409s
+			// are refusals, and a research log that can't be re-read shows the refusal.
+			const id = log?.id;
+			if (!(id && isVersionConflict(e) && (await saveConflict.load(() => api.getResearchLog(id))))) {
 				error = (e as { message?: string }).message || 'Failed to save';
 			}
 		} finally {
@@ -299,6 +332,17 @@
 				<Label for="notes" class="text-sm text-slate-600">Notes</Label>
 				<Textarea id="notes" bind:value={formData.notes} rows={3} />
 			</div>
+
+			<!-- Beside the Save button, where the user is looking when it fails. -->
+			{#if saveConflict.latest}
+				<SaveConflict
+					noun="research log"
+					fields={saveConflict.fields(conflictRows)}
+					onKeepMine={saveConflict.keepMine}
+					onUseLatest={saveConflict.useLatest}
+					busy={saving}
+				/>
+			{/if}
 
 			<div class="mt-6 flex justify-end gap-3 border-t border-slate-200 pt-4">
 				<Button variant="outline" onclick={cancelEdit} disabled={saving}>Cancel</Button>

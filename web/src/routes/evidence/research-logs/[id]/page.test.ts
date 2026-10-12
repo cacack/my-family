@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/svelte';
+import { render, screen, waitFor, fireEvent } from '@testing-library/svelte';
 import Page from './+page.svelte';
 import * as apiModule from '$lib/api/client';
 
@@ -175,6 +175,55 @@ describe('Research Log Detail Page - New Mode', () => {
 		render(Page);
 		await waitFor(() => {
 			expect(screen.getByText('Create Research Log')).toBeDefined();
+		});
+	});
+});
+
+describe('Research Log Detail Page - save conflict (#939)', () => {
+	const stale = { status: 409, code: 'VERSION_CONFLICT', message: 'Conflict' };
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		mockPageParams = { id: 'rl-1' };
+	});
+
+	async function editNotes(value: string) {
+		render(Page);
+		await fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+		await fireEvent.input(screen.getByLabelText('Notes'), { target: { value } });
+		await fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+	}
+
+	it('compares the edits with the latest version and keeps them in the form', async () => {
+		vi.mocked(apiModule.api.getResearchLog)
+			.mockResolvedValueOnce(mockLog)
+			.mockResolvedValue({ ...mockLog, notes: 'Their notes', version: 2 });
+		vi.mocked(apiModule.api.updateResearchLog).mockRejectedValueOnce(stale);
+		await editNotes('My notes');
+
+		expect(await screen.findByRole('rowheader', { name: 'Notes' })).toBeTruthy();
+		expect(screen.getByTestId('latest').textContent).toBe('Their notes');
+		expect((screen.getByLabelText('Notes') as HTMLTextAreaElement).value).toBe('My notes');
+		expect(screen.queryByText(/reload and try again/i)).toBeNull();
+	});
+
+	it("keeps another writer's changes to the fields the user did not edit", async () => {
+		const latest = { ...mockLog, repository: 'FamilySearch', outcome: 'inconclusive' as const, version: 2 };
+		vi.mocked(apiModule.api.getResearchLog).mockResolvedValueOnce(mockLog).mockResolvedValue(latest);
+		vi.mocked(apiModule.api.updateResearchLog).mockRejectedValueOnce(stale).mockResolvedValueOnce({ ...latest, version: 3 });
+		await editNotes('My notes');
+
+		expect(await screen.findByRole('rowheader', { name: 'Notes' })).toBeTruthy();
+		expect(screen.queryByRole('rowheader', { name: 'Repository' })).toBeNull();
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Save my edits' }));
+
+		await waitFor(() => expect(apiModule.api.updateResearchLog).toHaveBeenCalledTimes(2));
+		expect(vi.mocked(apiModule.api.updateResearchLog).mock.calls[1][1]).toMatchObject({
+			notes: 'My notes',
+			repository: 'FamilySearch',
+			outcome: 'inconclusive',
+			version: 2
 		});
 	});
 });

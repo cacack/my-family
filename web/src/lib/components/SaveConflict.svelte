@@ -114,6 +114,11 @@
 		color: #1e293b;
 	}
 
+	/* Labels wrap between words only, so a narrow form doesn't split "Field". */
+	th {
+		overflow-wrap: break-word;
+	}
+
 	thead th {
 		font-size: 0.75rem;
 		font-weight: 600;
