@@ -1410,10 +1410,6 @@ func (ss *StrictServer) AddChildToFamily(ctx context.Context, request AddChildTo
 		input.RelationType = string(*request.Body.RelationshipType)
 	}
 
-	// Note: on a branch the expected family version comes from main's row, so a
-	// second link to the same family within one branch surfaces as a 409
-	// (repository.ErrConcurrencyConflict via customErrorHandler). Documented on
-	// the operation; the fix is branch-scoping the command layer's reads.
 	_, err = ss.branchWriter(branch).LinkChild(ctx, input)
 	if err != nil {
 		if errors.Is(err, query.ErrNotFound) {
@@ -1444,9 +1440,6 @@ func (ss *StrictServer) RemoveChildFromFamily(ctx context.Context, request Remov
 		return nil, err
 	}
 
-	// Same main-scoped-read caveat as AddChildToFamily above, plus: a child
-	// linked only on the branch is invisible to this command's mainline lookup
-	// and surfaces as 400 "Child is not in this family".
 	err = ss.branchWriter(branch).UnlinkChild(ctx, command.UnlinkChildInput{
 		FamilyID: request.Id,
 		ChildID:  request.PersonId,
