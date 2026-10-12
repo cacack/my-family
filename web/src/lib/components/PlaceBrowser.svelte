@@ -268,7 +268,7 @@
 	.chevron-icon {
 		width: 1.25rem;
 		height: 1.25rem;
-		color: #94a3b8;
+		color: var(--color-text-muted);
 	}
 
 	.place-item:hover .chevron-icon {

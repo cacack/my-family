@@ -906,7 +906,7 @@
 	}
 
 	.pedigree-chart:focus {
-		outline: 2px solid #3b82f6;
+		outline: 2px solid var(--color-focus-ring);
 		outline-offset: 2px;
 	}
 

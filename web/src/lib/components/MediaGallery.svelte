@@ -233,7 +233,7 @@
 	}
 
 	.thumbnail-button:focus-visible {
-		outline: 2px solid #3b82f6;
+		outline: 2px solid var(--color-focus-ring);
 		outline-offset: 2px;
 	}
 
@@ -260,7 +260,7 @@
 	.thumbnail-placeholder svg {
 		width: 3rem;
 		height: 3rem;
-		color: #94a3b8;
+		color: var(--color-text-muted);
 	}
 
 	.thumbnail-overlay {

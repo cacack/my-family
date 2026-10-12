@@ -232,10 +232,7 @@
 												? result.personB
 												: undefined}
 									{#if index > 0}
-										<div
-											class="path-connector"
-											class:common-ancestor-connector={step.isCommonAncestor}
-										>
+										<div class="path-connector">
 											<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 												<path d="M12 5v14m-7-7l7 7 7-7" />
 											</svg>
@@ -654,10 +651,6 @@
 		height: 1.25rem;
 	}
 
-	.common-ancestor-connector svg {
-		color: #f59e0b;
-	}
-
 	.path-step {
 		display: flex;
 		align-items: center;
@@ -731,7 +724,7 @@
 	.not-related svg {
 		width: 3rem;
 		height: 3rem;
-		color: #94a3b8;
+		color: var(--color-text-muted);
 		margin-bottom: 1rem;
 	}
 

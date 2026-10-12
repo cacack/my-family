@@ -102,7 +102,7 @@
 		justify-content: center;
 		background: #f0fdf4;
 		border-radius: 50%;
-		color: #22c55e;
+		color: var(--color-success);
 	}
 
 	.success-icon svg {

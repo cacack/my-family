@@ -199,7 +199,7 @@
 	}
 
 	.feed-card-link:focus-visible {
-		outline: 2px solid hsl(var(--primary));
+		outline: 2px solid var(--color-focus-ring);
 		outline-offset: 2px;
 		border-radius: 0.75rem;
 	}

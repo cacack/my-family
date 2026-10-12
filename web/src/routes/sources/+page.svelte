@@ -341,7 +341,7 @@
 		left: 0.75rem;
 		width: 1rem;
 		height: 1rem;
-		color: #94a3b8;
+		color: var(--color-text-muted);
 		pointer-events: none;
 	}
 

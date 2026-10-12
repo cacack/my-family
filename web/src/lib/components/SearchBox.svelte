@@ -264,7 +264,7 @@
 		left: 0.75rem;
 		width: 1rem;
 		height: 1rem;
-		color: #94a3b8;
+		color: var(--color-text-muted);
 		pointer-events: none;
 	}
 
@@ -365,7 +365,7 @@
 	}
 
 	.result-item.highlighted {
-		outline: 2px solid #3b82f6;
+		outline: 2px solid var(--color-focus-ring);
 		outline-offset: -2px;
 	}
 

@@ -189,7 +189,6 @@
 	.warning-icon {
 		width: 1rem;
 		height: 1rem;
-		color: #ca8a04;
 		flex-shrink: 0;
 	}
 
