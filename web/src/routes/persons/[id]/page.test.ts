@@ -425,6 +425,19 @@ describe('Person detail edit form', () => {
 		}
 	});
 
+	// Back/Forward replays that state after the date may have been edited (#996).
+	it('drops a create note the stored date no longer matches', async () => {
+		getPerson.mockResolvedValue(person({ birth_date: { raw: '1851' } }));
+		pageState.savedAs = { birth_date: { typed: 'about 1850', stored: 'ABT 1850' } };
+		try {
+			render(Page);
+			await screen.findByText('1851');
+			expect(screen.queryByText(/Saved as/)).toBeNull();
+		} finally {
+			delete pageState.savedAs;
+		}
+	});
+
 	it('sends no gender when it is untouched', async () => {
 		getPerson.mockResolvedValue(person());
 		await openEdit();

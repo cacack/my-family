@@ -39,3 +39,12 @@ export function savedAsNotes<F extends string>(
 	}
 	return notes;
 }
+
+/**
+ * `note` while `stored` is still what it says was saved, else undefined: a
+ * note carried in history state comes back on Back/Forward even after the
+ * date has been edited since (#996).
+ */
+export function stillStored(note: SavedAs | undefined, stored: string): SavedAs | undefined {
+	return note?.stored === stored ? note : undefined;
+}

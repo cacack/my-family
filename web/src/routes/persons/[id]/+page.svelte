@@ -24,7 +24,7 @@
 	import { ROLLBACK_MAINLINE_ONLY } from '$lib/utils/rollbackScope';
 	import { GENDER_OPTIONS, RESEARCH_STATUS_OPTIONS } from '$lib/utils/enumOptions';
 	import { SaveConflictFlow, type ConflictRow } from '$lib/utils/saveConflict.svelte';
-	import { asDatePhrase, savedAsNotes, unreadableDateField, type SavedAs } from '$lib/utils/dateInput';
+	import { asDatePhrase, savedAsNotes, stillStored, unreadableDateField, type SavedAs } from '$lib/utils/dateInput';
 	
 	const DATE_FIELDS = ['birth_date', 'death_date'] as const;
 	type DateField = (typeof DATE_FIELDS)[number];
@@ -105,6 +105,11 @@
 		try {
 			person = await api.getPerson(id);
 			resetForm();
+			const stored = formFrom(person);
+			savedAs = {
+				birth_date: stillStored(savedAs.birth_date, stored.birth_date),
+				death_date: stillStored(savedAs.death_date, stored.death_date)
+			};
 		} catch (e) {
 			loadError = recordLoadError(e, 'person');
 			person = null;

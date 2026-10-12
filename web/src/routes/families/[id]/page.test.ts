@@ -460,6 +460,19 @@ describe('Family Detail Page: partners and children (#826)', () => {
 		}
 	});
 
+	// Back/Forward replays that state after the date may have been edited (#996).
+	it('drops a create note the stored marriage date no longer matches', async () => {
+		vi.mocked(api.getFamily).mockResolvedValue({ ...mockFamilyWithChildren, marriage_date: { raw: '1876' } });
+		pageState.savedAs = { marriage_date: { typed: 'circa 1875', stored: 'ABT 1875' } };
+		try {
+			render(FamilyPage);
+			await screen.findByText('1876');
+			expect(screen.queryByText(/Saved as/)).toBeNull();
+		} finally {
+			delete pageState.savedAs;
+		}
+	});
+
 	it('offers Add child, which opens the dialog', async () => {
 		render(FamilyPage);
 		await fireEvent.click(await screen.findByRole('button', { name: 'Add child' }));

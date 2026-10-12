@@ -33,7 +33,7 @@
 	import { ROLLBACK_MAINLINE_ONLY } from '$lib/utils/rollbackScope';
 	import { RELATION_TYPE_OPTIONS } from '$lib/utils/enumOptions';
 	import { SaveConflictFlow, type ConflictRow } from '$lib/utils/saveConflict.svelte';
-	import { asDatePhrase, savedAsNotes, unreadableDateField, type SavedAs } from '$lib/utils/dateInput';
+	import { asDatePhrase, savedAsNotes, stillStored, unreadableDateField, type SavedAs } from '$lib/utils/dateInput';
 
 	let family: FamilyDetail | null = $state(null);
 	let loading = $state(true);
@@ -140,6 +140,7 @@
 		try {
 			family = await api.getFamily(id);
 			resetForm();
+			savedAs = stillStored(savedAs, formFrom(family).marriage_date);
 		} catch (e) {
 			loadError = recordLoadError(e, 'family');
 			family = null;
