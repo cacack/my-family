@@ -24,7 +24,11 @@
 	import { ROLLBACK_MAINLINE_ONLY } from '$lib/utils/rollbackScope';
 	import { GENDER_OPTIONS, RESEARCH_STATUS_OPTIONS } from '$lib/utils/enumOptions';
 	import { SaveConflictFlow, type ConflictRow } from '$lib/utils/saveConflict.svelte';
+	import { asDatePhrase, savedAsNotes, unreadableDateField, type SavedAs } from '$lib/utils/dateInput';
 	
+	const DATE_FIELDS = ['birth_date', 'death_date'] as const;
+	type DateField = (typeof DATE_FIELDS)[number];
+
 	let person: PersonDetail | null = $state(null);
 	let loading = $state(true);
 	// A failed load replaces the page; a failed save, delete or brick-wall
@@ -44,6 +48,11 @@
 		},
 		save: () => savePerson()
 	});
+	// The date field of a save refused because its text isn't a date, which
+	// the error offers to keep as text (#978).
+	let unreadableDate: DateField | null = $state(null);
+	// The dates the last save stored in another form than typed (#978).
+	let savedAs: Partial<Record<DateField, SavedAs>> = $state({});
 	let editing = $state(false);
 	let saving = $state(false);
 	let historyExpanded = $state(false);
@@ -247,6 +256,7 @@
 
 	function resetForm() {
 		saveError = null;
+		unreadableDate = null;
 		if (person) {
 			formData = formFrom(person);
 		}
@@ -289,6 +299,7 @@
 
 	function startEdit() {
 		resetForm();
+		savedAs = {};
 		saveError = null;
 		saveConflict.clear();
 		actionError = null;
@@ -309,6 +320,9 @@
 		saving = true;
 		saveError = null;
 		saveConflict.clear();
+		unreadableDate = null;
+		// Loading the saved person resets the form, so the dates as typed are kept.
+		const typedDates = { birth_date: formData.birth_date, death_date: formData.death_date };
 		try {
 			await api.updatePerson(person.id, {
 				// The given name is required, so an empty one is never sent. The
@@ -330,6 +344,9 @@
 				version: person.version
 			});
 			await loadPerson(person.id);
+			if (person) {
+				savedAs = savedAsNotes(typedDates, formFrom(person));
+			}
 			editing = false;
 			focusEditButton();
 		} catch (e) {
@@ -338,10 +355,17 @@
 			const id = person.id;
 			if (!(isVersionConflict(e) && (await saveConflict.load(() => api.getPerson(id))))) {
 				saveError = (e as { message?: string }).message || 'Failed to save';
+				unreadableDate = unreadableDateField(e, DATE_FIELDS);
 			}
 		} finally {
 			saving = false;
 		}
+	}
+
+	/** Save an unreadable date as a date phrase, so it is kept as text (#978). */
+	function keepDateAsText(field: DateField) {
+		formData[field] = asDatePhrase(formData[field]);
+		savePerson();
 	}
 
 	async function deletePerson() {
@@ -360,6 +384,7 @@
 	$effect(() => {
 		const id = $page.params.id;
 		if (id) {
+			savedAs = {};
 			loadPerson(id);
 		}
 	});
@@ -485,7 +510,13 @@
 						busy={saving}
 					/>
 				{:else if saveError}
-					<ActionError message={saveError} />
+					{@const dateField = unreadableDate}
+					<ActionError
+						message={saveError}
+						action={dateField
+							? { label: 'Keep as text', onclick: () => keepDateAsText(dateField), disabled: saving }
+							: undefined}
+					/>
 				{/if}
 
 				<div class="form-actions">
@@ -521,7 +552,12 @@
 						<h2>Birth</h2>
 						<dl>
 							<dt>Date</dt>
-							<dd>{formatGenDate(person.birth_date) || '—'}</dd>
+							<dd>
+								{formatGenDate(person.birth_date) || '—'}
+								{#if savedAs.birth_date}
+									<span class="saved-as" role="status">Saved as {savedAs.birth_date.stored} from “{savedAs.birth_date.typed}”</span>
+								{/if}
+							</dd>
 							<dt>Place</dt>
 							<dd>{person.birth_place || '—'}</dd>
 						</dl>
@@ -531,7 +567,12 @@
 						<h2>Death</h2>
 						<dl>
 							<dt>Date</dt>
-							<dd>{formatGenDate(person.death_date) || '—'}</dd>
+							<dd>
+								{formatGenDate(person.death_date) || '—'}
+								{#if savedAs.death_date}
+									<span class="saved-as" role="status">Saved as {savedAs.death_date.stored} from “{savedAs.death_date.typed}”</span>
+								{/if}
+							</dd>
 							<dt>Place</dt>
 							<dd>{person.death_place || '—'}</dd>
 						</dl>
@@ -924,6 +965,13 @@
 		overflow-wrap: anywhere;
 		color: #1e293b;
 		font-size: 0.875rem;
+	}
+
+	.saved-as {
+		display: block;
+		margin-top: 0.125rem;
+		color: #64748b;
+		font-size: 0.75rem;
 	}
 
 	.notes {

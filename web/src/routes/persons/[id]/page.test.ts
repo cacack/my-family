@@ -365,6 +365,51 @@ describe('Person detail edit form', () => {
 		expect(screen.queryByText(/is not a recognized date/)).toBeNull();
 	});
 
+	// An unreadable date is a dead end without a way to keep it as text (#978).
+	it('offers to keep an unreadable date as text and resubmits it as a phrase', async () => {
+		getPerson.mockResolvedValue(person());
+		updatePerson.mockRejectedValueOnce({
+			code: 'VALIDATION_ERROR',
+			message: 'invalid input: birth_date: "Sept 5, 1850" is not a recognized date',
+			details: { field: 'birth_date', unreadable: true }
+		});
+		await openEdit();
+
+		await fireEvent.input(screen.getByLabelText('Birth Date'), { target: { value: 'Sept 5, 1850' } });
+		await save();
+		await fireEvent.click(await screen.findByRole('button', { name: 'Keep as text' }));
+
+		await waitFor(() => expect(updatePerson).toHaveBeenCalledTimes(2));
+		expect(updatePerson.mock.calls[1][1].birth_date).toBe('(Sept 5, 1850)');
+	});
+
+	it('offers no Keep as text for a date that reads but does not exist', async () => {
+		getPerson.mockResolvedValue(person());
+		updatePerson.mockRejectedValue({
+			code: 'VALIDATION_ERROR',
+			message: 'invalid input: death_date: "31 FEB 1900" is not a real calendar date',
+			details: { field: 'death_date', unreadable: false }
+		});
+		await openEdit();
+
+		await fireEvent.input(screen.getByLabelText('Death Date'), { target: { value: '31 FEB 1900' } });
+		await save();
+
+		expect((await screen.findByRole('alert')).textContent).toContain('is not a real calendar date');
+		expect(screen.queryByRole('button', { name: 'Keep as text' })).toBeNull();
+	});
+
+	it('says what a converted date was saved as', async () => {
+		getPerson.mockResolvedValueOnce(person());
+		getPerson.mockResolvedValue(person({ birth_date: { raw: 'ABT 1850' }, version: 4 }));
+		await openEdit();
+
+		await fireEvent.input(screen.getByLabelText('Birth Date'), { target: { value: 'about 1850' } });
+		await save();
+
+		expect((await screen.findByRole('status')).textContent).toContain('Saved as ABT 1850 from “about 1850”');
+	});
+
 	it('sends no gender when it is untouched', async () => {
 		getPerson.mockResolvedValue(person());
 		await openEdit();

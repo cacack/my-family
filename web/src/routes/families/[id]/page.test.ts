@@ -406,6 +406,46 @@ describe('Family Detail Page: partners and children (#826)', () => {
 		expect(screen.getByRole('button', { name: 'Save Changes' })).toBeDefined();
 	});
 
+	// An unreadable date is a dead end without a way to keep it as text (#978).
+	it('offers to keep an unreadable marriage date as text and resubmits it as a phrase', async () => {
+		vi.mocked(api.updateFamily).mockRejectedValueOnce({
+			code: 'VALIDATION_ERROR',
+			message: 'invalid input: marriage_date: "spring 1875" is not a recognized date',
+			details: { field: 'marriage_date', unreadable: true }
+		});
+		await openEdit();
+		await fireEvent.input(screen.getByLabelText('Marriage Date'), { target: { value: 'spring 1875' } });
+		await fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+		await fireEvent.click(await screen.findByRole('button', { name: 'Keep as text' }));
+
+		await waitFor(() => expect(api.updateFamily).toHaveBeenCalledTimes(2));
+		expect(vi.mocked(api.updateFamily).mock.calls[1][1].marriage_date).toBe('(spring 1875)');
+	});
+
+	it('offers no Keep as text for a refusal that is not an unreadable date', async () => {
+		vi.mocked(api.updateFamily).mockRejectedValue({
+			code: 'VALIDATION_ERROR',
+			message: 'invalid input: marriage_date: "31 FEB 1900" is not a real calendar date',
+			details: { field: 'marriage_date', unreadable: false }
+		});
+		await openEdit();
+		await fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+
+		expect((await screen.findByRole('alert')).textContent).toContain('is not a real calendar date');
+		expect(screen.queryByRole('button', { name: 'Keep as text' })).toBeNull();
+	});
+
+	it('says what a converted marriage date was saved as', async () => {
+		vi.mocked(api.getFamily)
+			.mockResolvedValueOnce(mockFamilyWithChildren)
+			.mockResolvedValue({ ...mockFamilyWithChildren, marriage_date: { raw: 'ABT 1875' }, version: 2 });
+		await openEdit();
+		await fireEvent.input(screen.getByLabelText('Marriage Date'), { target: { value: 'circa 1875' } });
+		await fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+
+		expect(await screen.findByText('Saved as ABT 1875 from “circa 1875”')).toBeDefined();
+	});
+
 	it('offers Add child, which opens the dialog', async () => {
 		render(FamilyPage);
 		await fireEvent.click(await screen.findByRole('button', { name: 'Add child' }));

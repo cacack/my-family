@@ -33,6 +33,7 @@
 	import { ROLLBACK_MAINLINE_ONLY } from '$lib/utils/rollbackScope';
 	import { RELATION_TYPE_OPTIONS } from '$lib/utils/enumOptions';
 	import { SaveConflictFlow, type ConflictRow } from '$lib/utils/saveConflict.svelte';
+	import { asDatePhrase, savedAsNotes, unreadableDateField, type SavedAs } from '$lib/utils/dateInput';
 
 	let family: FamilyDetail | null = $state(null);
 	let loading = $state(true);
@@ -70,6 +71,12 @@
 		},
 		save: () => saveFamily()
 	});
+	// Whether the save was refused because the marriage date's text isn't a
+	// date, which the error offers to keep as text (#978).
+	let unreadableDate = $state(false);
+	// The marriage date, when the last save stored it in another form than
+	// typed (#978).
+	let savedAs: SavedAs | undefined = $state();
 	let historyExpanded = $state(false);
 	let historyTab: 'history' | 'restore' = $state('history');
 	let historyCount: number | null = $state(null);
@@ -279,6 +286,8 @@
 		resetForm();
 		saveError = null;
 		saveConflict.clear();
+		unreadableDate = false;
+		savedAs = undefined;
 		actionError = null;
 		editing = true;
 		focusFirstField();
@@ -288,6 +297,7 @@
 		resetForm();
 		saveError = null;
 		saveConflict.clear();
+		unreadableDate = false;
 		editing = false;
 		focusEditButton();
 	}
@@ -297,6 +307,9 @@
 		saving = true;
 		saveError = null;
 		saveConflict.clear();
+		unreadableDate = false;
+		// Refreshing the family resets the form, so the date as typed is kept.
+		const typedDate = { marriage_date: formData.marriage_date };
 		try {
 			await api.updateFamily(family.id, {
 				// Sent only when changed, so saving a family with no type
@@ -312,6 +325,7 @@
 				version: family.version
 			});
 			await refreshFamily(family.id);
+			if (family) savedAs = savedAsNotes(typedDate, formFrom(family)).marriage_date;
 			editing = false;
 			focusEditButton();
 			announce('Family saved');
@@ -321,10 +335,17 @@
 			const id = family.id;
 			if (!(isVersionConflict(e) && (await saveConflict.load(() => api.getFamily(id))))) {
 				saveError = (e as { message?: string }).message || 'Failed to save';
+				unreadableDate = unreadableDateField(e, ['marriage_date']) !== null;
 			}
 		} finally {
 			saving = false;
 		}
+	}
+
+	/** Save an unreadable marriage date as a date phrase, so it is kept as text (#978). */
+	function keepDateAsText() {
+		formData.marriage_date = asDatePhrase(formData.marriage_date);
+		saveFamily();
 	}
 
 	async function deleteFamily() {
@@ -394,6 +415,7 @@
 	$effect(() => {
 		const id = $page.params.id;
 		if (id) {
+			savedAs = undefined;
 			loadFamily(id);
 		}
 	});
@@ -489,7 +511,10 @@
 						busy={saving}
 					/>
 				{:else if saveError}
-					<ActionError message={saveError} />
+					<ActionError
+						message={saveError}
+						action={unreadableDate ? { label: 'Keep as text', onclick: keepDateAsText, disabled: saving } : undefined}
+					/>
 				{/if}
 
 				<div class="form-actions">
@@ -531,7 +556,12 @@
 						<dl>
 							{#if family.marriage_date}
 								<dt>Date</dt>
-								<dd>{formatGenDate(family.marriage_date)}</dd>
+								<dd>
+									{formatGenDate(family.marriage_date)}
+									{#if savedAs}
+										<span class="saved-as" role="status">Saved as {savedAs.stored} from “{savedAs.typed}”</span>
+									{/if}
+								</dd>
 							{/if}
 							{#if family.marriage_place}
 								<dt>Place</dt>
@@ -843,6 +873,13 @@
 		margin: 0;
 		color: #1e293b;
 		font-size: 0.875rem;
+	}
+
+	.saved-as {
+		display: block;
+		margin-top: 0.125rem;
+		color: #64748b;
+		font-size: 0.75rem;
 	}
 
 	.section-header {

@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"errors"
 	"strings"
 	"testing"
 )
@@ -287,7 +288,7 @@ func TestGenDate_Validate(t *testing.T) {
 	}
 }
 
-func TestValidateDateInput(t *testing.T) {
+func TestValidateDate(t *testing.T) {
 	tests := []struct {
 		input   string
 		wantErr string // substring of the error; empty means valid
@@ -329,10 +330,10 @@ func TestValidateDateInput(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			err := ValidateDateInput(tt.input)
+			err := validateDate(tt.input, tt.input)
 			if tt.wantErr == "" {
 				if err != nil {
-					t.Errorf("ValidateDateInput(%q) = %v, want nil", tt.input, err)
+					t.Errorf("validateDate(%q) = %v, want nil", tt.input, err)
 				}
 				// An accepted date must be stored with a year (issue #904).
 				in := strings.TrimSpace(tt.input)
@@ -342,7 +343,96 @@ func TestValidateDateInput(t *testing.T) {
 				return
 			}
 			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
-				t.Errorf("ValidateDateInput(%q) = %v, want error containing %q", tt.input, err, tt.wantErr)
+				t.Errorf("validateDate(%q) = %v, want error containing %q", tt.input, err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestValidateDate_Unreadable(t *testing.T) {
+	tests := []struct {
+		input          string
+		wantUnreadable bool
+	}{
+		{input: "garbage", wantUnreadable: true},
+		{input: "1750/51", wantUnreadable: true},
+		{input: "31 FEB 1900", wantUnreadable: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			var dateErr *DateInputError
+			if err := validateDate(tt.input, tt.input); !errors.As(err, &dateErr) {
+				t.Fatalf("validateDate(%q) = %v, want *DateInputError", tt.input, err)
+			}
+			if dateErr.Unreadable != tt.wantUnreadable {
+				t.Errorf("Unreadable = %v, want %v", dateErr.Unreadable, tt.wantUnreadable)
+			}
+		})
+	}
+}
+
+func TestNormalizeDateInput(t *testing.T) {
+	tests := []struct {
+		input   string
+		want    string
+		wantErr string // substring of the error; empty means valid
+	}{
+		// Qualifiers.
+		{input: "about 1850", want: "ABT 1850"},
+		{input: "About 1850", want: "ABT 1850"},
+		{input: "circa 1850", want: "ABT 1850"},
+		{input: "c. 1850", want: "ABT 1850"},
+		{input: "c 1850", want: "ABT 1850"},
+		{input: "ca. 1850", want: "ABT 1850"},
+		{input: "ca 1850", want: "ABT 1850"},
+		{input: "abt 1850", want: "ABT 1850"},
+		{input: "before 1900", want: "BEF 1900"},
+		{input: "bef. 1900", want: "BEF 1900"},
+		{input: "after 1900", want: "AFT 1900"},
+		{input: "est 1850", want: "EST 1850"},
+		// Ranges and periods.
+		{input: "between 1840 and 1850", want: "BET 1840 AND 1850"},
+		{input: "Between March 1840 and 5 June 1850", want: "BET MAR 1840 AND 5 JUN 1850"},
+		{input: "from 1840 to 1850", want: "FROM 1840 TO 1850"},
+		{input: "from 1840", want: "FROM 1840"},
+		// Month names, full and abbreviated.
+		{input: "Sept 1850", want: "SEP 1850"},
+		{input: "sept. 1850", want: "SEP 1850"},
+		{input: "5 September 1850", want: "5 SEP 1850"},
+		{input: "1 January 1850", want: "1 JAN 1850"},
+		{input: "Feb. 1850", want: "FEB 1850"},
+		{input: "about 12 May 1850", want: "ABT 12 MAY 1850"},
+		{input: "before  1  dec  1900", want: "BEF 1 DEC 1900"},
+		// GEDCOM input is stored in GEDCOM case.
+		{input: "1 jan 1850", want: "1 JAN 1850"},
+		{input: "ABT 1850", want: "ABT 1850"},
+		// Left as typed: phrases, interpreted dates, calendar escapes, empty.
+		{input: "", want: ""},
+		{input: "(about the time of the war)", want: "(about the time of the war)"},
+		{input: "INT 1850 (about eighteen fifty)", want: "INT 1850 (about eighteen fifty)"},
+		{input: "@#DJULIAN@ 29 FEB 1700", want: "@#DJULIAN@ 29 FEB 1700"},
+		// Still rejected, naming the actual problem and quoting what was typed.
+		{input: "31 February 1900", wantErr: `"31 February 1900" is not a real calendar date (February has 28 days`},
+		{input: "garbage", wantErr: `"garbage" is not a recognized date`},
+		{input: "Sept 5, 1850", wantErr: `"Sept 5, 1850" is not a recognized date`},
+		{input: "September 5 1850", wantErr: `"September 5 1850" is not a recognized date`},
+		{input: "1850 and 1860", wantErr: "is not a recognized date"},
+		{input: "1840 c", wantErr: "is not a recognized date"},
+		{input: "between 1840", wantErr: `"between 1840" is not a recognized date`},
+		{input: "to 1860", wantErr: `"to 1860" is not a supported date yet`},
+		{input: "about 1750/51", wantErr: "is not a supported date yet"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got, err := NormalizeDateInput(tt.input)
+			if tt.wantErr == "" {
+				if err != nil || got != tt.want {
+					t.Errorf("NormalizeDateInput(%q) = %q, %v, want %q, nil", tt.input, got, err, tt.want)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("NormalizeDateInput(%q) error = %v, want error containing %q", tt.input, err, tt.wantErr)
 			}
 		})
 	}

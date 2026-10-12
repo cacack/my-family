@@ -19,14 +19,30 @@ var (
 	ErrInvalidInput      = errors.New("invalid input")
 )
 
-// validateDateInput rejects a newly entered date that isn't a usable GEDCOM
-// date, naming the field. Only new input is checked, so a stored or imported
-// date the parser can't read never blocks an unrelated edit.
-func validateDateInput(field, value string) error {
-	if err := domain.ValidateDateInput(value); err != nil {
-		return fmt.Errorf("%w: %s: %v", ErrInvalidInput, field, err)
+// InvalidDateError is a newly entered date that was rejected, naming the
+// field. It matches ErrInvalidInput and the underlying *domain.DateInputError
+// with errors.Is and errors.As.
+type InvalidDateError struct {
+	Field string
+	Err   error
+}
+
+func (e *InvalidDateError) Error() string {
+	return fmt.Sprintf("%v: %s: %v", ErrInvalidInput, e.Field, e.Err)
+}
+
+func (e *InvalidDateError) Unwrap() []error { return []error{ErrInvalidInput, e.Err} }
+
+// normalizeDateInput returns a newly entered date in the GEDCOM form it is
+// stored in (see domain.NormalizeDateInput), or an *InvalidDateError. Only new
+// input is checked, so a stored or imported date the parser can't read never
+// blocks an unrelated edit.
+func normalizeDateInput(field, value string) (string, error) {
+	normalized, err := domain.NormalizeDateInput(value)
+	if err != nil {
+		return "", &InvalidDateError{Field: field, Err: err}
 	}
-	return nil
+	return normalized, nil
 }
 
 // CreatePersonInput contains the data for creating a new person.
@@ -54,10 +70,12 @@ func (h *Handler) CreatePerson(ctx context.Context, input CreatePersonInput) (*C
 	if input.GivenName == "" {
 		return nil, fmt.Errorf("%w: given_name is required", ErrInvalidInput)
 	}
-	if err := validateDateInput("birth_date", input.BirthDate); err != nil {
+	birthDate, err := normalizeDateInput("birth_date", input.BirthDate)
+	if err != nil {
 		return nil, err
 	}
-	if err := validateDateInput("death_date", input.DeathDate); err != nil {
+	deathDate, err := normalizeDateInput("death_date", input.DeathDate)
+	if err != nil {
 		return nil, err
 	}
 
@@ -67,14 +85,14 @@ func (h *Handler) CreatePerson(ctx context.Context, input CreatePersonInput) (*C
 	if input.Gender != "" {
 		person.Gender = domain.Gender(input.Gender)
 	}
-	if input.BirthDate != "" {
-		person.SetBirthDate(input.BirthDate)
+	if birthDate != "" {
+		person.SetBirthDate(birthDate)
 	}
 	if input.BirthPlace != "" {
 		person.BirthPlace = input.BirthPlace
 	}
-	if input.DeathDate != "" {
-		person.SetDeathDate(input.DeathDate)
+	if deathDate != "" {
+		person.SetDeathDate(deathDate)
 	}
 	if input.DeathPlace != "" {
 		person.DeathPlace = input.DeathPlace
@@ -180,22 +198,28 @@ func (h *Handler) UpdatePerson(ctx context.Context, input UpdatePersonInput) (*U
 		changes["gender"] = *input.Gender
 	}
 	if input.BirthDate != nil && *input.BirthDate != current.BirthDateRaw {
-		if err := validateDateInput("birth_date", *input.BirthDate); err != nil {
+		birthDate, err := normalizeDateInput("birth_date", *input.BirthDate)
+		if err != nil {
 			return nil, err
 		}
-		testPerson.SetBirthDate(*input.BirthDate)
-		changes["birth_date"] = *input.BirthDate
+		if birthDate != current.BirthDateRaw {
+			testPerson.SetBirthDate(birthDate)
+			changes["birth_date"] = birthDate
+		}
 	}
 	if input.BirthPlace != nil && *input.BirthPlace != current.BirthPlace {
 		testPerson.BirthPlace = *input.BirthPlace
 		changes["birth_place"] = *input.BirthPlace
 	}
 	if input.DeathDate != nil && *input.DeathDate != current.DeathDateRaw {
-		if err := validateDateInput("death_date", *input.DeathDate); err != nil {
+		deathDate, err := normalizeDateInput("death_date", *input.DeathDate)
+		if err != nil {
 			return nil, err
 		}
-		testPerson.SetDeathDate(*input.DeathDate)
-		changes["death_date"] = *input.DeathDate
+		if deathDate != current.DeathDateRaw {
+			testPerson.SetDeathDate(deathDate)
+			changes["death_date"] = deathDate
+		}
 	}
 	if input.DeathPlace != nil && *input.DeathPlace != current.DeathPlace {
 		testPerson.DeathPlace = *input.DeathPlace

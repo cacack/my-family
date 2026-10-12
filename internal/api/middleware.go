@@ -7,6 +7,7 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"github.com/cacack/my-family/internal/command"
+	"github.com/cacack/my-family/internal/domain"
 	"github.com/cacack/my-family/internal/query"
 	"github.com/cacack/my-family/internal/repository"
 )
@@ -123,6 +124,7 @@ func customErrorHandler(err error, c echo.Context) {
 		apiErr = APIError{
 			Code:    CodeValidation,
 			Message: err.Error(),
+			Details: invalidDateDetails(err),
 		}
 	default:
 		// Check if it's an Echo HTTP error
@@ -152,6 +154,26 @@ func customErrorHandler(err error, c echo.Context) {
 	}
 
 	_ = c.JSON(code, apiErr)
+}
+
+// invalidDateDetails describes a rejected date for the client, or is nil for
+// any other error: the field, and whether the text can't be read as a date at
+// all, in which case it can be kept as a date phrase instead (#978).
+func invalidDateDetails(err error) map[string]any {
+	var dateErr *command.InvalidDateError
+	var reason *domain.DateInputError
+	if !errors.As(err, &dateErr) || !errors.As(err, &reason) {
+		return nil
+	}
+	return map[string]any{"field": dateErr.Field, "unreadable": reason.Unreadable}
+}
+
+// optionalDetails adapts details to the generated Error type, omitting nil.
+func optionalDetails(details map[string]any) *map[string]any { //nolint:gocritic // matches generated API type
+	if details == nil {
+		return nil
+	}
+	return &details
 }
 
 // httpStatusToCode converts HTTP status to error code.

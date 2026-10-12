@@ -3015,6 +3015,13 @@ export interface components {
              * @example Person not found
              */
             message: string;
+            /**
+             * @description Extra context for some errors. A 400 for a rejected date carries
+             *     `field` (the request field, such as `birth_date`) and `unreadable`:
+             *     true when the text can't be read as a date at all, so it can be
+             *     sent again in parentheses as a date phrase; false for a date that
+             *     doesn't exist in the calendar, such as "31 FEB 1900".
+             */
             details?: {
                 [key: string]: unknown;
             };
