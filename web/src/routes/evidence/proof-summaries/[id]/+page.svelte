@@ -4,6 +4,7 @@
 	import { goto } from '$app/navigation';
 	import {
 		api,
+		isVersionConflict,
 		recordLoadError,
 		type ProofSummaryResponse,
 		type ProofSummaryCreateRequest,
@@ -20,6 +21,8 @@
 	import { FACT_TYPES, formatFactType, subjectRoute } from '$lib/utils/evidence';
 	import { nativeSelectClass } from '$lib/utils/forms';
 	import ErrorState from '$lib/components/ErrorState.svelte';
+	import SaveConflict from '$lib/components/SaveConflict.svelte';
+	import { SaveConflictFlow, type ConflictRow } from '$lib/utils/saveConflict.svelte';
 
 	const factTypes = FACT_TYPES;
 
@@ -44,6 +47,31 @@
 	});
 
 	let newAnalysisId = $state('');
+
+	const saveConflict = new SaveConflictFlow<ProofSummaryResponse, typeof formData>({
+		base: () => summary,
+		formFrom,
+		form: () => formData,
+		adopt: (latest, form) => {
+			summary = latest;
+			formData = form;
+		},
+		save: () => saveSummary()
+	});
+
+	// The edit form's fields, in its order, for comparing with the latest version.
+	const conflictRows: ConflictRow<typeof formData>[] = [
+		{ key: 'fact_type', label: 'Fact Type', format: (value) => formatFactType(String(value)) },
+		{ key: 'subject_id', label: 'Subject ID' },
+		{ key: 'conclusion', label: 'Conclusion' },
+		{ key: 'argument', label: 'Argument' },
+		{ key: 'research_status', label: 'Research Status', format: (value) => capitalize(String(value)) },
+		{ key: 'analysis_ids', label: 'Linked Analysis IDs' }
+	];
+
+	function capitalize(value: string): string {
+		return value.charAt(0).toUpperCase() + value.slice(1);
+	}
 
 	// Monotonic request id to guard against stale async completions on fast route changes.
 	let loadSeq = 0;
@@ -97,21 +125,27 @@
 		}
 	}
 
+	/** The edit form's values for a proof summary as saved. */
+	function formFrom(saved: ProofSummaryResponse): typeof formData {
+		return {
+			fact_type: saved.fact_type,
+			subject_id: saved.subject_id,
+			conclusion: saved.conclusion,
+			argument: saved.argument,
+			research_status: saved.research_status || 'unknown',
+			analysis_ids: [...(saved.analysis_ids || [])]
+		};
+	}
+
 	function resetForm() {
 		if (summary) {
-			formData = {
-				fact_type: summary.fact_type,
-				subject_id: summary.subject_id,
-				conclusion: summary.conclusion,
-				argument: summary.argument,
-				research_status: summary.research_status || 'unknown',
-				analysis_ids: [...(summary.analysis_ids || [])]
-			};
+			formData = formFrom(summary);
 		}
 	}
 
 	function startEdit() {
 		resetForm();
+		saveConflict.clear();
 		editing = true;
 	}
 
@@ -121,6 +155,7 @@
 			return;
 		}
 		resetForm();
+		saveConflict.clear();
 		editing = false;
 	}
 
@@ -152,6 +187,7 @@
 
 		saving = true;
 		error = null;
+		saveConflict.clear();
 		try {
 			if (isNew) {
 				const data: ProofSummaryCreateRequest = {
@@ -190,10 +226,10 @@
 				editing = false;
 			}
 		} catch (e) {
-			const status = (e as { status?: number }).status;
-			if (status === 409) {
-				error = 'Version conflict: someone else modified this record. Please reload and try again.';
-			} else {
+			// Only a stale version is compared with the latest (#940); other 409s
+			// are refusals, and a proof summary that can't be re-read shows the refusal.
+			const id = summary?.id;
+			if (!(id && isVersionConflict(e) && (await saveConflict.load(() => api.getProofSummary(id))))) {
 				error = (e as { message?: string }).message || 'Failed to save';
 			}
 		} finally {
@@ -375,6 +411,17 @@
 					<Button type="button" variant="outline" onclick={addAnalysis}>Add</Button>
 				</div>
 			</div>
+
+			<!-- Beside the Save button, where the user is looking when it fails. -->
+			{#if saveConflict.latest}
+				<SaveConflict
+					noun="proof summary"
+					fields={saveConflict.fields(conflictRows)}
+					onKeepMine={saveConflict.keepMine}
+					onUseLatest={saveConflict.useLatest}
+					busy={saving}
+				/>
+			{/if}
 
 			<div class="mt-6 flex justify-end gap-3 border-t border-slate-200 pt-4">
 				<Button variant="outline" onclick={cancelEdit} disabled={saving}>Cancel</Button>

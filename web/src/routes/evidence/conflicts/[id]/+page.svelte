@@ -3,6 +3,7 @@
 	import { page } from '$app/stores';
 	import {
 		api,
+		isVersionConflict,
 		recordLoadError,
 		type EvidenceConflictResponse,
 		type EvidenceAnalysisResponse
@@ -18,6 +19,8 @@
 		conflictBadgeProps
 	} from '$lib/utils/evidence';
 	import ErrorState from '$lib/components/ErrorState.svelte';
+	import SaveConflict from '$lib/components/SaveConflict.svelte';
+	import { SaveConflictFlow, type ConflictRow } from '$lib/utils/saveConflict.svelte';
 
 	let conflict: EvidenceConflictResponse | null = $state(null);
 	let linkedAnalyses: EvidenceAnalysisResponse[] = $state([]);
@@ -25,6 +28,20 @@
 	let error: string | null = $state(null);
 	let resolving = $state(false);
 	let resolutionText = $state('');
+
+	// The resolution form, for a resolve refused because the conflict changed.
+	type ResolutionForm = { resolution: string };
+	const saveConflict = new SaveConflictFlow<EvidenceConflictResponse, ResolutionForm>({
+		base: () => conflict,
+		formFrom: (saved) => ({ resolution: saved.resolution ?? '' }),
+		form: () => ({ resolution: resolutionText }),
+		adopt: (latest, form) => {
+			conflict = latest;
+			resolutionText = form.resolution;
+		},
+		save: () => resolveConflict()
+	});
+	const conflictRows: ConflictRow<ResolutionForm>[] = [{ key: 'resolution', label: 'Resolution' }];
 
 	async function loadConflict(id: string) {
 		loading = true;
@@ -58,6 +75,7 @@
 
 		resolving = true;
 		error = null;
+		saveConflict.clear();
 		try {
 			await api.resolveEvidenceConflict(conflict.id, {
 				resolution: resolutionText.trim(),
@@ -66,11 +84,15 @@
 			await loadConflict(conflict.id);
 			resolutionText = '';
 		} catch (e) {
-			const status = (e as { status?: number }).status;
-			if (status === 409) {
-				error = 'Version conflict: someone else modified this record. Please reload and try again.';
-			} else {
+			// Only a stale version is compared with the latest (#940); other 409s
+			// are refusals, and a conflict that can't be re-read shows the refusal.
+			const id = conflict.id;
+			if (!(isVersionConflict(e) && (await saveConflict.load(() => api.getEvidenceConflict(id))))) {
 				error = (e as { message?: string }).message || 'Failed to resolve conflict';
+			} else if (saveConflict.latest?.status !== 'open') {
+				// Resolved elsewhere: show that resolution rather than offer to overwrite it.
+				saveConflict.useLatest();
+				error = 'Someone else resolved this conflict while you were editing. Their resolution is shown below.';
 			}
 		} finally {
 			resolving = false;
@@ -245,6 +267,18 @@
 							aria-label="Resolution text"
 						/>
 					</div>
+					<!-- Beside the Resolve button, where the user is looking when it fails. -->
+					{#if saveConflict.latest}
+						<div class="mt-4">
+							<SaveConflict
+								noun="conflict"
+								fields={saveConflict.fields(conflictRows)}
+								onKeepMine={saveConflict.keepMine}
+								onUseLatest={saveConflict.useLatest}
+								busy={resolving}
+							/>
+						</div>
+					{/if}
 					<div class="mt-4 flex justify-end">
 						<Button onclick={resolveConflict} disabled={resolving}>
 							{resolving ? 'Resolving...' : 'Resolve Conflict'}

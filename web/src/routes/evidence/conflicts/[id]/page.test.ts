@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/svelte';
+import { render, screen, waitFor, fireEvent } from '@testing-library/svelte';
 import Page from './+page.svelte';
 import * as apiModule from '$lib/api/client';
 
@@ -184,5 +184,72 @@ describe('Conflict Detail Page - Resolved', () => {
 			expect(screen.getByText('Evidence Conflict')).toBeDefined();
 		});
 		expect(screen.queryByText('Resolve Conflict')).toBeNull();
+	});
+});
+
+describe('Conflict Detail Page - save conflict (#939)', () => {
+	const stale = { status: 409, code: 'VERSION_CONFLICT', message: 'Conflict' };
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		vi.mocked(apiModule.api.getEvidenceAnalysis).mockRejectedValue(new Error('Not found'));
+	});
+
+	async function resolveWith(value: string) {
+		render(Page);
+		await fireEvent.input(await screen.findByLabelText('Resolution text'), { target: { value } });
+		await fireEvent.click(screen.getByRole('button', { name: 'Resolve Conflict' }));
+	}
+
+	it('shows a resolution saved elsewhere instead of offering to overwrite it', async () => {
+		vi.mocked(apiModule.api.getEvidenceConflict)
+			.mockResolvedValueOnce(mockOpenConflict)
+			.mockResolvedValue(mockResolvedConflict);
+		vi.mocked(apiModule.api.resolveEvidenceConflict).mockRejectedValueOnce(stale);
+		await resolveWith('The newspaper is wrong.');
+
+		expect(await screen.findByText(/someone else resolved this conflict/i)).toBeTruthy();
+		expect(screen.getByText(mockResolvedConflict.resolution!)).toBeTruthy();
+		expect(screen.queryByRole('button', { name: 'Save my edits' })).toBeNull();
+		expect(screen.queryByLabelText('Resolution text')).toBeNull();
+		expect(apiModule.api.resolveEvidenceConflict).toHaveBeenCalledTimes(1);
+	});
+
+	it('compares the resolution with the latest version and keeps it in the form', async () => {
+		const latest = { ...mockOpenConflict, resolution: 'A draft elsewhere', version: 2 };
+		vi.mocked(apiModule.api.getEvidenceConflict)
+			.mockResolvedValueOnce(mockOpenConflict)
+			.mockResolvedValue(latest);
+		vi.mocked(apiModule.api.resolveEvidenceConflict).mockRejectedValueOnce(stale);
+		await resolveWith('The newspaper is wrong.');
+
+		expect(await screen.findByRole('rowheader', { name: 'Resolution' })).toBeTruthy();
+		expect(screen.getByTestId('mine').textContent).toBe('The newspaper is wrong.');
+		expect(screen.getByTestId('latest').textContent).toBe('A draft elsewhere');
+		expect((screen.getByLabelText('Resolution text') as HTMLTextAreaElement).value).toBe(
+			'The newspaper is wrong.'
+		);
+		expect(screen.queryByText(/reload and try again/i)).toBeNull();
+	});
+
+	it("keeps another writer's changes to the fields the user did not edit", async () => {
+		const latest = { ...mockOpenConflict, description: 'Death year disputed', version: 2 };
+		vi.mocked(apiModule.api.getEvidenceConflict).mockResolvedValueOnce(mockOpenConflict).mockResolvedValue(latest);
+		vi.mocked(apiModule.api.resolveEvidenceConflict).mockRejectedValueOnce(stale).mockResolvedValueOnce({
+			...latest,
+			status: 'resolved',
+			resolution: 'The newspaper is wrong.',
+			version: 3
+		});
+		await resolveWith('The newspaper is wrong.');
+
+		await fireEvent.click(await screen.findByRole('button', { name: 'Save my edits' }));
+
+		await waitFor(() => expect(apiModule.api.resolveEvidenceConflict).toHaveBeenCalledTimes(2));
+		expect(vi.mocked(apiModule.api.resolveEvidenceConflict).mock.calls[1][1]).toEqual({
+			resolution: 'The newspaper is wrong.',
+			version: 2
+		});
+		expect(await screen.findByText('Death year disputed')).toBeTruthy();
 	});
 });

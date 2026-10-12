@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
-	import { api, recordLoadError, type SourceDetail, type SourceType, type Citation } from '$lib/api/client';
+	import { api, isVersionConflict, recordLoadError, type SourceDetail, type SourceType, type Citation } from '$lib/api/client';
 	import ExternalLinks from '$lib/components/ExternalLinks.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import FormRow from '$lib/components/FormRow.svelte';
@@ -9,6 +9,8 @@
 	import { SOURCE_TYPES } from '$lib/utils/sourceTypes';
 	import ErrorState from '$lib/components/ErrorState.svelte';
 	import ActionError from '$lib/components/ActionError.svelte';
+	import SaveConflict from '$lib/components/SaveConflict.svelte';
+	import { SaveConflictFlow, type ConflictRow } from '$lib/utils/saveConflict.svelte';
 
 	let source: SourceDetail | null = $state(null);
 	let loading = $state(true);
@@ -31,6 +33,35 @@
 		notes: ''
 	});
 
+	const saveConflict = new SaveConflictFlow<SourceDetail, typeof formData>({
+		base: () => source,
+		formFrom,
+		form: () => formData,
+		adopt: (latest, form) => {
+			source = latest;
+			formData = form;
+		},
+		save: () => saveSource()
+	});
+
+	// The edit form's fields, in its order, for comparing with the latest version.
+	const conflictRows: ConflictRow<typeof formData>[] = [
+		{ key: 'source_type', label: 'Source Type', format: (value) => sourceTypeLabel(String(value)) },
+		{ key: 'title', label: 'Title' },
+		{ key: 'author', label: 'Author' },
+		{ key: 'publisher', label: 'Publisher' },
+		{ key: 'publish_date', label: 'Publish Date' },
+		{ key: 'url', label: 'URL' },
+		{ key: 'repository_name', label: 'Repository Name' },
+		{ key: 'collection_name', label: 'Collection Name' },
+		{ key: 'call_number', label: 'Call Number' },
+		{ key: 'notes', label: 'Notes' }
+	];
+
+	function sourceTypeLabel(value: string): string {
+		return SOURCE_TYPES.find((type) => type.value === value)?.label ?? value;
+	}
+
 	async function loadSource(id: string) {
 		loading = true;
 		error = null;
@@ -45,20 +76,25 @@
 		}
 	}
 
+	/** The edit form's values for a source as saved. */
+	function formFrom(saved: SourceDetail): typeof formData {
+		return {
+			source_type: saved.source_type,
+			title: saved.title,
+			author: saved.author || '',
+			publisher: saved.publisher || '',
+			publish_date: saved.publish_date || '',
+			url: saved.url || '',
+			repository_name: saved.repository_name || '',
+			collection_name: saved.collection_name || '',
+			call_number: saved.call_number || '',
+			notes: saved.notes || ''
+		};
+	}
+
 	function resetForm() {
 		if (source) {
-			formData = {
-				source_type: source.source_type,
-				title: source.title,
-				author: source.author || '',
-				publisher: source.publisher || '',
-				publish_date: source.publish_date || '',
-				url: source.url || '',
-				repository_name: source.repository_name || '',
-				collection_name: source.collection_name || '',
-				call_number: source.call_number || '',
-				notes: source.notes || ''
-			};
+			formData = formFrom(source);
 		}
 	}
 
@@ -66,12 +102,14 @@
 		resetForm();
 		editing = true;
 		error = null;
+		saveConflict.clear();
 	}
 
 	function cancelEdit() {
 		resetForm();
 		editing = false;
 		error = null;
+		saveConflict.clear();
 	}
 
 	async function saveSource() {
@@ -83,6 +121,7 @@
 
 		saving = true;
 		error = null;
+		saveConflict.clear();
 		try {
 			await api.updateSource(source.id, {
 				source_type: formData.source_type || undefined,
@@ -102,7 +141,12 @@
 			await loadSource(source.id);
 			editing = false;
 		} catch (e) {
-			error = (e as { message?: string }).message || 'Failed to save';
+			// Only a stale version is compared with the latest (#940); other 409s
+			// are refusals, and a source that can't be re-read shows the refusal.
+			const id = source.id;
+			if (!(isVersionConflict(e) && (await saveConflict.load(() => api.getSource(id))))) {
+				error = (e as { message?: string }).message || 'Failed to save';
+			}
 		} finally {
 			saving = false;
 		}
@@ -235,6 +279,17 @@
 					Notes
 					<textarea bind:value={formData.notes} rows="4"></textarea>
 				</label>
+
+				<!-- Beside the Save button, where the user is looking when it fails. -->
+				{#if saveConflict.latest}
+					<SaveConflict
+						noun="source"
+						fields={saveConflict.fields(conflictRows)}
+						onKeepMine={saveConflict.keepMine}
+						onUseLatest={saveConflict.useLatest}
+						busy={saving}
+					/>
+				{/if}
 
 				<div class="form-actions">
 					<Button variant="outline" onclick={cancelEdit} disabled={saving}>Cancel</Button>

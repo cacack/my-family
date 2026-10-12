@@ -128,3 +128,65 @@ describe('Repository detail page: failed actions (#899)', () => {
 		expect(await screen.findByText('National Archives')).toBeTruthy();
 	});
 });
+
+describe('Repository detail page: save conflict (#939)', () => {
+	const api = apiModule.api;
+	const stale = { status: 409, code: 'VERSION_CONFLICT', message: 'Conflict' };
+	const opened = {
+		id: 'repo-1',
+		name: 'National Archives',
+		address: { city: 'Washington', phone: '555-0100' },
+		version: 1
+	} as apiModule.RepositoryDetail;
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		branchState.id = null;
+	});
+
+	async function editCity(value: string) {
+		render(RepositoryPage);
+		await fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+		await fireEvent.input(screen.getByLabelText('City'), { target: { value } });
+		await fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+	}
+
+	it('compares the edits with the latest version and keeps them in the form', async () => {
+		vi.mocked(api.getRepository)
+			.mockResolvedValueOnce(opened)
+			.mockResolvedValue({ ...opened, address: { city: 'Baltimore', phone: '555-0100' }, version: 2 });
+		vi.mocked(api.updateRepository).mockRejectedValueOnce(stale);
+		await editCity('College Park');
+
+		expect(await screen.findByRole('rowheader', { name: 'City' })).toBeTruthy();
+		expect(screen.getByTestId('mine').textContent).toBe('College Park');
+		expect(screen.getByTestId('latest').textContent).toBe('Baltimore');
+		expect((screen.getByLabelText('City') as HTMLInputElement).value).toBe('College Park');
+		expect(screen.queryByText(/reload and try again/i)).toBeNull();
+	});
+
+	it("keeps another writer's changes to the fields the user did not edit", async () => {
+		vi.mocked(api.getRepository)
+			.mockResolvedValueOnce(opened)
+			.mockResolvedValue({
+				...opened,
+				address: { city: 'Washington', phone: '555-0199' },
+				notes: 'Theirs',
+				version: 2
+			});
+		vi.mocked(api.updateRepository).mockRejectedValueOnce(stale).mockResolvedValueOnce({} as apiModule.Repository);
+		await editCity('College Park');
+
+		expect(await screen.findByRole('rowheader', { name: 'City' })).toBeTruthy();
+		expect(screen.queryByRole('rowheader', { name: 'Phone' })).toBeNull();
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Save my edits' }));
+
+		await waitFor(() => expect(api.updateRepository).toHaveBeenCalledTimes(2));
+		expect(vi.mocked(api.updateRepository).mock.calls[1][1]).toMatchObject({
+			address: { city: 'College Park', phone: '555-0199' },
+			notes: 'Theirs',
+			version: 2
+		});
+	});
+});

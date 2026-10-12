@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/svelte';
+import { render, screen, waitFor, fireEvent } from '@testing-library/svelte';
 import Page from './+page.svelte';
 import * as apiModule from '$lib/api/client';
 
@@ -219,5 +219,87 @@ describe('Analysis Detail Page - New Mode', () => {
 			expect(screen.getByText('New Evidence Analysis')).toBeDefined();
 		});
 		expect(apiModule.api.getEvidenceAnalysis).not.toHaveBeenCalled();
+	});
+});
+
+describe('Analysis Detail Page - save conflict (#939)', () => {
+	const stale = { status: 409, code: 'VERSION_CONFLICT', message: 'Conflict' };
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		mockPageParams = { id: 'ea-1' };
+		mockPageUrl = undefined;
+	});
+
+	async function editConclusion(value: string) {
+		render(Page);
+		await fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+		await fireEvent.input(screen.getByLabelText('Conclusion'), { target: { value } });
+		await fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+	}
+
+	it('compares the edits with the latest version and keeps them in the form', async () => {
+		vi.mocked(apiModule.api.getEvidenceAnalysis)
+			.mockResolvedValueOnce(mockAnalysis)
+			.mockResolvedValue({ ...mockAnalysis, conclusion: 'Born 1851 in Ohio', version: 2 });
+		vi.mocked(apiModule.api.updateEvidenceAnalysis).mockRejectedValueOnce(stale);
+		await editConclusion('Born 1849 in Ohio');
+
+		expect(await screen.findByRole('rowheader', { name: 'Conclusion' })).toBeTruthy();
+		expect(screen.getByTestId('mine').textContent).toBe('Born 1849 in Ohio');
+		expect(screen.getByTestId('latest').textContent).toBe('Born 1851 in Ohio');
+		expect((screen.getByLabelText('Conclusion') as HTMLTextAreaElement).value).toBe('Born 1849 in Ohio');
+		expect(screen.queryByText(/reload and try again/i)).toBeNull();
+	});
+
+	it("keeps another writer's changes to the fields the user did not edit", async () => {
+		const latest = { ...mockAnalysis, notes: 'Theirs', citation_ids: ['c-1', 'c-2'], version: 2 };
+		vi.mocked(apiModule.api.getEvidenceAnalysis).mockResolvedValueOnce(mockAnalysis).mockResolvedValue(latest);
+		vi.mocked(apiModule.api.updateEvidenceAnalysis)
+			.mockRejectedValueOnce(stale)
+			.mockResolvedValueOnce({ ...latest, conclusion: 'Born 1849 in Ohio', version: 3 });
+		await editConclusion('Born 1849 in Ohio');
+
+		// Only the edited field is compared; the list of citations was left alone.
+		expect(await screen.findByRole('rowheader', { name: 'Conclusion' })).toBeTruthy();
+		expect(screen.queryByRole('rowheader', { name: 'Notes' })).toBeNull();
+		expect(screen.queryByRole('rowheader', { name: 'Citation IDs' })).toBeNull();
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Save my edits' }));
+
+		await waitFor(() => expect(apiModule.api.updateEvidenceAnalysis).toHaveBeenCalledTimes(2));
+		expect(vi.mocked(apiModule.api.updateEvidenceAnalysis).mock.calls[1][1]).toMatchObject({
+			conclusion: 'Born 1849 in Ohio',
+			notes: 'Theirs',
+			citation_ids: ['c-1', 'c-2'],
+			version: 2
+		});
+	});
+
+	it('replaces the edits with the latest version when the user takes it', async () => {
+		vi.mocked(apiModule.api.getEvidenceAnalysis)
+			.mockResolvedValueOnce(mockAnalysis)
+			.mockResolvedValue({ ...mockAnalysis, conclusion: 'Born 1851 in Ohio', version: 2 });
+		vi.mocked(apiModule.api.updateEvidenceAnalysis).mockRejectedValueOnce(stale);
+		await editConclusion('Born 1849 in Ohio');
+
+		await fireEvent.click(await screen.findByRole('button', { name: 'Use the latest version' }));
+
+		expect((screen.getByLabelText('Conclusion') as HTMLTextAreaElement).value).toBe('Born 1851 in Ohio');
+		expect(screen.queryByText(/changed elsewhere/)).toBeNull();
+		expect(apiModule.api.updateEvidenceAnalysis).toHaveBeenCalledTimes(1);
+	});
+
+	it('shows a 409 that is not a change elsewhere as it came', async () => {
+		vi.mocked(apiModule.api.getEvidenceAnalysis).mockResolvedValue(mockAnalysis);
+		vi.mocked(apiModule.api.updateEvidenceAnalysis).mockRejectedValueOnce({
+			status: 409,
+			code: 'CONFLICT',
+			message: 'Branch is merged and cannot be written to'
+		});
+		await editConclusion('Born 1849 in Ohio');
+
+		expect((await screen.findByRole('alert')).textContent).toContain('Branch is merged');
+		expect(apiModule.api.getEvidenceAnalysis).toHaveBeenCalledTimes(1);
 	});
 });

@@ -2,12 +2,14 @@
 	import MainlineNotice from '$lib/components/MainlineNotice.svelte';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
-	import { api, recordLoadError, type RepositoryDetail, type Address } from '$lib/api/client';
+	import { api, isVersionConflict, recordLoadError, type RepositoryDetail, type Address } from '$lib/api/client';
 	import ExternalLinks from '$lib/components/ExternalLinks.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import FormRow from '$lib/components/FormRow.svelte';
 	import ErrorState from '$lib/components/ErrorState.svelte';
 	import ActionError from '$lib/components/ActionError.svelte';
+	import SaveConflict from '$lib/components/SaveConflict.svelte';
+	import { SaveConflictFlow, type ConflictRow } from '$lib/utils/saveConflict.svelte';
 
 	let repository: RepositoryDetail | null = $state(null);
 	let loading = $state(true);
@@ -33,6 +35,33 @@
 
 	let formData = $state(emptyForm());
 
+	const saveConflict = new SaveConflictFlow<RepositoryDetail, typeof formData>({
+		base: () => repository,
+		formFrom,
+		form: () => formData,
+		adopt: (latest, form) => {
+			repository = latest;
+			formData = form;
+		},
+		save: () => saveRepository()
+	});
+
+	// The edit form's fields, in its order, for comparing with the latest version.
+	const conflictRows: ConflictRow<typeof formData>[] = [
+		{ key: 'name', label: 'Name' },
+		{ key: 'line1', label: 'Address Line 1' },
+		{ key: 'line2', label: 'Address Line 2' },
+		{ key: 'city', label: 'City' },
+		{ key: 'state', label: 'State/Province' },
+		{ key: 'postal_code', label: 'Postal Code' },
+		{ key: 'country', label: 'Country' },
+		{ key: 'phone', label: 'Phone' },
+		{ key: 'email', label: 'Email' },
+		{ key: 'fax', label: 'Fax' },
+		{ key: 'notes', label: 'Notes' },
+		{ key: 'gedcom_xref', label: 'GEDCOM Xref' }
+	];
+
 	async function loadRepository(id: string) {
 		loading = true;
 		error = null;
@@ -47,23 +76,28 @@
 		}
 	}
 
+	/** The edit form's values for a repository as saved. */
+	function formFrom(saved: RepositoryDetail): ReturnType<typeof emptyForm> {
+		const a = saved.address ?? {};
+		return {
+			name: saved.name,
+			line1: a.line1 ?? '',
+			line2: a.line2 ?? '',
+			city: a.city ?? '',
+			state: a.state ?? '',
+			postal_code: a.postal_code ?? '',
+			country: a.country ?? '',
+			phone: a.phone ?? '',
+			email: a.email ?? '',
+			fax: a.fax ?? '',
+			notes: saved.notes ?? '',
+			gedcom_xref: saved.gedcom_xref ?? ''
+		};
+	}
+
 	function resetForm() {
 		if (repository) {
-			const a = repository.address ?? {};
-			formData = {
-				name: repository.name,
-				line1: a.line1 ?? '',
-				line2: a.line2 ?? '',
-				city: a.city ?? '',
-				state: a.state ?? '',
-				postal_code: a.postal_code ?? '',
-				country: a.country ?? '',
-				phone: a.phone ?? '',
-				email: a.email ?? '',
-				fax: a.fax ?? '',
-				notes: repository.notes ?? '',
-				gedcom_xref: repository.gedcom_xref ?? ''
-			};
+			formData = formFrom(repository);
 		}
 	}
 
@@ -71,12 +105,14 @@
 		resetForm();
 		editing = true;
 		error = null;
+		saveConflict.clear();
 	}
 
 	function cancelEdit() {
 		resetForm();
 		editing = false;
 		error = null;
+		saveConflict.clear();
 	}
 
 	function buildAddress(f: ReturnType<typeof emptyForm>): Address | undefined {
@@ -102,6 +138,7 @@
 
 		saving = true;
 		error = null;
+		saveConflict.clear();
 		try {
 			await api.updateRepository(repository.id, {
 				name: formData.name.trim(),
@@ -115,11 +152,11 @@
 			await loadRepository(repository.id);
 			editing = false;
 		} catch (e) {
-			const err = e as { message?: string; status?: number };
-			if (err.status === 409) {
-				error = 'This repository was modified by someone else. Reload and try again.';
-			} else {
-				error = err.message || 'Failed to save';
+			// Only a stale version is compared with the latest (#940); other 409s
+			// are refusals, and a repository that can't be re-read shows the refusal.
+			const id = repository.id;
+			if (!(isVersionConflict(e) && (await saveConflict.load(() => api.getRepository(id))))) {
+				error = (e as { message?: string }).message || 'Failed to save';
 			}
 		} finally {
 			saving = false;
@@ -261,6 +298,17 @@
 					GEDCOM Xref
 					<input type="text" bind:value={formData.gedcom_xref} placeholder="e.g., @R1@" />
 				</label>
+
+				<!-- Beside the Save button, where the user is looking when it fails. -->
+				{#if saveConflict.latest}
+					<SaveConflict
+						noun="repository"
+						fields={saveConflict.fields(conflictRows)}
+						onKeepMine={saveConflict.keepMine}
+						onUseLatest={saveConflict.useLatest}
+						busy={saving}
+					/>
+				{/if}
 
 				<div class="form-actions">
 					<Button variant="outline" onclick={cancelEdit} disabled={saving}>Cancel</Button>

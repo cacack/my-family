@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/svelte';
+import { render, screen, waitFor, fireEvent } from '@testing-library/svelte';
 import Page from './+page.svelte';
 import * as apiModule from '$lib/api/client';
 
@@ -163,6 +163,59 @@ describe('Proof Summary Detail Page - New Mode', () => {
 		render(Page);
 		await waitFor(() => {
 			expect(screen.getByText('Create Proof Summary')).toBeDefined();
+		});
+	});
+});
+
+describe('Proof Summary Detail Page - save conflict (#939)', () => {
+	const stale = { status: 409, code: 'VERSION_CONFLICT', message: 'Conflict' };
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		mockPageParams = { id: 'ps-1' };
+		vi.mocked(apiModule.api.getEvidenceAnalysis).mockResolvedValue(mockLinkedAnalysis);
+	});
+
+	async function editArgument(value: string) {
+		render(Page);
+		await fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+		await fireEvent.input(screen.getByLabelText('Argument'), { target: { value } });
+		await fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+	}
+
+	it('compares the edits with the latest version and keeps them in the form', async () => {
+		vi.mocked(apiModule.api.getProofSummary)
+			.mockResolvedValueOnce(mockSummary)
+			.mockResolvedValue({ ...mockSummary, argument: 'Their argument', version: 2 });
+		vi.mocked(apiModule.api.updateProofSummary).mockRejectedValueOnce(stale);
+		await editArgument('My argument');
+
+		expect(await screen.findByRole('rowheader', { name: 'Argument' })).toBeTruthy();
+		expect(screen.getByTestId('latest').textContent).toBe('Their argument');
+		expect((screen.getByLabelText('Argument') as HTMLTextAreaElement).value).toBe('My argument');
+		expect(screen.queryByText(/reload and try again/i)).toBeNull();
+	});
+
+	it("keeps another writer's changes to the fields the user did not edit", async () => {
+		const latest = { ...mockSummary, conclusion: 'Born 1851 in Ohio', analysis_ids: ['ea-1', 'ea-2'], version: 2 };
+		vi.mocked(apiModule.api.getProofSummary).mockResolvedValueOnce(mockSummary).mockResolvedValue(latest);
+		vi.mocked(apiModule.api.updateProofSummary)
+			.mockRejectedValueOnce(stale)
+			.mockResolvedValueOnce({ ...latest, argument: 'My argument', version: 3 });
+		await editArgument('My argument');
+
+		expect(await screen.findByRole('rowheader', { name: 'Argument' })).toBeTruthy();
+		expect(screen.queryByRole('rowheader', { name: 'Conclusion' })).toBeNull();
+		expect(screen.queryByRole('rowheader', { name: 'Linked Analysis IDs' })).toBeNull();
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Save my edits' }));
+
+		await waitFor(() => expect(apiModule.api.updateProofSummary).toHaveBeenCalledTimes(2));
+		expect(vi.mocked(apiModule.api.updateProofSummary).mock.calls[1][1]).toMatchObject({
+			argument: 'My argument',
+			conclusion: 'Born 1851 in Ohio',
+			analysis_ids: ['ea-1', 'ea-2'],
+			version: 2
 		});
 	});
 });
