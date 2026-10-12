@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { page } from '$app/stores';
 	import { api, type ChangeEntry, type ChangeHistoryResponse } from '$lib/api/client';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
@@ -11,6 +12,7 @@
 		changeEntryLink,
 		entityTypeLabel
 	} from '$lib/utils/changeEntries';
+	import { readEnum, setQuery } from '$lib/utils/urlState';
 	import ErrorState from './ErrorState.svelte';
 	import ActionError from './ActionError.svelte';
 
@@ -29,8 +31,13 @@
 	let loadMoreError: string | null = $state(null);
 	let expandedEntries: Set<string> = $state(new Set());
 
-	// Filter state for global view
-	let filterEntityType = $state('');
+	// The global view's entity-type filter lives in the URL (see urlState.ts),
+	// so Back, reload and a copied link keep it. It refines the view, so it
+	// replaces. An entity's own history has no filter and ignores the URL.
+	const FILTER_TYPES = ['', ...CHANGE_ENTITY_TYPES] as const;
+	const filterEntityType = $derived(
+		entityId ? '' : readEnum($page.url.searchParams, 'type', FILTER_TYPES, '')
+	);
 
 	const PAGE_SIZE = 20;
 
@@ -144,8 +151,8 @@
 		}
 	}
 
-	function handleFilterChange() {
-		loadHistory();
+	function handleFilterChange(e: Event) {
+		setQuery($page.url, { type: (e.target as HTMLSelectElement).value });
 	}
 
 	$effect(() => {
@@ -158,7 +165,7 @@
 		<div class="filters">
 			<label>
 				Entity Type
-				<select bind:value={filterEntityType} onchange={handleFilterChange}>
+				<select value={filterEntityType} onchange={handleFilterChange}>
 					<option value="">All</option>
 					{#each CHANGE_ENTITY_TYPES as type (type)}
 						<option value={type}>{ENTITY_TYPE_LABELS[type]}</option>
