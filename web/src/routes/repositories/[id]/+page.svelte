@@ -235,7 +235,7 @@
 				{/if}
 
 				<label>
-					Name <span class="required">*</span>
+					<span>Name <span class="required">*</span></span>
 					<input type="text" bind:value={formData.name} required />
 				</label>
 

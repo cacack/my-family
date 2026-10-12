@@ -263,7 +263,7 @@
 		<form class="add-form" onsubmit={(e) => { e.preventDefault(); saveNewName(); }}>
 			<FormRow>
 				<label>
-					Given Name <span class="required">*</span>
+					<span>Given Name <span class="required">*</span></span>
 					<input type="text" bind:value={formData.given_name} placeholder="e.g., John" required />
 				</label>
 				<label>
@@ -296,7 +296,7 @@
 
 			<FormRow>
 				<label>
-					Name Type <span class="required">*</span>
+					<span>Name Type <span class="required">*</span></span>
 					<select bind:value={formData.name_type} required>
 						{#each NAME_TYPE_OPTIONS as option (option.value)}
 							<option value={option.value}>{option.label}</option>
@@ -337,7 +337,7 @@
 						<form class="add-form edit-form" onsubmit={(e) => { e.preventDefault(); saveEdit(); }}>
 							<FormRow>
 								<label>
-									Given Name <span class="required">*</span>
+									<span>Given Name <span class="required">*</span></span>
 									<input type="text" bind:value={formData.given_name} required />
 								</label>
 								<label>
@@ -370,7 +370,7 @@
 
 							<FormRow>
 								<label>
-									Name Type <span class="required">*</span>
+									<span>Name Type <span class="required">*</span></span>
 									<select bind:value={formData.name_type} required>
 										{#each NAME_TYPE_OPTIONS as option (option.value)}
 											<option value={option.value}>{option.label}</option>

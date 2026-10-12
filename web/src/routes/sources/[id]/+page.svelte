@@ -230,7 +230,7 @@
 						</select>
 					</label>
 					<label>
-						Title <span class="required">*</span>
+						<span>Title <span class="required">*</span></span>
 						<input type="text" bind:value={formData.title} required />
 					</label>
 				</FormRow>
