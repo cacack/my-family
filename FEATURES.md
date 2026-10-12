@@ -11,7 +11,7 @@ Completed features in my-family genealogy software.
 - **JSON/CSV Export** - Export persons and families as JSON or CSV with configurable field selection
 - **Person Management** - Create, edit, and delete individual records with names, dates, places, gender, and notes
 - **Family Management** - Create family units linking partners and children, supporting multiple marriages and single-parent families
-- **Flexible Date Formats** - Support for exact dates, approximate dates (circa), date ranges, and bounded dates (before/after)
+- **Flexible Date Formats** - Support for exact dates, approximate dates (circa), date ranges, and bounded dates (before/after), typed in GEDCOM form or plain English ("about 1850", "Sept 1850", "between 1840 and 1850"), or kept as free text
 - **Relationship Types** - Biological, adopted, step, and foster relationship qualifiers for children
 
 ## Visualization

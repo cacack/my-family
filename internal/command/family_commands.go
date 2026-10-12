@@ -82,10 +82,11 @@ func (h *Handler) CreateFamily(ctx context.Context, input CreateFamilyInput) (*C
 	family.RelationshipType = relType
 
 	if input.MarriageDate != "" {
-		if err := validateDateInput("marriage_date", input.MarriageDate); err != nil {
+		marriageDate, err := normalizeDateInput("marriage_date", input.MarriageDate)
+		if err != nil {
 			return nil, err
 		}
-		md := domain.ParseGenDate(input.MarriageDate)
+		md := domain.ParseGenDate(marriageDate)
 		family.MarriageDate = &md
 	}
 	if input.MarriagePlace != "" {
@@ -178,13 +179,14 @@ func (h *Handler) UpdateFamily(ctx context.Context, input UpdateFamilyInput) (*U
 		changes["relationship_type"] = *input.RelationshipType
 	}
 	if input.MarriageDate != nil && *input.MarriageDate != family.MarriageDateRaw {
-		if err := validateDateInput("marriage_date", *input.MarriageDate); err != nil {
+		marriageDate, err := normalizeDateInput("marriage_date", *input.MarriageDate)
+		if err != nil {
 			return nil, err
 		}
-		if *input.MarriageDate == "" {
+		if marriageDate == "" {
 			changes["marriage_date"] = nil
-		} else {
-			changes["marriage_date"] = *input.MarriageDate
+		} else if marriageDate != family.MarriageDateRaw {
+			changes["marriage_date"] = marriageDate
 		}
 	}
 	if input.MarriagePlace != nil && *input.MarriagePlace != family.MarriagePlace {

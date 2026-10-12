@@ -220,38 +220,134 @@ func ParseGenDate(s string) GenDate {
 	return gd
 }
 
+// DateInputError is a date rejected by ValidateDateInput. Unreadable is true
+// when the text can't be stored as a dated value at all (it isn't a GEDCOM
+// date, or uses a form stored without a year), so keeping it as a date phrase
+// is the way to save it; it is false for a real-looking date that doesn't
+// exist in the calendar, such as "31 FEB 1900".
+type DateInputError struct {
+	Reason     string
+	Unreadable bool
+}
+
+func (e *DateInputError) Error() string { return e.Reason }
+
+// NormalizeDateInput converts a date as a person typed it to the GEDCOM form
+// it is stored in, then checks it with ValidateDateInput. Unambiguous English
+// is converted (see englishDateToGEDCOM), so "about Sept 1850" is stored as
+// "ABT SEP 1850"; anything else is checked as typed and returned unchanged.
+// A rejection quotes the date as it was typed.
+func NormalizeDateInput(s string) (string, error) {
+	converted, ok := englishDateToGEDCOM(s)
+	if !ok {
+		converted = s
+	}
+	if err := validateDate(converted, s); err != nil {
+		return "", err
+	}
+	return converted, nil
+}
+
+// englishLeadingWords are the words that may start a typed date, with their
+// GEDCOM keyword. GEDCOM's own keywords are included so a date mixing the
+// two ("bef. 5 March 1850") still converts.
+var englishLeadingWords = map[string]string{
+	"about": "ABT", "abt": "ABT", "circa": "ABT", "c": "ABT", "ca": "ABT",
+	"before": "BEF", "bef": "BEF",
+	"after": "AFT", "aft": "AFT",
+	"between": "BET", "bet": "BET",
+	"from": "FROM", "to": "TO",
+	"est": "EST", "cal": "CAL",
+}
+
+// englishDateWords are the words that may appear anywhere in a typed date:
+// range connectors and English month names, full or abbreviated.
+var englishDateWords = func() map[string]string {
+	words := map[string]string{"and": "AND", "to": "TO", "sept": "SEP"}
+	for m := time.January; m <= time.December; m++ {
+		name := strings.ToLower(m.String())
+		words[name] = reverseMonthMap[int(m)]
+		words[name[:3]] = reverseMonthMap[int(m)]
+	}
+	return words
+}()
+
+// englishDateToGEDCOM rewrites a date typed in plain English, such as
+// "circa 1850", "before 5 Sept 1900" or "between 1840 and 1850", into GEDCOM
+// form. It only rewrites words; gedcom-go still parses and validates the
+// result. It reports false, changing nothing, unless every word is a known
+// qualifier, connector or month (a trailing "." is ignored) or a number, so
+// text with any doubt about its meaning is left for validation to reject.
+// Date phrases, interpreted dates and calendar escapes are never rewritten.
+func englishDateToGEDCOM(s string) (string, bool) {
+	if strings.ContainsAny(s, "(@") {
+		return "", false
+	}
+	fields := strings.Fields(s)
+	if len(fields) == 0 {
+		return "", false
+	}
+	out := make([]string, len(fields))
+	for i, field := range fields {
+		word := strings.TrimSuffix(strings.ToLower(field), ".")
+		if gedcom, ok := englishLeadingWords[word]; ok && i == 0 {
+			out[i] = gedcom
+		} else if gedcom, ok := englishDateWords[word]; ok {
+			out[i] = gedcom
+		} else if word != "" && strings.Trim(word, "0123456789/") == "" {
+			out[i] = word
+		} else {
+			return "", false
+		}
+	}
+	return strings.Join(out, " "), true
+}
+
 // ValidateDateInput checks a date as a person typed it. It rejects text that
 // isn't a GEDCOM date (e.g. "garbage", "1850-01-01", "31 FEB 19xx") and dates
 // that don't exist in the calendar (e.g. "31 FEB 1900"); a GEDCOM date phrase
 // in parentheses, such as "(about the time of the war)", is always accepted.
-// An empty string is valid: it means no date.
+// An empty string is valid: it means no date. A rejection is a *DateInputError.
 //
 // Accepted dates (other than phrases) always parse to a year with ParseGenDate.
 // ParseGenDate stays lenient so imported and already-stored dates keep loading;
 // this check is for new input only. Syntax and calendar rules come from
 // gedcom-go, which currently checks day counts for Gregorian dates only.
 func ValidateDateInput(s string) error {
+	return validateDate(s, s)
+}
+
+// validateDate checks s as ValidateDateInput does, quoting typed (the text the
+// person entered, which s may be a GEDCOM rewrite of) in a rejection.
+func validateDate(s, typed string) error {
 	s = strings.TrimSpace(s)
+	typed = strings.TrimSpace(typed)
 	if s == "" {
 		return nil
 	}
 	d, err := gedcomlib.ParseDate(s)
 	if err != nil {
-		return fmt.Errorf("%q is not a recognized date; use a form like \"1 JAN 1850\", \"ABT 1850\" or \"BET 1850 AND 1860\", or put free text in parentheses to keep it as a date phrase", s)
+		return &DateInputError{
+			Reason:     fmt.Sprintf("%q is not a recognized date; use a form like \"1 JAN 1850\", \"about 1850\" or \"between 1850 and 1860\", or keep it as text in parentheses as a date phrase", typed),
+			Unreadable: true,
+		}
 	}
 	for _, part := range []*gedcomlib.Date{d, d.EndDate} {
 		if part == nil {
 			continue
 		}
 		if err := part.Validate(); err != nil {
-			return fmt.Errorf("%q is not a real calendar date (%s)", s, strings.TrimPrefix(err.Error(), "invalid date: "))
+			return &DateInputError{Reason: fmt.Sprintf("%q is not a real calendar date (%s)", typed, strings.TrimPrefix(err.Error(), "invalid date: "))}
 		}
 	}
 	// gedcom-go accepts forms ParseGenDate can't read a year from (dual years
 	// like "1750/51", BC years, a bare "TO 1860"). Storing those would leave the
 	// date without a year, so reject them unless they are a date phrase.
 	if !strings.HasPrefix(s, "(") && ParseGenDate(s).Year == nil {
-		return fmt.Errorf("%q is not a supported date yet (dual years, BC years and \"TO\" without \"FROM\" can't be stored with a year); use a single year such as \"1751\", or put it in parentheses to keep it as a date phrase", s)
+		return &DateInputError{
+			Reason:     fmt.Sprintf("%q is not a supported date yet (dual years, BC years and \"TO\" without \"FROM\" can't be stored with a year); use a single year such as \"1751\", or keep it as text in parentheses as a date phrase", typed),
+			Unreadable: true,
+		}
 	}
 	return nil
 }

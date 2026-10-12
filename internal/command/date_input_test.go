@@ -166,3 +166,88 @@ func TestLDSOrdinance_RejectsInvalidDate(t *testing.T) {
 	_, err = handler.UpdateLDSOrdinance(ctx, command.UpdateLDSOrdinanceInput{ID: ord.ID, Date: strPtr("garbage"), Version: ord.Version})
 	requireDateError(t, err, "date", "is not a recognized date")
 }
+
+// Plain-English dates are stored in GEDCOM form on every date entry point
+// (issue #978).
+func TestDateInput_StoresEnglishAsGEDCOM(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(memory.NewEventStore(), readStore)
+	ctx := context.Background()
+
+	created, err := handler.CreatePerson(ctx, command.CreatePersonInput{GivenName: "John", BirthDate: "about 1850", DeathDate: "before Sept 1900"})
+	if err != nil {
+		t.Fatalf("CreatePerson: %v", err)
+	}
+	person, _ := readStore.GetPerson(ctx, domain.MainBranchID, created.ID)
+	if person.BirthDateRaw != "ABT 1850" || person.DeathDateRaw != "BEF SEP 1900" {
+		t.Errorf("created dates = %q, %q, want ABT 1850, BEF SEP 1900", person.BirthDateRaw, person.DeathDateRaw)
+	}
+
+	updated, err := handler.UpdatePerson(ctx, command.UpdatePersonInput{ID: created.ID, BirthDate: strPtr("circa 1851"), DeathDate: strPtr("between 1900 and 1905"), Version: created.Version})
+	if err != nil {
+		t.Fatalf("UpdatePerson: %v", err)
+	}
+	person, _ = readStore.GetPerson(ctx, domain.MainBranchID, created.ID)
+	if person.BirthDateRaw != "ABT 1851" || person.DeathDateRaw != "BET 1900 AND 1905" {
+		t.Errorf("updated dates = %q, %q, want ABT 1851, BET 1900 AND 1905", person.BirthDateRaw, person.DeathDateRaw)
+	}
+
+	// Typing the stored date in English again is not a change.
+	same, err := handler.UpdatePerson(ctx, command.UpdatePersonInput{ID: created.ID, BirthDate: strPtr("c. 1851"), Version: updated.Version})
+	if err != nil {
+		t.Fatalf("UpdatePerson with the same date: %v", err)
+	}
+	if same.Version != updated.Version {
+		t.Errorf("version = %d, want %d unchanged", same.Version, updated.Version)
+	}
+
+	family, err := handler.CreateFamily(ctx, command.CreateFamilyInput{Partner1ID: &created.ID, MarriageDate: "5 June 1875"})
+	if err != nil {
+		t.Fatalf("CreateFamily: %v", err)
+	}
+	f, _ := readStore.GetFamily(ctx, domain.MainBranchID, family.ID)
+	if f.MarriageDateRaw != "5 JUN 1875" {
+		t.Errorf("created marriage date = %q, want 5 JUN 1875", f.MarriageDateRaw)
+	}
+	if _, err := handler.UpdateFamily(ctx, command.UpdateFamilyInput{ID: family.ID, MarriageDate: strPtr("after 1875"), Version: family.Version}); err != nil {
+		t.Fatalf("UpdateFamily: %v", err)
+	}
+	f, _ = readStore.GetFamily(ctx, domain.MainBranchID, family.ID)
+	if f.MarriageDateRaw != "AFT 1875" {
+		t.Errorf("updated marriage date = %q, want AFT 1875", f.MarriageDateRaw)
+	}
+
+	ord, err := handler.CreateLDSOrdinance(ctx, command.CreateLDSOrdinanceInput{Type: domain.LDSBaptism, PersonID: &created.ID, Date: "from 1860 to 1861"})
+	if err != nil {
+		t.Fatalf("CreateLDSOrdinance: %v", err)
+	}
+	o, _ := readStore.GetLDSOrdinance(ctx, ord.ID)
+	if o.DateRaw != "FROM 1860 TO 1861" {
+		t.Errorf("created ordinance date = %q, want FROM 1860 TO 1861", o.DateRaw)
+	}
+	if _, err := handler.UpdateLDSOrdinance(ctx, command.UpdateLDSOrdinanceInput{ID: ord.ID, Date: strPtr("about Jan 1862"), Version: ord.Version}); err != nil {
+		t.Fatalf("UpdateLDSOrdinance: %v", err)
+	}
+	o, _ = readStore.GetLDSOrdinance(ctx, ord.ID)
+	if o.DateRaw != "ABT JAN 1862" {
+		t.Errorf("updated ordinance date = %q, want ABT JAN 1862", o.DateRaw)
+	}
+}
+
+// A rejected date says whether it can be kept as a date phrase instead.
+func TestDateInput_RejectionReportsUnreadable(t *testing.T) {
+	handler := command.NewHandler(memory.NewEventStore(), memory.NewReadModelStore())
+	ctx := context.Background()
+
+	for input, want := range map[string]bool{"Sept 5, 1850": true, "31 February 1900": false} {
+		_, err := handler.CreatePerson(ctx, command.CreatePersonInput{GivenName: "John", BirthDate: input})
+		var dateErr *command.InvalidDateError
+		var reason *domain.DateInputError
+		if !errors.As(err, &dateErr) || !errors.As(err, &reason) {
+			t.Fatalf("%q: err = %v, want *InvalidDateError wrapping *DateInputError", input, err)
+		}
+		if dateErr.Field != "birth_date" || reason.Unreadable != want {
+			t.Errorf("%q: field %q unreadable %v, want birth_date %v", input, dateErr.Field, reason.Unreadable, want)
+		}
+	}
+}
