@@ -4,10 +4,18 @@
 	import { Button } from '$lib/components/ui/button';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import FormRow from '$lib/components/FormRow.svelte';
+	import ActionError from '$lib/components/ActionError.svelte';
 	import { GENDER_OPTIONS } from '$lib/utils/enumOptions';
+	import { asDatePhrase, savedAsNotes, unreadableDateField } from '$lib/utils/dateInput';
+
+	const DATE_FIELDS = ['birth_date', 'death_date'] as const;
+	type DateField = (typeof DATE_FIELDS)[number];
 
 	let saving = $state(false);
 	let error: string | null = $state(null);
+	// The date field a create was refused for because its text isn't a date,
+	// which the error offers to keep as text (#996).
+	let unreadableDate: DateField | null = $state(null);
 
 	// Form state
 	let formData = $state<PersonCreate>({
@@ -24,6 +32,7 @@
 	async function createPerson() {
 		saving = true;
 		error = null;
+		unreadableDate = null;
 		try {
 			// Build the create payload, only including non-empty optional fields
 			const payload: PersonCreate = {
@@ -51,12 +60,24 @@
 			}
 
 			const person = await api.createPerson(payload);
-			goto(`/persons/${person.id}`);
+			// The new person's page says which dates were stored in another form (#996).
+			const savedAs = savedAsNotes(
+				{ birth_date: formData.birth_date ?? '', death_date: formData.death_date ?? '' },
+				{ birth_date: person.birth_date?.raw ?? '', death_date: person.death_date?.raw ?? '' }
+			);
+			goto(`/persons/${person.id}`, { state: { savedAs } });
 		} catch (e) {
 			error = (e as { message?: string }).message || 'Failed to create person';
+			unreadableDate = unreadableDateField(e, DATE_FIELDS);
 		} finally {
 			saving = false;
 		}
+	}
+
+	/** Create with an unreadable date as a date phrase, so it is kept as text (#996). */
+	function keepDateAsText(field: DateField) {
+		formData[field] = asDatePhrase(formData[field] ?? '');
+		createPerson();
 	}
 
 	function cancel() {
@@ -76,7 +97,13 @@
 	</div>
 
 	{#if error}
-		<div class="error" role="alert">{error}</div>
+		{@const dateField = unreadableDate}
+		<ActionError
+			message={error}
+			action={dateField
+				? { label: 'Keep as text', onclick: () => keepDateAsText(dateField), disabled: saving }
+				: undefined}
+		/>
 	{/if}
 
 	<form class="edit-form" onsubmit={(e) => { e.preventDefault(); createPerson(); }}>
@@ -144,16 +171,6 @@
 		max-width: 800px;
 		margin: 0 auto;
 		padding: 1.5rem;
-	}
-
-	.error {
-		background: #fef2f2;
-		border: 1px solid #fecaca;
-		color: #dc2626;
-		padding: 0.75rem 1rem;
-		border-radius: 6px;
-		margin-bottom: 1rem;
-		font-size: 0.875rem;
 	}
 
 	/* Edit form styles */

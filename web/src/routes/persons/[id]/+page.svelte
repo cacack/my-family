@@ -384,7 +384,8 @@
 	$effect(() => {
 		const id = $page.params.id;
 		if (id) {
-			savedAs = {};
+			// A create that stored a date in another form says so here (#996).
+			savedAs = $page.state.savedAs ?? {};
 			loadPerson(id);
 		}
 	});

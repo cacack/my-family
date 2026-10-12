@@ -2,10 +2,13 @@
 	import { api, formatPersonName, type PersonCreate } from '$lib/api/client';
 	import { Button } from '$lib/components/ui/button';
 	import FormRow from '$lib/components/FormRow.svelte';
+	import ActionError from '$lib/components/ActionError.svelte';
 	import { GENDER_OPTIONS } from '$lib/utils/enumOptions';
+	import { asDatePhrase, savedAsNotes, unreadableDateField, type SavedAs } from '$lib/utils/dateInput';
 
 	interface Props {
-		onComplete: (data: { personId: string; personName: string }) => void;
+		/** `birthDateSavedAs` is set when the birth date was stored in another form than typed (#996). */
+		onComplete: (data: { personId: string; personName: string; birthDateSavedAs?: SavedAs }) => void;
 		onBack: () => void;
 	}
 
@@ -13,6 +16,9 @@
 
 	let saving = $state(false);
 	let error: string | null = $state(null);
+	// True when a create was refused because the birth date isn't a date,
+	// which the error offers to keep as text (#996).
+	let unreadableDate = $state(false);
 
 	let formData = $state<PersonCreate>({
 		given_name: '',
@@ -25,6 +31,7 @@
 	async function createPerson() {
 		saving = true;
 		error = null;
+		unreadableDate = false;
 		try {
 			const payload: PersonCreate = {
 				given_name: formData.given_name,
@@ -44,13 +51,24 @@
 			const person = await api.createPerson(payload);
 			onComplete({
 				personId: person.id,
-				personName: formatPersonName(person)
+				personName: formatPersonName(person),
+				birthDateSavedAs: savedAsNotes(
+					{ birth_date: formData.birth_date ?? '' },
+					{ birth_date: person.birth_date?.raw ?? '' }
+				).birth_date
 			});
 		} catch (e) {
 			error = (e as { message?: string }).message || 'Failed to create person';
+			unreadableDate = unreadableDateField(e, ['birth_date']) !== null;
 		} finally {
 			saving = false;
 		}
+	}
+
+	/** Create with an unreadable birth date as a date phrase, so it is kept as text (#996). */
+	function keepDateAsText() {
+		formData.birth_date = asDatePhrase(formData.birth_date ?? '');
+		createPerson();
 	}
 </script>
 
@@ -61,7 +79,12 @@
 	<p class="description">Start building your family tree by adding the first person. You can always edit and add more details later.</p>
 
 	{#if error}
-		<div class="error" role="alert">{error}</div>
+		<ActionError
+			message={error}
+			action={unreadableDate
+				? { label: 'Keep as text', onclick: keepDateAsText, disabled: saving }
+				: undefined}
+		/>
 	{/if}
 
 	<form class="edit-form" onsubmit={(e) => { e.preventDefault(); createPerson(); }}>
@@ -136,16 +159,6 @@
 	.description {
 		margin: 0 0 1.5rem;
 		color: var(--color-text-muted);
-		font-size: 0.875rem;
-	}
-
-	.error {
-		background: #fef2f2;
-		border: 1px solid #fecaca;
-		color: #dc2626;
-		padding: 0.75rem 1rem;
-		border-radius: 6px;
-		margin-bottom: 1rem;
 		font-size: 0.875rem;
 	}
 

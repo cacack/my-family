@@ -415,7 +415,8 @@
 	$effect(() => {
 		const id = $page.params.id;
 		if (id) {
-			savedAs = undefined;
+			// A create that stored the date in another form says so here (#996).
+			savedAs = $page.state.savedAs?.marriage_date;
 			loadFamily(id);
 		}
 	});

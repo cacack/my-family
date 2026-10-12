@@ -11,10 +11,15 @@
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import FormRow from '$lib/components/FormRow.svelte';
 	import PartnerPickers from '$lib/components/PartnerPickers.svelte';
+	import ActionError from '$lib/components/ActionError.svelte';
 	import { RELATION_TYPE_OPTIONS } from '$lib/utils/enumOptions';
+	import { asDatePhrase, savedAsNotes, unreadableDateField } from '$lib/utils/dateInput';
 
 	let saving = $state(false);
 	let error: string | null = $state(null);
+	// True when a create was refused because the marriage date isn't a date,
+	// which the error offers to keep as text (#996).
+	let unreadableDate = $state(false);
 
 	// Form state
 	let formData = $state<FamilyCreate>({
@@ -84,6 +89,7 @@
 		if (formLocked || childPending || !hasPartner) return;
 		saving = true;
 		error = null;
+		unreadableDate = false;
 		try {
 			const payload: FamilyCreate = {
 				partner1_id: partner1?.id,
@@ -105,12 +111,24 @@
 					return;
 				}
 			}
-			goto(`/families/${family.id}`);
+			// The new family's page says if the date was stored in another form (#996).
+			const savedAs = savedAsNotes(
+				{ marriage_date: formData.marriage_date ?? '' },
+				{ marriage_date: family.marriage_date?.raw ?? '' }
+			);
+			goto(`/families/${family.id}`, { state: { savedAs } });
 		} catch (e) {
 			error = (e as { message?: string }).message || 'Failed to create family';
+			unreadableDate = unreadableDateField(e, ['marriage_date']) !== null;
 		} finally {
 			saving = false;
 		}
+	}
+
+	/** Create with an unreadable marriage date as a date phrase, so it is kept as text (#996). */
+	function keepDateAsText() {
+		formData.marriage_date = asDatePhrase(formData.marriage_date ?? '');
+		handleSubmit();
 	}
 
 	function handleCancel() {
@@ -125,13 +143,18 @@
 <div class="add-family-page">
 	<PageHeader title="Add Family" back={{ href: '/families', label: 'Families' }} />
 
-	{#if error}
+	{#if error && createdFamilyId}
 		<div class="error" role="alert">
 			{error}
-			{#if createdFamilyId}
-				<a href="/families/{createdFamilyId}">Open the family</a>
-			{/if}
+			<a href="/families/{createdFamilyId}">Open the family</a>
 		</div>
+	{:else if error}
+		<ActionError
+			message={error}
+			action={unreadableDate
+				? { label: 'Keep as text', onclick: keepDateAsText, disabled: formLocked }
+				: undefined}
+		/>
 	{/if}
 	{#if prefillError}
 		<div class="error" role="alert">

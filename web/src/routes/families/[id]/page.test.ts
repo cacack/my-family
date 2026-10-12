@@ -3,9 +3,11 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import FamilyPage from './+page.svelte';
 import * as apiModule from '$lib/api/client';
 
-const { branchState } = vi.hoisted(() => ({
+const { branchState, pageState } = vi.hoisted(() => ({
 	// The real store exposes a read-only view, so the active branch is injected.
-	branchState: { id: null as string | null }
+	branchState: { id: null as string | null },
+	// The history state a navigation left, e.g. a create's converted date.
+	pageState: {} as App.PageState
 }));
 
 vi.mock('$lib/stores/activeBranch.svelte', () => ({
@@ -34,7 +36,7 @@ vi.mock('$lib/api/client', async (importOriginal) => {
 vi.mock('$app/stores', () => ({
 	page: {
 		subscribe: vi.fn((callback) => {
-			callback({ params: { id: 'test-family-id' } });
+			callback({ params: { id: 'test-family-id' }, state: pageState });
 			return () => {};
 		})
 	}
@@ -444,6 +446,18 @@ describe('Family Detail Page: partners and children (#826)', () => {
 		await fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
 
 		expect(await screen.findByText('Saved as ABT 1875 from “circa 1875”')).toBeDefined();
+	});
+
+	// A create that converted the date navigates here with what it stored (#996).
+	it('says what a create stored a converted marriage date as', async () => {
+		vi.mocked(api.getFamily).mockResolvedValue({ ...mockFamilyWithChildren, marriage_date: { raw: 'ABT 1875' } });
+		pageState.savedAs = { marriage_date: { typed: 'circa 1875', stored: 'ABT 1875' } };
+		try {
+			render(FamilyPage);
+			expect(await screen.findByText('Saved as ABT 1875 from “circa 1875”')).toBeDefined();
+		} finally {
+			delete pageState.savedAs;
+		}
 	});
 
 	it('offers Add child, which opens the dialog', async () => {

@@ -1,8 +1,9 @@
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button';
+	import type { SavedAs } from '$lib/utils/dateInput';
 
 	interface Props {
-		completionData: { personCount?: number; personId?: string; personName?: string };
+		completionData: { personCount?: number; personId?: string; personName?: string; birthDateSavedAs?: SavedAs };
 		onFinish: () => void;
 	}
 
@@ -23,6 +24,11 @@
 		<p class="summary">Successfully imported {completionData.personCount} {completionData.personCount === 1 ? 'person' : 'people'} into your family tree.</p>
 	{:else if completionData.personName}
 		<p class="summary">Successfully created {completionData.personName} as your first person.</p>
+		{#if completionData.birthDateSavedAs}
+			<p class="saved-as" role="status">
+				Birth date saved as {completionData.birthDateSavedAs.stored} from “{completionData.birthDateSavedAs.typed}”
+			</p>
+		{/if}
 	{:else}
 		<p class="summary">Your family tree is ready. Start exploring!</p>
 	{/if}
@@ -114,6 +120,14 @@
 		margin: 0 0 2rem;
 		color: var(--color-text-muted);
 		font-size: 1rem;
+	}
+
+	/* Sits under the summary, inside its bottom margin. */
+	.saved-as {
+		margin: -1.5rem 0 2rem;
+		color: var(--color-text-muted);
+		font-size: 0.875rem;
+		overflow-wrap: anywhere;
 	}
 
 	.feature-cards {
