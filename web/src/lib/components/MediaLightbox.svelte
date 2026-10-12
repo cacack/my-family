@@ -253,7 +253,7 @@
 
 	.description {
 		margin: 0 0 1.5rem;
-		color: #cbd5e1;
+		color: rgb(255 255 255 / 0.8);
 		font-size: 0.875rem;
 		line-height: 1.5;
 	}
@@ -266,7 +266,7 @@
 	}
 
 	.metadata-list dt {
-		color: #94a3b8;
+		color: rgb(255 255 255 / 0.65);
 		font-size: 0.8125rem;
 	}
 
@@ -285,7 +285,7 @@
 		padding-top: 1rem;
 		border-top: 1px solid rgba(255, 255, 255, 0.1);
 		text-align: center;
-		color: #94a3b8;
+		color: rgb(255 255 255 / 0.65);
 		font-size: 0.875rem;
 	}
 

@@ -36,7 +36,7 @@
 			default:
 				return {
 					indicatorColor: 'bg-gray-400',
-					badgeClass: 'bg-gray-50 text-gray-500 border-gray-200 dark:bg-gray-900 dark:text-gray-400 dark:border-gray-700',
+					badgeClass: 'bg-gray-50 text-muted-foreground border-gray-200 dark:bg-gray-900 dark:text-gray-400 dark:border-gray-700',
 					label: 'Unknown',
 					tooltip: 'Not yet assessed'
 				};

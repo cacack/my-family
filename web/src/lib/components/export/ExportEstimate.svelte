@@ -49,10 +49,10 @@
 	{#if loading}
 		<div class="estimate-loading">
 			<span class="spinner" aria-hidden="true"></span>
-			<span class="text-gray-500">Calculating export size...</span>
+			<span class="text-muted-foreground">Calculating export size...</span>
 		</div>
 	{:else if error}
-		<span class="estimate-error text-gray-400">{error}</span>
+		<span class="estimate-error text-muted-foreground">{error}</span>
 	{:else if estimate}
 		<div class="estimate-info">
 			<div class="estimate-size">
