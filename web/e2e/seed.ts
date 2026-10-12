@@ -67,6 +67,20 @@ export interface SeedData {
 		familyBranchMarriagePlace: string;
 	};
 	/**
+	 * Mainline records that exist only so the whole-app guards have a detail
+	 * page of every remaining kind to visit: a source, and a person imported by
+	 * GEDCOM (burial places only arrive that way) whose birth place, burial
+	 * place and surname are the keys of the place, cemetery and surname pages.
+	 */
+	detail: {
+		sourceId: string;
+		/** A `/browse/places` key: the person's birth place. */
+		place: string;
+		/** A `/browse/cemeteries` key: the person's burial place. */
+		cemetery: string;
+		surname: string;
+	};
+	/**
 	 * Two snapshots bracketing the mainline seeding: `before` on the empty store,
 	 * `after` once every mainline write (and every branch write) has landed. Their
 	 * comparison therefore holds the merge person's mainline edit and must not
@@ -139,6 +153,12 @@ export function writeSeed(seed: SeedData): void {
 				seed.merge.familyBranchMarriagePlace,
 				'merge.familyBranchMarriagePlace'
 			)
+		},
+		detail: {
+			sourceId: asId(seed.detail.sourceId, 'detail.sourceId'),
+			place: asText(seed.detail.place, 'detail.place'),
+			cemetery: asText(seed.detail.cemetery, 'detail.cemetery'),
+			surname: asText(seed.detail.surname, 'detail.surname')
 		},
 		snapshots: {
 			beforeId: asId(seed.snapshots.beforeId, 'snapshots.beforeId'),

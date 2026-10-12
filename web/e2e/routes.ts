@@ -41,5 +41,9 @@ export const DETAIL_ROUTES: ((s: SeedData) => string)[] = [
 	(s) => `/families/${s.merge.familyId}`,
 	(s) => `/families/${s.merge.familyId}/group-sheet`,
 	(s) => `/branches/${s.switcher.branchId}`,
-	(s) => `/snapshots/compare?from=${s.snapshots.beforeId}&to=${s.snapshots.afterId}`
+	(s) => `/snapshots/compare?from=${s.snapshots.beforeId}&to=${s.snapshots.afterId}`,
+	(s) => `/sources/${s.detail.sourceId}`,
+	(s) => `/browse/cemeteries/${encodeURIComponent(s.detail.cemetery)}`,
+	(s) => `/browse/places/${encodeURIComponent(s.detail.place)}`,
+	(s) => `/browse/surnames/${encodeURIComponent(s.detail.surname)}`
 ];

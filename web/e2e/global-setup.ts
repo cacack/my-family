@@ -39,6 +39,18 @@ interface CreatedFamily {
 	version: number;
 }
 
+interface CreatedSource {
+	id: string;
+}
+
+interface ImportResult {
+	persons_imported: number;
+}
+
+interface PersonList {
+	total: number;
+}
+
 interface CreatedBranch {
 	id: string;
 	name: string;
@@ -61,6 +73,19 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
 		);
 	}
 	return (await response.json()) as T;
+}
+
+/** Imports a GEDCOM document, the only way the API takes life events such as a burial. */
+async function importGedcom(lines: string[]): Promise<ImportResult> {
+	const form = new FormData();
+	form.append('file', new Blob([lines.join('\n')], { type: 'text/plain' }), 'seed.ged');
+	const response = await fetch(`${API_BASE}/gedcom/import`, { method: 'POST', body: form });
+	if (!response.ok) {
+		throw new Error(
+			`E2E seed: POST /gedcom/import responded ${response.status}: ${await response.text()}`
+		);
+	}
+	return (await response.json()) as ImportResult;
 }
 
 /** The name the UI renders, mirroring `formatPersonName` in the API client. */
@@ -96,6 +121,50 @@ export default async function globalSetup(): Promise<void> {
 		relationship_type: 'marriage',
 		marriage_place: 'Old Chapel'
 	});
+
+	// The source, place, cemetery and surname detail pages the whole-app
+	// guards visit (`routes.ts`).
+	const source = await call<CreatedSource>('POST', '/sources', {
+		source_type: 'church_record',
+		title: 'Millbrook Parish Register'
+	});
+	const detailSurname = 'Ashgrove';
+	const detailPlace = 'Millbrook, Ohio';
+	const detailCemetery = 'Millbrook Cemetery';
+	const imported = await importGedcom([
+		'0 HEAD',
+		'1 GEDC',
+		'2 VERS 5.5.1',
+		'1 CHAR UTF-8',
+		'0 @I1@ INDI',
+		`1 NAME Cornelius /${detailSurname}/`,
+		'1 BIRT',
+		'2 DATE 3 MAR 1841',
+		`2 PLAC ${detailPlace}`,
+		'1 BURI',
+		'2 DATE 9 NOV 1902',
+		`2 PLAC ${detailCemetery}`,
+		'0 TRLR',
+		''
+	]);
+	if (imported.persons_imported !== 1) {
+		throw new Error(`E2E seed: GEDCOM import created ${imported.persons_imported} persons, not 1`);
+	}
+	// A guard visiting an empty page proves little, so check each one has the
+	// imported person to show.
+	for (const [kind, key] of [
+		['places', detailPlace],
+		['cemeteries', detailCemetery],
+		['surnames', detailSurname]
+	]) {
+		const listed = await call<PersonList>(
+			'GET',
+			`/browse/${kind}/${encodeURIComponent(key)}/persons`
+		);
+		if (listed.total !== 1) {
+			throw new Error(`E2E seed: /browse/${kind}/${key} lists ${listed.total} persons, not 1`);
+		}
+	}
 
 	// --- Branches (after every mainline create - see rule 1 above) ---------
 	const switcherBranch = await call<CreatedBranch>('POST', '/branches', {
@@ -166,6 +235,12 @@ export default async function globalSetup(): Promise<void> {
 			familyId: family.id,
 			familyName: `${displayName(switcherPerson)} & ${displayName(mergePerson)}`,
 			familyBranchMarriagePlace
+		},
+		detail: {
+			sourceId: source.id,
+			place: detailPlace,
+			cemetery: detailCemetery,
+			surname: detailSurname
 		},
 		snapshots: {
 			beforeId: beforeSnapshot.id,
