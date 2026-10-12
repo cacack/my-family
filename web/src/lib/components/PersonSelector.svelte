@@ -176,8 +176,8 @@
 	}
 
 	function getGenderBgClass(gender?: string): string {
-		if (gender === 'male') return 'bg-blue-100 text-blue-600';
-		if (gender === 'female') return 'bg-pink-100 text-pink-600';
+		if (gender === 'male') return 'bg-blue-100 text-blue-700';
+		if (gender === 'female') return 'bg-pink-100 text-pink-700';
 		return 'bg-slate-100 text-muted-foreground';
 	}
 </script>
@@ -538,14 +538,14 @@
 	.bg-blue-100 {
 		background-color: #dbeafe;
 	}
-	.text-blue-600 {
-		color: #2563eb;
+	.text-blue-700 {
+		color: var(--color-link);
 	}
 	.bg-pink-100 {
 		background-color: #fce7f3;
 	}
-	.text-pink-600 {
-		color: #db2777;
+	.text-pink-700 {
+		color: #be185d;
 	}
 	.bg-slate-100 {
 		background-color: #f1f5f9;

@@ -611,12 +611,12 @@
 
 	.path-node.person-node[data-gender="male"] .node-avatar {
 		background: #dbeafe;
-		color: #3b82f6;
+		color: var(--color-link);
 	}
 
 	.path-node.person-node[data-gender="female"] .node-avatar {
 		background: #fce7f3;
-		color: #ec4899;
+		color: #be185d;
 	}
 
 	.node-avatar svg {
