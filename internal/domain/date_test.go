@@ -288,7 +288,7 @@ func TestGenDate_Validate(t *testing.T) {
 	}
 }
 
-func TestValidateDateInput(t *testing.T) {
+func TestValidateDate(t *testing.T) {
 	tests := []struct {
 		input   string
 		wantErr string // substring of the error; empty means valid
@@ -330,10 +330,10 @@ func TestValidateDateInput(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			err := ValidateDateInput(tt.input)
+			err := validateDate(tt.input, tt.input)
 			if tt.wantErr == "" {
 				if err != nil {
-					t.Errorf("ValidateDateInput(%q) = %v, want nil", tt.input, err)
+					t.Errorf("validateDate(%q) = %v, want nil", tt.input, err)
 				}
 				// An accepted date must be stored with a year (issue #904).
 				in := strings.TrimSpace(tt.input)
@@ -343,13 +343,13 @@ func TestValidateDateInput(t *testing.T) {
 				return
 			}
 			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
-				t.Errorf("ValidateDateInput(%q) = %v, want error containing %q", tt.input, err, tt.wantErr)
+				t.Errorf("validateDate(%q) = %v, want error containing %q", tt.input, err, tt.wantErr)
 			}
 		})
 	}
 }
 
-func TestValidateDateInput_Unreadable(t *testing.T) {
+func TestValidateDate_Unreadable(t *testing.T) {
 	tests := []struct {
 		input          string
 		wantUnreadable bool
@@ -361,8 +361,8 @@ func TestValidateDateInput_Unreadable(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
 			var dateErr *DateInputError
-			if err := ValidateDateInput(tt.input); !errors.As(err, &dateErr) {
-				t.Fatalf("ValidateDateInput(%q) = %v, want *DateInputError", tt.input, err)
+			if err := validateDate(tt.input, tt.input); !errors.As(err, &dateErr) {
+				t.Fatalf("validateDate(%q) = %v, want *DateInputError", tt.input, err)
 			}
 			if dateErr.Unreadable != tt.wantUnreadable {
 				t.Errorf("Unreadable = %v, want %v", dateErr.Unreadable, tt.wantUnreadable)

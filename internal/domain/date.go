@@ -220,7 +220,7 @@ func ParseGenDate(s string) GenDate {
 	return gd
 }
 
-// DateInputError is a date rejected by ValidateDateInput. Unreadable is true
+// DateInputError is a date rejected by NormalizeDateInput. Unreadable is true
 // when the text can't be stored as a dated value at all (it isn't a GEDCOM
 // date, or uses a form stored without a year), so keeping it as a date phrase
 // is the way to save it; it is false for a real-looking date that doesn't
@@ -233,7 +233,7 @@ type DateInputError struct {
 func (e *DateInputError) Error() string { return e.Reason }
 
 // NormalizeDateInput converts a date as a person typed it to the GEDCOM form
-// it is stored in, then checks it with ValidateDateInput. Unambiguous English
+// it is stored in, then checks it with validateDate. Unambiguous English
 // is converted (see englishDateToGEDCOM), so "about Sept 1850" is stored as
 // "ABT SEP 1850"; anything else is checked as typed and returned unchanged.
 // A rejection quotes the date as it was typed.
@@ -303,22 +303,18 @@ func englishDateToGEDCOM(s string) (string, bool) {
 	return strings.Join(out, " "), true
 }
 
-// ValidateDateInput checks a date as a person typed it. It rejects text that
-// isn't a GEDCOM date (e.g. "garbage", "1850-01-01", "31 FEB 19xx") and dates
-// that don't exist in the calendar (e.g. "31 FEB 1900"); a GEDCOM date phrase
-// in parentheses, such as "(about the time of the war)", is always accepted.
-// An empty string is valid: it means no date. A rejection is a *DateInputError.
+// validateDate checks s, a date as it will be stored, quoting typed (the text
+// the person entered, which s may be a GEDCOM rewrite of) in a rejection. It
+// rejects text that isn't a GEDCOM date (e.g. "garbage", "1850-01-01",
+// "31 FEB 19xx") and dates that don't exist in the calendar (e.g.
+// "31 FEB 1900"); a GEDCOM date phrase in parentheses, such as "(about the
+// time of the war)", is always accepted. An empty string is valid: it means no
+// date. A rejection is a *DateInputError.
 //
 // Accepted dates (other than phrases) always parse to a year with ParseGenDate.
 // ParseGenDate stays lenient so imported and already-stored dates keep loading;
 // this check is for new input only. Syntax and calendar rules come from
 // gedcom-go, which currently checks day counts for Gregorian dates only.
-func ValidateDateInput(s string) error {
-	return validateDate(s, s)
-}
-
-// validateDate checks s as ValidateDateInput does, quoting typed (the text the
-// person entered, which s may be a GEDCOM rewrite of) in a rejection.
 func validateDate(s, typed string) error {
 	s = strings.TrimSpace(s)
 	typed = strings.TrimSpace(typed)
