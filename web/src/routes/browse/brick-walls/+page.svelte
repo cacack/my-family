@@ -1,31 +1,41 @@
 <script lang="ts">
+	import { page } from '$app/stores';
 	import { api, type BrickWallEntry } from '$lib/api/client';
 	import { Badge } from '$lib/components/ui/badge';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import { Card, CardHeader, CardContent, CardFooter } from '$lib/components/ui/card';
 	import MainlineNotice from '$lib/components/MainlineNotice.svelte';
 	import ErrorState from '$lib/components/ErrorState.svelte';
+	import { readFlag, setQuery } from '$lib/utils/urlState';
 
 	let entries: BrickWallEntry[] = $state([]);
 	let activeCount = $state(0);
 	let resolvedCount = $state(0);
 	let loading = $state(true);
 	let error: string | null = $state(null);
-	let includeResolved = $state(false);
+	// The resolved filter lives in the URL (see urlState.ts), so Back, reload
+	// and a copied link keep it. It refines the view, so it replaces.
+	const includeResolved = $derived(readFlag($page.url.searchParams, 'resolved'));
+
+	// Back/Forward can start loads faster than they finish: only the latest one may land.
+	let loadSeq = 0;
 
 	async function loadBrickWalls() {
+		const seq = ++loadSeq;
 		loading = true;
 		error = null;
 		try {
 			const result = await api.getBrickWalls(includeResolved);
+			if (seq !== loadSeq) return;
 			entries = result.items;
 			activeCount = result.active_count;
 			resolvedCount = result.resolved_count;
 		} catch (e) {
+			if (seq !== loadSeq) return;
 			console.error('Failed to load brick walls:', e);
 			error = 'Failed to load brick wall data. Please try again.';
 		} finally {
-			loading = false;
+			if (seq === loadSeq) loading = false;
 		}
 	}
 
@@ -34,7 +44,7 @@
 	});
 
 	function toggleResolved() {
-		includeResolved = !includeResolved;
+		setQuery($page.url, { resolved: !includeResolved });
 	}
 
 	function formatRelativeTime(dateStr: string): string {

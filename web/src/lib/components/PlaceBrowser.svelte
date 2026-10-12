@@ -1,49 +1,61 @@
 <script lang="ts">
+	import { page } from '$app/stores';
 	import { api, type PlaceEntry } from '$lib/api/client';
+	import { setQuery } from '$lib/utils/urlState';
 	import ErrorState from './ErrorState.svelte';
 
 	let places: PlaceEntry[] = $state([]);
 	let breadcrumb: string[] = $state([]);
-	let currentParent = $state('');
 	let loading = $state(true);
 	let error: string | null = $state(null);
-	// The parent whose places failed to load, for Retry.
-	let failedParent = '';
 
-	async function loadPlaces(parent: string = '') {
+	// The place being browsed lives in the URL (see urlState.ts), so Back,
+	// reload and a copied link return to it. Drilling in is navigation, so it pushes.
+	const currentParent = $derived($page.url.searchParams.get('parent') ?? '');
+
+	// Back/Forward can start loads faster than they finish: only the latest one may land.
+	let loadSeq = 0;
+
+	async function loadPlaces() {
+		const seq = ++loadSeq;
+		const parent = currentParent;
 		loading = true;
 		error = null;
 		try {
 			const result = await api.getPlaceHierarchy(parent);
+			if (seq !== loadSeq) return;
 			places = result.items;
 			breadcrumb = result.breadcrumb || [];
-			currentParent = parent;
 		} catch (e) {
+			if (seq !== loadSeq) return;
 			console.error('Failed to load places:', e);
 			error = 'Failed to load places. Please try again.';
-			failedParent = parent;
 		} finally {
-			loading = false;
+			if (seq === loadSeq) loading = false;
 		}
+	}
+
+	function browse(parent: string) {
+		setQuery($page.url, { parent }, { push: true });
 	}
 
 	function navigateToPlace(place: PlaceEntry) {
 		if (place.has_children) {
-			loadPlaces(place.full_name);
+			browse(place.full_name ?? '');
 		}
 	}
 
 	function navigateToBreadcrumb(index: number) {
 		if (index < 0) {
 			// Go to root
-			loadPlaces('');
+			browse('');
 		} else {
 			// Build the path up to this breadcrumb
 			const path = breadcrumb
 				.slice(0, index + 1)
 				.reverse()
 				.join(', ');
-			loadPlaces(path);
+			browse(path);
 		}
 	}
 
@@ -56,7 +68,7 @@
 	{#if loading}
 		<div class="loading" role="status" aria-live="polite">Loading places...</div>
 	{:else if error}
-		<ErrorState message={error} onRetry={() => loadPlaces(failedParent)} />
+		<ErrorState message={error} onRetry={loadPlaces} />
 	{:else}
 		<!-- Breadcrumb Navigation -->
 		<nav class="breadcrumb" aria-label="Place hierarchy">
