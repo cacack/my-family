@@ -5,7 +5,8 @@
  * outlines need their own guard. Two checks: the non-text tokens in app.css
  * reach 3:1 on every light surface, and no component colours an icon or a
  * focus outline with a literal below 3:1 on white, the lightest surface
- * (CONVENTIONS.md, "Non-text colour").
+ * (CONVENTIONS.md, "Non-text colour"). Only component `<style>` blocks are
+ * read; Tailwind utility classes and inline `style=` attributes are not.
  *
  * Empty-state illustrations are decorative - the message beside them carries
  * the meaning - so rules whose selector names `empty-state` are exempt. A
