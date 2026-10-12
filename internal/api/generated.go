@@ -3250,7 +3250,13 @@ type Error struct {
 	//
 	//
 	// Example: NOT_FOUND
-	Code    string                  `json:"code"`
+	Code string `json:"code"`
+
+	// Details Extra context for some errors. A 400 for a rejected date carries
+	// `field` (the request field, such as `birth_date`) and `unreadable`:
+	// true when the text can't be read as a date at all, so it can be
+	// sent again in parentheses as a date phrase; false for a date that
+	// doesn't exist in the calendar, such as "31 FEB 1900".
 	Details *map[string]interface{} `json:"details,omitempty"`
 
 	// Message Human-readable error message

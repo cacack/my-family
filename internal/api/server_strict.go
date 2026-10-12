@@ -5738,6 +5738,7 @@ func (ss *StrictServer) CreateLDSOrdinance(ctx context.Context, request CreateLD
 			return CreateLDSOrdinance400JSONResponse{BadRequestJSONResponse{
 				Code:    "invalid_input",
 				Message: err.Error(),
+				Details: optionalDetails(invalidDateDetails(err)),
 			}}, nil
 		}
 		return nil, err
@@ -5805,6 +5806,7 @@ func (ss *StrictServer) UpdateLDSOrdinance(ctx context.Context, request UpdateLD
 			return UpdateLDSOrdinance400JSONResponse{BadRequestJSONResponse{
 				Code:    "invalid_input",
 				Message: err.Error(),
+				Details: optionalDetails(invalidDateDetails(err)),
 			}}, nil
 		}
 		return nil, err
