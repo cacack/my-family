@@ -30,17 +30,24 @@
 	 *   --color-action      accent fill behind white text: primary buttons,
 	 *                       selected toggles, count badges
 	 * Tailwind reaches them as text-muted-foreground and text-link.
+	 *
+	 * Non-text tokens must reach 3:1 (WCAG 1.4.11) on the same surfaces, for
+	 * icons, chevrons and focus indicators that show state or affordance:
+	 *   --color-focus-ring  focus outlines
+	 *   --color-success     success icons and their controls
+	 * A neutral icon uses --color-text-muted, which passes too.
 	 */
 	--color-text: #1e293b;
 	--color-text-muted: #475569;
 	--color-bg: #ffffff;
 	--color-bg-secondary: #f8fafc;
 	--a11y-color-border: #e2e8f0;
-	--color-focus-ring: #3b82f6;
+	--color-focus-ring: #2563eb;
 	--color-link: #1d4ed8;
 	--color-link-hover: #1e40af;
 	--color-action: #1d4ed8;
 	--color-action-hover: #1e40af;
+	--color-success: #15803d;
 
 	/* Transition timing (disabled for reduced motion) */
 	--transition-duration: 0.15s;
@@ -121,6 +128,7 @@ body.high-contrast {
 	--color-link-hover: #0000aa;
 	--color-action: #0000ee;
 	--color-action-hover: #0000aa;
+	--color-success: #006400;
 
 	--background: #ffffff;
 	--foreground: #000000;

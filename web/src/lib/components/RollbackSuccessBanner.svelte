@@ -74,7 +74,7 @@
 	}
 
 	.banner-icon {
-		color: #22c55e;
+		color: var(--color-success);
 		flex-shrink: 0;
 		margin-top: 0.125rem;
 	}
@@ -118,13 +118,12 @@
 		padding: 0.25rem;
 		border: none;
 		background: none;
-		color: #86efac;
+		color: var(--color-success);
 		cursor: pointer;
 		border-radius: 4px;
 	}
 
 	.dismiss-btn:hover {
 		background: #dcfce7;
-		color: #22c55e;
 	}
 </style>

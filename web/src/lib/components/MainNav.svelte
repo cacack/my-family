@@ -148,7 +148,7 @@
 	}
 
 	.nav-link:focus-visible {
-		outline: 2px solid #3b82f6;
+		outline: 2px solid var(--color-focus-ring);
 		outline-offset: 2px;
 	}
 

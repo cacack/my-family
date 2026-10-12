@@ -225,7 +225,7 @@
 	.upload-icon {
 		width: 3rem;
 		height: 3rem;
-		color: #94a3b8;
+		color: var(--color-text-muted);
 		margin-bottom: 1rem;
 	}
 
