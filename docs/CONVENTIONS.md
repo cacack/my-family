@@ -191,7 +191,7 @@ web/src/
 
 ### UI Building Blocks
 
-- **Page header**: a page with its own heading uses `PageHeader` (`title`, optional `description`, `back` (`{ href, label }`), an `actions` snippet, and `children` for rich notes). Don't hand-build an h1 + actions row. Entity detail pages (a back link plus Edit/Delete) and chart toolbars (pedigree, descendancy, Ahnentafel) still have their own bars.
+- **Page header**: a page with its own heading uses `PageHeader` (`title`, optional `description`, `back` (`{ href, label }`), a `badges` snippet for status badges beside the title, an `actions` snippet, and `children` for rich notes); chart pages (pedigree, descendancy) put their controls in `actions`. A page whose heading lives in its body (entity detail pages, the Ahnentafel report, the family group sheet) uses `ActionBar` (`back` plus an `actions` snippet, such as Edit/Delete), which never prints. Don't hand-build an h1 + actions row or a back link + actions bar.
 - **Form row**: fields that sit side by side go in `FormRow`; pass `minColumnWidth` (default `14rem`) for rows of short fields. It spaces itself `1rem` below, so don't also put it in a flex/grid `gap` container. Don't redefine `.form-row` in a component.
 - **Required marker**: in a column-layout `<label>` (text above input), wrap the label text and its marker in one `<span>` (`<span>Title <span class="required">*</span></span>`) so the `*` stays on the text's line instead of becoming its own flex item.
 - **Detail section**: a read-only block on a detail page is a `.info-section` with an `h2` label (small, uppercase, muted) over a `dl` of `dt`/`dd` pairs; empty values show `—`.
