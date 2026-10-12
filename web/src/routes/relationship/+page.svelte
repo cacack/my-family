@@ -3,6 +3,7 @@
 	import { page } from '$app/stores';
 	import { api, type Person } from '$lib/api/client';
 	import RelationshipCalculator from '$lib/components/RelationshipCalculator.svelte';
+	import ActionBar from '$lib/components/ActionBar.svelte';
 	import { setQuery } from '$lib/utils/urlState';
 
 	// The calculated pair lives in the URL (see urlState.ts), so a result can be
@@ -52,16 +53,8 @@
 </svelte:head>
 
 <div class="relationship-page">
-	<header class="page-header">
-		<a href="/" class="back-link">
-			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-				<path d="M19 12H5m0 0l7 7m-7-7l7-7" />
-			</svg>
-			Back
-		</a>
-	</header>
-
 	<div class="page-content">
+		<ActionBar back={{ href: '/', label: 'Back' }} />
 		{#if loading}
 			<div class="loading-container">
 				<div class="loading-spinner"></div>
@@ -79,32 +72,6 @@
 	.relationship-page {
 		min-height: 100vh;
 		background: #f8fafc;
-	}
-
-	.page-header {
-		padding: 1rem 1.5rem;
-		background: white;
-		border-bottom: 1px solid #e2e8f0;
-	}
-
-	.back-link {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.375rem;
-		color: var(--color-text-muted);
-		text-decoration: none;
-		font-size: 0.875rem;
-		font-weight: 500;
-		transition: color 0.15s;
-	}
-
-	.back-link:hover {
-		color: var(--color-link);
-	}
-
-	.back-link svg {
-		width: 1rem;
-		height: 1rem;
 	}
 
 	.page-content {

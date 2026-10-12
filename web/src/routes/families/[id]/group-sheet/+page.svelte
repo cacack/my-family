@@ -2,6 +2,7 @@
 	import { page } from '$app/stores';
 	import { api, recordLoadError, type FamilyGroupSheet } from '$lib/api/client';
 	import { Button } from '$lib/components/ui/button';
+	import ActionBar from '$lib/components/ActionBar.svelte';
 	import FamilyGroupSheetComponent from '$lib/components/FamilyGroupSheet.svelte';
 	import ErrorState from '$lib/components/ErrorState.svelte';
 
@@ -51,12 +52,11 @@
 </svelte:head>
 
 <div class="group-sheet-page">
-	<header class="page-header no-print">
-		<a href="/families/{$page.params.id}" class="back-link">&larr; Back to Family</a>
-		<div class="actions">
+	<ActionBar back={{ href: `/families/${$page.params.id}`, label: 'Back to Family' }}>
+		{#snippet actions()}
 			<Button onclick={handlePrint}>Print</Button>
-		</div>
-	</header>
+		{/snippet}
+	</ActionBar>
 
 	{#if loading}
 		<div class="loading">Loading family group sheet...</div>
@@ -74,28 +74,6 @@
 		padding: 1.5rem;
 	}
 
-	.page-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		margin-bottom: 1.5rem;
-	}
-
-	.back-link {
-		color: var(--color-text-muted);
-		text-decoration: none;
-		font-size: 0.875rem;
-	}
-
-	.back-link:hover {
-		color: var(--color-link);
-	}
-
-	.actions {
-		display: flex;
-		gap: 0.5rem;
-	}
-
 	.loading {
 		text-align: center;
 		padding: 3rem;
@@ -108,8 +86,5 @@
 			max-width: none;
 		}
 
-		.no-print {
-			display: none !important;
-		}
 	}
 </style>

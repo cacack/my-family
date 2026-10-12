@@ -14,6 +14,7 @@
 	import UncertaintyBadge from '$lib/components/UncertaintyBadge.svelte';
 	import { createShortcutHandler } from '$lib/keyboard/useShortcuts.svelte';
 	import { Button } from '$lib/components/ui/button';
+	import ActionBar from '$lib/components/ActionBar.svelte';
 	import FormRow from '$lib/components/FormRow.svelte';
 	import { Badge } from '$lib/components/ui/badge';
 	import ExternalLinks from '$lib/components/ExternalLinks.svelte';
@@ -421,19 +422,18 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
+{#snippet personActions()}
+	{#if person}
+		<Button variant="outline" href="/pedigree/{person.id}">Pedigree</Button>
+		<Button variant="outline" href="/descendancy/{person.id}">Descendants</Button>
+		<Button variant="outline" href="/ahnentafel/{person.id}">Ahnentafel</Button>
+		<Button variant="outline" onclick={startEdit} bind:ref={editButton}>Edit</Button>
+		<Button variant="destructive" onclick={deletePerson}>Delete</Button>
+	{/if}
+{/snippet}
+
 <div class="person-page">
-	<header class="page-header">
-		<a href="/persons" class="back-link">&larr; People</a>
-		{#if person && !editing}
-			<div class="actions">
-				<Button variant="outline" href="/pedigree/{person.id}">Pedigree</Button>
-				<Button variant="outline" href="/descendancy/{person.id}">Descendants</Button>
-				<Button variant="outline" href="/ahnentafel/{person.id}">Ahnentafel</Button>
-				<Button variant="outline" onclick={startEdit} bind:ref={editButton}>Edit</Button>
-				<Button variant="destructive" onclick={deletePerson}>Delete</Button>
-			</div>
-		{/if}
-	</header>
+	<ActionBar back={{ href: '/persons', label: 'People' }} actions={person && !editing ? personActions : undefined} />
 
 	{#if loading}
 		<div class="loading">Loading...</div>
@@ -823,31 +823,6 @@
 		max-width: 800px;
 		margin: 0 auto;
 		padding: 1.5rem;
-	}
-
-	.page-header {
-		display: flex;
-		flex-wrap: wrap;
-		justify-content: space-between;
-		align-items: center;
-		gap: 0.75rem;
-		margin-bottom: 1.5rem;
-	}
-
-	.back-link {
-		color: var(--color-text-muted);
-		text-decoration: none;
-		font-size: 0.875rem;
-	}
-
-	.back-link:hover {
-		color: var(--color-link);
-	}
-
-	.actions {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.5rem;
 	}
 
 	.loading {

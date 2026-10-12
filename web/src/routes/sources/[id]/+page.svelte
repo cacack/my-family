@@ -4,6 +4,7 @@
 	import { api, isVersionConflict, recordLoadError, type SourceDetail, type SourceType, type Citation } from '$lib/api/client';
 	import ExternalLinks from '$lib/components/ExternalLinks.svelte';
 	import { Button } from '$lib/components/ui/button';
+	import ActionBar from '$lib/components/ActionBar.svelte';
 	import FormRow from '$lib/components/FormRow.svelte';
 	import { Badge } from '$lib/components/ui/badge';
 	import { SOURCE_TYPES } from '$lib/utils/sourceTypes';
@@ -192,18 +193,15 @@
 	<title>{source ? source.title : 'Source'} | My Family</title>
 </svelte:head>
 
+{#snippet sourceActions()}
+	<Button variant="outline" onclick={startEdit}>Edit</Button>
+	<Button variant="destructive" onclick={deleteSource} disabled={deleting}>
+		{deleting ? 'Deleting...' : 'Delete'}
+	</Button>
+{/snippet}
+
 <div class="source-page">
-	<header class="page-header">
-		<a href="/sources" class="back-link">&larr; Sources</a>
-		{#if source && !editing}
-			<div class="actions">
-				<Button variant="outline" onclick={startEdit}>Edit</Button>
-				<Button variant="destructive" onclick={deleteSource} disabled={deleting}>
-					{deleting ? 'Deleting...' : 'Delete'}
-				</Button>
-			</div>
-		{/if}
-	</header>
+	<ActionBar back={{ href: '/sources', label: 'Sources' }} actions={source && !editing ? sourceActions : undefined} />
 
 	{#if loading}
 		<div class="loading">Loading...</div>
@@ -437,28 +435,6 @@
 		max-width: 800px;
 		margin: 0 auto;
 		padding: 1.5rem;
-	}
-
-	.page-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		margin-bottom: 1.5rem;
-	}
-
-	.back-link {
-		color: var(--color-text-muted);
-		text-decoration: none;
-		font-size: 0.875rem;
-	}
-
-	.back-link:hover {
-		color: var(--color-link);
-	}
-
-	.actions {
-		display: flex;
-		gap: 0.5rem;
 	}
 
 	.loading {

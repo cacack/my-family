@@ -34,7 +34,7 @@ test('a family save that lost a race keeps the edits and re-applies them on requ
 	});
 
 	await page.goto(`/families/${family.id}`);
-	await page.locator('header.page-header').getByRole('button', { name: 'Edit', exact: true }).click();
+	await page.locator('.action-bar').getByRole('button', { name: 'Edit', exact: true }).click();
 	await page.getByLabel('Marriage Place').fill('Evanston');
 
 	// Another tab saves first, also setting a field this form did not edit.

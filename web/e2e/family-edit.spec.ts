@@ -38,7 +38,7 @@ test('a family edit of relationship type and marriage date is shown after saving
 	await page.goto(`/families/${family.id}`);
 	await expect(page.locator('.relationship-badge')).toHaveText('marriage');
 
-	await page.locator('header.page-header').getByRole('button', { name: 'Edit', exact: true }).click();
+	await page.locator('.action-bar').getByRole('button', { name: 'Edit', exact: true }).click();
 	await page.getByLabel('Relationship Type').selectOption('partnership');
 	await page.getByLabel('Marriage Date').fill('ABT 1880');
 	await page.getByRole('button', { name: 'Save Changes' }).click();

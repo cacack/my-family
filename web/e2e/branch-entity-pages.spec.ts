@@ -68,7 +68,7 @@ test('a person and a family created on a branch open, save, and offer no rollbac
 	// Person: opens (this used to be "Failed to load"), edits and saves.
 	await page.goto(`/persons/${person.id}`);
 	await expect(page.getByRole('heading', { level: 1, name: 'Hypatia Branchwood' })).toBeVisible();
-	await page.locator('header.page-header').getByRole('button', { name: 'Edit', exact: true }).click();
+	await page.locator('.action-bar').getByRole('button', { name: 'Edit', exact: true }).click();
 	await page.getByLabel('Birth Place').fill('Alexandria');
 	await page.getByRole('button', { name: 'Save Changes' }).click();
 	await expect(page.getByRole('button', { name: 'Save Changes' })).toHaveCount(0);
@@ -78,7 +78,7 @@ test('a person and a family created on a branch open, save, and offer no rollbac
 	// Family: the same.
 	await page.goto(`/families/${family.id}`);
 	await expect(page.getByRole('heading', { level: 1, name: /Theon Branchwood & Hypatia Branchwood/ })).toBeVisible();
-	await page.locator('header.page-header').getByRole('button', { name: 'Edit', exact: true }).click();
+	await page.locator('.action-bar').getByRole('button', { name: 'Edit', exact: true }).click();
 	await page.getByLabel('Marriage Place').fill('Library of Alexandria');
 	await page.getByRole('button', { name: 'Save Changes' }).click();
 	await expect(page.getByRole('button', { name: 'Save Changes' })).toHaveCount(0);
@@ -150,7 +150,7 @@ test('a mainline person corrected after the fork saves on the branch (#844)', as
 	await switchTo(page, branchName);
 	await page.goto(`/persons/${person.id}`);
 	await expect(page.getByRole('heading', { level: 1, name: 'Corrected Elderly' })).toBeVisible();
-	await page.locator('header.page-header').getByRole('button', { name: 'Edit', exact: true }).click();
+	await page.locator('.action-bar').getByRole('button', { name: 'Edit', exact: true }).click();
 	await page.getByLabel('Birth Place').fill('Newtown');
 	await page.getByRole('button', { name: 'Save Changes' }).click();
 	// This save used to fail with "Version conflict".
