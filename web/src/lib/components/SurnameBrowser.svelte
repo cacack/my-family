@@ -1,16 +1,24 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
+	import { page } from '$app/stores';
 	import { api, type SurnameEntry, type LetterCount } from '$lib/api/client';
 	import { Button } from '$lib/components/ui/button';
+	import { readEnum, setQuery } from '$lib/utils/urlState';
 	import ErrorState from './ErrorState.svelte';
 
 	let letterCounts: LetterCount[] = $state([]);
-	let surnames: SurnameEntry[] = $state([]);
-	let selectedLetter: string | null = $state(null);
+	let allSurnames: SurnameEntry[] = $state([]);
+	let letterSurnames: SurnameEntry[] = $state([]);
 	let loading = $state(true);
 	let loadingSurnames = $state(false);
 	let error: string | null = $state(null);
 
 	const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+
+	// The selected letter lives in the URL (see urlState.ts), so Back, reload
+	// and a copied link keep it. It filters the list, so it replaces.
+	const selectedLetter = $derived(readEnum($page.url.searchParams, 'letter', ALPHABET, '') || null);
+	const surnames = $derived(selectedLetter ? letterSurnames : allSurnames);
 
 	async function loadIndex() {
 		loading = true;
@@ -18,7 +26,7 @@
 		try {
 			const result = await api.getSurnameIndex();
 			letterCounts = result.letter_counts || [];
-			surnames = result.items;
+			allSurnames = result.items;
 		} catch (e) {
 			console.error('Failed to load surname index:', e);
 			error = 'Failed to load surnames. Please try again.';
@@ -27,29 +35,28 @@
 		}
 	}
 
-	async function selectLetter(letter: string) {
-		if (selectedLetter === letter) {
-			// Deselect - show all surnames
-			selectedLetter = null;
-			loadIndex();
-			return;
-		}
-
-		selectedLetter = letter;
-		await loadLetter(letter);
+	function selectLetter(letter: string) {
+		// Selecting the active letter again clears the filter.
+		setQuery($page.url, { letter: selectedLetter === letter ? null : letter });
 	}
 
+	// Back/Forward can start loads faster than they finish: only the latest one may land.
+	let letterSeq = 0;
+
 	async function loadLetter(letter: string) {
+		const seq = ++letterSeq;
 		loadingSurnames = true;
 		error = null;
 		try {
 			const result = await api.getSurnameIndex(letter);
-			surnames = result.items;
+			if (seq !== letterSeq) return;
+			letterSurnames = result.items;
 		} catch (e) {
+			if (seq !== letterSeq) return;
 			console.error('Failed to load surnames for letter:', e);
 			error = 'Failed to load surnames. Please try again.';
 		} finally {
-			loadingSurnames = false;
+			if (seq === letterSeq) loadingSurnames = false;
 		}
 	}
 
@@ -59,15 +66,27 @@
 	}
 
 	function retry() {
-		if (selectedLetter) {
-			loadLetter(selectedLetter);
-		} else {
-			loadIndex();
-		}
+		if (letterCounts.length === 0) loadIndex();
+		if (selectedLetter) loadLetter(selectedLetter);
 	}
 
 	$effect(() => {
-		loadIndex();
+		untrack(loadIndex);
+	});
+
+	$effect(() => {
+		const letter = selectedLetter;
+		untrack(() => {
+			if (letter) {
+				loadLetter(letter);
+			} else {
+				// Back to the full list: drop any in-flight letter load and its
+				// error, which belonged to the letter view.
+				letterSeq++;
+				loadingSurnames = false;
+				if (letterCounts.length > 0) error = null;
+			}
+		});
 	});
 </script>
 

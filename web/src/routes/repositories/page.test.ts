@@ -2,6 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/svelte';
 import RepositoriesPage from './+page.svelte';
 import * as apiModule from '$lib/api/client';
+import { back, currentPath, historyLength, resetRouter } from '$lib/test/fakeRouter';
+
+vi.mock('$app/stores', async () => (await import('$lib/test/fakeRouter')).appStores);
+vi.mock('$app/navigation', async () => (await import('$lib/test/fakeRouter')).appNavigation);
 
 // Mock the API module
 vi.mock('$lib/api/client', async (importOriginal) => {
@@ -44,6 +48,7 @@ const mockList: apiModule.RepositoryList = {
 describe('Repositories list page', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		resetRouter('/repositories');
 		branchState.id = null;
 		vi.mocked(apiModule.api.listRepositories).mockResolvedValue(mockList);
 		vi.mocked(apiModule.api.createRepository).mockResolvedValue({
@@ -117,5 +122,40 @@ describe('Repositories list page', () => {
 		});
 		// Reloaded the list after create (initial load + post-create reload)
 		expect(apiModule.api.listRepositories).toHaveBeenCalledTimes(2);
+	});
+
+	const manyRepos: apiModule.RepositoryList = { repositories: mockList.repositories, total: 45 };
+
+	it('restores sort and page from the URL (#946)', async () => {
+		vi.mocked(apiModule.api.listRepositories).mockResolvedValue(manyRepos);
+		resetRouter('/repositories?sort=updated_at&order=desc&page=2');
+		render(RepositoriesPage);
+		await waitFor(() =>
+			expect(apiModule.api.listRepositories).toHaveBeenCalledWith({
+				limit: 20,
+				offset: 20,
+				sort: 'updated_at',
+				order: 'desc'
+			})
+		);
+		await screen.findByText('Page 2 of 3');
+	});
+
+	it('pushes page changes and replaces sort changes (#946)', async () => {
+		vi.mocked(apiModule.api.listRepositories).mockResolvedValue(manyRepos);
+		render(RepositoriesPage);
+		await screen.findByText('Page 1 of 3');
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+		await waitFor(() => expect(currentPath()).toBe('/repositories?page=2'));
+		expect(historyLength()).toBe(2);
+
+		await fireEvent.change(screen.getByLabelText('Sort by:'), { target: { value: 'updated_at' } });
+		await waitFor(() => expect(currentPath()).toBe('/repositories?sort=updated_at'));
+		expect(historyLength()).toBe(2);
+
+		back();
+		await screen.findByText('Page 1 of 3');
+		expect(currentPath()).toBe('/repositories');
 	});
 });

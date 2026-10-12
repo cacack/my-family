@@ -1,11 +1,21 @@
 <script lang="ts">
+	import { page } from '$app/stores';
 	import { api, type CemeteryEntry } from '$lib/api/client';
+	import { setQuery } from '$lib/utils/urlState';
 	import ErrorState from './ErrorState.svelte';
 
 	let entries: CemeteryEntry[] = $state([]);
 	let loading = $state(true);
 	let error: string | null = $state(null);
-	let searchQuery = $state('');
+	// The box owns the filter text and the URL mirrors it (see urlState.ts),
+	// so reload, Back to this page and a copied link restore the filter. The
+	// box is not re-read from the URL while typing, so no keystroke is lost.
+	// The filter refines the view, so it replaces.
+	let searchQuery = $state($page.url.searchParams.get('q') ?? '');
+
+	function handleFilterInput() {
+		setQuery($page.url, { q: searchQuery });
+	}
 
 	let filteredEntries = $derived(
 		searchQuery
@@ -48,6 +58,7 @@
 				type="text"
 				placeholder="Filter cemeteries..."
 				bind:value={searchQuery}
+				oninput={handleFilterInput}
 				aria-label="Filter cemeteries by name"
 			/>
 			{#if searchQuery}

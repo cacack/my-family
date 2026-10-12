@@ -1,22 +1,31 @@
 <script lang="ts">
+	import { page } from '$app/stores';
 	import MainlineNotice from '$lib/components/MainlineNotice.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import { api, type Repository, type Address } from '$lib/api/client';
 	import { Button } from '$lib/components/ui/button';
 	import FormRow from '$lib/components/FormRow.svelte';
 	import ErrorState from '$lib/components/ErrorState.svelte';
+	import { readEnum, readPositiveInt, setQuery } from '$lib/utils/urlState';
 
 	let repositories: Repository[] = $state([]);
 	let total = $state(0);
 	let loading = $state(true);
 	let loadError: string | null = $state(null);
-	let currentPage = $state(1);
-	let sort = $state<'name' | 'updated_at'>('name');
-	let order = $state<'asc' | 'desc'>('asc');
 	let showAddForm = $state(false);
 	let saving = $state(false);
 	let error: string | null = $state(null);
 	const pageSize = 20;
+
+	// Sort and page live in the URL (see urlState.ts), so Back, reload and a
+	// copied link restore the list.
+	const SORTS = ['name', 'updated_at'] as const;
+	const DEFAULTS = { sort: 'name', order: 'asc', page: 1 } as const;
+
+	const params = $derived($page.url.searchParams);
+	const sort = $derived(readEnum(params, 'sort', SORTS, DEFAULTS.sort));
+	const order = $derived(readEnum(params, 'order', ['asc', 'desc'] as const, DEFAULTS.order));
+	const currentPage = $derived(readPositiveInt(params, 'page', DEFAULTS.page));
 
 	const emptyForm = () => ({
 		name: '',
@@ -35,7 +44,11 @@
 
 	let newRepo = $state(emptyForm());
 
+	// Back/Forward can start loads faster than they finish: only the latest one may land.
+	let loadSeq = 0;
+
 	async function loadRepositories() {
+		const seq = ++loadSeq;
 		loading = true;
 		loadError = null;
 		try {
@@ -45,40 +58,38 @@
 				sort,
 				order
 			});
+			if (seq !== loadSeq) return;
 			repositories = result.repositories;
 			total = result.total;
 		} catch (e) {
+			if (seq !== loadSeq) return;
 			console.error('Failed to load repositories:', e);
 			loadError = 'Failed to load repositories. Please try again.';
 		} finally {
-			loading = false;
+			if (seq === loadSeq) loading = false;
 		}
 	}
 
+	function goToPage(n: number) {
+		setQuery($page.url, { page: n }, { push: true, defaults: DEFAULTS });
+	}
+
+	// Sort refines the view (replace); a new sort starts at page 1.
 	function handleSortChange(e: Event) {
-		const select = e.target as HTMLSelectElement;
-		sort = select.value as typeof sort;
-		currentPage = 1;
-		loadRepositories();
+		const sort = (e.target as HTMLSelectElement).value;
+		setQuery($page.url, { sort, page: 1 }, { defaults: DEFAULTS });
 	}
 
 	function handleOrderChange() {
-		order = order === 'asc' ? 'desc' : 'asc';
-		loadRepositories();
+		setQuery($page.url, { order: order === 'asc' ? 'desc' : 'asc' }, { defaults: DEFAULTS });
 	}
 
 	function prevPage() {
-		if (currentPage > 1) {
-			currentPage--;
-			loadRepositories();
-		}
+		if (currentPage > 1) goToPage(currentPage - 1);
 	}
 
 	function nextPage() {
-		if (currentPage * pageSize < total) {
-			currentPage++;
-			loadRepositories();
-		}
+		if (currentPage * pageSize < total) goToPage(currentPage + 1);
 	}
 
 	function openAddForm() {

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import { SvelteSet } from 'svelte/reactivity';
+	import { page } from '$app/stores';
 	import {
 		api,
 		type ValidationIssue,
@@ -13,6 +14,7 @@
 	import SeverityBadge from '$lib/components/SeverityBadge.svelte';
 	import MainlineNotice from '$lib/components/MainlineNotice.svelte';
 	import ErrorState from '$lib/components/ErrorState.svelte';
+	import { readEnum, readPositiveInt, setQuery } from '$lib/utils/urlState';
 
 	const pageSize = 20;
 	const ERROR_MESSAGE_MAX_LEN = 200;
@@ -32,24 +34,53 @@
 	const ROW_CLICKABLE = 'cursor-pointer transition-colors hover:bg-slate-50';
 	const SUBJECT_LINK = 'text-link no-underline hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500';
 
-	// Active tab
-	let activeTab = $state('validation');
+	// The active tab, its page and the severity filter live in the URL (see
+	// urlState.ts), so Back, reload and a copied link restore the view. `page`
+	// belongs to the active tab: switching tabs starts the new one at page 1
+	// and drops the severity filter. Tab and page changes push; the filter
+	// refines the view, so it replaces.
+	const TABS = ['validation', 'duplicates'] as const;
+	const SEVERITIES = ['all', 'error', 'warning', 'info'] as const;
+	const DEFAULTS = { tab: 'validation', page: 1, severity: 'all' } as const;
+
+	const params = $derived($page.url.searchParams);
+	const activeTab = $derived(readEnum(params, 'tab', TABS, DEFAULTS.tab));
+	const currentPage = $derived(readPositiveInt(params, 'page', DEFAULTS.page));
+	const severityFilter = $derived(
+		activeTab === 'validation' ? readEnum(params, 'severity', SEVERITIES, DEFAULTS.severity) : DEFAULTS.severity
+	);
+
+	function selectTab(tab: string) {
+		setQuery($page.url, { tab, page: null, severity: null }, { push: true, defaults: DEFAULTS });
+	}
+
+	function goToPage(n: number) {
+		setQuery($page.url, { page: n }, { push: true, defaults: DEFAULTS });
+	}
+
+	function selectSeverity(severity: (typeof SEVERITIES)[number]) {
+		setQuery($page.url, { severity, page: null }, { defaults: DEFAULTS });
+	}
+
+	// A page past the end (e.g. after dismissing the last rows of the last
+	// page, or a hand-edited URL) moves to the last page. That is a correction,
+	// not a step the user took, so it replaces; the URL change reloads.
+	function clampToPage(target: number) {
+		setQuery($page.url, { page: target }, { defaults: DEFAULTS });
+	}
 
 	// --- Validation tab state ---
 	let issues: ValidationIssue[] = $state([]);
 	let validationTotal = $state(0); // total matching the active severity filter
-	let validationPage = $state(1);
 	let errorCount = $state(0);
 	let warningCount = $state(0);
 	let infoCount = $state(0);
 	let validationLoading = $state(false);
 	let validationError: string | null = $state(null);
-	let severityFilter = $state<'all' | 'error' | 'warning' | 'info'>('all');
 
 	// --- Duplicates tab state ---
 	let duplicates: DuplicatePair[] = $state([]);
 	let duplicatesTotal = $state(0);
-	let duplicatesPage = $state(1);
 	let duplicatesLoading = $state(false);
 	let duplicatesError: string | null = $state(null);
 	let dismissError: string | null = $state(null);
@@ -108,35 +139,33 @@
 
 	// --- Data loading ---
 
-	// Returns the page actually fetched. When the requested page was beyond the
-	// post-mutation total (e.g. user dismissed the last items on page 3), the
-	// caller can re-issue with the returned page or update local state.
+	// The last page that exists for `total` items, if `requested` is past it.
 	function clampPage(requested: number, total: number): number {
 		const maxPage = Math.max(1, Math.ceil(total / pageSize));
 		return Math.min(Math.max(1, requested), maxPage);
 	}
 
+	// Tab switches, Back and paging can start loads faster than they finish:
+	// only each tab's latest load may land.
+	let validationSeq = 0;
+	let duplicatesSeq = 0;
+
 	async function loadValidationIssues() {
+		const seq = ++validationSeq;
 		validationLoading = true;
 		validationError = null;
 		try {
-			const severityParam = severityFilter === 'all' ? undefined : severityFilter;
-			const requestedPage = validationPage;
-			let result = await api.getValidationIssues({
-				severity: severityParam,
+			const requestedPage = currentPage;
+			const result = await api.getValidationIssues({
+				severity: severityFilter === 'all' ? undefined : severityFilter,
 				limit: pageSize,
 				offset: (requestedPage - 1) * pageSize
 			});
-			// If a previous fetch / filter switch / external mutation left
-			// validationPage past the new total, clamp and refetch the valid page.
+			if (seq !== validationSeq) return;
 			const target = clampPage(requestedPage, result.total);
 			if (target !== requestedPage && result.total > 0) {
-				validationPage = target;
-				result = await api.getValidationIssues({
-					severity: severityParam,
-					limit: pageSize,
-					offset: (target - 1) * pageSize
-				});
+				clampToPage(target);
+				return;
 			}
 			issues = result.issues;
 			validationTotal = result.total;
@@ -146,38 +175,36 @@
 			warningCount = result.warning_count;
 			infoCount = result.info_count;
 		} catch (e) {
+			if (seq !== validationSeq) return;
 			validationError = truncateError(e, 'Failed to load validation issues');
 		} finally {
-			validationLoading = false;
+			if (seq === validationSeq) validationLoading = false;
 		}
 	}
 
 	async function loadDuplicates() {
+		const seq = ++duplicatesSeq;
 		duplicatesLoading = true;
 		duplicatesError = null;
 		try {
-			const requestedPage = duplicatesPage;
-			let result = await api.getPersonsDuplicates({
+			const requestedPage = currentPage;
+			const result = await api.getPersonsDuplicates({
 				limit: pageSize,
 				offset: (requestedPage - 1) * pageSize
 			});
-			// If a dismiss reduced the total below the active page (e.g. user
-			// dismissed the last items on page 3), clamp and refetch so the UI
-			// shows the correct page rather than an empty out-of-range slice.
+			if (seq !== duplicatesSeq) return;
 			const target = clampPage(requestedPage, result.total);
 			if (target !== requestedPage && result.total > 0) {
-				duplicatesPage = target;
-				result = await api.getPersonsDuplicates({
-					limit: pageSize,
-					offset: (target - 1) * pageSize
-				});
+				clampToPage(target);
+				return;
 			}
 			duplicates = result.duplicates;
 			duplicatesTotal = result.total;
 		} catch (e) {
+			if (seq !== duplicatesSeq) return;
 			duplicatesError = truncateError(e, 'Failed to load duplicates');
 		} finally {
-			duplicatesLoading = false;
+			if (seq === duplicatesSeq) duplicatesLoading = false;
 		}
 	}
 
@@ -217,17 +244,15 @@
 		}
 	}
 
-	// Load data when active tab changes. Switching tabs resets the active
-	// pagination so a stale page number from a previous visit doesn't render
-	// an empty list.
+	// Load the active tab whenever the URL changes its tab, page or filter.
 	$effect(() => {
 		const tab = activeTab;
+		void currentPage;
+		void severityFilter;
 		untrack(() => {
 			if (tab === 'validation') {
-				validationPage = 1;
 				loadValidationIssues();
-			} else if (tab === 'duplicates') {
-				duplicatesPage = 1;
+			} else {
 				loadDuplicates();
 			}
 		});
@@ -266,7 +291,7 @@
 		</div>
 	</header>
 
-	<Tabs.Root bind:value={activeTab}>
+	<Tabs.Root value={activeTab} onValueChange={selectTab}>
 		<Tabs.List class="max-w-full justify-start overflow-x-auto">
 			<Tabs.Trigger value="validation">
 				Validation Issues
@@ -291,11 +316,7 @@
 							variant={severityFilter === filter.key ? 'default' : 'outline'}
 							size="sm"
 							aria-pressed={severityFilter === filter.key}
-							onclick={() => {
-								severityFilter = filter.key;
-								validationPage = 1;
-								loadValidationIssues();
-							}}
+							onclick={() => selectSeverity(filter.key)}
 						>
 							{filter.label} ({filter.count})
 						</Button>
@@ -377,28 +398,22 @@
 							variant="outline"
 							size="sm"
 							onclick={() => {
-								if (validationPage > 1) {
-									validationPage--;
-									loadValidationIssues();
-								}
+								if (currentPage > 1) goToPage(currentPage - 1);
 							}}
-							disabled={validationPage === 1 || validationLoading}
+							disabled={currentPage === 1 || validationLoading}
 						>
 							Previous
 						</Button>
 						<span class="text-sm text-muted-foreground">
-							Page {validationPage} of {validationTotalPages}
+							Page {currentPage} of {validationTotalPages}
 						</span>
 						<Button
 							variant="outline"
 							size="sm"
 							onclick={() => {
-								if (validationPage < validationTotalPages) {
-									validationPage++;
-									loadValidationIssues();
-								}
+								if (currentPage < validationTotalPages) goToPage(currentPage + 1);
 							}}
-							disabled={validationPage >= validationTotalPages || validationLoading}
+							disabled={currentPage >= validationTotalPages || validationLoading}
 						>
 							Next
 						</Button>
@@ -545,28 +560,22 @@
 							variant="outline"
 							size="sm"
 							onclick={() => {
-								if (duplicatesPage > 1) {
-									duplicatesPage--;
-									loadDuplicates();
-								}
+								if (currentPage > 1) goToPage(currentPage - 1);
 							}}
-							disabled={duplicatesPage === 1 || duplicatesLoading}
+							disabled={currentPage === 1 || duplicatesLoading}
 						>
 							Previous
 						</Button>
 						<span class="text-sm text-muted-foreground">
-							Page {duplicatesPage} of {duplicatesTotalPages}
+							Page {currentPage} of {duplicatesTotalPages}
 						</span>
 						<Button
 							variant="outline"
 							size="sm"
 							onclick={() => {
-								if (duplicatesPage < duplicatesTotalPages) {
-									duplicatesPage++;
-									loadDuplicates();
-								}
+								if (currentPage < duplicatesTotalPages) goToPage(currentPage + 1);
 							}}
-							disabled={duplicatesPage >= duplicatesTotalPages || duplicatesLoading}
+							disabled={currentPage >= duplicatesTotalPages || duplicatesLoading}
 						>
 							Next
 						</Button>

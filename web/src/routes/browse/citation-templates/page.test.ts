@@ -3,6 +3,10 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/svelte';
 import Page from './+page.svelte';
 import * as apiModule from '$lib/api/client';
 import type { CitationTemplateList } from '$lib/api/client';
+import { currentPath, historyLength, resetRouter } from '$lib/test/fakeRouter';
+
+vi.mock('$app/stores', async () => (await import('$lib/test/fakeRouter')).appStores);
+vi.mock('$app/navigation', async () => (await import('$lib/test/fakeRouter')).appNavigation);
 
 // Mock the API module
 vi.mock('$lib/api/client', async (importOriginal) => {
@@ -48,6 +52,7 @@ const mockTemplates: CitationTemplateList = {
 describe('Citation Templates Browse Page', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		resetRouter('/browse/citation-templates');
 		vi.mocked(apiModule.api.listCitationTemplates).mockResolvedValue(mockTemplates);
 	});
 
@@ -150,5 +155,25 @@ describe('Citation Templates Browse Page', () => {
 		await waitFor(() => {
 			expect(screen.getByText('U.S. Federal Census')).toBeDefined();
 		});
+	});
+
+	it('restores the category and source-type filters from the URL (#946)', async () => {
+		resetRouter('/browse/citation-templates?category=Vital+Records&type=vital_record');
+		render(Page);
+		await screen.findByText('Birth Certificate');
+		expect(screen.queryByText('U.S. Federal Census')).toBeNull();
+		expect(document.querySelector('#source-type-filter')?.textContent).toContain('vital_record');
+	});
+
+	it('replaces the URL on a category change and drops the default (#946)', async () => {
+		render(Page);
+		await fireEvent.click(await screen.findByText(/Census Records \(1\)/));
+		await waitFor(() => expect(currentPath()).toBe('/browse/citation-templates?category=Census+Records'));
+		expect(historyLength()).toBe(1);
+		await waitFor(() => expect(screen.queryByText('Birth Certificate')).toBeNull());
+
+		await fireEvent.click(screen.getByText(/All \(2\)/));
+		await waitFor(() => expect(currentPath()).toBe('/browse/citation-templates'));
+		await screen.findByText('Birth Certificate');
 	});
 });

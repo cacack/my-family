@@ -2,6 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/svelte';
 import Page from './+page.svelte';
 import * as apiModule from '$lib/api/client';
+import { back, currentPath, historyLength, resetRouter } from '$lib/test/fakeRouter';
+
+vi.mock('$app/stores', async () => (await import('$lib/test/fakeRouter')).appStores);
+vi.mock('$app/navigation', async () => (await import('$lib/test/fakeRouter')).appNavigation);
 
 // Mock the API module
 vi.mock('$lib/api/client', async (importOriginal) => {
@@ -75,6 +79,7 @@ const mockBatchDismissResponse: apiModule.BatchDismissResponse = {
 describe('Quality landing page', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		resetRouter('/quality');
 		vi.mocked(apiModule.api.getValidationIssues).mockResolvedValue(mockValidationResponse);
 		vi.mocked(apiModule.api.getPersonsDuplicates).mockResolvedValue(mockDuplicatesResponse);
 		vi.mocked(apiModule.api.dismissDuplicate).mockResolvedValue(undefined);
@@ -178,5 +183,63 @@ describe('Quality landing page', () => {
 				]
 			});
 		});
+	});
+
+	const manyIssues: apiModule.ValidationIssuesResponse = { ...mockValidationResponse, total: 45 };
+
+	it('restores the tab, page and severity filter from the URL (#946)', async () => {
+		vi.mocked(apiModule.api.getValidationIssues).mockResolvedValue(manyIssues);
+		resetRouter('/quality?severity=warning&page=2');
+		render(Page);
+		await waitFor(() =>
+			expect(apiModule.api.getValidationIssues).toHaveBeenCalledWith({
+				severity: 'warning',
+				limit: 20,
+				offset: 20
+			})
+		);
+		await screen.findByText('Page 2 of 3');
+		expect(screen.getByRole('button', { name: /^Warnings/ }).getAttribute('aria-pressed')).toBe('true');
+	});
+
+	it('pushes page and tab changes, so Back steps through them (#946)', async () => {
+		vi.mocked(apiModule.api.getValidationIssues).mockResolvedValue(manyIssues);
+		render(Page);
+		await screen.findByText('Page 1 of 3');
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+		await waitFor(() => expect(currentPath()).toBe('/quality?page=2'));
+		await screen.findByText('Page 2 of 3');
+
+		await fireEvent.click(screen.getByRole('tab', { name: /duplicates/i }));
+		await waitFor(() => expect(currentPath()).toBe('/quality?tab=duplicates'));
+		expect(historyLength()).toBe(3);
+		await screen.findByText('Jane Doe');
+
+		back();
+		await screen.findByText('Page 2 of 3');
+		expect(screen.getByRole('tab', { name: /validation/i }).getAttribute('aria-selected')).toBe('true');
+	});
+
+	it('replaces the URL on a severity change and starts at page 1 (#946)', async () => {
+		resetRouter('/quality?page=2');
+		render(Page);
+		await fireEvent.click(await screen.findByRole('button', { name: /^Errors/ }));
+		await waitFor(() => expect(currentPath()).toBe('/quality?severity=error'));
+		expect(historyLength()).toBe(1);
+
+		await fireEvent.click(screen.getByRole('button', { name: /^All/ }));
+		await waitFor(() => expect(currentPath()).toBe('/quality'));
+	});
+
+	it('moves a page past the end to the last page, replacing the URL (#946)', async () => {
+		resetRouter('/quality?tab=duplicates&page=9');
+		render(Page);
+		await waitFor(() => expect(currentPath()).toBe('/quality?tab=duplicates'));
+		expect(historyLength()).toBe(1);
+		await waitFor(() =>
+			expect(apiModule.api.getPersonsDuplicates).toHaveBeenLastCalledWith({ limit: 20, offset: 0 })
+		);
+		await screen.findByText('Jane Doe');
 	});
 });

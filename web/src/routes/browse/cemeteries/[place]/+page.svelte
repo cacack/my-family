@@ -1,20 +1,25 @@
 <script lang="ts">
 	import { page } from '$app/stores';
-	import { untrack } from 'svelte';
 	import { api, type Person } from '$lib/api/client';
 	import PersonCard from '$lib/components/PersonCard.svelte';
 	import ErrorState from '$lib/components/ErrorState.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
+	import { readPositiveInt, setQuery } from '$lib/utils/urlState';
 
 	let place = $derived(decodeURIComponent($page.params.place ?? ''));
 	let persons: Person[] = $state([]);
 	let total = $state(0);
 	let loading = $state(true);
 	let loadError: string | null = $state(null);
-	let currentPage = $state(1);
 	const pageSize = 20;
+	// The page lives in the URL (see urlState.ts), so Back and reload restore it.
+	const currentPage = $derived(readPositiveInt($page.url.searchParams, 'page', 1));
+
+	// Back/Forward can start loads faster than they finish: only the latest one may land.
+	let loadSeq = 0;
 
 	async function loadPersons() {
+		const seq = ++loadSeq;
 		loading = true;
 		loadError = null;
 		try {
@@ -22,37 +27,32 @@
 				limit: pageSize,
 				offset: (currentPage - 1) * pageSize
 			});
+			if (seq !== loadSeq) return;
 			persons = result.items;
 			total = result.total;
 		} catch (e) {
+			if (seq !== loadSeq) return;
 			console.error('Failed to load persons:', e);
 			loadError = 'Failed to load people. Please try again.';
 		} finally {
-			loading = false;
+			if (seq === loadSeq) loading = false;
 		}
+	}
+
+	function goToPage(n: number) {
+		setQuery($page.url, { page: n }, { push: true, defaults: { page: 1 } });
 	}
 
 	function prevPage() {
-		if (currentPage > 1) {
-			currentPage--;
-			loadPersons();
-		}
+		if (currentPage > 1) goToPage(currentPage - 1);
 	}
 
 	function nextPage() {
-		if (currentPage * pageSize < total) {
-			currentPage++;
-			loadPersons();
-		}
+		if (currentPage * pageSize < total) goToPage(currentPage + 1);
 	}
 
 	$effect(() => {
-		// Subscribe only to place changes
-		void place;
-		untrack(() => {
-			currentPage = 1;
-			loadPersons();
-		});
+		loadPersons();
 	});
 
 	const totalPages = $derived(Math.ceil(total / pageSize));

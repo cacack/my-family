@@ -138,6 +138,102 @@ describe('Evidence Hub Page', () => {
 			expect(screen.getByRole('tab', { name: 'Analyses' }).getAttribute('aria-selected')).toBe('true')
 		);
 	});
+	const manyConflicts = (status: apiModule.ConflictStatus): apiModule.EvidenceConflictListResponse => ({
+		conflicts: [
+			{
+				id: `ec-${status}`,
+				fact_type: 'person_birth',
+				subject_id: 'p-1-long-uuid',
+				analysis_ids: ['ea-1', 'ea-2'],
+				description: `A ${status} conflict`,
+				status,
+				version: 1
+			}
+		],
+		total: 45
+	});
+
+	it('restores the Conflicts page and status filter from the URL (#946)', async () => {
+		vi.mocked(apiModule.api.listEvidenceConflicts).mockResolvedValue(manyConflicts('open'));
+		resetRouter('/evidence?tab=conflicts&status=open&page=2');
+		render(Page);
+		await waitFor(() =>
+			expect(apiModule.api.listEvidenceConflicts).toHaveBeenCalledWith({
+				limit: 20,
+				offset: 20,
+				status: 'open'
+			})
+		);
+		await waitFor(() => expect(screen.getByText('Page 2 of 3')).toBeDefined());
+		expect(screen.getByRole('button', { name: 'Open' }).getAttribute('aria-pressed')).toBe('true');
+	});
+
+	it('pushes a page change, so Back returns to the previous page (#946)', async () => {
+		vi.mocked(apiModule.api.listEvidenceConflicts).mockResolvedValue(manyConflicts('open'));
+		resetRouter('/evidence?tab=conflicts');
+		render(Page);
+		await waitFor(() => expect(screen.getByText('Page 1 of 3')).toBeDefined());
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+		await waitFor(() => expect(currentPath()).toBe('/evidence?tab=conflicts&page=2'));
+		expect(historyLength()).toBe(2);
+		await waitFor(() => expect(screen.getByText('Page 2 of 3')).toBeDefined());
+		expect(apiModule.api.listEvidenceConflicts).toHaveBeenCalledWith(
+			expect.objectContaining({ offset: 20 })
+		);
+
+		back();
+		await waitFor(() => expect(screen.getByText('Page 1 of 3')).toBeDefined());
+	});
+
+	it('replaces the URL on a filter change and starts at page 1 (#946)', async () => {
+		vi.mocked(apiModule.api.listEvidenceConflicts).mockResolvedValue(manyConflicts('resolved'));
+		resetRouter('/evidence?tab=conflicts&page=3');
+		render(Page);
+		await waitFor(() => expect(screen.getByText('Page 3 of 3')).toBeDefined());
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Resolved' }));
+		await waitFor(() => expect(currentPath()).toBe('/evidence?tab=conflicts&status=resolved'));
+		expect(historyLength()).toBe(1);
+		await waitFor(() =>
+			expect(apiModule.api.listEvidenceConflicts).toHaveBeenCalledWith({
+				limit: 20,
+				offset: 0,
+				status: 'resolved'
+			})
+		);
+
+		await fireEvent.click(screen.getByRole('button', { name: 'All' }));
+		await waitFor(() => expect(currentPath()).toBe('/evidence?tab=conflicts'));
+	});
+
+	it('moves a page past the end to the last page, replacing the URL (#946)', async () => {
+		vi.mocked(apiModule.api.listEvidenceConflicts).mockImplementation(async ({ offset } = {}) =>
+			(offset ?? 0) < 60 ? manyConflicts('open') : { conflicts: [], total: 45 }
+		);
+		resetRouter('/evidence?tab=conflicts&status=open&page=5');
+		render(Page);
+		await waitFor(() => expect(currentPath()).toBe('/evidence?tab=conflicts&status=open&page=3'));
+		expect(historyLength()).toBe(1);
+		await screen.findByText('Page 3 of 3');
+		expect(apiModule.api.listEvidenceConflicts).toHaveBeenCalledWith({
+			limit: 20,
+			offset: 40,
+			status: 'open'
+		});
+		expect(screen.queryByText('No conflicts found.')).toBeNull();
+	});
+
+	it('keeps defaults out of the URL when switching tabs (#946)', async () => {
+		resetRouter('/evidence?tab=conflicts&status=open&page=2');
+		render(Page);
+		await fireEvent.click(screen.getByRole('tab', { name: 'Analyses' }));
+		await waitFor(() => expect(currentPath()).toBe('/evidence'));
+		await waitFor(() =>
+			expect(apiModule.api.listEvidenceAnalyses).toHaveBeenCalledWith({ limit: 20, offset: 0 })
+		);
+	});
+
 	it('ignores a load that resolves after a newer one (#947)', async () => {
 		let resolveSlow: (r: apiModule.EvidenceAnalysisListResponse) => void = () => {};
 		const stale: apiModule.EvidenceAnalysisListResponse = {

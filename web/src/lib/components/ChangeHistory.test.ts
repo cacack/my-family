@@ -2,6 +2,14 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/svelte";
 import ChangeHistory from "./ChangeHistory.svelte";
 import * as apiModule from "$lib/api/client";
+import {
+  currentPath,
+  historyLength,
+  resetRouter,
+} from "$lib/test/fakeRouter";
+
+vi.mock("$app/stores", async () => (await import("$lib/test/fakeRouter")).appStores);
+vi.mock("$app/navigation", async () => (await import("$lib/test/fakeRouter")).appNavigation);
 
 vi.mock("$lib/api/client", async (importOriginal) => {
   const actual = await importOriginal<typeof apiModule>();
@@ -322,5 +330,53 @@ describe("ChangeHistory failed loads (#899)", () => {
 
     expect((await screen.findByRole("alert")).textContent).toContain("Timed out");
     expect(screen.getByText("Ada Lovelace")).toBeTruthy();
+  });
+});
+
+describe("ChangeHistory entity-type filter in the URL (#946)", () => {
+  const empty = { items: [], total: 0, limit: 20, offset: 0, has_more: false };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetRouter("/history");
+    vi.mocked(apiModule.api.getGlobalHistory).mockResolvedValue(empty);
+    vi.mocked(apiModule.api.getPersonHistory).mockResolvedValue(empty);
+  });
+
+  it("restores the filter from the URL", async () => {
+    resetRouter("/history?type=family");
+    render(ChangeHistory);
+    const select = (await screen.findByLabelText("Entity Type")) as HTMLSelectElement;
+    expect(select.value).toBe("family");
+    expect(apiModule.api.getGlobalHistory).toHaveBeenCalledWith({
+      entity_type: "family",
+      limit: 20,
+      offset: 0,
+    });
+  });
+
+  it("replaces the URL when the filter changes, leaving All out of it", async () => {
+    render(ChangeHistory);
+    const select = await screen.findByLabelText("Entity Type");
+    await fireEvent.change(select, { target: { value: "source" } });
+    await vi.waitFor(() => expect(currentPath()).toBe("/history?type=source"));
+    expect(historyLength()).toBe(1);
+    await vi.waitFor(() =>
+      expect(apiModule.api.getGlobalHistory).toHaveBeenLastCalledWith({
+        entity_type: "source",
+        limit: 20,
+        offset: 0,
+      }),
+    );
+
+    await fireEvent.change(screen.getByLabelText("Entity Type"), { target: { value: "" } });
+    await vi.waitFor(() => expect(currentPath()).toBe("/history"));
+  });
+
+  it("ignores the URL on an entity's own history", async () => {
+    resetRouter("/persons/p-1?type=family");
+    render(ChangeHistory, { entityType: "person", entityId: PERSON_ID });
+    await vi.waitFor(() => expect(apiModule.api.getPersonHistory).toHaveBeenCalled());
+    expect(screen.queryByLabelText("Entity Type")).toBeNull();
   });
 });

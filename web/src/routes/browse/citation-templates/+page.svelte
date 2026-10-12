@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { page } from '$app/stores';
 	import { api, type CitationTemplate } from '$lib/api/client';
 	import * as Card from '$lib/components/ui/card';
 	import PageHeader from '$lib/components/PageHeader.svelte';
@@ -7,12 +8,22 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Separator } from '$lib/components/ui/separator';
 	import ErrorState from '$lib/components/ErrorState.svelte';
+	import { setQuery } from '$lib/utils/urlState';
 
 	let templates: CitationTemplate[] = $state([]);
 	let loading = $state(true);
 	let error: string | null = $state(null);
-	let activeCategory = $state('all');
-	let sourceTypeFilter = $state('');
+	// The category and source-type filters live in the URL (see urlState.ts),
+	// so Back, reload and a copied link keep them. Filters refine the view, so
+	// they replace. Both come from the loaded templates, so an unknown value
+	// just matches nothing.
+	const DEFAULTS = { category: 'all', type: '' } as const;
+	const activeCategory = $derived($page.url.searchParams.get('category') || DEFAULTS.category);
+	const sourceTypeFilter = $derived($page.url.searchParams.get('type') ?? DEFAULTS.type);
+
+	function refine(updates: Partial<Record<keyof typeof DEFAULTS, string>>) {
+		setQuery($page.url, updates, { defaults: DEFAULTS });
+	}
 	let expandedIds: Set<string> = $state(new Set());
 
 	// Derive categories from loaded templates
@@ -96,7 +107,7 @@
 				<Select.Root
 					type="single"
 					value={sourceTypeFilter || undefined}
-					onValueChange={(v) => { sourceTypeFilter = v ?? ''; }}
+					onValueChange={(v) => refine({ type: v ?? '' })}
 				>
 					<Select.Trigger id="source-type-filter" class="source-type-trigger">
 						{sourceTypeFilter || 'All source types'}
@@ -119,7 +130,7 @@
 			<Button
 				variant={activeCategory === 'all' ? 'default' : 'outline'}
 				size="sm"
-				onclick={() => { activeCategory = 'all'; }}
+				onclick={() => refine({ category: 'all' })}
 			>
 				All ({templates.length})
 			</Button>
@@ -127,7 +138,7 @@
 				<Button
 					variant={activeCategory === cat ? 'default' : 'outline'}
 					size="sm"
-					onclick={() => { activeCategory = cat; }}
+					onclick={() => refine({ category: cat })}
 				>
 					{cat} ({templates.filter((t) => t.category === cat).length})
 				</Button>
