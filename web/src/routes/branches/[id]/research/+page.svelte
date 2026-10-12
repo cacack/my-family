@@ -21,6 +21,7 @@
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import ErrorState from '$lib/components/ErrorState.svelte';
+	import PageHeader from '$lib/components/PageHeader.svelte';
 
 	const LOG_OUTCOME_LABELS: Record<string, string> = {
 		found: 'Found',
@@ -129,14 +130,15 @@
 	{:else if error}
 		<ErrorState message={error} onRetry={() => load(branchId)} />
 	{:else if branch && archive}
-		<header class="page-header">
-			<div class="title-row">
-				<h1>{branch.name}</h1>
+		<!-- A const keeps the null check inside the badges snippet. -->
+		{@const record = branch}
+		<PageHeader title={record.name}>
+			{#snippet badges()}
 				<Badge variant="secondary" class="capitalize">
-					{branch.status === 'archived' ? 'closed' : branch.status}
+					{record.status === 'archived' ? 'closed' : record.status}
 				</Badge>
-				<BranchOutcomeBadge outcome={branch.outcome} />
-			</div>
+				<BranchOutcomeBadge outcome={record.outcome} />
+			{/snippet}
 			<p class="lede">
 				The research this branch recorded, as it left it. Read-only: rebuilt from the branch's
 				history{closed ? ', since a closed branch has no view of its own' : ''}.
@@ -156,7 +158,7 @@
 					{branch.close_reason}
 				</p>
 			{/if}
-		</header>
+		</PageHeader>
 
 		{#if archive.truncated}
 			<div class="note" role="note">
@@ -311,23 +313,6 @@
 
 	.back-link:hover {
 		color: var(--color-link);
-	}
-
-	.page-header {
-		margin-bottom: 1.5rem;
-	}
-
-	.title-row {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		flex-wrap: wrap;
-	}
-
-	h1 {
-		margin: 0;
-		font-size: 1.5rem;
-		color: #1e293b;
 	}
 
 	.lede {

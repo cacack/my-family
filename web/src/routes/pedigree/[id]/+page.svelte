@@ -6,6 +6,7 @@
 	import { CHART_DEFAULTS, readChartOptions, setQuery } from '$lib/utils/urlState';
 	import { createShortcutHandler } from '$lib/keyboard/useShortcuts.svelte';
 	import ErrorState from '$lib/components/ErrorState.svelte';
+	import PageHeader from '$lib/components/PageHeader.svelte';
 
 	let pedigree: Pedigree | null = $state(null);
 	let error: string | null = $state(null);
@@ -190,49 +191,46 @@
 </div>
 
 <div class="pedigree-page">
-	<header class="page-header">
-		<div class="header-left">
-			<a href="/" class="back-link">&larr; Back</a>
-			<h1>Pedigree Chart</h1>
-		</div>
-		<div class="controls">
-			<label>
-				Generations:
-				<select value={generations} onchange={handleGenerationsChange}>
-					<option value={2}>2</option>
-					<option value={3}>3</option>
-					<option value={4}>4</option>
-					<option value={5}>5</option>
-					<option value={6}>6</option>
-					<option value={7}>7</option>
-					<option value={8}>8</option>
-					<option value={9}>9</option>
-					<option value={10}>10</option>
-				</select>
-			</label>
-			<div class="layout-toggle">
-				<button
-					class:active={layout === 'compact'}
-					onclick={() => setChartOption({ layout: 'compact' })}
-					title="Compact layout">Compact</button>
-				<button
-					class:active={layout === 'standard'}
-					onclick={() => setChartOption({ layout: 'standard' })}
-					title="Standard layout">Standard</button>
-				<button
-					class:active={layout === 'wide'}
-					onclick={() => setChartOption({ layout: 'wide' })}
-					title="Wide layout">Wide</button>
-			</div>
-			<div class="zoom-controls">
-				<button onclick={() => chart?.zoomIn()} title="Zoom In">+</button>
-				<button onclick={() => chart?.zoomOut()} title="Zoom Out">-</button>
-				<button onclick={() => chart?.resetZoom()} title="Reset Zoom">Reset</button>
-			</div>
-		</div>
-	</header>
-
 	<div class="chart-container">
+		<PageHeader title="Pedigree Chart" back={{ href: '/', label: 'Back' }}>
+			{#snippet actions()}
+				<div class="controls">
+					<label>
+						Generations:
+						<select value={generations} onchange={handleGenerationsChange}>
+							<option value={2}>2</option>
+							<option value={3}>3</option>
+							<option value={4}>4</option>
+							<option value={5}>5</option>
+							<option value={6}>6</option>
+							<option value={7}>7</option>
+							<option value={8}>8</option>
+							<option value={9}>9</option>
+							<option value={10}>10</option>
+						</select>
+					</label>
+					<div class="layout-toggle">
+						<button
+							class:active={layout === 'compact'}
+							onclick={() => setChartOption({ layout: 'compact' })}
+							title="Compact layout">Compact</button>
+						<button
+							class:active={layout === 'standard'}
+							onclick={() => setChartOption({ layout: 'standard' })}
+							title="Standard layout">Standard</button>
+						<button
+							class:active={layout === 'wide'}
+							onclick={() => setChartOption({ layout: 'wide' })}
+							title="Wide layout">Wide</button>
+					</div>
+					<div class="zoom-controls">
+						<button onclick={() => chart?.zoomIn()} title="Zoom In">+</button>
+						<button onclick={() => chart?.zoomOut()} title="Zoom Out">-</button>
+						<button onclick={() => chart?.resetZoom()} title="Reset Zoom">Reset</button>
+					</div>
+				</div>
+			{/snippet}
+		</PageHeader>
 		{#if loading}
 			<div class="loading">Loading pedigree...</div>
 		{:else if error}
@@ -256,42 +254,6 @@
 		flex-direction: column;
 		flex: 1;
 		background: #f8fafc;
-	}
-
-	.page-header {
-		display: flex;
-		flex-wrap: wrap;
-		justify-content: space-between;
-		align-items: center;
-		gap: 0.75rem;
-		padding: 1rem 1.5rem;
-		background: white;
-		border-bottom: 1px solid #e2e8f0;
-	}
-
-	.header-left {
-		display: flex;
-		align-items: center;
-		gap: 1rem;
-	}
-
-	.back-link {
-		display: inline-flex;
-		align-items: center;
-		min-height: 24px;
-		color: var(--color-text-muted);
-		text-decoration: none;
-		font-size: 0.875rem;
-	}
-
-	.back-link:hover {
-		color: var(--color-link);
-	}
-
-	h1 {
-		margin: 0;
-		font-size: 1.5rem;
-		color: #1e293b;
 	}
 
 	.controls {

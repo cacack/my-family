@@ -3,6 +3,7 @@
 	import { api, type Person } from '$lib/api/client';
 	import PersonCard from '$lib/components/PersonCard.svelte';
 	import ErrorState from '$lib/components/ErrorState.svelte';
+	import PageHeader from '$lib/components/PageHeader.svelte';
 
 	let surname = $derived(decodeURIComponent($page.params.surname ?? ''));
 	let persons: Person[] = $state([]);
@@ -57,17 +58,11 @@
 </svelte:head>
 
 <div class="surname-detail-page">
-	<header class="page-header">
-		<nav class="breadcrumb">
-			<a href="/browse/surnames">Browse Surnames</a>
-			<span class="separator">/</span>
-			<span class="current">{surname}</span>
-		</nav>
-		<h1>People with surname "{surname}"</h1>
-		{#if total > 0}
-			<p class="result-count">{total} {total === 1 ? 'person' : 'people'} found</p>
-		{/if}
-	</header>
+	<PageHeader
+		title={`People with surname "${surname}"`}
+		back={{ href: '/browse/surnames', label: 'Browse Surnames' }}
+		description={total > 0 ? `${total} ${total === 1 ? 'person' : 'people'} found` : undefined}
+	/>
 
 	{#if loading}
 		<div class="loading">Loading...</div>
@@ -100,52 +95,6 @@
 		max-width: 1200px;
 		margin: 0 auto;
 		padding: 1.5rem;
-	}
-
-	.page-header {
-		margin-bottom: 1.5rem;
-	}
-
-	.breadcrumb {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: 0.5rem;
-		margin-bottom: 1rem;
-		font-size: 0.875rem;
-	}
-
-	.breadcrumb a {
-		color: var(--color-link);
-		text-decoration: none;
-	}
-
-	.breadcrumb a:hover {
-		text-decoration: underline;
-	}
-
-	.breadcrumb .separator {
-		color: var(--color-text-muted);
-	}
-
-	.breadcrumb .current {
-		min-width: 0;
-		/* GEDCOM places are often comma-joined with no spaces to break on. */
-		overflow-wrap: anywhere;
-		color: var(--color-text-muted);
-	}
-
-	.page-header h1 {
-		margin: 0;
-		overflow-wrap: anywhere;
-		font-size: 1.5rem;
-		color: #1e293b;
-	}
-
-	.result-count {
-		margin: 0.5rem 0 0;
-		color: var(--color-text-muted);
-		font-size: 0.875rem;
 	}
 
 	.loading,

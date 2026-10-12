@@ -98,6 +98,7 @@
 	import { blockedEntityIds, blockerFix } from '$lib/utils/mergeBlockers';
 	import { isIncompleteMerge, isUnreadableMerge, pendingEntities } from '$lib/utils/mergeState';
 	import ErrorState from '$lib/components/ErrorState.svelte';
+	import PageHeader from '$lib/components/PageHeader.svelte';
 
 	let comparison: BranchComparisonResult | null = $state(null);
 	let loading = $state(true);
@@ -882,86 +883,25 @@
 	{:else if error}
 		<ErrorState message={error} onRetry={() => loadComparison(branchId)} />
 	{:else if comparison}
-		<header class="page-header">
-			<div>
-				<div class="title-row">
-					<h1>{comparison.branch.name}</h1>
-					<Badge variant={comparison.branch.status === 'active' ? 'default' : 'secondary'} class="capitalize">
-						{comparison.branch.status === 'archived' ? 'closed' : comparison.branch.status}
-					</Badge>
-					{#if isIncompleteMerge(comparison.branch)}
-						<Badge variant="outline" class="border-orange-500 text-orange-800">Merge unfinished</Badge>
-					{/if}
-				</div>
-				{#if comparison.branch.status === 'archived'}
-					<div class="closed-record" data-testid="closed-record">
-						<p>
-							Closed{comparison.branch.closed_at
-								? ` ${formatTimestamp(comparison.branch.closed_at)}`
-								: ''} without merging.
-							{#if comparison.branch.close_reason}
-								<span class="closed-reason">{comparison.branch.close_reason}</span>
-							{/if}
-						</p>
-						<a href="/branches/{comparison.branch.id}/research" class="research-link">
-							View this branch's research
-						</a>
-					</div>
+		<!-- A const keeps the null check inside the header snippets. -->
+		{@const branch = comparison.branch}
+		<PageHeader title={branch.name}>
+			{#snippet badges()}
+				<Badge variant={branch.status === 'active' ? 'default' : 'secondary'} class="capitalize">
+					{branch.status === 'archived' ? 'closed' : branch.status}
+				</Badge>
+				{#if isIncompleteMerge(branch)}
+					<Badge variant="outline" class="border-orange-500 text-orange-800">Merge unfinished</Badge>
 				{/if}
-				{#if closeNotice}
-					<div class="close-notice" role="status">
-						<p>{closeNotice.text}</p>
-						{#if closeNotice.warning}
-							<p class="close-warning">
-								{closeNotice.warning} You can copy them from the branch's research page.
-							</p>
-						{/if}
-					</div>
-				{/if}
-				{#if comparison.branch.description}
-					<p class="description">{comparison.branch.description}</p>
-				{/if}
-				{#if comparison.branch.status === 'merged' && comparison.branch.merged_at}
-					<p class="merged-line" data-testid="merged-at">
-						Merged into the mainline {formatTimestamp(comparison.branch.merged_at)}{comparison
-							.branch.merge_note
-							? ':'
-							: '.'}
-						{#if comparison.branch.merge_note}
-							<span class="merged-note">{comparison.branch.merge_note}</span>
-						{/if}
-					</p>
-				{/if}
-				<p class="anchor">Compared against the mainline from position {comparison.base_position}.</p>
-				{#if editingResearch}
-					<BranchResearchEditor
-						branch={comparison.branch}
-						candidates={subjectCandidates}
-						onsaved={handleResearchSaved}
-						oncancel={() => (editingResearch = false)}
-					/>
-				{:else}
-					<BranchResearchSummary branch={comparison.branch} scopeNote={researchScopeNote} />
-					{#if researchEditable}
-						<Button
-							variant="outline"
-							size="sm"
-							class="research-edit"
-							onclick={() => (editingResearch = true)}
-						>
-							{mergeable ? 'Edit research record' : 'Record outcome'}
-						</Button>
-					{/if}
-				{/if}
-			</div>
-			<div class="header-actions">
-				{#if mergeable && activeBranch.id !== comparison.branch.id}
-					<Button variant="outline" onclick={() => switchBranch(comparison?.branch ?? null)}>
+			{/snippet}
+			{#snippet actions()}
+				{#if mergeable && activeBranch.id !== branch.id}
+					<Button variant="outline" onclick={() => switchBranch(branch)}>
 						Switch to branch
 					</Button>
 				{/if}
-				{#if comparison.branch.status !== 'archived'}
-					<Button variant="ghost" href="/branches/{comparison.branch.id}/research">Research</Button>
+				{#if branch.status !== 'archived'}
+					<Button variant="ghost" href="/branches/{branch.id}/research">Research</Button>
 				{/if}
 				{#if mergeable}
 					<Button variant="outline" onclick={() => (closeOpen = true)} disabled={merging}>
@@ -982,8 +922,68 @@
 						</Button>
 					</div>
 				{/if}
-			</div>
-		</header>
+			{/snippet}
+			{#if comparison.branch.status === 'archived'}
+				<div class="closed-record" data-testid="closed-record">
+					<p>
+						Closed{comparison.branch.closed_at
+							? ` ${formatTimestamp(comparison.branch.closed_at)}`
+							: ''} without merging.
+						{#if comparison.branch.close_reason}
+							<span class="closed-reason">{comparison.branch.close_reason}</span>
+						{/if}
+					</p>
+					<a href="/branches/{comparison.branch.id}/research" class="research-link">
+						View this branch's research
+					</a>
+				</div>
+			{/if}
+			{#if closeNotice}
+				<div class="close-notice" role="status">
+					<p>{closeNotice.text}</p>
+					{#if closeNotice.warning}
+						<p class="close-warning">
+							{closeNotice.warning} You can copy them from the branch's research page.
+						</p>
+					{/if}
+				</div>
+			{/if}
+			{#if comparison.branch.description}
+				<p class="description">{comparison.branch.description}</p>
+			{/if}
+			{#if comparison.branch.status === 'merged' && comparison.branch.merged_at}
+				<p class="merged-line" data-testid="merged-at">
+					Merged into the mainline {formatTimestamp(comparison.branch.merged_at)}{comparison
+						.branch.merge_note
+						? ':'
+						: '.'}
+					{#if comparison.branch.merge_note}
+						<span class="merged-note">{comparison.branch.merge_note}</span>
+					{/if}
+				</p>
+			{/if}
+			<p class="anchor">Compared against the mainline from position {comparison.base_position}.</p>
+			{#if editingResearch}
+				<BranchResearchEditor
+					branch={comparison.branch}
+					candidates={subjectCandidates}
+					onsaved={handleResearchSaved}
+					oncancel={() => (editingResearch = false)}
+				/>
+			{:else}
+				<BranchResearchSummary branch={comparison.branch} scopeNote={researchScopeNote} />
+				{#if researchEditable}
+					<Button
+						variant="outline"
+						size="sm"
+						class="research-edit"
+						onclick={() => (editingResearch = true)}
+					>
+						{mergeable ? 'Edit research record' : 'Record outcome'}
+					</Button>
+				{/if}
+			{/if}
+		</PageHeader>
 
 		{#if isIncompleteMerge(comparison.branch)}
 			<IncompleteMergeCallout
@@ -1269,35 +1269,8 @@
 		color: var(--color-link);
 	}
 
-	.page-header {
-		display: flex;
-		align-items: flex-start;
-		justify-content: space-between;
-		gap: 1rem;
-		flex-wrap: wrap;
-		margin-bottom: 1.5rem;
-	}
-
-	.page-header > div:first-child {
-		flex: 1 1 28rem;
-		min-width: 0;
-	}
-
-	.page-header :global(.research-edit) {
+	.compare-page :global(.research-edit) {
 		margin-top: 0.5rem;
-	}
-
-	.title-row {
-		display: flex;
-		align-items: center;
-		gap: 0.625rem;
-		flex-wrap: wrap;
-	}
-
-	.title-row h1 {
-		margin: 0;
-		font-size: 1.5rem;
-		color: #1e293b;
 	}
 
 	.description {
@@ -1310,14 +1283,6 @@
 		margin: 0.25rem 0 0;
 		font-size: 0.8125rem;
 		color: var(--color-text-muted);
-	}
-
-	/* Wraps under the heading at narrow widths rather than squeezing beside it. */
-	.header-actions {
-		display: flex;
-		align-items: flex-start;
-		gap: 0.75rem;
-		flex-wrap: wrap;
 	}
 
 	.merge-bar {
