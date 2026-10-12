@@ -2,6 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/svelte';
 import SourcesPage from './+page.svelte';
 import * as apiModule from '$lib/api/client';
+import { back, currentPath, historyLength, resetRouter } from '$lib/test/fakeRouter';
+
+vi.mock('$app/stores', async () => (await import('$lib/test/fakeRouter')).appStores);
+vi.mock('$app/navigation', async () => (await import('$lib/test/fakeRouter')).appNavigation);
 
 vi.mock('$lib/api/client', async (importOriginal) => {
 	const actual = await importOriginal<typeof apiModule>();
@@ -23,6 +27,7 @@ const API_SOURCE_TYPES = [
 describe('Sources page', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		resetRouter('/sources');
 		vi.mocked(apiModule.api.listSources).mockResolvedValue({ sources: [], total: 0, limit: 20, offset: 0 });
 		vi.mocked(apiModule.api.createSource).mockResolvedValue({
 			id: 's-1',
@@ -52,7 +57,7 @@ describe('Sources page', () => {
 		render(SourcesPage);
 		expect(screen.getByRole('textbox', { name: 'Search sources' })).toBeTruthy();
 		await fireEvent.click(screen.getByRole('button', { name: 'Sort order: ascending' }));
-		expect(screen.getByRole('button', { name: 'Sort order: descending' })).toBeTruthy();
+		await screen.findByRole('button', { name: 'Sort order: descending' });
 	});
 
 	it('shows a load failure as an error with Retry, not as an empty list', async () => {
@@ -67,5 +72,58 @@ describe('Sources page', () => {
 		await fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
 		await screen.findByText('No sources found.');
 		spy.mockRestore();
+	});
+
+	const source = (i: number) => ({ id: `s-${i}`, source_type: 'book', title: `Source ${i}`, version: 1 }) as apiModule.Source;
+	const manySources = { sources: [source(1)], total: 45, limit: 20, offset: 0 };
+
+	it('restores search, sort and page from the URL (#946)', async () => {
+		vi.mocked(apiModule.api.listSources).mockResolvedValue(manySources);
+		resetRouter('/sources?q=parish&sort=author&order=desc&page=2');
+		render(SourcesPage);
+		await waitFor(() =>
+			expect(apiModule.api.listSources).toHaveBeenCalledWith({
+				limit: 20,
+				offset: 20,
+				sort: 'author',
+				order: 'desc',
+				q: 'parish'
+			})
+		);
+		expect((screen.getByRole('textbox', { name: 'Search sources' }) as HTMLInputElement).value).toBe('parish');
+		await screen.findByText('Page 2 of 3');
+	});
+
+	it('pushes a page change, so Back returns to the previous page (#946)', async () => {
+		vi.mocked(apiModule.api.listSources).mockResolvedValue(manySources);
+		render(SourcesPage);
+		await screen.findByText('Page 1 of 3');
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+		await waitFor(() => expect(currentPath()).toBe('/sources?page=2'));
+		expect(historyLength()).toBe(2);
+		await screen.findByText('Page 2 of 3');
+
+		back();
+		await screen.findByText('Page 1 of 3');
+	});
+
+	it('replaces the URL with a search after a pause and starts at page 1 (#946)', async () => {
+		resetRouter('/sources?page=3');
+		render(SourcesPage);
+		const box = screen.getByRole('textbox', { name: 'Search sources' }) as HTMLInputElement;
+		await fireEvent.input(box, { target: { value: 'census' } });
+		await waitFor(() => expect(currentPath()).toBe('/sources?q=census'));
+		expect(historyLength()).toBe(1);
+		expect(box.value).toBe('census');
+		await waitFor(() =>
+			expect(apiModule.api.listSources).toHaveBeenLastCalledWith(
+				expect.objectContaining({ q: 'census', offset: 0 })
+			)
+		);
+
+		await fireEvent.click(await screen.findByRole('button', { name: 'Clear Search' }));
+		await waitFor(() => expect(currentPath()).toBe('/sources'));
+		expect(box.value).toBe('');
 	});
 });

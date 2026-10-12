@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { page } from '$app/stores';
 	import { api, type Source } from '$lib/api/client';
 	import { Button } from '$lib/components/ui/button';
 	import PageHeader from '$lib/components/PageHeader.svelte';
@@ -6,19 +7,38 @@
 	import SourceCard from '$lib/components/SourceCard.svelte';
 	import { DEFAULT_SOURCE_TYPE, SOURCE_TYPES } from '$lib/utils/sourceTypes';
 	import ErrorState from '$lib/components/ErrorState.svelte';
+	import { readEnum, readPositiveInt, setQuery } from '$lib/utils/urlState';
 
 	let sources: Source[] = $state([]);
 	let total = $state(0);
 	let loading = $state(true);
 	let loadError: string | null = $state(null);
-	let currentPage = $state(1);
-	let sort = $state<'title' | 'author' | 'citation_count'>('title');
-	let order = $state<'asc' | 'desc'>('asc');
-	let searchQuery = $state('');
 	let showAddForm = $state(false);
 	let saving = $state(false);
 	let error: string | null = $state(null);
 	const pageSize = 20;
+
+	// Search, sort and page live in the URL (see urlState.ts), so Back, reload
+	// and a copied link restore the list.
+	const SORTS = ['title', 'author', 'citation_count'] as const;
+	const DEFAULTS = { sort: 'title', order: 'asc', q: '', page: 1 } as const;
+
+	const params = $derived($page.url.searchParams);
+	const sort = $derived(readEnum(params, 'sort', SORTS, DEFAULTS.sort));
+	const order = $derived(readEnum(params, 'order', ['asc', 'desc'] as const, DEFAULTS.order));
+	const searchQuery = $derived(params.get('q') ?? DEFAULTS.q);
+	const currentPage = $derived(readPositiveInt(params, 'page', DEFAULTS.page));
+
+	// The search box is a draft while typing; the URL takes it after a pause.
+	// A URL change from elsewhere (Back, a link) refills the box, but the
+	// search this page just wrote does not, so it never eats keystrokes.
+	let searchInput = $state('');
+	let lastWrittenQuery: string | null = null;
+	$effect.pre(() => {
+		const q = searchQuery;
+		if (q !== lastWrittenQuery) searchInput = q;
+		lastWrittenQuery = null;
+	});
 
 	// New source form state
 	let newSource = $state({
@@ -36,7 +56,11 @@
 
 	let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
+	// Back/Forward can start loads faster than they finish: only the latest one may land.
+	let loadSeq = 0;
+
 	async function loadSources() {
+		const seq = ++loadSeq;
 		loading = true;
 		loadError = null;
 		try {
@@ -47,53 +71,58 @@
 				order,
 				q: searchQuery || undefined
 			});
+			if (seq !== loadSeq) return;
 			sources = result.sources;
 			total = result.total;
 		} catch (e) {
+			if (seq !== loadSeq) return;
 			console.error('Failed to load sources:', e);
 			loadError = 'Failed to load sources. Please try again.';
 		} finally {
-			loading = false;
+			if (seq === loadSeq) loading = false;
 		}
+	}
+
+	// Search and sort refine the view (replace); a new search or sort starts at page 1.
+	function refine(updates: Record<string, string>) {
+		setQuery($page.url, { ...updates, page: 1 }, { defaults: DEFAULTS });
+	}
+
+	function goToPage(n: number) {
+		setQuery($page.url, { page: n }, { push: true, defaults: DEFAULTS });
 	}
 
 	function handleSortChange(e: Event) {
-		const select = e.target as HTMLSelectElement;
-		sort = select.value as typeof sort;
-		currentPage = 1;
-		loadSources();
+		refine({ sort: (e.target as HTMLSelectElement).value });
 	}
 
 	function handleOrderChange() {
-		order = order === 'asc' ? 'desc' : 'asc';
-		loadSources();
+		setQuery($page.url, { order: order === 'asc' ? 'desc' : 'asc' }, { defaults: DEFAULTS });
+	}
+
+	function search(q: string) {
+		if (debounceTimer) clearTimeout(debounceTimer);
+		lastWrittenQuery = q;
+		refine({ q });
 	}
 
 	function handleSearchInput(e: Event) {
-		const input = e.target as HTMLInputElement;
-		searchQuery = input.value;
+		searchInput = (e.target as HTMLInputElement).value;
+		if (debounceTimer) clearTimeout(debounceTimer);
+		debounceTimer = setTimeout(() => search(searchInput), 300);
+	}
 
-		if (debounceTimer) {
-			clearTimeout(debounceTimer);
-		}
-		debounceTimer = setTimeout(() => {
-			currentPage = 1;
-			loadSources();
-		}, 300);
+	function clearSearch() {
+		searchInput = '';
+		search('');
 	}
 
 	function prevPage() {
-		if (currentPage > 1) {
-			currentPage--;
-			loadSources();
-		}
+		if (currentPage > 1) goToPage(currentPage - 1);
 	}
 
 	function nextPage() {
-		if (currentPage * pageSize < total) {
-			currentPage++;
-			loadSources();
-		}
+		if (currentPage * pageSize < total) goToPage(currentPage + 1);
 	}
 
 	function openAddForm() {
@@ -170,7 +199,7 @@
 					</svg>
 					<input
 						type="text"
-						value={searchQuery}
+						value={searchInput}
 						oninput={handleSearchInput}
 						placeholder="Search sources..."
 						aria-label="Search sources"
@@ -293,7 +322,7 @@
 		<div class="empty">
 			{#if searchQuery}
 				<p>No sources found matching "{searchQuery}".</p>
-				<Button variant="outline" onclick={() => { searchQuery = ''; loadSources(); }}>Clear Search</Button>
+				<Button variant="outline" onclick={clearSearch}>Clear Search</Button>
 			{:else}
 				<p>No sources found.</p>
 				<Button onclick={openAddForm}>Add Source</Button>
