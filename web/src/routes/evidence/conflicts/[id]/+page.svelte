@@ -89,6 +89,10 @@
 			const id = conflict.id;
 			if (!(isVersionConflict(e) && (await saveConflict.load(() => api.getEvidenceConflict(id))))) {
 				error = (e as { message?: string }).message || 'Failed to resolve conflict';
+			} else if (saveConflict.latest?.status !== 'open') {
+				// Resolved elsewhere: show that resolution rather than offer to overwrite it.
+				saveConflict.useLatest();
+				error = 'Someone else resolved this conflict while you were editing. Their resolution is shown below.';
 			}
 		} finally {
 			resolving = false;

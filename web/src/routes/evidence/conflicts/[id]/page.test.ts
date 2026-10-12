@@ -201,16 +201,31 @@ describe('Conflict Detail Page - save conflict (#939)', () => {
 		await fireEvent.click(screen.getByRole('button', { name: 'Resolve Conflict' }));
 	}
 
-	it('compares the resolution with the latest version and keeps it in the form', async () => {
+	it('shows a resolution saved elsewhere instead of offering to overwrite it', async () => {
 		vi.mocked(apiModule.api.getEvidenceConflict)
 			.mockResolvedValueOnce(mockOpenConflict)
 			.mockResolvedValue(mockResolvedConflict);
 		vi.mocked(apiModule.api.resolveEvidenceConflict).mockRejectedValueOnce(stale);
 		await resolveWith('The newspaper is wrong.');
 
+		expect(await screen.findByText(/someone else resolved this conflict/i)).toBeTruthy();
+		expect(screen.getByText(mockResolvedConflict.resolution!)).toBeTruthy();
+		expect(screen.queryByRole('button', { name: 'Save my edits' })).toBeNull();
+		expect(screen.queryByLabelText('Resolution text')).toBeNull();
+		expect(apiModule.api.resolveEvidenceConflict).toHaveBeenCalledTimes(1);
+	});
+
+	it('compares the resolution with the latest version and keeps it in the form', async () => {
+		const latest = { ...mockOpenConflict, resolution: 'A draft elsewhere', version: 2 };
+		vi.mocked(apiModule.api.getEvidenceConflict)
+			.mockResolvedValueOnce(mockOpenConflict)
+			.mockResolvedValue(latest);
+		vi.mocked(apiModule.api.resolveEvidenceConflict).mockRejectedValueOnce(stale);
+		await resolveWith('The newspaper is wrong.');
+
 		expect(await screen.findByRole('rowheader', { name: 'Resolution' })).toBeTruthy();
 		expect(screen.getByTestId('mine').textContent).toBe('The newspaper is wrong.');
-		expect(screen.getByTestId('latest').textContent).toBe(mockResolvedConflict.resolution);
+		expect(screen.getByTestId('latest').textContent).toBe('A draft elsewhere');
 		expect((screen.getByLabelText('Resolution text') as HTMLTextAreaElement).value).toBe(
 			'The newspaper is wrong.'
 		);

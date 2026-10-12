@@ -76,6 +76,7 @@ describe('SaveConflictFlow', () => {
 		expect(state.record).toEqual(latest);
 		expect(state.form).toEqual({ title: 'Census, Kent', notes: 'Theirs', tags: ['a', 'b'] });
 		expect(save).toHaveBeenCalledOnce();
+		expect(flow.latest).toBeNull();
 	});
 
 	it('drops the edits for the latest version', async () => {

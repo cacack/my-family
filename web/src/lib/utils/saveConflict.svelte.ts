@@ -92,6 +92,7 @@ export class SaveConflictFlow<R, F extends Record<string, unknown>> {
 		if (!base || !latest) return;
 		const { formFrom, form } = this.target;
 		this.target.adopt(latest, rebaseEdits(form(), formFrom(base), formFrom(latest)));
+		this.latest = null;
 		this.target.save();
 	};
 
