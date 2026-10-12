@@ -6688,7 +6688,10 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             404: components["responses"]["NotFound"];
-            /** @description Child already belongs to a family or circular relationship */
+            /**
+             * @description Child already belongs to a family or circular relationship, or a
+             *     version conflict while linking the child (`VERSION_CONFLICT`)
+             */
             409: {
                 headers: {
                     [name: string]: unknown;

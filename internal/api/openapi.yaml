@@ -348,7 +348,9 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          description: Child already belongs to a family or circular relationship
+          description: |
+            Child already belongs to a family or circular relationship, or a
+            version conflict while linking the child (`VERSION_CONFLICT`)
           content:
             application/json:
               schema:
