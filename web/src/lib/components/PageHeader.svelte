@@ -4,7 +4,8 @@
 	 * with any status badges beside it (`badges`), a one-line description, any
 	 * extra notes (`children`), and the page's actions. The actions wrap below
 	 * the title when the row runs out of room, so no page needs its own
-	 * breakpoint for them.
+	 * breakpoint for them. Unlike ActionBar, it prints, back link and actions
+	 * included.
 	 *
 	 * Rich description content (links, several paragraphs, notes) goes in
 	 * `children`, styled by the page. See docs/CONVENTIONS.md#ui-building-blocks.

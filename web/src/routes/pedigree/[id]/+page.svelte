@@ -192,6 +192,7 @@
 
 <div class="pedigree-page">
 	<div class="chart-container">
+		<!-- Inside the container on purpose: PageHeader has no padding, so the container's padding is its gutter. -->
 		<PageHeader title="Pedigree Chart" back={{ href: '/', label: 'Back' }}>
 			{#snippet actions()}
 				<div class="controls">
