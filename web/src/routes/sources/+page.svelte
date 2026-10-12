@@ -181,6 +181,11 @@
 		loadSources();
 	});
 
+	// A search still waiting on its pause must not write into the next page's URL.
+	$effect(() => () => {
+		if (debounceTimer) clearTimeout(debounceTimer);
+	});
+
 	const totalPages = $derived(Math.ceil(total / pageSize));
 </script>
 

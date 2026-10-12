@@ -54,4 +54,23 @@ describe('SurnameBrowser', () => {
 		await waitFor(() => expect(currentPath()).toBe('/browse/surnames'));
 		await screen.findByText('Adams');
 	});
+
+	it('clears a failed letter load when the letter is cleared (#946)', async () => {
+		resetRouter('/browse/surnames?letter=S');
+		vi.mocked(apiModule.api.getSurnameIndex).mockImplementation(async (letter) => {
+			if (letter === 'S') throw new Error('boom');
+			return {
+				items: [{ surname: 'Adams', count: 1 }],
+				total: 1,
+				letter_counts: [{ letter: 'A', count: 1 }, { letter: 'S', count: 1 }]
+			};
+		});
+		render(SurnameBrowser);
+		await screen.findByText('Failed to load surnames. Please try again.');
+
+		await fireEvent.click(screen.getByRole('button', { name: /^S/ }));
+		await waitFor(() => expect(currentPath()).toBe('/browse/surnames'));
+		await screen.findByText('Adams');
+		expect(screen.queryByText('Failed to load surnames. Please try again.')).toBeNull();
+	});
 });

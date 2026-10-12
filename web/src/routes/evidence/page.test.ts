@@ -207,6 +207,23 @@ describe('Evidence Hub Page', () => {
 		await waitFor(() => expect(currentPath()).toBe('/evidence?tab=conflicts'));
 	});
 
+	it('moves a page past the end to the last page, replacing the URL (#946)', async () => {
+		vi.mocked(apiModule.api.listEvidenceConflicts).mockImplementation(async ({ offset } = {}) =>
+			(offset ?? 0) < 60 ? manyConflicts('open') : { conflicts: [], total: 45 }
+		);
+		resetRouter('/evidence?tab=conflicts&status=open&page=5');
+		render(Page);
+		await waitFor(() => expect(currentPath()).toBe('/evidence?tab=conflicts&status=open&page=3'));
+		expect(historyLength()).toBe(1);
+		await screen.findByText('Page 3 of 3');
+		expect(apiModule.api.listEvidenceConflicts).toHaveBeenCalledWith({
+			limit: 20,
+			offset: 40,
+			status: 'open'
+		});
+		expect(screen.queryByText('No conflicts found.')).toBeNull();
+	});
+
 	it('keeps defaults out of the URL when switching tabs (#946)', async () => {
 		resetRouter('/evidence?tab=conflicts&status=open&page=2');
 		render(Page);

@@ -71,6 +71,17 @@
 		setQuery($page.url, { status, page: null }, { defaults: DEFAULTS });
 	}
 
+	// A page past the end (e.g. Back to a page whose last conflict was just
+	// resolved, or a stale link) moves to the last page. That is a correction,
+	// not a step the user took, so it replaces; the URL change reloads.
+	// Returns true when it moved, so the caller drops the empty result.
+	function clampToLastPage(requested: number, total: number): boolean {
+		const lastPage = Math.max(1, Math.ceil(total / pageSize));
+		if (total === 0 || requested <= lastPage) return false;
+		setQuery($page.url, { page: lastPage }, { defaults: DEFAULTS });
+		return true;
+	}
+
 	// Analyses state
 	let analyses: EvidenceAnalysisResponse[] = $state([]);
 	let analysesTotal = $state(0);
@@ -116,11 +127,13 @@
 		analysesLoading = true;
 		analysesError = null;
 		try {
+			const requestedPage = currentPage;
 			const result = await api.listEvidenceAnalyses({
 				limit: pageSize,
-				offset: (currentPage - 1) * pageSize
+				offset: (requestedPage - 1) * pageSize
 			});
 			if (seq !== analysesSeq) return;
+			if (clampToLastPage(requestedPage, result.total ?? 0)) return;
 			analyses = result.analyses;
 			analysesTotal = result.total ?? 0;
 		} catch (e) {
@@ -136,12 +149,14 @@
 		conflictsLoading = true;
 		conflictsError = null;
 		try {
+			const requestedPage = currentPage;
 			const result = await api.listEvidenceConflicts({
 				limit: pageSize,
-				offset: (currentPage - 1) * pageSize,
+				offset: (requestedPage - 1) * pageSize,
 				status: conflictStatusFilter === 'all' ? undefined : conflictStatusFilter
 			});
 			if (seq !== conflictsSeq) return;
+			if (clampToLastPage(requestedPage, result.total ?? 0)) return;
 			conflicts = result.conflicts;
 			conflictsTotal = result.total ?? 0;
 
@@ -171,11 +186,13 @@
 		logsLoading = true;
 		logsError = null;
 		try {
+			const requestedPage = currentPage;
 			const result = await api.listResearchLogs({
 				limit: pageSize,
-				offset: (currentPage - 1) * pageSize
+				offset: (requestedPage - 1) * pageSize
 			});
 			if (seq !== logsSeq) return;
+			if (clampToLastPage(requestedPage, result.total ?? 0)) return;
 			logs = result.logs;
 			logsTotal = result.total ?? 0;
 		} catch (e) {
@@ -191,11 +208,13 @@
 		summariesLoading = true;
 		summariesError = null;
 		try {
+			const requestedPage = currentPage;
 			const result = await api.listProofSummaries({
 				limit: pageSize,
-				offset: (currentPage - 1) * pageSize
+				offset: (requestedPage - 1) * pageSize
 			});
 			if (seq !== summariesSeq) return;
+			if (clampToLastPage(requestedPage, result.total ?? 0)) return;
 			summaries = result.summaries;
 			summariesTotal = result.total ?? 0;
 		} catch (e) {

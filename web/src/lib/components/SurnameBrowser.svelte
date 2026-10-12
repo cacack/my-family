@@ -76,7 +76,17 @@
 
 	$effect(() => {
 		const letter = selectedLetter;
-		if (letter) untrack(() => loadLetter(letter));
+		untrack(() => {
+			if (letter) {
+				loadLetter(letter);
+			} else {
+				// Back to the full list: drop any in-flight letter load and its
+				// error, which belonged to the letter view.
+				letterSeq++;
+				loadingSurnames = false;
+				if (letterCounts.length > 0) error = null;
+			}
+		});
 	});
 </script>
 

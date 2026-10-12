@@ -126,4 +126,20 @@ describe('Sources page', () => {
 		await waitFor(() => expect(currentPath()).toBe('/sources'));
 		expect(box.value).toBe('');
 	});
+
+	it('drops a pending search when the page is left (#946)', async () => {
+		vi.useFakeTimers();
+		try {
+			const { unmount } = render(SourcesPage);
+			const box = screen.getByRole('textbox', { name: 'Search sources' });
+			await fireEvent.input(box, { target: { value: 'census' } });
+			unmount();
+			resetRouter('/people');
+			await vi.advanceTimersByTimeAsync(500);
+			expect(currentPath()).toBe('/people');
+		} finally {
+			vi.useRealTimers();
+		}
+	});
 });
+
