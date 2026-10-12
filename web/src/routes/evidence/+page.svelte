@@ -21,7 +21,7 @@
 		outcomeBadgeProps,
 		conflictBadgeProps
 	} from '$lib/utils/evidence';
-	import { readEnum, setQuery } from '$lib/utils/urlState';
+	import { readEnum, readPositiveInt, setQuery } from '$lib/utils/urlState';
 	import ErrorState from '$lib/components/ErrorState.svelte';
 
 	const pageSize = 20;
@@ -38,43 +38,62 @@
 	const ROW_CLICKABLE = 'cursor-pointer transition-colors hover:bg-slate-50';
 	const SUBJECT_LINK = 'text-link no-underline hover:underline';
 
-	// The active tab lives in the URL (see urlState.ts), so Back and reload
-	// return to it. A tab is navigation-level, so switching pushes.
+	// The active tab, its page and the Conflicts status filter live in the URL
+	// (see urlState.ts), so Back, reload and a copied link restore the view.
+	// `page` belongs to the active tab: switching tabs starts the new one at
+	// page 1 and drops the Conflicts filter. Tab and page changes push; the
+	// filter refines the view, so it replaces.
 	const TABS = ['analyses', 'conflicts', 'logs', 'summaries'] as const;
-	const activeTab = $derived(readEnum($page.url.searchParams, 'tab', TABS, 'analyses'));
+	const STATUSES = ['all', 'open', 'resolved'] as const satisfies readonly ('all' | ConflictStatus)[];
+	const CONFLICT_FILTERS = [
+		{ key: 'all', label: 'All' },
+		{ key: 'open', label: 'Open' },
+		{ key: 'resolved', label: 'Resolved' }
+	] as const satisfies readonly { key: (typeof STATUSES)[number]; label: string }[];
+	const DEFAULTS = { tab: 'analyses', page: 1, status: 'all' } as const;
+
+	const params = $derived($page.url.searchParams);
+	const activeTab = $derived(readEnum(params, 'tab', TABS, DEFAULTS.tab));
+	const currentPage = $derived(readPositiveInt(params, 'page', DEFAULTS.page));
+	const conflictStatusFilter = $derived(
+		activeTab === 'conflicts' ? readEnum(params, 'status', STATUSES, DEFAULTS.status) : DEFAULTS.status
+	);
 
 	function selectTab(tab: string) {
-		setQuery($page.url, { tab }, { push: true, defaults: { tab: 'analyses' } });
+		setQuery($page.url, { tab, page: null, status: null }, { push: true, defaults: DEFAULTS });
+	}
+
+	function goToPage(n: number) {
+		setQuery($page.url, { page: n }, { push: true, defaults: DEFAULTS });
+	}
+
+	function selectConflictStatus(status: (typeof STATUSES)[number]) {
+		setQuery($page.url, { status, page: null }, { defaults: DEFAULTS });
 	}
 
 	// Analyses state
 	let analyses: EvidenceAnalysisResponse[] = $state([]);
 	let analysesTotal = $state(0);
-	let analysesPage = $state(1);
 	let analysesLoading = $state(false);
 	let analysesError: string | null = $state(null);
 
 	// Conflicts state
 	let conflicts: EvidenceConflictResponse[] = $state([]);
 	let conflictsTotal = $state(0);
-	let conflictsPage = $state(1);
 	let conflictsLoading = $state(false);
 	let conflictsError: string | null = $state(null);
-	let conflictStatusFilter = $state<'all' | ConflictStatus>('all');
 	let openConflictsCount = $state(0);
 	let openConflictsLoaded = $state(false);
 
 	// Research logs state
 	let logs: ResearchLogResponse[] = $state([]);
 	let logsTotal = $state(0);
-	let logsPage = $state(1);
 	let logsLoading = $state(false);
 	let logsError: string | null = $state(null);
 
 	// Proof summaries state
 	let summaries: ProofSummaryResponse[] = $state([]);
 	let summariesTotal = $state(0);
-	let summariesPage = $state(1);
 	let summariesLoading = $state(false);
 	let summariesError: string | null = $state(null);
 
@@ -99,7 +118,7 @@
 		try {
 			const result = await api.listEvidenceAnalyses({
 				limit: pageSize,
-				offset: (analysesPage - 1) * pageSize
+				offset: (currentPage - 1) * pageSize
 			});
 			if (seq !== analysesSeq) return;
 			analyses = result.analyses;
@@ -117,11 +136,10 @@
 		conflictsLoading = true;
 		conflictsError = null;
 		try {
-			const statusParam = conflictStatusFilter === 'all' ? undefined : conflictStatusFilter;
 			const result = await api.listEvidenceConflicts({
 				limit: pageSize,
-				offset: (conflictsPage - 1) * pageSize,
-				status: statusParam as ConflictStatus | undefined
+				offset: (currentPage - 1) * pageSize,
+				status: conflictStatusFilter === 'all' ? undefined : conflictStatusFilter
 			});
 			if (seq !== conflictsSeq) return;
 			conflicts = result.conflicts;
@@ -155,7 +173,7 @@
 		try {
 			const result = await api.listResearchLogs({
 				limit: pageSize,
-				offset: (logsPage - 1) * pageSize
+				offset: (currentPage - 1) * pageSize
 			});
 			if (seq !== logsSeq) return;
 			logs = result.logs;
@@ -175,7 +193,7 @@
 		try {
 			const result = await api.listProofSummaries({
 				limit: pageSize,
-				offset: (summariesPage - 1) * pageSize
+				offset: (currentPage - 1) * pageSize
 			});
 			if (seq !== summariesSeq) return;
 			summaries = result.summaries;
@@ -188,9 +206,11 @@
 		}
 	}
 
-	// Load data when tab changes
+	// Load the active tab whenever the URL changes its tab, page or filter.
 	$effect(() => {
 		const tab = activeTab;
+		void currentPage;
+		void conflictStatusFilter;
 		untrack(() => {
 			switch (tab) {
 				case 'analyses': loadAnalyses(); break;
@@ -379,17 +399,11 @@
 
 				{#if analysesTotalPages > 1}
 					{@render pagination(
-						analysesPage,
+						currentPage,
 						analysesTotalPages,
 						analysesLoading,
-						() => {
-							analysesPage--;
-							loadAnalyses();
-						},
-						() => {
-							analysesPage++;
-							loadAnalyses();
-						}
+						() => goToPage(currentPage - 1),
+						() => goToPage(currentPage + 1)
 					)}
 				{/if}
 			{/if}
@@ -399,16 +413,12 @@
 		<Tabs.Content value="conflicts">
 			<div class="mb-4 flex flex-wrap items-center justify-between gap-2 pt-2">
 				<div class="flex gap-1">
-					{#each [{ key: 'all', label: 'All' }, { key: 'open', label: 'Open' }, { key: 'resolved', label: 'Resolved' }] as filter}
+					{#each CONFLICT_FILTERS as filter (filter.key)}
 						<Button
 							variant={conflictStatusFilter === filter.key ? 'default' : 'outline'}
 							size="sm"
 							aria-pressed={conflictStatusFilter === filter.key}
-							onclick={() => {
-								conflictStatusFilter = filter.key as 'all' | ConflictStatus;
-								conflictsPage = 1;
-								loadConflicts();
-							}}
+							onclick={() => selectConflictStatus(filter.key)}
 						>
 							{filter.label}
 						</Button>
@@ -500,17 +510,11 @@
 
 				{#if conflictsTotalPages > 1}
 					{@render pagination(
-						conflictsPage,
+						currentPage,
 						conflictsTotalPages,
 						conflictsLoading,
-						() => {
-							conflictsPage--;
-							loadConflicts();
-						},
-						() => {
-							conflictsPage++;
-							loadConflicts();
-						}
+						() => goToPage(currentPage - 1),
+						() => goToPage(currentPage + 1)
 					)}
 				{/if}
 			{/if}
@@ -611,17 +615,11 @@
 
 				{#if logsTotalPages > 1}
 					{@render pagination(
-						logsPage,
+						currentPage,
 						logsTotalPages,
 						logsLoading,
-						() => {
-							logsPage--;
-							loadLogs();
-						},
-						() => {
-							logsPage++;
-							loadLogs();
-						}
+						() => goToPage(currentPage - 1),
+						() => goToPage(currentPage + 1)
 					)}
 				{/if}
 			{/if}
@@ -724,17 +722,11 @@
 
 				{#if summariesTotalPages > 1}
 					{@render pagination(
-						summariesPage,
+						currentPage,
 						summariesTotalPages,
 						summariesLoading,
-						() => {
-							summariesPage--;
-							loadSummaries();
-						},
-						() => {
-							summariesPage++;
-							loadSummaries();
-						}
+						() => goToPage(currentPage - 1),
+						() => goToPage(currentPage + 1)
 					)}
 				{/if}
 			{/if}
