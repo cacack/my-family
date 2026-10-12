@@ -42,6 +42,15 @@ describe('PageHeader', () => {
 		expect(container.querySelector('.page-header-text .note')).not.toBeNull();
 	});
 
+	it('renders badges on the title line', () => {
+		const { container } = render(PageHeader, {
+			props: { title: 'Census', badges: snippet('<span class="badge">active</span>') }
+		});
+		const row = container.querySelector('.title-row');
+		expect(row?.querySelector('h1')?.textContent).toBe('Census');
+		expect(row?.querySelector('.badge')?.textContent).toBe('active');
+	});
+
 	it('omits the actions group when there are no actions', () => {
 		const { container } = render(PageHeader, { props: { title: 'Families' } });
 		expect(container.querySelector('.page-header-actions')).toBeNull();

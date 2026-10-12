@@ -5,6 +5,7 @@
 	import { api, isVersionConflict, recordLoadError, type RepositoryDetail, type Address } from '$lib/api/client';
 	import ExternalLinks from '$lib/components/ExternalLinks.svelte';
 	import { Button } from '$lib/components/ui/button';
+	import ActionBar from '$lib/components/ActionBar.svelte';
 	import FormRow from '$lib/components/FormRow.svelte';
 	import ErrorState from '$lib/components/ErrorState.svelte';
 	import ActionError from '$lib/components/ActionError.svelte';
@@ -202,18 +203,15 @@
 	<title>{repository ? repository.name : 'Repository'} | My Family</title>
 </svelte:head>
 
+{#snippet repositoryActions()}
+	<Button variant="outline" onclick={startEdit}>Edit</Button>
+	<Button variant="destructive" onclick={deleteRepository} disabled={deleting}>
+		{deleting ? 'Deleting...' : 'Delete'}
+	</Button>
+{/snippet}
+
 <div class="repository-page">
-	<header class="page-header">
-		<a href="/repositories" class="back-link">&larr; Repositories</a>
-		{#if repository && !editing}
-			<div class="actions">
-				<Button variant="outline" onclick={startEdit}>Edit</Button>
-				<Button variant="destructive" onclick={deleteRepository} disabled={deleting}>
-					{deleting ? 'Deleting...' : 'Delete'}
-				</Button>
-			</div>
-		{/if}
-	</header>
+	<ActionBar back={{ href: '/repositories', label: 'Repositories' }} actions={repository && !editing ? repositoryActions : undefined} />
 
 	<MainlineNotice
 		message="Repositories are shared across all branches. Creating, editing or deleting a repository here changes the mainline, and every research branch sees the change."
@@ -373,28 +371,6 @@
 		max-width: 800px;
 		margin: 0 auto;
 		padding: 1.5rem;
-	}
-
-	.page-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		margin-bottom: 1.5rem;
-	}
-
-	.back-link {
-		color: var(--color-text-muted);
-		text-decoration: none;
-		font-size: 0.875rem;
-	}
-
-	.back-link:hover {
-		color: var(--color-link);
-	}
-
-	.actions {
-		display: flex;
-		gap: 0.5rem;
 	}
 
 	.loading {

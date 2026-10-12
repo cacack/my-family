@@ -2,6 +2,7 @@
 	import { page } from '$app/stores';
 	import { api, recordLoadError, type AhnentafelResponse, type AhnentafelEntry, formatGenDate } from '$lib/api/client';
 	import { Button } from '$lib/components/ui/button';
+	import ActionBar from '$lib/components/ActionBar.svelte';
 	import { Card, CardHeader, CardContent } from '$lib/components/ui/card';
 	import ErrorState from '$lib/components/ErrorState.svelte';
 	import ActionError from '$lib/components/ActionError.svelte';
@@ -122,33 +123,29 @@
 </svelte:head>
 
 <div class="ahnentafel-page">
-	<header class="page-header no-print">
-		<div class="header-left">
-			{#if report?.subject}
-				<a href="/persons/{report.subject.id}" class="back-link">&larr; Back to {report.subject.given_name} {report.subject.surname}</a>
-			{:else}
-				<a href="/" class="back-link">&larr; Back</a>
-			{/if}
-		</div>
-		<div class="controls">
-			<label>
-				Generations:
-				<select value={generations} onchange={handleGenerationsChange}>
-					{#each Array.from({ length: 9 }, (_, i) => i + 2) as n}
-						<option value={n}>{n}</option>
-					{/each}
-				</select>
-			</label>
-			<Button variant="outline" onclick={handlePrint} disabled={loading || !!error}>
-				Print
-			</Button>
-			<Button variant="outline" onclick={handleExportText} disabled={loading || !!error || exporting}>
-				{exporting ? 'Exporting...' : 'Export Text'}
-			</Button>
-		</div>
-	</header>
-
 	<div class="report-container">
+		<ActionBar
+			back={report?.subject
+				? { href: `/persons/${report.subject.id}`, label: `Back to ${report.subject.given_name} ${report.subject.surname}` }
+				: { href: '/', label: 'Back' }}
+		>
+			{#snippet actions()}
+				<label class="generations">
+					Generations:
+					<select value={generations} onchange={handleGenerationsChange}>
+						{#each Array.from({ length: 9 }, (_, i) => i + 2) as n}
+							<option value={n}>{n}</option>
+						{/each}
+					</select>
+				</label>
+				<Button variant="outline" onclick={handlePrint} disabled={loading || !!error}>
+					Print
+				</Button>
+				<Button variant="outline" onclick={handleExportText} disabled={loading || !!error || exporting}>
+					{exporting ? 'Exporting...' : 'Export Text'}
+				</Button>
+			{/snippet}
+		</ActionBar>
 		{#if exportError}
 			<div class="no-print"><ActionError message={exportError} /></div>
 		{/if}
@@ -299,38 +296,7 @@
 		background: #f8fafc;
 	}
 
-	.page-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		padding: 1rem 1.5rem;
-		background: white;
-		border-bottom: 1px solid #e2e8f0;
-	}
-
-	.header-left {
-		display: flex;
-		align-items: center;
-		gap: 1rem;
-	}
-
-	.back-link {
-		color: var(--color-text-muted);
-		text-decoration: none;
-		font-size: 0.875rem;
-	}
-
-	.back-link:hover {
-		color: var(--color-link);
-	}
-
-	.controls {
-		display: flex;
-		align-items: center;
-		gap: 1rem;
-	}
-
-	.controls label {
+	.generations {
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
@@ -338,7 +304,7 @@
 		color: #475569;
 	}
 
-	.controls select {
+	.generations select {
 		padding: 0.375rem 0.75rem;
 		border: 1px solid #cbd5e1;
 		border-radius: 6px;
@@ -561,17 +527,6 @@
 
 	/* Responsive design */
 	@media (max-width: 768px) {
-		.page-header {
-			flex-direction: column;
-			gap: 1rem;
-			align-items: flex-start;
-		}
-
-		.controls {
-			width: 100%;
-			flex-wrap: wrap;
-		}
-
 		.table-view {
 			display: none;
 		}

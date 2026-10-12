@@ -106,7 +106,7 @@ test('a snapshot taken on a branch compares to now and shows the branch edit mad
 	// Edit the person on the branch.
 	await page.goto(`/persons/${personId}`);
 	await expect(page.getByRole('heading', { level: 1, name: 'Snapshot Branchley' })).toBeVisible();
-	await page.locator('header.page-header').getByRole('button', { name: 'Edit', exact: true }).click();
+	await page.locator('.action-bar').getByRole('button', { name: 'Edit', exact: true }).click();
 	await page.getByLabel('Birth Place').fill('Branchton Parish');
 	await page.getByRole('button', { name: 'Save Changes' }).click();
 	await expect(page.getByRole('button', { name: 'Save Changes' })).toHaveCount(0);

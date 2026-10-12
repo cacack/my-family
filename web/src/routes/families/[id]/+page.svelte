@@ -27,6 +27,7 @@
 	import RollbackSuccessBanner from '$lib/components/RollbackSuccessBanner.svelte';
 	import { createShortcutHandler } from '$lib/keyboard/useShortcuts.svelte';
 	import { Button } from '$lib/components/ui/button';
+	import ActionBar from '$lib/components/ActionBar.svelte';
 	import FormRow from '$lib/components/FormRow.svelte';
 	import { Badge } from '$lib/components/ui/badge';
 	import { activeBranch } from '$lib/stores/activeBranch.svelte';
@@ -452,17 +453,16 @@
 	{announcement}
 </div>
 
+{#snippet familyActions()}
+	{#if family}
+		<Button variant="outline" href="/families/{family.id}/group-sheet">Group Sheet</Button>
+		<Button variant="outline" onclick={startEdit} bind:ref={editButton}>Edit</Button>
+		<Button variant="destructive" onclick={deleteFamily}>Delete</Button>
+	{/if}
+{/snippet}
+
 <div class="family-page">
-	<header class="page-header">
-		<a href="/families" class="back-link">&larr; Families</a>
-		{#if family && !editing}
-			<div class="actions">
-				<Button variant="outline" href="/families/{family.id}/group-sheet">Group Sheet</Button>
-				<Button variant="outline" onclick={startEdit} bind:ref={editButton}>Edit</Button>
-				<Button variant="destructive" onclick={deleteFamily}>Delete</Button>
-			</div>
-		{/if}
-	</header>
+	<ActionBar back={{ href: '/families', label: 'Families' }} actions={family && !editing ? familyActions : undefined} />
 
 	{#if loading}
 		<div class="loading">Loading...</div>
@@ -731,37 +731,12 @@
 		padding: 1.5rem;
 	}
 
-	.page-header {
-		display: flex;
-		flex-wrap: wrap;
-		justify-content: space-between;
-		align-items: center;
-		gap: 0.75rem;
-		margin-bottom: 1.5rem;
-	}
-
 	.rollback-mainline-only {
 		margin: 0 0 0.75rem;
 		font-size: 0.8125rem;
 		font-style: italic;
 		color: var(--color-text-muted);
 		line-height: 1.5;
-	}
-
-	.back-link {
-		color: var(--color-text-muted);
-		text-decoration: none;
-		font-size: 0.875rem;
-	}
-
-	.back-link:hover {
-		color: var(--color-link);
-	}
-
-	.actions {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.5rem;
 	}
 
 	.loading {

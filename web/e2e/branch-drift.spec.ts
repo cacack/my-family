@@ -109,7 +109,7 @@ test('the banner re-reads the counts when the tab regains focus and after a bran
 	await page.goto(`/persons/${otherPerson.id}`);
 	await expect(page.getByRole('heading', { level: 1, name: 'Percival Driftwood' })).toBeVisible();
 	await expect(banner.getByTestId('branch-drift')).toBeVisible();
-	await page.locator('header.page-header').getByRole('button', { name: 'Edit', exact: true }).click();
+	await page.locator('.action-bar').getByRole('button', { name: 'Edit', exact: true }).click();
 	await page.getByLabel('Birth Place').fill('Branch Village');
 	const reread = page.waitForRequest(
 		(req) => req.method() === 'GET' && req.url().includes(`/api/v1/branches/${branch.id}/drift`)
