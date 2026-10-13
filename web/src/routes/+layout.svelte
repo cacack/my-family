@@ -334,6 +334,12 @@
 		border-color: #bfdbfe;
 	}
 
+	/* Inverted, like the active main-nav entry (MainNav.svelte). */
+	:global(body.high-contrast) .icon-btn.active {
+		background: var(--color-text);
+		color: var(--color-bg);
+	}
+
 	:global(body.high-contrast) .icon-btn:focus {
 		outline-color: var(--color-focus-ring);
 	}
