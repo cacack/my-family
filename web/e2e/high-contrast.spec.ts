@@ -42,6 +42,9 @@ async function expectNoContrastFailures(page: Page) {
 /** The high-contrast `--color-link`, as `getComputedStyle` reports it. */
 const LINK_COLOUR = 'rgb(0, 0, 238)';
 
+/** The high-contrast `--color-link-hover`. */
+const LINK_HOVER_COLOUR = 'rgb(0, 0, 170)';
+
 async function linkStyle(link: Locator) {
 	return link.evaluate((el) => {
 		const style = getComputedStyle(el);
@@ -107,8 +110,10 @@ test('the header Advanced search icon shows it is the current page', async ({ pa
 
 /*
  * Both pages style their links with a component-scoped `a { ... }` rule, which
- * once beat the high-contrast link rule (#961). The data is this spec's own:
- * the shared seed has no child and no branch subject to link to.
+ * once beat the high-contrast link rule (#961), and with a scoped `a:hover`
+ * rule that must not beat the high-contrast hover colour (#983). The data is
+ * this spec's own: the shared seed has no child and no branch subject to link
+ * to.
  */
 test.describe('component-styled text links', () => {
 	let familyId: string;
@@ -139,7 +144,7 @@ test.describe('component-styled text links', () => {
 		subjectName = `Ida ${surname}`;
 	});
 
-	test('family detail: the children list links are underlined in the link colour', async ({
+	test('family detail: the children list links are underlined in the link colours', async ({
 		page
 	}) => {
 		await page.goto(`/families/${familyId}`);
@@ -148,9 +153,11 @@ test.describe('component-styled text links', () => {
 		expect(await linkStyle(link)).toEqual({ color: LINK_COLOUR, decoration: 'underline' });
 		await page.waitForLoadState('networkidle');
 		await expectNoContrastFailures(page);
+		await link.hover();
+		await expect(link).toHaveCSS('color', LINK_HOVER_COLOUR);
 	});
 
-	test('branch view: the research subject links are underlined in the link colour', async ({
+	test('branch view: the research subject links are underlined in the link colours', async ({
 		page
 	}) => {
 		await page.goto(`/branches/${branchId}`);
@@ -159,5 +166,7 @@ test.describe('component-styled text links', () => {
 		expect(await linkStyle(link)).toEqual({ color: LINK_COLOUR, decoration: 'underline' });
 		await page.waitForLoadState('networkidle');
 		await expectNoContrastFailures(page);
+		await link.hover();
+		await expect(link).toHaveCSS('color', LINK_HOVER_COLOUR);
 	});
 });
