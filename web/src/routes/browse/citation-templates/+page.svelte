@@ -264,7 +264,7 @@
 
 	.template-grid {
 		display: grid;
-		grid-template-columns: repeat(3, 1fr);
+		grid-template-columns: repeat(auto-fit, minmax(min(20rem, 100%), 1fr));
 		gap: 1rem;
 	}
 
@@ -345,17 +345,7 @@
 	}
 
 	/* Responsive */
-	@media (max-width: 1024px) {
-		.template-grid {
-			grid-template-columns: repeat(2, 1fr);
-		}
-	}
-
 	@media (max-width: 640px) {
-		.template-grid {
-			grid-template-columns: 1fr;
-		}
-
 		.filters {
 			flex-direction: column;
 			align-items: stretch;

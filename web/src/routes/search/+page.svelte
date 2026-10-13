@@ -856,7 +856,7 @@
 	/* Date ranges */
 	.date-grid {
 		display: grid;
-		grid-template-columns: repeat(2, 1fr);
+		grid-template-columns: repeat(auto-fit, minmax(min(20rem, 100%), 1fr));
 		gap: 1rem;
 	}
 
@@ -898,7 +898,7 @@
 	/* Place filters */
 	.place-grid {
 		display: grid;
-		grid-template-columns: repeat(2, 1fr);
+		grid-template-columns: repeat(auto-fit, minmax(min(20rem, 100%), 1fr));
 		gap: 1rem;
 	}
 
@@ -1212,14 +1212,6 @@
 	@media (max-width: 640px) {
 		.search-page {
 			padding: 1rem;
-		}
-
-		.date-grid {
-			grid-template-columns: 1fr;
-		}
-
-		.place-grid {
-			grid-template-columns: 1fr;
 		}
 
 		.form-actions {
