@@ -35,20 +35,23 @@ describe.each([
 
 	const generations = () => screen.getByLabelText('Generations:') as HTMLSelectElement;
 	const layoutButton = (label: string) => screen.getByTitle(`${label} layout`);
+	// The aria-pressed state of the Compact, Standard and Wide buttons, in order.
+	const pressedLayouts = () =>
+		['Compact', 'Standard', 'Wide'].map((label) => layoutButton(label).getAttribute('aria-pressed'));
 
 	it('reads generations and layout from the URL', async () => {
 		resetRouter(`/${name}/p-1?gens=7&layout=wide`, { id: 'p-1' });
 		render(Page);
 		await waitFor(() => expect(load()).toHaveBeenCalledWith('p-1', 7));
 		expect(generations().value).toBe('7');
-		expect(layoutButton('Wide').classList.contains('active')).toBe(true);
+		expect(pressedLayouts()).toEqual(['false', 'false', 'true']);
 	});
 
 	it('defaults to 4 generations, compact, with a clean URL', async () => {
 		resetRouter(`/${name}/p-1`, { id: 'p-1' });
 		render(Page);
 		await waitFor(() => expect(load()).toHaveBeenCalledWith('p-1', 4));
-		expect(layoutButton('Compact').classList.contains('active')).toBe(true);
+		expect(pressedLayouts()).toEqual(['true', 'false', 'false']);
 	});
 
 	it('replaces the URL on option changes and reloads only for generations', async () => {
@@ -62,7 +65,7 @@ describe.each([
 
 		await fireEvent.click(layoutButton('Standard'));
 		await waitFor(() => expect(currentPath()).toBe(`/${name}/p-1?gens=6&layout=standard`));
-		expect(layoutButton('Standard').classList.contains('active')).toBe(true);
+		expect(pressedLayouts()).toEqual(['false', 'true', 'false']);
 		expect(load()).toHaveBeenCalledTimes(2);
 		expect(historyLength()).toBe(1);
 
