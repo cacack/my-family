@@ -167,6 +167,52 @@ func TestLDSOrdinance_RejectsInvalidDate(t *testing.T) {
 	requireDateError(t, err, "date", "is not a recognized date")
 }
 
+// A source's publish date is a strict date like every other entered date
+// (issue #957); free text can still be kept as a date phrase.
+func TestSource_RejectsInvalidPublishDate(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(memory.NewEventStore(), readStore)
+	ctx := context.Background()
+
+	_, err := handler.CreateSource(ctx, command.CreateSourceInput{Title: "Census", PublishDate: "31 FEB 1900"})
+	requireDateError(t, err, "publish_date", "is not a real calendar date")
+
+	_, err = handler.CreateSource(ctx, command.CreateSourceInput{Title: "Census", PublishDate: "garbage"})
+	requireDateError(t, err, "publish_date", "is not a recognized date")
+
+	created, err := handler.CreateSource(ctx, command.CreateSourceInput{Title: "Census", PublishDate: "15 Mar 1920"})
+	if err != nil {
+		t.Fatalf("CreateSource: %v", err)
+	}
+	source, _ := readStore.GetSource(ctx, domain.MainBranchID, created.ID)
+	if source.PublishDateRaw != "15 MAR 1920" {
+		t.Errorf("PublishDateRaw = %q, want 15 MAR 1920", source.PublishDateRaw)
+	}
+
+	_, err = handler.UpdateSource(ctx, command.UpdateSourceInput{ID: created.ID, PublishDate: strPtr("31 FEB 1900"), Version: created.Version})
+	requireDateError(t, err, "publish_date", "is not a real calendar date")
+
+	_, err = handler.UpdateSource(ctx, command.UpdateSourceInput{ID: created.ID, PublishDate: strPtr("garbage"), Version: created.Version})
+	requireDateError(t, err, "publish_date", "is not a recognized date")
+
+	// Retyping the stored date in English is not a change.
+	same, err := handler.UpdateSource(ctx, command.UpdateSourceInput{ID: created.ID, PublishDate: strPtr("15 March 1920"), Version: created.Version})
+	if err != nil {
+		t.Fatalf("UpdateSource with the same date: %v", err)
+	}
+	if same.Version != created.Version {
+		t.Errorf("version = %d, want unchanged %d", same.Version, created.Version)
+	}
+
+	if _, err := handler.UpdateSource(ctx, command.UpdateSourceInput{ID: created.ID, PublishDate: strPtr("(second edition, undated)"), Version: created.Version}); err != nil {
+		t.Fatalf("UpdateSource with a date phrase: %v", err)
+	}
+	source, _ = readStore.GetSource(ctx, domain.MainBranchID, created.ID)
+	if source.PublishDateRaw != "(second edition, undated)" {
+		t.Errorf("PublishDateRaw = %q, want the phrase kept", source.PublishDateRaw)
+	}
+}
+
 // Plain-English dates are stored in GEDCOM form on every date entry point
 // (issue #978).
 func TestDateInput_StoresEnglishAsGEDCOM(t *testing.T) {

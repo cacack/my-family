@@ -3984,6 +3984,10 @@ export interface components {
             title: string;
             author?: string;
             publisher?: string;
+            /**
+             * @description Date as a GEDCOM date or plain English (stored in GEDCOM form); an unrecognized or impossible date is rejected with 400. Free text can be kept as a date phrase in parentheses.
+             * @example 15 MAR 1920
+             */
             publish_date?: string;
             /** Format: uri */
             url?: string;
@@ -3997,6 +4001,10 @@ export interface components {
             title?: string;
             author?: string;
             publisher?: string;
+            /**
+             * @description Date as a GEDCOM date or plain English (stored in GEDCOM form); an unrecognized or impossible date is rejected with 400. Free text can be kept as a date phrase in parentheses.
+             * @example 15 MAR 1920
+             */
             publish_date?: string;
             /** Format: uri */
             url?: string;

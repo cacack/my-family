@@ -61,6 +61,7 @@ func TestDateInput_RejectionDetails(t *testing.T) {
 		{"unreadable person date", http.MethodPost, "/api/v1/persons", `{"given_name":"Jane","birth_date":"Sept 5, 1850"}`, "birth_date", true},
 		{"impossible person date", http.MethodPost, "/api/v1/persons", `{"given_name":"Jane","death_date":"31 February 1900"}`, "death_date", false},
 		{"unreadable marriage date", http.MethodPost, "/api/v1/families", fmt.Sprintf(`{"partner1_id":%q,"marriage_date":"spring 1875"}`, personID), "marriage_date", true},
+		{"impossible source publish date", http.MethodPost, "/api/v1/sources", `{"title":"Census","publish_date":"31 FEB 1900"}`, "publish_date", false},
 		{"unreadable ordinance date", http.MethodPut, "/api/v1/lds-ordinances/" + ordinanceID, fmt.Sprintf(`{"version":%d,"date":"garbage"}`, version), "date", true},
 	}
 	for _, tt := range tests {
@@ -69,7 +70,11 @@ func TestDateInput_RejectionDetails(t *testing.T) {
 			if rec.Code != http.StatusBadRequest {
 				t.Fatalf("status = %d %s, want 400", rec.Code, rec.Body.String())
 			}
-			details, _ := decodeBody(t, rec)["details"].(map[string]any)
+			body := decodeBody(t, rec)
+			if msg, _ := body["message"].(string); !strings.Contains(msg, tt.field) {
+				t.Errorf("message = %q, want it to name %s", msg, tt.field)
+			}
+			details, _ := body["details"].(map[string]any)
 			if details["field"] != tt.field || details["unreadable"] != tt.unreadable {
 				t.Errorf("details = %v, want field %s unreadable %v", details, tt.field, tt.unreadable)
 			}

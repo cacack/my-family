@@ -5427,6 +5427,10 @@ type SourceCreate struct {
 	CallNumber     *string `json:"call_number,omitempty"`
 	CollectionName *string `json:"collection_name,omitempty"`
 	Notes          *string `json:"notes,omitempty"`
+
+	// PublishDate Date as a GEDCOM date or plain English (stored in GEDCOM form); an unrecognized or impossible date is rejected with 400. Free text can be kept as a date phrase in parentheses.
+	//
+	// Example: 15 MAR 1920
 	PublishDate    *string `json:"publish_date,omitempty"`
 	Publisher      *string `json:"publisher,omitempty"`
 	RepositoryName *string `json:"repository_name,omitempty"`
@@ -5491,6 +5495,10 @@ type SourceUpdate struct {
 	CallNumber     *string `json:"call_number,omitempty"`
 	CollectionName *string `json:"collection_name,omitempty"`
 	Notes          *string `json:"notes,omitempty"`
+
+	// PublishDate Date as a GEDCOM date or plain English (stored in GEDCOM form); an unrecognized or impossible date is rejected with 400. Free text can be kept as a date phrase in parentheses.
+	//
+	// Example: 15 MAR 1920
 	PublishDate    *string `json:"publish_date,omitempty"`
 	Publisher      *string `json:"publisher,omitempty"`
 	RepositoryName *string `json:"repository_name,omitempty"`
