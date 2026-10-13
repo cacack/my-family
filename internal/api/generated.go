@@ -3153,7 +3153,9 @@ type DataLossItem struct {
 // or `Sept 5, 1850`), a date without a year, or a date that doesn't
 // exist in the calendar (such as `31 FEB 1900`) is rejected with 400;
 // the error's `details` name the field and say whether the text can be
-// kept as a date phrase.
+// kept as a date phrase. On update, a date identical to the stored value
+// is not re-checked, so an imported date the parser can't read never
+// blocks an unrelated edit.
 //
 // Example: 1 JAN 1850
 type DateInput = string
@@ -3580,7 +3582,9 @@ type FamilyCreate struct {
 	// or `Sept 5, 1850`), a date without a year, or a date that doesn't
 	// exist in the calendar (such as `31 FEB 1900`) is rejected with 400;
 	// the error's `details` name the field and say whether the text can be
-	// kept as a date phrase.
+	// kept as a date phrase. On update, a date identical to the stored value
+	// is not re-checked, so an imported date the parser can't read never
+	// blocks an unrelated edit.
 	//
 	//
 	// Example: 1 JAN 1850
@@ -3687,7 +3691,9 @@ type FamilyUpdate struct {
 	// or `Sept 5, 1850`), a date without a year, or a date that doesn't
 	// exist in the calendar (such as `31 FEB 1900`) is rejected with 400;
 	// the error's `details` name the field and say whether the text can be
-	// kept as a date phrase.
+	// kept as a date phrase. On update, a date identical to the stored value
+	// is not re-checked, so an imported date the parser can't read never
+	// blocks an unrelated edit.
 	//
 	//
 	// Example: 1 JAN 1850
@@ -3924,7 +3930,9 @@ type LDSOrdinanceCreate struct {
 	// or `Sept 5, 1850`), a date without a year, or a date that doesn't
 	// exist in the calendar (such as `31 FEB 1900`) is rejected with 400;
 	// the error's `details` name the field and say whether the text can be
-	// kept as a date phrase.
+	// kept as a date phrase. On update, a date identical to the stored value
+	// is not re-checked, so an imported date the parser can't read never
+	// blocks an unrelated edit.
 	//
 	//
 	// Example: 1 JAN 1850
@@ -3992,7 +4000,9 @@ type LDSOrdinanceUpdate struct {
 	// or `Sept 5, 1850`), a date without a year, or a date that doesn't
 	// exist in the calendar (such as `31 FEB 1900`) is rejected with 400;
 	// the error's `details` name the field and say whether the text can be
-	// kept as a date phrase.
+	// kept as a date phrase. On update, a date identical to the stored value
+	// is not re-checked, so an imported date the parser can't read never
+	// blocks an unrelated edit.
 	//
 	//
 	// Example: 1 JAN 1850
@@ -4795,7 +4805,9 @@ type PersonCreate struct {
 	// or `Sept 5, 1850`), a date without a year, or a date that doesn't
 	// exist in the calendar (such as `31 FEB 1900`) is rejected with 400;
 	// the error's `details` name the field and say whether the text can be
-	// kept as a date phrase.
+	// kept as a date phrase. On update, a date identical to the stored value
+	// is not re-checked, so an imported date the parser can't read never
+	// blocks an unrelated edit.
 	//
 	//
 	// Example: 1 JAN 1850
@@ -4822,7 +4834,9 @@ type PersonCreate struct {
 	// or `Sept 5, 1850`), a date without a year, or a date that doesn't
 	// exist in the calendar (such as `31 FEB 1900`) is rejected with 400;
 	// the error's `details` name the field and say whether the text can be
-	// kept as a date phrase.
+	// kept as a date phrase. On update, a date identical to the stored value
+	// is not re-checked, so an imported date the parser can't read never
+	// blocks an unrelated edit.
 	//
 	//
 	// Example: 1 JAN 1850
@@ -4996,7 +5010,9 @@ type PersonUpdate struct {
 	// or `Sept 5, 1850`), a date without a year, or a date that doesn't
 	// exist in the calendar (such as `31 FEB 1900`) is rejected with 400;
 	// the error's `details` name the field and say whether the text can be
-	// kept as a date phrase.
+	// kept as a date phrase. On update, a date identical to the stored value
+	// is not re-checked, so an imported date the parser can't read never
+	// blocks an unrelated edit.
 	//
 	//
 	// Example: 1 JAN 1850
@@ -5023,7 +5039,9 @@ type PersonUpdate struct {
 	// or `Sept 5, 1850`), a date without a year, or a date that doesn't
 	// exist in the calendar (such as `31 FEB 1900`) is rejected with 400;
 	// the error's `details` name the field and say whether the text can be
-	// kept as a date phrase.
+	// kept as a date phrase. On update, a date identical to the stored value
+	// is not re-checked, so an imported date the parser can't read never
+	// blocks an unrelated edit.
 	//
 	//
 	// Example: 1 JAN 1850
@@ -5664,7 +5682,9 @@ type SourceCreate struct {
 	// or `Sept 5, 1850`), a date without a year, or a date that doesn't
 	// exist in the calendar (such as `31 FEB 1900`) is rejected with 400;
 	// the error's `details` name the field and say whether the text can be
-	// kept as a date phrase.
+	// kept as a date phrase. On update, a date identical to the stored value
+	// is not re-checked, so an imported date the parser can't read never
+	// blocks an unrelated edit.
 	//
 	//
 	// Example: 1 JAN 1850
@@ -5753,7 +5773,9 @@ type SourceUpdate struct {
 	// or `Sept 5, 1850`), a date without a year, or a date that doesn't
 	// exist in the calendar (such as `31 FEB 1900`) is rejected with 400;
 	// the error's `details` name the field and say whether the text can be
-	// kept as a date phrase.
+	// kept as a date phrase. On update, a date identical to the stored value
+	// is not re-checked, so an imported date the parser can't read never
+	// blocks an unrelated edit.
 	//
 	//
 	// Example: 1 JAN 1850
