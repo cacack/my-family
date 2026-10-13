@@ -3133,6 +3133,31 @@ type DataLossItem struct {
 	Reason string `json:"reason"`
 }
 
+// DateInput A date as entered, stored in GEDCOM form. Accepted forms:
+//
+//   - GEDCOM dates: `1850`, `MAR 1850`, `15 MAR 1850`, including dual
+//     years (`1 JAN 1750/51`) and BC years (`44 BC`).
+//   - GEDCOM qualifiers: `ABT`, `CAL`, `EST`, `BEF`, `AFT`,
+//     `BET ... AND ...`, `FROM ... TO ...`, `FROM ...`, `TO ...`, and
+//     interpreted dates such as `INT 1850 (about eighteen fifty)`.
+//   - Calendar escapes: `@#DJULIAN@`, `@#DHEBREW@`, `@#DFRENCH R@`
+//     (for example `@#DJULIAN@ 29 FEB 1700`).
+//   - Plain English, converted to GEDCOM before it is checked and stored:
+//     about, circa, c., ca., before, after, `between X and Y`,
+//     `from X to Y`, and month names in full, as three letters or as
+//     "Sept". For example `about Sept 1850` is stored as `ABT SEP 1850`.
+//   - A date phrase in parentheses, such as `(about the time of the war)`,
+//     kept as text.
+//
+// An empty string means no date. Any other text (such as `1850-01-01`
+// or `Sept 5, 1850`), a date without a year, or a date that doesn't
+// exist in the calendar (such as `31 FEB 1900`) is rejected with 400;
+// the error's `details` name the field and say whether the text can be
+// kept as a date phrase.
+//
+// Example: 1 JAN 1850
+type DateInput = string
+
 // DateRange defines model for DateRange.
 type DateRange struct {
 	// EarliestBirth Earliest birth year in the tree
@@ -3535,7 +3560,31 @@ type FamilyChild struct {
 
 // FamilyCreate defines model for FamilyCreate.
 type FamilyCreate struct {
-	MarriageDate  *string             `json:"marriage_date,omitempty"`
+	// MarriageDate A date as entered, stored in GEDCOM form. Accepted forms:
+	//
+	// - GEDCOM dates: `1850`, `MAR 1850`, `15 MAR 1850`, including dual
+	//   years (`1 JAN 1750/51`) and BC years (`44 BC`).
+	// - GEDCOM qualifiers: `ABT`, `CAL`, `EST`, `BEF`, `AFT`,
+	//   `BET ... AND ...`, `FROM ... TO ...`, `FROM ...`, `TO ...`, and
+	//   interpreted dates such as `INT 1850 (about eighteen fifty)`.
+	// - Calendar escapes: `@#DJULIAN@`, `@#DHEBREW@`, `@#DFRENCH R@`
+	//   (for example `@#DJULIAN@ 29 FEB 1700`).
+	// - Plain English, converted to GEDCOM before it is checked and stored:
+	//   about, circa, c., ca., before, after, `between X and Y`,
+	//   `from X to Y`, and month names in full, as three letters or as
+	//   "Sept". For example `about Sept 1850` is stored as `ABT SEP 1850`.
+	// - A date phrase in parentheses, such as `(about the time of the war)`,
+	//   kept as text.
+	//
+	// An empty string means no date. Any other text (such as `1850-01-01`
+	// or `Sept 5, 1850`), a date without a year, or a date that doesn't
+	// exist in the calendar (such as `31 FEB 1900`) is rejected with 400;
+	// the error's `details` name the field and say whether the text can be
+	// kept as a date phrase.
+	//
+	//
+	// Example: 1 JAN 1850
+	MarriageDate  *DateInput          `json:"marriage_date,omitempty"`
 	MarriagePlace *string             `json:"marriage_place,omitempty"`
 	Partner1Id    *openapi_types.UUID `json:"partner1_id,omitempty"`
 	Partner2Id    *openapi_types.UUID `json:"partner2_id,omitempty"`
@@ -3616,9 +3665,34 @@ type FamilyUpdate struct {
 	ClearPartner1 *bool `json:"clear_partner1,omitempty"`
 
 	// ClearPartner2 Remove partner 2 from the family. Cannot be combined with partner2_id.
-	ClearPartner2 *bool   `json:"clear_partner2,omitempty"`
-	MarriageDate  *string `json:"marriage_date,omitempty"`
-	MarriagePlace *string `json:"marriage_place,omitempty"`
+	ClearPartner2 *bool `json:"clear_partner2,omitempty"`
+
+	// MarriageDate A date as entered, stored in GEDCOM form. Accepted forms:
+	//
+	// - GEDCOM dates: `1850`, `MAR 1850`, `15 MAR 1850`, including dual
+	//   years (`1 JAN 1750/51`) and BC years (`44 BC`).
+	// - GEDCOM qualifiers: `ABT`, `CAL`, `EST`, `BEF`, `AFT`,
+	//   `BET ... AND ...`, `FROM ... TO ...`, `FROM ...`, `TO ...`, and
+	//   interpreted dates such as `INT 1850 (about eighteen fifty)`.
+	// - Calendar escapes: `@#DJULIAN@`, `@#DHEBREW@`, `@#DFRENCH R@`
+	//   (for example `@#DJULIAN@ 29 FEB 1700`).
+	// - Plain English, converted to GEDCOM before it is checked and stored:
+	//   about, circa, c., ca., before, after, `between X and Y`,
+	//   `from X to Y`, and month names in full, as three letters or as
+	//   "Sept". For example `about Sept 1850` is stored as `ABT SEP 1850`.
+	// - A date phrase in parentheses, such as `(about the time of the war)`,
+	//   kept as text.
+	//
+	// An empty string means no date. Any other text (such as `1850-01-01`
+	// or `Sept 5, 1850`), a date without a year, or a date that doesn't
+	// exist in the calendar (such as `31 FEB 1900`) is rejected with 400;
+	// the error's `details` name the field and say whether the text can be
+	// kept as a date phrase.
+	//
+	//
+	// Example: 1 JAN 1850
+	MarriageDate  *DateInput `json:"marriage_date,omitempty"`
+	MarriagePlace *string    `json:"marriage_place,omitempty"`
 
 	// Partner1Id Set partner 1 to this person. Omit to leave partner 1 unchanged.
 	Partner1Id *openapi_types.UUID `json:"partner1_id,omitempty"`
@@ -3830,8 +3904,31 @@ type LDSOrdinance struct {
 
 // LDSOrdinanceCreate defines model for LDSOrdinanceCreate.
 type LDSOrdinanceCreate struct {
-	// Date Date string in GEDCOM format
-	Date *string `json:"date,omitempty"`
+	// Date A date as entered, stored in GEDCOM form. Accepted forms:
+	//
+	// - GEDCOM dates: `1850`, `MAR 1850`, `15 MAR 1850`, including dual
+	//   years (`1 JAN 1750/51`) and BC years (`44 BC`).
+	// - GEDCOM qualifiers: `ABT`, `CAL`, `EST`, `BEF`, `AFT`,
+	//   `BET ... AND ...`, `FROM ... TO ...`, `FROM ...`, `TO ...`, and
+	//   interpreted dates such as `INT 1850 (about eighteen fifty)`.
+	// - Calendar escapes: `@#DJULIAN@`, `@#DHEBREW@`, `@#DFRENCH R@`
+	//   (for example `@#DJULIAN@ 29 FEB 1700`).
+	// - Plain English, converted to GEDCOM before it is checked and stored:
+	//   about, circa, c., ca., before, after, `between X and Y`,
+	//   `from X to Y`, and month names in full, as three letters or as
+	//   "Sept". For example `about Sept 1850` is stored as `ABT SEP 1850`.
+	// - A date phrase in parentheses, such as `(about the time of the war)`,
+	//   kept as text.
+	//
+	// An empty string means no date. Any other text (such as `1850-01-01`
+	// or `Sept 5, 1850`), a date without a year, or a date that doesn't
+	// exist in the calendar (such as `31 FEB 1900`) is rejected with 400;
+	// the error's `details` name the field and say whether the text can be
+	// kept as a date phrase.
+	//
+	//
+	// Example: 1 JAN 1850
+	Date *DateInput `json:"date,omitempty"`
 
 	// FamilyId Required for spouse sealing (SLGS)
 	FamilyId *openapi_types.UUID `json:"family_id,omitempty"`
@@ -3875,8 +3972,31 @@ type LDSOrdinanceType string
 
 // LDSOrdinanceUpdate defines model for LDSOrdinanceUpdate.
 type LDSOrdinanceUpdate struct {
-	// Date Updated date
-	Date *string `json:"date,omitempty"`
+	// Date A date as entered, stored in GEDCOM form. Accepted forms:
+	//
+	// - GEDCOM dates: `1850`, `MAR 1850`, `15 MAR 1850`, including dual
+	//   years (`1 JAN 1750/51`) and BC years (`44 BC`).
+	// - GEDCOM qualifiers: `ABT`, `CAL`, `EST`, `BEF`, `AFT`,
+	//   `BET ... AND ...`, `FROM ... TO ...`, `FROM ...`, `TO ...`, and
+	//   interpreted dates such as `INT 1850 (about eighteen fifty)`.
+	// - Calendar escapes: `@#DJULIAN@`, `@#DHEBREW@`, `@#DFRENCH R@`
+	//   (for example `@#DJULIAN@ 29 FEB 1700`).
+	// - Plain English, converted to GEDCOM before it is checked and stored:
+	//   about, circa, c., ca., before, after, `between X and Y`,
+	//   `from X to Y`, and month names in full, as three letters or as
+	//   "Sept". For example `about Sept 1850` is stored as `ABT SEP 1850`.
+	// - A date phrase in parentheses, such as `(about the time of the war)`,
+	//   kept as text.
+	//
+	// An empty string means no date. Any other text (such as `1850-01-01`
+	// or `Sept 5, 1850`), a date without a year, or a date that doesn't
+	// exist in the calendar (such as `31 FEB 1900`) is rejected with 400;
+	// the error's `details` name the field and say whether the text can be
+	// kept as a date phrase.
+	//
+	//
+	// Example: 1 JAN 1850
+	Date *DateInput `json:"date,omitempty"`
 
 	// Place Updated place
 	Place *string `json:"place,omitempty"`
@@ -4655,18 +4775,62 @@ type Person struct {
 
 // PersonCreate defines model for PersonCreate.
 type PersonCreate struct {
-	// BirthDate GEDCOM-format date string
+	// BirthDate A date as entered, stored in GEDCOM form. Accepted forms:
+	//
+	// - GEDCOM dates: `1850`, `MAR 1850`, `15 MAR 1850`, including dual
+	//   years (`1 JAN 1750/51`) and BC years (`44 BC`).
+	// - GEDCOM qualifiers: `ABT`, `CAL`, `EST`, `BEF`, `AFT`,
+	//   `BET ... AND ...`, `FROM ... TO ...`, `FROM ...`, `TO ...`, and
+	//   interpreted dates such as `INT 1850 (about eighteen fifty)`.
+	// - Calendar escapes: `@#DJULIAN@`, `@#DHEBREW@`, `@#DFRENCH R@`
+	//   (for example `@#DJULIAN@ 29 FEB 1700`).
+	// - Plain English, converted to GEDCOM before it is checked and stored:
+	//   about, circa, c., ca., before, after, `between X and Y`,
+	//   `from X to Y`, and month names in full, as three letters or as
+	//   "Sept". For example `about Sept 1850` is stored as `ABT SEP 1850`.
+	// - A date phrase in parentheses, such as `(about the time of the war)`,
+	//   kept as text.
+	//
+	// An empty string means no date. Any other text (such as `1850-01-01`
+	// or `Sept 5, 1850`), a date without a year, or a date that doesn't
+	// exist in the calendar (such as `31 FEB 1900`) is rejected with 400;
+	// the error's `details` name the field and say whether the text can be
+	// kept as a date phrase.
+	//
 	//
 	// Example: 1 JAN 1850
-	BirthDate  *string `json:"birth_date,omitempty"`
-	BirthPlace *string `json:"birth_place,omitempty"`
+	BirthDate  *DateInput `json:"birth_date,omitempty"`
+	BirthPlace *string    `json:"birth_place,omitempty"`
 
-	// DeathDate GEDCOM-format date string
-	DeathDate  *string `json:"death_date,omitempty"`
-	DeathPlace *string `json:"death_place,omitempty"`
-	Gender     *Gender `json:"gender,omitempty"`
-	GivenName  string  `json:"given_name"`
-	Notes      *string `json:"notes,omitempty"`
+	// DeathDate A date as entered, stored in GEDCOM form. Accepted forms:
+	//
+	// - GEDCOM dates: `1850`, `MAR 1850`, `15 MAR 1850`, including dual
+	//   years (`1 JAN 1750/51`) and BC years (`44 BC`).
+	// - GEDCOM qualifiers: `ABT`, `CAL`, `EST`, `BEF`, `AFT`,
+	//   `BET ... AND ...`, `FROM ... TO ...`, `FROM ...`, `TO ...`, and
+	//   interpreted dates such as `INT 1850 (about eighteen fifty)`.
+	// - Calendar escapes: `@#DJULIAN@`, `@#DHEBREW@`, `@#DFRENCH R@`
+	//   (for example `@#DJULIAN@ 29 FEB 1700`).
+	// - Plain English, converted to GEDCOM before it is checked and stored:
+	//   about, circa, c., ca., before, after, `between X and Y`,
+	//   `from X to Y`, and month names in full, as three letters or as
+	//   "Sept". For example `about Sept 1850` is stored as `ABT SEP 1850`.
+	// - A date phrase in parentheses, such as `(about the time of the war)`,
+	//   kept as text.
+	//
+	// An empty string means no date. Any other text (such as `1850-01-01`
+	// or `Sept 5, 1850`), a date without a year, or a date that doesn't
+	// exist in the calendar (such as `31 FEB 1900`) is rejected with 400;
+	// the error's `details` name the field and say whether the text can be
+	// kept as a date phrase.
+	//
+	//
+	// Example: 1 JAN 1850
+	DeathDate  *DateInput `json:"death_date,omitempty"`
+	DeathPlace *string    `json:"death_place,omitempty"`
+	Gender     *Gender    `json:"gender,omitempty"`
+	GivenName  string     `json:"given_name"`
+	Notes      *string    `json:"notes,omitempty"`
 
 	// ResearchStatus Confidence level of genealogical data per GPS standards
 	//
@@ -4812,13 +4976,62 @@ type PersonSummary struct {
 
 // PersonUpdate defines model for PersonUpdate.
 type PersonUpdate struct {
-	BirthDate  *string `json:"birth_date,omitempty"`
-	BirthPlace *string `json:"birth_place,omitempty"`
-	DeathDate  *string `json:"death_date,omitempty"`
-	DeathPlace *string `json:"death_place,omitempty"`
-	Gender     *Gender `json:"gender,omitempty"`
-	GivenName  *string `json:"given_name,omitempty"`
-	Notes      *string `json:"notes,omitempty"`
+	// BirthDate A date as entered, stored in GEDCOM form. Accepted forms:
+	//
+	// - GEDCOM dates: `1850`, `MAR 1850`, `15 MAR 1850`, including dual
+	//   years (`1 JAN 1750/51`) and BC years (`44 BC`).
+	// - GEDCOM qualifiers: `ABT`, `CAL`, `EST`, `BEF`, `AFT`,
+	//   `BET ... AND ...`, `FROM ... TO ...`, `FROM ...`, `TO ...`, and
+	//   interpreted dates such as `INT 1850 (about eighteen fifty)`.
+	// - Calendar escapes: `@#DJULIAN@`, `@#DHEBREW@`, `@#DFRENCH R@`
+	//   (for example `@#DJULIAN@ 29 FEB 1700`).
+	// - Plain English, converted to GEDCOM before it is checked and stored:
+	//   about, circa, c., ca., before, after, `between X and Y`,
+	//   `from X to Y`, and month names in full, as three letters or as
+	//   "Sept". For example `about Sept 1850` is stored as `ABT SEP 1850`.
+	// - A date phrase in parentheses, such as `(about the time of the war)`,
+	//   kept as text.
+	//
+	// An empty string means no date. Any other text (such as `1850-01-01`
+	// or `Sept 5, 1850`), a date without a year, or a date that doesn't
+	// exist in the calendar (such as `31 FEB 1900`) is rejected with 400;
+	// the error's `details` name the field and say whether the text can be
+	// kept as a date phrase.
+	//
+	//
+	// Example: 1 JAN 1850
+	BirthDate  *DateInput `json:"birth_date,omitempty"`
+	BirthPlace *string    `json:"birth_place,omitempty"`
+
+	// DeathDate A date as entered, stored in GEDCOM form. Accepted forms:
+	//
+	// - GEDCOM dates: `1850`, `MAR 1850`, `15 MAR 1850`, including dual
+	//   years (`1 JAN 1750/51`) and BC years (`44 BC`).
+	// - GEDCOM qualifiers: `ABT`, `CAL`, `EST`, `BEF`, `AFT`,
+	//   `BET ... AND ...`, `FROM ... TO ...`, `FROM ...`, `TO ...`, and
+	//   interpreted dates such as `INT 1850 (about eighteen fifty)`.
+	// - Calendar escapes: `@#DJULIAN@`, `@#DHEBREW@`, `@#DFRENCH R@`
+	//   (for example `@#DJULIAN@ 29 FEB 1700`).
+	// - Plain English, converted to GEDCOM before it is checked and stored:
+	//   about, circa, c., ca., before, after, `between X and Y`,
+	//   `from X to Y`, and month names in full, as three letters or as
+	//   "Sept". For example `about Sept 1850` is stored as `ABT SEP 1850`.
+	// - A date phrase in parentheses, such as `(about the time of the war)`,
+	//   kept as text.
+	//
+	// An empty string means no date. Any other text (such as `1850-01-01`
+	// or `Sept 5, 1850`), a date without a year, or a date that doesn't
+	// exist in the calendar (such as `31 FEB 1900`) is rejected with 400;
+	// the error's `details` name the field and say whether the text can be
+	// kept as a date phrase.
+	//
+	//
+	// Example: 1 JAN 1850
+	DeathDate  *DateInput `json:"death_date,omitempty"`
+	DeathPlace *string    `json:"death_place,omitempty"`
+	Gender     *Gender    `json:"gender,omitempty"`
+	GivenName  *string    `json:"given_name,omitempty"`
+	Notes      *string    `json:"notes,omitempty"`
 
 	// ResearchStatus Confidence level of genealogical data per GPS standards
 	//
@@ -5431,12 +5644,33 @@ type SourceCreate struct {
 	CollectionName *string `json:"collection_name,omitempty"`
 	Notes          *string `json:"notes,omitempty"`
 
-	// PublishDate Date as a GEDCOM date or plain English (stored in GEDCOM form); an unrecognized or impossible date is rejected with 400. Free text can be kept as a date phrase in parentheses.
+	// PublishDate A date as entered, stored in GEDCOM form. Accepted forms:
 	//
-	// Example: 15 MAR 1920
-	PublishDate    *string `json:"publish_date,omitempty"`
-	Publisher      *string `json:"publisher,omitempty"`
-	RepositoryName *string `json:"repository_name,omitempty"`
+	// - GEDCOM dates: `1850`, `MAR 1850`, `15 MAR 1850`, including dual
+	//   years (`1 JAN 1750/51`) and BC years (`44 BC`).
+	// - GEDCOM qualifiers: `ABT`, `CAL`, `EST`, `BEF`, `AFT`,
+	//   `BET ... AND ...`, `FROM ... TO ...`, `FROM ...`, `TO ...`, and
+	//   interpreted dates such as `INT 1850 (about eighteen fifty)`.
+	// - Calendar escapes: `@#DJULIAN@`, `@#DHEBREW@`, `@#DFRENCH R@`
+	//   (for example `@#DJULIAN@ 29 FEB 1700`).
+	// - Plain English, converted to GEDCOM before it is checked and stored:
+	//   about, circa, c., ca., before, after, `between X and Y`,
+	//   `from X to Y`, and month names in full, as three letters or as
+	//   "Sept". For example `about Sept 1850` is stored as `ABT SEP 1850`.
+	// - A date phrase in parentheses, such as `(about the time of the war)`,
+	//   kept as text.
+	//
+	// An empty string means no date. Any other text (such as `1850-01-01`
+	// or `Sept 5, 1850`), a date without a year, or a date that doesn't
+	// exist in the calendar (such as `31 FEB 1900`) is rejected with 400;
+	// the error's `details` name the field and say whether the text can be
+	// kept as a date phrase.
+	//
+	//
+	// Example: 1 JAN 1850
+	PublishDate    *DateInput `json:"publish_date,omitempty"`
+	Publisher      *string    `json:"publisher,omitempty"`
+	RepositoryName *string    `json:"repository_name,omitempty"`
 
 	// SourceType Kind of source material
 	SourceType SourceType `json:"source_type"`
@@ -5499,12 +5733,33 @@ type SourceUpdate struct {
 	CollectionName *string `json:"collection_name,omitempty"`
 	Notes          *string `json:"notes,omitempty"`
 
-	// PublishDate Date as a GEDCOM date or plain English (stored in GEDCOM form); an unrecognized or impossible date is rejected with 400. Free text can be kept as a date phrase in parentheses.
+	// PublishDate A date as entered, stored in GEDCOM form. Accepted forms:
 	//
-	// Example: 15 MAR 1920
-	PublishDate    *string `json:"publish_date,omitempty"`
-	Publisher      *string `json:"publisher,omitempty"`
-	RepositoryName *string `json:"repository_name,omitempty"`
+	// - GEDCOM dates: `1850`, `MAR 1850`, `15 MAR 1850`, including dual
+	//   years (`1 JAN 1750/51`) and BC years (`44 BC`).
+	// - GEDCOM qualifiers: `ABT`, `CAL`, `EST`, `BEF`, `AFT`,
+	//   `BET ... AND ...`, `FROM ... TO ...`, `FROM ...`, `TO ...`, and
+	//   interpreted dates such as `INT 1850 (about eighteen fifty)`.
+	// - Calendar escapes: `@#DJULIAN@`, `@#DHEBREW@`, `@#DFRENCH R@`
+	//   (for example `@#DJULIAN@ 29 FEB 1700`).
+	// - Plain English, converted to GEDCOM before it is checked and stored:
+	//   about, circa, c., ca., before, after, `between X and Y`,
+	//   `from X to Y`, and month names in full, as three letters or as
+	//   "Sept". For example `about Sept 1850` is stored as `ABT SEP 1850`.
+	// - A date phrase in parentheses, such as `(about the time of the war)`,
+	//   kept as text.
+	//
+	// An empty string means no date. Any other text (such as `1850-01-01`
+	// or `Sept 5, 1850`), a date without a year, or a date that doesn't
+	// exist in the calendar (such as `31 FEB 1900`) is rejected with 400;
+	// the error's `details` name the field and say whether the text can be
+	// kept as a date phrase.
+	//
+	//
+	// Example: 1 JAN 1850
+	PublishDate    *DateInput `json:"publish_date,omitempty"`
+	Publisher      *string    `json:"publisher,omitempty"`
+	RepositoryName *string    `json:"repository_name,omitempty"`
 
 	// SourceType Kind of source material
 	SourceType *SourceType `json:"source_type,omitempty"`
