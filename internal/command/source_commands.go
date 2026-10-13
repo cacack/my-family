@@ -54,8 +54,12 @@ func (h *Handler) CreateSource(ctx context.Context, input CreateSourceInput) (*C
 	if input.Publisher != "" {
 		source.Publisher = input.Publisher
 	}
-	if input.PublishDate != "" {
-		pd := domain.ParseGenDate(input.PublishDate)
+	publishDate, err := normalizeDateInput("publish_date", input.PublishDate)
+	if err != nil {
+		return nil, err
+	}
+	if publishDate != "" {
+		pd := domain.ParseGenDate(publishDate)
 		source.PublishDate = &pd
 	}
 	if input.URL != "" {
@@ -171,9 +175,15 @@ func (h *Handler) UpdateSource(ctx context.Context, input UpdateSourceInput) (*U
 		changes["publisher"] = *input.Publisher
 	}
 	if input.PublishDate != nil && *input.PublishDate != current.PublishDateRaw {
-		pd := domain.ParseGenDate(*input.PublishDate)
-		testSource.PublishDate = &pd
-		changes["publish_date"] = *input.PublishDate
+		publishDate, err := normalizeDateInput("publish_date", *input.PublishDate)
+		if err != nil {
+			return nil, err
+		}
+		if publishDate != current.PublishDateRaw {
+			pd := domain.ParseGenDate(publishDate)
+			testSource.PublishDate = &pd
+			changes["publish_date"] = publishDate
+		}
 	}
 	if input.URL != nil && *input.URL != current.URL {
 		testSource.URL = *input.URL
