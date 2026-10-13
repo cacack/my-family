@@ -24,11 +24,15 @@
 		// Clear existing content
 		d3.select(container).selectAll('*').remove();
 
-		const margin = { top: 10, right: 60, bottom: 10, left: 140 };
+		// Each label sits on its own line above its bar so it gets the full chart
+		// width instead of a fixed left margin that cut long labels off (#922).
+		const margin = { top: 4, right: 60, bottom: 4, left: 0 };
 		const width = container.clientWidth || 400;
-		const barHeight = 28;
-		const barGap = 8;
-		const height = data.length * (barHeight + barGap) + margin.top + margin.bottom;
+		const labelHeight = 18;
+		const barHeight = 20;
+		const rowGap = 12;
+		const rowHeight = labelHeight + barHeight + rowGap;
+		const height = data.length * rowHeight - rowGap + margin.top + margin.bottom;
 
 		const svg = d3
 			.select(container)
@@ -37,7 +41,7 @@
 			.attr('height', height)
 			.attr('viewBox', `0 0 ${width} ${height}`);
 
-		const chartWidth = width - margin.left - margin.right;
+		const chartWidth = Math.max(width - margin.left - margin.right, 0);
 
 		// Find max value for scale
 		const maxValue = d3.max(data, (d) => d.value) || 1;
@@ -52,27 +56,33 @@
 			.enter()
 			.append('g')
 			.attr('class', 'bar-group')
-			.attr('transform', (_, i) => `translate(0, ${margin.top + i * (barHeight + barGap)})`);
+			.attr('transform', (_, i) => `translate(0, ${margin.top + i * rowHeight})`);
 
-		// Labels on left
+		// Full label and count as the tooltip and accessible name, even if the
+		// visible label has to be truncated on a very narrow chart.
+		barGroups.append('title').text((d) => `${d.label}: ${d.value.toLocaleString()}`);
+
+		// Label above the bar
 		barGroups
 			.append('text')
-			.attr('x', margin.left - 10)
-			.attr('y', barHeight / 2)
-			.attr('text-anchor', 'end')
+			.attr('class', 'bar-label')
+			.attr('x', margin.left)
+			.attr('y', labelHeight / 2)
 			.attr('dominant-baseline', 'middle')
 			.attr('font-size', '13px')
 			.attr('fill', '#475569')
-			.text((d) => {
-				const label = d.label;
-				return label.length > 20 ? label.substring(0, 18) + '...' : label;
+			.text((d) => d.label)
+			.each(function () {
+				fitText(this, width - margin.left);
 			});
+
+		const barY = labelHeight;
 
 		// Background bars
 		barGroups
 			.append('rect')
 			.attr('x', margin.left)
-			.attr('y', 0)
+			.attr('y', barY)
 			.attr('width', chartWidth)
 			.attr('height', barHeight)
 			.attr('fill', '#f1f5f9')
@@ -82,7 +92,7 @@
 		barGroups
 			.append('rect')
 			.attr('x', margin.left)
-			.attr('y', 0)
+			.attr('y', barY)
 			.attr('width', (d) => xScale(d.value))
 			.attr('height', barHeight)
 			.attr('fill', (d, i) => d.color || defaultColors[i % defaultColors.length])
@@ -92,12 +102,26 @@
 		barGroups
 			.append('text')
 			.attr('x', (d) => margin.left + xScale(d.value) + 8)
-			.attr('y', barHeight / 2)
+			.attr('y', barY + barHeight / 2)
 			.attr('dominant-baseline', 'middle')
 			.attr('font-size', '13px')
 			.attr('font-weight', '600')
 			.attr('fill', '#1e293b')
 			.text((d) => d.value.toLocaleString());
+	}
+
+	// Shorten a text node with an ellipsis until it fits maxWidth. A no-op where
+	// text can't be measured (e.g. jsdom), leaving the full label.
+	function fitText(node: SVGTextElement, maxWidth: number) {
+		if (typeof node.getComputedTextLength !== 'function') return;
+		const full = node.textContent ?? '';
+		if (node.getComputedTextLength() <= maxWidth) return;
+		let end = full.length;
+		while (end > 0) {
+			end--;
+			node.textContent = full.slice(0, end).trimEnd() + '…';
+			if (node.getComputedTextLength() <= maxWidth) return;
+		}
 	}
 
 	onMount(() => {
