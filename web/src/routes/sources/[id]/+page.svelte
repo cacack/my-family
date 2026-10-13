@@ -486,7 +486,7 @@
 	}
 
 	/* The grid gap spaces the sections, not their own margins. */
-	.info-grid > :global(*) {
+	.info-grid > :global(.info-section) {
 		margin-bottom: 0;
 	}
 
