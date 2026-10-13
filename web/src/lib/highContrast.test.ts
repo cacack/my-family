@@ -6,6 +6,7 @@
  * at all. These checks keep it to a single definition that switches every
  * colour token the light theme defines.
  */
+import postcss, { type Declaration, type Rule } from 'postcss';
 import { describe, expect, it } from 'vitest';
 // Needs the `test.css.include` entry in vite.config.ts, or Vitest blanks it.
 import appCss from '../app.css?raw';
@@ -16,12 +17,25 @@ const svelteSources = import.meta.glob('/src/**/*.svelte', {
 	eager: true
 }) as Record<string, string>;
 
-/** Custom properties declared directly in the first rule whose selector is `selector`. */
+/**
+ * Custom properties declared directly in the first top-level rule whose
+ * selector is `selector`. Parsed, so a nested block cannot cut the list short.
+ */
 function declaredTokens(css: string, selector: string): string[] {
-	const start = css.indexOf(`\n${selector} {`);
-	expect(start, `no "${selector}" rule in app.css`).toBeGreaterThanOrEqual(0);
-	const body = css.slice(css.indexOf('{', start) + 1, css.indexOf('}', start));
-	return [...body.matchAll(/(--[\w-]+)\s*:/g)].map((m) => m[1]);
+	const rule = postcss
+		.parse(css)
+		.nodes.find((node): node is Rule => node.type === 'rule' && node.selector === selector);
+	expect(rule, `no "${selector}" rule in app.css`).toBeDefined();
+	return (rule?.nodes ?? [])
+		.filter((node): node is Declaration => node.type === 'decl' && node.prop.startsWith('--'))
+		.map((decl) => decl.prop);
+}
+
+/** Whether `source` sets a custom property in a rule whose selector names `body.high-contrast`. */
+function redefinesHighContrast(source: string): boolean {
+	return [...source.matchAll(/body\.high-contrast\)?[^{]*\{([^}]*)\}/g)].some((m) =>
+		/--[\w-]+\s*:/.test(m[1])
+	);
 }
 
 // Tokens that are not colours, or are data-series colours charts own.
@@ -36,6 +50,18 @@ describe('high-contrast definition', () => {
 			expect.arrayContaining(['--background', '--foreground', '--primary', '--border'])
 		);
 		expect(themed.filter((t) => !highContrast.has(t))).toEqual([]);
+	});
+
+	it('reads every top-level declaration, past nested blocks', () => {
+		const css = `:root {
+	--a: 1;
+	.x { --nested: 2; }
+	--b: 3;
+}
+@media (min-width: 1px) {
+	:root { --in-media: 4; }
+}`;
+		expect(declaredTokens(css, ':root')).toEqual(['--a', '--b']);
 	});
 
 	it('styles links outside any cascade layer, so component-scoped link rules cannot beat it', () => {
@@ -69,12 +95,24 @@ describe('high-contrast definition', () => {
 		expect(offenders).toEqual([]);
 	});
 
+	it('reports a component that sets a token under body.high-contrast', () => {
+		const offending = `<style>
+	:global(body.high-contrast) .card { color: var(--color-text); }
+	:global(body.high-contrast) {
+		--color-text: #000;
+	}
+</style>`;
+		const harmless = `<style>
+	:global(body.high-contrast) .card { color: var(--color-text); }
+</style>`;
+		expect(redefinesHighContrast(offending)).toBe(true);
+		expect(redefinesHighContrast(harmless)).toBe(false);
+	});
+
 	it('is not redefined by any component', () => {
-		const offenders = Object.entries(svelteSources).flatMap(([file, source]) =>
-			[...source.matchAll(/body\.high-contrast\)?[^{]*\{([^}]*)\}/g)]
-				.filter((m) => /--[\w-]+\s*:/.test(m[1]))
-				.map(() => file)
-		);
+		const offenders = Object.entries(svelteSources)
+			.filter(([, source]) => redefinesHighContrast(source))
+			.map(([file]) => file);
 		expect(offenders).toEqual([]);
 	});
 });
