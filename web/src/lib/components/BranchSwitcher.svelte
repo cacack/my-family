@@ -68,13 +68,16 @@
 	<DropdownMenu.Trigger>
 		<!-- `child` so the Button *is* the trigger: the default would nest a
 		     button inside bits-ui's own, and the aria-label would land on the
-		     inner one rather than the control that takes focus. -->
+		     inner one rather than the control that takes focus.
+		     From 1024px the header is one row (+layout.svelte); below 1280px the
+		     label is capped tighter so a long branch name leaves the search box
+		     room to type in. -->
 		{#snippet child({ props })}
 			<Button
 				{...props}
 				variant="outline"
 				size="sm"
-				class="max-w-[12rem] gap-1.5"
+				class="max-w-[12rem] gap-1.5 lg:max-xl:max-w-[8rem]"
 				aria-label="Switch research branch. Currently on {currentLabel}"
 			>
 				<svg
