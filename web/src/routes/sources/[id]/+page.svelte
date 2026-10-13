@@ -11,12 +11,16 @@
 	import { SOURCE_TYPES } from '$lib/utils/sourceTypes';
 	import ErrorState from '$lib/components/ErrorState.svelte';
 	import ActionError from '$lib/components/ActionError.svelte';
+	import { asDatePhrase, savedAsNotes, savedAsText, unreadableDateField, type SavedAs } from '$lib/utils/dateInput';
 	import SaveConflict from '$lib/components/SaveConflict.svelte';
 	import { SaveConflictFlow, type ConflictRow } from '$lib/utils/saveConflict.svelte';
 
 	let source: SourceDetail | null = $state(null);
 	let loading = $state(true);
 	let error: string | null = $state(null);
+	let unreadableDate = $state(false);
+	// The publish date as stored, when that differs from the form typed (#957).
+	let savedAs: SavedAs | undefined = $state();
 	let editing = $state(false);
 	let saving = $state(false);
 	let deleting = $state(false);
@@ -104,6 +108,8 @@
 		resetForm();
 		editing = true;
 		error = null;
+		unreadableDate = false;
+		savedAs = undefined;
 		saveConflict.clear();
 	}
 
@@ -111,6 +117,7 @@
 		resetForm();
 		editing = false;
 		error = null;
+		unreadableDate = false;
 		saveConflict.clear();
 	}
 
@@ -123,7 +130,10 @@
 
 		saving = true;
 		error = null;
+		unreadableDate = false;
 		saveConflict.clear();
+		// Reloading the source resets the form, so the date as typed is kept.
+		const typedDate = { publish_date: formData.publish_date };
 		try {
 			await api.updateSource(source.id, {
 				source_type: formData.source_type || undefined,
@@ -141,6 +151,7 @@
 				version: source.version
 			});
 			await loadSource(source.id);
+			if (source) savedAs = savedAsNotes(typedDate, { publish_date: source.publish_date || '' }).publish_date;
 			editing = false;
 		} catch (e) {
 			// Only a stale version is compared with the latest (#940); other 409s
@@ -148,10 +159,17 @@
 			const id = source.id;
 			if (!(isVersionConflict(e) && (await saveConflict.load(() => api.getSource(id))))) {
 				error = (e as { message?: string }).message || 'Failed to save';
+				unreadableDate = unreadableDateField(e, ['publish_date']) !== null;
 			}
 		} finally {
 			saving = false;
 		}
+	}
+
+	/** Save an unreadable publish date as a date phrase, so it is kept as text (#957). */
+	function keepDateAsText() {
+		formData.publish_date = asDatePhrase(formData.publish_date);
+		saveSource();
 	}
 
 	async function deleteSource() {
@@ -216,7 +234,10 @@
 		{#if editing}
 			<form class="edit-form" onsubmit={(e) => { e.preventDefault(); saveSource(); }}>
 				{#if error}
-					<div class="form-error">{error}</div>
+					<ActionError
+						message={error}
+						action={unreadableDate ? { label: 'Keep as text', onclick: keepDateAsText, disabled: saving } : undefined}
+					/>
 				{/if}
 
 				<FormRow>
@@ -322,7 +343,7 @@
 							fields={[
 								{ label: 'Author', value: source.author },
 								{ label: 'Publisher', value: source.publisher },
-								{ label: 'Date', value: source.publish_date }
+								{ label: 'Date', value: source.publish_date, note: savedAsText(savedAs) }
 							]}
 						/>
 					{/if}
@@ -612,15 +633,6 @@
 		padding: 1.5rem;
 	}
 
-	.form-error {
-		padding: 0.75rem;
-		background: #fef2f2;
-		border: 1px solid #fecaca;
-		border-radius: 6px;
-		color: #dc2626;
-		font-size: 0.875rem;
-		margin-bottom: 1rem;
-	}
 
 	.edit-form label {
 		display: flex;

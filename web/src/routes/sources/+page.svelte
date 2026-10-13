@@ -7,6 +7,8 @@
 	import SourceCard from '$lib/components/SourceCard.svelte';
 	import { DEFAULT_SOURCE_TYPE, SOURCE_TYPES } from '$lib/utils/sourceTypes';
 	import ErrorState from '$lib/components/ErrorState.svelte';
+	import ActionError from '$lib/components/ActionError.svelte';
+	import { asDatePhrase, unreadableDateField } from '$lib/utils/dateInput';
 	import { clampPageToTotal, readEnum, readPositiveInt, setQuery } from '$lib/utils/urlState';
 
 	let sources: Source[] = $state([]);
@@ -16,6 +18,7 @@
 	let showAddForm = $state(false);
 	let saving = $state(false);
 	let error: string | null = $state(null);
+	let unreadableDate = $state(false);
 	const pageSize = 20;
 
 	// Search, sort and page live in the URL (see urlState.ts), so Back, reload
@@ -142,11 +145,13 @@
 		};
 		showAddForm = true;
 		error = null;
+		unreadableDate = false;
 	}
 
 	function cancelAdd() {
 		showAddForm = false;
 		error = null;
+		unreadableDate = false;
 	}
 
 	async function saveNewSource() {
@@ -157,6 +162,7 @@
 
 		saving = true;
 		error = null;
+		unreadableDate = false;
 		try {
 			await api.createSource({
 				source_type: newSource.source_type,
@@ -174,9 +180,16 @@
 			loadSources();
 		} catch (e) {
 			error = (e as { message?: string }).message || 'Failed to create source';
+			unreadableDate = unreadableDateField(e, ['publish_date']) !== null;
 		} finally {
 			saving = false;
 		}
+	}
+
+	/** Create with an unreadable publish date as a date phrase, so it is kept as text (#957). */
+	function keepDateAsText() {
+		newSource.publish_date = asDatePhrase(newSource.publish_date);
+		saveNewSource();
 	}
 
 	$effect(() => {
@@ -248,7 +261,10 @@
 				<h2>Add New Source</h2>
 
 				{#if error}
-					<div class="form-error" role="alert">{error}</div>
+					<ActionError
+						message={error}
+						action={unreadableDate ? { label: 'Keep as text', onclick: keepDateAsText, disabled: saving } : undefined}
+					/>
 				{/if}
 
 				<FormRow>
@@ -450,15 +466,6 @@
 		color: #1e293b;
 	}
 
-	.form-error {
-		padding: 0.75rem;
-		background: #fef2f2;
-		border: 1px solid #fecaca;
-		border-radius: 6px;
-		color: #dc2626;
-		font-size: 0.875rem;
-		margin-bottom: 1rem;
-	}
 
 	.add-form label {
 		display: flex;
