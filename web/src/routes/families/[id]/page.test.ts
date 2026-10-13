@@ -201,10 +201,27 @@ describe('Family Detail Page', () => {
 		const { container } = render(FamilyPage);
 
 		await waitFor(() => {
-			const partnerLinks = container.querySelectorAll('a.partner-card');
+			const partnerLinks = container.querySelectorAll('.partners-grid a');
 			expect(partnerLinks.length).toBe(2);
 			expect(partnerLinks[0].getAttribute('href')).toBe('/persons/partner1-id');
 			expect(partnerLinks[1].getAttribute('href')).toBe('/persons/partner2-id');
+		});
+	});
+
+	it('styles partner cards by gender like PersonCard', async () => {
+		vi.mocked(apiModule.api.getFamily).mockResolvedValue({
+			...mockFamilyWithChildren,
+			partner1: { ...mockFamilyWithChildren.partner1!, gender: 'male' },
+			partner2: { ...mockFamilyWithChildren.partner2!, gender: 'female' }
+		});
+
+		const { container } = render(FamilyPage);
+
+		await waitFor(() => {
+			const avatars = container.querySelectorAll('.partners-grid .avatar');
+			expect(avatars.length).toBe(2);
+			expect(avatars[0].getAttribute('data-gender')).toBe('male');
+			expect(avatars[1].getAttribute('data-gender')).toBe('female');
 		});
 	});
 
