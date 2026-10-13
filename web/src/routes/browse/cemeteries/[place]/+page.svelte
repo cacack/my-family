@@ -4,7 +4,7 @@
 	import PersonCard from '$lib/components/PersonCard.svelte';
 	import ErrorState from '$lib/components/ErrorState.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
-	import { readPositiveInt, setQuery } from '$lib/utils/urlState';
+	import { clampPageToTotal, readPositiveInt, setQuery } from '$lib/utils/urlState';
 
 	let place = $derived(decodeURIComponent($page.params.place ?? ''));
 	let persons: Person[] = $state([]);
@@ -23,11 +23,13 @@
 		loading = true;
 		loadError = null;
 		try {
+			const requestedPage = currentPage;
 			const result = await api.getPersonsByCemetery(place, {
 				limit: pageSize,
-				offset: (currentPage - 1) * pageSize
+				offset: (requestedPage - 1) * pageSize
 			});
 			if (seq !== loadSeq) return;
+			if (clampPageToTotal($page.url, requestedPage, result.total, pageSize)) return;
 			persons = result.items;
 			total = result.total;
 		} catch (e) {

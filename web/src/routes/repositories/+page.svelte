@@ -6,7 +6,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import FormRow from '$lib/components/FormRow.svelte';
 	import ErrorState from '$lib/components/ErrorState.svelte';
-	import { readEnum, readPositiveInt, setQuery } from '$lib/utils/urlState';
+	import { clampPageToTotal, readEnum, readPositiveInt, setQuery } from '$lib/utils/urlState';
 
 	let repositories: Repository[] = $state([]);
 	let total = $state(0);
@@ -52,13 +52,15 @@
 		loading = true;
 		loadError = null;
 		try {
+			const requestedPage = currentPage;
 			const result = await api.listRepositories({
 				limit: pageSize,
-				offset: (currentPage - 1) * pageSize,
+				offset: (requestedPage - 1) * pageSize,
 				sort,
 				order
 			});
 			if (seq !== loadSeq) return;
+			if (clampPageToTotal($page.url, requestedPage, result.total, pageSize)) return;
 			repositories = result.repositories;
 			total = result.total;
 		} catch (e) {

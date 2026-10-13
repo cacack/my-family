@@ -120,4 +120,26 @@ describe('People list page: state in the URL (#901)', () => {
 			})
 		);
 	});
+
+	it('moves a page past the end to the last page, replacing the URL (#948)', async () => {
+		resetRouter('/persons?sort=birth_date&page=9');
+		render(PersonsPage);
+		await waitFor(() => expect(currentPath()).toBe('/persons?sort=birth_date&page=5'));
+		expect(historyLength()).toBe(1);
+		await screen.findByText('Page 5 of 5');
+		expect(lastListCall()).toMatchObject({ offset: 80, sort: 'birth_date' });
+	});
+
+	it('drops the page from the URL and shows the empty state when there are no people (#948)', async () => {
+		vi.mocked(apiModule.api.listPersons).mockResolvedValue({
+			items: [],
+			total: 0
+		} as unknown as Awaited<ReturnType<typeof apiModule.api.listPersons>>);
+		resetRouter('/persons?page=4');
+		render(PersonsPage);
+		await waitFor(() => expect(currentPath()).toBe('/persons'));
+		expect(historyLength()).toBe(1);
+		await screen.findByText('No people found.');
+		expect(lastListCall()).toMatchObject({ offset: 0 });
+	});
 });

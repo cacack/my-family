@@ -41,4 +41,13 @@ describe('Browse place detail page', () => {
 		back();
 		await screen.findByText('Page 1 of 3');
 	});
+
+	it('moves a page past the end to the last page, replacing the URL (#948)', async () => {
+		resetRouter('/browse/places/Ohio?page=9', { place: 'Ohio' });
+		render(Page);
+		await waitFor(() => expect(currentPath()).toBe('/browse/places/Ohio?page=3'));
+		expect(historyLength()).toBe(1);
+		await screen.findByText('Page 3 of 3');
+		expect(apiModule.api.getPersonsByPlace).toHaveBeenLastCalledWith('Ohio', { limit: 20, offset: 40 });
+	});
 });

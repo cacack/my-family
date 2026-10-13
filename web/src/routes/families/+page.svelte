@@ -4,7 +4,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import FamilyCard from '$lib/components/FamilyCard.svelte';
-	import { readPositiveInt, setQuery } from '$lib/utils/urlState';
+	import { clampPageToTotal, readPositiveInt, setQuery } from '$lib/utils/urlState';
 	import ErrorState from '$lib/components/ErrorState.svelte';
 
 	let families: FamilyDetail[] = $state([]);
@@ -23,11 +23,13 @@
 		loading = true;
 		loadError = null;
 		try {
+			const requestedPage = currentPage;
 			const result = await api.listFamilies({
 				limit: pageSize,
-				offset: (currentPage - 1) * pageSize
+				offset: (requestedPage - 1) * pageSize
 			});
 			if (seq !== loadSeq) return;
+			if (clampPageToTotal($page.url, requestedPage, result.total, pageSize)) return;
 			families = result.items;
 			total = result.total;
 		} catch (e) {
