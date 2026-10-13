@@ -21,9 +21,9 @@ const created = (birthDate?: string) => ({
 	...(birthDate ? { birth_date: { raw: birthDate } } : {})
 });
 
-async function addWithBirthYear(year: string, button = 'Add & Next') {
+async function addWithBirthDate(year: string, button = 'Add & Next') {
 	await fireEvent.input(screen.getByLabelText('Full Name'), { target: { value: 'Ada Lovelace' } });
-	await fireEvent.input(screen.getByLabelText(/Birth Year/), { target: { value: year } });
+	await fireEvent.input(screen.getByLabelText(/Birth Date/), { target: { value: year } });
 	await fireEvent.click(screen.getByRole('button', { name: button }));
 }
 
@@ -33,7 +33,7 @@ describe('QuickCapture dates (#996)', () => {
 		vi.clearAllMocks();
 	});
 
-	it('offers to keep an unreadable birth year as text and adds the person with it as a phrase', async () => {
+	it('offers to keep an unreadable birth date as text and adds the person with it as a phrase', async () => {
 		createPerson.mockRejectedValueOnce({
 			code: 'VALIDATION_ERROR',
 			message: 'invalid input: birth_date: "late 1850s" is not a recognized date',
@@ -41,7 +41,7 @@ describe('QuickCapture dates (#996)', () => {
 		});
 		createPerson.mockResolvedValueOnce(created('(late 1850s)'));
 		render(QuickCapture);
-		await addWithBirthYear('late 1850s');
+		await addWithBirthDate('late 1850s');
 
 		await fireEvent.click(await screen.findByRole('button', { name: 'Keep as text' }));
 
@@ -57,7 +57,7 @@ describe('QuickCapture dates (#996)', () => {
 		});
 		createPerson.mockResolvedValueOnce(created('(late 1850s)'));
 		render(QuickCapture);
-		await addWithBirthYear('late 1850s', 'Add & View');
+		await addWithBirthDate('late 1850s', 'Add & View');
 
 		await fireEvent.click(await screen.findByRole('button', { name: 'Keep as text' }));
 
@@ -70,26 +70,26 @@ describe('QuickCapture dates (#996)', () => {
 			details: { field: 'birth_date', unreadable: false }
 		});
 		render(QuickCapture);
-		await addWithBirthYear('31 FEB 1900');
+		await addWithBirthDate('31 FEB 1900');
 
 		expect((await screen.findByRole('alert')).textContent).toContain('is not a real calendar date');
 		expect(screen.queryByRole('button', { name: 'Keep as text' })).toBeNull();
 	});
 
-	it('says what a converted birth year was saved as', async () => {
+	it('says what a converted birth date was saved as', async () => {
 		createPerson.mockResolvedValue(created('ABT 1850'));
 		render(QuickCapture);
-		await addWithBirthYear('about 1850');
+		await addWithBirthDate('about 1850');
 
 		expect((await screen.findByRole('status')).textContent).toContain(
-			'Birth year saved as ABT 1850 from “about 1850”'
+			'Birth date saved as ABT 1850 from “about 1850”'
 		);
 	});
 
-	it('hands the person page what a converted birth year was saved as', async () => {
+	it('hands the person page what a converted birth date was saved as', async () => {
 		createPerson.mockResolvedValue(created('ABT 1850'));
 		render(QuickCapture);
-		await addWithBirthYear('about 1850', 'Add & View');
+		await addWithBirthDate('about 1850', 'Add & View');
 
 		await waitFor(() =>
 			expect(goto).toHaveBeenCalledWith('/persons/p1', {
@@ -98,10 +98,18 @@ describe('QuickCapture dates (#996)', () => {
 		);
 	});
 
-	it('says nothing when the birth year was stored as typed', async () => {
+	it('asks for a birth date in English, not a year on a number keypad (#1007)', () => {
+		render(QuickCapture);
+		const input = screen.getByLabelText(/Birth Date/);
+
+		expect(input.getAttribute('placeholder')).toBe('e.g., 1850 or about 1850');
+		expect(input.hasAttribute('inputmode')).toBe(false);
+	});
+
+	it('says nothing when the birth date was stored as typed', async () => {
 		createPerson.mockResolvedValue(created('1850'));
 		render(QuickCapture);
-		await addWithBirthYear('1850');
+		await addWithBirthDate('1850');
 
 		await screen.findByText('1 person added this session');
 		expect(screen.queryByRole('status')).toBeNull();
