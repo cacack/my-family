@@ -11,7 +11,7 @@
  * Deliberately not a screenshot diff: those break on every intended change.
  */
 import { expect, test } from '@playwright/test';
-import { readSeed } from './seed';
+import { API_BASE, readSeed } from './seed';
 import { DETAIL_ROUTES, STATIC_ROUTES } from './routes';
 
 const WIDTHS = [375, 768, 1280, 1440];
@@ -111,6 +111,18 @@ test('the person avatar stays a circle at every font size', async ({ page }) => 
 	}
 });
 
+async function expectHeaderOneRow(page: import('@playwright/test').Page) {
+	const rows = await page.evaluate(() =>
+		[...document.querySelectorAll('.app-header > *')].map((el) => {
+			const r = el.getBoundingClientRect();
+			return { top: r.top, bottom: r.bottom };
+		})
+	);
+	const lowestTop = Math.max(...rows.map((r) => r.top));
+	const highestBottom = Math.min(...rows.map((r) => r.bottom));
+	expect(lowestTop, 'header items wrapped onto a second row').toBeLessThan(highestBottom);
+}
+
 // The grouped nav exists so the header fits on one row from 1024px up; a new
 // top-level link that breaks that should fail here, not in a screenshot review.
 // 1024 and 1279/1280 mirror the breakpoints in MainNav.svelte and +layout.svelte.
@@ -119,18 +131,43 @@ for (const width of [1024, 1280, 1440]) {
 		await page.setViewportSize({ width, height: 900 });
 		await page.goto('/');
 		await page.waitForLoadState('networkidle');
-
-		const rows = await page.evaluate(() =>
-			[...document.querySelectorAll('.app-header > *')].map((el) => {
-				const r = el.getBoundingClientRect();
-				return { top: r.top, bottom: r.bottom };
-			})
-		);
-		const lowestTop = Math.max(...rows.map((r) => r.top));
-		const highestBottom = Math.min(...rows.map((r) => r.bottom));
-		expect(lowestTop, 'header items wrapped onto a second row').toBeLessThan(highestBottom);
+		await expectHeaderOneRow(page);
 	});
 }
+
+// An active branch adds its switcher label to the same row. A long name must
+// truncate rather than wrap the header, and must leave the search box room to
+// type in at 1024px, where the row is tightest (#919).
+test.describe('with a long research branch name active', () => {
+	let name = '';
+
+	test.beforeEach(async ({ page, request }) => {
+		const suffix = Date.now().toString(36);
+		name = `${suffix} Was the ferry keeper at Lindholm the father of Robin Ashby?`.slice(0, 60);
+		const response = await request.post(`${API_BASE}/branches`, { data: { name } });
+		expect(response.status(), await response.text()).toBe(201);
+		const { id } = (await response.json()) as { id: string };
+		await page.addInitScript((branchId) => {
+			localStorage.setItem('active-branch', branchId);
+		}, id);
+	});
+
+	for (const width of [1024, 1280]) {
+		test(`header is a single row at ${width}px`, async ({ page }) => {
+			await page.setViewportSize({ width, height: 900 });
+			await expectNoHorizontalOverflow(page, '/');
+			const switcher = page.getByRole('button', { name: `Switch research branch. Currently on ${name}` });
+			await expect(switcher).toBeVisible();
+			await expectHeaderOneRow(page);
+
+			const searchRem = await page.evaluate(() => {
+				const rem = parseFloat(getComputedStyle(document.documentElement).fontSize);
+				return document.querySelector('.search-wrapper')!.getBoundingClientRect().width / rem;
+			});
+			expect(searchRem, 'header search box is narrower than 8rem').toBeGreaterThanOrEqual(8);
+		});
+	}
+});
 
 test('every nav destination is two taps away on a phone', async ({ page }) => {
 	await page.setViewportSize({ width: 375, height: 900 });
