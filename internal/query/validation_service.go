@@ -456,20 +456,7 @@ func (s *ValidationService) personToIndividual(person repository.PersonReadModel
 			Date: person.BirthDateRaw,
 		}
 		birthEvent.SetPlaceName(person.BirthPlace)
-		// Parse the date
-		gd := domain.ParseGenDate(person.BirthDateRaw)
-		if gd.Year != nil {
-			birthEvent.ParsedDate = &gedcom.Date{
-				Original: person.BirthDateRaw,
-				Year:     *gd.Year,
-			}
-			if gd.Month != nil {
-				birthEvent.ParsedDate.Month = *gd.Month
-			}
-			if gd.Day != nil {
-				birthEvent.ParsedDate.Day = *gd.Day
-			}
-		}
+		birthEvent.ParsedDate = validatorDate(person.BirthDateRaw)
 		individual.Events = append(individual.Events, birthEvent)
 	}
 
@@ -480,24 +467,38 @@ func (s *ValidationService) personToIndividual(person repository.PersonReadModel
 			Date: person.DeathDateRaw,
 		}
 		deathEvent.SetPlaceName(person.DeathPlace)
-		// Parse the date
-		gd := domain.ParseGenDate(person.DeathDateRaw)
-		if gd.Year != nil {
-			deathEvent.ParsedDate = &gedcom.Date{
-				Original: person.DeathDateRaw,
-				Year:     *gd.Year,
-			}
-			if gd.Month != nil {
-				deathEvent.ParsedDate.Month = *gd.Month
-			}
-			if gd.Day != nil {
-				deathEvent.ParsedDate.Day = *gd.Day
-			}
-		}
+		deathEvent.ParsedDate = validatorDate(person.DeathDateRaw)
 		individual.Events = append(individual.Events, deathEvent)
 	}
 
 	return individual
+}
+
+// validatorDate builds the gedcom-go date the validator reads from a stored
+// date, or nil when it has no year. A BC year is given in astronomical
+// numbering (1 BC is 0, 10 BC is -9), not as gedcom-go's IsBC form: v2's
+// YearsBetween ignores IsBC, but on the astronomical scale its year
+// arithmetic and ordering are exact, so 10 BC to AD 10 is 19 years, not 20.
+// 1 BC becomes year 0, which gedcom-go reads as no year, so the date-logic
+// checks skip it rather than misjudge it. The gedcom-go v3 upgrade (#875),
+// whose YearsBetween honours IsBC, can switch this to Year and IsBC.
+func validatorDate(raw string) *gedcom.Date {
+	gd := domain.ParseGenDate(raw)
+	if gd.Year == nil {
+		return nil
+	}
+	year := *gd.Year
+	if year < 0 {
+		year = gedcom.AstronomicalYear(-year, true)
+	}
+	date := &gedcom.Date{Original: raw, Year: year}
+	if gd.Month != nil {
+		date.Month = *gd.Month
+	}
+	if gd.Day != nil {
+		date.Day = *gd.Day
+	}
+	return date
 }
 
 // familyToGedcomFamily converts a FamilyReadModel to a gedcom.Family.
@@ -528,20 +529,7 @@ func (s *ValidationService) familyToGedcomFamily(family repository.FamilyReadMod
 			Date: family.MarriageDateRaw,
 		}
 		marriageEvent.SetPlaceName(family.MarriagePlace)
-		// Parse the date
-		gd := domain.ParseGenDate(family.MarriageDateRaw)
-		if gd.Year != nil {
-			marriageEvent.ParsedDate = &gedcom.Date{
-				Original: family.MarriageDateRaw,
-				Year:     *gd.Year,
-			}
-			if gd.Month != nil {
-				marriageEvent.ParsedDate.Month = *gd.Month
-			}
-			if gd.Day != nil {
-				marriageEvent.ParsedDate.Day = *gd.Day
-			}
-		}
+		marriageEvent.ParsedDate = validatorDate(family.MarriageDateRaw)
 		gedFamily.Events = append(gedFamily.Events, marriageEvent)
 	}
 
