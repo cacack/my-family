@@ -5394,7 +5394,7 @@ components:
           example: "ABT 1850"
         qualifier:
           type: string
-          enum: [exact, abt, cal, est, bef, aft, bet, from, int]
+          enum: [exact, abt, cal, est, bef, aft, bet, from, int, to]
           example: "abt"
         calendar:
           type: string

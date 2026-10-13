@@ -90,3 +90,39 @@ func TestDateInput_RejectionDetails(t *testing.T) {
 		t.Errorf("details = %v, want none", details)
 	}
 }
+
+// Dual-year, BC and TO-only dates are saved with a year and export to GEDCOM
+// with the date text unchanged (issue #958).
+func TestDateInput_DualYearBCAndToOnlyRoundTrip(t *testing.T) {
+	tests := []struct {
+		date     string
+		wantYear float64
+		wantQual string
+	}{
+		{date: "1750/51", wantYear: 1751, wantQual: "exact"},
+		{date: "1 JAN 1750/51", wantYear: 1751, wantQual: "exact"},
+		{date: "1 JAN 1850 BC", wantYear: -1850, wantQual: "exact"},
+		{date: "TO 1860", wantYear: 1860, wantQual: "to"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.date, func(t *testing.T) {
+			server := setupTestServer()
+			rec := send(server, http.MethodPost, "/api/v1/persons", fmt.Sprintf(`{"given_name":"John","birth_date":%q}`, tt.date))
+			if rec.Code != http.StatusCreated {
+				t.Fatalf("create person: %d %s", rec.Code, rec.Body.String())
+			}
+			birth, _ := decodeBody(t, rec)["birth_date"].(map[string]any)
+			if birth["raw"] != tt.date || birth["year"] != tt.wantYear || birth["qualifier"] != tt.wantQual {
+				t.Errorf("birth_date = %v, want raw %q, year %v, qualifier %q", birth, tt.date, tt.wantYear, tt.wantQual)
+			}
+
+			rec = send(server, http.MethodGet, "/api/v1/gedcom/export", "")
+			if rec.Code != http.StatusOK {
+				t.Fatalf("export: %d %s", rec.Code, rec.Body.String())
+			}
+			if want := "2 DATE " + tt.date + "\n"; !strings.Contains(rec.Body.String(), want) {
+				t.Errorf("export does not contain %q:\n%s", want, rec.Body.String())
+			}
+		})
+	}
+}

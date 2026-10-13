@@ -120,6 +120,62 @@ func TestParseGenDate(t *testing.T) {
 			wantQual: DateInt,
 			wantYear: intPtr(1850),
 		},
+		// Dual years read as the later year (issue #958).
+		{
+			name:     "dual year",
+			input:    "1750/51",
+			wantQual: DateExact,
+			wantYear: intPtr(1751),
+		},
+		{
+			name:      "full date with dual year",
+			input:     "1 JAN 1750/51",
+			wantQual:  DateExact,
+			wantYear:  intPtr(1751),
+			wantMonth: intPtr(1),
+			wantDay:   intPtr(1),
+		},
+		{
+			name:     "dual year crossing a century",
+			input:    "1699/00",
+			wantQual: DateExact,
+			wantYear: intPtr(1700),
+		},
+		{
+			name:     "dual year written in full",
+			input:    "ABT 1750/1751",
+			wantQual: DateAbout,
+			wantYear: intPtr(1751),
+		},
+		// BC years are negative.
+		{
+			name:      "BC full date",
+			input:     "1 JAN 1850 BC",
+			wantQual:  DateExact,
+			wantYear:  intPtr(-1850),
+			wantMonth: intPtr(1),
+			wantDay:   intPtr(1),
+		},
+		{
+			name:     "BCE year",
+			input:    "44 b.c.e.",
+			wantQual: DateExact,
+			wantYear: intPtr(-44),
+		},
+		{
+			name:      "range from BC to AD",
+			input:     "BET 10 BC AND 10",
+			wantQual:  DateBet,
+			wantYear:  intPtr(-10),
+			wantYear2: intPtr(10),
+		},
+		// A period end with no start.
+		{
+			name:     "TO only",
+			input:    "TO 1860",
+			wantQual: DateTo,
+			wantYear: intPtr(1860),
+		},
 	}
 
 	for _, tt := range tests {
@@ -312,6 +368,10 @@ func TestValidateDate(t *testing.T) {
 		{input: "@#DJULIAN@ 29 FEB 1700"},
 		{input: "@#DHEBREW@ 1 TSH 5600"},
 		{input: "@#DFRENCH R@ 1 VEND 10"},
+		{input: "1750/51"},
+		{input: "1 JAN 1750/51"},
+		{input: "1 JAN 1850 BC"},
+		{input: "TO 1860"},
 		{input: "garbage", wantErr: `"garbage" is not a recognized date`},
 		{input: "1850-01-01", wantErr: `"1850-01-01" is not a recognized date`},
 		{input: "31 FEB 19xx", wantErr: `"31 FEB 19xx" is not a recognized date`},
@@ -322,10 +382,6 @@ func TestValidateDate(t *testing.T) {
 		{input: "29 FEB 1900", wantErr: "is not a real calendar date"},
 		{input: "32 JAN 1850", wantErr: "is not a real calendar date"},
 		{input: "BET 1850 AND 30 FEB 1860", wantErr: "is not a real calendar date"},
-		{input: "1750/51", wantErr: `"1750/51" is not a supported date yet`},
-		{input: "1 JAN 1750/51", wantErr: "is not a supported date yet"},
-		{input: "1 JAN 1850 BC", wantErr: "is not a supported date yet"},
-		{input: "TO 1860", wantErr: "is not a supported date yet"},
 	}
 
 	for _, tt := range tests {
@@ -355,7 +411,6 @@ func TestValidateDate_Unreadable(t *testing.T) {
 		wantUnreadable bool
 	}{
 		{input: "garbage", wantUnreadable: true},
-		{input: "1750/51", wantUnreadable: true},
 		{input: "31 FEB 1900", wantUnreadable: false},
 	}
 	for _, tt := range tests {
@@ -395,6 +450,9 @@ func TestNormalizeDateInput(t *testing.T) {
 		{input: "Between March 1840 and 5 June 1850", want: "BET MAR 1840 AND 5 JUN 1850"},
 		{input: "from 1840 to 1850", want: "FROM 1840 TO 1850"},
 		{input: "from 1840", want: "FROM 1840"},
+		{input: "to 1860", want: "TO 1860"},
+		// Dual years.
+		{input: "about 1750/51", want: "ABT 1750/51"},
 		// Month names, full and abbreviated.
 		{input: "Sept 1850", want: "SEP 1850"},
 		{input: "sept. 1850", want: "SEP 1850"},
@@ -419,8 +477,6 @@ func TestNormalizeDateInput(t *testing.T) {
 		{input: "1850 and 1860", wantErr: "is not a recognized date"},
 		{input: "1840 c", wantErr: "is not a recognized date"},
 		{input: "between 1840", wantErr: `"between 1840" is not a recognized date`},
-		{input: "to 1860", wantErr: `"to 1860" is not a supported date yet`},
-		{input: "about 1750/51", wantErr: "is not a supported date yet"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
@@ -504,6 +560,16 @@ func TestGenDate_Format(t *testing.T) {
 			want: "INT 1850 (about eighteen fifty)",
 		},
 		{
+			name: "to date",
+			date: GenDate{Qualifier: DateTo, Year: intPtr(1860)},
+			want: "TO 1860",
+		},
+		{
+			name: "BC date",
+			date: GenDate{Qualifier: DateExact, Year: intPtr(-44), Month: intPtr(3), Day: intPtr(15)},
+			want: "15 MAR 44 BC",
+		},
+		{
 			name: "interpreted date without phrase",
 			date: GenDate{Qualifier: DateInt, Year: intPtr(1850)},
 			want: "INT 1850",
@@ -522,6 +588,18 @@ func TestGenDate_Format(t *testing.T) {
 				t.Errorf("Format() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+// TestParseGenDate_SortOrder checks that dual-year, BC and TO-only dates sort
+// among ordinary dates by the year they are read as (issue #958).
+func TestParseGenDate_SortOrder(t *testing.T) {
+	ordered := []string{"1 JAN 1850 BC", "44 BC", "10", "1750", "1 JAN 1750/51", "FEB 1751", "TO 1860"}
+	for i := 1; i < len(ordered); i++ {
+		prev, cur := ParseGenDate(ordered[i-1]), ParseGenDate(ordered[i])
+		if !prev.Before(&cur) {
+			t.Errorf("%q does not sort before %q", ordered[i-1], ordered[i])
+		}
 	}
 }
 
@@ -584,6 +662,11 @@ func TestDateQualifier_IsValid(t *testing.T) {
 		{
 			name:      "interpreted is valid",
 			qualifier: DateInt,
+			want:      true,
+		},
+		{
+			name:      "to is valid",
+			qualifier: DateTo,
 			want:      true,
 		},
 		{

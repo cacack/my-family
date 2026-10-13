@@ -22,12 +22,13 @@ const (
 	DateBet   DateQualifier = "bet"   // Between (BET ... AND ...)
 	DateFrom  DateQualifier = "from"  // From/to range (FROM ... TO ...)
 	DateInt   DateQualifier = "int"   // Interpreted (INT <date> (<original phrase>))
+	DateTo    DateQualifier = "to"    // Period end with no start (TO <date>)
 )
 
 // IsValid checks if the date qualifier is valid.
 func (d DateQualifier) IsValid() bool {
 	switch d {
-	case DateExact, DateAbout, DateCalc, DateEst, DateBef, DateAft, DateBet, DateFrom, DateInt:
+	case DateExact, DateAbout, DateCalc, DateEst, DateBef, DateAft, DateBet, DateFrom, DateInt, DateTo:
 		return true
 	default:
 		return false
@@ -157,12 +158,17 @@ var qualifierPrefixes = []struct {
 	{"AFTER ", DateAft},
 	{"BET ", DateBet},
 	{"FROM ", DateFrom},
+	{"TO ", DateTo},
 }
 
 // ParseGenDate parses a GEDCOM-format date string into a GenDate. It detects and
 // strips a leading calendar escape sequence (e.g. "@#DJULIAN@") into Calendar,
 // interpreting month codes according to that calendar; unrecognized escapes are
 // left in place and the date is treated as Gregorian.
+//
+// A dual year ("1750/51") is read as its later year (1751), and a BC year as a
+// negative year ("44 BC" is -44), so both sort sensibly; Raw keeps the text as
+// written for display and GEDCOM export.
 func ParseGenDate(s string) GenDate {
 	s = strings.TrimSpace(s)
 	if s == "" {
@@ -336,12 +342,12 @@ func validateDate(s, typed string) error {
 			return &DateInputError{Reason: fmt.Sprintf("%q is not a real calendar date (%s)", typed, strings.TrimPrefix(err.Error(), "invalid date: "))}
 		}
 	}
-	// gedcom-go accepts forms ParseGenDate can't read a year from (dual years
-	// like "1750/51", BC years, a bare "TO 1860"). Storing those would leave the
-	// date without a year, so reject them unless they are a date phrase.
+	// Every accepted date must be stored with a year. ParseGenDate reads one
+	// from every form gedcom-go accepts today; this guards against a form it
+	// doesn't, such as one added by a gedcom-go upgrade.
 	if !strings.HasPrefix(s, "(") && ParseGenDate(s).Year == nil {
 		return &DateInputError{
-			Reason:     fmt.Sprintf("%q is not a supported date yet (dual years, BC years and \"TO\" without \"FROM\" can't be stored with a year); use a single year such as \"1751\", or keep it as text in parentheses as a date phrase", typed),
+			Reason:     fmt.Sprintf("%q is not a supported date yet; use a form like \"1 JAN 1850\" or \"about 1850\", or keep it as text in parentheses as a date phrase", typed),
 			Unreadable: true,
 		}
 	}
@@ -392,26 +398,37 @@ func extractCalendarEscape(s string) (calendar, rest string, found bool) {
 	return token, strings.Join(strings.Fields(remainder), " "), true
 }
 
-// parseSimpleDate parses a simple date like "1 JAN 1850", "JAN 1850", or "1850".
+// bcSuffixes are the era markers gedcom-go accepts after a BC year.
+var bcSuffixes = map[string]bool{"BC": true, "B.C.": true, "BCE": true, "B.C.E.": true}
+
+// parseSimpleDate parses a simple date like "1 JAN 1850", "JAN 1850", or "1850",
+// optionally with a dual year ("1750/51") or a BC suffix ("44 BC").
 // Month codes are interpreted according to the given calendar system.
 func parseSimpleDate(s, calendar string, year, month, day **int) {
 	s = strings.TrimSpace(s)
 	parts := strings.Fields(s)
 	months := monthMapFor(calendar)
 
+	bc := false
+	if n := len(parts); n > 1 && bcSuffixes[parts[n-1]] {
+		bc = true
+		parts = parts[:n-1]
+	}
+	setYear := func(text string) {
+		if y, ok := parseYear(text, bc); ok {
+			*year = &y
+		}
+	}
+
 	switch len(parts) {
 	case 1:
 		// Year only: "1850"
-		if y, err := strconv.Atoi(parts[0]); err == nil {
-			*year = &y
-		}
+		setYear(parts[0])
 	case 2:
 		// Month Year: "JAN 1850"
 		if m, ok := months[parts[0]]; ok {
 			*month = &m
-			if y, err := strconv.Atoi(parts[1]); err == nil {
-				*year = &y
-			}
+			setYear(parts[1])
 		}
 	case 3:
 		// Day Month Year: "1 JAN 1850"
@@ -421,10 +438,27 @@ func parseSimpleDate(s, calendar string, year, month, day **int) {
 		if m, ok := months[parts[1]]; ok {
 			*month = &m
 		}
-		if y, err := strconv.Atoi(parts[2]); err == nil {
-			*year = &y
-		}
+		setYear(parts[2])
 	}
+}
+
+// parseYear reads a year field, negated when bc is set. A dual year
+// ("1750/51", from the switch to a 1 January new year) names two consecutive
+// years, so it reads as the later one; the second part is not parsed, which
+// keeps "1699/00" (1700) from losing its century.
+func parseYear(s string, bc bool) (int, bool) {
+	first, _, dual := strings.Cut(s, "/")
+	y, err := strconv.Atoi(first)
+	if err != nil {
+		return 0, false
+	}
+	if bc {
+		y = -y
+	}
+	if dual {
+		y++
+	}
+	return y, true
 }
 
 // String returns the GEDCOM-format string representation.
@@ -452,6 +486,8 @@ func (g *GenDate) Format() string {
 		qualPrefix = "EST "
 	case DateBef:
 		qualPrefix = "BEF "
+	case DateTo:
+		qualPrefix = "TO "
 	case DateAft:
 		qualPrefix = "AFT "
 	case DateBet:
@@ -492,7 +528,11 @@ func formatSimpleDate(calendar string, year, month, day *int) string {
 			parts = append(parts, code)
 		}
 	}
-	parts = append(parts, strconv.Itoa(*year))
+	if *year < 0 {
+		parts = append(parts, strconv.Itoa(-*year), "BC")
+	} else {
+		parts = append(parts, strconv.Itoa(*year))
+	}
 	return strings.Join(parts, " ")
 }
 
