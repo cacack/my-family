@@ -8,16 +8,16 @@
 
 	let nameInput = $state('');
 	let gender = $state<Gender>('unknown');
-	let birthYear = $state('');
+	let birthDate = $state('');
 	let notes = $state('');
 	let showNotes = $state(false);
 	let sessionCount = $state(0);
 	let error = $state<string | null>(null);
 	let saving = $state(false);
-	// True when an add was refused because the birth year isn't a date, which
+	// True when an add was refused because the birth date can't be read, which
 	// the error offers to keep as text (#996).
 	let unreadableDate = $state(false);
-	// The last added person's birth year, when it was stored in another form
+	// The last added person's birth date, when it was stored in another form
 	// than typed (#996).
 	let savedAs: SavedAs | undefined = $state();
 	// How the last add was submitted, so keeping its date as text repeats it.
@@ -52,13 +52,13 @@
 				payload.notes = '[Quick capture]';
 			}
 
-			if (birthYear) {
-				payload.birth_date = birthYear;
+			if (birthDate) {
+				payload.birth_date = birthDate;
 			}
 
 			const person = await api.createPerson(payload);
 			sessionCount++;
-			const dateNotes = savedAsNotes({ birth_date: birthYear }, { birth_date: person.birth_date?.raw ?? '' });
+			const dateNotes = savedAsNotes({ birth_date: birthDate }, { birth_date: person.birth_date?.raw ?? '' });
 
 			if (mode === 'view') {
 				goto(`/persons/${person.id}`, { state: { savedAs: dateNotes } });
@@ -67,7 +67,7 @@
 				// Reset form for next entry
 				nameInput = '';
 				gender = 'unknown';
-				birthYear = '';
+				birthDate = '';
 				notes = '';
 				showNotes = false;
 			}
@@ -79,9 +79,9 @@
 		}
 	}
 
-	/** Add with an unreadable birth year as a date phrase, so it is kept as text (#996). */
+	/** Add with an unreadable birth date as a date phrase, so it is kept as text (#996). */
 	function keepDateAsText() {
-		birthYear = asDatePhrase(birthYear);
+		birthDate = asDatePhrase(birthDate);
 		submit(lastMode);
 	}
 </script>
@@ -94,7 +94,7 @@
 	{/if}
 
 	{#if savedAs}
-		<p class="saved-as" role="status">Birth year saved as {savedAs.stored} from “{savedAs.typed}”</p>
+		<p class="saved-as" role="status">Birth date saved as {savedAs.stored} from “{savedAs.typed}”</p>
 	{/if}
 
 	{#if error}
@@ -162,13 +162,8 @@
 		</fieldset>
 
 		<label class="field">
-			Birth Year <span class="optional">(optional)</span>
-			<input
-				type="text"
-				bind:value={birthYear}
-				placeholder="e.g., 1850"
-				inputmode="numeric"
-			/>
+			Birth Date <span class="optional">(optional)</span>
+			<input type="text" bind:value={birthDate} placeholder="e.g., 1850 or about 1850" />
 		</label>
 
 		{#if showNotes}
