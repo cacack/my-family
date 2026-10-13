@@ -380,7 +380,7 @@
 
 	@media (max-width: 640px) {
 		.gallery-grid {
-			grid-template-columns: repeat(2, 1fr);
+			grid-template-columns: repeat(auto-fill, minmax(min(100px, 100%), 1fr));
 			gap: 0.75rem;
 		}
 	}

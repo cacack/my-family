@@ -132,16 +132,10 @@
 
 	.feature-cards {
 		display: grid;
-		grid-template-columns: repeat(2, 1fr);
+		grid-template-columns: repeat(auto-fit, minmax(min(14rem, 100%), 1fr));
 		gap: 1rem;
 		margin-bottom: 2rem;
 		text-align: left;
-	}
-
-	@media (max-width: 480px) {
-		.feature-cards {
-			grid-template-columns: 1fr;
-		}
 	}
 
 	.feature-card {
