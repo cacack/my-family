@@ -52,6 +52,18 @@ describe('high-contrast definition', () => {
 		expect(themed.filter((t) => !highContrast.has(t))).toEqual([]);
 	});
 
+	it('reads every top-level declaration, past nested blocks', () => {
+		const css = `:root {
+	--a: 1;
+	.x { --nested: 2; }
+	--b: 3;
+}
+@media (min-width: 1px) {
+	:root { --in-media: 4; }
+}`;
+		expect(declaredTokens(css, ':root')).toEqual(['--a', '--b']);
+	});
+
 	it('styles links outside any cascade layer, so component-scoped link rules cannot beat it', () => {
 		// Unlayered styles beat layered ones whatever their specificity (#961).
 		const selector = 'body.high-contrast a:not([data-slot]) {';
