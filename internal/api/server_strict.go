@@ -4079,13 +4079,18 @@ func convertQueryFamilyToGenerated(f query.Family) Family {
 	return resp
 }
 
-// partnerSummary builds a PersonSummary for a family partner.
-func partnerSummary(id uuid.UUID, given, surname string) *PersonSummary {
-	return &PersonSummary{
+// personSummary builds a PersonSummary for a family partner or child.
+func personSummary(id uuid.UUID, given, surname string, gender *string) *PersonSummary {
+	s := &PersonSummary{
 		Id:        id,
 		GivenName: given,
 		Surname:   surname,
 	}
+	if gender != nil {
+		g := Gender(*gender)
+		s.Gender = &g
+	}
+	return s
 }
 
 // convertQueryFamilyDetailToGenerated converts a query.FamilyDetail to the generated FamilyDetail type.
@@ -4119,10 +4124,10 @@ func convertQueryFamilyDetailToGenerated(fd query.FamilyDetail) FamilyDetail {
 	// nil for legacy or unprojected data; missing parts render as empty
 	// strings rather than dropping the whole summary.
 	if fd.Partner1ID != nil {
-		resp.Partner1 = partnerSummary(*fd.Partner1ID, stringValue(fd.Partner1GivenName), stringValue(fd.Partner1Surname))
+		resp.Partner1 = personSummary(*fd.Partner1ID, stringValue(fd.Partner1GivenName), stringValue(fd.Partner1Surname), fd.Partner1Gender)
 	}
 	if fd.Partner2ID != nil {
-		resp.Partner2 = partnerSummary(*fd.Partner2ID, stringValue(fd.Partner2GivenName), stringValue(fd.Partner2Surname))
+		resp.Partner2 = personSummary(*fd.Partner2ID, stringValue(fd.Partner2GivenName), stringValue(fd.Partner2Surname), fd.Partner2Gender)
 	}
 
 	if len(fd.Children) > 0 {
@@ -4131,11 +4136,7 @@ func convertQueryFamilyDetailToGenerated(fd query.FamilyDetail) FamilyDetail {
 			children[i] = FamilyChild{
 				PersonId:         c.ID,
 				RelationshipType: ChildRelationType(c.RelationshipType),
-				Person: &PersonSummary{
-					Id:        c.ID,
-					GivenName: c.GivenName,
-					Surname:   c.Surname,
-				},
+				Person:           personSummary(c.ID, c.GivenName, c.Surname, c.Gender),
 			}
 		}
 		resp.Children = &children
@@ -4174,10 +4175,10 @@ func convertQueryFamilyToFamilyDetail(f query.Family) FamilyDetail {
 	}
 
 	if f.Partner1ID != nil {
-		resp.Partner1 = partnerSummary(*f.Partner1ID, stringValue(f.Partner1GivenName), stringValue(f.Partner1Surname))
+		resp.Partner1 = personSummary(*f.Partner1ID, stringValue(f.Partner1GivenName), stringValue(f.Partner1Surname), nil)
 	}
 	if f.Partner2ID != nil {
-		resp.Partner2 = partnerSummary(*f.Partner2ID, stringValue(f.Partner2GivenName), stringValue(f.Partner2Surname))
+		resp.Partner2 = personSummary(*f.Partner2ID, stringValue(f.Partner2GivenName), stringValue(f.Partner2Surname), nil)
 	}
 
 	return resp

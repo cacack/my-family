@@ -5610,7 +5610,8 @@ components:
         surname:
           type: string
         gender:
-          # Set on search results; absent on a family's partner and child summaries.
+          # Set on search results and on a family's partner and child summaries;
+          # absent on the family list and when the person's gender is unrecorded.
           $ref: '#/components/schemas/Gender'
         birth_date:
           $ref: '#/components/schemas/GenDate'

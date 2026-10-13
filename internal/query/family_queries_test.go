@@ -1245,3 +1245,74 @@ func TestFamilyService_BranchScope(t *testing.T) {
 		t.Errorf("GetFamily main after branch tombstone: %v, want nil", err)
 	}
 }
+
+func TestGetFamily_PartnerAndChildGenders(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	service := query.NewFamilyService(readStore)
+	ctx := context.Background()
+
+	father, _ := handler.CreatePerson(ctx, command.CreatePersonInput{GivenName: "John", Surname: "Doe", Gender: "male"})
+	mother, _ := handler.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Jane", Surname: "Doe", Gender: "female"})
+	daughter, _ := handler.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Alice", Surname: "Doe", Gender: "female"})
+	unrecorded, _ := handler.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Pat", Surname: "Doe"})
+
+	fam, err := handler.CreateFamily(ctx, command.CreateFamilyInput{Partner1ID: &father.ID, Partner2ID: &mother.ID})
+	if err != nil {
+		t.Fatalf("CreateFamily: %v", err)
+	}
+	for _, c := range []uuid.UUID{daughter.ID, unrecorded.ID} {
+		if _, err := handler.LinkChild(ctx, command.LinkChildInput{FamilyID: fam.ID, ChildID: c, RelationType: "biological"}); err != nil {
+			t.Fatalf("LinkChild: %v", err)
+		}
+	}
+
+	family, err := service.GetFamily(ctx, domain.MainBranchID, fam.ID)
+	if err != nil {
+		t.Fatalf("GetFamily: %v", err)
+	}
+
+	deref := func(s *string) string {
+		if s == nil {
+			return ""
+		}
+		return *s
+	}
+	if got := deref(family.Partner1Gender); got != "male" {
+		t.Errorf("Partner1Gender = %q, want male", got)
+	}
+	if got := deref(family.Partner2Gender); got != "female" {
+		t.Errorf("Partner2Gender = %q, want female", got)
+	}
+	want := map[uuid.UUID]string{daughter.ID: "female", unrecorded.ID: ""}
+	if len(family.Children) != len(want) {
+		t.Fatalf("Children = %d, want %d", len(family.Children), len(want))
+	}
+	for _, c := range family.Children {
+		if got := deref(c.Gender); got != want[c.ID] {
+			t.Errorf("child %s Gender = %q, want %q", c.GivenName, got, want[c.ID])
+		}
+	}
+}
+
+func TestGetFamily_UnrecordedPartnerGenderIsAbsent(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	service := query.NewFamilyService(readStore)
+	ctx := context.Background()
+
+	p, _ := handler.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Solo", Surname: "Doe"})
+	fam, err := handler.CreateFamily(ctx, command.CreateFamilyInput{Partner1ID: &p.ID})
+	if err != nil {
+		t.Fatalf("CreateFamily: %v", err)
+	}
+	family, err := service.GetFamily(ctx, domain.MainBranchID, fam.ID)
+	if err != nil {
+		t.Fatalf("GetFamily: %v", err)
+	}
+	if family.Partner1Gender != nil || family.Partner2Gender != nil {
+		t.Errorf("want no genders, got %v / %v", family.Partner1Gender, family.Partner2Gender)
+	}
+}

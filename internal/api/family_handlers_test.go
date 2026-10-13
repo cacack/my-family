@@ -332,6 +332,109 @@ func TestGetFamily_ChildrenHaveSplitNames(t *testing.T) {
 	}
 }
 
+func TestGetFamily_SummariesIncludeGender(t *testing.T) {
+	server := setupFamilyTestServer(t)
+
+	createPerson := func(given, gender string) string {
+		t.Helper()
+		body := map[string]interface{}{"given_name": given, "surname": "Doe"}
+		if gender != "" {
+			body["gender"] = gender
+		}
+		jsonBody, _ := json.Marshal(body)
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/persons", bytes.NewReader(jsonBody))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		server.Echo().ServeHTTP(rec, req)
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("create person %s: %d %s", given, rec.Code, rec.Body.String())
+		}
+		var p map[string]interface{}
+		_ = json.Unmarshal(rec.Body.Bytes(), &p)
+		return p["id"].(string)
+	}
+	post := func(path string, body map[string]interface{}) map[string]interface{} {
+		t.Helper()
+		jsonBody, _ := json.Marshal(body)
+		req := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(jsonBody))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		server.Echo().ServeHTTP(rec, req)
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("POST %s: %d %s", path, rec.Code, rec.Body.String())
+		}
+		var out map[string]interface{}
+		_ = json.Unmarshal(rec.Body.Bytes(), &out)
+		return out
+	}
+
+	father := createPerson("John", "male")
+	mother := createPerson("Jane", "female")
+	son := createPerson("Bob", "male")
+	unrecorded := createPerson("Pat", "")
+	familyID := post("/api/v1/families", map[string]interface{}{
+		"partner1_id": father, "partner2_id": mother, "relationship_type": "marriage",
+	})["id"].(string)
+	for _, c := range []string{son, unrecorded} {
+		post("/api/v1/families/"+familyID+"/children", map[string]interface{}{
+			"person_id": c, "relationship_type": "biological",
+		})
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/families/"+familyID, http.NoBody)
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET family: %d %s", rec.Code, rec.Body.String())
+	}
+	var result map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	tests := []struct {
+		name    string
+		summary interface{}
+		want    interface{} // nil means the key must be absent
+	}{
+		{"partner1", result["partner1"], "male"},
+		{"partner2", result["partner2"], "female"},
+	}
+	wantChild := map[string]interface{}{son: "male", unrecorded: nil}
+	children, _ := result["children"].([]interface{})
+	if len(children) != len(wantChild) {
+		t.Fatalf("expected %d children, got %v", len(wantChild), result["children"])
+	}
+	for _, c := range children {
+		entry := c.(map[string]interface{})
+		id := entry["person_id"].(string)
+		tests = append(tests, struct {
+			name    string
+			summary interface{}
+			want    interface{}
+		}{"child " + id, entry["person"], wantChild[id]})
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			summary, ok := tt.summary.(map[string]interface{})
+			if !ok {
+				t.Fatalf("expected summary object, got %v", tt.summary)
+			}
+			got, present := summary["gender"]
+			if tt.want == nil {
+				if present {
+					t.Errorf("gender should be absent, got %v", got)
+				}
+				return
+			}
+			if got != tt.want {
+				t.Errorf("gender = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestGetFamily_WithChildren_ResponseFormat(t *testing.T) {
 	server := setupFamilyTestServer(t)
 
