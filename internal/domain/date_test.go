@@ -616,9 +616,22 @@ func TestGenDate_SortDate(t *testing.T) {
 func TestGenDate_SortDate_BC(t *testing.T) {
 	for _, s := range []string{"44 BC", "@#DJULIAN@ 15 MAR 44 BC"} {
 		gd := ParseGenDate(s)
-		if got := gd.SortDate(); !got.IsZero() {
-			t.Errorf("SortDate(%q) = %v, want zero (BC has no persisted sort date)", s, got)
+		if got := gd.SortDate(); got.Year() >= 1 {
+			t.Errorf("SortDate(%q) = %v, want a year before 1 AD", s, got)
 		}
+	}
+}
+
+func TestGenDate_SortDate_ClampsToEarliest(t *testing.T) {
+	for _, s := range []string{"5000 BC", "4713 BC"} {
+		gd := ParseGenDate(s)
+		if got := gd.SortDate(); !got.Equal(EarliestSortDate) {
+			t.Errorf("SortDate(%q) = %v, want %v", s, got, EarliestSortDate)
+		}
+	}
+	gd := ParseGenDate("4712 BC")
+	if got := gd.SortDate(); !got.Equal(gd.ToTime()) {
+		t.Errorf("SortDate(4712 BC) = %v, want %v", got, gd.ToTime())
 	}
 }
 

@@ -8,10 +8,10 @@ import (
 	"github.com/cacack/my-family/internal/repository"
 )
 
-// TestProjector_BCDateHasNoSortDate proves a BC birth date is stored with no
-// sort date on every backend, so SQLite (whose text sort column cannot hold a
-// negative year) and memory agree, while the raw date text is kept.
-func TestProjector_BCDateHasNoSortDate(t *testing.T) {
+// TestProjector_BCDateKeepsSortDate proves a BC birth date is stored with its
+// BC sort date on every backend and reads back unchanged, alongside the raw
+// date text (#1065).
+func TestProjector_BCDateKeepsSortDate(t *testing.T) {
 	for backend, readStore := range fullNameStores(t) {
 		t.Run(backend, func(t *testing.T) {
 			ctx := context.Background()
@@ -30,8 +30,8 @@ func TestProjector_BCDateHasNoSortDate(t *testing.T) {
 			if err != nil || rm == nil {
 				t.Fatalf("GetPerson: %v, %v", rm, err)
 			}
-			if rm.BirthDateSort != nil {
-				t.Errorf("BirthDateSort = %v, want nil for a BC date", rm.BirthDateSort)
+			if want := bc.SortDate(); rm.BirthDateSort == nil || !rm.BirthDateSort.Equal(want) {
+				t.Errorf("BirthDateSort = %v, want %v", rm.BirthDateSort, want)
 			}
 			if rm.BirthDateRaw != bc.Raw {
 				t.Errorf("BirthDateRaw = %q, want %q", rm.BirthDateRaw, bc.Raw)

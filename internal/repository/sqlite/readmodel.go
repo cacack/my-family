@@ -1391,11 +1391,11 @@ func scoreFuzzyRows(rows *sql.Rows, query repository.TrigramQuery) ([]fuzzyMatch
 		}
 		return top, hit
 	}
-	parseSortDate := func(v sql.NullString) *time.Time {
+	sortDate := func(v sql.NullString) *time.Time {
 		if !v.Valid {
 			return nil
 		}
-		t, err := time.Parse("2006-01-02", v.String)
+		t, err := parseSortDate(v.String, sortDateLayout)
 		if err != nil {
 			return nil
 		}
@@ -1430,7 +1430,7 @@ func scoreFuzzyRows(rows *sql.Rows, query repository.TrigramQuery) ([]fuzzyMatch
 			}
 			e = &entry{fuzzyMatch: fuzzyMatch{person: repository.PersonReadModel{
 				ID: id, GivenName: given, Surname: surname, FullName: full,
-				BirthDateSort: parseSortDate(birthSort), DeathDateSort: parseSortDate(deathSort),
+				BirthDateSort: sortDate(birthSort), DeathDateSort: sortDate(deathSort),
 			}}}
 			e.primary, e.primaryHit = best(given, surname, full)
 			byID[idStr] = e
@@ -1691,19 +1691,19 @@ func buildDatePlaceFilters(opts repository.SearchOptions) (string, []any) {
 
 	if opts.BirthDateFrom != nil {
 		conditions = append(conditions, "p.birth_date_sort >= ?")
-		args = append(args, opts.BirthDateFrom.Format("2006-01-02"))
+		args = append(args, formatSortDate(*opts.BirthDateFrom, sortDateLayout))
 	}
 	if opts.BirthDateTo != nil {
 		conditions = append(conditions, "p.birth_date_sort <= ?")
-		args = append(args, opts.BirthDateTo.Format("2006-01-02"))
+		args = append(args, formatSortDate(*opts.BirthDateTo, sortDateLayout))
 	}
 	if opts.DeathDateFrom != nil {
 		conditions = append(conditions, "p.death_date_sort >= ?")
-		args = append(args, opts.DeathDateFrom.Format("2006-01-02"))
+		args = append(args, formatSortDate(*opts.DeathDateFrom, sortDateLayout))
 	}
 	if opts.DeathDateTo != nil {
 		conditions = append(conditions, "p.death_date_sort <= ?")
-		args = append(args, opts.DeathDateTo.Format("2006-01-02"))
+		args = append(args, formatSortDate(*opts.DeathDateTo, sortDateLayout))
 	}
 	// Places match as PostgreSQL's ILIKE '%' || place || '%' (see containsFoldFunc).
 	// SearchPersons has already trimmed them.
@@ -1817,10 +1817,10 @@ func (s *ReadModelStore) SavePerson(ctx context.Context, branchID domain.BranchI
 	}
 	var birthDateSort, deathDateSort sql.NullString
 	if person.BirthDateSort != nil {
-		birthDateSort = sql.NullString{String: person.BirthDateSort.Format("2006-01-02"), Valid: true}
+		birthDateSort = sql.NullString{String: formatSortDate(*person.BirthDateSort, sortDateLayout), Valid: true}
 	}
 	if person.DeathDateSort != nil {
-		deathDateSort = sql.NullString{String: person.DeathDateSort.Format("2006-01-02"), Valid: true}
+		deathDateSort = sql.NullString{String: formatSortDate(*person.DeathDateSort, sortDateLayout), Valid: true}
 	}
 
 	// Convert coordinate pointers to nullable strings
@@ -2602,7 +2602,7 @@ func (s *ReadModelStore) SaveFamily(ctx context.Context, branchID domain.BranchI
 
 	var marriageDateSort sql.NullString
 	if family.MarriageDateSort != nil {
-		marriageDateSort = sql.NullString{String: family.MarriageDateSort.Format("2006-01-02"), Valid: true}
+		marriageDateSort = sql.NullString{String: formatSortDate(*family.MarriageDateSort, sortDateLayout), Valid: true}
 	}
 
 	// Convert coordinate pointers to nullable strings
@@ -3075,12 +3075,12 @@ func scanPerson(row rowScanner, extra ...any) (*repository.PersonReadModel, erro
 	}
 
 	if birthDateSort.Valid {
-		if t, err := time.Parse("2006-01-02", birthDateSort.String); err == nil {
+		if t, err := parseSortDate(birthDateSort.String, sortDateLayout); err == nil {
 			p.BirthDateSort = &t
 		}
 	}
 	if deathDateSort.Valid {
-		if t, err := time.Parse("2006-01-02", deathDateSort.String); err == nil {
+		if t, err := parseSortDate(deathDateSort.String, sortDateLayout); err == nil {
 			p.DeathDateSort = &t
 		}
 	}
@@ -3155,7 +3155,7 @@ func scanFamily(row rowScanner) (*repository.FamilyReadModel, error) {
 		f.Partner2ID = &p2ID
 	}
 	if marriageDateSort.Valid {
-		if t, err := time.Parse("2006-01-02", marriageDateSort.String); err == nil {
+		if t, err := parseSortDate(marriageDateSort.String, sortDateLayout); err == nil {
 			f.MarriageDateSort = &t
 		}
 	}
@@ -3304,7 +3304,7 @@ func (s *ReadModelStore) SaveSource(ctx context.Context, branchID domain.BranchI
 
 	var publishDateSort sql.NullString
 	if source.PublishDateSort != nil {
-		publishDateSort = sql.NullString{String: source.PublishDateSort.Format("2006-01-02"), Valid: true}
+		publishDateSort = sql.NullString{String: formatSortDate(*source.PublishDateSort, sortDateLayout), Valid: true}
 	}
 
 	var repositoryID sql.NullString
@@ -3783,7 +3783,7 @@ func (s *ReadModelStore) SaveEvent(ctx context.Context, branchID domain.BranchID
 	var description, cause, age, researchStatus interface{}
 
 	if event.DateSort != nil {
-		dateSort = event.DateSort.Format(time.RFC3339)
+		dateSort = formatSortDate(*event.DateSort, time.RFC3339)
 	}
 	if event.PlaceLat != nil {
 		placeLat = *event.PlaceLat
@@ -3928,7 +3928,7 @@ func (s *ReadModelStore) SaveAttribute(ctx context.Context, branchID domain.Bran
 
 	var dateSort interface{}
 	if attribute.DateSort != nil {
-		dateSort = attribute.DateSort.Format(time.RFC3339)
+		dateSort = formatSortDate(*attribute.DateSort, time.RFC3339)
 	}
 
 	_, err := s.db.ExecContext(ctx, `
@@ -4008,7 +4008,7 @@ func scanSource(row rowScanner) (*repository.SourceReadModel, error) {
 		}
 	}
 	if publishDateSort.Valid {
-		if t, err := time.Parse("2006-01-02", publishDateSort.String); err == nil {
+		if t, err := parseSortDate(publishDateSort.String, sortDateLayout); err == nil {
 			src.PublishDateSort = &t
 		}
 	}
@@ -4120,7 +4120,7 @@ func scanEvent(row rowScanner) (*repository.EventReadModel, error) {
 	}
 
 	if dateSort.Valid {
-		if t, err := parseTimestamp(dateSort.String); err == nil {
+		if t, err := parseSortDate(dateSort.String, time.RFC3339); err == nil {
 			event.DateSort = &t
 		}
 	}
@@ -4186,7 +4186,7 @@ func scanAttribute(row rowScanner) (*repository.AttributeReadModel, error) {
 	}
 
 	if dateSort.Valid {
-		if t, err := parseTimestamp(dateSort.String); err == nil {
+		if t, err := parseSortDate(dateSort.String, time.RFC3339); err == nil {
 			attr.DateSort = &t
 		}
 	}
@@ -5992,7 +5992,7 @@ func (s *ReadModelStore) GetLDSOrdinance(ctx context.Context, id uuid.UUID) (*re
 		ordinance.DateRaw = dateRaw.String
 	}
 	if dateSort.Valid {
-		if t, err := parseTimestamp(dateSort.String); err == nil {
+		if t, err := parseSortDate(dateSort.String, time.RFC3339); err == nil {
 			ordinance.DateSort = &t
 		}
 	}
@@ -6089,7 +6089,7 @@ func (s *ReadModelStore) ListLDSOrdinances(ctx context.Context, opts repository.
 			ordinance.DateRaw = dateRaw.String
 		}
 		if dateSort.Valid {
-			if t, err := parseTimestamp(dateSort.String); err == nil {
+			if t, err := parseSortDate(dateSort.String, time.RFC3339); err == nil {
 				ordinance.DateSort = &t
 			}
 		}
@@ -6166,7 +6166,7 @@ func (s *ReadModelStore) ListLDSOrdinancesForPerson(ctx context.Context, personI
 			ordinance.DateRaw = dateRaw.String
 		}
 		if dateSort.Valid {
-			if t, err := parseTimestamp(dateSort.String); err == nil {
+			if t, err := parseSortDate(dateSort.String, time.RFC3339); err == nil {
 				ordinance.DateSort = &t
 			}
 		}
@@ -6243,7 +6243,7 @@ func (s *ReadModelStore) ListLDSOrdinancesForFamily(ctx context.Context, familyI
 			ordinance.DateRaw = dateRaw.String
 		}
 		if dateSort.Valid {
-			if t, err := parseTimestamp(dateSort.String); err == nil {
+			if t, err := parseSortDate(dateSort.String, time.RFC3339); err == nil {
 				ordinance.DateSort = &t
 			}
 		}
@@ -6283,7 +6283,7 @@ func (s *ReadModelStore) SaveLDSOrdinance(ctx context.Context, ordinance *reposi
 		dateRaw = ordinance.DateRaw
 	}
 	if ordinance.DateSort != nil {
-		dateSort = ordinance.DateSort.Format(time.RFC3339)
+		dateSort = formatSortDate(*ordinance.DateSort, time.RFC3339)
 	}
 	if ordinance.Place != "" {
 		place = ordinance.Place
