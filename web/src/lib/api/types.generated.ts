@@ -14,7 +14,12 @@ export interface paths {
         /** List all persons */
         get: operations["listPersons"];
         put?: never;
-        /** Create a new person */
+        /**
+         * Create a new person
+         * @description `birth_date` and `death_date` are checked against the accepted date
+         *     forms (see `DateInput`) and stored in GEDCOM form; any other date is
+         *     rejected with 400.
+         */
         post: operations["createPerson"];
         delete?: never;
         options?: never;
@@ -33,7 +38,12 @@ export interface paths {
         };
         /** Get a person by ID */
         get: operations["getPerson"];
-        /** Update a person */
+        /**
+         * Update a person
+         * @description `birth_date` and `death_date` are checked against the accepted date
+         *     forms (see `DateInput`) and stored in GEDCOM form; any other date is
+         *     rejected with 400.
+         */
         put: operations["updatePerson"];
         post?: never;
         /** Delete a person */
@@ -58,6 +68,10 @@ export interface paths {
          * @description When `branch` is supplied the family is created on that branch only, and
          *     partner ids are resolved through the branch overlay — a person that
          *     exists only on the branch may be a partner.
+         *
+         *     `marriage_date` is checked against the accepted date forms (see
+         *     `DateInput`) and stored in GEDCOM form; any other date is rejected
+         *     with 400.
          */
         post: operations["createFamily"];
         delete?: never;
@@ -77,7 +91,12 @@ export interface paths {
         };
         /** Get a family by ID */
         get: operations["getFamily"];
-        /** Update a family */
+        /**
+         * Update a family
+         * @description `marriage_date` is checked against the accepted date forms (see
+         *     `DateInput`) and stored in GEDCOM form; any other date is rejected
+         *     with 400.
+         */
         put: operations["updateFamily"];
         post?: never;
         /**
@@ -1060,6 +1079,10 @@ export interface paths {
          * Create a new source
          * @description Creates a source. With `?branch=` the source is created on that branch
          *     only.
+         *
+         *     `publish_date` is checked against the accepted date forms (see
+         *     `DateInput`) and stored in GEDCOM form; any other date is rejected
+         *     with 400.
          */
         post: operations["createSource"];
         delete?: never;
@@ -1106,7 +1129,12 @@ export interface paths {
          *     `?branch=` all three are read from that branch's isolated view.
          */
         get: operations["getSource"];
-        /** Update a source */
+        /**
+         * Update a source
+         * @description `publish_date` is checked against the accepted date forms (see
+         *     `DateInput`) and stored in GEDCOM form; any other date is rejected
+         *     with 400.
+         */
         put: operations["updateSource"];
         post?: never;
         /**
@@ -2582,7 +2610,12 @@ export interface paths {
          */
         get: operations["listLDSOrdinances"];
         put?: never;
-        /** Create a new LDS ordinance */
+        /**
+         * Create a new LDS ordinance
+         * @description `date` is checked against the accepted date forms (see
+         *     `DateInput`) and stored in GEDCOM form; any other date is rejected
+         *     with 400.
+         */
         post: operations["createLDSOrdinance"];
         delete?: never;
         options?: never;
@@ -2602,7 +2635,12 @@ export interface paths {
         };
         /** Get an LDS ordinance by ID */
         get: operations["getLDSOrdinance"];
-        /** Update an LDS ordinance */
+        /**
+         * Update an LDS ordinance
+         * @description `date` is checked against the accepted date forms (see
+         *     `DateInput`) and stored in GEDCOM form; any other date is rejected
+         *     with 400.
+         */
         put: operations["updateLDSOrdinance"];
         post?: never;
         /** Delete an LDS ordinance */
@@ -3162,6 +3200,33 @@ export interface components {
          * @enum {string}
          */
         FactType: "person_birth" | "person_death" | "person_name" | "person_gender" | "person_burial" | "person_cremation" | "person_baptism" | "person_christening" | "person_emigration" | "person_immigration" | "person_naturalization" | "person_census" | "person_generic_event" | "person_occupation" | "person_residence" | "person_education" | "person_religion" | "person_title" | "family_marriage" | "family_divorce" | "family_marriage_bann" | "family_marriage_contract" | "family_marriage_license" | "family_marriage_settlement" | "family_annulment" | "family_engagement";
+        /**
+         * @description A date as entered, stored in GEDCOM form. Accepted forms:
+         *
+         *     - GEDCOM dates: `1850`, `MAR 1850`, `15 MAR 1850`, including dual
+         *       years (`1 JAN 1750/51`) and BC years (`44 BC`).
+         *     - GEDCOM qualifiers: `ABT`, `CAL`, `EST`, `BEF`, `AFT`,
+         *       `BET ... AND ...`, `FROM ... TO ...`, `FROM ...`, `TO ...`, and
+         *       interpreted dates such as `INT 1850 (about eighteen fifty)`.
+         *     - Calendar escapes: `@#DJULIAN@`, `@#DHEBREW@`, `@#DFRENCH R@`
+         *       (for example `@#DJULIAN@ 29 FEB 1700`).
+         *     - Plain English, converted to GEDCOM before it is checked and stored:
+         *       about, circa, c., ca., before, after, `between X and Y`,
+         *       `from X to Y`, and month names in full, as three letters or as
+         *       "Sept". For example `about Sept 1850` is stored as `ABT SEP 1850`.
+         *     - A date phrase in parentheses, such as `(about the time of the war)`,
+         *       kept as text.
+         *
+         *     An empty string means no date. Any other text (such as `1850-01-01`
+         *     or `Sept 5, 1850`), a date without a year, or a date that doesn't
+         *     exist in the calendar (such as `31 FEB 1900`) is rejected with 400;
+         *     the error's `details` name the field and say whether the text can be
+         *     kept as a date phrase. On update, a date identical to the stored value
+         *     is not re-checked, so an imported date the parser can't read never
+         *     blocks an unrelated edit.
+         * @example 1 JAN 1850
+         */
+        DateInput: string;
         /** @description Genealogical date with flexible precision */
         GenDate: {
             /**
@@ -3228,14 +3293,9 @@ export interface components {
             given_name: string;
             surname?: string;
             gender?: components["schemas"]["Gender"];
-            /**
-             * @description GEDCOM-format date string
-             * @example 1 JAN 1850
-             */
-            birth_date?: string;
+            birth_date?: components["schemas"]["DateInput"];
             birth_place?: string;
-            /** @description GEDCOM-format date string */
-            death_date?: string;
+            death_date?: components["schemas"]["DateInput"];
             death_place?: string;
             notes?: string;
             research_status?: components["schemas"]["ResearchStatus"];
@@ -3244,9 +3304,9 @@ export interface components {
             given_name?: string;
             surname?: string;
             gender?: components["schemas"]["Gender"];
-            birth_date?: string;
+            birth_date?: components["schemas"]["DateInput"];
             birth_place?: string;
-            death_date?: string;
+            death_date?: components["schemas"]["DateInput"];
             death_place?: string;
             notes?: string;
             research_status?: components["schemas"]["ResearchStatus"];
@@ -3325,7 +3385,7 @@ export interface components {
             /** Format: uuid */
             partner2_id?: string;
             relationship_type?: components["schemas"]["RelationType"];
-            marriage_date?: string;
+            marriage_date?: components["schemas"]["DateInput"];
             marriage_place?: string;
         };
         FamilyUpdate: {
@@ -3350,7 +3410,7 @@ export interface components {
              */
             clear_partner2?: boolean;
             relationship_type?: components["schemas"]["RelationType"];
-            marriage_date?: string;
+            marriage_date?: components["schemas"]["DateInput"];
             marriage_place?: string;
             /** Format: int64 */
             version: number;
@@ -3984,11 +4044,7 @@ export interface components {
             title: string;
             author?: string;
             publisher?: string;
-            /**
-             * @description Date as a GEDCOM date or plain English (stored in GEDCOM form); an unrecognized or impossible date is rejected with 400. Free text can be kept as a date phrase in parentheses.
-             * @example 15 MAR 1920
-             */
-            publish_date?: string;
+            publish_date?: components["schemas"]["DateInput"];
             /** Format: uri */
             url?: string;
             repository_name?: string;
@@ -4001,11 +4057,7 @@ export interface components {
             title?: string;
             author?: string;
             publisher?: string;
-            /**
-             * @description Date as a GEDCOM date or plain English (stored in GEDCOM form); an unrecognized or impossible date is rejected with 400. Free text can be kept as a date phrase in parentheses.
-             * @example 15 MAR 1920
-             */
-            publish_date?: string;
+            publish_date?: components["schemas"]["DateInput"];
             /** Format: uri */
             url?: string;
             repository_name?: string;
@@ -5939,8 +5991,7 @@ export interface components {
              * @description Required for spouse sealing (SLGS)
              */
             family_id?: string;
-            /** @description Date string in GEDCOM format */
-            date?: string;
+            date?: components["schemas"]["DateInput"];
             place?: string;
             /** @description Temple code */
             temple?: string;
@@ -5948,8 +5999,7 @@ export interface components {
             status?: string;
         };
         LDSOrdinanceUpdate: {
-            /** @description Updated date */
-            date?: string;
+            date?: components["schemas"]["DateInput"];
             /** @description Updated place */
             place?: string;
             /** @description Updated temple code */
@@ -6203,7 +6253,10 @@ export interface components {
         };
     };
     responses: {
-        /** @description Invalid request */
+        /**
+         * @description Invalid request. A rejected date field also carries `details.field`
+         *     and `details.unreadable` (see `Error.details` and `DateInput`).
+         */
         BadRequest: {
             headers: {
                 [name: string]: unknown;

@@ -113,6 +113,10 @@ paths:
     post:
       operationId: createPerson
       summary: Create a new person
+      description: |
+        `birth_date` and `death_date` are checked against the accepted date
+        forms (see `DateInput`) and stored in GEDCOM form; any other date is
+        rejected with 400.
       tags: [persons]
       parameters:
         - $ref: '#/components/parameters/branchScope'
@@ -159,6 +163,10 @@ paths:
     put:
       operationId: updatePerson
       summary: Update a person
+      description: |
+        `birth_date` and `death_date` are checked against the accepted date
+        forms (see `DateInput`) and stored in GEDCOM form; any other date is
+        rejected with 400.
       tags: [persons]
       parameters:
         - $ref: '#/components/parameters/branchScope'
@@ -224,6 +232,10 @@ paths:
         When `branch` is supplied the family is created on that branch only, and
         partner ids are resolved through the branch overlay — a person that
         exists only on the branch may be a partner.
+
+        `marriage_date` is checked against the accepted date forms (see
+        `DateInput`) and stored in GEDCOM form; any other date is rejected
+        with 400.
       tags: [families]
       parameters:
         - $ref: '#/components/parameters/branchScope'
@@ -270,6 +282,10 @@ paths:
     put:
       operationId: updateFamily
       summary: Update a family
+      description: |
+        `marriage_date` is checked against the accepted date forms (see
+        `DateInput`) and stored in GEDCOM form; any other date is rejected
+        with 400.
       tags: [families]
       parameters:
         - $ref: '#/components/parameters/branchScope'
@@ -1828,6 +1844,10 @@ paths:
       description: |
         Creates a source. With `?branch=` the source is created on that branch
         only.
+
+        `publish_date` is checked against the accepted date forms (see
+        `DateInput`) and stored in GEDCOM form; any other date is rejected
+        with 400.
       tags: [sources]
       parameters:
         - $ref: '#/components/parameters/branchScope'
@@ -1908,6 +1928,10 @@ paths:
     put:
       operationId: updateSource
       summary: Update a source
+      description: |
+        `publish_date` is checked against the accepted date forms (see
+        `DateInput`) and stored in GEDCOM form; any other date is rejected
+        with 400.
       tags: [sources]
       parameters:
         - $ref: '#/components/parameters/branchScope'
@@ -4256,6 +4280,10 @@ paths:
     post:
       operationId: createLDSOrdinance
       summary: Create a new LDS ordinance
+      description: |
+        `date` is checked against the accepted date forms (see
+        `DateInput`) and stored in GEDCOM form; any other date is rejected
+        with 400.
       tags: [lds-ordinances]
       requestBody:
         required: true
@@ -4294,6 +4322,10 @@ paths:
     put:
       operationId: updateLDSOrdinance
       summary: Update an LDS ordinance
+      description: |
+        `date` is checked against the accepted date forms (see
+        `DateInput`) and stored in GEDCOM form; any other date is rejected
+        with 400.
       tags: [lds-ordinances]
       requestBody:
         required: true
@@ -5140,7 +5172,9 @@ components:
 
   responses:
     BadRequest:
-      description: Invalid request
+      description: |
+        Invalid request. A rejected date field also carries `details.field`
+        and `details.unreadable` (see `Error.details` and `DateInput`).
       content:
         application/json:
           schema:
@@ -5384,6 +5418,34 @@ components:
         - family_annulment
         - family_engagement
 
+    DateInput:
+      type: string
+      description: |
+        A date as entered, stored in GEDCOM form. Accepted forms:
+
+        - GEDCOM dates: `1850`, `MAR 1850`, `15 MAR 1850`, including dual
+          years (`1 JAN 1750/51`) and BC years (`44 BC`).
+        - GEDCOM qualifiers: `ABT`, `CAL`, `EST`, `BEF`, `AFT`,
+          `BET ... AND ...`, `FROM ... TO ...`, `FROM ...`, `TO ...`, and
+          interpreted dates such as `INT 1850 (about eighteen fifty)`.
+        - Calendar escapes: `@#DJULIAN@`, `@#DHEBREW@`, `@#DFRENCH R@`
+          (for example `@#DJULIAN@ 29 FEB 1700`).
+        - Plain English, converted to GEDCOM before it is checked and stored:
+          about, circa, c., ca., before, after, `between X and Y`,
+          `from X to Y`, and month names in full, as three letters or as
+          "Sept". For example `about Sept 1850` is stored as `ABT SEP 1850`.
+        - A date phrase in parentheses, such as `(about the time of the war)`,
+          kept as text.
+
+        An empty string means no date. Any other text (such as `1850-01-01`
+        or `Sept 5, 1850`), a date without a year, or a date that doesn't
+        exist in the calendar (such as `31 FEB 1900`) is rejected with 400;
+        the error's `details` name the field and say whether the text can be
+        kept as a date phrase. On update, a date identical to the stored value
+        is not re-checked, so an imported date the parser can't read never
+        blocks an unrelated edit.
+      example: "1 JAN 1850"
+
     GenDate:
       type: object
       description: Genealogical date with flexible precision
@@ -5501,14 +5563,11 @@ components:
         gender:
           $ref: '#/components/schemas/Gender'
         birth_date:
-          type: string
-          description: GEDCOM-format date string
-          example: "1 JAN 1850"
+          $ref: '#/components/schemas/DateInput'
         birth_place:
           type: string
         death_date:
-          type: string
-          description: GEDCOM-format date string
+          $ref: '#/components/schemas/DateInput'
         death_place:
           type: string
         notes:
@@ -5530,11 +5589,11 @@ components:
         gender:
           $ref: '#/components/schemas/Gender'
         birth_date:
-          type: string
+          $ref: '#/components/schemas/DateInput'
         birth_place:
           type: string
         death_date:
-          type: string
+          $ref: '#/components/schemas/DateInput'
         death_place:
           type: string
         notes:
@@ -5676,7 +5735,7 @@ components:
         relationship_type:
           $ref: '#/components/schemas/RelationType'
         marriage_date:
-          type: string
+          $ref: '#/components/schemas/DateInput'
         marriage_place:
           type: string
 
@@ -5705,7 +5764,7 @@ components:
         relationship_type:
           $ref: '#/components/schemas/RelationType'
         marriage_date:
-          type: string
+          $ref: '#/components/schemas/DateInput'
         marriage_place:
           type: string
         version:
@@ -6722,9 +6781,7 @@ components:
         publisher:
           type: string
         publish_date:
-          type: string
-          description: Date as a GEDCOM date or plain English (stored in GEDCOM form); an unrecognized or impossible date is rejected with 400. Free text can be kept as a date phrase in parentheses.
-          example: "15 MAR 1920"
+          $ref: '#/components/schemas/DateInput'
         url:
           type: string
           format: uri
@@ -6750,9 +6807,7 @@ components:
         publisher:
           type: string
         publish_date:
-          type: string
-          description: Date as a GEDCOM date or plain English (stored in GEDCOM form); an unrecognized or impossible date is rejected with 400. Free text can be kept as a date phrase in parentheses.
-          example: "15 MAR 1920"
+          $ref: '#/components/schemas/DateInput'
         url:
           type: string
           format: uri
@@ -9695,8 +9750,7 @@ components:
           format: uuid
           description: Required for spouse sealing (SLGS)
         date:
-          type: string
-          description: Date string in GEDCOM format
+          $ref: '#/components/schemas/DateInput'
         place:
           type: string
         temple:
@@ -9711,8 +9765,7 @@ components:
       required: [version]
       properties:
         date:
-          type: string
-          description: Updated date
+          $ref: '#/components/schemas/DateInput'
         place:
           type: string
           description: Updated place
