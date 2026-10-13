@@ -167,7 +167,8 @@ var qualifierPrefixes = []struct {
 // left in place and the date is treated as Gregorian.
 //
 // A dual year ("1750/51") is read as its later year (1751), and a BC year as a
-// negative year ("44 BC" is -44), so both sort sensibly; Raw keeps the text as
+// negative year ("44 BC" is -44), so both sort sensibly in memory (Before,
+// After); see SortDate for how BC dates are persisted. Raw keeps the text as
 // written for display and GEDCOM export.
 func ParseGenDate(s string) GenDate {
 	s = strings.TrimSpace(s)
@@ -569,12 +570,16 @@ func (g *GenDate) ToTime() time.Time {
 	return time.Date(year, month, day, 0, 0, 0, 0, time.UTC)
 }
 
-// SortDate returns a date suitable for sorting comparisons.
-// For "before" dates, returns the date itself.
-// For "after" dates, returns the date itself.
-// For ranges, returns the start date.
+// SortDate returns the date stored in the read model's *_date_sort columns:
+// ToTime, except that a BC date returns the zero time (stored as no sort
+// date), because SQLite keeps sort dates as text that neither parses back nor
+// orders correctly with a negative year.
 func (g *GenDate) SortDate() time.Time {
-	return g.ToTime()
+	t := g.ToTime()
+	if t.Year() < 1 {
+		return time.Time{}
+	}
+	return t
 }
 
 // Validate checks if the date components are valid.

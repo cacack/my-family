@@ -613,6 +613,32 @@ func TestGenDate_SortDate(t *testing.T) {
 	}
 }
 
+func TestGenDate_SortDate_BC(t *testing.T) {
+	for _, s := range []string{"44 BC", "@#DJULIAN@ 15 MAR 44 BC"} {
+		gd := ParseGenDate(s)
+		if got := gd.SortDate(); !got.IsZero() {
+			t.Errorf("SortDate(%q) = %v, want zero (BC has no persisted sort date)", s, got)
+		}
+	}
+}
+
+func TestGenDate_ToTime_JulianBC(t *testing.T) {
+	gd := ParseGenDate("@#DJULIAN@ 15 MAR 44 BC")
+	if got := gd.ToTime().Year(); got >= 0 {
+		t.Errorf("ToTime().Year() = %d, want a BC (negative) year", got)
+	}
+	greg, err := gd.ToGregorian()
+	if err != nil {
+		t.Fatalf("ToGregorian: %v", err)
+	}
+	if greg.Year == nil || *greg.Year != -44 {
+		t.Errorf("ToGregorian().Year = %v, want -44", greg.Year)
+	}
+	if !strings.HasSuffix(greg.Raw, "44 BC") {
+		t.Errorf("ToGregorian().Raw = %q, want a 44 BC date", greg.Raw)
+	}
+}
+
 func TestDateQualifier_IsValid(t *testing.T) {
 	tests := []struct {
 		name      string

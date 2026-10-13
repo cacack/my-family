@@ -313,14 +313,14 @@ func (p *Projector) projectPersonCreated(ctx context.Context, e domain.PersonCre
 
 	if e.BirthDate != nil {
 		birthDateRaw = e.BirthDate.Raw
-		t := e.BirthDate.ToTime()
+		t := e.BirthDate.SortDate()
 		if !t.IsZero() {
 			birthDateSort = &t
 		}
 	}
 	if e.DeathDate != nil {
 		deathDateRaw = e.DeathDate.Raw
-		t := e.DeathDate.ToTime()
+		t := e.DeathDate.SortDate()
 		if !t.IsZero() {
 			deathDateSort = &t
 		}
@@ -377,7 +377,7 @@ func (p *Projector) projectPersonUpdated(ctx context.Context, e domain.PersonUpd
 			if v, ok := value.(string); ok {
 				person.BirthDateRaw = v
 				gd := domain.ParseGenDate(v)
-				t := gd.ToTime()
+				t := gd.SortDate()
 				if !t.IsZero() {
 					person.BirthDateSort = &t
 				} else {
@@ -392,7 +392,7 @@ func (p *Projector) projectPersonUpdated(ctx context.Context, e domain.PersonUpd
 			if v, ok := value.(string); ok {
 				person.DeathDateRaw = v
 				gd := domain.ParseGenDate(v)
-				t := gd.ToTime()
+				t := gd.SortDate()
 				if !t.IsZero() {
 					person.DeathDateSort = &t
 				} else {
@@ -432,7 +432,7 @@ func (p *Projector) projectFamilyCreated(ctx context.Context, e domain.FamilyCre
 
 	if e.MarriageDate != nil {
 		marriageDateRaw = e.MarriageDate.Raw
-		t := e.MarriageDate.ToTime()
+		t := e.MarriageDate.SortDate()
 		if !t.IsZero() {
 			marriageDateSort = &t
 		}
@@ -518,7 +518,7 @@ func (p *Projector) projectFamilyUpdated(ctx context.Context, e domain.FamilyUpd
 			family.MarriageDateSort = nil
 			if raw != "" {
 				gd := domain.ParseGenDate(raw)
-				if t := gd.ToTime(); !t.IsZero() {
+				if t := gd.SortDate(); !t.IsZero() {
 					family.MarriageDateSort = &t
 				}
 			}
@@ -777,7 +777,7 @@ func (p *Projector) projectSourceCreated(ctx context.Context, e domain.SourceCre
 
 	if e.PublishDate != nil {
 		publishDateRaw = e.PublishDate.Raw
-		t := e.PublishDate.ToTime()
+		t := e.PublishDate.SortDate()
 		if !t.IsZero() {
 			publishDateSort = &t
 		}
@@ -838,7 +838,7 @@ func (p *Projector) projectSourceUpdated(ctx context.Context, e domain.SourceUpd
 			if v, ok := value.(string); ok {
 				source.PublishDateRaw = v
 				gd := domain.ParseGenDate(v)
-				t := gd.ToTime()
+				t := gd.SortDate()
 				if !t.IsZero() {
 					source.PublishDateSort = &t
 				} else {
@@ -1238,7 +1238,7 @@ func (p *Projector) projectLifeEventCreated(ctx context.Context, e domain.LifeEv
 
 	if e.Date != nil {
 		dateRaw = e.Date.Raw
-		t := e.Date.ToTime()
+		t := e.Date.SortDate()
 		if !t.IsZero() {
 			dateSort = &t
 		}
@@ -1285,7 +1285,7 @@ func (p *Projector) projectAttributeCreated(ctx context.Context, e domain.Attrib
 
 	if e.Date != nil {
 		dateRaw = e.Date.Raw
-		t := e.Date.ToTime()
+		t := e.Date.SortDate()
 		if !t.IsZero() {
 			dateSort = &t
 		}
@@ -1329,7 +1329,7 @@ func (p *Projector) projectLifeEventUpdated(ctx context.Context, e domain.LifeEv
 			if v, ok := value.(string); ok {
 				event.DateRaw = v
 				gd := domain.ParseGenDate(v)
-				t := gd.ToTime()
+				t := gd.SortDate()
 				if !t.IsZero() {
 					event.DateSort = &t
 				} else {
@@ -1394,7 +1394,7 @@ func (p *Projector) projectAttributeUpdated(ctx context.Context, e domain.Attrib
 			if v, ok := value.(string); ok {
 				attribute.DateRaw = v
 				gd := domain.ParseGenDate(v)
-				t := gd.ToTime()
+				t := gd.SortDate()
 				if !t.IsZero() {
 					attribute.DateSort = &t
 				} else {
@@ -1634,7 +1634,7 @@ func (p *Projector) projectPersonMerged(ctx context.Context, e domain.PersonMerg
 			if v, ok := value.(string); ok {
 				survivor.BirthDateRaw = v
 				gd := domain.ParseGenDate(v)
-				t := gd.ToTime()
+				t := gd.SortDate()
 				if !t.IsZero() {
 					survivor.BirthDateSort = &t
 				} else {
@@ -1649,7 +1649,7 @@ func (p *Projector) projectPersonMerged(ctx context.Context, e domain.PersonMerg
 			if v, ok := value.(string); ok {
 				survivor.DeathDateRaw = v
 				gd := domain.ParseGenDate(v)
-				t := gd.ToTime()
+				t := gd.SortDate()
 				if !t.IsZero() {
 					survivor.DeathDateSort = &t
 				} else {
@@ -2255,7 +2255,7 @@ func (p *Projector) projectLDSOrdinanceCreated(ctx context.Context, e domain.LDS
 
 	if e.Date != nil {
 		dateRaw = e.Date.Raw
-		t := e.Date.ToTime()
+		t := e.Date.SortDate()
 		if !t.IsZero() {
 			dateSort = &t
 		}
@@ -2305,7 +2305,7 @@ func (p *Projector) projectLDSOrdinanceUpdated(ctx context.Context, e domain.LDS
 			if v, ok := value.(string); ok {
 				ordinance.DateRaw = v
 				gd := domain.ParseGenDate(v)
-				t := gd.ToTime()
+				t := gd.SortDate()
 				if !t.IsZero() {
 					ordinance.DateSort = &t
 				} else {
