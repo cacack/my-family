@@ -211,7 +211,8 @@ func TestCreateFamily_ValidationIs400(t *testing.T) {
 }
 
 // TestUpdateFamily_ConflictCodes pins the two kinds of 409 a family PUT gives
-// (#899, #940): a stale version carries VERSION_CONFLICT, so the UI offers to
+// (#899, #940): a stale version carries VERSION_CONFLICT, even when the update
+// changes nothing (#944), so the UI offers to
 // compare versions; a refusal such as circular ancestry keeps CONFLICT, so the
 // UI shows its message without re-reading the family.
 func TestUpdateFamily_ConflictCodes(t *testing.T) {
@@ -224,6 +225,15 @@ func TestUpdateFamily_ConflictCodes(t *testing.T) {
 			name: "stale version",
 			body: func(_ string, version float64) map[string]any {
 				return map[string]any{"version": version - 1, "marriage_place": "Evanston"}
+			},
+			wantCode: "VERSION_CONFLICT",
+		},
+		{
+			// An update that changes nothing is still refused on a stale
+			// version (#944), not silently accepted.
+			name: "stale version, unchanged values",
+			body: func(_ string, version float64) map[string]any {
+				return map[string]any{"version": version - 1, "relationship_type": "marriage"}
 			},
 			wantCode: "VERSION_CONFLICT",
 		},
