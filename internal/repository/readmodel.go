@@ -66,12 +66,12 @@ type PersonReadModel struct {
 	FullName            string                `json:"full_name"`
 	Gender              domain.Gender         `json:"gender,omitempty"`
 	BirthDateRaw        string                `json:"birth_date_raw,omitempty"`
-	BirthDateSort       *time.Time            `json:"birth_date_sort,omitempty"`
+	BirthDateSort       *time.Time            `json:"-"` // internal sort key; BC years cannot encode as JSON (#1065)
 	BirthPlace          string                `json:"birth_place,omitempty"`
 	BirthPlaceLat       *string               `json:"birth_place_lat,omitempty"`
 	BirthPlaceLong      *string               `json:"birth_place_long,omitempty"`
 	DeathDateRaw        string                `json:"death_date_raw,omitempty"`
-	DeathDateSort       *time.Time            `json:"death_date_sort,omitempty"`
+	DeathDateSort       *time.Time            `json:"-"` // internal sort key; BC years cannot encode as JSON (#1065)
 	DeathPlace          string                `json:"death_place,omitempty"`
 	DeathPlaceLat       *string               `json:"death_place_lat,omitempty"`
 	DeathPlaceLong      *string               `json:"death_place_long,omitempty"`
@@ -95,7 +95,7 @@ type FamilyReadModel struct {
 	Partner2Surname   string              `json:"partner2_surname,omitempty"`
 	RelationshipType  domain.RelationType `json:"relationship_type,omitempty"`
 	MarriageDateRaw   string              `json:"marriage_date_raw,omitempty"`
-	MarriageDateSort  *time.Time          `json:"marriage_date_sort,omitempty"`
+	MarriageDateSort  *time.Time          `json:"-"` // internal sort key; BC years cannot encode as JSON (#1065)
 	MarriagePlace     string              `json:"marriage_place,omitempty"`
 	MarriagePlaceLat  *string             `json:"marriage_place_lat,omitempty"`
 	MarriagePlaceLong *string             `json:"marriage_place_long,omitempty"`
@@ -131,7 +131,7 @@ type SourceReadModel struct {
 	Author          string            `json:"author,omitempty"`
 	Publisher       string            `json:"publisher,omitempty"`
 	PublishDateRaw  string            `json:"publish_date_raw,omitempty"`
-	PublishDateSort *time.Time        `json:"publish_date_sort,omitempty"`
+	PublishDateSort *time.Time        `json:"-"` // internal sort key; BC years cannot encode as JSON (#1065)
 	URL             string            `json:"url,omitempty"`
 	RepositoryID    *uuid.UUID        `json:"repository_id,omitempty"`
 	RepositoryName  string            `json:"repository_name,omitempty"`
@@ -200,7 +200,7 @@ type EventReadModel struct {
 	OwnerID        uuid.UUID             `json:"owner_id"`
 	FactType       domain.FactType       `json:"fact_type"`
 	DateRaw        string                `json:"date_raw,omitempty"`
-	DateSort       *time.Time            `json:"date_sort,omitempty"`
+	DateSort       *time.Time            `json:"-"` // internal sort key; BC years cannot encode as JSON (#1065)
 	Place          string                `json:"place,omitempty"`
 	PlaceLat       *string               `json:"place_lat,omitempty"`
 	PlaceLong      *string               `json:"place_long,omitempty"`
@@ -221,7 +221,7 @@ type AttributeReadModel struct {
 	FactType  domain.FactType `json:"fact_type"`
 	Value     string          `json:"value"`
 	DateRaw   string          `json:"date_raw,omitempty"`
-	DateSort  *time.Time      `json:"date_sort,omitempty"`
+	DateSort  *time.Time      `json:"-"` // internal sort key; BC years cannot encode as JSON (#1065)
 	Place     string          `json:"place,omitempty"`
 	Version   int64           `json:"version"`
 	CreatedAt time.Time       `json:"created_at"`
@@ -297,7 +297,7 @@ type LDSOrdinanceReadModel struct {
 	PersonName string                  `json:"person_name,omitempty"` // Denormalized for display
 	FamilyID   *uuid.UUID              `json:"family_id,omitempty"`   // For SLGS (sealing to spouse)
 	DateRaw    string                  `json:"date_raw,omitempty"`    // Raw date string
-	DateSort   *time.Time              `json:"date_sort,omitempty"`   // Parsed date for sorting
+	DateSort   *time.Time              `json:"-"`                     // internal sort key; BC years cannot encode as JSON (#1065)
 	Place      string                  `json:"place,omitempty"`       // Location
 	Temple     string                  `json:"temple,omitempty"`      // Temple code (TEMP)
 	Status     string                  `json:"status,omitempty"`      // COMPLETED, BIC, CHILD, EXCLUDED, etc.

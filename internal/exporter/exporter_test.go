@@ -1671,3 +1671,35 @@ func TestExporter_MultiplePersonsAndFamilies(t *testing.T) {
 	assert.Len(t, data.Persons, 5)
 	assert.Len(t, data.Families, 2)
 }
+
+// A BC sort date (#1065) has a negative year, which time.Time cannot encode
+// as JSON; the export must still succeed and keep the raw date.
+func TestJSONExporter_ExportTree_BCSortDate(t *testing.T) {
+	store := setupTestStore(t)
+	gd := domain.ParseGenDate("15 MAR 44 BC")
+	bc := gd.SortDate()
+	person := repository.PersonReadModel{
+		ID:            uuid.New(),
+		GivenName:     "Gaius",
+		Surname:       "Caesar",
+		FullName:      "Gaius Caesar",
+		BirthDateRaw:  "15 MAR 44 BC",
+		BirthDateSort: &bc,
+		Version:       1,
+		UpdatedAt:     time.Now(),
+	}
+	require.NoError(t, store.SavePerson(context.Background(), domain.MainBranchID, &person))
+
+	var buf bytes.Buffer
+	result, err := exporter.NewDataExporter(store).Export(context.Background(), &buf, exporter.ExportOptions{
+		Format:     exporter.FormatJSON,
+		EntityType: exporter.EntityTypeAll,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 1, result.PersonsExported)
+
+	var data exporter.TreeExport
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &data))
+	require.Len(t, data.Persons, 1)
+	assert.Equal(t, "15 MAR 44 BC", data.Persons[0].BirthDateRaw)
+}

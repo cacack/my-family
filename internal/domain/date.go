@@ -575,12 +575,10 @@ func (g *GenDate) ToTime() time.Time {
 // year -4713 in Go's astronomical numbering.
 var EarliestSortDate = time.Date(-4713, time.November, 24, 0, 0, 0, 0, time.UTC)
 
-// SortDate returns a date suitable for sorting comparisons.
-// For "before" dates, returns the date itself.
-// For "after" dates, returns the date itself.
-// For ranges, returns the start date.
-// A BC date keeps its negative year ("44 BC" is -44), and a date earlier than
-// EarliestSortDate returns EarliestSortDate, so every read model can store it.
+// SortDate returns the date stored in the read model's *_date_sort columns:
+// ToTime, so a BC date keeps its negative year ("44 BC" is -44), except that a
+// date earlier than EarliestSortDate is clamped to it so every backend can
+// store it. The clamp is lossy; ToTime is the exact value.
 func (g *GenDate) SortDate() time.Time {
 	t := g.ToTime()
 	if !t.IsZero() && t.Before(EarliestSortDate) {
