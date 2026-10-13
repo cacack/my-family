@@ -7,6 +7,8 @@ import { NOTE_MAX_LENGTH } from '$lib/components/MergeConfirmDialog.svelte';
 import {
 	api,
 	formatGenDate,
+	formatLifespan,
+	formatYear,
 	isBranchMergeRefusal,
 	isBranchScopedRequest,
 	setClientBranch,
@@ -43,6 +45,49 @@ describe('formatGenDate', () => {
 	it('formats an interpreted date without a phrase', () => {
 		const date: GenDate = { qualifier: 'int', year: 1850 };
 		expect(formatGenDate(date)).toBe('INT 1850');
+	});
+
+	it('shows a BC year as "N BC" when raw is absent (#1066)', () => {
+		expect(formatGenDate({ year: -44 })).toBe('44 BC');
+		expect(formatGenDate({ day: 15, month: 3, year: -44 })).toBe('15 MAR 44 BC');
+		expect(formatGenDate({ qualifier: 'bet', year: -50, year2: -40 })).toBe(
+			'BET 50 BC AND 40 BC'
+		);
+	});
+
+	it('keeps year 0 when raw is absent', () => {
+		expect(formatGenDate({ year: 0 })).toBe('0');
+	});
+});
+
+describe('formatYear', () => {
+	it.each([
+		[1850, '1850'],
+		[1, '1'],
+		[-1, '1 BC'],
+		[-1850, '1850 BC']
+	])('formats %i as %s', (year, expected) => {
+		expect(formatYear(year)).toBe(expected);
+	});
+});
+
+describe('formatLifespan', () => {
+	it('shows BC years as "N BC", never as negative numbers (#1066)', () => {
+		expect(formatLifespan({ birth_date: { year: -1850 }, death_date: { year: -1790 } })).toBe(
+			'(1850 BC–1790 BC)'
+		);
+		expect(formatLifespan({ birth_date: { year: -10 }, death_date: { year: 10 } })).toBe(
+			'(10 BC–10)'
+		);
+		expect(formatLifespan({ birth_date: { year: -1850 } })).toBe('(b. 1850 BC)');
+		expect(formatLifespan({ death_date: { year: -1790 } })).toBe('(d. 1790 BC)');
+	});
+
+	it('formats AD lifespans unchanged', () => {
+		expect(formatLifespan({ birth_date: { year: 1850 }, death_date: { year: 1920 } })).toBe(
+			'(1850–1920)'
+		);
+		expect(formatLifespan({})).toBe('');
 	});
 });
 

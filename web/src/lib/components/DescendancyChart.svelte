@@ -1,7 +1,7 @@
 <script lang="ts">
 	import * as d3 from 'd3';
 	import { onMount } from 'svelte';
-	import { formatGenDate, formatPersonName, type DescendancyNode } from '$lib/api/client';
+	import { formatGenDate, formatPersonName, formatYear, type DescendancyNode } from '$lib/api/client';
 	import {
 		fitTransform,
 		motionDuration,
@@ -287,9 +287,9 @@
 				const birth = d.data.birth_date?.year;
 				const death = d.data.death_date?.year;
 				if (!birth && !death) return '';
-				if (birth && !death) return `b. ${birth}`;
-				if (!birth && death) return `d. ${death}`;
-				return `${birth} - ${death}`;
+				if (birth && !death) return `b. ${formatYear(birth)}`;
+				if (!birth && death) return `d. ${formatYear(death)}`;
+				return `${formatYear(birth!)} - ${formatYear(death!)}`;
 			});
 	}
 
@@ -379,7 +379,7 @@
 				.attr('font-size', '11px')
 				.attr('fill', '#64748b')
 				.text(spouse.marriage_date
-						? `m. ${spouse.marriage_date.year ?? formatGenDate(spouse.marriage_date)}`
+						? `m. ${spouse.marriage_date.year != null ? formatYear(spouse.marriage_date.year) : formatGenDate(spouse.marriage_date)}`
 						: '');
 		});
 	}

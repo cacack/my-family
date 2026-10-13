@@ -218,6 +218,20 @@ describe('PedigreeChart', () => {
 		expect(textContents).toContain('1950 - 2020');
 	});
 
+	it('renders BC years as "N BC", never as negative numbers (#1066)', () => {
+		const bcPerson: PedigreeNode = {
+			...mockSinglePerson,
+			birth_date: { year: -1850 },
+			death_date: { year: -1790 }
+		};
+		const { container } = render(PedigreeChart, { props: { data: bcPerson } });
+		const textContents = Array.from(container.querySelectorAll('.node text')).map(
+			(t) => t.textContent
+		);
+		expect(textContents).toContain('1850 BC - 1790 BC');
+		expect(textContents.join(' ')).not.toContain('-1850');
+	});
+
 	it('calls onPersonClick when node is clicked', async () => {
 		const clickHandler = vi.fn();
 		const { container } = render(PedigreeChart, {

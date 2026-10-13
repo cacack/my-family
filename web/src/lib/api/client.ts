@@ -2187,6 +2187,14 @@ function stripCalendarEscape(raw: string): { text: string; token?: string } {
 	};
 }
 
+/**
+ * Display form of an API year. The API stores a BC year as a negative number
+ * ("44 BC" is -44), which is never shown to people: -44 renders as "44 BC".
+ */
+export function formatYear(year: number): string {
+	return year < 0 ? `${-year} BC` : year.toString();
+}
+
 export function formatGenDate(date?: GenDate): string {
 	if (!date) return '';
 
@@ -2229,9 +2237,9 @@ export function formatGenDate(date?: GenDate): string {
 		parts.push(months[date.month - 1]);
 	}
 
-	if (date.year) parts.push(date.year.toString());
+	if (date.year != null) parts.push(formatYear(date.year));
 
-	if (date.qualifier === 'bet' && date.year2) {
+	if (date.qualifier === 'bet' && date.year2 != null) {
 		parts.push('AND');
 		if (date.day2) parts.push(date.day2.toString());
 		if (date.month2) {
@@ -2251,7 +2259,7 @@ export function formatGenDate(date?: GenDate): string {
 			];
 			parts.push(months[date.month2 - 1]);
 		}
-		parts.push(date.year2.toString());
+		parts.push(formatYear(date.year2));
 	}
 
 	if (date.qualifier === 'int' && date.interpreted_from) {
@@ -2291,7 +2299,7 @@ export function formatLifespan(person: { birth_date?: GenDate; death_date?: GenD
 	const death = person.death_date?.year;
 
 	if (!birth && !death) return '';
-	if (birth && !death) return `(b. ${birth})`;
-	if (!birth && death) return `(d. ${death})`;
-	return `(${birth}–${death})`;
+	if (birth && !death) return `(b. ${formatYear(birth)})`;
+	if (!birth && death) return `(d. ${formatYear(death)})`;
+	return `(${formatYear(birth!)}–${formatYear(death!)})`;
 }
