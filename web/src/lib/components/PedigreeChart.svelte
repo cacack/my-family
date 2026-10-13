@@ -1,7 +1,7 @@
 <script lang="ts">
 	import * as d3 from 'd3';
 	import { onMount, untrack } from 'svelte';
-	import { formatPersonName, type PedigreeNode } from '$lib/api/client';
+	import { formatPersonName, formatYear, type PedigreeNode } from '$lib/api/client';
 	import {
 		fitTransform,
 		motionDuration,
@@ -583,9 +583,9 @@
 				const birth = d.data.birth_date?.year;
 				const death = d.data.death_date?.year;
 				if (!birth && !death) return '';
-				if (birth && !death) return `b. ${birth}`;
-				if (!birth && death) return `d. ${death}`;
-				return `${birth} - ${death}`;
+				if (birth && !death) return `b. ${formatYear(birth)}`;
+				if (!birth && death) return `d. ${formatYear(death)}`;
+				return `${formatYear(birth!)} - ${formatYear(death!)}`;
 			});
 	}
 

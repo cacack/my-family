@@ -187,6 +187,22 @@ describe('DescendancyChart', () => {
 		}
 	});
 
+	it('renders BC years as "N BC", never as negative numbers (#1066)', () => {
+		const bcPerson: DescendancyNode = {
+			...mockPersonWithSpouse,
+			birth_date: { year: -1850 },
+			death_date: { year: -1790 },
+			spouses: [{ id: '2', name: 'Jane Smith', marriage_date: { year: -1825 } }]
+		};
+		const { container } = render(DescendancyChart, { props: { data: bcPerson } });
+		const textContents = Array.from(container.querySelectorAll('.node text, .spouse-group text')).map(
+			(t) => t.textContent
+		);
+		expect(textContents).toContain('1850 BC - 1790 BC');
+		expect(textContents).toContain('m. 1825 BC');
+		expect(textContents.join(' ')).not.toMatch(/-1[0-9]{3}/);
+	});
+
 	it('renders spouse connector lines', () => {
 		const { container } = render(DescendancyChart, { props: { data: mockPersonWithSpouse } });
 		const spouseLinks = container.querySelectorAll('.spouse-link');

@@ -461,6 +461,11 @@ func TestNormalizeDateInput(t *testing.T) {
 		{input: "Feb. 1850", want: "FEB 1850"},
 		{input: "about 12 May 1850", want: "ABT 12 MAY 1850"},
 		{input: "before  1  dec  1900", want: "BEF 1 DEC 1900"},
+		// BC era markers, in any case.
+		{input: "1 Jan 1850 bc", want: "1 JAN 1850 BC"},
+		{input: "44 BC", want: "44 BC"},
+		{input: "about 44 bce", want: "ABT 44 BCE"},
+		{input: "between 50 bc and 10", want: "BET 50 BC AND 10"},
 		// GEDCOM input is stored in GEDCOM case.
 		{input: "1 jan 1850", want: "1 JAN 1850"},
 		{input: "ABT 1850", want: "ABT 1850"},

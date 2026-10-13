@@ -268,9 +268,10 @@ var englishLeadingWords = map[string]string{
 }
 
 // englishDateWords are the words that may appear anywhere in a typed date:
-// range connectors and English month names, full or abbreviated.
+// range connectors, BC era markers and English month names, full or
+// abbreviated.
 var englishDateWords = func() map[string]string {
-	words := map[string]string{"and": "AND", "to": "TO", "sept": "SEP"}
+	words := map[string]string{"and": "AND", "to": "TO", "sept": "SEP", "bc": "BC", "bce": "BCE"}
 	for m := time.January; m <= time.December; m++ {
 		name := strings.ToLower(m.String())
 		words[name] = reverseMonthMap[int(m)]
