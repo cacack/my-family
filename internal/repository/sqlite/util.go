@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	// modernc.org/sqlite is a pure-Go SQLite (no cgo), so every build —
@@ -137,6 +139,50 @@ func parseTimestamp(s string) (time.Time, error) {
 // formatTimestamp formats a time to ISO 8601 string.
 func formatTimestamp(t time.Time) string {
 	return t.Format("2006-01-02T15:04:05.999999999Z07:00")
+}
+
+// sortDateLayout is the text layout of the persons, families and sources
+// *_date_sort columns. The life_events, attributes and lds_ordinances date_sort
+// columns use time.RFC3339 instead.
+const sortDateLayout = "2006-01-02"
+
+// bcYearOffset shifts a negative year into four digits for formatSortDate.
+const bcYearOffset = 10000
+
+// formatSortDate formats a sort date as text that SQLite orders like the time
+// itself. A year of 0 or later uses layout as is. A negative (BC) year is
+// written as "-" then year+10000 in four digits, so "-8150-..." (1850 BC)
+// < "-9956-..." (44 BC) < "0010-..." (10 AD); the rest of layout follows
+// unchanged. Years before 10000 BC sort as 10000 BC. parseSortDate reverses it.
+func formatSortDate(t time.Time, layout string) string {
+	if t.Year() >= 0 {
+		return t.Format(layout)
+	}
+	shifted := max(t.Year()+bcYearOffset, 0)
+	// Format the month, day and time with a leap placeholder year (so 29 Feb
+	// survives) and drop its four year digits; both layouts start with "2006".
+	rest := time.Date(2000, t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second(), t.Nanosecond(), t.Location())
+	return fmt.Sprintf("-%04d%s", shifted, rest.Format(layout)[4:])
+}
+
+// parseSortDate parses a sort date written by formatSortDate with the same layout.
+func parseSortDate(s, layout string) (time.Time, error) {
+	if !strings.HasPrefix(s, "-") {
+		return time.Parse(layout, s)
+	}
+	if len(s) < 5 {
+		return time.Time{}, fmt.Errorf("invalid BC sort date: %q", s)
+	}
+	shifted, err := strconv.Atoi(s[1:5])
+	if err != nil {
+		return time.Time{}, fmt.Errorf("invalid BC sort date %q: %w", s, err)
+	}
+	rest, err := time.Parse(layout, "2000"+s[5:])
+	if err != nil {
+		return time.Time{}, fmt.Errorf("invalid BC sort date %q: %w", s, err)
+	}
+	return time.Date(shifted-bcYearOffset, rest.Month(), rest.Day(), rest.Hour(), rest.Minute(),
+		rest.Second(), rest.Nanosecond(), rest.Location()), nil
 }
 
 // parseNullableTimestamp parses a nullable ISO 8601 timestamp column. A NULL
