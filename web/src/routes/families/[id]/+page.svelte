@@ -16,6 +16,7 @@
 	} from '$lib/api/client';
 	import AddChildDialog from '$lib/components/AddChildDialog.svelte';
 	import PartnerPickers, { partnerChanges } from '$lib/components/PartnerPickers.svelte';
+	import PersonCard from '$lib/components/PersonCard.svelte';
 	import * as AlertDialog from '$lib/components/ui/alert-dialog';
 	import ChangeHistory from '$lib/components/ChangeHistory.svelte';
 	import ExternalLinks from '$lib/components/ExternalLinks.svelte';
@@ -540,15 +541,11 @@
 					<h2>Partners</h2>
 					<div class="partners-grid">
 						{#if family.partner1}
-							<a href="/persons/{family.partner1.id}" class="partner-card" data-slot="card-link">
-								<div class="partner-name">{formatPersonName(family.partner1)}</div>
-							</a>
+							<PersonCard person={family.partner1} href="/persons/{family.partner1.id}" />
 						{/if}
 
 						{#if family.partner2}
-							<a href="/persons/{family.partner2.id}" class="partner-card" data-slot="card-link">
-								<div class="partner-name">{formatPersonName(family.partner2)}</div>
-							</a>
+							<PersonCard person={family.partner2} href="/persons/{family.partner2.id}" />
 						{/if}
 					</div>
 				</div>
@@ -781,30 +778,6 @@
 		display: grid;
 		grid-template-columns: repeat(auto-fit, minmax(min(12rem, 100%), 1fr));
 		gap: 1rem;
-	}
-
-	.partner-card {
-		display: block;
-		padding: 1rem;
-		background: #f8fafc;
-		border-radius: 8px;
-		text-decoration: none;
-		border: 1px solid #e2e8f0;
-		transition: border-color 0.2s;
-	}
-
-	a.partner-card:hover {
-		border-color: #3b82f6;
-	}
-
-	a.partner-card:hover .partner-name {
-		color: var(--color-link);
-	}
-
-	.partner-name {
-		font-weight: 500;
-		color: #1e293b;
-		transition: color 0.2s;
 	}
 
 	.remove-child {

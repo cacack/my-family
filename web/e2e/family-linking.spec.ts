@@ -131,11 +131,11 @@ test('on a branch, link two partners and a child in the UI, compare, and merge t
 	// --- The mainline has the family with its partners and child. ---
 	await page.goto(`/families/${familyId}`);
 	await expect(familyHeading).toBeVisible();
-	await expect(page.locator('a.partner-card', { hasText: `John ${surname}` })).toHaveAttribute(
+	await expect(page.locator('.partners-grid a', { hasText: `John ${surname}` })).toHaveAttribute(
 		'href',
 		`/persons/${johnId}`
 	);
-	await expect(page.locator('a.partner-card', { hasText: `Ann ${surname}` })).toHaveAttribute(
+	await expect(page.locator('.partners-grid a', { hasText: `Ann ${surname}` })).toHaveAttribute(
 		'href',
 		`/persons/${annId}`
 	);
