@@ -269,6 +269,23 @@ describe('PedigreeChart', () => {
 		expect(container.querySelector('.node title')?.textContent).toBe('Ælfgifu');
 	});
 
+	it('leaves the given-name line blank when there is no given name', () => {
+		const person: PedigreeNode = { id: '1', given_name: '', surname: 'Tudor' };
+		const { container } = render(PedigreeChart, { props: { data: person } });
+		const texts = Array.from(container.querySelectorAll('.node text')).map((t) => t.textContent);
+		expect(texts.slice(0, 2)).toEqual(['', 'Tudor']);
+		expect(texts).not.toContain('?');
+		expect(container.querySelector('.node title')?.textContent).toBe('Tudor');
+	});
+
+	it('reads Unknown when there is no name at all', () => {
+		const person: PedigreeNode = { id: '1', given_name: '', surname: '' };
+		const { container } = render(PedigreeChart, { props: { data: person } });
+		const texts = Array.from(container.querySelectorAll('.node text')).map((t) => t.textContent);
+		expect(texts.slice(0, 2)).toEqual(['Unknown', '']);
+		expect(texts).not.toContain('?');
+	});
+
 	it('handles missing dates gracefully', () => {
 		const noDatesPerson: PedigreeNode = {
 			id: '1',

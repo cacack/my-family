@@ -4,6 +4,7 @@ import {
 	FIT_SCALE_RANGE,
 	MIN_CARD_FONT_PX,
 	fitTransform,
+	nameLines,
 	scaleAbout,
 	touchScrollsPage,
 	truncateLabel,
@@ -106,6 +107,18 @@ describe('truncateLabel', () => {
 
 	it('cuts a long single word', () => {
 		expect(truncateLabel('Alexander-Christopher', 16)).toBe('Alexander-Chris…');
+	});
+});
+
+describe('nameLines', () => {
+	it.each([
+		[{ given_name: 'Jane', surname: 'Smith' }, ['Jane', 'Smith']],
+		[{ given_name: 'Jane', surname: '' }, ['Jane', '']],
+		[{ given_name: '', surname: 'Smith' }, ['', 'Smith']],
+		[{ given_name: ' ', surname: undefined }, ['Unknown', '']],
+		[{}, ['Unknown', '']]
+	])('%o -> %o', (person, lines) => {
+		expect(nameLines(person)).toEqual(lines);
 	});
 });
 
