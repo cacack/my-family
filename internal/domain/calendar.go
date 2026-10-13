@@ -78,7 +78,12 @@ func gregorianComponents(cal gedcomlib.Calendar, year, month, day *int) (*int, *
 		return nil, nil, nil, fmt.Errorf("year is missing")
 	}
 
+	// The domain stores a BC year as negative; gedcom-go wants it positive
+	// with IsBC set, and returns it the same way.
 	src := &gedcomlib.Date{Calendar: cal, Year: *year}
+	if *year < 0 {
+		src.Year, src.IsBC = -*year, true
+	}
 	if month != nil {
 		src.Month = *month
 	}
@@ -94,6 +99,9 @@ func gregorianComponents(cal gedcomlib.Calendar, year, month, day *int) (*int, *
 	var gy, gm, gd *int
 	if greg.Year != 0 {
 		y := greg.Year
+		if greg.IsBC {
+			y = -y
+		}
 		gy = &y
 	}
 	if greg.Month != 0 {

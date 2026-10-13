@@ -633,6 +633,7 @@ const (
 	Exact GenDateQualifier = "exact"
 	From  GenDateQualifier = "from"
 	Int   GenDateQualifier = "int"
+	To    GenDateQualifier = "to"
 )
 
 // Valid indicates whether the value is a known member of the GenDateQualifier enum.
@@ -655,6 +656,8 @@ func (e GenDateQualifier) Valid() bool {
 	case From:
 		return true
 	case Int:
+		return true
+	case To:
 		return true
 	default:
 		return false

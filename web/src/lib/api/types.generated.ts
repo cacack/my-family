@@ -3173,7 +3173,7 @@ export interface components {
              * @example abt
              * @enum {string}
              */
-            qualifier?: "exact" | "abt" | "cal" | "est" | "bef" | "aft" | "bet" | "from" | "int";
+            qualifier?: "exact" | "abt" | "cal" | "est" | "bef" | "aft" | "bet" | "from" | "int" | "to";
             /**
              * @description Calendar system for the date, using the GEDCOM escape token (DGREGORIAN, DJULIAN, DHEBREW, or "DFRENCH R"). Absent or DGREGORIAN means the Gregorian calendar.
              * @example DJULIAN

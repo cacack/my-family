@@ -386,7 +386,7 @@ func GenDateToSortTime(gd *domain.GenDate) *time.Time {
 	if gd == nil || gd.IsEmpty() {
 		return nil
 	}
-	t := gd.ToTime()
+	t := gd.SortDate()
 	if t.IsZero() {
 		return nil
 	}
