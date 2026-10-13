@@ -15,10 +15,12 @@ const svelteSources = import.meta.glob('/src/**/*.svelte', {
 	eager: true
 }) as Record<string, string>;
 
-const FIXED_GRID = /repeat\(\s*\d+\s*,\s*1fr\s*\)/;
+// Spaces may be Tailwind underscores; `minmax(0, 1fr)` is the same fixed track.
+const FIXED_GRID =
+	/repeat\([\s_]*\d+[\s_]*,[\s_]*(?:1fr|minmax\([\s_]*0[\s_]*,[\s_]*1fr[\s_]*\))[\s_]*\)/;
 const EXEMPTION = /fixed columns:/i;
 
-/** Fixed `repeat(N, 1fr)` grids in one Svelte source, as `line N: text` findings. */
+/** Fixed `repeat(N, 1fr)` or `repeat(N, minmax(0, 1fr))` grids in one source, as `line N: text` findings. */
 export function fixedGrids(source: string): string[] {
 	const lines = source.split('\n');
 	return lines.flatMap((line, i) =>
@@ -32,7 +34,9 @@ describe('fixedGrids', () => {
 	it.each([
 		['a fixed two-column grid', '.g {\n\tgrid-template-columns: repeat(2, 1fr);\n}'],
 		['a fixed grid without spaces', '.g { grid-template-columns: repeat(3,1fr); }'],
-		['a Tailwind arbitrary value', '<div class="grid grid-cols-[repeat(4, 1fr)]"></div>']
+		['a fixed minmax(0, 1fr) grid', '.g { grid-template-columns: repeat(2, minmax(0, 1fr)); }'],
+		['a Tailwind arbitrary value', '<div class="grid grid-cols-[repeat(4,_1fr)]"></div>'],
+		['a Tailwind minmax value', '<div class="grid-cols-[repeat(3,minmax(0,1fr))]"></div>']
 	])('flags %s', (_name, source) => {
 		expect(fixedGrids(source)).toHaveLength(1);
 	});
