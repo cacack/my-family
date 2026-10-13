@@ -158,14 +158,19 @@ test('review resolves the conflict, merges the branch, and the mainline takes th
 	const viaMerge = page.getByRole('link', { name: `via merge of ${branchName}: ${mergeNote}` });
 	await expect(viaMerge).toBeVisible();
 	await expect(viaMerge).toHaveAttribute('href', `/branches/${branchId}`);
-	// The merge itself is in the mainline's history too.
+	// The merge itself is in the mainline's history too. Every spec's branch
+	// events share that oldest-first log, so page through until it shows.
 	await page.goto('/history');
 	await page.getByLabel('Entity Type').selectOption('branch');
 	const mergeEntry = page.locator('.timeline-entry').filter({
 		has: page.getByRole('link', { name: branchName, exact: true }),
 		hasText: 'merged'
 	});
-	await expect(mergeEntry).toBeVisible();
+	const loadMore = page.getByRole('button', { name: 'Load more' });
+	await expect(async () => {
+		if (await loadMore.isEnabled({ timeout: 100 }).catch(() => false)) await loadMore.click();
+		await expect(mergeEntry).toBeVisible({ timeout: 1000 });
+	}).toPass();
 
 	// A merged branch is terminal, so it is no longer a switch target.
 	await page.goto('/');
