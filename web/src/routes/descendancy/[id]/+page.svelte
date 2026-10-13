@@ -222,21 +222,21 @@
 					</label>
 					<div class="layout-toggle">
 						<button
-							class:active={layout === 'compact'}
+							aria-pressed={layout === 'compact'}
 							onclick={() => setChartOption({ layout: 'compact' })}
 							title="Compact layout"
 						>
 							Compact
 						</button>
 						<button
-							class:active={layout === 'standard'}
+							aria-pressed={layout === 'standard'}
 							onclick={() => setChartOption({ layout: 'standard' })}
 							title="Standard layout"
 						>
 							Standard
 						</button>
 						<button
-							class:active={layout === 'wide'}
+							aria-pressed={layout === 'wide'}
 							onclick={() => setChartOption({ layout: 'wide' })}
 							title="Wide layout"
 						>
@@ -346,7 +346,7 @@
 		background: #f1f5f9;
 	}
 
-	.layout-toggle button.active {
+	.layout-toggle button[aria-pressed='true'] {
 		background: var(--color-action);
 		border-color: var(--color-action);
 		color: white;
