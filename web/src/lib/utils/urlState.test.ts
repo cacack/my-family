@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { goto } from '$app/navigation';
 import {
+	clampPageToTotal,
 	readChartOptions,
 	readEnum,
 	readFlag,
@@ -45,6 +46,28 @@ describe('setQuery', () => {
 			keepFocus: true,
 			noScroll: true
 		});
+	});
+});
+
+describe('clampPageToTotal', () => {
+	beforeEach(() => vi.mocked(goto).mockClear());
+
+	it.each([
+		['moves a page past the end to the last page', '/persons?sort=surname&page=9', 9, 45, '/persons?sort=surname&page=3'],
+		['drops the page param when the last page is 1', '/persons?page=4', 4, 5, '/persons'],
+		['drops the page param when there are no items', '/persons?page=2', 2, 0, '/persons']
+	])('%s, replacing the URL', (_name, from, requested, total, want) => {
+		expect(clampPageToTotal(url(from), requested, total, 20)).toBe(true);
+		expect(goto).toHaveBeenCalledWith(want, { replaceState: true, keepFocus: true, noScroll: true });
+	});
+
+	it.each([
+		['the last page', 3, 45],
+		['page 1 of an empty list', 1, 0],
+		['a page inside the list', 2, 100]
+	])('leaves %s alone', (_name, requested, total) => {
+		expect(clampPageToTotal(url('/persons'), requested, total, 20)).toBe(false);
+		expect(goto).not.toHaveBeenCalled();
 	});
 });
 

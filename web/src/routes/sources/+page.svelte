@@ -7,7 +7,7 @@
 	import SourceCard from '$lib/components/SourceCard.svelte';
 	import { DEFAULT_SOURCE_TYPE, SOURCE_TYPES } from '$lib/utils/sourceTypes';
 	import ErrorState from '$lib/components/ErrorState.svelte';
-	import { readEnum, readPositiveInt, setQuery } from '$lib/utils/urlState';
+	import { clampPageToTotal, readEnum, readPositiveInt, setQuery } from '$lib/utils/urlState';
 
 	let sources: Source[] = $state([]);
 	let total = $state(0);
@@ -64,14 +64,16 @@
 		loading = true;
 		loadError = null;
 		try {
+			const requestedPage = currentPage;
 			const result = await api.listSources({
 				limit: pageSize,
-				offset: (currentPage - 1) * pageSize,
+				offset: (requestedPage - 1) * pageSize,
 				sort,
 				order,
 				q: searchQuery || undefined
 			});
 			if (seq !== loadSeq) return;
+			if (clampPageToTotal($page.url, requestedPage, result.total, pageSize)) return;
 			sources = result.sources;
 			total = result.total;
 		} catch (e) {

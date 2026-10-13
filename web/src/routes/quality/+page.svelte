@@ -14,7 +14,7 @@
 	import SeverityBadge from '$lib/components/SeverityBadge.svelte';
 	import MainlineNotice from '$lib/components/MainlineNotice.svelte';
 	import ErrorState from '$lib/components/ErrorState.svelte';
-	import { readEnum, readPositiveInt, setQuery } from '$lib/utils/urlState';
+	import { clampPageToTotal, readEnum, readPositiveInt, setQuery } from '$lib/utils/urlState';
 
 	const pageSize = 20;
 	const ERROR_MESSAGE_MAX_LEN = 200;
@@ -60,13 +60,6 @@
 
 	function selectSeverity(severity: (typeof SEVERITIES)[number]) {
 		setQuery($page.url, { severity, page: null }, { defaults: DEFAULTS });
-	}
-
-	// A page past the end (e.g. after dismissing the last rows of the last
-	// page, or a hand-edited URL) moves to the last page. That is a correction,
-	// not a step the user took, so it replaces; the URL change reloads.
-	function clampToPage(target: number) {
-		setQuery($page.url, { page: target }, { defaults: DEFAULTS });
 	}
 
 	// --- Validation tab state ---
@@ -139,12 +132,6 @@
 
 	// --- Data loading ---
 
-	// The last page that exists for `total` items, if `requested` is past it.
-	function clampPage(requested: number, total: number): number {
-		const maxPage = Math.max(1, Math.ceil(total / pageSize));
-		return Math.min(Math.max(1, requested), maxPage);
-	}
-
 	// Tab switches, Back and paging can start loads faster than they finish:
 	// only each tab's latest load may land.
 	let validationSeq = 0;
@@ -162,11 +149,7 @@
 				offset: (requestedPage - 1) * pageSize
 			});
 			if (seq !== validationSeq) return;
-			const target = clampPage(requestedPage, result.total);
-			if (target !== requestedPage && result.total > 0) {
-				clampToPage(target);
-				return;
-			}
+			if (clampPageToTotal($page.url, requestedPage, result.total, pageSize)) return;
 			issues = result.issues;
 			validationTotal = result.total;
 			// Counts always reflect the full unfiltered set from the backend, so
@@ -193,11 +176,7 @@
 				offset: (requestedPage - 1) * pageSize
 			});
 			if (seq !== duplicatesSeq) return;
-			const target = clampPage(requestedPage, result.total);
-			if (target !== requestedPage && result.total > 0) {
-				clampToPage(target);
-				return;
-			}
+			if (clampPageToTotal($page.url, requestedPage, result.total, pageSize)) return;
 			duplicates = result.duplicates;
 			duplicatesTotal = result.total;
 		} catch (e) {

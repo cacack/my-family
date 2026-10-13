@@ -141,5 +141,25 @@ describe('Sources page', () => {
 			vi.useRealTimers();
 		}
 	});
-});
 
+	it('moves a page past the end to the last page, replacing the URL (#948)', async () => {
+		vi.mocked(apiModule.api.listSources).mockResolvedValue(manySources);
+		resetRouter('/sources?q=parish&page=9');
+		render(SourcesPage);
+		await waitFor(() => expect(currentPath()).toBe('/sources?q=parish&page=3'));
+		expect(historyLength()).toBe(1);
+		await screen.findByText('Page 3 of 3');
+		expect(apiModule.api.listSources).toHaveBeenLastCalledWith(
+			expect.objectContaining({ q: 'parish', offset: 40 })
+		);
+	});
+
+	it('drops the page from the URL and shows the empty state when there are no sources (#948)', async () => {
+		resetRouter('/sources?page=4');
+		render(SourcesPage);
+		await waitFor(() => expect(currentPath()).toBe('/sources'));
+		expect(historyLength()).toBe(1);
+		await screen.findByText('No sources found.');
+		expect(apiModule.api.listSources).toHaveBeenLastCalledWith(expect.objectContaining({ offset: 0 }));
+	});
+});

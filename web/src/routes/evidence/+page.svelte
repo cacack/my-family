@@ -21,7 +21,7 @@
 		outcomeBadgeProps,
 		conflictBadgeProps
 	} from '$lib/utils/evidence';
-	import { readEnum, readPositiveInt, setQuery } from '$lib/utils/urlState';
+	import { clampPageToTotal, readEnum, readPositiveInt, setQuery } from '$lib/utils/urlState';
 	import ErrorState from '$lib/components/ErrorState.svelte';
 
 	const pageSize = 20;
@@ -69,17 +69,6 @@
 
 	function selectConflictStatus(status: (typeof STATUSES)[number]) {
 		setQuery($page.url, { status, page: null }, { defaults: DEFAULTS });
-	}
-
-	// A page past the end (e.g. Back to a page whose last conflict was just
-	// resolved, or a stale link) moves to the last page. That is a correction,
-	// not a step the user took, so it replaces; the URL change reloads.
-	// Returns true when it moved, so the caller drops the empty result.
-	function clampToLastPage(requested: number, total: number): boolean {
-		const lastPage = Math.max(1, Math.ceil(total / pageSize));
-		if (total === 0 || requested <= lastPage) return false;
-		setQuery($page.url, { page: lastPage }, { defaults: DEFAULTS });
-		return true;
 	}
 
 	// Analyses state
@@ -133,7 +122,7 @@
 				offset: (requestedPage - 1) * pageSize
 			});
 			if (seq !== analysesSeq) return;
-			if (clampToLastPage(requestedPage, result.total ?? 0)) return;
+			if (clampPageToTotal($page.url, requestedPage, result.total ?? 0, pageSize)) return;
 			analyses = result.analyses;
 			analysesTotal = result.total ?? 0;
 		} catch (e) {
@@ -156,7 +145,7 @@
 				status: conflictStatusFilter === 'all' ? undefined : conflictStatusFilter
 			});
 			if (seq !== conflictsSeq) return;
-			if (clampToLastPage(requestedPage, result.total ?? 0)) return;
+			if (clampPageToTotal($page.url, requestedPage, result.total ?? 0, pageSize)) return;
 			conflicts = result.conflicts;
 			conflictsTotal = result.total ?? 0;
 
@@ -192,7 +181,7 @@
 				offset: (requestedPage - 1) * pageSize
 			});
 			if (seq !== logsSeq) return;
-			if (clampToLastPage(requestedPage, result.total ?? 0)) return;
+			if (clampPageToTotal($page.url, requestedPage, result.total ?? 0, pageSize)) return;
 			logs = result.logs;
 			logsTotal = result.total ?? 0;
 		} catch (e) {
@@ -214,7 +203,7 @@
 				offset: (requestedPage - 1) * pageSize
 			});
 			if (seq !== summariesSeq) return;
-			if (clampToLastPage(requestedPage, result.total ?? 0)) return;
+			if (clampPageToTotal($page.url, requestedPage, result.total ?? 0, pageSize)) return;
 			summaries = result.summaries;
 			summariesTotal = result.total ?? 0;
 		} catch (e) {

@@ -158,4 +158,28 @@ describe('Repositories list page', () => {
 		await screen.findByText('Page 1 of 3');
 		expect(currentPath()).toBe('/repositories');
 	});
+
+	it('moves a page past the end to the last page, replacing the URL (#948)', async () => {
+		vi.mocked(apiModule.api.listRepositories).mockResolvedValue(manyRepos);
+		resetRouter('/repositories?sort=updated_at&page=9');
+		render(RepositoriesPage);
+		await waitFor(() => expect(currentPath()).toBe('/repositories?sort=updated_at&page=3'));
+		expect(historyLength()).toBe(1);
+		await screen.findByText('Page 3 of 3');
+		expect(apiModule.api.listRepositories).toHaveBeenLastCalledWith(
+			expect.objectContaining({ sort: 'updated_at', offset: 40 })
+		);
+	});
+
+	it('drops the page from the URL and shows the empty state when there are no repositories (#948)', async () => {
+		vi.mocked(apiModule.api.listRepositories).mockResolvedValue({ repositories: [], total: 0 });
+		resetRouter('/repositories?page=4');
+		render(RepositoriesPage);
+		await waitFor(() => expect(currentPath()).toBe('/repositories'));
+		expect(historyLength()).toBe(1);
+		await screen.findByText('No repositories found.');
+		expect(apiModule.api.listRepositories).toHaveBeenLastCalledWith(
+			expect.objectContaining({ offset: 0 })
+		);
+	});
 });

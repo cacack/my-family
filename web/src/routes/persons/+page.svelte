@@ -5,7 +5,7 @@
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import PersonCard from '$lib/components/PersonCard.svelte';
 	import { RESEARCH_STATUS_OPTIONS } from '$lib/utils/enumOptions';
-	import { readEnum, readPositiveInt, setQuery } from '$lib/utils/urlState';
+	import { clampPageToTotal, readEnum, readPositiveInt, setQuery } from '$lib/utils/urlState';
 	import ErrorState from '$lib/components/ErrorState.svelte';
 
 	let persons: Person[] = $state([]);
@@ -34,14 +34,16 @@
 		loading = true;
 		loadError = null;
 		try {
+			const requestedPage = currentPage;
 			const result = await api.listPersons({
 				limit: pageSize,
-				offset: (currentPage - 1) * pageSize,
+				offset: (requestedPage - 1) * pageSize,
 				sort,
 				order,
 				research_status: researchStatusFilter || undefined
 			});
 			if (seq !== loadSeq) return;
+			if (clampPageToTotal($page.url, requestedPage, result.total, pageSize)) return;
 			persons = result.items;
 			total = result.total;
 		} catch (e) {

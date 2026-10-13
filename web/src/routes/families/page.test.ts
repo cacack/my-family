@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import FamiliesPage from './+page.svelte';
 import * as apiModule from '$lib/api/client';
-import { back, currentPath, resetRouter } from '$lib/test/fakeRouter';
+import { back, currentPath, historyLength, resetRouter } from '$lib/test/fakeRouter';
 
 vi.mock('$lib/api/client', async (importOriginal) => {
 	const actual = await importOriginal<typeof apiModule>();
@@ -78,5 +78,27 @@ describe('Families list page', () => {
 		back();
 		await waitFor(() => expect(screen.getByText('Page 2 of 3')).toBeTruthy());
 		expect(apiModule.api.listFamilies).toHaveBeenLastCalledWith({ limit: 20, offset: 20 });
+	});
+
+	it('moves a page past the end to the last page, replacing the URL (#948)', async () => {
+		vi.mocked(apiModule.api.listFamilies).mockResolvedValue({
+			items: [{ id: 'f-1', version: 1, partner1_name: 'Ada Lovelace' }],
+			total: 45
+		} as unknown as Awaited<ReturnType<typeof apiModule.api.listFamilies>>);
+		resetRouter('/families?page=9');
+		render(FamiliesPage);
+		await waitFor(() => expect(currentPath()).toBe('/families?page=3'));
+		expect(historyLength()).toBe(1);
+		await screen.findByText('Page 3 of 3');
+		expect(apiModule.api.listFamilies).toHaveBeenLastCalledWith({ limit: 20, offset: 40 });
+	});
+
+	it('drops the page from the URL and shows the empty state when there are no families (#948)', async () => {
+		resetRouter('/families?page=4');
+		render(FamiliesPage);
+		await waitFor(() => expect(currentPath()).toBe('/families'));
+		expect(historyLength()).toBe(1);
+		await screen.findByText('No families found.');
+		expect(apiModule.api.listFamilies).toHaveBeenLastCalledWith({ limit: 20, offset: 0 });
 	});
 });
