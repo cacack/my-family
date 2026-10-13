@@ -3,6 +3,7 @@ package command_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"slices"
 	"testing"
 
@@ -10,6 +11,7 @@ import (
 
 	"github.com/cacack/my-family/internal/command"
 	"github.com/cacack/my-family/internal/domain"
+	"github.com/cacack/my-family/internal/repository"
 	"github.com/cacack/my-family/internal/repository/memory"
 )
 
@@ -127,6 +129,28 @@ func TestUpdateFamily_RecordsOnlyChangedFields(t *testing.T) {
 			checkRecorded(t, f.events, f.familyID, 1, tt.want)
 		})
 	}
+}
+
+// TestUpdateFamily_StaleVersionUnchangedForm is the #944 regression: an
+// unchanged form appends no event, so the version must be checked up front or
+// a stale one would slip through as a silent success (UpdatePerson already
+// refuses it).
+func TestUpdateFamily_StaleVersionUnchangedForm(t *testing.T) {
+	f := newFamilyFixture(t)
+	bumped, err := f.handler.UpdateFamily(f.ctx, command.UpdateFamilyInput{
+		ID: f.familyID, MarriagePlace: ptr("York"), Version: f.version,
+	})
+	if err != nil {
+		t.Fatalf("UpdateFamily: %v", err)
+	}
+	_, err = f.handler.UpdateFamily(f.ctx, command.UpdateFamilyInput{
+		ID: f.familyID, Partner1ID: &f.p1, Partner2ID: &f.p2, RelationshipType: ptr("marriage"),
+		MarriageDate: ptr("1 JUN 1875"), MarriagePlace: ptr("York"), Version: f.version,
+	})
+	if !errors.Is(err, repository.ErrConcurrencyConflict) {
+		t.Fatalf("stale unchanged update: err = %v, want ErrConcurrencyConflict", err)
+	}
+	checkRecorded(t, f.events, f.familyID, int(bumped.Version), nil)
 }
 
 func TestUpdateSource_RecordsOnlyChangedFields(t *testing.T) {

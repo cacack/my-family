@@ -150,6 +150,13 @@ func (h *Handler) UpdateFamily(ctx context.Context, input UpdateFamilyInput) (*U
 		return nil, ErrFamilyNotFound
 	}
 
+	// Check version for optimistic locking up front, as UpdatePerson does: an
+	// update that changes nothing appends no event, so the append alone would
+	// let a stale version through (#944).
+	if family.Version != input.Version {
+		return nil, repository.ErrConcurrencyConflict
+	}
+
 	if err := h.validateFamilyUpdate(ctx, family, input); err != nil {
 		return nil, err
 	}
