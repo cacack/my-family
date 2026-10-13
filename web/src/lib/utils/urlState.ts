@@ -65,6 +65,20 @@ export function readPositiveInt(
 	return Number.isInteger(value) && value > 0 ? Math.min(value, max) : fallback;
 }
 
+/**
+ * Moves a paged list off a `page` past its last page (a stale link, a
+ * hand-edited URL, or data that shrank) to the last page; with no items the
+ * `page` param is dropped. That is a correction, not a step the user took, so
+ * it replaces; the URL change reloads the list. Returns true when it moved, so
+ * the caller drops the result it just loaded.
+ */
+export function clampPageToTotal(url: URL, requested: number, total: number, pageSize: number): boolean {
+	const lastPage = Math.max(1, Math.ceil(total / pageSize));
+	if (requested <= lastPage) return false;
+	setQuery(url, { page: lastPage === 1 ? null : lastPage });
+	return true;
+}
+
 /** `params[key]` as a flag: present and not `0`/`false` (`withQuery` writes `1` or omits it). */
 export function readFlag(params: URLSearchParams, key: string): boolean {
 	const value = params.get(key);
