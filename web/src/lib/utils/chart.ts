@@ -3,6 +3,7 @@
  * resize handling, motion preferences and label truncation.
  */
 import * as d3 from 'd3';
+import { formatPersonName } from '$lib/api/client';
 import { getReducedMotion } from '$lib/stores/accessibilitySettings.svelte';
 
 export type ScaleExtent = [number, number];
@@ -156,4 +157,16 @@ export function wrapLabel(text: string, max: number): [string, string] {
 	}
 	if (!first && words.length > 0) first = truncateLabel(words.shift()!, max);
 	return [first, truncateLabel(words.join(' '), max)];
+}
+
+/**
+ * The given-name and surname lines of a chart card. A missing part is left
+ * blank; a person with no name at all reads "Unknown" on the first line, as
+ * `formatPersonName` does elsewhere (#932).
+ */
+export function nameLines(person: { given_name?: string; surname?: string }): [string, string] {
+	const given = (person.given_name ?? '').trim();
+	const surname = (person.surname ?? '').trim();
+	if (!given && !surname) return [formatPersonName(person), ''];
+	return [given, surname];
 }

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/stores';
-	import { api, recordLoadError, type AhnentafelResponse, type AhnentafelEntry, formatGenDate } from '$lib/api/client';
+	import { api, recordLoadError, type AhnentafelResponse, type AhnentafelEntry, formatGenDate, formatPersonName } from '$lib/api/client';
 	import { Button } from '$lib/components/ui/button';
 	import ActionBar from '$lib/components/ActionBar.svelte';
 	import { Card, CardHeader, CardContent } from '$lib/components/ui/card';
@@ -53,9 +53,7 @@
 			const url = URL.createObjectURL(blob);
 			const link = document.createElement('a');
 			link.href = url;
-			const subjectName = report?.subject
-				? `${report.subject.given_name}_${report.subject.surname}`
-				: 'ahnentafel';
+			const subjectName = report?.subject ? formatPersonName(report.subject) : 'ahnentafel';
 			link.download = `${subjectName.replace(/\s+/g, '_')}_ahnentafel.txt`;
 			document.body.appendChild(link);
 			link.click();
@@ -118,7 +116,7 @@
 
 <svelte:head>
 	<title>
-		{report?.subject ? `${report.subject.given_name} ${report.subject.surname}` : 'Person'} - Ahnentafel Report | My Family
+		{report?.subject ? formatPersonName(report.subject) : 'Person'} - Ahnentafel Report | My Family
 	</title>
 </svelte:head>
 
@@ -126,7 +124,7 @@
 	<div class="report-container">
 		<ActionBar
 			back={report?.subject
-				? { href: `/persons/${report.subject.id}`, label: `Back to ${report.subject.given_name} ${report.subject.surname}` }
+				? { href: `/persons/${report.subject.id}`, label: `Back to ${formatPersonName(report.subject)}` }
 				: { href: '/', label: 'Back' }}
 		>
 			{#snippet actions()}
@@ -157,7 +155,7 @@
 			<div class="report">
 				<div class="report-header">
 					<h1>Ahnentafel Report</h1>
-					<h2>{report.subject.given_name} {report.subject.surname}</h2>
+					<h2>{formatPersonName(report.subject)}</h2>
 					<p class="report-meta">
 						{report.generations} generations - {report.known_count} of {report.total_count} ancestors known
 					</p>
@@ -188,7 +186,7 @@
 											<td class="col-name">
 												{#if entry.id}
 													<a href="/persons/{entry.id}" class="person-link">
-														{entry.given_name || '?'} {entry.surname || '?'}
+														{formatPersonName(entry)}
 													</a>
 												{:else}
 													<span class="unknown-person">Unknown</span>
@@ -242,7 +240,7 @@
 											<div class="mb-1 text-base font-medium">
 												{#if entry.id}
 													<a href="/persons/{entry.id}" class="person-link">
-														{entry.given_name || '?'} {entry.surname || '?'}
+														{formatPersonName(entry)}
 													</a>
 												{:else}
 													<span class="unknown-person">Unknown</span>

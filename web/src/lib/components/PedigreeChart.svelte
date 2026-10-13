@@ -1,10 +1,11 @@
 <script lang="ts">
 	import * as d3 from 'd3';
 	import { onMount, untrack } from 'svelte';
-	import type { PedigreeNode } from '$lib/api/client';
+	import { formatPersonName, type PedigreeNode } from '$lib/api/client';
 	import {
 		fitTransform,
 		motionDuration,
+		nameLines,
 		observeChartResize,
 		scaleAbout,
 		touchScrollsPage,
@@ -542,7 +543,7 @@
 		// Full name on hover, since the lines below may be truncated
 		nodeGroups
 			.append('title')
-			.text((d) => [d.data.given_name, d.data.surname].filter(Boolean).join(' ') || 'Unknown');
+			.text((d) => formatPersonName(d.data));
 
 		// Given name (first line)
 		nodeGroups
@@ -554,7 +555,7 @@
 			.attr('font-weight', '600')
 			.attr('fill', '#1e293b')
 			.text((d) => {
-				return truncateLabel(d.data.given_name || '?', 16);
+				return truncateLabel(nameLines(d.data)[0], 16);
 			});
 
 		// Surname (second line)
@@ -567,7 +568,7 @@
 			.attr('font-weight', '500')
 			.attr('fill', '#475569')
 			.text((d) => {
-				return truncateLabel(d.data.surname ?? '', 16);
+				return truncateLabel(nameLines(d.data)[1], 16);
 			});
 
 		// Birth-death dates (third line)
