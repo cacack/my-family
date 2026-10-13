@@ -4,6 +4,7 @@
 	import { goto } from '$app/navigation';
 	import { api, isVersionConflict, recordLoadError, type RepositoryDetail, type Address } from '$lib/api/client';
 	import ExternalLinks from '$lib/components/ExternalLinks.svelte';
+	import InfoSection from '$lib/components/InfoSection.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import ActionBar from '$lib/components/ActionBar.svelte';
 	import FormRow from '$lib/components/FormRow.svelte';
@@ -323,43 +324,41 @@
 
 				{#if hasAddress(repository.address)}
 					{@const a = repository.address}
-					<div class="info-section">
-						<h2>Address</h2>
-						<dl>
-							{#if a?.line1}<dt>Line 1</dt><dd>{a.line1}</dd>{/if}
-							{#if a?.line2}<dt>Line 2</dt><dd>{a.line2}</dd>{/if}
-							{#if a?.city}<dt>City</dt><dd>{a.city}</dd>{/if}
-							{#if a?.state}<dt>State/Province</dt><dd>{a.state}</dd>{/if}
-							{#if a?.postal_code}<dt>Postal Code</dt><dd>{a.postal_code}</dd>{/if}
-							{#if a?.country}<dt>Country</dt><dd>{a.country}</dd>{/if}
-							{#if a?.phone}<dt>Phone</dt><dd>{a.phone}</dd>{/if}
-							{#if a?.email}<dt>Email</dt><dd>{a.email}</dd>{/if}
-							{#if a?.fax}<dt>Fax</dt><dd>{a.fax}</dd>{/if}
-						</dl>
-					</div>
+					<InfoSection
+						title="Address"
+						hideEmpty
+						fields={[
+							{ label: 'Line 1', value: a?.line1 },
+							{ label: 'Line 2', value: a?.line2 },
+							{ label: 'City', value: a?.city },
+							{ label: 'State/Province', value: a?.state },
+							{ label: 'Postal Code', value: a?.postal_code },
+							{ label: 'Country', value: a?.country },
+							{ label: 'Phone', value: a?.phone },
+							{ label: 'Email', value: a?.email },
+							{ label: 'Fax', value: a?.fax }
+						]}
+					/>
 				{/if}
 
 				{#if repository.notes}
-					<div class="info-section">
-						<h2>Notes</h2>
+					<InfoSection title="Notes">
 						<p class="notes">{repository.notes}</p>
-					</div>
+					</InfoSection>
 				{/if}
 
 				{#if repository.gedcom_xref}
-					<div class="info-section">
-						<h2>GEDCOM Xref</h2>
+					<InfoSection title="GEDCOM Xref">
 						<p class="mono">{repository.gedcom_xref}</p>
-					</div>
+					</InfoSection>
 				{/if}
 
 				<!-- Guard here (in addition to ExternalLinks' own empty check) so the
 				     "External links" heading is suppressed when there are none. -->
 				{#if repository.external_ids && repository.external_ids.length > 0}
-					<div class="info-section">
-						<h2>External links</h2>
+					<InfoSection title="External links">
 						<ExternalLinks externalIds={repository.external_ids} />
-					</div>
+					</InfoSection>
 				{/if}
 			</div>
 		{/if}
@@ -396,41 +395,6 @@
 		margin: 0;
 		font-size: 1.5rem;
 		color: #1e293b;
-	}
-
-	.info-section {
-		margin-bottom: 1.5rem;
-	}
-
-	.info-section:last-child {
-		margin-bottom: 0;
-	}
-
-	.info-section h2 {
-		margin: 0 0 0.75rem;
-		font-size: 0.875rem;
-		font-weight: 600;
-		color: var(--color-text-muted);
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-	}
-
-	.info-section dl {
-		margin: 0;
-		display: grid;
-		grid-template-columns: auto 1fr;
-		gap: 0.25rem 1rem;
-	}
-
-	.info-section dt {
-		color: var(--color-text-muted);
-		font-size: 0.8125rem;
-	}
-
-	.info-section dd {
-		margin: 0;
-		color: #1e293b;
-		font-size: 0.875rem;
 	}
 
 	.notes {

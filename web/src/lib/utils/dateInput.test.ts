@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { asDatePhrase, savedAsNotes, stillStored, unreadableDateField } from './dateInput';
+import { asDatePhrase, savedAsNotes, savedAsText, stillStored, unreadableDateField } from './dateInput';
 
 describe('unreadableDateField', () => {
 	const fields = ['birth_date', 'death_date'] as const;
@@ -51,5 +51,15 @@ describe('stillStored', () => {
 
 	it('passes no note through as none', () => {
 		expect(stillStored(undefined, 'ABT 1850')).toBeUndefined();
+	});
+});
+
+describe('savedAsText', () => {
+	it('says what a typed date was saved as', () => {
+		expect(savedAsText({ typed: 'about 1850', stored: 'ABT 1850' })).toBe('Saved as ABT 1850 from “about 1850”');
+	});
+
+	it('is empty without a note', () => {
+		expect(savedAsText(undefined)).toBeUndefined();
 	});
 });

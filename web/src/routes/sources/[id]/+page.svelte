@@ -3,6 +3,7 @@
 	import { goto } from '$app/navigation';
 	import { api, isVersionConflict, recordLoadError, type SourceDetail, type SourceType, type Citation } from '$lib/api/client';
 	import ExternalLinks from '$lib/components/ExternalLinks.svelte';
+	import InfoSection from '$lib/components/InfoSection.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import ActionBar from '$lib/components/ActionBar.svelte';
 	import FormRow from '$lib/components/FormRow.svelte';
@@ -315,72 +316,52 @@
 
 				<div class="info-grid">
 					{#if source.author || source.publisher || source.publish_date}
-						<div class="info-section">
-							<h2>Publication Info</h2>
-							<dl>
-								{#if source.author}
-									<dt>Author</dt>
-									<dd>{source.author}</dd>
-								{/if}
-								{#if source.publisher}
-									<dt>Publisher</dt>
-									<dd>{source.publisher}</dd>
-								{/if}
-								{#if source.publish_date}
-									<dt>Date</dt>
-									<dd>{source.publish_date}</dd>
-								{/if}
-							</dl>
-						</div>
+						<InfoSection
+							title="Publication Info"
+							hideEmpty
+							fields={[
+								{ label: 'Author', value: source.author },
+								{ label: 'Publisher', value: source.publisher },
+								{ label: 'Date', value: source.publish_date }
+							]}
+						/>
 					{/if}
 
 					{#if source.repository_name || source.collection_name || source.call_number}
-						<div class="info-section">
-							<h2>Repository Info</h2>
-							<dl>
-								{#if source.repository_name}
-									<dt>Repository</dt>
-									<dd>{source.repository_name}</dd>
-								{/if}
-								{#if source.collection_name}
-									<dt>Collection</dt>
-									<dd>{source.collection_name}</dd>
-								{/if}
-								{#if source.call_number}
-									<dt>Call Number</dt>
-									<dd>{source.call_number}</dd>
-								{/if}
-							</dl>
-						</div>
+						<InfoSection
+							title="Repository Info"
+							hideEmpty
+							fields={[
+								{ label: 'Repository', value: source.repository_name },
+								{ label: 'Collection', value: source.collection_name },
+								{ label: 'Call Number', value: source.call_number }
+							]}
+						/>
 					{/if}
 				</div>
 
 				{#if source.url}
-					<div class="info-section">
-						<h2>URL</h2>
+					<InfoSection title="URL">
 						<a href={source.url} target="_blank" rel="noopener noreferrer" class="source-url">{source.url}</a>
-					</div>
+					</InfoSection>
 				{/if}
 
 				{#if source.notes}
-					<div class="info-section">
-						<h2>Notes</h2>
+					<InfoSection title="Notes">
 						<p class="notes">{source.notes}</p>
-					</div>
+					</InfoSection>
 				{/if}
 
 				<!-- Guard here (in addition to ExternalLinks' own empty check) so the
 				     "External links" heading is suppressed when there are none. -->
 				{#if source.external_ids && source.external_ids.length > 0}
-					<div class="info-section">
-						<h2>External links</h2>
+					<InfoSection title="External links">
 						<ExternalLinks externalIds={source.external_ids} />
-					</div>
+					</InfoSection>
 				{/if}
 
 				{#if getCitations().length > 0}
-					<div class="info-section">
-						<h2>Citations ({getCitations().length})</h2>
+					<InfoSection title={`Citations (${getCitations().length})`}>
 						<ul class="citation-list">
 							{#each getCitations() as citation}
 								<li class="citation-item">
@@ -423,7 +404,7 @@
 								</li>
 							{/each}
 						</ul>
-					</div>
+					</InfoSection>
 				{/if}
 			</div>
 		{/if}
@@ -504,35 +485,9 @@
 		margin-bottom: 1.5rem;
 	}
 
-	.info-section {
-		margin-bottom: 1.5rem;
-	}
-
-	.info-section h2 {
-		margin: 0 0 0.75rem;
-		font-size: 0.875rem;
-		font-weight: 600;
-		color: var(--color-text-muted);
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-	}
-
-	.info-section dl {
-		margin: 0;
-		display: grid;
-		grid-template-columns: auto 1fr;
-		gap: 0.25rem 1rem;
-	}
-
-	.info-section dt {
-		color: var(--color-text-muted);
-		font-size: 0.8125rem;
-	}
-
-	.info-section dd {
-		margin: 0;
-		color: #1e293b;
-		font-size: 0.875rem;
+	/* The grid gap spaces the sections, not their own margins. */
+	.info-grid > :global(.info-section) {
+		margin-bottom: 0;
 	}
 
 	.source-url {
