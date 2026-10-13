@@ -18,6 +18,7 @@
 	import FormRow from '$lib/components/FormRow.svelte';
 	import { Badge } from '$lib/components/ui/badge';
 	import ExternalLinks from '$lib/components/ExternalLinks.svelte';
+	import InfoSection from '$lib/components/InfoSection.svelte';
 	import ErrorState from '$lib/components/ErrorState.svelte';
 	import SaveConflict from '$lib/components/SaveConflict.svelte';
 	import ActionError from '$lib/components/ActionError.svelte';
@@ -25,7 +26,7 @@
 	import { ROLLBACK_MAINLINE_ONLY } from '$lib/utils/rollbackScope';
 	import { GENDER_OPTIONS, RESEARCH_STATUS_OPTIONS } from '$lib/utils/enumOptions';
 	import { SaveConflictFlow, type ConflictRow } from '$lib/utils/saveConflict.svelte';
-	import { asDatePhrase, savedAsNotes, stillStored, unreadableDateField, type SavedAs } from '$lib/utils/dateInput';
+	import { asDatePhrase, savedAsNotes, savedAsText, stillStored, unreadableDateField, type SavedAs } from '$lib/utils/dateInput';
 	
 	const DATE_FIELDS = ['birth_date', 'death_date'] as const;
 	type DateField = (typeof DATE_FIELDS)[number];
@@ -554,44 +555,37 @@
 				</div>
 
 				<div class="info-grid">
-					<div class="info-section">
-						<h2>Birth</h2>
-						<dl>
-							<dt>Date</dt>
-							<dd>
-								{formatGenDate(person.birth_date) || '—'}
-								{#if savedAs.birth_date}
-									<span class="saved-as" role="status">Saved as {savedAs.birth_date.stored} from “{savedAs.birth_date.typed}”</span>
-								{/if}
-							</dd>
-							<dt>Place</dt>
-							<dd>{person.birth_place || '—'}</dd>
-						</dl>
-					</div>
+					<InfoSection
+						title="Birth"
+						fields={[
+							{
+								label: 'Date',
+								value: formatGenDate(person.birth_date),
+								note: savedAsText(savedAs.birth_date)
+							},
+							{ label: 'Place', value: person.birth_place }
+						]}
+					/>
 
-					<div class="info-section">
-						<h2>Death</h2>
-						<dl>
-							<dt>Date</dt>
-							<dd>
-								{formatGenDate(person.death_date) || '—'}
-								{#if savedAs.death_date}
-									<span class="saved-as" role="status">Saved as {savedAs.death_date.stored} from “{savedAs.death_date.typed}”</span>
-								{/if}
-							</dd>
-							<dt>Place</dt>
-							<dd>{person.death_place || '—'}</dd>
-						</dl>
-					</div>
+					<InfoSection
+						title="Death"
+						fields={[
+							{
+								label: 'Date',
+								value: formatGenDate(person.death_date),
+								note: savedAsText(savedAs.death_date)
+							},
+							{ label: 'Place', value: person.death_place }
+						]}
+					/>
 				</div>
 
 				<!-- Guard here (in addition to ExternalLinks' own empty check) so the
 				     "External links" heading is suppressed when there are none. -->
 				{#if person.external_ids && person.external_ids.length > 0}
-					<div class="info-section">
-						<h2>External links</h2>
+					<InfoSection title="External links">
 						<ExternalLinks externalIds={person.external_ids} />
-					</div>
+					</InfoSection>
 				{/if}
 
 				<!-- Brick Wall Section -->
@@ -679,19 +673,19 @@
 				</div>
 
 				{#if person.notes}
-					<div class="info-section">
-						<h2>Notes</h2>
+					<InfoSection title="Notes">
 						<p class="notes">{person.notes}</p>
-					</div>
+					</InfoSection>
 				{/if}
 
-				<div class="info-section">
-					<div class="section-header">
-						<h2>Families</h2>
-						<Button variant="outline" size="sm" href="/families/add?partner1={person.id}">
-							Add family
-						</Button>
-					</div>
+				<InfoSection title="Families">
+					{#snippet actions()}
+						{#if person}
+							<Button variant="outline" size="sm" href="/families/add?partner1={person.id}">
+								Add family
+							</Button>
+						{/if}
+					{/snippet}
 					{#if person.families_as_partner && person.families_as_partner.length > 0}
 						<ul class="family-list">
 							{#each person.families_as_partner as family}
@@ -709,17 +703,16 @@
 					{:else}
 						<p class="empty-links">Not a partner in any family yet.</p>
 					{/if}
-				</div>
+				</InfoSection>
 
-				<div class="info-section">
-					<div class="section-header">
-						<h2>Parents</h2>
-						{#if !person.family_as_child}
+				<InfoSection title="Parents">
+					{#snippet actions()}
+						{#if person && !person.family_as_child}
 							<Button variant="outline" size="sm" href="/families/add?child={person.id}">
 								Add parents
 							</Button>
 						{/if}
-					</div>
+					{/snippet}
 					{#if person.family_as_child}
 						<a href="/families/{person.family_as_child.id}" class="parent-link">
 							{person.family_as_child.partner1_name || 'Unknown'}
@@ -728,16 +721,17 @@
 					{:else}
 						<p class="empty-links">No parents recorded.</p>
 					{/if}
-				</div>
+				</InfoSection>
 
-				<div class="info-section media-section">
-					<h2>
-						Media
-						{#if mediaCount !== null && mediaCount > 0}
-							<Badge variant="outline" class="ml-2">{mediaCount}</Badge>
-						{/if}
-					</h2>
-					<MediaGallery personId={person.id} onMediaAdded={handleMediaAdded} />
+				<div class="media-section">
+					<InfoSection title="Media">
+						{#snippet badge()}
+							{#if mediaCount !== null && mediaCount > 0}
+								<Badge variant="outline" class="ml-2">{mediaCount}</Badge>
+							{/if}
+						{/snippet}
+						<MediaGallery personId={person.id} onMediaAdded={handleMediaAdded} />
+					</InfoSection>
 				</div>
 
 				<CitationSection personId={person.id} />
@@ -915,44 +909,9 @@
 		margin-bottom: 1.5rem;
 	}
 
-	.info-section h2 {
-		margin: 0 0 0.75rem;
-		font-size: 0.875rem;
-		font-weight: 600;
-		color: var(--color-text-muted);
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-	}
-
-	.info-section dl {
-		margin: 0;
-		display: grid;
-		grid-template-columns: auto minmax(0, 1fr);
-		gap: 0.25rem 1rem;
-	}
-
-	.info-section dt {
-		color: var(--color-text-muted);
-		font-size: 0.8125rem;
-	}
-
-	:global(body.high-contrast) :is(.info-section dt, .empty-links, .brick-wall-since) {
-		color: var(--color-text-muted);
-	}
-
-	.info-section dd {
-		margin: 0;
-		/* GEDCOM places are often comma-joined with no spaces to break on. */
-		overflow-wrap: anywhere;
-		color: #1e293b;
-		font-size: 0.875rem;
-	}
-
-	.saved-as {
-		display: block;
-		margin-top: 0.125rem;
-		color: #64748b;
-		font-size: 0.75rem;
+	/* The grid gap spaces the sections, not their own margins. */
+	.info-grid > :global(*) {
+		margin-bottom: 0;
 	}
 
 	.notes {
@@ -962,17 +921,8 @@
 		white-space: pre-wrap;
 	}
 
-	.section-header {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		justify-content: space-between;
-		gap: 1rem;
-		margin-bottom: 0.75rem;
-	}
-
-	.info-section .section-header h2 {
-		margin: 0;
+	:global(body.high-contrast) :is(.empty-links, .brick-wall-since) {
+		color: var(--color-text-muted);
 	}
 
 	.empty-links {
@@ -1014,11 +964,6 @@
 		margin-top: 1.5rem;
 		padding-top: 1.5rem;
 		border-top: 1px solid #e2e8f0;
-	}
-
-	.media-section h2 {
-		display: flex;
-		align-items: center;
 	}
 
 	/* History section styles */

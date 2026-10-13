@@ -48,3 +48,8 @@ export function savedAsNotes<F extends string>(
 export function stillStored(note: SavedAs | undefined, stored: string): SavedAs | undefined {
 	return note?.stored === stored ? note : undefined;
 }
+
+/** The line a detail page shows under a date saved in a different form, if any. */
+export function savedAsText(note: SavedAs | undefined): string | undefined {
+	return note && `Saved as ${note.stored} from “${note.typed}”`;
+}

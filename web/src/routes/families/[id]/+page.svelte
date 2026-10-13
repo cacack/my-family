@@ -19,6 +19,7 @@
 	import * as AlertDialog from '$lib/components/ui/alert-dialog';
 	import ChangeHistory from '$lib/components/ChangeHistory.svelte';
 	import ExternalLinks from '$lib/components/ExternalLinks.svelte';
+	import InfoSection from '$lib/components/InfoSection.svelte';
 	import ErrorState from '$lib/components/ErrorState.svelte';
 	import SaveConflict from '$lib/components/SaveConflict.svelte';
 	import ActionError from '$lib/components/ActionError.svelte';
@@ -34,7 +35,7 @@
 	import { ROLLBACK_MAINLINE_ONLY } from '$lib/utils/rollbackScope';
 	import { RELATION_TYPE_OPTIONS } from '$lib/utils/enumOptions';
 	import { SaveConflictFlow, type ConflictRow } from '$lib/utils/saveConflict.svelte';
-	import { asDatePhrase, savedAsNotes, stillStored, unreadableDateField, type SavedAs } from '$lib/utils/dateInput';
+	import { asDatePhrase, savedAsNotes, savedAsText, stillStored, unreadableDateField, type SavedAs } from '$lib/utils/dateInput';
 
 	let family: FamilyDetail | null = $state(null);
 	let loading = $state(true);
@@ -94,7 +95,7 @@
 	let removeTarget: FamilyChild | null = $state(null);
 	let removing = $state(false);
 	let removeError: string | null = $state(null);
-	let childrenHeading: HTMLHeadingElement | undefined = $state();
+	let childrenSection: InfoSection | undefined = $state();
 
 	// Polite live region for the outcome of child and partner changes.
 	let announcement = $state('');
@@ -399,7 +400,7 @@
 			announce(`${childName(target)} removed from this family`);
 			// The row and its button are gone; land focus on the section instead.
 			await tick();
-			childrenHeading?.focus();
+			childrenSection?.focusHeading();
 		} catch (err) {
 			removeError = (err as { message?: string }).message || 'Failed to remove the child';
 		} finally {
@@ -553,33 +554,23 @@
 				</div>
 
 				{#if family.marriage_date || family.marriage_place}
-					<div class="info-section">
-						<h2>Marriage</h2>
-						<dl>
-							{#if family.marriage_date}
-								<dt>Date</dt>
-								<dd>
-									{formatGenDate(family.marriage_date)}
-									{#if savedAs}
-										<span class="saved-as" role="status">Saved as {savedAs.stored} from “{savedAs.typed}”</span>
-									{/if}
-								</dd>
-							{/if}
-							{#if family.marriage_place}
-								<dt>Place</dt>
-								<dd>{family.marriage_place}</dd>
-							{/if}
-						</dl>
-					</div>
+					<InfoSection
+						title="Marriage"
+						hideEmpty
+						fields={[
+							{ label: 'Date', value: formatGenDate(family.marriage_date), note: savedAsText(savedAs) },
+							{ label: 'Place', value: family.marriage_place }
+						]}
+					/>
 				{/if}
 
-				<div class="info-section">
-					<div class="section-header">
-						<h2 bind:this={childrenHeading} tabindex="-1">
-							Children{#if family.children && family.children.length > 0}&nbsp;({family.children.length}){/if}
-						</h2>
+				<InfoSection
+					bind:this={childrenSection}
+					title={`Children${family.children && family.children.length > 0 ? `\u00a0(${family.children.length})` : ''}`}
+				>
+					{#snippet actions()}
 						<Button variant="outline" size="sm" onclick={() => (addChildOpen = true)}>Add child</Button>
-					</div>
+					{/snippet}
 					{#if family.children && family.children.length > 0}
 						<ul class="children-list">
 							{#each family.children as child (child.person_id)}
@@ -604,15 +595,14 @@
 					{:else}
 						<p class="empty-message">No children recorded</p>
 					{/if}
-				</div>
+				</InfoSection>
 
 				<!-- Guard here (in addition to ExternalLinks' own empty check) so the
 				     "External links" heading is suppressed when there are none. -->
 				{#if family.external_ids && family.external_ids.length > 0}
-					<div class="info-section">
-						<h2>External links</h2>
+					<InfoSection title="External links">
 						<ExternalLinks externalIds={family.external_ids} />
-					</div>
+					</InfoSection>
 				{/if}
 
 				{#if rollbackSuccess.show}
@@ -815,70 +805,6 @@
 		font-weight: 500;
 		color: #1e293b;
 		transition: color 0.2s;
-	}
-
-	.info-section {
-		margin-bottom: 1.5rem;
-	}
-
-	.info-section:last-child {
-		margin-bottom: 0;
-	}
-
-	.info-section h2 {
-		margin: 0 0 0.75rem;
-		font-size: 0.875rem;
-		font-weight: 600;
-		color: var(--color-text-muted);
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-	}
-
-	.info-section dl {
-		margin: 0;
-		display: grid;
-		grid-template-columns: auto 1fr;
-		gap: 0.25rem 1rem;
-	}
-
-	.info-section dt {
-		color: var(--color-text-muted);
-		font-size: 0.8125rem;
-	}
-
-	.info-section dd {
-		margin: 0;
-		color: #1e293b;
-		font-size: 0.875rem;
-	}
-
-	.saved-as {
-		display: block;
-		margin-top: 0.125rem;
-		color: #64748b;
-		font-size: 0.75rem;
-	}
-
-	.section-header {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		justify-content: space-between;
-		gap: 1rem;
-		margin-bottom: 0.75rem;
-	}
-
-	.info-section .section-header h2 {
-		margin: 0;
-	}
-
-	.section-header h2:focus {
-		outline: none;
-	}
-
-	.section-header h2:focus-visible {
-		outline: 2px solid var(--color-focus-ring);
-		outline-offset: 2px;
 	}
 
 	.remove-child {
