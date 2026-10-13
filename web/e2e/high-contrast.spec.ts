@@ -17,7 +17,8 @@ const PAGES: { name: string; path: (s: ReturnType<typeof readSeed>) => string }[
 	{ name: 'people', path: () => '/persons' },
 	{ name: 'person', path: (s) => `/persons/${s.switcher.person.id}` },
 	{ name: 'quality', path: () => '/quality' },
-	{ name: 'evidence', path: () => '/evidence' }
+	{ name: 'evidence', path: () => '/evidence' },
+	{ name: 'search', path: () => '/search' }
 ];
 
 test.beforeEach(async ({ page }) => {
@@ -69,6 +70,39 @@ test('links styled as buttons keep their button colours', async ({ page }) => {
 		const style = await linkStyle(page.getByRole('link', { name, exact: true }));
 		expect(style, name).toEqual({ color: 'rgb(0, 0, 0)', decoration: 'none' });
 	}
+});
+
+/** WCAG relative luminance contrast ratio of two `rgb(r, g, b)` colours. */
+function contrastRatio(a: string, b: string): number {
+	const luminance = (rgb: string) => {
+		const [r, g, bl] = (rgb.match(/\d+/g) ?? []).slice(0, 3).map((c) => {
+			const v = Number(c) / 255;
+			return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+		});
+		return 0.2126 * r + 0.7152 * g + 0.0722 * bl;
+	};
+	const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+	return (hi + 0.05) / (lo + 0.05);
+}
+
+// The header icon's high-contrast rule once hid its active state (#918).
+test('the header Advanced search icon shows it is the current page', async ({ page }) => {
+	const icon = page.getByRole('link', { name: 'Advanced search' });
+	const colours = () =>
+		icon.evaluate((el) => {
+			const style = getComputedStyle(el);
+			return { background: style.backgroundColor, color: style.color };
+		});
+
+	await page.goto('/');
+	await expect(page.locator('body')).toHaveClass(/high-contrast/);
+	const idle = await colours();
+
+	await page.goto('/search');
+	await expect(icon).toHaveAttribute('aria-current', 'page');
+	const active = await colours();
+	expect(active.background).not.toEqual(idle.background);
+	expect(contrastRatio(active.color, active.background)).toBeGreaterThanOrEqual(3);
 });
 
 /*
