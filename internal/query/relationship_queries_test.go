@@ -1,7 +1,9 @@
 package query_test
 
 import (
+	"bytes"
 	"context"
+	"slices"
 	"testing"
 
 	"github.com/google/uuid"
@@ -1313,5 +1315,124 @@ func assertEndpointOnly(t *testing.T, label string, path []query.RelationshipPat
 		if node.ID == start || (node.ID == other && i+1 != len(path)-1) {
 			t.Errorf("%s passes through an endpoint: %v", label, path)
 		}
+	}
+}
+
+// createPersonWithID saves a person under a fixed ID, so a test can control
+// how ties on common ancestor ID break.
+func createPersonWithID(t *testing.T, ctx context.Context, store *memory.ReadModelStore, id uuid.UUID, givenName string) uuid.UUID {
+	t.Helper()
+	err := store.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
+		ID: id, GivenName: givenName, Surname: "Tie", FullName: givenName + " Tie",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return id
+}
+
+func TestGetRelationship_PathOrderIsDeterministic(t *testing.T) {
+	store := memory.NewReadModelStore()
+	svc := query.NewRelationshipService(store)
+	ctx := context.Background()
+
+	// Double first cousins: two brothers married two sisters, so the cousins
+	// share all four grandparents, each at total distance 4.
+	gf1 := createPerson(t, ctx, store, "Grandfather", "One", domain.GenderMale)
+	gm1 := createPerson(t, ctx, store, "Grandmother", "One", domain.GenderFemale)
+	gf2 := createPerson(t, ctx, store, "Grandfather", "Two", domain.GenderMale)
+	gm2 := createPerson(t, ctx, store, "Grandmother", "Two", domain.GenderFemale)
+	brother1 := createPerson(t, ctx, store, "Brother", "One", domain.GenderMale)
+	brother2 := createPerson(t, ctx, store, "Brother", "One", domain.GenderMale)
+	sister1 := createPerson(t, ctx, store, "Sister", "Two", domain.GenderFemale)
+	sister2 := createPerson(t, ctx, store, "Sister", "Two", domain.GenderFemale)
+	cousinA := createPerson(t, ctx, store, "Cousin", "A", domain.GenderMale)
+	cousinB := createPerson(t, ctx, store, "Cousin", "B", domain.GenderFemale)
+
+	for _, child := range []uuid.UUID{brother1, brother2} {
+		createParentChild(t, ctx, store, child, &gf1, &gm1, "", "")
+	}
+	for _, child := range []uuid.UUID{sister1, sister2} {
+		createParentChild(t, ctx, store, child, &gf2, &gm2, "", "")
+	}
+	createParentChild(t, ctx, store, cousinA, &brother1, &sister1, "", "")
+	createParentChild(t, ctx, store, cousinB, &brother2, &sister2, "", "")
+
+	ancestorIDs := func(paths []query.RelationshipPath) []uuid.UUID {
+		ids := make([]uuid.UUID, len(paths))
+		for i, p := range paths {
+			ids[i] = p.CommonAncestor.ID
+		}
+		return ids
+	}
+
+	first, err := svc.GetRelationship(ctx, domain.MainBranchID, cousinA, cousinB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := ancestorIDs(first.Paths)
+	if len(want) != 4 {
+		t.Fatalf("got %d paths, want 4 (one per shared grandparent)", len(want))
+	}
+	if !slices.IsSortedFunc(want, func(x, y uuid.UUID) int { return bytes.Compare(x[:], y[:]) }) {
+		t.Errorf("tied paths are not ordered by common ancestor ID: %v", want)
+	}
+
+	for i := 0; i < 50; i++ {
+		result, err := svc.GetRelationship(ctx, domain.MainBranchID, cousinA, cousinB)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := ancestorIDs(result.Paths); !slices.Equal(got, want) {
+			t.Fatalf("call %d: path order %v, want %v", i, got, want)
+		}
+	}
+}
+
+func TestGetRelationship_DirectLineWinsTie(t *testing.T) {
+	store := memory.NewReadModelStore()
+	svc := query.NewRelationshipService(store)
+	ctx := context.Background()
+
+	// Pedigree collapse that ties a direct line with a collateral one: C is
+	// both A's parent and B's parent, and A is B's grandparent through P.
+	//
+	//   C ── A ── P ── B
+	//   └─────────────┘
+	//
+	// From A, B is reached directly (A itself, distance 0+2) and through C
+	// (1+1). C gets the lower ID, so only the direct-line rule puts A first.
+	c := createPersonWithID(t, ctx, store, uuid.MustParse("00000000-0000-0000-0000-000000000001"), "C")
+	a := createPersonWithID(t, ctx, store, uuid.MustParse("00000000-0000-0000-0000-000000000002"), "A")
+	p := createPersonWithID(t, ctx, store, uuid.MustParse("00000000-0000-0000-0000-000000000003"), "P")
+	b := createPersonWithID(t, ctx, store, uuid.MustParse("00000000-0000-0000-0000-000000000004"), "B")
+	createParentChild(t, ctx, store, a, &c, nil, "", "")
+	createParentChild(t, ctx, store, p, &a, nil, "", "")
+	createParentChild(t, ctx, store, b, &p, &c, "", "")
+
+	for _, tt := range []struct {
+		name     string
+		from, to uuid.UUID
+	}{
+		{"ancestor first", a, b},
+		{"descendant first", b, a},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			for i := 0; i < 20; i++ {
+				result, err := svc.GetRelationship(ctx, domain.MainBranchID, tt.from, tt.to)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(result.Paths) != 2 {
+					t.Fatalf("got %d paths, want 2", len(result.Paths))
+				}
+				if got := result.Paths[0].CommonAncestor.ID; got != a {
+					t.Fatalf("call %d: Paths[0] goes through %v, want the direct line through A (%v)", i, got, a)
+				}
+				if got := result.Paths[1].CommonAncestor.ID; got != c {
+					t.Fatalf("call %d: Paths[1] goes through %v, want C (%v)", i, got, c)
+				}
+			}
+		})
 	}
 }

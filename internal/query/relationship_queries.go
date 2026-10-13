@@ -1,8 +1,11 @@
 package query
 
 import (
+	"bytes"
+	"cmp"
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/google/uuid"
@@ -258,14 +261,26 @@ func (s *RelationshipService) findCommonAncestors(ancestorsA, ancestorsB map[uui
 		}
 	}
 
-	// Sort by total generation distance (lowest first)
-	for i := 0; i < len(common)-1; i++ {
-		for j := i + 1; j < len(common); j++ {
-			if common[j].generation < common[i].generation {
-				common[i], common[j] = common[j], common[i]
-			}
-		}
+	// The map walk above has no order, and callers show Paths[0] as the main
+	// chain, so the order is fixed here (#974):
+	//  1. smallest total generation distance first;
+	//  2. on a tie, a direct line (A or B is itself the common ancestor) first;
+	//  3. then by common ancestor ID, so every remaining tie has one answer.
+	isDirect := func(ca ancestorInfo) bool {
+		return ancestorsA[ca.person.ID].generation == 0 || ancestorsB[ca.person.ID].generation == 0
 	}
+	slices.SortFunc(common, func(x, y ancestorInfo) int {
+		if c := cmp.Compare(x.generation, y.generation); c != 0 {
+			return c
+		}
+		if dx, dy := isDirect(x), isDirect(y); dx != dy {
+			if dx {
+				return -1
+			}
+			return 1
+		}
+		return bytes.Compare(x.person.ID[:], y.person.ID[:])
+	})
 
 	// Keep only the lowest common ancestors (filter out ancestors of common ancestors)
 	return s.filterToLowestCommonAncestors(common, ancestorsA, ancestorsB)
