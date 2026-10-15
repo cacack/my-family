@@ -76,13 +76,24 @@ func (h *Handler) AddName(ctx context.Context, input AddNameInput) (*AddNameResu
 		return nil, fmt.Errorf("%w: %v", ErrInvalidInput, err)
 	}
 
-	// If this is the first name, make it primary
+	var events []domain.Event
+
+	// A person's first name is its primary name. A primary name renames the
+	// person (docs/CONVENTIONS.md "Person Name and Primary Name"), so a first
+	// name that is neither marked primary nor the person's own name is added as
+	// an alternate, after a primary name recording the person's current name.
 	if len(existingNames) == 0 {
-		pn.IsPrimary = true
+		sameAsPerson := pn.GivenName == person.GivenName && pn.Surname == person.Surname
+		if pn.IsPrimary || sameAsPerson || person.GivenName == "" {
+			pn.IsPrimary = true
+		} else {
+			current := domain.NewPersonName(input.PersonID, person.GivenName, person.Surname)
+			current.IsPrimary = true
+			events = append(events, domain.NewNameAdded(current))
+		}
 	}
 
 	// If setting as primary, we need to demote the existing primary
-	var events []domain.Event
 	if pn.IsPrimary {
 		for _, existing := range existingNames {
 			if existing.IsPrimary {
