@@ -135,6 +135,56 @@ for (const width of [1024, 1280, 1440]) {
 	});
 }
 
+// Every nav entry must be the topmost element at its own centre: header
+// controls that run out of room must wrap, not lie on top of the nav (#1094).
+// The search box must stay wide enough to show its whole placeholder.
+async function expectHeaderUnobstructed(page: import('@playwright/test').Page, label: string) {
+	const m = await page.evaluate(() => {
+		const covered = [...document.querySelectorAll('.app-header .logo, .app-header .nav-wide > *')]
+			.filter((el) => {
+				const r = el.getBoundingClientRect();
+				const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+				return !hit || !el.contains(hit);
+			})
+			.map((el) => el.textContent?.trim() || el.className);
+		const input = document.querySelector<HTMLInputElement>('.header-controls input')!;
+		const style = getComputedStyle(input);
+		const ctx = document.createElement('canvas').getContext('2d')!;
+		ctx.font = style.font;
+		return {
+			covered,
+			placeholder: ctx.measureText(input.placeholder).width,
+			room: input.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight)
+		};
+	});
+	expect(m.covered, `${label}: nav entries covered by another element`).toEqual([]);
+	expect(m.room, `${label}: search placeholder is cut off`).toBeGreaterThanOrEqual(m.placeholder);
+}
+
+const FONT_SIZES = ['normal', 'large', 'larger'] as const;
+const HEADER_WIDTHS = [1024, 1280, 1440];
+
+// The breakpoints are in px but the header is sized in rem, so a larger font
+// size shrinks the room at every width. Only the default size must fit on one row.
+async function sweepHeader(page: import('@playwright/test').Page) {
+	for (const fontSize of FONT_SIZES) {
+		// Init scripts run in the order added, so the latest setting wins.
+		await page.addInitScript((size) => {
+			localStorage.setItem('accessibility-settings', JSON.stringify({ fontSize: size }));
+		}, fontSize);
+		for (const width of HEADER_WIDTHS) {
+			await page.setViewportSize({ width, height: 900 });
+			await expectNoHorizontalOverflow(page, '/');
+			await expectHeaderUnobstructed(page, `${fontSize} at ${width}px`);
+			if (fontSize === 'normal') await expectHeaderOneRow(page);
+		}
+	}
+}
+
+test('the header controls never cover the nav, at any font size', async ({ page }) => {
+	await sweepHeader(page);
+});
+
 // An active branch adds its switcher label to the same row. A long name must
 // truncate rather than wrap the header, and must leave the search box room to
 // type in at 1024px, where the row is tightest (#919).
@@ -167,6 +217,10 @@ test.describe('with a long research branch name active', () => {
 			expect(searchRem, 'header search box is narrower than 8rem').toBeGreaterThanOrEqual(8);
 		});
 	}
+
+	test('the header controls never cover the nav, at any font size', async ({ page }) => {
+		await sweepHeader(page);
+	});
 });
 
 test('every nav destination is two taps away on a phone', async ({ page }) => {
