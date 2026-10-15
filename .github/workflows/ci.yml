@@ -527,6 +527,15 @@ jobs:
         with:
           args: semgrep scan --config p/security-audit --config p/secrets --config p/golang --config p/typescript --sarif --output semgrep.sarif .
 
+      # Semgrep keeps `// nosemgrep` matches in its SARIF, marked with a
+      # `suppressions` entry, and GitHub code scanning opens alerts for them
+      # anyway (#979). Drop them so a reviewed suppression never becomes an alert.
+      - name: Drop nosemgrep-suppressed Semgrep results
+        if: (success() || failure()) && hashFiles('semgrep.sarif') != ''
+        run: |
+          jq '.runs[].results |= map(select((.suppressions // []) | length == 0))' semgrep.sarif > semgrep.filtered.sarif
+          mv semgrep.filtered.sarif semgrep.sarif
+
       - name: Upload Semgrep results to GitHub Security
         uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4
         if: (success() || failure()) && hashFiles('semgrep.sarif') != ''
