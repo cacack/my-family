@@ -68,6 +68,8 @@ func (s *ReadModelStore) createTables() error {
 		return err
 	}
 
+	// personFullNameExpr is a package constant; this DDL takes no external input.
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 	_, err := s.db.Exec(`
 		-- Enable pg_trgm extension for fuzzy search
 		CREATE EXTENSION IF NOT EXISTS pg_trgm;
@@ -718,9 +720,9 @@ func (s *ReadModelStore) renameLegacyEventsTable() error {
 	}
 
 	// Bound as $1, not interpolated: to_regclass takes the qualified name as a value.
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 	qualifiedTable := qualifiedSchema + `.life_events`
 	var pkName string
-	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 	err = s.db.QueryRow(`
 		SELECT conname FROM pg_constraint
 		WHERE conrelid = to_regclass($1) AND contype = 'p'
@@ -952,6 +954,7 @@ func (s *ReadModelStore) runBranchMigration() {
 		// mainBranchDefault is a package constant; no external input reaches this DDL.
 		// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 		_, _ = s.db.Exec(`ALTER TABLE ` + t.name + ` ADD COLUMN IF NOT EXISTS branch_id UUID NOT NULL ` + mainBranchDefault)
+		// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 		_, _ = s.db.Exec(`ALTER TABLE ` + t.name + ` ADD COLUMN IF NOT EXISTS deleted BOOLEAN NOT NULL DEFAULT FALSE`)
 
 		// Already the target shape? Nothing to do. Checked explicitly so the swap

@@ -265,6 +265,7 @@ Both PostgreSQL and SQLite implement these interfaces identically. The `memory/`
 - Document *why*, not *what*
 - All exported functions need doc comments
 - Use `// TODO:` for future work (with context)
+- Mark a reviewed static-analysis false positive with `// #nosec <id> -- <reason>` (gosec) and `// nosemgrep: <full rule id>` (Semgrep), on the line directly above the line Semgrep reports. For a multi-line match that is the match's first line. CI drops suppressed Semgrep results before uploading them to code scanning.
 
 ## Git Workflow
 

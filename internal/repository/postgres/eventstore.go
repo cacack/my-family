@@ -87,6 +87,7 @@ func (s *EventStore) createTables() error {
 
 	// #nosec G201 -- mainBranch is a constant UUID literal, not user input.
 	mainBranch := domain.MainBranchID.String()
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 	_, err = s.db.Exec(fmt.Sprintf(`
 		CREATE TABLE IF NOT EXISTS streams (
 			id UUID PRIMARY KEY,

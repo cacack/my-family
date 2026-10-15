@@ -161,7 +161,9 @@ func (s *ReadModelStore) createTables() error {
 	// defines branch_id inline) and an upgraded one.
 	s.migrateBranchColumns()
 
-	// Create core tables
+	// Create core tables. personFullNameExpr is a package constant; this DDL
+	// takes no external input.
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 	_, err := s.db.Exec(`
 		-- Persons table
 		CREATE TABLE IF NOT EXISTS persons (
@@ -843,6 +845,7 @@ func (s *ReadModelStore) runMigrations() {
 		{"idx_proof_summaries_id_branch", "proof_summaries", "id, branch_id"},
 	} {
 		// #nosec G201 -- idx fields are internal constants, never user input.
+		// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 		_, _ = s.db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS ` + idx.name + ` ON ` + idx.table + `(` + idx.cols + `)`)
 	}
 }
@@ -885,8 +888,10 @@ var branchKeyedTables = []string{
 func (s *ReadModelStore) migrateBranchColumns() {
 	for _, tbl := range branchScopedTables {
 		// #nosec G201 -- tbl comes from the fixed branchScopedTables list, not user input.
+		// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 		_, _ = s.db.Exec(`ALTER TABLE ` + tbl + ` ADD COLUMN branch_id TEXT NOT NULL DEFAULT '` + mainBranchID + `'`)
 		// #nosec G201 -- tbl comes from the fixed branchScopedTables list, not user input.
+		// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 		_, _ = s.db.Exec(`ALTER TABLE ` + tbl + ` ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0`)
 	}
 }
@@ -1090,6 +1095,7 @@ func (s *ReadModelStore) ListPersons(ctx context.Context, opts repository.ListOp
 
 	// Count total (with filter if present)
 	var total int
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query -- overlay is an internal subquery and whereClause a fixed literal; values stay bound
 	countQuery := "SELECT COUNT(*) FROM " + overlay + " " + whereClause
 	countArgs := append(append([]any{}, overlayArgs...), whereArgs...)
 	err := s.db.QueryRowContext(ctx, countQuery, countArgs...).Scan(&total)
@@ -2815,6 +2821,7 @@ func (s *ReadModelStore) GetChildrenOfFamily(ctx context.Context, branchID domai
 func (s *ReadModelStore) GetChildFamily(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) (*repository.FamilyReadModel, error) {
 	familyOverlay, familyArgs := familyOverlaySubquery(branchID)
 	// #nosec G201 G202 -- familyOverlay is a fixed internal subquery, not user input.
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 	query := `
 		SELECT f.id, f.partner1_id, f.partner1_given_name, f.partner1_surname,
 			   f.partner2_id, f.partner2_given_name, f.partner2_surname,
