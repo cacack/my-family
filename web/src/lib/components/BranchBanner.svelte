@@ -20,6 +20,7 @@
 		returnToMainline,
 		dismissBranchNotice
 	} from '$lib/stores/activeBranch.svelte';
+	import { Button } from '$lib/components/ui/button';
 	import BranchOutcomeBadge from '$lib/components/branch/BranchOutcomeBadge.svelte';
 	import BranchDriftIndicator from './BranchDriftIndicator.svelte';
 	import { subjectHref, subjectLabel } from '$lib/utils/branchResearch';
@@ -112,25 +113,24 @@
 	<div class="branch-notice" role="alert">
 		<span class="notice-text">{activeBranch.notice}</span>
 		{#if activeBranch.noticeHref}
-			<a class="notice-action" data-slot="action-link" href={activeBranch.noticeHref} onclick={dismissBranchNotice}>
+			<Button variant="outline" size="sm" href={activeBranch.noticeHref} onclick={dismissBranchNotice}>
 				Finish merge
-			</a>
+			</Button>
 		{/if}
-		<button class="notice-dismiss" onclick={dismissBranchNotice}>Dismiss</button>
+		<Button variant="outline" size="sm" onclick={dismissBranchNotice}>Dismiss</Button>
 	</div>
 {/if}
 
 {#if activeBranch.id}
 	<div class="branch-banner" role="status">
-		<span class="branch-label">Research Branch</span>
-		<span class="branch-text">
+		<div class="branch-text">
+			<!-- The label leads the first line rather than sitting in its own column,
+			     which on a phone squeezed everything else into a sliver (#1095). -->
+			<span class="branch-label">Research Branch</span>
 			{#if activeBranch.branch}
-				Working on <strong>{activeBranch.branch.name}</strong>. Changes to people, families,
-				sources, media and evidence are isolated to this branch; pages that stay on the mainline say
-				so.
+				Working on <strong>{activeBranch.branch.name}</strong>.
 			{:else}
-				Working on a research branch. Changes to people, families, sources, media and evidence are
-				isolated to this branch; pages that stay on the mainline say so.
+				Working on a research branch.
 			{/if}
 			{#if activeBranch.branch}
 				<span class="branch-research" data-testid="banner-research">
@@ -168,6 +168,10 @@
 			<details class="branch-help">
 				<summary>How branches work</summary>
 				<p>
+					Changes to people, families, sources, media and evidence are isolated to this branch;
+					pages that stay on the mainline say so.
+				</p>
+				<p>
 					A branch is a live view over the mainline, not a frozen copy. Records you haven't edited
 					here always show the mainline's current data, so later mainline corrections appear on
 					this branch too - there is nothing to rebase. Records you edit here are isolated: the
@@ -175,11 +179,13 @@
 					Compare for you to review before merging.
 				</p>
 			</details>
-		</span>
-		<a class="branch-compare" data-slot="action-link" href="/branches/{activeBranch.id}">Compare</a>
-		<button class="branch-exit" onclick={handleReturn} disabled={leaving}>
-			{leaving ? 'Returning...' : 'Return to Mainline'}
-		</button>
+		</div>
+		<div class="branch-actions">
+			<Button variant="outline" size="sm" href="/branches/{activeBranch.id}">Compare</Button>
+			<Button variant="outline" size="sm" onclick={handleReturn} disabled={leaving}>
+				{leaving ? 'Returning...' : 'Return to Mainline'}
+			</Button>
+		</div>
 	</div>
 {/if}
 
@@ -194,7 +200,9 @@
 		flex-wrap: wrap;
 	}
 
+	/* Tighter leading keeps a full research record within ~160px on a phone (#1095). */
 	.branch-banner {
+		line-height: 1.25;
 		background: #ede9fe;
 		border-bottom: 1px solid #7c3aed;
 		color: #5b21b6;
@@ -203,6 +211,7 @@
 	.branch-label {
 		font-weight: 700;
 		white-space: nowrap;
+		margin-right: 0.5rem;
 	}
 
 	.branch-text {
@@ -210,15 +219,22 @@
 		min-width: 12rem;
 	}
 
+	/* Wraps so the subjects drop below a long question instead of squeezing
+	   it to a few characters; the question grows to its own width, keeps at
+	   least 8rem, and truncates with the full text in its title. */
 	.branch-research {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
-		gap: 0.5rem;
+		column-gap: 0.5rem;
+		row-gap: 0.125rem;
 		margin-top: 0.25rem;
 		min-width: 0;
 	}
 
 	.branch-hypothesis {
+		flex: 1 1 8rem;
+		max-width: max-content;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
@@ -275,35 +291,10 @@
 		max-width: 48rem;
 	}
 
-	.branch-compare,
-	.branch-exit {
-		padding: 0.25rem 0.75rem;
-		border: 1px solid #7c3aed;
-		border-radius: 4px;
-		background: white;
-		color: #5b21b6;
-		font-size: 0.8125rem;
-		font-weight: 500;
-		text-decoration: none;
-		cursor: pointer;
-		white-space: nowrap;
-		transition: background 0.15s;
-	}
-
-	.branch-compare:hover,
-	.branch-exit:hover:not(:disabled) {
-		background: #ede9fe;
-	}
-
-	.branch-compare:focus-visible,
-	.branch-exit:focus-visible {
-		outline: 2px solid #7c3aed;
-		outline-offset: 2px;
-	}
-
-	.branch-exit:disabled {
-		opacity: 0.6;
-		cursor: not-allowed;
+	.branch-actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.5rem;
 	}
 
 	.branch-notice {
@@ -315,32 +306,5 @@
 	.notice-text {
 		flex: 1;
 		min-width: 12rem;
-	}
-
-	.notice-dismiss,
-	.notice-action {
-		padding: 0.25rem 0.75rem;
-		border: 1px solid #d97706;
-		border-radius: 4px;
-		background: white;
-		color: #92400e;
-		font-size: 0.8125rem;
-		font-weight: 500;
-		cursor: pointer;
-		white-space: nowrap;
-	}
-
-	.notice-action {
-		text-decoration: none;
-		font-weight: 600;
-	}
-
-	.notice-dismiss:hover {
-		background: #fef3c7;
-	}
-
-	.notice-dismiss:focus-visible {
-		outline: 2px solid #d97706;
-		outline-offset: 2px;
 	}
 </style>
