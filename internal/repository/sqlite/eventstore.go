@@ -87,6 +87,7 @@ func (s *EventStore) createTables() error {
 	}
 
 	// #nosec G201 -- mainBranch is a constant UUID literal, not user input.
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 	_, err = s.db.Exec(fmt.Sprintf(`
 		CREATE TABLE IF NOT EXISTS streams (
 			id TEXT PRIMARY KEY,
@@ -144,6 +145,7 @@ const eventsIndexDDL = `
 // already-migrated databases is intentionally swallowed.
 func (s *EventStore) migrateBranchID(mainBranch string) {
 	// #nosec G201 -- mainBranch is a constant UUID literal, not user input.
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 	_, _ = s.db.Exec(fmt.Sprintf(
 		"ALTER TABLE events ADD COLUMN branch_id TEXT NOT NULL DEFAULT '%s'", mainBranch))
 }
