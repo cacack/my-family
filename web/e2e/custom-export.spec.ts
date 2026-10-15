@@ -44,3 +44,14 @@ test('CSV export includes only the chosen fields', async ({ page }) => {
 		expect(line.split(',')).toHaveLength(2);
 	}
 });
+
+test('CSV export is disabled when no fields are chosen', async ({ page }) => {
+	const exportButton = page.getByRole('button', { name: 'Export People as CSV' });
+	await page.getByRole('button', { name: 'Select None' }).click();
+
+	await expect(exportButton).toBeDisabled();
+	await expect(page.getByText('Select at least one field to export.')).toBeVisible();
+
+	await page.getByRole('checkbox', { name: 'ID', exact: true }).check();
+	await expect(exportButton).toBeEnabled();
+});

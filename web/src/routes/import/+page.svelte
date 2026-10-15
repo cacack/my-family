@@ -216,6 +216,14 @@
 		}
 	}
 
+	// An empty selection would otherwise export the server's default columns.
+	const noFieldsSelected = $derived.by(
+		() =>
+			exportEntityType !== 'tree' &&
+			exportFormat === 'csv' &&
+			getSelectedFieldsForEntityType(exportEntityType).size === 0
+	);
+
 	function getEntityLabel(entityType: EntityType): string {
 		switch (entityType) {
 			case 'tree': return 'Tree';
@@ -651,6 +659,11 @@
 									</label>
 								{/each}
 							</div>
+							{#if noFieldsSelected}
+								<p class="option-description" id="export-fields-hint">
+									Select at least one field to export.
+								</p>
+							{/if}
 						</div>
 					{/if}
 				{/if}
@@ -659,7 +672,12 @@
 					<p class="error-message" role="alert">{exportError}</p>
 				{/if}
 
-				<Button class="h-auto min-h-9 whitespace-normal" onclick={exportData} disabled={exporting}>
+				<Button
+					class="h-auto min-h-9 whitespace-normal"
+					onclick={exportData}
+					disabled={exporting || noFieldsSelected}
+					aria-describedby={noFieldsSelected ? 'export-fields-hint' : undefined}
+				>
 					{#if exporting}
 						<span class="spinner"></span>
 						Exporting...
