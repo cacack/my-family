@@ -357,17 +357,20 @@ func (p *Projector) projectPersonUpdated(ctx context.Context, e domain.PersonUpd
 	}
 
 	// Apply changes
+	nameChanged := false
 	for key, value := range e.Changes {
 		switch key {
 		case "given_name":
 			if v, ok := value.(string); ok {
 				person.GivenName = v
 				person.FullName = domain.JoinFullName(v, person.Surname)
+				nameChanged = true
 			}
 		case "surname":
 			if v, ok := value.(string); ok {
 				person.Surname = v
 				person.FullName = domain.JoinFullName(person.GivenName, v)
+				nameChanged = true
 			}
 		case "gender":
 			if v, ok := value.(string); ok {
@@ -419,7 +422,13 @@ func (p *Projector) projectPersonUpdated(ctx context.Context, e domain.PersonUpd
 	person.Version = version
 	person.UpdatedAt = e.OccurredAt()
 
-	return p.readStore.SavePerson(ctx, branchID, person)
+	if err := p.readStore.SavePerson(ctx, branchID, person); err != nil {
+		return err
+	}
+	if !nameChanged {
+		return nil
+	}
+	return p.syncPrimaryNameFromPerson(ctx, branchID, person, e.OccurredAt())
 }
 
 func (p *Projector) projectPersonDeleted(ctx context.Context, e domain.PersonDeleted, branchID domain.BranchID) error {
@@ -1515,8 +1524,7 @@ func (p *Projector) projectNameAdded(ctx context.Context, e domain.NameAdded, ve
 		return err
 	}
 
-	// Update person version to stay in sync with event stream
-	return p.updatePersonVersion(ctx, branchID, e.PersonID, version)
+	return p.updatePersonForName(ctx, branchID, name, version)
 }
 
 func (p *Projector) projectNameUpdated(ctx context.Context, e domain.NameUpdated, version int64, branchID domain.BranchID) error {
@@ -1542,8 +1550,7 @@ func (p *Projector) projectNameUpdated(ctx context.Context, e domain.NameUpdated
 		return err
 	}
 
-	// Update person version to stay in sync with event stream
-	return p.updatePersonVersion(ctx, branchID, e.PersonID, version)
+	return p.updatePersonForName(ctx, branchID, name, version)
 }
 
 func (p *Projector) projectNameRemoved(ctx context.Context, e domain.NameRemoved, version int64, branchID domain.BranchID) error {
@@ -1553,6 +1560,58 @@ func (p *Projector) projectNameRemoved(ctx context.Context, e domain.NameRemoved
 
 	// Update person version to stay in sync with event stream
 	return p.updatePersonVersion(ctx, branchID, e.PersonID, version)
+}
+
+// Primary name sync (#1093, docs/CONVENTIONS.md "Person Name and Primary Name"):
+// a person's given_name/surname always mirror its primary name. PersonUpdated
+// (and PersonMerged's resolved fields) copy onto the primary name; a primary
+// NameAdded/NameUpdated copies onto the person. Both directions live here in the
+// projection, so a replay of the log rebuilds the same agreement.
+
+// updatePersonForName brings a person in line with one of its names after a
+// NameAdded/NameUpdated: the version always follows the event stream, and a
+// primary name also sets the person's given name and surname.
+func (p *Projector) updatePersonForName(ctx context.Context, branchID domain.BranchID, name *PersonNameReadModel, version int64) error {
+	person, err := p.readStore.GetPerson(ctx, branchID, name.PersonID)
+	if err != nil {
+		return fmt.Errorf("get person for name update: %w", err)
+	}
+	if person == nil {
+		// Person may not exist yet if events are out of order
+		return nil
+	}
+	if name.IsPrimary && (person.GivenName != name.GivenName || person.Surname != name.Surname) {
+		person.GivenName = name.GivenName
+		person.Surname = name.Surname
+		person.FullName = domain.JoinFullName(name.GivenName, name.Surname)
+		person.UpdatedAt = name.UpdatedAt
+	}
+	person.Version = version
+	return p.readStore.SavePerson(ctx, branchID, person)
+}
+
+// syncPrimaryNameFromPerson copies a person's given name and surname onto its
+// primary name, if it has one and they differ.
+func (p *Projector) syncPrimaryNameFromPerson(ctx context.Context, branchID domain.BranchID, person *PersonReadModel, at time.Time) error {
+	names, err := p.readStore.GetPersonNames(ctx, branchID, person.ID)
+	if err != nil {
+		return fmt.Errorf("get names for primary name sync: %w", err)
+	}
+	for i := range names {
+		name := &names[i]
+		if !name.IsPrimary {
+			continue
+		}
+		if name.GivenName == person.GivenName && name.Surname == person.Surname {
+			return nil
+		}
+		name.GivenName = person.GivenName
+		name.Surname = person.Surname
+		name.FullName = buildFullName(name.GivenName, name.Surname, name.NamePrefix, name.NameSuffix, name.SurnamePrefix)
+		name.UpdatedAt = at
+		return p.readStore.SavePersonName(ctx, branchID, name)
+	}
+	return nil
 }
 
 // updatePersonVersion updates a person's version in the read model.
@@ -1818,6 +1877,10 @@ func (p *Projector) projectPersonMerged(ctx context.Context, e domain.PersonMerg
 		if err := p.readStore.SavePersonName(ctx, branchID, &name); err != nil {
 			return fmt.Errorf("migrate person name %s for merged person %s: %w", name.ID, e.MergedID, err)
 		}
+	}
+	// The resolved given name and surname also apply to the survivor's primary name.
+	if err := p.syncPrimaryNameFromPerson(ctx, branchID, survivor, e.OccurredAt()); err != nil {
+		return fmt.Errorf("sync primary name for survivor %s: %w", e.SurvivorID, err)
 	}
 
 	// 6. Transfer life events from merged person to survivor
