@@ -60,3 +60,16 @@ test('on the descendancy, ArrowDown selects the child and Enter opens them', asy
 	await page.keyboard.press('Enter');
 	await expect(page).toHaveURL(new RegExp(`/persons/${childId}$`));
 });
+
+test('on the pedigree, Enter on a toolbar button activates it instead of opening the person', async ({ page }) => {
+	await page.goto(`/pedigree/${childId}`);
+	await expect(selectedNode(page)).toContainText('Cal');
+
+	const wide = page.getByRole('button', { name: 'Wide' });
+	await expect(wide).toHaveAttribute('aria-pressed', 'false');
+	await wide.focus();
+	await page.keyboard.press('Enter');
+
+	await expect(wide).toHaveAttribute('aria-pressed', 'true');
+	await expect(page).toHaveURL(new RegExp(`/pedigree/${childId}`));
+});

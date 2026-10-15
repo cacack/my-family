@@ -85,4 +85,36 @@ describe('useShortcuts', () => {
 		expect(event.defaultPrevented).toBe(false);
 		cleanup();
 	});
+
+	it.each([
+		['button', () => document.createElement('button')],
+		['link', () => Object.assign(document.createElement('a'), { href: '/persons' })]
+	])('leaves Enter and arrow keys to a focused %s', (_name, create) => {
+		const handlers = spiesFor('pedigree');
+		const { handleKeydown, cleanup } = useShortcuts('pedigree', handlers);
+		const control = create();
+		document.body.appendChild(control);
+		control.focus();
+
+		const enter = press(handleKeydown, 'Enter');
+		const arrow = press(handleKeydown, 'ArrowUp');
+
+		for (const spy of Object.values(handlers)) expect(spy).not.toHaveBeenCalled();
+		expect(enter.defaultPrevented).toBe(false);
+		expect(arrow.defaultPrevented).toBe(false);
+		cleanup();
+	});
+
+	it('still fires letter shortcuts while a button has focus', () => {
+		const handlers = { 'reset-view': vi.fn() };
+		const { handleKeydown, cleanup } = useShortcuts('pedigree', handlers);
+		const button = document.createElement('button');
+		document.body.appendChild(button);
+		button.focus();
+
+		press(handleKeydown, 'r');
+
+		expect(handlers['reset-view']).toHaveBeenCalledTimes(1);
+		cleanup();
+	});
 });
