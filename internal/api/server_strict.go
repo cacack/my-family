@@ -2,6 +2,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -18,6 +19,7 @@ import (
 	"github.com/cacack/my-family/internal/citation"
 	"github.com/cacack/my-family/internal/command"
 	"github.com/cacack/my-family/internal/domain"
+	"github.com/cacack/my-family/internal/exporter"
 	"github.com/cacack/my-family/internal/gedcom"
 	"github.com/cacack/my-family/internal/query"
 	"github.com/cacack/my-family/internal/repository"
@@ -51,7 +53,7 @@ func (ss *StrictServer) GetAhnentafel(ctx context.Context, request GetAhnentafel
 	// Validate format enum if provided
 	if request.Params.Format != nil {
 		switch *request.Params.Format {
-		case Json, Text:
+		case GetAhnentafelParamsFormatJson, GetAhnentafelParamsFormatText:
 			// Valid formats
 		default:
 			return GetAhnentafel400JSONResponse{BadRequestJSONResponse{
@@ -103,7 +105,7 @@ func (ss *StrictServer) GetAhnentafel(ctx context.Context, request GetAhnentafel
 	}
 
 	// Check format - if text, return text response
-	if request.Params.Format != nil && *request.Params.Format == Text {
+	if request.Params.Format != nil && *request.Params.Format == GetAhnentafelParamsFormatText {
 		var sb strings.Builder
 		sb.WriteString("AHNENTAFEL REPORT\n")
 		sb.WriteString("=================\n")
@@ -975,8 +977,50 @@ func (ss *StrictServer) RollbackCitation(ctx context.Context, request RollbackCi
 // Export endpoints
 // ============================================================================
 
+// entityCSV resolves the format and fields query parameters shared by the
+// entity export endpoints. It returns a CSV body when format=csv, a bad-request
+// error for an unknown format or field, and neither when the caller should
+// respond with its JSON form.
+func (ss *StrictServer) entityCSV(ctx context.Context, entity exporter.EntityType, format *ExportFormat, fields *ExportFields) (*bytes.Buffer, *Error, error) {
+	if format == nil || *format == ExportFormatJson {
+		return nil, nil, nil
+	}
+	if *format != ExportFormatCsv {
+		return nil, &Error{Code: "invalid_format", Message: "Invalid format: must be 'json' or 'csv'"}, nil
+	}
+
+	var fieldList []string
+	if fields != nil {
+		fieldList = *fields
+	}
+
+	var body bytes.Buffer
+	_, err := exporter.NewDataExporter(ss.server.readStore).Export(ctx, &body, exporter.ExportOptions{
+		Format:     exporter.FormatCSV,
+		EntityType: entity,
+		Fields:     fieldList,
+	})
+	if errors.Is(err, exporter.ErrInvalidFields) {
+		return nil, &Error{Code: "invalid_fields", Message: err.Error()}, nil
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+	return &body, nil, nil
+}
+
 // ExportFamilies implements StrictServerInterface.
-func (ss *StrictServer) ExportFamilies(ctx context.Context, _ ExportFamiliesRequestObject) (ExportFamiliesResponseObject, error) {
+func (ss *StrictServer) ExportFamilies(ctx context.Context, request ExportFamiliesRequestObject) (ExportFamiliesResponseObject, error) {
+	csvBody, badReq, err := ss.entityCSV(ctx, exporter.EntityTypeFamilies, request.Params.Format, request.Params.Fields)
+	switch {
+	case err != nil:
+		return nil, err
+	case badReq != nil:
+		return ExportFamilies400JSONResponse{BadRequestJSONResponse(*badReq)}, nil
+	case csvBody != nil:
+		return ExportFamilies200TextcsvResponse{Body: csvBody, ContentLength: int64(csvBody.Len())}, nil
+	}
+
 	readModels, err := repository.ListAll(ctx, 1000, ss.server.readStore.ListFamilies)
 	if err != nil {
 		return nil, err
@@ -995,7 +1039,17 @@ func (ss *StrictServer) ExportFamilies(ctx context.Context, _ ExportFamiliesRequ
 }
 
 // ExportPersons implements StrictServerInterface.
-func (ss *StrictServer) ExportPersons(ctx context.Context, _ ExportPersonsRequestObject) (ExportPersonsResponseObject, error) {
+func (ss *StrictServer) ExportPersons(ctx context.Context, request ExportPersonsRequestObject) (ExportPersonsResponseObject, error) {
+	csvBody, badReq, err := ss.entityCSV(ctx, exporter.EntityTypePersons, request.Params.Format, request.Params.Fields)
+	switch {
+	case err != nil:
+		return nil, err
+	case badReq != nil:
+		return ExportPersons400JSONResponse{BadRequestJSONResponse(*badReq)}, nil
+	case csvBody != nil:
+		return ExportPersons200TextcsvResponse{Body: csvBody, ContentLength: int64(csvBody.Len())}, nil
+	}
+
 	readModels, err := repository.ListAll(ctx, 1000, ss.server.readStore.ListPersons)
 	if err != nil {
 		return nil, err
@@ -1062,7 +1116,17 @@ func (ss *StrictServer) GetExportEstimate(ctx context.Context, _ GetExportEstima
 }
 
 // ExportSources implements StrictServerInterface.
-func (ss *StrictServer) ExportSources(ctx context.Context, _ ExportSourcesRequestObject) (ExportSourcesResponseObject, error) {
+func (ss *StrictServer) ExportSources(ctx context.Context, request ExportSourcesRequestObject) (ExportSourcesResponseObject, error) {
+	csvBody, badReq, err := ss.entityCSV(ctx, exporter.EntityTypeSources, request.Params.Format, request.Params.Fields)
+	switch {
+	case err != nil:
+		return nil, err
+	case badReq != nil:
+		return ExportSources400JSONResponse{BadRequestJSONResponse(*badReq)}, nil
+	case csvBody != nil:
+		return ExportSources200TextcsvResponse{Body: csvBody, ContentLength: int64(csvBody.Len())}, nil
+	}
+
 	readModels, err := repository.ListAll(ctx, 1000, ss.server.readStore.ListSources)
 	if err != nil {
 		return nil, err
@@ -1081,7 +1145,17 @@ func (ss *StrictServer) ExportSources(ctx context.Context, _ ExportSourcesReques
 }
 
 // ExportCitations implements StrictServerInterface.
-func (ss *StrictServer) ExportCitations(ctx context.Context, _ ExportCitationsRequestObject) (ExportCitationsResponseObject, error) {
+func (ss *StrictServer) ExportCitations(ctx context.Context, request ExportCitationsRequestObject) (ExportCitationsResponseObject, error) {
+	csvBody, badReq, err := ss.entityCSV(ctx, exporter.EntityTypeCitations, request.Params.Format, request.Params.Fields)
+	switch {
+	case err != nil:
+		return nil, err
+	case badReq != nil:
+		return ExportCitations400JSONResponse{BadRequestJSONResponse(*badReq)}, nil
+	case csvBody != nil:
+		return ExportCitations200TextcsvResponse{Body: csvBody, ContentLength: int64(csvBody.Len())}, nil
+	}
+
 	readModels, err := repository.ListAll(ctx, 1000, ss.server.readStore.ListCitations)
 	if err != nil {
 		return nil, err
@@ -1100,7 +1174,17 @@ func (ss *StrictServer) ExportCitations(ctx context.Context, _ ExportCitationsRe
 }
 
 // ExportEvents implements StrictServerInterface.
-func (ss *StrictServer) ExportEvents(ctx context.Context, _ ExportEventsRequestObject) (ExportEventsResponseObject, error) {
+func (ss *StrictServer) ExportEvents(ctx context.Context, request ExportEventsRequestObject) (ExportEventsResponseObject, error) {
+	csvBody, badReq, err := ss.entityCSV(ctx, exporter.EntityTypeEvents, request.Params.Format, request.Params.Fields)
+	switch {
+	case err != nil:
+		return nil, err
+	case badReq != nil:
+		return ExportEvents400JSONResponse{BadRequestJSONResponse(*badReq)}, nil
+	case csvBody != nil:
+		return ExportEvents200TextcsvResponse{Body: csvBody, ContentLength: int64(csvBody.Len())}, nil
+	}
+
 	events, err := repository.ListAll(ctx, 1000, ss.server.readStore.ListEvents)
 	if err != nil {
 		return nil, err
@@ -1119,7 +1203,17 @@ func (ss *StrictServer) ExportEvents(ctx context.Context, _ ExportEventsRequestO
 }
 
 // ExportAttributes implements StrictServerInterface.
-func (ss *StrictServer) ExportAttributes(ctx context.Context, _ ExportAttributesRequestObject) (ExportAttributesResponseObject, error) {
+func (ss *StrictServer) ExportAttributes(ctx context.Context, request ExportAttributesRequestObject) (ExportAttributesResponseObject, error) {
+	csvBody, badReq, err := ss.entityCSV(ctx, exporter.EntityTypeAttributes, request.Params.Format, request.Params.Fields)
+	switch {
+	case err != nil:
+		return nil, err
+	case badReq != nil:
+		return ExportAttributes400JSONResponse{BadRequestJSONResponse(*badReq)}, nil
+	case csvBody != nil:
+		return ExportAttributes200TextcsvResponse{Body: csvBody, ContentLength: int64(csvBody.Len())}, nil
+	}
+
 	attributes, err := repository.ListAll(ctx, 1000, ss.server.readStore.ListAttributes)
 	if err != nil {
 		return nil, err

@@ -2,6 +2,7 @@ package api_test
 
 import (
 	"bytes"
+	"encoding/csv"
 	"encoding/json"
 	"io"
 	"mime/multipart"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/cacack/my-family/internal/api"
 	"github.com/cacack/my-family/internal/config"
+	"github.com/cacack/my-family/internal/exporter"
 	"github.com/cacack/my-family/internal/repository/memory"
 )
 
@@ -763,5 +765,157 @@ func TestExportGedcom_InvalidVersion(t *testing.T) {
 	}
 	if errResp.Code != "invalid_version" {
 		t.Errorf("Code = %q, want invalid_version", errResp.Code)
+	}
+}
+
+// importExportTestGedcom seeds the server with exportTestGedcom.
+func importExportTestGedcom(t *testing.T, server *api.Server) {
+	t.Helper()
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	part, _ := writer.CreateFormFile("file", "test.ged")
+	io.WriteString(part, exportTestGedcom)
+	writer.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/gedcom/import", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("import: status %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestExportEntities_CSV(t *testing.T) {
+	server := setupExportTestServer(t)
+	importExportTestGedcom(t, server)
+
+	tests := []struct {
+		entity     string
+		wantHeader []string
+		wantRows   int
+	}{
+		{"persons", exporter.DefaultPersonFields, 2},
+		{"families", exporter.DefaultFamilyFields, 1},
+		{"sources", exporter.DefaultSourceFields, 0},
+		{"citations", exporter.DefaultCitationFields, 0},
+		{"events", exporter.DefaultEventFields, -1},
+		{"attributes", exporter.DefaultAttributeFields, -1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.entity, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/api/v1/export/"+tt.entity+"?format=csv", http.NoBody)
+			rec := httptest.NewRecorder()
+			server.Echo().ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+			}
+			if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/csv") {
+				t.Errorf("Content-Type = %q, want text/csv", ct)
+			}
+
+			records, err := csv.NewReader(rec.Body).ReadAll()
+			if err != nil {
+				t.Fatalf("invalid CSV: %v", err)
+			}
+			if len(records) == 0 {
+				t.Fatal("CSV has no header row")
+			}
+			if got := strings.Join(records[0], ","); got != strings.Join(tt.wantHeader, ",") {
+				t.Errorf("header = %q, want %q", got, strings.Join(tt.wantHeader, ","))
+			}
+			if tt.wantRows >= 0 && len(records)-1 != tt.wantRows {
+				t.Errorf("rows = %d, want %d", len(records)-1, tt.wantRows)
+			}
+		})
+	}
+}
+
+func TestExportPersons_CSVFields(t *testing.T) {
+	server := setupExportTestServer(t)
+	importExportTestGedcom(t, server)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/export/persons?format=csv&fields=id,given_name", http.NoBody)
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	records, err := csv.NewReader(rec.Body).ReadAll()
+	if err != nil {
+		t.Fatalf("invalid CSV: %v", err)
+	}
+	if len(records) != 3 {
+		t.Fatalf("records = %d, want header + 2 rows", len(records))
+	}
+	for i, r := range records {
+		if len(r) != 2 {
+			t.Errorf("record %d has %d columns, want 2: %v", i, len(r), r)
+		}
+	}
+	if got := strings.Join(records[0], ","); got != "id,given_name" {
+		t.Errorf("header = %q, want id,given_name", got)
+	}
+}
+
+func TestExportEntities_BadRequest(t *testing.T) {
+	server := setupExportTestServer(t)
+
+	tests := []struct {
+		name     string
+		url      string
+		wantCode string
+	}{
+		{"unknown field", "/api/v1/export/persons?format=csv&fields=id,nope", "invalid_fields"},
+		{"field from another entity", "/api/v1/export/attributes?format=csv&fields=surname", "invalid_fields"},
+		{"unknown format", "/api/v1/export/families?format=xml", "invalid_format"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, tt.url, http.NoBody)
+			rec := httptest.NewRecorder()
+			server.Echo().ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("status %d, want 400: %s", rec.Code, rec.Body.String())
+			}
+			var errResp struct {
+				Code string `json:"code"`
+			}
+			if err := json.Unmarshal(rec.Body.Bytes(), &errResp); err != nil {
+				t.Fatalf("decode error response: %v", err)
+			}
+			if errResp.Code != tt.wantCode {
+				t.Errorf("code = %q, want %q", errResp.Code, tt.wantCode)
+			}
+		})
+	}
+}
+
+func TestExportPersons_ExplicitJSONIgnoresFields(t *testing.T) {
+	server := setupExportTestServer(t)
+	importExportTestGedcom(t, server)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/export/persons?format=json&fields=id", http.NoBody)
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	var result struct {
+		Persons []map[string]interface{} `json:"persons"`
+		Total   int                      `json:"total"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if result.Total != 2 || len(result.Persons) != 2 {
+		t.Fatalf("total = %d, persons = %d, want 2", result.Total, len(result.Persons))
+	}
+	if _, ok := result.Persons[0]["surname"]; !ok {
+		t.Error("JSON export should keep every field")
 	}
 }

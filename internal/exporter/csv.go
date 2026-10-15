@@ -3,6 +3,7 @@ package exporter
 import (
 	"context"
 	"encoding/csv"
+	"errors"
 	"fmt"
 	"io"
 	"sort"
@@ -208,6 +209,10 @@ func (e *DataExporter) exportCSV(ctx context.Context, w io.Writer, opts ExportOp
 	}
 }
 
+// ErrInvalidFields is returned when a CSV export names a field the entity
+// type does not support.
+var ErrInvalidFields = errors.New("invalid fields")
+
 // validateFields checks that all requested fields are valid for the entity type.
 func validateFields(fields []string, available map[string]bool) error {
 	var invalid []string
@@ -217,7 +222,7 @@ func validateFields(fields []string, available map[string]bool) error {
 		}
 	}
 	if len(invalid) > 0 {
-		return fmt.Errorf("invalid fields: %v; available fields: %v", invalid, availableFieldNames(available))
+		return fmt.Errorf("%w: %v; available fields: %v", ErrInvalidFields, invalid, availableFieldNames(available))
 	}
 	return nil
 }
