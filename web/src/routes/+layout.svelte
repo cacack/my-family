@@ -261,7 +261,11 @@
 	   larger font size wraps the row instead of laying the controls over the
 	   nav (#1094). On the row they grow, and the search box takes up to 15rem.
 	   Its 12rem floor keeps the placeholder readable, in rem so it scales with
-	   the font size. 1024px must match MainNav.svelte's wide-nav breakpoint. */
+	   the font size. The min-content width, and so the wrap point, is that
+	   floor plus BranchSwitcher.svelte's label cap, the icon buttons and the
+	   gaps: changing any of them moves where the row wraps, which the e2e
+	   one-row check at the default font size guards.
+	   1024px must match MainNav.svelte's wide-nav breakpoint. */
 	@media (min-width: 1024px) {
 		.header-controls {
 			flex: 1 1 0;
