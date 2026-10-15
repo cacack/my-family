@@ -294,7 +294,7 @@ func TestCompareBranch_EveryBranchWritableType(t *testing.T) {
 				f.media:        {entityType: "media", name: "Portrait (1840)", field: "title", oldValue: "Portrait", newValue: "Portrait (1840)", parentType: "person", parentID: f.person, expectedEntriesCount: 1},
 				f.lifeEvent:    {entityType: "life_event", name: "Birth, 10 DEC 1815, Marylebone", field: "place", oldValue: "London", newValue: "Marylebone", parentType: "person", parentID: f.person, expectedEntriesCount: 1},
 				f.attribute:    {entityType: "attribute", name: "Occupation: Analyst", field: "value", oldValue: "Mathematician", newValue: "Analyst", parentType: "person", parentID: f.person, expectedEntriesCount: 1},
-				f.association:  {entityType: "association", name: "friend: Ada Lovelace and Charles Babbage", field: "role", oldValue: "colleague", newValue: "friend", parentType: "person", parentID: f.person, expectedEntriesCount: 1},
+				f.association:  {entityType: "association", name: "friend: Augusta Ada Lovelace and Charles Babbage", field: "role", oldValue: "colleague", newValue: "friend", parentType: "person", parentID: f.person, expectedEntriesCount: 1},
 				f.analysis:     {entityType: "evidence_analysis", name: "Birth: Born 10 Dec 1815 in Marylebone", field: "conclusion", oldValue: "Born 10 Dec 1815 in London", newValue: "Born 10 Dec 1815 in Marylebone", expectedEntriesCount: 1},
 				f.conflict:     {entityType: "evidence_conflict", name: "Birth: Two birth dates disagree", field: "status", oldValue: "open", newValue: "resolved", expectedEntriesCount: 1},
 				f.researchLog:  {entityType: "research_log", name: "Searched baptism registers (National Archives)", field: "outcome", oldValue: "inconclusive", newValue: "found", expectedEntriesCount: 1},
@@ -319,13 +319,14 @@ func TestCompareBranch_EveryBranchWritableType(t *testing.T) {
 				}
 			}
 
-			// The person: a field edit, then its name variants.
+			// The person: a field edit, then its name variants. Renaming the
+			// primary name renames the person on the branch (#1093).
 			person := byEntity(result.BranchChanges, f.person)
 			require.Len(t, person, 4)
 			for _, e := range person {
 				assert.Equal(t, "person", e.EntityType)
 				assert.Equal(t, actionUpdated, e.Action)
-				assert.Equal(t, "Ada Lovelace", e.EntityName)
+				assert.Equal(t, "Augusta Ada Lovelace", e.EntityName)
 			}
 			assert.Equal(t, FieldChange{OldValue: "London", NewValue: "Marylebone"}, person[0].Changes["birth_place"])
 			assert.Equal(t, FieldChange{OldValue: "Ada Lovelace", NewValue: "Augusta Ada Lovelace"}, person[1].Changes["name"])
@@ -365,7 +366,7 @@ func TestCompareBranch_EveryBranchWritableType(t *testing.T) {
 				"person: Allegra Byron", "family: Charles Babbage", "source: Parish Register",
 				"citation: 1851 Census (Death)", "note: A passing thought", "media: Wedding sketch",
 				"life_event: Marriage, 8 JUL 1835", "attribute: Occupation: Writer",
-				"association: mentor: Charles Babbage and Ada Lovelace", "evidence_analysis: Death: Died 1852",
+				"association: mentor: Charles Babbage and Augusta Ada Lovelace", "evidence_analysis: Death: Died 1852",
 				"research_log: Looked for burial (Parish chest)", "proof_summary: Death: Died 27 Nov 1852",
 			} {
 				assert.True(t, names[want], "missing created/deleted entry %q (have %v)", want, names)

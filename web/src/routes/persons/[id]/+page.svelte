@@ -183,6 +183,22 @@
 		}
 	}
 
+	/**
+	 * A name edit bumps the person's version and, on the primary name, renames
+	 * the person (#1093), so the header and form are refreshed in place. While
+	 * the person form is open it is left alone: saving it then reports the
+	 * stale version instead of silently reverting the name.
+	 */
+	async function handleNamesChanged() {
+		if (!person || editing) return;
+		try {
+			person = await api.getPerson(person.id);
+			resetForm();
+		} catch {
+			// The header keeps the last loaded person; the next load reports the error.
+		}
+	}
+
 	async function markBrickWall() {
 		if (brickWallOnMainlineOnly) return;
 		if (!person || !brickWallNote.trim()) return;
@@ -738,7 +754,7 @@
 
 				<EvidencePanel subjectId={person.id} />
 
-				<NameSection personId={person.id} />
+				<NameSection personId={person.id} onNamesChanged={handleNamesChanged} />
 
 				{#if rollbackSuccess.show}
 					<RollbackSuccessBanner

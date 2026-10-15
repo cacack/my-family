@@ -253,6 +253,17 @@ This project does **not** use an ORM. Data access follows the event sourcing pat
 
 Both PostgreSQL and SQLite implement these interfaces identically. The `memory/` implementation is for tests.
 
+### Person Name and Primary Name
+
+A person's `given_name`/`surname` and its primary name (the `is_primary` row in Names) are one fact and always agree. Either side may be edited, and the projection copies the edit onto the other:
+
+- `PersonUpdated` changing `given_name` or `surname`, and `PersonMerged` resolving them, set the primary name's given name and surname (prefix, suffix, nickname and type are kept).
+- `NameAdded`/`NameUpdated` with `is_primary` set the person's `given_name`/`surname`, including when a name is promoted to primary. Alternate names never change the person.
+- A person with no names keeps its own fields. Its first name becomes primary; when that name is not marked primary and differs from the person, `AddName` first records the person's current name as the primary name, so the new name is added as an alternate.
+- The primary name cannot be removed (`ErrCannotDeletePrimary`), so `NameRemoved` never touches the person.
+
+The sync lives only in `repository/projection.go`, not in commands, so a rebuild from the log reaches the same state and older logs heal on replay.
+
 ### Migrations
 
 - Schema DDL is embedded in each database implementation

@@ -73,6 +73,33 @@ describe('NameSection', () => {
 		});
 	});
 
+	// An edit can rename the person (the primary name, #1093), so the page is told.
+	it('reports a saved edit and a saved add to the page', async () => {
+		const onNamesChanged = vi.fn();
+		render(NameSection, { personId: PERSON_ID, onNamesChanged });
+
+		await fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+		await fireEvent.submit(screen.getByLabelText(/^Given Name/).closest('form')!);
+		await waitFor(() => expect(onNamesChanged).toHaveBeenCalledTimes(1));
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Add Name' }));
+		await fireEvent.input(screen.getByLabelText(/^Given Name/), { target: { value: 'Alexandrina' } });
+		await fireEvent.submit(screen.getByLabelText(/^Given Name/).closest('form')!);
+		await waitFor(() => expect(onNamesChanged).toHaveBeenCalledTimes(2));
+	});
+
+	it('does not report a failed edit', async () => {
+		const onNamesChanged = vi.fn();
+		vi.mocked(apiModule.api.updatePersonName).mockRejectedValue({ message: 'boom' });
+		render(NameSection, { personId: PERSON_ID, onNamesChanged });
+
+		await fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+		await fireEvent.submit(screen.getByLabelText(/^Given Name/).closest('form')!);
+
+		expect(await screen.findByRole('alert')).toHaveProperty('textContent', 'boom');
+		expect(onNamesChanged).not.toHaveBeenCalled();
+	});
+
 	it('still requires a given name', async () => {
 		render(NameSection, { personId: PERSON_ID });
 		await fireEvent.click(await screen.findByRole('button', { name: 'Add Name' }));

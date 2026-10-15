@@ -42,7 +42,8 @@ export interface paths {
          * Update a person
          * @description `birth_date` and `death_date` are checked against the accepted date
          *     forms (see `DateInput`) and stored in GEDCOM form; any other date is
-         *     rejected with 400.
+         *     rejected with 400. Changing `given_name` or `surname` also updates the
+         *     person's primary name.
          */
         put: operations["updatePerson"];
         post?: never;
@@ -1248,7 +1249,11 @@ export interface paths {
         /**
          * Add a name to a person
          * @description Add a new name variant to a person. If is_primary is true, the existing
-         *     primary name will be demoted to non-primary.
+         *     primary name will be demoted to non-primary. A primary name also sets the
+         *     person's given_name and surname. The first name added to a person becomes
+         *     primary; if it is not marked primary and differs from the person's name,
+         *     the person's name is recorded as the primary name first and this name is
+         *     added as an alternate.
          */
         post: operations["addPersonName"];
         delete?: never;
@@ -1271,7 +1276,8 @@ export interface paths {
         /**
          * Update a person's name
          * @description Update an existing name variant. If is_primary is set to true, the existing
-         *     primary name will be demoted to non-primary.
+         *     primary name will be demoted to non-primary. Updating the primary name
+         *     also sets the person's given_name and surname.
          */
         put: operations["updatePersonName"];
         post?: never;

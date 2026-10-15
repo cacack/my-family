@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/cacack/my-family/internal/command"
+	"github.com/cacack/my-family/internal/domain"
 	"github.com/cacack/my-family/internal/repository/memory"
 )
 
@@ -80,6 +81,53 @@ func TestAddName_FirstNameBecomesPrimary(t *testing.T) {
 
 	if !result.IsPrimary {
 		t.Error("First name should become primary")
+	}
+}
+
+// TestAddName_FirstAlternateKeepsPersonName checks that adding a differing,
+// non-primary name to a person with no names keeps the person's name: it is
+// recorded as the primary name and the new name becomes an alternate (#1093).
+func TestAddName_FirstAlternateKeepsPersonName(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	personResult, err := handler.CreatePerson(ctx, command.CreatePersonInput{GivenName: "John", Surname: "Doe"})
+	if err != nil {
+		t.Fatalf("CreatePerson failed: %v", err)
+	}
+	result, err := handler.AddName(ctx, command.AddNameInput{
+		PersonID:  personResult.ID,
+		GivenName: "Jane",
+		Surname:   "Married",
+		NameType:  "married",
+	})
+	if err != nil {
+		t.Fatalf("AddName failed: %v", err)
+	}
+	if result.IsPrimary {
+		t.Error("an unmarked name differing from the person should stay an alternate")
+	}
+
+	person, err := readStore.GetPerson(ctx, domain.MainBranchID, personResult.ID)
+	if err != nil || person == nil {
+		t.Fatalf("GetPerson = %v, %v", person, err)
+	}
+	if person.GivenName != "John" || person.Surname != "Doe" {
+		t.Errorf("person renamed to %s %s, want John Doe", person.GivenName, person.Surname)
+	}
+	names, err := readStore.GetPersonNames(ctx, domain.MainBranchID, personResult.ID)
+	if err != nil || len(names) != 2 {
+		t.Fatalf("names = %v, %v; want 2", names, err)
+	}
+	for _, n := range names {
+		switch {
+		case n.ID == result.ID && n.IsPrimary:
+			t.Error("the added name should not be primary")
+		case n.ID != result.ID && (!n.IsPrimary || n.GivenName != "John" || n.Surname != "Doe"):
+			t.Errorf("recorded name = %+v, want primary John Doe", n)
+		}
 	}
 }
 

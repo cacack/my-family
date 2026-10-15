@@ -849,6 +849,56 @@ func TestComputeRollbackChanges_Resurrection(t *testing.T) {
 	assert.Equal(t, int64(1), result.TargetVersion)
 }
 
+// TestComputeRollbackChanges_PrimaryNameEdits checks that a primary name edit
+// counts as a change to the person's name (#1093), and an alternate does not.
+func TestComputeRollbackChanges_PrimaryNameEdits(t *testing.T) {
+	personID := uuid.New()
+	now := time.Now().UTC()
+	person := domain.NewPerson("Avery", "Original")
+	person.ID = personID
+	primary := domain.NewPersonName(personID, "Avery", "Original")
+	primary.IsPrimary = true
+	alt := domain.NewPersonName(personID, "Ava", "Alias")
+	renamed := *primary
+	renamed.GivenName, renamed.Surname = "Blake", "Renamed"
+
+	events := []domain.Event{
+		domain.NewPersonCreated(person),
+		domain.NewNameAdded(primary),
+		domain.NewNameAdded(alt),
+		domain.NewNameUpdated(&renamed),
+	}
+	stored := make([]repository.StoredEvent, len(events))
+	for i, e := range events {
+		data, err := json.Marshal(e)
+		require.NoError(t, err)
+		stored[i] = repository.StoredEvent{
+			ID: uuid.New(), StreamID: personID, StreamType: "person", EventType: e.EventType(),
+			Data: data, Version: int64(i + 1), Position: int64(i + 1), Timestamp: now,
+		}
+	}
+	eventStore := &rollbackMockEventStore{
+		readStreamFunc: func(ctx context.Context, streamID uuid.UUID) ([]repository.StoredEvent, error) {
+			return stored, nil
+		},
+	}
+	service := NewRollbackService(eventStore, &mockReadModelStore{})
+	ctx := context.Background()
+
+	state, err := service.GetStateAtVersion(ctx, "person", personID, 3)
+	require.NoError(t, err)
+	assert.Equal(t, "Avery", state.State["given_name"], "an alternate name must not rename the person")
+
+	state, err = service.GetStateAtVersion(ctx, "person", personID, 4)
+	require.NoError(t, err)
+	assert.Equal(t, "Blake", state.State["given_name"])
+	assert.Equal(t, "Renamed", state.State["surname"])
+
+	changes, err := service.ComputeRollbackChanges(ctx, "person", personID, 3)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]any{"given_name": "Avery", "surname": "Original"}, changes.Changes)
+}
+
 func TestApplyEventToState_FamilyEvents(t *testing.T) {
 	familyID := uuid.New()
 	partner1ID := uuid.New()

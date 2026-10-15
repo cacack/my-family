@@ -324,6 +324,22 @@ func (s *RollbackService) applyEventToState(evt repository.StoredEvent, state ma
 		// Mark as deleted but preserve state for potential restore
 		return true, nil
 
+	// A primary name sets the person's given name and surname, as the
+	// projection does (docs/CONVENTIONS.md "Person Name and Primary Name").
+	case domain.NameAdded:
+		if e.IsPrimary {
+			state["given_name"] = e.GivenName
+			state["surname"] = e.Surname
+		}
+		return false, nil
+
+	case domain.NameUpdated:
+		if e.IsPrimary {
+			state["given_name"] = e.GivenName
+			state["surname"] = e.Surname
+		}
+		return false, nil
+
 	// Family events
 	case domain.FamilyCreated:
 		state["id"] = e.FamilyID.String()
