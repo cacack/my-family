@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import Page from './+page.svelte';
 import { buttonVariants } from '$lib/components/ui/button';
 import { cn } from '$lib/utils.js';
@@ -20,6 +20,8 @@ const {
 	getPersonRestorePoints,
 	updatePerson,
 	deletePerson,
+	getPersonNames,
+	updatePersonName,
 	pageState
 } = vi.hoisted(() => ({
 	// The real store exposes a read-only view, so the active branch is injected.
@@ -32,6 +34,8 @@ const {
 	getPersonRestorePoints: vi.fn(async () => ({ items: [], total: 0, has_more: false })),
 	updatePerson: vi.fn(),
 	deletePerson: vi.fn(),
+	getPersonNames: vi.fn(async () => ({ items: [] as apiModule.PersonName[], total: 0 })),
+	updatePersonName: vi.fn(),
 	// The history state a navigation left, e.g. a create's converted dates.
 	pageState: {} as App.PageState
 }));
@@ -65,6 +69,8 @@ vi.mock('$lib/api/client', async (importOriginal) => {
 		getPersonRestorePoints,
 		updatePerson,
 		deletePerson,
+		getPersonNames,
+		updatePersonName,
 		// These two answer with a bare array rather than a wrapper object.
 		getConflictsBySubject: vi.fn(async () => []),
 		getResearchLogsBySubject: vi.fn(async () => [])
@@ -590,5 +596,47 @@ describe('Person detail failed actions (#899)', () => {
 
 		await fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
 		expect(await screen.findByRole('heading', { name: 'Ada Lovelace' })).toBeTruthy();
+	});
+});
+
+// Editing the primary name renames the person (#1093), so the header follows a
+// name edit without a reload.
+describe('Person detail name edits', () => {
+	const primary = {
+		id: 'n1',
+		person_id: PERSON_ID,
+		given_name: 'Ada',
+		surname: 'Lovelace',
+		name_type: 'birth',
+		is_primary: true
+	} as apiModule.PersonName;
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		branchState.id = null;
+		getPersonNames.mockResolvedValue({ items: [primary], total: 1 });
+		updatePersonName.mockResolvedValue({ ...primary, given_name: 'Augusta Ada' });
+	});
+
+	afterEach(() => {
+		getPersonNames.mockImplementation(async () => ({ items: [], total: 0 }));
+	});
+
+	it('refreshes the header after the primary name is edited', async () => {
+		getPerson
+			.mockResolvedValueOnce(person())
+			.mockResolvedValue(person({ given_name: 'Augusta Ada', version: 4 }));
+		render(Page);
+		expect((await screen.findByRole('heading', { level: 1 })).textContent).toContain('Ada Lovelace');
+
+		const names = screen.getByRole('heading', { name: /^Names/ }).closest('.name-section') as HTMLElement;
+		await fireEvent.click(within(names).getByRole('button', { name: 'Edit' }));
+		await fireEvent.input(within(names).getByLabelText(/^Given Name/), { target: { value: 'Augusta Ada' } });
+		await fireEvent.submit(within(names).getByLabelText(/^Given Name/).closest('form')!);
+
+		await waitFor(() =>
+			expect(screen.getByRole('heading', { level: 1 }).textContent).toContain('Augusta Ada Lovelace')
+		);
+		expect(getPerson).toHaveBeenCalledTimes(2);
 	});
 });

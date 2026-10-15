@@ -7,9 +7,11 @@
 
 	interface Props {
 		personId: string;
+		/** Called after a name is added, edited or deleted. */
+		onNamesChanged?: () => void;
 	}
 
-	let { personId }: Props = $props();
+	let { personId, onNamesChanged }: Props = $props();
 
 	let names: PersonName[] = $state([]);
 	let loading = $state(true);
@@ -137,6 +139,7 @@
 			showAddForm = false;
 			conflictError = false;
 			loadNames();
+			onNamesChanged?.();
 		} catch (e) {
 			if (isConflictError(e)) {
 				conflictError = true;
@@ -172,6 +175,7 @@
 			editingId = null;
 			conflictError = false;
 			loadNames();
+			onNamesChanged?.();
 		} catch (e) {
 			if (isConflictError(e)) {
 				conflictError = true;
@@ -192,6 +196,7 @@
 			deleteConfirm = null;
 			conflictError = false;
 			loadNames();
+			onNamesChanged?.();
 		} catch (e) {
 			if (isConflictError(e)) {
 				conflictError = true;
