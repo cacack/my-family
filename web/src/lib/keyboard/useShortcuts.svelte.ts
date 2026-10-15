@@ -38,16 +38,13 @@ function isInputElement(element: Element | null): boolean {
 }
 
 /**
- * Normalize a keyboard event key to a consistent format
+ * Normalize a keyboard event key to the form shortcuts are registered in:
+ * printable characters are lower-cased (so Shift+R still means `r`), while
+ * named keys such as `ArrowUp`, `Enter` and `Escape` keep their KeyboardEvent
+ * spelling.
  */
 function normalizeKey(event: KeyboardEvent): string {
-	// Handle special keys
-	if (event.key === 'Escape') return 'Escape';
-	if (event.key === '/') return '/';
-	if (event.key === '?') return '?';
-
-	// Return lowercase for letter keys
-	return event.key.toLowerCase();
+	return event.key.length === 1 ? event.key.toLowerCase() : event.key;
 }
 
 /**
