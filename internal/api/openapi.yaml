@@ -2265,6 +2265,9 @@ paths:
       summary: Export persons data
       description: Export all persons data in a structured format
       tags: [export]
+      parameters:
+        - $ref: '#/components/parameters/exportFormat'
+        - $ref: '#/components/parameters/exportFields'
       responses:
         '200':
           description: Persons data
@@ -2279,6 +2282,11 @@ paths:
                       $ref: '#/components/schemas/Person'
                   total:
                     type: integer
+            text/csv:
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
 
   /export/families:
     get:
@@ -2286,6 +2294,9 @@ paths:
       summary: Export families data
       description: Export all families data in a structured format
       tags: [export]
+      parameters:
+        - $ref: '#/components/parameters/exportFormat'
+        - $ref: '#/components/parameters/exportFields'
       responses:
         '200':
           description: Families data
@@ -2300,6 +2311,11 @@ paths:
                       $ref: '#/components/schemas/Family'
                   total:
                     type: integer
+            text/csv:
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
 
   /export/sources:
     get:
@@ -2307,6 +2323,9 @@ paths:
       summary: Export sources data
       description: Export all sources data in a structured format
       tags: [export]
+      parameters:
+        - $ref: '#/components/parameters/exportFormat'
+        - $ref: '#/components/parameters/exportFields'
       responses:
         '200':
           description: Sources data
@@ -2321,6 +2340,11 @@ paths:
                       $ref: '#/components/schemas/Source'
                   total:
                     type: integer
+            text/csv:
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
 
   /export/citations:
     get:
@@ -2328,6 +2352,9 @@ paths:
       summary: Export citations data
       description: Export all citations data in a structured format
       tags: [export]
+      parameters:
+        - $ref: '#/components/parameters/exportFormat'
+        - $ref: '#/components/parameters/exportFields'
       responses:
         '200':
           description: Citations data
@@ -2342,6 +2369,11 @@ paths:
                       $ref: '#/components/schemas/Citation'
                   total:
                     type: integer
+            text/csv:
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
 
   /export/events:
     get:
@@ -2349,6 +2381,9 @@ paths:
       summary: Export events data
       description: Export all life events data in a structured format
       tags: [export]
+      parameters:
+        - $ref: '#/components/parameters/exportFormat'
+        - $ref: '#/components/parameters/exportFields'
       responses:
         '200':
           description: Events data
@@ -2356,6 +2391,11 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/EventsExportResponse'
+            text/csv:
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
 
   /export/attributes:
     get:
@@ -2363,6 +2403,9 @@ paths:
       summary: Export attributes data
       description: Export all person attributes data in a structured format
       tags: [export]
+      parameters:
+        - $ref: '#/components/parameters/exportFormat'
+        - $ref: '#/components/parameters/exportFields'
       responses:
         '200':
           description: Attributes data
@@ -2370,6 +2413,11 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AttributesExportResponse'
+            text/csv:
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
 
   /export/estimate:
     get:
@@ -5014,6 +5062,26 @@ paths:
 
 components:
   parameters:
+    exportFormat:
+      name: format
+      in: query
+      description: Output format. JSON returns the structured response; CSV returns one header row plus one row per record.
+      schema:
+        $ref: '#/components/schemas/ExportFormat'
+
+    exportFields:
+      name: fields
+      in: query
+      description: |
+        Comma-separated columns to include, in order (CSV only; ignored for JSON).
+        Omit for the default column set. Unknown fields return 400.
+      style: form
+      explode: false
+      schema:
+        type: array
+        items:
+          type: string
+
     personId:
       name: id
       in: path
@@ -5274,6 +5342,12 @@ components:
           items:
             $ref: '#/components/schemas/DataLossItem'
           description: Features that cannot be represented in the target version.
+
+    ExportFormat:
+      type: string
+      description: Output format for an entity export.
+      enum: [json, csv]
+      default: json
 
     ExportEstimate:
       type: object

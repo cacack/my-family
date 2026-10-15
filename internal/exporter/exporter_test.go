@@ -367,6 +367,7 @@ func TestCSVExporter_ExportPersons_InvalidField(t *testing.T) {
 	})
 
 	require.Error(t, err)
+	assert.ErrorIs(t, err, exporter.ErrInvalidFields)
 	assert.Contains(t, err.Error(), "invalid fields")
 	assert.Contains(t, err.Error(), "invalid_field")
 }

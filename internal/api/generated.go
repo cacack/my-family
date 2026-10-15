@@ -532,6 +532,24 @@ func (e EvidenceType) Valid() bool {
 	}
 }
 
+// Defines values for ExportFormat.
+const (
+	ExportFormatCsv  ExportFormat = "csv"
+	ExportFormatJson ExportFormat = "json"
+)
+
+// Valid indicates whether the value is a known member of the ExportFormat enum.
+func (e ExportFormat) Valid() bool {
+	switch e {
+	case ExportFormatCsv:
+		return true
+	case ExportFormatJson:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for FactType.
 const (
 	FactTypeFamilyAnnulment          FactType = "family_annulment"
@@ -1332,16 +1350,16 @@ func (e ValidationIssueSeverity) Valid() bool {
 
 // Defines values for GetAhnentafelParamsFormat.
 const (
-	Json GetAhnentafelParamsFormat = "json"
-	Text GetAhnentafelParamsFormat = "text"
+	GetAhnentafelParamsFormatJson GetAhnentafelParamsFormat = "json"
+	GetAhnentafelParamsFormatText GetAhnentafelParamsFormat = "text"
 )
 
 // Valid indicates whether the value is a known member of the GetAhnentafelParamsFormat enum.
 func (e GetAhnentafelParamsFormat) Valid() bool {
 	switch e {
-	case Json:
+	case GetAhnentafelParamsFormatJson:
 		return true
-	case Text:
+	case GetAhnentafelParamsFormatText:
 		return true
 	default:
 		return false
@@ -3483,6 +3501,9 @@ type ExportEstimate struct {
 	// Example: 235
 	TotalRecords int `json:"total_records"`
 }
+
+// ExportFormat Output format for an entity export.
+type ExportFormat string
 
 // ExportPreview defines model for ExportPreview.
 type ExportPreview struct {
@@ -5984,6 +6005,9 @@ type EvidenceAnalysisId = openapi_types.UUID
 // EvidenceConflictId defines model for evidenceConflictId.
 type EvidenceConflictId = openapi_types.UUID
 
+// ExportFields defines model for exportFields.
+type ExportFields = []string
+
 // FamilyId defines model for familyId.
 type FamilyId = openapi_types.UUID
 
@@ -6451,6 +6475,66 @@ type ResolveEvidenceConflictParams struct {
 	// return 409; reads of one return 404, because its overlay rows are purged
 	// on archive and it therefore has no view to return.
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+}
+
+// ExportAttributesParams defines parameters for ExportAttributes.
+type ExportAttributesParams struct {
+	// Format Output format. JSON returns the structured response; CSV returns one header row plus one row per record.
+	Format *ExportFormat `form:"format,omitempty" json:"format,omitempty"`
+
+	// Fields Comma-separated columns to include, in order (CSV only; ignored for JSON).
+	// Omit for the default column set. Unknown fields return 400.
+	Fields *ExportFields `form:"fields,omitempty" json:"fields,omitempty"`
+}
+
+// ExportCitationsParams defines parameters for ExportCitations.
+type ExportCitationsParams struct {
+	// Format Output format. JSON returns the structured response; CSV returns one header row plus one row per record.
+	Format *ExportFormat `form:"format,omitempty" json:"format,omitempty"`
+
+	// Fields Comma-separated columns to include, in order (CSV only; ignored for JSON).
+	// Omit for the default column set. Unknown fields return 400.
+	Fields *ExportFields `form:"fields,omitempty" json:"fields,omitempty"`
+}
+
+// ExportEventsParams defines parameters for ExportEvents.
+type ExportEventsParams struct {
+	// Format Output format. JSON returns the structured response; CSV returns one header row plus one row per record.
+	Format *ExportFormat `form:"format,omitempty" json:"format,omitempty"`
+
+	// Fields Comma-separated columns to include, in order (CSV only; ignored for JSON).
+	// Omit for the default column set. Unknown fields return 400.
+	Fields *ExportFields `form:"fields,omitempty" json:"fields,omitempty"`
+}
+
+// ExportFamiliesParams defines parameters for ExportFamilies.
+type ExportFamiliesParams struct {
+	// Format Output format. JSON returns the structured response; CSV returns one header row plus one row per record.
+	Format *ExportFormat `form:"format,omitempty" json:"format,omitempty"`
+
+	// Fields Comma-separated columns to include, in order (CSV only; ignored for JSON).
+	// Omit for the default column set. Unknown fields return 400.
+	Fields *ExportFields `form:"fields,omitempty" json:"fields,omitempty"`
+}
+
+// ExportPersonsParams defines parameters for ExportPersons.
+type ExportPersonsParams struct {
+	// Format Output format. JSON returns the structured response; CSV returns one header row plus one row per record.
+	Format *ExportFormat `form:"format,omitempty" json:"format,omitempty"`
+
+	// Fields Comma-separated columns to include, in order (CSV only; ignored for JSON).
+	// Omit for the default column set. Unknown fields return 400.
+	Fields *ExportFields `form:"fields,omitempty" json:"fields,omitempty"`
+}
+
+// ExportSourcesParams defines parameters for ExportSources.
+type ExportSourcesParams struct {
+	// Format Output format. JSON returns the structured response; CSV returns one header row plus one row per record.
+	Format *ExportFormat `form:"format,omitempty" json:"format,omitempty"`
+
+	// Fields Comma-separated columns to include, in order (CSV only; ignored for JSON).
+	// Omit for the default column set. Unknown fields return 400.
+	Fields *ExportFields `form:"fields,omitempty" json:"fields,omitempty"`
 }
 
 // ListFamiliesParams defines parameters for ListFamilies.
@@ -7831,25 +7915,25 @@ type ServerInterface interface {
 	ResolveEvidenceConflict(ctx echo.Context, id EvidenceConflictId, params ResolveEvidenceConflictParams) error
 	// ExportAttributes Export attributes data
 	// (GET /export/attributes)
-	ExportAttributes(ctx echo.Context) error
+	ExportAttributes(ctx echo.Context, params ExportAttributesParams) error
 	// ExportCitations Export citations data
 	// (GET /export/citations)
-	ExportCitations(ctx echo.Context) error
+	ExportCitations(ctx echo.Context, params ExportCitationsParams) error
 	// GetExportEstimate Get export size estimation
 	// (GET /export/estimate)
 	GetExportEstimate(ctx echo.Context) error
 	// ExportEvents Export events data
 	// (GET /export/events)
-	ExportEvents(ctx echo.Context) error
+	ExportEvents(ctx echo.Context, params ExportEventsParams) error
 	// ExportFamilies Export families data
 	// (GET /export/families)
-	ExportFamilies(ctx echo.Context) error
+	ExportFamilies(ctx echo.Context, params ExportFamiliesParams) error
 	// ExportPersons Export persons data
 	// (GET /export/persons)
-	ExportPersons(ctx echo.Context) error
+	ExportPersons(ctx echo.Context, params ExportPersonsParams) error
 	// ExportSources Export sources data
 	// (GET /export/sources)
-	ExportSources(ctx echo.Context) error
+	ExportSources(ctx echo.Context, params ExportSourcesParams) error
 	// ExportTree Export full family tree
 	// (GET /export/tree)
 	ExportTree(ctx echo.Context) error
@@ -9374,8 +9458,24 @@ func (w *ServerInterfaceWrapper) ResolveEvidenceConflict(ctx echo.Context) error
 func (w *ServerInterfaceWrapper) ExportAttributes(ctx echo.Context) error {
 	var err error
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ExportAttributesParams
+	// ------------- Optional query parameter "format" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "format", ctx.QueryParams(), &params.Format, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter format: %s", err))
+	}
+
+	// ------------- Optional query parameter "fields" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", false, false, "fields", ctx.QueryParams(), &params.Fields, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter fields: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.ExportAttributes(ctx)
+	err = w.Handler.ExportAttributes(ctx, params)
 	return err
 }
 
@@ -9383,8 +9483,24 @@ func (w *ServerInterfaceWrapper) ExportAttributes(ctx echo.Context) error {
 func (w *ServerInterfaceWrapper) ExportCitations(ctx echo.Context) error {
 	var err error
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ExportCitationsParams
+	// ------------- Optional query parameter "format" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "format", ctx.QueryParams(), &params.Format, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter format: %s", err))
+	}
+
+	// ------------- Optional query parameter "fields" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", false, false, "fields", ctx.QueryParams(), &params.Fields, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter fields: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.ExportCitations(ctx)
+	err = w.Handler.ExportCitations(ctx, params)
 	return err
 }
 
@@ -9401,8 +9517,24 @@ func (w *ServerInterfaceWrapper) GetExportEstimate(ctx echo.Context) error {
 func (w *ServerInterfaceWrapper) ExportEvents(ctx echo.Context) error {
 	var err error
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ExportEventsParams
+	// ------------- Optional query parameter "format" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "format", ctx.QueryParams(), &params.Format, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter format: %s", err))
+	}
+
+	// ------------- Optional query parameter "fields" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", false, false, "fields", ctx.QueryParams(), &params.Fields, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter fields: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.ExportEvents(ctx)
+	err = w.Handler.ExportEvents(ctx, params)
 	return err
 }
 
@@ -9410,8 +9542,24 @@ func (w *ServerInterfaceWrapper) ExportEvents(ctx echo.Context) error {
 func (w *ServerInterfaceWrapper) ExportFamilies(ctx echo.Context) error {
 	var err error
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ExportFamiliesParams
+	// ------------- Optional query parameter "format" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "format", ctx.QueryParams(), &params.Format, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter format: %s", err))
+	}
+
+	// ------------- Optional query parameter "fields" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", false, false, "fields", ctx.QueryParams(), &params.Fields, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter fields: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.ExportFamilies(ctx)
+	err = w.Handler.ExportFamilies(ctx, params)
 	return err
 }
 
@@ -9419,8 +9567,24 @@ func (w *ServerInterfaceWrapper) ExportFamilies(ctx echo.Context) error {
 func (w *ServerInterfaceWrapper) ExportPersons(ctx echo.Context) error {
 	var err error
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ExportPersonsParams
+	// ------------- Optional query parameter "format" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "format", ctx.QueryParams(), &params.Format, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter format: %s", err))
+	}
+
+	// ------------- Optional query parameter "fields" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", false, false, "fields", ctx.QueryParams(), &params.Fields, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter fields: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.ExportPersons(ctx)
+	err = w.Handler.ExportPersons(ctx, params)
 	return err
 }
 
@@ -9428,8 +9592,24 @@ func (w *ServerInterfaceWrapper) ExportPersons(ctx echo.Context) error {
 func (w *ServerInterfaceWrapper) ExportSources(ctx echo.Context) error {
 	var err error
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ExportSourcesParams
+	// ------------- Optional query parameter "format" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "format", ctx.QueryParams(), &params.Format, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter format: %s", err))
+	}
+
+	// ------------- Optional query parameter "fields" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", false, false, "fields", ctx.QueryParams(), &params.Fields, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter fields: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.ExportSources(ctx)
+	err = w.Handler.ExportSources(ctx, params)
 	return err
 }
 
@@ -14766,6 +14946,7 @@ func (response ResolveEvidenceConflict409JSONResponse) VisitResolveEvidenceConfl
 }
 
 type ExportAttributesRequestObject struct {
+	Params ExportAttributesParams
 }
 
 type ExportAttributesResponseObject interface {
@@ -14786,7 +14967,42 @@ func (response ExportAttributes200JSONResponse) VisitExportAttributesResponse(w 
 	return err
 }
 
+type ExportAttributes200TextcsvResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response ExportAttributes200TextcsvResponse) VisitExportAttributesResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "text/csv")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type ExportAttributes400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ExportAttributes400JSONResponse) VisitExportAttributesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ExportCitationsRequestObject struct {
+	Params ExportCitationsParams
 }
 
 type ExportCitationsResponseObject interface {
@@ -14806,6 +15022,40 @@ func (response ExportCitations200JSONResponse) VisitExportCitationsResponse(w ht
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportCitations200TextcsvResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response ExportCitations200TextcsvResponse) VisitExportCitationsResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "text/csv")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type ExportCitations400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ExportCitations400JSONResponse) VisitExportCitationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -14832,6 +15082,7 @@ func (response GetExportEstimate200JSONResponse) VisitGetExportEstimateResponse(
 }
 
 type ExportEventsRequestObject struct {
+	Params ExportEventsParams
 }
 
 type ExportEventsResponseObject interface {
@@ -14852,7 +15103,42 @@ func (response ExportEvents200JSONResponse) VisitExportEventsResponse(w http.Res
 	return err
 }
 
+type ExportEvents200TextcsvResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response ExportEvents200TextcsvResponse) VisitExportEventsResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "text/csv")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type ExportEvents400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ExportEvents400JSONResponse) VisitExportEventsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ExportFamiliesRequestObject struct {
+	Params ExportFamiliesParams
 }
 
 type ExportFamiliesResponseObject interface {
@@ -14876,7 +15162,42 @@ func (response ExportFamilies200JSONResponse) VisitExportFamiliesResponse(w http
 	return err
 }
 
+type ExportFamilies200TextcsvResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response ExportFamilies200TextcsvResponse) VisitExportFamiliesResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "text/csv")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type ExportFamilies400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ExportFamilies400JSONResponse) VisitExportFamiliesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ExportPersonsRequestObject struct {
+	Params ExportPersonsParams
 }
 
 type ExportPersonsResponseObject interface {
@@ -14900,7 +15221,42 @@ func (response ExportPersons200JSONResponse) VisitExportPersonsResponse(w http.R
 	return err
 }
 
+type ExportPersons200TextcsvResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response ExportPersons200TextcsvResponse) VisitExportPersonsResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "text/csv")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type ExportPersons400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ExportPersons400JSONResponse) VisitExportPersonsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ExportSourcesRequestObject struct {
+	Params ExportSourcesParams
 }
 
 type ExportSourcesResponseObject interface {
@@ -14920,6 +15276,40 @@ func (response ExportSources200JSONResponse) VisitExportSourcesResponse(w http.R
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportSources200TextcsvResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response ExportSources200TextcsvResponse) VisitExportSourcesResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "text/csv")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type ExportSources400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ExportSources400JSONResponse) VisitExportSourcesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -21645,8 +22035,10 @@ func (sh *strictHandler) ResolveEvidenceConflict(ctx echo.Context, id EvidenceCo
 }
 
 // ExportAttributes operation middleware
-func (sh *strictHandler) ExportAttributes(ctx echo.Context) error {
+func (sh *strictHandler) ExportAttributes(ctx echo.Context, params ExportAttributesParams) error {
 	var request ExportAttributesRequestObject
+
+	request.Params = params
 
 	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
 		return sh.ssi.ExportAttributes(ctx.Request().Context(), request.(ExportAttributesRequestObject))
@@ -21668,8 +22060,10 @@ func (sh *strictHandler) ExportAttributes(ctx echo.Context) error {
 }
 
 // ExportCitations operation middleware
-func (sh *strictHandler) ExportCitations(ctx echo.Context) error {
+func (sh *strictHandler) ExportCitations(ctx echo.Context, params ExportCitationsParams) error {
 	var request ExportCitationsRequestObject
+
+	request.Params = params
 
 	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
 		return sh.ssi.ExportCitations(ctx.Request().Context(), request.(ExportCitationsRequestObject))
@@ -21714,8 +22108,10 @@ func (sh *strictHandler) GetExportEstimate(ctx echo.Context) error {
 }
 
 // ExportEvents operation middleware
-func (sh *strictHandler) ExportEvents(ctx echo.Context) error {
+func (sh *strictHandler) ExportEvents(ctx echo.Context, params ExportEventsParams) error {
 	var request ExportEventsRequestObject
+
+	request.Params = params
 
 	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
 		return sh.ssi.ExportEvents(ctx.Request().Context(), request.(ExportEventsRequestObject))
@@ -21737,8 +22133,10 @@ func (sh *strictHandler) ExportEvents(ctx echo.Context) error {
 }
 
 // ExportFamilies operation middleware
-func (sh *strictHandler) ExportFamilies(ctx echo.Context) error {
+func (sh *strictHandler) ExportFamilies(ctx echo.Context, params ExportFamiliesParams) error {
 	var request ExportFamiliesRequestObject
+
+	request.Params = params
 
 	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
 		return sh.ssi.ExportFamilies(ctx.Request().Context(), request.(ExportFamiliesRequestObject))
@@ -21760,8 +22158,10 @@ func (sh *strictHandler) ExportFamilies(ctx echo.Context) error {
 }
 
 // ExportPersons operation middleware
-func (sh *strictHandler) ExportPersons(ctx echo.Context) error {
+func (sh *strictHandler) ExportPersons(ctx echo.Context, params ExportPersonsParams) error {
 	var request ExportPersonsRequestObject
+
+	request.Params = params
 
 	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
 		return sh.ssi.ExportPersons(ctx.Request().Context(), request.(ExportPersonsRequestObject))
@@ -21783,8 +22183,10 @@ func (sh *strictHandler) ExportPersons(ctx echo.Context) error {
 }
 
 // ExportSources operation middleware
-func (sh *strictHandler) ExportSources(ctx echo.Context) error {
+func (sh *strictHandler) ExportSources(ctx echo.Context, params ExportSourcesParams) error {
 	var request ExportSourcesRequestObject
+
+	request.Params = params
 
 	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
 		return sh.ssi.ExportSources(ctx.Request().Context(), request.(ExportSourcesRequestObject))

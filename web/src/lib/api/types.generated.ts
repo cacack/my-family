@@ -3094,6 +3094,12 @@ export interface components {
             /** @description Features that cannot be represented in the target version. */
             dataLoss: components["schemas"]["DataLossItem"][];
         };
+        /**
+         * @description Output format for an entity export.
+         * @default json
+         * @enum {string}
+         */
+        ExportFormat: "json" | "csv";
         ExportEstimate: {
             /**
              * @description Number of person records
@@ -6301,6 +6307,13 @@ export interface components {
         };
     };
     parameters: {
+        /** @description Output format. JSON returns the structured response; CSV returns one header row plus one row per record. */
+        exportFormat: components["schemas"]["ExportFormat"];
+        /**
+         * @description Comma-separated columns to include, in order (CSV only; ignored for JSON).
+         *     Omit for the default column set. Unknown fields return 400.
+         */
+        exportFields: string[];
         personId: string;
         familyId: string;
         limitParam: number;
@@ -8948,7 +8961,15 @@ export interface operations {
     };
     exportPersons: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Output format. JSON returns the structured response; CSV returns one header row plus one row per record. */
+                format?: components["parameters"]["exportFormat"];
+                /**
+                 * @description Comma-separated columns to include, in order (CSV only; ignored for JSON).
+                 *     Omit for the default column set. Unknown fields return 400.
+                 */
+                fields?: components["parameters"]["exportFields"];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -8965,13 +8986,23 @@ export interface operations {
                         persons?: components["schemas"]["Person"][];
                         total?: number;
                     };
+                    "text/csv": string;
                 };
             };
+            400: components["responses"]["BadRequest"];
         };
     };
     exportFamilies: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Output format. JSON returns the structured response; CSV returns one header row plus one row per record. */
+                format?: components["parameters"]["exportFormat"];
+                /**
+                 * @description Comma-separated columns to include, in order (CSV only; ignored for JSON).
+                 *     Omit for the default column set. Unknown fields return 400.
+                 */
+                fields?: components["parameters"]["exportFields"];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -8988,13 +9019,23 @@ export interface operations {
                         families?: components["schemas"]["Family"][];
                         total?: number;
                     };
+                    "text/csv": string;
                 };
             };
+            400: components["responses"]["BadRequest"];
         };
     };
     exportSources: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Output format. JSON returns the structured response; CSV returns one header row plus one row per record. */
+                format?: components["parameters"]["exportFormat"];
+                /**
+                 * @description Comma-separated columns to include, in order (CSV only; ignored for JSON).
+                 *     Omit for the default column set. Unknown fields return 400.
+                 */
+                fields?: components["parameters"]["exportFields"];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -9011,13 +9052,23 @@ export interface operations {
                         sources?: components["schemas"]["Source"][];
                         total?: number;
                     };
+                    "text/csv": string;
                 };
             };
+            400: components["responses"]["BadRequest"];
         };
     };
     exportCitations: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Output format. JSON returns the structured response; CSV returns one header row plus one row per record. */
+                format?: components["parameters"]["exportFormat"];
+                /**
+                 * @description Comma-separated columns to include, in order (CSV only; ignored for JSON).
+                 *     Omit for the default column set. Unknown fields return 400.
+                 */
+                fields?: components["parameters"]["exportFields"];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -9034,13 +9085,23 @@ export interface operations {
                         citations?: components["schemas"]["Citation"][];
                         total?: number;
                     };
+                    "text/csv": string;
                 };
             };
+            400: components["responses"]["BadRequest"];
         };
     };
     exportEvents: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Output format. JSON returns the structured response; CSV returns one header row plus one row per record. */
+                format?: components["parameters"]["exportFormat"];
+                /**
+                 * @description Comma-separated columns to include, in order (CSV only; ignored for JSON).
+                 *     Omit for the default column set. Unknown fields return 400.
+                 */
+                fields?: components["parameters"]["exportFields"];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -9054,13 +9115,23 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EventsExportResponse"];
+                    "text/csv": string;
                 };
             };
+            400: components["responses"]["BadRequest"];
         };
     };
     exportAttributes: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Output format. JSON returns the structured response; CSV returns one header row plus one row per record. */
+                format?: components["parameters"]["exportFormat"];
+                /**
+                 * @description Comma-separated columns to include, in order (CSV only; ignored for JSON).
+                 *     Omit for the default column set. Unknown fields return 400.
+                 */
+                fields?: components["parameters"]["exportFields"];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -9074,8 +9145,10 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AttributesExportResponse"];
+                    "text/csv": string;
                 };
             };
+            400: components["responses"]["BadRequest"];
         };
     };
     getExportEstimate: {
