@@ -533,7 +533,8 @@ jobs:
       - name: Drop nosemgrep-suppressed Semgrep results
         if: (success() || failure()) && hashFiles('semgrep.sarif') != ''
         run: |
-          jq '.runs[].results |= map(select((.suppressions // []) | length == 0))' semgrep.sarif > semgrep.filtered.sarif
+          echo "Dropping $(jq '[.runs[].results[]? | select(any(.suppressions[]?; .kind == "inSource"))] | length' semgrep.sarif) nosemgrep-suppressed result(s)"
+          jq '.runs[] |= (.results = ((.results // []) | map(select(any(.suppressions[]?; .kind == "inSource") | not))))' semgrep.sarif > semgrep.filtered.sarif
           mv semgrep.filtered.sarif semgrep.sarif
 
       - name: Upload Semgrep results to GitHub Security
