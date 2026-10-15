@@ -223,6 +223,53 @@ test.describe('with a long research branch name active', () => {
 	});
 });
 
+// A branch with a name and a research question. On a phone its banner once
+// took 300px+, with the label in a side column squeezing the question to two
+// letters (#1095).
+test.describe('with a research branch and its question active', () => {
+	const hypothesis = 'Test parentage of the ferry keeper via the 1850 census household';
+
+	test.beforeEach(async ({ page, request }) => {
+		const response = await request.post(`${API_BASE}/branches`, {
+			data: {
+				name: `Banner ${Date.now().toString(36)} parentage`,
+				hypothesis
+			}
+		});
+		expect(response.status(), await response.text()).toBe(201);
+		const { id } = (await response.json()) as { id: string };
+		await page.addInitScript((branchId) => {
+			localStorage.setItem('active-branch', branchId);
+		}, id);
+	});
+
+	for (const width of [320, 768, 1920]) {
+		test(`the page does not overflow at ${width}px`, async ({ page }) => {
+			await page.setViewportSize({ width, height: 900 });
+			await expectNoHorizontalOverflow(page, '/');
+			await expect(page.getByTestId('banner-research')).toBeVisible();
+		});
+	}
+
+	for (const width of [375, 390]) {
+		test(`the banner stays compact at ${width}px`, async ({ page }) => {
+			await page.setViewportSize({ width, height: 844 });
+			await expectNoHorizontalOverflow(page, '/');
+			const banner = page.locator('.branch-banner');
+			const question = banner.locator('.branch-hypothesis');
+			await expect(question).toHaveAttribute('title', hypothesis);
+
+			const whole = (await banner.boundingBox())!;
+			const label = (await banner.locator('.branch-label').boundingBox())!;
+			const asked = (await question.boundingBox())!;
+			expect(whole.height, 'banner is taller than 160px').toBeLessThanOrEqual(160);
+			expect(asked.y, 'question is not below the label').toBeGreaterThanOrEqual(label.y + label.height);
+			expect(asked.x, 'label sits in a side column').toBeLessThan(label.x + label.width);
+			expect(asked.width, 'question is squeezed').toBeGreaterThanOrEqual(100);
+		});
+	}
+});
+
 test('every nav destination is two taps away on a phone', async ({ page }) => {
 	await page.setViewportSize({ width: 375, height: 900 });
 	await page.goto('/');
