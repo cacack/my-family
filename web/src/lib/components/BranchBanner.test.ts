@@ -155,7 +155,9 @@ describe('BranchBanner', () => {
 		expect(compare.getAttribute('href')).toBe(`/branches/${branch.id}`);
 		expect(compare.dataset.slot).toBe('button');
 		expect(exit.dataset.slot).toBe('button');
-		// Phone-sized banners keep the isolation detail one tap away, not inline.
+		// The isolation cue stays visible outside the disclosure; its detail is one tap away.
+		const text = container.querySelector('.branch-text');
+		expect(text?.textContent).toMatch(/Edits stay on this branch\./);
 		const help = container.querySelector('.branch-help');
 		expect(help?.textContent).toMatch(/isolated to this branch/);
 

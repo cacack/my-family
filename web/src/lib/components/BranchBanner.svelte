@@ -128,9 +128,9 @@
 			     which on a phone squeezed everything else into a sliver (#1095). -->
 			<span class="branch-label">Research Branch</span>
 			{#if activeBranch.branch}
-				Working on <strong>{activeBranch.branch.name}</strong>.
+				Working on <strong>{activeBranch.branch.name}</strong>. Edits stay on this branch.
 			{:else}
-				Working on a research branch.
+				Working on a research branch. Edits stay on this branch.
 			{/if}
 			{#if activeBranch.branch}
 				<span class="branch-research" data-testid="banner-research">
