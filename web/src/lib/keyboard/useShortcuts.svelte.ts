@@ -37,17 +37,26 @@ function isInputElement(element: Element | null): boolean {
 	return false;
 }
 
+/** Controls whose native Enter/arrow-key behaviour a shortcut must not cancel. */
+const INTERACTIVE_SELECTOR =
+	'a[href], button, summary, [role="button"], [role="link"], [role="menuitem"], [role="tab"]';
+
 /**
- * Normalize a keyboard event key to a consistent format
+ * Check if the focused element is a link, button or similar control that
+ * handles named keys (Enter, arrows) itself.
+ */
+function isInteractiveElement(element: Element | null): boolean {
+	return element?.matches(INTERACTIVE_SELECTOR) ?? false;
+}
+
+/**
+ * Normalize a keyboard event key to the form shortcuts are registered in:
+ * printable characters are lower-cased (so Shift+R still means `r`), while
+ * named keys such as `ArrowUp`, `Enter` and `Escape` keep their KeyboardEvent
+ * spelling.
  */
 function normalizeKey(event: KeyboardEvent): string {
-	// Handle special keys
-	if (event.key === 'Escape') return 'Escape';
-	if (event.key === '/') return '/';
-	if (event.key === '?') return '?';
-
-	// Return lowercase for letter keys
-	return event.key.toLowerCase();
+	return event.key.length === 1 ? event.key.toLowerCase() : event.key;
 }
 
 /**
@@ -129,6 +138,13 @@ export function useShortcuts(
 		}
 
 		const key = normalizeKey(event);
+
+		// Leave named keys (Enter, arrows) to a focused link or button so its
+		// native activation and scrolling still work; Escape stays global.
+		if (key.length > 1 && key !== 'Escape' && isInteractiveElement(document.activeElement)) {
+			clearPendingKeys();
+			return;
+		}
 		const now = Date.now();
 
 		// Check if we should continue a sequence or start fresh
