@@ -134,6 +134,38 @@ describe('BranchBanner', () => {
 		expect(screen.getByTestId('branch-outcome').textContent).toContain('Proved');
 	});
 
+	it('keeps the full question in a title for when it is truncated (#1095)', () => {
+		const hypothesis = 'Was Mary the daughter of John Smith and Ann Doe of Lindholm parish?';
+		mockState.id = branch.id;
+		mockState.branch = { ...branch, hypothesis };
+
+		render(BranchBanner);
+
+		expect(screen.getByText(hypothesis).getAttribute('title')).toBe(hypothesis);
+	});
+
+	it('uses the shared Button for its actions and the disclosure for what isolation covers (#1095)', async () => {
+		mockState.id = branch.id;
+		mockState.branch = branch;
+
+		const { container } = render(BranchBanner);
+
+		const compare = screen.getByRole('link', { name: 'Compare' });
+		const exit = screen.getByRole('button', { name: /return to mainline/i });
+		expect(compare.getAttribute('href')).toBe(`/branches/${branch.id}`);
+		expect(compare.dataset.slot).toBe('button');
+		expect(exit.dataset.slot).toBe('button');
+		// The isolation cue stays visible outside the disclosure; its detail is one tap away.
+		const text = container.querySelector('.branch-text');
+		expect(text?.textContent).toMatch(/Edits stay on this branch\./);
+		const help = container.querySelector('.branch-help');
+		expect(help?.textContent).toMatch(/isolated to this branch/);
+
+		await fireEvent.click(exit);
+		expect(exit.hasAttribute('disabled')).toBe(true);
+		expect(exit.textContent).toMatch(/Returning/);
+	});
+
 	it("names the branch's subjects, linked to their pages, and summarises the rest", () => {
 		mockState.id = branch.id;
 		mockState.branch = {
