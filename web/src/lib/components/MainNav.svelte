@@ -125,8 +125,9 @@
 		display: flex;
 	}
 
-	/* Keep in sync: the 1024px one-row header rules in routes/+layout.svelte and
-	   the widths sampled in e2e/layout.spec.ts assume the wide nav from here. */
+	/* Keep in sync: the 1024px header rules in routes/+layout.svelte (one row
+	   at the default font size) and the widths sampled in e2e/layout.spec.ts
+	   assume the wide nav from here. */
 	@media (min-width: 1024px) {
 		.nav-wide {
 			display: flex;

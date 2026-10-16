@@ -229,20 +229,6 @@
 		height: 100%;
 	}
 
-	/* Between the width where the grouped nav appears and the width where the
-	   wordmark fits beside it, the mark alone keeps the header on one row.
-	   Keep 1024px in sync with MainNav.svelte's wide-nav breakpoint. */
-	@media (min-width: 1024px) and (max-width: 1279px) {
-		.logo-text {
-			position: absolute;
-			width: 1px;
-			height: 1px;
-			overflow: hidden;
-			clip: rect(0, 0, 0, 0);
-			white-space: nowrap;
-		}
-	}
-
 	:global(body.high-contrast) .logo {
 		color: var(--color-text);
 	}
@@ -269,24 +255,52 @@
 		}
 	}
 
-	/* From 1024px the header is one row: the search box gives up width rather
-	   than pushing the controls onto a second line. 1024px must match
-	   MainNav.svelte's wide-nav breakpoint. */
+	/* From 1024px the controls share the logo and nav's row while their
+	   narrowest form fits beside them, then wrap onto a row of their own.
+	   A zero basis with a min-content floor makes that the wrap point, so a
+	   larger font size wraps the row instead of laying the controls over the
+	   nav (#1094). On the row they grow, and the search box takes up to 15rem.
+	   Its 12rem floor keeps the placeholder readable, in rem so it scales with
+	   the font size. The min-content width, and so the wrap point, is that
+	   floor plus BranchSwitcher.svelte's label cap, the icon buttons and the
+	   gaps: changing any of them moves where the row wraps, which the e2e
+	   one-row check at the default font size guards.
+	   1024px must match MainNav.svelte's wide-nav breakpoint. */
 	@media (min-width: 1024px) {
-		.app-header {
-			flex-wrap: nowrap;
-		}
-
 		.header-controls {
-			flex: 1 1 auto;
+			flex: 1 1 0;
+			min-width: min-content;
 			flex-wrap: nowrap;
 			justify-content: flex-end;
-			min-width: 0;
 		}
 
 		.search-wrapper {
 			flex: 0 1 15rem;
-			min-width: 6rem;
+			min-width: 12rem;
+		}
+	}
+
+	/* Between the width where the grouped nav appears and the width where the
+	   wordmark fits beside it, the mark alone and tighter spacing keep the
+	   header on one row at the default font size.
+	   Keep 1024px in sync with MainNav.svelte's wide-nav breakpoint. */
+	@media (min-width: 1024px) and (max-width: 1279px) {
+		.app-header {
+			column-gap: 0.75rem;
+			padding-inline: 1rem;
+		}
+
+		.header-controls {
+			gap: 0.5rem;
+		}
+
+		.logo-text {
+			position: absolute;
+			width: 1px;
+			height: 1px;
+			overflow: hidden;
+			clip: rect(0, 0, 0, 0);
+			white-space: nowrap;
 		}
 	}
 
