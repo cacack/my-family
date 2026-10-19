@@ -6,7 +6,7 @@ toolchain go1.26.2
 
 require (
 	github.com/cacack/gedcom-go/v2 v2.5.0
-	github.com/getkin/kin-openapi v0.149.0
+	github.com/getkin/kin-openapi v0.150.0
 	github.com/google/uuid v1.6.0
 	github.com/labstack/echo/v4 v4.16.0
 	github.com/lib/pq v1.12.3
