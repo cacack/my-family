@@ -2739,6 +2739,18 @@ func (ss *StrictServer) DeletePersonName(ctx context.Context, request DeletePers
 				Message: "Person or name not found",
 			}}, nil
 		}
+		if errors.Is(err, command.ErrCannotDeleteLast) {
+			return DeletePersonName409JSONResponse{
+				Code:    CodeConflict,
+				Message: "A person must keep at least one name, so the only name cannot be deleted",
+			}, nil
+		}
+		if errors.Is(err, command.ErrCannotDeletePrimary) {
+			return DeletePersonName409JSONResponse{
+				Code:    CodeConflict,
+				Message: "The primary name cannot be deleted; make another name primary first",
+			}, nil
+		}
 		return nil, err
 	}
 

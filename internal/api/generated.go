@@ -17825,7 +17825,7 @@ func (response DeletePersonName204Response) VisitDeletePersonNameResponse(w http
 	return nil
 }
 
-type DeletePersonName400JSONResponse Error
+type DeletePersonName400JSONResponse struct{ BadRequestJSONResponse }
 
 func (response DeletePersonName400JSONResponse) VisitDeletePersonNameResponse(w http.ResponseWriter) error {
 
@@ -17853,7 +17853,7 @@ func (response DeletePersonName404JSONResponse) VisitDeletePersonNameResponse(w 
 	return err
 }
 
-type DeletePersonName409JSONResponse struct{ ConflictJSONResponse }
+type DeletePersonName409JSONResponse Error
 
 func (response DeletePersonName409JSONResponse) VisitDeletePersonNameResponse(w http.ResponseWriter) error {
 

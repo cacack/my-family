@@ -2222,8 +2222,9 @@ paths:
       operationId: deletePersonName
       summary: Remove a name from a person
       description: |
-        Remove a name variant from a person. Cannot delete the last remaining name
-        or the primary name (must transfer primary status first).
+        Remove a name variant from a person. The last remaining name and the
+        primary name cannot be deleted (make another name primary first); both
+        refusals return 409 with code `CONFLICT`.
       tags: [persons]
       parameters:
         - $ref: '#/components/parameters/branchScope'
@@ -2231,15 +2232,17 @@ paths:
         '204':
           description: Name removed
         '400':
-          description: Cannot delete last name or primary name
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: |
+            The name cannot be deleted: it is the person's only name, or it is
+            the primary name. `code` is `CONFLICT` and `message` says which.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
 
   # Export endpoints
   /export/tree:

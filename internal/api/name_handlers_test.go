@@ -365,10 +365,7 @@ func TestDeletePersonName_CannotDeletePrimary(t *testing.T) {
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
-	// Should fail
-	if rec.Code == http.StatusNoContent {
-		t.Error("Should not be able to delete primary name")
-	}
+	assertNameDeleteRefused(t, rec, "make another name primary first")
 }
 
 func TestDeletePersonName_CannotDeleteLast(t *testing.T) {
@@ -390,10 +387,7 @@ func TestDeletePersonName_CannotDeleteLast(t *testing.T) {
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
-	// Should fail
-	if rec.Code == http.StatusNoContent {
-		t.Error("Should not be able to delete the last name")
-	}
+	assertNameDeleteRefused(t, rec, "at least one name")
 }
 
 func TestAddPersonName_WithAllFields(t *testing.T) {
@@ -436,5 +430,24 @@ func TestAddPersonName_WithAllFields(t *testing.T) {
 	}
 	if resp["name_type"] != "professional" {
 		t.Errorf("name_type = %v, want professional", resp["name_type"])
+	}
+}
+
+// assertNameDeleteRefused checks a refused name delete is a 409 CONFLICT
+// carrying a readable message, not a 500 (#1106).
+func assertNameDeleteRefused(t *testing.T, rec *httptest.ResponseRecorder, wantMessage string) {
+	t.Helper()
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("Status = %d, want %d. Body: %s", rec.Code, http.StatusConflict, rec.Body.String())
+	}
+	var resp map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decoding body: %v", err)
+	}
+	if resp["code"] != api.CodeConflict {
+		t.Errorf("code = %v, want %s", resp["code"], api.CodeConflict)
+	}
+	if msg, _ := resp["message"].(string); !strings.Contains(msg, wantMessage) {
+		t.Errorf("message = %q, want it to contain %q", msg, wantMessage)
 	}
 }
