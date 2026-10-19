@@ -354,6 +354,49 @@ describe('Family Detail Page: partners and children (#826)', () => {
 		await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Edit' })));
 	});
 
+	// Escape in a field used to drop every edit unasked (#1097).
+	it('asks before Escape discards edits, and keeps them when declined', async () => {
+		const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+		await openEdit();
+
+		const date = screen.getByLabelText('Marriage Date') as HTMLInputElement;
+		date.focus();
+		await fireEvent.input(date, { target: { value: '1875' } });
+		await fireEvent.keyDown(date, { key: 'Escape' });
+
+		expect(confirm).toHaveBeenCalledWith('Discard your unsaved changes?');
+		expect((screen.getByLabelText('Marriage Date') as HTMLInputElement).value).toBe('1875');
+		confirm.mockRestore();
+	});
+
+	it('asks before Escape discards a changed partner', async () => {
+		const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+		await openEdit();
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Clear Partner 1: John Smith' }));
+		const date = screen.getByLabelText('Marriage Date');
+		date.focus();
+		await fireEvent.keyDown(date, { key: 'Escape' });
+
+		expect(confirm).toHaveBeenCalled();
+		expect(screen.getByLabelText('Marriage Date')).toBeDefined();
+		confirm.mockRestore();
+	});
+
+	it('leaves edit mode on Escape without asking when nothing changed', async () => {
+		const confirm = vi.spyOn(window, 'confirm');
+		await openEdit();
+
+		const date = screen.getByLabelText('Marriage Date');
+		date.focus();
+		await fireEvent.keyDown(date, { key: 'Escape' });
+
+		expect(confirm).not.toHaveBeenCalled();
+		expect(screen.queryByLabelText('Marriage Date')).toBeNull();
+		await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Edit' })));
+		confirm.mockRestore();
+	});
+
 	it('shows the current partners in the edit form', async () => {
 		await openEdit();
 		expect(screen.getByRole('button', { name: 'Clear Partner 1: John Smith' })).toBeDefined();

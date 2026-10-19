@@ -19,6 +19,9 @@ export interface SaveConflictForm<R, F extends Record<string, unknown>> {
 	save: () => void;
 }
 
+/** What Escape asks before it closes an edit form that has unsaved edits (#1097). */
+export const DISCARD_EDITS_PROMPT = 'Discard your unsaved changes?';
+
 /** A row of the comparison: a form field, and how to show its value. */
 export interface ConflictRow<F> {
 	key: keyof F & string;
@@ -66,6 +69,11 @@ export class SaveConflictFlow<R, F extends Record<string, unknown>> {
 	edited(key: keyof F): boolean {
 		const base = this.target.base();
 		return !!base && !sameValue(this.target.form()[key], this.target.formFrom(base)[key]);
+	}
+
+	/** Whether the user changed any field, so leaving the form would lose edits. */
+	hasEdits(): boolean {
+		return Object.keys(this.target.form()).some((key) => this.edited(key));
 	}
 
 	/**

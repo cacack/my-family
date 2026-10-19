@@ -351,6 +351,51 @@ describe('Person detail edit form', () => {
 		await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Edit' })));
 	});
 
+	// Escape in a field used to drop every edit unasked (#1097).
+	it('asks before Escape discards edits, and keeps them when declined', async () => {
+		const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+		getPerson.mockResolvedValue(person());
+		await openEdit();
+
+		const given = screen.getByLabelText('Given Name') as HTMLInputElement;
+		given.focus();
+		await fireEvent.input(given, { target: { value: 'Augusta' } });
+		await fireEvent.keyDown(given, { key: 'Escape' });
+
+		expect(confirm).toHaveBeenCalledWith('Discard your unsaved changes?');
+		expect((screen.getByLabelText('Given Name') as HTMLInputElement).value).toBe('Augusta');
+		confirm.mockRestore();
+	});
+
+	it('leaves edit mode on Escape once the discard is confirmed', async () => {
+		const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+		getPerson.mockResolvedValue(person());
+		await openEdit();
+
+		const given = screen.getByLabelText('Given Name');
+		given.focus();
+		await fireEvent.input(given, { target: { value: 'Augusta' } });
+		await fireEvent.keyDown(given, { key: 'Escape' });
+
+		expect(screen.queryByLabelText('Given Name')).toBeNull();
+		await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Edit' })));
+		confirm.mockRestore();
+	});
+
+	it('leaves edit mode on Escape without asking when nothing changed', async () => {
+		const confirm = vi.spyOn(window, 'confirm');
+		getPerson.mockResolvedValue(person());
+		await openEdit();
+
+		const given = screen.getByLabelText('Given Name');
+		given.focus();
+		await fireEvent.keyDown(given, { key: 'Escape' });
+
+		expect(confirm).not.toHaveBeenCalled();
+		expect(screen.queryByLabelText('Given Name')).toBeNull();
+		confirm.mockRestore();
+	});
+
 	it('returns focus to Edit after a save', async () => {
 		getPerson.mockResolvedValue(person());
 		await openEdit();
