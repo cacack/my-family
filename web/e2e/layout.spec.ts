@@ -111,6 +111,71 @@ test('the person avatar stays a circle at every font size', async ({ page }) => 
 	}
 });
 
+// A card is the only place a list shows a name or title, so it must wrap rather
+// than cut off. Seeded names are short, so each is swapped for a long one (#1105).
+test.describe('card names and titles at 375px with the Larger font setting', () => {
+	test.use({ viewport: { width: 375, height: 900 } });
+
+	test.beforeEach(async ({ page }) => {
+		await page.addInitScript(() => {
+			localStorage.setItem('accessibility-settings', JSON.stringify({ fontSize: 'larger' }));
+		});
+	});
+
+	test('are never clipped', async ({ page }) => {
+		const seed = readSeed();
+		const routes = [
+			'/persons',
+			'/families',
+			`/families/${seed.merge.familyId}`,
+			`/browse/surnames/${encodeURIComponent(seed.detail.surname)}`,
+			`/browse/places/${encodeURIComponent(seed.detail.place)}`,
+			'/sources'
+		];
+		for (const route of routes) {
+			await page.goto(route);
+			await page.waitForLoadState('networkidle');
+			const names = page.locator('main [data-slot="card-link"] :is(h3, .partner)');
+			await expect(names.first(), `${route}: no card names rendered`).toBeVisible();
+			const clipped = await names.evaluateAll((els) =>
+				els
+					.map((el) => {
+						el.textContent = 'Bartholomew Montgomery-Fitzwilliam Wolfeschlegelsteinhausen';
+						return { tag: el.tagName, over: el.scrollWidth - el.clientWidth };
+					})
+					.filter((m) => m.over > 0)
+			);
+			expect(clipped, `${route}: card names cut off`).toEqual([]);
+		}
+	});
+});
+
+// Each label sits beside a value that may be long; the value must wrap, never
+// the label (#1105: "Mothe / r:" at 375px).
+for (const width of [320, 375]) {
+	test(`group sheet labels stay on one line at ${width}px`, async ({ page }) => {
+		await page.setViewportSize({ width, height: 900 });
+		await page.goto(`/families/${readSeed().merge.familyId}/group-sheet`);
+		const labels = page.locator('main :is(.label, .event-label)');
+		await expect(labels.first()).toBeVisible();
+		const wrapped = await labels.evaluateAll((els) => {
+			for (const el of els) {
+				const value = el.nextElementSibling;
+				if (value) value.textContent = 'Wolfeschlegelsteinhausen Bergerdorff '.repeat(4);
+			}
+			return els
+				.filter((el) => {
+					const range = document.createRange();
+					range.selectNodeContents(el);
+					const lines = new Set([...range.getClientRects()].map((r) => Math.round(r.top)));
+					return lines.size !== 1;
+				})
+				.map((el) => el.textContent);
+		});
+		expect(wrapped, 'group sheet labels wrapped').toEqual([]);
+	});
+}
+
 async function expectHeaderOneRow(page: import('@playwright/test').Page) {
 	const rows = await page.evaluate(() =>
 		[...document.querySelectorAll('.app-header > *')].map((el) => {

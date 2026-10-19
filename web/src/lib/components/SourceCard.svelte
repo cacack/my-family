@@ -90,9 +90,8 @@
 		font-size: 0.9375rem;
 		font-weight: 600;
 		color: #1e293b;
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
+		/* Wrap, never truncate: the card is the only place the full text shows. */
+		overflow-wrap: anywhere;
 	}
 
 	.meta {
