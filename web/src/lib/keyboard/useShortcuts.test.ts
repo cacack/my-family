@@ -88,7 +88,16 @@ describe('useShortcuts', () => {
 
 	it.each([
 		['button', () => document.createElement('button')],
-		['link', () => Object.assign(document.createElement('a'), { href: '/persons' })]
+		['link', () => Object.assign(document.createElement('a'), { href: '/persons' })],
+		[
+			'scroll region',
+			() => {
+				const region = document.createElement('div');
+				region.setAttribute('role', 'region');
+				region.tabIndex = 0;
+				return region;
+			}
+		]
 	])('leaves Enter and arrow keys to a focused %s', (_name, create) => {
 		const handlers = spiesFor('pedigree');
 		const { handleKeydown, cleanup } = useShortcuts('pedigree', handlers);
