@@ -65,7 +65,11 @@
 </svelte:head>
 
 <div class="families-page">
-	<PageHeader title="Families" />
+	<PageHeader title="Families">
+		{#snippet actions()}
+			<Button href="/families/add">Add Family</Button>
+		{/snippet}
+	</PageHeader>
 
 	{#if loading}
 		<div class="loading">Loading...</div>
@@ -74,7 +78,10 @@
 	{:else if families.length === 0}
 		<div class="empty">
 			<p>No families found.</p>
-			<Button href="/import">Import GEDCOM</Button>
+			<div class="empty-actions">
+				<Button href="/families/add">Add Family</Button>
+				<Button variant="outline" href="/import">Import GEDCOM</Button>
+			</div>
 		</div>
 	{:else}
 		<div class="families-grid">
@@ -109,6 +116,13 @@
 
 	.empty p {
 		margin: 0 0 1rem;
+	}
+
+	.empty-actions {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: center;
+		gap: 0.5rem;
 	}
 
 	.families-grid {
