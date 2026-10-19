@@ -423,6 +423,9 @@
 		font-weight: 600;
 		color: #475569;
 		min-width: 60px;
+		/* The value beside it wraps instead; a label never breaks mid-word. */
+		flex-shrink: 0;
+		white-space: nowrap;
 	}
 
 	.person-link {
