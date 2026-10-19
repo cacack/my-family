@@ -955,3 +955,49 @@ describe('isVersionConflict (#940)', () => {
 		expect(isVersionConflict(error)).toBe(want);
 	});
 });
+
+// A stale version is retried once; a refusal is not, and keeps its message (#1106).
+describe('person sub-resource conflict retry', () => {
+	const NAME_PATH = '/api/v1/persons/p1/names/n1';
+	let fetchMock: ReturnType<typeof vi.fn>;
+
+	function reply(status: number, body: unknown) {
+		return { ok: status >= 200 && status < 300, status, statusText: '', json: async () => body };
+	}
+
+	beforeEach(() => {
+		fetchMock = vi.fn();
+		vi.stubGlobal('fetch', fetchMock);
+	});
+
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	it('throws a refusal after one request, as it came', async () => {
+		const refusal = { code: 'CONFLICT', message: 'The primary name cannot be deleted' };
+		fetchMock.mockResolvedValue(reply(409, refusal));
+
+		await expect(api.deletePersonName('p1', 'n1')).rejects.toEqual({ ...refusal, status: 409 });
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		expect(fetchMock.mock.calls[0][0]).toBe(NAME_PATH);
+	});
+
+	it('retries a stale version once', async () => {
+		fetchMock
+			.mockResolvedValueOnce(reply(409, { code: 'VERSION_CONFLICT', message: 'stale' }))
+			.mockResolvedValueOnce(reply(204, undefined));
+
+		await api.deletePersonName('p1', 'n1');
+		expect(fetchMock).toHaveBeenCalledTimes(2);
+	});
+
+	it('marks a stale version that the retry hits again', async () => {
+		fetchMock.mockResolvedValue(reply(409, { code: 'VERSION_CONFLICT', message: 'stale' }));
+
+		await expect(api.deletePersonName('p1', 'n1')).rejects.toMatchObject({
+			status: 409,
+			code: 'CONFLICT_RETRY_FAILED'
+		});
+	});
+});

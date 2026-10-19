@@ -1283,8 +1283,9 @@ export interface paths {
         post?: never;
         /**
          * Remove a name from a person
-         * @description Remove a name variant from a person. Cannot delete the last remaining name
-         *     or the primary name (must transfer primary status first).
+         * @description Remove a name variant from a person. The last remaining name and the
+         *     primary name cannot be deleted (make another name primary first); both
+         *     refusals return 409 with code `CONFLICT`.
          */
         delete: operations["deletePersonName"];
         options?: never;
@@ -8929,8 +8930,13 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Cannot delete last name or primary name */
-            400: {
+            400: components["responses"]["BadRequest"];
+            404: components["responses"]["NotFound"];
+            /**
+             * @description The name cannot be deleted: it is the person's only name, or it is
+             *     the primary name. `code` is `CONFLICT` and `message` says which.
+             */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -8938,8 +8944,6 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            404: components["responses"]["NotFound"];
-            409: components["responses"]["Conflict"];
         };
     };
     exportTree: {

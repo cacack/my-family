@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { api, isConflictError, type PersonName, type NameType } from '$lib/api/client';
+	import { api, isConflictError, isVersionConflict, type PersonName, type NameType } from '$lib/api/client';
 	import { Button } from '$lib/components/ui/button';
 	import FormRow from '$lib/components/FormRow.svelte';
 	import ConflictError from './ConflictError.svelte';
@@ -198,7 +198,7 @@
 			loadNames();
 			onNamesChanged?.();
 		} catch (e) {
-			if (isConflictError(e)) {
+			if (isStaleVersion(e)) {
 				conflictError = true;
 				retryAction = () => deleteName(name);
 			} else {
@@ -207,6 +207,14 @@
 		} finally {
 			saving = false;
 		}
+	}
+
+	/**
+	 * Whether a delete failed on a stale version, which a retry can fix. Any
+	 * other 409, such as refusing the primary name (#1106), is shown as an error.
+	 */
+	function isStaleVersion(e: unknown): boolean {
+		return isVersionConflict(e) || (e as { code?: string }).code === 'CONFLICT_RETRY_FAILED';
 	}
 
 	function formatDisplayName(name: PersonName): string {
@@ -421,7 +429,11 @@
 								<Button variant="outline" size="sm" onclick={() => deleteConfirm = null}>Cancel</Button>
 							{:else}
 								<Button variant="ghost" size="sm" onclick={() => startEdit(name)}>Edit</Button>
-								<Button variant="ghost" size="sm" onclick={() => deleteConfirm = name.id}>Delete</Button>
+								{#if name.is_primary}
+									<span class="delete-hint">To delete this name, make another name primary first.</span>
+								{:else}
+									<Button variant="ghost" size="sm" onclick={() => deleteConfirm = name.id}>Delete</Button>
+								{/if}
 							{/if}
 						</div>
 					{/if}
@@ -624,6 +636,11 @@
 		margin-top: 0.75rem;
 		padding-top: 0.75rem;
 		border-top: 1px solid #f1f5f9;
+	}
+
+	.delete-hint {
+		font-size: 0.75rem;
+		color: var(--color-text-muted);
 	}
 
 	.delete-confirm {
