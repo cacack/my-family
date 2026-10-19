@@ -37,9 +37,12 @@ function isInputElement(element: Element | null): boolean {
 	return false;
 }
 
-/** Controls whose native Enter/arrow-key behaviour a shortcut must not cancel. */
+/**
+ * Controls whose native Enter/arrow-key behaviour a shortcut must not cancel,
+ * including focusable scroll regions (arrow keys scroll them).
+ */
 const INTERACTIVE_SELECTOR =
-	'a[href], button, summary, [role="button"], [role="link"], [role="menuitem"], [role="tab"]';
+	'a[href], button, summary, [role="button"], [role="link"], [role="menuitem"], [role="tab"], [role="region"][tabindex]';
 
 /**
  * Check if the focused element is a link, button or similar control that

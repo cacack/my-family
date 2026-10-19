@@ -73,3 +73,22 @@ test('on the pedigree, Enter on a toolbar button activates it instead of opening
 	await expect(wide).toHaveAttribute('aria-pressed', 'true');
 	await expect(page).toHaveURL(new RegExp(`/pedigree/${childId}`));
 });
+
+test('on the pedigree, arrow keys scroll the focused shortcut list, not the chart behind it (#1104)', async ({
+	page
+}) => {
+	await page.goto(`/pedigree/${childId}`);
+	await expect(selectedNode(page)).toContainText('Cal');
+
+	await page.locator('body').press('?');
+	const list = page.getByRole('region', { name: 'Shortcut list' });
+	await list.focus();
+	await page.keyboard.press('ArrowDown');
+	await page.keyboard.press('ArrowDown');
+	await expect.poll(() => list.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+	await page.keyboard.press('ArrowUp');
+
+	await page.keyboard.press('Escape');
+	await expect(list).toBeHidden();
+	await expect(selectedNode(page)).toContainText('Cal');
+});
