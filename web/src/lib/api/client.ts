@@ -582,10 +582,12 @@ class ApiClient {
 	}
 
 	/**
-	 * Execute a request with automatic retry on 409 Conflict.
+	 * Execute a request with automatic retry on a stale-version 409.
 	 * Person sub-resources share the Person aggregate's version counter,
 	 * so conflicts between unrelated operations are common. A simple
 	 * retry usually succeeds because the backend re-reads the current version.
+	 * Any other 409 is a refusal (such as deleting the primary name, #1106),
+	 * which a retry cannot change, so it is thrown as it came.
 	 */
 	private async requestWithConflictRetry<T>(
 		method: string,
@@ -596,14 +598,13 @@ class ApiClient {
 		try {
 			return await this.request<T>(method, path, body, headers);
 		} catch (error) {
-			const apiError = error as ApiError;
-			if (apiError.status === 409) {
+			if (isVersionConflict(error)) {
 				await new Promise((resolve) => setTimeout(resolve, 100));
 				try {
 					return await this.request<T>(method, path, body, headers);
 				} catch (retryError) {
 					const retryApiError = retryError as ApiError;
-					if (retryApiError.status === 409) {
+					if (isVersionConflict(retryApiError)) {
 						retryApiError.message =
 							'This record was modified by another operation. Please try again.';
 						retryApiError.code = 'CONFLICT_RETRY_FAILED';

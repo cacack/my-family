@@ -198,7 +198,7 @@
 			loadNames();
 			onNamesChanged?.();
 		} catch (e) {
-			if (isConflictError(e)) {
+			if (isConflictError(e) && !isNameDeleteRefusal(e)) {
 				conflictError = true;
 				retryAction = () => deleteName(name);
 			} else {
@@ -207,6 +207,11 @@
 		} finally {
 			saving = false;
 		}
+	}
+
+	/** A 409 the server gives for a name that cannot go, such as the primary one (#1106). */
+	function isNameDeleteRefusal(e: unknown): boolean {
+		return (e as { code?: string }).code === 'CONFLICT';
 	}
 
 	function formatDisplayName(name: PersonName): string {
@@ -421,7 +426,11 @@
 								<Button variant="outline" size="sm" onclick={() => deleteConfirm = null}>Cancel</Button>
 							{:else}
 								<Button variant="ghost" size="sm" onclick={() => startEdit(name)}>Edit</Button>
-								<Button variant="ghost" size="sm" onclick={() => deleteConfirm = name.id}>Delete</Button>
+								{#if name.is_primary}
+									<span class="delete-hint">To delete this name, make another name primary first.</span>
+								{:else}
+									<Button variant="ghost" size="sm" onclick={() => deleteConfirm = name.id}>Delete</Button>
+								{/if}
 							{/if}
 						</div>
 					{/if}
@@ -624,6 +633,11 @@
 		margin-top: 0.75rem;
 		padding-top: 0.75rem;
 		border-top: 1px solid #f1f5f9;
+	}
+
+	.delete-hint {
+		font-size: 0.75rem;
+		color: var(--color-text-muted);
 	}
 
 	.delete-confirm {
