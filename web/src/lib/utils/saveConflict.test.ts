@@ -61,6 +61,15 @@ describe('SaveConflictFlow', () => {
 		).toEqual([{ label: 'Title', mine: 'CENSUS, KENT', latest: 'CENSUS 1851' }]);
 	});
 
+	it('says whether any field was edited', () => {
+		const { state, flow } = setup(opened);
+		expect(flow.hasEdits()).toBe(false);
+		state.form = { ...state.form, tags: ['a', 'b'] };
+		expect(flow.hasEdits()).toBe(true);
+		state.form = { title: 'Census', notes: '', tags: ['a'] };
+		expect(flow.hasEdits()).toBe(false);
+	});
+
 	it('joins a list for display', async () => {
 		const { state, flow } = setup(opened);
 		state.form = { ...state.form, tags: ['c'] };

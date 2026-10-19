@@ -35,7 +35,7 @@
 	import { activeBranch } from '$lib/stores/activeBranch.svelte';
 	import { ROLLBACK_MAINLINE_ONLY } from '$lib/utils/rollbackScope';
 	import { RELATION_TYPE_OPTIONS } from '$lib/utils/enumOptions';
-	import { SaveConflictFlow, type ConflictRow } from '$lib/utils/saveConflict.svelte';
+	import { DISCARD_EDITS_PROMPT, SaveConflictFlow, type ConflictRow } from '$lib/utils/saveConflict.svelte';
 	import { asDatePhrase, savedAsNotes, savedAsText, stillStored, unreadableDateField, type SavedAs } from '$lib/utils/dateInput';
 
 	let family: FamilyDetail | null = $state(null);
@@ -437,8 +437,9 @@
 				saveFamily();
 			}
 		},
+		// Escape is easy to press by accident, so it asks before dropping edits (#1097).
 		'cancel': () => {
-			if (editing) {
+			if (editing && (!saveConflict.hasEdits() || confirm(DISCARD_EDITS_PROMPT))) {
 				cancelEdit();
 			}
 		}
