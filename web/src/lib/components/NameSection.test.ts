@@ -159,7 +159,25 @@ describe('NameSection', () => {
 			await fireEvent.click(screen.getByRole('button', { name: 'Yes, Delete' }));
 
 			expect(await screen.findByRole('alert')).toHaveProperty('textContent', message);
-			expect(screen.queryByRole('button', { name: /retry/i })).toBeNull();
+			expect(screen.queryByRole('button', { name: 'Try Again' })).toBeNull();
+		});
+
+		it('offers a retry when the delete still hits a stale version', async () => {
+			vi.mocked(apiModule.api.getPersonNames).mockResolvedValue({
+				items: [surnameless(), alias],
+				total: 2
+			});
+			vi.mocked(apiModule.api.deletePersonName).mockRejectedValue({
+				status: 409,
+				code: 'CONFLICT_RETRY_FAILED',
+				message: 'This record was modified by another operation. Please try again.'
+			});
+			render(NameSection, { personId: PERSON_ID });
+
+			await fireEvent.click(await screen.findByRole('button', { name: 'Delete' }));
+			await fireEvent.click(screen.getByRole('button', { name: 'Yes, Delete' }));
+
+			expect(await screen.findByRole('button', { name: 'Try Again' })).toBeTruthy();
 		});
 	});
 });

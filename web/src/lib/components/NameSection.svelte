@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { api, isConflictError, type PersonName, type NameType } from '$lib/api/client';
+	import { api, isConflictError, isVersionConflict, type PersonName, type NameType } from '$lib/api/client';
 	import { Button } from '$lib/components/ui/button';
 	import FormRow from '$lib/components/FormRow.svelte';
 	import ConflictError from './ConflictError.svelte';
@@ -198,7 +198,7 @@
 			loadNames();
 			onNamesChanged?.();
 		} catch (e) {
-			if (isConflictError(e) && !isNameDeleteRefusal(e)) {
+			if (isStaleVersion(e)) {
 				conflictError = true;
 				retryAction = () => deleteName(name);
 			} else {
@@ -209,9 +209,12 @@
 		}
 	}
 
-	/** A 409 the server gives for a name that cannot go, such as the primary one (#1106). */
-	function isNameDeleteRefusal(e: unknown): boolean {
-		return (e as { code?: string }).code === 'CONFLICT';
+	/**
+	 * Whether a delete failed on a stale version, which a retry can fix. Any
+	 * other 409, such as refusing the primary name (#1106), is shown as an error.
+	 */
+	function isStaleVersion(e: unknown): boolean {
+		return isVersionConflict(e) || (e as { code?: string }).code === 'CONFLICT_RETRY_FAILED';
 	}
 
 	function formatDisplayName(name: PersonName): string {
