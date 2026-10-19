@@ -62,7 +62,14 @@
 			<Dialog.Title>Keyboard Shortcuts</Dialog.Title>
 		</Dialog.Header>
 
-		<div class="flex-1 overflow-y-auto">
+		<!-- A Tab stop with a name, so the list scrolls by keyboard (#1104). -->
+		<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+		<div
+			class="flex-1 overflow-y-auto focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+			role="region"
+			aria-label="Shortcut list"
+			tabindex="0"
+		>
 			{#each contextOrder as context}
 				{@const shortcuts = shortcutGroups.get(context)}
 				{#if shortcuts && shortcuts.length > 0}

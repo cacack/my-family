@@ -446,18 +446,25 @@
 	}
 
 	/* Toggle Switch */
+	/* Positioned so the hidden input scrolls with .dialog-content (#1104). */
 	.toggle-control {
+		position: relative;
 		display: flex;
 		align-items: center;
 		gap: 0.75rem;
 		cursor: pointer;
 	}
 
+	/* Laid over the switch, so focusing it scrolls the whole switch into view. */
 	.toggle-input {
 		position: absolute;
+		top: 0;
+		left: 0;
+		width: 44px;
+		height: 100%;
+		margin: 0;
 		opacity: 0;
-		width: 0;
-		height: 0;
+		cursor: pointer;
 	}
 
 	.toggle-switch {
