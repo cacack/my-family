@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import FamiliesPage from './+page.svelte';
 import * as apiModule from '$lib/api/client';
 import { back, currentPath, historyLength, resetRouter } from '$lib/test/fakeRouter';
@@ -100,5 +100,29 @@ describe('Families list page', () => {
 		expect(historyLength()).toBe(1);
 		await screen.findByText('No families found.');
 		expect(apiModule.api.listFamilies).toHaveBeenLastCalledWith({ limit: 20, offset: 0 });
+	});
+
+	it('offers Add Family in the page header, like the other list pages (#1109)', async () => {
+		vi.mocked(apiModule.api.listFamilies).mockResolvedValue({
+			items: [{ id: 'f-1', version: 1, partner1_name: 'Ada Lovelace' }],
+			total: 1
+		} as unknown as Awaited<ReturnType<typeof apiModule.api.listFamilies>>);
+		const { container } = render(FamiliesPage);
+		const header = container.querySelector('header.page-header') as HTMLElement;
+		const add = within(header).getByRole('link', { name: 'Add Family' });
+		expect(add.getAttribute('href')).toBe('/families/add');
+		expect(add.getAttribute('data-slot')).toBe('button');
+	});
+
+	it('offers Add Family and Import GEDCOM in the empty state (#1109)', async () => {
+		const { container } = render(FamiliesPage);
+		await screen.findByText('No families found.');
+		const empty = container.querySelector('.empty') as HTMLElement;
+		expect(within(empty).getByRole('link', { name: 'Add Family' }).getAttribute('href')).toBe(
+			'/families/add'
+		);
+		expect(within(empty).getByRole('link', { name: 'Import GEDCOM' }).getAttribute('href')).toBe(
+			'/import'
+		);
 	});
 });
