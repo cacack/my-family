@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.13.1](https://github.com/cacack/my-family/compare/v0.13.0...v0.13.1) (2026-10-21)
+
+
+### Bug Fixes
+
+* **api:** refuse deleting the primary or only name with a 409 ([06e364d](https://github.com/cacack/my-family/commit/06e364d77ffeacc8639a4930860fb567a92c100c)), closes [#1106](https://github.com/cacack/my-family/issues/1106)
+* **deps:** patch Go x509 and x/net HTTP/2 vulnerabilities ([9b3db70](https://github.com/cacack/my-family/commit/9b3db703f1bbd4af88097f570af50725f813b540))
+* **web:** add an Add Family action to the families list ([fa69785](https://github.com/cacack/my-family/commit/fa69785acbd3d369d4e3c971f36939f8c9bacbb2)), closes [#1109](https://github.com/cacack/my-family/issues/1109)
+* **web:** ask before Escape discards unsaved person and family edits ([959d095](https://github.com/cacack/my-family/commit/959d0952d38193d5690648ab74d7bdbd27a26c93)), closes [#1097](https://github.com/cacack/my-family/issues/1097)
+* **web:** hide Delete on the primary name and show name-delete refusals ([32672a5](https://github.com/cacack/my-family/commit/32672a58b5af6e40192b92cc081f7cc458d4ad0c)), closes [#1106](https://github.com/cacack/my-family/issues/1106)
+* **web:** keep scrolling dialog content reachable by keyboard ([8c67d84](https://github.com/cacack/my-family/commit/8c67d844bc6f0f0c71c4efb90434c94905b352f6)), closes [#1104](https://github.com/cacack/my-family/issues/1104)
+* **web:** let arrow keys scroll the focused shortcut list ([31f189d](https://github.com/cacack/my-family/commit/31f189d9aedfafabd5177b389d4893d3953514b1)), closes [#1104](https://github.com/cacack/my-family/issues/1104)
+* **web:** offer the name-delete retry only for stale versions ([1d1e914](https://github.com/cacack/my-family/commit/1d1e914ab9e6feca4b5bdfeda054ddc4b656111e)), closes [#1106](https://github.com/cacack/my-family/issues/1106)
+* **web:** wrap card names and keep group sheet labels on one line ([d2e30ce](https://github.com/cacack/my-family/commit/d2e30ce6e248c1700d6ad180116231268ff08c41)), closes [#1105](https://github.com/cacack/my-family/issues/1105)
+
 ## [0.13.0](https://github.com/cacack/my-family/compare/v0.12.0...v0.13.0) (2026-10-16)
 
 
