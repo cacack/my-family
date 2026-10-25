@@ -9,9 +9,10 @@ on: pull_request_target
 #
 # The secrets are mapped one by one rather than with `secrets: inherit`, which
 # would hand the called workflow every secret this repo holds. These two are
-# the my-family-steward App, whose `workflows` permission GITHUB_TOKEN cannot
-# be granted — that is what lets auto-merge be enabled on PRs that edit
-# .github/workflows/*.
+# the shared Dependabot App's, stored in this repo's `dependabot` environment
+# (see cacack/workflows, "The Dependabot App"). Its `workflows` permission,
+# which GITHUB_TOKEN cannot be granted, is what lets auto-merge be enabled on
+# PRs that edit .github/workflows/*.
 #
 # v2 blocks harden-runner egress by default, so this job matches the `block`
 # posture every other workflow here uses. v1 audited instead, which is why
@@ -28,7 +29,7 @@ permissions:
 
 jobs:
   automerge:
-    uses: cacack/workflows/.github/workflows/dependabot-automerge.yml@9c4e052cf489c8721c0570d64c6bf307ceb82036 # v2.3.0
+    uses: cacack/workflows/.github/workflows/dependabot-automerge.yml@8c32eefebab14d35b588034d5bca5178d781acf6 # v2.4.0
     secrets:
       BOT_APP_ID: ${{ secrets.BOT_APP_ID }}
       BOT_PRIVATE_KEY: ${{ secrets.BOT_PRIVATE_KEY }}
