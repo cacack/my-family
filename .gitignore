@@ -72,3 +72,6 @@ internal/api/openapi_gen.go
 /.claude/worktrees/
 /.claude/settings.local.json
 coverage.html
+
+# Local review reports (findings live in GitHub issues)
+docs/reviews/
