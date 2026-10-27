@@ -12,7 +12,7 @@ import (
 	"time"
 	"unicode"
 
-	gcgedcom "github.com/cacack/gedcom-go/v2/gedcom"
+	gcgedcom "github.com/cacack/gedcom-go/v3/gedcom"
 	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 

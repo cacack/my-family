@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cacack/gedcom-go/v2/gedcom"
+	"github.com/cacack/gedcom-go/v3/gedcom"
 	"github.com/google/uuid"
 
 	"github.com/cacack/my-family/internal/domain"

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	gedcomlib "github.com/cacack/gedcom-go/v2/gedcom"
+	gedcomlib "github.com/cacack/gedcom-go/v3/gedcom"
 )
 
 // DateQualifier represents the precision qualifier for a genealogical date.
@@ -336,13 +336,13 @@ func validateDate(s, typed string) error {
 			Unreadable: true,
 		}
 	}
-	for _, part := range []*gedcomlib.Date{d, d.EndDate} {
-		if part == nil {
-			continue
-		}
-		if err := part.Validate(); err != nil {
-			return &DateInputError{Reason: fmt.Sprintf("%q is not a real calendar date (%s)", typed, strings.TrimPrefix(err.Error(), "invalid date: "))}
-		}
+	// Validate checks a range or period's end date too; drop gedcom-go's
+	// "invalid end date: " and "invalid date: " prefixes so the reason reads
+	// the same for either endpoint.
+	if err := d.Validate(); err != nil {
+		reason := strings.TrimPrefix(err.Error(), "invalid end date: ")
+		reason = strings.TrimPrefix(reason, "invalid date: ")
+		return &DateInputError{Reason: fmt.Sprintf("%q is not a real calendar date (%s)", typed, reason)}
 	}
 	// Every accepted date must be stored with a year. ParseGenDate reads one
 	// from every form gedcom-go accepts today; this guards against a form it

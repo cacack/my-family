@@ -424,6 +424,35 @@ func TestValidationService_GetValidationIssues_BCLifespan(t *testing.T) {
 	}
 }
 
+// gedcom-go v3.1 reports a date that does not exist in the calendar as
+// INVALID_DATE (gedcom-go#613); the validation service surfaces it on the
+// person's record (#875).
+func TestValidationService_GetValidationIssues_InvalidDate(t *testing.T) {
+	service, store := setupValidationService()
+	ctx := context.Background()
+	personID := addPerson(store, "Impossible", "Birthday", "31 FEB 1900")
+
+	page, err := service.GetValidationIssues(ctx, "", 0, 0)
+	if err != nil {
+		t.Fatalf("GetValidationIssues returned error: %v", err)
+	}
+	var found []query.ValidationIssueResult
+	for _, issue := range page.Issues {
+		if issue.Code == "INVALID_DATE" {
+			found = append(found, issue)
+		}
+	}
+	if len(found) != 1 {
+		t.Fatalf("INVALID_DATE issues = %+v, want exactly 1 (all issues: %+v)", found, page.Issues)
+	}
+	if found[0].RecordID == nil || *found[0].RecordID != personID {
+		t.Errorf("INVALID_DATE RecordID = %v, want %v", found[0].RecordID, personID)
+	}
+	if found[0].Severity != "warning" {
+		t.Errorf("INVALID_DATE Severity = %q, want warning", found[0].Severity)
+	}
+}
+
 func TestValidationService_GetValidationIssues_SeverityLevels(t *testing.T) {
 	service, store := setupValidationService()
 	ctx := context.Background()

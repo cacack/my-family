@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strconv"
 
-	"github.com/cacack/gedcom-go/v2/validator"
+	"github.com/cacack/gedcom-go/v3/validator"
 	"github.com/google/uuid"
 
 	"github.com/cacack/my-family/internal/domain"
