@@ -6,11 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 
-	"github.com/cacack/gedcom-go/v2/decoder"
-	"github.com/cacack/gedcom-go/v2/gedcom"
-	"github.com/cacack/gedcom-go/v2/validator"
+	"github.com/cacack/gedcom-go/v3/decoder"
+	"github.com/cacack/gedcom-go/v3/gedcom"
+	"github.com/cacack/gedcom-go/v3/validator"
 	"github.com/google/uuid"
 
 	"github.com/cacack/my-family/internal/domain"
@@ -806,10 +807,11 @@ func parseSource(src *gedcom.Source, result *ImportResult) SourceData {
 		Publisher:  src.Publication,
 	}
 
-	// Link to repository if available. Use the structured RepositoryLink,
-	// which supersedes gedcom-go's flat RepositoryRef/Repository fields and
-	// carries the inline NAME and CALN subordinates.
-	if link := src.RepositoryLink; link != nil {
+	// Link to repository if available. The domain models one repository per
+	// source, so take the first REPO link in document order (v2's scalar
+	// held the last); it carries the inline NAME and CALN subordinates.
+	if len(src.RepositoryLinks) > 0 {
+		link := src.RepositoryLinks[0]
 		switch {
 		case link.XRef != "":
 			if repoID, ok := result.RepositoryXrefToID[link.XRef]; ok {
@@ -824,7 +826,7 @@ func parseSource(src *gedcom.Source, result *ImportResult) SourceData {
 		}
 		// The domain models a single call number; GEDCOM allows several.
 		if len(link.CallNumbers) > 0 {
-			source.CallNumber = link.CallNumbers[0]
+			source.CallNumber = link.CallNumbers[0].Value
 		}
 	}
 
@@ -876,9 +878,18 @@ func parseRepository(repo *gedcom.Repository, _ *ImportResult) RepositoryData {
 		repository.State = addr.State
 		repository.PostalCode = addr.PostalCode
 		repository.Country = addr.Country
-		repository.Phone = addr.Phone
-		repository.Email = addr.Email
-		repository.Website = addr.Website
+	}
+
+	// Contact details are siblings of ADDR on the repository (each may repeat;
+	// the domain keeps the first).
+	if len(repo.Phone) > 0 {
+		repository.Phone = repo.Phone[0]
+	}
+	if len(repo.Email) > 0 {
+		repository.Email = repo.Email[0]
+	}
+	if len(repo.Website) > 0 {
+		repository.Website = repo.Website[0]
 	}
 
 	// Collect notes
@@ -899,12 +910,12 @@ func parseRepository(repo *gedcom.Repository, _ *ImportResult) RepositoryData {
 }
 
 // parseNote converts a GEDCOM note record to NoteData.
-// gedcom-go handles CONT/CONC lines automatically - FullText() returns the complete text.
+// gedcom-go folds CONT/CONC lines into Note.Text, the complete text.
 func parseNote(note *gedcom.Note) NoteData {
 	return NoteData{
 		ID:         uuid.New(),
 		GedcomXref: note.XRef,
-		Text:       note.FullText(),
+		Text:       note.Text,
 	}
 }
 
@@ -986,11 +997,12 @@ func extractCitationsFromIndividual(indi *gedcom.Individual, personID uuid.UUID,
 			factType = domain.FactPersonNaturalization
 		case gedcom.EventCensus:
 			factType = domain.FactPersonCensus
-		case gedcom.EventOccupation:
-			factType = domain.FactPersonOccupation
 		case gedcom.EventResidence:
 			factType = domain.FactPersonResidence
 		default:
+			// Includes a GEDCOM 7.0 "NO OCCU", which decodes as an event of type
+			// OCCU and is imported as a negated generic event, so its citations
+			// follow that event's fact type.
 			factType = domain.FactPersonGenericEvent
 		}
 
@@ -1009,9 +1021,7 @@ func extractCitationsFromIndividual(indi *gedcom.Individual, personID uuid.UUID,
 			}
 
 			// Extract quoted text if available
-			if srcCit.Data != nil && srcCit.Data.Text != "" {
-				citation.QuotedText = srcCit.Data.Text
-			}
+			citation.QuotedText = citationQuotedText(srcCit.Data)
 
 			// Extract Ancestry APID if available (vendor extension)
 			if srcCit.AncestryAPID != nil {
@@ -1072,9 +1082,7 @@ func extractCitationsFromFamily(fam *gedcom.Family, familyID uuid.UUID, _ *Impor
 			}
 
 			// Extract quoted text if available
-			if srcCit.Data != nil && srcCit.Data.Text != "" {
-				citation.QuotedText = srcCit.Data.Text
-			}
+			citation.QuotedText = citationQuotedText(srcCit.Data)
 
 			// Extract Ancestry APID if available (vendor extension)
 			if srcCit.AncestryAPID != nil {
@@ -1092,13 +1100,33 @@ func extractCitationsFromFamily(fam *gedcom.Family, familyID uuid.UUID, _ *Impor
 	return citations
 }
 
+// citationQuotedText returns a citation's DATA.TEXT passages joined with "\n",
+// in document order, or "" when there are none. The domain keeps one quoted
+// text; GEDCOM allows TEXT to repeat.
+func citationQuotedText(data *gedcom.SourceCitationData) string {
+	if data == nil {
+		return ""
+	}
+	var parts []string
+	for _, t := range data.Text {
+		if t != nil && t.Value != "" {
+			parts = append(parts, t.Value)
+		}
+	}
+	return strings.Join(parts, "\n")
+}
+
 // mapGedcomQualityToGPS maps GEDCOM QUAY values (0-3) to GPS quality terms.
 // QUAY 0 = Unreliable -> "negative"
 // QUAY 1 = Questionable -> "indirect"
 // QUAY 2 = Secondary evidence -> "secondary"
 // QUAY 3 = Direct evidence -> "direct"
-func mapGedcomQualityToGPS(quay int) string {
-	switch quay {
+// No QUAY (nil) -> "" (no rating recorded)
+func mapGedcomQualityToGPS(quay *int) string {
+	if quay == nil {
+		return ""
+	}
+	switch *quay {
 	case 0:
 		return "negative"
 	case 1:
@@ -1239,9 +1267,6 @@ func convertGedcomAddress(addr *gedcom.Address) *domain.Address {
 		State:      addr.State,
 		PostalCode: addr.PostalCode,
 		Country:    addr.Country,
-		Phone:      addr.Phone,
-		Email:      addr.Email,
-		Website:    addr.Website,
 	}
 	if domainAddr.IsEmpty() {
 		return nil
@@ -1257,10 +1282,9 @@ func extractAttributesFromIndividual(indi *gedcom.Individual, personID uuid.UUID
 		var factType domain.FactType
 		var value string
 
+		// OCCU is an attribute, not an event: it arrives via the indi.Tags loop
+		// below. (Only a 7.0 "NO OCCU" ever decoded into Events.)
 		switch event.Type {
-		case gedcom.EventOccupation:
-			factType = domain.FactPersonOccupation
-			value = event.Description
 		case gedcom.EventResidence:
 			factType = domain.FactPersonResidence
 			value = event.PlaceName() // For residence, place is the value
@@ -1358,9 +1382,10 @@ func extractAssociationsFromIndividual(indi *gedcom.Individual, personID uuid.UU
 			Phrase:        assoc.Phrase,
 		}
 
-		// Combine notes into a single string
-		if len(assoc.Notes) > 0 {
-			associationData.Notes = strings.Join(assoc.Notes, "\n")
+		// Combine notes into a single string. Pointers are kept verbatim, as
+		// v2's interleaved Notes slice did; v3 groups them ahead of the text.
+		if notes := append(slices.Clone(assoc.NoteXRefs), assoc.InlineNotes...); len(notes) > 0 {
+			associationData.Notes = strings.Join(notes, "\n")
 		}
 
 		associations = append(associations, associationData)

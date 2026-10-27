@@ -3032,3 +3032,147 @@ func TestImportSource_InlineRepositoryName(t *testing.T) {
 		t.Errorf("linked CallNumber = %q, want DEED-42", linked.CallNumber)
 	}
 }
+
+func TestImportCitationWithoutQualityHasNoRating(t *testing.T) {
+	// gedcom-go v3 reads an absent QUAY as a nil Quality. It must import as no
+	// GPS rating, not "negative" (v2 read it as QUAY 0), and must not panic.
+	// An explicit QUAY 0 still imports as "negative" (#875).
+	gedcomData := `0 HEAD
+1 GEDC
+2 VERS 5.5.1
+1 CHAR UTF-8
+0 @S1@ SOUR
+1 TITL Parish Register
+0 @I1@ INDI
+1 NAME John /Doe/
+1 BIRT
+2 DATE 1850
+2 SOUR @S1@
+3 PAGE 12
+1 DEAT
+2 DATE 1920
+2 SOUR @S1@
+3 PAGE 34
+3 QUAY 0
+0 TRLR
+`
+	_, _, _, _, citations, _, _, _, _, _, _, _, _, err := gedcom.NewImporter().Import(context.Background(), strings.NewReader(gedcomData))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+	if len(citations) != 2 {
+		t.Fatalf("len(citations) = %d, want 2", len(citations))
+	}
+	got := map[string]string{}
+	for _, c := range citations {
+		got[c.Page] = c.Quality
+	}
+	if q := got["12"]; q != "" {
+		t.Errorf("citation without QUAY: Quality = %q, want empty (no rating)", q)
+	}
+	if q := got["34"]; q != "negative" {
+		t.Errorf("citation with QUAY 0: Quality = %q, want negative", q)
+	}
+}
+
+func TestImportSpacedXrefsWithNotePointer(t *testing.T) {
+	// A 5.5.1 file whose xrefs contain a space (@I 1@, @N 1@) imports, and the
+	// person's NOTE pointer names the imported note record (#875).
+	gedcomData := `0 HEAD
+1 GEDC
+2 VERS 5.5.1
+1 CHAR UTF-8
+0 @I 1@ INDI
+1 NAME John /Doe/
+1 NOTE @N 1@
+0 @N 1@ NOTE A shared note
+0 TRLR
+`
+	_, persons, _, _, _, _, _, _, notes, _, _, _, _, err := gedcom.NewImporter().Import(context.Background(), strings.NewReader(gedcomData))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+	if len(persons) != 1 {
+		t.Fatalf("len(persons) = %d, want 1", len(persons))
+	}
+	if len(notes) != 1 {
+		t.Fatalf("len(notes) = %d, want 1", len(notes))
+	}
+	if notes[0].GedcomXref != "@N 1@" || notes[0].Text != "A shared note" {
+		t.Errorf("note = {%q, %q}, want {\"@N 1@\", \"A shared note\"}", notes[0].GedcomXref, notes[0].Text)
+	}
+	if persons[0].Notes != notes[0].GedcomXref {
+		t.Errorf("person Notes = %q, want the note pointer %q", persons[0].Notes, notes[0].GedcomXref)
+	}
+}
+
+func TestImportFirstOfMany(t *testing.T) {
+	// GEDCOM lets these structures repeat where the domain keeps one value
+	// (#875): a source's first REPO link wins, a citation's DATA.TEXT passages
+	// are joined with "\n", and a repository's first PHON/EMAIL/WWW wins.
+	gedcomData := `0 HEAD
+1 GEDC
+2 VERS 5.5.1
+1 CHAR UTF-8
+0 @R1@ REPO
+1 NAME First Archive
+1 PHON 555-0001
+1 PHON 555-0002
+1 EMAIL first@example.com
+1 EMAIL second@example.com
+1 WWW https://first.example.com
+1 WWW https://second.example.com
+0 @R2@ REPO
+1 NAME Second Archive
+0 @S1@ SOUR
+1 TITL Parish Register
+1 REPO @R1@
+1 REPO @R2@
+0 @I1@ INDI
+1 NAME John /Doe/
+1 BIRT
+2 DATE 1850
+2 SOUR @S1@
+3 DATA
+4 TEXT First passage
+4 TEXT Second passage
+0 TRLR
+`
+	result, _, _, sources, citations, repositories, _, _, _, _, _, _, _, err := gedcom.NewImporter().Import(context.Background(), strings.NewReader(gedcomData))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+
+	t.Run("source REPO", func(t *testing.T) {
+		if len(sources) != 1 || sources[0].RepositoryID == nil {
+			t.Fatalf("sources = %+v, want one linked to a repository", sources)
+		}
+		if want := result.RepositoryXrefToID["@R1@"]; *sources[0].RepositoryID != want {
+			t.Errorf("RepositoryID = %v, want the first link @R1@ (%v)", *sources[0].RepositoryID, want)
+		}
+	})
+
+	t.Run("citation DATA TEXT", func(t *testing.T) {
+		if len(citations) != 1 {
+			t.Fatalf("len(citations) = %d, want 1", len(citations))
+		}
+		if want := "First passage\nSecond passage"; citations[0].QuotedText != want {
+			t.Errorf("QuotedText = %q, want %q", citations[0].QuotedText, want)
+		}
+	})
+
+	t.Run("repository contacts", func(t *testing.T) {
+		var repo *gedcom.RepositoryData
+		for i := range repositories {
+			if repositories[i].GedcomXref == "@R1@" {
+				repo = &repositories[i]
+			}
+		}
+		if repo == nil {
+			t.Fatalf("repository @R1@ not imported; got %+v", repositories)
+		}
+		if repo.Phone != "555-0001" || repo.Email != "first@example.com" || repo.Website != "https://first.example.com" {
+			t.Errorf("contacts = %q/%q/%q, want the first of each", repo.Phone, repo.Email, repo.Website)
+		}
+	})
+}

@@ -5,7 +5,7 @@ go 1.26.0
 toolchain go1.26.10
 
 require (
-	github.com/cacack/gedcom-go/v2 v2.5.0
+	github.com/cacack/gedcom-go/v3 v3.3.0
 	github.com/getkin/kin-openapi v0.151.0
 	github.com/google/uuid v1.6.0
 	github.com/labstack/echo/v4 v4.16.1
@@ -98,4 +98,4 @@ require (
 )
 
 // For local development, uncomment to use local gedcom-go:
-// replace github.com/cacack/gedcom-go => /Users/chris/devel/home/gedcom-go
+// replace github.com/cacack/gedcom-go/v3 => /Users/chris/devel/home/gedcom-go

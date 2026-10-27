@@ -3,7 +3,7 @@ package query
 import (
 	"testing"
 
-	"github.com/cacack/gedcom-go/v2/gedcom"
+	"github.com/cacack/gedcom-go/v3/gedcom"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -33,7 +33,7 @@ func TestValidatorDate_YearsAcrossBCAndAD(t *testing.T) {
 func TestValidatorDate(t *testing.T) {
 	d := validatorDate("15 MAR 44 BC")
 	require.NotNil(t, d)
-	assert.Equal(t, gedcom.Date{Original: "15 MAR 44 BC", Year: -43, Month: 3, Day: 15}, *d)
+	assert.Equal(t, gedcom.Date{Original: "15 MAR 44 BC", Year: 44, Month: 3, Day: 15, IsBC: true}, *d)
 
 	assert.True(t, validatorDate("10 BC").IsBefore(validatorDate("10")))
 	assert.True(t, validatorDate("44 BC").IsBefore(validatorDate("10 BC")))

@@ -382,6 +382,9 @@ func TestValidateDate(t *testing.T) {
 		{input: "29 FEB 1900", wantErr: "is not a real calendar date"},
 		{input: "32 JAN 1850", wantErr: "is not a real calendar date"},
 		{input: "BET 1850 AND 30 FEB 1860", wantErr: "is not a real calendar date"},
+		// The end date's reason reads like a start date's, without gedcom-go's
+		// "invalid end date: invalid date: " prefixes (#875).
+		{input: "BET 1900 AND 31 FEB 1901", wantErr: `"BET 1900 AND 31 FEB 1901" is not a real calendar date (February has 28 days in 1901, got day 31)`},
 	}
 
 	for _, tt := range tests {
