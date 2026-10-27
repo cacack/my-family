@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.2](https://github.com/cacack/my-family/compare/v0.13.1...v0.13.2) (2026-10-27)
+
+
+### Bug Fixes
+
+* **deps:** bump undici to 7.30.1 for high-severity advisories ([a84bf2a](https://github.com/cacack/my-family/commit/a84bf2a330e5f7676b351ef931b4b5700ee6d0b0))
+
 ## [0.13.1](https://github.com/cacack/my-family/compare/v0.13.0...v0.13.1) (2026-10-21)
 
 
