@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	gcgedcom "github.com/cacack/gedcom-go/v2/gedcom"
+	gcgedcom "github.com/cacack/gedcom-go/v3/gedcom"
 	"github.com/google/uuid"
 
 	"github.com/cacack/my-family/internal/domain"
@@ -699,7 +699,7 @@ func TestExport_CitationQualityMapping(t *testing.T) {
 		evidenceType  domain.EvidenceType
 		informantType domain.InformantType
 		wantQuality   string
-		wantNoQuality bool // QUAY 0 is not output (it's the default)
+		wantNoQuality bool // no GPS rating: no QUAY line at all
 		factType      domain.FactType
 	}{
 		{
@@ -722,9 +722,16 @@ func TestExport_CitationQualityMapping(t *testing.T) {
 			factType:     domain.FactPersonBirth,
 		},
 		{
+			// Negative evidence writes no QUAY, as in v2: pre-v3 imports stored
+			// QUAY-less citations as negative, indistinguishable from QUAY 0.
 			name:          "negative evidence",
 			evidenceType:  domain.EvidenceNegative,
-			wantNoQuality: true, // QUAY 0 is the default, not output per GEDCOM spec
+			wantNoQuality: true,
+			factType:      domain.FactPersonDeath,
+		},
+		{
+			name:          "no rating",
+			wantNoQuality: true,
 			factType:      domain.FactPersonDeath,
 		},
 	}
@@ -766,9 +773,9 @@ func TestExport_CitationQualityMapping(t *testing.T) {
 
 			output := buf.String()
 			if tt.wantNoQuality {
-				// QUAY 0 should NOT be in output (it's the default)
+				// No rating must not become QUAY 0 ("unreliable evidence")
 				if strings.Contains(output, "QUAY") {
-					t.Errorf("Output should not contain QUAY tag for quality 0, got:\n%s", output)
+					t.Errorf("Output should not contain QUAY tag without a rating, got:\n%s", output)
 				}
 			} else if !strings.Contains(output, tt.wantQuality) {
 				t.Errorf("Output should contain %s, got:\n%s", tt.wantQuality, output)
@@ -2837,6 +2844,9 @@ func TestExport_RepositoryRoundTrip(t *testing.T) {
 2 CITY Washington
 2 STAE DC
 2 CTRY USA
+1 PHON 202-357-5000
+1 EMAIL inquire@nara.gov
+1 WWW https://www.archives.gov
 0 @I1@ INDI
 1 NAME Test /Person/
 0 TRLR
@@ -2865,12 +2875,15 @@ func TestExport_RepositoryRoundTrip(t *testing.T) {
 	repoNameByID := make(map[uuid.UUID]string)
 	for _, r := range repositories {
 		var addr *domain.Address
-		if r.Address != "" || r.City != "" || r.State != "" || r.Country != "" {
+		if r.Address != "" || r.City != "" || r.State != "" || r.Country != "" || r.Phone != "" || r.Email != "" || r.Website != "" {
 			addr = &domain.Address{
 				Line1:   r.Address,
 				City:    r.City,
 				State:   r.State,
 				Country: r.Country,
+				Phone:   r.Phone,
+				Email:   r.Email,
+				Website: r.Website,
 			}
 		}
 		rm := &repository.RepositoryReadModel{
@@ -2951,6 +2964,12 @@ func TestExport_RepositoryRoundTrip(t *testing.T) {
 	}
 	if !strings.Contains(output, "700 Pennsylvania Ave NW") {
 		t.Error("Round-trip should preserve repository address")
+	}
+	// PHON/EMAIL/WWW are siblings of ADDR on a repository (gedcom-go v3).
+	for _, want := range []string{"1 PHON 202-357-5000\n", "1 EMAIL inquire@nara.gov\n", "1 WWW https://www.archives.gov\n"} {
+		if !strings.Contains(output, want) {
+			t.Errorf("Round-trip should preserve repository contact %q; got:\n%s", want, output)
+		}
 	}
 
 	// Linked source (@S1@) keeps its SOUR.REPO cross-reference.
@@ -3568,5 +3587,372 @@ func TestExport_InlineRepositoryNameRoundTrip(t *testing.T) {
 	}
 	if sources[0].CallNumber != "MS-123" {
 		t.Errorf("Round-trip CallNumber = %q, want MS-123", sources[0].CallNumber)
+	}
+}
+
+func TestExport_ContactOnlyRepositoryHasNoEmptyAddr(t *testing.T) {
+	// A repository with contact details but no postal address writes PHON/EMAIL/
+	// WWW on the repository itself and no empty ADDR line (gedcom-go v3, #875).
+	readStore := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	if err := readStore.SaveRepository(ctx, &repository.RepositoryReadModel{
+		ID:      uuid.New(),
+		Name:    "Online Archive",
+		Address: &domain.Address{Phone: "555-0100", Email: "help@example.org", Website: "https://example.org"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	buf := &bytes.Buffer{}
+	if _, err := gedcom.NewExporter(readStore).Export(ctx, buf); err != nil {
+		t.Fatalf("Export failed: %v", err)
+	}
+
+	output := buf.String()
+	for _, want := range []string{"1 PHON 555-0100\n", "1 EMAIL help@example.org\n", "1 WWW https://example.org\n"} {
+		if !strings.Contains(output, want) {
+			t.Errorf("export should contain %q; got:\n%s", want, output)
+		}
+	}
+	if strings.Contains(output, "ADDR") {
+		t.Errorf("contact-only repository must not export an ADDR line; got:\n%s", output)
+	}
+}
+
+func TestExport_InvalidGedcomXrefFallsBack(t *testing.T) {
+	// A stored gedcom_xref that is not a valid pointer (a line break from the
+	// API, or a space kept from a 5.5.1 import) exports under the generated
+	// xref: no encoder failure, no forged line, and every pointer that names
+	// the record by its stored xref follows it (#875).
+	tests := []struct {
+		name     string
+		noteXref string
+		repoXref string
+	}{
+		{name: "LF", noteXref: "@N1\n0 _FORGED@", repoXref: "@R1\n0 _FORGED@"},
+		{name: "CRLF", noteXref: "@N1\r\n0 _FORGED@", repoXref: "@R1\r\n0 _FORGED@"},
+		{name: "space", noteXref: "@N 1@", repoXref: "@R 1@"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			readStore := memory.NewReadModelStore()
+			ctx := context.Background()
+
+			if err := readStore.SaveNote(ctx, domain.MainBranchID, &repository.NoteReadModel{
+				ID:         uuid.New(),
+				Text:       "A shared note",
+				GedcomXref: tt.noteXref,
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if err := readStore.SaveRepository(ctx, &repository.RepositoryReadModel{
+				ID:         uuid.New(),
+				Name:       "Some Archive",
+				GedcomXref: tt.repoXref,
+			}); err != nil {
+				t.Fatal(err)
+			}
+			// References by raw stored xref, as an import keeps them.
+			if err := readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
+				ID: uuid.New(), GivenName: "Test", Surname: "Person", Notes: tt.noteXref,
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if err := readStore.SaveSource(ctx, domain.MainBranchID, &repository.SourceReadModel{
+				ID: uuid.New(), SourceType: "book", Title: "Register", RepositoryName: tt.repoXref,
+			}); err != nil {
+				t.Fatal(err)
+			}
+
+			buf := &bytes.Buffer{}
+			if _, err := gedcom.NewExporter(readStore).Export(ctx, buf); err != nil {
+				t.Fatalf("Export failed: %v", err)
+			}
+
+			output := buf.String()
+			for _, want := range []string{
+				"0 @N1@ NOTE A shared note\n", "0 @R1@ REPO\n",
+				"1 NOTE @N1@\n", "1 REPO @R1@\n",
+			} {
+				if !strings.Contains(output, want) {
+					t.Errorf("export should contain %q; got:\n%s", want, output)
+				}
+			}
+			for _, line := range strings.Split(output, "\n") {
+				if strings.HasPrefix(line, "0 _FORGED") {
+					t.Errorf("export contains a forged line %q; got:\n%s", line, output)
+				}
+			}
+			if strings.Contains(output, "\r") || strings.Contains(output, tt.noteXref) || strings.Contains(output, tt.repoXref) {
+				t.Errorf("export must not contain a CR or a stored invalid xref; got:\n%q", output)
+			}
+
+			// The pointers resolve on re-import.
+			result, _, _, sources, _, _, _, _, _, _, _, _, _, err := gedcom.NewImporter().Import(ctx, strings.NewReader(output))
+			if err != nil {
+				t.Fatalf("Re-import failed: %v", err)
+			}
+			if _, ok := result.NoteXrefToID["@N1@"]; !ok {
+				t.Errorf("re-import has no note @N1@; got %v", result.NoteXrefToID)
+			}
+			if len(sources) != 1 || sources[0].RepositoryID == nil {
+				t.Errorf("re-imported source should link its repository by ID; got %+v", sources)
+			}
+		})
+	}
+}
+
+func TestExport_SpacedXrefDowngrade(t *testing.T) {
+	// A 5.5.1 import keeps a spaced xref like @N 1@ verbatim. Forcing a 5.5.1
+	// export of 7.0-only data (an association PHRASE) runs the strict 7.0
+	// re-parse in encodeDowngraded, which rejects a spaced xref; the note must
+	// export under its generated xref, with its references following (#875).
+	readStore := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	if err := readStore.SaveNote(ctx, domain.MainBranchID, &repository.NoteReadModel{
+		ID: uuid.New(), Text: "A shared note", GedcomXref: "@N 1@",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	personID, associateID := uuid.New(), uuid.New()
+	for _, p := range []*repository.PersonReadModel{
+		{ID: personID, GivenName: "Ann", Surname: "Smith", Notes: "@N 1@"},
+		{ID: associateID, GivenName: "Bob", Surname: "Jones"},
+	} {
+		if err := readStore.SavePerson(ctx, domain.MainBranchID, p); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := readStore.SaveAssociation(ctx, domain.MainBranchID, &repository.AssociationReadModel{
+		ID: uuid.New(), PersonID: personID, AssociateID: associateID,
+		Role: domain.RoleGodparent, Phrase: "Family friend", Notes: "@N 1@", Version: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	exporter := gedcom.NewExporter(readStore)
+	buf := &bytes.Buffer{}
+	res, err := exporter.ExportWithOptions(ctx, buf, gedcom.ExportOptions{TargetVersion: gcgedcom.Version551})
+	if err != nil {
+		t.Fatalf("Export failed: %v", err)
+	}
+	if res.SourceVersion != gcgedcom.Version70 {
+		t.Errorf("SourceVersion = %q, want 7.0 (the downgrade path)", res.SourceVersion)
+	}
+
+	output := buf.String()
+	for _, want := range []string{"2 VERS 5.5.1\n", "0 @N1@ NOTE A shared note\n", "1 NOTE @N1@\n", "2 NOTE @N1@\n"} {
+		if !strings.Contains(output, want) {
+			t.Errorf("export should contain %q; got:\n%s", want, output)
+		}
+	}
+	if strings.Contains(output, "@N 1@") {
+		t.Errorf("export must not contain the spaced xref; got:\n%s", output)
+	}
+
+	result, _, _, _, _, _, _, _, _, _, assocs, _, _, err := gedcom.NewImporter().Import(ctx, strings.NewReader(output))
+	if err != nil {
+		t.Fatalf("Re-import failed: %v", err)
+	}
+	if _, ok := result.NoteXrefToID["@N1@"]; !ok {
+		t.Errorf("re-import has no note @N1@; got %v", result.NoteXrefToID)
+	}
+	if len(assocs) != 1 || assocs[0].Notes != "@N1@" {
+		t.Errorf("re-imported association notes = %+v, want @N1@", assocs)
+	}
+
+	if _, err := exporter.PreviewConversion(ctx, gcgedcom.Version551); err != nil {
+		t.Errorf("PreviewConversion failed: %v", err)
+	}
+}
+
+func TestExport_RepositoryNameWithLineBreak(t *testing.T) {
+	// A pointer-shaped RepositoryName with a line break is not a valid xref,
+	// so it exports as an inline repository name rather than failing (#875).
+	readStore := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	if err := readStore.SaveSource(ctx, domain.MainBranchID, &repository.SourceReadModel{
+		ID: uuid.New(), SourceType: "book", Title: "Register", RepositoryName: "@R1\n0 _FORGED@",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	buf := &bytes.Buffer{}
+	if _, err := gedcom.NewExporter(readStore).Export(ctx, buf); err != nil {
+		t.Fatalf("Export failed: %v", err)
+	}
+	output := buf.String()
+	if strings.Contains(output, "1 REPO @") {
+		t.Errorf("RepositoryName must not become a REPO pointer; got:\n%s", output)
+	}
+	for _, line := range strings.Split(output, "\n") {
+		if strings.HasPrefix(line, "0 _FORGED") {
+			t.Errorf("export contains a forged line %q; got:\n%s", line, output)
+		}
+	}
+}
+
+func TestAssociationNotes_RoundTrip(t *testing.T) {
+	// Association Notes holds a NOTE pointer or inline text in one string. The
+	// exporter sends a valid pointer to NoteXRefs and anything else to
+	// InlineNotes; the v3 encoder writes both lists as NOTE lines, and the
+	// importer keeps the value verbatim (#875).
+	tests := []struct {
+		name      string
+		notes     string
+		wantLines []string
+		wantNotes string // re-imported Notes; empty means notes
+	}{
+		{name: "pointer", notes: "@N1@", wantLines: []string{"2 NOTE @N1@\n"}},
+		{name: "inline", notes: "Met at church", wantLines: []string{"2 NOTE Met at church\n"}},
+		{name: "spaced", notes: "@N 1@", wantLines: []string{"2 NOTE @N 1@\n"}},
+		// Known loss: the importer reads `NOTE @N1@` as a pointer and drops
+		// its CONT text.
+		{name: "mixed", notes: "@N1@\nsee baptism", wantLines: []string{"2 NOTE @N1@\n", "3 CONT see baptism\n"}, wantNotes: "@N1@"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			readStore := memory.NewReadModelStore()
+			ctx := context.Background()
+
+			personID, associateID := uuid.New(), uuid.New()
+			for _, p := range []*repository.PersonReadModel{
+				{ID: personID, GivenName: "Ann", Surname: "Smith"},
+				{ID: associateID, GivenName: "Bob", Surname: "Jones"},
+			} {
+				if err := readStore.SavePerson(ctx, domain.MainBranchID, p); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := readStore.SaveAssociation(ctx, domain.MainBranchID, &repository.AssociationReadModel{
+				ID: uuid.New(), PersonID: personID, AssociateID: associateID,
+				Role: domain.RoleWitness, Notes: tt.notes, Version: 1,
+			}); err != nil {
+				t.Fatal(err)
+			}
+
+			buf := &bytes.Buffer{}
+			if _, err := gedcom.NewExporter(readStore).Export(ctx, buf); err != nil {
+				t.Fatalf("Export failed: %v", err)
+			}
+			output := buf.String()
+			for _, want := range tt.wantLines {
+				if !strings.Contains(output, want) {
+					t.Errorf("export should contain %q; got:\n%s", want, output)
+				}
+			}
+
+			_, _, _, _, _, _, _, _, _, _, assocs, _, _, err := gedcom.NewImporter().Import(ctx, strings.NewReader(output))
+			if err != nil {
+				t.Fatalf("Re-import failed: %v", err)
+			}
+			if len(assocs) != 1 {
+				t.Fatalf("len(assocs) = %d, want 1", len(assocs))
+			}
+			want := tt.wantNotes
+			if want == "" {
+				want = tt.notes
+			}
+			if assocs[0].Notes != want {
+				t.Errorf("re-imported Notes = %q, want %q", assocs[0].Notes, want)
+			}
+		})
+	}
+}
+
+func TestMultilineSourceFields_RoundTrip(t *testing.T) {
+	// gedcom-go v3.3.0 folds CONT lines under a source's TITL/AUTH/PUBL and a
+	// citation's PAGE into the value with "\n" (gedcom-go#442). my-family keeps
+	// the multi-line value on import, and the export writes it back as CONT
+	// lines (#875).
+	gedcomInput := `0 HEAD
+1 GEDC
+2 VERS 5.5.1
+1 CHAR UTF-8
+0 @S1@ SOUR
+1 TITL Parish Register
+2 CONT Baptisms 1850-1860
+1 AUTH Rev. John Smith
+2 CONT Curate
+1 PUBL Diocesan Press
+2 CONT London, 1900
+0 @I1@ INDI
+1 NAME Test /Person/
+1 BIRT
+2 DATE 1850
+2 SOUR @S1@
+3 PAGE Folio 12
+4 CONT Entry 34
+0 TRLR
+`
+	ctx := context.Background()
+
+	_, persons, _, sources, citations, _, _, _, _, _, _, _, _, err := gedcom.NewImporter().Import(ctx, strings.NewReader(gedcomInput))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+	if len(persons) != 1 || len(sources) != 1 || len(citations) != 1 {
+		t.Fatalf("got %d persons, %d sources, %d citations; want 1 each", len(persons), len(sources), len(citations))
+	}
+
+	src := sources[0]
+	for _, c := range []struct{ field, got, want string }{
+		{"Title", src.Title, "Parish Register\nBaptisms 1850-1860"},
+		{"Author", src.Author, "Rev. John Smith\nCurate"},
+		{"Publisher", src.Publisher, "Diocesan Press\nLondon, 1900"},
+		{"Page", citations[0].Page, "Folio 12\nEntry 34"},
+	} {
+		if c.got != c.want {
+			t.Errorf("imported %s = %q, want %q", c.field, c.got, c.want)
+		}
+	}
+
+	readStore := memory.NewReadModelStore()
+	if err := readStore.SaveSource(ctx, domain.MainBranchID, &repository.SourceReadModel{
+		ID:         src.ID,
+		SourceType: domain.SourceType(src.SourceType),
+		Title:      src.Title,
+		Author:     src.Author,
+		Publisher:  src.Publisher,
+		GedcomXref: src.GedcomXref,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	p := persons[0]
+	if err := readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
+		ID: p.ID, GivenName: p.GivenName, Surname: p.Surname, FullName: p.GivenName + " " + p.Surname, BirthDateRaw: "1850",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := readStore.SaveCitation(ctx, domain.MainBranchID, &repository.CitationReadModel{
+		ID:          citations[0].ID,
+		SourceID:    src.ID,
+		FactType:    domain.FactPersonBirth,
+		FactOwnerID: p.ID,
+		Page:        citations[0].Page,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	buf := &bytes.Buffer{}
+	if _, err := gedcom.NewExporter(readStore).Export(ctx, buf); err != nil {
+		t.Fatalf("Export failed: %v", err)
+	}
+
+	output := buf.String()
+	for _, want := range []string{
+		"1 TITL Parish Register\n2 CONT Baptisms 1850-1860\n",
+		"1 AUTH Rev. John Smith\n2 CONT Curate\n",
+		"1 PUBL Diocesan Press\n2 CONT London, 1900\n",
+		"3 PAGE Folio 12\n4 CONT Entry 34\n",
+	} {
+		if !strings.Contains(output, want) {
+			t.Errorf("export should contain %q; got:\n%s", want, output)
+		}
 	}
 }

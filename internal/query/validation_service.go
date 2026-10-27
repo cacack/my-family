@@ -7,8 +7,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/cacack/gedcom-go/v2/gedcom"
-	"github.com/cacack/gedcom-go/v2/validator"
+	"github.com/cacack/gedcom-go/v3/gedcom"
+	"github.com/cacack/gedcom-go/v3/validator"
 	"github.com/cacack/my-family/internal/domain"
 	"github.com/cacack/my-family/internal/repository"
 )
@@ -475,23 +475,21 @@ func (s *ValidationService) personToIndividual(person repository.PersonReadModel
 }
 
 // validatorDate builds the gedcom-go date the validator reads from a stored
-// date, or nil when it has no year. A BC year is given in astronomical
-// numbering (1 BC is 0, 10 BC is -9), not as gedcom-go's IsBC form: v2's
-// YearsBetween ignores IsBC, but on the astronomical scale its year
-// arithmetic and ordering are exact, so 10 BC to AD 10 is 19 years, not 20.
-// 1 BC becomes year 0, which gedcom-go reads as no year, so the date-logic
-// checks skip it rather than misjudge it. The gedcom-go v3 upgrade (#875),
-// whose YearsBetween honours IsBC, can switch this to Year and IsBC.
+// date, or nil when it has no year. A BC year is given in gedcom-go's own
+// form, the positive year with IsBC set ("44 BC" is Year 44, IsBC). gedcom-go
+// v3 counts such years astronomically in YearsBetween and Compare, so there
+// is no year 0 and 10 BC to AD 10 is 19 years, not 20; 1 BC is checked like
+// any other year.
 func validatorDate(raw string) *gedcom.Date {
 	gd := domain.ParseGenDate(raw)
 	if gd.Year == nil {
 		return nil
 	}
 	year := *gd.Year
-	if year < 0 {
-		year = gedcom.AstronomicalYear(-year, true)
-	}
 	date := &gedcom.Date{Original: raw, Year: year}
+	if year < 0 {
+		date.Year, date.IsBC = -year, true
+	}
 	if gd.Month != nil {
 		date.Month = *gd.Month
 	}

@@ -3,7 +3,7 @@ package domain
 import (
 	"fmt"
 
-	gedcomlib "github.com/cacack/gedcom-go/v2/gedcom"
+	gedcomlib "github.com/cacack/gedcom-go/v3/gedcom"
 )
 
 // domainToGedcomCalendar maps a domain calendar identifier to the gedcom-go

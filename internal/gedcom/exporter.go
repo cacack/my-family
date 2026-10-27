@@ -8,10 +8,10 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/cacack/gedcom-go/v2/converter"
-	"github.com/cacack/gedcom-go/v2/decoder"
-	"github.com/cacack/gedcom-go/v2/encoder"
-	"github.com/cacack/gedcom-go/v2/gedcom"
+	"github.com/cacack/gedcom-go/v3/converter"
+	"github.com/cacack/gedcom-go/v3/decoder"
+	"github.com/cacack/gedcom-go/v3/encoder"
+	"github.com/cacack/gedcom-go/v3/gedcom"
 	"github.com/google/uuid"
 
 	"github.com/cacack/my-family/internal/domain"
@@ -165,6 +165,26 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 	familyXrefs := make(map[uuid.UUID]string)
 	sourceXrefs := make(map[uuid.UUID]string)
 	repositoryXrefs := make(map[uuid.UUID]string)
+	noteXrefs := make(map[uuid.UUID]string)
+
+	// replacedXrefs maps a stored GedcomXref that is not a valid pointer to the
+	// generated xref exported in its place, so values that refer to the record
+	// by its raw stored xref (a NOTE pointer kept in Notes, a SOUR.REPO pointer
+	// kept in RepositoryName) follow it.
+	replacedXrefs := make(map[string]string)
+	assignXref := func(stored, generated string) string {
+		xref := exportXref(stored, generated)
+		if stored != "" && stored != xref {
+			replacedXrefs[stored] = xref
+		}
+		return xref
+	}
+	remapXref := func(v string) string {
+		if xref, ok := replacedXrefs[v]; ok {
+			return xref
+		}
+		return v
+	}
 
 	// Sort persons by ID for stable output
 	sort.Slice(persons, func(i, j int) bool {
@@ -188,11 +208,7 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 	})
 	for i, s := range sources {
 		// Use GedcomXref if available (for round-trip), otherwise generate
-		if s.GedcomXref != "" {
-			sourceXrefs[s.ID] = s.GedcomXref
-		} else {
-			sourceXrefs[s.ID] = fmt.Sprintf("@S%d@", i+1)
-		}
+		sourceXrefs[s.ID] = assignXref(s.GedcomXref, fmt.Sprintf("@S%d@", i+1))
 	}
 
 	// Sort repositories by ID for stable output and assign xrefs.
@@ -206,15 +222,21 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 	repoIDToXref := make(map[uuid.UUID]string)
 	for i, r := range repositories {
 		// Use GedcomXref if available (for round-trip), otherwise generate.
-		if r.GedcomXref != "" {
-			repositoryXrefs[r.ID] = r.GedcomXref
-		} else {
-			repositoryXrefs[r.ID] = fmt.Sprintf("@R%d@", i+1)
-		}
+		repositoryXrefs[r.ID] = assignXref(r.GedcomXref, fmt.Sprintf("@R%d@", i+1))
 		repoIDToXref[r.ID] = repositoryXrefs[r.ID]
 		if r.Name != "" {
 			repoNameToXref[r.Name] = repositoryXrefs[r.ID]
 		}
+	}
+
+	// Sort notes by ID for stable output. Their xrefs are assigned before any
+	// record is built so that remapXref knows every replaced note xref.
+	sort.Slice(notes, func(i, j int) bool {
+		return notes[i].ID.String() < notes[j].ID.String()
+	})
+	for i, n := range notes {
+		// Use GedcomXref if available (for round-trip), otherwise generate
+		noteXrefs[n.ID] = assignXref(n.GedcomXref, fmt.Sprintf("@N%d@", i+1))
 	}
 
 	// Build GEDCOM document
@@ -230,6 +252,8 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 	// Add source records
 	for i, s := range sources {
 		xref := sourceXrefs[s.ID]
+		s.Notes = remapXref(s.Notes)
+		s.RepositoryName = remapXref(s.RepositoryName)
 		src := toGedcomSource(s, repoIDToXref, repoNameToXref, exp.readStore, ctx)
 		doc.Records = append(doc.Records, &gedcom.Record{
 			XRef:   xref,
@@ -269,6 +293,7 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 		var associations []repository.AssociationReadModel
 		for _, a := range allAssocs {
 			if a.PersonID == p.ID {
+				a.Notes = remapXref(a.Notes)
 				associations = append(associations, a)
 			}
 		}
@@ -278,6 +303,7 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 		ldsOrdinances, _ := exp.readStore.ListLDSOrdinancesForPerson(ctx, p.ID)
 		result.LDSOrdinancesExported += len(ldsOrdinances)
 
+		p.Notes = remapXref(p.Notes)
 		indi := toGedcomIndividual(p, sourceXrefs, personXrefs, birthCitations, deathCitations, events, attributes, associations, ldsOrdinances, exp.readStore, ctx)
 		doc.Records = append(doc.Records, &gedcom.Record{
 			XRef:   xref,
@@ -329,19 +355,8 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 		}
 	}
 
-	// Sort notes by ID for stable output
-	sort.Slice(notes, func(i, j int) bool {
-		return notes[i].ID.String() < notes[j].ID.String()
-	})
-
 	for i, n := range notes {
-		// Use GedcomXref if available (for round-trip), otherwise generate
-		var xref string
-		if n.GedcomXref != "" {
-			xref = n.GedcomXref
-		} else {
-			xref = fmt.Sprintf("@N%d@", i+1)
-		}
+		xref := noteXrefs[n.ID]
 
 		// Notes carrying GEDCOM 7.0 metadata (MIME, language, or translations)
 		// round-trip as SNOTE records; plain notes stay as NOTE records for
@@ -366,12 +381,7 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 
 	for i, s := range submitters {
 		// Use GedcomXref if available (for round-trip), otherwise generate
-		var xref string
-		if s.GedcomXref != "" {
-			xref = s.GedcomXref
-		} else {
-			xref = fmt.Sprintf("@U%d@", i+1)
-		}
+		xref := exportXref(s.GedcomXref, fmt.Sprintf("@U%d@", i+1))
 
 		subm := toGedcomSubmitter(s)
 		doc.Records = append(doc.Records, &gedcom.Record{
@@ -395,6 +405,7 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 	// via SOUR.REPO cross-references.
 	for i, r := range repositories {
 		xref := repositoryXrefs[r.ID]
+		r.Notes = remapXref(r.Notes)
 		repo := toGedcomRepository(r, exp.readStore, ctx)
 		doc.Records = append(doc.Records, &gedcom.Record{
 			XRef:   xref,
@@ -456,10 +467,9 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 	} else {
 		// Encode using gedcom-go encoder with LF line endings. TargetVersion
 		// selects the emitted version without mutating doc.Header.Version.
-		// PreserveUnknownTags mirrors the downgrade path (and the library's own
-		// nil-opts default) so vendor "_"-prefixed tags are never silently
-		// stripped by the bare-literal zero value.
-		encOpts := &encoder.EncodeOptions{LineEnding: "\n", TargetVersion: targetVersion, PreserveUnknownTags: true}
+		// DropUnknownTags is deliberately left unset: its zero value keeps
+		// vendor "_"-prefixed tags (_FSFTID, _APID, ...) in the output.
+		encOpts := &encoder.EncodeOptions{LineEnding: "\n", TargetVersion: targetVersion}
 		if err := encoder.EncodeWithOptions(cw, doc, encOpts); err != nil {
 			return result, fmt.Errorf("failed to write GEDCOM: %w", err)
 		}
@@ -483,10 +493,12 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 // encoded to w.
 func (exp *Exporter) encodeDowngraded(w io.Writer, doc *gedcom.Document, targetVersion gedcom.Version) (*gedcom.ConversionReport, error) {
 	var full bytes.Buffer
-	if err := encoder.EncodeWithOptions(&full, doc, &encoder.EncodeOptions{LineEnding: "\n", TargetVersion: gedcom.Version70, PreserveUnknownTags: true}); err != nil {
+	if err := encoder.EncodeWithOptions(&full, doc, &encoder.EncodeOptions{LineEnding: "\n", TargetVersion: gedcom.Version70}); err != nil {
 		return nil, fmt.Errorf("failed to encode document for conversion: %w", err)
 	}
-	parsed, err := decoder.Decode(bytes.NewReader(full.Bytes()))
+	// StrictMode keeps this a real check: a lenient decode would silently
+	// recover from a malformed line in our own encoder output.
+	parsed, err := decoder.DecodeWithOptions(bytes.NewReader(full.Bytes()), &decoder.DecodeOptions{StrictMode: true})
 	if err != nil {
 		return nil, fmt.Errorf("failed to re-parse document for conversion: %w", err)
 	}
@@ -496,9 +508,9 @@ func (exp *Exporter) encodeDowngraded(w io.Writer, doc *gedcom.Document, targetV
 	}
 	// Preserve custom "_"-prefixed tags: the converter deliberately keeps vendor
 	// extensions through a downgrade (and maps 7.0-only EXIDs to vendor tags like
-	// _FSFTID), but EncodeOptions only defaults PreserveUnknownTags to true when
-	// opts is nil — a bare literal would silently strip them. See issue #599.
-	if err := encoder.EncodeWithOptions(w, converted, &encoder.EncodeOptions{LineEnding: "\n", TargetVersion: targetVersion, PreserveUnknownTags: true}); err != nil {
+	// _FSFTID). DropUnknownTags is left unset because its zero value keeps
+	// them. See issue #599.
+	if err := encoder.EncodeWithOptions(w, converted, &encoder.EncodeOptions{LineEnding: "\n", TargetVersion: targetVersion}); err != nil {
 		return nil, fmt.Errorf("failed to write GEDCOM: %w", err)
 	}
 	return report, nil
@@ -588,7 +600,7 @@ func toGedcomSource(s repository.SourceReadModel, repoIDToXref map[uuid.UUID]str
 	case repoNameToXref[s.RepositoryName] != "":
 		// Legacy: source references a Repository entity by name.
 		repoLink.XRef = repoNameToXref[s.RepositoryName]
-	case strings.HasPrefix(s.RepositoryName, "@") && strings.HasSuffix(s.RepositoryName, "@"):
+	case gedcom.IsPointerXRef(s.RepositoryName):
 		// Already an XREF (e.g. an unresolved import reference): preserve it.
 		repoLink.XRef = s.RepositoryName
 	default:
@@ -596,10 +608,10 @@ func toGedcomSource(s repository.SourceReadModel, repoIDToXref map[uuid.UUID]str
 		repoLink.Inline = &gedcom.InlineRepository{Name: s.RepositoryName}
 	}
 	if s.CallNumber != "" {
-		repoLink.CallNumbers = []string{s.CallNumber}
+		repoLink.CallNumbers = []*gedcom.CallNumber{{Value: s.CallNumber}}
 	}
 	if repoLink.XRef != "" || repoLink.Inline != nil || len(repoLink.CallNumbers) > 0 {
-		src.RepositoryLink = repoLink
+		src.RepositoryLinks = []*gedcom.SourceRepositoryLink{repoLink}
 	}
 
 	// Notes - encoder handles CONT/CONC automatically for multiline text
@@ -767,9 +779,14 @@ func toGedcomAssociation(a repository.AssociationReadModel, personXrefs map[uuid
 		assoc.Phrase = a.Phrase
 	}
 
-	// Notes
+	// Notes: a pointer-shaped value (kept verbatim on import) is a NOTE
+	// pointer; anything else is inline note text.
 	if a.Notes != "" {
-		assoc.Notes = []string{a.Notes}
+		if gedcom.IsPointerXRef(a.Notes) {
+			assoc.NoteXRefs = []string{a.Notes}
+		} else {
+			assoc.InlineNotes = []string{a.Notes}
+		}
 	}
 
 	return assoc
@@ -834,15 +851,16 @@ func toGedcomSourceCitations(citations []repository.CitationReadModel, sourceXre
 			citation.Page = cit.Page
 		}
 
-		// QUAY (quality) - always output if any GPS quality info present
-		if cit.SourceQuality != "" || cit.InformantType != "" || cit.EvidenceType != "" {
-			citation.Quality = mapGPSToGedcomQuality(cit.SourceQuality, cit.InformantType, cit.EvidenceType)
+		// QUAY (quality) - only when a rating maps; a nil Quality writes no
+		// QUAY line, whereas &0 would assert "unreliable evidence".
+		if q, ok := mapGPSToGedcomQuality(cit.SourceQuality, cit.InformantType, cit.EvidenceType); ok {
+			citation.Quality = &q
 		}
 
 		// DATA with TEXT (quoted text)
 		if cit.QuotedText != "" {
 			citation.Data = &gedcom.SourceCitationData{
-				Text: cit.QuotedText,
+				Text: []*gedcom.SourceText{{Value: cit.QuotedText}},
 			}
 		}
 
@@ -918,9 +936,6 @@ func convertDomainAddressToGedcom(addr *domain.Address) *gedcom.Address {
 		State:      addr.State,
 		PostalCode: addr.PostalCode,
 		Country:    addr.Country,
-		Phone:      addr.Phone,
-		Email:      addr.Email,
-		Website:    addr.Website,
 	}
 }
 
@@ -932,7 +947,7 @@ func toGedcomAttribute(attr repository.AttributeReadModel) *gedcom.Attribute {
 	}
 
 	ga := &gedcom.Attribute{
-		Type:  tagName,
+		Type:  gedcom.AttributeType(tagName),
 		Value: attr.Value,
 	}
 
@@ -1025,28 +1040,40 @@ func toGedcomFamily(f repository.FamilyReadModel, personXrefs, sourceXrefs map[u
 }
 
 // mapGPSToGedcomQuality maps GPS quality terms to GEDCOM QUAY values (0-3).
+// ok is false when no rating maps, so the caller writes no QUAY line.
 // This is the reverse of mapGedcomQualityToGPS in importer.go
 // TODO: sourceQuality is reserved for future use when GEDCOM quality mapping is enhanced
-func mapGPSToGedcomQuality(_ domain.SourceQuality, informantType domain.InformantType, evidenceType domain.EvidenceType) int {
+func mapGPSToGedcomQuality(_ domain.SourceQuality, informantType domain.InformantType, evidenceType domain.EvidenceType) (quay int, ok bool) {
 	// Priority: evidenceType > informantType > sourceQuality
 	// QUAY 3 = Direct and primary evidence
 	if evidenceType == domain.EvidenceDirect && informantType == domain.InformantPrimary {
-		return 3
+		return 3, true
 	}
 	// QUAY 2 = Secondary evidence (informant type)
 	if informantType == domain.InformantSecondary {
-		return 2
+		return 2, true
 	}
 	// QUAY 1 = Questionable/Indirect evidence
 	if evidenceType == domain.EvidenceIndirect {
-		return 1
+		return 1, true
 	}
-	// QUAY 0 = Unreliable/Negative evidence
-	if evidenceType == domain.EvidenceNegative {
-		return 0
-	}
+	// Negative evidence writes no QUAY (not QUAY 0): pre-v3 imports stored
+	// every QUAY-less citation as EvidenceNegative, and those spurious
+	// negatives are indistinguishable from a genuine QUAY 0.
 	// Default: no quality specified
-	return 0
+	return 0, false
+}
+
+// exportXref returns the stored xref when it is a valid pointer, otherwise
+// generated. A stored xref can be invalid: 5.5.1 imports keep `@N 1@` verbatim
+// and an API-supplied gedcom_xref is not validated. A space would fail the
+// strict 7.0 re-parse in encodeDowngraded, and a line break would fail the
+// encoder (encoder.ErrLineBreak, gedcom-go#466) or forge a GEDCOM line.
+func exportXref(stored, generated string) string {
+	if gedcom.IsPointerXRef(stored) {
+		return stored
+	}
+	return generated
 }
 
 // formatGedcomName formats a name in GEDCOM format (Given /Surname/).
@@ -1160,17 +1187,17 @@ func mapFactTypeToGedcomTag(factType domain.FactType) string {
 // MIME/LANG/TRAN substructures, which the encoder's entity conversion cannot
 // guarantee.
 func toGedcomNoteRecord(xref string, n repository.NoteReadModel) *gedcom.Record {
-	firstLine, contLines := splitNoteText(n.Text)
-
 	if n.MIME == "" && n.Language == "" && len(n.Translations) == 0 {
+		// Value stays empty so the encoder derives the level-0 line and the
+		// CONT/CONC continuation from Note.Text (enforcing MaxLineLength).
 		return &gedcom.Record{
 			XRef:   xref,
 			Type:   gedcom.RecordTypeNote,
-			Value:  firstLine,
-			Entity: &gedcom.Note{Text: firstLine, Continuation: contLines},
+			Entity: &gedcom.Note{Text: n.Text},
 		}
 	}
 
+	firstLine, contLines := splitNoteText(n.Text)
 	var tags []*gedcom.Tag
 	for _, line := range contLines {
 		tags = append(tags, &gedcom.Tag{Level: 1, Tag: "CONT", Value: line})
@@ -1239,9 +1266,22 @@ func toGedcomRepository(r repository.RepositoryReadModel, readStore repository.R
 		Name: r.Name,
 	}
 
-	// Convert address if present (includes phone/email/website).
+	// Convert address if present. PHON/EMAIL/WWW are siblings of ADDR on a
+	// repository, so they are written from the Repository's own fields, and a
+	// contact-only repository gets no empty ADDR line.
 	if r.Address != nil && !r.Address.IsEmpty() {
-		repo.Address = convertDomainAddressToGedcom(r.Address)
+		if addr := convertDomainAddressToGedcom(r.Address); *addr != (gedcom.Address{}) {
+			repo.Address = addr
+		}
+		if r.Address.Phone != "" {
+			repo.Phone = []string{r.Address.Phone}
+		}
+		if r.Address.Email != "" {
+			repo.Email = []string{r.Address.Email}
+		}
+		if r.Address.Website != "" {
+			repo.Website = []string{r.Address.Website}
+		}
 	}
 
 	// Notes - encoder handles CONT/CONC automatically for multiline text.
