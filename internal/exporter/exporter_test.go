@@ -355,6 +355,47 @@ func TestCSVExporter_ExportPersons_CustomFields(t *testing.T) {
 	assert.Len(t, records[1], 3)
 }
 
+// TestCSVExporter_EscapesFormulaCells verifies that cells which a spreadsheet
+// would evaluate as a formula are prefixed with a single quote (#1126), while
+// ordinary values and numeric columns pass through unchanged.
+func TestCSVExporter_EscapesFormulaCells(t *testing.T) {
+	tests := []struct {
+		name  string
+		value string
+		want  string
+	}{
+		{"equals", "=HYPERLINK(\"http://x\")", "'=HYPERLINK(\"http://x\")"},
+		{"plus", "+1+2", "'+1+2"},
+		{"minus", "-2+3", "'-2+3"},
+		{"at", "@SUM(A1)", "'@SUM(A1)"},
+		{"tab", "\t=1", "'\t=1"},
+		{"carriage return", "\r=1", "'\r=1"},
+		{"normal", "John", "John"},
+		{"empty", "", ""},
+		{"formula char not leading", "Mary-Ann = Jo", "Mary-Ann = Jo"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store := setupTestStore(t)
+			_ = createTestPerson(t, store, tt.value, "Doe", domain.GenderMale)
+
+			var buf bytes.Buffer
+			_, err := exporter.NewDataExporter(store).Export(context.Background(), &buf, exporter.ExportOptions{
+				Format:     exporter.FormatCSV,
+				EntityType: exporter.EntityTypePersons,
+				Fields:     []string{"given_name", "version"},
+			})
+			require.NoError(t, err)
+
+			records, err := csv.NewReader(strings.NewReader(buf.String())).ReadAll()
+			require.NoError(t, err)
+			require.Len(t, records, 2)
+			assert.Equal(t, tt.want, records[1][0])
+			assert.Equal(t, "1", records[1][1], "numeric column must not be escaped")
+		})
+	}
+}
+
 func TestCSVExporter_ExportPersons_InvalidField(t *testing.T) {
 	store := setupTestStore(t)
 	exp := exporter.NewDataExporter(store)

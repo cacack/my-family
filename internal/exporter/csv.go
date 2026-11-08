@@ -273,7 +273,7 @@ func (e *DataExporter) exportCSVPersons(ctx context.Context, cw *countingWriter,
 	for _, p := range persons {
 		row := make([]string, len(fields))
 		for i, field := range fields {
-			row[i] = getPersonFieldValue(p, field)
+			row[i] = escapeCSVCell(getPersonFieldValue(p, field))
 		}
 		if err := csvWriter.Write(row); err != nil {
 			return result, fmt.Errorf("failed to write CSV row: %w", err)
@@ -359,7 +359,7 @@ func (e *DataExporter) exportCSVFamilies(ctx context.Context, cw *countingWriter
 	for _, f := range families {
 		row := make([]string, len(fields))
 		for i, field := range fields {
-			row[i] = getFamilyFieldValue(f, field)
+			row[i] = escapeCSVCell(getFamilyFieldValue(f, field))
 		}
 		if err := csvWriter.Write(row); err != nil {
 			return result, fmt.Errorf("failed to write CSV row: %w", err)
@@ -450,7 +450,7 @@ func (e *DataExporter) exportCSVSources(ctx context.Context, cw *countingWriter,
 	for _, s := range sources {
 		row := make([]string, len(fields))
 		for i, field := range fields {
-			row[i] = getSourceFieldValue(s, field)
+			row[i] = escapeCSVCell(getSourceFieldValue(s, field))
 		}
 		if err := csvWriter.Write(row); err != nil {
 			return result, fmt.Errorf("failed to write CSV row: %w", err)
@@ -533,7 +533,7 @@ func (e *DataExporter) exportCSVCitations(ctx context.Context, cw *countingWrite
 	for _, c := range citations {
 		row := make([]string, len(fields))
 		for i, field := range fields {
-			row[i] = getCitationFieldValue(c, field)
+			row[i] = escapeCSVCell(getCitationFieldValue(c, field))
 		}
 		if err := csvWriter.Write(row); err != nil {
 			return result, fmt.Errorf("failed to write CSV row: %w", err)
@@ -616,7 +616,7 @@ func (e *DataExporter) exportCSVEvents(ctx context.Context, cw *countingWriter, 
 	for _, ev := range events {
 		row := make([]string, len(fields))
 		for i, field := range fields {
-			row[i] = getEventFieldValue(ev, field)
+			row[i] = escapeCSVCell(getEventFieldValue(ev, field))
 		}
 		if err := csvWriter.Write(row); err != nil {
 			return result, fmt.Errorf("failed to write CSV row: %w", err)
@@ -695,7 +695,7 @@ func (e *DataExporter) exportCSVAttributes(ctx context.Context, cw *countingWrit
 	for _, a := range attributes {
 		row := make([]string, len(fields))
 		for i, field := range fields {
-			row[i] = getAttributeFieldValue(a, field)
+			row[i] = escapeCSVCell(getAttributeFieldValue(a, field))
 		}
 		if err := csvWriter.Write(row); err != nil {
 			return result, fmt.Errorf("failed to write CSV row: %w", err)
@@ -735,4 +735,20 @@ func getAttributeFieldValue(a repository.AttributeReadModel, field string) strin
 	default:
 		return ""
 	}
+}
+
+// escapeCSVCell neutralises spreadsheet formula injection (OWASP "CSV
+// Injection"): a cell beginning with =, +, -, @, tab or carriage return is
+// prefixed with a single quote so spreadsheets display it as text. It applies
+// to every data cell; the only numeric columns (version and the *_count
+// fields) are never negative, so no legitimate number is altered.
+func escapeCSVCell(s string) string {
+	if s == "" {
+		return s
+	}
+	switch s[0] {
+	case '=', '+', '-', '@', '\t', '\r':
+		return "'" + s
+	}
+	return s
 }

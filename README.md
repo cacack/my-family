@@ -148,7 +148,7 @@ no C toolchain.
 - `GET /api/v1/gedcom/export` - Export as GEDCOM (optional `?version=5.5|5.5.1|7.0`; defaults to 5.5, auto-upgraded to 7.0 when the data uses 7.0-only features). When exporting 7.0 external identifiers (EXID) down to 5.5/5.5.1, a FamilySearch ARK identifier on a person is preserved as the `_FSFTID` vendor tag; other external IDs have no 5.5.x equivalent and are reported as data loss.
 - `GET /api/v1/gedcom/export/preview` - Preview an export conversion (optional `?version=`); reports data loss without producing a file
 - `GET /api/v1/export/tree` - Export complete tree as JSON
-- `GET /api/v1/export/{persons,families,sources,citations,events,attributes}` - Export one entity type as JSON (default) or CSV (`?format=csv`); for CSV, `?fields=id,given_name,...` picks the columns. Unknown formats or fields return 400
+- `GET /api/v1/export/{persons,families,sources,citations,events,attributes}` - Export one entity type as JSON (default) or CSV (`?format=csv`); for CSV, `?fields=id,given_name,...` picks the columns. Unknown formats or fields return 400. CSV cells beginning with `=`, `+`, `-`, `@`, tab or carriage return are prefixed with `'` so spreadsheets show them as text rather than evaluating a formula
 
 API documentation: http://localhost:8080/api/v1/docs
 
