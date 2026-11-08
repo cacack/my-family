@@ -355,6 +355,104 @@ func TestCSVExporter_ExportPersons_CustomFields(t *testing.T) {
 	assert.Len(t, records[1], 3)
 }
 
+// TestCSVExporter_EscapesFormulaCells verifies that cells which a spreadsheet
+// would evaluate as a formula are prefixed with a single quote (#1126), while
+// ordinary values and numeric columns pass through unchanged.
+func TestCSVExporter_EscapesFormulaCells(t *testing.T) {
+	tests := []struct {
+		name  string
+		value string
+		want  string
+	}{
+		{"equals", "=HYPERLINK(\"http://x\")", "'=HYPERLINK(\"http://x\")"},
+		{"plus", "+1+2", "'+1+2"},
+		{"minus", "-2+3", "'-2+3"},
+		{"at", "@SUM(A1)", "'@SUM(A1)"},
+		{"tab", "\t=1", "'\t=1"},
+		{"carriage return", "\r=1", "'\r=1"},
+		{"normal", "John", "John"},
+		{"empty", "", ""},
+		{"formula char not leading", "Mary-Ann = Jo", "Mary-Ann = Jo"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store := setupTestStore(t)
+			_ = createTestPerson(t, store, tt.value, "Doe", domain.GenderMale)
+
+			var buf bytes.Buffer
+			_, err := exporter.NewDataExporter(store).Export(context.Background(), &buf, exporter.ExportOptions{
+				Format:     exporter.FormatCSV,
+				EntityType: exporter.EntityTypePersons,
+				Fields:     []string{"given_name", "version"},
+			})
+			require.NoError(t, err)
+
+			records, err := csv.NewReader(strings.NewReader(buf.String())).ReadAll()
+			require.NoError(t, err)
+			require.Len(t, records, 2)
+			assert.Equal(t, tt.want, records[1][0])
+			assert.Equal(t, "1", records[1][1], "numeric column must not be escaped")
+		})
+	}
+}
+
+// TestCSVExporter_EscapesFormulaCells_AllEntityTypes verifies that every CSV
+// writer, not only persons, escapes formula-leading free-text cells (#1126).
+func TestCSVExporter_EscapesFormulaCells_AllEntityTypes(t *testing.T) {
+	const payload = "=HYPERLINK(\"http://x\")"
+	ctx := context.Background()
+	tests := []struct {
+		name       string
+		entityType exporter.EntityType
+		field      string
+		seed       func(t *testing.T, store *memory.ReadModelStore)
+	}{
+		{"families", exporter.EntityTypeFamilies, "marriage_place", func(t *testing.T, store *memory.ReadModelStore) {
+			f := createTestFamily(t, store, nil, nil)
+			f.MarriagePlace = payload
+			require.NoError(t, store.SaveFamily(ctx, domain.MainBranchID, &f))
+		}},
+		{"sources", exporter.EntityTypeSources, "title", func(t *testing.T, store *memory.ReadModelStore) {
+			_ = createTestSource(t, store, payload, "Author")
+		}},
+		{"citations", exporter.EntityTypeCitations, "quoted_text", func(t *testing.T, store *memory.ReadModelStore) {
+			s := createTestSource(t, store, "Title", "Author")
+			c := createTestCitation(t, store, &s, uuid.New())
+			c.QuotedText = payload
+			require.NoError(t, store.SaveCitation(ctx, domain.MainBranchID, &c))
+		}},
+		{"events", exporter.EntityTypeEvents, "description", func(t *testing.T, store *memory.ReadModelStore) {
+			e := createTestEvent(t, store, "person", uuid.New())
+			e.Description = payload
+			require.NoError(t, store.SaveEvent(ctx, domain.MainBranchID, &e))
+		}},
+		{"attributes", exporter.EntityTypeAttributes, "value", func(t *testing.T, store *memory.ReadModelStore) {
+			a := createTestAttribute(t, store, uuid.New())
+			a.Value = payload
+			require.NoError(t, store.SaveAttribute(ctx, domain.MainBranchID, &a))
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store := setupTestStore(t)
+			tt.seed(t, store)
+
+			var buf bytes.Buffer
+			_, err := exporter.NewDataExporter(store).Export(ctx, &buf, exporter.ExportOptions{
+				Format:     exporter.FormatCSV,
+				EntityType: tt.entityType,
+				Fields:     []string{tt.field},
+			})
+			require.NoError(t, err)
+
+			records, err := csv.NewReader(strings.NewReader(buf.String())).ReadAll()
+			require.NoError(t, err)
+			require.Len(t, records, 2)
+			assert.Equal(t, "'"+payload, records[1][0])
+		})
+	}
+}
+
 func TestCSVExporter_ExportPersons_InvalidField(t *testing.T) {
 	store := setupTestStore(t)
 	exp := exporter.NewDataExporter(store)
