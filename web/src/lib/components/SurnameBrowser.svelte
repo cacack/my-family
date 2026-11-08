@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { api, type SurnameEntry, type LetterCount } from '$lib/api/client';
 	import { Button } from '$lib/components/ui/button';
 	import { readEnum, setQuery } from '$lib/utils/urlState';
@@ -17,7 +17,7 @@
 
 	// The selected letter lives in the URL (see urlState.ts), so Back, reload
 	// and a copied link keep it. It filters the list, so it replaces.
-	const selectedLetter = $derived(readEnum($page.url.searchParams, 'letter', ALPHABET, '') || null);
+	const selectedLetter = $derived(readEnum(page.url.searchParams, 'letter', ALPHABET, '') || null);
 	const surnames = $derived(selectedLetter ? letterSurnames : allSurnames);
 
 	async function loadIndex() {
@@ -37,7 +37,7 @@
 
 	function selectLetter(letter: string) {
 		// Selecting the active letter again clears the filter.
-		setQuery($page.url, { letter: selectedLetter === letter ? null : letter });
+		setQuery(page.url, { letter: selectedLetter === letter ? null : letter });
 	}
 
 	// Back/Forward can start loads faster than they finish: only the latest one may land.

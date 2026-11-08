@@ -3,10 +3,10 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/svelte';
 import Page from './+page.svelte';
 import * as apiModule from '$lib/api/client';
 import type { CitationTemplateList } from '$lib/api/client';
-import { currentPath, historyLength, resetRouter } from '$lib/test/fakeRouter';
+import { currentPath, historyLength, resetRouter } from '$lib/test/fakeRouter.svelte';
 
-vi.mock('$app/stores', async () => (await import('$lib/test/fakeRouter')).appStores);
-vi.mock('$app/navigation', async () => (await import('$lib/test/fakeRouter')).appNavigation);
+vi.mock('$app/state', async () => (await import('$lib/test/fakeRouter.svelte')).appState);
+vi.mock('$app/navigation', async () => (await import('$lib/test/fakeRouter.svelte')).appNavigation);
 
 // Mock the API module
 vi.mock('$lib/api/client', async (importOriginal) => {

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { api, type Person } from '$lib/api/client';
 	import RelationshipCalculator from '$lib/components/RelationshipCalculator.svelte';
 	import ActionBar from '$lib/components/ActionBar.svelte';
@@ -8,8 +8,8 @@
 
 	// The calculated pair lives in the URL (see urlState.ts), so a result can be
 	// shared, reloaded and reached again with Back.
-	const personIdA = $derived($page.url.searchParams.get('personA'));
-	const personIdB = $derived($page.url.searchParams.get('personB'));
+	const personIdA = $derived(page.url.searchParams.get('personA'));
+	const personIdB = $derived(page.url.searchParams.get('personB'));
 
 	let initialPersonA: Person | null = $state(null);
 	let initialPersonB: Person | null = $state(null);
@@ -43,7 +43,7 @@
 	function handleCalculate(idA: string, idB: string) {
 		if (idA === personIdA && idB === personIdB) return; // Already the URL's pair
 		shownPair = pairKey(idA, idB); // So the effect does not reload the pair just calculated
-		setQuery($page.url, { personA: idA, personB: idB }, { push: true });
+		setQuery(page.url, { personA: idA, personB: idB }, { push: true });
 	}
 </script>
 

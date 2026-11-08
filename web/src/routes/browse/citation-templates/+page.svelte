@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { api, type CitationTemplate } from '$lib/api/client';
 	import * as Card from '$lib/components/ui/card';
 	import PageHeader from '$lib/components/PageHeader.svelte';
@@ -18,11 +18,11 @@
 	// they replace. Both come from the loaded templates, so an unknown value
 	// just matches nothing.
 	const DEFAULTS = { category: 'all', type: '' } as const;
-	const activeCategory = $derived($page.url.searchParams.get('category') || DEFAULTS.category);
-	const sourceTypeFilter = $derived($page.url.searchParams.get('type') ?? DEFAULTS.type);
+	const activeCategory = $derived(page.url.searchParams.get('category') || DEFAULTS.category);
+	const sourceTypeFilter = $derived(page.url.searchParams.get('type') ?? DEFAULTS.type);
 
 	function refine(updates: Partial<Record<keyof typeof DEFAULTS, string>>) {
-		setQuery($page.url, updates, { defaults: DEFAULTS });
+		setQuery(page.url, updates, { defaults: DEFAULTS });
 	}
 	let expandedIds: Set<string> = $state(new Set());
 

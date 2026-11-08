@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { api, type Source } from '$lib/api/client';
 	import { Button } from '$lib/components/ui/button';
 	import PageHeader from '$lib/components/PageHeader.svelte';
@@ -26,7 +26,7 @@
 	const SORTS = ['title', 'author', 'citation_count'] as const;
 	const DEFAULTS = { sort: 'title', order: 'asc', q: '', page: 1 } as const;
 
-	const params = $derived($page.url.searchParams);
+	const params = $derived(page.url.searchParams);
 	const sort = $derived(readEnum(params, 'sort', SORTS, DEFAULTS.sort));
 	const order = $derived(readEnum(params, 'order', ['asc', 'desc'] as const, DEFAULTS.order));
 	const searchQuery = $derived(params.get('q') ?? DEFAULTS.q);
@@ -76,7 +76,7 @@
 				q: searchQuery || undefined
 			});
 			if (seq !== loadSeq) return;
-			if (clampPageToTotal($page.url, requestedPage, result.total, pageSize)) return;
+			if (clampPageToTotal(page.url, requestedPage, result.total, pageSize)) return;
 			sources = result.sources;
 			total = result.total;
 		} catch (e) {
@@ -90,11 +90,11 @@
 
 	// Search and sort refine the view (replace); a new search or sort starts at page 1.
 	function refine(updates: Record<string, string>) {
-		setQuery($page.url, { ...updates, page: 1 }, { defaults: DEFAULTS });
+		setQuery(page.url, { ...updates, page: 1 }, { defaults: DEFAULTS });
 	}
 
 	function goToPage(n: number) {
-		setQuery($page.url, { page: n }, { push: true, defaults: DEFAULTS });
+		setQuery(page.url, { page: n }, { push: true, defaults: DEFAULTS });
 	}
 
 	function handleSortChange(e: Event) {
@@ -102,7 +102,7 @@
 	}
 
 	function handleOrderChange() {
-		setQuery($page.url, { order: order === 'asc' ? 'desc' : 'asc' }, { defaults: DEFAULTS });
+		setQuery(page.url, { order: order === 'asc' ? 'desc' : 'asc' }, { defaults: DEFAULTS });
 	}
 
 	function search(q: string) {

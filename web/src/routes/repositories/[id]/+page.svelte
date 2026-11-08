@@ -1,6 +1,6 @@
 <script lang="ts">
 	import MainlineNotice from '$lib/components/MainlineNotice.svelte';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { api, isVersionConflict, recordLoadError, type RepositoryDetail, type Address } from '$lib/api/client';
 	import ExternalLinks from '$lib/components/ExternalLinks.svelte';
@@ -193,7 +193,7 @@
 	}
 
 	$effect(() => {
-		const id = $page.params.id;
+		const id = page.params.id;
 		if (id) {
 			loadRepository(id);
 		}
@@ -221,7 +221,7 @@
 	{#if loading}
 		<div class="loading">Loading...</div>
 	{:else if error && !repository}
-		<ErrorState message={error} onRetry={() => loadRepository($page.params.id ?? '')} />
+		<ErrorState message={error} onRetry={() => loadRepository(page.params.id ?? '')} />
 	{:else if repository}
 		<!-- In the form, the error shows in it; out of it, a failed delete shows here. -->
 		{#if error && !editing}

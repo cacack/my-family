@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import {
 		api,
@@ -74,7 +74,7 @@
 	}
 
 	$effect(() => {
-		const params = $page.url?.searchParams;
+		const params = page.url?.searchParams;
 		const partner1Id = params?.get('partner1') ?? null;
 		const childId = params?.get('child') ?? null;
 		const key = `${partner1Id}|${childId}`;

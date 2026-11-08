@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { tick } from 'svelte';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { api, isVersionConflict, recordLoadError, type PersonDetail, type ChangeHistoryResponse, type Media, type ResearchStatus, type RollbackResponse, formatGenDate, formatPersonName, type Gender } from '$lib/api/client';
 	import ChangeHistory from '$lib/components/ChangeHistory.svelte';
@@ -405,10 +405,10 @@
 	}
 
 	$effect(() => {
-		const id = $page.params.id;
+		const id = page.params.id;
 		if (id) {
 			// A create that stored a date in another form says so here (#996).
-			savedAs = $page.state.savedAs ?? {};
+			savedAs = page.state.savedAs ?? {};
 			loadPerson(id);
 		}
 	});
@@ -456,7 +456,7 @@
 	{#if loading}
 		<div class="loading">Loading...</div>
 	{:else if loadError}
-		<ErrorState message={loadError} onRetry={() => loadPerson($page.params.id ?? '')} />
+		<ErrorState message={loadError} onRetry={() => loadPerson(page.params.id ?? '')} />
 	{:else if person}
 		{#if actionError}
 			<ActionError message={actionError} />

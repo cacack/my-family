@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import {
 		api,
 		isVersionConflict,
@@ -100,7 +100,7 @@
 	}
 
 	$effect(() => {
-		const id = $page.params.id;
+		const id = page.params.id;
 		if (id) {
 			untrack(() => loadConflict(id));
 		}
@@ -121,7 +121,7 @@
 	{#if loading}
 		<div class="p-12 text-center text-muted-foreground">Loading...</div>
 	{:else if error && !conflict}
-		<ErrorState message={error} onRetry={() => loadConflict($page.params.id!)} />
+		<ErrorState message={error} onRetry={() => loadConflict(page.params.id!)} />
 	{:else if conflict}
 		{@const statusBadge = conflictBadgeProps(conflict.status)}
 		<div class="rounded-xl border border-slate-200 bg-white p-6">

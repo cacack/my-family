@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import { goto } from '$app/navigation';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import {
 		api,
 		type EvidenceAnalysisResponse,
@@ -52,7 +52,7 @@
 	] as const satisfies readonly { key: (typeof STATUSES)[number]; label: string }[];
 	const DEFAULTS = { tab: 'analyses', page: 1, status: 'all' } as const;
 
-	const params = $derived($page.url.searchParams);
+	const params = $derived(page.url.searchParams);
 	const activeTab = $derived(readEnum(params, 'tab', TABS, DEFAULTS.tab));
 	const currentPage = $derived(readPositiveInt(params, 'page', DEFAULTS.page));
 	const conflictStatusFilter = $derived(
@@ -60,15 +60,15 @@
 	);
 
 	function selectTab(tab: string) {
-		setQuery($page.url, { tab, page: null, status: null }, { push: true, defaults: DEFAULTS });
+		setQuery(page.url, { tab, page: null, status: null }, { push: true, defaults: DEFAULTS });
 	}
 
 	function goToPage(n: number) {
-		setQuery($page.url, { page: n }, { push: true, defaults: DEFAULTS });
+		setQuery(page.url, { page: n }, { push: true, defaults: DEFAULTS });
 	}
 
 	function selectConflictStatus(status: (typeof STATUSES)[number]) {
-		setQuery($page.url, { status, page: null }, { defaults: DEFAULTS });
+		setQuery(page.url, { status, page: null }, { defaults: DEFAULTS });
 	}
 
 	// Analyses state
@@ -122,7 +122,7 @@
 				offset: (requestedPage - 1) * pageSize
 			});
 			if (seq !== analysesSeq) return;
-			if (clampPageToTotal($page.url, requestedPage, result.total ?? 0, pageSize)) return;
+			if (clampPageToTotal(page.url, requestedPage, result.total ?? 0, pageSize)) return;
 			analyses = result.analyses;
 			analysesTotal = result.total ?? 0;
 		} catch (e) {
@@ -145,7 +145,7 @@
 				status: conflictStatusFilter === 'all' ? undefined : conflictStatusFilter
 			});
 			if (seq !== conflictsSeq) return;
-			if (clampPageToTotal($page.url, requestedPage, result.total ?? 0, pageSize)) return;
+			if (clampPageToTotal(page.url, requestedPage, result.total ?? 0, pageSize)) return;
 			conflicts = result.conflicts;
 			conflictsTotal = result.total ?? 0;
 
@@ -181,7 +181,7 @@
 				offset: (requestedPage - 1) * pageSize
 			});
 			if (seq !== logsSeq) return;
-			if (clampPageToTotal($page.url, requestedPage, result.total ?? 0, pageSize)) return;
+			if (clampPageToTotal(page.url, requestedPage, result.total ?? 0, pageSize)) return;
 			logs = result.logs;
 			logsTotal = result.total ?? 0;
 		} catch (e) {
@@ -203,7 +203,7 @@
 				offset: (requestedPage - 1) * pageSize
 			});
 			if (seq !== summariesSeq) return;
-			if (clampPageToTotal($page.url, requestedPage, result.total ?? 0, pageSize)) return;
+			if (clampPageToTotal(page.url, requestedPage, result.total ?? 0, pageSize)) return;
 			summaries = result.summaries;
 			summariesTotal = result.total ?? 0;
 		} catch (e) {

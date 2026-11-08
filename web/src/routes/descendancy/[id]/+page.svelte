@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { api, recordLoadError, type Descendancy, type DescendancyNode } from '$lib/api/client';
 	import DescendancyChart, { type LayoutMode } from '$lib/components/DescendancyChart.svelte';
@@ -13,8 +13,8 @@
 	let loading = $state(true);
 	// Generations and layout live in the URL (see urlState.ts), so reload, Back
 	// and a copied link keep them; both refine the view, so they replace.
-	const personId = $derived($page.params.id);
-	const chartOptions = $derived(readChartOptions($page.url.searchParams));
+	const personId = $derived(page.params.id);
+	const chartOptions = $derived(readChartOptions(page.url.searchParams));
 	const generations = $derived(chartOptions.generations);
 	const layout: LayoutMode = $derived(chartOptions.layout);
 	let chart: DescendancyChart;
@@ -171,11 +171,11 @@
 
 	// Re-rooting the chart keeps the current options.
 	function handlePersonClick(id: string) {
-		goto(`/descendancy/${id}${$page.url.search}`);
+		goto(`/descendancy/${id}${page.url.search}`);
 	}
 
 	function setChartOption(updates: { gens?: number; layout?: LayoutMode }) {
-		setQuery($page.url, updates, { defaults: CHART_DEFAULTS });
+		setQuery(page.url, updates, { defaults: CHART_DEFAULTS });
 	}
 
 	function handleGenerationsChange(e: Event) {
@@ -254,7 +254,7 @@
 		{#if loading}
 			<div class="loading">Loading descendancy...</div>
 		{:else if error}
-			<ErrorState message={error} onRetry={() => loadDescendancy($page.params.id ?? '', generations)} />
+			<ErrorState message={error} onRetry={() => loadDescendancy(page.params.id ?? '', generations)} />
 		{:else if descendancy}
 			<div class="chart-area">
 				<DescendancyChart

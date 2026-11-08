@@ -6,10 +6,10 @@ import {
   currentPath,
   historyLength,
   resetRouter,
-} from "$lib/test/fakeRouter";
+} from "$lib/test/fakeRouter.svelte";
 
-vi.mock("$app/stores", async () => (await import("$lib/test/fakeRouter")).appStores);
-vi.mock("$app/navigation", async () => (await import("$lib/test/fakeRouter")).appNavigation);
+vi.mock("$app/state", async () => (await import("$lib/test/fakeRouter.svelte")).appState);
+vi.mock("$app/navigation", async () => (await import("$lib/test/fakeRouter.svelte")).appNavigation);
 
 vi.mock("$lib/api/client", async (importOriginal) => {
   const actual = await importOriginal<typeof apiModule>();

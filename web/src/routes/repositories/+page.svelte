@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import MainlineNotice from '$lib/components/MainlineNotice.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import { api, type Repository, type Address } from '$lib/api/client';
@@ -22,7 +22,7 @@
 	const SORTS = ['name', 'updated_at'] as const;
 	const DEFAULTS = { sort: 'name', order: 'asc', page: 1 } as const;
 
-	const params = $derived($page.url.searchParams);
+	const params = $derived(page.url.searchParams);
 	const sort = $derived(readEnum(params, 'sort', SORTS, DEFAULTS.sort));
 	const order = $derived(readEnum(params, 'order', ['asc', 'desc'] as const, DEFAULTS.order));
 	const currentPage = $derived(readPositiveInt(params, 'page', DEFAULTS.page));
@@ -60,7 +60,7 @@
 				order
 			});
 			if (seq !== loadSeq) return;
-			if (clampPageToTotal($page.url, requestedPage, result.total, pageSize)) return;
+			if (clampPageToTotal(page.url, requestedPage, result.total, pageSize)) return;
 			repositories = result.repositories;
 			total = result.total;
 		} catch (e) {
@@ -73,17 +73,17 @@
 	}
 
 	function goToPage(n: number) {
-		setQuery($page.url, { page: n }, { push: true, defaults: DEFAULTS });
+		setQuery(page.url, { page: n }, { push: true, defaults: DEFAULTS });
 	}
 
 	// Sort refines the view (replace); a new sort starts at page 1.
 	function handleSortChange(e: Event) {
 		const sort = (e.target as HTMLSelectElement).value;
-		setQuery($page.url, { sort, page: 1 }, { defaults: DEFAULTS });
+		setQuery(page.url, { sort, page: 1 }, { defaults: DEFAULTS });
 	}
 
 	function handleOrderChange() {
-		setQuery($page.url, { order: order === 'asc' ? 'desc' : 'asc' }, { defaults: DEFAULTS });
+		setQuery(page.url, { order: order === 'asc' ? 'desc' : 'asc' }, { defaults: DEFAULTS });
 	}
 
 	function prevPage() {

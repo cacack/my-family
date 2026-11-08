@@ -46,12 +46,9 @@ vi.mock('$lib/stores/activeBranch.svelte', () => ({
 	refreshActiveBranch: (branch: Branch) => refreshActiveBranch(branch)
 }));
 
-vi.mock('$app/stores', () => ({
-	page: {
-		subscribe: (callback: (value: { params: { id: string } }) => void) => {
-			callback({ params: { id: BRANCH_ID } });
-			return () => {};
-		}
+vi.mock('$app/state', () => ({
+	get page() {
+		return { params: { id: BRANCH_ID } };
 	}
 }));
 

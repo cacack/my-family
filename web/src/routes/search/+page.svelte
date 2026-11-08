@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { Button } from '$lib/components/ui/button';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import { Card, CardContent } from '$lib/components/ui/card';
@@ -79,7 +79,7 @@
 	// The submitted search lives in the URL (see urlState.ts): the form is a
 	// draft until submitted, and the results always match the URL, so Back from a
 	// result, reload and a copied link all show the same search again.
-	const urlSearch = $derived($page.url.search);
+	const urlSearch = $derived(page.url.search);
 	$effect(() => {
 		const search = urlSearch;
 		untrack(() => applyUrl(new URLSearchParams(search)));
@@ -172,7 +172,7 @@
 	// whole form and is navigation-level (push); re-sorting or loading more
 	// changes only those keys, keeping the submitted criteria (replace).
 	function navigate(values: QueryValues, push: boolean) {
-		const url = $page.url;
+		const url = page.url;
 		if (withQuery(url, values, DEFAULTS) === url.pathname + url.search) {
 			// Nothing changed, so no navigation: run it again as asked.
 			performSearch();

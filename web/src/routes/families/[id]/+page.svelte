@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { tick } from 'svelte';
 	import {
@@ -417,10 +417,10 @@
 	}
 
 	$effect(() => {
-		const id = $page.params.id;
+		const id = page.params.id;
 		if (id) {
 			// A create that stored the date in another form says so here (#996).
-			savedAs = $page.state.savedAs?.marriage_date;
+			savedAs = page.state.savedAs?.marriage_date;
 			loadFamily(id);
 		}
 	});
@@ -470,7 +470,7 @@
 	{#if loading}
 		<div class="loading">Loading...</div>
 	{:else if loadError}
-		<ErrorState message={loadError} onRetry={() => loadFamily($page.params.id ?? '')} />
+		<ErrorState message={loadError} onRetry={() => loadFamily(page.params.id ?? '')} />
 	{:else if family}
 		{#if actionError}
 			<ActionError message={actionError} />

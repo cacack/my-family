@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { api, type Person } from '$lib/api/client';
 	import { Button } from '$lib/components/ui/button';
 	import PageHeader from '$lib/components/PageHeader.svelte';
@@ -20,7 +20,7 @@
 	const STATUSES = ['', 'unset', ...RESEARCH_STATUS_OPTIONS.map((o) => o.value)] as const;
 	const DEFAULTS = { sort: 'surname', order: 'asc', status: '', page: 1 } as const;
 
-	const params = $derived($page.url.searchParams);
+	const params = $derived(page.url.searchParams);
 	const sort = $derived(readEnum(params, 'sort', SORTS, DEFAULTS.sort));
 	const order = $derived(readEnum(params, 'order', ['asc', 'desc'] as const, DEFAULTS.order));
 	const researchStatusFilter = $derived(readEnum(params, 'status', STATUSES, DEFAULTS.status));
@@ -43,7 +43,7 @@
 				research_status: researchStatusFilter || undefined
 			});
 			if (seq !== loadSeq) return;
-			if (clampPageToTotal($page.url, requestedPage, result.total, pageSize)) return;
+			if (clampPageToTotal(page.url, requestedPage, result.total, pageSize)) return;
 			persons = result.items;
 			total = result.total;
 		} catch (e) {
@@ -57,11 +57,11 @@
 
 	// Sort and filter refine the view (replace); a filter change starts at page 1.
 	function refine(updates: Record<string, string>) {
-		setQuery($page.url, { ...updates, page: 1 }, { defaults: DEFAULTS });
+		setQuery(page.url, { ...updates, page: 1 }, { defaults: DEFAULTS });
 	}
 
 	function goToPage(n: number) {
-		setQuery($page.url, { page: n }, { push: true, defaults: DEFAULTS });
+		setQuery(page.url, { page: n }, { push: true, defaults: DEFAULTS });
 	}
 
 	function handleSortChange(e: Event) {
@@ -69,7 +69,7 @@
 	}
 
 	function handleOrderChange() {
-		setQuery($page.url, { order: order === 'asc' ? 'desc' : 'asc' }, { defaults: DEFAULTS });
+		setQuery(page.url, { order: order === 'asc' ? 'desc' : 'asc' }, { defaults: DEFAULTS });
 	}
 
 	function handleStatusFilterChange(e: Event) {
@@ -103,8 +103,8 @@
 		{/snippet}
 	</PageHeader>
 
-	{#if $page.state.notice}
-		<p class="notice" role="status">{$page.state.notice}</p>
+	{#if page.state.notice}
+		<p class="notice" role="status">{page.state.notice}</p>
 	{/if}
 
 	<div class="toolbar">

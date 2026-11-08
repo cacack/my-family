@@ -3,17 +3,16 @@ import { render, screen, waitFor, fireEvent, within } from '@testing-library/sve
 import Page from './+page.svelte';
 import type * as apiModule from '$lib/api/client';
 import type { BranchChangeEntry, Snapshot, SnapshotComparisonResult } from '$lib/api/client';
+import { resetRouter } from '$lib/test/fakeRouter.svelte';
 
 const OLDER_ID = '11111111-1111-1111-1111-111111111111';
 const NEWER_ID = '22222222-2222-2222-2222-222222222222';
 const PERSON_ID = '99999999-9999-9999-9999-999999999999';
 const FAMILY_ID = '88888888-8888-8888-8888-888888888888';
 
-type RouteValue = { url: URL };
-
 // Hoisted so the module mocks below (which vitest lifts above the imports) can
 // close over them.
-const { compareSnapshots, compareSnapshotToCurrent, routeState, branchState } = vi.hoisted(() => ({
+const { compareSnapshots, compareSnapshotToCurrent, branchState } = vi.hoisted(() => ({
 	compareSnapshots: vi.fn(),
 	compareSnapshotToCurrent: vi.fn(),
 	branchState: {
@@ -23,12 +22,6 @@ const { compareSnapshots, compareSnapshotToCurrent, routeState, branchState } = 
 			revalidating: false,
 			notice: null
 		}
-	},
-	// A soft navigation between two comparisons reuses the component, so the
-	// route store has to be drivable rather than fixed.
-	routeState: {
-		current: { url: new URL('http://localhost/snapshots/compare') } as RouteValue,
-		subscribers: new Set<(value: RouteValue) => void>()
 	}
 }));
 
@@ -44,24 +37,14 @@ vi.mock('$lib/api/client', async (importOriginal) => {
 	};
 });
 
-vi.mock('$app/stores', () => ({
-	page: {
-		subscribe: (callback: (value: RouteValue) => void) => {
-			routeState.subscribers.add(callback);
-			callback(routeState.current);
-			return () => routeState.subscribers.delete(callback);
-		}
-	}
-}));
+// A soft navigation between two comparisons reuses the component, so the
+// route has to be drivable rather than fixed.
+vi.mock('$app/state', async () => (await import('$lib/test/fakeRouter.svelte')).appState);
 
 vi.mock('$lib/stores/activeBranch.svelte', () => branchState);
 
 function navigateTo(query: string) {
-	// A fresh object: Svelte's store bridge dedupes on identity.
-	routeState.current = { url: new URL(`http://localhost/snapshots/compare${query}`) };
-	for (const subscriber of routeState.subscribers) {
-		subscriber(routeState.current);
-	}
+	resetRouter(`/snapshots/compare${query}`);
 }
 
 const older: Snapshot = {

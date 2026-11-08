@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import {
 		api,
@@ -77,7 +77,7 @@
 	const branchLabel = $derived(activeBranch.branch?.name ?? 'the active research branch');
 
 	$effect(() => {
-		const params = $page.params as Record<string, string | undefined>;
+		const params = page.params as Record<string, string | undefined>;
 		const survivorId = params.survivorId;
 		const mergedId = params.mergedId;
 		if (survivorId && mergedId) {
@@ -299,7 +299,7 @@
 	{:else if error && !result && !(survivor && merged)}
 		<ErrorState
 			message={error}
-			onRetry={() => loadPersons($page.params.survivorId ?? '', $page.params.mergedId ?? '')}
+			onRetry={() => loadPersons(page.params.survivorId ?? '', page.params.mergedId ?? '')}
 		/>
 	{:else if result}
 		<Card class="border-green-300 bg-green-50">

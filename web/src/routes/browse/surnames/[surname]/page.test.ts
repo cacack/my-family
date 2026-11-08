@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/svelte";
 import Page from "./+page.svelte";
 import * as apiModule from "$lib/api/client";
-import { currentPath, historyLength, resetRouter } from "$lib/test/fakeRouter";
+import { currentPath, historyLength, resetRouter } from "$lib/test/fakeRouter.svelte";
 
 vi.mock("$lib/api/client", async (importOriginal) => {
   const actual = await importOriginal<typeof apiModule>();
@@ -10,12 +10,12 @@ vi.mock("$lib/api/client", async (importOriginal) => {
 });
 
 vi.mock(
-  "$app/stores",
-  async () => (await import("$lib/test/fakeRouter")).appStores,
+  "$app/state",
+  async () => (await import("$lib/test/fakeRouter.svelte")).appState,
 );
 vi.mock(
   "$app/navigation",
-  async () => (await import("$lib/test/fakeRouter")).appNavigation,
+  async () => (await import("$lib/test/fakeRouter.svelte")).appNavigation,
 );
 
 const person = {

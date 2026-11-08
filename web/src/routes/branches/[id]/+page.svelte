@@ -39,7 +39,7 @@
 	 * its own data and never holds the merge.
 	 */
 	import { tick } from 'svelte';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import {
 		api,
 		type ApiError,
@@ -156,7 +156,7 @@
 
 	// `?? ''` so the id is a plain string everywhere below; the `$effect` already
 	// treats an absent id as "nothing to load", and empty is absent.
-	const branchId = $derived($page.params.id ?? '');
+	const branchId = $derived(page.params.id ?? '');
 	const conflicts: MergeConflict[] = $derived.by(
 		() => serverConflicts ?? comparison?.conflicts ?? []
 	);

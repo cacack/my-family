@@ -25,7 +25,7 @@
 	 * change log altogether (snapshot markers, imports), so there is nothing
 	 * left to count without listing (#827).
 	 */
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { api, type ApiError, type BranchChangeEntry, type Snapshot } from '$lib/api/client';
 	import DiffView from '$lib/components/DiffView.svelte';
 	import MergedFromChip from '$lib/components/MergedFromChip.svelte';
@@ -59,11 +59,11 @@
 		reordered: boolean;
 	}
 
-	const fromId = $derived($page.url.searchParams.get('from') ?? '');
-	const toId = $derived($page.url.searchParams.get('to') ?? '');
+	const fromId = $derived(page.url.searchParams.get('from') ?? '');
+	const toId = $derived(page.url.searchParams.get('to') ?? '');
 	const toNow = $derived(toId === CURRENT_STATE);
 	/** The log position a "to now" comparison stops at; null for the head. */
-	const until = $derived(toNow ? parseComparisonEnd($page.url.searchParams.get('until')) : null);
+	const until = $derived(toNow ? parseComparisonEnd(page.url.searchParams.get('until')) : null);
 
 	let comparison = $state<ComparisonView | null>(null);
 	let loading = $state(true);

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { api, recordLoadError, type AhnentafelResponse, type AhnentafelEntry, formatGenDate, formatPersonName } from '$lib/api/client';
 	import { Button } from '$lib/components/ui/button';
 	import ActionBar from '$lib/components/ActionBar.svelte';
@@ -31,7 +31,7 @@
 	function handleGenerationsChange(e: Event) {
 		const select = e.target as HTMLSelectElement;
 		generations = parseInt(select.value, 10);
-		const personId = $page.params.id;
+		const personId = page.params.id;
 		if (personId) {
 			loadReport(personId, generations);
 		}
@@ -42,7 +42,7 @@
 	}
 
 	async function handleExportText() {
-		const personId = $page.params.id;
+		const personId = page.params.id;
 		if (!personId) return;
 
 		exporting = true;
@@ -107,7 +107,7 @@
 	}
 
 	$effect(() => {
-		const personId = $page.params.id;
+		const personId = page.params.id;
 		if (personId) {
 			loadReport(personId, generations);
 		}
@@ -150,7 +150,7 @@
 		{#if loading}
 			<div class="loading">Loading report...</div>
 		{:else if error}
-			<ErrorState message={error} onRetry={() => loadReport($page.params.id ?? '', generations)} />
+			<ErrorState message={error} onRetry={() => loadReport(page.params.id ?? '', generations)} />
 		{:else if report}
 			<div class="report">
 				<div class="report-header">

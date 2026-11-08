@@ -17,6 +17,7 @@ import type {
 	MergeBlocker,
 	MergeConflict
 } from '$lib/api/client';
+import { resetRouter } from '$lib/test/fakeRouter.svelte';
 
 const BRANCH_ID = '11111111-1111-1111-1111-111111111111';
 const PERSON_ID = '99999999-9999-9999-9999-999999999999';
@@ -34,8 +35,7 @@ const {
 	getBranchEvidenceCoverage,
 	getBranchHealth,
 	switchBranch,
-	returnToMainline,
-	routeState
+	returnToMainline
 } = vi.hoisted(() => ({
 		mockState: {
 			id: null as string | null,
@@ -51,13 +51,7 @@ const {
 		getBranchEvidenceCoverage: vi.fn(),
 		getBranchHealth: vi.fn(),
 		switchBranch: vi.fn().mockResolvedValue(undefined),
-		returnToMainline: vi.fn(),
-		// A soft navigation between two /branches/{id} entries reuses the component,
-		// so the route store has to be drivable rather than fixed.
-		routeState: {
-			current: { params: { id: '' } } as { params: { id: string } },
-			subscribers: new Set<(value: { params: { id: string } }) => void>()
-		}
+		returnToMainline: vi.fn()
 	}));
 
 vi.mock('$lib/api/client', async (importOriginal) => {
@@ -82,24 +76,13 @@ vi.mock('$lib/stores/activeBranch.svelte', () => ({
 	returnToMainline: () => returnToMainline()
 }));
 
-vi.mock('$app/stores', () => ({
-	page: {
-		subscribe: (callback: (value: { params: { id: string } }) => void) => {
-			routeState.subscribers.add(callback);
-			callback(routeState.current);
-			return () => routeState.subscribers.delete(callback);
-		}
-	}
-}));
+// A soft navigation between two /branches/{id} entries reuses the component,
+// so the route has to be drivable rather than fixed.
+vi.mock('$app/state', async () => (await import('$lib/test/fakeRouter.svelte')).appState);
 
 /** Navigate to another `/branches/{id}` without remounting the component. */
 function navigateTo(id: string) {
-	// A fresh object: Svelte's store bridge dedupes on identity, so mutating the
-	// existing one would not re-run the effect.
-	routeState.current = { params: { id } };
-	for (const subscriber of routeState.subscribers) {
-		subscriber(routeState.current);
-	}
+	resetRouter(`/branches/${id}`, { id });
 }
 
 const branch: Branch = {
@@ -247,8 +230,7 @@ describe('Branch comparison page', () => {
 		vi.clearAllMocks();
 		mockState.id = null;
 		mockState.branch = null;
-		routeState.current = { params: { id: BRANCH_ID } };
-		routeState.subscribers.clear();
+		navigateTo(BRANCH_ID);
 		compareBranch.mockResolvedValue(comparison());
 		mergeBranch.mockResolvedValue(mergeResult());
 		precheckBranchMerge.mockResolvedValue({ blockers: [] });
@@ -1306,8 +1288,7 @@ describe('Merged branch record (#832)', () => {
 		vi.clearAllMocks();
 		mockState.id = null;
 		mockState.branch = null;
-		routeState.current = { params: { id: BRANCH_ID } };
-		routeState.subscribers.clear();
+		navigateTo(BRANCH_ID);
 		precheckBranchMerge.mockResolvedValue({ blockers: [] });
 		getBranchEvidenceCoverage.mockResolvedValue(emptyCoverage);
 		getBranchHealth.mockResolvedValue(emptyHealth);
@@ -1551,8 +1532,7 @@ describe('Incomplete merge (#830)', () => {
 		vi.clearAllMocks();
 		mockState.id = null;
 		mockState.branch = null;
-		routeState.current = { params: { id: BRANCH_ID } };
-		routeState.subscribers.clear();
+		navigateTo(BRANCH_ID);
 		precheckBranchMerge.mockResolvedValue({ blockers: [] });
 	});
 
@@ -1715,8 +1695,7 @@ describe('Review checks (#838)', () => {
 		vi.clearAllMocks();
 		mockState.id = null;
 		mockState.branch = null;
-		routeState.current = { params: { id: BRANCH_ID } };
-		routeState.subscribers.clear();
+		navigateTo(BRANCH_ID);
 		compareBranch.mockResolvedValue(
 			comparison({ conflicts: [], main_changes: [], main_change_count: 0 })
 		);

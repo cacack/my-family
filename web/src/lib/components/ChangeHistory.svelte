@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { api, type ChangeEntry, type ChangeHistoryResponse } from '$lib/api/client';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
@@ -36,7 +36,7 @@
 	// replaces. An entity's own history has no filter and ignores the URL.
 	const FILTER_TYPES = ['', ...CHANGE_ENTITY_TYPES] as const;
 	const filterEntityType = $derived(
-		entityId ? '' : readEnum($page.url.searchParams, 'type', FILTER_TYPES, '')
+		entityId ? '' : readEnum(page.url.searchParams, 'type', FILTER_TYPES, '')
 	);
 
 	const PAGE_SIZE = 20;
@@ -152,7 +152,7 @@
 	}
 
 	function handleFilterChange(e: Event) {
-		setQuery($page.url, { type: (e.target as HTMLSelectElement).value });
+		setQuery(page.url, { type: (e.target as HTMLSelectElement).value });
 	}
 
 	$effect(() => {

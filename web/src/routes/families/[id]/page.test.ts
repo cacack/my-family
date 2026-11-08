@@ -33,12 +33,9 @@ vi.mock('$lib/api/client', async (importOriginal) => {
 });
 
 // Mock the page store
-vi.mock('$app/stores', () => ({
-	page: {
-		subscribe: vi.fn((callback) => {
-			callback({ params: { id: 'test-family-id' }, state: pageState });
-			return () => {};
-		})
+vi.mock('$app/state', () => ({
+	get page() {
+		return { params: { id: 'test-family-id' }, state: pageState };
 	}
 }));
 

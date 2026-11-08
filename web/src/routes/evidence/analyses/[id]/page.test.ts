@@ -22,12 +22,9 @@ vi.mock('$lib/api/client', async (importOriginal) => {
 });
 
 // Mock the page store with configurable params
-vi.mock('$app/stores', () => ({
-	page: {
-		subscribe: vi.fn((callback: (value: unknown) => void) => {
-			callback({ params: mockPageParams, url: mockPageUrl });
-			return () => {};
-		})
+vi.mock('$app/state', () => ({
+	get page() {
+		return { params: mockPageParams, url: mockPageUrl };
 	}
 }));
 

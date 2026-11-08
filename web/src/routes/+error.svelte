@@ -1,8 +1,8 @@
 <script lang="ts">
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { Button } from '$lib/components/ui/button';
 
-	const notFound = $derived($page.status === 404);
+	const notFound = $derived(page.status === 404);
 </script>
 
 <svelte:head>
@@ -10,13 +10,13 @@
 </svelte:head>
 
 <div class="error-page">
-	<p class="status">{$page.status}</p>
+	<p class="status">{page.status}</p>
 	<h1>{notFound ? 'Page not found' : 'Something went wrong'}</h1>
 	<p class="message">
 		{#if notFound}
 			There is no page at this address. It may have been moved, or the link may be wrong.
 		{:else}
-			{$page.error?.message || 'An unexpected error occurred.'}
+			{page.error?.message || 'An unexpected error occurred.'}
 		{/if}
 	</p>
 	<Button href="/">Go to the dashboard</Button>

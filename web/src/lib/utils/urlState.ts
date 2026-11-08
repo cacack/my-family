@@ -1,7 +1,7 @@
 /**
  * Page state kept in URL search params, so reload, Back and a copied link all
  * restore the view. The URL is the single source of truth: a page derives its
- * state from `$page.url` and changes it only through `setQuery`.
+ * state from `page.url` (`$app/state`) and changes it only through `setQuery`.
  *
  * History rule: `push` for navigation-level changes the user may want to step
  * back through (a list page, a tab, a submitted search); replace for refining
@@ -12,12 +12,16 @@ import { goto } from '$app/navigation';
 export type QueryValue = string | number | boolean | null | undefined;
 export type QueryValues = Record<string, QueryValue>;
 
+/** What these helpers read from a URL; `page.url` from `$app/state` is a read-only `URL`. */
+type UrlLike = Pick<URL, 'pathname' | 'search'>;
+type ParamsLike = Pick<URLSearchParams, 'get'>;
+
 /**
  * The `pathname?search` of `url` with `updates` applied. A value that is empty,
  * `false`, `null`/`undefined` or equal to its entry in `defaults` is removed,
  * so a view in its default state has a clean URL. `true` is written as `1`.
  */
-export function withQuery(url: URL, updates: QueryValues, defaults: QueryValues = {}): string {
+export function withQuery(url: UrlLike, updates: QueryValues, defaults: QueryValues = {}): string {
 	const params = new URLSearchParams(url.search);
 	for (const [key, value] of Object.entries(updates)) {
 		if (value === null || value === undefined || value === '' || value === false || value === defaults[key]) {
@@ -32,20 +36,19 @@ export function withQuery(url: URL, updates: QueryValues, defaults: QueryValues 
 
 /** Applies `updates` to the current URL; see `withQuery` and the history rule above. */
 export function setQuery(
-	url: URL,
+	url: UrlLike,
 	updates: QueryValues,
 	{ push = false, defaults = {} }: { push?: boolean; defaults?: QueryValues } = {}
 ): Promise<void> {
 	return goto(withQuery(url, updates, defaults), {
-		replaceState: !push,
-		keepFocus: true,
-		noScroll: true
+		replace: !push,
+		reset: false
 	});
 }
 
 /** `params[key]` when it is one of `allowed`, else `fallback` (a hand-edited URL never breaks the page). */
 export function readEnum<T extends string>(
-	params: URLSearchParams,
+	params: ParamsLike,
 	key: string,
 	allowed: readonly T[],
 	fallback: T
@@ -56,7 +59,7 @@ export function readEnum<T extends string>(
 
 /** `params[key]` as a positive integer capped at `max`, else `fallback`. */
 export function readPositiveInt(
-	params: URLSearchParams,
+	params: ParamsLike,
 	key: string,
 	fallback: number,
 	max = Number.MAX_SAFE_INTEGER
@@ -72,7 +75,7 @@ export function readPositiveInt(
  * it replaces; the URL change reloads the list. Returns true when it moved, so
  * the caller drops the result it just loaded.
  */
-export function clampPageToTotal(url: URL, requested: number, total: number, pageSize: number): boolean {
+export function clampPageToTotal(url: UrlLike, requested: number, total: number, pageSize: number): boolean {
 	const lastPage = Math.max(1, Math.ceil(total / pageSize));
 	if (requested <= lastPage) return false;
 	setQuery(url, { page: lastPage === 1 ? null : lastPage });
@@ -80,7 +83,7 @@ export function clampPageToTotal(url: URL, requested: number, total: number, pag
 }
 
 /** `params[key]` as a flag: present and not `0`/`false` (`withQuery` writes `1` or omits it). */
-export function readFlag(params: URLSearchParams, key: string): boolean {
+export function readFlag(params: ParamsLike, key: string): boolean {
 	const value = params.get(key);
 	return value !== null && value !== '0' && value !== 'false';
 }
@@ -93,7 +96,7 @@ export const CHART_DEFAULTS = { gens: 4, layout: 'compact' } as const satisfies 
 	layout: (typeof CHART_LAYOUTS)[number];
 };
 
-export function readChartOptions(params: URLSearchParams): {
+export function readChartOptions(params: ParamsLike): {
 	generations: number;
 	layout: (typeof CHART_LAYOUTS)[number];
 } {
