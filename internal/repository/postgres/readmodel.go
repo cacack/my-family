@@ -785,12 +785,12 @@ func (s *ReadModelStore) migratePersonFullName() {
 // multilineTextColumns hold values gedcom-go v3.3.0 folds from CONT/CONC
 // lines (#875), so they carry no length cap, matching SQLite's TEXT. Databases
 // created before that have them as length-capped VARCHARs.
-var multilineTextColumns = []struct{ table, column string }{
-	{"sources", "title"},
-	{"sources", "author"},
-	{"sources", "publisher"},
-	{"citations", "source_title"},
-	{"citations", "page"},
+var multilineTextColumns = []struct{ table, column, widen string }{
+	{"sources", "title", `ALTER TABLE sources ALTER COLUMN title TYPE TEXT`},
+	{"sources", "author", `ALTER TABLE sources ALTER COLUMN author TYPE TEXT`},
+	{"sources", "publisher", `ALTER TABLE sources ALTER COLUMN publisher TYPE TEXT`},
+	{"citations", "source_title", `ALTER TABLE citations ALTER COLUMN source_title TYPE TEXT`},
+	{"citations", "page", `ALTER TABLE citations ALTER COLUMN page TYPE TEXT`},
 }
 
 // migrateMultilineTextColumns widens each multilineTextColumns VARCHAR to TEXT.
@@ -811,8 +811,7 @@ func (s *ReadModelStore) migrateMultilineTextColumns() {
 		if dataType != "character varying" {
 			continue
 		}
-		if _, err := s.db.Exec(`ALTER TABLE ` + pq.QuoteIdentifier(c.table) +
-			` ALTER COLUMN ` + pq.QuoteIdentifier(c.column) + ` TYPE TEXT`); err != nil {
+		if _, err := s.db.Exec(c.widen); err != nil {
 			slog.Warn("read model migration: cannot widen column to TEXT; long multi-line values fail to project (#875)",
 				"table", c.table, "column", c.column, "error", err)
 		}
