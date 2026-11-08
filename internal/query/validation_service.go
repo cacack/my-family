@@ -480,13 +480,18 @@ func (s *ValidationService) personToIndividual(person repository.PersonReadModel
 // v3 counts such years astronomically in YearsBetween and Compare, so there
 // is no year 0 and 10 BC to AD 10 is 19 years, not 20; 1 BC is checked like
 // any other year.
+//
+// An ABT, CAL or EST qualifier is carried as the Modifier, which caps the
+// validator's date-ordering checks at a warning (gedcom-go#632). Range
+// qualifiers are not: the validator would also need their end dates, so they
+// are checked by their first date, as before.
 func validatorDate(raw string) *gedcom.Date {
 	gd := domain.ParseGenDate(raw)
 	if gd.Year == nil {
 		return nil
 	}
 	year := *gd.Year
-	date := &gedcom.Date{Original: raw, Year: year}
+	date := &gedcom.Date{Original: raw, Year: year, Modifier: approximateModifiers[gd.Qualifier]}
 	if year < 0 {
 		date.Year, date.IsBC = -year, true
 	}
@@ -497,6 +502,14 @@ func validatorDate(raw string) *gedcom.Date {
 		date.Day = *gd.Day
 	}
 	return date
+}
+
+// approximateModifiers maps the approximate date qualifiers to their gedcom-go
+// modifier; any other qualifier maps to the zero value, ModifierNone.
+var approximateModifiers = map[domain.DateQualifier]gedcom.DateModifier{
+	domain.DateAbout: gedcom.ModifierAbout,
+	domain.DateCalc:  gedcom.ModifierCalculated,
+	domain.DateEst:   gedcom.ModifierEstimated,
 }
 
 // familyToGedcomFamily converts a FamilyReadModel to a gedcom.Family.
