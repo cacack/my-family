@@ -396,6 +396,63 @@ func TestCSVExporter_EscapesFormulaCells(t *testing.T) {
 	}
 }
 
+// TestCSVExporter_EscapesFormulaCells_AllEntityTypes verifies that every CSV
+// writer, not only persons, escapes formula-leading free-text cells (#1126).
+func TestCSVExporter_EscapesFormulaCells_AllEntityTypes(t *testing.T) {
+	const payload = "=HYPERLINK(\"http://x\")"
+	ctx := context.Background()
+	tests := []struct {
+		name       string
+		entityType exporter.EntityType
+		field      string
+		seed       func(t *testing.T, store *memory.ReadModelStore)
+	}{
+		{"families", exporter.EntityTypeFamilies, "marriage_place", func(t *testing.T, store *memory.ReadModelStore) {
+			f := createTestFamily(t, store, nil, nil)
+			f.MarriagePlace = payload
+			require.NoError(t, store.SaveFamily(ctx, domain.MainBranchID, &f))
+		}},
+		{"sources", exporter.EntityTypeSources, "title", func(t *testing.T, store *memory.ReadModelStore) {
+			_ = createTestSource(t, store, payload, "Author")
+		}},
+		{"citations", exporter.EntityTypeCitations, "quoted_text", func(t *testing.T, store *memory.ReadModelStore) {
+			s := createTestSource(t, store, "Title", "Author")
+			c := createTestCitation(t, store, &s, uuid.New())
+			c.QuotedText = payload
+			require.NoError(t, store.SaveCitation(ctx, domain.MainBranchID, &c))
+		}},
+		{"events", exporter.EntityTypeEvents, "description", func(t *testing.T, store *memory.ReadModelStore) {
+			e := createTestEvent(t, store, "person", uuid.New())
+			e.Description = payload
+			require.NoError(t, store.SaveEvent(ctx, domain.MainBranchID, &e))
+		}},
+		{"attributes", exporter.EntityTypeAttributes, "value", func(t *testing.T, store *memory.ReadModelStore) {
+			a := createTestAttribute(t, store, uuid.New())
+			a.Value = payload
+			require.NoError(t, store.SaveAttribute(ctx, domain.MainBranchID, &a))
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store := setupTestStore(t)
+			tt.seed(t, store)
+
+			var buf bytes.Buffer
+			_, err := exporter.NewDataExporter(store).Export(ctx, &buf, exporter.ExportOptions{
+				Format:     exporter.FormatCSV,
+				EntityType: tt.entityType,
+				Fields:     []string{tt.field},
+			})
+			require.NoError(t, err)
+
+			records, err := csv.NewReader(strings.NewReader(buf.String())).ReadAll()
+			require.NoError(t, err)
+			require.Len(t, records, 2)
+			assert.Equal(t, "'"+payload, records[1][0])
+		})
+	}
+}
+
 func TestCSVExporter_ExportPersons_InvalidField(t *testing.T) {
 	store := setupTestStore(t)
 	exp := exporter.NewDataExporter(store)
