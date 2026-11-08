@@ -3,6 +3,7 @@ package gedcom_test
 import (
 	"bytes"
 	"context"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -3766,6 +3767,61 @@ func TestExport_SpacedXrefDowngrade(t *testing.T) {
 
 	if _, err := exporter.PreviewConversion(ctx, gcgedcom.Version551); err != nil {
 		t.Errorf("PreviewConversion failed: %v", err)
+	}
+}
+
+func TestExport_SpacedXrefMultipleNotePointers(t *testing.T) {
+	// The importer joins a record's NOTE values with "\n\n", so a 5.5.1 person
+	// with two spaced note pointers stores "@N 1@\n\n@N 2@". Both notes export
+	// under generated xrefs, so both pointers must follow them (#875).
+	readStore := memory.NewReadModelStore()
+	ctx := context.Background()
+	for i, xref := range []string{"@N 1@", "@N 2@"} {
+		if err := readStore.SaveNote(ctx, domain.MainBranchID, &repository.NoteReadModel{
+			ID: uuid.New(), Text: "Note " + strconv.Itoa(i+1), GedcomXref: xref,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
+		ID: uuid.New(), GivenName: "Ann", Surname: "Smith", Notes: "@N 1@\n\n@N 2@",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, version := range []gcgedcom.Version{gcgedcom.Version551, gcgedcom.Version70} {
+		t.Run(string(version), func(t *testing.T) {
+			buf := &bytes.Buffer{}
+			if _, err := gedcom.NewExporter(readStore).ExportWithOptions(ctx, buf, gedcom.ExportOptions{TargetVersion: version}); err != nil {
+				t.Fatalf("Export failed: %v", err)
+			}
+			output := buf.String()
+			if strings.Contains(output, "@N 1@") || strings.Contains(output, "@N 2@") {
+				t.Errorf("export must not point at a spaced xref; got:\n%s", output)
+			}
+			xrefs := map[string]bool{}
+			for _, line := range strings.Split(output, "\n") {
+				if strings.HasPrefix(line, "0 @N") {
+					xrefs[strings.Fields(line)[1]] = true
+				}
+			}
+			if len(xrefs) != 2 {
+				t.Fatalf("export should hold two note records; got:\n%s", output)
+			}
+			// The person's notes keep their stored shape (one NOTE, the second
+			// pointer on a CONT line), each now naming an exported note record.
+			var refs []string
+			for _, line := range strings.Split(output, "\n") {
+				if v, ok := strings.CutPrefix(line, "1 NOTE "); ok {
+					refs = append(refs, v)
+				} else if v, ok := strings.CutPrefix(line, "2 CONT @"); ok {
+					refs = append(refs, "@"+v)
+				}
+			}
+			if len(refs) != 2 || refs[0] == refs[1] || !xrefs[refs[0]] || !xrefs[refs[1]] {
+				t.Errorf("person note pointers = %q, want the two exported note xrefs %v; got:\n%s", refs, xrefs, output)
+			}
+		})
 	}
 }
 

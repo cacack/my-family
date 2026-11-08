@@ -17,6 +17,9 @@ import (
 	"github.com/cacack/my-family/internal/domain"
 )
 
+// noteJoin separates a record's several NOTE values in its single Notes field.
+const noteJoin = "\n\n"
+
 // ImportResult contains the results of a GEDCOM import operation.
 type ImportResult struct {
 	PersonsImported       int
@@ -643,7 +646,7 @@ func parseIndividual(indi *gedcom.Individual, _ *gedcom.Document, result *Import
 		}
 	}
 	if len(notes) > 0 {
-		person.Notes = strings.Join(notes, "\n\n")
+		person.Notes = strings.Join(notes, noteJoin)
 	}
 
 	// Extract FamilySearch Family Tree ID (vendor extension)
@@ -838,7 +841,7 @@ func parseSource(src *gedcom.Source, result *ImportResult) SourceData {
 		}
 	}
 	if len(notes) > 0 {
-		source.Notes = strings.Join(notes, "\n\n")
+		source.Notes = strings.Join(notes, noteJoin)
 	}
 
 	// Default source type to "other" if not specified
@@ -900,7 +903,7 @@ func parseRepository(repo *gedcom.Repository, _ *ImportResult) RepositoryData {
 		}
 	}
 	if len(notes) > 0 {
-		repository.Notes = strings.Join(notes, "\n\n")
+		repository.Notes = strings.Join(notes, noteJoin)
 	}
 
 	// Extract GEDCOM 7.0 external identifiers (EXID)

@@ -179,11 +179,16 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 		}
 		return xref
 	}
+	// remapXref remaps each noteJoin-separated part of v: one Notes value can
+	// hold several NOTE pointers.
 	remapXref := func(v string) string {
-		if xref, ok := replacedXrefs[v]; ok {
-			return xref
+		parts := strings.Split(v, noteJoin)
+		for i, part := range parts {
+			if xref, ok := replacedXrefs[part]; ok {
+				parts[i] = xref
+			}
 		}
-		return v
+		return strings.Join(parts, noteJoin)
 	}
 
 	// Sort persons by ID for stable output
