@@ -29,4 +29,8 @@ jobs:
         uses: peter-evans/rebase@e4945786f7ca41fe6e101cead4395f5489593943 # v4
         with:
           token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
-          exclude: dependabot/**
+          # Dependabot rebases its own PRs (label: dependencies); any PR can
+          # opt out with no-auto-rebase.
+          exclude-labels: |
+            dependencies
+            no-auto-rebase
