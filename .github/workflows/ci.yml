@@ -289,6 +289,10 @@ jobs:
   e2e:
     name: E2E Tests
     runs-on: ubuntu-latest
+    # A green run takes ~7 minutes; fail a hung runner fast instead of at the 6h default.
+    # Playwright's globalTimeout (web/playwright.config.ts) fires first, at 15m, so a
+    # hung suite still uploads its report; this catches everything else.
+    timeout-minutes: 20
 
     steps:
       - name: Harden Runner
