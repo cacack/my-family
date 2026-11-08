@@ -2,7 +2,7 @@ import '@testing-library/svelte/vitest';
 import { cleanup } from '@testing-library/svelte';
 import { afterEach, vi } from 'vitest';
 
-// Drain bits-ui's deferred body-scroll-lock cleanup before vitest tears jsdom down.
+// Drain bits-ui's deferred body-scroll-lock cleanup before vitest tears jsdom down (#741).
 //
 // Unmounting a scroll-locking bits-ui component (dropdown, dialog, popover) does not
 // restore document.body immediately — it schedules the reset on a timer, 24ms by
