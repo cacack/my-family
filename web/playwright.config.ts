@@ -66,6 +66,14 @@ export default defineConfig({
 	retries: 0,
 	forbidOnly: !!process.env.CI,
 
+	/**
+	 * In CI, cap the whole run below the job's `timeout-minutes: 20` (ci.yml).
+	 * The suite takes ~5 minutes; a hang then fails here, inside the job, so the
+	 * `if: failure()` step can still upload the report. A job timeout cancels
+	 * the job before that step runs. Locally there is no cap.
+	 */
+	globalTimeout: process.env.CI ? 15 * 60_000 : 0,
+
 	reporter: process.env.CI
 		? [['list'], ['html', { open: 'never' }]]
 		: [['list']],
