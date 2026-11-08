@@ -19,23 +19,5 @@
 
   // Review quarterly, in step with osv-scanner.toml. Remove entries as soon as
   // upstreams publish fixes on the versions we actually resolve to.
-  "allowlist": [
-    {
-      "GHSA-29g2-3rmr-qm68": {
-        "active": true,
-        // SvelteKit ReDoS (O(n^2)) in content negotiation, reachable only by
-        // sending an `Accept` header to the SvelteKit *server*. This project
-        // builds the app as a static SPA that is embedded in the Go binary and
-        // served by Go, so no SvelteKit server ever runs — the same
-        // reachability argument osv-scanner.toml records for GHSA-pxg6-pf52-xh8x.
-        //
-        // No fix exists to take: the advisory covers `<=2.70.2` and 2.70.2 is
-        // the latest published release. Every other package the audit flagged
-        // through @sveltejs/kit is resolved by overrides; this one cannot be.
-        // Drop this entry when a fixed SvelteKit ships, which Dependabot tracks.
-        "notes": "Unpatched upstream (<=2.70.2 is latest). SvelteKit server never runs: app ships as a static SPA embedded in the Go binary. Re-check when a fixed release lands.",
-        "expiry": "9 November 2026"
-      }
-    }
-  ]
+  "allowlist": []
 }

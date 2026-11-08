@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/svelte';
 import SearchPage from './+page.svelte';
 import * as apiModule from '$lib/api/client';
-import { back, currentPath, historyLength, resetRouter } from '$lib/test/fakeRouter';
+import { back, currentPath, historyLength, resetRouter } from '$lib/test/fakeRouter.svelte';
 
 // Mock the API module
 vi.mock('$lib/api/client', async (importOriginal) => {
@@ -57,8 +57,8 @@ const mockPlaces: apiModule.PlaceIndexResponse = {
 	total: 3
 };
 
-vi.mock('$app/stores', async () => (await import('$lib/test/fakeRouter')).appStores);
-vi.mock('$app/navigation', async () => (await import('$lib/test/fakeRouter')).appNavigation);
+vi.mock('$app/state', async () => (await import('$lib/test/fakeRouter.svelte')).appState);
+vi.mock('$app/navigation', async () => (await import('$lib/test/fakeRouter.svelte')).appNavigation);
 
 describe('Advanced Search Page', () => {
 	beforeEach(() => {

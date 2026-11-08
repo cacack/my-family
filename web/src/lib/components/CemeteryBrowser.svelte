@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { api, type CemeteryEntry } from '$lib/api/client';
 	import { setQuery } from '$lib/utils/urlState';
 	import ErrorState from './ErrorState.svelte';
@@ -11,10 +11,10 @@
 	// so reload, Back to this page and a copied link restore the filter. The
 	// box is not re-read from the URL while typing, so no keystroke is lost.
 	// The filter refines the view, so it replaces.
-	let searchQuery = $state($page.url.searchParams.get('q') ?? '');
+	let searchQuery = $state(page.url.searchParams.get('q') ?? '');
 
 	function handleFilterInput() {
-		setQuery($page.url, { q: searchQuery });
+		setQuery(page.url, { q: searchQuery });
 	}
 
 	let filteredEntries = $derived(

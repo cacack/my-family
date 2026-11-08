@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { api, type BrickWallEntry } from '$lib/api/client';
 	import { Badge } from '$lib/components/ui/badge';
 	import PageHeader from '$lib/components/PageHeader.svelte';
@@ -15,7 +15,7 @@
 	let error: string | null = $state(null);
 	// The resolved filter lives in the URL (see urlState.ts), so Back, reload
 	// and a copied link keep it. It refines the view, so it replaces.
-	const includeResolved = $derived(readFlag($page.url.searchParams, 'resolved'));
+	const includeResolved = $derived(readFlag(page.url.searchParams, 'resolved'));
 
 	// Back/Forward can start loads faster than they finish: only the latest one may land.
 	let loadSeq = 0;
@@ -44,7 +44,7 @@
 	});
 
 	function toggleResolved() {
-		setQuery($page.url, { resolved: !includeResolved });
+		setQuery(page.url, { resolved: !includeResolved });
 	}
 
 	function formatRelativeTime(dateStr: string): string {

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import {
 		api,
@@ -205,9 +205,9 @@
 	}
 
 	$effect(() => {
-		const id = $page.params.id;
+		const id = page.params.id;
 		// Track subjectId so navigating ?subjectId=A → ?subjectId=B re-prefills
-		const subjectId = $page.url?.searchParams?.get('subjectId');
+		const subjectId = page.url?.searchParams?.get('subjectId');
 		if (id) {
 			untrack(() => loadLog(id, subjectId ?? undefined));
 		}
@@ -236,7 +236,7 @@
 	{#if loading}
 		<div class="p-12 text-center text-muted-foreground">Loading...</div>
 	{:else if error && !log && !isNew}
-		<ErrorState message={error} onRetry={() => loadLog($page.params.id!)} />
+		<ErrorState message={error} onRetry={() => loadLog(page.params.id!)} />
 	{:else if editing}
 		<form
 			class="rounded-xl border border-slate-200 bg-white p-6"

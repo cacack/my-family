@@ -49,8 +49,14 @@ for (const width of [375, 1280]) {
 
 		test.beforeEach(async ({ page }) => {
 			await page.goto('/');
-			await page.locator('body').press('?');
-			await expect(page.getByRole('dialog', { name: 'Keyboard Shortcuts' })).toBeVisible();
+			// `goto` resolves on `load`, which can come before hydration attaches the
+			// shortcut listener, so a single early `?` may go unheard. `?` toggles the
+			// dialog, so only press again while it is still closed.
+			const dialog = page.getByRole('dialog', { name: 'Keyboard Shortcuts' });
+			await expect(async () => {
+				if (!(await dialog.isVisible())) await page.locator('body').press('?');
+				await expect(dialog).toBeVisible({ timeout: 500 });
+			}).toPass();
 		});
 
 		test('has no scrollable-region-focusable violation', async ({ page }) => {

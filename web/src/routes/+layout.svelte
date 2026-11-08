@@ -3,7 +3,7 @@
 	import favicon from '$lib/assets/favicon.svg';
 	import logoMark from '$lib/assets/favicon.svg?raw';
 	import { goto } from '$app/navigation';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import SearchBox from '$lib/components/SearchBox.svelte';
 	import KeyboardHelp from '$lib/components/KeyboardHelp.svelte';
 	import AccessibilityPanel from '$lib/components/AccessibilityPanel.svelte';
@@ -35,7 +35,7 @@
 
 	// Chart pages fill the viewport under the header instead of growing with content
 	const FULL_HEIGHT_ROUTES = new Set(['/pedigree/[id]', '/descendancy/[id]']);
-	const fullHeight = $derived(FULL_HEIGHT_ROUTES.has($page.route.id ?? ''));
+	const fullHeight = $derived(FULL_HEIGHT_ROUTES.has(page.route.id ?? ''));
 
 	// Component refs
 	let searchBoxRef: SearchBox | undefined = $state();
@@ -97,7 +97,7 @@
 			<span class="logo-mark">{@html logoMark}</span>
 			<span class="logo-text">My Family</span>
 		</a>
-		<MainNav pathname={$page.url.pathname} />
+		<MainNav pathname={page.url.pathname} />
 		<div class="header-controls">
 			<BranchSwitcher />
 			<div class="search-wrapper">
@@ -109,8 +109,8 @@
 				href="/search"
 				class="icon-btn"
 				data-slot="action-link"
-				class:active={$page.url.pathname === '/search'}
-				aria-current={$page.url.pathname === '/search' ? 'page' : undefined}
+				class:active={page.url.pathname === '/search'}
+				aria-current={page.url.pathname === '/search' ? 'page' : undefined}
 				aria-label="Advanced search"
 				title="Advanced search"
 			>

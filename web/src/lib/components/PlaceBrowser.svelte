@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { api, type PlaceEntry } from '$lib/api/client';
 	import { setQuery } from '$lib/utils/urlState';
 	import ErrorState from './ErrorState.svelte';
@@ -11,7 +11,7 @@
 
 	// The place being browsed lives in the URL (see urlState.ts), so Back,
 	// reload and a copied link return to it. Drilling in is navigation, so it pushes.
-	const currentParent = $derived($page.url.searchParams.get('parent') ?? '');
+	const currentParent = $derived(page.url.searchParams.get('parent') ?? '');
 
 	// Back/Forward can start loads faster than they finish: only the latest one may land.
 	let loadSeq = 0;
@@ -36,7 +36,7 @@
 	}
 
 	function browse(parent: string) {
-		setQuery($page.url, { parent }, { push: true });
+		setQuery(page.url, { parent }, { push: true });
 	}
 
 	function navigateToPlace(place: PlaceEntry) {

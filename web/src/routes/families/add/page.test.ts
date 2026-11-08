@@ -17,12 +17,9 @@ vi.mock('$lib/api/client', async (importOriginal) => {
 	return { ...actual, api: { createFamily, addChildToFamily, getPerson, searchPersons } };
 });
 
-vi.mock('$app/stores', () => ({
-	page: {
-		subscribe: (callback: (value: { url: URL; params: Record<string, string> }) => void) => {
-			callback({ url: new URL(`http://localhost/families/add${pageState.search}`), params: {} });
-			return () => {};
-		}
+vi.mock('$app/state', () => ({
+	get page() {
+		return { url: new URL(`http://localhost/families/add${pageState.search}`), params: {} };
 	}
 }));
 

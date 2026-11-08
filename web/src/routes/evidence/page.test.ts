@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import Page from './+page.svelte';
 import * as apiModule from '$lib/api/client';
-import { back, currentPath, historyLength, resetRouter } from '$lib/test/fakeRouter';
+import { back, currentPath, historyLength, resetRouter } from '$lib/test/fakeRouter.svelte';
 
 // Mock the API module
 vi.mock('$lib/api/client', async (importOriginal) => {
@@ -48,8 +48,8 @@ const emptyConflicts: apiModule.EvidenceConflictListResponse = { conflicts: [], 
 const emptyLogs: apiModule.ResearchLogListResponse = { logs: [], total: 0 };
 const emptySummaries: apiModule.ProofSummaryListResponse = { summaries: [], total: 0 };
 
-vi.mock('$app/stores', async () => (await import('$lib/test/fakeRouter')).appStores);
-vi.mock('$app/navigation', async () => (await import('$lib/test/fakeRouter')).appNavigation);
+vi.mock('$app/state', async () => (await import('$lib/test/fakeRouter.svelte')).appState);
+vi.mock('$app/navigation', async () => (await import('$lib/test/fakeRouter.svelte')).appNavigation);
 
 describe('Evidence Hub Page', () => {
 	beforeEach(() => {

@@ -33,18 +33,16 @@ describe('setQuery', () => {
 	it('replaces by default, keeping focus and scroll', async () => {
 		await setQuery(url('/persons'), { sort: 'birth_date' });
 		expect(goto).toHaveBeenCalledWith('/persons?sort=birth_date', {
-			replaceState: true,
-			keepFocus: true,
-			noScroll: true
+			replace: true,
+			reset: false
 		});
 	});
 
 	it('pushes when asked, applying defaults', async () => {
 		await setQuery(url('/persons?page=2'), { page: 1 }, { push: true, defaults: { page: 1 } });
 		expect(goto).toHaveBeenCalledWith('/persons', {
-			replaceState: false,
-			keepFocus: true,
-			noScroll: true
+			replace: false,
+			reset: false
 		});
 	});
 });
@@ -58,7 +56,7 @@ describe('clampPageToTotal', () => {
 		['drops the page param when there are no items', '/persons?page=2', 2, 0, '/persons']
 	])('%s, replacing the URL', (_name, from, requested, total, want) => {
 		expect(clampPageToTotal(url(from), requested, total, 20)).toBe(true);
-		expect(goto).toHaveBeenCalledWith(want, { replaceState: true, keepFocus: true, noScroll: true });
+		expect(goto).toHaveBeenCalledWith(want, { replace: true, reset: false });
 	});
 
 	it.each([

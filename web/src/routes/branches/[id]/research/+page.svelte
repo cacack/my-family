@@ -8,7 +8,7 @@
 	 * A closed branch's research logs can be copied to the mainline from here,
 	 * as the close dialog offers; copying again is safe.
 	 */
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import {
 		api,
 		type ApiError,
@@ -39,7 +39,7 @@
 	let promotion: PromoteResearchLogsResult | null = $state(null);
 	let promoteError: string | null = $state(null);
 
-	const branchId = $derived($page.params.id ?? '');
+	const branchId = $derived(page.params.id ?? '');
 	const closed = $derived.by(() => branch?.status === 'archived');
 	const promotable = $derived.by(
 		() => closed && (archive?.research_logs ?? []).some((entry) => entry.created_on_branch)

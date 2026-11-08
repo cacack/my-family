@@ -92,12 +92,9 @@ vi.mock('$lib/stores/activeBranch.svelte', () => ({
 	activeBranch: branchState
 }));
 
-vi.mock('$app/stores', () => ({
-	page: {
-		subscribe: (callback: (value: { params: { id: string }; state: App.PageState }) => void) => {
-			callback({ params: { id: PERSON_ID }, state: pageState });
-			return () => {};
-		}
+vi.mock('$app/state', () => ({
+	get page() {
+		return { params: { id: PERSON_ID }, state: pageState };
 	}
 }));
 

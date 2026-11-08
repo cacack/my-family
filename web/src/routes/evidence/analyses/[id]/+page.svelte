@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import {
 		api,
@@ -245,11 +245,11 @@
 	}
 
 	$effect(() => {
-		const id = $page.params.id;
+		const id = page.params.id;
 		// Track subjectId (and factType) so navigating ?subjectId=A → ?subjectId=B re-prefills
-		const subjectId = $page.url?.searchParams?.get('subjectId');
-		const factType = $page.url?.searchParams?.get('factType');
-		const subjectType = $page.url?.searchParams?.get('subjectType');
+		const subjectId = page.url?.searchParams?.get('subjectId');
+		const factType = page.url?.searchParams?.get('factType');
+		const subjectType = page.url?.searchParams?.get('subjectType');
 		if (id) {
 			untrack(() =>
 				loadAnalysis(id, subjectId ?? undefined, factType ?? undefined, subjectType ?? undefined)
@@ -280,7 +280,7 @@
 	{#if loading}
 		<div class="p-12 text-center text-muted-foreground">Loading...</div>
 	{:else if error && !analysis && !isNew}
-		<ErrorState message={error} onRetry={() => loadAnalysis($page.params.id!)} />
+		<ErrorState message={error} onRetry={() => loadAnalysis(page.params.id!)} />
 	{:else if editing}
 		<form
 			class="rounded-xl border border-slate-200 bg-white p-6"

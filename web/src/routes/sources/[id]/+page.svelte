@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { api, isVersionConflict, recordLoadError, type SourceDetail, type SourceType, type Citation } from '$lib/api/client';
 	import ExternalLinks from '$lib/components/ExternalLinks.svelte';
@@ -196,7 +196,7 @@
 	}
 
 	$effect(() => {
-		const id = $page.params.id;
+		const id = page.params.id;
 		if (id) {
 			loadSource(id);
 		}
@@ -225,7 +225,7 @@
 	{#if loading}
 		<div class="loading">Loading...</div>
 	{:else if error && !source}
-		<ErrorState message={error} onRetry={() => loadSource($page.params.id ?? '')} />
+		<ErrorState message={error} onRetry={() => loadSource(page.params.id ?? '')} />
 	{:else if source}
 		<!-- In the form, the error shows in it; out of it, a failed delete shows here. -->
 		{#if error && !editing}

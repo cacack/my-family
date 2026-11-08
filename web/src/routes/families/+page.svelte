@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { api, type FamilyDetail } from '$lib/api/client';
 	import { Button } from '$lib/components/ui/button';
 	import PageHeader from '$lib/components/PageHeader.svelte';
@@ -13,7 +13,7 @@
 	let loadError: string | null = $state(null);
 	const pageSize = 20;
 	// The page lives in the URL (see urlState.ts), so Back and reload restore it.
-	const currentPage = $derived(readPositiveInt($page.url.searchParams, 'page', 1));
+	const currentPage = $derived(readPositiveInt(page.url.searchParams, 'page', 1));
 
 	// Back/Forward can start loads faster than they finish: only the latest one may land.
 	let loadSeq = 0;
@@ -29,7 +29,7 @@
 				offset: (requestedPage - 1) * pageSize
 			});
 			if (seq !== loadSeq) return;
-			if (clampPageToTotal($page.url, requestedPage, result.total, pageSize)) return;
+			if (clampPageToTotal(page.url, requestedPage, result.total, pageSize)) return;
 			families = result.items;
 			total = result.total;
 		} catch (e) {
@@ -42,7 +42,7 @@
 	}
 
 	function goToPage(n: number) {
-		setQuery($page.url, { page: n }, { push: true, defaults: { page: 1 } });
+		setQuery(page.url, { page: n }, { push: true, defaults: { page: 1 } });
 	}
 
 	function prevPage() {

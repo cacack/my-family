@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { api, recordLoadError, type FamilyGroupSheet } from '$lib/api/client';
 	import { Button } from '$lib/components/ui/button';
 	import ActionBar from '$lib/components/ActionBar.svelte';
@@ -40,7 +40,7 @@
 	}
 
 	$effect(() => {
-		const id = $page.params.id;
+		const id = page.params.id;
 		if (id) {
 			loadGroupSheet(id);
 		}
@@ -52,7 +52,7 @@
 </svelte:head>
 
 <div class="group-sheet-page">
-	<ActionBar back={{ href: `/families/${$page.params.id}`, label: 'Back to Family' }}>
+	<ActionBar back={{ href: `/families/${page.params.id}`, label: 'Back to Family' }}>
 		{#snippet actions()}
 			<Button onclick={handlePrint}>Print</Button>
 		{/snippet}
@@ -61,7 +61,7 @@
 	{#if loading}
 		<div class="loading">Loading family group sheet...</div>
 	{:else if error}
-		<ErrorState message={error} onRetry={() => loadGroupSheet($page.params.id ?? '')} />
+		<ErrorState message={error} onRetry={() => loadGroupSheet(page.params.id ?? '')} />
 	{:else if data}
 		<FamilyGroupSheetComponent {data} />
 	{/if}

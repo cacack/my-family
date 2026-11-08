@@ -17,12 +17,9 @@ vi.mock('$lib/api/client', async (importOriginal) => {
 });
 
 // Mock the page store
-vi.mock('$app/stores', () => ({
-	page: {
-		subscribe: vi.fn((callback: (value: unknown) => void) => {
-			callback({ params: { id: 'ec-1' } });
-			return () => {};
-		})
+vi.mock('$app/state', () => ({
+	get page() {
+		return { params: { id: 'ec-1' } };
 	}
 }));
 

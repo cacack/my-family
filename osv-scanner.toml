@@ -20,23 +20,3 @@ id = "GO-2026-4887"
 # Same dependency/reachability story as GO-2026-4883: Moby AuthZ plugin
 # bypass on oversized request bodies, only fixed on the moby/v2 module
 # path, unreachable from this codebase.
-
-[[IgnoredVulns]]
-id = "GHSA-29g2-3rmr-qm68"
-ignoreUntil = 2026-11-09
-# SvelteKit ReDoS in content negotiation, triggered by an `Accept` header sent
-# to the SvelteKit server. Same reachability story as GHSA-pxg6-pf52-xh8x
-# below: this project ships the app as a statically built SPA embedded in the
-# Go binary, so the SvelteKit server and its request handling never execute.
-# Unpatched upstream — the advisory covers `<=2.70.2` and that is the latest
-# published release, so there is no version to move to. Mirrored in
-# web/audit-ci.jsonc for the npm audit gate. Drop both entries once a fixed
-# @sveltejs/kit ships, which Dependabot tracks.
-
-[[IgnoredVulns]]
-id = "GHSA-pxg6-pf52-xh8x"
-# `cookie` <0.7.0 accepts out-of-bounds characters. Pulled transitively
-# via `@sveltejs/kit` server runtime. This project ships the SvelteKit
-# app as a statically built SPA embedded in the Go binary; the SvelteKit
-# server and its cookie parsing are never executed. Will clear on the
-# next @sveltejs/kit major bump, which Dependabot tracks.

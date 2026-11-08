@@ -1,15 +1,14 @@
 /**
  * A stand-in for SvelteKit's router in component tests of pages that keep
  * state in the URL (see `$lib/utils/urlState.ts`). `goto` moves a fake history
- * and updates the `page` store, so a test can drive a page, read its URL and
+ * and updates the reactive `page`, so a test can drive a page, read its URL and
  * step Back. Wire it up with:
  *
- *   vi.mock('$app/stores', async () => (await import('$lib/test/fakeRouter')).appStores);
- *   vi.mock('$app/navigation', async () => (await import('$lib/test/fakeRouter')).appNavigation);
+ *   vi.mock('$app/state', async () => (await import('$lib/test/fakeRouter.svelte')).appState);
+ *   vi.mock('$app/navigation', async () => (await import('$lib/test/fakeRouter.svelte')).appNavigation);
  *
  * and call `resetRouter(path)` before each render.
  */
-import { writable } from 'svelte/store';
 import { vi } from 'vitest';
 
 interface FakePage {
@@ -24,11 +23,23 @@ let entries: string[] = ['/'];
 let index = 0;
 let params: Record<string, string> = {};
 
-const page = writable<FakePage>({ url: new URL('/', ORIGIN), params, state: {} });
+let current = $state.raw<FakePage>({ url: new URL('/', ORIGIN), params, state: {} });
+
+/** Read-only and reactive, like `page` from `$app/state`. */
+const page = {
+	get url() {
+		return current.url;
+	},
+	get params() {
+		return current.params;
+	},
+	get state() {
+		return current.state;
+	}
+};
 
 function show() {
-	// A fresh object each time: Svelte's store bridge dedupes on identity.
-	page.set({ url: new URL(entries[index], ORIGIN), params, state: {} });
+	current = { url: new URL(entries[index], ORIGIN), params, state: {} };
 }
 
 /** Starts a fresh history at `path`, with the route `routeParams`. */
@@ -39,8 +50,8 @@ export function resetRouter(path: string, routeParams: Record<string, string> = 
 	show();
 }
 
-const goto = vi.fn(async (href: string, opts: { replaceState?: boolean } = {}) => {
-	if (opts.replaceState) {
+const goto = vi.fn(async (href: string, opts: { replace?: boolean } = {}) => {
+	if (opts.replace) {
 		entries[index] = href;
 	} else {
 		entries = [...entries.slice(0, index + 1), href];
@@ -66,5 +77,5 @@ export function historyLength(): number {
 	return entries.length;
 }
 
-export const appStores = { page };
+export const appState = { page };
 export const appNavigation = { goto };

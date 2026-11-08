@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import { SvelteSet } from 'svelte/reactivity';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import {
 		api,
 		type ValidationIssue,
@@ -43,7 +43,7 @@
 	const SEVERITIES = ['all', 'error', 'warning', 'info'] as const;
 	const DEFAULTS = { tab: 'validation', page: 1, severity: 'all' } as const;
 
-	const params = $derived($page.url.searchParams);
+	const params = $derived(page.url.searchParams);
 	const activeTab = $derived(readEnum(params, 'tab', TABS, DEFAULTS.tab));
 	const currentPage = $derived(readPositiveInt(params, 'page', DEFAULTS.page));
 	const severityFilter = $derived(
@@ -51,15 +51,15 @@
 	);
 
 	function selectTab(tab: string) {
-		setQuery($page.url, { tab, page: null, severity: null }, { push: true, defaults: DEFAULTS });
+		setQuery(page.url, { tab, page: null, severity: null }, { push: true, defaults: DEFAULTS });
 	}
 
 	function goToPage(n: number) {
-		setQuery($page.url, { page: n }, { push: true, defaults: DEFAULTS });
+		setQuery(page.url, { page: n }, { push: true, defaults: DEFAULTS });
 	}
 
 	function selectSeverity(severity: (typeof SEVERITIES)[number]) {
-		setQuery($page.url, { severity, page: null }, { defaults: DEFAULTS });
+		setQuery(page.url, { severity, page: null }, { defaults: DEFAULTS });
 	}
 
 	// --- Validation tab state ---
@@ -149,7 +149,7 @@
 				offset: (requestedPage - 1) * pageSize
 			});
 			if (seq !== validationSeq) return;
-			if (clampPageToTotal($page.url, requestedPage, result.total, pageSize)) return;
+			if (clampPageToTotal(page.url, requestedPage, result.total, pageSize)) return;
 			issues = result.issues;
 			validationTotal = result.total;
 			// Counts always reflect the full unfiltered set from the backend, so
@@ -176,7 +176,7 @@
 				offset: (requestedPage - 1) * pageSize
 			});
 			if (seq !== duplicatesSeq) return;
-			if (clampPageToTotal($page.url, requestedPage, result.total, pageSize)) return;
+			if (clampPageToTotal(page.url, requestedPage, result.total, pageSize)) return;
 			duplicates = result.duplicates;
 			duplicatesTotal = result.total;
 		} catch (e) {
