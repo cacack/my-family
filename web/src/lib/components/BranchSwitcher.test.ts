@@ -151,4 +151,24 @@ describe('BranchSwitcher', () => {
 		expect(link.tagName).toBe('A');
 		expect(link.getAttribute('href')).toBe('/branches');
 	});
+
+	// Guards the scroll-lock drain in src/lib/test/setup.ts (#741). bits-ui
+	// releases the body lock on a 24ms timer after unmount; if that timer
+	// outlives the test, it can fire after vitest tears jsdom down and fail
+	// the run with an unhandled "document is not defined". These two tests
+	// must stay in this order: the first leaves the menu open (body locked)
+	// for teardown, the second proves the timer had already run by the time
+	// the next test began.
+	describe('scroll-lock release between tests', () => {
+		it('locks the body while the menu is open', async () => {
+			render(BranchSwitcher);
+			await fireEvent.pointerDown(screen.getByRole('button', { name: /switch research branch/i }));
+			await screen.findByRole('menuitem', { name: /Maternal Smith line/ });
+			expect(document.body.style.overflow).toBe('hidden');
+		});
+
+		it('has fully released the lock before the next test starts', () => {
+			expect(document.body.hasAttribute('style')).toBe(false);
+		});
+	});
 });
