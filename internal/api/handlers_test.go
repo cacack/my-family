@@ -25,6 +25,20 @@ func setupTestServer() *api.Server {
 	return api.NewServer(cfg, eventStore, readStore, snapshotStore, nil)
 }
 
+func TestRealIPIgnoresForwardingHeaders(t *testing.T) {
+	server := setupTestServer()
+	req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
+	req.RemoteAddr = "192.0.2.10:4321"
+	req.Header.Set("X-Forwarded-For", "203.0.113.7")
+	req.Header.Set("X-Real-IP", "203.0.113.8")
+
+	c := server.Echo().NewContext(req, httptest.NewRecorder())
+
+	if got := c.RealIP(); got != "192.0.2.10" {
+		t.Errorf("RealIP() = %q, want the TCP peer 192.0.2.10", got)
+	}
+}
+
 func TestHealthCheck(t *testing.T) {
 	server := setupTestServer()
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/health", http.NoBody)
