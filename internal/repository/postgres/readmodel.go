@@ -197,9 +197,9 @@ func (s *ReadModelStore) createTables() error {
 			id UUID NOT NULL,
 			branch_id UUID NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000',
 			source_type VARCHAR(50) NOT NULL,
-			title VARCHAR(500) NOT NULL,
-			author VARCHAR(200),
-			publisher VARCHAR(200),
+			title TEXT NOT NULL,
+			author TEXT,
+			publisher TEXT,
 			publish_date_raw VARCHAR(100),
 			publish_date_sort DATE,
 			url VARCHAR(500),
@@ -227,10 +227,10 @@ func (s *ReadModelStore) createTables() error {
 			id UUID NOT NULL,
 			branch_id UUID NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000',
 			source_id UUID NOT NULL,
-			source_title VARCHAR(500),
+			source_title TEXT,
 			fact_type VARCHAR(100) NOT NULL,
 			fact_owner_id UUID NOT NULL,
-			page VARCHAR(100),
+			page TEXT,
 			volume VARCHAR(50),
 			source_quality VARCHAR(20),
 			informant_type VARCHAR(20),
@@ -782,9 +782,47 @@ func (s *ReadModelStore) migratePersonFullName() {
 	}
 }
 
+// multilineTextColumns hold values gedcom-go v3.3.0 folds from CONT/CONC
+// lines (#875), so they carry no length cap, matching SQLite's TEXT. Databases
+// created before that have them as length-capped VARCHARs.
+var multilineTextColumns = []struct{ table, column string }{
+	{"sources", "title"},
+	{"sources", "author"},
+	{"sources", "publisher"},
+	{"citations", "source_title"},
+	{"citations", "page"},
+}
+
+// migrateMultilineTextColumns widens each multilineTextColumns VARCHAR to TEXT.
+// VARCHAR to TEXT is binary-coercible, so PostgreSQL rewrites neither the table
+// nor its indexes. A column already TEXT is skipped, so reopening takes no lock.
+// Failures follow runMigrations' degrade-and-warn policy and keep the cap.
+func (s *ReadModelStore) migrateMultilineTextColumns() {
+	for _, c := range multilineTextColumns {
+		var dataType string
+		if err := s.db.QueryRow(`
+			SELECT data_type FROM information_schema.columns
+			WHERE table_schema = CURRENT_SCHEMA() AND table_name = $1 AND column_name = $2`,
+			c.table, c.column).Scan(&dataType); err != nil {
+			slog.Warn("read model migration: cannot inspect column (#875)",
+				"table", c.table, "column", c.column, "error", err)
+			continue
+		}
+		if dataType != "character varying" {
+			continue
+		}
+		if _, err := s.db.Exec(`ALTER TABLE ` + pq.QuoteIdentifier(c.table) +
+			` ALTER COLUMN ` + pq.QuoteIdentifier(c.column) + ` TYPE TEXT`); err != nil {
+			slog.Warn("read model migration: cannot widen column to TEXT; long multi-line values fail to project (#875)",
+				"table", c.table, "column", c.column, "error", err)
+		}
+	}
+}
+
 // runMigrations applies schema changes for existing databases.
 func (s *ReadModelStore) runMigrations() {
 	s.migratePersonFullName()
+	s.migrateMultilineTextColumns()
 
 	// Add research_status column if it doesn't exist (for databases created before this column was added)
 	_, _ = s.db.Exec(`ALTER TABLE persons ADD COLUMN IF NOT EXISTS research_status VARCHAR(20)`)
