@@ -470,12 +470,7 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 		result.SourceVersion = report.SourceVersion
 		result.DataLoss = toDataLossDetails(report)
 	} else {
-		// Encode using gedcom-go encoder with LF line endings. TargetVersion
-		// selects the emitted version without mutating doc.Header.Version.
-		// DropUnknownTags is deliberately left unset: its zero value keeps
-		// vendor "_"-prefixed tags (_FSFTID, _APID, ...) in the output.
-		encOpts := &encoder.EncodeOptions{LineEnding: "\n", TargetVersion: targetVersion}
-		if err := encoder.EncodeWithOptions(cw, doc, encOpts); err != nil {
+		if err := encoder.EncodeWithOptions(cw, doc, encodeOptions(targetVersion)); err != nil {
 			return result, fmt.Errorf("failed to write GEDCOM: %w", err)
 		}
 	}
@@ -498,7 +493,7 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 // encoded to w.
 func (exp *Exporter) encodeDowngraded(w io.Writer, doc *gedcom.Document, targetVersion gedcom.Version) (*gedcom.ConversionReport, error) {
 	var full bytes.Buffer
-	if err := encoder.EncodeWithOptions(&full, doc, &encoder.EncodeOptions{LineEnding: "\n", TargetVersion: gedcom.Version70}); err != nil {
+	if err := encoder.EncodeWithOptions(&full, doc, encodeOptions(gedcom.Version70)); err != nil {
 		return nil, fmt.Errorf("failed to encode document for conversion: %w", err)
 	}
 	// StrictMode keeps this a real check: a lenient decode would silently
@@ -511,14 +506,21 @@ func (exp *Exporter) encodeDowngraded(w io.Writer, doc *gedcom.Document, targetV
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert export to %s: %w", targetVersion, err)
 	}
-	// Preserve custom "_"-prefixed tags: the converter deliberately keeps vendor
-	// extensions through a downgrade (and maps 7.0-only EXIDs to vendor tags like
-	// _FSFTID). DropUnknownTags is left unset because its zero value keeps
-	// them. See issue #599.
-	if err := encoder.EncodeWithOptions(w, converted, &encoder.EncodeOptions{LineEnding: "\n", TargetVersion: targetVersion}); err != nil {
+	// The converter deliberately keeps vendor extensions through a downgrade
+	// (and maps 7.0-only EXIDs to vendor tags like _FSFTID); encodeOptions
+	// keeps them in the output. See issue #599.
+	if err := encoder.EncodeWithOptions(w, converted, encodeOptions(targetVersion)); err != nil {
 		return nil, fmt.Errorf("failed to write GEDCOM: %w", err)
 	}
 	return report, nil
+}
+
+// encodeOptions returns the options for every export encode: LF line endings
+// and targetVersion, which selects the emitted version without mutating
+// doc.Header.Version. DropUnknownTags is deliberately left unset: its zero
+// value keeps vendor "_"-prefixed tags (_FSFTID, _APID, ...) in the output.
+func encodeOptions(targetVersion gedcom.Version) *encoder.EncodeOptions {
+	return &encoder.EncodeOptions{LineEnding: "\n", TargetVersion: targetVersion}
 }
 
 // PreviewConversion reports what a GEDCOM export at targetVersion would change,
