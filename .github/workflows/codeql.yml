@@ -13,9 +13,10 @@ permissions:
   contents: read
 
 # A new push to a PR branch supersedes the run for its previous head, so cancel
-# that one. Pushes to main, merge-queue and scheduled runs are never cancelled.
+# that one. Every other run (push to main, merge queue, schedule) gets its own
+# group keyed on run_id, so it is never queued behind or cancelled by another.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
