@@ -1,10 +1,32 @@
+import adapter from '@sveltejs/adapter-static';
 import { sveltekit } from '@sveltejs/kit/vite';
+import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
 import { defineConfig } from 'vitest/config';
 import { svelteTesting } from '@testing-library/svelte/vite';
 import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
-	plugins: [tailwindcss(), sveltekit(), svelteTesting()],
+	plugins: [
+		tailwindcss(),
+		sveltekit({
+			preprocess: vitePreprocess(),
+			adapter: adapter({
+				pages: 'build',
+				assets: 'build',
+				fallback: 'index.html',
+				precompress: false,
+				strict: true
+			}),
+			// Kit 3 dropped the built-in `$lib` alias in favour of `#lib` subpath
+			// imports. This keeps the existing `$lib` imports (and shadcn-svelte's
+			// components.json aliases) working until they are migrated.
+			alias: { $lib: 'src/lib' },
+			paths: {
+				base: ''
+			}
+		}),
+		svelteTesting()
+	],
 	server: {
 		fs: {
 			// `web/` is its own npm package, so Vite's file allowlist stops at it.
