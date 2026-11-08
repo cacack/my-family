@@ -117,11 +117,6 @@ jobs:
       - name: Install dependencies
         run: go mod download
 
-      - name: Install oapi-codegen
-        # Pin to the version declared in go.mod to satisfy Scorecard's
-        # Pinned-Dependencies check and keep generator output reproducible.
-        run: go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.6.0
-
       - name: Verify Go generated code
         run: |
           go generate ./internal/api/...
