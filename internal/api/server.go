@@ -98,6 +98,11 @@ func NewServer(
 ) *Server {
 	e := echo.New()
 	e.HideBanner = true
+	// Take the client IP from the TCP peer, never from X-Forwarded-For or
+	// X-Real-IP: no trusted proxy is configured, so those headers are
+	// client-controlled (GO-2026-6872, GO-2026-6875). Echo >= 4.16.3 defaults
+	// to this; setting it keeps the guarantee explicit.
+	e.IPExtractor = echo.ExtractIPDirect()
 
 	// Setup middleware stack (order matters)
 	e.Use(middleware.Recover())
