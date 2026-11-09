@@ -370,10 +370,13 @@
 		}
 	}
 
+	// Choosing a sort starts from its natural direction: best match first for
+	// relevance, otherwise ascending (A-Z, oldest first), as /persons does.
 	function handleSortChange(e: Event) {
 		const select = e.target as HTMLSelectElement;
 		sort = select.value as typeof sort;
-		if (searched) navigate({ sort }, false);
+		order = sort === 'relevance' ? 'desc' : 'asc';
+		if (searched) navigate({ sort, order }, false);
 	}
 
 	function handleOrderToggle() {

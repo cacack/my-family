@@ -18,7 +18,12 @@
 	// The selected letter lives in the URL (see urlState.ts), so Back, reload
 	// and a copied link keep it. It filters the list, so it replaces.
 	const selectedLetter = $derived(readEnum(page.url.searchParams, 'letter', ALPHABET, '') || null);
-	const surnames = $derived(selectedLetter ? letterSurnames : allSurnames);
+	// People with no surname have no surname page to link to, so they are left
+	// out of the index and counted in a note after it (#1120).
+	const surnames = $derived((selectedLetter ? letterSurnames : allSurnames).filter((e) => e.surname));
+	const noSurnameCount = $derived(
+		selectedLetter ? 0 : allSurnames.filter((e) => !e.surname).reduce((n, e) => n + e.count, 0)
+	);
 
 	async function loadIndex() {
 		loading = true;
@@ -128,11 +133,17 @@
 				<div class="surname-grid">
 					{#each surnames as entry}
 						<a href="/browse/surnames/{encodeURIComponent(entry.surname)}" class="surname-item" data-slot="card-link">
-							<span class="surname-name">{entry.surname || '(Unknown)'}</span>
+							<span class="surname-name">{entry.surname}</span>
 							<span class="surname-count">{entry.count}</span>
 						</a>
 					{/each}
 				</div>
+			{/if}
+			{#if noSurnameCount > 0 && !loadingSurnames && !error}
+				<p class="no-surname-note">
+					Not listed: {noSurnameCount.toLocaleString('en-US')}
+					{noSurnameCount === 1 ? 'person' : 'people'} with no surname.
+				</p>
 			{/if}
 		</div>
 	{/if}
@@ -180,6 +191,12 @@
 	.count-badge-active {
 		background: white;
 		color: var(--color-link);
+	}
+
+	.no-surname-note {
+		margin: 1rem 0 0;
+		font-size: 0.875rem;
+		color: var(--color-text-muted);
 	}
 
 	.surname-grid {

@@ -609,6 +609,34 @@ describe('Advanced Search Page', () => {
 			);
 		});
 
+		it('Birth Date sorts oldest first, the same default /persons sends (#1120)', async () => {
+			const container = await performSearchAndReturn();
+			vi.mocked(apiModule.api.searchPersons).mockClear();
+
+			const sortSelect = container.querySelector('.sort-controls select') as HTMLSelectElement;
+			await fireEvent.change(sortSelect, { target: { value: 'birth_date' } });
+			await vi.advanceTimersByTimeAsync(0);
+
+			expect(apiModule.api.searchPersons).toHaveBeenLastCalledWith(
+				expect.objectContaining({ sort: 'birth_date', order: 'asc' })
+			);
+		});
+
+		it('returning to Relevance sorts best match first again (#1120)', async () => {
+			const container = await performSearchAndReturn();
+			const sortSelect = container.querySelector('.sort-controls select') as HTMLSelectElement;
+			await fireEvent.change(sortSelect, { target: { value: 'name' } });
+			await vi.advanceTimersByTimeAsync(0);
+			vi.mocked(apiModule.api.searchPersons).mockClear();
+
+			await fireEvent.change(sortSelect, { target: { value: 'relevance' } });
+			await vi.advanceTimersByTimeAsync(0);
+
+			expect(apiModule.api.searchPersons).toHaveBeenLastCalledWith(
+				expect.objectContaining({ sort: 'relevance', order: 'desc' })
+			);
+		});
+
 		it('toggling order (asc/desc) triggers new search', async () => {
 			const container = await performSearchAndReturn();
 
@@ -921,18 +949,18 @@ describe('Advanced Search Page', () => {
 			const sortSelect = container.querySelector('.sort-controls select') as HTMLSelectElement;
 			await fireEvent.change(sortSelect, { target: { value: 'birth_date' } });
 			await vi.advanceTimersByTimeAsync(0);
-			expect(currentPath()).toBe('/search?q=Smith&sort=birth_date');
+			expect(currentPath()).toBe('/search?q=Smith&sort=birth_date&order=asc');
 
 			await fireEvent.click(container.querySelector('.order-btn') as HTMLButtonElement);
 			await vi.advanceTimersByTimeAsync(0);
-			expect(currentPath()).toBe('/search?q=Smith&sort=birth_date&order=asc');
+			expect(currentPath()).toBe('/search?q=Smith&sort=birth_date');
 
 			vi.mocked(apiModule.api.searchPersons).mockResolvedValue({ ...mockSearchResults, total: 50 });
 			await fireEvent.click(container.querySelector('.order-btn') as HTMLButtonElement);
 			await vi.advanceTimersByTimeAsync(0);
 			await fireEvent.click(screen.getByText('Load more'));
 			await vi.advanceTimersByTimeAsync(0);
-			expect(currentPath()).toBe('/search?q=Smith&sort=birth_date&limit=40');
+			expect(currentPath()).toBe('/search?q=Smith&sort=birth_date&order=asc&limit=40');
 
 			expect(historyLength()).toBe(2);
 		});
@@ -955,7 +983,7 @@ describe('Advanced Search Page', () => {
 			await fireEvent.click(screen.getByText('Load more'));
 			await vi.advanceTimersByTimeAsync(0);
 
-			expect(currentPath()).toBe('/search?q=Smith&sort=name&order=asc&limit=40');
+			expect(currentPath()).toBe('/search?q=Smith&sort=name&limit=40');
 			expect(historyLength()).toBe(2);
 			const calls = vi.mocked(apiModule.api.searchPersons).mock.calls.map(([p]) => p);
 			expect(calls.length).toBeGreaterThan(0);
