@@ -6,7 +6,7 @@
 	 * merge claims the branch, so the merged branch can later link to exactly
 	 * what the merge changed.
 	 */
-	import { Checkbox } from '$lib/components/ui/checkbox';
+	import { Checkbox } from '#lib/components/ui/checkbox/index.js';
 
 	interface Props {
 		checked: boolean;

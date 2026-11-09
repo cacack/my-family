@@ -5,7 +5,7 @@
  * a person has.
  */
 import * as d3 from 'd3';
-import type { DescendancyNode, SpouseInfo } from '$lib/api/client';
+import type { DescendancyNode, SpouseInfo } from '#lib/api/client.js';
 
 export interface DescendancyLayoutConfig {
 	cardWidth: number;

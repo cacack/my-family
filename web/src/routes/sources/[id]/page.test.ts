@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/svelte';
 import SourcePage from './+page.svelte';
-import * as apiModule from '$lib/api/client';
+import * as apiModule from '#lib/api/client.js';
 
-vi.mock('$lib/api/client', async (importOriginal) => {
+vi.mock('#lib/api/client.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof apiModule>();
 	return {
 		...actual,

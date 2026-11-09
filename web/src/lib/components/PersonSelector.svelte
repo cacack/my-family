@@ -5,7 +5,7 @@
 		type PersonSummary,
 		formatPersonName,
 		formatLifespan
-	} from '$lib/api/client';
+	} from '#lib/api/client.js';
 
 	interface Props {
 		label: string;

@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import Page from './+page.svelte';
-import { buttonVariants } from '$lib/components/ui/button';
-import { cn } from '$lib/utils.js';
-import type * as apiModule from '$lib/api/client';
-import type { PersonDetail } from '$lib/api/client';
+import { buttonVariants } from '#lib/components/ui/button/index.js';
+import { cn } from '#lib/utils.js';
+import type * as apiModule from '#lib/api/client.js';
+import type { PersonDetail } from '#lib/api/client.js';
 import { goto } from '$app/navigation';
 
 const PERSON_ID = '11111111-1111-1111-1111-111111111111';
@@ -58,7 +58,7 @@ const EMPTY_RESPONSE = {
 	names: []
 };
 
-vi.mock('$lib/api/client', async (importOriginal) => {
+vi.mock('#lib/api/client.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof apiModule>();
 	const stubs: Record<string, unknown> = {
 		getPerson,
@@ -88,7 +88,7 @@ vi.mock('$lib/api/client', async (importOriginal) => {
 	return { ...actual, api };
 });
 
-vi.mock('$lib/stores/activeBranch.svelte', () => ({
+vi.mock('#lib/stores/activeBranch.svelte.js', () => ({
 	activeBranch: branchState
 }));
 

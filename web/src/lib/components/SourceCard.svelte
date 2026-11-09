@@ -1,7 +1,7 @@
 <script lang="ts">
-	import type { Source } from '$lib/api/client';
-	import { Badge } from '$lib/components/ui/badge';
-	import { Card, CardContent } from '$lib/components/ui/card';
+	import type { Source } from '#lib/api/client.js';
+	import { Badge } from '#lib/components/ui/badge/index.js';
+	import { Card, CardContent } from '#lib/components/ui/card/index.js';
 
 	interface Props {
 		source: Source;

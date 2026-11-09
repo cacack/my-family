@@ -1,12 +1,12 @@
 <script lang="ts">
-	import { api, type ImportResult, type ImportProgress } from '$lib/api/client';
-	import { ExportButton } from '$lib/components/export';
-	import PageHeader from '$lib/components/PageHeader.svelte';
-	import ImportProgressBar from '$lib/components/import/ImportProgress.svelte';
-	import BranchImportBlocked from '$lib/components/import/BranchImportBlocked.svelte';
-	import MainlineNotice from '$lib/components/MainlineNotice.svelte';
-	import { Button } from '$lib/components/ui/button';
-	import { activeBranch } from '$lib/stores/activeBranch.svelte';
+	import { api, type ImportResult, type ImportProgress } from '#lib/api/client.js';
+	import { ExportButton } from '#lib/components/export/index.js';
+	import PageHeader from '#lib/components/PageHeader.svelte';
+	import ImportProgressBar from '#lib/components/import/ImportProgress.svelte';
+	import BranchImportBlocked from '#lib/components/import/BranchImportBlocked.svelte';
+	import MainlineNotice from '#lib/components/MainlineNotice.svelte';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import { activeBranch } from '#lib/stores/activeBranch.svelte.js';
 
 	/**
 	 * GEDCOM import always writes the mainline, so it is withdrawn while a

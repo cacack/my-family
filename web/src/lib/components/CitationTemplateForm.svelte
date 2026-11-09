@@ -5,7 +5,7 @@
 		type CitationTemplateList,
 		type FormattedCitation,
 		type CitationValidationIssue
-	} from '$lib/api/client';
+	} from '#lib/api/client.js';
 	import {
 		Select,
 		SelectContent,
@@ -13,19 +13,19 @@
 		SelectGroupHeading,
 		SelectItem,
 		SelectTrigger
-	} from '$lib/components/ui/select';
-	import { Input } from '$lib/components/ui/input';
-	import { Label } from '$lib/components/ui/label';
-	import { Textarea } from '$lib/components/ui/textarea';
+	} from '#lib/components/ui/select/index.js';
+	import { Input } from '#lib/components/ui/input/index.js';
+	import { Label } from '#lib/components/ui/label/index.js';
+	import { Textarea } from '#lib/components/ui/textarea/index.js';
 	import {
 		Tooltip,
 		TooltipContent,
 		TooltipTrigger
-	} from '$lib/components/ui/tooltip';
-	import { Separator } from '$lib/components/ui/separator';
-	import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
-	import { Badge } from '$lib/components/ui/badge';
-	import { Button } from '$lib/components/ui/button';
+	} from '#lib/components/ui/tooltip/index.js';
+	import { Separator } from '#lib/components/ui/separator/index.js';
+	import { Card, CardContent, CardHeader, CardTitle } from '#lib/components/ui/card/index.js';
+	import { Badge } from '#lib/components/ui/badge/index.js';
+	import { Button } from '#lib/components/ui/button/index.js';
 	import Info from '@lucide/svelte/icons/info';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import X from '@lucide/svelte/icons/x';

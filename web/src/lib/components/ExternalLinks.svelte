@@ -1,6 +1,6 @@
 <script lang="ts">
-	import type { ExternalLink } from '$lib/api/client';
-	import { Badge } from '$lib/components/ui/badge';
+	import type { ExternalLink } from '#lib/api/client.js';
+	import { Badge } from '#lib/components/ui/badge/index.js';
 
 	interface Props {
 		/** External identifiers with server-resolved label and (optional) URL. */

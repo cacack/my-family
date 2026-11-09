@@ -3,8 +3,8 @@
 		DEFAULT_SHORTCUTS,
 		type Shortcut,
 		type ShortcutContext
-	} from '$lib/keyboard/shortcuts';
-	import * as Dialog from '$lib/components/ui/dialog';
+	} from '#lib/keyboard/shortcuts.js';
+	import * as Dialog from '#lib/components/ui/dialog/index.js';
 
 	interface Props {
 		open: boolean;

@@ -4,8 +4,8 @@
  * report it. Shared by the branch list, the branch page, the banner notice and
  * the finish-merge dialog, so they all say the same thing.
  */
-import type { Branch, MergePendingEntity } from '$lib/api/client';
-import type { ResolvableConflict } from '$lib/components/MergeConflictResolver.svelte';
+import type { Branch, MergePendingEntity } from '#lib/api/client.js';
+import type { ResolvableConflict } from '#lib/components/MergeConflictResolver.svelte';
 
 type PendingReason = MergePendingEntity['reason'];
 

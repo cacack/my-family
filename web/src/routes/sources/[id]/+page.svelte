@@ -1,19 +1,19 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
-	import { api, isVersionConflict, recordLoadError, type SourceDetail, type SourceType, type Citation } from '$lib/api/client';
-	import ExternalLinks from '$lib/components/ExternalLinks.svelte';
-	import InfoSection from '$lib/components/InfoSection.svelte';
-	import { Button } from '$lib/components/ui/button';
-	import ActionBar from '$lib/components/ActionBar.svelte';
-	import FormRow from '$lib/components/FormRow.svelte';
-	import { Badge } from '$lib/components/ui/badge';
-	import { SOURCE_TYPES } from '$lib/utils/sourceTypes';
-	import ErrorState from '$lib/components/ErrorState.svelte';
-	import ActionError from '$lib/components/ActionError.svelte';
-	import { asDatePhrase, savedAsNotes, savedAsText, unreadableDateField, type SavedAs } from '$lib/utils/dateInput';
-	import SaveConflict from '$lib/components/SaveConflict.svelte';
-	import { SaveConflictFlow, type ConflictRow } from '$lib/utils/saveConflict.svelte';
+	import { api, isVersionConflict, recordLoadError, type SourceDetail, type SourceType, type Citation } from '#lib/api/client.js';
+	import ExternalLinks from '#lib/components/ExternalLinks.svelte';
+	import InfoSection from '#lib/components/InfoSection.svelte';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import ActionBar from '#lib/components/ActionBar.svelte';
+	import FormRow from '#lib/components/FormRow.svelte';
+	import { Badge } from '#lib/components/ui/badge/index.js';
+	import { SOURCE_TYPES } from '#lib/utils/sourceTypes.js';
+	import ErrorState from '#lib/components/ErrorState.svelte';
+	import ActionError from '#lib/components/ActionError.svelte';
+	import { asDatePhrase, savedAsNotes, savedAsText, unreadableDateField, type SavedAs } from '#lib/utils/dateInput.js';
+	import SaveConflict from '#lib/components/SaveConflict.svelte';
+	import { SaveConflictFlow, type ConflictRow } from '#lib/utils/saveConflict.svelte.js';
 
 	let source: SourceDetail | null = $state(null);
 	let loading = $state(true);

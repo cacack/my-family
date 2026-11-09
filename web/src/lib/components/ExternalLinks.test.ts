@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
-import type { ExternalLink } from '$lib/api/client';
+import type { ExternalLink } from '#lib/api/client.js';
 import ExternalLinks from './ExternalLinks.svelte';
 
 describe('ExternalLinks', () => {

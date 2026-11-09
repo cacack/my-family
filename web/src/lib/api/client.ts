@@ -526,7 +526,7 @@ export type ChangeHistoryResponse = Schemas['ChangeHistoryResponse'];
  * write to, whichever research branch is currently active rather than the
  * mainline. That branch is module-level state, set by
  * `setClientBranch`/`getClientBranch` and driven in practice by `switchBranch`
- * in `$lib/stores/activeBranch.svelte`. Nothing about a call site shows it —
+ * in `#lib/stores/activeBranch.svelte.js`. Nothing about a call site shows it —
  * `api.getPerson(id)` returns branch or mainline data depending on state some
  * other file set, so a scoped method's result is only as well-defined as the
  * scope in force when it runs.

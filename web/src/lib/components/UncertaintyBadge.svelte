@@ -1,6 +1,6 @@
 <script lang="ts">
-	import type { ResearchStatus } from '$lib/api/client';
-	import { Badge } from '$lib/components/ui/badge';
+	import type { ResearchStatus } from '#lib/api/client.js';
+	import { Badge } from '#lib/components/ui/badge/index.js';
 
 	interface Props {
 		status: ResearchStatus;

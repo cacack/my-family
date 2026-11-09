@@ -1,7 +1,7 @@
 <script lang="ts">
 	import * as d3 from 'd3';
 	import { onMount, untrack } from 'svelte';
-	import { formatPersonName, formatYear, type PedigreeNode } from '$lib/api/client';
+	import { formatPersonName, formatYear, type PedigreeNode } from '#lib/api/client.js';
 	import {
 		fitTransform,
 		motionDuration,
@@ -11,7 +11,7 @@
 		touchScrollsPage,
 		truncateLabel,
 		type ScaleExtent
-	} from '$lib/utils/chart';
+	} from '#lib/utils/chart.js';
 
 	export type LayoutMode = 'compact' | 'standard' | 'wide';
 

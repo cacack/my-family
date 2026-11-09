@@ -5,16 +5,16 @@
 		type EvidenceAnalysisResponse,
 		type EvidenceConflictResponse,
 		type ResearchLogResponse
-	} from '$lib/api/client';
+	} from '#lib/api/client.js';
 	import UncertaintyBadge from './UncertaintyBadge.svelte';
-	import { Badge } from '$lib/components/ui/badge';
+	import { Badge } from '#lib/components/ui/badge/index.js';
 	import {
 		formatFactTypeShort,
 		formatDate,
 		outcomeBadgeProps,
 		conflictBadgeProps,
 		conflictRowClass
-	} from '$lib/utils/evidence';
+	} from '#lib/utils/evidence.js';
 
 	interface Props {
 		subjectId: string;

@@ -8,14 +8,14 @@
 		type InformantType,
 		type Source,
 		type SourceQuality
-	} from '$lib/api/client';
-	import { Button } from '$lib/components/ui/button';
-	import FormRow from '$lib/components/FormRow.svelte';
-	import * as Tabs from '$lib/components/ui/tabs';
+	} from '#lib/api/client.js';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import FormRow from '#lib/components/FormRow.svelte';
+	import * as Tabs from '#lib/components/ui/tabs/index.js';
 	import ConflictError from './ConflictError.svelte';
 	import CitationTemplateForm from './CitationTemplateForm.svelte';
-	import { PERSON_FACT_TYPES, formatFactTypeShort } from '$lib/utils/evidence';
-	import { EVIDENCE_TYPE_OPTIONS, INFORMANT_TYPE_OPTIONS, SOURCE_QUALITY_OPTIONS } from '$lib/utils/enumOptions';
+	import { PERSON_FACT_TYPES, formatFactTypeShort } from '#lib/utils/evidence.js';
+	import { EVIDENCE_TYPE_OPTIONS, INFORMANT_TYPE_OPTIONS, SOURCE_QUALITY_OPTIONS } from '#lib/utils/enumOptions.js';
 
 	interface Props {
 		personId: string;

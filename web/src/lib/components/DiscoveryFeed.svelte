@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { api, type DiscoverySuggestion } from '$lib/api/client';
-	import { Card, CardContent } from '$lib/components/ui/card';
+	import { api, type DiscoverySuggestion } from '#lib/api/client.js';
+	import { Card, CardContent } from '#lib/components/ui/card/index.js';
 
 	type SuggestionType = DiscoverySuggestion['type'];
 

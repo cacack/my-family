@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { DescendancyNode } from '$lib/api/client';
+import type { DescendancyNode } from '#lib/api/client.js';
 import { layoutDescendancy, type CardBox, type DescendancyLayoutConfig } from './descendancyLayout';
 
 const CONFIGS: Record<string, DescendancyLayoutConfig> = {

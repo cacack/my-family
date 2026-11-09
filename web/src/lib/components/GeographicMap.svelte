@@ -1,13 +1,13 @@
 <script lang="ts">
 	import { tick } from 'svelte';
-	import { api, formatPersonName, type MapLocation } from '$lib/api/client';
+	import { api, formatPersonName, type MapLocation } from '#lib/api/client.js';
 	import * as d3 from 'd3';
 	import * as topojson from 'topojson-client';
 	import type { Topology, GeometryCollection as TopoGeometryCollection } from 'topojson-specification';
-	import { motionDuration, observeChartResize } from '$lib/utils/chart';
-	import { getReducedMotion } from '$lib/stores/accessibilitySettings.svelte';
-	import { loadWorldAtlas } from '$lib/utils/worldAtlas';
-	import { clusterKind, clusterLabel, clusterPoints, type MapCluster } from '$lib/utils/mapClusters';
+	import { motionDuration, observeChartResize } from '#lib/utils/chart.js';
+	import { getReducedMotion } from '#lib/stores/accessibilitySettings.svelte.js';
+	import { loadWorldAtlas } from '#lib/utils/worldAtlas.js';
+	import { clusterKind, clusterLabel, clusterPoints, type MapCluster } from '#lib/utils/mapClusters.js';
 	import ErrorState from './ErrorState.svelte';
 
 	// Markers closer than this on screen are drawn as one cluster

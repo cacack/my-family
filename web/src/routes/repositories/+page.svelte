@@ -1,12 +1,12 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import MainlineNotice from '$lib/components/MainlineNotice.svelte';
-	import PageHeader from '$lib/components/PageHeader.svelte';
-	import { api, type Repository, type Address } from '$lib/api/client';
-	import { Button } from '$lib/components/ui/button';
-	import FormRow from '$lib/components/FormRow.svelte';
-	import ErrorState from '$lib/components/ErrorState.svelte';
-	import { clampPageToTotal, readEnum, readPositiveInt, setQuery } from '$lib/utils/urlState';
+	import MainlineNotice from '#lib/components/MainlineNotice.svelte';
+	import PageHeader from '#lib/components/PageHeader.svelte';
+	import { api, type Repository, type Address } from '#lib/api/client.js';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import FormRow from '#lib/components/FormRow.svelte';
+	import ErrorState from '#lib/components/ErrorState.svelte';
+	import { clampPageToTotal, readEnum, readPositiveInt, setQuery } from '#lib/utils/urlState.js';
 
 	let repositories: Repository[] = $state([]);
 	let total = $state(0);

@@ -1,10 +1,10 @@
 <script lang="ts">
-	import { api, type QualityOverview, type ResearchStatus } from '$lib/api/client';
-	import QualityScore from '$lib/components/QualityScore.svelte';
-	import PageHeader from '$lib/components/PageHeader.svelte';
-	import QualityChart from '$lib/components/QualityChart.svelte';
-	import UncertaintyBadge from '$lib/components/UncertaintyBadge.svelte';
-	import ErrorState from '$lib/components/ErrorState.svelte';
+	import { api, type QualityOverview, type ResearchStatus } from '#lib/api/client.js';
+	import QualityScore from '#lib/components/QualityScore.svelte';
+	import PageHeader from '#lib/components/PageHeader.svelte';
+	import QualityChart from '#lib/components/QualityChart.svelte';
+	import UncertaintyBadge from '#lib/components/UncertaintyBadge.svelte';
+	import ErrorState from '#lib/components/ErrorState.svelte';
 
 	// Every figure here is aggregated by the server over the whole tree (#894);
 	// the page only lays it out.

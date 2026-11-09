@@ -2,11 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import PersonSelector from './PersonSelector.svelte';
 import PartnerPickers from './PartnerPickers.svelte';
-import type * as apiModule from '$lib/api/client';
+import type * as apiModule from '#lib/api/client.js';
 
 const { searchPersons } = vi.hoisted(() => ({ searchPersons: vi.fn() }));
 
-vi.mock('$lib/api/client', async (importOriginal) => {
+vi.mock('#lib/api/client.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof apiModule>();
 	return { ...actual, api: { searchPersons } };
 });

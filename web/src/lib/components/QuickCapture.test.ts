@@ -1,12 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import QuickCapture from './QuickCapture.svelte';
-import type * as apiModule from '$lib/api/client';
+import type * as apiModule from '#lib/api/client.js';
 import { goto } from '$app/navigation';
 
 const { createPerson } = vi.hoisted(() => ({ createPerson: vi.fn() }));
 
-vi.mock('$lib/api/client', async (importOriginal) => {
+vi.mock('#lib/api/client.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof apiModule>();
 	return { ...actual, api: { createPerson } };
 });

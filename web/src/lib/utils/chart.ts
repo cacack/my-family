@@ -3,8 +3,8 @@
  * resize handling, motion preferences and label truncation.
  */
 import * as d3 from 'd3';
-import { formatPersonName } from '$lib/api/client';
-import { getReducedMotion } from '$lib/stores/accessibilitySettings.svelte';
+import { formatPersonName } from '#lib/api/client.js';
+import { getReducedMotion } from '#lib/stores/accessibilitySettings.svelte.js';
 
 export type ScaleExtent = [number, number];
 

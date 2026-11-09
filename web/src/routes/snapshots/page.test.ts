@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/svelte';
 import Page from './+page.svelte';
-import type * as apiModule from '$lib/api/client';
-import type { Snapshot } from '$lib/api/client';
+import type * as apiModule from '#lib/api/client.js';
+import type { Snapshot } from '#lib/api/client.js';
 
 // Hoisted so the module mocks below (which vitest lifts above the imports) can
 // close over them.
@@ -13,7 +13,7 @@ const { listSnapshots, createSnapshot, deleteSnapshot, goto } = vi.hoisted(() =>
 	goto: vi.fn()
 }));
 
-vi.mock('$lib/api/client', async (importOriginal) => {
+vi.mock('#lib/api/client.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof apiModule>();
 	return {
 		...actual,
@@ -37,7 +37,7 @@ const branchState = vi.hoisted(() => ({
 		notice: null
 	}
 }));
-vi.mock('$lib/stores/activeBranch.svelte', () => branchState);
+vi.mock('#lib/stores/activeBranch.svelte.js', () => branchState);
 
 // Newest first, as the API returns them.
 const courthouse: Snapshot = {

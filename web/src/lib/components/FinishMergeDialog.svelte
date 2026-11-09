@@ -1,5 +1,5 @@
 <script lang="ts" module>
-	import type { BranchMergeResumeRefusalCode } from '$lib/api/client';
+	import type { BranchMergeResumeRefusalCode } from '#lib/api/client.js';
 
 	/** How many ready entities the dialog lists before summarising the rest. */
 	export const READY_PREVIEW_LIMIT = 20;
@@ -84,12 +84,12 @@
 		type MergeBlocker,
 		type MergePendingEntity,
 		type MergeResolution
-	} from '$lib/api/client';
-	import MergeConflictResolver from '$lib/components/MergeConflictResolver.svelte';
-	import { Button } from '$lib/components/ui/button';
-	import * as AlertDialog from '$lib/components/ui/alert-dialog';
-	import { entityTypeLabel, unnamedEntityLabel } from '$lib/utils/changeEntries';
-	import { blockedEntityIds, describeBlocker } from '$lib/utils/mergeBlockers';
+	} from '#lib/api/client.js';
+	import MergeConflictResolver from '#lib/components/MergeConflictResolver.svelte';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import * as AlertDialog from '#lib/components/ui/alert-dialog/index.js';
+	import { entityTypeLabel, unnamedEntityLabel } from '#lib/utils/changeEntries.js';
+	import { blockedEntityIds, describeBlocker } from '#lib/utils/mergeBlockers.js';
 	import {
 		incompleteMergeSummary,
 		isUnreadableMerge,
@@ -97,7 +97,7 @@
 		pendingEntities,
 		pendingReasonLabel,
 		pendingSoleOptionReason
-	} from '$lib/utils/mergeState';
+	} from '#lib/utils/mergeState.js';
 
 	interface Props {
 		open: boolean;

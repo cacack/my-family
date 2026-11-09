@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import { page } from '$app/state';
-	import { Button } from '$lib/components/ui/button';
-	import PageHeader from '$lib/components/PageHeader.svelte';
-	import { Card, CardContent } from '$lib/components/ui/card';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import PageHeader from '#lib/components/PageHeader.svelte';
+	import { Card, CardContent } from '#lib/components/ui/card/index.js';
 	import {
 		api,
 		type SearchResult,
@@ -11,7 +11,7 @@
 		formatPersonName,
 		formatGenDate,
 		formatLifespan
-	} from '$lib/api/client';
+	} from '#lib/api/client.js';
 	import {
 		readEnum,
 		readFlag,
@@ -19,8 +19,8 @@
 		setQuery,
 		withQuery,
 		type QueryValues
-	} from '$lib/utils/urlState';
-	import ErrorState from '$lib/components/ErrorState.svelte';
+	} from '#lib/utils/urlState.js';
+	import ErrorState from '#lib/components/ErrorState.svelte';
 
 	const SORTS = ['relevance', 'name', 'birth_date', 'death_date'] as const;
 	const PAGE_SIZE = 20;

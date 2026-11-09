@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/svelte';
 import AnalyticsPage from './+page.svelte';
-import * as apiModule from '$lib/api/client';
+import * as apiModule from '#lib/api/client.js';
 
-vi.mock('$lib/api/client', async (importOriginal) => {
+vi.mock('#lib/api/client.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof apiModule>();
 	return {
 		...actual,
@@ -19,7 +19,7 @@ const { branchState } = vi.hoisted(() => ({
 	branchState: { id: null as string | null }
 }));
 
-vi.mock('$lib/stores/activeBranch.svelte', () => ({
+vi.mock('#lib/stores/activeBranch.svelte.js', () => ({
 	activeBranch: branchState
 }));
 

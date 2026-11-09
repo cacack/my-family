@@ -11,18 +11,18 @@
 		type EvidenceAnalysisResponse,
 		type FactType,
 		type ResearchStatus
-	} from '$lib/api/client';
-	import { Button } from '$lib/components/ui/button';
-	import { Badge } from '$lib/components/ui/badge';
-	import { Input } from '$lib/components/ui/input';
-	import { Label } from '$lib/components/ui/label';
-	import { Textarea } from '$lib/components/ui/textarea';
-	import UncertaintyBadge from '$lib/components/UncertaintyBadge.svelte';
-	import { FACT_TYPES, formatFactType, subjectRoute } from '$lib/utils/evidence';
-	import { nativeSelectClass } from '$lib/utils/forms';
-	import ErrorState from '$lib/components/ErrorState.svelte';
-	import SaveConflict from '$lib/components/SaveConflict.svelte';
-	import { SaveConflictFlow, type ConflictRow } from '$lib/utils/saveConflict.svelte';
+	} from '#lib/api/client.js';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import { Badge } from '#lib/components/ui/badge/index.js';
+	import { Input } from '#lib/components/ui/input/index.js';
+	import { Label } from '#lib/components/ui/label/index.js';
+	import { Textarea } from '#lib/components/ui/textarea/index.js';
+	import UncertaintyBadge from '#lib/components/UncertaintyBadge.svelte';
+	import { FACT_TYPES, formatFactType, subjectRoute } from '#lib/utils/evidence.js';
+	import { nativeSelectClass } from '#lib/utils/forms.js';
+	import ErrorState from '#lib/components/ErrorState.svelte';
+	import SaveConflict from '#lib/components/SaveConflict.svelte';
+	import { SaveConflictFlow, type ConflictRow } from '#lib/utils/saveConflict.svelte.js';
 
 	const factTypes = FACT_TYPES;
 

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/svelte';
 import MainNav from './MainNav.svelte';
-import { mainNav, isGroup } from '$lib/navigation';
+import { mainNav, isGroup } from '#lib/navigation.js';
 
 // jsdom applies no media queries, so both the wide row and the narrow menu
 // trigger are in the DOM; queries scope to one or the other.

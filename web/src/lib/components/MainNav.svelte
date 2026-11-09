@@ -1,13 +1,13 @@
 <script lang="ts">
-	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
-	import { Button } from '$lib/components/ui/button';
+	import * as DropdownMenu from '#lib/components/ui/dropdown-menu/index.js';
+	import { Button } from '#lib/components/ui/button/index.js';
 	import {
 		mainNav,
 		isGroup,
 		isEntryActive,
 		isLinkActive,
 		type NavLink
-	} from '$lib/navigation';
+	} from '#lib/navigation.js';
 
 	interface Props {
 		/** The current page's path; decides which section is highlighted. */

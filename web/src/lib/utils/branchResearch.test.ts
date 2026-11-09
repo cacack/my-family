@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { BranchChangeEntry } from '$lib/api/client';
+import type { BranchChangeEntry } from '#lib/api/client.js';
 import {
 	BRANCH_OUTCOMES,
 	CLOSE_OUTCOMES,
