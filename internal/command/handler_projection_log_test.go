@@ -44,8 +44,8 @@ func TestExecute_ProjectionFailureIsLogged(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetStream: %v", err)
 	}
-	if len(events) != 1 {
-		t.Fatalf("expected the event to be appended, got %d events", len(events))
+	if len(events) != 2 {
+		t.Fatalf("expected both events to be appended, got %d events", len(events))
 	}
 
 	out := buf.String()

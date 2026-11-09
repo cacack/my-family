@@ -203,7 +203,7 @@ func TestResumeMerge_MainDeletesCitedSourceAfterInterruption(t *testing.T) {
 	cited := e.source(t, e.f.handler, "1880 Census")
 	branch, scoped := e.branch(t, "cite-then-lose")
 	surname := "Byron"
-	if _, err := scoped.UpdatePerson(ctx, command.UpdatePersonInput{ID: e.person, Surname: &surname, Version: 1}); err != nil {
+	if _, err := scoped.UpdatePerson(ctx, command.UpdatePersonInput{ID: e.person, Surname: &surname, Version: 2}); err != nil {
 		t.Fatalf("branch UpdatePerson failed: %v", err)
 	}
 	cit := e.cite(t, scoped, cited.ID)
@@ -257,7 +257,7 @@ func TestResumeMerge_SourceDeleteOntoLaterMainCitationIsPending(t *testing.T) {
 	unused := e.source(t, e.f.handler, "Unused register")
 	branch, scoped := e.branch(t, "tidy")
 	surname := "Byron"
-	if _, err := scoped.UpdatePerson(ctx, command.UpdatePersonInput{ID: e.person, Surname: &surname, Version: 1}); err != nil {
+	if _, err := scoped.UpdatePerson(ctx, command.UpdatePersonInput{ID: e.person, Surname: &surname, Version: 2}); err != nil {
 		t.Fatalf("branch UpdatePerson failed: %v", err)
 	}
 	if err := scoped.DeleteSource(ctx, unused.ID, unused.Version, "unused"); err != nil {

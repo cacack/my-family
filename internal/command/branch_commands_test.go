@@ -85,7 +85,7 @@ func TestCreateBranch(t *testing.T) {
 	f := newBranchFixture()
 	ctx := context.Background()
 
-	// One mainline event so the base position is non-zero and meaningful.
+	// Mainline events so the base position is non-zero and meaningful.
 	person, err := f.handler.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ada", Surname: "Lovelace"})
 	if err != nil {
 		t.Fatalf("CreatePerson failed: %v", err)
@@ -108,8 +108,8 @@ func TestCreateBranch(t *testing.T) {
 	if branch.Status != domain.BranchStatusActive {
 		t.Errorf("Status = %q, want %q", branch.Status, domain.BranchStatusActive)
 	}
-	if branch.BasePosition != 1 {
-		t.Errorf("BasePosition = %d, want 1 (the head after one mainline event)", branch.BasePosition)
+	if branch.BasePosition != 2 {
+		t.Errorf("BasePosition = %d, want 2 (the head after PersonCreated and NameAdded)", branch.BasePosition)
 	}
 
 	// The BranchCreated event is tagged with the new branch's own scope.
@@ -1106,16 +1106,8 @@ func TestBranchNameLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreatePerson failed: %v", err)
 	}
-	// A primary name on main, so the branch's alias is an addition to an
-	// existing bucket rather than the first name.
-	if _, err := f.handler.AddName(ctx, command.AddNameInput{
-		PersonID:  person.ID,
-		GivenName: "Ada",
-		Surname:   "Lovelace",
-		IsPrimary: true,
-	}); err != nil {
-		t.Fatalf("main AddName failed: %v", err)
-	}
+	// CreatePerson records the primary name on main, so the branch's alias is an
+	// addition to an existing bucket rather than the first name.
 
 	branch, err := f.handler.CreateBranch(ctx, "aliases", "")
 	if err != nil {
