@@ -126,4 +126,79 @@ describe('useShortcuts', () => {
 		expect(handlers['reset-view']).toHaveBeenCalledTimes(1);
 		cleanup();
 	});
+
+	// An overlay that consumed Escape must not also cancel the page's edit (#1139).
+	it.each([
+		['a button', () => document.createElement('button')],
+		['an input', () => document.createElement('input')]
+	])('ignores an Escape another listener already consumed, from %s', (_name, create) => {
+		const handlers = { 'close-modal': vi.fn(), cancel: vi.fn() };
+		const { handleKeydown, cleanup } = useShortcuts('person-detail', handlers);
+		const control = create();
+		document.body.appendChild(control);
+		control.focus();
+		const event = new KeyboardEvent('keydown', { key: 'Escape', cancelable: true });
+		event.preventDefault();
+
+		handleKeydown(event);
+
+		expect(handlers['close-modal']).not.toHaveBeenCalled();
+		expect(handlers.cancel).not.toHaveBeenCalled();
+		cleanup();
+	});
+
+	// The page's instance has no close-modal handler; Escape on a button must still cancel.
+	it('fires cancel on Escape from a button when only cancel is handled', () => {
+		const handlers = { cancel: vi.fn() };
+		const { handleKeydown, cleanup } = useShortcuts('person-detail', handlers);
+		const button = document.createElement('button');
+		document.body.appendChild(button);
+		button.focus();
+
+		const event = press(handleKeydown, 'Escape');
+
+		expect(handlers.cancel).toHaveBeenCalledTimes(1);
+		expect(event.defaultPrevented).toBe(true);
+		cleanup();
+	});
+
+	it('falls through to cancel, and leaves the key unconsumed, when close-modal declines', () => {
+		const handlers = { 'close-modal': vi.fn(() => false), cancel: vi.fn(() => false) };
+		const { handleKeydown, cleanup } = useShortcuts('person-detail', handlers);
+
+		const event = press(handleKeydown, 'Escape');
+
+		expect(handlers['close-modal']).toHaveBeenCalledTimes(1);
+		expect(handlers.cancel).toHaveBeenCalledTimes(1);
+		expect(event.defaultPrevented).toBe(false);
+		cleanup();
+	});
+
+	it('leaves a declined Escape in an input unconsumed for the next listener', () => {
+		const layout = useShortcuts('global', { 'close-modal': () => false });
+		const cancel = vi.fn();
+		const page = useShortcuts('person-detail', { cancel });
+		const input = document.createElement('input');
+		document.body.appendChild(input);
+		input.focus();
+		const event = new KeyboardEvent('keydown', { key: 'Escape', cancelable: true });
+
+		layout.handleKeydown(event);
+		expect(event.defaultPrevented).toBe(false);
+		page.handleKeydown(event);
+
+		expect(cancel).toHaveBeenCalledTimes(1);
+		expect(event.defaultPrevented).toBe(true);
+		layout.cleanup();
+		page.cleanup();
+	});
+
+	// A key no handler wants is left alone, so it reaches the other instance.
+	it('does not consume a shortcut it has no handler for', () => {
+		const { handleKeydown, cleanup } = useShortcuts('person-detail', { edit: vi.fn() });
+
+		expect(press(handleKeydown, '/').defaultPrevented).toBe(false);
+		expect(press(handleKeydown, 'g').defaultPrevented).toBe(false);
+		cleanup();
+	});
 });

@@ -55,10 +55,82 @@ describe('SearchBox', () => {
 		expect(input).toBeDefined();
 	});
 
-	it('has search icon', () => {
+	// The magnifier used to be a decorative icon that did nothing (#1022).
+	it('re-runs the search when the Search button is clicked', async () => {
+		vi.mocked(apiModule.api.searchPersons).mockResolvedValue(mockSearchResults);
 		const { container } = render(SearchBox);
-		const icon = container.querySelector('.search-icon');
-		expect(icon).not.toBeNull();
+		const input = screen.getByRole('combobox');
+		await fireEvent.input(input, { target: { value: 'Doe' } });
+		await vi.advanceTimersByTimeAsync(300);
+		await fireEvent.keyDown(input, { key: 'Escape' });
+		expect(container.querySelector('.dropdown')).toBeNull();
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+
+		expect(apiModule.api.searchPersons).toHaveBeenCalledTimes(2);
+		await waitFor(() => expect(container.querySelectorAll('.result-item').length).toBe(2));
+	});
+
+	it('does not search from the Search button with under 2 characters', async () => {
+		render(SearchBox);
+		await fireEvent.input(screen.getByRole('combobox'), { target: { value: 'D' } });
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Search' }));
+
+		expect(apiModule.api.searchPersons).not.toHaveBeenCalled();
+	});
+
+	it('reopens the results when a filled box is focused again', async () => {
+		vi.mocked(apiModule.api.searchPersons).mockResolvedValue(mockSearchResults);
+		const { container } = render(SearchBox);
+		const input = screen.getByRole('combobox');
+		await fireEvent.input(input, { target: { value: 'Doe' } });
+		await vi.advanceTimersByTimeAsync(300);
+		await waitFor(() => expect(container.querySelector('.result-item')).not.toBeNull());
+		// Picking a result clears the held results but keeps the text.
+		await fireEvent.click(container.querySelector('.result-item') as HTMLButtonElement);
+		await fireEvent.blur(input);
+		await vi.advanceTimersByTimeAsync(200);
+		expect(container.querySelector('.dropdown')).toBeNull();
+
+		await fireEvent.focus(input);
+
+		expect(apiModule.api.searchPersons).toHaveBeenLastCalledWith({ q: 'John Doe', fuzzy: false, limit: 10 });
+		await waitFor(() => expect(container.querySelectorAll('.result-item').length).toBe(2));
+	});
+
+	it('runs the search on Enter when no result is highlighted', async () => {
+		vi.mocked(apiModule.api.searchPersons).mockResolvedValue(mockSearchResults);
+		const { container } = render(SearchBox);
+		const input = screen.getByRole('combobox');
+		await fireEvent.input(input, { target: { value: 'Doe' } });
+
+		const enter = new KeyboardEvent('keydown', { key: 'Enter', cancelable: true, bubbles: true });
+		input.dispatchEvent(enter);
+
+		// At once, without waiting out the debounce
+		expect(apiModule.api.searchPersons).toHaveBeenCalledWith({ q: 'Doe', fuzzy: false, limit: 10 });
+		expect(enter.defaultPrevented).toBe(true);
+		await waitFor(() => expect(container.querySelectorAll('.result-item').length).toBe(2));
+		await vi.advanceTimersByTimeAsync(300);
+		expect(apiModule.api.searchPersons).toHaveBeenCalledTimes(1);
+	});
+
+	it('selects the highlighted result on Enter', async () => {
+		// jsdom has no scrollIntoView; the highlight scrolls into view
+		Element.prototype.scrollIntoView = vi.fn();
+		vi.mocked(apiModule.api.searchPersons).mockResolvedValue(mockSearchResults);
+		const onSelect = vi.fn();
+		const { container } = render(SearchBox, { props: { onSelect } });
+		const input = screen.getByRole('combobox');
+		await fireEvent.input(input, { target: { value: 'Doe' } });
+		await vi.advanceTimersByTimeAsync(300);
+		await waitFor(() => expect(container.querySelector('.result-item')).not.toBeNull());
+
+		await fireEvent.keyDown(input, { key: 'ArrowDown' });
+		await fireEvent.keyDown(input, { key: 'Enter' });
+
+		expect(onSelect).toHaveBeenCalledWith(mockSearchResults.items[0]);
 	});
 
 	it('has fuzzy toggle button', () => {
@@ -194,11 +266,35 @@ describe('SearchBox', () => {
 			expect(container.querySelector('.dropdown')).not.toBeNull();
 		});
 
-		await fireEvent.keyDown(input, { key: 'Escape' });
+		const escape = new KeyboardEvent('keydown', { key: 'Escape', cancelable: true, bubbles: true });
+		input.dispatchEvent(escape);
 
+		// Consumed, so page shortcuts (cancel edit) leave it alone (#1139)
+		expect(escape.defaultPrevented).toBe(true);
 		await waitFor(() => {
 			expect(container.querySelector('.dropdown')).toBeNull();
 		});
+	});
+
+	it('leaves Escape for page shortcuts when no dropdown is open', () => {
+		render(SearchBox);
+		const escape = new KeyboardEvent('keydown', { key: 'Escape', cancelable: true, bubbles: true });
+		screen.getByRole('combobox').dispatchEvent(escape);
+
+		expect(escape.defaultPrevented).toBe(false);
+	});
+
+	it('leaves Escape for page shortcuts while a 1-character query shows no dropdown', async () => {
+		const { container } = render(SearchBox);
+		const input = screen.getByRole('combobox');
+
+		await fireEvent.input(input, { target: { value: 'D' } });
+		expect(container.querySelector('.dropdown')).toBeNull();
+
+		const escape = new KeyboardEvent('keydown', { key: 'Escape', cancelable: true, bubbles: true });
+		input.dispatchEvent(escape);
+
+		expect(escape.defaultPrevented).toBe(false);
 	});
 
 	it('displays formatted names in results', async () => {

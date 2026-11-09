@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import DashboardPage from './+page.svelte';
+import dashboardSource from './+page.svelte?raw';
 import * as apiModule from '$lib/api/client';
 
 vi.mock('$lib/api/client', async (importOriginal) => {
@@ -106,5 +107,21 @@ describe('Dashboard', () => {
 		render(DashboardPage);
 		await waitFor(() => expect(screen.getByText('Recent People')).toBeTruthy());
 		expect(screen.queryByRole('note')).toBeNull();
+	});
+
+	/*
+	 * The in-sentence import link was set apart by colour alone, under 3:1
+	 * against the text around it; axe `link-in-text-block` (#1116). The e2e
+	 * store is never empty, so this checks the stylesheet instead.
+	 */
+	it('underlines the import link in the empty Recent People sentence', async () => {
+		emptyLists();
+		onboarding.completed = true;
+		render(DashboardPage);
+		const link = await screen.findByRole('link', { name: 'Import a GEDCOM file' });
+		expect(link.closest('p')?.classList.contains('empty')).toBe(true);
+
+		const rule = dashboardSource.match(/\n\t\.empty a \{([^}]*)\}/)?.[1] ?? '';
+		expect(rule).toMatch(/text-decoration:\s*underline/);
 	});
 });
