@@ -549,3 +549,82 @@ func TestProjectImportedValuesBackfilled_ExidOnlyLeavesBranchesOnMain(t *testing
 		t.Errorf("person on the branch = %+v, want main's later edit seen through the overlay", got)
 	}
 }
+
+// TestProjectImportedValuesBackfilled_MainDeletedFillsBranchCopiesOnly covers
+// a backfill on a stream main has deleted (#1255): it fills the branch copy
+// and writes nothing to main.
+func TestProjectImportedValuesBackfilled_MainDeletedFillsBranchCopiesOnly(t *testing.T) {
+	ctx := context.Background()
+	rs, branches := memory.NewReadModelStore(), memory.NewBranchStore()
+	branch, _ := domain.NewBranch("research", "", 0)
+	mustRebuildSetup(t, branches.Create(ctx, branch))
+	personID := uuid.New()
+	mustRebuildSetup(t, rs.SavePerson(ctx, domain.BranchID(branch.ID), &repository.PersonReadModel{ID: personID, GivenName: "Ada", Version: 1}))
+	lat := "N1.5"
+	mustRebuildSetup(t, repository.NewProjector(rs, branches).Project(ctx, domain.ImportedValuesBackfilled{BaseEvent: domain.NewBaseEvent(),
+		EntityType: domain.BackfillPerson, EntityID: personID, BirthPlaceLat: &lat,
+		ExternalIDs: []domain.ExternalIdentifier{{Value: "FS-1"}}}, 3, domain.MainBranchID))
+
+	if p, _ := rs.GetPerson(ctx, domain.BranchID(branch.ID), personID); p == nil || p.BirthPlaceLat == nil || *p.BirthPlaceLat != lat {
+		t.Errorf("branch copy = %+v, want the backfilled coordinate", p)
+	}
+	if p, _ := rs.GetPerson(ctx, domain.MainBranchID, personID); p != nil {
+		t.Errorf("main = %+v, want no row", p)
+	}
+	if ids, _ := rs.GetPersonExternalIDs(ctx, domain.MainBranchID, personID); len(ids) != 0 {
+		t.Errorf("main EXIDs = %+v, want none for a deleted person", ids)
+	}
+}
+
+func TestRebuildReadModel_BackfillReportsBranchListError(t *testing.T) {
+	ctx := context.Background()
+	events := memory.NewEventStore()
+	_, err := repository.RebuildReadModel(ctx, events, memory.NewReadModelStore(), failingBranches{memory.NewBranchStore()}, memory.NewSnapshotStore(events))
+	if !errors.Is(err, errRebuildTest) {
+		t.Errorf("rebuild = %v, want the branch list failure", err)
+	}
+}
+
+// TestRebuildReadModel_BackfillsBranchCopiesMainDeleted covers the collection
+// side of #1255: a branch's own copy of a person and a life event that main
+// has deleted gets a backfill on main's stream, after the delete. A branch row
+// with no main stream behind it gets none.
+func TestRebuildReadModel_BackfillsBranchCopiesMainDeleted(t *testing.T) {
+	ctx := context.Background()
+	s := newRebuildStores()
+	branch, _ := domain.NewBranch("research", "", 0)
+	mustRebuildSetup(t, s.branches.Create(ctx, branch))
+	onBranch := domain.BranchID(branch.ID)
+
+	person := domain.NewPerson("Ada", "Byron")
+	lifeEventID, strayID := uuid.New(), uuid.New()
+	mustRebuildSetup(t, s.events.Append(ctx, person.ID, "person", []domain.Event{
+		domain.NewPersonCreated(person), domain.NewPersonDeleted(person.ID, "duplicate")}, 0, repository.MainScope))
+	mustRebuildSetup(t, s.events.Append(ctx, lifeEventID, "event", []domain.Event{
+		domain.LifeEventCreated{BaseEvent: domain.NewBaseEvent(), EventID: lifeEventID, PersonID: &person.ID, FactType: domain.FactPersonResidence},
+		domain.NewLifeEventDeleted(lifeEventID, "duplicate")}, 0, repository.MainScope))
+	lat, long := "N1.5", "W2.5"
+	for _, id := range []uuid.UUID{person.ID, strayID} {
+		mustRebuildSetup(t, s.read.SavePerson(ctx, onBranch, &repository.PersonReadModel{ID: id, GivenName: "Ada", BirthPlaceLat: &lat, Version: 2}))
+	}
+	mustRebuildSetup(t, s.read.SaveEvent(ctx, onBranch, &repository.EventReadModel{ID: lifeEventID, OwnerType: "person", OwnerID: person.ID,
+		FactType: domain.FactPersonResidence, PlaceLat: &lat, PlaceLong: &long, Version: 2}))
+
+	result, err := s.rebuild(t, s.read)
+	if err != nil {
+		t.Fatalf("rebuild: %v", err)
+	}
+	if result.Backfilled != 2 {
+		t.Errorf("Backfilled = %d, want 2 (the person and the life event, not the stray)", result.Backfilled)
+	}
+	for _, id := range []uuid.UUID{person.ID, lifeEventID} {
+		stored, err := s.events.ReadStream(ctx, id)
+		if err != nil || len(stored) != 3 || stored[2].EventType != "ImportedValuesBackfilled" || stored[2].Version != 3 {
+			t.Errorf("stream %s = %+v, %v; want a backfill at version 3 after the delete", id, stored, err)
+		}
+	}
+	again, err := s.rebuild(t, s.read)
+	if err != nil || again.Backfilled != 0 {
+		t.Errorf("second rebuild = %+v, %v; want nothing backfilled", again, err)
+	}
+}

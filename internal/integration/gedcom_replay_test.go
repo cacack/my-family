@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/uuid"
+
 	"github.com/cacack/my-family/internal/command"
 	"github.com/cacack/my-family/internal/domain"
 	"github.com/cacack/my-family/internal/repository"
@@ -270,6 +272,118 @@ func TestRebuild_BackfillsBranchCopiesOfPreImportValues(t *testing.T) {
 				t.Errorf("John on main after the rebuild = %+v, want the branch's edit kept off main", p)
 			}
 		})
+	}
+}
+
+// TestRebuild_BackfillsBranchCopiesMainDeleted covers #1255: a branch's own
+// copy of a pre-#1225 person and life event keeps its coordinates through a
+// rebuild after main has deleted both.
+func TestRebuild_BackfillsBranchCopiesMainDeleted(t *testing.T) {
+	for _, backend := range backends {
+		t.Run(backend.name, func(t *testing.T) {
+			ctx := context.Background()
+			src := setupMemory(t)
+			srcHandler := command.NewHandlerWithBranches(src.events, src.read, src.branches, src.snapshots)
+			if _, err := srcHandler.ImportGedcom(ctx, command.ImportGedcomInput{Filename: "t.ged", Reader: strings.NewReader(replayGedcom)}); err != nil {
+				t.Fatalf("import: %v", err)
+			}
+			st := backend.setup(t)
+			copyLogWithoutImportedValues(t, ctx, src.events, st.events)
+			replayLog(t, ctx, st.events, st.read)
+			copyImportedFields(t, ctx, src.read, st.read)
+
+			h := command.NewHandlerWithBranches(st.events, st.read, st.branches, st.snapshots)
+			john := findPerson(t, ctx, st.read, "John")
+			resi := findPlacedLifeEvent(t, ctx, st.read)
+			branch, err := h.CreateBranch(ctx, "edited", "")
+			if err != nil {
+				t.Fatalf("create branch: %v", err)
+			}
+			onBranch := domain.BranchID(branch.ID)
+			notes := "checked the census"
+			johnOnBranch, _ := st.read.GetPerson(ctx, onBranch, john.ID)
+			if _, err := h.WithBranch(branch).UpdatePerson(ctx, command.UpdatePersonInput{ID: john.ID, Notes: &notes, Version: johnOnBranch.Version}); err != nil {
+				t.Fatalf("edit John on branch: %v", err)
+			}
+			appendAndProject(t, ctx, st, resi.ID, "event", repository.AppendScope{BranchID: onBranch},
+				domain.NewLifeEventUpdated(resi.ID, map[string]any{"description": "boarder"}))
+			appendAndProject(t, ctx, st, resi.ID, "event", repository.MainScope, domain.NewLifeEventDeleted(resi.ID, "duplicate"))
+			appendAndProject(t, ctx, st, john.ID, "person", repository.MainScope, domain.NewPersonDeleted(john.ID, "duplicate"))
+
+			johnCoords := func(p *repository.PersonReadModel) string {
+				return canonicalRowJSON(t, []*string{p.BirthPlaceLat, p.BirthPlaceLong, p.DeathPlaceLat, p.DeathPlaceLong})
+			}
+			wantJohn := johnCoords(&john)
+			wantResi := canonicalRowJSON(t, []*string{resi.PlaceLat, resi.PlaceLong})
+			check := func(when string) {
+				t.Helper()
+				if p, err := st.read.GetPerson(ctx, onBranch, john.ID); err != nil || p == nil || johnCoords(p) != wantJohn || p.Notes != notes {
+					t.Errorf("John on the branch %s = %+v, %v; want his coordinates and the branch's edit", when, p, err)
+				}
+				if e, err := st.read.GetEvent(ctx, onBranch, resi.ID); err != nil || e == nil || canonicalRowJSON(t, []*string{e.PlaceLat, e.PlaceLong}) != wantResi {
+					t.Errorf("RESI on the branch %s = %+v, %v; want its coordinates", when, e, err)
+				}
+				if p, _ := st.read.GetPerson(ctx, domain.MainBranchID, john.ID); p != nil {
+					t.Errorf("John on main %s = %+v, want deleted", when, p)
+				}
+				if e, _ := st.read.GetEvent(ctx, domain.MainBranchID, resi.ID); e != nil {
+					t.Errorf("RESI on main %s = %+v, want deleted", when, e)
+				}
+			}
+			check("before the rebuild")
+
+			if _, err := repository.RebuildReadModel(ctx, st.events, st.read, st.branches, st.snapshots); err != nil {
+				t.Fatalf("rebuild: %v", err)
+			}
+			check("after the rebuild")
+
+			again, err := repository.RebuildReadModel(ctx, st.events, st.read, st.branches, st.snapshots)
+			if err != nil {
+				t.Fatalf("second rebuild: %v", err)
+			}
+			if again.Backfilled != 0 || again.DroppedImported != 0 {
+				t.Errorf("second rebuild = %+v, want nothing backfilled or dropped", again)
+			}
+			check("after a second rebuild")
+		})
+	}
+}
+
+// findPlacedLifeEvent returns the one main-branch life event with coordinates.
+func findPlacedLifeEvent(t *testing.T, ctx context.Context, rs repository.ReadModelStore) repository.EventReadModel {
+	t.Helper()
+	events, err := repository.ListAll(ctx, 100, rs.ListEvents)
+	if err != nil {
+		t.Fatalf("list life events: %v", err)
+	}
+	for _, e := range events {
+		if e.PlaceLat != nil {
+			return e
+		}
+	}
+	t.Fatal("no life event with coordinates")
+	return repository.EventReadModel{}
+}
+
+// appendAndProject appends event to the stream on scope's branch and projects
+// it at the version the store gave it.
+func appendAndProject(t *testing.T, ctx context.Context, st stores, streamID uuid.UUID, streamType string, scope repository.AppendScope, event domain.Event) {
+	t.Helper()
+	if err := st.events.Append(ctx, streamID, streamType, []domain.Event{event}, -1, scope); err != nil {
+		t.Fatalf("append %s: %v", event.EventType(), err)
+	}
+	stored, err := st.events.ReadStream(ctx, streamID)
+	if err != nil {
+		t.Fatalf("read stream: %v", err)
+	}
+	var version int64
+	for _, s := range stored {
+		if s.BranchID == scope.BranchID {
+			version = max(version, s.Version)
+		}
+	}
+	if err := repository.NewProjector(st.read, st.branches).Project(ctx, event, version, scope.BranchID); err != nil {
+		t.Fatalf("project %s: %v", event.EventType(), err)
 	}
 }
 

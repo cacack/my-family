@@ -362,7 +362,9 @@ func reportDroppedImported(ctx context.Context, rs ReadModelStore, before int, r
 
 // backfillImportedValues appends an ImportedValuesBackfilled event to each
 // main-branch entity whose read model holds coordinates or EXIDs that its
-// main stream does not carry, and returns how many it appended (#1251).
+// main stream does not carry, and to each entity main has deleted whose
+// branch copy holds such coordinates, and returns how many it appended
+// (#1251, #1255).
 // Every append is durable on its own, so an interrupted backfill is finished
 // by the next rebuild.
 func backfillImportedValues(ctx context.Context, events EventStore, rs ReadModelStore, branches BranchStore) (int, error) {
@@ -375,6 +377,11 @@ func backfillImportedValues(ctx context.Context, events EventStore, rs ReadModel
 		return 0, err
 	}
 	pending = append(pending, exids...)
+	deleted, err := coordinatesMainDeleted(ctx, rs, branches)
+	if err != nil {
+		return 0, err
+	}
+	pending = append(pending, deleted...)
 
 	// Each backfill is projected as soon as it is appended, so the row's
 	// version follows its stream even if the rebuild stops before its reset.
@@ -446,6 +453,73 @@ func coordinatesInReadModel(ctx context.Context, rs ReadModelStore) ([]domain.Im
 	}
 	for i := range lifeEvents {
 		if e := &lifeEvents[i]; countSet(e.PlaceLat, e.PlaceLong) > 0 {
+			pending = append(pending, domain.ImportedValuesBackfilled{
+				EntityType: domain.BackfillLifeEvent, EntityID: e.ID, PlaceLat: e.PlaceLat, PlaceLong: e.PlaceLong,
+			})
+		}
+	}
+	return pending, nil
+}
+
+// coordinatesMainDeleted returns a backfill for every person and life event
+// that main has deleted but a research branch still holds its own copy of,
+// with the coordinates of that copy (#1255). A branch copy's coordinates can
+// only have come from main's row, as no event but the backfill sets them, so
+// every branch holds the same ones and the first copy found stands for all.
+// The backfill goes on main's stream, after its delete; its projection finds
+// no main row and fills in the branch copies alone.
+func coordinatesMainDeleted(ctx context.Context, rs ReadModelStore, branches BranchStore) ([]domain.ImportedValuesBackfilled, error) {
+	if branches == nil {
+		return nil, nil
+	}
+	all, err := branches.List(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list branches: %w", err)
+	}
+	var pending []domain.ImportedValuesBackfilled
+	seen := map[uuid.UUID]bool{}
+	for _, b := range all {
+		branchID := domain.BranchID(b.ID)
+		persons, err := ListAllOn(ctx, branchID, rebuildPageSize, rs.ListPersons)
+		if err != nil {
+			return nil, fmt.Errorf("list persons on branch %s: %w", b.ID, err)
+		}
+		for i := range persons {
+			p := &persons[i]
+			if seen[p.ID] || countSet(p.BirthPlaceLat, p.BirthPlaceLong, p.DeathPlaceLat, p.DeathPlaceLong) == 0 {
+				continue
+			}
+			onMain, err := rs.GetPerson(ctx, domain.MainBranchID, p.ID)
+			if err != nil {
+				return nil, fmt.Errorf("person %s on main: %w", p.ID, err)
+			}
+			if onMain != nil {
+				continue
+			}
+			seen[p.ID] = true
+			pending = append(pending, domain.ImportedValuesBackfilled{
+				EntityType: domain.BackfillPerson, EntityID: p.ID,
+				BirthPlaceLat: p.BirthPlaceLat, BirthPlaceLong: p.BirthPlaceLong,
+				DeathPlaceLat: p.DeathPlaceLat, DeathPlaceLong: p.DeathPlaceLong,
+			})
+		}
+		lifeEvents, err := ListAllOn(ctx, branchID, rebuildPageSize, rs.ListEvents)
+		if err != nil {
+			return nil, fmt.Errorf("list life events on branch %s: %w", b.ID, err)
+		}
+		for i := range lifeEvents {
+			e := &lifeEvents[i]
+			if seen[e.ID] || countSet(e.PlaceLat, e.PlaceLong) == 0 {
+				continue
+			}
+			onMain, err := rs.GetEvent(ctx, domain.MainBranchID, e.ID)
+			if err != nil {
+				return nil, fmt.Errorf("life event %s on main: %w", e.ID, err)
+			}
+			if onMain != nil {
+				continue
+			}
+			seen[e.ID] = true
 			pending = append(pending, domain.ImportedValuesBackfilled{
 				EntityType: domain.BackfillLifeEvent, EntityID: e.ID, PlaceLat: e.PlaceLat, PlaceLong: e.PlaceLong,
 			})
