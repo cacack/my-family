@@ -1734,17 +1734,21 @@ func (ss *StrictServer) ExportGedcom(ctx context.Context, request ExportGedcomRe
 	gedcomExporter := gedcom.NewExporter(ss.server.readStore)
 
 	var sb strings.Builder
-	_, err := gedcomExporter.ExportWithOptions(ctx, &sb, gedcom.ExportOptions{TargetVersion: targetVersion})
+	result, err := gedcomExporter.ExportWithOptions(ctx, &sb, gedcom.ExportOptions{TargetVersion: targetVersion})
 	if err != nil {
 		return nil, err
 	}
 
+	headers := ExportGedcom200ResponseHeaders{
+		ContentDisposition: strPtr("attachment; filename=export.ged"),
+	}
+	if len(result.Warnings) > 0 {
+		headers.XExportWarnings = strPtr(strings.Join(result.Warnings, "; "))
+	}
 	return ExportGedcom200ApplicationxGedcomResponse{
 		Body:          strings.NewReader(sb.String()),
 		ContentLength: int64(sb.Len()),
-		Headers: ExportGedcom200ResponseHeaders{
-			ContentDisposition: strPtr("attachment; filename=export.ged"),
-		},
+		Headers:       headers,
 	}, nil
 }
 
@@ -1780,12 +1784,16 @@ func (ss *StrictServer) PreviewGedcomExport(ctx context.Context, request Preview
 
 	// Note the deliberate rename: ExportResult.Version is the version that would
 	// actually be emitted, which is this API's TargetVersion.
-	return PreviewGedcomExport200JSONResponse{
+	preview := PreviewGedcomExport200JSONResponse{
 		SourceVersion: string(result.SourceVersion),
 		TargetVersion: string(result.Version),
 		HasDataLoss:   len(dataLoss) > 0,
 		DataLoss:      dataLoss,
-	}, nil
+	}
+	if len(result.Warnings) > 0 {
+		preview.Warnings = &result.Warnings
+	}
+	return preview, nil
 }
 
 // ImportGedcom implements StrictServerInterface.

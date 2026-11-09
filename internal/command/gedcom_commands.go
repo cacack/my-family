@@ -47,10 +47,16 @@ type ImportGedcomResult struct {
 func (h *Handler) ImportGedcom(ctx context.Context, input ImportGedcomInput) (*ImportGedcomResult, error) {
 	importer := gedcom.NewImporter()
 
+	existingXrefs, err := h.storedGedcomXrefs(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read existing GEDCOM xrefs: %w", err)
+	}
+
 	// Parse the GEDCOM file, forwarding progress callbacks when requested.
 	importResult, persons, families, sources, citations, repositories, events, attributes, notes, submitters, associations, ldsOrdinances, _, err := importer.ImportWithOptions(ctx, input.Reader, gedcom.ImportOptions{
-		TotalSize:  input.FileSize,
-		OnProgress: input.OnProgress,
+		TotalSize:     input.FileSize,
+		OnProgress:    input.OnProgress,
+		ExistingXrefs: existingXrefs,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse GEDCOM file: %w", err)
@@ -230,6 +236,42 @@ func (h *Handler) ImportGedcom(ctx context.Context, input ImportGedcomInput) (*I
 	_ = h.eventStore.Append(ctx, importEvent.ImportID, "import", []domain.Event{importEvent}, -1, repository.MainScope)
 
 	return result, nil
+}
+
+// storedGedcomXrefs returns the stored xrefs of the tree's sources,
+// repositories, notes and submitters: the record types whose xref the GEDCOM
+// exporter keeps, so an import must not reuse one for a new note (#1228).
+func (h *Handler) storedGedcomXrefs(ctx context.Context) ([]string, error) {
+	var xrefs []string
+	sources, err := repository.ListAll(ctx, 1000, h.readStore.ListSources)
+	if err != nil {
+		return nil, err
+	}
+	for _, s := range sources {
+		xrefs = append(xrefs, s.GedcomXref)
+	}
+	repositories, err := repository.ListAll(ctx, 1000, h.readStore.ListRepositories)
+	if err != nil {
+		return nil, err
+	}
+	for _, r := range repositories {
+		xrefs = append(xrefs, r.GedcomXref)
+	}
+	notes, err := repository.ListAll(ctx, 1000, h.readStore.ListNotes)
+	if err != nil {
+		return nil, err
+	}
+	for _, n := range notes {
+		xrefs = append(xrefs, n.GedcomXref)
+	}
+	submitters, err := repository.ListAll(ctx, 1000, h.readStore.ListSubmitters)
+	if err != nil {
+		return nil, err
+	}
+	for _, s := range submitters {
+		xrefs = append(xrefs, s.GedcomXref)
+	}
+	return xrefs, nil
 }
 
 // importPerson creates a person from GEDCOM data.

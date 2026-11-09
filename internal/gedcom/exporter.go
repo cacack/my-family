@@ -40,7 +40,10 @@ type ExportResult struct {
 	SourceVersion gedcom.Version
 	// DataLoss lists features dropped when a downgrade conversion could not
 	// represent them in the target version. Empty when nothing was lost.
-	DataLoss              []DataLossDetail
+	DataLoss []DataLossDetail
+	// Warnings lists problems the export could not repair, such as a NOTE
+	// pointer whose stored xref several NOTE records share (#1228).
+	Warnings              []string
 	BytesWritten          int64
 	PersonsExported       int
 	FamiliesExported      int
@@ -223,23 +226,30 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 	// is the authoritative ID-based map, preferred over name matching (issue #525).
 	repoNameToXref := make(map[string]string)
 	repoIDToXref := make(map[uuid.UUID]string)
+	// A SOUR.REPO pointer kept in RepositoryName and a NOTE pointer kept in
+	// Notes name their record by its raw stored xref; each resolves against
+	// records of its own type only (#1228).
+	repoPointers := newPointerTargets("REPO", &result.Warnings)
 	for i, r := range repositories {
 		// Use GedcomXref if available (for round-trip), otherwise generate.
 		repositoryXrefs[r.ID] = xrefs.assign(r.GedcomXref, "R", i+1)
 		repoIDToXref[r.ID] = repositoryXrefs[r.ID]
+		repoPointers.add(r.GedcomXref, repositoryXrefs[r.ID])
 		if r.Name != "" {
 			repoNameToXref[r.Name] = repositoryXrefs[r.ID]
 		}
 	}
 
 	// Sort notes by ID for stable output. Their xrefs are assigned before any
-	// record is built so that remap knows every replaced note xref.
+	// record is built so that every NOTE pointer can be resolved.
 	sort.Slice(notes, func(i, j int) bool {
 		return notes[i].ID.String() < notes[j].ID.String()
 	})
+	notePointers := newPointerTargets("NOTE", &result.Warnings)
 	for i, n := range notes {
 		// Use GedcomXref if available (for round-trip), otherwise generate
 		noteXrefs[n.ID] = xrefs.assign(n.GedcomXref, "N", i+1)
+		notePointers.add(n.GedcomXref, noteXrefs[n.ID])
 	}
 
 	// Build GEDCOM document
@@ -255,8 +265,8 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 	// Add source records
 	for i, s := range sources {
 		xref := sourceXrefs[s.ID]
-		s.Notes = xrefs.remap(s.Notes, noteJoin)
-		s.RepositoryName = xrefs.remap(s.RepositoryName, noteJoin)
+		s.Notes = notePointers.remap(s.Notes, noteJoin)
+		s.RepositoryName = repoPointers.remap(s.RepositoryName, noteJoin)
 		src := toGedcomSource(s, repoIDToXref, repoNameToXref, exp.readStore, ctx)
 		doc.Records = append(doc.Records, &gedcom.Record{
 			XRef:   xref,
@@ -296,7 +306,7 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 		var associations []repository.AssociationReadModel
 		for _, a := range allAssocs {
 			if a.PersonID == p.ID {
-				a.Notes = xrefs.remap(a.Notes, associationNoteJoin)
+				a.Notes = notePointers.remap(a.Notes, associationNoteJoin)
 				associations = append(associations, a)
 			}
 		}
@@ -306,7 +316,7 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 		ldsOrdinances, _ := exp.readStore.ListLDSOrdinancesForPerson(ctx, p.ID)
 		result.LDSOrdinancesExported += len(ldsOrdinances)
 
-		p.Notes = xrefs.remap(p.Notes, noteJoin)
+		p.Notes = notePointers.remap(p.Notes, noteJoin)
 		indi := toGedcomIndividual(p, sourceXrefs, personXrefs, birthCitations, deathCitations, events, attributes, associations, ldsOrdinances, exp.readStore, ctx)
 		doc.Records = append(doc.Records, &gedcom.Record{
 			XRef:   xref,
@@ -403,7 +413,7 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 	// via SOUR.REPO cross-references.
 	for i, r := range repositories {
 		xref := repositoryXrefs[r.ID]
-		r.Notes = xrefs.remap(r.Notes, noteJoin)
+		r.Notes = notePointers.remap(r.Notes, noteJoin)
 		repo := toGedcomRepository(r, exp.readStore, ctx)
 		doc.Records = append(doc.Records, &gedcom.Record{
 			XRef:   xref,
@@ -1106,16 +1116,11 @@ func mapGPSToGedcomQuality(_ domain.SourceQuality, informantType domain.Informan
 type xrefAllocator struct {
 	reserved map[string]bool // valid stored xrefs of every record type
 	taken    map[string]bool // xrefs already given to a record
-	// replaced maps an invalid stored xref to the xref generated in its
-	// place, so values that name the record by its raw stored xref (a NOTE
-	// pointer kept in Notes, a SOUR.REPO pointer kept in RepositoryName)
-	// follow it.
-	replaced map[string]string
 }
 
 // newXrefAllocator reserves every valid xref in stored.
 func newXrefAllocator(stored []string) *xrefAllocator {
-	a := &xrefAllocator{reserved: map[string]bool{}, taken: map[string]bool{}, replaced: map[string]string{}}
+	a := &xrefAllocator{reserved: map[string]bool{}, taken: map[string]bool{}}
 	for _, xref := range stored {
 		if gedcom.IsPointerXRef(xref) {
 			a.reserved[xref] = true
@@ -1128,8 +1133,7 @@ func newXrefAllocator(stored []string) *xrefAllocator {
 // itself when it is valid and still free, otherwise the first @<prefix><n>@,
 // counting up from n, that is neither reserved nor taken.
 func (a *xrefAllocator) assign(stored, prefix string, n int) string {
-	valid := gedcom.IsPointerXRef(stored)
-	if valid && !a.taken[stored] {
+	if gedcom.IsPointerXRef(stored) && !a.taken[stored] {
 		a.taken[stored] = true
 		return stored
 	}
@@ -1139,25 +1143,72 @@ func (a *xrefAllocator) assign(stored, prefix string, n int) string {
 		xref = fmt.Sprintf("@%s%d@", prefix, n)
 	}
 	a.taken[xref] = true
-	// A duplicate stored xref, valid or not, keeps naming the first record
-	// that holds it.
-	if _, seen := a.replaced[stored]; stored != "" && !valid && !seen {
-		a.replaced[stored] = xref
-	}
 	return xref
 }
 
-// remap replaces v, or each sep-separated part of v, that is a replaced
-// stored xref with its generated xref. One Notes value can hold several NOTE
-// pointers: the importer joins a record's with noteJoin and an association's
-// with "\n".
-func (a *xrefAllocator) remap(v, sep string) string {
-	if xref, ok := a.replaced[v]; ok {
+// pointerTargets resolves pointers to one record type (NOTE or REPO) that the
+// read model keeps as the target's raw stored xref, to the xref that target
+// is exported under. A pointer resolves against records of that type only, so
+// a NOTE pointer never lands on a SOUR that shares its stored xref (#1228).
+// When several records of the type share a stored xref the pointer is
+// ambiguous: it resolves to the first and the export records a warning.
+type pointerTargets struct {
+	recordType string
+	exported   map[string]string // stored xref -> export xref of the first record holding it
+	holders    map[string]int    // stored xref -> number of records holding it
+	warned     map[string]bool
+	warnings   *[]string
+}
+
+func newPointerTargets(recordType string, warnings *[]string) *pointerTargets {
+	return &pointerTargets{
+		recordType: recordType,
+		exported:   map[string]string{},
+		holders:    map[string]int{},
+		warned:     map[string]bool{},
+		warnings:   warnings,
+	}
+}
+
+// add records that the record stored as stored is exported as exported.
+func (t *pointerTargets) add(stored, exported string) {
+	if stored == "" {
+		return
+	}
+	if t.holders[stored] == 0 {
+		t.exported[stored] = exported
+	}
+	t.holders[stored]++
+}
+
+// remap rewrites v, or each sep-separated part of v, that is the stored xref
+// of a record of this type to that record's export xref. One Notes value can
+// hold several NOTE pointers: the importer joins a record's with noteJoin and
+// an association's with "\n".
+func (t *pointerTargets) remap(v, sep string) string {
+	return renameXrefs(v, sep, func(stored string) (string, bool) {
+		xref, ok := t.exported[stored]
+		if ok && t.holders[stored] > 1 && !t.warned[stored] {
+			t.warned[stored] = true
+			*t.warnings = append(*t.warnings, fmt.Sprintf(
+				// %q: a stored xref is not validated and can hold a line break.
+				"%d %s records share the xref %q; pointers to it were linked to the first of them (exported as %s)",
+				t.holders[stored], t.recordType, stored, xref))
+		}
+		return xref, ok
+	})
+}
+
+// renameXrefs replaces v, or else each sep-separated part of v, for which
+// rename reports a new value. v is tried whole first because an invalid
+// stored xref can contain sep.
+func renameXrefs(v, sep string, rename func(string) (string, bool)) string {
+	if xref, ok := rename(v); ok {
 		return xref
 	}
 	parts := strings.Split(v, sep)
 	for i, part := range parts {
-		if xref, ok := a.replaced[part]; ok {
+		if xref, ok := rename(part); ok {
 			parts[i] = xref
 		}
 	}

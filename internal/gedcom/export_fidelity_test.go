@@ -246,6 +246,78 @@ func TestExport_GeneratedXrefsAreUnique(t *testing.T) {
 	}
 }
 
+func TestExport_NotePointerResolvesToANoteRecord(t *testing.T) {
+	// A source and a note both stored as @N2@: the source keeps @N2@, so a
+	// person's NOTE @N2@ must follow the note to its fresh xref rather than
+	// point at the SOUR record (#1228).
+	readStore := memory.NewReadModelStore()
+	ctx := context.Background()
+	if err := readStore.SaveSource(ctx, domain.MainBranchID, &repository.SourceReadModel{
+		ID: uuid.MustParse("00000000-0000-0000-0000-000000000001"), SourceType: "book", Title: "Register", GedcomXref: "@N2@",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := readStore.SaveNote(ctx, domain.MainBranchID, &repository.NoteReadModel{
+		ID: uuid.MustParse("00000000-0000-0000-0000-000000000002"), Text: "The note", GedcomXref: "@N2@",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
+		ID: uuid.New(), GivenName: "Ann", Surname: "Smith", Notes: "@N2@",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	buf := &bytes.Buffer{}
+	exportResult, err := gedcom.NewExporter(readStore).Export(ctx, buf)
+	if err != nil {
+		t.Fatalf("Export failed: %v", err)
+	}
+	if len(exportResult.Warnings) != 0 {
+		t.Errorf("warnings = %q, want none: only one NOTE holds @N2@", exportResult.Warnings)
+	}
+	result, persons, _, _, _, _, _, _, notes, _, _, _, _, err := gedcom.NewImporter().Import(ctx, strings.NewReader(buf.String()))
+	if err != nil {
+		t.Fatalf("Re-import failed: %v", err)
+	}
+	if len(persons) != 1 || len(notes) != 1 {
+		t.Fatalf("re-import has %d persons and %d notes, want 1 each; got:\n%s", len(persons), len(notes), buf.String())
+	}
+	if id, ok := result.NoteXrefToID[persons[0].Notes]; !ok || id != notes[0].ID {
+		t.Errorf("person's NOTE pointer %q does not resolve to the NOTE record; got:\n%s", persons[0].Notes, buf.String())
+	}
+}
+
+func TestExport_AmbiguousNotePointerWarns(t *testing.T) {
+	// Two notes stored as @N1@ (data imported before #1228): a pointer to
+	// @N1@ cannot be resolved, so the export says so and names the xref.
+	readStore := memory.NewReadModelStore()
+	ctx := context.Background()
+	for _, n := range []*repository.NoteReadModel{
+		{ID: uuid.New(), Text: "First", GedcomXref: "@N1@"},
+		{ID: uuid.New(), Text: "Second", GedcomXref: "@N1@"},
+	} {
+		if err := readStore.SaveNote(ctx, domain.MainBranchID, n); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, given := range []string{"Ann", "Bob"} {
+		if err := readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
+			ID: uuid.New(), GivenName: given, Surname: "Smith", Notes: "@N1@",
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	exportResult, err := gedcom.NewExporter(readStore).Export(ctx, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("Export failed: %v", err)
+	}
+	if len(exportResult.Warnings) != 1 || !strings.Contains(exportResult.Warnings[0], "@N1@") {
+		t.Errorf("warnings = %q, want one naming @N1@", exportResult.Warnings)
+	}
+}
+
 func TestExport_FamilySearchIDRoundTrip(t *testing.T) {
 	// The importer reads _FSFTID; the person's FamilySearch ID must survive
 	// export as a FamilySearch EXID at 7.0 and as _FSFTID at 5.5.1, and

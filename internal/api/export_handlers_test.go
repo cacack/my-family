@@ -2,6 +2,7 @@ package api_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/csv"
 	"encoding/json"
 	"io"
@@ -12,9 +13,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/uuid"
+
 	"github.com/cacack/my-family/internal/api"
 	"github.com/cacack/my-family/internal/config"
+	"github.com/cacack/my-family/internal/domain"
 	"github.com/cacack/my-family/internal/exporter"
+	"github.com/cacack/my-family/internal/repository"
 	"github.com/cacack/my-family/internal/repository/memory"
 )
 
@@ -776,6 +781,45 @@ func TestPreviewGedcomExport(t *testing.T) {
 	}
 	if preview70.HasDataLoss {
 		t.Errorf("7.0 preview should have no data loss; got %+v", preview70.DataLoss)
+	}
+}
+
+func TestGedcomExport_SurfacesAmbiguousPointerWarning(t *testing.T) {
+	// Two notes stored as @N1@ (data imported before #1228) make a person's
+	// NOTE @N1@ ambiguous: both the export and its preview must say so.
+	ctx := context.Background()
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	for _, text := range []string{"First", "Second"} {
+		if err := readStore.SaveNote(ctx, domain.MainBranchID, &repository.NoteReadModel{ID: uuid.New(), Text: text, GedcomXref: "@N1@"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{ID: uuid.New(), GivenName: "Ann", Surname: "Doe", Notes: "@N1@"}); err != nil {
+		t.Fatal(err)
+	}
+	server := api.NewServer(&config.Config{Port: 8080, LogFormat: "text"}, eventStore, readStore, memory.NewSnapshotStore(eventStore), nil)
+
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/gedcom/export", http.NoBody))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Export failed: %d: %s", rec.Code, rec.Body.String())
+	}
+	if got := rec.Header().Get("X-Export-Warnings"); !strings.Contains(got, "@N1@") {
+		t.Errorf("X-Export-Warnings = %q, want a warning naming @N1@", got)
+	}
+
+	rec = httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/gedcom/export/preview", http.NoBody))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Preview failed: %d: %s", rec.Code, rec.Body.String())
+	}
+	var preview api.ExportPreview
+	if err := json.Unmarshal(rec.Body.Bytes(), &preview); err != nil {
+		t.Fatalf("decode: %v; body=%s", err, rec.Body.String())
+	}
+	if preview.Warnings == nil || len(*preview.Warnings) != 1 || !strings.Contains((*preview.Warnings)[0], "@N1@") {
+		t.Errorf("preview warnings = %v, want one naming @N1@", preview.Warnings)
 	}
 }
 
