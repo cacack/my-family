@@ -464,3 +464,35 @@ func TestEntityNames_DeletedFamilyNamesPartnersInOneRound(t *testing.T) {
 	assert.Zero(t, single)
 	assert.Equal(t, 2, batched, "families + persons, one round")
 }
+
+// A family keeps its read-model name while any partner is still visible: main
+// deleting one partner of a branch-only family leaves the family named by the
+// other on the branch, not dropped to its id (#1207). Only a family with no
+// partner left is dropped, to be named like one the read model lacks.
+func TestResolveEntityNamesOn_FamilyWithDeletedPartner(t *testing.T) {
+	ctx := context.Background()
+	store := memory.NewReadModelStore()
+	branch := domain.BranchID(uuid.New())
+	kept, gone, alsoGone := uuid.New(), uuid.New(), uuid.New()
+	for id, given := range map[uuid.UUID]string{kept: "Kept", gone: "Gone", alsoGone: "AlsoGone"} {
+		require.NoError(t, store.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
+			ID: id, GivenName: given, Surname: "Partner", FullName: given + " Partner", Version: 1,
+		}))
+	}
+	halfGone, allGone := uuid.New(), uuid.New()
+	require.NoError(t, store.SaveFamily(ctx, branch, &repository.FamilyReadModel{ID: halfGone, Partner1ID: &kept, Partner2ID: &gone, Version: 1}))
+	require.NoError(t, store.SaveFamily(ctx, branch, &repository.FamilyReadModel{ID: allGone, Partner1ID: &alsoGone, Version: 1}))
+	require.NoError(t, store.DeletePerson(ctx, domain.MainBranchID, gone))
+	require.NoError(t, store.DeletePerson(ctx, domain.MainBranchID, alsoGone))
+
+	refs := newEntityRefs()
+	refs.add(entityTypeFamily, halfGone)
+	refs.add(entityTypeFamily, allGone)
+	names, err := NewHistoryService(memory.NewEventStore(), store).resolveEntityNamesOn(ctx, branch, refs)
+	require.NoError(t, err)
+
+	require.NotNil(t, names.families[halfGone], "a family with a visible partner keeps its row")
+	updated := &repository.StoredEvent{EventType: "FamilyUpdated"}
+	assert.Equal(t, "Kept Partner", names.familyName(halfGone, updated))
+	assert.Nil(t, names.families[allGone], "a family with no visible partner is dropped")
+}

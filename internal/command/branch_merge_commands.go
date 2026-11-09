@@ -1046,7 +1046,7 @@ func personReferences(evt repository.StoredEvent) ([]uuid.UUID, error) {
 }
 
 // partnerChange decodes one partner entry of a FamilyUpdated's changes the
-// way the projection reads it (resolvePartnerChange in
+// way the projection reads it (parseOptionalUUID in
 // internal/repository/projection.go): a UUID string sets that person; an
 // absent entry, null, or any value the projection would store as "no partner"
 // references no one.

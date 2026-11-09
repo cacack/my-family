@@ -192,15 +192,16 @@ func lookupByIDs[T any](
 	return index, nil
 }
 
-// dropFamiliesWithUnnamedPartners removes the families naming a partner the
-// scope no longer has. The read model resolves partner names from the persons
-// (#1207), so such a partner reads with an empty name; dropping the family
-// names it the way a family the read model lacks is named, from the log, where
-// a deleted partner is still named by their own stream.
+// dropFamiliesWithUnnamedPartners removes the families that have partners but
+// none the scope can still name. The read model resolves partner names from
+// the persons (#1207), so a partner deleted since reads with an empty name. A
+// family with one partner left keeps its row and is named by that partner.
+// Only a family whose every partner is gone is dropped, so it is labelled as a
+// family the read model lacks: from its creation event, or, where the caller
+// folds the log (NameEntities), from the partners' own streams.
 func dropFamiliesWithUnnamedPartners(families map[uuid.UUID]*repository.FamilyReadModel) {
 	for id, f := range families {
-		if (f.Partner1ID != nil && f.Partner1GivenName == "" && f.Partner1Surname == "") ||
-			(f.Partner2ID != nil && f.Partner2GivenName == "" && f.Partner2Surname == "") {
+		if (f.Partner1ID != nil || f.Partner2ID != nil) && familyReadModelName(f) == "" {
 			delete(families, id)
 		}
 	}
