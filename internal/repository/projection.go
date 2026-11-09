@@ -2724,14 +2724,18 @@ func (p *Projector) projectImportedValuesBackfilled(ctx context.Context, e domai
 	switch e.EntityType {
 	case domain.BackfillPerson:
 		person, err := p.readStore.GetPerson(ctx, branchID, e.EntityID)
-		if err != nil || person == nil {
+		if err != nil {
 			return err
 		}
-		person.BirthPlaceLat, person.BirthPlaceLong = e.BirthPlaceLat, e.BirthPlaceLong
-		person.DeathPlaceLat, person.DeathPlaceLong = e.DeathPlaceLat, e.DeathPlaceLong
-		person.Version = version
-		if err := p.readStore.SavePerson(ctx, branchID, person); err != nil {
-			return err
+		// Main may have deleted the person since; its branch copies still
+		// need the coordinates (#1255).
+		if person != nil {
+			person.BirthPlaceLat, person.BirthPlaceLong = e.BirthPlaceLat, e.BirthPlaceLong
+			person.DeathPlaceLat, person.DeathPlaceLong = e.DeathPlaceLat, e.DeathPlaceLong
+			person.Version = version
+			if err := p.readStore.SavePerson(ctx, branchID, person); err != nil {
+				return err
+			}
 		}
 		hasCoordinates := countSet(e.BirthPlaceLat, e.BirthPlaceLong, e.DeathPlaceLat, e.DeathPlaceLong) > 0
 		if err := p.backfillBranchCopies(ctx, branchID, hasCoordinates, func(ctx context.Context, b domain.BranchID) error {
@@ -2742,7 +2746,7 @@ func (p *Projector) projectImportedValuesBackfilled(ctx context.Context, e domai
 			row.BirthPlaceLat, row.BirthPlaceLong = e.BirthPlaceLat, e.BirthPlaceLong
 			row.DeathPlaceLat, row.DeathPlaceLong = e.DeathPlaceLat, e.DeathPlaceLong
 			return p.readStore.SavePerson(ctx, b, row)
-		}); err != nil || len(e.ExternalIDs) == 0 {
+		}); err != nil || person == nil || len(e.ExternalIDs) == 0 {
 			return err
 		}
 		return p.readStore.ReplacePersonExternalIDs(ctx, branchID, e.EntityID, externalIDRows(e.ExternalIDs,
@@ -2751,13 +2755,15 @@ func (p *Projector) projectImportedValuesBackfilled(ctx context.Context, e domai
 			}))
 	case domain.BackfillLifeEvent:
 		event, err := p.readStore.GetEvent(ctx, branchID, e.EntityID)
-		if err != nil || event == nil {
+		if err != nil {
 			return err
 		}
-		event.PlaceLat, event.PlaceLong = e.PlaceLat, e.PlaceLong
-		event.Version = version
-		if err := p.readStore.SaveEvent(ctx, branchID, event); err != nil {
-			return err
+		if event != nil {
+			event.PlaceLat, event.PlaceLong = e.PlaceLat, e.PlaceLong
+			event.Version = version
+			if err := p.readStore.SaveEvent(ctx, branchID, event); err != nil {
+				return err
+			}
 		}
 		return p.backfillBranchCopies(ctx, branchID, countSet(e.PlaceLat, e.PlaceLong) > 0, func(ctx context.Context, b domain.BranchID) error {
 			row, err := p.readStore.GetEvent(ctx, b, e.EntityID)
@@ -2822,7 +2828,9 @@ func (p *Projector) projectImportedValuesBackfilled(ctx context.Context, e domai
 // coordinates (hasCoordinates): for an EXID-only backfill main's row still has
 // none, so a branch reading main's row would look like a copy, and saving it
 // would give that branch a row of its own that hides main's later edits.
-// EXIDs need no patch: a branch without its own EXIDs reads main's.
+// EXIDs need no patch: a branch without its own EXIDs reads main's. The rule
+// also holds once main has deleted the entity: a branch without a copy then
+// reads no row at all, so only its own copies are patched (#1255).
 func (p *Projector) backfillBranchCopies(ctx context.Context, branchID domain.BranchID, hasCoordinates bool, patch func(context.Context, domain.BranchID) error) error {
 	if !branchID.IsMain() || p.branchStore == nil || !hasCoordinates {
 		return nil

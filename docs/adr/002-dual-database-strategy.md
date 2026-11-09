@@ -168,9 +168,10 @@ Implemented in `internal/storage` (`storage.Open`), which `serve` calls at start
   from then on ([#1251](https://github.com/cacack/my-family/issues/1251)).
   Its projection also fills in a research branch's own copy of the person or
   life event when the replay made that copy before main had the coordinates
-  ([#1254](https://github.com/cacack/my-family/issues/1254)). An entity main
-  has since deleted gets no backfill, so a branch's copy of it still loses
-  them. The
+  ([#1254](https://github.com/cacack/my-family/issues/1254)). If main has
+  since deleted the entity, a branch's own copy of it still gets the backfill,
+  on main's stream after the delete, and only that copy is filled in
+  ([#1255](https://github.com/cacack/my-family/issues/1255)). The
   brick walls are also saved in the `rebuild_state` table, which the
   reset keeps, and every event is decoded before the reset. A rebuild that
   stops after the reset (an error, Ctrl-C, a crash) therefore leaves that row
