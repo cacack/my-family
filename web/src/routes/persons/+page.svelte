@@ -64,8 +64,10 @@
 		setQuery(page.url, { page: n }, { push: true, defaults: DEFAULTS });
 	}
 
+	// Choosing a sort resets the order to its natural direction (ascending for
+	// every sort here), as /search does.
 	function handleSortChange(e: Event) {
-		refine({ sort: (e.target as HTMLSelectElement).value });
+		refine({ sort: (e.target as HTMLSelectElement).value, order: DEFAULTS.order });
 	}
 
 	function handleOrderChange() {

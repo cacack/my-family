@@ -28,7 +28,14 @@
 	// Cap on a `limit` read from the URL, so a shared link fetches at most
 	// MAX_URL_LIMIT / API_MAX_LIMIT pages. Load more can still grow past it.
 	const MAX_URL_LIMIT = 1000;
-	const DEFAULTS = { sort: 'relevance', order: 'desc', limit: PAGE_SIZE } as const;
+	const DEFAULTS = { sort: 'relevance', limit: PAGE_SIZE } as const;
+	// Each sort's natural direction is its default order, as on /persons: best
+	// match first for relevance, otherwise ascending (A-Z, oldest first). The URL
+	// carries `order` only when it differs, so a bare `sort=birth_date` is
+	// oldest first on both pages.
+	function naturalOrder(s: (typeof SORTS)[number]): 'asc' | 'desc' {
+		return s === 'relevance' ? 'desc' : 'asc';
+	}
 
 	// Form state
 	let query = $state('');
@@ -41,7 +48,7 @@
 	let birthPlace = $state('');
 	let deathPlace = $state('');
 	let sort = $state<(typeof SORTS)[number]>(DEFAULTS.sort);
-	let order = $state<'asc' | 'desc'>(DEFAULTS.order);
+	let order = $state<'asc' | 'desc'>(naturalOrder(DEFAULTS.sort));
 
 	// Results state
 	let results: SearchResult[] = $state([]);
@@ -137,7 +144,7 @@
 		}
 		submitted = criteria;
 		sort = readEnum(params, 'sort', SORTS, DEFAULTS.sort);
-		order = readEnum(params, 'order', ['asc', 'desc'] as const, DEFAULTS.order);
+		order = readEnum(params, 'order', ['asc', 'desc'] as const, naturalOrder(sort));
 		limit = readPositiveInt(params, 'limit', DEFAULTS.limit, MAX_URL_LIMIT);
 		if (hasCriteria(criteria)) {
 			performSearch();
@@ -173,12 +180,13 @@
 	// changes only those keys, keeping the submitted criteria (replace).
 	function navigate(values: QueryValues, push: boolean) {
 		const url = page.url;
-		if (withQuery(url, values, DEFAULTS) === url.pathname + url.search) {
+		const defaults = { ...DEFAULTS, order: naturalOrder(sort) };
+		if (withQuery(url, values, defaults) === url.pathname + url.search) {
 			// Nothing changed, so no navigation: run it again as asked.
 			performSearch();
 			return;
 		}
-		setQuery(url, values, { push, defaults: DEFAULTS });
+		setQuery(url, values, { push, defaults });
 	}
 
 	// Load places on mount
@@ -370,12 +378,11 @@
 		}
 	}
 
-	// Choosing a sort starts from its natural direction: best match first for
-	// relevance, otherwise ascending (A-Z, oldest first), as /persons does.
+	// Choosing a sort resets the order to its natural direction, as /persons does.
 	function handleSortChange(e: Event) {
 		const select = e.target as HTMLSelectElement;
 		sort = select.value as typeof sort;
-		order = sort === 'relevance' ? 'desc' : 'asc';
+		order = naturalOrder(sort);
 		if (searched) navigate({ sort, order }, false);
 	}
 
@@ -395,7 +402,7 @@
 		birthPlace = '';
 		deathPlace = '';
 		sort = DEFAULTS.sort;
-		order = DEFAULTS.order;
+		order = naturalOrder(sort);
 		results = [];
 		total = 0;
 		searched = false;

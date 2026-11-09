@@ -168,4 +168,13 @@ describe('People list page: state in the URL (#901)', () => {
 		await fireEvent.change(screen.getByLabelText(/Sort by/), { target: { value: 'birth_date' } });
 		await waitFor(() => expect(lastListCall()).toMatchObject({ sort: 'birth_date', order: 'asc' }));
 	});
+
+	it('choosing a sort resets a descending order to ascending, as /search does (#1120)', async () => {
+		resetRouter('/persons?order=desc');
+		render(PersonsPage);
+		await waitFor(() => expect(lastListCall()).toMatchObject({ sort: 'surname', order: 'desc' }));
+		await fireEvent.change(screen.getByLabelText(/Sort by/), { target: { value: 'birth_date' } });
+		await waitFor(() => expect(lastListCall()).toMatchObject({ sort: 'birth_date', order: 'asc' }));
+		expect(currentPath()).toBe('/persons?sort=birth_date');
+	});
 });
