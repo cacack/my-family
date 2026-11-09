@@ -1,7 +1,9 @@
 package domain
 
 import (
+	"encoding/json"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -869,4 +871,56 @@ func ptrStr(p *int) string {
 		return "nil"
 	}
 	return string(rune(*p + '0'))
+}
+
+// TestGenDate_UnmarshalJSON_LegacyRangeEndEscape: a range whose end carries
+// its own calendar escape was stored before Calendar2 existed (#1239) with the
+// end's calendar as the whole date's calendar and no end year. Decoding it
+// re-reads it from Raw, so replay sorts it by its Gregorian start.
+func TestGenDate_UnmarshalJSON_LegacyRangeEndEscape(t *testing.T) {
+	legacy := `{"raw":"BET 1740 AND @#DHEBREW@ 5500","qualifier":"bet","year":1740,"calendar":"DHEBREW"}`
+	var gd GenDate
+	if err := json.Unmarshal([]byte(legacy), &gd); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	if gd.Calendar != CalendarGregorian || !intPtrEqual(gd.Year, intPtr(1740)) ||
+		gd.Calendar2 != CalendarHebrew || !intPtrEqual(gd.Year2, intPtr(5500)) {
+		t.Fatalf("decoded = %+v, want Gregorian 1740 to Hebrew 5500", gd)
+	}
+	if y := gd.SortDate().Year(); y != 1740 {
+		t.Errorf("SortDate year = %d, want 1740", y)
+	}
+	if gd.Raw != "BET 1740 AND @#DHEBREW@ 5500" {
+		t.Errorf("Raw = %q, want it unchanged", gd.Raw)
+	}
+}
+
+// TestGenDate_UnmarshalJSON_Unchanged: dates without an escape on the range
+// end, or already stored with Calendar2, decode exactly as stored, even when
+// the stored parts differ from what Raw would parse to.
+func TestGenDate_UnmarshalJSON_Unchanged(t *testing.T) {
+	for _, stored := range []GenDate{
+		ParseGenDate("@#DJULIAN@ BET 1690 AND 1700"),
+		ParseGenDate("BET @#DJULIAN@ 1690 AND @#DGREGORIAN@ 1700"),
+		ParseGenDate("@#DHEBREW@ 15 NSN 5785"),
+		ParseGenDate("INT 1850 (about eighteen fifty)"),
+		{Raw: "1850", Qualifier: DateAbout, Year: intPtr(1851)},
+		{},
+	} {
+		data, err := json.Marshal(stored)
+		if err != nil {
+			t.Fatalf("Marshal: %v", err)
+		}
+		var got GenDate
+		if err := json.Unmarshal(data, &got); err != nil {
+			t.Fatalf("Unmarshal(%s): %v", data, err)
+		}
+		if !reflect.DeepEqual(got, stored) {
+			t.Errorf("Unmarshal(%s) = %+v, want %+v", data, got, stored)
+		}
+	}
+	var gd GenDate
+	if err := json.Unmarshal([]byte(`{"raw":1}`), &gd); err == nil {
+		t.Error("Unmarshal of a non-string raw: want an error")
+	}
 }

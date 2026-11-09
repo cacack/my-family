@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -260,6 +261,27 @@ func (g *GenDate) parseRangeEnd(s string) {
 		}
 	}
 	parseSimpleDate(s, g.endCalendar(), &g.Year2, &g.Month2, &g.Day2)
+}
+
+// UnmarshalJSON decodes a stored GenDate. Before Calendar2 existed (#1227), a
+// range whose end carries its own calendar escape ("BET 1740 AND @#DHEBREW@
+// 5500") was stored with the end's calendar as Calendar and no end date, so
+// such a date stored without Calendar2 is re-read from Raw. Events stay as
+// written; replaying them projects the corrected date (#1239). Any other
+// date decodes as stored.
+func (g *GenDate) UnmarshalJSON(data []byte) error {
+	type stored GenDate // no methods, so decoding it doesn't recurse
+	var s stored
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+	*g = GenDate(s)
+	if g.Calendar2 == "" {
+		if _, tail := splitAtRangeEnd(strings.ToUpper(g.Raw)); strings.Contains(tail, "@#") {
+			*g = ParseGenDate(g.Raw)
+		}
+	}
+	return nil
 }
 
 // endCalendar returns the calendar of a range's end date: Calendar2 when the
