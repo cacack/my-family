@@ -61,11 +61,14 @@
 		'show-help': () => {
 			helpOpen = !helpOpen;
 		},
+		// Declines when nothing is open, so Escape reaches the page (#1139).
 		'close-modal': () => {
 			if (helpOpen) {
 				helpOpen = false;
 			} else if (accessibilityPanelOpen) {
 				accessibilityPanelOpen = false;
+			} else {
+				return false;
 			}
 		}
 	});

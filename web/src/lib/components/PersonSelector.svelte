@@ -37,6 +37,11 @@
 	let results: SearchResult[] = $state([]);
 	let loading = $state(false);
 	let showDropdown = $state(false);
+	// The dropdown renders only with results or a settled "no results" message;
+	// Escape is consumed only when it closes this visible list (#1139).
+	let dropdownVisible = $derived(
+		showDropdown && (results.length > 0 || (query.length >= 2 && !loading))
+	);
 	let highlightedIndex = $state(-1);
 	let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 	let inputRef: HTMLInputElement | undefined = $state();
@@ -137,9 +142,13 @@
 	function handleKeydown(e: KeyboardEvent) {
 		// Handle Escape
 		if (e.key === 'Escape') {
-			e.preventDefault();
-			// Closing an open result list must not also close a dialog around it.
-			if (showDropdown) e.stopPropagation();
+			// Closing an open result list is consumed so it does not also close a
+			// dialog or cancel an edit around it; with nothing open, Escape is
+			// left for page shortcuts (#1139).
+			if (dropdownVisible) {
+				e.preventDefault();
+				e.stopPropagation();
+			}
 			showDropdown = false;
 			highlightedIndex = -1;
 			return;
@@ -249,7 +258,7 @@
 		</div>
 
 		<!-- Dropdown results -->
-		{#if showDropdown && (results.length > 0 || (query.length >= 2 && !loading))}
+		{#if dropdownVisible}
 			<div
 				bind:this={dropdownRef}
 				class="dropdown"

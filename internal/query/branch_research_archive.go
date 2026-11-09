@@ -328,7 +328,7 @@ func newArchiveNames(branchEvents []repository.StoredEvent) (*archiveNames, erro
 			if err := json.Unmarshal(evt.Data, &e); err != nil {
 				return nil, fmt.Errorf("decode PersonCreated event %s: %w", evt.ID, err)
 			}
-			n.onBranch[e.PersonID] = strings.TrimSpace(e.GivenName + " " + e.Surname)
+			n.onBranch[e.PersonID] = domain.JoinFullName(e.GivenName, e.Surname)
 		case "FamilyCreated":
 			n.onBranch[evt.StreamID] = "Family created on this branch"
 		}

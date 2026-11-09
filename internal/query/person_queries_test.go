@@ -605,17 +605,6 @@ func TestGetPersonNames(t *testing.T) {
 		t.Fatalf("CreatePerson failed: %v", err)
 	}
 
-	// Add a primary name
-	_, err = handler.AddName(ctx, command.AddNameInput{
-		PersonID:  createResult.ID,
-		GivenName: "John",
-		Surname:   "Doe",
-		IsPrimary: true,
-	})
-	if err != nil {
-		t.Fatalf("AddName failed: %v", err)
-	}
-
 	// Get names for the person
 	names, err := service.GetPersonNames(ctx, domain.MainBranchID, createResult.ID)
 	if err != nil {
@@ -645,24 +634,13 @@ func TestGetPersonNames_MultipleNames(t *testing.T) {
 	service := query.NewPersonService(readStore)
 	ctx := context.Background()
 
-	// Create a person
+	// Create a person (with its primary, married name)
 	createResult, err := handler.CreatePerson(ctx, command.CreatePersonInput{
 		GivenName: "Jane",
 		Surname:   "Smith",
 	})
 	if err != nil {
 		t.Fatalf("CreatePerson failed: %v", err)
-	}
-
-	// Add a primary name (married name)
-	_, err = handler.AddName(ctx, command.AddNameInput{
-		PersonID:  createResult.ID,
-		GivenName: "Jane",
-		Surname:   "Smith",
-		IsPrimary: true,
-	})
-	if err != nil {
-		t.Fatalf("AddName failed: %v", err)
 	}
 
 	// Add a maiden name

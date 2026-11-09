@@ -40,6 +40,37 @@ func createPersonForNameTest(t *testing.T, server *api.Server) string {
 	return resp["id"].(string)
 }
 
+// TestCreatePerson_ReturnsOnePrimaryName checks a new person's detail carries
+// exactly one names[] entry, its primary name (#1131).
+func TestCreatePerson_ReturnsOnePrimaryName(t *testing.T) {
+	server := setupNameTestServer()
+	personID := createPersonForNameTest(t, server)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/persons/"+personID, http.NoBody)
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Status = %d, want %d. Body: %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var resp struct {
+		Names []struct {
+			GivenName string `json:"given_name"`
+			Surname   string `json:"surname"`
+			IsPrimary bool   `json:"is_primary"`
+		} `json:"names"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+	if len(resp.Names) != 1 {
+		t.Fatalf("names = %+v, want one primary name", resp.Names)
+	}
+	if n := resp.Names[0]; !n.IsPrimary || n.GivenName != "John" || n.Surname != "Doe" {
+		t.Errorf("name = %+v, want primary John Doe", n)
+	}
+}
+
 func TestGetPersonNames(t *testing.T) {
 	server := setupNameTestServer()
 	personID := createPersonForNameTest(t, server)

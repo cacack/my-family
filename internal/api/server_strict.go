@@ -2271,14 +2271,6 @@ func (ss *StrictServer) CreatePerson(ctx context.Context, request CreatePersonRe
 		return nil, err
 	}
 
-	// Create the primary name
-	_, _ = writer.AddName(ctx, command.AddNameInput{
-		PersonID:  result.ID,
-		GivenName: request.Body.GivenName,
-		Surname:   surname,
-		IsPrimary: true,
-	})
-
 	person, err := ss.server.personService.GetPerson(ctx, scope, result.ID)
 	if err != nil {
 		return nil, err

@@ -63,7 +63,19 @@ function normalizeKey(event: KeyboardEvent): string {
 }
 
 /**
+ * A shortcut handler. Returning `false` means it had nothing to do (say, no
+ * dialog was open to close): the key then falls through to the next matching
+ * action and is left for other listeners, rather than consumed.
+ */
+export type ShortcutHandler = () => unknown;
+
+/**
  * Creates a keyboard shortcut handler for a specific context.
+ *
+ * Only shortcuts this instance has a handler for are matched, so a page's
+ * instance and the layout's global one can share the window without one
+ * consuming keys meant for the other. Events another listener has already
+ * consumed (`defaultPrevented`, e.g. Escape closing a dropdown) are ignored.
  *
  * @param context - The shortcut context (e.g., 'global', 'pedigree')
  * @param handlers - Map of action names to handler functions
@@ -87,7 +99,7 @@ function normalizeKey(event: KeyboardEvent): string {
  */
 export function useShortcuts(
 	context: ShortcutContext,
-	handlers: Record<string, () => void>
+	handlers: Record<string, ShortcutHandler>
 ): {
 	handleKeydown: (event: KeyboardEvent) => void;
 	cleanup: () => void;
@@ -98,8 +110,19 @@ export function useShortcuts(
 	let lastKeyTime = 0;
 	let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
-	// Get shortcuts for this context
-	const shortcuts = getShortcutsForContext(context);
+	// Shortcuts for this context that this instance can act on
+	const shortcuts = getShortcutsForContext(context).filter((shortcut) => shortcut.action in handlers);
+
+	/**
+	 * Run the first of these actions whose handler does not decline.
+	 * Returns whether one handled the key.
+	 */
+	function runFirst(actions: string[]): boolean {
+		return actions.some((action) => {
+			const handler = handlers[action];
+			return handler !== undefined && handler() !== false;
+		});
+	}
 
 	/**
 	 * Clear pending key sequence
@@ -116,8 +139,9 @@ export function useShortcuts(
 	 * Handle a keydown event
 	 */
 	function handleKeydown(event: KeyboardEvent): void {
-		// Skip if shortcuts are disabled globally
-		if (!keyboardState.shortcutsEnabled) {
+		// Skip if shortcuts are disabled globally, or another listener (a
+		// dropdown or dialog) already consumed the key
+		if (!keyboardState.shortcutsEnabled || event.defaultPrevented) {
 			return;
 		}
 
@@ -126,10 +150,8 @@ export function useShortcuts(
 			// Exception: Escape should always work to blur/close/cancel
 			if (event.key === 'Escape') {
 				// Try close-modal first (for modals), then cancel (for edit forms)
-				const handler = handlers['close-modal'] || handlers['cancel'];
-				if (handler) {
+				if (runFirst(['close-modal', 'cancel'])) {
 					event.preventDefault();
-					handler();
 				}
 			}
 			return;
@@ -164,18 +186,13 @@ export function useShortcuts(
 			clearTimeout(timeoutId);
 		}
 
-		// Check for exact match
-		const matchedShortcut = shortcuts.find((shortcut) =>
-			sequenceMatches(pendingKeys, shortcut.keys)
-		);
+		// Check for exact matches (Escape matches both close-modal and cancel)
+		const matched = shortcuts.filter((shortcut) => sequenceMatches(pendingKeys, shortcut.keys));
 
-		if (matchedShortcut) {
-			event.preventDefault();
+		if (matched.length > 0) {
 			clearPendingKeys();
-
-			const handler = handlers[matchedShortcut.action];
-			if (handler) {
-				handler();
+			if (runFirst(matched.map((shortcut) => shortcut.action))) {
+				event.preventDefault();
 			}
 			return;
 		}
@@ -244,7 +261,7 @@ export function useShortcuts(
  */
 export function createShortcutHandler(
 	context: ShortcutContext,
-	handlers: Record<string, () => void>
+	handlers: Record<string, ShortcutHandler>
 ): {
 	handleKeydown: (event: KeyboardEvent) => void;
 } {

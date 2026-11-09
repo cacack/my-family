@@ -24,6 +24,7 @@
 	import BranchOutcomeBadge from '#lib/components/branch/BranchOutcomeBadge.svelte';
 	import BranchDriftIndicator from './BranchDriftIndicator.svelte';
 	import { subjectHref, subjectLabel } from '#lib/utils/branchResearch.js';
+	import { MediaQuery } from 'svelte/reactivity';
 
 	/** How many subjects the banner names before summarising the rest. */
 	const BANNER_SUBJECTS = 3;
@@ -32,11 +33,16 @@
 	const shownSubjects = $derived(subjects.slice(0, BANNER_SUBJECTS));
 	const hiddenSubjects = $derived(subjects.length - shownSubjects.length);
 
+	/** The whole first line, kept in a title since it is clamped to two lines (#1135). */
+	const identity = $derived(
+		`Working on ${activeBranch.branch?.name ?? 'a research branch'}. Edits stay on this branch.`
+	);
+
 	// Switching reloads the page, so this only has to survive until the reload
 	// lands - it stops a second click from firing another one.
 	let leaving = $state(false);
 
-	let drift: BranchDrift | null = $state(null);
+	let drift = $state<BranchDrift | null>(null);
 	/** The drift read failed; the banner says so rather than showing nothing. */
 	let driftFailed = $state(false);
 	/**
@@ -49,6 +55,27 @@
 	let refreshTick = $state(0);
 	/** The branch the shown counts belong to; a refresh of the same one keeps them on screen. */
 	let driftFor: string | null = null;
+
+	/**
+	 * On a phone the drift sentence runs two or three lines, so it moves into
+	 * the disclosure there and the summary says the mainline moved (#1135).
+	 * Same breakpoint as the layout's phone header.
+	 */
+	const phone = new MediaQuery('max-width: 639px');
+	const driftInDisclosure = $derived(phone.current && (drift !== null || driftFailed));
+	/**
+	 * With the drift folded away, the summary carries its gist so a phone still
+	 * sees a failed check or mainline changes to records edited here (#1135).
+	 */
+	const summary = $derived.by(() => {
+		if (!driftInDisclosure) return 'How branches work';
+		if (driftFailed) return 'Mainline check failed - how branches work';
+		if (!drift || drift.main_change_count === 0) return 'How branches work';
+		const touched = drift.main_change_count_on_branch_entities;
+		if (touched === 0) return 'Mainline moved - how branches work';
+		const capped = drift.has_more && touched === drift.main_change_count ? '+' : '';
+		return `Mainline moved, ${touched.toLocaleString('en-US')}${capped} on your edits - details`;
+	});
 
 	function requestRefresh() {
 		refreshTick++;
@@ -125,13 +152,16 @@
 	<div class="branch-banner" role="status">
 		<div class="branch-text">
 			<!-- The label leads the first line rather than sitting in its own column,
-			     which on a phone squeezed everything else into a sliver (#1095). -->
-			<span class="branch-label">Research Branch</span>
-			{#if activeBranch.branch}
-				Working on <strong>{activeBranch.branch.name}</strong>. Edits stay on this branch.
-			{:else}
-				Working on a research branch. Edits stay on this branch.
-			{/if}
+			     which on a phone squeezed everything else into a sliver (#1095). The
+			     line is clamped to two so a long name cannot push the record down (#1135). -->
+			<span class="branch-identity" data-testid="banner-identity" title={identity}>
+				<span class="branch-label">Research Branch</span>
+				{#if activeBranch.branch}
+					Working on <strong>{activeBranch.branch.name}</strong>. Edits stay on this branch.
+				{:else}
+					Working on a research branch. Edits stay on this branch.
+				{/if}
+			</span>
 			{#if activeBranch.branch}
 				<span class="branch-research" data-testid="banner-research">
 					<BranchOutcomeBadge outcome={activeBranch.branch.outcome} />
@@ -144,10 +174,13 @@
 						<span class="branch-subjects" data-testid="banner-subjects">
 							<span class="subjects-label">About</span>
 							{#each shownSubjects as subject, i (subject.type + subject.id)}
-								<a href={subjectHref(subject)}>{subjectLabel(subject)}</a>{#if i < shownSubjects.length - 1},{/if}
+								<span class="subject"
+									><a href={subjectHref(subject)} title={subjectLabel(subject)}>{subjectLabel(subject)}</a
+									>{#if i < shownSubjects.length - 1},{/if}</span
+								>
 							{/each}
 							{#if hiddenSubjects > 0}
-								<a href="/branches/{activeBranch.id}">+{hiddenSubjects} more</a>
+								<a class="subjects-more" href="/branches/{activeBranch.id}">+{hiddenSubjects} more</a>
 							{/if}
 						</span>
 					{/if}
@@ -158,15 +191,18 @@
 					Couldn't confirm this branch's status with the server, so it is still in use.
 				</span>
 			{/if}
-			{#if drift}
-				<span class="branch-drift">
-					<BranchDriftIndicator {drift} />
-				</span>
-			{:else if driftFailed}
-				<span class="branch-drift">Couldn't check how far the mainline has moved.</span>
+			{#if !driftInDisclosure}
+				{@render driftLine()}
 			{/if}
 			<details class="branch-help">
-				<summary>How branches work</summary>
+				<summary>{summary}</summary>
+				{#if phone.current}
+					<!-- The clamped line's full text, reachable by tap where no title tooltip shows. -->
+					<p data-testid="banner-identity-full">{identity}</p>
+				{/if}
+				{#if driftInDisclosure}
+					{@render driftLine()}
+				{/if}
 				<p>
 					Changes to people, families, sources, media and evidence are isolated to this branch;
 					pages that stay on the mainline say so.
@@ -188,6 +224,16 @@
 		</div>
 	</div>
 {/if}
+
+{#snippet driftLine()}
+	{#if drift}
+		<span class="branch-drift">
+			<BranchDriftIndicator {drift} />
+		</span>
+	{:else if driftFailed}
+		<span class="branch-drift">Couldn't check how far the mainline has moved.</span>
+	{/if}
+{/snippet}
 
 <style>
 	.branch-banner,
@@ -219,6 +265,14 @@
 		min-width: 12rem;
 	}
 
+	.branch-identity {
+		display: -webkit-box;
+		-webkit-box-orient: vertical;
+		-webkit-line-clamp: 2;
+		line-clamp: 2;
+		overflow: hidden;
+	}
+
 	/* Wraps so the subjects drop below a long question instead of squeezing
 	   it to a few characters; the question grows to its own width, keeps at
 	   least 8rem, and truncates with the full text in its title. */
@@ -242,11 +296,29 @@
 		min-width: 0;
 	}
 
+	/* One line at any width: each name truncates, with its full text in its
+	   title, rather than wrapping the line on a phone (#1135). */
 	.branch-subjects {
 		display: inline-flex;
-		flex-wrap: wrap;
 		gap: 0.25rem;
 		white-space: nowrap;
+		min-width: 0;
+		max-width: 100%;
+	}
+
+	.subject {
+		display: inline-flex;
+		min-width: 1.5rem;
+	}
+
+	.subject a {
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.subjects-label,
+	.subjects-more {
+		flex-shrink: 0;
 	}
 
 	.branch-subjects a {
@@ -286,6 +358,10 @@
 		outline-offset: 2px;
 	}
 
+	.branch-help .branch-drift {
+		margin-top: 0.25rem;
+	}
+
 	.branch-help p {
 		margin: 0.25rem 0 0;
 		max-width: 48rem;
@@ -306,5 +382,14 @@
 	.notice-text {
 		flex: 1;
 		min-width: 12rem;
+	}
+
+	/* A narrower gutter on a phone gives the text lines back a few words each. */
+	@media (max-width: 639px) {
+		.branch-banner,
+		.branch-notice {
+			padding: 0.5rem 1rem;
+			row-gap: 0.5rem;
+		}
 	}
 </style>

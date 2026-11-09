@@ -60,6 +60,25 @@ describe('NameSection', () => {
 		});
 	});
 
+	// An imported name with no GEDCOM TYPE has name_type "" (#1131).
+	it('saves an edit to a name with no type, keeping it untyped', async () => {
+		const untyped = { ...surnameless(), name_type: '' } as unknown as apiModule.PersonName;
+		vi.mocked(apiModule.api.getPersonNames).mockResolvedValue({ items: [untyped], total: 1 });
+		render(NameSection, { personId: PERSON_ID });
+		await fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+
+		const select = screen.getByLabelText(/^Name Type/) as HTMLSelectElement;
+		expect(select.value).toBe('');
+		const form = select.closest('form')!;
+		expect(form.checkValidity()).toBe(true);
+		await fireEvent.submit(form);
+
+		await waitFor(() => expect(apiModule.api.updatePersonName).toHaveBeenCalled());
+		const body = vi.mocked(apiModule.api.updatePersonName).mock.calls[0][2];
+		expect(body.given_name).toBe('Victoria');
+		expect(body.name_type).toBeUndefined();
+	});
+
 	it('adds a name with no surname', async () => {
 		render(NameSection, { personId: PERSON_ID });
 		await fireEvent.click(await screen.findByRole('button', { name: 'Add Name' }));

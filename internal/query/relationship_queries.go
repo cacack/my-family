@@ -155,7 +155,7 @@ func (s *RelationshipService) GetRelationship(ctx context.Context, branchID doma
 
 // personDisplayName returns a display name for a person.
 func personDisplayName(p Person) string {
-	name := fullName(p.GivenName, p.Surname)
+	name := domain.JoinFullName(p.GivenName, p.Surname)
 	if name == "" {
 		return "Unknown"
 	}

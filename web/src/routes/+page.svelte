@@ -261,8 +261,10 @@
 		color: var(--color-link);
 	}
 
+	/* Underlined: colour alone does not set it apart from the text around it (#1116). */
 	.empty a {
 		color: var(--color-link);
+		text-decoration: underline;
 	}
 
 	.action-buttons {

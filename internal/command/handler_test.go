@@ -68,8 +68,8 @@ func TestHandler_Execute_ValidEvents(t *testing.T) {
 	if result.ID == uuid.Nil {
 		t.Error("Expected non-nil ID")
 	}
-	if result.Version != 1 {
-		t.Errorf("Version = %d, want 1", result.Version)
+	if result.Version != 2 {
+		t.Errorf("Version = %d, want 2", result.Version)
 	}
 
 	// Verify event was stored
@@ -118,8 +118,8 @@ func TestHandler_Execute_InvalidUUID(t *testing.T) {
 
 	// Verify the version was incremented correctly
 	person, _ := readStore.GetPerson(ctx, domain.MainBranchID, result.ID)
-	if person.Version != 2 {
-		t.Errorf("Version = %d, want 2", person.Version)
+	if person.Version != 3 {
+		t.Errorf("Version = %d, want 3", person.Version)
 	}
 }
 
@@ -158,12 +158,12 @@ func TestHandler_Execute_VersionCalculation(t *testing.T) {
 		{
 			name:            "new stream (version -1)",
 			expectedVersion: -1,
-			wantNewVersion:  1,
+			wantNewVersion:  2,
 		},
 		{
 			name:            "existing stream (version 0)",
 			expectedVersion: 0,
-			wantNewVersion:  1,
+			wantNewVersion:  2,
 		},
 	}
 
@@ -218,8 +218,8 @@ func TestHandler_Execute_MultipleEvents(t *testing.T) {
 
 	// Verify final version
 	person, _ := readStore.GetPerson(ctx, domain.MainBranchID, createResult.ID)
-	if person.Version != 4 {
-		t.Errorf("Final version = %d, want 4", person.Version)
+	if person.Version != 5 {
+		t.Errorf("Final version = %d, want 5", person.Version)
 	}
 }
 
@@ -245,8 +245,8 @@ func TestHandler_Execute_ProjectionError(t *testing.T) {
 	if result.ID == uuid.Nil {
 		t.Error("Expected non-nil ID")
 	}
-	if result.Version != 1 {
-		t.Errorf("Version = %d, want 1", result.Version)
+	if result.Version != 2 {
+		t.Errorf("Version = %d, want 2", result.Version)
 	}
 }
 
@@ -291,8 +291,8 @@ func TestRollbackPerson_Success(t *testing.T) {
 	if rollbackResult.EntityType != "Person" {
 		t.Errorf("EntityType = %s, want Person", rollbackResult.EntityType)
 	}
-	if rollbackResult.NewVersion != 3 {
-		t.Errorf("NewVersion = %d, want 3", rollbackResult.NewVersion)
+	if rollbackResult.NewVersion != 4 {
+		t.Errorf("NewVersion = %d, want 4", rollbackResult.NewVersion)
 	}
 	if rollbackResult.Changes["given_name"] != "John" {
 		t.Errorf("given_name change = %v, want John", rollbackResult.Changes["given_name"])
@@ -352,7 +352,7 @@ func TestRollbackPerson_ToCurrentVersion(t *testing.T) {
 	}
 
 	// Try to rollback to current version (no-op)
-	_, err = handler.RollbackPerson(ctx, createResult.ID, 1)
+	_, err = handler.RollbackPerson(ctx, createResult.ID, createResult.Version)
 	if err != command.ErrRollbackNoChanges {
 		t.Errorf("Expected ErrRollbackNoChanges, got %v", err)
 	}
@@ -422,7 +422,7 @@ func TestRollbackPerson_DeletedEntity(t *testing.T) {
 	// Delete the person
 	err = handler.DeletePerson(ctx, command.DeletePersonInput{
 		ID:      createResult.ID,
-		Version: 2,
+		Version: createResult.Version + 1,
 		Reason:  "test deletion",
 	})
 	if err != nil {
@@ -737,7 +737,7 @@ func TestRollbackPerson_NoChangesNeeded(t *testing.T) {
 	_, err = handler.UpdatePerson(ctx, command.UpdatePersonInput{
 		ID:      createResult.ID,
 		Notes:   &emptyNotes,
-		Version: 2,
+		Version: createResult.Version + 1,
 	})
 	if err != nil {
 		t.Fatalf("UpdatePerson failed: %v", err)
@@ -753,8 +753,8 @@ func TestRollbackPerson_NoChangesNeeded(t *testing.T) {
 
 	// There should be changes (notes was added then removed, so at v1 there was no notes field)
 	// At v3 notes is empty string, at v1 notes didn't exist
-	if rollbackResult.NewVersion != 4 {
-		t.Errorf("NewVersion = %d, want 4", rollbackResult.NewVersion)
+	if rollbackResult.NewVersion != 5 {
+		t.Errorf("NewVersion = %d, want 5", rollbackResult.NewVersion)
 	}
 }
 
@@ -1352,9 +1352,9 @@ func TestRollbackPerson_NoChangesRequiredFromState(t *testing.T) {
 		t.Fatalf("RollbackPerson failed: %v", err)
 	}
 
-	// Should return result indicating no changes needed (version stays at 3)
-	if result.NewVersion != 3 {
-		t.Errorf("Expected NewVersion=3 (no change), got %d", result.NewVersion)
+	// Should return result indicating no changes needed (version stays at 4)
+	if result.NewVersion != 4 {
+		t.Errorf("Expected NewVersion=4 (no change), got %d", result.NewVersion)
 	}
 }
 
@@ -1383,8 +1383,8 @@ func TestHandler_Unscoped_WritesMain(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadAll failed: %v", err)
 	}
-	if len(events) != 2 {
-		t.Fatalf("stored %d events, want 2", len(events))
+	if len(events) != 3 {
+		t.Fatalf("stored %d events, want 3 (PersonCreated, NameAdded, SourceCreated)", len(events))
 	}
 	for _, e := range events {
 		if e.BranchID != domain.MainBranchID {

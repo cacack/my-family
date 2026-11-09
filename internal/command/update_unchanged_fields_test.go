@@ -96,7 +96,7 @@ func TestUpdatePerson_RecordsOnlyChangedFields(t *testing.T) {
 			if _, err := handler.UpdatePerson(ctx, input); err != nil {
 				t.Fatalf("UpdatePerson: %v", err)
 			}
-			checkRecorded(t, events, created.ID, 1, tt.want)
+			checkRecorded(t, events, created.ID, int(created.Version), tt.want)
 		})
 	}
 }

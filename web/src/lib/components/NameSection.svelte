@@ -28,7 +28,9 @@
 	let retryAction: (() => Promise<void>) | null = $state(null);
 	let retrying = $state(false);
 
-	// Form state for add/edit
+	// Form state for add/edit. name_type is '' for an imported name with no
+	// GEDCOM TYPE (#1131); the API has no way to set it back to untyped, so
+	// only such a name offers "Unspecified", and saving it leaves the type alone.
 	let formData = $state({
 		given_name: '',
 		surname: '',
@@ -36,7 +38,7 @@
 		name_suffix: '',
 		surname_prefix: '',
 		nickname: '',
-		name_type: 'birth' as NameType,
+		name_type: 'birth' as NameType | '',
 		is_primary: false
 	});
 
@@ -105,8 +107,8 @@
 			name_suffix: name.name_suffix || '',
 			surname_prefix: name.surname_prefix || '',
 			nickname: name.nickname || '',
-			// An untyped name has no name_type (#1121); keep it untyped as before.
-			name_type: (name.name_type ?? '') as NameType,
+			// An untyped name has no name_type (#1121, #1131); keep it untyped.
+			name_type: name.name_type || '',
 			is_primary: name.is_primary
 		};
 		showAddForm = false;
@@ -121,6 +123,10 @@
 	async function saveNewName() {
 		if (!formData.given_name.trim()) {
 			error = 'Given name is required';
+			return;
+		}
+		if (!formData.name_type) {
+			error = 'Name type is required';
 			return;
 		}
 
@@ -170,7 +176,7 @@
 				name_suffix: formData.name_suffix.trim(),
 				surname_prefix: formData.surname_prefix.trim(),
 				nickname: formData.nickname.trim(),
-				name_type: formData.name_type,
+				name_type: formData.name_type || undefined,
 				is_primary: formData.is_primary
 			});
 			editingId = null;
@@ -384,8 +390,11 @@
 
 							<FormRow>
 								<label>
-									<span>Name Type <span class="required">*</span></span>
-									<select bind:value={formData.name_type} required>
+									<span>Name Type {#if name.name_type}<span class="required">*</span>{/if}</span>
+									<select bind:value={formData.name_type} required={!!name.name_type}>
+										{#if !name.name_type}
+											<option value="">Unspecified</option>
+										{/if}
 										{#each NAME_TYPE_OPTIONS as option (option.value)}
 											<option value={option.value}>{option.label}</option>
 										{/each}

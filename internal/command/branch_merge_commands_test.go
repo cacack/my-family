@@ -182,10 +182,10 @@ func TestMergeBranch_PreservesProvenance(t *testing.T) {
 	}
 
 	mainEvents := branchEventsFor(t, s.f, s.person, domain.MainBranchID)
-	if len(mainEvents) != 2 { // PersonCreated, then the replayed PersonUpdated
-		t.Fatalf("main holds %d person events, want 2", len(mainEvents))
+	if len(mainEvents) != 3 { // PersonCreated and NameAdded, then the replayed PersonUpdated
+		t.Fatalf("main holds %d person events, want 3", len(mainEvents))
 	}
-	replayed := mainEvents[1]
+	replayed := mainEvents[2]
 
 	// The payload keeps when the research was done; the envelope records the
 	// event at the merge (#832), so main's history shows when it arrived.
@@ -714,8 +714,8 @@ func TestMergeBranch_MultipleStreams(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MergeBranch failed: %v", err)
 	}
-	if res.ReplayedEventCount != 3 { // two edits to keep, one create for fresh
-		t.Errorf("ReplayedEventCount = %d, want 3", res.ReplayedEventCount)
+	if res.ReplayedEventCount != 4 { // two edits to keep, PersonCreated + NameAdded for fresh
+		t.Errorf("ReplayedEventCount = %d, want 4", res.ReplayedEventCount)
 	}
 	if len(res.SkippedStreamIDs) != 1 || res.SkippedStreamIDs[0] != drop.ID {
 		t.Errorf("SkippedStreamIDs = %v, want [%s]", res.SkippedStreamIDs, drop.ID)
@@ -1669,12 +1669,14 @@ func TestMergeBranch_StampsProvenance(t *testing.T) {
 	claim := branchMergedEvent(t, s.f, s.branch)
 	mainEvents := branchEventsFor(t, s.f, s.person, domain.MainBranchID)
 
-	if prov := replayProvenance(t, mainEvents[0]); prov != nil {
-		t.Errorf("the mainline's own PersonCreated carries provenance %+v, want none", prov)
+	for _, own := range mainEvents[:2] {
+		if prov := replayProvenance(t, own); prov != nil {
+			t.Errorf("the mainline's own %s carries provenance %+v, want none", own.EventType, prov)
+		}
 	}
-	prov := replayProvenance(t, mainEvents[1])
+	prov := replayProvenance(t, mainEvents[2])
 	if prov == nil {
-		t.Fatalf("replayed event carries no provenance; metadata = %s", mainEvents[1].Metadata)
+		t.Fatalf("replayed event carries no provenance; metadata = %s", mainEvents[2].Metadata)
 	}
 	want := domain.MergeProvenance{
 		BranchID: s.branch.ID, BranchName: s.branch.Name, ClaimID: claim.ID,
@@ -1739,8 +1741,8 @@ func TestMergeBranch_RecordsDecisions(t *testing.T) {
 	if !claim.HasRecord() {
 		t.Fatal("claim carries no merge record")
 	}
-	if *claim.ReplayedEventCount != result.ReplayedEventCount || *claim.ReplayedEventCount != 2 {
-		t.Errorf("recorded replayed_event_count = %d, result says %d, want 2", *claim.ReplayedEventCount, result.ReplayedEventCount)
+	if *claim.ReplayedEventCount != result.ReplayedEventCount || *claim.ReplayedEventCount != 3 {
+		t.Errorf("recorded replayed_event_count = %d, result says %d, want 3", *claim.ReplayedEventCount, result.ReplayedEventCount)
 	}
 	if len(claim.SkippedStreamIDs) != 1 || claim.SkippedStreamIDs[0] != left.ID {
 		t.Errorf("skipped = %v, want [%s]", claim.SkippedStreamIDs, left.ID)
