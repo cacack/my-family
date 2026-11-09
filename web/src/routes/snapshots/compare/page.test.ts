@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent, within } from '@testing-library/svelte';
 import Page from './+page.svelte';
-import type * as apiModule from '$lib/api/client';
-import type { BranchChangeEntry, Snapshot, SnapshotComparisonResult } from '$lib/api/client';
-import { resetRouter } from '$lib/test/fakeRouter.svelte';
+import type * as apiModule from '#lib/api/client.js';
+import type { BranchChangeEntry, Snapshot, SnapshotComparisonResult } from '#lib/api/client.js';
+import { resetRouter } from '#lib/test/fakeRouter.svelte.js';
 
 const OLDER_ID = '11111111-1111-1111-1111-111111111111';
 const NEWER_ID = '22222222-2222-2222-2222-222222222222';
@@ -25,7 +25,7 @@ const { compareSnapshots, compareSnapshotToCurrent, branchState } = vi.hoisted((
 	}
 }));
 
-vi.mock('$lib/api/client', async (importOriginal) => {
+vi.mock('#lib/api/client.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof apiModule>();
 	return {
 		...actual,
@@ -39,9 +39,9 @@ vi.mock('$lib/api/client', async (importOriginal) => {
 
 // A soft navigation between two comparisons reuses the component, so the
 // route has to be drivable rather than fixed.
-vi.mock('$app/state', async () => (await import('$lib/test/fakeRouter.svelte')).appState);
+vi.mock('$app/state', async () => (await import('#lib/test/fakeRouter.svelte.js')).appState);
 
-vi.mock('$lib/stores/activeBranch.svelte', () => branchState);
+vi.mock('#lib/stores/activeBranch.svelte.js', () => branchState);
 
 function navigateTo(query: string) {
 	resetRouter(`/snapshots/compare${query}`);

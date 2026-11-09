@@ -14,15 +14,15 @@
 	 * `branchId`, with a request token so a late answer for another branch is
 	 * dropped.
 	 */
-	import { api, type ApiError, type BranchEvidenceCoverage } from '$lib/api/client';
-	import { Badge } from '$lib/components/ui/badge';
-	import { Button } from '$lib/components/ui/button';
+	import { api, type ApiError, type BranchEvidenceCoverage } from '#lib/api/client.js';
+	import { Badge } from '#lib/components/ui/badge/index.js';
+	import { Button } from '#lib/components/ui/button/index.js';
 	import {
 		addAnalysisHref,
 		changedFactLabel,
 		coverageHeading,
 		subjectHref
-	} from '$lib/utils/branchReview';
+	} from '#lib/utils/branchReview.js';
 
 	interface Props {
 		branchId: string;

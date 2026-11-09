@@ -3176,3 +3176,51 @@ func TestImportFirstOfMany(t *testing.T) {
 		}
 	})
 }
+
+func TestImportMultiLineInlineNotes(t *testing.T) {
+	// A record-level inline NOTE keeps its CONT (newline) and CONC
+	// (concatenated) continuation lines on INDI, SOUR and REPO (#1202). Note
+	// pointers and the file order of several NOTE values are unchanged.
+	gedcomData := `0 HEAD
+1 GEDC
+2 VERS 5.5.1
+1 CHAR UTF-8
+0 @R1@ REPO
+1 NAME Archive
+1 NOTE repo a
+2 CONT repo b
+2 CONC  tail
+0 @S1@ SOUR
+1 TITL Register
+1 NOTE src a
+2 CONC bc
+2 CONT
+2 CONT src d
+0 @I1@ INDI
+1 NAME A /B/
+1 NOTE line a
+2 CONT line b
+1 NOTE @N1@
+1 NOTE
+2 CONT after empty
+1 NOTE last
+0 @N1@ NOTE Shared
+0 TRLR
+`
+	_, persons, _, sources, _, repositories, _, _, _, _, _, _, _, err := gedcom.NewImporter().Import(context.Background(), strings.NewReader(gedcomData))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+	if len(persons) != 1 || len(sources) != 1 || len(repositories) != 1 {
+		t.Fatalf("got %d persons, %d sources, %d repositories; want 1 each", len(persons), len(sources), len(repositories))
+	}
+	if want := "line a\nline b\n\n@N1@\n\n\nafter empty\n\nlast"; persons[0].Notes != want {
+		t.Errorf("person Notes = %q, want %q", persons[0].Notes, want)
+	}
+	if want := "src abc\n\nsrc d"; sources[0].Notes != want {
+		t.Errorf("source Notes = %q, want %q", sources[0].Notes, want)
+	}
+	if want := "repo a\nrepo b tail"; repositories[0].Notes != want {
+		t.Errorf("repository Notes = %q, want %q", repositories[0].Notes, want)
+	}
+}

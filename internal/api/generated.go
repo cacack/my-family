@@ -328,6 +328,7 @@ const (
 	ChangeEntryEntityTypeAttribute        ChangeEntryEntityType = "attribute"
 	ChangeEntryEntityTypeBranch           ChangeEntryEntityType = "branch"
 	ChangeEntryEntityTypeCitation         ChangeEntryEntityType = "citation"
+	ChangeEntryEntityTypeDuplicatePair    ChangeEntryEntityType = "duplicate_pair"
 	ChangeEntryEntityTypeEvidenceAnalysis ChangeEntryEntityType = "evidence_analysis"
 	ChangeEntryEntityTypeEvidenceConflict ChangeEntryEntityType = "evidence_conflict"
 	ChangeEntryEntityTypeFamily           ChangeEntryEntityType = "family"
@@ -353,6 +354,8 @@ func (e ChangeEntryEntityType) Valid() bool {
 	case ChangeEntryEntityTypeBranch:
 		return true
 	case ChangeEntryEntityTypeCitation:
+		return true
+	case ChangeEntryEntityTypeDuplicatePair:
 		return true
 	case ChangeEntryEntityTypeEvidenceAnalysis:
 		return true
@@ -486,25 +489,25 @@ func (e ConflictStatus) Valid() bool {
 
 // Defines values for DiscoverySuggestionType.
 const (
-	BrickWallResolved DiscoverySuggestionType = "brick_wall_resolved"
-	MissingData       DiscoverySuggestionType = "missing_data"
-	Orphan            DiscoverySuggestionType = "orphan"
-	QualityGap        DiscoverySuggestionType = "quality_gap"
-	Unassessed        DiscoverySuggestionType = "unassessed"
+	DiscoverySuggestionTypeBrickWallResolved DiscoverySuggestionType = "brick_wall_resolved"
+	DiscoverySuggestionTypeMissingData       DiscoverySuggestionType = "missing_data"
+	DiscoverySuggestionTypeOrphan            DiscoverySuggestionType = "orphan"
+	DiscoverySuggestionTypeQualityGap        DiscoverySuggestionType = "quality_gap"
+	DiscoverySuggestionTypeUnassessed        DiscoverySuggestionType = "unassessed"
 )
 
 // Valid indicates whether the value is a known member of the DiscoverySuggestionType enum.
 func (e DiscoverySuggestionType) Valid() bool {
 	switch e {
-	case BrickWallResolved:
+	case DiscoverySuggestionTypeBrickWallResolved:
 		return true
-	case MissingData:
+	case DiscoverySuggestionTypeMissingData:
 		return true
-	case Orphan:
+	case DiscoverySuggestionTypeOrphan:
 		return true
-	case QualityGap:
+	case DiscoverySuggestionTypeQualityGap:
 		return true
-	case Unassessed:
+	case DiscoverySuggestionTypeUnassessed:
 		return true
 	default:
 		return false
@@ -1489,6 +1492,7 @@ const (
 	ListHistoryParamsEntityTypeAttribute        ListHistoryParamsEntityType = "attribute"
 	ListHistoryParamsEntityTypeBranch           ListHistoryParamsEntityType = "branch"
 	ListHistoryParamsEntityTypeCitation         ListHistoryParamsEntityType = "citation"
+	ListHistoryParamsEntityTypeDuplicatePair    ListHistoryParamsEntityType = "duplicate_pair"
 	ListHistoryParamsEntityTypeEvidenceAnalysis ListHistoryParamsEntityType = "evidence_analysis"
 	ListHistoryParamsEntityTypeEvidenceConflict ListHistoryParamsEntityType = "evidence_conflict"
 	ListHistoryParamsEntityTypeFamily           ListHistoryParamsEntityType = "family"
@@ -1514,6 +1518,8 @@ func (e ListHistoryParamsEntityType) Valid() bool {
 	case ListHistoryParamsEntityTypeBranch:
 		return true
 	case ListHistoryParamsEntityTypeCitation:
+		return true
+	case ListHistoryParamsEntityTypeDuplicatePair:
 		return true
 	case ListHistoryParamsEntityTypeEvidenceAnalysis:
 		return true
@@ -1647,11 +1653,12 @@ func (e ListPersonsParamsOrder) Valid() bool {
 
 // Defines values for ListPersonsParamsResearchStatus.
 const (
-	ListPersonsParamsResearchStatusCertain  ListPersonsParamsResearchStatus = "certain"
-	ListPersonsParamsResearchStatusPossible ListPersonsParamsResearchStatus = "possible"
-	ListPersonsParamsResearchStatusProbable ListPersonsParamsResearchStatus = "probable"
-	ListPersonsParamsResearchStatusUnknown  ListPersonsParamsResearchStatus = "unknown"
-	ListPersonsParamsResearchStatusUnset    ListPersonsParamsResearchStatus = "unset"
+	ListPersonsParamsResearchStatusCertain    ListPersonsParamsResearchStatus = "certain"
+	ListPersonsParamsResearchStatusPossible   ListPersonsParamsResearchStatus = "possible"
+	ListPersonsParamsResearchStatusProbable   ListPersonsParamsResearchStatus = "probable"
+	ListPersonsParamsResearchStatusUnassessed ListPersonsParamsResearchStatus = "unassessed"
+	ListPersonsParamsResearchStatusUnknown    ListPersonsParamsResearchStatus = "unknown"
+	ListPersonsParamsResearchStatusUnset      ListPersonsParamsResearchStatus = "unset"
 )
 
 // Valid indicates whether the value is a known member of the ListPersonsParamsResearchStatus enum.
@@ -1662,6 +1669,8 @@ func (e ListPersonsParamsResearchStatus) Valid() bool {
 	case ListPersonsParamsResearchStatusPossible:
 		return true
 	case ListPersonsParamsResearchStatusProbable:
+		return true
+	case ListPersonsParamsResearchStatusUnassessed:
 		return true
 	case ListPersonsParamsResearchStatusUnknown:
 		return true
@@ -2910,6 +2919,9 @@ type ChangeEntry struct {
 	// `changes` carry the `name`. `branch` is a research branch's
 	// lifecycle, in the global history only: `created`, `merged` (its
 	// `changes.merge_note` carries the note) and `deleted` (archived).
+	// `duplicate_pair` is a suggested duplicate pair marked "not a
+	// duplicate": `created` when dismissed, `deleted` when restored; its
+	// id is the pair's id and its name the two persons'.
 	EntityType ChangeEntryEntityType `json:"entity_type"`
 	Id         openapi_types.UUID    `json:"id"`
 
@@ -2951,6 +2963,9 @@ type ChangeEntryAction string
 // `changes` carry the `name`. `branch` is a research branch's
 // lifecycle, in the global history only: `created`, `merged` (its
 // `changes.merge_note` carries the note) and `deleted` (archived).
+// `duplicate_pair` is a suggested duplicate pair marked "not a
+// duplicate": `created` when dismissed, `deleted` when restored; its
+// id is the pair's id and its name the two persons'.
 type ChangeEntryEntityType string
 
 // ChangeEntryOrigin Set only on branch-scoped entity history and branch-scoped snapshot
@@ -3164,12 +3179,16 @@ type DataLossItem struct {
 //     about, circa, c., ca., before, after, `between X and Y`,
 //     `from X to Y`, and month names in full, as three letters or as
 //     "Sept". For example `about Sept 1850` is stored as `ABT SEP 1850`.
+//     Era markers may carry periods (`44 B.C.` is stored as `44 BC`), and
+//     an AD marker after a year is dropped (`500 A.D.` is stored as `500`).
 //   - A date phrase in parentheses, such as `(about the time of the war)`,
 //     kept as text.
 //
 // An empty string means no date. Any other text (such as `1850-01-01`
-// or `Sept 5, 1850`), a date without a year, or a date that doesn't
-// exist in the calendar (such as `31 FEB 1900`) is rejected with 400;
+// or `Sept 5, 1850`), a date without a year, a date that doesn't
+// exist in the calendar (such as `31 FEB 1900`, `0 JAN 1850` or year
+// `0`), or a range that ends before it starts (such as
+// `between 1860 and 1850`) is rejected with 400;
 // the error's `details` name the field and say whether the text can be
 // kept as a date phrase. On update, a date identical to the stored value
 // is not re-checked, so an imported date the parser can't read never
@@ -3205,19 +3224,29 @@ type Descendancy struct {
 // DescendancyNode A person node in the descendancy tree
 type DescendancyNode struct {
 	// BirthDate Genealogical date with flexible precision
-	BirthDate *GenDate           `json:"birth_date,omitempty"`
-	Children  *[]DescendancyNode `json:"children,omitempty"`
+	BirthDate *GenDate `json:"birth_date,omitempty"`
+
+	// Children Children grouped by family, in spouse order, and ordered by birth
+	// date (undated last) within each family.
+	Children *[]DescendancyNode `json:"children,omitempty"`
 
 	// DeathDate Genealogical date with flexible precision
 	DeathDate *GenDate `json:"death_date,omitempty"`
-	Gender    *Gender  `json:"gender,omitempty"`
+
+	// FamilyId The family through which this person descends from their parent
+	// node. Matches the family_id of one of the parent's spouses when that
+	// family has a second partner. Absent on the root.
+	FamilyId *openapi_types.UUID `json:"family_id,omitempty"`
+	Gender   *Gender             `json:"gender,omitempty"`
 
 	// Generation Generation level (0 = root, 1 = children, 2 = grandchildren, etc.)
 	Generation *int               `json:"generation,omitempty"`
 	GivenName  *string            `json:"given_name,omitempty"`
 	Id         openapi_types.UUID `json:"id"`
-	Spouses    *[]SpouseInfo      `json:"spouses,omitempty"`
-	Surname    *string            `json:"surname,omitempty"`
+
+	// Spouses Spouses ordered by marriage date, undated last.
+	Spouses *[]SpouseInfo `json:"spouses,omitempty"`
+	Surname *string       `json:"surname,omitempty"`
 }
 
 // DiscoveryFeedResponse defines model for DiscoveryFeedResponse.
@@ -3242,10 +3271,31 @@ type DiscoverySuggestion struct {
 // DiscoverySuggestionType defines model for DiscoverySuggestion.Type.
 type DiscoverySuggestionType string
 
-// DismissDuplicateRequest Request to dismiss a duplicate pair as false positive
+// DismissDuplicateRequest Request to mark a duplicate pair as not a duplicate
 type DismissDuplicateRequest struct {
-	// Reason Optional reason for dismissal
+	// Reason Optional reason for dismissal (e.g. "father and son")
 	Reason *string `json:"reason,omitempty"`
+}
+
+// DismissedDuplicate A suggested duplicate pair marked "not a duplicate"
+type DismissedDuplicate struct {
+	// DismissedAt When the pair was (last) dismissed
+	DismissedAt time.Time          `json:"dismissed_at"`
+	Person1Id   openapi_types.UUID `json:"person1_id"`
+	Person1Name string             `json:"person1_name"`
+	Person2Id   openapi_types.UUID `json:"person2_id"`
+	Person2Name string             `json:"person2_name"`
+
+	// Reason Reason given when the pair was dismissed, if any
+	Reason *string `json:"reason,omitempty"`
+}
+
+// DismissedDuplicatesResponse Pairs marked "not a duplicate", most recently dismissed first
+type DismissedDuplicatesResponse struct {
+	Dismissals []DismissedDuplicate `json:"dismissals"`
+
+	// Total Total number of dismissed pairs listed in this scope
+	Total int `json:"total"`
 }
 
 // DuplicatePair A pair of potentially duplicate persons
@@ -3596,12 +3646,16 @@ type FamilyCreate struct {
 	//   about, circa, c., ca., before, after, `between X and Y`,
 	//   `from X to Y`, and month names in full, as three letters or as
 	//   "Sept". For example `about Sept 1850` is stored as `ABT SEP 1850`.
+	//   Era markers may carry periods (`44 B.C.` is stored as `44 BC`), and
+	//   an AD marker after a year is dropped (`500 A.D.` is stored as `500`).
 	// - A date phrase in parentheses, such as `(about the time of the war)`,
 	//   kept as text.
 	//
 	// An empty string means no date. Any other text (such as `1850-01-01`
-	// or `Sept 5, 1850`), a date without a year, or a date that doesn't
-	// exist in the calendar (such as `31 FEB 1900`) is rejected with 400;
+	// or `Sept 5, 1850`), a date without a year, a date that doesn't
+	// exist in the calendar (such as `31 FEB 1900`, `0 JAN 1850` or year
+	// `0`), or a range that ends before it starts (such as
+	// `between 1860 and 1850`) is rejected with 400;
 	// the error's `details` name the field and say whether the text can be
 	// kept as a date phrase. On update, a date identical to the stored value
 	// is not re-checked, so an imported date the parser can't read never
@@ -3705,12 +3759,16 @@ type FamilyUpdate struct {
 	//   about, circa, c., ca., before, after, `between X and Y`,
 	//   `from X to Y`, and month names in full, as three letters or as
 	//   "Sept". For example `about Sept 1850` is stored as `ABT SEP 1850`.
+	//   Era markers may carry periods (`44 B.C.` is stored as `44 BC`), and
+	//   an AD marker after a year is dropped (`500 A.D.` is stored as `500`).
 	// - A date phrase in parentheses, such as `(about the time of the war)`,
 	//   kept as text.
 	//
 	// An empty string means no date. Any other text (such as `1850-01-01`
-	// or `Sept 5, 1850`), a date without a year, or a date that doesn't
-	// exist in the calendar (such as `31 FEB 1900`) is rejected with 400;
+	// or `Sept 5, 1850`), a date without a year, a date that doesn't
+	// exist in the calendar (such as `31 FEB 1900`, `0 JAN 1850` or year
+	// `0`), or a range that ends before it starts (such as
+	// `between 1860 and 1850`) is rejected with 400;
 	// the error's `details` name the field and say whether the text can be
 	// kept as a date phrase. On update, a date identical to the stored value
 	// is not re-checked, so an imported date the parser can't read never
@@ -3944,12 +4002,16 @@ type LDSOrdinanceCreate struct {
 	//   about, circa, c., ca., before, after, `between X and Y`,
 	//   `from X to Y`, and month names in full, as three letters or as
 	//   "Sept". For example `about Sept 1850` is stored as `ABT SEP 1850`.
+	//   Era markers may carry periods (`44 B.C.` is stored as `44 BC`), and
+	//   an AD marker after a year is dropped (`500 A.D.` is stored as `500`).
 	// - A date phrase in parentheses, such as `(about the time of the war)`,
 	//   kept as text.
 	//
 	// An empty string means no date. Any other text (such as `1850-01-01`
-	// or `Sept 5, 1850`), a date without a year, or a date that doesn't
-	// exist in the calendar (such as `31 FEB 1900`) is rejected with 400;
+	// or `Sept 5, 1850`), a date without a year, a date that doesn't
+	// exist in the calendar (such as `31 FEB 1900`, `0 JAN 1850` or year
+	// `0`), or a range that ends before it starts (such as
+	// `between 1860 and 1850`) is rejected with 400;
 	// the error's `details` name the field and say whether the text can be
 	// kept as a date phrase. On update, a date identical to the stored value
 	// is not re-checked, so an imported date the parser can't read never
@@ -4014,12 +4076,16 @@ type LDSOrdinanceUpdate struct {
 	//   about, circa, c., ca., before, after, `between X and Y`,
 	//   `from X to Y`, and month names in full, as three letters or as
 	//   "Sept". For example `about Sept 1850` is stored as `ABT SEP 1850`.
+	//   Era markers may carry periods (`44 B.C.` is stored as `44 BC`), and
+	//   an AD marker after a year is dropped (`500 A.D.` is stored as `500`).
 	// - A date phrase in parentheses, such as `(about the time of the war)`,
 	//   kept as text.
 	//
 	// An empty string means no date. Any other text (such as `1850-01-01`
-	// or `Sept 5, 1850`), a date without a year, or a date that doesn't
-	// exist in the calendar (such as `31 FEB 1900`) is rejected with 400;
+	// or `Sept 5, 1850`), a date without a year, a date that doesn't
+	// exist in the calendar (such as `31 FEB 1900`, `0 JAN 1850` or year
+	// `0`), or a range that ends before it starts (such as
+	// `between 1860 and 1850`) is rejected with 400;
 	// the error's `details` name the field and say whether the text can be
 	// kept as a date phrase. On update, a date identical to the stored value
 	// is not re-checked, so an imported date the parser can't read never
@@ -4819,12 +4885,16 @@ type PersonCreate struct {
 	//   about, circa, c., ca., before, after, `between X and Y`,
 	//   `from X to Y`, and month names in full, as three letters or as
 	//   "Sept". For example `about Sept 1850` is stored as `ABT SEP 1850`.
+	//   Era markers may carry periods (`44 B.C.` is stored as `44 BC`), and
+	//   an AD marker after a year is dropped (`500 A.D.` is stored as `500`).
 	// - A date phrase in parentheses, such as `(about the time of the war)`,
 	//   kept as text.
 	//
 	// An empty string means no date. Any other text (such as `1850-01-01`
-	// or `Sept 5, 1850`), a date without a year, or a date that doesn't
-	// exist in the calendar (such as `31 FEB 1900`) is rejected with 400;
+	// or `Sept 5, 1850`), a date without a year, a date that doesn't
+	// exist in the calendar (such as `31 FEB 1900`, `0 JAN 1850` or year
+	// `0`), or a range that ends before it starts (such as
+	// `between 1860 and 1850`) is rejected with 400;
 	// the error's `details` name the field and say whether the text can be
 	// kept as a date phrase. On update, a date identical to the stored value
 	// is not re-checked, so an imported date the parser can't read never
@@ -4848,12 +4918,16 @@ type PersonCreate struct {
 	//   about, circa, c., ca., before, after, `between X and Y`,
 	//   `from X to Y`, and month names in full, as three letters or as
 	//   "Sept". For example `about Sept 1850` is stored as `ABT SEP 1850`.
+	//   Era markers may carry periods (`44 B.C.` is stored as `44 BC`), and
+	//   an AD marker after a year is dropped (`500 A.D.` is stored as `500`).
 	// - A date phrase in parentheses, such as `(about the time of the war)`,
 	//   kept as text.
 	//
 	// An empty string means no date. Any other text (such as `1850-01-01`
-	// or `Sept 5, 1850`), a date without a year, or a date that doesn't
-	// exist in the calendar (such as `31 FEB 1900`) is rejected with 400;
+	// or `Sept 5, 1850`), a date without a year, a date that doesn't
+	// exist in the calendar (such as `31 FEB 1900`, `0 JAN 1850` or year
+	// `0`), or a range that ends before it starts (such as
+	// `between 1860 and 1850`) is rejected with 400;
 	// the error's `details` name the field and say whether the text can be
 	// kept as a date phrase. On update, a date identical to the stored value
 	// is not re-checked, so an imported date the parser can't read never
@@ -5026,12 +5100,16 @@ type PersonUpdate struct {
 	//   about, circa, c., ca., before, after, `between X and Y`,
 	//   `from X to Y`, and month names in full, as three letters or as
 	//   "Sept". For example `about Sept 1850` is stored as `ABT SEP 1850`.
+	//   Era markers may carry periods (`44 B.C.` is stored as `44 BC`), and
+	//   an AD marker after a year is dropped (`500 A.D.` is stored as `500`).
 	// - A date phrase in parentheses, such as `(about the time of the war)`,
 	//   kept as text.
 	//
 	// An empty string means no date. Any other text (such as `1850-01-01`
-	// or `Sept 5, 1850`), a date without a year, or a date that doesn't
-	// exist in the calendar (such as `31 FEB 1900`) is rejected with 400;
+	// or `Sept 5, 1850`), a date without a year, a date that doesn't
+	// exist in the calendar (such as `31 FEB 1900`, `0 JAN 1850` or year
+	// `0`), or a range that ends before it starts (such as
+	// `between 1860 and 1850`) is rejected with 400;
 	// the error's `details` name the field and say whether the text can be
 	// kept as a date phrase. On update, a date identical to the stored value
 	// is not re-checked, so an imported date the parser can't read never
@@ -5055,12 +5133,16 @@ type PersonUpdate struct {
 	//   about, circa, c., ca., before, after, `between X and Y`,
 	//   `from X to Y`, and month names in full, as three letters or as
 	//   "Sept". For example `about Sept 1850` is stored as `ABT SEP 1850`.
+	//   Era markers may carry periods (`44 B.C.` is stored as `44 BC`), and
+	//   an AD marker after a year is dropped (`500 A.D.` is stored as `500`).
 	// - A date phrase in parentheses, such as `(about the time of the war)`,
 	//   kept as text.
 	//
 	// An empty string means no date. Any other text (such as `1850-01-01`
-	// or `Sept 5, 1850`), a date without a year, or a date that doesn't
-	// exist in the calendar (such as `31 FEB 1900`) is rejected with 400;
+	// or `Sept 5, 1850`), a date without a year, a date that doesn't
+	// exist in the calendar (such as `31 FEB 1900`, `0 JAN 1850` or year
+	// `0`), or a range that ends before it starts (such as
+	// `between 1860 and 1850`) is rejected with 400;
 	// the error's `details` name the field and say whether the text can be
 	// kept as a date phrase. On update, a date identical to the stored value
 	// is not re-checked, so an imported date the parser can't read never
@@ -5698,12 +5780,16 @@ type SourceCreate struct {
 	//   about, circa, c., ca., before, after, `between X and Y`,
 	//   `from X to Y`, and month names in full, as three letters or as
 	//   "Sept". For example `about Sept 1850` is stored as `ABT SEP 1850`.
+	//   Era markers may carry periods (`44 B.C.` is stored as `44 BC`), and
+	//   an AD marker after a year is dropped (`500 A.D.` is stored as `500`).
 	// - A date phrase in parentheses, such as `(about the time of the war)`,
 	//   kept as text.
 	//
 	// An empty string means no date. Any other text (such as `1850-01-01`
-	// or `Sept 5, 1850`), a date without a year, or a date that doesn't
-	// exist in the calendar (such as `31 FEB 1900`) is rejected with 400;
+	// or `Sept 5, 1850`), a date without a year, a date that doesn't
+	// exist in the calendar (such as `31 FEB 1900`, `0 JAN 1850` or year
+	// `0`), or a range that ends before it starts (such as
+	// `between 1860 and 1850`) is rejected with 400;
 	// the error's `details` name the field and say whether the text can be
 	// kept as a date phrase. On update, a date identical to the stored value
 	// is not re-checked, so an imported date the parser can't read never
@@ -5789,12 +5875,16 @@ type SourceUpdate struct {
 	//   about, circa, c., ca., before, after, `between X and Y`,
 	//   `from X to Y`, and month names in full, as three letters or as
 	//   "Sept". For example `about Sept 1850` is stored as `ABT SEP 1850`.
+	//   Era markers may carry periods (`44 B.C.` is stored as `44 BC`), and
+	//   an AD marker after a year is dropped (`500 A.D.` is stored as `500`).
 	// - A date phrase in parentheses, such as `(about the time of the war)`,
 	//   kept as text.
 	//
 	// An empty string means no date. Any other text (such as `1850-01-01`
-	// or `Sept 5, 1850`), a date without a year, or a date that doesn't
-	// exist in the calendar (such as `31 FEB 1900`) is rejected with 400;
+	// or `Sept 5, 1850`), a date without a year, a date that doesn't
+	// exist in the calendar (such as `31 FEB 1900`, `0 JAN 1850` or year
+	// `0`), or a range that ends before it starts (such as
+	// `between 1860 and 1850`) is rejected with 400;
 	// the error's `details` name the field and say whether the text can be
 	// kept as a date phrase. On update, a date identical to the stored value
 	// is not re-checked, so an imported date the parser can't read never
@@ -5817,7 +5907,9 @@ type SourceUpdate struct {
 
 // SpouseInfo Spouse information in the descendancy tree
 type SpouseInfo struct {
-	Id openapi_types.UUID `json:"id"`
+	// FamilyId The family this spouse shares with the person; children of that family carry the same family_id.
+	FamilyId openapi_types.UUID `json:"family_id"`
+	Id       openapi_types.UUID `json:"id"`
 
 	// MarriageDate Genealogical date with flexible precision
 	MarriageDate *GenDate `json:"marriage_date,omitempty"`
@@ -6892,7 +6984,7 @@ type ListPersonsParams struct {
 	Sort   *ListPersonsParamsSort  `form:"sort,omitempty" json:"sort,omitempty"`
 	Order  *ListPersonsParamsOrder `form:"order,omitempty" json:"order,omitempty"`
 
-	// ResearchStatus Filter by research status
+	// ResearchStatus Filter by research status. `unset` matches persons with no status recorded; `unassessed` matches those and persons marked `unknown`.
 	ResearchStatus *ListPersonsParamsResearchStatus `form:"research_status,omitempty" json:"research_status,omitempty"`
 }
 
@@ -6918,11 +7010,69 @@ type CreatePersonParams struct {
 
 // GetPersonsDuplicatesParams defines parameters for GetPersonsDuplicates.
 type GetPersonsDuplicatesParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+
 	// Limit Maximum number of duplicate pairs to return
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
 
 	// Offset Number of duplicate pairs to skip
 	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// BatchDismissDuplicatesParams defines parameters for BatchDismissDuplicates.
+type BatchDismissDuplicatesParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+}
+
+// ListDismissedDuplicatesParams defines parameters for ListDismissedDuplicates.
+type ListDismissedDuplicatesParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+
+	// Limit Maximum number of pairs to return
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Offset Number of pairs to skip
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// RestoreDuplicateParams defines parameters for RestoreDuplicate.
+type RestoreDuplicateParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+}
+
+// DismissDuplicateParams defines parameters for DismissDuplicate.
+type DismissDuplicateParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
 // MergePersonsParams defines parameters for MergePersons.
@@ -8047,12 +8197,18 @@ type ServerInterface interface {
 	// GetPersonsDuplicates Find potential duplicate persons
 	// (GET /persons/duplicates)
 	GetPersonsDuplicates(ctx echo.Context, params GetPersonsDuplicatesParams) error
-	// BatchDismissDuplicates Batch dismiss multiple duplicate pairs
+	// BatchDismissDuplicates Mark several duplicate pairs as not duplicates
 	// (POST /persons/duplicates/dismiss/batch)
-	BatchDismissDuplicates(ctx echo.Context) error
-	// DismissDuplicate Dismiss a duplicate pair as false positive
+	BatchDismissDuplicates(ctx echo.Context, params BatchDismissDuplicatesParams) error
+	// ListDismissedDuplicates List pairs marked "not a duplicate"
+	// (GET /persons/duplicates/dismissed)
+	ListDismissedDuplicates(ctx echo.Context, params ListDismissedDuplicatesParams) error
+	// RestoreDuplicate Restore a pair marked "not a duplicate"
+	// (DELETE /persons/duplicates/{person1Id}/{person2Id}/dismiss)
+	RestoreDuplicate(ctx echo.Context, person1Id openapi_types.UUID, person2Id openapi_types.UUID, params RestoreDuplicateParams) error
+	// DismissDuplicate Mark a duplicate pair as not a duplicate
 	// (POST /persons/duplicates/{person1Id}/{person2Id}/dismiss)
-	DismissDuplicate(ctx echo.Context, person1Id openapi_types.UUID, person2Id openapi_types.UUID) error
+	DismissDuplicate(ctx echo.Context, person1Id openapi_types.UUID, person2Id openapi_types.UUID, params DismissDuplicateParams) error
 	// MergePersons Merge two person records
 	// (POST /persons/merge)
 	MergePersons(ctx echo.Context, params MergePersonsParams) error
@@ -10545,6 +10701,13 @@ func (w *ServerInterfaceWrapper) GetPersonsDuplicates(ctx echo.Context) error {
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetPersonsDuplicatesParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// ------------- Optional query parameter "limit" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", ctx.QueryParams(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
@@ -10568,8 +10731,82 @@ func (w *ServerInterfaceWrapper) GetPersonsDuplicates(ctx echo.Context) error {
 func (w *ServerInterfaceWrapper) BatchDismissDuplicates(ctx echo.Context) error {
 	var err error
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params BatchDismissDuplicatesParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.BatchDismissDuplicates(ctx)
+	err = w.Handler.BatchDismissDuplicates(ctx, params)
+	return err
+}
+
+// ListDismissedDuplicates converts echo context to params.
+func (w *ServerInterfaceWrapper) ListDismissedDuplicates(ctx echo.Context) error {
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListDismissedDuplicatesParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", ctx.QueryParams(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter limit: %s", err))
+	}
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "offset", ctx.QueryParams(), &params.Offset, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter offset: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.ListDismissedDuplicates(ctx, params)
+	return err
+}
+
+// RestoreDuplicate converts echo context to params.
+func (w *ServerInterfaceWrapper) RestoreDuplicate(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "person1Id" -------------
+	var person1Id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "person1Id", ctx.Param("person1Id"), &person1Id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: ctx.Request().URL.RawPath == ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter person1Id: %s", err))
+	}
+
+	// ------------- Path parameter "person2Id" -------------
+	var person2Id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "person2Id", ctx.Param("person2Id"), &person2Id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: ctx.Request().URL.RawPath == ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter person2Id: %s", err))
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params RestoreDuplicateParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.RestoreDuplicate(ctx, person1Id, person2Id, params)
 	return err
 }
 
@@ -10592,8 +10829,17 @@ func (w *ServerInterfaceWrapper) DismissDuplicate(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter person2Id: %s", err))
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DismissDuplicateParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.DismissDuplicate(ctx, person1Id, person2Id)
+	err = w.Handler.DismissDuplicate(ctx, person1Id, person2Id, params)
 	return err
 }
 
@@ -12460,7 +12706,9 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 	router.GET(options.BaseURL+"/quality/report", wrapper.GetQualityReport, options.OperationMiddlewares["getQualityReport"]...)
 	router.GET(options.BaseURL+"/quality/validation", wrapper.GetValidationIssues, options.OperationMiddlewares["getValidationIssues"]...)
 	router.GET(options.BaseURL+"/persons/duplicates", wrapper.GetPersonsDuplicates, options.OperationMiddlewares["getPersonsDuplicates"]...)
+	router.GET(options.BaseURL+"/persons/duplicates/dismissed", wrapper.ListDismissedDuplicates, options.OperationMiddlewares["listDismissedDuplicates"]...)
 	router.POST(options.BaseURL+"/persons/merge", wrapper.MergePersons, options.OperationMiddlewares["mergePersons"]...)
+	router.DELETE(options.BaseURL+"/persons/duplicates/:person1Id/:person2Id/dismiss", wrapper.RestoreDuplicate, options.OperationMiddlewares["restoreDuplicate"]...)
 	router.POST(options.BaseURL+"/persons/duplicates/:person1Id/:person2Id/dismiss", wrapper.DismissDuplicate, options.OperationMiddlewares["dismissDuplicate"]...)
 	router.POST(options.BaseURL+"/persons/merge/batch", wrapper.BatchMergePersons, options.OperationMiddlewares["batchMergePersons"]...)
 	router.POST(options.BaseURL+"/persons/duplicates/dismiss/batch", wrapper.BatchDismissDuplicates, options.OperationMiddlewares["batchDismissDuplicates"]...)
@@ -17064,7 +17312,8 @@ func (response GetPersonsDuplicates200JSONResponse) VisitGetPersonsDuplicatesRes
 }
 
 type BatchDismissDuplicatesRequestObject struct {
-	Body *BatchDismissDuplicatesJSONRequestBody
+	Params BatchDismissDuplicatesParams
+	Body   *BatchDismissDuplicatesJSONRequestBody
 }
 
 type BatchDismissDuplicatesResponseObject interface {
@@ -17099,9 +17348,78 @@ func (response BatchDismissDuplicates400JSONResponse) VisitBatchDismissDuplicate
 	return err
 }
 
+type ListDismissedDuplicatesRequestObject struct {
+	Params ListDismissedDuplicatesParams
+}
+
+type ListDismissedDuplicatesResponseObject interface {
+	VisitListDismissedDuplicatesResponse(w http.ResponseWriter) error
+}
+
+type ListDismissedDuplicates200JSONResponse DismissedDuplicatesResponse
+
+func (response ListDismissedDuplicates200JSONResponse) VisitListDismissedDuplicatesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RestoreDuplicateRequestObject struct {
+	Person1Id openapi_types.UUID `json:"person1Id"`
+	Person2Id openapi_types.UUID `json:"person2Id"`
+	Params    RestoreDuplicateParams
+}
+
+type RestoreDuplicateResponseObject interface {
+	VisitRestoreDuplicateResponse(w http.ResponseWriter) error
+}
+
+type RestoreDuplicate204Response struct {
+}
+
+func (response RestoreDuplicate204Response) VisitRestoreDuplicateResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type RestoreDuplicate400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response RestoreDuplicate400JSONResponse) VisitRestoreDuplicateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RestoreDuplicate404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response RestoreDuplicate404JSONResponse) VisitRestoreDuplicateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DismissDuplicateRequestObject struct {
 	Person1Id openapi_types.UUID `json:"person1Id"`
 	Person2Id openapi_types.UUID `json:"person2Id"`
+	Params    DismissDuplicateParams
 	Body      *DismissDuplicateJSONRequestBody
 }
 
@@ -20288,10 +20606,16 @@ type StrictServerInterface interface {
 	// GetPersonsDuplicates Find potential duplicate persons
 	// (GET /persons/duplicates)
 	GetPersonsDuplicates(ctx context.Context, request GetPersonsDuplicatesRequestObject) (GetPersonsDuplicatesResponseObject, error)
-	// BatchDismissDuplicates Batch dismiss multiple duplicate pairs
+	// BatchDismissDuplicates Mark several duplicate pairs as not duplicates
 	// (POST /persons/duplicates/dismiss/batch)
 	BatchDismissDuplicates(ctx context.Context, request BatchDismissDuplicatesRequestObject) (BatchDismissDuplicatesResponseObject, error)
-	// DismissDuplicate Dismiss a duplicate pair as false positive
+	// ListDismissedDuplicates List pairs marked "not a duplicate"
+	// (GET /persons/duplicates/dismissed)
+	ListDismissedDuplicates(ctx context.Context, request ListDismissedDuplicatesRequestObject) (ListDismissedDuplicatesResponseObject, error)
+	// RestoreDuplicate Restore a pair marked "not a duplicate"
+	// (DELETE /persons/duplicates/{person1Id}/{person2Id}/dismiss)
+	RestoreDuplicate(ctx context.Context, request RestoreDuplicateRequestObject) (RestoreDuplicateResponseObject, error)
+	// DismissDuplicate Mark a duplicate pair as not a duplicate
 	// (POST /persons/duplicates/{person1Id}/{person2Id}/dismiss)
 	DismissDuplicate(ctx context.Context, request DismissDuplicateRequestObject) (DismissDuplicateResponseObject, error)
 	// MergePersons Merge two person records
@@ -23497,8 +23821,10 @@ func (sh *strictHandler) GetPersonsDuplicates(ctx echo.Context, params GetPerson
 }
 
 // BatchDismissDuplicates operation middleware
-func (sh *strictHandler) BatchDismissDuplicates(ctx echo.Context) error {
+func (sh *strictHandler) BatchDismissDuplicates(ctx echo.Context, params BatchDismissDuplicatesParams) error {
 	var request BatchDismissDuplicatesRequestObject
+
+	request.Params = params
 
 	var body BatchDismissDuplicatesJSONRequestBody
 	var err error
@@ -23542,12 +23868,65 @@ func (sh *strictHandler) BatchDismissDuplicates(ctx echo.Context) error {
 	return nil
 }
 
+// ListDismissedDuplicates operation middleware
+func (sh *strictHandler) ListDismissedDuplicates(ctx echo.Context, params ListDismissedDuplicatesParams) error {
+	var request ListDismissedDuplicatesRequestObject
+
+	request.Params = params
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.ListDismissedDuplicates(ctx.Request().Context(), request.(ListDismissedDuplicatesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListDismissedDuplicates")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(ListDismissedDuplicatesResponseObject); ok {
+		return validResponse.VisitListDismissedDuplicatesResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// RestoreDuplicate operation middleware
+func (sh *strictHandler) RestoreDuplicate(ctx echo.Context, person1Id openapi_types.UUID, person2Id openapi_types.UUID, params RestoreDuplicateParams) error {
+	var request RestoreDuplicateRequestObject
+
+	request.Person1Id = person1Id
+	request.Person2Id = person2Id
+	request.Params = params
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.RestoreDuplicate(ctx.Request().Context(), request.(RestoreDuplicateRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RestoreDuplicate")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(RestoreDuplicateResponseObject); ok {
+		return validResponse.VisitRestoreDuplicateResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
 // DismissDuplicate operation middleware
-func (sh *strictHandler) DismissDuplicate(ctx echo.Context, person1Id openapi_types.UUID, person2Id openapi_types.UUID) error {
+func (sh *strictHandler) DismissDuplicate(ctx echo.Context, person1Id openapi_types.UUID, person2Id openapi_types.UUID, params DismissDuplicateParams) error {
 	var request DismissDuplicateRequestObject
 
 	request.Person1Id = person1Id
 	request.Person2Id = person2Id
+	request.Params = params
 
 	var body DismissDuplicateJSONRequestBody
 	var err error

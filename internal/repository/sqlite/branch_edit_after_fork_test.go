@@ -64,13 +64,14 @@ func runBranchEditAfterMainCorrection(t *testing.T, h *command.Handler, readStor
 	ctx := context.Background()
 	str := func(s string) *string { return &s }
 
-	// --- Main: a person at version 2 before the fork (the issue's steps 1-2),
+	// --- Main: a person at version 3 before the fork (the issue's steps 1-2;
+	// CreatePerson writes versions 1-2),
 	// plus a family and a source at version 1, to prove the fix is generic. ---
 	person, err := h.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Alex", Surname: "Placeholder"})
 	if err != nil {
 		t.Fatalf("CreatePerson: %v", err)
 	}
-	if _, err := h.UpdatePerson(ctx, command.UpdatePersonInput{ID: person.ID, BirthPlace: str("Placeville"), Version: 1}); err != nil {
+	if _, err := h.UpdatePerson(ctx, command.UpdatePersonInput{ID: person.ID, BirthPlace: str("Placeville"), Version: 2}); err != nil {
 		t.Fatalf("pre-fork UpdatePerson: %v", err)
 	}
 	family, err := h.CreateFamily(ctx, command.CreateFamilyInput{Partner1ID: &person.ID, RelationshipType: "marriage"})
@@ -94,7 +95,7 @@ func runBranchEditAfterMainCorrection(t *testing.T, h *command.Handler, readStor
 	branchID := domain.BranchID(branch.ID)
 
 	// --- Main corrects every entity AFTER the fork (step 3). ---
-	if _, err := h.UpdatePerson(ctx, command.UpdatePersonInput{ID: person.ID, Surname: str("Mainfix"), Version: 2}); err != nil {
+	if _, err := h.UpdatePerson(ctx, command.UpdatePersonInput{ID: person.ID, Surname: str("Mainfix"), Version: 3}); err != nil {
 		t.Fatalf("post-fork main UpdatePerson: %v", err)
 	}
 	if _, err := h.UpdateFamily(ctx, command.UpdateFamilyInput{ID: family.ID, MarriagePlace: str("Mainville"), Version: 1}); err != nil {
@@ -109,12 +110,12 @@ func runBranchEditAfterMainCorrection(t *testing.T, h *command.Handler, readStor
 	if err != nil || shown == nil {
 		t.Fatalf("branch GetPerson = %v (err %v), want main's current row", shown, err)
 	}
-	if shown.Version != 3 || shown.Surname != "Mainfix" {
-		t.Fatalf("branch read = version %d surname %q, want version 3 surname %q", shown.Version, shown.Surname, "Mainfix")
+	if shown.Version != 4 || shown.Surname != "Mainfix" {
+		t.Fatalf("branch read = version %d surname %q, want version 4 surname %q", shown.Version, shown.Surname, "Mainfix")
 	}
 
 	// --- The as-of-fork version is stale: the branch never showed it. ---
-	if _, err := onBranch.UpdatePerson(ctx, command.UpdatePersonInput{ID: person.ID, Surname: str("Stale"), Version: 2}); !errors.Is(err, repository.ErrConcurrencyConflict) {
+	if _, err := onBranch.UpdatePerson(ctx, command.UpdatePersonInput{ID: person.ID, Surname: str("Stale"), Version: 3}); !errors.Is(err, repository.ErrConcurrencyConflict) {
 		t.Fatalf("branch UpdatePerson at the as-of-fork version: want ErrConcurrencyConflict, got %v", err)
 	}
 
@@ -123,27 +124,27 @@ func runBranchEditAfterMainCorrection(t *testing.T, h *command.Handler, readStor
 	if err != nil {
 		t.Fatalf("branch UpdatePerson at the displayed version: %v", err)
 	}
-	if res.Version != 4 {
-		t.Fatalf("branch UpdatePerson version = %d, want 4", res.Version)
+	if res.Version != 5 {
+		t.Fatalf("branch UpdatePerson version = %d, want 5", res.Version)
 	}
 	after, err := readStore.GetPerson(ctx, branchID, person.ID)
 	if err != nil || after == nil {
 		t.Fatalf("branch GetPerson after edit = %v (err %v)", after, err)
 	}
-	if after.Version != 4 || after.Surname != "Branchfix" || after.BirthPlace != "Placeville" {
-		t.Fatalf("branch row after edit = version %d surname %q birth place %q, want 4 %q %q",
+	if after.Version != 5 || after.Surname != "Branchfix" || after.BirthPlace != "Placeville" {
+		t.Fatalf("branch row after edit = version %d surname %q birth place %q, want 5 %q %q",
 			after.Version, after.Surname, after.BirthPlace, "Branchfix", "Placeville")
 	}
 	onMain, err := readStore.GetPerson(ctx, domain.MainBranchID, person.ID)
 	if err != nil || onMain == nil {
 		t.Fatalf("main GetPerson = %v (err %v)", onMain, err)
 	}
-	if onMain.Version != 3 || onMain.Surname != "Mainfix" {
-		t.Fatalf("main row after branch edit = version %d surname %q, want 3 %q (isolated)", onMain.Version, onMain.Surname, "Mainfix")
+	if onMain.Version != 4 || onMain.Surname != "Mainfix" {
+		t.Fatalf("main row after branch edit = version %d surname %q, want 4 %q (isolated)", onMain.Version, onMain.Surname, "Mainfix")
 	}
 
 	// --- A second edit on the branch continues the branch's own line. ---
-	if _, err := onBranch.UpdatePerson(ctx, command.UpdatePersonInput{ID: person.ID, Notes: str("branch note"), Version: 4}); err != nil {
+	if _, err := onBranch.UpdatePerson(ctx, command.UpdatePersonInput{ID: person.ID, Notes: str("branch note"), Version: 5}); err != nil {
 		t.Fatalf("second branch UpdatePerson: %v", err)
 	}
 

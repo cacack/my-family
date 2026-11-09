@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 // `node:fs` (the `web` package declares no Node type definitions) nor any
 // assumption about the working directory.
 import openapiSpec from '../../../../internal/api/openapi.yaml?raw';
-import { NOTE_MAX_LENGTH } from '$lib/components/MergeConfirmDialog.svelte';
+import { NOTE_MAX_LENGTH } from '#lib/components/MergeConfirmDialog.svelte';
 import {
 	api,
 	formatGenDate,
@@ -226,8 +226,17 @@ describe('isBranchScopedRequest', () => {
 	});
 
 	it('does not mistake literal person routes for /persons/{id}', () => {
-		expect(isBranchScopedRequest('GET', '/persons/duplicates')).toBe(false);
 		expect(isBranchScopedRequest('GET', '/persons/merge')).toBe(false);
+		expect(isBranchScopedRequest('PUT', '/persons/duplicates')).toBe(false);
+	});
+
+	it('scopes duplicate detection and its dismissals (#1036)', () => {
+		expect(isBranchScopedRequest('GET', '/persons/duplicates?limit=20')).toBe(true);
+		expect(isBranchScopedRequest('GET', '/persons/duplicates/dismissed')).toBe(true);
+		expect(isBranchScopedRequest('POST', `/persons/duplicates/${PERSON_ID}/${NAME_ID}/dismiss`)).toBe(true);
+		expect(isBranchScopedRequest('DELETE', `/persons/duplicates/${PERSON_ID}/${NAME_ID}/dismiss`)).toBe(true);
+		expect(isBranchScopedRequest('POST', '/persons/duplicates/dismiss/batch')).toBe(true);
+		expect(isBranchScopedRequest('GET', `/persons/duplicates/${PERSON_ID}/${NAME_ID}/dismiss`)).toBe(false);
 	});
 
 	it('scopes person merge, single and batch (#834)', () => {

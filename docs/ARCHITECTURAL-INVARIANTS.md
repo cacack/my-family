@@ -160,6 +160,16 @@ Rules that must hold true in the my-family codebase. Violations break architectu
 > (`internal/integration`, over HTTP on all three backends), the `PersonMerged` probe of
 > `TestBranchAwareEventTypes_LeaveMainUntouched` and `internal/command/branch_person_merge_test.go`.
 >
+> **Implementation status ([#1036](https://github.com/cacack/my-family/issues/1036)):** duplicate-pair
+> dismissals are a branch-scoped entity from the start: `DuplicateDismissed` / `DuplicateRestored`
+> live on the pair's own stream, project into the branch-keyed `duplicate_dismissals` table on all
+> three backends (a branch restore of a mainline dismissal is a tombstone; `PurgeBranch` drops the
+> branch's rows), are on the BR-006 allowlist, replay on merge (BR-004), and are compared by the
+> merge conflict scan as one `not_a_duplicate` field. Verified by
+> `TestBranchScenario_DuplicateDismissals` (identical copies per backend),
+> `TestBranchDuplicateDismissal*` and the two probes of `TestBranchAwareEventTypes_LeaveMainUntouched`
+> (`internal/command`), and `TestDismissDuplicate_OnBranch` (`internal/api`).
+>
 > **BR-003's scope is bounded by decision, not only by progress.** Extending branch-scoping to the
 > pending entity types was #676 (complete with #760), but four entities — Submitter, Repository,
 > RepositoryExternalID and LDSOrdinance — will never carry a `branch_id`: they are file-/archive-level

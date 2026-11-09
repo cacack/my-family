@@ -22,6 +22,7 @@ describe("changeEntryLink", () => {
     ["research_log", `/evidence/research-logs/${ID}`],
     ["proof_summary", `/evidence/proof-summaries/${ID}`],
     ["branch", `/branches/${ID}`],
+    ["duplicate_pair", "/quality?tab=not-duplicates"],
   ] as const)("links a %s to its own page", (entityType, href) => {
     expect(
       changeEntryLink({
@@ -74,7 +75,7 @@ describe("changeEntryLink", () => {
 
 describe("entityTypeLabel", () => {
   it("labels every entity type", () => {
-    expect(CHANGE_ENTITY_TYPES).toHaveLength(17);
+    expect(CHANGE_ENTITY_TYPES).toHaveLength(18);
     for (const type of CHANGE_ENTITY_TYPES) {
       expect(entityTypeLabel(type)).not.toBe(type);
     }
@@ -119,6 +120,15 @@ describe("branch lifecycle and merge provenance (#832)", () => {
     expect(
       changeActionLabel({ entity_type: "person", action: "deleted" }),
     ).toBe("deleted");
+  });
+
+  it("reads a duplicate pair's decisions as dismissal and restore (#1036)", () => {
+    expect(
+      changeActionLabel({ entity_type: "duplicate_pair", action: "created" }),
+    ).toBe("marked not a duplicate");
+    expect(
+      changeActionLabel({ entity_type: "duplicate_pair", action: "deleted" }),
+    ).toBe("restored as a possible duplicate");
   });
 
   it('reads a merge origin as "via merge of <branch>: <note>"', () => {

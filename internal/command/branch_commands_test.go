@@ -85,7 +85,7 @@ func TestCreateBranch(t *testing.T) {
 	f := newBranchFixture()
 	ctx := context.Background()
 
-	// One mainline event so the base position is non-zero and meaningful.
+	// Mainline events so the base position is non-zero and meaningful.
 	person, err := f.handler.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ada", Surname: "Lovelace"})
 	if err != nil {
 		t.Fatalf("CreatePerson failed: %v", err)
@@ -108,8 +108,8 @@ func TestCreateBranch(t *testing.T) {
 	if branch.Status != domain.BranchStatusActive {
 		t.Errorf("Status = %q, want %q", branch.Status, domain.BranchStatusActive)
 	}
-	if branch.BasePosition != 1 {
-		t.Errorf("BasePosition = %d, want 1 (the head after one mainline event)", branch.BasePosition)
+	if branch.BasePosition != 2 {
+		t.Errorf("BasePosition = %d, want 2 (the head after PersonCreated and NameAdded)", branch.BasePosition)
 	}
 
 	// The BranchCreated event is tagged with the new branch's own scope.
@@ -1106,16 +1106,8 @@ func TestBranchNameLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreatePerson failed: %v", err)
 	}
-	// A primary name on main, so the branch's alias is an addition to an
-	// existing bucket rather than the first name.
-	if _, err := f.handler.AddName(ctx, command.AddNameInput{
-		PersonID:  person.ID,
-		GivenName: "Ada",
-		Surname:   "Lovelace",
-		IsPrimary: true,
-	}); err != nil {
-		t.Fatalf("main AddName failed: %v", err)
-	}
+	// CreatePerson records the primary name on main, so the branch's alias is an
+	// addition to an existing bucket rather than the first name.
 
 	branch, err := f.handler.CreateBranch(ctx, "aliases", "")
 	if err != nil {
@@ -1516,6 +1508,11 @@ func seedDriftFixture(t *testing.T) driftSeed {
 	}
 	seed.proofSummary = proof.ID
 
+	// A mainline dismissal (#1036) for the DuplicateRestored probe to restore.
+	if err := f.handler.DismissDuplicate(ctx, command.DismissDuplicateInput{Person1ID: seed.person, Person2ID: seed.child}); err != nil {
+		t.Fatalf("DismissDuplicate failed: %v", err)
+	}
+
 	branch, err := f.handler.CreateBranch(ctx, "drift-probe", "")
 	if err != nil {
 		t.Fatalf("CreateBranch failed: %v", err)
@@ -1680,6 +1677,15 @@ var branchAwareProbes = map[string]func(s driftSeed) domain.Event{
 			[]uuid.UUID{s.family}, []uuid.UUID{s.citation}, []uuid.UUID{s.name},
 			[]uuid.UUID{s.lifeEvent}, []uuid.UUID{s.media})
 	},
+	// Duplicate dismissals (#1036): the pair is its own aggregate.
+	"DuplicateDismissed": func(s driftSeed) domain.Event {
+		pair, _ := domain.NewDuplicatePair(s.person, s.partner)
+		return domain.NewDuplicateDismissed(pair, "not the same person")
+	},
+	"DuplicateRestored": func(s driftSeed) domain.Event {
+		pair, _ := domain.NewDuplicatePair(s.person, s.child)
+		return domain.NewDuplicateRestored(pair)
+	},
 }
 
 // mainRows is the mainline read-model state a branch-scoped projection must
@@ -1834,6 +1840,7 @@ func readMainOnlyCounts(t *testing.T, s driftSeed) map[string]int {
 		{"evidence_conflicts", func() (int, error) { _, n, err := rs.ListEvidenceConflicts(ctx, opts); return n, err }},
 		{"research_logs", func() (int, error) { _, n, err := rs.ListResearchLogs(ctx, opts); return n, err }},
 		{"proof_summaries", func() (int, error) { _, n, err := rs.ListProofSummaries(ctx, opts); return n, err }},
+		{"duplicate_dismissals", func() (int, error) { _, n, err := rs.ListDuplicateDismissals(ctx, opts); return n, err }},
 		{"media_for_person", func() (int, error) {
 			_, n, err := rs.ListMediaForEntity(ctx, "person", s.person, opts)
 			return n, err

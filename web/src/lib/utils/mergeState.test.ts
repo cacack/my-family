@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { Branch, MergePendingEntity } from '$lib/api/client';
+import type { Branch, MergePendingEntity } from '#lib/api/client.js';
 import {
 	branchMergeSummary,
 	decisionsNeeded,

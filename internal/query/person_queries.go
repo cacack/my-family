@@ -89,7 +89,7 @@ type ListPersonsInput struct {
 	Offset         int
 	Sort           string          // surname, given_name, birth_date, updated_at
 	Order          string          // asc, desc
-	ResearchStatus *string         // Filter by research_status: certain, probable, possible, unknown, or "unset" for NULL
+	ResearchStatus *string         // Filter by research_status: certain, probable, possible, unknown, "unset" for NULL, or "unassessed" for NULL or unknown
 	BranchID       domain.BranchID // Branch scope; zero value = MainBranchID (main line)
 }
 
@@ -329,10 +329,10 @@ func convertToFamilySummary(rm repository.FamilyReadModel) FamilySummary {
 	s := FamilySummary{
 		ID: rm.ID,
 	}
-	if p1 := fullName(rm.Partner1GivenName, rm.Partner1Surname); p1 != "" {
+	if p1 := domain.JoinFullName(rm.Partner1GivenName, rm.Partner1Surname); p1 != "" {
 		s.Partner1Name = &p1
 	}
-	if p2 := fullName(rm.Partner2GivenName, rm.Partner2Surname); p2 != "" {
+	if p2 := domain.JoinFullName(rm.Partner2GivenName, rm.Partner2Surname); p2 != "" {
 		s.Partner2Name = &p2
 	}
 	if rm.RelationshipType != "" {
@@ -385,12 +385,5 @@ func convertPersonNameReadModel(rm repository.PersonNameReadModel) PersonName {
 
 // GenDateToSortTime converts a GenDate to a sortable time for queries.
 func GenDateToSortTime(gd *domain.GenDate) *time.Time {
-	if gd == nil || gd.IsEmpty() {
-		return nil
-	}
-	t := gd.SortDate()
-	if t.IsZero() {
-		return nil
-	}
-	return &t
+	return repository.SortTime(gd)
 }

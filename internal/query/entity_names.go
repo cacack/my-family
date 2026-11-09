@@ -239,8 +239,8 @@ func (n *entityNames) personName(personID uuid.UUID, evt *repository.StoredEvent
 // familyReadModelName names a family by its partners ("A & B", or the one
 // partner it has), or "" when it has neither.
 func familyReadModelName(family *repository.FamilyReadModel) string {
-	p1Name := fullName(family.Partner1GivenName, family.Partner1Surname)
-	p2Name := fullName(family.Partner2GivenName, family.Partner2Surname)
+	p1Name := domain.JoinFullName(family.Partner1GivenName, family.Partner1Surname)
+	p2Name := domain.JoinFullName(family.Partner2GivenName, family.Partner2Surname)
 	switch {
 	case p1Name != "" && p2Name != "":
 		return fmt.Sprintf("%s & %s", p1Name, p2Name)

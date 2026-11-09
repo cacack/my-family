@@ -10,10 +10,10 @@
 	 * Controlled: it renders `blockers` and calls `onfix`; the page owns the
 	 * decisions a fix changes.
 	 */
-	import type { MergeBlocker } from '$lib/api/client';
-	import { Badge } from '$lib/components/ui/badge';
-	import { Button } from '$lib/components/ui/button';
-	import { blockerFixLabel, describeBlocker } from '$lib/utils/mergeBlockers';
+	import type { MergeBlocker } from '#lib/api/client.js';
+	import { Badge } from '#lib/components/ui/badge/index.js';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import { blockerFixLabel, describeBlocker } from '#lib/utils/mergeBlockers.js';
 
 	interface Props {
 		blockers: MergeBlocker[];

@@ -196,8 +196,10 @@ body.high-contrast a:not([data-slot]):focus {
 	color: var(--color-link-hover);
 }
 
+/* Nav links get the same border as the nav menu triggers beside them (#1116). */
 body.high-contrast button,
-body.high-contrast [role='button'] {
+body.high-contrast [role='button'],
+body.high-contrast .main-nav a[data-slot='nav-link'] {
 	border: 2px solid var(--a11y-color-border) !important;
 }
 

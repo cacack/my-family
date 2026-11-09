@@ -7,7 +7,7 @@
 	 * It is for loads only. A failed save or delete must not replace the page:
 	 * that is shown inline, beside the content and the user's input.
 	 */
-	import { Button } from '$lib/components/ui/button';
+	import { Button } from '#lib/components/ui/button/index.js';
 
 	interface Props {
 		message: string;

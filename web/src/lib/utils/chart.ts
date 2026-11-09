@@ -3,8 +3,8 @@
  * resize handling, motion preferences and label truncation.
  */
 import * as d3 from 'd3';
-import { formatPersonName } from '$lib/api/client';
-import { getReducedMotion } from '$lib/stores/accessibilitySettings.svelte';
+import { formatPersonName } from '#lib/api/client.js';
+import { getReducedMotion } from '#lib/stores/accessibilitySettings.svelte.js';
 
 export type ScaleExtent = [number, number];
 
@@ -68,6 +68,33 @@ export function fitTransform(
 	const x = fitAxis(bounds.x, bounds.width, width, scale, focus?.x);
 	const y = fitAxis(bounds.y, bounds.height, height, scale, focus?.y);
 	return d3.zoomIdentity.translate(x, y).scale(scale);
+}
+
+/** Bounds and points in layout units, scaled to chart units (see `getFontScale`). */
+export function scaleBounds(bounds: Bounds, k: number): Bounds {
+	return { x: bounds.x * k, y: bounds.y * k, width: bounds.width * k, height: bounds.height * k };
+}
+
+/**
+ * The cards (centre x and half-width, in chart units) lying wholly left or
+ * right of a `width`-wide viewport under `t`, nearest first on each side. The
+ * charts use it to point at first-generation relatives a first view can't
+ * reach at a readable zoom (#1098).
+ */
+export function offscreenX(
+	xs: number[],
+	halfWidth: number,
+	t: d3.ZoomTransform,
+	width: number
+): { left: number[]; right: number[] } {
+	const left = xs.filter((x) => t.applyX(x + halfWidth) < 0).sort((a, b) => b - a);
+	const right = xs.filter((x) => t.applyX(x - halfWidth) > width).sort((a, b) => a - b);
+	return { left, right };
+}
+
+/** `t` panned horizontally so chart point `x` sits mid-viewport. */
+export function centreOnX(t: d3.ZoomTransform, x: number, width: number): d3.ZoomTransform {
+	return d3.zoomIdentity.translate(width / 2 - t.k * x, t.y).scale(t.k);
 }
 
 /** `from` scaled by `factor` about the viewport point `center`, clamped to the extent. */
@@ -148,15 +175,52 @@ export function truncateLabel(text: string, max: number): string {
 	return `${head.trimEnd()}…`;
 }
 
-/** Splits `text` over two lines of at most `max` characters, truncating the rest. */
-export function wrapLabel(text: string, max: number): [string, string] {
+/** The drawn width of a string, in the chart units of the text it will sit in. */
+export type MeasureText = (text: string) => number;
+
+/** Room kept between card text and each side edge of its card, in chart units. */
+export const CARD_TEXT_INSET = 6;
+
+/**
+ * `text` shortened with `truncateLabel` until it measures at most `maxWidth`,
+ * so a long unbroken name never spills out of its card (#1213).
+ */
+export function fitLabel(text: string, maxWidth: number, measure: MeasureText): string {
+	if (measure(text) <= maxWidth) return text;
+	for (let max = text.length - 1; max > 1; max--) {
+		const label = truncateLabel(text, max);
+		if (measure(label) <= maxWidth) return label;
+	}
+	return '…';
+}
+
+/** Splits `text` over two lines no wider than `maxWidth`, truncating the rest. */
+export function wrapLabel(text: string, maxWidth: number, measure: MeasureText): [string, string] {
 	const words = text.trim().split(/\s+/).filter(Boolean);
 	let first = '';
-	while (words.length > 0 && `${first} ${words[0]}`.trim().length <= max) {
+	while (words.length > 0 && measure(`${first} ${words[0]}`.trim()) <= maxWidth) {
 		first = `${first} ${words.shift()}`.trim();
 	}
-	if (!first && words.length > 0) first = truncateLabel(words.shift()!, max);
-	return [first, truncateLabel(words.join(' '), max)];
+	if (!first && words.length > 0) first = fitLabel(words.shift()!, maxWidth, measure);
+	return [first, fitLabel(words.join(' '), maxWidth, measure)];
+}
+
+/**
+ * Measures strings as drawn in `el` (its font, size and weight), in its own
+ * chart units, so the zoom and the font-size scale don't change the result.
+ * Each call replaces the element's text. Measures 0 where there is no layout
+ * (jsdom), so nothing is cut.
+ */
+export function measureWith(el: SVGTextElement): MeasureText {
+	return (text) => {
+		el.textContent = text;
+		return typeof el.getComputedTextLength === 'function' ? el.getComputedTextLength() : 0;
+	};
+}
+
+/** Shortens the text of `el` with an ellipsis until it is at most `maxWidth` wide. */
+export function fitText(el: SVGTextElement, maxWidth: number): void {
+	el.textContent = fitLabel(el.textContent ?? '', maxWidth, measureWith(el));
 }
 
 /**

@@ -150,6 +150,35 @@ test.describe('card names and titles at 375px with the Larger font setting', () 
 	});
 });
 
+// The seeded database fills /persons, and no seeded or spec-created person has
+// a research status, so filtering by Certain reaches the empty state (#1156).
+// Its two buttons must wrap onto the screen rather than push the page sideways.
+test.describe('the People empty state at 375px', () => {
+	test.use({ viewport: { width: 375, height: 900 } });
+
+	for (const fontSize of ['normal', 'larger']) {
+		test(`its actions fit with the ${fontSize} font setting`, async ({ page }) => {
+			await page.addInitScript((size) => {
+				localStorage.setItem('accessibility-settings', JSON.stringify({ fontSize: size }));
+			}, fontSize);
+			await expectNoHorizontalOverflow(page, '/persons?status=certain');
+			await expect(page.getByText('No people found.')).toBeVisible();
+			const actions = page.locator('main .empty-actions a');
+			await expect(actions).toHaveText(['Add Person', 'Import GEDCOM']);
+			const boxes = await actions.evaluateAll((els) =>
+				els.map((el) => {
+					const r = el.getBoundingClientRect();
+					return { left: r.left, right: r.right };
+				})
+			);
+			for (const box of boxes) {
+				expect(box.left, 'empty-state button starts off-screen').toBeGreaterThanOrEqual(0);
+				expect(box.right, 'empty-state button runs off-screen').toBeLessThanOrEqual(375);
+			}
+		});
+	}
+});
+
 // Each label sits beside a value that may be long; the value must wrap, never
 // the label (#1105: "Mothe / r:" at 375px).
 for (const width of [320, 375]) {
@@ -331,6 +360,71 @@ test.describe('with a research branch and its question active', () => {
 			expect(asked.y, 'question is not below the label').toBeGreaterThanOrEqual(label.y + label.height);
 			expect(asked.x, 'label sits in a side column').toBeLessThan(label.x + label.width);
 			expect(asked.width, 'question is squeezed').toBeGreaterThanOrEqual(100);
+		});
+	}
+});
+
+// The fullest banner: a name that wraps, a question, more subjects than the
+// banner names, long subject names, and a mainline that moved since the fork.
+// Each of these once added a line or more on a phone, to 300px in all (#1135).
+test.describe('with a full research record and mainline drift active', () => {
+	const hypothesis = 'Test parentage of the ferry keeper via the 1850 census household';
+	let branchId = '';
+
+	test.beforeAll(async ({ request }) => {
+		const surname = `Fullbanner${Date.now().toString(36)}`;
+		const subjects = [];
+		for (const given of ['Wilhelmina Augusta Theodora', 'Bartholomew Maximilian', 'Ida', 'Otto']) {
+			const response = await request.post(`${API_BASE}/persons`, {
+				data: { given_name: given, surname }
+			});
+			expect(response.status(), await response.text()).toBe(201);
+			subjects.push({ type: 'person', id: ((await response.json()) as { id: string }).id });
+		}
+		const response = await request.post(`${API_BASE}/branches`, {
+			data: {
+				name: `Was the ferry keeper at Lindholm the father of Robin ${surname}?`,
+				hypothesis,
+				subjects
+			}
+		});
+		expect(response.status(), await response.text()).toBe(201);
+		branchId = ((await response.json()) as { id: string }).id;
+		// A mainline write after the fork gives the branch drift to report.
+		const moved = await request.post(`${API_BASE}/persons`, {
+			data: { given_name: 'Mainline', surname }
+		});
+		expect(moved.status(), await moved.text()).toBe(201);
+	});
+
+	test.beforeEach(async ({ page }) => {
+		await page.addInitScript((id) => {
+			localStorage.setItem('active-branch', id);
+		}, branchId);
+	});
+
+	for (const width of [320, 375, 390]) {
+		test(`the banner stays within 160px at ${width}px`, async ({ page }) => {
+			await page.setViewportSize({ width, height: 844 });
+			await expectNoHorizontalOverflow(page, '/');
+			const banner = page.locator('.branch-banner');
+			const summary = banner.getByText('Mainline moved - how branches work');
+			await expect(summary).toBeVisible();
+			await expect(banner.getByTestId('banner-subjects')).toBeVisible();
+			const height = (await banner.boundingBox())!.height;
+			expect(height, 'banner is taller than 160px').toBeLessThanOrEqual(160);
+
+			// The drift moved into the disclosure, not out of the banner.
+			await summary.click();
+			await expect(banner.getByTestId('branch-drift')).toContainText('Mainline changed');
+		});
+	}
+
+	for (const width of [768, 1024, 1280, 1920]) {
+		test(`the page does not overflow at ${width}px`, async ({ page }) => {
+			await page.setViewportSize({ width, height: 900 });
+			await expectNoHorizontalOverflow(page, '/');
+			await expect(page.getByTestId('branch-drift')).toContainText('Mainline changed');
 		});
 	}
 });

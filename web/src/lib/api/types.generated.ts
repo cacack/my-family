@@ -1550,9 +1550,36 @@ export interface paths {
         };
         /**
          * Find potential duplicate persons
-         * @description Returns pairs of persons that may be duplicates based on name, date, and place matching
+         * @description Returns pairs of persons that may be duplicates based on name, date, and
+         *     place matching. Pairs marked "not a duplicate" in this scope are left
+         *     out (see `/persons/duplicates/dismissed`). With `branch`, the pairs are
+         *     found in that research branch's view.
          */
         get: operations["getPersonsDuplicates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/persons/duplicates/dismissed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List pairs marked "not a duplicate"
+         * @description Returns the suggested duplicate pairs marked "not a duplicate" in this
+         *     scope, most recently dismissed first, so they can be reviewed and
+         *     restored. A pair naming a person that no longer exists is not listed.
+         *     With `branch`, the list is that research branch's view: the mainline's
+         *     dismissals plus the branch's own, less those the branch restored.
+         */
+        get: operations["listDismissedDuplicates"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1602,12 +1629,25 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Dismiss a duplicate pair as false positive
-         * @description Marks a duplicate pair as a false positive. The pair will not be returned
-         *     in future duplicate detection results.
+         * Mark a duplicate pair as not a duplicate
+         * @description Records that the two persons are not the same person, so the pair is no
+         *     longer returned by duplicate detection in this scope. The decision is
+         *     event-sourced (`DuplicateDismissed` on the pair's own stream), so it is
+         *     in the change history and can be undone with DELETE. The order of the
+         *     two ids does not matter; dismissing a pair that is already dismissed
+         *     succeeds without change. Both persons must exist (404 otherwise); the
+         *     same id twice is a 400. With `branch`, the decision is made on that
+         *     research branch only, and reaches the mainline when the branch is
+         *     merged.
          */
         post: operations["dismissDuplicate"];
-        delete?: never;
+        /**
+         * Restore a pair marked "not a duplicate"
+         * @description Undoes a dismissal (`DuplicateRestored`), so duplicate detection may
+         *     suggest the pair again. 404 when the pair is not dismissed in this
+         *     scope. With `branch`, the restore is made on that research branch only.
+         */
+        delete: operations["restoreDuplicate"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1647,9 +1687,11 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Batch dismiss multiple duplicate pairs
-         * @description Dismisses multiple duplicate pairs as false positives in a single operation.
-         *     Each pair is processed independently; partial failures are reported in the response.
+         * Mark several duplicate pairs as not duplicates
+         * @description Dismisses multiple duplicate pairs in a single operation, each recorded
+         *     exactly as a single dismissal is. Each pair is processed independently;
+         *     partial failures are reported in the response. With `branch`, every
+         *     dismissal is made on that research branch only.
          */
         post: operations["batchDismissDuplicates"];
         delete?: never;
@@ -3227,12 +3269,16 @@ export interface components {
          *       about, circa, c., ca., before, after, `between X and Y`,
          *       `from X to Y`, and month names in full, as three letters or as
          *       "Sept". For example `about Sept 1850` is stored as `ABT SEP 1850`.
+         *       Era markers may carry periods (`44 B.C.` is stored as `44 BC`), and
+         *       an AD marker after a year is dropped (`500 A.D.` is stored as `500`).
          *     - A date phrase in parentheses, such as `(about the time of the war)`,
          *       kept as text.
          *
          *     An empty string means no date. Any other text (such as `1850-01-01`
-         *     or `Sept 5, 1850`), a date without a year, or a date that doesn't
-         *     exist in the calendar (such as `31 FEB 1900`) is rejected with 400;
+         *     or `Sept 5, 1850`), a date without a year, a date that doesn't
+         *     exist in the calendar (such as `31 FEB 1900`, `0 JAN 1850` or year
+         *     `0`), or a range that ends before it starts (such as
+         *     `between 1860 and 1850`) is rejected with 400;
          *     the error's `details` name the field and say whether the text can be
          *     kept as a date phrase. On update, a date identical to the stored value
          *     is not re-checked, so an imported date the parser can't read never
@@ -3580,13 +3626,30 @@ export interface components {
             gender?: components["schemas"]["Gender"];
             /** @description Generation level (0 = root, 1 = children, 2 = grandchildren, etc.) */
             generation?: number;
+            /**
+             * Format: uuid
+             * @description The family through which this person descends from their parent
+             *     node. Matches the family_id of one of the parent's spouses when that
+             *     family has a second partner. Absent on the root.
+             */
+            family_id?: string;
+            /** @description Spouses ordered by marriage date, undated last. */
             spouses?: components["schemas"]["SpouseInfo"][];
+            /**
+             * @description Children grouped by family, in spouse order, and ordered by birth
+             *     date (undated last) within each family.
+             */
             children?: components["schemas"]["DescendancyNode"][];
         };
         /** @description Spouse information in the descendancy tree */
         SpouseInfo: {
             /** Format: uuid */
             id: string;
+            /**
+             * Format: uuid
+             * @description The family this spouse shares with the person; children of that family carry the same family_id.
+             */
+            family_id: string;
             name: string;
             marriage_date?: components["schemas"]["GenDate"];
         };
@@ -3700,9 +3763,12 @@ export interface components {
              *     `changes` carry the `name`. `branch` is a research branch's
              *     lifecycle, in the global history only: `created`, `merged` (its
              *     `changes.merge_note` carries the note) and `deleted` (archived).
+             *     `duplicate_pair` is a suggested duplicate pair marked "not a
+             *     duplicate": `created` when dismissed, `deleted` when restored; its
+             *     id is the pair's id and its name the two persons'.
              * @enum {string}
              */
-            entity_type: "person" | "family" | "source" | "citation" | "media" | "note" | "submitter" | "repository" | "association" | "life_event" | "attribute" | "lds_ordinance" | "evidence_analysis" | "evidence_conflict" | "research_log" | "proof_summary" | "branch";
+            entity_type: "person" | "family" | "source" | "citation" | "media" | "note" | "submitter" | "repository" | "association" | "life_event" | "attribute" | "lds_ordinance" | "evidence_analysis" | "evidence_conflict" | "research_log" | "proof_summary" | "branch" | "duplicate_pair";
             /**
              * Format: uuid
              * @description The changed entity's id (its event stream). Merge exclusions and
@@ -4462,10 +4528,32 @@ export interface components {
             /** @description Number of media files transferred */
             media_transferred: number;
         };
-        /** @description Request to dismiss a duplicate pair as false positive */
+        /** @description Request to mark a duplicate pair as not a duplicate */
         DismissDuplicateRequest: {
-            /** @description Optional reason for dismissal */
+            /** @description Optional reason for dismissal (e.g. "father and son") */
             reason?: string;
+        };
+        /** @description A suggested duplicate pair marked "not a duplicate" */
+        DismissedDuplicate: {
+            /** Format: uuid */
+            person1_id: string;
+            person1_name: string;
+            /** Format: uuid */
+            person2_id: string;
+            person2_name: string;
+            /** @description Reason given when the pair was dismissed, if any */
+            reason?: string;
+            /**
+             * Format: date-time
+             * @description When the pair was (last) dismissed
+             */
+            dismissed_at: string;
+        };
+        /** @description Pairs marked "not a duplicate", most recently dismissed first */
+        DismissedDuplicatesResponse: {
+            dismissals: components["schemas"]["DismissedDuplicate"][];
+            /** @description Total number of dismissed pairs listed in this scope */
+            total: number;
         };
         /** @description Request to merge multiple duplicate pairs */
         BatchMergeRequest: {
@@ -6382,8 +6470,8 @@ export interface operations {
                 offset?: components["parameters"]["offsetParam"];
                 sort?: "surname" | "given_name" | "birth_date" | "updated_at";
                 order?: "asc" | "desc";
-                /** @description Filter by research status */
-                research_status?: "certain" | "probable" | "possible" | "unknown" | "unset";
+                /** @description Filter by research status. `unset` matches persons with no status recorded; `unassessed` matches those and persons marked `unknown`. */
+                research_status?: "certain" | "probable" | "possible" | "unknown" | "unset" | "unassessed";
             };
             header?: never;
             path?: never;
@@ -7418,7 +7506,7 @@ export interface operations {
                  *     Applied in the store before pagination, so `total` counts only the
                  *     matching entries.
                  */
-                entity_type?: "person" | "family" | "source" | "citation" | "media" | "note" | "submitter" | "repository" | "association" | "life_event" | "attribute" | "lds_ordinance" | "evidence_analysis" | "evidence_conflict" | "research_log" | "proof_summary" | "branch";
+                entity_type?: "person" | "family" | "source" | "citation" | "media" | "note" | "submitter" | "repository" | "association" | "life_event" | "attribute" | "lds_ordinance" | "evidence_analysis" | "evidence_conflict" | "research_log" | "proof_summary" | "branch" | "duplicate_pair";
                 /** @description Start date/time for history (ISO 8601) */
                 from?: string;
                 /** @description End date/time for history (ISO 8601) */
@@ -9285,6 +9373,15 @@ export interface operations {
     getPersonsDuplicates: {
         parameters: {
             query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
                 /** @description Maximum number of duplicate pairs to return */
                 limit?: number;
                 /** @description Number of duplicate pairs to skip */
@@ -9303,6 +9400,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DuplicatesResponse"];
+                };
+            };
+        };
+    };
+    listDismissedDuplicates: {
+        parameters: {
+            query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
+                /** @description Maximum number of pairs to return */
+                limit?: number;
+                /** @description Number of pairs to skip */
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Pairs marked not a duplicate */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DismissedDuplicatesResponse"];
                 };
             };
         };
@@ -9358,7 +9489,17 @@ export interface operations {
     };
     dismissDuplicate: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
+            };
             header?: never;
             path: {
                 /** @description First person ID in the duplicate pair */
@@ -9375,6 +9516,41 @@ export interface operations {
         };
         responses: {
             /** @description Duplicate pair dismissed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    restoreDuplicate: {
+        parameters: {
+            query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
+            };
+            header?: never;
+            path: {
+                /** @description First person ID in the duplicate pair */
+                person1Id: string;
+                /** @description Second person ID in the duplicate pair */
+                person2Id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Duplicate pair restored */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -9422,7 +9598,17 @@ export interface operations {
     };
     batchDismissDuplicates: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
+            };
             header?: never;
             path?: never;
             cookie?: never;

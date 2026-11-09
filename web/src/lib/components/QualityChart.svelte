@@ -1,6 +1,8 @@
 <script lang="ts">
 	import * as d3 from 'd3';
 	import { onMount } from 'svelte';
+	import { getFontScale } from '#lib/stores/accessibilitySettings.svelte.js';
+	import { fitText } from '#lib/utils/chart.js';
 
 	interface ChartData {
 		label: string;
@@ -26,11 +28,14 @@
 
 		// Each label sits on its own line above its bar so it gets the full chart
 		// width instead of a fixed left margin that cut long labels off (#922).
-		const margin = { top: 4, right: 60, bottom: 4, left: 0 };
+		// Text and rows grow with the Accessibility font-size setting (#1103).
+		const k = getFontScale();
+		const fontSize = `${13 * k}px`;
+		const margin = { top: 4, right: 60 * k, bottom: 4, left: 0 };
 		const width = container.clientWidth || 400;
-		const labelHeight = 18;
-		const barHeight = 20;
-		const rowGap = 12;
+		const labelHeight = 18 * k;
+		const barHeight = 20 * k;
+		const rowGap = 12 * k;
 		const rowHeight = labelHeight + barHeight + rowGap;
 		const height = data.length * rowHeight - rowGap + margin.top + margin.bottom;
 
@@ -69,7 +74,7 @@
 			.attr('x', margin.left)
 			.attr('y', labelHeight / 2)
 			.attr('dominant-baseline', 'middle')
-			.attr('font-size', '13px')
+			.attr('font-size', fontSize)
 			.attr('fill', '#475569')
 			.text((d) => d.label)
 			.each(function () {
@@ -101,27 +106,14 @@
 		// Value text on right
 		barGroups
 			.append('text')
-			.attr('x', (d) => margin.left + xScale(d.value) + 8)
+			.attr('class', 'bar-value')
+			.attr('x', (d) => margin.left + xScale(d.value) + 8 * k)
 			.attr('y', barY + barHeight / 2)
 			.attr('dominant-baseline', 'middle')
-			.attr('font-size', '13px')
+			.attr('font-size', fontSize)
 			.attr('font-weight', '600')
 			.attr('fill', '#1e293b')
 			.text((d) => d.value.toLocaleString());
-	}
-
-	// Shorten a text node with an ellipsis until it fits maxWidth. A no-op where
-	// text can't be measured (e.g. jsdom), leaving the full label.
-	function fitText(node: SVGTextElement, maxWidth: number) {
-		if (typeof node.getComputedTextLength !== 'function') return;
-		const full = node.textContent ?? '';
-		if (node.getComputedTextLength() <= maxWidth) return;
-		let end = full.length;
-		while (end > 0) {
-			end--;
-			node.textContent = full.slice(0, end).trimEnd() + '…';
-			if (node.getComputedTextLength() <= maxWidth) return;
-		}
 	}
 
 	onMount(() => {
@@ -138,7 +130,8 @@
 	});
 
 	$effect(() => {
-		if (data) {
+		// Reading the scale here redraws the chart when the font-size setting changes
+		if (data && getFontScale()) {
 			renderChart();
 		}
 	});

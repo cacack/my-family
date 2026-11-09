@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { api, isConflictError, type Media } from '$lib/api/client';
-	import { Button } from '$lib/components/ui/button';
+	import { api, isConflictError, type Media } from '#lib/api/client.js';
+	import { Button } from '#lib/components/ui/button/index.js';
 	import MediaUpload from './MediaUpload.svelte';
 	import MediaLightbox from './MediaLightbox.svelte';
 	import ConflictError from './ConflictError.svelte';

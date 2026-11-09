@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/svelte';
 import Page from './+page.svelte';
-import * as apiModule from '$lib/api/client';
+import * as apiModule from '#lib/api/client.js';
 
 // Configurable page params
 let mockPageParams: Record<string, string> = {
@@ -10,13 +10,14 @@ let mockPageParams: Record<string, string> = {
 };
 
 // Mock the API module
-vi.mock('$lib/api/client', async (importOriginal) => {
+vi.mock('#lib/api/client.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof apiModule>();
 	return {
 		...actual,
 		api: {
 			getPerson: vi.fn(),
-			mergePersons: vi.fn()
+			mergePersons: vi.fn(),
+			dismissDuplicate: vi.fn()
 		}
 	};
 });
@@ -38,7 +39,7 @@ const { branchState } = vi.hoisted(() => ({
 	branchState: { id: null as string | null, branch: null as { name: string } | null }
 }));
 
-vi.mock('$lib/stores/activeBranch.svelte', () => ({
+vi.mock('#lib/stores/activeBranch.svelte.js', () => ({
 	activeBranch: branchState
 }));
 
@@ -235,5 +236,31 @@ describe('Merge Picker Page', () => {
 		await waitFor(() => {
 			expect(screen.getByText('Person not found')).toBeDefined();
 		});
+	});
+
+	// #1036: the pair can be marked "not a duplicate" from here as well.
+	it('marks the pair not a duplicate and returns to the duplicates list', async () => {
+		const { goto } = await import('$app/navigation');
+		vi.mocked(apiModule.api.dismissDuplicate).mockResolvedValue(undefined);
+
+		render(Page);
+		await fireEvent.click(await screen.findByRole('button', { name: 'Not a duplicate' }));
+
+		await waitFor(() => {
+			expect(apiModule.api.dismissDuplicate).toHaveBeenCalledWith('p-survivor', 'p-merged');
+		});
+		await waitFor(() => expect(goto).toHaveBeenCalledWith('/quality?tab=duplicates'));
+		expect(apiModule.api.mergePersons).not.toHaveBeenCalled();
+	});
+
+	it('stays on the page with the error when marking fails', async () => {
+		const { goto } = await import('$app/navigation');
+		vi.mocked(apiModule.api.dismissDuplicate).mockRejectedValue({ message: 'Person 2 not found' });
+
+		render(Page);
+		await fireEvent.click(await screen.findByRole('button', { name: 'Not a duplicate' }));
+
+		await screen.findByText('Person 2 not found');
+		expect(goto).not.toHaveBeenCalled();
 	});
 });

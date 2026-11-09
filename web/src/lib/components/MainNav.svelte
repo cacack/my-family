@@ -1,13 +1,13 @@
 <script lang="ts">
-	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
-	import { Button } from '$lib/components/ui/button';
+	import * as DropdownMenu from '#lib/components/ui/dropdown-menu/index.js';
+	import { Button } from '#lib/components/ui/button/index.js';
 	import {
 		mainNav,
 		isGroup,
 		isEntryActive,
 		isLinkActive,
 		type NavLink
-	} from '$lib/navigation';
+	} from '#lib/navigation.js';
 
 	interface Props {
 		/** The current page's path; decides which section is highlighted. */
@@ -19,6 +19,9 @@
 	const triggerClass = 'gap-1 px-3 py-2 text-sm font-medium';
 	const activeClass = 'nav-active bg-[#eff6ff] text-[#1d4ed8]';
 	const idleClass = 'text-muted-foreground hover:bg-[#f1f5f9] hover:text-[#1e293b]';
+
+	// The narrow-screen Menu button names the section you are in (#1116).
+	const currentSection = $derived(mainNav.find((entry) => isEntryActive(entry, pathname))?.label);
 </script>
 
 <!-- `child` on Triggers and Items for the reasons given in BranchSwitcher.svelte:
@@ -87,7 +90,7 @@
 							<line x1="4" y1="12" x2="20" y2="12" />
 							<line x1="4" y1="18" x2="20" y2="18" />
 						</svg>
-						Menu
+						Menu{#if currentSection}<span class="sr-only">, current section: {currentSection}</span>{/if}
 					</Button>
 				{/snippet}
 			</DropdownMenu.Trigger>

@@ -123,6 +123,13 @@ var branchAwareEventTypes = map[string]struct{}{
 	// the dangling-reference checks treat its survivor as a person it
 	// references and follow the branch's merge chains.
 	"PersonMerged": {},
+	// Duplicate dismissals (#1036): each pair is its own aggregate and its
+	// projection writes only the pair's branch-keyed duplicate_dismissals row.
+	// A branch merge replays them like any other branch event; they reference
+	// persons only as the pair they describe, so a dangling pair is harmless
+	// (it never matches a detected duplicate) and is not a merge blocker.
+	"DuplicateDismissed": {},
+	"DuplicateRestored":  {},
 }
 
 // BranchAwareEventTypes returns the event types a branch-scoped handler may

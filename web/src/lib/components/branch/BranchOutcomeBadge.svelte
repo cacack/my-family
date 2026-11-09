@@ -3,8 +3,8 @@
 	 * The verdict a branch's research reached (#835). Colour is a hint only:
 	 * the word is always shown, prefixed so a screen reader hears what it is.
 	 */
-	import type { BranchOutcome } from '$lib/api/client';
-	import { OUTCOME_LABELS, branchOutcome } from '$lib/utils/branchResearch';
+	import type { BranchOutcome } from '#lib/api/client.js';
+	import { OUTCOME_LABELS, branchOutcome } from '#lib/utils/branchResearch.js';
 
 	interface Props {
 		outcome: BranchOutcome | undefined | null;

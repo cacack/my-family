@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/svelte';
 import BranchSwitcher from './BranchSwitcher.svelte';
-import type * as apiModule from '$lib/api/client';
-import type { Branch } from '$lib/api/client';
+import type * as apiModule from '#lib/api/client.js';
+import type { Branch } from '#lib/api/client.js';
 
 // Hoisted so the module mocks below (which vitest lifts above the imports) can
 // close over them.
@@ -18,7 +18,7 @@ const { mockState, listBranches, switchBranch } = vi.hoisted(() => ({
 	switchBranch: vi.fn().mockResolvedValue(undefined)
 }));
 
-vi.mock('$lib/api/client', async (importOriginal) => {
+vi.mock('#lib/api/client.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof apiModule>();
 	return {
 		...actual,
@@ -26,7 +26,7 @@ vi.mock('$lib/api/client', async (importOriginal) => {
 	};
 });
 
-vi.mock('$lib/stores/activeBranch.svelte', () => ({
+vi.mock('#lib/stores/activeBranch.svelte.js', () => ({
 	activeBranch: mockState,
 	switchBranch: (branch: Branch | null) => switchBranch(branch)
 }));

@@ -4,8 +4,8 @@
  * `409 merge_dangling_reference` report them. Shared by the review's blockers
  * panel and the merge dialog, so both say the same thing.
  */
-import type { MergeBlocker, MergeResolution } from '$lib/api/client';
-import { entityTypeLabel, unnamedEntityLabel } from '$lib/utils/changeEntries';
+import type { MergeBlocker, MergeResolution } from '#lib/api/client.js';
+import { entityTypeLabel, unnamedEntityLabel } from '#lib/utils/changeEntries.js';
 
 /** An entity's name, or its type when nothing names it. */
 export function blockerEntityName(blocker: MergeBlocker): string {

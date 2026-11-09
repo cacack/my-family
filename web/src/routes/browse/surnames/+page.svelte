@@ -1,6 +1,6 @@
 <script lang="ts">
-	import SurnameBrowser from '$lib/components/SurnameBrowser.svelte';
-	import PageHeader from '$lib/components/PageHeader.svelte';
+	import SurnameBrowser from '#lib/components/SurnameBrowser.svelte';
+	import PageHeader from '#lib/components/PageHeader.svelte';
 </script>
 
 <svelte:head>

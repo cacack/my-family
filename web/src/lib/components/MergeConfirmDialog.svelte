@@ -1,9 +1,9 @@
 <script lang="ts" module>
-	import type { BranchMergeRefusalCode, MergeConflict, MergeResolution } from '$lib/api/client';
+	import type { BranchMergeRefusalCode, MergeConflict, MergeResolution } from '#lib/api/client.js';
 
 	/**
 	 * Mirrors the maxLength on `BranchMergeRequest.note` in openapi.yaml, and is
-	 * pinned to it by a spec-drift test in `$lib/api/client.test.ts`. Counted in
+	 * pinned to it by a spec-drift test in `#lib/api/client.test.js`. Counted in
 	 * UTF-8 bytes, because that is the unit `internal/domain/branch.go` enforces.
 	 */
 	export const NOTE_MAX_LENGTH = 1000;
@@ -176,15 +176,15 @@
 		type Branch,
 		type BranchMergeRefusal,
 		type BranchMergeResult
-	} from '$lib/api/client';
-	import { Badge } from '$lib/components/ui/badge';
-	import { Button } from '$lib/components/ui/button';
-	import { Label } from '$lib/components/ui/label';
-	import { Textarea } from '$lib/components/ui/textarea';
-	import * as AlertDialog from '$lib/components/ui/alert-dialog';
-	import PreMergeSnapshotOption from '$lib/components/PreMergeSnapshotOption.svelte';
-	import { entityTypeLabel, unnamedEntityLabel } from '$lib/utils/changeEntries';
-	import { describeBlocker } from '$lib/utils/mergeBlockers';
+	} from '#lib/api/client.js';
+	import { Badge } from '#lib/components/ui/badge/index.js';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import { Label } from '#lib/components/ui/label/index.js';
+	import { Textarea } from '#lib/components/ui/textarea/index.js';
+	import * as AlertDialog from '#lib/components/ui/alert-dialog/index.js';
+	import PreMergeSnapshotOption from '#lib/components/PreMergeSnapshotOption.svelte';
+	import { entityTypeLabel, unnamedEntityLabel } from '#lib/utils/changeEntries.js';
+	import { describeBlocker } from '#lib/utils/mergeBlockers.js';
 
 	interface Props {
 		open: boolean;

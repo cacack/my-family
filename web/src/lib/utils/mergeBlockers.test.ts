@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { MergeBlocker } from '$lib/api/client';
+import type { MergeBlocker } from '#lib/api/client.js';
 import {
 	blockedEntityIds,
 	blockerFix,

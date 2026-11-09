@@ -1,15 +1,15 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { api, type Source } from '$lib/api/client';
-	import { Button } from '$lib/components/ui/button';
-	import PageHeader from '$lib/components/PageHeader.svelte';
-	import FormRow from '$lib/components/FormRow.svelte';
-	import SourceCard from '$lib/components/SourceCard.svelte';
-	import { DEFAULT_SOURCE_TYPE, SOURCE_TYPES } from '$lib/utils/sourceTypes';
-	import ErrorState from '$lib/components/ErrorState.svelte';
-	import ActionError from '$lib/components/ActionError.svelte';
-	import { asDatePhrase, unreadableDateField } from '$lib/utils/dateInput';
-	import { clampPageToTotal, readEnum, readPositiveInt, setQuery } from '$lib/utils/urlState';
+	import { api, type Source } from '#lib/api/client.js';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import PageHeader from '#lib/components/PageHeader.svelte';
+	import FormRow from '#lib/components/FormRow.svelte';
+	import SourceCard from '#lib/components/SourceCard.svelte';
+	import { DEFAULT_SOURCE_TYPE, SOURCE_TYPES } from '#lib/utils/sourceTypes.js';
+	import ErrorState from '#lib/components/ErrorState.svelte';
+	import ActionError from '#lib/components/ActionError.svelte';
+	import { asDatePhrase, unreadableDateField } from '#lib/utils/dateInput.js';
+	import { clampPageToTotal, readEnum, readPositiveInt, setQuery } from '#lib/utils/urlState.js';
 
 	let sources: Source[] = $state([]);
 	let total = $state(0);
@@ -278,18 +278,18 @@
 					</label>
 					<label>
 						<span>Title <span class="required">*</span></span>
-						<input type="text" bind:value={newSource.title} required />
+						<textarea bind:value={newSource.title} rows="2" required></textarea>
 					</label>
 				</FormRow>
 
 				<FormRow>
 					<label>
 						Author
-						<input type="text" bind:value={newSource.author} />
+						<textarea bind:value={newSource.author} rows="2"></textarea>
 					</label>
 					<label>
 						Publisher
-						<input type="text" bind:value={newSource.publisher} />
+						<textarea bind:value={newSource.publisher} rows="2"></textarea>
 					</label>
 				</FormRow>
 

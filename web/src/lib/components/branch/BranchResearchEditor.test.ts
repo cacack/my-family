@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/svelte';
 import BranchResearchEditor from './BranchResearchEditor.svelte';
-import type * as apiModule from '$lib/api/client';
-import type { Branch, BranchSubject, BranchUpdate } from '$lib/api/client';
+import type * as apiModule from '#lib/api/client.js';
+import type { Branch, BranchSubject, BranchUpdate } from '#lib/api/client.js';
 
 const { updateBranch, listProofSummaries, searchPersons, getPerson } = vi.hoisted(() => ({
 	updateBranch: vi.fn(),
@@ -11,7 +11,7 @@ const { updateBranch, listProofSummaries, searchPersons, getPerson } = vi.hoiste
 	getPerson: vi.fn()
 }));
 
-vi.mock('$lib/api/client', async (importOriginal) => {
+vi.mock('#lib/api/client.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof apiModule>();
 	return {
 		...actual,

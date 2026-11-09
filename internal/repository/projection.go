@@ -159,6 +159,10 @@ func (p *Projector) Project(ctx context.Context, event domain.Event, version int
 		return p.projectProofSummaryUpdated(ctx, e, version, branchID)
 	case domain.ProofSummaryDeleted:
 		return p.projectProofSummaryDeleted(ctx, e, branchID)
+	case domain.DuplicateDismissed:
+		return p.projectDuplicateDismissed(ctx, e, version, branchID)
+	case domain.DuplicateRestored:
+		return p.readStore.DeleteDuplicateDismissal(ctx, branchID, e.PairID)
 	case domain.BranchCreated:
 		return p.projectBranchCreated(ctx, e)
 	case domain.BranchUpdated:
@@ -313,17 +317,11 @@ func (p *Projector) projectPersonCreated(ctx context.Context, e domain.PersonCre
 
 	if e.BirthDate != nil {
 		birthDateRaw = e.BirthDate.Raw
-		t := e.BirthDate.SortDate()
-		if !t.IsZero() {
-			birthDateSort = &t
-		}
+		birthDateSort = SortTime(e.BirthDate)
 	}
 	if e.DeathDate != nil {
 		deathDateRaw = e.DeathDate.Raw
-		t := e.DeathDate.SortDate()
-		if !t.IsZero() {
-			deathDateSort = &t
-		}
+		deathDateSort = SortTime(e.DeathDate)
 	}
 
 	person := &PersonReadModel{
@@ -344,6 +342,13 @@ func (p *Projector) projectPersonCreated(ctx context.Context, e domain.PersonCre
 		UpdatedAt:      e.OccurredAt(),
 	}
 
+	// A family may already name this person: a branch merge replays streams
+	// in first-event order, so a family's link can land before the person (#817).
+	// The rename runs before SavePerson records the version, so a failed rename
+	// leaves the person behind the log for ResumeMerge to re-project.
+	if err := p.readStore.RenameFamilyMember(ctx, branchID, person.ID, person.GivenName, person.Surname); err != nil {
+		return err
+	}
 	return p.readStore.SavePerson(ctx, branchID, person)
 }
 
@@ -380,12 +385,7 @@ func (p *Projector) projectPersonUpdated(ctx context.Context, e domain.PersonUpd
 			if v, ok := value.(string); ok {
 				person.BirthDateRaw = v
 				gd := domain.ParseGenDate(v)
-				t := gd.SortDate()
-				if !t.IsZero() {
-					person.BirthDateSort = &t
-				} else {
-					person.BirthDateSort = nil
-				}
+				person.BirthDateSort = SortTime(&gd)
 			}
 		case "birth_place":
 			if v, ok := value.(string); ok {
@@ -395,12 +395,7 @@ func (p *Projector) projectPersonUpdated(ctx context.Context, e domain.PersonUpd
 			if v, ok := value.(string); ok {
 				person.DeathDateRaw = v
 				gd := domain.ParseGenDate(v)
-				t := gd.SortDate()
-				if !t.IsZero() {
-					person.DeathDateSort = &t
-				} else {
-					person.DeathDateSort = nil
-				}
+				person.DeathDateSort = SortTime(&gd)
 			}
 		case "death_place":
 			if v, ok := value.(string); ok {
@@ -422,13 +417,17 @@ func (p *Projector) projectPersonUpdated(ctx context.Context, e domain.PersonUpd
 	person.Version = version
 	person.UpdatedAt = e.OccurredAt()
 
-	if err := p.readStore.SavePerson(ctx, branchID, person); err != nil {
-		return err
+	// Name side effects run before SavePerson records the version (see
+	// projectPersonCreated).
+	if nameChanged {
+		if err := p.syncPrimaryNameFromPerson(ctx, branchID, person, e.OccurredAt()); err != nil {
+			return err
+		}
+		if err := p.readStore.RenameFamilyMember(ctx, branchID, person.ID, person.GivenName, person.Surname); err != nil {
+			return err
+		}
 	}
-	if !nameChanged {
-		return nil
-	}
-	return p.syncPrimaryNameFromPerson(ctx, branchID, person, e.OccurredAt())
+	return p.readStore.SavePerson(ctx, branchID, person)
 }
 
 func (p *Projector) projectPersonDeleted(ctx context.Context, e domain.PersonDeleted, branchID domain.BranchID) error {
@@ -441,10 +440,7 @@ func (p *Projector) projectFamilyCreated(ctx context.Context, e domain.FamilyCre
 
 	if e.MarriageDate != nil {
 		marriageDateRaw = e.MarriageDate.Raw
-		t := e.MarriageDate.SortDate()
-		if !t.IsZero() {
-			marriageDateSort = &t
-		}
+		marriageDateSort = SortTime(e.MarriageDate)
 	}
 
 	// Get partner names if available (split into given/surname for API contract)
@@ -527,9 +523,7 @@ func (p *Projector) projectFamilyUpdated(ctx context.Context, e domain.FamilyUpd
 			family.MarriageDateSort = nil
 			if raw != "" {
 				gd := domain.ParseGenDate(raw)
-				if t := gd.SortDate(); !t.IsZero() {
-					family.MarriageDateSort = &t
-				}
+				family.MarriageDateSort = SortTime(&gd)
 			}
 		case "marriage_place":
 			if v, ok := value.(string); ok {
@@ -663,10 +657,13 @@ func (p *Projector) projectChildLinked(ctx context.Context, e domain.ChildLinked
 }
 
 // savePedigreeEdgeFromFamily writes the child's pedigree edge (father/mother)
-// from the family's current partners. Father/mother is decided by the
-// partner's gender (simplified: anyone not male is recorded as the mother).
+// from the family's current partners. A male partner is the father and a
+// female partner the mother; a partner of unknown gender (#1082), or the
+// second partner of a same-gender couple (#1230), takes whichever slot the
+// other partner leaves free.
 func (p *Projector) savePedigreeEdgeFromFamily(ctx context.Context, branchID domain.BranchID, childID uuid.UUID, family *FamilyReadModel) error {
 	edge := &PedigreeEdge{PersonID: childID}
+	var undetermined []*PersonReadModel
 	for _, partnerID := range []*uuid.UUID{family.Partner1ID, family.Partner2ID} {
 		if partnerID == nil {
 			continue
@@ -678,15 +675,53 @@ func (p *Projector) savePedigreeEdgeFromFamily(ctx context.Context, branchID dom
 		if partner == nil {
 			continue
 		}
-		if partner.Gender == domain.GenderMale {
-			edge.FatherID = partnerID
-			edge.FatherName = partner.FullName
-		} else {
-			edge.MotherID = partnerID
-			edge.MotherName = partner.FullName
+		if !fillGenderParentSlot(edge, partner) {
+			undetermined = append(undetermined, partner)
 		}
 	}
+	for _, partner := range undetermined {
+		fillFreeParentSlot(edge, partner)
+	}
 	return p.readStore.SavePedigreeEdge(ctx, branchID, edge)
+}
+
+func setEdgeFather(edge *PedigreeEdge, father *PersonReadModel) {
+	edge.FatherID = &father.ID
+	edge.FatherName = father.FullName
+}
+
+func setEdgeMother(edge *PedigreeEdge, mother *PersonReadModel) {
+	edge.MotherID = &mother.ID
+	edge.MotherName = mother.FullName
+}
+
+// fillGenderParentSlot records a male parent as the edge's father or a female
+// parent as its mother, and reports whether that slot was free. A parent of
+// unknown gender is never recorded here.
+func fillGenderParentSlot(edge *PedigreeEdge, parent *PersonReadModel) bool {
+	switch {
+	case parent.Gender == domain.GenderMale && edge.FatherID == nil:
+		setEdgeFather(edge, parent)
+	case parent.Gender == domain.GenderFemale && edge.MotherID == nil:
+		setEdgeMother(edge, parent)
+	default:
+		return false
+	}
+	return true
+}
+
+// fillFreeParentSlot records a parent whose gender's slot is unavailable in
+// the edge's free slot, the mother's first, and reports whether one was free.
+func fillFreeParentSlot(edge *PedigreeEdge, parent *PersonReadModel) bool {
+	switch {
+	case edge.MotherID == nil:
+		setEdgeMother(edge, parent)
+	case edge.FatherID == nil:
+		setEdgeFather(edge, parent)
+	default:
+		return false
+	}
+	return true
 }
 
 // refreshChildPedigreeEdges re-derives the pedigree edge of every child of a
@@ -786,10 +821,7 @@ func (p *Projector) projectSourceCreated(ctx context.Context, e domain.SourceCre
 
 	if e.PublishDate != nil {
 		publishDateRaw = e.PublishDate.Raw
-		t := e.PublishDate.SortDate()
-		if !t.IsZero() {
-			publishDateSort = &t
-		}
+		publishDateSort = SortTime(e.PublishDate)
 	}
 
 	source := &SourceReadModel{
@@ -847,12 +879,7 @@ func (p *Projector) projectSourceUpdated(ctx context.Context, e domain.SourceUpd
 			if v, ok := value.(string); ok {
 				source.PublishDateRaw = v
 				gd := domain.ParseGenDate(v)
-				t := gd.SortDate()
-				if !t.IsZero() {
-					source.PublishDateSort = &t
-				} else {
-					source.PublishDateSort = nil
-				}
+				source.PublishDateSort = SortTime(&gd)
 			}
 		case "url":
 			if v, ok := value.(string); ok {
@@ -1247,10 +1274,7 @@ func (p *Projector) projectLifeEventCreated(ctx context.Context, e domain.LifeEv
 
 	if e.Date != nil {
 		dateRaw = e.Date.Raw
-		t := e.Date.SortDate()
-		if !t.IsZero() {
-			dateSort = &t
-		}
+		dateSort = SortTime(e.Date)
 	}
 
 	// Derive owner type and ID from PersonID/FamilyID
@@ -1294,10 +1318,7 @@ func (p *Projector) projectAttributeCreated(ctx context.Context, e domain.Attrib
 
 	if e.Date != nil {
 		dateRaw = e.Date.Raw
-		t := e.Date.SortDate()
-		if !t.IsZero() {
-			dateSort = &t
-		}
+		dateSort = SortTime(e.Date)
 	}
 
 	attribute := &AttributeReadModel{
@@ -1338,12 +1359,7 @@ func (p *Projector) projectLifeEventUpdated(ctx context.Context, e domain.LifeEv
 			if v, ok := value.(string); ok {
 				event.DateRaw = v
 				gd := domain.ParseGenDate(v)
-				t := gd.SortDate()
-				if !t.IsZero() {
-					event.DateSort = &t
-				} else {
-					event.DateSort = nil
-				}
+				event.DateSort = SortTime(&gd)
 			}
 		case "place":
 			if v, ok := value.(string); ok {
@@ -1403,12 +1419,7 @@ func (p *Projector) projectAttributeUpdated(ctx context.Context, e domain.Attrib
 			if v, ok := value.(string); ok {
 				attribute.DateRaw = v
 				gd := domain.ParseGenDate(v)
-				t := gd.SortDate()
-				if !t.IsZero() {
-					attribute.DateSort = &t
-				} else {
-					attribute.DateSort = nil
-				}
+				attribute.DateSort = SortTime(&gd)
 			}
 		case "place":
 			if v, ok := value.(string); ok {
@@ -1502,15 +1513,11 @@ func (p *Projector) projectRepositoryDeleted(ctx context.Context, e domain.Repos
 }
 
 func (p *Projector) projectNameAdded(ctx context.Context, e domain.NameAdded, version int64, branchID domain.BranchID) error {
-	// Build full name from components
-	fullName := buildFullName(e.GivenName, e.Surname, e.NamePrefix, e.NameSuffix, e.SurnamePrefix)
-
 	name := &PersonNameReadModel{
 		ID:            e.NameID,
 		PersonID:      e.PersonID,
 		GivenName:     e.GivenName,
 		Surname:       e.Surname,
-		FullName:      fullName,
 		NamePrefix:    e.NamePrefix,
 		NameSuffix:    e.NameSuffix,
 		SurnamePrefix: e.SurnamePrefix,
@@ -1528,15 +1535,11 @@ func (p *Projector) projectNameAdded(ctx context.Context, e domain.NameAdded, ve
 }
 
 func (p *Projector) projectNameUpdated(ctx context.Context, e domain.NameUpdated, version int64, branchID domain.BranchID) error {
-	// Build full name from components
-	fullName := buildFullName(e.GivenName, e.Surname, e.NamePrefix, e.NameSuffix, e.SurnamePrefix)
-
 	name := &PersonNameReadModel{
 		ID:            e.NameID,
 		PersonID:      e.PersonID,
 		GivenName:     e.GivenName,
 		Surname:       e.Surname,
-		FullName:      fullName,
 		NamePrefix:    e.NamePrefix,
 		NameSuffix:    e.NameSuffix,
 		SurnamePrefix: e.SurnamePrefix,
@@ -1580,13 +1583,21 @@ func (p *Projector) updatePersonForName(ctx context.Context, branchID domain.Bra
 		// Person may not exist yet if events are out of order
 		return nil
 	}
-	if name.IsPrimary && (person.GivenName != name.GivenName || person.Surname != name.Surname) {
+	renamed := name.IsPrimary && (person.GivenName != name.GivenName || person.Surname != name.Surname)
+	if renamed {
 		person.GivenName = name.GivenName
 		person.Surname = name.Surname
 		person.FullName = domain.JoinFullName(name.GivenName, name.Surname)
 		person.UpdatedAt = name.UpdatedAt
 	}
 	person.Version = version
+	// The rename runs before SavePerson records the version (see
+	// projectPersonCreated).
+	if renamed {
+		if err := p.readStore.RenameFamilyMember(ctx, branchID, person.ID, person.GivenName, person.Surname); err != nil {
+			return err
+		}
+	}
 	return p.readStore.SavePerson(ctx, branchID, person)
 }
 
@@ -1607,7 +1618,6 @@ func (p *Projector) syncPrimaryNameFromPerson(ctx context.Context, branchID doma
 		}
 		name.GivenName = person.GivenName
 		name.Surname = person.Surname
-		name.FullName = buildFullName(name.GivenName, name.Surname, name.NamePrefix, name.NameSuffix, name.SurnamePrefix)
 		name.UpdatedAt = at
 		return p.readStore.SavePersonName(ctx, branchID, name)
 	}
@@ -1626,38 +1636,6 @@ func (p *Projector) updatePersonVersion(ctx context.Context, branchID domain.Bra
 	}
 	person.Version = version
 	return p.readStore.SavePerson(ctx, branchID, person)
-}
-
-// buildFullName constructs a full name from its components.
-func buildFullName(givenName, surname, namePrefix, nameSuffix, surnamePrefix string) string {
-	var parts []string
-
-	if namePrefix != "" {
-		parts = append(parts, namePrefix)
-	}
-	if givenName != "" {
-		parts = append(parts, givenName)
-	}
-	if surnamePrefix != "" {
-		parts = append(parts, surnamePrefix)
-	}
-	if surname != "" {
-		parts = append(parts, surname)
-	}
-	if nameSuffix != "" {
-		parts = append(parts, nameSuffix)
-	}
-
-	if len(parts) == 0 {
-		return ""
-	}
-
-	// Join with spaces
-	result := parts[0]
-	for i := 1; i < len(parts); i++ {
-		result += " " + parts[i]
-	}
-	return result
 }
 
 // projectPersonMerged handles the PersonMerged event by updating the survivor,
@@ -1693,12 +1671,7 @@ func (p *Projector) projectPersonMerged(ctx context.Context, e domain.PersonMerg
 			if v, ok := value.(string); ok {
 				survivor.BirthDateRaw = v
 				gd := domain.ParseGenDate(v)
-				t := gd.SortDate()
-				if !t.IsZero() {
-					survivor.BirthDateSort = &t
-				} else {
-					survivor.BirthDateSort = nil
-				}
+				survivor.BirthDateSort = SortTime(&gd)
 			}
 		case "birth_place":
 			if v, ok := value.(string); ok {
@@ -1708,12 +1681,7 @@ func (p *Projector) projectPersonMerged(ctx context.Context, e domain.PersonMerg
 			if v, ok := value.(string); ok {
 				survivor.DeathDateRaw = v
 				gd := domain.ParseGenDate(v)
-				t := gd.SortDate()
-				if !t.IsZero() {
-					survivor.DeathDateSort = &t
-				} else {
-					survivor.DeathDateSort = nil
-				}
+				survivor.DeathDateSort = SortTime(&gd)
 			}
 		case "death_place":
 			if v, ok := value.(string); ok {
@@ -1881,6 +1849,10 @@ func (p *Projector) projectPersonMerged(ctx context.Context, e domain.PersonMerg
 	// The resolved given name and surname also apply to the survivor's primary name.
 	if err := p.syncPrimaryNameFromPerson(ctx, branchID, survivor, e.OccurredAt()); err != nil {
 		return fmt.Errorf("sync primary name for survivor %s: %w", e.SurvivorID, err)
+	}
+	// ...and to the names the survivor's own families carry for it.
+	if err := p.readStore.RenameFamilyMember(ctx, branchID, survivor.ID, survivor.GivenName, survivor.Surname); err != nil {
+		return fmt.Errorf("refresh family names for survivor %s: %w", e.SurvivorID, err)
 	}
 
 	// 6. Transfer life events from merged person to survivor
@@ -2058,21 +2030,8 @@ func relinkEdgeParent(edge *PedigreeEdge, family *FamilyReadModel, mergedID uuid
 			return false // the edge came from another family
 		}
 	}
-	// The same father/mother choice projectChildLinked makes.
-	if survivor.Gender == domain.GenderMale {
-		if edge.FatherID != nil {
-			return false
-		}
-		edge.FatherID = &survivor.ID
-		edge.FatherName = survivor.FullName
-		return true
-	}
-	if edge.MotherID != nil {
-		return false
-	}
-	edge.MotherID = &survivor.ID
-	edge.MotherName = survivor.FullName
-	return true
+	// The same father/mother choice savePedigreeEdgeFromFamily makes.
+	return fillGenderParentSlot(edge, survivor) || fillFreeParentSlot(edge, survivor)
 }
 
 // familyHasPartner reports whether a person is one of a family's partners.
@@ -2318,10 +2277,7 @@ func (p *Projector) projectLDSOrdinanceCreated(ctx context.Context, e domain.LDS
 
 	if e.Date != nil {
 		dateRaw = e.Date.Raw
-		t := e.Date.SortDate()
-		if !t.IsZero() {
-			dateSort = &t
-		}
+		dateSort = SortTime(e.Date)
 	}
 
 	// Look up person name for denormalization on the event's branch scope so a
@@ -2368,12 +2324,7 @@ func (p *Projector) projectLDSOrdinanceUpdated(ctx context.Context, e domain.LDS
 			if v, ok := value.(string); ok {
 				ordinance.DateRaw = v
 				gd := domain.ParseGenDate(v)
-				t := gd.SortDate()
-				if !t.IsZero() {
-					ordinance.DateSort = &t
-				} else {
-					ordinance.DateSort = nil
-				}
+				ordinance.DateSort = SortTime(&gd)
 			}
 		case "place":
 			if v, ok := value.(string); ok {
@@ -2668,6 +2619,21 @@ func (p *Projector) projectProofSummaryDeleted(ctx context.Context, e domain.Pro
 	return p.readStore.DeleteProofSummary(ctx, branchID, e.SummaryID)
 }
 
+// projectDuplicateDismissed records the pair as not a duplicate on branchID
+// (#1036). Re-dismissing a restored pair writes a fresh row, so CreatedAt is
+// always the latest dismissal.
+func (p *Projector) projectDuplicateDismissed(ctx context.Context, e domain.DuplicateDismissed, version int64, branchID domain.BranchID) error {
+	return p.readStore.SaveDuplicateDismissal(ctx, branchID, &DuplicateDismissalReadModel{
+		ID:        e.PairID,
+		Person1ID: e.Person1ID,
+		Person2ID: e.Person2ID,
+		Reason:    e.Reason,
+		Version:   version,
+		CreatedAt: e.OccurredAt(),
+		UpdatedAt: e.OccurredAt(),
+	})
+}
+
 // marshalIDList encodes a GPS artifact's id list as the JSON array its read
 // model stores; an empty list is stored as "" (SQL NULL), as before #760.
 func marshalIDList(ids []uuid.UUID) (string, error) {
@@ -2679,4 +2645,19 @@ func marshalIDList(ids []uuid.UUID) (string, error) {
 		return "", err
 	}
 	return string(b), nil
+}
+
+// SortTime returns the value a read model's *_date_sort column stores for gd,
+// or nil when gd has no sort date: no year, or a historical-calendar date that
+// does not convert to Gregorian. It does not test SortDate's result with
+// IsZero, because time.Time{} is 1 JAN 1 AD, a real date (#1078).
+func SortTime(gd *domain.GenDate) *time.Time {
+	if gd == nil || gd.Year == nil {
+		return nil
+	}
+	if _, err := gd.ToGregorian(); err != nil {
+		return nil
+	}
+	t := gd.SortDate()
+	return &t
 }

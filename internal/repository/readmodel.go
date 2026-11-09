@@ -362,6 +362,20 @@ type ProofSummaryReadModel struct {
 	UpdatedAt       time.Time             `json:"updated_at"`
 }
 
+// DuplicateDismissalReadModel is a duplicate pair a researcher marked as not a
+// duplicate (#1036). ID is the pair's aggregate id (domain.DuplicatePair.ID);
+// Person1ID and Person2ID are in canonical order. CreatedAt is when the pair
+// was dismissed.
+type DuplicateDismissalReadModel struct {
+	ID        uuid.UUID `json:"id"`
+	Person1ID uuid.UUID `json:"person1_id"`
+	Person2ID uuid.UUID `json:"person2_id"`
+	Reason    string    `json:"reason,omitempty"`
+	Version   int64     `json:"version"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
 // ReadModelStore provides access to denormalized read models.
 //
 // Branch scoping (ADR-005) divides the methods below into four categories. Note that
@@ -375,7 +389,7 @@ type ProofSummaryReadModel struct {
 // metadata (Media; #759, sub-issue D — see the blob rule on the media methods
 // below: only metadata forks, the file bytes stay shared) and the GPS artifacts
 // (EvidenceAnalysis, EvidenceConflict, ResearchLog, ProofSummary; #760,
-// sub-issue E). These own
+// sub-issue E), and duplicate-pair dismissals (DuplicateDismissal; #1036). These own
 // branch_id-keyed tables. Their methods take an explicit domain.BranchID
 // (single-row) or carry it on ListOptions/SearchOptions (list/search); a
 // copy-on-write overlay resolves the branch's row for an entity else falls back to
@@ -493,6 +507,14 @@ type ReadModelStore interface {
 	ListAllFamilyChildren(ctx context.Context, branchID domain.BranchID) ([]FamilyChildReadModel, error)
 	GetChildrenOfFamily(ctx context.Context, branchID domain.BranchID, familyID uuid.UUID) ([]PersonReadModel, error)
 	GetChildFamily(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) (*FamilyReadModel, error)
+	// RenameFamilyMember rewrites the names families denormalize for personID
+	// (partner1/partner2 given name and surname, the child links' names, and the
+	// father/mother name on the pedigree edges of the person's children) on the
+	// rows stored under branchID itself (#1129). It never falls back to or
+	// shadows main's rows: a branch row written only to carry a name would hide
+	// main's later edits to that family from the branch (ADR-005 live overlay),
+	// and a main write never touches a branch's rows (BR-003).
+	RenameFamilyMember(ctx context.Context, branchID domain.BranchID, personID uuid.UUID, givenName, surname string) error
 	SaveFamilyChild(ctx context.Context, branchID domain.BranchID, child *FamilyChildReadModel) error
 	DeleteFamilyChild(ctx context.Context, branchID domain.BranchID, familyID, personID uuid.UUID) error
 
@@ -721,6 +743,17 @@ type ReadModelStore interface {
 	SaveProofSummary(ctx context.Context, branchID domain.BranchID, summary *ProofSummaryReadModel) error
 	DeleteProofSummary(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error
 
+	// Duplicate dismissal operations (branch-scoped, #1036). A dismissal is keyed
+	// by its pair id and has the GPS artifacts' overlay shape: a branch's row
+	// wins over main's, a branch restore tombstones main's row, and
+	// ListDuplicateDismissals sorts like the GPS lists (opts.Sort "created_at",
+	// else updated_at). There is no cascade: a dismissal naming a person who no
+	// longer exists simply never matches a detected pair.
+	GetDuplicateDismissal(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*DuplicateDismissalReadModel, error)
+	ListDuplicateDismissals(ctx context.Context, opts ListOptions) ([]DuplicateDismissalReadModel, int, error)
+	SaveDuplicateDismissal(ctx context.Context, branchID domain.BranchID, dismissal *DuplicateDismissalReadModel) error
+	DeleteDuplicateDismissal(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error
+
 	// Browse operations
 	//
 	// These aggregate `persons` (and, for the cemetery pair, `life_events`), so they
@@ -840,7 +873,7 @@ type PersonNameReadModel struct {
 	PersonID      uuid.UUID       `json:"person_id"`
 	GivenName     string          `json:"given_name"`
 	Surname       string          `json:"surname"`
-	FullName      string          `json:"full_name"`
+	FullName      string          `json:"full_name"` // set by SavePersonName from the parts; see JoinFullName
 	NamePrefix    string          `json:"name_prefix,omitempty"`
 	NameSuffix    string          `json:"name_suffix,omitempty"`
 	SurnamePrefix string          `json:"surname_prefix,omitempty"`
@@ -848,6 +881,13 @@ type PersonNameReadModel struct {
 	NameType      domain.NameType `json:"name_type"`
 	IsPrimary     bool            `json:"is_primary"`
 	UpdatedAt     time.Time       `json:"updated_at"`
+}
+
+// JoinFullName is the name's full name by the one person_names.full_name rule
+// (domain.JoinPersonName). Every store's SavePersonName stores it, whatever
+// FullName the caller passed, so all backends agree (#1130).
+func (n *PersonNameReadModel) JoinFullName() string {
+	return domain.JoinPersonName(n.NamePrefix, n.GivenName, n.SurnamePrefix, n.Surname, n.NameSuffix)
 }
 
 // PersonExternalIDReadModel represents a single GEDCOM 7.0 external identifier
@@ -907,7 +947,7 @@ type ListOptions struct {
 	Sort   string
 	Order  string // "asc" or "desc"
 	// ResearchStatus filters by research_status: certain, probable, possible,
-	// unknown, or "unset" for NULL.
+	// unknown, "unset" for NULL, or "unassessed" for NULL or unknown.
 	ResearchStatus *string
 	// ConflictStatus filters ListEvidenceConflicts by status (open, resolved,
 	// accepted). The predicate applies to each conflict's winning overlay row,

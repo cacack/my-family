@@ -1,7 +1,7 @@
 <script lang="ts">
-	import type { Source } from '$lib/api/client';
-	import { Badge } from '$lib/components/ui/badge';
-	import { Card, CardContent } from '$lib/components/ui/card';
+	import type { Source } from '#lib/api/client.js';
+	import { Badge } from '#lib/components/ui/badge/index.js';
+	import { Card, CardContent } from '#lib/components/ui/card/index.js';
 
 	interface Props {
 		source: Source;
@@ -92,6 +92,8 @@
 		color: #1e293b;
 		/* Wrap, never truncate: the card is the only place the full text shows. */
 		overflow-wrap: anywhere;
+		/* GEDCOM CONT lines fold into the title (#1174). */
+		white-space: pre-line;
 	}
 
 	.meta {
@@ -103,6 +105,8 @@
 	}
 
 	.author {
+		/* GEDCOM CONT lines fold into the author (#1174). */
+		white-space: pre-line;
 		font-size: 0.8125rem;
 		color: var(--color-text-muted);
 	}

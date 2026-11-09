@@ -5,11 +5,11 @@
 		setHighContrast,
 		setReducedMotion,
 		type FontSize
-	} from '$lib/stores/accessibilitySettings.svelte';
+	} from '#lib/stores/accessibilitySettings.svelte.js';
 	import {
 		keyboardState,
 		setShortcutsEnabled
-	} from '$lib/stores/keyboardSettings.svelte';
+	} from '#lib/stores/keyboardSettings.svelte.js';
 
 	interface Props {
 		open: boolean;
@@ -117,7 +117,9 @@
 	});
 </script>
 
-<svelte:window on:keydown={handleKeydown} />
+<!-- Capture phase: the panel sees Escape before page shortcuts on the window,
+     and its preventDefault tells them it is taken (#1139). -->
+<svelte:window onkeydowncapture={handleKeydown} />
 
 {#if open}
 	<div
@@ -443,6 +445,11 @@
 	.font-size-description {
 		font-size: 0.6875rem;
 		opacity: 0.75;
+	}
+
+	/* Full strength on the blue fill; faded it fails contrast (#1116). */
+	.font-size-btn.selected .font-size-description {
+		opacity: 1;
 	}
 
 	/* Toggle Switch */

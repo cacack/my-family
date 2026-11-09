@@ -236,6 +236,9 @@ func (m *mockReadModelStore) ListAllFamilyChildren(ctx context.Context, _ domain
 func (m *mockReadModelStore) GetChildrenOfFamily(ctx context.Context, _ domain.BranchID, familyID uuid.UUID) ([]repository.PersonReadModel, error) {
 	return nil, nil
 }
+func (m *mockReadModelStore) RenameFamilyMember(ctx context.Context, _ domain.BranchID, personID uuid.UUID, givenName, surname string) error {
+	return nil
+}
 func (m *mockReadModelStore) GetChildFamily(ctx context.Context, _ domain.BranchID, personID uuid.UUID) (*repository.FamilyReadModel, error) {
 	return nil, nil
 }
@@ -540,6 +543,20 @@ func (m *mockReadModelStore) SaveResearchLog(ctx context.Context, branchID domai
 	return nil
 }
 func (m *mockReadModelStore) DeleteResearchLog(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error {
+	return nil
+}
+
+// Duplicate dismissal stub methods
+func (m *mockReadModelStore) GetDuplicateDismissal(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.DuplicateDismissalReadModel, error) {
+	return nil, nil
+}
+func (m *mockReadModelStore) ListDuplicateDismissals(ctx context.Context, opts repository.ListOptions) ([]repository.DuplicateDismissalReadModel, int, error) {
+	return nil, 0, nil
+}
+func (m *mockReadModelStore) SaveDuplicateDismissal(ctx context.Context, branchID domain.BranchID, d *repository.DuplicateDismissalReadModel) error {
+	return nil
+}
+func (m *mockReadModelStore) DeleteDuplicateDismissal(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error {
 	return nil
 }
 

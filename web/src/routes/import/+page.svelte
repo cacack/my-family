@@ -1,12 +1,12 @@
 <script lang="ts">
-	import { api, type ImportResult, type ImportProgress } from '$lib/api/client';
-	import { ExportButton } from '$lib/components/export';
-	import PageHeader from '$lib/components/PageHeader.svelte';
-	import ImportProgressBar from '$lib/components/import/ImportProgress.svelte';
-	import BranchImportBlocked from '$lib/components/import/BranchImportBlocked.svelte';
-	import MainlineNotice from '$lib/components/MainlineNotice.svelte';
-	import { Button } from '$lib/components/ui/button';
-	import { activeBranch } from '$lib/stores/activeBranch.svelte';
+	import { api, type ImportResult, type ImportProgress } from '#lib/api/client.js';
+	import { ExportButton } from '#lib/components/export/index.js';
+	import PageHeader from '#lib/components/PageHeader.svelte';
+	import ImportProgressBar from '#lib/components/import/ImportProgress.svelte';
+	import BranchImportBlocked from '#lib/components/import/BranchImportBlocked.svelte';
+	import MainlineNotice from '#lib/components/MainlineNotice.svelte';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import { activeBranch } from '#lib/stores/activeBranch.svelte.js';
 
 	/**
 	 * GEDCOM import always writes the mainline, so it is withdrawn while a
@@ -216,6 +216,14 @@
 		}
 	}
 
+	// The picker's display order, not tick order, so CSV columns stay stable (#1125).
+	function getOrderedSelectedFieldIds(entityType: EntityType): string[] {
+		const selected = getSelectedFieldsForEntityType(entityType);
+		return getFieldsForEntityType(entityType)
+			.filter((f) => selected.has(f.id))
+			.map((f) => f.id);
+	}
+
 	// An empty selection would otherwise export the server's default columns.
 	const noFieldsSelected = $derived.by(
 		() =>
@@ -323,37 +331,37 @@
 				contentType = 'application/json';
 			} else if (exportEntityType === 'persons') {
 				const fields =
-					exportFormat === 'csv' ? Array.from(selectedPersonFields) : undefined;
+					exportFormat === 'csv' ? getOrderedSelectedFieldIds('persons') : undefined;
 				data = await api.exportPersons(exportFormat, fields);
 				filename = `persons.${exportFormat}`;
 				contentType = exportFormat === 'csv' ? 'text/csv' : 'application/json';
 			} else if (exportEntityType === 'families') {
 				const fields =
-					exportFormat === 'csv' ? Array.from(selectedFamilyFields) : undefined;
+					exportFormat === 'csv' ? getOrderedSelectedFieldIds('families') : undefined;
 				data = await api.exportFamilies(exportFormat, fields);
 				filename = `families.${exportFormat}`;
 				contentType = exportFormat === 'csv' ? 'text/csv' : 'application/json';
 			} else if (exportEntityType === 'sources') {
 				const fields =
-					exportFormat === 'csv' ? Array.from(selectedSourceFields) : undefined;
+					exportFormat === 'csv' ? getOrderedSelectedFieldIds('sources') : undefined;
 				data = await api.exportSources(exportFormat, fields);
 				filename = `sources.${exportFormat}`;
 				contentType = exportFormat === 'csv' ? 'text/csv' : 'application/json';
 			} else if (exportEntityType === 'citations') {
 				const fields =
-					exportFormat === 'csv' ? Array.from(selectedCitationFields) : undefined;
+					exportFormat === 'csv' ? getOrderedSelectedFieldIds('citations') : undefined;
 				data = await api.exportCitations(exportFormat, fields);
 				filename = `citations.${exportFormat}`;
 				contentType = exportFormat === 'csv' ? 'text/csv' : 'application/json';
 			} else if (exportEntityType === 'events') {
 				const fields =
-					exportFormat === 'csv' ? Array.from(selectedEventFields) : undefined;
+					exportFormat === 'csv' ? getOrderedSelectedFieldIds('events') : undefined;
 				data = await api.exportEvents(exportFormat, fields);
 				filename = `events.${exportFormat}`;
 				contentType = exportFormat === 'csv' ? 'text/csv' : 'application/json';
 			} else if (exportEntityType === 'attributes') {
 				const fields =
-					exportFormat === 'csv' ? Array.from(selectedAttributeFields) : undefined;
+					exportFormat === 'csv' ? getOrderedSelectedFieldIds('attributes') : undefined;
 				data = await api.exportAttributes(exportFormat, fields);
 				filename = `attributes.${exportFormat}`;
 				contentType = exportFormat === 'csv' ? 'text/csv' : 'application/json';

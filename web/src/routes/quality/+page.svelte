@@ -5,16 +5,17 @@
 	import {
 		api,
 		type ValidationIssue,
-		type DuplicatePair
-	} from '$lib/api/client';
-	import { Button } from '$lib/components/ui/button';
-	import { Badge } from '$lib/components/ui/badge';
-	import { Checkbox } from '$lib/components/ui/checkbox';
-	import * as Tabs from '$lib/components/ui/tabs';
-	import SeverityBadge from '$lib/components/SeverityBadge.svelte';
-	import MainlineNotice from '$lib/components/MainlineNotice.svelte';
-	import ErrorState from '$lib/components/ErrorState.svelte';
-	import { clampPageToTotal, readEnum, readPositiveInt, setQuery } from '$lib/utils/urlState';
+		type DuplicatePair,
+		type DismissedDuplicate
+	} from '#lib/api/client.js';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import { Badge } from '#lib/components/ui/badge/index.js';
+	import { Checkbox } from '#lib/components/ui/checkbox/index.js';
+	import * as Tabs from '#lib/components/ui/tabs/index.js';
+	import SeverityBadge from '#lib/components/SeverityBadge.svelte';
+	import MainlineNotice from '#lib/components/MainlineNotice.svelte';
+	import ErrorState from '#lib/components/ErrorState.svelte';
+	import { clampPageToTotal, readEnum, readPositiveInt, setQuery } from '#lib/utils/urlState.js';
 
 	const pageSize = 20;
 	const ERROR_MESSAGE_MAX_LEN = 200;
@@ -39,7 +40,9 @@
 	// belongs to the active tab: switching tabs starts the new one at page 1
 	// and drops the severity filter. Tab and page changes push; the filter
 	// refines the view, so it replaces.
-	const TABS = ['validation', 'duplicates'] as const;
+	// `not-duplicates` lists the pairs marked "Not a duplicate" (#1036), where
+	// they can be restored.
+	const TABS = ['validation', 'duplicates', 'not-duplicates'] as const;
 	const SEVERITIES = ['all', 'error', 'warning', 'info'] as const;
 	const DEFAULTS = { tab: 'validation', page: 1, severity: 'all' } as const;
 
@@ -83,6 +86,15 @@
 	// which row to relabel.
 	let dismissingKey: string | null = $state(null);
 	const selectedKeys: SvelteSet<string> = new SvelteSet();
+
+	// --- Not duplicates tab state (#1036) ---
+	let dismissed: DismissedDuplicate[] = $state([]);
+	let dismissedTotal = $state(0);
+	let dismissedLoading = $state(false);
+	let dismissedError: string | null = $state(null);
+	let restoreError: string | null = $state(null);
+	// The pair being restored; one restore at a time.
+	let restoringKey: string | null = $state(null);
 
 	// --- Helpers ---
 	function pairKey(p1: string, p2: string): string {
@@ -136,6 +148,7 @@
 	// only each tab's latest load may land.
 	let validationSeq = 0;
 	let duplicatesSeq = 0;
+	let dismissedSeq = 0;
 
 	async function loadValidationIssues() {
 		const seq = ++validationSeq;
@@ -213,14 +226,65 @@
 				const [person1_id, person2_id] = parsePairKey(k);
 				return { person1_id, person2_id };
 			});
-			await api.batchDismissDuplicates({ dismissals });
+			const response = await api.batchDismissDuplicates({ dismissals });
+			// Each pair is its own command and can fail alone: keep the failed
+			// pairs selected and say so, rather than letting them silently reappear.
+			const failed = response.results.filter((r) => !r.success);
 			clearSelection();
+			for (const r of failed) selectedKeys.add(pairKey(r.person1_id, r.person2_id));
+			if (failed.length > 0) {
+				const reasons = [...new Set(failed.map((r) => r.error).filter(Boolean))].join('; ');
+				dismissError =
+					`${failed.length} of ${response.total} pairs could not be marked not duplicates` +
+					(reasons ? `: ${reasons}` : '');
+			}
 			await loadDuplicates();
 		} catch (e) {
 			dismissError = truncateError(e, 'Failed to dismiss selected duplicates');
 		} finally {
 			dismissBusy = false;
 		}
+	}
+
+	async function loadDismissed() {
+		const seq = ++dismissedSeq;
+		dismissedLoading = true;
+		dismissedError = null;
+		try {
+			const requestedPage = currentPage;
+			const result = await api.listDismissedDuplicates({
+				limit: pageSize,
+				offset: (requestedPage - 1) * pageSize
+			});
+			if (seq !== dismissedSeq) return;
+			if (clampPageToTotal(page.url, requestedPage, result.total, pageSize)) return;
+			dismissed = result.dismissals;
+			dismissedTotal = result.total;
+		} catch (e) {
+			if (seq !== dismissedSeq) return;
+			dismissedError = truncateError(e, 'Failed to load pairs marked not a duplicate');
+		} finally {
+			if (seq === dismissedSeq) dismissedLoading = false;
+		}
+	}
+
+	async function restoreOne(p1: string, p2: string) {
+		if (restoringKey) return;
+		restoreError = null;
+		restoringKey = pairKey(p1, p2);
+		try {
+			await api.restoreDuplicate(p1, p2);
+			await loadDismissed();
+		} catch (e) {
+			restoreError = truncateError(e, 'Failed to restore the pair');
+		} finally {
+			restoringKey = null;
+		}
+	}
+
+	function formatDismissedAt(iso: string): string {
+		const d = new Date(iso);
+		return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString();
 	}
 
 	// Load the active tab whenever the URL changes its tab, page or filter.
@@ -231,8 +295,10 @@
 		untrack(() => {
 			if (tab === 'validation') {
 				loadValidationIssues();
-			} else {
+			} else if (tab === 'duplicates') {
 				loadDuplicates();
+			} else {
+				loadDismissed();
 			}
 		});
 	});
@@ -241,6 +307,7 @@
 	const totalIssuesCount = $derived(errorCount + warningCount + infoCount);
 	const validationTotalPages = $derived(Math.max(1, Math.ceil(validationTotal / pageSize)));
 	const duplicatesTotalPages = $derived(Math.max(1, Math.ceil(duplicatesTotal / pageSize)));
+	const dismissedTotalPages = $derived(Math.max(1, Math.ceil(dismissedTotal / pageSize)));
 
 	const filterPills = $derived([
 		{ key: 'all' as const, label: 'All', count: totalIssuesCount },
@@ -260,7 +327,9 @@
 </svelte:head>
 
 <div class="mx-auto max-w-screen-xl p-6">
-	<MainlineNotice surface="Quality" />
+	<MainlineNotice
+		message="On a research branch, duplicate pairs and the pairs marked not a duplicate follow your branch, but validation issues still come from the mainline."
+	/>
 	<header class="mb-6">
 		<div>
 			<h1 class="m-0 text-2xl text-slate-800">Quality</h1>
@@ -282,6 +351,12 @@
 				Duplicates
 				{#if duplicatesTotal > 0}
 					<span class="ml-1 text-xs text-muted-foreground">({duplicatesTotal})</span>
+				{/if}
+			</Tabs.Trigger>
+			<Tabs.Trigger value="not-duplicates">
+				Not duplicates
+				{#if dismissedTotal > 0}
+					<span class="ml-1 text-xs text-muted-foreground">({dismissedTotal})</span>
 				{/if}
 			</Tabs.Trigger>
 		</Tabs.List>
@@ -408,6 +483,10 @@
 					{duplicatesTotal}
 					{duplicatesTotal === 1 ? 'potential duplicate' : 'potential duplicates'}
 				</span>
+				<span class="text-[0.8125rem] text-muted-foreground">
+					Mark a pair <strong>Not a duplicate</strong> when the two records are different people
+					(say, a father and son); it stays off this list and can be restored from Not duplicates.
+				</span>
 			</div>
 
 			{#if selectedKeys.size > 0}
@@ -422,7 +501,7 @@
 							Clear
 						</Button>
 						<Button size="sm" onclick={dismissSelected} disabled={dismissBusy}>
-							{dismissBusy ? 'Dismissing…' : 'Dismiss selected'}
+							{dismissBusy ? 'Saving…' : 'Mark selected not duplicates'}
 						</Button>
 					</div>
 				</div>
@@ -518,10 +597,11 @@
 											<Button
 												variant="ghost"
 												size="sm"
+												aria-label="Mark {pair.person1_name} and {pair.person2_name} as not a duplicate"
 												onclick={() => dismissOne(pair.person1_id, pair.person2_id)}
 												disabled={dismissBusy}
 											>
-												{dismissingKey === key ? 'Dismissing…' : 'Dismiss'}
+												{dismissingKey === key ? 'Saving…' : 'Not a duplicate'}
 											</Button>
 										</div>
 									</td>
@@ -555,6 +635,119 @@
 								if (currentPage < duplicatesTotalPages) goToPage(currentPage + 1);
 							}}
 							disabled={currentPage >= duplicatesTotalPages || duplicatesLoading}
+						>
+							Next
+						</Button>
+					</div>
+				{/if}
+			{/if}
+		</Tabs.Content>
+
+		<!-- Not duplicates Tab (#1036) -->
+		<Tabs.Content value="not-duplicates">
+			<div class="mb-4 flex flex-wrap items-center justify-between gap-2 pt-2">
+				<span class="text-sm text-muted-foreground">
+					{dismissedTotal}
+					{dismissedTotal === 1 ? 'pair' : 'pairs'} marked not a duplicate
+				</span>
+			</div>
+
+			{#if restoreError}
+				<div
+					class="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+				>
+					{restoreError}
+				</div>
+			{/if}
+
+			{#if dismissedLoading}
+				<div class="p-12 text-center text-muted-foreground">Loading…</div>
+			{:else if dismissedError}
+				<ErrorState message={dismissedError} onRetry={loadDismissed} />
+			{:else if dismissed.length === 0}
+				<div class="p-12 text-center text-muted-foreground">
+					<p class="m-0 mb-2">No pairs are marked not a duplicate.</p>
+					<p class="text-[0.8125rem] text-muted-foreground">
+						Pairs you mark "Not a duplicate" on the Duplicates tab are listed here.
+					</p>
+				</div>
+			{:else}
+				<div class="overflow-x-auto">
+					<table class="w-full border-collapse text-sm">
+						<thead>
+							<tr>
+								<th class={TH_CLASS}>Person 1</th>
+								<th class={TH_CLASS}>Person 2</th>
+								<th class="{TH_CLASS} hidden sm:table-cell">Reason</th>
+								<th class="{TH_CLASS} hidden sm:table-cell">Marked</th>
+								<th class={TH_CLASS}>Actions</th>
+							</tr>
+						</thead>
+						<tbody>
+							{#each dismissed as pair (pairKey(pair.person1_id, pair.person2_id))}
+								{@const key = pairKey(pair.person1_id, pair.person2_id)}
+								<tr>
+									<td class={TD_CLASS}>
+										<a href="/persons/{pair.person1_id}" class={SUBJECT_LINK}>
+											{pair.person1_name}
+										</a>
+									</td>
+									<td class={TD_CLASS}>
+										<a href="/persons/{pair.person2_id}" class={SUBJECT_LINK}>
+											{pair.person2_name}
+										</a>
+									</td>
+									<td class="{TD_CLASS} hidden sm:table-cell">
+										{#if pair.reason}
+											{pair.reason}
+										{:else}
+											<span class="text-muted-foreground">—</span>
+										{/if}
+									</td>
+									<td class="{TD_NOWRAP} hidden sm:table-cell">
+										{formatDismissedAt(pair.dismissed_at)}
+									</td>
+									<td class={TD_NOWRAP}>
+										<Button
+											variant="outline"
+											size="sm"
+											aria-label="Restore {pair.person1_name} and {pair.person2_name} as a possible duplicate"
+											onclick={() => restoreOne(pair.person1_id, pair.person2_id)}
+											disabled={restoringKey !== null}
+										>
+											{restoringKey === key ? 'Restoring…' : 'Restore'}
+										</Button>
+									</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				</div>
+
+				{#if dismissedTotalPages > 1}
+					<div
+						class="mt-8 flex items-center justify-center gap-4 border-t border-slate-200 pt-4"
+					>
+						<Button
+							variant="outline"
+							size="sm"
+							onclick={() => {
+								if (currentPage > 1) goToPage(currentPage - 1);
+							}}
+							disabled={currentPage === 1 || dismissedLoading}
+						>
+							Previous
+						</Button>
+						<span class="text-sm text-muted-foreground">
+							Page {currentPage} of {dismissedTotalPages}
+						</span>
+						<Button
+							variant="outline"
+							size="sm"
+							onclick={() => {
+								if (currentPage < dismissedTotalPages) goToPage(currentPage + 1);
+							}}
+							disabled={currentPage >= dismissedTotalPages || dismissedLoading}
 						>
 							Next
 						</Button>

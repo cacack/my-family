@@ -1,14 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/svelte';
 import Page from './+page.svelte';
-import * as apiModule from '$lib/api/client';
+import * as apiModule from '#lib/api/client.js';
 
 // Configurable page params
 let mockPageParams = { id: 'ea-1' };
 let mockPageUrl: URL | undefined;
 
 // Mock the API module
-vi.mock('$lib/api/client', async (importOriginal) => {
+vi.mock('#lib/api/client.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof apiModule>();
 	return {
 		...actual,
@@ -298,5 +298,25 @@ describe('Analysis Detail Page - save conflict (#939)', () => {
 
 		expect((await screen.findByRole('alert')).textContent).toContain('Branch is merged');
 		expect(apiModule.api.getEvidenceAnalysis).toHaveBeenCalledTimes(1);
+	});
+});
+
+// The badge and the select name the unassessed status the same way (#1110).
+describe('Analysis Detail Page - research status label', () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		mockPageParams = { id: 'ea-1' };
+		mockPageUrl = undefined;
+		vi.mocked(apiModule.api.getEvidenceAnalysis).mockResolvedValue({ ...mockAnalysis, research_status: 'unknown' });
+	});
+
+	it('labels unknown "Not assessed" in the badge and the edit select', async () => {
+		render(Page);
+		expect(await screen.findByText('Not assessed')).toBeTruthy();
+		await fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+		const select = screen.getByLabelText('Research Status') as HTMLSelectElement;
+		expect(select.value).toBe('unknown');
+		expect(select.selectedOptions[0].textContent?.trim()).toBe('Not assessed');
+		expect(screen.queryByText('Unknown')).toBeNull();
 	});
 });

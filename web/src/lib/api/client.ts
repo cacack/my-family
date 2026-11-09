@@ -36,6 +36,8 @@ export type MergePersonsRequest = components['schemas']['MergePersonsRequest'];
 export type MergePersonsResponse = components['schemas']['MergePersonsResponse'];
 export type MergeSummary = components['schemas']['MergeSummary'];
 export type DismissDuplicateRequest = components['schemas']['DismissDuplicateRequest'];
+export type DismissedDuplicate = components['schemas']['DismissedDuplicate'];
+export type DismissedDuplicatesResponse = components['schemas']['DismissedDuplicatesResponse'];
 export type DuplicatePairRef = components['schemas']['DuplicatePairRef'];
 export type BatchMergeRequest = components['schemas']['BatchMergeRequest'];
 export type BatchMergeResponse = components['schemas']['BatchMergeResponse'];
@@ -176,7 +178,8 @@ const TEXT_SEGMENT = '[^/]+';
  * follow the branch too (#829), and so do research snapshots (#839): a
  * snapshot marks a position in one branch's view, so the list, create,
  * delete and both comparisons carry the scope. The quality overview behind
- * `/analytics` follows the branch too (#894). The
+ * `/analytics` follows the branch too (#894), and so do duplicate detection
+ * and its "not a duplicate" decisions (#1036). The
  * aggregates own no `branch_id` of their own — they read the overlay — so
  * scoping them is exactly this parameter and nothing else.
  *
@@ -226,6 +229,16 @@ const BRANCH_SCOPED_OPERATIONS: ReadonlyArray<{
 	// Person merge (#834): a merge made on a branch lands there only.
 	{ methods: ['POST'], pattern: new RegExp('^/persons/merge$') },
 	{ methods: ['POST'], pattern: new RegExp('^/persons/merge/batch$') },
+	// Duplicate detection and "not a duplicate" decisions (#1036): the pairs
+	// are found in the branch's view, and a dismissal or restore made on a
+	// branch lands there only.
+	{ methods: ['GET'], pattern: new RegExp('^/persons/duplicates$') },
+	{ methods: ['GET'], pattern: new RegExp('^/persons/duplicates/dismissed$') },
+	{
+		methods: ['POST', 'DELETE'],
+		pattern: new RegExp(`^/persons/duplicates/${UUID_SEGMENT}/${UUID_SEGMENT}/dismiss$`)
+	},
+	{ methods: ['POST'], pattern: new RegExp('^/persons/duplicates/dismiss/batch$') },
 	// Browse and map aggregates (#756), plus the cemetery index (#757).
 	{ methods: ['GET'], pattern: new RegExp('^/browse/surnames$') },
 	{ methods: ['GET'], pattern: new RegExp(`^/browse/surnames/${TEXT_SEGMENT}/persons$`) },
@@ -526,7 +539,7 @@ export type ChangeHistoryResponse = Schemas['ChangeHistoryResponse'];
  * write to, whichever research branch is currently active rather than the
  * mainline. That branch is module-level state, set by
  * `setClientBranch`/`getClientBranch` and driven in practice by `switchBranch`
- * in `$lib/stores/activeBranch.svelte`. Nothing about a call site shows it —
+ * in `#lib/stores/activeBranch.svelte.js`. Nothing about a call site shows it —
  * `api.getPerson(id)` returns branch or mainline data depending on state some
  * other file set, so a scoped method's result is only as well-defined as the
  * scope in force when it runs.
@@ -623,7 +636,7 @@ class ApiClient {
 		offset?: number;
 		sort?: 'surname' | 'given_name' | 'birth_date' | 'updated_at';
 		order?: 'asc' | 'desc';
-		research_status?: ResearchStatus | 'unset';
+		research_status?: ResearchStatus | 'unset' | 'unassessed';
 	}): Promise<PersonList> {
 		const searchParams = new URLSearchParams();
 		if (params?.limit) searchParams.set('limit', params.limit.toString());
@@ -1734,7 +1747,8 @@ class ApiClient {
 		);
 	}
 
-	// Duplicate detection endpoints
+	// Duplicate detection endpoints. They follow the active branch (#1036):
+	// pairs are found in its view, and "not a duplicate" decisions land on it.
 	async getPersonsDuplicates(params?: {
 		limit?: number;
 		offset?: number;
@@ -1759,6 +1773,30 @@ class ApiClient {
 			'POST',
 			`/persons/duplicates/${encodeURIComponent(person1Id)}/${encodeURIComponent(person2Id)}/dismiss`,
 			req
+		);
+	}
+
+	/** Undo a "not a duplicate" decision, so the pair may be suggested again. */
+	async restoreDuplicate(person1Id: string, person2Id: string): Promise<void> {
+		return this.request<void>(
+			'DELETE',
+			`/persons/duplicates/${encodeURIComponent(person1Id)}/${encodeURIComponent(person2Id)}/dismiss`
+		);
+	}
+
+	/** The pairs marked "not a duplicate", most recently dismissed first. */
+	async listDismissedDuplicates(params?: {
+		limit?: number;
+		offset?: number;
+	}): Promise<DismissedDuplicatesResponse> {
+		const searchParams = new URLSearchParams();
+		if (params?.limit != null) searchParams.set('limit', params.limit.toString());
+		if (params?.offset != null) searchParams.set('offset', params.offset.toString());
+
+		const query = searchParams.toString();
+		return this.request<DismissedDuplicatesResponse>(
+			'GET',
+			`/persons/duplicates/dismissed${query ? `?${query}` : ''}`
 		);
 	}
 
@@ -2189,6 +2227,33 @@ function stripCalendarEscape(raw: string): { text: string; token?: string } {
 }
 
 /**
+ * Display form of a raw BET/FROM range whose end carries its own calendar
+ * escape naming a different calendar from the start's ("BET @#DJULIAN@ 1690
+ * AND @#DGREGORIAN@ 1700"): each endpoint is labelled with its own calendar,
+ * "BET 1690 (Julian) AND 1700". The start's calendar comes from its own escape
+ * (Gregorian without one), since a date stored before the range end's calendar
+ * was read may carry the end's calendar as the whole date's. Returns undefined
+ * for any other date.
+ */
+function formatMixedCalendarRange(raw: string): string | undefined {
+	const connector = raw.match(/\s(AND|TO)\s/i);
+	if (connector?.index === undefined) return undefined;
+	const head = raw.slice(0, connector.index);
+	const tail = raw.slice(connector.index);
+	const end = stripCalendarEscape(tail);
+	if (!end.token) return undefined;
+	const start = stripCalendarEscape(head);
+	const startCalendar = start.token ?? 'DGREGORIAN';
+	if (end.token === startCalendar) return undefined;
+	const withLabel = (text: string, calendar: string) => {
+		const label = calendarLabel(calendar);
+		return label ? `${text} (${label})` : text;
+	};
+	// end.text is trimmed, so the connector's leading space is restored.
+	return `${withLabel(start.text, startCalendar)} ${withLabel(end.text, end.token)}`;
+}
+
+/**
  * Display form of an API year. The API stores a BC year as a negative number
  * ("44 BC" is -44), which is never shown to people: -44 renders as "44 BC".
  */
@@ -2204,6 +2269,8 @@ export function formatGenDate(date?: GenDate): string {
 		// annotated with the calendar system when it is not Gregorian. Derive the
 		// label from date.calendar, falling back to the escape token in the raw
 		// string so a stripped escape never disappears without annotation.
+		const mixed = formatMixedCalendarRange(date.raw);
+		if (mixed) return mixed;
 		const stripped = stripCalendarEscape(date.raw);
 		const rawLabel = calendarLabel(date.calendar) || calendarLabel(stripped.token);
 		return stripped.text + (rawLabel ? ` (${rawLabel})` : '');

@@ -1,23 +1,31 @@
 <script lang="ts">
 	import * as d3 from 'd3';
 	import { onMount } from 'svelte';
-	import { formatGenDate, formatPersonName, formatYear, type DescendancyNode } from '$lib/api/client';
+	import { formatGenDate, formatPersonName, formatYear, type DescendancyNode } from '#lib/api/client.js';
+	import { getFontScale } from '#lib/stores/accessibilitySettings.svelte.js';
 	import {
+		CARD_TEXT_INSET,
+		centreOnX,
+		fitText,
 		fitTransform,
+		measureWith,
 		motionDuration,
 		nameLines,
 		observeChartResize,
+		offscreenX,
 		scaleAbout,
+		scaleBounds,
 		touchScrollsPage,
-		truncateLabel,
 		wrapLabel,
 		type ScaleExtent
-	} from '$lib/utils/chart';
+	} from '#lib/utils/chart.js';
 	import {
 		layoutDescendancy,
+		type ChildLink,
 		type DescendancyLayoutConfig,
 		type SpouseCard
-	} from '$lib/utils/descendancyLayout';
+	} from '#lib/utils/descendancyLayout.js';
+	import OffscreenIndicator from './OffscreenIndicator.svelte';
 
 	export type LayoutMode = 'compact' | 'standard' | 'wide';
 
@@ -69,6 +77,11 @@
 	let container: HTMLDivElement;
 	let svg: d3.Selection<SVGSVGElement, unknown, null, undefined>;
 	let g: d3.Selection<SVGGElement, unknown, null, undefined>;
+	// Links (spouse connectors included) sit in a layer below the cards (#1025)
+	let linkLayer: d3.Selection<SVGGElement, unknown, null, undefined>;
+	let nodeLayer: d3.Selection<SVGGElement, unknown, null, undefined>;
+	// Chart units per layout unit: the Accessibility font-size scale (#1103)
+	let contentScale = 1;
 	let zoom: d3.ZoomBehavior<SVGSVGElement, unknown>;
 	// Where the running animated zoom is heading, so quick +/- clicks chain
 	let zoomTarget: d3.ZoomTransform | null = null;
@@ -79,6 +92,8 @@
 	let treeNodes: d3.HierarchyPointNode<DescendancyNode>[] = [];
 	// Extent of every card, for fitting the view
 	let treeBounds: { x: number; y: number; width: number; height: number } | null = null;
+	// Children lying off either side of the view (chart-unit x, nearest first)
+	let offscreen = $state.raw<{ left: number[]; right: number[] }>({ left: [], right: [] });
 
 	function renderChart() {
 		if (!container || !data) return;
@@ -97,8 +112,12 @@
 			.attr('height', '100%')
 			.attr('viewBox', `0 0 ${width} ${height}`);
 
-		// Create group for zoomable content
+		// Create group for zoomable content, drawn at the font-size scale
 		g = svg.append('g');
+		contentScale = getFontScale();
+		const content = g.append('g').attr('class', 'chart-content').attr('transform', `scale(${contentScale})`);
+		linkLayer = content.append('g').attr('class', 'links');
+		nodeLayer = content.append('g').attr('class', 'nodes');
 
 		// Setup zoom behavior
 		zoom = d3
@@ -108,6 +127,7 @@
 				g.attr('transform', event.transform);
 				// A wheel or drag gesture replaces any pending button zoom
 				if (event.sourceEvent) zoomTarget = null;
+				updateOffscreen(event.transform);
 			});
 
 		svg.call(zoom);
@@ -127,25 +147,25 @@
 			}
 		});
 
-		// Draw links (vertical lines from parent to children)
-		g.selectAll('.link')
+		// Draw links from each couple (or lone parent) down to their children
+		const linkPath = d3
+			.line<{ x: number; y: number }>()
+			.x((d) => d.x)
+			.y((d) => d.y);
+		linkLayer.selectAll('.link')
 			.data(links)
 			.enter()
 			.append('path')
 			.attr('class', 'link')
+			.attr('data-child-id', (d) => d.child.data.id)
+			.attr('data-spouse-id', (d) => d.spouse?.id ?? null)
 			.attr('fill', 'none')
 			.attr('stroke', '#94a3b8')
 			.attr('stroke-width', 2)
-			.attr(
-				'd',
-				d3
-					.linkVertical<d3.HierarchyLink<DescendancyNode>, d3.HierarchyPointNode<DescendancyNode>>()
-					.x((d) => d.x)
-					.y((d) => d.y) as (d: d3.HierarchyLink<DescendancyNode>) => string | null
-			);
+			.attr('d', (d: ChildLink) => linkPath(d.points));
 
 		// Create node groups
-		const nodeGroups = g
+		const nodeGroups = nodeLayer
 			.selectAll('.node')
 			.data(nodes)
 			.enter()
@@ -186,7 +206,22 @@
 	function fitToContent(): d3.ZoomTransform | null {
 		if (!treeBounds || treeNodes.length === 0) return null;
 		const [width, height] = viewportSize();
-		return fitTransform(treeBounds, width, height, SCALE_EXTENT, treeNodes[0]);
+		const root = { x: treeNodes[0].x * contentScale, y: treeNodes[0].y * contentScale };
+		return fitTransform(scaleBounds(treeBounds, contentScale), width, height, SCALE_EXTENT, root);
+	}
+
+	function updateOffscreen(t: d3.ZoomTransform) {
+		if (!container) return;
+		const children = treeNodes.filter((d) => d.depth === 1).map((d) => d.x * contentScale);
+		const [width] = viewportSize();
+		offscreen = offscreenX(children, (LAYOUTS[layout].cardWidth / 2) * contentScale, t, width);
+	}
+
+	function panToOffscreen(side: 'left' | 'right') {
+		const x = offscreen[side][0];
+		if (x === undefined || !svg) return;
+		const [width] = viewportSize();
+		animateZoomTo(centreOnX(zoomTarget ?? d3.zoomTransform(svg.node()!), x, width));
 	}
 
 	function animateZoomTo(target: d3.ZoomTransform) {
@@ -260,8 +295,9 @@
 			.attr('font-size', '13px')
 			.attr('font-weight', '600')
 			.attr('fill', '#1e293b')
-			.text((d) => {
-				return truncateLabel(nameLines(d.data)[0], 16);
+			.text((d) => nameLines(d.data)[0])
+			.each(function () {
+				fitText(this, cardWidth - 2 * CARD_TEXT_INSET);
 			});
 
 		// Surname (second line)
@@ -272,8 +308,9 @@
 			.attr('font-size', '13px')
 			.attr('font-weight', '500')
 			.attr('fill', '#475569')
-			.text((d) => {
-				return truncateLabel(nameLines(d.data)[1], 16);
+			.text((d) => nameLines(d.data)[1])
+			.each(function () {
+				fitText(this, cardWidth - 2 * CARD_TEXT_INSET);
 			});
 
 		// Birth-death dates (third line)
@@ -296,7 +333,7 @@
 	function renderSpouseCards(spouses: SpouseCard[]) {
 		spouses.forEach(({ spouse, linkFromX, x: spouseX, y: spouseY, width: spouseCardWidth, height: spouseCardHeight }) => {
 			// Create spouse group
-			const spouseGroup = g
+			const spouseGroup = nodeLayer
 				.append('g')
 				.attr('class', 'spouse-group')
 				.attr('transform', `translate(${spouseX},${spouseY})`)
@@ -308,7 +345,8 @@
 				});
 
 			// Draw horizontal connector line from the previous card to this spouse
-			g.append('line')
+			linkLayer
+				.append('line')
 				.attr('class', 'spouse-link')
 				.attr('x1', linkFromX)
 				.attr('y1', spouseY)
@@ -351,25 +389,30 @@
 			// Full name on hover, since the lines below may be truncated
 			spouseGroup.append('title').text(spouse.name || 'Unknown');
 
-			// Spouse name, wrapped over two lines
-			const [nameLine1, nameLine2] = wrapLabel(spouse.name || 'Unknown', 18);
-			spouseGroup
+			// Spouse name, wrapped over two lines that fit inside the card
+			const nameText1 = spouseGroup
 				.append('text')
 				.attr('y', -10)
 				.attr('text-anchor', 'middle')
 				.attr('font-size', '11px')
 				.attr('font-weight', '600')
-				.attr('fill', '#1e293b')
-				.text(nameLine1);
+				.attr('fill', '#1e293b');
 
-			spouseGroup
+			const nameText2 = spouseGroup
 				.append('text')
 				.attr('y', 3)
 				.attr('text-anchor', 'middle')
 				.attr('font-size', '11px')
 				.attr('font-weight', '600')
-				.attr('fill', '#1e293b')
-				.text(nameLine2);
+				.attr('fill', '#1e293b');
+
+			const [nameLine1, nameLine2] = wrapLabel(
+				spouse.name || 'Unknown',
+				spouseCardWidth - 2 * CARD_TEXT_INSET,
+				measureWith(nameText1.node()!)
+			);
+			nameText1.text(nameLine1);
+			nameText2.text(nameLine2);
 
 			// Marriage date
 			spouseGroup
@@ -382,6 +425,29 @@
 						? `m. ${spouse.marriage_date.year != null ? formatYear(spouse.marriage_date.year) : formatGenDate(spouse.marriage_date)}`
 						: '');
 		});
+
+		// With several spouses, number each marriage where its children's line
+		// starts, naming both partners on hover (#1099). Drawn last, over the cards
+		spouses
+			.filter(({ node }) => (node.data.spouses?.length ?? 0) > 1)
+			.forEach(({ node, spouse, index, dropX, y }) => {
+				const badge = g
+					.append('g')
+					.attr('class', 'marriage-badge')
+					.attr('transform', `translate(${dropX},${y})`);
+				badge
+					.append('title')
+					.text(`Marriage ${index + 1}: ${formatPersonName(node.data)} and ${spouse.name || 'Unknown'}`);
+				badge.append('circle').attr('r', 8).attr('fill', '#ffffff').attr('stroke', '#94a3b8').attr('stroke-width', 1.5);
+				badge
+					.append('text')
+					.attr('text-anchor', 'middle')
+					.attr('dy', '0.35em')
+					.attr('font-size', '11px')
+					.attr('font-weight', '600')
+					.attr('fill', '#475569')
+					.text(index + 1);
+			});
 	}
 
 	// Zoom control functions
@@ -535,7 +601,8 @@
 
 	// Re-render when data or layout changes
 	$effect(() => {
-		if (data && layout) {
+		// Reading the scale here redraws the chart when the font-size setting changes
+		if (data && layout && getFontScale()) {
 			renderChart();
 		}
 	});
@@ -548,15 +615,30 @@
 	});
 </script>
 
-<div
-	class="descendancy-chart"
-	bind:this={container}
-	role="application"
-	aria-label="Descendancy chart. Use arrow keys to navigate: Down for first child, Up to return to parent, Left/Right to cycle siblings. Plus/minus to zoom, R to reset view."
-	tabindex="0"
-></div>
+<div class="chart-frame">
+	<div
+		class="descendancy-chart"
+		bind:this={container}
+		role="application"
+		aria-label="Descendancy chart. Use arrow keys to navigate: Down for first child, Up to return to parent, Left/Right to cycle siblings. Plus/minus to zoom, R to reset view."
+		tabindex="0"
+	></div>
+	<OffscreenIndicator
+		left={offscreen.left.length}
+		right={offscreen.right.length}
+		noun={['child', 'children']}
+		onPan={panToOffscreen}
+		focusFallback={container}
+	/>
+</div>
 
 <style>
+	.chart-frame {
+		position: relative;
+		width: 100%;
+		height: 100%;
+	}
+
 	.descendancy-chart {
 		width: 100%;
 		height: 100%;

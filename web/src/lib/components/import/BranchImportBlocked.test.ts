@@ -7,7 +7,7 @@ const { branchState, returnToMainline } = vi.hoisted(() => ({
 	returnToMainline: vi.fn()
 }));
 
-vi.mock('$lib/stores/activeBranch.svelte', () => ({
+vi.mock('#lib/stores/activeBranch.svelte.js', () => ({
 	activeBranch: branchState,
 	returnToMainline
 }));

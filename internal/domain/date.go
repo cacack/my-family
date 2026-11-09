@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -46,6 +47,10 @@ type GenDate struct {
 	Month2    *int          `json:"month2,omitempty"`   // End month for ranges
 	Day2      *int          `json:"day2,omitempty"`     // End day for ranges
 	Calendar  string        `json:"calendar,omitempty"` // DGREGORIAN (default), DJULIAN, etc.
+	// Calendar2 is a range end's calendar when the end carries its own escape
+	// naming a different calendar ("BET @#DJULIAN@ 1700 AND @#DGREGORIAN@
+	// 1710"); empty means the end is in Calendar.
+	Calendar2 string `json:"calendar2,omitempty"`
 
 	// InterpretedFrom holds the original ambiguous phrase for interpreted (INT)
 	// dates, e.g. "about eighteen fifty" from "INT 1850 (about eighteen fifty)".
@@ -164,7 +169,8 @@ var qualifierPrefixes = []struct {
 // ParseGenDate parses a GEDCOM-format date string into a GenDate. It detects and
 // strips a leading calendar escape sequence (e.g. "@#DJULIAN@") into Calendar,
 // interpreting month codes according to that calendar; unrecognized escapes are
-// left in place and the date is treated as Gregorian.
+// left in place and the date is treated as Gregorian. A BET/FROM range's end
+// date may carry its own escape, recorded in Calendar2.
 //
 // A dual year ("1750/51") is read as its later year (1751), and a BC year as a
 // negative year ("44 BC" is -44), so both sort sensibly in memory (Before,
@@ -184,11 +190,13 @@ func ParseGenDate(s string) GenDate {
 
 	work := strings.ToUpper(s)
 
-	// Extract a calendar escape sequence (e.g. "@#DJULIAN@") if present. It may
-	// appear before or after a qualifier, so we strip it first.
-	if cal, rest, ok := extractCalendarEscape(work); ok {
+	// Extract the (start) date's calendar escape (e.g. "@#DJULIAN@") if present.
+	// It may appear before or after a qualifier, so we strip it first. A range
+	// end may carry its own escape, so only the text before it is searched.
+	head, tail := splitAtRangeEnd(work)
+	if cal, rest, ok := extractCalendarEscape(head); ok {
 		gd.Calendar = cal
-		work = rest
+		work = rest + tail
 	}
 
 	// Handle interpreted dates (INT <date> (<original phrase>)) before the other
@@ -210,14 +218,14 @@ func ParseGenDate(s string) GenDate {
 	if gd.Qualifier == DateBet {
 		if parts := strings.SplitN(work, " AND ", 2); len(parts) == 2 {
 			parseSimpleDate(strings.TrimSpace(parts[0]), gd.Calendar, &gd.Year, &gd.Month, &gd.Day)
-			parseSimpleDate(strings.TrimSpace(parts[1]), gd.Calendar, &gd.Year2, &gd.Month2, &gd.Day2)
+			gd.parseRangeEnd(parts[1])
 			return gd
 		}
 	}
 	if gd.Qualifier == DateFrom {
 		if parts := strings.SplitN(work, " TO ", 2); len(parts) == 2 {
 			parseSimpleDate(strings.TrimSpace(parts[0]), gd.Calendar, &gd.Year, &gd.Month, &gd.Day)
-			parseSimpleDate(strings.TrimSpace(parts[1]), gd.Calendar, &gd.Year2, &gd.Month2, &gd.Day2)
+			gd.parseRangeEnd(parts[1])
 			return gd
 		}
 	}
@@ -225,6 +233,64 @@ func ParseGenDate(s string) GenDate {
 	// Parse simple date
 	parseSimpleDate(work, gd.Calendar, &gd.Year, &gd.Month, &gd.Day)
 	return gd
+}
+
+// splitAtRangeEnd splits an upper-cased date at its first range connector
+// (" AND " or " TO "), so head is the start date and tail, which keeps the
+// connector, is the rest. A date with no connector is all head.
+func splitAtRangeEnd(s string) (head, tail string) {
+	i := len(s)
+	for _, sep := range []string{" AND ", " TO "} {
+		if j := strings.Index(s, sep); j != -1 && j < i {
+			i = j
+		}
+	}
+	return s[:i], s[i:]
+}
+
+// parseRangeEnd parses a BET/FROM range's end date into Year2/Month2/Day2. The
+// end is in the start's calendar unless it carries its own calendar escape
+// (GEDCOM allows one per date), which is then recorded in Calendar2 when it
+// differs from Calendar.
+func (g *GenDate) parseRangeEnd(s string) {
+	s = strings.TrimSpace(s)
+	if cal, rest, ok := extractCalendarEscape(s); ok {
+		s = rest
+		if cal != g.Calendar {
+			g.Calendar2 = cal
+		}
+	}
+	parseSimpleDate(s, g.endCalendar(), &g.Year2, &g.Month2, &g.Day2)
+}
+
+// UnmarshalJSON decodes a stored GenDate. Before Calendar2 existed (#1227), a
+// range whose end carries its own calendar escape ("BET 1740 AND @#DHEBREW@
+// 5500") was stored with the end's calendar as Calendar and no end date, so
+// such a date stored without Calendar2 is re-read from Raw. Events stay as
+// written; replaying them projects the corrected date (#1239). Any other
+// date decodes as stored.
+func (g *GenDate) UnmarshalJSON(data []byte) error {
+	type stored GenDate // no methods, so decoding it doesn't recurse
+	var s stored
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+	*g = GenDate(s)
+	if g.Calendar2 == "" {
+		if _, tail := splitAtRangeEnd(strings.ToUpper(g.Raw)); strings.Contains(tail, "@#") {
+			*g = ParseGenDate(g.Raw)
+		}
+	}
+	return nil
+}
+
+// endCalendar returns the calendar of a range's end date: Calendar2 when the
+// end carries its own calendar, otherwise Calendar.
+func (g *GenDate) endCalendar() string {
+	if g.Calendar2 != "" {
+		return g.Calendar2
+	}
+	return g.Calendar
 }
 
 // DateInputError is a date rejected by NormalizeDateInput. Unreadable is true
@@ -268,10 +334,13 @@ var englishLeadingWords = map[string]string{
 }
 
 // englishDateWords are the words that may appear anywhere in a typed date:
-// range connectors, BC era markers and English month names, full or
-// abbreviated.
+// range connectors, BC era markers (with or without periods; the trailing
+// one is already trimmed) and English month names, full or abbreviated.
 var englishDateWords = func() map[string]string {
-	words := map[string]string{"and": "AND", "to": "TO", "sept": "SEP", "bc": "BC", "bce": "BCE"}
+	words := map[string]string{
+		"and": "AND", "to": "TO", "sept": "SEP",
+		"bc": "BC", "b.c": "BC", "bce": "BCE", "b.c.e": "BCE",
+	}
 	for m := time.January; m <= time.December; m++ {
 		name := strings.ToLower(m.String())
 		words[name] = reverseMonthMap[int(m)]
@@ -284,9 +353,11 @@ var englishDateWords = func() map[string]string {
 // "circa 1850", "before 5 Sept 1900" or "between 1840 and 1850", into GEDCOM
 // form. It only rewrites words; gedcom-go still parses and validates the
 // result. It reports false, changing nothing, unless every word is a known
-// qualifier, connector or month (a trailing "." is ignored) or a number, so
-// text with any doubt about its meaning is left for validation to reject.
-// Date phrases, interpreted dates and calendar escapes are never rewritten.
+// qualifier, connector, era marker or month (a trailing "." is ignored) or a
+// number, so text with any doubt about its meaning is left for validation to
+// reject. An AD marker ("500 AD", "500 A.D.") right after a year is dropped,
+// since a GEDCOM year is AD unless marked BC. Date phrases, interpreted dates
+// and calendar escapes are never rewritten.
 func englishDateToGEDCOM(s string) (string, bool) {
 	if strings.ContainsAny(s, "(@") {
 		return "", false
@@ -295,15 +366,17 @@ func englishDateToGEDCOM(s string) (string, bool) {
 	if len(fields) == 0 {
 		return "", false
 	}
-	out := make([]string, len(fields))
+	out := make([]string, 0, len(fields))
 	for i, field := range fields {
 		word := strings.TrimSuffix(strings.ToLower(field), ".")
 		if gedcom, ok := englishLeadingWords[word]; ok && i == 0 {
-			out[i] = gedcom
+			out = append(out, gedcom)
 		} else if gedcom, ok := englishDateWords[word]; ok {
-			out[i] = gedcom
-		} else if word != "" && strings.Trim(word, "0123456789/") == "" {
-			out[i] = word
+			out = append(out, gedcom)
+		} else if isNumeral(word) {
+			out = append(out, word)
+		} else if (word == "ad" || word == "a.d") && len(out) > 0 && isNumeral(out[len(out)-1]) && !isBCWordAt(fields, i+1) {
+			continue
 		} else {
 			return "", false
 		}
@@ -311,11 +384,27 @@ func englishDateToGEDCOM(s string) (string, bool) {
 	return strings.Join(out, " "), true
 }
 
+// isBCWordAt reports whether fields[i] is a BC era marker, so an AD marker
+// before it ("500 AD BC") contradicts it instead of being dropped.
+func isBCWordAt(fields []string, i int) bool {
+	if i >= len(fields) {
+		return false
+	}
+	gedcom := englishDateWords[strings.TrimSuffix(strings.ToLower(fields[i]), ".")]
+	return gedcom == "BC" || gedcom == "BCE"
+}
+
+// isNumeral reports whether word is a day or year, including a dual year.
+func isNumeral(word string) bool {
+	return word != "" && strings.Trim(word, "0123456789/") == ""
+}
+
 // validateDate checks s, a date as it will be stored, quoting typed (the text
 // the person entered, which s may be a GEDCOM rewrite of) in a rejection. It
 // rejects text that isn't a GEDCOM date (e.g. "garbage", "1850-01-01",
-// "31 FEB 19xx") and dates that don't exist in the calendar (e.g.
-// "31 FEB 1900"); a GEDCOM date phrase in parentheses, such as "(about the
+// "31 FEB 19xx"), dates that don't exist in the calendar (e.g.
+// "31 FEB 1900", "0 JAN 1850", year 0) and ranges that end before they start
+// ("BET 1860 AND 1850"); a GEDCOM date phrase in parentheses, such as "(about the
 // time of the war)", is always accepted. An empty string is valid: it means no
 // date. A rejection is a *DateInputError.
 //
@@ -344,16 +433,98 @@ func validateDate(s, typed string) error {
 		reason = strings.TrimPrefix(reason, "invalid date: ")
 		return &DateInputError{Reason: fmt.Sprintf("%q is not a real calendar date (%s)", typed, reason)}
 	}
+	if strings.HasPrefix(s, "(") {
+		return nil
+	}
 	// Every accepted date must be stored with a year. ParseGenDate reads one
 	// from every form gedcom-go accepts today; this guards against a form it
 	// doesn't, such as one added by a gedcom-go upgrade.
-	if !strings.HasPrefix(s, "(") && ParseGenDate(s).Year == nil {
+	gd := ParseGenDate(s)
+	if gd.Year == nil {
 		return &DateInputError{
 			Reason:     fmt.Sprintf("%q is not a supported date yet; use a form like \"1 JAN 1850\" or \"about 1850\", or keep it as text in parentheses as a date phrase", typed),
 			Unreadable: true,
 		}
 	}
+	// gedcom-go reads a 0 day or year as absent, so "0 JAN 1850" and
+	// "1 JAN 0" get past it.
+	if err := gd.Validate(); err != nil {
+		return &DateInputError{Reason: fmt.Sprintf("%q is not a real calendar date (%s)", typed, err)}
+	}
+	if *gd.Year == 0 || (gd.Year2 != nil && *gd.Year2 == 0) || hasDualYearFromZero(s) {
+		return &DateInputError{Reason: fmt.Sprintf("%q is not a real calendar date (there is no year 0: 1 BC is followed by 1 AD)", typed)}
+	}
+	if gd.isReversedRange() {
+		start, end := rangeEndpointText(s)
+		if gd.Calendar2 != "" {
+			start = calendarName(gd.Calendar) + " " + start
+			end = calendarName(gd.endCalendar()) + " " + end
+		}
+		return &DateInputError{Reason: fmt.Sprintf("%q is a reversed range: %s is after %s; put the earlier date first", typed, start, end)}
+	}
 	return nil
+}
+
+// hasDualYearFromZero reports whether s holds a dual year whose first year is
+// 0 ("0/1"). ParseGenDate reads a dual year as its later year, so the year-0
+// check on Year and Year2 alone misses it.
+func hasDualYearFromZero(s string) bool {
+	for _, field := range strings.Fields(s) {
+		if first, _, dual := strings.Cut(field, "/"); dual && first != "" && strings.Trim(first, "0") == "" {
+			return true
+		}
+	}
+	return false
+}
+
+// rangeEndpointText returns the start and end of a BET/FROM range s as
+// written, without its qualifier or calendar escapes, so a rejection quotes
+// "1750/51" rather than the sort year 1751 it parses to.
+func rangeEndpointText(s string) (start, end string) {
+	work := strings.ToUpper(s)
+	for {
+		_, rest, ok := extractCalendarEscape(work)
+		if !ok {
+			break
+		}
+		work = rest
+	}
+	sep := " AND "
+	if strings.HasPrefix(work, "FROM ") {
+		sep = " TO "
+	}
+	work = strings.TrimPrefix(strings.TrimPrefix(work, "BET "), "FROM ")
+	start, end, _ = strings.Cut(work, sep)
+	return strings.TrimSpace(start), strings.TrimSpace(end)
+}
+
+// isReversedRange reports whether a BET/FROM range ends before it starts,
+// comparing only the precision both endpoints share, so "BET JAN 1850 AND
+// 1850" is not reversed. Endpoints in one calendar are compared as written,
+// since its month numbers run in calendar order. Endpoints in different
+// calendars ("BET @#DJULIAN@ 1700 AND @#DGREGORIAN@ 1690") don't share
+// year or month boundaries, so the range is reversed only when the last day
+// the end can mean is before the first day the start can mean; a range that
+// can't be placed is not reported as reversed.
+func (g *GenDate) isReversedRange() bool {
+	if g.Year == nil || g.Year2 == nil {
+		return false
+	}
+	if g.Calendar2 != "" {
+		startEarliest, _, startOK := endpointBounds(g.Calendar, g.Year, g.Month, g.Day)
+		_, endLatest, endOK := endpointBounds(g.endCalendar(), g.Year2, g.Month2, g.Day2)
+		return startOK && endOK && endLatest < startEarliest
+	}
+	if *g.Year != *g.Year2 {
+		return *g.Year > *g.Year2
+	}
+	if g.Month == nil || g.Month2 == nil {
+		return false
+	}
+	if *g.Month != *g.Month2 {
+		return *g.Month > *g.Month2
+	}
+	return g.Day != nil && g.Day2 != nil && *g.Day > *g.Day2
 }
 
 // parseInterpretedGenDate parses an interpreted date of the form
@@ -493,9 +664,9 @@ func (g *GenDate) Format() string {
 	case DateAft:
 		qualPrefix = "AFT "
 	case DateBet:
-		return fmt.Sprintf("BET %s AND %s", g.calendarEscape()+formatSimpleDate(g.Calendar, g.Year, g.Month, g.Day), formatSimpleDate(g.Calendar, g.Year2, g.Month2, g.Day2))
+		return fmt.Sprintf("BET %s AND %s", g.calendarEscape()+formatSimpleDate(g.Calendar, g.Year, g.Month, g.Day), g.endCalendarEscape()+formatSimpleDate(g.endCalendar(), g.Year2, g.Month2, g.Day2))
 	case DateFrom:
-		return fmt.Sprintf("FROM %s TO %s", g.calendarEscape()+formatSimpleDate(g.Calendar, g.Year, g.Month, g.Day), formatSimpleDate(g.Calendar, g.Year2, g.Month2, g.Day2))
+		return fmt.Sprintf("FROM %s TO %s", g.calendarEscape()+formatSimpleDate(g.Calendar, g.Year, g.Month, g.Day), g.endCalendarEscape()+formatSimpleDate(g.endCalendar(), g.Year2, g.Month2, g.Day2))
 	case DateInt:
 		datePart := g.calendarEscape() + formatSimpleDate(g.Calendar, g.Year, g.Month, g.Day)
 		if g.InterpretedFrom != "" {
@@ -505,6 +676,16 @@ func (g *GenDate) Format() string {
 	}
 
 	return qualPrefix + g.calendarEscape() + formatSimpleDate(g.Calendar, g.Year, g.Month, g.Day)
+}
+
+// endCalendarEscape returns the escape prefix (with trailing space) for a
+// range end in its own calendar (Calendar2), Gregorian included, since an end
+// with no escape is read in the start's calendar; otherwise it is empty.
+func (g *GenDate) endCalendarEscape() string {
+	if g.Calendar2 == "" {
+		return ""
+	}
+	return "@#" + g.Calendar2 + "@ "
 }
 
 // calendarEscape returns the GEDCOM escape prefix (with trailing space) for a
@@ -544,7 +725,9 @@ func (g *GenDate) IsEmpty() bool {
 }
 
 // ToTime converts the GenDate to a time.Time for sorting purposes.
-// Returns the earliest possible date based on the qualifier.
+// Returns the earliest possible date based on the qualifier. A BC year is
+// converted to Go's astronomical numbering, where 1 BC is year 0 ("44 BC" is
+// -43), so durations across BC/AD come out exact.
 func (g *GenDate) ToTime() time.Time {
 	if g.Year == nil {
 		return time.Time{}
@@ -560,6 +743,9 @@ func (g *GenDate) ToTime() time.Time {
 		return greg.ToTime()
 	}
 	year := *g.Year
+	if year < 0 {
+		year++
+	}
 	month := time.January
 	day := 1
 	if g.Month != nil {
@@ -577,7 +763,7 @@ func (g *GenDate) ToTime() time.Time {
 var EarliestSortDate = time.Date(-4713, time.November, 24, 0, 0, 0, 0, time.UTC)
 
 // SortDate returns the date stored in the read model's *_date_sort columns:
-// ToTime, so a BC date keeps its negative year ("44 BC" is -44), except that a
+// ToTime, so a BC date keeps a negative year ("44 BC" is -43), except that a
 // date earlier than EarliestSortDate is clamped to it so every backend can
 // store it. The clamp is lossy; ToTime is the exact value.
 func (g *GenDate) SortDate() time.Time {
@@ -592,16 +778,17 @@ func (g *GenDate) SortDate() time.Time {
 func (g *GenDate) Validate() error {
 	maxMonth := maxMonthFor(g.Calendar)
 	if g.Month != nil && (*g.Month < 1 || *g.Month > maxMonth) {
-		return fmt.Errorf("invalid month: %d", *g.Month)
+		return fmt.Errorf("month must be 1-%d, got %d", maxMonth, *g.Month)
 	}
 	if g.Day != nil && (*g.Day < 1 || *g.Day > 31) {
-		return fmt.Errorf("invalid day: %d", *g.Day)
+		return fmt.Errorf("day must be 1-31, got %d", *g.Day)
 	}
-	if g.Month2 != nil && (*g.Month2 < 1 || *g.Month2 > maxMonth) {
-		return fmt.Errorf("invalid month2: %d", *g.Month2)
+	maxMonth2 := maxMonthFor(g.endCalendar())
+	if g.Month2 != nil && (*g.Month2 < 1 || *g.Month2 > maxMonth2) {
+		return fmt.Errorf("end month must be 1-%d, got %d", maxMonth2, *g.Month2)
 	}
 	if g.Day2 != nil && (*g.Day2 < 1 || *g.Day2 > 31) {
-		return fmt.Errorf("invalid day2: %d", *g.Day2)
+		return fmt.Errorf("end day must be 1-31, got %d", *g.Day2)
 	}
 	return nil
 }

@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cacack/gedcom-go/v3/gedcom"
 	"github.com/google/uuid"
 	"github.com/lib/pq"
 
@@ -296,7 +295,8 @@ func (s *ReadModelStore) createTables() error {
 			person_id UUID NOT NULL,
 			given_name VARCHAR(100) NOT NULL,
 			surname VARCHAR(100) NOT NULL,
-			full_name VARCHAR(200) GENERATED ALWAYS AS (given_name || ' ' || surname) STORED,
+			-- Written by SavePersonName (PersonNameReadModel.JoinFullName, #1130).
+			full_name TEXT NOT NULL DEFAULT '',
 			name_prefix VARCHAR(50),
 			name_suffix VARCHAR(50),
 			surname_prefix VARCHAR(50),
@@ -619,6 +619,21 @@ func (s *ReadModelStore) createTables() error {
 		CREATE INDEX IF NOT EXISTS idx_proof_summaries_subject ON proof_summaries(subject_id);
 		CREATE INDEX IF NOT EXISTS idx_proof_summaries_fact_type ON proof_summaries(fact_type);
 
+		-- Duplicate pairs marked "not a duplicate" (branch-aware, #1036); id is
+		-- the pair id (domain.DuplicatePair.ID).
+		CREATE TABLE IF NOT EXISTS duplicate_dismissals (
+			id UUID NOT NULL,
+			branch_id UUID NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000',
+			person1_id UUID NOT NULL,
+			person2_id UUID NOT NULL,
+			reason TEXT,
+			version BIGINT NOT NULL DEFAULT 1,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			deleted BOOLEAN NOT NULL DEFAULT FALSE,
+			PRIMARY KEY (id, branch_id)
+		);
+
 		-- Events whose projection failed after they were appended (#845).
 		CREATE TABLE IF NOT EXISTS projection_failures (
 			seq BIGSERIAL PRIMARY KEY,
@@ -645,7 +660,11 @@ func (s *ReadModelStore) createTables() error {
 	// Run schema migrations for existing databases
 	s.runMigrations()
 
-	return nil
+	// Must run after runMigrations, whose branch migration gives a pre-#669
+	// person_names its branch_id. Its error is FATAL: SavePersonName always
+	// writes full_name, so a column left GENERATED would make every name
+	// projection fail. See migratePersonNameFullName.
+	return s.migratePersonNameFullName()
 }
 
 // renameLegacyEventsTable renames a pre-#733 read model events table to
@@ -799,6 +818,86 @@ func (s *ReadModelStore) migratePersonFullName() {
 		slog.Warn("read model migration: cannot update persons.full_name; names without a surname or given name keep a stray space (#977)",
 			"error", err)
 	}
+}
+
+// migratePersonNameFullName turns an older generated person_names.full_name
+// (given_name || ' ' || surname, which dropped the prefixes and suffix and left
+// a stray space when a part was empty) into the plain column SavePersonName
+// writes, and recomputes every existing row by the same rule (#1130, #985), so
+// no replay is needed. It runs in one transaction and is a no-op once the
+// column is no longer generated.
+//
+// Unlike runMigrations' degrade-and-warn migrations, every failure is returned
+// and refuses the store, as SQLite's counterpart does: SavePersonName always
+// binds full_name, which a still-generated column rejects, so a swallowed
+// failure would make every name projection fail after its events were appended.
+func (s *ReadModelStore) migratePersonNameFullName() error {
+	var outdated bool
+	if err := s.db.QueryRow(`
+		SELECT EXISTS (
+			SELECT 1 FROM information_schema.columns
+			WHERE table_schema = CURRENT_SCHEMA() AND table_name = 'person_names'
+			  AND column_name = 'full_name' AND is_generated = 'ALWAYS'
+		)`).Scan(&outdated); err != nil {
+		return fmt.Errorf("inspect person_names.full_name (#1130): %w", err)
+	}
+	if !outdated {
+		return nil
+	}
+	if err := s.recomputePersonNameFullName(); err != nil {
+		return fmt.Errorf("migrate person_names.full_name (#1130): %w", err)
+	}
+	return nil
+}
+
+// recomputePersonNameFullName is migratePersonNameFullName's transaction.
+func (s *ReadModelStore) recomputePersonNameFullName() error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.Exec(`ALTER TABLE person_names DROP COLUMN full_name,
+		ADD COLUMN full_name TEXT NOT NULL DEFAULT ''`); err != nil {
+		return err
+	}
+
+	rows, err := tx.Query(`SELECT id, branch_id, given_name, surname, COALESCE(name_prefix, ''),
+		COALESCE(name_suffix, ''), COALESCE(surname_prefix, '') FROM person_names`)
+	if err != nil {
+		return err
+	}
+	type fullNameRow struct {
+		id, branchID uuid.UUID
+		fullName     string
+	}
+	var updates []fullNameRow
+	for rows.Next() {
+		var (
+			u    fullNameRow
+			name repository.PersonNameReadModel
+		)
+		if err := rows.Scan(&u.id, &u.branchID, &name.GivenName, &name.Surname,
+			&name.NamePrefix, &name.NameSuffix, &name.SurnamePrefix); err != nil {
+			rows.Close()
+			return err
+		}
+		u.fullName = name.JoinFullName()
+		updates = append(updates, u)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	for _, u := range updates {
+		if _, err := tx.Exec(`UPDATE person_names SET full_name = $1 WHERE id = $2 AND branch_id = $3`,
+			u.fullName, u.id, u.branchID); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 // multilineTextColumns hold values gedcom-go v3.3.0 folds from CONT/CONC
@@ -1116,6 +1215,7 @@ var branchScopedTables = []string{
 	"sources", "source_external_ids", "citations", "notes",
 	"media",
 	"evidence_analyses", "evidence_conflicts", "research_logs", "proof_summaries",
+	"duplicate_dismissals", // #1036; created with its composite key
 }
 
 // mainBranchDefault is the column default that backfills existing rows to the
@@ -1151,8 +1251,10 @@ const (
 		surname_prefix, nickname, name_type, is_primary, updated_at`
 
 	// personNameOverlayCols are the person_names columns SearchPersons needs from
-	// the resolved rpn CTE (matching against alternate names).
-	personNameOverlayCols = `id, person_id, given_name, surname, full_name, nickname, is_primary, search_vector`
+	// the resolved rpn CTE (matching against alternate names). Search matches an
+	// alternate name's given name and surname joined as persons.full_name is
+	// (search_name), not its displayed full_name with prefixes and suffix.
+	personNameOverlayCols = `id, person_id, given_name, surname, ` + personFullNameExpr + ` AS search_name, nickname, is_primary, search_vector`
 
 	// familySelectCols is scanFamily's column order (unaliased).
 	familySelectCols = `id, partner1_id, partner1_given_name, partner1_surname,
@@ -1212,9 +1314,12 @@ func (s *ReadModelStore) ListPersons(ctx context.Context, opts repository.ListOp
 
 	// research_status filter (params continue after branch/main).
 	if opts.ResearchStatus != nil {
-		if *opts.ResearchStatus == "unset" {
+		switch *opts.ResearchStatus {
+		case "unset":
 			conds = append(conds, "(research_status IS NULL OR research_status = '')")
-		} else {
+		case "unassessed":
+			conds = append(conds, "(research_status IS NULL OR research_status IN ('', 'unknown'))")
+		default:
 			conds = append(conds, fmt.Sprintf("research_status = $%d", paramNum))
 			args = append(args, *opts.ResearchStatus)
 			paramNum++
@@ -1256,9 +1361,9 @@ func (s *ReadModelStore) ListPersons(ctx context.Context, opts repository.ListOp
 		SELECT `+personSelectCols+`
 		FROM `+fromSrc+`
 		%s
-		ORDER BY %s %s NULLS LAST, given_name %s
+		ORDER BY %s %s NULLS LAST, given_name %s, id %s
 		LIMIT $%d OFFSET $%d
-	`, whereClause, orderColumn, orderDir, orderDir, paramNum, paramNum+1)
+	`, whereClause, orderColumn, orderDir, orderDir, orderDir, paramNum, paramNum+1)
 
 	// Build args: branch/main + where args + limit + offset
 	queryArgs := append(args, opts.Limit, opts.Offset)
@@ -1441,9 +1546,9 @@ func writeNameMatchCTE(qb *strings.Builder, opts repository.SearchOptions, param
 			WHERE p.given_name %% $%d OR p.surname %% $%d OR p.full_name %% $%d
 			UNION
 			SELECT %s, pn.is_primary,
-				GREATEST(similarity(pn.given_name, $%d), similarity(pn.surname, $%d), similarity(pn.full_name, $%d), similarity(COALESCE(pn.nickname, ''), $%d)) as rank_score
+				GREATEST(similarity(pn.given_name, $%d), similarity(pn.surname, $%d), similarity(pn.search_name, $%d), similarity(COALESCE(pn.nickname, ''), $%d)) as rank_score
 			FROM rp p JOIN rpn pn ON p.id = pn.person_id
-			WHERE pn.given_name %% $%d OR pn.surname %% $%d OR pn.full_name %% $%d OR pn.nickname %% $%d
+			WHERE pn.given_name %% $%d OR pn.surname %% $%d OR pn.search_name %% $%d OR pn.nickname %% $%d
 		)`, personCols, n, n, n, n, n, n,
 			personCols, n, n, n, n, n, n, n, n)
 
@@ -1471,7 +1576,7 @@ func writeNameMatchCTE(qb *strings.Builder, opts repository.SearchOptions, param
 			SELECT %s, pn.is_primary,
 				ts_rank(pn.search_vector, plainto_tsquery('english', $%d)) as rank_score
 			FROM rp p JOIN rpn pn ON p.id = pn.person_id
-			WHERE pn.search_vector @@ plainto_tsquery('english', $%d) OR pn.full_name ILIKE '%%' || $%d || '%%' OR pn.nickname ILIKE '%%' || $%d || '%%'
+			WHERE pn.search_vector @@ plainto_tsquery('english', $%d) OR pn.search_name ILIKE '%%' || $%d || '%%' OR pn.nickname ILIKE '%%' || $%d || '%%'
 		)`, personCols, n, n, n,
 			personCols, n, n, n, n)
 	}
@@ -1751,13 +1856,14 @@ func cascadePersonFacts(ctx context.Context, tx *sql.Tx, branchID domain.BranchI
 // overlay, so no copy-on-write of the whole bucket is needed here.
 func (s *ReadModelStore) SavePersonName(ctx context.Context, branchID domain.BranchID, name *repository.PersonNameReadModel) error {
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO person_names (id, branch_id, person_id, given_name, surname, name_prefix, name_suffix,
+		INSERT INTO person_names (id, branch_id, person_id, given_name, surname, full_name, name_prefix, name_suffix,
 								  surname_prefix, nickname, name_type, is_primary, updated_at, deleted)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, FALSE)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, FALSE)
 		ON CONFLICT(id, branch_id) DO UPDATE SET
 			person_id = EXCLUDED.person_id,
 			given_name = EXCLUDED.given_name,
 			surname = EXCLUDED.surname,
+			full_name = EXCLUDED.full_name,
 			name_prefix = EXCLUDED.name_prefix,
 			name_suffix = EXCLUDED.name_suffix,
 			surname_prefix = EXCLUDED.surname_prefix,
@@ -1766,7 +1872,7 @@ func (s *ReadModelStore) SavePersonName(ctx context.Context, branchID domain.Bra
 			is_primary = EXCLUDED.is_primary,
 			updated_at = EXCLUDED.updated_at,
 			deleted = FALSE
-	`, name.ID, branchID.UUID(), name.PersonID, name.GivenName, name.Surname,
+	`, name.ID, branchID.UUID(), name.PersonID, name.GivenName, name.Surname, name.JoinFullName(),
 		nullableString(name.NamePrefix), nullableString(name.NameSuffix),
 		nullableString(name.SurnamePrefix), nullableString(name.Nickname),
 		// name_type is NOT NULL DEFAULT '' — bind the empty string, not NULL
@@ -2236,7 +2342,7 @@ func (s *ReadModelStore) ListFamilies(ctx context.Context, opts repository.ListO
 		SELECT `+familySelectCols+`
 		FROM `+fromSrc+`
 		%s
-		ORDER BY updated_at DESC
+		ORDER BY updated_at DESC, id DESC
 		LIMIT $%d OFFSET $%d
 	`, whereClause, limitParam, limitParam+1)
 	queryArgs := append(args, opts.Limit, opts.Offset)
@@ -2531,6 +2637,38 @@ func (s *ReadModelStore) GetChildFamily(ctx context.Context, branchID domain.Bra
 	`, personID, branchID.UUID(), domain.MainBranchID.UUID())
 
 	return scanFamily(row)
+}
+
+// RenameFamilyMember rewrites personID's partner, child and pedigree parent
+// names on the families, family_children and pedigree_edges rows stored under
+// branchID itself.
+func (s *ReadModelStore) RenameFamilyMember(ctx context.Context, branchID domain.BranchID, personID uuid.UUID, givenName, surname string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin rename family member: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	args := []any{givenName, surname, personID, branchID.UUID()}
+	for _, stmt := range []string{
+		`UPDATE families SET partner1_given_name = $1, partner1_surname = $2 WHERE partner1_id = $3 AND branch_id = $4 AND NOT deleted`,
+		`UPDATE families SET partner2_given_name = $1, partner2_surname = $2 WHERE partner2_id = $3 AND branch_id = $4 AND NOT deleted`,
+		`UPDATE family_children SET person_given_name = $1, person_surname = $2 WHERE person_id = $3 AND branch_id = $4 AND NOT deleted`,
+	} {
+		if _, err := tx.ExecContext(ctx, stmt, args...); err != nil {
+			return fmt.Errorf("rename family member: %w", err)
+		}
+	}
+	edgeArgs := []any{domain.JoinFullName(givenName, surname), personID, branchID.UUID()}
+	for _, stmt := range []string{
+		`UPDATE pedigree_edges SET father_name = $1 WHERE father_id = $2 AND branch_id = $3 AND NOT deleted`,
+		`UPDATE pedigree_edges SET mother_name = $1 WHERE mother_id = $2 AND branch_id = $3 AND NOT deleted`,
+	} {
+		if _, err := tx.ExecContext(ctx, stmt, edgeArgs...); err != nil {
+			return fmt.Errorf("rename pedigree parent: %w", err)
+		}
+	}
+	return tx.Commit()
 }
 
 // SaveFamilyChild saves a family child relationship on the given branch (ADR-005).
@@ -4465,13 +4603,13 @@ func (s *ReadModelStore) GetPersonsBySurname(ctx context.Context, surname string
 		return nil, 0, fmt.Errorf("count persons by surname: %w", err)
 	}
 
-	// #nosec G201 -- src/n/personSelectCols are internal SQL fragments, not user input
+	// #nosec G201 G202 -- src/n/personSelectCols/placeNormSQL are internal SQL fragments, not user input
 	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 	query := fmt.Sprintf(`
 		SELECT `+personSelectCols+`
 		FROM %s p
 		WHERE LOWER(surname) = LOWER($%d)
-		ORDER BY given_name ASC
+		ORDER BY given_name ASC, id ASC
 		LIMIT $%d OFFSET $%d
 	`, src, n, n+1, n+2)
 	rows, err := s.db.QueryContext(ctx, query, append(countArgs, opts.Limit, opts.Offset)...)
@@ -4492,9 +4630,18 @@ func (s *ReadModelStore) GetPersonsBySurname(ctx context.Context, surname string
 	return persons, total, rows.Err()
 }
 
+// placeNormSQL is the SQL form of repository.NormalizePlace applied to expr:
+// each run of spaces and commas holding a comma becomes one ",", then commas
+// and spaces are trimmed from both ends, so blank parts are dropped (#925). The
+// SQLite store calls NormalizePlace itself; the shared place-hierarchy parity
+// test holds the two to the same result.
+func placeNormSQL(expr string) string {
+	return "TRIM(BOTH ', ' FROM REGEXP_REPLACE(" + expr + ", ' *,[ ,]*', ',', 'g'))"
+}
+
 // GetPlaceHierarchy returns places at a given level in the hierarchy.
 // Places are parsed from comma-separated strings like "City, County, State, Country"
-// working from right to left (Country is top level).
+// working from right to left (Country is top level); blank parts are skipped.
 func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, branchID domain.BranchID, parent string) ([]repository.PlaceEntry, error) {
 	var rows *sql.Rows
 	var err error
@@ -4507,7 +4654,7 @@ func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, branchID domain.
 
 	if parent == "" {
 		// Top-level: get unique countries/top-level places (rightmost part after last comma)
-		// #nosec G201 -- withClause/src are internal SQL fragments carrying only $-placeholders, not user input
+		// #nosec G201 G202 -- withClause/src and placeNormSQL are internal SQL fragments carrying only $-placeholders, not user input
 		// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 		rows, err = s.db.QueryContext(ctx, fmt.Sprintf(`
 			%[1]sall_places AS (
@@ -4515,22 +4662,26 @@ func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, branchID domain.
 				UNION
 				SELECT DISTINCT death_place as place FROM %[2]s p WHERE death_place != '' AND death_place IS NOT NULL
 			),
+			normalized AS (
+				SELECT place, `+placeNormSQL("place")+` as norm FROM all_places
+			),
 			parsed AS (
 				SELECT
 					place,
+					norm,
 					CASE
-						WHEN POSITION(',' IN place) > 0
-						THEN TRIM(SPLIT_PART(place, ',', ARRAY_LENGTH(STRING_TO_ARRAY(place, ','), 1)))
-						ELSE TRIM(place)
+						WHEN POSITION(',' IN norm) > 0
+						THEN SPLIT_PART(norm, ',', ARRAY_LENGTH(STRING_TO_ARRAY(norm, ','), 1))
+						ELSE norm
 					END as top_level
-				FROM all_places
+				FROM normalized
 			)
 			SELECT
 				top_level as place_name,
 				top_level as full_name,
 				COUNT(DISTINCT place) as count,
 				CASE
-					WHEN COUNT(DISTINCT place) > (SELECT COUNT(*) FROM parsed p2 WHERE p2.top_level = parsed.top_level AND p2.place = p2.top_level)
+					WHEN COUNT(DISTINCT place) > COUNT(DISTINCT CASE WHEN norm = top_level THEN place END)
 					THEN true
 					ELSE false
 				END as has_children
@@ -4541,9 +4692,9 @@ func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, branchID domain.
 		`, withClause, src), args...)
 	} else {
 		// Child level: places whose last parts are parent's parts. parent is a
-		// full_name built with ", " while GEDCOM places may omit the space, so both
-		// sides compare with ", " collapsed to ",".
-		// #nosec G201 -- withClause/src/n are internal SQL fragments; parent stays a bound parameter
+		// full_name built with ", " while GEDCOM places may omit the space or carry
+		// blank parts, so both sides compare normalized (repository.NormalizePlace).
+		// #nosec G201 G202 -- withClause/src/n and placeNormSQL are internal SQL fragments; parent stays a bound parameter
 		// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 		rows, err = s.db.QueryContext(ctx, fmt.Sprintf(`
 			%[1]sall_places AS (
@@ -4554,8 +4705,8 @@ func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, branchID domain.
 			normalized AS (
 				SELECT
 					place,
-					REPLACE(place, ', ', ',') as norm,
-					REPLACE($%[3]d, ', ', ',') as norm_parent
+					`+placeNormSQL("place")+` as norm,
+					`+placeNormSQL("$%[3]d")+` as norm_parent
 				FROM all_places
 			),
 			parsed AS (
@@ -4617,28 +4768,28 @@ func (s *ReadModelStore) GetPersonsByPlace(ctx context.Context, place string, op
 
 	// Count total - match place at any position in birth_place or death_place.
 	// place is usually a GetPlaceHierarchy full_name (parts joined with ", "), so
-	// both sides compare with ", " collapsed to "," as the hierarchy does.
+	// both sides compare normalized (repository.NormalizePlace) as the hierarchy does.
 	var total int
-	// #nosec G201 -- src/n are internal SQL fragments; place stays a bound parameter
+	// #nosec G201 G202 -- src/n and placeNormSQL are internal SQL fragments; place stays a bound parameter
 	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 	countQuery := fmt.Sprintf(`
 		SELECT COUNT(*) FROM %[1]s p
-		WHERE REPLACE(birth_place, ', ', ',') ILIKE '%%' || REPLACE($%[2]d, ', ', ',') || '%%'
-		   OR REPLACE(death_place, ', ', ',') ILIKE '%%' || REPLACE($%[2]d, ', ', ',') || '%%'
+		WHERE `+placeNormSQL("birth_place")+` ILIKE '%%' || `+placeNormSQL("$%[2]d")+` || '%%'
+		   OR `+placeNormSQL("death_place")+` ILIKE '%%' || `+placeNormSQL("$%[2]d")+` || '%%'
 	`, src, n)
 	err := s.db.QueryRowContext(ctx, countQuery, countArgs...).Scan(&total)
 	if err != nil {
 		return nil, 0, fmt.Errorf("count persons by place: %w", err)
 	}
 
-	// #nosec G201 -- src/n/personSelectCols are internal SQL fragments, not user input
+	// #nosec G201 G202 -- src/n/personSelectCols/placeNormSQL are internal SQL fragments, not user input
 	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 	query := fmt.Sprintf(`
 		SELECT `+personSelectCols+`
 		FROM %[1]s p
-		WHERE REPLACE(birth_place, ', ', ',') ILIKE '%%' || REPLACE($%[2]d, ', ', ',') || '%%'
-		   OR REPLACE(death_place, ', ', ',') ILIKE '%%' || REPLACE($%[2]d, ', ', ',') || '%%'
-		ORDER BY surname ASC, given_name ASC
+		WHERE `+placeNormSQL("birth_place")+` ILIKE '%%' || `+placeNormSQL("$%[2]d")+` || '%%'
+		   OR `+placeNormSQL("death_place")+` ILIKE '%%' || `+placeNormSQL("$%[2]d")+` || '%%'
+		ORDER BY surname ASC, given_name ASC, id ASC
 		LIMIT $%[3]d OFFSET $%[4]d
 	`, src, n, n+1, n+2)
 	rows, err := s.db.QueryContext(ctx, query, append(countArgs, opts.Limit, opts.Offset)...)
@@ -4728,7 +4879,7 @@ func (s *ReadModelStore) GetPersonsByCemetery(ctx context.Context, place string,
 		SELECT DISTINCT `+personCols+`
 		FROM %s p
 		INNER JOIN %s e ON e.owner_id = p.id
-		ORDER BY p.surname ASC, p.given_name ASC
+		ORDER BY p.surname ASC, p.given_name ASC, p.id ASC
 		LIMIT $%d OFFSET $%d
 	`, src, eventsSrc, n+3, n+4)
 	rows, err := s.db.QueryContext(ctx, query, append(args, opts.Limit, opts.Offset)...)
@@ -4785,9 +4936,8 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 		if err := rows.Scan(&personID, &givenName, &surname, &place, &latStr, &lonStr); err != nil {
 			return nil, fmt.Errorf("scan birth map location: %w", err)
 		}
-		lat, errLat := gedcom.ParseCoordinate(latStr)
-		lon, errLon := gedcom.ParseCoordinate(lonStr)
-		if errLat != nil || errLon != nil {
+		lat, lon, ok := repository.ParseMapCoordinates(personID, "birth", latStr, lonStr)
+		if !ok {
 			continue
 		}
 		person := repository.MapPerson{ID: personID, GivenName: givenName, Surname: surname}
@@ -4824,9 +4974,8 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 		if err := rows2.Scan(&personID, &givenName, &surname, &place, &latStr, &lonStr); err != nil {
 			return nil, fmt.Errorf("scan death map location: %w", err)
 		}
-		lat, errLat := gedcom.ParseCoordinate(latStr)
-		lon, errLon := gedcom.ParseCoordinate(lonStr)
-		if errLat != nil || errLon != nil {
+		lat, lon, ok := repository.ParseMapCoordinates(personID, "death", latStr, lonStr)
+		if !ok {
 			continue
 		}
 		person := repository.MapPerson{ID: personID, GivenName: givenName, Surname: surname}
@@ -5131,9 +5280,9 @@ func (s *ReadModelStore) ListSubmitters(ctx context.Context, opts repository.Lis
 	query := fmt.Sprintf(`
 		SELECT id, name, address, phone, email, language, media_id, gedcom_xref, version, updated_at
 		FROM submitters
-		ORDER BY %s %s
+		ORDER BY %s %s, id %s
 		LIMIT $1 OFFSET $2
-	`, orderColumn, orderDir)
+	`, orderColumn, orderDir, orderDir)
 
 	rows, err := s.db.QueryContext(ctx, query, opts.Limit, opts.Offset)
 	if err != nil {
@@ -5655,9 +5804,9 @@ func (s *ReadModelStore) ListLDSOrdinances(ctx context.Context, opts repository.
 		SELECT id, type, type_label, person_id, person_name, family_id,
 		       date_raw, date_sort, place, temple, status, version, updated_at
 		FROM lds_ordinances
-		ORDER BY %s %s
+		ORDER BY %s %s, id %s
 		LIMIT $1 OFFSET $2
-	`, orderColumn, orderDir)
+	`, orderColumn, orderDir, orderDir)
 
 	rows, err := s.db.QueryContext(ctx, query, opts.Limit, opts.Offset)
 	if err != nil {
@@ -6424,6 +6573,73 @@ func (s *ReadModelStore) SaveProofSummary(ctx context.Context, branchID domain.B
 func (s *ReadModelStore) DeleteProofSummary(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error {
 	if err := deleteOverlayRow(ctx, s.db, "proof_summaries", proofSummarySelectCols, branchID, id); err != nil {
 		return fmt.Errorf("delete proof_summary: %w", err)
+	}
+	return nil
+}
+
+// dismissalSelectCols is scanDismissalRow's column order (unaliased). The
+// duplicate_dismissals table (#1036) has the GPS artifacts' id-keyed overlay
+// shape, so it reuses their list and single-row helpers.
+const dismissalSelectCols = `id, person1_id, person2_id, reason, version, created_at, updated_at`
+
+func scanDismissalRow(row rowScanner) (*repository.DuplicateDismissalReadModel, error) {
+	var d repository.DuplicateDismissalReadModel
+	var reason sql.NullString
+	err := row.Scan(&d.ID, &d.Person1ID, &d.Person2ID, &reason, &d.Version, &d.CreatedAt, &d.UpdatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("scan duplicate_dismissal: %w", err)
+	}
+	d.Reason = reason.String
+	return &d, nil
+}
+
+// GetDuplicateDismissal retrieves a duplicate dismissal by pair id within the
+// branch overlay (ADR-005, #1036).
+func (s *ReadModelStore) GetDuplicateDismissal(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.DuplicateDismissalReadModel, error) {
+	return scanDismissalRow(s.getGPSRow(ctx, "duplicate_dismissals", dismissalSelectCols, branchID, id))
+}
+
+// ListDuplicateDismissals returns a paginated list of the duplicate dismissals
+// visible on opts.BranchID.
+func (s *ReadModelStore) ListDuplicateDismissals(ctx context.Context, opts repository.ListOptions) ([]repository.DuplicateDismissalReadModel, int, error) {
+	var results []repository.DuplicateDismissalReadModel
+	total, err := s.queryGPSPage(ctx, "duplicate_dismissals", dismissalSelectCols, "", opts, collectRows(&results, scanDismissalRow))
+	if err != nil {
+		return nil, 0, err
+	}
+	return results, total, nil
+}
+
+// SaveDuplicateDismissal saves a duplicate dismissal on the given branch
+// (ADR-005); a save always clears any prior tombstone and restamps the
+// dismissal time.
+func (s *ReadModelStore) SaveDuplicateDismissal(ctx context.Context, branchID domain.BranchID, d *repository.DuplicateDismissalReadModel) error {
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO duplicate_dismissals (id, branch_id, person1_id, person2_id, reason, version, created_at, updated_at, deleted)
+		VALUES ($1, $2, $3, $4, NULLIF($5, ''), $6, $7, $8, FALSE)
+		ON CONFLICT (id, branch_id) DO UPDATE SET
+			person1_id = EXCLUDED.person1_id,
+			person2_id = EXCLUDED.person2_id,
+			reason = EXCLUDED.reason,
+			version = EXCLUDED.version,
+			created_at = EXCLUDED.created_at,
+			updated_at = EXCLUDED.updated_at,
+			deleted = FALSE
+	`, d.ID, branchID.UUID(), d.Person1ID, d.Person2ID, d.Reason, d.Version, d.CreatedAt, d.UpdatedAt)
+	if err != nil {
+		return fmt.Errorf("save duplicate_dismissal: %w", err)
+	}
+	return nil
+}
+
+// DeleteDuplicateDismissal removes a duplicate dismissal (ADR-005): a real
+// removal on main, a tombstone on a non-main branch.
+func (s *ReadModelStore) DeleteDuplicateDismissal(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error {
+	if err := deleteOverlayRow(ctx, s.db, "duplicate_dismissals", dismissalSelectCols, branchID, id); err != nil {
+		return fmt.Errorf("delete duplicate_dismissal: %w", err)
 	}
 	return nil
 }

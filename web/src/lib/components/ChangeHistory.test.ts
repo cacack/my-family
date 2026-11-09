@@ -1,17 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/svelte";
 import ChangeHistory from "./ChangeHistory.svelte";
-import * as apiModule from "$lib/api/client";
+import * as apiModule from "#lib/api/client.js";
 import {
   currentPath,
   historyLength,
   resetRouter,
-} from "$lib/test/fakeRouter.svelte";
+} from "#lib/test/fakeRouter.svelte.js";
 
-vi.mock("$app/state", async () => (await import("$lib/test/fakeRouter.svelte")).appState);
-vi.mock("$app/navigation", async () => (await import("$lib/test/fakeRouter.svelte")).appNavigation);
+vi.mock("$app/state", async () => (await import("#lib/test/fakeRouter.svelte.js")).appState);
+vi.mock("$app/navigation", async () => (await import("#lib/test/fakeRouter.svelte.js")).appNavigation);
 
-vi.mock("$lib/api/client", async (importOriginal) => {
+vi.mock("#lib/api/client.js", async (importOriginal) => {
   const actual = await importOriginal<typeof apiModule>();
   return {
     ...actual,
@@ -173,7 +173,8 @@ describe("ChangeHistory global log (#739)", () => {
     expect(values).toContain("life_event");
     expect(values).toContain("research_log");
     expect(values).toContain("branch");
-    expect(values).toHaveLength(18);
+    expect(values).toContain("duplicate_pair");
+    expect(values).toHaveLength(19);
   });
 });
 

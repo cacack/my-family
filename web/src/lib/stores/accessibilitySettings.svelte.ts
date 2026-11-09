@@ -196,6 +196,11 @@ export function getFontSize(): FontSize {
 	return accessibilityState.fontSize;
 }
 
+/** How much the font-size setting enlarges text (1 at Normal); drawn charts scale by it too. */
+export function getFontScale(): number {
+	return FONT_SIZE_CONFIG[accessibilityState.fontSize].scale;
+}
+
 export function getHighContrast(): boolean {
 	return accessibilityState.highContrast;
 }

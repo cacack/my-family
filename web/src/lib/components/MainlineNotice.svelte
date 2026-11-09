@@ -10,7 +10,7 @@
 	 * the families list, the group sheet, the Ahnentafel, descendancy and the
 	 * relationship calculator (#829), person and family history (#824),
 	 * snapshots (#839) and person merges (#834). `BRANCH_SCOPED_OPERATIONS` in
-	 * `$lib/api/client.ts` is the exact list. The remaining surfaces — checks and
+	 * `#lib/api/client.js` is the exact list. The remaining surfaces — checks and
 	 * suggestions computed over the mainline, the global history, brick walls,
 	 * and the entities that stay main-only by decision (ADR-005) — still answer
 	 * from the mainline. Rendering one of them unlabelled beneath the branch
@@ -23,11 +23,11 @@
 	 * - `/` (dashboard) — the research suggestions (discovery feed) come from
 	 *   the mainline while the people and family counts and the recent people
 	 *   and families follow the branch; the notice says which is which
-	 * - `/quality` — validation issues and duplicate pairs (a branch's own findings,
-	 *   the ones it introduces over the mainline, are in its merge review's branch
-	 *   health section, #838). A pair's "Merge" link opens the merge page, which
-	 *   follows the branch (#834): it shows the two persons as the branch sees
-	 *   them and merges them on the branch only
+	 * - `/quality` — validation issues (a branch's own findings, the ones it
+	 *   introduces over the mainline, are in its merge review's branch health
+	 *   section, #838). Its duplicate pairs and "Not a duplicate" decisions follow
+	 *   the branch (#1036), and so does a pair's merge page (#834): it shows the
+	 *   two persons as the branch sees them and merges them on the branch only
 	 * - `/history` — the global change feed
 	 * - `/browse/brick-walls` — brick walls are not event-sourced (#761; whether
 	 *   they become event-sourced is #802)
@@ -61,7 +61,7 @@
 	 * For a person the branch has edited it therefore shows the flag as it stood
 	 * then, not a later mainline change (#802).
 	 */
-	import { activeBranch } from '$lib/stores/activeBranch.svelte';
+	import { activeBranch } from '#lib/stores/activeBranch.svelte.js';
 
 	interface Props {
 		/** What this page shows, e.g. "Sources". Used in the sentence. */

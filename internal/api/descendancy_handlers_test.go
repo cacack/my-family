@@ -169,6 +169,13 @@ func TestGetDescendancy_Success(t *testing.T) {
 	if int(john["generation"].(float64)) != 1 {
 		t.Errorf("John generation = %v, want 1", john["generation"])
 	}
+	// John names the family he descends through: George's family with Mary (#1099).
+	if spouse["family_id"] == nil || john["family_id"] != spouse["family_id"] {
+		t.Errorf("John family_id = %v, want George and Mary's family %v", john["family_id"], spouse["family_id"])
+	}
+	if _, ok := root["family_id"]; ok {
+		t.Errorf("Root family_id = %v, want absent", root["family_id"])
+	}
 
 	// Verify John's spouse
 	johnSpouses := john["spouses"].([]interface{})

@@ -1,6 +1,6 @@
 <script lang="ts">
-	import QuickCapture from '$lib/components/QuickCapture.svelte';
-	import PageHeader from '$lib/components/PageHeader.svelte';
+	import QuickCapture from '#lib/components/QuickCapture.svelte';
+	import PageHeader from '#lib/components/PageHeader.svelte';
 </script>
 
 <svelte:head>

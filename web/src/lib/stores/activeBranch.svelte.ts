@@ -32,7 +32,7 @@
  * `$effect`, so the store can be exercised without a reactive root.
  */
 
-import { api, setClientBranch, type ApiError, type Branch } from '$lib/api/client';
+import { api, setClientBranch, type ApiError, type Branch } from '#lib/api/client.js';
 
 const STORAGE_KEY = 'active-branch';
 /**

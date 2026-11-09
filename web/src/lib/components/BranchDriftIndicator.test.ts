@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
 import BranchDriftIndicator from './BranchDriftIndicator.svelte';
-import type { BranchDrift } from '$lib/api/client';
+import type { BranchDrift } from '#lib/api/client.js';
 
 const BRANCH_ID = '44444444-4444-4444-4444-444444444444';
 

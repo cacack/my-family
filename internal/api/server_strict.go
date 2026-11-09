@@ -2271,14 +2271,6 @@ func (ss *StrictServer) CreatePerson(ctx context.Context, request CreatePersonRe
 		return nil, err
 	}
 
-	// Create the primary name
-	_, _ = writer.AddName(ctx, command.AddNameInput{
-		PersonID:  result.ID,
-		GivenName: request.Body.GivenName,
-		Surname:   surname,
-		IsPrimary: true,
-	})
-
 	person, err := ss.server.personService.GetPerson(ctx, scope, result.ID)
 	if err != nil {
 		return nil, err
@@ -3102,6 +3094,11 @@ func (ss *StrictServer) GetValidationIssues(ctx context.Context, request GetVali
 
 // GetPersonsDuplicates implements StrictServerInterface.
 func (ss *StrictServer) GetPersonsDuplicates(ctx context.Context, request GetPersonsDuplicatesRequestObject) (GetPersonsDuplicatesResponseObject, error) {
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
+
 	// Extract limit/offset from params with defaults
 	limit := 100
 	offset := 0
@@ -3112,7 +3109,7 @@ func (ss *StrictServer) GetPersonsDuplicates(ctx context.Context, request GetPer
 		offset = *request.Params.Offset
 	}
 
-	results, total, err := ss.server.validationService.FindDuplicates(ctx, limit, offset)
+	results, total, err := ss.server.validationService.FindDuplicatesOn(ctx, branchScopeID(branch), limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -3218,37 +3215,81 @@ func (ss *StrictServer) MergePersons(ctx context.Context, request MergePersonsRe
 
 // DismissDuplicate implements StrictServerInterface.
 func (ss *StrictServer) DismissDuplicate(ctx context.Context, request DismissDuplicateRequestObject) (DismissDuplicateResponseObject, error) {
-	// Validate both persons exist
-	_, err := ss.server.personService.GetPerson(ctx, domain.MainBranchID, request.Person1Id)
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeWrite)
 	if err != nil {
-		if errors.Is(err, query.ErrNotFound) {
-			return DismissDuplicate404JSONResponse{NotFoundJSONResponse{
-				Code:    "not_found",
-				Message: "Person 1 not found",
-			}}, nil
-		}
 		return nil, err
 	}
-	_, err = ss.server.personService.GetPerson(ctx, domain.MainBranchID, request.Person2Id)
-	if err != nil {
-		if errors.Is(err, query.ErrNotFound) {
-			return DismissDuplicate404JSONResponse{NotFoundJSONResponse{
-				Code:    "not_found",
-				Message: "Person 2 not found",
-			}}, nil
-		}
+	input := command.DismissDuplicateInput{Person1ID: request.Person1Id, Person2ID: request.Person2Id}
+	if request.Body != nil && request.Body.Reason != nil {
+		input.Reason = *request.Body.Reason
+	}
+	err = ss.branchWriter(branch).DismissDuplicate(ctx, input)
+	switch {
+	case err == nil:
+		return DismissDuplicate204Response{}, nil
+	case errors.Is(err, command.ErrInvalidInput):
+		return DismissDuplicate400JSONResponse{BadRequestJSONResponse{Code: "bad_request", Message: err.Error()}}, nil
+	case errors.Is(err, command.ErrPersonNotFound):
+		return DismissDuplicate404JSONResponse{NotFoundJSONResponse{Code: "not_found", Message: err.Error()}}, nil
+	default:
 		return nil, err
 	}
+}
 
-	// For now, dismissing duplicates is a no-op since we don't have persistent
-	// dismissal storage. The duplicate detection uses gedcom-go's algorithm
-	// which doesn't support dismissals yet. A future enhancement could store
-	// dismissed pairs in a database table.
-	//
-	// TODO: Implement persistent dismissal storage when needed
-	// (see plan.md Phase 4 for details on future implementation)
+// RestoreDuplicate implements StrictServerInterface: it undoes a dismissal
+// (#1036).
+func (ss *StrictServer) RestoreDuplicate(ctx context.Context, request RestoreDuplicateRequestObject) (RestoreDuplicateResponseObject, error) {
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeWrite)
+	if err != nil {
+		return nil, err
+	}
+	err = ss.branchWriter(branch).RestoreDuplicate(ctx, request.Person1Id, request.Person2Id)
+	switch {
+	case err == nil:
+		return RestoreDuplicate204Response{}, nil
+	case errors.Is(err, command.ErrInvalidInput):
+		return RestoreDuplicate400JSONResponse{BadRequestJSONResponse{Code: "bad_request", Message: err.Error()}}, nil
+	case errors.Is(err, command.ErrDuplicateNotDismissed):
+		return RestoreDuplicate404JSONResponse{NotFoundJSONResponse{Code: "not_found", Message: "Duplicate pair is not dismissed"}}, nil
+	default:
+		return nil, err
+	}
+}
 
-	return DismissDuplicate204Response{}, nil
+// ListDismissedDuplicates implements StrictServerInterface: the pairs marked
+// not a duplicate in the scope's view (#1036).
+func (ss *StrictServer) ListDismissedDuplicates(ctx context.Context, request ListDismissedDuplicatesRequestObject) (ListDismissedDuplicatesResponseObject, error) {
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
+	limit, offset := 100, 0
+	if request.Params.Limit != nil {
+		limit = *request.Params.Limit
+	}
+	if request.Params.Offset != nil {
+		offset = *request.Params.Offset
+	}
+
+	page, err := ss.server.validationService.ListDismissedDuplicatesOn(ctx, branchScopeID(branch), limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	dismissals := make([]DismissedDuplicate, len(page.Items))
+	for i, d := range page.Items {
+		dismissals[i] = DismissedDuplicate{
+			Person1Id:   d.Person1ID,
+			Person1Name: d.Person1Name,
+			Person2Id:   d.Person2ID,
+			Person2Name: d.Person2Name,
+			DismissedAt: d.DismissedAt,
+		}
+		if d.Reason != "" {
+			reason := d.Reason
+			dismissals[i].Reason = &reason
+		}
+	}
+	return ListDismissedDuplicates200JSONResponse{Dismissals: dismissals, Total: page.Total}, nil
 }
 
 // BatchMergePersons implements StrictServerInterface.
@@ -3346,6 +3387,12 @@ func (ss *StrictServer) BatchDismissDuplicates(ctx context.Context, request Batc
 		}}, nil
 	}
 
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeWrite)
+	if err != nil {
+		return nil, err
+	}
+	writer := ss.branchWriter(branch)
+
 	results := make([]BatchDismissResult, len(request.Body.Dismissals))
 	successful := 0
 	failed := 0
@@ -3355,38 +3402,16 @@ func (ss *StrictServer) BatchDismissDuplicates(ctx context.Context, request Batc
 			Person1Id: dismissal.Person1Id,
 			Person2Id: dismissal.Person2Id,
 		}
-
-		// Validate person1 exists
-		_, err := ss.server.personService.GetPerson(ctx, domain.MainBranchID, dismissal.Person1Id)
-		if err != nil {
+		input := command.DismissDuplicateInput{Person1ID: dismissal.Person1Id, Person2ID: dismissal.Person2Id}
+		if dismissal.Reason != nil {
+			input.Reason = *dismissal.Reason
+		}
+		if err := writer.DismissDuplicate(ctx, input); err != nil {
 			failed++
-			results[i].Success = false
-			if errors.Is(err, query.ErrNotFound) {
-				errMsg := "Person 1 not found"
-				results[i].Error = &errMsg
-			} else {
-				errMsg := err.Error()
-				results[i].Error = &errMsg
-			}
+			errMsg := err.Error()
+			results[i].Error = &errMsg
 			continue
 		}
-
-		// Validate person2 exists
-		_, err = ss.server.personService.GetPerson(ctx, domain.MainBranchID, dismissal.Person2Id)
-		if err != nil {
-			failed++
-			results[i].Success = false
-			if errors.Is(err, query.ErrNotFound) {
-				errMsg := "Person 2 not found"
-				results[i].Error = &errMsg
-			} else {
-				errMsg := err.Error()
-				results[i].Error = &errMsg
-			}
-			continue
-		}
-
-		// Dismissal is currently a no-op (see single dismiss comment)
 		successful++
 		results[i].Success = true
 	}
@@ -4619,6 +4644,7 @@ func convertQueryDescendancyNodeToGenerated(node *query.DescendancyNode) Descend
 	resp := DescendancyNode{
 		Id:         node.ID,
 		Generation: &gen,
+		FamilyId:   node.FamilyID,
 	}
 
 	if node.GivenName != "" {
@@ -4641,8 +4667,9 @@ func convertQueryDescendancyNodeToGenerated(node *query.DescendancyNode) Descend
 		spouses := make([]SpouseInfo, len(node.Spouses))
 		for i, s := range node.Spouses {
 			spouses[i] = SpouseInfo{
-				Id:   s.ID,
-				Name: s.Name,
+				Id:       s.ID,
+				FamilyId: s.FamilyID,
+				Name:     s.Name,
 			}
 			if s.MarriageDate != nil {
 				spouses[i].MarriageDate = convertDomainGenDateToGenerated(s.MarriageDate)
