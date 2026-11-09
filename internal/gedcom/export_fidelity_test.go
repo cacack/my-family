@@ -81,10 +81,8 @@ func TestExport_MultipleNotePointers(t *testing.T) {
 			for _, p := range persons {
 				got[p.GivenName] = p.Notes
 			}
-			// Bob's multi-line note is not re-checked: the importer keeps only
-			// a NOTE's first line (#1202).
-			if got["Ann"] != twoPointers {
-				t.Errorf("re-imported person notes = %q, want Ann %q", got, twoPointers)
+			if got["Ann"] != twoPointers || got["Bob"] != inlineOnly {
+				t.Errorf("re-imported person notes = %q, want Ann %q and Bob %q", got, twoPointers, inlineOnly)
 			}
 			if len(sources) != 1 || sources[0].Notes != twoPointers {
 				t.Errorf("re-imported source notes = %+v, want %q", sources, twoPointers)
@@ -169,10 +167,8 @@ func TestExport_MixedNotePointerAndText(t *testing.T) {
 			for _, p := range persons {
 				got[p.GivenName] = p.Notes
 			}
-			// Cy's multi-line note is not re-checked: the importer keeps only
-			// a NOTE's first line (#1202).
-			if got["Ann"] != mixed || got["Bob"] != "plain text" {
-				t.Errorf("re-imported person notes = %q, want Ann %q and Bob %q", got, mixed, "plain text")
+			if got["Ann"] != mixed || got["Bob"] != "plain text" || got["Cy"] != inlineOnly {
+				t.Errorf("re-imported person notes = %q, want Ann %q, Bob %q and Cy %q", got, mixed, "plain text", inlineOnly)
 			}
 			if len(sources) != 1 || sources[0].Notes != mixed {
 				t.Errorf("re-imported source notes = %+v, want %q", sources, mixed)
