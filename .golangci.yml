@@ -135,11 +135,7 @@ issues:
   max-issues-per-linter: 0
   max-same-issues: 0
 
-formatters:
-  enable:
-    - gofmt
-  exclusions:
-    generated: lax
-    paths:
-      - third_party$
-      - builtin$
+# No formatters: golangci-lint's gofmt uses the go/printer of whatever Go
+# built the binary, which can disagree with the go.mod-pinned toolchain CI
+# checks with (#1244). Formatting is enforced by scripts/gofmt (make fmt,
+# pre-commit) and `gofmt -l .` in CI instead.
