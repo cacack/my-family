@@ -874,24 +874,44 @@ func ptrStr(p *int) string {
 }
 
 // TestGenDate_UnmarshalJSON_LegacyRangeEndEscape: a range whose end carries
-// its own calendar escape was stored before Calendar2 existed (#1239) with the
-// end's calendar as the whole date's calendar and no end year. Decoding it
-// re-reads it from Raw, so replay sorts it by its Gregorian start.
+// its own calendar escape was stored before Calendar2 existed (#1239) without
+// Calendar2. The payloads are exactly what pre-#1227 ParseGenDate stored: an
+// unescaped start took the end's calendar for the whole date (year2 read as a
+// Hebrew year), and an escaped start kept its calendar but lost the end year.
+// Decoding re-reads them from Raw, so replay sorts them by their real start.
 func TestGenDate_UnmarshalJSON_LegacyRangeEndEscape(t *testing.T) {
-	legacy := `{"raw":"BET 1740 AND @#DHEBREW@ 5500","qualifier":"bet","year":1740,"calendar":"DHEBREW"}`
-	var gd GenDate
-	if err := json.Unmarshal([]byte(legacy), &gd); err != nil {
-		t.Fatalf("Unmarshal: %v", err)
+	tests := []struct {
+		legacy            string
+		cal, cal2         string
+		year, year2, sort int
+	}{
+		{
+			legacy: `{"raw":"BET 1740 AND @#DHEBREW@ 5500","qualifier":"bet","year":1740,"year2":5500,"calendar":"DHEBREW"}`,
+			cal:    CalendarGregorian, cal2: CalendarHebrew, year: 1740, year2: 5500, sort: 1740,
+		},
+		{
+			legacy: `{"raw":"BET @#DJULIAN@ 1690 AND @#DGREGORIAN@ 1700","qualifier":"bet","year":1690,"calendar":"DJULIAN"}`,
+			cal:    CalendarJulian, cal2: CalendarGregorian, year: 1690, year2: 1700, sort: 1690,
+		},
 	}
-	if gd.Calendar != CalendarGregorian || !intPtrEqual(gd.Year, intPtr(1740)) ||
-		gd.Calendar2 != CalendarHebrew || !intPtrEqual(gd.Year2, intPtr(5500)) {
-		t.Fatalf("decoded = %+v, want Gregorian 1740 to Hebrew 5500", gd)
-	}
-	if y := gd.SortDate().Year(); y != 1740 {
-		t.Errorf("SortDate year = %d, want 1740", y)
-	}
-	if gd.Raw != "BET 1740 AND @#DHEBREW@ 5500" {
-		t.Errorf("Raw = %q, want it unchanged", gd.Raw)
+	for _, tt := range tests {
+		var gd GenDate
+		if err := json.Unmarshal([]byte(tt.legacy), &gd); err != nil {
+			t.Fatalf("Unmarshal(%s): %v", tt.legacy, err)
+		}
+		if gd.Calendar != tt.cal || !intPtrEqual(gd.Year, intPtr(tt.year)) ||
+			gd.Calendar2 != tt.cal2 || !intPtrEqual(gd.Year2, intPtr(tt.year2)) {
+			t.Errorf("Unmarshal(%s) = %+v, want %s %d to %s %d", tt.legacy, gd, tt.cal, tt.year, tt.cal2, tt.year2)
+			continue
+		}
+		if y := gd.SortDate().Year(); y != tt.sort {
+			t.Errorf("Unmarshal(%s): SortDate year = %d, want %d", tt.legacy, y, tt.sort)
+		}
+		var raw struct{ Raw string }
+		_ = json.Unmarshal([]byte(tt.legacy), &raw)
+		if gd.Raw != raw.Raw {
+			t.Errorf("Raw = %q, want %q unchanged", gd.Raw, raw.Raw)
+		}
 	}
 }
 
