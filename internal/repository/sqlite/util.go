@@ -27,8 +27,24 @@ const DriverName = "sqlite"
 // so they disagree with PostgreSQL on names such as "MÜLLER" (DB-005).
 const containsFoldFunc = "ilike_contains"
 
+// placeNormFunc is the SQL function name of repository.NormalizePlace:
+// place_norm(place) is the place with blank parts dropped and the rest joined
+// with "," (NULL for a NULL place). The place hierarchy and place lookups
+// compare places through it (#925).
+const placeNormFunc = "place_norm"
+
 func init() {
 	sqlitedriver.MustRegisterDeterministicScalarFunction(containsFoldFunc, 2, ilikeContains)
+	sqlitedriver.MustRegisterDeterministicScalarFunction(placeNormFunc, 1, placeNorm)
+}
+
+// placeNorm implements placeNormFunc.
+func placeNorm(_ *sqlitedriver.FunctionContext, args []driver.Value) (driver.Value, error) {
+	place, ok := sqlText(args[0])
+	if !ok {
+		return nil, nil
+	}
+	return repository.NormalizePlace(place), nil
 }
 
 // ilikeContains implements containsFoldFunc.

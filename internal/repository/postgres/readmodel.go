@@ -4446,7 +4446,7 @@ func (s *ReadModelStore) GetPersonsBySurname(ctx context.Context, surname string
 		return nil, 0, fmt.Errorf("count persons by surname: %w", err)
 	}
 
-	// #nosec G201 -- src/n/personSelectCols are internal SQL fragments, not user input
+	// #nosec G201 G202 -- src/n/personSelectCols/placeNormSQL are internal SQL fragments, not user input
 	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 	query := fmt.Sprintf(`
 		SELECT `+personSelectCols+`
@@ -4473,9 +4473,18 @@ func (s *ReadModelStore) GetPersonsBySurname(ctx context.Context, surname string
 	return persons, total, rows.Err()
 }
 
+// placeNormSQL is the SQL form of repository.NormalizePlace applied to expr:
+// each run of spaces and commas holding a comma becomes one ",", then commas
+// and spaces are trimmed from both ends, so blank parts are dropped (#925). The
+// SQLite store calls NormalizePlace itself; the shared place-hierarchy parity
+// test holds the two to the same result.
+func placeNormSQL(expr string) string {
+	return "TRIM(BOTH ', ' FROM REGEXP_REPLACE(" + expr + ", ' *,[ ,]*', ',', 'g'))"
+}
+
 // GetPlaceHierarchy returns places at a given level in the hierarchy.
 // Places are parsed from comma-separated strings like "City, County, State, Country"
-// working from right to left (Country is top level).
+// working from right to left (Country is top level); blank parts are skipped.
 func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, branchID domain.BranchID, parent string) ([]repository.PlaceEntry, error) {
 	var rows *sql.Rows
 	var err error
@@ -4488,7 +4497,7 @@ func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, branchID domain.
 
 	if parent == "" {
 		// Top-level: get unique countries/top-level places (rightmost part after last comma)
-		// #nosec G201 -- withClause/src are internal SQL fragments carrying only $-placeholders, not user input
+		// #nosec G201 G202 -- withClause/src and placeNormSQL are internal SQL fragments carrying only $-placeholders, not user input
 		// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 		rows, err = s.db.QueryContext(ctx, fmt.Sprintf(`
 			%[1]sall_places AS (
@@ -4496,22 +4505,26 @@ func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, branchID domain.
 				UNION
 				SELECT DISTINCT death_place as place FROM %[2]s p WHERE death_place != '' AND death_place IS NOT NULL
 			),
+			normalized AS (
+				SELECT place, `+placeNormSQL("place")+` as norm FROM all_places
+			),
 			parsed AS (
 				SELECT
 					place,
+					norm,
 					CASE
-						WHEN POSITION(',' IN place) > 0
-						THEN TRIM(SPLIT_PART(place, ',', ARRAY_LENGTH(STRING_TO_ARRAY(place, ','), 1)))
-						ELSE TRIM(place)
+						WHEN POSITION(',' IN norm) > 0
+						THEN SPLIT_PART(norm, ',', ARRAY_LENGTH(STRING_TO_ARRAY(norm, ','), 1))
+						ELSE norm
 					END as top_level
-				FROM all_places
+				FROM normalized
 			)
 			SELECT
 				top_level as place_name,
 				top_level as full_name,
 				COUNT(DISTINCT place) as count,
 				CASE
-					WHEN COUNT(DISTINCT place) > (SELECT COUNT(*) FROM parsed p2 WHERE p2.top_level = parsed.top_level AND p2.place = p2.top_level)
+					WHEN COUNT(DISTINCT place) > COUNT(DISTINCT CASE WHEN norm = top_level THEN place END)
 					THEN true
 					ELSE false
 				END as has_children
@@ -4522,9 +4535,9 @@ func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, branchID domain.
 		`, withClause, src), args...)
 	} else {
 		// Child level: places whose last parts are parent's parts. parent is a
-		// full_name built with ", " while GEDCOM places may omit the space, so both
-		// sides compare with ", " collapsed to ",".
-		// #nosec G201 -- withClause/src/n are internal SQL fragments; parent stays a bound parameter
+		// full_name built with ", " while GEDCOM places may omit the space or carry
+		// blank parts, so both sides compare normalized (repository.NormalizePlace).
+		// #nosec G201 G202 -- withClause/src/n and placeNormSQL are internal SQL fragments; parent stays a bound parameter
 		// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 		rows, err = s.db.QueryContext(ctx, fmt.Sprintf(`
 			%[1]sall_places AS (
@@ -4535,8 +4548,8 @@ func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, branchID domain.
 			normalized AS (
 				SELECT
 					place,
-					REPLACE(place, ', ', ',') as norm,
-					REPLACE($%[3]d, ', ', ',') as norm_parent
+					`+placeNormSQL("place")+` as norm,
+					`+placeNormSQL("$%[3]d")+` as norm_parent
 				FROM all_places
 			),
 			parsed AS (
@@ -4598,27 +4611,27 @@ func (s *ReadModelStore) GetPersonsByPlace(ctx context.Context, place string, op
 
 	// Count total - match place at any position in birth_place or death_place.
 	// place is usually a GetPlaceHierarchy full_name (parts joined with ", "), so
-	// both sides compare with ", " collapsed to "," as the hierarchy does.
+	// both sides compare normalized (repository.NormalizePlace) as the hierarchy does.
 	var total int
-	// #nosec G201 -- src/n are internal SQL fragments; place stays a bound parameter
+	// #nosec G201 G202 -- src/n and placeNormSQL are internal SQL fragments; place stays a bound parameter
 	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 	countQuery := fmt.Sprintf(`
 		SELECT COUNT(*) FROM %[1]s p
-		WHERE REPLACE(birth_place, ', ', ',') ILIKE '%%' || REPLACE($%[2]d, ', ', ',') || '%%'
-		   OR REPLACE(death_place, ', ', ',') ILIKE '%%' || REPLACE($%[2]d, ', ', ',') || '%%'
+		WHERE `+placeNormSQL("birth_place")+` ILIKE '%%' || `+placeNormSQL("$%[2]d")+` || '%%'
+		   OR `+placeNormSQL("death_place")+` ILIKE '%%' || `+placeNormSQL("$%[2]d")+` || '%%'
 	`, src, n)
 	err := s.db.QueryRowContext(ctx, countQuery, countArgs...).Scan(&total)
 	if err != nil {
 		return nil, 0, fmt.Errorf("count persons by place: %w", err)
 	}
 
-	// #nosec G201 -- src/n/personSelectCols are internal SQL fragments, not user input
+	// #nosec G201 G202 -- src/n/personSelectCols/placeNormSQL are internal SQL fragments, not user input
 	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 	query := fmt.Sprintf(`
 		SELECT `+personSelectCols+`
 		FROM %[1]s p
-		WHERE REPLACE(birth_place, ', ', ',') ILIKE '%%' || REPLACE($%[2]d, ', ', ',') || '%%'
-		   OR REPLACE(death_place, ', ', ',') ILIKE '%%' || REPLACE($%[2]d, ', ', ',') || '%%'
+		WHERE `+placeNormSQL("birth_place")+` ILIKE '%%' || `+placeNormSQL("$%[2]d")+` || '%%'
+		   OR `+placeNormSQL("death_place")+` ILIKE '%%' || `+placeNormSQL("$%[2]d")+` || '%%'
 		ORDER BY surname ASC, given_name ASC
 		LIMIT $%[3]d OFFSET $%[4]d
 	`, src, n, n+1, n+2)
