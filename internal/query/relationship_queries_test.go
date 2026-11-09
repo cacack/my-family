@@ -1556,3 +1556,63 @@ func TestGetRelationship_NearerUnrelatedAncestorKeepsOther(t *testing.T) {
 
 	assertCommonAncestors(t, svc, a, b, f, g)
 }
+
+// The #975 shape where the routes tie: a first-cousin marriage. S1 and S2 are
+// Y's children; X is S1's son and M is S2's daughter; A is the child of X and
+// M, and B is X's child by another partner:
+//
+//	Y ── S1 ── X ──┬── A
+//	│              └── B
+//	└── S2 ── M ────── A
+//
+// A reaches Y in 3 generations through X and in 3 around it, through M. A and
+// B are half-siblings through X and, by M's line, second cousins through Y, so
+// both are lowest, and A's path to Y is the one around X.
+func TestGetRelationship_OuterAncestorTiedAroundInner(t *testing.T) {
+	store := memory.NewReadModelStore()
+	svc := query.NewRelationshipService(store)
+	ctx := context.Background()
+
+	y := createPerson(t, ctx, store, "Y", "Outer", domain.GenderMale)
+	s1 := createPerson(t, ctx, store, "S1", "Inner", domain.GenderMale)
+	s2 := createPerson(t, ctx, store, "S2", "Side", domain.GenderFemale)
+	x := createPerson(t, ctx, store, "X", "Inner", domain.GenderMale)
+	m := createPerson(t, ctx, store, "M", "Side", domain.GenderFemale)
+	a := createPerson(t, ctx, store, "A", "Child", domain.GenderMale)
+	b := createPerson(t, ctx, store, "B", "Child", domain.GenderFemale)
+
+	createParentChild(t, ctx, store, s1, &y, nil, "", "")
+	createParentChild(t, ctx, store, s2, &y, nil, "", "")
+	createParentChild(t, ctx, store, x, &s1, nil, "", "")
+	createParentChild(t, ctx, store, m, nil, &s2, "", "")
+	createParentChild(t, ctx, store, a, &x, &m, "", "")
+	createParentChild(t, ctx, store, b, &x, nil, "", "")
+
+	assertCommonAncestors(t, svc, a, b, x, y)
+
+	for _, pair := range [][2]uuid.UUID{{a, b}, {b, a}} {
+		result, err := svc.GetRelationship(ctx, domain.MainBranchID, pair[0], pair[1])
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, p := range result.Paths {
+			if p.CommonAncestor.ID != y {
+				continue
+			}
+			fromA := p.PathFromA
+			if pair[0] == b {
+				fromA = p.PathFromB
+			}
+			var ids []uuid.UUID
+			for _, n := range fromA {
+				ids = append(ids, n.ID)
+			}
+			if want := []uuid.UUID{a, m, s2, y}; !slices.Equal(ids, want) {
+				t.Errorf("path from A to Y = %v, want %v (around X)", ids, want)
+			}
+			if p.Name != "2nd cousin" {
+				t.Errorf("relationship through Y = %q, want 2nd cousin", p.Name)
+			}
+		}
+	}
+}

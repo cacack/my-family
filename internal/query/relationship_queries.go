@@ -125,15 +125,15 @@ func (s *RelationshipService) GetRelationship(ctx context.Context, branchID doma
 	// One path per lowest common ancestor. Keying on the ancestor means no two
 	// paths share one, and because A or B count as common ancestors when on the
 	// other's line, every ancestor whose shortest route runs through them is
-	// filtered out as not lowest: no path passes through A or B except at its
-	// endpoints (#910).
+	// filtered out as not lowest, and each kept path takes a route around them:
+	// no path passes through A or B except at its endpoints (#910).
 	for _, ca := range s.findCommonAncestors(ancestorsA, ancestorsB) {
 		infoA := ancestorsA[ca.person.ID]
 		infoB := ancestorsB[ca.person.ID]
 
 		path := RelationshipPath{
-			PathFromA:           infoA.path,
-			PathFromB:           infoB.path,
+			PathFromA:           routeAroundOthers(ancestorsA, ancestorsB, ca.person.ID),
+			PathFromB:           routeAroundOthers(ancestorsB, ancestorsA, ca.person.ID),
 			CommonAncestor:      &ca.person,
 			GenerationDistanceA: infoA.generation,
 			GenerationDistanceB: infoB.generation,
@@ -307,64 +307,132 @@ func (s *RelationshipService) findCommonAncestors(ancestorsA, ancestorsB map[uui
 	return s.filterToLowestCommonAncestors(common, ancestorsA, ancestorsB)
 }
 
-// filterToLowestCommonAncestors drops a common ancestor Y when another common
-// ancestor X lies on a shortest route to Y from both people: the kinship
-// through Y is then only the kinship through X carried further back. Under
-// pedigree collapse Y stays when either person reaches it by a shorter route
-// around X, and a nearer common ancestor that does not descend from Y hides
-// nothing (#975).
+// filterToLowestCommonAncestors drops each common ancestor Y whose kinship is
+// only that of a nearer common ancestor carried further back. Y is dropped when
+//   - one person is the other's ancestor and lies on a shortest route to Y from
+//     both, since the search does not walk past A or B (#910); or
+//   - every shortest route to Y, from both people, runs through some other
+//     common ancestor.
+//
+// Under pedigree collapse Y stays when either person reaches it by a shortest
+// route that avoids the nearer common ancestors, whether that route is shorter
+// than the one through them or ties with it (#975).
 func (s *RelationshipService) filterToLowestCommonAncestors(common []ancestorInfo, ancestorsA, ancestorsB map[uuid.UUID]ancestorInfo) []ancestorInfo {
 	if len(common) <= 1 {
 		return common
 	}
 
-	parentsOf := func(id uuid.UUID) []uuid.UUID {
-		if parents := ancestorsA[id].parents; parents != nil {
-			return parents
-		}
-		return ancestorsB[id].parents
+	// A direct line: the side whose person is the other's ancestor, with that
+	// person's generation from the other side.
+	type directLine struct {
+		upper, lower map[uuid.UUID]ancestorInfo
+		gen          int
 	}
-
-	hidden := make(map[uuid.UUID]bool)
-	for _, x := range common {
-		genA, genB := ancestorsA[x.person.ID].generation, ancestorsB[x.person.ID].generation
-		for y, up := range generationsAbove(x.person.ID, parentsOf) {
-			infoA, okA := ancestorsA[y]
-			infoB, okB := ancestorsB[y]
-			if okA && okB && genA+up <= infoA.generation && genB+up <= infoB.generation {
-				hidden[y] = true
-			}
-		}
+	var direct []directLine
+	if info, ok := ancestorsA[startOf(ancestorsB)]; ok {
+		direct = append(direct, directLine{upper: ancestorsB, lower: ancestorsA, gen: info.generation})
+	}
+	if info, ok := ancestorsB[startOf(ancestorsA)]; ok {
+		direct = append(direct, directLine{upper: ancestorsA, lower: ancestorsB, gen: info.generation})
 	}
 
 	filtered := make([]ancestorInfo, 0, len(common))
 	for _, ca := range common {
-		if !hidden[ca.person.ID] {
+		y := ca.person.ID
+		hidden := false
+		for _, d := range direct {
+			if d.upper[y].generation > 0 && d.gen+d.upper[y].generation <= d.lower[y].generation {
+				hidden = true
+			}
+		}
+		if !hidden {
+			hidden = shortestRoute(ancestorsA, y, otherCommonAncestors(ancestorsA, ancestorsB, y)) == nil &&
+				shortestRoute(ancestorsB, y, otherCommonAncestors(ancestorsB, ancestorsA, y)) == nil
+		}
+		if !hidden {
 			filtered = append(filtered, ca)
 		}
 	}
 	return filtered
 }
 
-// generationsAbove returns every ancestor of id that parentsOf reaches, with
-// its shortest distance in generations; id itself is left out.
-func generationsAbove(id uuid.UUID, parentsOf func(uuid.UUID) []uuid.UUID) map[uuid.UUID]int {
-	dist := map[uuid.UUID]int{id: 0}
-	frontier := []uuid.UUID{id}
-	for up := 1; len(frontier) > 0; up++ {
+// startOf returns the person an ancestor map was built for.
+func startOf(ancestors map[uuid.UUID]ancestorInfo) uuid.UUID {
+	for id, info := range ancestors {
+		if info.generation == 0 {
+			return id
+		}
+	}
+	return uuid.Nil
+}
+
+// otherCommonAncestors returns the common ancestors of the two maps other than
+// target and the person ancestors was built for.
+func otherCommonAncestors(ancestors, other map[uuid.UUID]ancestorInfo, target uuid.UUID) map[uuid.UUID]bool {
+	start := startOf(ancestors)
+	avoid := make(map[uuid.UUID]bool)
+	for id := range ancestors {
+		if _, common := other[id]; common && id != target && id != start {
+			avoid[id] = true
+		}
+	}
+	return avoid
+}
+
+// shortestRoute returns a shortest path (of target's recorded generation) from
+// the ancestor map's person to target that passes through none of avoid, or nil
+// when there is none; a route always passes through its starting person.
+// Within a generation it keeps the father-first order of buildAncestorMap.
+func shortestRoute(ancestors map[uuid.UUID]ancestorInfo, target uuid.UUID, avoid map[uuid.UUID]bool) []RelationshipPathNode {
+	info, ok := ancestors[target]
+	if !ok || len(info.path) == 0 {
+		return nil
+	}
+	start := info.path[0].ID
+	if avoid[start] || avoid[target] {
+		return nil
+	}
+	child := make(map[uuid.UUID]uuid.UUID)
+	layer := []uuid.UUID{start}
+	for gen := 1; gen <= info.generation; gen++ {
 		var next []uuid.UUID
-		for _, child := range frontier {
-			for _, parent := range parentsOf(child) {
-				if _, seen := dist[parent]; !seen {
-					dist[parent] = up
-					next = append(next, parent)
+		for _, id := range layer {
+			for _, parent := range ancestors[id].parents {
+				if _, seen := child[parent]; seen || avoid[parent] || ancestors[parent].generation != gen {
+					continue
 				}
+				child[parent] = id
+				next = append(next, parent)
 			}
 		}
-		frontier = next
+		layer = next
 	}
-	delete(dist, id)
-	return dist
+	if _, reached := child[target]; !reached && target != start {
+		return nil
+	}
+
+	path := make([]RelationshipPathNode, info.generation+1)
+	for i, id := info.generation, target; i >= 0; i, id = i-1, child[id] {
+		path[i] = RelationshipPathNode{ID: id, Name: personDisplayName(ancestors[id].person)}
+	}
+	return path
+}
+
+// routeAroundOthers returns ancestors' path to the common ancestor ca,
+// preferring a shortest route that avoids every other common ancestor, then one
+// that avoids the other person (#910), then the recorded one. Under pedigree
+// collapse with tied routes, this keeps the path to an outer ancestor from
+// running through the inner one that would otherwise hide it (#975).
+func routeAroundOthers(ancestors, other map[uuid.UUID]ancestorInfo, ca uuid.UUID) []RelationshipPathNode {
+	if path := shortestRoute(ancestors, ca, otherCommonAncestors(ancestors, other, ca)); path != nil {
+		return path
+	}
+	if otherPerson := startOf(other); otherPerson != ca {
+		if path := shortestRoute(ancestors, ca, map[uuid.UUID]bool{otherPerson: true}); path != nil {
+			return path
+		}
+	}
+	return ancestors[ca].path
 }
 
 // getRelationshipName returns the human-readable relationship name based on generation distances.
