@@ -415,6 +415,11 @@ func TestValidateDate(t *testing.T) {
 		{input: "0", wantErr: "there is no year 0"},
 		{input: "0 BC", wantErr: "there is no year 0"},
 		{input: "BET 10 BC AND 0", wantErr: "there is no year 0"},
+		// A dual year names two years; neither may be 0.
+		{input: "1 JAN 0/1", wantErr: `"1 JAN 0/1" is not a real calendar date (there is no year 0`},
+		{input: "BET 0/1 AND 5", wantErr: "there is no year 0"},
+		{input: "BET 5 AND 00/01", wantErr: "there is no year 0"},
+		{input: "1 JAN 1750/51"},
 		{input: "1 JAN 1"},
 		{input: "1 BC"},
 		// A range must not end before it starts (#1111), compared at the
@@ -424,6 +429,10 @@ func TestValidateDate(t *testing.T) {
 		{input: "BET 10 BC AND 44 BC", wantErr: "is a reversed range: 10 BC is after 44 BC"},
 		{input: "BET MAR 1850 AND FEB 1850", wantErr: "is a reversed range: MAR 1850 is after FEB 1850"},
 		{input: "BET 2 MAR 1850 AND 1 MAR 1850", wantErr: "is a reversed range"},
+		// The message quotes each endpoint as written, not its sort year: a
+		// dual year 1750/51 is early 1751, after 1750.
+		{input: "BET 1750/51 AND 1750", wantErr: "is a reversed range: 1750/51 is after 1750;"},
+		{input: "@#DJULIAN@ BET 1700 AND 1690", wantErr: "is a reversed range: 1700 is after 1690;"},
 		{input: "BET 44 BC AND 10 BC"},
 		{input: "BET 1 MAR 1850 AND 1 MAR 1850"},
 		{input: "BET JAN 1850 AND 1850"},
@@ -524,6 +533,10 @@ func TestNormalizeDateInput(t *testing.T) {
 		{input: "about 15 March 500 ad", want: "ABT 15 MAR 500"},
 		{input: "between 50 B.C. and 10 A.D.", want: "BET 50 BC AND 10"},
 		{input: "AD 500", wantErr: `"AD 500" is not a recognized date`},
+		// Both era markers on one year contradict each other, in either order.
+		{input: "500 AD BC", wantErr: `"500 AD BC" is not a recognized date`},
+		{input: "1 A.D. B.C.E.", wantErr: "is not a recognized date"},
+		{input: "500 BC AD", wantErr: "is not a recognized date"},
 		{input: "ad", wantErr: "is not a recognized date"},
 		// Dates that read but don't exist (#1111).
 		{input: "1 Jan 0", wantErr: `"1 Jan 0" is not a real calendar date (there is no year 0`},

@@ -309,13 +309,23 @@ func englishDateToGEDCOM(s string) (string, bool) {
 			out = append(out, gedcom)
 		} else if isNumeral(word) {
 			out = append(out, word)
-		} else if (word == "ad" || word == "a.d") && len(out) > 0 && isNumeral(out[len(out)-1]) {
+		} else if (word == "ad" || word == "a.d") && len(out) > 0 && isNumeral(out[len(out)-1]) && !isBCWordAt(fields, i+1) {
 			continue
 		} else {
 			return "", false
 		}
 	}
 	return strings.Join(out, " "), true
+}
+
+// isBCWordAt reports whether fields[i] is a BC era marker, so an AD marker
+// before it ("500 AD BC") contradicts it instead of being dropped.
+func isBCWordAt(fields []string, i int) bool {
+	if i >= len(fields) {
+		return false
+	}
+	gedcom := englishDateWords[strings.TrimSuffix(strings.ToLower(fields[i]), ".")]
+	return gedcom == "BC" || gedcom == "BCE"
 }
 
 // isNumeral reports whether word is a day or year, including a dual year.
@@ -375,21 +385,51 @@ func validateDate(s, typed string) error {
 	if err := gd.Validate(); err != nil {
 		return &DateInputError{Reason: fmt.Sprintf("%q is not a real calendar date (%s)", typed, err)}
 	}
-	if *gd.Year == 0 || (gd.Year2 != nil && *gd.Year2 == 0) {
+	if *gd.Year == 0 || (gd.Year2 != nil && *gd.Year2 == 0) || hasDualYearFromZero(s) {
 		return &DateInputError{Reason: fmt.Sprintf("%q is not a real calendar date (there is no year 0: 1 BC is followed by 1 AD)", typed)}
 	}
 	if gd.isReversedRange() {
-		start := formatSimpleDate(gd.Calendar, gd.Year, gd.Month, gd.Day)
-		end := formatSimpleDate(gd.Calendar, gd.Year2, gd.Month2, gd.Day2)
+		start, end := rangeEndpointText(s)
 		return &DateInputError{Reason: fmt.Sprintf("%q is a reversed range: %s is after %s; put the earlier date first", typed, start, end)}
 	}
 	return nil
 }
 
+// hasDualYearFromZero reports whether s holds a dual year whose first year is
+// 0 ("0/1"). ParseGenDate reads a dual year as its later year, so the year-0
+// check on Year and Year2 alone misses it.
+func hasDualYearFromZero(s string) bool {
+	for _, field := range strings.Fields(s) {
+		if first, _, dual := strings.Cut(field, "/"); dual && first != "" && strings.Trim(first, "0") == "" {
+			return true
+		}
+	}
+	return false
+}
+
+// rangeEndpointText returns the start and end of a BET/FROM range s as
+// written, without its qualifier or calendar escape, so a rejection quotes
+// "1750/51" rather than the sort year 1751 it parses to.
+func rangeEndpointText(s string) (start, end string) {
+	work := strings.ToUpper(s)
+	if _, rest, ok := extractCalendarEscape(work); ok {
+		work = rest
+	}
+	sep := " AND "
+	if strings.HasPrefix(work, "FROM ") {
+		sep = " TO "
+	}
+	work = strings.TrimPrefix(strings.TrimPrefix(work, "BET "), "FROM ")
+	start, end, _ = strings.Cut(work, sep)
+	return strings.TrimSpace(start), strings.TrimSpace(end)
+}
+
 // isReversedRange reports whether a BET/FROM range ends before it starts,
 // comparing only the precision both endpoints share, so "BET JAN 1850 AND
-// 1850" is not reversed. Both endpoints are in the same calendar, whose month
-// numbers run in calendar order.
+// 1850" is not reversed. It assumes both endpoints are in one calendar, whose
+// month numbers run in calendar order. A range whose end date carries its own
+// calendar escape ("BET @#DJULIAN@ 1700 AND @#DGREGORIAN@ 1690") parses with
+// no Year2 (#1227), so it is never reported as reversed.
 func (g *GenDate) isReversedRange() bool {
 	if g.Year == nil || g.Year2 == nil {
 		return false
