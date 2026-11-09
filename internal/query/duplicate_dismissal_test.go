@@ -5,11 +5,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cacack/gedcom-go/v3/validator"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cacack/my-family/internal/domain"
+	"github.com/cacack/my-family/internal/query"
 	"github.com/cacack/my-family/internal/repository"
 )
 
@@ -116,4 +118,50 @@ func TestBranchHealth_HonorsDismissals(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, after.Duplicates)
 	assert.Equal(t, before.ResolvedCount+1, after.ResolvedCount, "dismissing main's Zed pair on the branch resolves it there")
+}
+
+// potentialDuplicates counts the POTENTIAL_DUPLICATE issues in issues.
+func potentialDuplicates(issues []query.ValidationIssueResult) int {
+	n := 0
+	for _, issue := range issues {
+		if issue.Code == validator.CodePotentialDuplicate {
+			n++
+		}
+	}
+	return n
+}
+
+// A dismissed pair is not reported as a POTENTIAL_DUPLICATE validation issue,
+// nor counted in the quality report, so the Validation tab agrees with the
+// Duplicates tab (#1036).
+func TestValidationIssues_ExcludeDismissedPairs(t *testing.T) {
+	service, store := setupValidationService()
+	ctx := context.Background()
+	father := addPerson(store, "John", "Smith", "1950")
+	son := addPerson(store, "John", "Smith", "1951")
+
+	before, err := service.GetValidationIssues(ctx, "", 0, 0)
+	require.NoError(t, err)
+	require.Equal(t, 1, potentialDuplicates(before.Issues))
+	reportBefore, err := service.GetQualityReport(ctx)
+	require.NoError(t, err)
+
+	dismissPair(t, store, father, son, "", time.Now().UTC())
+
+	after, err := service.GetValidationIssues(ctx, "", 0, 0)
+	require.NoError(t, err)
+	assert.Zero(t, potentialDuplicates(after.Issues), "a dismissed pair is not a validation issue")
+	assert.Equal(t, before.InfoCount-1, after.InfoCount)
+	assert.Equal(t, before.Total-1, after.Total)
+
+	info, err := service.GetValidationIssues(ctx, "info", 0, 0)
+	require.NoError(t, err)
+	assert.Zero(t, potentialDuplicates(info.Issues))
+
+	reportAfter, err := service.GetQualityReport(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, reportBefore.InfoCount-1, reportAfter.InfoCount)
+	for _, top := range reportAfter.TopIssues {
+		assert.NotEqual(t, validator.CodePotentialDuplicate, top.Code, "a dismissed pair is not a top issue")
+	}
 }

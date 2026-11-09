@@ -226,8 +226,18 @@
 				const [person1_id, person2_id] = parsePairKey(k);
 				return { person1_id, person2_id };
 			});
-			await api.batchDismissDuplicates({ dismissals });
+			const response = await api.batchDismissDuplicates({ dismissals });
+			// Each pair is its own command and can fail alone: keep the failed
+			// pairs selected and say so, rather than letting them silently reappear.
+			const failed = response.results.filter((r) => !r.success);
 			clearSelection();
+			for (const r of failed) selectedKeys.add(pairKey(r.person1_id, r.person2_id));
+			if (failed.length > 0) {
+				const reasons = [...new Set(failed.map((r) => r.error).filter(Boolean))].join('; ');
+				dismissError =
+					`${failed.length} of ${response.total} pairs could not be marked not duplicates` +
+					(reasons ? `: ${reasons}` : '');
+			}
 			await loadDuplicates();
 		} catch (e) {
 			dismissError = truncateError(e, 'Failed to dismiss selected duplicates');

@@ -80,12 +80,20 @@ func (s *ValidationService) GetQualityReportOn(ctx context.Context, branchID dom
 		return nil, err
 	}
 
+	dismissed, err := s.dismissedPairIDs(ctx, branchID)
+	if err != nil {
+		return nil, err
+	}
+
 	// Generate quality report with strict mode to get all severity levels
 	qr := strictValidator().QualityReport(view.doc)
+	errs := view.withoutDismissedIssues(qr.Errors, dismissed)
+	warnings := view.withoutDismissedIssues(qr.Warnings, dismissed)
+	info := view.withoutDismissedIssues(qr.Info, dismissed)
 
 	// Count issues by code for top issues
 	issueCounts := make(map[string]int)
-	allIssues := append(append(append([]validator.Issue{}, qr.Errors...), qr.Warnings...), qr.Info...)
+	allIssues := append(append(append([]validator.Issue{}, errs...), warnings...), info...)
 	for _, issue := range allIssues {
 		issueCounts[issue.Code]++
 	}
@@ -109,9 +117,9 @@ func (s *ValidationService) GetQualityReportOn(ctx context.Context, branchID dom
 		BirthDateCoverage: qr.BirthDateCoverage,
 		DeathDateCoverage: qr.DeathDateCoverage,
 		SourceCoverage:    qr.SourceCoverage,
-		ErrorCount:        qr.ErrorCount,
-		WarningCount:      qr.WarningCount,
-		InfoCount:         qr.InfoCount,
+		ErrorCount:        len(errs),
+		WarningCount:      len(warnings),
+		InfoCount:         len(info),
 		TopIssues:         topIssues,
 	}, nil
 }
@@ -279,9 +287,14 @@ func (s *ValidationService) GetValidationIssuesOn(ctx context.Context, branchID 
 		return nil, err
 	}
 
+	dismissed, err := s.dismissedPairIDs(ctx, branchID)
+	if err != nil {
+		return nil, err
+	}
+
 	// Get all validation issues (unfiltered) so we can compute global counts
 	// even when a severity filter is applied.
-	allIssues := strictValidator().ValidateAll(view.doc)
+	allIssues := view.withoutDismissedIssues(strictValidator().ValidateAll(view.doc), dismissed)
 
 	page := &ValidationIssuesPage{
 		Issues: []ValidationIssueResult{},
@@ -367,6 +380,33 @@ func (v *gedcomView) issueResult(issue validator.Issue) ValidationIssueResult {
 		result.RelatedRecordID = &id
 	}
 	return result
+}
+
+// isDismissedDuplicate reports whether issue is the POTENTIAL_DUPLICATE issue
+// of a pair dismissed in the view's scope (#1036).
+func (v *gedcomView) isDismissedDuplicate(issue validator.Issue, dismissed map[uuid.UUID]bool) bool {
+	if issue.Code != validator.CodePotentialDuplicate || len(dismissed) == 0 {
+		return false
+	}
+	first, ok1 := v.xrefMap[issue.RecordXRef]
+	second, ok2 := v.xrefMap[issue.RelatedXRef]
+	if !ok1 || !ok2 {
+		return false
+	}
+	pair, err := domain.NewDuplicatePair(first, second)
+	return err == nil && dismissed[pair.ID()]
+}
+
+// withoutDismissedIssues drops the POTENTIAL_DUPLICATE issues of dismissed
+// pairs, keeping order, so validation agrees with FindDuplicatesOn.
+func (v *gedcomView) withoutDismissedIssues(issues []validator.Issue, dismissed map[uuid.UUID]bool) []validator.Issue {
+	kept := make([]validator.Issue, 0, len(issues))
+	for _, issue := range issues {
+		if !v.isDismissedDuplicate(issue, dismissed) {
+			kept = append(kept, issue)
+		}
+	}
+	return kept
 }
 
 // duplicates returns every potential duplicate pair in the view, in the

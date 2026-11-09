@@ -204,6 +204,48 @@ describe('Quality landing page', () => {
 		});
 	});
 
+	it('reports a partly failed batch dismissal and keeps the failed pairs selected', async () => {
+		vi.mocked(apiModule.api.batchDismissDuplicates).mockResolvedValue({
+			total: 2,
+			successful: 1,
+			failed: 1,
+			results: [
+				{
+					person1_id: 'p1-aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+					person2_id: 'p2-bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+					success: true
+				},
+				{
+					person1_id: 'p3-cccccccc-cccc-cccc-cccc-cccccccccccc',
+					person2_id: 'p4-dddddddd-dddd-dddd-dddd-dddddddddddd',
+					success: false,
+					error: 'person not found'
+				}
+			]
+		});
+		render(Page);
+		await fireEvent.click(screen.getByRole('tab', { name: /^duplicates/i }));
+		await screen.findByText('Jane Doe');
+		await fireEvent.click(
+			await screen.findByRole('checkbox', { name: /Select duplicate pair Jane Doe and Jane Doh/i })
+		);
+		await fireEvent.click(
+			await screen.findByRole('checkbox', {
+				name: /Select duplicate pair John Smith and Jon Smith/i
+			})
+		);
+		await fireEvent.click(
+			await screen.findByRole('button', { name: /^Mark selected not duplicates$/ })
+		);
+
+		await screen.findByText(/1 of 2 pairs could not be marked not duplicates: person not found/);
+		expect(screen.getByText('1 selected')).toBeDefined();
+		const failed = screen.getByRole('checkbox', {
+			name: /Select duplicate pair John Smith and Jon Smith/i
+		});
+		await waitFor(() => expect(failed.getAttribute('aria-checked')).toBe('true'));
+	});
+
 	const manyIssues: apiModule.ValidationIssuesResponse = { ...mockValidationResponse, total: 45 };
 
 	it('restores the tab, page and severity filter from the URL (#946)', async () => {

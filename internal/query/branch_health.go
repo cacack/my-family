@@ -203,10 +203,7 @@ func (s *BranchHealthService) findings(ctx context.Context, scope domain.BranchI
 	occurrences := make(map[string]int)
 	for _, issue := range strictValidator().ValidateAll(view.doc) {
 		if issue.Code == validator.CodePotentialDuplicate {
-			if dup, ok := view.duplicateFromIssue(issue); ok {
-				if pair, err := domain.NewDuplicatePair(dup.Person1ID, dup.Person2ID); err == nil && dismissed[pair.ID()] {
-					continue
-				}
+			if dup, ok := view.duplicateFromIssue(issue); ok && !view.isDismissedDuplicate(issue, dismissed) {
 				found.duplicates[dup.Key] = dup
 			}
 			continue
