@@ -2604,6 +2604,38 @@ func (s *ReadModelStore) GetChildFamily(ctx context.Context, branchID domain.Bra
 	return scanFamily(row)
 }
 
+// RenameFamilyMember rewrites personID's partner, child and pedigree parent
+// names on the families, family_children and pedigree_edges rows stored under
+// branchID itself.
+func (s *ReadModelStore) RenameFamilyMember(ctx context.Context, branchID domain.BranchID, personID uuid.UUID, givenName, surname string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin rename family member: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	args := []any{givenName, surname, personID, branchID.UUID()}
+	for _, stmt := range []string{
+		`UPDATE families SET partner1_given_name = $1, partner1_surname = $2 WHERE partner1_id = $3 AND branch_id = $4 AND NOT deleted`,
+		`UPDATE families SET partner2_given_name = $1, partner2_surname = $2 WHERE partner2_id = $3 AND branch_id = $4 AND NOT deleted`,
+		`UPDATE family_children SET person_given_name = $1, person_surname = $2 WHERE person_id = $3 AND branch_id = $4 AND NOT deleted`,
+	} {
+		if _, err := tx.ExecContext(ctx, stmt, args...); err != nil {
+			return fmt.Errorf("rename family member: %w", err)
+		}
+	}
+	edgeArgs := []any{domain.JoinFullName(givenName, surname), personID, branchID.UUID()}
+	for _, stmt := range []string{
+		`UPDATE pedigree_edges SET father_name = $1 WHERE father_id = $2 AND branch_id = $3 AND NOT deleted`,
+		`UPDATE pedigree_edges SET mother_name = $1 WHERE mother_id = $2 AND branch_id = $3 AND NOT deleted`,
+	} {
+		if _, err := tx.ExecContext(ctx, stmt, edgeArgs...); err != nil {
+			return fmt.Errorf("rename pedigree parent: %w", err)
+		}
+	}
+	return tx.Commit()
+}
+
 // SaveFamilyChild saves a family child relationship on the given branch (ADR-005).
 // Keyed by (family_id, person_id, branch_id); untouched children fall back to main.
 func (s *ReadModelStore) SaveFamilyChild(ctx context.Context, branchID domain.BranchID, child *repository.FamilyChildReadModel) error {

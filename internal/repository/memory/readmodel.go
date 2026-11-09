@@ -1081,6 +1081,49 @@ func (s *ReadModelStore) GetChildFamily(ctx context.Context, branchID domain.Bra
 	return nil, nil
 }
 
+// RenameFamilyMember rewrites personID's partner, child and pedigree parent
+// names on the family rows, child buckets and pedigree edges stored under
+// branchID itself.
+func (s *ReadModelStore) RenameFamilyMember(ctx context.Context, branchID domain.BranchID, personID uuid.UUID, givenName, surname string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for k, f := range s.families {
+		if k.branch != branchID || f == nil {
+			continue
+		}
+		if f.Partner1ID != nil && *f.Partner1ID == personID {
+			f.Partner1GivenName, f.Partner1Surname = givenName, surname
+		}
+		if f.Partner2ID != nil && *f.Partner2ID == personID {
+			f.Partner2GivenName, f.Partner2Surname = givenName, surname
+		}
+	}
+	for k, children := range s.familyChildren {
+		if k.branch != branchID {
+			continue
+		}
+		for i := range children {
+			if children[i].PersonID == personID {
+				children[i].PersonGivenName, children[i].PersonSurname = givenName, surname
+			}
+		}
+	}
+	fullName := domain.JoinFullName(givenName, surname)
+	for k, edge := range s.pedigreeEdges {
+		if k.branch != branchID || edge == nil {
+			continue
+		}
+		if edge.FatherID != nil && *edge.FatherID == personID {
+			edge.FatherName = fullName
+		}
+		if edge.MotherID != nil && *edge.MotherID == personID {
+			edge.MotherName = fullName
+		}
+	}
+	return nil
+}
+
 // SaveFamilyChild saves a family child relationship on the given branch. On a
 // non-main branch the family's children bucket is copied-on-write from main
 // before the mutation is applied.
