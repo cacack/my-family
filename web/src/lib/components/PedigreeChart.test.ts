@@ -805,4 +805,81 @@ describe('PedigreeChart', () => {
 			expect(zoomed()).toBe(first);
 		});
 	});
+
+	describe('first view on a narrow chart (#1098)', () => {
+		/** `generations` full generations above a root: 2 parents, 4 grandparents and so on. */
+		function fullTree(generations: number, id = 'r'): PedigreeNode {
+			if (generations === 0) return { id, given_name: id };
+			return { id, given_name: id, father: fullTree(generations - 1, `${id}f`), mother: fullTree(generations - 1, `${id}m`) };
+		}
+		/** Draws the chart in a `width` x `height` box (jsdom has no layout). */
+		function chartSize(width: number, height: number) {
+			vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, width, height));
+		}
+		const count = (container: Element) => container.querySelectorAll('.node').length;
+		const badges = (container: Element) => [...container.querySelectorAll('.ancestor-badge text')].map((t) => t.textContent);
+
+		beforeEach(() => setReducedMotion(true));
+		afterEach(() => {
+			setReducedMotion(false);
+			setFontSize('normal');
+			vi.restoreAllMocks();
+		});
+
+		it('folds the generations past the parents at phone size, behind +N badges', () => {
+			chartSize(343, 240);
+			const { container, component } = render(PedigreeChart, { props: { data: fullTree(3), layout: 'compact' } });
+			expect(count(container)).toBe(3);
+			expect(badges(container)).toEqual(['+6', '+6']);
+			expect(component.isCollapsed('rf')).toBe(true);
+			expect(component.isCollapsed('rm')).toBe(true);
+		});
+
+		it('keeps the generations that still fit', () => {
+			// Wide enough for the grandparents, not the great-grandparents
+			chartSize(560, 400);
+			const { container } = render(PedigreeChart, { props: { data: fullTree(3), layout: 'compact' } });
+			expect(count(container)).toBe(7);
+			expect(badges(container)).toEqual(['+2', '+2', '+2', '+2']);
+		});
+
+		it('draws every generation when they fit, as on a desktop', () => {
+			chartSize(1250, 600);
+			const { container } = render(PedigreeChart, { props: { data: fullTree(3), layout: 'compact' } });
+			expect(count(container)).toBe(15);
+			expect(badges(container)).toEqual([]);
+		});
+
+		it('keeps an expansion through a redraw, and Reset folds it again', async () => {
+			chartSize(343, 240);
+			const { container, component } = render(PedigreeChart, { props: { data: fullTree(3), layout: 'compact' } });
+			const zoomed = () => container.querySelector('svg > g')?.getAttribute('transform');
+			const first = zoomed();
+			component.toggleCollapse('rf');
+			await wait(100);
+			expect(count(container)).toBe(9);
+
+			// A redraw (here the font-size setting) is not a new first view
+			setFontSize('large');
+			await wait(0);
+			expect(count(container)).toBe(9);
+			setFontSize('normal');
+			await wait(0);
+
+			component.resetZoom();
+			await wait(100);
+			expect(count(container)).toBe(3);
+			expect(zoomed()).toBe(first);
+		});
+
+		it('works out the first view afresh for a new root', async () => {
+			chartSize(343, 240);
+			const { container, component, rerender } = render(PedigreeChart, { props: { data: fullTree(3), layout: 'compact' } });
+			component.expandAll();
+			await wait(100);
+			expect(count(container)).toBe(15);
+			await rerender({ data: fullTree(3, 'other') });
+			expect(count(container)).toBe(3);
+		});
+	});
 });

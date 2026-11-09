@@ -3,10 +3,12 @@ import * as d3 from 'd3';
 import {
 	FIT_SCALE_RANGE,
 	MIN_CARD_FONT_PX,
+	cardsInView,
 	centreOnX,
 	fitLabel,
 	fitText,
 	fitTransform,
+	firstViewDepth,
 	measureWith,
 	nameLines,
 	offscreenX,
@@ -72,6 +74,54 @@ describe('offscreenX', () => {
 	it('honours the zoom scale', () => {
 		const t = d3.zoomIdentity.translate(500, 0).scale(0.5);
 		expect(offscreenX([-1000, 1000, 1200], 50, t, 1000)).toEqual({ left: [], right: [1200] });
+	});
+});
+
+describe('cardsInView', () => {
+	const half = { width: 50, height: 20 };
+	const t = d3.zoomIdentity.translate(500, 100);
+
+	it('accepts cards wholly inside the viewport', () => {
+		expect(cardsInView([{ x: -450, y: -80 }, { x: 450, y: 80 }], half, t, 1000, 200)).toBe(true);
+	});
+
+	it('rejects a card cut by any edge', () => {
+		expect(cardsInView([{ x: -451, y: 0 }], half, t, 1000, 200)).toBe(false);
+		expect(cardsInView([{ x: 451, y: 0 }], half, t, 1000, 200)).toBe(false);
+		expect(cardsInView([{ x: 0, y: -81 }], half, t, 1000, 200)).toBe(false);
+		expect(cardsInView([{ x: 0, y: 81 }], half, t, 1000, 200)).toBe(false);
+	});
+
+	it('honours the zoom scale', () => {
+		const zoomed = d3.zoomIdentity.translate(500, 100).scale(0.5);
+		expect(cardsInView([{ x: 900, y: 0 }], half, zoomed, 1000, 200)).toBe(true);
+	});
+});
+
+describe('firstViewDepth (#1098)', () => {
+	it('keeps every generation when they all fit', () => {
+		expect(firstViewDepth(4, () => true)).toBe(4);
+	});
+
+	it('keeps the most generations that fit', () => {
+		expect(firstViewDepth(5, (depth) => depth <= 2)).toBe(2);
+	});
+
+	it('always keeps the parents, even when they do not fit', () => {
+		expect(firstViewDepth(4, () => false)).toBe(1);
+	});
+
+	it('only tries depths that exist, deepest first, and never asks about the parents', () => {
+		const asked: number[] = [];
+		firstViewDepth(3, (depth) => {
+			asked.push(depth);
+			return false;
+		});
+		expect(asked).toEqual([3, 2]);
+	});
+
+	it('leaves a lone person at depth 0', () => {
+		expect(firstViewDepth(0, () => false)).toBe(0);
 	});
 });
 
