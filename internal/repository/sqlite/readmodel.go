@@ -12,7 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cacack/gedcom-go/v3/gedcom"
 	"github.com/google/uuid"
 
 	"github.com/cacack/my-family/internal/domain"
@@ -5067,9 +5066,8 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 		if err != nil {
 			continue
 		}
-		lat, errLat := gedcom.ParseCoordinate(latStr)
-		lon, errLon := gedcom.ParseCoordinate(lonStr)
-		if errLat != nil || errLon != nil {
+		lat, lon, ok := repository.ParseMapCoordinates(personID, "birth", latStr, lonStr)
+		if !ok {
 			continue
 		}
 		person := repository.MapPerson{ID: personID, GivenName: givenName, Surname: surname}
@@ -5107,9 +5105,8 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 		if err != nil {
 			continue
 		}
-		lat, errLat := gedcom.ParseCoordinate(latStr)
-		lon, errLon := gedcom.ParseCoordinate(lonStr)
-		if errLat != nil || errLon != nil {
+		lat, lon, ok := repository.ParseMapCoordinates(personID, "death", latStr, lonStr)
+		if !ok {
 			continue
 		}
 		person := repository.MapPerson{ID: personID, GivenName: givenName, Surname: surname}

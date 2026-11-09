@@ -3488,6 +3488,42 @@ func TestReadModelStore_GetMapLocations_NoCoordinates(t *testing.T) {
 	}
 }
 
+func TestReadModelStore_GetMapLocations_AxisChecked(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	// #801: a direction letter from the other axis, or an out-of-range value,
+	// is skipped rather than plotted; only the valid pins remain.
+	str := func(s string) *string { return &s }
+	persons := []*repository.PersonReadModel{
+		{ID: uuid.New(), BirthPlace: "Boston", BirthPlaceLat: str("N42.3601"), BirthPlaceLong: str("W71.0589")},
+		{ID: uuid.New(), BirthPlace: "Swapped Latitude", BirthPlaceLat: str("E42.3601"), BirthPlaceLong: str("W71.0589")},
+		{ID: uuid.New(), BirthPlace: "Swapped Longitude", BirthPlaceLat: str("N42.3601"), BirthPlaceLong: str("S71.0589")},
+		{ID: uuid.New(), BirthPlace: "Out Of Range", BirthPlaceLat: str("N95"), BirthPlaceLong: str("E10")},
+		{ID: uuid.New(), DeathPlace: "Paris", DeathPlaceLat: str("N48.8566"), DeathPlaceLong: str("E2.3522")},
+		{ID: uuid.New(), DeathPlace: "Bad Death", DeathPlaceLat: str("N48.8566"), DeathPlaceLong: str("E200")},
+	}
+	for _, p := range persons {
+		p.Version = 1
+		if err := store.SavePerson(ctx, domain.MainBranchID, p); err != nil {
+			t.Fatalf("SavePerson() failed: %v", err)
+		}
+	}
+
+	results, err := store.GetMapLocations(ctx, domain.MainBranchID)
+	if err != nil {
+		t.Fatalf("GetMapLocations() failed: %v", err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("GetMapLocations = %+v, want only the Boston birth and Paris death pins", results)
+	}
+	for _, r := range results {
+		if !(r.Place == "Boston" && r.EventType == "birth") && !(r.Place == "Paris" && r.EventType == "death") {
+			t.Errorf("unexpected pin %+v", r)
+		}
+	}
+}
+
 // Global List methods for export
 
 func TestReadModelStore_ListEvents(t *testing.T) {
