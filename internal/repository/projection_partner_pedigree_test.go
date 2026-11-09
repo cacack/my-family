@@ -71,6 +71,58 @@ func TestProjector_FamilyPartnerChange_RefreshesChildEdges(t *testing.T) {
 	}
 }
 
+// TestProjector_PartnerCreatedAfterFamily_FillsChildEdges (#1259): a family
+// projected before one of its partners exists, as a merge replay can do,
+// gets that partner into its children's edges once the person is created,
+// but an edge that came from another family is left alone.
+func TestProjector_PartnerCreatedAfterFamily_FillsChildEdges(t *testing.T) {
+	ctx := context.Background()
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore, nil)
+	project := func(e domain.Event, version int64) {
+		t.Helper()
+		if err := projector.Project(ctx, e, version, domain.MainBranchID); err != nil {
+			t.Fatalf("project %T: %v", e, err)
+		}
+	}
+	newPerson := func(name string, g domain.Gender) *domain.Person {
+		p := domain.NewPerson(name, "Placeholder")
+		p.Gender = g
+		return p
+	}
+	mother := newPerson("Briar", domain.GenderFemale)
+	stepMother := newPerson("Dana", domain.GenderFemale)
+	child := newPerson("Wren", domain.GenderFemale)
+	adopted := newPerson("Ellis", domain.GenderMale)
+	lateFather := newPerson("Alden", domain.GenderMale)
+	for _, p := range []*domain.Person{mother, stepMother, child, adopted} {
+		project(domain.NewPersonCreated(p), 1)
+	}
+
+	birth := domain.NewFamilyWithPartners(&mother.ID, &lateFather.ID)
+	project(domain.NewFamilyCreated(birth), 1)
+	project(domain.NewChildLinkedToFamily(domain.NewFamilyChild(birth.ID, child.ID, domain.ChildBiological)), 2)
+	project(domain.NewChildLinkedToFamily(domain.NewFamilyChild(birth.ID, adopted.ID, domain.ChildBiological)), 3)
+	other := domain.NewFamilyWithPartners(&stepMother.ID, nil)
+	project(domain.NewFamilyCreated(other), 1)
+	project(domain.NewChildLinkedToFamily(domain.NewFamilyChild(other.ID, adopted.ID, domain.ChildAdopted)), 2)
+
+	if edge := mustEdge(t, readStore, child.ID); edge.FatherID != nil {
+		t.Fatalf("Wren father before the father exists = %v, want none", edge.FatherID)
+	}
+
+	project(domain.NewPersonCreated(lateFather), 1)
+
+	edge := mustEdge(t, readStore, child.ID)
+	if edge.FatherID == nil || *edge.FatherID != lateFather.ID || edge.MotherID == nil || *edge.MotherID != mother.ID {
+		t.Errorf("Wren edge = father %v mother %v, want %s / %s", edge.FatherID, edge.MotherID, lateFather.ID, mother.ID)
+	}
+	edge = mustEdge(t, readStore, adopted.ID)
+	if edge.MotherID == nil || *edge.MotherID != stepMother.ID || edge.FatherID != nil {
+		t.Errorf("Ellis edge = father %v mother %v, want the other family's mother %s", edge.FatherID, edge.MotherID, stepMother.ID)
+	}
+}
+
 func mustEdge(t *testing.T, rs repository.ReadModelStore, personID uuid.UUID) *repository.PedigreeEdge {
 	t.Helper()
 	edge, err := rs.GetPedigreeEdge(context.Background(), domain.MainBranchID, personID)
