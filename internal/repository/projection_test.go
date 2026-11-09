@@ -2246,17 +2246,16 @@ func TestProjector_ChildLinked_WithTwoMaleParents(t *testing.T) {
 		t.Fatalf("Project child link failed: %v", err)
 	}
 
-	// Verify pedigree edge - second male should overwrite first as father
+	// Both partners must be parents: the second male takes the free slot (#1230).
 	edge, _ := readStore.GetPedigreeEdge(ctx, domain.MainBranchID, child.ID)
 	if edge == nil {
 		t.Fatal("Pedigree edge not created")
 	}
-	// Both are male, so father2 should be the father (last one wins)
-	if edge.FatherID == nil || *edge.FatherID != father2.ID {
-		t.Error("FatherID should be father2")
+	if edge.FatherID == nil || *edge.FatherID != father1.ID {
+		t.Error("FatherID should be father1")
 	}
-	if edge.MotherID != nil {
-		t.Error("MotherID should be nil (no female parent)")
+	if edge.MotherID == nil || *edge.MotherID != father2.ID {
+		t.Error("MotherID should be father2 (the free slot)")
 	}
 }
 
@@ -2288,17 +2287,16 @@ func TestProjector_ChildLinked_WithTwoFemaleParents(t *testing.T) {
 		t.Fatalf("Project child link failed: %v", err)
 	}
 
-	// Verify pedigree edge - second female should overwrite first as mother
+	// Both partners must be parents: the second female takes the free slot (#1230).
 	edge, _ := readStore.GetPedigreeEdge(ctx, domain.MainBranchID, child.ID)
 	if edge == nil {
 		t.Fatal("Pedigree edge not created")
 	}
-	if edge.FatherID != nil {
-		t.Error("FatherID should be nil (no male parent)")
+	if edge.FatherID == nil || *edge.FatherID != mother2.ID {
+		t.Error("FatherID should be mother2 (the free slot)")
 	}
-	// Both are female, so mother2 should be the mother (last one wins)
-	if edge.MotherID == nil || *edge.MotherID != mother2.ID {
-		t.Error("MotherID should be mother2")
+	if edge.MotherID == nil || *edge.MotherID != mother1.ID {
+		t.Error("MotherID should be mother1")
 	}
 }
 
