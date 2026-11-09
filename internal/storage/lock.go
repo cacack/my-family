@@ -76,7 +76,7 @@ type fileLock struct {
 }
 
 func openFileLock(path string) (*fileLock, error) {
-	// #nosec G304 -- path is the operator's SQLITE_PATH plus ".lock".
+	// #nosec G304 -- path is the operator's SQLITE_PATH, resolved, plus ".lock".
 	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600)
 	if err != nil {
 		return nil, err

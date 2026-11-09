@@ -25,6 +25,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -200,12 +201,12 @@ func OpenMemory() *Stores {
 
 // OpenSQLite opens (creating if needed) the SQLite database at path and
 // constructs all four stores over it, holding the lock for access on the file
-// path + ".lock" until Close.
+// lockPath(path) until Close.
 func OpenSQLite(path string, access Access) (*Stores, error) {
 	if strings.TrimSpace(path) == "" {
 		return nil, errors.New("SQLite storage selected but SQLITE_PATH is empty")
 	}
-	lock, err := openFileLock(path + ".lock")
+	lock, err := openFileLock(lockPath(path))
 	if err != nil {
 		return nil, fmt.Errorf("open SQLite database %q: lock file: %w", path, err)
 	}
@@ -225,6 +226,18 @@ func OpenSQLite(path string, access Access) (*Stores, error) {
 		func(db *sql.DB) (repository.SnapshotStore, error) { return sqlite.NewSnapshotStore(db) },
 		func(db *sql.DB) (repository.BranchStore, error) { return sqlite.NewBranchStore(db) },
 	)
+}
+
+// lockPath returns the lock file for the SQLite database at path: the
+// database's real path, with symlinks resolved, plus ".lock". Without that, a
+// server and a rebuild naming one database through a symlink to the file and
+// through its real path would lock different files. A path that does not
+// resolve (no database yet) is used as given.
+func lockPath(path string) string {
+	if real, err := filepath.EvalSymlinks(path); err == nil {
+		path = real
+	}
+	return path + ".lock"
 }
 
 // OpenPostgres connects to the PostgreSQL database at connStr and constructs

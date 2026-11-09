@@ -174,10 +174,16 @@ Implemented in `internal/storage` (`storage.Open`), which `serve` calls at start
   `rebuild` exclude each other through a lock taken before any store is
   built and held until exit: a PostgreSQL session advisory lock on a
   connection of its own, or on SQLite an OS file lock (`flock`, `LockFileEx`)
-  on `<SQLITE_PATH>.lock`. Servers take it shared, so several may run; a
-  rebuild takes it exclusively, so each refuses to start while the other runs
+  on `<SQLITE_PATH>.lock`, with symlinks in `SQLITE_PATH` resolved so every
+  path to one database file locks the same file. Servers take it shared, so
+  several may run; a rebuild takes it exclusively, so each refuses to start
+  while the other runs
   ([#1232](https://github.com/cacack/my-family/issues/1232)). If a PostgreSQL
-  server's lock connection drops, its lock is lost until it restarts.
+  server's lock connection drops, its lock is lost until it restarts. The
+  advisory lock needs a session of its own: `DATABASE_URL` must reach
+  PostgreSQL directly or through a pooler in session mode. Behind PgBouncer in
+  transaction or statement pooling mode a session lock is not held between
+  statements, so the guard does not work.
 
 ### SQLite Driver and Builds
 

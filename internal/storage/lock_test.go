@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -14,6 +15,48 @@ import (
 
 func TestSQLite_RebuildAndServeExcludeEachOther(t *testing.T) {
 	assertRebuildAndServeExcludeEachOther(t, &config.Config{SQLitePath: filepath.Join(t.TempDir(), "myfamily.db")})
+}
+
+// TestSQLite_LockFollowsSymlinks proves serve and rebuild exclude each other
+// when they name the same database through different paths: a symlink to the
+// file, or a symlinked directory before the file exists.
+func TestSQLite_LockFollowsSymlinks(t *testing.T) {
+	dir := t.TempDir()
+	realDir := filepath.Join(dir, "real")
+	if err := os.Mkdir(realDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	linkDir := filepath.Join(dir, "link")
+	if err := os.Symlink(realDir, linkDir); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	realPath := filepath.Join(realDir, "myfamily.db")
+
+	// The database does not exist yet: only its directory is a symlink.
+	serving, err := OpenSQLite(filepath.Join(linkDir, "myfamily.db"), AccessServe)
+	if err != nil {
+		t.Fatalf("Open for serve through the linked directory: %v", err)
+	}
+	if _, err := OpenSQLite(realPath, AccessRebuild); !errors.Is(err, ErrServerRunning) {
+		t.Fatalf("Open for rebuild by the real path: err = %v, want ErrServerRunning", err)
+	}
+	if err := serving.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// A symlink to the database file itself.
+	fileLink := filepath.Join(dir, "alias.db")
+	if err := os.Symlink(realPath, fileLink); err != nil {
+		t.Fatal(err)
+	}
+	rebuilding, err := OpenSQLite(fileLink, AccessRebuild)
+	if err != nil {
+		t.Fatalf("Open for rebuild through the file link: %v", err)
+	}
+	defer rebuilding.Close()
+	if _, err := OpenSQLite(realPath, AccessServe); !errors.Is(err, ErrRebuildRunning) {
+		t.Fatalf("Open for serve by the real path: err = %v, want ErrRebuildRunning", err)
+	}
 }
 
 func TestPostgres_RebuildAndServeExcludeEachOther(t *testing.T) {
