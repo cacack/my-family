@@ -1007,6 +1007,14 @@ func (p *Projector) projectCitationCreated(ctx context.Context, e domain.Citatio
 	if err := p.readStore.SaveCitation(ctx, branchID, citation); err != nil {
 		return err
 	}
+	if len(e.ExternalIDs) > 0 {
+		if err := p.readStore.ReplaceCitationExternalIDs(ctx, branchID, e.CitationID, externalIDRows(e.ExternalIDs,
+			func(seq int, x domain.ExternalIdentifier) CitationExternalIDReadModel {
+				return CitationExternalIDReadModel{CitationID: e.CitationID, Sequence: seq, Value: x.Value, Type: x.Type}
+			})); err != nil {
+			return err
+		}
+	}
 
 	// Increment citation count on the source, on the same branch.
 	if source != nil {

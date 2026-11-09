@@ -193,6 +193,10 @@ type CitationData struct {
 	// AncestryAPID is the Ancestry Permanent Identifier from the _APID tag.
 	// This links the citation to a specific record in an Ancestry database.
 	AncestryAPID *AncestryAPIDData
+
+	// ExternalIDs are the citation's vendor identifiers as typed external IDs:
+	// the Ancestry APID, if any, typed ancestryAPIDExternalIDType (#1175).
+	ExternalIDs []domain.ExternalIdentifier
 }
 
 // MediaData contains parsed media data ready for creation.
@@ -667,6 +671,27 @@ func parseIndividual(indi *gedcom.Individual, _ *gedcom.Document, result *Import
 // ID. The gedcom-go converter maps an EXID of this type to _FSFTID on a
 // 5.5.x export.
 const familySearchExternalIDType = "https://www.familysearch.org/ark"
+
+// ancestryAPIDExternalIDType is the external-ID type under which a citation's
+// Ancestry _APID is kept (#1175). GEDCOM defines no URI for it and 7.0 has no
+// EXID on a citation, so it never reaches a file as a TYPE: export writes the
+// value back as _APID.
+const ancestryAPIDExternalIDType = "https://www.ancestry.com/apid"
+
+// setAncestryAPID records an Ancestry APID (vendor extension) on citation,
+// both as AncestryAPID and as an external ID, which is what the read model
+// stores. A nil apid leaves citation unchanged.
+func setAncestryAPID(citation *CitationData, apid *gedcom.AncestryAPID) {
+	if apid == nil {
+		return
+	}
+	citation.AncestryAPID = &AncestryAPIDData{
+		Database: apid.Database,
+		Record:   apid.Record,
+		RawValue: apid.Raw,
+	}
+	citation.ExternalIDs = []domain.ExternalIdentifier{{Value: apid.Raw, Type: ancestryAPIDExternalIDType}}
+}
 
 // withFamilySearchID appends the FamilySearch ID fsID to ids as a FamilySearch
 // external identifier, unless it is empty or ids already holds it.
@@ -1147,14 +1172,7 @@ func extractCitationsFromIndividual(indi *gedcom.Individual, personID uuid.UUID,
 			// Extract quoted text if available
 			citation.QuotedText = citationQuotedText(srcCit.Data)
 
-			// Extract Ancestry APID if available (vendor extension)
-			if srcCit.AncestryAPID != nil {
-				citation.AncestryAPID = &AncestryAPIDData{
-					Database: srcCit.AncestryAPID.Database,
-					Record:   srcCit.AncestryAPID.Record,
-					RawValue: srcCit.AncestryAPID.Raw,
-				}
-			}
+			setAncestryAPID(&citation, srcCit.AncestryAPID)
 
 			citations = append(citations, citation)
 		}
@@ -1208,14 +1226,7 @@ func extractCitationsFromFamily(fam *gedcom.Family, familyID uuid.UUID, _ *Impor
 			// Extract quoted text if available
 			citation.QuotedText = citationQuotedText(srcCit.Data)
 
-			// Extract Ancestry APID if available (vendor extension)
-			if srcCit.AncestryAPID != nil {
-				citation.AncestryAPID = &AncestryAPIDData{
-					Database: srcCit.AncestryAPID.Database,
-					Record:   srcCit.AncestryAPID.Record,
-					RawValue: srcCit.AncestryAPID.Raw,
-				}
-			}
+			setAncestryAPID(&citation, srcCit.AncestryAPID)
 
 			citations = append(citations, citation)
 		}

@@ -167,16 +167,17 @@ type ReadModelStore struct {
 	nameOwners            map[branchKey]uuid.UUID                              // (branch, name ID) -> person last saved under; a hint, see SavePersonName
 	personExternalIDs     map[branchKey][]repository.PersonExternalIDReadModel // keyed by (branch, person ID)
 	families              map[branchKey]*repository.FamilyReadModel
-	familyChildren        map[branchKey][]repository.FamilyChildReadModel      // keyed by (branch, family ID)
-	familyExternalIDs     map[branchKey][]repository.FamilyExternalIDReadModel // keyed by (branch, family ID)
-	pedigreeEdges         map[branchKey]*repository.PedigreeEdge               // keyed by (branch, person ID)
-	sources               map[branchKey]*repository.SourceReadModel            // branch-scoped (#758)
-	sourceExternalIDs     map[branchKey][]repository.SourceExternalIDReadModel // branch-scoped bucket keyed by source ID (#758)
-	citations             map[branchKey]*repository.CitationReadModel          // branch-scoped (#758)
-	media                 map[branchKey]*mediaRow                              // branch-scoped metadata; bytes shared (#759)
-	events                map[branchKey]*repository.EventReadModel             // branch-scoped (#757)
-	attributes            map[branchKey]*repository.AttributeReadModel         // branch-scoped (#757)
-	notes                 map[branchKey]*repository.NoteReadModel              // branch-scoped (#758)
+	familyChildren        map[branchKey][]repository.FamilyChildReadModel        // keyed by (branch, family ID)
+	familyExternalIDs     map[branchKey][]repository.FamilyExternalIDReadModel   // keyed by (branch, family ID)
+	pedigreeEdges         map[branchKey]*repository.PedigreeEdge                 // keyed by (branch, person ID)
+	sources               map[branchKey]*repository.SourceReadModel              // branch-scoped (#758)
+	sourceExternalIDs     map[branchKey][]repository.SourceExternalIDReadModel   // branch-scoped bucket keyed by source ID (#758)
+	citations             map[branchKey]*repository.CitationReadModel            // branch-scoped (#758)
+	citationExternalIDs   map[branchKey][]repository.CitationExternalIDReadModel // branch-scoped bucket keyed by citation ID (#1175)
+	media                 map[branchKey]*mediaRow                                // branch-scoped metadata; bytes shared (#759)
+	events                map[branchKey]*repository.EventReadModel               // branch-scoped (#757)
+	attributes            map[branchKey]*repository.AttributeReadModel           // branch-scoped (#757)
+	notes                 map[branchKey]*repository.NoteReadModel                // branch-scoped (#758)
 	submitters            map[uuid.UUID]*repository.SubmitterReadModel
 	repositories          map[uuid.UUID]*repository.RepositoryReadModel
 	repositoryExternalIDs map[uuid.UUID][]repository.RepositoryExternalIDReadModel // keyed by repository ID
@@ -211,6 +212,7 @@ func (s *ReadModelStore) clear() {
 	s.sources = make(map[branchKey]*repository.SourceReadModel)
 	s.sourceExternalIDs = make(map[branchKey][]repository.SourceExternalIDReadModel)
 	s.citations = make(map[branchKey]*repository.CitationReadModel)
+	s.citationExternalIDs = make(map[branchKey][]repository.CitationExternalIDReadModel)
 	s.media = make(map[branchKey]*mediaRow)
 	s.events = make(map[branchKey]*repository.EventReadModel)
 	s.attributes = make(map[branchKey]*repository.AttributeReadModel)
@@ -1256,6 +1258,7 @@ func (s *ReadModelStore) PurgeBranch(ctx context.Context, branchID domain.Branch
 	deleteBranchRows(s.sources, branchID)
 	deleteBranchRows(s.sourceExternalIDs, branchID)
 	deleteBranchRows(s.citations, branchID)
+	deleteBranchRows(s.citationExternalIDs, branchID)
 	deleteBranchRows(s.notes, branchID)
 	deleteBranchRows(s.media, branchID)
 	deleteBranchRows(s.evidenceAnalyses, branchID)
@@ -1434,6 +1437,7 @@ func (s *ReadModelStore) DeleteSource(ctx context.Context, branchID domain.Branc
 	for _, c := range resolveAllRows(s.citations, branchID) {
 		if c.SourceID == id {
 			removeRow(s.citations, branchID, c.ID)
+			storeBucket(s.citationExternalIDs, branchID, c.ID, nil)
 		}
 	}
 	s.cascadeMedia(branchID, "source", id)
@@ -1582,7 +1586,47 @@ func (s *ReadModelStore) DeleteCitation(ctx context.Context, branchID domain.Bra
 	defer s.mu.Unlock()
 
 	removeRow(s.citations, branchID, id)
+	storeBucket(s.citationExternalIDs, branchID, id, nil)
 	return nil
+}
+
+// ReplaceCitationExternalIDs replaces all external identifiers for a citation
+// on the given branch (#1175), the same bucket model as
+// ReplaceSourceExternalIDs.
+func (s *ReadModelStore) ReplaceCitationExternalIDs(ctx context.Context, branchID domain.BranchID, citationID uuid.UUID, ids []repository.CitationExternalIDReadModel) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if len(ids) == 0 {
+		storeBucket(s.citationExternalIDs, branchID, citationID, nil)
+		return nil
+	}
+	stored := make([]repository.CitationExternalIDReadModel, len(ids))
+	for i, id := range ids {
+		id.CitationID = citationID
+		id.Sequence = i
+		stored[i] = id
+	}
+	storeBucket(s.citationExternalIDs, branchID, citationID, stored)
+	return nil
+}
+
+// GetCitationExternalIDs retrieves all external identifiers for a citation
+// within the branch overlay, ordered by their original sequence.
+func (s *ReadModelStore) GetCitationExternalIDs(ctx context.Context, branchID domain.BranchID, citationID uuid.UUID) ([]repository.CitationExternalIDReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	ids, ok := resolveBucket(s.citationExternalIDs, branchID, citationID)
+	if !ok || len(ids) == 0 {
+		return nil, nil
+	}
+	result := make([]repository.CitationExternalIDReadModel, len(ids))
+	copy(result, ids)
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Sequence < result[j].Sequence
+	})
+	return result, nil
 }
 
 // mediaRow is one stored media row (ADR-005, #759). Unlike the other

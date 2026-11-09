@@ -482,6 +482,22 @@ func (s *ReadModelStore) createTables() error {
 
 		CREATE INDEX IF NOT EXISTS idx_source_external_ids_source ON source_external_ids(source_id, branch_id);
 
+		-- Citation external identifiers (#1175), e.g. an Ancestry _APID. Created
+		-- branch-aware: the same per-parent bucket + empty-marker tombstone model
+		-- as source_external_ids, with no FK; DeleteCitation and DeleteSource
+		-- cascade the bucket in code.
+		CREATE TABLE IF NOT EXISTS citation_external_ids (
+			citation_id TEXT NOT NULL,
+			sequence INTEGER NOT NULL,
+			value TEXT NOT NULL,
+			type TEXT NOT NULL DEFAULT '',
+			branch_id TEXT NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000',
+			deleted INTEGER NOT NULL DEFAULT 0,
+			PRIMARY KEY (citation_id, sequence, branch_id)
+		);
+
+		CREATE INDEX IF NOT EXISTS idx_citation_external_ids_citation ON citation_external_ids(citation_id, branch_id);
+
 		-- Repository external identifiers (GEDCOM 7.0 EXID)
 		CREATE TABLE IF NOT EXISTS repository_external_ids (
 			repository_id TEXT NOT NULL,
@@ -853,7 +869,7 @@ func (s *ReadModelStore) runMigrations() {
 	// writable; on fresh DBs the IF NOT EXISTS duplicate is harmless (a second unique
 	// index over the same columns as the PK autoindex). The pre-#669 rows are all
 	// branch_id = main and were already unique under the old PK, so uniqueness holds.
-	// person_external_ids/family_external_ids/source_external_ids are omitted: they use plain DELETE+INSERT
+	// The *_external_ids tables are omitted: they use plain DELETE+INSERT
 	// (no ON CONFLICT) and carry multiple rows per (parent, branch), so a unique index
 	// on the parent+branch would be wrong.
 	for _, idx := range []struct{ name, table, cols string }{
@@ -901,9 +917,9 @@ var branchScopedTables = []string{
 	"sources", "source_external_ids", "citations", "notes",
 	"media",
 	"evidence_analyses", "evidence_conflicts", "research_logs", "proof_summaries",
-	// Duplicate dismissals (#1036): created with their composite key, so they
-	// need no place in branchKeyedTables.
-	"duplicate_dismissals",
+	// Duplicate dismissals (#1036) and citation external IDs (#1175): created
+	// with their composite key, so they need no place in branchKeyedTables.
+	"duplicate_dismissals", "citation_external_ids",
 }
 
 // branchKeyedTables are the branch-scoped tables whose row identity must include
@@ -2490,6 +2506,54 @@ func (s *ReadModelStore) GetSourceExternalIDs(ctx context.Context, branchID doma
 	return result, nil
 }
 
+// ReplaceCitationExternalIDs replaces all external identifiers for a citation
+// within a single transaction, scoped to the branch (#1175): the same
+// per-parent bucket model as ReplaceSourceExternalIDs.
+func (s *ReadModelStore) ReplaceCitationExternalIDs(ctx context.Context, branchID domain.BranchID, citationID uuid.UUID, ids []repository.CitationExternalIDReadModel) error {
+	if err := s.guardBranchWrite(branchID); err != nil {
+		return err
+	}
+	values := make([]extIDValue, len(ids))
+	for i, id := range ids {
+		values[i] = extIDValue{Value: id.Value, Type: id.Type}
+	}
+	return replaceExternalIDs(ctx, s.db, "citation_external_ids", "citation_id", branchID, citationID, values)
+}
+
+// GetCitationExternalIDs retrieves all external identifiers for a citation
+// within the branch overlay, ordered by their original sequence (per-parent
+// bucket overlay, same model as GetSourceExternalIDs).
+func (s *ReadModelStore) GetCitationExternalIDs(ctx context.Context, branchID domain.BranchID, citationID uuid.UUID) ([]repository.CitationExternalIDReadModel, error) {
+	rows, err := s.db.QueryContext(ctx, externalIDsOverlayQuery("citation_external_ids", "citation_id"),
+		citationID.String(), citationID.String(), branchID.String(), branchID.String(), mainBranchID)
+	if err != nil {
+		return nil, fmt.Errorf("query citation external ids: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var result []repository.CitationExternalIDReadModel
+	for rows.Next() {
+		var (
+			seq   int
+			value string
+			typ   string
+		)
+		if err := rows.Scan(&seq, &value, &typ); err != nil {
+			return nil, fmt.Errorf("scan citation external id: %w", err)
+		}
+		result = append(result, repository.CitationExternalIDReadModel{
+			CitationID: citationID,
+			Sequence:   seq,
+			Value:      value,
+			Type:       typ,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate citation external ids: %w", err)
+	}
+	return result, nil
+}
+
 // ReplaceRepositoryExternalIDs replaces all external identifiers (GEDCOM 7.0
 // EXID) for a repository within a single transaction.
 func (s *ReadModelStore) ReplaceRepositoryExternalIDs(ctx context.Context, repositoryID uuid.UUID, ids []repository.RepositoryExternalIDReadModel) error {
@@ -3515,6 +3579,15 @@ func (s *ReadModelStore) DeleteSource(ctx context.Context, branchID domain.Branc
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	if branchID.IsMain() {
+		// The citations' external-id buckets go with them on main; off main a
+		// tombstoned citation is never read, so its bucket needs no marker.
+		if _, err := tx.ExecContext(ctx, `DELETE FROM citation_external_ids WHERE branch_id = ? AND citation_id IN
+			(SELECT id FROM citations WHERE branch_id = ? AND `+sourceCitationsFilter+`)`,
+			mainBranchID, mainBranchID, id.String()); err != nil {
+			return fmt.Errorf("delete citation external ids: %w", err)
+		}
+	}
 	if err := cascadeFactRows(ctx, tx, "citations", citationSelectCols, sourceCitationsFilter, branchID, id); err != nil {
 		return err
 	}
@@ -3658,13 +3731,36 @@ func (s *ReadModelStore) SaveCitation(ctx context.Context, branchID domain.Branc
 	return nil
 }
 
-// DeleteCitation removes a citation (ADR-005, #758): a real removal on main, a
-// tombstone on a non-main branch. Other branches' rows are untouched.
+// DeleteCitation removes a citation (ADR-005, #758) and its external-id
+// bucket (#1175): a real removal on main, a tombstone on a non-main branch.
+// Other branches' rows are untouched.
 func (s *ReadModelStore) DeleteCitation(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error {
-	if err := s.deleteFactRow(ctx, "citations", citationSelectCols, branchID, id); err != nil {
+	if err := s.guardBranchWrite(branchID); err != nil {
+		return err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if branchID.IsMain() {
+		if _, err := tx.ExecContext(ctx, "DELETE FROM citation_external_ids WHERE citation_id = ? AND branch_id = ?", id.String(), mainBranchID); err != nil {
+			return fmt.Errorf("delete citation external ids: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, "DELETE FROM citations WHERE id = ? AND branch_id = ?", id.String(), mainBranchID); err != nil {
+			return fmt.Errorf("delete citation: %w", err)
+		}
+		return tx.Commit()
+	}
+	if err := tombstoneExternalIDsBranch(ctx, tx, "citation_external_ids", "citation_id", id, branchID); err != nil {
+		return err
+	}
+	sub, args := factOverlaySubquery("citations", "id = ?", []any{id.String()}, branchID)
+	if err := tombstoneFactRows(ctx, tx, "citations", citationSelectCols, branchID, sub, args); err != nil {
 		return fmt.Errorf("delete citation: %w", err)
 	}
-	return nil
+	return tx.Commit()
 }
 
 // Person/family fact tables (#757): life_events, attributes and associations are

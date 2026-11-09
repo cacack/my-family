@@ -518,6 +518,7 @@ func (h *Handler) importCitation(ctx context.Context, c gedcom.CitationData, sou
 
 	// Create event
 	event := domain.NewCitationCreated(citation)
+	event.ExternalIDs = c.ExternalIDs
 
 	// Append to event store
 	err := h.eventStore.Append(ctx, citation.ID, "citation", []domain.Event{event}, -1, repository.MainScope)

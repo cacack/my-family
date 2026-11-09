@@ -580,7 +580,16 @@ type ReadModelStore interface {
 	GetCitationsForPerson(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) ([]CitationReadModel, error)
 	GetCitationsForFact(ctx context.Context, branchID domain.BranchID, factType domain.FactType, factOwnerID uuid.UUID) ([]CitationReadModel, error)
 	SaveCitation(ctx context.Context, branchID domain.BranchID, citation *CitationReadModel) error
+	// DeleteCitation cascades to the citation's external identifiers on the
+	// same branch (and only that branch), as DeleteSource does to a source's.
 	DeleteCitation(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error
+
+	// Citation external identifier operations (branch-scoped per citation
+	// bucket, #1175 — same model as ReplaceSourceExternalIDs). GEDCOM has no
+	// EXID on a citation; the bucket holds vendor identifiers such as an
+	// Ancestry _APID, typed by URI.
+	ReplaceCitationExternalIDs(ctx context.Context, branchID domain.BranchID, citationID uuid.UUID, ids []CitationExternalIDReadModel) error
+	GetCitationExternalIDs(ctx context.Context, branchID domain.BranchID, citationID uuid.UUID) ([]CitationExternalIDReadModel, error)
 
 	// Media operations (branch-scoped METADATA, #759)
 	//
@@ -922,6 +931,17 @@ type FamilyExternalIDReadModel struct {
 // model rather than the event schema.
 type SourceExternalIDReadModel struct {
 	SourceID uuid.UUID `json:"source_id"`
+	// Sequence preserves source-file order so export round-trips deterministically.
+	Sequence int    `json:"sequence"`
+	Value    string `json:"value"`
+	Type     string `json:"type,omitempty"`
+}
+
+// CitationExternalIDReadModel represents a single external identifier attached
+// to a citation (#1175), such as an Ancestry _APID. GEDCOM 7.0 has no EXID on a
+// citation, so these are vendor identifiers kept as typed external IDs.
+type CitationExternalIDReadModel struct {
+	CitationID uuid.UUID `json:"citation_id"`
 	// Sequence preserves source-file order so export round-trips deterministically.
 	Sequence int    `json:"sequence"`
 	Value    string `json:"value"`
