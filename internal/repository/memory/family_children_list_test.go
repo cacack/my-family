@@ -130,3 +130,120 @@ func runListAllFamilyChildrenScenario(t *testing.T, store repository.ReadModelSt
 		}
 	}
 }
+
+// TestRenameFamilyMember_Parity runs the #1129 family-member rename scenario
+// against the memory backend; the other backend packages run the same body (DB-001).
+func TestRenameFamilyMember_Parity(t *testing.T) {
+	runRenameFamilyMemberScenario(t, memory.NewReadModelStore())
+}
+
+// runRenameFamilyMemberScenario is the backend-agnostic body of the #1129
+// family-member rename. Each backend package carries an identical copy
+// (DB-001). It proves RenameFamilyMember rewrites the person's partner and
+// child names on the rows stored under the given scope only: a main rename
+// leaves branch rows alone, a branch rename leaves main rows alone and writes
+// no shadow for a family the branch holds no row of, and other people's names
+// never change. Fixtures use neutral placeholder names only.
+func runRenameFamilyMemberScenario(t *testing.T, store repository.ReadModelStore) {
+	t.Helper()
+	ctx := context.Background()
+	branch := domain.BranchID(uuid.New())
+	now := time.Now().UTC().Truncate(time.Second)
+	person, other := uuid.New(), uuid.New()
+	asPartner1, asPartner2, branchOnly, mainOnly := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+
+	saveFamily := func(scope domain.BranchID, id uuid.UUID, p1, p2 *uuid.UUID) {
+		t.Helper()
+		if err := store.SaveFamily(ctx, scope, &repository.FamilyReadModel{
+			ID: id, Partner1ID: p1, Partner1GivenName: "Old", Partner1Surname: "Sample",
+			Partner2ID: p2, Partner2GivenName: "Old", Partner2Surname: "Sample",
+			RelationshipType: domain.RelationMarriage, Version: 1, UpdatedAt: now,
+		}); err != nil {
+			t.Fatalf("save family: %v", err)
+		}
+	}
+	link := func(scope domain.BranchID, family, child uuid.UUID) {
+		t.Helper()
+		if err := store.SaveFamilyChild(ctx, scope, &repository.FamilyChildReadModel{
+			FamilyID: family, PersonID: child, PersonGivenName: "Old", PersonSurname: "Sample", RelationshipType: domain.ChildBiological,
+		}); err != nil {
+			t.Fatalf("save family child: %v", err)
+		}
+	}
+	saveFamily(domain.MainBranchID, asPartner1, &person, &other)
+	saveFamily(domain.MainBranchID, asPartner2, &other, &person)
+	saveFamily(branch, asPartner2, &other, &person)
+	saveFamily(branch, branchOnly, &person, nil)
+	saveFamily(domain.MainBranchID, mainOnly, nil, nil)
+	link(domain.MainBranchID, mainOnly, person)
+	link(domain.MainBranchID, mainOnly, other)
+	link(branch, branchOnly, person)
+
+	family := func(scope domain.BranchID, id uuid.UUID) *repository.FamilyReadModel {
+		t.Helper()
+		f, err := store.GetFamily(ctx, scope, id)
+		if err != nil || f == nil {
+			t.Fatalf("GetFamily %s = %v, %v", id, f, err)
+		}
+		return f
+	}
+	childName := func(scope domain.BranchID, familyID, child uuid.UUID) string {
+		t.Helper()
+		children, err := store.GetFamilyChildren(ctx, scope, familyID)
+		if err != nil {
+			t.Fatalf("GetFamilyChildren: %v", err)
+		}
+		for _, c := range children {
+			if c.PersonID == child {
+				return c.PersonGivenName + " " + c.PersonSurname
+			}
+		}
+		t.Fatalf("family %s has no child %s", familyID, child)
+		return ""
+	}
+	partners := func(f *repository.FamilyReadModel) string {
+		return f.Partner1GivenName + " " + f.Partner1Surname + " & " + f.Partner2GivenName + " " + f.Partner2Surname
+	}
+
+	if err := store.RenameFamilyMember(ctx, domain.MainBranchID, person, "New", "Main"); err != nil {
+		t.Fatalf("main RenameFamilyMember: %v", err)
+	}
+	if got, want := partners(family(domain.MainBranchID, asPartner1)), "New Main & Old Sample"; got != want {
+		t.Errorf("main partner-1 family = %q, want %q", got, want)
+	}
+	if got, want := partners(family(domain.MainBranchID, asPartner2)), "Old Sample & New Main"; got != want {
+		t.Errorf("main partner-2 family = %q, want %q", got, want)
+	}
+	if got, want := childName(domain.MainBranchID, mainOnly, person), "New Main"; got != want {
+		t.Errorf("main child = %q, want %q", got, want)
+	}
+	if got, want := childName(domain.MainBranchID, mainOnly, other), "Old Sample"; got != want {
+		t.Errorf("main sibling = %q, want %q (another person)", got, want)
+	}
+	if got, want := partners(family(branch, asPartner2)), "Old Sample & Old Sample"; got != want {
+		t.Errorf("branch shadow after main rename = %q, want %q (BR-003)", got, want)
+	}
+
+	if err := store.RenameFamilyMember(ctx, branch, person, "New", "Branch"); err != nil {
+		t.Fatalf("branch RenameFamilyMember: %v", err)
+	}
+	if got, want := partners(family(branch, asPartner2)), "Old Sample & New Branch"; got != want {
+		t.Errorf("branch shadow = %q, want %q", got, want)
+	}
+	if got, want := partners(family(branch, branchOnly)), "New Branch & Old Sample"; got != want {
+		t.Errorf("branch-only family = %q, want %q", got, want)
+	}
+	if got, want := childName(branch, branchOnly, person), "New Branch"; got != want {
+		t.Errorf("branch child = %q, want %q", got, want)
+	}
+	if got, want := partners(family(domain.MainBranchID, asPartner2)), "Old Sample & New Main"; got != want {
+		t.Errorf("main family after branch rename = %q, want %q", got, want)
+	}
+	// The branch holds no row of asPartner1 or mainOnly: it still sees main's.
+	if got, want := partners(family(branch, asPartner1)), "New Main & Old Sample"; got != want {
+		t.Errorf("branch view of main's family = %q, want main's %q (no shadow written)", got, want)
+	}
+	if got, want := childName(branch, mainOnly, person), "New Main"; got != want {
+		t.Errorf("branch view of main's child = %q, want main's %q (no shadow written)", got, want)
+	}
+}

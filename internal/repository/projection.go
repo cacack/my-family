@@ -344,7 +344,12 @@ func (p *Projector) projectPersonCreated(ctx context.Context, e domain.PersonCre
 		UpdatedAt:      e.OccurredAt(),
 	}
 
-	return p.readStore.SavePerson(ctx, branchID, person)
+	if err := p.readStore.SavePerson(ctx, branchID, person); err != nil {
+		return err
+	}
+	// A family may already name this person: a branch merge replays streams
+	// in first-event order, so a family's link can land before the person (#817).
+	return p.readStore.RenameFamilyMember(ctx, branchID, person.ID, person.GivenName, person.Surname)
 }
 
 func (p *Projector) projectPersonUpdated(ctx context.Context, e domain.PersonUpdated, version int64, branchID domain.BranchID) error {
@@ -428,7 +433,10 @@ func (p *Projector) projectPersonUpdated(ctx context.Context, e domain.PersonUpd
 	if !nameChanged {
 		return nil
 	}
-	return p.syncPrimaryNameFromPerson(ctx, branchID, person, e.OccurredAt())
+	if err := p.syncPrimaryNameFromPerson(ctx, branchID, person, e.OccurredAt()); err != nil {
+		return err
+	}
+	return p.readStore.RenameFamilyMember(ctx, branchID, person.ID, person.GivenName, person.Surname)
 }
 
 func (p *Projector) projectPersonDeleted(ctx context.Context, e domain.PersonDeleted, branchID domain.BranchID) error {
@@ -1580,14 +1588,21 @@ func (p *Projector) updatePersonForName(ctx context.Context, branchID domain.Bra
 		// Person may not exist yet if events are out of order
 		return nil
 	}
-	if name.IsPrimary && (person.GivenName != name.GivenName || person.Surname != name.Surname) {
+	renamed := name.IsPrimary && (person.GivenName != name.GivenName || person.Surname != name.Surname)
+	if renamed {
 		person.GivenName = name.GivenName
 		person.Surname = name.Surname
 		person.FullName = domain.JoinFullName(name.GivenName, name.Surname)
 		person.UpdatedAt = name.UpdatedAt
 	}
 	person.Version = version
-	return p.readStore.SavePerson(ctx, branchID, person)
+	if err := p.readStore.SavePerson(ctx, branchID, person); err != nil {
+		return err
+	}
+	if !renamed {
+		return nil
+	}
+	return p.readStore.RenameFamilyMember(ctx, branchID, person.ID, person.GivenName, person.Surname)
 }
 
 // syncPrimaryNameFromPerson copies a person's given name and surname onto its
@@ -1881,6 +1896,10 @@ func (p *Projector) projectPersonMerged(ctx context.Context, e domain.PersonMerg
 	// The resolved given name and surname also apply to the survivor's primary name.
 	if err := p.syncPrimaryNameFromPerson(ctx, branchID, survivor, e.OccurredAt()); err != nil {
 		return fmt.Errorf("sync primary name for survivor %s: %w", e.SurvivorID, err)
+	}
+	// ...and to the names the survivor's own families carry for it.
+	if err := p.readStore.RenameFamilyMember(ctx, branchID, survivor.ID, survivor.GivenName, survivor.Surname); err != nil {
+		return fmt.Errorf("refresh family names for survivor %s: %w", e.SurvivorID, err)
 	}
 
 	// 6. Transfer life events from merged person to survivor

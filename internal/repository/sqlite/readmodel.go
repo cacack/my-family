@@ -2843,6 +2843,31 @@ func (s *ReadModelStore) GetChildFamily(ctx context.Context, branchID domain.Bra
 	return scanFamily(row)
 }
 
+// RenameFamilyMember rewrites personID's partner and child names on the family
+// and family_children rows stored under branchID itself.
+func (s *ReadModelStore) RenameFamilyMember(ctx context.Context, branchID domain.BranchID, personID uuid.UUID, givenName, surname string) error {
+	if err := s.guardBranchWrite(branchID); err != nil {
+		return err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin rename family member: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	args := []any{givenName, surname, personID.String(), branchID.String()}
+	for _, stmt := range []string{
+		`UPDATE families SET partner1_given_name = ?, partner1_surname = ? WHERE partner1_id = ? AND branch_id = ? AND deleted = 0`,
+		`UPDATE families SET partner2_given_name = ?, partner2_surname = ? WHERE partner2_id = ? AND branch_id = ? AND deleted = 0`,
+		`UPDATE family_children SET person_given_name = ?, person_surname = ? WHERE person_id = ? AND branch_id = ? AND deleted = 0`,
+	} {
+		if _, err := tx.ExecContext(ctx, stmt, args...); err != nil {
+			return fmt.Errorf("rename family member: %w", err)
+		}
+	}
+	return tx.Commit()
+}
+
 // SaveFamilyChild saves a family child relationship on the given branch.
 func (s *ReadModelStore) SaveFamilyChild(ctx context.Context, branchID domain.BranchID, child *repository.FamilyChildReadModel) error {
 	if err := s.guardBranchWrite(branchID); err != nil {
