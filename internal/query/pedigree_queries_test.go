@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/cacack/my-family/internal/command"
 	"github.com/cacack/my-family/internal/domain"
 	"github.com/cacack/my-family/internal/query"
 	"github.com/cacack/my-family/internal/repository"
@@ -667,5 +668,68 @@ func TestPedigreeService_BranchScope(t *testing.T) {
 	}
 	if len(branchAnc) != 1 || branchAnc[0].Surname != "Branch" {
 		t.Errorf("branch ancestors = %+v, want single Branch father", branchAnc)
+	}
+}
+
+// A partner of unknown gender takes whichever parent slot the other partner
+// leaves free, so the pedigree shows both parents (#1082).
+func TestGetPedigree_UnknownGenderParent(t *testing.T) {
+	tests := []struct {
+		name             string
+		gender1, gender2 string
+		wantFather       int // 1 or 2: which partner must be the father; 0 = either
+	}{
+		{"unknown and female", "unknown", "female", 1},
+		{"female and unknown", "female", "unknown", 2},
+		{"male and unknown", "male", "unknown", 1},
+		{"unknown and male", "unknown", "male", 2},
+		{"both unknown", "unknown", "unknown", 0},
+		{"both unset", "", "", 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			readStore := memory.NewReadModelStore()
+			handler := command.NewHandler(memory.NewEventStore(), readStore)
+			svc := query.NewPedigreeService(readStore)
+
+			mustPerson := func(name, gender string) uuid.UUID {
+				t.Helper()
+				p, err := handler.CreatePerson(ctx, command.CreatePersonInput{GivenName: name, Surname: "Doe", Gender: gender})
+				if err != nil {
+					t.Fatal(err)
+				}
+				return p.ID
+			}
+			partner1 := mustPerson("One", tt.gender1)
+			partner2 := mustPerson("Two", tt.gender2)
+			child := mustPerson("Child", "")
+
+			family, err := handler.CreateFamily(ctx, command.CreateFamilyInput{Partner1ID: &partner1, Partner2ID: &partner2})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := handler.LinkChild(ctx, command.LinkChildInput{FamilyID: family.ID, ChildID: child}); err != nil {
+				t.Fatal(err)
+			}
+
+			result, err := svc.GetPedigree(ctx, query.GetPedigreeInput{PersonID: child})
+			if err != nil {
+				t.Fatal(err)
+			}
+			root := result.Root
+			if root.Father == nil || root.Mother == nil {
+				t.Fatalf("pedigree parents = father %v, mother %v; want both partners", root.Father, root.Mother)
+			}
+			if got := map[uuid.UUID]bool{root.Father.ID: true, root.Mother.ID: true}; !got[partner1] || !got[partner2] {
+				t.Errorf("pedigree parents = %v, %v; want %v and %v", root.Father.ID, root.Mother.ID, partner1, partner2)
+			}
+			if tt.wantFather == 1 && root.Father.ID != partner1 || tt.wantFather == 2 && root.Father.ID != partner2 {
+				t.Errorf("father = %v, want partner %d", root.Father.ID, tt.wantFather)
+			}
+			if result.TotalAncestors != 2 {
+				t.Errorf("TotalAncestors = %d, want 2", result.TotalAncestors)
+			}
+		})
 	}
 }

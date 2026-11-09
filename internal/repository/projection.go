@@ -663,10 +663,12 @@ func (p *Projector) projectChildLinked(ctx context.Context, e domain.ChildLinked
 }
 
 // savePedigreeEdgeFromFamily writes the child's pedigree edge (father/mother)
-// from the family's current partners. Father/mother is decided by the
-// partner's gender (simplified: anyone not male is recorded as the mother).
+// from the family's current partners. A male partner is the father and a
+// female partner the mother; a partner of unknown gender takes whichever slot
+// the other partner leaves free (#1082).
 func (p *Projector) savePedigreeEdgeFromFamily(ctx context.Context, branchID domain.BranchID, childID uuid.UUID, family *FamilyReadModel) error {
 	edge := &PedigreeEdge{PersonID: childID}
+	var undetermined []*PersonReadModel
 	for _, partnerID := range []*uuid.UUID{family.Partner1ID, family.Partner2ID} {
 		if partnerID == nil {
 			continue
@@ -678,15 +680,43 @@ func (p *Projector) savePedigreeEdgeFromFamily(ctx context.Context, branchID dom
 		if partner == nil {
 			continue
 		}
-		if partner.Gender == domain.GenderMale {
-			edge.FatherID = partnerID
-			edge.FatherName = partner.FullName
-		} else {
-			edge.MotherID = partnerID
-			edge.MotherName = partner.FullName
+		switch partner.Gender {
+		case domain.GenderMale:
+			setEdgeFather(edge, partner)
+		case domain.GenderFemale:
+			setEdgeMother(edge, partner)
+		default:
+			undetermined = append(undetermined, partner)
 		}
 	}
+	for _, partner := range undetermined {
+		fillFreeParentSlot(edge, partner)
+	}
 	return p.readStore.SavePedigreeEdge(ctx, branchID, edge)
+}
+
+func setEdgeFather(edge *PedigreeEdge, father *PersonReadModel) {
+	edge.FatherID = &father.ID
+	edge.FatherName = father.FullName
+}
+
+func setEdgeMother(edge *PedigreeEdge, mother *PersonReadModel) {
+	edge.MotherID = &mother.ID
+	edge.MotherName = mother.FullName
+}
+
+// fillFreeParentSlot records a parent of unknown gender in the edge's free
+// slot, the mother's first, and reports whether one was free.
+func fillFreeParentSlot(edge *PedigreeEdge, parent *PersonReadModel) bool {
+	switch {
+	case edge.MotherID == nil:
+		setEdgeMother(edge, parent)
+	case edge.FatherID == nil:
+		setEdgeFather(edge, parent)
+	default:
+		return false
+	}
+	return true
 }
 
 // refreshChildPedigreeEdges re-derives the pedigree edge of every child of a
@@ -2058,21 +2088,23 @@ func relinkEdgeParent(edge *PedigreeEdge, family *FamilyReadModel, mergedID uuid
 			return false // the edge came from another family
 		}
 	}
-	// The same father/mother choice projectChildLinked makes.
-	if survivor.Gender == domain.GenderMale {
+	// The same father/mother choice savePedigreeEdgeFromFamily makes.
+	switch survivor.Gender {
+	case domain.GenderMale:
 		if edge.FatherID != nil {
 			return false
 		}
-		edge.FatherID = &survivor.ID
-		edge.FatherName = survivor.FullName
+		setEdgeFather(edge, survivor)
 		return true
+	case domain.GenderFemale:
+		if edge.MotherID != nil {
+			return false
+		}
+		setEdgeMother(edge, survivor)
+		return true
+	default:
+		return fillFreeParentSlot(edge, survivor)
 	}
-	if edge.MotherID != nil {
-		return false
-	}
-	edge.MotherID = &survivor.ID
-	edge.MotherName = survivor.FullName
-	return true
 }
 
 // familyHasPartner reports whether a person is one of a family's partners.
