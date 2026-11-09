@@ -567,3 +567,79 @@ func postgresDatabase(t *testing.T) string {
 	dsn.Path = "/" + name
 	return dsn.String()
 }
+
+// ============================================================================
+// Projection repair (#845)
+// ============================================================================
+
+// TestSQLite_RebuildReadModel walks the operator path: a recorded projection
+// failure makes `serve` warn on start, and a rebuild repairs the read model
+// and clears the warning.
+func TestSQLite_RebuildReadModel(t *testing.T) {
+	ctx := context.Background()
+	stores, err := OpenSQLite(filepath.Join(t.TempDir(), "myfamily.db"))
+	if err != nil {
+		t.Fatalf("OpenSQLite: %v", err)
+	}
+	t.Cleanup(func() { _ = stores.Close() })
+
+	createPerson(t, newServer(stores), "Ada", "Rebuild")
+	if got := stores.ProjectionFailureWarning(ctx); got != "" {
+		t.Fatalf("warning with no failures = %q, want none", got)
+	}
+
+	streamID := uuid.New()
+	if err := stores.ReadModel.RecordProjectionFailure(ctx, repository.ProjectionFailure{
+		StreamID: streamID, Version: 3, EventType: "PersonUpdated", Error: "boom", FailedAt: time.Now(),
+	}); err != nil {
+		t.Fatalf("record failure: %v", err)
+	}
+	warning := stores.ProjectionFailureWarning(ctx)
+	for _, want := range []string{"out of sync", "PersonUpdated", streamID.String(), "version 3", "myfamily rebuild"} {
+		if !strings.Contains(warning, want) {
+			t.Errorf("warning %q does not mention %q", warning, want)
+		}
+	}
+
+	result, err := stores.RebuildReadModel(ctx)
+	if err != nil {
+		t.Fatalf("RebuildReadModel: %v", err)
+	}
+	if result.Events == 0 {
+		t.Errorf("rebuild replayed no events")
+	}
+	if got := stores.ProjectionFailureWarning(ctx); got != "" {
+		t.Errorf("warning after rebuild = %q, want none", got)
+	}
+
+	// An unfinished rebuild keeps the warning up until a rerun succeeds.
+	if err := stores.ReadModel.SaveRebuildState(ctx, []byte("{}")); err != nil {
+		t.Fatalf("save rebuild state: %v", err)
+	}
+	if got := stores.ProjectionFailureWarning(ctx); !strings.Contains(got, "did not finish") {
+		t.Errorf("warning with an unfinished rebuild = %q, want it named", got)
+	}
+	if _, err := stores.RebuildReadModel(ctx); err != nil {
+		t.Fatalf("rerun: %v", err)
+	}
+	if got := stores.ProjectionFailureWarning(ctx); got != "" {
+		t.Errorf("warning after rerun = %q, want none", got)
+	}
+	if n := countPersons(t, newServer(stores)); n != 1 {
+		t.Errorf("persons after rebuild = %d, want 1", n)
+	}
+
+	// A store that cannot be read is reported rather than taken as healthy.
+	if err := stores.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	if got := stores.ProjectionFailureWarning(ctx); !strings.Contains(got, "could not check") {
+		t.Errorf("warning on a closed store = %q, want a could-not-check line", got)
+	}
+}
+
+func TestMemory_RebuildReadModelRefused(t *testing.T) {
+	if _, err := OpenMemory().RebuildReadModel(context.Background()); !errors.Is(err, ErrRebuildMemory) {
+		t.Fatalf("RebuildReadModel on memory = %v, want ErrRebuildMemory", err)
+	}
+}

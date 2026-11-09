@@ -29,10 +29,10 @@ var (
 //
 // CAVEAT — rows predating #624. Snapshots created before this store became
 // projection-written were inserted directly and have NO event on their stream,
-// so a rebuild would not reconstruct them. Nothing replays the log into a
-// projector today (no rebuild command exists), so the gap is latent rather than
-// live; issue #680 tracks rebuild tooling and must backfill these rows, or
-// deliberately drop them, before it ships.
+// so a replay would not reconstruct them. `myfamily rebuild`
+// (repository.RebuildReadModel, #845) does not empty this registry, so such
+// rows survive it; any future rebuild that recreates the registry from the log
+// must backfill these rows, or deliberately drop them (#680).
 type SnapshotStore interface {
 	// Create stores a new snapshot. It has no production caller since the
 	// registry became projection-written — Upsert is that path — and is retained

@@ -187,37 +187,45 @@ type ReadModelStore struct {
 	researchLogs          map[branchKey]*repository.ResearchLogReadModel        // branch-scoped (#760)
 	proofSummaries        map[branchKey]*repository.ProofSummaryReadModel       // branch-scoped (#760)
 	duplicateDismissals   map[branchKey]*repository.DuplicateDismissalReadModel // branch-scoped (#1036)
+	projectionFailures    []repository.ProjectionFailure                        // #845
+	rebuildState          []byte                                                // #845; outlives ResetReadModel
 }
 
 // NewReadModelStore creates a new in-memory read model store.
 func NewReadModelStore() *ReadModelStore {
-	return &ReadModelStore{
-		persons:               make(map[branchKey]*repository.PersonReadModel),
-		personNames:           make(map[branchKey][]repository.PersonNameReadModel),
-		nameOwners:            make(map[branchKey]uuid.UUID),
-		personExternalIDs:     make(map[branchKey][]repository.PersonExternalIDReadModel),
-		families:              make(map[branchKey]*repository.FamilyReadModel),
-		familyChildren:        make(map[branchKey][]repository.FamilyChildReadModel),
-		familyExternalIDs:     make(map[branchKey][]repository.FamilyExternalIDReadModel),
-		pedigreeEdges:         make(map[branchKey]*repository.PedigreeEdge),
-		sources:               make(map[branchKey]*repository.SourceReadModel),
-		sourceExternalIDs:     make(map[branchKey][]repository.SourceExternalIDReadModel),
-		citations:             make(map[branchKey]*repository.CitationReadModel),
-		media:                 make(map[branchKey]*mediaRow),
-		events:                make(map[branchKey]*repository.EventReadModel),
-		attributes:            make(map[branchKey]*repository.AttributeReadModel),
-		notes:                 make(map[branchKey]*repository.NoteReadModel),
-		submitters:            make(map[uuid.UUID]*repository.SubmitterReadModel),
-		repositories:          make(map[uuid.UUID]*repository.RepositoryReadModel),
-		repositoryExternalIDs: make(map[uuid.UUID][]repository.RepositoryExternalIDReadModel),
-		associations:          make(map[branchKey]*repository.AssociationReadModel),
-		ldsOrdinances:         make(map[uuid.UUID]*repository.LDSOrdinanceReadModel),
-		evidenceAnalyses:      make(map[branchKey]*repository.EvidenceAnalysisReadModel),
-		evidenceConflicts:     make(map[branchKey]*repository.EvidenceConflictReadModel),
-		researchLogs:          make(map[branchKey]*repository.ResearchLogReadModel),
-		proofSummaries:        make(map[branchKey]*repository.ProofSummaryReadModel),
-		duplicateDismissals:   make(map[branchKey]*repository.DuplicateDismissalReadModel),
-	}
+	s := &ReadModelStore{}
+	s.clear()
+	return s
+}
+
+// clear empties every table. The caller holds s.mu (or owns s exclusively).
+func (s *ReadModelStore) clear() {
+	s.persons = make(map[branchKey]*repository.PersonReadModel)
+	s.personNames = make(map[branchKey][]repository.PersonNameReadModel)
+	s.nameOwners = make(map[branchKey]uuid.UUID)
+	s.personExternalIDs = make(map[branchKey][]repository.PersonExternalIDReadModel)
+	s.families = make(map[branchKey]*repository.FamilyReadModel)
+	s.familyChildren = make(map[branchKey][]repository.FamilyChildReadModel)
+	s.familyExternalIDs = make(map[branchKey][]repository.FamilyExternalIDReadModel)
+	s.pedigreeEdges = make(map[branchKey]*repository.PedigreeEdge)
+	s.sources = make(map[branchKey]*repository.SourceReadModel)
+	s.sourceExternalIDs = make(map[branchKey][]repository.SourceExternalIDReadModel)
+	s.citations = make(map[branchKey]*repository.CitationReadModel)
+	s.media = make(map[branchKey]*mediaRow)
+	s.events = make(map[branchKey]*repository.EventReadModel)
+	s.attributes = make(map[branchKey]*repository.AttributeReadModel)
+	s.notes = make(map[branchKey]*repository.NoteReadModel)
+	s.submitters = make(map[uuid.UUID]*repository.SubmitterReadModel)
+	s.repositories = make(map[uuid.UUID]*repository.RepositoryReadModel)
+	s.repositoryExternalIDs = make(map[uuid.UUID][]repository.RepositoryExternalIDReadModel)
+	s.associations = make(map[branchKey]*repository.AssociationReadModel)
+	s.ldsOrdinances = make(map[uuid.UUID]*repository.LDSOrdinanceReadModel)
+	s.evidenceAnalyses = make(map[branchKey]*repository.EvidenceAnalysisReadModel)
+	s.evidenceConflicts = make(map[branchKey]*repository.EvidenceConflictReadModel)
+	s.researchLogs = make(map[branchKey]*repository.ResearchLogReadModel)
+	s.proofSummaries = make(map[branchKey]*repository.ProofSummaryReadModel)
+	s.duplicateDismissals = make(map[branchKey]*repository.DuplicateDismissalReadModel)
+	s.projectionFailures = nil
 }
 
 // GetPerson retrieves a person by ID, resolving the branch overlay.
@@ -1275,29 +1283,55 @@ func deleteBranchRows[V any](m map[branchKey]V, branch domain.BranchID) {
 func (s *ReadModelStore) Reset() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.clear()
+}
 
-	s.persons = make(map[branchKey]*repository.PersonReadModel)
-	s.personNames = make(map[branchKey][]repository.PersonNameReadModel)
-	s.nameOwners = make(map[branchKey]uuid.UUID)
-	s.families = make(map[branchKey]*repository.FamilyReadModel)
-	s.familyChildren = make(map[branchKey][]repository.FamilyChildReadModel)
-	s.pedigreeEdges = make(map[branchKey]*repository.PedigreeEdge)
-	s.sources = make(map[branchKey]*repository.SourceReadModel)
-	s.sourceExternalIDs = make(map[branchKey][]repository.SourceExternalIDReadModel)
-	s.citations = make(map[branchKey]*repository.CitationReadModel)
-	s.media = make(map[branchKey]*mediaRow)
-	s.events = make(map[branchKey]*repository.EventReadModel)
-	s.attributes = make(map[branchKey]*repository.AttributeReadModel)
-	s.notes = make(map[branchKey]*repository.NoteReadModel)
-	s.submitters = make(map[uuid.UUID]*repository.SubmitterReadModel)
-	s.repositories = make(map[uuid.UUID]*repository.RepositoryReadModel)
-	s.associations = make(map[branchKey]*repository.AssociationReadModel)
-	s.ldsOrdinances = make(map[uuid.UUID]*repository.LDSOrdinanceReadModel)
-	s.evidenceAnalyses = make(map[branchKey]*repository.EvidenceAnalysisReadModel)
-	s.evidenceConflicts = make(map[branchKey]*repository.EvidenceConflictReadModel)
-	s.researchLogs = make(map[branchKey]*repository.ResearchLogReadModel)
-	s.proofSummaries = make(map[branchKey]*repository.ProofSummaryReadModel)
-	s.duplicateDismissals = make(map[branchKey]*repository.DuplicateDismissalReadModel)
+// ResetReadModel empties every table (#845).
+func (s *ReadModelStore) ResetReadModel(ctx context.Context) error {
+	s.Reset()
+	return nil
+}
+
+// RecordProjectionFailure stores a projection-failure marker (#845).
+func (s *ReadModelStore) RecordProjectionFailure(ctx context.Context, failure repository.ProjectionFailure) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.projectionFailures = append(s.projectionFailures, failure)
+	return nil
+}
+
+// ListProjectionFailures returns up to limit markers, oldest first (#845).
+func (s *ReadModelStore) ListProjectionFailures(ctx context.Context, limit int) ([]repository.ProjectionFailure, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	n := min(max(limit, 0), len(s.projectionFailures))
+	return append([]repository.ProjectionFailure(nil), s.projectionFailures[:n]...), nil
+}
+
+// SaveRebuildState stores the state of a rebuild in progress (#845).
+func (s *ReadModelStore) SaveRebuildState(ctx context.Context, state []byte) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.rebuildState = append([]byte{}, state...)
+	return nil
+}
+
+// GetRebuildState returns the saved rebuild state, or nil (#845).
+func (s *ReadModelStore) GetRebuildState(ctx context.Context) ([]byte, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.rebuildState == nil {
+		return nil, nil
+	}
+	return append([]byte{}, s.rebuildState...), nil
+}
+
+// ClearRebuildState deletes the saved rebuild state (#845).
+func (s *ReadModelStore) ClearRebuildState(ctx context.Context) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.rebuildState = nil
+	return nil
 }
 
 // GetSource retrieves a source by ID within the branch overlay (ADR-005, #758).

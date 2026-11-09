@@ -74,7 +74,7 @@ func (h *Handler) createSnapshotOn(ctx context.Context, branchID domain.BranchID
 		return nil, fmt.Errorf("appending snapshot created event: %w", err)
 	}
 
-	if err := h.projector.Project(ctx, event, 1, domain.MainBranchID); err != nil {
+	if err := h.project(ctx, event, 1, domain.MainBranchID); err != nil {
 		return nil, fmt.Errorf("projecting snapshot created event: %w", err)
 	}
 
@@ -155,7 +155,7 @@ func (h *Handler) deleteSnapshotOn(ctx context.Context, branchID domain.BranchID
 		return fmt.Errorf("appending snapshot deleted event: %w", err)
 	}
 
-	if err := h.projector.Project(ctx, event, currentVersion+1, domain.MainBranchID); err != nil {
+	if err := h.project(ctx, event, currentVersion+1, domain.MainBranchID); err != nil {
 		return fmt.Errorf("projecting snapshot deleted event: %w", err)
 	}
 
@@ -187,7 +187,7 @@ func (h *Handler) reprojectSnapshotTombstone(ctx context.Context, tombstone *rep
 	if err != nil {
 		return fmt.Errorf("decoding the existing snapshot tombstone: %w", err)
 	}
-	if err := h.projector.Project(ctx, decoded, tombstone.Version, domain.MainBranchID); err != nil {
+	if err := h.project(ctx, decoded, tombstone.Version, domain.MainBranchID); err != nil {
 		return fmt.Errorf("projecting the existing snapshot tombstone: %w", err)
 	}
 	return nil

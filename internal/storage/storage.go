@@ -20,6 +20,7 @@
 package storage
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -98,6 +99,44 @@ func (s *Stores) Close() error {
 		return fmt.Errorf("close %s database: %w", s.Backend, err)
 	}
 	return nil
+}
+
+// ErrRebuildMemory is returned by RebuildReadModel on the in-memory backend,
+// whose event log does not outlive the process, so there is nothing to repair.
+var ErrRebuildMemory = errors.New("the in-memory backend has no persistent read model to rebuild; unset DEMO_MODE")
+
+// RebuildReadModel empties the read model and replays the event log into it
+// (#845); see repository.RebuildReadModel. Run it with the server stopped.
+func (s *Stores) RebuildReadModel(ctx context.Context) (repository.RebuildResult, error) {
+	if s.Backend == BackendMemory {
+		return repository.RebuildResult{}, ErrRebuildMemory
+	}
+	return repository.RebuildReadModel(ctx, s.Events, s.ReadModel, s.Branches, s.Snapshots)
+}
+
+// ProjectionFailureWarning returns a log line saying the read model is behind
+// the event log, because a rebuild did not finish or naming the oldest failed
+// projection, or "" when neither is recorded (#845).
+func (s *Stores) ProjectionFailureWarning(ctx context.Context) string {
+	state, err := s.ReadModel.GetRebuildState(ctx)
+	if err != nil {
+		return fmt.Sprintf("Warning: could not check for an unfinished rebuild: %v", err)
+	}
+	if state != nil {
+		return "Warning: the read model is out of sync with the event log: a `myfamily rebuild` did not finish. " +
+			"Stop the server and run `myfamily rebuild` again to repair it."
+	}
+	failures, err := s.ReadModel.ListProjectionFailures(ctx, 1)
+	if err != nil {
+		return fmt.Sprintf("Warning: could not check for failed projections: %v", err)
+	}
+	if len(failures) == 0 {
+		return ""
+	}
+	f := failures[0]
+	return fmt.Sprintf("Warning: the read model is out of sync with the event log: projecting %s (stream %s, version %d) failed at %s. "+
+		"Stop the server and run `myfamily rebuild` to repair it.",
+		f.EventType, f.StreamID, f.Version, f.FailedAt.Format("2006-01-02T15:04:05Z07:00"))
 }
 
 // Select reports which backend Open would construct for cfg.

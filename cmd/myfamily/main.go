@@ -37,6 +37,10 @@ func main() {
 		if err := runServer(); err != nil {
 			log.Fatal(err)
 		}
+	case "rebuild":
+		if err := runRebuild(); err != nil {
+			log.Fatal(err)
+		}
 	case "version":
 		fmt.Printf("my-family %s (commit: %s, built: %s)\n", version, commit, date)
 	case "help", "-h", "--help":
@@ -56,6 +60,7 @@ Usage:
 
 Commands:
   serve     Start the HTTP server
+  rebuild   Rebuild the read model from the event log (stop the server first)
   version   Show version information
   help      Show this help message
 
@@ -88,6 +93,10 @@ func runServer() error {
 			log.Printf("Error closing storage: %v", err)
 		}
 	}()
+
+	if warning := stores.ProjectionFailureWarning(context.Background()); warning != "" {
+		log.Print(warning)
+	}
 
 	// Get frontend filesystem (embedded in production, local in dev)
 	frontendFS, err := web.GetFileSystem()
@@ -135,6 +144,36 @@ func runServer() error {
 	// Serve until a signal, then drain in-flight requests before returning,
 	// so the deferred Close never runs under a handler that is still writing.
 	return serveUntilSignal(server, sigChan, shutdownTimeout)
+}
+
+// runRebuild opens the configured store, empties its read model and replays the
+// event log into it (#845). It is the repair for a failed projection.
+func runRebuild() error {
+	cfg := config.Load()
+	stores, err := storage.Open(cfg)
+	if err != nil {
+		return fmt.Errorf("failed to open %s storage: %w", storage.Select(cfg), err)
+	}
+	defer func() {
+		if err := stores.Close(); err != nil {
+			log.Printf("Error closing storage: %v", err)
+		}
+	}()
+
+	// Ctrl-C stops the replay between events; the saved rebuild state keeps
+	// the read model flagged as out of sync until a rerun succeeds.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	log.Printf("Rebuilding the read model of %s from its event log", stores.Describe())
+	result, err := stores.RebuildReadModel(ctx)
+	if errors.Is(err, storage.ErrRebuildMemory) {
+		return err
+	}
+	if err != nil {
+		return fmt.Errorf("rebuild replayed %d events, %d failed: %w", result.Events, result.Failed, err)
+	}
+	log.Printf("Rebuilt the read model: %d events replayed", result.Events)
+	return nil
 }
 
 // shutdownTimeout bounds how long a SIGINT/SIGTERM waits for in-flight

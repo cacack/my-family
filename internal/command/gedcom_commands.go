@@ -271,7 +271,7 @@ func (h *Handler) importPerson(ctx context.Context, p gedcom.PersonData) error {
 	}
 
 	// Project to read model
-	if err := h.projector.Project(ctx, event, 1, domain.MainBranchID); err != nil {
+	if err := h.project(ctx, event, 1, domain.MainBranchID); err != nil {
 		return fmt.Errorf("projecting person created event: %w", err)
 	}
 
@@ -331,7 +331,7 @@ func (h *Handler) importPerson(ctx context.Context, p gedcom.PersonData) error {
 		currentVersion++
 
 		// Project to read model with correct version
-		if err := h.projector.Project(ctx, nameEvent, currentVersion, domain.MainBranchID); err != nil {
+		if err := h.project(ctx, nameEvent, currentVersion, domain.MainBranchID); err != nil {
 			return fmt.Errorf("projecting name added event: %w", err)
 		}
 	}
@@ -373,7 +373,7 @@ func (h *Handler) importFamily(ctx context.Context, f gedcom.FamilyData) error {
 	}
 
 	// Project to read model
-	if err := h.projector.Project(ctx, event, 1, domain.MainBranchID); err != nil {
+	if err := h.project(ctx, event, 1, domain.MainBranchID); err != nil {
 		return err
 	}
 
@@ -435,7 +435,7 @@ func (h *Handler) importSource(ctx context.Context, s gedcom.SourceData) error {
 	}
 
 	// Project to read model
-	if err := h.projector.Project(ctx, event, 1, domain.MainBranchID); err != nil {
+	if err := h.project(ctx, event, 1, domain.MainBranchID); err != nil {
 		return err
 	}
 
@@ -487,7 +487,7 @@ func (h *Handler) importRepository(ctx context.Context, r gedcom.RepositoryData)
 	}
 
 	// Project to read model
-	if err := h.projector.Project(ctx, event, 1, domain.MainBranchID); err != nil {
+	if err := h.project(ctx, event, 1, domain.MainBranchID); err != nil {
 		return err
 	}
 
@@ -559,7 +559,7 @@ func (h *Handler) importCitation(ctx context.Context, c gedcom.CitationData, sou
 	}
 
 	// Project to read model
-	return h.projector.Project(ctx, event, 1, domain.MainBranchID)
+	return h.project(ctx, event, 1, domain.MainBranchID)
 }
 
 // linkChildToFamily links a child to a family.
@@ -594,7 +594,7 @@ func (h *Handler) linkChildToFamily(ctx context.Context, familyID, childID uuid.
 	}
 
 	// Project to read model at the version the append produced.
-	return h.projector.Project(ctx, event, family.Version+1, domain.MainBranchID)
+	return h.project(ctx, event, family.Version+1, domain.MainBranchID)
 }
 
 // importEvent creates a life event from GEDCOM data.
@@ -631,7 +631,7 @@ func (h *Handler) importEvent(ctx context.Context, e gedcom.EventData) error {
 	}
 
 	// Project to read model
-	if err := h.projector.Project(ctx, event, 1, domain.MainBranchID); err != nil {
+	if err := h.project(ctx, event, 1, domain.MainBranchID); err != nil {
 		return fmt.Errorf("projecting life event created event: %w", err)
 	}
 
@@ -677,7 +677,7 @@ func (h *Handler) importAttribute(ctx context.Context, a gedcom.AttributeData) e
 	}
 
 	// Project to read model
-	return h.projector.Project(ctx, event, 1, domain.MainBranchID)
+	return h.project(ctx, event, 1, domain.MainBranchID)
 }
 
 // importNote creates a shared note from GEDCOM data.
@@ -698,7 +698,7 @@ func (h *Handler) importNote(ctx context.Context, n gedcom.NoteData) error {
 	}
 
 	// Project to read model
-	return h.projector.Project(ctx, event, 1, domain.MainBranchID)
+	return h.project(ctx, event, 1, domain.MainBranchID)
 }
 
 // importSubmitter creates a submitter from GEDCOM data.
@@ -730,7 +730,7 @@ func (h *Handler) importSubmitter(ctx context.Context, s gedcom.SubmitterData) e
 	}
 
 	// Project to read model
-	return h.projector.Project(ctx, event, 1, domain.MainBranchID)
+	return h.project(ctx, event, 1, domain.MainBranchID)
 }
 
 // importAssociation creates an association from GEDCOM data.
@@ -755,7 +755,7 @@ func (h *Handler) importAssociation(ctx context.Context, a gedcom.AssociationDat
 	}
 
 	// Project to read model
-	return h.projector.Project(ctx, event, 1, domain.MainBranchID)
+	return h.project(ctx, event, 1, domain.MainBranchID)
 }
 
 // importLDSOrdinance creates an LDS ordinance from GEDCOM data.
@@ -792,5 +792,5 @@ func (h *Handler) importLDSOrdinance(ctx context.Context, o gedcom.LDSOrdinanceD
 	}
 
 	// Project to read model
-	return h.projector.Project(ctx, event, 1, domain.MainBranchID)
+	return h.project(ctx, event, 1, domain.MainBranchID)
 }

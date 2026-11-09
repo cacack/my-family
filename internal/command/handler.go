@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"sort"
 
 	"github.com/google/uuid"
@@ -300,6 +299,19 @@ func (h *Handler) appendScope() repository.AppendScope {
 	return repository.AppendScope{BranchID: h.branchID}
 }
 
+// project applies one already-appended event to the read model. A failure is
+// reported (logged, and recorded as a projection-failure marker) before it is
+// returned, because the event is in the log either way and the read model now
+// lags it (#845). Every projection a command makes after an append goes
+// through here.
+func (h *Handler) project(ctx context.Context, event domain.Event, version int64, branchID domain.BranchID) error {
+	err := h.projector.Project(ctx, event, version, branchID)
+	if err != nil {
+		repository.ReportProjectionFailure(ctx, h.readStore, event, version, branchID, err)
+	}
+	return err
+}
+
 // execute is a helper that appends events, projects them, and returns the new version.
 func (h *Handler) execute(ctx context.Context, streamID string, streamType string, events []domain.Event, expectedVersion int64) (int64, error) {
 	// Parse stream ID as UUID
@@ -354,17 +366,10 @@ func (h *Handler) execute(ctx context.Context, streamID string, streamType strin
 	}
 	for _, event := range events {
 		newVersion++
-		if err := h.projector.Project(ctx, event, newVersion, h.branchID); err != nil {
-			// The event is already appended, so the command still succeeds, but
-			// the read model now lacks this event's effect. Log it so the drift
-			// is visible; there is no automatic projection rebuild yet.
-			slog.Error("projection failed after append; read model is out of sync with the event log",
-				"event_type", event.EventType(),
-				"stream_id", id.String(),
-				"version", newVersion,
-				"branch_id", h.branchID.String(),
-				"error", err)
-		}
+		// The event is already appended, so a projection failure does not fail
+		// the command: h.project has logged it and recorded a marker, and
+		// `myfamily rebuild` brings the read model back in line (#845).
+		_ = h.project(ctx, event, newVersion, h.branchID)
 	}
 
 	return newVersion, nil

@@ -692,6 +692,25 @@ func (s *ReadModelStore) createTables() error {
 			deleted INTEGER NOT NULL DEFAULT 0,
 			PRIMARY KEY (id, branch_id)
 		);
+
+		-- Events whose projection failed after they were appended (#845).
+		CREATE TABLE IF NOT EXISTS projection_failures (
+			seq INTEGER PRIMARY KEY AUTOINCREMENT,
+			stream_id TEXT NOT NULL,
+			branch_id TEXT NOT NULL,
+			version INTEGER NOT NULL,
+			event_type TEXT NOT NULL,
+			error TEXT NOT NULL,
+			failed_at TEXT NOT NULL
+		);
+
+		-- The state of a rebuild in progress (#845): the values no event
+		-- carries, saved before the reset. ResetReadModel keeps it; a row means
+		-- a rebuild has not finished.
+		CREATE TABLE IF NOT EXISTS rebuild_state (
+			id INTEGER PRIMARY KEY CHECK (id = 1),
+			state TEXT NOT NULL
+		);
 	`)
 	if err != nil {
 		return err
@@ -794,10 +813,10 @@ func (s *ReadModelStore) runMigrations() {
 	// only a freshly built read model has. Such a pre-#669 SQLite database therefore
 	// stays main-only for these tables until the read model is recreated from the
 	// event store; the branch_id/deleted columns below keep mainline reads working in
-	// the meantime. NOTE: there is no automated read-model rebuild command in the repo
-	// yet — recreation is currently manual (delete the read-model DB and let it
-	// re-project on startup). TODO(#680): add a rebuild command and link it
-	// here once it exists.
+	// the meantime. NOTE: `myfamily rebuild` (#845) does not help here: it only
+	// deletes rows and replays the log, so these tables keep their lone-id
+	// primary key. Recreation is still manual (delete the read-model DB and let
+	// it re-project on startup). TODO(#680): make the rebuild recreate tables.
 	s.migrateBranchColumns()
 
 	// Secondary indexes leading with branch_id so PurgeBranch's DELETE ... WHERE

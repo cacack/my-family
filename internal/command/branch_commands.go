@@ -74,7 +74,7 @@ func (h *Handler) CreateBranchWithResearch(ctx context.Context, input CreateBran
 		return nil, fmt.Errorf("appending branch created event: %w", err)
 	}
 
-	if err := h.projector.Project(ctx, event, 1, scope.BranchID); err != nil {
+	if err := h.project(ctx, event, 1, scope.BranchID); err != nil {
 		return nil, fmt.Errorf("projecting branch created event: %w", err)
 	}
 
@@ -146,7 +146,7 @@ func (h *Handler) closeBranch(ctx context.Context, branchID uuid.UUID, outcome d
 		return fmt.Errorf("appending branch deleted event: %w", err)
 	}
 
-	if err := h.projector.Project(ctx, event, currentVersion+1, scope.BranchID); err != nil {
+	if err := h.project(ctx, event, currentVersion+1, scope.BranchID); err != nil {
 		return fmt.Errorf("projecting branch deleted event: %w", err)
 	}
 

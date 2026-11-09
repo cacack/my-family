@@ -512,7 +512,7 @@ func (h *Handler) claimMerge(ctx context.Context, branch *domain.Branch, event d
 		// against a main the earlier attempt may already have written to.
 		// Finishing that attempt is ResumeMerge's job (#685), which works from
 		// the plan the claim recorded and detects what already landed.
-		if err := h.projector.Project(ctx, claimed, currentVersion, scope.BranchID); err != nil {
+		if err := h.project(ctx, claimed, currentVersion, scope.BranchID); err != nil {
 			return fmt.Errorf("repairing branch registry after an interrupted claim: %w", err)
 		}
 		return fmt.Errorf("%w: %s was already claimed by an earlier attempt whose registry update did not land; "+
@@ -526,7 +526,7 @@ func (h *Handler) claimMerge(ctx context.Context, branch *domain.Branch, event d
 		return fmt.Errorf("appending branch merged event: %w", err)
 	}
 
-	if err := h.projector.Project(ctx, event, currentVersion+1, scope.BranchID); err != nil {
+	if err := h.project(ctx, event, currentVersion+1, scope.BranchID); err != nil {
 		return fmt.Errorf("projecting branch merged event: %w", err)
 	}
 	return nil
@@ -721,7 +721,7 @@ func (h *Handler) replayStream(ctx context.Context, group streamGroup, plannedVe
 	version := currentVersion
 	for _, event := range events {
 		version++
-		if err := h.projector.Project(ctx, event, version, domain.MainBranchID); err != nil {
+		if err := h.project(ctx, event, version, domain.MainBranchID); err != nil {
 			return len(events), fmt.Errorf("projecting replayed %s onto main: %w", event.EventType(), err)
 		}
 	}
