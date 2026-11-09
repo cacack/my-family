@@ -447,6 +447,38 @@ describe('Family Detail Page: partners and children (#826)', () => {
 		confirm.mockRestore();
 	});
 
+	// PersonSelector consumed every Escape, so a closed partner search swallowed cancel (#1139).
+	it('leaves edit mode on Escape from a closed partner search, after the discard prompt', async () => {
+		const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+		await openEdit();
+		await fireEvent.click(screen.getByRole('button', { name: 'Clear Partner 1: John Smith' }));
+		const partner = screen.getByRole('combobox', { name: 'Partner 1' });
+		partner.focus();
+
+		await fireEvent.keyDown(partner, { key: 'Escape' });
+
+		expect(confirm).toHaveBeenCalledWith('Discard your unsaved changes?');
+		expect(screen.queryByLabelText('Marriage Date')).toBeNull();
+		confirm.mockRestore();
+	});
+
+	it('keeps edit mode when Escape closes the partner search results', async () => {
+		const confirm = vi.spyOn(window, 'confirm');
+		await openEdit();
+		await fireEvent.click(screen.getByRole('button', { name: 'Clear Partner 1: John Smith' }));
+		const partner = screen.getByRole('combobox', { name: 'Partner 1' });
+		partner.focus();
+		await fireEvent.input(partner, { target: { value: 'Jones' } });
+		await screen.findByRole('option', { name: /Carl Jones/ }, { timeout: 1500 });
+
+		await fireEvent.keyDown(partner, { key: 'Escape' });
+
+		await waitFor(() => expect(screen.queryByRole('listbox')).toBeNull());
+		expect(confirm).not.toHaveBeenCalled();
+		expect(screen.getByLabelText('Marriage Date')).toBeDefined();
+		confirm.mockRestore();
+	});
+
 	it('shows the current partners in the edit form', async () => {
 		await openEdit();
 		expect(screen.getByRole('button', { name: 'Clear Partner 1: John Smith' })).toBeDefined();

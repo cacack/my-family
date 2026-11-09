@@ -12,6 +12,11 @@
 	let results: SearchResult[] = $state([]);
 	let loading = $state(false);
 	let showDropdown = $state(false);
+	// The dropdown renders only with results or a settled "no results" message;
+	// Escape is consumed only when it closes this visible list (#1139).
+	let dropdownVisible = $derived(
+		showDropdown && (results.length > 0 || (query.length >= 2 && !loading))
+	);
 	let fuzzy = $state(false);
 	let highlightedIndex = $state(-1);
 	let debounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -144,7 +149,7 @@
 		// Escape closes an open dropdown and is consumed; with nothing open it is
 		// left for page shortcuts (e.g. cancelling an edit) (#1139).
 		if (e.key === 'Escape') {
-			if (showDropdown) {
+			if (dropdownVisible) {
 				e.preventDefault();
 				showDropdown = false;
 				highlightedIndex = -1;
@@ -244,7 +249,7 @@
 		{/if}
 	</div>
 
-	{#if showDropdown && (results.length > 0 || (query.length >= 2 && !loading))}
+	{#if dropdownVisible}
 		<div
 			bind:this={dropdownRef}
 			class="dropdown"

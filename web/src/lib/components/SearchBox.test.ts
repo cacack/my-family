@@ -284,6 +284,19 @@ describe('SearchBox', () => {
 		expect(escape.defaultPrevented).toBe(false);
 	});
 
+	it('leaves Escape for page shortcuts while a 1-character query shows no dropdown', async () => {
+		const { container } = render(SearchBox);
+		const input = screen.getByRole('combobox');
+
+		await fireEvent.input(input, { target: { value: 'D' } });
+		expect(container.querySelector('.dropdown')).toBeNull();
+
+		const escape = new KeyboardEvent('keydown', { key: 'Escape', cancelable: true, bubbles: true });
+		input.dispatchEvent(escape);
+
+		expect(escape.defaultPrevented).toBe(false);
+	});
+
 	it('displays formatted names in results', async () => {
 		vi.mocked(apiModule.api.searchPersons).mockResolvedValue(mockSearchResults);
 
