@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { api, type SearchResult, formatPersonName, formatLifespan } from '$lib/api/client';
+	import { api, type SearchResult, formatPersonName, formatLifespan } from '#lib/api/client.js';
 
 	interface Props {
 		onSelect?: (person: SearchResult) => void;

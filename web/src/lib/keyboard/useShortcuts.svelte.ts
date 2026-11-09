@@ -5,7 +5,7 @@
  * Supports vim-style key sequences (e.g., `g h`) with configurable timeout.
  */
 
-import { keyboardState } from '$lib/stores/keyboardSettings.svelte';
+import { keyboardState } from '#lib/stores/keyboardSettings.svelte.js';
 import {
 	getShortcutsForContext,
 	sequenceMatches,
@@ -84,7 +84,7 @@ export type ShortcutHandler = () => unknown;
  * @example
  * ```svelte
  * <script lang="ts">
- *   import { useShortcuts } from '$lib/keyboard';
+ *   import { useShortcuts } from '#lib/keyboard/index.js';
  *   import { goto } from '$app/navigation';
  *
  *   const shortcuts = useShortcuts('global', {
@@ -247,7 +247,7 @@ export function useShortcuts(
  * @example
  * ```svelte
  * <script lang="ts">
- *   import { createShortcutHandler } from '$lib/keyboard';
+ *   import { createShortcutHandler } from '#lib/keyboard/index.js';
  *   import { goto } from '$app/navigation';
  *
  *   const { handleKeydown } = createShortcutHandler('global', {

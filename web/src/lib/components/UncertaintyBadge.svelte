@@ -1,7 +1,7 @@
 <script lang="ts">
-	import type { ResearchStatus } from '$lib/api/client';
-	import { Badge } from '$lib/components/ui/badge';
-	import { RESEARCH_STATUS_OPTIONS } from '$lib/utils/enumOptions';
+	import type { ResearchStatus } from '#lib/api/client.js';
+	import { Badge } from '#lib/components/ui/badge/index.js';
+	import { RESEARCH_STATUS_OPTIONS } from '#lib/utils/enumOptions.js';
 
 	interface Props {
 		status: ResearchStatus;

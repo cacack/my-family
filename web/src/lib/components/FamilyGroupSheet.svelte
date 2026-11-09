@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { FamilyGroupSheet, GroupSheetPerson, GroupSheetChild, GroupSheetEvent } from '$lib/api/client';
+	import type { FamilyGroupSheet, GroupSheetPerson, GroupSheetChild, GroupSheetEvent } from '#lib/api/client.js';
 
 	interface Props {
 		data: FamilyGroupSheet;

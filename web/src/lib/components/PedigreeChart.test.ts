@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, cleanup } from '@testing-library/svelte';
 import PedigreeChart from './PedigreeChart.svelte';
-import type { PedigreeNode } from '$lib/api/client';
-import { FIT_SCALE_RANGE, MIN_CARD_FONT_PX } from '$lib/utils/chart';
+import type { PedigreeNode } from '#lib/api/client.js';
+import { FIT_SCALE_RANGE, MIN_CARD_FONT_PX } from '#lib/utils/chart.js';
 
 // Mock data for tests
 const mockSinglePerson: PedigreeNode = {

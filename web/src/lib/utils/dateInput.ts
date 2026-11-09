@@ -1,4 +1,4 @@
-import type { ApiError } from '$lib/api/client';
+import type { ApiError } from '#lib/api/client.js';
 
 /**
  * The date field a save was refused for because its text can't be read as a

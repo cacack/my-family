@@ -4,7 +4,7 @@
 	 * Use the announce() function to make announcements that screen readers will read.
 	 *
 	 * Usage:
-	 *   import { announce } from '$lib/components/Announcer.svelte';
+	 *   import { announce } from '#lib/components/Announcer.svelte';
 	 *   announce('5 results found');
 	 */
 

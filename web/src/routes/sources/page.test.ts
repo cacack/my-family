@@ -1,13 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/svelte';
 import SourcesPage from './+page.svelte';
-import * as apiModule from '$lib/api/client';
-import { back, currentPath, historyLength, resetRouter } from '$lib/test/fakeRouter.svelte';
+import * as apiModule from '#lib/api/client.js';
+import { back, currentPath, historyLength, resetRouter } from '#lib/test/fakeRouter.svelte.js';
 
-vi.mock('$app/state', async () => (await import('$lib/test/fakeRouter.svelte')).appState);
-vi.mock('$app/navigation', async () => (await import('$lib/test/fakeRouter.svelte')).appNavigation);
+vi.mock('$app/state', async () => (await import('#lib/test/fakeRouter.svelte.js')).appState);
+vi.mock('$app/navigation', async () => (await import('#lib/test/fakeRouter.svelte.js')).appNavigation);
 
-vi.mock('$lib/api/client', async (importOriginal) => {
+vi.mock('#lib/api/client.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof apiModule>();
 	return {
 		...actual,

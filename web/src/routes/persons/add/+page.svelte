@@ -1,12 +1,12 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { api, type PersonCreate } from '$lib/api/client';
-	import { Button } from '$lib/components/ui/button';
-	import PageHeader from '$lib/components/PageHeader.svelte';
-	import FormRow from '$lib/components/FormRow.svelte';
-	import ActionError from '$lib/components/ActionError.svelte';
-	import { GENDER_OPTIONS } from '$lib/utils/enumOptions';
-	import { asDatePhrase, savedAsNotes, unreadableDateField } from '$lib/utils/dateInput';
+	import { api, type PersonCreate } from '#lib/api/client.js';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import PageHeader from '#lib/components/PageHeader.svelte';
+	import FormRow from '#lib/components/FormRow.svelte';
+	import ActionError from '#lib/components/ActionError.svelte';
+	import { GENDER_OPTIONS } from '#lib/utils/enumOptions.js';
+	import { asDatePhrase, savedAsNotes, unreadableDateField } from '#lib/utils/dateInput.js';
 
 	const DATE_FIELDS = ['birth_date', 'death_date'] as const;
 	type DateField = (typeof DATE_FIELDS)[number];

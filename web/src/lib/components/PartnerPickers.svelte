@@ -1,5 +1,5 @@
 <script lang="ts" module>
-	import type { FamilyUpdate, PersonSummary } from '$lib/api/client';
+	import type { FamilyUpdate, PersonSummary } from '#lib/api/client.js';
 
 	type PartnerFields = Pick<
 		FamilyUpdate,

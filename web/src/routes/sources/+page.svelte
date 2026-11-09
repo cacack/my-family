@@ -1,15 +1,15 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { api, type Source } from '$lib/api/client';
-	import { Button } from '$lib/components/ui/button';
-	import PageHeader from '$lib/components/PageHeader.svelte';
-	import FormRow from '$lib/components/FormRow.svelte';
-	import SourceCard from '$lib/components/SourceCard.svelte';
-	import { DEFAULT_SOURCE_TYPE, SOURCE_TYPES } from '$lib/utils/sourceTypes';
-	import ErrorState from '$lib/components/ErrorState.svelte';
-	import ActionError from '$lib/components/ActionError.svelte';
-	import { asDatePhrase, unreadableDateField } from '$lib/utils/dateInput';
-	import { clampPageToTotal, readEnum, readPositiveInt, setQuery } from '$lib/utils/urlState';
+	import { api, type Source } from '#lib/api/client.js';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import PageHeader from '#lib/components/PageHeader.svelte';
+	import FormRow from '#lib/components/FormRow.svelte';
+	import SourceCard from '#lib/components/SourceCard.svelte';
+	import { DEFAULT_SOURCE_TYPE, SOURCE_TYPES } from '#lib/utils/sourceTypes.js';
+	import ErrorState from '#lib/components/ErrorState.svelte';
+	import ActionError from '#lib/components/ActionError.svelte';
+	import { asDatePhrase, unreadableDateField } from '#lib/utils/dateInput.js';
+	import { clampPageToTotal, readEnum, readPositiveInt, setQuery } from '#lib/utils/urlState.js';
 
 	let sources: Source[] = $state([]);
 	let total = $state(0);

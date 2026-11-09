@@ -1,7 +1,7 @@
 <script lang="ts">
 	import * as d3 from 'd3';
 	import { onMount } from 'svelte';
-	import { formatGenDate, formatPersonName, formatYear, type DescendancyNode } from '$lib/api/client';
+	import { formatGenDate, formatPersonName, formatYear, type DescendancyNode } from '#lib/api/client.js';
 	import {
 		fitTransform,
 		motionDuration,
@@ -12,13 +12,13 @@
 		truncateLabel,
 		wrapLabel,
 		type ScaleExtent
-	} from '$lib/utils/chart';
+	} from '#lib/utils/chart.js';
 	import {
 		layoutDescendancy,
 		type ChildLink,
 		type DescendancyLayoutConfig,
 		type SpouseCard
-	} from '$lib/utils/descendancyLayout';
+	} from '#lib/utils/descendancyLayout.js';
 
 	export type LayoutMode = 'compact' | 'standard' | 'wide';
 

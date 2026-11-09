@@ -25,15 +25,15 @@
 		type ApiError,
 		type BranchHealth,
 		type BranchValidationIssue
-	} from '$lib/api/client';
-	import SeverityBadge from '$lib/components/SeverityBadge.svelte';
-	import { Button } from '$lib/components/ui/button';
+	} from '#lib/api/client.js';
+	import SeverityBadge from '#lib/components/SeverityBadge.svelte';
+	import { Button } from '#lib/components/ui/button/index.js';
 	import {
 		confidencePercent,
 		healthSummary,
 		issueRecordHref,
 		subjectHref
-	} from '$lib/utils/branchReview';
+	} from '#lib/utils/branchReview.js';
 
 	interface Props {
 		branchId: string;

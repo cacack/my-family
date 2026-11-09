@@ -1,21 +1,21 @@
 <script lang="ts">
 	import '../app.css';
-	import favicon from '$lib/assets/favicon.svg';
-	import logoMark from '$lib/assets/favicon.svg?raw';
+	import favicon from '#lib/assets/favicon.svg';
+	import logoMark from '#lib/assets/favicon.svg?raw';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import SearchBox from '$lib/components/SearchBox.svelte';
-	import KeyboardHelp from '$lib/components/KeyboardHelp.svelte';
-	import AccessibilityPanel from '$lib/components/AccessibilityPanel.svelte';
-	import DemoBanner from '$lib/components/DemoBanner.svelte';
-	import BranchBanner from '$lib/components/BranchBanner.svelte';
-	import BranchSwitcher from '$lib/components/BranchSwitcher.svelte';
-	import MainNav from '$lib/components/MainNav.svelte';
-	import TooltipProvider from '$lib/components/ui/tooltip/tooltip-provider.svelte';
-	import { createShortcutHandler } from '$lib/keyboard/useShortcuts.svelte';
-	import { loadAppConfig, getAppConfig } from '$lib/stores/appConfig.svelte';
-	import { revalidateActiveBranch } from '$lib/stores/activeBranch.svelte';
-	import type { SearchResult } from '$lib/api/client';
+	import SearchBox from '#lib/components/SearchBox.svelte';
+	import KeyboardHelp from '#lib/components/KeyboardHelp.svelte';
+	import AccessibilityPanel from '#lib/components/AccessibilityPanel.svelte';
+	import DemoBanner from '#lib/components/DemoBanner.svelte';
+	import BranchBanner from '#lib/components/BranchBanner.svelte';
+	import BranchSwitcher from '#lib/components/BranchSwitcher.svelte';
+	import MainNav from '#lib/components/MainNav.svelte';
+	import TooltipProvider from '#lib/components/ui/tooltip/tooltip-provider.svelte';
+	import { createShortcutHandler } from '#lib/keyboard/useShortcuts.svelte.js';
+	import { loadAppConfig, getAppConfig } from '#lib/stores/appConfig.svelte.js';
+	import { revalidateActiveBranch } from '#lib/stores/activeBranch.svelte.js';
+	import type { SearchResult } from '#lib/api/client.js';
 
 	let { children } = $props();
 

@@ -5,11 +5,11 @@
 		setHighContrast,
 		setReducedMotion,
 		type FontSize
-	} from '$lib/stores/accessibilitySettings.svelte';
+	} from '#lib/stores/accessibilitySettings.svelte.js';
 	import {
 		keyboardState,
 		setShortcutsEnabled
-	} from '$lib/stores/keyboardSettings.svelte';
+	} from '#lib/stores/keyboardSettings.svelte.js';
 
 	interface Props {
 		open: boolean;

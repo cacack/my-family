@@ -2,7 +2,7 @@
  * Shared utility functions for evidence analysis UI.
  */
 
-import type { FactType } from '$lib/api/client';
+import type { FactType } from '#lib/api/client.js';
 
 /** Every fact type the API accepts (domain.FactType); it rejects any other value. */
 export const FACT_TYPES: readonly FactType[] = [

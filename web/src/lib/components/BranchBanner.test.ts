@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/svelte';
 import BranchBanner from './BranchBanner.svelte';
-import type * as apiModule from '$lib/api/client';
-import type { Branch, BranchDrift } from '$lib/api/client';
+import type * as apiModule from '#lib/api/client.js';
+import type { Branch, BranchDrift } from '#lib/api/client.js';
 
 // Hoisted so the module mock below (which vitest lifts above the imports) can
 // close over them.
@@ -22,7 +22,7 @@ const { mockState, returnToMainline, dismissBranchNotice, getBranchDrift, writeL
 	writeListeners: new Set<(branchId: string) => void>()
 }));
 
-vi.mock('$lib/api/client', async (importOriginal) => {
+vi.mock('#lib/api/client.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof apiModule>();
 	return {
 		...actual,
@@ -34,7 +34,7 @@ vi.mock('$lib/api/client', async (importOriginal) => {
 	};
 });
 
-vi.mock('$lib/stores/activeBranch.svelte', () => ({
+vi.mock('#lib/stores/activeBranch.svelte.js', () => ({
 	activeBranch: mockState,
 	returnToMainline: () => returnToMainline(),
 	dismissBranchNotice: () => dismissBranchNotice()

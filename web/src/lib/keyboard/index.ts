@@ -6,7 +6,7 @@
  * @example
  * ```svelte
  * <script lang="ts">
- *   import { createShortcutHandler, getShortcutsForContext } from '$lib/keyboard';
+ *   import { createShortcutHandler, getShortcutsForContext } from '#lib/keyboard/index.js';
  *   import { goto } from '$app/navigation';
  *
  *   const { handleKeydown } = createShortcutHandler('global', {

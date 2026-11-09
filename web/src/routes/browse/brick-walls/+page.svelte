@@ -1,12 +1,12 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { api, type BrickWallEntry } from '$lib/api/client';
-	import { Badge } from '$lib/components/ui/badge';
-	import PageHeader from '$lib/components/PageHeader.svelte';
-	import { Card, CardHeader, CardContent, CardFooter } from '$lib/components/ui/card';
-	import MainlineNotice from '$lib/components/MainlineNotice.svelte';
-	import ErrorState from '$lib/components/ErrorState.svelte';
-	import { readFlag, setQuery } from '$lib/utils/urlState';
+	import { api, type BrickWallEntry } from '#lib/api/client.js';
+	import { Badge } from '#lib/components/ui/badge/index.js';
+	import PageHeader from '#lib/components/PageHeader.svelte';
+	import { Card, CardHeader, CardContent, CardFooter } from '#lib/components/ui/card/index.js';
+	import MainlineNotice from '#lib/components/MainlineNotice.svelte';
+	import ErrorState from '#lib/components/ErrorState.svelte';
+	import { readFlag, setQuery } from '#lib/utils/urlState.js';
 
 	let entries: BrickWallEntry[] = $state([]);
 	let activeCount = $state(0);

@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render } from '@testing-library/svelte';
 import DescendancyChart from './DescendancyChart.svelte';
-import type { DescendancyNode } from '$lib/api/client';
-import { MIN_CARD_FONT_PX } from '$lib/utils/chart';
+import type { DescendancyNode } from '#lib/api/client.js';
+import { MIN_CARD_FONT_PX } from '#lib/utils/chart.js';
 
 // Mock data for tests
 const mockSinglePerson: DescendancyNode = {

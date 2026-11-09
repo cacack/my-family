@@ -2,9 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import DashboardPage from './+page.svelte';
 import dashboardSource from './+page.svelte?raw';
-import * as apiModule from '$lib/api/client';
+import * as apiModule from '#lib/api/client.js';
 
-vi.mock('$lib/api/client', async (importOriginal) => {
+vi.mock('#lib/api/client.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof apiModule>();
 	return {
 		...actual,
@@ -22,12 +22,12 @@ const { branchState, returnToMainline, onboarding } = vi.hoisted(() => ({
 	onboarding: { completed: false }
 }));
 
-vi.mock('$lib/stores/activeBranch.svelte', () => ({
+vi.mock('#lib/stores/activeBranch.svelte.js', () => ({
 	activeBranch: branchState,
 	returnToMainline
 }));
 
-vi.mock('$lib/stores/onboardingSettings.svelte', () => ({
+vi.mock('#lib/stores/onboardingSettings.svelte.js', () => ({
 	onboardingState: onboarding,
 	setOnboardingCompleted: vi.fn()
 }));

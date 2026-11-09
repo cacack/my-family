@@ -1,11 +1,11 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { api, recordLoadError, type AhnentafelResponse, type AhnentafelEntry, formatGenDate, formatPersonName } from '$lib/api/client';
-	import { Button } from '$lib/components/ui/button';
-	import ActionBar from '$lib/components/ActionBar.svelte';
-	import { Card, CardHeader, CardContent } from '$lib/components/ui/card';
-	import ErrorState from '$lib/components/ErrorState.svelte';
-	import ActionError from '$lib/components/ActionError.svelte';
+	import { api, recordLoadError, type AhnentafelResponse, type AhnentafelEntry, formatGenDate, formatPersonName } from '#lib/api/client.js';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import ActionBar from '#lib/components/ActionBar.svelte';
+	import { Card, CardHeader, CardContent } from '#lib/components/ui/card/index.js';
+	import ErrorState from '#lib/components/ErrorState.svelte';
+	import ActionError from '#lib/components/ActionError.svelte';
 
 	let report: AhnentafelResponse | null = $state(null);
 	let error: string | null = $state(null);

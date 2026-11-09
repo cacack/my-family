@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import CitationSection from './CitationSection.svelte';
-import * as apiModule from '$lib/api/client';
-import { PERSON_FACT_TYPES } from '$lib/utils/evidence';
+import * as apiModule from '#lib/api/client.js';
+import { PERSON_FACT_TYPES } from '#lib/utils/evidence.js';
 
-vi.mock('$lib/api/client', async (importOriginal) => {
+vi.mock('#lib/api/client.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof apiModule>();
 	return {
 		...actual,

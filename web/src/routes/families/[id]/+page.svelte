@@ -13,30 +13,30 @@
 		formatGenDate,
 		formatPersonName,
 		type RelationType
-	} from '$lib/api/client';
-	import AddChildDialog from '$lib/components/AddChildDialog.svelte';
-	import PartnerPickers, { partnerChanges } from '$lib/components/PartnerPickers.svelte';
-	import PersonCard from '$lib/components/PersonCard.svelte';
-	import * as AlertDialog from '$lib/components/ui/alert-dialog';
-	import ChangeHistory from '$lib/components/ChangeHistory.svelte';
-	import ExternalLinks from '$lib/components/ExternalLinks.svelte';
-	import InfoSection from '$lib/components/InfoSection.svelte';
-	import ErrorState from '$lib/components/ErrorState.svelte';
-	import SaveConflict from '$lib/components/SaveConflict.svelte';
-	import ActionError from '$lib/components/ActionError.svelte';
-	import RestorePointBrowser from '$lib/components/RestorePointBrowser.svelte';
-	import RollbackConfirmDialog from '$lib/components/RollbackConfirmDialog.svelte';
-	import RollbackSuccessBanner from '$lib/components/RollbackSuccessBanner.svelte';
-	import { createShortcutHandler } from '$lib/keyboard/useShortcuts.svelte';
-	import { Button } from '$lib/components/ui/button';
-	import ActionBar from '$lib/components/ActionBar.svelte';
-	import FormRow from '$lib/components/FormRow.svelte';
-	import { Badge } from '$lib/components/ui/badge';
-	import { activeBranch } from '$lib/stores/activeBranch.svelte';
-	import { ROLLBACK_MAINLINE_ONLY } from '$lib/utils/rollbackScope';
-	import { RELATION_TYPE_OPTIONS } from '$lib/utils/enumOptions';
-	import { DISCARD_EDITS_PROMPT, SaveConflictFlow, type ConflictRow } from '$lib/utils/saveConflict.svelte';
-	import { asDatePhrase, savedAsNotes, savedAsText, stillStored, unreadableDateField, type SavedAs } from '$lib/utils/dateInput';
+	} from '#lib/api/client.js';
+	import AddChildDialog from '#lib/components/AddChildDialog.svelte';
+	import PartnerPickers, { partnerChanges } from '#lib/components/PartnerPickers.svelte';
+	import PersonCard from '#lib/components/PersonCard.svelte';
+	import * as AlertDialog from '#lib/components/ui/alert-dialog/index.js';
+	import ChangeHistory from '#lib/components/ChangeHistory.svelte';
+	import ExternalLinks from '#lib/components/ExternalLinks.svelte';
+	import InfoSection from '#lib/components/InfoSection.svelte';
+	import ErrorState from '#lib/components/ErrorState.svelte';
+	import SaveConflict from '#lib/components/SaveConflict.svelte';
+	import ActionError from '#lib/components/ActionError.svelte';
+	import RestorePointBrowser from '#lib/components/RestorePointBrowser.svelte';
+	import RollbackConfirmDialog from '#lib/components/RollbackConfirmDialog.svelte';
+	import RollbackSuccessBanner from '#lib/components/RollbackSuccessBanner.svelte';
+	import { createShortcutHandler } from '#lib/keyboard/useShortcuts.svelte.js';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import ActionBar from '#lib/components/ActionBar.svelte';
+	import FormRow from '#lib/components/FormRow.svelte';
+	import { Badge } from '#lib/components/ui/badge/index.js';
+	import { activeBranch } from '#lib/stores/activeBranch.svelte.js';
+	import { ROLLBACK_MAINLINE_ONLY } from '#lib/utils/rollbackScope.js';
+	import { RELATION_TYPE_OPTIONS } from '#lib/utils/enumOptions.js';
+	import { DISCARD_EDITS_PROMPT, SaveConflictFlow, type ConflictRow } from '#lib/utils/saveConflict.svelte.js';
+	import { asDatePhrase, savedAsNotes, savedAsText, stillStored, unreadableDateField, type SavedAs } from '#lib/utils/dateInput.js';
 
 	let family: FamilyDetail | null = $state(null);
 	let loading = $state(true);

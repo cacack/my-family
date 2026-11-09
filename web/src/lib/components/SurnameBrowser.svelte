@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import { page } from '$app/state';
-	import { api, type SurnameEntry, type LetterCount } from '$lib/api/client';
-	import { Button } from '$lib/components/ui/button';
-	import { readEnum, setQuery } from '$lib/utils/urlState';
+	import { api, type SurnameEntry, type LetterCount } from '#lib/api/client.js';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import { readEnum, setQuery } from '#lib/utils/urlState.js';
 	import ErrorState from './ErrorState.svelte';
 
 	let letterCounts: LetterCount[] = $state([]);

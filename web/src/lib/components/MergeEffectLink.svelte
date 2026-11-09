@@ -14,8 +14,8 @@
 	 * active branch, so standing on a branch the comparison cannot open; the
 	 * link says to return to the mainline first rather than lead to a refusal.
 	 */
-	import type { MergeRecord } from '$lib/api/client';
-	import { snapshotCompareRangeHref, snapshotCompareToNowHref } from '$lib/utils/snapshots';
+	import type { MergeRecord } from '#lib/api/client.js';
+	import { snapshotCompareRangeHref, snapshotCompareToNowHref } from '#lib/utils/snapshots.js';
 
 	interface Props {
 		record: MergeRecord;

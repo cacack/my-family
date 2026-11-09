@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { api, type ChangeEntry, type ChangeHistoryResponse } from '$lib/api/client';
-	import { Badge } from '$lib/components/ui/badge';
-	import { Button } from '$lib/components/ui/button';
+	import { api, type ChangeEntry, type ChangeHistoryResponse } from '#lib/api/client.js';
+	import { Badge } from '#lib/components/ui/badge/index.js';
+	import { Button } from '#lib/components/ui/button/index.js';
 	import DiffView from './DiffView.svelte';
 	import MergedFromChip from './MergedFromChip.svelte';
 	import {
@@ -11,8 +11,8 @@
 		changeActionLabel,
 		changeEntryLink,
 		entityTypeLabel
-	} from '$lib/utils/changeEntries';
-	import { readEnum, setQuery } from '$lib/utils/urlState';
+	} from '#lib/utils/changeEntries.js';
+	import { readEnum, setQuery } from '#lib/utils/urlState.js';
 	import ErrorState from './ErrorState.svelte';
 	import ActionError from './ActionError.svelte';
 

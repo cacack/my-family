@@ -1,10 +1,10 @@
 <script lang="ts">
-	import { api, formatPersonName, type PersonCreate } from '$lib/api/client';
-	import { Button } from '$lib/components/ui/button';
-	import FormRow from '$lib/components/FormRow.svelte';
-	import ActionError from '$lib/components/ActionError.svelte';
-	import { GENDER_OPTIONS } from '$lib/utils/enumOptions';
-	import { asDatePhrase, savedAsNotes, unreadableDateField, type SavedAs } from '$lib/utils/dateInput';
+	import { api, formatPersonName, type PersonCreate } from '#lib/api/client.js';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import FormRow from '#lib/components/FormRow.svelte';
+	import ActionError from '#lib/components/ActionError.svelte';
+	import { GENDER_OPTIONS } from '#lib/utils/enumOptions.js';
+	import { asDatePhrase, savedAsNotes, unreadableDateField, type SavedAs } from '#lib/utils/dateInput.js';
 
 	interface Props {
 		/** `birthDateSavedAs` is set when the birth date was stored in another form than typed (#996). */

@@ -15,13 +15,13 @@
 		type Branch,
 		type BranchResearchArchive,
 		type PromoteResearchLogsResult
-	} from '$lib/api/client';
-	import BranchOutcomeBadge from '$lib/components/branch/BranchOutcomeBadge.svelte';
-	import { promotionSummary } from '$lib/utils/branchResearch';
-	import { Badge } from '$lib/components/ui/badge';
-	import { Button } from '$lib/components/ui/button';
-	import ErrorState from '$lib/components/ErrorState.svelte';
-	import PageHeader from '$lib/components/PageHeader.svelte';
+	} from '#lib/api/client.js';
+	import BranchOutcomeBadge from '#lib/components/branch/BranchOutcomeBadge.svelte';
+	import { promotionSummary } from '#lib/utils/branchResearch.js';
+	import { Badge } from '#lib/components/ui/badge/index.js';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import ErrorState from '#lib/components/ErrorState.svelte';
+	import PageHeader from '#lib/components/PageHeader.svelte';
 
 	const LOG_OUTCOME_LABELS: Record<string, string> = {
 		found: 'Found',

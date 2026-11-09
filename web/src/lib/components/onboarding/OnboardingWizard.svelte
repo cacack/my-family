@@ -1,10 +1,10 @@
 <script lang="ts">
-	import { setOnboardingCompleted } from '$lib/stores/onboardingSettings.svelte';
+	import { setOnboardingCompleted } from '#lib/stores/onboardingSettings.svelte.js';
 	import WelcomeStep from './WelcomeStep.svelte';
 	import ImportStep from './ImportStep.svelte';
 	import CreatePersonStep from './CreatePersonStep.svelte';
 	import CompletionStep from './CompletionStep.svelte';
-	import type { SavedAs } from '$lib/utils/dateInput';
+	import type { SavedAs } from '#lib/utils/dateInput.js';
 
 	interface Props {
 		onComplete: () => void;
