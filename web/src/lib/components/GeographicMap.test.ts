@@ -96,6 +96,55 @@ describe('GeographicMap', () => {
 		expect(screen.queryByRole('heading', { name: '2 locations' })).toBeNull();
 	});
 
+	it('marks the open marker and returns focus to it when Escape or × closes the panel', async () => {
+		const { container } = await renderMap();
+		const marker = () => screen.getByRole('button', { name: 'Boston, MA: 2 births, 1 death' });
+		const sydney = screen.getByRole('button', { name: 'Sydney, NSW: 1 death' });
+		expect(marker().getAttribute('aria-expanded')).toBe('false');
+
+		marker().focus();
+		await fireEvent.keyDown(marker(), { key: 'Enter' });
+		await screen.findByRole('heading', { name: '2 locations' });
+		expect(marker().getAttribute('aria-expanded')).toBe('true');
+		expect(marker().classList.contains('selected')).toBe(true);
+		expect(sydney.getAttribute('aria-expanded')).toBe('false');
+		expect(container.querySelectorAll('.marker.selected')).toHaveLength(1);
+
+		// Escape from inside the panel
+		const details = container.querySelector('.detail-panel') as HTMLElement;
+		within(details).getAllByRole('link')[0].focus();
+		await fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+		await waitFor(() => expect(screen.queryByRole('heading', { name: '2 locations' })).toBeNull());
+		expect(document.activeElement).toBe(marker());
+		expect(marker().getAttribute('aria-expanded')).toBe('false');
+		expect(container.querySelectorAll('.marker.selected')).toHaveLength(0);
+
+		// × does the same
+		await fireEvent.click(marker());
+		const close = await screen.findByRole('button', { name: 'Close details' });
+		close.focus();
+		await fireEvent.click(close);
+		await waitFor(() => expect(screen.queryByRole('heading', { name: '2 locations' })).toBeNull());
+		expect(document.activeElement).toBe(marker());
+	});
+
+	it('returns focus to the list item that opened the panel', async () => {
+		const { container } = await renderMap();
+		const list = container.querySelector('details.location-list') as HTMLDetailsElement;
+		const item = within(list).getAllByRole('button')[2];
+		await fireEvent.click(item);
+		await screen.findByRole('heading', { name: 'Sydney, NSW' });
+		expect(screen.getByRole('button', { name: 'Sydney, NSW: 1 death' }).classList).toContain(
+			'selected'
+		);
+
+		await fireEvent.keyDown(screen.getByRole('button', { name: 'Close details' }), {
+			key: 'Escape'
+		});
+		await waitFor(() => expect(screen.queryByRole('heading', { name: 'Sydney, NSW' })).toBeNull());
+		expect(document.activeElement).toBe(item);
+	});
+
 	it('draws the bundled world outline under the markers', async () => {
 		const { container } = await renderMap();
 		await waitFor(() => expect(container.querySelectorAll('.country').length).toBeGreaterThan(100));

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { tick } from 'svelte';
+	import { tick, untrack } from 'svelte';
 	import { api, formatPersonName, type MapLocation } from '#lib/api/client.js';
 	import * as d3 from 'd3';
 	import * as topojson from 'topojson-client';
@@ -7,11 +7,18 @@
 	import { motionDuration, observeChartResize } from '#lib/utils/chart.js';
 	import { getReducedMotion } from '#lib/stores/accessibilitySettings.svelte.js';
 	import { loadWorldAtlas } from '#lib/utils/worldAtlas.js';
-	import { clusterKind, clusterLabel, clusterPoints, type MapCluster } from '#lib/utils/mapClusters.js';
+	import {
+		clusterKind,
+		clusterLabel,
+		clusterPoints,
+		markerRadius,
+		type MapCluster
+	} from '#lib/utils/mapClusters.js';
+	import { fitMapProjection, mapHeight } from '#lib/utils/mapProjection.js';
 	import ErrorState from './ErrorState.svelte';
 
-	// Markers closer than this on screen are drawn as one cluster
-	const CLUSTER_RADIUS = 18;
+	// Space kept between a marker's centre and the map edge: the largest marker plus its outline
+	const MARKER_MARGIN = 24;
 	// Smallest tap target around a marker, in screen pixels
 	const MIN_HIT_RADIUS = 12;
 	const MARKER_FILL = { birth: '#3b82f6', death: '#6b7280', mixed: '#8b5cf6' };
@@ -20,6 +27,7 @@
 	let tooltipEl: HTMLDivElement;
 	let panelEl: HTMLDivElement | undefined = $state();
 	let svg: d3.Selection<SVGSVGElement, unknown, null, undefined> | null = null;
+	let markerLayer: d3.Selection<SVGGElement, unknown, null, undefined> | null = null;
 	let zoom: d3.ZoomBehavior<SVGSVGElement, unknown> | null = null;
 	// Loaded once on first draw and reused when the map is redrawn on resize
 	let worldAtlas: Promise<Topology> | null = null;
@@ -33,6 +41,8 @@
 	let baseMapFailed = $state(false);
 	// The locations of the marker the user picked (one cluster may hold several)
 	let selected: MapLocation[] | null = $state(null);
+	// What opened the details panel, so closing it can hand focus back
+	let opener: HTMLElement | SVGElement | null = null;
 
 	$effect(() => {
 		loadData();
@@ -72,16 +82,58 @@
 
 	const locationKey = (l: MapLocation) => `${l.place}|${l.event_type}`;
 
-	async function select(items: MapLocation[]) {
+	async function select(items: MapLocation[], from: HTMLElement | SVGElement | null) {
 		const same =
 			selected?.length === items.length &&
 			selected.every((l, i) => locationKey(l) === locationKey(items[i]));
 		selected = same ? null : items;
+		opener = from;
 		if (selected) {
 			await tick();
 			const behavior = getReducedMotion() ? 'auto' : 'smooth';
 			panelEl?.scrollIntoView?.({ block: 'nearest', behavior });
 		}
+	}
+
+	/** Close the details panel and return focus to the marker or list item that opened it. */
+	function closePanel() {
+		const keys = new Set((selected ?? []).map(locationKey));
+		selected = null;
+		// Zooming redraws the markers, so the opening marker may have been replaced
+		const target = opener?.isConnected
+			? opener
+			: markerLayer
+					?.selectAll<SVGGElement, MapCluster<MapLocation>>('.marker')
+					.filter((c) => c.items.some((l) => keys.has(locationKey(l))))
+					.node();
+		opener = null;
+		target?.focus();
+	}
+
+	function onKeydown(event: KeyboardEvent) {
+		if (event.key === 'Escape' && selected && !event.defaultPrevented) {
+			event.preventDefault();
+			closePanel();
+		}
+	}
+
+	// Mark the marker(s) holding the open panel's locations
+	$effect(() => {
+		const keys = new Set((selected ?? []).map(locationKey));
+		if (markerLayer) markSelected(markerLayer, keys);
+	});
+
+	function markSelected(
+		layer: d3.Selection<SVGGElement, unknown, null, undefined>,
+		keys: Set<string>
+	) {
+		layer
+			.selectAll<SVGGElement, MapCluster<MapLocation>>('.marker')
+			.each(function (c) {
+				const open = c.items.some((l) => keys.has(locationKey(l)));
+				this.classList.toggle('selected', open);
+				this.setAttribute('aria-expanded', String(open));
+			});
 	}
 
 	function hideTooltip() {
@@ -119,8 +171,7 @@
 		hideTooltip();
 
 		const width = container.clientWidth;
-		// Tall enough to tap markers on a phone; capped on wide screens
-		const height = Math.max(320, Math.min(width * 0.55, 600));
+		const height = mapHeight(width);
 
 		svg = d3
 			.select(container)
@@ -132,33 +183,24 @@
 
 		const g = svg.append('g');
 		const baseLayer = g.append('g');
-		const markerLayer = g.append('g');
+		const layer = g.append('g');
+		markerLayer = layer;
 
-		// Fill the height on narrow screens (the world is wider than the map then),
-		// panning sideways to centre the family's locations without showing past the edge
-		const projection = d3
-			.geoNaturalEarth1()
-			.scale(Math.max(width / 5.5, height / 2.8))
-			.translate([width / 2, height / 2]);
-		const halfWorld = projection([180, 0])![0] - width / 2;
-		if (halfWorld > width / 2) {
-			const dataX = projection([d3.mean(locations, (d) => d.longitude) ?? 0, 0])![0];
-			const tx = Math.min(halfWorld, Math.max(width - halfWorld, width - dataX));
-			projection.translate([tx, height / 2]);
-		}
+		// Every location starts inside the map; Reset view returns here
+		const projection = fitMapProjection(
+			width,
+			height,
+			locations.map((d) => [d.longitude, d.latitude]),
+			MARKER_MARGIN
+		);
 
 		const path = d3.geoPath().projection(projection);
 		const projected = new Map(
 			locations.map((d) => [d, projection([d.longitude, d.latitude]) ?? [0, 0]])
 		);
 
-		const radiusScale = d3
-			.scaleSqrt()
-			.domain([1, d3.max(locations, (d) => d.count) || 1])
-			.range([7, 20])
-			.clamp(true);
-		const clusterRadius = (c: MapCluster<MapLocation>) =>
-			radiusScale(d3.sum(c.items, (d) => d.count));
+		const radius = markerRadius(d3.max(locations, (d) => d.count) || 1);
+		const clusterRadius = (c: MapCluster<MapLocation>) => radius(c.items);
 
 		// Largest first, so the biggest markers anchor their clusters
 		const bySize = [...locations].sort((a, b) => b.count - a.count);
@@ -174,14 +216,14 @@
 					const [x, y] = projected.get(d)!;
 					return [x * k, y * k];
 				},
-				CLUSTER_RADIUS
+				radius
 			)
 				.map((c) => ({ ...c, x: c.x / k, y: c.y / k }))
 				// Tab through the markers west to east
 				.sort((a, b) => a.x - b.x || a.y - b.y);
 
-			markerLayer.selectAll('.marker').remove();
-			const markers = markerLayer
+			layer.selectAll('.marker').remove();
+			const markers = layer
 				.selectAll<SVGGElement, MapCluster<MapLocation>>('.marker')
 				.data(clusters)
 				.enter()
@@ -198,17 +240,22 @@
 				.on('mousemove', (event: MouseEvent) => positionTooltip(d3.pointer(event, container)))
 				.on('mouseleave', hideTooltip)
 				.on('focus', function (_event: FocusEvent, c) {
+					// Only keyboard focus pans: a click focuses on press, and panning then
+					// would move the marker out from under the release, losing the click
+					if (this.matches(':focus-visible')) panIntoView(c);
 					showTooltip(clusterLabel(c.items));
 					const box = this.getBoundingClientRect();
 					const origin = container.getBoundingClientRect();
 					positionTooltip([box.right - origin.left, box.top - origin.top + box.height / 2]);
 				})
 				.on('blur', hideTooltip)
-				.on('click', (_event: MouseEvent, c) => select(c.items))
-				.on('keydown', (event: KeyboardEvent, c) => {
+				.on('click', function (_event: MouseEvent, c) {
+					select(c.items, this);
+				})
+				.on('keydown', function (event: KeyboardEvent, c) {
 					if (event.key === 'Enter' || event.key === ' ') {
 						event.preventDefault();
-						select(c.items);
+						select(c.items, this);
 					}
 				});
 
@@ -225,6 +272,20 @@
 				.attr('fill-opacity', 0.75)
 				.attr('stroke', '#fff')
 				.attr('stroke-width', 1);
+			// untrack: a selection change re-marks the markers (below), it doesn't redraw the map
+			markSelected(layer, new Set(untrack(() => selected ?? []).map(locationKey)));
+		}
+
+		// Keyboard focus can reach a marker panned out of view: bring it back to the centre
+		function panIntoView(c: MapCluster<MapLocation>) {
+			if (!svg || !zoom) return;
+			const [x, y] = d3.zoomTransform(svgNode).apply([c.x, c.y]);
+			const inside =
+				x >= MARKER_MARGIN &&
+				x <= width - MARKER_MARGIN &&
+				y >= MARKER_MARGIN &&
+				y <= height - MARKER_MARGIN;
+			if (!inside) svg.call(zoom.translateTo, c.x, c.y);
 		}
 
 		// Zoom behavior; markers and borders are counter-scaled to keep a constant on-screen size
@@ -235,10 +296,10 @@
 			.on('zoom', (event) => {
 				const k = event.transform.k;
 				g.attr('transform', event.transform);
-				markerLayer
+				layer
 					.selectAll<SVGCircleElement, MapCluster<MapLocation>>('.dot')
 					.attr('r', (c) => clusterRadius(c) / k);
-				markerLayer
+				layer
 					.selectAll<SVGCircleElement, MapCluster<MapLocation>>('.hit')
 					.attr('r', (c) => Math.max(clusterRadius(c), MIN_HIT_RADIUS) / k);
 				baseLayer.selectAll('.country').attr('stroke-width', 0.5 / k);
@@ -284,7 +345,9 @@
 	}
 </script>
 
-<div class="geographic-map">
+<!-- Escape from a marker or from inside the details panel closes the panel -->
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<div class="geographic-map" onkeydown={onKeydown}>
 	{#if loading}
 		<div class="loading">Loading map data...</div>
 	{:else if error}
@@ -332,7 +395,7 @@
 						type="button"
 						class="close-btn"
 						aria-label="Close details"
-						onclick={() => (selected = null)}>&times;</button
+						onclick={closePanel}>&times;</button
 					>
 				</div>
 				{#each selected as location (locationKey(location))}
@@ -359,7 +422,7 @@
 			<ul>
 				{#each locations as location (locationKey(location))}
 					<li>
-						<button type="button" onclick={() => select([location])}>
+						<button type="button" onclick={(e) => select([location], e.currentTarget)}>
 							<span class="dot {location.event_type}"></span>
 							<span class="location-place">{location.place}</span>
 							<span class="location-meta">{location.event_type} · {location.count}</span>
@@ -406,6 +469,12 @@
 
 	.map-container :global(.dot) {
 		vector-effect: non-scaling-stroke;
+	}
+
+	.map-container :global(.marker.selected .dot) {
+		stroke: #1e293b;
+		stroke-width: 2;
+		fill-opacity: 1;
 	}
 
 	.map-container :global(.marker:focus-visible .dot) {

@@ -3,6 +3,7 @@ import { render, cleanup } from '@testing-library/svelte';
 import PedigreeChart from './PedigreeChart.svelte';
 import type { PedigreeNode } from '#lib/api/client.js';
 import { CARD_TEXT_INSET, FIT_SCALE_RANGE, MIN_CARD_FONT_PX } from '#lib/utils/chart.js';
+import { setFontSize, setReducedMotion } from '#lib/stores/accessibilitySettings.svelte.js';
 import { mockTextLength } from '#lib/test/textLength.js';
 
 // Card labels are cut to their measured width (#1213)
@@ -11,6 +12,22 @@ beforeAll(() => {
 	restoreTextLength = mockTextLength();
 });
 afterAll(() => restoreTextLength());
+
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** Every element of `first` comes before every element of `second` in the document. */
+function allPrecede(first: Element[], second: Element[]): boolean {
+	return first.every((a) =>
+		second.every((b) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING))
+	);
+}
+
+/** A text's font size as drawn: its own size times the chart's content scale. */
+function drawnFontSize(container: Element, selector: string): number {
+	const content = container.querySelector('.chart-content');
+	const scale = Number(content?.getAttribute('transform')?.match(/scale\(([^)]+)\)/)?.[1] ?? 1);
+	return parseFloat(container.querySelector(selector)?.getAttribute('font-size') ?? '') * scale;
+}
 
 // Mock data for tests
 const mockSinglePerson: PedigreeNode = {
@@ -209,6 +226,38 @@ describe('PedigreeChart', () => {
 		});
 		const wideRect = wideContainer.querySelector('.node rect');
 		expect(wideRect?.getAttribute('width')).toBe('160'); // Wide card width
+	});
+
+	it('keeps at least 8px between cards of different families in compact layout', () => {
+		const person = (id: string, father?: PedigreeNode, mother?: PedigreeNode): PedigreeNode => ({
+			id,
+			given_name: id,
+			surname: 'Doe',
+			father,
+			mother
+		});
+		// Both grandparent couples: the father's mother and mother's father sit side by side
+		const data = person(
+			'1',
+			person('2', person('4'), person('5')),
+			person('3', person('6'), person('7'))
+		);
+		const { container } = render(PedigreeChart, { props: { data, layout: 'compact' } });
+
+		const rows = new Map<number, number[]>();
+		for (const node of container.querySelectorAll('.node')) {
+			const [, x, y] = node.getAttribute('transform')!.match(/translate\(([-\d.]+),([-\d.]+)\)/)!;
+			rows.set(Number(y), [...(rows.get(Number(y)) ?? []), Number(x)]);
+		}
+		const cardWidth = Number(container.querySelector('.node rect')!.getAttribute('width'));
+		const gaps = [...rows.values()].flatMap((xs) =>
+			xs
+				.sort((a, b) => a - b)
+				.slice(1)
+				.map((x, i) => x - xs[i] - cardWidth)
+		);
+		expect(gaps.length).toBeGreaterThan(0);
+		expect(Math.min(...gaps)).toBeGreaterThanOrEqual(8);
 	});
 
 	it('renders name text in nodes', () => {
@@ -625,6 +674,135 @@ describe('PedigreeChart', () => {
 
 			// Now William should not be in visible nodes
 			expect(component.hasNode('4')).toBe(false);
+		});
+	});
+	describe('layering (#1025)', () => {
+		it('draws links in a layer below the node layer', () => {
+			const { container } = render(PedigreeChart, { props: { data: mockThreeGenerations } });
+			expect(container.querySelectorAll('g.links > .link')).toHaveLength(4);
+			expect(container.querySelectorAll('g.nodes > .node')).toHaveLength(5);
+		});
+
+		it('keeps every link before every node after a collapse and expand', async () => {
+			const { container, component } = render(PedigreeChart, { props: { data: mockThreeGenerations } });
+			// Wait out the 300ms exit transition, so the expand re-enters the links
+			component.toggleCollapse('2');
+			await wait(450);
+			component.toggleCollapse('2');
+			await wait(100);
+
+			const links = [...container.querySelectorAll('.link')];
+			const nodes = [...container.querySelectorAll('.node')];
+			expect(links.length).toBeGreaterThanOrEqual(4);
+			expect(allPrecede(links, nodes)).toBe(true);
+		});
+	});
+
+	describe('keyboard collapse toggles (#1100)', () => {
+		function toggleOf(container: Element, name: RegExp): Element {
+			const toggle = [...container.querySelectorAll('.collapse-toggle')].find((t) =>
+				name.test(t.getAttribute('aria-label') ?? '')
+			);
+			expect(toggle, `no toggle labelled ${name}`).toBeDefined();
+			return toggle!;
+		}
+
+		it('makes each toggle a focusable, labelled button that reports its state', () => {
+			const { container } = render(PedigreeChart, { props: { data: mockThreeGenerations } });
+			const toggle = toggleOf(container, /Robert Doe/);
+			expect(toggle.getAttribute('role')).toBe('button');
+			expect(toggle.getAttribute('tabindex')).toBe('0');
+			expect(toggle.getAttribute('aria-label')).toBe('Collapse ancestors of Robert Doe');
+			expect(toggle.getAttribute('aria-expanded')).toBe('true');
+		});
+
+		it('toggles the branch on Enter and Space, updating the label and state', async () => {
+			const onWindowKey = vi.fn();
+			window.addEventListener('keydown', onWindowKey);
+			try {
+				const { container, component } = render(PedigreeChart, { props: { data: mockThreeGenerations } });
+				const toggle = toggleOf(container, /Robert Doe/);
+
+				toggle.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+				await wait(100);
+				expect(component.isCollapsed('2')).toBe(true);
+				expect(toggle.getAttribute('aria-expanded')).toBe('false');
+				expect(toggle.getAttribute('aria-label')).toBe('Expand ancestors of Robert Doe');
+
+				const space = new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true });
+				toggle.dispatchEvent(space);
+				await wait(100);
+				expect(component.isCollapsed('2')).toBe(false);
+				expect(toggle.getAttribute('aria-expanded')).toBe('true');
+				// Space must not scroll the page, and neither key may reach the page shortcuts
+				expect(space.defaultPrevented).toBe(true);
+				expect(onWindowKey).not.toHaveBeenCalled();
+			} finally {
+				window.removeEventListener('keydown', onWindowKey);
+			}
+		});
+
+		it('labels a re-entering toggle too', async () => {
+			const { container, component } = render(PedigreeChart, { props: { data: mockThreeGenerations } });
+			component.toggleCollapse('1');
+			await wait(450);
+			component.toggleCollapse('1');
+			await wait(100);
+			const robert = toggleOf(container, /Robert Doe/);
+			expect(robert.getAttribute('role')).toBe('button');
+			expect(robert.getAttribute('aria-expanded')).toBe('true');
+		});
+
+		it('ignores other keys', async () => {
+			const { container, component } = render(PedigreeChart, { props: { data: mockThreeGenerations } });
+			toggleOf(container, /Robert Doe/).dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true }));
+			await wait(100);
+			expect(component.isCollapsed('2')).toBe(false);
+		});
+	});
+
+	describe('font-size setting (#1103)', () => {
+		afterEach(() => setFontSize('normal'));
+
+		it('draws names and dates bigger at Larger, cards and spacing included', () => {
+			const normal = render(PedigreeChart, { props: { data: mockPersonWithParents } });
+			const normalName = drawnFontSize(normal.container, '.given-name');
+			const normalDates = drawnFontSize(normal.container, '.dates');
+			cleanup();
+
+			setFontSize('larger');
+			const larger = render(PedigreeChart, { props: { data: mockPersonWithParents } });
+			expect(drawnFontSize(larger.container, '.given-name')).toBeGreaterThanOrEqual(normalName * 1.25);
+			expect(drawnFontSize(larger.container, '.dates')).toBeGreaterThanOrEqual(normalDates * 1.25);
+			// Cards and spacing are drawn in the same scaled group, so text keeps fitting its card
+			const card = larger.container.querySelector('.node-card');
+			expect(card?.closest('.chart-content')).not.toBeNull();
+			expect(larger.container.querySelector('.link')?.closest('.chart-content')).not.toBeNull();
+		});
+
+		it('redraws when the setting changes', async () => {
+			const { container } = render(PedigreeChart, { props: { data: mockPersonWithParents } });
+			const before = drawnFontSize(container, '.given-name');
+			setFontSize('large');
+			await wait(0);
+			expect(drawnFontSize(container, '.given-name')).toBeCloseTo(before * 1.25);
+		});
+	});
+
+	describe('reset (#1098)', () => {
+		beforeEach(() => setReducedMotion(true));
+		afterEach(() => setReducedMotion(false));
+
+		it('returns to the first view', async () => {
+			const { container, component } = render(PedigreeChart, { props: { data: mockFourGenerations } });
+			const zoomed = () => container.querySelector('svg > g')?.getAttribute('transform');
+			const first = zoomed();
+			component.zoomIn();
+			await wait(100);
+			expect(zoomed()).not.toBe(first);
+			component.resetZoom();
+			await wait(100);
+			expect(zoomed()).toBe(first);
 		});
 	});
 });

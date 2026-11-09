@@ -1203,9 +1203,9 @@ func (s *ReadModelStore) ListPersons(ctx context.Context, opts repository.ListOp
 			   version, updated_at
 		FROM %s
 		%s
-		ORDER BY %s %s, given_name %s
+		ORDER BY %s %s NULLS LAST, given_name %s, id %s
 		LIMIT ? OFFSET ?
-	`, overlay, whereClause, orderColumn, orderDir, orderDir)
+	`, overlay, whereClause, orderColumn, orderDir, orderDir, orderDir)
 
 	// Build args: overlay args + where args + limit + offset
 	queryArgs := append(append(append([]any{}, overlayArgs...), whereArgs...), opts.Limit, opts.Offset)
@@ -1818,9 +1818,9 @@ func searchOrderClause(opts repository.SearchOptions, prefix string) string {
 	tiebreak := ", " + prefix + "id " + dir
 	switch opts.Sort {
 	case "birth_date":
-		return prefix + "birth_date_sort " + dir + tiebreak
+		return prefix + "birth_date_sort " + dir + " NULLS LAST" + tiebreak
 	case "death_date":
-		return prefix + "death_date_sort " + dir + tiebreak
+		return prefix + "death_date_sort " + dir + " NULLS LAST" + tiebreak
 	default: // "name", "relevance" or empty
 		return prefix + "surname " + dir + ", " + prefix + "given_name " + dir + tiebreak
 	}
@@ -1832,51 +1832,39 @@ func sortPersonResults(persons []repository.PersonReadModel, opts repository.Sea
 		return
 	}
 
-	less := func(i, j int) bool {
+	desc := strings.EqualFold(opts.Order, "desc")
+	sort.Slice(persons, func(i, j int) bool {
 		a, b := persons[i], persons[j]
+		var cmp int
 		switch opts.Sort {
-		case "birth_date":
-			if a.BirthDateSort == nil && b.BirthDateSort == nil {
-				return false
+		case "birth_date", "death_date":
+			da, db := a.BirthDateSort, b.BirthDateSort
+			if opts.Sort == "death_date" {
+				da, db = a.DeathDateSort, b.DeathDateSort
 			}
-			if a.BirthDateSort == nil {
-				return false
+			// No date sorts last in both directions, as NULLS LAST does in
+			// searchOrderClause (#1078).
+			if (da == nil) != (db == nil) {
+				return db == nil
 			}
-			if b.BirthDateSort == nil {
-				return true
+			if da != nil {
+				cmp = da.Compare(*db)
 			}
-			return a.BirthDateSort.Before(*b.BirthDateSort)
-		case "death_date":
-			if a.DeathDateSort == nil && b.DeathDateSort == nil {
-				return false
-			}
-			if a.DeathDateSort == nil {
-				return false
-			}
-			if b.DeathDateSort == nil {
-				return true
-			}
-			return a.DeathDateSort.Before(*b.DeathDateSort)
 		default: // "name", "relevance", or empty
-			if a.Surname != b.Surname {
-				return a.Surname < b.Surname
+			cmp = strings.Compare(a.Surname, b.Surname)
+			if cmp == 0 {
+				cmp = strings.Compare(a.GivenName, b.GivenName)
 			}
-			return a.GivenName < b.GivenName
 		}
-	}
-	// Ties break on id so pages never overlap or skip a match (#902).
-	keyThenID := func(i, j int) bool {
-		if less(i, j) || less(j, i) {
-			return less(i, j)
+		// Ties break on id so pages never overlap or skip a match (#902).
+		if cmp == 0 {
+			cmp = bytes.Compare(a.ID[:], b.ID[:])
 		}
-		return bytes.Compare(persons[i].ID[:], persons[j].ID[:]) < 0
-	}
-
-	if strings.EqualFold(opts.Order, "desc") {
-		sort.Slice(persons, func(i, j int) bool { return keyThenID(j, i) })
-	} else {
-		sort.Slice(persons, keyThenID)
-	}
+		if desc {
+			return cmp > 0
+		}
+		return cmp < 0
+	})
 }
 
 // scanPersonRows scans all rows into PersonReadModel slice.
@@ -2619,7 +2607,7 @@ func (s *ReadModelStore) ListFamilies(ctx context.Context, opts repository.ListO
 			   marriage_place_lat, marriage_place_long,
 			   child_count, version, updated_at
 		FROM `+overlay+`
-		ORDER BY updated_at DESC
+		ORDER BY updated_at DESC, id DESC
 		LIMIT ? OFFSET ?
 	`, queryArgs...)
 	if err != nil {
@@ -4861,7 +4849,7 @@ func (s *ReadModelStore) GetPersonsBySurname(ctx context.Context, surname string
 			   version, updated_at
 		FROM `+overlay+`
 		WHERE LOWER(surname) = LOWER(?)
-		ORDER BY given_name ASC
+		ORDER BY given_name ASC, id ASC
 		LIMIT ? OFFSET ?
 	`, queryArgs...)
 	if err != nil {
@@ -5035,7 +5023,7 @@ func (s *ReadModelStore) GetPersonsByPlace(ctx context.Context, place string, op
 		FROM `+overlay+`
 		WHERE `+placeNormFunc+`(birth_place) LIKE '%' || `+placeNormFunc+`(?) || '%'
 		   OR `+placeNormFunc+`(death_place) LIKE '%' || `+placeNormFunc+`(?) || '%'
-		ORDER BY surname ASC, given_name ASC
+		ORDER BY surname ASC, given_name ASC, id ASC
 		LIMIT ? OFFSET ?
 	`, queryArgs...)
 	if err != nil {
@@ -5121,7 +5109,7 @@ func (s *ReadModelStore) GetPersonsByCemetery(ctx context.Context, place string,
 			   p.version, p.updated_at
 		FROM `+overlay+` p
 		INNER JOIN `+events+` e ON e.owner_id = p.id
-		ORDER BY p.surname ASC, p.given_name ASC
+		ORDER BY p.surname ASC, p.given_name ASC, p.id ASC
 		LIMIT ? OFFSET ?
 	`, append(joinArgs, opts.Limit, opts.Offset)...)
 	if err != nil {
@@ -5560,9 +5548,9 @@ func (s *ReadModelStore) ListSubmitters(ctx context.Context, opts repository.Lis
 	query := fmt.Sprintf(`
 		SELECT id, name, address, phone, email, language, media_id, gedcom_xref, version, updated_at
 		FROM submitters
-		ORDER BY %s %s
+		ORDER BY %s %s, id %s
 		LIMIT ? OFFSET ?
-	`, orderColumn, orderDir)
+	`, orderColumn, orderDir, orderDir)
 
 	rows, err := s.db.QueryContext(ctx, query, opts.Limit, opts.Offset)
 	if err != nil {
@@ -6169,9 +6157,9 @@ func (s *ReadModelStore) ListLDSOrdinances(ctx context.Context, opts repository.
 		SELECT id, type, type_label, person_id, person_name, family_id,
 		       date_raw, date_sort, place, temple, status, version, updated_at
 		FROM lds_ordinances
-		ORDER BY %s %s
+		ORDER BY %s %s, id %s
 		LIMIT ? OFFSET ?
-	`, orderColumn, orderDir)
+	`, orderColumn, orderDir, orderDir)
 
 	rows, err := s.db.QueryContext(ctx, query, opts.Limit, opts.Offset)
 	if err != nil {
