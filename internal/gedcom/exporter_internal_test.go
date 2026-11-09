@@ -2,6 +2,7 @@ package gedcom
 
 import (
 	"bytes"
+	"slices"
 	"strings"
 	"testing"
 
@@ -47,6 +48,39 @@ func TestXrefAllocator_Unique(t *testing.T) {
 	}
 	if r := a.remap("@N2@\n\n@N 3@", noteJoin); r != "@N2@\n\n@N5@" {
 		t.Errorf("remap = %q, want only the invalid xref replaced", r)
+	}
+	// A duplicate invalid stored xref also keeps naming the first record
+	// that holds it, as a duplicate valid one does.
+	if got := a.assign("@N 3@", "N", 6); got != "@N6@" {
+		t.Errorf("assign duplicate invalid = %q, want @N6@", got)
+	}
+	if r := a.remap("@N 3@", noteJoin); r != "@N5@" {
+		t.Errorf("remap duplicate invalid = %q, want the first record's @N5@", r)
+	}
+}
+
+func TestSplitNotes(t *testing.T) {
+	tests := []struct {
+		name, notes   string
+		xrefs, inline []string
+	}{
+		{"empty", "", nil, nil},
+		{"text only", "one\n\ntwo", nil, []string{"one\n\ntwo"}},
+		{"pointers only", "@N1@\n\n@N2@", []string{"@N1@", "@N2@"}, nil},
+		{"pointer then text", "@N1@\n\nsee baptism", []string{"@N1@"}, []string{"see baptism"}},
+		// The encoder writes every pointer ahead of the inline notes, so
+		// interleaved text cannot keep its place; each run of text between
+		// pointers stays its own NOTE rather than merging into one.
+		{"interleaved", "one\n\n@N1@\n\ntwo\n\nthree\n\n@N2@\n\nfour",
+			[]string{"@N1@", "@N2@"}, []string{"one", "two\n\nthree", "four"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			xrefs, inline := splitNotes(tt.notes, noteJoin)
+			if !slices.Equal(xrefs, tt.xrefs) || !slices.Equal(inline, tt.inline) {
+				t.Errorf("splitNotes(%q) = %q, %q; want %q, %q", tt.notes, xrefs, inline, tt.xrefs, tt.inline)
+			}
+		})
 	}
 }
 

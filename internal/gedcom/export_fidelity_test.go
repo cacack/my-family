@@ -196,21 +196,32 @@ func TestExport_FamilySearchIDRoundTrip(t *testing.T) {
 		t.Fatalf("import external IDs = %q, want the FamilySearch IDs", want)
 	}
 
+	// A FamilySearch ID alone does not upgrade the default export to 7.0:
+	// 5.5 carries it losslessly as _FSFTID, as it did before the ID was kept.
 	for _, tt := range []struct {
+		name    string
 		version gcgedcom.Version
+		vers    string
 		line    string
 	}{
-		{gcgedcom.Version70, "1 EXID KWCJ-QN7\n2 TYPE https://www.familysearch.org/ark\n"},
-		{gcgedcom.Version551, "1 _FSFTID KWCJ-QN7\n"},
+		{"default", "", "2 VERS 5.5\n", "1 _FSFTID KWCJ-QN7\n"},
+		{"7.0", gcgedcom.Version70, "2 VERS 7.0\n", "1 EXID KWCJ-QN7\n2 TYPE https://www.familysearch.org/ark\n"},
+		{"5.5.1", gcgedcom.Version551, "2 VERS 5.5.1\n", "1 _FSFTID KWCJ-QN7\n"},
 	} {
-		t.Run(string(tt.version), func(t *testing.T) {
+		t.Run(tt.name, func(t *testing.T) {
 			buf := &bytes.Buffer{}
-			if _, err := gedcom.NewExporter(readStore).ExportWithOptions(ctx, buf, gedcom.ExportOptions{TargetVersion: tt.version}); err != nil {
+			result, err := gedcom.NewExporter(readStore).ExportWithOptions(ctx, buf, gedcom.ExportOptions{TargetVersion: tt.version})
+			if err != nil {
 				t.Fatalf("Export failed: %v", err)
 			}
 			output := buf.String()
-			if !strings.Contains(output, tt.line) {
-				t.Errorf("export should contain %q; got:\n%s", tt.line, output)
+			for _, want := range []string{tt.vers, tt.line} {
+				if !strings.Contains(output, want) {
+					t.Errorf("export should contain %q; got:\n%s", want, output)
+				}
+			}
+			if len(result.DataLoss) != 0 {
+				t.Errorf("export reports data loss %+v, want none", result.DataLoss)
 			}
 			_, again, _, _, _, _, _, _, _, _, _, _, _, err := gedcom.NewImporter().Import(ctx, strings.NewReader(output))
 			if err != nil {

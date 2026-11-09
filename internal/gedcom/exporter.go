@@ -427,11 +427,13 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 	// 7.0-only structures. The library's RequiresGEDCOM7 inspects the whole
 	// document — negated events (NO), EXID, SNOTE, SCHMA, TRAN, association
 	// PHRASE, media CROP, SDATE, CREA — so such documents are emitted as 7.0
-	// instead of silently lossy 5.5.1 (issue #539).
+	// instead of silently lossy 5.5.1 (issue #539). A FamilySearch EXID on a
+	// person does not count: the downgrade path writes it as _FSFTID, so
+	// FamilySearch trees keep defaulting to 5.5 (#1175).
 	targetVersion := opts.TargetVersion
 	if targetVersion == "" {
 		targetVersion = gedcom.Version55
-		if doc.RequiresGEDCOM7() {
+		if requiresGEDCOM7(doc) {
 			targetVersion = gedcom.Version70
 		}
 	}
@@ -476,6 +478,46 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 	}
 
 	return result, nil
+}
+
+// requiresGEDCOM7 reports whether doc needs GEDCOM 7.0 for anything other
+// than FamilySearch EXIDs on individuals, which the converter maps losslessly
+// to the 5.5.x vendor tag _FSFTID. doc itself is not modified.
+func requiresGEDCOM7(doc *gedcom.Document) bool {
+	view := *doc
+	view.Records = make([]*gedcom.Record, len(doc.Records))
+	for i, rec := range doc.Records {
+		view.Records[i] = rec
+		indi, ok := rec.Entity.(*gedcom.Individual)
+		if !ok || len(indi.ExternalIDs) == 0 {
+			continue
+		}
+		indiView := *indi
+		indiView.ExternalIDs = nil
+		for _, ext := range indi.ExternalIDs {
+			if !isFamilySearchExternalIDType(ext.Type) {
+				indiView.ExternalIDs = append(indiView.ExternalIDs, ext)
+			}
+		}
+		recView := *rec
+		recView.Entity = &indiView
+		view.Records[i] = &recView
+	}
+	return view.RequiresGEDCOM7()
+}
+
+// isFamilySearchExternalIDType reports whether an EXID TYPE names a
+// FamilySearch ARK, matching the converter's rule for mapping to _FSFTID:
+// "ark" must be a whole path segment, so ".../arkansas" does not match.
+func isFamilySearchExternalIDType(typeURI string) bool {
+	const ark = "familysearch.org/ark"
+	lower := strings.ToLower(typeURI)
+	idx := strings.Index(lower, ark)
+	if idx < 0 {
+		return false
+	}
+	rest := lower[idx+len(ark):]
+	return rest == "" || rest[0] == ':' || rest[0] == '/'
 }
 
 // encodeDowngraded emits doc to w at targetVersion (an older version than the
@@ -1097,8 +1139,9 @@ func (a *xrefAllocator) assign(stored, prefix string, n int) string {
 		xref = fmt.Sprintf("@%s%d@", prefix, n)
 	}
 	a.taken[xref] = true
-	// A duplicate valid stored xref keeps naming the record that holds it.
-	if stored != "" && !valid {
+	// A duplicate stored xref, valid or not, keeps naming the first record
+	// that holds it.
+	if _, seen := a.replaced[stored]; stored != "" && !valid && !seen {
 		a.replaced[stored] = xref
 	}
 	return xref
@@ -1125,23 +1168,30 @@ func (a *xrefAllocator) remap(v, sep string) string {
 // inline note text that GEDCOM models as separate lists (#1201, #1178). The
 // importer joins an entity's NOTE values with sep and keeps pointers
 // verbatim, so each sep-separated part that is a valid pointer is a NOTE
-// pointer; the remaining parts, rejoined with sep, are one inline note.
-// A value with no pointer therefore exports unchanged.
+// pointer. Each run of other parts between pointers, rejoined with sep, is
+// one inline note, so a value with no pointer exports unchanged. The encoder
+// writes every pointer ahead of the inline notes, so text interleaved with
+// pointers keeps its own NOTE but not its place.
 func splitNotes(notes, sep string) (xrefs, inline []string) {
 	if notes == "" {
 		return nil, nil
 	}
 	var text []string
+	flush := func() {
+		if len(text) > 0 {
+			inline = append(inline, strings.Join(text, sep))
+			text = nil
+		}
+	}
 	for _, part := range strings.Split(notes, sep) {
 		if gedcom.IsPointerXRef(part) {
+			flush()
 			xrefs = append(xrefs, part)
 		} else {
 			text = append(text, part)
 		}
 	}
-	if len(text) > 0 {
-		inline = []string{strings.Join(text, sep)}
-	}
+	flush()
 	return xrefs, inline
 }
 

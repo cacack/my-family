@@ -677,7 +677,7 @@ func withFamilySearchID(ids []domain.ExternalIdentifier, fsID string) []domain.E
 		return ids
 	}
 	for _, id := range ids {
-		if id.Value == fsID && strings.Contains(strings.ToLower(id.Type), "familysearch.org/ark") {
+		if id.Value == fsID && isFamilySearchExternalIDType(id.Type) {
 			return ids
 		}
 	}
