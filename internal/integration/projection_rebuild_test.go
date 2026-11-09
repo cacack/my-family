@@ -139,7 +139,7 @@ func TestProjectionFailure_RecordedAndRepairedByRebuild(t *testing.T) {
 			}
 
 			row, err := st.read.GetPerson(ctx, domain.MainBranchID, broken.ID)
-			if err != nil || row == nil || row.GivenName != "Broken" || row.Version != 1 {
+			if err != nil || row == nil || row.GivenName != "Broken" || row.Version != broken.Version {
 				t.Fatalf("Broken's row after rebuild = %+v, %v; want it projected", row, err)
 			}
 			if failures, err := st.read.ListProjectionFailures(ctx, 10); err != nil || len(failures) != 0 {
@@ -184,8 +184,12 @@ func TestRebuild_ReplayFailureIsRecorded(t *testing.T) {
 			if !errors.Is(err, errInjectedProjection) {
 				t.Fatalf("rebuild error = %v, want the injected failure", err)
 			}
-			if result.Events != 2 || result.Failed != 1 {
-				t.Errorf("rebuild result = %+v, want 2 events replayed, 1 failed", result)
+			logged, err := st.events.ReadAll(ctx, 0, 100)
+			if err != nil {
+				t.Fatalf("read log: %v", err)
+			}
+			if result.Events != len(logged) || result.Failed != 1 {
+				t.Errorf("rebuild result = %+v, want all %d logged events replayed, 1 failed", result, len(logged))
 			}
 			failures, err := st.read.ListProjectionFailures(ctx, 10)
 			if err != nil || len(failures) != 1 || failures[0].StreamID != p.ID {

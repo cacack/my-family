@@ -99,8 +99,8 @@ func TestRebuildReadModel_KeepsFieldsNoEventCarries(t *testing.T) {
 	if err != nil {
 		t.Fatalf("rebuild: %v", err)
 	}
-	if result.Events != 5 {
-		t.Errorf("events replayed = %d, want 5", result.Events)
+	if logged, _ := s.events.ReadAll(ctx, 0, 100); result.Events != len(logged) {
+		t.Errorf("events replayed = %d, want all %d logged", result.Events, len(logged))
 	}
 
 	p, _ = s.read.GetPerson(ctx, domain.MainBranchID, person.ID)
