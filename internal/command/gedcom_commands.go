@@ -303,8 +303,12 @@ func (h *Handler) importPerson(ctx context.Context, p gedcom.PersonData) error {
 		person.DeathDate = &dd
 	}
 
-	// Create event
+	// Create event. Place coordinates and EXIDs are not domain.Person fields,
+	// so they are set on the event directly (#1225).
 	event := domain.NewPersonCreated(person)
+	event.BirthPlaceLat, event.BirthPlaceLong = p.BirthPlaceLat, p.BirthPlaceLong
+	event.DeathPlaceLat, event.DeathPlaceLong = p.DeathPlaceLat, p.DeathPlaceLong
+	event.ExternalIDs = p.ExternalIDs
 
 	// Append to event store
 	err := h.eventStore.Append(ctx, person.ID, "person", []domain.Event{event}, -1, repository.MainScope)
@@ -315,40 +319,6 @@ func (h *Handler) importPerson(ctx context.Context, p gedcom.PersonData) error {
 	// Project to read model
 	if err := h.project(ctx, event, 1, domain.MainBranchID); err != nil {
 		return fmt.Errorf("projecting person created event: %w", err)
-	}
-
-	// Update read model with GEDCOM coordinates (not in event schema)
-	if p.BirthPlaceLat != nil || p.BirthPlaceLong != nil || p.DeathPlaceLat != nil || p.DeathPlaceLong != nil {
-		readModel, err := h.readStore.GetPerson(ctx, domain.MainBranchID, person.ID)
-		if err != nil {
-			return fmt.Errorf("failed to get person read model for coordinate update: %w", err)
-		}
-		if readModel != nil {
-			readModel.BirthPlaceLat = p.BirthPlaceLat
-			readModel.BirthPlaceLong = p.BirthPlaceLong
-			readModel.DeathPlaceLat = p.DeathPlaceLat
-			readModel.DeathPlaceLong = p.DeathPlaceLong
-			if err := h.readStore.SavePerson(ctx, domain.MainBranchID, readModel); err != nil {
-				return fmt.Errorf("failed to save person coordinates: %w", err)
-			}
-		}
-	}
-
-	// Store GEDCOM 7.0 external identifiers (EXID) in the read model. Like place
-	// coordinates, these are GEDCOM metadata that live outside the event schema.
-	if len(p.ExternalIDs) > 0 {
-		ids := make([]repository.PersonExternalIDReadModel, len(p.ExternalIDs))
-		for i, ext := range p.ExternalIDs {
-			ids[i] = repository.PersonExternalIDReadModel{
-				PersonID: person.ID,
-				Sequence: i,
-				Value:    ext.Value,
-				Type:     ext.Type,
-			}
-		}
-		if err := h.readStore.ReplacePersonExternalIDs(ctx, domain.MainBranchID, person.ID, ids); err != nil {
-			return fmt.Errorf("failed to save person external identifiers: %w", err)
-		}
 	}
 
 	// Emit NameAdded events for all names from GEDCOM
@@ -407,6 +377,7 @@ func (h *Handler) importFamily(ctx context.Context, f gedcom.FamilyData) error {
 
 	// Create event
 	event := domain.NewFamilyCreated(family)
+	event.ExternalIDs = f.ExternalIDs
 
 	// Append to event store
 	err := h.eventStore.Append(ctx, family.ID, "family", []domain.Event{event}, -1, repository.MainScope)
@@ -419,22 +390,6 @@ func (h *Handler) importFamily(ctx context.Context, f gedcom.FamilyData) error {
 		return err
 	}
 
-	// Store GEDCOM 7.0 external identifiers (EXID) in the read model. Like place
-	// coordinates, these are GEDCOM metadata that live outside the event schema.
-	if len(f.ExternalIDs) > 0 {
-		ids := make([]repository.FamilyExternalIDReadModel, len(f.ExternalIDs))
-		for i, ext := range f.ExternalIDs {
-			ids[i] = repository.FamilyExternalIDReadModel{
-				FamilyID: family.ID,
-				Sequence: i,
-				Value:    ext.Value,
-				Type:     ext.Type,
-			}
-		}
-		if err := h.readStore.ReplaceFamilyExternalIDs(ctx, domain.MainBranchID, family.ID, ids); err != nil {
-			return fmt.Errorf("failed to save family external identifiers: %w", err)
-		}
-	}
 	return nil
 }
 
@@ -469,6 +424,7 @@ func (h *Handler) importSource(ctx context.Context, s gedcom.SourceData) error {
 
 	// Create event
 	event := domain.NewSourceCreated(source)
+	event.ExternalIDs = s.ExternalIDs
 
 	// Append to event store
 	err := h.eventStore.Append(ctx, source.ID, "source", []domain.Event{event}, -1, repository.MainScope)
@@ -481,22 +437,6 @@ func (h *Handler) importSource(ctx context.Context, s gedcom.SourceData) error {
 		return err
 	}
 
-	// Store GEDCOM 7.0 external identifiers (EXID) in the read model. Like place
-	// coordinates, these are GEDCOM metadata that live outside the event schema.
-	if len(s.ExternalIDs) > 0 {
-		ids := make([]repository.SourceExternalIDReadModel, len(s.ExternalIDs))
-		for i, ext := range s.ExternalIDs {
-			ids[i] = repository.SourceExternalIDReadModel{
-				SourceID: source.ID,
-				Sequence: i,
-				Value:    ext.Value,
-				Type:     ext.Type,
-			}
-		}
-		if err := h.readStore.ReplaceSourceExternalIDs(ctx, domain.MainBranchID, source.ID, ids); err != nil {
-			return fmt.Errorf("failed to save source external identifiers: %w", err)
-		}
-	}
 	return nil
 }
 
@@ -521,6 +461,7 @@ func (h *Handler) importRepository(ctx context.Context, r gedcom.RepositoryData)
 
 	// Create event
 	event := domain.NewRepositoryCreated(repo)
+	event.ExternalIDs = r.ExternalIDs
 
 	// Append to event store
 	err := h.eventStore.Append(ctx, repo.ID, "repository", []domain.Event{event}, -1, repository.MainScope)
@@ -533,22 +474,6 @@ func (h *Handler) importRepository(ctx context.Context, r gedcom.RepositoryData)
 		return err
 	}
 
-	// Store GEDCOM 7.0 external identifiers (EXID) in the read model. Like place
-	// coordinates, these are GEDCOM metadata that live outside the event schema.
-	if len(r.ExternalIDs) > 0 {
-		ids := make([]repository.RepositoryExternalIDReadModel, len(r.ExternalIDs))
-		for i, ext := range r.ExternalIDs {
-			ids[i] = repository.RepositoryExternalIDReadModel{
-				RepositoryID: repo.ID,
-				Sequence:     i,
-				Value:        ext.Value,
-				Type:         ext.Type,
-			}
-		}
-		if err := h.readStore.ReplaceRepositoryExternalIDs(ctx, repo.ID, ids); err != nil {
-			return fmt.Errorf("failed to save repository external identifiers: %w", err)
-		}
-	}
 	return nil
 }
 
@@ -663,8 +588,9 @@ func (h *Handler) importEvent(ctx context.Context, e gedcom.EventData) error {
 		lifeEvent.SetDate(e.Date)
 	}
 
-	// Create domain event from model
+	// Create domain event from model; coordinates are not LifeEvent fields (#1225).
 	event := domain.NewLifeEventCreatedFromModel(lifeEvent)
+	event.PlaceLat, event.PlaceLong = e.PlaceLat, e.PlaceLong
 
 	// Append to event store using owner's stream
 	err := h.eventStore.Append(ctx, e.ID, "event", []domain.Event{event}, -1, repository.MainScope)
@@ -675,21 +601,6 @@ func (h *Handler) importEvent(ctx context.Context, e gedcom.EventData) error {
 	// Project to read model
 	if err := h.project(ctx, event, 1, domain.MainBranchID); err != nil {
 		return fmt.Errorf("projecting life event created event: %w", err)
-	}
-
-	// Update read model with GEDCOM coordinates (not in event schema)
-	if e.PlaceLat != nil || e.PlaceLong != nil {
-		readModel, err := h.readStore.GetEvent(ctx, domain.MainBranchID, e.ID)
-		if err != nil {
-			return fmt.Errorf("failed to get event read model for coordinate update: %w", err)
-		}
-		if readModel != nil {
-			readModel.PlaceLat = e.PlaceLat
-			readModel.PlaceLong = e.PlaceLong
-			if err := h.readStore.SaveEvent(ctx, domain.MainBranchID, readModel); err != nil {
-				return fmt.Errorf("failed to save event coordinates: %w", err)
-			}
-		}
 	}
 
 	return nil

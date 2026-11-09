@@ -80,7 +80,7 @@ func setupMemory(t *testing.T) stores {
 // `life_events`. The file lives in t.TempDir(), which removes it.
 func setupSQLite(t *testing.T) stores {
 	t.Helper()
-	opened, err := storage.OpenSQLite(filepath.Join(t.TempDir(), "myfamily.db"))
+	opened, err := storage.OpenSQLite(filepath.Join(t.TempDir(), "myfamily.db"), storage.AccessServe)
 	return fromStorage(t, opened, err)
 }
 
@@ -183,7 +183,7 @@ const localPostgresEnv = "MYFAMILY_TEST_POSTGRES_URL"
 // newPostgresStores builds the four PostgreSQL stores over one database.
 func newPostgresStores(t *testing.T, dsn string) stores {
 	t.Helper()
-	opened, err := storage.OpenPostgres(dsn)
+	opened, err := storage.OpenPostgres(dsn, storage.AccessServe)
 	return fromStorage(t, opened, err)
 }
 

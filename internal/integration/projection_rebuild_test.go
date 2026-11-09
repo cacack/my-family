@@ -21,8 +21,9 @@ import (
 // the failure must not be silent: it is recorded as a marker in the read model.
 // RebuildReadModel then replays the log into an emptied read model, which must
 // bring the missing row back and leave every other row exactly as it was —
-// including the fields no event carries (GEDCOM coordinates and EXIDs, brick
-// walls). The scenario runs on every backend (DB-001).
+// including GEDCOM coordinates and EXIDs, which the created events carry
+// (#1225), and brick walls, which no event carries and the rebuild keeps. The
+// scenario runs on every backend (DB-001).
 
 var errInjectedProjection = errors.New("injected projection failure")
 
@@ -134,8 +135,8 @@ func TestProjectionFailure_RecordedAndRepairedByRebuild(t *testing.T) {
 			if err != nil {
 				t.Fatalf("rebuild: %v", err)
 			}
-			if result.Events == 0 || result.LastPosition == 0 {
-				t.Errorf("rebuild result = %+v, want events replayed", result)
+			if result.Events == 0 || result.LastPosition == 0 || result.DroppedImported != 0 {
+				t.Errorf("rebuild result = %+v, want events replayed and no logged coordinate or EXID dropped", result)
 			}
 
 			row, err := st.read.GetPerson(ctx, domain.MainBranchID, broken.ID)

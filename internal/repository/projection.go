@@ -336,6 +336,10 @@ func (p *Projector) projectPersonCreated(ctx context.Context, e domain.PersonCre
 		DeathDateRaw:   deathDateRaw,
 		DeathDateSort:  deathDateSort,
 		DeathPlace:     e.DeathPlace,
+		BirthPlaceLat:  e.BirthPlaceLat,
+		BirthPlaceLong: e.BirthPlaceLong,
+		DeathPlaceLat:  e.DeathPlaceLat,
+		DeathPlaceLong: e.DeathPlaceLong,
 		Notes:          e.Notes,
 		ResearchStatus: e.ResearchStatus,
 		Version:        version,
@@ -349,7 +353,26 @@ func (p *Projector) projectPersonCreated(ctx context.Context, e domain.PersonCre
 	if err := p.readStore.RenameFamilyMember(ctx, branchID, person.ID, person.GivenName, person.Surname); err != nil {
 		return err
 	}
-	return p.readStore.SavePerson(ctx, branchID, person)
+	if err := p.readStore.SavePerson(ctx, branchID, person); err != nil {
+		return err
+	}
+	if len(e.ExternalIDs) == 0 {
+		return nil
+	}
+	return p.readStore.ReplacePersonExternalIDs(ctx, branchID, e.PersonID, externalIDRows(e.ExternalIDs,
+		func(seq int, x domain.ExternalIdentifier) PersonExternalIDReadModel {
+			return PersonExternalIDReadModel{PersonID: e.PersonID, Sequence: seq, Value: x.Value, Type: x.Type}
+		}))
+}
+
+// externalIDRows turns a created event's EXIDs into read-model rows, keeping
+// their order as the sequence (#1225).
+func externalIDRows[T any](ids []domain.ExternalIdentifier, row func(seq int, x domain.ExternalIdentifier) T) []T {
+	rows := make([]T, len(ids))
+	for i, x := range ids {
+		rows[i] = row(i, x)
+	}
+	return rows
 }
 
 func (p *Projector) projectPersonUpdated(ctx context.Context, e domain.PersonUpdated, version int64, branchID domain.BranchID) error {
@@ -475,7 +498,16 @@ func (p *Projector) projectFamilyCreated(ctx context.Context, e domain.FamilyCre
 		UpdatedAt:         e.OccurredAt(),
 	}
 
-	return p.readStore.SaveFamily(ctx, branchID, family)
+	if err := p.readStore.SaveFamily(ctx, branchID, family); err != nil {
+		return err
+	}
+	if len(e.ExternalIDs) == 0 {
+		return nil
+	}
+	return p.readStore.ReplaceFamilyExternalIDs(ctx, branchID, e.FamilyID, externalIDRows(e.ExternalIDs,
+		func(seq int, x domain.ExternalIdentifier) FamilyExternalIDReadModel {
+			return FamilyExternalIDReadModel{FamilyID: e.FamilyID, Sequence: seq, Value: x.Value, Type: x.Type}
+		}))
 }
 
 func (p *Projector) projectFamilyUpdated(ctx context.Context, e domain.FamilyUpdated, version int64, branchID domain.BranchID) error {
@@ -844,7 +876,16 @@ func (p *Projector) projectSourceCreated(ctx context.Context, e domain.SourceCre
 		UpdatedAt:       e.OccurredAt(),
 	}
 
-	return p.readStore.SaveSource(ctx, branchID, source)
+	if err := p.readStore.SaveSource(ctx, branchID, source); err != nil {
+		return err
+	}
+	if len(e.ExternalIDs) == 0 {
+		return nil
+	}
+	return p.readStore.ReplaceSourceExternalIDs(ctx, branchID, e.SourceID, externalIDRows(e.ExternalIDs,
+		func(seq int, x domain.ExternalIdentifier) SourceExternalIDReadModel {
+			return SourceExternalIDReadModel{SourceID: e.SourceID, Sequence: seq, Value: x.Value, Type: x.Type}
+		}))
 }
 
 func (p *Projector) projectSourceUpdated(ctx context.Context, e domain.SourceUpdated, version int64, branchID domain.BranchID) error {
@@ -1296,6 +1337,8 @@ func (p *Projector) projectLifeEventCreated(ctx context.Context, e domain.LifeEv
 		DateRaw:     dateRaw,
 		DateSort:    dateSort,
 		Place:       e.Place,
+		PlaceLat:    e.PlaceLat,
+		PlaceLong:   e.PlaceLong,
 		Address:     e.Address,
 		Description: e.Description,
 		Cause:       e.Cause,
@@ -1463,7 +1506,16 @@ func (p *Projector) projectRepositoryCreated(ctx context.Context, e domain.Repos
 		UpdatedAt:  e.OccurredAt(),
 	}
 
-	return p.readStore.SaveRepository(ctx, repo)
+	if err := p.readStore.SaveRepository(ctx, repo); err != nil {
+		return err
+	}
+	if len(e.ExternalIDs) == 0 {
+		return nil
+	}
+	return p.readStore.ReplaceRepositoryExternalIDs(ctx, e.RepositoryID, externalIDRows(e.ExternalIDs,
+		func(seq int, x domain.ExternalIdentifier) RepositoryExternalIDReadModel {
+			return RepositoryExternalIDReadModel{RepositoryID: e.RepositoryID, Sequence: seq, Value: x.Value, Type: x.Type}
+		}))
 }
 
 func (p *Projector) projectRepositoryUpdated(ctx context.Context, e domain.RepositoryUpdated, version int64) error {
