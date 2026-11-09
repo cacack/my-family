@@ -7,9 +7,12 @@
  *   vi.mock('$app/state', async () => (await import('$lib/test/fakeRouter.svelte')).appState);
  *   vi.mock('$app/navigation', async () => (await import('$lib/test/fakeRouter.svelte')).appNavigation);
  *
- * and call `resetRouter(path)` before each render.
+ * and call `resetRouter(path)` before each render. `afterNavigate` callbacks
+ * run on mount and after each `goto` or `back`.
  */
 import { vi } from 'vitest';
+import { onMount } from 'svelte';
+import type { AfterNavigate } from '$app/navigation';
 
 interface FakePage {
 	url: URL;
@@ -17,11 +20,14 @@ interface FakePage {
 	state: Record<string, unknown>;
 }
 
+type AfterNavigateCallback = (navigation: AfterNavigate) => void;
+
 const ORIGIN = 'http://localhost';
 
 let entries: string[] = ['/'];
 let index = 0;
 let params: Record<string, string> = {};
+let afterNavigateCallbacks: AfterNavigateCallback[] = [];
 
 let current = $state.raw<FakePage>({ url: new URL('/', ORIGIN), params, state: {} });
 
@@ -42,15 +48,65 @@ function show() {
 	current = { url: new URL(entries[index], ORIGIN), params, state: {} };
 }
 
-/** Starts a fresh history at `path`, with the route `routeParams`. */
-export function resetRouter(path: string, routeParams: Record<string, string> = {}) {
-	entries = [path];
-	index = 0;
+/**
+ * A fake route id: the first path segment, with any further segments as one
+ * `[id]` param, so `/pedigree/p-1` and `/pedigree/p-2` share a route.
+ */
+function routeIdOf(path: string): string {
+	const segments = new URL(path, ORIGIN).pathname.split('/').filter(Boolean);
+	if (segments.length === 0) return '/';
+	return segments.length === 1 ? `/${segments[0]}` : `/${segments[0]}/[id]`;
+}
+
+function target(path: string) {
+	return { url: new URL(path, ORIGIN), params, route: { id: routeIdOf(path) } };
+}
+
+/** A navigation to the current entry from `fromPath` (null: from outside the app). */
+function navigationFrom(fromPath: string | null, type: 'enter' | 'goto' | 'popstate'): AfterNavigate {
+	return {
+		from: fromPath === null ? null : target(fromPath),
+		to: target(entries[index]),
+		type,
+		willUnload: false,
+		complete: Promise.resolve()
+	} as unknown as AfterNavigate;
+}
+
+function navigated(fromPath: string, type: 'goto' | 'popstate') {
+	const navigation = navigationFrom(fromPath, type);
+	for (const callback of afterNavigateCallbacks) callback(navigation);
+}
+
+/**
+ * Starts a fresh history at `path`, with the route `routeParams`. With
+ * `from`, the history holds that page first, as if the user came from it.
+ */
+export function resetRouter(
+	path: string,
+	routeParams: Record<string, string> = {},
+	{ from }: { from?: string } = {}
+) {
+	entries = from ? [from, path] : [path];
+	index = entries.length - 1;
 	params = routeParams;
+	afterNavigateCallbacks = [];
 	show();
 }
 
+/** Like SvelteKit's: runs on mount (from the previous entry, if any) and after each navigation. */
+function afterNavigate(callback: AfterNavigateCallback) {
+	onMount(() => {
+		afterNavigateCallbacks.push(callback);
+		callback(index > 0 ? navigationFrom(entries[index - 1], 'goto') : navigationFrom(null, 'enter'));
+		return () => {
+			afterNavigateCallbacks = afterNavigateCallbacks.filter((c) => c !== callback);
+		};
+	});
+}
+
 const goto = vi.fn(async (href: string, opts: { replace?: boolean } = {}) => {
+	const fromPath = entries[index];
 	if (opts.replace) {
 		entries[index] = href;
 	} else {
@@ -58,13 +114,16 @@ const goto = vi.fn(async (href: string, opts: { replace?: boolean } = {}) => {
 		index++;
 	}
 	show();
+	navigated(fromPath, 'goto');
 });
 
 /** The browser's Back button. */
 export function back() {
 	if (index === 0) throw new Error('fakeRouter: no history entry to go back to');
+	const fromPath = entries[index];
 	index--;
 	show();
+	navigated(fromPath, 'popstate');
 }
 
 /** The current entry's `pathname?search`. */
@@ -78,4 +137,4 @@ export function historyLength(): number {
 }
 
 export const appState = { page };
-export const appNavigation = { goto };
+export const appNavigation = { goto, afterNavigate };

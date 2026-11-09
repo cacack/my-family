@@ -32,6 +32,8 @@ export {
 	getShortcutsForContext,
 	getGlobalShortcuts,
 	formatKeySequence,
+	keyLabel,
+	describeContextKeys,
 	sequenceMatches,
 	isPartialMatch
 } from './shortcuts';

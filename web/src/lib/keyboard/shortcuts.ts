@@ -129,12 +129,6 @@ export const DEFAULT_SHORTCUTS: Shortcut[] = [
 		context: 'pedigree'
 	},
 	{
-		keys: ['ArrowRight'],
-		action: 'navigate-spouse',
-		description: 'Navigate to first spouse/family',
-		context: 'pedigree'
-	},
-	{
 		keys: ['Enter'],
 		action: 'view-person-detail',
 		description: 'View selected person details',
@@ -190,6 +184,13 @@ export const DEFAULT_SHORTCUTS: Shortcut[] = [
 		keys: ['ArrowRight'],
 		action: 'navigate-next-sibling',
 		description: 'Navigate to next sibling',
+		context: 'descendancy'
+	},
+	{
+		// Every arrow already moves the selection, so the root gets Home.
+		keys: ['Home'],
+		action: 'navigate-root',
+		description: 'Navigate to root person',
 		context: 'descendancy'
 	},
 	{
@@ -295,6 +296,48 @@ export function getGlobalShortcuts(): Shortcut[] {
  */
 export function formatKeySequence(keys: string[]): string {
 	return keys.join(' ');
+}
+
+/** Spoken names for the keys a chart hint lists; other keys read as themselves. */
+const KEY_LABELS: Record<string, string> = {
+	ArrowUp: 'Up',
+	ArrowDown: 'Down',
+	ArrowLeft: 'Left',
+	ArrowRight: 'Right'
+};
+
+/**
+ * The name a hint or aria-label uses for a key (e.g. `ArrowUp` -> "Up")
+ */
+export function keyLabel(key: string): string {
+	return KEY_LABELS[key] ?? key;
+}
+
+/**
+ * Describe every key of one context, for a chart's aria-label and on-page
+ * hint, so they list exactly what the `?` dialog's group lists (#1123).
+ * Keys sharing an action are joined: "+ or =: zoom in".
+ *
+ * @param context - The context whose own shortcuts (not the global ones) to describe
+ * @returns e.g. "Up: navigate to father; Down: navigate to root person; ..."
+ */
+export function describeContextKeys(context: ShortcutContext): string {
+	const byAction = new Map<string, { keys: string[]; description: string }>();
+	for (const shortcut of DEFAULT_SHORTCUTS.filter((s) => s.context === context)) {
+		const keys = formatKeySequence(shortcut.keys.map(keyLabel));
+		const entry = byAction.get(shortcut.action);
+		if (entry) {
+			entry.keys.push(keys);
+		} else {
+			byAction.set(shortcut.action, { keys: [keys], description: shortcut.description });
+		}
+	}
+	return [...byAction.values()]
+		.map(
+			({ keys, description }) =>
+				`${keys.join(' or ')}: ${description.charAt(0).toLowerCase()}${description.slice(1)}`
+		)
+		.join('; ');
 }
 
 /**

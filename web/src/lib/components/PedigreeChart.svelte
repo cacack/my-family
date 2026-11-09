@@ -2,6 +2,7 @@
 	import * as d3 from 'd3';
 	import { onMount, untrack } from 'svelte';
 	import { formatPersonName, formatYear, type PedigreeNode } from '$lib/api/client';
+	import { describeContextKeys } from '$lib/keyboard/shortcuts';
 	import {
 		fitTransform,
 		motionDuration,
@@ -785,17 +786,6 @@
 	}
 
 	/**
-	 * Get the first spouse/family ID if available
-	 * Note: In pedigree chart data, spouses are not directly available
-	 * This would need additional data from the API
-	 */
-	export function getSpouseId(): string | null {
-		// Spouse navigation would require additional data - returning null for now
-		// Could be extended when the API provides spouse information
-		return null;
-	}
-
-	/**
 	 * Check if a person exists in the current pedigree view
 	 */
 	export function hasNode(personId: string): boolean {
@@ -890,7 +880,7 @@
 	class="pedigree-chart"
 	bind:this={container}
 	role="application"
-	aria-label="Pedigree chart. Use arrow keys to navigate: Up for father, Left for mother, Down to return to root. Plus/minus to zoom, R to reset view. Click toggle buttons below nodes to collapse or expand ancestor branches."
+	aria-label="Pedigree chart. Keys: {describeContextKeys('pedigree')}. Click toggle buttons below nodes to collapse or expand ancestor branches."
 	tabindex="0"
 ></div>
 

@@ -2,6 +2,7 @@
 	import * as d3 from 'd3';
 	import { onMount } from 'svelte';
 	import { formatGenDate, formatPersonName, formatYear, type DescendancyNode } from '$lib/api/client';
+	import { describeContextKeys } from '$lib/keyboard/shortcuts';
 	import {
 		fitTransform,
 		motionDuration,
@@ -552,7 +553,7 @@
 	class="descendancy-chart"
 	bind:this={container}
 	role="application"
-	aria-label="Descendancy chart. Use arrow keys to navigate: Down for first child, Up to return to parent, Left/Right to cycle siblings. Plus/minus to zoom, R to reset view."
+	aria-label="Descendancy chart. Keys: {describeContextKeys('descendancy')}."
 	tabindex="0"
 ></div>
 
