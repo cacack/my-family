@@ -691,7 +691,7 @@ func TestGetDescendancy_OrdersSpousesAndChildren(t *testing.T) {
 	id := func(n int) uuid.UUID { return uuid.MustParse(fmt.Sprintf("00000000-0000-0000-0000-%012d", n)) }
 	henry := id(100)
 	aragon, boleyn, parr := id(101), id(102), id(103)
-	mary, henryJr, unnamed, elizabeth, fitzroy := id(201), id(202), id(203), id(204), id(205)
+	mary, henryJr, unnamed, elizabeth, fitzroy, garbled := id(201), id(202), id(203), id(204), id(205), id(206)
 	// Family ids run opposite to marriage order, so store (id) order is wrong.
 	famUndated, famBoleyn, famAragon := id(1), id(2), id(3)
 
@@ -705,6 +705,8 @@ func TestGetDescendancy_OrdersSpousesAndChildren(t *testing.T) {
 		{ID: unnamed, GivenName: "Unnamed", Surname: "Tudor"},
 		{ID: elizabeth, GivenName: "Elizabeth", Surname: "Tudor", BirthDateRaw: "7 SEP 1533"},
 		{ID: fitzroy, GivenName: "Henry", Surname: "FitzRoy", BirthDateRaw: "15 JUN 1519"},
+		// A Hebrew date that cannot be converted to the Gregorian timeline counts as undated.
+		{ID: garbled, GivenName: "Garbled", Surname: "Tudor", BirthDateRaw: "@#DHEBREW@ 13 ADS 0"},
 	}
 	for _, p := range persons {
 		pm := p
@@ -724,7 +726,7 @@ func TestGetDescendancy_OrdersSpousesAndChildren(t *testing.T) {
 		}
 	}
 	links := []struct{ family, child uuid.UUID }{
-		{famAragon, unnamed}, {famAragon, mary}, {famAragon, henryJr},
+		{famAragon, garbled}, {famAragon, unnamed}, {famAragon, mary}, {famAragon, henryJr},
 		{famBoleyn, elizabeth},
 		{famUndated, fitzroy},
 	}
@@ -753,7 +755,7 @@ func TestGetDescendancy_OrdersSpousesAndChildren(t *testing.T) {
 	}
 
 	wantChildren := []struct{ id, family uuid.UUID }{
-		{henryJr, famAragon}, {mary, famAragon}, {unnamed, famAragon},
+		{henryJr, famAragon}, {mary, famAragon}, {unnamed, famAragon}, {garbled, famAragon},
 		{elizabeth, famBoleyn},
 		{fitzroy, famUndated},
 	}

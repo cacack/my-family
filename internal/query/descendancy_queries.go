@@ -3,7 +3,6 @@ package query
 import (
 	"context"
 	"sort"
-	"time"
 
 	"github.com/google/uuid"
 
@@ -266,24 +265,14 @@ func parseRawDate(raw string) *domain.GenDate {
 	return &d
 }
 
-// genDateBefore reports whether a sorts before b, with dates lacking a year
-// last.
+// genDateBefore reports whether a sorts before b, with dates that cannot be
+// placed on the timeline (no year, or an unconvertible calendar) last.
 func genDateBefore(a, b *domain.GenDate) bool {
-	ta, okA := genDateSortTime(a)
-	tb, okB := genDateSortTime(b)
-	if okA != okB {
-		return okA
+	ta, tb := GenDateToSortTime(a), GenDateToSortTime(b)
+	if (ta == nil) != (tb == nil) {
+		return ta != nil
 	}
-	return okA && ta.Before(tb)
-}
-
-// genDateSortTime returns d's position on the timeline, and false when d has no
-// year to place it by.
-func genDateSortTime(d *domain.GenDate) (time.Time, bool) {
-	if d == nil || d.Year == nil {
-		return time.Time{}, false
-	}
-	return d.ToTime(), true
+	return ta != nil && ta.Before(*tb)
 }
 
 // newDescendancyNode builds the node for person at generation, without spouses
