@@ -3,13 +3,15 @@
 	import { onMount } from 'svelte';
 	import { formatGenDate, formatPersonName, formatYear, type DescendancyNode } from '#lib/api/client.js';
 	import {
+		CARD_TEXT_INSET,
+		fitText,
 		fitTransform,
+		measureWith,
 		motionDuration,
 		nameLines,
 		observeChartResize,
 		scaleAbout,
 		touchScrollsPage,
-		truncateLabel,
 		wrapLabel,
 		type ScaleExtent
 	} from '#lib/utils/chart.js';
@@ -261,8 +263,9 @@
 			.attr('font-size', '13px')
 			.attr('font-weight', '600')
 			.attr('fill', '#1e293b')
-			.text((d) => {
-				return truncateLabel(nameLines(d.data)[0], 16);
+			.text((d) => nameLines(d.data)[0])
+			.each(function () {
+				fitText(this, cardWidth - 2 * CARD_TEXT_INSET);
 			});
 
 		// Surname (second line)
@@ -273,8 +276,9 @@
 			.attr('font-size', '13px')
 			.attr('font-weight', '500')
 			.attr('fill', '#475569')
-			.text((d) => {
-				return truncateLabel(nameLines(d.data)[1], 16);
+			.text((d) => nameLines(d.data)[1])
+			.each(function () {
+				fitText(this, cardWidth - 2 * CARD_TEXT_INSET);
 			});
 
 		// Birth-death dates (third line)
@@ -352,25 +356,30 @@
 			// Full name on hover, since the lines below may be truncated
 			spouseGroup.append('title').text(spouse.name || 'Unknown');
 
-			// Spouse name, wrapped over two lines
-			const [nameLine1, nameLine2] = wrapLabel(spouse.name || 'Unknown', 18);
-			spouseGroup
+			// Spouse name, wrapped over two lines that fit inside the card
+			const nameText1 = spouseGroup
 				.append('text')
 				.attr('y', -10)
 				.attr('text-anchor', 'middle')
 				.attr('font-size', '11px')
 				.attr('font-weight', '600')
-				.attr('fill', '#1e293b')
-				.text(nameLine1);
+				.attr('fill', '#1e293b');
 
-			spouseGroup
+			const nameText2 = spouseGroup
 				.append('text')
 				.attr('y', 3)
 				.attr('text-anchor', 'middle')
 				.attr('font-size', '11px')
 				.attr('font-weight', '600')
-				.attr('fill', '#1e293b')
-				.text(nameLine2);
+				.attr('fill', '#1e293b');
+
+			const [nameLine1, nameLine2] = wrapLabel(
+				spouse.name || 'Unknown',
+				spouseCardWidth - 2 * CARD_TEXT_INSET,
+				measureWith(nameText1.node()!)
+			);
+			nameText1.text(nameLine1);
+			nameText2.text(nameLine2);
 
 			// Marriage date
 			spouseGroup
