@@ -434,8 +434,18 @@ func TestValidateDate(t *testing.T) {
 		{input: "BET 1750/51 AND 1750", wantErr: "is a reversed range: 1750/51 is after 1750;"},
 		{input: "@#DJULIAN@ BET 1700 AND 1690", wantErr: "is a reversed range: 1700 is after 1690;"},
 		// Endpoints in different calendars are compared in Gregorian (#1227).
-		{input: "BET @#DJULIAN@ 1700 AND @#DGREGORIAN@ 1690", wantErr: "is a reversed range: 1700 is after 1690;"},
-		{input: "FROM 10 JAN 1701 TO @#DJULIAN@ 25 DEC 1700", wantErr: "is a reversed range: 10 JAN 1701 is after 25 DEC 1700;"},
+		// The message names each endpoint's calendar, so the years read.
+		{input: "BET @#DJULIAN@ 1700 AND @#DGREGORIAN@ 1690", wantErr: "is a reversed range: Julian 1700 is after Gregorian 1690;"},
+		{input: "FROM 10 JAN 1701 TO @#DJULIAN@ 25 DEC 1700", wantErr: "is a reversed range: Gregorian 10 JAN 1701 is after Julian 25 DEC 1700;"},
+		// Hebrew 5500 ends in September 1740, before 1741 starts.
+		{input: "BET 1741 AND @#DHEBREW@ 5500", wantErr: "is a reversed range: Gregorian 1741 is after Hebrew 5500;"},
+		// A partial end covers its whole year or month in its own calendar:
+		// Hebrew 5500 is Sep 1739 to Sep 1740, French Republican year 2 is
+		// Sep 1793 to Sep 1794, Julian DEC 1700 runs to 10 JAN 1701.
+		{input: "BET 1740 AND @#DHEBREW@ 5500"},
+		{input: "BET JUN 1740 AND @#DHEBREW@ 5500"},
+		{input: "FROM 1794 TO @#DFRENCH R@ 2"},
+		{input: "BET 5 JAN 1701 AND @#DJULIAN@ DEC 1700"},
 		{input: "BET @#DJULIAN@ 1690 AND @#DGREGORIAN@ 1700"},
 		// Julian 25 DEC 1700 is Gregorian 5 JAN 1701: in order, though its
 		// Julian year is earlier.
@@ -551,6 +561,9 @@ func TestNormalizeDateInput(t *testing.T) {
 		{input: "between 1860 and 1850", wantErr: `"between 1860 and 1850" is a reversed range: 1860 is after 1850`},
 		{input: "BET @#DJULIAN@ 1700 AND @#DGREGORIAN@ 1690", wantErr: "is a reversed range"},
 		{input: "BET @#DJULIAN@ 1690 AND @#DGREGORIAN@ 1700", want: "BET @#DJULIAN@ 1690 AND @#DGREGORIAN@ 1700"},
+		{input: "BET 1740 AND @#DHEBREW@ 5500", want: "BET 1740 AND @#DHEBREW@ 5500"},
+		{input: "FROM 1794 TO @#DFRENCH R@ 2", want: "FROM 1794 TO @#DFRENCH R@ 2"},
+		{input: "BET 5 JAN 1701 AND @#DJULIAN@ DEC 1700", want: "BET 5 JAN 1701 AND @#DJULIAN@ DEC 1700"},
 		// GEDCOM input is stored in GEDCOM case.
 		{input: "1 jan 1850", want: "1 JAN 1850"},
 		{input: "ABT 1850", want: "ABT 1850"},

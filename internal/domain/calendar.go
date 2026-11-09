@@ -66,6 +66,51 @@ func (g GenDate) ToGregorian() (GenDate, error) {
 	return result, nil
 }
 
+// endpointBounds returns the first and last day, as Julian day numbers, that
+// one date in the given domain calendar can mean: a date without a day or
+// month covers its whole month or year in that calendar, so Hebrew 5500 runs
+// from September 1739 to September 1740. ok is false when the calendar is
+// unrecognized, the year is missing, or gedcom-go can't place the date.
+func endpointBounds(calendar string, year, month, day *int) (earliest, latest int, ok bool) {
+	cal, known := domainToGedcomCalendar(calendar)
+	if !known || year == nil {
+		return 0, 0, false
+	}
+	return gedcomDate(cal, *year, month, day).Bounds()
+}
+
+// gedcomDate builds a gedcom-go date from domain components. The domain stores
+// a BC year as negative; gedcom-go wants it positive with IsBC set.
+func gedcomDate(cal gedcomlib.Calendar, year int, month, day *int) *gedcomlib.Date {
+	d := &gedcomlib.Date{Calendar: cal, Year: year}
+	if year < 0 {
+		d.Year, d.IsBC = -year, true
+	}
+	if month != nil {
+		d.Month = *month
+	}
+	if day != nil {
+		d.Day = *day
+	}
+	return d
+}
+
+// calendarName returns a domain calendar's name for messages.
+func calendarName(calendar string) string {
+	switch calendar {
+	case CalendarJulian:
+		return "Julian"
+	case CalendarHebrew:
+		return "Hebrew"
+	case CalendarFrench:
+		return "French Republican"
+	case CalendarGregorian, "":
+		return "Gregorian"
+	default:
+		return calendar
+	}
+}
+
 // isGregorian reports whether a domain calendar identifier is Gregorian; an
 // empty identifier means Gregorian.
 func isGregorian(calendar string) bool {
@@ -97,20 +142,7 @@ func gregorianComponents(cal gedcomlib.Calendar, year, month, day *int) (*int, *
 		return nil, nil, nil, fmt.Errorf("year is missing")
 	}
 
-	// The domain stores a BC year as negative; gedcom-go wants it positive
-	// with IsBC set, and returns it the same way.
-	src := &gedcomlib.Date{Calendar: cal, Year: *year}
-	if *year < 0 {
-		src.Year, src.IsBC = -*year, true
-	}
-	if month != nil {
-		src.Month = *month
-	}
-	if day != nil {
-		src.Day = *day
-	}
-
-	greg, err := src.ToGregorian()
+	greg, err := gedcomDate(cal, *year, month, day).ToGregorian()
 	if err != nil {
 		return nil, nil, nil, err
 	}

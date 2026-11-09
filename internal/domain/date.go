@@ -434,6 +434,10 @@ func validateDate(s, typed string) error {
 	}
 	if gd.isReversedRange() {
 		start, end := rangeEndpointText(s)
+		if gd.Calendar2 != "" {
+			start = calendarName(gd.Calendar) + " " + start
+			end = calendarName(gd.endCalendar()) + " " + end
+		}
 		return &DateInputError{Reason: fmt.Sprintf("%q is a reversed range: %s is after %s; put the earlier date first", typed, start, end)}
 	}
 	return nil
@@ -475,20 +479,19 @@ func rangeEndpointText(s string) (start, end string) {
 // isReversedRange reports whether a BET/FROM range ends before it starts,
 // comparing only the precision both endpoints share, so "BET JAN 1850 AND
 // 1850" is not reversed. Endpoints in one calendar are compared as written,
-// since its month numbers run in calendar order; endpoints in different
-// calendars ("BET @#DJULIAN@ 1700 AND @#DGREGORIAN@ 1690") are compared after
-// converting both to Gregorian, and a range that can't be converted is not
-// reported as reversed.
+// since its month numbers run in calendar order. Endpoints in different
+// calendars ("BET @#DJULIAN@ 1700 AND @#DGREGORIAN@ 1690") don't share
+// year or month boundaries, so the range is reversed only when the last day
+// the end can mean is before the first day the start can mean; a range that
+// can't be placed is not reported as reversed.
 func (g *GenDate) isReversedRange() bool {
 	if g.Year == nil || g.Year2 == nil {
 		return false
 	}
 	if g.Calendar2 != "" {
-		greg, err := g.ToGregorian()
-		if err != nil {
-			return false
-		}
-		return greg.isReversedRange()
+		startEarliest, _, startOK := endpointBounds(g.Calendar, g.Year, g.Month, g.Day)
+		_, endLatest, endOK := endpointBounds(g.endCalendar(), g.Year2, g.Month2, g.Day2)
+		return startOK && endOK && endLatest < startEarliest
 	}
 	if *g.Year != *g.Year2 {
 		return *g.Year > *g.Year2
