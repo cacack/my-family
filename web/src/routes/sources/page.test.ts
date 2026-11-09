@@ -53,6 +53,28 @@ describe('Sources page', () => {
 		expect(API_SOURCE_TYPES).toContain(body.source_type);
 	});
 
+	// GEDCOM CONT lines fold into these fields; a text input would strip the breaks (#1174).
+	it('creates a source with multi-line title, author and publisher', async () => {
+		render(SourcesPage);
+		await screen.findByText('No sources found.');
+		await fireEvent.click(screen.getAllByRole('button', { name: 'Add Source' })[0]);
+
+		const multiline = {
+			title: 'Parish register\nSt Mary, Kent',
+			author: 'Church of England\nDiocese of Canterbury',
+			publisher: 'Kent Archives\nMaidstone'
+		};
+		for (const [label, value] of [[/Title/, multiline.title], ['Author', multiline.author], ['Publisher', multiline.publisher]] as const) {
+			const field = screen.getByLabelText(label);
+			expect(field.tagName).toBe('TEXTAREA');
+			await fireEvent.input(field, { target: { value } });
+		}
+		await fireEvent.click(screen.getByRole('button', { name: 'Create Source' }));
+
+		await waitFor(() => expect(apiModule.api.createSource).toHaveBeenCalled());
+		expect(vi.mocked(apiModule.api.createSource).mock.calls[0][0]).toMatchObject(multiline);
+	});
+
 	it('names the search box and says the current sort direction', async () => {
 		render(SourcesPage);
 		expect(screen.getByRole('textbox', { name: 'Search sources' })).toBeTruthy();

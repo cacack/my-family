@@ -46,6 +46,10 @@ test('multi-line source and citation fields keep their line breaks', async ({ pa
 	const saved = await (await request.get(`${API_BASE}/sources/${source.id}`)).json();
 	expect(saved).toMatchObject(fields);
 
+	await page.goto(`/sources?q=${stamp}`);
+	await expect(page.getByRole('heading', { level: 3, name: /Parish register/ })).toHaveCSS('white-space', 'pre-line');
+	await expect(page.locator('.author', { hasText: 'Church of England' })).toHaveCSS('white-space', 'pre-line');
+
 	await page.goto(`/persons/${person.id}`);
 	await expect(page.getByText(/^Page: Folio 12/)).toHaveCSS('white-space', 'pre-line');
 	await expect(page.getByRole('link', { name: /Parish register/ })).toHaveCSS('white-space', 'pre-line');

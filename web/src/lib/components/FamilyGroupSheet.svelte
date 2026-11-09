@@ -564,6 +564,11 @@
 		margin-bottom: 0.5rem;
 	}
 
+	.citations-list a,
+	.cit-detail {
+		/* GEDCOM CONT lines fold into source titles and citation pages (#1174). */
+		white-space: pre-line;
+	}
 	.citations-list a {
 		color: var(--color-link);
 		text-decoration: none;
