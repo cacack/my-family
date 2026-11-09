@@ -37,6 +37,17 @@ func TestPagedListsVisitEveryRowOnce(t *testing.T) {
 				}
 				want["persons"] = append(want["persons"], p.ID)
 
+				// Two burials each, so the DISTINCT join has duplicates to fold.
+				for range 2 {
+					burial := &repository.EventReadModel{
+						ID: uuid.New(), OwnerType: "person", OwnerID: p.ID, FactType: domain.FactPersonBurial,
+						Place: "Zentralfriedhof", Version: 1, CreatedAt: stamp,
+					}
+					if err := read.SaveEvent(ctx, main, burial); err != nil {
+						t.Fatalf("SaveEvent: %v", err)
+					}
+				}
+
 				f := &repository.FamilyReadModel{ID: uuid.New(), Version: 1, UpdatedAt: stamp}
 				if err := read.SaveFamily(ctx, main, f); err != nil {
 					t.Fatalf("SaveFamily: %v", err)
@@ -65,15 +76,19 @@ func TestPagedListsVisitEveryRowOnce(t *testing.T) {
 				}
 			}
 			personLists := map[string]func(context.Context, repository.ListOptions) ([]repository.PersonReadModel, int, error){
-				"ListPersons":            read.ListPersons,
-				"ListPersons given desc": personsBy("given_name", "desc"),
-				"ListPersons birth asc":  personsBy("birth_date", "asc"),
-				"ListPersons updated":    personsBy("updated_at", "desc"),
+				"ListPersons":              read.ListPersons,
+				"ListPersons surname desc": personsBy("surname", "desc"),
+				"ListPersons given desc":   personsBy("given_name", "desc"),
+				"ListPersons birth asc":    personsBy("birth_date", "asc"),
+				"ListPersons updated":      personsBy("updated_at", "desc"),
 				"GetPersonsBySurname": func(ctx context.Context, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
 					return read.GetPersonsBySurname(ctx, "von_Hugel", opts)
 				},
 				"GetPersonsByPlace": func(ctx context.Context, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
 					return read.GetPersonsByPlace(ctx, "Vienna", opts)
+				},
+				"GetPersonsByCemetery": func(ctx context.Context, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
+					return read.GetPersonsByCemetery(ctx, "Zentralfriedhof", opts)
 				},
 			}
 			for name, list := range personLists {
@@ -109,6 +124,8 @@ func TestUndatedAndYearOneBirthSort(t *testing.T) {
 				if date != "" {
 					gd := domain.ParseGenDate(date)
 					p.BirthDate = &gd
+					dd := gd
+					p.DeathDate = &dd
 				}
 				if date == "1 JAN 1" {
 					yearOne = p.ID
@@ -126,6 +143,13 @@ func TestUndatedAndYearOneBirthSort(t *testing.T) {
 				t.Fatalf("1 JAN 1 birth sort value = %v (err %v), want non-nil", rm, err)
 			}
 
+			// Soundex and fuzzy search sort in Go on SQLite and in SQL on
+			// PostgreSQL; every path must agree.
+			searches := map[string]repository.SearchOptions{
+				"SearchPersons":         {Query: "Same"},
+				"SearchPersons soundex": {Query: "Same", Soundex: true},
+				"SearchPersons fuzzy":   {Query: "Same", Fuzzy: true},
+			}
 			for order, want := range map[string][]string{"asc": wantAsc, "desc": wantDesc} {
 				people, _, err := read.ListPersons(ctx, repository.ListOptions{Sort: "birth_date", Order: order, Limit: 50})
 				if err != nil {
@@ -135,12 +159,18 @@ func TestUndatedAndYearOneBirthSort(t *testing.T) {
 					t.Errorf("ListPersons %s order %q, want %q", order, got, want)
 				}
 
-				people, _, err = read.SearchPersons(ctx, repository.SearchOptions{Query: "Same", Sort: "birth_date", Order: order, Limit: 50})
-				if err != nil {
-					t.Fatalf("SearchPersons: %v", err)
-				}
-				if got := bornDates(people, ids); !slices.Equal(got, want) {
-					t.Errorf("SearchPersons %s order %q, want %q", order, got, want)
+				// Search alone sorts by death date too.
+				for _, sortBy := range []string{"birth_date", "death_date"} {
+					for name, opts := range searches {
+						opts.Sort, opts.Order, opts.Limit = sortBy, order, 50
+						people, _, err := read.SearchPersons(ctx, opts)
+						if err != nil {
+							t.Fatalf("%s: %v", name, err)
+						}
+						if got := bornDates(people, ids); !slices.Equal(got, want) {
+							t.Errorf("%s %s %s order %q, want %q", name, sortBy, order, got, want)
+						}
+					}
 				}
 			}
 

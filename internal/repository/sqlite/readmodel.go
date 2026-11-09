@@ -1755,51 +1755,39 @@ func sortPersonResults(persons []repository.PersonReadModel, opts repository.Sea
 		return
 	}
 
-	less := func(i, j int) bool {
+	desc := strings.EqualFold(opts.Order, "desc")
+	sort.Slice(persons, func(i, j int) bool {
 		a, b := persons[i], persons[j]
+		var cmp int
 		switch opts.Sort {
-		case "birth_date":
-			if a.BirthDateSort == nil && b.BirthDateSort == nil {
-				return false
+		case "birth_date", "death_date":
+			da, db := a.BirthDateSort, b.BirthDateSort
+			if opts.Sort == "death_date" {
+				da, db = a.DeathDateSort, b.DeathDateSort
 			}
-			if a.BirthDateSort == nil {
-				return false
+			// No date sorts last in both directions, as NULLS LAST does in
+			// searchOrderClause (#1078).
+			if (da == nil) != (db == nil) {
+				return db == nil
 			}
-			if b.BirthDateSort == nil {
-				return true
+			if da != nil {
+				cmp = da.Compare(*db)
 			}
-			return a.BirthDateSort.Before(*b.BirthDateSort)
-		case "death_date":
-			if a.DeathDateSort == nil && b.DeathDateSort == nil {
-				return false
-			}
-			if a.DeathDateSort == nil {
-				return false
-			}
-			if b.DeathDateSort == nil {
-				return true
-			}
-			return a.DeathDateSort.Before(*b.DeathDateSort)
 		default: // "name", "relevance", or empty
-			if a.Surname != b.Surname {
-				return a.Surname < b.Surname
+			cmp = strings.Compare(a.Surname, b.Surname)
+			if cmp == 0 {
+				cmp = strings.Compare(a.GivenName, b.GivenName)
 			}
-			return a.GivenName < b.GivenName
 		}
-	}
-	// Ties break on id so pages never overlap or skip a match (#902).
-	keyThenID := func(i, j int) bool {
-		if less(i, j) || less(j, i) {
-			return less(i, j)
+		// Ties break on id so pages never overlap or skip a match (#902).
+		if cmp == 0 {
+			cmp = bytes.Compare(a.ID[:], b.ID[:])
 		}
-		return bytes.Compare(persons[i].ID[:], persons[j].ID[:]) < 0
-	}
-
-	if strings.EqualFold(opts.Order, "desc") {
-		sort.Slice(persons, func(i, j int) bool { return keyThenID(j, i) })
-	} else {
-		sort.Slice(persons, keyThenID)
-	}
+		if desc {
+			return cmp > 0
+		}
+		return cmp < 0
+	})
 }
 
 // scanPersonRows scans all rows into PersonReadModel slice.
