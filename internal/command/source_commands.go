@@ -2,8 +2,10 @@ package command
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 
 	"github.com/google/uuid"
 
@@ -403,7 +405,8 @@ func (h *Handler) UpdateCitation(ctx context.Context, input UpdateCitationInput)
 		return nil, repository.ErrConcurrencyConflict
 	}
 
-	// Build changes map
+	// Build changes map. A field equal to its current value is not a change
+	// (the edit form sends every field), so only differing fields are recorded.
 	changes := make(map[string]any)
 
 	// Apply and validate changes
@@ -422,7 +425,7 @@ func (h *Handler) UpdateCitation(ctx context.Context, input UpdateCitationInput)
 		TemplateID:    current.TemplateID,
 	}
 
-	if input.SourceID != nil {
+	if input.SourceID != nil && *input.SourceID != current.SourceID {
 		// Verify source exists
 		source, err := h.readStore.GetSource(ctx, h.branchID, *input.SourceID)
 		if err != nil {
@@ -434,49 +437,59 @@ func (h *Handler) UpdateCitation(ctx context.Context, input UpdateCitationInput)
 		testCitation.SourceID = *input.SourceID
 		changes["source_id"] = input.SourceID.String()
 	}
-	if input.FactType != nil {
+	if input.FactType != nil && domain.FactType(*input.FactType) != current.FactType {
 		testCitation.FactType = domain.FactType(*input.FactType)
 		changes["fact_type"] = *input.FactType
 	}
-	if input.FactOwnerID != nil {
+	if input.FactOwnerID != nil && *input.FactOwnerID != current.FactOwnerID {
 		testCitation.FactOwnerID = *input.FactOwnerID
 		changes["fact_owner_id"] = input.FactOwnerID.String()
 	}
-	if input.Page != nil {
+	if input.Page != nil && *input.Page != current.Page {
 		testCitation.Page = *input.Page
 		changes["page"] = *input.Page
 	}
-	if input.Volume != nil {
+	if input.Volume != nil && *input.Volume != current.Volume {
 		testCitation.Volume = *input.Volume
 		changes["volume"] = *input.Volume
 	}
-	if input.SourceQuality != nil {
+	if input.SourceQuality != nil && domain.SourceQuality(*input.SourceQuality) != current.SourceQuality {
 		testCitation.SourceQuality = domain.SourceQuality(*input.SourceQuality)
 		changes["source_quality"] = *input.SourceQuality
 	}
-	if input.InformantType != nil {
+	if input.InformantType != nil && domain.InformantType(*input.InformantType) != current.InformantType {
 		testCitation.InformantType = domain.InformantType(*input.InformantType)
 		changes["informant_type"] = *input.InformantType
 	}
-	if input.EvidenceType != nil {
+	if input.EvidenceType != nil && domain.EvidenceType(*input.EvidenceType) != current.EvidenceType {
 		testCitation.EvidenceType = domain.EvidenceType(*input.EvidenceType)
 		changes["evidence_type"] = *input.EvidenceType
 	}
-	if input.QuotedText != nil {
+	if input.QuotedText != nil && *input.QuotedText != current.QuotedText {
 		testCitation.QuotedText = *input.QuotedText
 		changes["quoted_text"] = *input.QuotedText
 	}
-	if input.Analysis != nil {
+	if input.Analysis != nil && *input.Analysis != current.Analysis {
 		testCitation.Analysis = *input.Analysis
 		changes["analysis"] = *input.Analysis
 	}
-	if input.TemplateID != nil {
+	if input.TemplateID != nil && *input.TemplateID != current.TemplateID {
 		testCitation.TemplateID = *input.TemplateID
 		changes["template_id"] = *input.TemplateID
 	}
 	if input.Fields != nil {
-		testCitation.Fields = input.Fields
-		changes["fields"] = input.Fields
+		// No stored fields compares as an empty map, so a form that sends none
+		// for a citation without any records no change.
+		var currentFields map[string]string
+		if current.FieldsJSON != "" {
+			if err := json.Unmarshal([]byte(current.FieldsJSON), &currentFields); err != nil {
+				return nil, fmt.Errorf("decoding citation fields: %w", err)
+			}
+		}
+		if !maps.Equal(input.Fields, currentFields) {
+			testCitation.Fields = input.Fields
+			changes["fields"] = input.Fields
+		}
 	}
 
 	// No changes?
