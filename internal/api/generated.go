@@ -3167,12 +3167,16 @@ type DataLossItem struct {
 //     about, circa, c., ca., before, after, `between X and Y`,
 //     `from X to Y`, and month names in full, as three letters or as
 //     "Sept". For example `about Sept 1850` is stored as `ABT SEP 1850`.
+//     Era markers may carry periods (`44 B.C.` is stored as `44 BC`), and
+//     an AD marker after a year is dropped (`500 A.D.` is stored as `500`).
 //   - A date phrase in parentheses, such as `(about the time of the war)`,
 //     kept as text.
 //
 // An empty string means no date. Any other text (such as `1850-01-01`
-// or `Sept 5, 1850`), a date without a year, or a date that doesn't
-// exist in the calendar (such as `31 FEB 1900`) is rejected with 400;
+// or `Sept 5, 1850`), a date without a year, a date that doesn't
+// exist in the calendar (such as `31 FEB 1900`, `0 JAN 1850` or year
+// `0`), or a range that ends before it starts (such as
+// `between 1860 and 1850`) is rejected with 400;
 // the error's `details` name the field and say whether the text can be
 // kept as a date phrase. On update, a date identical to the stored value
 // is not re-checked, so an imported date the parser can't read never
@@ -3609,12 +3613,16 @@ type FamilyCreate struct {
 	//   about, circa, c., ca., before, after, `between X and Y`,
 	//   `from X to Y`, and month names in full, as three letters or as
 	//   "Sept". For example `about Sept 1850` is stored as `ABT SEP 1850`.
+	//   Era markers may carry periods (`44 B.C.` is stored as `44 BC`), and
+	//   an AD marker after a year is dropped (`500 A.D.` is stored as `500`).
 	// - A date phrase in parentheses, such as `(about the time of the war)`,
 	//   kept as text.
 	//
 	// An empty string means no date. Any other text (such as `1850-01-01`
-	// or `Sept 5, 1850`), a date without a year, or a date that doesn't
-	// exist in the calendar (such as `31 FEB 1900`) is rejected with 400;
+	// or `Sept 5, 1850`), a date without a year, a date that doesn't
+	// exist in the calendar (such as `31 FEB 1900`, `0 JAN 1850` or year
+	// `0`), or a range that ends before it starts (such as
+	// `between 1860 and 1850`) is rejected with 400;
 	// the error's `details` name the field and say whether the text can be
 	// kept as a date phrase. On update, a date identical to the stored value
 	// is not re-checked, so an imported date the parser can't read never
@@ -3718,12 +3726,16 @@ type FamilyUpdate struct {
 	//   about, circa, c., ca., before, after, `between X and Y`,
 	//   `from X to Y`, and month names in full, as three letters or as
 	//   "Sept". For example `about Sept 1850` is stored as `ABT SEP 1850`.
+	//   Era markers may carry periods (`44 B.C.` is stored as `44 BC`), and
+	//   an AD marker after a year is dropped (`500 A.D.` is stored as `500`).
 	// - A date phrase in parentheses, such as `(about the time of the war)`,
 	//   kept as text.
 	//
 	// An empty string means no date. Any other text (such as `1850-01-01`
-	// or `Sept 5, 1850`), a date without a year, or a date that doesn't
-	// exist in the calendar (such as `31 FEB 1900`) is rejected with 400;
+	// or `Sept 5, 1850`), a date without a year, a date that doesn't
+	// exist in the calendar (such as `31 FEB 1900`, `0 JAN 1850` or year
+	// `0`), or a range that ends before it starts (such as
+	// `between 1860 and 1850`) is rejected with 400;
 	// the error's `details` name the field and say whether the text can be
 	// kept as a date phrase. On update, a date identical to the stored value
 	// is not re-checked, so an imported date the parser can't read never
@@ -3957,12 +3969,16 @@ type LDSOrdinanceCreate struct {
 	//   about, circa, c., ca., before, after, `between X and Y`,
 	//   `from X to Y`, and month names in full, as three letters or as
 	//   "Sept". For example `about Sept 1850` is stored as `ABT SEP 1850`.
+	//   Era markers may carry periods (`44 B.C.` is stored as `44 BC`), and
+	//   an AD marker after a year is dropped (`500 A.D.` is stored as `500`).
 	// - A date phrase in parentheses, such as `(about the time of the war)`,
 	//   kept as text.
 	//
 	// An empty string means no date. Any other text (such as `1850-01-01`
-	// or `Sept 5, 1850`), a date without a year, or a date that doesn't
-	// exist in the calendar (such as `31 FEB 1900`) is rejected with 400;
+	// or `Sept 5, 1850`), a date without a year, a date that doesn't
+	// exist in the calendar (such as `31 FEB 1900`, `0 JAN 1850` or year
+	// `0`), or a range that ends before it starts (such as
+	// `between 1860 and 1850`) is rejected with 400;
 	// the error's `details` name the field and say whether the text can be
 	// kept as a date phrase. On update, a date identical to the stored value
 	// is not re-checked, so an imported date the parser can't read never
@@ -4027,12 +4043,16 @@ type LDSOrdinanceUpdate struct {
 	//   about, circa, c., ca., before, after, `between X and Y`,
 	//   `from X to Y`, and month names in full, as three letters or as
 	//   "Sept". For example `about Sept 1850` is stored as `ABT SEP 1850`.
+	//   Era markers may carry periods (`44 B.C.` is stored as `44 BC`), and
+	//   an AD marker after a year is dropped (`500 A.D.` is stored as `500`).
 	// - A date phrase in parentheses, such as `(about the time of the war)`,
 	//   kept as text.
 	//
 	// An empty string means no date. Any other text (such as `1850-01-01`
-	// or `Sept 5, 1850`), a date without a year, or a date that doesn't
-	// exist in the calendar (such as `31 FEB 1900`) is rejected with 400;
+	// or `Sept 5, 1850`), a date without a year, a date that doesn't
+	// exist in the calendar (such as `31 FEB 1900`, `0 JAN 1850` or year
+	// `0`), or a range that ends before it starts (such as
+	// `between 1860 and 1850`) is rejected with 400;
 	// the error's `details` name the field and say whether the text can be
 	// kept as a date phrase. On update, a date identical to the stored value
 	// is not re-checked, so an imported date the parser can't read never
@@ -4832,12 +4852,16 @@ type PersonCreate struct {
 	//   about, circa, c., ca., before, after, `between X and Y`,
 	//   `from X to Y`, and month names in full, as three letters or as
 	//   "Sept". For example `about Sept 1850` is stored as `ABT SEP 1850`.
+	//   Era markers may carry periods (`44 B.C.` is stored as `44 BC`), and
+	//   an AD marker after a year is dropped (`500 A.D.` is stored as `500`).
 	// - A date phrase in parentheses, such as `(about the time of the war)`,
 	//   kept as text.
 	//
 	// An empty string means no date. Any other text (such as `1850-01-01`
-	// or `Sept 5, 1850`), a date without a year, or a date that doesn't
-	// exist in the calendar (such as `31 FEB 1900`) is rejected with 400;
+	// or `Sept 5, 1850`), a date without a year, a date that doesn't
+	// exist in the calendar (such as `31 FEB 1900`, `0 JAN 1850` or year
+	// `0`), or a range that ends before it starts (such as
+	// `between 1860 and 1850`) is rejected with 400;
 	// the error's `details` name the field and say whether the text can be
 	// kept as a date phrase. On update, a date identical to the stored value
 	// is not re-checked, so an imported date the parser can't read never
@@ -4861,12 +4885,16 @@ type PersonCreate struct {
 	//   about, circa, c., ca., before, after, `between X and Y`,
 	//   `from X to Y`, and month names in full, as three letters or as
 	//   "Sept". For example `about Sept 1850` is stored as `ABT SEP 1850`.
+	//   Era markers may carry periods (`44 B.C.` is stored as `44 BC`), and
+	//   an AD marker after a year is dropped (`500 A.D.` is stored as `500`).
 	// - A date phrase in parentheses, such as `(about the time of the war)`,
 	//   kept as text.
 	//
 	// An empty string means no date. Any other text (such as `1850-01-01`
-	// or `Sept 5, 1850`), a date without a year, or a date that doesn't
-	// exist in the calendar (such as `31 FEB 1900`) is rejected with 400;
+	// or `Sept 5, 1850`), a date without a year, a date that doesn't
+	// exist in the calendar (such as `31 FEB 1900`, `0 JAN 1850` or year
+	// `0`), or a range that ends before it starts (such as
+	// `between 1860 and 1850`) is rejected with 400;
 	// the error's `details` name the field and say whether the text can be
 	// kept as a date phrase. On update, a date identical to the stored value
 	// is not re-checked, so an imported date the parser can't read never
@@ -5039,12 +5067,16 @@ type PersonUpdate struct {
 	//   about, circa, c., ca., before, after, `between X and Y`,
 	//   `from X to Y`, and month names in full, as three letters or as
 	//   "Sept". For example `about Sept 1850` is stored as `ABT SEP 1850`.
+	//   Era markers may carry periods (`44 B.C.` is stored as `44 BC`), and
+	//   an AD marker after a year is dropped (`500 A.D.` is stored as `500`).
 	// - A date phrase in parentheses, such as `(about the time of the war)`,
 	//   kept as text.
 	//
 	// An empty string means no date. Any other text (such as `1850-01-01`
-	// or `Sept 5, 1850`), a date without a year, or a date that doesn't
-	// exist in the calendar (such as `31 FEB 1900`) is rejected with 400;
+	// or `Sept 5, 1850`), a date without a year, a date that doesn't
+	// exist in the calendar (such as `31 FEB 1900`, `0 JAN 1850` or year
+	// `0`), or a range that ends before it starts (such as
+	// `between 1860 and 1850`) is rejected with 400;
 	// the error's `details` name the field and say whether the text can be
 	// kept as a date phrase. On update, a date identical to the stored value
 	// is not re-checked, so an imported date the parser can't read never
@@ -5068,12 +5100,16 @@ type PersonUpdate struct {
 	//   about, circa, c., ca., before, after, `between X and Y`,
 	//   `from X to Y`, and month names in full, as three letters or as
 	//   "Sept". For example `about Sept 1850` is stored as `ABT SEP 1850`.
+	//   Era markers may carry periods (`44 B.C.` is stored as `44 BC`), and
+	//   an AD marker after a year is dropped (`500 A.D.` is stored as `500`).
 	// - A date phrase in parentheses, such as `(about the time of the war)`,
 	//   kept as text.
 	//
 	// An empty string means no date. Any other text (such as `1850-01-01`
-	// or `Sept 5, 1850`), a date without a year, or a date that doesn't
-	// exist in the calendar (such as `31 FEB 1900`) is rejected with 400;
+	// or `Sept 5, 1850`), a date without a year, a date that doesn't
+	// exist in the calendar (such as `31 FEB 1900`, `0 JAN 1850` or year
+	// `0`), or a range that ends before it starts (such as
+	// `between 1860 and 1850`) is rejected with 400;
 	// the error's `details` name the field and say whether the text can be
 	// kept as a date phrase. On update, a date identical to the stored value
 	// is not re-checked, so an imported date the parser can't read never
@@ -5711,12 +5747,16 @@ type SourceCreate struct {
 	//   about, circa, c., ca., before, after, `between X and Y`,
 	//   `from X to Y`, and month names in full, as three letters or as
 	//   "Sept". For example `about Sept 1850` is stored as `ABT SEP 1850`.
+	//   Era markers may carry periods (`44 B.C.` is stored as `44 BC`), and
+	//   an AD marker after a year is dropped (`500 A.D.` is stored as `500`).
 	// - A date phrase in parentheses, such as `(about the time of the war)`,
 	//   kept as text.
 	//
 	// An empty string means no date. Any other text (such as `1850-01-01`
-	// or `Sept 5, 1850`), a date without a year, or a date that doesn't
-	// exist in the calendar (such as `31 FEB 1900`) is rejected with 400;
+	// or `Sept 5, 1850`), a date without a year, a date that doesn't
+	// exist in the calendar (such as `31 FEB 1900`, `0 JAN 1850` or year
+	// `0`), or a range that ends before it starts (such as
+	// `between 1860 and 1850`) is rejected with 400;
 	// the error's `details` name the field and say whether the text can be
 	// kept as a date phrase. On update, a date identical to the stored value
 	// is not re-checked, so an imported date the parser can't read never
@@ -5802,12 +5842,16 @@ type SourceUpdate struct {
 	//   about, circa, c., ca., before, after, `between X and Y`,
 	//   `from X to Y`, and month names in full, as three letters or as
 	//   "Sept". For example `about Sept 1850` is stored as `ABT SEP 1850`.
+	//   Era markers may carry periods (`44 B.C.` is stored as `44 BC`), and
+	//   an AD marker after a year is dropped (`500 A.D.` is stored as `500`).
 	// - A date phrase in parentheses, such as `(about the time of the war)`,
 	//   kept as text.
 	//
 	// An empty string means no date. Any other text (such as `1850-01-01`
-	// or `Sept 5, 1850`), a date without a year, or a date that doesn't
-	// exist in the calendar (such as `31 FEB 1900`) is rejected with 400;
+	// or `Sept 5, 1850`), a date without a year, a date that doesn't
+	// exist in the calendar (such as `31 FEB 1900`, `0 JAN 1850` or year
+	// `0`), or a range that ends before it starts (such as
+	// `between 1860 and 1850`) is rejected with 400;
 	// the error's `details` name the field and say whether the text can be
 	// kept as a date phrase. On update, a date identical to the stored value
 	// is not re-checked, so an imported date the parser can't read never

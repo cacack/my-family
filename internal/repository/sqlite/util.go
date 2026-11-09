@@ -167,8 +167,9 @@ const bcYearOffset = 10000
 
 // formatSortDate formats a sort date as text that SQLite orders like the time
 // itself. A year of 0 or later uses layout as is. A negative (BC) year is
-// written as "-" then year+10000 in four digits, so "-8150-..." (1850 BC)
-// < "-9956-..." (44 BC) < "0010-..." (10 AD); the rest of layout follows
+// written as "-" then year+10000 in four digits. ToTime numbers BC years
+// astronomically (1 BC is 0, 44 BC is -43), so "-8151-..." (1850 BC)
+// < "-9957-..." (44 BC) < "0000-..." (1 BC) < "0010-..." (10 AD); the rest of layout follows
 // unchanged. Years before 10000 BC sort as 10000 BC. parseSortDate reverses it.
 func formatSortDate(t time.Time, layout string) string {
 	if t.Year() >= 0 {

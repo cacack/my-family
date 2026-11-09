@@ -344,6 +344,28 @@ func TestGenDate_Validate(t *testing.T) {
 	}
 }
 
+// TestGenDate_Validate_Messages checks that a rejection names the field and
+// its accepted range (#1111).
+func TestGenDate_Validate_Messages(t *testing.T) {
+	tests := []struct {
+		date GenDate
+		want string
+	}{
+		{GenDate{Year: intPtr(1850), Month: intPtr(1), Day: intPtr(0)}, "day must be 1-31, got 0"},
+		{GenDate{Year: intPtr(1850), Month: intPtr(13)}, "month must be 1-12, got 13"},
+		{GenDate{Year: intPtr(5600), Month: intPtr(14), Calendar: CalendarHebrew}, "month must be 1-13, got 14"},
+		{GenDate{Year: intPtr(1850), Year2: intPtr(1860), Month2: intPtr(1), Day2: intPtr(32)}, "end day must be 1-31, got 32"},
+		{GenDate{Year: intPtr(1850), Year2: intPtr(1860), Month2: intPtr(0)}, "end month must be 1-12, got 0"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.want, func(t *testing.T) {
+			if err := tt.date.Validate(); err == nil || err.Error() != tt.want {
+				t.Errorf("Validate() = %v, want %q", err, tt.want)
+			}
+		})
+	}
+}
+
 func TestValidateDate(t *testing.T) {
 	tests := []struct {
 		input   string
@@ -385,6 +407,37 @@ func TestValidateDate(t *testing.T) {
 		// The end date's reason reads like a start date's, without gedcom-go's
 		// "invalid end date: invalid date: " prefixes (#875).
 		{input: "BET 1900 AND 31 FEB 1901", wantErr: `"BET 1900 AND 31 FEB 1901" is not a real calendar date (February has 28 days in 1901, got day 31)`},
+		// Day 0 names the field and its range (#1111).
+		{input: "0 JAN 1850", wantErr: `"0 JAN 1850" is not a real calendar date (day must be 1-31, got 0)`},
+		{input: "BET 1850 AND 0 JAN 1860", wantErr: "(end day must be 1-31, got 0)"},
+		// There is no year 0: 1 BC is followed by 1 AD (#1111).
+		{input: "1 JAN 0", wantErr: `"1 JAN 0" is not a real calendar date (there is no year 0`},
+		{input: "0", wantErr: "there is no year 0"},
+		{input: "0 BC", wantErr: "there is no year 0"},
+		{input: "BET 10 BC AND 0", wantErr: "there is no year 0"},
+		// A dual year names two years; neither may be 0.
+		{input: "1 JAN 0/1", wantErr: `"1 JAN 0/1" is not a real calendar date (there is no year 0`},
+		{input: "BET 0/1 AND 5", wantErr: "there is no year 0"},
+		{input: "BET 5 AND 00/01", wantErr: "there is no year 0"},
+		{input: "1 JAN 1750/51"},
+		{input: "1 JAN 1"},
+		{input: "1 BC"},
+		// A range must not end before it starts (#1111), compared at the
+		// precision both endpoints share.
+		{input: "BET 1860 AND 1850", wantErr: `"BET 1860 AND 1850" is a reversed range: 1860 is after 1850; put the earlier date first`},
+		{input: "FROM 1860 TO 1850", wantErr: "is a reversed range: 1860 is after 1850"},
+		{input: "BET 10 BC AND 44 BC", wantErr: "is a reversed range: 10 BC is after 44 BC"},
+		{input: "BET MAR 1850 AND FEB 1850", wantErr: "is a reversed range: MAR 1850 is after FEB 1850"},
+		{input: "BET 2 MAR 1850 AND 1 MAR 1850", wantErr: "is a reversed range"},
+		// The message quotes each endpoint as written, not its sort year: a
+		// dual year 1750/51 is early 1751, after 1750.
+		{input: "BET 1750/51 AND 1750", wantErr: "is a reversed range: 1750/51 is after 1750;"},
+		{input: "@#DJULIAN@ BET 1700 AND 1690", wantErr: "is a reversed range: 1700 is after 1690;"},
+		{input: "BET 44 BC AND 10 BC"},
+		{input: "BET 1 MAR 1850 AND 1 MAR 1850"},
+		{input: "BET JAN 1850 AND 1850"},
+		{input: "BET 1850 AND JAN 1850"},
+		{input: "BET 5 MAR 1850 AND MAR 1850"},
 	}
 
 	for _, tt := range tests {
@@ -469,6 +522,26 @@ func TestNormalizeDateInput(t *testing.T) {
 		{input: "44 BC", want: "44 BC"},
 		{input: "about 44 bce", want: "ABT 44 BCE"},
 		{input: "between 50 bc and 10", want: "BET 50 BC AND 10"},
+		// BC era markers with periods (#1081).
+		{input: "44 B.C.", want: "44 BC"},
+		{input: "about 44 b.c.e.", want: "ABT 44 BCE"},
+		{input: "1 Jan 44 B.C", want: "1 JAN 44 BC"},
+		// An AD era marker after a year is dropped: a GEDCOM year is AD unless
+		// marked BC (#1111).
+		{input: "500 AD", want: "500"},
+		{input: "500 A.D.", want: "500"},
+		{input: "about 15 March 500 ad", want: "ABT 15 MAR 500"},
+		{input: "between 50 B.C. and 10 A.D.", want: "BET 50 BC AND 10"},
+		{input: "AD 500", wantErr: `"AD 500" is not a recognized date`},
+		// Both era markers on one year contradict each other, in either order.
+		{input: "500 AD BC", wantErr: `"500 AD BC" is not a recognized date`},
+		{input: "1 A.D. B.C.E.", wantErr: "is not a recognized date"},
+		{input: "500 BC AD", wantErr: "is not a recognized date"},
+		{input: "ad", wantErr: "is not a recognized date"},
+		// Dates that read but don't exist (#1111).
+		{input: "1 Jan 0", wantErr: `"1 Jan 0" is not a real calendar date (there is no year 0`},
+		{input: "0 Jan 1850", wantErr: `"0 Jan 1850" is not a real calendar date (day must be 1-31, got 0)`},
+		{input: "between 1860 and 1850", wantErr: `"between 1860 and 1850" is a reversed range: 1860 is after 1850`},
 		// GEDCOM input is stored in GEDCOM case.
 		{input: "1 jan 1850", want: "1 JAN 1850"},
 		{input: "ABT 1850", want: "ABT 1850"},
@@ -631,15 +704,37 @@ func TestGenDate_SortDate_BC(t *testing.T) {
 }
 
 func TestGenDate_SortDate_ClampsToEarliest(t *testing.T) {
-	for _, s := range []string{"5000 BC", "4713 BC"} {
+	// 1 JAN 4714 BC is before the 24 NOV 4714 BC limit; 1 JAN 4713 BC is not.
+	for _, s := range []string{"5000 BC", "4714 BC"} {
 		gd := ParseGenDate(s)
 		if got := gd.SortDate(); !got.Equal(EarliestSortDate) {
 			t.Errorf("SortDate(%q) = %v, want %v", s, got, EarliestSortDate)
 		}
 	}
-	gd := ParseGenDate("4712 BC")
+	gd := ParseGenDate("4713 BC")
 	if got := gd.SortDate(); !got.Equal(gd.ToTime()) {
-		t.Errorf("SortDate(4712 BC) = %v, want %v", got, gd.ToTime())
+		t.Errorf("SortDate(4713 BC) = %v, want %v", got, gd.ToTime())
+	}
+}
+
+// TestGenDate_ToTime_AstronomicalBC checks that ToTime uses astronomical year
+// numbering, where 1 BC is year 0, so durations across BC/AD are exact (#1081).
+func TestGenDate_ToTime_AstronomicalBC(t *testing.T) {
+	bc44 := ParseGenDate("1 JAN 44 BC")
+	if got := bc44.ToTime().Year(); got != -43 {
+		t.Errorf("ToTime(1 JAN 44 BC).Year() = %d, want -43", got)
+	}
+	bc1 := ParseGenDate("1 BC")
+	if got := bc1.ToTime().Year(); got != 0 {
+		t.Errorf("ToTime(1 BC).Year() = %d, want 0", got)
+	}
+	from, to := ParseGenDate("1 JAN 10 BC"), ParseGenDate("1 JAN 10")
+	if got := to.ToTime().Year() - from.ToTime().Year(); got != 19 {
+		t.Errorf("years from 1 JAN 10 BC to 1 JAN 10 = %d, want 19", got)
+	}
+	ad := ParseGenDate("1 JAN 1850")
+	if got := ad.ToTime().Year(); got != 1850 {
+		t.Errorf("ToTime(1 JAN 1850).Year() = %d, want 1850", got)
 	}
 }
 
