@@ -664,8 +664,9 @@ func (p *Projector) projectChildLinked(ctx context.Context, e domain.ChildLinked
 
 // savePedigreeEdgeFromFamily writes the child's pedigree edge (father/mother)
 // from the family's current partners. A male partner is the father and a
-// female partner the mother; a partner of unknown gender takes whichever slot
-// the other partner leaves free (#1082).
+// female partner the mother; a partner of unknown gender (#1082), or the
+// second partner of a same-gender couple (#1230), takes whichever slot the
+// other partner leaves free.
 func (p *Projector) savePedigreeEdgeFromFamily(ctx context.Context, branchID domain.BranchID, childID uuid.UUID, family *FamilyReadModel) error {
 	edge := &PedigreeEdge{PersonID: childID}
 	var undetermined []*PersonReadModel
@@ -680,12 +681,7 @@ func (p *Projector) savePedigreeEdgeFromFamily(ctx context.Context, branchID dom
 		if partner == nil {
 			continue
 		}
-		switch partner.Gender {
-		case domain.GenderMale:
-			setEdgeFather(edge, partner)
-		case domain.GenderFemale:
-			setEdgeMother(edge, partner)
-		default:
+		if !fillGenderParentSlot(edge, partner) {
 			undetermined = append(undetermined, partner)
 		}
 	}
@@ -705,8 +701,23 @@ func setEdgeMother(edge *PedigreeEdge, mother *PersonReadModel) {
 	edge.MotherName = mother.FullName
 }
 
-// fillFreeParentSlot records a parent of unknown gender in the edge's free
-// slot, the mother's first, and reports whether one was free.
+// fillGenderParentSlot records a male parent as the edge's father or a female
+// parent as its mother, and reports whether that slot was free. A parent of
+// unknown gender is never recorded here.
+func fillGenderParentSlot(edge *PedigreeEdge, parent *PersonReadModel) bool {
+	switch {
+	case parent.Gender == domain.GenderMale && edge.FatherID == nil:
+		setEdgeFather(edge, parent)
+	case parent.Gender == domain.GenderFemale && edge.MotherID == nil:
+		setEdgeMother(edge, parent)
+	default:
+		return false
+	}
+	return true
+}
+
+// fillFreeParentSlot records a parent whose gender's slot is unavailable in
+// the edge's free slot, the mother's first, and reports whether one was free.
 func fillFreeParentSlot(edge *PedigreeEdge, parent *PersonReadModel) bool {
 	switch {
 	case edge.MotherID == nil:
@@ -2048,22 +2059,7 @@ func relinkEdgeParent(edge *PedigreeEdge, family *FamilyReadModel, mergedID uuid
 		}
 	}
 	// The same father/mother choice savePedigreeEdgeFromFamily makes.
-	switch survivor.Gender {
-	case domain.GenderMale:
-		if edge.FatherID != nil {
-			return false
-		}
-		setEdgeFather(edge, survivor)
-		return true
-	case domain.GenderFemale:
-		if edge.MotherID != nil {
-			return false
-		}
-		setEdgeMother(edge, survivor)
-		return true
-	default:
-		return fillFreeParentSlot(edge, survivor)
-	}
+	return fillGenderParentSlot(edge, survivor) || fillFreeParentSlot(edge, survivor)
 }
 
 // familyHasPartner reports whether a person is one of a family's partners.
