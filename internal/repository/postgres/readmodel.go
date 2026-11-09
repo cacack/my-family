@@ -1193,9 +1193,12 @@ func (s *ReadModelStore) ListPersons(ctx context.Context, opts repository.ListOp
 
 	// research_status filter (params continue after branch/main).
 	if opts.ResearchStatus != nil {
-		if *opts.ResearchStatus == "unset" {
+		switch *opts.ResearchStatus {
+		case "unset":
 			conds = append(conds, "(research_status IS NULL OR research_status = '')")
-		} else {
+		case "unassessed":
+			conds = append(conds, "(research_status IS NULL OR research_status IN ('', 'unknown'))")
+		default:
 			conds = append(conds, fmt.Sprintf("research_status = $%d", paramNum))
 			args = append(args, *opts.ResearchStatus)
 			paramNum++

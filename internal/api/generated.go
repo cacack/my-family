@@ -486,25 +486,25 @@ func (e ConflictStatus) Valid() bool {
 
 // Defines values for DiscoverySuggestionType.
 const (
-	BrickWallResolved DiscoverySuggestionType = "brick_wall_resolved"
-	MissingData       DiscoverySuggestionType = "missing_data"
-	Orphan            DiscoverySuggestionType = "orphan"
-	QualityGap        DiscoverySuggestionType = "quality_gap"
-	Unassessed        DiscoverySuggestionType = "unassessed"
+	DiscoverySuggestionTypeBrickWallResolved DiscoverySuggestionType = "brick_wall_resolved"
+	DiscoverySuggestionTypeMissingData       DiscoverySuggestionType = "missing_data"
+	DiscoverySuggestionTypeOrphan            DiscoverySuggestionType = "orphan"
+	DiscoverySuggestionTypeQualityGap        DiscoverySuggestionType = "quality_gap"
+	DiscoverySuggestionTypeUnassessed        DiscoverySuggestionType = "unassessed"
 )
 
 // Valid indicates whether the value is a known member of the DiscoverySuggestionType enum.
 func (e DiscoverySuggestionType) Valid() bool {
 	switch e {
-	case BrickWallResolved:
+	case DiscoverySuggestionTypeBrickWallResolved:
 		return true
-	case MissingData:
+	case DiscoverySuggestionTypeMissingData:
 		return true
-	case Orphan:
+	case DiscoverySuggestionTypeOrphan:
 		return true
-	case QualityGap:
+	case DiscoverySuggestionTypeQualityGap:
 		return true
-	case Unassessed:
+	case DiscoverySuggestionTypeUnassessed:
 		return true
 	default:
 		return false
@@ -1647,11 +1647,12 @@ func (e ListPersonsParamsOrder) Valid() bool {
 
 // Defines values for ListPersonsParamsResearchStatus.
 const (
-	ListPersonsParamsResearchStatusCertain  ListPersonsParamsResearchStatus = "certain"
-	ListPersonsParamsResearchStatusPossible ListPersonsParamsResearchStatus = "possible"
-	ListPersonsParamsResearchStatusProbable ListPersonsParamsResearchStatus = "probable"
-	ListPersonsParamsResearchStatusUnknown  ListPersonsParamsResearchStatus = "unknown"
-	ListPersonsParamsResearchStatusUnset    ListPersonsParamsResearchStatus = "unset"
+	ListPersonsParamsResearchStatusCertain    ListPersonsParamsResearchStatus = "certain"
+	ListPersonsParamsResearchStatusPossible   ListPersonsParamsResearchStatus = "possible"
+	ListPersonsParamsResearchStatusProbable   ListPersonsParamsResearchStatus = "probable"
+	ListPersonsParamsResearchStatusUnassessed ListPersonsParamsResearchStatus = "unassessed"
+	ListPersonsParamsResearchStatusUnknown    ListPersonsParamsResearchStatus = "unknown"
+	ListPersonsParamsResearchStatusUnset      ListPersonsParamsResearchStatus = "unset"
 )
 
 // Valid indicates whether the value is a known member of the ListPersonsParamsResearchStatus enum.
@@ -1662,6 +1663,8 @@ func (e ListPersonsParamsResearchStatus) Valid() bool {
 	case ListPersonsParamsResearchStatusPossible:
 		return true
 	case ListPersonsParamsResearchStatusProbable:
+		return true
+	case ListPersonsParamsResearchStatusUnassessed:
 		return true
 	case ListPersonsParamsResearchStatusUnknown:
 		return true
@@ -6904,7 +6907,7 @@ type ListPersonsParams struct {
 	Sort   *ListPersonsParamsSort  `form:"sort,omitempty" json:"sort,omitempty"`
 	Order  *ListPersonsParamsOrder `form:"order,omitempty" json:"order,omitempty"`
 
-	// ResearchStatus Filter by research status
+	// ResearchStatus Filter by research status. `unset` matches persons with no status recorded; `unassessed` matches those and persons marked `unknown`.
 	ResearchStatus *ListPersonsParamsResearchStatus `form:"research_status,omitempty" json:"research_status,omitempty"`
 }
 

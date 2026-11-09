@@ -94,10 +94,12 @@ paths:
             default: asc
         - name: research_status
           in: query
-          description: Filter by research status
+          description: >-
+            Filter by research status. `unset` matches persons with no status
+            recorded; `unassessed` matches those and persons marked `unknown`.
           schema:
             type: string
-            enum: [certain, probable, possible, unknown, unset]
+            enum: [certain, probable, possible, unknown, unset, unassessed]
       responses:
         '200':
           description: List of persons

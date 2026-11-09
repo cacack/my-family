@@ -20,7 +20,12 @@ export interface EnumOption<T extends string> {
 	readonly label: string;
 }
 
-export const GENDER_OPTIONS: readonly EnumOption<Gender>[] = [
+/** The label `options` give `value`, else the value itself. */
+export function optionLabel(options: readonly EnumOption<string>[], value: string): string {
+	return options.find((option) => option.value === value)?.label ?? value;
+}
+
+export const GENDER_OPTIONS:readonly EnumOption<Gender>[] = [
 	{ value: 'unknown', label: 'Unknown' },
 	{ value: 'male', label: 'Male' },
 	{ value: 'female', label: 'Female' }
@@ -45,7 +50,9 @@ export const RESEARCH_STATUS_OPTIONS: readonly (EnumOption<ResearchStatus> & { r
 	{ value: 'certain', label: 'Certain', description: 'Confirmed with strong evidence' },
 	{ value: 'probable', label: 'Probable', description: 'Good supporting evidence' },
 	{ value: 'possible', label: 'Possible', description: 'Limited evidence' },
-	{ value: 'unknown', label: 'Unknown', description: 'Not yet assessed' }
+	// The API's unassessed status. A person with no status recorded reads the
+	// same, so the UI has one label and one bucket for both (#1110).
+	{ value: 'unknown', label: 'Not assessed', description: 'No conclusion yet' }
 ];
 
 /** The media types an upload offers: the API also accepts audio and video. */
