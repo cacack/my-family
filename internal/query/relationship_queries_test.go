@@ -1436,3 +1436,123 @@ func TestGetRelationship_DirectLineWinsTie(t *testing.T) {
 		})
 	}
 }
+
+// assertCommonAncestors fails unless A-to-B and B-to-A each have one path per
+// want ancestor and no other.
+func assertCommonAncestors(t *testing.T, svc *query.RelationshipService, a, b uuid.UUID, want ...uuid.UUID) {
+	t.Helper()
+	for _, pair := range [][2]uuid.UUID{{a, b}, {b, a}} {
+		result, err := svc.GetRelationship(context.Background(), domain.MainBranchID, pair[0], pair[1])
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := make(map[uuid.UUID]bool, len(result.Paths))
+		for _, p := range result.Paths {
+			got[p.CommonAncestor.ID] = true
+		}
+		ok := len(result.Paths) == len(want) && len(got) == len(want)
+		for _, id := range want {
+			ok = ok && got[id]
+		}
+		if !ok {
+			t.Fatalf("common ancestors = %v, want %v", got, want)
+		}
+	}
+}
+
+// Pedigree collapse where the shortest route from A to an outer common
+// ancestor Y avoids the inner common ancestor X (#975). A's parents are X and
+// R; R is a grandchild of Y, X a great-grandchild; B is X's child:
+//
+//	Y ── X2 ── X1 ── X ──┬── A
+//	│                    └── B
+//	└── R1 ── R ───────────── A
+//
+// Through X, A and B are half-siblings. Y is also an ancestor of X, but A
+// reaches Y through R in 3 generations, not the 4 through X, so A and B are
+// related through Y in their own right (R1 and X2 are Y's two children).
+// X1 and X2, reached through X on both sides, are not lowest.
+func TestGetRelationship_OuterAncestorReachedAroundInner(t *testing.T) {
+	store := memory.NewReadModelStore()
+	svc := query.NewRelationshipService(store)
+	ctx := context.Background()
+
+	y := createPerson(t, ctx, store, "Y", "Outer", domain.GenderMale)
+	x2 := createPerson(t, ctx, store, "X2", "Inner", domain.GenderMale)
+	x1 := createPerson(t, ctx, store, "X1", "Inner", domain.GenderMale)
+	x := createPerson(t, ctx, store, "X", "Inner", domain.GenderMale)
+	r1 := createPerson(t, ctx, store, "R1", "Side", domain.GenderFemale)
+	r := createPerson(t, ctx, store, "R", "Side", domain.GenderFemale)
+	a := createPerson(t, ctx, store, "A", "Child", domain.GenderMale)
+	b := createPerson(t, ctx, store, "B", "Child", domain.GenderFemale)
+
+	createParentChild(t, ctx, store, x2, &y, nil, "", "")
+	createParentChild(t, ctx, store, x1, &x2, nil, "", "")
+	createParentChild(t, ctx, store, x, &x1, nil, "", "")
+	createParentChild(t, ctx, store, r1, nil, &y, "", "")
+	createParentChild(t, ctx, store, r, nil, &r1, "", "")
+	createParentChild(t, ctx, store, a, &x, &r, "", "")
+	createParentChild(t, ctx, store, b, &x, nil, "", "")
+
+	assertCommonAncestors(t, svc, a, b, x, y)
+}
+
+// The #975 shape at equal distance: A's shortest route to the outer common
+// ancestor Y avoids the inner one X, and is no longer than the route
+// through it. A's parents are P (X's child) and R (Y's child); B's parent Q
+// is X's child:
+//
+//	Y ── X ──┬── P ── A
+//	│        └── Q ── B
+//	└── R ─────────── A
+//
+// A and B are first cousins through X, and first cousins once removed through
+// Y (R and X are siblings), so both are lowest.
+func TestGetRelationship_OuterAncestorAtEqualDistance(t *testing.T) {
+	store := memory.NewReadModelStore()
+	svc := query.NewRelationshipService(store)
+	ctx := context.Background()
+
+	y := createPerson(t, ctx, store, "Y", "Outer", domain.GenderMale)
+	x := createPerson(t, ctx, store, "X", "Inner", domain.GenderMale)
+	r := createPerson(t, ctx, store, "R", "Side", domain.GenderFemale)
+	p := createPerson(t, ctx, store, "P", "Inner", domain.GenderMale)
+	q := createPerson(t, ctx, store, "Q", "Inner", domain.GenderMale)
+	a := createPerson(t, ctx, store, "A", "Child", domain.GenderMale)
+	b := createPerson(t, ctx, store, "B", "Child", domain.GenderFemale)
+
+	createParentChild(t, ctx, store, x, &y, nil, "", "")
+	createParentChild(t, ctx, store, r, nil, &y, "", "")
+	createParentChild(t, ctx, store, p, &x, nil, "", "")
+	createParentChild(t, ctx, store, q, &x, nil, "", "")
+	createParentChild(t, ctx, store, a, &p, &r, "", "")
+	createParentChild(t, ctx, store, b, &q, nil, "", "")
+
+	assertCommonAncestors(t, svc, a, b, x, y)
+}
+
+// A common ancestor nearer on both sides hides another only when it descends
+// from it (#975). A and B are half-siblings through F, and first cousins
+// through G, the mother of their mothers; G is not F's ancestor.
+//
+//	F ──┬── A ── M1 ──┐
+//	    └── B ── M2 ──┴── G
+func TestGetRelationship_NearerUnrelatedAncestorKeepsOther(t *testing.T) {
+	store := memory.NewReadModelStore()
+	svc := query.NewRelationshipService(store)
+	ctx := context.Background()
+
+	f := createPerson(t, ctx, store, "F", "Father", domain.GenderMale)
+	g := createPerson(t, ctx, store, "G", "Grandmother", domain.GenderFemale)
+	m1 := createPerson(t, ctx, store, "M1", "Mother", domain.GenderFemale)
+	m2 := createPerson(t, ctx, store, "M2", "Mother", domain.GenderFemale)
+	a := createPerson(t, ctx, store, "A", "Child", domain.GenderMale)
+	b := createPerson(t, ctx, store, "B", "Child", domain.GenderFemale)
+
+	createParentChild(t, ctx, store, m1, nil, &g, "", "")
+	createParentChild(t, ctx, store, m2, nil, &g, "", "")
+	createParentChild(t, ctx, store, a, &f, &m1, "", "")
+	createParentChild(t, ctx, store, b, &f, &m2, "", "")
+
+	assertCommonAncestors(t, svc, a, b, f, g)
+}

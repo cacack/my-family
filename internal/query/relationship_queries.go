@@ -58,6 +58,7 @@ type ancestorInfo struct {
 	person     Person
 	generation int
 	path       []RelationshipPathNode // Path from the starting person to this ancestor
+	parents    []uuid.UUID            // This ancestor's parents in the map; nil past the search depth
 }
 
 // maxGenerations is the limit for ancestor search to prevent excessive recursion.
@@ -123,8 +124,9 @@ func (s *RelationshipService) GetRelationship(ctx context.Context, branchID doma
 
 	// One path per lowest common ancestor. Keying on the ancestor means no two
 	// paths share one, and because A or B count as common ancestors when on the
-	// other's line, every ancestor reached through them is filtered out as not
-	// lowest: no path passes through A or B except at its endpoints (#910).
+	// other's line, every ancestor whose shortest route runs through them is
+	// filtered out as not lowest: no path passes through A or B except at its
+	// endpoints (#910).
 	for _, ca := range s.findCommonAncestors(ancestorsA, ancestorsB) {
 		infoA := ancestorsA[ca.person.ID]
 		infoB := ancestorsB[ca.person.ID]
@@ -240,6 +242,25 @@ func (s *RelationshipService) buildAncestorMap(ctx context.Context, branchID dom
 			ancestors[parent.ID] = ancestorInfo{person: parent, generation: generation + 1, path: path}
 			next = append(next, frontierNode{id: parent.ID, path: path})
 		}
+
+		// Record each frontier person's visible parents, including ones an
+		// earlier generation already reached, for filterToLowestCommonAncestors.
+		for _, node := range frontier {
+			edge, ok := edgeOf[node.id]
+			if !ok {
+				continue
+			}
+			info := ancestors[node.id]
+			for _, parentID := range []*uuid.UUID{edge.FatherID, edge.MotherID} {
+				if parentID == nil {
+					continue
+				}
+				if _, visible := ancestors[*parentID]; visible {
+					info.parents = append(info.parents, *parentID)
+				}
+			}
+			ancestors[node.id] = info
+		}
 		frontier = next
 	}
 
@@ -286,49 +307,64 @@ func (s *RelationshipService) findCommonAncestors(ancestorsA, ancestorsB map[uui
 	return s.filterToLowestCommonAncestors(common, ancestorsA, ancestorsB)
 }
 
-// filterToLowestCommonAncestors removes common ancestors that are ancestors of other common ancestors.
+// filterToLowestCommonAncestors drops a common ancestor Y when another common
+// ancestor X lies on a shortest route to Y from both people: the kinship
+// through Y is then only the kinship through X carried further back. Under
+// pedigree collapse Y stays when either person reaches it by a shorter route
+// around X, and a nearer common ancestor that does not descend from Y hides
+// nothing (#975).
 func (s *RelationshipService) filterToLowestCommonAncestors(common []ancestorInfo, ancestorsA, ancestorsB map[uuid.UUID]ancestorInfo) []ancestorInfo {
 	if len(common) <= 1 {
 		return common
 	}
 
-	// Build set of common ancestor IDs
-	commonIDs := make(map[uuid.UUID]bool)
-	for _, ca := range common {
-		commonIDs[ca.person.ID] = true
+	parentsOf := func(id uuid.UUID) []uuid.UUID {
+		if parents := ancestorsA[id].parents; parents != nil {
+			return parents
+		}
+		return ancestorsB[id].parents
 	}
 
-	// Filter out ancestors that have common ancestors as descendants
-	// A common ancestor X is "lower" than Y if X is an ancestor of Y
-	filtered := make([]ancestorInfo, 0, len(common))
-
-	for _, ca := range common {
-		isLowest := true
-		caInfoA := ancestorsA[ca.person.ID]
-		caInfoB := ancestorsB[ca.person.ID]
-
-		// Check if any other common ancestor is a descendant of this one
-		// (i.e., this one has higher generation numbers for both paths)
-		for _, other := range common {
-			if other.person.ID == ca.person.ID {
-				continue
-			}
-			otherInfoA := ancestorsA[other.person.ID]
-			otherInfoB := ancestorsB[other.person.ID]
-
-			// If other has lower generation distances on both sides, it's closer to the people
-			if otherInfoA.generation < caInfoA.generation && otherInfoB.generation < caInfoB.generation {
-				isLowest = false
-				break
+	hidden := make(map[uuid.UUID]bool)
+	for _, x := range common {
+		genA, genB := ancestorsA[x.person.ID].generation, ancestorsB[x.person.ID].generation
+		for y, up := range generationsAbove(x.person.ID, parentsOf) {
+			infoA, okA := ancestorsA[y]
+			infoB, okB := ancestorsB[y]
+			if okA && okB && genA+up <= infoA.generation && genB+up <= infoB.generation {
+				hidden[y] = true
 			}
 		}
+	}
 
-		if isLowest {
+	filtered := make([]ancestorInfo, 0, len(common))
+	for _, ca := range common {
+		if !hidden[ca.person.ID] {
 			filtered = append(filtered, ca)
 		}
 	}
-
 	return filtered
+}
+
+// generationsAbove returns every ancestor of id that parentsOf reaches, with
+// its shortest distance in generations; id itself is left out.
+func generationsAbove(id uuid.UUID, parentsOf func(uuid.UUID) []uuid.UUID) map[uuid.UUID]int {
+	dist := map[uuid.UUID]int{id: 0}
+	frontier := []uuid.UUID{id}
+	for up := 1; len(frontier) > 0; up++ {
+		var next []uuid.UUID
+		for _, child := range frontier {
+			for _, parent := range parentsOf(child) {
+				if _, seen := dist[parent]; !seen {
+					dist[parent] = up
+					next = append(next, parent)
+				}
+			}
+		}
+		frontier = next
+	}
+	delete(dist, id)
+	return dist
 }
 
 // getRelationshipName returns the human-readable relationship name based on generation distances.
