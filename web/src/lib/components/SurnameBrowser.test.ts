@@ -73,4 +73,25 @@ describe('SurnameBrowser', () => {
 		await screen.findByText('Adams');
 		expect(screen.queryByText('Failed to load surnames. Please try again.')).toBeNull();
 	});
+
+	it('leaves people with no surname out of the index, with a note after it (#1120)', async () => {
+		vi.mocked(apiModule.api.getSurnameIndex).mockResolvedValue({
+			items: [
+				{ surname: '', count: 1867 },
+				{ surname: 'Adams', count: 1 }
+			],
+			total: 2,
+			letter_counts: [{ letter: 'A', count: 1 }]
+		});
+		const { container } = render(SurnameBrowser);
+		await screen.findByText('Adams');
+		const links = Array.from(container.querySelectorAll('.surname-grid a'));
+		expect(links.map((a) => a.getAttribute('href'))).toEqual(['/browse/surnames/Adams']);
+		expect(screen.queryByText('(Unknown)')).toBeNull();
+		const note = screen.getByText(/Not listed: 1,867 people with no surname\./);
+		expect(note.closest('a')).toBeNull();
+		expect(container.querySelector('.surname-grid')?.compareDocumentPosition(note)).toBe(
+			Node.DOCUMENT_POSITION_FOLLOWING
+		);
+	});
 });

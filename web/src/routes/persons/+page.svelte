@@ -73,8 +73,10 @@
 		setQuery(page.url, { page: n }, { push: true, defaults: DEFAULTS });
 	}
 
+	// Choosing a sort resets the order to its natural direction (ascending for
+	// every sort here), as /search does.
 	function handleSortChange(e: Event) {
-		refine({ sort: (e.target as HTMLSelectElement).value });
+		refine({ sort: (e.target as HTMLSelectElement).value, order: DEFAULTS.order });
 	}
 
 	function handleOrderChange() {
@@ -170,7 +172,10 @@
 	{:else if persons.length === 0}
 		<div class="empty">
 			<p>No people found.</p>
-			<Button href="/import">Import GEDCOM</Button>
+			<div class="empty-actions">
+				<Button href="/persons/add">Add Person</Button>
+				<Button variant="outline" href="/import">Import GEDCOM</Button>
+			</div>
 		</div>
 	{:else}
 		<div class="persons-grid">
@@ -261,6 +266,13 @@
 
 	.empty p {
 		margin: 0 0 1rem;
+	}
+
+	.empty-actions {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: center;
+		gap: 0.5rem;
 	}
 
 	.persons-grid {
