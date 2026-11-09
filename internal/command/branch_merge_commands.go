@@ -296,10 +296,10 @@ func (h *Handler) MergeBranch(ctx context.Context, input MergeBranchInput) (*Mer
 		if err := h.branchService.DescribeConflictValues(ctx, plan); err != nil {
 			return nil, err
 		}
-		return &MergeBranchResult{
-			Branch:    branch,
-			Conflicts: plan.Conflicts,
-		}, fmt.Errorf("%w: %d of %d conflicts have no resolution",
+		// Built before the return: gofmt 1.26 and 1.27 indent a multi-line
+		// composite literal followed by more results differently (#1231).
+		refused := &MergeBranchResult{Branch: branch, Conflicts: plan.Conflicts}
+		return refused, fmt.Errorf("%w: %d of %d conflicts have no resolution",
 			ErrMergeConflicts, unresolved, len(plan.Conflicts))
 	}
 
