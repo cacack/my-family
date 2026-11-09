@@ -79,9 +79,6 @@ func TestProjectionFailure_RecordedAndRepairedByRebuild(t *testing.T) {
 			if john.BirthPlaceLat == nil {
 				t.Fatal("precondition: import did not store birth coordinates")
 			}
-			if err := st.read.SetBrickWall(ctx, john.ID, "no parents found"); err != nil {
-				t.Fatalf("set brick wall: %v", err)
-			}
 
 			ada, err := h.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ada", Surname: "Example"})
 			if err != nil {
@@ -101,6 +98,15 @@ func TestProjectionFailure_RecordedAndRepairedByRebuild(t *testing.T) {
 			notes := "branch only"
 			if _, err := h.WithBranch(branch).UpdatePerson(ctx, command.UpdatePersonInput{ID: ada.ID, Notes: &notes, Version: ada.Version}); err != nil {
 				t.Fatalf("branch update: %v", err)
+			}
+			// John's branch row is copied from main before his brick wall is set,
+			// so it must not carry the brick wall after the rebuild either.
+			johnNotes := "branch edit"
+			if _, err := h.WithBranch(branch).UpdatePerson(ctx, command.UpdatePersonInput{ID: john.ID, Notes: &johnNotes, Version: john.Version}); err != nil {
+				t.Fatalf("branch update of John: %v", err)
+			}
+			if err := st.read.SetBrickWall(ctx, john.ID, "no parents found"); err != nil {
+				t.Fatalf("set brick wall: %v", err)
 			}
 			if _, err := h.CreateSnapshot(ctx, "before rebuild", ""); err != nil {
 				t.Fatalf("create snapshot: %v", err)

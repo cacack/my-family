@@ -42,7 +42,8 @@ func TestResetReadModel_CoversEveryReadModelTable(t *testing.T) {
 		t.Fatalf("list tables: %v", err)
 	}
 	defer rows.Close()
-	logOwned := map[string]bool{"events": true, "streams": true, "branches": true, "snapshots": true}
+	// Tables ResetReadModel keeps; rebuild_state must outlive the reset.
+	logOwned := map[string]bool{"events": true, "streams": true, "branches": true, "snapshots": true, "rebuild_state": true}
 	var schema []string
 	for rows.Next() {
 		var name string
@@ -114,5 +115,40 @@ func TestResetReadModel_EmptiesRowsAndMarkers(t *testing.T) {
 	}
 	if left, err := store.ListProjectionFailures(ctx, 10); err != nil || len(left) != 0 {
 		t.Errorf("failures after reset = %+v, %v; want none", left, err)
+	}
+}
+
+// TestRebuildState_RoundTripAndOutlivesReset covers the state an unfinished
+// rebuild leaves behind (#845): saved, replaced, kept by the reset, cleared.
+func TestRebuildState_RoundTripAndOutlivesReset(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	db, cleanup := setupPostgres(t)
+	defer cleanup()
+	store, err := pgstore.NewReadModelStore(db)
+	if err != nil {
+		t.Fatalf("read model store: %v", err)
+	}
+	if got, err := store.GetRebuildState(ctx); err != nil || got != nil {
+		t.Fatalf("state before save = %q, %v; want none", got, err)
+	}
+	for _, state := range []string{`{"a":1}`, `{"b":2}`} {
+		if err := store.SaveRebuildState(ctx, []byte(state)); err != nil {
+			t.Fatalf("save %s: %v", state, err)
+		}
+	}
+	if err := store.ResetReadModel(ctx); err != nil {
+		t.Fatalf("reset: %v", err)
+	}
+	if got, err := store.GetRebuildState(ctx); err != nil || string(got) != `{"b":2}` {
+		t.Fatalf("state after reset = %q, %v; want the latest save", got, err)
+	}
+	if err := store.ClearRebuildState(ctx); err != nil {
+		t.Fatalf("clear: %v", err)
+	}
+	if got, err := store.GetRebuildState(ctx); err != nil || got != nil {
+		t.Fatalf("state after clear = %q, %v; want none", got, err)
 	}
 }

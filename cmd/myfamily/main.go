@@ -160,8 +160,12 @@ func runRebuild() error {
 		}
 	}()
 
+	// Ctrl-C stops the replay between events; the saved rebuild state keeps
+	// the read model flagged as out of sync until a rerun succeeds.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 	log.Printf("Rebuilding the read model of %s from its event log", stores.Describe())
-	result, err := stores.RebuildReadModel(context.Background())
+	result, err := stores.RebuildReadModel(ctx)
 	if errors.Is(err, storage.ErrRebuildMemory) {
 		return err
 	}

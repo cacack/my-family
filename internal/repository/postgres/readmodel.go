@@ -629,6 +629,14 @@ func (s *ReadModelStore) createTables() error {
 			error TEXT NOT NULL,
 			failed_at TIMESTAMPTZ NOT NULL
 		);
+
+		-- The state of a rebuild in progress (#845): the values no event
+		-- carries, saved before the reset. ResetReadModel keeps it; a row means
+		-- a rebuild has not finished.
+		CREATE TABLE IF NOT EXISTS rebuild_state (
+			id SMALLINT PRIMARY KEY CHECK (id = 1),
+			state TEXT NOT NULL
+		);
 	`)
 	if err != nil {
 		return err

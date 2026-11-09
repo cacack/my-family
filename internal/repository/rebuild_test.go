@@ -3,6 +3,7 @@ package repository_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -232,6 +233,27 @@ func (f *failingRead) ReplacePersonExternalIDs(ctx context.Context, b domain.Bra
 	return f.ReadModelStore.ReplacePersonExternalIDs(ctx, b, id, ids)
 }
 
+func (f *failingRead) GetRebuildState(ctx context.Context) ([]byte, error) {
+	if err := f.err("get state"); err != nil {
+		return nil, err
+	}
+	return f.ReadModelStore.GetRebuildState(ctx)
+}
+
+func (f *failingRead) SaveRebuildState(ctx context.Context, state []byte) error {
+	if err := f.err("save state"); err != nil {
+		return err
+	}
+	return f.ReadModelStore.SaveRebuildState(ctx, state)
+}
+
+func (f *failingRead) ClearRebuildState(ctx context.Context) error {
+	if err := f.err("clear state"); err != nil {
+		return err
+	}
+	return f.ReadModelStore.ClearRebuildState(ctx)
+}
+
 func (f *failingRead) RecordProjectionFailure(ctx context.Context, failure repository.ProjectionFailure) error {
 	if err := f.err("record"); err != nil {
 		return err
@@ -243,6 +265,7 @@ func TestRebuildReadModel_ReportsStoreErrors(t *testing.T) {
 	for _, op := range []string{
 		"reset", "list persons", "list events", "list families", "list sources", "list repositories",
 		"person exids", "family exids", "source exids", "repository exids", "restore",
+		"get state", "save state", "clear state",
 	} {
 		t.Run(op, func(t *testing.T) {
 			ctx := context.Background()
@@ -294,8 +317,94 @@ func TestRebuildReadModel_ReportsUndecodableEvent(t *testing.T) {
 	if err := s.events.Append(ctx, bad.id, "person", []domain.Event{bad}, -1, repository.MainScope); err != nil {
 		t.Fatalf("append: %v", err)
 	}
+	note := &repository.NoteReadModel{ID: uuid.New(), Text: "kept", Version: 1}
+	if err := s.read.SaveNote(ctx, domain.MainBranchID, note); err != nil {
+		t.Fatalf("save note: %v", err)
+	}
 	if _, err := s.rebuild(t, s.read); err == nil {
 		t.Fatal("rebuild of an undecodable event succeeded, want an error")
+	}
+	// The log is checked before the reset, so nothing was deleted.
+	if n, _ := s.read.GetNote(ctx, domain.MainBranchID, note.ID); n == nil {
+		t.Error("read model was reset although the log cannot be replayed")
+	}
+	if state, _ := s.read.GetRebuildState(ctx); state != nil {
+		t.Errorf("rebuild state = %s, want none saved", state)
+	}
+}
+
+// cancelAfterReset cancels the rebuild's context once the read model has
+// been reset, as Ctrl-C or a crash mid-replay would stop it.
+type cancelAfterReset struct {
+	*memory.ReadModelStore
+	cancel context.CancelFunc
+}
+
+func (c *cancelAfterReset) ResetReadModel(ctx context.Context) error {
+	defer c.cancel()
+	return c.ReadModelStore.ResetReadModel(ctx)
+}
+
+// TestRebuildReadModel_InterruptedRebuildIsRecoverable stops a rebuild right
+// after its reset. The read model must stay flagged as out of sync, and a
+// rerun must still restore the values no event carries, which the reset has
+// already removed from the read model.
+func TestRebuildReadModel_InterruptedRebuildIsRecoverable(t *testing.T) {
+	ctx := context.Background()
+	s := newRebuildStores()
+	h := command.NewHandlerWithBranches(s.events, s.read, s.branches, s.snapshots)
+	person, err := h.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ada", Surname: "Example"})
+	if err != nil {
+		t.Fatalf("create person: %v", err)
+	}
+	lat := "N1.5"
+	p, _ := s.read.GetPerson(ctx, domain.MainBranchID, person.ID)
+	p.BirthPlaceLat = &lat
+	if err := s.read.SavePerson(ctx, domain.MainBranchID, p); err != nil {
+		t.Fatalf("save coordinates: %v", err)
+	}
+	if err := s.read.SetBrickWall(ctx, person.ID, "stuck"); err != nil {
+		t.Fatalf("set brick wall: %v", err)
+	}
+	if err := s.read.ReplacePersonExternalIDs(ctx, domain.MainBranchID, person.ID, []repository.PersonExternalIDReadModel{{PersonID: person.ID, Value: "P-1"}}); err != nil {
+		t.Fatalf("save exid: %v", err)
+	}
+
+	aborted, cancel := context.WithCancel(ctx)
+	defer cancel()
+	_, err = repository.RebuildReadModel(aborted, s.events, &cancelAfterReset{ReadModelStore: s.read, cancel: cancel}, s.branches, s.snapshots)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("interrupted rebuild error = %v, want context.Canceled", err)
+	}
+	if row, _ := s.read.GetPerson(ctx, domain.MainBranchID, person.ID); row != nil {
+		t.Fatalf("precondition: person replayed although the rebuild stopped at the first event")
+	}
+	if state, err := s.read.GetRebuildState(ctx); err != nil || state == nil {
+		t.Fatalf("rebuild state after an interrupted rebuild = %v, %v; want it kept", state, err)
+	}
+
+	if _, err := s.rebuild(t, s.read); err != nil {
+		t.Fatalf("rerun: %v", err)
+	}
+	p, _ = s.read.GetPerson(ctx, domain.MainBranchID, person.ID)
+	if p == nil || p.BirthPlaceLat == nil || *p.BirthPlaceLat != lat || p.BrickWallNote != "stuck" || p.BrickWallSince == nil {
+		t.Errorf("person after rerun = %+v, want coordinates and brick wall restored", p)
+	}
+	if ids, _ := s.read.GetPersonExternalIDs(ctx, domain.MainBranchID, person.ID); len(ids) != 1 || ids[0].Value != "P-1" {
+		t.Errorf("person exids after rerun = %+v", ids)
+	}
+	if state, _ := s.read.GetRebuildState(ctx); state != nil {
+		t.Errorf("rebuild state after a successful rerun = %s, want cleared", state)
+	}
+}
+
+func TestRebuildReadModel_ReportsCorruptRebuildState(t *testing.T) {
+	s := newRebuildStores()
+	if err := s.read.SaveRebuildState(context.Background(), []byte("not json")); err != nil {
+		t.Fatalf("save state: %v", err)
+	}
+	if _, err := s.rebuild(t, s.read); err == nil || !strings.Contains(err.Error(), "decode rebuild state") {
+		t.Fatalf("rebuild error = %v, want a decode failure", err)
 	}
 }
 

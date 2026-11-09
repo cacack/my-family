@@ -611,6 +611,20 @@ func TestSQLite_RebuildReadModel(t *testing.T) {
 	if got := stores.ProjectionFailureWarning(ctx); got != "" {
 		t.Errorf("warning after rebuild = %q, want none", got)
 	}
+
+	// An unfinished rebuild keeps the warning up until a rerun succeeds.
+	if err := stores.ReadModel.SaveRebuildState(ctx, []byte("{}")); err != nil {
+		t.Fatalf("save rebuild state: %v", err)
+	}
+	if got := stores.ProjectionFailureWarning(ctx); !strings.Contains(got, "did not finish") {
+		t.Errorf("warning with an unfinished rebuild = %q, want it named", got)
+	}
+	if _, err := stores.RebuildReadModel(ctx); err != nil {
+		t.Fatalf("rerun: %v", err)
+	}
+	if got := stores.ProjectionFailureWarning(ctx); got != "" {
+		t.Errorf("warning after rerun = %q, want none", got)
+	}
 	if n := countPersons(t, newServer(stores)); n != 1 {
 		t.Errorf("persons after rebuild = %d, want 1", n)
 	}

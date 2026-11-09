@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -73,9 +74,19 @@ const rebuildPageSize = 1000
 // A few read-model fields are not in any event (GEDCOM import writes them
 // straight to the read model, and brick walls are set there directly): person
 // and life-event coordinates, brick walls and external identifiers. They
-// cannot be rebuilt from the log, so they are read before the reset and written
-// back once the entity's first event has been replayed, which is where import
-// wrote them, and again at the end.
+// cannot be rebuilt from the log, so they are read before the reset and
+// written back: coordinates and external identifiers once the entity's first
+// event has been replayed, which is where import wrote them, and everything
+// again at the end. Brick walls are written back only at the end, so a branch
+// row the replay copies from main does not pick up a brick wall set later.
+//
+// The rebuild is safe to abort. Every event is decoded before anything is
+// deleted, so an event the replay could not read fails the rebuild while the
+// read model is intact. The values above are saved as the rebuild state
+// (SaveRebuildState) before the reset, and only a rebuild that succeeds clears
+// it: while it exists `serve` warns that the read model is out of sync, and a
+// rerun after an interrupted rebuild restores the values from it, since the
+// reset has removed them from the read model.
 //
 // An event that fails to replay is reported like a live projection failure
 // (logged, and recorded as a marker) and the replay goes on, as live writes
@@ -83,9 +94,19 @@ const rebuildPageSize = 1000
 // rebuild then returns an error wrapping the first failure.
 func RebuildReadModel(ctx context.Context, events EventStore, rs ReadModelStore, branches BranchStore, snapshots SnapshotStore) (RebuildResult, error) {
 	var result RebuildResult
-	kept, err := captureUnloggedFields(ctx, rs)
+	if err := checkLogDecodes(ctx, events); err != nil {
+		return result, err
+	}
+	kept, err := loadUnloggedFields(ctx, rs)
 	if err != nil {
-		return result, fmt.Errorf("read fields that are not in the event log: %w", err)
+		return result, err
+	}
+	state, err := json.Marshal(kept)
+	if err != nil {
+		return result, fmt.Errorf("encode rebuild state: %w", err)
+	}
+	if err := rs.SaveRebuildState(ctx, state); err != nil {
+		return result, fmt.Errorf("save rebuild state: %w", err)
 	}
 	if err := rs.ResetReadModel(ctx); err != nil {
 		return result, fmt.Errorf("reset read model: %w", err)
@@ -97,18 +118,44 @@ func RebuildReadModel(ctx context.Context, events EventStore, rs ReadModelStore,
 	// Write back the unlogged fields once more, now that every entity that
 	// will exist does. An entity that is not in the read model is skipped.
 	var restoreErr error
-	for id, restore := range kept {
-		if err := restore(ctx); err != nil {
-			restoreErr = errors.Join(restoreErr, fmt.Errorf("restore unlogged fields of %s: %w", id, err))
+	if ctx.Err() == nil {
+		restoreErr = kept.restoreAll(ctx, rs)
+	}
+	if err := errors.Join(replayErr, restoreErr); err != nil {
+		return result, err
+	}
+	if err := rs.ClearRebuildState(ctx); err != nil {
+		return result, fmt.Errorf("clear rebuild state: %w", err)
+	}
+	return result, nil
+}
+
+// checkLogDecodes decodes every logged event, so a log the replay could not
+// read fails the rebuild before the read model is reset.
+func checkLogDecodes(ctx context.Context, events EventStore) error {
+	var after int64
+	for {
+		page, err := events.ReadAll(ctx, after, rebuildPageSize)
+		if err != nil {
+			return fmt.Errorf("read event log after position %d: %w", after, err)
+		}
+		if len(page) == 0 {
+			return nil
+		}
+		for i := range page {
+			if _, err := page[i].DecodeEvent(); err != nil {
+				return fmt.Errorf("decode %s at position %d: %w", page[i].EventType, page[i].Position, err)
+			}
+			after = page[i].Position
 		}
 	}
-	return result, errors.Join(replayErr, restoreErr)
 }
 
 // replayLog projects every logged event in position order, restoring an
-// entity's unlogged fields right after its first main event. It stops only if
-// the log cannot be read or an event cannot be decoded.
-func replayLog(ctx context.Context, events EventStore, rs ReadModelStore, projector *Projector, kept unloggedFields, result *RebuildResult) error {
+// entity's imported fields right after its first main event. It stops only if
+// the log cannot be read, an event cannot be decoded, a restore fails or ctx
+// is done.
+func replayLog(ctx context.Context, events EventStore, rs ReadModelStore, projector *Projector, kept *unloggedFields, result *RebuildResult) error {
 	var firstFailure error
 	for {
 		page, err := events.ReadAll(ctx, result.LastPosition, rebuildPageSize)
@@ -122,6 +169,9 @@ func replayLog(ctx context.Context, events EventStore, rs ReadModelStore, projec
 			return nil
 		}
 		for i := range page {
+			if err := ctx.Err(); err != nil {
+				return errors.Join(firstFailure, fmt.Errorf("rebuild stopped after position %d: %w", result.LastPosition, err))
+			}
 			stored := &page[i]
 			decoded, err := stored.DecodeEvent()
 			if err != nil {
@@ -138,38 +188,104 @@ func replayLog(ctx context.Context, events EventStore, rs ReadModelStore, projec
 				}
 				continue
 			}
-			if restore, ok := kept[stored.StreamID]; ok && stored.BranchID.IsMain() && stored.Version == 1 {
-				if err := restore(ctx); err != nil {
-					return errors.Join(firstFailure, fmt.Errorf("restore unlogged fields of %s: %w", stored.StreamID, err))
+			if stored.BranchID.IsMain() && stored.Version == 1 {
+				if err := kept.restoreImported(ctx, rs, stored.StreamID); err != nil {
+					return errors.Join(firstFailure, err)
 				}
 			}
 		}
 	}
 }
 
-// restoreFunc writes an entity's unlogged fields back onto its main row. It is
-// idempotent and a no-op when the row does not exist.
-type restoreFunc func(ctx context.Context) error
-
-// unloggedFields collects one restoreFunc per entity id.
-type unloggedFields map[uuid.UUID]restoreFunc
-
-func (k unloggedFields) add(id uuid.UUID, fn restoreFunc) {
-	if prev, ok := k[id]; ok {
-		k[id] = func(ctx context.Context) error { return errors.Join(prev(ctx), fn(ctx)) }
-		return
-	}
-	k[id] = fn
+// unloggedFields holds the main-branch read-model values that no event
+// carries, by entity id. It is saved as the rebuild state, hence the JSON tags.
+type unloggedFields struct {
+	PersonCoords          map[uuid.UUID]personCoords                    `json:"person_coords"`
+	BrickWalls            map[uuid.UUID]brickWall                       `json:"brick_walls"`
+	EventCoords           map[uuid.UUID]placeCoords                     `json:"event_coords"`
+	PersonExternalIDs     map[uuid.UUID][]PersonExternalIDReadModel     `json:"person_external_ids"`
+	FamilyExternalIDs     map[uuid.UUID][]FamilyExternalIDReadModel     `json:"family_external_ids"`
+	SourceExternalIDs     map[uuid.UUID][]SourceExternalIDReadModel     `json:"source_external_ids"`
+	RepositoryExternalIDs map[uuid.UUID][]RepositoryExternalIDReadModel `json:"repository_external_ids"`
 }
 
-// captureUnloggedFields reads every main-branch value that no event carries
-// and returns, per entity id, a function that writes it back.
-func captureUnloggedFields(ctx context.Context, rs ReadModelStore) (unloggedFields, error) {
-	kept := make(unloggedFields)
-	if err := keepPersonFields(ctx, rs, kept); err != nil {
-		return nil, err
+type personCoords struct {
+	BirthLat  *string `json:"birth_lat,omitempty"`
+	BirthLong *string `json:"birth_long,omitempty"`
+	DeathLat  *string `json:"death_lat,omitempty"`
+	DeathLong *string `json:"death_long,omitempty"`
+}
+
+type placeCoords struct {
+	Lat  *string `json:"lat,omitempty"`
+	Long *string `json:"long,omitempty"`
+}
+
+type brickWall struct {
+	Note       string     `json:"note,omitempty"`
+	Since      *time.Time `json:"since,omitempty"`
+	ResolvedAt *time.Time `json:"resolved_at,omitempty"`
+}
+
+func newUnloggedFields() *unloggedFields {
+	return &unloggedFields{
+		PersonCoords:          map[uuid.UUID]personCoords{},
+		BrickWalls:            map[uuid.UUID]brickWall{},
+		EventCoords:           map[uuid.UUID]placeCoords{},
+		PersonExternalIDs:     map[uuid.UUID][]PersonExternalIDReadModel{},
+		FamilyExternalIDs:     map[uuid.UUID][]FamilyExternalIDReadModel{},
+		SourceExternalIDs:     map[uuid.UUID][]SourceExternalIDReadModel{},
+		RepositoryExternalIDs: map[uuid.UUID][]RepositoryExternalIDReadModel{},
 	}
-	if err := keepLifeEventCoordinates(ctx, rs, kept); err != nil {
+}
+
+// merge copies every value of src into k, replacing k's value for the same
+// entity and field group.
+func (k *unloggedFields) merge(src *unloggedFields) {
+	mergeInto(k.PersonCoords, src.PersonCoords)
+	mergeInto(k.BrickWalls, src.BrickWalls)
+	mergeInto(k.EventCoords, src.EventCoords)
+	mergeInto(k.PersonExternalIDs, src.PersonExternalIDs)
+	mergeInto(k.FamilyExternalIDs, src.FamilyExternalIDs)
+	mergeInto(k.SourceExternalIDs, src.SourceExternalIDs)
+	mergeInto(k.RepositoryExternalIDs, src.RepositoryExternalIDs)
+}
+
+func mergeInto[V any](dst, src map[uuid.UUID]V) {
+	for id, v := range src {
+		dst[id] = v
+	}
+}
+
+// loadUnloggedFields returns the values to carry over: those saved by an
+// unfinished earlier rebuild, whose reset removed them from the read model,
+// overlaid with those the read model holds now.
+func loadUnloggedFields(ctx context.Context, rs ReadModelStore) (*unloggedFields, error) {
+	kept := newUnloggedFields()
+	saved, err := rs.GetRebuildState(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("read rebuild state: %w", err)
+	}
+	if saved != nil {
+		var prior unloggedFields
+		if err := json.Unmarshal(saved, &prior); err != nil {
+			return nil, fmt.Errorf("decode rebuild state: %w", err)
+		}
+		slog.Warn("an earlier rebuild did not finish; restoring the values it saved before its reset")
+		kept.merge(&prior)
+	}
+	live, err := captureUnloggedFields(ctx, rs)
+	if err != nil {
+		return nil, fmt.Errorf("read fields that are not in the event log: %w", err)
+	}
+	kept.merge(live)
+	return kept, nil
+}
+
+// captureUnloggedFields reads every main-branch value that no event carries.
+func captureUnloggedFields(ctx context.Context, rs ReadModelStore) (*unloggedFields, error) {
+	kept := newUnloggedFields()
+	if err := capturePersonsAndLifeEvents(ctx, rs, kept); err != nil {
 		return nil, err
 	}
 
@@ -179,18 +295,9 @@ func captureUnloggedFields(ctx context.Context, rs ReadModelStore) (unloggedFiel
 	}
 	for i := range families {
 		id := families[i].ID
-		err := keepExternalIDs(ctx, kept, "family", id,
-			func(ctx context.Context) ([]FamilyExternalIDReadModel, error) {
-				return rs.GetFamilyExternalIDs(ctx, domain.MainBranchID, id)
-			},
-			func(ctx context.Context) (bool, error) {
-				row, err := rs.GetFamily(ctx, domain.MainBranchID, id)
-				return row != nil, err
-			},
-			func(ctx context.Context, ids []FamilyExternalIDReadModel) error {
-				return rs.ReplaceFamilyExternalIDs(ctx, domain.MainBranchID, id, ids)
-			})
-		if err != nil {
+		if err := keepExternalIDs(kept.FamilyExternalIDs, "family", id, func() ([]FamilyExternalIDReadModel, error) {
+			return rs.GetFamilyExternalIDs(ctx, domain.MainBranchID, id)
+		}); err != nil {
 			return nil, err
 		}
 	}
@@ -201,18 +308,9 @@ func captureUnloggedFields(ctx context.Context, rs ReadModelStore) (unloggedFiel
 	}
 	for i := range sources {
 		id := sources[i].ID
-		err := keepExternalIDs(ctx, kept, "source", id,
-			func(ctx context.Context) ([]SourceExternalIDReadModel, error) {
-				return rs.GetSourceExternalIDs(ctx, domain.MainBranchID, id)
-			},
-			func(ctx context.Context) (bool, error) {
-				row, err := rs.GetSource(ctx, domain.MainBranchID, id)
-				return row != nil, err
-			},
-			func(ctx context.Context, ids []SourceExternalIDReadModel) error {
-				return rs.ReplaceSourceExternalIDs(ctx, domain.MainBranchID, id, ids)
-			})
-		if err != nil {
+		if err := keepExternalIDs(kept.SourceExternalIDs, "source", id, func() ([]SourceExternalIDReadModel, error) {
+			return rs.GetSourceExternalIDs(ctx, domain.MainBranchID, id)
+		}); err != nil {
 			return nil, err
 		}
 	}
@@ -223,106 +321,159 @@ func captureUnloggedFields(ctx context.Context, rs ReadModelStore) (unloggedFiel
 	}
 	for i := range repos {
 		id := repos[i].ID
-		err := keepExternalIDs(ctx, kept, "repository", id,
-			func(ctx context.Context) ([]RepositoryExternalIDReadModel, error) {
-				return rs.GetRepositoryExternalIDs(ctx, id)
-			},
-			func(ctx context.Context) (bool, error) {
-				row, err := rs.GetRepository(ctx, id)
-				return row != nil, err
-			},
-			func(ctx context.Context, ids []RepositoryExternalIDReadModel) error {
-				return rs.ReplaceRepositoryExternalIDs(ctx, id, ids)
-			})
-		if err != nil {
+		if err := keepExternalIDs(kept.RepositoryExternalIDs, "repository", id, func() ([]RepositoryExternalIDReadModel, error) {
+			return rs.GetRepositoryExternalIDs(ctx, id)
+		}); err != nil {
 			return nil, err
 		}
 	}
 	return kept, nil
 }
 
-// keepPersonFields keeps each main person's coordinates, brick wall and EXIDs.
-func keepPersonFields(ctx context.Context, rs ReadModelStore, kept unloggedFields) error {
+// capturePersonsAndLifeEvents reads each main person's coordinates, brick
+// wall and EXIDs, and each main life event's coordinates, into kept.
+func capturePersonsAndLifeEvents(ctx context.Context, rs ReadModelStore, kept *unloggedFields) error {
 	persons, err := ListAll(ctx, rebuildPageSize, rs.ListPersons)
 	if err != nil {
 		return fmt.Errorf("list persons: %w", err)
 	}
 	for i := range persons {
-		p := persons[i]
-		if p.BirthPlaceLat != nil || p.BirthPlaceLong != nil || p.DeathPlaceLat != nil || p.DeathPlaceLong != nil ||
-			p.BrickWallNote != "" || p.BrickWallSince != nil || p.BrickWallResolvedAt != nil {
-			kept.add(p.ID, func(ctx context.Context) error {
-				row, err := rs.GetPerson(ctx, domain.MainBranchID, p.ID)
-				if err != nil || row == nil {
-					return err
-				}
-				row.BirthPlaceLat, row.BirthPlaceLong = p.BirthPlaceLat, p.BirthPlaceLong
-				row.DeathPlaceLat, row.DeathPlaceLong = p.DeathPlaceLat, p.DeathPlaceLong
-				row.BrickWallNote, row.BrickWallSince, row.BrickWallResolvedAt = p.BrickWallNote, p.BrickWallSince, p.BrickWallResolvedAt
-				return rs.SavePerson(ctx, domain.MainBranchID, row)
-			})
+		p := &persons[i]
+		if p.BirthPlaceLat != nil || p.BirthPlaceLong != nil || p.DeathPlaceLat != nil || p.DeathPlaceLong != nil {
+			kept.PersonCoords[p.ID] = personCoords{BirthLat: p.BirthPlaceLat, BirthLong: p.BirthPlaceLong, DeathLat: p.DeathPlaceLat, DeathLong: p.DeathPlaceLong}
 		}
-		err := keepExternalIDs(ctx, kept, "person", p.ID,
-			func(ctx context.Context) ([]PersonExternalIDReadModel, error) {
-				return rs.GetPersonExternalIDs(ctx, domain.MainBranchID, p.ID)
-			},
-			func(ctx context.Context) (bool, error) {
-				row, err := rs.GetPerson(ctx, domain.MainBranchID, p.ID)
-				return row != nil, err
-			},
-			func(ctx context.Context, ids []PersonExternalIDReadModel) error {
-				return rs.ReplacePersonExternalIDs(ctx, domain.MainBranchID, p.ID, ids)
-			})
-		if err != nil {
+		if p.BrickWallNote != "" || p.BrickWallSince != nil || p.BrickWallResolvedAt != nil {
+			kept.BrickWalls[p.ID] = brickWall{Note: p.BrickWallNote, Since: p.BrickWallSince, ResolvedAt: p.BrickWallResolvedAt}
+		}
+		if err := keepExternalIDs(kept.PersonExternalIDs, "person", p.ID, func() ([]PersonExternalIDReadModel, error) {
+			return rs.GetPersonExternalIDs(ctx, domain.MainBranchID, p.ID)
+		}); err != nil {
 			return err
 		}
 	}
-	return nil
-}
 
-// keepLifeEventCoordinates keeps each main life event's place coordinates.
-func keepLifeEventCoordinates(ctx context.Context, rs ReadModelStore, kept unloggedFields) error {
 	lifeEvents, err := ListAll(ctx, rebuildPageSize, rs.ListEvents)
 	if err != nil {
 		return fmt.Errorf("list life events: %w", err)
 	}
 	for i := range lifeEvents {
-		e := lifeEvents[i]
-		if e.PlaceLat == nil && e.PlaceLong == nil {
-			continue
+		if e := &lifeEvents[i]; e.PlaceLat != nil || e.PlaceLong != nil {
+			kept.EventCoords[e.ID] = placeCoords{Lat: e.PlaceLat, Long: e.PlaceLong}
 		}
-		kept.add(e.ID, func(ctx context.Context) error {
-			row, err := rs.GetEvent(ctx, domain.MainBranchID, e.ID)
-			if err != nil || row == nil {
-				return err
-			}
-			row.PlaceLat, row.PlaceLong = e.PlaceLat, e.PlaceLong
-			return rs.SaveEvent(ctx, domain.MainBranchID, row)
-		})
 	}
 	return nil
 }
 
-// keepExternalIDs keeps one entity's EXIDs, if it has any, to be written back
-// while the entity exists.
-func keepExternalIDs[T any](ctx context.Context, kept unloggedFields, kind string, id uuid.UUID,
-	get func(context.Context) ([]T, error),
-	exists func(context.Context) (bool, error),
-	replace func(context.Context, []T) error,
-) error {
-	ids, err := get(ctx)
+// keepExternalIDs records one entity's EXIDs in into, if it has any.
+func keepExternalIDs[T any](into map[uuid.UUID][]T, kind string, id uuid.UUID, get func() ([]T, error)) error {
+	ids, err := get()
 	if err != nil {
 		return fmt.Errorf("%s %s external ids: %w", kind, id, err)
 	}
-	if len(ids) == 0 {
-		return nil
+	if len(ids) > 0 {
+		into[id] = ids
 	}
-	kept.add(id, func(ctx context.Context) error {
-		ok, err := exists(ctx)
-		if err != nil || !ok {
-			return err
-		}
-		return replace(ctx, ids)
-	})
 	return nil
+}
+
+// restoreImported writes back the coordinates and EXIDs kept for id, the
+// values GEDCOM import writes right after the entity's first event. Each
+// write is a no-op when the entity's main row does not exist.
+func (k *unloggedFields) restoreImported(ctx context.Context, rs ReadModelStore, id uuid.UUID) error {
+	var errs []error
+	if c, ok := k.PersonCoords[id]; ok {
+		errs = append(errs, updateMainPerson(ctx, rs, id, func(p *PersonReadModel) {
+			p.BirthPlaceLat, p.BirthPlaceLong, p.DeathPlaceLat, p.DeathPlaceLong = c.BirthLat, c.BirthLong, c.DeathLat, c.DeathLong
+		}))
+	}
+	if c, ok := k.EventCoords[id]; ok {
+		errs = append(errs, restoreEventCoords(ctx, rs, id, c))
+	}
+	if ids, ok := k.PersonExternalIDs[id]; ok {
+		errs = append(errs, replaceIfExists(func() (bool, error) {
+			row, err := rs.GetPerson(ctx, domain.MainBranchID, id)
+			return row != nil, err
+		}, func() error { return rs.ReplacePersonExternalIDs(ctx, domain.MainBranchID, id, ids) }))
+	}
+	if ids, ok := k.FamilyExternalIDs[id]; ok {
+		errs = append(errs, replaceIfExists(func() (bool, error) {
+			row, err := rs.GetFamily(ctx, domain.MainBranchID, id)
+			return row != nil, err
+		}, func() error { return rs.ReplaceFamilyExternalIDs(ctx, domain.MainBranchID, id, ids) }))
+	}
+	if ids, ok := k.SourceExternalIDs[id]; ok {
+		errs = append(errs, replaceIfExists(func() (bool, error) {
+			row, err := rs.GetSource(ctx, domain.MainBranchID, id)
+			return row != nil, err
+		}, func() error { return rs.ReplaceSourceExternalIDs(ctx, domain.MainBranchID, id, ids) }))
+	}
+	if ids, ok := k.RepositoryExternalIDs[id]; ok {
+		errs = append(errs, replaceIfExists(func() (bool, error) {
+			row, err := rs.GetRepository(ctx, id)
+			return row != nil, err
+		}, func() error { return rs.ReplaceRepositoryExternalIDs(ctx, id, ids) }))
+	}
+	if err := errors.Join(errs...); err != nil {
+		return fmt.Errorf("restore unlogged fields of %s: %w", id, err)
+	}
+	return nil
+}
+
+// restoreAll writes back every kept value, brick walls included, onto the
+// main rows that exist.
+func (k *unloggedFields) restoreAll(ctx context.Context, rs ReadModelStore) error {
+	ids := map[uuid.UUID]struct{}{}
+	addKeys(ids, k.PersonCoords)
+	addKeys(ids, k.EventCoords)
+	addKeys(ids, k.PersonExternalIDs)
+	addKeys(ids, k.FamilyExternalIDs)
+	addKeys(ids, k.SourceExternalIDs)
+	addKeys(ids, k.RepositoryExternalIDs)
+	var errs []error
+	for id := range ids {
+		errs = append(errs, k.restoreImported(ctx, rs, id))
+	}
+	for id, bw := range k.BrickWalls {
+		if err := updateMainPerson(ctx, rs, id, func(p *PersonReadModel) {
+			p.BrickWallNote, p.BrickWallSince, p.BrickWallResolvedAt = bw.Note, bw.Since, bw.ResolvedAt
+		}); err != nil {
+			errs = append(errs, fmt.Errorf("restore brick wall of %s: %w", id, err))
+		}
+	}
+	return errors.Join(errs...)
+}
+
+func addKeys[V any](into map[uuid.UUID]struct{}, from map[uuid.UUID]V) {
+	for id := range from {
+		into[id] = struct{}{}
+	}
+}
+
+// updateMainPerson applies set to the person's main row, if it exists.
+func updateMainPerson(ctx context.Context, rs ReadModelStore, id uuid.UUID, set func(*PersonReadModel)) error {
+	row, err := rs.GetPerson(ctx, domain.MainBranchID, id)
+	if err != nil || row == nil {
+		return err
+	}
+	set(row)
+	return rs.SavePerson(ctx, domain.MainBranchID, row)
+}
+
+// restoreEventCoords writes a life event's coordinates back, if it exists.
+func restoreEventCoords(ctx context.Context, rs ReadModelStore, id uuid.UUID, c placeCoords) error {
+	row, err := rs.GetEvent(ctx, domain.MainBranchID, id)
+	if err != nil || row == nil {
+		return err
+	}
+	row.PlaceLat, row.PlaceLong = c.Lat, c.Long
+	return rs.SaveEvent(ctx, domain.MainBranchID, row)
+}
+
+// replaceIfExists calls replace when exists reports the entity's row exists.
+func replaceIfExists(exists func() (bool, error), replace func() error) error {
+	ok, err := exists()
+	if err != nil || !ok {
+		return err
+	}
+	return replace()
 }

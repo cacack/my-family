@@ -160,10 +160,19 @@ Implemented in `internal/storage` (`storage.Open`), which `serve` calls at start
   emptied, because their projections are replay-safe upserts. The few
   read-model values that no event carries (GEDCOM place coordinates and
   external IDs, brick walls) are read before the reset and written back after
-  the replay. An event that fails to replay is recorded like a live failure
-  and the replay goes on; the rebuild then exits with an error, and the
-  warning stays until a rebuild succeeds
-  ([#845](https://github.com/cacack/my-family/issues/845)).
+  the replay. They are also saved in the `rebuild_state` table, which the
+  reset keeps, and every event is decoded before the reset. A rebuild that
+  stops after the reset (an error, Ctrl-C, a crash) therefore leaves that row
+  behind: `serve` warns while it exists, and a rerun restores the values from
+  it. An event that fails to replay is recorded like a live failure and the
+  replay goes on; the rebuild then exits with an error, and the warning stays
+  until a rebuild succeeds
+  ([#845](https://github.com/cacack/my-family/issues/845)). Values a GEDCOM
+  import would have written for an entity whose create projection failed
+  never reached the read model, so no rebuild can restore them until they are
+  logged ([#1225](https://github.com/cacack/my-family/issues/1225)). Nothing
+  stops a rebuild from running while `serve` is up; the operator must stop
+  the server first.
 
 ### SQLite Driver and Builds
 

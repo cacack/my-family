@@ -115,9 +115,17 @@ func (s *Stores) RebuildReadModel(ctx context.Context) (repository.RebuildResult
 }
 
 // ProjectionFailureWarning returns a log line saying the read model is behind
-// the event log, naming the oldest failed projection, or "" when no failure is
-// recorded (#845).
+// the event log, because a rebuild did not finish or naming the oldest failed
+// projection, or "" when neither is recorded (#845).
 func (s *Stores) ProjectionFailureWarning(ctx context.Context) string {
+	state, err := s.ReadModel.GetRebuildState(ctx)
+	if err != nil {
+		return fmt.Sprintf("Warning: could not check for an unfinished rebuild: %v", err)
+	}
+	if state != nil {
+		return "Warning: the read model is out of sync with the event log: a `myfamily rebuild` did not finish. " +
+			"Stop the server and run `myfamily rebuild` again to repair it."
+	}
 	failures, err := s.ReadModel.ListProjectionFailures(ctx, 1)
 	if err != nil {
 		return fmt.Sprintf("Warning: could not check for failed projections: %v", err)

@@ -188,6 +188,7 @@ type ReadModelStore struct {
 	researchLogs          map[branchKey]*repository.ResearchLogReadModel      // branch-scoped (#760)
 	proofSummaries        map[branchKey]*repository.ProofSummaryReadModel     // branch-scoped (#760)
 	projectionFailures    []repository.ProjectionFailure                      // #845
+	rebuildState          []byte                                              // #845; outlives ResetReadModel
 }
 
 // NewReadModelStore creates a new in-memory read model store.
@@ -1262,6 +1263,32 @@ func (s *ReadModelStore) ListProjectionFailures(ctx context.Context, limit int) 
 	defer s.mu.RUnlock()
 	n := min(max(limit, 0), len(s.projectionFailures))
 	return append([]repository.ProjectionFailure(nil), s.projectionFailures[:n]...), nil
+}
+
+// SaveRebuildState stores the state of a rebuild in progress (#845).
+func (s *ReadModelStore) SaveRebuildState(ctx context.Context, state []byte) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.rebuildState = append([]byte{}, state...)
+	return nil
+}
+
+// GetRebuildState returns the saved rebuild state, or nil (#845).
+func (s *ReadModelStore) GetRebuildState(ctx context.Context) ([]byte, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.rebuildState == nil {
+		return nil, nil
+	}
+	return append([]byte{}, s.rebuildState...), nil
+}
+
+// ClearRebuildState deletes the saved rebuild state (#845).
+func (s *ReadModelStore) ClearRebuildState(ctx context.Context) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.rebuildState = nil
+	return nil
 }
 
 // GetSource retrieves a source by ID within the branch overlay (ADR-005, #758).

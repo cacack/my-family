@@ -14,9 +14,10 @@ import (
 	"github.com/cacack/my-family/internal/repository/sqlite"
 )
 
-// logOwnedTables are the tables in the shared database that are not the read
-// model's: the event log, the branch registry and the snapshot registry.
-var logOwnedTables = map[string]bool{"events": true, "streams": true, "branches": true, "snapshots": true}
+// logOwnedTables are the tables in the shared database that ResetReadModel
+// keeps: the event log, the branch registry, the snapshot registry and the
+// rebuild state, which must outlive the reset.
+var logOwnedTables = map[string]bool{"events": true, "streams": true, "branches": true, "snapshots": true, "rebuild_state": true}
 
 // TestResetReadModel_CoversEveryReadModelTable fails when a read-model table is
 // added without being added to the reset list, which would let a rebuild
@@ -115,5 +116,49 @@ func TestResetReadModel_EmptiesRowsAndMarkers(t *testing.T) {
 	}
 	if left, err := store.ListProjectionFailures(ctx, 10); err != nil || len(left) != 0 {
 		t.Errorf("failures after reset = %+v, %v; want none", left, err)
+	}
+}
+
+// TestRebuildState_RoundTripAndOutlivesReset covers the state an unfinished
+// rebuild leaves behind (#845): saved, replaced, kept by the reset, cleared.
+func TestRebuildState_RoundTripAndOutlivesReset(t *testing.T) {
+	ctx := context.Background()
+	db, cleanup := newTempDB(t)
+	defer cleanup()
+	store, err := sqlite.NewReadModelStore(db)
+	if err != nil {
+		t.Fatalf("read model store: %v", err)
+	}
+	if got, err := store.GetRebuildState(ctx); err != nil || got != nil {
+		t.Fatalf("state before save = %q, %v; want none", got, err)
+	}
+	for _, state := range []string{`{"a":1}`, `{"b":2}`} {
+		if err := store.SaveRebuildState(ctx, []byte(state)); err != nil {
+			t.Fatalf("save %s: %v", state, err)
+		}
+	}
+	if err := store.ResetReadModel(ctx); err != nil {
+		t.Fatalf("reset: %v", err)
+	}
+	if got, err := store.GetRebuildState(ctx); err != nil || string(got) != `{"b":2}` {
+		t.Fatalf("state after reset = %q, %v; want the latest save", got, err)
+	}
+	if err := store.ClearRebuildState(ctx); err != nil {
+		t.Fatalf("clear: %v", err)
+	}
+	if got, err := store.GetRebuildState(ctx); err != nil || got != nil {
+		t.Fatalf("state after clear = %q, %v; want none", got, err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	if _, err := store.GetRebuildState(ctx); err == nil {
+		t.Error("GetRebuildState on a closed db succeeded")
+	}
+	if err := store.SaveRebuildState(ctx, []byte("{}")); err == nil {
+		t.Error("SaveRebuildState on a closed db succeeded")
+	}
+	if err := store.ClearRebuildState(ctx); err == nil {
+		t.Error("ClearRebuildState on a closed db succeeded")
 	}
 }

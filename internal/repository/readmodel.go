@@ -763,9 +763,18 @@ type ReadModelStore interface {
 
 	// ResetReadModel deletes every row of every read-model table, including the
 	// projection-failure markers, so RebuildReadModel can replay the event log
-	// into an empty read model. The event log, branch registry and snapshot
-	// registry are not touched.
+	// into an empty read model. The event log, branch registry, snapshot
+	// registry and rebuild state are not touched.
 	ResetReadModel(ctx context.Context) error
+	// SaveRebuildState stores, replacing any earlier one, the state of a
+	// rebuild in progress: the values no event carries, saved before the reset
+	// so an interrupted rebuild can still restore them. While it exists the
+	// read model is out of sync with the event log.
+	SaveRebuildState(ctx context.Context, state []byte) error
+	// GetRebuildState returns the saved rebuild state, or nil when none is saved.
+	GetRebuildState(ctx context.Context) ([]byte, error)
+	// ClearRebuildState deletes the saved rebuild state once a rebuild succeeds.
+	ClearRebuildState(ctx context.Context) error
 	// RecordProjectionFailure stores a marker for an event that is in the log
 	// but whose projection failed, so the drift outlives the process that saw it.
 	RecordProjectionFailure(ctx context.Context, failure ProjectionFailure) error

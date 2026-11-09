@@ -2,6 +2,8 @@ package postgres
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -25,7 +27,8 @@ func readModelTables() []string {
 
 // ResetReadModel deletes every row of every read-model table in one
 // transaction (#845). The event log, branch registry and snapshot registry
-// live in other tables and are untouched.
+// live in other tables and are untouched, and so is rebuild_state, which must
+// outlive the reset.
 func (s *ReadModelStore) ResetReadModel(ctx context.Context) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -77,4 +80,37 @@ func (s *ReadModelStore) ListProjectionFailures(ctx context.Context, limit int) 
 		out = append(out, f)
 	}
 	return out, rows.Err()
+}
+
+// SaveRebuildState stores the state of a rebuild in progress (#845).
+func (s *ReadModelStore) SaveRebuildState(ctx context.Context, state []byte) error {
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO rebuild_state (id, state) VALUES (1, $1)
+		ON CONFLICT (id) DO UPDATE SET state = excluded.state
+	`, string(state))
+	if err != nil {
+		return fmt.Errorf("save rebuild state: %w", err)
+	}
+	return nil
+}
+
+// GetRebuildState returns the saved rebuild state, or nil (#845).
+func (s *ReadModelStore) GetRebuildState(ctx context.Context) ([]byte, error) {
+	var state string
+	err := s.db.QueryRowContext(ctx, `SELECT state FROM rebuild_state WHERE id = 1`).Scan(&state)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get rebuild state: %w", err)
+	}
+	return []byte(state), nil
+}
+
+// ClearRebuildState deletes the saved rebuild state (#845).
+func (s *ReadModelStore) ClearRebuildState(ctx context.Context) error {
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM rebuild_state`); err != nil {
+		return fmt.Errorf("clear rebuild state: %w", err)
+	}
+	return nil
 }

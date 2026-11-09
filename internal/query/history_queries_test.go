@@ -395,6 +395,11 @@ func (m *mockReadModelStore) GetBrickWalls(ctx context.Context, includeResolved 
 }
 
 func (m *mockReadModelStore) ResetReadModel(ctx context.Context) error { return nil }
+func (m *mockReadModelStore) SaveRebuildState(ctx context.Context, state []byte) error {
+	return nil
+}
+func (m *mockReadModelStore) GetRebuildState(ctx context.Context) ([]byte, error) { return nil, nil }
+func (m *mockReadModelStore) ClearRebuildState(ctx context.Context) error         { return nil }
 func (m *mockReadModelStore) RecordProjectionFailure(ctx context.Context, f repository.ProjectionFailure) error {
 	return nil
 }

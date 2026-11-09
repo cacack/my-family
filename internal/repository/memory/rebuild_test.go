@@ -62,3 +62,28 @@ func TestResetReadModel_EmptiesRowsExternalIDsAndMarkers(t *testing.T) {
 		t.Errorf("markers survived reset: %+v", got)
 	}
 }
+
+// TestRebuildState_RoundTripAndOutlivesReset covers the state an unfinished
+// rebuild leaves behind (#845): saved, kept by the reset, cleared.
+func TestRebuildState_RoundTripAndOutlivesReset(t *testing.T) {
+	ctx := context.Background()
+	store := memory.NewReadModelStore()
+	if got, _ := store.GetRebuildState(ctx); got != nil {
+		t.Fatalf("state before save = %q, want none", got)
+	}
+	if err := store.SaveRebuildState(ctx, []byte(`{"a":1}`)); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.ResetReadModel(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := store.GetRebuildState(ctx); string(got) != `{"a":1}` {
+		t.Fatalf("state after reset = %q, want it kept", got)
+	}
+	if err := store.ClearRebuildState(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := store.GetRebuildState(ctx); got != nil {
+		t.Fatalf("state after clear = %q, want none", got)
+	}
+}
