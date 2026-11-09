@@ -84,7 +84,9 @@ type PersonReadModel struct {
 	UpdatedAt           time.Time             `json:"updated_at"`
 }
 
-// FamilyReadModel represents a family in the read model.
+// FamilyReadModel represents a family in the read model. The partner names are
+// not stored: every read resolves them from the person overlay of the branch
+// it reads, and SaveFamily ignores them (#1207, see family_names.go).
 type FamilyReadModel struct {
 	ID                uuid.UUID           `json:"id"`
 	Partner1ID        *uuid.UUID          `json:"partner1_id,omitempty"`
@@ -104,7 +106,8 @@ type FamilyReadModel struct {
 	UpdatedAt         time.Time           `json:"updated_at"`
 }
 
-// FamilyChildReadModel represents a child in a family.
+// FamilyChildReadModel represents a child in a family. The person names are
+// resolved on every read, not stored (#1207, see FamilyReadModel).
 type FamilyChildReadModel struct {
 	FamilyID         uuid.UUID                `json:"family_id"`
 	PersonID         uuid.UUID                `json:"person_id"`
@@ -115,6 +118,8 @@ type FamilyChildReadModel struct {
 }
 
 // PedigreeEdge represents a parent-child relationship for pedigree traversal.
+// FatherName and MotherName are resolved on every read, not stored (#1207, see
+// FamilyReadModel).
 type PedigreeEdge struct {
 	PersonID   uuid.UUID  `json:"person_id"`
 	FatherID   *uuid.UUID `json:"father_id,omitempty"`
@@ -493,8 +498,8 @@ type ReadModelStore interface {
 	// GetFamilyChildrenByFamilyIDs is GetFamilyChildren for many families at
 	// once: ONE set-based read resolving the branch overlay of every family's
 	// child links (#829). Rows are ordered by family id, then by sequence
-	// (unsequenced children last), surname, given name and person id, the same
-	// order on every backend. Duplicated family ids are collapsed; an empty
+	// (unsequenced children last), resolved surname, given name and person id
+	// (CompareFamilyChildren), the same order on every backend. Duplicated family ids are collapsed; an empty
 	// familyIDs slice returns nil without touching the store.
 	GetFamilyChildrenByFamilyIDs(ctx context.Context, branchID domain.BranchID, familyIDs []uuid.UUID) ([]FamilyChildReadModel, error)
 	// ListAllFamilyChildren returns every child link branchID sees, across all
@@ -507,14 +512,6 @@ type ReadModelStore interface {
 	ListAllFamilyChildren(ctx context.Context, branchID domain.BranchID) ([]FamilyChildReadModel, error)
 	GetChildrenOfFamily(ctx context.Context, branchID domain.BranchID, familyID uuid.UUID) ([]PersonReadModel, error)
 	GetChildFamily(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) (*FamilyReadModel, error)
-	// RenameFamilyMember rewrites the names families denormalize for personID
-	// (partner1/partner2 given name and surname, the child links' names, and the
-	// father/mother name on the pedigree edges of the person's children) on the
-	// rows stored under branchID itself (#1129). It never falls back to or
-	// shadows main's rows: a branch row written only to carry a name would hide
-	// main's later edits to that family from the branch (ADR-005 live overlay),
-	// and a main write never touches a branch's rows (BR-003).
-	RenameFamilyMember(ctx context.Context, branchID domain.BranchID, personID uuid.UUID, givenName, surname string) error
 	SaveFamilyChild(ctx context.Context, branchID domain.BranchID, child *FamilyChildReadModel) error
 	DeleteFamilyChild(ctx context.Context, branchID domain.BranchID, familyID, personID uuid.UUID) error
 

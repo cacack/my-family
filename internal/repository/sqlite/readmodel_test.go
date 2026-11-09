@@ -2200,18 +2200,18 @@ func TestBranchFamilyOverlayTombstone(t *testing.T) {
 	branch := domain.BranchID(uuid.New())
 	id := uuid.New()
 
-	_ = store.SaveFamily(ctx, domain.MainBranchID, &repository.FamilyReadModel{ID: id, Partner1GivenName: "Main", Version: 1})
-	_ = store.SaveFamily(ctx, branch, &repository.FamilyReadModel{ID: id, Partner1GivenName: "Branch", Version: 1})
+	_ = store.SaveFamily(ctx, domain.MainBranchID, &repository.FamilyReadModel{ID: id, MarriagePlace: "Main", Version: 1})
+	_ = store.SaveFamily(ctx, branch, &repository.FamilyReadModel{ID: id, MarriagePlace: "Branch", Version: 1})
 
-	if got, _ := store.GetFamily(ctx, branch, id); got == nil || got.Partner1GivenName != "Branch" {
+	if got, _ := store.GetFamily(ctx, branch, id); got == nil || got.MarriagePlace != "Branch" {
 		t.Fatalf("branch GetFamily: want Branch, got %+v", got)
 	}
-	if got, _ := store.GetFamily(ctx, domain.MainBranchID, id); got == nil || got.Partner1GivenName != "Main" {
+	if got, _ := store.GetFamily(ctx, domain.MainBranchID, id); got == nil || got.MarriagePlace != "Main" {
 		t.Fatalf("main GetFamily: want Main, got %+v", got)
 	}
 
 	branchList, total, _ := store.ListFamilies(ctx, repository.ListOptions{Limit: 10, BranchID: branch})
-	if total != 1 || len(branchList) != 1 || branchList[0].Partner1GivenName != "Branch" {
+	if total != 1 || len(branchList) != 1 || branchList[0].MarriagePlace != "Branch" {
 		t.Fatalf("branch ListFamilies: want 1 Branch, got total=%d %+v", total, branchList)
 	}
 

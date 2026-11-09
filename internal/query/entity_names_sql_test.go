@@ -261,7 +261,7 @@ func TestTransformStoredEvents_SQLStatementCountDoesNotScale(t *testing.T) {
 				entries, err := service.transformStoredEvents(ctx, set.events)
 				require.NoError(t, err)
 				require.Len(t, entries, 5*n)
-				assert.Equal(t, int64(4), counter.count(), "one SQL statement per entity type, independent of entry count")
+				assert.Equal(t, int64(5), counter.count(), "one SQL statement per entity type (two for families, whose partner names resolve from the persons, #1207), independent of entry count")
 
 				for _, entry := range entries {
 					assert.Equal(t, set.wantNames[entry.EntityID], entry.EntityName, "entry %s", entry.EntityID)
@@ -294,7 +294,7 @@ func TestEnrichConflictEntities_SQLStatementCountDoesNotScale(t *testing.T) {
 				counter.reset()
 
 				require.NoError(t, service.enrichConflictEntities(ctx, domain.MainBranchID, set.events, conflicts))
-				assert.Equal(t, int64(4), counter.count(), "one SQL statement per entity type, independent of conflict count")
+				assert.Equal(t, int64(5), counter.count(), "one SQL statement per entity type (two for families, #1207), independent of conflict count")
 
 				for _, c := range conflicts {
 					assert.Equal(t, set.wantNames[c.StreamID], c.EntityName)
@@ -322,7 +322,7 @@ func TestTransformStoredEventsOn_SQLStatementCountDoesNotScale(t *testing.T) {
 				entries, err := service.transformStoredEventsOn(ctx, branch, set.events)
 				require.NoError(t, err)
 				require.Len(t, entries, 5*n)
-				assert.Equal(t, int64(8), counter.count(), "one branch and one main-fallback statement per entity type")
+				assert.Equal(t, int64(10), counter.count(), "one branch and one main-fallback lookup per entity type (two statements each for families, #1207)")
 
 				for _, entry := range entries {
 					assert.Equal(t, want[entry.EntityID], entry.EntityName, "entry %s", entry.EntityID)
@@ -331,7 +331,7 @@ func TestTransformStoredEventsOn_SQLStatementCountDoesNotScale(t *testing.T) {
 				counter.reset()
 				mainEntries, err := service.transformStoredEvents(ctx, set.events)
 				require.NoError(t, err)
-				assert.Equal(t, int64(4), counter.count())
+				assert.Equal(t, int64(5), counter.count())
 				for _, entry := range mainEntries {
 					assert.Equal(t, set.wantNames[entry.EntityID], entry.EntityName)
 				}

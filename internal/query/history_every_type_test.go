@@ -289,7 +289,7 @@ func TestCompareBranch_EveryBranchWritableType(t *testing.T) {
 				expectedEntriesCount int
 			}
 			wants := map[uuid.UUID]want{
-				f.family: {entityType: "family", name: "Ada Lovelace & Charles Babbage", field: "marriage_place", oldValue: "London", newValue: "Ockham", expectedEntriesCount: 3},
+				f.family: {entityType: "family", name: "Augusta Ada Lovelace & Charles Babbage", field: "marriage_place", oldValue: "London", newValue: "Ockham", expectedEntriesCount: 3},
 				f.source: {entityType: "source", name: "1851 Census", field: "title", oldValue: "1850 Census", newValue: "1851 Census", expectedEntriesCount: 1},
 				// A citation is named from its read-model row, whose source title
 				// is denormalized when the citation row is written.

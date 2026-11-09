@@ -1163,6 +1163,17 @@ func TestFamilyService_BranchScope(t *testing.T) {
 	p1 := uuid.New()
 	childID := uuid.New()
 
+	// Member names resolve from each scope's persons (#1207).
+	for scope, given := range map[domain.BranchID]string{domain.MainBranchID: "Main", branch: "Branch"} {
+		for id, surname := range map[uuid.UUID]string{p1: "Partner", childID: "Child"} {
+			if err := readStore.SavePerson(ctx, scope, &repository.PersonReadModel{
+				ID: id, GivenName: given, Surname: surname, FullName: given + " " + surname, Version: 1,
+			}); err != nil {
+				t.Fatalf("seed person: %v", err)
+			}
+		}
+	}
+
 	// Seed the main family + one child.
 	if err := readStore.SaveFamily(ctx, domain.MainBranchID, &repository.FamilyReadModel{
 		ID: famID, Partner1ID: &p1, Partner1GivenName: "Main", Partner1Surname: "Partner",

@@ -755,7 +755,8 @@ func TestGetDescendancy_OrdersSpousesAndChildren(t *testing.T) {
 	}
 
 	wantChildren := []struct{ id, family uuid.UUID }{
-		{henryJr, famAragon}, {mary, famAragon}, {unnamed, famAragon}, {garbled, famAragon},
+		// Undated children keep the store's order: by name, then id.
+		{henryJr, famAragon}, {mary, famAragon}, {garbled, famAragon}, {unnamed, famAragon},
 		{elizabeth, famBoleyn},
 		{fitzroy, famUndated},
 	}

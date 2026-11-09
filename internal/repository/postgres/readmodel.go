@@ -134,6 +134,8 @@ func (s *ReadModelStore) createTables() error {
 			id UUID NOT NULL,
 			branch_id UUID NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000',
 			partner1_id UUID,
+			-- The partner, child and parent name columns here and in family_children
+			-- and pedigree_edges are legacy: unused since #1207 resolved them at read time.
 			partner1_given_name VARCHAR(200),
 			partner1_surname VARCHAR(200),
 			partner2_id UUID,
@@ -1015,29 +1017,8 @@ func (s *ReadModelStore) runMigrations() {
 			_, _ = tx.Exec(`ALTER TABLE ` + t + ` ADD COLUMN IF NOT EXISTS branch_id UUID NOT NULL ` + mainBranchDefault)
 		}
 
-		// Backfill split fields from persons table; idempotent via IS NULL guard.
-		main := domain.MainBranchID.UUID()
-		_, _ = tx.Exec(`
-			UPDATE families f SET
-				partner1_given_name = p.given_name,
-				partner1_surname    = p.surname
-			FROM persons p WHERE f.partner1_id = p.id AND f.partner1_given_name IS NULL
-			  AND f.branch_id = $1 AND p.branch_id = $1
-		`, main)
-		_, _ = tx.Exec(`
-			UPDATE families f SET
-				partner2_given_name = p.given_name,
-				partner2_surname    = p.surname
-			FROM persons p WHERE f.partner2_id = p.id AND f.partner2_given_name IS NULL
-			  AND f.branch_id = $1 AND p.branch_id = $1
-		`, main)
-		_, _ = tx.Exec(`
-			UPDATE family_children fc SET
-				person_given_name = p.given_name,
-				person_surname    = p.surname
-			FROM persons p WHERE fc.person_id = p.id AND fc.person_given_name IS NULL
-			  AND fc.branch_id = $1 AND p.branch_id = $1
-		`, main)
+		// The split columns are no longer written or read: family reads resolve
+		// member names from the person overlay (#1207), so they are not backfilled.
 
 		// Drop legacy denormalized columns once the split is populated.
 		_, _ = tx.Exec(`ALTER TABLE families DROP COLUMN IF EXISTS partner1_name, DROP COLUMN IF EXISTS partner2_name`)
@@ -1273,18 +1254,21 @@ const (
 	// (search_name), not its displayed full_name with prefixes and suffix.
 	personNameOverlayCols = `id, person_id, given_name, surname, ` + personFullNameExpr + ` AS search_name, nickname, is_primary, search_vector`
 
-	// familySelectCols is scanFamily's column order (unaliased).
-	familySelectCols = `id, partner1_id, partner1_given_name, partner1_surname,
-		partner2_id, partner2_given_name, partner2_surname,
+	// familySelectCols is scanFamily's column order (unaliased). The partner
+	// name columns are legacy and no longer read or written: reads resolve the
+	// names from the persons (#1207).
+	familySelectCols = `id, partner1_id, partner2_id,
 		relationship_type, marriage_date_raw, marriage_date_sort, marriage_place,
 		marriage_place_lat, marriage_place_long,
 		child_count, version, updated_at`
 
-	// familyChildSelectCols matches GetFamilyChildren's scan order (unaliased).
-	familyChildSelectCols = `family_id, person_id, person_given_name, person_surname, relationship_type, sequence`
+	// familyChildSelectCols matches GetFamilyChildren's scan order (unaliased);
+	// the person names are resolved, not read (#1207).
+	familyChildSelectCols = `family_id, person_id, relationship_type, sequence`
 
-	// pedigreeSelectCols matches GetPedigreeEdge's scan order (unaliased).
-	pedigreeSelectCols = `person_id, father_id, mother_id, father_name, mother_name`
+	// pedigreeSelectCols matches GetPedigreeEdge's scan order (unaliased); the
+	// parent names are resolved, not read (#1207).
+	pedigreeSelectCols = `person_id, father_id, mother_id`
 )
 
 // GetPerson retrieves a person by ID within the branch overlay (ADR-005).
@@ -2392,7 +2376,7 @@ func (s *ReadModelStore) GetFamily(ctx context.Context, branchID domain.BranchID
 		) o WHERE NOT deleted
 	`, id, branchID.UUID(), domain.MainBranchID.UUID())
 
-	return scanFamily(row)
+	return s.familyWithNames(ctx, branchID, row)
 }
 
 // ListFamilies returns a paginated list of families within the branch overlay (ADR-005).
@@ -2451,8 +2435,11 @@ func (s *ReadModelStore) ListFamilies(ctx context.Context, opts repository.ListO
 		}
 		families = append(families, *f)
 	}
-
-	return families, total, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+	families, err = s.withFamilyNames(ctx, opts.BranchID, families)
+	return families, total, err
 }
 
 // GetFamiliesForPerson returns all families where the person is a partner, within
@@ -2478,27 +2465,24 @@ func (s *ReadModelStore) GetFamiliesForPerson(ctx context.Context, branchID doma
 		}
 		families = append(families, *f)
 	}
-
-	return families, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return s.withFamilyNames(ctx, branchID, families)
 }
 
 // SaveFamily saves or updates a family on the given branch (ADR-005). Keyed by
 // (id, branch_id); a save clears any prior tombstone.
 func (s *ReadModelStore) SaveFamily(ctx context.Context, branchID domain.BranchID, family *repository.FamilyReadModel) error {
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO families (id, branch_id, partner1_id, partner1_given_name, partner1_surname,
-							  partner2_id, partner2_given_name, partner2_surname,
+		INSERT INTO families (id, branch_id, partner1_id, partner2_id,
 							  relationship_type, marriage_date_raw, marriage_date_sort, marriage_place,
 							  marriage_place_lat, marriage_place_long,
 							  child_count, version, updated_at, deleted)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, FALSE)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, FALSE)
 		ON CONFLICT(id, branch_id) DO UPDATE SET
 			partner1_id = EXCLUDED.partner1_id,
-			partner1_given_name = EXCLUDED.partner1_given_name,
-			partner1_surname = EXCLUDED.partner1_surname,
 			partner2_id = EXCLUDED.partner2_id,
-			partner2_given_name = EXCLUDED.partner2_given_name,
-			partner2_surname = EXCLUDED.partner2_surname,
 			relationship_type = EXCLUDED.relationship_type,
 			marriage_date_raw = EXCLUDED.marriage_date_raw,
 			marriage_date_sort = EXCLUDED.marriage_date_sort,
@@ -2510,8 +2494,7 @@ func (s *ReadModelStore) SaveFamily(ctx context.Context, branchID domain.BranchI
 			updated_at = EXCLUDED.updated_at,
 			deleted = FALSE
 	`, family.ID, branchID.UUID(),
-		nullableUUID(family.Partner1ID), nullableString(family.Partner1GivenName), nullableString(family.Partner1Surname),
-		nullableUUID(family.Partner2ID), nullableString(family.Partner2GivenName), nullableString(family.Partner2Surname),
+		nullableUUID(family.Partner1ID), nullableUUID(family.Partner2ID),
 		// relationship_type is NOT NULL DEFAULT 'biological' — bind the string value,
 		// not NULL (matches the SQLite backend; a nil here violates the constraint).
 		string(family.RelationshipType), nullableString(family.MarriageDateRaw),
@@ -2578,12 +2561,10 @@ func (s *ReadModelStore) DeleteFamily(ctx context.Context, branchID domain.Branc
 
 	// Cascade tombstone the family's children (every child visible on the branch).
 	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO family_children (family_id, person_id, person_given_name, person_surname,
-									 relationship_type, sequence, branch_id, deleted)
-		SELECT family_id, person_id, person_given_name, person_surname, relationship_type, sequence, $2, TRUE
+		INSERT INTO family_children (family_id, person_id, relationship_type, sequence, branch_id, deleted)
+		SELECT family_id, person_id, relationship_type, sequence, $2, TRUE
 		FROM (
-			SELECT DISTINCT ON (family_id, person_id) family_id, person_id, person_given_name,
-				   person_surname, relationship_type, sequence, deleted
+			SELECT DISTINCT ON (family_id, person_id) family_id, person_id, relationship_type, sequence, deleted
 			FROM family_children WHERE family_id = $1 AND branch_id IN ($2, $3)
 			ORDER BY family_id, person_id, (branch_id = $2) DESC
 		) o WHERE NOT o.deleted
@@ -2626,7 +2607,11 @@ func (s *ReadModelStore) ListAllFamilyChildren(ctx context.Context, branchID dom
 		return nil, fmt.Errorf("query all family children: %w", err)
 	}
 	defer rows.Close()
-	return scanFamilyChildRows(rows)
+	children, err := scanFamilyChildRows(rows)
+	if err != nil {
+		return nil, err
+	}
+	return s.withFamilyChildNames(ctx, branchID, children)
 }
 
 // scanFamilyChildRows scans familyChildSelectCols rows.
@@ -2634,12 +2619,11 @@ func scanFamilyChildRows(rows *sql.Rows) ([]repository.FamilyChildReadModel, err
 	var children []repository.FamilyChildReadModel
 	for rows.Next() {
 		var (
-			familyID, personID             uuid.UUID
-			personGivenName, personSurname sql.NullString
-			relType                        string
-			sequence                       sql.NullInt64
+			familyID, personID uuid.UUID
+			relType            string
+			sequence           sql.NullInt64
 		)
-		err := rows.Scan(&familyID, &personID, &personGivenName, &personSurname, &relType, &sequence)
+		err := rows.Scan(&familyID, &personID, &relType, &sequence)
 		if err != nil {
 			return nil, fmt.Errorf("scan family child: %w", err)
 		}
@@ -2647,8 +2631,6 @@ func scanFamilyChildRows(rows *sql.Rows) ([]repository.FamilyChildReadModel, err
 		child := repository.FamilyChildReadModel{
 			FamilyID:         familyID,
 			PersonID:         personID,
-			PersonGivenName:  personGivenName.String,
-			PersonSurname:    personSurname.String,
 			RelationshipType: domain.ChildRelationType(relType),
 		}
 		if sequence.Valid {
@@ -2717,8 +2699,7 @@ func (s *ReadModelStore) GetChildFamily(ctx context.Context, branchID domain.Bra
 				ORDER BY id, (branch_id = $2) DESC
 			) o WHERE NOT deleted
 		)
-		SELECT f.id, f.partner1_id, f.partner1_given_name, f.partner1_surname,
-			   f.partner2_id, f.partner2_given_name, f.partner2_surname,
+		SELECT f.id, f.partner1_id, f.partner2_id,
 			   f.relationship_type, f.marriage_date_raw, f.marriage_date_sort, f.marriage_place,
 			   f.marriage_place_lat, f.marriage_place_long,
 			   f.child_count, f.version, f.updated_at
@@ -2727,54 +2708,20 @@ func (s *ReadModelStore) GetChildFamily(ctx context.Context, branchID domain.Bra
 		LIMIT 1
 	`, personID, branchID.UUID(), domain.MainBranchID.UUID())
 
-	return scanFamily(row)
-}
-
-// RenameFamilyMember rewrites personID's partner, child and pedigree parent
-// names on the families, family_children and pedigree_edges rows stored under
-// branchID itself.
-func (s *ReadModelStore) RenameFamilyMember(ctx context.Context, branchID domain.BranchID, personID uuid.UUID, givenName, surname string) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin rename family member: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	args := []any{givenName, surname, personID, branchID.UUID()}
-	for _, stmt := range []string{
-		`UPDATE families SET partner1_given_name = $1, partner1_surname = $2 WHERE partner1_id = $3 AND branch_id = $4 AND NOT deleted`,
-		`UPDATE families SET partner2_given_name = $1, partner2_surname = $2 WHERE partner2_id = $3 AND branch_id = $4 AND NOT deleted`,
-		`UPDATE family_children SET person_given_name = $1, person_surname = $2 WHERE person_id = $3 AND branch_id = $4 AND NOT deleted`,
-	} {
-		if _, err := tx.ExecContext(ctx, stmt, args...); err != nil {
-			return fmt.Errorf("rename family member: %w", err)
-		}
-	}
-	edgeArgs := []any{domain.JoinFullName(givenName, surname), personID, branchID.UUID()}
-	for _, stmt := range []string{
-		`UPDATE pedigree_edges SET father_name = $1 WHERE father_id = $2 AND branch_id = $3 AND NOT deleted`,
-		`UPDATE pedigree_edges SET mother_name = $1 WHERE mother_id = $2 AND branch_id = $3 AND NOT deleted`,
-	} {
-		if _, err := tx.ExecContext(ctx, stmt, edgeArgs...); err != nil {
-			return fmt.Errorf("rename pedigree parent: %w", err)
-		}
-	}
-	return tx.Commit()
+	return s.familyWithNames(ctx, branchID, row)
 }
 
 // SaveFamilyChild saves a family child relationship on the given branch (ADR-005).
 // Keyed by (family_id, person_id, branch_id); untouched children fall back to main.
 func (s *ReadModelStore) SaveFamilyChild(ctx context.Context, branchID domain.BranchID, child *repository.FamilyChildReadModel) error {
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO family_children (family_id, person_id, branch_id, person_given_name, person_surname, relationship_type, sequence, deleted)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, FALSE)
+		INSERT INTO family_children (family_id, person_id, branch_id, relationship_type, sequence, deleted)
+		VALUES ($1, $2, $3, $4, $5, FALSE)
 		ON CONFLICT(family_id, person_id, branch_id) DO UPDATE SET
-			person_given_name = EXCLUDED.person_given_name,
-			person_surname = EXCLUDED.person_surname,
 			relationship_type = EXCLUDED.relationship_type,
 			sequence = EXCLUDED.sequence,
 			deleted = FALSE
-	`, child.FamilyID, child.PersonID, branchID.UUID(), nullableString(child.PersonGivenName), nullableString(child.PersonSurname),
+	`, child.FamilyID, child.PersonID, branchID.UUID(),
 		string(child.RelationshipType), nullableInt(child.Sequence))
 
 	return err
@@ -2790,12 +2737,10 @@ func (s *ReadModelStore) DeleteFamilyChild(ctx context.Context, branchID domain.
 		return err
 	}
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO family_children (family_id, person_id, person_given_name, person_surname,
-									 relationship_type, sequence, branch_id, deleted)
-		SELECT family_id, person_id, person_given_name, person_surname, relationship_type, sequence, $3, TRUE
+		INSERT INTO family_children (family_id, person_id, relationship_type, sequence, branch_id, deleted)
+		SELECT family_id, person_id, relationship_type, sequence, $3, TRUE
 		FROM (
-			SELECT DISTINCT ON (family_id, person_id) family_id, person_id, person_given_name,
-				   person_surname, relationship_type, sequence
+			SELECT DISTINCT ON (family_id, person_id) family_id, person_id, relationship_type, sequence
 			FROM family_children WHERE family_id = $1 AND person_id = $2 AND branch_id IN ($3, $4)
 			ORDER BY family_id, person_id, (branch_id = $3) DESC
 		) o
@@ -2807,9 +2752,8 @@ func (s *ReadModelStore) DeleteFamilyChild(ctx context.Context, branchID domain.
 // GetPedigreeEdge returns the pedigree edge for a person within the branch overlay (ADR-005).
 func (s *ReadModelStore) GetPedigreeEdge(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) (*repository.PedigreeEdge, error) {
 	var (
-		pID                    uuid.UUID
-		fatherID, motherID     sql.NullString
-		fatherName, motherName sql.NullString
+		pID                uuid.UUID
+		fatherID, motherID sql.NullString
 	)
 
 	err := s.db.QueryRowContext(ctx, `
@@ -2818,7 +2762,7 @@ func (s *ReadModelStore) GetPedigreeEdge(ctx context.Context, branchID domain.Br
 			FROM pedigree_edges WHERE person_id = $1 AND branch_id IN ($2, $3)
 			ORDER BY person_id, (branch_id = $2) DESC
 		) o WHERE NOT deleted
-	`, personID, branchID.UUID(), domain.MainBranchID.UUID()).Scan(&pID, &fatherID, &motherID, &fatherName, &motherName)
+	`, personID, branchID.UUID(), domain.MainBranchID.UUID()).Scan(&pID, &fatherID, &motherID)
 
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -2827,11 +2771,7 @@ func (s *ReadModelStore) GetPedigreeEdge(ctx context.Context, branchID domain.Br
 		return nil, fmt.Errorf("query pedigree edge: %w", err)
 	}
 
-	edge := &repository.PedigreeEdge{
-		PersonID:   pID,
-		FatherName: fatherName.String,
-		MotherName: motherName.String,
-	}
+	edge := repository.PedigreeEdge{PersonID: pID}
 
 	if fatherID.Valid {
 		fID, _ := uuid.Parse(fatherID.String)
@@ -2842,23 +2782,24 @@ func (s *ReadModelStore) GetPedigreeEdge(ctx context.Context, branchID domain.Br
 		edge.MotherID = &mID
 	}
 
-	return edge, nil
+	edges := []repository.PedigreeEdge{edge}
+	if err := repository.ResolvePedigreeEdgeNames(ctx, s.GetPersonsByIDs, branchID, edges); err != nil {
+		return nil, err
+	}
+	return &edges[0], nil
 }
 
 // SavePedigreeEdge saves a pedigree edge on the given branch (ADR-005). Keyed by
 // (person_id, branch_id); a save clears any prior tombstone.
 func (s *ReadModelStore) SavePedigreeEdge(ctx context.Context, branchID domain.BranchID, edge *repository.PedigreeEdge) error {
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO pedigree_edges (person_id, branch_id, father_id, mother_id, father_name, mother_name, deleted)
-		VALUES ($1, $2, $3, $4, $5, $6, FALSE)
+		INSERT INTO pedigree_edges (person_id, branch_id, father_id, mother_id, deleted)
+		VALUES ($1, $2, $3, $4, FALSE)
 		ON CONFLICT(person_id, branch_id) DO UPDATE SET
 			father_id = EXCLUDED.father_id,
 			mother_id = EXCLUDED.mother_id,
-			father_name = EXCLUDED.father_name,
-			mother_name = EXCLUDED.mother_name,
 			deleted = FALSE
-	`, edge.PersonID, branchID.UUID(), nullableUUID(edge.FatherID), nullableUUID(edge.MotherID),
-		nullableString(edge.FatherName), nullableString(edge.MotherName))
+	`, edge.PersonID, branchID.UUID(), nullableUUID(edge.FatherID), nullableUUID(edge.MotherID))
 
 	return err
 }
@@ -3006,8 +2947,6 @@ func scanFamily(row rowScanner) (*repository.FamilyReadModel, error) {
 	var (
 		id                                      uuid.UUID
 		partner1ID, partner2ID                  sql.NullString
-		partner1GivenName, partner1Surname      sql.NullString
-		partner2GivenName, partner2Surname      sql.NullString
 		relType, marriageDateRaw, marriagePlace sql.NullString
 		marriagePlaceLat, marriagePlaceLong     sql.NullString
 		marriageDateSort                        sql.NullTime
@@ -3016,9 +2955,7 @@ func scanFamily(row rowScanner) (*repository.FamilyReadModel, error) {
 		updatedAt                               time.Time
 	)
 
-	err := row.Scan(&id,
-		&partner1ID, &partner1GivenName, &partner1Surname,
-		&partner2ID, &partner2GivenName, &partner2Surname,
+	err := row.Scan(&id, &partner1ID, &partner2ID,
 		&relType, &marriageDateRaw, &marriageDateSort, &marriagePlace,
 		&marriagePlaceLat, &marriagePlaceLong,
 		&childCount, &version, &updatedAt)
@@ -3031,17 +2968,13 @@ func scanFamily(row rowScanner) (*repository.FamilyReadModel, error) {
 	}
 
 	f := &repository.FamilyReadModel{
-		ID:                id,
-		Partner1GivenName: partner1GivenName.String,
-		Partner1Surname:   partner1Surname.String,
-		Partner2GivenName: partner2GivenName.String,
-		Partner2Surname:   partner2Surname.String,
-		RelationshipType:  domain.RelationType(relType.String),
-		MarriageDateRaw:   marriageDateRaw.String,
-		MarriagePlace:     marriagePlace.String,
-		ChildCount:        childCount,
-		Version:           version,
-		UpdatedAt:         updatedAt,
+		ID:               id,
+		RelationshipType: domain.RelationType(relType.String),
+		MarriageDateRaw:  marriageDateRaw.String,
+		MarriagePlace:    marriagePlace.String,
+		ChildCount:       childCount,
+		Version:          version,
+		UpdatedAt:        updatedAt,
 	}
 
 	if partner1ID.Valid {
@@ -3068,6 +3001,36 @@ func scanFamily(row rowScanner) (*repository.FamilyReadModel, error) {
 
 func scanFamilyRow(rows *sql.Rows) (*repository.FamilyReadModel, error) {
 	return scanFamily(rows)
+}
+
+// familyWithNames scans one family row (nil when there is none) and resolves
+// its partner names on branchID (#1207).
+func (s *ReadModelStore) familyWithNames(ctx context.Context, branchID domain.BranchID, row rowScanner) (*repository.FamilyReadModel, error) {
+	f, err := scanFamily(row)
+	if err != nil || f == nil {
+		return f, err
+	}
+	families, err := s.withFamilyNames(ctx, branchID, []repository.FamilyReadModel{*f})
+	if err != nil {
+		return nil, err
+	}
+	return &families[0], nil
+}
+
+// withFamilyNames resolves the partner names of families on branchID (#1207).
+func (s *ReadModelStore) withFamilyNames(ctx context.Context, branchID domain.BranchID, families []repository.FamilyReadModel) ([]repository.FamilyReadModel, error) {
+	if err := repository.ResolveFamilyNames(ctx, s.GetPersonsByIDs, branchID, families); err != nil {
+		return nil, err
+	}
+	return families, nil
+}
+
+// withFamilyChildNames resolves the names of child links on branchID (#1207).
+func (s *ReadModelStore) withFamilyChildNames(ctx context.Context, branchID domain.BranchID, children []repository.FamilyChildReadModel) ([]repository.FamilyChildReadModel, error) {
+	if err := repository.ResolveFamilyChildNames(ctx, s.GetPersonsByIDs, branchID, children); err != nil {
+		return nil, err
+	}
+	return children, nil
 }
 
 func nullableString(s string) sql.NullString {

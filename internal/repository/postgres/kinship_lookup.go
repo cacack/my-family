@@ -2,8 +2,8 @@ package postgres
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
+	"slices"
 
 	"github.com/google/uuid"
 	"github.com/lib/pq"
@@ -30,17 +30,15 @@ const (
 		) o WHERE NOT deleted
 		ORDER BY person_id`
 
-	// familyChildrenByFamilyIDsQuery binds (branch, main, ids). The order is the
-	// cross-backend contract of GetFamilyChildrenByFamilyIDs; the "C" collation
-	// makes the name tie-break bytewise, as it is on SQLite and in memory.
+	// familyChildrenByFamilyIDsQuery binds (branch, main, ids). The rows are put
+	// in the cross-backend order of GetFamilyChildrenByFamilyIDs once their names
+	// are resolved (repository.CompareFamilyChildren).
 	familyChildrenByFamilyIDsQuery = `
 		SELECT ` + familyChildSelectCols + ` FROM (
 			SELECT DISTINCT ON (family_id, person_id) ` + familyChildSelectCols + `, deleted
 			FROM family_children WHERE family_id = ANY($3::uuid[]) AND branch_id IN ($1, $2)
 			ORDER BY family_id, person_id, (branch_id = $1) DESC
-		) o WHERE NOT deleted
-		ORDER BY family_id, sequence NULLS LAST,
-			COALESCE(person_surname, '') COLLATE "C", COALESCE(person_given_name, '') COLLATE "C", person_id`
+		) o WHERE NOT deleted`
 
 	// partnerSetFilter narrows the families overlay to those with a partner in
 	// one bound uuid[]. %[1]d is its placeholder number (see idSetFilter).
@@ -74,10 +72,8 @@ func (s *ReadModelStore) GetPedigreeEdgesByPersonIDs(ctx context.Context, branch
 		var (
 			edge               repository.PedigreeEdge
 			fatherID, motherID uuid.NullUUID
-			fatherName         sql.NullString
-			motherName         sql.NullString
 		)
-		if err := rows.Scan(&edge.PersonID, &fatherID, &motherID, &fatherName, &motherName); err != nil {
+		if err := rows.Scan(&edge.PersonID, &fatherID, &motherID); err != nil {
 			return nil, fmt.Errorf("scan pedigree edge: %w", err)
 		}
 		if fatherID.Valid {
@@ -86,11 +82,15 @@ func (s *ReadModelStore) GetPedigreeEdgesByPersonIDs(ctx context.Context, branch
 		if motherID.Valid {
 			edge.MotherID = &motherID.UUID
 		}
-		edge.FatherName = fatherName.String
-		edge.MotherName = motherName.String
 		edges = append(edges, edge)
 	}
-	return edges, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if err := repository.ResolvePedigreeEdgeNames(ctx, s.GetPersonsByIDs, branchID, edges); err != nil {
+		return nil, err
+	}
+	return edges, nil
 }
 
 // GetFamiliesForPersons retrieves every family visible on branchID in which any
@@ -113,7 +113,7 @@ func (s *ReadModelStore) GetFamiliesForPersons(ctx context.Context, branchID dom
 	if err != nil {
 		return nil, fmt.Errorf("scan families for persons: %w", err)
 	}
-	return families, nil
+	return s.withFamilyNames(ctx, branchID, families)
 }
 
 // GetFamilyChildrenByFamilyIDs retrieves the child links visible on branchID of
@@ -128,26 +128,13 @@ func (s *ReadModelStore) GetFamilyChildrenByFamilyIDs(ctx context.Context, branc
 		return nil, fmt.Errorf("query family children by family ids: %w", err)
 	}
 	defer rows.Close()
-
-	var children []repository.FamilyChildReadModel
-	for rows.Next() {
-		var (
-			child                          repository.FamilyChildReadModel
-			personGivenName, personSurname sql.NullString
-			relType                        string
-			sequence                       sql.NullInt64
-		)
-		if err := rows.Scan(&child.FamilyID, &child.PersonID, &personGivenName, &personSurname, &relType, &sequence); err != nil {
-			return nil, fmt.Errorf("scan family child: %w", err)
-		}
-		child.PersonGivenName = personGivenName.String
-		child.PersonSurname = personSurname.String
-		child.RelationshipType = domain.ChildRelationType(relType)
-		if sequence.Valid {
-			seq := int(sequence.Int64)
-			child.Sequence = &seq
-		}
-		children = append(children, child)
+	children, err := scanFamilyChildRows(rows)
+	if err != nil {
+		return nil, err
 	}
-	return children, rows.Err()
+	if children, err = s.withFamilyChildNames(ctx, branchID, children); err != nil {
+		return nil, err
+	}
+	slices.SortStableFunc(children, repository.CompareFamilyChildren)
+	return children, nil
 }

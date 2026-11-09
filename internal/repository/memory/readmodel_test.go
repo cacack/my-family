@@ -1056,13 +1056,19 @@ func TestReadModelStore_SaveAndGetPedigreeEdge(t *testing.T) {
 	personID := uuid.New()
 	fatherID := uuid.New()
 	motherID := uuid.New()
+	// The parent names resolve from the persons (#1207).
+	for id, given := range map[uuid.UUID]string{fatherID: "John", motherID: "Jane"} {
+		if err := store.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
+			ID: id, GivenName: given, Surname: "Doe", FullName: given + " Doe",
+		}); err != nil {
+			t.Fatalf("SavePerson() failed: %v", err)
+		}
+	}
 
 	edge := &repository.PedigreeEdge{
-		PersonID:   personID,
-		FatherID:   &fatherID,
-		MotherID:   &motherID,
-		FatherName: "John Doe",
-		MotherName: "Jane Doe",
+		PersonID: personID,
+		FatherID: &fatherID,
+		MotherID: &motherID,
 	}
 
 	// Save pedigree edge

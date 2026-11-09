@@ -181,6 +181,11 @@ func overlayOnBranch(t *testing.T, ctx context.Context, store repository.ReadMod
 				first[3] = evt.StreamID
 			}
 		}
+		// A family is named by its partner as the branch sees them (#1207):
+		// the person whose events precede it, renamed below unless deleted.
+		if evt.StreamType == "Family" && evt.StreamID != first[1] {
+			want[evt.StreamID] = "Branch " + set.wantNames[set.events[i-i%5].StreamID]
+		}
 		if evt.StreamType != "Person" || evt.StreamID == first[0] {
 			continue
 		}

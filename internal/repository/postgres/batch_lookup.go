@@ -73,9 +73,13 @@ func (s *ReadModelStore) GetPersonsByIDs(ctx context.Context, branchID domain.Br
 
 // GetFamiliesByIDs retrieves every visible family among ids on branchID (#697).
 func (s *ReadModelStore) GetFamiliesByIDs(ctx context.Context, branchID domain.BranchID, ids []uuid.UUID) ([]repository.FamilyReadModel, error) {
-	return queryByIDs(ctx, s, "families", familySelectCols, branchID, ids, func(rows *sql.Rows) ([]repository.FamilyReadModel, error) {
+	families, err := queryByIDs(ctx, s, "families", familySelectCols, branchID, ids, func(rows *sql.Rows) ([]repository.FamilyReadModel, error) {
 		return drainRows(rows, scanFamilyRow)
 	})
+	if err != nil {
+		return nil, err
+	}
+	return s.withFamilyNames(ctx, branchID, families)
 }
 
 // GetSourcesByIDs retrieves every visible source among ids on branchID (#697).

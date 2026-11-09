@@ -173,8 +173,16 @@ func (f *branchTestFixture) savedCitation(t *testing.T, sourceTitle string) uuid
 func (f *branchTestFixture) savedFamily(t *testing.T, given1, given2, surname string) uuid.UUID {
 	t.Helper()
 	id := uuid.New()
+	// A family's partner names resolve from the persons (#1207).
+	partner := func(given string) *uuid.UUID {
+		pid := uuid.New()
+		require.NoError(t, f.readStore.SavePerson(f.ctx, domain.MainBranchID, &repository.PersonReadModel{
+			ID: pid, GivenName: given, Surname: surname, FullName: domain.JoinFullName(given, surname),
+		}))
+		return &pid
+	}
 	require.NoError(t, f.readStore.SaveFamily(f.ctx, domain.MainBranchID, &repository.FamilyReadModel{
-		ID: id, Partner1GivenName: given1, Partner1Surname: surname, Partner2GivenName: given2, Partner2Surname: surname,
+		ID: id, Partner1ID: partner(given1), Partner2ID: partner(given2),
 	}))
 	return id
 }

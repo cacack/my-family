@@ -53,19 +53,30 @@ func runKinshipLookupScenario(t *testing.T, store repository.ReadModelStore) {
 		t.Fatalf("empty inputs returned rows: %v %v %v", edges, families, children)
 	}
 
+	// savePerson saves a main person; the reads resolve names from it (#1207).
+	savePerson := func(id uuid.UUID, given, surname string) {
+		t.Helper()
+		mustNoErr(t, "save person", store.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
+			ID: id, GivenName: given, Surname: surname, FullName: domain.JoinFullName(given, surname), Version: 1, UpdatedAt: now}))
+	}
+
 	// --- Pedigree edges ---
 	kept, edited, deleted, added, missing := uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New()
-	mainFather, branchFather, mother := uuid.New(), uuid.New(), uuid.New()
-	edge := func(person, father uuid.UUID, fatherName string) *repository.PedigreeEdge {
-		return &repository.PedigreeEdge{PersonID: person, FatherID: &father, MotherID: &mother, FatherName: fatherName, MotherName: "Mother Sample"}
+	mainFather, branchFather, leakedFather, mother := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	savePerson(mainFather, "Main", "")
+	savePerson(branchFather, "Branch", "")
+	savePerson(leakedFather, "Leaked", "")
+	savePerson(mother, "Mother", "Sample")
+	edge := func(person, father uuid.UUID) *repository.PedigreeEdge {
+		return &repository.PedigreeEdge{PersonID: person, FatherID: &father, MotherID: &mother}
 	}
-	for _, e := range []*repository.PedigreeEdge{edge(kept, mainFather, "Main"), edge(edited, mainFather, "Main"), edge(deleted, mainFather, "Main")} {
+	for _, e := range []*repository.PedigreeEdge{edge(kept, mainFather), edge(edited, mainFather), edge(deleted, mainFather)} {
 		mustNoErr(t, "save main edge", store.SavePedigreeEdge(ctx, domain.MainBranchID, e))
 	}
-	mustNoErr(t, "save branch edge", store.SavePedigreeEdge(ctx, branch, edge(edited, branchFather, "Branch")))
-	mustNoErr(t, "save added edge", store.SavePedigreeEdge(ctx, branch, edge(added, branchFather, "Branch")))
+	mustNoErr(t, "save branch edge", store.SavePedigreeEdge(ctx, branch, edge(edited, branchFather)))
+	mustNoErr(t, "save added edge", store.SavePedigreeEdge(ctx, branch, edge(added, branchFather)))
 	mustNoErr(t, "delete branch edge", store.DeletePedigreeEdge(ctx, branch, deleted))
-	mustNoErr(t, "save other-branch edge", store.SavePedigreeEdge(ctx, other, edge(kept, branchFather, "Leaked")))
+	mustNoErr(t, "save other-branch edge", store.SavePedigreeEdge(ctx, other, edge(kept, leakedFather)))
 
 	lookup := []uuid.UUID{missing, added, deleted, edited, kept, kept}
 	checkEdges := func(what string, b domain.BranchID, want map[uuid.UUID]string) {
@@ -79,7 +90,7 @@ func runKinshipLookupScenario(t *testing.T, store repository.ReadModelStore) {
 			if i > 0 && got[i-1].PersonID.String() >= e.PersonID.String() {
 				t.Fatalf("%s: edges not in ascending person id order at %d", what, i)
 			}
-			if e.FatherName != want[e.PersonID] {
+			if e.FatherName != want[e.PersonID] || e.MotherName != "Mother Sample" {
 				t.Fatalf("%s: edge %s father name = %q, want %q", what, e.PersonID, e.FatherName, want[e.PersonID])
 			}
 			one, err := store.GetPedigreeEdge(ctx, b, e.PersonID)
@@ -95,8 +106,8 @@ func runKinshipLookupScenario(t *testing.T, store repository.ReadModelStore) {
 	p1, p2, p3 := uuid.New(), uuid.New(), uuid.New()
 	fKept, fBoth, fRepartnered, fDeleted, fAdded, fLeaked := uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New()
 	family := func(id uuid.UUID, partner1, partner2 *uuid.UUID, label string) *repository.FamilyReadModel {
-		return &repository.FamilyReadModel{ID: id, Partner1ID: partner1, Partner2ID: partner2, Partner1GivenName: label,
-			Partner1Surname: "Sample", RelationshipType: domain.RelationMarriage, Version: 1, UpdatedAt: now}
+		return &repository.FamilyReadModel{ID: id, Partner1ID: partner1, Partner2ID: partner2, MarriagePlace: label,
+			RelationshipType: domain.RelationMarriage, Version: 1, UpdatedAt: now}
 	}
 	for _, f := range []*repository.FamilyReadModel{
 		family(fKept, &p1, nil, "Kept"),
@@ -123,8 +134,8 @@ func runKinshipLookupScenario(t *testing.T, store repository.ReadModelStore) {
 				t.Fatalf("%s: families not in ascending id order at %d", what, i)
 			}
 			wantLabel, ok := want[f.ID]
-			if !ok || f.Partner1GivenName != wantLabel {
-				t.Fatalf("%s: family %s label = %q, want %q (expected: %v)", what, f.ID, f.Partner1GivenName, wantLabel, ok)
+			if !ok || f.MarriagePlace != wantLabel {
+				t.Fatalf("%s: family %s label = %q, want %q (expected: %v)", what, f.ID, f.MarriagePlace, wantLabel, ok)
 			}
 			one, err := store.GetFamily(ctx, b, f.ID)
 			if err != nil || one == nil || !reflect.DeepEqual(*one, f) {
@@ -144,8 +155,10 @@ func runKinshipLookupScenario(t *testing.T, store repository.ReadModelStore) {
 	famA, famB, famC, famNone := uuid.New(), uuid.New(), uuid.New(), uuid.New()
 	one, two := 1, 2
 	child := func(familyID uuid.UUID, given string, seq *int) *repository.FamilyChildReadModel {
-		return &repository.FamilyChildReadModel{FamilyID: familyID, PersonID: uuid.New(), PersonGivenName: given,
-			PersonSurname: "Sample", RelationshipType: domain.ChildBiological, Sequence: seq}
+		id := uuid.New()
+		savePerson(id, given, "Sample")
+		return &repository.FamilyChildReadModel{FamilyID: familyID, PersonID: id,
+			RelationshipType: domain.ChildBiological, Sequence: seq}
 	}
 	unsequencedA, unsequencedB := child(famA, "Adam", nil), child(famA, "Bree", nil)
 	// A lowercase name sorts after the capitals bytewise but before them under

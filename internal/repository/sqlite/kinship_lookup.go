@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"slices"
 
 	"github.com/google/uuid"
 
@@ -22,7 +23,7 @@ import (
 const (
 	// pedigreeEdgesByPersonIDsQuery binds (branch, ids JSON, branch, main).
 	pedigreeEdgesByPersonIDsQuery = `
-		SELECT person_id, father_id, mother_id, father_name, mother_name
+		SELECT person_id, father_id, mother_id
 		FROM (
 			SELECT *, ROW_NUMBER() OVER (PARTITION BY person_id ORDER BY (branch_id = ?) DESC) AS rn
 			FROM pedigree_edges
@@ -32,17 +33,16 @@ const (
 		ORDER BY person_id`
 
 	// familyChildrenByFamilyIDsQuery binds (branch, ids JSON, branch, main). The
-	// order is the cross-backend contract of GetFamilyChildrenByFamilyIDs.
+	// rows are put in the cross-backend order of GetFamilyChildrenByFamilyIDs
+	// once their names are resolved (repository.CompareFamilyChildren).
 	familyChildrenByFamilyIDsQuery = `
-		SELECT family_id, person_id, person_given_name, person_surname, relationship_type, sequence
+		SELECT ` + familyChildSelectCols + `
 		FROM (
 			SELECT *, ROW_NUMBER() OVER (PARTITION BY family_id, person_id ORDER BY (branch_id = ?) DESC) AS rn
 			FROM family_children
 			WHERE family_id IN (SELECT value FROM json_each(?)) AND branch_id IN (?, ?)
 		)
-		WHERE rn = 1 AND deleted = 0
-		ORDER BY family_id, sequence IS NULL, sequence,
-			COALESCE(person_surname, ''), COALESCE(person_given_name, ''), person_id`
+		WHERE rn = 1 AND deleted = 0`
 
 	// partnerSetFilter narrows the families overlay to those with a partner in
 	// the one bound JSON array (bound twice: once per partner column).
@@ -81,15 +81,15 @@ func (s *ReadModelStore) GetPedigreeEdgesByPersonIDs(ctx context.Context, branch
 
 	var edges []repository.PedigreeEdge
 	for rows.Next() {
-		var personID, fatherID, motherID, fatherName, motherName sql.NullString
-		if err := rows.Scan(&personID, &fatherID, &motherID, &fatherName, &motherName); err != nil {
+		var personID, fatherID, motherID sql.NullString
+		if err := rows.Scan(&personID, &fatherID, &motherID); err != nil {
 			return nil, fmt.Errorf("scan pedigree edge: %w", err)
 		}
 		pID, err := uuid.Parse(personID.String)
 		if err != nil {
 			return nil, fmt.Errorf("parse pedigree edge person id: %w", err)
 		}
-		edge := repository.PedigreeEdge{PersonID: pID, FatherName: fatherName.String, MotherName: motherName.String}
+		edge := repository.PedigreeEdge{PersonID: pID}
 		if edge.FatherID, err = parseNullUUID(fatherID); err != nil {
 			return nil, fmt.Errorf("parse pedigree edge father id: %w", err)
 		}
@@ -98,7 +98,13 @@ func (s *ReadModelStore) GetPedigreeEdgesByPersonIDs(ctx context.Context, branch
 		}
 		edges = append(edges, edge)
 	}
-	return edges, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if err := repository.ResolvePedigreeEdgeNames(ctx, s.GetPersonsByIDs, branchID, edges); err != nil {
+		return nil, err
+	}
+	return edges, nil
 }
 
 // GetFamiliesForPersons retrieves every family visible on branchID in which any
@@ -123,7 +129,7 @@ func (s *ReadModelStore) GetFamiliesForPersons(ctx context.Context, branchID dom
 	if err != nil {
 		return nil, fmt.Errorf("scan families for persons: %w", err)
 	}
-	return families, nil
+	return s.withFamilyNames(ctx, branchID, families)
 }
 
 // GetFamilyChildrenByFamilyIDs retrieves the child links visible on branchID of
@@ -142,39 +148,15 @@ func (s *ReadModelStore) GetFamilyChildrenByFamilyIDs(ctx context.Context, branc
 		return nil, fmt.Errorf("query family children by family ids: %w", err)
 	}
 	defer rows.Close()
-
-	var children []repository.FamilyChildReadModel
-	for rows.Next() {
-		var (
-			familyID, personID, relType    string
-			personGivenName, personSurname sql.NullString
-			sequence                       sql.NullInt64
-		)
-		if err := rows.Scan(&familyID, &personID, &personGivenName, &personSurname, &relType, &sequence); err != nil {
-			return nil, fmt.Errorf("scan family child: %w", err)
-		}
-		fID, err := uuid.Parse(familyID)
-		if err != nil {
-			return nil, fmt.Errorf("parse family child family id: %w", err)
-		}
-		pID, err := uuid.Parse(personID)
-		if err != nil {
-			return nil, fmt.Errorf("parse family child person id: %w", err)
-		}
-		child := repository.FamilyChildReadModel{
-			FamilyID:         fID,
-			PersonID:         pID,
-			PersonGivenName:  personGivenName.String,
-			PersonSurname:    personSurname.String,
-			RelationshipType: domain.ChildRelationType(relType),
-		}
-		if sequence.Valid {
-			seq := int(sequence.Int64)
-			child.Sequence = &seq
-		}
-		children = append(children, child)
+	children, err := scanFamilyChildRows(rows)
+	if err != nil {
+		return nil, err
 	}
-	return children, rows.Err()
+	if children, err = s.withFamilyChildNames(ctx, branchID, children); err != nil {
+		return nil, err
+	}
+	slices.SortStableFunc(children, repository.CompareFamilyChildren)
+	return children, nil
 }
 
 // parseNullUUID parses an optional uuid column; NULL is nil.
