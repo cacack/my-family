@@ -385,12 +385,5 @@ func convertPersonNameReadModel(rm repository.PersonNameReadModel) PersonName {
 
 // GenDateToSortTime converts a GenDate to a sortable time for queries.
 func GenDateToSortTime(gd *domain.GenDate) *time.Time {
-	if gd == nil || gd.IsEmpty() {
-		return nil
-	}
-	t := gd.SortDate()
-	if t.IsZero() {
-		return nil
-	}
-	return &t
+	return repository.SortTime(gd)
 }
