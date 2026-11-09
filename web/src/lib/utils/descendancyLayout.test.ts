@@ -13,7 +13,11 @@ function person(spouseCount: number, children: DescendancyNode[] = []): Descenda
 	return {
 		id,
 		given_name: `P${id}`,
-		spouses: Array.from({ length: spouseCount }, (_, i) => ({ id: `${id}-s${i}`, name: `Spouse ${i}` })),
+		spouses: Array.from({ length: spouseCount }, (_, i) => ({
+			id: `${id}-s${i}`,
+			family_id: `${id}-f${i}`,
+			name: `Spouse ${i}`
+		})),
 		children
 	};
 }
@@ -81,6 +85,40 @@ describe('layoutDescendancy', () => {
 			expect(s.linkFromX).toBeCloseTo(rightEdges[i]);
 			expect(s.x - s.width / 2 - s.linkFromX).toBeCloseTo(config.spouseGap);
 		});
+	});
+
+	it('hangs each child from the connector to the spouse of its family (#1099)', () => {
+		const config = CONFIGS.wide;
+		const first = { ...person(0), family_id: 'root-f0' };
+		const second = { ...person(0), family_id: 'root-f1' };
+		const lone = { ...person(0), family_id: 'root-solo' };
+		const root: DescendancyNode = {
+			id: 'root',
+			spouses: [
+				{ id: 's0', family_id: 'root-f0', name: 'First' },
+				{ id: 's1', family_id: 'root-f1', name: 'Second' }
+			],
+			children: [first, second, lone]
+		};
+		const layout = layoutDescendancy(root, config);
+		const [rootNode] = layout.nodes;
+		const [s0, s1] = layout.spouses;
+		const linkTo = (id: string) => layout.links.find((l) => l.child.data.id === id)!;
+
+		// Midway along each couple's connector, in the person's row
+		expect(linkTo(first.id).spouse?.id).toBe('s0');
+		expect(linkTo(first.id).source.x).toBeCloseTo((s0.linkFromX + s0.x - s0.width / 2) / 2);
+		expect(linkTo(second.id).spouse?.id).toBe('s1');
+		expect(linkTo(second.id).source.x).toBeCloseTo((s1.linkFromX + s1.x - s1.width / 2) / 2);
+		for (const link of layout.links) expect(link.source.y).toBe(rootNode.y);
+
+		// The second couple's line starts right of the first's, between the two spouse cards
+		expect(linkTo(second.id).source.x).toBeGreaterThan(s0.x + s0.width / 2);
+		expect(linkTo(second.id).source.x).toBeLessThan(s1.x - s1.width / 2);
+
+		// A family with no named spouse hangs from the parent's own card
+		expect(linkTo(lone.id).spouse).toBeUndefined();
+		expect(linkTo(lone.id).source).toEqual({ x: rootNode.x, y: rootNode.y });
 	});
 
 	it('bounds every card', () => {

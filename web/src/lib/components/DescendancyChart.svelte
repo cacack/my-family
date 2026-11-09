@@ -15,6 +15,7 @@
 	} from '$lib/utils/chart';
 	import {
 		layoutDescendancy,
+		type ChildLink,
 		type DescendancyLayoutConfig,
 		type SpouseCard
 	} from '$lib/utils/descendancyLayout';
@@ -127,22 +128,22 @@
 			}
 		});
 
-		// Draw links (vertical lines from parent to children)
+		// Draw links from each couple (or lone parent) down to their children
+		const linkPath = d3
+			.linkVertical<ChildLink, { x: number; y: number }>()
+			.x((d) => d.x)
+			.y((d) => d.y);
 		g.selectAll('.link')
 			.data(links)
 			.enter()
 			.append('path')
 			.attr('class', 'link')
+			.attr('data-child-id', (d) => d.child.data.id)
+			.attr('data-spouse-id', (d) => d.spouse?.id ?? null)
 			.attr('fill', 'none')
 			.attr('stroke', '#94a3b8')
 			.attr('stroke-width', 2)
-			.attr(
-				'd',
-				d3
-					.linkVertical<d3.HierarchyLink<DescendancyNode>, d3.HierarchyPointNode<DescendancyNode>>()
-					.x((d) => d.x)
-					.y((d) => d.y) as (d: d3.HierarchyLink<DescendancyNode>) => string | null
-			);
+			.attr('d', (d) => linkPath(d));
 
 		// Create node groups
 		const nodeGroups = g

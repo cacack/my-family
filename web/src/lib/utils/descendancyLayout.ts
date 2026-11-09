@@ -32,10 +32,22 @@ export interface SpouseCard extends CardBox {
 	linkFromX: number;
 }
 
+/** A line from a couple (or a lone parent) down to one of their children. */
+export interface ChildLink {
+	parent: d3.HierarchyPointNode<DescendancyNode>;
+	child: d3.HierarchyPointNode<DescendancyNode>;
+	/** The parent's spouse in the child's family, when the API names one. */
+	spouse?: SpouseInfo;
+	/** The midpoint of the couple's connector, or the parent's card centre. */
+	source: { x: number; y: number };
+	/** The child's card centre. */
+	target: { x: number; y: number };
+}
+
 export interface DescendancyLayout {
 	/** Tree nodes; `x`/`y` is the centre of the person's own card. */
 	nodes: d3.HierarchyPointNode<DescendancyNode>[];
-	links: d3.HierarchyPointLink<DescendancyNode>[];
+	links: ChildLink[];
 	spouses: SpouseCard[];
 	/** Every card, person and spouse alike. */
 	cards: CardBox[];
@@ -93,6 +105,21 @@ export function layoutDescendancy(
 		})
 	);
 
+	// Each child hangs from the connector between its parent and the spouse of
+	// its family, so the child's other parent is the card the line leaves from
+	// (#1099); a child of a family with no named spouse hangs from the parent.
+	const spouseCardOf = new Map<string, SpouseCard>();
+	for (const card of spouses) spouseCardOf.set(`${card.node.data.id}/${card.spouse.family_id}`, card);
+	const links: ChildLink[] = tree.links().map(({ source: parent, target: child }) => {
+		const card = child.data.family_id
+			? spouseCardOf.get(`${parent.data.id}/${child.data.family_id}`)
+			: undefined;
+		const source = card
+			? { x: (card.linkFromX + card.x - card.width / 2) / 2, y: parent.y }
+			: { x: parent.x, y: parent.y };
+		return { parent, child, spouse: card?.spouse, source, target: { x: child.x, y: child.y } };
+	});
+
 	const cards: CardBox[] = [
 		...nodes.map((node) => ({ x: node.x, y: node.y, width: cardWidth, height: cardHeight })),
 		...spouses
@@ -104,7 +131,7 @@ export function layoutDescendancy(
 
 	return {
 		nodes,
-		links: tree.links(),
+		links,
 		spouses,
 		cards,
 		bounds: { x: left, y: top, width: right - left, height: bottom - top }
