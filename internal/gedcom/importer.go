@@ -20,6 +20,10 @@ import (
 // noteJoin separates a record's several NOTE values in its single Notes field.
 const noteJoin = "\n\n"
 
+// associationNoteJoin separates an association's NOTE values in its single
+// Notes field.
+const associationNoteJoin = "\n"
+
 // ImportResult contains the results of a GEDCOM import operation.
 type ImportResult struct {
 	PersonsImported       int
@@ -652,10 +656,32 @@ func parseIndividual(indi *gedcom.Individual, _ *gedcom.Document, result *Import
 	// Extract FamilySearch Family Tree ID (vendor extension)
 	person.FamilySearchID = indi.FamilySearchID
 
-	// Extract GEDCOM 7.0 external identifiers (EXID)
-	person.ExternalIDs = toDomainExternalIDs(indi.ExternalIDs)
+	// Extract GEDCOM 7.0 external identifiers (EXID). The FamilySearch ID is
+	// kept as one too, since the read model stores external IDs but has no
+	// vendor-tag field: export writes it as a FamilySearch EXID, which a
+	// 5.5.1 export maps back to _FSFTID (#1175).
+	person.ExternalIDs = withFamilySearchID(toDomainExternalIDs(indi.ExternalIDs), indi.FamilySearchID)
 
 	return person
+}
+
+// familySearchExternalIDType is the EXID TYPE for a FamilySearch Family Tree
+// ID. The gedcom-go converter maps an EXID of this type to _FSFTID on a
+// 5.5.x export.
+const familySearchExternalIDType = "https://www.familysearch.org/ark"
+
+// withFamilySearchID appends the FamilySearch ID fsID to ids as a FamilySearch
+// external identifier, unless it is empty or ids already holds it.
+func withFamilySearchID(ids []domain.ExternalIdentifier, fsID string) []domain.ExternalIdentifier {
+	if fsID == "" {
+		return ids
+	}
+	for _, id := range ids {
+		if id.Value == fsID && strings.Contains(strings.ToLower(id.Type), "familysearch.org/ark") {
+			return ids
+		}
+	}
+	return append(ids, domain.ExternalIdentifier{Value: fsID, Type: familySearchExternalIDType})
 }
 
 // toDomainExternalIDs converts gedcom-go EXID records to domain external
@@ -1388,7 +1414,7 @@ func extractAssociationsFromIndividual(indi *gedcom.Individual, personID uuid.UU
 		// Combine notes into a single string. Pointers are kept verbatim, as
 		// v2's interleaved Notes slice did; v3 groups them ahead of the text.
 		if notes := append(slices.Clone(assoc.NoteXRefs), assoc.InlineNotes...); len(notes) > 0 {
-			associationData.Notes = strings.Join(notes, "\n")
+			associationData.Notes = strings.Join(notes, associationNoteJoin)
 		}
 
 		associations = append(associations, associationData)

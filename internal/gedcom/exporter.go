@@ -167,36 +167,34 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 	repositoryXrefs := make(map[uuid.UUID]string)
 	noteXrefs := make(map[uuid.UUID]string)
 
-	// replacedXrefs maps a stored GedcomXref that is not a valid pointer to the
-	// generated xref exported in its place, so values that refer to the record
-	// by its raw stored xref (a NOTE pointer kept in Notes, a SOUR.REPO pointer
-	// kept in RepositoryName) follow it.
-	replacedXrefs := make(map[string]string)
-	assignXref := func(stored, generated string) string {
-		xref := exportXref(stored, generated)
-		if stored != "" && stored != xref {
-			replacedXrefs[stored] = xref
-		}
-		return xref
-	}
-	// remapXref remaps each noteJoin-separated part of v: one Notes value can
-	// hold several NOTE pointers.
-	remapXref := func(v string) string {
-		parts := strings.Split(v, noteJoin)
-		for i, part := range parts {
-			if xref, ok := replacedXrefs[part]; ok {
-				parts[i] = xref
-			}
-		}
-		return strings.Join(parts, noteJoin)
-	}
-
 	// Sort persons by ID for stable output
 	sort.Slice(persons, func(i, j int) bool {
 		return persons[i].ID.String() < persons[j].ID.String()
 	})
+	// Sort submitters by ID for stable output
+	sort.Slice(submitters, func(i, j int) bool {
+		return submitters[i].ID.String() < submitters[j].ID.String()
+	})
+
+	// Every stored xref is reserved before any is generated, so a generated
+	// xref never duplicates another record's stored one.
+	var storedXrefs []string
+	for _, s := range sources {
+		storedXrefs = append(storedXrefs, s.GedcomXref)
+	}
+	for _, r := range repositories {
+		storedXrefs = append(storedXrefs, r.GedcomXref)
+	}
+	for _, n := range notes {
+		storedXrefs = append(storedXrefs, n.GedcomXref)
+	}
+	for _, s := range submitters {
+		storedXrefs = append(storedXrefs, s.GedcomXref)
+	}
+	xrefs := newXrefAllocator(storedXrefs)
+
 	for i, p := range persons {
-		personXrefs[p.ID] = fmt.Sprintf("@I%d@", i+1)
+		personXrefs[p.ID] = xrefs.assign("", "I", i+1)
 	}
 
 	// Sort families by ID for stable output
@@ -204,7 +202,7 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 		return families[i].ID.String() < families[j].ID.String()
 	})
 	for i, f := range families {
-		familyXrefs[f.ID] = fmt.Sprintf("@F%d@", i+1)
+		familyXrefs[f.ID] = xrefs.assign("", "F", i+1)
 	}
 
 	// Sort sources by ID for stable output
@@ -213,7 +211,7 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 	})
 	for i, s := range sources {
 		// Use GedcomXref if available (for round-trip), otherwise generate
-		sourceXrefs[s.ID] = assignXref(s.GedcomXref, fmt.Sprintf("@S%d@", i+1))
+		sourceXrefs[s.ID] = xrefs.assign(s.GedcomXref, "S", i+1)
 	}
 
 	// Sort repositories by ID for stable output and assign xrefs.
@@ -227,7 +225,7 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 	repoIDToXref := make(map[uuid.UUID]string)
 	for i, r := range repositories {
 		// Use GedcomXref if available (for round-trip), otherwise generate.
-		repositoryXrefs[r.ID] = assignXref(r.GedcomXref, fmt.Sprintf("@R%d@", i+1))
+		repositoryXrefs[r.ID] = xrefs.assign(r.GedcomXref, "R", i+1)
 		repoIDToXref[r.ID] = repositoryXrefs[r.ID]
 		if r.Name != "" {
 			repoNameToXref[r.Name] = repositoryXrefs[r.ID]
@@ -235,13 +233,13 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 	}
 
 	// Sort notes by ID for stable output. Their xrefs are assigned before any
-	// record is built so that remapXref knows every replaced note xref.
+	// record is built so that remap knows every replaced note xref.
 	sort.Slice(notes, func(i, j int) bool {
 		return notes[i].ID.String() < notes[j].ID.String()
 	})
 	for i, n := range notes {
 		// Use GedcomXref if available (for round-trip), otherwise generate
-		noteXrefs[n.ID] = assignXref(n.GedcomXref, fmt.Sprintf("@N%d@", i+1))
+		noteXrefs[n.ID] = xrefs.assign(n.GedcomXref, "N", i+1)
 	}
 
 	// Build GEDCOM document
@@ -257,8 +255,8 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 	// Add source records
 	for i, s := range sources {
 		xref := sourceXrefs[s.ID]
-		s.Notes = remapXref(s.Notes)
-		s.RepositoryName = remapXref(s.RepositoryName)
+		s.Notes = xrefs.remap(s.Notes, noteJoin)
+		s.RepositoryName = xrefs.remap(s.RepositoryName, noteJoin)
 		src := toGedcomSource(s, repoIDToXref, repoNameToXref, exp.readStore, ctx)
 		doc.Records = append(doc.Records, &gedcom.Record{
 			XRef:   xref,
@@ -298,7 +296,7 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 		var associations []repository.AssociationReadModel
 		for _, a := range allAssocs {
 			if a.PersonID == p.ID {
-				a.Notes = remapXref(a.Notes)
+				a.Notes = xrefs.remap(a.Notes, associationNoteJoin)
 				associations = append(associations, a)
 			}
 		}
@@ -308,7 +306,7 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 		ldsOrdinances, _ := exp.readStore.ListLDSOrdinancesForPerson(ctx, p.ID)
 		result.LDSOrdinancesExported += len(ldsOrdinances)
 
-		p.Notes = remapXref(p.Notes)
+		p.Notes = xrefs.remap(p.Notes, noteJoin)
 		indi := toGedcomIndividual(p, sourceXrefs, personXrefs, birthCitations, deathCitations, events, attributes, associations, ldsOrdinances, exp.readStore, ctx)
 		doc.Records = append(doc.Records, &gedcom.Record{
 			XRef:   xref,
@@ -379,14 +377,9 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 		}
 	}
 
-	// Sort submitters by ID for stable output
-	sort.Slice(submitters, func(i, j int) bool {
-		return submitters[i].ID.String() < submitters[j].ID.String()
-	})
-
 	for i, s := range submitters {
 		// Use GedcomXref if available (for round-trip), otherwise generate
-		xref := exportXref(s.GedcomXref, fmt.Sprintf("@U%d@", i+1))
+		xref := xrefs.assign(s.GedcomXref, "U", i+1)
 
 		subm := toGedcomSubmitter(s)
 		doc.Records = append(doc.Records, &gedcom.Record{
@@ -410,7 +403,7 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 	// via SOUR.REPO cross-references.
 	for i, r := range repositories {
 		xref := repositoryXrefs[r.ID]
-		r.Notes = remapXref(r.Notes)
+		r.Notes = xrefs.remap(r.Notes, noteJoin)
 		repo := toGedcomRepository(r, exp.readStore, ctx)
 		doc.Records = append(doc.Records, &gedcom.Record{
 			XRef:   xref,
@@ -622,9 +615,7 @@ func toGedcomSource(s repository.SourceReadModel, repoIDToXref map[uuid.UUID]str
 	}
 
 	// Notes - encoder handles CONT/CONC automatically for multiline text
-	if s.Notes != "" {
-		src.InlineNotes = []string{s.Notes}
-	}
+	src.NoteXRefs, src.InlineNotes = splitNotes(s.Notes, noteJoin)
 
 	// External identifiers (GEDCOM 7.0 EXID), re-emitted from the read model.
 	if externalIDs, err := readStore.GetSourceExternalIDs(ctx, domain.MainBranchID, s.ID); err == nil {
@@ -732,9 +723,7 @@ func toGedcomIndividual(p repository.PersonReadModel, sourceXrefs map[uuid.UUID]
 	}
 
 	// Notes - encoder handles CONT/CONC automatically for multiline text
-	if p.Notes != "" {
-		indi.InlineNotes = []string{p.Notes}
-	}
+	indi.NoteXRefs, indi.InlineNotes = splitNotes(p.Notes, noteJoin)
 
 	// Associations (godparents, witnesses, etc.)
 	for _, assoc := range associations {
@@ -786,15 +775,7 @@ func toGedcomAssociation(a repository.AssociationReadModel, personXrefs map[uuid
 		assoc.Phrase = a.Phrase
 	}
 
-	// Notes: a pointer-shaped value (kept verbatim on import) is a NOTE
-	// pointer; anything else is inline note text.
-	if a.Notes != "" {
-		if gedcom.IsPointerXRef(a.Notes) {
-			assoc.NoteXRefs = []string{a.Notes}
-		} else {
-			assoc.InlineNotes = []string{a.Notes}
-		}
-	}
+	assoc.NoteXRefs, assoc.InlineNotes = splitNotes(a.Notes, associationNoteJoin)
 
 	return assoc
 }
@@ -1071,16 +1052,97 @@ func mapGPSToGedcomQuality(_ domain.SourceQuality, informantType domain.Informan
 	return 0, false
 }
 
-// exportXref returns the stored xref when it is a valid pointer, otherwise
-// generated. A stored xref can be invalid: 5.5.1 imports keep `@N 1@` verbatim
-// and an API-supplied gedcom_xref is not validated. A space would fail the
-// strict 7.0 re-parse in encodeDowngraded, and a line break would fail the
-// encoder (encoder.ErrLineBreak, gedcom-go#466) or forge a GEDCOM line.
-func exportXref(stored, generated string) string {
-	if gedcom.IsPointerXRef(stored) {
+// xrefAllocator gives every exported record a distinct xref. A record keeps
+// its stored GedcomXref when that is a valid pointer no other record has
+// taken; otherwise it gets a generated one that skips every stored xref of any
+// record type and every xref already given out (#1177).
+//
+// A stored xref can be invalid: 5.5.1 imports keep `@N 1@` verbatim and an
+// API-supplied gedcom_xref is not validated. A space would fail the strict 7.0
+// re-parse in encodeDowngraded, and a line break would fail the encoder
+// (encoder.ErrLineBreak, gedcom-go#466) or forge a GEDCOM line.
+type xrefAllocator struct {
+	reserved map[string]bool // valid stored xrefs of every record type
+	taken    map[string]bool // xrefs already given to a record
+	// replaced maps an invalid stored xref to the xref generated in its
+	// place, so values that name the record by its raw stored xref (a NOTE
+	// pointer kept in Notes, a SOUR.REPO pointer kept in RepositoryName)
+	// follow it.
+	replaced map[string]string
+}
+
+// newXrefAllocator reserves every valid xref in stored.
+func newXrefAllocator(stored []string) *xrefAllocator {
+	a := &xrefAllocator{reserved: map[string]bool{}, taken: map[string]bool{}, replaced: map[string]string{}}
+	for _, xref := range stored {
+		if gedcom.IsPointerXRef(xref) {
+			a.reserved[xref] = true
+		}
+	}
+	return a
+}
+
+// assign returns the xref for a record with the given stored xref: stored
+// itself when it is valid and still free, otherwise the first @<prefix><n>@,
+// counting up from n, that is neither reserved nor taken.
+func (a *xrefAllocator) assign(stored, prefix string, n int) string {
+	valid := gedcom.IsPointerXRef(stored)
+	if valid && !a.taken[stored] {
+		a.taken[stored] = true
 		return stored
 	}
-	return generated
+	xref := fmt.Sprintf("@%s%d@", prefix, n)
+	for a.reserved[xref] || a.taken[xref] {
+		n++
+		xref = fmt.Sprintf("@%s%d@", prefix, n)
+	}
+	a.taken[xref] = true
+	// A duplicate valid stored xref keeps naming the record that holds it.
+	if stored != "" && !valid {
+		a.replaced[stored] = xref
+	}
+	return xref
+}
+
+// remap replaces v, or each sep-separated part of v, that is a replaced
+// stored xref with its generated xref. One Notes value can hold several NOTE
+// pointers: the importer joins a record's with noteJoin and an association's
+// with "\n".
+func (a *xrefAllocator) remap(v, sep string) string {
+	if xref, ok := a.replaced[v]; ok {
+		return xref
+	}
+	parts := strings.Split(v, sep)
+	for i, part := range parts {
+		if xref, ok := a.replaced[part]; ok {
+			parts[i] = xref
+		}
+	}
+	return strings.Join(parts, sep)
+}
+
+// splitNotes splits a stored Notes value back into the NOTE pointers and the
+// inline note text that GEDCOM models as separate lists (#1201, #1178). The
+// importer joins an entity's NOTE values with sep and keeps pointers
+// verbatim, so each sep-separated part that is a valid pointer is a NOTE
+// pointer; the remaining parts, rejoined with sep, are one inline note.
+// A value with no pointer therefore exports unchanged.
+func splitNotes(notes, sep string) (xrefs, inline []string) {
+	if notes == "" {
+		return nil, nil
+	}
+	var text []string
+	for _, part := range strings.Split(notes, sep) {
+		if gedcom.IsPointerXRef(part) {
+			xrefs = append(xrefs, part)
+		} else {
+			text = append(text, part)
+		}
+	}
+	if len(text) > 0 {
+		inline = []string{strings.Join(text, sep)}
+	}
+	return xrefs, inline
 }
 
 // formatGedcomName formats a name in GEDCOM format (Given /Surname/).
@@ -1292,9 +1354,7 @@ func toGedcomRepository(r repository.RepositoryReadModel, readStore repository.R
 	}
 
 	// Notes - encoder handles CONT/CONC automatically for multiline text.
-	if r.Notes != "" {
-		repo.InlineNotes = []string{r.Notes}
-	}
+	repo.NoteXRefs, repo.InlineNotes = splitNotes(r.Notes, noteJoin)
 
 	// External identifiers (GEDCOM 7.0 EXID), re-emitted from the read model.
 	if externalIDs, err := readStore.GetRepositoryExternalIDs(ctx, r.ID); err == nil {

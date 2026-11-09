@@ -9,7 +9,7 @@ import (
 	"github.com/cacack/gedcom-go/v3/gedcom"
 )
 
-func TestExportXref(t *testing.T) {
+func TestXrefAllocator_Validity(t *testing.T) {
 	tests := []struct {
 		stored, want string
 	}{
@@ -22,9 +22,31 @@ func TestExportXref(t *testing.T) {
 		{"@VOID@", "@G1@"},
 	}
 	for _, tt := range tests {
-		if got := exportXref(tt.stored, "@G1@"); got != tt.want {
-			t.Errorf("exportXref(%q) = %q, want %q", tt.stored, got, tt.want)
+		if got := newXrefAllocator(nil).assign(tt.stored, "G", 1); got != tt.want {
+			t.Errorf("assign(%q) = %q, want %q", tt.stored, got, tt.want)
 		}
+	}
+}
+
+func TestXrefAllocator_Unique(t *testing.T) {
+	// A generated xref skips stored xrefs of any record type and xrefs already
+	// given out; a duplicate stored xref is not reused (#1177).
+	a := newXrefAllocator([]string{"@N2@", "@I1@", "@N 3@", "@N2@"})
+	got := []string{
+		a.assign("", "I", 1),     // @I1@ is a stored xref
+		a.assign("@N2@", "N", 1), // keeps its stored xref
+		a.assign("", "N", 2),     // @N2@ taken
+		a.assign("@N2@", "N", 3), // duplicate stored xref
+		a.assign("@N 3@", "N", 4),
+	}
+	want := []string{"@I2@", "@N2@", "@N3@", "@N4@", "@N5@"}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("assign #%d = %q, want %q (all: %q)", i, got[i], want[i], got)
+		}
+	}
+	if r := a.remap("@N2@\n\n@N 3@", noteJoin); r != "@N2@\n\n@N5@" {
+		t.Errorf("remap = %q, want only the invalid xref replaced", r)
 	}
 }
 

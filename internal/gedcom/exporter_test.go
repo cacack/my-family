@@ -3808,14 +3808,12 @@ func TestExport_SpacedXrefMultipleNotePointers(t *testing.T) {
 			if len(xrefs) != 2 {
 				t.Fatalf("export should hold two note records; got:\n%s", output)
 			}
-			// The person's notes keep their stored shape (one NOTE, the second
-			// pointer on a CONT line), each now naming an exported note record.
+			// The person writes one NOTE pointer per note (#1201), each now
+			// naming an exported note record.
 			var refs []string
 			for _, line := range strings.Split(output, "\n") {
 				if v, ok := strings.CutPrefix(line, "1 NOTE "); ok {
 					refs = append(refs, v)
-				} else if v, ok := strings.CutPrefix(line, "2 CONT @"); ok {
-					refs = append(refs, "@"+v)
 				}
 			}
 			if len(refs) != 2 || refs[0] == refs[1] || !xrefs[refs[0]] || !xrefs[refs[1]] {
@@ -3853,10 +3851,11 @@ func TestExport_RepositoryNameWithLineBreak(t *testing.T) {
 }
 
 func TestAssociationNotes_RoundTrip(t *testing.T) {
-	// Association Notes holds a NOTE pointer or inline text in one string. The
-	// exporter sends a valid pointer to NoteXRefs and anything else to
-	// InlineNotes; the v3 encoder writes both lists as NOTE lines, and the
-	// importer keeps the value verbatim (#875).
+	// Association Notes holds NOTE pointers and inline text in one string,
+	// one value per line. The exporter sends each valid pointer line to
+	// NoteXRefs and the remaining text to InlineNotes; the v3 encoder writes
+	// both lists as NOTE lines, and the importer keeps the values verbatim
+	// (#875, #1178).
 	tests := []struct {
 		name      string
 		notes     string
@@ -3866,9 +3865,8 @@ func TestAssociationNotes_RoundTrip(t *testing.T) {
 		{name: "pointer", notes: "@N1@", wantLines: []string{"2 NOTE @N1@\n"}},
 		{name: "inline", notes: "Met at church", wantLines: []string{"2 NOTE Met at church\n"}},
 		{name: "spaced", notes: "@N 1@", wantLines: []string{"2 NOTE @N 1@\n"}},
-		// Known loss: the importer reads `NOTE @N1@` as a pointer and drops
-		// its CONT text.
-		{name: "mixed", notes: "@N1@\nsee baptism", wantLines: []string{"2 NOTE @N1@\n", "3 CONT see baptism\n"}, wantNotes: "@N1@"},
+		{name: "mixed", notes: "@N1@\nsee baptism", wantLines: []string{"2 NOTE @N1@\n", "2 NOTE see baptism\n"}},
+		{name: "multiline inline", notes: "Met at church\nin 1850", wantLines: []string{"2 NOTE Met at church\n", "3 CONT in 1850\n"}},
 	}
 
 	for _, tt := range tests {
