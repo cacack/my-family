@@ -14,21 +14,21 @@
 	 * the branch's view. The mainline's snapshots are listed on the mainline.
 	 */
 	import { goto } from '$app/navigation';
-	import { api, type ApiError, type Snapshot } from '$lib/api/client';
-	import { activeBranch } from '$lib/stores/activeBranch.svelte';
-	import { Button } from '$lib/components/ui/button';
-	import PageHeader from '$lib/components/PageHeader.svelte';
-	import { Input } from '$lib/components/ui/input';
-	import { Label } from '$lib/components/ui/label';
-	import { Textarea } from '$lib/components/ui/textarea';
-	import * as Dialog from '$lib/components/ui/dialog';
-	import * as AlertDialog from '$lib/components/ui/alert-dialog';
+	import { api, type ApiError, type Snapshot } from '#lib/api/client.js';
+	import { activeBranch } from '#lib/stores/activeBranch.svelte.js';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import PageHeader from '#lib/components/PageHeader.svelte';
+	import { Input } from '#lib/components/ui/input/index.js';
+	import { Label } from '#lib/components/ui/label/index.js';
+	import { Textarea } from '#lib/components/ui/textarea/index.js';
+	import * as Dialog from '#lib/components/ui/dialog/index.js';
+	import * as AlertDialog from '#lib/components/ui/alert-dialog/index.js';
 	import {
 		CURRENT_STATE,
 		snapshotCompareHref,
 		snapshotCompareToNowHref
-	} from '$lib/utils/snapshots';
-	import ErrorState from '$lib/components/ErrorState.svelte';
+	} from '#lib/utils/snapshots.js';
+	import ErrorState from '#lib/components/ErrorState.svelte';
 
 	// Mirrors the maxLength on SnapshotCreate in openapi.yaml.
 	const NAME_MAX_LENGTH = 100;

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/svelte';
 import MergeConflictResolver from './MergeConflictResolver.svelte';
-import type { MergeConflict, MergeResolution } from '$lib/api/client';
+import type { MergeConflict, MergeResolution } from '#lib/api/client.js';
 
 const EDIT_EDIT: MergeConflict = {
 	stream_id: '11111111-1111-1111-1111-111111111111',

@@ -1,4 +1,4 @@
-import type { ConflictField } from '$lib/components/SaveConflict.svelte';
+import type { ConflictField } from '#lib/components/SaveConflict.svelte';
 import { rebaseEdits, sameValue } from './rebaseEdits';
 
 /**

@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/svelte';
 import SourcePage from './+page.svelte';
-import * as apiModule from '$lib/api/client';
+import * as apiModule from '#lib/api/client.js';
 
-vi.mock('$lib/api/client', async (importOriginal) => {
+vi.mock('#lib/api/client.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof apiModule>();
 	return {
 		...actual,
@@ -112,5 +112,34 @@ describe('Source detail page: save conflict (#939)', () => {
 		expect(await screen.findByText(/Branch is merged/)).toBeTruthy();
 		expect(api.getSource).toHaveBeenCalledTimes(1);
 		expect(screen.queryByText(/changed elsewhere/)).toBeNull();
+	});
+});
+
+// GEDCOM CONT/CONC lines fold into these fields; a text input would strip the breaks (#1174).
+describe('Source detail page: multi-line fields (#1174)', () => {
+	const api = apiModule.api;
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
+
+	it('saves an unchanged multi-line title, author and publisher with their line breaks', async () => {
+		const multiline = {
+			title: 'Parish register\nSt Mary, Kent',
+			author: 'Church of England\nDiocese of Canterbury',
+			publisher: 'Kent Archives\nMaidstone'
+		};
+		vi.mocked(api.getSource).mockResolvedValue(source(multiline));
+		vi.mocked(api.updateSource).mockResolvedValue({} as apiModule.Source);
+		render(SourcePage);
+
+		await fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+		for (const label of [/^Title/, 'Author', 'Publisher']) {
+			expect(screen.getByLabelText(label).tagName).toBe('TEXTAREA');
+		}
+		await fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+
+		await waitFor(() => expect(api.updateSource).toHaveBeenCalledTimes(1));
+		expect(vi.mocked(api.updateSource).mock.calls[0][1]).toMatchObject(multiline);
 	});
 });

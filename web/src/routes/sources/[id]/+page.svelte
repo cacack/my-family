@@ -1,19 +1,19 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
-	import { api, isVersionConflict, recordLoadError, type SourceDetail, type SourceType, type Citation } from '$lib/api/client';
-	import ExternalLinks from '$lib/components/ExternalLinks.svelte';
-	import InfoSection from '$lib/components/InfoSection.svelte';
-	import { Button } from '$lib/components/ui/button';
-	import ActionBar from '$lib/components/ActionBar.svelte';
-	import FormRow from '$lib/components/FormRow.svelte';
-	import { Badge } from '$lib/components/ui/badge';
-	import { SOURCE_TYPES } from '$lib/utils/sourceTypes';
-	import ErrorState from '$lib/components/ErrorState.svelte';
-	import ActionError from '$lib/components/ActionError.svelte';
-	import { asDatePhrase, savedAsNotes, savedAsText, unreadableDateField, type SavedAs } from '$lib/utils/dateInput';
-	import SaveConflict from '$lib/components/SaveConflict.svelte';
-	import { SaveConflictFlow, type ConflictRow } from '$lib/utils/saveConflict.svelte';
+	import { api, isVersionConflict, recordLoadError, type SourceDetail, type SourceType, type Citation } from '#lib/api/client.js';
+	import ExternalLinks from '#lib/components/ExternalLinks.svelte';
+	import InfoSection from '#lib/components/InfoSection.svelte';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import ActionBar from '#lib/components/ActionBar.svelte';
+	import FormRow from '#lib/components/FormRow.svelte';
+	import { Badge } from '#lib/components/ui/badge/index.js';
+	import { SOURCE_TYPES } from '#lib/utils/sourceTypes.js';
+	import ErrorState from '#lib/components/ErrorState.svelte';
+	import ActionError from '#lib/components/ActionError.svelte';
+	import { asDatePhrase, savedAsNotes, savedAsText, unreadableDateField, type SavedAs } from '#lib/utils/dateInput.js';
+	import SaveConflict from '#lib/components/SaveConflict.svelte';
+	import { SaveConflictFlow, type ConflictRow } from '#lib/utils/saveConflict.svelte.js';
 
 	let source: SourceDetail | null = $state(null);
 	let loading = $state(true);
@@ -251,18 +251,18 @@
 					</label>
 					<label>
 						<span>Title <span class="required">*</span></span>
-						<input type="text" bind:value={formData.title} required />
+						<textarea bind:value={formData.title} rows="2" required></textarea>
 					</label>
 				</FormRow>
 
 				<FormRow>
 					<label>
 						Author
-						<input type="text" bind:value={formData.author} />
+						<textarea bind:value={formData.author} rows="2"></textarea>
 					</label>
 					<label>
 						Publisher
-						<input type="text" bind:value={formData.publisher} />
+						<textarea bind:value={formData.publisher} rows="2"></textarea>
 					</label>
 				</FormRow>
 
@@ -485,6 +485,8 @@
 	.source-title h1 {
 		margin: 0;
 		overflow-wrap: anywhere;
+		/* GEDCOM CONT lines fold into the title (#1174). */
+		white-space: pre-line;
 		font-size: 1.5rem;
 		color: #1e293b;
 	}
@@ -580,7 +582,11 @@
 	}
 
 	.citation-details span {
+		display: inline-block;
+		vertical-align: top;
 		margin-right: 1rem;
+		/* A GEDCOM PAGE can span CONT lines (#1174). */
+		white-space: pre-line;
 	}
 
 	.quality-badges {

@@ -305,6 +305,35 @@ func TestExport_Notes(t *testing.T) {
 	}
 }
 
+func TestExport_MultiLineNoteRoundTrip(t *testing.T) {
+	// A multi-line person note survives export -> re-import (#1202).
+	readStore := memory.NewReadModelStore()
+	ctx := context.Background()
+	const notes = "Line one\n\nLine two"
+	readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
+		ID:        uuid.New(),
+		GivenName: "Test",
+		Surname:   "Person",
+		FullName:  "Test Person",
+		Notes:     notes,
+	})
+
+	buf := &bytes.Buffer{}
+	if _, err := gedcom.NewExporter(readStore).Export(ctx, buf); err != nil {
+		t.Fatal(err)
+	}
+	_, persons, _, _, _, _, _, _, _, _, _, _, _, err := gedcom.NewImporter().Import(ctx, buf)
+	if err != nil {
+		t.Fatalf("re-import failed: %v", err)
+	}
+	if len(persons) != 1 {
+		t.Fatalf("len(persons) = %d, want 1", len(persons))
+	}
+	if persons[0].Notes != notes {
+		t.Errorf("re-imported Notes = %q, want %q", persons[0].Notes, notes)
+	}
+}
+
 func TestExport_SingleParentFamily(t *testing.T) {
 	readStore := memory.NewReadModelStore()
 	ctx := context.Background()
@@ -3808,14 +3837,12 @@ func TestExport_SpacedXrefMultipleNotePointers(t *testing.T) {
 			if len(xrefs) != 2 {
 				t.Fatalf("export should hold two note records; got:\n%s", output)
 			}
-			// The person's notes keep their stored shape (one NOTE, the second
-			// pointer on a CONT line), each now naming an exported note record.
+			// The person writes one NOTE pointer per note (#1201), each now
+			// naming an exported note record.
 			var refs []string
 			for _, line := range strings.Split(output, "\n") {
 				if v, ok := strings.CutPrefix(line, "1 NOTE "); ok {
 					refs = append(refs, v)
-				} else if v, ok := strings.CutPrefix(line, "2 CONT @"); ok {
-					refs = append(refs, "@"+v)
 				}
 			}
 			if len(refs) != 2 || refs[0] == refs[1] || !xrefs[refs[0]] || !xrefs[refs[1]] {
@@ -3853,10 +3880,11 @@ func TestExport_RepositoryNameWithLineBreak(t *testing.T) {
 }
 
 func TestAssociationNotes_RoundTrip(t *testing.T) {
-	// Association Notes holds a NOTE pointer or inline text in one string. The
-	// exporter sends a valid pointer to NoteXRefs and anything else to
-	// InlineNotes; the v3 encoder writes both lists as NOTE lines, and the
-	// importer keeps the value verbatim (#875).
+	// Association Notes holds NOTE pointers and inline text in one string,
+	// one value per line. The exporter sends each valid pointer line to
+	// NoteXRefs and the remaining text to InlineNotes; the v3 encoder writes
+	// both lists as NOTE lines, and the importer keeps the values verbatim
+	// (#875, #1178).
 	tests := []struct {
 		name      string
 		notes     string
@@ -3866,9 +3894,8 @@ func TestAssociationNotes_RoundTrip(t *testing.T) {
 		{name: "pointer", notes: "@N1@", wantLines: []string{"2 NOTE @N1@\n"}},
 		{name: "inline", notes: "Met at church", wantLines: []string{"2 NOTE Met at church\n"}},
 		{name: "spaced", notes: "@N 1@", wantLines: []string{"2 NOTE @N 1@\n"}},
-		// Known loss: the importer reads `NOTE @N1@` as a pointer and drops
-		// its CONT text.
-		{name: "mixed", notes: "@N1@\nsee baptism", wantLines: []string{"2 NOTE @N1@\n", "3 CONT see baptism\n"}, wantNotes: "@N1@"},
+		{name: "mixed", notes: "@N1@\nsee baptism", wantLines: []string{"2 NOTE @N1@\n", "2 NOTE see baptism\n"}},
+		{name: "multiline inline", notes: "Met at church\nin 1850", wantLines: []string{"2 NOTE Met at church\n", "3 CONT in 1850\n"}},
 	}
 
 	for _, tt := range tests {

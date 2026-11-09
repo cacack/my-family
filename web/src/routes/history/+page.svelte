@@ -1,8 +1,8 @@
 <script lang="ts">
-	import ChangeHistory from '$lib/components/ChangeHistory.svelte';
-	import PageHeader from '$lib/components/PageHeader.svelte';
-	import MainlineNotice from '$lib/components/MainlineNotice.svelte';
-	import { Button } from '$lib/components/ui/button';
+	import ChangeHistory from '#lib/components/ChangeHistory.svelte';
+	import PageHeader from '#lib/components/PageHeader.svelte';
+	import MainlineNotice from '#lib/components/MainlineNotice.svelte';
+	import { Button } from '#lib/components/ui/button/index.js';
 </script>
 
 <svelte:head>

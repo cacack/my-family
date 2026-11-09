@@ -1,5 +1,5 @@
 <script lang="ts" module>
-	import type { MergeConflict } from '$lib/api/client';
+	import type { MergeConflict } from '#lib/api/client.js';
 
 	/**
 	 * What the resolver can put a decision in front of: a merge conflict, or
@@ -38,14 +38,14 @@
 	 * survive a `409 merge_conflicts` re-render and be serialized into the merge
 	 * request. The same goes for `rationales`.
 	 */
-	import type { MergeResolution } from '$lib/api/client';
-	import ConflictValues from '$lib/components/ConflictValues.svelte';
-	import { Badge } from '$lib/components/ui/badge';
-	import { Button } from '$lib/components/ui/button';
-	import { Label } from '$lib/components/ui/label';
-	import { RadioGroup, RadioGroupItem } from '$lib/components/ui/radio-group';
-	import { Textarea } from '$lib/components/ui/textarea';
-	import { entityTypeLabel, unnamedEntityLabel } from '$lib/utils/changeEntries';
+	import type { MergeResolution } from '#lib/api/client.js';
+	import ConflictValues from '#lib/components/ConflictValues.svelte';
+	import { Badge } from '#lib/components/ui/badge/index.js';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import { Label } from '#lib/components/ui/label/index.js';
+	import { RadioGroup, RadioGroupItem } from '#lib/components/ui/radio-group/index.js';
+	import { Textarea } from '#lib/components/ui/textarea/index.js';
+	import { entityTypeLabel, unnamedEntityLabel } from '#lib/utils/changeEntries.js';
 
 	/** The server's limit on one rationale, in characters. */
 	const RATIONALE_MAX_LENGTH = 1000;

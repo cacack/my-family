@@ -26,19 +26,19 @@
 	 * left to count without listing (#827).
 	 */
 	import { page } from '$app/state';
-	import { api, type ApiError, type BranchChangeEntry, type Snapshot } from '$lib/api/client';
-	import DiffView from '$lib/components/DiffView.svelte';
-	import MergedFromChip from '$lib/components/MergedFromChip.svelte';
-	import { Badge } from '$lib/components/ui/badge';
-	import { Label } from '$lib/components/ui/label';
-	import { activeBranch } from '$lib/stores/activeBranch.svelte';
-	import { CURRENT_STATE, parseComparisonEnd, snapshotCompareHref } from '$lib/utils/snapshots';
+	import { api, type ApiError, type BranchChangeEntry, type Snapshot } from '#lib/api/client.js';
+	import DiffView from '#lib/components/DiffView.svelte';
+	import MergedFromChip from '#lib/components/MergedFromChip.svelte';
+	import { Badge } from '#lib/components/ui/badge/index.js';
+	import { Label } from '#lib/components/ui/label/index.js';
+	import { activeBranch } from '#lib/stores/activeBranch.svelte.js';
+	import { CURRENT_STATE, parseComparisonEnd, snapshotCompareHref } from '#lib/utils/snapshots.js';
 	import {
 		CHANGE_ENTITY_TYPES,
 		ENTITY_TYPE_LABELS as ENTITY_LABELS,
 		changeEntryLink
-	} from '$lib/utils/changeEntries';
-	import ErrorState from '$lib/components/ErrorState.svelte';
+	} from '#lib/utils/changeEntries.js';
+	import ErrorState from '#lib/components/ErrorState.svelte';
 
 	type EntityType = BranchChangeEntry['entity_type'];
 	type EntityFilter = EntityType | 'all';

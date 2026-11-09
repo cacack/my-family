@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
 import FamilyCard from './FamilyCard.svelte';
-import type { FamilyDetail } from '$lib/api/client';
+import type { FamilyDetail } from '#lib/api/client.js';
 
 describe('FamilyCard', () => {
 	it('renders both partner names from the nested partner objects', () => {

@@ -404,6 +404,32 @@ func TestGetPersonsByPlace_NotFound(t *testing.T) {
 	}
 }
 
+// A place that normalizes to "" (e.g. "," or " ") is contained in every
+// normalized place, so it must match nobody rather than everybody.
+func TestGetPersonsByPlace_BlankPlaceMatchesNobody(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	service := query.NewBrowseService(readStore)
+	ctx := context.Background()
+
+	_, _ = handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName:  "John",
+		Surname:    "Doe",
+		BirthPlace: "Springfield, Ohio, USA",
+	})
+
+	for _, place := range []string{"", " ", ",", " , , "} {
+		result, err := service.GetPersonsByPlace(ctx, query.GetPersonsByPlaceInput{Place: place})
+		if err != nil {
+			t.Fatalf("GetPersonsByPlace(%q) failed: %v", place, err)
+		}
+		if result.Total != 0 || len(result.Items) != 0 {
+			t.Errorf("GetPersonsByPlace(%q): Total = %d, items = %d, want 0", place, result.Total, len(result.Items))
+		}
+	}
+}
+
 func TestGetPersonsBySurname_LimitCapping(t *testing.T) {
 	eventStore := memory.NewEventStore()
 	readStore := memory.NewReadModelStore()

@@ -9,20 +9,20 @@
 		type ResearchLogResponse,
 		type ProofSummaryResponse,
 		type ConflictStatus
-	} from '$lib/api/client';
-	import { Button } from '$lib/components/ui/button';
-	import { Badge } from '$lib/components/ui/badge';
-	import * as Tabs from '$lib/components/ui/tabs';
-	import UncertaintyBadge from '$lib/components/UncertaintyBadge.svelte';
+	} from '#lib/api/client.js';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import { Badge } from '#lib/components/ui/badge/index.js';
+	import * as Tabs from '#lib/components/ui/tabs/index.js';
+	import UncertaintyBadge from '#lib/components/UncertaintyBadge.svelte';
 	import {
 		formatFactType,
 		subjectRoute,
 		formatDate,
 		outcomeBadgeProps,
 		conflictBadgeProps
-	} from '$lib/utils/evidence';
-	import { clampPageToTotal, readEnum, readPositiveInt, setQuery } from '$lib/utils/urlState';
-	import ErrorState from '$lib/components/ErrorState.svelte';
+	} from '#lib/utils/evidence.js';
+	import { clampPageToTotal, readEnum, readPositiveInt, setQuery } from '#lib/utils/urlState.js';
+	import ErrorState from '#lib/components/ErrorState.svelte';
 
 	const pageSize = 20;
 

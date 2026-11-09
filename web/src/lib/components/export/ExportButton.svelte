@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { api, type ExportEstimate, type ExportProgress, type GedcomVersion } from '$lib/api/client';
-	import { Button } from '$lib/components/ui/button';
+	import { api, type ExportEstimate, type ExportProgress, type GedcomVersion } from '#lib/api/client.js';
+	import { Button } from '#lib/components/ui/button/index.js';
 	import ExportEstimateDisplay from './ExportEstimate.svelte';
 	import ExportProgressBar from './ExportProgress.svelte';
 	import ExportConfirmDialog from './ExportConfirmDialog.svelte';

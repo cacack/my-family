@@ -5,8 +5,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/svelte';
 import Page from './+page.svelte';
-import type * as apiModule from '$lib/api/client';
-import type { Branch, BranchComparisonResult, BranchUpdate } from '$lib/api/client';
+import type * as apiModule from '#lib/api/client.js';
+import type { Branch, BranchComparisonResult, BranchUpdate } from '#lib/api/client.js';
 
 const BRANCH_ID = '11111111-1111-1111-1111-111111111111';
 const PERSON_ID = '99999999-9999-9999-9999-999999999999';
@@ -27,7 +27,7 @@ const { mockState, compareBranch, updateBranch, listProofSummaries, refreshActiv
 	})
 );
 
-vi.mock('$lib/api/client', async (importOriginal) => {
+vi.mock('#lib/api/client.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof apiModule>();
 	return {
 		...actual,
@@ -39,7 +39,7 @@ vi.mock('$lib/api/client', async (importOriginal) => {
 	};
 });
 
-vi.mock('$lib/stores/activeBranch.svelte', () => ({
+vi.mock('#lib/stores/activeBranch.svelte.js', () => ({
 	activeBranch: mockState,
 	switchBranch: vi.fn(),
 	returnToMainline: vi.fn(),

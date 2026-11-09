@@ -6,7 +6,7 @@ const { branchState } = vi.hoisted(() => ({
 	branchState: { id: null as string | null }
 }));
 
-vi.mock('$lib/stores/activeBranch.svelte', () => ({
+vi.mock('#lib/stores/activeBranch.svelte.js', () => ({
 	activeBranch: branchState
 }));
 

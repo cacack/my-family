@@ -3,6 +3,7 @@ package domain
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 )
@@ -109,8 +110,8 @@ func (p *Person) FullName() string {
 // JoinFullName joins a given name and surname with a single space, leaving no
 // leading or trailing space when either part is empty. It is the rule for
 // persons.full_name: the personFullNameExpr constants in repository/sqlite and
-// repository/postgres must change with it. person_names.full_name (alternate
-// names) still always joins with a space and does not follow this rule.
+// repository/postgres must change with it. person_names.full_name follows
+// JoinPersonName, which also folds in the prefixes and suffix.
 func JoinFullName(givenName, surname string) string {
 	switch {
 	case surname == "":
@@ -204,10 +205,22 @@ func (pn *PersonName) Validate() error {
 	return nil
 }
 
-// FullName returns the full name combining GivenName and Surname.
+// FullName returns the name's full name; see JoinPersonName.
 func (pn *PersonName) FullName() string {
-	if pn.Surname == "" {
-		return pn.GivenName
+	return JoinPersonName(pn.NamePrefix, pn.GivenName, pn.SurnamePrefix, pn.Surname, pn.NameSuffix)
+}
+
+// JoinPersonName is the rule for a person name's full name
+// (person_names.full_name, on every read-model backend): name prefix, given
+// name, surname prefix, surname and name suffix, in that order, joined by single
+// spaces with empty parts skipped, so there is never a leading, trailing or
+// doubled space. With only a given name and surname it equals JoinFullName.
+func JoinPersonName(namePrefix, givenName, surnamePrefix, surname, nameSuffix string) string {
+	parts := make([]string, 0, 5)
+	for _, part := range []string{namePrefix, givenName, surnamePrefix, surname, nameSuffix} {
+		if part != "" {
+			parts = append(parts, part)
+		}
 	}
-	return pn.GivenName + " " + pn.Surname
+	return strings.Join(parts, " ")
 }

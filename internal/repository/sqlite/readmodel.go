@@ -12,7 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cacack/gedcom-go/v3/gedcom"
 	"github.com/google/uuid"
 
 	"github.com/cacack/my-family/internal/domain"
@@ -366,7 +365,8 @@ func (s *ReadModelStore) createTables() error {
 			person_id TEXT NOT NULL,
 			given_name TEXT NOT NULL,
 			surname TEXT NOT NULL,
-			full_name TEXT GENERATED ALWAYS AS (given_name || ' ' || surname) STORED,
+			-- Written by SavePersonName (PersonNameReadModel.JoinFullName, #1130).
+			full_name TEXT NOT NULL DEFAULT '',
 			name_prefix TEXT,
 			name_suffix TEXT,
 			surname_prefix TEXT,
@@ -687,6 +687,10 @@ func (s *ReadModelStore) createTables() error {
 	}
 
 	if err := s.migratePersonFullName(); err != nil {
+		return err
+	}
+
+	if err := s.migratePersonNameFullName(); err != nil {
 		return err
 	}
 
@@ -1021,6 +1025,74 @@ func (s *ReadModelStore) migratePersonFullName() error {
 	return tx.Commit()
 }
 
+// migratePersonNameFullName turns an older generated person_names.full_name
+// (given_name || ' ' || surname, which dropped the prefixes and suffix and left
+// a stray space when a part was empty) into the plain column SavePersonName
+// writes, and recomputes every existing row by the same rule (#1130, #985), so
+// no replay is needed. Rows are addressed by rowid, which every schema revision
+// of the table has. Like migratePersonFullName it runs in one transaction and
+// fails the open on error; it is a no-op once the column is no longer generated.
+func (s *ReadModelStore) migratePersonNameFullName() error {
+	var ddl string
+	if err := s.db.QueryRow(
+		`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'person_names'`,
+	).Scan(&ddl); err != nil {
+		return fmt.Errorf("inspect person_names schema: %w", err)
+	}
+	if !strings.Contains(ddl, "GENERATED") {
+		return nil
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin person_names.full_name migration: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	for _, stmt := range []string{
+		`ALTER TABLE person_names DROP COLUMN full_name`,
+		`ALTER TABLE person_names ADD COLUMN full_name TEXT NOT NULL DEFAULT ''`,
+	} {
+		if _, err := tx.Exec(stmt); err != nil {
+			return fmt.Errorf("migrate person_names.full_name (%s): %w", stmt, err)
+		}
+	}
+
+	rows, err := tx.Query(`SELECT rowid, given_name, surname, COALESCE(name_prefix, ''),
+		COALESCE(name_suffix, ''), COALESCE(surname_prefix, '') FROM person_names`)
+	if err != nil {
+		return fmt.Errorf("read person_names for full_name migration: %w", err)
+	}
+	type fullNameRow struct {
+		rowid    int64
+		fullName string
+	}
+	var updates []fullNameRow
+	for rows.Next() {
+		var (
+			rowid int64
+			name  repository.PersonNameReadModel
+		)
+		if err := rows.Scan(&rowid, &name.GivenName, &name.Surname,
+			&name.NamePrefix, &name.NameSuffix, &name.SurnamePrefix); err != nil {
+			rows.Close()
+			return fmt.Errorf("scan person_names for full_name migration: %w", err)
+		}
+		updates = append(updates, fullNameRow{rowid, name.JoinFullName()})
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("read person_names for full_name migration: %w", err)
+	}
+
+	for _, u := range updates {
+		if _, err := tx.Exec(`UPDATE person_names SET full_name = ? WHERE rowid = ?`, u.fullName, u.rowid); err != nil {
+			return fmt.Errorf("recompute person_names.full_name: %w", err)
+		}
+	}
+	return tx.Commit()
+}
+
 // personOverlaySubquery returns a parenthesized subquery that resolves the
 // branch overlay for persons (ADR-005 / #669): every id resolves to the branch's
 // own row when it has one, else the mainline row, with deleted=1 tombstones
@@ -1085,9 +1157,12 @@ func (s *ReadModelStore) ListPersons(ctx context.Context, opts repository.ListOp
 	whereClause := ""
 	var whereArgs []any
 	if opts.ResearchStatus != nil {
-		if *opts.ResearchStatus == "unset" {
+		switch *opts.ResearchStatus {
+		case "unset":
 			whereClause = "WHERE research_status IS NULL OR research_status = ''"
-		} else {
+		case "unassessed":
+			whereClause = "WHERE research_status IS NULL OR research_status IN ('', 'unknown')"
+		default:
 			whereClause = "WHERE research_status = ?"
 			whereArgs = append(whereArgs, *opts.ResearchStatus)
 		}
@@ -1265,7 +1340,7 @@ func searchPersonsLikeSQL(opts repository.SearchOptions) (string, []any) {
 		FROM ` + overlay + ` p
 		WHERE (` + containsFoldFunc + `(p.full_name, ?)
 		   OR p.id IN (SELECT person_id FROM ` + namesOverlay + `
-			   WHERE ` + containsFoldFunc + `(full_name, ?) OR ` + containsFoldFunc + `(nickname, ?)))`)
+			   WHERE ` + containsFoldFunc + `(search_name, ?) OR ` + containsFoldFunc + `(nickname, ?)))`)
 	args = append(args, opts.Query)
 	args = append(args, namesArgs...)
 	args = append(args, opts.Query, opts.Query)
@@ -1281,7 +1356,9 @@ func searchPersonsLikeSQL(opts repository.SearchOptions) (string, []any) {
 
 // personNamesOverlaySubquery resolves person_names for a branch (partition by
 // name id, branch row wins, tombstones excluded) so a branch-overridden name
-// does not also match its shadowed mainline value. Off main the three
+// does not also match its shadowed mainline value. Search matches an alternate
+// name's given name and surname joined as persons.full_name is (search_name),
+// not its displayed full_name with prefixes and suffix. Off main the three
 // placeholders bind (branch, branch, main); on main the one placeholder binds
 // main.
 func personNamesOverlaySubquery(branchID domain.BranchID) (string, []any) {
@@ -1290,13 +1367,13 @@ func personNamesOverlaySubquery(branchID domain.BranchID) (string, []any) {
 		// itself, so person_names holds one row per id and the ROW_NUMBER window
 		// over the whole table is unnecessary.
 		return `(
-			SELECT person_id, full_name, given_name, surname, nickname, is_primary
+			SELECT person_id, ` + personFullNameExpr + ` AS search_name, given_name, surname, nickname, is_primary
 			FROM person_names WHERE branch_id = ? AND deleted = 0
 		)`, []any{mainBranchID}
 	}
 	return `(
-			SELECT person_id, full_name, given_name, surname, nickname, is_primary FROM (
-				SELECT person_id, full_name, given_name, surname, nickname, is_primary, deleted,
+			SELECT person_id, ` + personFullNameExpr + ` AS search_name, given_name, surname, nickname, is_primary FROM (
+				SELECT person_id, given_name, surname, nickname, is_primary, deleted,
 					   ROW_NUMBER() OVER (PARTITION BY id ORDER BY (branch_id = ?) DESC) AS rrn
 				FROM person_names WHERE branch_id IN (?, ?)
 			) WHERE rrn = 1 AND deleted = 0
@@ -1325,7 +1402,7 @@ func (s *ReadModelStore) searchPersonsFuzzy(ctx context.Context, opts repository
 	args := append(append([]any{}, overlayArgs...), namesArgs...)
 	sb.WriteString(`
 		SELECT p.id, p.given_name, p.surname, p.full_name, p.birth_date_sort, p.death_date_sort,
-			   pn.given_name, pn.surname, pn.full_name, pn.nickname, pn.is_primary
+			   pn.given_name, pn.surname, pn.search_name, pn.nickname, pn.is_primary
 		FROM ` + overlay + ` p
 		LEFT JOIN ` + namesOverlay + ` pn ON p.id = pn.person_id`)
 	if filterSQL != "" {
@@ -2067,13 +2144,14 @@ func (s *ReadModelStore) SavePersonName(ctx context.Context, branchID domain.Bra
 	}
 
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO person_names (id, person_id, given_name, surname, name_prefix, name_suffix,
+		INSERT INTO person_names (id, person_id, given_name, surname, full_name, name_prefix, name_suffix,
 								  surname_prefix, nickname, name_type, is_primary, updated_at, branch_id, deleted)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
 		ON CONFLICT(id, branch_id) DO UPDATE SET
 			person_id = excluded.person_id,
 			given_name = excluded.given_name,
 			surname = excluded.surname,
+			full_name = excluded.full_name,
 			name_prefix = excluded.name_prefix,
 			name_suffix = excluded.name_suffix,
 			surname_prefix = excluded.surname_prefix,
@@ -2082,7 +2160,7 @@ func (s *ReadModelStore) SavePersonName(ctx context.Context, branchID domain.Bra
 			is_primary = excluded.is_primary,
 			updated_at = excluded.updated_at,
 			deleted = 0
-	`, name.ID.String(), name.PersonID.String(), name.GivenName, name.Surname,
+	`, name.ID.String(), name.PersonID.String(), name.GivenName, name.Surname, name.JoinFullName(),
 		nullableString(name.NamePrefix), nullableString(name.NameSuffix),
 		nullableString(name.SurnamePrefix), nullableString(name.Nickname),
 		string(name.NameType), isPrimary, formatTimestamp(name.UpdatedAt), branchID.String())
@@ -2829,6 +2907,41 @@ func (s *ReadModelStore) GetChildFamily(ctx context.Context, branchID domain.Bra
 	row := s.db.QueryRowContext(ctx, query, args...)
 
 	return scanFamily(row)
+}
+
+// RenameFamilyMember rewrites personID's partner, child and pedigree parent
+// names on the families, family_children and pedigree_edges rows stored under
+// branchID itself.
+func (s *ReadModelStore) RenameFamilyMember(ctx context.Context, branchID domain.BranchID, personID uuid.UUID, givenName, surname string) error {
+	if err := s.guardBranchWrite(branchID); err != nil {
+		return err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin rename family member: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	args := []any{givenName, surname, personID.String(), branchID.String()}
+	for _, stmt := range []string{
+		`UPDATE families SET partner1_given_name = ?, partner1_surname = ? WHERE partner1_id = ? AND branch_id = ? AND deleted = 0`,
+		`UPDATE families SET partner2_given_name = ?, partner2_surname = ? WHERE partner2_id = ? AND branch_id = ? AND deleted = 0`,
+		`UPDATE family_children SET person_given_name = ?, person_surname = ? WHERE person_id = ? AND branch_id = ? AND deleted = 0`,
+	} {
+		if _, err := tx.ExecContext(ctx, stmt, args...); err != nil {
+			return fmt.Errorf("rename family member: %w", err)
+		}
+	}
+	edgeArgs := []any{domain.JoinFullName(givenName, surname), personID.String(), branchID.String()}
+	for _, stmt := range []string{
+		`UPDATE pedigree_edges SET father_name = ? WHERE father_id = ? AND branch_id = ? AND deleted = 0`,
+		`UPDATE pedigree_edges SET mother_name = ? WHERE mother_id = ? AND branch_id = ? AND deleted = 0`,
+	} {
+		if _, err := tx.ExecContext(ctx, stmt, edgeArgs...); err != nil {
+			return fmt.Errorf("rename pedigree parent: %w", err)
+		}
+	}
+	return tx.Commit()
 }
 
 // SaveFamilyChild saves a family child relationship on the given branch.
@@ -4770,7 +4883,8 @@ func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, branchID domain.
 
 	if parent == "" {
 		// Top-level: get unique countries/top-level places (rightmost part after last comma).
-		// SQLite has no reverse split: RTRIM(place, <every non-comma char>) strips back to
+		// Places are normalized first, so blank parts never form a level (#925).
+		// SQLite has no reverse split: RTRIM(norm, <every non-comma char>) strips back to
 		// the last comma, so the SUBSTR after that prefix is the last part (or the whole
 		// place when it has no comma). The child level uses the same idiom.
 		// Args in statement order: the CTE's binds (off main), then each leg's own
@@ -4784,18 +4898,22 @@ func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, branchID domain.
 				UNION
 				SELECT DISTINCT death_place as place FROM `+src+` WHERE death_place != '' AND death_place IS NOT NULL
 			),
+			normalized AS (
+				SELECT place, `+placeNormFunc+`(place) as norm FROM all_places
+			),
 			parsed AS (
 				SELECT
 					place,
-					TRIM(SUBSTR(place, LENGTH(RTRIM(place, REPLACE(place, ',', ''))) + 1)) as top_level
-				FROM all_places
+					norm,
+					SUBSTR(norm, LENGTH(RTRIM(norm, REPLACE(norm, ',', ''))) + 1) as top_level
+				FROM normalized
 			)
 			SELECT
 				top_level as place_name,
 				top_level as full_name,
 				COUNT(DISTINCT place) as count,
 				CASE
-					WHEN COUNT(DISTINCT place) > (SELECT COUNT(*) FROM parsed p2 WHERE p2.top_level = parsed.top_level AND p2.place = p2.top_level)
+					WHEN COUNT(DISTINCT place) > COUNT(DISTINCT CASE WHEN norm = top_level THEN place END)
 					THEN 1
 					ELSE 0
 				END as has_children
@@ -4806,8 +4924,8 @@ func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, branchID domain.
 		`, args...)
 	} else {
 		// Child level: places whose last parts are parent's parts. parent is a
-		// full_name built with ", " while GEDCOM places may omit the space, so both
-		// sides compare with ", " collapsed to ",". Args in statement order: the
+		// full_name built with ", " while GEDCOM places may omit the space or carry
+		// blank parts, so both sides compare normalized (repository.NormalizePlace). Args in statement order: the
 		// CTE's binds (off main), each leg's own overlay binds (main only), then
 		// the two parent binds.
 		args := append(append([]any{}, cteArgs...), legArgs...)
@@ -4823,8 +4941,8 @@ func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, branchID domain.
 			normalized AS (
 				SELECT
 					place,
-					REPLACE(place, ', ', ',') as norm,
-					REPLACE(?, ', ', ',') as norm_parent
+					`+placeNormFunc+`(place) as norm,
+					`+placeNormFunc+`(?) as norm_parent
 				FROM all_places
 			),
 			parsed AS (
@@ -4882,13 +5000,13 @@ func (s *ReadModelStore) GetPersonsByPlace(ctx context.Context, place string, op
 
 	// Count total - match place at any position in birth_place or death_place.
 	// place is usually a GetPlaceHierarchy full_name (parts joined with ", "), so
-	// both sides compare with ", " collapsed to "," as the hierarchy does.
+	// both sides compare normalized (repository.NormalizePlace) as the hierarchy does.
 	var total int
 	countArgs := append(append([]any{}, overlayArgs...), place, place)
 	err := s.db.QueryRowContext(ctx, `
 		SELECT COUNT(*) FROM `+overlay+`
-		WHERE REPLACE(birth_place, ', ', ',') LIKE '%' || REPLACE(?, ', ', ',') || '%'
-		   OR REPLACE(death_place, ', ', ',') LIKE '%' || REPLACE(?, ', ', ',') || '%'
+		WHERE `+placeNormFunc+`(birth_place) LIKE '%' || `+placeNormFunc+`(?) || '%'
+		   OR `+placeNormFunc+`(death_place) LIKE '%' || `+placeNormFunc+`(?) || '%'
 	`, countArgs...).Scan(&total)
 	if err != nil {
 		return nil, 0, fmt.Errorf("count persons by place: %w", err)
@@ -4903,8 +5021,8 @@ func (s *ReadModelStore) GetPersonsByPlace(ctx context.Context, place string, op
 			   notes, research_status, brick_wall_note, brick_wall_since, brick_wall_resolved_at,
 			   version, updated_at
 		FROM `+overlay+`
-		WHERE REPLACE(birth_place, ', ', ',') LIKE '%' || REPLACE(?, ', ', ',') || '%'
-		   OR REPLACE(death_place, ', ', ',') LIKE '%' || REPLACE(?, ', ', ',') || '%'
+		WHERE `+placeNormFunc+`(birth_place) LIKE '%' || `+placeNormFunc+`(?) || '%'
+		   OR `+placeNormFunc+`(death_place) LIKE '%' || `+placeNormFunc+`(?) || '%'
 		ORDER BY surname ASC, given_name ASC, id ASC
 		LIMIT ? OFFSET ?
 	`, queryArgs...)
@@ -5050,9 +5168,8 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 		if err != nil {
 			continue
 		}
-		lat, errLat := gedcom.ParseCoordinate(latStr)
-		lon, errLon := gedcom.ParseCoordinate(lonStr)
-		if errLat != nil || errLon != nil {
+		lat, lon, ok := repository.ParseMapCoordinates(personID, "birth", latStr, lonStr)
+		if !ok {
 			continue
 		}
 		person := repository.MapPerson{ID: personID, GivenName: givenName, Surname: surname}
@@ -5090,9 +5207,8 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 		if err != nil {
 			continue
 		}
-		lat, errLat := gedcom.ParseCoordinate(latStr)
-		lon, errLon := gedcom.ParseCoordinate(lonStr)
-		if errLat != nil || errLon != nil {
+		lat, lon, ok := repository.ParseMapCoordinates(personID, "death", latStr, lonStr)
+		if !ok {
 			continue
 		}
 		person := repository.MapPerson{ID: personID, GivenName: givenName, Surname: surname}

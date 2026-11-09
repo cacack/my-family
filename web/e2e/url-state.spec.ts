@@ -60,7 +60,8 @@ test('Back from a person opened on /persons page 3, sorted by birth date, return
 test('Back from a search result returns to the search and its results', async ({ page }) => {
 	await page.goto('/search');
 	await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Pager01');
-	await page.getByRole('button', { name: 'Search', exact: true }).click();
+	// Scoped to the page: the header search box has its own Search button.
+	await page.getByRole('main').getByRole('button', { name: 'Search', exact: true }).click();
 	await expect(page).toHaveURL(/\/search\?q=Pager01$/);
 	const result = page.locator('.results-table .person-link').first();
 	await expect(result).toContainText('Pager01');

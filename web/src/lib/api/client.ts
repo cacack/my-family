@@ -526,7 +526,7 @@ export type ChangeHistoryResponse = Schemas['ChangeHistoryResponse'];
  * write to, whichever research branch is currently active rather than the
  * mainline. That branch is module-level state, set by
  * `setClientBranch`/`getClientBranch` and driven in practice by `switchBranch`
- * in `$lib/stores/activeBranch.svelte`. Nothing about a call site shows it —
+ * in `#lib/stores/activeBranch.svelte.js`. Nothing about a call site shows it —
  * `api.getPerson(id)` returns branch or mainline data depending on state some
  * other file set, so a scoped method's result is only as well-defined as the
  * scope in force when it runs.
@@ -623,7 +623,7 @@ class ApiClient {
 		offset?: number;
 		sort?: 'surname' | 'given_name' | 'birth_date' | 'updated_at';
 		order?: 'asc' | 'desc';
-		research_status?: ResearchStatus | 'unset';
+		research_status?: ResearchStatus | 'unset' | 'unassessed';
 	}): Promise<PersonList> {
 		const searchParams = new URLSearchParams();
 		if (params?.limit) searchParams.set('limit', params.limit.toString());
@@ -2189,6 +2189,33 @@ function stripCalendarEscape(raw: string): { text: string; token?: string } {
 }
 
 /**
+ * Display form of a raw BET/FROM range whose end carries its own calendar
+ * escape naming a different calendar from the start's ("BET @#DJULIAN@ 1690
+ * AND @#DGREGORIAN@ 1700"): each endpoint is labelled with its own calendar,
+ * "BET 1690 (Julian) AND 1700". The start's calendar comes from its own escape
+ * (Gregorian without one), since a date stored before the range end's calendar
+ * was read may carry the end's calendar as the whole date's. Returns undefined
+ * for any other date.
+ */
+function formatMixedCalendarRange(raw: string): string | undefined {
+	const connector = raw.match(/\s(AND|TO)\s/i);
+	if (connector?.index === undefined) return undefined;
+	const head = raw.slice(0, connector.index);
+	const tail = raw.slice(connector.index);
+	const end = stripCalendarEscape(tail);
+	if (!end.token) return undefined;
+	const start = stripCalendarEscape(head);
+	const startCalendar = start.token ?? 'DGREGORIAN';
+	if (end.token === startCalendar) return undefined;
+	const withLabel = (text: string, calendar: string) => {
+		const label = calendarLabel(calendar);
+		return label ? `${text} (${label})` : text;
+	};
+	// end.text is trimmed, so the connector's leading space is restored.
+	return `${withLabel(start.text, startCalendar)} ${withLabel(end.text, end.token)}`;
+}
+
+/**
  * Display form of an API year. The API stores a BC year as a negative number
  * ("44 BC" is -44), which is never shown to people: -44 renders as "44 BC".
  */
@@ -2204,6 +2231,8 @@ export function formatGenDate(date?: GenDate): string {
 		// annotated with the calendar system when it is not Gregorian. Derive the
 		// label from date.calendar, falling back to the escape token in the raw
 		// string so a stripped escape never disappears without annotation.
+		const mixed = formatMixedCalendarRange(date.raw);
+		if (mixed) return mixed;
 		const stripped = stripCalendarEscape(date.raw);
 		const rawLabel = calendarLabel(date.calendar) || calendarLabel(stripped.token);
 		return stripped.text + (rawLabel ? ` (${rawLabel})` : '');

@@ -10,19 +10,19 @@
 		type MergePersonsRequest,
 		type MergePersonsResponse,
 		type PersonDetail
-	} from '$lib/api/client';
-	import { activeBranch } from '$lib/stores/activeBranch.svelte';
-	import { Button } from '$lib/components/ui/button';
+	} from '#lib/api/client.js';
+	import { activeBranch } from '#lib/stores/activeBranch.svelte.js';
+	import { Button } from '#lib/components/ui/button/index.js';
 	import {
 		Card,
 		CardContent,
 		CardDescription,
 		CardHeader,
 		CardTitle
-	} from '$lib/components/ui/card';
-	import { RadioGroup, RadioGroupItem } from '$lib/components/ui/radio-group';
-	import { Label } from '$lib/components/ui/label';
-	import ErrorState from '$lib/components/ErrorState.svelte';
+	} from '#lib/components/ui/card/index.js';
+	import { RadioGroup, RadioGroupItem } from '#lib/components/ui/radio-group/index.js';
+	import { Label } from '#lib/components/ui/label/index.js';
+	import ErrorState from '#lib/components/ErrorState.svelte';
 
 	const MERGEABLE_FIELDS = [
 		'given_name',

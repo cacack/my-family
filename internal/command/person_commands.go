@@ -109,11 +109,15 @@ func (h *Handler) CreatePerson(ctx context.Context, input CreatePersonInput) (*C
 		return nil, fmt.Errorf("%w: %v", ErrInvalidInput, err)
 	}
 
-	// Create event
-	event := domain.NewPersonCreated(person)
+	// A person's name is its primary name (docs/CONVENTIONS.md "Person Name and
+	// Primary Name"), recorded with the person so its Names list is never
+	// empty (#1131).
+	primary := domain.NewPersonName(person.ID, person.GivenName, person.Surname)
+	primary.IsPrimary = true
+	events := []domain.Event{domain.NewPersonCreated(person), domain.NewNameAdded(primary)}
 
 	// Execute command (append + project)
-	version, err := h.execute(ctx, person.ID.String(), "Person", []domain.Event{event}, -1)
+	version, err := h.execute(ctx, person.ID.String(), "Person", events, -1)
 	if err != nil {
 		return nil, fmt.Errorf("executing create person command: %w", err)
 	}
