@@ -376,9 +376,10 @@ func (h *Handler) importFamily(ctx context.Context, f gedcom.FamilyData) error {
 		return nil
 	}
 
-	// Create event. EXIDs and marriage notes are not domain.Family fields
-	// (#1225, #1250).
+	// Create event. Marriage place coordinates, EXIDs and marriage notes are
+	// not domain.Family fields (#1225, #1250, #1265).
 	event := domain.NewFamilyCreated(family)
+	event.MarriagePlaceLat, event.MarriagePlaceLong = f.MarriagePlaceLat, f.MarriagePlaceLong
 	event.ExternalIDs = f.ExternalIDs
 	event.MarriageNotes = f.MarriageNotes
 

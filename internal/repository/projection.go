@@ -465,17 +465,19 @@ func (p *Projector) projectFamilyCreated(ctx context.Context, e domain.FamilyCre
 
 	// Partner names are not stored; reads resolve them from the persons (#1207).
 	family := &FamilyReadModel{
-		ID:               e.FamilyID,
-		Partner1ID:       e.Partner1ID,
-		Partner2ID:       e.Partner2ID,
-		RelationshipType: e.RelationshipType,
-		MarriageDateRaw:  marriageDateRaw,
-		MarriageDateSort: marriageDateSort,
-		MarriagePlace:    e.MarriagePlace,
-		MarriageNotes:    e.MarriageNotes,
-		ChildCount:       0,
-		Version:          version,
-		UpdatedAt:        e.OccurredAt(),
+		ID:                e.FamilyID,
+		Partner1ID:        e.Partner1ID,
+		Partner2ID:        e.Partner2ID,
+		RelationshipType:  e.RelationshipType,
+		MarriageDateRaw:   marriageDateRaw,
+		MarriageDateSort:  marriageDateSort,
+		MarriagePlace:     e.MarriagePlace,
+		MarriagePlaceLat:  e.MarriagePlaceLat,
+		MarriagePlaceLong: e.MarriagePlaceLong,
+		MarriageNotes:     e.MarriageNotes,
+		ChildCount:        0,
+		Version:           version,
+		UpdatedAt:         e.OccurredAt(),
 	}
 
 	if err := p.readStore.SaveFamily(ctx, branchID, family); err != nil {

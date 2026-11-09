@@ -139,6 +139,9 @@ type FamilyCreated struct {
 	GedcomXref       string       `json:"gedcom_xref,omitempty"`
 	// ExternalIDs are GEDCOM 7.0 EXIDs set at import (#1225).
 	ExternalIDs []ExternalIdentifier `json:"external_ids,omitempty"`
+	// Marriage place coordinates come from GEDCOM import (#1265).
+	MarriagePlaceLat  *string `json:"marriage_place_lat,omitempty"`
+	MarriagePlaceLong *string `json:"marriage_place_long,omitempty"`
 	// MarriageNotes are the notes under the MARR event, set at import (#1250).
 	MarriageNotes string `json:"marriage_notes,omitempty"`
 }
