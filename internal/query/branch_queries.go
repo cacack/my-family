@@ -32,6 +32,10 @@ var researchMetadataEventTypes = map[string]bool{
 	"SnapshotDeleted": true,
 	// A resumed merge's decision record (#685), on the branch's own stream.
 	"BranchMergeResumed": true,
+	// A rebuild's log of values an import made before #1225 already set
+	// (#1251). It lands on main's streams but changes no data, so it must not
+	// read as main editing an entity a branch deleted, nor count as drift.
+	"ImportedValuesBackfilled": true,
 }
 
 // BranchService provides query operations for research branches.

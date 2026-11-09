@@ -145,6 +145,33 @@ func TestRebuildReadModel_BackfillsUnloggedImportFields(t *testing.T) {
 	}
 }
 
+// TestRebuildReadModel_BackfillKeepsVersionsIfTheRebuildStops proves a
+// rebuild that stops after its backfill but before its reset leaves each
+// backfilled row at its stream's version, so the entity can still be edited.
+func TestRebuildReadModel_BackfillKeepsVersionsIfTheRebuildStops(t *testing.T) {
+	ctx := context.Background()
+	s := newRebuildStores()
+	h := command.NewHandlerWithBranches(s.events, s.read, s.branches, s.snapshots)
+	person, err := h.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ada", Surname: "Example"})
+	if err != nil {
+		t.Fatalf("create person: %v", err)
+	}
+	lat := "N1.5"
+	p, _ := s.read.GetPerson(ctx, domain.MainBranchID, person.ID)
+	p.BirthPlaceLat = &lat
+	mustRebuildSetup(t, s.read.SavePerson(ctx, domain.MainBranchID, p))
+
+	result, err := s.rebuild(t, &failingRead{ReadModelStore: s.read, fail: "save state"})
+	if !errors.Is(err, errRebuildTest) || result.Backfilled != 1 {
+		t.Fatalf("rebuild = %+v, %v; want the backfill done and the injected failure", result, err)
+	}
+	p, _ = s.read.GetPerson(ctx, domain.MainBranchID, person.ID)
+	surname := "Edited"
+	if _, err := h.UpdatePerson(ctx, command.UpdatePersonInput{ID: person.ID, Surname: &surname, Version: p.Version}); err != nil {
+		t.Errorf("update at read-model version %d after the stopped rebuild: %v", p.Version, err)
+	}
+}
+
 // TestRebuildReadModel_ReportsRowsWithoutAStream proves a row whose values no
 // stream can carry is not backfilled; the replay drops it and the recount
 // reports what it held (#1251).

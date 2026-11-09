@@ -376,6 +376,9 @@ func backfillImportedValues(ctx context.Context, events EventStore, rs ReadModel
 	}
 	pending = append(pending, exids...)
 
+	// Each backfill is projected as soon as it is appended, so the row's
+	// version follows its stream even if the rebuild stops before its reset.
+	projector := NewProjector(rs, nil)
 	appended := 0
 	for _, backfill := range pending {
 		version, carried, err := mainStreamCarriesImportedValues(ctx, events, backfill.EntityID)
@@ -388,16 +391,29 @@ func backfillImportedValues(ctx context.Context, events EventStore, rs ReadModel
 			continue
 		}
 		backfill.BaseEvent = domain.NewBaseEvent()
-		if err := events.Append(ctx, backfill.EntityID, backfill.EntityType, []domain.Event{backfill}, version, MainScope); err != nil {
+		if err := events.Append(ctx, backfill.EntityID, backfillStreamType(backfill.EntityType), []domain.Event{backfill}, version, MainScope); err != nil {
 			return appended, fmt.Errorf("append backfill for %s %s: %w", backfill.EntityType, backfill.EntityID, err)
 		}
 		appended++
+		if err := projector.Project(ctx, backfill, version+1, domain.MainBranchID); err != nil {
+			ReportProjectionFailure(ctx, rs, backfill, version+1, domain.MainBranchID, err)
+		}
 	}
 	if appended > 0 {
 		slog.Info("logged place coordinates and EXIDs that an import before #1225 left only in the read model",
 			"entities", appended)
 	}
 	return appended, nil
+}
+
+// backfillStreamType is the stream type GEDCOM import gave the entity's stream:
+// "event" for a life event, the entity type otherwise. The stream already
+// exists, so the store keeps its type either way; this keeps them consistent.
+func backfillStreamType(entityType string) string {
+	if entityType == domain.BackfillLifeEvent {
+		return "event"
+	}
+	return entityType
 }
 
 // coordinatesInReadModel returns a backfill for every main-branch person with

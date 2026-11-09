@@ -634,3 +634,17 @@ func (s *mainTailFailingStore) ReadBranch(ctx context.Context, branchID domain.B
 	}
 	return s.EventStore.ReadBranch(ctx, branchID, fromPosition, limit)
 }
+
+// A rebuild's backfill of pre-#1225 import values on main's stream changes no
+// data, so a branch that deleted the person does not conflict with it (#1251).
+func TestClassifyConflicts_ImportBackfillOnMainIsClean(t *testing.T) {
+	person := uuid.New()
+	lat := "N1.5"
+	branch := newEventLog(t).add(person, "person", domain.NewPersonDeleted(person, "duplicate"))
+	main := newEventLog(t).add(person, "person", domain.ImportedValuesBackfilled{
+		BaseEvent: domain.NewBaseEvent(), EntityType: domain.BackfillPerson, EntityID: person, BirthPlaceLat: &lat,
+	})
+
+	assert.Empty(t, classifyConflicts(branch.events, withoutBranchLifecycleEvents(main.events), nil))
+	assert.True(t, driftExcludedEventTypes["ImportedValuesBackfilled"], "a backfill must not count as main drift")
+}
