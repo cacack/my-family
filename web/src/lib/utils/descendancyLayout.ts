@@ -30,6 +30,8 @@ export interface SpouseCard extends CardBox {
 	index: number;
 	/** Right edge of the card before this one (the person's, or the previous spouse's), where its connector starts. */
 	linkFromX: number;
+	/** Midpoint of the connector into this card, where this couple's children hang from. */
+	dropX: number;
 }
 
 /** A line from a couple (or a lone parent) down to one of their children. */
@@ -42,6 +44,12 @@ export interface ChildLink {
 	source: { x: number; y: number };
 	/** The child's card centre. */
 	target: { x: number; y: number };
+	/**
+	 * The line as an elbow: straight down from `source` to a bus in the gap
+	 * below the parent's row, along it, then down to `target`. Each family of a
+	 * parent gets its own bus height, so the drop never runs under a card.
+	 */
+	points: { x: number; y: number }[];
 }
 
 export interface DescendancyLayout {
@@ -97,6 +105,7 @@ export function layoutDescendancy(
 				spouse,
 				index,
 				linkFromX,
+				dropX: linkFromX + spouseGap / 2,
 				x: linkFromX + spouseGap + spouseWidth / 2,
 				y: node.y,
 				width: spouseWidth,
@@ -110,14 +119,30 @@ export function layoutDescendancy(
 	// (#1099); a child of a family with no named spouse hangs from the parent.
 	const spouseCardOf = new Map<string, SpouseCard>();
 	for (const card of spouses) spouseCardOf.set(`${card.node.data.id}/${card.spouse.family_id}`, card);
-	const links: ChildLink[] = tree.links().map(({ source: parent, target: child }) => {
-		const card = child.data.family_id
-			? spouseCardOf.get(`${parent.data.id}/${child.data.family_id}`)
-			: undefined;
-		const source = card
-			? { x: (card.linkFromX + card.x - card.width / 2) / 2, y: parent.y }
-			: { x: parent.x, y: parent.y };
-		return { parent, child, spouse: card?.spouse, source, target: { x: child.x, y: child.y } };
+	const treeLinks = tree.links().map(({ source: parent, target: child }) => ({
+		parent,
+		child,
+		card: child.data.family_id ? spouseCardOf.get(`${parent.data.id}/${child.data.family_id}`) : undefined
+	}));
+
+	// One bus height per family of each parent, in spouse order, lone-parent last
+	const laneKey = (card?: SpouseCard) => card?.index ?? Number.POSITIVE_INFINITY;
+	const lanesOf = new Map<d3.HierarchyPointNode<DescendancyNode>, number[]>();
+	for (const { parent, card } of treeLinks) {
+		const lanes = lanesOf.get(parent) ?? [];
+		if (!lanes.includes(laneKey(card))) lanes.push(laneKey(card));
+		lanesOf.set(parent, lanes);
+	}
+	for (const lanes of lanesOf.values()) lanes.sort((a, b) => a - b);
+
+	const links: ChildLink[] = treeLinks.map(({ parent, child, card }) => {
+		const lanes = lanesOf.get(parent)!;
+		const lane = lanes.indexOf(laneKey(card));
+		const busY = parent.y + cardHeight / 2 + (config.verticalGap * (lane + 1)) / (lanes.length + 1);
+		const source = { x: card ? card.dropX : parent.x, y: parent.y };
+		const target = { x: child.x, y: child.y };
+		const points = [source, { x: source.x, y: busY }, { x: target.x, y: busY }, target];
+		return { parent, child, spouse: card?.spouse, source, target, points };
 	});
 
 	const cards: CardBox[] = [

@@ -247,6 +247,19 @@ describe('DescendancyChart', () => {
 		expect(startX('30')).toBeCloseTo((spouseLinks[1].x1 + spouseLinks[1].x2) / 2);
 	});
 
+	it('numbers each marriage at its connector when a person has several spouses (#1099)', () => {
+		const { container } = render(DescendancyChart, { props: { data: mockMultipleSpouses } });
+		const badges = Array.from(container.querySelectorAll('.marriage-badge'));
+		expect(badges.map((b) => b.querySelector('text')?.textContent)).toEqual(['1', '2']);
+		expect(badges.map((b) => b.querySelector('title')?.textContent)).toEqual([
+			'Marriage 1: John Doe and Jane Smith',
+			'Marriage 2: John Doe and Sarah Johnson'
+		]);
+
+		const single = render(DescendancyChart, { props: { data: mockPersonWithSpouse } });
+		expect(single.container.querySelectorAll('.marriage-badge')).toHaveLength(0);
+	});
+
 	it('uses correct fill color for male nodes', () => {
 		const { container } = render(DescendancyChart, { props: { data: mockSinglePerson } });
 		const rect = container.querySelector('.node rect.node-card');

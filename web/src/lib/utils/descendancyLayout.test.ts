@@ -121,6 +121,51 @@ describe('layoutDescendancy', () => {
 		expect(linkTo(lone.id).source).toEqual({ x: rootNode.x, y: rootNode.y });
 	});
 
+	it('routes every child link clear of the cards it does not join (#1099)', () => {
+		for (const config of Object.values(CONFIGS)) {
+			// Wide families: many spouses, so most children sit far from their couple's connector
+			const families = (p: DescendancyNode) =>
+				p.spouses!.flatMap((s) => [
+					{ ...person(1), family_id: s.family_id },
+					{ ...person(2), family_id: s.family_id }
+				]);
+			const root = person(6);
+			root.children = [...families(root), { ...person(0), family_id: 'solo' }];
+			const middle = root.children[3];
+			middle.children = [...families(middle), ...families(middle)];
+			const layout = layoutDescendancy(root, config);
+
+			const inside = (p: { x: number; y: number }, c: CardBox) =>
+				Math.abs(p.x - c.x) < c.width / 2 && Math.abs(p.y - c.y) < c.height / 2;
+			for (const link of layout.links) {
+				const own = (c: CardBox) =>
+					(c.x === link.target.x && c.y === link.target.y) ||
+					(!link.spouse && c.x === link.parent.x && c.y === link.parent.y);
+				const others = layout.cards.filter((c) => !own(c));
+				for (let i = 1; i < link.points.length; i++) {
+					const [a, b] = [link.points[i - 1], link.points[i]];
+					// Each segment is horizontal or vertical
+					expect(a.x === b.x || a.y === b.y).toBe(true);
+					const steps = Math.ceil(Math.hypot(b.x - a.x, b.y - a.y));
+					for (let t = 0; t <= steps; t++) {
+						const p = { x: a.x + ((b.x - a.x) * t) / steps, y: a.y + ((b.y - a.y) * t) / steps };
+						expect(others.filter((c) => inside(p, c))).toEqual([]);
+					}
+				}
+			}
+
+			// A parent's families each get their own bus height, below the parent's row
+			const busYs = (parentId: string) =>
+				new Set(layout.links.filter((l) => l.parent.data.id === parentId).map((l) => l.points[1].y));
+			expect(busYs(root.id).size).toBe(7);
+			expect(busYs(middle.id).size).toBe(2);
+			for (const link of layout.links) {
+				expect(link.points[1].y).toBeGreaterThan(link.parent.y + config.cardHeight / 2);
+				expect(link.points[1].y).toBeLessThan(link.target.y - config.cardHeight / 2);
+			}
+		}
+	});
+
 	it('bounds every card', () => {
 		const layout = layoutDescendancy(person(2, [person(0), person(1)]), CONFIGS.wide);
 		const { x, y, width, height } = layout.bounds;
