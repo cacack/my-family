@@ -54,7 +54,7 @@
 		"vitest": "^5.0.5"
 	},
 	"dependencies": {
-		"d3": "^7.9.0",
+		"d3": "^7.9.2",
 		"topojson-client": "^3.1.0",
 		"world-atlas": "^2.0.2"
 	},
