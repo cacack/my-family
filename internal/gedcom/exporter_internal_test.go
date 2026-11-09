@@ -46,16 +46,30 @@ func TestXrefAllocator_Unique(t *testing.T) {
 			t.Errorf("assign #%d = %q, want %q (all: %q)", i, got[i], want[i], got)
 		}
 	}
-	if r := a.remap("@N2@\n\n@N 3@", noteJoin); r != "@N2@\n\n@N5@" {
-		t.Errorf("remap = %q, want only the invalid xref replaced", r)
+}
+
+func TestPointerTargets(t *testing.T) {
+	var warnings []string
+	notes := newPointerTargets("NOTE", &warnings)
+	notes.add("@N2@", "@N2@")
+	notes.add("@N 3@", "@N5@") // invalid stored xref, replaced
+	notes.add("@N4@", "@N7@")  // lost @N4@ to another record type
+	notes.add("@N 3@", "@N6@") // duplicate: pointers keep naming the first
+	notes.add("", "@N8@")
+
+	if r := notes.remap("@N2@\n\n@N4@\n\ntext", noteJoin); r != "@N2@\n\n@N7@\n\ntext" {
+		t.Errorf("remap = %q, want each NOTE pointer moved to its note's export xref", r)
 	}
-	// A duplicate invalid stored xref also keeps naming the first record
-	// that holds it, as a duplicate valid one does.
-	if got := a.assign("@N 3@", "N", 6); got != "@N6@" {
-		t.Errorf("assign duplicate invalid = %q, want @N6@", got)
+	if len(warnings) != 0 {
+		t.Errorf("warnings = %q, want none for unambiguous pointers", warnings)
 	}
-	if r := a.remap("@N 3@", noteJoin); r != "@N5@" {
+	// A pointer shared by two notes resolves to the first and warns once.
+	if r := notes.remap("@N 3@", associationNoteJoin); r != "@N5@" {
 		t.Errorf("remap duplicate invalid = %q, want the first record's @N5@", r)
+	}
+	notes.remap("@N 3@", noteJoin)
+	if len(warnings) != 1 || !strings.Contains(warnings[0], "@N 3@") {
+		t.Errorf("warnings = %q, want one naming the shared xref @N 3@", warnings)
 	}
 }
 

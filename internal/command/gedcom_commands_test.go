@@ -2099,3 +2099,52 @@ func TestImportGedcom_ExternalIDs(t *testing.T) {
 		t.Errorf("unexpected second external id: %+v", ids[1])
 	}
 }
+
+// twoFileNoteGedcom is a file whose person points at its own @N1@ note. Two
+// of them, imported into one tree, both define @N1@ (#1228).
+func twoFileNoteGedcom(given, noteText string) string {
+	return "0 HEAD\n1 GEDC\n2 VERS 5.5.1\n1 CHAR UTF-8\n" +
+		"0 @I1@ INDI\n1 NAME " + given + " /Doe/\n1 NOTE @N1@\n" +
+		"0 @N1@ NOTE " + noteText + "\n0 TRLR\n"
+}
+
+func TestImportGedcom_SecondFileNotePointersKeepTheirOwnNote(t *testing.T) {
+	ctx := context.Background()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(memory.NewEventStore(), readStore)
+
+	for _, f := range []struct{ given, note string }{{"Ann", "Ann's note"}, {"Bob", "Bob's note"}} {
+		data := twoFileNoteGedcom(f.given, f.note)
+		if _, err := handler.ImportGedcom(ctx, command.ImportGedcomInput{
+			Filename: f.given + ".ged", FileSize: int64(len(data)), Reader: strings.NewReader(data),
+		}); err != nil {
+			t.Fatalf("import %s: %v", f.given, err)
+		}
+	}
+
+	var out strings.Builder
+	exportResult, err := gedcom.NewExporter(readStore).Export(ctx, &out)
+	if err != nil {
+		t.Fatalf("export: %v", err)
+	}
+	if len(exportResult.Warnings) != 0 {
+		t.Errorf("export warnings = %q, want none once the import renamed the clash", exportResult.Warnings)
+	}
+	result, persons, _, _, _, _, _, _, notes, _, _, _, _, err := gedcom.NewImporter().Import(ctx, strings.NewReader(out.String()))
+	if err != nil {
+		t.Fatalf("re-import: %v", err)
+	}
+	noteText := map[uuid.UUID]string{}
+	for _, n := range notes {
+		noteText[n.ID] = n.Text
+	}
+	if len(persons) != 2 {
+		t.Fatalf("re-import has %d persons, want 2; export:\n%s", len(persons), out.String())
+	}
+	for _, p := range persons {
+		got := noteText[result.NoteXrefToID[p.Notes]]
+		if want := p.GivenName + "'s note"; got != want {
+			t.Errorf("%s's NOTE pointer %q resolves to %q, want %q; export:\n%s", p.GivenName, p.Notes, got, want, out.String())
+		}
+	}
+}

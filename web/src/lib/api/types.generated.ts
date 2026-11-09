@@ -3142,6 +3142,8 @@ export interface components {
             hasDataLoss: boolean;
             /** @description Features that cannot be represented in the target version. */
             dataLoss: components["schemas"]["DataLossItem"][];
+            /** @description Problems the export could not repair, such as a NOTE or REPO pointer whose stored xref several records of that type share. Each warning names the duplicated xref. Omitted when there are none. */
+            warnings?: string[];
         };
         /**
          * @description Output format for an entity export.
@@ -7475,6 +7477,8 @@ export interface operations {
             200: {
                 headers: {
                     "Content-Disposition"?: string;
+                    /** @description Present only when the export has warnings (see ExportPreview.warnings): the warnings joined with "; ", cut to at most 1024 bytes. A cut list ends with how many warnings were shown and points to the preview, which always has the full list. */
+                    "X-Export-Warnings"?: string;
                     [name: string]: unknown;
                 };
                 content: {
