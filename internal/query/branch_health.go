@@ -186,6 +186,11 @@ func (s *BranchHealthService) findings(ctx context.Context, scope domain.BranchI
 	if err != nil {
 		return nil, err
 	}
+	// A pair the scope marked not a duplicate (#1036) is not a finding there.
+	dismissed, err := s.validation.dismissedPairIDs(ctx, scope)
+	if err != nil {
+		return nil, err
+	}
 
 	found := &healthFindings{
 		validation: make(map[string]BranchValidationIssue),
@@ -198,7 +203,7 @@ func (s *BranchHealthService) findings(ctx context.Context, scope domain.BranchI
 	occurrences := make(map[string]int)
 	for _, issue := range strictValidator().ValidateAll(view.doc) {
 		if issue.Code == validator.CodePotentialDuplicate {
-			if dup, ok := view.duplicateFromIssue(issue); ok {
+			if dup, ok := view.duplicateFromIssue(issue); ok && !view.isDismissedDuplicate(issue, dismissed) {
 				found.duplicates[dup.Key] = dup
 			}
 			continue

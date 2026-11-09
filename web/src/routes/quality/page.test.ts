@@ -16,7 +16,9 @@ vi.mock('#lib/api/client.js', async (importOriginal) => {
 			getValidationIssues: vi.fn(),
 			getPersonsDuplicates: vi.fn(),
 			dismissDuplicate: vi.fn(),
-			batchDismissDuplicates: vi.fn()
+			batchDismissDuplicates: vi.fn(),
+			listDismissedDuplicates: vi.fn(),
+			restoreDuplicate: vi.fn()
 		}
 	};
 });
@@ -76,6 +78,20 @@ const mockBatchDismissResponse: apiModule.BatchDismissResponse = {
 	]
 };
 
+const mockDismissedResponse: apiModule.DismissedDuplicatesResponse = {
+	dismissals: [
+		{
+			person1_id: 'p5-eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee',
+			person1_name: 'Tom Jones',
+			person2_id: 'p6-ffffffff-ffff-ffff-ffff-ffffffffffff',
+			person2_name: 'Tom Jones',
+			reason: 'father and son',
+			dismissed_at: '2026-10-12T09:00:00Z'
+		}
+	],
+	total: 1
+};
+
 describe('Quality landing page', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
@@ -84,12 +100,15 @@ describe('Quality landing page', () => {
 		vi.mocked(apiModule.api.getPersonsDuplicates).mockResolvedValue(mockDuplicatesResponse);
 		vi.mocked(apiModule.api.dismissDuplicate).mockResolvedValue(undefined);
 		vi.mocked(apiModule.api.batchDismissDuplicates).mockResolvedValue(mockBatchDismissResponse);
+		vi.mocked(apiModule.api.listDismissedDuplicates).mockResolvedValue(mockDismissedResponse);
+		vi.mocked(apiModule.api.restoreDuplicate).mockResolvedValue(undefined);
 	});
 
-	it('renders both tab triggers', async () => {
+	it('renders every tab trigger', async () => {
 		render(Page);
 		expect(screen.getByRole('tab', { name: /validation issues/i })).toBeDefined();
-		expect(screen.getByRole('tab', { name: /duplicates/i })).toBeDefined();
+		expect(screen.getByRole('tab', { name: /^duplicates/i })).toBeDefined();
+		expect(screen.getByRole('tab', { name: /^not duplicates/i })).toBeDefined();
 	});
 
 	it('loads validation issues with no severity filter on mount', async () => {
@@ -153,7 +172,7 @@ describe('Quality landing page', () => {
 		render(Page);
 
 		// Switch to duplicates tab.
-		const duplicatesTab = screen.getByRole('tab', { name: /duplicates/i });
+		const duplicatesTab = screen.getByRole('tab', { name: /^duplicates/i });
 		await fireEvent.click(duplicatesTab);
 
 		await waitFor(() => {
@@ -170,7 +189,7 @@ describe('Quality landing page', () => {
 		await fireEvent.click(rowCheckbox);
 
 		// The bulk-action toolbar appears.
-		const dismissButton = await screen.findByRole('button', { name: /^Dismiss selected$/ });
+		const dismissButton = await screen.findByRole('button', { name: /^Mark selected not duplicates$/ });
 		await fireEvent.click(dismissButton);
 
 		await waitFor(() => {
@@ -183,6 +202,48 @@ describe('Quality landing page', () => {
 				]
 			});
 		});
+	});
+
+	it('reports a partly failed batch dismissal and keeps the failed pairs selected', async () => {
+		vi.mocked(apiModule.api.batchDismissDuplicates).mockResolvedValue({
+			total: 2,
+			successful: 1,
+			failed: 1,
+			results: [
+				{
+					person1_id: 'p1-aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+					person2_id: 'p2-bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+					success: true
+				},
+				{
+					person1_id: 'p3-cccccccc-cccc-cccc-cccc-cccccccccccc',
+					person2_id: 'p4-dddddddd-dddd-dddd-dddd-dddddddddddd',
+					success: false,
+					error: 'person not found'
+				}
+			]
+		});
+		render(Page);
+		await fireEvent.click(screen.getByRole('tab', { name: /^duplicates/i }));
+		await screen.findByText('Jane Doe');
+		await fireEvent.click(
+			await screen.findByRole('checkbox', { name: /Select duplicate pair Jane Doe and Jane Doh/i })
+		);
+		await fireEvent.click(
+			await screen.findByRole('checkbox', {
+				name: /Select duplicate pair John Smith and Jon Smith/i
+			})
+		);
+		await fireEvent.click(
+			await screen.findByRole('button', { name: /^Mark selected not duplicates$/ })
+		);
+
+		await screen.findByText(/1 of 2 pairs could not be marked not duplicates: person not found/);
+		expect(screen.getByText('1 selected')).toBeDefined();
+		const failed = screen.getByRole('checkbox', {
+			name: /Select duplicate pair John Smith and Jon Smith/i
+		});
+		await waitFor(() => expect(failed.getAttribute('aria-checked')).toBe('true'));
 	});
 
 	const manyIssues: apiModule.ValidationIssuesResponse = { ...mockValidationResponse, total: 45 };
@@ -211,7 +272,7 @@ describe('Quality landing page', () => {
 		await waitFor(() => expect(currentPath()).toBe('/quality?page=2'));
 		await screen.findByText('Page 2 of 3');
 
-		await fireEvent.click(screen.getByRole('tab', { name: /duplicates/i }));
+		await fireEvent.click(screen.getByRole('tab', { name: /^duplicates/i }));
 		await waitFor(() => expect(currentPath()).toBe('/quality?tab=duplicates'));
 		expect(historyLength()).toBe(3);
 		await screen.findByText('Jane Doe');
@@ -241,5 +302,66 @@ describe('Quality landing page', () => {
 			expect(apiModule.api.getPersonsDuplicates).toHaveBeenLastCalledWith({ limit: 20, offset: 0 })
 		);
 		await screen.findByText('Jane Doe');
+	});
+
+	// #1036: "Not a duplicate" is persisted, then the list reloads without it.
+	it('marks one pair not a duplicate and reloads the list', async () => {
+		resetRouter('/quality?tab=duplicates');
+		render(Page);
+		await screen.findByText('Jane Doe');
+		vi.mocked(apiModule.api.getPersonsDuplicates).mockResolvedValue({
+			duplicates: mockDuplicatesResponse.duplicates.slice(1),
+			total: 1
+		});
+
+		await fireEvent.click(
+			screen.getByRole('button', { name: 'Mark Jane Doe and Jane Doh as not a duplicate' })
+		);
+
+		await waitFor(() =>
+			expect(apiModule.api.dismissDuplicate).toHaveBeenCalledWith(
+				'p1-aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+				'p2-bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'
+			)
+		);
+		await waitFor(() => expect(screen.queryByText('Jane Doe')).toBeNull());
+		expect(screen.getByText('John Smith')).toBeDefined();
+	});
+
+	it('lists the pairs marked not a duplicate and restores one', async () => {
+		resetRouter('/quality?tab=not-duplicates');
+		render(Page);
+		await waitFor(() =>
+			expect(apiModule.api.listDismissedDuplicates).toHaveBeenCalledWith({ limit: 20, offset: 0 })
+		);
+		await screen.findByText('father and son');
+		expect(screen.getAllByText('Tom Jones')).toHaveLength(2);
+
+		vi.mocked(apiModule.api.listDismissedDuplicates).mockResolvedValue({ dismissals: [], total: 0 });
+		await fireEvent.click(
+			screen.getByRole('button', { name: 'Restore Tom Jones and Tom Jones as a possible duplicate' })
+		);
+
+		await waitFor(() =>
+			expect(apiModule.api.restoreDuplicate).toHaveBeenCalledWith(
+				'p5-eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee',
+				'p6-ffffffff-ffff-ffff-ffff-ffffffffffff'
+			)
+		);
+		await screen.findByText('No pairs are marked not a duplicate.');
+	});
+
+	it('shows a failed restore and keeps the pair listed', async () => {
+		vi.mocked(apiModule.api.restoreDuplicate).mockRejectedValue({ message: 'Duplicate pair is not dismissed' });
+		resetRouter('/quality?tab=not-duplicates');
+		render(Page);
+		await screen.findByText('father and son');
+
+		await fireEvent.click(
+			screen.getByRole('button', { name: 'Restore Tom Jones and Tom Jones as a possible duplicate' })
+		);
+
+		await screen.findByText('Duplicate pair is not dismissed');
+		expect(screen.getByText('father and son')).toBeDefined();
 	});
 });

@@ -4,6 +4,7 @@ import (
 	"context"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -79,12 +80,20 @@ func (s *ValidationService) GetQualityReportOn(ctx context.Context, branchID dom
 		return nil, err
 	}
 
+	dismissed, err := s.dismissedPairIDs(ctx, branchID)
+	if err != nil {
+		return nil, err
+	}
+
 	// Generate quality report with strict mode to get all severity levels
 	qr := strictValidator().QualityReport(view.doc)
+	errs := view.withoutDismissedIssues(qr.Errors, dismissed)
+	warnings := view.withoutDismissedIssues(qr.Warnings, dismissed)
+	info := view.withoutDismissedIssues(qr.Info, dismissed)
 
 	// Count issues by code for top issues
 	issueCounts := make(map[string]int)
-	allIssues := append(append(append([]validator.Issue{}, qr.Errors...), qr.Warnings...), qr.Info...)
+	allIssues := append(append(append([]validator.Issue{}, errs...), warnings...), info...)
 	for _, issue := range allIssues {
 		issueCounts[issue.Code]++
 	}
@@ -108,9 +117,9 @@ func (s *ValidationService) GetQualityReportOn(ctx context.Context, branchID dom
 		BirthDateCoverage: qr.BirthDateCoverage,
 		DeathDateCoverage: qr.DeathDateCoverage,
 		SourceCoverage:    qr.SourceCoverage,
-		ErrorCount:        qr.ErrorCount,
-		WarningCount:      qr.WarningCount,
-		InfoCount:         qr.InfoCount,
+		ErrorCount:        len(errs),
+		WarningCount:      len(warnings),
+		InfoCount:         len(info),
 		TopIssues:         topIssues,
 	}, nil
 }
@@ -135,7 +144,11 @@ func (s *ValidationService) FindDuplicatesOn(ctx context.Context, branchID domai
 	if err != nil {
 		return nil, 0, err
 	}
-	pairs := view.duplicates()
+	dismissed, err := s.dismissedPairIDs(ctx, branchID)
+	if err != nil {
+		return nil, 0, err
+	}
+	pairs := withoutDismissed(view.duplicates(), dismissed)
 
 	// Total count before pagination
 	total := len(pairs)
@@ -149,6 +162,104 @@ func (s *ValidationService) FindDuplicatesOn(ctx context.Context, branchID domai
 		end = len(pairs)
 	}
 	return pairs[offset:end], total, nil
+}
+
+// DismissedDuplicate is a suggested duplicate pair a researcher marked as not
+// a duplicate (#1036), with the two persons' current names.
+type DismissedDuplicate struct {
+	Person1ID   uuid.UUID
+	Person1Name string
+	Person2ID   uuid.UUID
+	Person2Name string
+	Reason      string
+	DismissedAt time.Time
+}
+
+// DismissedDuplicatesPage is one page of dismissed pairs, newest first. Total
+// counts every listed pair, not just the page.
+type DismissedDuplicatesPage struct {
+	Items []DismissedDuplicate
+	Total int
+}
+
+// dismissedPairIDs returns the pair ids dismissed in branchID's view (#1036).
+func (s *ValidationService) dismissedPairIDs(ctx context.Context, branchID domain.BranchID) (map[uuid.UUID]bool, error) {
+	rows, err := repository.ListAllOn(ctx, branchID, 1000, s.readStore.ListDuplicateDismissals)
+	if err != nil {
+		return nil, err
+	}
+	ids := make(map[uuid.UUID]bool, len(rows))
+	for i := range rows {
+		ids[rows[i].ID] = true
+	}
+	return ids, nil
+}
+
+// withoutDismissed drops the pairs whose pair id is dismissed, keeping order.
+func withoutDismissed(pairs []DuplicateResult, dismissed map[uuid.UUID]bool) []DuplicateResult {
+	if len(dismissed) == 0 {
+		return pairs
+	}
+	kept := pairs[:0:0]
+	for _, p := range pairs {
+		if pair, err := domain.NewDuplicatePair(p.Person1ID, p.Person2ID); err == nil && dismissed[pair.ID()] {
+			continue
+		}
+		kept = append(kept, p)
+	}
+	return kept
+}
+
+// ListDismissedDuplicatesOn lists the pairs marked not a duplicate in
+// branchID's view (#1036), newest dismissal first. A pair naming a person the
+// scope no longer has is left out: it can never be suggested again, so there
+// is nothing to restore.
+func (s *ValidationService) ListDismissedDuplicatesOn(ctx context.Context, branchID domain.BranchID, limit, offset int) (*DismissedDuplicatesPage, error) {
+	rows, err := repository.ListAllOn(ctx, branchID, 1000, s.readStore.ListDuplicateDismissals)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]uuid.UUID, 0, 2*len(rows))
+	for i := range rows {
+		ids = append(ids, rows[i].Person1ID, rows[i].Person2ID)
+	}
+	persons, err := s.readStore.GetPersonsByIDs(ctx, branchID, ids)
+	if err != nil {
+		return nil, err
+	}
+	names := make(map[uuid.UUID]string, len(persons))
+	for i := range persons {
+		names[persons[i].ID] = persons[i].FullName
+	}
+
+	items := make([]DismissedDuplicate, 0, len(rows))
+	for i := range rows {
+		name1, ok1 := names[rows[i].Person1ID]
+		name2, ok2 := names[rows[i].Person2ID]
+		if !ok1 || !ok2 {
+			continue
+		}
+		items = append(items, DismissedDuplicate{
+			Person1ID: rows[i].Person1ID, Person1Name: name1,
+			Person2ID: rows[i].Person2ID, Person2Name: name2,
+			Reason: rows[i].Reason, DismissedAt: rows[i].CreatedAt,
+		})
+	}
+	sort.SliceStable(items, func(i, j int) bool { return items[i].DismissedAt.After(items[j].DismissedAt) })
+
+	page := &DismissedDuplicatesPage{Items: []DismissedDuplicate{}, Total: len(items)}
+	if offset < 0 {
+		offset = 0
+	}
+	if offset >= len(items) {
+		return page, nil
+	}
+	end := len(items)
+	if limit > 0 && offset+limit < end {
+		end = offset + limit
+	}
+	page.Items = items[offset:end]
+	return page, nil
 }
 
 // ValidationIssuesPage is the result of a paginated validation-issues query.
@@ -176,9 +287,14 @@ func (s *ValidationService) GetValidationIssuesOn(ctx context.Context, branchID 
 		return nil, err
 	}
 
+	dismissed, err := s.dismissedPairIDs(ctx, branchID)
+	if err != nil {
+		return nil, err
+	}
+
 	// Get all validation issues (unfiltered) so we can compute global counts
 	// even when a severity filter is applied.
-	allIssues := strictValidator().ValidateAll(view.doc)
+	allIssues := view.withoutDismissedIssues(strictValidator().ValidateAll(view.doc), dismissed)
 
 	page := &ValidationIssuesPage{
 		Issues: []ValidationIssueResult{},
@@ -264,6 +380,33 @@ func (v *gedcomView) issueResult(issue validator.Issue) ValidationIssueResult {
 		result.RelatedRecordID = &id
 	}
 	return result
+}
+
+// isDismissedDuplicate reports whether issue is the POTENTIAL_DUPLICATE issue
+// of a pair dismissed in the view's scope (#1036).
+func (v *gedcomView) isDismissedDuplicate(issue validator.Issue, dismissed map[uuid.UUID]bool) bool {
+	if issue.Code != validator.CodePotentialDuplicate || len(dismissed) == 0 {
+		return false
+	}
+	first, ok1 := v.xrefMap[issue.RecordXRef]
+	second, ok2 := v.xrefMap[issue.RelatedXRef]
+	if !ok1 || !ok2 {
+		return false
+	}
+	pair, err := domain.NewDuplicatePair(first, second)
+	return err == nil && dismissed[pair.ID()]
+}
+
+// withoutDismissedIssues drops the POTENTIAL_DUPLICATE issues of dismissed
+// pairs, keeping order, so validation agrees with FindDuplicatesOn.
+func (v *gedcomView) withoutDismissedIssues(issues []validator.Issue, dismissed map[uuid.UUID]bool) []validator.Issue {
+	kept := make([]validator.Issue, 0, len(issues))
+	for _, issue := range issues {
+		if !v.isDismissedDuplicate(issue, dismissed) {
+			kept = append(kept, issue)
+		}
+	}
+	return kept
 }
 
 // duplicates returns every potential duplicate pair in the view, in the

@@ -182,10 +182,11 @@ type ReadModelStore struct {
 	repositoryExternalIDs map[uuid.UUID][]repository.RepositoryExternalIDReadModel // keyed by repository ID
 	associations          map[branchKey]*repository.AssociationReadModel           // branch-scoped (#757)
 	ldsOrdinances         map[uuid.UUID]*repository.LDSOrdinanceReadModel
-	evidenceAnalyses      map[branchKey]*repository.EvidenceAnalysisReadModel // branch-scoped (#760)
-	evidenceConflicts     map[branchKey]*repository.EvidenceConflictReadModel // branch-scoped (#760)
-	researchLogs          map[branchKey]*repository.ResearchLogReadModel      // branch-scoped (#760)
-	proofSummaries        map[branchKey]*repository.ProofSummaryReadModel     // branch-scoped (#760)
+	evidenceAnalyses      map[branchKey]*repository.EvidenceAnalysisReadModel   // branch-scoped (#760)
+	evidenceConflicts     map[branchKey]*repository.EvidenceConflictReadModel   // branch-scoped (#760)
+	researchLogs          map[branchKey]*repository.ResearchLogReadModel        // branch-scoped (#760)
+	proofSummaries        map[branchKey]*repository.ProofSummaryReadModel       // branch-scoped (#760)
+	duplicateDismissals   map[branchKey]*repository.DuplicateDismissalReadModel // branch-scoped (#1036)
 }
 
 // NewReadModelStore creates a new in-memory read model store.
@@ -215,6 +216,7 @@ func NewReadModelStore() *ReadModelStore {
 		evidenceConflicts:     make(map[branchKey]*repository.EvidenceConflictReadModel),
 		researchLogs:          make(map[branchKey]*repository.ResearchLogReadModel),
 		proofSummaries:        make(map[branchKey]*repository.ProofSummaryReadModel),
+		duplicateDismissals:   make(map[branchKey]*repository.DuplicateDismissalReadModel),
 	}
 }
 
@@ -1252,6 +1254,7 @@ func (s *ReadModelStore) PurgeBranch(ctx context.Context, branchID domain.Branch
 	deleteBranchRows(s.evidenceConflicts, branchID)
 	deleteBranchRows(s.researchLogs, branchID)
 	deleteBranchRows(s.proofSummaries, branchID)
+	deleteBranchRows(s.duplicateDismissals, branchID)
 	// Drop main media tombstones kept alive only for this branch's shadows (#759).
 	s.collectMainMediaTombstones()
 	return nil
@@ -1294,6 +1297,7 @@ func (s *ReadModelStore) Reset() {
 	s.evidenceConflicts = make(map[branchKey]*repository.EvidenceConflictReadModel)
 	s.researchLogs = make(map[branchKey]*repository.ResearchLogReadModel)
 	s.proofSummaries = make(map[branchKey]*repository.ProofSummaryReadModel)
+	s.duplicateDismissals = make(map[branchKey]*repository.DuplicateDismissalReadModel)
 }
 
 // GetSource retrieves a source by ID within the branch overlay (ADR-005, #758).
@@ -3232,5 +3236,45 @@ func (s *ReadModelStore) DeleteProofSummary(ctx context.Context, branchID domain
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	removeRow(s.proofSummaries, branchID, id)
+	return nil
+}
+
+func dismissalTimes(d *repository.DuplicateDismissalReadModel) (uuid.UUID, time.Time, time.Time) {
+	return d.ID, d.CreatedAt, d.UpdatedAt
+}
+
+// GetDuplicateDismissal retrieves a duplicate dismissal by pair id within the
+// branch overlay (ADR-005, #1036).
+func (s *ReadModelStore) GetDuplicateDismissal(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.DuplicateDismissalReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return getGPS(s.duplicateDismissals, branchID, id), nil
+}
+
+// ListDuplicateDismissals returns a paginated list of the duplicate dismissals
+// visible on opts.BranchID.
+func (s *ReadModelStore) ListDuplicateDismissals(ctx context.Context, opts repository.ListOptions) ([]repository.DuplicateDismissalReadModel, int, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	rows, total := pageGPS(resolveGPS(s.duplicateDismissals, opts.BranchID, nil, dismissalTimes), opts, dismissalTimes)
+	return rows, total, nil
+}
+
+// SaveDuplicateDismissal saves a duplicate dismissal on the given branch; a
+// save clears any prior tombstone.
+func (s *ReadModelStore) SaveDuplicateDismissal(ctx context.Context, branchID domain.BranchID, dismissal *repository.DuplicateDismissalReadModel) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	result := *dismissal
+	s.duplicateDismissals[branchKey{branchID, dismissal.ID}] = &result
+	return nil
+}
+
+// DeleteDuplicateDismissal removes a duplicate dismissal: a real removal on
+// main, a tombstone on a non-main branch.
+func (s *ReadModelStore) DeleteDuplicateDismissal(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	removeRow(s.duplicateDismissals, branchID, id)
 	return nil
 }

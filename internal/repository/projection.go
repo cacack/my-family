@@ -159,6 +159,10 @@ func (p *Projector) Project(ctx context.Context, event domain.Event, version int
 		return p.projectProofSummaryUpdated(ctx, e, version, branchID)
 	case domain.ProofSummaryDeleted:
 		return p.projectProofSummaryDeleted(ctx, e, branchID)
+	case domain.DuplicateDismissed:
+		return p.projectDuplicateDismissed(ctx, e, version, branchID)
+	case domain.DuplicateRestored:
+		return p.readStore.DeleteDuplicateDismissal(ctx, branchID, e.PairID)
 	case domain.BranchCreated:
 		return p.projectBranchCreated(ctx, e)
 	case domain.BranchUpdated:
@@ -2613,6 +2617,21 @@ func (p *Projector) projectProofSummaryUpdated(ctx context.Context, e domain.Pro
 
 func (p *Projector) projectProofSummaryDeleted(ctx context.Context, e domain.ProofSummaryDeleted, branchID domain.BranchID) error {
 	return p.readStore.DeleteProofSummary(ctx, branchID, e.SummaryID)
+}
+
+// projectDuplicateDismissed records the pair as not a duplicate on branchID
+// (#1036). Re-dismissing a restored pair writes a fresh row, so CreatedAt is
+// always the latest dismissal.
+func (p *Projector) projectDuplicateDismissed(ctx context.Context, e domain.DuplicateDismissed, version int64, branchID domain.BranchID) error {
+	return p.readStore.SaveDuplicateDismissal(ctx, branchID, &DuplicateDismissalReadModel{
+		ID:        e.PairID,
+		Person1ID: e.Person1ID,
+		Person2ID: e.Person2ID,
+		Reason:    e.Reason,
+		Version:   version,
+		CreatedAt: e.OccurredAt(),
+		UpdatedAt: e.OccurredAt(),
+	})
 }
 
 // marshalIDList encodes a GPS artifact's id list as the JSON array its read

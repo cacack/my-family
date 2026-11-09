@@ -278,6 +278,12 @@ func (d *historyDescription) registerRelated(refs entityRefs, entityType string,
 				refs.add(entityTypePerson, id)
 			}
 		}
+	case entityTypeDuplicatePair:
+		for _, field := range []string{"person1_id", "person2_id"} {
+			if id, ok := state.id(field); ok {
+				refs.add(entityTypePerson, id)
+			}
+		}
 	}
 }
 
@@ -334,6 +340,13 @@ func (st *streamState) apply(evt *repository.StoredEvent) {
 		}
 		if snapshot, ok := fields["merged_person_snapshot"].(map[string]any); ok {
 			st.mergedName = mergedPersonName(snapshot)
+		}
+		return
+	case "DuplicateRestored":
+		// It names the pair it restores, so the pair is named even when the
+		// dismissal it undoes was not folded (#1036).
+		if !st.created {
+			st.fields = eventFields(evt)
 		}
 		return
 	case "EvidenceConflictResolved":
@@ -578,6 +591,8 @@ func (d *historyDescription) stateLabel(entityType string, entityID uuid.UUID) s
 		}
 	case entityTypeAssociation:
 		return d.associationName(state)
+	case entityTypeDuplicatePair:
+		return d.duplicatePairName(state)
 	default:
 		if label, ok := stateLabels[entityType]; ok {
 			return label(state)
@@ -704,6 +719,20 @@ func (d *historyDescription) associationName(state *streamState) string {
 		}
 	}
 	return joinLabel(": ", state.str("role"), strings.Join(people, " and "))
+}
+
+// duplicatePairName names a dismissed duplicate pair by its two people.
+func (d *historyDescription) duplicatePairName(state *streamState) string {
+	if state == nil {
+		return ""
+	}
+	var people []string
+	for _, field := range []string{"person1_id", "person2_id"} {
+		if id, ok := state.id(field); ok {
+			people = append(people, d.personLabel(id))
+		}
+	}
+	return strings.Join(people, " and ")
 }
 
 // parent returns the entity whose page presents a sub-record — a life

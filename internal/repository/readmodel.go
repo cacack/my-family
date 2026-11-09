@@ -362,6 +362,20 @@ type ProofSummaryReadModel struct {
 	UpdatedAt       time.Time             `json:"updated_at"`
 }
 
+// DuplicateDismissalReadModel is a duplicate pair a researcher marked as not a
+// duplicate (#1036). ID is the pair's aggregate id (domain.DuplicatePair.ID);
+// Person1ID and Person2ID are in canonical order. CreatedAt is when the pair
+// was dismissed.
+type DuplicateDismissalReadModel struct {
+	ID        uuid.UUID `json:"id"`
+	Person1ID uuid.UUID `json:"person1_id"`
+	Person2ID uuid.UUID `json:"person2_id"`
+	Reason    string    `json:"reason,omitempty"`
+	Version   int64     `json:"version"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
 // ReadModelStore provides access to denormalized read models.
 //
 // Branch scoping (ADR-005) divides the methods below into four categories. Note that
@@ -375,7 +389,7 @@ type ProofSummaryReadModel struct {
 // metadata (Media; #759, sub-issue D — see the blob rule on the media methods
 // below: only metadata forks, the file bytes stay shared) and the GPS artifacts
 // (EvidenceAnalysis, EvidenceConflict, ResearchLog, ProofSummary; #760,
-// sub-issue E). These own
+// sub-issue E), and duplicate-pair dismissals (DuplicateDismissal; #1036). These own
 // branch_id-keyed tables. Their methods take an explicit domain.BranchID
 // (single-row) or carry it on ListOptions/SearchOptions (list/search); a
 // copy-on-write overlay resolves the branch's row for an entity else falls back to
@@ -728,6 +742,17 @@ type ReadModelStore interface {
 	GetProofSummariesBySubject(ctx context.Context, branchID domain.BranchID, subjectID uuid.UUID) ([]ProofSummaryReadModel, error)
 	SaveProofSummary(ctx context.Context, branchID domain.BranchID, summary *ProofSummaryReadModel) error
 	DeleteProofSummary(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error
+
+	// Duplicate dismissal operations (branch-scoped, #1036). A dismissal is keyed
+	// by its pair id and has the GPS artifacts' overlay shape: a branch's row
+	// wins over main's, a branch restore tombstones main's row, and
+	// ListDuplicateDismissals sorts like the GPS lists (opts.Sort "created_at",
+	// else updated_at). There is no cascade: a dismissal naming a person who no
+	// longer exists simply never matches a detected pair.
+	GetDuplicateDismissal(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*DuplicateDismissalReadModel, error)
+	ListDuplicateDismissals(ctx context.Context, opts ListOptions) ([]DuplicateDismissalReadModel, int, error)
+	SaveDuplicateDismissal(ctx context.Context, branchID domain.BranchID, dismissal *DuplicateDismissalReadModel) error
+	DeleteDuplicateDismissal(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error
 
 	// Browse operations
 	//

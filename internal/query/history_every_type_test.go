@@ -215,6 +215,10 @@ func writeEveryTypeFixture(t *testing.T, ctx context.Context, es repository.Even
 			return domain.ProofSummaryCreated{BaseEvent: base(), SummaryID: id, FactType: domain.FactPersonDeath, SubjectID: f.person, Conclusion: "Died 27 Nov 1852"}
 		},
 		func(id uuid.UUID) domain.Event { return domain.ProofSummaryDeleted{BaseEvent: base(), SummaryID: id} })
+	// A duplicate pair marked not a duplicate, then restored (#1036).
+	pair, err := domain.NewDuplicatePair(f.person, f.associate)
+	require.NoError(t, err)
+	onBranch(pair.ID(), "DuplicatePair", domain.NewDuplicateDismissed(pair, "different people"), domain.NewDuplicateRestored(pair))
 	return f
 }
 
@@ -226,7 +230,7 @@ var (
 		"person": true, "family": true, "source": true, "citation": true, "media": true, "note": true,
 		"submitter": true, "repository": true, "association": true, "life_event": true, "attribute": true,
 		"lds_ordinance": true, "evidence_analysis": true, "evidence_conflict": true, "research_log": true,
-		"proof_summary": true, "branch": true,
+		"proof_summary": true, "branch": true, "duplicate_pair": true,
 	}
 	validActions = map[string]bool{"created": true, "updated": true, "deleted": true, "merged": true}
 )
@@ -370,6 +374,19 @@ func TestCompareBranch_EveryBranchWritableType(t *testing.T) {
 				"research_log: Looked for burial (Parish chest)", "proof_summary: Death: Died 27 Nov 1852",
 			} {
 				assert.True(t, names[want], "missing created/deleted entry %q (have %v)", want, names)
+			}
+
+			// The duplicate pair (#1036): dismissed then restored, named by
+			// its two people in the pair's canonical order.
+			pair, err := domain.NewDuplicatePair(f.person, f.associate)
+			require.NoError(t, err)
+			label := map[uuid.UUID]string{f.person: "Augusta Ada Lovelace", f.associate: "Charles Babbage"}
+			review := byEntity(result.BranchChanges, pair.ID())
+			require.Len(t, review, 2)
+			for i, action := range []string{actionCreated, actionDeleted} {
+				assert.Equal(t, "duplicate_pair", review[i].EntityType)
+				assert.Equal(t, action, review[i].Action)
+				assert.Equal(t, label[pair.Person1ID]+" and "+label[pair.Person2ID], review[i].EntityName)
 			}
 
 			// The mainline's full log reads the same way, and a branch's edits

@@ -23,11 +23,11 @@
 	 * - `/` (dashboard) — the research suggestions (discovery feed) come from
 	 *   the mainline while the people and family counts and the recent people
 	 *   and families follow the branch; the notice says which is which
-	 * - `/quality` — validation issues and duplicate pairs (a branch's own findings,
-	 *   the ones it introduces over the mainline, are in its merge review's branch
-	 *   health section, #838). A pair's "Merge" link opens the merge page, which
-	 *   follows the branch (#834): it shows the two persons as the branch sees
-	 *   them and merges them on the branch only
+	 * - `/quality` — validation issues (a branch's own findings, the ones it
+	 *   introduces over the mainline, are in its merge review's branch health
+	 *   section, #838). Its duplicate pairs and "Not a duplicate" decisions follow
+	 *   the branch (#1036), and so does a pair's merge page (#834): it shows the
+	 *   two persons as the branch sees them and merges them on the branch only
 	 * - `/history` — the global change feed
 	 * - `/browse/brick-walls` — brick walls are not event-sourced (#761; whether
 	 *   they become event-sourced is #802)

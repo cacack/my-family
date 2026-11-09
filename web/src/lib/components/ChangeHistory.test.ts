@@ -173,7 +173,8 @@ describe("ChangeHistory global log (#739)", () => {
     expect(values).toContain("life_event");
     expect(values).toContain("research_log");
     expect(values).toContain("branch");
-    expect(values).toHaveLength(18);
+    expect(values).toContain("duplicate_pair");
+    expect(values).toHaveLength(19);
   });
 });
 

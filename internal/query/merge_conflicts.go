@@ -620,6 +620,11 @@ func summarizeStreams(events []repository.StoredEvent) map[uuid.UUID]*streamSide
 			applyEvidenceConflictResolved(side, evt)
 		case foldPersonMerged:
 			applyPersonMerged(side, evt)
+		case foldDuplicateReview:
+			// A pair's whole state is whether it is marked not a duplicate
+			// (#1036), so main dismissing a pair the branch restored (or the
+			// reverse) is an edit-vs-edit on that one field.
+			side.fields[duplicateReviewField] = evt.EventType == "DuplicateDismissed"
 		case foldIgnored:
 			// Nothing to compare — see conflictFoldFor.
 		}
@@ -644,7 +649,12 @@ const (
 	foldChangesMap
 	foldEvidenceConflictResolved
 	foldPersonMerged
+	foldDuplicateReview
 )
+
+// duplicateReviewField is the field a duplicate pair's dismissal and restore
+// assert (true when marked not a duplicate), as a merge conflict names it.
+const duplicateReviewField = "not_a_duplicate"
 
 // conflictFoldFor classifies an event type for conflict comparison.
 //
@@ -666,6 +676,8 @@ func conflictFoldFor(eventType string) conflictFold {
 		return foldEvidenceConflictResolved
 	case eventType == personMergedEventType:
 		return foldPersonMerged
+	case eventType == "DuplicateDismissed" || eventType == "DuplicateRestored":
+		return foldDuplicateReview
 	case strings.HasSuffix(eventType, "Updated"):
 		return foldChangesMap
 	default:
