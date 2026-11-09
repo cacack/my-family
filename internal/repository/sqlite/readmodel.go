@@ -677,6 +677,17 @@ func (s *ReadModelStore) createTables() error {
 
 		CREATE INDEX IF NOT EXISTS idx_proof_summaries_subject ON proof_summaries(subject_id);
 		CREATE INDEX IF NOT EXISTS idx_proof_summaries_fact_type ON proof_summaries(fact_type);
+
+		-- Events whose projection failed after they were appended (#845).
+		CREATE TABLE IF NOT EXISTS projection_failures (
+			seq INTEGER PRIMARY KEY AUTOINCREMENT,
+			stream_id TEXT NOT NULL,
+			branch_id TEXT NOT NULL,
+			version INTEGER NOT NULL,
+			event_type TEXT NOT NULL,
+			error TEXT NOT NULL,
+			failed_at TEXT NOT NULL
+		);
 	`)
 	if err != nil {
 		return err

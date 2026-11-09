@@ -483,7 +483,7 @@ func (h *Handler) resumableMerge(ctx context.Context, branch *domain.Branch) (me
 		return mergeRecord{}, err
 	}
 	if branch.Status != domain.BranchStatusMerged {
-		if err := h.projector.Project(ctx, record.claim, claimVersion, domain.BranchID(branch.ID)); err != nil {
+		if err := h.project(ctx, record.claim, claimVersion, domain.BranchID(branch.ID)); err != nil {
 			return mergeRecord{}, fmt.Errorf("repairing branch registry after an interrupted claim: %w", err)
 		}
 	}
@@ -589,7 +589,7 @@ func (h *Handler) recordResumeDecisions(
 		}
 		return fmt.Errorf("recording resume decisions: %w", err)
 	}
-	if err := h.projector.Project(ctx, event, record.branchVersion+1, scope.BranchID); err != nil {
+	if err := h.project(ctx, event, record.branchVersion+1, scope.BranchID); err != nil {
 		return fmt.Errorf("projecting resume decisions: %w", err)
 	}
 	return nil

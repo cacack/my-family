@@ -50,3 +50,6 @@ func (s *ReadModelStore) SearchPersonsPlan(opts repository.SearchOptions) ([]str
 	}
 	return steps, rows.Err()
 }
+
+// ReadModelTables exposes the tables ResetReadModel empties to the external tests.
+var ReadModelTables = readModelTables

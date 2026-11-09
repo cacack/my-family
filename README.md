@@ -103,6 +103,15 @@ SQLite deployment by copying the database file while the server is stopped (it a
 so the Docker image, the prebuilt release archives and a plain `go build` all run on SQLite with
 no C toolchain.
 
+#### Repairing the read model
+
+The read model is derived from the event log. If projecting an event fails after it was saved,
+the request still succeeds, the failure is logged, and every later `serve` start warns that the
+read model is out of sync. To repair it, stop the server, back up the database, and run
+`myfamily rebuild` with the same `DATABASE_URL` / `SQLITE_PATH`. It empties the read model and
+replays the whole event log into it, keeping the values that are not in the log (GEDCOM place
+coordinates and external IDs, brick walls).
+
 ## API Endpoints
 
 - `GET /api/v1/persons` - List persons

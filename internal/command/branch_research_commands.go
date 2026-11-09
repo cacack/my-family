@@ -210,7 +210,7 @@ func (h *Handler) appendBranchUpdated(ctx context.Context, updated *domain.Branc
 	if err := h.eventStore.Append(ctx, updated.ID, branchStreamType, []domain.Event{event}, expectedVersion, scope); err != nil {
 		return fmt.Errorf("appending branch updated event: %w", err)
 	}
-	if err := h.projector.Project(ctx, event, expectedVersion+1, scope.BranchID); err != nil {
+	if err := h.project(ctx, event, expectedVersion+1, scope.BranchID); err != nil {
 		return fmt.Errorf("projecting branch updated event: %w", err)
 	}
 	return nil

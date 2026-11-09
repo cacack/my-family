@@ -273,7 +273,7 @@ func (h *Handler) reprojectForward(ctx context.Context, group streamGroup, event
 		if err != nil {
 			return fmt.Errorf("decoding main %s event on stream %s for re-projection: %w", events[i].EventType, group.streamID, err)
 		}
-		if err := h.projector.Project(ctx, decoded, events[i].Version, domain.MainBranchID); err != nil {
+		if err := h.project(ctx, decoded, events[i].Version, domain.MainBranchID); err != nil {
 			return fmt.Errorf("re-projecting main %s (version %d) on stream %s: %w",
 				events[i].EventType, events[i].Version, group.streamID, err)
 		}

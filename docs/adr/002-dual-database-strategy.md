@@ -145,15 +145,25 @@ Implemented in `internal/storage` (`storage.Open`), which `serve` calls at start
   password; a URL that does not parse is rejected with a fixed message, and
   driver errors are scrubbed of the connection string and password before
   they are reported.
-- **Known limitation: projection failures are not recoverable yet.** A
-  command appends its events and then projects them as a separate step, and a
-  projection error does not fail the command: it is logged at error level
-  (`projection failed after append`) and otherwise dropped. With persistent
-  storage such an event stays in the log without its read-model row, and there
-  is no projection rebuild yet, so PR-001 (projection in the same transaction
-  as append) is a target, not a guarantee, for the SQL backends. Making
-  projection failures fail the command, or adding a rebuild, is tracked in
-  [#845](https://github.com/cacack/my-family/issues/845).
+- **Projection failures are recorded and repaired by a rebuild.** A command
+  appends its events and then projects them as a separate step; the two share
+  no transaction, so PR-001 (projection in the same transaction as append) is
+  a target, not a guarantee, for the SQL backends. A projection error after
+  the append does not fail most commands, since the event is durable (a GEDCOM
+  import or a branch command returns it). Either way it is
+  logged at error level (`projection failed after append`, with event type,
+  stream, version and branch) and recorded as a row in the read model's
+  `projection_failures` table. `serve` warns on startup while any such row
+  exists. `myfamily rebuild` (server stopped) is the repair: it empties every
+  read-model table, including `projection_failures`, and replays the whole log
+  into them on the same backend. The branch and snapshot registries are not
+  emptied, because their projections are replay-safe upserts. The few
+  read-model values that no event carries (GEDCOM place coordinates and
+  external IDs, brick walls) are read before the reset and written back after
+  the replay. An event that fails to replay is recorded like a live failure
+  and the replay goes on; the rebuild then exits with an error, and the
+  warning stays until a rebuild succeeds
+  ([#845](https://github.com/cacack/my-family/issues/845)).
 
 ### SQLite Driver and Builds
 

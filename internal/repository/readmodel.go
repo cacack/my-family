@@ -758,6 +758,19 @@ type ReadModelStore interface {
 	SetBrickWall(ctx context.Context, personID uuid.UUID, note string) error
 	ResolveBrickWall(ctx context.Context, personID uuid.UUID) error
 	GetBrickWalls(ctx context.Context, includeResolved bool) ([]BrickWallEntry, error)
+
+	// Projection repair (#845)
+
+	// ResetReadModel deletes every row of every read-model table, including the
+	// projection-failure markers, so RebuildReadModel can replay the event log
+	// into an empty read model. The event log, branch registry and snapshot
+	// registry are not touched.
+	ResetReadModel(ctx context.Context) error
+	// RecordProjectionFailure stores a marker for an event that is in the log
+	// but whose projection failed, so the drift outlives the process that saw it.
+	RecordProjectionFailure(ctx context.Context, failure ProjectionFailure) error
+	// ListProjectionFailures returns up to limit markers, oldest first.
+	ListProjectionFailures(ctx context.Context, limit int) ([]ProjectionFailure, error)
 }
 
 // SurnameEntry represents a surname with count.

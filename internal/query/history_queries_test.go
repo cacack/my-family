@@ -394,6 +394,14 @@ func (m *mockReadModelStore) GetBrickWalls(ctx context.Context, includeResolved 
 	return nil, nil
 }
 
+func (m *mockReadModelStore) ResetReadModel(ctx context.Context) error { return nil }
+func (m *mockReadModelStore) RecordProjectionFailure(ctx context.Context, f repository.ProjectionFailure) error {
+	return nil
+}
+func (m *mockReadModelStore) ListProjectionFailures(ctx context.Context, limit int) ([]repository.ProjectionFailure, error) {
+	return nil, nil
+}
+
 // Note stub methods
 func (m *mockReadModelStore) GetNote(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.NoteReadModel, error) {
 	return nil, nil
