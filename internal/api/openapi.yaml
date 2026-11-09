@@ -924,7 +924,10 @@ paths:
             X-Export-Warnings:
               description: >-
                 Present only when the export has warnings (see
-                ExportPreview.warnings): the warnings joined with "; ".
+                ExportPreview.warnings): the warnings joined with "; ", cut to
+                at most 1024 bytes. A cut list ends with how many warnings
+                were shown and points to the preview, which always has the
+                full list.
               schema:
                 type: string
         '400':

@@ -858,6 +858,9 @@ func renameCollidingNotes(doc *gedcom.Document, existing []string, notes []NoteD
 		}
 		used[xref] = true
 		notes[i].GedcomXref = xref
+		// Keep NoteXrefToID keyed by the pointers as rewritten below.
+		delete(result.NoteXrefToID, old)
+		result.NoteXrefToID[xref] = notes[i].ID
 		// A file defining one xref twice is already ambiguous; its pointers
 		// follow the first record.
 		if _, seen := renamed[old]; !seen {

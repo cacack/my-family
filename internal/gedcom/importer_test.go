@@ -3266,6 +3266,16 @@ func TestImport_ExistingXrefsRenameCollidingNotes(t *testing.T) {
 	if len(assocs) != 1 || assocs[0].Notes != "@N5@" {
 		t.Errorf("association Notes = %+v, want @N5@", assocs)
 	}
+	// NoteXrefToID must key the renamed note by its new xref, matching the
+	// rewritten pointers.
+	for _, n := range notes {
+		if id, ok := result.NoteXrefToID[n.GedcomXref]; !ok || id != n.ID {
+			t.Errorf("NoteXrefToID[%s] = %v, %v; want %v", n.GedcomXref, id, ok, n.ID)
+		}
+	}
+	if _, ok := result.NoteXrefToID["@N1@"]; ok {
+		t.Errorf("NoteXrefToID still holds the renamed note's old xref @N1@: %v", result.NoteXrefToID)
+	}
 	found := false
 	for _, w := range result.Warnings {
 		found = found || strings.Contains(w, "@N1@ renamed to @N5@")

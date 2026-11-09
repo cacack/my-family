@@ -1743,13 +1743,42 @@ func (ss *StrictServer) ExportGedcom(ctx context.Context, request ExportGedcomRe
 		ContentDisposition: strPtr("attachment; filename=export.ged"),
 	}
 	if len(result.Warnings) > 0 {
-		headers.XExportWarnings = strPtr(strings.Join(result.Warnings, "; "))
+		headers.XExportWarnings = strPtr(exportWarningsHeader(result.Warnings))
 	}
 	return ExportGedcom200ApplicationxGedcomResponse{
 		Body:          strings.NewReader(sb.String()),
 		ContentLength: int64(sb.Len()),
 		Headers:       headers,
 	}, nil
+}
+
+// maxExportWarningsHeader bounds X-Export-Warnings: reverse proxies reject
+// response headers past a few KB (nginx's default buffer is 4-8KB), and one
+// tree can carry a warning per duplicated xref.
+const maxExportWarningsHeader = 1024
+
+// exportWarningsHeader joins warnings with "; " for X-Export-Warnings. When
+// that exceeds maxExportWarningsHeader it keeps the leading warnings that fit
+// and ends with how many were shown and where the full list is.
+func exportWarningsHeader(warnings []string) string {
+	joined := strings.Join(warnings, "; ")
+	if len(joined) <= maxExportWarningsHeader {
+		return joined
+	}
+	truncation := func(shown int) string {
+		return fmt.Sprintf("... (%d of %d shown; full list at GET /api/v1/gedcom/export/preview)", shown, len(warnings))
+	}
+	var sb strings.Builder
+	shown := 0
+	for _, w := range warnings {
+		if sb.Len()+len(w)+len("; ")+len(truncation(shown+1)) > maxExportWarningsHeader {
+			break
+		}
+		sb.WriteString(w + "; ")
+		shown++
+	}
+	sb.WriteString(truncation(shown))
+	return sb.String()
 }
 
 // PreviewGedcomExport implements StrictServerInterface. It reports whether
