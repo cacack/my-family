@@ -451,3 +451,122 @@ func assertNameDeleteRefused(t *testing.T, rec *httptest.ResponseRecorder, wantM
 		t.Errorf("message = %q, want it to contain %q", msg, wantMessage)
 	}
 }
+
+// firstNameID returns the id of the first name listed for personID.
+func firstNameID(t *testing.T, server *api.Server, personID string) string {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/persons/"+personID+"/names", http.NoBody))
+	var resp struct {
+		Items []struct {
+			ID string `json:"id"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil || len(resp.Items) == 0 {
+		t.Fatalf("listing names: %s (err %v)", rec.Body.String(), err)
+	}
+	return resp.Items[0].ID
+}
+
+// An unknown name id, or one that belongs to another person, is a 404
+// NOT_FOUND on update and delete, not a 500 (#1142).
+func TestPersonName_UnknownOrForeignNameIsNotFound(t *testing.T) {
+	server := setupNameTestServer()
+	personID := createPersonForNameTest(t, server)
+	otherID := createPersonForNameTest(t, server)
+	foreignNameID := firstNameID(t, server, otherID)
+	const unknownNameID = "00000000-0000-0000-0000-000000000001"
+
+	for _, nameID := range []string{unknownNameID, foreignNameID} {
+		for _, method := range []string{http.MethodPut, http.MethodDelete} {
+			url := "/api/v1/persons/" + personID + "/names/" + nameID
+			req := httptest.NewRequest(method, url, http.NoBody)
+			if method == http.MethodPut {
+				req = httptest.NewRequest(method, url, strings.NewReader(`{"given_name":"Changed"}`))
+				req.Header.Set("Content-Type", "application/json")
+			}
+			rec := httptest.NewRecorder()
+			server.Echo().ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusNotFound {
+				t.Errorf("%s name %s: status = %d, want 404. Body: %s", method, nameID, rec.Code, rec.Body.String())
+				continue
+			}
+			var resp map[string]any
+			_ = json.Unmarshal(rec.Body.Bytes(), &resp)
+			if resp["code"] != api.CodeNotFound {
+				t.Errorf("%s name %s: code = %v, want %s", method, nameID, resp["code"], api.CodeNotFound)
+			}
+		}
+	}
+
+	// The other person's name is untouched.
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/persons/"+otherID+"/names", http.NoBody))
+	if !strings.Contains(rec.Body.String(), `"given_name":"John"`) {
+		t.Errorf("other person's names changed: %s", rec.Body.String())
+	}
+}
+
+// Each name carries its person's id, and a name with no type omits name_type
+// rather than sending an empty one (#1121).
+func TestPersonName_CarriesPersonIDAndOmitsEmptyType(t *testing.T) {
+	server := setupNameTestServer()
+	personID := createPersonForNameTest(t, server)
+
+	addReq := httptest.NewRequest(http.MethodPost, "/api/v1/persons/"+personID+"/names",
+		strings.NewReader(`{"given_name":"Jane","surname":"Doe","name_type":"married"}`))
+	addReq.Header.Set("Content-Type", "application/json")
+	addRec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(addRec, addReq)
+	if addRec.Code != http.StatusCreated {
+		t.Fatalf("add name: %d %s", addRec.Code, addRec.Body.String())
+	}
+
+	type name struct {
+		PersonID string  `json:"person_id"`
+		NameType *string `json:"name_type"`
+		Given    string  `json:"given_name"`
+	}
+	check := func(label string, names []name) {
+		t.Helper()
+		if len(names) != 2 {
+			t.Fatalf("%s: got %d names, want 2", label, len(names))
+		}
+		for _, n := range names {
+			if n.PersonID != personID {
+				t.Errorf("%s: %s person_id = %q, want %q", label, n.Given, n.PersonID, personID)
+			}
+			switch n.Given {
+			case "John": // created without a type
+				if n.NameType != nil {
+					t.Errorf("%s: untyped name has name_type %q, want it omitted", label, *n.NameType)
+				}
+			case "Jane":
+				if n.NameType == nil || *n.NameType != "married" {
+					t.Errorf("%s: name_type = %v, want married", label, n.NameType)
+				}
+			}
+		}
+	}
+
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/persons/"+personID, http.NoBody))
+	var person struct {
+		Names []name `json:"names"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &person); err != nil {
+		t.Fatalf("decoding person: %v", err)
+	}
+	check("GET /persons/{id}", person.Names)
+
+	rec = httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/persons/"+personID+"/names", http.NoBody))
+	var list struct {
+		Items []name `json:"items"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil {
+		t.Fatalf("decoding names: %v", err)
+	}
+	check("GET /persons/{id}/names", list.Items)
+}

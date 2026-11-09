@@ -1826,7 +1826,7 @@ paths:
             default: asc
         - name: q
           in: query
-          description: Search query to filter sources
+          description: Lists only the sources whose title contains this text (case-insensitive); total counts the matches.
           schema:
             type: string
       responses:
@@ -6955,7 +6955,7 @@ components:
     # PersonName schemas
     PersonName:
       type: object
-      required: [id, person_id, given_name, surname, name_type, is_primary]
+      required: [id, person_id, given_name, surname, is_primary]
       properties:
         id:
           type: string
@@ -6981,7 +6981,9 @@ components:
         nickname:
           type: string
         name_type:
-          $ref: '#/components/schemas/NameType'
+          description: Omitted when the name has no type (a GEDCOM NAME without TYPE).
+          allOf:
+            - $ref: '#/components/schemas/NameType'
         is_primary:
           type: boolean
 

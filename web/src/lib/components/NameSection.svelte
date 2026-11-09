@@ -105,7 +105,8 @@
 			name_suffix: name.name_suffix || '',
 			surname_prefix: name.surname_prefix || '',
 			nickname: name.nickname || '',
-			name_type: name.name_type,
+			// An untyped name has no name_type (#1121); keep it untyped as before.
+			name_type: (name.name_type ?? '') as NameType,
 			is_primary: name.is_primary
 		};
 		showAddForm = false;
@@ -408,15 +409,17 @@
 							</div>
 						</form>
 					{:else}
-						{@const badgeInfo = nameTypeBadgeInfo(name.name_type)}
+						{@const badgeInfo = name.name_type ? nameTypeBadgeInfo(name.name_type) : null}
 						<div class="name-header">
 							<span class="name-display">{formatDisplayName(name)}</span>
-							<span
-								class="name-type-badge"
-								style="background: {badgeInfo.bg}; color: {badgeInfo.color};"
-							>
-								{badgeInfo.label}
-							</span>
+							{#if badgeInfo}
+								<span
+									class="name-type-badge"
+									style="background: {badgeInfo.bg}; color: {badgeInfo.color};"
+								>
+									{badgeInfo.label}
+								</span>
+							{/if}
 							{#if name.is_primary}
 								<span class="primary-badge">Primary</span>
 							{/if}

@@ -4111,7 +4111,8 @@ export interface components {
             name_suffix?: string;
             surname_prefix?: string;
             nickname?: string;
-            name_type: components["schemas"]["NameType"];
+            /** @description Omitted when the name has no type (a GEDCOM NAME without TYPE). */
+            name_type?: components["schemas"]["NameType"];
             is_primary: boolean;
         };
         PersonNameCreate: {
@@ -8375,7 +8376,7 @@ export interface operations {
                 offset?: components["parameters"]["offsetParam"];
                 sort?: "title" | "source_type" | "created_at" | "updated_at";
                 order?: "asc" | "desc";
-                /** @description Search query to filter sources */
+                /** @description Lists only the sources whose title contains this text (case-insensitive); total counts the matches. */
                 q?: string;
             };
             header?: never;

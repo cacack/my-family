@@ -46,6 +46,7 @@ type Person struct {
 // PersonName represents a name variant for a person in query results.
 type PersonName struct {
 	ID            uuid.UUID `json:"id"`
+	PersonID      uuid.UUID `json:"person_id"`
 	GivenName     string    `json:"given_name"`
 	Surname       string    `json:"surname"`
 	FullName      string    `json:"full_name"`
@@ -369,6 +370,7 @@ func (s *PersonService) GetPersonNames(ctx context.Context, branchID domain.Bran
 func convertPersonNameReadModel(rm repository.PersonNameReadModel) PersonName {
 	return PersonName{
 		ID:            rm.ID,
+		PersonID:      rm.PersonID,
 		GivenName:     rm.GivenName,
 		Surname:       rm.Surname,
 		FullName:      rm.FullName,

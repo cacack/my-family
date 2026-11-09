@@ -94,6 +94,7 @@ func (s *SourceService) ListSources(ctx context.Context, input ListSourcesInput)
 		Offset: input.Offset,
 		Sort:   input.SortBy,
 		Order:  input.SortOrder,
+		Query:  input.Query,
 		// BranchID scopes the list to the branch overlay (ADR-005, #758).
 		BranchID: input.BranchID,
 	}

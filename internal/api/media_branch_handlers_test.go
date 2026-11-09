@@ -24,7 +24,7 @@ import (
 func uploadMedia(t *testing.T, server *api.Server, personID, suffix string, jpegData []byte) (string, int64) {
 	t.Helper()
 	req, err := createMultipartRequest(fmt.Sprintf("/api/v1/persons/%s/media%s", personID, suffix),
-		"file", "portrait.jpg", jpegData, nil)
+		"file", "portrait.jpg", jpegData, map[string]string{"title": "Portrait"})
 	if err != nil {
 		t.Fatalf("build upload request: %v", err)
 	}
@@ -79,8 +79,8 @@ func TestMedia_BranchScope(t *testing.T) {
 	if got := decodeJSON(t, rec)["title"]; got != "Portrait (branch reading)" {
 		t.Errorf("Branch update response title = %v, want the branch title", got)
 	}
-	if got := getJSON("/api/v1/media/" + mediaID)["title"]; got != "portrait.jpg" {
-		t.Errorf("Mainline media title = %v, want portrait.jpg", got)
+	if got := getJSON("/api/v1/media/" + mediaID)["title"]; got != "Portrait" {
+		t.Errorf("Mainline media title = %v, want Portrait", got)
 	}
 	if got := getJSON("/api/v1/media/" + mediaID + onBranch)["title"]; got != "Portrait (branch reading)" {
 		t.Errorf("Branch media title = %v, want the branch title", got)
