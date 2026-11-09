@@ -2,12 +2,14 @@ package repository_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/google/uuid"
 
 	"github.com/cacack/my-family/internal/domain"
 	"github.com/cacack/my-family/internal/repository"
+	"github.com/cacack/my-family/internal/repository/memory"
 )
 
 // TestProjector_FamilyMemberNamesFollowThePerson proves the partner and child
@@ -103,6 +105,32 @@ func TestProjector_FamilyMemberNamesFollowThePerson(t *testing.T) {
 
 				assertPartner1(t, readStore, domain.MainBranchID, parents.ID, "Frankie", "Late")
 				assertChild(t, readStore, domain.MainBranchID, parents.ID, child.ID, "Gale", "Late")
+			})
+
+			t.Run("parent rename refreshes the children's pedigree edges", func(t *testing.T) {
+				father := domain.NewPerson("Lane", "Original")
+				father.Gender = domain.GenderMale
+				onMain(t, domain.NewPersonCreated(father), 1)
+				mother := person(t, "Morgan", "Original")
+				child := person(t, "Noel", "Original")
+				parents := domain.NewFamilyWithPartners(&father.ID, &mother.ID)
+				onMain(t, domain.NewFamilyCreated(parents), 1)
+				onMain(t, domain.NewChildLinkedToFamily(domain.NewFamilyChild(parents.ID, child.ID, domain.ChildBiological)), 2)
+				primary := domain.NewPersonName(mother.ID, "Morgan", "Original")
+				primary.IsPrimary = true
+				onMain(t, domain.NewNameAdded(primary), 2)
+
+				onMain(t, domain.NewPersonUpdated(father.ID, map[string]any{"surname": "Renamed"}), 2)
+				primary.Surname = "Renamed"
+				onMain(t, domain.NewNameUpdated(primary), 3)
+
+				edge, err := readStore.GetPedigreeEdge(ctx, domain.MainBranchID, child.ID)
+				if err != nil || edge == nil {
+					t.Fatalf("GetPedigreeEdge = %v, %v", edge, err)
+				}
+				if edge.FatherName != "Lane Renamed" || edge.MotherName != "Morgan Renamed" {
+					t.Errorf("pedigree names = %q / %q, want %q / %q", edge.FatherName, edge.MotherName, "Lane Renamed", "Morgan Renamed")
+				}
 			})
 
 			// A rename on a branch rewrites the family rows the branch itself
@@ -239,4 +267,64 @@ func assertChild(t *testing.T, rs repository.ReadModelStore, branchID domain.Bra
 		}
 	}
 	t.Errorf("family %s has no child %s", familyID, personID)
+}
+
+// failingRenameStore fails every RenameFamilyMember, standing in for a
+// transient database error part way through projecting a rename.
+type failingRenameStore struct {
+	repository.ReadModelStore
+}
+
+func (failingRenameStore) RenameFamilyMember(context.Context, domain.BranchID, uuid.UUID, string, string) error {
+	return errors.New("rename failed")
+}
+
+// TestProjector_FamilyMemberRenameFailureLeavesPersonBehind proves a failed
+// family-name rewrite does not record the person's new version: ResumeMerge
+// re-projects only streams whose read-model version lags the log, so a person
+// saved at the new version would hide the stale family names from it (#817).
+func TestProjector_FamilyMemberRenameFailureLeavesPersonBehind(t *testing.T) {
+	ctx := context.Background()
+	base := memory.NewReadModelStore()
+	failing := repository.NewProjector(failingRenameStore{base}, nil)
+	ok := repository.NewProjector(base, nil)
+
+	created := domain.NewPerson("Ola", "Original")
+	if err := failing.Project(ctx, domain.NewPersonCreated(created), 1, domain.MainBranchID); err == nil {
+		t.Fatal("PersonCreated: want the rename error")
+	}
+	if got, _ := base.GetPerson(ctx, domain.MainBranchID, created.ID); got != nil {
+		t.Errorf("PersonCreated saved the person at version %d despite the failed rename", got.Version)
+	}
+
+	p := domain.NewPerson("Pat", "Original")
+	if err := ok.Project(ctx, domain.NewPersonCreated(p), 1, domain.MainBranchID); err != nil {
+		t.Fatalf("PersonCreated: %v", err)
+	}
+	if err := failing.Project(ctx, domain.NewPersonUpdated(p.ID, map[string]any{"surname": "Renamed"}), 2, domain.MainBranchID); err == nil {
+		t.Fatal("PersonUpdated: want the rename error")
+	}
+	assertPersonVersion(t, base, p.ID, 1)
+
+	primary := domain.NewPersonName(p.ID, "Pat", "Original")
+	primary.IsPrimary = true
+	if err := ok.Project(ctx, domain.NewNameAdded(primary), 2, domain.MainBranchID); err != nil {
+		t.Fatalf("NameAdded: %v", err)
+	}
+	primary.Surname = "Renamed"
+	if err := failing.Project(ctx, domain.NewNameUpdated(primary), 3, domain.MainBranchID); err == nil {
+		t.Fatal("NameUpdated: want the rename error")
+	}
+	assertPersonVersion(t, base, p.ID, 2)
+}
+
+func assertPersonVersion(t *testing.T, rs repository.ReadModelStore, id uuid.UUID, want int64) {
+	t.Helper()
+	got, err := rs.GetPerson(context.Background(), domain.MainBranchID, id)
+	if err != nil || got == nil {
+		t.Fatalf("GetPerson = %v, %v", got, err)
+	}
+	if got.Version != want {
+		t.Errorf("person version = %d, want %d (the failed rename must leave it behind)", got.Version, want)
+	}
 }

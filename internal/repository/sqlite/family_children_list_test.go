@@ -143,10 +143,10 @@ func TestRenameFamilyMember_Parity(t *testing.T) {
 // runRenameFamilyMemberScenario is the backend-agnostic body of the #1129
 // family-member rename. Each backend package carries an identical copy
 // (DB-001). It proves RenameFamilyMember rewrites the person's partner and
-// child names on the rows stored under the given scope only: a main rename
-// leaves branch rows alone, a branch rename leaves main rows alone and writes
-// no shadow for a family the branch holds no row of, and other people's names
-// never change. Fixtures use neutral placeholder names only.
+// child names, and its children's pedigree parent names, on the rows stored
+// under the given scope only: a main rename leaves branch rows alone, a branch
+// rename leaves main rows alone and writes no shadow for a family the branch
+// holds no row of, and other people's names never change. Fixtures use neutral placeholder names only.
 func runRenameFamilyMemberScenario(t *testing.T, store repository.ReadModelStore) {
 	t.Helper()
 	ctx := context.Background()
@@ -181,6 +181,26 @@ func runRenameFamilyMemberScenario(t *testing.T, store repository.ReadModelStore
 	link(domain.MainBranchID, mainOnly, person)
 	link(domain.MainBranchID, mainOnly, other)
 	link(branch, branchOnly, person)
+	mainKid, branchKid := uuid.New(), uuid.New()
+	for _, e := range []struct {
+		scope domain.BranchID
+		edge  *repository.PedigreeEdge
+	}{
+		{domain.MainBranchID, &repository.PedigreeEdge{PersonID: mainKid, FatherID: &person, FatherName: "Old Sample", MotherID: &other, MotherName: "Old Sample"}},
+		{branch, &repository.PedigreeEdge{PersonID: branchKid, MotherID: &person, MotherName: "Old Sample"}},
+	} {
+		if err := store.SavePedigreeEdge(ctx, e.scope, e.edge); err != nil {
+			t.Fatalf("save pedigree edge: %v", err)
+		}
+	}
+	parents := func(scope domain.BranchID, child uuid.UUID) string {
+		t.Helper()
+		edge, err := store.GetPedigreeEdge(ctx, scope, child)
+		if err != nil || edge == nil {
+			t.Fatalf("GetPedigreeEdge %s = %v, %v", child, edge, err)
+		}
+		return edge.FatherName + " & " + edge.MotherName
+	}
 
 	family := func(scope domain.BranchID, id uuid.UUID) *repository.FamilyReadModel {
 		t.Helper()
@@ -223,6 +243,12 @@ func runRenameFamilyMemberScenario(t *testing.T, store repository.ReadModelStore
 	if got, want := childName(domain.MainBranchID, mainOnly, other), "Old Sample"; got != want {
 		t.Errorf("main sibling = %q, want %q (another person)", got, want)
 	}
+	if got, want := parents(domain.MainBranchID, mainKid), "New Main & Old Sample"; got != want {
+		t.Errorf("main pedigree parents = %q, want %q", got, want)
+	}
+	if got, want := parents(branch, branchKid), " & Old Sample"; got != want {
+		t.Errorf("branch pedigree after main rename = %q, want %q (BR-003)", got, want)
+	}
 	if got, want := partners(family(branch, asPartner2)), "Old Sample & Old Sample"; got != want {
 		t.Errorf("branch shadow after main rename = %q, want %q (BR-003)", got, want)
 	}
@@ -238,6 +264,12 @@ func runRenameFamilyMemberScenario(t *testing.T, store repository.ReadModelStore
 	}
 	if got, want := childName(branch, branchOnly, person), "New Branch"; got != want {
 		t.Errorf("branch child = %q, want %q", got, want)
+	}
+	if got, want := parents(branch, branchKid), " & New Branch"; got != want {
+		t.Errorf("branch pedigree parents = %q, want %q", got, want)
+	}
+	if got, want := parents(domain.MainBranchID, mainKid), "New Main & Old Sample"; got != want {
+		t.Errorf("main pedigree after branch rename = %q, want %q", got, want)
 	}
 	if got, want := partners(family(domain.MainBranchID, asPartner2)), "Old Sample & New Main"; got != want {
 		t.Errorf("main family after branch rename = %q, want %q", got, want)

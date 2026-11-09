@@ -1093,8 +1093,9 @@ func (s *ReadModelStore) GetChildFamily(ctx context.Context, branchID domain.Bra
 	return nil, nil
 }
 
-// RenameFamilyMember rewrites personID's partner and child names on the family
-// rows and child buckets stored under branchID itself.
+// RenameFamilyMember rewrites personID's partner, child and pedigree parent
+// names on the family rows, child buckets and pedigree edges stored under
+// branchID itself.
 func (s *ReadModelStore) RenameFamilyMember(ctx context.Context, branchID domain.BranchID, personID uuid.UUID, givenName, surname string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -1118,6 +1119,18 @@ func (s *ReadModelStore) RenameFamilyMember(ctx context.Context, branchID domain
 			if children[i].PersonID == personID {
 				children[i].PersonGivenName, children[i].PersonSurname = givenName, surname
 			}
+		}
+	}
+	fullName := domain.JoinFullName(givenName, surname)
+	for k, edge := range s.pedigreeEdges {
+		if k.branch != branchID || edge == nil {
+			continue
+		}
+		if edge.FatherID != nil && *edge.FatherID == personID {
+			edge.FatherName = fullName
+		}
+		if edge.MotherID != nil && *edge.MotherID == personID {
+			edge.MotherName = fullName
 		}
 	}
 	return nil

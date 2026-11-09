@@ -494,8 +494,9 @@ type ReadModelStore interface {
 	GetChildrenOfFamily(ctx context.Context, branchID domain.BranchID, familyID uuid.UUID) ([]PersonReadModel, error)
 	GetChildFamily(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) (*FamilyReadModel, error)
 	// RenameFamilyMember rewrites the names families denormalize for personID
-	// (partner1/partner2 given name and surname, and the child links' names) on
-	// the rows stored under branchID itself (#1129). It never falls back to or
+	// (partner1/partner2 given name and surname, the child links' names, and the
+	// father/mother name on the pedigree edges of the person's children) on the
+	// rows stored under branchID itself (#1129). It never falls back to or
 	// shadows main's rows: a branch row written only to carry a name would hide
 	// main's later edits to that family from the branch (ADR-005 live overlay),
 	// and a main write never touches a branch's rows (BR-003).

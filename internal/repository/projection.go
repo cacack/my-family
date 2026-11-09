@@ -344,12 +344,14 @@ func (p *Projector) projectPersonCreated(ctx context.Context, e domain.PersonCre
 		UpdatedAt:      e.OccurredAt(),
 	}
 
-	if err := p.readStore.SavePerson(ctx, branchID, person); err != nil {
-		return err
-	}
 	// A family may already name this person: a branch merge replays streams
 	// in first-event order, so a family's link can land before the person (#817).
-	return p.readStore.RenameFamilyMember(ctx, branchID, person.ID, person.GivenName, person.Surname)
+	// The rename runs before SavePerson records the version, so a failed rename
+	// leaves the person behind the log for ResumeMerge to re-project.
+	if err := p.readStore.RenameFamilyMember(ctx, branchID, person.ID, person.GivenName, person.Surname); err != nil {
+		return err
+	}
+	return p.readStore.SavePerson(ctx, branchID, person)
 }
 
 func (p *Projector) projectPersonUpdated(ctx context.Context, e domain.PersonUpdated, version int64, branchID domain.BranchID) error {
@@ -427,16 +429,17 @@ func (p *Projector) projectPersonUpdated(ctx context.Context, e domain.PersonUpd
 	person.Version = version
 	person.UpdatedAt = e.OccurredAt()
 
-	if err := p.readStore.SavePerson(ctx, branchID, person); err != nil {
-		return err
+	// Name side effects run before SavePerson records the version (see
+	// projectPersonCreated).
+	if nameChanged {
+		if err := p.syncPrimaryNameFromPerson(ctx, branchID, person, e.OccurredAt()); err != nil {
+			return err
+		}
+		if err := p.readStore.RenameFamilyMember(ctx, branchID, person.ID, person.GivenName, person.Surname); err != nil {
+			return err
+		}
 	}
-	if !nameChanged {
-		return nil
-	}
-	if err := p.syncPrimaryNameFromPerson(ctx, branchID, person, e.OccurredAt()); err != nil {
-		return err
-	}
-	return p.readStore.RenameFamilyMember(ctx, branchID, person.ID, person.GivenName, person.Surname)
+	return p.readStore.SavePerson(ctx, branchID, person)
 }
 
 func (p *Projector) projectPersonDeleted(ctx context.Context, e domain.PersonDeleted, branchID domain.BranchID) error {
@@ -1596,13 +1599,14 @@ func (p *Projector) updatePersonForName(ctx context.Context, branchID domain.Bra
 		person.UpdatedAt = name.UpdatedAt
 	}
 	person.Version = version
-	if err := p.readStore.SavePerson(ctx, branchID, person); err != nil {
-		return err
+	// The rename runs before SavePerson records the version (see
+	// projectPersonCreated).
+	if renamed {
+		if err := p.readStore.RenameFamilyMember(ctx, branchID, person.ID, person.GivenName, person.Surname); err != nil {
+			return err
+		}
 	}
-	if !renamed {
-		return nil
-	}
-	return p.readStore.RenameFamilyMember(ctx, branchID, person.ID, person.GivenName, person.Surname)
+	return p.readStore.SavePerson(ctx, branchID, person)
 }
 
 // syncPrimaryNameFromPerson copies a person's given name and surname onto its

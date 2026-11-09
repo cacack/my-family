@@ -2843,8 +2843,9 @@ func (s *ReadModelStore) GetChildFamily(ctx context.Context, branchID domain.Bra
 	return scanFamily(row)
 }
 
-// RenameFamilyMember rewrites personID's partner and child names on the family
-// and family_children rows stored under branchID itself.
+// RenameFamilyMember rewrites personID's partner, child and pedigree parent
+// names on the families, family_children and pedigree_edges rows stored under
+// branchID itself.
 func (s *ReadModelStore) RenameFamilyMember(ctx context.Context, branchID domain.BranchID, personID uuid.UUID, givenName, surname string) error {
 	if err := s.guardBranchWrite(branchID); err != nil {
 		return err
@@ -2863,6 +2864,15 @@ func (s *ReadModelStore) RenameFamilyMember(ctx context.Context, branchID domain
 	} {
 		if _, err := tx.ExecContext(ctx, stmt, args...); err != nil {
 			return fmt.Errorf("rename family member: %w", err)
+		}
+	}
+	edgeArgs := []any{domain.JoinFullName(givenName, surname), personID.String(), branchID.String()}
+	for _, stmt := range []string{
+		`UPDATE pedigree_edges SET father_name = ? WHERE father_id = ? AND branch_id = ? AND deleted = 0`,
+		`UPDATE pedigree_edges SET mother_name = ? WHERE mother_id = ? AND branch_id = ? AND deleted = 0`,
+	} {
+		if _, err := tx.ExecContext(ctx, stmt, edgeArgs...); err != nil {
+			return fmt.Errorf("rename pedigree parent: %w", err)
 		}
 	}
 	return tx.Commit()
