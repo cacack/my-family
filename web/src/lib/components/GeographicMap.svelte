@@ -240,7 +240,9 @@
 				.on('mousemove', (event: MouseEvent) => positionTooltip(d3.pointer(event, container)))
 				.on('mouseleave', hideTooltip)
 				.on('focus', function (_event: FocusEvent, c) {
-					panIntoView(c);
+					// Only keyboard focus pans: a click focuses on press, and panning then
+					// would move the marker out from under the release, losing the click
+					if (this.matches(':focus-visible')) panIntoView(c);
 					showTooltip(clusterLabel(c.items));
 					const box = this.getBoundingClientRect();
 					const origin = container.getBoundingClientRect();

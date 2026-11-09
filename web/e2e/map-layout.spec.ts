@@ -176,3 +176,28 @@ test('the details panel closes on Escape or × and returns focus to its marker',
 	await expect(page.getByRole('heading', { name: place('Sydney') })).toHaveCount(0);
 	await expect(marker).toBeFocused();
 });
+
+test('clicking a marker near the map edge opens its panel without panning', async ({ page }) => {
+	await page.setViewportSize({ width: 1280, height: 900 });
+	await openMap(page);
+	const box = (await page.locator('.map-container').boundingBox())!;
+	const sydney = (markers: Drawn[]) => markers.find((m) => m.label.includes(place('Sydney')))!;
+
+	// Drag Sydney to 10px inside the left edge: in view, but inside the pan-on-focus margin
+	const before = sydney((await measure(page)).markers);
+	const startX = box.x + box.width / 2;
+	const startY = box.y + 40;
+	await page.mouse.move(startX, startY);
+	await page.mouse.down();
+	await page.mouse.move(startX + box.x + 10 - before.x, startY, { steps: 10 });
+	await page.mouse.up();
+
+	const { map, markers } = await measure(page);
+	const near = sydney(markers);
+	expect(near.x - map.left).toBeLessThan(24);
+	expect(inside(near, map)).toBe(true);
+
+	await page.mouse.click(near.x, near.y);
+	await expect(page.getByRole('heading', { name: place('Sydney') })).toBeVisible();
+	expect(sydney((await measure(page)).markers).x).toBeCloseTo(near.x, 0);
+});
