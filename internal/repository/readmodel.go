@@ -885,7 +885,7 @@ type ListOptions struct {
 	Sort   string
 	Order  string // "asc" or "desc"
 	// ResearchStatus filters by research_status: certain, probable, possible,
-	// unknown, or "unset" for NULL.
+	// unknown, "unset" for NULL, or "unassessed" for NULL or unknown.
 	ResearchStatus *string
 	// ConflictStatus filters ListEvidenceConflicts by status (open, resolved,
 	// accepted). The predicate applies to each conflict's winning overlay row,

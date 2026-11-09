@@ -245,8 +245,11 @@ func matchesResearchStatusFilter(p *repository.PersonReadModel, filter *string) 
 	if filter == nil {
 		return true
 	}
-	if *filter == "unset" {
+	switch *filter {
+	case "unset":
 		return p.ResearchStatus == ""
+	case "unassessed":
+		return p.ResearchStatus == "" || p.ResearchStatus == domain.ResearchStatusUnknown
 	}
 	return string(p.ResearchStatus) == *filter
 }

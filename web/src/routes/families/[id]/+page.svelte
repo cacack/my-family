@@ -625,17 +625,19 @@
 						{#if rollbackOnMainlineOnly}
 							<p class="rollback-mainline-only" role="note">{ROLLBACK_MAINLINE_ONLY}</p>
 						{:else}
-							<div class="history-tabs">
+							<div class="history-tabs" role="group" aria-label="History view">
 								<button
+									type="button"
 									class="tab-btn"
-									class:active={historyTab === 'history'}
+									aria-pressed={historyTab === 'history'}
 									onclick={() => historyTab = 'history'}
 								>
 									Change Log
 								</button>
 								<button
+									type="button"
 									class="tab-btn"
-									class:active={historyTab === 'restore'}
+									aria-pressed={historyTab === 'restore'}
 									onclick={() => historyTab = 'restore'}
 								>
 									Restore
@@ -972,7 +974,7 @@
 		color: #475569;
 	}
 
-	.tab-btn.active {
+	.tab-btn[aria-pressed='true'] {
 		color: var(--color-link);
 		border-bottom-color: #3b82f6;
 	}

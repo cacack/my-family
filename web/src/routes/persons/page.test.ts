@@ -121,6 +121,31 @@ describe('People list page: state in the URL (#901)', () => {
 		);
 	});
 
+	// Unknown and no status listed as two buckets (#1110).
+	it('filters on one Not assessed bucket covering unknown and unset', async () => {
+		resetRouter('/persons');
+		render(PersonsPage);
+		await screen.findByText('Page 1 of 5');
+
+		const filter = screen.getByLabelText('Confidence:') as HTMLSelectElement;
+		const labels = Array.from(filter.options, (o) => o.textContent?.trim());
+		expect(labels).toEqual(['All', 'Certain', 'Probable', 'Possible', 'Not assessed']);
+
+		await fireEvent.change(filter, { target: { value: 'unassessed' } });
+		await waitFor(() => expect(currentPath()).toBe('/persons?status=unassessed'));
+		await waitFor(() => expect(lastListCall()).toMatchObject({ research_status: 'unassessed' }));
+	});
+
+	it('marks the Quick Captures chip pressed while its filter is on', async () => {
+		resetRouter('/persons');
+		render(PersonsPage);
+		await screen.findByText('Page 1 of 5');
+
+		const chip = screen.getByRole('button', { name: 'Quick Captures', pressed: false });
+		await fireEvent.click(chip);
+		await waitFor(() => expect(chip.getAttribute('aria-pressed')).toBe('true'));
+	});
+
 	it('moves a page past the end to the last page, replacing the URL (#948)', async () => {
 		resetRouter('/persons?sort=birth_date&page=9');
 		render(PersonsPage);

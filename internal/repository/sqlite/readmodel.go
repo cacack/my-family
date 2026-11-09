@@ -1085,9 +1085,12 @@ func (s *ReadModelStore) ListPersons(ctx context.Context, opts repository.ListOp
 	whereClause := ""
 	var whereArgs []any
 	if opts.ResearchStatus != nil {
-		if *opts.ResearchStatus == "unset" {
+		switch *opts.ResearchStatus {
+		case "unset":
 			whereClause = "WHERE research_status IS NULL OR research_status = ''"
-		} else {
+		case "unassessed":
+			whereClause = "WHERE research_status IS NULL OR research_status IN ('', 'unknown')"
+		default:
 			whereClause = "WHERE research_status = ?"
 			whereArgs = append(whereArgs, *opts.ResearchStatus)
 		}

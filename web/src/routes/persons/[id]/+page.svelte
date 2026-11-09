@@ -98,7 +98,7 @@
 		death_date: '',
 		death_place: '',
 		notes: '',
-		research_status: '' as ResearchStatus | ''
+		research_status: 'unknown' as ResearchStatus
 	});
 
 	async function loadPerson(id: string) {
@@ -273,7 +273,7 @@
 			death_date: saved.death_date?.raw || '',
 			death_place: saved.death_place || '',
 			notes: saved.notes || '',
-			research_status: saved.research_status || ''
+			research_status: saved.research_status || 'unknown'
 		};
 	}
 
@@ -289,15 +289,12 @@
 		return options.find((option) => option.value === value)?.label ?? value;
 	}
 
-	const researchStatusLabel = (value: string) =>
-		value ? optionLabel(RESEARCH_STATUS_OPTIONS, value) : 'Not assessed';
-
 	// The edit form's fields, in its order, for comparing with the latest version.
 	const conflictRows: ConflictRow<typeof formData>[] = [
 		{ key: 'given_name', label: 'Given Name' },
 		{ key: 'surname', label: 'Surname' },
 		{ key: 'gender', label: 'Gender', format: (value) => optionLabel(GENDER_OPTIONS, value) },
-		{ key: 'research_status', label: 'Research Status', format: researchStatusLabel },
+		{ key: 'research_status', label: 'Research Status', format: (value) => optionLabel(RESEARCH_STATUS_OPTIONS, value) },
 		{ key: 'birth_date', label: 'Birth Date' },
 		{ key: 'birth_place', label: 'Birth Place' },
 		{ key: 'death_date', label: 'Death Date' },
@@ -361,9 +358,12 @@
 				death_date: formData.death_date,
 				death_place: formData.death_place,
 				notes: formData.notes,
-				// "Not assessed" on an assessed person resets it to unknown, the
-				// API's unassessed status.
-				research_status: formData.research_status || (person.research_status ? 'unknown' : undefined),
+				// Sent only when changed, so saving a person with no status
+				// recorded doesn't set one: both read as "Not assessed".
+				research_status:
+					formData.research_status !== (person.research_status || 'unknown')
+						? formData.research_status
+						: undefined,
 				version: person.version
 			});
 			await loadPerson(person.id);
@@ -486,7 +486,6 @@
 					<label>
 						Research Status
 						<select bind:value={formData.research_status}>
-							<option value="">Not assessed</option>
 							{#each RESEARCH_STATUS_OPTIONS as option (option.value)}
 								<option value={option.value}>{option.label} - {option.description}</option>
 							{/each}
@@ -561,9 +560,7 @@
 					<div class="person-title">
 						<div class="name-row">
 							<h1>{formatPersonName(person)}</h1>
-							{#if person.research_status}
-								<UncertaintyBadge status={person.research_status} showLabel={true} />
-							{/if}
+							<UncertaintyBadge status={person.research_status || 'unknown'} showLabel={true} />
 						</div>
 						{#if person.gender}
 							<span class="gender-badge">{person.gender}</span>
@@ -779,17 +776,19 @@
 						{#if rollbackOnMainlineOnly}
 							<p class="rollback-mainline-only" role="note">{ROLLBACK_MAINLINE_ONLY}</p>
 						{:else}
-							<div class="history-tabs">
+							<div class="history-tabs" role="group" aria-label="History view">
 								<button
+									type="button"
 									class="tab-btn"
-									class:active={historyTab === 'history'}
+									aria-pressed={historyTab === 'history'}
 									onclick={() => historyTab = 'history'}
 								>
 									Change Log
 								</button>
 								<button
+									type="button"
 									class="tab-btn"
-									class:active={historyTab === 'restore'}
+									aria-pressed={historyTab === 'restore'}
 									onclick={() => historyTab = 'restore'}
 								>
 									Restore
@@ -1095,7 +1094,7 @@
 		color: #475569;
 	}
 
-	.tab-btn.active {
+	.tab-btn[aria-pressed='true'] {
 		color: var(--color-link);
 		border-bottom-color: #3b82f6;
 	}

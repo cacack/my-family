@@ -295,6 +295,21 @@ describe('Family Detail Page', () => {
 		expect(screen.getByRole('button', { name: 'Restore' })).toBeDefined();
 	});
 
+	// The selected tab was shown only by a class (#1061).
+	it('exposes the selected history tab with aria-pressed', async () => {
+		vi.mocked(apiModule.api.getFamily).mockResolvedValue(mockFamilyWithChildren);
+
+		render(FamilyPage);
+		await fireEvent.click(await screen.findByRole('button', { name: /History/ }));
+
+		const changeLog = screen.getByRole('button', { name: 'Change Log', pressed: true });
+		const restore = screen.getByRole('button', { name: 'Restore', pressed: false });
+		await fireEvent.click(restore);
+		expect(restore.getAttribute('aria-pressed')).toBe('true');
+		expect(changeLog.getAttribute('aria-pressed')).toBe('false');
+		expect(changeLog.classList.contains('active')).toBe(false);
+	});
+
 	// #824: rollback is mainline-only, so on a branch the Restore tab and the
 	// rollback dialog are withdrawn; the change log (the branch's view) stays.
 	it('withdraws Restore and rollback on a branch', async () => {

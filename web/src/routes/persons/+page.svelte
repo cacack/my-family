@@ -17,7 +17,11 @@
 	// Sort, filter and page live in the URL (see urlState.ts), so Back, reload
 	// and a copied link restore the list.
 	const SORTS = ['surname', 'given_name', 'birth_date', 'updated_at'] as const;
-	const STATUSES = ['', 'unset', ...RESEARCH_STATUS_OPTIONS.map((o) => o.value)] as const;
+	// One "Not assessed" bucket: the API's unknown status and no status at all (#1110).
+	const STATUS_FILTER_OPTIONS = RESEARCH_STATUS_OPTIONS.map((o) =>
+		o.value === 'unknown' ? { value: 'unassessed' as const, label: o.label } : o
+	);
+	const STATUSES = ['', ...STATUS_FILTER_OPTIONS.map((o) => o.value)] as const;
 	const DEFAULTS = { sort: 'surname', order: 'asc', status: '', page: 1 } as const;
 
 	const params = $derived(page.url.searchParams);
@@ -109,8 +113,9 @@
 
 	<div class="toolbar">
 		<button
+			type="button"
 			class="chip"
-			class:chip-active={researchStatusFilter === 'possible'}
+			aria-pressed={researchStatusFilter === 'possible'}
 			onclick={() => refine({ status: researchStatusFilter === 'possible' ? '' : 'possible' })}
 		>
 			Quick Captures
@@ -120,10 +125,9 @@
 				Confidence:
 				<select value={researchStatusFilter} onchange={handleStatusFilterChange}>
 					<option value="">All</option>
-					{#each RESEARCH_STATUS_OPTIONS as option (option.value)}
+					{#each STATUS_FILTER_OPTIONS as option (option.value)}
 						<option value={option.value}>{option.label}</option>
 					{/each}
-					<option value="unset">Not assessed</option>
 				</select>
 			</label>
 			<label>
@@ -318,7 +322,7 @@
 		background: #f8fafc;
 	}
 
-	.chip-active {
+	.chip[aria-pressed='true'] {
 		background: #fef3c7;
 		border-color: #fbbf24;
 		color: #92400e;
