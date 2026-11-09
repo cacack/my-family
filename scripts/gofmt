@@ -1,0 +1,20 @@
+#!/bin/bash
+# Run gofmt from the Go toolchain pinned in go.mod (the `toolchain` line),
+# which is the version CI formats with. A newer host gofmt can format some
+# code differently, so `make fmt` and the pre-commit hook use this wrapper.
+#
+# Usage: scripts/gofmt [gofmt flags] [paths]   (e.g. scripts/gofmt -l .)
+
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+TOOLCHAIN="$(sed -n 's/^toolchain //p' "$ROOT/go.mod")"
+if [ -z "$TOOLCHAIN" ]; then
+  echo "scripts/gofmt: no toolchain directive in $ROOT/go.mod" >&2
+  exit 1
+fi
+
+# GOTOOLCHAIN=<version> makes the go command download (once) and run that
+# exact toolchain; its GOROOT holds the matching gofmt binary.
+PINNED_GOROOT="$(GOTOOLCHAIN="$TOOLCHAIN" go env GOROOT)"
+exec "$PINNED_GOROOT/bin/gofmt" "$@"

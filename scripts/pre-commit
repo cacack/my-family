@@ -38,12 +38,13 @@ if [ -z "$(ls -A internal/web/dist 2>/dev/null)" ]; then
 fi
 
 # --- Format Check ---
+# Uses the go.mod-pinned toolchain's gofmt (matches CI), not the host's.
 echo "→ Checking code formatting..."
-UNFORMATTED=$(gofmt -l . | grep -v '^vendor/' || true)
+UNFORMATTED=$(scripts/gofmt -l . | grep -v '^vendor/' || true)
 if [ -n "$UNFORMATTED" ]; then
   echo "  ✗ The following files need formatting:"
   echo "$UNFORMATTED" | sed 's/^/    /'
-  echo "  Run: go fmt ./..."
+  echo "  Run: make fmt"
   exit 1
 fi
 echo "  ✓ Code formatting OK"
