@@ -343,6 +343,8 @@ func (p *Projector) projectPersonCreated(ctx context.Context, e domain.PersonCre
 		DeathPlaceLat:  e.DeathPlaceLat,
 		DeathPlaceLong: e.DeathPlaceLong,
 		Notes:          e.Notes,
+		BirthNotes:     e.BirthNotes,
+		DeathNotes:     e.DeathNotes,
 		ResearchStatus: e.ResearchStatus,
 		Version:        version,
 		UpdatedAt:      e.OccurredAt(),
@@ -470,6 +472,7 @@ func (p *Projector) projectFamilyCreated(ctx context.Context, e domain.FamilyCre
 		MarriageDateRaw:  marriageDateRaw,
 		MarriageDateSort: marriageDateSort,
 		MarriagePlace:    e.MarriagePlace,
+		MarriageNotes:    e.MarriageNotes,
 		ChildCount:       0,
 		Version:          version,
 		UpdatedAt:        e.OccurredAt(),
@@ -1315,6 +1318,7 @@ func (p *Projector) projectLifeEventCreated(ctx context.Context, e domain.LifeEv
 		Cause:       e.Cause,
 		Age:         e.Age,
 		IsNegated:   e.IsNegated,
+		Notes:       e.Notes,
 		Version:     version,
 		CreatedAt:   e.OccurredAt(),
 	}
@@ -1716,6 +1720,13 @@ func (p *Projector) projectPersonMerged(ctx context.Context, e domain.PersonMerg
 		}
 	}
 
+	// Birth and death notes are not resolved fields: the merged person's are
+	// added to the survivor's, so neither is lost, even when the birth or death
+	// date or place resolved to the merged person (#1250). They come from the
+	// event's snapshot, so a replay derives the same result.
+	survivor.BirthNotes = joinMergedNotes(survivor.BirthNotes, e.MergedPersonSnapshot["birth_notes"])
+	survivor.DeathNotes = joinMergedNotes(survivor.DeathNotes, e.MergedPersonSnapshot["death_notes"])
+
 	survivor.Version = version
 	survivor.UpdatedAt = e.OccurredAt()
 	// The survivor row — and with it the version — is saved LAST (step 14), not
@@ -1967,6 +1978,19 @@ func (p *Projector) recountFamilyChildren(ctx context.Context, branchID domain.B
 		return fmt.Errorf("recount children of family %s: %w", family.ID, err)
 	}
 	return nil
+}
+
+// joinMergedNotes appends the merged person's notes, a snapshot value, to the
+// survivor's, separated as the GEDCOM importer joins several NOTEs ("\n\n").
+func joinMergedNotes(survivor string, merged any) string {
+	m, _ := merged.(string)
+	switch {
+	case m == "":
+		return survivor
+	case survivor == "":
+		return m
+	}
+	return survivor + "\n\n" + m
 }
 
 // relinkChildEdges points the pedigree edges of a family's children from the

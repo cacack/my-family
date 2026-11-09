@@ -58,6 +58,9 @@ type PersonCreated struct {
 	DeathPlaceLat  *string              `json:"death_place_lat,omitempty"`
 	DeathPlaceLong *string              `json:"death_place_long,omitempty"`
 	ExternalIDs    []ExternalIdentifier `json:"external_ids,omitempty"`
+	// Notes under the BIRT and DEAT events come from GEDCOM import (#1250).
+	BirthNotes string `json:"birth_notes,omitempty"`
+	DeathNotes string `json:"death_notes,omitempty"`
 }
 
 func (e PersonCreated) EventType() string      { return "PersonCreated" }
@@ -136,6 +139,8 @@ type FamilyCreated struct {
 	GedcomXref       string       `json:"gedcom_xref,omitempty"`
 	// ExternalIDs are GEDCOM 7.0 EXIDs set at import (#1225).
 	ExternalIDs []ExternalIdentifier `json:"external_ids,omitempty"`
+	// MarriageNotes are the notes under the MARR event, set at import (#1250).
+	MarriageNotes string `json:"marriage_notes,omitempty"`
 }
 
 func (e FamilyCreated) EventType() string      { return "FamilyCreated" }
@@ -717,6 +722,8 @@ type LifeEventCreated struct {
 	// Place coordinates come from GEDCOM import (#1225).
 	PlaceLat  *string `json:"place_lat,omitempty"`
 	PlaceLong *string `json:"place_long,omitempty"`
+	// Notes are the event's own NOTEs, set at import (#1250).
+	Notes string `json:"notes,omitempty"`
 }
 
 func (e LifeEventCreated) EventType() string      { return "LifeEventCreated" }

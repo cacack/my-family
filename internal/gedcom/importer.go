@@ -92,6 +92,8 @@ type PersonData struct {
 	DeathPlaceLat  *string // Latitude in GEDCOM format
 	DeathPlaceLong *string // Longitude in GEDCOM format
 	Notes          string
+	BirthNotes     string // NOTEs under BIRT, joined with noteJoin (#1250)
+	DeathNotes     string // NOTEs under DEAT, joined with noteJoin (#1250)
 
 	// Names contains all name variants from the GEDCOM file.
 	// The first name is also stored in the main GivenName/Surname fields.
@@ -118,6 +120,7 @@ type FamilyData struct {
 	MarriagePlace     string
 	MarriagePlaceLat  *string // Latitude in GEDCOM format (e.g., "N39.7817")
 	MarriagePlaceLong *string // Longitude in GEDCOM format (e.g., "W89.6501")
+	MarriageNotes     string  // NOTEs under MARR, joined with noteJoin (#1250)
 	ChildIDs          []uuid.UUID
 	ChildRelTypes     []domain.ChildRelationType
 
@@ -231,6 +234,7 @@ type EventData struct {
 	Cause       string // For death/burial events
 	Age         string // Age at event
 	IsNegated   bool   // Negative assertion (GEDCOM 7.0 NO tag)
+	Notes       string // The event's NOTEs, joined with noteJoin (#1250)
 }
 
 // AttributeData contains parsed attribute data ready for creation.
@@ -497,7 +501,9 @@ func (imp *Importer) ImportWithOptions(ctx context.Context, reader io.Reader, im
 		associations = append(associations, personAssocs...)
 	}
 
-	renameCollidingNotes(doc, importOpts.ExistingXrefs, notes, persons, sources, repositories, associations, result)
+	warnDroppedNestedNotes(doc, result)
+
+	renameCollidingNotes(doc, importOpts.ExistingXrefs, notes, persons, families, events, sources, repositories, associations, result)
 
 	// Eighth pass: parse LDS ordinance records from individuals and families
 	// GEDCOM was originally developed by the LDS Church and includes temple ordinance tags
@@ -611,6 +617,7 @@ func parseIndividual(indi *gedcom.Individual, _ *gedcom.Document, result *Import
 		case gedcom.EventBirth:
 			person.BirthDate = event.Date
 			person.BirthPlace = event.PlaceName()
+			person.BirthNotes = eventNotes(event)
 			// Extract coordinates from PlaceDetail if available
 			if event.PlaceDetail != nil && event.PlaceDetail.Coordinates != nil {
 				if event.PlaceDetail.Coordinates.Latitude != "" {
@@ -632,6 +639,7 @@ func parseIndividual(indi *gedcom.Individual, _ *gedcom.Document, result *Import
 		case gedcom.EventDeath:
 			person.DeathDate = event.Date
 			person.DeathPlace = event.PlaceName()
+			person.DeathNotes = eventNotes(event)
 			// Extract coordinates from PlaceDetail if available
 			if event.PlaceDetail != nil && event.PlaceDetail.Coordinates != nil {
 				if event.PlaceDetail.Coordinates.Latitude != "" {
@@ -752,6 +760,7 @@ func parseFamily(fam *gedcom.Family, doc *gedcom.Document, result *ImportResult)
 			family.RelationshipType = domain.RelationMarriage
 			family.MarriageDate = event.Date
 			family.MarriagePlace = event.PlaceName()
+			family.MarriageNotes = eventNotes(event)
 			// Extract coordinates from PlaceDetail if available
 			if event.PlaceDetail != nil && event.PlaceDetail.Coordinates != nil {
 				if event.PlaceDetail.Coordinates.Latitude != "" {
@@ -854,7 +863,7 @@ func childPedigreeType(indi *gedcom.Individual, familyXRef string) domain.ChildR
 // uses, and rewrites this file's NOTE pointers (kept as raw xrefs in Notes) to
 // match. Without it, a second file's @N1@ is stored beside the tree's and an
 // export cannot tell which one a pointer meant (#1228).
-func renameCollidingNotes(doc *gedcom.Document, existing []string, notes []NoteData, persons []PersonData, sources []SourceData, repositories []RepositoryData, associations []AssociationData, result *ImportResult) {
+func renameCollidingNotes(doc *gedcom.Document, existing []string, notes []NoteData, persons []PersonData, families []FamilyData, events []EventData, sources []SourceData, repositories []RepositoryData, associations []AssociationData, result *ImportResult) {
 	inTree := make(map[string]bool, len(existing))
 	for _, xref := range existing {
 		if xref != "" {
@@ -904,6 +913,14 @@ func renameCollidingNotes(doc *gedcom.Document, existing []string, notes []NoteD
 	}
 	for i := range persons {
 		persons[i].Notes = renameXrefs(persons[i].Notes, noteJoin, rename)
+		persons[i].BirthNotes = renameXrefs(persons[i].BirthNotes, noteJoin, rename)
+		persons[i].DeathNotes = renameXrefs(persons[i].DeathNotes, noteJoin, rename)
+	}
+	for i := range families {
+		families[i].MarriageNotes = renameXrefs(families[i].MarriageNotes, noteJoin, rename)
+	}
+	for i := range events {
+		events[i].Notes = renameXrefs(events[i].Notes, noteJoin, rename)
 	}
 	for i := range sources {
 		sources[i].Notes = renameXrefs(sources[i].Notes, noteJoin, rename)
@@ -929,15 +946,20 @@ func recordNotes(tags []*gedcom.Tag) string {
 		if tag.Level != 1 || tag.Tag != "NOTE" {
 			continue
 		}
-		value := tag.Value
-		if !gedcom.IsPointerXRef(strings.TrimSpace(value)) {
-			value = foldContinuations(tags, i)
-		}
-		if value != "" {
+		if value := noteText(tags, i); value != "" {
 			notes = append(notes, value)
 		}
 	}
 	return strings.Join(notes, noteJoin)
+}
+
+// noteText returns the value of the NOTE line tags[idx]: a pointer verbatim,
+// inline text with its CONT/CONC lines folded in.
+func noteText(tags []*gedcom.Tag, idx int) string {
+	if value := tags[idx].Value; gedcom.IsPointerXRef(strings.TrimSpace(value)) {
+		return value
+	}
+	return foldContinuations(tags, idx)
 }
 
 // foldContinuations returns tags[idx].Value with its direct CONT/CONC
@@ -962,6 +984,179 @@ func foldContinuations(tags []*gedcom.Tag, idx int) string {
 		}
 	}
 	return b.String()
+}
+
+// recordLabels names a record type in an import warning.
+var recordLabels = map[gedcom.RecordType]string{
+	gedcom.RecordTypeIndividual: "Individual",
+	gedcom.RecordTypeFamily:     "Family",
+	gedcom.RecordTypeSource:     "Source",
+	gedcom.RecordTypeRepository: "Repository",
+	gedcom.RecordTypeMedia:      "Media",
+	gedcom.RecordTypeSubmitter:  "Submitter",
+}
+
+// recordKeepsNotes lists the record types whose own level-1 NOTE lines the
+// import keeps (recordNotes). A FAM, OBJE or SUBM record has no notes field.
+var recordKeepsNotes = map[gedcom.RecordType]bool{
+	gedcom.RecordTypeIndividual: true,
+	gedcom.RecordTypeSource:     true,
+	gedcom.RecordTypeRepository: true,
+}
+
+// droppedNoteMaxLen caps how much of a dropped note a warning quotes.
+const droppedNoteMaxLen = 60
+
+// droppedNotesPerPath caps the dropped notes warned about one by one under
+// the same record type and path (e.g. INDI.BIRT.SOUR); the rest are counted
+// in one summary warning, so a large file does not flood the result.
+const droppedNotesPerPath = 5
+
+// warnDroppedNestedNotes adds a warning for each NOTE or SNOTE line the
+// import does not keep, naming the record, the substructure and the note, so
+// the loss is visible (#1250). Kept are the level-1 NOTE lines of the record
+// types in recordKeepsNotes, and the NOTEs directly under an individual's ASSO
+// and events and a family's imported events. Of several BIRT, DEAT or MARR
+// blocks only the last is kept, as for their date and place.
+func warnDroppedNestedNotes(doc *gedcom.Document, result *ImportResult) {
+	counts := map[string]int{}
+	var paths []string // keys of counts, in first-seen order
+	for _, rec := range doc.Records {
+		label := recordLabels[rec.Type]
+		if label == "" {
+			label = string(rec.Type)
+		}
+		for _, d := range droppedNotes(rec.Tags, recordKeepsNotes[rec.Type], keptEventNotes(rec)) {
+			key := strings.Join(append([]string{string(rec.Type)}, d.path...), ".")
+			if counts[key] == 0 {
+				paths = append(paths, key)
+			}
+			counts[key]++
+			if counts[key] > droppedNotesPerPath {
+				continue
+			}
+			where := ""
+			if len(d.path) > 0 {
+				where = " under " + strings.Join(d.path, ".")
+			}
+			result.Warnings = append(result.Warnings,
+				fmt.Sprintf("%s %s: %s%s not imported: %q", label, rec.XRef, d.tag, where, d.text))
+		}
+	}
+	for _, key := range paths {
+		if n := counts[key] - droppedNotesPerPath; n > 0 {
+			result.Warnings = append(result.Warnings, fmt.Sprintf("%d more notes under %s not imported", n, key))
+		}
+	}
+}
+
+// keptEventNotes reports, for a record, whether the NOTEs directly under a
+// level-1 block are kept; last is true for the last block of its kind.
+func keptEventNotes(rec *gedcom.Record) func(block string, last bool) bool {
+	if indi, ok := rec.GetIndividual(); ok {
+		return func(block string, last bool) bool {
+			switch block {
+			case "BIRT", "DEAT":
+				return last // parseIndividual keeps the last one's notes
+			case "ASSO":
+				return true
+			}
+			eventType := gedcom.EventType(strings.TrimPrefix(block, "NO "))
+			return slices.ContainsFunc(indi.Events, func(e *gedcom.Event) bool {
+				return e != nil && e.Type == eventType
+			})
+		}
+	}
+	if rec.IsFamily() {
+		return func(block string, last bool) bool {
+			if block == "MARR" {
+				return last // parseFamily keeps the last one's notes
+			}
+			_, ok := familyEventFactType(gedcom.EventType(strings.TrimPrefix(block, "NO ")))
+			return ok
+		}
+	}
+	return func(string, bool) bool { return false }
+}
+
+// droppedNote is a NOTE or SNOTE line the import does not keep: its tag, the
+// path of the substructure it sits under (empty for the record's own), and
+// its text or pointer, cut to droppedNoteMaxLen.
+type droppedNote struct {
+	tag  string
+	path []string
+	text string
+}
+
+// droppedNotes returns the non-empty NOTE and SNOTE lines in a record's tags
+// that the import does not keep: a level-1 line unless keepsOwn and it is a
+// NOTE, a level-2 line unless kept reports true for its level-1 block, and any
+// deeper one. A level-1 block is named by its tag, a 7.0 negative assertion
+// as "NO <event>".
+func droppedNotes(tags []*gedcom.Tag, keepsOwn bool, kept func(block string, last bool) bool) []droppedNote {
+	blockName := func(tag *gedcom.Tag) string {
+		if tag.Tag == "NO" {
+			return "NO " + strings.TrimSpace(tag.Value)
+		}
+		return tag.Tag
+	}
+	lastBlock := map[string]int{}
+	for i, tag := range tags {
+		if tag.Level == 1 {
+			lastBlock[blockName(tag)] = i
+		}
+	}
+
+	var dropped []droppedNote
+	var path []string // path[l-1] names the open level-l substructure
+	block := -1       // index of the open level-1 block
+	for i, tag := range tags {
+		if tag.Level < 1 {
+			path = path[:0]
+			continue
+		}
+		path = path[:min(len(path), tag.Level-1)]
+		if tag.Tag == "NOTE" || tag.Tag == "SNOTE" {
+			var keep bool
+			switch {
+			case tag.Level == 1:
+				keep = keepsOwn && tag.Tag == "NOTE"
+			case tag.Level == 2 && len(path) == 1:
+				keep = kept(path[0], lastBlock[path[0]] == block)
+			}
+			if text := noteText(tags, i); !keep && text != "" {
+				if r := []rune(text); len(r) > droppedNoteMaxLen {
+					text = string(r[:droppedNoteMaxLen]) + "..."
+				}
+				dropped = append(dropped, droppedNote{tag: tag.Tag, path: slices.Clone(path), text: text})
+			}
+		}
+		name := tag.Tag
+		if tag.Level == 1 {
+			name, block = blockName(tag), i
+		}
+		path = append(path, name)
+	}
+	return dropped
+}
+
+// eventNotes joins an event's NOTE values with noteJoin: its NOTE pointers,
+// kept verbatim, then its inline text. gedcom-go keeps the two in separate
+// lists, so their relative order in the file is not known; the encoder writes
+// pointers first, so an export restores that order (#1250).
+func eventNotes(event *gedcom.Event) string {
+	return joinNotes(append(slices.Clone(event.NoteXRefs), event.InlineNotes...)...)
+}
+
+// joinNotes joins the non-empty notes with noteJoin.
+func joinNotes(notes ...string) string {
+	kept := make([]string, 0, len(notes))
+	for _, n := range notes {
+		if n != "" {
+			kept = append(kept, n)
+		}
+	}
+	return strings.Join(kept, noteJoin)
 }
 
 // parseSource converts a GEDCOM source record to SourceData.
@@ -1313,6 +1508,7 @@ func extractEventsFromIndividual(indi *gedcom.Individual, personID uuid.UUID) []
 				Cause:       event.Cause,
 				Age:         event.Age,
 				IsNegated:   true,
+				Notes:       eventNotes(event),
 			}
 			if event.PlaceDetail != nil && event.PlaceDetail.Coordinates != nil {
 				if event.PlaceDetail.Coordinates.Latitude != "" {
@@ -1367,6 +1563,7 @@ func extractEventsFromIndividual(indi *gedcom.Individual, personID uuid.UUID) []
 			Cause:       event.Cause,
 			Age:         event.Age,
 			IsNegated:   event.IsNegative,
+			Notes:       eventNotes(event),
 		}
 		// Extract coordinates from PlaceDetail if available
 		if event.PlaceDetail != nil && event.PlaceDetail.Coordinates != nil {
@@ -1551,8 +1748,6 @@ func extractEventsFromFamily(fam *gedcom.Family, familyID uuid.UUID) []EventData
 	var events []EventData
 
 	for _, event := range fam.Events {
-		var factType domain.FactType
-
 		// Negated marriage events (NO MARR) are stored as LifeEvents,
 		// not on Family fields, because they represent "event did NOT occur".
 		if event.IsNegative && event.Type == gedcom.EventMarriage {
@@ -1565,6 +1760,7 @@ func extractEventsFromFamily(fam *gedcom.Family, familyID uuid.UUID) []EventData
 				Place:       event.PlaceName(),
 				Description: event.Description,
 				IsNegated:   true,
+				Notes:       eventNotes(event),
 			}
 			if event.PlaceDetail != nil && event.PlaceDetail.Coordinates != nil {
 				if event.PlaceDetail.Coordinates.Latitude != "" {
@@ -1583,25 +1779,12 @@ func extractEventsFromFamily(fam *gedcom.Family, familyID uuid.UUID) []EventData
 			continue
 		}
 
-		switch event.Type {
-		case gedcom.EventMarriage:
+		if event.Type == gedcom.EventMarriage {
 			// Non-negated marriage is stored on Family entity, skip
 			continue
-		case gedcom.EventDivorce:
-			factType = domain.FactFamilyDivorce
-		case gedcom.EventMarriageBann:
-			factType = domain.FactFamilyMarriageBann
-		case gedcom.EventMarriageContract:
-			factType = domain.FactFamilyMarriageContract
-		case gedcom.EventMarriageLicense:
-			factType = domain.FactFamilyMarriageLicense
-		case gedcom.EventMarriageSettlement:
-			factType = domain.FactFamilyMarriageSettlement
-		case gedcom.EventAnnulment:
-			factType = domain.FactFamilyAnnulment
-		case gedcom.EventEngagement:
-			factType = domain.FactFamilyEngagement
-		default:
+		}
+		factType, ok := familyEventFactType(event.Type)
+		if !ok {
 			// Skip unrecognized family event types
 			continue
 		}
@@ -1615,6 +1798,7 @@ func extractEventsFromFamily(fam *gedcom.Family, familyID uuid.UUID) []EventData
 			Place:       event.PlaceName(),
 			Description: event.Description,
 			IsNegated:   event.IsNegative,
+			Notes:       eventNotes(event),
 		}
 		// Extract coordinates from PlaceDetail if available
 		if event.PlaceDetail != nil && event.PlaceDetail.Coordinates != nil {
@@ -1635,6 +1819,30 @@ func extractEventsFromFamily(fam *gedcom.Family, familyID uuid.UUID) []EventData
 	}
 
 	return events
+}
+
+// familyEventFactType maps a family event type to its fact type; ok is false
+// for a type the importer does not keep.
+func familyEventFactType(eventType gedcom.EventType) (factType domain.FactType, ok bool) {
+	switch eventType {
+	case gedcom.EventMarriage:
+		return domain.FactFamilyMarriage, true
+	case gedcom.EventDivorce:
+		return domain.FactFamilyDivorce, true
+	case gedcom.EventMarriageBann:
+		return domain.FactFamilyMarriageBann, true
+	case gedcom.EventMarriageContract:
+		return domain.FactFamilyMarriageContract, true
+	case gedcom.EventMarriageLicense:
+		return domain.FactFamilyMarriageLicense, true
+	case gedcom.EventMarriageSettlement:
+		return domain.FactFamilyMarriageSettlement, true
+	case gedcom.EventAnnulment:
+		return domain.FactFamilyAnnulment, true
+	case gedcom.EventEngagement:
+		return domain.FactFamilyEngagement, true
+	}
+	return "", false
 }
 
 // mapNameType converts a GEDCOM name TYPE value to a domain NameType.

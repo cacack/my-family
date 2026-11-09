@@ -776,6 +776,12 @@ func (s *ReadModelStore) runMigrations() {
 	// Targets life_events, not events: the latter is the event log's table (#733).
 	_, _ = s.db.Exec(`ALTER TABLE life_events ADD COLUMN is_negated INTEGER NOT NULL DEFAULT 0`)
 
+	// Add the NOTEs nested under birth, death, marriage and life events (issue #1250).
+	_, _ = s.db.Exec(`ALTER TABLE persons ADD COLUMN birth_notes TEXT`)
+	_, _ = s.db.Exec(`ALTER TABLE persons ADD COLUMN death_notes TEXT`)
+	_, _ = s.db.Exec(`ALTER TABLE families ADD COLUMN marriage_notes TEXT`)
+	_, _ = s.db.Exec(`ALTER TABLE life_events ADD COLUMN notes TEXT`)
+
 	// Add GEDCOM 7.0 shared-note (SNOTE) metadata columns (issue #225).
 	// SQLite ALTER TABLE ADD COLUMN has no IF NOT EXISTS; rely on the _,_ = swallowing.
 	_, _ = s.db.Exec(`ALTER TABLE notes ADD COLUMN mime TEXT`)
@@ -1235,7 +1241,7 @@ func (s *ReadModelStore) ListPersons(ctx context.Context, opts repository.ListOp
 		SELECT id, given_name, surname, full_name, gender,
 			   birth_date_raw, birth_date_sort, birth_place, birth_place_lat, birth_place_long,
 			   death_date_raw, death_date_sort, death_place, death_place_lat, death_place_long,
-			   notes, research_status, brick_wall_note, brick_wall_since, brick_wall_resolved_at,
+			   notes, birth_notes, death_notes, research_status, brick_wall_note, brick_wall_since, brick_wall_resolved_at,
 			   version, updated_at
 		FROM %s
 		%s
@@ -1371,7 +1377,7 @@ func searchPersonsLikeSQL(opts repository.SearchOptions) (string, []any) {
 		SELECT p.id, p.given_name, p.surname, p.full_name, p.gender,
 			   p.birth_date_raw, p.birth_date_sort, p.birth_place, p.birth_place_lat, p.birth_place_long,
 			   p.death_date_raw, p.death_date_sort, p.death_place, p.death_place_lat, p.death_place_long,
-			   p.notes, p.research_status, p.brick_wall_note, p.brick_wall_since, p.brick_wall_resolved_at,
+			   p.notes, p.birth_notes, p.death_notes, p.research_status, p.brick_wall_note, p.brick_wall_since, p.brick_wall_resolved_at,
 			   p.version, p.updated_at
 		FROM ` + overlay + ` p
 		WHERE (` + containsFoldFunc + `(p.full_name, ?)
@@ -1642,7 +1648,7 @@ func (s *ReadModelStore) searchPersonsSoundex(ctx context.Context, opts reposito
 		SELECT p.id, p.given_name, p.surname, p.full_name, p.gender,
 			   p.birth_date_raw, p.birth_date_sort, p.birth_place, p.birth_place_lat, p.birth_place_long,
 			   p.death_date_raw, p.death_date_sort, p.death_place, p.death_place_lat, p.death_place_long,
-			   p.notes, p.research_status, p.brick_wall_note, p.brick_wall_since, p.brick_wall_resolved_at,
+			   p.notes, p.birth_notes, p.death_notes, p.research_status, p.brick_wall_note, p.brick_wall_since, p.brick_wall_resolved_at,
 			   p.version, p.updated_at
 		FROM ` + overlay + ` p`)
 
@@ -1784,7 +1790,7 @@ func (s *ReadModelStore) searchPersonsFiltersOnly(ctx context.Context, opts repo
 		SELECT p.id, p.given_name, p.surname, p.full_name, p.gender,
 			   p.birth_date_raw, p.birth_date_sort, p.birth_place, p.birth_place_lat, p.birth_place_long,
 			   p.death_date_raw, p.death_date_sort, p.death_place, p.death_place_lat, p.death_place_long,
-			   p.notes, p.research_status, p.brick_wall_note, p.brick_wall_since, p.brick_wall_resolved_at,
+			   p.notes, p.birth_notes, p.death_notes, p.research_status, p.brick_wall_note, p.brick_wall_since, p.brick_wall_resolved_at,
 			   p.version, p.updated_at
 		FROM ` + overlay + ` p`)
 
@@ -1957,10 +1963,10 @@ func (s *ReadModelStore) SavePerson(ctx context.Context, branchID domain.BranchI
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO persons (id, given_name, surname, gender, birth_date_raw, birth_date_sort, birth_place,
 							 birth_place_lat, birth_place_long, death_date_raw, death_date_sort, death_place,
-							 death_place_lat, death_place_long, notes, research_status,
+							 death_place_lat, death_place_long, notes, birth_notes, death_notes, research_status,
 							 brick_wall_note, brick_wall_since, brick_wall_resolved_at,
 							 version, updated_at, branch_id, deleted)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
 		ON CONFLICT(id, branch_id) DO UPDATE SET
 			given_name = excluded.given_name,
 			surname = excluded.surname,
@@ -1976,6 +1982,8 @@ func (s *ReadModelStore) SavePerson(ctx context.Context, branchID domain.BranchI
 			death_place_lat = excluded.death_place_lat,
 			death_place_long = excluded.death_place_long,
 			notes = excluded.notes,
+			birth_notes = excluded.birth_notes,
+			death_notes = excluded.death_notes,
 			research_status = excluded.research_status,
 			brick_wall_note = excluded.brick_wall_note,
 			brick_wall_since = excluded.brick_wall_since,
@@ -1986,7 +1994,7 @@ func (s *ReadModelStore) SavePerson(ctx context.Context, branchID domain.BranchI
 	`, person.ID.String(), person.GivenName, person.Surname, string(person.Gender),
 		person.BirthDateRaw, birthDateSort, person.BirthPlace, birthPlaceLat, birthPlaceLong,
 		person.DeathDateRaw, deathDateSort, person.DeathPlace, deathPlaceLat, deathPlaceLong,
-		person.Notes, string(person.ResearchStatus),
+		person.Notes, person.BirthNotes, person.DeathNotes, string(person.ResearchStatus),
 		person.BrickWallNote, brickWallSince, brickWallResolvedAt,
 		person.Version, formatTimestamp(person.UpdatedAt), branchID.String())
 
@@ -2770,9 +2778,9 @@ func (s *ReadModelStore) SaveFamily(ctx context.Context, branchID domain.BranchI
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO families (id, partner1_id, partner2_id,
 							  relationship_type, marriage_date_raw, marriage_date_sort, marriage_place,
-							  marriage_place_lat, marriage_place_long,
+							  marriage_place_lat, marriage_place_long, marriage_notes,
 							  child_count, version, updated_at, branch_id, deleted)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
 		ON CONFLICT(id, branch_id) DO UPDATE SET
 			partner1_id = excluded.partner1_id,
 			partner2_id = excluded.partner2_id,
@@ -2782,6 +2790,7 @@ func (s *ReadModelStore) SaveFamily(ctx context.Context, branchID domain.BranchI
 			marriage_place = excluded.marriage_place,
 			marriage_place_lat = excluded.marriage_place_lat,
 			marriage_place_long = excluded.marriage_place_long,
+			marriage_notes = excluded.marriage_notes,
 			child_count = excluded.child_count,
 			version = excluded.version,
 			updated_at = excluded.updated_at,
@@ -2789,7 +2798,7 @@ func (s *ReadModelStore) SaveFamily(ctx context.Context, branchID domain.BranchI
 	`, family.ID.String(),
 		partner1ID, partner2ID,
 		string(family.RelationshipType), family.MarriageDateRaw, marriageDateSort, family.MarriagePlace,
-		marriagePlaceLat, marriagePlaceLong,
+		marriagePlaceLat, marriagePlaceLong, family.MarriageNotes,
 		family.ChildCount, family.Version, formatTimestamp(family.UpdatedAt), branchID.String())
 
 	return err
@@ -2933,7 +2942,7 @@ func (s *ReadModelStore) GetChildrenOfFamily(ctx context.Context, branchID domai
 		SELECT p.id, p.given_name, p.surname, p.full_name, p.gender,
 			   p.birth_date_raw, p.birth_date_sort, p.birth_place, p.birth_place_lat, p.birth_place_long,
 			   p.death_date_raw, p.death_date_sort, p.death_place, p.death_place_lat, p.death_place_long,
-			   p.notes, p.research_status, p.brick_wall_note, p.brick_wall_since, p.brick_wall_resolved_at,
+			   p.notes, p.birth_notes, p.death_notes, p.research_status, p.brick_wall_note, p.brick_wall_since, p.brick_wall_resolved_at,
 			   p.version, p.updated_at
 		FROM ` + personOverlay + ` p
 		JOIN (
@@ -2972,7 +2981,7 @@ func (s *ReadModelStore) GetChildFamily(ctx context.Context, branchID domain.Bra
 	query := `
 		SELECT f.id, f.partner1_id, f.partner2_id,
 			   f.relationship_type, f.marriage_date_raw, f.marriage_date_sort, f.marriage_place,
-			   f.marriage_place_lat, f.marriage_place_long,
+			   f.marriage_place_lat, f.marriage_place_long, f.marriage_notes,
 			   f.child_count, f.version, f.updated_at
 		FROM ` + familyOverlay + ` f
 		JOIN (
@@ -3170,6 +3179,7 @@ func scanPerson(row rowScanner, extra ...any) (*repository.PersonReadModel, erro
 		birthPlaceLat, birthPlaceLong                   sql.NullString
 		deathDateRaw, deathDateSort, deathPlace, notes  sql.NullString
 		deathPlaceLat, deathPlaceLong                   sql.NullString
+		birthNotes, deathNotes                          sql.NullString
 		researchStatus                                  sql.NullString
 		brickWallNote                                   sql.NullString
 		brickWallSince, brickWallResolvedAt             sql.NullString
@@ -3180,7 +3190,7 @@ func scanPerson(row rowScanner, extra ...any) (*repository.PersonReadModel, erro
 	dest := []any{&idStr, &givenName, &surname, &fullName, &gender,
 		&birthDateRaw, &birthDateSort, &birthPlace, &birthPlaceLat, &birthPlaceLong,
 		&deathDateRaw, &deathDateSort, &deathPlace, &deathPlaceLat, &deathPlaceLong,
-		&notes, &researchStatus, &brickWallNote, &brickWallSince, &brickWallResolvedAt,
+		&notes, &birthNotes, &deathNotes, &researchStatus, &brickWallNote, &brickWallSince, &brickWallResolvedAt,
 		&version, &updatedAt}
 	err := row.Scan(append(dest, extra...)...)
 
@@ -3203,6 +3213,8 @@ func scanPerson(row rowScanner, extra ...any) (*repository.PersonReadModel, erro
 		DeathDateRaw:   deathDateRaw.String,
 		DeathPlace:     deathPlace.String,
 		Notes:          notes.String,
+		BirthNotes:     birthNotes.String,
+		DeathNotes:     deathNotes.String,
 		ResearchStatus: domain.ResearchStatus(researchStatus.String),
 		BrickWallNote:  brickWallNote.String,
 		Version:        version,
@@ -3258,7 +3270,7 @@ func scanFamily(row rowScanner) (*repository.FamilyReadModel, error) {
 		idStr                                                     string
 		partner1ID, partner2ID                                    sql.NullString
 		relType, marriageDateRaw, marriageDateSort, marriagePlace sql.NullString
-		marriagePlaceLat, marriagePlaceLong                       sql.NullString
+		marriagePlaceLat, marriagePlaceLong, marriageNotes        sql.NullString
 		childCount                                                int
 		version                                                   int64
 		updatedAt                                                 string
@@ -3266,7 +3278,7 @@ func scanFamily(row rowScanner) (*repository.FamilyReadModel, error) {
 
 	err := row.Scan(&idStr, &partner1ID, &partner2ID,
 		&relType, &marriageDateRaw, &marriageDateSort, &marriagePlace,
-		&marriagePlaceLat, &marriagePlaceLong,
+		&marriagePlaceLat, &marriagePlaceLong, &marriageNotes,
 		&childCount, &version, &updatedAt)
 
 	if err == sql.ErrNoRows {
@@ -3282,6 +3294,7 @@ func scanFamily(row rowScanner) (*repository.FamilyReadModel, error) {
 		RelationshipType: domain.RelationType(relType.String),
 		MarriageDateRaw:  marriageDateRaw.String,
 		MarriagePlace:    marriagePlace.String,
+		MarriageNotes:    marriageNotes.String,
 		ChildCount:       childCount,
 		Version:          version,
 	}
@@ -3735,7 +3748,7 @@ const (
 	// eventSelectCols is scanEvent's column order (unaliased).
 	eventSelectCols = `id, owner_type, owner_id, fact_type, date_raw, date_sort,
 		place, place_lat, place_long, address, description, cause,
-		age, research_status, is_negated, version, created_at`
+		age, research_status, is_negated, notes, version, created_at`
 
 	// attributeSelectCols is scanAttribute's column order (unaliased).
 	attributeSelectCols = `id, person_id, fact_type, value, date_raw, date_sort, place, version, created_at`
@@ -4024,8 +4037,8 @@ func (s *ReadModelStore) SaveEvent(ctx context.Context, branchID domain.BranchID
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO life_events (id, branch_id, owner_type, owner_id, fact_type, date_raw, date_sort,
 		                    place, place_lat, place_long, address, description, cause,
-		                    age, research_status, is_negated, version, created_at, deleted)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+		                    age, research_status, is_negated, notes, version, created_at, deleted)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
 		ON CONFLICT (id, branch_id) DO UPDATE SET
 			owner_type = excluded.owner_type,
 			owner_id = excluded.owner_id,
@@ -4041,11 +4054,12 @@ func (s *ReadModelStore) SaveEvent(ctx context.Context, branchID domain.BranchID
 			age = excluded.age,
 			research_status = excluded.research_status,
 			is_negated = excluded.is_negated,
+			notes = excluded.notes,
 			version = excluded.version,
 			deleted = 0
 	`, event.ID.String(), branchID.String(), event.OwnerType, event.OwnerID.String(), string(event.FactType),
 		event.DateRaw, dateSort, event.Place, placeLat, placeLong, addressJSON,
-		description, cause, age, researchStatus, event.IsNegated, event.Version,
+		description, cause, age, researchStatus, event.IsNegated, event.Notes, event.Version,
 		formatTimestamp(event.CreatedAt))
 	if err != nil {
 		return fmt.Errorf("save event: %w", err)
@@ -4295,7 +4309,7 @@ func scanEvent(row rowScanner) (*repository.EventReadModel, error) {
 		placeLat, placeLong                    sql.NullString
 		addressJSON                            []byte
 		description, cause, age                sql.NullString
-		researchStatus                         sql.NullString
+		researchStatus, notes                  sql.NullString
 		isNegated                              bool
 		version                                int64
 		createdAt                              string
@@ -4303,7 +4317,7 @@ func scanEvent(row rowScanner) (*repository.EventReadModel, error) {
 
 	err := row.Scan(&idStr, &ownerType, &ownerIDStr, &factType, &dateRaw, &dateSort,
 		&place, &placeLat, &placeLong, &addressJSON, &description, &cause,
-		&age, &researchStatus, &isNegated, &version, &createdAt)
+		&age, &researchStatus, &isNegated, &notes, &version, &createdAt)
 
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -4326,6 +4340,7 @@ func scanEvent(row rowScanner) (*repository.EventReadModel, error) {
 		Cause:       cause.String,
 		Age:         age.String,
 		IsNegated:   isNegated,
+		Notes:       notes.String,
 		Version:     version,
 	}
 
@@ -4939,7 +4954,7 @@ func (s *ReadModelStore) GetPersonsBySurname(ctx context.Context, surname string
 		SELECT id, given_name, surname, full_name, gender,
 			   birth_date_raw, birth_date_sort, birth_place, birth_place_lat, birth_place_long,
 			   death_date_raw, death_date_sort, death_place, death_place_lat, death_place_long,
-			   notes, research_status, brick_wall_note, brick_wall_since, brick_wall_resolved_at,
+			   notes, birth_notes, death_notes, research_status, brick_wall_note, brick_wall_since, brick_wall_resolved_at,
 			   version, updated_at
 		FROM `+overlay+`
 		WHERE LOWER(surname) = LOWER(?)
@@ -5112,7 +5127,7 @@ func (s *ReadModelStore) GetPersonsByPlace(ctx context.Context, place string, op
 		SELECT id, given_name, surname, full_name, gender,
 			   birth_date_raw, birth_date_sort, birth_place, birth_place_lat, birth_place_long,
 			   death_date_raw, death_date_sort, death_place, death_place_lat, death_place_long,
-			   notes, research_status, brick_wall_note, brick_wall_since, brick_wall_resolved_at,
+			   notes, birth_notes, death_notes, research_status, brick_wall_note, brick_wall_since, brick_wall_resolved_at,
 			   version, updated_at
 		FROM `+overlay+`
 		WHERE `+placeNormFunc+`(birth_place) LIKE '%' || `+placeNormFunc+`(?) || '%'
@@ -5199,7 +5214,7 @@ func (s *ReadModelStore) GetPersonsByCemetery(ctx context.Context, place string,
 		SELECT DISTINCT p.id, p.given_name, p.surname, p.full_name, p.gender,
 			   p.birth_date_raw, p.birth_date_sort, p.birth_place, p.birth_place_lat, p.birth_place_long,
 			   p.death_date_raw, p.death_date_sort, p.death_place, p.death_place_lat, p.death_place_long,
-			   p.notes, p.research_status, p.brick_wall_note, p.brick_wall_since, p.brick_wall_resolved_at,
+			   p.notes, p.birth_notes, p.death_notes, p.research_status, p.brick_wall_note, p.brick_wall_since, p.brick_wall_resolved_at,
 			   p.version, p.updated_at
 		FROM `+overlay+` p
 		INNER JOIN `+events+` e ON e.owner_id = p.id

@@ -296,6 +296,7 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 
 		// Fetch events and attributes for this person
 		events, _ := exp.readStore.ListEventsForPerson(ctx, domain.MainBranchID, p.ID)
+		notePointers.remapEvents(events)
 		attributes, _ := exp.readStore.ListAttributesForPerson(ctx, domain.MainBranchID, p.ID)
 		result.EventsExported += len(events)
 		result.AttributesExported += len(attributes)
@@ -317,6 +318,8 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 		result.LDSOrdinancesExported += len(ldsOrdinances)
 
 		p.Notes = notePointers.remap(p.Notes, noteJoin)
+		p.BirthNotes = notePointers.remap(p.BirthNotes, noteJoin)
+		p.DeathNotes = notePointers.remap(p.DeathNotes, noteJoin)
 		indi := toGedcomIndividual(p, sourceXrefs, personXrefs, birthCitations, deathCitations, events, attributes, associations, ldsOrdinances, exp.readStore, ctx)
 		doc.Records = append(doc.Records, &gedcom.Record{
 			XRef:   xref,
@@ -344,6 +347,8 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 
 		// Fetch events for this family
 		familyEvents, _ := exp.readStore.ListEventsForFamily(ctx, domain.MainBranchID, f.ID)
+		notePointers.remapEvents(familyEvents)
+		f.MarriageNotes = notePointers.remap(f.MarriageNotes, noteJoin)
 		result.EventsExported += len(familyEvents)
 
 		// Fetch LDS ordinances for this family
@@ -737,8 +742,9 @@ func toGedcomIndividual(p repository.PersonReadModel, sourceXrefs map[uuid.UUID]
 	}
 
 	// Birth event
-	if p.BirthDateRaw != "" || p.BirthPlace != "" {
+	if p.BirthDateRaw != "" || p.BirthPlace != "" || p.BirthNotes != "" {
 		birthEvent := &gedcom.Event{Type: gedcom.EventBirth}
+		birthEvent.NoteXRefs, birthEvent.InlineNotes = splitNotes(p.BirthNotes, noteJoin)
 		if p.BirthDateRaw != "" {
 			birthEvent.Date = p.BirthDateRaw
 		}
@@ -761,8 +767,9 @@ func toGedcomIndividual(p repository.PersonReadModel, sourceXrefs map[uuid.UUID]
 	}
 
 	// Death event
-	if p.DeathDateRaw != "" || p.DeathPlace != "" {
+	if p.DeathDateRaw != "" || p.DeathPlace != "" || p.DeathNotes != "" {
 		deathEvent := &gedcom.Event{Type: gedcom.EventDeath}
+		deathEvent.NoteXRefs, deathEvent.InlineNotes = splitNotes(p.DeathNotes, noteJoin)
 		if p.DeathDateRaw != "" {
 			deathEvent.Date = p.DeathDateRaw
 		}
@@ -981,6 +988,8 @@ func toGedcomEvent(event repository.EventReadModel, sourceXrefs map[uuid.UUID]st
 		ge.Age = event.Age
 	}
 
+	ge.NoteXRefs, ge.InlineNotes = splitNotes(event.Notes, noteJoin)
+
 	// Fetch and add citations for this event
 	if readStore != nil {
 		citations, _ := readStore.GetCitationsForFact(ctx, domain.MainBranchID, event.FactType, event.OwnerID)
@@ -1049,8 +1058,9 @@ func toGedcomFamily(f repository.FamilyReadModel, personXrefs, sourceXrefs map[u
 	}
 
 	// Marriage event
-	if f.RelationshipType == domain.RelationMarriage || f.MarriageDateRaw != "" || f.MarriagePlace != "" {
+	if f.RelationshipType == domain.RelationMarriage || f.MarriageDateRaw != "" || f.MarriagePlace != "" || f.MarriageNotes != "" {
 		marriageEvent := &gedcom.Event{Type: gedcom.EventMarriage}
+		marriageEvent.NoteXRefs, marriageEvent.InlineNotes = splitNotes(f.MarriageNotes, noteJoin)
 		if f.MarriageDateRaw != "" {
 			marriageEvent.Date = f.MarriageDateRaw
 		}
@@ -1224,6 +1234,13 @@ func (t *pointerTargets) remap(v, sep string) string {
 		}
 		return xref, ok
 	})
+}
+
+// remapEvents remaps the NOTE pointers in each event's Notes, in place.
+func (t *pointerTargets) remapEvents(events []repository.EventReadModel) {
+	for i := range events {
+		events[i].Notes = t.remap(events[i].Notes, noteJoin)
+	}
 }
 
 // renameXrefs replaces v, or else each sep-separated part of v, for which

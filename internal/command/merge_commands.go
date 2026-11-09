@@ -240,6 +240,13 @@ func buildPersonSnapshot(p *repository.PersonReadModel) map[string]any {
 	if p.ResearchStatus != "" {
 		snapshot["research_status"] = string(p.ResearchStatus)
 	}
+	// The projection adds these to the survivor's notes (#1250).
+	if p.BirthNotes != "" {
+		snapshot["birth_notes"] = p.BirthNotes
+	}
+	if p.DeathNotes != "" {
+		snapshot["death_notes"] = p.DeathNotes
+	}
 
 	return snapshot
 }
