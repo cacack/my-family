@@ -921,6 +921,15 @@ paths:
               schema:
                 type: string
                 example: attachment; filename="export.ged"
+            X-Export-Warnings:
+              description: >-
+                Present only when the export has warnings (see
+                ExportPreview.warnings): the warnings joined with "; ", cut to
+                at most 1024 bytes. A cut list ends with how many warnings
+                were shown and points to the preview, which always has the
+                full list.
+              schema:
+                type: string
         '400':
           $ref: '#/components/responses/BadRequest'
 
@@ -5424,6 +5433,14 @@ components:
           items:
             $ref: '#/components/schemas/DataLossItem'
           description: Features that cannot be represented in the target version.
+        warnings:
+          type: array
+          items:
+            type: string
+          description: >-
+            Problems the export could not repair, such as a NOTE or REPO
+            pointer whose stored xref several records of that type share. Each
+            warning names the duplicated xref. Omitted when there are none.
 
     ExportFormat:
       type: string

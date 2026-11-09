@@ -3582,6 +3582,9 @@ type ExportPreview struct {
 	//
 	// Example: 5.5.1
 	TargetVersion string `json:"targetVersion"`
+
+	// Warnings Problems the export could not repair, such as a NOTE or REPO pointer whose stored xref several records of that type share. Each warning names the duplicated xref. Omitted when there are none.
+	Warnings *[]string `json:"warnings,omitempty"`
 }
 
 // ExternalLink A GEDCOM 7.0 external identifier (EXID) with a resolved display label and, for recognized systems, a browsable URL.
@@ -16182,6 +16185,7 @@ type ExportGedcomResponseObject interface {
 
 type ExportGedcom200ResponseHeaders struct {
 	ContentDisposition *string
+	XExportWarnings    *string
 }
 
 type ExportGedcom200ApplicationxGedcomResponse struct {
@@ -16198,6 +16202,9 @@ func (response ExportGedcom200ApplicationxGedcomResponse) VisitExportGedcomRespo
 	}
 	if response.Headers.ContentDisposition != nil {
 		w.Header().Set("Content-Disposition", fmt.Sprint(*response.Headers.ContentDisposition))
+	}
+	if response.Headers.XExportWarnings != nil {
+		w.Header().Set("X-Export-Warnings", fmt.Sprint(*response.Headers.XExportWarnings))
 	}
 	w.WriteHeader(200)
 

@@ -3224,3 +3224,63 @@ func TestImportMultiLineInlineNotes(t *testing.T) {
 		t.Errorf("repository Notes = %q, want %q", repositories[0].Notes, want)
 	}
 }
+
+func TestImport_ExistingXrefsRenameCollidingNotes(t *testing.T) {
+	// The tree already holds @N1@ and @N2@; this file's @N1@ note must get a
+	// fresh xref that neither the tree nor the file uses, and every pointer
+	// in the file must follow it. @N3@ does not collide and keeps its xref
+	// (#1228).
+	data := "0 HEAD\n1 GEDC\n2 VERS 5.5.1\n1 CHAR UTF-8\n" +
+		"0 @I1@ INDI\n1 NAME Ann /Doe/\n1 NOTE @N1@\n1 NOTE @N3@\n1 ASSO @I2@\n2 RELA godmother\n2 NOTE @N1@\n" +
+		"0 @I2@ INDI\n1 NAME Bob /Doe/\n" +
+		"0 @R1@ REPO\n1 NAME Archive\n1 NOTE @N1@\n" +
+		"0 @S1@ SOUR\n1 TITL Register\n1 NOTE @N1@\n" +
+		"0 @N1@ NOTE Renamed\n0 @N3@ NOTE Kept\n0 @N4@ NOTE Unrelated\n0 TRLR\n"
+
+	result, persons, _, sources, _, repos, _, _, notes, _, assocs, _, _, err := gedcom.NewImporter().ImportWithOptions(
+		context.Background(), strings.NewReader(data), gedcom.ImportOptions{ExistingXrefs: []string{"@N1@", "@N2@", ""}})
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+	xrefs := map[string]string{}
+	for _, n := range notes {
+		xrefs[n.Text] = n.GedcomXref
+	}
+	// @N1@ and @N2@ are the tree's, @N3@ and @N4@ this file's.
+	if xrefs["Renamed"] != "@N5@" || xrefs["Kept"] != "@N3@" || xrefs["Unrelated"] != "@N4@" {
+		t.Fatalf("note xrefs = %v, want Renamed @N5@, Kept @N3@, Unrelated @N4@", xrefs)
+	}
+	for _, p := range persons {
+		// recordNotes also collects the ASSO's level-2 NOTE, so only the
+		// prefix is checked here (#1246).
+		if p.GivenName == "Ann" && (!strings.HasPrefix(p.Notes, "@N5@\n\n@N3@") || strings.Contains(p.Notes, "@N1@")) {
+			t.Errorf("person Notes = %q, want the renamed pointer", p.Notes)
+		}
+	}
+	if len(sources) != 1 || sources[0].Notes != "@N5@" {
+		t.Errorf("source Notes = %+v, want @N5@", sources)
+	}
+	if len(repos) != 1 || repos[0].Notes != "@N5@" {
+		t.Errorf("repository Notes = %+v, want @N5@", repos)
+	}
+	if len(assocs) != 1 || assocs[0].Notes != "@N5@" {
+		t.Errorf("association Notes = %+v, want @N5@", assocs)
+	}
+	// NoteXrefToID must key the renamed note by its new xref, matching the
+	// rewritten pointers.
+	for _, n := range notes {
+		if id, ok := result.NoteXrefToID[n.GedcomXref]; !ok || id != n.ID {
+			t.Errorf("NoteXrefToID[%s] = %v, %v; want %v", n.GedcomXref, id, ok, n.ID)
+		}
+	}
+	if _, ok := result.NoteXrefToID["@N1@"]; ok {
+		t.Errorf("NoteXrefToID still holds the renamed note's old xref @N1@: %v", result.NoteXrefToID)
+	}
+	found := false
+	for _, w := range result.Warnings {
+		found = found || strings.Contains(w, "@N1@ renamed to @N5@")
+	}
+	if !found {
+		t.Errorf("warnings = %q, want one reporting the rename", result.Warnings)
+	}
+}
