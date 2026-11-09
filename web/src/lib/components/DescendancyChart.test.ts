@@ -518,6 +518,14 @@ describe('DescendancyChart', () => {
 			expect(drawnFontSize(larger.container, '.spouse-group text')).toBeGreaterThanOrEqual(spouse * 1.25);
 			expect(larger.container.querySelector('.spouse-card')?.closest('.chart-content')).not.toBeNull();
 		});
+
+		it('redraws when the setting changes', async () => {
+			const { container } = render(DescendancyChart, { props: { data: mockPersonWithSpouse } });
+			const before = drawnFontSize(container, '.node text');
+			setFontSize('large');
+			await wait(0);
+			expect(drawnFontSize(container, '.node text')).toBeCloseTo(before * 1.25);
+		});
 	});
 
 	describe('first view (#1098)', () => {
@@ -549,6 +557,18 @@ describe('DescendancyChart', () => {
 			await fireEvent.click(container.querySelector('.offscreen-indicator.right')!);
 			await wait(100);
 			expect(count(container, 'right')).toBe(right - 1);
+		});
+
+		it('keeps keyboard focus on an indicator once a side runs out', async () => {
+			const { container } = render(DescendancyChart, { props: { data: mockNineChildren } });
+			for (let i = count(container, 'right'); i > 0; i--) {
+				const button = container.querySelector<HTMLButtonElement>('.offscreen-indicator.right')!;
+				button.focus();
+				await fireEvent.click(button);
+				await wait(100);
+			}
+			expect(count(container, 'right')).toBe(0);
+			expect(document.activeElement).toBe(container.querySelector('.offscreen-indicator.left'));
 		});
 
 		it('resets to the first view', async () => {

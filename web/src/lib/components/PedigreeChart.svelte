@@ -965,6 +965,7 @@
 		right={offscreen.right.length}
 		noun={['parent', 'parents']}
 		onPan={panToOffscreen}
+		focusFallback={container}
 	/>
 </div>
 

@@ -107,7 +107,7 @@ test('pedigree collapse toggles work from the keyboard (#1100)', async ({ page }
 	await expect(page.locator('.node')).toHaveCount(5);
 });
 
-/** On-screen height of the first card's given name, and whether any card text spills out of its card. */
+/** On-screen height of the first card's given name, whether any card text spills out of its card, and whether any two cards overlap. */
 async function chartText(page: Page, chart: string) {
 	await expect(page.locator(`.${chart}-chart .node`).first()).toBeVisible();
 	// Let the fit settle
@@ -121,25 +121,33 @@ async function chartText(page: Page, chart: string) {
 				return t.width > 0 && (t.left < box.left - 0.5 || t.right > box.right + 0.5 || t.top < box.top - 0.5 || t.bottom > box.bottom + 0.5);
 			});
 		});
+		const boxes = [...document.querySelectorAll(`.${chart}-chart rect.node-card, .${chart}-chart rect.spouse-card`)]
+			.map((r) => r.getBoundingClientRect())
+			.filter((b) => b.width > 0);
+		const overlap = boxes.some((a, i) =>
+			boxes.slice(i + 1).some((b) => a.left < b.right - 0.5 && b.left < a.right - 0.5 && a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5)
+		);
 		const name = document.querySelector(`.${chart}-chart .node text`)!;
 		const size = parseFloat(getComputedStyle(name).fontSize) * (name as SVGGraphicsElement).getScreenCTM()!.a;
-		return { size, overflow };
+		return { size, overflow, overlap };
 	}, chart);
 }
 
 for (const chart of ['pedigree', 'descendancy']) {
-	test(`${chart} text grows with the font-size setting and stays inside its cards (#1103)`, async ({ page }) => {
+	test(`${chart} text grows with the font-size setting, stays inside its cards and cards do not overlap (#1103)`, async ({ page }) => {
 		const id = chart === 'pedigree' ? childId : matriarchId;
 		const route = `/${chart}/${id}?gens=2`;
 		await page.setViewportSize({ width: 1280, height: 900 });
 		await page.goto(route);
 		const normal = await chartText(page, chart);
+		expect(normal.overlap, 'cards overlap at Normal').toBe(false);
 
 		await useFontSize(page, 'larger');
 		await page.goto(route);
 		const larger = await chartText(page, chart);
 		expect(larger.size).toBeGreaterThanOrEqual(normal.size * 1.25);
 		expect(larger.overflow, 'card text overflows its card at Larger').toBe(false);
+		expect(larger.overlap, 'cards overlap at Larger').toBe(false);
 	});
 }
 
