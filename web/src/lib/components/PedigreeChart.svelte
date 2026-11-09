@@ -6,7 +6,9 @@
 	import { getFontScale } from '#lib/stores/accessibilitySettings.svelte.js';
 	import {
 		CARD_TEXT_INSET,
+		cardsInView,
 		centreOnX,
+		firstViewDepth,
 		fitText,
 		fitTransform,
 		motionDuration,
@@ -83,6 +85,12 @@
 	// Collapsed nodes state - tracks which node IDs have their ancestors collapsed
 	// Using a plain Set since reactivity is managed through manual re-renders
 	let collapsedNodes: Set<string> = new Set();
+	// The collapse of the first view: on a narrow chart, the generations beyond
+	// what fits with both parents readable are folded behind their +N badges
+	// (#1098). Applied when a root is first drawn and on Reset; the user's own
+	// expansions stand until then.
+	let firstViewCollapsed: Set<string> = new Set();
+	let showFirstView = true;
 
 	// Parents lying off either side of the view (chart-unit x, nearest first)
 	let offscreen = $state.raw<{ left: number[]; right: number[] }>({ left: [], right: [] });
@@ -170,15 +178,15 @@
 		renderChartWithAnimation();
 	}
 
-	// Convert pedigree data to D3 hierarchy format, respecting collapsed state
-	function buildHierarchy(node: PedigreeNode): d3.HierarchyNode<PedigreeNode> {
-		const hierarchyData = buildHierarchyData(node);
+	// Convert pedigree data to D3 hierarchy format, leaving out the ancestors of collapsed nodes
+	function buildHierarchy(node: PedigreeNode, collapsed: Set<string>): d3.HierarchyNode<PedigreeNode> {
+		const hierarchyData = buildHierarchyData(node, collapsed);
 		return d3.hierarchy(hierarchyData as PedigreeNode);
 	}
 
-	function buildHierarchyData(node: PedigreeNode): PedigreeNode & { children?: PedigreeNode[] } {
+	function buildHierarchyData(node: PedigreeNode, collapsed: Set<string>): PedigreeNode & { children?: PedigreeNode[] } {
 		// If this node is collapsed, don't include its ancestors
-		if (node.id && collapsedNodes.has(node.id)) {
+		if (node.id && collapsed.has(node.id)) {
 			return {
 				...node,
 				children: undefined
@@ -193,12 +201,55 @@
 
 		return {
 			...node,
-			children: children.length > 0 ? children.map((c) => buildHierarchyData(c)) : undefined
+			children: children.length > 0 ? children.map((c) => buildHierarchyData(c, collapsed)) : undefined
 		} as PedigreeNode & { children?: PedigreeNode[] };
 	}
 
 	// Store previous node positions for animations
 	let previousNodePositions: Map<string, { x: number; y: number }> = new Map();
+
+	// Lay out the tree with `collapsed` folded, ancestors above (root at the bottom)
+	function layoutTree(collapsed: Set<string>): d3.HierarchyPointNode<PedigreeNode> {
+		const config = LAYOUTS[layout];
+		const verticalSpacing = config.cardHeight + config.verticalGap;
+		// Use nodeSize for consistent spacing regardless of tree size
+		// Custom separation function to bring unrelated branches closer together
+		const treeData = d3
+			.tree<PedigreeNode>()
+			.nodeSize([config.cardWidth + config.horizontalGap, verticalSpacing])
+			.separation((a, b) => (a.parent === b.parent ? 1 : config.cousinSeparation))(buildHierarchy(data, collapsed));
+		const maxDepth = treeData.height;
+		treeData.each((d) => {
+			d.y = (maxDepth - d.depth) * verticalSpacing;
+		});
+		return treeData;
+	}
+
+	// The nodes of the full tree `depth` generations up that have ancestors of their own
+	function foldedAt(depth: number): Set<string> {
+		return new Set(
+			d3
+				.hierarchy(data, (d) => [d.father, d.mother].filter((p): p is PedigreeNode => !!p))
+				.descendants()
+				.filter((d) => d.depth === depth && d.data.id && hasAncestors(d.data))
+				.map((d) => d.data.id!)
+		);
+	}
+
+	// The deepest collapse whose fitted first view shows both parents whole
+	function computeFirstView(): Set<string> {
+		const { cardWidth, cardHeight } = LAYOUTS[layout];
+		const half = { width: (cardWidth / 2) * contentScale, height: (cardHeight / 2) * contentScale };
+		const [width, height] = viewportSize();
+		const fullDepth = buildHierarchy(data, new Set()).height;
+		const depth = firstViewDepth(fullDepth, (depth) => {
+			const nodes = layoutTree(foldedAt(depth)).descendants();
+			const fit = fitToContent(nodes);
+			const parents = nodes.filter((d) => d.depth === 1).map((d) => ({ x: d.x * contentScale, y: d.y * contentScale }));
+			return fit !== null && cardsInView(parents, half, fit, width, height);
+		});
+		return foldedAt(depth);
+	}
 
 	function renderChart() {
 		if (!container || !data) return;
@@ -238,24 +289,15 @@
 		svg.call(zoom);
 		touchScrollsPage(svg.node()!);
 
-		// Build hierarchy and create tree layout
-		const root = buildHierarchy(data);
+		// Fold what the first view can't show, once per root; later redraws keep the user's state
+		firstViewCollapsed = computeFirstView();
+		if (showFirstView) {
+			collapsedNodes = new Set(firstViewCollapsed);
+			showFirstView = false;
+		}
 
-		// Get layout config
-		const config = LAYOUTS[layout];
-		const cardWidth = config.cardWidth;
-		const cardHeight = config.cardHeight;
-		const horizontalSpacing = cardWidth + config.horizontalGap;
-		const verticalSpacing = cardHeight + config.verticalGap;
-
-		// Use nodeSize for consistent spacing regardless of tree size
-		// Custom separation function to bring unrelated branches closer together
-		const treeLayout = d3
-			.tree<PedigreeNode>()
-			.nodeSize([horizontalSpacing, verticalSpacing])
-			.separation((a, b) => (a.parent === b.parent ? 1 : config.cousinSeparation));
-
-		const treeData = treeLayout(root);
+		const { cardWidth, cardHeight } = LAYOUTS[layout];
+		const treeData = layoutTree(collapsedNodes);
 		const nodes = treeData.descendants();
 		const links = treeData.links();
 
@@ -266,12 +308,6 @@
 			if (node.data.id) {
 				nodeMap.set(node.data.id, node);
 			}
-		});
-
-		// Flip y coordinates so ancestors are above (root at bottom)
-		const maxDepth = d3.max(nodes, (d) => d.depth) || 0;
-		nodes.forEach((d) => {
-			d.y = (maxDepth - d.depth) * verticalSpacing;
 		});
 
 		// Draw links
@@ -322,7 +358,7 @@
 		});
 
 		// Initial zoom to fit
-		const fit = fitToContent();
+		const fit = fitToContent(treeNodes);
 		if (fit) svg.call(zoom.transform, fit);
 	}
 
@@ -339,12 +375,12 @@
 		svg.attr('viewBox', `0 0 ${width} ${height}`);
 	}
 
-	// The transform that fits the laid-out tree, keeping the root in view
-	function fitToContent(): d3.ZoomTransform | null {
-		if (treeNodes.length === 0) return null;
+	// The transform that fits the laid-out `nodes`, keeping the root in view
+	function fitToContent(nodes: d3.HierarchyPointNode<PedigreeNode>[]): d3.ZoomTransform | null {
+		if (nodes.length === 0) return null;
 		const { cardWidth, cardHeight } = LAYOUTS[layout];
-		const [minX, maxX] = d3.extent(treeNodes, (d) => d.x) as [number, number];
-		const [minY, maxY] = d3.extent(treeNodes, (d) => d.y) as [number, number];
+		const [minX, maxX] = d3.extent(nodes, (d) => d.x) as [number, number];
+		const [minY, maxY] = d3.extent(nodes, (d) => d.y) as [number, number];
 		const bounds = {
 			x: minX - cardWidth / 2,
 			y: minY - cardHeight / 2,
@@ -352,7 +388,7 @@
 			height: maxY - minY + cardHeight + TOGGLE_EXTENT
 		};
 		const [width, height] = viewportSize();
-		const root = { x: treeNodes[0].x * contentScale, y: treeNodes[0].y * contentScale };
+		const root = { x: nodes[0].x * contentScale, y: nodes[0].y * contentScale };
 		return fitTransform(scaleBounds(bounds, contentScale), width, height, SCALE_EXTENT, root);
 	}
 
@@ -384,22 +420,9 @@
 	function renderChartWithAnimation() {
 		if (!container || !data) return;
 
-		// Build new hierarchy with updated collapsed state
-		const root = buildHierarchy(data);
-
-		// Get layout config
-		const config = LAYOUTS[layout];
-		const cardWidth = config.cardWidth;
-		const cardHeight = config.cardHeight;
-		const horizontalSpacing = cardWidth + config.horizontalGap;
-		const verticalSpacing = cardHeight + config.verticalGap;
-
-		const treeLayout = d3
-			.tree<PedigreeNode>()
-			.nodeSize([horizontalSpacing, verticalSpacing])
-			.separation((a, b) => (a.parent === b.parent ? 1 : config.cousinSeparation));
-
-		const treeData = treeLayout(root);
+		// Lay out the tree with the updated collapsed state
+		const { cardWidth, cardHeight } = LAYOUTS[layout];
+		const treeData = layoutTree(collapsedNodes);
 		const nodes = treeData.descendants();
 		const links = treeData.links();
 
@@ -410,12 +433,6 @@
 			if (node.data.id) {
 				nodeMap.set(node.data.id, node);
 			}
-		});
-
-		// Flip y coordinates
-		const maxDepth = d3.max(nodes, (d) => d.depth) || 0;
-		nodes.forEach((d) => {
-			d.y = (maxDepth - d.depth) * verticalSpacing;
 		});
 
 		// Create sets for tracking which nodes exist
@@ -531,7 +548,7 @@
 		});
 
 		// Re-fit so the root stays in view as the tree grows or shrinks
-		const fit = fitToContent();
+		const fit = fitToContent(treeNodes);
 		if (fit) animateZoomTo(fit);
 	}
 
@@ -817,10 +834,11 @@
 		zoomBy(0.8);
 	}
 
+	// Back to the first view: its collapse and its fit
 	export function resetZoom() {
 		if (!svg || !zoom) return;
-		const fit = fitToContent();
-		if (fit) animateZoomTo(fit);
+		collapsedNodes = new Set(firstViewCollapsed);
+		renderChartWithAnimation();
 	}
 
 	// Navigation helper functions
@@ -931,7 +949,7 @@
 				untrack(() => {
 					previousDataId = data.id;
 				});
-				collapsedNodes.clear();
+				showFirstView = true;
 				previousNodePositions.clear();
 			}
 			renderChart();

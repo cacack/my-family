@@ -36,6 +36,7 @@ function useFontSize(page: Page, fontSize: string) {
 }
 
 let childId: string; // three generations of ancestors
+let heirId: string; // four full generations: two parents, four grandparents, eight great-grandparents
 let matriarchId: string; // nine children, each with a spouse and four children
 // Spouse names stay short whatever the suffix: long unbroken names overflow a spouse card at any font size (#1213)
 const surname = `Chart${Date.now().toString(36).slice(-4)}`;
@@ -52,6 +53,18 @@ test.beforeAll(async ({ request }) => {
 	await family(request, gf, gm, [father]);
 	await family(request, father, mother, [child]);
 	childId = child;
+
+	// Each person's parents, recursively, so the tree is as wide as four generations get
+	const ancestors = async (id: string, label: string, generations: number) => {
+		if (generations === 0) return;
+		const dad = await p(`${label}Fa`, 'male');
+		const mum = await p(`${label}Mo`, 'female');
+		await family(request, dad, mum, [id]);
+		await ancestors(dad, `${label}Fa`, generations - 1);
+		await ancestors(mum, `${label}Mo`, generations - 1);
+	};
+	heirId = await p('Heir');
+	await ancestors(heirId, '', 3);
 
 	matriarchId = await p('Matilda', 'female');
 	const consort = await p('Consort', 'male');
@@ -200,5 +213,66 @@ for (const width of [375, 1280, 1440]) {
 		await page.getByRole('button', { name: 'Reset' }).click();
 		await expect.poll(transform).toBe(initial);
 		expect(await counted()).toEqual(first);
+	});
+}
+
+/** The pedigree's parent cards: whether each lies inside the chart, and its given name as drawn. */
+async function parentCards(page: Page) {
+	await expect(page.locator('.pedigree-chart .node').first()).toBeVisible();
+	// Let the fit settle
+	await page.waitForTimeout(400);
+	return page.evaluate(() => {
+		const view = document.querySelector('.pedigree-chart')!.getBoundingClientRect();
+		const inside = (b: DOMRect) =>
+			b.left >= view.left && b.right <= view.right && b.top >= view.top && b.bottom <= view.bottom;
+		return [...document.querySelectorAll<SVGGElement>('.pedigree-chart .node')]
+			.filter((n) => (n as unknown as { __data__: { depth: number } }).__data__.depth === 1)
+			.map((n) => {
+				const name = n.querySelector<SVGTextElement>('.given-name')!;
+				return {
+					name: name.textContent,
+					cardInView: inside(n.querySelector('.node-card')!.getBoundingClientRect()),
+					nameInView: inside(name.getBoundingClientRect()),
+					namePx: parseFloat(getComputedStyle(name).fontSize) * name.getScreenCTM()!.a
+				};
+			});
+	});
+}
+
+test('pedigree first view at 375x667 shows both parents with readable names (#1098)', async ({ page }) => {
+	await page.setViewportSize({ width: 375, height: 667 });
+	await page.goto(`/pedigree/${heirId}`);
+	const parents = await parentCards(page);
+	expect(parents.map((p) => p.name).sort()).toEqual(['Fa', 'Mo']);
+	for (const p of parents) {
+		expect(p, JSON.stringify(p)).toMatchObject({ cardInView: true, nameInView: true });
+		expect(p.namePx, JSON.stringify(p)).toBeGreaterThanOrEqual(10);
+	}
+	// With both parents in view, nothing points off-screen
+	await expect(page.locator('.offscreen-indicator')).toHaveCount(0);
+
+	// The generations that did not fit are folded behind the parents' +N badges
+	const nodes = page.locator('.pedigree-chart .node');
+	await expect(nodes).toHaveCount(3);
+	await expect(page.locator('.ancestor-badge')).toHaveText(['+6', '+6']);
+
+	// An expansion sticks until Reset, which returns to the same first view
+	const transform = () => page.locator('.pedigree-chart svg > g').getAttribute('transform');
+	const initial = await transform();
+	await page.getByRole('button', { name: /^Expand ancestors of Fa / }).click();
+	await expect(nodes).toHaveCount(9);
+	await page.getByRole('button', { name: 'Reset' }).click();
+	await expect(nodes).toHaveCount(3);
+	await expect.poll(transform).toBe(initial);
+});
+
+for (const width of [1280, 1440]) {
+	test(`pedigree first view at ${width}px draws all four generations (#1098)`, async ({ page }) => {
+		await page.setViewportSize({ width, height: 900 });
+		await page.goto(`/pedigree/${heirId}`);
+		const parents = await parentCards(page);
+		expect(parents.every((p) => p.cardInView), JSON.stringify(parents)).toBe(true);
+		await expect(page.locator('.pedigree-chart .node')).toHaveCount(15);
+		await expect(page.locator('.ancestor-badge')).toHaveCount(0);
 	});
 }

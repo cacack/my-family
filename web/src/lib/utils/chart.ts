@@ -92,6 +92,38 @@ export function offscreenX(
 	return { left, right };
 }
 
+/**
+ * Whether every card (centre point and half-size, in chart units) lies wholly
+ * inside a `width` x `height` viewport under `t`.
+ */
+export function cardsInView(
+	points: { x: number; y: number }[],
+	half: { width: number; height: number },
+	t: d3.ZoomTransform,
+	width: number,
+	height: number
+): boolean {
+	return points.every(
+		({ x, y }) =>
+			t.applyX(x - half.width) >= 0 &&
+			t.applyX(x + half.width) <= width &&
+			t.applyY(y - half.height) >= 0 &&
+			t.applyY(y + half.height) <= height
+	);
+}
+
+/**
+ * The most generations, from `maxDepth` down to 1, whose first view `fits`. A
+ * narrow chart folds the rest away so the parents open readable (#1098); the
+ * parents themselves are always drawn, fitting or not.
+ */
+export function firstViewDepth(maxDepth: number, fits: (depth: number) => boolean): number {
+	for (let depth = maxDepth; depth > 1; depth--) {
+		if (fits(depth)) return depth;
+	}
+	return Math.min(maxDepth, 1);
+}
+
 /** `t` panned horizontally so chart point `x` sits mid-viewport. */
 export function centreOnX(t: d3.ZoomTransform, x: number, width: number): d3.ZoomTransform {
 	return d3.zoomIdentity.translate(width / 2 - t.k * x, t.y).scale(t.k);
