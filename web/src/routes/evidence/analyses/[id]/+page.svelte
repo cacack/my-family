@@ -19,6 +19,7 @@
 	import UncertaintyBadge from '$lib/components/UncertaintyBadge.svelte';
 	import { FACT_TYPES, formatFactType, isFactType, subjectRoute } from '$lib/utils/evidence';
 	import { nativeSelectClass } from '$lib/utils/forms';
+	import { RESEARCH_STATUS_OPTIONS, optionLabel } from '$lib/utils/enumOptions';
 	import ErrorState from '$lib/components/ErrorState.svelte';
 	import SaveConflict from '$lib/components/SaveConflict.svelte';
 	import { SaveConflictFlow, type ConflictRow } from '$lib/utils/saveConflict.svelte';
@@ -26,8 +27,6 @@
 	// Every fact type the API accepts, so a fact the merge review links here
 	// (#838) is always offered.
 	const factTypes = FACT_TYPES;
-
-	const researchStatuses: readonly ResearchStatus[] = ['certain', 'probable', 'possible', 'unknown'];
 
 	let analysis: EvidenceAnalysisResponse | null = $state(null);
 	let loading = $state(true);
@@ -78,14 +77,10 @@
 		{ key: 'fact_type', label: 'Fact Type', format: (value) => formatFactType(String(value)) },
 		{ key: 'subject_id', label: 'Subject ID' },
 		{ key: 'conclusion', label: 'Conclusion' },
-		{ key: 'research_status', label: 'Research Status', format: (value) => capitalize(String(value)) },
+		{ key: 'research_status', label: 'Research Status', format: (value) => optionLabel(RESEARCH_STATUS_OPTIONS, String(value)) },
 		{ key: 'notes', label: 'Notes' },
 		{ key: 'citation_ids', label: 'Citation IDs' }
 	];
-
-	function capitalize(value: string): string {
-		return value.charAt(0).toUpperCase() + value.slice(1);
-	}
 
 	// Monotonic request id to guard against stale async completions on fast route changes.
 	let loadSeq = 0;
@@ -361,8 +356,8 @@
 						aria-label="Research Status"
 						class={nativeSelectClass}
 					>
-						{#each researchStatuses as s}
-							<option value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
+						{#each RESEARCH_STATUS_OPTIONS as option (option.value)}
+							<option value={option.value}>{option.label}</option>
 						{/each}
 					</select>
 				</div>

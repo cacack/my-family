@@ -20,7 +20,12 @@ export interface EnumOption<T extends string> {
 	readonly label: string;
 }
 
-export const GENDER_OPTIONS: readonly EnumOption<Gender>[] = [
+/** The label `options` give `value`, else the value itself. */
+export function optionLabel(options: readonly EnumOption<string>[], value: string): string {
+	return options.find((option) => option.value === value)?.label ?? value;
+}
+
+export const GENDER_OPTIONS:readonly EnumOption<Gender>[] = [
 	{ value: 'unknown', label: 'Unknown' },
 	{ value: 'male', label: 'Male' },
 	{ value: 'female', label: 'Female' }

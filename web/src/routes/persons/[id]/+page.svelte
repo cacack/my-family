@@ -24,7 +24,7 @@
 	import ActionError from '$lib/components/ActionError.svelte';
 	import { activeBranch } from '$lib/stores/activeBranch.svelte';
 	import { ROLLBACK_MAINLINE_ONLY } from '$lib/utils/rollbackScope';
-	import { GENDER_OPTIONS, RESEARCH_STATUS_OPTIONS } from '$lib/utils/enumOptions';
+	import { GENDER_OPTIONS, RESEARCH_STATUS_OPTIONS, optionLabel } from '$lib/utils/enumOptions';
 	import { DISCARD_EDITS_PROMPT, SaveConflictFlow, type ConflictRow } from '$lib/utils/saveConflict.svelte';
 	import { asDatePhrase, savedAsNotes, savedAsText, stillStored, unreadableDateField, type SavedAs } from '$lib/utils/dateInput';
 	
@@ -283,10 +283,6 @@
 		if (person) {
 			formData = formFrom(person);
 		}
-	}
-
-	function optionLabel(options: readonly { value: string; label: string }[], value: string): string {
-		return options.find((option) => option.value === value)?.label ?? value;
 	}
 
 	// The edit form's fields, in its order, for comparing with the latest version.

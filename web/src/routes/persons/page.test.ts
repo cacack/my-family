@@ -136,6 +136,15 @@ describe('People list page: state in the URL (#901)', () => {
 		await waitFor(() => expect(lastListCall()).toMatchObject({ research_status: 'unassessed' }));
 	});
 
+	// Links made before #1110 named the two statuses the bucket now covers.
+	it.each(['unset', 'unknown'])('reads an older status=%s link as Not assessed', async (old) => {
+		resetRouter(`/persons?status=${old}`);
+		render(PersonsPage);
+		await screen.findByText('Page 1 of 5');
+		expect(lastListCall()).toMatchObject({ research_status: 'unassessed' });
+		expect((screen.getByLabelText('Confidence:') as HTMLSelectElement).value).toBe('unassessed');
+	});
+
 	it('marks the Quick Captures chip pressed while its filter is on', async () => {
 		resetRouter('/persons');
 		render(PersonsPage);

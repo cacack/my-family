@@ -27,7 +27,12 @@
 	const params = $derived(page.url.searchParams);
 	const sort = $derived(readEnum(params, 'sort', SORTS, DEFAULTS.sort));
 	const order = $derived(readEnum(params, 'order', ['asc', 'desc'] as const, DEFAULTS.order));
-	const researchStatusFilter = $derived(readEnum(params, 'status', STATUSES, DEFAULTS.status));
+	// Links made before the one bucket named its two statuses: read them as it.
+	const LEGACY_STATUSES = ['unset', 'unknown'] as const;
+	const researchStatusFilter = $derived.by(() => {
+		const status = readEnum(params, 'status', [...STATUSES, ...LEGACY_STATUSES], DEFAULTS.status);
+		return (LEGACY_STATUSES as readonly string[]).includes(status) ? 'unassessed' : status;
+	});
 	const currentPage = $derived(readPositiveInt(params, 'page', DEFAULTS.page));
 
 	// Back/Forward can start loads faster than they finish: only the latest one may land.
