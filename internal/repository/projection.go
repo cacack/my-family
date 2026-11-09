@@ -2733,7 +2733,8 @@ func (p *Projector) projectImportedValuesBackfilled(ctx context.Context, e domai
 		if err := p.readStore.SavePerson(ctx, branchID, person); err != nil {
 			return err
 		}
-		if err := p.backfillBranchCopies(ctx, branchID, func(ctx context.Context, b domain.BranchID) error {
+		hasCoordinates := countSet(e.BirthPlaceLat, e.BirthPlaceLong, e.DeathPlaceLat, e.DeathPlaceLong) > 0
+		if err := p.backfillBranchCopies(ctx, branchID, hasCoordinates, func(ctx context.Context, b domain.BranchID) error {
 			row, err := p.readStore.GetPerson(ctx, b, e.EntityID)
 			if err != nil || row == nil || countSet(row.BirthPlaceLat, row.BirthPlaceLong, row.DeathPlaceLat, row.DeathPlaceLong) > 0 {
 				return err
@@ -2758,7 +2759,7 @@ func (p *Projector) projectImportedValuesBackfilled(ctx context.Context, e domai
 		if err := p.readStore.SaveEvent(ctx, branchID, event); err != nil {
 			return err
 		}
-		return p.backfillBranchCopies(ctx, branchID, func(ctx context.Context, b domain.BranchID) error {
+		return p.backfillBranchCopies(ctx, branchID, countSet(e.PlaceLat, e.PlaceLong) > 0, func(ctx context.Context, b domain.BranchID) error {
 			row, err := p.readStore.GetEvent(ctx, b, e.EntityID)
 			if err != nil || row == nil || countSet(row.PlaceLat, row.PlaceLong) > 0 {
 				return err
@@ -2817,10 +2818,13 @@ func (p *Projector) projectImportedValuesBackfilled(ctx context.Context, e domai
 // the branch never changed them (no event but the backfill does). With main's
 // row already set, a branch whose row has no coordinates must have such a
 // copy, since a branch without one reads main's row; patch fills those in and
-// leaves every other branch alone. EXIDs need no patch: a branch without its
-// own EXIDs reads main's.
-func (p *Projector) backfillBranchCopies(ctx context.Context, branchID domain.BranchID, patch func(context.Context, domain.BranchID) error) error {
-	if !branchID.IsMain() || p.branchStore == nil {
+// leaves every other branch alone. The rule only holds when the backfill set
+// coordinates (hasCoordinates): for an EXID-only backfill main's row still has
+// none, so a branch reading main's row would look like a copy, and saving it
+// would give that branch a row of its own that hides main's later edits.
+// EXIDs need no patch: a branch without its own EXIDs reads main's.
+func (p *Projector) backfillBranchCopies(ctx context.Context, branchID domain.BranchID, hasCoordinates bool, patch func(context.Context, domain.BranchID) error) error {
+	if !branchID.IsMain() || p.branchStore == nil || !hasCoordinates {
 		return nil
 	}
 	branches, err := p.branchStore.List(ctx)

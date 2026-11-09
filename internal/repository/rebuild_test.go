@@ -528,3 +528,24 @@ func TestProjectImportedValuesBackfilled_ReportsBranchListError(t *testing.T) {
 		t.Errorf("project = %v, want the branch list failure", err)
 	}
 }
+
+// TestProjectImportedValuesBackfilled_ExidOnlyLeavesBranchesOnMain proves an
+// EXID-only backfill gives no branch a row of its own: a branch keeps reading
+// main's row, so a later edit on main still shows there (#1254).
+func TestProjectImportedValuesBackfilled_ExidOnlyLeavesBranchesOnMain(t *testing.T) {
+	ctx := context.Background()
+	rs, branches := memory.NewReadModelStore(), memory.NewBranchStore()
+	branch, _ := domain.NewBranch("research", "", 0)
+	mustRebuildSetup(t, branches.Create(ctx, branch))
+	personID := uuid.New()
+	mustRebuildSetup(t, rs.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{ID: personID, GivenName: "Ada", Version: 1}))
+	mustRebuildSetup(t, repository.NewProjector(rs, branches).Project(ctx, domain.ImportedValuesBackfilled{BaseEvent: domain.NewBaseEvent(),
+		EntityType: domain.BackfillPerson, EntityID: personID, ExternalIDs: []domain.ExternalIdentifier{{Value: "FS-1"}}}, 2, domain.MainBranchID))
+
+	p, _ := rs.GetPerson(ctx, domain.MainBranchID, personID)
+	p.GivenName = "Augusta"
+	mustRebuildSetup(t, rs.SavePerson(ctx, domain.MainBranchID, p))
+	if got, _ := rs.GetPerson(ctx, domain.BranchID(branch.ID), personID); got == nil || got.GivenName != "Augusta" {
+		t.Errorf("person on the branch = %+v, want main's later edit seen through the overlay", got)
+	}
+}
