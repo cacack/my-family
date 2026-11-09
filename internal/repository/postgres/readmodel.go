@@ -627,7 +627,11 @@ func (s *ReadModelStore) createTables() error {
 	// Run schema migrations for existing databases
 	s.runMigrations()
 
-	return nil
+	// Must run after runMigrations, whose branch migration gives a pre-#669
+	// person_names its branch_id. Its error is FATAL: SavePersonName always
+	// writes full_name, so a column left GENERATED would make every name
+	// projection fail. See migratePersonNameFullName.
+	return s.migratePersonNameFullName()
 }
 
 // renameLegacyEventsTable renames a pre-#733 read model events table to
@@ -788,9 +792,13 @@ func (s *ReadModelStore) migratePersonFullName() {
 // a stray space when a part was empty) into the plain column SavePersonName
 // writes, and recomputes every existing row by the same rule (#1130, #985), so
 // no replay is needed. It runs in one transaction and is a no-op once the
-// column is no longer generated. Failures follow runMigrations'
-// degrade-and-warn policy: the old generated column stays readable.
-func (s *ReadModelStore) migratePersonNameFullName() {
+// column is no longer generated.
+//
+// Unlike runMigrations' degrade-and-warn migrations, every failure is returned
+// and refuses the store, as SQLite's counterpart does: SavePersonName always
+// binds full_name, which a still-generated column rejects, so a swallowed
+// failure would make every name projection fail after its events were appended.
+func (s *ReadModelStore) migratePersonNameFullName() error {
 	var outdated bool
 	if err := s.db.QueryRow(`
 		SELECT EXISTS (
@@ -798,16 +806,15 @@ func (s *ReadModelStore) migratePersonNameFullName() {
 			WHERE table_schema = CURRENT_SCHEMA() AND table_name = 'person_names'
 			  AND column_name = 'full_name' AND is_generated = 'ALWAYS'
 		)`).Scan(&outdated); err != nil {
-		slog.Warn("read model migration: cannot inspect person_names.full_name (#1130)", "error", err)
-		return
+		return fmt.Errorf("inspect person_names.full_name (#1130): %w", err)
 	}
 	if !outdated {
-		return
+		return nil
 	}
 	if err := s.recomputePersonNameFullName(); err != nil {
-		slog.Warn("read model migration: cannot update person_names.full_name; alternate names keep the old full name (#1130)",
-			"error", err)
+		return fmt.Errorf("migrate person_names.full_name (#1130): %w", err)
 	}
+	return nil
 }
 
 // recomputePersonNameFullName is migratePersonNameFullName's transaction.
@@ -899,7 +906,6 @@ func (s *ReadModelStore) migrateMultilineTextColumns() {
 // runMigrations applies schema changes for existing databases.
 func (s *ReadModelStore) runMigrations() {
 	s.migratePersonFullName()
-	s.migratePersonNameFullName()
 	s.migrateMultilineTextColumns()
 
 	// Add research_status column if it doesn't exist (for databases created before this column was added)

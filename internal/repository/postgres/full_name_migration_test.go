@@ -206,3 +206,55 @@ func TestPersonNameFullName(t *testing.T) {
 		})
 	}
 }
+
+// TestReadModelStore_PersonNameFullNameMigrationFailureIsFatal checks that a
+// failed person_names.full_name migration refuses the store instead of leaving
+// the column GENERATED, which every later SavePersonName would hit (#1130).
+func TestReadModelStore_PersonNameFullNameMigrationFailureIsFatal(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+
+	db, cleanup := setupPostgres(t)
+	defer cleanup()
+
+	if _, err := db.Exec(`
+		CREATE TABLE person_names (
+			id UUID NOT NULL,
+			branch_id UUID NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000',
+			person_id UUID NOT NULL,
+			given_name VARCHAR(100) NOT NULL,
+			surname VARCHAR(100) NOT NULL,
+			full_name VARCHAR(200) GENERATED ALWAYS AS (given_name || ' ' || surname) STORED,
+			name_prefix VARCHAR(50),
+			name_suffix VARCHAR(50),
+			surname_prefix VARCHAR(50),
+			nickname VARCHAR(100),
+			name_type VARCHAR(20) NOT NULL DEFAULT '',
+			is_primary BOOLEAN NOT NULL DEFAULT FALSE,
+			search_vector TSVECTOR,
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			deleted BOOLEAN NOT NULL DEFAULT FALSE,
+			PRIMARY KEY (id, branch_id)
+		)`); err != nil {
+		t.Fatalf("create legacy person_names table: %v", err)
+	}
+	// A dependent view makes the migration's DROP COLUMN fail.
+	if _, err := db.Exec(`CREATE VIEW person_name_full_names AS SELECT full_name FROM person_names`); err != nil {
+		t.Fatalf("create dependent view: %v", err)
+	}
+
+	if _, err := pgstore.NewReadModelStore(db); err == nil {
+		t.Fatal("NewReadModelStore succeeded although person_names.full_name could not be migrated")
+	}
+
+	var generated string
+	if err := db.QueryRow(`SELECT is_generated FROM information_schema.columns
+		WHERE table_schema = CURRENT_SCHEMA() AND table_name = 'person_names' AND column_name = 'full_name'`).
+		Scan(&generated); err != nil {
+		t.Fatalf("inspect full_name: %v", err)
+	}
+	if generated != "ALWAYS" {
+		t.Errorf("full_name is_generated = %q, want the failed migration rolled back to ALWAYS", generated)
+	}
+}
