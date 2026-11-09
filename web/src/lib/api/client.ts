@@ -36,6 +36,8 @@ export type MergePersonsRequest = components['schemas']['MergePersonsRequest'];
 export type MergePersonsResponse = components['schemas']['MergePersonsResponse'];
 export type MergeSummary = components['schemas']['MergeSummary'];
 export type DismissDuplicateRequest = components['schemas']['DismissDuplicateRequest'];
+export type DismissedDuplicate = components['schemas']['DismissedDuplicate'];
+export type DismissedDuplicatesResponse = components['schemas']['DismissedDuplicatesResponse'];
 export type DuplicatePairRef = components['schemas']['DuplicatePairRef'];
 export type BatchMergeRequest = components['schemas']['BatchMergeRequest'];
 export type BatchMergeResponse = components['schemas']['BatchMergeResponse'];
@@ -176,7 +178,8 @@ const TEXT_SEGMENT = '[^/]+';
  * follow the branch too (#829), and so do research snapshots (#839): a
  * snapshot marks a position in one branch's view, so the list, create,
  * delete and both comparisons carry the scope. The quality overview behind
- * `/analytics` follows the branch too (#894). The
+ * `/analytics` follows the branch too (#894), and so do duplicate detection
+ * and its "not a duplicate" decisions (#1036). The
  * aggregates own no `branch_id` of their own — they read the overlay — so
  * scoping them is exactly this parameter and nothing else.
  *
@@ -226,6 +229,16 @@ const BRANCH_SCOPED_OPERATIONS: ReadonlyArray<{
 	// Person merge (#834): a merge made on a branch lands there only.
 	{ methods: ['POST'], pattern: new RegExp('^/persons/merge$') },
 	{ methods: ['POST'], pattern: new RegExp('^/persons/merge/batch$') },
+	// Duplicate detection and "not a duplicate" decisions (#1036): the pairs
+	// are found in the branch's view, and a dismissal or restore made on a
+	// branch lands there only.
+	{ methods: ['GET'], pattern: new RegExp('^/persons/duplicates$') },
+	{ methods: ['GET'], pattern: new RegExp('^/persons/duplicates/dismissed$') },
+	{
+		methods: ['POST', 'DELETE'],
+		pattern: new RegExp(`^/persons/duplicates/${UUID_SEGMENT}/${UUID_SEGMENT}/dismiss$`)
+	},
+	{ methods: ['POST'], pattern: new RegExp('^/persons/duplicates/dismiss/batch$') },
 	// Browse and map aggregates (#756), plus the cemetery index (#757).
 	{ methods: ['GET'], pattern: new RegExp('^/browse/surnames$') },
 	{ methods: ['GET'], pattern: new RegExp(`^/browse/surnames/${TEXT_SEGMENT}/persons$`) },
@@ -1734,7 +1747,8 @@ class ApiClient {
 		);
 	}
 
-	// Duplicate detection endpoints
+	// Duplicate detection endpoints. They follow the active branch (#1036):
+	// pairs are found in its view, and "not a duplicate" decisions land on it.
 	async getPersonsDuplicates(params?: {
 		limit?: number;
 		offset?: number;
@@ -1759,6 +1773,30 @@ class ApiClient {
 			'POST',
 			`/persons/duplicates/${encodeURIComponent(person1Id)}/${encodeURIComponent(person2Id)}/dismiss`,
 			req
+		);
+	}
+
+	/** Undo a "not a duplicate" decision, so the pair may be suggested again. */
+	async restoreDuplicate(person1Id: string, person2Id: string): Promise<void> {
+		return this.request<void>(
+			'DELETE',
+			`/persons/duplicates/${encodeURIComponent(person1Id)}/${encodeURIComponent(person2Id)}/dismiss`
+		);
+	}
+
+	/** The pairs marked "not a duplicate", most recently dismissed first. */
+	async listDismissedDuplicates(params?: {
+		limit?: number;
+		offset?: number;
+	}): Promise<DismissedDuplicatesResponse> {
+		const searchParams = new URLSearchParams();
+		if (params?.limit != null) searchParams.set('limit', params.limit.toString());
+		if (params?.offset != null) searchParams.set('offset', params.offset.toString());
+
+		const query = searchParams.toString();
+		return this.request<DismissedDuplicatesResponse>(
+			'GET',
+			`/persons/duplicates/dismissed${query ? `?${query}` : ''}`
 		);
 	}
 

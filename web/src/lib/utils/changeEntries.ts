@@ -32,6 +32,7 @@ export const ENTITY_TYPE_LABELS: Record<ChangeEntityType, string> = {
   research_log: "Research log",
   proof_summary: "Proof summary",
   branch: "Research branch",
+  duplicate_pair: "Duplicate pair",
 };
 
 /** Every entity type, in label order. */
@@ -82,6 +83,10 @@ function pageOf(entityType: string, id: string): string | null {
       return `/evidence/proof-summaries/${id}`;
     case "branch":
       return `/branches/${id}`;
+    // A pair marked "not a duplicate" (#1036) is listed, and restored, on
+    // the Quality page.
+    case "duplicate_pair":
+      return "/quality?tab=not-duplicates";
     default:
       return null;
   }
@@ -121,6 +126,11 @@ export function changeActionLabel(
   if (entry.entity_type === "branch" && entry.action === "deleted") {
     // A close (#836) records its outcome; a delete from before it does not.
     return entry.changes?.outcome ? "closed" : "archived";
+  }
+  // A duplicate pair is created by marking it not a duplicate and deleted by
+  // restoring it (#1036).
+  if (entry.entity_type === "duplicate_pair") {
+    return entry.action === "deleted" ? "restored as a possible duplicate" : "marked not a duplicate";
   }
   return entry.action;
 }

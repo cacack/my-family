@@ -1872,3 +1872,50 @@ func NewProofSummaryDeleted(summaryID uuid.UUID, reason string) ProofSummaryDele
 		Reason:    reason,
 	}
 }
+
+// DuplicateDismissed event is emitted when a researcher marks a suggested
+// duplicate pair as not a duplicate (#1036). It lives on the pair's own stream
+// (DuplicatePair.ID), so the persons' streams are untouched.
+type DuplicateDismissed struct {
+	BaseEvent
+	PairID    uuid.UUID `json:"pair_id"`
+	Person1ID uuid.UUID `json:"person1_id"`
+	Person2ID uuid.UUID `json:"person2_id"`
+	Reason    string    `json:"reason,omitempty"`
+}
+
+func (e DuplicateDismissed) EventType() string      { return "DuplicateDismissed" }
+func (e DuplicateDismissed) AggregateID() uuid.UUID { return e.PairID }
+
+// NewDuplicateDismissed creates a DuplicateDismissed event for pair.
+func NewDuplicateDismissed(pair DuplicatePair, reason string) DuplicateDismissed {
+	return DuplicateDismissed{
+		BaseEvent: NewBaseEvent(),
+		PairID:    pair.ID(),
+		Person1ID: pair.Person1ID,
+		Person2ID: pair.Person2ID,
+		Reason:    reason,
+	}
+}
+
+// DuplicateRestored event is emitted when a dismissed duplicate pair is
+// restored, so the detector may suggest it again (#1036).
+type DuplicateRestored struct {
+	BaseEvent
+	PairID    uuid.UUID `json:"pair_id"`
+	Person1ID uuid.UUID `json:"person1_id"`
+	Person2ID uuid.UUID `json:"person2_id"`
+}
+
+func (e DuplicateRestored) EventType() string      { return "DuplicateRestored" }
+func (e DuplicateRestored) AggregateID() uuid.UUID { return e.PairID }
+
+// NewDuplicateRestored creates a DuplicateRestored event for pair.
+func NewDuplicateRestored(pair DuplicatePair) DuplicateRestored {
+	return DuplicateRestored{
+		BaseEvent: NewBaseEvent(),
+		PairID:    pair.ID(),
+		Person1ID: pair.Person1ID,
+		Person2ID: pair.Person2ID,
+	}
+}

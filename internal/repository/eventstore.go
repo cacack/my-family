@@ -614,6 +614,18 @@ func (e *StoredEvent) DecodeEvent() (domain.Event, error) {
 			return nil, err
 		}
 		return event, nil
+	case "DuplicateDismissed":
+		var event domain.DuplicateDismissed
+		if err := json.Unmarshal(e.Data, &event); err != nil {
+			return nil, err
+		}
+		return event, nil
+	case "DuplicateRestored":
+		var event domain.DuplicateRestored
+		if err := json.Unmarshal(e.Data, &event); err != nil {
+			return nil, err
+		}
+		return event, nil
 	default:
 		return nil, errors.New("unknown event type: " + e.EventType)
 	}

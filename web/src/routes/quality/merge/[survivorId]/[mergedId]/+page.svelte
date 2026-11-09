@@ -58,6 +58,7 @@
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 	let submitting = $state(false);
+	let dismissing = $state(false);
 	let result = $state<MergePersonsResponse | null>(null);
 	let resolution = $state<Record<string, Side>>({});
 	// Captured at load time so both the merge request payload and the post-merge
@@ -242,6 +243,25 @@
 	function handleCancel() {
 		goto('/quality');
 	}
+
+	/**
+	 * The two records are different people (#1036): record that, so the pair
+	 * is no longer suggested, and go back to the remaining duplicates. Like the
+	 * merge, it lands on the active branch when there is one.
+	 */
+	async function handleNotDuplicate() {
+		if (!routeSurvivorId || !routeMergedId) return;
+		dismissing = true;
+		error = null;
+		try {
+			await api.dismissDuplicate(routeSurvivorId, routeMergedId);
+			goto('/quality?tab=duplicates');
+		} catch (e) {
+			error = truncateError(e, 'Failed to mark the pair as not a duplicate');
+		} finally {
+			dismissing = false;
+		}
+	}
 </script>
 
 <svelte:head>
@@ -258,7 +278,9 @@
 		</a>
 		<h1 class="text-2xl font-semibold text-foreground">Merge Persons</h1>
 		<p class="text-sm text-muted-foreground">
-			Choose which value to keep for each field. The merged record will be deleted.
+			Choose which value to keep for each field. The merged record will be deleted. If these are
+			different people, choose <strong>Not a duplicate</strong> and the pair will no longer be
+			suggested.
 		</p>
 	</header>
 
@@ -430,10 +452,17 @@
 		</Card>
 
 		<div class="flex items-center justify-end gap-3">
-			<Button variant="outline" onclick={handleCancel} disabled={submitting}>Cancel</Button>
+			<Button variant="outline" onclick={handleCancel} disabled={submitting || dismissing}>Cancel</Button>
+			<Button
+				variant="outline"
+				onclick={handleNotDuplicate}
+				disabled={loading || submitting || dismissing || !survivor || !merged}
+			>
+				{dismissing ? 'Saving…' : 'Not a duplicate'}
+			</Button>
 			<Button
 				onclick={handleMerge}
-				disabled={loading || submitting || !survivor || !merged}
+				disabled={loading || submitting || dismissing || !survivor || !merged}
 			>
 				{submitting ? 'Merging…' : 'Merge persons'}
 			</Button>

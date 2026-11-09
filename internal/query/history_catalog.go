@@ -45,6 +45,10 @@ const (
 	// shows it; its events live on each branch's own scope, and the store
 	// keeps them in the mainline's page (HistoryBranchLifecycleEventTypes).
 	entityTypeBranch = "branch"
+	// entityTypeDuplicatePair is a suggested duplicate pair a researcher marked
+	// as not a duplicate (#1036): created when dismissed, deleted when
+	// restored. Its id is the pair id (domain.DuplicatePair.ID).
+	entityTypeDuplicatePair = "duplicate_pair"
 )
 
 // ChangeEntry.Action vocabulary.
@@ -153,6 +157,10 @@ var historyEventCatalog = map[string]historyEventClass{
 	"ProofSummaryCreated":      mapped(entityTypeProofSummary, actionCreated),
 	"ProofSummaryUpdated":      mapped(entityTypeProofSummary, actionUpdated),
 	"ProofSummaryDeleted":      mapped(entityTypeProofSummary, actionDeleted),
+	// A duplicate pair marked "not a duplicate" (#1036) is created by the
+	// dismissal and deleted by its restore; the pair's own stream carries both.
+	"DuplicateDismissed": mapped(entityTypeDuplicatePair, actionCreated),
+	"DuplicateRestored":  mapped(entityTypeDuplicatePair, actionDeleted),
 }
 
 // classifyHistoryEvent looks an event type up in the table. ok is false only

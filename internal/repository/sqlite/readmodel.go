@@ -677,6 +677,21 @@ func (s *ReadModelStore) createTables() error {
 
 		CREATE INDEX IF NOT EXISTS idx_proof_summaries_subject ON proof_summaries(subject_id);
 		CREATE INDEX IF NOT EXISTS idx_proof_summaries_fact_type ON proof_summaries(fact_type);
+
+		-- Duplicate pairs marked "not a duplicate" (branch-aware, #1036); id is
+		-- the pair id (domain.DuplicatePair.ID).
+		CREATE TABLE IF NOT EXISTS duplicate_dismissals (
+			id TEXT NOT NULL,
+			branch_id TEXT NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000',
+			person1_id TEXT NOT NULL,
+			person2_id TEXT NOT NULL,
+			reason TEXT,
+			version INTEGER NOT NULL DEFAULT 1,
+			created_at TEXT NOT NULL DEFAULT (datetime('now')),
+			updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+			deleted INTEGER NOT NULL DEFAULT 0,
+			PRIMARY KEY (id, branch_id)
+		);
 	`)
 	if err != nil {
 		return err
@@ -843,6 +858,7 @@ func (s *ReadModelStore) runMigrations() {
 		{"idx_evidence_conflicts_id_branch", "evidence_conflicts", "id, branch_id"},
 		{"idx_research_logs_id_branch", "research_logs", "id, branch_id"},
 		{"idx_proof_summaries_id_branch", "proof_summaries", "id, branch_id"},
+		{"idx_duplicate_dismissals_id_branch", "duplicate_dismissals", "id, branch_id"},
 	} {
 		// #nosec G201 -- idx fields are internal constants, never user input.
 		// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
@@ -862,6 +878,9 @@ var branchScopedTables = []string{
 	"sources", "source_external_ids", "citations", "notes",
 	"media",
 	"evidence_analyses", "evidence_conflicts", "research_logs", "proof_summaries",
+	// Duplicate dismissals (#1036): created with their composite key, so they
+	// need no place in branchKeyedTables.
+	"duplicate_dismissals",
 }
 
 // branchKeyedTables are the branch-scoped tables whose row identity must include
@@ -6907,6 +6926,87 @@ func (s *ReadModelStore) SaveProofSummary(ctx context.Context, branchID domain.B
 func (s *ReadModelStore) DeleteProofSummary(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error {
 	if err := s.deleteFactRow(ctx, "proof_summaries", proofSummarySelectCols, branchID, id); err != nil {
 		return fmt.Errorf("delete proof_summary: %w", err)
+	}
+	return nil
+}
+
+// dismissalSelectCols is scanDismissal's column order (unaliased). The
+// duplicate_dismissals table (#1036) has the GPS artifacts' id-keyed overlay
+// shape, so it reuses their list and single-row helpers.
+const dismissalSelectCols = `id, person1_id, person2_id, reason, version, created_at, updated_at`
+
+func scanDismissal(row rowScanner) (*repository.DuplicateDismissalReadModel, error) {
+	var d repository.DuplicateDismissalReadModel
+	var idStr, p1Str, p2Str, createdStr, updatedStr string
+	var reason sql.NullString
+	err := row.Scan(&idStr, &p1Str, &p2Str, &reason, &d.Version, &createdStr, &updatedStr)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("scan duplicate_dismissal: %w", err)
+	}
+	if d.ID, d.Person1ID, err = parseGPSIDs("duplicate_dismissal", idStr, p1Str); err != nil {
+		return nil, err
+	}
+	if d.Person2ID, err = uuid.Parse(p2Str); err != nil {
+		return nil, fmt.Errorf("parse duplicate_dismissal person2_id: %w", err)
+	}
+	if d.CreatedAt, d.UpdatedAt, err = parseGPSTimes("duplicate_dismissal", createdStr, updatedStr); err != nil {
+		return nil, err
+	}
+	d.Reason = reason.String
+	return &d, nil
+}
+
+// GetDuplicateDismissal retrieves a duplicate dismissal by pair id within the
+// branch overlay (ADR-005, #1036).
+func (s *ReadModelStore) GetDuplicateDismissal(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.DuplicateDismissalReadModel, error) {
+	return scanDismissal(s.getGPSRow(ctx, "duplicate_dismissals", dismissalSelectCols, branchID, id))
+}
+
+// ListDuplicateDismissals returns a paginated list of the duplicate dismissals
+// visible on opts.BranchID.
+func (s *ReadModelStore) ListDuplicateDismissals(ctx context.Context, opts repository.ListOptions) ([]repository.DuplicateDismissalReadModel, int, error) {
+	var results []repository.DuplicateDismissalReadModel
+	total, err := s.queryGPSPage(ctx, "duplicate_dismissals", dismissalSelectCols, "", opts, collectRows(&results, scanDismissal))
+	if err != nil {
+		return nil, 0, err
+	}
+	return results, total, nil
+}
+
+// SaveDuplicateDismissal saves a duplicate dismissal on the given branch
+// (ADR-005); a save always clears any prior tombstone and restamps the
+// dismissal time.
+func (s *ReadModelStore) SaveDuplicateDismissal(ctx context.Context, branchID domain.BranchID, d *repository.DuplicateDismissalReadModel) error {
+	if err := s.guardBranchWrite(branchID); err != nil {
+		return err
+	}
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO duplicate_dismissals (id, branch_id, person1_id, person2_id, reason, version, created_at, updated_at, deleted)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)
+		ON CONFLICT (id, branch_id) DO UPDATE SET
+			person1_id = excluded.person1_id,
+			person2_id = excluded.person2_id,
+			reason = excluded.reason,
+			version = excluded.version,
+			created_at = excluded.created_at,
+			updated_at = excluded.updated_at,
+			deleted = 0
+	`, d.ID.String(), branchID.String(), d.Person1ID.String(), d.Person2ID.String(), nullableString(d.Reason),
+		d.Version, d.CreatedAt.Format(time.RFC3339), d.UpdatedAt.Format(time.RFC3339))
+	if err != nil {
+		return fmt.Errorf("save duplicate_dismissal: %w", err)
+	}
+	return nil
+}
+
+// DeleteDuplicateDismissal removes a duplicate dismissal (ADR-005): a real
+// removal on main, a tombstone on a non-main branch.
+func (s *ReadModelStore) DeleteDuplicateDismissal(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error {
+	if err := s.deleteFactRow(ctx, "duplicate_dismissals", dismissalSelectCols, branchID, id); err != nil {
+		return fmt.Errorf("delete duplicate_dismissal: %w", err)
 	}
 	return nil
 }

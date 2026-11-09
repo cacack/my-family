@@ -530,6 +530,20 @@ func (m *mockReadModelStore) DeleteResearchLog(ctx context.Context, branchID dom
 	return nil
 }
 
+// Duplicate dismissal stub methods
+func (m *mockReadModelStore) GetDuplicateDismissal(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.DuplicateDismissalReadModel, error) {
+	return nil, nil
+}
+func (m *mockReadModelStore) ListDuplicateDismissals(ctx context.Context, opts repository.ListOptions) ([]repository.DuplicateDismissalReadModel, int, error) {
+	return nil, 0, nil
+}
+func (m *mockReadModelStore) SaveDuplicateDismissal(ctx context.Context, branchID domain.BranchID, d *repository.DuplicateDismissalReadModel) error {
+	return nil
+}
+func (m *mockReadModelStore) DeleteDuplicateDismissal(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error {
+	return nil
+}
+
 // Proof summary stub methods
 func (m *mockReadModelStore) GetProofSummary(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.ProofSummaryReadModel, error) {
 	return nil, nil

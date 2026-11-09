@@ -13,6 +13,11 @@ import (
 	"github.com/cacack/my-family/internal/repository/memory"
 )
 
+// testDuplicatePair is a fixed pair for the duplicate dismissal decode cases.
+var testDuplicatePair, _ = domain.NewDuplicatePair(
+	uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+	uuid.MustParse("22222222-2222-2222-2222-222222222222"))
+
 func TestEventStore_Append(t *testing.T) {
 	store := memory.NewEventStore()
 	ctx := context.Background()
@@ -962,6 +967,35 @@ func TestStoredEvent_DecodeEvent_AllTypes(t *testing.T) {
 				}
 			},
 		},
+		{
+			name:      "DuplicateDismissed",
+			event:     domain.NewDuplicateDismissed(testDuplicatePair, "father and son"),
+			eventType: "DuplicateDismissed",
+			validate: func(t *testing.T, decoded domain.Event) {
+				e, ok := decoded.(domain.DuplicateDismissed)
+				if !ok {
+					t.Fatalf("Expected DuplicateDismissed, got %T", decoded)
+				}
+				if e.PairID != testDuplicatePair.ID() || e.Person1ID != testDuplicatePair.Person1ID ||
+					e.Person2ID != testDuplicatePair.Person2ID || e.Reason != "father and son" {
+					t.Errorf("decoded %+v", e)
+				}
+			},
+		},
+		{
+			name:      "DuplicateRestored",
+			event:     domain.NewDuplicateRestored(testDuplicatePair),
+			eventType: "DuplicateRestored",
+			validate: func(t *testing.T, decoded domain.Event) {
+				e, ok := decoded.(domain.DuplicateRestored)
+				if !ok {
+					t.Fatalf("Expected DuplicateRestored, got %T", decoded)
+				}
+				if e.PairID != testDuplicatePair.ID() || e.Person1ID != testDuplicatePair.Person1ID {
+					t.Errorf("decoded %+v", e)
+				}
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -1058,6 +1092,7 @@ func TestStoredEvent_DecodeEvent_InvalidJSON_AllTypes(t *testing.T) {
 		"EvidenceConflictDetected", "EvidenceConflictResolved",
 		"ResearchLogCreated", "ResearchLogUpdated", "ResearchLogDeleted",
 		"ProofSummaryCreated", "ProofSummaryUpdated", "ProofSummaryDeleted",
+		"DuplicateDismissed", "DuplicateRestored",
 	}
 
 	for _, eventType := range eventTypes {
