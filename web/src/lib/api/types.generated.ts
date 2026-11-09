@@ -3667,15 +3667,25 @@ export interface components {
              */
             generations: number;
             /**
-             * @description Total number of entries (2^(generations+1) - 1)
+             * @description Every Ahnentafel slot in those generations, including the subject (2^(generations+1) - 1)
              * @example 31
              */
             total_count: number;
             /**
-             * @description Number of entries with known ancestors
+             * @description Number of known entries, including the subject
              * @example 15
              */
             known_count: number;
+            /**
+             * @description Every ancestor slot in those generations, leaving out the subject (total_count - 1)
+             * @example 30
+             */
+            ancestor_slots: number;
+            /**
+             * @description Number of known ancestors, leaving out the subject; equals the pedigree's total_ancestors for the same person and generations
+             * @example 14
+             */
+            known_ancestors: number;
         };
         /** @description The subject (root person) of the Ahnentafel report */
         AhnentafelSubject: {

@@ -36,6 +36,8 @@ function reportWith(
     generations: 1,
     total_count: 1,
     known_count: 1,
+    ancestor_slots: 0,
+    known_ancestors: 0,
   } as apiModule.AhnentafelResponse;
 }
 
@@ -113,5 +115,63 @@ describe("Ahnentafel page: export filename follows the display name (#932)", () 
     [{}, "Unknown_ahnentafel.txt"],
   ])("names the file from %o", async (entry, expected) => {
     expect(await exportFilename(entry)).toBe(expected);
+  });
+});
+
+describe("Ahnentafel page: summary counts ancestors, not the subject (#1119)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const person = (number: number, generation: number) => ({
+    number,
+    generation,
+    id: `p-${number}`,
+    given_name: `G${number}`,
+    surname: "Hanover",
+    relationship: "",
+  });
+
+  async function summary(report: Partial<apiModule.AhnentafelResponse>) {
+    vi.mocked(apiModule.api.getAhnentafel).mockResolvedValue({
+      subject: { id: "p-1", given_name: "G1", surname: "Hanover" },
+      ...report,
+    } as apiModule.AhnentafelResponse);
+    resetRouter("/ahnentafel/p-1", { id: "p-1" });
+    const { container } = render(AhnentafelPage);
+    await waitFor(() =>
+      expect(container.querySelector(".report-meta")).not.toBeNull(),
+    );
+    return (container.querySelector(".report-meta")?.textContent ?? "")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  it("reads one generation in the singular, with the API's ancestor counts", async () => {
+    // The API leaves the subject out of known_ancestors and ancestor_slots;
+    // known_ancestors equals the pedigree's total_ancestors (Go API test).
+    expect(
+      await summary({
+        entries: [person(1, 0), person(2, 1), person(3, 1)],
+        generations: 1,
+        total_count: 3,
+        known_count: 3,
+        ancestor_slots: 2,
+        known_ancestors: 2,
+      }),
+    ).toBe("1 generation - 2 of 2 ancestors known");
+  });
+
+  it("reads several generations in the plural", async () => {
+    expect(
+      await summary({
+        entries: [person(1, 0), person(2, 1), person(5, 2)],
+        generations: 2,
+        total_count: 7,
+        known_count: 3,
+        ancestor_slots: 6,
+        known_ancestors: 2,
+      }),
+    ).toBe("2 generations - 2 of 6 ancestors known");
   });
 });

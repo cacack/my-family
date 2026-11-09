@@ -1,10 +1,12 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
-	import { api, recordLoadError, type Pedigree } from '#lib/api/client.js';
+	import { api, formatPersonName, recordLoadError, type Pedigree } from '#lib/api/client.js';
 	import PedigreeChart, { type LayoutMode } from '#lib/components/PedigreeChart.svelte';
 	import { CHART_DEFAULTS, readChartOptions, setQuery } from '#lib/utils/urlState.js';
 	import { createShortcutHandler } from '#lib/keyboard/useShortcuts.svelte.js';
+	import { describeContextKeys } from '#lib/keyboard/shortcuts.js';
+	import { useBackLink } from '#lib/utils/backLink.svelte.js';
 	import ErrorState from '#lib/components/ErrorState.svelte';
 	import PageHeader from '#lib/components/PageHeader.svelte';
 
@@ -20,6 +22,11 @@
 	let chart: PedigreeChart;
 	let selectedPersonId: string | null = $state(null);
 	let announceMessage: string = $state('');
+	const rootName = $derived.by(() => (pedigree?.root ? formatPersonName(pedigree.root) : null));
+	const back = useBackLink(() => ({
+		href: `/persons/${personId}`,
+		label: rootName ? `Back to ${rootName}` : 'Back'
+	}));
 
 	// Screen reader announcement helper
 	function announce(message: string) {
@@ -61,17 +68,6 @@
 			const name = findPersonName(rootId);
 			announce(`Navigated to root: ${name || 'Unknown'}`);
 		}
-	}
-
-	function navigateToSpouse() {
-		if (!chart) return;
-		const spouseId = chart.getSpouseId();
-		if (spouseId) {
-			selectedPersonId = spouseId;
-			const name = findPersonName(spouseId);
-			announce(`Navigated to spouse: ${name || 'Unknown'}`);
-		}
-		// Note: spouse navigation not available in current pedigree data
 	}
 
 	function viewPersonDetail() {
@@ -121,7 +117,6 @@
 		'navigate-father': navigateToFather,
 		'navigate-mother': navigateToMother,
 		'navigate-root': navigateToRoot,
-		'navigate-spouse': navigateToSpouse,
 		'view-person-detail': viewPersonDetail,
 		'zoom-in': handleZoomIn,
 		'zoom-out': handleZoomOut,
@@ -175,7 +170,7 @@
 </script>
 
 <svelte:head>
-	<title>Pedigree Chart | My Family</title>
+	<title>{rootName ? `Pedigree: ${rootName}` : 'Pedigree Chart'} | My Family</title>
 </svelte:head>
 
 <svelte:window onkeydown={handleKeydown} />
@@ -193,7 +188,7 @@
 <div class="pedigree-page">
 	<div class="chart-container">
 		<!-- Inside the container on purpose: PageHeader has no padding, so the container's padding is its gutter. -->
-		<PageHeader title="Pedigree Chart" back={{ href: '/', label: 'Back' }}>
+		<PageHeader title="Pedigree Chart" back={back.link}>
 			{#snippet actions()}
 				<div class="controls">
 					<label>
@@ -240,7 +235,7 @@
 			<div class="chart-area">
 				<PedigreeChart bind:this={chart} data={pedigree.root} {layout} {selectedPersonId} onPersonClick={handlePersonClick} />
 			</div>
-			<p class="hint">Click on any person to view their pedigree. Scroll to zoom, drag to pan (two fingers on a touchscreen). Use arrow keys to navigate, +/- to zoom, R to reset.</p>
+			<p class="hint">Click on any person to view their pedigree. Scroll to zoom, drag to pan (two fingers on a touchscreen). Keys: {describeContextKeys('pedigree')}. Press ? for all shortcuts.</p>
 		{:else}
 			<div class="empty">No pedigree data available.</div>
 		{/if}

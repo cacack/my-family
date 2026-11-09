@@ -36,7 +36,7 @@ Based on thorough code review of the keyboard shortcuts and accessibility implem
 | `ArrowUp` navigates to father | PASS | `navigate-father` action in `/pedigree/[id]/+page.svelte` |
 | `ArrowDown` navigates to root person | PASS | `navigate-root` action implemented |
 | `ArrowLeft` navigates to mother | PASS | `navigate-mother` action implemented |
-| `ArrowRight` navigates to spouse | PASS | `navigate-spouse` action implemented (note: limited by data availability) |
+| `ArrowRight` (no shortcut) | N/A | Removed (#1123): pedigree data has no spouses, so the key had nothing to move to |
 | `Enter` views selected person details | PASS | `view-person-detail` action, calls `goto()` |
 | `+` / `=` zooms in | PASS | `zoom-in` action, both keys mapped |
 | `-` zooms out | PASS | `zoom-out` action implemented |

@@ -6,6 +6,7 @@
 	import { Card, CardHeader, CardContent } from '#lib/components/ui/card/index.js';
 	import ErrorState from '#lib/components/ErrorState.svelte';
 	import ActionError from '#lib/components/ActionError.svelte';
+	import { useBackLink } from '#lib/utils/backLink.svelte.js';
 
 	let report: AhnentafelResponse | null = $state(null);
 	let error: string | null = $state(null);
@@ -14,6 +15,10 @@
 	let loading = $state(true);
 	let generations = $state(4);
 	let exporting = $state(false);
+	const back = useBackLink(() => ({
+		href: `/persons/${page.params.id}`,
+		label: report?.subject ? `Back to ${formatPersonName(report.subject)}` : 'Back'
+	}));
 
 	async function loadReport(personId: string, gens: number) {
 		loading = true;
@@ -122,11 +127,7 @@
 
 <div class="ahnentafel-page">
 	<div class="report-container">
-		<ActionBar
-			back={report?.subject
-				? { href: `/persons/${report.subject.id}`, label: `Back to ${formatPersonName(report.subject)}` }
-				: { href: '/', label: 'Back' }}
-		>
+		<ActionBar back={back.link}>
 			{#snippet actions()}
 				<label class="generations">
 					Generations:
@@ -157,7 +158,8 @@
 					<h1>Ahnentafel Report</h1>
 					<h2>{formatPersonName(report.subject)}</h2>
 					<p class="report-meta">
-						{report.generations} generations - {report.known_count} of {report.total_count} ancestors known
+						{report.generations} generation{report.generations !== 1 ? 's' : ''} - {report.known_ancestors} of
+						{report.ancestor_slots} ancestors known
 					</p>
 				</div>
 

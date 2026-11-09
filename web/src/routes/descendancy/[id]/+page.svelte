@@ -1,10 +1,12 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
-	import { api, recordLoadError, type Descendancy, type DescendancyNode } from '#lib/api/client.js';
+	import { api, formatPersonName, recordLoadError, type Descendancy, type DescendancyNode } from '#lib/api/client.js';
 	import DescendancyChart, { type LayoutMode } from '#lib/components/DescendancyChart.svelte';
 	import { CHART_DEFAULTS, readChartOptions, setQuery } from '#lib/utils/urlState.js';
 	import { createShortcutHandler } from '#lib/keyboard/useShortcuts.svelte.js';
+	import { describeContextKeys } from '#lib/keyboard/shortcuts.js';
+	import { useBackLink } from '#lib/utils/backLink.svelte.js';
 	import ErrorState from '#lib/components/ErrorState.svelte';
 	import PageHeader from '#lib/components/PageHeader.svelte';
 
@@ -20,6 +22,11 @@
 	let chart: DescendancyChart;
 	let selectedPersonId: string | null = $state(null);
 	let announceMessage: string = $state('');
+	const rootName = $derived.by(() => (descendancy?.root ? formatPersonName(descendancy.root) : null));
+	const back = useBackLink(() => ({
+		href: `/persons/${personId}`,
+		label: rootName ? `Back to ${rootName}` : 'Back'
+	}));
 
 	// Screen reader announcement helper
 	function announce(message: string) {
@@ -190,7 +197,7 @@
 </script>
 
 <svelte:head>
-	<title>Descendancy Chart | My Family</title>
+	<title>{rootName ? `Descendancy: ${rootName}` : 'Descendancy Chart'} | My Family</title>
 </svelte:head>
 
 <svelte:window onkeydown={handleKeydown} />
@@ -203,7 +210,7 @@
 <div class="descendancy-page">
 	<div class="chart-container">
 		<!-- Inside the container on purpose: PageHeader has no padding, so the container's padding is its gutter. -->
-		<PageHeader title="Descendancy Chart" back={{ href: '/', label: 'Back' }}>
+		<PageHeader title="Descendancy Chart" back={back.link}>
 			{#snippet actions()}
 				<div class="controls">
 					<label>
@@ -274,8 +281,8 @@
 				<span class="stat">{descendancy.max_generation} generation{descendancy.max_generation !== 1 ? 's' : ''}</span>
 			</div>
 			<p class="hint">
-				Click on any person to view their descendants. Scroll to zoom, drag to pan (two fingers on a touchscreen). Use arrow keys
-				to navigate, +/- to zoom, R to reset.
+				Click on any person to view their descendants. Scroll to zoom, drag to pan (two fingers on a touchscreen). Keys:
+				{describeContextKeys('descendancy')}. Press ? for all shortcuts.
 			</p>
 		{:else}
 			<div class="empty">No descendancy data available.</div>

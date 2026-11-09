@@ -2,6 +2,7 @@
 	import * as d3 from 'd3';
 	import { onMount } from 'svelte';
 	import { formatGenDate, formatPersonName, formatYear, type DescendancyNode } from '#lib/api/client.js';
+	import { describeContextKeys } from '#lib/keyboard/shortcuts.js';
 	import { getFontScale } from '#lib/stores/accessibilitySettings.svelte.js';
 	import {
 		CARD_TEXT_INSET,
@@ -620,7 +621,7 @@
 		class="descendancy-chart"
 		bind:this={container}
 		role="application"
-		aria-label="Descendancy chart. Use arrow keys to navigate: Down for first child, Up to return to parent, Left/Right to cycle siblings. Plus/minus to zoom, R to reset view."
+		aria-label="Descendancy chart. Keys: {describeContextKeys('descendancy')}."
 		tabindex="0"
 	></div>
 	<OffscreenIndicator

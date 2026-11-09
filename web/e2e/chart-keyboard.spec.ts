@@ -61,6 +61,35 @@ test('on the descendancy, ArrowDown selects the child and Enter opens them', asy
 	await expect(page).toHaveURL(new RegExp(`/persons/${childId}$`));
 });
 
+test('on the descendancy, Home returns the selection to the root (#1123)', async ({ page }) => {
+	await page.goto(`/descendancy/${fatherId}`);
+	await expect(selectedNode(page)).toContainText('Abel');
+
+	await page.getByRole('application', { name: /Descendancy chart/ }).focus();
+	await page.keyboard.press('ArrowDown');
+	await expect(selectedNode(page)).toContainText('Cal');
+	await page.keyboard.press('Home');
+	await expect(selectedNode(page)).toContainText('Abel');
+});
+
+test('Back on a chart returns to the page it was opened from, or its person on a deep link (#1026)', async ({
+	page
+}) => {
+	const errors: string[] = [];
+	page.on('pageerror', (e) => errors.push(e.message));
+
+	await page.goto(`/persons/${childId}`);
+	await page.getByRole('link', { name: 'Pedigree', exact: true }).click();
+	await expect(selectedNode(page)).toContainText('Cal');
+	await page.getByRole('link', { name: '← Back', exact: true }).click();
+	await expect(page).toHaveURL(new RegExp(`/persons/${childId}$`));
+
+	await page.goto(`/descendancy/${fatherId}`);
+	await page.getByRole('link', { name: /Back to Abel/ }).click();
+	await expect(page).toHaveURL(new RegExp(`/persons/${fatherId}$`));
+	expect(errors, 'uncaught page errors').toEqual([]);
+});
+
 test('on the pedigree, Enter on a toolbar button activates it instead of opening the person', async ({ page }) => {
 	await page.goto(`/pedigree/${childId}`);
 	await expect(selectedNode(page)).toContainText('Cal');
