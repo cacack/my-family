@@ -3580,13 +3580,30 @@ export interface components {
             gender?: components["schemas"]["Gender"];
             /** @description Generation level (0 = root, 1 = children, 2 = grandchildren, etc.) */
             generation?: number;
+            /**
+             * Format: uuid
+             * @description The family through which this person descends from their parent
+             *     node. Matches the family_id of one of the parent's spouses when that
+             *     family has a second partner. Absent on the root.
+             */
+            family_id?: string;
+            /** @description Spouses ordered by marriage date, undated last. */
             spouses?: components["schemas"]["SpouseInfo"][];
+            /**
+             * @description Children grouped by family, in spouse order, and ordered by birth
+             *     date (undated last) within each family.
+             */
             children?: components["schemas"]["DescendancyNode"][];
         };
         /** @description Spouse information in the descendancy tree */
         SpouseInfo: {
             /** Format: uuid */
             id: string;
+            /**
+             * Format: uuid
+             * @description The family this spouse shares with the person; children of that family carry the same family_id.
+             */
+            family_id: string;
             name: string;
             marriage_date?: components["schemas"]["GenDate"];
         };
@@ -6382,8 +6399,8 @@ export interface operations {
                 offset?: components["parameters"]["offsetParam"];
                 sort?: "surname" | "given_name" | "birth_date" | "updated_at";
                 order?: "asc" | "desc";
-                /** @description Filter by research status */
-                research_status?: "certain" | "probable" | "possible" | "unknown" | "unset";
+                /** @description Filter by research status. `unset` matches persons with no status recorded; `unassessed` matches those and persons marked `unknown`. */
+                research_status?: "certain" | "probable" | "possible" | "unknown" | "unset" | "unassessed";
             };
             header?: never;
             path?: never;

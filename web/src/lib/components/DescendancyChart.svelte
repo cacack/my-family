@@ -19,6 +19,7 @@
 	} from '$lib/utils/chart';
 	import {
 		layoutDescendancy,
+		type ChildLink,
 		type DescendancyLayoutConfig,
 		type SpouseCard
 	} from '$lib/utils/descendancyLayout';
@@ -144,22 +145,22 @@
 			}
 		});
 
-		// Draw links (vertical lines from parent to children)
+		// Draw links from each couple (or lone parent) down to their children
+		const linkPath = d3
+			.line<{ x: number; y: number }>()
+			.x((d) => d.x)
+			.y((d) => d.y);
 		linkLayer.selectAll('.link')
 			.data(links)
 			.enter()
 			.append('path')
 			.attr('class', 'link')
+			.attr('data-child-id', (d) => d.child.data.id)
+			.attr('data-spouse-id', (d) => d.spouse?.id ?? null)
 			.attr('fill', 'none')
 			.attr('stroke', '#94a3b8')
 			.attr('stroke-width', 2)
-			.attr(
-				'd',
-				d3
-					.linkVertical<d3.HierarchyLink<DescendancyNode>, d3.HierarchyPointNode<DescendancyNode>>()
-					.x((d) => d.x)
-					.y((d) => d.y) as (d: d3.HierarchyLink<DescendancyNode>) => string | null
-			);
+			.attr('d', (d: ChildLink) => linkPath(d.points));
 
 		// Create node groups
 		const nodeGroups = nodeLayer
@@ -415,6 +416,29 @@
 						? `m. ${spouse.marriage_date.year != null ? formatYear(spouse.marriage_date.year) : formatGenDate(spouse.marriage_date)}`
 						: '');
 		});
+
+		// With several spouses, number each marriage where its children's line
+		// starts, naming both partners on hover (#1099). Drawn last, over the cards
+		spouses
+			.filter(({ node }) => (node.data.spouses?.length ?? 0) > 1)
+			.forEach(({ node, spouse, index, dropX, y }) => {
+				const badge = g
+					.append('g')
+					.attr('class', 'marriage-badge')
+					.attr('transform', `translate(${dropX},${y})`);
+				badge
+					.append('title')
+					.text(`Marriage ${index + 1}: ${formatPersonName(node.data)} and ${spouse.name || 'Unknown'}`);
+				badge.append('circle').attr('r', 8).attr('fill', '#ffffff').attr('stroke', '#94a3b8').attr('stroke-width', 1.5);
+				badge
+					.append('text')
+					.attr('text-anchor', 'middle')
+					.attr('dy', '0.35em')
+					.attr('font-size', '11px')
+					.attr('font-weight', '600')
+					.attr('fill', '#475569')
+					.text(index + 1);
+			});
 	}
 
 	// Zoom control functions

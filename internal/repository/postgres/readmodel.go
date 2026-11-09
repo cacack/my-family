@@ -296,7 +296,8 @@ func (s *ReadModelStore) createTables() error {
 			person_id UUID NOT NULL,
 			given_name VARCHAR(100) NOT NULL,
 			surname VARCHAR(100) NOT NULL,
-			full_name VARCHAR(200) GENERATED ALWAYS AS (given_name || ' ' || surname) STORED,
+			-- Written by SavePersonName (PersonNameReadModel.JoinFullName, #1130).
+			full_name TEXT NOT NULL DEFAULT '',
 			name_prefix VARCHAR(50),
 			name_suffix VARCHAR(50),
 			surname_prefix VARCHAR(50),
@@ -626,7 +627,11 @@ func (s *ReadModelStore) createTables() error {
 	// Run schema migrations for existing databases
 	s.runMigrations()
 
-	return nil
+	// Must run after runMigrations, whose branch migration gives a pre-#669
+	// person_names its branch_id. Its error is FATAL: SavePersonName always
+	// writes full_name, so a column left GENERATED would make every name
+	// projection fail. See migratePersonNameFullName.
+	return s.migratePersonNameFullName()
 }
 
 // renameLegacyEventsTable renames a pre-#733 read model events table to
@@ -780,6 +785,86 @@ func (s *ReadModelStore) migratePersonFullName() {
 		slog.Warn("read model migration: cannot update persons.full_name; names without a surname or given name keep a stray space (#977)",
 			"error", err)
 	}
+}
+
+// migratePersonNameFullName turns an older generated person_names.full_name
+// (given_name || ' ' || surname, which dropped the prefixes and suffix and left
+// a stray space when a part was empty) into the plain column SavePersonName
+// writes, and recomputes every existing row by the same rule (#1130, #985), so
+// no replay is needed. It runs in one transaction and is a no-op once the
+// column is no longer generated.
+//
+// Unlike runMigrations' degrade-and-warn migrations, every failure is returned
+// and refuses the store, as SQLite's counterpart does: SavePersonName always
+// binds full_name, which a still-generated column rejects, so a swallowed
+// failure would make every name projection fail after its events were appended.
+func (s *ReadModelStore) migratePersonNameFullName() error {
+	var outdated bool
+	if err := s.db.QueryRow(`
+		SELECT EXISTS (
+			SELECT 1 FROM information_schema.columns
+			WHERE table_schema = CURRENT_SCHEMA() AND table_name = 'person_names'
+			  AND column_name = 'full_name' AND is_generated = 'ALWAYS'
+		)`).Scan(&outdated); err != nil {
+		return fmt.Errorf("inspect person_names.full_name (#1130): %w", err)
+	}
+	if !outdated {
+		return nil
+	}
+	if err := s.recomputePersonNameFullName(); err != nil {
+		return fmt.Errorf("migrate person_names.full_name (#1130): %w", err)
+	}
+	return nil
+}
+
+// recomputePersonNameFullName is migratePersonNameFullName's transaction.
+func (s *ReadModelStore) recomputePersonNameFullName() error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.Exec(`ALTER TABLE person_names DROP COLUMN full_name,
+		ADD COLUMN full_name TEXT NOT NULL DEFAULT ''`); err != nil {
+		return err
+	}
+
+	rows, err := tx.Query(`SELECT id, branch_id, given_name, surname, COALESCE(name_prefix, ''),
+		COALESCE(name_suffix, ''), COALESCE(surname_prefix, '') FROM person_names`)
+	if err != nil {
+		return err
+	}
+	type fullNameRow struct {
+		id, branchID uuid.UUID
+		fullName     string
+	}
+	var updates []fullNameRow
+	for rows.Next() {
+		var (
+			u    fullNameRow
+			name repository.PersonNameReadModel
+		)
+		if err := rows.Scan(&u.id, &u.branchID, &name.GivenName, &name.Surname,
+			&name.NamePrefix, &name.NameSuffix, &name.SurnamePrefix); err != nil {
+			rows.Close()
+			return err
+		}
+		u.fullName = name.JoinFullName()
+		updates = append(updates, u)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	for _, u := range updates {
+		if _, err := tx.Exec(`UPDATE person_names SET full_name = $1 WHERE id = $2 AND branch_id = $3`,
+			u.fullName, u.id, u.branchID); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 // multilineTextColumns hold values gedcom-go v3.3.0 folds from CONT/CONC
@@ -1132,8 +1217,10 @@ const (
 		surname_prefix, nickname, name_type, is_primary, updated_at`
 
 	// personNameOverlayCols are the person_names columns SearchPersons needs from
-	// the resolved rpn CTE (matching against alternate names).
-	personNameOverlayCols = `id, person_id, given_name, surname, full_name, nickname, is_primary, search_vector`
+	// the resolved rpn CTE (matching against alternate names). Search matches an
+	// alternate name's given name and surname joined as persons.full_name is
+	// (search_name), not its displayed full_name with prefixes and suffix.
+	personNameOverlayCols = `id, person_id, given_name, surname, ` + personFullNameExpr + ` AS search_name, nickname, is_primary, search_vector`
 
 	// familySelectCols is scanFamily's column order (unaliased).
 	familySelectCols = `id, partner1_id, partner1_given_name, partner1_surname,
@@ -1193,9 +1280,12 @@ func (s *ReadModelStore) ListPersons(ctx context.Context, opts repository.ListOp
 
 	// research_status filter (params continue after branch/main).
 	if opts.ResearchStatus != nil {
-		if *opts.ResearchStatus == "unset" {
+		switch *opts.ResearchStatus {
+		case "unset":
 			conds = append(conds, "(research_status IS NULL OR research_status = '')")
-		} else {
+		case "unassessed":
+			conds = append(conds, "(research_status IS NULL OR research_status IN ('', 'unknown'))")
+		default:
 			conds = append(conds, fmt.Sprintf("research_status = $%d", paramNum))
 			args = append(args, *opts.ResearchStatus)
 			paramNum++
@@ -1422,9 +1512,9 @@ func writeNameMatchCTE(qb *strings.Builder, opts repository.SearchOptions, param
 			WHERE p.given_name %% $%d OR p.surname %% $%d OR p.full_name %% $%d
 			UNION
 			SELECT %s, pn.is_primary,
-				GREATEST(similarity(pn.given_name, $%d), similarity(pn.surname, $%d), similarity(pn.full_name, $%d), similarity(COALESCE(pn.nickname, ''), $%d)) as rank_score
+				GREATEST(similarity(pn.given_name, $%d), similarity(pn.surname, $%d), similarity(pn.search_name, $%d), similarity(COALESCE(pn.nickname, ''), $%d)) as rank_score
 			FROM rp p JOIN rpn pn ON p.id = pn.person_id
-			WHERE pn.given_name %% $%d OR pn.surname %% $%d OR pn.full_name %% $%d OR pn.nickname %% $%d
+			WHERE pn.given_name %% $%d OR pn.surname %% $%d OR pn.search_name %% $%d OR pn.nickname %% $%d
 		)`, personCols, n, n, n, n, n, n,
 			personCols, n, n, n, n, n, n, n, n)
 
@@ -1452,7 +1542,7 @@ func writeNameMatchCTE(qb *strings.Builder, opts repository.SearchOptions, param
 			SELECT %s, pn.is_primary,
 				ts_rank(pn.search_vector, plainto_tsquery('english', $%d)) as rank_score
 			FROM rp p JOIN rpn pn ON p.id = pn.person_id
-			WHERE pn.search_vector @@ plainto_tsquery('english', $%d) OR pn.full_name ILIKE '%%' || $%d || '%%' OR pn.nickname ILIKE '%%' || $%d || '%%'
+			WHERE pn.search_vector @@ plainto_tsquery('english', $%d) OR pn.search_name ILIKE '%%' || $%d || '%%' OR pn.nickname ILIKE '%%' || $%d || '%%'
 		)`, personCols, n, n, n,
 			personCols, n, n, n, n)
 	}
@@ -1732,13 +1822,14 @@ func cascadePersonFacts(ctx context.Context, tx *sql.Tx, branchID domain.BranchI
 // overlay, so no copy-on-write of the whole bucket is needed here.
 func (s *ReadModelStore) SavePersonName(ctx context.Context, branchID domain.BranchID, name *repository.PersonNameReadModel) error {
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO person_names (id, branch_id, person_id, given_name, surname, name_prefix, name_suffix,
+		INSERT INTO person_names (id, branch_id, person_id, given_name, surname, full_name, name_prefix, name_suffix,
 								  surname_prefix, nickname, name_type, is_primary, updated_at, deleted)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, FALSE)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, FALSE)
 		ON CONFLICT(id, branch_id) DO UPDATE SET
 			person_id = EXCLUDED.person_id,
 			given_name = EXCLUDED.given_name,
 			surname = EXCLUDED.surname,
+			full_name = EXCLUDED.full_name,
 			name_prefix = EXCLUDED.name_prefix,
 			name_suffix = EXCLUDED.name_suffix,
 			surname_prefix = EXCLUDED.surname_prefix,
@@ -1747,7 +1838,7 @@ func (s *ReadModelStore) SavePersonName(ctx context.Context, branchID domain.Bra
 			is_primary = EXCLUDED.is_primary,
 			updated_at = EXCLUDED.updated_at,
 			deleted = FALSE
-	`, name.ID, branchID.UUID(), name.PersonID, name.GivenName, name.Surname,
+	`, name.ID, branchID.UUID(), name.PersonID, name.GivenName, name.Surname, name.JoinFullName(),
 		nullableString(name.NamePrefix), nullableString(name.NameSuffix),
 		nullableString(name.SurnamePrefix), nullableString(name.Nickname),
 		// name_type is NOT NULL DEFAULT '' — bind the empty string, not NULL

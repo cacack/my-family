@@ -8,6 +8,7 @@ import (
 
 	"github.com/cacack/my-family/internal/command"
 	"github.com/cacack/my-family/internal/domain"
+	"github.com/cacack/my-family/internal/repository"
 	"github.com/cacack/my-family/internal/repository/memory"
 )
 
@@ -33,8 +34,8 @@ func TestCreatePerson(t *testing.T) {
 	if result.ID == uuid.Nil {
 		t.Error("Expected non-nil ID")
 	}
-	if result.Version != 1 {
-		t.Errorf("Version = %d, want 1", result.Version)
+	if result.Version != 2 {
+		t.Errorf("Version = %d, want 2 (PersonCreated + NameAdded)", result.Version)
 	}
 
 	// Verify person in read model
@@ -44,6 +45,63 @@ func TestCreatePerson(t *testing.T) {
 	}
 	if person.GivenName != "John" {
 		t.Errorf("GivenName = %s, want John", person.GivenName)
+	}
+}
+
+// TestCreatePerson_RecordsPrimaryName proves a created person gets its primary
+// name in the same command (#1131), and that replaying the log rebuilds it.
+func TestCreatePerson_RecordsPrimaryName(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	result, err := handler.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Avery", Surname: "Example"})
+	if err != nil {
+		t.Fatalf("CreatePerson failed: %v", err)
+	}
+	if result.Version != 2 {
+		t.Errorf("Version = %d, want 2 (PersonCreated + NameAdded)", result.Version)
+	}
+
+	assertPrimary := func(t *testing.T, store *memory.ReadModelStore) repository.PersonNameReadModel {
+		t.Helper()
+		names, err := store.GetPersonNames(ctx, domain.MainBranchID, result.ID)
+		if err != nil {
+			t.Fatalf("GetPersonNames: %v", err)
+		}
+		if len(names) != 1 {
+			t.Fatalf("names = %+v, want one primary name", names)
+		}
+		n := names[0]
+		if !n.IsPrimary || n.GivenName != "Avery" || n.Surname != "Example" || n.FullName != "Avery Example" {
+			t.Errorf("name = %+v, want primary Avery Example", n)
+		}
+		person, _ := store.GetPerson(ctx, domain.MainBranchID, result.ID)
+		if person == nil || person.Version != result.Version {
+			t.Errorf("person = %+v, want version %d", person, result.Version)
+		}
+		return n
+	}
+	live := assertPrimary(t, readStore)
+
+	events, err := eventStore.ReadStream(ctx, result.ID)
+	if err != nil {
+		t.Fatalf("ReadStream: %v", err)
+	}
+	replayed := memory.NewReadModelStore()
+	projector := repository.NewProjector(replayed, nil)
+	for _, stored := range events {
+		event, err := stored.DecodeEvent()
+		if err != nil {
+			t.Fatalf("DecodeEvent: %v", err)
+		}
+		if err := projector.Project(ctx, event, stored.Version, domain.MainBranchID); err != nil {
+			t.Fatalf("Project: %v", err)
+		}
+	}
+	if got := assertPrimary(t, replayed); got.ID != live.ID {
+		t.Errorf("replayed name id = %s, want %s", got.ID, live.ID)
 	}
 }
 
@@ -116,8 +174,8 @@ func TestUpdatePerson(t *testing.T) {
 		t.Fatalf("UpdatePerson failed: %v", err)
 	}
 
-	if updateResult.Version != 2 {
-		t.Errorf("Version = %d, want 2", updateResult.Version)
+	if updateResult.Version != createResult.Version+1 {
+		t.Errorf("Version = %d, want %d", updateResult.Version, createResult.Version+1)
 	}
 
 	// Verify update in read model
@@ -370,8 +428,8 @@ func TestUpdatePerson_AllFields(t *testing.T) {
 		t.Fatalf("UpdatePerson failed: %v", err)
 	}
 
-	if updateResult.Version != 2 {
-		t.Errorf("Version = %d, want 2", updateResult.Version)
+	if updateResult.Version != createResult.Version+1 {
+		t.Errorf("Version = %d, want %d", updateResult.Version, createResult.Version+1)
 	}
 
 	// Verify all updates in read model
@@ -441,8 +499,8 @@ func TestPersonUpdateStaleVersion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreatePerson failed: %v", err)
 	}
-	if createResult.Version != 1 {
-		t.Fatalf("Expected initial version 1, got %d", createResult.Version)
+	if createResult.Version != 2 {
+		t.Fatalf("Expected initial version 2 (PersonCreated + NameAdded), got %d", createResult.Version)
 	}
 
 	// First update succeeds (version 1 -> 2)
@@ -450,13 +508,13 @@ func TestPersonUpdateStaleVersion(t *testing.T) {
 	updateResult, err := handler.UpdatePerson(ctx, command.UpdatePersonInput{
 		ID:        createResult.ID,
 		GivenName: &newName,
-		Version:   1,
+		Version:   createResult.Version,
 	})
 	if err != nil {
 		t.Fatalf("First update failed: %v", err)
 	}
-	if updateResult.Version != 2 {
-		t.Fatalf("Expected version 2 after first update, got %d", updateResult.Version)
+	if updateResult.Version != createResult.Version+1 {
+		t.Fatalf("Expected version 3 after first update, got %d", updateResult.Version)
 	}
 
 	// Attempt update with stale version 1 (current is 2)
@@ -547,9 +605,9 @@ func TestPersonSequentialUpdatesSucceed(t *testing.T) {
 		name            string
 		expectedVersion int64
 	}{
-		{"Jane", 2},
-		{"Alice", 3},
-		{"Bob", 4},
+		{"Jane", 3},
+		{"Alice", 4},
+		{"Bob", 5},
 	}
 
 	currentVersion := createResult.Version
@@ -574,8 +632,8 @@ func TestPersonSequentialUpdatesSucceed(t *testing.T) {
 	if person.GivenName != "Bob" {
 		t.Errorf("Final name = %s, want Bob", person.GivenName)
 	}
-	if person.Version != 4 {
-		t.Errorf("Final version = %d, want 4", person.Version)
+	if person.Version != 5 {
+		t.Errorf("Final version = %d, want 5", person.Version)
 	}
 }
 
@@ -600,7 +658,7 @@ func TestPersonDeleteVersionConflict(t *testing.T) {
 	_, err = handler.UpdatePerson(ctx, command.UpdatePersonInput{
 		ID:        createResult.ID,
 		GivenName: &newName,
-		Version:   1,
+		Version:   createResult.Version,
 	})
 	if err != nil {
 		t.Fatalf("Update failed: %v", err)
@@ -643,7 +701,7 @@ func TestPersonDeleteWithCorrectVersion(t *testing.T) {
 	updateResult, err := handler.UpdatePerson(ctx, command.UpdatePersonInput{
 		ID:        createResult.ID,
 		GivenName: &newName,
-		Version:   1,
+		Version:   createResult.Version,
 	})
 	if err != nil {
 		t.Fatalf("Update failed: %v", err)
@@ -687,7 +745,7 @@ func TestPersonVersionConflictNoPartialState(t *testing.T) {
 	_, err = handler.UpdatePerson(ctx, command.UpdatePersonInput{
 		ID:         createResult.ID,
 		BirthPlace: &newPlace,
-		Version:    1,
+		Version:    createResult.Version,
 	})
 	if err != nil {
 		t.Fatalf("First update failed: %v", err)

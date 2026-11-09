@@ -94,10 +94,12 @@ paths:
             default: asc
         - name: research_status
           in: query
-          description: Filter by research status
+          description: >-
+            Filter by research status. `unset` matches persons with no status
+            recorded; `unassessed` matches those and persons marked `unknown`.
           schema:
             type: string
-            enum: [certain, probable, possible, unknown, unset]
+            enum: [certain, probable, possible, unknown, unset, unassessed]
       responses:
         '200':
           description: List of persons
@@ -6134,11 +6136,22 @@ components:
         generation:
           type: integer
           description: Generation level (0 = root, 1 = children, 2 = grandchildren, etc.)
+        family_id:
+          type: string
+          format: uuid
+          description: |
+            The family through which this person descends from their parent
+            node. Matches the family_id of one of the parent's spouses when that
+            family has a second partner. Absent on the root.
         spouses:
+          description: Spouses ordered by marriage date, undated last.
           type: array
           items:
             $ref: '#/components/schemas/SpouseInfo'
         children:
+          description: |
+            Children grouped by family, in spouse order, and ordered by birth
+            date (undated last) within each family.
           type: array
           items:
             $ref: '#/components/schemas/DescendancyNode'
@@ -6146,11 +6159,15 @@ components:
     SpouseInfo:
       type: object
       description: Spouse information in the descendancy tree
-      required: [id, name]
+      required: [id, family_id, name]
       properties:
         id:
           type: string
           format: uuid
+        family_id:
+          type: string
+          format: uuid
+          description: The family this spouse shares with the person; children of that family carry the same family_id.
         name:
           type: string
         marriage_date:

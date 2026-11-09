@@ -2,6 +2,7 @@ package repository_test
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 
@@ -69,14 +70,13 @@ func TestProjector_PrimaryNameSync(t *testing.T) {
 					t.Errorf("person version = %d, want %d", p.Version, version)
 				}
 			}
-			// assertName checks a name's components. The full name is checked
-			// only to contain "given surname": the SQL backends generate it
-			// from those two columns alone, the memory store adds the prefix.
+			// assertName checks a name's components and its full name, which
+			// every backend builds by one rule (#1130).
 			assertName := func(t *testing.T, id uuid.UUID, prefix, given, surname string) {
 				t.Helper()
 				n := getName(t, id)
 				if n.NamePrefix != prefix || n.GivenName != given || n.Surname != surname ||
-					!strings.Contains(n.FullName, domain.JoinFullName(given, surname)) {
+					n.FullName != strings.Join(slices.DeleteFunc([]string{prefix, given, surname}, func(s string) bool { return s == "" }), " ") {
 					t.Errorf("name = %q / %q / %q (full %q), want %q / %q / %q",
 						n.NamePrefix, n.GivenName, n.Surname, n.FullName, prefix, given, surname)
 				}

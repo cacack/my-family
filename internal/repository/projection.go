@@ -663,10 +663,12 @@ func (p *Projector) projectChildLinked(ctx context.Context, e domain.ChildLinked
 }
 
 // savePedigreeEdgeFromFamily writes the child's pedigree edge (father/mother)
-// from the family's current partners. Father/mother is decided by the
-// partner's gender (simplified: anyone not male is recorded as the mother).
+// from the family's current partners. A male partner is the father and a
+// female partner the mother; a partner of unknown gender takes whichever slot
+// the other partner leaves free (#1082).
 func (p *Projector) savePedigreeEdgeFromFamily(ctx context.Context, branchID domain.BranchID, childID uuid.UUID, family *FamilyReadModel) error {
 	edge := &PedigreeEdge{PersonID: childID}
+	var undetermined []*PersonReadModel
 	for _, partnerID := range []*uuid.UUID{family.Partner1ID, family.Partner2ID} {
 		if partnerID == nil {
 			continue
@@ -678,15 +680,43 @@ func (p *Projector) savePedigreeEdgeFromFamily(ctx context.Context, branchID dom
 		if partner == nil {
 			continue
 		}
-		if partner.Gender == domain.GenderMale {
-			edge.FatherID = partnerID
-			edge.FatherName = partner.FullName
-		} else {
-			edge.MotherID = partnerID
-			edge.MotherName = partner.FullName
+		switch partner.Gender {
+		case domain.GenderMale:
+			setEdgeFather(edge, partner)
+		case domain.GenderFemale:
+			setEdgeMother(edge, partner)
+		default:
+			undetermined = append(undetermined, partner)
 		}
 	}
+	for _, partner := range undetermined {
+		fillFreeParentSlot(edge, partner)
+	}
 	return p.readStore.SavePedigreeEdge(ctx, branchID, edge)
+}
+
+func setEdgeFather(edge *PedigreeEdge, father *PersonReadModel) {
+	edge.FatherID = &father.ID
+	edge.FatherName = father.FullName
+}
+
+func setEdgeMother(edge *PedigreeEdge, mother *PersonReadModel) {
+	edge.MotherID = &mother.ID
+	edge.MotherName = mother.FullName
+}
+
+// fillFreeParentSlot records a parent of unknown gender in the edge's free
+// slot, the mother's first, and reports whether one was free.
+func fillFreeParentSlot(edge *PedigreeEdge, parent *PersonReadModel) bool {
+	switch {
+	case edge.MotherID == nil:
+		setEdgeMother(edge, parent)
+	case edge.FatherID == nil:
+		setEdgeFather(edge, parent)
+	default:
+		return false
+	}
+	return true
 }
 
 // refreshChildPedigreeEdges re-derives the pedigree edge of every child of a
@@ -1502,15 +1532,11 @@ func (p *Projector) projectRepositoryDeleted(ctx context.Context, e domain.Repos
 }
 
 func (p *Projector) projectNameAdded(ctx context.Context, e domain.NameAdded, version int64, branchID domain.BranchID) error {
-	// Build full name from components
-	fullName := buildFullName(e.GivenName, e.Surname, e.NamePrefix, e.NameSuffix, e.SurnamePrefix)
-
 	name := &PersonNameReadModel{
 		ID:            e.NameID,
 		PersonID:      e.PersonID,
 		GivenName:     e.GivenName,
 		Surname:       e.Surname,
-		FullName:      fullName,
 		NamePrefix:    e.NamePrefix,
 		NameSuffix:    e.NameSuffix,
 		SurnamePrefix: e.SurnamePrefix,
@@ -1528,15 +1554,11 @@ func (p *Projector) projectNameAdded(ctx context.Context, e domain.NameAdded, ve
 }
 
 func (p *Projector) projectNameUpdated(ctx context.Context, e domain.NameUpdated, version int64, branchID domain.BranchID) error {
-	// Build full name from components
-	fullName := buildFullName(e.GivenName, e.Surname, e.NamePrefix, e.NameSuffix, e.SurnamePrefix)
-
 	name := &PersonNameReadModel{
 		ID:            e.NameID,
 		PersonID:      e.PersonID,
 		GivenName:     e.GivenName,
 		Surname:       e.Surname,
-		FullName:      fullName,
 		NamePrefix:    e.NamePrefix,
 		NameSuffix:    e.NameSuffix,
 		SurnamePrefix: e.SurnamePrefix,
@@ -1607,7 +1629,6 @@ func (p *Projector) syncPrimaryNameFromPerson(ctx context.Context, branchID doma
 		}
 		name.GivenName = person.GivenName
 		name.Surname = person.Surname
-		name.FullName = buildFullName(name.GivenName, name.Surname, name.NamePrefix, name.NameSuffix, name.SurnamePrefix)
 		name.UpdatedAt = at
 		return p.readStore.SavePersonName(ctx, branchID, name)
 	}
@@ -1626,38 +1647,6 @@ func (p *Projector) updatePersonVersion(ctx context.Context, branchID domain.Bra
 	}
 	person.Version = version
 	return p.readStore.SavePerson(ctx, branchID, person)
-}
-
-// buildFullName constructs a full name from its components.
-func buildFullName(givenName, surname, namePrefix, nameSuffix, surnamePrefix string) string {
-	var parts []string
-
-	if namePrefix != "" {
-		parts = append(parts, namePrefix)
-	}
-	if givenName != "" {
-		parts = append(parts, givenName)
-	}
-	if surnamePrefix != "" {
-		parts = append(parts, surnamePrefix)
-	}
-	if surname != "" {
-		parts = append(parts, surname)
-	}
-	if nameSuffix != "" {
-		parts = append(parts, nameSuffix)
-	}
-
-	if len(parts) == 0 {
-		return ""
-	}
-
-	// Join with spaces
-	result := parts[0]
-	for i := 1; i < len(parts); i++ {
-		result += " " + parts[i]
-	}
-	return result
 }
 
 // projectPersonMerged handles the PersonMerged event by updating the survivor,
@@ -2058,21 +2047,23 @@ func relinkEdgeParent(edge *PedigreeEdge, family *FamilyReadModel, mergedID uuid
 			return false // the edge came from another family
 		}
 	}
-	// The same father/mother choice projectChildLinked makes.
-	if survivor.Gender == domain.GenderMale {
+	// The same father/mother choice savePedigreeEdgeFromFamily makes.
+	switch survivor.Gender {
+	case domain.GenderMale:
 		if edge.FatherID != nil {
 			return false
 		}
-		edge.FatherID = &survivor.ID
-		edge.FatherName = survivor.FullName
+		setEdgeFather(edge, survivor)
 		return true
+	case domain.GenderFemale:
+		if edge.MotherID != nil {
+			return false
+		}
+		setEdgeMother(edge, survivor)
+		return true
+	default:
+		return fillFreeParentSlot(edge, survivor)
 	}
-	if edge.MotherID != nil {
-		return false
-	}
-	edge.MotherID = &survivor.ID
-	edge.MotherName = survivor.FullName
-	return true
 }
 
 // familyHasPartner reports whether a person is one of a family's partners.

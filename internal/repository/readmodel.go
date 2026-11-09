@@ -818,7 +818,7 @@ type PersonNameReadModel struct {
 	PersonID      uuid.UUID       `json:"person_id"`
 	GivenName     string          `json:"given_name"`
 	Surname       string          `json:"surname"`
-	FullName      string          `json:"full_name"`
+	FullName      string          `json:"full_name"` // set by SavePersonName from the parts; see JoinFullName
 	NamePrefix    string          `json:"name_prefix,omitempty"`
 	NameSuffix    string          `json:"name_suffix,omitempty"`
 	SurnamePrefix string          `json:"surname_prefix,omitempty"`
@@ -826,6 +826,13 @@ type PersonNameReadModel struct {
 	NameType      domain.NameType `json:"name_type"`
 	IsPrimary     bool            `json:"is_primary"`
 	UpdatedAt     time.Time       `json:"updated_at"`
+}
+
+// JoinFullName is the name's full name by the one person_names.full_name rule
+// (domain.JoinPersonName). Every store's SavePersonName stores it, whatever
+// FullName the caller passed, so all backends agree (#1130).
+func (n *PersonNameReadModel) JoinFullName() string {
+	return domain.JoinPersonName(n.NamePrefix, n.GivenName, n.SurnamePrefix, n.Surname, n.NameSuffix)
 }
 
 // PersonExternalIDReadModel represents a single GEDCOM 7.0 external identifier
@@ -885,7 +892,7 @@ type ListOptions struct {
 	Sort   string
 	Order  string // "asc" or "desc"
 	// ResearchStatus filters by research_status: certain, probable, possible,
-	// unknown, or "unset" for NULL.
+	// unknown, "unset" for NULL, or "unassessed" for NULL or unknown.
 	ResearchStatus *string
 	// ConflictStatus filters ListEvidenceConflicts by status (open, resolved,
 	// accepted). The predicate applies to each conflict's winning overlay row,

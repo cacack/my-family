@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/svelte';
 import BranchBanner from './BranchBanner.svelte';
 import type * as apiModule from '$lib/api/client';
@@ -394,6 +394,141 @@ describe('BranchBanner', () => {
 			expect(writeListeners.size).toBe(1);
 			unmount();
 			expect(writeListeners.size).toBe(0);
+		});
+	});
+
+	// On a phone the fullest banner ran to 300px; what was moved or truncated to
+	// bring it under 160px must stay reachable (#1135).
+	describe('compact phone layout (#1135)', () => {
+		const realMatchMedia = window.matchMedia;
+
+		function setPhone(phone: boolean) {
+			window.matchMedia = ((query: string) => ({
+				...realMatchMedia(query),
+				matches: phone && query.includes('max-width: 639px'),
+				media: query
+			})) as typeof window.matchMedia;
+		}
+
+		afterEach(() => {
+			window.matchMedia = realMatchMedia;
+		});
+
+		const longName = 'Was the ferry keeper at Lindholm the father of Robin Ashby of Lindholm parish?';
+
+		it('keeps the whole branch line in a title for when it is clamped', () => {
+			mockState.id = branch.id;
+			mockState.branch = { ...branch, name: longName };
+
+			render(BranchBanner);
+
+			expect(screen.getByTestId('banner-identity').getAttribute('title')).toBe(
+				`Working on ${longName}. Edits stay on this branch.`
+			);
+		});
+
+		it('keeps each subject name in a title for when it is truncated', () => {
+			const name = 'Wilhelmina Augusta Theodora Fullbanner';
+			mockState.id = branch.id;
+			mockState.branch = {
+				...branch,
+				subjects: [{ type: 'person', id: 'a1111111-1111-1111-1111-111111111111', name }]
+			};
+
+			render(BranchBanner);
+
+			expect(screen.getByRole('link', { name }).getAttribute('title')).toBe(name);
+		});
+
+		it('moves the drift into the disclosure on a phone, and says the mainline moved', async () => {
+			setPhone(true);
+			mockState.id = branch.id;
+			mockState.branch = branch;
+			getBranchDrift.mockResolvedValue(
+				drift({ main_change_count: 7, main_change_count_on_branch_entities: 2 })
+			);
+
+			const { container } = render(BranchBanner);
+
+			const indicator = await screen.findByTestId('branch-drift');
+			const help = container.querySelector('details.branch-help')!;
+			expect(help.contains(indicator)).toBe(true);
+			expect(help.querySelector('summary')?.textContent).toMatch(/Mainline moved/);
+			expect(indicator.textContent).toMatch(/Mainline changed 7\s+times since you branched/);
+			expect(indicator.textContent).toMatch(/2 on entities this branch touched/);
+			expect(
+				screen.getByRole('link', { name: 'Review mainline changes' }).getAttribute('href')
+			).toBe(`/branches/${branch.id}#main-changes`);
+		});
+
+		it('moves an unchanged mainline and a failed read into the disclosure too', async () => {
+			setPhone(true);
+			mockState.id = branch.id;
+			const { container, unmount } = render(BranchBanner);
+			const unchanged = await screen.findByText('Mainline unchanged since you branched.');
+			const help = container.querySelector('details.branch-help')!;
+			expect(help.contains(unchanged)).toBe(true);
+			expect(help.querySelector('summary')?.textContent?.trim()).toBe('How branches work');
+			unmount();
+
+			getBranchDrift.mockRejectedValue(new Error('boom'));
+			const failed = render(BranchBanner);
+			const notice = await screen.findByText("Couldn't check how far the mainline has moved.");
+			const failedHelp = failed.container.querySelector('details.branch-help')!;
+			expect(failedHelp.contains(notice)).toBe(true);
+			expect(failedHelp.querySelector('summary')?.textContent?.trim()).toBe(
+				'Mainline check failed - how branches work'
+			);
+		});
+
+		it('says in the summary when mainline changes touched records edited here', async () => {
+			setPhone(true);
+			mockState.id = branch.id;
+			getBranchDrift.mockResolvedValue(
+				drift({ main_change_count: 7, main_change_count_on_branch_entities: 0 })
+			);
+			const { container, unmount } = render(BranchBanner);
+			await screen.findByTestId('branch-drift');
+			expect(container.querySelector('summary')?.textContent?.trim()).toBe(
+				'Mainline moved - how branches work'
+			);
+			unmount();
+
+			getBranchDrift.mockResolvedValue(
+				drift({ main_change_count: 7, main_change_count_on_branch_entities: 2 })
+			);
+			const touched = render(BranchBanner);
+			await screen.findByTestId('branch-drift');
+			expect(touched.container.querySelector('summary')?.textContent?.trim()).toBe(
+				'Mainline moved, 2 on your edits - details'
+			);
+		});
+
+		it('repeats the clamped branch line inside the disclosure on a phone only', () => {
+			setPhone(true);
+			mockState.id = branch.id;
+			mockState.branch = { ...branch, name: longName };
+			const { container, unmount } = render(BranchBanner);
+			const full = screen.getByTestId('banner-identity-full');
+			expect(container.querySelector('details.branch-help')!.contains(full)).toBe(true);
+			expect(full.textContent).toBe(`Working on ${longName}. Edits stay on this branch.`);
+			unmount();
+
+			setPhone(false);
+			render(BranchBanner);
+			expect(screen.queryByTestId('banner-identity-full')).toBeNull();
+		});
+
+		it('keeps the drift on the banner itself on a wider screen', async () => {
+			setPhone(false);
+			mockState.id = branch.id;
+			getBranchDrift.mockResolvedValue(drift({ main_change_count: 3 }));
+
+			const { container } = render(BranchBanner);
+
+			const indicator = await screen.findByTestId('branch-drift');
+			expect(container.querySelector('details.branch-help')!.contains(indicator)).toBe(false);
+			expect(screen.getByText('How branches work')).toBeDefined();
 		});
 	});
 });

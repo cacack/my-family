@@ -371,6 +371,27 @@ func TestPersonName_FullName(t *testing.T) {
 			pn:   NewPersonName(personID, "Mary", ""),
 			want: "Mary",
 		},
+		{
+			name: "surname only",
+			pn:   NewPersonName(personID, "", "Smith"),
+			want: "Smith",
+		},
+		{
+			name: "every part",
+			pn: &PersonName{NamePrefix: "Dr.", GivenName: "Avery", SurnamePrefix: "van",
+				Surname: "Original", NameSuffix: "Jr."},
+			want: "Dr. Avery van Original Jr.",
+		},
+		{
+			name: "prefix and surname only",
+			pn:   &PersonName{NamePrefix: "Rev.", Surname: "Original"},
+			want: "Rev. Original",
+		},
+		{
+			name: "no parts",
+			pn:   &PersonName{},
+			want: "",
+		},
 	}
 
 	for _, tt := range tests {

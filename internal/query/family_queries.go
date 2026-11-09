@@ -489,12 +489,12 @@ func (s *FamilyService) getGroupSheetChild(ctx context.Context, branchID domain.
 			// Find the other partner
 			if fam.Partner1ID != nil && *fam.Partner1ID != person.ID {
 				gsc.SpouseID = fam.Partner1ID
-				gsc.SpouseName = fullName(fam.Partner1GivenName, fam.Partner1Surname)
+				gsc.SpouseName = domain.JoinFullName(fam.Partner1GivenName, fam.Partner1Surname)
 				break
 			}
 			if fam.Partner2ID != nil && *fam.Partner2ID != person.ID {
 				gsc.SpouseID = fam.Partner2ID
-				gsc.SpouseName = fullName(fam.Partner2GivenName, fam.Partner2Surname)
+				gsc.SpouseName = domain.JoinFullName(fam.Partner2GivenName, fam.Partner2Surname)
 				break
 			}
 		}

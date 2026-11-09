@@ -261,10 +261,12 @@ A person's `given_name`/`surname` and its primary name (the `is_primary` row in 
 
 - `PersonUpdated` changing `given_name` or `surname`, and `PersonMerged` resolving them, set the primary name's given name and surname (prefix, suffix, nickname and type are kept).
 - `NameAdded`/`NameUpdated` with `is_primary` set the person's `given_name`/`surname`, including when a name is promoted to primary. Alternate names never change the person.
-- A person with no names keeps its own fields. Its first name becomes primary; when that name is not marked primary and differs from the person, `AddName` first records the person's current name as the primary name, so the new name is added as an alternate.
+- `CreatePerson` records the primary name with the person (`PersonCreated` + a primary `NameAdded`, one append). A person with no names (from logs before #1131) keeps its own fields. Its first name becomes primary; when that name is not marked primary and differs from the person, `AddName` first records the person's current name as the primary name, so the new name is added as an alternate.
 - The primary name cannot be removed (`ErrCannotDeletePrimary`; the API refuses it with 409 `CONFLICT`, and the Names section offers no Delete on it), so `NameRemoved` never touches the person.
 
 The sync lives only in `repository/projection.go`, not in commands, so a rebuild from the log reaches the same state and older logs heal on replay.
+
+A name's `full_name` (`person_names.full_name`) is `domain.JoinPersonName`: prefix, given name, surname prefix, surname and suffix joined by single spaces, empty parts skipped. Every store's `SavePersonName` writes it from the parts. A person's `full_name` stays `domain.JoinFullName` (given name and surname), and search matches alternate names on that same given-name-and-surname join.
 
 ### Migrations
 
@@ -289,6 +291,11 @@ The sync lives only in `repository/projection.go`, not in commands, so a rebuild
 3. Ensure tests pass: `make test`
 4. Create PR when ready
 5. Squash merge to main
+
+### CI Behaviour
+
+- A new push to a PR branch cancels that PR's in-progress CI and CodeQL runs. Every other run (pushes to `main`, merge queue, schedule) has its own concurrency group, so it is never queued behind or cancelled by another run.
+- The auto-rebase workflow rebases open PRs onto `main` after every merge, restarting their CI. Add the `no-auto-rebase` label to a PR to skip it (Dependabot PRs, labelled `dependencies`, are skipped too).
 
 ### PR Checklist
 

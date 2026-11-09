@@ -15,6 +15,7 @@ func TestRelinkEdgeParent(t *testing.T) {
 	merged, partner, stranger := uuid.New(), uuid.New(), uuid.New()
 	male := &PersonReadModel{ID: uuid.New(), FullName: "Sam Survivor", Gender: domain.GenderMale}
 	female := &PersonReadModel{ID: uuid.New(), FullName: "Sue Survivor", Gender: domain.GenderFemale}
+	unknown := &PersonReadModel{ID: uuid.New(), FullName: "Pat Survivor", Gender: domain.GenderUnknown}
 	familyWith := func(survivor *PersonReadModel) *FamilyReadModel {
 		return &FamilyReadModel{ID: uuid.New(), Partner1ID: &survivor.ID, Partner2ID: &partner}
 	}
@@ -37,6 +38,8 @@ func TestRelinkEdgeParent(t *testing.T) {
 		{"edge from another family", PedigreeEdge{MotherID: ptr(stranger)}, male, familyWith(male), false, nil, &stranger},
 		{"father slot taken", PedigreeEdge{FatherID: ptr(partner)}, male, familyWith(male), false, &partner, nil},
 		{"mother slot taken", PedigreeEdge{MotherID: ptr(partner)}, female, familyWith(female), false, nil, &partner},
+		{"unknown fills empty father", PedigreeEdge{MotherID: ptr(partner)}, unknown, familyWith(unknown), true, &unknown.ID, &partner},
+		{"unknown fills empty mother", PedigreeEdge{FatherID: ptr(partner)}, unknown, familyWith(unknown), true, &partner, &unknown.ID},
 		{"survivor not a partner", PedigreeEdge{}, male, &FamilyReadModel{ID: uuid.New(), Partner2ID: &partner}, false, nil, nil},
 	}
 	for _, tt := range tests {

@@ -20,7 +20,7 @@ import (
 // hyphen names, a multi-word query, and fuzzy against non-fuzzy. Beyond those:
 // non-ASCII case (SQLite's own LOWER/LIKE fold only ASCII), ILIKE's wildcards
 // and backslash escape, padded place filters, and an alternate name with a
-// prefix and suffix (the SQL full_name columns leave both out).
+// prefix and suffix (search matches the given name and surname only).
 func TestSearchParity(t *testing.T) {
 	forEachBackend(t, runSearchParity)
 }
@@ -89,7 +89,7 @@ func runSearchParity(t *testing.T, server *api.Server) {
 		{`O\'Brien`, false, "", []string{"Patrick"}},
 		{`Smith\-Jones`, false, "", []string{"Mary"}},
 
-		// An alternate name's prefix and suffix are not part of its full name.
+		// Search leaves out an alternate name's prefix and suffix (#1130).
 		{"Johann Beethoven", false, "", []string{"Hans"}},
 		{"Dr.", false, "", nil},
 		{"van Beethoven", false, "", nil},

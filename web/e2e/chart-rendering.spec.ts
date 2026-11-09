@@ -37,7 +37,7 @@ function useFontSize(page: Page, fontSize: string) {
 
 let childId: string; // three generations of ancestors
 let matriarchId: string; // nine children, each with a spouse and four children
-// Short enough for a spouse card: long unbroken names overflow it at any font size (#1213)
+// Spouse names stay short whatever the suffix: long unbroken names overflow a spouse card at any font size (#1213)
 const surname = `Chart${Date.now().toString(36).slice(-4)}`;
 
 test.beforeAll(async ({ request }) => {
@@ -58,7 +58,7 @@ test.beforeAll(async ({ request }) => {
 	const children: string[] = [];
 	for (let i = 0; i < 9; i++) {
 		const kid = await p(`Kid${i}`);
-		const spouse = await p(`Spouse${i}`);
+		const spouse = await p(`Sp${i}`);
 		const grandkids = [];
 		for (let j = 0; j < 4; j++) grandkids.push(await p(`Grandkid${i}x${j}`));
 		await family(request, kid, spouse, grandkids);

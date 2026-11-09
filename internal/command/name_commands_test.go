@@ -8,8 +8,26 @@ import (
 
 	"github.com/cacack/my-family/internal/command"
 	"github.com/cacack/my-family/internal/domain"
+	"github.com/cacack/my-family/internal/repository"
 	"github.com/cacack/my-family/internal/repository/memory"
 )
+
+// createPersonWithoutNames records a person the way logs from before #1131 do,
+// a PersonCreated with no NameAdded, so it has no names. CreatePerson always
+// records a primary name now.
+func createPersonWithoutNames(t *testing.T, eventStore repository.EventStore, readStore repository.ReadModelStore, given, surname string) uuid.UUID {
+	t.Helper()
+	ctx := context.Background()
+	person := domain.NewPerson(given, surname)
+	event := domain.NewPersonCreated(person)
+	if err := eventStore.Append(ctx, person.ID, "Person", []domain.Event{event}, -1, repository.AppendScope{}); err != nil {
+		t.Fatalf("append PersonCreated: %v", err)
+	}
+	if err := repository.NewProjector(readStore, nil).Project(ctx, event, 1, domain.MainBranchID); err != nil {
+		t.Fatalf("project PersonCreated: %v", err)
+	}
+	return person.ID
+}
 
 func TestAddName_Success(t *testing.T) {
 	eventStore := memory.NewEventStore()
@@ -55,20 +73,11 @@ func TestAddName_FirstNameBecomesPrimary(t *testing.T) {
 	handler := command.NewHandler(eventStore, readStore)
 	ctx := context.Background()
 
-	// Create a person (no names yet in person_names table)
-	personInput := command.CreatePersonInput{
-		GivenName: "John",
-		Surname:   "Doe",
-		Gender:    "male",
-	}
-	personResult, err := handler.CreatePerson(ctx, personInput)
-	if err != nil {
-		t.Fatalf("CreatePerson failed: %v", err)
-	}
+	personID := createPersonWithoutNames(t, eventStore, readStore, "John", "Doe")
 
 	// Add first name - should become primary even if IsPrimary=false
 	nameInput := command.AddNameInput{
-		PersonID:  personResult.ID,
+		PersonID:  personID,
 		GivenName: "John",
 		Surname:   "Doe",
 		NameType:  "birth",
@@ -93,12 +102,9 @@ func TestAddName_FirstAlternateKeepsPersonName(t *testing.T) {
 	handler := command.NewHandler(eventStore, readStore)
 	ctx := context.Background()
 
-	personResult, err := handler.CreatePerson(ctx, command.CreatePersonInput{GivenName: "John", Surname: "Doe"})
-	if err != nil {
-		t.Fatalf("CreatePerson failed: %v", err)
-	}
+	personID := createPersonWithoutNames(t, eventStore, readStore, "John", "Doe")
 	result, err := handler.AddName(ctx, command.AddNameInput{
-		PersonID:  personResult.ID,
+		PersonID:  personID,
 		GivenName: "Jane",
 		Surname:   "Married",
 		NameType:  "married",
@@ -110,14 +116,14 @@ func TestAddName_FirstAlternateKeepsPersonName(t *testing.T) {
 		t.Error("an unmarked name differing from the person should stay an alternate")
 	}
 
-	person, err := readStore.GetPerson(ctx, domain.MainBranchID, personResult.ID)
+	person, err := readStore.GetPerson(ctx, domain.MainBranchID, personID)
 	if err != nil || person == nil {
 		t.Fatalf("GetPerson = %v, %v", person, err)
 	}
 	if person.GivenName != "John" || person.Surname != "Doe" {
 		t.Errorf("person renamed to %s %s, want John Doe", person.GivenName, person.Surname)
 	}
-	names, err := readStore.GetPersonNames(ctx, domain.MainBranchID, personResult.ID)
+	names, err := readStore.GetPersonNames(ctx, domain.MainBranchID, personID)
 	if err != nil || len(names) != 2 {
 		t.Fatalf("names = %v, %v; want 2", names, err)
 	}
@@ -427,20 +433,11 @@ func TestDeleteName_CannotDeleteLast(t *testing.T) {
 	handler := command.NewHandler(eventStore, readStore)
 	ctx := context.Background()
 
-	// Create person
-	personInput := command.CreatePersonInput{
-		GivenName: "John",
-		Surname:   "Doe",
-		Gender:    "male",
-	}
-	personResult, err := handler.CreatePerson(ctx, personInput)
-	if err != nil {
-		t.Fatalf("CreatePerson failed: %v", err)
-	}
+	personID := createPersonWithoutNames(t, eventStore, readStore, "John", "Doe")
 
 	// Add one name
 	nameResult, err := handler.AddName(ctx, command.AddNameInput{
-		PersonID:  personResult.ID,
+		PersonID:  personID,
 		GivenName: "John",
 		Surname:   "Doe",
 		NameType:  "birth",
@@ -451,7 +448,7 @@ func TestDeleteName_CannotDeleteLast(t *testing.T) {
 
 	// Try to delete the only name
 	err = handler.DeleteName(ctx, command.DeleteNameInput{
-		PersonID: personResult.ID,
+		PersonID: personID,
 		NameID:   nameResult.ID,
 	})
 	if err == nil {
