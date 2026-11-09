@@ -57,3 +57,19 @@ for (const width of WIDTHS) {
 		});
 	});
 }
+
+// Interaction state the route sweep never opens: the selected font-size
+// option's faded description failed contrast on its blue fill (#1116).
+test('the open Accessibility panel has no colour-contrast failures', async ({ page }) => {
+	await page.setViewportSize({ width: 1280, height: 900 });
+	await page.goto('/');
+	await page.getByRole('button', { name: 'Accessibility settings' }).click();
+	const dialog = page.getByRole('dialog', { name: 'Accessibility Settings' });
+	await expect(dialog.getByRole('button', { name: /Normal/, pressed: true })).toBeVisible();
+
+	const { violations } = await new AxeBuilder({ page })
+		.include('.accessibility-dialog')
+		.withRules(['color-contrast'])
+		.analyze();
+	expect(violations.flatMap((v) => v.nodes.map((n) => n.target.join(' ')))).toEqual([]);
+});
