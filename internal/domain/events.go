@@ -1934,3 +1934,35 @@ func NewDuplicateRestored(pair DuplicatePair) DuplicateRestored {
 		Person2ID: pair.Person2ID,
 	}
 }
+
+// Kinds of entity an ImportedValuesBackfilled event can name.
+const (
+	BackfillPerson     = "person"
+	BackfillLifeEvent  = "life_event"
+	BackfillFamily     = "family"
+	BackfillSource     = "source"
+	BackfillRepository = "repository"
+)
+
+// ImportedValuesBackfilled logs the place coordinates and EXIDs that a GEDCOM
+// import made before #1225 wrote only to the read model. `myfamily rebuild`
+// appends one to such an entity's main stream before it resets the read model,
+// so the replay restores them (#1251). It carries the entity's full set of
+// these values, and only the fields of its kind: birth and death coordinates
+// and EXIDs for a person, place coordinates for a life event, EXIDs for a
+// family, source or repository.
+type ImportedValuesBackfilled struct {
+	BaseEvent
+	EntityType     string               `json:"entity_type"`
+	EntityID       uuid.UUID            `json:"entity_id"`
+	BirthPlaceLat  *string              `json:"birth_place_lat,omitempty"`
+	BirthPlaceLong *string              `json:"birth_place_long,omitempty"`
+	DeathPlaceLat  *string              `json:"death_place_lat,omitempty"`
+	DeathPlaceLong *string              `json:"death_place_long,omitempty"`
+	PlaceLat       *string              `json:"place_lat,omitempty"`
+	PlaceLong      *string              `json:"place_long,omitempty"`
+	ExternalIDs    []ExternalIdentifier `json:"external_ids,omitempty"`
+}
+
+func (e ImportedValuesBackfilled) EventType() string      { return "ImportedValuesBackfilled" }
+func (e ImportedValuesBackfilled) AggregateID() uuid.UUID { return e.EntityID }

@@ -1092,7 +1092,7 @@ func TestStoredEvent_DecodeEvent_InvalidJSON_AllTypes(t *testing.T) {
 		"EvidenceConflictDetected", "EvidenceConflictResolved",
 		"ResearchLogCreated", "ResearchLogUpdated", "ResearchLogDeleted",
 		"ProofSummaryCreated", "ProofSummaryUpdated", "ProofSummaryDeleted",
-		"DuplicateDismissed", "DuplicateRestored",
+		"DuplicateDismissed", "DuplicateRestored", "ImportedValuesBackfilled",
 	}
 
 	for _, eventType := range eventTypes {

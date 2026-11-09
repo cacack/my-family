@@ -67,6 +67,7 @@ while the log still names them. Nothing is read per entry.
 | `SnapshotCreated` / `SnapshotDeleted` | Research-artifact markers (#624): a snapshot names a position in the log, it changes no data. |
 | `BranchMergeResumed` | A resume's decision record (#685): part of the merge it finishes, which the history shows once, as `BranchMerged`. Its decisions are on the branch's merge record (`merge_record` in `GET /branches/{id}/compare`). |
 | `BranchUpdated` | A research-record edit (#835): the branch's description, hypothesis, subjects, outcome and linked proof summaries describe the research and are shown on the branch itself; it changes no genealogical data. |
+| `ImportedValuesBackfilled` | A rebuild backfill (#1251): `myfamily rebuild` logs the place coordinates and EXIDs that an import made before #1225 wrote only to the read model. The import set them; the backfill changes no data. |
 
 These events remain in the append-only log (ES-002) as the audit record; only the change-log
 views leave them out. The branch diff's `researchMetadataEventTypes` is either excluded here or

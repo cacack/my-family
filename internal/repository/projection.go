@@ -163,6 +163,8 @@ func (p *Projector) Project(ctx context.Context, event domain.Event, version int
 		return p.projectDuplicateDismissed(ctx, e, version, branchID)
 	case domain.DuplicateRestored:
 		return p.readStore.DeleteDuplicateDismissal(ctx, branchID, e.PairID)
+	case domain.ImportedValuesBackfilled:
+		return p.projectImportedValuesBackfilled(ctx, e, version, branchID)
 	case domain.BranchCreated:
 		return p.projectBranchCreated(ctx, e)
 	case domain.BranchUpdated:
@@ -2712,4 +2714,77 @@ func SortTime(gd *domain.GenDate) *time.Time {
 	}
 	t := gd.SortDate()
 	return &t
+}
+
+// projectImportedValuesBackfilled writes the coordinates and EXIDs a pre-#1225
+// import left only in the read model back onto their entity (#1251). It only
+// moves the row's version on, as the event is the next one in its stream; the
+// row's UpdatedAt is kept, since nobody edited the entity.
+func (p *Projector) projectImportedValuesBackfilled(ctx context.Context, e domain.ImportedValuesBackfilled, version int64, branchID domain.BranchID) error {
+	switch e.EntityType {
+	case domain.BackfillPerson:
+		person, err := p.readStore.GetPerson(ctx, branchID, e.EntityID)
+		if err != nil || person == nil {
+			return err
+		}
+		person.BirthPlaceLat, person.BirthPlaceLong = e.BirthPlaceLat, e.BirthPlaceLong
+		person.DeathPlaceLat, person.DeathPlaceLong = e.DeathPlaceLat, e.DeathPlaceLong
+		person.Version = version
+		if err := p.readStore.SavePerson(ctx, branchID, person); err != nil || len(e.ExternalIDs) == 0 {
+			return err
+		}
+		return p.readStore.ReplacePersonExternalIDs(ctx, branchID, e.EntityID, externalIDRows(e.ExternalIDs,
+			func(seq int, x domain.ExternalIdentifier) PersonExternalIDReadModel {
+				return PersonExternalIDReadModel{PersonID: e.EntityID, Sequence: seq, Value: x.Value, Type: x.Type}
+			}))
+	case domain.BackfillLifeEvent:
+		event, err := p.readStore.GetEvent(ctx, branchID, e.EntityID)
+		if err != nil || event == nil {
+			return err
+		}
+		event.PlaceLat, event.PlaceLong = e.PlaceLat, e.PlaceLong
+		event.Version = version
+		return p.readStore.SaveEvent(ctx, branchID, event)
+	case domain.BackfillFamily:
+		family, err := p.readStore.GetFamily(ctx, branchID, e.EntityID)
+		if err != nil || family == nil {
+			return err
+		}
+		family.Version = version
+		if err := p.readStore.SaveFamily(ctx, branchID, family); err != nil {
+			return err
+		}
+		return p.readStore.ReplaceFamilyExternalIDs(ctx, branchID, e.EntityID, externalIDRows(e.ExternalIDs,
+			func(seq int, x domain.ExternalIdentifier) FamilyExternalIDReadModel {
+				return FamilyExternalIDReadModel{FamilyID: e.EntityID, Sequence: seq, Value: x.Value, Type: x.Type}
+			}))
+	case domain.BackfillSource:
+		source, err := p.readStore.GetSource(ctx, branchID, e.EntityID)
+		if err != nil || source == nil {
+			return err
+		}
+		source.Version = version
+		if err := p.readStore.SaveSource(ctx, branchID, source); err != nil {
+			return err
+		}
+		return p.readStore.ReplaceSourceExternalIDs(ctx, branchID, e.EntityID, externalIDRows(e.ExternalIDs,
+			func(seq int, x domain.ExternalIdentifier) SourceExternalIDReadModel {
+				return SourceExternalIDReadModel{SourceID: e.EntityID, Sequence: seq, Value: x.Value, Type: x.Type}
+			}))
+	case domain.BackfillRepository:
+		repo, err := p.readStore.GetRepository(ctx, e.EntityID)
+		if err != nil || repo == nil {
+			return err
+		}
+		repo.Version = version
+		if err := p.readStore.SaveRepository(ctx, repo); err != nil {
+			return err
+		}
+		return p.readStore.ReplaceRepositoryExternalIDs(ctx, e.EntityID, externalIDRows(e.ExternalIDs,
+			func(seq int, x domain.ExternalIdentifier) RepositoryExternalIDReadModel {
+				return RepositoryExternalIDReadModel{RepositoryID: e.EntityID, Sequence: seq, Value: x.Value, Type: x.Type}
+			}))
+	default:
+		return fmt.Errorf("imported values backfill names unknown entity type %q", e.EntityType)
+	}
 }
