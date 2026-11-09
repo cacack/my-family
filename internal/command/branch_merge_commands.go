@@ -297,10 +297,10 @@ func (h *Handler) MergeBranch(ctx context.Context, input MergeBranchInput) (*Mer
 			return nil, err
 		}
 		return &MergeBranchResult{
-				Branch:    branch,
-				Conflicts: plan.Conflicts,
-			}, fmt.Errorf("%w: %d of %d conflicts have no resolution",
-				ErrMergeConflicts, unresolved, len(plan.Conflicts))
+			Branch:    branch,
+			Conflicts: plan.Conflicts,
+		}, fmt.Errorf("%w: %d of %d conflicts have no resolution",
+			ErrMergeConflicts, unresolved, len(plan.Conflicts))
 	}
 
 	// main's head as the branch sees it — recorded on the marker, not used as an
