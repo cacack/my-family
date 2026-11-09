@@ -263,6 +263,73 @@ func TestSearchSources(t *testing.T) {
 	if len(sources) < 2 {
 		t.Errorf("len(sources) = %d, want at least 2", len(sources))
 	}
+	// The response echoes the query it ran (#1121).
+	if resp["query"] != "Census" {
+		t.Errorf("query = %v, want Census", resp["query"])
+	}
+}
+
+// GET /sources?q= lists only the sources whose title matches, and total counts
+// the matches alone, so the pager reflects the filtered list (#1059).
+func TestListSources_FiltersByQuery(t *testing.T) {
+	server := setupTestServer()
+	for _, title := range []string{"Census of 1900", "Parish Register", "census of 1910", "Family Bible"} {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/sources",
+			strings.NewReader(fmt.Sprintf(`{"source_type":"book","title":%q,"author":"Census Bureau"}`, title)))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		server.Echo().ServeHTTP(rec, req)
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("create %q: %d %s", title, rec.Code, rec.Body.String())
+		}
+	}
+
+	list := func(query string) (titles []string, total int) {
+		t.Helper()
+		rec := httptest.NewRecorder()
+		server.Echo().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/sources"+query, http.NoBody))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("list %s: %d %s", query, rec.Code, rec.Body.String())
+		}
+		var resp struct {
+			Sources []struct {
+				Title string `json:"title"`
+			} `json:"sources"`
+			Total int `json:"total"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("decoding list: %v", err)
+		}
+		for _, s := range resp.Sources {
+			titles = append(titles, s.Title)
+		}
+		return titles, resp.Total
+	}
+
+	// Title match is case-insensitive; the author (which every source shares)
+	// does not count.
+	titles, total := list("?q=CENSUS")
+	if fmt.Sprint(titles) != "[Census of 1900 census of 1910]" || total != 2 {
+		t.Errorf("q=CENSUS: titles = %v, total = %d; want the two census titles, total 2", titles, total)
+	}
+
+	// Paging walks the filtered set, and total stays the filtered count.
+	titles, total = list("?q=census&limit=1&offset=1")
+	if fmt.Sprint(titles) != "[census of 1910]" || total != 2 {
+		t.Errorf("q=census page 2: titles = %v, total = %d; want [census of 1910], total 2", titles, total)
+	}
+
+	titles, total = list("?q=nothing-matches")
+	if len(titles) != 0 || total != 0 {
+		t.Errorf("q=nothing-matches: titles = %v, total = %d; want none", titles, total)
+	}
+
+	// Without q (or with an empty one) every source is listed.
+	for _, query := range []string{"", "?q="} {
+		if titles, total = list(query); len(titles) != 4 || total != 4 {
+			t.Errorf("list %q: titles = %v, total = %d; want all 4", query, titles, total)
+		}
+	}
 }
 
 func TestCreateCitation(t *testing.T) {

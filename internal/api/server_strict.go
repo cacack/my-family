@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/url"
 	"strings"
 	"time"
@@ -2550,44 +2551,25 @@ func (ss *StrictServer) UploadPersonMedia(ctx context.Context, request UploadPer
 		}}, nil
 	}
 
-	// Read the first part from multipart reader (the file)
-	part, err := request.Body.NextPart()
-	if err != nil {
-		return UploadPersonMedia400JSONResponse{BadRequestJSONResponse{
-			Code:    "bad_request",
-			Message: "Failed to read uploaded file",
-		}}, nil
-	}
-	defer part.Close()
-
-	// Read at most one byte past the limit, so an oversized upload is refused
-	// below without first buffering all of it in memory.
-	fileData, err := io.ReadAll(io.LimitReader(part, domain.MaxMediaFileSize+1))
+	form, badRequest, err := readMediaUploadForm(request.Body)
 	if err != nil {
 		return nil, err
 	}
-
-	if int64(len(fileData)) > domain.MaxMediaFileSize {
+	if badRequest != "" {
 		return UploadPersonMedia400JSONResponse{BadRequestJSONResponse{
 			Code:    "bad_request",
-			Message: "File too large (max 10MB)",
+			Message: badRequest,
 		}}, nil
-	}
-
-	// For now, use the part name and filename as title if available
-	title := part.FileName()
-	if title == "" {
-		title = "Uploaded media"
 	}
 
 	result, err := ss.branchWriter(branch).UploadMedia(ctx, command.UploadMediaInput{
 		EntityType:  "person",
 		EntityID:    request.Id,
-		Title:       title,
-		Description: "",
-		MediaType:   "",
-		Filename:    part.FileName(),
-		FileData:    fileData,
+		Title:       form.title,
+		Description: form.description,
+		MediaType:   form.mediaType,
+		Filename:    form.filename,
+		FileData:    form.fileData,
 	})
 	if err != nil {
 		return nil, err
@@ -2602,6 +2584,74 @@ func (ss *StrictServer) UploadPersonMedia(ctx context.Context, request UploadPer
 	}
 
 	return UploadPersonMedia201JSONResponse(convertMediaReadModelToGenerated(*media)), nil
+}
+
+// maxMediaFormFieldSize caps each text part of a media upload (title,
+// description, media_type), so a client cannot make the handler buffer an
+// unbounded field.
+const maxMediaFormFieldSize = 64 << 10
+
+// mediaUploadForm is a parsed media upload body.
+type mediaUploadForm struct {
+	title, description, mediaType string
+	filename                      string
+	fileData                      []byte
+}
+
+// readMediaUploadForm reads every part of a media upload by its form name, in
+// whatever order the client sent them (#1000). It returns a non-empty
+// badRequest message when the upload is malformed: no file, no title (the spec
+// requires one), or a part over its size limit.
+func readMediaUploadForm(body *multipart.Reader) (form mediaUploadForm, badRequest string, err error) {
+	hasFile := false
+	for {
+		part, err := body.NextPart()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return form, "Failed to read the upload", nil
+		}
+
+		// Read at most one byte past each limit, so an oversized part is refused
+		// without first buffering all of it in memory.
+		limit := int64(maxMediaFormFieldSize)
+		if part.FormName() == "file" {
+			limit = domain.MaxMediaFileSize
+		}
+		data, err := io.ReadAll(io.LimitReader(part, limit+1))
+		_ = part.Close()
+		if err != nil {
+			return form, "", err
+		}
+		if int64(len(data)) > limit {
+			if part.FormName() == "file" {
+				return form, "File too large (max 10MB)", nil
+			}
+			return form, fmt.Sprintf("Field %q is too large", part.FormName()), nil
+		}
+
+		switch part.FormName() {
+		case "file":
+			hasFile = true
+			form.filename = part.FileName()
+			form.fileData = data
+		case "title":
+			form.title = strings.TrimSpace(string(data))
+		case "description":
+			form.description = string(data)
+		case "media_type":
+			form.mediaType = string(data)
+		}
+	}
+
+	if !hasFile {
+		return form, "No file uploaded", nil
+	}
+	if form.title == "" {
+		return form, "title is required", nil
+	}
+	return form, "", nil
 }
 
 // GetPersonNames implements StrictServerInterface.
@@ -3530,13 +3580,17 @@ func (ss *StrictServer) ListSources(ctx context.Context, request ListSourcesRequ
 		return nil, err
 	}
 
-	result, err := ss.server.sourceService.ListSources(ctx, query.ListSourcesInput{
+	listInput := query.ListSourcesInput{
 		Limit:     limit,
 		Offset:    offset,
 		SortBy:    sortBy,
 		SortOrder: sortOrder,
 		BranchID:  branchScopeID(branch),
-	})
+	}
+	if request.Params.Q != nil {
+		listInput.Query = *request.Params.Q
+	}
+	result, err := ss.server.sourceService.ListSources(ctx, listInput)
 	if err != nil {
 		return nil, err
 	}
@@ -3636,6 +3690,7 @@ func (ss *StrictServer) SearchSources(ctx context.Context, request SearchSources
 	}
 
 	return SearchSources200JSONResponse{
+		Query:   request.Params.Q,
 		Sources: items,
 		Total:   len(items),
 	}, nil
@@ -4124,10 +4179,21 @@ func convertExternalIDsToLinks(externalIDs []domain.ExternalIdentifier) *[]Exter
 	return &links
 }
 
+// optionalNameType returns nil for an untyped name, so name_type is omitted
+// rather than sent empty (#1121).
+func optionalNameType(t string) *NameType {
+	if t == "" {
+		return nil
+	}
+	nt := NameType(t)
+	return &nt
+}
+
 // convertQueryPersonNameToGenerated converts a query.PersonName to the generated PersonName type.
 func convertQueryPersonNameToGenerated(n query.PersonName) PersonName {
 	return PersonName{
 		Id:            n.ID,
+		PersonId:      n.PersonID,
 		GivenName:     n.GivenName,
 		Surname:       n.Surname,
 		FullName:      &n.FullName,
@@ -4135,7 +4201,7 @@ func convertQueryPersonNameToGenerated(n query.PersonName) PersonName {
 		NameSuffix:    &n.NameSuffix,
 		SurnamePrefix: &n.SurnamePrefix,
 		Nickname:      &n.Nickname,
-		NameType:      NameType(n.NameType),
+		NameType:      optionalNameType(n.NameType),
 		IsPrimary:     n.IsPrimary,
 	}
 }
@@ -4144,6 +4210,7 @@ func convertQueryPersonNameToGenerated(n query.PersonName) PersonName {
 func convertPersonNameReadModelToGenerated(n repository.PersonNameReadModel) PersonName {
 	return PersonName{
 		Id:            n.ID,
+		PersonId:      n.PersonID,
 		GivenName:     n.GivenName,
 		Surname:       n.Surname,
 		FullName:      &n.FullName,
@@ -4151,7 +4218,7 @@ func convertPersonNameReadModelToGenerated(n repository.PersonNameReadModel) Per
 		NameSuffix:    &n.NameSuffix,
 		SurnamePrefix: &n.SurnamePrefix,
 		Nickname:      &n.Nickname,
-		NameType:      NameType(n.NameType),
+		NameType:      optionalNameType(string(n.NameType)),
 		IsPrimary:     n.IsPrimary,
 	}
 }

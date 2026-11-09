@@ -1083,6 +1083,18 @@ func runBranchEvidenceScenario(t *testing.T, readStore repository.ReadModelStore
 	if got := searchIDs(branchID, "enumerator"); !reflect.DeepEqual(got, []uuid.UUID{census.ID}) {
 		t.Errorf("branch SearchSources(enumerator) = %v, want [census] (author is unchanged)", got)
 	}
+	// ListSources' title filter also matches the winning rows only, and its
+	// total counts the matches (#1059); the author does not count.
+	for q, want := range map[string][]uuid.UUID{"BAPTISM": {register.ID}, "parish": nil, "enumerator": nil, "": {register.ID, census.ID, diary.ID}} {
+		rows, total, err := readStore.ListSources(ctx, repository.ListOptions{Limit: 100, BranchID: branchID, Query: q})
+		got := make([]uuid.UUID, 0, len(rows))
+		for _, r := range rows {
+			got = append(got, r.ID)
+		}
+		if err != nil || total != len(want) || len(got) != len(want) || (len(want) > 0 && !reflect.DeepEqual(got, want)) {
+			t.Errorf("branch ListSources(q=%q) = %v total %d (err=%v), want %v", q, got, total, err, want)
+		}
+	}
 	if got, err := readStore.GetSourceExternalIDs(ctx, branchID, census.ID); err != nil || len(got) != 2 || got[0].Value != "BRANCH-1" || got[1].Value != "BRANCH-2" {
 		t.Errorf("branch GetSourceExternalIDs = %+v (err=%v), want [BRANCH-1 BRANCH-2]", got, err)
 	}

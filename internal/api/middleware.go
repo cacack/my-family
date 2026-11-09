@@ -47,6 +47,13 @@ func customErrorHandler(err error, c echo.Context) {
 			Code:    CodeNotFound,
 			Message: "Person not found",
 		}
+	case errors.Is(err, command.ErrNameNotFound):
+		// Also covers a name id that belongs to another person.
+		code = http.StatusNotFound
+		apiErr = APIError{
+			Code:    CodeNotFound,
+			Message: "Name not found",
+		}
 	case errors.Is(err, query.ErrNotFound):
 		code = http.StatusNotFound
 		apiErr = APIError{

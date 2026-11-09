@@ -106,11 +106,8 @@ func TestUploadPersonMedia(t *testing.T) {
 		t.Fatalf("Failed to parse response: %v", err)
 	}
 
-	// Note: The current server implementation uses the filename as the title
-	// rather than the form field. This is a known limitation.
-	if mediaResp["title"] != "portrait.jpg" {
-		t.Errorf("title = %v, want portrait.jpg", mediaResp["title"])
-	}
+	// The form's title, description and media type are stored as sent (#1000).
+	assertUploadedFields(t, "upload", mediaResp)
 	if mediaResp["id"] == nil || mediaResp["id"] == "" {
 		t.Error("Expected non-empty id")
 	}
@@ -125,6 +122,7 @@ func TestUploadPersonMedia(t *testing.T) {
 	if err := json.Unmarshal(getRec.Body.Bytes(), &getResp); err != nil || getResp["has_thumbnail"] != true {
 		t.Errorf("get has_thumbnail = %v (status %d, err %v), want true", getResp["has_thumbnail"], getRec.Code, err)
 	}
+	assertUploadedFields(t, "get", getResp)
 	listRec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(listRec, httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/persons/%s/media", personID), http.NoBody))
 	var listResp struct {
@@ -149,9 +147,7 @@ func TestUploadPersonMedia_MissingTitle(t *testing.T) {
 	_ = json.Unmarshal(personRec.Body.Bytes(), &personResp)
 	personID := personResp["id"].(string)
 
-	// Upload media without title field
-	// Note: The current server implementation uses filename as title fallback,
-	// so missing title field still results in 201 with filename as title.
+	// Upload media without title field: the spec requires one, so it is refused.
 	jpegData := createTestJPEGImage()
 	fields := map[string]string{
 		"description": "Missing title",
@@ -168,15 +164,98 @@ func TestUploadPersonMedia_MissingTitle(t *testing.T) {
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
-	// Server accepts upload and uses filename as title
-	if rec.Code != http.StatusCreated {
-		t.Errorf("Status = %d, want %d", rec.Code, http.StatusCreated)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("Status = %d, want %d. Body: %s", rec.Code, http.StatusBadRequest, rec.Body.String())
+	}
+	if !bytes.Contains(rec.Body.Bytes(), []byte("title is required")) {
+		t.Errorf("Body = %s, want it to say the title is required", rec.Body.String())
 	}
 
-	var resp map[string]any
-	json.Unmarshal(rec.Body.Bytes(), &resp)
-	if resp["title"] != "test.jpg" {
-		t.Errorf("title = %v, want test.jpg (filename fallback)", resp["title"])
+	// Nothing was stored.
+	listRec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(listRec, httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/persons/%s/media", personID), http.NoBody))
+	if !bytes.Contains(listRec.Body.Bytes(), []byte(`"total":0`)) {
+		t.Errorf("list after refused upload = %s, want total 0", listRec.Body.String())
+	}
+}
+
+// assertUploadedFields checks a media payload carries the form fields
+// TestUploadPersonMedia sends.
+func assertUploadedFields(t *testing.T, label string, media map[string]any) {
+	t.Helper()
+	for field, want := range map[string]string{
+		"title":       "Family Portrait",
+		"description": "A family portrait from 1920",
+		"media_type":  "photo",
+	} {
+		if media[field] != want {
+			t.Errorf("%s %s = %v, want %q", label, field, media[field], want)
+		}
+	}
+}
+
+// Parts are read by name, not position: a title sent before the file is stored
+// as the title, and the file bytes as the content (#1000).
+func TestUploadPersonMedia_FieldsBeforeFile(t *testing.T) {
+	server := setupTestServer()
+	personRec := httptest.NewRecorder()
+	personReq := httptest.NewRequest(http.MethodPost, "/api/v1/persons", bytes.NewReader([]byte(`{"given_name":"Order","surname":"Test"}`)))
+	personReq.Header.Set("Content-Type", "application/json")
+	server.Echo().ServeHTTP(personRec, personReq)
+	var personResp map[string]any
+	_ = json.Unmarshal(personRec.Body.Bytes(), &personResp)
+	personID := personResp["id"].(string)
+
+	jpegData := createTestJPEGImage()
+	var buf bytes.Buffer
+	writer := multipart.NewWriter(&buf)
+	_ = writer.WriteField("title", "Wedding Day")
+	_ = writer.WriteField("media_type", "photo")
+	_ = writer.WriteField("unrelated", "ignored")
+	part, _ := writer.CreateFormFile("file", "wedding.jpg")
+	_, _ = part.Write(jpegData)
+	_ = writer.WriteField("description", "Sent after the file")
+	_ = writer.Close()
+
+	req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/v1/persons/%s/media", personID), &buf)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("Status = %d, want 201. Body: %s", rec.Code, rec.Body.String())
+	}
+	var media map[string]any
+	_ = json.Unmarshal(rec.Body.Bytes(), &media)
+	if media["title"] != "Wedding Day" || media["description"] != "Sent after the file" || media["media_type"] != "photo" {
+		t.Errorf("media = %v, want the title, description and media_type sent", media)
+	}
+	if media["filename"] != "wedding.jpg" {
+		t.Errorf("filename = %v, want wedding.jpg", media["filename"])
+	}
+
+	contentRec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(contentRec, httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/media/%s/content", media["id"]), http.NoBody))
+	if !bytes.Equal(contentRec.Body.Bytes(), jpegData) {
+		t.Errorf("content = %d bytes (status %d), want the %d uploaded bytes", contentRec.Body.Len(), contentRec.Code, len(jpegData))
+	}
+}
+
+// An oversized text part is refused rather than buffered without bound.
+func TestUploadPersonMedia_OversizedField(t *testing.T) {
+	server := setupTestServer()
+	personRec := httptest.NewRecorder()
+	personReq := httptest.NewRequest(http.MethodPost, "/api/v1/persons", bytes.NewReader([]byte(`{"given_name":"Big","surname":"Field"}`)))
+	personReq.Header.Set("Content-Type", "application/json")
+	server.Echo().ServeHTTP(personRec, personReq)
+	var personResp map[string]any
+	_ = json.Unmarshal(personRec.Body.Bytes(), &personResp)
+
+	req, _ := createMultipartRequest(fmt.Sprintf("/api/v1/persons/%s/media", personResp["id"]), "file", "big.jpg", createTestJPEGImage(),
+		map[string]string{"title": "Big", "description": string(bytes.Repeat([]byte("x"), 64<<10+1))})
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest || !bytes.Contains(rec.Body.Bytes(), []byte("description")) {
+		t.Errorf("Status = %d, body %s; want 400 naming the description", rec.Code, rec.Body.String())
 	}
 }
 
@@ -322,9 +401,8 @@ func TestGetMedia(t *testing.T) {
 		t.Fatalf("Failed to parse response: %v", err)
 	}
 
-	// Note: Server uses filename as title, not form field
-	if resp["title"] != "test.jpg" {
-		t.Errorf("title = %v, want test.jpg", resp["title"])
+	if resp["title"] != "Get Test Photo" {
+		t.Errorf("title = %v, want Get Test Photo", resp["title"])
 	}
 }
 

@@ -2943,21 +2943,29 @@ func (s *ReadModelStore) ListSources(ctx context.Context, opts repository.ListOp
 	args, n := overlayArgs(opts.BranchID)
 	src := overlaySrc("sources", sourceSelectCols, "", opts.BranchID)
 
+	// The title filter matches the resolved overlay rows, as SearchSources does.
+	where := ""
+	if opts.Query != "" {
+		where = fmt.Sprintf(" WHERE title ILIKE '%%' || $%d || '%%'", n)
+		args = append(args, opts.Query)
+		n++
+	}
+
 	var total int
-	// #nosec G202 -- src is built from package constants carrying only $-placeholders
+	// #nosec G202 -- src and where are built from package constants carrying only $-placeholders
 	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
-	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+src+" s", args...).Scan(&total); err != nil {
+	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+src+" s"+where, args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count sources: %w", err)
 	}
 
-	// #nosec G201 G202 -- src and n are internal; limit/offset stay bound parameters
+	// #nosec G201 G202 -- src, where and n are internal; the query text and limit/offset stay bound parameters
 	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 	query := fmt.Sprintf(`
 		SELECT `+sourceSelectCols+`
-		FROM %s s
+		FROM %s s%s
 		ORDER BY title ASC, id ASC
 		LIMIT $%d OFFSET $%d
-	`, src, n, n+1)
+	`, src, where, n, n+1)
 	rows, err := s.db.QueryContext(ctx, query, append(args, opts.Limit, opts.Offset)...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("query sources: %w", err)

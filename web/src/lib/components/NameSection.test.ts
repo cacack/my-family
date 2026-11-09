@@ -101,6 +101,20 @@ describe('NameSection', () => {
 		expect(onNamesChanged).not.toHaveBeenCalled();
 	});
 
+	// The API omits name_type for an untyped name (#1121): no empty pill shows.
+	it('shows no type pill for a name with no type', async () => {
+		const { name_type: _omitted, ...untyped } = surnameless();
+		vi.mocked(apiModule.api.getPersonNames).mockResolvedValue({
+			items: [untyped, { ...surnameless(), id: 'n2', given_name: 'Drina', name_type: 'aka', is_primary: false }],
+			total: 2
+		});
+		const { container } = render(NameSection, { personId: PERSON_ID });
+
+		await screen.findByText('Drina');
+		const pills = [...container.querySelectorAll('.name-type-badge')].map((p) => p.textContent?.trim());
+		expect(pills).toEqual(['AKA']);
+	});
+
 	it('still requires a given name', async () => {
 		render(NameSection, { personId: PERSON_ID });
 		await fireEvent.click(await screen.findByRole('button', { name: 'Add Name' }));

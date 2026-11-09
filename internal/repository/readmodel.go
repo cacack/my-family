@@ -892,6 +892,11 @@ type ListOptions struct {
 	// so a conflict a branch resolved is not listed as open there (#760).
 	// Other lists ignore it.
 	ConflictStatus *domain.ConflictStatus
+	// Query filters ListSources to the sources whose title contains it, matched
+	// as PostgreSQL's title ILIKE '%' || Query || '%' (see ContainsFold); the
+	// total counts the matches only. Empty lists every source. Other lists
+	// ignore it.
+	Query string
 	// BranchID scopes list queries over branch-aware slice entities (ADR-005).
 	// The zero value (domain.MainBranchID) lists the mainline only, reproducing
 	// pre-branch behavior. On a non-main branch the store returns the copy-on-write

@@ -3256,17 +3256,25 @@ func (s *ReadModelStore) GetSource(ctx context.Context, branchID domain.BranchID
 func (s *ReadModelStore) ListSources(ctx context.Context, opts repository.ListOptions) ([]repository.SourceReadModel, int, error) {
 	sub, args := factOverlaySubquery("sources", "", nil, opts.BranchID)
 
+	// The title filter matches the resolved overlay rows, as SearchSources does,
+	// with PostgreSQL's ILIKE rules (see containsFoldFunc).
+	where := ""
+	if opts.Query != "" {
+		where = " WHERE " + containsFoldFunc + "(title, ?)"
+		args = append(args, opts.Query)
+	}
+
 	var total int
-	// #nosec G202 -- sub is built from package constants; every value is a bound ? placeholder
+	// #nosec G202 -- sub and where are built from package constants; every value is a bound ? placeholder
 	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
-	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+sub+" src", args...).Scan(&total); err != nil {
+	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+sub+" src"+where, args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count sources: %w", err)
 	}
 
-	// #nosec G202 -- sub is built from package constants; every value is a bound ? placeholder
+	// #nosec G202 -- sub and where are built from package constants; every value is a bound ? placeholder
 	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT `+sourceSelectCols+` FROM `+sub+` src
+		SELECT `+sourceSelectCols+` FROM `+sub+` src`+where+`
 		ORDER BY title ASC, id ASC
 		LIMIT ? OFFSET ?
 	`, append(args, opts.Limit, opts.Offset)...)

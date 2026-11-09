@@ -1292,8 +1292,11 @@ func (s *ReadModelStore) ListSources(ctx context.Context, opts repository.ListOp
 
 	resolved := resolveAllRows(s.sources, opts.BranchID)
 	sources := make([]repository.SourceReadModel, 0, len(resolved))
+	title := repository.CompileContains(opts.Query)
 	for _, src := range resolved {
-		sources = append(sources, *src)
+		if opts.Query == "" || title.Match(src.Title) {
+			sources = append(sources, *src)
+		}
 	}
 
 	// Sort by title (id breaks ties)

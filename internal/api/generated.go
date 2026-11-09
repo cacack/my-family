@@ -4931,13 +4931,15 @@ type PersonList struct {
 
 // PersonName defines model for PersonName.
 type PersonName struct {
-	FullName      *string            `json:"full_name,omitempty"`
-	GivenName     string             `json:"given_name"`
-	Id            openapi_types.UUID `json:"id"`
-	IsPrimary     bool               `json:"is_primary"`
-	NamePrefix    *string            `json:"name_prefix,omitempty"`
-	NameSuffix    *string            `json:"name_suffix,omitempty"`
-	NameType      NameType           `json:"name_type"`
+	FullName   *string            `json:"full_name,omitempty"`
+	GivenName  string             `json:"given_name"`
+	Id         openapi_types.UUID `json:"id"`
+	IsPrimary  bool               `json:"is_primary"`
+	NamePrefix *string            `json:"name_prefix,omitempty"`
+	NameSuffix *string            `json:"name_suffix,omitempty"`
+
+	// NameType Omitted when the name has no type (a GEDCOM NAME without TYPE).
+	NameType      *NameType          `json:"name_type,omitempty"`
 	Nickname      *string            `json:"nickname,omitempty"`
 	PersonId      openapi_types.UUID `json:"person_id"`
 	Surname       string             `json:"surname"`
@@ -7480,7 +7482,7 @@ type ListSourcesParams struct {
 	Sort   *ListSourcesParamsSort  `form:"sort,omitempty" json:"sort,omitempty"`
 	Order  *ListSourcesParamsOrder `form:"order,omitempty" json:"order,omitempty"`
 
-	// Q Search query to filter sources
+	// Q Lists only the sources whose title contains this text (case-insensitive); total counts the matches.
 	Q *string `form:"q,omitempty" json:"q,omitempty"`
 }
 
