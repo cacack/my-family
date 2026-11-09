@@ -300,6 +300,7 @@ func countImportedValues(ctx context.Context, rs ReadModelStore) (int, error) {
 		return 0, fmt.Errorf("list families: %w", err)
 	}
 	for i := range families {
+		n += countSet(families[i].MarriagePlaceLat, families[i].MarriagePlaceLong)
 		ids, err := rs.GetFamilyExternalIDs(ctx, domain.MainBranchID, families[i].ID)
 		if err != nil {
 			return 0, fmt.Errorf("family %s exids: %w", families[i].ID, err)
@@ -623,7 +624,7 @@ func setsImportedValues(event domain.Event) bool {
 	case domain.LifeEventCreated:
 		return countSet(e.PlaceLat, e.PlaceLong) > 0
 	case domain.FamilyCreated:
-		return len(e.ExternalIDs) > 0
+		return countSet(e.MarriagePlaceLat, e.MarriagePlaceLong)+len(e.ExternalIDs) > 0
 	case domain.SourceCreated:
 		return len(e.ExternalIDs) > 0
 	case domain.RepositoryCreated:
