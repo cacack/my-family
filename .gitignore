@@ -24,6 +24,8 @@ vendor/
 *.db-wal
 *.db-shm
 *.db-journal
+# The serve/rebuild lock file next to a SQLite database (#1232)
+*.db.lock
 
 # Node.js / Frontend
 node_modules/

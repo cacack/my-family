@@ -154,25 +154,30 @@ Implemented in `internal/storage` (`storage.Open`), which `serve` calls at start
   logged at error level (`projection failed after append`, with event type,
   stream, version and branch) and recorded as a row in the read model's
   `projection_failures` table. `serve` warns on startup while any such row
-  exists. `myfamily rebuild` (server stopped) is the repair: it empties every
+  exists. `myfamily rebuild` is the repair: it empties every
   read-model table, including `projection_failures`, and replays the whole log
   into them on the same backend. The branch and snapshot registries are not
-  emptied, because their projections are replay-safe upserts. The few
-  read-model values that no event carries (GEDCOM place coordinates and
-  external IDs, brick walls) are read before the reset and written back after
-  the replay. They are also saved in the `rebuild_state` table, which the
+  emptied, because their projections are replay-safe upserts. Brick walls,
+  the one read-model value no event carries, are read before the reset and
+  written back after the replay; GEDCOM place coordinates and external IDs
+  travel in the entities' created events
+  ([#1225](https://github.com/cacack/my-family/issues/1225)), so the replay
+  reproduces them, except for entities imported before that change. The
+  brick walls are also saved in the `rebuild_state` table, which the
   reset keeps, and every event is decoded before the reset. A rebuild that
   stops after the reset (an error, Ctrl-C, a crash) therefore leaves that row
   behind: `serve` warns while it exists, and a rerun restores the values from
   it. An event that fails to replay is recorded like a live failure and the
   replay goes on; the rebuild then exits with an error, and the warning stays
   until a rebuild succeeds
-  ([#845](https://github.com/cacack/my-family/issues/845)). Values a GEDCOM
-  import would have written for an entity whose create projection failed
-  never reached the read model, so no rebuild can restore them until they are
-  logged ([#1225](https://github.com/cacack/my-family/issues/1225)). Nothing
-  stops a rebuild from running while `serve` is up; the operator must stop
-  the server first.
+  ([#845](https://github.com/cacack/my-family/issues/845)). `serve` and
+  `rebuild` exclude each other through a lock taken before any store is
+  built and held until exit: a PostgreSQL session advisory lock on a
+  connection of its own, or on SQLite an OS file lock (`flock`, `LockFileEx`)
+  on `<SQLITE_PATH>.lock`. Servers take it shared, so several may run; a
+  rebuild takes it exclusively, so each refuses to start while the other runs
+  ([#1232](https://github.com/cacack/my-family/issues/1232)). If a PostgreSQL
+  server's lock connection drops, its lock is lost until it restarts.
 
 ### SQLite Driver and Builds
 

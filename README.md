@@ -126,13 +126,14 @@ The read model is derived from the event log. If projecting an event fails after
 the request still succeeds, the failure is logged, and every later `serve` start warns that the
 read model is out of sync. To repair it, stop the server, back up the database, and run
 `myfamily rebuild` with the same `DATABASE_URL` / `SQLITE_PATH`. It empties the read model and
-replays the whole event log into it, keeping the values that are not in the log (GEDCOM place
-coordinates and external IDs, brick walls). If the rebuild is interrupted, `serve` keeps warning;
-run `myfamily rebuild` again and it restores those values from what it saved before the reset.
-One case it cannot repair: if the failed projection was a GEDCOM import creating a person or
-event, that entity's imported coordinates and external IDs never reached the read model, so the
-rebuild brings the entity back without them; re-import the file to recover them (see
-[#1225](https://github.com/cacack/my-family/issues/1225)).
+replays the whole event log into it, keeping brick walls, the one value that is not in the log.
+The rebuild refuses to start while a server is running against the same database, and the
+server refuses to start while a rebuild is running; on SQLite the lock is a `.lock` file next to
+the database file. If the rebuild is interrupted, `serve` keeps warning; run `myfamily rebuild`
+again and it restores the brick walls from what it saved before the reset. GEDCOM place
+coordinates and external IDs are in the log only for files imported by a version that has
+`myfamily rebuild`: a rebuild drops them from entities imported by an earlier version, so
+re-import those files afterwards.
 
 ## API Endpoints
 

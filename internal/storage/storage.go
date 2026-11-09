@@ -72,7 +72,9 @@ type Stores struct {
 	// Memory is non-nil only for BackendMemory.
 	Memory *MemoryStores
 
-	db *sql.DB
+	db     *sql.DB
+	lock   dbLock
+	access Access
 }
 
 // Describe returns a one-line, log-safe description of the store in use.
@@ -87,18 +89,23 @@ func (s *Stores) Describe() string {
 	}
 }
 
-// Close releases the underlying database connection. It is a no-op for the
-// in-memory backend and safe to call more than once.
+// Close releases the database lock and the underlying database connection.
+// It is a no-op for the in-memory backend and safe to call more than once.
 func (s *Stores) Close() error {
-	if s.db == nil {
-		return nil
+	var errs []error
+	if s.lock != nil {
+		if err := s.lock.close(); err != nil {
+			errs = append(errs, fmt.Errorf("release %s database lock: %w", s.Backend, err))
+		}
+		s.lock = nil
 	}
-	db := s.db
-	s.db = nil
-	if err := db.Close(); err != nil {
-		return fmt.Errorf("close %s database: %w", s.Backend, err)
+	if s.db != nil {
+		if err := s.db.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("close %s database: %w", s.Backend, err))
+		}
+		s.db = nil
 	}
-	return nil
+	return errors.Join(errs...)
 }
 
 // ErrRebuildMemory is returned by RebuildReadModel on the in-memory backend,
@@ -106,10 +113,14 @@ func (s *Stores) Close() error {
 var ErrRebuildMemory = errors.New("the in-memory backend has no persistent read model to rebuild; unset DEMO_MODE")
 
 // RebuildReadModel empties the read model and replays the event log into it
-// (#845); see repository.RebuildReadModel. Run it with the server stopped.
+// (#845); see repository.RebuildReadModel. The stores must have been opened
+// for AccessRebuild, whose lock keeps every server out meanwhile (#1232).
 func (s *Stores) RebuildReadModel(ctx context.Context) (repository.RebuildResult, error) {
 	if s.Backend == BackendMemory {
 		return repository.RebuildResult{}, ErrRebuildMemory
+	}
+	if s.access != AccessRebuild {
+		return repository.RebuildResult{}, ErrRebuildNotExclusive
 	}
 	return repository.RebuildReadModel(ctx, s.Events, s.ReadModel, s.Branches, s.Snapshots)
 }
@@ -152,16 +163,18 @@ func Select(cfg *config.Config) Backend {
 }
 
 // Open selects a backend from cfg (see Select) and constructs all four stores
-// over it, running each store's schema setup. The caller must Close the
-// result.
-func Open(cfg *config.Config) (*Stores, error) {
+// over it, running each store's schema setup. A SQL backend is first locked
+// for access (see Access), so Open fails with ErrServerRunning or
+// ErrRebuildRunning, before touching the database, when the two would
+// overlap. The caller must Close the result, which releases the lock.
+func Open(cfg *config.Config, access Access) (*Stores, error) {
 	switch Select(cfg) {
 	case BackendMemory:
 		return OpenMemory(), nil
 	case BackendPostgres:
-		return OpenPostgres(cfg.DatabaseURL)
+		return OpenPostgres(cfg.DatabaseURL, access)
 	default:
-		return OpenSQLite(cfg.SQLitePath)
+		return OpenSQLite(cfg.SQLitePath, access)
 	}
 }
 
@@ -186,19 +199,27 @@ func OpenMemory() *Stores {
 }
 
 // OpenSQLite opens (creating if needed) the SQLite database at path and
-// constructs all four stores over it.
-func OpenSQLite(path string) (*Stores, error) {
+// constructs all four stores over it, holding the lock for access on the file
+// path + ".lock" until Close.
+func OpenSQLite(path string, access Access) (*Stores, error) {
 	if strings.TrimSpace(path) == "" {
 		return nil, errors.New("SQLite storage selected but SQLITE_PATH is empty")
 	}
+	lock, err := openFileLock(path + ".lock")
+	if err != nil {
+		return nil, fmt.Errorf("open SQLite database %q: lock file: %w", path, err)
+	}
+	if err := acquire(lock, access); err != nil {
+		return nil, errors.Join(fmt.Errorf("open SQLite database %q: %w", path, err), lock.close())
+	}
 	db, err := sqlite.OpenDB(path)
 	if err != nil {
-		return nil, fmt.Errorf("open SQLite database %q: %w", path, err)
+		return nil, errors.Join(fmt.Errorf("open SQLite database %q: %w", path, err), lock.close())
 	}
 	// The read model is constructed FIRST: on a pre-#733 database it renames
 	// its old `events` table to `life_events`, which the event store otherwise
 	// refuses to touch (sqlite.ErrReadModelEventsTable).
-	return build(BackendSQLite, path, db,
+	return build(BackendSQLite, path, db, lock, access,
 		func(db *sql.DB) (repository.ReadModelStore, error) { return sqlite.NewReadModelStore(db) },
 		func(db *sql.DB) (repository.EventStore, error) { return sqlite.NewEventStore(db) },
 		func(db *sql.DB) (repository.SnapshotStore, error) { return sqlite.NewSnapshotStore(db) },
@@ -207,13 +228,14 @@ func OpenSQLite(path string) (*Stores, error) {
 }
 
 // OpenPostgres connects to the PostgreSQL database at connStr and constructs
-// all four stores over it.
+// all four stores over it, holding a session advisory lock for access on a
+// connection of its own until Close.
 //
 // No error it returns carries the connection string's password: lib/pq repeats
 // the raw DSN in some of its errors (notably URL parse failures), so driver
 // errors are scrubbed before they are wrapped, and a URL-shaped string that
 // does not parse is rejected before it reaches the driver at all.
-func OpenPostgres(connStr string) (*Stores, error) {
+func OpenPostgres(connStr string, access Access) (*Stores, error) {
 	if strings.Contains(connStr, "://") {
 		if !validURL(connStr) {
 			// Deliberately not wrapping err: url.Error quotes the whole input,
@@ -228,8 +250,16 @@ func OpenPostgres(connStr string) (*Stores, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open PostgreSQL database %s: %w", location, scrubError(err, connStr))
 	}
+	conn, err := db.Conn(context.Background())
+	if err != nil {
+		return nil, errors.Join(fmt.Errorf("open PostgreSQL database %s: lock connection: %w", location, scrubError(err, connStr)), db.Close())
+	}
+	lock := &advisoryLock{conn: conn}
+	if err := acquire(lock, access); err != nil {
+		return nil, errors.Join(fmt.Errorf("open PostgreSQL database %s: %w", location, err), lock.close(), db.Close())
+	}
 	// Read model first, for the same pre-#733 reason as SQLite.
-	return build(BackendPostgres, location, db,
+	return build(BackendPostgres, location, db, lock, access,
 		func(db *sql.DB) (repository.ReadModelStore, error) { return postgres.NewReadModelStore(db) },
 		func(db *sql.DB) (repository.EventStore, error) { return postgres.NewEventStore(db) },
 		func(db *sql.DB) (repository.SnapshotStore, error) { return postgres.NewSnapshotStore(db) },
@@ -238,17 +268,20 @@ func OpenPostgres(connStr string) (*Stores, error) {
 }
 
 // build constructs the four stores over db in a fixed order (read model first)
-// and closes db if any construction fails, so a failed Open leaks nothing.
+// and closes db and releases lock if any construction fails, so a failed Open
+// leaks nothing.
 func build(
 	backend Backend,
 	location string,
 	db *sql.DB,
+	lock dbLock,
+	access Access,
 	newReadModel func(*sql.DB) (repository.ReadModelStore, error),
 	newEvents func(*sql.DB) (repository.EventStore, error),
 	newSnapshots func(*sql.DB) (repository.SnapshotStore, error),
 	newBranches func(*sql.DB) (repository.BranchStore, error),
 ) (*Stores, error) {
-	s := &Stores{Backend: backend, Location: location, db: db}
+	s := &Stores{Backend: backend, Location: location, db: db, lock: lock, access: access}
 	fail := func(what string, err error) (*Stores, error) {
 		return nil, errors.Join(
 			fmt.Errorf("initialize %s %s store: %w", backend, what, err),
