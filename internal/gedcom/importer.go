@@ -617,7 +617,7 @@ func parseIndividual(indi *gedcom.Individual, _ *gedcom.Document, result *Import
 		case gedcom.EventBirth:
 			person.BirthDate = event.Date
 			person.BirthPlace = event.PlaceName()
-			person.BirthNotes = joinNotes(person.BirthNotes, eventNotes(event))
+			person.BirthNotes = eventNotes(event)
 			// Extract coordinates from PlaceDetail if available
 			if event.PlaceDetail != nil && event.PlaceDetail.Coordinates != nil {
 				if event.PlaceDetail.Coordinates.Latitude != "" {
@@ -639,7 +639,7 @@ func parseIndividual(indi *gedcom.Individual, _ *gedcom.Document, result *Import
 		case gedcom.EventDeath:
 			person.DeathDate = event.Date
 			person.DeathPlace = event.PlaceName()
-			person.DeathNotes = joinNotes(person.DeathNotes, eventNotes(event))
+			person.DeathNotes = eventNotes(event)
 			// Extract coordinates from PlaceDetail if available
 			if event.PlaceDetail != nil && event.PlaceDetail.Coordinates != nil {
 				if event.PlaceDetail.Coordinates.Latitude != "" {
@@ -760,7 +760,7 @@ func parseFamily(fam *gedcom.Family, doc *gedcom.Document, result *ImportResult)
 			family.RelationshipType = domain.RelationMarriage
 			family.MarriageDate = event.Date
 			family.MarriagePlace = event.PlaceName()
-			family.MarriageNotes = joinNotes(family.MarriageNotes, eventNotes(event))
+			family.MarriageNotes = eventNotes(event)
 			// Extract coordinates from PlaceDetail if available
 			if event.PlaceDetail != nil && event.PlaceDetail.Coordinates != nil {
 				if event.PlaceDetail.Coordinates.Latitude != "" {
@@ -996,70 +996,146 @@ var recordLabels = map[gedcom.RecordType]string{
 	gedcom.RecordTypeSubmitter:  "Submitter",
 }
 
+// recordKeepsNotes lists the record types whose own level-1 NOTE lines the
+// import keeps (recordNotes). A FAM, OBJE or SUBM record has no notes field.
+var recordKeepsNotes = map[gedcom.RecordType]bool{
+	gedcom.RecordTypeIndividual: true,
+	gedcom.RecordTypeSource:     true,
+	gedcom.RecordTypeRepository: true,
+}
+
 // droppedNoteMaxLen caps how much of a dropped note a warning quotes.
 const droppedNoteMaxLen = 60
 
-// warnDroppedNestedNotes adds a warning for each NOTE nested in a record's
-// substructure that the import does not keep, naming the record, the
-// substructure and the note, so the loss is visible (#1250). A record's own
-// level-1 NOTEs are kept (recordNotes), as are the NOTEs directly under an
-// individual's ASSO and events and a family's imported events.
+// droppedNotesPerPath caps the dropped notes warned about one by one under
+// the same record type and path (e.g. INDI.BIRT.SOUR); the rest are counted
+// in one summary warning, so a large file does not flood the result.
+const droppedNotesPerPath = 5
+
+// warnDroppedNestedNotes adds a warning for each NOTE or SNOTE line the
+// import does not keep, naming the record, the substructure and the note, so
+// the loss is visible (#1250). Kept are the level-1 NOTE lines of the record
+// types in recordKeepsNotes, and the NOTEs directly under an individual's ASSO
+// and events and a family's imported events. Of several BIRT, DEAT or MARR
+// blocks only the last is kept, as for their date and place.
 func warnDroppedNestedNotes(doc *gedcom.Document, result *ImportResult) {
+	counts := map[string]int{}
+	var paths []string // keys of counts, in first-seen order
 	for _, rec := range doc.Records {
-		kept := func(string) bool { return false }
-		if indi, ok := rec.GetIndividual(); ok {
-			kept = func(parent string) bool {
-				return parent == "ASSO" || slices.ContainsFunc(indi.Events, func(e *gedcom.Event) bool {
-					return e != nil && string(e.Type) == parent
-				})
-			}
-		} else if rec.IsFamily() {
-			kept = func(parent string) bool {
-				_, ok := familyEventFactType(gedcom.EventType(parent))
-				return ok
-			}
+		label := recordLabels[rec.Type]
+		if label == "" {
+			label = string(rec.Type)
 		}
-		for _, d := range droppedNestedNotes(rec.Tags, kept) {
-			label := recordLabels[rec.Type]
-			if label == "" {
-				label = string(rec.Type)
+		for _, d := range droppedNotes(rec.Tags, recordKeepsNotes[rec.Type], keptEventNotes(rec)) {
+			key := strings.Join(append([]string{string(rec.Type)}, d.path...), ".")
+			if counts[key] == 0 {
+				paths = append(paths, key)
+			}
+			counts[key]++
+			if counts[key] > droppedNotesPerPath {
+				continue
+			}
+			where := ""
+			if len(d.path) > 0 {
+				where = " under " + strings.Join(d.path, ".")
 			}
 			result.Warnings = append(result.Warnings,
-				fmt.Sprintf("%s %s: NOTE under %s not imported: %q", label, rec.XRef, d.path, d.text))
+				fmt.Sprintf("%s %s: %s%s not imported: %q", label, rec.XRef, d.tag, where, d.text))
+		}
+	}
+	for _, key := range paths {
+		if n := counts[key] - droppedNotesPerPath; n > 0 {
+			result.Warnings = append(result.Warnings, fmt.Sprintf("%d more notes under %s not imported", n, key))
 		}
 	}
 }
 
-// droppedNote is a nested NOTE the import does not keep: the dot-joined path
-// of the substructure it sits under, and its text or pointer.
-type droppedNote struct{ path, text string }
+// keptEventNotes reports, for a record, whether the NOTEs directly under a
+// level-1 block are kept; last is true for the last block of its kind.
+func keptEventNotes(rec *gedcom.Record) func(block string, last bool) bool {
+	if indi, ok := rec.GetIndividual(); ok {
+		return func(block string, last bool) bool {
+			switch block {
+			case "BIRT", "DEAT":
+				return last // parseIndividual keeps the last one's notes
+			case "ASSO":
+				return true
+			}
+			eventType := gedcom.EventType(strings.TrimPrefix(block, "NO "))
+			return slices.ContainsFunc(indi.Events, func(e *gedcom.Event) bool {
+				return e != nil && e.Type == eventType
+			})
+		}
+	}
+	if rec.IsFamily() {
+		return func(block string, last bool) bool {
+			if block == "MARR" {
+				return last // parseFamily keeps the last one's notes
+			}
+			_, ok := familyEventFactType(gedcom.EventType(strings.TrimPrefix(block, "NO ")))
+			return ok
+		}
+	}
+	return func(string, bool) bool { return false }
+}
 
-// droppedNestedNotes returns the NOTE and SNOTE lines nested below level 1 in
-// tags, except those directly under a level-1 substructure for which kept
-// reports true. A 7.0 "NO <event>" substructure is identified by its event.
-func droppedNestedNotes(tags []*gedcom.Tag, kept func(parent string) bool) []droppedNote {
+// droppedNote is a NOTE or SNOTE line the import does not keep: its tag, the
+// path of the substructure it sits under (empty for the record's own), and
+// its text or pointer, cut to droppedNoteMaxLen.
+type droppedNote struct {
+	tag  string
+	path []string
+	text string
+}
+
+// droppedNotes returns the non-empty NOTE and SNOTE lines in a record's tags
+// that the import does not keep: a level-1 line unless keepsOwn and it is a
+// NOTE, a level-2 line unless kept reports true for its level-1 block, and any
+// deeper one. A level-1 block is named by its tag, a 7.0 negative assertion
+// as "NO <event>".
+func droppedNotes(tags []*gedcom.Tag, keepsOwn bool, kept func(block string, last bool) bool) []droppedNote {
+	blockName := func(tag *gedcom.Tag) string {
+		if tag.Tag == "NO" {
+			return "NO " + strings.TrimSpace(tag.Value)
+		}
+		return tag.Tag
+	}
+	lastBlock := map[string]int{}
+	for i, tag := range tags {
+		if tag.Level == 1 {
+			lastBlock[blockName(tag)] = i
+		}
+	}
+
 	var dropped []droppedNote
-	var path []string // path[l-1] identifies the open level-l substructure
+	var path []string // path[l-1] names the open level-l substructure
+	block := -1       // index of the open level-1 block
 	for i, tag := range tags {
 		if tag.Level < 1 {
 			path = path[:0]
 			continue
 		}
 		path = path[:min(len(path), tag.Level-1)]
-		if tag.Level >= 2 && (tag.Tag == "NOTE" || tag.Tag == "SNOTE") &&
-			(len(path) != 1 || !kept(path[0])) {
-			if text := noteText(tags, i); text != "" {
+		if tag.Tag == "NOTE" || tag.Tag == "SNOTE" {
+			var keep bool
+			switch {
+			case tag.Level == 1:
+				keep = keepsOwn && tag.Tag == "NOTE"
+			case tag.Level == 2 && len(path) == 1:
+				keep = kept(path[0], lastBlock[path[0]] == block)
+			}
+			if text := noteText(tags, i); !keep && text != "" {
 				if r := []rune(text); len(r) > droppedNoteMaxLen {
 					text = string(r[:droppedNoteMaxLen]) + "..."
 				}
-				dropped = append(dropped, droppedNote{path: strings.Join(path, "."), text: text})
+				dropped = append(dropped, droppedNote{tag: tag.Tag, path: slices.Clone(path), text: text})
 			}
 		}
-		id := tag.Tag
-		if tag.Level == 1 && tag.Tag == "NO" {
-			id = strings.TrimSpace(tag.Value)
+		name := tag.Tag
+		if tag.Level == 1 {
+			name, block = blockName(tag), i
 		}
-		path = append(path, id)
+		path = append(path, name)
 	}
 	return dropped
 }

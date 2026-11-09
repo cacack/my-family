@@ -8,7 +8,9 @@ import (
 	"testing"
 
 	"github.com/cacack/my-family/internal/command"
+	"github.com/cacack/my-family/internal/domain"
 	"github.com/cacack/my-family/internal/gedcom"
+	"github.com/cacack/my-family/internal/repository"
 )
 
 // NOTEs nested under events (issue #1250).
@@ -132,4 +134,70 @@ func eventNoteLines(out, recordLine, event string) []string {
 		}
 	}
 	return notes
+}
+
+const mergeNotesGedcom = `0 HEAD
+1 GEDC
+2 VERS 5.5.1
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME John /Doe/
+1 BIRT
+2 DATE 1850
+2 NOTE Born at home
+0 @I2@ INDI
+1 NAME Johnny /Doe/
+1 BIRT
+2 DATE 1851
+2 NOTE Baptised the same week
+1 DEAT
+2 NOTE Died abroad
+0 TRLR
+`
+
+func TestMergePersons_KeepsBothPersonsEventNotes(t *testing.T) {
+	// A merge adds the merged person's birth and death notes to the
+	// survivor's, even when the birth date resolves to the merged person, and
+	// a replay of the log reproduces the result (#1250).
+	for _, backend := range backends {
+		t.Run(backend.name, func(t *testing.T) {
+			ctx := context.Background()
+			st := backend.setup(t)
+			h := command.NewHandlerWithBranches(st.events, st.read, st.branches, st.snapshots)
+			if _, err := h.ImportGedcom(ctx, command.ImportGedcomInput{Filename: "t.ged", Reader: strings.NewReader(mergeNotesGedcom)}); err != nil {
+				t.Fatalf("import: %v", err)
+			}
+			persons, err := repository.ListAll(ctx, 100, st.read.ListPersons)
+			if err != nil {
+				t.Fatal(err)
+			}
+			byName := map[string]repository.PersonReadModel{}
+			for _, p := range persons {
+				byName[p.GivenName] = p
+			}
+			survivor, merged := byName["John"], byName["Johnny"]
+			if _, err := h.MergePersons(ctx, command.MergePersonsInput{
+				SurvivorID: survivor.ID, MergedID: merged.ID,
+				SurvivorVersion: survivor.Version, MergedVersion: merged.Version,
+				FieldResolution: map[string]string{"birth_date": "merged"},
+			}); err != nil {
+				t.Fatalf("merge: %v", err)
+			}
+
+			fresh := backend.setup(t).read
+			replayLog(t, ctx, st.events, fresh)
+			for name, rs := range map[string]repository.ReadModelStore{"live": st.read, "replayed": fresh} {
+				got, err := rs.GetPerson(ctx, domain.MainBranchID, survivor.ID)
+				if err != nil || got == nil {
+					t.Fatalf("%s: get survivor: %v, %v", name, got, err)
+				}
+				if want := "Born at home\n\nBaptised the same week"; got.BirthNotes != want || got.BirthDateRaw != "1851" {
+					t.Errorf("%s: survivor birth = %q, notes %q; want 1851, %q", name, got.BirthDateRaw, got.BirthNotes, want)
+				}
+				if got.DeathNotes != "Died abroad" {
+					t.Errorf("%s: survivor DeathNotes = %q, want %q", name, got.DeathNotes, "Died abroad")
+				}
+			}
+		})
+	}
 }

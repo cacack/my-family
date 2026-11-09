@@ -3,6 +3,7 @@ package gedcom_test
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -182,7 +183,24 @@ func TestEventNotes_FollowRenamedNoteXref(t *testing.T) {
 	}
 }
 
-func TestImport_WarnsOnDroppedNestedNotes(t *testing.T) {
+// droppedNoteWarnings imports data and returns its dropped-note warnings and
+// persons.
+func droppedNoteWarnings(t *testing.T, data string) ([]string, []gedcom.PersonData) {
+	t.Helper()
+	result, persons, _, _, _, _, _, _, _, _, _, _, _, err := gedcom.NewImporter().Import(context.Background(), strings.NewReader(data))
+	if err != nil {
+		t.Fatalf("import: %v", err)
+	}
+	var got []string
+	for _, w := range result.Warnings {
+		if strings.Contains(w, "not imported") {
+			got = append(got, w)
+		}
+	}
+	return got, persons
+}
+
+func TestImport_WarnsOnDroppedNotes(t *testing.T) {
 	// A NOTE the import has nowhere to keep is reported, naming the record,
 	// the substructure and the note; the notes it keeps are not (#1250).
 	const data = `0 HEAD
@@ -203,6 +221,10 @@ func TestImport_WarnsOnDroppedNestedNotes(t *testing.T) {
 1 NAME John /Doe/
 2 NOTE Spelling varies
 1 BIRT
+2 DATE 1849
+2 NOTE An earlier claim
+1 BIRT
+2 DATE 1850
 2 NOTE Born at home
 2 SOUR @S1@
 3 NOTE Page is torn
@@ -217,25 +239,59 @@ func TestImport_WarnsOnDroppedNestedNotes(t *testing.T) {
 1 WIFE @I2@
 1 MARR
 2 NOTE Married in the parlour
+1 NOTE Lived on the farm
+0 @M1@ OBJE
+1 FILE photo.jpg
+2 FORM jpg
+1 NOTE A family photo
+0 @U1@ SUBM
+1 NAME Ann Smith
+1 NOTE Contact by mail
 0 TRLR
 `
-	result, _, _, _, _, _, _, _, _, _, _, _, _, err := gedcom.NewImporter().Import(context.Background(), strings.NewReader(data))
-	if err != nil {
-		t.Fatalf("import: %v", err)
-	}
-	var got []string
-	for _, w := range result.Warnings {
-		if strings.Contains(w, "not imported") {
-			got = append(got, w)
-		}
-	}
+	got, persons := droppedNoteWarnings(t, data)
 	want := []string{
 		`Repository @R1@: NOTE under ADDR not imported: "Entrance on the side street"`,
 		`Source @S1@: NOTE under REPO not imported: "Microfilm only"`,
 		`Individual @I1@: NOTE under NAME not imported: "Spelling varies"`,
+		`Individual @I1@: NOTE under BIRT not imported: "An earlier claim"`,
 		`Individual @I1@: NOTE under BIRT.SOUR not imported: "Page is torn"`,
+		`Family @F1@: NOTE not imported: "Lived on the farm"`,
+		`Media @M1@: NOTE not imported: "A family photo"`,
+		`Submitter @U1@: NOTE not imported: "Contact by mail"`,
 	}
 	if !slices.Equal(got, want) {
-		t.Errorf("dropped-note warnings = %q, want %q", got, want)
+		t.Errorf("dropped-note warnings =\n%q\nwant\n%q", got, want)
+	}
+
+	// Of two BIRT blocks the last supplies the date, place and notes.
+	for _, p := range persons {
+		if p.GivenName == "John" && (p.BirthDate != "1850" || p.BirthNotes != "Born at home") {
+			t.Errorf("John's birth = %q, notes %q; want 1850, %q", p.BirthDate, p.BirthNotes, "Born at home")
+		}
+	}
+}
+
+func TestImport_CapsDroppedNoteWarningsPerPath(t *testing.T) {
+	// Past five dropped notes under the same record type and path, the rest
+	// are counted in one summary warning (#1250).
+	var b strings.Builder
+	b.WriteString("0 HEAD\n1 GEDC\n2 VERS 5.5.1\n1 CHAR UTF-8\n0 @S1@ SOUR\n1 TITL Census\n")
+	for i := 1; i <= 7; i++ {
+		fmt.Fprintf(&b, "0 @I%d@ INDI\n1 NAME P%d /Doe/\n1 BIRT\n2 SOUR @S1@\n3 NOTE Citation note %d\n", i, i, i)
+	}
+	b.WriteString("0 @I8@ INDI\n1 NAME P8 /Doe/\n2 NOTE Name note\n0 TRLR\n")
+
+	got, _ := droppedNoteWarnings(t, b.String())
+	var want []string
+	for i := 1; i <= 5; i++ {
+		want = append(want, fmt.Sprintf(`Individual @I%d@: NOTE under BIRT.SOUR not imported: "Citation note %d"`, i, i))
+	}
+	want = append(want,
+		`Individual @I8@: NOTE under NAME not imported: "Name note"`,
+		"2 more notes under INDI.BIRT.SOUR not imported",
+	)
+	if !slices.Equal(got, want) {
+		t.Errorf("dropped-note warnings =\n%q\nwant\n%q", got, want)
 	}
 }
