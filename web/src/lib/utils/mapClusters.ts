@@ -1,3 +1,5 @@
+import * as d3 from 'd3';
+
 /**
  * Screen-space clustering and labels for the geographic map's markers.
  */
@@ -10,29 +12,60 @@ export interface MapCluster<T> {
 }
 
 /**
- * Greedy clustering: each item joins the first cluster whose centre lies within
- * `radius` of it, else starts a new one. Co-located items always share a cluster.
- * Pass items largest first so the big markers anchor the clusters.
+ * Merges markers until no two drawn circles overlap: two clusters join whenever
+ * their centres are no farther apart than the sum of their drawn radii, and the
+ * merged centre is the mean of all its members' positions. A merge can move a
+ * centre and grow its radius into a neighbour, so merging repeats until stable.
+ * Co-located items always share a cluster. Pass items largest first so the big
+ * markers anchor the clusters (and come first in each cluster's items).
  */
 export function clusterPoints<T>(
 	items: T[],
 	position: (item: T) => [number, number],
-	radius: number
+	radius: (items: T[]) => number
 ): MapCluster<T>[] {
-	const clusters: MapCluster<T>[] = [];
-	for (const item of items) {
+	const clusters = items.map((item) => {
 		const [x, y] = position(item);
-		const near = clusters.find((c) => Math.hypot(c.x - x, c.y - y) <= radius);
-		if (near) {
-			const n = near.items.length;
-			near.x = (near.x * n + x) / (n + 1);
-			near.y = (near.y * n + y) / (n + 1);
-			near.items.push(item);
-		} else {
-			clusters.push({ x, y, items: [item] });
+		return { x, y, items: [item], sumX: x, sumY: y, r: radius([item]) };
+	});
+	const overlap = (a: (typeof clusters)[number], b: (typeof clusters)[number]) =>
+		Math.hypot(a.x - b.x, a.y - b.y) <= a.r + b.r;
+
+	let merged = true;
+	while (merged) {
+		merged = false;
+		for (let i = 0; i < clusters.length; i++) {
+			const a = clusters[i];
+			for (let j = i + 1; j < clusters.length; j++) {
+				const b = clusters[j];
+				if (!overlap(a, b)) continue;
+				a.items.push(...b.items);
+				a.sumX += b.sumX;
+				a.sumY += b.sumY;
+				a.x = a.sumX / a.items.length;
+				a.y = a.sumY / a.items.length;
+				a.r = radius(a.items);
+				clusters.splice(j, 1);
+				merged = true;
+				// a moved and grew: check it against every later cluster again
+				j = i;
+			}
 		}
 	}
-	return clusters;
+	return clusters.map(({ x, y, items }) => ({ x, y, items }));
+}
+
+/**
+ * The drawn radius of a marker in screen pixels, by the people it holds: area
+ * grows with the count, from 7px for one person up to 20px at `maxCount`.
+ */
+export function markerRadius(maxCount: number): (items: { count: number }[]) => number {
+	const scale = d3
+		.scaleSqrt()
+		.domain([1, maxCount || 1])
+		.range([7, 20])
+		.clamp(true);
+	return (items) => scale(d3.sum(items, (d) => d.count));
 }
 
 interface LabelledLocation {
