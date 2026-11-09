@@ -933,7 +933,9 @@ func TestImportOccupationAttribute(t *testing.T) {
 	}
 }
 
-func TestImportResidenceAttribute(t *testing.T) {
+// TestImportResidenceOnce checks that a RESI is imported once, as a residence
+// life event keeping its address and note, and not also as an attribute (#1266).
+func TestImportResidenceOnce(t *testing.T) {
 	gedcomData := `0 HEAD
 1 GEDC
 2 VERS 5.5
@@ -945,13 +947,16 @@ func TestImportResidenceAttribute(t *testing.T) {
 2 DATE 1840
 1 RESI
 2 DATE 1870
-2 PLAC 123 Main St, Springfield, IL
+2 PLAC Springfield, IL
+2 ADDR 123 Main St
+3 CITY Springfield
+2 NOTE Boarded with her aunt
 0 TRLR
 `
 	importer := gedcom.NewImporter()
 	ctx := context.Background()
 
-	_, persons, _, _, _, _, _, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	_, persons, _, _, _, _, events, attributes, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -959,10 +964,18 @@ func TestImportResidenceAttribute(t *testing.T) {
 	if len(persons) != 1 {
 		t.Fatalf("len(persons) = %d, want 1", len(persons))
 	}
-
-	person := persons[0]
-	if person.GivenName != "Sarah" {
-		t.Errorf("GivenName = %s, want Sarah", person.GivenName)
+	if len(attributes) != 0 {
+		t.Errorf("attributes = %+v, want none", attributes)
+	}
+	if len(events) != 1 {
+		t.Fatalf("events = %+v, want one residence", events)
+	}
+	e := events[0]
+	if e.FactType != domain.FactPersonResidence || e.Date != "1870" || e.Place != "Springfield, IL" || e.Notes != "Boarded with her aunt" {
+		t.Errorf("residence = %+v, want person_residence 1870 in Springfield, IL with its note", e)
+	}
+	if e.Address == nil || e.Address.City != "Springfield" {
+		t.Errorf("residence address = %+v, want city Springfield", e.Address)
 	}
 }
 
@@ -1363,12 +1376,12 @@ func TestImportAttributesExtraction(t *testing.T) {
 		t.Fatalf("Import failed: %v", err)
 	}
 
-	// Should have 5 attributes (OCCU, RESI as events, plus EDUC, RELI, TITL as tags)
-	if result.AttributesImported != 5 {
-		t.Errorf("AttributesImported = %d, want 5", result.AttributesImported)
+	// Should have 4 attributes (OCCU, EDUC, RELI, TITL); RESI is a life event (#1266)
+	if result.AttributesImported != 4 {
+		t.Errorf("AttributesImported = %d, want 4", result.AttributesImported)
 	}
-	if len(attributes) != 5 {
-		t.Fatalf("len(attributes) = %d, want 5", len(attributes))
+	if len(attributes) != 4 {
+		t.Fatalf("len(attributes) = %d, want 4", len(attributes))
 	}
 
 	// Verify attribute types

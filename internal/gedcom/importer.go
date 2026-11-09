@@ -1547,6 +1547,10 @@ func extractEventsFromIndividual(indi *gedcom.Individual, personID uuid.UUID) []
 			factType = domain.FactPersonNaturalization
 		case gedcom.EventCensus:
 			factType = domain.FactPersonCensus
+		case gedcom.EventResidence:
+			// RESI is imported once, as a life event: unlike an attribute, it
+			// keeps the residence's coordinates, address, notes and citations.
+			factType = domain.FactPersonResidence
 		default:
 			// Generic event for unrecognized types
 			factType = domain.FactPersonGenericEvent
@@ -1610,33 +1614,9 @@ func convertGedcomAddress(addr *gedcom.Address) *domain.Address {
 func extractAttributesFromIndividual(indi *gedcom.Individual, personID uuid.UUID) []AttributeData {
 	var attributes []AttributeData
 
-	for _, event := range indi.Events {
-		var factType domain.FactType
-		var value string
-
-		// OCCU is an attribute, not an event: it arrives via the indi.Tags loop
-		// below. (Only a 7.0 "NO OCCU" ever decoded into Events.)
-		switch event.Type {
-		case gedcom.EventResidence:
-			factType = domain.FactPersonResidence
-			value = event.PlaceName() // For residence, place is the value
-		default:
-			// Not an attribute type, skip
-			continue
-		}
-
-		attr := AttributeData{
-			ID:       uuid.New(),
-			PersonID: personID,
-			FactType: factType,
-			Value:    value,
-			Date:     event.Date,
-			Place:    event.PlaceName(),
-		}
-		attributes = append(attributes, attr)
-	}
-
-	// Also check for attribute-specific tags that might be on individual directly
+	// RESI decodes into indi.Events and is imported as a life event
+	// (extractEventsFromIndividual), not here, so it is stored once. The
+	// attributes are read from the individual's top-level tags.
 	// Note: These are top-level tags that may not have DATE/PLAC subordinates accessible
 	for _, tag := range indi.Tags {
 		var factType domain.FactType
