@@ -96,6 +96,94 @@ func TestExport_MultipleNotePointers(t *testing.T) {
 	}
 }
 
+func TestExport_MixedNotePointerAndText(t *testing.T) {
+	// A record with "1 NOTE @N1@" and "1 NOTE some text" stores
+	// "@N1@\n\nsome text". Export must write a pointer line and a separate
+	// inline note, not a pointer carrying the text on CONT lines, which
+	// re-imports as the bare pointer (#1237).
+	readStore := memory.NewReadModelStore()
+	ctx := context.Background()
+	if err := readStore.SaveNote(ctx, domain.MainBranchID, &repository.NoteReadModel{
+		ID: uuid.New(), Text: "Shared note", GedcomXref: "@N1@",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	const mixed = "@N1@\n\nsome text"
+	// Inline-only text, multi-line (CONT) and over one line's length (CONC),
+	// must still export exactly as before.
+	long := strings.Repeat("word ", 60) + "end"
+	inlineOnly := "Line one\n" + long
+	if err := readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
+		ID: uuid.New(), GivenName: "Ann", Surname: "Smith", Notes: mixed,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
+		ID: uuid.New(), GivenName: "Bob", Surname: "Jones", Notes: "plain text",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
+		ID: uuid.New(), GivenName: "Cy", Surname: "Long", Notes: inlineOnly,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := readStore.SaveSource(ctx, domain.MainBranchID, &repository.SourceReadModel{
+		ID: uuid.New(), SourceType: "book", Title: "Register", Notes: mixed,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := readStore.SaveRepository(ctx, &repository.RepositoryReadModel{
+		ID: uuid.New(), Name: "Archive", Notes: mixed,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, version := range []gcgedcom.Version{gcgedcom.Version551, gcgedcom.Version70} {
+		t.Run(string(version), func(t *testing.T) {
+			buf := &bytes.Buffer{}
+			if _, err := gedcom.NewExporter(readStore).ExportWithOptions(ctx, buf, gedcom.ExportOptions{TargetVersion: version}); err != nil {
+				t.Fatalf("Export failed: %v", err)
+			}
+			output := buf.String()
+			// Person, source and repository each write the pointer with no
+			// subordinate CONT, then the text as its own NOTE.
+			if got := strings.Count(output, "1 NOTE @N1@\n1 NOTE some text\n"); got != 3 {
+				t.Errorf("export has %d pointer+text NOTE pairs, want 3; got:\n%s", got, output)
+			}
+			if strings.Contains(output, "1 NOTE @N1@\n2 CONT") {
+				t.Errorf("a note pointer must not carry CONT lines; got:\n%s", output)
+			}
+			if !strings.Contains(output, "1 NOTE plain text\n") {
+				t.Errorf("a single-line inline note should export unchanged; got:\n%s", output)
+			}
+			if !strings.Contains(output, "1 NOTE Line one\n2 CONT word ") || !strings.Contains(output, "\n2 CONC ") {
+				t.Errorf("a multi-line inline note should export as one NOTE with CONT/CONC; got:\n%s", output)
+			}
+
+			_, persons, _, sources, _, repos, _, _, _, _, _, _, _, err := gedcom.NewImporter().Import(ctx, strings.NewReader(output))
+			if err != nil {
+				t.Fatalf("Re-import failed: %v", err)
+			}
+			got := map[string]string{}
+			for _, p := range persons {
+				got[p.GivenName] = p.Notes
+			}
+			// Cy's multi-line note is not re-checked: the importer keeps only
+			// a NOTE's first line (#1202).
+			if got["Ann"] != mixed || got["Bob"] != "plain text" {
+				t.Errorf("re-imported person notes = %q, want Ann %q and Bob %q", got, mixed, "plain text")
+			}
+			if len(sources) != 1 || sources[0].Notes != mixed {
+				t.Errorf("re-imported source notes = %+v, want %q", sources, mixed)
+			}
+			if len(repos) != 1 || repos[0].Notes != mixed {
+				t.Errorf("re-imported repository notes = %+v, want %q", repos, mixed)
+			}
+		})
+	}
+}
+
 func TestExport_GeneratedXrefsAreUnique(t *testing.T) {
 	// A generated xref must skip every stored xref of any record type, so a
 	// note stored as @N2@ and a note without a stored xref sorted second do
