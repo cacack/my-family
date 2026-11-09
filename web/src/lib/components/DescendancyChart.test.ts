@@ -1,8 +1,9 @@
-import { afterAll, beforeAll, describe, it, expect, vi, beforeEach } from 'vitest';
-import { render } from '@testing-library/svelte';
+import { afterAll, beforeAll, describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, cleanup, fireEvent } from '@testing-library/svelte';
 import DescendancyChart from './DescendancyChart.svelte';
 import type { DescendancyNode } from '#lib/api/client.js';
 import { CARD_TEXT_INSET, MIN_CARD_FONT_PX } from '#lib/utils/chart.js';
+import { setFontSize, setReducedMotion } from '#lib/stores/accessibilitySettings.svelte.js';
 import { mockTextLength } from '#lib/test/textLength.js';
 
 // Card labels are cut to their measured width (#1213)
@@ -11,6 +12,35 @@ beforeAll(() => {
 	restoreTextLength = mockTextLength();
 });
 afterAll(() => restoreTextLength());
+
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** A text's font size as drawn: its own size times the chart's content scale. */
+function drawnFontSize(container: Element, selector: string): number {
+	const content = container.querySelector('.chart-content');
+	const scale = Number(content?.getAttribute('transform')?.match(/scale\(([^)]+)\)/)?.[1] ?? 1);
+	return parseFloat(container.querySelector(selector)?.getAttribute('font-size') ?? '') * scale;
+}
+
+/** Nine children, each with four children and a spouse: far too wide for one view. */
+const mockNineChildren: DescendancyNode = {
+	id: 'root',
+	given_name: 'Victoria',
+	surname: 'Hanover',
+	gender: 'female',
+	children: Array.from({ length: 9 }, (_, i) => ({
+		id: `c${i}`,
+		given_name: `Child${i}`,
+		surname: 'Wettin',
+		spouses: [{ id: `s${i}`, family_id: `f${i}`, name: `Spouse ${i}` }],
+		children: Array.from({ length: 4 }, (_, j) => ({
+			id: `g${i}-${j}`,
+			given_name: `Grandchild${j}`,
+			surname: 'Wettin',
+			spouses: [{ id: `gs${i}-${j}`, family_id: `gf${i}-${j}`, name: `Partner ${j}` }]
+		}))
+	}))
+};
 
 // Mock data for tests
 const mockSinglePerson: DescendancyNode = {
@@ -539,5 +569,98 @@ describe('DescendancyChart', () => {
 	it('returns correct root ID', () => {
 		const { component } = render(DescendancyChart, { props: { data: mockThreeGenerations } });
 		expect(component.getRootId()).toBe('1');
+	});
+	describe('layering (#1025)', () => {
+		it('draws every link, spouse connectors included, before every card', () => {
+			const { container } = render(DescendancyChart, { props: { data: mockMultipleSpouses } });
+			const links = [...container.querySelectorAll('g.links > *')];
+			const cards = [...container.querySelectorAll('g.nodes > *')];
+			expect(container.querySelectorAll('g.links > .spouse-link')).toHaveLength(2);
+			expect(container.querySelectorAll('g.nodes > .spouse-group')).toHaveLength(2);
+			expect(
+				links.every((l) => cards.every((c) => l.compareDocumentPosition(c) & Node.DOCUMENT_POSITION_FOLLOWING))
+			).toBe(true);
+		});
+	});
+
+	describe('font-size setting (#1103)', () => {
+		afterEach(() => setFontSize('normal'));
+
+		it('draws person and spouse text bigger at Larger', () => {
+			const normal = render(DescendancyChart, { props: { data: mockPersonWithSpouse } });
+			const name = drawnFontSize(normal.container, '.node text');
+			const spouse = drawnFontSize(normal.container, '.spouse-group text');
+			cleanup();
+
+			setFontSize('larger');
+			const larger = render(DescendancyChart, { props: { data: mockPersonWithSpouse } });
+			expect(drawnFontSize(larger.container, '.node text')).toBeGreaterThanOrEqual(name * 1.25);
+			expect(drawnFontSize(larger.container, '.spouse-group text')).toBeGreaterThanOrEqual(spouse * 1.25);
+			expect(larger.container.querySelector('.spouse-card')?.closest('.chart-content')).not.toBeNull();
+		});
+
+		it('redraws when the setting changes', async () => {
+			const { container } = render(DescendancyChart, { props: { data: mockPersonWithSpouse } });
+			const before = drawnFontSize(container, '.node text');
+			setFontSize('large');
+			await wait(0);
+			expect(drawnFontSize(container, '.node text')).toBeCloseTo(before * 1.25);
+		});
+	});
+
+	describe('first view (#1098)', () => {
+		beforeEach(() => setReducedMotion(true));
+		afterEach(() => setReducedMotion(false));
+
+		const count = (container: Element, side: 'left' | 'right') =>
+			Number(container.querySelector(`.offscreen-indicator.${side}`)?.textContent?.match(/\d+/)?.[0] ?? 0);
+
+		it('points at the children it cannot show', () => {
+			const { container } = render(DescendancyChart, { props: { data: mockNineChildren } });
+			const left = count(container, 'left');
+			const right = count(container, 'right');
+			expect(left).toBeGreaterThan(0);
+			expect(right).toBeGreaterThan(0);
+			expect(container.querySelector('.offscreen-indicator.right')?.getAttribute('aria-label')).toBe(
+				`Show ${right} children off-screen to the right`
+			);
+		});
+
+		it('shows no indicator when every child is in view', () => {
+			const { container } = render(DescendancyChart, { props: { data: mockThreeGenerations } });
+			expect(container.querySelector('.offscreen-indicator')).toBeNull();
+		});
+
+		it('pans to the nearest off-screen child on click', async () => {
+			const { container } = render(DescendancyChart, { props: { data: mockNineChildren } });
+			const right = count(container, 'right');
+			await fireEvent.click(container.querySelector('.offscreen-indicator.right')!);
+			await wait(100);
+			expect(count(container, 'right')).toBe(right - 1);
+		});
+
+		it('keeps keyboard focus on an indicator once a side runs out', async () => {
+			const { container } = render(DescendancyChart, { props: { data: mockNineChildren } });
+			for (let i = count(container, 'right'); i > 0; i--) {
+				const button = container.querySelector<HTMLButtonElement>('.offscreen-indicator.right')!;
+				button.focus();
+				await fireEvent.click(button);
+				await wait(100);
+			}
+			expect(count(container, 'right')).toBe(0);
+			expect(document.activeElement).toBe(container.querySelector('.offscreen-indicator.left'));
+		});
+
+		it('resets to the first view', async () => {
+			const { container, component } = render(DescendancyChart, { props: { data: mockNineChildren } });
+			const zoomed = () => container.querySelector('svg > g')?.getAttribute('transform');
+			const first = zoomed();
+			await fireEvent.click(container.querySelector('.offscreen-indicator.right')!);
+			await wait(100);
+			expect(zoomed()).not.toBe(first);
+			component.resetZoom();
+			await wait(100);
+			expect(zoomed()).toBe(first);
+		});
 	});
 });
