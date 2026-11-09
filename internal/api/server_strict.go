@@ -4619,6 +4619,7 @@ func convertQueryDescendancyNodeToGenerated(node *query.DescendancyNode) Descend
 	resp := DescendancyNode{
 		Id:         node.ID,
 		Generation: &gen,
+		FamilyId:   node.FamilyID,
 	}
 
 	if node.GivenName != "" {
@@ -4641,8 +4642,9 @@ func convertQueryDescendancyNodeToGenerated(node *query.DescendancyNode) Descend
 		spouses := make([]SpouseInfo, len(node.Spouses))
 		for i, s := range node.Spouses {
 			spouses[i] = SpouseInfo{
-				Id:   s.ID,
-				Name: s.Name,
+				Id:       s.ID,
+				FamilyId: s.FamilyID,
+				Name:     s.Name,
 			}
 			if s.MarriageDate != nil {
 				spouses[i].MarriageDate = convertDomainGenDateToGenerated(s.MarriageDate)

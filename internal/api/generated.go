@@ -3205,19 +3205,29 @@ type Descendancy struct {
 // DescendancyNode A person node in the descendancy tree
 type DescendancyNode struct {
 	// BirthDate Genealogical date with flexible precision
-	BirthDate *GenDate           `json:"birth_date,omitempty"`
-	Children  *[]DescendancyNode `json:"children,omitempty"`
+	BirthDate *GenDate `json:"birth_date,omitempty"`
+
+	// Children Children grouped by family, in spouse order, and ordered by birth
+	// date (undated last) within each family.
+	Children *[]DescendancyNode `json:"children,omitempty"`
 
 	// DeathDate Genealogical date with flexible precision
 	DeathDate *GenDate `json:"death_date,omitempty"`
-	Gender    *Gender  `json:"gender,omitempty"`
+
+	// FamilyId The family through which this person descends from their parent
+	// node. Matches the family_id of one of the parent's spouses when that
+	// family has a second partner. Absent on the root.
+	FamilyId *openapi_types.UUID `json:"family_id,omitempty"`
+	Gender   *Gender             `json:"gender,omitempty"`
 
 	// Generation Generation level (0 = root, 1 = children, 2 = grandchildren, etc.)
 	Generation *int               `json:"generation,omitempty"`
 	GivenName  *string            `json:"given_name,omitempty"`
 	Id         openapi_types.UUID `json:"id"`
-	Spouses    *[]SpouseInfo      `json:"spouses,omitempty"`
-	Surname    *string            `json:"surname,omitempty"`
+
+	// Spouses Spouses ordered by marriage date, undated last.
+	Spouses *[]SpouseInfo `json:"spouses,omitempty"`
+	Surname *string       `json:"surname,omitempty"`
 }
 
 // DiscoveryFeedResponse defines model for DiscoveryFeedResponse.
@@ -5817,7 +5827,9 @@ type SourceUpdate struct {
 
 // SpouseInfo Spouse information in the descendancy tree
 type SpouseInfo struct {
-	Id openapi_types.UUID `json:"id"`
+	// FamilyId The family this spouse shares with the person; children of that family carry the same family_id.
+	FamilyId openapi_types.UUID `json:"family_id"`
+	Id       openapi_types.UUID `json:"id"`
 
 	// MarriageDate Genealogical date with flexible precision
 	MarriageDate *GenDate `json:"marriage_date,omitempty"`

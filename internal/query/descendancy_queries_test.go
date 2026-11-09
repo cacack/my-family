@@ -2,6 +2,7 @@ package query_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/google/uuid"
@@ -675,5 +676,97 @@ func TestGetDescendancy_MultipleSpouses(t *testing.T) {
 	}
 	if !spouseNames["Spouse2 Test"] {
 		t.Error("Spouse2 should be in spouses list")
+	}
+}
+
+// TestGetDescendancy_OrdersSpousesAndChildren pins #1099: spouses are ordered
+// by marriage date and each family's children by birth date (undated last),
+// whatever order the store returns them in, and every spouse and child names
+// the family that links it to the parent.
+func TestGetDescendancy_OrdersSpousesAndChildren(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	svc := query.NewDescendancyService(readStore)
+	ctx := context.Background()
+
+	id := func(n int) uuid.UUID { return uuid.MustParse(fmt.Sprintf("00000000-0000-0000-0000-%012d", n)) }
+	henry := id(100)
+	aragon, boleyn, parr := id(101), id(102), id(103)
+	mary, henryJr, unnamed, elizabeth, fitzroy := id(201), id(202), id(203), id(204), id(205)
+	// Family ids run opposite to marriage order, so store (id) order is wrong.
+	famUndated, famBoleyn, famAragon := id(1), id(2), id(3)
+
+	persons := []repository.PersonReadModel{
+		{ID: henry, GivenName: "Henry", Surname: "Tudor"},
+		{ID: aragon, GivenName: "Catherine", Surname: "of Aragon"},
+		{ID: boleyn, GivenName: "Anne", Surname: "Boleyn"},
+		{ID: parr, GivenName: "Catherine", Surname: "Parr"},
+		{ID: mary, GivenName: "Mary", Surname: "Tudor", BirthDateRaw: "18 FEB 1516"},
+		{ID: henryJr, GivenName: "Henry", Surname: "Tudor", BirthDateRaw: "1 JAN 1511"},
+		{ID: unnamed, GivenName: "Unnamed", Surname: "Tudor"},
+		{ID: elizabeth, GivenName: "Elizabeth", Surname: "Tudor", BirthDateRaw: "7 SEP 1533"},
+		{ID: fitzroy, GivenName: "Henry", Surname: "FitzRoy", BirthDateRaw: "15 JUN 1519"},
+	}
+	for _, p := range persons {
+		pm := p
+		if err := readStore.SavePerson(ctx, domain.MainBranchID, &pm); err != nil {
+			t.Fatal(err)
+		}
+	}
+	families := []repository.FamilyReadModel{
+		{ID: famUndated, Partner1ID: &henry, Partner2ID: &parr, Partner2GivenName: "Catherine", Partner2Surname: "Parr"},
+		{ID: famBoleyn, Partner1ID: &henry, Partner2ID: &boleyn, Partner2GivenName: "Anne", Partner2Surname: "Boleyn", MarriageDateRaw: "25 JAN 1533"},
+		{ID: famAragon, Partner1ID: &henry, Partner2ID: &aragon, Partner2GivenName: "Catherine", Partner2Surname: "of Aragon", MarriageDateRaw: "11 JUN 1509"},
+	}
+	for _, f := range families {
+		fm := f
+		if err := readStore.SaveFamily(ctx, domain.MainBranchID, &fm); err != nil {
+			t.Fatal(err)
+		}
+	}
+	links := []struct{ family, child uuid.UUID }{
+		{famAragon, unnamed}, {famAragon, mary}, {famAragon, henryJr},
+		{famBoleyn, elizabeth},
+		{famUndated, fitzroy},
+	}
+	for _, l := range links {
+		if err := readStore.SaveFamilyChild(ctx, domain.MainBranchID, &repository.FamilyChildReadModel{
+			FamilyID: l.family, PersonID: l.child, RelationshipType: domain.ChildBiological,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	result, err := svc.GetDescendancy(ctx, query.GetDescendancyInput{PersonID: henry, MaxGenerations: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wantSpouses := []struct{ id, family uuid.UUID }{{aragon, famAragon}, {boleyn, famBoleyn}, {parr, famUndated}}
+	if len(result.Root.Spouses) != len(wantSpouses) {
+		t.Fatalf("spouses = %d, want %d", len(result.Root.Spouses), len(wantSpouses))
+	}
+	for i, want := range wantSpouses {
+		got := result.Root.Spouses[i]
+		if got.ID != want.id || got.FamilyID != want.family {
+			t.Errorf("spouse[%d] = %s (family %s), want %s (family %s)", i, got.ID, got.FamilyID, want.id, want.family)
+		}
+	}
+
+	wantChildren := []struct{ id, family uuid.UUID }{
+		{henryJr, famAragon}, {mary, famAragon}, {unnamed, famAragon},
+		{elizabeth, famBoleyn},
+		{fitzroy, famUndated},
+	}
+	if len(result.Root.Children) != len(wantChildren) {
+		t.Fatalf("children = %d, want %d", len(result.Root.Children), len(wantChildren))
+	}
+	for i, want := range wantChildren {
+		got := result.Root.Children[i]
+		if got.ID != want.id || got.FamilyID == nil || *got.FamilyID != want.family {
+			t.Errorf("child[%d] = %s %s (family %v), want %s (family %s)", i, got.GivenName, got.ID, got.FamilyID, want.id, want.family)
+		}
+	}
+	if result.Root.FamilyID != nil {
+		t.Errorf("root FamilyID = %v, want nil", result.Root.FamilyID)
 	}
 }

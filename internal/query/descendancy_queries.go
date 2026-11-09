@@ -2,6 +2,8 @@ package query
 
 import (
 	"context"
+	"sort"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -22,6 +24,7 @@ func NewDescendancyService(readStore repository.ReadModelStore) *DescendancyServ
 // SpouseInfo represents spouse information in a descendancy node.
 type SpouseInfo struct {
 	ID           uuid.UUID       `json:"id"`
+	FamilyID     uuid.UUID       `json:"family_id"`
 	Name         string          `json:"name"`
 	MarriageDate *domain.GenDate `json:"marriage_date,omitempty"`
 }
@@ -37,6 +40,10 @@ type DescendancyNode struct {
 	Spouses    []SpouseInfo       `json:"spouses,omitempty"`
 	Children   []*DescendancyNode `json:"children,omitempty"`
 	Generation int                `json:"generation"`
+	// FamilyID is the family through which this node descends from its parent
+	// node, matching one of the parent's Spouses when that family has a second
+	// partner; nil on the root.
+	FamilyID *uuid.UUID `json:"family_id,omitempty"`
 }
 
 // DescendancyResult contains the descendancy tree for a person.
@@ -115,7 +122,8 @@ func (s *DescendancyService) buildDescendancyTree(ctx context.Context, branchID 
 			return nil, err
 		}
 
-		// Each node's families, in the store's (id) order, and its spouses.
+		// Each node's families, by marriage date (undated last), and its spouses
+		// in that order (#1099).
 		familiesOf := make(map[uuid.UUID][]repository.FamilyReadModel, len(level))
 		for _, family := range families {
 			for _, partnerID := range []*uuid.UUID{family.Partner1ID, family.Partner2ID} {
@@ -125,6 +133,7 @@ func (s *DescendancyService) buildDescendancyTree(ctx context.Context, branchID 
 			}
 		}
 		for _, node := range level {
+			sortFamiliesByMarriage(familiesOf[node.ID])
 			for _, family := range familiesOf[node.ID] {
 				if spouse := s.getSpouseInfo(family, node.ID); spouse != nil {
 					node.Spouses = append(node.Spouses, *spouse)
@@ -149,7 +158,9 @@ func (s *DescendancyService) buildDescendancyTree(ctx context.Context, branchID 
 
 // nextGeneration resolves the children of every family in families and attaches
 // each not-yet-visited child, in tree order, to the level node whose family
-// claims them first. It returns the new nodes, which form the next level.
+// claims them first. A node's children are grouped by family, in the node's
+// family order, and ordered by birth date (undated last) within each family.
+// It returns the new nodes, which form the next level.
 func (s *DescendancyService) nextGeneration(
 	ctx context.Context,
 	branchID domain.BranchID,
@@ -174,8 +185,9 @@ func (s *DescendancyService) nextGeneration(
 
 	// Claim each child for its first parent in tree order.
 	type claim struct {
-		parent  *DescendancyNode
-		childID uuid.UUID
+		parent   *DescendancyNode
+		familyID uuid.UUID
+		childID  uuid.UUID
 	}
 	var claims []claim
 	var childIDs []uuid.UUID
@@ -186,7 +198,7 @@ func (s *DescendancyService) nextGeneration(
 					continue
 				}
 				visited[childID] = true
-				claims = append(claims, claim{parent: node, childID: childID})
+				claims = append(claims, claim{parent: node, familyID: family.ID, childID: childID})
 				childIDs = append(childIDs, childID)
 			}
 		}
@@ -210,10 +222,68 @@ func (s *DescendancyService) nextGeneration(
 			continue
 		}
 		child := newDescendancyNode(person, generation)
+		familyID := c.familyID
+		child.FamilyID = &familyID
 		c.parent.Children = append(c.parent.Children, child)
 		next = append(next, child)
 	}
+	for _, node := range level {
+		sortChildrenWithinFamilies(node.Children)
+	}
 	return next, nil
+}
+
+// sortFamiliesByMarriage orders one person's families by marriage date,
+// undated last; ties keep the store's (id) order.
+func sortFamiliesByMarriage(families []repository.FamilyReadModel) {
+	sort.SliceStable(families, func(i, j int) bool {
+		return genDateBefore(parseRawDate(families[i].MarriageDateRaw), parseRawDate(families[j].MarriageDateRaw))
+	})
+}
+
+// sortChildrenWithinFamilies orders children by birth date (undated last)
+// inside each run of one family, leaving the family groups where they are.
+func sortChildrenWithinFamilies(children []*DescendancyNode) {
+	for start := 0; start < len(children); {
+		end := start + 1
+		for end < len(children) && *children[end].FamilyID == *children[start].FamilyID {
+			end++
+		}
+		group := children[start:end]
+		sort.SliceStable(group, func(i, j int) bool {
+			return genDateBefore(group[i].BirthDate, group[j].BirthDate)
+		})
+		start = end
+	}
+}
+
+// parseRawDate parses a raw date, or returns nil when there is none.
+func parseRawDate(raw string) *domain.GenDate {
+	if raw == "" {
+		return nil
+	}
+	d := domain.ParseGenDate(raw)
+	return &d
+}
+
+// genDateBefore reports whether a sorts before b, with dates lacking a year
+// last.
+func genDateBefore(a, b *domain.GenDate) bool {
+	ta, okA := genDateSortTime(a)
+	tb, okB := genDateSortTime(b)
+	if okA != okB {
+		return okA
+	}
+	return okA && ta.Before(tb)
+}
+
+// genDateSortTime returns d's position on the timeline, and false when d has no
+// year to place it by.
+func genDateSortTime(d *domain.GenDate) (time.Time, bool) {
+	if d == nil || d.Year == nil {
+		return time.Time{}, false
+	}
+	return d.ToTime(), true
 }
 
 // newDescendancyNode builds the node for person at generation, without spouses
@@ -258,8 +328,9 @@ func (s *DescendancyService) getSpouseInfo(family repository.FamilyReadModel, pe
 	}
 
 	info := &SpouseInfo{
-		ID:   *spouseID,
-		Name: spouseName,
+		ID:       *spouseID,
+		FamilyID: family.ID,
+		Name:     spouseName,
 	}
 
 	// Add marriage date if available
