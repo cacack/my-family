@@ -303,12 +303,13 @@ func (h *Handler) importPerson(ctx context.Context, p gedcom.PersonData) error {
 		person.DeathDate = &dd
 	}
 
-	// Create event. Place coordinates and EXIDs are not domain.Person fields,
-	// so they are set on the event directly (#1225).
+	// Create event. Place coordinates, EXIDs and birth and death notes are not
+	// domain.Person fields, so they are set on the event directly (#1225, #1250).
 	event := domain.NewPersonCreated(person)
 	event.BirthPlaceLat, event.BirthPlaceLong = p.BirthPlaceLat, p.BirthPlaceLong
 	event.DeathPlaceLat, event.DeathPlaceLong = p.DeathPlaceLat, p.DeathPlaceLong
 	event.ExternalIDs = p.ExternalIDs
+	event.BirthNotes, event.DeathNotes = p.BirthNotes, p.DeathNotes
 
 	// Append to event store
 	err := h.eventStore.Append(ctx, person.ID, "person", []domain.Event{event}, -1, repository.MainScope)
@@ -375,9 +376,11 @@ func (h *Handler) importFamily(ctx context.Context, f gedcom.FamilyData) error {
 		return nil
 	}
 
-	// Create event
+	// Create event. EXIDs and marriage notes are not domain.Family fields
+	// (#1225, #1250).
 	event := domain.NewFamilyCreated(family)
 	event.ExternalIDs = f.ExternalIDs
+	event.MarriageNotes = f.MarriageNotes
 
 	// Append to event store
 	err := h.eventStore.Append(ctx, family.ID, "family", []domain.Event{event}, -1, repository.MainScope)
@@ -589,9 +592,11 @@ func (h *Handler) importEvent(ctx context.Context, e gedcom.EventData) error {
 		lifeEvent.SetDate(e.Date)
 	}
 
-	// Create domain event from model; coordinates are not LifeEvent fields (#1225).
+	// Create domain event from model; coordinates and notes are not LifeEvent
+	// fields (#1225, #1250).
 	event := domain.NewLifeEventCreatedFromModel(lifeEvent)
 	event.PlaceLat, event.PlaceLong = e.PlaceLat, e.PlaceLong
+	event.Notes = e.Notes
 
 	// Append to event store using owner's stream
 	err := h.eventStore.Append(ctx, e.ID, "event", []domain.Event{event}, -1, repository.MainScope)

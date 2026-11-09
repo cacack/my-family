@@ -76,6 +76,8 @@ type PersonReadModel struct {
 	DeathPlaceLat       *string               `json:"death_place_lat,omitempty"`
 	DeathPlaceLong      *string               `json:"death_place_long,omitempty"`
 	Notes               string                `json:"notes,omitempty"`
+	BirthNotes          string                `json:"birth_notes,omitempty"` // NOTEs under BIRT (#1250)
+	DeathNotes          string                `json:"death_notes,omitempty"` // NOTEs under DEAT (#1250)
 	ResearchStatus      domain.ResearchStatus `json:"research_status,omitempty"`
 	BrickWallNote       string                `json:"brick_wall_note,omitempty"`
 	BrickWallSince      *time.Time            `json:"brick_wall_since,omitempty"`
@@ -101,6 +103,7 @@ type FamilyReadModel struct {
 	MarriagePlace     string              `json:"marriage_place,omitempty"`
 	MarriagePlaceLat  *string             `json:"marriage_place_lat,omitempty"`
 	MarriagePlaceLong *string             `json:"marriage_place_long,omitempty"`
+	MarriageNotes     string              `json:"marriage_notes,omitempty"` // NOTEs under MARR (#1250)
 	ChildCount        int                 `json:"child_count"`
 	Version           int64               `json:"version"`
 	UpdatedAt         time.Time           `json:"updated_at"`
@@ -215,6 +218,7 @@ type EventReadModel struct {
 	Age            string                `json:"age,omitempty"`             // Age at event
 	ResearchStatus domain.ResearchStatus `json:"research_status,omitempty"` // Confidence level
 	IsNegated      bool                  `json:"is_negated,omitempty"`      // Negative assertion (GEDCOM 7.0 NO tag)
+	Notes          string                `json:"notes,omitempty"`           // The event's own NOTEs (#1250)
 	Version        int64                 `json:"version"`
 	CreatedAt      time.Time             `json:"created_at"`
 }
