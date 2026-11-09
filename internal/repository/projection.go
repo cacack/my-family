@@ -351,6 +351,9 @@ func (p *Projector) projectPersonCreated(ctx context.Context, e domain.PersonCre
 	if err := p.readStore.SavePerson(ctx, branchID, person); err != nil {
 		return err
 	}
+	if err := p.refreshEdgesNamingNewPartner(ctx, branchID, e.PersonID); err != nil {
+		return err
+	}
 	if len(e.ExternalIDs) == 0 {
 		return nil
 	}
@@ -721,6 +724,26 @@ func (p *Projector) refreshChildPedigreeEdges(ctx context.Context, branchID doma
 			continue
 		}
 		if err := p.savePedigreeEdgeFromFamily(ctx, branchID, child.PersonID, family); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// refreshEdgesNamingNewPartner re-derives the child edges of every family that
+// already names a just-created person as a partner (#1259). Such a family
+// projected before the person existed, as when a merge replays a family
+// stream re-partnered to a person the branch created later, so its children's
+// edges skipped that partner. A person created in log order is partner of no
+// family yet, and the lookup finds nothing.
+func (p *Projector) refreshEdgesNamingNewPartner(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) error {
+	families, err := p.readStore.GetFamiliesForPersons(ctx, branchID, []uuid.UUID{personID})
+	if err != nil {
+		return err
+	}
+	for i := range families {
+		family := &families[i]
+		if err := p.refreshChildPedigreeEdges(ctx, branchID, family, family.Partner1ID, family.Partner2ID); err != nil {
 			return err
 		}
 	}
