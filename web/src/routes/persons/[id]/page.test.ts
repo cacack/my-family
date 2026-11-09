@@ -219,6 +219,20 @@ describe('Person detail rollback on a branch (#824)', () => {
 		expect(screen.queryByText(/work on the mainline only/)).toBeNull();
 	});
 
+	// The selected tab was shown only by a class (#1061).
+	it('exposes the selected history tab with aria-pressed', async () => {
+		render(Page);
+		await openHistory();
+		const changeLog = screen.getByRole('button', { name: 'Change Log', pressed: true });
+		const restore = screen.getByRole('button', { name: 'Restore', pressed: false });
+		expect(screen.getByRole('group', { name: 'History view' })).toBeDefined();
+
+		await fireEvent.click(restore);
+		expect(restore.getAttribute('aria-pressed')).toBe('true');
+		expect(changeLog.getAttribute('aria-pressed')).toBe('false');
+		expect(changeLog.classList.contains('active')).toBe(false);
+	});
+
 	it('withdraws Restore and rollback on a branch, keeping the change log', async () => {
 		branchState.id = BRANCH_ID;
 
@@ -337,6 +351,48 @@ describe('Person detail edit form', () => {
 		const body = await save();
 
 		expect(body.gender).toBe('unknown');
+	});
+
+	// "Not assessed" saved as unknown and then read "Unknown" (#1110).
+	describe('research status', () => {
+		const select = () => screen.getByLabelText('Research Status') as HTMLSelectElement;
+
+		it('offers one option for the unassessed state, labelled as the badge is', async () => {
+			getPerson.mockResolvedValue(person());
+			render(Page);
+			// The header badge reads the same for a person with no status recorded.
+			expect(await screen.findByText('Not assessed')).toBeDefined();
+			await fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+
+			const labels = Array.from(select().options, (o) => o.textContent?.trim());
+			expect(labels.filter((l) => /assessed|unknown/i.test(l ?? ''))).toEqual(['Not assessed - No conclusion yet']);
+			expect(select().value).toBe('unknown');
+		});
+
+		it('does not set a status on a person with none when saved unchanged', async () => {
+			getPerson.mockResolvedValue(person());
+			await openEdit();
+			const body = await save();
+			expect(body.research_status).toBeUndefined();
+		});
+
+		it('round-trips Not assessed: saved as unknown, shown as Not assessed after reload', async () => {
+			getPerson.mockResolvedValue(person({ research_status: 'certain' }));
+			await openEdit();
+			expect(select().value).toBe('certain');
+
+			await fireEvent.change(select(), { target: { value: 'unknown' } });
+			getPerson.mockResolvedValue(person({ research_status: 'unknown', version: 4 }));
+			const body = await save();
+			expect(body.research_status).toBe('unknown');
+
+			const edit = await screen.findByRole('button', { name: 'Edit' });
+			expect(screen.getByText('Not assessed')).toBeDefined();
+			expect(screen.queryByText('Unknown')).toBeNull();
+			await fireEvent.click(edit);
+			expect(select().value).toBe('unknown');
+			expect(select().selectedOptions[0].textContent?.trim()).toBe('Not assessed - No conclusion yet');
+		});
 	});
 
 	it('moves focus into the form on Edit and back to Edit on Cancel', async () => {

@@ -89,7 +89,7 @@ type ListPersonsInput struct {
 	Offset         int
 	Sort           string          // surname, given_name, birth_date, updated_at
 	Order          string          // asc, desc
-	ResearchStatus *string         // Filter by research_status: certain, probable, possible, unknown, or "unset" for NULL
+	ResearchStatus *string         // Filter by research_status: certain, probable, possible, unknown, "unset" for NULL, or "unassessed" for NULL or unknown
 	BranchID       domain.BranchID // Branch scope; zero value = MainBranchID (main line)
 }
 

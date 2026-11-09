@@ -19,15 +19,15 @@
 	);
 
 	// Bar colours match UncertaintyBadge's dots (Tailwind green/yellow/orange-500, gray-400).
+	// Unknown and unset are one "Not assessed" bar, as everywhere else (#1110).
 	const researchStatusCounts = $derived.by(() => {
 		const c = overview?.research_status_counts;
 		return [
 			{ status: 'certain', count: c?.certain ?? 0, color: '#22c55e' },
 			{ status: 'probable', count: c?.probable ?? 0, color: '#eab308' },
 			{ status: 'possible', count: c?.possible ?? 0, color: '#f97316' },
-			{ status: 'unknown', count: c?.unknown ?? 0, color: '#9ca3af' },
-			{ status: 'unset', count: c?.unset ?? 0, color: '#94a3b8' }
-		] satisfies { status: ResearchStatus | 'unset'; count: number; color: string }[];
+			{ status: 'unknown', count: (c?.unknown ?? 0) + (c?.unset ?? 0), color: '#9ca3af' }
+		] satisfies { status: ResearchStatus; count: number; color: string }[];
 	});
 
 	async function loadData() {
@@ -113,11 +113,7 @@
 				{#each researchStatusCounts as item}
 					<div class="status-bar-row">
 						<div class="status-label">
-							{#if item.status !== 'unset'}
-								<UncertaintyBadge status={item.status} size="small" showLabel={true} />
-							{:else}
-								<span class="unset-label">Not assessed</span>
-							{/if}
+							<UncertaintyBadge status={item.status} size="small" showLabel={true} />
 						</div>
 						<div class="status-bar-container">
 							<div
@@ -346,12 +342,6 @@
 	.status-label {
 		width: 120px;
 		flex-shrink: 0;
-	}
-
-	.unset-label {
-		font-size: 0.75rem;
-		color: var(--color-text-muted);
-		font-weight: 500;
 	}
 
 	.status-bar-container {

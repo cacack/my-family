@@ -290,6 +290,11 @@ The sync lives only in `repository/projection.go`, not in commands, so a rebuild
 4. Create PR when ready
 5. Squash merge to main
 
+### CI Behaviour
+
+- A new push to a PR branch cancels that PR's in-progress CI and CodeQL runs. Every other run (pushes to `main`, merge queue, schedule) has its own concurrency group, so it is never queued behind or cancelled by another run.
+- The auto-rebase workflow rebases open PRs onto `main` after every merge, restarting their CI. Add the `no-auto-rebase` label to a PR to skip it (Dependabot PRs, labelled `dependencies`, are skipped too).
+
 ### PR Checklist
 
 - [ ] Tests added/updated

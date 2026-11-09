@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { ResearchStatus } from '#lib/api/client.js';
 	import { Badge } from '#lib/components/ui/badge/index.js';
+	import { RESEARCH_STATUS_OPTIONS } from '#lib/utils/enumOptions.js';
 
 	interface Props {
 		status: ResearchStatus;
@@ -16,32 +17,34 @@
 				return {
 					indicatorColor: 'bg-green-500',
 					badgeClass: 'bg-green-50 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-400 dark:border-green-800',
-					label: 'Certain',
 					tooltip: 'Confirmed with strong evidence'
 				};
 			case 'probable':
 				return {
 					indicatorColor: 'bg-yellow-500',
 					badgeClass: 'bg-yellow-50 text-yellow-700 border-yellow-200 dark:bg-yellow-950 dark:text-yellow-400 dark:border-yellow-800',
-					label: 'Probable',
 					tooltip: 'Likely correct, good supporting evidence'
 				};
 			case 'possible':
 				return {
 					indicatorColor: 'bg-orange-500',
 					badgeClass: 'bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-950 dark:text-orange-400 dark:border-orange-800',
-					label: 'Possible',
 					tooltip: 'Speculative, limited evidence'
 				};
 			default:
 				return {
 					indicatorColor: 'bg-gray-400',
 					badgeClass: 'bg-gray-50 text-muted-foreground border-gray-200 dark:bg-gray-900 dark:text-gray-400 dark:border-gray-700',
-					label: 'Unknown',
 					tooltip: 'Not yet assessed'
 				};
 		}
 	});
+
+	// The same label the research-status select and filters use.
+	const label = $derived(
+		RESEARCH_STATUS_OPTIONS.find((option) => option.value === status)?.label ??
+			RESEARCH_STATUS_OPTIONS.find((option) => option.value === 'unknown')!.label
+	);
 
 	const sizeClass = $derived(() => {
 		switch (size) {
@@ -62,6 +65,6 @@
 >
 	<span class="rounded-full flex-shrink-0 {config().indicatorColor} {sizeClass().indicator}"></span>
 	{#if showLabel}
-		<span class="capitalize">{config().label}</span>
+		<span>{label}</span>
 	{/if}
 </Badge>

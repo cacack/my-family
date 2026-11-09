@@ -75,7 +75,7 @@
 					<button
 						type="button"
 						class="chip"
-						class:active={activeFilter === type}
+						aria-pressed={activeFilter === type}
 						onclick={() => toggleFilter(type)}
 					>
 						{typeLabels[type] || type}
@@ -181,7 +181,7 @@
 		background: #f8fafc;
 	}
 
-	.chip.active {
+	.chip[aria-pressed='true'] {
 		background: #eff6ff;
 		border-color: #3b82f6;
 		color: var(--color-link);

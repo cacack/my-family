@@ -623,7 +623,7 @@ class ApiClient {
 		offset?: number;
 		sort?: 'surname' | 'given_name' | 'birth_date' | 'updated_at';
 		order?: 'asc' | 'desc';
-		research_status?: ResearchStatus | 'unset';
+		research_status?: ResearchStatus | 'unset' | 'unassessed';
 	}): Promise<PersonList> {
 		const searchParams = new URLSearchParams();
 		if (params?.limit) searchParams.set('limit', params.limit.toString());
