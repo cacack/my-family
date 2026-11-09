@@ -34,10 +34,10 @@ func (s rebuildStores) rebuild(t *testing.T, rs repository.ReadModelStore) (repo
 	return repository.RebuildReadModel(context.Background(), s.events, rs, s.branches, s.snapshots)
 }
 
-// TestRebuildReadModel_KeepsFieldsNoEventCarries covers each value written
-// straight to the read model (GEDCOM coordinates and EXIDs, brick walls): a
-// replay cannot derive them, so the rebuild must carry them over (#845).
-func TestRebuildReadModel_KeepsFieldsNoEventCarries(t *testing.T) {
+// TestRebuildReadModel_KeepsBrickWalls covers the one value written straight
+// to the read model, a brick wall: a replay cannot derive it, so the rebuild
+// must carry it over (#845).
+func TestRebuildReadModel_KeepsBrickWalls(t *testing.T) {
 	ctx := context.Background()
 	s := newRebuildStores()
 	h := command.NewHandlerWithBranches(s.events, s.read, s.branches, s.snapshots)
@@ -46,54 +46,9 @@ func TestRebuildReadModel_KeepsFieldsNoEventCarries(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create person: %v", err)
 	}
-	family, err := h.CreateFamily(ctx, command.CreateFamilyInput{Partner1ID: &person.ID})
-	if err != nil {
-		t.Fatalf("create family: %v", err)
-	}
-	source, err := h.CreateSource(ctx, command.CreateSourceInput{SourceType: "book", Title: "Register"})
-	if err != nil {
-		t.Fatalf("create source: %v", err)
-	}
-	repo, err := h.CreateRepository(ctx, command.CreateRepositoryInput{Name: "Archive"})
-	if err != nil {
-		t.Fatalf("create repository: %v", err)
-	}
-	life := domain.NewLifeEvent(person.ID, domain.FactPersonBirth)
-	if err := s.events.Append(ctx, life.ID, "life_event", []domain.Event{domain.NewLifeEventCreatedFromModel(life)}, -1, repository.MainScope); err != nil {
-		t.Fatalf("append life event: %v", err)
-	}
-
-	// Rebuild once so the life event is projected, then add the unlogged values.
-	if _, err := s.rebuild(t, s.read); err != nil {
-		t.Fatalf("first rebuild: %v", err)
-	}
-	lat, long := "N1.5", "W2.5"
-	p, _ := s.read.GetPerson(ctx, domain.MainBranchID, person.ID)
-	p.BirthPlaceLat, p.DeathPlaceLong = &lat, &long
-	if err := s.read.SavePerson(ctx, domain.MainBranchID, p); err != nil {
-		t.Fatalf("save person coordinates: %v", err)
-	}
 	if err := s.read.SetBrickWall(ctx, person.ID, "stuck"); err != nil {
 		t.Fatalf("set brick wall: %v", err)
 	}
-	le, _ := s.read.GetEvent(ctx, domain.MainBranchID, life.ID)
-	if le == nil {
-		t.Fatal("life event not projected")
-	}
-	le.PlaceLat, le.PlaceLong = &lat, &long
-	if err := s.read.SaveEvent(ctx, domain.MainBranchID, le); err != nil {
-		t.Fatalf("save life event coordinates: %v", err)
-	}
-	must := func(err error) {
-		t.Helper()
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-	must(s.read.ReplacePersonExternalIDs(ctx, domain.MainBranchID, person.ID, []repository.PersonExternalIDReadModel{{PersonID: person.ID, Value: "P-1"}}))
-	must(s.read.ReplaceFamilyExternalIDs(ctx, domain.MainBranchID, family.ID, []repository.FamilyExternalIDReadModel{{FamilyID: family.ID, Value: "F-1"}}))
-	must(s.read.ReplaceSourceExternalIDs(ctx, domain.MainBranchID, source.ID, []repository.SourceExternalIDReadModel{{SourceID: source.ID, Value: "S-1"}}))
-	must(s.read.ReplaceRepositoryExternalIDs(ctx, repo.ID, []repository.RepositoryExternalIDReadModel{{RepositoryID: repo.ID, Value: "R-1"}}))
 
 	result, err := s.rebuild(t, s.read)
 	if err != nil {
@@ -102,27 +57,41 @@ func TestRebuildReadModel_KeepsFieldsNoEventCarries(t *testing.T) {
 	if logged, _ := s.events.ReadAll(ctx, 0, 100); result.Events != len(logged) {
 		t.Errorf("events replayed = %d, want all %d logged", result.Events, len(logged))
 	}
+	p, _ := s.read.GetPerson(ctx, domain.MainBranchID, person.ID)
+	if p == nil || p.BrickWallNote != "stuck" || p.BrickWallSince == nil {
+		t.Errorf("person after rebuild = %+v, want the brick wall kept", p)
+	}
+}
 
-	p, _ = s.read.GetPerson(ctx, domain.MainBranchID, person.ID)
-	if p == nil || p.BirthPlaceLat == nil || *p.BirthPlaceLat != lat || p.DeathPlaceLong == nil || *p.DeathPlaceLong != long ||
-		p.BrickWallNote != "stuck" || p.BrickWallSince == nil {
-		t.Errorf("person after rebuild = %+v, want coordinates and brick wall kept", p)
+// TestRebuildReadModel_DoesNotCarryOverUnloggedImportFields proves the rebuild
+// no longer copies coordinates or EXIDs across its reset (#1225): they come
+// from the log, so a value only the read model holds is not kept.
+func TestRebuildReadModel_DoesNotCarryOverUnloggedImportFields(t *testing.T) {
+	ctx := context.Background()
+	s := newRebuildStores()
+	h := command.NewHandlerWithBranches(s.events, s.read, s.branches, s.snapshots)
+	person, err := h.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ada", Surname: "Example"})
+	if err != nil {
+		t.Fatalf("create person: %v", err)
 	}
-	le, _ = s.read.GetEvent(ctx, domain.MainBranchID, life.ID)
-	if le == nil || le.PlaceLat == nil || *le.PlaceLat != lat || le.PlaceLong == nil || *le.PlaceLong != long {
-		t.Errorf("life event after rebuild = %+v, want coordinates kept", le)
+	lat := "N1.5"
+	p, _ := s.read.GetPerson(ctx, domain.MainBranchID, person.ID)
+	p.BirthPlaceLat = &lat
+	if err := s.read.SavePerson(ctx, domain.MainBranchID, p); err != nil {
+		t.Fatalf("save coordinates: %v", err)
 	}
-	if ids, _ := s.read.GetPersonExternalIDs(ctx, domain.MainBranchID, person.ID); len(ids) != 1 || ids[0].Value != "P-1" {
-		t.Errorf("person exids = %+v", ids)
+	if err := s.read.ReplacePersonExternalIDs(ctx, domain.MainBranchID, person.ID, []repository.PersonExternalIDReadModel{{PersonID: person.ID, Value: "P-1"}}); err != nil {
+		t.Fatalf("save exid: %v", err)
 	}
-	if ids, _ := s.read.GetFamilyExternalIDs(ctx, domain.MainBranchID, family.ID); len(ids) != 1 || ids[0].Value != "F-1" {
-		t.Errorf("family exids = %+v", ids)
+
+	if _, err := s.rebuild(t, s.read); err != nil {
+		t.Fatalf("rebuild: %v", err)
 	}
-	if ids, _ := s.read.GetSourceExternalIDs(ctx, domain.MainBranchID, source.ID); len(ids) != 1 || ids[0].Value != "S-1" {
-		t.Errorf("source exids = %+v", ids)
+	if p, _ := s.read.GetPerson(ctx, domain.MainBranchID, person.ID); p == nil || p.BirthPlaceLat != nil {
+		t.Errorf("person after rebuild = %+v, want it back without the unlogged coordinate", p)
 	}
-	if ids, _ := s.read.GetRepositoryExternalIDs(ctx, repo.ID); len(ids) != 1 || ids[0].Value != "R-1" {
-		t.Errorf("repository exids = %+v", ids)
+	if ids, _ := s.read.GetPersonExternalIDs(ctx, domain.MainBranchID, person.ID); len(ids) != 0 {
+		t.Errorf("person exids after rebuild = %+v, want none", ids)
 	}
 }
 
@@ -170,67 +139,14 @@ func (f *failingRead) ListPersons(ctx context.Context, opts repository.ListOptio
 	return f.ReadModelStore.ListPersons(ctx, opts)
 }
 
-func (f *failingRead) ListEvents(ctx context.Context, opts repository.ListOptions) ([]repository.EventReadModel, int, error) {
-	if err := f.err("list events"); err != nil {
-		return nil, 0, err
+// SavePerson fails only the write that restores a brick wall.
+func (f *failingRead) SavePerson(ctx context.Context, b domain.BranchID, p *repository.PersonReadModel) error {
+	if p.BrickWallNote != "" {
+		if err := f.err("restore"); err != nil {
+			return err
+		}
 	}
-	return f.ReadModelStore.ListEvents(ctx, opts)
-}
-
-func (f *failingRead) ListFamilies(ctx context.Context, opts repository.ListOptions) ([]repository.FamilyReadModel, int, error) {
-	if err := f.err("list families"); err != nil {
-		return nil, 0, err
-	}
-	return f.ReadModelStore.ListFamilies(ctx, opts)
-}
-
-func (f *failingRead) ListSources(ctx context.Context, opts repository.ListOptions) ([]repository.SourceReadModel, int, error) {
-	if err := f.err("list sources"); err != nil {
-		return nil, 0, err
-	}
-	return f.ReadModelStore.ListSources(ctx, opts)
-}
-
-func (f *failingRead) ListRepositories(ctx context.Context, opts repository.ListOptions) ([]repository.RepositoryReadModel, int, error) {
-	if err := f.err("list repositories"); err != nil {
-		return nil, 0, err
-	}
-	return f.ReadModelStore.ListRepositories(ctx, opts)
-}
-
-func (f *failingRead) GetPersonExternalIDs(ctx context.Context, b domain.BranchID, id uuid.UUID) ([]repository.PersonExternalIDReadModel, error) {
-	if err := f.err("person exids"); err != nil {
-		return nil, err
-	}
-	return f.ReadModelStore.GetPersonExternalIDs(ctx, b, id)
-}
-
-func (f *failingRead) GetFamilyExternalIDs(ctx context.Context, b domain.BranchID, id uuid.UUID) ([]repository.FamilyExternalIDReadModel, error) {
-	if err := f.err("family exids"); err != nil {
-		return nil, err
-	}
-	return f.ReadModelStore.GetFamilyExternalIDs(ctx, b, id)
-}
-
-func (f *failingRead) GetSourceExternalIDs(ctx context.Context, b domain.BranchID, id uuid.UUID) ([]repository.SourceExternalIDReadModel, error) {
-	if err := f.err("source exids"); err != nil {
-		return nil, err
-	}
-	return f.ReadModelStore.GetSourceExternalIDs(ctx, b, id)
-}
-
-func (f *failingRead) GetRepositoryExternalIDs(ctx context.Context, id uuid.UUID) ([]repository.RepositoryExternalIDReadModel, error) {
-	if err := f.err("repository exids"); err != nil {
-		return nil, err
-	}
-	return f.ReadModelStore.GetRepositoryExternalIDs(ctx, id)
-}
-
-func (f *failingRead) ReplacePersonExternalIDs(ctx context.Context, b domain.BranchID, id uuid.UUID, ids []repository.PersonExternalIDReadModel) error {
-	if err := f.err("restore"); err != nil {
-		return err
-	}
-	return f.ReadModelStore.ReplacePersonExternalIDs(ctx, b, id, ids)
+	return f.ReadModelStore.SavePerson(ctx, b, p)
 }
 
 func (f *failingRead) GetRebuildState(ctx context.Context) ([]byte, error) {
@@ -263,9 +179,7 @@ func (f *failingRead) RecordProjectionFailure(ctx context.Context, failure repos
 
 func TestRebuildReadModel_ReportsStoreErrors(t *testing.T) {
 	for _, op := range []string{
-		"reset", "list persons", "list events", "list families", "list sources", "list repositories",
-		"person exids", "family exids", "source exids", "repository exids", "restore",
-		"get state", "save state", "clear state",
+		"reset", "list persons", "restore", "get state", "save state", "clear state",
 	} {
 		t.Run(op, func(t *testing.T) {
 			ctx := context.Background()
@@ -275,17 +189,8 @@ func TestRebuildReadModel_ReportsStoreErrors(t *testing.T) {
 			if err != nil {
 				t.Fatalf("create person: %v", err)
 			}
-			if _, err := h.CreateFamily(ctx, command.CreateFamilyInput{Partner1ID: &p.ID}); err != nil {
-				t.Fatalf("create family: %v", err)
-			}
-			if _, err := h.CreateSource(ctx, command.CreateSourceInput{SourceType: "book", Title: "Register"}); err != nil {
-				t.Fatalf("create source: %v", err)
-			}
-			if _, err := h.CreateRepository(ctx, command.CreateRepositoryInput{Name: "Archive"}); err != nil {
-				t.Fatalf("create repository: %v", err)
-			}
-			if err := s.read.ReplacePersonExternalIDs(ctx, domain.MainBranchID, p.ID, []repository.PersonExternalIDReadModel{{PersonID: p.ID, Value: "P-1"}}); err != nil {
-				t.Fatalf("save exid: %v", err)
+			if err := s.read.SetBrickWall(ctx, p.ID, "stuck"); err != nil {
+				t.Fatalf("set brick wall: %v", err)
 			}
 			_, err = s.rebuild(t, &failingRead{ReadModelStore: s.read, fail: op})
 			if !errors.Is(err, errRebuildTest) {
@@ -347,8 +252,8 @@ func (c *cancelAfterReset) ResetReadModel(ctx context.Context) error {
 
 // TestRebuildReadModel_InterruptedRebuildIsRecoverable stops a rebuild right
 // after its reset. The read model must stay flagged as out of sync, and a
-// rerun must still restore the values no event carries, which the reset has
-// already removed from the read model.
+// rerun must still restore the brick walls, which the reset has already
+// removed from the read model.
 func TestRebuildReadModel_InterruptedRebuildIsRecoverable(t *testing.T) {
 	ctx := context.Background()
 	s := newRebuildStores()
@@ -357,17 +262,8 @@ func TestRebuildReadModel_InterruptedRebuildIsRecoverable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create person: %v", err)
 	}
-	lat := "N1.5"
-	p, _ := s.read.GetPerson(ctx, domain.MainBranchID, person.ID)
-	p.BirthPlaceLat = &lat
-	if err := s.read.SavePerson(ctx, domain.MainBranchID, p); err != nil {
-		t.Fatalf("save coordinates: %v", err)
-	}
 	if err := s.read.SetBrickWall(ctx, person.ID, "stuck"); err != nil {
 		t.Fatalf("set brick wall: %v", err)
-	}
-	if err := s.read.ReplacePersonExternalIDs(ctx, domain.MainBranchID, person.ID, []repository.PersonExternalIDReadModel{{PersonID: person.ID, Value: "P-1"}}); err != nil {
-		t.Fatalf("save exid: %v", err)
 	}
 
 	aborted, cancel := context.WithCancel(ctx)
@@ -386,12 +282,8 @@ func TestRebuildReadModel_InterruptedRebuildIsRecoverable(t *testing.T) {
 	if _, err := s.rebuild(t, s.read); err != nil {
 		t.Fatalf("rerun: %v", err)
 	}
-	p, _ = s.read.GetPerson(ctx, domain.MainBranchID, person.ID)
-	if p == nil || p.BirthPlaceLat == nil || *p.BirthPlaceLat != lat || p.BrickWallNote != "stuck" || p.BrickWallSince == nil {
-		t.Errorf("person after rerun = %+v, want coordinates and brick wall restored", p)
-	}
-	if ids, _ := s.read.GetPersonExternalIDs(ctx, domain.MainBranchID, person.ID); len(ids) != 1 || ids[0].Value != "P-1" {
-		t.Errorf("person exids after rerun = %+v", ids)
+	if p, _ := s.read.GetPerson(ctx, domain.MainBranchID, person.ID); p == nil || p.BrickWallNote != "stuck" || p.BrickWallSince == nil {
+		t.Errorf("person after rerun = %+v, want the brick wall restored", p)
 	}
 	if state, _ := s.read.GetRebuildState(ctx); state != nil {
 		t.Errorf("rebuild state after a successful rerun = %s, want cleared", state)
