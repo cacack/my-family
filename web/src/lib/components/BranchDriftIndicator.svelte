@@ -11,7 +11,7 @@
 	 * It inherits its text colour so it sits on the banner and on a branch card
 	 * alike.
 	 */
-	import type { BranchDrift } from '$lib/api/client';
+	import type { BranchDrift } from '#lib/api/client.js';
 
 	interface Props {
 		drift: BranchDrift;

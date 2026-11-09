@@ -1,6 +1,6 @@
 <script lang="ts">
-	import CemeteryBrowser from '$lib/components/CemeteryBrowser.svelte';
-	import PageHeader from '$lib/components/PageHeader.svelte';
+	import CemeteryBrowser from '#lib/components/CemeteryBrowser.svelte';
+	import PageHeader from '#lib/components/PageHeader.svelte';
 </script>
 
 <svelte:head>

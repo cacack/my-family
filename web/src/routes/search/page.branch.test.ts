@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/svelte';
 import SearchPage from './+page.svelte';
-import * as apiModule from '$lib/api/client';
-import { resetRouter } from '$lib/test/fakeRouter.svelte';
+import * as apiModule from '#lib/api/client.js';
+import { resetRouter } from '#lib/test/fakeRouter.svelte.js';
 
-vi.mock('$lib/api/client', async (importOriginal) => {
+vi.mock('#lib/api/client.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof apiModule>();
 	return {
 		...actual,
@@ -19,12 +19,12 @@ const { branchState } = vi.hoisted(() => ({
 	branchState: { id: null as string | null }
 }));
 
-vi.mock('$lib/stores/activeBranch.svelte', () => ({
+vi.mock('#lib/stores/activeBranch.svelte.js', () => ({
 	activeBranch: branchState
 }));
 
-vi.mock('$app/state', async () => (await import('$lib/test/fakeRouter.svelte')).appState);
-vi.mock('$app/navigation', async () => (await import('$lib/test/fakeRouter.svelte')).appNavigation);
+vi.mock('$app/state', async () => (await import('#lib/test/fakeRouter.svelte.js')).appState);
+vi.mock('$app/navigation', async () => (await import('#lib/test/fakeRouter.svelte.js')).appNavigation);
 
 describe('Advanced Search page', () => {
 	beforeEach(() => {

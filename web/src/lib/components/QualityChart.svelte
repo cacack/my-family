@@ -1,7 +1,8 @@
 <script lang="ts">
 	import * as d3 from 'd3';
 	import { onMount } from 'svelte';
-	import { getFontScale } from '$lib/stores/accessibilitySettings.svelte';
+	import { getFontScale } from '#lib/stores/accessibilitySettings.svelte.js';
+	import { fitText } from '#lib/utils/chart.js';
 
 	interface ChartData {
 		label: string;
@@ -113,20 +114,6 @@
 			.attr('font-weight', '600')
 			.attr('fill', '#1e293b')
 			.text((d) => d.value.toLocaleString());
-	}
-
-	// Shorten a text node with an ellipsis until it fits maxWidth. A no-op where
-	// text can't be measured (e.g. jsdom), leaving the full label.
-	function fitText(node: SVGTextElement, maxWidth: number) {
-		if (typeof node.getComputedTextLength !== 'function') return;
-		const full = node.textContent ?? '';
-		if (node.getComputedTextLength() <= maxWidth) return;
-		let end = full.length;
-		while (end > 0) {
-			end--;
-			node.textContent = full.slice(0, end).trimEnd() + '…';
-			if (node.getComputedTextLength() <= maxWidth) return;
-		}
 	}
 
 	onMount(() => {

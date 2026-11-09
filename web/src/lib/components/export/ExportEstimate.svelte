@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { api, type ExportEstimate } from '$lib/api/client';
+	import { api, type ExportEstimate } from '#lib/api/client.js';
 
 	interface Props {
 		onEstimateLoaded?: (estimate: ExportEstimate) => void;

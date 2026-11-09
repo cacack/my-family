@@ -672,7 +672,8 @@ func TestPedigreeService_BranchScope(t *testing.T) {
 }
 
 // A partner of unknown gender takes whichever parent slot the other partner
-// leaves free, so the pedigree shows both parents (#1082).
+// leaves free, so the pedigree shows both parents (#1082). So does the second
+// partner of a same-gender couple (#1230).
 func TestGetPedigree_UnknownGenderParent(t *testing.T) {
 	tests := []struct {
 		name             string
@@ -685,6 +686,8 @@ func TestGetPedigree_UnknownGenderParent(t *testing.T) {
 		{"unknown and male", "unknown", "male", 2},
 		{"both unknown", "unknown", "unknown", 0},
 		{"both unset", "", "", 0},
+		{"both male", "male", "male", 0},
+		{"both female", "female", "female", 0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

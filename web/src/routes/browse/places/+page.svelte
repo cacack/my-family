@@ -1,6 +1,6 @@
 <script lang="ts">
-	import PlaceBrowser from '$lib/components/PlaceBrowser.svelte';
-	import PageHeader from '$lib/components/PageHeader.svelte';
+	import PlaceBrowser from '#lib/components/PlaceBrowser.svelte';
+	import PageHeader from '#lib/components/PageHeader.svelte';
 </script>
 
 <svelte:head>

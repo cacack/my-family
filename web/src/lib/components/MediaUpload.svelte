@@ -1,8 +1,8 @@
 <script lang="ts">
-	import { api, isConflictError, type Media, type MediaType } from '$lib/api/client';
-	import { Button } from '$lib/components/ui/button';
+	import { api, isConflictError, type Media, type MediaType } from '#lib/api/client.js';
+	import { Button } from '#lib/components/ui/button/index.js';
 	import ConflictError from './ConflictError.svelte';
-	import { UPLOAD_MEDIA_TYPE_OPTIONS } from '$lib/utils/enumOptions';
+	import { UPLOAD_MEDIA_TYPE_OPTIONS } from '#lib/utils/enumOptions.js';
 
 	interface Props {
 		personId: string;

@@ -1,10 +1,12 @@
 <script lang="ts">
 	import * as d3 from 'd3';
 	import { onMount, untrack } from 'svelte';
-	import { formatPersonName, formatYear, type PedigreeNode } from '$lib/api/client';
-	import { getFontScale } from '$lib/stores/accessibilitySettings.svelte';
+	import { formatPersonName, formatYear, type PedigreeNode } from '#lib/api/client.js';
+	import { getFontScale } from '#lib/stores/accessibilitySettings.svelte.js';
 	import {
+		CARD_TEXT_INSET,
 		centreOnX,
+		fitText,
 		fitTransform,
 		motionDuration,
 		nameLines,
@@ -13,9 +15,8 @@
 		scaleAbout,
 		scaleBounds,
 		touchScrollsPage,
-		truncateLabel,
 		type ScaleExtent
-	} from '$lib/utils/chart';
+	} from '#lib/utils/chart.js';
 	import OffscreenIndicator from './OffscreenIndicator.svelte';
 
 	export type LayoutMode = 'compact' | 'standard' | 'wide';
@@ -588,8 +589,9 @@
 			.attr('font-size', '13px')
 			.attr('font-weight', '600')
 			.attr('fill', '#1e293b')
-			.text((d) => {
-				return truncateLabel(nameLines(d.data)[0], 16);
+			.text((d) => nameLines(d.data)[0])
+			.each(function () {
+				fitText(this, cardWidth - 2 * CARD_TEXT_INSET);
 			});
 
 		// Surname (second line)
@@ -601,8 +603,9 @@
 			.attr('font-size', '13px')
 			.attr('font-weight', '500')
 			.attr('fill', '#475569')
-			.text((d) => {
-				return truncateLabel(nameLines(d.data)[1], 16);
+			.text((d) => nameLines(d.data)[1])
+			.each(function () {
+				fitText(this, cardWidth - 2 * CARD_TEXT_INSET);
 			});
 
 		// Birth-death dates (third line)

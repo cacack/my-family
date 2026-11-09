@@ -1,9 +1,17 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { afterAll, beforeAll, describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, cleanup, fireEvent } from '@testing-library/svelte';
 import DescendancyChart from './DescendancyChart.svelte';
-import type { DescendancyNode } from '$lib/api/client';
-import { MIN_CARD_FONT_PX } from '$lib/utils/chart';
-import { setFontSize, setReducedMotion } from '$lib/stores/accessibilitySettings.svelte';
+import type { DescendancyNode } from '#lib/api/client.js';
+import { CARD_TEXT_INSET, MIN_CARD_FONT_PX } from '#lib/utils/chart.js';
+import { setFontSize, setReducedMotion } from '#lib/stores/accessibilitySettings.svelte.js';
+import { mockTextLength } from '#lib/test/textLength.js';
+
+// Card labels are cut to their measured width (#1213)
+let restoreTextLength: () => void;
+beforeAll(() => {
+	restoreTextLength = mockTextLength();
+});
+afterAll(() => restoreTextLength());
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -410,6 +418,33 @@ describe('DescendancyChart', () => {
 		// Should be truncated with an ellipsis
 		const truncatedTexts = textContents.filter((t) => t?.endsWith('…'));
 		expect(truncatedTexts.length).toBeGreaterThan(0);
+	});
+
+	it('fits a 22-character unbroken given name and surname inside the card (#1213)', () => {
+		const person: DescendancyNode = { id: '1', given_name: 'MWOLLSTONECRAFTWHEWELL', surname: 'MWOLLSTONECRAFTWHEWELL' };
+		const { container } = render(DescendancyChart, { props: { data: person } });
+		const width = Number(container.querySelector('.node-card')!.getAttribute('width'));
+		const lines = Array.from(container.querySelectorAll('.node text')).slice(0, 2) as SVGTextElement[];
+		for (const line of lines) {
+			expect(line.textContent).toMatch(/…$/);
+			expect(line.getComputedTextLength()).toBeLessThanOrEqual(width - 2 * CARD_TEXT_INSET);
+		}
+		expect(container.querySelector('.node title')?.textContent).toBe('MWOLLSTONECRAFTWHEWELL MWOLLSTONECRAFTWHEWELL');
+	});
+
+	it('fits a spouse with a 22-character unbroken surname inside the spouse card (#1213)', () => {
+		const data: DescendancyNode = {
+			...mockSinglePerson,
+			spouses: [{ id: '2', family_id: 'f2', name: 'Ann MWOLLSTONECRAFTWHEWELL' }]
+		};
+		const { container } = render(DescendancyChart, { props: { data } });
+		const width = Number(container.querySelector('.spouse-card')!.getAttribute('width'));
+		const lines = Array.from(container.querySelectorAll('.spouse-group text')).slice(0, 2) as SVGTextElement[];
+		expect(lines.map((t) => t.textContent)).toEqual(['Ann', expect.stringMatching(/^MWOLL.*…$/)]);
+		for (const line of lines) {
+			expect(line.getComputedTextLength()).toBeLessThanOrEqual(width - 2 * CARD_TEXT_INSET);
+		}
+		expect(container.querySelector('.spouse-group title')?.textContent).toBe('Ann MWOLLSTONECRAFTWHEWELL');
 	});
 
 	it('truncates at a word boundary and shows the full name as a tooltip', () => {

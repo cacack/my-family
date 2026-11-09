@@ -1,4 +1,4 @@
-import type { SourceType } from '$lib/api/client';
+import type { SourceType } from '#lib/api/client.js';
 
 /**
  * Every source type the API accepts (domain.SourceType), in the order the

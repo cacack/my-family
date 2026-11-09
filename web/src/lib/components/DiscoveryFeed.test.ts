@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import DiscoveryFeed from './DiscoveryFeed.svelte';
-import * as apiModule from '$lib/api/client';
+import * as apiModule from '#lib/api/client.js';
 
-vi.mock('$lib/api/client', async (importOriginal) => {
+vi.mock('#lib/api/client.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof apiModule>();
 	return { ...actual, api: { getDiscoveryFeed: vi.fn() } };
 });

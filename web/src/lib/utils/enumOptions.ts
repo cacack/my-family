@@ -13,7 +13,7 @@ import type {
 	RelationType,
 	ResearchStatus,
 	SourceQuality
-} from '$lib/api/client';
+} from '#lib/api/client.js';
 
 export interface EnumOption<T extends string> {
 	readonly value: T;

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { FieldChange } from '$lib/api/client';
+	import type { FieldChange } from '#lib/api/client.js';
 
 	interface Props {
 		changes: Record<string, FieldChange>;

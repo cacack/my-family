@@ -1,9 +1,9 @@
 <script lang="ts">
-	import { api, isConflictError, isVersionConflict, type PersonName, type NameType } from '$lib/api/client';
-	import { Button } from '$lib/components/ui/button';
-	import FormRow from '$lib/components/FormRow.svelte';
+	import { api, isConflictError, isVersionConflict, type PersonName, type NameType } from '#lib/api/client.js';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import FormRow from '#lib/components/FormRow.svelte';
 	import ConflictError from './ConflictError.svelte';
-	import { NAME_TYPE_OPTIONS } from '$lib/utils/enumOptions';
+	import { NAME_TYPE_OPTIONS } from '#lib/utils/enumOptions.js';
 
 	interface Props {
 		personId: string;

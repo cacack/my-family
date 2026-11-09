@@ -270,6 +270,99 @@ func TestGenDate_ToGregorian_UnknownCalendar(t *testing.T) {
 	}
 }
 
+// TestParseGenDate_MixedCalendarRange covers a range whose end date carries its
+// own calendar escape (#1227): the end is parsed in its own calendar and that
+// calendar is recorded in Calendar2.
+func TestParseGenDate_MixedCalendarRange(t *testing.T) {
+	tests := []struct {
+		input         string
+		wantCalendar  string
+		wantCalendar2 string
+		wantQual      DateQualifier
+		wantYear      *int
+		wantYear2     *int
+		wantMonth2    *int
+	}{
+		{"BET @#DJULIAN@ 1700 AND @#DGREGORIAN@ 1690", CalendarJulian, CalendarGregorian, DateBet, intPtr(1700), intPtr(1690), nil},
+		{"FROM @#DJULIAN@ 1700 TO @#DGREGORIAN@ 1750", CalendarJulian, CalendarGregorian, DateFrom, intPtr(1700), intPtr(1750), nil},
+		// Only the end carries an escape: the start stays Gregorian.
+		{"BET 1690 AND @#DJULIAN@ 1700", CalendarGregorian, CalendarJulian, DateBet, intPtr(1690), intPtr(1700), nil},
+		// The end's month code is read in the end's calendar.
+		{"BET @#DJULIAN@ 1700 AND @#DHEBREW@ NSN 5500", CalendarJulian, CalendarHebrew, DateBet, intPtr(1700), intPtr(5500), intPtr(8)},
+		// An end escape naming the start's calendar is not a mixed range.
+		{"BET @#DJULIAN@ 1690 AND @#DJULIAN@ 1700", CalendarJulian, "", DateBet, intPtr(1690), intPtr(1700), nil},
+		// Single-calendar ranges are unchanged.
+		{"@#DJULIAN@ BET 1690 AND 1700", CalendarJulian, "", DateBet, intPtr(1690), intPtr(1700), nil},
+		{"BET @#DJULIAN@ 1690 AND 1700", CalendarJulian, "", DateBet, intPtr(1690), intPtr(1700), nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := ParseGenDate(tt.input)
+			if got.Calendar != tt.wantCalendar {
+				t.Errorf("Calendar = %q, want %q", got.Calendar, tt.wantCalendar)
+			}
+			if got.Calendar2 != tt.wantCalendar2 {
+				t.Errorf("Calendar2 = %q, want %q", got.Calendar2, tt.wantCalendar2)
+			}
+			if got.Qualifier != tt.wantQual {
+				t.Errorf("Qualifier = %q, want %q", got.Qualifier, tt.wantQual)
+			}
+			assertIntPtr(t, "Year", got.Year, tt.wantYear)
+			assertIntPtr(t, "Year2", got.Year2, tt.wantYear2)
+			assertIntPtr(t, "Month2", got.Month2, tt.wantMonth2)
+		})
+	}
+}
+
+// TestGenDate_MixedCalendarRange_FormatAndConvert ensures a mixed-calendar
+// range keeps the end's escape when formatted, and that ToGregorian converts
+// each endpoint from its own calendar (#1227).
+func TestGenDate_MixedCalendarRange_FormatAndConvert(t *testing.T) {
+	for _, in := range []string{
+		"BET @#DJULIAN@ 1700 AND @#DGREGORIAN@ 1690",
+		"FROM 1690 TO @#DJULIAN@ 1700",
+		"BET @#DJULIAN@ 1 JAN 1700 AND @#DHEBREW@ 1 NSN 5500",
+	} {
+		gd := ParseGenDate(in)
+		gd.Raw = ""
+		if got := gd.Format(); got != in {
+			t.Errorf("Format(ParseGenDate(%q)) = %q", in, got)
+		}
+	}
+
+	// Julian 25 DEC 1700 is Gregorian 5 JAN 1701; the Gregorian start is unchanged.
+	got, err := ParseGenDate("BET 1 JAN 1701 AND @#DJULIAN@ 25 DEC 1700").ToGregorian()
+	if err != nil {
+		t.Fatalf("ToGregorian() error = %v", err)
+	}
+	if got.Calendar != CalendarGregorian || got.Calendar2 != "" {
+		t.Errorf("calendars = %q/%q, want %q/\"\"", got.Calendar, got.Calendar2, CalendarGregorian)
+	}
+	assertIntPtr(t, "Year", got.Year, intPtr(1701))
+	assertIntPtr(t, "Day", got.Day, intPtr(1))
+	assertIntPtr(t, "Year2", got.Year2, intPtr(1701))
+	assertIntPtr(t, "Month2", got.Month2, intPtr(1))
+	assertIntPtr(t, "Day2", got.Day2, intPtr(5))
+
+	bad := GenDate{Calendar: CalendarGregorian, Calendar2: "DBOGUS", Year: intPtr(1700), Year2: intPtr(1701)}
+	if _, err := bad.ToGregorian(); err == nil {
+		t.Error("expected error for unrecognized end calendar")
+	}
+}
+
+// TestGenDate_Validate_MixedCalendarEnd checks the end month against the end
+// date's calendar: a 13th month is valid in Hebrew but not Julian.
+func TestGenDate_Validate_MixedCalendarEnd(t *testing.T) {
+	ok := GenDate{Calendar: CalendarJulian, Calendar2: CalendarHebrew, Year: intPtr(1700), Year2: intPtr(5500), Month2: intPtr(13)}
+	if err := ok.Validate(); err != nil {
+		t.Errorf("Validate() = %v, want nil", err)
+	}
+	bad := GenDate{Calendar: CalendarHebrew, Calendar2: CalendarJulian, Year: intPtr(5500), Year2: intPtr(1750), Month2: intPtr(13)}
+	if err := bad.Validate(); err == nil {
+		t.Error("Validate() = nil, want error for month 13 in a Julian end date")
+	}
+}
+
 func assertIntPtr(t *testing.T, field string, got, want *int) {
 	t.Helper()
 	switch {

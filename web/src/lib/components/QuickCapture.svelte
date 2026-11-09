@@ -1,10 +1,10 @@
 <script lang="ts">
-	import { api, type PersonCreate, type Gender } from '$lib/api/client';
-	import { Button } from '$lib/components/ui/button';
+	import { api, type PersonCreate, type Gender } from '#lib/api/client.js';
+	import { Button } from '#lib/components/ui/button/index.js';
 	import { goto } from '$app/navigation';
-	import { parseName } from '$lib/utils/nameParse';
-	import ActionError from '$lib/components/ActionError.svelte';
-	import { asDatePhrase, savedAsNotes, unreadableDateField, type SavedAs } from '$lib/utils/dateInput';
+	import { parseName } from '#lib/utils/nameParse.js';
+	import ActionError from '#lib/components/ActionError.svelte';
+	import { asDatePhrase, savedAsNotes, unreadableDateField, type SavedAs } from '#lib/utils/dateInput.js';
 
 	let nameInput = $state('');
 	let gender = $state<Gender>('unknown');

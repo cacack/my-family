@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import FamilyPage from './+page.svelte';
-import * as apiModule from '$lib/api/client';
+import SearchBox from '#lib/components/SearchBox.svelte';
+import AccessibilityPanel from '#lib/components/AccessibilityPanel.svelte';
+import * as apiModule from '#lib/api/client.js';
 
 const { branchState, pageState } = vi.hoisted(() => ({
 	// The real store exposes a read-only view, so the active branch is injected.
@@ -10,12 +12,12 @@ const { branchState, pageState } = vi.hoisted(() => ({
 	pageState: {} as App.PageState
 }));
 
-vi.mock('$lib/stores/activeBranch.svelte', () => ({
+vi.mock('#lib/stores/activeBranch.svelte.js', () => ({
 	activeBranch: branchState
 }));
 
 // Mock the API module
-vi.mock('$lib/api/client', async (importOriginal) => {
+vi.mock('#lib/api/client.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof apiModule>();
 	return {
 		...actual,
@@ -406,6 +408,89 @@ describe('Family Detail Page: partners and children (#826)', () => {
 		expect(confirm).not.toHaveBeenCalled();
 		expect(screen.queryByLabelText('Marriage Date')).toBeNull();
 		await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Edit' })));
+		confirm.mockRestore();
+	});
+
+	// Escape on a form button (the form focuses Clear Partner 1 first) did nothing (#1139).
+	it('leaves edit mode on Escape from a form button, after the discard prompt', async () => {
+		const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+		await openEdit();
+
+		await fireEvent.input(screen.getByLabelText('Marriage Date'), { target: { value: '1875' } });
+		const clear = screen.getByRole('button', { name: 'Clear Partner 1: John Smith' });
+		clear.focus();
+		await fireEvent.keyDown(clear, { key: 'Escape' });
+
+		expect(confirm).toHaveBeenCalledWith('Discard your unsaved changes?');
+		expect(screen.queryByLabelText('Marriage Date')).toBeNull();
+		confirm.mockRestore();
+	});
+
+	// An overlay's Escape also reached the page's cancel (#1139).
+	it('keeps edit mode when Escape closes the search dropdown', async () => {
+		const confirm = vi.spyOn(window, 'confirm');
+		vi.mocked(apiModule.api.searchPersons).mockResolvedValue({ items: [], total: 0 });
+		await openEdit();
+		await fireEvent.input(screen.getByLabelText('Marriage Date'), { target: { value: '1875' } });
+		render(SearchBox);
+		const search = screen.getByRole('combobox', { name: 'Search' });
+		search.focus();
+		await fireEvent.input(search, { target: { value: 'Smith' } });
+
+		await fireEvent.keyDown(search, { key: 'Escape' });
+
+		expect(search.getAttribute('aria-expanded')).toBe('false');
+		expect(confirm).not.toHaveBeenCalled();
+		expect(screen.getByLabelText('Marriage Date')).toBeDefined();
+		confirm.mockRestore();
+	});
+
+	it('keeps edit mode when Escape closes the accessibility panel', async () => {
+		const confirm = vi.spyOn(window, 'confirm');
+		await openEdit();
+		await fireEvent.input(screen.getByLabelText('Marriage Date'), { target: { value: '1875' } });
+		const onClose = vi.fn();
+		render(AccessibilityPanel, { open: true, onClose });
+		const closeButton = screen.getByRole('button', { name: 'Close accessibility settings' });
+		closeButton.focus();
+
+		await fireEvent.keyDown(closeButton, { key: 'Escape' });
+
+		expect(onClose).toHaveBeenCalled();
+		expect(confirm).not.toHaveBeenCalled();
+		expect(screen.getByLabelText('Marriage Date')).toBeDefined();
+		confirm.mockRestore();
+	});
+
+	// PersonSelector consumed every Escape, so a closed partner search swallowed cancel (#1139).
+	it('leaves edit mode on Escape from a closed partner search, after the discard prompt', async () => {
+		const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+		await openEdit();
+		await fireEvent.click(screen.getByRole('button', { name: 'Clear Partner 1: John Smith' }));
+		const partner = screen.getByRole('combobox', { name: 'Partner 1' });
+		partner.focus();
+
+		await fireEvent.keyDown(partner, { key: 'Escape' });
+
+		expect(confirm).toHaveBeenCalledWith('Discard your unsaved changes?');
+		expect(screen.queryByLabelText('Marriage Date')).toBeNull();
+		confirm.mockRestore();
+	});
+
+	it('keeps edit mode when Escape closes the partner search results', async () => {
+		const confirm = vi.spyOn(window, 'confirm');
+		await openEdit();
+		await fireEvent.click(screen.getByRole('button', { name: 'Clear Partner 1: John Smith' }));
+		const partner = screen.getByRole('combobox', { name: 'Partner 1' });
+		partner.focus();
+		await fireEvent.input(partner, { target: { value: 'Jones' } });
+		await screen.findByRole('option', { name: /Carl Jones/ }, { timeout: 1500 });
+
+		await fireEvent.keyDown(partner, { key: 'Escape' });
+
+		await waitFor(() => expect(screen.queryByRole('listbox')).toBeNull());
+		expect(confirm).not.toHaveBeenCalled();
+		expect(screen.getByLabelText('Marriage Date')).toBeDefined();
 		confirm.mockRestore();
 	});
 

@@ -10,7 +10,8 @@ import (
 
 // TestRelinkEdgeParent covers relinkChildEdges' per-edge rules: swap the
 // merged person for the survivor, and fill a parent slot a link left empty
-// only when the edge still agrees with the family (#834).
+// only when the edge still agrees with the family (#834). A survivor whose
+// gender's slot is taken, as in a same-gender couple, takes the free one (#1230).
 func TestRelinkEdgeParent(t *testing.T) {
 	merged, partner, stranger := uuid.New(), uuid.New(), uuid.New()
 	male := &PersonReadModel{ID: uuid.New(), FullName: "Sam Survivor", Gender: domain.GenderMale}
@@ -36,8 +37,9 @@ func TestRelinkEdgeParent(t *testing.T) {
 		{"fills empty mother", PedigreeEdge{FatherID: ptr(partner)}, female, familyWith(female), true, &partner, &female.ID},
 		{"survivor already named", PedigreeEdge{FatherID: ptr(male.ID)}, male, familyWith(male), false, &male.ID, nil},
 		{"edge from another family", PedigreeEdge{MotherID: ptr(stranger)}, male, familyWith(male), false, nil, &stranger},
-		{"father slot taken", PedigreeEdge{FatherID: ptr(partner)}, male, familyWith(male), false, &partner, nil},
-		{"mother slot taken", PedigreeEdge{MotherID: ptr(partner)}, female, familyWith(female), false, nil, &partner},
+		{"father slot taken fills mother", PedigreeEdge{FatherID: ptr(partner)}, male, familyWith(male), true, &partner, &male.ID},
+		{"mother slot taken fills father", PedigreeEdge{MotherID: ptr(partner)}, female, familyWith(female), true, &female.ID, &partner},
+		{"both slots taken", PedigreeEdge{FatherID: ptr(partner), MotherID: ptr(partner)}, male, familyWith(male), false, &partner, &partner},
 		{"unknown fills empty father", PedigreeEdge{MotherID: ptr(partner)}, unknown, familyWith(unknown), true, &unknown.ID, &partner},
 		{"unknown fills empty mother", PedigreeEdge{FatherID: ptr(partner)}, unknown, familyWith(unknown), true, &partner, &unknown.ID},
 		{"survivor not a partner", PedigreeEdge{}, male, &FamilyReadModel{ID: uuid.New(), Partner2ID: &partner}, false, nil, nil},

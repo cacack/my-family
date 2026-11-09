@@ -17,10 +17,6 @@ export default defineConfig({
 				precompress: false,
 				strict: true
 			}),
-			// Kit 3 dropped the built-in `$lib` alias in favour of `#lib` subpath
-			// imports. This keeps the existing `$lib` imports (and shadcn-svelte's
-			// components.json aliases) working until they are migrated.
-			alias: { $lib: 'src/lib' },
 			paths: {
 				base: ''
 			}

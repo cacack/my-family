@@ -1,7 +1,7 @@
 /**
  * Presentation helpers for relationship calculator results.
  */
-import type { RelationshipPath, RelationshipPathNode } from '$lib/api/client';
+import type { RelationshipPath, RelationshipPathNode } from '#lib/api/client.js';
 
 export interface ChainNode extends RelationshipPathNode {
 	isCommonAncestor: boolean;

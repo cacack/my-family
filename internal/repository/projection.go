@@ -344,6 +344,13 @@ func (p *Projector) projectPersonCreated(ctx context.Context, e domain.PersonCre
 		UpdatedAt:      e.OccurredAt(),
 	}
 
+	// A family may already name this person: a branch merge replays streams
+	// in first-event order, so a family's link can land before the person (#817).
+	// The rename runs before SavePerson records the version, so a failed rename
+	// leaves the person behind the log for ResumeMerge to re-project.
+	if err := p.readStore.RenameFamilyMember(ctx, branchID, person.ID, person.GivenName, person.Surname); err != nil {
+		return err
+	}
 	return p.readStore.SavePerson(ctx, branchID, person)
 }
 
@@ -422,13 +429,17 @@ func (p *Projector) projectPersonUpdated(ctx context.Context, e domain.PersonUpd
 	person.Version = version
 	person.UpdatedAt = e.OccurredAt()
 
-	if err := p.readStore.SavePerson(ctx, branchID, person); err != nil {
-		return err
+	// Name side effects run before SavePerson records the version (see
+	// projectPersonCreated).
+	if nameChanged {
+		if err := p.syncPrimaryNameFromPerson(ctx, branchID, person, e.OccurredAt()); err != nil {
+			return err
+		}
+		if err := p.readStore.RenameFamilyMember(ctx, branchID, person.ID, person.GivenName, person.Surname); err != nil {
+			return err
+		}
 	}
-	if !nameChanged {
-		return nil
-	}
-	return p.syncPrimaryNameFromPerson(ctx, branchID, person, e.OccurredAt())
+	return p.readStore.SavePerson(ctx, branchID, person)
 }
 
 func (p *Projector) projectPersonDeleted(ctx context.Context, e domain.PersonDeleted, branchID domain.BranchID) error {
@@ -664,8 +675,9 @@ func (p *Projector) projectChildLinked(ctx context.Context, e domain.ChildLinked
 
 // savePedigreeEdgeFromFamily writes the child's pedigree edge (father/mother)
 // from the family's current partners. A male partner is the father and a
-// female partner the mother; a partner of unknown gender takes whichever slot
-// the other partner leaves free (#1082).
+// female partner the mother; a partner of unknown gender (#1082), or the
+// second partner of a same-gender couple (#1230), takes whichever slot the
+// other partner leaves free.
 func (p *Projector) savePedigreeEdgeFromFamily(ctx context.Context, branchID domain.BranchID, childID uuid.UUID, family *FamilyReadModel) error {
 	edge := &PedigreeEdge{PersonID: childID}
 	var undetermined []*PersonReadModel
@@ -680,12 +692,7 @@ func (p *Projector) savePedigreeEdgeFromFamily(ctx context.Context, branchID dom
 		if partner == nil {
 			continue
 		}
-		switch partner.Gender {
-		case domain.GenderMale:
-			setEdgeFather(edge, partner)
-		case domain.GenderFemale:
-			setEdgeMother(edge, partner)
-		default:
+		if !fillGenderParentSlot(edge, partner) {
 			undetermined = append(undetermined, partner)
 		}
 	}
@@ -705,8 +712,23 @@ func setEdgeMother(edge *PedigreeEdge, mother *PersonReadModel) {
 	edge.MotherName = mother.FullName
 }
 
-// fillFreeParentSlot records a parent of unknown gender in the edge's free
-// slot, the mother's first, and reports whether one was free.
+// fillGenderParentSlot records a male parent as the edge's father or a female
+// parent as its mother, and reports whether that slot was free. A parent of
+// unknown gender is never recorded here.
+func fillGenderParentSlot(edge *PedigreeEdge, parent *PersonReadModel) bool {
+	switch {
+	case parent.Gender == domain.GenderMale && edge.FatherID == nil:
+		setEdgeFather(edge, parent)
+	case parent.Gender == domain.GenderFemale && edge.MotherID == nil:
+		setEdgeMother(edge, parent)
+	default:
+		return false
+	}
+	return true
+}
+
+// fillFreeParentSlot records a parent whose gender's slot is unavailable in
+// the edge's free slot, the mother's first, and reports whether one was free.
 func fillFreeParentSlot(edge *PedigreeEdge, parent *PersonReadModel) bool {
 	switch {
 	case edge.MotherID == nil:
@@ -1602,13 +1624,21 @@ func (p *Projector) updatePersonForName(ctx context.Context, branchID domain.Bra
 		// Person may not exist yet if events are out of order
 		return nil
 	}
-	if name.IsPrimary && (person.GivenName != name.GivenName || person.Surname != name.Surname) {
+	renamed := name.IsPrimary && (person.GivenName != name.GivenName || person.Surname != name.Surname)
+	if renamed {
 		person.GivenName = name.GivenName
 		person.Surname = name.Surname
 		person.FullName = domain.JoinFullName(name.GivenName, name.Surname)
 		person.UpdatedAt = name.UpdatedAt
 	}
 	person.Version = version
+	// The rename runs before SavePerson records the version (see
+	// projectPersonCreated).
+	if renamed {
+		if err := p.readStore.RenameFamilyMember(ctx, branchID, person.ID, person.GivenName, person.Surname); err != nil {
+			return err
+		}
+	}
 	return p.readStore.SavePerson(ctx, branchID, person)
 }
 
@@ -1871,6 +1901,10 @@ func (p *Projector) projectPersonMerged(ctx context.Context, e domain.PersonMerg
 	if err := p.syncPrimaryNameFromPerson(ctx, branchID, survivor, e.OccurredAt()); err != nil {
 		return fmt.Errorf("sync primary name for survivor %s: %w", e.SurvivorID, err)
 	}
+	// ...and to the names the survivor's own families carry for it.
+	if err := p.readStore.RenameFamilyMember(ctx, branchID, survivor.ID, survivor.GivenName, survivor.Surname); err != nil {
+		return fmt.Errorf("refresh family names for survivor %s: %w", e.SurvivorID, err)
+	}
 
 	// 6. Transfer life events from merged person to survivor
 	events, err := p.readStore.ListEventsForPerson(ctx, branchID, e.MergedID)
@@ -2048,22 +2082,7 @@ func relinkEdgeParent(edge *PedigreeEdge, family *FamilyReadModel, mergedID uuid
 		}
 	}
 	// The same father/mother choice savePedigreeEdgeFromFamily makes.
-	switch survivor.Gender {
-	case domain.GenderMale:
-		if edge.FatherID != nil {
-			return false
-		}
-		setEdgeFather(edge, survivor)
-		return true
-	case domain.GenderFemale:
-		if edge.MotherID != nil {
-			return false
-		}
-		setEdgeMother(edge, survivor)
-		return true
-	default:
-		return fillFreeParentSlot(edge, survivor)
-	}
+	return fillGenderParentSlot(edge, survivor) || fillFreeParentSlot(edge, survivor)
 }
 
 // familyHasPartner reports whether a person is one of a family's partners.

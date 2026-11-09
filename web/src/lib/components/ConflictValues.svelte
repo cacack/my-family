@@ -8,7 +8,7 @@
 	 * values arrive as display text from the server, ids already resolved to
 	 * names, so nothing here formats or looks anything up.
 	 */
-	import type { MergeConflict } from '$lib/api/client';
+	import type { MergeConflict } from '#lib/api/client.js';
 
 	interface Props {
 		conflict: MergeConflict;

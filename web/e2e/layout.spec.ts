@@ -150,6 +150,35 @@ test.describe('card names and titles at 375px with the Larger font setting', () 
 	});
 });
 
+// The seeded database fills /persons, and no seeded or spec-created person has
+// a research status, so filtering by Certain reaches the empty state (#1156).
+// Its two buttons must wrap onto the screen rather than push the page sideways.
+test.describe('the People empty state at 375px', () => {
+	test.use({ viewport: { width: 375, height: 900 } });
+
+	for (const fontSize of ['normal', 'larger']) {
+		test(`its actions fit with the ${fontSize} font setting`, async ({ page }) => {
+			await page.addInitScript((size) => {
+				localStorage.setItem('accessibility-settings', JSON.stringify({ fontSize: size }));
+			}, fontSize);
+			await expectNoHorizontalOverflow(page, '/persons?status=certain');
+			await expect(page.getByText('No people found.')).toBeVisible();
+			const actions = page.locator('main .empty-actions a');
+			await expect(actions).toHaveText(['Add Person', 'Import GEDCOM']);
+			const boxes = await actions.evaluateAll((els) =>
+				els.map((el) => {
+					const r = el.getBoundingClientRect();
+					return { left: r.left, right: r.right };
+				})
+			);
+			for (const box of boxes) {
+				expect(box.left, 'empty-state button starts off-screen').toBeGreaterThanOrEqual(0);
+				expect(box.right, 'empty-state button runs off-screen').toBeLessThanOrEqual(375);
+			}
+		});
+	}
+});
+
 // Each label sits beside a value that may be long; the value must wrap, never
 // the label (#1105: "Mothe / r:" at 375px).
 for (const width of [320, 375]) {

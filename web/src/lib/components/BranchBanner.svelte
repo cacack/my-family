@@ -14,16 +14,16 @@
 	 * banner also explains that and says how far the mainline has moved under
 	 * the branch since it forked (#837) - a cheap count, not a compare.
 	 */
-	import { api, onBranchWrite, type BranchDrift } from '$lib/api/client';
+	import { api, onBranchWrite, type BranchDrift } from '#lib/api/client.js';
 	import {
 		activeBranch,
 		returnToMainline,
 		dismissBranchNotice
-	} from '$lib/stores/activeBranch.svelte';
-	import { Button } from '$lib/components/ui/button';
-	import BranchOutcomeBadge from '$lib/components/branch/BranchOutcomeBadge.svelte';
+	} from '#lib/stores/activeBranch.svelte.js';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import BranchOutcomeBadge from '#lib/components/branch/BranchOutcomeBadge.svelte';
 	import BranchDriftIndicator from './BranchDriftIndicator.svelte';
-	import { subjectHref, subjectLabel } from '$lib/utils/branchResearch';
+	import { subjectHref, subjectLabel } from '#lib/utils/branchResearch.js';
 	import { MediaQuery } from 'svelte/reactivity';
 
 	/** How many subjects the banner names before summarising the rest. */

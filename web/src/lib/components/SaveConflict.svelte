@@ -19,7 +19,7 @@
 	 * writes the client already retried once: a whole-record edit is not safe to
 	 * retry blindly, so this one shows what would be overwritten.
 	 */
-	import { Button } from '$lib/components/ui/button';
+	import { Button } from '#lib/components/ui/button/index.js';
 
 	interface Props {
 		/** What was edited, for the message: "person", "family". */

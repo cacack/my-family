@@ -57,3 +57,38 @@ for (const width of WIDTHS) {
 		});
 	});
 }
+
+// Interaction state the route sweep never opens: the selected font-size
+// option's faded description failed contrast on its blue fill (#1116).
+test('the open Accessibility panel has no colour-contrast failures', async ({ page }) => {
+	await page.setViewportSize({ width: 1280, height: 900 });
+	await page.goto('/');
+	await page.getByRole('button', { name: 'Accessibility settings' }).click();
+	const dialog = page.getByRole('dialog', { name: 'Accessibility Settings' });
+	await expect(dialog.getByRole('button', { name: /Normal/, pressed: true })).toBeVisible();
+
+	const { violations } = await new AxeBuilder({ page })
+		.include('.accessibility-dialog')
+		.withRules(['color-contrast'])
+		.analyze();
+	expect(violations.flatMap((v) => v.nodes.map((n) => n.target.join(' ')))).toEqual([]);
+});
+
+// The seeded store never shows the empty home page, so its lists are stubbed
+// empty here. Its import link sits in a sentence and must not rely on colour
+// alone to stand out (#1116).
+test('the empty home page has no link-in-text-block violation', async ({ page }) => {
+	await page.addInitScript(() => {
+		// Past onboarding, so the empty dashboard shows rather than the wizard.
+		localStorage.setItem('onboarding-settings', JSON.stringify({ completed: true }));
+	});
+	await page.route(/\/api\/v1\/(persons|families)\?/, (route) =>
+		route.fulfill({ json: { items: [], total: 0 } })
+	);
+
+	await page.goto('/');
+	await expect(page.getByRole('link', { name: 'Import a GEDCOM file' })).toBeVisible();
+
+	const { violations } = await new AxeBuilder({ page }).withRules(['link-in-text-block']).analyze();
+	expect(violations.flatMap((v) => v.nodes.map((n) => n.target.join(' ')))).toEqual([]);
+});

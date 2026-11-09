@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterEach } from 'vitest';
 import { render, cleanup } from '@testing-library/svelte';
 import QualityChart from './QualityChart.svelte';
-import { setFontSize } from '$lib/stores/accessibilitySettings.svelte';
+import { setFontSize } from '#lib/stores/accessibilitySettings.svelte.js';
 
 beforeAll(() => {
 	// jsdom lacks ResizeObserver.
@@ -37,7 +37,7 @@ describe('QualityChart', () => {
 	});
 
 	it('truncates a label that does not fit, keeping the full text in the tooltip', () => {
-		// Fake measurement: 10px per character on a 200px-wide chart.
+		// Fake measurement: 10px per character on a 170px-wide chart.
 		const proto = SVGElement.prototype as unknown as {
 			getComputedTextLength?: () => number;
 		};
@@ -47,13 +47,15 @@ describe('QualityChart', () => {
 		const width = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientWidth');
 		Object.defineProperty(HTMLElement.prototype, 'clientWidth', {
 			configurable: true,
-			get: () => 200
+			get: () => 170
 		});
 		try {
 			const { container } = render(QualityChart, { props: { data } });
 			const label = container.querySelectorAll('text.bar-label')[1];
 			expect(label.textContent!.endsWith('…')).toBe(true);
-			expect(label.textContent!.length * 10).toBeLessThanOrEqual(200);
+			expect(label.textContent!.length * 10).toBeLessThanOrEqual(170);
+			// Uses the shared chart fitText, which cuts at a word boundary.
+			expect(label.textContent).toBe('Missing death…');
 			expect(container.querySelectorAll('.bar-group > title')[1].textContent).toBe(
 				`${longLabel}: 87`
 			);

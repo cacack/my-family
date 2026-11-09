@@ -9,7 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cacack/gedcom-go/v3/gedcom"
 	"github.com/google/uuid"
 
 	"github.com/cacack/my-family/internal/domain"
@@ -1082,6 +1081,49 @@ func (s *ReadModelStore) GetChildFamily(ctx context.Context, branchID domain.Bra
 	return nil, nil
 }
 
+// RenameFamilyMember rewrites personID's partner, child and pedigree parent
+// names on the family rows, child buckets and pedigree edges stored under
+// branchID itself.
+func (s *ReadModelStore) RenameFamilyMember(ctx context.Context, branchID domain.BranchID, personID uuid.UUID, givenName, surname string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for k, f := range s.families {
+		if k.branch != branchID || f == nil {
+			continue
+		}
+		if f.Partner1ID != nil && *f.Partner1ID == personID {
+			f.Partner1GivenName, f.Partner1Surname = givenName, surname
+		}
+		if f.Partner2ID != nil && *f.Partner2ID == personID {
+			f.Partner2GivenName, f.Partner2Surname = givenName, surname
+		}
+	}
+	for k, children := range s.familyChildren {
+		if k.branch != branchID {
+			continue
+		}
+		for i := range children {
+			if children[i].PersonID == personID {
+				children[i].PersonGivenName, children[i].PersonSurname = givenName, surname
+			}
+		}
+	}
+	fullName := domain.JoinFullName(givenName, surname)
+	for k, edge := range s.pedigreeEdges {
+		if k.branch != branchID || edge == nil {
+			continue
+		}
+		if edge.FatherID != nil && *edge.FatherID == personID {
+			edge.FatherName = fullName
+		}
+		if edge.MotherID != nil && *edge.MotherID == personID {
+			edge.MotherName = fullName
+		}
+	}
+	return nil
+}
+
 // SaveFamilyChild saves a family child relationship on the given branch. On a
 // non-main branch the family's children bucket is copied-on-write from main
 // before the mutation is applied.
@@ -2122,9 +2164,9 @@ func (s *ReadModelStore) GetPersonsByPlace(ctx context.Context, place string, op
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	// Match the SQL stores: compare with ", " collapsed to "," so a hierarchy
-	// full_name finds places stored without the space.
-	norm := func(v string) string { return strings.ReplaceAll(v, ", ", ",") }
+	// Match the SQL stores: compare normalized so a hierarchy full_name finds
+	// places stored without the space or with blank parts.
+	norm := repository.NormalizePlace
 	want := norm(place)
 	var results []repository.PersonReadModel
 	for _, p := range resolveAllRows(s.persons, opts.BranchID) {
@@ -2266,9 +2308,7 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 		person := repository.MapPerson{ID: p.ID, GivenName: p.GivenName, Surname: p.Surname}
 		// Birth location
 		if p.BirthPlaceLat != nil && p.BirthPlaceLong != nil && *p.BirthPlaceLat != "" && *p.BirthPlaceLong != "" {
-			lat, errLat := gedcom.ParseCoordinate(*p.BirthPlaceLat)
-			lon, errLon := gedcom.ParseCoordinate(*p.BirthPlaceLong)
-			if errLat == nil && errLon == nil {
+			if lat, lon, ok := repository.ParseMapCoordinates(p.ID, "birth", *p.BirthPlaceLat, *p.BirthPlaceLong); ok {
 				key := locKey{place: p.BirthPlace, eventType: "birth"}
 				if d, ok := agg[key]; ok {
 					d.persons = append(d.persons, person)
@@ -2279,9 +2319,7 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 		}
 		// Death location
 		if p.DeathPlaceLat != nil && p.DeathPlaceLong != nil && *p.DeathPlaceLat != "" && *p.DeathPlaceLong != "" {
-			lat, errLat := gedcom.ParseCoordinate(*p.DeathPlaceLat)
-			lon, errLon := gedcom.ParseCoordinate(*p.DeathPlaceLong)
-			if errLat == nil && errLon == nil {
+			if lat, lon, ok := repository.ParseMapCoordinates(p.ID, "death", *p.DeathPlaceLat, *p.DeathPlaceLong); ok {
 				key := locKey{place: p.DeathPlace, eventType: "death"}
 				if d, ok := agg[key]; ok {
 					d.persons = append(d.persons, person)

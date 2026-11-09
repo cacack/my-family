@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/svelte';
 import MainNav from './MainNav.svelte';
-import { mainNav, isGroup } from '$lib/navigation';
+import { mainNav, isGroup } from '#lib/navigation.js';
 
 // jsdom applies no media queries, so both the wide row and the narrow menu
 // trigger are in the DOM; queries scope to one or the other.
@@ -52,7 +52,7 @@ describe('MainNav', () => {
 
 	it('offers every destination from the narrow-screen menu, grouped', async () => {
 		render(MainNav, { pathname: '/sources/abc' });
-		const menu = await open(screen.getByRole('button', { name: 'Menu' }));
+		const menu = await open(screen.getByRole('button', { name: 'Menu, current section: Research' }));
 		for (const heading of ['Browse', 'Research', 'History']) {
 			expect(within(menu).getByText(heading)).toBeDefined();
 		}
@@ -60,5 +60,14 @@ describe('MainNav', () => {
 		const destinations = mainNav.flatMap((e) => (isGroup(e) ? e.links : [e])).map((l) => l.label);
 		expect(labels).toEqual(destinations);
 		expect(within(menu).getByRole('menuitem', { name: 'Sources' }).getAttribute('aria-current')).toBe('page');
+	});
+
+	it.each([
+		['/persons/abc', 'Menu, current section: People'],
+		['/pedigree/abc', 'Menu, current section: People'],
+		['/', 'Menu']
+	])('names the current section on the narrow-screen Menu button at %s', (pathname, name) => {
+		render(MainNav, { pathname });
+		expect(screen.getByRole('button', { name })).toBeDefined();
 	});
 });
