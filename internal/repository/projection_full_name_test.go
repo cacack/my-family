@@ -135,3 +135,42 @@ func TestProjector_FullNameHasNoStraySpace(t *testing.T) {
 		})
 	}
 }
+
+// TestReadModel_PersonNameFullName saves names straight to each store and
+// checks every backend returns the same person_names.full_name (#1130, #985):
+// prefix, given name, surname prefix, surname and suffix joined by single
+// spaces, empty parts skipped. postgres.TestPersonNameFullName mirrors it.
+func TestReadModel_PersonNameFullName(t *testing.T) {
+	tests := []struct {
+		name string
+		pn   repository.PersonNameReadModel
+		want string
+	}{
+		{"every part", repository.PersonNameReadModel{NamePrefix: "Dr.", GivenName: "Avery", SurnamePrefix: "van",
+			Surname: "Original", NameSuffix: "Jr."}, "Dr. Avery van Original Jr."},
+		{"no surname", repository.PersonNameReadModel{GivenName: "Alpha"}, "Alpha"},
+		{"no given name", repository.PersonNameReadModel{Surname: "Placeholder"}, "Placeholder"},
+		{"prefix and surname", repository.PersonNameReadModel{NamePrefix: "Rev.", Surname: "Placeholder"}, "Rev. Placeholder"},
+	}
+	for backend, readStore := range fullNameStores(t) {
+		t.Run(backend, func(t *testing.T) {
+			ctx := context.Background()
+			for _, tt := range tests {
+				t.Run(tt.name, func(t *testing.T) {
+					pn := tt.pn
+					pn.ID, pn.PersonID = uuid.New(), uuid.New()
+					if err := readStore.SavePersonName(ctx, domain.MainBranchID, &pn); err != nil {
+						t.Fatalf("SavePersonName: %v", err)
+					}
+					got, err := readStore.GetPersonName(ctx, domain.MainBranchID, pn.ID)
+					if err != nil || got == nil {
+						t.Fatalf("GetPersonName = %v, %v", got, err)
+					}
+					if got.FullName != tt.want {
+						t.Errorf("FullName = %q, want %q", got.FullName, tt.want)
+					}
+				})
+			}
+		})
+	}
+}
