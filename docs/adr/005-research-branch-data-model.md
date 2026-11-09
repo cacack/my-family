@@ -1497,9 +1497,9 @@ the merged person — their own stream (their creation or edits), a family linki
 upload or a GPS artifact about them — must land first. And when the branch CREATED the survivor,
 the survivor's stream carries that creation too, so everything that names the survivor (a family
 partner slot, a child link under their family, an association) must still land after it: the
-projections denormalize a partner's name and a child's parents from the person row, and a
-reference landing before the person exists leaves a blank name and a parentless pedigree edge on
-main that the branch never had. `orderPersonMergesForReplay` solves both constraints together as a
+projections derive a child's parents from the person rows, and a reference landing before the
+person exists leaves a parentless pedigree edge on main that the branch never had (names are no
+longer stored, see the #1207 note). `orderPersonMergesForReplay` solves both constraints together as a
 stable topological order (Kahn's algorithm, always taking the ready stream the branch touched
 first): every stream mentioning a merged person goes before the merge's stream, every stream
 mentioning an entity the branch created goes after the stream that creates it, and nothing else
@@ -2025,3 +2025,22 @@ findings the mainline lacks, plus a count of the mainline's the branch resolves.
 branch has a view, so an unknown or terminal branch is `404`, as for a `?branch=` read. The
 `/quality` endpoints and page stay mainline and keep their `MainlineNotice`; a branch's own checks
 are read in its merge review.
+
+## Implementation Note — family member names resolve at read time (#1207, delivered)
+
+Families used to store their partners' and children's names (`families.partner*_given_name` /
+`partner*_surname`, `family_children.person_given_name` / `person_surname`,
+`pedigree_edges.father_name` / `mother_name`), and a rename rewrote them only on the rows stored
+under its own scope (#1129). So a branch rename never reached a family the branch had not edited,
+and a main rename never reached a branch's shadow of a family. Writing branch rows to carry the name
+would hide main's later edits to those families (the live overlay above), so the names are no longer
+stored at all: every family, child-link and pedigree-edge read resolves them from the person overlay
+of the scope it reads (`repository.ResolveFamilyNames`, `ResolveFamilyChildNames`,
+`ResolvePedigreeEdgeNames`), with one batched `GetPersonsByIDs` per call on every backend. A member
+the scope cannot see reads with an empty name. `GetFamilyChildrenByFamilyIDs` orders child links by
+the resolved names (`repository.CompareFamilyChildren`). `RenameFamilyMember` is gone, and the name
+columns stay in both SQL schemas unread and unwritten (no table rebuild).
+
+Verified by `TestFamilyMemberNames_Parity` (memory/SQLite/PostgreSQL),
+`TestProjector_FamilyMemberNamesFollowThePerson` and `TestFamilyMemberNames_FollowTheBranch`
+(`internal/integration`, all three backends).

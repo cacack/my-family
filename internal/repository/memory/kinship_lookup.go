@@ -1,7 +1,6 @@
 package memory
 
 import (
-	"cmp"
 	"context"
 	"slices"
 	"strings"
@@ -22,7 +21,11 @@ import (
 func (s *ReadModelStore) GetPedigreeEdgesByPersonIDs(ctx context.Context, branchID domain.BranchID, personIDs []uuid.UUID) ([]repository.PedigreeEdge, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return resolveRowsByIDs(s.pedigreeEdges, branchID, personIDs), nil
+	edges := resolveRowsByIDs(s.pedigreeEdges, branchID, personIDs)
+	if err := repository.ResolvePedigreeEdgeNames(ctx, s.personsByIDsLocked, branchID, edges); err != nil {
+		return nil, err
+	}
+	return edges, nil
 }
 
 // GetFamiliesForPersons retrieves every family visible on branchID in which any
@@ -49,7 +52,7 @@ func (s *ReadModelStore) GetFamiliesForPersons(ctx context.Context, branchID dom
 	slices.SortFunc(results, func(a, b repository.FamilyReadModel) int {
 		return strings.Compare(a.ID.String(), b.ID.String())
 	})
-	return results, nil
+	return s.withFamilyNames(ctx, branchID, results)
 }
 
 // GetFamilyChildrenByFamilyIDs retrieves the child links visible on branchID of
@@ -68,29 +71,11 @@ func (s *ReadModelStore) GetFamilyChildrenByFamilyIDs(ctx context.Context, branc
 	var results []repository.FamilyChildReadModel
 	for _, familyID := range sorted {
 		children, _ := resolveBucket(s.familyChildren, branchID, familyID)
-		bucket := slices.Clone(children)
-		slices.SortStableFunc(bucket, compareFamilyChild)
-		results = append(results, bucket...)
+		results = append(results, children...)
 	}
+	if err := repository.ResolveFamilyChildNames(ctx, s.personsByIDsLocked, branchID, results); err != nil {
+		return nil, err
+	}
+	slices.SortStableFunc(results, repository.CompareFamilyChildren)
 	return results, nil
-}
-
-// compareFamilyChild orders child links within one family: by sequence with
-// unsequenced children last, then surname, given name and person id.
-func compareFamilyChild(a, b repository.FamilyChildReadModel) int {
-	switch {
-	case a.Sequence == nil && b.Sequence != nil:
-		return 1
-	case a.Sequence != nil && b.Sequence == nil:
-		return -1
-	case a.Sequence != nil && b.Sequence != nil && *a.Sequence != *b.Sequence:
-		return cmp.Compare(*a.Sequence, *b.Sequence)
-	}
-	if c := strings.Compare(a.PersonSurname, b.PersonSurname); c != 0 {
-		return c
-	}
-	if c := strings.Compare(a.PersonGivenName, b.PersonGivenName); c != 0 {
-		return c
-	}
-	return strings.Compare(a.PersonID.String(), b.PersonID.String())
 }

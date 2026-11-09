@@ -936,15 +936,18 @@ func (s *ReadModelStore) GetFamily(ctx context.Context, branchID domain.BranchID
 	if !ok || f == nil {
 		return nil, nil
 	}
-	result := *f
-	return &result, nil
+	result := []repository.FamilyReadModel{*f}
+	if err := repository.ResolveFamilyNames(ctx, s.personsByIDsLocked, branchID, result); err != nil {
+		return nil, err
+	}
+	return &result[0], nil
 }
 
 // GetFamiliesByIDs retrieves every visible family among ids on branchID (#697).
 func (s *ReadModelStore) GetFamiliesByIDs(ctx context.Context, branchID domain.BranchID, ids []uuid.UUID) ([]repository.FamilyReadModel, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return resolveRowsByIDs(s.families, branchID, ids), nil
+	return s.withFamilyNames(ctx, branchID, resolveRowsByIDs(s.families, branchID, ids))
 }
 
 // ListFamilies returns a paginated list of families for the requested branch.
@@ -980,7 +983,8 @@ func (s *ReadModelStore) ListFamilies(ctx context.Context, opts repository.ListO
 		end = len(families)
 	}
 
-	return families[start:end], total, nil
+	page, err := s.withFamilyNames(ctx, opts.BranchID, families[start:end])
+	return page, total, err
 }
 
 // GetFamiliesForPerson returns all families where the person is a partner,
@@ -996,7 +1000,7 @@ func (s *ReadModelStore) GetFamiliesForPerson(ctx context.Context, branchID doma
 			results = append(results, *f)
 		}
 	}
-	return results, nil
+	return s.withFamilyNames(ctx, branchID, results)
 }
 
 // SaveFamily saves or updates a family on the given branch.
@@ -1064,6 +1068,9 @@ func (s *ReadModelStore) ListAllFamilyChildren(ctx context.Context, branchID dom
 		}
 		return result[i].PersonID.String() < result[j].PersonID.String()
 	})
+	if err := repository.ResolveFamilyChildNames(ctx, s.personsByIDsLocked, branchID, result); err != nil {
+		return nil, err
+	}
 	return result, nil
 }
 
@@ -1093,56 +1100,16 @@ func (s *ReadModelStore) GetChildFamily(ctx context.Context, branchID domain.Bra
 		for _, child := range children {
 			if child.PersonID == personID {
 				if f, ok := resolveRow(s.families, branchID, familyID); ok && f != nil {
-					result := *f
-					return &result, nil
+					result := []repository.FamilyReadModel{*f}
+					if err := repository.ResolveFamilyNames(ctx, s.personsByIDsLocked, branchID, result); err != nil {
+						return nil, err
+					}
+					return &result[0], nil
 				}
 			}
 		}
 	}
 	return nil, nil
-}
-
-// RenameFamilyMember rewrites personID's partner, child and pedigree parent
-// names on the family rows, child buckets and pedigree edges stored under
-// branchID itself.
-func (s *ReadModelStore) RenameFamilyMember(ctx context.Context, branchID domain.BranchID, personID uuid.UUID, givenName, surname string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	for k, f := range s.families {
-		if k.branch != branchID || f == nil {
-			continue
-		}
-		if f.Partner1ID != nil && *f.Partner1ID == personID {
-			f.Partner1GivenName, f.Partner1Surname = givenName, surname
-		}
-		if f.Partner2ID != nil && *f.Partner2ID == personID {
-			f.Partner2GivenName, f.Partner2Surname = givenName, surname
-		}
-	}
-	for k, children := range s.familyChildren {
-		if k.branch != branchID {
-			continue
-		}
-		for i := range children {
-			if children[i].PersonID == personID {
-				children[i].PersonGivenName, children[i].PersonSurname = givenName, surname
-			}
-		}
-	}
-	fullName := domain.JoinFullName(givenName, surname)
-	for k, edge := range s.pedigreeEdges {
-		if k.branch != branchID || edge == nil {
-			continue
-		}
-		if edge.FatherID != nil && *edge.FatherID == personID {
-			edge.FatherName = fullName
-		}
-		if edge.MotherID != nil && *edge.MotherID == personID {
-			edge.MotherName = fullName
-		}
-	}
-	return nil
 }
 
 // SaveFamilyChild saves a family child relationship on the given branch. On a
@@ -1201,8 +1168,26 @@ func (s *ReadModelStore) GetPedigreeEdge(ctx context.Context, branchID domain.Br
 	if !ok || edge == nil {
 		return nil, nil
 	}
-	result := *edge
-	return &result, nil
+	result := []repository.PedigreeEdge{*edge}
+	if err := repository.ResolvePedigreeEdgeNames(ctx, s.personsByIDsLocked, branchID, result); err != nil {
+		return nil, err
+	}
+	return &result[0], nil
+}
+
+// personsByIDsLocked is GetPersonsByIDs for a caller that already holds s.mu;
+// the family reads resolve member names through it (#1207).
+func (s *ReadModelStore) personsByIDsLocked(_ context.Context, branchID domain.BranchID, ids []uuid.UUID) ([]repository.PersonReadModel, error) {
+	return resolveRowsByIDs(s.persons, branchID, ids), nil
+}
+
+// withFamilyNames resolves the partner names of families (#1207); the caller
+// holds s.mu.
+func (s *ReadModelStore) withFamilyNames(ctx context.Context, branchID domain.BranchID, families []repository.FamilyReadModel) ([]repository.FamilyReadModel, error) {
+	if err := repository.ResolveFamilyNames(ctx, s.personsByIDsLocked, branchID, families); err != nil {
+		return nil, err
+	}
+	return families, nil
 }
 
 // SavePedigreeEdge saves a pedigree edge on the given branch.

@@ -82,7 +82,7 @@ func runBatchLookupScenario(t *testing.T, store repository.ReadModelStore) {
 	// --- Families ---
 	f := newIDs()
 	family := func(id uuid.UUID, given string) *repository.FamilyReadModel {
-		return &repository.FamilyReadModel{ID: id, Partner1GivenName: given, Partner1Surname: "Sample",
+		return &repository.FamilyReadModel{ID: id, MarriagePlace: given,
 			RelationshipType: domain.RelationMarriage, Version: 1, UpdatedAt: now}
 	}
 	for _, row := range []*repository.FamilyReadModel{family(f.kept, "Kept"), family(f.edited, "MainEdit"), family(f.deleted, "Doomed")} {
@@ -93,7 +93,7 @@ func runBatchLookupScenario(t *testing.T, store repository.ReadModelStore) {
 	mustNoErr(t, "delete branch family", store.DeleteFamily(ctx, branch, f.deleted))
 	mustNoErr(t, "save other-branch family", store.SaveFamily(ctx, other, family(f.kept, "Leaked")))
 
-	familyName := func(r repository.FamilyReadModel) string { return r.Partner1GivenName }
+	familyName := func(r repository.FamilyReadModel) string { return r.MarriagePlace }
 	familyID := func(r repository.FamilyReadModel) uuid.UUID { return r.ID }
 	getFamily := func(b domain.BranchID) func(uuid.UUID) (*repository.FamilyReadModel, error) {
 		return func(id uuid.UUID) (*repository.FamilyReadModel, error) { return store.GetFamily(ctx, b, id) }

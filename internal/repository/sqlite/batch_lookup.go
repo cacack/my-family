@@ -27,9 +27,10 @@ const (
 		notes, research_status, brick_wall_note, brick_wall_since, brick_wall_resolved_at,
 		version, updated_at`
 
-	// familySelectCols is scanFamily's column order (unaliased).
-	familySelectCols = `id, partner1_id, partner1_given_name, partner1_surname,
-		partner2_id, partner2_given_name, partner2_surname,
+	// familySelectCols is scanFamily's column order (unaliased). The partner
+	// name columns are legacy and no longer read or written: reads resolve the
+	// names from the persons (#1207).
+	familySelectCols = `id, partner1_id, partner2_id,
 		relationship_type, marriage_date_raw, marriage_date_sort, marriage_place,
 		marriage_place_lat, marriage_place_long,
 		child_count, version, updated_at`
@@ -90,9 +91,13 @@ func (s *ReadModelStore) GetPersonsByIDs(ctx context.Context, branchID domain.Br
 
 // GetFamiliesByIDs retrieves every visible family among ids on branchID (#697).
 func (s *ReadModelStore) GetFamiliesByIDs(ctx context.Context, branchID domain.BranchID, ids []uuid.UUID) ([]repository.FamilyReadModel, error) {
-	return queryByIDs(ctx, s, "families", familySelectCols, branchID, ids, func(rows *sql.Rows) ([]repository.FamilyReadModel, error) {
+	families, err := queryByIDs(ctx, s, "families", familySelectCols, branchID, ids, func(rows *sql.Rows) ([]repository.FamilyReadModel, error) {
 		return drainRows(rows, scanFamilyRow)
 	})
+	if err != nil {
+		return nil, err
+	}
+	return s.withFamilyNames(ctx, branchID, families)
 }
 
 // GetSourcesByIDs retrieves every visible source among ids on branchID (#697).

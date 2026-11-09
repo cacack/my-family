@@ -140,6 +140,7 @@ func (s *HistoryService) resolveEntityNamesOn(ctx context.Context, branchID doma
 		func(f *repository.FamilyReadModel) uuid.UUID { return f.ID }); err != nil {
 		return nil, fmt.Errorf("resolve family names: %w", err)
 	}
+	dropFamiliesWithUnnamedPartners(names.families)
 	if names.sources, err = lookupByIDs(ctx, branchID, refs.ids(entityTypeSource), s.readStore.GetSourcesByIDs,
 		func(src *repository.SourceReadModel) uuid.UUID { return src.ID }); err != nil {
 		return nil, fmt.Errorf("resolve source names: %w", err)
@@ -189,6 +190,21 @@ func lookupByIDs[T any](
 		index[id(&mainRows[i])] = &mainRows[i]
 	}
 	return index, nil
+}
+
+// dropFamiliesWithUnnamedPartners removes the families that have partners but
+// none the scope can still name. The read model resolves partner names from
+// the persons (#1207), so a partner deleted since reads with an empty name. A
+// family with one partner left keeps its row and is named by that partner.
+// Only a family whose every partner is gone is dropped, so it is labelled as a
+// family the read model lacks: from its creation event, or, where the caller
+// folds the log (NameEntities), from the partners' own streams.
+func dropFamiliesWithUnnamedPartners(families map[uuid.UUID]*repository.FamilyReadModel) {
+	for id, f := range families {
+		if (f.Partner1ID != nil || f.Partner2ID != nil) && familyReadModelName(f) == "" {
+			delete(families, id)
+		}
+	}
 }
 
 // indexByID maps each row to its id.

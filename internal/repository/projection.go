@@ -348,13 +348,6 @@ func (p *Projector) projectPersonCreated(ctx context.Context, e domain.PersonCre
 		UpdatedAt:      e.OccurredAt(),
 	}
 
-	// A family may already name this person: a branch merge replays streams
-	// in first-event order, so a family's link can land before the person (#817).
-	// The rename runs before SavePerson records the version, so a failed rename
-	// leaves the person behind the log for ResumeMerge to re-project.
-	if err := p.readStore.RenameFamilyMember(ctx, branchID, person.ID, person.GivenName, person.Surname); err != nil {
-		return err
-	}
 	if err := p.readStore.SavePerson(ctx, branchID, person); err != nil {
 		return err
 	}
@@ -448,9 +441,6 @@ func (p *Projector) projectPersonUpdated(ctx context.Context, e domain.PersonUpd
 		if err := p.syncPrimaryNameFromPerson(ctx, branchID, person, e.OccurredAt()); err != nil {
 			return err
 		}
-		if err := p.readStore.RenameFamilyMember(ctx, branchID, person.ID, person.GivenName, person.Surname); err != nil {
-			return err
-		}
 	}
 	return p.readStore.SavePerson(ctx, branchID, person)
 }
@@ -468,36 +458,18 @@ func (p *Projector) projectFamilyCreated(ctx context.Context, e domain.FamilyCre
 		marriageDateSort = SortTime(e.MarriageDate)
 	}
 
-	// Get partner names if available (split into given/surname for API contract)
-	var partner1GivenName, partner1Surname, partner2GivenName, partner2Surname string
-	if e.Partner1ID != nil {
-		if p1, _ := p.readStore.GetPerson(ctx, branchID, *e.Partner1ID); p1 != nil {
-			partner1GivenName = p1.GivenName
-			partner1Surname = p1.Surname
-		}
-	}
-	if e.Partner2ID != nil {
-		if p2, _ := p.readStore.GetPerson(ctx, branchID, *e.Partner2ID); p2 != nil {
-			partner2GivenName = p2.GivenName
-			partner2Surname = p2.Surname
-		}
-	}
-
+	// Partner names are not stored; reads resolve them from the persons (#1207).
 	family := &FamilyReadModel{
-		ID:                e.FamilyID,
-		Partner1ID:        e.Partner1ID,
-		Partner1GivenName: partner1GivenName,
-		Partner1Surname:   partner1Surname,
-		Partner2ID:        e.Partner2ID,
-		Partner2GivenName: partner2GivenName,
-		Partner2Surname:   partner2Surname,
-		RelationshipType:  e.RelationshipType,
-		MarriageDateRaw:   marriageDateRaw,
-		MarriageDateSort:  marriageDateSort,
-		MarriagePlace:     e.MarriagePlace,
-		ChildCount:        0,
-		Version:           version,
-		UpdatedAt:         e.OccurredAt(),
+		ID:               e.FamilyID,
+		Partner1ID:       e.Partner1ID,
+		Partner2ID:       e.Partner2ID,
+		RelationshipType: e.RelationshipType,
+		MarriageDateRaw:  marriageDateRaw,
+		MarriageDateSort: marriageDateSort,
+		MarriagePlace:    e.MarriagePlace,
+		ChildCount:       0,
+		Version:          version,
+		UpdatedAt:        e.OccurredAt(),
 	}
 
 	if err := p.readStore.SaveFamily(ctx, branchID, family); err != nil {
@@ -532,15 +504,9 @@ func (p *Projector) projectFamilyUpdated(ctx context.Context, e domain.FamilyUpd
 		}
 		switch key {
 		case "partner1_id":
-			newID, given, surname := p.resolvePartnerChange(ctx, branchID, value)
-			family.Partner1ID = newID
-			family.Partner1GivenName = given
-			family.Partner1Surname = surname
+			family.Partner1ID = parseOptionalUUID(value)
 		case "partner2_id":
-			newID, given, surname := p.resolvePartnerChange(ctx, branchID, value)
-			family.Partner2ID = newID
-			family.Partner2GivenName = given
-			family.Partner2Surname = surname
+			family.Partner2ID = parseOptionalUUID(value)
 		case "relationship_type":
 			switch v := value.(type) {
 			case string:
@@ -607,23 +573,6 @@ func parseOptionalUUID(value any) *uuid.UUID {
 	}
 }
 
-// resolvePartnerChange resolves a partner_id value from a FamilyUpdated.Changes
-// map into the new partner ID and split name fields. Values arrive as untyped
-// JSON: a string UUID for a swap, nil/empty to clear. Unknown person IDs leave
-// the names empty rather than failing — the name will be backfilled the next
-// time the projection sees the person.
-func (p *Projector) resolvePartnerChange(ctx context.Context, branchID domain.BranchID, value any) (*uuid.UUID, string, string) {
-	parsed := parseOptionalUUID(value)
-	if parsed == nil {
-		return nil, "", ""
-	}
-	person, _ := p.readStore.GetPerson(ctx, branchID, *parsed)
-	if person == nil {
-		return parsed, "", ""
-	}
-	return parsed, person.GivenName, person.Surname
-}
-
 // genDateChange reads a date change value as its raw text. The canonical form
 // is the raw string (nil or "" clears the date), which is what UpdateFamily and
 // the rollback service write. FamilyUpdated events stored before issue #848
@@ -655,18 +604,9 @@ func genDateChange(value any) (string, bool) {
 }
 
 func (p *Projector) projectChildLinked(ctx context.Context, e domain.ChildLinkedToFamily, version int64, branchID domain.BranchID) error {
-	// Get child name (split into given/surname)
-	var childGivenName, childSurname string
-	if child, _ := p.readStore.GetPerson(ctx, branchID, e.PersonID); child != nil {
-		childGivenName = child.GivenName
-		childSurname = child.Surname
-	}
-
 	fc := &FamilyChildReadModel{
 		FamilyID:         e.FamilyID,
 		PersonID:         e.PersonID,
-		PersonGivenName:  childGivenName,
-		PersonSurname:    childSurname,
 		RelationshipType: e.RelationshipType,
 		Sequence:         e.Sequence,
 	}
@@ -721,12 +661,10 @@ func (p *Projector) savePedigreeEdgeFromFamily(ctx context.Context, branchID dom
 
 func setEdgeFather(edge *PedigreeEdge, father *PersonReadModel) {
 	edge.FatherID = &father.ID
-	edge.FatherName = father.FullName
 }
 
 func setEdgeMother(edge *PedigreeEdge, mother *PersonReadModel) {
 	edge.MotherID = &mother.ID
-	edge.MotherName = mother.FullName
 }
 
 // fillGenderParentSlot records a male parent as the edge's father or a female
@@ -1653,13 +1591,6 @@ func (p *Projector) updatePersonForName(ctx context.Context, branchID domain.Bra
 		person.UpdatedAt = name.UpdatedAt
 	}
 	person.Version = version
-	// The rename runs before SavePerson records the version (see
-	// projectPersonCreated).
-	if renamed {
-		if err := p.readStore.RenameFamilyMember(ctx, branchID, person.ID, person.GivenName, person.Surname); err != nil {
-			return err
-		}
-	}
 	return p.readStore.SavePerson(ctx, branchID, person)
 }
 
@@ -1781,13 +1712,9 @@ func (p *Projector) projectPersonMerged(ctx context.Context, e domain.PersonMerg
 	for _, family := range families {
 		if family.Partner1ID != nil && *family.Partner1ID == e.MergedID {
 			family.Partner1ID = &e.SurvivorID
-			family.Partner1GivenName = survivor.GivenName
-			family.Partner1Surname = survivor.Surname
 		}
 		if family.Partner2ID != nil && *family.Partner2ID == e.MergedID {
 			family.Partner2ID = &e.SurvivorID
-			family.Partner2GivenName = survivor.GivenName
-			family.Partner2Surname = survivor.Surname
 		}
 		family.UpdatedAt = e.OccurredAt()
 		if err := p.readStore.SaveFamily(ctx, branchID, &family); err != nil {
@@ -1833,8 +1760,6 @@ func (p *Projector) projectPersonMerged(ctx context.Context, e domain.PersonMerg
 				fc := &FamilyChildReadModel{
 					FamilyID:         mergedChildFamily.ID,
 					PersonID:         e.SurvivorID,
-					PersonGivenName:  survivor.GivenName,
-					PersonSurname:    survivor.Surname,
 					RelationshipType: domain.ChildBiological, // Default, could be improved
 				}
 				if err := p.readStore.SaveFamilyChild(ctx, branchID, fc); err != nil {
@@ -1843,11 +1768,9 @@ func (p *Projector) projectPersonMerged(ctx context.Context, e domain.PersonMerg
 
 				// Create pedigree edge for survivor
 				edge := &PedigreeEdge{
-					PersonID:   e.SurvivorID,
-					FatherID:   mergedEdge.FatherID,
-					MotherID:   mergedEdge.MotherID,
-					FatherName: mergedEdge.FatherName,
-					MotherName: mergedEdge.MotherName,
+					PersonID: e.SurvivorID,
+					FatherID: mergedEdge.FatherID,
+					MotherID: mergedEdge.MotherID,
 				}
 				if err := p.readStore.SavePedigreeEdge(ctx, branchID, edge); err != nil {
 					return err
@@ -1911,10 +1834,6 @@ func (p *Projector) projectPersonMerged(ctx context.Context, e domain.PersonMerg
 	// The resolved given name and surname also apply to the survivor's primary name.
 	if err := p.syncPrimaryNameFromPerson(ctx, branchID, survivor, e.OccurredAt()); err != nil {
 		return fmt.Errorf("sync primary name for survivor %s: %w", e.SurvivorID, err)
-	}
-	// ...and to the names the survivor's own families carry for it.
-	if err := p.readStore.RenameFamilyMember(ctx, branchID, survivor.ID, survivor.GivenName, survivor.Surname); err != nil {
-		return fmt.Errorf("refresh family names for survivor %s: %w", e.SurvivorID, err)
 	}
 
 	// 6. Transfer life events from merged person to survivor
@@ -2073,12 +1992,10 @@ func relinkEdgeParent(edge *PedigreeEdge, family *FamilyReadModel, mergedID uuid
 	changed := false
 	if edge.FatherID != nil && *edge.FatherID == mergedID {
 		edge.FatherID = &survivor.ID
-		edge.FatherName = survivor.FullName
 		changed = true
 	}
 	if edge.MotherID != nil && *edge.MotherID == mergedID {
 		edge.MotherID = &survivor.ID
-		edge.MotherName = survivor.FullName
 		changed = true
 	}
 	if changed {
