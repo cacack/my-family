@@ -58,10 +58,13 @@ type RebuildResult struct {
 	Failed int
 	// LastPosition is the log position of the last event replayed.
 	LastPosition int64
+	// Backfilled is how many entities had coordinates or EXIDs that only the
+	// read model held (an import made before #1225), and so had them logged in
+	// an ImportedValuesBackfilled event before the reset (#1251).
+	Backfilled int
 	// DroppedImported is how many main-branch coordinates and EXIDs the read
-	// model held before the reset but not after the replay. They belong to
-	// entities imported before #1225, whose events do not carry them; the
-	// rebuild does not restore them yet (#1251), so it warns when it drops any.
+	// model held before the reset but not after the replay. The backfill
+	// should leave none; the rebuild warns if it drops any all the same.
 	DroppedImported int
 }
 
@@ -82,6 +85,12 @@ const rebuildPageSize = 1000
 // before the reset and written back once the replay is done, so a branch row
 // the replay copies from main does not pick up a brick wall set later.
 //
+// Place coordinates and EXIDs come from the log (#1225), but an import made
+// before #1225 wrote them only to the read model. Before the reset, the
+// rebuild logs any the log does not carry yet, one ImportedValuesBackfilled
+// event per entity, so the replay restores them and later rebuilds need no
+// backfill (#1251).
+//
 // The rebuild is safe to abort. Every event is decoded before anything is
 // deleted, so an event the replay could not read fails the rebuild while the
 // read model is intact. The brick walls are saved as the rebuild state
@@ -98,6 +107,11 @@ func RebuildReadModel(ctx context.Context, events EventStore, rs ReadModelStore,
 	var result RebuildResult
 	if err := checkLogDecodes(ctx, events); err != nil {
 		return result, err
+	}
+	backfilled, err := backfillImportedValues(ctx, events, rs)
+	result.Backfilled = backfilled
+	if err != nil {
+		return result, fmt.Errorf("log imported coordinates and EXIDs: %w", err)
 	}
 	kept, err := loadUnloggedFields(ctx, rs)
 	if err != nil {
@@ -328,7 +342,8 @@ func countSet(values ...*string) int {
 }
 
 // reportDroppedImported recounts the coordinates and EXIDs after the replay
-// and warns if fewer are left than before the reset (#1251). A recount that
+// and warns if fewer are left than before the reset. The backfill should
+// leave none to drop; this is the check that it did. A recount that
 // fails is only logged: the replay is done, and the count is advisory.
 func reportDroppedImported(ctx context.Context, rs ReadModelStore, before int, result *RebuildResult) {
 	after, err := countImportedValues(ctx, rs)
@@ -340,7 +355,189 @@ func reportDroppedImported(ctx context.Context, rs ReadModelStore, before int, r
 		return
 	}
 	result.DroppedImported = before - after
-	slog.Warn("the rebuild dropped imported place coordinates or EXIDs that the event log does not carry "+
-		"(entities imported before #1225); re-import the GEDCOM file to restore them",
+	slog.Warn("the rebuild dropped imported place coordinates or EXIDs that the event log does not carry; "+
+		"re-import the GEDCOM file to restore them",
 		"dropped", result.DroppedImported)
+}
+
+// backfillImportedValues appends an ImportedValuesBackfilled event to each
+// main-branch entity whose read model holds coordinates or EXIDs that its
+// main stream does not carry, and returns how many it appended (#1251).
+// Every append is durable on its own, so an interrupted backfill is finished
+// by the next rebuild.
+func backfillImportedValues(ctx context.Context, events EventStore, rs ReadModelStore) (int, error) {
+	pending, err := coordinatesInReadModel(ctx, rs)
+	if err != nil {
+		return 0, err
+	}
+	exids, err := exidsInReadModel(ctx, rs)
+	if err != nil {
+		return 0, err
+	}
+	pending = append(pending, exids...)
+
+	appended := 0
+	for _, backfill := range pending {
+		version, carried, err := mainStreamCarriesImportedValues(ctx, events, backfill.EntityID)
+		if err != nil {
+			return appended, err
+		}
+		// A row with no main stream behind it has nothing to append to; the
+		// replay drops it and the recount reports what it held.
+		if carried || version == 0 {
+			continue
+		}
+		backfill.BaseEvent = domain.NewBaseEvent()
+		if err := events.Append(ctx, backfill.EntityID, backfill.EntityType, []domain.Event{backfill}, version, MainScope); err != nil {
+			return appended, fmt.Errorf("append backfill for %s %s: %w", backfill.EntityType, backfill.EntityID, err)
+		}
+		appended++
+	}
+	if appended > 0 {
+		slog.Info("logged place coordinates and EXIDs that an import before #1225 left only in the read model",
+			"entities", appended)
+	}
+	return appended, nil
+}
+
+// coordinatesInReadModel returns a backfill for every main-branch person with
+// coordinates or EXIDs, and every life event with coordinates, in the read
+// model.
+func coordinatesInReadModel(ctx context.Context, rs ReadModelStore) ([]domain.ImportedValuesBackfilled, error) {
+	var pending []domain.ImportedValuesBackfilled
+	persons, err := ListAll(ctx, rebuildPageSize, rs.ListPersons)
+	if err != nil {
+		return nil, fmt.Errorf("list persons: %w", err)
+	}
+	for i := range persons {
+		p := &persons[i]
+		ids, err := rs.GetPersonExternalIDs(ctx, domain.MainBranchID, p.ID)
+		if err != nil {
+			return nil, fmt.Errorf("person %s exids: %w", p.ID, err)
+		}
+		if countSet(p.BirthPlaceLat, p.BirthPlaceLong, p.DeathPlaceLat, p.DeathPlaceLong)+len(ids) > 0 {
+			pending = append(pending, domain.ImportedValuesBackfilled{
+				EntityType: domain.BackfillPerson, EntityID: p.ID,
+				BirthPlaceLat: p.BirthPlaceLat, BirthPlaceLong: p.BirthPlaceLong,
+				DeathPlaceLat: p.DeathPlaceLat, DeathPlaceLong: p.DeathPlaceLong,
+				ExternalIDs: toExternalIDs(ids, func(x PersonExternalIDReadModel) (string, string) { return x.Value, x.Type }),
+			})
+		}
+	}
+	lifeEvents, err := ListAll(ctx, rebuildPageSize, rs.ListEvents)
+	if err != nil {
+		return nil, fmt.Errorf("list life events: %w", err)
+	}
+	for i := range lifeEvents {
+		if e := &lifeEvents[i]; countSet(e.PlaceLat, e.PlaceLong) > 0 {
+			pending = append(pending, domain.ImportedValuesBackfilled{
+				EntityType: domain.BackfillLifeEvent, EntityID: e.ID, PlaceLat: e.PlaceLat, PlaceLong: e.PlaceLong,
+			})
+		}
+	}
+	return pending, nil
+}
+
+// exidsInReadModel returns a backfill for every main-branch family, source and
+// repository with EXIDs in the read model.
+func exidsInReadModel(ctx context.Context, rs ReadModelStore) ([]domain.ImportedValuesBackfilled, error) {
+	var pending []domain.ImportedValuesBackfilled
+	families, err := ListAll(ctx, rebuildPageSize, rs.ListFamilies)
+	if err != nil {
+		return nil, fmt.Errorf("list families: %w", err)
+	}
+	for i := range families {
+		ids, err := rs.GetFamilyExternalIDs(ctx, domain.MainBranchID, families[i].ID)
+		if err != nil {
+			return nil, fmt.Errorf("family %s exids: %w", families[i].ID, err)
+		}
+		if len(ids) > 0 {
+			pending = append(pending, domain.ImportedValuesBackfilled{EntityType: domain.BackfillFamily, EntityID: families[i].ID,
+				ExternalIDs: toExternalIDs(ids, func(x FamilyExternalIDReadModel) (string, string) { return x.Value, x.Type })})
+		}
+	}
+	sources, err := ListAll(ctx, rebuildPageSize, rs.ListSources)
+	if err != nil {
+		return nil, fmt.Errorf("list sources: %w", err)
+	}
+	for i := range sources {
+		ids, err := rs.GetSourceExternalIDs(ctx, domain.MainBranchID, sources[i].ID)
+		if err != nil {
+			return nil, fmt.Errorf("source %s exids: %w", sources[i].ID, err)
+		}
+		if len(ids) > 0 {
+			pending = append(pending, domain.ImportedValuesBackfilled{EntityType: domain.BackfillSource, EntityID: sources[i].ID,
+				ExternalIDs: toExternalIDs(ids, func(x SourceExternalIDReadModel) (string, string) { return x.Value, x.Type })})
+		}
+	}
+	repos, err := ListAll(ctx, rebuildPageSize, rs.ListRepositories)
+	if err != nil {
+		return nil, fmt.Errorf("list repositories: %w", err)
+	}
+	for i := range repos {
+		ids, err := rs.GetRepositoryExternalIDs(ctx, repos[i].ID)
+		if err != nil {
+			return nil, fmt.Errorf("repository %s exids: %w", repos[i].ID, err)
+		}
+		if len(ids) > 0 {
+			pending = append(pending, domain.ImportedValuesBackfilled{EntityType: domain.BackfillRepository, EntityID: repos[i].ID,
+				ExternalIDs: toExternalIDs(ids, func(x RepositoryExternalIDReadModel) (string, string) { return x.Value, x.Type })})
+		}
+	}
+	return pending, nil
+}
+
+// toExternalIDs turns read-model EXID rows back into the values an event
+// carries, in row order; the inverse of externalIDRows.
+func toExternalIDs[T any](rows []T, valueType func(T) (string, string)) []domain.ExternalIdentifier {
+	if len(rows) == 0 {
+		return nil
+	}
+	ids := make([]domain.ExternalIdentifier, len(rows))
+	for i, row := range rows {
+		ids[i].Value, ids[i].Type = valueType(row)
+	}
+	return ids
+}
+
+// mainStreamCarriesImportedValues reads an entity's main stream and reports
+// its version and whether any of its events sets coordinates or EXIDs.
+func mainStreamCarriesImportedValues(ctx context.Context, events EventStore, id uuid.UUID) (version int64, carried bool, err error) {
+	stored, err := events.ReadStream(ctx, id)
+	if err != nil {
+		return 0, false, fmt.Errorf("read stream %s: %w", id, err)
+	}
+	for i := range stored {
+		s := &stored[i]
+		if !s.BranchID.IsMain() {
+			continue
+		}
+		version = max(version, s.Version)
+		decoded, err := s.DecodeEvent()
+		if err != nil {
+			return 0, false, fmt.Errorf("decode %s at position %d: %w", s.EventType, s.Position, err)
+		}
+		carried = carried || setsImportedValues(decoded)
+	}
+	return version, carried, nil
+}
+
+// setsImportedValues reports whether a logged event sets place coordinates or
+// EXIDs. Only the created events (#1225) and the backfill do.
+func setsImportedValues(event domain.Event) bool {
+	switch e := event.(type) {
+	case domain.ImportedValuesBackfilled:
+		return true
+	case domain.PersonCreated:
+		return countSet(e.BirthPlaceLat, e.BirthPlaceLong, e.DeathPlaceLat, e.DeathPlaceLong)+len(e.ExternalIDs) > 0
+	case domain.LifeEventCreated:
+		return countSet(e.PlaceLat, e.PlaceLong) > 0
+	case domain.FamilyCreated:
+		return len(e.ExternalIDs) > 0
+	case domain.SourceCreated:
+		return len(e.ExternalIDs) > 0
+	case domain.RepositoryCreated:
+		return len(e.ExternalIDs) > 0
+	}
+	return false
 }

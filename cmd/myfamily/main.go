@@ -174,6 +174,9 @@ func runRebuild() error {
 	if err != nil {
 		return fmt.Errorf("rebuild replayed %d events, %d failed: %w", result.Events, result.Failed, err)
 	}
+	if result.Backfilled > 0 {
+		log.Printf("Logged imported coordinates and EXIDs of %d entities imported before they were kept in the event log", result.Backfilled)
+	}
 	log.Printf("Rebuilt the read model: %d events replayed", result.Events)
 	return nil
 }

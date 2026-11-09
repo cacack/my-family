@@ -152,3 +152,156 @@ func hasKeyPrefix(m map[string]string, prefix string) bool {
 	}
 	return false
 }
+
+// TestRebuild_BackfillsValuesOnlyTheReadModelHeld seeds a database the way an
+// import made before #1225 left it: created events without coordinates or
+// EXIDs, and those values written straight to the read model. A rebuild must
+// log them before its reset and keep them, and leave every row's version in
+// step with its stream so the next edit is not refused (#1251).
+func TestRebuild_BackfillsValuesOnlyTheReadModelHeld(t *testing.T) {
+	for _, backend := range backends {
+		t.Run(backend.name, func(t *testing.T) {
+			ctx := context.Background()
+			src := setupMemory(t)
+			srcHandler := command.NewHandlerWithBranches(src.events, src.read, src.branches, src.snapshots)
+			if _, err := srcHandler.ImportGedcom(ctx, command.ImportGedcomInput{Filename: "t.ged", Reader: strings.NewReader(replayGedcom)}); err != nil {
+				t.Fatalf("import: %v", err)
+			}
+			want := dumpImportedFields(t, ctx, src.read)
+
+			st := backend.setup(t)
+			copyLogWithoutImportedValues(t, ctx, src.events, st.events)
+			replayLog(t, ctx, st.events, st.read)
+			if got := dumpImportedFields(t, ctx, st.read); len(got) != 0 {
+				t.Fatalf("precondition: the copied log still carries imported values: %v", got)
+			}
+			copyImportedFields(t, ctx, src.read, st.read)
+			assertSameDump(t, want, dumpImportedFields(t, ctx, st.read))
+
+			result, err := repository.RebuildReadModel(ctx, st.events, st.read, st.branches, st.snapshots)
+			if err != nil {
+				t.Fatalf("rebuild: %v", err)
+			}
+			// John (birth and death coordinates, an EXID), his residence (a
+			// life event with coordinates), the family, the source and the
+			// repository.
+			if result.Backfilled != 5 || result.DroppedImported != 0 {
+				t.Errorf("Backfilled = %d, DroppedImported = %d; want 5 and 0", result.Backfilled, result.DroppedImported)
+			}
+			assertSameDump(t, want, dumpImportedFields(t, ctx, st.read))
+
+			again, err := repository.RebuildReadModel(ctx, st.events, st.read, st.branches, st.snapshots)
+			if err != nil || again.Backfilled != 0 || again.DroppedImported != 0 {
+				t.Errorf("second rebuild = %+v, %v; want nothing left to backfill or drop", again, err)
+			}
+			assertSameDump(t, want, dumpImportedFields(t, ctx, st.read))
+
+			h := command.NewHandlerWithBranches(st.events, st.read, st.branches, st.snapshots)
+			persons, err := repository.ListAll(ctx, 100, st.read.ListPersons)
+			if err != nil {
+				t.Fatalf("list persons: %v", err)
+			}
+			for _, p := range persons {
+				surname := p.Surname + "-edited"
+				if _, err := h.UpdatePerson(ctx, command.UpdatePersonInput{ID: p.ID, Surname: &surname, Version: p.Version}); err != nil {
+					t.Errorf("update %s at read-model version %d: %v", p.GivenName, p.Version, err)
+				}
+			}
+		})
+	}
+}
+
+// copyLogWithoutImportedValues appends every event of from's log to to, with
+// the coordinates and EXIDs that #1225 added to the created events removed.
+func copyLogWithoutImportedValues(t *testing.T, ctx context.Context, from, to repository.EventStore) {
+	t.Helper()
+	var after int64
+	for {
+		page, err := from.ReadAll(ctx, after, 500)
+		if err != nil {
+			t.Fatalf("read log: %v", err)
+		}
+		if len(page) == 0 {
+			return
+		}
+		for _, stored := range page {
+			decoded, err := stored.DecodeEvent()
+			if err != nil {
+				t.Fatalf("decode %s: %v", stored.EventType, err)
+			}
+			switch e := decoded.(type) {
+			case domain.PersonCreated:
+				e.BirthPlaceLat, e.BirthPlaceLong, e.DeathPlaceLat, e.DeathPlaceLong, e.ExternalIDs = nil, nil, nil, nil, nil
+				decoded = e
+			case domain.LifeEventCreated:
+				e.PlaceLat, e.PlaceLong = nil, nil
+				decoded = e
+			case domain.FamilyCreated:
+				e.ExternalIDs = nil
+				decoded = e
+			case domain.SourceCreated:
+				e.ExternalIDs = nil
+				decoded = e
+			case domain.RepositoryCreated:
+				e.ExternalIDs = nil
+				decoded = e
+			}
+			if err := to.Append(ctx, stored.StreamID, stored.StreamType, []domain.Event{decoded}, stored.Version-1, repository.MainScope); err != nil {
+				t.Fatalf("append %s: %v", stored.EventType, err)
+			}
+			after = stored.Position
+		}
+	}
+}
+
+// copyImportedFields writes from's main-branch coordinates and EXIDs straight
+// onto to's rows, as import did before #1225.
+func copyImportedFields(t *testing.T, ctx context.Context, from, to repository.ReadModelStore) {
+	t.Helper()
+	must := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatalf("copy imported fields: %v", err)
+		}
+	}
+	persons, err := repository.ListAll(ctx, 100, from.ListPersons)
+	must(err)
+	for _, p := range persons {
+		row, err := to.GetPerson(ctx, domain.MainBranchID, p.ID)
+		must(err)
+		row.BirthPlaceLat, row.BirthPlaceLong, row.DeathPlaceLat, row.DeathPlaceLong = p.BirthPlaceLat, p.BirthPlaceLong, p.DeathPlaceLat, p.DeathPlaceLong
+		must(to.SavePerson(ctx, domain.MainBranchID, row))
+		ids, err := from.GetPersonExternalIDs(ctx, domain.MainBranchID, p.ID)
+		must(err)
+		must(to.ReplacePersonExternalIDs(ctx, domain.MainBranchID, p.ID, ids))
+	}
+	events, err := repository.ListAll(ctx, 100, from.ListEvents)
+	must(err)
+	for _, e := range events {
+		row, err := to.GetEvent(ctx, domain.MainBranchID, e.ID)
+		must(err)
+		row.PlaceLat, row.PlaceLong = e.PlaceLat, e.PlaceLong
+		must(to.SaveEvent(ctx, domain.MainBranchID, row))
+	}
+	families, err := repository.ListAll(ctx, 100, from.ListFamilies)
+	must(err)
+	for _, f := range families {
+		ids, err := from.GetFamilyExternalIDs(ctx, domain.MainBranchID, f.ID)
+		must(err)
+		must(to.ReplaceFamilyExternalIDs(ctx, domain.MainBranchID, f.ID, ids))
+	}
+	sources, err := repository.ListAll(ctx, 100, from.ListSources)
+	must(err)
+	for _, s := range sources {
+		ids, err := from.GetSourceExternalIDs(ctx, domain.MainBranchID, s.ID)
+		must(err)
+		must(to.ReplaceSourceExternalIDs(ctx, domain.MainBranchID, s.ID, ids))
+	}
+	repos, err := repository.ListAll(ctx, 100, from.ListRepositories)
+	must(err)
+	for _, r := range repos {
+		ids, err := from.GetRepositoryExternalIDs(ctx, r.ID)
+		must(err)
+		must(to.ReplaceRepositoryExternalIDs(ctx, r.ID, ids))
+	}
+}

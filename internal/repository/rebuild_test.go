@@ -66,10 +66,11 @@ func TestRebuildReadModel_KeepsBrickWalls(t *testing.T) {
 	}
 }
 
-// TestRebuildReadModel_DoesNotCarryOverUnloggedImportFields proves the rebuild
-// no longer copies coordinates or EXIDs across its reset (#1225): they come
-// from the log, so a value only the read model holds is not kept.
-func TestRebuildReadModel_DoesNotCarryOverUnloggedImportFields(t *testing.T) {
+// TestRebuildReadModel_BackfillsUnloggedImportFields covers a database an
+// import made before #1225 left behind: coordinates and EXIDs written only to
+// the read model. The rebuild logs them before its reset, so it keeps them,
+// and a second rebuild has nothing left to log (#1251).
+func TestRebuildReadModel_BackfillsUnloggedImportFields(t *testing.T) {
 	ctx := context.Background()
 	s := newRebuildStores()
 	h := command.NewHandlerWithBranches(s.events, s.read, s.branches, s.snapshots)
@@ -77,28 +78,101 @@ func TestRebuildReadModel_DoesNotCarryOverUnloggedImportFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create person: %v", err)
 	}
-	lat := "N1.5"
+	family, err := h.CreateFamily(ctx, command.CreateFamilyInput{Partner1ID: &person.ID})
+	if err != nil {
+		t.Fatalf("create family: %v", err)
+	}
+	source, err := h.CreateSource(ctx, command.CreateSourceInput{SourceType: "census", Title: "Census"})
+	if err != nil {
+		t.Fatalf("create source: %v", err)
+	}
+	repo, err := h.CreateRepository(ctx, command.CreateRepositoryInput{Name: "Archive"})
+	if err != nil {
+		t.Fatalf("create repository: %v", err)
+	}
+	residence := domain.NewLifeEvent(person.ID, domain.FactPersonResidence)
+	if err := s.events.Append(ctx, residence.ID, "event", []domain.Event{domain.NewLifeEventCreatedFromModel(residence)}, -1, repository.MainScope); err != nil {
+		t.Fatalf("append life event: %v", err)
+	}
+	if err := repository.NewProjector(s.read, nil).Project(ctx, domain.NewLifeEventCreatedFromModel(residence), 1, domain.MainBranchID); err != nil {
+		t.Fatalf("project life event: %v", err)
+	}
+
+	// Write the values straight to the read model, as import did before #1225.
+	lat, long := "N1.5", "W2.5"
 	p, _ := s.read.GetPerson(ctx, domain.MainBranchID, person.ID)
-	p.BirthPlaceLat = &lat
-	if err := s.read.SavePerson(ctx, domain.MainBranchID, p); err != nil {
-		t.Fatalf("save coordinates: %v", err)
-	}
-	if err := s.read.ReplacePersonExternalIDs(ctx, domain.MainBranchID, person.ID, []repository.PersonExternalIDReadModel{{PersonID: person.ID, Value: "P-1"}}); err != nil {
-		t.Fatalf("save exid: %v", err)
-	}
+	p.BirthPlaceLat, p.DeathPlaceLong = &lat, &long
+	personVersion := p.Version
+	mustRebuildSetup(t, s.read.SavePerson(ctx, domain.MainBranchID, p))
+	mustRebuildSetup(t, s.read.ReplacePersonExternalIDs(ctx, domain.MainBranchID, person.ID, []repository.PersonExternalIDReadModel{{PersonID: person.ID, Value: "P-1", Type: "urn:p"}}))
+	le, _ := s.read.GetEvent(ctx, domain.MainBranchID, residence.ID)
+	le.PlaceLat, le.PlaceLong = &lat, &long
+	mustRebuildSetup(t, s.read.SaveEvent(ctx, domain.MainBranchID, le))
+	mustRebuildSetup(t, s.read.ReplaceFamilyExternalIDs(ctx, domain.MainBranchID, family.ID, []repository.FamilyExternalIDReadModel{{FamilyID: family.ID, Value: "F-1"}}))
+	mustRebuildSetup(t, s.read.ReplaceSourceExternalIDs(ctx, domain.MainBranchID, source.ID, []repository.SourceExternalIDReadModel{{SourceID: source.ID, Value: "S-1"}}))
+	mustRebuildSetup(t, s.read.ReplaceRepositoryExternalIDs(ctx, repo.ID, []repository.RepositoryExternalIDReadModel{{RepositoryID: repo.ID, Value: "R-1"}}))
 
 	result, err := s.rebuild(t, s.read)
 	if err != nil {
 		t.Fatalf("rebuild: %v", err)
 	}
-	if result.DroppedImported != 2 {
-		t.Errorf("DroppedImported = %d, want the coordinate and the EXID reported (#1251)", result.DroppedImported)
+	if result.Backfilled != 5 || result.DroppedImported != 0 {
+		t.Errorf("Backfilled = %d, DroppedImported = %d; want 5 and 0", result.Backfilled, result.DroppedImported)
 	}
-	if p, _ := s.read.GetPerson(ctx, domain.MainBranchID, person.ID); p == nil || p.BirthPlaceLat != nil {
-		t.Errorf("person after rebuild = %+v, want it back without the unlogged coordinate", p)
+	if p, _ := s.read.GetPerson(ctx, domain.MainBranchID, person.ID); p == nil || p.BirthPlaceLat == nil || *p.BirthPlaceLat != lat ||
+		p.DeathPlaceLong == nil || *p.DeathPlaceLong != long || p.BirthPlaceLong != nil || p.Version != personVersion+1 {
+		t.Errorf("person after rebuild = %+v, want its coordinates kept, one version on from %d", p, personVersion)
 	}
-	if ids, _ := s.read.GetPersonExternalIDs(ctx, domain.MainBranchID, person.ID); len(ids) != 0 {
-		t.Errorf("person exids after rebuild = %+v, want none", ids)
+	if ids, _ := s.read.GetPersonExternalIDs(ctx, domain.MainBranchID, person.ID); len(ids) != 1 || ids[0].Value != "P-1" || ids[0].Type != "urn:p" {
+		t.Errorf("person exids after rebuild = %+v, want P-1", ids)
+	}
+	if le, _ := s.read.GetEvent(ctx, domain.MainBranchID, residence.ID); le == nil || le.PlaceLat == nil || le.PlaceLong == nil || le.Version != 2 {
+		t.Errorf("life event after rebuild = %+v, want its coordinates kept at version 2", le)
+	}
+	if ids, _ := s.read.GetFamilyExternalIDs(ctx, domain.MainBranchID, family.ID); len(ids) != 1 || ids[0].Value != "F-1" {
+		t.Errorf("family exids after rebuild = %+v, want F-1", ids)
+	}
+	if ids, _ := s.read.GetSourceExternalIDs(ctx, domain.MainBranchID, source.ID); len(ids) != 1 || ids[0].Value != "S-1" {
+		t.Errorf("source exids after rebuild = %+v, want S-1", ids)
+	}
+	if ids, _ := s.read.GetRepositoryExternalIDs(ctx, repo.ID); len(ids) != 1 || ids[0].Value != "R-1" {
+		t.Errorf("repository exids after rebuild = %+v, want R-1", ids)
+	}
+
+	again, err := s.rebuild(t, s.read)
+	if err != nil || again.Backfilled != 0 || again.DroppedImported != 0 {
+		t.Errorf("second rebuild = %+v, %v; want nothing left to backfill or drop", again, err)
+	}
+}
+
+// TestRebuildReadModel_ReportsRowsWithoutAStream proves a row whose values no
+// stream can carry is not backfilled; the replay drops it and the recount
+// reports what it held (#1251).
+func TestRebuildReadModel_ReportsRowsWithoutAStream(t *testing.T) {
+	ctx := context.Background()
+	s := newRebuildStores()
+	lat := "N1.5"
+	mustRebuildSetup(t, s.read.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{ID: uuid.New(), GivenName: "Stray", BirthPlaceLat: &lat, Version: 1}))
+	result, err := s.rebuild(t, s.read)
+	if err != nil {
+		t.Fatalf("rebuild: %v", err)
+	}
+	if result.Backfilled != 0 || result.DroppedImported != 1 {
+		t.Errorf("Backfilled = %d, DroppedImported = %d; want 0 and 1", result.Backfilled, result.DroppedImported)
+	}
+}
+
+func TestProjectImportedValuesBackfilled_RejectsUnknownEntityType(t *testing.T) {
+	event := domain.ImportedValuesBackfilled{BaseEvent: domain.NewBaseEvent(), EntityType: "note", EntityID: uuid.New()}
+	if err := repository.NewProjector(memory.NewReadModelStore(), nil).Project(context.Background(), event, 2, domain.MainBranchID); err == nil {
+		t.Error("projecting a backfill for an unknown entity type succeeded")
+	}
+}
+
+func mustRebuildSetup(t *testing.T, err error) {
+	t.Helper()
+	if err != nil {
+		t.Fatalf("setup: %v", err)
 	}
 }
 

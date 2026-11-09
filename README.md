@@ -133,8 +133,8 @@ the database file, and on PostgreSQL a session advisory lock, so `DATABASE_URL` 
 through PgBouncer in transaction or statement pooling mode. If the rebuild is interrupted, `serve` keeps warning; run `myfamily rebuild`
 again and it restores the brick walls from what it saved before the reset. GEDCOM place
 coordinates and external IDs are in the log only for files imported by a version that has
-`myfamily rebuild`: a rebuild drops them from entities imported by an earlier version, logs a
-warning with how many it dropped, and those files must be re-imported afterwards.
+`myfamily rebuild`. For entities imported by an earlier version, the first rebuild logs them
+before its reset, so it keeps them, and later rebuilds replay them from the log.
 
 ## API Endpoints
 

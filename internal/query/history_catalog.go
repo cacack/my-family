@@ -86,6 +86,7 @@ const (
 	reasonSnapshot = "research-artifact marker (#624): a snapshot names a position in the log, it changes no genealogical data"
 	reasonResume   = "merge resume record (#685): part of the merge it finishes, which the history shows once as BranchMerged; its decisions are on the branch's merge record"
 	reasonResearch = "research-record edit (#835): a branch's hypothesis, subjects and outcome describe the research, shown on the branch itself; it changes no genealogical data"
+	reasonBackfill = "rebuild backfill (#1251): logs coordinates and EXIDs an import made before #1225 had already set; it changes no genealogical data"
 )
 
 // historyEventCatalog is the table itself. Keep it in the order of
@@ -159,8 +160,9 @@ var historyEventCatalog = map[string]historyEventClass{
 	"ProofSummaryDeleted":      mapped(entityTypeProofSummary, actionDeleted),
 	// A duplicate pair marked "not a duplicate" (#1036) is created by the
 	// dismissal and deleted by its restore; the pair's own stream carries both.
-	"DuplicateDismissed": mapped(entityTypeDuplicatePair, actionCreated),
-	"DuplicateRestored":  mapped(entityTypeDuplicatePair, actionDeleted),
+	"DuplicateDismissed":       mapped(entityTypeDuplicatePair, actionCreated),
+	"DuplicateRestored":        mapped(entityTypeDuplicatePair, actionDeleted),
+	"ImportedValuesBackfilled": excluded(reasonBackfill),
 }
 
 // classifyHistoryEvent looks an event type up in the table. ok is false only
