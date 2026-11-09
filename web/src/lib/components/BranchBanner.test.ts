@@ -474,7 +474,49 @@ describe('BranchBanner', () => {
 			getBranchDrift.mockRejectedValue(new Error('boom'));
 			const failed = render(BranchBanner);
 			const notice = await screen.findByText("Couldn't check how far the mainline has moved.");
-			expect(failed.container.querySelector('details.branch-help')!.contains(notice)).toBe(true);
+			const failedHelp = failed.container.querySelector('details.branch-help')!;
+			expect(failedHelp.contains(notice)).toBe(true);
+			expect(failedHelp.querySelector('summary')?.textContent?.trim()).toBe(
+				'Mainline check failed - how branches work'
+			);
+		});
+
+		it('says in the summary when mainline changes touched records edited here', async () => {
+			setPhone(true);
+			mockState.id = branch.id;
+			getBranchDrift.mockResolvedValue(
+				drift({ main_change_count: 7, main_change_count_on_branch_entities: 0 })
+			);
+			const { container, unmount } = render(BranchBanner);
+			await screen.findByTestId('branch-drift');
+			expect(container.querySelector('summary')?.textContent?.trim()).toBe(
+				'Mainline moved - how branches work'
+			);
+			unmount();
+
+			getBranchDrift.mockResolvedValue(
+				drift({ main_change_count: 7, main_change_count_on_branch_entities: 2 })
+			);
+			const touched = render(BranchBanner);
+			await screen.findByTestId('branch-drift');
+			expect(touched.container.querySelector('summary')?.textContent?.trim()).toBe(
+				'Mainline moved, 2 on your edits - details'
+			);
+		});
+
+		it('repeats the clamped branch line inside the disclosure on a phone only', () => {
+			setPhone(true);
+			mockState.id = branch.id;
+			mockState.branch = { ...branch, name: longName };
+			const { container, unmount } = render(BranchBanner);
+			const full = screen.getByTestId('banner-identity-full');
+			expect(container.querySelector('details.branch-help')!.contains(full)).toBe(true);
+			expect(full.textContent).toBe(`Working on ${longName}. Edits stay on this branch.`);
+			unmount();
+
+			setPhone(false);
+			render(BranchBanner);
+			expect(screen.queryByTestId('banner-identity-full')).toBeNull();
 		});
 
 		it('keeps the drift on the banner itself on a wider screen', async () => {

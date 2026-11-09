@@ -63,7 +63,19 @@
 	 */
 	const phone = new MediaQuery('max-width: 639px');
 	const driftInDisclosure = $derived(phone.current && (drift !== null || driftFailed));
-	const mainlineMoved = $derived((drift?.main_change_count ?? 0) > 0);
+	/**
+	 * With the drift folded away, the summary carries its gist so a phone still
+	 * sees a failed check or mainline changes to records edited here (#1135).
+	 */
+	const summary = $derived.by(() => {
+		if (!driftInDisclosure) return 'How branches work';
+		if (driftFailed) return 'Mainline check failed - how branches work';
+		if (!drift || drift.main_change_count === 0) return 'How branches work';
+		const touched = drift.main_change_count_on_branch_entities;
+		if (touched === 0) return 'Mainline moved - how branches work';
+		const capped = drift.has_more && touched === drift.main_change_count ? '+' : '';
+		return `Mainline moved, ${touched.toLocaleString('en-US')}${capped} on your edits - details`;
+	});
 
 	function requestRefresh() {
 		refreshTick++;
@@ -183,13 +195,11 @@
 				{@render driftLine()}
 			{/if}
 			<details class="branch-help">
-				<summary>
-					{#if driftInDisclosure && mainlineMoved}
-						Mainline moved - how branches work
-					{:else}
-						How branches work
-					{/if}
-				</summary>
+				<summary>{summary}</summary>
+				{#if phone.current}
+					<!-- The clamped line's full text, reachable by tap where no title tooltip shows. -->
+					<p data-testid="banner-identity-full">{identity}</p>
+				{/if}
 				{#if driftInDisclosure}
 					{@render driftLine()}
 				{/if}
