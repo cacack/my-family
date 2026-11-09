@@ -8,6 +8,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
@@ -199,6 +200,49 @@ func TestExportGedcom_RoundTrip(t *testing.T) {
 		if !strings.Contains(output, data) {
 			t.Errorf("Round-trip should preserve: %s", data)
 		}
+	}
+}
+
+// TestExportGedcom_Royal92EveryIndividualOnce exports a tree larger than one
+// export page with same-named people: each individual must appear exactly once
+// (#1176, where one "Paul von_Hugel" was exported twice and the other dropped).
+func TestExportGedcom_Royal92EveryIndividualOnce(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping large file test in short mode")
+	}
+	data, err := os.ReadFile("../../testdata/gedcom-5.5/royal92.ged")
+	if err != nil {
+		t.Fatalf("read royal92.ged: %v", err)
+	}
+	server := setupExportTestServer(t)
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	part, _ := writer.CreateFormFile("file", "royal92.ged")
+	part.Write(data)
+	writer.Close()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/gedcom/import", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("import status %d: %s", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/gedcom/export", http.NoBody)
+	rec = httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	// A person's xref comes from its id, so a person exported twice repeats one.
+	indi, xrefs := 0, map[string]bool{}
+	for _, line := range strings.Split(rec.Body.String(), "\n") {
+		if strings.HasPrefix(line, "0 @") && strings.HasSuffix(line, "@ INDI") {
+			indi++
+			xrefs[line] = true
+		}
+	}
+	if indi != 3010 || len(xrefs) != 3010 {
+		t.Errorf("export has %d INDI records with %d distinct xrefs, want 3010 of each", indi, len(xrefs))
 	}
 }
 

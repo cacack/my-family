@@ -251,36 +251,30 @@ func matchesResearchStatusFilter(p *repository.PersonReadModel, filter *string) 
 	return string(p.ResearchStatus) == *filter
 }
 
-// comparePersons compares two persons based on the sort field.
+// comparePersons compares two persons on the sort field, then given name, then
+// id: the SQL stores' ORDER BY <field>, given_name, id. A nil birth date
+// compares as equal to any other; ListPersons places undated people itself.
 func comparePersons(a, b *repository.PersonReadModel, sortField string) int {
+	var cmp int
 	switch sortField {
 	case "given_name":
-		return strings.Compare(a.GivenName, b.GivenName)
+		cmp = strings.Compare(a.GivenName, b.GivenName)
 	case "birth_date":
-		return compareBirthDates(a.BirthDateSort, b.BirthDateSort)
-	case "updated_at":
-		return compareTimestamps(a.UpdatedAt, b.UpdatedAt)
-	default: // surname
-		cmp := strings.Compare(a.Surname, b.Surname)
-		if cmp == 0 {
-			return strings.Compare(a.GivenName, b.GivenName)
+		if a.BirthDateSort != nil && b.BirthDateSort != nil {
+			cmp = compareTimestamps(*a.BirthDateSort, *b.BirthDateSort)
 		}
-		return cmp
+	case "updated_at":
+		cmp = compareTimestamps(a.UpdatedAt, b.UpdatedAt)
+	default: // surname
+		cmp = strings.Compare(a.Surname, b.Surname)
 	}
-}
-
-// compareBirthDates compares two birth date pointers.
-func compareBirthDates(a, b *time.Time) int {
-	if a == nil && b == nil {
-		return 0
+	if cmp == 0 {
+		cmp = strings.Compare(a.GivenName, b.GivenName)
 	}
-	if a == nil {
-		return 1
+	if cmp == 0 {
+		cmp = bytes.Compare(a.ID[:], b.ID[:])
 	}
-	if b == nil {
-		return -1
-	}
-	return compareTimestamps(*a, *b)
+	return cmp
 }
 
 // compareTimestamps compares two timestamps.
@@ -308,8 +302,13 @@ func (s *ReadModelStore) ListPersons(ctx context.Context, opts repository.ListOp
 		}
 	}
 
-	// Sort
+	// Sort. No birth date sorts last in both directions, as the SQL stores'
+	// NULLS LAST does (#1078); id ends every order so pages are stable (#1176).
 	sort.Slice(persons, func(i, j int) bool {
+		a, b := persons[i].BirthDateSort, persons[j].BirthDateSort
+		if opts.Sort == "birth_date" && (a == nil) != (b == nil) {
+			return b == nil
+		}
 		cmp := comparePersons(&persons[i], &persons[j], opts.Sort)
 		if opts.Order == "desc" {
 			return cmp > 0
@@ -960,6 +959,16 @@ func (s *ReadModelStore) ListFamilies(ctx context.Context, opts repository.ListO
 	}
 
 	total := len(families)
+
+	// Sort by updated_at DESC, id DESC (the SQL stores' order) so pages are
+	// stable (#1176).
+	sort.Slice(families, func(i, j int) bool {
+		cmp := compareTimestamps(families[i].UpdatedAt, families[j].UpdatedAt)
+		if cmp == 0 {
+			cmp = bytes.Compare(families[i].ID[:], families[j].ID[:])
+		}
+		return cmp > 0
+	})
 
 	// Paginate
 	start := opts.Offset
@@ -2077,9 +2086,12 @@ func (s *ReadModelStore) GetPersonsBySurname(ctx context.Context, surname string
 
 	total := len(results)
 
-	// Sort by GivenName
+	// Sort by given name, then id (the SQL stores' order).
 	sort.Slice(results, func(i, j int) bool {
-		return results[i].GivenName < results[j].GivenName
+		if results[i].GivenName != results[j].GivenName {
+			return results[i].GivenName < results[j].GivenName
+		}
+		return bytes.Compare(results[i].ID[:], results[j].ID[:]) < 0
 	})
 
 	// Apply pagination
@@ -2151,7 +2163,10 @@ func (s *ReadModelStore) GetPersonsByPlace(ctx context.Context, place string, op
 		if results[i].Surname != results[j].Surname {
 			return results[i].Surname < results[j].Surname
 		}
-		return results[i].GivenName < results[j].GivenName
+		if results[i].GivenName != results[j].GivenName {
+			return results[i].GivenName < results[j].GivenName
+		}
+		return bytes.Compare(results[i].ID[:], results[j].ID[:]) < 0
 	})
 
 	// Apply pagination
@@ -2238,7 +2253,10 @@ func (s *ReadModelStore) GetPersonsByCemetery(ctx context.Context, place string,
 		if results[i].Surname != results[j].Surname {
 			return results[i].Surname < results[j].Surname
 		}
-		return results[i].GivenName < results[j].GivenName
+		if results[i].GivenName != results[j].GivenName {
+			return results[i].GivenName < results[j].GivenName
+		}
+		return bytes.Compare(results[i].ID[:], results[j].ID[:]) < 0
 	})
 
 	// Apply pagination
@@ -2492,13 +2510,22 @@ func (s *ReadModelStore) ListSubmitters(ctx context.Context, opts repository.Lis
 
 	total := len(results)
 
-	// Sort by name
+	// Sort by updated_at (or name), then id, as the SQL stores do.
 	asc := opts.Order == "asc"
 	sort.Slice(results, func(i, j int) bool {
-		if asc {
-			return results[i].Name < results[j].Name
+		var cmp int
+		if opts.Sort == "name" {
+			cmp = strings.Compare(results[i].Name, results[j].Name)
+		} else {
+			cmp = compareTimestamps(results[i].UpdatedAt, results[j].UpdatedAt)
 		}
-		return results[i].Name > results[j].Name
+		if cmp == 0 {
+			cmp = bytes.Compare(results[i].ID[:], results[j].ID[:])
+		}
+		if asc {
+			return cmp < 0
+		}
+		return cmp > 0
 	})
 
 	// Apply pagination
@@ -2655,10 +2682,14 @@ func (s *ReadModelStore) ListAssociations(ctx context.Context, opts repository.L
 		} else {
 			cmp = compareTimestamps(results[i].UpdatedAt, results[j].UpdatedAt)
 		}
-		if asc {
-			return cmp < 0
+		if !asc {
+			cmp = -cmp
 		}
-		return cmp > 0
+		// id breaks ties ascending in both directions, as the SQL stores do.
+		if cmp == 0 {
+			cmp = bytes.Compare(results[i].ID[:], results[j].ID[:])
+		}
+		return cmp < 0
 	})
 
 	// Apply pagination
@@ -2756,6 +2787,9 @@ func (s *ReadModelStore) ListLDSOrdinances(ctx context.Context, opts repository.
 			cmp = strings.Compare(string(results[i].Type), string(results[j].Type))
 		} else {
 			cmp = compareTimestamps(results[i].UpdatedAt, results[j].UpdatedAt)
+		}
+		if cmp == 0 {
+			cmp = bytes.Compare(results[i].ID[:], results[j].ID[:])
 		}
 		if asc {
 			return cmp < 0

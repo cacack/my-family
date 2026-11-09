@@ -1237,9 +1237,9 @@ func (s *ReadModelStore) ListPersons(ctx context.Context, opts repository.ListOp
 		SELECT `+personSelectCols+`
 		FROM `+fromSrc+`
 		%s
-		ORDER BY %s %s NULLS LAST, given_name %s
+		ORDER BY %s %s NULLS LAST, given_name %s, id %s
 		LIMIT $%d OFFSET $%d
-	`, whereClause, orderColumn, orderDir, orderDir, paramNum, paramNum+1)
+	`, whereClause, orderColumn, orderDir, orderDir, orderDir, paramNum, paramNum+1)
 
 	// Build args: branch/main + where args + limit + offset
 	queryArgs := append(args, opts.Limit, opts.Offset)
@@ -2217,7 +2217,7 @@ func (s *ReadModelStore) ListFamilies(ctx context.Context, opts repository.ListO
 		SELECT `+familySelectCols+`
 		FROM `+fromSrc+`
 		%s
-		ORDER BY updated_at DESC
+		ORDER BY updated_at DESC, id DESC
 		LIMIT $%d OFFSET $%d
 	`, whereClause, limitParam, limitParam+1)
 	queryArgs := append(args, opts.Limit, opts.Offset)
@@ -4452,7 +4452,7 @@ func (s *ReadModelStore) GetPersonsBySurname(ctx context.Context, surname string
 		SELECT `+personSelectCols+`
 		FROM %s p
 		WHERE LOWER(surname) = LOWER($%d)
-		ORDER BY given_name ASC
+		ORDER BY given_name ASC, id ASC
 		LIMIT $%d OFFSET $%d
 	`, src, n, n+1, n+2)
 	rows, err := s.db.QueryContext(ctx, query, append(countArgs, opts.Limit, opts.Offset)...)
@@ -4619,7 +4619,7 @@ func (s *ReadModelStore) GetPersonsByPlace(ctx context.Context, place string, op
 		FROM %[1]s p
 		WHERE REPLACE(birth_place, ', ', ',') ILIKE '%%' || REPLACE($%[2]d, ', ', ',') || '%%'
 		   OR REPLACE(death_place, ', ', ',') ILIKE '%%' || REPLACE($%[2]d, ', ', ',') || '%%'
-		ORDER BY surname ASC, given_name ASC
+		ORDER BY surname ASC, given_name ASC, id ASC
 		LIMIT $%[3]d OFFSET $%[4]d
 	`, src, n, n+1, n+2)
 	rows, err := s.db.QueryContext(ctx, query, append(countArgs, opts.Limit, opts.Offset)...)
@@ -4709,7 +4709,7 @@ func (s *ReadModelStore) GetPersonsByCemetery(ctx context.Context, place string,
 		SELECT DISTINCT `+personCols+`
 		FROM %s p
 		INNER JOIN %s e ON e.owner_id = p.id
-		ORDER BY p.surname ASC, p.given_name ASC
+		ORDER BY p.surname ASC, p.given_name ASC, p.id ASC
 		LIMIT $%d OFFSET $%d
 	`, src, eventsSrc, n+3, n+4)
 	rows, err := s.db.QueryContext(ctx, query, append(args, opts.Limit, opts.Offset)...)
@@ -5112,9 +5112,9 @@ func (s *ReadModelStore) ListSubmitters(ctx context.Context, opts repository.Lis
 	query := fmt.Sprintf(`
 		SELECT id, name, address, phone, email, language, media_id, gedcom_xref, version, updated_at
 		FROM submitters
-		ORDER BY %s %s
+		ORDER BY %s %s, id %s
 		LIMIT $1 OFFSET $2
-	`, orderColumn, orderDir)
+	`, orderColumn, orderDir, orderDir)
 
 	rows, err := s.db.QueryContext(ctx, query, opts.Limit, opts.Offset)
 	if err != nil {
@@ -5636,9 +5636,9 @@ func (s *ReadModelStore) ListLDSOrdinances(ctx context.Context, opts repository.
 		SELECT id, type, type_label, person_id, person_name, family_id,
 		       date_raw, date_sort, place, temple, status, version, updated_at
 		FROM lds_ordinances
-		ORDER BY %s %s
+		ORDER BY %s %s, id %s
 		LIMIT $1 OFFSET $2
-	`, orderColumn, orderDir)
+	`, orderColumn, orderDir, orderDir)
 
 	rows, err := s.db.QueryContext(ctx, query, opts.Limit, opts.Offset)
 	if err != nil {
