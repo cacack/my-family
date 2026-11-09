@@ -6,7 +6,6 @@
  * the `components.json` aliases, so each must sit under `#lib` and name a real
  * path, or `shadcn-svelte add` emits imports that do not build.
  */
-import { existsSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import pkg from '../../package.json';
 import components from '../../components.json';
@@ -17,6 +16,13 @@ const sources = import.meta.glob('/src/**/*.{ts,js,svelte}', {
 	eager: true
 }) as Record<string, string>;
 
+// A path exists if it is a source file (any extension) or a directory holding one.
+// Uses the glob keys rather than node:fs, which web/ has no type definitions for.
+const exists = (path: string) =>
+	Object.keys(sources).some(
+		(file) => file.startsWith(`${path}/`) || file.replace(/\.[^./]+$/, '') === path
+	);
+
 describe('#lib subpath imports', () => {
 	it('maps #lib and #lib/* to src/lib', () => {
 		expect(pkg.imports).toEqual({ '#lib': './src/lib', '#lib/*': './src/lib/*' });
@@ -26,9 +32,9 @@ describe('#lib subpath imports', () => {
 		'components.json alias %s resolves under #lib',
 		(name, alias) => {
 			expect(alias).toMatch(/^#lib(\/|$)/);
-			const target = alias.replace(/^#lib/, 'src/lib');
+			const target = alias.replace(/^#lib/, '/src/lib');
 			// `hooks` is created on first use; the rest exist today.
-			if (name !== 'hooks') expect(existsSync(target)).toBe(true);
+			if (name !== 'hooks') expect(exists(target)).toBe(true);
 		}
 	);
 
