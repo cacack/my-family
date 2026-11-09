@@ -108,7 +108,7 @@ func RebuildReadModel(ctx context.Context, events EventStore, rs ReadModelStore,
 	if err := checkLogDecodes(ctx, events); err != nil {
 		return result, err
 	}
-	backfilled, err := backfillImportedValues(ctx, events, rs)
+	backfilled, err := backfillImportedValues(ctx, events, rs, branches)
 	result.Backfilled = backfilled
 	if err != nil {
 		return result, fmt.Errorf("log imported coordinates and EXIDs: %w", err)
@@ -365,7 +365,7 @@ func reportDroppedImported(ctx context.Context, rs ReadModelStore, before int, r
 // main stream does not carry, and returns how many it appended (#1251).
 // Every append is durable on its own, so an interrupted backfill is finished
 // by the next rebuild.
-func backfillImportedValues(ctx context.Context, events EventStore, rs ReadModelStore) (int, error) {
+func backfillImportedValues(ctx context.Context, events EventStore, rs ReadModelStore, branches BranchStore) (int, error) {
 	pending, err := coordinatesInReadModel(ctx, rs)
 	if err != nil {
 		return 0, err
@@ -378,7 +378,7 @@ func backfillImportedValues(ctx context.Context, events EventStore, rs ReadModel
 
 	// Each backfill is projected as soon as it is appended, so the row's
 	// version follows its stream even if the rebuild stops before its reset.
-	projector := NewProjector(rs, nil)
+	projector := NewProjector(rs, branches)
 	appended := 0
 	for _, backfill := range pending {
 		version, carried, err := mainStreamCarriesImportedValues(ctx, events, backfill.EntityID)

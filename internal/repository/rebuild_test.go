@@ -460,3 +460,92 @@ func TestReportProjectionFailure_RecordFailureIsOnlyLogged(t *testing.T) {
 		t.Errorf("markers = %+v, want none", got)
 	}
 }
+
+// TestProjectImportedValuesBackfilled_FillsBranchCopies covers the branch rows
+// a backfill must also fill in (#1254): a branch's own copy of the person or
+// life event that lacks the coordinates gets them, a branch without its own
+// row still reads main's, and a branch copy that has them is left alone.
+func TestProjectImportedValuesBackfilled_FillsBranchCopies(t *testing.T) {
+	ctx := context.Background()
+	rs, branches := memory.NewReadModelStore(), memory.NewBranchStore()
+	copied, _ := domain.NewBranch("copied", "", 0)
+	plain, _ := domain.NewBranch("plain", "", 0)
+	for _, b := range []*domain.Branch{copied, plain} {
+		mustRebuildSetup(t, branches.Create(ctx, b))
+	}
+	personID, eventID := uuid.New(), uuid.New()
+	for _, b := range []domain.BranchID{domain.MainBranchID, domain.BranchID(copied.ID)} {
+		mustRebuildSetup(t, rs.SavePerson(ctx, b, &repository.PersonReadModel{ID: personID, GivenName: "Ada", Version: 1}))
+		mustRebuildSetup(t, rs.SaveEvent(ctx, b, &repository.EventReadModel{ID: eventID, OwnerType: "person", OwnerID: personID, FactType: domain.FactPersonResidence, Version: 1}))
+	}
+	lat, long := "N1.5", "W2.5"
+	projector := repository.NewProjector(rs, branches)
+	mustRebuildSetup(t, projector.Project(ctx, domain.ImportedValuesBackfilled{BaseEvent: domain.NewBaseEvent(),
+		EntityType: domain.BackfillPerson, EntityID: personID, BirthPlaceLat: &lat}, 2, domain.MainBranchID))
+	mustRebuildSetup(t, projector.Project(ctx, domain.ImportedValuesBackfilled{BaseEvent: domain.NewBaseEvent(),
+		EntityType: domain.BackfillLifeEvent, EntityID: eventID, PlaceLat: &lat, PlaceLong: &long}, 2, domain.MainBranchID))
+
+	for _, b := range []*domain.Branch{copied, plain} {
+		p, _ := rs.GetPerson(ctx, domain.BranchID(b.ID), personID)
+		if p == nil || p.BirthPlaceLat == nil || *p.BirthPlaceLat != lat {
+			t.Errorf("person on branch %s = %+v, want the backfilled coordinate", b.Name, p)
+		}
+		e, _ := rs.GetEvent(ctx, domain.BranchID(b.ID), eventID)
+		if e == nil || e.PlaceLat == nil || e.PlaceLong == nil {
+			t.Errorf("life event on branch %s = %+v, want the backfilled coordinates", b.Name, e)
+		}
+	}
+	if p, _ := rs.GetPerson(ctx, domain.BranchID(copied.ID), personID); p == nil || p.Version != 1 {
+		t.Errorf("branch copy = %+v, want its own version kept", p)
+	}
+
+	// A branch copy with coordinates of its own is not overwritten.
+	other := "S9.9"
+	p, _ := rs.GetPerson(ctx, domain.BranchID(copied.ID), personID)
+	p.BirthPlaceLat = &other
+	mustRebuildSetup(t, rs.SavePerson(ctx, domain.BranchID(copied.ID), p))
+	mustRebuildSetup(t, projector.Project(ctx, domain.ImportedValuesBackfilled{BaseEvent: domain.NewBaseEvent(),
+		EntityType: domain.BackfillPerson, EntityID: personID, BirthPlaceLat: &lat}, 3, domain.MainBranchID))
+	if p, _ := rs.GetPerson(ctx, domain.BranchID(copied.ID), personID); p == nil || p.BirthPlaceLat == nil || *p.BirthPlaceLat != other {
+		t.Errorf("branch copy with its own coordinate = %+v, want it left alone", p)
+	}
+}
+
+// failingBranches fails List.
+type failingBranches struct{ *memory.BranchStore }
+
+func (failingBranches) List(context.Context) ([]*domain.Branch, error) { return nil, errRebuildTest }
+
+func TestProjectImportedValuesBackfilled_ReportsBranchListError(t *testing.T) {
+	ctx := context.Background()
+	rs := memory.NewReadModelStore()
+	personID := uuid.New()
+	mustRebuildSetup(t, rs.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{ID: personID, GivenName: "Ada", Version: 1}))
+	lat := "N1.5"
+	err := repository.NewProjector(rs, failingBranches{memory.NewBranchStore()}).Project(ctx, domain.ImportedValuesBackfilled{
+		BaseEvent: domain.NewBaseEvent(), EntityType: domain.BackfillPerson, EntityID: personID, BirthPlaceLat: &lat}, 2, domain.MainBranchID)
+	if !errors.Is(err, errRebuildTest) {
+		t.Errorf("project = %v, want the branch list failure", err)
+	}
+}
+
+// TestProjectImportedValuesBackfilled_ExidOnlyLeavesBranchesOnMain proves an
+// EXID-only backfill gives no branch a row of its own: a branch keeps reading
+// main's row, so a later edit on main still shows there (#1254).
+func TestProjectImportedValuesBackfilled_ExidOnlyLeavesBranchesOnMain(t *testing.T) {
+	ctx := context.Background()
+	rs, branches := memory.NewReadModelStore(), memory.NewBranchStore()
+	branch, _ := domain.NewBranch("research", "", 0)
+	mustRebuildSetup(t, branches.Create(ctx, branch))
+	personID := uuid.New()
+	mustRebuildSetup(t, rs.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{ID: personID, GivenName: "Ada", Version: 1}))
+	mustRebuildSetup(t, repository.NewProjector(rs, branches).Project(ctx, domain.ImportedValuesBackfilled{BaseEvent: domain.NewBaseEvent(),
+		EntityType: domain.BackfillPerson, EntityID: personID, ExternalIDs: []domain.ExternalIdentifier{{Value: "FS-1"}}}, 2, domain.MainBranchID))
+
+	p, _ := rs.GetPerson(ctx, domain.MainBranchID, personID)
+	p.GivenName = "Augusta"
+	mustRebuildSetup(t, rs.SavePerson(ctx, domain.MainBranchID, p))
+	if got, _ := rs.GetPerson(ctx, domain.BranchID(branch.ID), personID); got == nil || got.GivenName != "Augusta" {
+		t.Errorf("person on the branch = %+v, want main's later edit seen through the overlay", got)
+	}
+}
