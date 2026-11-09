@@ -161,7 +161,10 @@
 	{:else if persons.length === 0}
 		<div class="empty">
 			<p>No people found.</p>
-			<Button href="/import">Import GEDCOM</Button>
+			<div class="empty-actions">
+				<Button href="/persons/add">Add Person</Button>
+				<Button variant="outline" href="/import">Import GEDCOM</Button>
+			</div>
 		</div>
 	{:else}
 		<div class="persons-grid">
@@ -252,6 +255,13 @@
 
 	.empty p {
 		margin: 0 0 1rem;
+	}
+
+	.empty-actions {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: center;
+		gap: 0.5rem;
 	}
 
 	.persons-grid {
