@@ -15,6 +15,7 @@
 	let fuzzy = $state(false);
 	let highlightedIndex = $state(-1);
 	let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+	let blurTimer: ReturnType<typeof setTimeout> | null = null;
 	let inputRef: HTMLInputElement | undefined = $state();
 	let dropdownRef: HTMLDivElement | undefined = $state();
 
@@ -74,6 +75,25 @@
 		}
 	}
 
+	/**
+	 * Search for the current text at once (no debounce) and show the results.
+	 * The magnifier and Enter use this so a filled box can be re-run (#1022).
+	 */
+	function searchNow() {
+		if (debounceTimer) {
+			clearTimeout(debounceTimer);
+			debounceTimer = null;
+		}
+		if (query.length < 2) return;
+		showDropdown = true;
+		search(query);
+	}
+
+	function handleSearchClick() {
+		searchNow();
+		inputRef?.focus();
+	}
+
 	function handleInput(e: Event) {
 		const input = e.target as HTMLInputElement;
 		query = input.value;
@@ -97,25 +117,45 @@
 	}
 
 	function handleFocus() {
-		if (query.length >= 2 && results.length > 0) {
+		// Coming back (e.g. via the magnifier) keeps the dropdown open
+		if (blurTimer) {
+			clearTimeout(blurTimer);
+			blurTimer = null;
+		}
+		// Refocusing a filled box reopens its results, fetching them if none are held
+		if (query.length >= 2) {
 			showDropdown = true;
+			if (results.length === 0 && !loading) {
+				search(query);
+			}
 		}
 	}
 
 	function handleBlur() {
 		// Delay hiding dropdown to allow click events to fire
-		setTimeout(() => {
+		blurTimer = setTimeout(() => {
+			blurTimer = null;
 			showDropdown = false;
 			highlightedIndex = -1;
 		}, 200);
 	}
 
 	function handleKeydown(e: KeyboardEvent) {
-		// Handle Escape even when dropdown is closed
+		// Escape closes an open dropdown and is consumed; with nothing open it is
+		// left for page shortcuts (e.g. cancelling an edit) (#1139).
 		if (e.key === 'Escape') {
+			if (showDropdown) {
+				e.preventDefault();
+				showDropdown = false;
+				highlightedIndex = -1;
+			}
+			return;
+		}
+
+		// Enter with nothing highlighted runs the search and opens the results
+		if (e.key === 'Enter' && highlightedIndex < 0) {
 			e.preventDefault();
-			showDropdown = false;
-			highlightedIndex = -1;
+			searchNow();
 			return;
 		}
 
@@ -141,10 +181,8 @@
 				highlightedIndex = highlightedIndex <= 0 ? results.length - 1 : highlightedIndex - 1;
 				break;
 			case 'Enter':
-				if (highlightedIndex >= 0) {
-					e.preventDefault();
-					handleSelect(results[highlightedIndex]);
-				}
+				e.preventDefault();
+				handleSelect(results[highlightedIndex]);
 				break;
 		}
 	}
@@ -159,10 +197,12 @@
 
 <div class="search-box">
 	<div class="input-wrapper">
-		<svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-			<circle cx="11" cy="11" r="8" />
-			<path d="m21 21-4.35-4.35" />
-		</svg>
+		<button type="button" class="search-button" onclick={handleSearchClick} aria-label="Search" title="Search">
+			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+				<circle cx="11" cy="11" r="8" />
+				<path d="m21 21-4.35-4.35" />
+			</svg>
+		</button>
 		<input
 			bind:this={inputRef}
 			type="text"
@@ -259,13 +299,29 @@
 		align-items: center;
 	}
 
-	.search-icon {
+	.search-button {
 		position: absolute;
-		left: 0.75rem;
+		left: 0.375rem;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 1.75rem;
+		height: 1.75rem;
+		padding: 0;
+		border: none;
+		border-radius: 4px;
+		background: none;
+		color: var(--color-text-muted);
+		cursor: pointer;
+	}
+
+	.search-button:hover {
+		background: #f1f5f9;
+	}
+
+	.search-button svg {
 		width: 1rem;
 		height: 1rem;
-		color: var(--color-text-muted);
-		pointer-events: none;
 	}
 
 	input {

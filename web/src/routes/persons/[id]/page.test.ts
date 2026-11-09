@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import Page from './+page.svelte';
+import SearchBox from '$lib/components/SearchBox.svelte';
+import AccessibilityPanel from '$lib/components/AccessibilityPanel.svelte';
 import { buttonVariants } from '$lib/components/ui/button';
 import { cn } from '$lib/utils.js';
 import type * as apiModule from '$lib/api/client';
@@ -390,6 +392,60 @@ describe('Person detail edit form', () => {
 
 		expect(confirm).not.toHaveBeenCalled();
 		expect(screen.queryByLabelText('Given Name')).toBeNull();
+		confirm.mockRestore();
+	});
+
+	// Escape on a form button matched the layout's close-modal, not cancel (#1139).
+	it('leaves edit mode on Escape from a form button, after the discard prompt', async () => {
+		const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+		getPerson.mockResolvedValue(person());
+		await openEdit();
+
+		await fireEvent.input(screen.getByLabelText('Given Name'), { target: { value: 'Augusta' } });
+		const saveButton = screen.getByRole('button', { name: 'Save Changes' });
+		saveButton.focus();
+		await fireEvent.keyDown(saveButton, { key: 'Escape' });
+
+		expect(confirm).toHaveBeenCalledWith('Discard your unsaved changes?');
+		expect(screen.queryByLabelText('Given Name')).toBeNull();
+		confirm.mockRestore();
+	});
+
+	// An overlay's Escape also reached the page's cancel (#1139).
+	it('keeps edit mode when Escape closes the search dropdown', async () => {
+		const confirm = vi.spyOn(window, 'confirm');
+		getPerson.mockResolvedValue(person());
+		await openEdit();
+		await fireEvent.input(screen.getByLabelText('Given Name'), { target: { value: 'Augusta' } });
+		render(SearchBox);
+		const search = screen.getByRole('combobox', { name: 'Search' });
+		search.focus();
+		await fireEvent.input(search, { target: { value: 'Smith' } });
+		expect(search.getAttribute('aria-expanded')).toBe('true');
+
+		await fireEvent.keyDown(search, { key: 'Escape' });
+
+		expect(search.getAttribute('aria-expanded')).toBe('false');
+		expect(confirm).not.toHaveBeenCalled();
+		expect(screen.getByLabelText('Given Name')).toBeDefined();
+		confirm.mockRestore();
+	});
+
+	it('keeps edit mode when Escape closes the accessibility panel', async () => {
+		const confirm = vi.spyOn(window, 'confirm');
+		getPerson.mockResolvedValue(person());
+		await openEdit();
+		await fireEvent.input(screen.getByLabelText('Given Name'), { target: { value: 'Augusta' } });
+		const onClose = vi.fn();
+		render(AccessibilityPanel, { open: true, onClose });
+		const closeButton = screen.getByRole('button', { name: 'Close accessibility settings' });
+		closeButton.focus();
+
+		await fireEvent.keyDown(closeButton, { key: 'Escape' });
+
+		expect(onClose).toHaveBeenCalled();
+		expect(confirm).not.toHaveBeenCalled();
+		expect(screen.getByLabelText('Given Name')).toBeDefined();
 		confirm.mockRestore();
 	});
 
