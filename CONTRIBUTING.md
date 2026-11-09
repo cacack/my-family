@@ -21,7 +21,7 @@ This installs tools and git hooks:
 ### Git Hooks
 
 **Pre-commit** (runs on every commit):
-- Code formatting (`go fmt`)
+- Code formatting (`scripts/gofmt`, the gofmt of the go.mod-pinned toolchain)
 - Linting (`golangci-lint`)
 - Static analysis (`go vet`)
 - Tests pass
@@ -55,7 +55,7 @@ Follow the patterns documented in [docs/CONVENTIONS.md](./docs/CONVENTIONS.md) -
 
 ### Key Points
 
-- Code MUST pass `go vet` and `go fmt` without warnings or changes
+- Code MUST pass `go vet` and `make fmt` without warnings or changes. Formatting is defined by the gofmt of the Go version on the `toolchain` line of `go.mod` (what CI uses); `make fmt` runs that version even if your host Go is newer
 - All exported functions, types, and packages MUST have documentation comments
 - Error handling MUST be explicit with wrapped context; never ignore returned errors
 - Dependencies MUST be minimal and justified; prefer standard library

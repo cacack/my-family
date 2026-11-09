@@ -310,6 +310,13 @@ type ImportOptions struct {
 	// must be cheap and non-blocking; parsing happens on the calling goroutine.
 	// When nil there is zero progress-reporting overhead.
 	OnProgress ImportProgressCallback
+
+	// ExistingXrefs lists the stored xrefs of the records already in the tree
+	// that the exporter keeps (sources, repositories, notes, submitters). A
+	// NOTE record whose xref is among them is given a fresh xref, and this
+	// file's NOTE pointers follow it, so a second file's @N1@ stays apart
+	// from the tree's (#1228).
+	ExistingXrefs []string
 }
 
 // Importer handles GEDCOM file parsing and conversion to domain events.
@@ -485,6 +492,8 @@ func (imp *Importer) ImportWithOptions(ctx context.Context, reader io.Reader, im
 		personAssocs := extractAssociationsFromIndividual(indi, personID, result)
 		associations = append(associations, personAssocs...)
 	}
+
+	renameCollidingNotes(doc, importOpts.ExistingXrefs, notes, persons, sources, repositories, associations, result)
 
 	// Eighth pass: parse LDS ordinance records from individuals and families
 	// GEDCOM was originally developed by the LDS Church and includes temple ordinance tags
@@ -813,6 +822,73 @@ func childPedigreeType(indi *gedcom.Individual, familyXRef string) domain.ChildR
 	}
 
 	return domain.ChildBiological // Default if no FAMC link found
+}
+
+// renameCollidingNotes gives each NOTE record whose xref an existing record of
+// the tree already holds a fresh @N<n>@ that neither the tree nor this file
+// uses, and rewrites this file's NOTE pointers (kept as raw xrefs in Notes) to
+// match. Without it, a second file's @N1@ is stored beside the tree's and an
+// export cannot tell which one a pointer meant (#1228).
+func renameCollidingNotes(doc *gedcom.Document, existing []string, notes []NoteData, persons []PersonData, sources []SourceData, repositories []RepositoryData, associations []AssociationData, result *ImportResult) {
+	inTree := make(map[string]bool, len(existing))
+	for _, xref := range existing {
+		if xref != "" {
+			inTree[xref] = true
+		}
+	}
+	used := make(map[string]bool, len(inTree)+len(doc.Records))
+	for xref := range inTree {
+		used[xref] = true
+	}
+	for _, rec := range doc.Records {
+		used[rec.XRef] = true
+	}
+
+	renamed := map[string]string{}
+	n := 0
+	for i := range notes {
+		old := notes[i].GedcomXref
+		if !inTree[old] {
+			continue
+		}
+		xref := ""
+		for xref == "" || used[xref] {
+			n++
+			xref = fmt.Sprintf("@N%d@", n)
+		}
+		used[xref] = true
+		notes[i].GedcomXref = xref
+		// Keep NoteXrefToID keyed by the pointers as rewritten below.
+		delete(result.NoteXrefToID, old)
+		result.NoteXrefToID[xref] = notes[i].ID
+		// A file defining one xref twice is already ambiguous; its pointers
+		// follow the first record.
+		if _, seen := renamed[old]; !seen {
+			renamed[old] = xref
+		}
+		result.Warnings = append(result.Warnings,
+			fmt.Sprintf("Note %s renamed to %s: the tree already has a record with xref %s", old, xref, old))
+	}
+	if len(renamed) == 0 {
+		return
+	}
+
+	rename := func(v string) (string, bool) {
+		xref, ok := renamed[v]
+		return xref, ok
+	}
+	for i := range persons {
+		persons[i].Notes = renameXrefs(persons[i].Notes, noteJoin, rename)
+	}
+	for i := range sources {
+		sources[i].Notes = renameXrefs(sources[i].Notes, noteJoin, rename)
+	}
+	for i := range repositories {
+		repositories[i].Notes = renameXrefs(repositories[i].Notes, noteJoin, rename)
+	}
+	for i := range associations {
+		associations[i].Notes = renameXrefs(associations[i].Notes, associationNoteJoin, rename)
+	}
 }
 
 // recordNotes joins a record's NOTE values with noteJoin, in file order. It

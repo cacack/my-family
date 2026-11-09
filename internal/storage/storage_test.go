@@ -84,7 +84,7 @@ func TestSelect_FromEnvironment(t *testing.T) {
 // ============================================================================
 
 func TestOpen_Memory(t *testing.T) {
-	stores, err := Open(&config.Config{DemoMode: true})
+	stores, err := Open(&config.Config{DemoMode: true}, AccessServe)
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -117,7 +117,7 @@ func TestOpen_Memory(t *testing.T) {
 
 func TestOpen_SQLite(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "myfamily.db")
-	stores, err := Open(&config.Config{SQLitePath: path})
+	stores, err := Open(&config.Config{SQLitePath: path}, AccessServe)
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -146,14 +146,14 @@ func TestSQLite_Restart(t *testing.T) {
 }
 
 func TestOpenSQLite_EmptyPath(t *testing.T) {
-	if _, err := OpenSQLite("  "); err == nil || !strings.Contains(err.Error(), "SQLITE_PATH") {
+	if _, err := OpenSQLite("  ", AccessServe); err == nil || !strings.Contains(err.Error(), "SQLITE_PATH") {
 		t.Fatalf("OpenSQLite(\"  \"): err = %v, want an error naming SQLITE_PATH", err)
 	}
 }
 
 func TestOpenSQLite_MissingDirectory(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "no-such-dir", "myfamily.db")
-	_, err := OpenSQLite(path)
+	_, err := OpenSQLite(path, AccessServe)
 	if err == nil {
 		t.Fatal("OpenSQLite in a missing directory succeeded, want an error")
 	}
@@ -178,7 +178,7 @@ func TestOpenSQLite_SchemaFailureClosesDatabase(t *testing.T) {
 		t.Fatalf("close: %v", err)
 	}
 
-	_, err = OpenSQLite(path)
+	_, err = OpenSQLite(path, AccessServe)
 	if err == nil {
 		t.Fatal("OpenSQLite over a conflicting schema succeeded, want an error")
 	}
@@ -193,7 +193,7 @@ func TestOpenSQLite_SchemaFailureClosesDatabase(t *testing.T) {
 
 func TestOpen_Postgres(t *testing.T) {
 	dsn := postgresDatabase(t)
-	stores, err := Open(&config.Config{DatabaseURL: dsn, SQLitePath: "unused.db"})
+	stores, err := Open(&config.Config{DatabaseURL: dsn, SQLitePath: "unused.db"}, AccessServe)
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -217,7 +217,7 @@ func TestPostgres_Restart(t *testing.T) {
 
 func TestOpenPostgres_Unreachable(t *testing.T) {
 	// Port 1 on localhost refuses immediately; nothing listens there.
-	_, err := OpenPostgres("postgres://" + userinfo("user", "s3cret") + "127.0.0.1:1/db?sslmode=disable&connect_timeout=2")
+	_, err := OpenPostgres("postgres://"+userinfo("user", "s3cret")+"127.0.0.1:1/db?sslmode=disable&connect_timeout=2", AccessServe)
 	if err == nil {
 		t.Fatal("OpenPostgres against a closed port succeeded, want an error")
 	}
@@ -238,7 +238,7 @@ func TestOpenPostgres_MalformedURLDoesNotLeakPassword(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := OpenPostgres(tt.dsn)
+			_, err := OpenPostgres(tt.dsn, AccessServe)
 			if err == nil {
 				t.Fatal("OpenPostgres succeeded on a malformed URL, want an error")
 			}
@@ -258,7 +258,7 @@ func TestOpenPostgres_MalformedURLDoesNotLeakPassword(t *testing.T) {
 }
 
 func TestOpenPostgres_KeyValueUnreachableDoesNotLeakPassword(t *testing.T) {
-	_, err := OpenPostgres("host=127.0.0.1 port=1 user=u " + pwKey + "='s3cret pw' dbname=db sslmode=disable connect_timeout=2")
+	_, err := OpenPostgres("host=127.0.0.1 port=1 user=u "+pwKey+"='s3cret pw' dbname=db sslmode=disable connect_timeout=2", AccessServe)
 	if err == nil {
 		t.Fatal("OpenPostgres against a closed port succeeded, want an error")
 	}
@@ -351,7 +351,7 @@ func TestBuild_ClosesDatabaseOnEachFailure(t *testing.T) {
 				}
 				return nil
 			}
-			_, err = build(BackendSQLite, "x.db", db,
+			_, err = build(BackendSQLite, "x.db", db, nil, AccessServe,
 				func(*sql.DB) (repository.ReadModelStore, error) { return nil, failAt(0) },
 				func(*sql.DB) (repository.EventStore, error) { return nil, failAt(1) },
 				func(*sql.DB) (repository.SnapshotStore, error) { return nil, failAt(2) },
@@ -371,7 +371,7 @@ func TestBuild_ClosesDatabaseOnEachFailure(t *testing.T) {
 }
 
 func TestClose_Idempotent(t *testing.T) {
-	stores, err := OpenSQLite(filepath.Join(t.TempDir(), "myfamily.db"))
+	stores, err := OpenSQLite(filepath.Join(t.TempDir(), "myfamily.db"), AccessServe)
 	if err != nil {
 		t.Fatalf("OpenSQLite: %v", err)
 	}
@@ -393,7 +393,7 @@ func TestClose_Idempotent(t *testing.T) {
 func assertSurvivesRestart(t *testing.T, cfg *config.Config) {
 	t.Helper()
 
-	first, err := Open(cfg)
+	first, err := Open(cfg, AccessServe)
 	if err != nil {
 		t.Fatalf("first Open: %v", err)
 	}
@@ -405,7 +405,7 @@ func assertSurvivesRestart(t *testing.T, cfg *config.Config) {
 		t.Fatalf("Close: %v", err)
 	}
 
-	second, err := Open(cfg)
+	second, err := Open(cfg, AccessServe)
 	if err != nil {
 		t.Fatalf("reopen: %v", err)
 	}
@@ -577,7 +577,7 @@ func postgresDatabase(t *testing.T) string {
 // and clears the warning.
 func TestSQLite_RebuildReadModel(t *testing.T) {
 	ctx := context.Background()
-	stores, err := OpenSQLite(filepath.Join(t.TempDir(), "myfamily.db"))
+	stores, err := OpenSQLite(filepath.Join(t.TempDir(), "myfamily.db"), AccessRebuild)
 	if err != nil {
 		t.Fatalf("OpenSQLite: %v", err)
 	}

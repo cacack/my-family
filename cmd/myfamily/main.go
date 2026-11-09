@@ -60,7 +60,7 @@ Usage:
 
 Commands:
   serve     Start the HTTP server
-  rebuild   Rebuild the read model from the event log (stop the server first)
+  rebuild   Rebuild the read model from the event log (refused while the server runs)
   version   Show version information
   help      Show this help message
 
@@ -84,7 +84,7 @@ func runServer() error {
 	// Open the configured store: DEMO_MODE -> memory, DATABASE_URL -> PostgreSQL,
 	// otherwise SQLite at SQLITE_PATH. A backend that cannot be opened stops the
 	// server here; there is no silent fallback to memory.
-	stores, err := storage.Open(cfg)
+	stores, err := storage.Open(cfg, storage.AccessServe)
 	if err != nil {
 		return fmt.Errorf("failed to open %s storage: %w", storage.Select(cfg), err)
 	}
@@ -147,10 +147,12 @@ func runServer() error {
 }
 
 // runRebuild opens the configured store, empties its read model and replays the
-// event log into it (#845). It is the repair for a failed projection.
+// event log into it (#845). It is the repair for a failed projection. Open
+// refuses while a server holds the same database, and the server refuses to
+// start while the rebuild holds it (#1232).
 func runRebuild() error {
 	cfg := config.Load()
-	stores, err := storage.Open(cfg)
+	stores, err := storage.Open(cfg, storage.AccessRebuild)
 	if err != nil {
 		return fmt.Errorf("failed to open %s storage: %w", storage.Select(cfg), err)
 	}

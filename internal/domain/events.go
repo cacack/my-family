@@ -52,6 +52,12 @@ type PersonCreated struct {
 	Notes          string         `json:"notes,omitempty"`
 	ResearchStatus ResearchStatus `json:"research_status,omitempty"`
 	GedcomXref     string         `json:"gedcom_xref,omitempty"`
+	// Place coordinates and EXIDs come from GEDCOM import (#1225).
+	BirthPlaceLat  *string              `json:"birth_place_lat,omitempty"`
+	BirthPlaceLong *string              `json:"birth_place_long,omitempty"`
+	DeathPlaceLat  *string              `json:"death_place_lat,omitempty"`
+	DeathPlaceLong *string              `json:"death_place_long,omitempty"`
+	ExternalIDs    []ExternalIdentifier `json:"external_ids,omitempty"`
 }
 
 func (e PersonCreated) EventType() string      { return "PersonCreated" }
@@ -128,6 +134,8 @@ type FamilyCreated struct {
 	MarriageDate     *GenDate     `json:"marriage_date,omitempty"`
 	MarriagePlace    string       `json:"marriage_place,omitempty"`
 	GedcomXref       string       `json:"gedcom_xref,omitempty"`
+	// ExternalIDs are GEDCOM 7.0 EXIDs set at import (#1225).
+	ExternalIDs []ExternalIdentifier `json:"external_ids,omitempty"`
 }
 
 func (e FamilyCreated) EventType() string      { return "FamilyCreated" }
@@ -379,6 +387,8 @@ type SourceCreated struct {
 	CallNumber     string     `json:"call_number,omitempty"`
 	Notes          string     `json:"notes,omitempty"`
 	GedcomXref     string     `json:"gedcom_xref,omitempty"`
+	// ExternalIDs are GEDCOM 7.0 EXIDs set at import (#1225).
+	ExternalIDs []ExternalIdentifier `json:"external_ids,omitempty"`
 }
 
 func (e SourceCreated) EventType() string      { return "SourceCreated" }
@@ -622,6 +632,8 @@ type RepositoryCreated struct {
 	Website       string    `json:"website,omitempty"`
 	Notes         string    `json:"notes,omitempty"`
 	GedcomXref    string    `json:"gedcom_xref,omitempty"`
+	// ExternalIDs are GEDCOM 7.0 EXIDs set at import (#1225).
+	ExternalIDs []ExternalIdentifier `json:"external_ids,omitempty"`
 }
 
 func (e RepositoryCreated) EventType() string      { return "RepositoryCreated" }
@@ -699,6 +711,9 @@ type LifeEventCreated struct {
 	Age         string     `json:"age,omitempty"`        // Age at event
 	IsNegated   bool       `json:"is_negated,omitempty"` // Negative assertion (GEDCOM 7.0 NO tag)
 	GedcomXref  string     `json:"gedcom_xref,omitempty"`
+	// Place coordinates come from GEDCOM import (#1225).
+	PlaceLat  *string `json:"place_lat,omitempty"`
+	PlaceLong *string `json:"place_long,omitempty"`
 }
 
 func (e LifeEventCreated) EventType() string      { return "LifeEventCreated" }

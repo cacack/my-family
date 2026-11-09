@@ -60,8 +60,8 @@ test-coverage: ## Run tests with HTML coverage report
 	go test -coverprofile=coverage.out ./...
 	go tool cover -html=coverage.out -o coverage.html
 
-fmt: ## Format Go code
-	go fmt ./...
+fmt: ## Format Go code with the go.mod-pinned toolchain's gofmt
+	scripts/gofmt -l -w .
 
 vet: ## Run go vet
 	go vet ./...
