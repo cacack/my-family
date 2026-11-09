@@ -2,16 +2,21 @@
 	import * as d3 from 'd3';
 	import { onMount, untrack } from 'svelte';
 	import { formatPersonName, formatYear, type PedigreeNode } from '$lib/api/client';
+	import { getFontScale } from '$lib/stores/accessibilitySettings.svelte';
 	import {
+		centreOnX,
 		fitTransform,
 		motionDuration,
 		nameLines,
 		observeChartResize,
+		offscreenX,
 		scaleAbout,
+		scaleBounds,
 		touchScrollsPage,
 		truncateLabel,
 		type ScaleExtent
 	} from '$lib/utils/chart';
+	import OffscreenIndicator from './OffscreenIndicator.svelte';
 
 	export type LayoutMode = 'compact' | 'standard' | 'wide';
 
@@ -57,6 +62,12 @@
 	let container: HTMLDivElement;
 	let svg: d3.Selection<SVGSVGElement, unknown, null, undefined>;
 	let g: d3.Selection<SVGGElement, unknown, null, undefined>;
+	// Links get a layer of their own below the cards, so a link drawn after a
+	// collapse and expand can never cover a card (#1025)
+	let linkLayer: d3.Selection<SVGGElement, unknown, null, undefined>;
+	let nodeLayer: d3.Selection<SVGGElement, unknown, null, undefined>;
+	// Chart units per layout unit: the Accessibility font-size scale (#1103)
+	let contentScale = 1;
 	let zoom: d3.ZoomBehavior<SVGSVGElement, unknown>;
 	// Where the running animated zoom is heading, so quick +/- clicks chain
 	let zoomTarget: d3.ZoomTransform | null = null;
@@ -69,6 +80,9 @@
 	// Collapsed nodes state - tracks which node IDs have their ancestors collapsed
 	// Using a plain Set since reactivity is managed through manual re-renders
 	let collapsedNodes: Set<string> = new Set();
+
+	// Parents lying off either side of the view (chart-unit x, nearest first)
+	let offscreen = $state.raw<{ left: number[]; right: number[] }>({ left: [], right: [] });
 
 	// Debounce timer for rapid collapse/expand operations
 	let collapseDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -200,8 +214,12 @@
 			.attr('height', '100%')
 			.attr('viewBox', `0 0 ${width} ${height}`);
 
-		// Create group for zoomable content
+		// Create group for zoomable content, drawn at the font-size scale
 		g = svg.append('g');
+		contentScale = getFontScale();
+		const content = g.append('g').attr('class', 'chart-content').attr('transform', `scale(${contentScale})`);
+		linkLayer = content.append('g').attr('class', 'links');
+		nodeLayer = content.append('g').attr('class', 'nodes');
 
 		// Setup zoom behavior
 		zoom = d3
@@ -211,6 +229,7 @@
 				g.attr('transform', event.transform);
 				// A wheel or drag gesture replaces any pending button zoom
 				if (event.sourceEvent) zoomTarget = null;
+				updateOffscreen(event.transform);
 			});
 
 		svg.call(zoom);
@@ -253,7 +272,7 @@
 		});
 
 		// Draw links
-		g.selectAll('.link')
+		linkLayer.selectAll('.link')
 			.data(links)
 			.enter()
 			.append('path')
@@ -272,7 +291,7 @@
 			);
 
 		// Create node groups
-		const nodeGroups = g
+		const nodeGroups = nodeLayer
 			.selectAll('.node')
 			.data(nodes)
 			.enter()
@@ -330,7 +349,22 @@
 			height: maxY - minY + cardHeight + TOGGLE_EXTENT
 		};
 		const [width, height] = viewportSize();
-		return fitTransform(bounds, width, height, SCALE_EXTENT, treeNodes[0]);
+		const root = { x: treeNodes[0].x * contentScale, y: treeNodes[0].y * contentScale };
+		return fitTransform(scaleBounds(bounds, contentScale), width, height, SCALE_EXTENT, root);
+	}
+
+	function updateOffscreen(t: d3.ZoomTransform) {
+		if (!container) return;
+		const parents = treeNodes.filter((d) => d.depth === 1).map((d) => d.x * contentScale);
+		const [width] = viewportSize();
+		offscreen = offscreenX(parents, (LAYOUTS[layout].cardWidth / 2) * contentScale, t, width);
+	}
+
+	function panToOffscreen(side: 'left' | 'right') {
+		const x = offscreen[side][0];
+		if (x === undefined || !svg) return;
+		const [width] = viewportSize();
+		animateZoomTo(centreOnX(zoomTarget ?? d3.zoomTransform(svg.node()!), x, width));
 	}
 
 	function animateZoomTo(target: d3.ZoomTransform) {
@@ -386,7 +420,7 @@
 		const previousNodeIds = new Set(previousNodePositions.keys());
 
 		// Update links with animation
-		const linkSelection = g.selectAll<SVGPathElement, d3.HierarchyLink<PedigreeNode>>('.link')
+		const linkSelection = linkLayer.selectAll<SVGPathElement, d3.HierarchyLink<PedigreeNode>>('.link')
 			.data(links, (d) => `${d.source.data.id}-${d.target.data.id}`);
 
 		// Remove old links
@@ -433,7 +467,7 @@
 			);
 
 		// Update nodes with animation
-		const nodeSelection = g.selectAll<SVGGElement, d3.HierarchyPointNode<PedigreeNode>>('.node')
+		const nodeSelection = nodeLayer.selectAll<SVGGElement, d3.HierarchyPointNode<PedigreeNode>>('.node')
 			.data(nodes, (d) => d.data.id || '');
 
 		// Remove old nodes with fade out
@@ -597,18 +631,31 @@
 		// Filter to only nodes that have ancestors in the original data
 		const nodesWithAncestors = nodeGroups.filter((d) => hasAncestors(d.data));
 
-		// Create toggle group positioned below the card
+		// Create toggle group positioned below the card: a keyboard-operable
+		// button whose label and state follow the collapse (#1100)
 		const toggleGroups = nodesWithAncestors
 			.append('g')
 			.attr('class', 'collapse-toggle')
 			.attr('transform', `translate(0, ${cardHeight / 2 + TOGGLE_OFFSET})`)
+			.attr('role', 'button')
+			.attr('tabindex', 0)
 			.style('cursor', 'pointer')
 			.on('click', (event, d) => {
 				event.stopPropagation(); // Prevent triggering person click
 				if (d.data.id) {
 					toggleCollapse(d.data.id);
 				}
+			})
+			.on('keydown', (event: KeyboardEvent, d) => {
+				if (event.key !== 'Enter' && event.key !== ' ') return;
+				// Keep the key from scrolling the page or reaching the chart shortcuts
+				event.preventDefault();
+				event.stopPropagation();
+				if (d.data.id) {
+					toggleCollapse(d.data.id);
+				}
 			});
+		labelCollapseToggle(toggleGroups);
 
 		// Invisible touch target, larger than the drawn button
 		toggleGroups
@@ -616,6 +663,13 @@
 			.attr('class', 'toggle-hit-area')
 			.attr('r', TOGGLE_HIT_RADIUS)
 			.attr('fill', 'transparent');
+
+		// Focus ring, shown only while the toggle has keyboard focus
+		toggleGroups
+			.append('circle')
+			.attr('class', 'toggle-focus-ring')
+			.attr('r', TOGGLE_HIT_RADIUS)
+			.attr('fill', 'none');
 
 		// Toggle button circle
 		toggleGroups
@@ -677,12 +731,23 @@
 			});
 	}
 
+	function labelCollapseToggle(
+		toggles: d3.Selection<SVGGElement, d3.HierarchyPointNode<PedigreeNode>, d3.BaseType, unknown>
+	) {
+		const collapsed = (d: d3.HierarchyPointNode<PedigreeNode>) => Boolean(d.data.id && collapsedNodes.has(d.data.id));
+		toggles
+			.attr('aria-expanded', (d) => String(!collapsed(d)))
+			.attr('aria-label', (d) => `${collapsed(d) ? 'Expand' : 'Collapse'} ancestors of ${formatPersonName(d.data)}`);
+	}
+
 	function updateCollapseToggle(
 		nodeGroup: d3.Selection<SVGGElement, d3.HierarchyPointNode<PedigreeNode>, null, undefined>,
 		d: d3.HierarchyPointNode<PedigreeNode>,
 		cardWidth: number,
 		cardHeight: number
 	) {
+		labelCollapseToggle(nodeGroup.select<SVGGElement>('.collapse-toggle'));
+
 		// Update toggle text
 		nodeGroup.select('.toggle-text')
 			.text(d.data.id && collapsedNodes.has(d.data.id) ? '+' : '-');
@@ -863,7 +928,8 @@
 
 	// Re-render when data or layout changes
 	$effect(() => {
-		if (data && layout) {
+		// Reading the scale here redraws the chart when the font-size setting changes
+		if (data && layout && getFontScale()) {
 			// Reset collapsed state when the root person changes (new person selected)
 			// Use untrack to prevent reactive loops when reading/writing previousDataId
 			const prevId = untrack(() => previousDataId);
@@ -886,15 +952,29 @@
 	});
 </script>
 
-<div
-	class="pedigree-chart"
-	bind:this={container}
-	role="application"
-	aria-label="Pedigree chart. Use arrow keys to navigate: Up for father, Left for mother, Down to return to root. Plus/minus to zoom, R to reset view. Click toggle buttons below nodes to collapse or expand ancestor branches."
-	tabindex="0"
-></div>
+<div class="chart-frame">
+	<div
+		class="pedigree-chart"
+		bind:this={container}
+		role="application"
+		aria-label="Pedigree chart. Use arrow keys to navigate: Up for father, Left for mother, Down to return to root. Plus/minus to zoom, R to reset view. Tab to the toggle buttons below nodes to collapse or expand ancestor branches."
+		tabindex="0"
+	></div>
+	<OffscreenIndicator
+		left={offscreen.left.length}
+		right={offscreen.right.length}
+		noun={['parent', 'parents']}
+		onPan={panToOffscreen}
+	/>
+</div>
 
 <style>
+	.chart-frame {
+		position: relative;
+		width: 100%;
+		height: 100%;
+	}
+
 	.pedigree-chart {
 		width: 100%;
 		height: 100%;
@@ -918,6 +998,15 @@
 	:global(.pedigree-chart .collapse-toggle:hover circle.toggle-button) {
 		fill: #e2e8f0;
 		stroke: #64748b;
+	}
+
+	:global(.pedigree-chart .collapse-toggle:focus) {
+		outline: none;
+	}
+
+	:global(.pedigree-chart .collapse-toggle:focus-visible circle.toggle-focus-ring) {
+		stroke: var(--color-focus-ring);
+		stroke-width: 2.5px;
 	}
 
 	/* High contrast mode support for selection indicator */

@@ -1,6 +1,7 @@
-import { describe, it, expect, beforeAll } from 'vitest';
-import { render } from '@testing-library/svelte';
+import { describe, it, expect, beforeAll, afterEach } from 'vitest';
+import { render, cleanup } from '@testing-library/svelte';
 import QualityChart from './QualityChart.svelte';
+import { setFontSize } from '$lib/stores/accessibilitySettings.svelte';
 
 beforeAll(() => {
 	// jsdom lacks ResizeObserver.
@@ -65,5 +66,33 @@ describe('QualityChart', () => {
 	it('renders nothing for empty data', () => {
 		const { container } = render(QualityChart, { props: { data: [] } });
 		expect(container.querySelector('svg')).toBeNull();
+	});
+	describe('font-size setting (#1103)', () => {
+		afterEach(() => setFontSize('normal'));
+
+		const measure = (container: Element) => ({
+			label: parseFloat(container.querySelector('.bar-label')?.getAttribute('font-size') ?? ''),
+			value: parseFloat(container.querySelector('.bar-value')?.getAttribute('font-size') ?? ''),
+			height: Number(container.querySelector('svg')?.getAttribute('height'))
+		});
+
+		it('draws labels, values and rows bigger at Larger', () => {
+			const normal = measure(render(QualityChart, { props: { data } }).container);
+			cleanup();
+			setFontSize('larger');
+			const larger = measure(render(QualityChart, { props: { data } }).container);
+			expect(larger.label).toBeGreaterThanOrEqual(normal.label * 1.25);
+			expect(larger.value).toBeGreaterThanOrEqual(normal.value * 1.25);
+			// Rows grow with the text, so labels never overlap the bar below
+			expect(larger.height).toBeGreaterThanOrEqual(normal.height * 1.25);
+		});
+
+		it('redraws when the setting changes', async () => {
+			const { container } = render(QualityChart, { props: { data } });
+			const before = measure(container).label;
+			setFontSize('large');
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			expect(measure(container).label).toBeCloseTo(before * 1.25);
+		});
 	});
 });

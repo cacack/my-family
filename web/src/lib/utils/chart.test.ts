@@ -3,8 +3,11 @@ import * as d3 from 'd3';
 import {
 	FIT_SCALE_RANGE,
 	MIN_CARD_FONT_PX,
+	centreOnX,
 	fitTransform,
 	nameLines,
+	offscreenX,
+	scaleBounds,
 	scaleAbout,
 	touchScrollsPage,
 	truncateLabel,
@@ -52,6 +55,34 @@ describe('fitTransform', () => {
 		expect(t.apply([focus.x, focus.y])[0]).toBeCloseTo(187.5);
 		// The top edge sits just inside the viewport instead of the root sitting mid-screen
 		expect(t.apply([0, 0])[1]).toBeCloseTo(16);
+	});
+});
+
+describe('offscreenX', () => {
+	it('lists cards wholly off each side, nearest first', () => {
+		const t = d3.zoomIdentity.translate(500, 0);
+		// Viewport 0..1000 shows chart x -500..500; cards are 100 wide
+		const xs = [-2000, -560, -540, 0, 540, 560, 3000];
+		expect(offscreenX(xs, 50, t, 1000)).toEqual({ left: [-560, -2000], right: [560, 3000] });
+	});
+
+	it('honours the zoom scale', () => {
+		const t = d3.zoomIdentity.translate(500, 0).scale(0.5);
+		expect(offscreenX([-1000, 1000, 1200], 50, t, 1000)).toEqual({ left: [], right: [1200] });
+	});
+});
+
+describe('centreOnX', () => {
+	it('pans a point to mid-viewport, keeping the scale and vertical offset', () => {
+		const t = centreOnX(d3.zoomIdentity.translate(10, 40).scale(2), 300, 1000);
+		expect(t.apply([300, 0])).toEqual([500, 40]);
+		expect(t.k).toBe(2);
+	});
+});
+
+describe('scaleBounds', () => {
+	it('scales position and size', () => {
+		expect(scaleBounds({ x: -10, y: 4, width: 100, height: 50 }, 1.5)).toEqual({ x: -15, y: 6, width: 150, height: 75 });
 	});
 });
 

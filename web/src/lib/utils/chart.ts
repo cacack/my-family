@@ -70,6 +70,33 @@ export function fitTransform(
 	return d3.zoomIdentity.translate(x, y).scale(scale);
 }
 
+/** Bounds and points in layout units, scaled to chart units (see `getFontScale`). */
+export function scaleBounds(bounds: Bounds, k: number): Bounds {
+	return { x: bounds.x * k, y: bounds.y * k, width: bounds.width * k, height: bounds.height * k };
+}
+
+/**
+ * The cards (centre x and half-width, in chart units) lying wholly left or
+ * right of a `width`-wide viewport under `t`, nearest first on each side. The
+ * charts use it to point at first-generation relatives a first view can't
+ * reach at a readable zoom (#1098).
+ */
+export function offscreenX(
+	xs: number[],
+	halfWidth: number,
+	t: d3.ZoomTransform,
+	width: number
+): { left: number[]; right: number[] } {
+	const left = xs.filter((x) => t.applyX(x + halfWidth) < 0).sort((a, b) => b - a);
+	const right = xs.filter((x) => t.applyX(x - halfWidth) > width).sort((a, b) => a - b);
+	return { left, right };
+}
+
+/** `t` panned horizontally so chart point `x` sits mid-viewport. */
+export function centreOnX(t: d3.ZoomTransform, x: number, width: number): d3.ZoomTransform {
+	return d3.zoomIdentity.translate(width / 2 - t.k * x, t.y).scale(t.k);
+}
+
 /** `from` scaled by `factor` about the viewport point `center`, clamped to the extent. */
 export function scaleAbout(
 	from: d3.ZoomTransform,

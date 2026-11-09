@@ -2,12 +2,16 @@
 	import * as d3 from 'd3';
 	import { onMount } from 'svelte';
 	import { formatGenDate, formatPersonName, formatYear, type DescendancyNode } from '$lib/api/client';
+	import { getFontScale } from '$lib/stores/accessibilitySettings.svelte';
 	import {
+		centreOnX,
 		fitTransform,
 		motionDuration,
 		nameLines,
 		observeChartResize,
+		offscreenX,
 		scaleAbout,
+		scaleBounds,
 		touchScrollsPage,
 		truncateLabel,
 		wrapLabel,
@@ -18,6 +22,7 @@
 		type DescendancyLayoutConfig,
 		type SpouseCard
 	} from '$lib/utils/descendancyLayout';
+	import OffscreenIndicator from './OffscreenIndicator.svelte';
 
 	export type LayoutMode = 'compact' | 'standard' | 'wide';
 
@@ -69,6 +74,11 @@
 	let container: HTMLDivElement;
 	let svg: d3.Selection<SVGSVGElement, unknown, null, undefined>;
 	let g: d3.Selection<SVGGElement, unknown, null, undefined>;
+	// Links (spouse connectors included) sit in a layer below the cards (#1025)
+	let linkLayer: d3.Selection<SVGGElement, unknown, null, undefined>;
+	let nodeLayer: d3.Selection<SVGGElement, unknown, null, undefined>;
+	// Chart units per layout unit: the Accessibility font-size scale (#1103)
+	let contentScale = 1;
 	let zoom: d3.ZoomBehavior<SVGSVGElement, unknown>;
 	// Where the running animated zoom is heading, so quick +/- clicks chain
 	let zoomTarget: d3.ZoomTransform | null = null;
@@ -79,6 +89,8 @@
 	let treeNodes: d3.HierarchyPointNode<DescendancyNode>[] = [];
 	// Extent of every card, for fitting the view
 	let treeBounds: { x: number; y: number; width: number; height: number } | null = null;
+	// Children lying off either side of the view (chart-unit x, nearest first)
+	let offscreen = $state.raw<{ left: number[]; right: number[] }>({ left: [], right: [] });
 
 	function renderChart() {
 		if (!container || !data) return;
@@ -97,8 +109,12 @@
 			.attr('height', '100%')
 			.attr('viewBox', `0 0 ${width} ${height}`);
 
-		// Create group for zoomable content
+		// Create group for zoomable content, drawn at the font-size scale
 		g = svg.append('g');
+		contentScale = getFontScale();
+		const content = g.append('g').attr('class', 'chart-content').attr('transform', `scale(${contentScale})`);
+		linkLayer = content.append('g').attr('class', 'links');
+		nodeLayer = content.append('g').attr('class', 'nodes');
 
 		// Setup zoom behavior
 		zoom = d3
@@ -108,6 +124,7 @@
 				g.attr('transform', event.transform);
 				// A wheel or drag gesture replaces any pending button zoom
 				if (event.sourceEvent) zoomTarget = null;
+				updateOffscreen(event.transform);
 			});
 
 		svg.call(zoom);
@@ -128,7 +145,7 @@
 		});
 
 		// Draw links (vertical lines from parent to children)
-		g.selectAll('.link')
+		linkLayer.selectAll('.link')
 			.data(links)
 			.enter()
 			.append('path')
@@ -145,7 +162,7 @@
 			);
 
 		// Create node groups
-		const nodeGroups = g
+		const nodeGroups = nodeLayer
 			.selectAll('.node')
 			.data(nodes)
 			.enter()
@@ -186,7 +203,22 @@
 	function fitToContent(): d3.ZoomTransform | null {
 		if (!treeBounds || treeNodes.length === 0) return null;
 		const [width, height] = viewportSize();
-		return fitTransform(treeBounds, width, height, SCALE_EXTENT, treeNodes[0]);
+		const root = { x: treeNodes[0].x * contentScale, y: treeNodes[0].y * contentScale };
+		return fitTransform(scaleBounds(treeBounds, contentScale), width, height, SCALE_EXTENT, root);
+	}
+
+	function updateOffscreen(t: d3.ZoomTransform) {
+		if (!container) return;
+		const children = treeNodes.filter((d) => d.depth === 1).map((d) => d.x * contentScale);
+		const [width] = viewportSize();
+		offscreen = offscreenX(children, (LAYOUTS[layout].cardWidth / 2) * contentScale, t, width);
+	}
+
+	function panToOffscreen(side: 'left' | 'right') {
+		const x = offscreen[side][0];
+		if (x === undefined || !svg) return;
+		const [width] = viewportSize();
+		animateZoomTo(centreOnX(zoomTarget ?? d3.zoomTransform(svg.node()!), x, width));
 	}
 
 	function animateZoomTo(target: d3.ZoomTransform) {
@@ -296,7 +328,7 @@
 	function renderSpouseCards(spouses: SpouseCard[]) {
 		spouses.forEach(({ spouse, linkFromX, x: spouseX, y: spouseY, width: spouseCardWidth, height: spouseCardHeight }) => {
 			// Create spouse group
-			const spouseGroup = g
+			const spouseGroup = nodeLayer
 				.append('g')
 				.attr('class', 'spouse-group')
 				.attr('transform', `translate(${spouseX},${spouseY})`)
@@ -308,7 +340,8 @@
 				});
 
 			// Draw horizontal connector line from the previous card to this spouse
-			g.append('line')
+			linkLayer
+				.append('line')
 				.attr('class', 'spouse-link')
 				.attr('x1', linkFromX)
 				.attr('y1', spouseY)
@@ -535,7 +568,8 @@
 
 	// Re-render when data or layout changes
 	$effect(() => {
-		if (data && layout) {
+		// Reading the scale here redraws the chart when the font-size setting changes
+		if (data && layout && getFontScale()) {
 			renderChart();
 		}
 	});
@@ -548,15 +582,29 @@
 	});
 </script>
 
-<div
-	class="descendancy-chart"
-	bind:this={container}
-	role="application"
-	aria-label="Descendancy chart. Use arrow keys to navigate: Down for first child, Up to return to parent, Left/Right to cycle siblings. Plus/minus to zoom, R to reset view."
-	tabindex="0"
-></div>
+<div class="chart-frame">
+	<div
+		class="descendancy-chart"
+		bind:this={container}
+		role="application"
+		aria-label="Descendancy chart. Use arrow keys to navigate: Down for first child, Up to return to parent, Left/Right to cycle siblings. Plus/minus to zoom, R to reset view."
+		tabindex="0"
+	></div>
+	<OffscreenIndicator
+		left={offscreen.left.length}
+		right={offscreen.right.length}
+		noun={['child', 'children']}
+		onPan={panToOffscreen}
+	/>
+</div>
 
 <style>
+	.chart-frame {
+		position: relative;
+		width: 100%;
+		height: 100%;
+	}
+
 	.descendancy-chart {
 		width: 100%;
 		height: 100%;
