@@ -6,14 +6,14 @@
 		formatPersonName,
 		type FamilyCreate,
 		type PersonSummary
-	} from '$lib/api/client';
-	import { Button } from '$lib/components/ui/button';
-	import PageHeader from '$lib/components/PageHeader.svelte';
-	import FormRow from '$lib/components/FormRow.svelte';
-	import PartnerPickers from '$lib/components/PartnerPickers.svelte';
-	import ActionError from '$lib/components/ActionError.svelte';
-	import { RELATION_TYPE_OPTIONS } from '$lib/utils/enumOptions';
-	import { asDatePhrase, savedAsNotes, unreadableDateField } from '$lib/utils/dateInput';
+	} from '#lib/api/client.js';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import PageHeader from '#lib/components/PageHeader.svelte';
+	import FormRow from '#lib/components/FormRow.svelte';
+	import PartnerPickers from '#lib/components/PartnerPickers.svelte';
+	import ActionError from '#lib/components/ActionError.svelte';
+	import { RELATION_TYPE_OPTIONS } from '#lib/utils/enumOptions.js';
+	import { asDatePhrase, savedAsNotes, unreadableDateField } from '#lib/utils/dateInput.js';
 
 	let saving = $state(false);
 	let error: string | null = $state(null);

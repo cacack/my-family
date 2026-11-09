@@ -1,14 +1,14 @@
 <script lang="ts">
-	import { api, type Person, type FamilyDetail } from '$lib/api/client';
-	import PersonCard from '$lib/components/PersonCard.svelte';
-	import FamilyCard from '$lib/components/FamilyCard.svelte';
-	import DiscoveryFeed from '$lib/components/DiscoveryFeed.svelte';
-	import { onboardingState } from '$lib/stores/onboardingSettings.svelte';
-	import OnboardingWizard from '$lib/components/onboarding/OnboardingWizard.svelte';
-	import { Card, CardHeader, CardContent } from '$lib/components/ui/card';
-	import MainlineNotice from '$lib/components/MainlineNotice.svelte';
-	import { activeBranch } from '$lib/stores/activeBranch.svelte';
-	import ErrorState from '$lib/components/ErrorState.svelte';
+	import { api, type Person, type FamilyDetail } from '#lib/api/client.js';
+	import PersonCard from '#lib/components/PersonCard.svelte';
+	import FamilyCard from '#lib/components/FamilyCard.svelte';
+	import DiscoveryFeed from '#lib/components/DiscoveryFeed.svelte';
+	import { onboardingState } from '#lib/stores/onboardingSettings.svelte.js';
+	import OnboardingWizard from '#lib/components/onboarding/OnboardingWizard.svelte';
+	import { Card, CardHeader, CardContent } from '#lib/components/ui/card/index.js';
+	import MainlineNotice from '#lib/components/MainlineNotice.svelte';
+	import { activeBranch } from '#lib/stores/activeBranch.svelte.js';
+	import ErrorState from '#lib/components/ErrorState.svelte';
 
 	/**
 	 * The onboarding wizard is for an empty *database*. On a research branch the
@@ -261,8 +261,10 @@
 		color: var(--color-link);
 	}
 
+	/* Underlined: colour alone does not set it apart from the text around it (#1116). */
 	.empty a {
 		color: var(--color-link);
+		text-decoration: underline;
 	}
 
 	.action-buttons {

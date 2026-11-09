@@ -6,7 +6,7 @@ import FinishMergeDialog, {
 	GENERIC_FINISH_FAILURE,
 	READY_PREVIEW_LIMIT
 } from './FinishMergeDialog.svelte';
-import type { Branch, BranchMergeResumeResult, MergePendingEntity } from '$lib/api/client';
+import type { Branch, BranchMergeResumeResult, MergePendingEntity } from '#lib/api/client.js';
 
 const ADA = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
 const GRACE = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';

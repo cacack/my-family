@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { Button } from '$lib/components/ui/button';
-	import type { SavedAs } from '$lib/utils/dateInput';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import type { SavedAs } from '#lib/utils/dateInput.js';
 
 	interface Props {
 		completionData: { personCount?: number; personId?: string; personName?: string; birthDateSavedAs?: SavedAs };

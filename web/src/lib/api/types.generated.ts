@@ -3269,12 +3269,16 @@ export interface components {
          *       about, circa, c., ca., before, after, `between X and Y`,
          *       `from X to Y`, and month names in full, as three letters or as
          *       "Sept". For example `about Sept 1850` is stored as `ABT SEP 1850`.
+         *       Era markers may carry periods (`44 B.C.` is stored as `44 BC`), and
+         *       an AD marker after a year is dropped (`500 A.D.` is stored as `500`).
          *     - A date phrase in parentheses, such as `(about the time of the war)`,
          *       kept as text.
          *
          *     An empty string means no date. Any other text (such as `1850-01-01`
-         *     or `Sept 5, 1850`), a date without a year, or a date that doesn't
-         *     exist in the calendar (such as `31 FEB 1900`) is rejected with 400;
+         *     or `Sept 5, 1850`), a date without a year, a date that doesn't
+         *     exist in the calendar (such as `31 FEB 1900`, `0 JAN 1850` or year
+         *     `0`), or a range that ends before it starts (such as
+         *     `between 1860 and 1850`) is rejected with 400;
          *     the error's `details` name the field and say whether the text can be
          *     kept as a date phrase. On update, a date identical to the stored value
          *     is not re-checked, so an imported date the parser can't read never
@@ -3622,13 +3626,30 @@ export interface components {
             gender?: components["schemas"]["Gender"];
             /** @description Generation level (0 = root, 1 = children, 2 = grandchildren, etc.) */
             generation?: number;
+            /**
+             * Format: uuid
+             * @description The family through which this person descends from their parent
+             *     node. Matches the family_id of one of the parent's spouses when that
+             *     family has a second partner. Absent on the root.
+             */
+            family_id?: string;
+            /** @description Spouses ordered by marriage date, undated last. */
             spouses?: components["schemas"]["SpouseInfo"][];
+            /**
+             * @description Children grouped by family, in spouse order, and ordered by birth
+             *     date (undated last) within each family.
+             */
             children?: components["schemas"]["DescendancyNode"][];
         };
         /** @description Spouse information in the descendancy tree */
         SpouseInfo: {
             /** Format: uuid */
             id: string;
+            /**
+             * Format: uuid
+             * @description The family this spouse shares with the person; children of that family carry the same family_id.
+             */
+            family_id: string;
             name: string;
             marriage_date?: components["schemas"]["GenDate"];
         };
@@ -6449,8 +6470,8 @@ export interface operations {
                 offset?: components["parameters"]["offsetParam"];
                 sort?: "surname" | "given_name" | "birth_date" | "updated_at";
                 order?: "asc" | "desc";
-                /** @description Filter by research status */
-                research_status?: "certain" | "probable" | "possible" | "unknown" | "unset";
+                /** @description Filter by research status. `unset` matches persons with no status recorded; `unassessed` matches those and persons marked `unknown`. */
+                research_status?: "certain" | "probable" | "possible" | "unknown" | "unset" | "unassessed";
             };
             header?: never;
             path?: never;

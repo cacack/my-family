@@ -2271,14 +2271,6 @@ func (ss *StrictServer) CreatePerson(ctx context.Context, request CreatePersonRe
 		return nil, err
 	}
 
-	// Create the primary name
-	_, _ = writer.AddName(ctx, command.AddNameInput{
-		PersonID:  result.ID,
-		GivenName: request.Body.GivenName,
-		Surname:   surname,
-		IsPrimary: true,
-	})
-
 	person, err := ss.server.personService.GetPerson(ctx, scope, result.ID)
 	if err != nil {
 		return nil, err
@@ -4652,6 +4644,7 @@ func convertQueryDescendancyNodeToGenerated(node *query.DescendancyNode) Descend
 	resp := DescendancyNode{
 		Id:         node.ID,
 		Generation: &gen,
+		FamilyId:   node.FamilyID,
 	}
 
 	if node.GivenName != "" {
@@ -4674,8 +4667,9 @@ func convertQueryDescendancyNodeToGenerated(node *query.DescendancyNode) Descend
 		spouses := make([]SpouseInfo, len(node.Spouses))
 		for i, s := range node.Spouses {
 			spouses[i] = SpouseInfo{
-				Id:   s.ID,
-				Name: s.Name,
+				Id:       s.ID,
+				FamilyId: s.FamilyID,
+				Name:     s.Name,
 			}
 			if s.MarriageDate != nil {
 				spouses[i].MarriageDate = convertDomainGenDateToGenerated(s.MarriageDate)

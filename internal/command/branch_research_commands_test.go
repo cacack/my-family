@@ -332,8 +332,8 @@ func TestUpdateBranch_MergedBranch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MergeBranch: %v", err)
 	}
-	if result.ReplayedEventCount != 1 {
-		t.Errorf("ReplayedEventCount = %d, want 1 (the person, not the BranchUpdated)", result.ReplayedEventCount)
+	if result.ReplayedEventCount != 2 {
+		t.Errorf("ReplayedEventCount = %d, want 2 (PersonCreated and NameAdded, not the BranchUpdated)", result.ReplayedEventCount)
 	}
 
 	updated, err := f.handler.UpdateBranch(ctx, command.UpdateBranchInput{BranchID: branch.ID, Outcome: ptr(domain.BranchOutcomeProved)})

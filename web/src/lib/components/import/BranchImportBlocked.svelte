@@ -11,8 +11,8 @@
 	 * mainline. The API refuses an import that
 	 * carries `?branch=` as a backstop (#825).
 	 */
-	import { activeBranch, returnToMainline } from '$lib/stores/activeBranch.svelte';
-	import { Button } from '$lib/components/ui/button';
+	import { activeBranch, returnToMainline } from '#lib/stores/activeBranch.svelte.js';
+	import { Button } from '#lib/components/ui/button/index.js';
 
 	const branchLabel = $derived(
 		activeBranch.branch?.name ? `the research branch "${activeBranch.branch.name}"` : 'a research branch'

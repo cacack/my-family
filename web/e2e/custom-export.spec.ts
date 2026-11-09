@@ -55,3 +55,17 @@ test('CSV export is disabled when no fields are chosen', async ({ page }) => {
 	await page.getByRole('checkbox', { name: 'ID', exact: true }).check();
 	await expect(exportButton).toBeEnabled();
 });
+
+test('CSV columns follow the picker order, not the tick order (#1125)', async ({ page }) => {
+	await page.getByRole('button', { name: 'Select None' }).click();
+	await page.getByRole('checkbox', { name: 'Surname', exact: true }).check();
+	await page.getByRole('checkbox', { name: 'ID', exact: true }).check();
+	const givenName = page.getByRole('checkbox', { name: 'Given Name', exact: true });
+	await givenName.check();
+	await givenName.uncheck();
+	await givenName.check();
+
+	const { text } = await downloadCustomExport(page);
+
+	expect(text.split('\n')[0]).toBe('id,given_name,surname');
+});

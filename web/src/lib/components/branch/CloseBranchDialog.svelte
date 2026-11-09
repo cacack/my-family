@@ -1,5 +1,5 @@
 <script lang="ts" module>
-	import type { Branch, PromoteResearchLogsResult } from '$lib/api/client';
+	import type { Branch, PromoteResearchLogsResult } from '#lib/api/client.js';
 
 	/** What a close produced, handed to `onclosed`. */
 	export interface BranchCloseResult {
@@ -21,17 +21,17 @@
 	 * never leaves the branch half-closed (it can be retried from the branch's
 	 * research page).
 	 */
-	import { api, type ApiError, type BranchCloseOutcome } from '$lib/api/client';
+	import { api, type ApiError, type BranchCloseOutcome } from '#lib/api/client.js';
 	import {
 		CLOSE_OUTCOMES,
 		CLOSE_OUTCOME_HINTS,
 		CLOSE_REASON_MAX_LENGTH,
 		OUTCOME_LABELS
-	} from '$lib/utils/branchResearch';
-	import { Button } from '$lib/components/ui/button';
-	import { Label } from '$lib/components/ui/label';
-	import { Textarea } from '$lib/components/ui/textarea';
-	import * as Dialog from '$lib/components/ui/dialog';
+	} from '#lib/utils/branchResearch.js';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import { Label } from '#lib/components/ui/label/index.js';
+	import { Textarea } from '#lib/components/ui/textarea/index.js';
+	import * as Dialog from '#lib/components/ui/dialog/index.js';
 
 	interface Props {
 		/** The branch to close; the dialog is open while this is non-null. */

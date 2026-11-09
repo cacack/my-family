@@ -55,50 +55,50 @@
 		type MergeRecord,
 		type MergeRecordDecision,
 		type MergeResolution
-	} from '$lib/api/client';
+	} from '#lib/api/client.js';
 	import {
 		activeBranch,
 		refreshActiveBranch,
 		returnToMainline,
 		switchBranch
-	} from '$lib/stores/activeBranch.svelte';
-	import ConflictValues from '$lib/components/ConflictValues.svelte';
-	import BranchResearchSummary from '$lib/components/branch/BranchResearchSummary.svelte';
-	import BranchResearchEditor from '$lib/components/branch/BranchResearchEditor.svelte';
+	} from '#lib/stores/activeBranch.svelte.js';
+	import ConflictValues from '#lib/components/ConflictValues.svelte';
+	import BranchResearchSummary from '#lib/components/branch/BranchResearchSummary.svelte';
+	import BranchResearchEditor from '#lib/components/branch/BranchResearchEditor.svelte';
 	import CloseBranchDialog, {
 		type BranchCloseResult
-	} from '$lib/components/branch/CloseBranchDialog.svelte';
+	} from '#lib/components/branch/CloseBranchDialog.svelte';
 	import {
 		OUTCOME_LABELS,
 		branchOutcome,
 		branchSubjectCandidates,
 		promotionSummary
-	} from '$lib/utils/branchResearch';
-	import DiffView from '$lib/components/DiffView.svelte';
-	import FinishMergeDialog from '$lib/components/FinishMergeDialog.svelte';
-	import IncompleteMergeCallout from '$lib/components/IncompleteMergeCallout.svelte';
-	import MergeBlockersPanel from '$lib/components/MergeBlockersPanel.svelte';
-	import BranchEvidenceCoveragePanel from '$lib/components/BranchEvidenceCoveragePanel.svelte';
-	import BranchHealthPanel from '$lib/components/BranchHealthPanel.svelte';
-	import MergeConflictResolver from '$lib/components/MergeConflictResolver.svelte';
-	import MergeEffectLink from '$lib/components/MergeEffectLink.svelte';
+	} from '#lib/utils/branchResearch.js';
+	import DiffView from '#lib/components/DiffView.svelte';
+	import FinishMergeDialog from '#lib/components/FinishMergeDialog.svelte';
+	import IncompleteMergeCallout from '#lib/components/IncompleteMergeCallout.svelte';
+	import MergeBlockersPanel from '#lib/components/MergeBlockersPanel.svelte';
+	import BranchEvidenceCoveragePanel from '#lib/components/BranchEvidenceCoveragePanel.svelte';
+	import BranchHealthPanel from '#lib/components/BranchHealthPanel.svelte';
+	import MergeConflictResolver from '#lib/components/MergeConflictResolver.svelte';
+	import MergeEffectLink from '#lib/components/MergeEffectLink.svelte';
 	import MergeConfirmDialog, {
 		type MergeOptions,
 		type MergePlan,
 		type MergePlanEntity
-	} from '$lib/components/MergeConfirmDialog.svelte';
-	import { Badge } from '$lib/components/ui/badge';
-	import { Button } from '$lib/components/ui/button';
-	import { Checkbox } from '$lib/components/ui/checkbox';
+	} from '#lib/components/MergeConfirmDialog.svelte';
+	import { Badge } from '#lib/components/ui/badge/index.js';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import { Checkbox } from '#lib/components/ui/checkbox/index.js';
 	import {
 		changeEntryLink,
 		entityTypeLabel,
 		unnamedEntityLabel
-	} from '$lib/utils/changeEntries';
-	import { blockedEntityIds, blockerFix } from '$lib/utils/mergeBlockers';
-	import { isIncompleteMerge, isUnreadableMerge, pendingEntities } from '$lib/utils/mergeState';
-	import ErrorState from '$lib/components/ErrorState.svelte';
-	import PageHeader from '$lib/components/PageHeader.svelte';
+	} from '#lib/utils/changeEntries.js';
+	import { blockedEntityIds, blockerFix } from '#lib/utils/mergeBlockers.js';
+	import { isIncompleteMerge, isUnreadableMerge, pendingEntities } from '#lib/utils/mergeState.js';
+	import ErrorState from '#lib/components/ErrorState.svelte';
+	import PageHeader from '#lib/components/PageHeader.svelte';
 
 	let comparison: BranchComparisonResult | null = $state(null);
 	let loading = $state(true);

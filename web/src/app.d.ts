@@ -12,7 +12,7 @@ declare global {
 			 * The dates a create stored in another form than typed, for the new record's page (#996).
 			 * Back/Forward replays it, so the page drops a note the record no longer matches.
 			 */
-			savedAs?: Partial<Record<string, import('$lib/utils/dateInput').SavedAs>>;
+			savedAs?: Partial<Record<string, import('#lib/utils/dateInput.js').SavedAs>>;
 		}
 		// interface Platform {}
 	}

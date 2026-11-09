@@ -3488,6 +3488,42 @@ func TestReadModelStore_GetMapLocations_NoCoordinates(t *testing.T) {
 	}
 }
 
+func TestReadModelStore_GetMapLocations_AxisChecked(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	// #801: a direction letter from the other axis, or an out-of-range value,
+	// is skipped rather than plotted; only the valid pins remain.
+	str := func(s string) *string { return &s }
+	persons := []*repository.PersonReadModel{
+		{ID: uuid.New(), BirthPlace: "Boston", BirthPlaceLat: str("N42.3601"), BirthPlaceLong: str("W71.0589")},
+		{ID: uuid.New(), BirthPlace: "Swapped Latitude", BirthPlaceLat: str("E42.3601"), BirthPlaceLong: str("W71.0589")},
+		{ID: uuid.New(), BirthPlace: "Swapped Longitude", BirthPlaceLat: str("N42.3601"), BirthPlaceLong: str("S71.0589")},
+		{ID: uuid.New(), BirthPlace: "Out Of Range", BirthPlaceLat: str("N95"), BirthPlaceLong: str("E10")},
+		{ID: uuid.New(), DeathPlace: "Paris", DeathPlaceLat: str("N48.8566"), DeathPlaceLong: str("E2.3522")},
+		{ID: uuid.New(), DeathPlace: "Bad Death", DeathPlaceLat: str("N48.8566"), DeathPlaceLong: str("E200")},
+	}
+	for _, p := range persons {
+		p.Version = 1
+		if err := store.SavePerson(ctx, domain.MainBranchID, p); err != nil {
+			t.Fatalf("SavePerson() failed: %v", err)
+		}
+	}
+
+	results, err := store.GetMapLocations(ctx, domain.MainBranchID)
+	if err != nil {
+		t.Fatalf("GetMapLocations() failed: %v", err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("GetMapLocations = %+v, want only the Boston birth and Paris death pins", results)
+	}
+	for _, r := range results {
+		if !(r.Place == "Boston" && r.EventType == "birth") && !(r.Place == "Paris" && r.EventType == "death") {
+			t.Errorf("unexpected pin %+v", r)
+		}
+	}
+}
+
 // Global List methods for export
 
 func TestReadModelStore_ListEvents(t *testing.T) {
@@ -4196,5 +4232,62 @@ func TestReadModelStore_ListRepositories(t *testing.T) {
 	}
 	if len(results) == 3 && results[0].Name != "Repo 0" {
 		t.Errorf("name sort ascending: first = %s, want Repo 0", results[0].Name)
+	}
+}
+
+// "unassessed" lists persons with no status recorded and those marked unknown
+// together, the one "Not assessed" bucket the UI shows (#1110).
+func TestReadModelStore_ListPersons_UnassessedFilter(t *testing.T) {
+	store := memory.NewReadModelStore()
+
+	ctx := context.Background()
+
+	statuses := map[string]domain.ResearchStatus{
+		"Unset":   "",
+		"Unknown": domain.ResearchStatusUnknown,
+		"Certain": domain.ResearchStatusCertain,
+	}
+	for given, status := range statuses {
+		person := &repository.PersonReadModel{
+			ID:             uuid.New(),
+			GivenName:      given,
+			Surname:        "Filter",
+			FullName:       given + " Filter",
+			ResearchStatus: status,
+			Version:        1,
+			UpdatedAt:      time.Now(),
+		}
+		if err := store.SavePerson(ctx, domain.MainBranchID, person); err != nil {
+			t.Fatalf("save person %s: %v", given, err)
+		}
+	}
+
+	tests := []struct {
+		filter string
+		want   []string
+	}{
+		{"unassessed", []string{"Unknown", "Unset"}},
+		{"unset", []string{"Unset"}},
+		{"unknown", []string{"Unknown"}},
+		{"certain", []string{"Certain"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.filter, func(t *testing.T) {
+			opts := repository.DefaultListOptions()
+			opts.Sort = "given_name"
+			filter := tt.filter
+			opts.ResearchStatus = &filter
+			results, total, err := store.ListPersons(ctx, opts)
+			if err != nil {
+				t.Fatalf("list persons: %v", err)
+			}
+			var got []string
+			for _, p := range results {
+				got = append(got, p.GivenName)
+			}
+			if total != len(tt.want) || fmt.Sprint(got) != fmt.Sprint(tt.want) {
+				t.Errorf("filter %q = %v (total %d), want %v", tt.filter, got, total, tt.want)
+			}
+		})
 	}
 }

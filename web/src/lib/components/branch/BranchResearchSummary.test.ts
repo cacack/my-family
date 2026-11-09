@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
 import BranchResearchSummary from './BranchResearchSummary.svelte';
 import BranchOutcomeBadge from './BranchOutcomeBadge.svelte';
-import type { Branch } from '$lib/api/client';
+import type { Branch } from '#lib/api/client.js';
 
 const PERSON_ID = '99999999-9999-9999-9999-999999999999';
 const FAMILY_ID = '88888888-8888-8888-8888-888888888888';

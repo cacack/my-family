@@ -10,7 +10,7 @@
 	 * the families list, the group sheet, the Ahnentafel, descendancy and the
 	 * relationship calculator (#829), person and family history (#824),
 	 * snapshots (#839) and person merges (#834). `BRANCH_SCOPED_OPERATIONS` in
-	 * `$lib/api/client.ts` is the exact list. The remaining surfaces — checks and
+	 * `#lib/api/client.js` is the exact list. The remaining surfaces — checks and
 	 * suggestions computed over the mainline, the global history, brick walls,
 	 * and the entities that stay main-only by decision (ADR-005) — still answer
 	 * from the mainline. Rendering one of them unlabelled beneath the branch
@@ -61,7 +61,7 @@
 	 * For a person the branch has edited it therefore shows the flag as it stood
 	 * then, not a later mainline change (#802).
 	 */
-	import { activeBranch } from '$lib/stores/activeBranch.svelte';
+	import { activeBranch } from '#lib/stores/activeBranch.svelte.js';
 
 	interface Props {
 		/** What this page shows, e.g. "Sources". Used in the sentence. */

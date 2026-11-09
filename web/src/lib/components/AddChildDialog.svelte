@@ -1,5 +1,5 @@
 <script lang="ts" module>
-	import type { AddChild } from '$lib/api/client';
+	import type { AddChild } from '#lib/api/client.js';
 
 	export type ChildRelationship = NonNullable<AddChild['relationship_type']>;
 
@@ -12,9 +12,9 @@
 </script>
 
 <script lang="ts">
-	import { api, formatPersonName, type FamilyChild, type PersonSummary } from '$lib/api/client';
-	import { Button } from '$lib/components/ui/button';
-	import * as Dialog from '$lib/components/ui/dialog';
+	import { api, formatPersonName, type FamilyChild, type PersonSummary } from '#lib/api/client.js';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import * as Dialog from '#lib/components/ui/dialog/index.js';
 	import PersonSelector from './PersonSelector.svelte';
 
 	interface Props {

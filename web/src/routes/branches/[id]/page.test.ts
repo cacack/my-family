@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import Page from './+page.svelte';
-import type * as apiModule from '$lib/api/client';
+import type * as apiModule from '#lib/api/client.js';
 import type {
 	Branch,
 	BranchChangeEntry,
@@ -16,8 +16,8 @@ import type {
 	BranchMergeResumeResult,
 	MergeBlocker,
 	MergeConflict
-} from '$lib/api/client';
-import { resetRouter } from '$lib/test/fakeRouter.svelte';
+} from '#lib/api/client.js';
+import { resetRouter } from '#lib/test/fakeRouter.svelte.js';
 
 const BRANCH_ID = '11111111-1111-1111-1111-111111111111';
 const PERSON_ID = '99999999-9999-9999-9999-999999999999';
@@ -54,7 +54,7 @@ const {
 		returnToMainline: vi.fn()
 	}));
 
-vi.mock('$lib/api/client', async (importOriginal) => {
+vi.mock('#lib/api/client.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof apiModule>();
 	return {
 		...actual,
@@ -70,7 +70,7 @@ vi.mock('$lib/api/client', async (importOriginal) => {
 	};
 });
 
-vi.mock('$lib/stores/activeBranch.svelte', () => ({
+vi.mock('#lib/stores/activeBranch.svelte.js', () => ({
 	activeBranch: mockState,
 	switchBranch: (branch: Branch | null) => switchBranch(branch),
 	returnToMainline: () => returnToMainline()
@@ -78,7 +78,7 @@ vi.mock('$lib/stores/activeBranch.svelte', () => ({
 
 // A soft navigation between two /branches/{id} entries reuses the component,
 // so the route has to be drivable rather than fixed.
-vi.mock('$app/state', async () => (await import('$lib/test/fakeRouter.svelte')).appState);
+vi.mock('$app/state', async () => (await import('#lib/test/fakeRouter.svelte.js')).appState);
 
 /** Navigate to another `/branches/{id}` without remounting the component. */
 function navigateTo(id: string) {

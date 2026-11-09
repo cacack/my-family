@@ -1,8 +1,8 @@
 <script lang="ts">
-	import type { FamilyDetail } from '$lib/api/client';
-	import { formatGenDate, formatPersonName } from '$lib/api/client';
-	import { Badge } from '$lib/components/ui/badge';
-	import { Card, CardHeader, CardContent } from '$lib/components/ui/card';
+	import type { FamilyDetail } from '#lib/api/client.js';
+	import { formatGenDate, formatPersonName } from '#lib/api/client.js';
+	import { Badge } from '#lib/components/ui/badge/index.js';
+	import { Card, CardHeader, CardContent } from '#lib/components/ui/card/index.js';
 
 	interface Props {
 		family: FamilyDetail;

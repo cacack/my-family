@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { BranchChangedFact, BranchHealth, BranchValidationIssue } from '$lib/api/client';
+import type { BranchChangedFact, BranchHealth, BranchValidationIssue } from '#lib/api/client.js';
 import {
 	addAnalysisHref,
 	changedFactLabel,

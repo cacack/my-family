@@ -1,11 +1,11 @@
 /**
  * A stand-in for SvelteKit's router in component tests of pages that keep
- * state in the URL (see `$lib/utils/urlState.ts`). `goto` moves a fake history
+ * state in the URL (see `#lib/utils/urlState.js`). `goto` moves a fake history
  * and updates the reactive `page`, so a test can drive a page, read its URL and
  * step Back. Wire it up with:
  *
- *   vi.mock('$app/state', async () => (await import('$lib/test/fakeRouter.svelte')).appState);
- *   vi.mock('$app/navigation', async () => (await import('$lib/test/fakeRouter.svelte')).appNavigation);
+ *   vi.mock('$app/state', async () => (await import('#lib/test/fakeRouter.svelte.js')).appState);
+ *   vi.mock('$app/navigation', async () => (await import('#lib/test/fakeRouter.svelte.js')).appNavigation);
  *
  * and call `resetRouter(path)` before each render.
  */

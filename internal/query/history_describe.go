@@ -523,7 +523,7 @@ func mergedPersonName(snapshot map[string]any) string {
 	}
 	given, _ := snapshot["given_name"].(string)
 	surname, _ := snapshot["surname"].(string)
-	return fullName(given, surname)
+	return domain.JoinFullName(given, surname)
 }
 
 // excerpt shortens free text to a one-line display name.
@@ -651,7 +651,7 @@ func (d *historyDescription) personFromState(state *streamState) string {
 		// A few updated fields ("surname: Lovelace") are not a name.
 		return ""
 	}
-	if name := fullName(state.str("given_name"), state.str("surname")); name != "" {
+	if name := domain.JoinFullName(state.str("given_name"), state.str("surname")); name != "" {
 		return name
 	}
 	keys := make([]string, 0, len(state.names))

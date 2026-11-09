@@ -11,10 +11,10 @@
 	 * terminal and their overlay rows are purged, so scoping to one would 404
 	 * every person and family page.
 	 */
-	import { api, type ApiError, type Branch } from '$lib/api/client';
-	import { activeBranch, switchBranch } from '$lib/stores/activeBranch.svelte';
-	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
-	import { Button } from '$lib/components/ui/button';
+	import { api, type ApiError, type Branch } from '#lib/api/client.js';
+	import { activeBranch, switchBranch } from '#lib/stores/activeBranch.svelte.js';
+	import * as DropdownMenu from '#lib/components/ui/dropdown-menu/index.js';
+	import { Button } from '#lib/components/ui/button/index.js';
 
 	let open = $state(false);
 	let branches: Branch[] = $state([]);

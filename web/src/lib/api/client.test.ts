@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 // `node:fs` (the `web` package declares no Node type definitions) nor any
 // assumption about the working directory.
 import openapiSpec from '../../../../internal/api/openapi.yaml?raw';
-import { NOTE_MAX_LENGTH } from '$lib/components/MergeConfirmDialog.svelte';
+import { NOTE_MAX_LENGTH } from '#lib/components/MergeConfirmDialog.svelte';
 import {
 	api,
 	formatGenDate,

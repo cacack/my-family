@@ -361,9 +361,10 @@ func runResumeRollsForwardDanglingFamily(t *testing.T, server *api.Server, fault
 		t.Fatalf("pending_stream_ids = %v, want [%s]", pending, family)
 	}
 	// Replaying the family anyway names the person it would dangle on (#831).
+	// The partner's rename has already landed, and main's family carries it (#1129).
 	dangling := mustDo(t, server, http.MethodPost, branchPath+"/merge/resume",
 		fmt.Sprintf(`{"resolutions":[{"stream_id":%q,"resolution":"branch"}]}`, family), http.StatusConflict)
-	assertBlockers(t, dangling, blockerRow{family, "family", "Alex Original & Robin Other", child, "person", "Casey Child", "missing_person", "leave_out"})
+	assertBlockers(t, dangling, blockerRow{family, "family", "Alex Revised & Robin Other", child, "person", "Casey Child", "missing_person", "leave_out"})
 	done := mustDo(t, server, http.MethodPost, branchPath+"/merge/resume",
 		fmt.Sprintf(`{"resolutions":[{"stream_id":%q,"resolution":"main"}]}`, family), http.StatusOK)
 	if skipped := entryStrings(t, done["skipped_stream_ids"].([]any)); len(skipped) != 1 || skipped[0] != family {

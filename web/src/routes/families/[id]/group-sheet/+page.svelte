@@ -1,10 +1,10 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { api, recordLoadError, type FamilyGroupSheet } from '$lib/api/client';
-	import { Button } from '$lib/components/ui/button';
-	import ActionBar from '$lib/components/ActionBar.svelte';
-	import FamilyGroupSheetComponent from '$lib/components/FamilyGroupSheet.svelte';
-	import ErrorState from '$lib/components/ErrorState.svelte';
+	import { api, recordLoadError, type FamilyGroupSheet } from '#lib/api/client.js';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import ActionBar from '#lib/components/ActionBar.svelte';
+	import FamilyGroupSheetComponent from '#lib/components/FamilyGroupSheet.svelte';
+	import ErrorState from '#lib/components/ErrorState.svelte';
 
 	let data: FamilyGroupSheet | null = $state(null);
 	let loading = $state(true);

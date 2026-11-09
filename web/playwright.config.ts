@@ -3,7 +3,9 @@
  *
  * `make binary` embeds the built SPA into the server, so the UI and the API are
  * same-origin behind one port - one `webServer` entry, no proxy, no separate
- * Vite dev server, and no API mocking anywhere in the suite.
+ * Vite dev server, and no API mocking in the suite - save where a state the
+ * seeded store cannot reach is stubbed in one test (the empty home page in
+ * a11y.spec.ts).
  *
  * This config deliberately does NOT build the binary. `make test-e2e` depends on
  * `make binary`; making the config build too would put a multi-minute frontend
