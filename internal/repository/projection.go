@@ -1532,15 +1532,11 @@ func (p *Projector) projectRepositoryDeleted(ctx context.Context, e domain.Repos
 }
 
 func (p *Projector) projectNameAdded(ctx context.Context, e domain.NameAdded, version int64, branchID domain.BranchID) error {
-	// Build full name from components
-	fullName := buildFullName(e.GivenName, e.Surname, e.NamePrefix, e.NameSuffix, e.SurnamePrefix)
-
 	name := &PersonNameReadModel{
 		ID:            e.NameID,
 		PersonID:      e.PersonID,
 		GivenName:     e.GivenName,
 		Surname:       e.Surname,
-		FullName:      fullName,
 		NamePrefix:    e.NamePrefix,
 		NameSuffix:    e.NameSuffix,
 		SurnamePrefix: e.SurnamePrefix,
@@ -1558,15 +1554,11 @@ func (p *Projector) projectNameAdded(ctx context.Context, e domain.NameAdded, ve
 }
 
 func (p *Projector) projectNameUpdated(ctx context.Context, e domain.NameUpdated, version int64, branchID domain.BranchID) error {
-	// Build full name from components
-	fullName := buildFullName(e.GivenName, e.Surname, e.NamePrefix, e.NameSuffix, e.SurnamePrefix)
-
 	name := &PersonNameReadModel{
 		ID:            e.NameID,
 		PersonID:      e.PersonID,
 		GivenName:     e.GivenName,
 		Surname:       e.Surname,
-		FullName:      fullName,
 		NamePrefix:    e.NamePrefix,
 		NameSuffix:    e.NameSuffix,
 		SurnamePrefix: e.SurnamePrefix,
@@ -1637,7 +1629,6 @@ func (p *Projector) syncPrimaryNameFromPerson(ctx context.Context, branchID doma
 		}
 		name.GivenName = person.GivenName
 		name.Surname = person.Surname
-		name.FullName = buildFullName(name.GivenName, name.Surname, name.NamePrefix, name.NameSuffix, name.SurnamePrefix)
 		name.UpdatedAt = at
 		return p.readStore.SavePersonName(ctx, branchID, name)
 	}
@@ -1656,38 +1647,6 @@ func (p *Projector) updatePersonVersion(ctx context.Context, branchID domain.Bra
 	}
 	person.Version = version
 	return p.readStore.SavePerson(ctx, branchID, person)
-}
-
-// buildFullName constructs a full name from its components.
-func buildFullName(givenName, surname, namePrefix, nameSuffix, surnamePrefix string) string {
-	var parts []string
-
-	if namePrefix != "" {
-		parts = append(parts, namePrefix)
-	}
-	if givenName != "" {
-		parts = append(parts, givenName)
-	}
-	if surnamePrefix != "" {
-		parts = append(parts, surnamePrefix)
-	}
-	if surname != "" {
-		parts = append(parts, surname)
-	}
-	if nameSuffix != "" {
-		parts = append(parts, nameSuffix)
-	}
-
-	if len(parts) == 0 {
-		return ""
-	}
-
-	// Join with spaces
-	result := parts[0]
-	for i := 1; i < len(parts); i++ {
-		result += " " + parts[i]
-	}
-	return result
 }
 
 // projectPersonMerged handles the PersonMerged event by updating the survivor,

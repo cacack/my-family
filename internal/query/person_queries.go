@@ -329,10 +329,10 @@ func convertToFamilySummary(rm repository.FamilyReadModel) FamilySummary {
 	s := FamilySummary{
 		ID: rm.ID,
 	}
-	if p1 := fullName(rm.Partner1GivenName, rm.Partner1Surname); p1 != "" {
+	if p1 := domain.JoinFullName(rm.Partner1GivenName, rm.Partner1Surname); p1 != "" {
 		s.Partner1Name = &p1
 	}
-	if p2 := fullName(rm.Partner2GivenName, rm.Partner2Surname); p2 != "" {
+	if p2 := domain.JoinFullName(rm.Partner2GivenName, rm.Partner2Surname); p2 != "" {
 		s.Partner2Name = &p2
 	}
 	if rm.RelationshipType != "" {

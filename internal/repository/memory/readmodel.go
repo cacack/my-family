@@ -381,14 +381,6 @@ func (s *ReadModelStore) SearchPersons(ctx context.Context, opts repository.Sear
 	return repository.Page(results, opts.Offset, limit), len(results), nil
 }
 
-// sqlFullName is the alternate-name full name the SQL stores search: their
-// person_names.full_name column is generated as given_name || ' ' || surname,
-// without the prefix, suffix and surname prefix the projection folds into an
-// alternate name's FullName. persons.full_name is domain.JoinFullName instead.
-func sqlFullName(givenName, surname string) string {
-	return givenName + " " + surname
-}
-
 // personMatchesQuery checks if a person matches the text query (or returns true if no query).
 // A plain query matches as PostgreSQL's full_name ILIKE '%' || q || '%' and a
 // fuzzy query is trigram similarity, as PostgreSQL's pg_trgm `%` (DB-005).
@@ -440,7 +432,7 @@ func altNameMatches(name repository.PersonNameReadModel, queryLower string, opts
 	if opts.Fuzzy {
 		return repository.TrigramMatch(queryLower, name.GivenName) ||
 			repository.TrigramMatch(queryLower, name.Surname) ||
-			repository.TrigramMatch(queryLower, sqlFullName(name.GivenName, name.Surname)) ||
+			repository.TrigramMatch(queryLower, domain.JoinFullName(name.GivenName, name.Surname)) ||
 			repository.TrigramMatch(queryLower, name.Nickname)
 	}
 	soundex := opts.Soundex
@@ -508,9 +500,9 @@ func compareTimePtr(a, b *time.Time) int {
 }
 
 // nameMatchesQuery checks if a PersonNameReadModel matches the query, as
-// PostgreSQL's full_name or nickname ILIKE '%' || q || '%'.
+// PostgreSQL's search_name or nickname ILIKE '%' || q || '%'.
 func nameMatchesQuery(name repository.PersonNameReadModel, queryLower string) bool {
-	return repository.ContainsFold(sqlFullName(name.GivenName, name.Surname), queryLower) ||
+	return repository.ContainsFold(domain.JoinFullName(name.GivenName, name.Surname), queryLower) ||
 		repository.ContainsFold(name.Nickname, queryLower)
 }
 
@@ -638,14 +630,8 @@ func (s *ReadModelStore) SavePersonName(ctx context.Context, branchID domain.Bra
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Compute full name if not set
-	fullName := name.FullName
-	if fullName == "" {
-		fullName = name.GivenName + " " + name.Surname
-	}
-
 	nameCopy := *name
-	nameCopy.FullName = fullName
+	nameCopy.FullName = name.JoinFullName()
 
 	// A name saved under a different person than the one the scope currently
 	// files it under has been re-owned (PersonMerged moves the merged person's
