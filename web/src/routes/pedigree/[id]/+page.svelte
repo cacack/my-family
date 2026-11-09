@@ -1,14 +1,14 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
-	import { api, formatPersonName, recordLoadError, type Pedigree } from '$lib/api/client';
-	import PedigreeChart, { type LayoutMode } from '$lib/components/PedigreeChart.svelte';
-	import { CHART_DEFAULTS, readChartOptions, setQuery } from '$lib/utils/urlState';
-	import { createShortcutHandler } from '$lib/keyboard/useShortcuts.svelte';
-	import { describeContextKeys } from '$lib/keyboard/shortcuts';
-	import { useBackLink } from '$lib/utils/backLink.svelte';
-	import ErrorState from '$lib/components/ErrorState.svelte';
-	import PageHeader from '$lib/components/PageHeader.svelte';
+	import { api, formatPersonName, recordLoadError, type Pedigree } from '#lib/api/client.js';
+	import PedigreeChart, { type LayoutMode } from '#lib/components/PedigreeChart.svelte';
+	import { CHART_DEFAULTS, readChartOptions, setQuery } from '#lib/utils/urlState.js';
+	import { createShortcutHandler } from '#lib/keyboard/useShortcuts.svelte.js';
+	import { describeContextKeys } from '#lib/keyboard/shortcuts.js';
+	import { useBackLink } from '#lib/utils/backLink.svelte.js';
+	import ErrorState from '#lib/components/ErrorState.svelte';
+	import PageHeader from '#lib/components/PageHeader.svelte';
 
 	let pedigree: Pedigree | null = $state(null);
 	let error: string | null = $state(null);
@@ -95,7 +95,7 @@
 		return searchForPerson(pedigree.root, personId);
 	}
 
-	function searchForPerson(node: import('$lib/api/client').PedigreeNode, personId: string): string | null {
+	function searchForPerson(node: import('#lib/api/client.js').PedigreeNode, personId: string): string | null {
 		if (node.id === personId) {
 			const given = node.given_name || '';
 			const surname = node.surname || '';

@@ -1,27 +1,27 @@
 <script lang="ts">
-	import { api, type ApiError, type Branch, type BranchOutcome } from '$lib/api/client';
-	import BranchOutcomeBadge from '$lib/components/branch/BranchOutcomeBadge.svelte';
-	import PageHeader from '$lib/components/PageHeader.svelte';
+	import { api, type ApiError, type Branch, type BranchOutcome } from '#lib/api/client.js';
+	import BranchOutcomeBadge from '#lib/components/branch/BranchOutcomeBadge.svelte';
+	import PageHeader from '#lib/components/PageHeader.svelte';
 	import CloseBranchDialog, {
 		type BranchCloseResult
-	} from '$lib/components/branch/CloseBranchDialog.svelte';
+	} from '#lib/components/branch/CloseBranchDialog.svelte';
 	import {
 		BRANCH_OUTCOMES,
 		HYPOTHESIS_MAX_LENGTH,
 		OUTCOME_LABELS,
 		branchOutcome,
 		promotionSummary
-	} from '$lib/utils/branchResearch';
-	import { activeBranch, switchBranch } from '$lib/stores/activeBranch.svelte';
-	import { Button } from '$lib/components/ui/button';
-	import { Badge } from '$lib/components/ui/badge';
-	import { Input } from '$lib/components/ui/input';
-	import { Label } from '$lib/components/ui/label';
-	import { Textarea } from '$lib/components/ui/textarea';
-	import * as Dialog from '$lib/components/ui/dialog';
-	import { branchMergeSummary, isIncompleteMerge } from '$lib/utils/mergeState';
-	import BranchDriftIndicator from '$lib/components/BranchDriftIndicator.svelte';
-	import ErrorState from '$lib/components/ErrorState.svelte';
+	} from '#lib/utils/branchResearch.js';
+	import { activeBranch, switchBranch } from '#lib/stores/activeBranch.svelte.js';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import { Badge } from '#lib/components/ui/badge/index.js';
+	import { Input } from '#lib/components/ui/input/index.js';
+	import { Label } from '#lib/components/ui/label/index.js';
+	import { Textarea } from '#lib/components/ui/textarea/index.js';
+	import * as Dialog from '#lib/components/ui/dialog/index.js';
+	import { branchMergeSummary, isIncompleteMerge } from '#lib/utils/mergeState.js';
+	import BranchDriftIndicator from '#lib/components/BranchDriftIndicator.svelte';
+	import ErrorState from '#lib/components/ErrorState.svelte';
 
 	// Mirrors the maxLength on BranchCreate in openapi.yaml.
 	const NAME_MAX_LENGTH = 100;

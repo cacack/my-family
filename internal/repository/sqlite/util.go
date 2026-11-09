@@ -27,8 +27,24 @@ const DriverName = "sqlite"
 // so they disagree with PostgreSQL on names such as "MÜLLER" (DB-005).
 const containsFoldFunc = "ilike_contains"
 
+// placeNormFunc is the SQL function name of repository.NormalizePlace:
+// place_norm(place) is the place with blank parts dropped and the rest joined
+// with "," (NULL for a NULL place). The place hierarchy and place lookups
+// compare places through it (#925).
+const placeNormFunc = "place_norm"
+
 func init() {
 	sqlitedriver.MustRegisterDeterministicScalarFunction(containsFoldFunc, 2, ilikeContains)
+	sqlitedriver.MustRegisterDeterministicScalarFunction(placeNormFunc, 1, placeNorm)
+}
+
+// placeNorm implements placeNormFunc.
+func placeNorm(_ *sqlitedriver.FunctionContext, args []driver.Value) (driver.Value, error) {
+	place, ok := sqlText(args[0])
+	if !ok {
+		return nil, nil
+	}
+	return repository.NormalizePlace(place), nil
 }
 
 // ilikeContains implements containsFoldFunc.
@@ -151,8 +167,9 @@ const bcYearOffset = 10000
 
 // formatSortDate formats a sort date as text that SQLite orders like the time
 // itself. A year of 0 or later uses layout as is. A negative (BC) year is
-// written as "-" then year+10000 in four digits, so "-8150-..." (1850 BC)
-// < "-9956-..." (44 BC) < "0010-..." (10 AD); the rest of layout follows
+// written as "-" then year+10000 in four digits. ToTime numbers BC years
+// astronomically (1 BC is 0, 44 BC is -43), so "-8151-..." (1850 BC)
+// < "-9957-..." (44 BC) < "0000-..." (1 BC) < "0010-..." (10 AD); the rest of layout follows
 // unchanged. Years before 10000 BC sort as 10000 BC. parseSortDate reverses it.
 func formatSortDate(t time.Time, layout string) string {
 	if t.Year() >= 0 {

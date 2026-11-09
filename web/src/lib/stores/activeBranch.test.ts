@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type * as apiModule from '$lib/api/client';
+import type * as apiModule from '#lib/api/client.js';
 
 const getBranchMock = vi.fn();
 const reloadMock = vi.fn();
 
-vi.mock('$lib/api/client', async (importOriginal) => {
+vi.mock('#lib/api/client.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof apiModule>();
 	return {
 		...actual,
@@ -46,7 +46,7 @@ async function loadStore(persistedId: string | null, persistedNotice?: string) {
 	if (persistedNotice !== undefined) {
 		sessionStorage.setItem(NOTICE_KEY, persistedNotice);
 	}
-	const client = await import('$lib/api/client');
+	const client = await import('#lib/api/client.js');
 	const store = await import('./activeBranch.svelte');
 	return { client, store };
 }

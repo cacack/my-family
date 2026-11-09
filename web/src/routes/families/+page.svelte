@@ -1,11 +1,11 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { api, type FamilyDetail } from '$lib/api/client';
-	import { Button } from '$lib/components/ui/button';
-	import PageHeader from '$lib/components/PageHeader.svelte';
-	import FamilyCard from '$lib/components/FamilyCard.svelte';
-	import { clampPageToTotal, readPositiveInt, setQuery } from '$lib/utils/urlState';
-	import ErrorState from '$lib/components/ErrorState.svelte';
+	import { api, type FamilyDetail } from '#lib/api/client.js';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import PageHeader from '#lib/components/PageHeader.svelte';
+	import FamilyCard from '#lib/components/FamilyCard.svelte';
+	import { clampPageToTotal, readPositiveInt, setQuery } from '#lib/utils/urlState.js';
+	import ErrorState from '#lib/components/ErrorState.svelte';
 
 	let families: FamilyDetail[] = $state([]);
 	let total = $state(0);

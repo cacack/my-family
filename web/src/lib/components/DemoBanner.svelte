@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { resetDemo } from '$lib/stores/appConfig.svelte';
+	import { resetDemo } from '#lib/stores/appConfig.svelte.js';
 
 	let resetting = $state(false);
 

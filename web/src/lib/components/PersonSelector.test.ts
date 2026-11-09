@@ -2,11 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import PersonSelector from './PersonSelector.svelte';
 import PartnerPickers from './PartnerPickers.svelte';
-import type * as apiModule from '$lib/api/client';
+import type * as apiModule from '#lib/api/client.js';
 
 const { searchPersons } = vi.hoisted(() => ({ searchPersons: vi.fn() }));
 
-vi.mock('$lib/api/client', async (importOriginal) => {
+vi.mock('#lib/api/client.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof apiModule>();
 	return { ...actual, api: { searchPersons } };
 });
@@ -78,6 +78,30 @@ describe('PersonSelector', () => {
 		} finally {
 			document.removeEventListener('keydown', outer);
 		}
+	});
+
+	it('consumes Escape only when it closes a visible list (#1139)', async () => {
+		render(PersonSelector, { label: 'Partner 1' });
+		const input = screen.getByRole('combobox', { name: 'Partner 1' });
+		const press = () => {
+			const escape = new KeyboardEvent('keydown', { key: 'Escape', cancelable: true, bubbles: true });
+			input.dispatchEvent(escape);
+			return escape;
+		};
+
+		// Empty box: left for page shortcuts such as cancelling an edit.
+		expect(press().defaultPrevented).toBe(false);
+
+		// One character opens nothing, so there is nothing to close.
+		await fireEvent.input(input, { target: { value: 'S' } });
+		expect(screen.queryByRole('listbox')).toBeNull();
+		expect(press().defaultPrevented).toBe(false);
+
+		// An open list is closed and the key consumed.
+		await typeQuery(input, 'Smith');
+		await screen.findAllByRole('option');
+		expect(press().defaultPrevented).toBe(true);
+		await waitFor(() => expect(screen.queryByRole('listbox')).toBeNull());
 	});
 
 	it('names the clear button after the slot and the person in it', async () => {

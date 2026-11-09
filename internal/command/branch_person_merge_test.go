@@ -83,8 +83,8 @@ func TestMergePersons_OnBranchLeavesMainUntouched(t *testing.T) {
 	onBranch := domain.BranchID(branch.ID)
 
 	res := mergeOn(t, f, f.handler.WithBranch(branch), onBranch, survivor, merged)
-	// The merged person's names: its own (recorded as primary when the alias
-	// was added) and the alias, read through the branch.
+	// The merged person's names: its own primary (recorded by CreatePerson)
+	// and the alias, read through the branch.
 	if res.Summary.NamesTransferred != 2 {
 		t.Errorf("NamesTransferred = %d, want the merged person's two names (read through the branch)", res.Summary.NamesTransferred)
 	}
@@ -121,8 +121,9 @@ func TestMergePersons_OnBranchLeavesMainUntouched(t *testing.T) {
 		t.Errorf("main survivor = %+v, want the merge carried onto main", p)
 	}
 	names, err := f.readStore.GetPersonNames(ctx, domain.MainBranchID, survivor)
-	if err != nil || len(names) != 2 || !slices.ContainsFunc(names, func(n repository.PersonNameReadModel) bool { return n.GivenName == "Morgen" }) {
-		t.Errorf("main survivor names = %+v (err=%v), want the merged person's names", names, err)
+	// Its own primary name plus the merged person's two.
+	if err != nil || len(names) != 3 || !slices.ContainsFunc(names, func(n repository.PersonNameReadModel) bool { return n.GivenName == "Morgen" }) {
+		t.Errorf("main survivor names = %+v (err=%v), want its own and the merged person's names", names, err)
 	}
 }
 
@@ -136,7 +137,7 @@ func TestMergePersons_OnBranchChecksBranchVersions(t *testing.T) {
 	}
 	scoped := f.handler.WithBranch(branch)
 	surname := "Branchside"
-	if _, err := scoped.UpdatePerson(ctx, command.UpdatePersonInput{ID: merged, Surname: &surname, Version: 1}); err != nil {
+	if _, err := scoped.UpdatePerson(ctx, command.UpdatePersonInput{ID: merged, Surname: &surname, Version: 2}); err != nil {
 		t.Fatalf("branch UpdatePerson failed: %v", err)
 	}
 
@@ -171,7 +172,7 @@ func TestMergeBranch_PersonMergeReplaysAfterItsReferences(t *testing.T) {
 	onBranch := domain.BranchID(branch.ID)
 
 	notes := "touched first"
-	if _, err := scoped.UpdatePerson(ctx, command.UpdatePersonInput{ID: survivor, Notes: &notes, Version: 1}); err != nil {
+	if _, err := scoped.UpdatePerson(ctx, command.UpdatePersonInput{ID: survivor, Notes: &notes, Version: 2}); err != nil {
 		t.Fatalf("branch UpdatePerson failed: %v", err)
 	}
 	dup, err := scoped.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Morgan", Surname: "Dupe", Gender: "male"})
@@ -262,7 +263,7 @@ func TestMergeBranch_MergedPersonStaleRefuses(t *testing.T) {
 
 	positions.rival = func() {
 		surname := "Rival"
-		if _, err := f.handler.UpdatePerson(ctx, command.UpdatePersonInput{ID: merged, Surname: &surname, Version: 1}); err != nil {
+		if _, err := f.handler.UpdatePerson(ctx, command.UpdatePersonInput{ID: merged, Surname: &surname, Version: 2}); err != nil {
 			t.Fatalf("rival UpdatePerson failed: %v", err)
 		}
 	}
@@ -318,7 +319,7 @@ func TestMergeBranch_MergeChainVouchesForMediaAndResearch(t *testing.T) {
 	}
 	mergeOn(t, f, scoped, onBranch, survivor, merged)
 
-	if err := f.handler.DeletePerson(ctx, command.DeletePersonInput{ID: merged, Version: 1}); err != nil {
+	if err := f.handler.DeletePerson(ctx, command.DeletePersonInput{ID: merged, Version: 2}); err != nil {
 		t.Fatalf("main DeletePerson failed: %v", err)
 	}
 

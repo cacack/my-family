@@ -2,31 +2,31 @@
 	import { tick } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
-	import { api, isVersionConflict, recordLoadError, type PersonDetail, type ChangeHistoryResponse, type Media, type ResearchStatus, type RollbackResponse, formatGenDate, formatPersonName, type Gender } from '$lib/api/client';
-	import ChangeHistory from '$lib/components/ChangeHistory.svelte';
-	import RestorePointBrowser from '$lib/components/RestorePointBrowser.svelte';
-	import RollbackConfirmDialog from '$lib/components/RollbackConfirmDialog.svelte';
-	import RollbackSuccessBanner from '$lib/components/RollbackSuccessBanner.svelte';
-	import MediaGallery from '$lib/components/MediaGallery.svelte';
-	import CitationSection from '$lib/components/CitationSection.svelte';
-	import EvidencePanel from '$lib/components/EvidencePanel.svelte';
-	import NameSection from '$lib/components/NameSection.svelte';
-	import UncertaintyBadge from '$lib/components/UncertaintyBadge.svelte';
-	import { createShortcutHandler } from '$lib/keyboard/useShortcuts.svelte';
-	import { Button } from '$lib/components/ui/button';
-	import ActionBar from '$lib/components/ActionBar.svelte';
-	import FormRow from '$lib/components/FormRow.svelte';
-	import { Badge } from '$lib/components/ui/badge';
-	import ExternalLinks from '$lib/components/ExternalLinks.svelte';
-	import InfoSection from '$lib/components/InfoSection.svelte';
-	import ErrorState from '$lib/components/ErrorState.svelte';
-	import SaveConflict from '$lib/components/SaveConflict.svelte';
-	import ActionError from '$lib/components/ActionError.svelte';
-	import { activeBranch } from '$lib/stores/activeBranch.svelte';
-	import { ROLLBACK_MAINLINE_ONLY } from '$lib/utils/rollbackScope';
-	import { GENDER_OPTIONS, RESEARCH_STATUS_OPTIONS } from '$lib/utils/enumOptions';
-	import { DISCARD_EDITS_PROMPT, SaveConflictFlow, type ConflictRow } from '$lib/utils/saveConflict.svelte';
-	import { asDatePhrase, savedAsNotes, savedAsText, stillStored, unreadableDateField, type SavedAs } from '$lib/utils/dateInput';
+	import { api, isVersionConflict, recordLoadError, type PersonDetail, type ChangeHistoryResponse, type Media, type ResearchStatus, type RollbackResponse, formatGenDate, formatPersonName, type Gender } from '#lib/api/client.js';
+	import ChangeHistory from '#lib/components/ChangeHistory.svelte';
+	import RestorePointBrowser from '#lib/components/RestorePointBrowser.svelte';
+	import RollbackConfirmDialog from '#lib/components/RollbackConfirmDialog.svelte';
+	import RollbackSuccessBanner from '#lib/components/RollbackSuccessBanner.svelte';
+	import MediaGallery from '#lib/components/MediaGallery.svelte';
+	import CitationSection from '#lib/components/CitationSection.svelte';
+	import EvidencePanel from '#lib/components/EvidencePanel.svelte';
+	import NameSection from '#lib/components/NameSection.svelte';
+	import UncertaintyBadge from '#lib/components/UncertaintyBadge.svelte';
+	import { createShortcutHandler } from '#lib/keyboard/useShortcuts.svelte.js';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import ActionBar from '#lib/components/ActionBar.svelte';
+	import FormRow from '#lib/components/FormRow.svelte';
+	import { Badge } from '#lib/components/ui/badge/index.js';
+	import ExternalLinks from '#lib/components/ExternalLinks.svelte';
+	import InfoSection from '#lib/components/InfoSection.svelte';
+	import ErrorState from '#lib/components/ErrorState.svelte';
+	import SaveConflict from '#lib/components/SaveConflict.svelte';
+	import ActionError from '#lib/components/ActionError.svelte';
+	import { activeBranch } from '#lib/stores/activeBranch.svelte.js';
+	import { ROLLBACK_MAINLINE_ONLY } from '#lib/utils/rollbackScope.js';
+	import { GENDER_OPTIONS, RESEARCH_STATUS_OPTIONS, optionLabel } from '#lib/utils/enumOptions.js';
+	import { DISCARD_EDITS_PROMPT, SaveConflictFlow, type ConflictRow } from '#lib/utils/saveConflict.svelte.js';
+	import { asDatePhrase, savedAsNotes, savedAsText, stillStored, unreadableDateField, type SavedAs } from '#lib/utils/dateInput.js';
 	
 	const DATE_FIELDS = ['birth_date', 'death_date'] as const;
 	type DateField = (typeof DATE_FIELDS)[number];
@@ -98,7 +98,7 @@
 		death_date: '',
 		death_place: '',
 		notes: '',
-		research_status: '' as ResearchStatus | ''
+		research_status: 'unknown' as ResearchStatus
 	});
 
 	async function loadPerson(id: string) {
@@ -273,7 +273,7 @@
 			death_date: saved.death_date?.raw || '',
 			death_place: saved.death_place || '',
 			notes: saved.notes || '',
-			research_status: saved.research_status || ''
+			research_status: saved.research_status || 'unknown'
 		};
 	}
 
@@ -285,19 +285,12 @@
 		}
 	}
 
-	function optionLabel(options: readonly { value: string; label: string }[], value: string): string {
-		return options.find((option) => option.value === value)?.label ?? value;
-	}
-
-	const researchStatusLabel = (value: string) =>
-		value ? optionLabel(RESEARCH_STATUS_OPTIONS, value) : 'Not assessed';
-
 	// The edit form's fields, in its order, for comparing with the latest version.
 	const conflictRows: ConflictRow<typeof formData>[] = [
 		{ key: 'given_name', label: 'Given Name' },
 		{ key: 'surname', label: 'Surname' },
 		{ key: 'gender', label: 'Gender', format: (value) => optionLabel(GENDER_OPTIONS, value) },
-		{ key: 'research_status', label: 'Research Status', format: researchStatusLabel },
+		{ key: 'research_status', label: 'Research Status', format: (value) => optionLabel(RESEARCH_STATUS_OPTIONS, value) },
 		{ key: 'birth_date', label: 'Birth Date' },
 		{ key: 'birth_place', label: 'Birth Place' },
 		{ key: 'death_date', label: 'Death Date' },
@@ -361,9 +354,12 @@
 				death_date: formData.death_date,
 				death_place: formData.death_place,
 				notes: formData.notes,
-				// "Not assessed" on an assessed person resets it to unknown, the
-				// API's unassessed status.
-				research_status: formData.research_status || (person.research_status ? 'unknown' : undefined),
+				// Sent only when changed, so saving a person with no status
+				// recorded doesn't set one: both read as "Not assessed".
+				research_status:
+					formData.research_status !== (person.research_status || 'unknown')
+						? formData.research_status
+						: undefined,
 				version: person.version
 			});
 			await loadPerson(person.id);
@@ -486,7 +482,6 @@
 					<label>
 						Research Status
 						<select bind:value={formData.research_status}>
-							<option value="">Not assessed</option>
 							{#each RESEARCH_STATUS_OPTIONS as option (option.value)}
 								<option value={option.value}>{option.label} - {option.description}</option>
 							{/each}
@@ -561,9 +556,7 @@
 					<div class="person-title">
 						<div class="name-row">
 							<h1>{formatPersonName(person)}</h1>
-							{#if person.research_status}
-								<UncertaintyBadge status={person.research_status} showLabel={true} />
-							{/if}
+							<UncertaintyBadge status={person.research_status || 'unknown'} showLabel={true} />
 						</div>
 						{#if person.gender}
 							<span class="gender-badge">{person.gender}</span>
@@ -779,17 +772,19 @@
 						{#if rollbackOnMainlineOnly}
 							<p class="rollback-mainline-only" role="note">{ROLLBACK_MAINLINE_ONLY}</p>
 						{:else}
-							<div class="history-tabs">
+							<div class="history-tabs" role="group" aria-label="History view">
 								<button
+									type="button"
 									class="tab-btn"
-									class:active={historyTab === 'history'}
+									aria-pressed={historyTab === 'history'}
 									onclick={() => historyTab = 'history'}
 								>
 									Change Log
 								</button>
 								<button
+									type="button"
 									class="tab-btn"
-									class:active={historyTab === 'restore'}
+									aria-pressed={historyTab === 'restore'}
 									onclick={() => historyTab = 'restore'}
 								>
 									Restore
@@ -1095,7 +1090,7 @@
 		color: #475569;
 	}
 
-	.tab-btn.active {
+	.tab-btn[aria-pressed='true'] {
 		color: var(--color-link);
 		border-bottom-color: #3b82f6;
 	}

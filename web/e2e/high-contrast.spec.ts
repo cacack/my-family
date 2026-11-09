@@ -108,6 +108,24 @@ test('the header Advanced search icon shows it is the current page', async ({ pa
 	expect(contrastRatio(active.color, active.background)).toBeGreaterThanOrEqual(3);
 });
 
+// Only the nav menu triggers, being buttons, used to get the border (#1116).
+test('nav links and nav menu triggers share one border treatment', async ({ page }) => {
+	await page.setViewportSize({ width: 1280, height: 900 });
+	await page.goto('/');
+	await expect(page.locator('body')).toHaveClass(/high-contrast/);
+	const nav = page.getByRole('navigation', { name: 'Main navigation' });
+	const border = (control: Locator) =>
+		control.evaluate((el) => {
+			const style = getComputedStyle(el);
+			return `${style.borderTopWidth} ${style.borderTopStyle} ${style.borderTopColor}`;
+		});
+
+	const link = await border(nav.getByRole('link', { name: 'People' }));
+	const trigger = await border(nav.getByRole('button', { name: 'Browse' }));
+	expect(link).toEqual(trigger);
+	expect(link).toMatch(/^2px solid/);
+});
+
 /*
  * Both pages style their links with a component-scoped `a { ... }` rule, which
  * once beat the high-contrast link rule (#961), and with a scoped `a:hover`

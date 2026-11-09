@@ -135,6 +135,8 @@
 		margin: 0;
 		/* GEDCOM places are often comma-joined with no spaces to break on. */
 		overflow-wrap: anywhere;
+		/* Multi-line values, e.g. a source author folded from GEDCOM CONT lines (#1174). */
+		white-space: pre-line;
 		color: var(--color-text);
 		font-size: 0.875rem;
 	}

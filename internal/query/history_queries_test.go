@@ -236,6 +236,9 @@ func (m *mockReadModelStore) ListAllFamilyChildren(ctx context.Context, _ domain
 func (m *mockReadModelStore) GetChildrenOfFamily(ctx context.Context, _ domain.BranchID, familyID uuid.UUID) ([]repository.PersonReadModel, error) {
 	return nil, nil
 }
+func (m *mockReadModelStore) RenameFamilyMember(ctx context.Context, _ domain.BranchID, personID uuid.UUID, givenName, surname string) error {
+	return nil
+}
 func (m *mockReadModelStore) GetChildFamily(ctx context.Context, _ domain.BranchID, personID uuid.UUID) (*repository.FamilyReadModel, error) {
 	return nil, nil
 }

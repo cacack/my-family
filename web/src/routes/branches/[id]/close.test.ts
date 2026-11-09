@@ -4,8 +4,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/svelte';
 import Page from './+page.svelte';
-import type * as apiModule from '$lib/api/client';
-import type { Branch, BranchComparisonResult } from '$lib/api/client';
+import type * as apiModule from '#lib/api/client.js';
+import type { Branch, BranchComparisonResult } from '#lib/api/client.js';
 
 const BRANCH_ID = '11111111-1111-1111-1111-111111111111';
 
@@ -24,7 +24,7 @@ const { mockState, compareBranch, closeBranch, promoteBranchResearchLogs, switch
 		switchBranch: vi.fn()
 	}));
 
-vi.mock('$lib/api/client', async (importOriginal) => {
+vi.mock('#lib/api/client.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof apiModule>();
 	return {
 		...actual,
@@ -36,7 +36,7 @@ vi.mock('$lib/api/client', async (importOriginal) => {
 	};
 });
 
-vi.mock('$lib/stores/activeBranch.svelte', () => ({
+vi.mock('#lib/stores/activeBranch.svelte.js', () => ({
 	activeBranch: mockState,
 	switchBranch: (branch: Branch | null) => switchBranch(branch),
 	returnToMainline: vi.fn(),

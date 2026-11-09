@@ -9,7 +9,7 @@ import type {
 	BranchOutcome,
 	BranchSubject,
 	PromoteResearchLogsResult
-} from '$lib/api/client';
+} from '#lib/api/client.js';
 
 export const HYPOTHESIS_MAX_LENGTH = 2000;
 /** Mirrors `BranchCloseRequest.reason` maxLength (#836). */

@@ -1,10 +1,10 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { api, type Person } from '$lib/api/client';
-	import PersonCard from '$lib/components/PersonCard.svelte';
-	import ErrorState from '$lib/components/ErrorState.svelte';
-	import PageHeader from '$lib/components/PageHeader.svelte';
-	import { clampPageToTotal, readPositiveInt, setQuery } from '$lib/utils/urlState';
+	import { api, type Person } from '#lib/api/client.js';
+	import PersonCard from '#lib/components/PersonCard.svelte';
+	import ErrorState from '#lib/components/ErrorState.svelte';
+	import PageHeader from '#lib/components/PageHeader.svelte';
+	import { clampPageToTotal, readPositiveInt, setQuery } from '#lib/utils/urlState.js';
 
 	let place = $derived(decodeURIComponent(page.params.place ?? ''));
 	let persons: Person[] = $state([]);

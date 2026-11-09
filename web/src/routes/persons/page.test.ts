@@ -1,16 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import PersonsPage from './+page.svelte';
-import * as apiModule from '$lib/api/client';
-import { back, currentPath, historyLength, resetRouter } from '$lib/test/fakeRouter.svelte';
+import * as apiModule from '#lib/api/client.js';
+import { back, currentPath, historyLength, resetRouter } from '#lib/test/fakeRouter.svelte.js';
 
-vi.mock('$lib/api/client', async (importOriginal) => {
+vi.mock('#lib/api/client.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof apiModule>();
 	return { ...actual, api: { listPersons: vi.fn() } };
 });
 
-vi.mock('$app/state', async () => (await import('$lib/test/fakeRouter.svelte')).appState);
-vi.mock('$app/navigation', async () => (await import('$lib/test/fakeRouter.svelte')).appNavigation);
+vi.mock('$app/state', async () => (await import('#lib/test/fakeRouter.svelte.js')).appState);
+vi.mock('$app/navigation', async () => (await import('#lib/test/fakeRouter.svelte.js')).appNavigation);
 
 const persons = Array.from({ length: 20 }, (_, i) => ({
 	id: `p-${i}`,
@@ -121,6 +121,40 @@ describe('People list page: state in the URL (#901)', () => {
 		);
 	});
 
+	// Unknown and no status listed as two buckets (#1110).
+	it('filters on one Not assessed bucket covering unknown and unset', async () => {
+		resetRouter('/persons');
+		render(PersonsPage);
+		await screen.findByText('Page 1 of 5');
+
+		const filter = screen.getByLabelText('Confidence:') as HTMLSelectElement;
+		const labels = Array.from(filter.options, (o) => o.textContent?.trim());
+		expect(labels).toEqual(['All', 'Certain', 'Probable', 'Possible', 'Not assessed']);
+
+		await fireEvent.change(filter, { target: { value: 'unassessed' } });
+		await waitFor(() => expect(currentPath()).toBe('/persons?status=unassessed'));
+		await waitFor(() => expect(lastListCall()).toMatchObject({ research_status: 'unassessed' }));
+	});
+
+	// Links made before #1110 named the two statuses the bucket now covers.
+	it.each(['unset', 'unknown'])('reads an older status=%s link as Not assessed', async (old) => {
+		resetRouter(`/persons?status=${old}`);
+		render(PersonsPage);
+		await screen.findByText('Page 1 of 5');
+		expect(lastListCall()).toMatchObject({ research_status: 'unassessed' });
+		expect((screen.getByLabelText('Confidence:') as HTMLSelectElement).value).toBe('unassessed');
+	});
+
+	it('marks the Quick Captures chip pressed while its filter is on', async () => {
+		resetRouter('/persons');
+		render(PersonsPage);
+		await screen.findByText('Page 1 of 5');
+
+		const chip = screen.getByRole('button', { name: 'Quick Captures', pressed: false });
+		await fireEvent.click(chip);
+		await waitFor(() => expect(chip.getAttribute('aria-pressed')).toBe('true'));
+	});
+
 	it('moves a page past the end to the last page, replacing the URL (#948)', async () => {
 		resetRouter('/persons?sort=birth_date&page=9');
 		render(PersonsPage);
@@ -141,5 +175,40 @@ describe('People list page: state in the URL (#901)', () => {
 		expect(historyLength()).toBe(1);
 		await screen.findByText('No people found.');
 		expect(lastListCall()).toMatchObject({ offset: 0 });
+	});
+
+	it('offers Add Person and Import GEDCOM in the empty state (#1156)', async () => {
+		vi.mocked(apiModule.api.listPersons).mockResolvedValue({
+			items: [],
+			total: 0
+		} as unknown as Awaited<ReturnType<typeof apiModule.api.listPersons>>);
+		resetRouter('/persons');
+		const { container } = render(PersonsPage);
+		await screen.findByText('No people found.');
+		const empty = container.querySelector('.empty') as HTMLElement;
+		const add = within(empty).getByRole('link', { name: 'Add Person' });
+		expect(add.getAttribute('href')).toBe('/persons/add');
+		expect(add.className).not.toMatch(/border-border/);
+		const importLink = within(empty).getByRole('link', { name: 'Import GEDCOM' });
+		expect(importLink.getAttribute('href')).toBe('/import');
+		expect(importLink.className).toMatch(/border-border/);
+		expect(add.parentElement).toBe(importLink.parentElement);
+	});
+
+	it('sorts Birth Date oldest first, as /search does (#1120)', async () => {
+		resetRouter('/persons');
+		render(PersonsPage);
+		await waitFor(() => expect(lastListCall()).toMatchObject({ sort: 'surname' }));
+		await fireEvent.change(screen.getByLabelText(/Sort by/), { target: { value: 'birth_date' } });
+		await waitFor(() => expect(lastListCall()).toMatchObject({ sort: 'birth_date', order: 'asc' }));
+	});
+
+	it('choosing a sort resets a descending order to ascending, as /search does (#1120)', async () => {
+		resetRouter('/persons?order=desc');
+		render(PersonsPage);
+		await waitFor(() => expect(lastListCall()).toMatchObject({ sort: 'surname', order: 'desc' }));
+		await fireEvent.change(screen.getByLabelText(/Sort by/), { target: { value: 'birth_date' } });
+		await waitFor(() => expect(lastListCall()).toMatchObject({ sort: 'birth_date', order: 'asc' }));
+		expect(currentPath()).toBe('/persons?sort=birth_date');
 	});
 });

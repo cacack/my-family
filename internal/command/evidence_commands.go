@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -127,7 +128,8 @@ func (h *Handler) UpdateEvidenceAnalysis(ctx context.Context, input UpdateEviden
 		return nil, repository.ErrConcurrencyConflict
 	}
 
-	// Build changes map
+	// Build changes map. A field equal to its current value is not a change
+	// (the edit form sends every field), so only differing fields are recorded.
 	changes := make(map[string]any)
 
 	// Build a test entity for validation
@@ -148,27 +150,27 @@ func (h *Handler) UpdateEvidenceAnalysis(ctx context.Context, input UpdateEviden
 		}
 	}
 
-	if input.FactType != nil {
+	if input.FactType != nil && domain.FactType(*input.FactType) != current.FactType {
 		testAnalysis.FactType = domain.FactType(*input.FactType)
 		changes["fact_type"] = *input.FactType
 	}
-	if input.SubjectID != nil {
+	if input.SubjectID != nil && *input.SubjectID != current.SubjectID {
 		testAnalysis.SubjectID = *input.SubjectID
 		changes["subject_id"] = input.SubjectID.String()
 	}
-	if input.CitationIDs != nil {
+	if input.CitationIDs != nil && !slices.Equal(input.CitationIDs, testAnalysis.CitationIDs) {
 		testAnalysis.CitationIDs = input.CitationIDs
 		changes["citation_ids"] = input.CitationIDs
 	}
-	if input.Conclusion != nil {
+	if input.Conclusion != nil && *input.Conclusion != current.Conclusion {
 		testAnalysis.Conclusion = *input.Conclusion
 		changes["conclusion"] = *input.Conclusion
 	}
-	if input.ResearchStatus != nil {
+	if input.ResearchStatus != nil && domain.ResearchStatus(*input.ResearchStatus) != current.ResearchStatus {
 		testAnalysis.ResearchStatus = domain.ResearchStatus(*input.ResearchStatus)
 		changes["research_status"] = *input.ResearchStatus
 	}
-	if input.Notes != nil {
+	if input.Notes != nil && *input.Notes != current.Notes {
 		testAnalysis.Notes = *input.Notes
 		changes["notes"] = *input.Notes
 	}
@@ -339,6 +341,8 @@ func (h *Handler) UpdateResearchLog(ctx context.Context, input UpdateResearchLog
 		return nil, repository.ErrConcurrencyConflict
 	}
 
+	// Build changes map. A field equal to its current value is not a change
+	// (the edit form sends every field), so only differing fields are recorded.
 	changes := make(map[string]any)
 
 	testLog := &domain.ResearchLog{
@@ -352,31 +356,31 @@ func (h *Handler) UpdateResearchLog(ctx context.Context, input UpdateResearchLog
 		SearchDate:        current.SearchDate,
 	}
 
-	if input.SubjectID != nil {
+	if input.SubjectID != nil && *input.SubjectID != current.SubjectID {
 		testLog.SubjectID = *input.SubjectID
 		changes["subject_id"] = input.SubjectID.String()
 	}
-	if input.SubjectType != nil {
+	if input.SubjectType != nil && *input.SubjectType != current.SubjectType {
 		testLog.SubjectType = *input.SubjectType
 		changes["subject_type"] = *input.SubjectType
 	}
-	if input.Repository != nil {
+	if input.Repository != nil && *input.Repository != current.Repository {
 		testLog.Repository = *input.Repository
 		changes["repository"] = *input.Repository
 	}
-	if input.SearchDescription != nil {
+	if input.SearchDescription != nil && *input.SearchDescription != current.SearchDescription {
 		testLog.SearchDescription = *input.SearchDescription
 		changes["search_description"] = *input.SearchDescription
 	}
-	if input.Outcome != nil {
+	if input.Outcome != nil && domain.ResearchOutcome(*input.Outcome) != current.Outcome {
 		testLog.Outcome = domain.ResearchOutcome(*input.Outcome)
 		changes["outcome"] = *input.Outcome
 	}
-	if input.Notes != nil {
+	if input.Notes != nil && *input.Notes != current.Notes {
 		testLog.Notes = *input.Notes
 		changes["notes"] = *input.Notes
 	}
-	if input.SearchDate != nil {
+	if input.SearchDate != nil && !input.SearchDate.Equal(current.SearchDate) {
 		testLog.SearchDate = *input.SearchDate
 		// Stored as the RFC 3339 string the projection parses: a time.Time value
 		// would only survive a JSON round trip, so the synchronous projection of
@@ -499,6 +503,8 @@ func (h *Handler) UpdateProofSummary(ctx context.Context, input UpdateProofSumma
 		return nil, repository.ErrConcurrencyConflict
 	}
 
+	// Build changes map. A field equal to its current value is not a change
+	// (the edit form sends every field), so only differing fields are recorded.
 	changes := make(map[string]any)
 
 	testSummary := &domain.ProofSummary{
@@ -518,27 +524,27 @@ func (h *Handler) UpdateProofSummary(ctx context.Context, input UpdateProofSumma
 		}
 	}
 
-	if input.FactType != nil {
+	if input.FactType != nil && domain.FactType(*input.FactType) != current.FactType {
 		testSummary.FactType = domain.FactType(*input.FactType)
 		changes["fact_type"] = *input.FactType
 	}
-	if input.SubjectID != nil {
+	if input.SubjectID != nil && *input.SubjectID != current.SubjectID {
 		testSummary.SubjectID = *input.SubjectID
 		changes["subject_id"] = input.SubjectID.String()
 	}
-	if input.Conclusion != nil {
+	if input.Conclusion != nil && *input.Conclusion != current.Conclusion {
 		testSummary.Conclusion = *input.Conclusion
 		changes["conclusion"] = *input.Conclusion
 	}
-	if input.Argument != nil {
+	if input.Argument != nil && *input.Argument != current.Argument {
 		testSummary.Argument = *input.Argument
 		changes["argument"] = *input.Argument
 	}
-	if input.AnalysisIDs != nil {
+	if input.AnalysisIDs != nil && !slices.Equal(input.AnalysisIDs, testSummary.AnalysisIDs) {
 		testSummary.AnalysisIDs = input.AnalysisIDs
 		changes["analysis_ids"] = input.AnalysisIDs
 	}
-	if input.ResearchStatus != nil {
+	if input.ResearchStatus != nil && domain.ResearchStatus(*input.ResearchStatus) != current.ResearchStatus {
 		testSummary.ResearchStatus = domain.ResearchStatus(*input.ResearchStatus)
 		changes["research_status"] = *input.ResearchStatus
 	}

@@ -8,8 +8,8 @@ import (
 	"io"
 	"sort"
 	"strconv"
-	"strings"
 
+	"github.com/cacack/my-family/internal/domain"
 	"github.com/cacack/my-family/internal/repository"
 )
 
@@ -392,7 +392,7 @@ func getFamilyFieldValue(f repository.FamilyReadModel, field string) string {
 	case "partner1_surname":
 		return f.Partner1Surname
 	case "partner1_name": // deprecated; concatenated for callers using the pre-#483 field
-		return strings.TrimSpace(f.Partner1GivenName + " " + f.Partner1Surname)
+		return domain.JoinFullName(f.Partner1GivenName, f.Partner1Surname)
 	case "partner2_id":
 		if f.Partner2ID != nil {
 			return f.Partner2ID.String()
@@ -403,7 +403,7 @@ func getFamilyFieldValue(f repository.FamilyReadModel, field string) string {
 	case "partner2_surname":
 		return f.Partner2Surname
 	case "partner2_name": // deprecated; concatenated for callers using the pre-#483 field
-		return strings.TrimSpace(f.Partner2GivenName + " " + f.Partner2Surname)
+		return domain.JoinFullName(f.Partner2GivenName, f.Partner2Surname)
 	case "relationship_type":
 		return string(f.RelationshipType)
 	case "marriage_date":

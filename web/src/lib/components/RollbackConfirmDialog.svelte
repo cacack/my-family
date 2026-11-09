@@ -1,7 +1,7 @@
 <script lang="ts">
-	import { api, type RollbackResponse } from '$lib/api/client';
-	import { Button } from '$lib/components/ui/button';
-	import * as AlertDialog from '$lib/components/ui/alert-dialog';
+	import { api, type RollbackResponse } from '#lib/api/client.js';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import * as AlertDialog from '#lib/components/ui/alert-dialog/index.js';
 
 	interface Props {
 		open: boolean;

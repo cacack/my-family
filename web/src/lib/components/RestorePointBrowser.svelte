@@ -1,7 +1,7 @@
 <script lang="ts">
-	import { api, type RestorePointsResponse } from '$lib/api/client';
-	import { Badge } from '$lib/components/ui/badge';
-	import { Button } from '$lib/components/ui/button';
+	import { api, type RestorePointsResponse } from '#lib/api/client.js';
+	import { Badge } from '#lib/components/ui/badge/index.js';
+	import { Button } from '#lib/components/ui/button/index.js';
 
 	interface Props {
 		entityType: 'person' | 'family' | 'source' | 'citation';

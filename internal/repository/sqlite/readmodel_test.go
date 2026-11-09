@@ -2,6 +2,7 @@ package sqlite_test
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -2397,5 +2398,63 @@ func TestBranchDeletePersonCascadesTombstones(t *testing.T) {
 	// Main still has the person.
 	if p, _ := store.GetPerson(ctx, domain.MainBranchID, personID); p == nil {
 		t.Fatal("main person after branch cascade: want present, got nil")
+	}
+}
+
+// "unassessed" lists persons with no status recorded and those marked unknown
+// together, the one "Not assessed" bucket the UI shows (#1110).
+func TestReadModelStore_ListPersons_UnassessedFilter(t *testing.T) {
+	store, cleanup := setupTestReadModelDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	statuses := map[string]domain.ResearchStatus{
+		"Unset":   "",
+		"Unknown": domain.ResearchStatusUnknown,
+		"Certain": domain.ResearchStatusCertain,
+	}
+	for given, status := range statuses {
+		person := &repository.PersonReadModel{
+			ID:             uuid.New(),
+			GivenName:      given,
+			Surname:        "Filter",
+			FullName:       given + " Filter",
+			ResearchStatus: status,
+			Version:        1,
+			UpdatedAt:      time.Now(),
+		}
+		if err := store.SavePerson(ctx, domain.MainBranchID, person); err != nil {
+			t.Fatalf("save person %s: %v", given, err)
+		}
+	}
+
+	tests := []struct {
+		filter string
+		want   []string
+	}{
+		{"unassessed", []string{"Unknown", "Unset"}},
+		{"unset", []string{"Unset"}},
+		{"unknown", []string{"Unknown"}},
+		{"certain", []string{"Certain"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.filter, func(t *testing.T) {
+			opts := repository.DefaultListOptions()
+			opts.Sort = "given_name"
+			filter := tt.filter
+			opts.ResearchStatus = &filter
+			results, total, err := store.ListPersons(ctx, opts)
+			if err != nil {
+				t.Fatalf("list persons: %v", err)
+			}
+			var got []string
+			for _, p := range results {
+				got = append(got, p.GivenName)
+			}
+			if total != len(tt.want) || fmt.Sprint(got) != fmt.Sprint(tt.want) {
+				t.Errorf("filter %q = %v (total %d), want %v", tt.filter, got, total, tt.want)
+			}
+		})
 	}
 }

@@ -9,9 +9,9 @@
 	 * longer exists where the branch can see it; it is still listed, by type,
 	 * so the record stays honest about what was linked.
 	 */
-	import type { Branch } from '$lib/api/client';
+	import type { Branch } from '#lib/api/client.js';
 	import BranchOutcomeBadge from './BranchOutcomeBadge.svelte';
-	import { proofSummaryHref, subjectHref, subjectLabel } from '$lib/utils/branchResearch';
+	import { proofSummaryHref, subjectHref, subjectLabel } from '#lib/utils/branchResearch.js';
 
 	interface Props {
 		branch: Branch;

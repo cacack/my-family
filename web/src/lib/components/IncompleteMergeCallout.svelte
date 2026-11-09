@@ -5,9 +5,9 @@
 	 * mainline holds only part of the branch's research, which is exactly what
 	 * this has to make impossible to miss.
 	 */
-	import type { MergePendingEntity } from '$lib/api/client';
-	import { Button } from '$lib/components/ui/button';
-	import { incompleteMergeSummary, UNREADABLE_MERGE_SUMMARY } from '$lib/utils/mergeState';
+	import type { MergePendingEntity } from '#lib/api/client.js';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import { incompleteMergeSummary, UNREADABLE_MERGE_SUMMARY } from '#lib/utils/mergeState.js';
 
 	interface Props {
 		pending: MergePendingEntity[];

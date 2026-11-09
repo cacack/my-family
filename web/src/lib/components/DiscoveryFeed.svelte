@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { api, type DiscoverySuggestion } from '$lib/api/client';
-	import { Card, CardContent } from '$lib/components/ui/card';
+	import { api, type DiscoverySuggestion } from '#lib/api/client.js';
+	import { Card, CardContent } from '#lib/components/ui/card/index.js';
 
 	type SuggestionType = DiscoverySuggestion['type'];
 
@@ -75,7 +75,7 @@
 					<button
 						type="button"
 						class="chip"
-						class:active={activeFilter === type}
+						aria-pressed={activeFilter === type}
 						onclick={() => toggleFilter(type)}
 					>
 						{typeLabels[type] || type}
@@ -181,7 +181,7 @@
 		background: #f8fafc;
 	}
 
-	.chip.active {
+	.chip[aria-pressed='true'] {
 		background: #eff6ff;
 		border-color: #3b82f6;
 		color: var(--color-link);

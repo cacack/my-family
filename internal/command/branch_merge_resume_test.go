@@ -629,7 +629,7 @@ func TestResumeMerge_PartiallyPresentStreamIsRefused(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetStreamVersion failed: %v", err)
 	}
-	claim := domain.NewBranchMerged(s.branch.ID, s.branch.BasePosition, head, "", map[uuid.UUID]int64{s.person: 1})
+	claim := domain.NewBranchMerged(s.branch.ID, s.branch.BasePosition, head, "", map[uuid.UUID]int64{s.person: 2})
 	if err := s.f.eventStore.Append(ctx, s.branch.ID, "branch", []domain.Event{claim}, version, scope); err != nil {
 		t.Fatalf("claim append failed: %v", err)
 	}
@@ -638,7 +638,7 @@ func TestResumeMerge_PartiallyPresentStreamIsRefused(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DecodeEvent failed: %v", err)
 	}
-	if err := s.f.eventStore.Append(ctx, s.person, "person", []domain.Event{decoded}, 1, repository.MainScope); err != nil {
+	if err := s.f.eventStore.Append(ctx, s.person, "person", []domain.Event{decoded}, 2, repository.MainScope); err != nil {
 		t.Fatalf("main append failed: %v", err)
 	}
 
@@ -661,7 +661,7 @@ func TestResumeMerge_RefusesBranchWritesAfterTheClaim(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetStreamVersion failed: %v", err)
 	}
-	claim := domain.NewBranchMerged(s.branch.ID, s.branch.BasePosition, logHead(t, s.f), "", map[uuid.UUID]int64{s.person: 1})
+	claim := domain.NewBranchMerged(s.branch.ID, s.branch.BasePosition, logHead(t, s.f), "", map[uuid.UUID]int64{s.person: 2})
 	if err := s.f.eventStore.Append(ctx, s.branch.ID, "branch", []domain.Event{claim}, version, scope); err != nil {
 		t.Fatalf("claim append failed: %v", err)
 	}

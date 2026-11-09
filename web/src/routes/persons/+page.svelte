@@ -1,12 +1,12 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { api, type Person } from '$lib/api/client';
-	import { Button } from '$lib/components/ui/button';
-	import PageHeader from '$lib/components/PageHeader.svelte';
-	import PersonCard from '$lib/components/PersonCard.svelte';
-	import { RESEARCH_STATUS_OPTIONS } from '$lib/utils/enumOptions';
-	import { clampPageToTotal, readEnum, readPositiveInt, setQuery } from '$lib/utils/urlState';
-	import ErrorState from '$lib/components/ErrorState.svelte';
+	import { api, type Person } from '#lib/api/client.js';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import PageHeader from '#lib/components/PageHeader.svelte';
+	import PersonCard from '#lib/components/PersonCard.svelte';
+	import { RESEARCH_STATUS_OPTIONS } from '#lib/utils/enumOptions.js';
+	import { clampPageToTotal, readEnum, readPositiveInt, setQuery } from '#lib/utils/urlState.js';
+	import ErrorState from '#lib/components/ErrorState.svelte';
 
 	let persons: Person[] = $state([]);
 	let total = $state(0);
@@ -17,13 +17,22 @@
 	// Sort, filter and page live in the URL (see urlState.ts), so Back, reload
 	// and a copied link restore the list.
 	const SORTS = ['surname', 'given_name', 'birth_date', 'updated_at'] as const;
-	const STATUSES = ['', 'unset', ...RESEARCH_STATUS_OPTIONS.map((o) => o.value)] as const;
+	// One "Not assessed" bucket: the API's unknown status and no status at all (#1110).
+	const STATUS_FILTER_OPTIONS = RESEARCH_STATUS_OPTIONS.map((o) =>
+		o.value === 'unknown' ? { value: 'unassessed' as const, label: o.label } : o
+	);
+	const STATUSES = ['', ...STATUS_FILTER_OPTIONS.map((o) => o.value)] as const;
 	const DEFAULTS = { sort: 'surname', order: 'asc', status: '', page: 1 } as const;
 
 	const params = $derived(page.url.searchParams);
 	const sort = $derived(readEnum(params, 'sort', SORTS, DEFAULTS.sort));
 	const order = $derived(readEnum(params, 'order', ['asc', 'desc'] as const, DEFAULTS.order));
-	const researchStatusFilter = $derived(readEnum(params, 'status', STATUSES, DEFAULTS.status));
+	// Links made before the one bucket named its two statuses: read them as it.
+	const LEGACY_STATUSES = ['unset', 'unknown'] as const;
+	const researchStatusFilter = $derived.by(() => {
+		const status = readEnum(params, 'status', [...STATUSES, ...LEGACY_STATUSES], DEFAULTS.status);
+		return (LEGACY_STATUSES as readonly string[]).includes(status) ? 'unassessed' : status;
+	});
 	const currentPage = $derived(readPositiveInt(params, 'page', DEFAULTS.page));
 
 	// Back/Forward can start loads faster than they finish: only the latest one may land.
@@ -64,8 +73,10 @@
 		setQuery(page.url, { page: n }, { push: true, defaults: DEFAULTS });
 	}
 
+	// Choosing a sort resets the order to its natural direction (ascending for
+	// every sort here), as /search does.
 	function handleSortChange(e: Event) {
-		refine({ sort: (e.target as HTMLSelectElement).value });
+		refine({ sort: (e.target as HTMLSelectElement).value, order: DEFAULTS.order });
 	}
 
 	function handleOrderChange() {
@@ -109,8 +120,9 @@
 
 	<div class="toolbar">
 		<button
+			type="button"
 			class="chip"
-			class:chip-active={researchStatusFilter === 'possible'}
+			aria-pressed={researchStatusFilter === 'possible'}
 			onclick={() => refine({ status: researchStatusFilter === 'possible' ? '' : 'possible' })}
 		>
 			Quick Captures
@@ -120,10 +132,9 @@
 				Confidence:
 				<select value={researchStatusFilter} onchange={handleStatusFilterChange}>
 					<option value="">All</option>
-					{#each RESEARCH_STATUS_OPTIONS as option (option.value)}
+					{#each STATUS_FILTER_OPTIONS as option (option.value)}
 						<option value={option.value}>{option.label}</option>
 					{/each}
-					<option value="unset">Not assessed</option>
 				</select>
 			</label>
 			<label>
@@ -161,7 +172,10 @@
 	{:else if persons.length === 0}
 		<div class="empty">
 			<p>No people found.</p>
-			<Button href="/import">Import GEDCOM</Button>
+			<div class="empty-actions">
+				<Button href="/persons/add">Add Person</Button>
+				<Button variant="outline" href="/import">Import GEDCOM</Button>
+			</div>
 		</div>
 	{:else}
 		<div class="persons-grid">
@@ -254,6 +268,13 @@
 		margin: 0 0 1rem;
 	}
 
+	.empty-actions {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: center;
+		gap: 0.5rem;
+	}
+
 	.persons-grid {
 		display: grid;
 		grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr));
@@ -318,7 +339,7 @@
 		background: #f8fafc;
 	}
 
-	.chip-active {
+	.chip[aria-pressed='true'] {
 		background: #fef3c7;
 		border-color: #fbbf24;
 		color: #92400e;

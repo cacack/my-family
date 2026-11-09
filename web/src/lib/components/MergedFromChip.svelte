@@ -7,8 +7,8 @@
 	 * comparison, where it tells a merge's replayed changes apart from
 	 * mainline edits in the same range (#833).
 	 */
-	import type { MergeOrigin } from '$lib/api/client';
-	import { mergedFromLabel } from '$lib/utils/changeEntries';
+	import type { MergeOrigin } from '#lib/api/client.js';
+	import { mergedFromLabel } from '#lib/utils/changeEntries.js';
 
 	let { origin }: { origin: MergeOrigin } = $props();
 

@@ -56,8 +56,8 @@ func TestMergePersons_Success(t *testing.T) {
 	if result.SurvivorID != survivor.ID {
 		t.Errorf("SurvivorID = %v, want %v", result.SurvivorID, survivor.ID)
 	}
-	if result.Version != 2 {
-		t.Errorf("Version = %d, want 2", result.Version)
+	if result.Version != 3 {
+		t.Errorf("Version = %d, want 3", result.Version)
 	}
 	if result.Summary.MergedPersonName != "Jonathan Doe" {
 		t.Errorf("MergedPersonName = %s, want Jonathan Doe", result.Summary.MergedPersonName)

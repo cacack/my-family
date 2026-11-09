@@ -1,14 +1,14 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
-	import { api, formatPersonName, recordLoadError, type Descendancy, type DescendancyNode } from '$lib/api/client';
-	import DescendancyChart, { type LayoutMode } from '$lib/components/DescendancyChart.svelte';
-	import { CHART_DEFAULTS, readChartOptions, setQuery } from '$lib/utils/urlState';
-	import { createShortcutHandler } from '$lib/keyboard/useShortcuts.svelte';
-	import { describeContextKeys } from '$lib/keyboard/shortcuts';
-	import { useBackLink } from '$lib/utils/backLink.svelte';
-	import ErrorState from '$lib/components/ErrorState.svelte';
-	import PageHeader from '$lib/components/PageHeader.svelte';
+	import { api, formatPersonName, recordLoadError, type Descendancy, type DescendancyNode } from '#lib/api/client.js';
+	import DescendancyChart, { type LayoutMode } from '#lib/components/DescendancyChart.svelte';
+	import { CHART_DEFAULTS, readChartOptions, setQuery } from '#lib/utils/urlState.js';
+	import { createShortcutHandler } from '#lib/keyboard/useShortcuts.svelte.js';
+	import { describeContextKeys } from '#lib/keyboard/shortcuts.js';
+	import { useBackLink } from '#lib/utils/backLink.svelte.js';
+	import ErrorState from '#lib/components/ErrorState.svelte';
+	import PageHeader from '#lib/components/PageHeader.svelte';
 
 	let descendancy: Descendancy | null = $state(null);
 	let error: string | null = $state(null);

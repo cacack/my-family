@@ -8,7 +8,7 @@
  * `Record` over the generated enum makes a new server-side type a type error
  * here until it has a label.
  */
-import type { components } from "$lib/api/types.generated";
+import type { components } from "#lib/api/types.generated.js";
 
 type Entry = components["schemas"]["ChangeEntry"];
 export type ChangeEntityType = Entry["entity_type"];
