@@ -251,18 +251,18 @@
 					</label>
 					<label>
 						<span>Title <span class="required">*</span></span>
-						<input type="text" bind:value={formData.title} required />
+						<textarea bind:value={formData.title} rows="2" required></textarea>
 					</label>
 				</FormRow>
 
 				<FormRow>
 					<label>
 						Author
-						<input type="text" bind:value={formData.author} />
+						<textarea bind:value={formData.author} rows="2"></textarea>
 					</label>
 					<label>
 						Publisher
-						<input type="text" bind:value={formData.publisher} />
+						<textarea bind:value={formData.publisher} rows="2"></textarea>
 					</label>
 				</FormRow>
 
@@ -485,6 +485,8 @@
 	.source-title h1 {
 		margin: 0;
 		overflow-wrap: anywhere;
+		/* GEDCOM CONT lines fold into the title (#1174). */
+		white-space: pre-line;
 		font-size: 1.5rem;
 		color: #1e293b;
 	}
@@ -580,7 +582,11 @@
 	}
 
 	.citation-details span {
+		display: inline-block;
+		vertical-align: top;
 		margin-right: 1rem;
+		/* A GEDCOM PAGE can span CONT lines (#1174). */
+		white-space: pre-line;
 	}
 
 	.quality-badges {
