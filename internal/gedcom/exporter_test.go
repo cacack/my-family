@@ -305,6 +305,35 @@ func TestExport_Notes(t *testing.T) {
 	}
 }
 
+func TestExport_MultiLineNoteRoundTrip(t *testing.T) {
+	// A multi-line person note survives export -> re-import (#1202).
+	readStore := memory.NewReadModelStore()
+	ctx := context.Background()
+	const notes = "Line one\n\nLine two"
+	readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
+		ID:        uuid.New(),
+		GivenName: "Test",
+		Surname:   "Person",
+		FullName:  "Test Person",
+		Notes:     notes,
+	})
+
+	buf := &bytes.Buffer{}
+	if _, err := gedcom.NewExporter(readStore).Export(ctx, buf); err != nil {
+		t.Fatal(err)
+	}
+	_, persons, _, _, _, _, _, _, _, _, _, _, _, err := gedcom.NewImporter().Import(ctx, buf)
+	if err != nil {
+		t.Fatalf("re-import failed: %v", err)
+	}
+	if len(persons) != 1 {
+		t.Fatalf("len(persons) = %d, want 1", len(persons))
+	}
+	if persons[0].Notes != notes {
+		t.Errorf("re-imported Notes = %q, want %q", persons[0].Notes, notes)
+	}
+}
+
 func TestExport_SingleParentFamily(t *testing.T) {
 	readStore := memory.NewReadModelStore()
 	ctx := context.Background()

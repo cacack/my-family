@@ -636,18 +636,7 @@ func parseIndividual(indi *gedcom.Individual, _ *gedcom.Document, result *Import
 		}
 	}
 
-	// Collect notes - in cacack/gedcom-go, Notes contains XRefs to note records
-	// For inline notes, we need to check for notes stored differently
-	// The library stores inline notes as part of the individual's Tags
-	var notes []string
-	for _, tag := range indi.Tags {
-		if tag.Tag == "NOTE" && tag.Value != "" {
-			notes = append(notes, tag.Value)
-		}
-	}
-	if len(notes) > 0 {
-		person.Notes = strings.Join(notes, noteJoin)
-	}
+	person.Notes = recordNotes(indi.Tags)
 
 	// Extract FamilySearch Family Tree ID (vendor extension)
 	person.FamilySearchID = indi.FamilySearchID
@@ -800,6 +789,52 @@ func childPedigreeType(indi *gedcom.Individual, familyXRef string) domain.ChildR
 	return domain.ChildBiological // Default if no FAMC link found
 }
 
+// recordNotes joins a record's NOTE values with noteJoin, in file order. It
+// reads the raw tags rather than gedcom-go's InlineNotes/NoteXRefs so pointers
+// and text keep their relative order. A raw tag value excludes its CONT/CONC
+// subordinates, so inline text has them folded back in (CONT as a newline,
+// CONC concatenated); a pointer is kept verbatim.
+func recordNotes(tags []*gedcom.Tag) string {
+	var notes []string
+	for i, tag := range tags {
+		if tag.Tag != "NOTE" {
+			continue
+		}
+		value := tag.Value
+		if !gedcom.IsPointerXRef(strings.TrimSpace(value)) {
+			value = foldContinuations(tags, i)
+		}
+		if value != "" {
+			notes = append(notes, value)
+		}
+	}
+	return strings.Join(notes, noteJoin)
+}
+
+// foldContinuations returns tags[idx].Value with its direct CONT/CONC
+// subordinates folded in: CONT starts a new line, CONC concatenates.
+func foldContinuations(tags []*gedcom.Tag, idx int) string {
+	base := tags[idx].Level
+	var b strings.Builder
+	b.WriteString(tags[idx].Value)
+	for _, sub := range tags[idx+1:] {
+		if sub.Level <= base {
+			break
+		}
+		if sub.Level != base+1 {
+			continue
+		}
+		switch sub.Tag {
+		case "CONT":
+			b.WriteString("\n")
+			b.WriteString(sub.Value)
+		case "CONC":
+			b.WriteString(sub.Value)
+		}
+	}
+	return b.String()
+}
+
 // parseSource converts a GEDCOM source record to SourceData.
 func parseSource(src *gedcom.Source, result *ImportResult) SourceData {
 	source := SourceData{
@@ -833,16 +868,7 @@ func parseSource(src *gedcom.Source, result *ImportResult) SourceData {
 		}
 	}
 
-	// Collect notes
-	var notes []string
-	for _, tag := range src.Tags {
-		if tag.Tag == "NOTE" && tag.Value != "" {
-			notes = append(notes, tag.Value)
-		}
-	}
-	if len(notes) > 0 {
-		source.Notes = strings.Join(notes, noteJoin)
-	}
+	source.Notes = recordNotes(src.Tags)
 
 	// Default source type to "other" if not specified
 	source.SourceType = string(domain.SourceOther)
@@ -895,16 +921,7 @@ func parseRepository(repo *gedcom.Repository, _ *ImportResult) RepositoryData {
 		repository.Website = repo.Website[0]
 	}
 
-	// Collect notes
-	var notes []string
-	for _, tag := range repo.Tags {
-		if tag.Tag == "NOTE" && tag.Value != "" {
-			notes = append(notes, tag.Value)
-		}
-	}
-	if len(notes) > 0 {
-		repository.Notes = strings.Join(notes, noteJoin)
-	}
+	repository.Notes = recordNotes(repo.Tags)
 
 	// Extract GEDCOM 7.0 external identifiers (EXID)
 	repository.ExternalIDs = toDomainExternalIDs(repo.ExternalIDs)
