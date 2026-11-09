@@ -819,11 +819,13 @@ func childPedigreeType(indi *gedcom.Individual, familyXRef string) domain.ChildR
 // reads the raw tags rather than gedcom-go's InlineNotes/NoteXRefs so pointers
 // and text keep their relative order. A raw tag value excludes its CONT/CONC
 // subordinates, so inline text has them folded back in (CONT as a newline,
-// CONC concatenated); a pointer is kept verbatim.
+// CONC concatenated); a pointer is kept verbatim. Only the record's own
+// level-1 NOTE lines count: a NOTE nested under an ASSO, event, NAME or other
+// substructure belongs to that substructure (#1246).
 func recordNotes(tags []*gedcom.Tag) string {
 	var notes []string
 	for i, tag := range tags {
-		if tag.Tag != "NOTE" {
+		if tag.Level != 1 || tag.Tag != "NOTE" {
 			continue
 		}
 		value := tag.Value

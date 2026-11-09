@@ -3224,3 +3224,66 @@ func TestImportMultiLineInlineNotes(t *testing.T) {
 		t.Errorf("repository Notes = %q, want %q", repositories[0].Notes, want)
 	}
 }
+
+// nestedNotesGedcom has a NOTE at level 1 on each record plus NOTEs nested
+// under substructures: an ASSO, an event, a NAME, a REPO link and an ADDR.
+const nestedNotesGedcom = `0 HEAD
+1 GEDC
+2 VERS 5.5.1
+1 CHAR UTF-8
+0 @R1@ REPO
+1 NAME Archive
+1 ADDR 1 Main St
+2 NOTE repo addr note
+1 NOTE repo note
+0 @S1@ SOUR
+1 TITL Register
+1 REPO @R1@
+2 NOTE source repo note
+1 NOTE source note
+0 @I1@ INDI
+1 NAME Ann /Doe/
+2 NOTE name note
+1 NOTE @N1@
+1 BIRT
+2 DATE 1850
+2 NOTE birth note
+1 ASSO @I2@
+2 RELA godmother
+2 NOTE @N3@
+0 @I2@ INDI
+1 NAME Bea /Roe/
+0 @N1@ NOTE First
+0 @N3@ NOTE Third
+0 TRLR
+`
+
+func TestImportRecordNotesSkipNestedNotes(t *testing.T) {
+	// Only a record's own level-1 NOTE lines become its Notes. A NOTE nested
+	// under an ASSO, an event or another substructure stays with that
+	// substructure (#1246).
+	_, persons, _, sources, _, repositories, _, _, _, _, assocs, _, _, err := gedcom.NewImporter().Import(context.Background(), strings.NewReader(nestedNotesGedcom))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+	if len(persons) != 2 || len(sources) != 1 || len(repositories) != 1 || len(assocs) != 1 {
+		t.Fatalf("got %d persons, %d sources, %d repositories, %d associations; want 2, 1, 1, 1",
+			len(persons), len(sources), len(repositories), len(assocs))
+	}
+	notes := map[string]string{}
+	for _, p := range persons {
+		notes[p.GivenName] = p.Notes
+	}
+	if notes["Ann"] != "@N1@" || notes["Bea"] != "" {
+		t.Errorf("person Notes = %q, want Ann %q and Bea empty", notes, "@N1@")
+	}
+	if assocs[0].Notes != "@N3@" {
+		t.Errorf("association Notes = %q, want %q", assocs[0].Notes, "@N3@")
+	}
+	if sources[0].Notes != "source note" {
+		t.Errorf("source Notes = %q, want %q", sources[0].Notes, "source note")
+	}
+	if repositories[0].Notes != "repo note" {
+		t.Errorf("repository Notes = %q, want %q", repositories[0].Notes, "repo note")
+	}
+}

@@ -349,3 +349,63 @@ func externalIDs(ids []domain.ExternalIdentifier) string {
 	}
 	return strings.Join(parts, ",")
 }
+
+func TestNestedNotes_RoundTrip(t *testing.T) {
+	// A NOTE nested under an ASSO or event is not a record note, so the
+	// re-exported INDI carries exactly the one level-1 NOTE it had (#1246).
+	ctx := context.Background()
+	_, persons, _, _, _, _, _, _, notes, _, assocs, _, _, err := gedcom.NewImporter().Import(ctx, strings.NewReader(nestedNotesGedcom))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+
+	readStore := memory.NewReadModelStore()
+	for _, p := range persons {
+		if err := readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
+			ID: p.ID, GivenName: p.GivenName, Surname: p.Surname, Notes: p.Notes,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, n := range notes {
+		if err := readStore.SaveNote(ctx, domain.MainBranchID, &repository.NoteReadModel{
+			ID: n.ID, Text: n.Text, GedcomXref: n.GedcomXref,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, a := range assocs {
+		if err := readStore.SaveAssociation(ctx, domain.MainBranchID, &repository.AssociationReadModel{
+			ID: a.ID, PersonID: a.PersonID, AssociateID: a.AssociateID, Role: a.Role, Notes: a.Notes, Version: 1,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	buf := &bytes.Buffer{}
+	if _, err := gedcom.NewExporter(readStore).Export(ctx, buf); err != nil {
+		t.Fatalf("Export failed: %v", err)
+	}
+	output := buf.String()
+
+	// Collect the level-1 NOTE lines of Ann's INDI record.
+	var annNotes []string
+	inAnn := false
+	for _, line := range strings.Split(output, "\n") {
+		if strings.HasPrefix(line, "0 ") {
+			inAnn = false
+		}
+		if strings.HasPrefix(line, "1 NAME Ann ") {
+			inAnn = true
+		}
+		if inAnn && strings.HasPrefix(line, "1 NOTE") {
+			annNotes = append(annNotes, line)
+		}
+	}
+	if len(annNotes) != 1 || annNotes[0] != "1 NOTE @N1@" {
+		t.Errorf("Ann's INDI level-1 NOTE lines = %q, want exactly [\"1 NOTE @N1@\"]; got:\n%s", annNotes, output)
+	}
+	if !strings.Contains(output, "2 NOTE @N3@\n") {
+		t.Errorf("the association should keep its NOTE @N3@; got:\n%s", output)
+	}
+}
