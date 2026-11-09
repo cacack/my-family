@@ -132,7 +132,7 @@ func (ss *StrictServer) GetAhnentafel(ctx context.Context, request GetAhnentafel
 		}
 
 		sb.WriteString(fmt.Sprintf("Generated: %s\n", time.Now().Format("2006-01-02")))
-		sb.WriteString(fmt.Sprintf("Total ancestors: %d\n", result.TotalEntries))
+		sb.WriteString(fmt.Sprintf("Total ancestors: %d\n", result.KnownAncestors))
 		sb.WriteString(fmt.Sprintf("Generations: %d\n", result.MaxGeneration))
 
 		return GetAhnentafel200TextResponse(sb.String()), nil
@@ -148,13 +148,16 @@ func (ss *StrictServer) GetAhnentafel(ctx context.Context, request GetAhnentafel
 		}
 	}
 
+	totalCount := 1<<(result.MaxGeneration+1) - 1
 	return GetAhnentafel200JSONResponse{
 		Subject:     subject,
 		Entries:     entries,
 		Generations: result.MaxGeneration,
 		// Every Ahnentafel slot in those generations, known or not
-		TotalCount: 1<<(result.MaxGeneration+1) - 1,
-		KnownCount: knownCount,
+		TotalCount:     totalCount,
+		KnownCount:     knownCount,
+		AncestorSlots:  totalCount - 1,
+		KnownAncestors: result.KnownAncestors,
 	}, nil
 }
 

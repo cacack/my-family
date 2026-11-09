@@ -62,10 +62,16 @@ function target(path: string) {
 	return { url: new URL(path, ORIGIN), params, route: { id: routeIdOf(path) } };
 }
 
+/**
+ * Where an `enter` navigation comes from. In SPA mode (`ssr = false`) SvelteKit
+ * passes a `from` with no route id and no URL, not `from: null`.
+ */
+const OUTSIDE_THE_APP = { params: {}, route: { id: null }, url: null };
+
 /** A navigation to the current entry from `fromPath` (null: from outside the app). */
 function navigationFrom(fromPath: string | null, type: 'enter' | 'goto' | 'popstate'): AfterNavigate {
 	return {
-		from: fromPath === null ? null : target(fromPath),
+		from: fromPath === null ? OUTSIDE_THE_APP : target(fromPath),
 		to: target(entries[index]),
 		type,
 		willUnload: false,

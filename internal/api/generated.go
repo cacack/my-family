@@ -2011,6 +2011,11 @@ type AhnentafelEntry struct {
 // AhnentafelResponse Ahnentafel (ancestor table) report using standard genealogical numbering.
 // This schema is shared between backend and frontend - changes require updates to both.
 type AhnentafelResponse struct {
+	// AncestorSlots Every ancestor slot in those generations, leaving out the subject (total_count - 1)
+	//
+	// Example: 30
+	AncestorSlots int `json:"ancestor_slots"`
+
 	// Entries List of ancestors in Ahnentafel number order
 	Entries []AhnentafelEntry `json:"entries"`
 
@@ -2019,7 +2024,12 @@ type AhnentafelResponse struct {
 	// Example: 4
 	Generations int `json:"generations"`
 
-	// KnownCount Number of entries with known ancestors
+	// KnownAncestors Number of known ancestors, leaving out the subject; equals the pedigree's total_ancestors for the same person and generations
+	//
+	// Example: 14
+	KnownAncestors int `json:"known_ancestors"`
+
+	// KnownCount Number of known entries, including the subject
 	//
 	// Example: 15
 	KnownCount int `json:"known_count"`
@@ -2027,7 +2037,7 @@ type AhnentafelResponse struct {
 	// Subject The subject (root person) of the Ahnentafel report
 	Subject AhnentafelSubject `json:"subject"`
 
-	// TotalCount Total number of entries (2^(generations+1) - 1)
+	// TotalCount Every Ahnentafel slot in those generations, including the subject (2^(generations+1) - 1)
 	//
 	// Example: 31
 	TotalCount int `json:"total_count"`

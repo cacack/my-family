@@ -19,10 +19,6 @@
 		href: `/persons/${page.params.id}`,
 		label: report?.subject ? `Back to ${formatPersonName(report.subject)}` : 'Back'
 	}));
-	// Entry 1 is the subject, who is not their own ancestor (#1119).
-	const ancestorsKnown = $derived.by(() =>
-		report ? report.entries.filter((e) => e.id && e.number > 1).length : 0
-	);
 
 	async function loadReport(personId: string, gens: number) {
 		loading = true;
@@ -162,8 +158,8 @@
 					<h1>Ahnentafel Report</h1>
 					<h2>{formatPersonName(report.subject)}</h2>
 					<p class="report-meta">
-						{report.generations} generation{report.generations !== 1 ? 's' : ''} - {ancestorsKnown} of
-						{report.total_count - 1} ancestors known
+						{report.generations} generation{report.generations !== 1 ? 's' : ''} - {report.known_ancestors} of
+						{report.ancestor_slots} ancestors known
 					</p>
 				</div>
 

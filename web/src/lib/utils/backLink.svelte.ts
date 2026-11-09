@@ -9,11 +9,12 @@ export interface BackLink {
 /**
  * The in-app page a navigation came from, or null when it came from outside
  * the app (a deep link, a new tab, a reload) or stayed on the same route (a
- * chart re-rooted on another person, or its options changed).
+ * chart re-rooted on another person, or its options changed). In SPA mode an
+ * `enter` navigation has a `from` with a null URL, so test the URL, not `from`.
  */
 export function cameFrom(navigation: Pick<AfterNavigate, 'from' | 'to'>): string | null {
 	const { from, to } = navigation;
-	if (!from || from.route.id === to?.route.id) return null;
+	if (!from?.url || from.route.id === to?.route.id) return null;
 	return `${from.url.pathname}${from.url.search}${from.url.hash}`;
 }
 

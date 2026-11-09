@@ -221,6 +221,42 @@ func TestGetAhnentafel_JSONFormat_Success(t *testing.T) {
 	if knownCount != 5 {
 		t.Errorf("known_count = %d, want 5", knownCount)
 	}
+
+	// The ancestor counts leave out the subject (#1119)
+	if got := int(result["known_ancestors"].(float64)); got != 4 {
+		t.Errorf("known_ancestors = %d, want 4", got)
+	}
+	if got := int(result["ancestor_slots"].(float64)); got != 6 {
+		t.Errorf("ancestor_slots = %d, want 6", got)
+	}
+}
+
+// The Ahnentafel and the pedigree count the same ancestors for the same person (#1119).
+func TestGetAhnentafel_KnownAncestorsMatchesPedigreeTotal(t *testing.T) {
+	server := setupAhnentafelTestServer(t)
+	juniorID := importAhnentafelTestData(t, server)
+
+	get := func(path string) map[string]interface{} {
+		t.Helper()
+		rec := httptest.NewRecorder()
+		server.Echo().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, http.NoBody))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("GET %s: status %d: %s", path, rec.Code, rec.Body.String())
+		}
+		var result map[string]interface{}
+		if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
+			t.Fatalf("GET %s: %v", path, err)
+		}
+		return result
+	}
+
+	ahnentafel := get("/api/v1/ahnentafel/" + juniorID)
+	pedigree := get("/api/v1/pedigree/" + juniorID)
+
+	known, total := ahnentafel["known_ancestors"], pedigree["total_ancestors"]
+	if known == nil || known != total {
+		t.Errorf("ahnentafel known_ancestors = %v, pedigree total_ancestors = %v; want equal", known, total)
+	}
 }
 
 func TestGetAhnentafel_TextFormat_Success(t *testing.T) {
@@ -280,8 +316,9 @@ func TestGetAhnentafel_TextFormat_Success(t *testing.T) {
 	if !strings.Contains(body, "Generated:") {
 		t.Error("Text output should contain 'Generated:' footer")
 	}
-	if !strings.Contains(body, "Total ancestors: 5") {
-		t.Error("Text output should contain 'Total ancestors: 5'")
+	// The subject is not one of their own ancestors (#1119)
+	if !strings.Contains(body, "Total ancestors: 4") {
+		t.Errorf("Text output should contain 'Total ancestors: 4', got:\n%s", body)
 	}
 	if !strings.Contains(body, "Generations: 2") {
 		t.Error("Text output should contain 'Generations: 2'")
@@ -467,8 +504,8 @@ func TestGetAhnentafel_TextFormat_NoAncestors(t *testing.T) {
 	}
 
 	// Verify footer
-	if !strings.Contains(body, "Total ancestors: 1") {
-		t.Error("Text output should contain 'Total ancestors: 1'")
+	if !strings.Contains(body, "Total ancestors: 0") {
+		t.Error("Text output should contain 'Total ancestors: 0'")
 	}
 	if !strings.Contains(body, "Generations: 0") {
 		t.Error("Text output should contain 'Generations: 0'")

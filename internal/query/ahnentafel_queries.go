@@ -29,9 +29,10 @@ type AhnentafelEntry struct {
 
 // AhnentafelResult contains the complete Ahnentafel report for a person.
 type AhnentafelResult struct {
-	Entries       []AhnentafelEntry `json:"entries"`        // Sorted by Ahnentafel number
-	TotalEntries  int               `json:"total_entries"`  // Number of entries (including subject)
-	MaxGeneration int               `json:"max_generation"` // Highest generation reached
+	Entries        []AhnentafelEntry `json:"entries"`         // Sorted by Ahnentafel number
+	TotalEntries   int               `json:"total_entries"`   // Number of entries (including subject)
+	KnownAncestors int               `json:"known_ancestors"` // Entries minus the subject: the pedigree's TotalAncestors
+	MaxGeneration  int               `json:"max_generation"`  // Highest generation reached
 }
 
 // AhnentafelService provides Ahnentafel query operations.
@@ -80,9 +81,10 @@ func (s *AhnentafelService) GetAhnentafel(ctx context.Context, input GetAhnentaf
 	}
 
 	return &AhnentafelResult{
-		Entries:       entries,
-		TotalEntries:  len(entries),
-		MaxGeneration: maxGen,
+		Entries:        entries,
+		TotalEntries:   len(entries),
+		KnownAncestors: pedigreeResult.TotalAncestors,
+		MaxGeneration:  maxGen,
 	}, nil
 }
 

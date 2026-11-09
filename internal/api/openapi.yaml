@@ -6161,7 +6161,7 @@ components:
       description: |
         Ahnentafel (ancestor table) report using standard genealogical numbering.
         This schema is shared between backend and frontend - changes require updates to both.
-      required: [subject, entries, generations, total_count, known_count]
+      required: [subject, entries, generations, total_count, known_count, ancestor_slots, known_ancestors]
       properties:
         subject:
           $ref: '#/components/schemas/AhnentafelSubject'
@@ -6176,12 +6176,20 @@ components:
           example: 4
         total_count:
           type: integer
-          description: Total number of entries (2^(generations+1) - 1)
+          description: Every Ahnentafel slot in those generations, including the subject (2^(generations+1) - 1)
           example: 31
         known_count:
           type: integer
-          description: Number of entries with known ancestors
+          description: Number of known entries, including the subject
           example: 15
+        ancestor_slots:
+          type: integer
+          description: Every ancestor slot in those generations, leaving out the subject (total_count - 1)
+          example: 30
+        known_ancestors:
+          type: integer
+          description: Number of known ancestors, leaving out the subject; equals the pedigree's total_ancestors for the same person and generations
+          example: 14
 
     AhnentafelSubject:
       type: object

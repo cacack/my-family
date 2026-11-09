@@ -43,7 +43,9 @@ beforeEach(() => {
 		entries: [{ number: 1, generation: 0, id: 'p-1', given_name: 'Victoria', surname: 'Hanover' }],
 		generations: 0,
 		total_count: 1,
-		known_count: 1
+		known_count: 1,
+		ancestor_slots: 0,
+		known_ancestors: 0
 	} as unknown as apiModule.AhnentafelResponse);
 });
 

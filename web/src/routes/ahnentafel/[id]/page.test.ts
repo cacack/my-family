@@ -36,6 +36,8 @@ function reportWith(
     generations: 1,
     total_count: 1,
     known_count: 1,
+    ancestor_slots: 0,
+    known_ancestors: 0,
   } as apiModule.AhnentafelResponse;
 }
 
@@ -145,14 +147,17 @@ describe("Ahnentafel page: summary counts ancestors, not the subject (#1119)", (
       .trim();
   }
 
-  it("reads one generation in the singular, the subject left out", async () => {
-    // The pedigree API's total_ancestors for this tree is 2.
+  it("reads one generation in the singular, with the API's ancestor counts", async () => {
+    // The API leaves the subject out of known_ancestors and ancestor_slots;
+    // known_ancestors equals the pedigree's total_ancestors (Go API test).
     expect(
       await summary({
         entries: [person(1, 0), person(2, 1), person(3, 1)],
         generations: 1,
         total_count: 3,
         known_count: 3,
+        ancestor_slots: 2,
+        known_ancestors: 2,
       }),
     ).toBe("1 generation - 2 of 2 ancestors known");
   });
@@ -164,6 +169,8 @@ describe("Ahnentafel page: summary counts ancestors, not the subject (#1119)", (
         generations: 2,
         total_count: 7,
         known_count: 3,
+        ancestor_slots: 6,
+        known_ancestors: 2,
       }),
     ).toBe("2 generations - 2 of 6 ancestors known");
   });
