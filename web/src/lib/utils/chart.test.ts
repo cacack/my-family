@@ -3,7 +3,10 @@ import * as d3 from 'd3';
 import {
 	FIT_SCALE_RANGE,
 	MIN_CARD_FONT_PX,
+	fitLabel,
+	fitText,
 	fitTransform,
+	measureWith,
 	nameLines,
 	scaleAbout,
 	touchScrollsPage,
@@ -122,12 +125,63 @@ describe('nameLines', () => {
 	});
 });
 
+// Fake measurement: 10 units per character, 20 for a wide 'W'
+const measure = (text: string) => [...text].reduce((w, c) => w + (c === 'W' ? 20 : 10), 0);
+
+describe('fitLabel', () => {
+	it('leaves text that fits alone', () => {
+		expect(fitLabel('Victoria', 80, measure)).toBe('Victoria');
+	});
+
+	it('cuts at a word boundary to fit the width', () => {
+		expect(fitLabel('Beatrice Mary Victoria', 160, measure)).toBe('Beatrice Mary…');
+	});
+
+	it('cuts a long unbroken word by its measured width, not its length (#1213)', () => {
+		const label = fitLabel('WWWWWWWWWWWWWWWWWWWWWW', 108, measure);
+		expect(label).toBe('WWWW…');
+		expect(measure(label)).toBeLessThanOrEqual(108);
+	});
+
+	it('falls back to a bare ellipsis when nothing fits', () => {
+		expect(fitLabel('Victoria', 5, measure)).toBe('…');
+	});
+});
+
 describe('wrapLabel', () => {
 	it('splits a name over two lines', () => {
-		expect(wrapLabel('Louise Margaret of_Prussia', 18)).toEqual(['Louise Margaret', 'of_Prussia']);
+		expect(wrapLabel('Louise Margaret of_Prussia', 180, measure)).toEqual(['Louise Margaret', 'of_Prussia']);
 	});
 
 	it('keeps a short name on one line', () => {
-		expect(wrapLabel('Marie Alexandrovna', 18)).toEqual(['Marie Alexandrovna', '']);
+		expect(wrapLabel('Marie Alexandrovna', 180, measure)).toEqual(['Marie Alexandrovna', '']);
+	});
+
+	it('fits a long unbroken surname on the second line (#1213)', () => {
+		const lines = wrapLabel('Ann Chartwell1794183826WWWW', 96, measure);
+		expect(lines).toEqual(['Ann', 'Chartwel…']);
+		lines.forEach((line) => expect(measure(line)).toBeLessThanOrEqual(96));
+	});
+});
+
+describe('fitText', () => {
+	function textElement(text: string, length?: (text: string) => number) {
+		const el = document.createElementNS('http://www.w3.org/2000/svg', 'text') as SVGTextElement;
+		el.textContent = text;
+		if (length) el.getComputedTextLength = () => length(el.textContent ?? '');
+		return el;
+	}
+
+	it('shortens the element text to its measured width', () => {
+		const el = textElement('Alexander-Christopher', measure);
+		fitText(el, 100);
+		expect(el.textContent).toBe('Alexander…');
+	});
+
+	it('leaves the text whole where nothing can be measured', () => {
+		expect(measureWith(textElement(''))('Alexander-Christopher')).toBe(0);
+		const el = textElement('Alexander-Christopher');
+		fitText(el, 100);
+		expect(el.textContent).toBe('Alexander-Christopher');
 	});
 });

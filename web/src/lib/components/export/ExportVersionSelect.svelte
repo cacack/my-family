@@ -1,7 +1,7 @@
 <script lang="ts">
-	import { api, type ExportPreview, type GedcomVersion } from '$lib/api/client';
-	import { Label } from '$lib/components/ui/label';
-	import { Select, SelectContent, SelectItem, SelectTrigger } from '$lib/components/ui/select';
+	import { api, type ExportPreview, type GedcomVersion } from '#lib/api/client.js';
+	import { Label } from '#lib/components/ui/label/index.js';
+	import { Select, SelectContent, SelectItem, SelectTrigger } from '#lib/components/ui/select/index.js';
 
 	interface Props {
 		/** Selected version: 'auto' (default, server picks) or an explicit version. */

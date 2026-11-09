@@ -1,8 +1,16 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { afterAll, beforeAll, describe, it, expect, vi, beforeEach } from 'vitest';
 import { render } from '@testing-library/svelte';
 import DescendancyChart from './DescendancyChart.svelte';
-import type { DescendancyNode } from '$lib/api/client';
-import { MIN_CARD_FONT_PX } from '$lib/utils/chart';
+import type { DescendancyNode } from '#lib/api/client.js';
+import { CARD_TEXT_INSET, MIN_CARD_FONT_PX } from '#lib/utils/chart.js';
+import { mockTextLength } from '#lib/test/textLength.js';
+
+// Card labels are cut to their measured width (#1213)
+let restoreTextLength: () => void;
+beforeAll(() => {
+	restoreTextLength = mockTextLength();
+});
+afterAll(() => restoreTextLength());
 
 // Mock data for tests
 const mockSinglePerson: DescendancyNode = {
@@ -23,6 +31,7 @@ const mockPersonWithSpouse: DescendancyNode = {
 	spouses: [
 		{
 			id: '2',
+			family_id: 'f2',
 			name: 'Jane Smith',
 			marriage_date: { year: 1975 }
 		}
@@ -62,6 +71,7 @@ const mockThreeGenerations: DescendancyNode = {
 	spouses: [
 		{
 			id: '10',
+			family_id: 'f10',
 			name: 'Jane Smith'
 		}
 	],
@@ -108,11 +118,13 @@ const mockMultipleSpouses: DescendancyNode = {
 	spouses: [
 		{
 			id: '2',
+			family_id: 'f2',
 			name: 'Jane Smith',
 			marriage_date: { year: 1975 }
 		},
 		{
 			id: '3',
+			family_id: 'f3',
 			name: 'Sarah Johnson',
 			marriage_date: { year: 1990 }
 		}
@@ -192,7 +204,7 @@ describe('DescendancyChart', () => {
 			...mockPersonWithSpouse,
 			birth_date: { year: -1850 },
 			death_date: { year: -1790 },
-			spouses: [{ id: '2', name: 'Jane Smith', marriage_date: { year: -1825 } }]
+			spouses: [{ id: '2', family_id: 'f2', name: 'Jane Smith', marriage_date: { year: -1825 } }]
 		};
 		const { container } = render(DescendancyChart, { props: { data: bcPerson } });
 		const textContents = Array.from(container.querySelectorAll('.node text, .spouse-group text')).map(
@@ -213,6 +225,47 @@ describe('DescendancyChart', () => {
 		const { container } = render(DescendancyChart, { props: { data: mockPersonWithChildren } });
 		const links = container.querySelectorAll('.link');
 		expect(links.length).toBe(2); // 2 links to children
+	});
+
+	it('draws each child link from the couple of the child\'s family (#1099)', () => {
+		const data: DescendancyNode = {
+			...mockMultipleSpouses,
+			children: [
+				{ id: '20', given_name: 'First', family_id: 'f2' },
+				{ id: '30', given_name: 'Second', family_id: 'f3' }
+			]
+		};
+		const { container } = render(DescendancyChart, { props: { data } });
+		const links = Array.from(container.querySelectorAll('path.link'));
+		const spouseOf = (childId: string) =>
+			links.find((l) => l.getAttribute('data-child-id') === childId)?.getAttribute('data-spouse-id');
+		expect(spouseOf('20')).toBe('2');
+		expect(spouseOf('30')).toBe('3');
+
+		// Each line starts between the person's row cards, at the second couple's connector for the second child
+		const startX = (childId: string) =>
+			parseFloat(
+				links.find((l) => l.getAttribute('data-child-id') === childId)!.getAttribute('d')!.slice(1)
+			);
+		const spouseLinks = Array.from(container.querySelectorAll('.spouse-link')).map((l) => ({
+			x1: parseFloat(l.getAttribute('x1')!),
+			x2: parseFloat(l.getAttribute('x2')!)
+		}));
+		expect(startX('20')).toBeCloseTo((spouseLinks[0].x1 + spouseLinks[0].x2) / 2);
+		expect(startX('30')).toBeCloseTo((spouseLinks[1].x1 + spouseLinks[1].x2) / 2);
+	});
+
+	it('numbers each marriage at its connector when a person has several spouses (#1099)', () => {
+		const { container } = render(DescendancyChart, { props: { data: mockMultipleSpouses } });
+		const badges = Array.from(container.querySelectorAll('.marriage-badge'));
+		expect(badges.map((b) => b.querySelector('text')?.textContent)).toEqual(['1', '2']);
+		expect(badges.map((b) => b.querySelector('title')?.textContent)).toEqual([
+			'Marriage 1: John Doe and Jane Smith',
+			'Marriage 2: John Doe and Sarah Johnson'
+		]);
+
+		const single = render(DescendancyChart, { props: { data: mockPersonWithSpouse } });
+		expect(single.container.querySelectorAll('.marriage-badge')).toHaveLength(0);
 	});
 
 	it('uses correct fill color for male nodes', () => {
@@ -275,7 +328,7 @@ describe('DescendancyChart', () => {
 	it('wraps long spouse names over two lines without a space before the ellipsis', () => {
 		const data: DescendancyNode = {
 			...mockSinglePerson,
-			spouses: [{ id: '2', name: 'Louise Margaret Alexandra Victoria Agnes of_Prussia' }]
+			spouses: [{ id: '2', family_id: 'f2', name: 'Louise Margaret Alexandra Victoria Agnes of_Prussia' }]
 		};
 		const { container } = render(DescendancyChart, { props: { data } });
 		const lines = Array.from(container.querySelectorAll('.spouse-group text')).map(
@@ -335,6 +388,33 @@ describe('DescendancyChart', () => {
 		// Should be truncated with an ellipsis
 		const truncatedTexts = textContents.filter((t) => t?.endsWith('…'));
 		expect(truncatedTexts.length).toBeGreaterThan(0);
+	});
+
+	it('fits a 22-character unbroken given name and surname inside the card (#1213)', () => {
+		const person: DescendancyNode = { id: '1', given_name: 'MWOLLSTONECRAFTWHEWELL', surname: 'MWOLLSTONECRAFTWHEWELL' };
+		const { container } = render(DescendancyChart, { props: { data: person } });
+		const width = Number(container.querySelector('.node-card')!.getAttribute('width'));
+		const lines = Array.from(container.querySelectorAll('.node text')).slice(0, 2) as SVGTextElement[];
+		for (const line of lines) {
+			expect(line.textContent).toMatch(/…$/);
+			expect(line.getComputedTextLength()).toBeLessThanOrEqual(width - 2 * CARD_TEXT_INSET);
+		}
+		expect(container.querySelector('.node title')?.textContent).toBe('MWOLLSTONECRAFTWHEWELL MWOLLSTONECRAFTWHEWELL');
+	});
+
+	it('fits a spouse with a 22-character unbroken surname inside the spouse card (#1213)', () => {
+		const data: DescendancyNode = {
+			...mockSinglePerson,
+			spouses: [{ id: '2', family_id: 'f2', name: 'Ann MWOLLSTONECRAFTWHEWELL' }]
+		};
+		const { container } = render(DescendancyChart, { props: { data } });
+		const width = Number(container.querySelector('.spouse-card')!.getAttribute('width'));
+		const lines = Array.from(container.querySelectorAll('.spouse-group text')).slice(0, 2) as SVGTextElement[];
+		expect(lines.map((t) => t.textContent)).toEqual(['Ann', expect.stringMatching(/^MWOLL.*…$/)]);
+		for (const line of lines) {
+			expect(line.getComputedTextLength()).toBeLessThanOrEqual(width - 2 * CARD_TEXT_INSET);
+		}
+		expect(container.querySelector('.spouse-group title')?.textContent).toBe('Ann MWOLLSTONECRAFTWHEWELL');
 	});
 
 	it('truncates at a word boundary and shows the full name as a tooltip', () => {

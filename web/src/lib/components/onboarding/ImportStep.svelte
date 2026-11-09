@@ -1,8 +1,8 @@
 <script lang="ts">
-	import { api, type ImportResult } from '$lib/api/client';
-	import { Button } from '$lib/components/ui/button';
-	import BranchImportBlocked from '$lib/components/import/BranchImportBlocked.svelte';
-	import { activeBranch } from '$lib/stores/activeBranch.svelte';
+	import { api, type ImportResult } from '#lib/api/client.js';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import BranchImportBlocked from '#lib/components/import/BranchImportBlocked.svelte';
+	import { activeBranch } from '#lib/stores/activeBranch.svelte.js';
 
 	interface Props {
 		onComplete: (data: { personCount: number }) => void;

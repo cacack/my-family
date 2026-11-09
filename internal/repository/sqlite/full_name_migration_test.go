@@ -1,9 +1,14 @@
 package sqlite_test
 
 import (
+	"context"
 	"os"
 	"testing"
 
+	"github.com/google/uuid"
+
+	"github.com/cacack/my-family/internal/domain"
+	"github.com/cacack/my-family/internal/repository"
 	"github.com/cacack/my-family/internal/repository/sqlite"
 )
 
@@ -80,6 +85,83 @@ func TestReadModel_MigratesPersonFullName(t *testing.T) {
 		t.Fatalf("open read model over legacy schema: %v", err)
 	}
 	check(t)
+
+	if _, err := sqlite.NewReadModelStore(db); err != nil {
+		t.Fatalf("reopen migrated read model: %v", err)
+	}
+	check(t)
+}
+
+// TestReadModel_MigratesPersonNameFullName opens a database whose
+// person_names.full_name is still the generated given_name || ' ' || surname
+// column and checks that the store recomputes existing rows by the one rule
+// (#1130, #985), that a name saved afterwards follows it, and that reopening is
+// a no-op.
+func TestReadModel_MigratesPersonNameFullName(t *testing.T) {
+	tmpFile, err := os.CreateTemp("", "myfamily-name-full-name-migration-*.db")
+	if err != nil {
+		t.Fatalf("create temp file: %v", err)
+	}
+	tmpFile.Close()
+	t.Cleanup(func() { os.Remove(tmpFile.Name()) })
+
+	db, err := sqlite.OpenDB(tmpFile.Name())
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+
+	if _, err := db.Exec(`
+		CREATE TABLE person_names (
+			id TEXT NOT NULL,
+			person_id TEXT NOT NULL,
+			given_name TEXT NOT NULL,
+			surname TEXT NOT NULL,
+			full_name TEXT GENERATED ALWAYS AS (given_name || ' ' || surname) STORED,
+			name_prefix TEXT,
+			name_suffix TEXT,
+			surname_prefix TEXT,
+			nickname TEXT,
+			name_type TEXT NOT NULL DEFAULT '',
+			is_primary INTEGER NOT NULL DEFAULT 0,
+			updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+			branch_id TEXT NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000',
+			deleted INTEGER NOT NULL DEFAULT 0,
+			PRIMARY KEY (id, branch_id)
+		);
+		INSERT INTO person_names (id, person_id, given_name, surname, name_prefix, name_suffix, surname_prefix) VALUES
+			('a', 'p', 'Alpha', '', NULL, NULL, NULL),
+			('b', 'p', '', 'Placeholder', 'Rev.', NULL, NULL),
+			('c', 'p', 'Avery', 'Original', 'Dr.', 'Jr.', 'van');
+	`); err != nil {
+		t.Fatalf("create legacy person_names table: %v", err)
+	}
+
+	want := map[string]string{"a": "Alpha", "b": "Rev. Placeholder", "c": "Dr. Avery van Original Jr."}
+	check := func(t *testing.T) {
+		t.Helper()
+		for id, wantName := range want {
+			var got string
+			if err := db.QueryRow(`SELECT full_name FROM person_names WHERE id = ?`, id).Scan(&got); err != nil {
+				t.Fatalf("read full_name for %s: %v", id, err)
+			}
+			if got != wantName {
+				t.Errorf("full_name for %s = %q, want %q", id, got, wantName)
+			}
+		}
+	}
+
+	store, err := sqlite.NewReadModelStore(db)
+	if err != nil {
+		t.Fatalf("open read model over legacy schema: %v", err)
+	}
+	check(t)
+
+	saved := &repository.PersonNameReadModel{ID: uuid.New(), PersonID: uuid.New(), GivenName: "Beta", NameSuffix: "III"}
+	if err := store.SavePersonName(context.Background(), domain.MainBranchID, saved); err != nil {
+		t.Fatalf("save name after migration: %v", err)
+	}
+	want[saved.ID.String()] = "Beta III"
 
 	if _, err := sqlite.NewReadModelStore(db); err != nil {
 		t.Fatalf("reopen migrated read model: %v", err)

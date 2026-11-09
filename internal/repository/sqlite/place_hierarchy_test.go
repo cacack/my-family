@@ -3,6 +3,7 @@ package sqlite_test
 import (
 	"context"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -27,7 +28,9 @@ func TestPlaceHierarchy_Parity(t *testing.T) {
 // whether the place separates parts with "," (as GEDCOM files often do) or ", ",
 // and that a parent only matches whole trailing parts ("New England" is not under
 // "England"). Names sort bytewise on every backend, so a lowercase name sorts
-// after every uppercase one.
+// after every uppercase one. Empty or whitespace-only parts and stray spaces
+// (#925) are skipped, so no level is empty and every node that reports
+// children has some.
 func runPlaceHierarchyScenario(t *testing.T, store repository.ReadModelStore) {
 	t.Helper()
 	ctx := context.Background()
@@ -40,6 +43,10 @@ func runPlaceHierarchyScenario(t *testing.T, store repository.ReadModelStore) {
 		"Springfield, IL",
 		"New England",
 		"Aix,en-Provence",
+		". James,,England",
+		"Leeds,England, ",
+		"Darmstadt,,,Germany",
+		" Bonn , ,Germany",
 	}
 	deaths := []string{
 		"Kensington Palace, London, England",
@@ -72,15 +79,22 @@ func runPlaceHierarchyScenario(t *testing.T, store repository.ReadModelStore) {
 		want   []repository.PlaceEntry
 	}{
 		{"", []repository.PlaceEntry{
-			{Name: "England", FullName: "England", Count: 4, HasChildren: true},
+			{Name: "England", FullName: "England", Count: 6, HasChildren: true},
+			{Name: "Germany", FullName: "Germany", Count: 2, HasChildren: true},
 			{Name: "IL", FullName: "IL", Count: 1, HasChildren: true},
 			{Name: "New England", FullName: "New England", Count: 1, HasChildren: false},
 			{Name: "Poland", FullName: "Poland", Count: 1, HasChildren: true},
 			{Name: "en-Provence", FullName: "en-Provence", Count: 1, HasChildren: true},
 		}},
 		{"England", []repository.PlaceEntry{
+			{Name: ". James", FullName: ". James, England", Count: 1, HasChildren: false},
 			{Name: "Berkshire", FullName: "Berkshire, England", Count: 1, HasChildren: true},
+			{Name: "Leeds", FullName: "Leeds, England", Count: 1, HasChildren: false},
 			{Name: "London", FullName: "London, England", Count: 2, HasChildren: true},
+		}},
+		{"Germany", []repository.PlaceEntry{
+			{Name: "Bonn", FullName: "Bonn, Germany", Count: 1, HasChildren: false},
+			{Name: "Darmstadt", FullName: "Darmstadt, Germany", Count: 1, HasChildren: false},
 		}},
 		{"London, England", []repository.PlaceEntry{
 			{Name: "Kensington Palace", FullName: "Kensington Palace, London, England", Count: 1, HasChildren: false},
@@ -124,4 +138,31 @@ func runPlaceHierarchyScenario(t *testing.T, store repository.ReadModelStore) {
 			}
 		}
 	}
+
+	// Walk the whole tree: no level is blank, and every node that reports
+	// children returns some when asked for them by its full_name.
+	var walk func(parent string)
+	walk = func(parent string) {
+		got, err := store.GetPlaceHierarchy(ctx, domain.MainBranchID, parent)
+		if err != nil {
+			t.Fatalf("GetPlaceHierarchy(%q): %v", parent, err)
+		}
+		for _, e := range got {
+			if strings.TrimSpace(e.Name) == "" {
+				t.Errorf("GetPlaceHierarchy(%q) returned a blank level %+v", parent, e)
+			}
+			if !e.HasChildren {
+				continue
+			}
+			children, err := store.GetPlaceHierarchy(ctx, domain.MainBranchID, e.FullName)
+			if err != nil {
+				t.Fatalf("GetPlaceHierarchy(%q): %v", e.FullName, err)
+			}
+			if len(children) == 0 {
+				t.Errorf("%q reports has_children but GetPlaceHierarchy(%q) is empty", e.FullName, e.FullName)
+			}
+			walk(e.FullName)
+		}
+	}
+	walk("")
 }

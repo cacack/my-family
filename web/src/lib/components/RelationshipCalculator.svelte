@@ -1,12 +1,12 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { api, type RelationshipResult, type Person, type SearchResult, formatPersonName } from '$lib/api/client';
+	import { api, type RelationshipResult, type Person, type SearchResult, formatPersonName } from '#lib/api/client.js';
 	import PersonSelector from './PersonSelector.svelte';
 	import {
 		additionalRelationships,
 		genderedRelationship,
 		relationshipChain
-	} from '$lib/utils/relationship';
+	} from '#lib/utils/relationship.js';
 
 	interface Props {
 		initialPersonA?: Person | null;

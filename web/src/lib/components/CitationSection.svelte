@@ -8,14 +8,14 @@
 		type InformantType,
 		type Source,
 		type SourceQuality
-	} from '$lib/api/client';
-	import { Button } from '$lib/components/ui/button';
-	import FormRow from '$lib/components/FormRow.svelte';
-	import * as Tabs from '$lib/components/ui/tabs';
+	} from '#lib/api/client.js';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import FormRow from '#lib/components/FormRow.svelte';
+	import * as Tabs from '#lib/components/ui/tabs/index.js';
 	import ConflictError from './ConflictError.svelte';
 	import CitationTemplateForm from './CitationTemplateForm.svelte';
-	import { PERSON_FACT_TYPES, formatFactTypeShort } from '$lib/utils/evidence';
-	import { EVIDENCE_TYPE_OPTIONS, INFORMANT_TYPE_OPTIONS, SOURCE_QUALITY_OPTIONS } from '$lib/utils/enumOptions';
+	import { PERSON_FACT_TYPES, formatFactTypeShort } from '#lib/utils/evidence.js';
+	import { EVIDENCE_TYPE_OPTIONS, INFORMANT_TYPE_OPTIONS, SOURCE_QUALITY_OPTIONS } from '#lib/utils/enumOptions.js';
 
 	interface Props {
 		personId: string;
@@ -351,7 +351,7 @@
 			<FormRow>
 				<label>
 					Page
-					<input type="text" bind:value={newCitation.page} placeholder="e.g., 42" />
+					<textarea bind:value={newCitation.page} rows="1" placeholder="e.g., 42"></textarea>
 				</label>
 				<label>
 					Volume
@@ -736,6 +736,8 @@
 	}
 
 	.source-link {
+		/* GEDCOM CONT lines fold into the source title (#1174). */
+		white-space: pre-line;
 		color: var(--color-link);
 		text-decoration: none;
 		font-size: 0.9375rem;
@@ -762,7 +764,11 @@
 	}
 
 	.citation-details span {
+		display: inline-block;
+		vertical-align: top;
 		margin-right: 1rem;
+		/* A GEDCOM PAGE can span CONT lines (#1174). */
+		white-space: pre-line;
 	}
 
 	.quality-badges {

@@ -30,11 +30,11 @@
 		type FamilySummary,
 		type ProofSummaryResponse,
 		type SearchResult
-	} from '$lib/api/client';
-	import PersonSelector from '$lib/components/PersonSelector.svelte';
-	import { Button } from '$lib/components/ui/button';
-	import { Label } from '$lib/components/ui/label';
-	import { Textarea } from '$lib/components/ui/textarea';
+	} from '#lib/api/client.js';
+	import PersonSelector from '#lib/components/PersonSelector.svelte';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import { Label } from '#lib/components/ui/label/index.js';
+	import { Textarea } from '#lib/components/ui/textarea/index.js';
 	import {
 		BRANCH_OUTCOMES,
 		HYPOTHESIS_MAX_LENGTH,
@@ -43,7 +43,7 @@
 		OUTCOME_LABELS,
 		branchOutcome,
 		subjectLabel
-	} from '$lib/utils/branchResearch';
+	} from '#lib/utils/branchResearch.js';
 
 	// Mirrors the maxLength on BranchUpdate.description in openapi.yaml.
 	const DESCRIPTION_MAX_LENGTH = 500;

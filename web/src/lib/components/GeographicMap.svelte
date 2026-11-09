@@ -1,20 +1,20 @@
 <script lang="ts">
 	import { tick, untrack } from 'svelte';
-	import { api, formatPersonName, type MapLocation } from '$lib/api/client';
+	import { api, formatPersonName, type MapLocation } from '#lib/api/client.js';
 	import * as d3 from 'd3';
 	import * as topojson from 'topojson-client';
 	import type { Topology, GeometryCollection as TopoGeometryCollection } from 'topojson-specification';
-	import { motionDuration, observeChartResize } from '$lib/utils/chart';
-	import { getReducedMotion } from '$lib/stores/accessibilitySettings.svelte';
-	import { loadWorldAtlas } from '$lib/utils/worldAtlas';
+	import { motionDuration, observeChartResize } from '#lib/utils/chart.js';
+	import { getReducedMotion } from '#lib/stores/accessibilitySettings.svelte.js';
+	import { loadWorldAtlas } from '#lib/utils/worldAtlas.js';
 	import {
 		clusterKind,
 		clusterLabel,
 		clusterPoints,
 		markerRadius,
 		type MapCluster
-	} from '$lib/utils/mapClusters';
-	import { fitMapProjection, mapHeight } from '$lib/utils/mapProjection';
+	} from '#lib/utils/mapClusters.js';
+	import { fitMapProjection, mapHeight } from '#lib/utils/mapProjection.js';
 	import ErrorState from './ErrorState.svelte';
 
 	// Space kept between a marker's centre and the map edge: the largest marker plus its outline

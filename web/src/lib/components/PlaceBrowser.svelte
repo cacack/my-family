@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { api, type PlaceEntry } from '$lib/api/client';
-	import { setQuery } from '$lib/utils/urlState';
+	import { api, type PlaceEntry } from '#lib/api/client.js';
+	import { setQuery } from '#lib/utils/urlState.js';
 	import ErrorState from './ErrorState.svelte';
 
 	let places: PlaceEntry[] = $state([]);

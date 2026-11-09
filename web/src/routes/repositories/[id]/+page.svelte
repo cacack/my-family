@@ -1,17 +1,17 @@
 <script lang="ts">
-	import MainlineNotice from '$lib/components/MainlineNotice.svelte';
+	import MainlineNotice from '#lib/components/MainlineNotice.svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
-	import { api, isVersionConflict, recordLoadError, type RepositoryDetail, type Address } from '$lib/api/client';
-	import ExternalLinks from '$lib/components/ExternalLinks.svelte';
-	import InfoSection from '$lib/components/InfoSection.svelte';
-	import { Button } from '$lib/components/ui/button';
-	import ActionBar from '$lib/components/ActionBar.svelte';
-	import FormRow from '$lib/components/FormRow.svelte';
-	import ErrorState from '$lib/components/ErrorState.svelte';
-	import ActionError from '$lib/components/ActionError.svelte';
-	import SaveConflict from '$lib/components/SaveConflict.svelte';
-	import { SaveConflictFlow, type ConflictRow } from '$lib/utils/saveConflict.svelte';
+	import { api, isVersionConflict, recordLoadError, type RepositoryDetail, type Address } from '#lib/api/client.js';
+	import ExternalLinks from '#lib/components/ExternalLinks.svelte';
+	import InfoSection from '#lib/components/InfoSection.svelte';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import ActionBar from '#lib/components/ActionBar.svelte';
+	import FormRow from '#lib/components/FormRow.svelte';
+	import ErrorState from '#lib/components/ErrorState.svelte';
+	import ActionError from '#lib/components/ActionError.svelte';
+	import SaveConflict from '#lib/components/SaveConflict.svelte';
+	import { SaveConflictFlow, type ConflictRow } from '#lib/utils/saveConflict.svelte.js';
 
 	let repository: RepositoryDetail | null = $state(null);
 	let loading = $state(true);

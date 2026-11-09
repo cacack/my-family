@@ -486,25 +486,25 @@ func (e ConflictStatus) Valid() bool {
 
 // Defines values for DiscoverySuggestionType.
 const (
-	BrickWallResolved DiscoverySuggestionType = "brick_wall_resolved"
-	MissingData       DiscoverySuggestionType = "missing_data"
-	Orphan            DiscoverySuggestionType = "orphan"
-	QualityGap        DiscoverySuggestionType = "quality_gap"
-	Unassessed        DiscoverySuggestionType = "unassessed"
+	DiscoverySuggestionTypeBrickWallResolved DiscoverySuggestionType = "brick_wall_resolved"
+	DiscoverySuggestionTypeMissingData       DiscoverySuggestionType = "missing_data"
+	DiscoverySuggestionTypeOrphan            DiscoverySuggestionType = "orphan"
+	DiscoverySuggestionTypeQualityGap        DiscoverySuggestionType = "quality_gap"
+	DiscoverySuggestionTypeUnassessed        DiscoverySuggestionType = "unassessed"
 )
 
 // Valid indicates whether the value is a known member of the DiscoverySuggestionType enum.
 func (e DiscoverySuggestionType) Valid() bool {
 	switch e {
-	case BrickWallResolved:
+	case DiscoverySuggestionTypeBrickWallResolved:
 		return true
-	case MissingData:
+	case DiscoverySuggestionTypeMissingData:
 		return true
-	case Orphan:
+	case DiscoverySuggestionTypeOrphan:
 		return true
-	case QualityGap:
+	case DiscoverySuggestionTypeQualityGap:
 		return true
-	case Unassessed:
+	case DiscoverySuggestionTypeUnassessed:
 		return true
 	default:
 		return false
@@ -1647,11 +1647,12 @@ func (e ListPersonsParamsOrder) Valid() bool {
 
 // Defines values for ListPersonsParamsResearchStatus.
 const (
-	ListPersonsParamsResearchStatusCertain  ListPersonsParamsResearchStatus = "certain"
-	ListPersonsParamsResearchStatusPossible ListPersonsParamsResearchStatus = "possible"
-	ListPersonsParamsResearchStatusProbable ListPersonsParamsResearchStatus = "probable"
-	ListPersonsParamsResearchStatusUnknown  ListPersonsParamsResearchStatus = "unknown"
-	ListPersonsParamsResearchStatusUnset    ListPersonsParamsResearchStatus = "unset"
+	ListPersonsParamsResearchStatusCertain    ListPersonsParamsResearchStatus = "certain"
+	ListPersonsParamsResearchStatusPossible   ListPersonsParamsResearchStatus = "possible"
+	ListPersonsParamsResearchStatusProbable   ListPersonsParamsResearchStatus = "probable"
+	ListPersonsParamsResearchStatusUnassessed ListPersonsParamsResearchStatus = "unassessed"
+	ListPersonsParamsResearchStatusUnknown    ListPersonsParamsResearchStatus = "unknown"
+	ListPersonsParamsResearchStatusUnset      ListPersonsParamsResearchStatus = "unset"
 )
 
 // Valid indicates whether the value is a known member of the ListPersonsParamsResearchStatus enum.
@@ -1662,6 +1663,8 @@ func (e ListPersonsParamsResearchStatus) Valid() bool {
 	case ListPersonsParamsResearchStatusPossible:
 		return true
 	case ListPersonsParamsResearchStatusProbable:
+		return true
+	case ListPersonsParamsResearchStatusUnassessed:
 		return true
 	case ListPersonsParamsResearchStatusUnknown:
 		return true
@@ -3164,12 +3167,16 @@ type DataLossItem struct {
 //     about, circa, c., ca., before, after, `between X and Y`,
 //     `from X to Y`, and month names in full, as three letters or as
 //     "Sept". For example `about Sept 1850` is stored as `ABT SEP 1850`.
+//     Era markers may carry periods (`44 B.C.` is stored as `44 BC`), and
+//     an AD marker after a year is dropped (`500 A.D.` is stored as `500`).
 //   - A date phrase in parentheses, such as `(about the time of the war)`,
 //     kept as text.
 //
 // An empty string means no date. Any other text (such as `1850-01-01`
-// or `Sept 5, 1850`), a date without a year, or a date that doesn't
-// exist in the calendar (such as `31 FEB 1900`) is rejected with 400;
+// or `Sept 5, 1850`), a date without a year, a date that doesn't
+// exist in the calendar (such as `31 FEB 1900`, `0 JAN 1850` or year
+// `0`), or a range that ends before it starts (such as
+// `between 1860 and 1850`) is rejected with 400;
 // the error's `details` name the field and say whether the text can be
 // kept as a date phrase. On update, a date identical to the stored value
 // is not re-checked, so an imported date the parser can't read never
@@ -3205,19 +3212,29 @@ type Descendancy struct {
 // DescendancyNode A person node in the descendancy tree
 type DescendancyNode struct {
 	// BirthDate Genealogical date with flexible precision
-	BirthDate *GenDate           `json:"birth_date,omitempty"`
-	Children  *[]DescendancyNode `json:"children,omitempty"`
+	BirthDate *GenDate `json:"birth_date,omitempty"`
+
+	// Children Children grouped by family, in spouse order, and ordered by birth
+	// date (undated last) within each family.
+	Children *[]DescendancyNode `json:"children,omitempty"`
 
 	// DeathDate Genealogical date with flexible precision
 	DeathDate *GenDate `json:"death_date,omitempty"`
-	Gender    *Gender  `json:"gender,omitempty"`
+
+	// FamilyId The family through which this person descends from their parent
+	// node. Matches the family_id of one of the parent's spouses when that
+	// family has a second partner. Absent on the root.
+	FamilyId *openapi_types.UUID `json:"family_id,omitempty"`
+	Gender   *Gender             `json:"gender,omitempty"`
 
 	// Generation Generation level (0 = root, 1 = children, 2 = grandchildren, etc.)
 	Generation *int               `json:"generation,omitempty"`
 	GivenName  *string            `json:"given_name,omitempty"`
 	Id         openapi_types.UUID `json:"id"`
-	Spouses    *[]SpouseInfo      `json:"spouses,omitempty"`
-	Surname    *string            `json:"surname,omitempty"`
+
+	// Spouses Spouses ordered by marriage date, undated last.
+	Spouses *[]SpouseInfo `json:"spouses,omitempty"`
+	Surname *string       `json:"surname,omitempty"`
 }
 
 // DiscoveryFeedResponse defines model for DiscoveryFeedResponse.
@@ -3596,12 +3613,16 @@ type FamilyCreate struct {
 	//   about, circa, c., ca., before, after, `between X and Y`,
 	//   `from X to Y`, and month names in full, as three letters or as
 	//   "Sept". For example `about Sept 1850` is stored as `ABT SEP 1850`.
+	//   Era markers may carry periods (`44 B.C.` is stored as `44 BC`), and
+	//   an AD marker after a year is dropped (`500 A.D.` is stored as `500`).
 	// - A date phrase in parentheses, such as `(about the time of the war)`,
 	//   kept as text.
 	//
 	// An empty string means no date. Any other text (such as `1850-01-01`
-	// or `Sept 5, 1850`), a date without a year, or a date that doesn't
-	// exist in the calendar (such as `31 FEB 1900`) is rejected with 400;
+	// or `Sept 5, 1850`), a date without a year, a date that doesn't
+	// exist in the calendar (such as `31 FEB 1900`, `0 JAN 1850` or year
+	// `0`), or a range that ends before it starts (such as
+	// `between 1860 and 1850`) is rejected with 400;
 	// the error's `details` name the field and say whether the text can be
 	// kept as a date phrase. On update, a date identical to the stored value
 	// is not re-checked, so an imported date the parser can't read never
@@ -3705,12 +3726,16 @@ type FamilyUpdate struct {
 	//   about, circa, c., ca., before, after, `between X and Y`,
 	//   `from X to Y`, and month names in full, as three letters or as
 	//   "Sept". For example `about Sept 1850` is stored as `ABT SEP 1850`.
+	//   Era markers may carry periods (`44 B.C.` is stored as `44 BC`), and
+	//   an AD marker after a year is dropped (`500 A.D.` is stored as `500`).
 	// - A date phrase in parentheses, such as `(about the time of the war)`,
 	//   kept as text.
 	//
 	// An empty string means no date. Any other text (such as `1850-01-01`
-	// or `Sept 5, 1850`), a date without a year, or a date that doesn't
-	// exist in the calendar (such as `31 FEB 1900`) is rejected with 400;
+	// or `Sept 5, 1850`), a date without a year, a date that doesn't
+	// exist in the calendar (such as `31 FEB 1900`, `0 JAN 1850` or year
+	// `0`), or a range that ends before it starts (such as
+	// `between 1860 and 1850`) is rejected with 400;
 	// the error's `details` name the field and say whether the text can be
 	// kept as a date phrase. On update, a date identical to the stored value
 	// is not re-checked, so an imported date the parser can't read never
@@ -3944,12 +3969,16 @@ type LDSOrdinanceCreate struct {
 	//   about, circa, c., ca., before, after, `between X and Y`,
 	//   `from X to Y`, and month names in full, as three letters or as
 	//   "Sept". For example `about Sept 1850` is stored as `ABT SEP 1850`.
+	//   Era markers may carry periods (`44 B.C.` is stored as `44 BC`), and
+	//   an AD marker after a year is dropped (`500 A.D.` is stored as `500`).
 	// - A date phrase in parentheses, such as `(about the time of the war)`,
 	//   kept as text.
 	//
 	// An empty string means no date. Any other text (such as `1850-01-01`
-	// or `Sept 5, 1850`), a date without a year, or a date that doesn't
-	// exist in the calendar (such as `31 FEB 1900`) is rejected with 400;
+	// or `Sept 5, 1850`), a date without a year, a date that doesn't
+	// exist in the calendar (such as `31 FEB 1900`, `0 JAN 1850` or year
+	// `0`), or a range that ends before it starts (such as
+	// `between 1860 and 1850`) is rejected with 400;
 	// the error's `details` name the field and say whether the text can be
 	// kept as a date phrase. On update, a date identical to the stored value
 	// is not re-checked, so an imported date the parser can't read never
@@ -4014,12 +4043,16 @@ type LDSOrdinanceUpdate struct {
 	//   about, circa, c., ca., before, after, `between X and Y`,
 	//   `from X to Y`, and month names in full, as three letters or as
 	//   "Sept". For example `about Sept 1850` is stored as `ABT SEP 1850`.
+	//   Era markers may carry periods (`44 B.C.` is stored as `44 BC`), and
+	//   an AD marker after a year is dropped (`500 A.D.` is stored as `500`).
 	// - A date phrase in parentheses, such as `(about the time of the war)`,
 	//   kept as text.
 	//
 	// An empty string means no date. Any other text (such as `1850-01-01`
-	// or `Sept 5, 1850`), a date without a year, or a date that doesn't
-	// exist in the calendar (such as `31 FEB 1900`) is rejected with 400;
+	// or `Sept 5, 1850`), a date without a year, a date that doesn't
+	// exist in the calendar (such as `31 FEB 1900`, `0 JAN 1850` or year
+	// `0`), or a range that ends before it starts (such as
+	// `between 1860 and 1850`) is rejected with 400;
 	// the error's `details` name the field and say whether the text can be
 	// kept as a date phrase. On update, a date identical to the stored value
 	// is not re-checked, so an imported date the parser can't read never
@@ -4819,12 +4852,16 @@ type PersonCreate struct {
 	//   about, circa, c., ca., before, after, `between X and Y`,
 	//   `from X to Y`, and month names in full, as three letters or as
 	//   "Sept". For example `about Sept 1850` is stored as `ABT SEP 1850`.
+	//   Era markers may carry periods (`44 B.C.` is stored as `44 BC`), and
+	//   an AD marker after a year is dropped (`500 A.D.` is stored as `500`).
 	// - A date phrase in parentheses, such as `(about the time of the war)`,
 	//   kept as text.
 	//
 	// An empty string means no date. Any other text (such as `1850-01-01`
-	// or `Sept 5, 1850`), a date without a year, or a date that doesn't
-	// exist in the calendar (such as `31 FEB 1900`) is rejected with 400;
+	// or `Sept 5, 1850`), a date without a year, a date that doesn't
+	// exist in the calendar (such as `31 FEB 1900`, `0 JAN 1850` or year
+	// `0`), or a range that ends before it starts (such as
+	// `between 1860 and 1850`) is rejected with 400;
 	// the error's `details` name the field and say whether the text can be
 	// kept as a date phrase. On update, a date identical to the stored value
 	// is not re-checked, so an imported date the parser can't read never
@@ -4848,12 +4885,16 @@ type PersonCreate struct {
 	//   about, circa, c., ca., before, after, `between X and Y`,
 	//   `from X to Y`, and month names in full, as three letters or as
 	//   "Sept". For example `about Sept 1850` is stored as `ABT SEP 1850`.
+	//   Era markers may carry periods (`44 B.C.` is stored as `44 BC`), and
+	//   an AD marker after a year is dropped (`500 A.D.` is stored as `500`).
 	// - A date phrase in parentheses, such as `(about the time of the war)`,
 	//   kept as text.
 	//
 	// An empty string means no date. Any other text (such as `1850-01-01`
-	// or `Sept 5, 1850`), a date without a year, or a date that doesn't
-	// exist in the calendar (such as `31 FEB 1900`) is rejected with 400;
+	// or `Sept 5, 1850`), a date without a year, a date that doesn't
+	// exist in the calendar (such as `31 FEB 1900`, `0 JAN 1850` or year
+	// `0`), or a range that ends before it starts (such as
+	// `between 1860 and 1850`) is rejected with 400;
 	// the error's `details` name the field and say whether the text can be
 	// kept as a date phrase. On update, a date identical to the stored value
 	// is not re-checked, so an imported date the parser can't read never
@@ -5026,12 +5067,16 @@ type PersonUpdate struct {
 	//   about, circa, c., ca., before, after, `between X and Y`,
 	//   `from X to Y`, and month names in full, as three letters or as
 	//   "Sept". For example `about Sept 1850` is stored as `ABT SEP 1850`.
+	//   Era markers may carry periods (`44 B.C.` is stored as `44 BC`), and
+	//   an AD marker after a year is dropped (`500 A.D.` is stored as `500`).
 	// - A date phrase in parentheses, such as `(about the time of the war)`,
 	//   kept as text.
 	//
 	// An empty string means no date. Any other text (such as `1850-01-01`
-	// or `Sept 5, 1850`), a date without a year, or a date that doesn't
-	// exist in the calendar (such as `31 FEB 1900`) is rejected with 400;
+	// or `Sept 5, 1850`), a date without a year, a date that doesn't
+	// exist in the calendar (such as `31 FEB 1900`, `0 JAN 1850` or year
+	// `0`), or a range that ends before it starts (such as
+	// `between 1860 and 1850`) is rejected with 400;
 	// the error's `details` name the field and say whether the text can be
 	// kept as a date phrase. On update, a date identical to the stored value
 	// is not re-checked, so an imported date the parser can't read never
@@ -5055,12 +5100,16 @@ type PersonUpdate struct {
 	//   about, circa, c., ca., before, after, `between X and Y`,
 	//   `from X to Y`, and month names in full, as three letters or as
 	//   "Sept". For example `about Sept 1850` is stored as `ABT SEP 1850`.
+	//   Era markers may carry periods (`44 B.C.` is stored as `44 BC`), and
+	//   an AD marker after a year is dropped (`500 A.D.` is stored as `500`).
 	// - A date phrase in parentheses, such as `(about the time of the war)`,
 	//   kept as text.
 	//
 	// An empty string means no date. Any other text (such as `1850-01-01`
-	// or `Sept 5, 1850`), a date without a year, or a date that doesn't
-	// exist in the calendar (such as `31 FEB 1900`) is rejected with 400;
+	// or `Sept 5, 1850`), a date without a year, a date that doesn't
+	// exist in the calendar (such as `31 FEB 1900`, `0 JAN 1850` or year
+	// `0`), or a range that ends before it starts (such as
+	// `between 1860 and 1850`) is rejected with 400;
 	// the error's `details` name the field and say whether the text can be
 	// kept as a date phrase. On update, a date identical to the stored value
 	// is not re-checked, so an imported date the parser can't read never
@@ -5698,12 +5747,16 @@ type SourceCreate struct {
 	//   about, circa, c., ca., before, after, `between X and Y`,
 	//   `from X to Y`, and month names in full, as three letters or as
 	//   "Sept". For example `about Sept 1850` is stored as `ABT SEP 1850`.
+	//   Era markers may carry periods (`44 B.C.` is stored as `44 BC`), and
+	//   an AD marker after a year is dropped (`500 A.D.` is stored as `500`).
 	// - A date phrase in parentheses, such as `(about the time of the war)`,
 	//   kept as text.
 	//
 	// An empty string means no date. Any other text (such as `1850-01-01`
-	// or `Sept 5, 1850`), a date without a year, or a date that doesn't
-	// exist in the calendar (such as `31 FEB 1900`) is rejected with 400;
+	// or `Sept 5, 1850`), a date without a year, a date that doesn't
+	// exist in the calendar (such as `31 FEB 1900`, `0 JAN 1850` or year
+	// `0`), or a range that ends before it starts (such as
+	// `between 1860 and 1850`) is rejected with 400;
 	// the error's `details` name the field and say whether the text can be
 	// kept as a date phrase. On update, a date identical to the stored value
 	// is not re-checked, so an imported date the parser can't read never
@@ -5789,12 +5842,16 @@ type SourceUpdate struct {
 	//   about, circa, c., ca., before, after, `between X and Y`,
 	//   `from X to Y`, and month names in full, as three letters or as
 	//   "Sept". For example `about Sept 1850` is stored as `ABT SEP 1850`.
+	//   Era markers may carry periods (`44 B.C.` is stored as `44 BC`), and
+	//   an AD marker after a year is dropped (`500 A.D.` is stored as `500`).
 	// - A date phrase in parentheses, such as `(about the time of the war)`,
 	//   kept as text.
 	//
 	// An empty string means no date. Any other text (such as `1850-01-01`
-	// or `Sept 5, 1850`), a date without a year, or a date that doesn't
-	// exist in the calendar (such as `31 FEB 1900`) is rejected with 400;
+	// or `Sept 5, 1850`), a date without a year, a date that doesn't
+	// exist in the calendar (such as `31 FEB 1900`, `0 JAN 1850` or year
+	// `0`), or a range that ends before it starts (such as
+	// `between 1860 and 1850`) is rejected with 400;
 	// the error's `details` name the field and say whether the text can be
 	// kept as a date phrase. On update, a date identical to the stored value
 	// is not re-checked, so an imported date the parser can't read never
@@ -5817,7 +5874,9 @@ type SourceUpdate struct {
 
 // SpouseInfo Spouse information in the descendancy tree
 type SpouseInfo struct {
-	Id openapi_types.UUID `json:"id"`
+	// FamilyId The family this spouse shares with the person; children of that family carry the same family_id.
+	FamilyId openapi_types.UUID `json:"family_id"`
+	Id       openapi_types.UUID `json:"id"`
 
 	// MarriageDate Genealogical date with flexible precision
 	MarriageDate *GenDate `json:"marriage_date,omitempty"`
@@ -6892,7 +6951,7 @@ type ListPersonsParams struct {
 	Sort   *ListPersonsParamsSort  `form:"sort,omitempty" json:"sort,omitempty"`
 	Order  *ListPersonsParamsOrder `form:"order,omitempty" json:"order,omitempty"`
 
-	// ResearchStatus Filter by research status
+	// ResearchStatus Filter by research status. `unset` matches persons with no status recorded; `unassessed` matches those and persons marked `unknown`.
 	ResearchStatus *ListPersonsParamsResearchStatus `form:"research_status,omitempty" json:"research_status,omitempty"`
 }
 

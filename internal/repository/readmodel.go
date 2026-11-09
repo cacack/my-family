@@ -493,6 +493,14 @@ type ReadModelStore interface {
 	ListAllFamilyChildren(ctx context.Context, branchID domain.BranchID) ([]FamilyChildReadModel, error)
 	GetChildrenOfFamily(ctx context.Context, branchID domain.BranchID, familyID uuid.UUID) ([]PersonReadModel, error)
 	GetChildFamily(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) (*FamilyReadModel, error)
+	// RenameFamilyMember rewrites the names families denormalize for personID
+	// (partner1/partner2 given name and surname, the child links' names, and the
+	// father/mother name on the pedigree edges of the person's children) on the
+	// rows stored under branchID itself (#1129). It never falls back to or
+	// shadows main's rows: a branch row written only to carry a name would hide
+	// main's later edits to that family from the branch (ADR-005 live overlay),
+	// and a main write never touches a branch's rows (BR-003).
+	RenameFamilyMember(ctx context.Context, branchID domain.BranchID, personID uuid.UUID, givenName, surname string) error
 	SaveFamilyChild(ctx context.Context, branchID domain.BranchID, child *FamilyChildReadModel) error
 	DeleteFamilyChild(ctx context.Context, branchID domain.BranchID, familyID, personID uuid.UUID) error
 
@@ -818,7 +826,7 @@ type PersonNameReadModel struct {
 	PersonID      uuid.UUID       `json:"person_id"`
 	GivenName     string          `json:"given_name"`
 	Surname       string          `json:"surname"`
-	FullName      string          `json:"full_name"`
+	FullName      string          `json:"full_name"` // set by SavePersonName from the parts; see JoinFullName
 	NamePrefix    string          `json:"name_prefix,omitempty"`
 	NameSuffix    string          `json:"name_suffix,omitempty"`
 	SurnamePrefix string          `json:"surname_prefix,omitempty"`
@@ -826,6 +834,13 @@ type PersonNameReadModel struct {
 	NameType      domain.NameType `json:"name_type"`
 	IsPrimary     bool            `json:"is_primary"`
 	UpdatedAt     time.Time       `json:"updated_at"`
+}
+
+// JoinFullName is the name's full name by the one person_names.full_name rule
+// (domain.JoinPersonName). Every store's SavePersonName stores it, whatever
+// FullName the caller passed, so all backends agree (#1130).
+func (n *PersonNameReadModel) JoinFullName() string {
+	return domain.JoinPersonName(n.NamePrefix, n.GivenName, n.SurnamePrefix, n.Surname, n.NameSuffix)
 }
 
 // PersonExternalIDReadModel represents a single GEDCOM 7.0 external identifier
@@ -885,7 +900,7 @@ type ListOptions struct {
 	Sort   string
 	Order  string // "asc" or "desc"
 	// ResearchStatus filters by research_status: certain, probable, possible,
-	// unknown, or "unset" for NULL.
+	// unknown, "unset" for NULL, or "unassessed" for NULL or unknown.
 	ResearchStatus *string
 	// ConflictStatus filters ListEvidenceConflicts by status (open, resolved,
 	// accepted). The predicate applies to each conflict's winning overlay row,

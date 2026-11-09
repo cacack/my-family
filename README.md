@@ -55,14 +55,31 @@ Prerequisites:
 ```bash
 # Install dependencies
 go mod download
-cd web && npm install && cd ..
+npm ci --prefix web
 
-# Build frontend
-cd web && npm run build && cd ..
-
-# Build and run
-go build -o myfamily ./cmd/myfamily
+# Build the frontend, stage it for embedding, and build the binary
+make binary
 ./myfamily serve      # stores data in ./myfamily.db
+```
+
+The binary embeds the frontend from `internal/web/dist`, so a plain `go build` fails with
+`pattern all:dist: no matching files found` until that directory is filled. Without `make`, the
+equivalent steps are:
+
+```bash
+npm run build --prefix web                  # SvelteKit writes web/build
+mkdir -p internal/web/dist
+cp -r web/build/* internal/web/dist/        # what `make embed-assets` does
+go build -o myfamily ./cmd/myfamily
+```
+
+A source build reports `my-family dev (commit: none, built: unknown)` from `./myfamily version`.
+Release builds set these values with linker flags; to stamp your own build, pass them to `go build`:
+
+```bash
+go build -ldflags "-X main.version=$(git describe --tags --always) \
+  -X main.commit=$(git rev-parse --short HEAD) \
+  -X main.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" -o myfamily ./cmd/myfamily
 ```
 
 **Why Node is pinned to 24.** `.nvmrc`, CI and the Dockerfile all read the same version so they

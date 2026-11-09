@@ -1,8 +1,16 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { afterAll, beforeAll, describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, cleanup } from '@testing-library/svelte';
 import PedigreeChart from './PedigreeChart.svelte';
-import type { PedigreeNode } from '$lib/api/client';
-import { FIT_SCALE_RANGE, MIN_CARD_FONT_PX } from '$lib/utils/chart';
+import type { PedigreeNode } from '#lib/api/client.js';
+import { CARD_TEXT_INSET, FIT_SCALE_RANGE, MIN_CARD_FONT_PX } from '#lib/utils/chart.js';
+import { mockTextLength } from '#lib/test/textLength.js';
+
+// Card labels are cut to their measured width (#1213)
+let restoreTextLength: () => void;
+beforeAll(() => {
+	restoreTextLength = mockTextLength();
+});
+afterAll(() => restoreTextLength());
 
 // Mock data for tests
 const mockSinglePerson: PedigreeNode = {
@@ -291,6 +299,18 @@ describe('PedigreeChart', () => {
 		// Should be truncated with an ellipsis
 		const truncatedTexts = textContents.filter((t) => t?.endsWith('…'));
 		expect(truncatedTexts.length).toBeGreaterThan(0);
+	});
+
+	it('fits a 22-character unbroken given name and surname inside the card (#1213)', () => {
+		const person: PedigreeNode = { id: '1', given_name: 'MWOLLSTONECRAFTWHEWELL', surname: 'MWOLLSTONECRAFTWHEWELL' };
+		const { container } = render(PedigreeChart, { props: { data: person } });
+		const width = Number(container.querySelector('.node-card')!.getAttribute('width'));
+		const lines = Array.from(container.querySelectorAll('.node text')).slice(0, 2) as SVGTextElement[];
+		for (const line of lines) {
+			expect(line.textContent).toMatch(/…$/);
+			expect(line.getComputedTextLength()).toBeLessThanOrEqual(width - 2 * CARD_TEXT_INSET);
+		}
+		expect(container.querySelector('.node title')?.textContent).toBe('MWOLLSTONECRAFTWHEWELL MWOLLSTONECRAFTWHEWELL');
 	});
 
 	it('truncates at a word boundary and shows the full name as a tooltip', () => {

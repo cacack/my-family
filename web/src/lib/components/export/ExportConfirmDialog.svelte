@@ -1,7 +1,7 @@
 <script lang="ts">
-	import type { ExportEstimate } from '$lib/api/client';
-	import { Button } from '$lib/components/ui/button';
-	import * as Dialog from '$lib/components/ui/dialog';
+	import type { ExportEstimate } from '#lib/api/client.js';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import * as Dialog from '#lib/components/ui/dialog/index.js';
 
 	interface Props {
 		open: boolean;

@@ -1,14 +1,14 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { api, type CitationTemplate } from '$lib/api/client';
-	import * as Card from '$lib/components/ui/card';
-	import PageHeader from '$lib/components/PageHeader.svelte';
-	import * as Select from '$lib/components/ui/select';
-	import { Badge } from '$lib/components/ui/badge';
-	import { Button } from '$lib/components/ui/button';
-	import { Separator } from '$lib/components/ui/separator';
-	import ErrorState from '$lib/components/ErrorState.svelte';
-	import { setQuery } from '$lib/utils/urlState';
+	import { api, type CitationTemplate } from '#lib/api/client.js';
+	import * as Card from '#lib/components/ui/card/index.js';
+	import PageHeader from '#lib/components/PageHeader.svelte';
+	import * as Select from '#lib/components/ui/select/index.js';
+	import { Badge } from '#lib/components/ui/badge/index.js';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import { Separator } from '#lib/components/ui/separator/index.js';
+	import ErrorState from '#lib/components/ErrorState.svelte';
+	import { setQuery } from '#lib/utils/urlState.js';
 
 	let templates: CitationTemplate[] = $state([]);
 	let loading = $state(true);

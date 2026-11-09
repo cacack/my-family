@@ -6,15 +6,15 @@
 		api,
 		type ValidationIssue,
 		type DuplicatePair
-	} from '$lib/api/client';
-	import { Button } from '$lib/components/ui/button';
-	import { Badge } from '$lib/components/ui/badge';
-	import { Checkbox } from '$lib/components/ui/checkbox';
-	import * as Tabs from '$lib/components/ui/tabs';
-	import SeverityBadge from '$lib/components/SeverityBadge.svelte';
-	import MainlineNotice from '$lib/components/MainlineNotice.svelte';
-	import ErrorState from '$lib/components/ErrorState.svelte';
-	import { clampPageToTotal, readEnum, readPositiveInt, setQuery } from '$lib/utils/urlState';
+	} from '#lib/api/client.js';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import { Badge } from '#lib/components/ui/badge/index.js';
+	import { Checkbox } from '#lib/components/ui/checkbox/index.js';
+	import * as Tabs from '#lib/components/ui/tabs/index.js';
+	import SeverityBadge from '#lib/components/SeverityBadge.svelte';
+	import MainlineNotice from '#lib/components/MainlineNotice.svelte';
+	import ErrorState from '#lib/components/ErrorState.svelte';
+	import { clampPageToTotal, readEnum, readPositiveInt, setQuery } from '#lib/utils/urlState.js';
 
 	const pageSize = 20;
 	const ERROR_MESSAGE_MAX_LEN = 200;

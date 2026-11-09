@@ -1,6 +1,6 @@
 <script lang="ts">
-	import GeographicMap from '$lib/components/GeographicMap.svelte';
-	import PageHeader from '$lib/components/PageHeader.svelte';
+	import GeographicMap from '#lib/components/GeographicMap.svelte';
+	import PageHeader from '#lib/components/PageHeader.svelte';
 </script>
 
 <svelte:head>

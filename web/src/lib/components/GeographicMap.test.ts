@@ -1,17 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import GeographicMap from './GeographicMap.svelte';
-import * as apiModule from '$lib/api/client';
+import * as apiModule from '#lib/api/client.js';
 
-vi.mock('$lib/api/client', async (importOriginal) => {
+vi.mock('#lib/api/client.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof apiModule>();
 	return { ...actual, api: { getMapLocations: vi.fn() } };
 });
 
 // The real bundled outline, unless a test makes it fail
 const atlas = vi.hoisted(() => ({ fail: false }));
-vi.mock('$lib/utils/worldAtlas', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('$lib/utils/worldAtlas')>();
+vi.mock('#lib/utils/worldAtlas.js', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('#lib/utils/worldAtlas.js')>();
 	return {
 		loadWorldAtlas: () =>
 			atlas.fail ? Promise.reject(new Error('blocked')) : actual.loadWorldAtlas()

@@ -487,8 +487,8 @@ func TestResumeMerge_LegacyClaimRefusesExcludingALandedLogsSubject(t *testing.T)
 		t.Fatalf("ResumeMerge(main) error = %v, want ErrMergeDanglingReference", err)
 	}
 	done := e.resume(t, branch.ID, map[uuid.UUID]command.MergeResolution{created.ID: command.ResolveBranch})
-	if done.ReplayedEventCount != 1 {
-		t.Errorf("ReplayedEventCount = %d, want 1 (the person)", done.ReplayedEventCount)
+	if done.ReplayedEventCount != 2 {
+		t.Errorf("ReplayedEventCount = %d, want 2 (the person and its primary name)", done.ReplayedEventCount)
 	}
 	if got := e.mainLog(t, logID); got == nil || got.SubjectID != created.ID {
 		t.Errorf("main log = %+v, want it about the landed person", got)

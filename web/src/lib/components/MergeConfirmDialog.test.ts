@@ -8,7 +8,7 @@ import MergeConfirmDialog, {
 	NOTE_MAX_LENGTH,
 	type MergePlan
 } from './MergeConfirmDialog.svelte';
-import type { Branch, BranchMergeResult, MergeConflict } from '$lib/api/client';
+import type { Branch, BranchMergeResult, MergeConflict } from '#lib/api/client.js';
 
 const branch: Branch = {
 	id: '11111111-1111-1111-1111-111111111111',

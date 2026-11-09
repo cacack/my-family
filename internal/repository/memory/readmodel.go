@@ -9,7 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cacack/gedcom-go/v3/gedcom"
 	"github.com/google/uuid"
 
 	"github.com/cacack/my-family/internal/domain"
@@ -245,8 +244,11 @@ func matchesResearchStatusFilter(p *repository.PersonReadModel, filter *string) 
 	if filter == nil {
 		return true
 	}
-	if *filter == "unset" {
+	switch *filter {
+	case "unset":
 		return p.ResearchStatus == ""
+	case "unassessed":
+		return p.ResearchStatus == "" || p.ResearchStatus == domain.ResearchStatusUnknown
 	}
 	return string(p.ResearchStatus) == *filter
 }
@@ -381,14 +383,6 @@ func (s *ReadModelStore) SearchPersons(ctx context.Context, opts repository.Sear
 	return repository.Page(results, opts.Offset, limit), len(results), nil
 }
 
-// sqlFullName is the alternate-name full name the SQL stores search: their
-// person_names.full_name column is generated as given_name || ' ' || surname,
-// without the prefix, suffix and surname prefix the projection folds into an
-// alternate name's FullName. persons.full_name is domain.JoinFullName instead.
-func sqlFullName(givenName, surname string) string {
-	return givenName + " " + surname
-}
-
 // personMatchesQuery checks if a person matches the text query (or returns true if no query).
 // A plain query matches as PostgreSQL's full_name ILIKE '%' || q || '%' and a
 // fuzzy query is trigram similarity, as PostgreSQL's pg_trgm `%` (DB-005).
@@ -440,7 +434,7 @@ func altNameMatches(name repository.PersonNameReadModel, queryLower string, opts
 	if opts.Fuzzy {
 		return repository.TrigramMatch(queryLower, name.GivenName) ||
 			repository.TrigramMatch(queryLower, name.Surname) ||
-			repository.TrigramMatch(queryLower, sqlFullName(name.GivenName, name.Surname)) ||
+			repository.TrigramMatch(queryLower, domain.JoinFullName(name.GivenName, name.Surname)) ||
 			repository.TrigramMatch(queryLower, name.Nickname)
 	}
 	soundex := opts.Soundex
@@ -508,9 +502,9 @@ func compareTimePtr(a, b *time.Time) int {
 }
 
 // nameMatchesQuery checks if a PersonNameReadModel matches the query, as
-// PostgreSQL's full_name or nickname ILIKE '%' || q || '%'.
+// PostgreSQL's search_name or nickname ILIKE '%' || q || '%'.
 func nameMatchesQuery(name repository.PersonNameReadModel, queryLower string) bool {
-	return repository.ContainsFold(sqlFullName(name.GivenName, name.Surname), queryLower) ||
+	return repository.ContainsFold(domain.JoinFullName(name.GivenName, name.Surname), queryLower) ||
 		repository.ContainsFold(name.Nickname, queryLower)
 }
 
@@ -638,14 +632,8 @@ func (s *ReadModelStore) SavePersonName(ctx context.Context, branchID domain.Bra
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Compute full name if not set
-	fullName := name.FullName
-	if fullName == "" {
-		fullName = name.GivenName + " " + name.Surname
-	}
-
 	nameCopy := *name
-	nameCopy.FullName = fullName
+	nameCopy.FullName = name.JoinFullName()
 
 	// A name saved under a different person than the one the scope currently
 	// files it under has been re-owned (PersonMerged moves the merged person's
@@ -1091,6 +1079,49 @@ func (s *ReadModelStore) GetChildFamily(ctx context.Context, branchID domain.Bra
 		}
 	}
 	return nil, nil
+}
+
+// RenameFamilyMember rewrites personID's partner, child and pedigree parent
+// names on the family rows, child buckets and pedigree edges stored under
+// branchID itself.
+func (s *ReadModelStore) RenameFamilyMember(ctx context.Context, branchID domain.BranchID, personID uuid.UUID, givenName, surname string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for k, f := range s.families {
+		if k.branch != branchID || f == nil {
+			continue
+		}
+		if f.Partner1ID != nil && *f.Partner1ID == personID {
+			f.Partner1GivenName, f.Partner1Surname = givenName, surname
+		}
+		if f.Partner2ID != nil && *f.Partner2ID == personID {
+			f.Partner2GivenName, f.Partner2Surname = givenName, surname
+		}
+	}
+	for k, children := range s.familyChildren {
+		if k.branch != branchID {
+			continue
+		}
+		for i := range children {
+			if children[i].PersonID == personID {
+				children[i].PersonGivenName, children[i].PersonSurname = givenName, surname
+			}
+		}
+	}
+	fullName := domain.JoinFullName(givenName, surname)
+	for k, edge := range s.pedigreeEdges {
+		if k.branch != branchID || edge == nil {
+			continue
+		}
+		if edge.FatherID != nil && *edge.FatherID == personID {
+			edge.FatherName = fullName
+		}
+		if edge.MotherID != nil && *edge.MotherID == personID {
+			edge.MotherName = fullName
+		}
+	}
+	return nil
 }
 
 // SaveFamilyChild saves a family child relationship on the given branch. On a
@@ -2133,9 +2164,9 @@ func (s *ReadModelStore) GetPersonsByPlace(ctx context.Context, place string, op
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	// Match the SQL stores: compare with ", " collapsed to "," so a hierarchy
-	// full_name finds places stored without the space.
-	norm := func(v string) string { return strings.ReplaceAll(v, ", ", ",") }
+	// Match the SQL stores: compare normalized so a hierarchy full_name finds
+	// places stored without the space or with blank parts.
+	norm := repository.NormalizePlace
 	want := norm(place)
 	var results []repository.PersonReadModel
 	for _, p := range resolveAllRows(s.persons, opts.BranchID) {
@@ -2277,9 +2308,7 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 		person := repository.MapPerson{ID: p.ID, GivenName: p.GivenName, Surname: p.Surname}
 		// Birth location
 		if p.BirthPlaceLat != nil && p.BirthPlaceLong != nil && *p.BirthPlaceLat != "" && *p.BirthPlaceLong != "" {
-			lat, errLat := gedcom.ParseCoordinate(*p.BirthPlaceLat)
-			lon, errLon := gedcom.ParseCoordinate(*p.BirthPlaceLong)
-			if errLat == nil && errLon == nil {
+			if lat, lon, ok := repository.ParseMapCoordinates(p.ID, "birth", *p.BirthPlaceLat, *p.BirthPlaceLong); ok {
 				key := locKey{place: p.BirthPlace, eventType: "birth"}
 				if d, ok := agg[key]; ok {
 					d.persons = append(d.persons, person)
@@ -2290,9 +2319,7 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 		}
 		// Death location
 		if p.DeathPlaceLat != nil && p.DeathPlaceLong != nil && *p.DeathPlaceLat != "" && *p.DeathPlaceLong != "" {
-			lat, errLat := gedcom.ParseCoordinate(*p.DeathPlaceLat)
-			lon, errLon := gedcom.ParseCoordinate(*p.DeathPlaceLong)
-			if errLat == nil && errLon == nil {
+			if lat, lon, ok := repository.ParseMapCoordinates(p.ID, "death", *p.DeathPlaceLat, *p.DeathPlaceLong); ok {
 				key := locKey{place: p.DeathPlace, eventType: "death"}
 				if d, ok := agg[key]; ok {
 					d.persons = append(d.persons, person)

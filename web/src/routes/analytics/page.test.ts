@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/svelte';
 import AnalyticsPage from './+page.svelte';
-import * as apiModule from '$lib/api/client';
+import * as apiModule from '#lib/api/client.js';
 
-vi.mock('$lib/api/client', async (importOriginal) => {
+vi.mock('#lib/api/client.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof apiModule>();
 	return {
 		...actual,
@@ -19,7 +19,7 @@ const { branchState } = vi.hoisted(() => ({
 	branchState: { id: null as string | null }
 }));
 
-vi.mock('$lib/stores/activeBranch.svelte', () => ({
+vi.mock('#lib/stores/activeBranch.svelte.js', () => ({
 	activeBranch: branchState
 }));
 
@@ -92,6 +92,23 @@ describe('Completeness (analytics) page', () => {
 		expect(screen.getByText('Missing birth date')).toBeTruthy();
 		expect(screen.getByText('4')).toBeTruthy();
 		expect(screen.getByRole('heading', { name: 'Most Common Issues' })).toBeTruthy();
+	});
+
+	// Unknown and unset were two buckets with different labels (#1110).
+	it('shows unknown and unset as one Not assessed bucket', async () => {
+		vi.mocked(apiModule.api.getQualityOverview).mockResolvedValue(
+			overview({
+				total_persons: 10,
+				research_status_counts: { certain: 1, probable: 0, possible: 0, unknown: 2, unset: 5 }
+			})
+		);
+
+		render(AnalyticsPage);
+
+		const label = await screen.findByText('Not assessed');
+		expect(screen.getAllByText('Not assessed')).toHaveLength(1);
+		expect(screen.queryByText('Unknown')).toBeNull();
+		expect(label.closest('.status-bar-row')?.querySelector('.status-count')?.textContent).toBe('7');
 	});
 
 	it('names itself Completeness and points to Quality for validation and duplicates', async () => {

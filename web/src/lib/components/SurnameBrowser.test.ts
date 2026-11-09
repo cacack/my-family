@@ -1,16 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/svelte';
 import SurnameBrowser from './SurnameBrowser.svelte';
-import * as apiModule from '$lib/api/client';
-import { currentPath, historyLength, resetRouter } from '$lib/test/fakeRouter.svelte';
+import * as apiModule from '#lib/api/client.js';
+import { currentPath, historyLength, resetRouter } from '#lib/test/fakeRouter.svelte.js';
 
-vi.mock('$lib/api/client', async (importOriginal) => {
+vi.mock('#lib/api/client.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof apiModule>();
 	return { ...actual, api: { getSurnameIndex: vi.fn() } };
 });
 
-vi.mock('$app/state', async () => (await import('$lib/test/fakeRouter.svelte')).appState);
-vi.mock('$app/navigation', async () => (await import('$lib/test/fakeRouter.svelte')).appNavigation);
+vi.mock('$app/state', async () => (await import('#lib/test/fakeRouter.svelte.js')).appState);
+vi.mock('$app/navigation', async () => (await import('#lib/test/fakeRouter.svelte.js')).appNavigation);
 
 describe('SurnameBrowser', () => {
 	beforeEach(() => {
@@ -72,5 +72,26 @@ describe('SurnameBrowser', () => {
 		await waitFor(() => expect(currentPath()).toBe('/browse/surnames'));
 		await screen.findByText('Adams');
 		expect(screen.queryByText('Failed to load surnames. Please try again.')).toBeNull();
+	});
+
+	it('leaves people with no surname out of the index, with a note after it (#1120)', async () => {
+		vi.mocked(apiModule.api.getSurnameIndex).mockResolvedValue({
+			items: [
+				{ surname: '', count: 1867 },
+				{ surname: 'Adams', count: 1 }
+			],
+			total: 2,
+			letter_counts: [{ letter: 'A', count: 1 }]
+		});
+		const { container } = render(SurnameBrowser);
+		await screen.findByText('Adams');
+		const links = Array.from(container.querySelectorAll('.surname-grid a'));
+		expect(links.map((a) => a.getAttribute('href'))).toEqual(['/browse/surnames/Adams']);
+		expect(screen.queryByText('(Unknown)')).toBeNull();
+		const note = screen.getByText(/Not listed: 1,867 people with no surname\./);
+		expect(note.closest('a')).toBeNull();
+		expect(container.querySelector('.surname-grid')?.compareDocumentPosition(note)).toBe(
+			Node.DOCUMENT_POSITION_FOLLOWING
+		);
 	});
 });

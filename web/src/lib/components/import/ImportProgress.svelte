@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { ImportProgress } from '$lib/api/client';
+	import type { ImportProgress } from '#lib/api/client.js';
 
 	interface Props {
 		progress: ImportProgress;

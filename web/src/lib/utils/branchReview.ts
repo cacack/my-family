@@ -3,8 +3,8 @@
  * evidence-coverage warning and the branch health. Pure functions, so the
  * panels stay thin and the wording is tested once.
  */
-import type { BranchChangedFact, BranchHealth, BranchValidationIssue } from '$lib/api/client';
-import { formatFactTypeShort } from '$lib/utils/evidence';
+import type { BranchChangedFact, BranchHealth, BranchValidationIssue } from '#lib/api/client.js';
+import { formatFactTypeShort } from '#lib/utils/evidence.js';
 
 function plural(count: number, one: string, many = `${one}s`): string {
 	return `${count} ${count === 1 ? one : many}`;

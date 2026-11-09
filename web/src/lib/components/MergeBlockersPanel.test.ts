@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import MergeBlockersPanel from './MergeBlockersPanel.svelte';
-import type { MergeBlocker } from '$lib/api/client';
+import type { MergeBlocker } from '#lib/api/client.js';
 
 const leaveOut: MergeBlocker = {
 	stream_id: '11111111-1111-1111-1111-111111111111',

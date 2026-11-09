@@ -1,16 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/svelte';
 import CemeteryBrowser from './CemeteryBrowser.svelte';
-import * as apiModule from '$lib/api/client';
-import { currentPath, historyLength, resetRouter } from '$lib/test/fakeRouter.svelte';
+import * as apiModule from '#lib/api/client.js';
+import { currentPath, historyLength, resetRouter } from '#lib/test/fakeRouter.svelte.js';
 
-vi.mock('$lib/api/client', async (importOriginal) => {
+vi.mock('#lib/api/client.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof apiModule>();
 	return { ...actual, api: { getCemeteryIndex: vi.fn() } };
 });
 
-vi.mock('$app/state', async () => (await import('$lib/test/fakeRouter.svelte')).appState);
-vi.mock('$app/navigation', async () => (await import('$lib/test/fakeRouter.svelte')).appNavigation);
+vi.mock('$app/state', async () => (await import('#lib/test/fakeRouter.svelte.js')).appState);
+vi.mock('$app/navigation', async () => (await import('#lib/test/fakeRouter.svelte.js')).appNavigation);
 
 describe('CemeteryBrowser', () => {
 	beforeEach(() => {

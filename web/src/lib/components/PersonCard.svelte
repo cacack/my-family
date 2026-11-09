@@ -1,8 +1,8 @@
 <script lang="ts">
-	import type { Person, PersonSummary } from '$lib/api/client';
-	import { formatGenDate, formatPersonName, formatLifespan } from '$lib/api/client';
+	import type { Person, PersonSummary } from '#lib/api/client.js';
+	import { formatGenDate, formatPersonName, formatLifespan } from '#lib/api/client.js';
 	import UncertaintyBadge from './UncertaintyBadge.svelte';
-	import { Card, CardContent } from '$lib/components/ui/card';
+	import { Card, CardContent } from '#lib/components/ui/card/index.js';
 
 	interface Props {
 		person: Person | PersonSummary;

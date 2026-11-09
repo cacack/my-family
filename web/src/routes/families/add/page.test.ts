@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import AddFamilyPage from './+page.svelte';
-import type * as apiModule from '$lib/api/client';
+import type * as apiModule from '#lib/api/client.js';
 import { goto } from '$app/navigation';
 
 const { createFamily, addChildToFamily, getPerson, searchPersons, pageState } = vi.hoisted(() => ({
@@ -12,7 +12,7 @@ const { createFamily, addChildToFamily, getPerson, searchPersons, pageState } = 
 	pageState: { search: '' }
 }));
 
-vi.mock('$lib/api/client', async (importOriginal) => {
+vi.mock('#lib/api/client.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof apiModule>();
 	return { ...actual, api: { createFamily, addChildToFamily, getPerson, searchPersons } };
 });

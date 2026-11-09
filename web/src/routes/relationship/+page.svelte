@@ -1,10 +1,10 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import { page } from '$app/state';
-	import { api, type Person } from '$lib/api/client';
-	import RelationshipCalculator from '$lib/components/RelationshipCalculator.svelte';
-	import ActionBar from '$lib/components/ActionBar.svelte';
-	import { setQuery } from '$lib/utils/urlState';
+	import { api, type Person } from '#lib/api/client.js';
+	import RelationshipCalculator from '#lib/components/RelationshipCalculator.svelte';
+	import ActionBar from '#lib/components/ActionBar.svelte';
+	import { setQuery } from '#lib/utils/urlState.js';
 
 	// The calculated pair lives in the URL (see urlState.ts), so a result can be
 	// shared, reloaded and reached again with Back.
