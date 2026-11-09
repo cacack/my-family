@@ -237,6 +237,7 @@ four GPS artifact types of #760. Branch
 | Source (#758) | ✅ | ✅ | `createSource` / `updateSource` / `deleteSource` (the delete cascades to the source's external IDs and citations on the branch) |
 | SourceExternalID (#758) | ✅ | ⚠️ | written only by GEDCOM import (main-only); tombstoned by a branch `deleteSource` |
 | Citation (#758) | ✅ | ✅ | `createCitation` / `updateCitation` / `deleteCitation`; the denormalized source title and the source's citation count resolve on the branch. Known gap: bumping the count writes a branch copy of the source, which then hides later main edits to that source on the branch (stale view, tracked in [#815](https://github.com/cacack/my-family/issues/815)) |
+| CitationExternalID (#1175) | ✅ | ⚠️ | written only by GEDCOM import (main-only; an Ancestry `_APID`); tombstoned by a branch `deleteCitation` |
 | Note (#758) | ✅ | ✅ | `createNote` / `updateNote` / `deleteNote` |
 | Media (#759) | ✅ | ✅ | `uploadPersonMedia` / `updateMedia` / `deleteMedia`; metadata only — a branch row stores no copy of the file or thumbnail, which are read from main's row. Also tombstoned by a branch `deletePerson` / `deleteFamily` / `deleteSource` |
 | EvidenceAnalysis (#760) | ✅ | ✅ | `createEvidenceAnalysis` / `updateEvidenceAnalysis` / `deleteEvidenceAnalysis`; the automatic evidence-conflict check compares the analyses the branch sees and records its conflict on the branch. Also tombstoned by a branch `deletePerson` / `deleteFamily` of its subject |

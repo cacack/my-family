@@ -3,6 +3,7 @@ package gedcom_test
 import (
 	"bytes"
 	"context"
+	"maps"
 	"os"
 	"strings"
 	"testing"
@@ -10,6 +11,7 @@ import (
 	gcgedcom "github.com/cacack/gedcom-go/v3/gedcom"
 	"github.com/google/uuid"
 
+	"github.com/cacack/my-family/internal/command"
 	"github.com/cacack/my-family/internal/domain"
 	"github.com/cacack/my-family/internal/gedcom"
 	"github.com/cacack/my-family/internal/repository"
@@ -420,6 +422,66 @@ func externalIDs(ids []domain.ExternalIdentifier) string {
 		parts[i] = id.Value + "|" + id.Type
 	}
 	return strings.Join(parts, ",")
+}
+
+func TestExport_CitationAncestryAPIDRoundTrip(t *testing.T) {
+	// An imported citation _APID is kept as a citation external ID; export
+	// writes it back as _APID at every version, and re-import gives the same
+	// IDs (#1175).
+	data, err := os.ReadFile("../../testdata/gedcom-5.5/ancestry-sample.ged")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	_, _, _, _, citations, _, _, _, _, _, _, _, _, err := gedcom.NewImporter().Import(ctx, bytes.NewReader(data))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+	want := citationExternalIDsByFact(citations)
+	const apidType = "|https://www.ancestry.com/apid"
+	if want[string(domain.FactPersonBirth)] != "1,7602::2771226"+apidType ||
+		want[string(domain.FactPersonDeath)] != "1,9024::12345678"+apidType ||
+		want[string(domain.FactFamilyMarriage)] != "1,5678::87654321"+apidType {
+		t.Fatalf("import citation external IDs = %q, want the APIDs", want)
+	}
+	readStore := memory.NewReadModelStore()
+	if _, err := command.NewHandler(memory.NewEventStore(), readStore).ImportGedcom(ctx, command.ImportGedcomInput{
+		Filename: "ancestry-sample.ged", Reader: bytes.NewReader(data),
+	}); err != nil {
+		t.Fatalf("ImportGedcom failed: %v", err)
+	}
+
+	for _, version := range []gcgedcom.Version{"", gcgedcom.Version551, gcgedcom.Version70} {
+		t.Run("version "+string(version), func(t *testing.T) {
+			buf := &bytes.Buffer{}
+			if _, err := gedcom.NewExporter(readStore).ExportWithOptions(ctx, buf, gedcom.ExportOptions{TargetVersion: version}); err != nil {
+				t.Fatalf("Export failed: %v", err)
+			}
+			output := buf.String()
+			for _, line := range []string{"3 _APID 1,7602::2771226\n", "3 _APID 1,9024::12345678\n", "3 _APID 1,5678::87654321\n"} {
+				if !strings.Contains(output, line) {
+					t.Errorf("export should contain %q; got:\n%s", line, output)
+				}
+			}
+			_, _, _, _, again, _, _, _, _, _, _, _, _, err := gedcom.NewImporter().Import(ctx, strings.NewReader(output))
+			if err != nil {
+				t.Fatalf("Re-import failed: %v", err)
+			}
+			if got := citationExternalIDsByFact(again); !maps.Equal(got, want) {
+				t.Errorf("re-imported citation external IDs = %q, want %q", got, want)
+			}
+		})
+	}
+}
+
+// citationExternalIDsByFact renders each citation's external IDs, keyed by
+// its fact type.
+func citationExternalIDsByFact(citations []gedcom.CitationData) map[string]string {
+	out := map[string]string{}
+	for _, c := range citations {
+		out[c.FactType] = externalIDs(c.ExternalIDs)
+	}
+	return out
 }
 
 func TestNestedNotes_RoundTrip(t *testing.T) {

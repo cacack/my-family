@@ -490,6 +490,30 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 	return result, nil
 }
 
+// citationAncestryAPID returns the citation's Ancestry APID, kept as an
+// external ID of type ancestryAPIDExternalIDType (#1175), for export as
+// _APID; nil when it has none or readStore is nil. The encoder writes only
+// Raw, so a value ParseAPID rejects is still written back unchanged.
+func citationAncestryAPID(ctx context.Context, readStore repository.ReadModelStore, citationID uuid.UUID) *gedcom.AncestryAPID {
+	if readStore == nil {
+		return nil
+	}
+	ids, err := readStore.GetCitationExternalIDs(ctx, domain.MainBranchID, citationID)
+	if err != nil {
+		return nil
+	}
+	for _, ext := range ids {
+		if ext.Type != ancestryAPIDExternalIDType {
+			continue
+		}
+		if apid := gedcom.ParseAPID(ext.Value); apid != nil {
+			return apid
+		}
+		return &gedcom.AncestryAPID{Raw: ext.Value}
+	}
+	return nil
+}
+
 // requiresGEDCOM7 reports whether doc needs GEDCOM 7.0 for anything other
 // than FamilySearch EXIDs on individuals, which the converter maps losslessly
 // to the 5.5.x vendor tag _FSFTID. doc itself is not modified.
@@ -732,7 +756,7 @@ func toGedcomIndividual(p repository.PersonReadModel, sourceXrefs map[uuid.UUID]
 			}
 		}
 		// Citations for birth
-		birthEvent.SourceCitations = toGedcomSourceCitations(birthCitations, sourceXrefs)
+		birthEvent.SourceCitations = toGedcomSourceCitations(birthCitations, sourceXrefs, readStore, ctx)
 		indi.Events = append(indi.Events, birthEvent)
 	}
 
@@ -756,7 +780,7 @@ func toGedcomIndividual(p repository.PersonReadModel, sourceXrefs map[uuid.UUID]
 			}
 		}
 		// Citations for death
-		deathEvent.SourceCitations = toGedcomSourceCitations(deathCitations, sourceXrefs)
+		deathEvent.SourceCitations = toGedcomSourceCitations(deathCitations, sourceXrefs, readStore, ctx)
 		indi.Events = append(indi.Events, deathEvent)
 	}
 
@@ -874,7 +898,8 @@ func toGedcomPersonalName(nm repository.PersonNameReadModel) *gedcom.PersonalNam
 }
 
 // toGedcomSourceCitations converts a slice of CitationReadModel to gedcom.SourceCitation slice.
-func toGedcomSourceCitations(citations []repository.CitationReadModel, sourceXrefs map[uuid.UUID]string) []*gedcom.SourceCitation {
+// readStore supplies each citation's external IDs; it may be nil.
+func toGedcomSourceCitations(citations []repository.CitationReadModel, sourceXrefs map[uuid.UUID]string, readStore repository.ReadModelStore, ctx context.Context) []*gedcom.SourceCitation {
 	var result []*gedcom.SourceCitation
 
 	for _, cit := range citations {
@@ -903,6 +928,8 @@ func toGedcomSourceCitations(citations []repository.CitationReadModel, sourceXre
 				Text: []*gedcom.SourceText{{Value: cit.QuotedText}},
 			}
 		}
+
+		citation.AncestryAPID = citationAncestryAPID(ctx, readStore, cit.ID)
 
 		result = append(result, citation)
 	}
@@ -957,7 +984,7 @@ func toGedcomEvent(event repository.EventReadModel, sourceXrefs map[uuid.UUID]st
 	// Fetch and add citations for this event
 	if readStore != nil {
 		citations, _ := readStore.GetCitationsForFact(ctx, domain.MainBranchID, event.FactType, event.OwnerID)
-		ge.SourceCitations = toGedcomSourceCitations(citations, sourceXrefs)
+		ge.SourceCitations = toGedcomSourceCitations(citations, sourceXrefs, readStore, ctx)
 	}
 
 	return ge
@@ -1041,7 +1068,7 @@ func toGedcomFamily(f repository.FamilyReadModel, personXrefs, sourceXrefs map[u
 			}
 		}
 		// Citations for marriage
-		marriageEvent.SourceCitations = toGedcomSourceCitations(marriageCitations, sourceXrefs)
+		marriageEvent.SourceCitations = toGedcomSourceCitations(marriageCitations, sourceXrefs, readStore, ctx)
 		fam.Events = append(fam.Events, marriageEvent)
 	}
 

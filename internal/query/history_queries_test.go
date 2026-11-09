@@ -208,6 +208,12 @@ func (m *mockReadModelStore) ReplaceSourceExternalIDs(ctx context.Context, branc
 func (m *mockReadModelStore) GetSourceExternalIDs(ctx context.Context, branchID domain.BranchID, sourceID uuid.UUID) ([]repository.SourceExternalIDReadModel, error) {
 	return nil, nil
 }
+func (m *mockReadModelStore) ReplaceCitationExternalIDs(ctx context.Context, branchID domain.BranchID, citationID uuid.UUID, ids []repository.CitationExternalIDReadModel) error {
+	return nil
+}
+func (m *mockReadModelStore) GetCitationExternalIDs(ctx context.Context, branchID domain.BranchID, citationID uuid.UUID) ([]repository.CitationExternalIDReadModel, error) {
+	return nil, nil
+}
 func (m *mockReadModelStore) ReplaceRepositoryExternalIDs(ctx context.Context, repositoryID uuid.UUID, ids []repository.RepositoryExternalIDReadModel) error {
 	return nil
 }

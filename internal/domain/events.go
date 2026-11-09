@@ -469,6 +469,9 @@ type CitationCreated struct {
 	TemplateID    string            `json:"template_id,omitempty"`
 	Fields        map[string]string `json:"fields,omitempty"`
 	GedcomXref    string            `json:"gedcom_xref,omitempty"`
+	// ExternalIDs are vendor identifiers set at import, such as an Ancestry
+	// _APID (#1175).
+	ExternalIDs []ExternalIdentifier `json:"external_ids,omitempty"`
 }
 
 func (e CitationCreated) EventType() string      { return "CitationCreated" }

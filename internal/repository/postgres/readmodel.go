@@ -425,6 +425,22 @@ func (s *ReadModelStore) createTables() error {
 			PRIMARY KEY (source_id, sequence, branch_id)
 		);
 
+		-- Citation external identifiers (#1175), e.g. an Ancestry _APID. Created
+		-- branch-aware: the same per-parent bucket + empty-marker tombstone model
+		-- as source_external_ids, with no FK; DeleteCitation and DeleteSource
+		-- cascade the bucket in code.
+		CREATE TABLE IF NOT EXISTS citation_external_ids (
+			citation_id UUID NOT NULL,
+			sequence INTEGER NOT NULL,
+			branch_id UUID NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000',
+			value TEXT NOT NULL,
+			type TEXT NOT NULL DEFAULT '',
+			deleted BOOLEAN NOT NULL DEFAULT FALSE,
+			PRIMARY KEY (citation_id, sequence, branch_id)
+		);
+
+		CREATE INDEX IF NOT EXISTS idx_citation_external_ids_citation ON citation_external_ids(citation_id, branch_id);
+
 		-- Repository external identifiers (GEDCOM 7.0 EXID)
 		CREATE TABLE IF NOT EXISTS repository_external_ids (
 			repository_id UUID NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
@@ -1215,7 +1231,8 @@ var branchScopedTables = []string{
 	"sources", "source_external_ids", "citations", "notes",
 	"media",
 	"evidence_analyses", "evidence_conflicts", "research_logs", "proof_summaries",
-	"duplicate_dismissals", // #1036; created with its composite key
+	"duplicate_dismissals",  // #1036; created with its composite key
+	"citation_external_ids", // #1175; created with its composite key
 }
 
 // mainBranchDefault is the column default that backfills existing rows to the
@@ -2186,6 +2203,80 @@ func (s *ReadModelStore) GetSourceExternalIDs(ctx context.Context, branchID doma
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate source external ids: %w", err)
+	}
+	return result, nil
+}
+
+// ReplaceCitationExternalIDs replaces all external identifiers for a citation
+// on the given branch within a single transaction (#1175). Same bucket-scoped
+// semantics as ReplaceSourceExternalIDs.
+func (s *ReadModelStore) ReplaceCitationExternalIDs(ctx context.Context, branchID domain.BranchID, citationID uuid.UUID, ids []repository.CitationExternalIDReadModel) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.ExecContext(ctx, "DELETE FROM citation_external_ids WHERE citation_id = $1 AND branch_id = $2", citationID, branchID.UUID()); err != nil {
+		return fmt.Errorf("delete citation external ids: %w", err)
+	}
+	if len(ids) == 0 {
+		if !branchID.IsMain() {
+			if _, err := tx.ExecContext(ctx, `
+				INSERT INTO citation_external_ids (citation_id, sequence, branch_id, value, type, deleted)
+				VALUES ($1, 0, $2, '', '', TRUE)
+			`, citationID, branchID.UUID()); err != nil {
+				return fmt.Errorf("mark empty citation external id bucket: %w", err)
+			}
+		}
+		return tx.Commit()
+	}
+	for i, id := range ids {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO citation_external_ids (citation_id, sequence, branch_id, value, type, deleted)
+			VALUES ($1, $2, $3, $4, $5, FALSE)
+		`, citationID, i, branchID.UUID(), id.Value, id.Type); err != nil {
+			return fmt.Errorf("insert citation external id: %w", err)
+		}
+	}
+	return tx.Commit()
+}
+
+// GetCitationExternalIDs retrieves all external identifiers for a citation
+// within the branch overlay, ordered by their original sequence (#1175).
+// Bucket-scoped resolution, matching GetSourceExternalIDs.
+func (s *ReadModelStore) GetCitationExternalIDs(ctx context.Context, branchID domain.BranchID, citationID uuid.UUID) ([]repository.CitationExternalIDReadModel, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT sequence, value, type FROM citation_external_ids
+		WHERE citation_id = $1 AND NOT deleted AND branch_id = (
+			CASE WHEN EXISTS (SELECT 1 FROM citation_external_ids WHERE citation_id = $1 AND branch_id = $2)
+			     THEN $2 ELSE $3 END)
+		ORDER BY sequence
+	`, citationID, branchID.UUID(), domain.MainBranchID.UUID())
+	if err != nil {
+		return nil, fmt.Errorf("query citation external ids: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var result []repository.CitationExternalIDReadModel
+	for rows.Next() {
+		var (
+			seq   int
+			value string
+			typ   string
+		)
+		if err := rows.Scan(&seq, &value, &typ); err != nil {
+			return nil, fmt.Errorf("scan citation external id: %w", err)
+		}
+		result = append(result, repository.CitationExternalIDReadModel{
+			CitationID: citationID,
+			Sequence:   seq,
+			Value:      value,
+			Type:       typ,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate citation external ids: %w", err)
 	}
 	return result, nil
 }
@@ -3214,6 +3305,15 @@ func (s *ReadModelStore) DeleteSource(ctx context.Context, branchID domain.Branc
 		return err
 	}
 
+	if branchID.IsMain() {
+		// The citations' external-id buckets go with them on main; off main a
+		// tombstoned citation is never read, so its bucket needs no marker.
+		if _, err := tx.ExecContext(ctx, `DELETE FROM citation_external_ids WHERE branch_id = $1 AND citation_id IN
+			(SELECT id FROM citations WHERE branch_id = $1 AND source_id = $2)`,
+			domain.MainBranchID.UUID(), id); err != nil {
+			return fmt.Errorf("delete citation external ids: %w", err)
+		}
+	}
 	if err := cascadeOverlayRows(ctx, tx, "citations", citationSelectCols, sourceCitationsFilter, branchID, id); err != nil {
 		return err
 	}
@@ -3358,13 +3458,27 @@ func (s *ReadModelStore) SaveCitation(ctx context.Context, branchID domain.Branc
 	return nil
 }
 
-// DeleteCitation removes a citation (ADR-005, #758): a real removal on main, a
-// tombstone on a non-main branch. Other branches' rows are untouched.
+// DeleteCitation removes a citation (ADR-005, #758) and its external-id
+// bucket (#1175): a real removal on main, a tombstone on a non-main branch.
+// Other branches' rows are untouched.
 func (s *ReadModelStore) DeleteCitation(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error {
-	if err := deleteOverlayRow(ctx, s.db, "citations", citationSelectCols, branchID, id); err != nil {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if branchID.IsMain() {
+		if _, err := tx.ExecContext(ctx, "DELETE FROM citation_external_ids WHERE citation_id = $1 AND branch_id = $2", id, domain.MainBranchID.UUID()); err != nil {
+			return fmt.Errorf("delete citation external ids: %w", err)
+		}
+	} else if err := tombstoneExternalIDBucket(ctx, tx, "citation_external_ids", "citation_id", id, branchID.UUID()); err != nil {
+		return err
+	}
+	if err := deleteOverlayRow(ctx, tx, "citations", citationSelectCols, branchID, id); err != nil {
 		return fmt.Errorf("delete citation: %w", err)
 	}
-	return nil
+	return tx.Commit()
 }
 
 // Person/family fact tables (#757): life_events, attributes and associations are
