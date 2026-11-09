@@ -12,7 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cacack/gedcom-go/v3/gedcom"
 	"github.com/google/uuid"
 
 	"github.com/cacack/my-family/internal/domain"
@@ -4861,7 +4860,8 @@ func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, branchID domain.
 
 	if parent == "" {
 		// Top-level: get unique countries/top-level places (rightmost part after last comma).
-		// SQLite has no reverse split: RTRIM(place, <every non-comma char>) strips back to
+		// Places are normalized first, so blank parts never form a level (#925).
+		// SQLite has no reverse split: RTRIM(norm, <every non-comma char>) strips back to
 		// the last comma, so the SUBSTR after that prefix is the last part (or the whole
 		// place when it has no comma). The child level uses the same idiom.
 		// Args in statement order: the CTE's binds (off main), then each leg's own
@@ -4875,18 +4875,22 @@ func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, branchID domain.
 				UNION
 				SELECT DISTINCT death_place as place FROM `+src+` WHERE death_place != '' AND death_place IS NOT NULL
 			),
+			normalized AS (
+				SELECT place, `+placeNormFunc+`(place) as norm FROM all_places
+			),
 			parsed AS (
 				SELECT
 					place,
-					TRIM(SUBSTR(place, LENGTH(RTRIM(place, REPLACE(place, ',', ''))) + 1)) as top_level
-				FROM all_places
+					norm,
+					SUBSTR(norm, LENGTH(RTRIM(norm, REPLACE(norm, ',', ''))) + 1) as top_level
+				FROM normalized
 			)
 			SELECT
 				top_level as place_name,
 				top_level as full_name,
 				COUNT(DISTINCT place) as count,
 				CASE
-					WHEN COUNT(DISTINCT place) > (SELECT COUNT(*) FROM parsed p2 WHERE p2.top_level = parsed.top_level AND p2.place = p2.top_level)
+					WHEN COUNT(DISTINCT place) > COUNT(DISTINCT CASE WHEN norm = top_level THEN place END)
 					THEN 1
 					ELSE 0
 				END as has_children
@@ -4897,8 +4901,8 @@ func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, branchID domain.
 		`, args...)
 	} else {
 		// Child level: places whose last parts are parent's parts. parent is a
-		// full_name built with ", " while GEDCOM places may omit the space, so both
-		// sides compare with ", " collapsed to ",". Args in statement order: the
+		// full_name built with ", " while GEDCOM places may omit the space or carry
+		// blank parts, so both sides compare normalized (repository.NormalizePlace). Args in statement order: the
 		// CTE's binds (off main), each leg's own overlay binds (main only), then
 		// the two parent binds.
 		args := append(append([]any{}, cteArgs...), legArgs...)
@@ -4914,8 +4918,8 @@ func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, branchID domain.
 			normalized AS (
 				SELECT
 					place,
-					REPLACE(place, ', ', ',') as norm,
-					REPLACE(?, ', ', ',') as norm_parent
+					`+placeNormFunc+`(place) as norm,
+					`+placeNormFunc+`(?) as norm_parent
 				FROM all_places
 			),
 			parsed AS (
@@ -4973,13 +4977,13 @@ func (s *ReadModelStore) GetPersonsByPlace(ctx context.Context, place string, op
 
 	// Count total - match place at any position in birth_place or death_place.
 	// place is usually a GetPlaceHierarchy full_name (parts joined with ", "), so
-	// both sides compare with ", " collapsed to "," as the hierarchy does.
+	// both sides compare normalized (repository.NormalizePlace) as the hierarchy does.
 	var total int
 	countArgs := append(append([]any{}, overlayArgs...), place, place)
 	err := s.db.QueryRowContext(ctx, `
 		SELECT COUNT(*) FROM `+overlay+`
-		WHERE REPLACE(birth_place, ', ', ',') LIKE '%' || REPLACE(?, ', ', ',') || '%'
-		   OR REPLACE(death_place, ', ', ',') LIKE '%' || REPLACE(?, ', ', ',') || '%'
+		WHERE `+placeNormFunc+`(birth_place) LIKE '%' || `+placeNormFunc+`(?) || '%'
+		   OR `+placeNormFunc+`(death_place) LIKE '%' || `+placeNormFunc+`(?) || '%'
 	`, countArgs...).Scan(&total)
 	if err != nil {
 		return nil, 0, fmt.Errorf("count persons by place: %w", err)
@@ -4994,8 +4998,8 @@ func (s *ReadModelStore) GetPersonsByPlace(ctx context.Context, place string, op
 			   notes, research_status, brick_wall_note, brick_wall_since, brick_wall_resolved_at,
 			   version, updated_at
 		FROM `+overlay+`
-		WHERE REPLACE(birth_place, ', ', ',') LIKE '%' || REPLACE(?, ', ', ',') || '%'
-		   OR REPLACE(death_place, ', ', ',') LIKE '%' || REPLACE(?, ', ', ',') || '%'
+		WHERE `+placeNormFunc+`(birth_place) LIKE '%' || `+placeNormFunc+`(?) || '%'
+		   OR `+placeNormFunc+`(death_place) LIKE '%' || `+placeNormFunc+`(?) || '%'
 		ORDER BY surname ASC, given_name ASC
 		LIMIT ? OFFSET ?
 	`, queryArgs...)
@@ -5141,9 +5145,8 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 		if err != nil {
 			continue
 		}
-		lat, errLat := gedcom.ParseCoordinate(latStr)
-		lon, errLon := gedcom.ParseCoordinate(lonStr)
-		if errLat != nil || errLon != nil {
+		lat, lon, ok := repository.ParseMapCoordinates(personID, "birth", latStr, lonStr)
+		if !ok {
 			continue
 		}
 		person := repository.MapPerson{ID: personID, GivenName: givenName, Surname: surname}
@@ -5181,9 +5184,8 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 		if err != nil {
 			continue
 		}
-		lat, errLat := gedcom.ParseCoordinate(latStr)
-		lon, errLon := gedcom.ParseCoordinate(lonStr)
-		if errLat != nil || errLon != nil {
+		lat, lon, ok := repository.ParseMapCoordinates(personID, "death", latStr, lonStr)
+		if !ok {
 			continue
 		}
 		person := repository.MapPerson{ID: personID, GivenName: givenName, Surname: surname}
