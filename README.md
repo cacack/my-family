@@ -129,11 +129,12 @@ read model is out of sync. To repair it, stop the server, back up the database, 
 replays the whole event log into it, keeping brick walls, the one value that is not in the log.
 The rebuild refuses to start while a server is running against the same database, and the
 server refuses to start while a rebuild is running; on SQLite the lock is a `.lock` file next to
-the database file. If the rebuild is interrupted, `serve` keeps warning; run `myfamily rebuild`
+the database file, and on PostgreSQL a session advisory lock, so `DATABASE_URL` must not go
+through PgBouncer in transaction or statement pooling mode. If the rebuild is interrupted, `serve` keeps warning; run `myfamily rebuild`
 again and it restores the brick walls from what it saved before the reset. GEDCOM place
 coordinates and external IDs are in the log only for files imported by a version that has
-`myfamily rebuild`: a rebuild drops them from entities imported by an earlier version, so
-re-import those files afterwards.
+`myfamily rebuild`: a rebuild drops them from entities imported by an earlier version, logs a
+warning with how many it dropped, and those files must be re-imported afterwards.
 
 ## API Endpoints
 

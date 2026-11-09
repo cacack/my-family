@@ -61,6 +61,9 @@ func TestRebuildReadModel_KeepsBrickWalls(t *testing.T) {
 	if p == nil || p.BrickWallNote != "stuck" || p.BrickWallSince == nil {
 		t.Errorf("person after rebuild = %+v, want the brick wall kept", p)
 	}
+	if result.DroppedImported != 0 {
+		t.Errorf("DroppedImported = %d, want 0", result.DroppedImported)
+	}
 }
 
 // TestRebuildReadModel_DoesNotCarryOverUnloggedImportFields proves the rebuild
@@ -84,8 +87,12 @@ func TestRebuildReadModel_DoesNotCarryOverUnloggedImportFields(t *testing.T) {
 		t.Fatalf("save exid: %v", err)
 	}
 
-	if _, err := s.rebuild(t, s.read); err != nil {
+	result, err := s.rebuild(t, s.read)
+	if err != nil {
 		t.Fatalf("rebuild: %v", err)
+	}
+	if result.DroppedImported != 2 {
+		t.Errorf("DroppedImported = %d, want the coordinate and the EXID reported (#1251)", result.DroppedImported)
 	}
 	if p, _ := s.read.GetPerson(ctx, domain.MainBranchID, person.ID); p == nil || p.BirthPlaceLat != nil {
 		t.Errorf("person after rebuild = %+v, want it back without the unlogged coordinate", p)
@@ -115,7 +122,8 @@ func TestRebuildReadModel_DropsRowsTheLogDoesNotExplain(t *testing.T) {
 // failingRead fails the named operation.
 type failingRead struct {
 	*memory.ReadModelStore
-	fail string
+	fail     string
+	didReset bool
 }
 
 func (f *failingRead) err(op string) error {
@@ -129,7 +137,22 @@ func (f *failingRead) ResetReadModel(ctx context.Context) error {
 	if err := f.err("reset"); err != nil {
 		return err
 	}
+	f.didReset = true
 	return f.ReadModelStore.ResetReadModel(ctx)
+}
+
+// ListRepositories fails as "list repositories" always, or as "recount" once
+// the read model has been reset.
+func (f *failingRead) ListRepositories(ctx context.Context, opts repository.ListOptions) ([]repository.RepositoryReadModel, int, error) {
+	if err := f.err("list repositories"); err != nil {
+		return nil, 0, err
+	}
+	if f.didReset {
+		if err := f.err("recount"); err != nil {
+			return nil, 0, err
+		}
+	}
+	return f.ReadModelStore.ListRepositories(ctx, opts)
 }
 
 func (f *failingRead) ListPersons(ctx context.Context, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
@@ -179,7 +202,7 @@ func (f *failingRead) RecordProjectionFailure(ctx context.Context, failure repos
 
 func TestRebuildReadModel_ReportsStoreErrors(t *testing.T) {
 	for _, op := range []string{
-		"reset", "list persons", "restore", "get state", "save state", "clear state",
+		"reset", "list persons", "list repositories", "restore", "get state", "save state", "clear state",
 	} {
 		t.Run(op, func(t *testing.T) {
 			ctx := context.Background()
@@ -197,6 +220,25 @@ func TestRebuildReadModel_ReportsStoreErrors(t *testing.T) {
 				t.Fatalf("rebuild error = %v, want the injected %q failure", err, op)
 			}
 		})
+	}
+}
+
+// TestRebuildReadModel_RecountFailureIsOnlyLogged proves the check for
+// dropped coordinates and EXIDs after the replay does not fail a rebuild that
+// otherwise succeeded (#1251).
+func TestRebuildReadModel_RecountFailureIsOnlyLogged(t *testing.T) {
+	ctx := context.Background()
+	s := newRebuildStores()
+	h := command.NewHandlerWithBranches(s.events, s.read, s.branches, s.snapshots)
+	if _, err := h.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ada", Surname: "Example"}); err != nil {
+		t.Fatalf("create person: %v", err)
+	}
+	result, err := s.rebuild(t, &failingRead{ReadModelStore: s.read, fail: "recount"})
+	if err != nil {
+		t.Fatalf("rebuild error = %v, want the failed recount only logged", err)
+	}
+	if result.DroppedImported != 0 {
+		t.Errorf("DroppedImported = %d, want 0 when the recount failed", result.DroppedImported)
 	}
 }
 

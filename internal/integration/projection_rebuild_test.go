@@ -135,8 +135,8 @@ func TestProjectionFailure_RecordedAndRepairedByRebuild(t *testing.T) {
 			if err != nil {
 				t.Fatalf("rebuild: %v", err)
 			}
-			if result.Events == 0 || result.LastPosition == 0 {
-				t.Errorf("rebuild result = %+v, want events replayed", result)
+			if result.Events == 0 || result.LastPosition == 0 || result.DroppedImported != 0 {
+				t.Errorf("rebuild result = %+v, want events replayed and no logged coordinate or EXID dropped", result)
 			}
 
 			row, err := st.read.GetPerson(ctx, domain.MainBranchID, broken.ID)

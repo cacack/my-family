@@ -58,6 +58,11 @@ type RebuildResult struct {
 	Failed int
 	// LastPosition is the log position of the last event replayed.
 	LastPosition int64
+	// DroppedImported is how many main-branch coordinates and EXIDs the read
+	// model held before the reset but not after the replay. They belong to
+	// entities imported before #1225, whose events do not carry them; the
+	// rebuild does not restore them yet (#1251), so it warns when it drops any.
+	DroppedImported int
 }
 
 // rebuildPageSize is how many log events RebuildReadModel reads per page.
@@ -98,6 +103,10 @@ func RebuildReadModel(ctx context.Context, events EventStore, rs ReadModelStore,
 	if err != nil {
 		return result, err
 	}
+	importedBefore, err := countImportedValues(ctx, rs)
+	if err != nil {
+		return result, fmt.Errorf("count coordinates and EXIDs: %w", err)
+	}
 	state, err := json.Marshal(kept)
 	if err != nil {
 		return result, fmt.Errorf("encode rebuild state: %w", err)
@@ -117,6 +126,9 @@ func RebuildReadModel(ctx context.Context, events EventStore, rs ReadModelStore,
 	var restoreErr error
 	if ctx.Err() == nil {
 		restoreErr = kept.restore(ctx, rs)
+	}
+	if ctx.Err() == nil {
+		reportDroppedImported(ctx, rs, importedBefore, &result)
 	}
 	if err := errors.Join(replayErr, restoreErr); err != nil {
 		return result, err
@@ -244,4 +256,91 @@ func (k *unloggedFields) restore(ctx context.Context, rs ReadModelStore) error {
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// countImportedValues counts the coordinates and EXIDs on main-branch rows.
+func countImportedValues(ctx context.Context, rs ReadModelStore) (int, error) {
+	n := 0
+	persons, err := ListAll(ctx, rebuildPageSize, rs.ListPersons)
+	if err != nil {
+		return 0, fmt.Errorf("list persons: %w", err)
+	}
+	for i := range persons {
+		p := &persons[i]
+		n += countSet(p.BirthPlaceLat, p.BirthPlaceLong, p.DeathPlaceLat, p.DeathPlaceLong)
+		ids, err := rs.GetPersonExternalIDs(ctx, domain.MainBranchID, p.ID)
+		if err != nil {
+			return 0, fmt.Errorf("person %s exids: %w", p.ID, err)
+		}
+		n += len(ids)
+	}
+	lifeEvents, err := ListAll(ctx, rebuildPageSize, rs.ListEvents)
+	if err != nil {
+		return 0, fmt.Errorf("list life events: %w", err)
+	}
+	for i := range lifeEvents {
+		n += countSet(lifeEvents[i].PlaceLat, lifeEvents[i].PlaceLong)
+	}
+	families, err := ListAll(ctx, rebuildPageSize, rs.ListFamilies)
+	if err != nil {
+		return 0, fmt.Errorf("list families: %w", err)
+	}
+	for i := range families {
+		ids, err := rs.GetFamilyExternalIDs(ctx, domain.MainBranchID, families[i].ID)
+		if err != nil {
+			return 0, fmt.Errorf("family %s exids: %w", families[i].ID, err)
+		}
+		n += len(ids)
+	}
+	sources, err := ListAll(ctx, rebuildPageSize, rs.ListSources)
+	if err != nil {
+		return 0, fmt.Errorf("list sources: %w", err)
+	}
+	for i := range sources {
+		ids, err := rs.GetSourceExternalIDs(ctx, domain.MainBranchID, sources[i].ID)
+		if err != nil {
+			return 0, fmt.Errorf("source %s exids: %w", sources[i].ID, err)
+		}
+		n += len(ids)
+	}
+	repos, err := ListAll(ctx, rebuildPageSize, rs.ListRepositories)
+	if err != nil {
+		return 0, fmt.Errorf("list repositories: %w", err)
+	}
+	for i := range repos {
+		ids, err := rs.GetRepositoryExternalIDs(ctx, repos[i].ID)
+		if err != nil {
+			return 0, fmt.Errorf("repository %s exids: %w", repos[i].ID, err)
+		}
+		n += len(ids)
+	}
+	return n, nil
+}
+
+func countSet(values ...*string) int {
+	n := 0
+	for _, v := range values {
+		if v != nil {
+			n++
+		}
+	}
+	return n
+}
+
+// reportDroppedImported recounts the coordinates and EXIDs after the replay
+// and warns if fewer are left than before the reset (#1251). A recount that
+// fails is only logged: the replay is done, and the count is advisory.
+func reportDroppedImported(ctx context.Context, rs ReadModelStore, before int, result *RebuildResult) {
+	after, err := countImportedValues(ctx, rs)
+	if err != nil {
+		slog.Warn("could not check whether the rebuild dropped imported coordinates or EXIDs", "error", err)
+		return
+	}
+	if after >= before {
+		return
+	}
+	result.DroppedImported = before - after
+	slog.Warn("the rebuild dropped imported place coordinates or EXIDs that the event log does not carry "+
+		"(entities imported before #1225); re-import the GEDCOM file to restore them",
+		"dropped", result.DroppedImported)
 }
