@@ -203,6 +203,38 @@ describe('PedigreeChart', () => {
 		expect(wideRect?.getAttribute('width')).toBe('160'); // Wide card width
 	});
 
+	it('keeps at least 8px between cards of different families in compact layout', () => {
+		const person = (id: string, father?: PedigreeNode, mother?: PedigreeNode): PedigreeNode => ({
+			id,
+			given_name: id,
+			surname: 'Doe',
+			father,
+			mother
+		});
+		// Both grandparent couples: the father's mother and mother's father sit side by side
+		const data = person(
+			'1',
+			person('2', person('4'), person('5')),
+			person('3', person('6'), person('7'))
+		);
+		const { container } = render(PedigreeChart, { props: { data, layout: 'compact' } });
+
+		const rows = new Map<number, number[]>();
+		for (const node of container.querySelectorAll('.node')) {
+			const [, x, y] = node.getAttribute('transform')!.match(/translate\(([-\d.]+),([-\d.]+)\)/)!;
+			rows.set(Number(y), [...(rows.get(Number(y)) ?? []), Number(x)]);
+		}
+		const cardWidth = Number(container.querySelector('.node rect')!.getAttribute('width'));
+		const gaps = [...rows.values()].flatMap((xs) =>
+			xs
+				.sort((a, b) => a - b)
+				.slice(1)
+				.map((x, i) => x - xs[i] - cardWidth)
+		);
+		expect(gaps.length).toBeGreaterThan(0);
+		expect(Math.min(...gaps)).toBeGreaterThanOrEqual(8);
+	});
+
 	it('renders name text in nodes', () => {
 		const { container } = render(PedigreeChart, { props: { data: mockSinglePerson } });
 		const texts = container.querySelectorAll('.node text');

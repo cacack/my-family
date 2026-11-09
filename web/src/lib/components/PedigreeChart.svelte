@@ -25,9 +25,10 @@
 
 	// cousinSeparation must be >= cardWidth/(cardWidth+horizontalGap) to avoid overlap
 	// compact: 120/128 = 0.94, standard: 140/160 = 0.88, wide: 160/200 = 0.80
+	// compact goes past 1 so cards of different families keep >= 8px apart (128 * 1.05 - 120 = 14.4)
 	// verticalGap must be >= TOGGLE_OFFSET + TOGGLE_HIT_RADIUS so a toggle never covers the card below
 	const LAYOUTS: Record<LayoutMode, LayoutConfig> = {
-		compact: { cardWidth: 120, cardHeight: 65, horizontalGap: 8, verticalGap: 32, cousinSeparation: 0.95 },
+		compact: { cardWidth: 120, cardHeight: 65, horizontalGap: 8, verticalGap: 32, cousinSeparation: 1.05 },
 		standard: { cardWidth: 140, cardHeight: 75, horizontalGap: 20, verticalGap: 40, cousinSeparation: 0.9 },
 		wide: { cardWidth: 160, cardHeight: 80, horizontalGap: 40, verticalGap: 50, cousinSeparation: 0.85 }
 	};
