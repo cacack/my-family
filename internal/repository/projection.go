@@ -2730,7 +2730,18 @@ func (p *Projector) projectImportedValuesBackfilled(ctx context.Context, e domai
 		person.BirthPlaceLat, person.BirthPlaceLong = e.BirthPlaceLat, e.BirthPlaceLong
 		person.DeathPlaceLat, person.DeathPlaceLong = e.DeathPlaceLat, e.DeathPlaceLong
 		person.Version = version
-		if err := p.readStore.SavePerson(ctx, branchID, person); err != nil || len(e.ExternalIDs) == 0 {
+		if err := p.readStore.SavePerson(ctx, branchID, person); err != nil {
+			return err
+		}
+		if err := p.backfillBranchCopies(ctx, branchID, func(ctx context.Context, b domain.BranchID) error {
+			row, err := p.readStore.GetPerson(ctx, b, e.EntityID)
+			if err != nil || row == nil || countSet(row.BirthPlaceLat, row.BirthPlaceLong, row.DeathPlaceLat, row.DeathPlaceLong) > 0 {
+				return err
+			}
+			row.BirthPlaceLat, row.BirthPlaceLong = e.BirthPlaceLat, e.BirthPlaceLong
+			row.DeathPlaceLat, row.DeathPlaceLong = e.DeathPlaceLat, e.DeathPlaceLong
+			return p.readStore.SavePerson(ctx, b, row)
+		}); err != nil || len(e.ExternalIDs) == 0 {
 			return err
 		}
 		return p.readStore.ReplacePersonExternalIDs(ctx, branchID, e.EntityID, externalIDRows(e.ExternalIDs,
@@ -2744,7 +2755,17 @@ func (p *Projector) projectImportedValuesBackfilled(ctx context.Context, e domai
 		}
 		event.PlaceLat, event.PlaceLong = e.PlaceLat, e.PlaceLong
 		event.Version = version
-		return p.readStore.SaveEvent(ctx, branchID, event)
+		if err := p.readStore.SaveEvent(ctx, branchID, event); err != nil {
+			return err
+		}
+		return p.backfillBranchCopies(ctx, branchID, func(ctx context.Context, b domain.BranchID) error {
+			row, err := p.readStore.GetEvent(ctx, b, e.EntityID)
+			if err != nil || row == nil || countSet(row.PlaceLat, row.PlaceLong) > 0 {
+				return err
+			}
+			row.PlaceLat, row.PlaceLong = e.PlaceLat, e.PlaceLong
+			return p.readStore.SaveEvent(ctx, b, row)
+		})
 	case domain.BackfillFamily:
 		family, err := p.readStore.GetFamily(ctx, branchID, e.EntityID)
 		if err != nil || family == nil {
@@ -2787,4 +2808,29 @@ func (p *Projector) projectImportedValuesBackfilled(ctx context.Context, e domai
 	default:
 		return fmt.Errorf("imported values backfill names unknown entity type %q", e.EntityType)
 	}
+}
+
+// backfillBranchCopies runs patch on every research branch once a backfill has
+// set main's row (#1254). A branch's first edit of a person or life event
+// copies main's row into a branch row of its own. If that copy was made by a
+// replay before the backfill set main's coordinates, it lacks them, though
+// the branch never changed them (no event but the backfill does). With main's
+// row already set, a branch whose row has no coordinates must have such a
+// copy, since a branch without one reads main's row; patch fills those in and
+// leaves every other branch alone. EXIDs need no patch: a branch without its
+// own EXIDs reads main's.
+func (p *Projector) backfillBranchCopies(ctx context.Context, branchID domain.BranchID, patch func(context.Context, domain.BranchID) error) error {
+	if !branchID.IsMain() || p.branchStore == nil {
+		return nil
+	}
+	branches, err := p.branchStore.List(ctx)
+	if err != nil {
+		return fmt.Errorf("list branches for the backfill: %w", err)
+	}
+	for _, b := range branches {
+		if err := patch(ctx, domain.BranchID(b.ID)); err != nil {
+			return fmt.Errorf("backfill branch %s: %w", b.ID, err)
+		}
+	}
+	return nil
 }

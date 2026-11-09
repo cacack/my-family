@@ -211,6 +211,83 @@ func TestRebuild_BackfillsValuesOnlyTheReadModelHeld(t *testing.T) {
 	}
 }
 
+// TestRebuild_BackfillsBranchCopiesOfPreImportValues covers a research branch
+// that edited a person imported before #1225: the edit copied main's row,
+// coordinates included, into a branch row. A rebuild replays that edit before
+// the backfill restores main's coordinates, so the backfill must fill in the
+// branch's copy as well (#1254). A branch that never touched the person reads
+// main's row.
+func TestRebuild_BackfillsBranchCopiesOfPreImportValues(t *testing.T) {
+	for _, backend := range backends {
+		t.Run(backend.name, func(t *testing.T) {
+			ctx := context.Background()
+			src := setupMemory(t)
+			srcHandler := command.NewHandlerWithBranches(src.events, src.read, src.branches, src.snapshots)
+			if _, err := srcHandler.ImportGedcom(ctx, command.ImportGedcomInput{Filename: "t.ged", Reader: strings.NewReader(replayGedcom)}); err != nil {
+				t.Fatalf("import: %v", err)
+			}
+			st := backend.setup(t)
+			copyLogWithoutImportedValues(t, ctx, src.events, st.events)
+			replayLog(t, ctx, st.events, st.read)
+			copyImportedFields(t, ctx, src.read, st.read)
+
+			h := command.NewHandlerWithBranches(st.events, st.read, st.branches, st.snapshots)
+			john := findPerson(t, ctx, st.read, "John")
+			edited, err := h.CreateBranch(ctx, "edited", "")
+			if err != nil {
+				t.Fatalf("create branch: %v", err)
+			}
+			untouched, err := h.CreateBranch(ctx, "untouched", "")
+			if err != nil {
+				t.Fatalf("create branch: %v", err)
+			}
+			notes := "checked the census"
+			onBranch, _ := st.read.GetPerson(ctx, domain.BranchID(edited.ID), john.ID)
+			if _, err := h.WithBranch(edited).UpdatePerson(ctx, command.UpdatePersonInput{ID: john.ID, Notes: &notes, Version: onBranch.Version}); err != nil {
+				t.Fatalf("edit on branch: %v", err)
+			}
+			want := []*string{john.BirthPlaceLat, john.BirthPlaceLong, john.DeathPlaceLat, john.DeathPlaceLong}
+			for _, b := range []*domain.Branch{edited, untouched} {
+				p, _ := st.read.GetPerson(ctx, domain.BranchID(b.ID), john.ID)
+				if p == nil || canonicalRowJSON(t, []*string{p.BirthPlaceLat, p.BirthPlaceLong, p.DeathPlaceLat, p.DeathPlaceLong}) != canonicalRowJSON(t, want) {
+					t.Fatalf("precondition: John on branch %s before the rebuild = %+v, want main's coordinates", b.Name, p)
+				}
+			}
+
+			if _, err := repository.RebuildReadModel(ctx, st.events, st.read, st.branches, st.snapshots); err != nil {
+				t.Fatalf("rebuild: %v", err)
+			}
+			for _, b := range []*domain.Branch{edited, untouched} {
+				p, err := st.read.GetPerson(ctx, domain.BranchID(b.ID), john.ID)
+				if err != nil || p == nil || canonicalRowJSON(t, []*string{p.BirthPlaceLat, p.BirthPlaceLong, p.DeathPlaceLat, p.DeathPlaceLong}) != canonicalRowJSON(t, want) {
+					t.Errorf("John on branch %s after the rebuild = %+v, %v; want main's coordinates", b.Name, p, err)
+				}
+			}
+			if p, _ := st.read.GetPerson(ctx, domain.BranchID(edited.ID), john.ID); p == nil || p.Notes != notes {
+				t.Errorf("John on branch edited after the rebuild = %+v, want the branch's edit kept", p)
+			}
+			if p, _ := st.read.GetPerson(ctx, domain.MainBranchID, john.ID); p == nil || p.Notes == notes {
+				t.Errorf("John on main after the rebuild = %+v, want the branch's edit kept off main", p)
+			}
+		})
+	}
+}
+
+func findPerson(t *testing.T, ctx context.Context, rs repository.ReadModelStore, given string) repository.PersonReadModel {
+	t.Helper()
+	persons, err := repository.ListAll(ctx, 100, rs.ListPersons)
+	if err != nil {
+		t.Fatalf("list persons: %v", err)
+	}
+	for _, p := range persons {
+		if p.GivenName == given {
+			return p
+		}
+	}
+	t.Fatalf("no person named %s", given)
+	return repository.PersonReadModel{}
+}
+
 // copyLogWithoutImportedValues appends every event of from's log to to, with
 // the coordinates and EXIDs that #1225 added to the created events removed.
 func copyLogWithoutImportedValues(t *testing.T, ctx context.Context, from, to repository.EventStore) {

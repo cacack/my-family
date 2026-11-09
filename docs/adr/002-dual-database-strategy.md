@@ -165,7 +165,10 @@ Implemented in `internal/storage` (`storage.Open`), which `serve` calls at start
   reproduces them. For an entity imported before that change, whose created
   event lacks them, the rebuild appends an `ImportedValuesBackfilled` event
   carrying the read model's values before the reset, so the log holds them
-  from then on ([#1251](https://github.com/cacack/my-family/issues/1251)). The
+  from then on ([#1251](https://github.com/cacack/my-family/issues/1251)).
+  Its projection also fills in a research branch's own copy of the person or
+  life event when the replay made that copy before main had the coordinates
+  ([#1254](https://github.com/cacack/my-family/issues/1254)). The
   brick walls are also saved in the `rebuild_state` table, which the
   reset keeps, and every event is decoded before the reset. A rebuild that
   stops after the reset (an error, Ctrl-C, a crash) therefore leaves that row
