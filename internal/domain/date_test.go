@@ -1,7 +1,9 @@
 package domain
 
 import (
+	"encoding/json"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -433,6 +435,23 @@ func TestValidateDate(t *testing.T) {
 		// dual year 1750/51 is early 1751, after 1750.
 		{input: "BET 1750/51 AND 1750", wantErr: "is a reversed range: 1750/51 is after 1750;"},
 		{input: "@#DJULIAN@ BET 1700 AND 1690", wantErr: "is a reversed range: 1700 is after 1690;"},
+		// Endpoints in different calendars are compared in Gregorian (#1227).
+		// The message names each endpoint's calendar, so the years read.
+		{input: "BET @#DJULIAN@ 1700 AND @#DGREGORIAN@ 1690", wantErr: "is a reversed range: Julian 1700 is after Gregorian 1690;"},
+		{input: "FROM 10 JAN 1701 TO @#DJULIAN@ 25 DEC 1700", wantErr: "is a reversed range: Gregorian 10 JAN 1701 is after Julian 25 DEC 1700;"},
+		// Hebrew 5500 ends in September 1740, before 1741 starts.
+		{input: "BET 1741 AND @#DHEBREW@ 5500", wantErr: "is a reversed range: Gregorian 1741 is after Hebrew 5500;"},
+		// A partial end covers its whole year or month in its own calendar:
+		// Hebrew 5500 is Sep 1739 to Sep 1740, French Republican year 2 is
+		// Sep 1793 to Sep 1794, Julian DEC 1700 runs to 10 JAN 1701.
+		{input: "BET 1740 AND @#DHEBREW@ 5500"},
+		{input: "BET JUN 1740 AND @#DHEBREW@ 5500"},
+		{input: "FROM 1794 TO @#DFRENCH R@ 2"},
+		{input: "BET 5 JAN 1701 AND @#DJULIAN@ DEC 1700"},
+		{input: "BET @#DJULIAN@ 1690 AND @#DGREGORIAN@ 1700"},
+		// Julian 25 DEC 1700 is Gregorian 5 JAN 1701: in order, though its
+		// Julian year is earlier.
+		{input: "BET 1 JAN 1701 AND @#DJULIAN@ 25 DEC 1700"},
 		{input: "BET 44 BC AND 10 BC"},
 		{input: "BET 1 MAR 1850 AND 1 MAR 1850"},
 		{input: "BET JAN 1850 AND 1850"},
@@ -542,6 +561,11 @@ func TestNormalizeDateInput(t *testing.T) {
 		{input: "1 Jan 0", wantErr: `"1 Jan 0" is not a real calendar date (there is no year 0`},
 		{input: "0 Jan 1850", wantErr: `"0 Jan 1850" is not a real calendar date (day must be 1-31, got 0)`},
 		{input: "between 1860 and 1850", wantErr: `"between 1860 and 1850" is a reversed range: 1860 is after 1850`},
+		{input: "BET @#DJULIAN@ 1700 AND @#DGREGORIAN@ 1690", wantErr: "is a reversed range"},
+		{input: "BET @#DJULIAN@ 1690 AND @#DGREGORIAN@ 1700", want: "BET @#DJULIAN@ 1690 AND @#DGREGORIAN@ 1700"},
+		{input: "BET 1740 AND @#DHEBREW@ 5500", want: "BET 1740 AND @#DHEBREW@ 5500"},
+		{input: "FROM 1794 TO @#DFRENCH R@ 2", want: "FROM 1794 TO @#DFRENCH R@ 2"},
+		{input: "BET 5 JAN 1701 AND @#DJULIAN@ DEC 1700", want: "BET 5 JAN 1701 AND @#DJULIAN@ DEC 1700"},
 		// GEDCOM input is stored in GEDCOM case.
 		{input: "1 jan 1850", want: "1 JAN 1850"},
 		{input: "ABT 1850", want: "ABT 1850"},
@@ -847,4 +871,76 @@ func ptrStr(p *int) string {
 		return "nil"
 	}
 	return string(rune(*p + '0'))
+}
+
+// TestGenDate_UnmarshalJSON_LegacyRangeEndEscape: a range whose end carries
+// its own calendar escape was stored before Calendar2 existed (#1239) without
+// Calendar2. The payloads are exactly what pre-#1227 ParseGenDate stored: an
+// unescaped start took the end's calendar for the whole date (year2 read as a
+// Hebrew year), and an escaped start kept its calendar but lost the end year.
+// Decoding re-reads them from Raw, so replay sorts them by their real start.
+func TestGenDate_UnmarshalJSON_LegacyRangeEndEscape(t *testing.T) {
+	tests := []struct {
+		legacy            string
+		cal, cal2         string
+		year, year2, sort int
+	}{
+		{
+			legacy: `{"raw":"BET 1740 AND @#DHEBREW@ 5500","qualifier":"bet","year":1740,"year2":5500,"calendar":"DHEBREW"}`,
+			cal:    CalendarGregorian, cal2: CalendarHebrew, year: 1740, year2: 5500, sort: 1740,
+		},
+		{
+			legacy: `{"raw":"BET @#DJULIAN@ 1690 AND @#DGREGORIAN@ 1700","qualifier":"bet","year":1690,"calendar":"DJULIAN"}`,
+			cal:    CalendarJulian, cal2: CalendarGregorian, year: 1690, year2: 1700, sort: 1690,
+		},
+	}
+	for _, tt := range tests {
+		var gd GenDate
+		if err := json.Unmarshal([]byte(tt.legacy), &gd); err != nil {
+			t.Fatalf("Unmarshal(%s): %v", tt.legacy, err)
+		}
+		if gd.Calendar != tt.cal || !intPtrEqual(gd.Year, intPtr(tt.year)) ||
+			gd.Calendar2 != tt.cal2 || !intPtrEqual(gd.Year2, intPtr(tt.year2)) {
+			t.Errorf("Unmarshal(%s) = %+v, want %s %d to %s %d", tt.legacy, gd, tt.cal, tt.year, tt.cal2, tt.year2)
+			continue
+		}
+		if y := gd.SortDate().Year(); y != tt.sort {
+			t.Errorf("Unmarshal(%s): SortDate year = %d, want %d", tt.legacy, y, tt.sort)
+		}
+		var raw struct{ Raw string }
+		_ = json.Unmarshal([]byte(tt.legacy), &raw)
+		if gd.Raw != raw.Raw {
+			t.Errorf("Raw = %q, want %q unchanged", gd.Raw, raw.Raw)
+		}
+	}
+}
+
+// TestGenDate_UnmarshalJSON_Unchanged: dates without an escape on the range
+// end, or already stored with Calendar2, decode exactly as stored, even when
+// the stored parts differ from what Raw would parse to.
+func TestGenDate_UnmarshalJSON_Unchanged(t *testing.T) {
+	for _, stored := range []GenDate{
+		ParseGenDate("@#DJULIAN@ BET 1690 AND 1700"),
+		ParseGenDate("BET @#DJULIAN@ 1690 AND @#DGREGORIAN@ 1700"),
+		ParseGenDate("@#DHEBREW@ 15 NSN 5785"),
+		ParseGenDate("INT 1850 (about eighteen fifty)"),
+		{Raw: "1850", Qualifier: DateAbout, Year: intPtr(1851)},
+		{},
+	} {
+		data, err := json.Marshal(stored)
+		if err != nil {
+			t.Fatalf("Marshal: %v", err)
+		}
+		var got GenDate
+		if err := json.Unmarshal(data, &got); err != nil {
+			t.Fatalf("Unmarshal(%s): %v", data, err)
+		}
+		if !reflect.DeepEqual(got, stored) {
+			t.Errorf("Unmarshal(%s) = %+v, want %+v", data, got, stored)
+		}
+	}
+	var gd GenDate
+	if err := json.Unmarshal([]byte(`{"raw":1}`), &gd); err == nil {
+		t.Error("Unmarshal of a non-string raw: want an error")
+	}
 }
