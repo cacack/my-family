@@ -35,4 +35,15 @@ describe('CitationSection', () => {
 		expect(values.every((v) => v.startsWith('person_'))).toBe(true);
 		expect(select.value).toBe('person_birth');
 	});
+
+	// A GEDCOM PAGE can span CONT lines; a text input would strip the breaks (#1174).
+	it('edits the page in a textarea that keeps line breaks', async () => {
+		render(CitationSection, { props: { personId: 'p-1' } });
+		await fireEvent.click(await screen.findByRole('button', { name: 'Add Citation' }));
+
+		const page = screen.getByLabelText('Page') as HTMLTextAreaElement;
+		expect(page.tagName).toBe('TEXTAREA');
+		await fireEvent.input(page, { target: { value: 'Folio 12\nEntry 3' } });
+		expect(page.value).toBe('Folio 12\nEntry 3');
+	});
 });

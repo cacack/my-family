@@ -351,7 +351,7 @@
 			<FormRow>
 				<label>
 					Page
-					<input type="text" bind:value={newCitation.page} placeholder="e.g., 42" />
+					<textarea bind:value={newCitation.page} rows="1" placeholder="e.g., 42"></textarea>
 				</label>
 				<label>
 					Volume
@@ -736,6 +736,8 @@
 	}
 
 	.source-link {
+		/* GEDCOM CONT lines fold into the source title (#1174). */
+		white-space: pre-line;
 		color: var(--color-link);
 		text-decoration: none;
 		font-size: 0.9375rem;
@@ -762,7 +764,11 @@
 	}
 
 	.citation-details span {
+		display: inline-block;
+		vertical-align: top;
 		margin-right: 1rem;
+		/* A GEDCOM PAGE can span CONT lines (#1174). */
+		white-space: pre-line;
 	}
 
 	.quality-badges {

@@ -92,6 +92,8 @@
 		color: #1e293b;
 		/* Wrap, never truncate: the card is the only place the full text shows. */
 		overflow-wrap: anywhere;
+		/* GEDCOM CONT lines fold into the title (#1174). */
+		white-space: pre-line;
 	}
 
 	.meta {
@@ -103,6 +105,8 @@
 	}
 
 	.author {
+		/* GEDCOM CONT lines fold into the author (#1174). */
+		white-space: pre-line;
 		font-size: 0.8125rem;
 		color: var(--color-text-muted);
 	}

@@ -278,18 +278,18 @@
 					</label>
 					<label>
 						<span>Title <span class="required">*</span></span>
-						<input type="text" bind:value={newSource.title} required />
+						<textarea bind:value={newSource.title} rows="2" required></textarea>
 					</label>
 				</FormRow>
 
 				<FormRow>
 					<label>
 						Author
-						<input type="text" bind:value={newSource.author} />
+						<textarea bind:value={newSource.author} rows="2"></textarea>
 					</label>
 					<label>
 						Publisher
-						<input type="text" bind:value={newSource.publisher} />
+						<textarea bind:value={newSource.publisher} rows="2"></textarea>
 					</label>
 				</FormRow>
 

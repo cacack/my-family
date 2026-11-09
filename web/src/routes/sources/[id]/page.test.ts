@@ -114,3 +114,32 @@ describe('Source detail page: save conflict (#939)', () => {
 		expect(screen.queryByText(/changed elsewhere/)).toBeNull();
 	});
 });
+
+// GEDCOM CONT/CONC lines fold into these fields; a text input would strip the breaks (#1174).
+describe('Source detail page: multi-line fields (#1174)', () => {
+	const api = apiModule.api;
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
+
+	it('saves an unchanged multi-line title, author and publisher with their line breaks', async () => {
+		const multiline = {
+			title: 'Parish register\nSt Mary, Kent',
+			author: 'Church of England\nDiocese of Canterbury',
+			publisher: 'Kent Archives\nMaidstone'
+		};
+		vi.mocked(api.getSource).mockResolvedValue(source(multiline));
+		vi.mocked(api.updateSource).mockResolvedValue({} as apiModule.Source);
+		render(SourcePage);
+
+		await fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+		for (const label of [/^Title/, 'Author', 'Publisher']) {
+			expect(screen.getByLabelText(label).tagName).toBe('TEXTAREA');
+		}
+		await fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+
+		await waitFor(() => expect(api.updateSource).toHaveBeenCalledTimes(1));
+		expect(vi.mocked(api.updateSource).mock.calls[0][1]).toMatchObject(multiline);
+	});
+});

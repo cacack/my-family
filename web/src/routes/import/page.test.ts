@@ -9,7 +9,8 @@ vi.mock('#lib/api/client.js', async (importOriginal) => {
 		...actual,
 		api: {
 			importGedcomStream: vi.fn(),
-			getExportEstimate: vi.fn()
+			getExportEstimate: vi.fn(),
+			exportPersons: vi.fn()
 		}
 	};
 });
@@ -109,5 +110,28 @@ describe('Import & Export page', () => {
 		await fireEvent.click(screen.getByRole('button', { name: /Import File/ }));
 
 		await waitFor(() => expect(apiModule.api.getExportEstimate).toHaveBeenCalledTimes(2));
+	});
+
+	it('sends CSV fields in the picker order, not the tick order (#1125)', async () => {
+		vi.mocked(apiModule.api.exportPersons).mockResolvedValue('id,given_name,surname\n');
+		URL.createObjectURL = vi.fn(() => 'blob:x');
+		URL.revokeObjectURL = vi.fn();
+		vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+		render(ImportPage);
+
+		await fireEvent.click(screen.getByRole('radio', { name: 'People' }));
+		await fireEvent.click(screen.getByRole('radio', { name: 'CSV' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Select None' }));
+		for (const name of ['Surname', 'ID', 'Given Name']) {
+			await fireEvent.click(screen.getByRole('checkbox', { name }));
+		}
+		// Untick and retick a field in the middle.
+		await fireEvent.click(screen.getByRole('checkbox', { name: 'Given Name' }));
+		await fireEvent.click(screen.getByRole('checkbox', { name: 'Given Name' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Export People as CSV' }));
+
+		await waitFor(() =>
+			expect(apiModule.api.exportPersons).toHaveBeenCalledWith('csv', ['id', 'given_name', 'surname'])
+		);
 	});
 });
