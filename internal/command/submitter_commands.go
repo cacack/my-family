@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/google/uuid"
 
@@ -110,25 +111,32 @@ func (h *Handler) UpdateSubmitter(ctx context.Context, input UpdateSubmitterInpu
 		return nil, repository.ErrConcurrencyConflict
 	}
 
-	// Build changes map
+	// Build changes map. A field equal to its current value is not a change
+	// (the edit form sends every field), so only differing fields are recorded.
 	changes := make(map[string]any)
 
 	if input.Name != nil && *input.Name != current.Name {
 		changes["name"] = *input.Name
 	}
-	if input.Address != nil {
+	// A submitter with no address compares as an empty one, so a form that
+	// sends a blank address for it records no change.
+	var currentAddress domain.Address
+	if current.Address != nil {
+		currentAddress = *current.Address
+	}
+	if input.Address != nil && *input.Address != currentAddress {
 		changes["address"] = input.Address
 	}
-	if input.Phone != nil {
+	if input.Phone != nil && !slices.Equal(input.Phone, current.Phone) {
 		changes["phone"] = input.Phone
 	}
-	if input.Email != nil {
+	if input.Email != nil && !slices.Equal(input.Email, current.Email) {
 		changes["email"] = input.Email
 	}
 	if input.Language != nil && *input.Language != current.Language {
 		changes["language"] = *input.Language
 	}
-	if input.MediaID != nil {
+	if input.MediaID != nil && !ptrEqual(input.MediaID, current.MediaID) {
 		changes["media_id"] = input.MediaID
 	}
 

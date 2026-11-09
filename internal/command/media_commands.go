@@ -138,7 +138,8 @@ func (h *Handler) UpdateMedia(ctx context.Context, input UpdateMediaInput) (*Upd
 		return nil, repository.ErrConcurrencyConflict
 	}
 
-	// Build changes map
+	// Build changes map. A field equal to its current value is not a change
+	// (the edit form sends every field), so only differing fields are recorded.
 	changes := make(map[string]any)
 
 	if input.Title != nil && *input.Title != current.Title {
@@ -150,16 +151,16 @@ func (h *Handler) UpdateMedia(ctx context.Context, input UpdateMediaInput) (*Upd
 	if input.MediaType != nil && string(current.MediaType) != *input.MediaType {
 		changes["media_type"] = *input.MediaType
 	}
-	if input.CropLeft != nil {
+	if input.CropLeft != nil && !ptrEqual(input.CropLeft, current.CropLeft) {
 		changes["crop_left"] = *input.CropLeft
 	}
-	if input.CropTop != nil {
+	if input.CropTop != nil && !ptrEqual(input.CropTop, current.CropTop) {
 		changes["crop_top"] = *input.CropTop
 	}
-	if input.CropWidth != nil {
+	if input.CropWidth != nil && !ptrEqual(input.CropWidth, current.CropWidth) {
 		changes["crop_width"] = *input.CropWidth
 	}
-	if input.CropHeight != nil {
+	if input.CropHeight != nil && !ptrEqual(input.CropHeight, current.CropHeight) {
 		changes["crop_height"] = *input.CropHeight
 	}
 
@@ -178,6 +179,15 @@ func (h *Handler) UpdateMedia(ctx context.Context, input UpdateMediaInput) (*Upd
 	}
 
 	return &UpdateMediaResult{Version: version}, nil
+}
+
+// ptrEqual reports whether two optional values hold the same value, treating
+// two nils as equal.
+func ptrEqual[T comparable](a, b *T) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
 }
 
 // DeleteMedia deletes a media record.

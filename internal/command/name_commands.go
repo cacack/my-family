@@ -192,6 +192,12 @@ func (h *Handler) UpdateName(ctx context.Context, input UpdateNameInput) (*Updat
 	pn := personNameFromReadModel(existingName)
 	applyNameUpdates(pn, input)
 
+	// The edit form sends every field, so a submit that changes nothing
+	// appends no event.
+	if *pn == *personNameFromReadModel(existingName) {
+		return &UpdateNameResult{ID: pn.ID, PersonID: input.PersonID, IsPrimary: pn.IsPrimary}, nil
+	}
+
 	if err := pn.Validate(); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidInput, err)
 	}
