@@ -1612,30 +1612,28 @@ func extractAttributesFromIndividual(indi *gedcom.Individual, personID uuid.UUID
 
 	// RESI decodes into indi.Events and is imported as a life event
 	// (extractEventsFromIndividual), not here, so it is stored once. The
-	// attributes are read from the individual's top-level tags.
-	// Note: These are top-level tags that may not have DATE/PLAC subordinates accessible
-	for _, tag := range indi.Tags {
+	// attributes are read from indi.Attributes, which gedcom-go fills from the
+	// level-1 attribute lines only, with their DATE and PLAC (#1275). The raw
+	// indi.Tags would also yield nested lines such as OBJE.TITL or BAPM.RELI.
+	// Attribute tags with no person fact type (DSCR, NATI, CAST, PROP, SSN,
+	// IDNO, NCHI, NMR, FACT) are not imported.
+	for _, ga := range indi.Attributes {
 		var factType domain.FactType
-		var value string
 
-		switch tag.Tag {
-		case "OCCU":
+		switch ga.Type {
+		case gedcom.AttributeOccupation:
 			factType = domain.FactPersonOccupation
-			value = tag.Value
-		case "EDUC":
+		case gedcom.AttributeEducation:
 			factType = domain.FactPersonEducation
-			value = tag.Value
-		case "RELI":
+		case gedcom.AttributeReligion:
 			factType = domain.FactPersonReligion
-			value = tag.Value
-		case "TITL":
+		case gedcom.AttributeTitle:
 			factType = domain.FactPersonTitle
-			value = tag.Value
 		default:
 			continue
 		}
 
-		if value == "" {
+		if ga.Value == "" {
 			continue
 		}
 
@@ -1643,7 +1641,9 @@ func extractAttributesFromIndividual(indi *gedcom.Individual, personID uuid.UUID
 			ID:       uuid.New(),
 			PersonID: personID,
 			FactType: factType,
-			Value:    value,
+			Value:    ga.Value,
+			Date:     ga.Date,
+			Place:    ga.PlaceName(),
 		}
 
 		attributes = append(attributes, attr)

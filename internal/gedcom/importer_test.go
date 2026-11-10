@@ -1404,6 +1404,44 @@ func TestImportAttributesExtraction(t *testing.T) {
 	}
 }
 
+// A TITL, RELI, OCCU or EDUC nested under another structure is not a person
+// attribute; a level-1 attribute keeps its own DATE and PLAC (#1275).
+func TestImportAttributes_NestedTagsIgnoredAndSubordinatesKept(t *testing.T) {
+	gedcomData := `0 HEAD
+1 GEDC
+2 VERS 5.5.1
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME A /B/
+1 OBJE
+2 FILE x.jpg
+2 TITL Portrait
+1 BAPM
+2 RELI Catholic
+1 CENS
+2 OCCU Farmhand
+2 EDUC None
+1 OCCU Blacksmith
+2 DATE 1860
+2 PLAC Springfield
+0 TRLR
+`
+	importer := gedcom.NewImporter()
+	_, _, _, _, _, _, _, attributes, _, _, _, _, _, err := importer.Import(context.Background(), strings.NewReader(gedcomData))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+
+	if len(attributes) != 1 {
+		t.Fatalf("attributes = %+v, want only the level-1 OCCU", attributes)
+	}
+	a := attributes[0]
+	if a.FactType != domain.FactPersonOccupation || a.Value != "Blacksmith" || a.Date != "1860" || a.Place != "Springfield" {
+		t.Errorf("attribute = {%s %q date %q place %q}, want {%s \"Blacksmith\" date \"1860\" place \"Springfield\"}",
+			a.FactType, a.Value, a.Date, a.Place, domain.FactPersonOccupation)
+	}
+}
+
 func TestImportFamilyEventsExtraction(t *testing.T) {
 	gedcomData := `0 HEAD
 1 GEDC
