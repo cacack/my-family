@@ -1321,6 +1321,7 @@ func (p *Projector) projectLifeEventCreated(ctx context.Context, e domain.LifeEv
 		Age:         e.Age,
 		IsNegated:   e.IsNegated,
 		Notes:       e.Notes,
+		TypeDetail:  e.TypeDetail,
 		Version:     version,
 		CreatedAt:   e.OccurredAt(),
 	}

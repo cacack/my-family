@@ -563,24 +563,36 @@ const (
 	FactTypeFamilyMarriageContract   FactType = "family_marriage_contract"
 	FactTypeFamilyMarriageLicense    FactType = "family_marriage_license"
 	FactTypeFamilyMarriageSettlement FactType = "family_marriage_settlement"
+	FactTypePersonAdoption           FactType = "person_adoption"
+	FactTypePersonAdultChristening   FactType = "person_adult_christening"
 	FactTypePersonBaptism            FactType = "person_baptism"
+	FactTypePersonBarMitzvah         FactType = "person_bar_mitzvah"
+	FactTypePersonBasMitzvah         FactType = "person_bas_mitzvah"
 	FactTypePersonBirth              FactType = "person_birth"
+	FactTypePersonBlessing           FactType = "person_blessing"
 	FactTypePersonBurial             FactType = "person_burial"
 	FactTypePersonCensus             FactType = "person_census"
 	FactTypePersonChristening        FactType = "person_christening"
+	FactTypePersonConfirmation       FactType = "person_confirmation"
 	FactTypePersonCremation          FactType = "person_cremation"
 	FactTypePersonDeath              FactType = "person_death"
 	FactTypePersonEducation          FactType = "person_education"
 	FactTypePersonEmigration         FactType = "person_emigration"
+	FactTypePersonFirstCommunion     FactType = "person_first_communion"
 	FactTypePersonGender             FactType = "person_gender"
 	FactTypePersonGenericEvent       FactType = "person_generic_event"
+	FactTypePersonGraduation         FactType = "person_graduation"
 	FactTypePersonImmigration        FactType = "person_immigration"
 	FactTypePersonName               FactType = "person_name"
 	FactTypePersonNaturalization     FactType = "person_naturalization"
 	FactTypePersonOccupation         FactType = "person_occupation"
+	FactTypePersonOrdination         FactType = "person_ordination"
+	FactTypePersonProbate            FactType = "person_probate"
 	FactTypePersonReligion           FactType = "person_religion"
 	FactTypePersonResidence          FactType = "person_residence"
+	FactTypePersonRetirement         FactType = "person_retirement"
 	FactTypePersonTitle              FactType = "person_title"
+	FactTypePersonWill               FactType = "person_will"
 )
 
 // Valid indicates whether the value is a known member of the FactType enum.
@@ -602,15 +614,27 @@ func (e FactType) Valid() bool {
 		return true
 	case FactTypeFamilyMarriageSettlement:
 		return true
+	case FactTypePersonAdoption:
+		return true
+	case FactTypePersonAdultChristening:
+		return true
 	case FactTypePersonBaptism:
 		return true
+	case FactTypePersonBarMitzvah:
+		return true
+	case FactTypePersonBasMitzvah:
+		return true
 	case FactTypePersonBirth:
+		return true
+	case FactTypePersonBlessing:
 		return true
 	case FactTypePersonBurial:
 		return true
 	case FactTypePersonCensus:
 		return true
 	case FactTypePersonChristening:
+		return true
+	case FactTypePersonConfirmation:
 		return true
 	case FactTypePersonCremation:
 		return true
@@ -620,9 +644,13 @@ func (e FactType) Valid() bool {
 		return true
 	case FactTypePersonEmigration:
 		return true
+	case FactTypePersonFirstCommunion:
+		return true
 	case FactTypePersonGender:
 		return true
 	case FactTypePersonGenericEvent:
+		return true
+	case FactTypePersonGraduation:
 		return true
 	case FactTypePersonImmigration:
 		return true
@@ -632,11 +660,19 @@ func (e FactType) Valid() bool {
 		return true
 	case FactTypePersonOccupation:
 		return true
+	case FactTypePersonOrdination:
+		return true
+	case FactTypePersonProbate:
+		return true
 	case FactTypePersonReligion:
 		return true
 	case FactTypePersonResidence:
 		return true
+	case FactTypePersonRetirement:
+		return true
 	case FactTypePersonTitle:
+		return true
+	case FactTypePersonWill:
 		return true
 	default:
 		return false

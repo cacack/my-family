@@ -5576,6 +5576,18 @@ components:
         - person_immigration
         - person_naturalization
         - person_census
+        - person_adoption
+        - person_bar_mitzvah
+        - person_bas_mitzvah
+        - person_blessing
+        - person_adult_christening
+        - person_confirmation
+        - person_first_communion
+        - person_graduation
+        - person_retirement
+        - person_ordination
+        - person_probate
+        - person_will
         - person_generic_event
         - person_occupation
         - person_residence

@@ -283,15 +283,27 @@ const (
 	FactPersonGender FactType = "person_gender"
 
 	// Individual life events (GEDCOM tags in comments)
-	FactPersonBurial         FactType = "person_burial"         // BURI
-	FactPersonCremation      FactType = "person_cremation"      // CREM
-	FactPersonBaptism        FactType = "person_baptism"        // BAPM
-	FactPersonChristening    FactType = "person_christening"    // CHR
-	FactPersonEmigration     FactType = "person_emigration"     // EMIG
-	FactPersonImmigration    FactType = "person_immigration"    // IMMI
-	FactPersonNaturalization FactType = "person_naturalization" // NATU
-	FactPersonCensus         FactType = "person_census"         // CENS
-	FactPersonGenericEvent   FactType = "person_generic_event"  // EVEN
+	FactPersonBurial           FactType = "person_burial"            // BURI
+	FactPersonCremation        FactType = "person_cremation"         // CREM
+	FactPersonBaptism          FactType = "person_baptism"           // BAPM
+	FactPersonChristening      FactType = "person_christening"       // CHR
+	FactPersonEmigration       FactType = "person_emigration"        // EMIG
+	FactPersonImmigration      FactType = "person_immigration"       // IMMI
+	FactPersonNaturalization   FactType = "person_naturalization"    // NATU
+	FactPersonCensus           FactType = "person_census"            // CENS
+	FactPersonAdoption         FactType = "person_adoption"          // ADOP
+	FactPersonBarMitzvah       FactType = "person_bar_mitzvah"       // BARM
+	FactPersonBasMitzvah       FactType = "person_bas_mitzvah"       // BASM
+	FactPersonBlessing         FactType = "person_blessing"          // BLES
+	FactPersonAdultChristening FactType = "person_adult_christening" // CHRA
+	FactPersonConfirmation     FactType = "person_confirmation"      // CONF
+	FactPersonFirstCommunion   FactType = "person_first_communion"   // FCOM
+	FactPersonGraduation       FactType = "person_graduation"        // GRAD
+	FactPersonRetirement       FactType = "person_retirement"        // RETI
+	FactPersonOrdination       FactType = "person_ordination"        // ORDN
+	FactPersonProbate          FactType = "person_probate"           // PROB
+	FactPersonWill             FactType = "person_will"              // WILL
+	FactPersonGenericEvent     FactType = "person_generic_event"     // EVEN
 
 	// Individual attributes
 	FactPersonOccupation FactType = "person_occupation" // OCCU
@@ -321,7 +333,10 @@ func AllFactTypes() []FactType {
 		// Individual life events
 		FactPersonBurial, FactPersonCremation, FactPersonBaptism, FactPersonChristening,
 		FactPersonEmigration, FactPersonImmigration, FactPersonNaturalization,
-		FactPersonCensus, FactPersonGenericEvent,
+		FactPersonCensus, FactPersonAdoption, FactPersonBarMitzvah, FactPersonBasMitzvah,
+		FactPersonBlessing, FactPersonAdultChristening, FactPersonConfirmation,
+		FactPersonFirstCommunion, FactPersonGraduation, FactPersonRetirement,
+		FactPersonOrdination, FactPersonProbate, FactPersonWill, FactPersonGenericEvent,
 		// Individual attributes
 		FactPersonOccupation, FactPersonResidence, FactPersonEducation,
 		FactPersonReligion, FactPersonTitle,
