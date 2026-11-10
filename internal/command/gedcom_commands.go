@@ -593,11 +593,12 @@ func (h *Handler) importEvent(ctx context.Context, e gedcom.EventData) error {
 		lifeEvent.SetDate(e.Date)
 	}
 
-	// Create domain event from model; coordinates and notes are not LifeEvent
-	// fields (#1225, #1250).
+	// Create domain event from model; coordinates, notes and TYPE are not
+	// LifeEvent fields (#1225, #1250, #1276).
 	event := domain.NewLifeEventCreatedFromModel(lifeEvent)
 	event.PlaceLat, event.PlaceLong = e.PlaceLat, e.PlaceLong
 	event.Notes = e.Notes
+	event.TypeDetail = e.TypeDetail
 
 	// Append to event store using owner's stream
 	err := h.eventStore.Append(ctx, e.ID, "event", []domain.Event{event}, -1, repository.MainScope)

@@ -219,6 +219,7 @@ type EventReadModel struct {
 	ResearchStatus domain.ResearchStatus `json:"research_status,omitempty"` // Confidence level
 	IsNegated      bool                  `json:"is_negated,omitempty"`      // Negative assertion (GEDCOM 7.0 NO tag)
 	Notes          string                `json:"notes,omitempty"`           // The event's own NOTEs (#1250)
+	TypeDetail     string                `json:"type_detail,omitempty"`     // The event's GEDCOM TYPE (#1276)
 	Version        int64                 `json:"version"`
 	CreatedAt      time.Time             `json:"created_at"`
 }

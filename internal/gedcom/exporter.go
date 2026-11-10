@@ -980,6 +980,13 @@ func toGedcomEvent(event repository.EventReadModel, sourceXrefs map[uuid.UUID]st
 		ge.Address = convertDomainAddressToGedcom(event.Address)
 	}
 
+	// Only a generic EVEN carries a descriptor on its own line; a named event
+	// tag's payload is the [Y|<NULL>] flag (#1276).
+	if ge.Type == "EVEN" {
+		ge.Description = event.Description
+	}
+	ge.EventTypeDetail = event.TypeDetail
+
 	if event.Cause != "" {
 		ge.Cause = event.Cause
 	}
@@ -1355,6 +1362,30 @@ func mapFactTypeToGedcomTag(factType domain.FactType) string {
 		return "NATU"
 	case domain.FactPersonCensus:
 		return "CENS"
+	case domain.FactPersonAdoption:
+		return "ADOP"
+	case domain.FactPersonBarMitzvah:
+		return "BARM"
+	case domain.FactPersonBasMitzvah:
+		return "BASM"
+	case domain.FactPersonBlessing:
+		return "BLES"
+	case domain.FactPersonAdultChristening:
+		return "CHRA"
+	case domain.FactPersonConfirmation:
+		return "CONF"
+	case domain.FactPersonFirstCommunion:
+		return "FCOM"
+	case domain.FactPersonGraduation:
+		return "GRAD"
+	case domain.FactPersonRetirement:
+		return "RETI"
+	case domain.FactPersonOrdination:
+		return "ORDN"
+	case domain.FactPersonProbate:
+		return "PROB"
+	case domain.FactPersonWill:
+		return "WILL"
 	case domain.FactPersonGenericEvent:
 		return "EVEN"
 	// Person attributes

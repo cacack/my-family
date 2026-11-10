@@ -986,6 +986,9 @@ func (s *ReadModelStore) runMigrations() {
 	_, _ = s.db.Exec(`ALTER TABLE families ADD COLUMN IF NOT EXISTS marriage_notes TEXT`)
 	_, _ = s.db.Exec(`ALTER TABLE life_events ADD COLUMN IF NOT EXISTS notes TEXT`)
 
+	// Add the TYPE of an imported life event (issue #1276)
+	_, _ = s.db.Exec(`ALTER TABLE life_events ADD COLUMN IF NOT EXISTS type_detail TEXT`)
+
 	// Add GEDCOM 7.0 shared-note (SNOTE) metadata columns (issue #225)
 	_, _ = s.db.Exec(`ALTER TABLE notes ADD COLUMN IF NOT EXISTS mime VARCHAR(100)`)
 	_, _ = s.db.Exec(`ALTER TABLE notes ADD COLUMN IF NOT EXISTS language VARCHAR(35)`)
@@ -3472,7 +3475,7 @@ const (
 	// eventSelectCols is scanEventRow's column order (unaliased).
 	eventSelectCols = `id, owner_type, owner_id, fact_type, date_raw, date_sort,
 		place, place_lat, place_long, address, description, cause,
-		age, research_status, is_negated, notes, version, created_at`
+		age, research_status, is_negated, notes, type_detail, version, created_at`
 
 	// attributeSelectCols is scanAttributeRow's column order (unaliased).
 	attributeSelectCols = `id, person_id, fact_type, value, date_raw, date_sort, place, version, created_at`
@@ -3721,9 +3724,9 @@ func (s *ReadModelStore) SaveEvent(ctx context.Context, branchID domain.BranchID
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO life_events (id, branch_id, owner_type, owner_id, fact_type, date_raw, date_sort,
 		                    place, place_lat, place_long, address, description, cause,
-		                    age, research_status, is_negated, notes, version, created_at, deleted)
+		                    age, research_status, is_negated, notes, type_detail, version, created_at, deleted)
 		VALUES ($1, $2, $3, $4, $5, NULLIF($6, ''), $7, NULLIF($8, ''), NULLIF($9, ''), NULLIF($10, ''),
-		        $11, NULLIF($12, ''), NULLIF($13, ''), NULLIF($14, ''), NULLIF($15, ''), $16, NULLIF($17, ''), $18, $19, FALSE)
+		        $11, NULLIF($12, ''), NULLIF($13, ''), NULLIF($14, ''), NULLIF($15, ''), $16, NULLIF($17, ''), NULLIF($18, ''), $19, $20, FALSE)
 		ON CONFLICT (id, branch_id) DO UPDATE SET
 			owner_type = EXCLUDED.owner_type,
 			owner_id = EXCLUDED.owner_id,
@@ -3740,13 +3743,14 @@ func (s *ReadModelStore) SaveEvent(ctx context.Context, branchID domain.BranchID
 			research_status = EXCLUDED.research_status,
 			is_negated = EXCLUDED.is_negated,
 			notes = EXCLUDED.notes,
+			type_detail = EXCLUDED.type_detail,
 			version = EXCLUDED.version,
 			deleted = FALSE
 	`, event.ID, branchID.UUID(), event.OwnerType, event.OwnerID, string(event.FactType),
 		event.DateRaw, nullableTime(event.DateSort), event.Place,
 		nullableStringPtr(event.PlaceLat), nullableStringPtr(event.PlaceLong),
 		addressJSON, event.Description, event.Cause, event.Age,
-		nullableString(string(event.ResearchStatus)), event.IsNegated, event.Notes, event.Version, event.CreatedAt)
+		nullableString(string(event.ResearchStatus)), event.IsNegated, event.Notes, event.TypeDetail, event.Version, event.CreatedAt)
 	if err != nil {
 		return fmt.Errorf("save event: %w", err)
 	}
@@ -3993,6 +3997,7 @@ func scanEventRow(row rowScanner) (*repository.EventReadModel, error) {
 		addressJSON             []byte
 		description, cause, age sql.NullString
 		researchStatus, notes   sql.NullString
+		typeDetail              sql.NullString
 		isNegated               bool
 		version                 int64
 		createdAt               time.Time
@@ -4000,7 +4005,7 @@ func scanEventRow(row rowScanner) (*repository.EventReadModel, error) {
 
 	err := row.Scan(&id, &ownerType, &ownerID, &factType, &dateRaw, &dateSort,
 		&place, &placeLat, &placeLong, &addressJSON, &description, &cause,
-		&age, &researchStatus, &isNegated, &notes, &version, &createdAt)
+		&age, &researchStatus, &isNegated, &notes, &typeDetail, &version, &createdAt)
 
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -4021,6 +4026,7 @@ func scanEventRow(row rowScanner) (*repository.EventReadModel, error) {
 		Age:         age.String,
 		IsNegated:   isNegated,
 		Notes:       notes.String,
+		TypeDetail:  typeDetail.String,
 		Version:     version,
 		CreatedAt:   createdAt,
 	}

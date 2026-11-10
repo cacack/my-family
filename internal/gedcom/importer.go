@@ -230,7 +230,8 @@ type EventData struct {
 	PlaceLat    *string // Latitude in GEDCOM format (e.g., "N42.3601")
 	PlaceLong   *string // Longitude in GEDCOM format (e.g., "W71.0589")
 	Address     *domain.Address
-	Description string
+	Description string // The descriptor on a generic EVEN line
+	TypeDetail  string // The event's TYPE (#1276)
 	Cause       string // For death/burial events
 	Age         string // Age at event
 	IsNegated   bool   // Negative assertion (GEDCOM 7.0 NO tag)
@@ -1319,36 +1320,10 @@ func extractCitationsFromIndividual(indi *gedcom.Individual, personID uuid.UUID,
 	var citations []CitationData
 
 	for _, event := range indi.Events {
-		var factType domain.FactType
-		switch event.Type {
-		case gedcom.EventBirth:
-			factType = domain.FactPersonBirth
-		case gedcom.EventDeath:
-			factType = domain.FactPersonDeath
-		case gedcom.EventBurial:
-			factType = domain.FactPersonBurial
-		case gedcom.EventCremation:
-			factType = domain.FactPersonCremation
-		case gedcom.EventBaptism:
-			factType = domain.FactPersonBaptism
-		case gedcom.EventChristening:
-			factType = domain.FactPersonChristening
-		case gedcom.EventEmigration:
-			factType = domain.FactPersonEmigration
-		case gedcom.EventImmigration:
-			factType = domain.FactPersonImmigration
-		case gedcom.EventNaturalization:
-			factType = domain.FactPersonNaturalization
-		case gedcom.EventCensus:
-			factType = domain.FactPersonCensus
-		case gedcom.EventResidence:
-			factType = domain.FactPersonResidence
-		default:
-			// Includes a GEDCOM 7.0 "NO OCCU", which decodes as an event of type
-			// OCCU and is imported as a negated generic event, so its citations
-			// follow that event's fact type.
-			factType = domain.FactPersonGenericEvent
-		}
+		// A GEDCOM 7.0 "NO OCCU" decodes as an event of type OCCU and is
+		// imported as a negated generic event, so its citations follow that
+		// event's fact type.
+		factType := individualEventFactType(event.Type)
 
 		for _, srcCit := range event.SourceCitations {
 			if srcCit.SourceXRef == "" {
@@ -1478,6 +1453,44 @@ func ValidateImportData(persons []PersonData, families []FamilyData) error {
 	return nil
 }
 
+// individualEventFactTypes maps each individual event tag gedcom-go decodes to
+// its fact type. A tag not listed (EVEN, or a negated attribute such as
+// "NO OCCU") is a generic event.
+var individualEventFactTypes = map[gedcom.EventType]domain.FactType{
+	gedcom.EventBirth:            domain.FactPersonBirth,
+	gedcom.EventDeath:            domain.FactPersonDeath,
+	gedcom.EventBurial:           domain.FactPersonBurial,
+	gedcom.EventCremation:        domain.FactPersonCremation,
+	gedcom.EventBaptism:          domain.FactPersonBaptism,
+	gedcom.EventChristening:      domain.FactPersonChristening,
+	gedcom.EventEmigration:       domain.FactPersonEmigration,
+	gedcom.EventImmigration:      domain.FactPersonImmigration,
+	gedcom.EventNaturalization:   domain.FactPersonNaturalization,
+	gedcom.EventCensus:           domain.FactPersonCensus,
+	gedcom.EventResidence:        domain.FactPersonResidence,
+	gedcom.EventAdoption:         domain.FactPersonAdoption,
+	gedcom.EventBarMitzvah:       domain.FactPersonBarMitzvah,
+	gedcom.EventBasMitzvah:       domain.FactPersonBasMitzvah,
+	gedcom.EventBlessing:         domain.FactPersonBlessing,
+	gedcom.EventAdultChristening: domain.FactPersonAdultChristening,
+	gedcom.EventConfirmation:     domain.FactPersonConfirmation,
+	gedcom.EventFirstCommunion:   domain.FactPersonFirstCommunion,
+	gedcom.EventGraduation:       domain.FactPersonGraduation,
+	gedcom.EventRetirement:       domain.FactPersonRetirement,
+	gedcom.EventOrdination:       domain.FactPersonOrdination,
+	gedcom.EventProbate:          domain.FactPersonProbate,
+	gedcom.EventWill:             domain.FactPersonWill,
+}
+
+// individualEventFactType returns the fact type of an individual event tag,
+// or FactPersonGenericEvent for a tag with none of its own.
+func individualEventFactType(t gedcom.EventType) domain.FactType {
+	if factType, ok := individualEventFactTypes[t]; ok {
+		return factType
+	}
+	return domain.FactPersonGenericEvent
+}
+
 // extractEventsFromIndividual extracts all life events from an individual.
 // Birth and Death are excluded as they are stored on Person directly,
 // unless they are negated (NO BIRT / NO DEAT), which represent negative assertions
@@ -1505,6 +1518,7 @@ func extractEventsFromIndividual(indi *gedcom.Individual, personID uuid.UUID) []
 				Date:        event.Date,
 				Place:       event.PlaceName(),
 				Description: event.Description,
+				TypeDetail:  event.EventTypeDetail,
 				Cause:       event.Cause,
 				Age:         event.Age,
 				IsNegated:   true,
@@ -1531,29 +1545,10 @@ func extractEventsFromIndividual(indi *gedcom.Individual, personID uuid.UUID) []
 		case gedcom.EventBirth, gedcom.EventDeath:
 			// Non-negated birth and death are stored on Person entity, skip
 			continue
-		case gedcom.EventBurial:
-			factType = domain.FactPersonBurial
-		case gedcom.EventCremation:
-			factType = domain.FactPersonCremation
-		case gedcom.EventBaptism:
-			factType = domain.FactPersonBaptism
-		case gedcom.EventChristening:
-			factType = domain.FactPersonChristening
-		case gedcom.EventEmigration:
-			factType = domain.FactPersonEmigration
-		case gedcom.EventImmigration:
-			factType = domain.FactPersonImmigration
-		case gedcom.EventNaturalization:
-			factType = domain.FactPersonNaturalization
-		case gedcom.EventCensus:
-			factType = domain.FactPersonCensus
-		case gedcom.EventResidence:
+		default:
 			// RESI is imported once, as a life event: unlike an attribute, it
 			// keeps the residence's coordinates, address, notes and citations.
-			factType = domain.FactPersonResidence
-		default:
-			// Generic event for unrecognized types
-			factType = domain.FactPersonGenericEvent
+			factType = individualEventFactType(event.Type)
 		}
 
 		eventData := EventData{
@@ -1564,6 +1559,7 @@ func extractEventsFromIndividual(indi *gedcom.Individual, personID uuid.UUID) []
 			Date:        event.Date,
 			Place:       event.PlaceName(),
 			Description: event.Description,
+			TypeDetail:  event.EventTypeDetail,
 			Cause:       event.Cause,
 			Age:         event.Age,
 			IsNegated:   event.IsNegative,
@@ -1739,6 +1735,7 @@ func extractEventsFromFamily(fam *gedcom.Family, familyID uuid.UUID) []EventData
 				Date:        event.Date,
 				Place:       event.PlaceName(),
 				Description: event.Description,
+				TypeDetail:  event.EventTypeDetail,
 				IsNegated:   true,
 				Notes:       eventNotes(event),
 			}
@@ -1777,6 +1774,7 @@ func extractEventsFromFamily(fam *gedcom.Family, familyID uuid.UUID) []EventData
 			Date:        event.Date,
 			Place:       event.PlaceName(),
 			Description: event.Description,
+			TypeDetail:  event.EventTypeDetail,
 			IsNegated:   event.IsNegative,
 			Notes:       eventNotes(event),
 		}

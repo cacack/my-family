@@ -727,6 +727,8 @@ type LifeEventCreated struct {
 	PlaceLong *string `json:"place_long,omitempty"`
 	// Notes are the event's own NOTEs, set at import (#1250).
 	Notes string `json:"notes,omitempty"`
+	// TypeDetail is the event's GEDCOM TYPE, set at import (#1276).
+	TypeDetail string `json:"type_detail,omitempty"`
 }
 
 func (e LifeEventCreated) EventType() string      { return "LifeEventCreated" }

@@ -782,6 +782,9 @@ func (s *ReadModelStore) runMigrations() {
 	_, _ = s.db.Exec(`ALTER TABLE families ADD COLUMN marriage_notes TEXT`)
 	_, _ = s.db.Exec(`ALTER TABLE life_events ADD COLUMN notes TEXT`)
 
+	// Add the TYPE of an imported life event (issue #1276).
+	_, _ = s.db.Exec(`ALTER TABLE life_events ADD COLUMN type_detail TEXT`)
+
 	// Add GEDCOM 7.0 shared-note (SNOTE) metadata columns (issue #225).
 	// SQLite ALTER TABLE ADD COLUMN has no IF NOT EXISTS; rely on the _,_ = swallowing.
 	_, _ = s.db.Exec(`ALTER TABLE notes ADD COLUMN mime TEXT`)
@@ -3748,7 +3751,7 @@ const (
 	// eventSelectCols is scanEvent's column order (unaliased).
 	eventSelectCols = `id, owner_type, owner_id, fact_type, date_raw, date_sort,
 		place, place_lat, place_long, address, description, cause,
-		age, research_status, is_negated, notes, version, created_at`
+		age, research_status, is_negated, notes, type_detail, version, created_at`
 
 	// attributeSelectCols is scanAttribute's column order (unaliased).
 	attributeSelectCols = `id, person_id, fact_type, value, date_raw, date_sort, place, version, created_at`
@@ -4037,8 +4040,8 @@ func (s *ReadModelStore) SaveEvent(ctx context.Context, branchID domain.BranchID
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO life_events (id, branch_id, owner_type, owner_id, fact_type, date_raw, date_sort,
 		                    place, place_lat, place_long, address, description, cause,
-		                    age, research_status, is_negated, notes, version, created_at, deleted)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+		                    age, research_status, is_negated, notes, type_detail, version, created_at, deleted)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
 		ON CONFLICT (id, branch_id) DO UPDATE SET
 			owner_type = excluded.owner_type,
 			owner_id = excluded.owner_id,
@@ -4055,11 +4058,12 @@ func (s *ReadModelStore) SaveEvent(ctx context.Context, branchID domain.BranchID
 			research_status = excluded.research_status,
 			is_negated = excluded.is_negated,
 			notes = excluded.notes,
+			type_detail = excluded.type_detail,
 			version = excluded.version,
 			deleted = 0
 	`, event.ID.String(), branchID.String(), event.OwnerType, event.OwnerID.String(), string(event.FactType),
 		event.DateRaw, dateSort, event.Place, placeLat, placeLong, addressJSON,
-		description, cause, age, researchStatus, event.IsNegated, event.Notes, event.Version,
+		description, cause, age, researchStatus, event.IsNegated, event.Notes, event.TypeDetail, event.Version,
 		formatTimestamp(event.CreatedAt))
 	if err != nil {
 		return fmt.Errorf("save event: %w", err)
@@ -4309,7 +4313,7 @@ func scanEvent(row rowScanner) (*repository.EventReadModel, error) {
 		placeLat, placeLong                    sql.NullString
 		addressJSON                            []byte
 		description, cause, age                sql.NullString
-		researchStatus, notes                  sql.NullString
+		researchStatus, notes, typeDetail      sql.NullString
 		isNegated                              bool
 		version                                int64
 		createdAt                              string
@@ -4317,7 +4321,7 @@ func scanEvent(row rowScanner) (*repository.EventReadModel, error) {
 
 	err := row.Scan(&idStr, &ownerType, &ownerIDStr, &factType, &dateRaw, &dateSort,
 		&place, &placeLat, &placeLong, &addressJSON, &description, &cause,
-		&age, &researchStatus, &isNegated, &notes, &version, &createdAt)
+		&age, &researchStatus, &isNegated, &notes, &typeDetail, &version, &createdAt)
 
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -4341,6 +4345,7 @@ func scanEvent(row rowScanner) (*repository.EventReadModel, error) {
 		Age:         age.String,
 		IsNegated:   isNegated,
 		Notes:       notes.String,
+		TypeDetail:  typeDetail.String,
 		Version:     version,
 	}
 
