@@ -123,6 +123,62 @@ func TestProjector_PartnerCreatedAfterFamily_FillsChildEdges(t *testing.T) {
 	}
 }
 
+// TestProjector_PartnerGenderChange_RefreshesChildEdges (#1263): a partner's
+// gender change re-derives the edges of the family's children, so the partner
+// moves to the side the new gender names, but an edge that came from another
+// family is left alone and a change to anything else leaves edges as they are.
+func TestProjector_PartnerGenderChange_RefreshesChildEdges(t *testing.T) {
+	ctx := context.Background()
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore, nil)
+	project := func(e domain.Event, version int64) {
+		t.Helper()
+		if err := projector.Project(ctx, e, version, domain.MainBranchID); err != nil {
+			t.Fatalf("project %T: %v", e, err)
+		}
+	}
+	person := func(name string, g domain.Gender) *domain.Person {
+		p := domain.NewPerson(name, "Placeholder")
+		p.Gender = g
+		project(domain.NewPersonCreated(p), 1)
+		return p
+	}
+	first := person("Alden", domain.GenderUnknown)
+	second := person("Briar", domain.GenderUnknown)
+	stepMother := person("Dana", domain.GenderFemale)
+	child := person("Wren", domain.GenderFemale)
+	adopted := person("Ellis", domain.GenderMale)
+
+	birth := domain.NewFamilyWithPartners(&first.ID, &second.ID)
+	project(domain.NewFamilyCreated(birth), 1)
+	project(domain.NewChildLinkedToFamily(domain.NewFamilyChild(birth.ID, child.ID, domain.ChildBiological)), 2)
+	project(domain.NewChildLinkedToFamily(domain.NewFamilyChild(birth.ID, adopted.ID, domain.ChildBiological)), 3)
+	other := domain.NewFamilyWithPartners(&stepMother.ID, nil)
+	project(domain.NewFamilyCreated(other), 1)
+	project(domain.NewChildLinkedToFamily(domain.NewFamilyChild(other.ID, adopted.ID, domain.ChildAdopted)), 2)
+
+	// Both unknown: the first takes the free mother slot.
+	edge := mustEdge(t, readStore, child.ID)
+	if edge.MotherID == nil || *edge.MotherID != first.ID || edge.FatherID == nil || *edge.FatherID != second.ID {
+		t.Fatalf("Wren edge before = father %v mother %v, want %s / %s", edge.FatherID, edge.MotherID, second.ID, first.ID)
+	}
+
+	project(domain.NewPersonUpdated(second.ID, map[string]any{"notes": "x"}), 2)
+	if edge := mustEdge(t, readStore, child.ID); edge.MotherID == nil || *edge.MotherID != first.ID {
+		t.Errorf("Wren mother after non-gender change = %v, want %s", edge.MotherID, first.ID)
+	}
+
+	project(domain.NewPersonUpdated(second.ID, map[string]any{"gender": string(domain.GenderFemale)}), 3)
+	edge = mustEdge(t, readStore, child.ID)
+	if edge.MotherID == nil || *edge.MotherID != second.ID || edge.FatherID == nil || *edge.FatherID != first.ID {
+		t.Errorf("Wren edge after = father %v mother %v, want %s / %s", edge.FatherID, edge.MotherID, first.ID, second.ID)
+	}
+	edge = mustEdge(t, readStore, adopted.ID)
+	if edge.MotherID == nil || *edge.MotherID != stepMother.ID || edge.FatherID != nil {
+		t.Errorf("Ellis edge = father %v mother %v, want the other family's mother %s", edge.FatherID, edge.MotherID, stepMother.ID)
+	}
+}
+
 func mustEdge(t *testing.T, rs repository.ReadModelStore, personID uuid.UUID) *repository.PedigreeEdge {
 	t.Helper()
 	edge, err := rs.GetPedigreeEdge(context.Background(), domain.MainBranchID, personID)

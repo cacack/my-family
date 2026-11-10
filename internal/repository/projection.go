@@ -353,7 +353,7 @@ func (p *Projector) projectPersonCreated(ctx context.Context, e domain.PersonCre
 	if err := p.readStore.SavePerson(ctx, branchID, person); err != nil {
 		return err
 	}
-	if err := p.refreshEdgesNamingNewPartner(ctx, branchID, e.PersonID); err != nil {
+	if err := p.refreshEdgesNamingPartner(ctx, branchID, e.PersonID); err != nil {
 		return err
 	}
 	if len(e.ExternalIDs) == 0 {
@@ -386,6 +386,7 @@ func (p *Projector) projectPersonUpdated(ctx context.Context, e domain.PersonUpd
 
 	// Apply changes
 	nameChanged := false
+	oldGender := person.Gender
 	for key, value := range e.Changes {
 		switch key {
 		case "given_name":
@@ -447,7 +448,13 @@ func (p *Projector) projectPersonUpdated(ctx context.Context, e domain.PersonUpd
 			return err
 		}
 	}
-	return p.readStore.SavePerson(ctx, branchID, person)
+	if err := p.readStore.SavePerson(ctx, branchID, person); err != nil {
+		return err
+	}
+	if person.Gender != oldGender {
+		return p.refreshEdgesNamingPartner(ctx, branchID, e.PersonID)
+	}
+	return nil
 }
 
 func (p *Projector) projectPersonDeleted(ctx context.Context, e domain.PersonDeleted, branchID domain.BranchID) error {
@@ -735,13 +742,15 @@ func (p *Projector) refreshChildPedigreeEdges(ctx context.Context, branchID doma
 	return nil
 }
 
-// refreshEdgesNamingNewPartner re-derives the child edges of every family that
-// already names a just-created person as a partner (#1259). Such a family
-// projected before the person existed, as when a merge replays a family
-// stream re-partnered to a person the branch created later, so its children's
-// edges skipped that partner. A person created in log order is partner of no
-// family yet, and the lookup finds nothing.
-func (p *Projector) refreshEdgesNamingNewPartner(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) error {
+// refreshEdgesNamingPartner re-derives the child edges of every family that
+// names a person as a partner. It runs when the person is created (#1259): a
+// family can project before its partner exists, as when a merge replays a
+// family stream re-partnered to a person the branch created later, so its
+// children's edges skipped that partner. A person created in log order is
+// partner of no family yet, and the lookup finds nothing. It also runs when
+// the person's gender changes (#1263), since gender decides which side of the
+// child's pedigree the partner takes.
+func (p *Projector) refreshEdgesNamingPartner(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) error {
 	families, err := p.readStore.GetFamiliesForPersons(ctx, branchID, []uuid.UUID{personID})
 	if err != nil {
 		return err
