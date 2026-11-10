@@ -33,8 +33,12 @@ type Person struct {
 	Gender              *string         `json:"gender,omitempty"`
 	BirthDate           *domain.GenDate `json:"birth_date,omitempty"`
 	BirthPlace          *string         `json:"birth_place,omitempty"`
+	BirthPlaceLat       *string         `json:"birth_place_latitude,omitempty"`
+	BirthPlaceLong      *string         `json:"birth_place_longitude,omitempty"`
 	DeathDate           *domain.GenDate `json:"death_date,omitempty"`
 	DeathPlace          *string         `json:"death_place,omitempty"`
+	DeathPlaceLat       *string         `json:"death_place_latitude,omitempty"`
+	DeathPlaceLong      *string         `json:"death_place_longitude,omitempty"`
 	Notes               *string         `json:"notes,omitempty"`
 	ResearchStatus      *string         `json:"research_status,omitempty"`
 	BrickWallNote       *string         `json:"brick_wall_note,omitempty"`
@@ -305,6 +309,10 @@ func convertReadModelToPerson(rm repository.PersonReadModel) Person {
 	if rm.DeathPlace != "" {
 		p.DeathPlace = &rm.DeathPlace
 	}
+	p.BirthPlaceLat = nonEmpty(rm.BirthPlaceLat)
+	p.BirthPlaceLong = nonEmpty(rm.BirthPlaceLong)
+	p.DeathPlaceLat = nonEmpty(rm.DeathPlaceLat)
+	p.DeathPlaceLong = nonEmpty(rm.DeathPlaceLong)
 	if rm.Notes != "" {
 		p.Notes = &rm.Notes
 	}
@@ -323,6 +331,16 @@ func convertReadModelToPerson(rm repository.PersonReadModel) Person {
 	}
 
 	return p
+}
+
+// nonEmpty returns a copy of an optional read-model string, or nil when it is
+// unset or empty, so an absent value is omitted from the response.
+func nonEmpty(s *string) *string {
+	if s == nil || *s == "" {
+		return nil
+	}
+	v := *s
+	return &v
 }
 
 func convertToFamilySummary(rm repository.FamilyReadModel) FamilySummary {

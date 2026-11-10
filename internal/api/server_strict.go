@@ -4124,6 +4124,10 @@ func convertQueryPersonToGenerated(p query.Person) Person {
 	if p.DeathPlace != nil {
 		resp.DeathPlace = p.DeathPlace
 	}
+	resp.BirthPlaceLatitude = p.BirthPlaceLat
+	resp.BirthPlaceLongitude = p.BirthPlaceLong
+	resp.DeathPlaceLatitude = p.DeathPlaceLat
+	resp.DeathPlaceLongitude = p.DeathPlaceLong
 	if p.Notes != nil {
 		resp.Notes = p.Notes
 	}
@@ -4169,6 +4173,10 @@ func convertQueryPersonDetailToGenerated(pd *query.PersonDetail) PersonDetail {
 	if pd.DeathPlace != nil {
 		resp.DeathPlace = pd.DeathPlace
 	}
+	resp.BirthPlaceLatitude = pd.BirthPlaceLat
+	resp.BirthPlaceLongitude = pd.BirthPlaceLong
+	resp.DeathPlaceLatitude = pd.DeathPlaceLat
+	resp.DeathPlaceLongitude = pd.DeathPlaceLong
 	if pd.Notes != nil {
 		resp.Notes = pd.Notes
 	}
@@ -4313,6 +4321,8 @@ func convertQueryFamilyToGenerated(f query.Family) Family {
 	if f.MarriagePlace != nil {
 		resp.MarriagePlace = f.MarriagePlace
 	}
+	resp.MarriagePlaceLatitude = f.MarriagePlaceLat
+	resp.MarriagePlaceLongitude = f.MarriagePlaceLong
 
 	return resp
 }
@@ -4356,6 +4366,8 @@ func convertQueryFamilyDetailToGenerated(fd query.FamilyDetail) FamilyDetail {
 	if fd.MarriagePlace != nil {
 		resp.MarriagePlace = fd.MarriagePlace
 	}
+	resp.MarriagePlaceLatitude = fd.MarriagePlaceLat
+	resp.MarriagePlaceLongitude = fd.MarriagePlaceLong
 
 	// Emit the partner summary whenever the partner ID is set so callers can
 	// always pair partner1_id with a partner1 object. Either name part may be
@@ -4411,6 +4423,8 @@ func convertQueryFamilyToFamilyDetail(f query.Family) FamilyDetail {
 	if f.MarriagePlace != nil {
 		resp.MarriagePlace = f.MarriagePlace
 	}
+	resp.MarriagePlaceLatitude = f.MarriagePlaceLat
+	resp.MarriagePlaceLongitude = f.MarriagePlaceLong
 
 	if f.Partner1ID != nil {
 		resp.Partner1 = personSummary(*f.Partner1ID, stringValue(f.Partner1GivenName), stringValue(f.Partner1Surname), nil)
@@ -6181,6 +6195,10 @@ func convertReadModelPersonToGenerated(rm repository.PersonReadModel) Person {
 	if rm.DeathPlace != "" {
 		resp.DeathPlace = &rm.DeathPlace
 	}
+	resp.BirthPlaceLatitude = nonEmptyString(rm.BirthPlaceLat)
+	resp.BirthPlaceLongitude = nonEmptyString(rm.BirthPlaceLong)
+	resp.DeathPlaceLatitude = nonEmptyString(rm.DeathPlaceLat)
+	resp.DeathPlaceLongitude = nonEmptyString(rm.DeathPlaceLong)
 	if rm.Notes != "" {
 		resp.Notes = &rm.Notes
 	}
@@ -6214,7 +6232,18 @@ func convertReadModelFamilyToGenerated(rm repository.FamilyReadModel) Family {
 	if rm.MarriagePlace != "" {
 		resp.MarriagePlace = &rm.MarriagePlace
 	}
+	resp.MarriagePlaceLatitude = nonEmptyString(rm.MarriagePlaceLat)
+	resp.MarriagePlaceLongitude = nonEmptyString(rm.MarriagePlaceLong)
 	return resp
+}
+
+// nonEmptyString returns nil for an unset or empty optional read-model string,
+// so the field is omitted from the response.
+func nonEmptyString(s *string) *string {
+	if s == nil || *s == "" {
+		return nil
+	}
+	return s
 }
 
 // convertReadModelSourceToGenerated converts a repository.SourceReadModel to the generated Source type.
