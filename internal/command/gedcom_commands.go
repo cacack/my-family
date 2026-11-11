@@ -512,6 +512,7 @@ func (h *Handler) importCitation(ctx context.Context, c gedcom.CitationData, sou
 		SourceID:      sourceID,
 		FactType:      factType,
 		FactOwnerID:   c.FactOwnerID,
+		FactID:        c.FactID,
 		Page:          c.Page,
 		InformantType: informantType,
 		EvidenceType:  evidenceType,

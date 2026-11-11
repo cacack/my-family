@@ -1554,6 +1554,16 @@ func (s *ReadModelStore) GetCitationsForFact(ctx context.Context, branchID domai
 	}), nil
 }
 
+// GetCitationsForFactInstance returns the citations of one life event or
+// attribute within the branch overlay (see the interface).
+func (s *ReadModelStore) GetCitationsForFactInstance(ctx context.Context, branchID domain.BranchID, factType domain.FactType, factOwnerID, factID uuid.UUID) ([]repository.CitationReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.filterCitations(branchID, func(c *repository.CitationReadModel) bool {
+		return c.FactType == factType && c.FactOwnerID == factOwnerID && (c.FactID == nil || *c.FactID == factID)
+	}), nil
+}
+
 // SaveCitation saves or updates a citation on the given branch (ADR-005, #758).
 func (s *ReadModelStore) SaveCitation(ctx context.Context, branchID domain.BranchID, citation *repository.CitationReadModel) error {
 	s.mu.Lock()

@@ -188,6 +188,7 @@ type CitationData struct {
 	SourceXref  string
 	FactType    string
 	FactOwnerID uuid.UUID
+	FactID      *uuid.UUID // The life event or attribute the SOUR is under; nil under a birth, death or marriage (#1294)
 	Page        string
 	Quality     string
 	QuotedText  string
@@ -441,17 +442,18 @@ func (imp *Importer) ImportWithOptions(ctx context.Context, reader io.Reader, im
 		persons = append(persons, person)
 		result.PersonXrefToID[indi.XRef] = person.ID
 
-		// Extract citations from person events
-		personCitations := extractCitationsFromIndividual(indi, person.ID, result)
-		citations = append(citations, personCitations...)
-
 		// Extract life events from individual
-		personEvents := extractEventsFromIndividual(indi, person.ID)
+		personEvents, eventIDs := extractEventsFromIndividual(indi, person.ID)
 		events = append(events, personEvents...)
 
 		// Extract attributes from individual
-		personAttributes := extractAttributesFromIndividual(indi, person.ID, result)
+		personAttributes, attributeIDs := extractAttributesFromIndividual(indi, person.ID, result)
 		attributes = append(attributes, personAttributes...)
+
+		// Extract citations from person events and attributes, each linked to
+		// the life event or attribute it sits under (#1294)
+		personCitations := extractCitationsFromIndividual(indi, person.ID, eventIDs, attributeIDs, result)
+		citations = append(citations, personCitations...)
 	}
 
 	// Fourth pass: create family mappings and resolve person references
@@ -461,13 +463,14 @@ func (imp *Importer) ImportWithOptions(ctx context.Context, reader io.Reader, im
 		families = append(families, family)
 		result.FamilyXrefToID[fam.XRef] = family.ID
 
-		// Extract citations from family events
-		familyCitations := extractCitationsFromFamily(fam, family.ID, result)
-		citations = append(citations, familyCitations...)
-
 		// Extract life events from family
-		familyEvents := extractEventsFromFamily(fam, family.ID)
+		familyEvents, eventIDs := extractEventsFromFamily(fam, family.ID)
 		events = append(events, familyEvents...)
+
+		// Extract citations from family events, each linked to the life event
+		// it sits under (#1294)
+		familyCitations := extractCitationsFromFamily(fam, family.ID, eventIDs, result)
+		citations = append(citations, familyCitations...)
 	}
 
 	// Fifth pass: parse shared (top-level) NOTE records
@@ -1325,9 +1328,12 @@ func parseSubmitter(subm *gedcom.Submitter) SubmitterData {
 	return submitter
 }
 
-// extractCitationsFromIndividual extracts all citations from individual events.
+// extractCitationsFromIndividual extracts all citations from individual events
+// and attributes. A citation under an event imported as a life event (in
+// eventIDs) or under an imported attribute (in attributeIDs) is linked to it,
+// so two events of one fact type keep their own citations (#1294).
 // TODO: result parameter reserved for future error/warning tracking
-func extractCitationsFromIndividual(indi *gedcom.Individual, personID uuid.UUID, _ *ImportResult) []CitationData {
+func extractCitationsFromIndividual(indi *gedcom.Individual, personID uuid.UUID, eventIDs map[*gedcom.Event]uuid.UUID, attributeIDs map[*gedcom.Attribute]uuid.UUID, _ *ImportResult) []CitationData {
 	var citations []CitationData
 
 	for _, event := range indi.Events {
@@ -1335,6 +1341,7 @@ func extractCitationsFromIndividual(indi *gedcom.Individual, personID uuid.UUID,
 		// imported as a negated generic event, so its citations follow that
 		// event's fact type.
 		factType := individualEventFactType(event.Type)
+		factID := factIDOf(eventIDs, event)
 
 		for _, srcCit := range event.SourceCitations {
 			if srcCit.SourceXRef == "" {
@@ -1346,6 +1353,7 @@ func extractCitationsFromIndividual(indi *gedcom.Individual, personID uuid.UUID,
 				SourceXref:  srcCit.SourceXRef,
 				FactType:    string(factType),
 				FactOwnerID: personID,
+				FactID:      factID,
 				Page:        srcCit.Page,
 				Quality:     mapGedcomQualityToGPS(srcCit.Quality),
 			}
@@ -1359,13 +1367,14 @@ func extractCitationsFromIndividual(indi *gedcom.Individual, personID uuid.UUID,
 		}
 	}
 
-	// An imported attribute's SOURs are cited against its fact type, as a life
-	// event's are (#1286).
+	// An imported attribute's SOURs are cited against it, as a life event's
+	// are (#1286, #1294).
 	for _, ga := range indi.Attributes {
 		factType, ok := importedAttributeFactType(ga)
 		if !ok {
 			continue
 		}
+		factID := factIDOf(attributeIDs, ga)
 		for _, srcCit := range ga.SourceCitations {
 			if srcCit.SourceXRef == "" {
 				continue
@@ -1375,6 +1384,7 @@ func extractCitationsFromIndividual(indi *gedcom.Individual, personID uuid.UUID,
 				SourceXref:  srcCit.SourceXRef,
 				FactType:    string(factType),
 				FactOwnerID: personID,
+				FactID:      factID,
 				Page:        srcCit.Page,
 				Quality:     mapGedcomQualityToGPS(srcCit.Quality),
 				QuotedText:  citationQuotedText(srcCit.Data),
@@ -1387,9 +1397,10 @@ func extractCitationsFromIndividual(indi *gedcom.Individual, personID uuid.UUID,
 	return citations
 }
 
-// extractCitationsFromFamily extracts all citations from family events.
+// extractCitationsFromFamily extracts all citations from family events, each
+// linked to the life event it sits under if the event is one (eventIDs; #1294).
 // TODO: result parameter reserved for future error/warning tracking
-func extractCitationsFromFamily(fam *gedcom.Family, familyID uuid.UUID, _ *ImportResult) []CitationData {
+func extractCitationsFromFamily(fam *gedcom.Family, familyID uuid.UUID, eventIDs map[*gedcom.Event]uuid.UUID, _ *ImportResult) []CitationData {
 	var citations []CitationData
 
 	for _, event := range fam.Events {
@@ -1397,6 +1408,7 @@ func extractCitationsFromFamily(fam *gedcom.Family, familyID uuid.UUID, _ *Impor
 		if !ok {
 			continue // Skip events we don't track citations for
 		}
+		factID := factIDOf(eventIDs, event)
 
 		for _, srcCit := range event.SourceCitations {
 			if srcCit.SourceXRef == "" {
@@ -1408,6 +1420,7 @@ func extractCitationsFromFamily(fam *gedcom.Family, familyID uuid.UUID, _ *Impor
 				SourceXref:  srcCit.SourceXRef,
 				FactType:    string(factType),
 				FactOwnerID: familyID,
+				FactID:      factID,
 				Page:        srcCit.Page,
 				Quality:     mapGedcomQualityToGPS(srcCit.Quality),
 			}
@@ -1422,6 +1435,17 @@ func extractCitationsFromFamily(fam *gedcom.Family, familyID uuid.UUID, _ *Impor
 	}
 
 	return citations
+}
+
+// factIDOf returns the ID a GEDCOM event or attribute is imported with, or nil
+// if it is not imported as a life event or attribute (a birth, death or
+// marriage, stored on the person or family).
+func factIDOf[K comparable](ids map[K]uuid.UUID, key K) *uuid.UUID {
+	id, ok := ids[key]
+	if !ok {
+		return nil
+	}
+	return &id
 }
 
 // citationQuotedText returns a citation's DATA.TEXT passages joined with "\n",
@@ -1510,12 +1534,15 @@ func individualEventFactType(t gedcom.EventType) domain.FactType {
 	return domain.FactPersonGenericEvent
 }
 
-// extractEventsFromIndividual extracts all life events from an individual.
+// extractEventsFromIndividual extracts all life events from an individual,
+// and returns with them the ID each GEDCOM event is imported with, for its
+// citations (#1294).
 // Birth and Death are excluded as they are stored on Person directly,
 // unless they are negated (NO BIRT / NO DEAT), which represent negative assertions
 // and must be stored as LifeEvents.
-func extractEventsFromIndividual(indi *gedcom.Individual, personID uuid.UUID) []EventData {
+func extractEventsFromIndividual(indi *gedcom.Individual, personID uuid.UUID) ([]EventData, map[*gedcom.Event]uuid.UUID) {
 	var events []EventData
+	ids := make(map[*gedcom.Event]uuid.UUID)
 
 	for _, event := range indi.Events {
 		var factType domain.FactType
@@ -1557,6 +1584,7 @@ func extractEventsFromIndividual(indi *gedcom.Individual, personID uuid.UUID) []
 				eventData.Address = convertGedcomAddress(event.Address)
 			}
 			events = append(events, eventData)
+			ids[event] = eventData.ID
 			continue
 		}
 
@@ -1600,9 +1628,10 @@ func extractEventsFromIndividual(indi *gedcom.Individual, personID uuid.UUID) []
 			eventData.Address = convertGedcomAddress(event.Address)
 		}
 		events = append(events, eventData)
+		ids[event] = eventData.ID
 	}
 
-	return events
+	return events, ids
 }
 
 // convertGedcomAddress converts a gedcom.Address to a domain.Address.
@@ -1625,9 +1654,12 @@ func convertGedcomAddress(addr *gedcom.Address) *domain.Address {
 	return domainAddr
 }
 
-// extractAttributesFromIndividual extracts all attributes from an individual.
-func extractAttributesFromIndividual(indi *gedcom.Individual, personID uuid.UUID, result *ImportResult) []AttributeData {
+// extractAttributesFromIndividual extracts all attributes from an individual,
+// and returns with them the ID each GEDCOM attribute is imported with, for its
+// citations (#1294).
+func extractAttributesFromIndividual(indi *gedcom.Individual, personID uuid.UUID, result *ImportResult) ([]AttributeData, map[*gedcom.Attribute]uuid.UUID) {
 	var attributes []AttributeData
+	ids := make(map[*gedcom.Attribute]uuid.UUID)
 
 	// RESI decodes into indi.Events and is imported as a life event
 	// (extractEventsFromIndividual), not here, so it is stored once. The
@@ -1674,9 +1706,10 @@ func extractAttributesFromIndividual(indi *gedcom.Individual, personID uuid.UUID
 		}
 
 		attributes = append(attributes, attr)
+		ids[ga] = attr.ID
 	}
 
-	return attributes
+	return attributes, ids
 }
 
 // personAttributeFactTypes maps each attribute tag imported as a person
@@ -1771,12 +1804,15 @@ func mapAssociationRole(gedcomRole string) string {
 	}
 }
 
-// extractEventsFromFamily extracts all life events from a family.
+// extractEventsFromFamily extracts all life events from a family, and returns
+// with them the ID each GEDCOM event is imported with, for its citations
+// (#1294).
 // Marriage is excluded as it is stored on Family directly,
 // unless it is negated (NO MARR), which represents a negative assertion
 // and must be stored as a LifeEvent.
-func extractEventsFromFamily(fam *gedcom.Family, familyID uuid.UUID) []EventData {
+func extractEventsFromFamily(fam *gedcom.Family, familyID uuid.UUID) ([]EventData, map[*gedcom.Event]uuid.UUID) {
 	var events []EventData
+	ids := make(map[*gedcom.Event]uuid.UUID)
 
 	for _, event := range fam.Events {
 		// Negated marriage events (NO MARR) are stored as LifeEvents,
@@ -1808,6 +1844,7 @@ func extractEventsFromFamily(fam *gedcom.Family, familyID uuid.UUID) []EventData
 				eventData.Address = convertGedcomAddress(event.Address)
 			}
 			events = append(events, eventData)
+			ids[event] = eventData.ID
 			continue
 		}
 
@@ -1849,9 +1886,10 @@ func extractEventsFromFamily(fam *gedcom.Family, familyID uuid.UUID) []EventData
 			eventData.Address = convertGedcomAddress(event.Address)
 		}
 		events = append(events, eventData)
+		ids[event] = eventData.ID
 	}
 
-	return events
+	return events, ids
 }
 
 // familyEventFactTypes maps each family event tag gedcom-go decodes to its

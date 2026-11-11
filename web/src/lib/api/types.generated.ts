@@ -4231,6 +4231,14 @@ export interface components {
              * @description ID of the person or family this citation applies to
              */
             fact_owner_id: string;
+            /**
+             * Format: uuid
+             * @description ID of the life event or attribute this citation supports, when it
+             *     cites one of several facts of the same type (such as one of two
+             *     censuses). Absent when it cites the fact as a whole: a birth,
+             *     death or marriage, or a citation recorded before the link existed.
+             */
+            fact_id?: string;
             page?: string;
             volume?: string;
             source_quality?: components["schemas"]["SourceQuality"];
@@ -4263,6 +4271,13 @@ export interface components {
              * @description ID of the person or family this citation applies to
              */
             fact_owner_id: string;
+            /**
+             * Format: uuid
+             * @description ID of the life event or attribute this citation supports. It must
+             *     belong to `fact_owner_id` and be of `fact_type`. Omit it to cite
+             *     the fact as a whole, as for a birth, death or marriage.
+             */
+            fact_id?: string;
             page?: string;
             volume?: string;
             source_quality?: components["schemas"]["SourceQuality"];

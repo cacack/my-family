@@ -13,6 +13,8 @@ import (
 	// (ADR-002, #822). It registers itself as the "sqlite" driver.
 	sqlitedriver "modernc.org/sqlite"
 
+	"github.com/google/uuid"
+
 	"github.com/cacack/my-family/internal/repository"
 )
 
@@ -230,6 +232,14 @@ func nullableString(s string) sql.NullString {
 		return sql.NullString{}
 	}
 	return sql.NullString{String: s, Valid: true}
+}
+
+// nullableUUID converts a nil *uuid.UUID to NULL and any other to its text.
+func nullableUUID(id *uuid.UUID) sql.NullString {
+	if id == nil {
+		return sql.NullString{}
+	}
+	return sql.NullString{String: id.String(), Valid: true}
 }
 
 // nullableInt converts a *int to sql.NullInt64.

@@ -965,6 +965,7 @@ func (p *Projector) projectCitationCreated(ctx context.Context, e domain.Citatio
 		SourceTitle:   sourceTitle,
 		FactType:      e.FactType,
 		FactOwnerID:   e.FactOwnerID,
+		FactID:        e.FactID,
 		Page:          e.Page,
 		Volume:        e.Volume,
 		SourceQuality: e.SourceQuality,
@@ -1032,6 +1033,15 @@ func (p *Projector) projectCitationUpdated(ctx context.Context, e domain.Citatio
 			if v, ok := value.(string); ok {
 				if id, err := uuid.Parse(v); err == nil {
 					citation.FactOwnerID = id
+				}
+			}
+		case "fact_id":
+			// A nil value unlinks the citation from its life event or
+			// attribute (#1294).
+			citation.FactID = nil
+			if v, ok := value.(string); ok {
+				if id, err := uuid.Parse(v); err == nil {
+					citation.FactID = &id
 				}
 			}
 		case "page":

@@ -785,6 +785,9 @@ func (s *ReadModelStore) runMigrations() {
 	// Add the TYPE of an imported life event (issue #1276).
 	_, _ = s.db.Exec(`ALTER TABLE life_events ADD COLUMN type_detail TEXT`)
 
+	// Link a citation to the life event or attribute it cites (issue #1294).
+	_, _ = s.db.Exec(`ALTER TABLE citations ADD COLUMN fact_id TEXT`)
+
 	// Add an imported attribute's place coordinates, NOTEs and TYPE (issue #1286).
 	_, _ = s.db.Exec(`ALTER TABLE attributes ADD COLUMN place_lat TEXT`)
 	_, _ = s.db.Exec(`ALTER TABLE attributes ADD COLUMN place_long TEXT`)
@@ -3384,7 +3387,7 @@ const (
 		citation_count, version, updated_at`
 
 	// citationSelectCols is scanCitation's column order (unaliased).
-	citationSelectCols = `id, source_id, source_title, fact_type, fact_owner_id, page, volume,
+	citationSelectCols = `id, source_id, source_title, fact_type, fact_owner_id, fact_id, page, volume,
 		source_quality, informant_type, evidence_type, quoted_text, analysis,
 		template_id, fields_data, gedcom_xref, version, created_at`
 
@@ -3398,6 +3401,9 @@ const (
 	sourceCitationsFilter = `source_id = ?`
 	personCitationsFilter = `fact_owner_id = ? AND fact_type LIKE 'person_%'`
 	factCitationsFilter   = `fact_type = ? AND fact_owner_id = ?`
+	// factInstanceCitationsFilter keeps a fact's citations linked to the
+	// instance bound last or to no instance (#1294).
+	factInstanceCitationsFilter = `fact_type = ? AND fact_owner_id = ? AND (fact_id IS NULL OR fact_id = ?)`
 )
 
 // scanSources drains rows of sourceSelectCols.
@@ -3645,6 +3651,17 @@ func (s *ReadModelStore) GetCitationsForFact(ctx context.Context, branchID domai
 	return citations, nil
 }
 
+// GetCitationsForFactInstance returns the citations of one life event or
+// attribute within the branch overlay (see the interface).
+func (s *ReadModelStore) GetCitationsForFactInstance(ctx context.Context, branchID domain.BranchID, factType domain.FactType, factOwnerID, factID uuid.UUID) ([]repository.CitationReadModel, error) {
+	citations, err := s.listFilteredCitations(ctx, branchID, factInstanceCitationsFilter,
+		[]any{string(factType), factOwnerID.String(), factID.String()})
+	if err != nil {
+		return nil, fmt.Errorf("query citations for fact instance: %w", err)
+	}
+	return citations, nil
+}
+
 // ListCitations returns a paginated list of the citations visible on
 // opts.BranchID (ADR-005, #758).
 func (s *ReadModelStore) ListCitations(ctx context.Context, opts repository.ListOptions) ([]repository.CitationReadModel, int, error) {
@@ -3681,15 +3698,16 @@ func (s *ReadModelStore) SaveCitation(ctx context.Context, branchID domain.Branc
 		return err
 	}
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO citations (id, branch_id, source_id, source_title, fact_type, fact_owner_id, page, volume,
+		INSERT INTO citations (id, branch_id, source_id, source_title, fact_type, fact_owner_id, fact_id, page, volume,
 							   source_quality, informant_type, evidence_type, quoted_text, analysis,
 							   template_id, fields_data, gedcom_xref, version, created_at, deleted)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
 		ON CONFLICT(id, branch_id) DO UPDATE SET
 			source_id = excluded.source_id,
 			source_title = excluded.source_title,
 			fact_type = excluded.fact_type,
 			fact_owner_id = excluded.fact_owner_id,
+			fact_id = excluded.fact_id,
 			page = excluded.page,
 			volume = excluded.volume,
 			source_quality = excluded.source_quality,
@@ -3703,7 +3721,7 @@ func (s *ReadModelStore) SaveCitation(ctx context.Context, branchID domain.Branc
 			version = excluded.version,
 			deleted = 0
 	`, citation.ID.String(), branchID.String(), citation.SourceID.String(), citation.SourceTitle,
-		string(citation.FactType), citation.FactOwnerID.String(), citation.Page, citation.Volume,
+		string(citation.FactType), citation.FactOwnerID.String(), nullableUUID(citation.FactID), citation.Page, citation.Volume,
 		string(citation.SourceQuality), string(citation.InformantType), string(citation.EvidenceType),
 		citation.QuotedText, citation.Analysis, citation.TemplateID, citation.FieldsJSON,
 		citation.GedcomXref, citation.Version, formatTimestamp(citation.CreatedAt))
@@ -4273,13 +4291,14 @@ func scanSourceRow(rows *sql.Rows) (*repository.SourceReadModel, error) {
 func scanCitation(row rowScanner) (*repository.CitationReadModel, error) {
 	var (
 		idStr, sourceIDStr, sourceTitle, factType, factOwnerIDStr string
+		factIDStr                                                 sql.NullString
 		page, volume, sourceQuality, informantType, evidenceType  sql.NullString
 		quotedText, analysis, templateID, fieldsData, gedcomXref  sql.NullString
 		version                                                   int64
 		createdAt                                                 string
 	)
 
-	err := row.Scan(&idStr, &sourceIDStr, &sourceTitle, &factType, &factOwnerIDStr,
+	err := row.Scan(&idStr, &sourceIDStr, &sourceTitle, &factType, &factOwnerIDStr, &factIDStr,
 		&page, &volume, &sourceQuality, &informantType, &evidenceType,
 		&quotedText, &analysis, &templateID, &fieldsData, &gedcomXref, &version, &createdAt)
 
@@ -4293,6 +4312,10 @@ func scanCitation(row rowScanner) (*repository.CitationReadModel, error) {
 	id, _ := uuid.Parse(idStr)
 	sourceID, _ := uuid.Parse(sourceIDStr)
 	factOwnerID, _ := uuid.Parse(factOwnerIDStr)
+	factID, err := parseNullUUID(factIDStr)
+	if err != nil {
+		return nil, fmt.Errorf("scan citation fact_id: %w", err)
+	}
 
 	cit := &repository.CitationReadModel{
 		ID:            id,
@@ -4300,6 +4323,7 @@ func scanCitation(row rowScanner) (*repository.CitationReadModel, error) {
 		SourceTitle:   sourceTitle,
 		FactType:      domain.FactType(factType),
 		FactOwnerID:   factOwnerID,
+		FactID:        factID,
 		Page:          page.String,
 		Volume:        volume.String,
 		SourceQuality: domain.SourceQuality(sourceQuality.String),
