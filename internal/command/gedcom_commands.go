@@ -628,8 +628,12 @@ func (h *Handler) importAttribute(ctx context.Context, a gedcom.AttributeData) e
 		attr.SetDate(a.Date)
 	}
 
-	// Create domain event from model
+	// Create domain event from model; coordinates, notes and TYPE are not
+	// Attribute fields (#1286).
 	event := domain.NewAttributeCreatedFromModel(attr)
+	event.PlaceLat, event.PlaceLong = a.PlaceLat, a.PlaceLong
+	event.Notes = a.Notes
+	event.TypeDetail = a.TypeDetail
 
 	// Append to event store
 	err := h.eventStore.Append(ctx, a.ID, "attribute", []domain.Event{event}, -1, repository.MainScope)

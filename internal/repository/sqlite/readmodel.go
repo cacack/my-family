@@ -785,6 +785,12 @@ func (s *ReadModelStore) runMigrations() {
 	// Add the TYPE of an imported life event (issue #1276).
 	_, _ = s.db.Exec(`ALTER TABLE life_events ADD COLUMN type_detail TEXT`)
 
+	// Add an imported attribute's place coordinates, NOTEs and TYPE (issue #1286).
+	_, _ = s.db.Exec(`ALTER TABLE attributes ADD COLUMN place_lat TEXT`)
+	_, _ = s.db.Exec(`ALTER TABLE attributes ADD COLUMN place_long TEXT`)
+	_, _ = s.db.Exec(`ALTER TABLE attributes ADD COLUMN notes TEXT`)
+	_, _ = s.db.Exec(`ALTER TABLE attributes ADD COLUMN type_detail TEXT`)
+
 	// Add GEDCOM 7.0 shared-note (SNOTE) metadata columns (issue #225).
 	// SQLite ALTER TABLE ADD COLUMN has no IF NOT EXISTS; rely on the _,_ = swallowing.
 	_, _ = s.db.Exec(`ALTER TABLE notes ADD COLUMN mime TEXT`)
@@ -3754,7 +3760,8 @@ const (
 		age, research_status, is_negated, notes, type_detail, version, created_at`
 
 	// attributeSelectCols is scanAttribute's column order (unaliased).
-	attributeSelectCols = `id, person_id, fact_type, value, date_raw, date_sort, place, version, created_at`
+	attributeSelectCols = `id, person_id, fact_type, value, date_raw, date_sort, place,
+		place_lat, place_long, notes, type_detail, version, created_at`
 
 	// associationSelectCols is scanAssociation's column order (unaliased).
 	associationSelectCols = `id, person_id, person_name, associate_id, associate_name,
@@ -4154,14 +4161,21 @@ func (s *ReadModelStore) SaveAttribute(ctx context.Context, branchID domain.Bran
 		return err
 	}
 
-	var dateSort interface{}
+	var dateSort, placeLat, placeLong interface{}
 	if attribute.DateSort != nil {
 		dateSort = formatSortDate(*attribute.DateSort, time.RFC3339)
 	}
+	if attribute.PlaceLat != nil {
+		placeLat = *attribute.PlaceLat
+	}
+	if attribute.PlaceLong != nil {
+		placeLong = *attribute.PlaceLong
+	}
 
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO attributes (id, branch_id, person_id, fact_type, value, date_raw, date_sort, place, version, created_at, deleted)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+		INSERT INTO attributes (id, branch_id, person_id, fact_type, value, date_raw, date_sort, place,
+		                        place_lat, place_long, notes, type_detail, version, created_at, deleted)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
 		ON CONFLICT (id, branch_id) DO UPDATE SET
 			person_id = excluded.person_id,
 			fact_type = excluded.fact_type,
@@ -4169,10 +4183,15 @@ func (s *ReadModelStore) SaveAttribute(ctx context.Context, branchID domain.Bran
 			date_raw = excluded.date_raw,
 			date_sort = excluded.date_sort,
 			place = excluded.place,
+			place_lat = excluded.place_lat,
+			place_long = excluded.place_long,
+			notes = excluded.notes,
+			type_detail = excluded.type_detail,
 			version = excluded.version,
 			deleted = 0
 	`, attribute.ID.String(), branchID.String(), attribute.PersonID.String(), string(attribute.FactType),
 		attribute.Value, attribute.DateRaw, dateSort, attribute.Place,
+		placeLat, placeLong, attribute.Notes, attribute.TypeDetail,
 		attribute.Version, formatTimestamp(attribute.CreatedAt))
 	if err != nil {
 		return fmt.Errorf("save attribute: %w", err)
@@ -4388,12 +4407,14 @@ func scanAttribute(row rowScanner) (*repository.AttributeReadModel, error) {
 		value                        string
 		dateRaw, place               sql.NullString
 		dateSort                     sql.NullString
+		placeLat, placeLong          sql.NullString
+		notes, typeDetail            sql.NullString
 		version                      int64
 		createdAt                    string
 	)
 
 	err := row.Scan(&idStr, &personIDStr, &factType, &value, &dateRaw, &dateSort,
-		&place, &version, &createdAt)
+		&place, &placeLat, &placeLong, &notes, &typeDetail, &version, &createdAt)
 
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -4406,19 +4427,29 @@ func scanAttribute(row rowScanner) (*repository.AttributeReadModel, error) {
 	personID, _ := uuid.Parse(personIDStr)
 
 	attr := &repository.AttributeReadModel{
-		ID:       id,
-		PersonID: personID,
-		FactType: domain.FactType(factType),
-		Value:    value,
-		DateRaw:  dateRaw.String,
-		Place:    place.String,
-		Version:  version,
+		ID:         id,
+		PersonID:   personID,
+		FactType:   domain.FactType(factType),
+		Value:      value,
+		DateRaw:    dateRaw.String,
+		Place:      place.String,
+		Notes:      notes.String,
+		TypeDetail: typeDetail.String,
+		Version:    version,
 	}
 
 	if dateSort.Valid {
 		if t, err := parseSortDate(dateSort.String, time.RFC3339); err == nil {
 			attr.DateSort = &t
 		}
+	}
+	if placeLat.Valid {
+		s := placeLat.String
+		attr.PlaceLat = &s
+	}
+	if placeLong.Valid {
+		s := placeLong.String
+		attr.PlaceLong = &s
 	}
 	if t, err := parseTimestamp(createdAt); err == nil {
 		attr.CreatedAt = t

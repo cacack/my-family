@@ -989,6 +989,12 @@ func (s *ReadModelStore) runMigrations() {
 	// Add the TYPE of an imported life event (issue #1276)
 	_, _ = s.db.Exec(`ALTER TABLE life_events ADD COLUMN IF NOT EXISTS type_detail TEXT`)
 
+	// Add an imported attribute's place coordinates, NOTEs and TYPE (issue #1286)
+	_, _ = s.db.Exec(`ALTER TABLE attributes ADD COLUMN IF NOT EXISTS place_lat VARCHAR(20)`)
+	_, _ = s.db.Exec(`ALTER TABLE attributes ADD COLUMN IF NOT EXISTS place_long VARCHAR(20)`)
+	_, _ = s.db.Exec(`ALTER TABLE attributes ADD COLUMN IF NOT EXISTS notes TEXT`)
+	_, _ = s.db.Exec(`ALTER TABLE attributes ADD COLUMN IF NOT EXISTS type_detail TEXT`)
+
 	// Add GEDCOM 7.0 shared-note (SNOTE) metadata columns (issue #225)
 	_, _ = s.db.Exec(`ALTER TABLE notes ADD COLUMN IF NOT EXISTS mime VARCHAR(100)`)
 	_, _ = s.db.Exec(`ALTER TABLE notes ADD COLUMN IF NOT EXISTS language VARCHAR(35)`)
@@ -3478,7 +3484,8 @@ const (
 		age, research_status, is_negated, notes, type_detail, version, created_at`
 
 	// attributeSelectCols is scanAttributeRow's column order (unaliased).
-	attributeSelectCols = `id, person_id, fact_type, value, date_raw, date_sort, place, version, created_at`
+	attributeSelectCols = `id, person_id, fact_type, value, date_raw, date_sort, place,
+		place_lat, place_long, notes, type_detail, version, created_at`
 
 	// associationSelectCols is scanAssociationRow's column order (unaliased).
 	associationSelectCols = `id, person_id, person_name, associate_id, associate_name,
@@ -3847,8 +3854,10 @@ func (s *ReadModelStore) ListAttributesForPerson(ctx context.Context, branchID d
 // save always clears any prior tombstone.
 func (s *ReadModelStore) SaveAttribute(ctx context.Context, branchID domain.BranchID, attribute *repository.AttributeReadModel) error {
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO attributes (id, branch_id, person_id, fact_type, value, date_raw, date_sort, place, version, created_at, deleted)
-		VALUES ($1, $2, $3, $4, $5, NULLIF($6, ''), $7, NULLIF($8, ''), $9, $10, FALSE)
+		INSERT INTO attributes (id, branch_id, person_id, fact_type, value, date_raw, date_sort, place,
+		                        place_lat, place_long, notes, type_detail, version, created_at, deleted)
+		VALUES ($1, $2, $3, $4, $5, NULLIF($6, ''), $7, NULLIF($8, ''),
+		        $9, $10, NULLIF($11, ''), NULLIF($12, ''), $13, $14, FALSE)
 		ON CONFLICT (id, branch_id) DO UPDATE SET
 			person_id = EXCLUDED.person_id,
 			fact_type = EXCLUDED.fact_type,
@@ -3856,11 +3865,16 @@ func (s *ReadModelStore) SaveAttribute(ctx context.Context, branchID domain.Bran
 			date_raw = EXCLUDED.date_raw,
 			date_sort = EXCLUDED.date_sort,
 			place = EXCLUDED.place,
+			place_lat = EXCLUDED.place_lat,
+			place_long = EXCLUDED.place_long,
+			notes = EXCLUDED.notes,
+			type_detail = EXCLUDED.type_detail,
 			version = EXCLUDED.version,
 			deleted = FALSE
 	`, attribute.ID, branchID.UUID(), attribute.PersonID, string(attribute.FactType),
 		attribute.Value, attribute.DateRaw, nullableTime(attribute.DateSort),
-		attribute.Place, attribute.Version, attribute.CreatedAt)
+		attribute.Place, nullableStringPtr(attribute.PlaceLat), nullableStringPtr(attribute.PlaceLong),
+		attribute.Notes, attribute.TypeDetail, attribute.Version, attribute.CreatedAt)
 	if err != nil {
 		return fmt.Errorf("save attribute: %w", err)
 	}
@@ -4061,16 +4075,18 @@ func scanEventRows(rows *sql.Rows) (*repository.EventReadModel, error) {
 
 func scanAttributeRow(row rowScanner) (*repository.AttributeReadModel, error) {
 	var (
-		id, personID    uuid.UUID
-		factType, value string
-		dateRaw, place  sql.NullString
-		dateSort        sql.NullTime
-		version         int64
-		createdAt       time.Time
+		id, personID        uuid.UUID
+		factType, value     string
+		dateRaw, place      sql.NullString
+		dateSort            sql.NullTime
+		placeLat, placeLong sql.NullString
+		notes, typeDetail   sql.NullString
+		version             int64
+		createdAt           time.Time
 	)
 
 	err := row.Scan(&id, &personID, &factType, &value, &dateRaw, &dateSort,
-		&place, &version, &createdAt)
+		&place, &placeLat, &placeLong, &notes, &typeDetail, &version, &createdAt)
 
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -4080,18 +4096,28 @@ func scanAttributeRow(row rowScanner) (*repository.AttributeReadModel, error) {
 	}
 
 	attr := &repository.AttributeReadModel{
-		ID:        id,
-		PersonID:  personID,
-		FactType:  domain.FactType(factType),
-		Value:     value,
-		DateRaw:   dateRaw.String,
-		Place:     place.String,
-		Version:   version,
-		CreatedAt: createdAt,
+		ID:         id,
+		PersonID:   personID,
+		FactType:   domain.FactType(factType),
+		Value:      value,
+		DateRaw:    dateRaw.String,
+		Place:      place.String,
+		Notes:      notes.String,
+		TypeDetail: typeDetail.String,
+		Version:    version,
+		CreatedAt:  createdAt,
 	}
 
 	if dateSort.Valid {
 		attr.DateSort = &dateSort.Time
+	}
+	if placeLat.Valid {
+		s := placeLat.String
+		attr.PlaceLat = &s
+	}
+	if placeLong.Valid {
+		s := placeLong.String
+		attr.PlaceLong = &s
 	}
 
 	return attr, nil

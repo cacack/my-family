@@ -233,8 +233,13 @@ type AttributeReadModel struct {
 	DateRaw   string          `json:"date_raw,omitempty"`
 	DateSort  *time.Time      `json:"-"` // internal sort key; BC years cannot encode as JSON (#1065)
 	Place     string          `json:"place,omitempty"`
-	Version   int64           `json:"version"`
-	CreatedAt time.Time       `json:"created_at"`
+	PlaceLat  *string         `json:"place_lat,omitempty"`
+	PlaceLong *string         `json:"place_long,omitempty"`
+	// Notes and TypeDetail are the attribute's own NOTEs and GEDCOM TYPE (#1286).
+	Notes      string    `json:"notes,omitempty"`
+	TypeDetail string    `json:"type_detail,omitempty"`
+	Version    int64     `json:"version"`
+	CreatedAt  time.Time `json:"created_at"`
 }
 
 // NoteReadModel represents a shared GEDCOM note in the read model.

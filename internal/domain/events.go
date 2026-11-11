@@ -801,6 +801,12 @@ type AttributeCreated struct {
 	Date        *GenDate  `json:"date,omitempty"`
 	Place       string    `json:"place,omitempty"`
 	GedcomXref  string    `json:"gedcom_xref,omitempty"`
+	// Place coordinates, NOTEs and TYPE come from GEDCOM import, as for
+	// LifeEventCreated (#1286).
+	PlaceLat   *string `json:"place_lat,omitempty"`
+	PlaceLong  *string `json:"place_long,omitempty"`
+	Notes      string  `json:"notes,omitempty"`
+	TypeDetail string  `json:"type_detail,omitempty"`
 }
 
 func (e AttributeCreated) EventType() string      { return "AttributeCreated" }

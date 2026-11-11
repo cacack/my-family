@@ -800,7 +800,7 @@ func toGedcomIndividual(p repository.PersonReadModel, sourceXrefs map[uuid.UUID]
 
 	// Attributes (occupation, residence, education, etc.)
 	for _, attr := range attributes {
-		if gedcomAttr := toGedcomAttribute(attr); gedcomAttr != nil {
+		if gedcomAttr := toGedcomAttribute(attr, sourceXrefs, readStore, ctx); gedcomAttr != nil {
 			indi.Attributes = append(indi.Attributes, gedcomAttr)
 		}
 	}
@@ -1030,15 +1030,16 @@ func convertDomainAddressToGedcom(addr *domain.Address) *gedcom.Address {
 }
 
 // toGedcomAttribute converts an AttributeReadModel to a gedcom.Attribute.
-func toGedcomAttribute(attr repository.AttributeReadModel) *gedcom.Attribute {
+func toGedcomAttribute(attr repository.AttributeReadModel, sourceXrefs map[uuid.UUID]string, readStore repository.ReadModelStore, ctx context.Context) *gedcom.Attribute {
 	tagName := mapFactTypeToGedcomTag(attr.FactType)
 	if tagName == "" {
 		return nil // Skip unknown attribute types
 	}
 
 	ga := &gedcom.Attribute{
-		Type:  gedcom.AttributeType(tagName),
-		Value: attr.Value,
+		Type:       gedcom.AttributeType(tagName),
+		Value:      attr.Value,
+		TypeDetail: attr.TypeDetail,
 	}
 
 	if attr.DateRaw != "" {
@@ -1047,6 +1048,21 @@ func toGedcomAttribute(attr repository.AttributeReadModel) *gedcom.Attribute {
 
 	if attr.Place != "" {
 		ga.SetPlaceName(attr.Place)
+		if attr.PlaceLat != nil && attr.PlaceLong != nil && *attr.PlaceLat != "" && *attr.PlaceLong != "" {
+			ga.PlaceDetail.Coordinates = &gedcom.Coordinates{
+				Latitude:  *attr.PlaceLat,
+				Longitude: *attr.PlaceLong,
+			}
+		}
+	}
+
+	ga.NoteXRefs, ga.InlineNotes = splitNotes(attr.Notes, noteJoin)
+
+	// Citations are keyed by fact type and person, as a life event's are, so
+	// two attributes of one fact type share them (#1294).
+	if readStore != nil {
+		citations, _ := readStore.GetCitationsForFact(ctx, domain.MainBranchID, attr.FactType, attr.PersonID)
+		ga.SourceCitations = toGedcomSourceCitations(citations, sourceXrefs, readStore, ctx)
 	}
 
 	return ga

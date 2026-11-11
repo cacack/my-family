@@ -1442,6 +1442,63 @@ func TestImportAttributes_NestedTagsIgnoredAndSubordinatesKept(t *testing.T) {
 	}
 }
 
+// A level-1 attribute keeps its place coordinates, TYPE and NOTEs, its SOUR
+// becomes a citation of its fact type, and its NOTE is not warned as dropped
+// (#1286).
+func TestImportAttributes_CoordinatesTypeNotesAndCitations(t *testing.T) {
+	gedcomData := `0 HEAD
+1 GEDC
+2 VERS 5.5.1
+1 CHAR UTF-8
+0 @S1@ SOUR
+1 TITL City directory
+0 @I1@ INDI
+1 NAME A /B/
+1 OCCU Blacksmith
+2 TYPE Trade
+2 PLAC Springfield
+3 MAP
+4 LATI N39.7817
+4 LONG W89.6501
+2 NOTE Shod the town's horses
+2 SOUR @S1@
+3 PAGE p. 12
+0 TRLR
+`
+	importer := gedcom.NewImporter()
+	result, persons, _, _, citations, _, _, attributes, _, _, _, _, _, err := importer.Import(context.Background(), strings.NewReader(gedcomData))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+
+	if len(attributes) != 1 {
+		t.Fatalf("attributes = %+v, want one OCCU", attributes)
+	}
+	a := attributes[0]
+	if a.TypeDetail != "Trade" || a.Notes != "Shod the town's horses" || a.Place != "Springfield" {
+		t.Errorf("attribute = {type %q notes %q place %q}, want {type \"Trade\" notes \"Shod the town's horses\" place \"Springfield\"}",
+			a.TypeDetail, a.Notes, a.Place)
+	}
+	if a.PlaceLat == nil || *a.PlaceLat != "N39.7817" || a.PlaceLong == nil || *a.PlaceLong != "W89.6501" {
+		t.Errorf("attribute coordinates = %v, %v; want N39.7817, W89.6501", a.PlaceLat, a.PlaceLong)
+	}
+
+	if len(citations) != 1 {
+		t.Fatalf("citations = %+v, want the OCCU's SOUR", citations)
+	}
+	c := citations[0]
+	if c.SourceXref != "@S1@" || c.FactType != string(domain.FactPersonOccupation) || c.FactOwnerID != persons[0].ID || c.Page != "p. 12" {
+		t.Errorf("citation = {%s %s owner %s page %q}, want {@S1@ %s owner %s page \"p. 12\"}",
+			c.SourceXref, c.FactType, c.FactOwnerID, c.Page, domain.FactPersonOccupation, persons[0].ID)
+	}
+
+	for _, w := range result.Warnings {
+		if strings.Contains(w, "NOTE") {
+			t.Errorf("unexpected dropped-note warning: %s", w)
+		}
+	}
+}
+
 func TestImportFamilyEventsExtraction(t *testing.T) {
 	gedcomData := `0 HEAD
 1 GEDC
