@@ -1422,6 +1422,24 @@ func mapFactTypeToGedcomTag(factType domain.FactType) string {
 		return "RELI"
 	case domain.FactPersonTitle:
 		return "TITL"
+	case domain.FactPersonPhysicalDescription:
+		return "DSCR"
+	case domain.FactPersonNationality:
+		return "NATI"
+	case domain.FactPersonCaste:
+		return "CAST"
+	case domain.FactPersonProperty:
+		return "PROP"
+	case domain.FactPersonSocialSecurityNumber:
+		return "SSN"
+	case domain.FactPersonIdentificationNumber:
+		return "IDNO"
+	case domain.FactPersonChildrenCount:
+		return "NCHI"
+	case domain.FactPersonMarriageCount:
+		return "NMR"
+	case domain.FactPersonGenericFact:
+		return "FACT"
 	// Family events
 	case domain.FactFamilyMarriage:
 		return "MARR"

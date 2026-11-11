@@ -555,48 +555,57 @@ func (e ExportFormat) Valid() bool {
 
 // Defines values for FactType.
 const (
-	FactTypeFamilyAnnulment          FactType = "family_annulment"
-	FactTypeFamilyCensus             FactType = "family_census"
-	FactTypeFamilyDivorce            FactType = "family_divorce"
-	FactTypeFamilyDivorceFiling      FactType = "family_divorce_filing"
-	FactTypeFamilyEngagement         FactType = "family_engagement"
-	FactTypeFamilyGenericEvent       FactType = "family_generic_event"
-	FactTypeFamilyMarriage           FactType = "family_marriage"
-	FactTypeFamilyMarriageBann       FactType = "family_marriage_bann"
-	FactTypeFamilyMarriageContract   FactType = "family_marriage_contract"
-	FactTypeFamilyMarriageLicense    FactType = "family_marriage_license"
-	FactTypeFamilyMarriageSettlement FactType = "family_marriage_settlement"
-	FactTypeFamilyResidence          FactType = "family_residence"
-	FactTypePersonAdoption           FactType = "person_adoption"
-	FactTypePersonAdultChristening   FactType = "person_adult_christening"
-	FactTypePersonBaptism            FactType = "person_baptism"
-	FactTypePersonBarMitzvah         FactType = "person_bar_mitzvah"
-	FactTypePersonBasMitzvah         FactType = "person_bas_mitzvah"
-	FactTypePersonBirth              FactType = "person_birth"
-	FactTypePersonBlessing           FactType = "person_blessing"
-	FactTypePersonBurial             FactType = "person_burial"
-	FactTypePersonCensus             FactType = "person_census"
-	FactTypePersonChristening        FactType = "person_christening"
-	FactTypePersonConfirmation       FactType = "person_confirmation"
-	FactTypePersonCremation          FactType = "person_cremation"
-	FactTypePersonDeath              FactType = "person_death"
-	FactTypePersonEducation          FactType = "person_education"
-	FactTypePersonEmigration         FactType = "person_emigration"
-	FactTypePersonFirstCommunion     FactType = "person_first_communion"
-	FactTypePersonGender             FactType = "person_gender"
-	FactTypePersonGenericEvent       FactType = "person_generic_event"
-	FactTypePersonGraduation         FactType = "person_graduation"
-	FactTypePersonImmigration        FactType = "person_immigration"
-	FactTypePersonName               FactType = "person_name"
-	FactTypePersonNaturalization     FactType = "person_naturalization"
-	FactTypePersonOccupation         FactType = "person_occupation"
-	FactTypePersonOrdination         FactType = "person_ordination"
-	FactTypePersonProbate            FactType = "person_probate"
-	FactTypePersonReligion           FactType = "person_religion"
-	FactTypePersonResidence          FactType = "person_residence"
-	FactTypePersonRetirement         FactType = "person_retirement"
-	FactTypePersonTitle              FactType = "person_title"
-	FactTypePersonWill               FactType = "person_will"
+	FactTypeFamilyAnnulment            FactType = "family_annulment"
+	FactTypeFamilyCensus               FactType = "family_census"
+	FactTypeFamilyDivorce              FactType = "family_divorce"
+	FactTypeFamilyDivorceFiling        FactType = "family_divorce_filing"
+	FactTypeFamilyEngagement           FactType = "family_engagement"
+	FactTypeFamilyGenericEvent         FactType = "family_generic_event"
+	FactTypeFamilyMarriage             FactType = "family_marriage"
+	FactTypeFamilyMarriageBann         FactType = "family_marriage_bann"
+	FactTypeFamilyMarriageContract     FactType = "family_marriage_contract"
+	FactTypeFamilyMarriageLicense      FactType = "family_marriage_license"
+	FactTypeFamilyMarriageSettlement   FactType = "family_marriage_settlement"
+	FactTypeFamilyResidence            FactType = "family_residence"
+	FactTypePersonAdoption             FactType = "person_adoption"
+	FactTypePersonAdultChristening     FactType = "person_adult_christening"
+	FactTypePersonBaptism              FactType = "person_baptism"
+	FactTypePersonBarMitzvah           FactType = "person_bar_mitzvah"
+	FactTypePersonBasMitzvah           FactType = "person_bas_mitzvah"
+	FactTypePersonBirth                FactType = "person_birth"
+	FactTypePersonBlessing             FactType = "person_blessing"
+	FactTypePersonBurial               FactType = "person_burial"
+	FactTypePersonCaste                FactType = "person_caste"
+	FactTypePersonCensus               FactType = "person_census"
+	FactTypePersonChildrenCount        FactType = "person_children_count"
+	FactTypePersonChristening          FactType = "person_christening"
+	FactTypePersonConfirmation         FactType = "person_confirmation"
+	FactTypePersonCremation            FactType = "person_cremation"
+	FactTypePersonDeath                FactType = "person_death"
+	FactTypePersonEducation            FactType = "person_education"
+	FactTypePersonEmigration           FactType = "person_emigration"
+	FactTypePersonFirstCommunion       FactType = "person_first_communion"
+	FactTypePersonGender               FactType = "person_gender"
+	FactTypePersonGenericEvent         FactType = "person_generic_event"
+	FactTypePersonGenericFact          FactType = "person_generic_fact"
+	FactTypePersonGraduation           FactType = "person_graduation"
+	FactTypePersonIdentificationNumber FactType = "person_identification_number"
+	FactTypePersonImmigration          FactType = "person_immigration"
+	FactTypePersonMarriageCount        FactType = "person_marriage_count"
+	FactTypePersonName                 FactType = "person_name"
+	FactTypePersonNationality          FactType = "person_nationality"
+	FactTypePersonNaturalization       FactType = "person_naturalization"
+	FactTypePersonOccupation           FactType = "person_occupation"
+	FactTypePersonOrdination           FactType = "person_ordination"
+	FactTypePersonPhysicalDescription  FactType = "person_physical_description"
+	FactTypePersonProbate              FactType = "person_probate"
+	FactTypePersonProperty             FactType = "person_property"
+	FactTypePersonReligion             FactType = "person_religion"
+	FactTypePersonResidence            FactType = "person_residence"
+	FactTypePersonRetirement           FactType = "person_retirement"
+	FactTypePersonSocialSecurityNumber FactType = "person_social_security_number"
+	FactTypePersonTitle                FactType = "person_title"
+	FactTypePersonWill                 FactType = "person_will"
 )
 
 // Valid indicates whether the value is a known member of the FactType enum.
@@ -642,7 +651,11 @@ func (e FactType) Valid() bool {
 		return true
 	case FactTypePersonBurial:
 		return true
+	case FactTypePersonCaste:
+		return true
 	case FactTypePersonCensus:
+		return true
+	case FactTypePersonChildrenCount:
 		return true
 	case FactTypePersonChristening:
 		return true
@@ -662,11 +675,19 @@ func (e FactType) Valid() bool {
 		return true
 	case FactTypePersonGenericEvent:
 		return true
+	case FactTypePersonGenericFact:
+		return true
 	case FactTypePersonGraduation:
+		return true
+	case FactTypePersonIdentificationNumber:
 		return true
 	case FactTypePersonImmigration:
 		return true
+	case FactTypePersonMarriageCount:
+		return true
 	case FactTypePersonName:
+		return true
+	case FactTypePersonNationality:
 		return true
 	case FactTypePersonNaturalization:
 		return true
@@ -674,13 +695,19 @@ func (e FactType) Valid() bool {
 		return true
 	case FactTypePersonOrdination:
 		return true
+	case FactTypePersonPhysicalDescription:
+		return true
 	case FactTypePersonProbate:
+		return true
+	case FactTypePersonProperty:
 		return true
 	case FactTypePersonReligion:
 		return true
 	case FactTypePersonResidence:
 		return true
 	case FactTypePersonRetirement:
+		return true
+	case FactTypePersonSocialSecurityNumber:
 		return true
 	case FactTypePersonTitle:
 		return true

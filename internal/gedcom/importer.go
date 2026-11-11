@@ -450,7 +450,7 @@ func (imp *Importer) ImportWithOptions(ctx context.Context, reader io.Reader, im
 		events = append(events, personEvents...)
 
 		// Extract attributes from individual
-		personAttributes := extractAttributesFromIndividual(indi, person.ID)
+		personAttributes := extractAttributesFromIndividual(indi, person.ID, result)
 		attributes = append(attributes, personAttributes...)
 	}
 
@@ -1626,7 +1626,7 @@ func convertGedcomAddress(addr *gedcom.Address) *domain.Address {
 }
 
 // extractAttributesFromIndividual extracts all attributes from an individual.
-func extractAttributesFromIndividual(indi *gedcom.Individual, personID uuid.UUID) []AttributeData {
+func extractAttributesFromIndividual(indi *gedcom.Individual, personID uuid.UUID, result *ImportResult) []AttributeData {
 	var attributes []AttributeData
 
 	// RESI decodes into indi.Events and is imported as a life event
@@ -1634,13 +1634,21 @@ func extractAttributesFromIndividual(indi *gedcom.Individual, personID uuid.UUID
 	// attributes are read from indi.Attributes, which gedcom-go fills from the
 	// level-1 attribute lines only, with their DATE and PLAC (#1275). The raw
 	// indi.Tags would also yield nested lines such as OBJE.TITL or BAPM.RELI.
-	// Attribute tags with no person fact type (DSCR, NATI, CAST, PROP, SSN,
-	// IDNO, NCHI, NMR, FACT) are not imported.
 	// Their coordinates, TYPE and NOTEs (here) and SOURs
 	// (extractCitationsFromIndividual) are kept as a life event's are (#1286).
+	// An attribute that is not imported is warned about (#1287).
 	for _, ga := range indi.Attributes {
+		if ga == nil {
+			continue
+		}
 		factType, ok := importedAttributeFactType(ga)
 		if !ok {
+			reason := "has no value"
+			if _, known := personAttributeFactTypes[ga.Type]; !known {
+				reason = "has no person fact type"
+			}
+			result.Warnings = append(result.Warnings,
+				fmt.Sprintf("Individual %s: attribute %s %s, not imported", indi.XRef, ga.Type, reason))
 			continue
 		}
 
@@ -1674,10 +1682,19 @@ func extractAttributesFromIndividual(indi *gedcom.Individual, personID uuid.UUID
 // personAttributeFactTypes maps each attribute tag imported as a person
 // attribute to its fact type.
 var personAttributeFactTypes = map[gedcom.AttributeType]domain.FactType{
-	gedcom.AttributeOccupation: domain.FactPersonOccupation,
-	gedcom.AttributeEducation:  domain.FactPersonEducation,
-	gedcom.AttributeReligion:   domain.FactPersonReligion,
-	gedcom.AttributeTitle:      domain.FactPersonTitle,
+	gedcom.AttributeOccupation:          domain.FactPersonOccupation,
+	gedcom.AttributeEducation:           domain.FactPersonEducation,
+	gedcom.AttributeReligion:            domain.FactPersonReligion,
+	gedcom.AttributeTitle:               domain.FactPersonTitle,
+	gedcom.AttributePhysicalDescription: domain.FactPersonPhysicalDescription,
+	gedcom.AttributeNationality:         domain.FactPersonNationality,
+	gedcom.AttributeCaste:               domain.FactPersonCaste,
+	gedcom.AttributeProperty:            domain.FactPersonProperty,
+	gedcom.AttributeSSN:                 domain.FactPersonSocialSecurityNumber,
+	gedcom.AttributeIDNumber:            domain.FactPersonIdentificationNumber,
+	gedcom.AttributeNumberOfChildren:    domain.FactPersonChildrenCount,
+	gedcom.AttributeNumberOfMarriages:   domain.FactPersonMarriageCount,
+	gedcom.AttributeFact:                domain.FactPersonGenericFact,
 }
 
 // importedAttributeFactType returns the fact type of an attribute the import
