@@ -1266,6 +1266,9 @@ func convertEventToExport(e repository.EventReadModel) EventExport {
 		rs := ResearchStatus(e.ResearchStatus)
 		event.ResearchStatus = &rs
 	}
+	if e.IsNegated {
+		event.IsNegated = &e.IsNegated
+	}
 	event.Version = &e.Version
 	event.CreatedAt = &e.CreatedAt
 
