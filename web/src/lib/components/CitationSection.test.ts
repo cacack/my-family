@@ -11,7 +11,8 @@ vi.mock('#lib/api/client.js', async (importOriginal) => {
 		api: {
 			getPersonCitations: vi.fn(),
 			searchSources: vi.fn(),
-			createCitation: vi.fn()
+			createCitation: vi.fn(),
+			deleteCitation: vi.fn()
 		}
 	};
 });
@@ -45,5 +46,47 @@ describe('CitationSection', () => {
 		expect(page.tagName).toBe('TEXTAREA');
 		await fireEvent.input(page, { target: { value: 'Folio 12\nEntry 3' } });
 		expect(page.value).toBe('Folio 12\nEntry 3');
+	});
+
+	// Only a stale version reads as "updated elsewhere"; a refusal keeps its message (#988).
+	describe('a 409 on delete', () => {
+		const citation = {
+			id: 'c-1',
+			source_id: 's-1',
+			source_title: 'Parish register',
+			fact_type: 'person_birth',
+			fact_owner_id: 'p-1',
+			version: 1
+		} as apiModule.Citation;
+
+		async function deleteIt() {
+			vi.mocked(apiModule.api.getPersonCitations).mockResolvedValue({ citations: [citation], total: 1 });
+			render(CitationSection, { props: { personId: 'p-1' } });
+			await fireEvent.click(await screen.findByRole('button', { name: 'Delete' }));
+			await fireEvent.click(screen.getByRole('button', { name: 'Yes, Delete' }));
+		}
+
+		it('shows the server message for a refusal, with no retry', async () => {
+			const message = 'The citation is referenced by a proof summary';
+			vi.mocked(apiModule.api.deleteCitation).mockRejectedValue({ status: 409, code: 'CONFLICT', message });
+			await deleteIt();
+
+			expect(await screen.findByRole('alert')).toHaveProperty('textContent', message);
+			expect(screen.queryByRole('button', { name: 'Try Again' })).toBeNull();
+		});
+
+		it('shows the stale-version notice and a retry for a version conflict', async () => {
+			vi.mocked(apiModule.api.deleteCitation).mockRejectedValue({
+				status: 409,
+				code: 'VERSION_CONFLICT',
+				message: 'version conflict'
+			});
+			await deleteIt();
+
+			expect((await screen.findByRole('alert')).textContent).toContain(
+				'This record was updated by another operation'
+			);
+			expect(screen.getByRole('button', { name: 'Try Again' })).toBeTruthy();
+		});
 	});
 });

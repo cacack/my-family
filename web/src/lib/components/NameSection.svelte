@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { api, isConflictError, isVersionConflict, type PersonName, type NameType } from '#lib/api/client.js';
+	import { api, isStaleVersion, type PersonName, type NameType } from '#lib/api/client.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import FormRow from '#lib/components/FormRow.svelte';
 	import ConflictError from './ConflictError.svelte';
@@ -78,7 +78,7 @@
 		try {
 			await retryAction();
 		} catch (e) {
-			if (isConflictError(e)) {
+			if (isStaleVersion(e)) {
 				conflictError = true;
 			} else {
 				error = (e as { message?: string }).message || 'Operation failed';
@@ -150,7 +150,7 @@
 			loadNames();
 			onNamesChanged?.();
 		} catch (e) {
-			if (isConflictError(e)) {
+			if (isStaleVersion(e)) {
 				conflictError = true;
 				retryAction = () => saveNewName();
 			} else {
@@ -186,7 +186,7 @@
 			loadNames();
 			onNamesChanged?.();
 		} catch (e) {
-			if (isConflictError(e)) {
+			if (isStaleVersion(e)) {
 				conflictError = true;
 				retryAction = () => saveEdit();
 			} else {
@@ -219,14 +219,6 @@
 		} finally {
 			saving = false;
 		}
-	}
-
-	/**
-	 * Whether a delete failed on a stale version, which a retry can fix. Any
-	 * other 409, such as refusing the primary name (#1106), is shown as an error.
-	 */
-	function isStaleVersion(e: unknown): boolean {
-		return isVersionConflict(e) || (e as { code?: string }).code === 'CONFLICT_RETRY_FAILED';
 	}
 
 	function formatDisplayName(name: PersonName): string {

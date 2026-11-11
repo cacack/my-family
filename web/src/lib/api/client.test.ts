@@ -16,6 +16,7 @@ import {
 	onBranchWrite,
 	recordLoadError,
 	isVersionConflict,
+	isStaleVersion,
 	type BranchMergeConflictError,
 	type BranchMergeResult,
 	type BranchMergeResumeResult,
@@ -962,6 +963,18 @@ describe('isVersionConflict (#940)', () => {
 		['no error', undefined, false]
 	])('reads %s', (_name, error, want) => {
 		expect(isVersionConflict(error)).toBe(want);
+	});
+});
+
+describe('isStaleVersion (#988)', () => {
+	it.each([
+		['a stale version', { status: 409, code: 'VERSION_CONFLICT' }, true],
+		['a stale version the retry hit again', { status: 409, code: 'CONFLICT_RETRY_FAILED' }, true],
+		['a refusal', { status: 409, code: 'CONFLICT' }, false],
+		['a lowercase refusal', { status: 409, code: 'conflict' }, false],
+		['no error', undefined, false]
+	])('reads %s', (_name, error, want) => {
+		expect(isStaleVersion(error)).toBe(want);
 	});
 });
 
