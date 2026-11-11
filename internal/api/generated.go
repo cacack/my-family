@@ -3446,6 +3446,12 @@ type EventExport struct {
 	OwnerType string  `json:"owner_type"`
 	Place     *string `json:"place,omitempty"`
 
+	// PlaceLatitude Latitude in GEDCOM format (e.g., "N42.3601")
+	PlaceLatitude *string `json:"place_latitude,omitempty"`
+
+	// PlaceLongitude Longitude in GEDCOM format (e.g., "W71.0589")
+	PlaceLongitude *string `json:"place_longitude,omitempty"`
+
 	// ResearchStatus Confidence level of genealogical data per GPS standards
 	//
 	// Example: probable

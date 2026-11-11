@@ -6145,6 +6145,10 @@ export interface components {
             /** @description Date in GEDCOM format */
             date?: string;
             place?: string;
+            /** @description Latitude in GEDCOM format (e.g., "N42.3601") */
+            place_latitude?: string | null;
+            /** @description Longitude in GEDCOM format (e.g., "W71.0589") */
+            place_longitude?: string | null;
             description?: string;
             /** @description Cause (for death events) */
             cause?: string;

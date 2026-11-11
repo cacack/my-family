@@ -10076,6 +10076,14 @@ components:
           description: Date in GEDCOM format
         place:
           type: string
+        place_latitude:
+          type: string
+          nullable: true
+          description: Latitude in GEDCOM format (e.g., "N42.3601")
+        place_longitude:
+          type: string
+          nullable: true
+          description: Longitude in GEDCOM format (e.g., "W71.0589")
         description:
           type: string
         cause:
