@@ -55,6 +55,21 @@ func TestConverters_FamilyPlaceCoordinates(t *testing.T) {
 		convertReadModelFamilyToGenerated(repository.FamilyReadModel{ID: uuid.New(), MarriagePlaceLat: &empty}), familyCoordinateKeys, nil)
 }
 
+// The life event export carries the event's place coordinates, and omits
+// them when unset (#1290).
+func TestConverters_LifeEventPlaceCoordinates(t *testing.T) {
+	lat, long, empty := "N42.3601", "W71.0589", ""
+	keys := []string{"place_latitude", "place_longitude"}
+	want := map[string]string{"place_latitude": lat, "place_longitude": long}
+
+	assertJSONCoordinates(t, "event export",
+		convertEventToExport(repository.EventReadModel{ID: uuid.New(), PlaceLat: &lat, PlaceLong: &long}), keys, want)
+	assertJSONCoordinates(t, "event export without",
+		convertEventToExport(repository.EventReadModel{ID: uuid.New()}), keys, nil)
+	assertJSONCoordinates(t, "event export with empty coordinates",
+		convertEventToExport(repository.EventReadModel{ID: uuid.New(), PlaceLat: &empty, PlaceLong: &empty}), keys, nil)
+}
+
 // assertJSONCoordinates encodes resp as the API would and checks each key:
 // present with its wanted value, or absent when want lacks it.
 func assertJSONCoordinates(t *testing.T, label string, resp any, keys []string, want map[string]string) {

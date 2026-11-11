@@ -1250,6 +1250,8 @@ func convertEventToExport(e repository.EventReadModel) EventExport {
 	if e.Place != "" {
 		event.Place = &e.Place
 	}
+	event.PlaceLatitude = nonEmptyString(e.PlaceLat)
+	event.PlaceLongitude = nonEmptyString(e.PlaceLong)
 	if e.Description != "" {
 		event.Description = &e.Description
 	}
