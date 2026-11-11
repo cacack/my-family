@@ -556,13 +556,17 @@ func (e ExportFormat) Valid() bool {
 // Defines values for FactType.
 const (
 	FactTypeFamilyAnnulment          FactType = "family_annulment"
+	FactTypeFamilyCensus             FactType = "family_census"
 	FactTypeFamilyDivorce            FactType = "family_divorce"
+	FactTypeFamilyDivorceFiling      FactType = "family_divorce_filing"
 	FactTypeFamilyEngagement         FactType = "family_engagement"
+	FactTypeFamilyGenericEvent       FactType = "family_generic_event"
 	FactTypeFamilyMarriage           FactType = "family_marriage"
 	FactTypeFamilyMarriageBann       FactType = "family_marriage_bann"
 	FactTypeFamilyMarriageContract   FactType = "family_marriage_contract"
 	FactTypeFamilyMarriageLicense    FactType = "family_marriage_license"
 	FactTypeFamilyMarriageSettlement FactType = "family_marriage_settlement"
+	FactTypeFamilyResidence          FactType = "family_residence"
 	FactTypePersonAdoption           FactType = "person_adoption"
 	FactTypePersonAdultChristening   FactType = "person_adult_christening"
 	FactTypePersonBaptism            FactType = "person_baptism"
@@ -600,9 +604,15 @@ func (e FactType) Valid() bool {
 	switch e {
 	case FactTypeFamilyAnnulment:
 		return true
+	case FactTypeFamilyCensus:
+		return true
 	case FactTypeFamilyDivorce:
 		return true
+	case FactTypeFamilyDivorceFiling:
+		return true
 	case FactTypeFamilyEngagement:
+		return true
+	case FactTypeFamilyGenericEvent:
 		return true
 	case FactTypeFamilyMarriage:
 		return true
@@ -613,6 +623,8 @@ func (e FactType) Valid() bool {
 	case FactTypeFamilyMarriageLicense:
 		return true
 	case FactTypeFamilyMarriageSettlement:
+		return true
+	case FactTypeFamilyResidence:
 		return true
 	case FactTypePersonAdoption:
 		return true

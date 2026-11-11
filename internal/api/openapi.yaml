@@ -5602,6 +5602,10 @@ components:
         - family_marriage_settlement
         - family_annulment
         - family_engagement
+        - family_divorce_filing
+        - family_census
+        - family_residence
+        - family_generic_event
 
     DateInput:
       type: string
