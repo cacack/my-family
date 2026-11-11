@@ -1352,15 +1352,19 @@ func (p *Projector) projectAttributeCreated(ctx context.Context, e domain.Attrib
 	}
 
 	attribute := &AttributeReadModel{
-		ID:        e.AttributeID,
-		PersonID:  e.PersonID,
-		FactType:  e.FactType,
-		Value:     e.Value,
-		DateRaw:   dateRaw,
-		DateSort:  dateSort,
-		Place:     e.Place,
-		Version:   version,
-		CreatedAt: e.OccurredAt(),
+		ID:         e.AttributeID,
+		PersonID:   e.PersonID,
+		FactType:   e.FactType,
+		Value:      e.Value,
+		DateRaw:    dateRaw,
+		DateSort:   dateSort,
+		Place:      e.Place,
+		PlaceLat:   e.PlaceLat,
+		PlaceLong:  e.PlaceLong,
+		Notes:      e.Notes,
+		TypeDetail: e.TypeDetail,
+		Version:    version,
+		CreatedAt:  e.OccurredAt(),
 	}
 
 	return p.readStore.SaveAttribute(ctx, branchID, attribute)

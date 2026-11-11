@@ -240,12 +240,16 @@ type EventData struct {
 
 // AttributeData contains parsed attribute data ready for creation.
 type AttributeData struct {
-	ID       uuid.UUID
-	PersonID uuid.UUID
-	FactType domain.FactType
-	Value    string
-	Date     string
-	Place    string
+	ID         uuid.UUID
+	PersonID   uuid.UUID
+	FactType   domain.FactType
+	Value      string
+	Date       string
+	Place      string
+	PlaceLat   *string // Latitude in GEDCOM format (e.g., "N42.3601")
+	PlaceLong  *string // Longitude in GEDCOM format (e.g., "W71.0589")
+	TypeDetail string  // The attribute's TYPE (#1286)
+	Notes      string  // The attribute's NOTEs, joined with noteJoin (#1286)
 }
 
 // NoteData contains parsed note data ready for creation.
@@ -1016,8 +1020,8 @@ const droppedNotesPerPath = 5
 // warnDroppedNestedNotes adds a warning for each NOTE or SNOTE line the
 // import does not keep, naming the record, the substructure and the note, so
 // the loss is visible (#1250). Kept are the level-1 NOTE lines of the record
-// types in recordKeepsNotes, and the NOTEs directly under an individual's ASSO
-// and events and a family's imported events. Of several BIRT, DEAT or MARR
+// types in recordKeepsNotes, and the NOTEs directly under an individual's ASSO,
+// events and imported attributes and a family's imported events. Of several BIRT, DEAT or MARR
 // blocks only the last is kept, as for their date and place.
 func warnDroppedNestedNotes(doc *gedcom.Document, result *ImportResult) {
 	counts := map[string]int{}
@@ -1063,8 +1067,15 @@ func keptEventNotes(rec *gedcom.Record) func(block string, last bool) bool {
 				return true
 			}
 			eventType := gedcom.EventType(strings.TrimPrefix(block, "NO "))
-			return slices.ContainsFunc(indi.Events, func(e *gedcom.Event) bool {
+			if slices.ContainsFunc(indi.Events, func(e *gedcom.Event) bool {
 				return e != nil && e.Type == eventType
+			}) {
+				return true
+			}
+			// An imported attribute keeps its notes (#1286).
+			return slices.ContainsFunc(indi.Attributes, func(a *gedcom.Attribute) bool {
+				_, ok := importedAttributeFactType(a)
+				return ok && string(a.Type) == block
 			})
 		}
 	}
@@ -1348,6 +1359,31 @@ func extractCitationsFromIndividual(indi *gedcom.Individual, personID uuid.UUID,
 		}
 	}
 
+	// An imported attribute's SOURs are cited against its fact type, as a life
+	// event's are (#1286).
+	for _, ga := range indi.Attributes {
+		factType, ok := importedAttributeFactType(ga)
+		if !ok {
+			continue
+		}
+		for _, srcCit := range ga.SourceCitations {
+			if srcCit.SourceXRef == "" {
+				continue
+			}
+			citation := CitationData{
+				ID:          uuid.New(),
+				SourceXref:  srcCit.SourceXRef,
+				FactType:    string(factType),
+				FactOwnerID: personID,
+				Page:        srcCit.Page,
+				Quality:     mapGedcomQualityToGPS(srcCit.Quality),
+				QuotedText:  citationQuotedText(srcCit.Data),
+			}
+			setAncestryAPID(&citation, srcCit.AncestryAPID)
+			citations = append(citations, citation)
+		}
+	}
+
 	return citations
 }
 
@@ -1600,39 +1636,58 @@ func extractAttributesFromIndividual(indi *gedcom.Individual, personID uuid.UUID
 	// indi.Tags would also yield nested lines such as OBJE.TITL or BAPM.RELI.
 	// Attribute tags with no person fact type (DSCR, NATI, CAST, PROP, SSN,
 	// IDNO, NCHI, NMR, FACT) are not imported.
+	// Their coordinates, TYPE and NOTEs (here) and SOURs
+	// (extractCitationsFromIndividual) are kept as a life event's are (#1286).
 	for _, ga := range indi.Attributes {
-		var factType domain.FactType
-
-		switch ga.Type {
-		case gedcom.AttributeOccupation:
-			factType = domain.FactPersonOccupation
-		case gedcom.AttributeEducation:
-			factType = domain.FactPersonEducation
-		case gedcom.AttributeReligion:
-			factType = domain.FactPersonReligion
-		case gedcom.AttributeTitle:
-			factType = domain.FactPersonTitle
-		default:
-			continue
-		}
-
-		if ga.Value == "" {
+		factType, ok := importedAttributeFactType(ga)
+		if !ok {
 			continue
 		}
 
 		attr := AttributeData{
-			ID:       uuid.New(),
-			PersonID: personID,
-			FactType: factType,
-			Value:    ga.Value,
-			Date:     ga.Date,
-			Place:    ga.PlaceName(),
+			ID:         uuid.New(),
+			PersonID:   personID,
+			FactType:   factType,
+			Value:      ga.Value,
+			Date:       ga.Date,
+			Place:      ga.PlaceName(),
+			TypeDetail: ga.TypeDetail,
+			Notes:      joinNotes(append(slices.Clone(ga.NoteXRefs), ga.InlineNotes...)...),
+		}
+		if ga.PlaceDetail != nil && ga.PlaceDetail.Coordinates != nil {
+			if ga.PlaceDetail.Coordinates.Latitude != "" {
+				lat := ga.PlaceDetail.Coordinates.Latitude
+				attr.PlaceLat = &lat
+			}
+			if ga.PlaceDetail.Coordinates.Longitude != "" {
+				long := ga.PlaceDetail.Coordinates.Longitude
+				attr.PlaceLong = &long
+			}
 		}
 
 		attributes = append(attributes, attr)
 	}
 
 	return attributes
+}
+
+// personAttributeFactTypes maps each attribute tag imported as a person
+// attribute to its fact type.
+var personAttributeFactTypes = map[gedcom.AttributeType]domain.FactType{
+	gedcom.AttributeOccupation: domain.FactPersonOccupation,
+	gedcom.AttributeEducation:  domain.FactPersonEducation,
+	gedcom.AttributeReligion:   domain.FactPersonReligion,
+	gedcom.AttributeTitle:      domain.FactPersonTitle,
+}
+
+// importedAttributeFactType returns the fact type of an attribute the import
+// keeps: one whose tag is in personAttributeFactTypes and that has a value.
+func importedAttributeFactType(ga *gedcom.Attribute) (domain.FactType, bool) {
+	if ga == nil || ga.Value == "" {
+		return "", false
+	}
+	factType, ok := personAttributeFactTypes[ga.Type]
+	return factType, ok
 }
 
 // extractAssociationsFromIndividual extracts all ASSO records from an individual.
