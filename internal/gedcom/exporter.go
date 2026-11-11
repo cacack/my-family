@@ -981,9 +981,16 @@ func toGedcomEvent(event repository.EventReadModel, sourceXrefs map[uuid.UUID]st
 	}
 
 	// Only a generic EVEN carries a descriptor on its own line; a named event
-	// tag's payload is the [Y|<NULL>] flag (#1276).
+	// tag's payload is the [Y|<NULL>] flag (#1276), so GEDCOM has no slot for
+	// a named event's description. It is appended to the event's notes and
+	// written as (the end of) its trailing inline NOTE (#1283). Re-import
+	// reads that NOTE into notes, not description, and the next export writes
+	// the same NOTE, so the text moves field once and is never duplicated.
+	notes := event.Notes
 	if ge.Type == "EVEN" {
 		ge.Description = event.Description
+	} else {
+		notes = joinNotes(notes, event.Description)
 	}
 	ge.EventTypeDetail = event.TypeDetail
 
@@ -995,7 +1002,7 @@ func toGedcomEvent(event repository.EventReadModel, sourceXrefs map[uuid.UUID]st
 		ge.Age = event.Age
 	}
 
-	ge.NoteXRefs, ge.InlineNotes = splitNotes(event.Notes, noteJoin)
+	ge.NoteXRefs, ge.InlineNotes = splitNotes(notes, noteJoin)
 
 	// Fetch and add citations for this event
 	if readStore != nil {
