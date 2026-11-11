@@ -159,6 +159,7 @@ type CitationReadModel struct {
 	SourceTitle   string               `json:"source_title"`
 	FactType      domain.FactType      `json:"fact_type"`
 	FactOwnerID   uuid.UUID            `json:"fact_owner_id"`
+	FactID        *uuid.UUID           `json:"fact_id,omitempty"` // cited life event or attribute (#1294)
 	Page          string               `json:"page,omitempty"`
 	Volume        string               `json:"volume,omitempty"`
 	SourceQuality domain.SourceQuality `json:"source_quality,omitempty"`
@@ -586,6 +587,11 @@ type ReadModelStore interface {
 	CountCitationsBySource(ctx context.Context, branchID domain.BranchID, sourceIDs []uuid.UUID) (map[uuid.UUID]int, error)
 	GetCitationsForPerson(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) ([]CitationReadModel, error)
 	GetCitationsForFact(ctx context.Context, branchID domain.BranchID, factType domain.FactType, factOwnerID uuid.UUID) ([]CitationReadModel, error)
+	// GetCitationsForFactInstance returns the citations of one life event or
+	// attribute, factID, of factType owned by factOwnerID: those linked to it
+	// and those of the fact as a whole (no fact_id), but not those linked to
+	// another instance of the same fact type (#1294).
+	GetCitationsForFactInstance(ctx context.Context, branchID domain.BranchID, factType domain.FactType, factOwnerID, factID uuid.UUID) ([]CitationReadModel, error)
 	SaveCitation(ctx context.Context, branchID domain.BranchID, citation *CitationReadModel) error
 	// DeleteCitation cascades to the citation's external identifiers on the
 	// same branch (and only that branch), as DeleteSource does to a source's.

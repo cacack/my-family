@@ -3085,6 +3085,12 @@ type Citation struct {
 	// EvidenceType How the evidence bears on the fact per GPS standards
 	EvidenceType *EvidenceType `json:"evidence_type,omitempty"`
 
+	// FactId ID of the life event or attribute this citation supports, when it
+	// cites one of several facts of the same type (such as one of two
+	// censuses). Absent when it cites the fact as a whole: a birth,
+	// death or marriage, or a citation recorded before the link existed.
+	FactId *openapi_types.UUID `json:"fact_id,omitempty"`
+
 	// FactOwnerId ID of the person or family this citation applies to
 	FactOwnerId openapi_types.UUID `json:"fact_owner_id"`
 
@@ -3126,6 +3132,11 @@ type CitationCreate struct {
 
 	// EvidenceType How the evidence bears on the fact per GPS standards
 	EvidenceType *EvidenceType `json:"evidence_type,omitempty"`
+
+	// FactId ID of the life event or attribute this citation supports. It must
+	// belong to `fact_owner_id` and be of `fact_type`. Omit it to cite
+	// the fact as a whole, as for a birth, death or marriage.
+	FactId *openapi_types.UUID `json:"fact_id,omitempty"`
 
 	// FactOwnerId ID of the person or family this citation applies to
 	FactOwnerId openapi_types.UUID `json:"fact_owner_id"`

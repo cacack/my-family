@@ -448,6 +448,9 @@ func (s *RollbackService) applyEventToState(evt repository.StoredEvent, state ma
 		state["source_id"] = e.SourceID.String()
 		state["fact_type"] = string(e.FactType)
 		state["fact_owner_id"] = e.FactOwnerID.String()
+		if e.FactID != nil {
+			state["fact_id"] = e.FactID.String()
+		}
 		if e.Page != "" {
 			state["page"] = e.Page
 		}

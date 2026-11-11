@@ -556,6 +556,7 @@ func (ss *StrictServer) CreateCitation(ctx context.Context, request CreateCitati
 		SourceID:    request.Body.SourceId,
 		FactType:    string(request.Body.FactType),
 		FactOwnerID: request.Body.FactOwnerId,
+		FactID:      request.Body.FactId,
 	}
 
 	if request.Body.Page != nil {
@@ -4621,6 +4622,7 @@ func convertQueryCitationToGenerated(c query.Citation) Citation {
 		SourceTitle:   c.SourceTitle,
 		FactType:      FactType(c.FactType),
 		FactOwnerId:   c.FactOwnerID,
+		FactId:        c.FactID,
 		Page:          c.Page,
 		Volume:        c.Volume,
 		SourceQuality: (*SourceQuality)(c.SourceQuality),
@@ -6278,6 +6280,7 @@ func convertReadModelCitationToGenerated(rm repository.CitationReadModel) Citati
 		SourceTitle: rm.SourceTitle,
 		FactType:    FactType(rm.FactType),
 		FactOwnerId: rm.FactOwnerID,
+		FactId:      rm.FactID,
 		Version:     rm.Version,
 	}
 	if rm.Page != "" {

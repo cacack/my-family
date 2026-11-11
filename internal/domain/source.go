@@ -72,14 +72,18 @@ func (s *Source) Validate() error {
 	return nil
 }
 
-// Citation represents a citation linking a source to a specific fact.
+// Citation represents a citation linking a source to a specific fact. FactID
+// names one instance of a repeatable fact, such as one of two CENS (#1294);
+// nil cites the fact as a whole: a birth, death or marriage, or a citation
+// recorded before the link existed.
 type Citation struct {
 	ID            uuid.UUID         `json:"id"`
 	SourceID      uuid.UUID         `json:"source_id"`
 	FactType      FactType          `json:"fact_type"`
-	FactOwnerID   uuid.UUID         `json:"fact_owner_id"`    // Person or Family ID
-	Page          string            `json:"page,omitempty"`   // Page/location within source
-	Volume        string            `json:"volume,omitempty"` // Volume/issue/series
+	FactOwnerID   uuid.UUID         `json:"fact_owner_id"`     // Person or Family ID
+	FactID        *uuid.UUID        `json:"fact_id,omitempty"` // Cited life event or attribute; nil cites the whole fact (#1294)
+	Page          string            `json:"page,omitempty"`    // Page/location within source
+	Volume        string            `json:"volume,omitempty"`  // Volume/issue/series
 	SourceQuality SourceQuality     `json:"source_quality,omitempty"`
 	InformantType InformantType     `json:"informant_type,omitempty"`
 	EvidenceType  EvidenceType      `json:"evidence_type,omitempty"`

@@ -7211,6 +7211,14 @@ components:
           type: string
           format: uuid
           description: ID of the person or family this citation applies to
+        fact_id:
+          type: string
+          format: uuid
+          description: |
+            ID of the life event or attribute this citation supports, when it
+            cites one of several facts of the same type (such as one of two
+            censuses). Absent when it cites the fact as a whole: a birth,
+            death or marriage, or a citation recorded before the link existed.
         page:
           type: string
         volume:
@@ -7256,6 +7264,13 @@ components:
           type: string
           format: uuid
           description: ID of the person or family this citation applies to
+        fact_id:
+          type: string
+          format: uuid
+          description: |
+            ID of the life event or attribute this citation supports. It must
+            belong to `fact_owner_id` and be of `fact_type`. Omit it to cite
+            the fact as a whole, as for a birth, death or marriage.
         page:
           type: string
         volume:

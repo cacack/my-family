@@ -271,6 +271,7 @@ type CreateCitationInput struct {
 	SourceID      uuid.UUID
 	FactType      string
 	FactOwnerID   uuid.UUID
+	FactID        *uuid.UUID // the cited life event or attribute, if any (#1294)
 	Page          string
 	Volume        string
 	SourceQuality string
@@ -308,12 +309,19 @@ func (h *Handler) CreateCitation(ctx context.Context, input CreateCitationInput)
 		return nil, fmt.Errorf("%w: source does not exist", ErrInvalidInput)
 	}
 
+	if input.FactID != nil {
+		if err := h.checkCitedFact(ctx, *input.FactID, domain.FactType(input.FactType), input.FactOwnerID); err != nil {
+			return nil, err
+		}
+	}
+
 	// Create citation entity
 	citation := domain.NewCitation(
 		input.SourceID,
 		domain.FactType(input.FactType),
 		input.FactOwnerID,
 	)
+	citation.FactID = input.FactID
 
 	if input.Page != "" {
 		citation.Page = input.Page
@@ -364,6 +372,33 @@ func (h *Handler) CreateCitation(ctx context.Context, input CreateCitationInput)
 		ID:      citation.ID,
 		Version: version,
 	}, nil
+}
+
+// checkCitedFact verifies that factID is a life event or attribute of
+// factType owned by factOwnerID on the handler's branch, so a citation linked
+// to it is listed with it and with no other fact (#1294).
+func (h *Handler) checkCitedFact(ctx context.Context, factID uuid.UUID, factType domain.FactType, factOwnerID uuid.UUID) error {
+	event, err := h.readStore.GetEvent(ctx, h.branchID, factID)
+	if err != nil {
+		return fmt.Errorf("getting life event: %w", err)
+	}
+	if event != nil {
+		if event.FactType != factType || event.OwnerID != factOwnerID {
+			return fmt.Errorf("%w: fact_id is a life event of another fact type or owner", ErrInvalidInput)
+		}
+		return nil
+	}
+	attr, err := h.readStore.GetAttribute(ctx, h.branchID, factID)
+	if err != nil {
+		return fmt.Errorf("getting attribute: %w", err)
+	}
+	if attr == nil {
+		return fmt.Errorf("%w: fact_id is not a life event or attribute", ErrInvalidInput)
+	}
+	if attr.FactType != factType || attr.PersonID != factOwnerID {
+		return fmt.Errorf("%w: fact_id is an attribute of another fact type or owner", ErrInvalidInput)
+	}
+	return nil
 }
 
 // UpdateCitationInput contains the data for updating a citation.
@@ -444,6 +479,13 @@ func (h *Handler) UpdateCitation(ctx context.Context, input UpdateCitationInput)
 	if input.FactOwnerID != nil && *input.FactOwnerID != current.FactOwnerID {
 		testCitation.FactOwnerID = *input.FactOwnerID
 		changes["fact_owner_id"] = input.FactOwnerID.String()
+	}
+	// A citation moved to another fact type or owner no longer cites its life
+	// event or attribute (#1294).
+	_, typeChanged := changes["fact_type"]
+	_, ownerChanged := changes["fact_owner_id"]
+	if current.FactID != nil && (typeChanged || ownerChanged) {
+		changes["fact_id"] = nil
 	}
 	if input.Page != nil && *input.Page != current.Page {
 		testCitation.Page = *input.Page

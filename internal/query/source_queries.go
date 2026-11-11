@@ -46,6 +46,7 @@ type Citation struct {
 	SourceTitle   string            `json:"source_title"`
 	FactType      string            `json:"fact_type"`
 	FactOwnerID   uuid.UUID         `json:"fact_owner_id"`
+	FactID        *uuid.UUID        `json:"fact_id,omitempty"`
 	Page          *string           `json:"page,omitempty"`
 	Volume        *string           `json:"volume,omitempty"`
 	SourceQuality *string           `json:"source_quality,omitempty"`
@@ -289,6 +290,7 @@ func convertReadModelToCitation(rm repository.CitationReadModel) Citation {
 		SourceTitle: rm.SourceTitle,
 		FactType:    string(rm.FactType),
 		FactOwnerID: rm.FactOwnerID,
+		FactID:      rm.FactID,
 		Version:     rm.Version,
 		CreatedAt:   rm.CreatedAt,
 	}

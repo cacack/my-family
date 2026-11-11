@@ -467,6 +467,7 @@ type CitationCreated struct {
 	SourceID      uuid.UUID         `json:"source_id"`
 	FactType      FactType          `json:"fact_type"`
 	FactOwnerID   uuid.UUID         `json:"fact_owner_id"`
+	FactID        *uuid.UUID        `json:"fact_id,omitempty"` // cited life event or attribute (#1294)
 	Page          string            `json:"page,omitempty"`
 	Volume        string            `json:"volume,omitempty"`
 	SourceQuality SourceQuality     `json:"source_quality,omitempty"`
@@ -493,6 +494,7 @@ func NewCitationCreated(c *Citation) CitationCreated {
 		SourceID:      c.SourceID,
 		FactType:      c.FactType,
 		FactOwnerID:   c.FactOwnerID,
+		FactID:        c.FactID,
 		Page:          c.Page,
 		Volume:        c.Volume,
 		SourceQuality: c.SourceQuality,

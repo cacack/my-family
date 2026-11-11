@@ -989,6 +989,9 @@ func (s *ReadModelStore) runMigrations() {
 	// Add the TYPE of an imported life event (issue #1276)
 	_, _ = s.db.Exec(`ALTER TABLE life_events ADD COLUMN IF NOT EXISTS type_detail TEXT`)
 
+	// Link a citation to the life event or attribute it cites (issue #1294)
+	_, _ = s.db.Exec(`ALTER TABLE citations ADD COLUMN IF NOT EXISTS fact_id UUID`)
+
 	// Add an imported attribute's place coordinates, NOTEs and TYPE (issue #1286)
 	_, _ = s.db.Exec(`ALTER TABLE attributes ADD COLUMN IF NOT EXISTS place_lat VARCHAR(20)`)
 	_, _ = s.db.Exec(`ALTER TABLE attributes ADD COLUMN IF NOT EXISTS place_long VARCHAR(20)`)
@@ -3119,7 +3122,7 @@ const (
 		citation_count, version, updated_at`
 
 	// citationSelectCols is scanCitationRow's column order (unaliased).
-	citationSelectCols = `id, source_id, source_title, fact_type, fact_owner_id, page, volume,
+	citationSelectCols = `id, source_id, source_title, fact_type, fact_owner_id, fact_id, page, volume,
 		source_quality, informant_type, evidence_type, quoted_text, analysis,
 		template_id, fields_data, gedcom_xref, version, created_at`
 
@@ -3129,11 +3132,14 @@ const (
 	// citationOrder is the deterministic citation order every backend returns.
 	citationOrder = `source_title ASC, fact_type ASC, id ASC`
 
-	// Per-parent citation filters. %[1]d (and %[2]d) are the placeholder numbers
-	// of the values, which the caller binds after overlayArgs.
+	// Per-parent citation filters. %[1]d (and %[2]d, %[3]d) are the placeholder
+	// numbers of the values, which the caller binds after overlayArgs.
 	sourceCitationsFilter = `source_id = $%[1]d`
 	personCitationsFilter = `fact_owner_id = $%[1]d AND fact_type LIKE 'person_%%'`
 	factCitationsFilter   = `fact_type = $%[1]d AND fact_owner_id = $%[2]d`
+	// factInstanceCitationsFilter keeps a fact's citations linked to the
+	// instance $%[3]d or to no instance (#1294).
+	factInstanceCitationsFilter = `fact_type = $%[1]d AND fact_owner_id = $%[2]d AND (fact_id IS NULL OR fact_id = $%[3]d)`
 )
 
 // scanSources drains rows of sourceSelectCols.
@@ -3335,7 +3341,7 @@ func (s *ReadModelStore) GetCitation(ctx context.Context, branchID domain.Branch
 // (and %[2]d) placeholders number the values, bound in order after overlayArgs.
 func (s *ReadModelStore) listFilteredCitations(ctx context.Context, branchID domain.BranchID, filter string, values ...any) ([]repository.CitationReadModel, error) {
 	args, n := overlayArgs(branchID)
-	src := overlaySrc("citations", citationSelectCols, fmt.Sprintf(filter, n, n+1), branchID)
+	src := overlaySrc("citations", citationSelectCols, fmt.Sprintf(filter, n, n+1, n+2), branchID)
 	// #nosec G202 -- src is built from package constants carrying only $-placeholders
 	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 	rows, err := s.db.QueryContext(ctx, `SELECT `+citationSelectCols+` FROM `+src+` c ORDER BY `+citationOrder,
@@ -3371,6 +3377,16 @@ func (s *ReadModelStore) GetCitationsForFact(ctx context.Context, branchID domai
 	citations, err := s.listFilteredCitations(ctx, branchID, factCitationsFilter, string(factType), factOwnerID)
 	if err != nil {
 		return nil, fmt.Errorf("query citations for fact: %w", err)
+	}
+	return citations, nil
+}
+
+// GetCitationsForFactInstance returns the citations of one life event or
+// attribute within the branch overlay (see the interface).
+func (s *ReadModelStore) GetCitationsForFactInstance(ctx context.Context, branchID domain.BranchID, factType domain.FactType, factOwnerID, factID uuid.UUID) ([]repository.CitationReadModel, error) {
+	citations, err := s.listFilteredCitations(ctx, branchID, factInstanceCitationsFilter, string(factType), factOwnerID, factID)
+	if err != nil {
+		return nil, fmt.Errorf("query citations for fact instance: %w", err)
 	}
 	return citations, nil
 }
@@ -3411,15 +3427,16 @@ func (s *ReadModelStore) ListCitations(ctx context.Context, opts repository.List
 // A save always clears any prior tombstone.
 func (s *ReadModelStore) SaveCitation(ctx context.Context, branchID domain.BranchID, citation *repository.CitationReadModel) error {
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO citations (id, branch_id, source_id, source_title, fact_type, fact_owner_id, page, volume,
+		INSERT INTO citations (id, branch_id, source_id, source_title, fact_type, fact_owner_id, fact_id, page, volume,
 							   source_quality, informant_type, evidence_type, quoted_text, analysis,
 							   template_id, fields_data, gedcom_xref, version, created_at, deleted)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, FALSE)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, FALSE)
 		ON CONFLICT(id, branch_id) DO UPDATE SET
 			source_id = EXCLUDED.source_id,
 			source_title = EXCLUDED.source_title,
 			fact_type = EXCLUDED.fact_type,
 			fact_owner_id = EXCLUDED.fact_owner_id,
+			fact_id = EXCLUDED.fact_id,
 			page = EXCLUDED.page,
 			volume = EXCLUDED.volume,
 			source_quality = EXCLUDED.source_quality,
@@ -3433,7 +3450,7 @@ func (s *ReadModelStore) SaveCitation(ctx context.Context, branchID domain.Branc
 			version = EXCLUDED.version,
 			deleted = FALSE
 	`, citation.ID, branchID.UUID(), citation.SourceID, nullableString(citation.SourceTitle),
-		nullableString(string(citation.FactType)), citation.FactOwnerID,
+		nullableString(string(citation.FactType)), citation.FactOwnerID, nullableUUID(citation.FactID),
 		nullableString(citation.Page), nullableString(citation.Volume),
 		nullableString(string(citation.SourceQuality)), nullableString(string(citation.InformantType)),
 		nullableString(string(citation.EvidenceType)), nullableString(citation.QuotedText),
@@ -3953,6 +3970,7 @@ func scanSourceRows(rows *sql.Rows) (*repository.SourceReadModel, error) {
 func scanCitationRow(row rowScanner) (*repository.CitationReadModel, error) {
 	var (
 		id, sourceID, factOwnerID        uuid.UUID
+		factID                           uuid.NullUUID
 		factType                         string
 		sourceTitle                      sql.NullString // SaveCitation stores an empty title as NULL
 		page, volume, sourceQuality      sql.NullString
@@ -3963,7 +3981,7 @@ func scanCitationRow(row rowScanner) (*repository.CitationReadModel, error) {
 		createdAt                        time.Time
 	)
 
-	err := row.Scan(&id, &sourceID, &sourceTitle, &factType, &factOwnerID,
+	err := row.Scan(&id, &sourceID, &sourceTitle, &factType, &factOwnerID, &factID,
 		&page, &volume, &sourceQuality, &informantType, &evidenceType,
 		&quotedText, &analysis, &templateID, &fieldsData, &gedcomXref, &version, &createdAt)
 
@@ -3992,6 +4010,9 @@ func scanCitationRow(row rowScanner) (*repository.CitationReadModel, error) {
 		GedcomXref:    gedcomXref.String,
 		Version:       version,
 		CreatedAt:     createdAt,
+	}
+	if factID.Valid {
+		cit.FactID = &factID.UUID
 	}
 
 	return cit, nil

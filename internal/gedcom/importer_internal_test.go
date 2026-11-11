@@ -34,7 +34,7 @@ func TestExtractAttributes_WarnsAboutAttributesNotImported(t *testing.T) {
 		},
 	}
 	result := &ImportResult{}
-	attrs := extractAttributesFromIndividual(indi, uuid.New(), result)
+	attrs, _ := extractAttributesFromIndividual(indi, uuid.New(), result)
 
 	if len(attrs) != 1 || attrs[0].Value != "American" {
 		t.Errorf("attributes = %+v, want only NATI", attrs)

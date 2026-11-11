@@ -1004,9 +1004,10 @@ func toGedcomEvent(event repository.EventReadModel, sourceXrefs map[uuid.UUID]st
 
 	ge.NoteXRefs, ge.InlineNotes = splitNotes(notes, noteJoin)
 
-	// Fetch and add citations for this event
+	// Fetch and add this event's citations: not those of another event of
+	// the same fact type (#1294)
 	if readStore != nil {
-		citations, _ := readStore.GetCitationsForFact(ctx, domain.MainBranchID, event.FactType, event.OwnerID)
+		citations, _ := readStore.GetCitationsForFactInstance(ctx, domain.MainBranchID, event.FactType, event.OwnerID, event.ID)
 		ge.SourceCitations = toGedcomSourceCitations(citations, sourceXrefs, readStore, ctx)
 	}
 
@@ -1058,10 +1059,10 @@ func toGedcomAttribute(attr repository.AttributeReadModel, sourceXrefs map[uuid.
 
 	ga.NoteXRefs, ga.InlineNotes = splitNotes(attr.Notes, noteJoin)
 
-	// Citations are keyed by fact type and person, as a life event's are, so
-	// two attributes of one fact type share them (#1294).
+	// The attribute's own citations, as a life event's: not those of another
+	// attribute of the same fact type (#1294).
 	if readStore != nil {
-		citations, _ := readStore.GetCitationsForFact(ctx, domain.MainBranchID, attr.FactType, attr.PersonID)
+		citations, _ := readStore.GetCitationsForFactInstance(ctx, domain.MainBranchID, attr.FactType, attr.PersonID, attr.ID)
 		ga.SourceCitations = toGedcomSourceCitations(citations, sourceXrefs, readStore, ctx)
 	}
 

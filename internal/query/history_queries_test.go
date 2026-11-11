@@ -299,6 +299,9 @@ func (m *mockReadModelStore) GetCitationsForPerson(ctx context.Context, branchID
 func (m *mockReadModelStore) GetCitationsForFact(ctx context.Context, branchID domain.BranchID, factType domain.FactType, factOwnerID uuid.UUID) ([]repository.CitationReadModel, error) {
 	return nil, nil
 }
+func (m *mockReadModelStore) GetCitationsForFactInstance(ctx context.Context, branchID domain.BranchID, factType domain.FactType, factOwnerID, factID uuid.UUID) ([]repository.CitationReadModel, error) {
+	return nil, nil
+}
 func (m *mockReadModelStore) SaveCitation(ctx context.Context, branchID domain.BranchID, citation *repository.CitationReadModel) error {
 	return nil
 }
