@@ -16,7 +16,8 @@ export const FACT_TYPES: readonly FactType[] = [
 	'person_religion', 'person_title',
 	'family_marriage', 'family_divorce', 'family_marriage_bann', 'family_marriage_contract',
 	'family_marriage_license', 'family_marriage_settlement', 'family_annulment',
-	'family_engagement'
+	'family_engagement', 'family_divorce_filing', 'family_census', 'family_residence',
+	'family_generic_event'
 ];
 
 /** Narrow an arbitrary string (a URL parameter, say) to a fact type the API accepts. */

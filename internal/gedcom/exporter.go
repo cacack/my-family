@@ -1416,6 +1416,14 @@ func mapFactTypeToGedcomTag(factType domain.FactType) string {
 		return "ANUL"
 	case domain.FactFamilyEngagement:
 		return "ENGA"
+	case domain.FactFamilyDivorceFiling:
+		return "DIVF"
+	case domain.FactFamilyCensus:
+		return "CENS"
+	case domain.FactFamilyResidence:
+		return "RESI"
+	case domain.FactFamilyGenericEvent:
+		return "EVEN"
 	default:
 		return ""
 	}

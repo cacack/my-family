@@ -1357,25 +1357,8 @@ func extractCitationsFromFamily(fam *gedcom.Family, familyID uuid.UUID, _ *Impor
 	var citations []CitationData
 
 	for _, event := range fam.Events {
-		var factType domain.FactType
-		switch event.Type {
-		case gedcom.EventMarriage:
-			factType = domain.FactFamilyMarriage
-		case gedcom.EventDivorce:
-			factType = domain.FactFamilyDivorce
-		case gedcom.EventMarriageBann:
-			factType = domain.FactFamilyMarriageBann
-		case gedcom.EventMarriageContract:
-			factType = domain.FactFamilyMarriageContract
-		case gedcom.EventMarriageLicense:
-			factType = domain.FactFamilyMarriageLicense
-		case gedcom.EventMarriageSettlement:
-			factType = domain.FactFamilyMarriageSettlement
-		case gedcom.EventAnnulment:
-			factType = domain.FactFamilyAnnulment
-		case gedcom.EventEngagement:
-			factType = domain.FactFamilyEngagement
-		default:
+		factType, ok := familyEventFactType(event.Type)
+		if !ok {
 			continue // Skip events we don't track citations for
 		}
 
@@ -1799,28 +1782,29 @@ func extractEventsFromFamily(fam *gedcom.Family, familyID uuid.UUID) []EventData
 	return events
 }
 
+// familyEventFactTypes maps each family event tag gedcom-go decodes to its
+// fact type. gedcom-go has no constant for a generic EVEN, so it is spelled
+// out (#1285, cacack/gedcom-go#775).
+var familyEventFactTypes = map[gedcom.EventType]domain.FactType{
+	gedcom.EventMarriage:           domain.FactFamilyMarriage,
+	gedcom.EventDivorce:            domain.FactFamilyDivorce,
+	gedcom.EventMarriageBann:       domain.FactFamilyMarriageBann,
+	gedcom.EventMarriageContract:   domain.FactFamilyMarriageContract,
+	gedcom.EventMarriageLicense:    domain.FactFamilyMarriageLicense,
+	gedcom.EventMarriageSettlement: domain.FactFamilyMarriageSettlement,
+	gedcom.EventAnnulment:          domain.FactFamilyAnnulment,
+	gedcom.EventEngagement:         domain.FactFamilyEngagement,
+	gedcom.EventDivorceFiling:      domain.FactFamilyDivorceFiling,
+	gedcom.EventCensus:             domain.FactFamilyCensus,
+	gedcom.EventResidence:          domain.FactFamilyResidence,
+	gedcom.EventType("EVEN"):       domain.FactFamilyGenericEvent,
+}
+
 // familyEventFactType maps a family event type to its fact type; ok is false
 // for a type the importer does not keep.
 func familyEventFactType(eventType gedcom.EventType) (factType domain.FactType, ok bool) {
-	switch eventType {
-	case gedcom.EventMarriage:
-		return domain.FactFamilyMarriage, true
-	case gedcom.EventDivorce:
-		return domain.FactFamilyDivorce, true
-	case gedcom.EventMarriageBann:
-		return domain.FactFamilyMarriageBann, true
-	case gedcom.EventMarriageContract:
-		return domain.FactFamilyMarriageContract, true
-	case gedcom.EventMarriageLicense:
-		return domain.FactFamilyMarriageLicense, true
-	case gedcom.EventMarriageSettlement:
-		return domain.FactFamilyMarriageSettlement, true
-	case gedcom.EventAnnulment:
-		return domain.FactFamilyAnnulment, true
-	case gedcom.EventEngagement:
-		return domain.FactFamilyEngagement, true
-	}
-	return "", false
+	factType, ok = familyEventFactTypes[eventType]
+	return factType, ok
 }
 
 // mapNameType converts a GEDCOM name TYPE value to a domain NameType.

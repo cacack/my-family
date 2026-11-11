@@ -323,6 +323,10 @@ const (
 	FactFamilyMarriageSettlement FactType = "family_marriage_settlement" // MARS
 	FactFamilyAnnulment          FactType = "family_annulment"           // ANUL
 	FactFamilyEngagement         FactType = "family_engagement"          // ENGA
+	FactFamilyDivorceFiling      FactType = "family_divorce_filing"      // DIVF
+	FactFamilyCensus             FactType = "family_census"              // CENS
+	FactFamilyResidence          FactType = "family_residence"           // RESI
+	FactFamilyGenericEvent       FactType = "family_generic_event"       // EVEN
 )
 
 // AllFactTypes returns every valid FactType value.
@@ -345,6 +349,7 @@ func AllFactTypes() []FactType {
 		// Family events
 		FactFamilyMarriageBann, FactFamilyMarriageContract, FactFamilyMarriageLicense,
 		FactFamilyMarriageSettlement, FactFamilyAnnulment, FactFamilyEngagement,
+		FactFamilyDivorceFiling, FactFamilyCensus, FactFamilyResidence, FactFamilyGenericEvent,
 	}
 }
 
