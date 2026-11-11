@@ -5594,6 +5594,15 @@ components:
         - person_education
         - person_religion
         - person_title
+        - person_physical_description
+        - person_nationality
+        - person_caste
+        - person_property
+        - person_social_security_number
+        - person_identification_number
+        - person_children_count
+        - person_marriage_count
+        - person_generic_fact
         - family_marriage
         - family_divorce
         - family_marriage_bann

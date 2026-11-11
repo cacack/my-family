@@ -312,6 +312,16 @@ const (
 	FactPersonReligion   FactType = "person_religion"   // RELI
 	FactPersonTitle      FactType = "person_title"      // TITL
 
+	FactPersonPhysicalDescription  FactType = "person_physical_description"   // DSCR
+	FactPersonNationality          FactType = "person_nationality"            // NATI
+	FactPersonCaste                FactType = "person_caste"                  // CAST
+	FactPersonProperty             FactType = "person_property"               // PROP
+	FactPersonSocialSecurityNumber FactType = "person_social_security_number" // SSN
+	FactPersonIdentificationNumber FactType = "person_identification_number"  // IDNO
+	FactPersonChildrenCount        FactType = "person_children_count"         // NCHI
+	FactPersonMarriageCount        FactType = "person_marriage_count"         // NMR
+	FactPersonGenericFact          FactType = "person_generic_fact"           // FACT
+
 	// Core family facts
 	FactFamilyMarriage FactType = "family_marriage"
 	FactFamilyDivorce  FactType = "family_divorce"
@@ -343,7 +353,10 @@ func AllFactTypes() []FactType {
 		FactPersonOrdination, FactPersonProbate, FactPersonWill, FactPersonGenericEvent,
 		// Individual attributes
 		FactPersonOccupation, FactPersonResidence, FactPersonEducation,
-		FactPersonReligion, FactPersonTitle,
+		FactPersonReligion, FactPersonTitle, FactPersonPhysicalDescription,
+		FactPersonNationality, FactPersonCaste, FactPersonProperty,
+		FactPersonSocialSecurityNumber, FactPersonIdentificationNumber,
+		FactPersonChildrenCount, FactPersonMarriageCount, FactPersonGenericFact,
 		// Core family facts
 		FactFamilyMarriage, FactFamilyDivorce,
 		// Family events
