@@ -2317,12 +2317,12 @@ func (ss *StrictServer) CreatePerson(ctx context.Context, request CreatePersonRe
 		return nil, err
 	}
 
-	person, err := ss.server.personService.GetPerson(ctx, scope, result.ID)
+	person, err := ss.server.personService.GetPersonCore(ctx, scope, result.ID)
 	if err != nil {
 		return nil, err
 	}
 
-	return CreatePerson201JSONResponse(convertQueryPersonToGenerated(person.Person)), nil
+	return CreatePerson201JSONResponse(convertQueryPersonToGenerated(*person)), nil
 }
 
 // GetPerson implements StrictServerInterface.
@@ -2405,12 +2405,12 @@ func (ss *StrictServer) UpdatePerson(ctx context.Context, request UpdatePersonRe
 		return nil, err
 	}
 
-	person, err := ss.server.personService.GetPerson(ctx, branchScopeID(branch), request.Id)
+	person, err := ss.server.personService.GetPersonCore(ctx, branchScopeID(branch), request.Id)
 	if err != nil {
 		return nil, err
 	}
 
-	return UpdatePerson200JSONResponse(convertQueryPersonToGenerated(person.Person)), nil
+	return UpdatePerson200JSONResponse(convertQueryPersonToGenerated(*person)), nil
 }
 
 // DeletePerson implements StrictServerInterface.
@@ -2421,7 +2421,7 @@ func (ss *StrictServer) DeletePerson(ctx context.Context, request DeletePersonRe
 	}
 
 	// Get current version since DELETE doesn't accept version parameter per OpenAPI spec
-	person, err := ss.server.personService.GetPerson(ctx, branchScopeID(branch), request.Id)
+	person, err := ss.server.personService.GetPersonCore(ctx, branchScopeID(branch), request.Id)
 	if err != nil {
 		if errors.Is(err, query.ErrNotFound) {
 			return DeletePerson404JSONResponse{NotFoundJSONResponse{
@@ -3248,13 +3248,13 @@ func (ss *StrictServer) MergePersons(ctx context.Context, request MergePersonsRe
 	}
 
 	// Get updated survivor person, as the scope the merge was made on sees it.
-	person, err := ss.server.personService.GetPerson(ctx, branchScopeID(branch), result.SurvivorID)
+	person, err := ss.server.personService.GetPersonCore(ctx, branchScopeID(branch), result.SurvivorID)
 	if err != nil {
 		return nil, err
 	}
 
 	return MergePersons200JSONResponse{
-		Person: convertQueryPersonToGenerated(person.Person),
+		Person: convertQueryPersonToGenerated(*person),
 		MergeSummary: MergeSummary{
 			MergedPersonName:     result.Summary.MergedPersonName,
 			FieldsUpdated:        result.Summary.FieldsUpdated,

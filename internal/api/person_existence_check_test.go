@@ -19,7 +19,8 @@ import (
 // detail build.
 type detailCountingStore struct {
 	repository.ReadModelStore
-	detailReads int
+	detailReads     int
+	externalIDReads int // made only by PersonDetail assembly, never by commands
 }
 
 func (s *detailCountingStore) GetPersonNames(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) ([]repository.PersonNameReadModel, error) {
@@ -29,6 +30,7 @@ func (s *detailCountingStore) GetPersonNames(ctx context.Context, branchID domai
 
 func (s *detailCountingStore) GetPersonExternalIDs(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) ([]repository.PersonExternalIDReadModel, error) {
 	s.detailReads++
+	s.externalIDReads++
 	return s.ReadModelStore.GetPersonExternalIDs(ctx, branchID, personID)
 }
 
@@ -64,6 +66,46 @@ func TestPersonExistenceChecks_SkipDetailAssembly(t *testing.T) {
 			}
 			if reads.detailReads != 0 {
 				t.Errorf("detail sub-resource reads = %d, want 0 for an existence check", reads.detailReads)
+			}
+		})
+	}
+}
+
+// TestPersonWriteResponses_SkipDetailAssembly: create, update, delete and
+// merge answer with the person's own fields only, so they read the person row
+// rather than assembling a full PersonDetail (#612). Commands read names and
+// families themselves, so the guard counts external-ID reads, which only
+// detail assembly makes.
+func TestPersonWriteResponses_SkipDetailAssembly(t *testing.T) {
+	cfg := &config.Config{Port: 8080, LogFormat: "text"}
+	events := memory.NewEventStore()
+	reads := &detailCountingStore{ReadModelStore: memory.NewReadModelStore()}
+	server := api.NewServer(cfg, events, reads, memory.NewSnapshotStore(events), nil)
+
+	personID, version := createMergeTestPerson(t, server, "Ada", "Lovelace")
+	survivorID, survivorVersion := createMergeTestPerson(t, server, "Charles", "Babbage")
+	mergedID, mergedVersion := createMergeTestPerson(t, server, "Charlie", "Babbage")
+
+	tests := []struct {
+		name, method, path, body string
+		want                     int
+	}{
+		{"create", http.MethodPost, "/api/v1/persons", `{"given_name":"Mary","surname":"Somerville"}`, http.StatusCreated},
+		{"update", http.MethodPut, "/api/v1/persons/" + personID, `{"given_name":"Augusta","version":` + intToString(version) + `}`, http.StatusOK},
+		{"merge", http.MethodPost, "/api/v1/persons/merge", `{"survivor_id":"` + survivorID + `","merged_id":"` + mergedID +
+			`","survivor_version":` + intToString(survivorVersion) + `,"merged_version":` + intToString(mergedVersion) + `}`, http.StatusOK},
+		{"delete", http.MethodDelete, "/api/v1/persons/" + personID, "", http.StatusNoContent},
+		{"delete unknown", http.MethodDelete, "/api/v1/persons/" + uuid.New().String(), "", http.StatusNotFound},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reads.externalIDReads = 0
+			rec := do(t, server, tt.method, tt.path, tt.body)
+			if rec.Code != tt.want {
+				t.Fatalf("status = %d, want %d. Body: %s", rec.Code, tt.want, rec.Body.String())
+			}
+			if reads.externalIDReads != 0 {
+				t.Errorf("external-ID reads = %d, want 0: response built from full PersonDetail", reads.externalIDReads)
 			}
 		})
 	}
