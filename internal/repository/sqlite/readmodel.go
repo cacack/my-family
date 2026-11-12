@@ -785,6 +785,9 @@ func (s *ReadModelStore) runMigrations() {
 	// Add the TYPE of an imported life event (issue #1276).
 	_, _ = s.db.Exec(`ALTER TABLE life_events ADD COLUMN type_detail TEXT`)
 
+	// Add a family record's own NOTEs (issue #1267).
+	_, _ = s.db.Exec(`ALTER TABLE families ADD COLUMN notes TEXT`)
+
 	// Link a citation to the life event or attribute it cites (issue #1294).
 	_, _ = s.db.Exec(`ALTER TABLE citations ADD COLUMN fact_id TEXT`)
 
@@ -2796,9 +2799,9 @@ func (s *ReadModelStore) SaveFamily(ctx context.Context, branchID domain.BranchI
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO families (id, partner1_id, partner2_id,
 							  relationship_type, marriage_date_raw, marriage_date_sort, marriage_place,
-							  marriage_place_lat, marriage_place_long, marriage_notes,
+							  marriage_place_lat, marriage_place_long, marriage_notes, notes,
 							  child_count, version, updated_at, branch_id, deleted)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
 		ON CONFLICT(id, branch_id) DO UPDATE SET
 			partner1_id = excluded.partner1_id,
 			partner2_id = excluded.partner2_id,
@@ -2809,6 +2812,7 @@ func (s *ReadModelStore) SaveFamily(ctx context.Context, branchID domain.BranchI
 			marriage_place_lat = excluded.marriage_place_lat,
 			marriage_place_long = excluded.marriage_place_long,
 			marriage_notes = excluded.marriage_notes,
+			notes = excluded.notes,
 			child_count = excluded.child_count,
 			version = excluded.version,
 			updated_at = excluded.updated_at,
@@ -2816,7 +2820,7 @@ func (s *ReadModelStore) SaveFamily(ctx context.Context, branchID domain.BranchI
 	`, family.ID.String(),
 		partner1ID, partner2ID,
 		string(family.RelationshipType), family.MarriageDateRaw, marriageDateSort, family.MarriagePlace,
-		marriagePlaceLat, marriagePlaceLong, family.MarriageNotes,
+		marriagePlaceLat, marriagePlaceLong, family.MarriageNotes, family.Notes,
 		family.ChildCount, family.Version, formatTimestamp(family.UpdatedAt), branchID.String())
 
 	return err
@@ -2999,7 +3003,7 @@ func (s *ReadModelStore) GetChildFamily(ctx context.Context, branchID domain.Bra
 	query := `
 		SELECT f.id, f.partner1_id, f.partner2_id,
 			   f.relationship_type, f.marriage_date_raw, f.marriage_date_sort, f.marriage_place,
-			   f.marriage_place_lat, f.marriage_place_long, f.marriage_notes,
+			   f.marriage_place_lat, f.marriage_place_long, f.marriage_notes, f.notes,
 			   f.child_count, f.version, f.updated_at
 		FROM ` + familyOverlay + ` f
 		JOIN (
@@ -3265,7 +3269,7 @@ func scanFamily(row rowScanner) (*repository.FamilyReadModel, error) {
 		idStr                                                     string
 		partner1ID, partner2ID                                    sql.NullString
 		relType, marriageDateRaw, marriageDateSort, marriagePlace sql.NullString
-		marriagePlaceLat, marriagePlaceLong, marriageNotes        sql.NullString
+		marriagePlaceLat, marriagePlaceLong, marriageNotes, notes sql.NullString
 		childCount                                                int
 		version                                                   int64
 		updatedAt                                                 string
@@ -3273,7 +3277,7 @@ func scanFamily(row rowScanner) (*repository.FamilyReadModel, error) {
 
 	err := row.Scan(&idStr, &partner1ID, &partner2ID,
 		&relType, &marriageDateRaw, &marriageDateSort, &marriagePlace,
-		&marriagePlaceLat, &marriagePlaceLong, &marriageNotes,
+		&marriagePlaceLat, &marriagePlaceLong, &marriageNotes, &notes,
 		&childCount, &version, &updatedAt)
 
 	if err == sql.ErrNoRows {
@@ -3290,6 +3294,7 @@ func scanFamily(row rowScanner) (*repository.FamilyReadModel, error) {
 		MarriageDateRaw:  marriageDateRaw.String,
 		MarriagePlace:    marriagePlace.String,
 		MarriageNotes:    marriageNotes.String,
+		Notes:            notes.String,
 		ChildCount:       childCount,
 		Version:          version,
 	}

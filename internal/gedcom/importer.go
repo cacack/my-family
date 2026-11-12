@@ -121,6 +121,7 @@ type FamilyData struct {
 	MarriagePlaceLat  *string // Latitude in GEDCOM format (e.g., "N39.7817")
 	MarriagePlaceLong *string // Longitude in GEDCOM format (e.g., "W89.6501")
 	MarriageNotes     string  // NOTEs under MARR, joined with noteJoin (#1250)
+	Notes             string  // the record's own NOTEs, joined with noteJoin (#1267)
 	ChildIDs          []uuid.UUID
 	ChildRelTypes     []domain.ChildRelationType
 
@@ -749,6 +750,7 @@ func parseFamily(fam *gedcom.Family, doc *gedcom.Document, result *ImportResult)
 		ID:               uuid.New(),
 		GedcomXref:       fam.XRef,
 		RelationshipType: domain.RelationUnknown,
+		Notes:            recordNotes(fam.Tags),
 	}
 
 	// Link husband/wife (partner1/partner2) using gedcom-go's nil-safe
@@ -926,6 +928,7 @@ func renameCollidingNotes(doc *gedcom.Document, existing []string, notes []NoteD
 	}
 	for i := range families {
 		families[i].MarriageNotes = renameXrefs(families[i].MarriageNotes, noteJoin, rename)
+		families[i].Notes = renameXrefs(families[i].Notes, noteJoin, rename)
 	}
 	for i := range events {
 		events[i].Notes = renameXrefs(events[i].Notes, noteJoin, rename)
@@ -1005,9 +1008,10 @@ var recordLabels = map[gedcom.RecordType]string{
 }
 
 // recordKeepsNotes lists the record types whose own level-1 NOTE lines the
-// import keeps (recordNotes). A FAM, OBJE or SUBM record has no notes field.
+// import keeps (recordNotes). An OBJE or SUBM record has no notes field.
 var recordKeepsNotes = map[gedcom.RecordType]bool{
 	gedcom.RecordTypeIndividual: true,
+	gedcom.RecordTypeFamily:     true,
 	gedcom.RecordTypeSource:     true,
 	gedcom.RecordTypeRepository: true,
 }

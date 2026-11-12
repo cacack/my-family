@@ -350,6 +350,7 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 		familyEvents, _ := exp.readStore.ListEventsForFamily(ctx, domain.MainBranchID, f.ID)
 		notePointers.remapEvents(familyEvents)
 		f.MarriageNotes = notePointers.remap(f.MarriageNotes, noteJoin)
+		f.Notes = notePointers.remap(f.Notes, noteJoin)
 		result.EventsExported += len(familyEvents)
 
 		// Fetch LDS ordinances for this family
@@ -1117,6 +1118,7 @@ func toGedcomAttribute(attr repository.AttributeReadModel, sourceXrefs map[uuid.
 // The encoder will automatically convert this to GEDCOM tags, handling CONT/CONC.
 func toGedcomFamily(f repository.FamilyReadModel, personXrefs, sourceXrefs map[uuid.UUID]string, children []repository.FamilyChildReadModel, marriageCitations []repository.CitationReadModel, events []repository.EventReadModel, ldsOrdinances []repository.LDSOrdinanceReadModel, readStore repository.ReadModelStore, ctx context.Context) *gedcom.Family {
 	fam := &gedcom.Family{}
+	fam.NoteXRefs, fam.InlineNotes = splitNotes(f.Notes, noteJoin)
 
 	// Husband (Partner1)
 	if f.Partner1ID != nil {

@@ -144,6 +144,8 @@ type FamilyCreated struct {
 	MarriagePlaceLong *string `json:"marriage_place_long,omitempty"`
 	// MarriageNotes are the notes under the MARR event, set at import (#1250).
 	MarriageNotes string `json:"marriage_notes,omitempty"`
+	// Notes are the FAM record's own level-1 NOTEs, set at import (#1267).
+	Notes string `json:"notes,omitempty"`
 }
 
 func (e FamilyCreated) EventType() string      { return "FamilyCreated" }

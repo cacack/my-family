@@ -256,7 +256,6 @@ func TestImport_WarnsOnDroppedNotes(t *testing.T) {
 		`Individual @I1@: NOTE under NAME not imported: "Spelling varies"`,
 		`Individual @I1@: NOTE under BIRT not imported: "An earlier claim"`,
 		`Individual @I1@: NOTE under BIRT.SOUR not imported: "Page is torn"`,
-		`Family @F1@: NOTE not imported: "Lived on the farm"`,
 		`Media @M1@: NOTE not imported: "A family photo"`,
 		`Submitter @U1@: NOTE not imported: "Contact by mail"`,
 	}
