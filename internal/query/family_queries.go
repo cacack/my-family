@@ -21,20 +21,23 @@ func NewFamilyService(readStore repository.ReadModelStore) *FamilyService {
 
 // Family represents a family in query results.
 type Family struct {
-	ID                uuid.UUID       `json:"id"`
-	Partner1ID        *uuid.UUID      `json:"partner1_id,omitempty"`
-	Partner1GivenName *string         `json:"partner1_given_name,omitempty"`
-	Partner1Surname   *string         `json:"partner1_surname,omitempty"`
-	Partner2ID        *uuid.UUID      `json:"partner2_id,omitempty"`
-	Partner2GivenName *string         `json:"partner2_given_name,omitempty"`
-	Partner2Surname   *string         `json:"partner2_surname,omitempty"`
-	RelationshipType  *string         `json:"relationship_type,omitempty"`
-	MarriageDate      *domain.GenDate `json:"marriage_date,omitempty"`
-	MarriagePlace     *string         `json:"marriage_place,omitempty"`
-	MarriagePlaceLat  *string         `json:"marriage_place_latitude,omitempty"`
-	MarriagePlaceLong *string         `json:"marriage_place_longitude,omitempty"`
-	ChildCount        int             `json:"child_count"`
-	Version           int64           `json:"version"`
+	ID                 uuid.UUID       `json:"id"`
+	Partner1ID         *uuid.UUID      `json:"partner1_id,omitempty"`
+	Partner1GivenName  *string         `json:"partner1_given_name,omitempty"`
+	Partner1Surname    *string         `json:"partner1_surname,omitempty"`
+	Partner2ID         *uuid.UUID      `json:"partner2_id,omitempty"`
+	Partner2GivenName  *string         `json:"partner2_given_name,omitempty"`
+	Partner2Surname    *string         `json:"partner2_surname,omitempty"`
+	RelationshipType   *string         `json:"relationship_type,omitempty"`
+	MarriageDate       *domain.GenDate `json:"marriage_date,omitempty"`
+	MarriagePlace      *string         `json:"marriage_place,omitempty"`
+	MarriagePlaceLat   *string         `json:"marriage_place_latitude,omitempty"`
+	MarriagePlaceLong  *string         `json:"marriage_place_longitude,omitempty"`
+	MarriageTypeDetail *string         `json:"marriage_type_detail,omitempty"`
+	MarriageNotes      *string         `json:"marriage_notes,omitempty"`
+	Notes              *string         `json:"notes,omitempty"`
+	ChildCount         int             `json:"child_count"`
+	Version            int64           `json:"version"`
 }
 
 // FamilyDetail includes children information.
@@ -251,6 +254,15 @@ func convertReadModelToFamily(rm repository.FamilyReadModel) Family {
 	}
 	f.MarriagePlaceLat = nonEmpty(rm.MarriagePlaceLat)
 	f.MarriagePlaceLong = nonEmpty(rm.MarriagePlaceLong)
+	if rm.MarriageTypeDetail != "" {
+		f.MarriageTypeDetail = &rm.MarriageTypeDetail
+	}
+	if rm.MarriageNotes != "" {
+		f.MarriageNotes = &rm.MarriageNotes
+	}
+	if rm.Notes != "" {
+		f.Notes = &rm.Notes
+	}
 
 	return f
 }

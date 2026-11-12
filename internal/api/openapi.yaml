@@ -5944,6 +5944,15 @@ components:
           type: string
           nullable: true
           description: Longitude in GEDCOM format (e.g., "W89.6501")
+        marriage_type_detail:
+          type: string
+          description: The marriage event's GEDCOM TYPE (e.g. "Civil"); omitted when it has none
+        marriage_notes:
+          type: string
+          description: NOTEs recorded on the marriage event; omitted when it has none
+        notes:
+          type: string
+          description: The family record's own NOTEs; omitted when it has none
         version:
           type: integer
           format: int64
