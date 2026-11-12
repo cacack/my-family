@@ -994,6 +994,9 @@ func (s *ReadModelStore) runMigrations() {
 	_, _ = s.db.Exec(`ALTER TABLE persons ADD COLUMN IF NOT EXISTS death_type_detail TEXT`)
 	_, _ = s.db.Exec(`ALTER TABLE families ADD COLUMN IF NOT EXISTS marriage_type_detail TEXT`)
 
+	// Add a family record's own NOTEs (issue #1267)
+	_, _ = s.db.Exec(`ALTER TABLE families ADD COLUMN IF NOT EXISTS notes TEXT`)
+
 	// Link a citation to the life event or attribute it cites (issue #1294)
 	_, _ = s.db.Exec(`ALTER TABLE citations ADD COLUMN IF NOT EXISTS fact_id UUID`)
 
@@ -1291,7 +1294,7 @@ const (
 	// names from the persons (#1207).
 	familySelectCols = `id, partner1_id, partner2_id,
 		relationship_type, marriage_date_raw, marriage_date_sort, marriage_place,
-		marriage_place_lat, marriage_place_long, marriage_notes, marriage_type_detail,
+		marriage_place_lat, marriage_place_long, marriage_notes, marriage_type_detail, notes,
 		child_count, version, updated_at`
 
 	// familyChildSelectCols matches GetFamilyChildren's scan order (unaliased);
@@ -2414,9 +2417,9 @@ func (s *ReadModelStore) SaveFamily(ctx context.Context, branchID domain.BranchI
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO families (id, branch_id, partner1_id, partner2_id,
 							  relationship_type, marriage_date_raw, marriage_date_sort, marriage_place,
-							  marriage_place_lat, marriage_place_long, marriage_notes, marriage_type_detail,
+							  marriage_place_lat, marriage_place_long, marriage_notes, marriage_type_detail, notes,
 							  child_count, version, updated_at, deleted)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, FALSE)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, FALSE)
 		ON CONFLICT(id, branch_id) DO UPDATE SET
 			partner1_id = EXCLUDED.partner1_id,
 			partner2_id = EXCLUDED.partner2_id,
@@ -2428,6 +2431,7 @@ func (s *ReadModelStore) SaveFamily(ctx context.Context, branchID domain.BranchI
 			marriage_place_long = EXCLUDED.marriage_place_long,
 			marriage_notes = EXCLUDED.marriage_notes,
 			marriage_type_detail = EXCLUDED.marriage_type_detail,
+			notes = EXCLUDED.notes,
 			child_count = EXCLUDED.child_count,
 			version = EXCLUDED.version,
 			updated_at = EXCLUDED.updated_at,
@@ -2439,7 +2443,7 @@ func (s *ReadModelStore) SaveFamily(ctx context.Context, branchID domain.BranchI
 		string(family.RelationshipType), nullableString(family.MarriageDateRaw),
 		nullableTime(family.MarriageDateSort), nullableString(family.MarriagePlace),
 		nullableStringPtr(family.MarriagePlaceLat), nullableStringPtr(family.MarriagePlaceLong),
-		nullableString(family.MarriageNotes), nullableString(family.MarriageTypeDetail),
+		nullableString(family.MarriageNotes), nullableString(family.MarriageTypeDetail), nullableString(family.Notes),
 		family.ChildCount, family.Version, family.UpdatedAt)
 
 	return err
@@ -2641,7 +2645,7 @@ func (s *ReadModelStore) GetChildFamily(ctx context.Context, branchID domain.Bra
 		)
 		SELECT f.id, f.partner1_id, f.partner2_id,
 			   f.relationship_type, f.marriage_date_raw, f.marriage_date_sort, f.marriage_place,
-			   f.marriage_place_lat, f.marriage_place_long, f.marriage_notes, f.marriage_type_detail,
+			   f.marriage_place_lat, f.marriage_place_long, f.marriage_notes, f.marriage_type_detail, f.notes,
 			   f.child_count, f.version, f.updated_at
 		FROM rf f
 		JOIN rc ON f.id = rc.family_id
@@ -2875,20 +2879,20 @@ func scanPersonRow(rows *sql.Rows) (*repository.PersonReadModel, error) {
 
 func scanFamily(row rowScanner) (*repository.FamilyReadModel, error) {
 	var (
-		id                                      uuid.UUID
-		partner1ID, partner2ID                  sql.NullString
-		relType, marriageDateRaw, marriagePlace sql.NullString
-		marriagePlaceLat, marriagePlaceLong     sql.NullString
-		marriageNotes, marriageTypeDetail       sql.NullString
-		marriageDateSort                        sql.NullTime
-		childCount                              int
-		version                                 int64
-		updatedAt                               time.Time
+		id                                       uuid.UUID
+		partner1ID, partner2ID                   sql.NullString
+		relType, marriageDateRaw, marriagePlace  sql.NullString
+		marriagePlaceLat, marriagePlaceLong      sql.NullString
+		marriageNotes, marriageTypeDetail, notes sql.NullString
+		marriageDateSort                         sql.NullTime
+		childCount                               int
+		version                                  int64
+		updatedAt                                time.Time
 	)
 
 	err := row.Scan(&id, &partner1ID, &partner2ID,
 		&relType, &marriageDateRaw, &marriageDateSort, &marriagePlace,
-		&marriagePlaceLat, &marriagePlaceLong, &marriageNotes, &marriageTypeDetail,
+		&marriagePlaceLat, &marriagePlaceLong, &marriageNotes, &marriageTypeDetail, &notes,
 		&childCount, &version, &updatedAt)
 
 	if err == sql.ErrNoRows {
@@ -2905,6 +2909,7 @@ func scanFamily(row rowScanner) (*repository.FamilyReadModel, error) {
 		MarriagePlace:      marriagePlace.String,
 		MarriageNotes:      marriageNotes.String,
 		MarriageTypeDetail: marriageTypeDetail.String,
+		Notes:              notes.String,
 		ChildCount:         childCount,
 		Version:            version,
 		UpdatedAt:          updatedAt,

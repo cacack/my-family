@@ -32,7 +32,7 @@ const (
 	// names from the persons (#1207).
 	familySelectCols = `id, partner1_id, partner2_id,
 		relationship_type, marriage_date_raw, marriage_date_sort, marriage_place,
-		marriage_place_lat, marriage_place_long, marriage_notes, marriage_type_detail,
+		marriage_place_lat, marriage_place_long, marriage_notes, marriage_type_detail, notes,
 		child_count, version, updated_at`
 
 	// idSetFilter narrows an overlay subquery to the ids in its one bound JSON

@@ -485,6 +485,7 @@ func (p *Projector) projectFamilyCreated(ctx context.Context, e domain.FamilyCre
 		MarriagePlaceLong:  e.MarriagePlaceLong,
 		MarriageNotes:      e.MarriageNotes,
 		MarriageTypeDetail: e.MarriageTypeDetail,
+		Notes:              e.Notes,
 		ChildCount:         0,
 		Version:            version,
 		UpdatedAt:          e.OccurredAt(),

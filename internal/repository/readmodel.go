@@ -141,6 +141,7 @@ type FamilyReadModel struct {
 	MarriagePlaceLong  *string             `json:"marriage_place_long,omitempty"`
 	MarriageNotes      string              `json:"marriage_notes,omitempty"`       // NOTEs under MARR (#1250)
 	MarriageTypeDetail string              `json:"marriage_type_detail,omitempty"` // TYPE under MARR (#1284)
+	Notes              string              `json:"notes,omitempty"`                // the FAM record's own NOTEs (#1267)
 	ChildCount         int                 `json:"child_count"`
 	Version            int64               `json:"version"`
 	UpdatedAt          time.Time           `json:"updated_at"`
