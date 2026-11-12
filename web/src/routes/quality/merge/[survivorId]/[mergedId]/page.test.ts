@@ -117,13 +117,17 @@ describe('Merge Picker Page', () => {
 		expect(survivorDeathPlace?.nextElementSibling?.textContent?.trim()).toBe('—');
 	});
 
-	it('rejects self-merge before fetching', async () => {
+	it('rejects self-merge before fetching, showing only the error (#1096)', async () => {
 		mockPageParams = { survivorId: 'p-same', mergedId: 'p-same' };
 		render(Page);
 		await waitFor(() => {
 			expect(screen.getByText('Cannot merge a person with themselves.')).toBeDefined();
 		});
 		expect(apiModule.api.getPerson).not.toHaveBeenCalled();
+		// No retry can make the pair two people, and there is nothing to suggest.
+		expect(screen.queryByText('Suggested merge')).toBeNull();
+		expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+		expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
 	});
 
 	it('defaults birth_date to merged when survivor is empty and merged has a value', async () => {
@@ -241,13 +245,16 @@ describe('Merge Picker Page', () => {
 	it('shows error when a person fetch fails', async () => {
 		vi.mocked(apiModule.api.getPerson).mockImplementation(async (id: string) => {
 			if (id === 'p-survivor') return survivorPerson;
-			throw { message: 'Person not found' };
+			throw { status: 500, message: 'boom' };
 		});
 
 		render(Page);
 		await waitFor(() => {
-			expect(screen.getByText('Person not found')).toBeDefined();
+			expect(screen.getByText('Failed to load one or both persons. Please try again.')).toBeDefined();
 		});
+		expect(screen.queryByText('boom')).toBeNull();
+		expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+		expect(screen.queryByText('Suggested merge')).toBeNull();
 	});
 
 	// #1036: the pair can be marked "not a duplicate" from here as well.

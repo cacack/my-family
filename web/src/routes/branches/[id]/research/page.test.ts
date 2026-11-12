@@ -215,9 +215,13 @@ describe('Branch research page', () => {
 		expect(await screen.findByText('Branch not found')).toBeDefined();
 	});
 
-	it('surfaces a load failure', async () => {
+	it('surfaces a load failure in a friendly sentence, with Retry (#1096)', async () => {
 		getBranchResearch.mockRejectedValue({ status: 500, message: 'boom' });
 		render(Page);
-		expect((await screen.findByRole('alert')).textContent).toContain('boom');
+		const alert = await screen.findByRole('alert');
+		expect(alert.textContent).toContain('Failed to load the branch. Please try again.');
+		expect(alert.textContent).not.toContain('boom');
+		expect(screen.getByRole('heading', { level: 1, name: 'Branch could not be loaded' })).toBeTruthy();
+		expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
 	});
 });

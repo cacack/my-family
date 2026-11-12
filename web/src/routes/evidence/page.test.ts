@@ -158,9 +158,12 @@ describe('Evidence Hub Page', () => {
 		vi.mocked(apiModule.api.listEvidenceAnalyses).mockRejectedValue(new Error('Network error'));
 		render(Page);
 		await waitFor(() => {
-			expect(screen.getByText('Network error')).toBeDefined();
+			expect(screen.getByText('Failed to load analyses. Please try again.')).toBeDefined();
 			expect(screen.getByText('Retry')).toBeDefined();
 		});
+		// A failed list has no count: "0 analyses" would read like real data (#1096).
+		expect(screen.queryByText(/\d+ analyses/)).toBeNull();
+		expect(screen.queryByText('Network error')).toBeNull();
 	});
 
 	it('opens the tab the URL names (#901)', async () => {

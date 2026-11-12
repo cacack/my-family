@@ -6,6 +6,7 @@
 		api,
 		isVersionConflict,
 		recordLoadError,
+		type LoadFailure,
 		type FamilyChild,
 		type FamilyDetail,
 		type PersonSummary,
@@ -56,7 +57,7 @@
 	// A failed load replaces the page; a failed save or refresh is shown
 	// inline and leaves the page and the form intact (#899); a failed delete
 	// is shown in its dialog.
-	let loadError: string | null = $state(null);
+	let loadError: LoadFailure | null = $state(null);
 	let actionError: string | null = $state(null);
 	let editing = $state(false);
 	let saving = $state(false);
@@ -485,7 +486,7 @@
 	{#if loading}
 		<div class="loading">Loading...</div>
 	{:else if loadError}
-		<ErrorState message={loadError} onRetry={() => loadFamily(page.params.id ?? '')} />
+		<ErrorState {...loadError} onRetry={() => loadFamily(page.params.id ?? '')} />
 	{:else if family}
 		{#if actionError}
 			<ActionError message={actionError} />
