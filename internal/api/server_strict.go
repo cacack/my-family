@@ -2489,15 +2489,15 @@ func (ss *StrictServer) GetPersonHistory(ctx context.Context, request GetPersonH
 		return nil, err
 	}
 
-	_, err = ss.server.personService.GetPerson(ctx, branchScopeID(branch), request.Id)
+	person, err := ss.server.readStore.GetPerson(ctx, branchScopeID(branch), request.Id)
 	if err != nil {
-		if errors.Is(err, query.ErrNotFound) {
-			return GetPersonHistory404JSONResponse{NotFoundJSONResponse{
-				Code:    "not_found",
-				Message: "Person not found",
-			}}, nil
-		}
 		return nil, err
+	}
+	if person == nil {
+		return GetPersonHistory404JSONResponse{NotFoundJSONResponse{
+			Code:    "not_found",
+			Message: "Person not found",
+		}}, nil
 	}
 
 	limit := 20
@@ -2858,15 +2858,15 @@ func (ss *StrictServer) GetPersonRestorePoints(ctx context.Context, request GetP
 		return GetPersonRestorePoints409JSONResponse(errRollbackMainlineOnly), nil
 	}
 
-	_, err = ss.server.personService.GetPerson(ctx, domain.MainBranchID, request.Id)
+	person, err := ss.server.readStore.GetPerson(ctx, domain.MainBranchID, request.Id)
 	if err != nil {
-		if errors.Is(err, query.ErrNotFound) {
-			return GetPersonRestorePoints404JSONResponse{NotFoundJSONResponse{
-				Code:    "not_found",
-				Message: "Person not found",
-			}}, nil
-		}
 		return nil, err
+	}
+	if person == nil {
+		return GetPersonRestorePoints404JSONResponse{NotFoundJSONResponse{
+			Code:    "not_found",
+			Message: "Person not found",
+		}}, nil
 	}
 
 	limit := 20
@@ -2907,15 +2907,15 @@ func (ss *StrictServer) RollbackPerson(ctx context.Context, request RollbackPers
 	}
 
 	if branch == nil {
-		_, err = ss.server.personService.GetPerson(ctx, domain.MainBranchID, request.Id)
+		person, err := ss.server.readStore.GetPerson(ctx, domain.MainBranchID, request.Id)
 		if err != nil {
-			if errors.Is(err, query.ErrNotFound) {
-				return RollbackPerson404JSONResponse{NotFoundJSONResponse{
-					Code:    "not_found",
-					Message: "Person not found",
-				}}, nil
-			}
 			return nil, err
+		}
+		if person == nil {
+			return RollbackPerson404JSONResponse{NotFoundJSONResponse{
+				Code:    "not_found",
+				Message: "Person not found",
+			}}, nil
 		}
 
 		if request.Body.TargetVersion < 1 {
