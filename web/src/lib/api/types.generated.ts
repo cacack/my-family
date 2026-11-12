@@ -3862,9 +3862,9 @@ export interface components {
         ChangeHistoryResponse: {
             items: components["schemas"]["ChangeEntry"][];
             total: number;
-            limit?: number;
-            offset?: number;
-            has_more?: boolean;
+            limit: number;
+            offset: number;
+            has_more: boolean;
         };
         RestorePoint: {
             /**
@@ -3959,7 +3959,7 @@ export interface components {
             /** Format: int64 */
             version: number;
             /** Format: date-time */
-            created_at?: string;
+            created_at: string;
             /** Format: date-time */
             updated_at?: string;
             /** @description Multiple file references (GEDCOM 7.0 support) */
@@ -4046,11 +4046,11 @@ export interface components {
             /** @description Place name at this level */
             name: string;
             /** @description Full place path */
-            full_name?: string;
+            full_name: string;
             /** @description Number of persons associated with this place */
             count: number;
             /** @description Whether this place has sub-locations */
-            has_children?: boolean;
+            has_children: boolean;
         };
         CemeteryIndexResponse: {
             items: components["schemas"]["CemeteryEntry"][];
@@ -4123,7 +4123,7 @@ export interface components {
             call_number?: string;
             notes?: string;
             /** @description Number of citations referencing this source */
-            citation_count?: number;
+            citation_count: number;
             /**
              * Format: int64
              * @description Optimistic locking version
@@ -4184,7 +4184,7 @@ export interface components {
             person_id: string;
             given_name: string;
             surname: string;
-            readonly full_name?: string;
+            full_name: string;
             name_prefix?: string;
             name_suffix?: string;
             surname_prefix?: string;
