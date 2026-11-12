@@ -733,9 +733,11 @@ func TestExport_DanglingNotePointerDropped(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// DeleteNote now refuses a note still pointed to (#1376), so remove it
+	// from the read model directly, as a note deleted before that refusal.
 	for _, n := range notes {
 		if n.GedcomXref == "@N1@" {
-			if err := handler.DeleteNote(ctx, n.ID, n.Version, "test"); err != nil {
+			if err := readStore.DeleteNote(ctx, domain.MainBranchID, n.ID); err != nil {
 				t.Fatalf("DeleteNote failed: %v", err)
 			}
 		}
