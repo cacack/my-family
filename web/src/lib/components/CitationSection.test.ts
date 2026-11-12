@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/svelte';
+import { render, screen, fireEvent, within } from '@testing-library/svelte';
 import CitationSection from './CitationSection.svelte';
 import * as apiModule from '#lib/api/client.js';
 import { PERSON_FACT_TYPES } from '#lib/utils/evidence.js';
@@ -63,7 +63,8 @@ describe('CitationSection', () => {
 			vi.mocked(apiModule.api.getPersonCitations).mockResolvedValue({ citations: [citation], total: 1 });
 			render(CitationSection, { props: { personId: 'p-1' } });
 			await fireEvent.click(await screen.findByRole('button', { name: 'Delete' }));
-			await fireEvent.click(screen.getByRole('button', { name: 'Yes, Delete' }));
+			const dialog = await screen.findByRole('alertdialog');
+			await fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
 		}
 
 		it('shows the server message for a refusal, with no retry', async () => {
