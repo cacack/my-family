@@ -773,24 +773,53 @@ func (s *ReadModelStore) DeletePersonName(ctx context.Context, branchID domain.B
 	return nil
 }
 
+// External identifiers (#617). Every external-id bucket — person, family,
+// source, citation, repository — shares the helpers below; the typed methods
+// only name their map and stamp the parent ID.
+
+// stampExternalIDs copies ids for storage as one parent's bucket, giving each
+// its position as Sequence (and, via stamp, the parent's ID). Buckets are thus
+// stored in sequence order, so reads need not sort.
+func stampExternalIDs[T any](ids []T, stamp func(id *T, seq int)) []T {
+	if len(ids) == 0 {
+		return nil
+	}
+	stored := slices.Clone(ids)
+	for i := range stored {
+		stamp(&stored[i], i)
+	}
+	return stored
+}
+
+// cloneExternalIDs returns a caller-owned copy of a stored bucket, nil when empty.
+func cloneExternalIDs[T any](ids []T) []T {
+	if len(ids) == 0 {
+		return nil
+	}
+	return slices.Clone(ids)
+}
+
+// listExternalIDBuckets returns a copy of every non-empty bucket in m visible
+// on branch, keyed by parent ID.
+func listExternalIDBuckets[T any](m map[branchKey][]T, branch domain.BranchID) map[uuid.UUID][]T {
+	out := make(map[uuid.UUID][]T)
+	for parent, ids := range resolveAllBuckets(m, branch) {
+		if len(ids) > 0 {
+			out[parent] = slices.Clone(ids)
+		}
+	}
+	return out
+}
+
 // ReplacePersonExternalIDs replaces all external identifiers for a person on the
 // given branch. On a non-main branch an empty set writes a tombstone bucket so
 // the main fallback does not resurrect the identifiers.
 func (s *ReadModelStore) ReplacePersonExternalIDs(ctx context.Context, branchID domain.BranchID, personID uuid.UUID, ids []repository.PersonExternalIDReadModel) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
-	if len(ids) == 0 {
-		storeBucket(s.personExternalIDs, branchID, personID, nil)
-		return nil
-	}
-	stored := make([]repository.PersonExternalIDReadModel, len(ids))
-	for i, id := range ids {
-		id.PersonID = personID
-		id.Sequence = i
-		stored[i] = id
-	}
-	storeBucket(s.personExternalIDs, branchID, personID, stored)
+	storeBucket(s.personExternalIDs, branchID, personID, stampExternalIDs(ids, func(id *repository.PersonExternalIDReadModel, seq int) {
+		id.PersonID, id.Sequence = personID, seq
+	}))
 	return nil
 }
 
@@ -799,17 +828,16 @@ func (s *ReadModelStore) ReplacePersonExternalIDs(ctx context.Context, branchID 
 func (s *ReadModelStore) GetPersonExternalIDs(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) ([]repository.PersonExternalIDReadModel, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	ids, _ := resolveBucket(s.personExternalIDs, branchID, personID)
+	return cloneExternalIDs(ids), nil
+}
 
-	ids, ok := resolveBucket(s.personExternalIDs, branchID, personID)
-	if !ok || len(ids) == 0 {
-		return nil, nil
-	}
-	result := make([]repository.PersonExternalIDReadModel, len(ids))
-	copy(result, ids)
-	sort.Slice(result, func(i, j int) bool {
-		return result[i].Sequence < result[j].Sequence
-	})
-	return result, nil
+// ListPersonExternalIDs returns every person's external identifiers visible on
+// the branch, keyed by person ID.
+func (s *ReadModelStore) ListPersonExternalIDs(ctx context.Context, branchID domain.BranchID) (map[uuid.UUID][]repository.PersonExternalIDReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return listExternalIDBuckets(s.personExternalIDs, branchID), nil
 }
 
 // ReplaceFamilyExternalIDs replaces all external identifiers for a family on the
@@ -818,18 +846,9 @@ func (s *ReadModelStore) GetPersonExternalIDs(ctx context.Context, branchID doma
 func (s *ReadModelStore) ReplaceFamilyExternalIDs(ctx context.Context, branchID domain.BranchID, familyID uuid.UUID, ids []repository.FamilyExternalIDReadModel) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
-	if len(ids) == 0 {
-		storeBucket(s.familyExternalIDs, branchID, familyID, nil)
-		return nil
-	}
-	stored := make([]repository.FamilyExternalIDReadModel, len(ids))
-	for i, id := range ids {
-		id.FamilyID = familyID
-		id.Sequence = i
-		stored[i] = id
-	}
-	storeBucket(s.familyExternalIDs, branchID, familyID, stored)
+	storeBucket(s.familyExternalIDs, branchID, familyID, stampExternalIDs(ids, func(id *repository.FamilyExternalIDReadModel, seq int) {
+		id.FamilyID, id.Sequence = familyID, seq
+	}))
 	return nil
 }
 
@@ -838,17 +857,16 @@ func (s *ReadModelStore) ReplaceFamilyExternalIDs(ctx context.Context, branchID 
 func (s *ReadModelStore) GetFamilyExternalIDs(ctx context.Context, branchID domain.BranchID, familyID uuid.UUID) ([]repository.FamilyExternalIDReadModel, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	ids, _ := resolveBucket(s.familyExternalIDs, branchID, familyID)
+	return cloneExternalIDs(ids), nil
+}
 
-	ids, ok := resolveBucket(s.familyExternalIDs, branchID, familyID)
-	if !ok || len(ids) == 0 {
-		return nil, nil
-	}
-	result := make([]repository.FamilyExternalIDReadModel, len(ids))
-	copy(result, ids)
-	sort.Slice(result, func(i, j int) bool {
-		return result[i].Sequence < result[j].Sequence
-	})
-	return result, nil
+// ListFamilyExternalIDs returns every family's external identifiers visible on
+// the branch, keyed by family ID.
+func (s *ReadModelStore) ListFamilyExternalIDs(ctx context.Context, branchID domain.BranchID) (map[uuid.UUID][]repository.FamilyExternalIDReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return listExternalIDBuckets(s.familyExternalIDs, branchID), nil
 }
 
 // ReplaceSourceExternalIDs replaces all external identifiers for a source on the
@@ -857,18 +875,9 @@ func (s *ReadModelStore) GetFamilyExternalIDs(ctx context.Context, branchID doma
 func (s *ReadModelStore) ReplaceSourceExternalIDs(ctx context.Context, branchID domain.BranchID, sourceID uuid.UUID, ids []repository.SourceExternalIDReadModel) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
-	if len(ids) == 0 {
-		storeBucket(s.sourceExternalIDs, branchID, sourceID, nil)
-		return nil
-	}
-	stored := make([]repository.SourceExternalIDReadModel, len(ids))
-	for i, id := range ids {
-		id.SourceID = sourceID
-		id.Sequence = i
-		stored[i] = id
-	}
-	storeBucket(s.sourceExternalIDs, branchID, sourceID, stored)
+	storeBucket(s.sourceExternalIDs, branchID, sourceID, stampExternalIDs(ids, func(id *repository.SourceExternalIDReadModel, seq int) {
+		id.SourceID, id.Sequence = sourceID, seq
+	}))
 	return nil
 }
 
@@ -877,33 +886,28 @@ func (s *ReadModelStore) ReplaceSourceExternalIDs(ctx context.Context, branchID 
 func (s *ReadModelStore) GetSourceExternalIDs(ctx context.Context, branchID domain.BranchID, sourceID uuid.UUID) ([]repository.SourceExternalIDReadModel, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	ids, _ := resolveBucket(s.sourceExternalIDs, branchID, sourceID)
+	return cloneExternalIDs(ids), nil
+}
 
-	ids, ok := resolveBucket(s.sourceExternalIDs, branchID, sourceID)
-	if !ok || len(ids) == 0 {
-		return nil, nil
-	}
-	result := make([]repository.SourceExternalIDReadModel, len(ids))
-	copy(result, ids)
-	sort.Slice(result, func(i, j int) bool {
-		return result[i].Sequence < result[j].Sequence
-	})
-	return result, nil
+// ListSourceExternalIDs returns every source's external identifiers visible on
+// the branch, keyed by source ID.
+func (s *ReadModelStore) ListSourceExternalIDs(ctx context.Context, branchID domain.BranchID) (map[uuid.UUID][]repository.SourceExternalIDReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return listExternalIDBuckets(s.sourceExternalIDs, branchID), nil
 }
 
 // ReplaceRepositoryExternalIDs replaces all external identifiers for a repository.
 func (s *ReadModelStore) ReplaceRepositoryExternalIDs(ctx context.Context, repositoryID uuid.UUID, ids []repository.RepositoryExternalIDReadModel) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
-	if len(ids) == 0 {
+	stored := stampExternalIDs(ids, func(id *repository.RepositoryExternalIDReadModel, seq int) {
+		id.RepositoryID, id.Sequence = repositoryID, seq
+	})
+	if stored == nil {
 		delete(s.repositoryExternalIDs, repositoryID)
 		return nil
-	}
-	stored := make([]repository.RepositoryExternalIDReadModel, len(ids))
-	for i, id := range ids {
-		id.RepositoryID = repositoryID
-		id.Sequence = i
-		stored[i] = id
 	}
 	s.repositoryExternalIDs[repositoryID] = stored
 	return nil
@@ -914,17 +918,19 @@ func (s *ReadModelStore) ReplaceRepositoryExternalIDs(ctx context.Context, repos
 func (s *ReadModelStore) GetRepositoryExternalIDs(ctx context.Context, repositoryID uuid.UUID) ([]repository.RepositoryExternalIDReadModel, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	return cloneExternalIDs(s.repositoryExternalIDs[repositoryID]), nil
+}
 
-	ids := s.repositoryExternalIDs[repositoryID]
-	if len(ids) == 0 {
-		return nil, nil
+// ListRepositoryExternalIDs returns every repository's external identifiers,
+// keyed by repository ID.
+func (s *ReadModelStore) ListRepositoryExternalIDs(ctx context.Context) (map[uuid.UUID][]repository.RepositoryExternalIDReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make(map[uuid.UUID][]repository.RepositoryExternalIDReadModel, len(s.repositoryExternalIDs))
+	for parent, ids := range s.repositoryExternalIDs {
+		out[parent] = slices.Clone(ids)
 	}
-	result := make([]repository.RepositoryExternalIDReadModel, len(ids))
-	copy(result, ids)
-	sort.Slice(result, func(i, j int) bool {
-		return result[i].Sequence < result[j].Sequence
-	})
-	return result, nil
+	return out, nil
 }
 
 // GetFamily retrieves a family by ID, resolving the branch overlay.
@@ -1591,18 +1597,9 @@ func (s *ReadModelStore) DeleteCitation(ctx context.Context, branchID domain.Bra
 func (s *ReadModelStore) ReplaceCitationExternalIDs(ctx context.Context, branchID domain.BranchID, citationID uuid.UUID, ids []repository.CitationExternalIDReadModel) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
-	if len(ids) == 0 {
-		storeBucket(s.citationExternalIDs, branchID, citationID, nil)
-		return nil
-	}
-	stored := make([]repository.CitationExternalIDReadModel, len(ids))
-	for i, id := range ids {
-		id.CitationID = citationID
-		id.Sequence = i
-		stored[i] = id
-	}
-	storeBucket(s.citationExternalIDs, branchID, citationID, stored)
+	storeBucket(s.citationExternalIDs, branchID, citationID, stampExternalIDs(ids, func(id *repository.CitationExternalIDReadModel, seq int) {
+		id.CitationID, id.Sequence = citationID, seq
+	}))
 	return nil
 }
 
@@ -1611,17 +1608,16 @@ func (s *ReadModelStore) ReplaceCitationExternalIDs(ctx context.Context, branchI
 func (s *ReadModelStore) GetCitationExternalIDs(ctx context.Context, branchID domain.BranchID, citationID uuid.UUID) ([]repository.CitationExternalIDReadModel, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	ids, _ := resolveBucket(s.citationExternalIDs, branchID, citationID)
+	return cloneExternalIDs(ids), nil
+}
 
-	ids, ok := resolveBucket(s.citationExternalIDs, branchID, citationID)
-	if !ok || len(ids) == 0 {
-		return nil, nil
-	}
-	result := make([]repository.CitationExternalIDReadModel, len(ids))
-	copy(result, ids)
-	sort.Slice(result, func(i, j int) bool {
-		return result[i].Sequence < result[j].Sequence
-	})
-	return result, nil
+// ListCitationExternalIDs returns every citation's external identifiers
+// visible on the branch, keyed by citation ID.
+func (s *ReadModelStore) ListCitationExternalIDs(ctx context.Context, branchID domain.BranchID) (map[uuid.UUID][]repository.CitationExternalIDReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return listExternalIDBuckets(s.citationExternalIDs, branchID), nil
 }
 
 // mediaRow is one stored media row (ADR-005, #759). Unlike the other
