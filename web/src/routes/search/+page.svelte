@@ -676,7 +676,7 @@
 						<!-- One element whose text changes: a live region inserted together
 						     with its text is often not announced. -->
 						<span class="results-count" aria-live="polite"
-							>{loading ? 'Searching...' : `Showing ${results.length} of ${total} results`}</span
+							>{loading ? 'Searching...' : error ? '' : `Showing ${results.length} of ${total} results`}</span
 						>
 						{#if soundex}
 							<span class="mode-badge">Phonetic</span>

@@ -874,6 +874,8 @@ describe('Advanced Search Page', () => {
 				expect(errorEl?.querySelector('p')?.textContent).toBe('Server error');
 			});
 			expect(screen.getByRole('button', { name: 'Retry' })).toBeDefined();
+			// A failed search has no count: "Showing 0 of 0" would read like real data (#1096).
+			expect(screen.queryByText(/Showing \d+ of \d+ results/)).toBeNull();
 		});
 	});
 
