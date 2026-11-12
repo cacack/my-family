@@ -2311,12 +2311,12 @@ func (ss *StrictServer) CreatePerson(ctx context.Context, request CreatePersonRe
 		return nil, err
 	}
 
-	person, err := ss.server.personService.GetPerson(ctx, scope, result.ID)
+	person, err := ss.server.personService.GetPersonCore(ctx, scope, result.ID)
 	if err != nil {
 		return nil, err
 	}
 
-	return CreatePerson201JSONResponse(convertQueryPersonToGenerated(person.Person)), nil
+	return CreatePerson201JSONResponse(convertQueryPersonToGenerated(*person)), nil
 }
 
 // GetPerson implements StrictServerInterface.
@@ -2399,12 +2399,12 @@ func (ss *StrictServer) UpdatePerson(ctx context.Context, request UpdatePersonRe
 		return nil, err
 	}
 
-	person, err := ss.server.personService.GetPerson(ctx, branchScopeID(branch), request.Id)
+	person, err := ss.server.personService.GetPersonCore(ctx, branchScopeID(branch), request.Id)
 	if err != nil {
 		return nil, err
 	}
 
-	return UpdatePerson200JSONResponse(convertQueryPersonToGenerated(person.Person)), nil
+	return UpdatePerson200JSONResponse(convertQueryPersonToGenerated(*person)), nil
 }
 
 // DeletePerson implements StrictServerInterface.
@@ -2415,7 +2415,7 @@ func (ss *StrictServer) DeletePerson(ctx context.Context, request DeletePersonRe
 	}
 
 	// Get current version since DELETE doesn't accept version parameter per OpenAPI spec
-	person, err := ss.server.personService.GetPerson(ctx, branchScopeID(branch), request.Id)
+	person, err := ss.server.personService.GetPersonCore(ctx, branchScopeID(branch), request.Id)
 	if err != nil {
 		if errors.Is(err, query.ErrNotFound) {
 			return DeletePerson404JSONResponse{NotFoundJSONResponse{
@@ -2483,15 +2483,15 @@ func (ss *StrictServer) GetPersonHistory(ctx context.Context, request GetPersonH
 		return nil, err
 	}
 
-	_, err = ss.server.personService.GetPerson(ctx, branchScopeID(branch), request.Id)
+	person, err := ss.server.readStore.GetPerson(ctx, branchScopeID(branch), request.Id)
 	if err != nil {
-		if errors.Is(err, query.ErrNotFound) {
-			return GetPersonHistory404JSONResponse{NotFoundJSONResponse{
-				Code:    "not_found",
-				Message: "Person not found",
-			}}, nil
-		}
 		return nil, err
+	}
+	if person == nil {
+		return GetPersonHistory404JSONResponse{NotFoundJSONResponse{
+			Code:    "not_found",
+			Message: "Person not found",
+		}}, nil
 	}
 
 	limit := 20
@@ -2852,15 +2852,15 @@ func (ss *StrictServer) GetPersonRestorePoints(ctx context.Context, request GetP
 		return GetPersonRestorePoints409JSONResponse(errRollbackMainlineOnly), nil
 	}
 
-	_, err = ss.server.personService.GetPerson(ctx, domain.MainBranchID, request.Id)
+	person, err := ss.server.readStore.GetPerson(ctx, domain.MainBranchID, request.Id)
 	if err != nil {
-		if errors.Is(err, query.ErrNotFound) {
-			return GetPersonRestorePoints404JSONResponse{NotFoundJSONResponse{
-				Code:    "not_found",
-				Message: "Person not found",
-			}}, nil
-		}
 		return nil, err
+	}
+	if person == nil {
+		return GetPersonRestorePoints404JSONResponse{NotFoundJSONResponse{
+			Code:    "not_found",
+			Message: "Person not found",
+		}}, nil
 	}
 
 	limit := 20
@@ -2901,15 +2901,15 @@ func (ss *StrictServer) RollbackPerson(ctx context.Context, request RollbackPers
 	}
 
 	if branch == nil {
-		_, err = ss.server.personService.GetPerson(ctx, domain.MainBranchID, request.Id)
+		person, err := ss.server.readStore.GetPerson(ctx, domain.MainBranchID, request.Id)
 		if err != nil {
-			if errors.Is(err, query.ErrNotFound) {
-				return RollbackPerson404JSONResponse{NotFoundJSONResponse{
-					Code:    "not_found",
-					Message: "Person not found",
-				}}, nil
-			}
 			return nil, err
+		}
+		if person == nil {
+			return RollbackPerson404JSONResponse{NotFoundJSONResponse{
+				Code:    "not_found",
+				Message: "Person not found",
+			}}, nil
 		}
 
 		if request.Body.TargetVersion < 1 {
@@ -3242,13 +3242,13 @@ func (ss *StrictServer) MergePersons(ctx context.Context, request MergePersonsRe
 	}
 
 	// Get updated survivor person, as the scope the merge was made on sees it.
-	person, err := ss.server.personService.GetPerson(ctx, branchScopeID(branch), result.SurvivorID)
+	person, err := ss.server.personService.GetPersonCore(ctx, branchScopeID(branch), result.SurvivorID)
 	if err != nil {
 		return nil, err
 	}
 
 	return MergePersons200JSONResponse{
-		Person: convertQueryPersonToGenerated(person.Person),
+		Person: convertQueryPersonToGenerated(*person),
 		MergeSummary: MergeSummary{
 			MergedPersonName:     result.Summary.MergedPersonName,
 			FieldsUpdated:        result.Summary.FieldsUpdated,
