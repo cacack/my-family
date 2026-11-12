@@ -41,7 +41,7 @@
 
 	function navigateToPlace(place: PlaceEntry) {
 		if (place.has_children) {
-			browse(place.full_name ?? '');
+			browse(place.full_name);
 		}
 	}
 
@@ -122,7 +122,7 @@
 							</button>
 						{:else}
 							<a
-								href="/browse/places/{encodeURIComponent(place.full_name || place.name)}"
+								href="/browse/places/{encodeURIComponent(place.full_name)}"
 								class="place-item"
 								data-slot="card-link"
 							>
