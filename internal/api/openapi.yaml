@@ -8296,7 +8296,7 @@ components:
         merge_state:
           type: string
           enum: [complete, incomplete, unknown]
-          x-enum-varnames: [MergeStateComplete, MergeStateIncomplete, MergeStateUnknown]
+          x-enum-varnames: [Complete, Incomplete, Unknown]
           description: |
             Whether the merge finished (#830). Present on `GET /branches`,
             `GET /branches/{id}` and the comparison's `branch`, and only when
@@ -9500,10 +9500,7 @@ components:
         code:
           type: string
           enum: [merge_not_claimed, merge_resume_needs_resolution, merge_dangling_reference, branch_too_large, merge_resume_concurrent]
-          # Distinct Go constant names: the last two values are shared with
-          # BranchMergeConflictError's enum, and a name collision would make
-          # the generator prefix every constant of both enums.
-          x-enum-varnames: [ResumeMergeNotClaimed, ResumeNeedsResolution, ResumeDanglingReference, ResumeBranchTooLarge, ResumeConcurrent]
+          x-enum-varnames: [MergeNotClaimed, NeedsResolution, DanglingReference, BranchTooLarge, Concurrent]
           description: Which refusal this is - see the operation's 409 description
           example: "merge_resume_needs_resolution"
         message:
@@ -9557,7 +9554,7 @@ components:
         reason:
           type: string
           enum: [ready, main_changed, main_removed, no_plan, breaks_reference, needs_repair]
-          x-enum-varnames: [PendingReady, PendingMainChanged, PendingMainRemoved, PendingNoPlan, PendingBreaksReference, PendingNeedsRepair]
+          x-enum-varnames: [Ready, MainChanged, MainRemoved, NoPlan, BreaksReference, NeedsRepair]
           description: |
             - `ready` - the merge's recorded plan still covers it; a resume
               replays it without asking.

@@ -22,19 +22,19 @@ import (
 
 // Defines values for BranchMergeState.
 const (
-	BranchMergeStateMergeStateComplete   BranchMergeState = "complete"
-	BranchMergeStateMergeStateIncomplete BranchMergeState = "incomplete"
-	BranchMergeStateMergeStateUnknown    BranchMergeState = "unknown"
+	BranchMergeStateComplete   BranchMergeState = "complete"
+	BranchMergeStateIncomplete BranchMergeState = "incomplete"
+	BranchMergeStateUnknown    BranchMergeState = "unknown"
 )
 
 // Valid indicates whether the value is a known member of the BranchMergeState enum.
 func (e BranchMergeState) Valid() bool {
 	switch e {
-	case BranchMergeStateMergeStateComplete:
+	case BranchMergeStateComplete:
 		return true
-	case BranchMergeStateMergeStateIncomplete:
+	case BranchMergeStateIncomplete:
 		return true
-	case BranchMergeStateMergeStateUnknown:
+	case BranchMergeStateUnknown:
 		return true
 	default:
 		return false
@@ -124,25 +124,25 @@ func (e BranchMergeConflictErrorCode) Valid() bool {
 
 // Defines values for BranchMergeResumeErrorCode.
 const (
-	BranchMergeResumeErrorCodeResumeBranchTooLarge    BranchMergeResumeErrorCode = "branch_too_large"
-	BranchMergeResumeErrorCodeResumeConcurrent        BranchMergeResumeErrorCode = "merge_resume_concurrent"
-	BranchMergeResumeErrorCodeResumeDanglingReference BranchMergeResumeErrorCode = "merge_dangling_reference"
-	BranchMergeResumeErrorCodeResumeMergeNotClaimed   BranchMergeResumeErrorCode = "merge_not_claimed"
-	BranchMergeResumeErrorCodeResumeNeedsResolution   BranchMergeResumeErrorCode = "merge_resume_needs_resolution"
+	BranchMergeResumeErrorCodeBranchTooLarge    BranchMergeResumeErrorCode = "branch_too_large"
+	BranchMergeResumeErrorCodeConcurrent        BranchMergeResumeErrorCode = "merge_resume_concurrent"
+	BranchMergeResumeErrorCodeDanglingReference BranchMergeResumeErrorCode = "merge_dangling_reference"
+	BranchMergeResumeErrorCodeMergeNotClaimed   BranchMergeResumeErrorCode = "merge_not_claimed"
+	BranchMergeResumeErrorCodeNeedsResolution   BranchMergeResumeErrorCode = "merge_resume_needs_resolution"
 )
 
 // Valid indicates whether the value is a known member of the BranchMergeResumeErrorCode enum.
 func (e BranchMergeResumeErrorCode) Valid() bool {
 	switch e {
-	case BranchMergeResumeErrorCodeResumeBranchTooLarge:
+	case BranchMergeResumeErrorCodeBranchTooLarge:
 		return true
-	case BranchMergeResumeErrorCodeResumeConcurrent:
+	case BranchMergeResumeErrorCodeConcurrent:
 		return true
-	case BranchMergeResumeErrorCodeResumeDanglingReference:
+	case BranchMergeResumeErrorCodeDanglingReference:
 		return true
-	case BranchMergeResumeErrorCodeResumeMergeNotClaimed:
+	case BranchMergeResumeErrorCodeMergeNotClaimed:
 		return true
-	case BranchMergeResumeErrorCodeResumeNeedsResolution:
+	case BranchMergeResumeErrorCodeNeedsResolution:
 		return true
 	default:
 		return false
@@ -1042,28 +1042,28 @@ func (e MergeConflictSupportedResolutions) Valid() bool {
 
 // Defines values for MergePendingEntityReason.
 const (
-	MergePendingEntityReasonPendingBreaksReference MergePendingEntityReason = "breaks_reference"
-	MergePendingEntityReasonPendingMainChanged     MergePendingEntityReason = "main_changed"
-	MergePendingEntityReasonPendingMainRemoved     MergePendingEntityReason = "main_removed"
-	MergePendingEntityReasonPendingNeedsRepair     MergePendingEntityReason = "needs_repair"
-	MergePendingEntityReasonPendingNoPlan          MergePendingEntityReason = "no_plan"
-	MergePendingEntityReasonPendingReady           MergePendingEntityReason = "ready"
+	MergePendingEntityReasonBreaksReference MergePendingEntityReason = "breaks_reference"
+	MergePendingEntityReasonMainChanged     MergePendingEntityReason = "main_changed"
+	MergePendingEntityReasonMainRemoved     MergePendingEntityReason = "main_removed"
+	MergePendingEntityReasonNeedsRepair     MergePendingEntityReason = "needs_repair"
+	MergePendingEntityReasonNoPlan          MergePendingEntityReason = "no_plan"
+	MergePendingEntityReasonReady           MergePendingEntityReason = "ready"
 )
 
 // Valid indicates whether the value is a known member of the MergePendingEntityReason enum.
 func (e MergePendingEntityReason) Valid() bool {
 	switch e {
-	case MergePendingEntityReasonPendingBreaksReference:
+	case MergePendingEntityReasonBreaksReference:
 		return true
-	case MergePendingEntityReasonPendingMainChanged:
+	case MergePendingEntityReasonMainChanged:
 		return true
-	case MergePendingEntityReasonPendingMainRemoved:
+	case MergePendingEntityReasonMainRemoved:
 		return true
-	case MergePendingEntityReasonPendingNeedsRepair:
+	case MergePendingEntityReasonNeedsRepair:
 		return true
-	case MergePendingEntityReasonPendingNoPlan:
+	case MergePendingEntityReasonNoPlan:
 		return true
-	case MergePendingEntityReasonPendingReady:
+	case MergePendingEntityReasonReady:
 		return true
 	default:
 		return false
