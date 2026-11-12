@@ -5668,6 +5668,12 @@ components:
         blocks an unrelated edit.
       example: "1 JAN 1850"
 
+    DateQualifier:
+      type: string
+      enum: [exact, abt, cal, est, bef, aft, bet, from, int, to]
+      description: Precision qualifier of a genealogical date (GEDCOM ABT, CAL, EST, BEF, AFT, BET, FROM, INT, TO).
+      example: "abt"
+
     GenDate:
       type: object
       description: Genealogical date with flexible precision
@@ -5677,9 +5683,7 @@ components:
           description: Original date string
           example: "ABT 1850"
         qualifier:
-          type: string
-          enum: [exact, abt, cal, est, bef, aft, bet, from, int, to]
-          example: "abt"
+          $ref: '#/components/schemas/DateQualifier'
         calendar:
           type: string
           description: >-
@@ -8175,13 +8179,7 @@ components:
           description: Mainline event store position the branch forked from
           example: 42
         status:
-          type: string
-          enum: [active, merged, archived]
-          description: |
-            Lifecycle state. `merged` and `archived` are terminal — a branch in
-            either state accepts no further writes. `archived` is the state a
-            deleted branch enters; its events are retained but its overlay rows
-            are purged.
+          $ref: '#/components/schemas/BranchStatus'
         created_at:
           type: string
           format: date-time
@@ -8308,6 +8306,15 @@ components:
         has_more:
           type: boolean
           description: A count hit the server's cap and is a lower bound
+
+    BranchStatus:
+      type: string
+      enum: [active, merged, archived]
+      description: |
+        Lifecycle state. `merged` and `archived` are terminal — a branch in
+        either state accepts no further writes. `archived` is the state a
+        deleted branch enters; its events are retained but its overlay rows
+        are purged.
 
     BranchOutcome:
       type: string
@@ -9102,8 +9109,8 @@ components:
           # The fact changed (e.g. `person_birth`); absent for a relationship or a deletion.
           $ref: '#/components/schemas/FactType'
         subject_type:
-          type: string
-          enum: [person, family]
+          allOf:
+            - $ref: '#/components/schemas/ResearchLogSubjectType'
           description: What the fact is about - the subject an analysis of it has.
         subject_id:
           type: string
@@ -10011,6 +10018,14 @@ components:
         - SLGC: Sealing to Parents
         - SLGS: Sealing to Spouse (family level)
 
+    LDSOrdinanceStatus:
+      type: string
+      enum: [BIC, CANCELED, CHILD, COMPLETED, EXCLUDED, DNS, DNS_CAN, INFANT, PRE_1970, STILLBORN, SUBMITTED, UNCLEARED]
+      description: |
+        LDS ordinance status, the GEDCOM 7 STAT enumeration. A GEDCOM import
+        keeps the file's STAT text as written, so an ordinance imported from
+        an older file can carry a value outside this list.
+
     LDSOrdinance:
       type: object
       required: [id, type, type_label, version, updated_at]
@@ -10043,8 +10058,7 @@ components:
           type: string
           description: Temple code (GEDCOM TEMP tag)
         status:
-          type: string
-          description: Status (COMPLETED, BIC, CHILD, EXCLUDED, etc.)
+          $ref: '#/components/schemas/LDSOrdinanceStatus'
         version:
           type: integer
           format: int64
@@ -10074,8 +10088,7 @@ components:
           type: string
           description: Temple code
         status:
-          type: string
-          description: Ordinance status
+          $ref: '#/components/schemas/LDSOrdinanceStatus'
 
     LDSOrdinanceUpdate:
       type: object
@@ -10090,8 +10103,7 @@ components:
           type: string
           description: Updated temple code
         status:
-          type: string
-          description: Updated status
+          $ref: '#/components/schemas/LDSOrdinanceStatus'
         version:
           type: integer
           format: int64
@@ -10403,6 +10415,11 @@ components:
           type: integer
 
     # Research Log schemas
+    ResearchLogSubjectType:
+      type: string
+      enum: [person, family]
+      description: The kind of record a research log is about.
+
     ResearchLog:
       type: object
       required: [id, subject_id, subject_type, repository, search_description, outcome, search_date, version]
@@ -10414,8 +10431,7 @@ components:
           type: string
           format: uuid
         subject_type:
-          type: string
-          description: Type of subject (person or family)
+          $ref: '#/components/schemas/ResearchLogSubjectType'
         repository:
           type: string
           description: Name of the repository searched
@@ -10447,7 +10463,7 @@ components:
           type: string
           format: uuid
         subject_type:
-          type: string
+          $ref: '#/components/schemas/ResearchLogSubjectType'
         repository:
           type: string
         search_description:
@@ -10468,7 +10484,7 @@ components:
           type: string
           format: uuid
         subject_type:
-          type: string
+          $ref: '#/components/schemas/ResearchLogSubjectType'
         repository:
           type: string
         search_description:

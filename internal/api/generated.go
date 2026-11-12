@@ -40,27 +40,6 @@ func (e BranchMergeState) Valid() bool {
 	}
 }
 
-// Defines values for BranchStatus.
-const (
-	BranchStatusActive   BranchStatus = "active"
-	BranchStatusArchived BranchStatus = "archived"
-	BranchStatusMerged   BranchStatus = "merged"
-)
-
-// Valid indicates whether the value is a known member of the BranchStatus enum.
-func (e BranchStatus) Valid() bool {
-	switch e {
-	case BranchStatusActive:
-		return true
-	case BranchStatusArchived:
-		return true
-	case BranchStatusMerged:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for BranchChangedFactKind.
 const (
 	Deletion     BranchChangedFactKind = "deletion"
@@ -76,24 +55,6 @@ func (e BranchChangedFactKind) Valid() bool {
 	case Fact:
 		return true
 	case Relationship:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for BranchChangedFactSubjectType.
-const (
-	BranchChangedFactSubjectTypeFamily BranchChangedFactSubjectType = "family"
-	BranchChangedFactSubjectTypePerson BranchChangedFactSubjectType = "person"
-)
-
-// Valid indicates whether the value is a known member of the BranchChangedFactSubjectType enum.
-func (e BranchChangedFactSubjectType) Valid() bool {
-	switch e {
-	case BranchChangedFactSubjectTypeFamily:
-		return true
-	case BranchChangedFactSubjectTypePerson:
 		return true
 	default:
 		return false
@@ -211,6 +172,27 @@ func (e BranchOutcome) Valid() bool {
 	case BranchOutcomeProved:
 		return true
 	case BranchOutcomeSuperseded:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BranchStatus.
+const (
+	BranchStatusActive   BranchStatus = "active"
+	BranchStatusArchived BranchStatus = "archived"
+	BranchStatusMerged   BranchStatus = "merged"
+)
+
+// Valid indicates whether the value is a known member of the BranchStatus enum.
+func (e BranchStatus) Valid() bool {
+	switch e {
+	case BranchStatusActive:
+		return true
+	case BranchStatusArchived:
+		return true
+	case BranchStatusMerged:
 		return true
 	default:
 		return false
@@ -487,6 +469,48 @@ func (e ConflictStatus) Valid() bool {
 	}
 }
 
+// Defines values for DateQualifier.
+const (
+	Abt   DateQualifier = "abt"
+	Aft   DateQualifier = "aft"
+	Bef   DateQualifier = "bef"
+	Bet   DateQualifier = "bet"
+	Cal   DateQualifier = "cal"
+	Est   DateQualifier = "est"
+	Exact DateQualifier = "exact"
+	From  DateQualifier = "from"
+	Int   DateQualifier = "int"
+	To    DateQualifier = "to"
+)
+
+// Valid indicates whether the value is a known member of the DateQualifier enum.
+func (e DateQualifier) Valid() bool {
+	switch e {
+	case Abt:
+		return true
+	case Aft:
+		return true
+	case Bef:
+		return true
+	case Bet:
+		return true
+	case Cal:
+		return true
+	case Est:
+		return true
+	case Exact:
+		return true
+	case From:
+		return true
+	case Int:
+		return true
+	case To:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for DiscoverySuggestionType.
 const (
 	DiscoverySuggestionTypeBrickWallResolved DiscoverySuggestionType = "brick_wall_resolved"
@@ -718,48 +742,6 @@ func (e FactType) Valid() bool {
 	}
 }
 
-// Defines values for GenDateQualifier.
-const (
-	Abt   GenDateQualifier = "abt"
-	Aft   GenDateQualifier = "aft"
-	Bef   GenDateQualifier = "bef"
-	Bet   GenDateQualifier = "bet"
-	Cal   GenDateQualifier = "cal"
-	Est   GenDateQualifier = "est"
-	Exact GenDateQualifier = "exact"
-	From  GenDateQualifier = "from"
-	Int   GenDateQualifier = "int"
-	To    GenDateQualifier = "to"
-)
-
-// Valid indicates whether the value is a known member of the GenDateQualifier enum.
-func (e GenDateQualifier) Valid() bool {
-	switch e {
-	case Abt:
-		return true
-	case Aft:
-		return true
-	case Bef:
-		return true
-	case Bet:
-		return true
-	case Cal:
-		return true
-	case Est:
-		return true
-	case Exact:
-		return true
-	case From:
-		return true
-	case Int:
-		return true
-	case To:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for Gender.
 const (
 	GenderFemale  Gender = "female"
@@ -796,6 +778,54 @@ func (e InformantType) Valid() bool {
 	case Primary:
 		return true
 	case Secondary:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for LDSOrdinanceStatus.
+const (
+	BIC       LDSOrdinanceStatus = "BIC"
+	CANCELED  LDSOrdinanceStatus = "CANCELED"
+	CHILD     LDSOrdinanceStatus = "CHILD"
+	COMPLETED LDSOrdinanceStatus = "COMPLETED"
+	DNS       LDSOrdinanceStatus = "DNS"
+	DNSCAN    LDSOrdinanceStatus = "DNS_CAN"
+	EXCLUDED  LDSOrdinanceStatus = "EXCLUDED"
+	INFANT    LDSOrdinanceStatus = "INFANT"
+	PRE1970   LDSOrdinanceStatus = "PRE_1970"
+	STILLBORN LDSOrdinanceStatus = "STILLBORN"
+	SUBMITTED LDSOrdinanceStatus = "SUBMITTED"
+	UNCLEARED LDSOrdinanceStatus = "UNCLEARED"
+)
+
+// Valid indicates whether the value is a known member of the LDSOrdinanceStatus enum.
+func (e LDSOrdinanceStatus) Valid() bool {
+	switch e {
+	case BIC:
+		return true
+	case CANCELED:
+		return true
+	case CHILD:
+		return true
+	case COMPLETED:
+		return true
+	case DNS:
+		return true
+	case DNSCAN:
+		return true
+	case EXCLUDED:
+		return true
+	case INFANT:
+		return true
+	case PRE1970:
+		return true
+	case STILLBORN:
+		return true
+	case SUBMITTED:
+		return true
+	case UNCLEARED:
 		return true
 	default:
 		return false
@@ -1237,6 +1267,24 @@ func (e RelationType) Valid() bool {
 	case RelationTypePartnership:
 		return true
 	case RelationTypeUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ResearchLogSubjectType.
+const (
+	ResearchLogSubjectTypeFamily ResearchLogSubjectType = "family"
+	ResearchLogSubjectTypePerson ResearchLogSubjectType = "person"
+)
+
+// Valid indicates whether the value is a known member of the ResearchLogSubjectType enum.
+func (e ResearchLogSubjectType) Valid() bool {
+	switch e {
+	case ResearchLogSubjectTypeFamily:
+		return true
+	case ResearchLogSubjectTypePerson:
 		return true
 	default:
 		return false
@@ -2508,12 +2556,6 @@ type Branch struct {
 // behind it (pending as `needs_repair`).
 type BranchMergeState string
 
-// BranchStatus Lifecycle state. `merged` and `archived` are terminal — a branch in
-// either state accepts no further writes. `archived` is the state a
-// deleted branch enters; its events are retained but its overlay rows
-// are purged.
-type BranchStatus string
-
 // BranchChangedFact One fact or relationship a branch changed.
 type BranchChangedFact struct {
 	// ChangeCount How many of the branch's changes touched the fact.
@@ -2532,16 +2574,13 @@ type BranchChangedFact struct {
 	SubjectName string `json:"subject_name"`
 
 	// SubjectType What the fact is about - the subject an analysis of it has.
-	SubjectType BranchChangedFactSubjectType `json:"subject_type"`
+	SubjectType ResearchLogSubjectType `json:"subject_type"`
 }
 
 // BranchChangedFactKind `fact` for a person's or family's fact (`fact_type` says which);
 // `relationship` for a family's partners or children; `deletion` for
 // a person or family the mainline has that the branch deleted.
 type BranchChangedFactKind string
-
-// BranchChangedFactSubjectType What the fact is about - the subject an analysis of it has.
-type BranchChangedFactSubjectType string
 
 // BranchCloseOutcome The outcomes a branch can be closed with (#836). `open` is no verdict,
 // and a `proved` branch is merged rather than closed.
@@ -2927,6 +2966,12 @@ type BranchResearchArchive struct {
 	// archive may be incomplete.
 	Truncated bool `json:"truncated"`
 }
+
+// BranchStatus Lifecycle state. `merged` and `archived` are terminal — a branch in
+// either state accepts no further writes. `archived` is the state a
+// deleted branch enters; its events are retained but its overlay rows
+// are purged.
+type BranchStatus string
 
 // BranchSubject defines model for BranchSubject.
 type BranchSubject struct {
@@ -3334,6 +3379,11 @@ type DataLossItem struct {
 //
 // Example: 1 JAN 1850
 type DateInput = string
+
+// DateQualifier Precision qualifier of a genealogical date (GEDCOM ABT, CAL, EST, BEF, AFT, BET, FROM, INT, TO).
+//
+// Example: abt
+type DateQualifier string
 
 // DateRange defines model for DateRange.
 type DateRange struct {
@@ -3994,8 +4044,10 @@ type GenDate struct {
 	Month           *int    `json:"month,omitempty"`
 	Month2          *int    `json:"month2,omitempty"`
 
-	// Qualifier Example: abt
-	Qualifier *GenDateQualifier `json:"qualifier,omitempty"`
+	// Qualifier Precision qualifier of a genealogical date (GEDCOM ABT, CAL, EST, BEF, AFT, BET, FROM, INT, TO).
+	//
+	// Example: abt
+	Qualifier *DateQualifier `json:"qualifier,omitempty"`
 
 	// Raw Original date string
 	//
@@ -4008,9 +4060,6 @@ type GenDate struct {
 	// Year2 End year for ranges
 	Year2 *int `json:"year2,omitempty"`
 }
-
-// GenDateQualifier Example: abt
-type GenDateQualifier string
 
 // Gender defines model for Gender.
 type Gender string
@@ -4134,8 +4183,10 @@ type LDSOrdinance struct {
 	// Place Location where ordinance was performed
 	Place *string `json:"place,omitempty"`
 
-	// Status Status (COMPLETED, BIC, CHILD, EXCLUDED, etc.)
-	Status *string `json:"status,omitempty"`
+	// Status LDS ordinance status, the GEDCOM 7 STAT enumeration. A GEDCOM import
+	// keeps the file's STAT text as written, so an ordinance imported from
+	// an older file can carry a value outside this list.
+	Status *LDSOrdinanceStatus `json:"status,omitempty"`
 
 	// Temple Temple code (GEDCOM TEMP tag)
 	Temple *string `json:"temple,omitempty"`
@@ -4195,8 +4246,10 @@ type LDSOrdinanceCreate struct {
 	PersonId *openapi_types.UUID `json:"person_id,omitempty"`
 	Place    *string             `json:"place,omitempty"`
 
-	// Status Ordinance status
-	Status *string `json:"status,omitempty"`
+	// Status LDS ordinance status, the GEDCOM 7 STAT enumeration. A GEDCOM import
+	// keeps the file's STAT text as written, so an ordinance imported from
+	// an older file can carry a value outside this list.
+	Status *LDSOrdinanceStatus `json:"status,omitempty"`
 
 	// Temple Temple code
 	Temple *string `json:"temple,omitempty"`
@@ -4219,6 +4272,11 @@ type LDSOrdinanceList struct {
 	// Total Total number of LDS ordinances
 	Total int `json:"total"`
 }
+
+// LDSOrdinanceStatus LDS ordinance status, the GEDCOM 7 STAT enumeration. A GEDCOM import
+// keeps the file's STAT text as written, so an ordinance imported from
+// an older file can carry a value outside this list.
+type LDSOrdinanceStatus string
 
 // LDSOrdinanceType LDS temple ordinance type:
 // - BAPL: Baptism (LDS)
@@ -4265,8 +4323,10 @@ type LDSOrdinanceUpdate struct {
 	// Place Updated place
 	Place *string `json:"place,omitempty"`
 
-	// Status Updated status
-	Status *string `json:"status,omitempty"`
+	// Status LDS ordinance status, the GEDCOM 7 STAT enumeration. A GEDCOM import
+	// keeps the file's STAT text as written, so an ordinance imported from
+	// an older file can carry a value outside this list.
+	Status *LDSOrdinanceStatus `json:"status,omitempty"`
 
 	// Temple Updated temple code
 	Temple *string `json:"temple,omitempty"`
@@ -5685,10 +5745,10 @@ type ResearchLog struct {
 	SearchDescription string             `json:"search_description"`
 	SubjectId         openapi_types.UUID `json:"subject_id"`
 
-	// SubjectType Type of subject (person or family)
-	SubjectType string     `json:"subject_type"`
-	UpdatedAt   *time.Time `json:"updated_at,omitempty"`
-	Version     int64      `json:"version"`
+	// SubjectType The kind of record a research log is about.
+	SubjectType ResearchLogSubjectType `json:"subject_type"`
+	UpdatedAt   *time.Time             `json:"updated_at,omitempty"`
+	Version     int64                  `json:"version"`
 }
 
 // ResearchLogCreate defines model for ResearchLogCreate.
@@ -5701,7 +5761,9 @@ type ResearchLogCreate struct {
 	SearchDate        time.Time          `json:"search_date"`
 	SearchDescription string             `json:"search_description"`
 	SubjectId         openapi_types.UUID `json:"subject_id"`
-	SubjectType       string             `json:"subject_type"`
+
+	// SubjectType The kind of record a research log is about.
+	SubjectType ResearchLogSubjectType `json:"subject_type"`
 }
 
 // ResearchLogList defines model for ResearchLogList.
@@ -5711,6 +5773,9 @@ type ResearchLogList struct {
 	Offset *int          `json:"offset,omitempty"`
 	Total  int           `json:"total"`
 }
+
+// ResearchLogSubjectType The kind of record a research log is about.
+type ResearchLogSubjectType string
 
 // ResearchLogUpdate defines model for ResearchLogUpdate.
 type ResearchLogUpdate struct {
@@ -5722,8 +5787,10 @@ type ResearchLogUpdate struct {
 	SearchDate        *time.Time          `json:"search_date,omitempty"`
 	SearchDescription *string             `json:"search_description,omitempty"`
 	SubjectId         *openapi_types.UUID `json:"subject_id,omitempty"`
-	SubjectType       *string             `json:"subject_type,omitempty"`
-	Version           int64               `json:"version"`
+
+	// SubjectType The kind of record a research log is about.
+	SubjectType *ResearchLogSubjectType `json:"subject_type,omitempty"`
+	Version     int64                   `json:"version"`
 }
 
 // ResearchOutcome Outcome of a research log entry

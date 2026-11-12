@@ -2,6 +2,7 @@ package command_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/google/uuid"
@@ -242,6 +243,48 @@ func TestUpdateLDSOrdinance_NoChanges(t *testing.T) {
 
 	if result.Version != createResult.Version {
 		t.Errorf("Version changed without updates: got %d, want %d", result.Version, createResult.Version)
+	}
+}
+
+// TestLDSOrdinance_InvalidStatus tests that create and update reject a status
+// outside domain.AllLDSOrdinanceStatuses.
+func TestLDSOrdinance_InvalidStatus(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	personResult, _ := handler.CreatePerson(ctx, command.CreatePersonInput{GivenName: "John", Surname: "Doe"})
+
+	if _, err := handler.CreateLDSOrdinance(ctx, command.CreateLDSOrdinanceInput{
+		Type:     domain.LDSBaptism,
+		PersonID: &personResult.ID,
+		Status:   "DONE",
+	}); !errors.Is(err, command.ErrInvalidInput) {
+		t.Errorf("CreateLDSOrdinance with an invalid status: err = %v, want ErrInvalidInput", err)
+	}
+
+	createResult, err := handler.CreateLDSOrdinance(ctx, command.CreateLDSOrdinanceInput{
+		Type:     domain.LDSBaptism,
+		PersonID: &personResult.ID,
+		Status:   string(domain.LDSStatusSubmitted),
+	})
+	if err != nil {
+		t.Fatalf("CreateLDSOrdinance failed: %v", err)
+	}
+	if _, err := handler.UpdateLDSOrdinance(ctx, command.UpdateLDSOrdinanceInput{
+		ID:      createResult.ID,
+		Status:  strPtr("DONE"),
+		Version: createResult.Version,
+	}); !errors.Is(err, command.ErrInvalidInput) {
+		t.Errorf("UpdateLDSOrdinance with an invalid status: err = %v, want ErrInvalidInput", err)
+	}
+	if _, err := handler.UpdateLDSOrdinance(ctx, command.UpdateLDSOrdinanceInput{
+		ID:      createResult.ID,
+		Status:  strPtr(string(domain.LDSStatusCompleted)),
+		Version: createResult.Version,
+	}); err != nil {
+		t.Errorf("UpdateLDSOrdinance with a valid status failed: %v", err)
 	}
 }
 
