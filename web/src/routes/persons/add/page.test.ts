@@ -108,6 +108,25 @@ describe('Add Person form dates (#996)', () => {
 		expect(screen.queryByRole('button', { name: 'Keep as text' })).toBeNull();
 	});
 
+	// A rejected date was a banner with the server's raw prefix (#1112).
+	it('shows a rejected date beside its field, tied to it and focused', async () => {
+		createPerson.mockRejectedValue({
+			code: 'VALIDATION_ERROR',
+			message: 'invalid input: death_date: "31 FEB 1900" is not a real calendar date',
+			details: { field: 'death_date', unreadable: false }
+		});
+		await createWithDate('Death Date', '31 FEB 1900');
+
+		const input = screen.getByLabelText('Death Date');
+		const message = await screen.findByRole('alert');
+		expect(message.textContent?.trim()).toBe('"31 FEB 1900" is not a real calendar date');
+		expect(input.closest('.date-field')?.contains(message)).toBe(true);
+		expect(input.getAttribute('aria-invalid')).toBe('true');
+		expect(input.getAttribute('aria-describedby')).toBe(message.id);
+		expect(screen.getByLabelText('Birth Date').hasAttribute('aria-invalid')).toBe(false);
+		await waitFor(() => expect(document.activeElement).toBe(input));
+	});
+
 	it('hands the person page what a converted date was saved as', async () => {
 		createPerson.mockResolvedValue({
 			id: 'p1',

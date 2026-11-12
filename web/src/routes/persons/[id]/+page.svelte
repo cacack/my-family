@@ -28,7 +28,18 @@
 	import { ROLLBACK_MAINLINE_ONLY } from '#lib/utils/rollbackScope.js';
 	import { GENDER_OPTIONS, RESEARCH_STATUS_OPTIONS, optionLabel } from '#lib/utils/enumOptions.js';
 	import { DISCARD_EDITS_PROMPT, SaveConflictFlow, type ConflictRow } from '#lib/utils/saveConflict.svelte.js';
-	import { asDatePhrase, savedAsNotes, savedAsText, stillStored, unreadableDateField, type SavedAs } from '#lib/utils/dateInput.js';
+	import {
+		asDatePhrase,
+		dateErrorAttrs,
+		dateErrorId,
+		dateFieldError,
+		focusFirstInvalid,
+		savedAsNotes,
+		savedAsText,
+		stillStored,
+		type DateFieldError,
+		type SavedAs
+	} from '#lib/utils/dateInput.js';
 	
 	const DATE_FIELDS = ['birth_date', 'death_date'] as const;
 	type DateField = (typeof DATE_FIELDS)[number];
@@ -53,9 +64,9 @@
 		},
 		save: () => savePerson()
 	});
-	// The date field of a save refused because its text isn't a date, which
-	// the error offers to keep as text (#978).
-	let unreadableDate: DateField | null = $state(null);
+	// The date field a save was refused for, shown beside it (#1112); an
+	// unreadable one is offered to keep as text (#978).
+	let dateError: DateFieldError<DateField> | null = $state(null);
 	// The dates the last save stored in another form than typed (#978).
 	let savedAs: Partial<Record<DateField, SavedAs>> = $state({});
 	let editing = $state(false);
@@ -292,7 +303,7 @@
 
 	function resetForm() {
 		saveError = null;
-		unreadableDate = null;
+		dateError = null;
 		if (person) {
 			formData = formFrom(person);
 		}
@@ -349,7 +360,7 @@
 		saving = true;
 		saveError = null;
 		saveConflict.clear();
-		unreadableDate = null;
+		dateError = null;
 		// Loading the saved person resets the form, so the dates as typed are kept.
 		const typedDates = { birth_date: formData.birth_date, death_date: formData.death_date };
 		try {
@@ -387,8 +398,9 @@
 			// are refusals, and a person that can't be re-read shows the refusal.
 			const id = person.id;
 			if (!(isVersionConflict(e) && (await saveConflict.load(() => api.getPerson(id))))) {
-				saveError = (e as { message?: string }).message || 'Failed to save';
-				unreadableDate = unreadableDateField(e, DATE_FIELDS);
+				dateError = dateFieldError(e, DATE_FIELDS);
+				if (dateError) focusFirstInvalid(editForm);
+				else saveError = (e as { message?: string }).message || 'Failed to save';
 			}
 		} finally {
 			saving = false;
@@ -486,6 +498,18 @@
 			<ActionError message={actionError} />
 		{/if}
 		{#if editing}
+			{#snippet dateMessage(field: DateField)}
+				{#if dateError?.field === field}
+					<ActionError
+						id={dateErrorId(field)}
+						message={dateError.message}
+						action={dateError.unreadable
+							? { label: 'Keep as text', onclick: () => keepDateAsText(field), disabled: saving }
+							: undefined}
+					/>
+				{/if}
+			{/snippet}
+
 			<form class="edit-form" bind:this={editForm} onsubmit={(e) => { e.preventDefault(); savePerson(); }}>
 				<FormRow>
 					<label>
@@ -518,10 +542,13 @@
 				</FormRow>
 
 				<FormRow>
-					<label>
-						Birth Date
-						<input type="text" bind:value={formData.birth_date} placeholder="e.g., 1 JAN 1850 or about 1850" />
-					</label>
+					<div class="date-field">
+						<label>
+							Birth Date
+							<input type="text" bind:value={formData.birth_date} {...dateErrorAttrs(dateError, 'birth_date')} placeholder="e.g., 1 JAN 1850 or about 1850" />
+						</label>
+						{@render dateMessage('birth_date')}
+					</div>
 					<label>
 						Birth Place
 						<input type="text" bind:value={formData.birth_place} />
@@ -529,10 +556,13 @@
 				</FormRow>
 
 				<FormRow>
-					<label>
-						Death Date
-						<input type="text" bind:value={formData.death_date} placeholder="e.g., 15 MAR 1920 or before 1920" />
-					</label>
+					<div class="date-field">
+						<label>
+							Death Date
+							<input type="text" bind:value={formData.death_date} {...dateErrorAttrs(dateError, 'death_date')} placeholder="e.g., 15 MAR 1920 or before 1920" />
+						</label>
+						{@render dateMessage('death_date')}
+					</div>
 					<label>
 						Death Place
 						<input type="text" bind:value={formData.death_place} />
@@ -557,13 +587,7 @@
 						busy={saving}
 					/>
 				{:else if saveError}
-					{@const dateField = unreadableDate}
-					<ActionError
-						message={saveError}
-						action={dateField
-							? { label: 'Keep as text', onclick: () => keepDateAsText(dateField), disabled: saving }
-							: undefined}
-					/>
+					<ActionError message={saveError} />
 				{/if}
 
 				<div class="form-actions">
@@ -1060,6 +1084,13 @@
 		gap: 0.375rem;
 		font-size: 0.875rem;
 		color: #475569;
+	}
+
+	/* A date input's label with any refusal of it underneath (#1112). */
+	.date-field {
+		display: flex;
+		flex-direction: column;
+		gap: 0.375rem;
 	}
 
 	input,

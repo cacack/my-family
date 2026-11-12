@@ -38,7 +38,18 @@
 	import { ROLLBACK_MAINLINE_ONLY } from '#lib/utils/rollbackScope.js';
 	import { RELATION_TYPE_OPTIONS } from '#lib/utils/enumOptions.js';
 	import { DISCARD_EDITS_PROMPT, SaveConflictFlow, type ConflictRow } from '#lib/utils/saveConflict.svelte.js';
-	import { asDatePhrase, savedAsNotes, savedAsText, stillStored, unreadableDateField, type SavedAs } from '#lib/utils/dateInput.js';
+	import {
+		asDatePhrase,
+		dateErrorAttrs,
+		dateErrorId,
+		dateFieldError,
+		focusFirstInvalid,
+		savedAsNotes,
+		savedAsText,
+		stillStored,
+		type DateFieldError,
+		type SavedAs
+	} from '#lib/utils/dateInput.js';
 
 	let family: FamilyDetail | null = $state(null);
 	let loading = $state(true);
@@ -77,9 +88,9 @@
 		},
 		save: () => saveFamily()
 	});
-	// Whether the save was refused because the marriage date's text isn't a
-	// date, which the error offers to keep as text (#978).
-	let unreadableDate = $state(false);
+	// A save refused for the marriage date, shown beside it (#1112); an
+	// unreadable one is offered to keep as text (#978).
+	let dateError: DateFieldError<'marriage_date'> | null = $state(null);
 	// The marriage date, when the last save stored it in another form than
 	// typed (#978).
 	let savedAs: SavedAs | undefined = $state();
@@ -299,7 +310,7 @@
 		resetForm();
 		saveError = null;
 		saveConflict.clear();
-		unreadableDate = false;
+		dateError = null;
 		savedAs = undefined;
 		actionError = null;
 		editing = true;
@@ -310,7 +321,7 @@
 		resetForm();
 		saveError = null;
 		saveConflict.clear();
-		unreadableDate = false;
+		dateError = null;
 		editing = false;
 		focusEditButton();
 	}
@@ -320,7 +331,7 @@
 		saving = true;
 		saveError = null;
 		saveConflict.clear();
-		unreadableDate = false;
+		dateError = null;
 		// Refreshing the family resets the form, so the date as typed is kept.
 		const typedDate = { marriage_date: formData.marriage_date };
 		try {
@@ -347,8 +358,9 @@
 			// are refusals, and a family that can't be re-read shows the refusal.
 			const id = family.id;
 			if (!(isVersionConflict(e) && (await saveConflict.load(() => api.getFamily(id))))) {
-				saveError = (e as { message?: string }).message || 'Failed to save';
-				unreadableDate = unreadableDateField(e, ['marriage_date']) !== null;
+				dateError = dateFieldError(e, ['marriage_date']);
+				if (dateError) focusFirstInvalid(editForm);
+				else saveError = (e as { message?: string }).message || 'Failed to save';
 			}
 		} finally {
 			saving = false;
@@ -496,10 +508,19 @@
 				</FormRow>
 
 				<FormRow>
-					<label>
-						Marriage Date
-						<input type="text" bind:value={formData.marriage_date} placeholder="e.g., 1 JAN 1850 or about 1850" />
-					</label>
+					<div class="date-field">
+						<label>
+							Marriage Date
+							<input type="text" bind:value={formData.marriage_date} {...dateErrorAttrs(dateError, 'marriage_date')} placeholder="e.g., 1 JAN 1850 or about 1850" />
+						</label>
+						{#if dateError}
+							<ActionError
+								id={dateErrorId('marriage_date')}
+								message={dateError.message}
+								action={dateError.unreadable ? { label: 'Keep as text', onclick: keepDateAsText, disabled: saving } : undefined}
+							/>
+						{/if}
+					</div>
 					<label>
 						Marriage Place
 						<input type="text" bind:value={formData.marriage_place} />
@@ -519,10 +540,7 @@
 						busy={saving}
 					/>
 				{:else if saveError}
-					<ActionError
-						message={saveError}
-						action={unreadableDate ? { label: 'Keep as text', onclick: keepDateAsText, disabled: saving } : undefined}
-					/>
+					<ActionError message={saveError} />
 				{/if}
 
 				<div class="form-actions">
@@ -845,6 +863,13 @@
 		gap: 0.375rem;
 		font-size: 0.875rem;
 		color: #475569;
+	}
+
+	/* The date input's label with any refusal of it underneath (#1112). */
+	.date-field {
+		display: flex;
+		flex-direction: column;
+		gap: 0.375rem;
 	}
 
 	input,

@@ -13,13 +13,22 @@
 	import PartnerPickers from '#lib/components/PartnerPickers.svelte';
 	import ActionError from '#lib/components/ActionError.svelte';
 	import { RELATION_TYPE_OPTIONS } from '#lib/utils/enumOptions.js';
-	import { asDatePhrase, savedAsNotes, unreadableDateField } from '#lib/utils/dateInput.js';
+	import {
+		asDatePhrase,
+		dateErrorAttrs,
+		dateErrorId,
+		dateFieldError,
+		focusFirstInvalid,
+		savedAsNotes,
+		type DateFieldError
+	} from '#lib/utils/dateInput.js';
 
 	let saving = $state(false);
 	let error: string | null = $state(null);
-	// True when a create was refused because the marriage date isn't a date,
-	// which the error offers to keep as text (#996).
-	let unreadableDate = $state(false);
+	// A create refused for the marriage date, shown beside it (#1112); an
+	// unreadable one is offered to keep as text (#996).
+	let dateError: DateFieldError<'marriage_date'> | null = $state(null);
+	let form: HTMLFormElement | null = $state(null);
 
 	// Form state
 	let formData = $state<FamilyCreate>({
@@ -89,7 +98,7 @@
 		if (formLocked || childPending || !hasPartner) return;
 		saving = true;
 		error = null;
-		unreadableDate = false;
+		dateError = null;
 		try {
 			const payload: FamilyCreate = {
 				partner1_id: partner1?.id,
@@ -118,8 +127,9 @@
 			);
 			goto(`/families/${family.id}`, { state: { savedAs } });
 		} catch (e) {
-			error = (e as { message?: string }).message || 'Failed to create family';
-			unreadableDate = unreadableDateField(e, ['marriage_date']) !== null;
+			dateError = dateFieldError(e, ['marriage_date']);
+			if (dateError) focusFirstInvalid(form);
+			else error = (e as { message?: string }).message || 'Failed to create family';
 		} finally {
 			saving = false;
 		}
@@ -149,12 +159,7 @@
 			<a href="/families/{createdFamilyId}">Open the family</a>
 		</div>
 	{:else if error}
-		<ActionError
-			message={error}
-			action={unreadableDate
-				? { label: 'Keep as text', onclick: keepDateAsText, disabled: formLocked }
-				: undefined}
-		/>
+		<ActionError message={error} />
 	{/if}
 	{#if prefillError}
 		<div class="error" role="alert">
@@ -165,7 +170,7 @@
 		</div>
 	{/if}
 
-	<form class="edit-form" onsubmit={(e) => { e.preventDefault(); handleSubmit(); }}>
+	<form class="edit-form" bind:this={form} onsubmit={(e) => { e.preventDefault(); handleSubmit(); }}>
 		{#if child}
 			<p class="child-note" data-testid="child-note">
 				{formatPersonName(child)} will be added as a child of this family.
@@ -191,10 +196,21 @@
 		</FormRow>
 
 		<FormRow>
-			<label>
-				Marriage Date
-				<input type="text" bind:value={formData.marriage_date} placeholder="e.g., 1 JAN 1850 or about 1850" />
-			</label>
+			<div class="date-field">
+				<label>
+					Marriage Date
+					<input type="text" bind:value={formData.marriage_date} {...dateErrorAttrs(dateError, 'marriage_date')} placeholder="e.g., 1 JAN 1850 or about 1850" />
+				</label>
+				{#if dateError}
+					<ActionError
+						id={dateErrorId('marriage_date')}
+						message={dateError.message}
+						action={dateError.unreadable
+							? { label: 'Keep as text', onclick: keepDateAsText, disabled: formLocked }
+							: undefined}
+					/>
+				{/if}
+			</div>
 			<label>
 				Marriage Place
 				<input type="text" bind:value={formData.marriage_place} placeholder="e.g., London, England" />
@@ -247,6 +263,13 @@
 		gap: 0.375rem;
 		font-size: 0.875rem;
 		color: #475569;
+	}
+
+	/* The date input's label with any refusal of it underneath (#1112). */
+	.date-field {
+		display: flex;
+		flex-direction: column;
+		gap: 0.375rem;
 	}
 
 	input,

@@ -6,16 +6,25 @@
 	import FormRow from '#lib/components/FormRow.svelte';
 	import ActionError from '#lib/components/ActionError.svelte';
 	import { GENDER_OPTIONS } from '#lib/utils/enumOptions.js';
-	import { asDatePhrase, savedAsNotes, unreadableDateField } from '#lib/utils/dateInput.js';
+	import {
+		asDatePhrase,
+		dateErrorAttrs,
+		dateErrorId,
+		dateFieldError,
+		focusFirstInvalid,
+		savedAsNotes,
+		type DateFieldError
+	} from '#lib/utils/dateInput.js';
 
 	const DATE_FIELDS = ['birth_date', 'death_date'] as const;
 	type DateField = (typeof DATE_FIELDS)[number];
 
 	let saving = $state(false);
 	let error: string | null = $state(null);
-	// The date field a create was refused for because its text isn't a date,
-	// which the error offers to keep as text (#996).
-	let unreadableDate: DateField | null = $state(null);
+	// The date field a create was refused for, shown beside it (#1112); an
+	// unreadable one is offered to keep as text (#996).
+	let dateError: DateFieldError<DateField> | null = $state(null);
+	let form: HTMLFormElement | null = $state(null);
 
 	// Form state
 	let formData = $state<PersonCreate>({
@@ -32,7 +41,7 @@
 	async function createPerson() {
 		saving = true;
 		error = null;
-		unreadableDate = null;
+		dateError = null;
 		try {
 			// Build the create payload, only including non-empty optional fields
 			const payload: PersonCreate = {
@@ -67,8 +76,9 @@
 			);
 			goto(`/persons/${person.id}`, { state: { savedAs } });
 		} catch (e) {
-			error = (e as { message?: string }).message || 'Failed to create person';
-			unreadableDate = unreadableDateField(e, DATE_FIELDS);
+			dateError = dateFieldError(e, DATE_FIELDS);
+			if (dateError) focusFirstInvalid(form);
+			else error = (e as { message?: string }).message || 'Failed to create person';
 		} finally {
 			saving = false;
 		}
@@ -97,16 +107,22 @@
 	</div>
 
 	{#if error}
-		{@const dateField = unreadableDate}
-		<ActionError
-			message={error}
-			action={dateField
-				? { label: 'Keep as text', onclick: () => keepDateAsText(dateField), disabled: saving }
-				: undefined}
-		/>
+		<ActionError message={error} />
 	{/if}
 
-	<form class="edit-form" onsubmit={(e) => { e.preventDefault(); createPerson(); }}>
+	{#snippet dateMessage(field: DateField)}
+		{#if dateError?.field === field}
+			<ActionError
+				id={dateErrorId(field)}
+				message={dateError.message}
+				action={dateError.unreadable
+					? { label: 'Keep as text', onclick: () => keepDateAsText(field), disabled: saving }
+					: undefined}
+			/>
+		{/if}
+	{/snippet}
+
+	<form class="edit-form" bind:this={form} onsubmit={(e) => { e.preventDefault(); createPerson(); }}>
 		<FormRow>
 			<label>
 				Given Name
@@ -131,10 +147,13 @@
 		</FormRow>
 
 		<FormRow>
-			<label>
-				Birth Date
-				<input type="text" bind:value={formData.birth_date} placeholder="e.g., 1 JAN 1850 or about 1850" />
-			</label>
+			<div class="date-field">
+				<label>
+					Birth Date
+					<input type="text" bind:value={formData.birth_date} {...dateErrorAttrs(dateError, 'birth_date')} placeholder="e.g., 1 JAN 1850 or about 1850" />
+				</label>
+				{@render dateMessage('birth_date')}
+			</div>
 			<label>
 				Birth Place
 				<input type="text" bind:value={formData.birth_place} />
@@ -142,10 +161,13 @@
 		</FormRow>
 
 		<FormRow>
-			<label>
-				Death Date
-				<input type="text" bind:value={formData.death_date} placeholder="e.g., 15 MAR 1920 or before 1920" />
-			</label>
+			<div class="date-field">
+				<label>
+					Death Date
+					<input type="text" bind:value={formData.death_date} {...dateErrorAttrs(dateError, 'death_date')} placeholder="e.g., 15 MAR 1920 or before 1920" />
+				</label>
+				{@render dateMessage('death_date')}
+			</div>
 			<label>
 				Death Place
 				<input type="text" bind:value={formData.death_place} />
@@ -187,6 +209,13 @@
 		gap: 0.375rem;
 		font-size: 0.875rem;
 		color: #475569;
+	}
+
+	/* A date input's label with any refusal of it underneath (#1112). */
+	.date-field {
+		display: flex;
+		flex-direction: column;
+		gap: 0.375rem;
 	}
 
 	input,

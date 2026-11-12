@@ -1,5 +1,53 @@
 import { describe, it, expect } from 'vitest';
-import { asDatePhrase, savedAsNotes, savedAsText, stillStored, unreadableDateField } from './dateInput';
+import {
+	asDatePhrase,
+	dateErrorAttrs,
+	dateFieldError,
+	savedAsNotes,
+	savedAsText,
+	stillStored,
+	unreadableDateField
+} from './dateInput';
+
+describe('dateFieldError', () => {
+	const fields = ['birth_date', 'death_date'] as const;
+
+	it('names the field and drops the server prefix from the message', () => {
+		const error = {
+			message: 'invalid input: death_date: "31 FEB 1900" is not a real calendar date',
+			details: { field: 'death_date', unreadable: false }
+		};
+		expect(dateFieldError(error, fields)).toEqual({
+			field: 'death_date',
+			message: '"31 FEB 1900" is not a real calendar date',
+			unreadable: false
+		});
+	});
+
+	it('keeps a message without the prefix as it is', () => {
+		const error = { message: 'not a date', details: { field: 'birth_date', unreadable: true } };
+		expect(dateFieldError(error, fields)).toEqual({ field: 'birth_date', message: 'not a date', unreadable: true });
+	});
+
+	it('is null for another field or another error', () => {
+		expect(dateFieldError({ details: { field: 'marriage_date', unreadable: true } }, fields)).toBeNull();
+		expect(dateFieldError({ message: 'x' }, fields)).toBeNull();
+		expect(dateFieldError(undefined, fields)).toBeNull();
+	});
+});
+
+describe('dateErrorAttrs', () => {
+	const error = { field: 'birth_date', message: 'x', unreadable: false };
+
+	it('marks only the refused field and points it at its message', () => {
+		expect(dateErrorAttrs(error, 'birth_date')).toEqual({
+			'aria-invalid': 'true',
+			'aria-describedby': 'birth_date-error'
+		});
+		expect(dateErrorAttrs(error, 'death_date')).toEqual({});
+		expect(dateErrorAttrs(null, 'birth_date')).toEqual({});
+	});
+});
 
 describe('unreadableDateField', () => {
 	const fields = ['birth_date', 'death_date'] as const;

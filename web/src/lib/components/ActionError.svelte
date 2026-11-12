@@ -9,13 +9,15 @@
 	 */
 	interface Props {
 		message: string;
+		/** For an input to point `aria-describedby` at, when the error concerns one field. */
+		id?: string;
 		action?: { label: string; onclick: () => void; disabled?: boolean };
 	}
 
-	let { message, action }: Props = $props();
+	let { message, id, action }: Props = $props();
 </script>
 
-<div class="action-error" role="alert">
+<div class="action-error" {id} role="alert">
 	{message}
 	{#if action}
 		<div class="action-error-action">
