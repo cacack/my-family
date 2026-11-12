@@ -28,8 +28,8 @@ func generateLargeGEDCOM(numIndividuals int) []byte {
 
 	// Generate individuals
 	for i := 1; i <= numIndividuals; i++ {
-		buf.WriteString(fmt.Sprintf("0 @I%d@ INDI\n", i))
-		buf.WriteString(fmt.Sprintf("1 NAME Person%d /TestFamily%d/\n", i, i/10))
+		fmt.Fprintf(&buf, "0 @I%d@ INDI\n", i)
+		fmt.Fprintf(&buf, "1 NAME Person%d /TestFamily%d/\n", i, i/10)
 		if i%2 == 0 {
 			buf.WriteString("1 SEX F\n")
 		} else {
@@ -38,8 +38,8 @@ func generateLargeGEDCOM(numIndividuals int) []byte {
 		// Add birth event for some individuals
 		if i%3 == 0 {
 			year := 1800 + (i % 200)
-			buf.WriteString(fmt.Sprintf("1 BIRT\n2 DATE 1 JAN %d\n", year))
-			buf.WriteString(fmt.Sprintf("2 PLAC City%d, State%d, Country%d\n", i%100, i%50, i%25))
+			fmt.Fprintf(&buf, "1 BIRT\n2 DATE 1 JAN %d\n", year)
+			fmt.Fprintf(&buf, "2 PLAC City%d, State%d, Country%d\n", i%100, i%50, i%25)
 		}
 	}
 
@@ -51,11 +51,11 @@ func generateLargeGEDCOM(numIndividuals int) []byte {
 		childID := numIndividuals/2 + i
 
 		if husbID <= numIndividuals && wifeID <= numIndividuals {
-			buf.WriteString(fmt.Sprintf("0 @F%d@ FAM\n", i))
-			buf.WriteString(fmt.Sprintf("1 HUSB @I%d@\n", husbID))
-			buf.WriteString(fmt.Sprintf("1 WIFE @I%d@\n", wifeID))
+			fmt.Fprintf(&buf, "0 @F%d@ FAM\n", i)
+			fmt.Fprintf(&buf, "1 HUSB @I%d@\n", husbID)
+			fmt.Fprintf(&buf, "1 WIFE @I%d@\n", wifeID)
 			if childID <= numIndividuals {
-				buf.WriteString(fmt.Sprintf("1 CHIL @I%d@\n", childID))
+				fmt.Fprintf(&buf, "1 CHIL @I%d@\n", childID)
 			}
 		}
 	}
