@@ -7151,6 +7151,9 @@ components:
             - $ref: '#/components/schemas/NameType'
         is_primary:
           type: boolean
+        notes:
+          type: string
+          description: Notes on this name (GEDCOM NAME.NOTE). NOTE pointers are kept as their xref.
 
     PersonNameCreate:
       type: object
@@ -7176,6 +7179,9 @@ components:
         is_primary:
           type: boolean
           default: false
+        notes:
+          type: string
+          description: Notes on this name (GEDCOM NAME.NOTE). NOTE pointers are kept as their xref.
 
     PersonNameUpdate:
       type: object
@@ -7199,6 +7205,9 @@ components:
           $ref: '#/components/schemas/NameType'
         is_primary:
           type: boolean
+        notes:
+          type: string
+          description: Notes on this name (GEDCOM NAME.NOTE). NOTE pointers are kept as their xref.
 
     PersonNameList:
       type: object
@@ -7237,7 +7246,8 @@ components:
           description: |
             ID of the life event or attribute this citation supports, when it
             cites one of several facts of the same type (such as one of two
-            censuses). Absent when it cites the fact as a whole: a birth,
+            censuses), or of the person name a `person_name` citation
+            supports. Absent when it cites the fact as a whole: a birth,
             death or marriage, or a citation recorded before the link existed.
         page:
           type: string
@@ -7288,9 +7298,10 @@ components:
           type: string
           format: uuid
           description: |
-            ID of the life event or attribute this citation supports. It must
-            belong to `fact_owner_id` and be of `fact_type`. Omit it to cite
-            the fact as a whole, as for a birth, death or marriage.
+            ID of the life event or attribute this citation supports, or for
+            a `person_name` citation the ID of one of the person's names. It
+            must belong to `fact_owner_id` and be of `fact_type`. Omit it to
+            cite the fact as a whole, as for a birth, death or marriage.
         page:
           type: string
         volume:

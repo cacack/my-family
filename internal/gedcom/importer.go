@@ -61,6 +61,7 @@ type ImportResult struct {
 
 // PersonNameData contains parsed name data for a person.
 type PersonNameData struct {
+	ID            uuid.UUID // The name's ID; a NAME.SOUR citation links to it (#1165)
 	GivenName     string
 	Surname       string
 	NamePrefix    string          // Dr., Rev., Sir (NPFX)
@@ -69,6 +70,7 @@ type PersonNameData struct {
 	Nickname      string          // Informal name (NICK)
 	NameType      domain.NameType // birth, married, aka (TYPE)
 	IsPrimary     bool            // First name is primary
+	Notes         string          // NOTEs under the NAME, joined with noteJoin (#1165)
 }
 
 // PersonData contains parsed person data ready for creation.
@@ -457,6 +459,7 @@ func (imp *Importer) ImportWithOptions(ctx context.Context, reader io.Reader, im
 		// the life event or attribute it sits under (#1294)
 		personCitations := extractCitationsFromIndividual(indi, person.ID, eventIDs, attributeIDs, result)
 		citations = append(citations, personCitations...)
+		citations = append(citations, extractNameCitations(indi, person)...)
 	}
 
 	// Fourth pass: create family mappings and resolve person references
@@ -568,6 +571,7 @@ func parseIndividual(indi *gedcom.Individual, _ *gedcom.Document, result *Import
 	if len(indi.Names) > 0 {
 		for i, name := range indi.Names {
 			nameData := PersonNameData{
+				ID:            uuid.New(),
 				GivenName:     strings.TrimSpace(name.Given),
 				Surname:       strings.TrimSpace(name.Surname),
 				NamePrefix:    strings.TrimSpace(name.Prefix),
@@ -576,6 +580,7 @@ func parseIndividual(indi *gedcom.Individual, _ *gedcom.Document, result *Import
 				Nickname:      strings.TrimSpace(name.Nickname),
 				NameType:      mapNameType(name.Type),
 				IsPrimary:     i == 0, // First name is primary
+				Notes:         joinNotes(append(slices.Clone(name.NoteXRefs), name.InlineNotes...)...),
 			}
 
 			// Given name is required - use "Unknown" if missing
@@ -926,6 +931,9 @@ func renameCollidingNotes(doc *gedcom.Document, existing []string, notes []NoteD
 		return xref, ok
 	}
 	for i := range persons {
+		for j := range persons[i].Names {
+			persons[i].Names[j].Notes = renameXrefs(persons[i].Names[j].Notes, noteJoin, rename)
+		}
 		persons[i].Notes = renameXrefs(persons[i].Notes, noteJoin, rename)
 		persons[i].BirthNotes = renameXrefs(persons[i].BirthNotes, noteJoin, rename)
 		persons[i].DeathNotes = renameXrefs(persons[i].DeathNotes, noteJoin, rename)
@@ -1029,7 +1037,7 @@ const droppedNotesPerPath = 5
 // warnDroppedNestedNotes adds a warning for each NOTE or SNOTE line the
 // import does not keep, naming the record, the substructure and the note, so
 // the loss is visible (#1250). Kept are the level-1 NOTE lines of the record
-// types in recordKeepsNotes, and the NOTEs directly under an individual's ASSO,
+// types in recordKeepsNotes, and the NOTEs directly under an individual's ASSO, NAME,
 // events and imported attributes and a family's imported events. Of several BIRT, DEAT or MARR
 // blocks only the last is kept, as for their date and place.
 func warnDroppedNestedNotes(doc *gedcom.Document, result *ImportResult) {
@@ -1072,8 +1080,8 @@ func keptEventNotes(rec *gedcom.Record) func(block string, last bool) bool {
 			switch block {
 			case "BIRT", "DEAT":
 				return last // parseIndividual keeps the last one's notes
-			case "ASSO":
-				return true
+			case "ASSO", "NAME":
+				return true // every ASSO and NAME is imported with its notes (#1165)
 			}
 			eventType := gedcom.EventType(strings.TrimPrefix(block, "NO "))
 			if slices.ContainsFunc(indi.Events, func(e *gedcom.Event) bool {
@@ -1389,6 +1397,34 @@ func extractCitationsFromIndividual(indi *gedcom.Individual, personID uuid.UUID,
 		}
 	}
 
+	return citations
+}
+
+// extractNameCitations extracts the citations under an individual's NAMEs as
+// person_name citations, each linked to the person name it sits under (#1165).
+// person.Names holds one entry per indi.Names entry, in the same order.
+func extractNameCitations(indi *gedcom.Individual, person PersonData) []CitationData {
+	var citations []CitationData
+	for i, name := range indi.Names {
+		nameID := person.Names[i].ID
+		for _, srcCit := range name.SourceCitations {
+			if srcCit.SourceXRef == "" {
+				continue
+			}
+			citation := CitationData{
+				ID:          uuid.New(),
+				SourceXref:  srcCit.SourceXRef,
+				FactType:    string(domain.FactPersonName),
+				FactOwnerID: person.ID,
+				FactID:      &nameID,
+				Page:        srcCit.Page,
+				Quality:     mapGedcomQualityToGPS(srcCit.Quality),
+				QuotedText:  citationQuotedText(srcCit.Data),
+			}
+			setAncestryAPID(&citation, srcCit.AncestryAPID)
+			citations = append(citations, citation)
+		}
+	}
 	return citations
 }
 

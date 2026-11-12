@@ -805,6 +805,9 @@ func (s *ReadModelStore) runMigrations() {
 	_, _ = s.db.Exec(`ALTER TABLE attributes ADD COLUMN notes TEXT`)
 	_, _ = s.db.Exec(`ALTER TABLE attributes ADD COLUMN type_detail TEXT`)
 
+	// Add the NOTEs under a person's GEDCOM NAME (issue #1165).
+	_, _ = s.db.Exec(`ALTER TABLE person_names ADD COLUMN notes TEXT`)
+
 	// Add GEDCOM 7.0 shared-note (SNOTE) metadata columns (issue #225).
 	// SQLite ALTER TABLE ADD COLUMN has no IF NOT EXISTS; rely on the _,_ = swallowing.
 	_, _ = s.db.Exec(`ALTER TABLE notes ADD COLUMN mime TEXT`)
@@ -2215,8 +2218,8 @@ func (s *ReadModelStore) SavePersonName(ctx context.Context, branchID domain.Bra
 
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO person_names (id, person_id, given_name, surname, full_name, name_prefix, name_suffix,
-								  surname_prefix, nickname, name_type, is_primary, updated_at, branch_id, deleted)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+								  surname_prefix, nickname, name_type, is_primary, notes, updated_at, branch_id, deleted)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
 		ON CONFLICT(id, branch_id) DO UPDATE SET
 			person_id = excluded.person_id,
 			given_name = excluded.given_name,
@@ -2228,12 +2231,13 @@ func (s *ReadModelStore) SavePersonName(ctx context.Context, branchID domain.Bra
 			nickname = excluded.nickname,
 			name_type = excluded.name_type,
 			is_primary = excluded.is_primary,
+			notes = excluded.notes,
 			updated_at = excluded.updated_at,
 			deleted = 0
 	`, name.ID.String(), name.PersonID.String(), name.GivenName, name.Surname, name.JoinFullName(),
 		nullableString(name.NamePrefix), nullableString(name.NameSuffix),
 		nullableString(name.SurnamePrefix), nullableString(name.Nickname),
-		string(name.NameType), isPrimary, formatTimestamp(name.UpdatedAt), branchID.String())
+		string(name.NameType), isPrimary, nullableString(name.Notes), formatTimestamp(name.UpdatedAt), branchID.String())
 
 	return err
 }
@@ -2242,7 +2246,7 @@ func (s *ReadModelStore) SavePersonName(ctx context.Context, branchID domain.Bra
 func (s *ReadModelStore) GetPersonName(ctx context.Context, branchID domain.BranchID, nameID uuid.UUID) (*repository.PersonNameReadModel, error) {
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, person_id, given_name, surname, full_name, name_prefix, name_suffix,
-			   surname_prefix, nickname, name_type, is_primary, updated_at
+			   surname_prefix, nickname, name_type, is_primary, notes, updated_at
 		FROM (
 			SELECT *, ROW_NUMBER() OVER (PARTITION BY id ORDER BY (branch_id = ?) DESC) AS rn
 			FROM person_names WHERE id = ? AND branch_id IN (?, ?)
@@ -2258,7 +2262,7 @@ func (s *ReadModelStore) GetPersonName(ctx context.Context, branchID domain.Bran
 func (s *ReadModelStore) GetPersonNames(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) ([]repository.PersonNameReadModel, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, person_id, given_name, surname, full_name, name_prefix, name_suffix,
-			   surname_prefix, nickname, name_type, is_primary, updated_at
+			   surname_prefix, nickname, name_type, is_primary, notes, updated_at
 		FROM (
 			SELECT *, ROW_NUMBER() OVER (PARTITION BY id ORDER BY (branch_id = ?) DESC) AS rn
 			FROM person_names
@@ -2633,14 +2637,14 @@ func scanPersonName(row rowScanner) (*repository.PersonNameReadModel, error) {
 	var (
 		idStr, personIDStr, givenName, surname, fullName string
 		namePrefix, nameSuffix, surnamePrefix, nickname  sql.NullString
-		nameType                                         sql.NullString
+		nameType, notes                                  sql.NullString
 		isPrimary                                        int
 		updatedAt                                        string
 	)
 
 	err := row.Scan(&idStr, &personIDStr, &givenName, &surname, &fullName,
 		&namePrefix, &nameSuffix, &surnamePrefix, &nickname,
-		&nameType, &isPrimary, &updatedAt)
+		&nameType, &isPrimary, &notes, &updatedAt)
 
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -2664,6 +2668,7 @@ func scanPersonName(row rowScanner) (*repository.PersonNameReadModel, error) {
 		Nickname:      nickname.String,
 		NameType:      domain.NameType(nameType.String),
 		IsPrimary:     isPrimary == 1,
+		Notes:         notes.String,
 	}
 
 	if t, err := parseTimestamp(updatedAt); err == nil {

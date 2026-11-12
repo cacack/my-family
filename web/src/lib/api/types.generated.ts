@@ -4192,6 +4192,8 @@ export interface components {
             /** @description Omitted when the name has no type (a GEDCOM NAME without TYPE). */
             name_type?: components["schemas"]["NameType"];
             is_primary: boolean;
+            /** @description Notes on this name (GEDCOM NAME.NOTE). NOTE pointers are kept as their xref. */
+            notes?: string;
         };
         PersonNameCreate: {
             given_name: string;
@@ -4203,6 +4205,8 @@ export interface components {
             name_type: components["schemas"]["NameType"];
             /** @default false */
             is_primary?: boolean;
+            /** @description Notes on this name (GEDCOM NAME.NOTE). NOTE pointers are kept as their xref. */
+            notes?: string;
         };
         PersonNameUpdate: {
             given_name?: string;
@@ -4213,6 +4217,8 @@ export interface components {
             nickname?: string;
             name_type?: components["schemas"]["NameType"];
             is_primary?: boolean;
+            /** @description Notes on this name (GEDCOM NAME.NOTE). NOTE pointers are kept as their xref. */
+            notes?: string;
         };
         PersonNameList: {
             items: components["schemas"]["PersonName"][];
@@ -4235,7 +4241,8 @@ export interface components {
              * Format: uuid
              * @description ID of the life event or attribute this citation supports, when it
              *     cites one of several facts of the same type (such as one of two
-             *     censuses). Absent when it cites the fact as a whole: a birth,
+             *     censuses), or of the person name a `person_name` citation
+             *     supports. Absent when it cites the fact as a whole: a birth,
              *     death or marriage, or a citation recorded before the link existed.
              */
             fact_id?: string;
@@ -4273,9 +4280,10 @@ export interface components {
             fact_owner_id: string;
             /**
              * Format: uuid
-             * @description ID of the life event or attribute this citation supports. It must
-             *     belong to `fact_owner_id` and be of `fact_type`. Omit it to cite
-             *     the fact as a whole, as for a birth, death or marriage.
+             * @description ID of the life event or attribute this citation supports, or for
+             *     a `person_name` citation the ID of one of the person's names. It
+             *     must belong to `fact_owner_id` and be of `fact_type`. Omit it to
+             *     cite the fact as a whole, as for a birth, death or marriage.
              */
             fact_id?: string;
             page?: string;

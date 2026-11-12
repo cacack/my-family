@@ -253,7 +253,6 @@ func TestImport_WarnsOnDroppedNotes(t *testing.T) {
 	want := []string{
 		`Repository @R1@: NOTE under ADDR not imported: "Entrance on the side street"`,
 		`Source @S1@: NOTE under REPO not imported: "Microfilm only"`,
-		`Individual @I1@: NOTE under NAME not imported: "Spelling varies"`,
 		`Individual @I1@: NOTE under BIRT not imported: "An earlier claim"`,
 		`Individual @I1@: NOTE under BIRT.SOUR not imported: "Page is torn"`,
 		`Family @F1@: NOTE not imported: "Lived on the farm"`,
@@ -280,7 +279,7 @@ func TestImport_CapsDroppedNoteWarningsPerPath(t *testing.T) {
 	for i := 1; i <= 7; i++ {
 		fmt.Fprintf(&b, "0 @I%d@ INDI\n1 NAME P%d /Doe/\n1 BIRT\n2 SOUR @S1@\n3 NOTE Citation note %d\n", i, i, i)
 	}
-	b.WriteString("0 @I8@ INDI\n1 NAME P8 /Doe/\n2 NOTE Name note\n0 TRLR\n")
+	b.WriteString("0 @I8@ INDI\n1 NAME P8 /Doe/\n2 SOUR @S1@\n3 NOTE Name note\n0 TRLR\n")
 
 	got, _ := droppedNoteWarnings(t, b.String())
 	var want []string
@@ -288,7 +287,7 @@ func TestImport_CapsDroppedNoteWarningsPerPath(t *testing.T) {
 		want = append(want, fmt.Sprintf(`Individual @I%d@: NOTE under BIRT.SOUR not imported: "Citation note %d"`, i, i))
 	}
 	want = append(want,
-		`Individual @I8@: NOTE under NAME not imported: "Name note"`,
+		`Individual @I8@: NOTE under NAME.SOUR not imported: "Name note"`,
 		"2 more notes under INDI.BIRT.SOUR not imported",
 	)
 	if !slices.Equal(got, want) {

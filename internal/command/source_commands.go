@@ -348,8 +348,19 @@ func (h *Handler) CreateCitation(ctx context.Context, input CreateCitationInput)
 // checkFactInstance verifies that factID is a life event or attribute of
 // factType owned by factOwnerID on the handler's branch, so a citation (#1294)
 // or an evidence analysis or proof summary (#1304) linked to it is listed with
-// it and with no other fact.
+// it and with no other fact, or, for a person_name fact, that it is one of the
+// owner's names (#1165).
 func (h *Handler) checkFactInstance(ctx context.Context, factID uuid.UUID, factType domain.FactType, factOwnerID uuid.UUID) error {
+	if factType == domain.FactPersonName {
+		name, err := h.readStore.GetPersonName(ctx, h.branchID, factID)
+		if err != nil {
+			return fmt.Errorf("getting person name: %w", err)
+		}
+		if name == nil || name.PersonID != factOwnerID {
+			return fmt.Errorf("%w: fact_id is not a name of the fact owner", ErrInvalidInput)
+		}
+		return nil
+	}
 	event, err := h.readStore.GetEvent(ctx, h.branchID, factID)
 	if err != nil {
 		return fmt.Errorf("getting life event: %w", err)

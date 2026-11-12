@@ -884,6 +884,7 @@ type NameAdded struct {
 	Nickname      string    `json:"nickname,omitempty"`
 	NameType      NameType  `json:"name_type,omitempty"`
 	IsPrimary     bool      `json:"is_primary"`
+	Notes         string    `json:"notes,omitempty"`
 }
 
 func (e NameAdded) EventType() string      { return "NameAdded" }
@@ -903,6 +904,7 @@ func NewNameAdded(pn *PersonName) NameAdded {
 		Nickname:      pn.Nickname,
 		NameType:      pn.NameType,
 		IsPrimary:     pn.IsPrimary,
+		Notes:         pn.Notes,
 	}
 }
 
@@ -919,6 +921,7 @@ type NameUpdated struct {
 	Nickname      string    `json:"nickname,omitempty"`
 	NameType      NameType  `json:"name_type,omitempty"`
 	IsPrimary     bool      `json:"is_primary"`
+	Notes         string    `json:"notes,omitempty"`
 }
 
 func (e NameUpdated) EventType() string      { return "NameUpdated" }
@@ -938,6 +941,7 @@ func NewNameUpdated(pn *PersonName) NameUpdated {
 		Nickname:      pn.Nickname,
 		NameType:      pn.NameType,
 		IsPrimary:     pn.IsPrimary,
+		Notes:         pn.Notes,
 	}
 }
 

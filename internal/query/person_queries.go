@@ -60,6 +60,7 @@ type PersonName struct {
 	Nickname      string    `json:"nickname,omitempty"`
 	NameType      string    `json:"name_type"`
 	IsPrimary     bool      `json:"is_primary"`
+	Notes         string    `json:"notes,omitempty"`
 }
 
 // PersonDetail includes family relationships and names.
@@ -398,6 +399,7 @@ func convertPersonNameReadModel(rm repository.PersonNameReadModel) PersonName {
 		Nickname:      rm.Nickname,
 		NameType:      string(rm.NameType),
 		IsPrimary:     rm.IsPrimary,
+		Notes:         rm.Notes,
 	}
 }
 

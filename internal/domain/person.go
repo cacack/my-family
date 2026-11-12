@@ -155,6 +155,7 @@ type PersonName struct {
 	Nickname      string    `json:"nickname,omitempty"`       // Informal name (NICK)
 	NameType      NameType  `json:"name_type,omitempty"`      // birth, married, aka, immigrant, religious, professional
 	IsPrimary     bool      `json:"is_primary"`               // Whether this is the display name
+	Notes         string    `json:"notes,omitempty"`          // NOTEs under the GEDCOM NAME (#1165)
 }
 
 // PersonNameValidationError represents a validation error for a PersonName.
