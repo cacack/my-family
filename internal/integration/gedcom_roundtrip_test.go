@@ -6,11 +6,13 @@ import (
 	"encoding/json"
 	"os"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/cacack/gedcom-go/v3/decoder"
 	gcgedcom "github.com/cacack/gedcom-go/v3/gedcom"
 	"github.com/google/uuid"
 
@@ -66,6 +68,7 @@ func TestGedcomRoundTrip_FixturesKeepTheirTree(t *testing.T) {
 					if fixture.version == gcgedcom.Version70 {
 						assertSharedNotesExportedAsSNOTE(t, exported)
 					}
+					assertSameSpouseLinks(t, data, []byte(exported))
 
 					second := backend.setup(t)
 					importInto(t, ctx, second, []byte(exported))
@@ -78,6 +81,49 @@ func TestGedcomRoundTrip_FixturesKeepTheirTree(t *testing.T) {
 			}
 		})
 	}
+}
+
+// assertSameSpouseLinks checks the export keeps every FAMS link of the
+// fixture (#1357). Xrefs are renumbered on export, so each link is named by
+// the individual and the family's partners.
+func assertSameSpouseLinks(t *testing.T, fixture, exported []byte) {
+	t.Helper()
+	want, got := spouseLinks(t, fixture), spouseLinks(t, exported)
+	if len(want) == 0 {
+		t.Fatal("precondition: the fixture has no FAMS links")
+	}
+	if !slices.Equal(want, got) {
+		t.Errorf("FAMS links = %q, want %q", got, want)
+	}
+}
+
+// spouseLinks returns each FAMS link in data as "individual -> partners",
+// sorted.
+func spouseLinks(t *testing.T, data []byte) []string {
+	t.Helper()
+	doc, err := decoder.Decode(bytes.NewReader(data))
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	name := func(xref string) string {
+		if indi := doc.GetIndividual(xref); indi != nil {
+			return indi.FullName()
+		}
+		return ""
+	}
+	var links []string
+	for _, indi := range doc.Individuals() {
+		for _, link := range indi.SpouseInFamilies {
+			fam := doc.GetFamily(link.FamilyXRef)
+			if fam == nil {
+				t.Errorf("%s has FAMS %s, which is not a family record", indi.FullName(), link.FamilyXRef)
+				continue
+			}
+			links = append(links, indi.FullName()+" -> "+name(fam.Husband)+" & "+name(fam.Wife))
+		}
+	}
+	sort.Strings(links)
+	return links
 }
 
 func importInto(t *testing.T, ctx context.Context, st stores, data []byte) *command.ImportGedcomResult {
