@@ -815,7 +815,7 @@ describe('Person detail failed actions (#899)', () => {
 		expect(goto).not.toHaveBeenCalled();
 	});
 
-	it('says a malformed id is not found, never the raw binding error, and offers Retry', async () => {
+	it('says a malformed id is not found, never the raw binding error, with no Retry (#1096)', async () => {
 		getPerson.mockRejectedValueOnce({
 			status: 400,
 			message: "Invalid format for parameter id: error unmarshaling 'xyz' text as *uuid.UUID"
@@ -825,9 +825,7 @@ describe('Person detail failed actions (#899)', () => {
 		const alert = await screen.findByRole('alert');
 		expect(alert.textContent).toContain('This person could not be found');
 		expect(alert.textContent).not.toContain('unmarshaling');
-
-		await fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
-		expect(await screen.findByRole('heading', { name: 'Ada Lovelace' })).toBeTruthy();
+		expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
 	});
 });
 

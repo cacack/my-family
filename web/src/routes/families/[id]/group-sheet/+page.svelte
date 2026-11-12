@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { api, recordLoadError, type FamilyGroupSheet } from '#lib/api/client.js';
+	import { api, recordLoadError, type FamilyGroupSheet, type LoadFailure } from '#lib/api/client.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import ActionBar from '#lib/components/ActionBar.svelte';
 	import FamilyGroupSheetComponent from '#lib/components/FamilyGroupSheet.svelte';
@@ -8,7 +8,7 @@
 
 	let data: FamilyGroupSheet | null = $state(null);
 	let loading = $state(true);
-	let error: string | null = $state(null);
+	let error: LoadFailure | null = $state(null);
 
 	async function loadGroupSheet(id: string) {
 		loading = true;
@@ -54,14 +54,15 @@
 <div class="group-sheet-page">
 	<ActionBar back={{ href: `/families/${page.params.id}`, label: 'Back to Family' }}>
 		{#snippet actions()}
-			<Button onclick={handlePrint}>Print</Button>
+			<!-- Nothing to print until the sheet has loaded (#1096). -->
+			<Button onclick={handlePrint} disabled={!data}>Print</Button>
 		{/snippet}
 	</ActionBar>
 
 	{#if loading}
 		<div class="loading">Loading family group sheet...</div>
 	{:else if error}
-		<ErrorState message={error} onRetry={() => loadGroupSheet(page.params.id ?? '')} />
+		<ErrorState {...error} onRetry={() => loadGroupSheet(page.params.id ?? '')} />
 	{:else if data}
 		<FamilyGroupSheetComponent {data} />
 	{/if}

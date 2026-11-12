@@ -144,6 +144,9 @@ func (h *Handler) UpdateLDSOrdinance(ctx context.Context, input UpdateLDSOrdinan
 		testOrdinance.Temple = *input.Temple
 	}
 	if input.Status != nil && *input.Status != current.Status {
+		if !domain.LDSOrdinanceStatus(*input.Status).IsValid() {
+			return nil, fmt.Errorf("%w: status: invalid value: %s", ErrInvalidInput, *input.Status)
+		}
 		changes["status"] = *input.Status
 		testOrdinance.Status = *input.Status
 	}

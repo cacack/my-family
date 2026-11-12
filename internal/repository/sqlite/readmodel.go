@@ -1485,18 +1485,27 @@ func (s *ReadModelStore) searchPersonsFuzzy(ctx context.Context, opts repository
 		return nil, 0, fmt.Errorf("search persons fuzzy: %w", err)
 	}
 	all := orderFuzzyMatches(matched, opts)
-	ranked := repository.Page(all, opts.Offset, limit)
-	if len(ranked) == 0 {
-		return nil, len(all), nil
+	results, err := s.loadPersonPage(ctx, opts.BranchID, repository.Page(all, opts.Offset, limit))
+	if err != nil {
+		return nil, 0, fmt.Errorf("search persons fuzzy: %w", err)
 	}
+	return results, len(all), nil
+}
 
+// loadPersonPage fetches the full rows of a page of ranked search results,
+// which carry only the columns they were scored and sorted on, keeping their
+// order.
+func (s *ReadModelStore) loadPersonPage(ctx context.Context, branchID domain.BranchID, ranked []repository.PersonReadModel) ([]repository.PersonReadModel, error) {
+	if len(ranked) == 0 {
+		return nil, nil
+	}
 	ids := make([]uuid.UUID, len(ranked))
 	for i, p := range ranked {
 		ids[i] = p.ID
 	}
-	full, err := s.GetPersonsByIDs(ctx, opts.BranchID, ids)
+	full, err := s.GetPersonsByIDs(ctx, branchID, ids)
 	if err != nil {
-		return nil, 0, fmt.Errorf("search persons fuzzy: %w", err)
+		return nil, err
 	}
 	byID := make(map[uuid.UUID]repository.PersonReadModel, len(full))
 	for _, p := range full {
@@ -1508,7 +1517,7 @@ func (s *ReadModelStore) searchPersonsFuzzy(ctx context.Context, opts repository
 			results = append(results, p)
 		}
 	}
-	return results, len(all), nil
+	return results, nil
 }
 
 // fuzzyMatch is a person that matched a fuzzy search, with their best score.
@@ -1655,26 +1664,20 @@ func orderFuzzyMatches(matched []fuzzyMatch, opts repository.SearchOptions) []re
 	return results
 }
 
-// searchPersonsSoundex fetches every candidate matching the date/place filters,
-// then post-filters using Soundex in Go. Candidates are not capped, so the
-// total counts every match (like searchPersonsFuzzy).
+// searchPersonsSoundex reads the id, name and sort-date columns of every
+// person matching the date/place filters, Soundex-filters them in Go on their
+// own and alternate names, sorts and pages them, then fetches the full rows of
+// the page only (like searchPersonsFuzzy, #954). Candidates are not capped, so
+// the total counts every match.
 func (s *ReadModelStore) searchPersonsSoundex(ctx context.Context, opts repository.SearchOptions, limit int) ([]repository.PersonReadModel, int, error) {
 	filterSQL, filterArgs := buildDatePlaceFilters(opts)
-
 	overlay, overlayArgs := personOverlaySubquery(opts.BranchID)
 
 	var sb strings.Builder
-	var args []any
-	args = append(args, overlayArgs...)
-
+	args := append([]any{}, overlayArgs...)
 	sb.WriteString(`
-		SELECT p.id, p.given_name, p.surname, p.full_name, p.gender,
-			   p.birth_date_raw, p.birth_date_sort, p.birth_place, p.birth_place_lat, p.birth_place_long,
-			   p.death_date_raw, p.death_date_sort, p.death_place, p.death_place_lat, p.death_place_long,
-			   p.notes, p.birth_notes, p.death_notes, p.birth_type_detail, p.death_type_detail, p.research_status, p.brick_wall_note, p.brick_wall_since, p.brick_wall_resolved_at,
-			   p.version, p.updated_at
+		SELECT p.id, p.given_name, p.surname, p.birth_date_sort, p.death_date_sort
 		FROM ` + overlay + ` p`)
-
 	if filterSQL != "" {
 		sb.WriteString(" WHERE " + filterSQL)
 		args = append(args, filterArgs...)
@@ -1684,37 +1687,58 @@ func (s *ReadModelStore) searchPersonsSoundex(ctx context.Context, opts reposito
 	if err != nil {
 		return nil, 0, fmt.Errorf("search persons soundex: %w", err)
 	}
-	defer rows.Close()
-
-	candidates, err := scanPersonRows(rows)
+	candidates, err := scanSoundexCandidates(rows)
+	rows.Close()
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, fmt.Errorf("search persons soundex: %w", err)
 	}
 
-	// Split query into words for soundex comparison
+	namesByPerson, err := s.loadPersonNamesForSoundex(ctx, opts.BranchID, candidates)
+	if err != nil {
+		return nil, 0, fmt.Errorf("load person names for soundex: %w", err)
+	}
+
+	// Keep persons where any query word Soundex-matches one of their names.
 	queryWords := strings.Fields(opts.Query)
-
-	// Also load person_names for Soundex matching on alternate names
-	namesByPerson := make(map[string][]nameEntry)
-	if len(candidates) > 0 {
-		var err error
-		namesByPerson, err = s.loadPersonNamesForSoundex(ctx, opts.BranchID, candidates)
-		if err != nil {
-			return nil, 0, fmt.Errorf("load person names for soundex: %w", err)
-		}
-	}
-
-	// Post-filter: keep persons where any query word Soundex-matches given_name or surname
-	var results []repository.PersonReadModel
+	var matched []repository.PersonReadModel
 	for _, p := range candidates {
 		if personMatchesSoundex(p, queryWords, namesByPerson[p.ID.String()]) {
-			results = append(results, p)
+			matched = append(matched, p)
 		}
 	}
 
 	// Sort before paging; the total counts every match.
-	sortPersonResults(results, opts)
-	return repository.Page(results, opts.Offset, limit), len(results), nil
+	sortPersonResults(matched, opts)
+	results, err := s.loadPersonPage(ctx, opts.BranchID, repository.Page(matched, opts.Offset, limit))
+	if err != nil {
+		return nil, 0, fmt.Errorf("search persons soundex: %w", err)
+	}
+	return results, len(matched), nil
+}
+
+// scanSoundexCandidates reads searchPersonsSoundex's rows (id, given name,
+// surname, birth and death sort dates). Only those fields are set.
+func scanSoundexCandidates(rows *sql.Rows) ([]repository.PersonReadModel, error) {
+	var candidates []repository.PersonReadModel
+	for rows.Next() {
+		var (
+			idStr, given, surname string
+			birthSort, deathSort  sql.NullString
+		)
+		if err := rows.Scan(&idStr, &given, &surname, &birthSort, &deathSort); err != nil {
+			return nil, err
+		}
+		id, err := uuid.Parse(idStr)
+		if err != nil {
+			return nil, fmt.Errorf("parse person id %q: %w", idStr, err)
+		}
+		p := repository.PersonReadModel{ID: id, GivenName: given, Surname: surname}
+		// An unparseable date column leaves its field unset, as in scanPerson.
+		p.BirthDateSort, _ = parseNullableSortDate(birthSort, sortDateLayout)
+		p.DeathDateSort, _ = parseNullableSortDate(deathSort, sortDateLayout)
+		candidates = append(candidates, p)
+	}
+	return candidates, rows.Err()
 }
 
 // nameEntry holds name fields for Soundex comparison.

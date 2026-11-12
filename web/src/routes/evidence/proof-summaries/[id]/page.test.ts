@@ -114,11 +114,11 @@ describe('Proof Summary Detail Page', () => {
 		});
 	});
 
-	it('renders error state on API failure', async () => {
+	it('renders a friendly error state with Retry on a load failure (#1096)', async () => {
 		vi.mocked(apiModule.api.getProofSummary).mockRejectedValue(new Error('Not found'));
 		render(Page);
 		await waitFor(() => {
-			expect(screen.getByText('Not found')).toBeDefined();
+			expect(screen.getByText('Failed to load the proof summary. Please try again.')).toBeDefined();
 			expect(screen.getByText('Retry')).toBeDefined();
 		});
 	});

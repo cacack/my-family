@@ -87,6 +87,7 @@
 		{ id: 'source_title', label: 'Source Title' },
 		{ id: 'fact_type', label: 'Fact Type' },
 		{ id: 'fact_owner_id', label: 'Fact Owner' },
+		{ id: 'fact_id', label: 'Cited Event or Attribute' },
 		{ id: 'page', label: 'Page' },
 		{ id: 'volume', label: 'Volume' },
 		{ id: 'source_quality', label: 'Source Quality' },

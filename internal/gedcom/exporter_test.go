@@ -3842,7 +3842,7 @@ func TestExport_SpacedXrefMultipleNotePointers(t *testing.T) {
 			// naming an exported note record.
 			var refs []string
 			for _, line := range strings.Split(output, "\n") {
-				if v, ok := strings.CutPrefix(line, "1 NOTE "); ok {
+				if v, ok := strings.CutPrefix(line, "1 "+notePointerTag(version)+" "); ok {
 					refs = append(refs, v)
 				}
 			}

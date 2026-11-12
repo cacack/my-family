@@ -18,6 +18,12 @@ updates:
     labels:
       - "dependencies"
       - "go"
+    ignore:
+      # Code generator: a bump changes internal/api/generated.go, so CI's
+      # "Verify Go generated code" step fails by construction and the PR can
+      # never merge unattended (#709). Bump it by hand with `make generate` in
+      # the same PR. The oapi-codegen/runtime library stays Dependabot-managed.
+      - dependency-name: "github.com/oapi-codegen/oapi-codegen/v2"
 
   # GitHub Actions
   - package-ecosystem: "github-actions"
@@ -72,6 +78,10 @@ updates:
       # ignore when adopting TS 7.
       - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]
+      # Code generator: a bump can change src/lib/api/types.generated.ts, so
+      # CI's "Verify TypeScript generated types" step fails by construction
+      # (#709). Bump it by hand with `make generate` in the same PR.
+      - dependency-name: "openapi-typescript"
 
   # Docker base images in Dockerfile (SHA-pinned; Dependabot keeps digests fresh)
   - package-ecosystem: "docker"

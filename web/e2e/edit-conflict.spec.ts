@@ -59,10 +59,10 @@ test('a family save that lost a race keeps the edits and re-applies them on requ
 	expect(saved.marriage_date?.raw).toBe('1 JAN 1900');
 });
 
-test('a malformed person id reads as not found and offers Retry', async ({ page }) => {
+test('a malformed person id reads as not found, with no Retry (#1096)', async ({ page }) => {
 	await page.goto('/persons/not-a-uuid');
 	const alert = page.getByRole('alert');
 	await expect(alert).toContainText('This person could not be found');
 	await expect(alert).not.toContainText('unmarshaling');
-	await expect(alert.getByRole('button', { name: 'Retry' })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Retry' })).toHaveCount(0);
 });

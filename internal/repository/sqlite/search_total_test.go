@@ -3,6 +3,7 @@ package sqlite_test
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 
 	"github.com/cacack/my-family/internal/domain"
 	"github.com/cacack/my-family/internal/repository"
+	"github.com/cacack/my-family/internal/repository/sqlite"
 )
 
 // TestSearchPersonsTotal_Parity runs the #902 search-total scenario against the
@@ -52,6 +54,55 @@ func TestSearchPersonsSoundex_TotalBeyondThousandCandidates(t *testing.T) {
 	}
 	if total != matches || len(page) != matches {
 		t.Fatalf("total = %d, page = %d, want %d and %d", total, len(page), matches, matches)
+	}
+}
+
+// TestSearchPersonsSoundex_LoadsFullRowsForPageOnly proves that a Soundex
+// search over more than 1000 candidates reads full person rows only for the
+// requested page (#954). Every match off the page has a version that cannot be
+// scanned, which only the full-row read touches: the search fails if it reads
+// any of those rows in full.
+func TestSearchPersonsSoundex_LoadsFullRowsForPageOnly(t *testing.T) {
+	db, err := sqlite.OpenDB(filepath.Join(t.TempDir(), "soundex-page.db"))
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	defer db.Close()
+	store, err := sqlite.NewReadModelStore(db)
+	if err != nil {
+		t.Fatalf("create read model store: %v", err)
+	}
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+
+	const matches, limit = 1005, 10
+	for i := range matches {
+		given := fmt.Sprintf("Person%04d", i)
+		if err := store.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
+			ID: uuid.New(), GivenName: given, Surname: "Pagetest", FullName: given + " Pagetest",
+			Version: 1, UpdatedAt: now,
+		}); err != nil {
+			t.Fatalf("save person: %v", err)
+		}
+	}
+	// Results sort by surname then given name, so the first page is
+	// Person0000..Person0009; break every other match's full row.
+	if _, err := db.ExecContext(ctx, `UPDATE persons SET version = 'unscannable' WHERE given_name >= ?`,
+		fmt.Sprintf("Person%04d", limit)); err != nil {
+		t.Fatalf("corrupt off-page rows: %v", err)
+	}
+
+	page, total, err := store.SearchPersons(ctx, repository.SearchOptions{Query: "Pagetest", Soundex: true, Limit: limit})
+	if err != nil {
+		t.Fatalf("SearchPersons read full rows beyond the page: %v", err)
+	}
+	if total != matches || len(page) != limit {
+		t.Fatalf("total = %d, page = %d, want %d and %d", total, len(page), matches, limit)
+	}
+	for i, p := range page {
+		if want := fmt.Sprintf("Person%04d", i); p.GivenName != want || p.Version != 1 {
+			t.Errorf("page[%d] = %s (version %d), want %s (version 1)", i, p.GivenName, p.Version, want)
+		}
 	}
 }
 
