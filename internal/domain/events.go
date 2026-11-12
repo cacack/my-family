@@ -1666,6 +1666,7 @@ type EvidenceAnalysisCreated struct {
 	AnalysisID     uuid.UUID      `json:"analysis_id"`
 	FactType       FactType       `json:"fact_type"`
 	SubjectID      uuid.UUID      `json:"subject_id"`
+	FactID         *uuid.UUID     `json:"fact_id,omitempty"` // analyzed life event or attribute (#1304)
 	CitationIDs    []uuid.UUID    `json:"citation_ids,omitempty"`
 	Conclusion     string         `json:"conclusion"`
 	ResearchStatus ResearchStatus `json:"research_status,omitempty"`
@@ -1682,6 +1683,7 @@ func NewEvidenceAnalysisCreated(ea *EvidenceAnalysis) EvidenceAnalysisCreated {
 		AnalysisID:     ea.ID,
 		FactType:       ea.FactType,
 		SubjectID:      ea.SubjectID,
+		FactID:         ea.FactID,
 		CitationIDs:    ea.CitationIDs,
 		Conclusion:     ea.Conclusion,
 		ResearchStatus: ea.ResearchStatus,
@@ -1733,6 +1735,7 @@ type EvidenceConflictDetected struct {
 	ConflictID  uuid.UUID      `json:"conflict_id"`
 	FactType    FactType       `json:"fact_type"`
 	SubjectID   uuid.UUID      `json:"subject_id"`
+	FactID      *uuid.UUID     `json:"fact_id,omitempty"` // disputed life event or attribute (#1304)
 	AnalysisIDs []uuid.UUID    `json:"analysis_ids"`
 	Description string         `json:"description"`
 	Status      ConflictStatus `json:"status"`
@@ -1748,6 +1751,7 @@ func NewEvidenceConflictDetected(ec *EvidenceConflict) EvidenceConflictDetected 
 		ConflictID:  ec.ID,
 		FactType:    ec.FactType,
 		SubjectID:   ec.SubjectID,
+		FactID:      ec.FactID,
 		AnalysisIDs: ec.AnalysisIDs,
 		Description: ec.Description,
 		Status:      ec.Status,
@@ -1850,6 +1854,7 @@ type ProofSummaryCreated struct {
 	SummaryID      uuid.UUID      `json:"summary_id"`
 	FactType       FactType       `json:"fact_type"`
 	SubjectID      uuid.UUID      `json:"subject_id"`
+	FactID         *uuid.UUID     `json:"fact_id,omitempty"` // proved life event or attribute (#1304)
 	Conclusion     string         `json:"conclusion"`
 	Argument       string         `json:"argument"`
 	AnalysisIDs    []uuid.UUID    `json:"analysis_ids,omitempty"`
@@ -1866,6 +1871,7 @@ func NewProofSummaryCreated(ps *ProofSummary) ProofSummaryCreated {
 		SummaryID:      ps.ID,
 		FactType:       ps.FactType,
 		SubjectID:      ps.SubjectID,
+		FactID:         ps.FactID,
 		Conclusion:     ps.Conclusion,
 		Argument:       ps.Argument,
 		AnalysisIDs:    ps.AnalysisIDs,

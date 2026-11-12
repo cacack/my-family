@@ -28,6 +28,7 @@ type EvidenceAnalysis struct {
 	ID             uuid.UUID   `json:"id"`
 	FactType       string      `json:"fact_type"`
 	SubjectID      uuid.UUID   `json:"subject_id"`
+	FactID         *uuid.UUID  `json:"fact_id,omitempty"`
 	CitationIDs    []uuid.UUID `json:"citation_ids,omitempty"`
 	Conclusion     string      `json:"conclusion"`
 	ResearchStatus *string     `json:"research_status,omitempty"`
@@ -42,6 +43,7 @@ type EvidenceConflict struct {
 	ID          uuid.UUID   `json:"id"`
 	FactType    string      `json:"fact_type"`
 	SubjectID   uuid.UUID   `json:"subject_id"`
+	FactID      *uuid.UUID  `json:"fact_id,omitempty"`
 	AnalysisIDs []uuid.UUID `json:"analysis_ids"`
 	Description string      `json:"description"`
 	Resolution  *string     `json:"resolution,omitempty"`
@@ -71,6 +73,7 @@ type ProofSummaryResult struct {
 	ID             uuid.UUID   `json:"id"`
 	FactType       string      `json:"fact_type"`
 	SubjectID      uuid.UUID   `json:"subject_id"`
+	FactID         *uuid.UUID  `json:"fact_id,omitempty"`
 	Conclusion     string      `json:"conclusion"`
 	Argument       string      `json:"argument"`
 	AnalysisIDs    []uuid.UUID `json:"analysis_ids,omitempty"`
@@ -165,16 +168,20 @@ func (s *EvidenceQueryService) ListEvidenceAnalyses(ctx context.Context, input L
 	}, nil
 }
 
-// GetAnalysesForFact returns all evidence analyses for a given fact type and subject.
-func (s *EvidenceQueryService) GetAnalysesForFact(ctx context.Context, branchID domain.BranchID, factType string, subjectID uuid.UUID) ([]EvidenceAnalysis, error) {
+// GetAnalysesForFact returns all evidence analyses for a given fact type and
+// subject. A non-nil factID narrows them to one life event or attribute: its
+// own analyses and those of the fact as a whole, not another instance's (#1304).
+func (s *EvidenceQueryService) GetAnalysesForFact(ctx context.Context, branchID domain.BranchID, factType string, subjectID uuid.UUID, factID *uuid.UUID) ([]EvidenceAnalysis, error) {
 	readModels, err := s.readStore.GetAnalysesForFact(ctx, branchID, domain.FactType(factType), subjectID)
 	if err != nil {
 		return nil, err
 	}
 
-	results := make([]EvidenceAnalysis, len(readModels))
-	for i, rm := range readModels {
-		results[i] = convertReadModelToEvidenceAnalysis(rm)
+	results := make([]EvidenceAnalysis, 0, len(readModels))
+	for _, rm := range readModels {
+		if factID == nil || domain.FactInstancesOverlap(rm.FactID, factID) {
+			results = append(results, convertReadModelToEvidenceAnalysis(rm))
+		}
 	}
 
 	return results, nil
@@ -340,16 +347,19 @@ func (s *EvidenceQueryService) ListProofSummaries(ctx context.Context, input Lis
 	}, nil
 }
 
-// GetProofSummaryForFact returns the proof summaries for a specific fact type and subject.
-func (s *EvidenceQueryService) GetProofSummaryForFact(ctx context.Context, branchID domain.BranchID, factType string, subjectID uuid.UUID) ([]ProofSummaryResult, error) {
+// GetProofSummaryForFact returns the proof summaries for a specific fact type
+// and subject, narrowed by a non-nil factID as GetAnalysesForFact is (#1304).
+func (s *EvidenceQueryService) GetProofSummaryForFact(ctx context.Context, branchID domain.BranchID, factType string, subjectID uuid.UUID, factID *uuid.UUID) ([]ProofSummaryResult, error) {
 	readModels, err := s.readStore.GetProofSummariesForFact(ctx, branchID, domain.FactType(factType), subjectID)
 	if err != nil {
 		return nil, err
 	}
 
-	results := make([]ProofSummaryResult, len(readModels))
-	for i, rm := range readModels {
-		results[i] = convertReadModelToProofSummary(rm)
+	results := make([]ProofSummaryResult, 0, len(readModels))
+	for _, rm := range readModels {
+		if factID == nil || domain.FactInstancesOverlap(rm.FactID, factID) {
+			results = append(results, convertReadModelToProofSummary(rm))
+		}
 	}
 
 	return results, nil
@@ -391,6 +401,7 @@ func convertReadModelToEvidenceAnalysis(rm repository.EvidenceAnalysisReadModel)
 		ID:         rm.ID,
 		FactType:   string(rm.FactType),
 		SubjectID:  rm.SubjectID,
+		FactID:     rm.FactID,
 		Conclusion: rm.Conclusion,
 		Version:    rm.Version,
 		CreatedAt:  rm.CreatedAt,
@@ -421,6 +432,7 @@ func convertReadModelToEvidenceConflict(rm repository.EvidenceConflictReadModel)
 		ID:          rm.ID,
 		FactType:    string(rm.FactType),
 		SubjectID:   rm.SubjectID,
+		FactID:      rm.FactID,
 		Description: rm.Description,
 		Status:      string(rm.Status),
 		Version:     rm.Version,
@@ -469,6 +481,7 @@ func convertReadModelToProofSummary(rm repository.ProofSummaryReadModel) ProofSu
 		ID:         rm.ID,
 		FactType:   string(rm.FactType),
 		SubjectID:  rm.SubjectID,
+		FactID:     rm.FactID,
 		Conclusion: rm.Conclusion,
 		Argument:   rm.Argument,
 		Version:    rm.Version,

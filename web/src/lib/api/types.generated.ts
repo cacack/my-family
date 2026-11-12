@@ -6227,6 +6227,14 @@ export interface components {
              * @description ID of the person or family this analysis is about
              */
             subject_id: string;
+            /**
+             * Format: uuid
+             * @description ID of the life event or attribute this analysis is about, when it
+             *     analyzes one of several facts of the same type (such as one of two
+             *     censuses). Absent when it analyzes the fact type of the subject as a
+             *     whole.
+             */
+            fact_id?: string;
             /** @description IDs of citations supporting this analysis */
             citation_ids?: string[];
             /** @description The conclusion drawn from the evidence */
@@ -6249,6 +6257,13 @@ export interface components {
             fact_type: components["schemas"]["FactType"];
             /** Format: uuid */
             subject_id: string;
+            /**
+             * Format: uuid
+             * @description ID of the life event or attribute this is about. It must be a fact
+             *     of `subject_id` and of `fact_type`, or the request is rejected. Omit
+             *     it for the fact type as a whole, as for a birth or death.
+             */
+            fact_id?: string;
             citation_ids?: string[];
             conclusion: string;
             research_status?: components["schemas"]["ResearchStatus"];
@@ -6258,6 +6273,13 @@ export interface components {
             fact_type?: components["schemas"]["FactType"];
             /** Format: uuid */
             subject_id?: string;
+            /**
+             * Format: uuid
+             * @description ID of the life event or attribute this is about, checked as on
+             *     create. Omitted, the link is kept, unless `fact_type` or
+             *     `subject_id` changes: then the link is removed.
+             */
+            fact_id?: string;
             citation_ids?: string[];
             conclusion?: string;
             research_status?: components["schemas"]["ResearchStatus"];
@@ -6277,6 +6299,12 @@ export interface components {
             fact_type: components["schemas"]["FactType"];
             /** Format: uuid */
             subject_id: string;
+            /**
+             * Format: uuid
+             * @description ID of the life event or attribute the conflicting analyses are
+             *     about, when the analysis that raised the conflict names one.
+             */
+            fact_id?: string;
             analysis_ids: string[];
             description: string;
             resolution?: string;
@@ -6358,6 +6386,13 @@ export interface components {
             fact_type: components["schemas"]["FactType"];
             /** Format: uuid */
             subject_id: string;
+            /**
+             * Format: uuid
+             * @description ID of the life event or attribute this proof is about, when it
+             *     proves one of several facts of the same type. Absent when it proves
+             *     the fact type of the subject as a whole.
+             */
+            fact_id?: string;
             /** @description The proven conclusion */
             conclusion: string;
             /** @description The proof argument supporting the conclusion */
@@ -6376,6 +6411,13 @@ export interface components {
             fact_type: components["schemas"]["FactType"];
             /** Format: uuid */
             subject_id: string;
+            /**
+             * Format: uuid
+             * @description ID of the life event or attribute this is about. It must be a fact
+             *     of `subject_id` and of `fact_type`, or the request is rejected. Omit
+             *     it for the fact type as a whole, as for a birth or death.
+             */
+            fact_id?: string;
             conclusion: string;
             argument: string;
             analysis_ids?: string[];
@@ -6385,6 +6427,13 @@ export interface components {
             fact_type?: components["schemas"]["FactType"];
             /** Format: uuid */
             subject_id?: string;
+            /**
+             * Format: uuid
+             * @description ID of the life event or attribute this is about, checked as on
+             *     create. Omitted, the link is kept, unless `fact_type` or
+             *     `subject_id` changes: then the link is removed.
+             */
+            fact_id?: string;
             conclusion?: string;
             argument?: string;
             analysis_ids?: string[];
@@ -11697,6 +11746,12 @@ export interface operations {
                 branch?: components["parameters"]["branchScope"];
                 factType: components["schemas"]["FactType"];
                 subjectId: string;
+                /**
+                 * @description ID of one life event or attribute of that fact type. The list is
+                 *     then that fact's own analyses plus those of the fact type as a
+                 *     whole, not another fact's.
+                 */
+                factId?: string;
             };
             header?: never;
             path?: never;
@@ -12263,6 +12318,12 @@ export interface operations {
                 branch?: components["parameters"]["branchScope"];
                 factType: components["schemas"]["FactType"];
                 subjectId: string;
+                /**
+                 * @description ID of one life event or attribute of that fact type. The list is
+                 *     then that fact's own proof summaries plus those of the fact type as a
+                 *     whole, not another fact's.
+                 */
+                factId?: string;
             };
             header?: never;
             path?: never;

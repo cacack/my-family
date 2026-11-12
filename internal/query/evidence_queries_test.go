@@ -169,7 +169,7 @@ func TestGetAnalysesForFact(t *testing.T) {
 		Conclusion: "Born in 1860",
 	})
 
-	results, err := queryService.GetAnalysesForFact(ctx, domain.MainBranchID, "person_birth", subjectID)
+	results, err := queryService.GetAnalysesForFact(ctx, domain.MainBranchID, "person_birth", subjectID, nil)
 	if err != nil {
 		t.Fatalf("GetAnalysesForFact failed: %v", err)
 	}
@@ -586,7 +586,7 @@ func TestGetProofSummaryForFact(t *testing.T) {
 		Argument:   "Death cert confirms",
 	})
 
-	results, err := queryService.GetProofSummaryForFact(ctx, domain.MainBranchID, "person_birth", subjectID)
+	results, err := queryService.GetProofSummaryForFact(ctx, domain.MainBranchID, "person_birth", subjectID, nil)
 	if err != nil {
 		t.Fatalf("GetProofSummaryForFact failed: %v", err)
 	}
@@ -607,7 +607,7 @@ func TestGetProofSummaryForFact_NotFound(t *testing.T) {
 	queryService := query.NewEvidenceQueryService(readStore)
 	ctx := context.Background()
 
-	results, err := queryService.GetProofSummaryForFact(ctx, domain.MainBranchID, "person_birth", uuid.New())
+	results, err := queryService.GetProofSummaryForFact(ctx, domain.MainBranchID, "person_birth", uuid.New(), nil)
 	if err != nil {
 		t.Fatalf("GetProofSummaryForFact failed: %v", err)
 	}

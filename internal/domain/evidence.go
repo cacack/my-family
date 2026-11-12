@@ -9,15 +9,25 @@ import (
 )
 
 // EvidenceAnalysis aggregates citations for a fact with a researcher's conclusion.
+// FactID names one instance of a repeatable fact, such as one of two censuses
+// (#1304); nil analyzes the fact type of the subject as a whole.
 type EvidenceAnalysis struct {
 	ID             uuid.UUID      `json:"id"`
 	FactType       FactType       `json:"fact_type"`
 	SubjectID      uuid.UUID      `json:"subject_id"`
+	FactID         *uuid.UUID     `json:"fact_id,omitempty"`
 	CitationIDs    []uuid.UUID    `json:"citation_ids,omitempty"`
 	Conclusion     string         `json:"conclusion"`
 	ResearchStatus ResearchStatus `json:"research_status,omitempty"`
 	Notes          string         `json:"notes,omitempty"`
 	Version        int64          `json:"version"`
+}
+
+// FactInstancesOverlap reports whether two GPS artifacts of one fact type and
+// subject, linked to fact instances a and b, may concern the same fact (#1304):
+// either is about the fact as a whole (nil), or both name the same instance.
+func FactInstancesOverlap(a, b *uuid.UUID) bool {
+	return a == nil || b == nil || *a == *b
 }
 
 // EvidenceAnalysisValidationError represents a validation error for an EvidenceAnalysis.
@@ -66,11 +76,13 @@ func (ea *EvidenceAnalysis) Validate() error {
 	return nil
 }
 
-// EvidenceConflict tracks contradictory evidence between analyses.
+// EvidenceConflict tracks contradictory evidence between analyses. FactID is
+// the fact instance the analyses disagree about, when they name one (#1304).
 type EvidenceConflict struct {
 	ID          uuid.UUID      `json:"id"`
 	FactType    FactType       `json:"fact_type"`
 	SubjectID   uuid.UUID      `json:"subject_id"`
+	FactID      *uuid.UUID     `json:"fact_id,omitempty"`
 	AnalysisIDs []uuid.UUID    `json:"analysis_ids"`
 	Description string         `json:"description"`
 	Resolution  string         `json:"resolution,omitempty"`
@@ -198,11 +210,13 @@ func (rl *ResearchLog) Validate() error {
 	return nil
 }
 
-// ProofSummary is a written proof argument for non-obvious conclusions.
+// ProofSummary is a written proof argument for non-obvious conclusions. FactID
+// names the fact instance it proves, as on EvidenceAnalysis (#1304).
 type ProofSummary struct {
 	ID             uuid.UUID      `json:"id"`
 	FactType       FactType       `json:"fact_type"`
 	SubjectID      uuid.UUID      `json:"subject_id"`
+	FactID         *uuid.UUID     `json:"fact_id,omitempty"`
 	Conclusion     string         `json:"conclusion"`
 	Argument       string         `json:"argument"`
 	AnalysisIDs    []uuid.UUID    `json:"analysis_ids,omitempty"`

@@ -4698,6 +4698,16 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: factId
+          in: query
+          required: false
+          description: |
+            ID of one life event or attribute of that fact type. The list is
+            then that fact's own analyses plus those of the fact type as a
+            whole, not another fact's.
+          schema:
+            type: string
+            format: uuid
       responses:
         '200':
           description: List of matching evidence analyses
@@ -5136,6 +5146,16 @@ paths:
         - name: subjectId
           in: query
           required: true
+          schema:
+            type: string
+            format: uuid
+        - name: factId
+          in: query
+          required: false
+          description: |
+            ID of one life event or attribute of that fact type. The list is
+            then that fact's own proof summaries plus those of the fact type as a
+            whole, not another fact's.
           schema:
             type: string
             format: uuid
@@ -10206,6 +10226,14 @@ components:
           type: string
           format: uuid
           description: ID of the person or family this analysis is about
+        fact_id:
+          type: string
+          format: uuid
+          description: |
+            ID of the life event or attribute this analysis is about, when it
+            analyzes one of several facts of the same type (such as one of two
+            censuses). Absent when it analyzes the fact type of the subject as a
+            whole.
         citation_ids:
           type: array
           items:
@@ -10242,6 +10270,13 @@ components:
         subject_id:
           type: string
           format: uuid
+        fact_id:
+          type: string
+          format: uuid
+          description: |
+            ID of the life event or attribute this is about. It must be a fact
+            of `subject_id` and of `fact_type`, or the request is rejected. Omit
+            it for the fact type as a whole, as for a birth or death.
         citation_ids:
           type: array
           items:
@@ -10263,6 +10298,13 @@ components:
         subject_id:
           type: string
           format: uuid
+        fact_id:
+          type: string
+          format: uuid
+          description: |
+            ID of the life event or attribute this is about, checked as on
+            create. Omitted, the link is kept, unless `fact_type` or
+            `subject_id` changes: then the link is removed.
         citation_ids:
           type: array
           items:
@@ -10306,6 +10348,12 @@ components:
         subject_id:
           type: string
           format: uuid
+        fact_id:
+          type: string
+          format: uuid
+          description: |
+            ID of the life event or attribute the conflicting analyses are
+            about, when the analysis that raised the conflict names one.
         analysis_ids:
           type: array
           items:
@@ -10463,6 +10511,13 @@ components:
         subject_id:
           type: string
           format: uuid
+        fact_id:
+          type: string
+          format: uuid
+          description: |
+            ID of the life event or attribute this proof is about, when it
+            proves one of several facts of the same type. Absent when it proves
+            the fact type of the subject as a whole.
         conclusion:
           type: string
           description: The proven conclusion
@@ -10496,6 +10551,13 @@ components:
         subject_id:
           type: string
           format: uuid
+        fact_id:
+          type: string
+          format: uuid
+          description: |
+            ID of the life event or attribute this is about. It must be a fact
+            of `subject_id` and of `fact_type`, or the request is rejected. Omit
+            it for the fact type as a whole, as for a birth or death.
         conclusion:
           type: string
         argument:
@@ -10517,6 +10579,13 @@ components:
         subject_id:
           type: string
           format: uuid
+        fact_id:
+          type: string
+          format: uuid
+          description: |
+            ID of the life event or attribute this is about, checked as on
+            create. Omitted, the link is kept, unless `fact_type` or
+            `subject_id` changes: then the link is removed.
         conclusion:
           type: string
         argument:

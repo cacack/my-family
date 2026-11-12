@@ -992,6 +992,12 @@ func (s *ReadModelStore) runMigrations() {
 	// Link a citation to the life event or attribute it cites (issue #1294)
 	_, _ = s.db.Exec(`ALTER TABLE citations ADD COLUMN IF NOT EXISTS fact_id UUID`)
 
+	// Link an evidence analysis, conflict or proof summary to the life event or
+	// attribute it is about (issue #1304)
+	_, _ = s.db.Exec(`ALTER TABLE evidence_analyses ADD COLUMN IF NOT EXISTS fact_id UUID`)
+	_, _ = s.db.Exec(`ALTER TABLE evidence_conflicts ADD COLUMN IF NOT EXISTS fact_id UUID`)
+	_, _ = s.db.Exec(`ALTER TABLE proof_summaries ADD COLUMN IF NOT EXISTS fact_id UUID`)
+
 	// Add an imported attribute's place coordinates, NOTEs and TYPE (issue #1286)
 	_, _ = s.db.Exec(`ALTER TABLE attributes ADD COLUMN IF NOT EXISTS place_lat VARCHAR(20)`)
 	_, _ = s.db.Exec(`ALTER TABLE attributes ADD COLUMN IF NOT EXISTS place_long VARCHAR(20)`)
@@ -3078,6 +3084,14 @@ func nullableUUID(id *uuid.UUID) sql.NullString {
 		return sql.NullString{}
 	}
 	return sql.NullString{String: id.String(), Valid: true}
+}
+
+// nullUUIDPtr converts a scanned nullable UUID column to nil or its value.
+func nullUUIDPtr(id uuid.NullUUID) *uuid.UUID {
+	if !id.Valid {
+		return nil
+	}
+	return &id.UUID
 }
 
 func nullableInt(i *int) sql.NullInt64 {
@@ -6204,11 +6218,11 @@ func (s *ReadModelStore) DeleteLDSOrdinance(ctx context.Context, id uuid.UUID) e
 // subject decides what the branch lists.
 const (
 	// analysisSelectCols is scanAnalysisRow's column order (unaliased).
-	analysisSelectCols = `id, fact_type, subject_id, citation_ids, conclusion, research_status, notes,
+	analysisSelectCols = `id, fact_type, subject_id, fact_id, citation_ids, conclusion, research_status, notes,
 		version, created_at, updated_at`
 
 	// conflictSelectCols is scanConflictRow's column order (unaliased).
-	conflictSelectCols = `id, fact_type, subject_id, analysis_ids, description, resolution, status,
+	conflictSelectCols = `id, fact_type, subject_id, fact_id, analysis_ids, description, resolution, status,
 		version, created_at, updated_at`
 
 	// researchLogSelectCols is scanResearchLogRow's column order (unaliased).
@@ -6216,7 +6230,7 @@ const (
 		search_date, version, created_at, updated_at`
 
 	// proofSummarySelectCols is scanProofSummaryRow's column order (unaliased).
-	proofSummarySelectCols = `id, fact_type, subject_id, conclusion, argument, analysis_ids, research_status,
+	proofSummarySelectCols = `id, fact_type, subject_id, fact_id, conclusion, argument, analysis_ids, research_status,
 		version, created_at, updated_at`
 
 	// GPS artifact filters. %[1]d (and %[2]d) are the placeholder numbers the
@@ -6343,8 +6357,9 @@ func (s *ReadModelStore) getGPSRow(ctx context.Context, table, cols string, bran
 
 func scanAnalysisRow(row rowScanner) (*repository.EvidenceAnalysisReadModel, error) {
 	var a repository.EvidenceAnalysisReadModel
+	var factID uuid.NullUUID
 	var citationIDs, researchStatus, notes sql.NullString
-	err := row.Scan(&a.ID, &a.FactType, &a.SubjectID, &citationIDs, &a.Conclusion, &researchStatus, &notes,
+	err := row.Scan(&a.ID, &a.FactType, &a.SubjectID, &factID, &citationIDs, &a.Conclusion, &researchStatus, &notes,
 		&a.Version, &a.CreatedAt, &a.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
@@ -6352,6 +6367,7 @@ func scanAnalysisRow(row rowScanner) (*repository.EvidenceAnalysisReadModel, err
 	if err != nil {
 		return nil, fmt.Errorf("scan evidence_analysis: %w", err)
 	}
+	a.FactID = nullUUIDPtr(factID)
 	a.CitationIDsJSON = citationIDs.String
 	a.ResearchStatus = domain.ResearchStatus(researchStatus.String)
 	a.Notes = notes.String
@@ -6360,8 +6376,9 @@ func scanAnalysisRow(row rowScanner) (*repository.EvidenceAnalysisReadModel, err
 
 func scanConflictRow(row rowScanner) (*repository.EvidenceConflictReadModel, error) {
 	var c repository.EvidenceConflictReadModel
+	var factID uuid.NullUUID
 	var analysisIDs, resolution sql.NullString
-	err := row.Scan(&c.ID, &c.FactType, &c.SubjectID, &analysisIDs, &c.Description, &resolution, &c.Status,
+	err := row.Scan(&c.ID, &c.FactType, &c.SubjectID, &factID, &analysisIDs, &c.Description, &resolution, &c.Status,
 		&c.Version, &c.CreatedAt, &c.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
@@ -6369,6 +6386,7 @@ func scanConflictRow(row rowScanner) (*repository.EvidenceConflictReadModel, err
 	if err != nil {
 		return nil, fmt.Errorf("scan evidence_conflict: %w", err)
 	}
+	c.FactID = nullUUIDPtr(factID)
 	c.AnalysisIDsJSON = analysisIDs.String
 	c.Resolution = resolution.String
 	return &c, nil
@@ -6391,8 +6409,9 @@ func scanResearchLogRow(row rowScanner) (*repository.ResearchLogReadModel, error
 
 func scanProofSummaryRow(row rowScanner) (*repository.ProofSummaryReadModel, error) {
 	var ps repository.ProofSummaryReadModel
+	var factID uuid.NullUUID
 	var analysisIDs, researchStatus sql.NullString
-	err := row.Scan(&ps.ID, &ps.FactType, &ps.SubjectID, &ps.Conclusion, &ps.Argument, &analysisIDs, &researchStatus,
+	err := row.Scan(&ps.ID, &ps.FactType, &ps.SubjectID, &factID, &ps.Conclusion, &ps.Argument, &analysisIDs, &researchStatus,
 		&ps.Version, &ps.CreatedAt, &ps.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
@@ -6400,6 +6419,7 @@ func scanProofSummaryRow(row rowScanner) (*repository.ProofSummaryReadModel, err
 	if err != nil {
 		return nil, fmt.Errorf("scan proof_summary: %w", err)
 	}
+	ps.FactID = nullUUIDPtr(factID)
 	ps.AnalysisIDsJSON = analysisIDs.String
 	ps.ResearchStatus = domain.ResearchStatus(researchStatus.String)
 	return &ps, nil
@@ -6461,11 +6481,12 @@ func (s *ReadModelStore) GetAnalysesBySubject(ctx context.Context, branchID doma
 func (s *ReadModelStore) SaveEvidenceAnalysis(ctx context.Context, branchID domain.BranchID, analysis *repository.EvidenceAnalysisReadModel) error {
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO evidence_analyses (id, branch_id, fact_type, subject_id, citation_ids, conclusion, research_status,
-		                               notes, version, created_at, updated_at, deleted)
-		VALUES ($1, $2, $3, $4, NULLIF($5, '')::JSONB, $6, NULLIF($7, ''), NULLIF($8, ''), $9, $10, $11, FALSE)
+		                               notes, version, created_at, updated_at, fact_id, deleted)
+		VALUES ($1, $2, $3, $4, NULLIF($5, '')::JSONB, $6, NULLIF($7, ''), NULLIF($8, ''), $9, $10, $11, $12, FALSE)
 		ON CONFLICT (id, branch_id) DO UPDATE SET
 			fact_type = EXCLUDED.fact_type,
 			subject_id = EXCLUDED.subject_id,
+			fact_id = EXCLUDED.fact_id,
 			citation_ids = EXCLUDED.citation_ids,
 			conclusion = EXCLUDED.conclusion,
 			research_status = EXCLUDED.research_status,
@@ -6475,7 +6496,7 @@ func (s *ReadModelStore) SaveEvidenceAnalysis(ctx context.Context, branchID doma
 			deleted = FALSE
 	`, analysis.ID, branchID.UUID(), string(analysis.FactType), analysis.SubjectID, analysis.CitationIDsJSON,
 		analysis.Conclusion, string(analysis.ResearchStatus), analysis.Notes,
-		analysis.Version, analysis.CreatedAt, analysis.UpdatedAt)
+		analysis.Version, analysis.CreatedAt, analysis.UpdatedAt, nullableUUID(analysis.FactID))
 	if err != nil {
 		return fmt.Errorf("save evidence_analysis: %w", err)
 	}
@@ -6542,11 +6563,12 @@ func (s *ReadModelStore) ListUnresolvedConflicts(ctx context.Context, branchID d
 func (s *ReadModelStore) SaveEvidenceConflict(ctx context.Context, branchID domain.BranchID, conflict *repository.EvidenceConflictReadModel) error {
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO evidence_conflicts (id, branch_id, fact_type, subject_id, analysis_ids, description, resolution,
-		                                status, version, created_at, updated_at, deleted)
-		VALUES ($1, $2, $3, $4, NULLIF($5, '')::JSONB, $6, NULLIF($7, ''), $8, $9, $10, $11, FALSE)
+		                                status, version, created_at, updated_at, fact_id, deleted)
+		VALUES ($1, $2, $3, $4, NULLIF($5, '')::JSONB, $6, NULLIF($7, ''), $8, $9, $10, $11, $12, FALSE)
 		ON CONFLICT (id, branch_id) DO UPDATE SET
 			fact_type = EXCLUDED.fact_type,
 			subject_id = EXCLUDED.subject_id,
+			fact_id = EXCLUDED.fact_id,
 			analysis_ids = EXCLUDED.analysis_ids,
 			description = EXCLUDED.description,
 			resolution = EXCLUDED.resolution,
@@ -6556,7 +6578,7 @@ func (s *ReadModelStore) SaveEvidenceConflict(ctx context.Context, branchID doma
 			deleted = FALSE
 	`, conflict.ID, branchID.UUID(), string(conflict.FactType), conflict.SubjectID, conflict.AnalysisIDsJSON,
 		conflict.Description, conflict.Resolution, string(conflict.Status),
-		conflict.Version, conflict.CreatedAt, conflict.UpdatedAt)
+		conflict.Version, conflict.CreatedAt, conflict.UpdatedAt, nullableUUID(conflict.FactID))
 	if err != nil {
 		return fmt.Errorf("save evidence_conflict: %w", err)
 	}
@@ -6679,11 +6701,12 @@ func (s *ReadModelStore) GetProofSummariesBySubject(ctx context.Context, branchI
 func (s *ReadModelStore) SaveProofSummary(ctx context.Context, branchID domain.BranchID, summary *repository.ProofSummaryReadModel) error {
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO proof_summaries (id, branch_id, fact_type, subject_id, conclusion, argument, analysis_ids,
-		                             research_status, version, created_at, updated_at, deleted)
-		VALUES ($1, $2, $3, $4, $5, $6, NULLIF($7, '')::JSONB, NULLIF($8, ''), $9, $10, $11, FALSE)
+		                             research_status, version, created_at, updated_at, fact_id, deleted)
+		VALUES ($1, $2, $3, $4, $5, $6, NULLIF($7, '')::JSONB, NULLIF($8, ''), $9, $10, $11, $12, FALSE)
 		ON CONFLICT (id, branch_id) DO UPDATE SET
 			fact_type = EXCLUDED.fact_type,
 			subject_id = EXCLUDED.subject_id,
+			fact_id = EXCLUDED.fact_id,
 			conclusion = EXCLUDED.conclusion,
 			argument = EXCLUDED.argument,
 			analysis_ids = EXCLUDED.analysis_ids,
@@ -6693,7 +6716,7 @@ func (s *ReadModelStore) SaveProofSummary(ctx context.Context, branchID domain.B
 			deleted = FALSE
 	`, summary.ID, branchID.UUID(), string(summary.FactType), summary.SubjectID, summary.Conclusion,
 		summary.Argument, summary.AnalysisIDsJSON, string(summary.ResearchStatus),
-		summary.Version, summary.CreatedAt, summary.UpdatedAt)
+		summary.Version, summary.CreatedAt, summary.UpdatedAt, nullableUUID(summary.FactID))
 	if err != nil {
 		return fmt.Errorf("save proof_summary: %w", err)
 	}
