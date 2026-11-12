@@ -565,9 +565,10 @@ func TestNestedNotes_RoundTrip(t *testing.T) {
 }
 
 func TestExport_ChildPedigreeRoundTrips(t *testing.T) {
-	// An adopted or foster child is exported with a FAMC carrying PEDI, so
-	// re-import keeps the relationship; a biological child stays linked by
-	// CHIL alone (#622).
+	// Every child is exported with a FAMC back to its family (#1374); only an
+	// adopted or foster child's carries PEDI, so re-import keeps the
+	// relationship (#622). A child row of a family that is not exported gets
+	// no FAMC.
 	ctx := context.Background()
 	readStore := memory.NewReadModelStore()
 	father, adopted, foster, born := uuid.New(), uuid.New(), uuid.New(), uuid.New()
@@ -590,6 +591,11 @@ func TestExport_ChildPedigreeRoundTrips(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	if err := readStore.SaveFamilyChild(ctx, domain.MainBranchID, &repository.FamilyChildReadModel{
+		FamilyID: uuid.New(), PersonID: born, RelationshipType: domain.ChildBiological,
+	}); err != nil {
+		t.Fatal(err)
+	}
 
 	for _, tc := range []struct {
 		version         gcgedcom.Version
@@ -607,8 +613,14 @@ func TestExport_ChildPedigreeRoundTrips(t *testing.T) {
 			if !strings.Contains(output, "1 FAMC @F1@\n2 PEDI "+tc.adoptedPedigree+"\n") {
 				t.Errorf("export lacks the adopted child's FAMC with PEDI %s; got:\n%s", tc.adoptedPedigree, output)
 			}
-			if got := strings.Count(output, "1 FAMC "); got != 2 {
-				t.Errorf("export has %d FAMC lines, want 2 (adopted and foster only); got:\n%s", got, output)
+			if !strings.Contains(output, "1 NAME Born /Smith/\n1 FAMC @F1@\n0 ") {
+				t.Errorf("export lacks the biological child's FAMC without PEDI; got:\n%s", output)
+			}
+			if got := strings.Count(output, "1 FAMC "); got != 3 {
+				t.Errorf("export has %d FAMC lines, want 3 (one per exported child link); got:\n%s", got, output)
+			}
+			if got := strings.Count(output, "2 PEDI "); got != 2 {
+				t.Errorf("export has %d PEDI lines, want 2 (adopted and foster only); got:\n%s", got, output)
 			}
 
 			_, persons, families, _, _, _, _, _, _, _, _, _, _, err := gedcom.NewImporter().Import(ctx, strings.NewReader(output))

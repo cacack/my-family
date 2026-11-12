@@ -293,7 +293,7 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 		}
 	}
 
-	childLinks, err := pedigreeLinks(ctx, exp.readStore, familyXrefs)
+	childLinks, err := childFamilyLinks(ctx, exp.readStore, familyXrefs)
 	if err != nil {
 		return nil, err
 	}
@@ -536,23 +536,23 @@ var childPedigrees = map[domain.ChildRelationType]string{
 	domain.ChildFoster:  "foster",
 }
 
-// pedigreeLinks returns, per person, a FAMC link with PEDI for each family
-// the person is an adopted or foster child of, in family xref order. A
-// biological child is linked by the family's CHIL alone, as before; without
-// the FAMC an imported adopted child came back biological (#622).
-func pedigreeLinks(ctx context.Context, readStore repository.ReadModelStore, familyXrefs map[uuid.UUID]string) (map[uuid.UUID][]gedcom.FamilyLink, error) {
+// childFamilyLinks returns, per person, a FAMC link for each exported family
+// the person is a child of, in family xref order. GEDCOM 5.5.1 links children
+// in both directions, so each CHIL has a FAMC pointing back (#1374). PEDI is
+// set only for an adopted or foster child; without it an imported adopted
+// child came back biological (#622).
+func childFamilyLinks(ctx context.Context, readStore repository.ReadModelStore, familyXrefs map[uuid.UUID]string) (map[uuid.UUID][]gedcom.FamilyLink, error) {
 	children, err := readStore.ListAllFamilyChildren(ctx, domain.MainBranchID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list family children: %w", err)
 	}
 	links := map[uuid.UUID][]gedcom.FamilyLink{}
 	for _, c := range children {
-		pedigree, ok := childPedigrees[c.RelationshipType]
 		xref := familyXrefs[c.FamilyID]
-		if !ok || xref == "" {
+		if xref == "" {
 			continue
 		}
-		links[c.PersonID] = append(links[c.PersonID], gedcom.FamilyLink{FamilyXRef: xref, Pedigree: pedigree})
+		links[c.PersonID] = append(links[c.PersonID], gedcom.FamilyLink{FamilyXRef: xref, Pedigree: childPedigrees[c.RelationshipType]})
 	}
 	for _, l := range links {
 		sort.Slice(l, func(i, j int) bool { return l[i].FamilyXRef < l[j].FamilyXRef })
