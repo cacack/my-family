@@ -240,7 +240,14 @@ func (h *Handler) UpdatePerson(ctx context.Context, input UpdatePersonInput) (*U
 	}
 	recordChange(changes, "death_place", input.DeathPlace, &testPerson.DeathPlace)
 	recordChange(changes, "notes", input.Notes, &testPerson.Notes)
-	if status, ok := input.ResearchStatus.Change(); ok && domain.ParseResearchStatus(status) != current.ResearchStatus {
+	// A clear leaves the status unset (""), recorded as nil: an empty string
+	// in a stored event has always meant "unknown" (ParseResearchStatus).
+	if input.ResearchStatus.Cleared() {
+		if current.ResearchStatus != "" {
+			testPerson.ResearchStatus = ""
+			changes["research_status"] = nil
+		}
+	} else if status, ok := input.ResearchStatus.Value(); ok && domain.ParseResearchStatus(status) != current.ResearchStatus {
 		testPerson.ResearchStatus = domain.ParseResearchStatus(status)
 		changes["research_status"] = status
 	}

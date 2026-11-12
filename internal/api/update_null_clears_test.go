@@ -146,6 +146,7 @@ func TestUpdate_NullClearsOptionalField(t *testing.T) {
 		{"person", "gender", `"female"`},
 		{"person", "birth_date", `"10 DEC 1815"`},
 		{"person", "notes", `"Mathematician"`},
+		{"person", "research_status", `"probable"`},
 		{"family", "partner2_id", fmt.Sprintf("%q", partner)},
 		{"family", "marriage_date", `"1835"`},
 		{"family", "marriage_place", `"London"`},

@@ -778,3 +778,32 @@ func TestPersonVersionConflictNoPartialState(t *testing.T) {
 		t.Errorf("Notes = %s, want empty (stale update should not apply)", person.Notes)
 	}
 }
+
+// TestUpdatePerson_ClearResearchStatus: a clear unsets the status rather than
+// setting it to "unknown", and clearing an unset status is no change (#1359).
+func TestUpdatePerson_ClearResearchStatus(t *testing.T) {
+	ctx, _, readStore, handler := newTestHandler()
+	created, err := handler.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ada", ResearchStatus: "probable"})
+	if err != nil {
+		t.Fatalf("CreatePerson: %v", err)
+	}
+
+	cleared, err := handler.UpdatePerson(ctx, command.UpdatePersonInput{ID: created.ID,
+		ResearchStatus: command.Clear[string](), Version: created.Version})
+	if err != nil {
+		t.Fatalf("UpdatePerson clear: %v", err)
+	}
+	person, _ := readStore.GetPerson(ctx, domain.MainBranchID, created.ID)
+	if person.ResearchStatus != "" {
+		t.Errorf("ResearchStatus = %q, want unset", person.ResearchStatus)
+	}
+
+	again, err := handler.UpdatePerson(ctx, command.UpdatePersonInput{ID: created.ID,
+		ResearchStatus: command.Clear[string](), Version: cleared.Version})
+	if err != nil {
+		t.Fatalf("UpdatePerson clear again: %v", err)
+	}
+	if again.Version != cleared.Version {
+		t.Errorf("version = %d, want %d: clearing an unset status is no change", again.Version, cleared.Version)
+	}
+}

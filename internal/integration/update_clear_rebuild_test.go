@@ -158,7 +158,7 @@ func seedAndClearOptionalFields(t *testing.T, ctx context.Context, h *command.Ha
 		person, err := rs.GetPerson(ctx, main, p1.ID)
 		got("person", person, err)
 		if person.Surname != "" || person.Gender != "" || person.BirthDateRaw != "" || person.BirthDateSort != nil ||
-			person.BirthPlace != "" || person.Notes != "" {
+			person.BirthPlace != "" || person.Notes != "" || person.ResearchStatus != "" {
 			t.Errorf("person not cleared: %+v", person)
 		}
 
