@@ -3439,6 +3439,12 @@ export interface components {
             marriage_place_latitude?: string | null;
             /** @description Longitude in GEDCOM format (e.g., "W89.6501") */
             marriage_place_longitude?: string | null;
+            /** @description The marriage event's GEDCOM TYPE (e.g. "Civil"); omitted when it has none */
+            marriage_type_detail?: string;
+            /** @description NOTEs recorded on the marriage event; omitted when it has none */
+            marriage_notes?: string;
+            /** @description The family record's own NOTEs; omitted when it has none */
+            notes?: string;
             /** Format: int64 */
             version: number;
         };

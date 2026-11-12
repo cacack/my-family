@@ -4340,6 +4340,9 @@ func convertQueryFamilyToGenerated(f query.Family) Family {
 	}
 	resp.MarriagePlaceLatitude = f.MarriagePlaceLat
 	resp.MarriagePlaceLongitude = f.MarriagePlaceLong
+	resp.MarriageTypeDetail = f.MarriageTypeDetail
+	resp.MarriageNotes = f.MarriageNotes
+	resp.Notes = f.Notes
 
 	return resp
 }
@@ -4385,6 +4388,9 @@ func convertQueryFamilyDetailToGenerated(fd query.FamilyDetail) FamilyDetail {
 	}
 	resp.MarriagePlaceLatitude = fd.MarriagePlaceLat
 	resp.MarriagePlaceLongitude = fd.MarriagePlaceLong
+	resp.MarriageTypeDetail = fd.MarriageTypeDetail
+	resp.MarriageNotes = fd.MarriageNotes
+	resp.Notes = fd.Notes
 
 	// Emit the partner summary whenever the partner ID is set so callers can
 	// always pair partner1_id with a partner1 object. Either name part may be
@@ -4442,6 +4448,9 @@ func convertQueryFamilyToFamilyDetail(f query.Family) FamilyDetail {
 	}
 	resp.MarriagePlaceLatitude = f.MarriagePlaceLat
 	resp.MarriagePlaceLongitude = f.MarriagePlaceLong
+	resp.MarriageTypeDetail = f.MarriageTypeDetail
+	resp.MarriageNotes = f.MarriageNotes
+	resp.Notes = f.Notes
 
 	if f.Partner1ID != nil {
 		resp.Partner1 = personSummary(*f.Partner1ID, stringValue(f.Partner1GivenName), stringValue(f.Partner1Surname), nil)
@@ -6247,6 +6256,15 @@ func convertReadModelFamilyToGenerated(rm repository.FamilyReadModel) Family {
 	}
 	resp.MarriagePlaceLatitude = nonEmptyString(rm.MarriagePlaceLat)
 	resp.MarriagePlaceLongitude = nonEmptyString(rm.MarriagePlaceLong)
+	if rm.MarriageTypeDetail != "" {
+		resp.MarriageTypeDetail = &rm.MarriageTypeDetail
+	}
+	if rm.MarriageNotes != "" {
+		resp.MarriageNotes = &rm.MarriageNotes
+	}
+	if rm.Notes != "" {
+		resp.Notes = &rm.Notes
+	}
 	return resp
 }
 

@@ -800,6 +800,46 @@ func TestCSVExporter_AllFamilyFieldValues(t *testing.T) {
 	assert.NotEmpty(t, row[12])                  // updated_at
 }
 
+// A family's notes, marriage notes and marriage TYPE are valid CSV fields;
+// a family without them gets empty cells (#1350).
+func TestCSVExporter_FamilyNotesFields(t *testing.T) {
+	store := setupTestStore(t)
+	ctx := context.Background()
+
+	withNotes := repository.FamilyReadModel{
+		ID:                 uuid.New(),
+		Partner1GivenName:  "Ann",
+		Notes:              "Lived on the farm",
+		MarriageNotes:      "Married at the town hall",
+		MarriageTypeDetail: "Civil",
+		Version:            1,
+	}
+	withoutNotes := repository.FamilyReadModel{ID: uuid.New(), Partner1GivenName: "Bob", Version: 1}
+	require.NoError(t, store.SaveFamily(ctx, domain.MainBranchID, &withNotes))
+	require.NoError(t, store.SaveFamily(ctx, domain.MainBranchID, &withoutNotes))
+
+	fields := []string{"id", "notes", "marriage_notes", "marriage_type_detail"}
+	var buf bytes.Buffer
+	_, err := exporter.NewDataExporter(store).Export(ctx, &buf, exporter.ExportOptions{
+		Format:     exporter.FormatCSV,
+		EntityType: exporter.EntityTypeFamilies,
+		Fields:     fields,
+	})
+	require.NoError(t, err)
+
+	records, err := csv.NewReader(strings.NewReader(buf.String())).ReadAll()
+	require.NoError(t, err)
+	require.Len(t, records, 3)
+	assert.Equal(t, fields, records[0])
+
+	rows := map[string][]string{}
+	for _, row := range records[1:] {
+		rows[row[0]] = row[1:]
+	}
+	assert.Equal(t, []string{"Lived on the farm", "Married at the town hall", "Civil"}, rows[withNotes.ID.String()])
+	assert.Equal(t, []string{"", "", ""}, rows[withoutNotes.ID.String()])
+}
+
 func TestCSVExporter_FamilyWithNilPartners(t *testing.T) {
 	store := setupTestStore(t)
 	now := time.Now()

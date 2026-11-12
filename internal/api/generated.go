@@ -3827,16 +3827,25 @@ type Family struct {
 	Id openapi_types.UUID `json:"id"`
 
 	// MarriageDate Genealogical date with flexible precision
-	MarriageDate  *GenDate `json:"marriage_date,omitempty"`
-	MarriagePlace *string  `json:"marriage_place,omitempty"`
+	MarriageDate *GenDate `json:"marriage_date,omitempty"`
+
+	// MarriageNotes NOTEs recorded on the marriage event; omitted when it has none
+	MarriageNotes *string `json:"marriage_notes,omitempty"`
+	MarriagePlace *string `json:"marriage_place,omitempty"`
 
 	// MarriagePlaceLatitude Latitude in GEDCOM format (e.g., "N39.7817")
 	MarriagePlaceLatitude *string `json:"marriage_place_latitude,omitempty"`
 
 	// MarriagePlaceLongitude Longitude in GEDCOM format (e.g., "W89.6501")
-	MarriagePlaceLongitude *string             `json:"marriage_place_longitude,omitempty"`
-	Partner1Id             *openapi_types.UUID `json:"partner1_id,omitempty"`
-	Partner2Id             *openapi_types.UUID `json:"partner2_id,omitempty"`
+	MarriagePlaceLongitude *string `json:"marriage_place_longitude,omitempty"`
+
+	// MarriageTypeDetail The marriage event's GEDCOM TYPE (e.g. "Civil"); omitted when it has none
+	MarriageTypeDetail *string `json:"marriage_type_detail,omitempty"`
+
+	// Notes The family record's own NOTEs; omitted when it has none
+	Notes      *string             `json:"notes,omitempty"`
+	Partner1Id *openapi_types.UUID `json:"partner1_id,omitempty"`
+	Partner2Id *openapi_types.UUID `json:"partner2_id,omitempty"`
 
 	// RelationshipType Relationship between a family's partners
 	RelationshipType *RelationType `json:"relationship_type,omitempty"`
@@ -3903,14 +3912,23 @@ type FamilyDetail struct {
 	Id          openapi_types.UUID `json:"id"`
 
 	// MarriageDate Genealogical date with flexible precision
-	MarriageDate  *GenDate `json:"marriage_date,omitempty"`
-	MarriagePlace *string  `json:"marriage_place,omitempty"`
+	MarriageDate *GenDate `json:"marriage_date,omitempty"`
+
+	// MarriageNotes NOTEs recorded on the marriage event; omitted when it has none
+	MarriageNotes *string `json:"marriage_notes,omitempty"`
+	MarriagePlace *string `json:"marriage_place,omitempty"`
 
 	// MarriagePlaceLatitude Latitude in GEDCOM format (e.g., "N39.7817")
 	MarriagePlaceLatitude *string `json:"marriage_place_latitude,omitempty"`
 
 	// MarriagePlaceLongitude Longitude in GEDCOM format (e.g., "W89.6501")
 	MarriagePlaceLongitude *string `json:"marriage_place_longitude,omitempty"`
+
+	// MarriageTypeDetail The marriage event's GEDCOM TYPE (e.g. "Civil"); omitted when it has none
+	MarriageTypeDetail *string `json:"marriage_type_detail,omitempty"`
+
+	// Notes The family record's own NOTEs; omitted when it has none
+	Notes *string `json:"notes,omitempty"`
 
 	// Partner1 Partner 1 summary. Present whenever partner1_id is set; given_name and surname may be empty strings if the partner has no recorded name.
 	Partner1   *PersonSummary      `json:"partner1,omitempty"`

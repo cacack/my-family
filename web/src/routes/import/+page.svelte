@@ -63,7 +63,10 @@
 		{ id: 'relationship_type', label: 'Relationship Type' },
 		{ id: 'marriage_date', label: 'Marriage Date' },
 		{ id: 'marriage_place', label: 'Marriage Place' },
-		{ id: 'child_count', label: 'Child Count' }
+		{ id: 'marriage_type_detail', label: 'Marriage Type' },
+		{ id: 'marriage_notes', label: 'Marriage Notes' },
+		{ id: 'child_count', label: 'Child Count' },
+		{ id: 'notes', label: 'Notes' }
 	];
 
 	const sourceFields = [
