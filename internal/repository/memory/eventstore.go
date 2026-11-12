@@ -198,41 +198,51 @@ func (s *EventStore) CountMainDrift(ctx context.Context, scopes []repository.Dri
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	// A branch named twice is answered once, from its earliest base — the same
-	// rule the SQL backends apply with MIN(base_position).
+	for branchID, base := range earliestDriftBases(scopes) {
+		result[branchID] = s.countDriftLocked(branchID, base, excluded, limit)
+	}
+	return result, nil
+}
+
+// earliestDriftBases maps each scope's branch to its base position. A branch
+// named twice is answered once, from its earliest base — the same rule the SQL
+// backends apply with MIN(base_position).
+func earliestDriftBases(scopes []repository.DriftScope) map[domain.BranchID]int64 {
 	bases := make(map[domain.BranchID]int64, len(scopes))
 	for _, scope := range scopes {
 		if base, seen := bases[scope.BranchID]; !seen || scope.BasePosition < base {
 			bases[scope.BranchID] = scope.BasePosition
 		}
 	}
+	return bases
+}
 
-	for branchID, base := range bases {
-		touched := make(map[uuid.UUID]bool)
-		for _, event := range s.events {
-			if event.BranchID == branchID && !excluded[event.EventType] {
-				touched[event.StreamID] = true
-			}
+// countDriftLocked counts main's events after base, and those on streams
+// branchID wrote, each capped at limit. The caller holds s.mu.
+func (s *EventStore) countDriftLocked(branchID domain.BranchID, base int64, excluded map[string]bool, limit int) repository.DriftCount {
+	touched := make(map[uuid.UUID]bool)
+	for _, event := range s.events {
+		if event.BranchID == branchID && !excluded[event.EventType] {
+			touched[event.StreamID] = true
 		}
-
-		var count repository.DriftCount
-		for _, event := range s.events {
-			if event.BranchID != domain.MainBranchID || event.Position <= base || excluded[event.EventType] {
-				continue
-			}
-			if count.MainChanges < limit {
-				count.MainChanges++
-			}
-			if touched[event.StreamID] && count.MainChangesOnBranchStreams < limit {
-				count.MainChangesOnBranchStreams++
-			}
-			if count.MainChanges >= limit && count.MainChangesOnBranchStreams >= limit {
-				break
-			}
-		}
-		result[branchID] = count
 	}
-	return result, nil
+
+	var count repository.DriftCount
+	for _, event := range s.events {
+		if event.BranchID != domain.MainBranchID || event.Position <= base || excluded[event.EventType] {
+			continue
+		}
+		if count.MainChanges < limit {
+			count.MainChanges++
+		}
+		if touched[event.StreamID] && count.MainChangesOnBranchStreams < limit {
+			count.MainChangesOnBranchStreams++
+		}
+		if count.MainChanges >= limit && count.MainChangesOnBranchStreams >= limit {
+			break
+		}
+	}
+	return count
 }
 
 // GetStreamVersion returns the current version of a stream on a branch.

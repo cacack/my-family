@@ -45,6 +45,31 @@ func normalizeDateInput(field, value string) (string, error) {
 	return normalized, nil
 }
 
+// recordChange is the per-field step of an Update* command: when input is
+// given and differs from *field (which starts as the current value), it sets
+// *field and records the input under key in changes. A field equal to its
+// current value is not a change (the edit form sends every field).
+func recordChange[T ~string](changes map[string]any, key string, input *string, field *T) {
+	if input != nil && T(*input) != *field {
+		*field = T(*input)
+		changes[key] = *input
+	}
+}
+
+// changedDate normalizes a date field's new input (see normalizeDateInput) and
+// reports whether it differs from the current raw date. An input that is
+// absent or equal to the current text is not a change.
+func changedDate(field string, input *string, current string) (string, bool, error) {
+	if input == nil || *input == current {
+		return "", false, nil
+	}
+	normalized, err := normalizeDateInput(field, *input)
+	if err != nil {
+		return "", false, err
+	}
+	return normalized, normalized != current, nil
+}
+
 // CreatePersonInput contains the data for creating a new person.
 type CreatePersonInput struct {
 	GivenName      string
@@ -189,50 +214,28 @@ func (h *Handler) UpdatePerson(ctx context.Context, input UpdatePersonInput) (*U
 		testPerson.DeathDate = &dd
 	}
 
-	if input.GivenName != nil && *input.GivenName != current.GivenName {
-		testPerson.GivenName = *input.GivenName
-		changes["given_name"] = *input.GivenName
+	recordChange(changes, "given_name", input.GivenName, &testPerson.GivenName)
+	recordChange(changes, "surname", input.Surname, &testPerson.Surname)
+	recordChange(changes, "gender", input.Gender, &testPerson.Gender)
+	birthDate, birthChanged, err := changedDate("birth_date", input.BirthDate, current.BirthDateRaw)
+	if err != nil {
+		return nil, err
 	}
-	if input.Surname != nil && *input.Surname != current.Surname {
-		testPerson.Surname = *input.Surname
-		changes["surname"] = *input.Surname
+	if birthChanged {
+		testPerson.SetBirthDate(birthDate)
+		changes["birth_date"] = birthDate
 	}
-	if input.Gender != nil && domain.Gender(*input.Gender) != current.Gender {
-		testPerson.Gender = domain.Gender(*input.Gender)
-		changes["gender"] = *input.Gender
+	recordChange(changes, "birth_place", input.BirthPlace, &testPerson.BirthPlace)
+	deathDate, deathChanged, err := changedDate("death_date", input.DeathDate, current.DeathDateRaw)
+	if err != nil {
+		return nil, err
 	}
-	if input.BirthDate != nil && *input.BirthDate != current.BirthDateRaw {
-		birthDate, err := normalizeDateInput("birth_date", *input.BirthDate)
-		if err != nil {
-			return nil, err
-		}
-		if birthDate != current.BirthDateRaw {
-			testPerson.SetBirthDate(birthDate)
-			changes["birth_date"] = birthDate
-		}
+	if deathChanged {
+		testPerson.SetDeathDate(deathDate)
+		changes["death_date"] = deathDate
 	}
-	if input.BirthPlace != nil && *input.BirthPlace != current.BirthPlace {
-		testPerson.BirthPlace = *input.BirthPlace
-		changes["birth_place"] = *input.BirthPlace
-	}
-	if input.DeathDate != nil && *input.DeathDate != current.DeathDateRaw {
-		deathDate, err := normalizeDateInput("death_date", *input.DeathDate)
-		if err != nil {
-			return nil, err
-		}
-		if deathDate != current.DeathDateRaw {
-			testPerson.SetDeathDate(deathDate)
-			changes["death_date"] = deathDate
-		}
-	}
-	if input.DeathPlace != nil && *input.DeathPlace != current.DeathPlace {
-		testPerson.DeathPlace = *input.DeathPlace
-		changes["death_place"] = *input.DeathPlace
-	}
-	if input.Notes != nil && *input.Notes != current.Notes {
-		testPerson.Notes = *input.Notes
-		changes["notes"] = *input.Notes
-	}
+	recordChange(changes, "death_place", input.DeathPlace, &testPerson.DeathPlace)
+	recordChange(changes, "notes", input.Notes, &testPerson.Notes)
 	if input.ResearchStatus != nil && domain.ParseResearchStatus(*input.ResearchStatus) != current.ResearchStatus {
 		testPerson.ResearchStatus = domain.ParseResearchStatus(*input.ResearchStatus)
 		changes["research_status"] = *input.ResearchStatus

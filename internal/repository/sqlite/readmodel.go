@@ -3233,39 +3233,16 @@ func scanPerson(row rowScanner, extra ...any) (*repository.PersonReadModel, erro
 	}
 
 	// Set coordinate pointers if values are present
-	if birthPlaceLat.Valid && birthPlaceLat.String != "" {
-		p.BirthPlaceLat = &birthPlaceLat.String
-	}
-	if birthPlaceLong.Valid && birthPlaceLong.String != "" {
-		p.BirthPlaceLong = &birthPlaceLong.String
-	}
-	if deathPlaceLat.Valid && deathPlaceLat.String != "" {
-		p.DeathPlaceLat = &deathPlaceLat.String
-	}
-	if deathPlaceLong.Valid && deathPlaceLong.String != "" {
-		p.DeathPlaceLong = &deathPlaceLong.String
-	}
+	p.BirthPlaceLat = nonEmptyStringPtr(birthPlaceLat)
+	p.BirthPlaceLong = nonEmptyStringPtr(birthPlaceLong)
+	p.DeathPlaceLat = nonEmptyStringPtr(deathPlaceLat)
+	p.DeathPlaceLong = nonEmptyStringPtr(deathPlaceLong)
 
-	if birthDateSort.Valid {
-		if t, err := parseSortDate(birthDateSort.String, sortDateLayout); err == nil {
-			p.BirthDateSort = &t
-		}
-	}
-	if deathDateSort.Valid {
-		if t, err := parseSortDate(deathDateSort.String, sortDateLayout); err == nil {
-			p.DeathDateSort = &t
-		}
-	}
-	if brickWallSince.Valid {
-		if t, err := parseTimestamp(brickWallSince.String); err == nil {
-			p.BrickWallSince = &t
-		}
-	}
-	if brickWallResolvedAt.Valid {
-		if t, err := parseTimestamp(brickWallResolvedAt.String); err == nil {
-			p.BrickWallResolvedAt = &t
-		}
-	}
+	// An unparseable date column leaves its field unset, as for NULL.
+	p.BirthDateSort, _ = parseNullableSortDate(birthDateSort, sortDateLayout)
+	p.DeathDateSort, _ = parseNullableSortDate(deathDateSort, sortDateLayout)
+	p.BrickWallSince, _ = parseNullableTimestamp(brickWallSince)
+	p.BrickWallResolvedAt, _ = parseNullableTimestamp(brickWallResolvedAt)
 	if t, err := parseTimestamp(updatedAt); err == nil {
 		p.UpdatedAt = t
 	}

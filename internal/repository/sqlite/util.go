@@ -218,6 +218,28 @@ func parseNullableTimestamp(s sql.NullString) (*time.Time, error) {
 	return &t, nil
 }
 
+// parseNullableSortDate parses a nullable sort date column written by
+// formatSortDate with layout. A NULL column maps to a nil *time.Time.
+func parseNullableSortDate(s sql.NullString, layout string) (*time.Time, error) {
+	if !s.Valid {
+		return nil, nil
+	}
+	t, err := parseSortDate(s.String, layout)
+	if err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
+// nonEmptyStringPtr maps a NULL or empty column to nil and any other to a
+// pointer to its text.
+func nonEmptyStringPtr(s sql.NullString) *string {
+	if !s.Valid || s.String == "" {
+		return nil
+	}
+	return &s.String
+}
+
 // nullableTimestamp formats a *time.Time for storage, mapping nil to NULL.
 func nullableTimestamp(t *time.Time) sql.NullString {
 	if t == nil {

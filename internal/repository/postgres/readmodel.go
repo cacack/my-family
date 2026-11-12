@@ -2936,31 +2936,15 @@ func scanPerson(row rowScanner) (*repository.PersonReadModel, error) {
 	}
 
 	// Set coordinate pointers if values are present
-	if birthPlaceLat.Valid && birthPlaceLat.String != "" {
-		p.BirthPlaceLat = &birthPlaceLat.String
-	}
-	if birthPlaceLong.Valid && birthPlaceLong.String != "" {
-		p.BirthPlaceLong = &birthPlaceLong.String
-	}
-	if deathPlaceLat.Valid && deathPlaceLat.String != "" {
-		p.DeathPlaceLat = &deathPlaceLat.String
-	}
-	if deathPlaceLong.Valid && deathPlaceLong.String != "" {
-		p.DeathPlaceLong = &deathPlaceLong.String
-	}
+	p.BirthPlaceLat = nonEmptyStringPtr(birthPlaceLat)
+	p.BirthPlaceLong = nonEmptyStringPtr(birthPlaceLong)
+	p.DeathPlaceLat = nonEmptyStringPtr(deathPlaceLat)
+	p.DeathPlaceLong = nonEmptyStringPtr(deathPlaceLong)
 
-	if birthDateSort.Valid {
-		p.BirthDateSort = &birthDateSort.Time
-	}
-	if deathDateSort.Valid {
-		p.DeathDateSort = &deathDateSort.Time
-	}
-	if brickWallSince.Valid {
-		p.BrickWallSince = &brickWallSince.Time
-	}
-	if brickWallResolvedAt.Valid {
-		p.BrickWallResolvedAt = &brickWallResolvedAt.Time
-	}
+	p.BirthDateSort = nullTimePtr(birthDateSort)
+	p.DeathDateSort = nullTimePtr(deathDateSort)
+	p.BrickWallSince = nullTimePtr(brickWallSince)
+	p.BrickWallResolvedAt = nullTimePtr(brickWallResolvedAt)
 
 	return p, nil
 }

@@ -53,3 +53,20 @@ func eventsTableBelongsToReadModel(db *sql.DB) (bool, error) {
 	}
 	return ownedByReadModel, nil
 }
+
+// nonEmptyStringPtr maps a NULL or empty column to nil and any other to a
+// pointer to its text.
+func nonEmptyStringPtr(s sql.NullString) *string {
+	if !s.Valid || s.String == "" {
+		return nil
+	}
+	return &s.String
+}
+
+// nullTimePtr maps a NULL column to nil and any other to a pointer to its time.
+func nullTimePtr(t sql.NullTime) *time.Time {
+	if !t.Valid {
+		return nil
+	}
+	return &t.Time
+}

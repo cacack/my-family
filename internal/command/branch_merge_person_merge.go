@@ -151,6 +151,40 @@ func survivorLookup(into map[uuid.UUID]uuid.UUID) func(uuid.UUID) (uuid.UUID, bo
 // interleave with the merge lands whole on one side of it; that is the
 // one-Append-per-stream granularity every replay ordering here shares.
 func orderPersonMergesForReplay(groups []streamGroup) ([]streamGroup, error) {
+	merged, err := mergedPersonsByStream(groups)
+	if err != nil {
+		return nil, err
+	}
+	if len(merged) == 0 {
+		return groups, nil
+	}
+
+	graph := personMergeReplayGraph(groups, merged)
+	order, blocked := graph.stableOrder()
+	if blocked < 0 {
+		ordered := make([]streamGroup, len(order))
+		for i, at := range order {
+			ordered[i] = groups[at]
+		}
+		return ordered, nil
+	}
+	for at := range groups {
+		if graph.indegree[at] > 0 && len(merged[at]) > 0 {
+			blocked = at
+			break
+		}
+	}
+	return nil, fmt.Errorf(
+		"%w: stream %s merges %s away, but another stream the branch wrote both mentions that person "+
+			"and needs an entity this branch created on a stream the merge must follow; no replay order lands it "+
+			"after that creation and before the merge, so main would not match the branch. "+
+			"Remove that reference on the branch before merging",
+		ErrMergeDanglingReference, groups[blocked].streamID, joinPersonIDs(merged[blocked]))
+}
+
+// mergedPersonsByStream maps the index of each stream that merges persons away
+// to the ids of the persons it merges.
+func mergedPersonsByStream(groups []streamGroup) (map[int][]uuid.UUID, error) {
 	merged := make(map[int][]uuid.UUID)
 	for i, group := range groups {
 		found, err := personMergesIn(group)
@@ -161,10 +195,14 @@ func orderPersonMergesForReplay(groups []streamGroup) ([]streamGroup, error) {
 			merged[i] = append(merged[i], m.mergedID)
 		}
 	}
-	if len(merged) == 0 {
-		return groups, nil
-	}
+	return merged, nil
+}
 
+// personMergeReplayGraph builds the "must land before" edges
+// orderPersonMergesForReplay sorts by: a stream that names an entity the branch
+// created lands after its creation, and a stream that mentions a merged person
+// lands before the merge.
+func personMergeReplayGraph(groups []streamGroup, merged map[int][]uuid.UUID) *replayGraph {
 	graph := newReplayGraph(len(groups))
 	mentioned := make([]map[uuid.UUID]bool, len(groups))
 	index := make(map[uuid.UUID]int, len(groups))
@@ -188,27 +226,7 @@ func orderPersonMergesForReplay(groups []streamGroup) ([]streamGroup, error) {
 			}
 		}
 	}
-
-	order, blocked := graph.stableOrder()
-	if blocked < 0 {
-		ordered := make([]streamGroup, len(order))
-		for i, at := range order {
-			ordered[i] = groups[at]
-		}
-		return ordered, nil
-	}
-	for at := range groups {
-		if graph.indegree[at] > 0 && len(merged[at]) > 0 {
-			blocked = at
-			break
-		}
-	}
-	return nil, fmt.Errorf(
-		"%w: stream %s merges %s away, but another stream the branch wrote both mentions that person "+
-			"and needs an entity this branch created on a stream the merge must follow; no replay order lands it "+
-			"after that creation and before the merge, so main would not match the branch. "+
-			"Remove that reference on the branch before merging",
-		ErrMergeDanglingReference, groups[blocked].streamID, joinPersonIDs(merged[blocked]))
+	return graph
 }
 
 // replayGraph is the "must land before" relation orderPersonMergesForReplay

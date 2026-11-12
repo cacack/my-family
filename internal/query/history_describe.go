@@ -316,46 +316,7 @@ func normalizeFieldValue(value any) any {
 
 // apply folds one event into the state.
 func (st *streamState) apply(evt *repository.StoredEvent) {
-	switch evt.EventType {
-	case "NameAdded", "NameUpdated":
-		fields := eventFields(evt)
-		if nameID, ok := fields["name_id"].(string); ok {
-			st.names[nameID] = fields
-		}
-		return
-	case "NameRemoved":
-		fields := eventFields(evt)
-		if nameID, ok := fields["name_id"].(string); ok {
-			delete(st.names, nameID)
-		}
-		return
-	case "ChildLinkedToFamily", "ChildUnlinkedFromFamily":
-		return
-	case "PersonMerged":
-		fields := eventFields(evt)
-		if resolved, ok := fields["resolved_fields"].(map[string]any); ok {
-			for key, value := range resolved {
-				st.fields[key] = normalizeFieldValue(value)
-			}
-		}
-		if snapshot, ok := fields["merged_person_snapshot"].(map[string]any); ok {
-			st.mergedName = mergedPersonName(snapshot)
-		}
-		return
-	case "DuplicateRestored":
-		// It names the pair it restores, so the pair is named even when the
-		// dismissal it undoes was not folded (#1036).
-		if !st.created {
-			st.fields = eventFields(evt)
-		}
-		return
-	case "EvidenceConflictResolved":
-		fields := eventFields(evt)
-		for _, key := range []string{"resolution", "status"} {
-			if value, ok := fields[key]; ok {
-				st.fields[key] = value
-			}
-		}
+	if st.applyUnclassified(evt) {
 		return
 	}
 
@@ -374,6 +335,56 @@ func (st *streamState) apply(evt *repository.StoredEvent) {
 				st.fields[key] = normalizeFieldValue(value)
 			}
 		}
+	}
+}
+
+// applyUnclassified folds the events whose effect on the state is not a plain
+// create or update: names, merges, restores and conflict resolutions, and the
+// child links that leave it unchanged. It reports whether evt was one of them.
+func (st *streamState) applyUnclassified(evt *repository.StoredEvent) bool {
+	switch evt.EventType {
+	case "NameAdded", "NameUpdated":
+		fields := eventFields(evt)
+		if nameID, ok := fields["name_id"].(string); ok {
+			st.names[nameID] = fields
+		}
+	case "NameRemoved":
+		fields := eventFields(evt)
+		if nameID, ok := fields["name_id"].(string); ok {
+			delete(st.names, nameID)
+		}
+	case "ChildLinkedToFamily", "ChildUnlinkedFromFamily":
+	case "PersonMerged":
+		st.applyPersonMerged(eventFields(evt))
+	case "DuplicateRestored":
+		// It names the pair it restores, so the pair is named even when the
+		// dismissal it undoes was not folded (#1036).
+		if !st.created {
+			st.fields = eventFields(evt)
+		}
+	case "EvidenceConflictResolved":
+		fields := eventFields(evt)
+		for _, key := range []string{"resolution", "status"} {
+			if value, ok := fields[key]; ok {
+				st.fields[key] = value
+			}
+		}
+	default:
+		return false
+	}
+	return true
+}
+
+// applyPersonMerged folds a PersonMerged event's resolved fields and the
+// merged-away person's name into the survivor's state.
+func (st *streamState) applyPersonMerged(fields map[string]any) {
+	if resolved, ok := fields["resolved_fields"].(map[string]any); ok {
+		for key, value := range resolved {
+			st.fields[key] = normalizeFieldValue(value)
+		}
+	}
+	if snapshot, ok := fields["merged_person_snapshot"].(map[string]any); ok {
+		st.mergedName = mergedPersonName(snapshot)
 	}
 }
 
