@@ -247,6 +247,13 @@ func buildPersonSnapshot(p *repository.PersonReadModel) map[string]any {
 	if p.DeathNotes != "" {
 		snapshot["death_notes"] = p.DeathNotes
 	}
+	// The GEDCOM TYPE under BIRT and DEAT (#1284), kept for the audit trail.
+	if p.BirthTypeDetail != "" {
+		snapshot["birth_type_detail"] = p.BirthTypeDetail
+	}
+	if p.DeathTypeDetail != "" {
+		snapshot["death_type_detail"] = p.DeathTypeDetail
+	}
 
 	return snapshot
 }
@@ -290,6 +297,30 @@ func resolveFields(survivor, merged *repository.PersonReadModel, resolution map[
 		if useMerged && field.mergedValue != "" && field.mergedValue != field.survivorValue {
 			resolved[field.name] = field.mergedValue
 			fieldsUpdated = append(fieldsUpdated, field.name)
+		}
+	}
+
+	// The birth and death TYPE is not resolvable on its own: it follows the
+	// event it describes. When the birth date or birth place resolves to the
+	// merged person, the survivor takes the merged person's birth TYPE too,
+	// even an empty one, so the TYPE always describes a date or place from the
+	// same person (#1352). Death works the same way. When both the date and
+	// place stay the survivor's, so does the TYPE.
+	typeDetails := []struct {
+		name          string
+		eventFields   [2]string
+		survivorValue string
+		mergedValue   string
+	}{
+		{"birth_type_detail", [2]string{"birth_date", "birth_place"}, survivor.BirthTypeDetail, merged.BirthTypeDetail},
+		{"death_type_detail", [2]string{"death_date", "death_place"}, survivor.DeathTypeDetail, merged.DeathTypeDetail},
+	}
+	for _, td := range typeDetails {
+		_, dateFromMerged := resolved[td.eventFields[0]]
+		_, placeFromMerged := resolved[td.eventFields[1]]
+		if (dateFromMerged || placeFromMerged) && td.mergedValue != td.survivorValue {
+			resolved[td.name] = td.mergedValue
+			fieldsUpdated = append(fieldsUpdated, td.name)
 		}
 	}
 

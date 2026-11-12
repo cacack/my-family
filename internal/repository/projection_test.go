@@ -2517,6 +2517,9 @@ func TestProjector_PersonMerged_WithResolvedFields(t *testing.T) {
 		"death_place":     "New York, NY",
 		"notes":           "Important notes",
 		"research_status": "verified",
+		// The birth and death TYPE follow the resolved date/place (#1352).
+		"birth_type_detail": "Home birth",
+		"death_type_detail": "Illness",
 	}
 
 	event := domain.NewPersonMerged(
@@ -2570,6 +2573,9 @@ func TestProjector_PersonMerged_WithResolvedFields(t *testing.T) {
 	}
 	if survivorRM.ResearchStatus != domain.ParseResearchStatus("verified") {
 		t.Errorf("ResearchStatus = %s, want verified", survivorRM.ResearchStatus)
+	}
+	if survivorRM.BirthTypeDetail != "Home birth" || survivorRM.DeathTypeDetail != "Illness" {
+		t.Errorf("BirthTypeDetail/DeathTypeDetail = %q/%q, want Home birth/Illness", survivorRM.BirthTypeDetail, survivorRM.DeathTypeDetail)
 	}
 }
 
