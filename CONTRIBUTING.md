@@ -33,10 +33,10 @@ This split keeps commits fast while catching coverage issues before CI.
 
 ### Manual Tool Installation
 
-If not using `make setup`:
+If not using `make setup`, install golangci-lint at the version pinned by `GOLANGCI_LINT_VERSION` in the `Makefile`:
 
 ```bash
-go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
+go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0
 go install github.com/vladopajic/go-test-coverage/v2@latest
 ln -sf ../../scripts/pre-commit .git/hooks/pre-commit
 ln -sf ../../scripts/pre-push .git/hooks/pre-push
