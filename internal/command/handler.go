@@ -442,10 +442,12 @@ func (h *Handler) rollbackEntity(ctx context.Context, entityType string, entityI
 	// Get current version from event store, on main per the guard above.
 	currentVersion, err := h.eventStore.GetStreamVersion(ctx, entityID, domain.MainBranchID)
 	if err != nil {
-		if errors.Is(err, repository.ErrStreamNotFound) {
-			return nil, query.ErrNoEvents
-		}
 		return nil, fmt.Errorf("getting stream version: %w", err)
+	}
+	// GetStreamVersion reports a stream with no events as version 0, not an
+	// error; surface that as "no history" rather than an invalid target version.
+	if currentVersion == 0 {
+		return nil, query.ErrNoEvents
 	}
 
 	// Validate target version is less than current version

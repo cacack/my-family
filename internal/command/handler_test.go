@@ -436,22 +436,6 @@ func TestRollbackPerson_DeletedEntity(t *testing.T) {
 	}
 }
 
-func TestRollbackPerson_NotFound(t *testing.T) {
-	eventStore := memory.NewEventStore()
-	readStore := memory.NewReadModelStore()
-	handler := command.NewHandler(eventStore, readStore)
-	ctx := context.Background()
-
-	// Try to rollback a non-existent person
-	nonExistentID := uuid.New()
-	_, err := handler.RollbackPerson(ctx, nonExistentID, 1)
-	// The memory event store returns version 0 for non-existent streams,
-	// which makes target version >= current version, causing ErrRollbackNoChanges
-	if err != command.ErrRollbackNoChanges && err != command.ErrRollbackInvalidVersion {
-		t.Errorf("Expected ErrRollbackNoChanges or ErrRollbackInvalidVersion, got %v", err)
-	}
-}
-
 func TestRollbackFamily_Success(t *testing.T) {
 	eventStore := memory.NewEventStore()
 	readStore := memory.NewReadModelStore()
@@ -1264,13 +1248,13 @@ func TestRollbackPerson_NonExistentEntity(t *testing.T) {
 	handler := command.NewHandler(eventStore, readStore)
 	ctx := context.Background()
 
-	// Try to rollback a non-existent person - memory store returns version 0
-	// so targetVersion >= currentVersion triggers ErrRollbackInvalidVersion
+	// GetStreamVersion reports a stream with no events as version 0; rollback
+	// surfaces that as query.ErrNoEvents (404), not an invalid version (400).
 	nonExistentID := uuid.New()
 	_, err := handler.RollbackPerson(ctx, nonExistentID, 1)
 
-	if err != command.ErrRollbackInvalidVersion {
-		t.Errorf("Expected ErrRollbackInvalidVersion for non-existent entity, got %v", err)
+	if !errors.Is(err, query.ErrNoEvents) {
+		t.Errorf("Expected query.ErrNoEvents for non-existent entity, got %v", err)
 	}
 }
 
@@ -1283,8 +1267,8 @@ func TestRollbackFamily_NonExistentEntity(t *testing.T) {
 	nonExistentID := uuid.New()
 	_, err := handler.RollbackFamily(ctx, nonExistentID, 1)
 
-	if err != command.ErrRollbackInvalidVersion {
-		t.Errorf("Expected ErrRollbackInvalidVersion for non-existent entity, got %v", err)
+	if !errors.Is(err, query.ErrNoEvents) {
+		t.Errorf("Expected query.ErrNoEvents for non-existent entity, got %v", err)
 	}
 }
 
@@ -1297,8 +1281,8 @@ func TestRollbackSource_NonExistentEntity(t *testing.T) {
 	nonExistentID := uuid.New()
 	_, err := handler.RollbackSource(ctx, nonExistentID, 1)
 
-	if err != command.ErrRollbackInvalidVersion {
-		t.Errorf("Expected ErrRollbackInvalidVersion for non-existent entity, got %v", err)
+	if !errors.Is(err, query.ErrNoEvents) {
+		t.Errorf("Expected query.ErrNoEvents for non-existent entity, got %v", err)
 	}
 }
 
@@ -1311,8 +1295,8 @@ func TestRollbackCitation_NonExistentEntity(t *testing.T) {
 	nonExistentID := uuid.New()
 	_, err := handler.RollbackCitation(ctx, nonExistentID, 1)
 
-	if err != command.ErrRollbackInvalidVersion {
-		t.Errorf("Expected ErrRollbackInvalidVersion for non-existent entity, got %v", err)
+	if !errors.Is(err, query.ErrNoEvents) {
+		t.Errorf("Expected query.ErrNoEvents for non-existent entity, got %v", err)
 	}
 }
 
