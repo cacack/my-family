@@ -2041,12 +2041,6 @@ class ApiClient {
 
 export const api = new ApiClient();
 
-/** Check if an error is a version conflict (409). For endpoints using requestWithConflictRetry, auto-retry has already been attempted. */
-export function isConflictError(error: unknown): boolean {
-	const apiError = error as ApiError;
-	return apiError?.status === 409 || apiError?.code === 'CONFLICT_RETRY_FAILED';
-}
-
 /**
  * Whether a 409 says the record changed since it was read (`VERSION_CONFLICT`),
  * as opposed to a refusal such as circular ancestry (`CONFLICT` or an
@@ -2055,6 +2049,16 @@ export function isConflictError(error: unknown): boolean {
 export function isVersionConflict(error: unknown): boolean {
 	const apiError = error as ApiError;
 	return apiError?.status === 409 && apiError.code === 'VERSION_CONFLICT';
+}
+
+/**
+ * Whether a write failed on a stale version, so retrying against the current
+ * version can succeed: a `VERSION_CONFLICT`, or one that
+ * `requestWithConflictRetry` already retried (`CONFLICT_RETRY_FAILED`). Any
+ * other 409 is a refusal whose message should be shown as it came (#988).
+ */
+export function isStaleVersion(error: unknown): boolean {
+	return isVersionConflict(error) || (error as ApiError)?.code === 'CONFLICT_RETRY_FAILED';
 }
 
 /** The prefix of the server's 400 for a path `{id}` that fails to parse. */

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { api, isConflictError, type Media } from '#lib/api/client.js';
+	import { api, isStaleVersion, type Media } from '#lib/api/client.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import MediaUpload from './MediaUpload.svelte';
 	import MediaLightbox from './MediaLightbox.svelte';
@@ -60,7 +60,7 @@
 		try {
 			await retryAction();
 		} catch (e) {
-			if (isConflictError(e)) {
+			if (isStaleVersion(e)) {
 				conflictError = true;
 			} else {
 				error = (e as { message?: string }).message || 'Operation failed';
@@ -89,7 +89,7 @@
 			mediaItems = mediaItems.filter((m) => m.id !== media.id);
 			conflictError = false;
 		} catch (e) {
-			if (isConflictError(e)) {
+			if (isStaleVersion(e)) {
 				conflictError = true;
 				retryAction = async () => {
 					deletingId = media.id;

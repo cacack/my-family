@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { api, isConflictError, type Media, type MediaType } from '#lib/api/client.js';
+	import { api, isStaleVersion, type Media, type MediaType } from '#lib/api/client.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import ConflictError from './ConflictError.svelte';
 	import { UPLOAD_MEDIA_TYPE_OPTIONS } from '#lib/utils/enumOptions.js';
@@ -124,7 +124,7 @@
 			description = '';
 			mediaType = 'photo';
 		} catch (e) {
-			if (isConflictError(e)) {
+			if (isStaleVersion(e)) {
 				conflictError = true;
 				retryAction = () => uploadFile();
 			} else {
@@ -143,7 +143,7 @@
 		try {
 			await retryAction();
 		} catch (e) {
-			if (isConflictError(e)) {
+			if (isStaleVersion(e)) {
 				conflictError = true;
 			} else {
 				error = (e as { message?: string }).message || 'Operation failed';

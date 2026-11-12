@@ -1,7 +1,7 @@
 <script lang="ts">
 	import {
 		api,
-		isConflictError,
+		isStaleVersion,
 		type Citation,
 		type EvidenceType,
 		type FactType,
@@ -140,7 +140,7 @@
 		try {
 			await retryAction();
 		} catch (e) {
-			if (isConflictError(e)) {
+			if (isStaleVersion(e)) {
 				conflictError = true;
 			} else {
 				error = (e as { message?: string }).message || 'Operation failed';
@@ -212,7 +212,7 @@
 			conflictError = false;
 			loadCitations();
 		} catch (e) {
-			if (isConflictError(e)) {
+			if (isStaleVersion(e)) {
 				conflictError = true;
 				retryAction = () => saveNewCitation();
 			} else {
@@ -233,7 +233,7 @@
 			conflictError = false;
 			loadCitations();
 		} catch (e) {
-			if (isConflictError(e)) {
+			if (isStaleVersion(e)) {
 				conflictError = true;
 				retryAction = async () => {
 					const result = await api.getPersonCitations(personId);
