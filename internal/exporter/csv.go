@@ -68,6 +68,7 @@ var DefaultEventFields = []string{
 	"owner_type",
 	"owner_id",
 	"fact_type",
+	"type_detail",
 	"date",
 	"place",
 	"description",
@@ -164,6 +165,7 @@ var AvailableEventFields = map[string]bool{
 	"owner_type":      true,
 	"owner_id":        true,
 	"fact_type":       true,
+	"type_detail":     true,
 	"date":            true,
 	"place":           true,
 	"description":     true,
@@ -652,6 +654,8 @@ func getEventFieldValue(e repository.EventReadModel, field string) string {
 		return e.OwnerID.String()
 	case "fact_type":
 		return string(e.FactType)
+	case "type_detail":
+		return e.TypeDetail
 	case "date":
 		return e.DateRaw
 	case "place":

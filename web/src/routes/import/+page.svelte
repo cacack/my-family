@@ -102,6 +102,7 @@
 		{ id: 'owner_type', label: 'Owner Type' },
 		{ id: 'owner_id', label: 'Owner ID' },
 		{ id: 'fact_type', label: 'Event Type' },
+		{ id: 'type_detail', label: 'Event Type Detail' },
 		{ id: 'date', label: 'Date' },
 		{ id: 'place', label: 'Place' },
 		{ id: 'description', label: 'Description' },

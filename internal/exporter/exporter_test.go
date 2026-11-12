@@ -971,6 +971,7 @@ func createTestEvent(t *testing.T, store *memory.ReadModelStore, ownerType strin
 		OwnerType:      ownerType,
 		OwnerID:        ownerID,
 		FactType:       domain.FactPersonOccupation,
+		TypeDetail:     "Seasonal",
 		DateRaw:        "1890",
 		Place:          "Springfield, IL",
 		Description:    "Worked as a farmer",
@@ -1606,6 +1607,7 @@ func TestCSVExporter_ExportEvents_AllFields(t *testing.T) {
 	allFields := []string{
 		"id", "owner_type", "owner_id", "fact_type", "date", "place",
 		"description", "cause", "age", "research_status", "version", "created_at",
+		"type_detail",
 	}
 
 	var buf bytes.Buffer
@@ -1633,6 +1635,7 @@ func TestCSVExporter_ExportEvents_AllFields(t *testing.T) {
 	assert.Equal(t, "", row[7]) // cause
 	assert.Equal(t, "25", row[8])
 	assert.Equal(t, "certain", row[9])
+	assert.Equal(t, "Seasonal", row[12])
 }
 
 // CSV Attributes Export Tests

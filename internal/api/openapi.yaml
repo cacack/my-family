@@ -10162,6 +10162,9 @@ components:
           format: uuid
         fact_type:
           $ref: '#/components/schemas/FactType'
+        type_detail:
+          type: string
+          description: The event's GEDCOM TYPE (e.g. "Migration"); omitted when the event has none
         date:
           type: string
           description: Date in GEDCOM format

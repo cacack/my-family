@@ -1239,6 +1239,9 @@ func convertEventToExport(e repository.EventReadModel) EventExport {
 		FactType:  FactType(e.FactType),
 	}
 
+	if e.TypeDetail != "" {
+		event.TypeDetail = &e.TypeDetail
+	}
 	if e.DateRaw != "" {
 		event.Date = &e.DateRaw
 	}

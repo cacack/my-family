@@ -6186,6 +6186,8 @@ export interface components {
             /** Format: uuid */
             owner_id: string;
             fact_type: components["schemas"]["FactType"];
+            /** @description The event's GEDCOM TYPE (e.g. "Migration"); omitted when the event has none */
+            type_detail?: string;
             /** @description Date in GEDCOM format */
             date?: string;
             place?: string;

@@ -3588,7 +3588,10 @@ type EventExport struct {
 	//
 	// Example: probable
 	ResearchStatus *ResearchStatus `json:"research_status,omitempty"`
-	Version        *int64          `json:"version,omitempty"`
+
+	// TypeDetail The event's GEDCOM TYPE (e.g. "Migration"); omitted when the event has none
+	TypeDetail *string `json:"type_detail,omitempty"`
+	Version    *int64  `json:"version,omitempty"`
 }
 
 // EventsExportResponse defines model for EventsExportResponse.
