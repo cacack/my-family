@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"slices"
 	"sort"
 	"strings"
 
@@ -742,7 +743,7 @@ func toGedcomIndividual(p repository.PersonReadModel, sourceXrefs map[uuid.UUID]
 	}
 
 	// Birth event
-	if p.BirthDateRaw != "" || p.BirthPlace != "" || p.BirthNotes != "" {
+	if hasBirthField(p) {
 		birthEvent := &gedcom.Event{Type: gedcom.EventBirth}
 		birthEvent.NoteXRefs, birthEvent.InlineNotes = splitNotes(p.BirthNotes, noteJoin)
 		if p.BirthDateRaw != "" {
@@ -762,12 +763,12 @@ func toGedcomIndividual(p repository.PersonReadModel, sourceXrefs map[uuid.UUID]
 			}
 		}
 		// Citations for birth
-		birthEvent.SourceCitations = toGedcomSourceCitations(birthCitations, sourceXrefs, readStore, ctx)
+		birthEvent.SourceCitations = toGedcomSourceCitations(fieldCitations(birthCitations, events), sourceXrefs, readStore, ctx)
 		indi.Events = append(indi.Events, birthEvent)
 	}
 
 	// Death event
-	if p.DeathDateRaw != "" || p.DeathPlace != "" || p.DeathNotes != "" {
+	if hasDeathField(p) {
 		deathEvent := &gedcom.Event{Type: gedcom.EventDeath}
 		deathEvent.NoteXRefs, deathEvent.InlineNotes = splitNotes(p.DeathNotes, noteJoin)
 		if p.DeathDateRaw != "" {
@@ -787,13 +788,15 @@ func toGedcomIndividual(p repository.PersonReadModel, sourceXrefs map[uuid.UUID]
 			}
 		}
 		// Citations for death
-		deathEvent.SourceCitations = toGedcomSourceCitations(deathCitations, sourceXrefs, readStore, ctx)
+		deathEvent.SourceCitations = toGedcomSourceCitations(fieldCitations(deathCitations, events), sourceXrefs, readStore, ctx)
 		indi.Events = append(indi.Events, deathEvent)
 	}
 
 	// Additional life events (burial, baptism, emigration, etc.)
 	for _, event := range events {
-		if gedcomEvent := toGedcomEvent(event, sourceXrefs, readStore, ctx); gedcomEvent != nil {
+		fieldOwnsUnlinked := (event.FactType == domain.FactPersonBirth && hasBirthField(p)) ||
+			(event.FactType == domain.FactPersonDeath && hasDeathField(p))
+		if gedcomEvent := toGedcomEvent(event, fieldOwnsUnlinked, sourceXrefs, readStore, ctx); gedcomEvent != nil {
 			indi.Events = append(indi.Events, gedcomEvent)
 		}
 	}
@@ -944,8 +947,40 @@ func toGedcomSourceCitations(citations []repository.CitationReadModel, sourceXre
 	return result
 }
 
+// hasBirthField, hasDeathField and hasMarriageField report whether the
+// person's birth or death, or the family's marriage, held on the record itself
+// rather than as a life event, is exported.
+func hasBirthField(p repository.PersonReadModel) bool {
+	return p.BirthDateRaw != "" || p.BirthPlace != "" || p.BirthNotes != ""
+}
+
+func hasDeathField(p repository.PersonReadModel) bool {
+	return p.DeathDateRaw != "" || p.DeathPlace != "" || p.DeathNotes != ""
+}
+
+func hasMarriageField(f repository.FamilyReadModel) bool {
+	return f.RelationshipType == domain.RelationMarriage || f.MarriageDateRaw != "" || f.MarriagePlace != "" || f.MarriageNotes != ""
+}
+
+// fieldCitations returns the citations of a birth, death or marriage held on
+// the person or family record: those of its fact type not linked to one of
+// the owner's life events, such as a NO BIRT (#1300).
+func fieldCitations(citations []repository.CitationReadModel, events []repository.EventReadModel) []repository.CitationReadModel {
+	var result []repository.CitationReadModel
+	for _, c := range citations {
+		if c.FactID != nil && slices.ContainsFunc(events, func(e repository.EventReadModel) bool { return e.ID == *c.FactID }) {
+			continue
+		}
+		result = append(result, c)
+	}
+	return result
+}
+
 // toGedcomEvent converts an EventReadModel to a gedcom.Event.
-func toGedcomEvent(event repository.EventReadModel, sourceXrefs map[uuid.UUID]string, readStore repository.ReadModelStore, ctx context.Context) *gedcom.Event {
+// fieldOwnsUnlinked is set when the owner also exports a birth, death or
+// marriage of the event's fact type from its own record; citations with no
+// fact_id (imported before #1294) are then written under that one only (#1300).
+func toGedcomEvent(event repository.EventReadModel, fieldOwnsUnlinked bool, sourceXrefs map[uuid.UUID]string, readStore repository.ReadModelStore, ctx context.Context) *gedcom.Event {
 	tagName := mapFactTypeToGedcomTag(event.FactType)
 	if tagName == "" {
 		return nil // Skip unknown event types
@@ -1008,6 +1043,9 @@ func toGedcomEvent(event repository.EventReadModel, sourceXrefs map[uuid.UUID]st
 	// the same fact type (#1294)
 	if readStore != nil {
 		citations, _ := readStore.GetCitationsForFactInstance(ctx, domain.MainBranchID, event.FactType, event.OwnerID, event.ID)
+		if fieldOwnsUnlinked {
+			citations = slices.DeleteFunc(citations, func(c repository.CitationReadModel) bool { return c.FactID == nil })
+		}
 		ge.SourceCitations = toGedcomSourceCitations(citations, sourceXrefs, readStore, ctx)
 	}
 
@@ -1089,7 +1127,7 @@ func toGedcomFamily(f repository.FamilyReadModel, personXrefs, sourceXrefs map[u
 	}
 
 	// Marriage event
-	if f.RelationshipType == domain.RelationMarriage || f.MarriageDateRaw != "" || f.MarriagePlace != "" || f.MarriageNotes != "" {
+	if hasMarriageField(f) {
 		marriageEvent := &gedcom.Event{Type: gedcom.EventMarriage}
 		marriageEvent.NoteXRefs, marriageEvent.InlineNotes = splitNotes(f.MarriageNotes, noteJoin)
 		if f.MarriageDateRaw != "" {
@@ -1109,13 +1147,14 @@ func toGedcomFamily(f repository.FamilyReadModel, personXrefs, sourceXrefs map[u
 			}
 		}
 		// Citations for marriage
-		marriageEvent.SourceCitations = toGedcomSourceCitations(marriageCitations, sourceXrefs, readStore, ctx)
+		marriageEvent.SourceCitations = toGedcomSourceCitations(fieldCitations(marriageCitations, events), sourceXrefs, readStore, ctx)
 		fam.Events = append(fam.Events, marriageEvent)
 	}
 
 	// Additional family events (divorce, annulment, engagement, etc.)
 	for _, event := range events {
-		if gedcomEvent := toGedcomEvent(event, sourceXrefs, readStore, ctx); gedcomEvent != nil {
+		fieldOwnsUnlinked := event.FactType == domain.FactFamilyMarriage && hasMarriageField(f)
+		if gedcomEvent := toGedcomEvent(event, fieldOwnsUnlinked, sourceXrefs, readStore, ctx); gedcomEvent != nil {
 			fam.Events = append(fam.Events, gedcomEvent)
 		}
 	}
