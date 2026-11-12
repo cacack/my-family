@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -647,4 +648,32 @@ func TestClassifyConflicts_ImportBackfillOnMainIsClean(t *testing.T) {
 
 	assert.Empty(t, classifyConflicts(branch.events, withoutBranchLifecycleEvents(main.events), nil))
 	assert.True(t, driftExcludedEventTypes["ImportedValuesBackfilled"], "a backfill must not count as main drift")
+}
+
+// TestClassifyConflicts_BrickWallBackfillOnMainIsClean covers a rebuild's log
+// of a pre-#802 brick wall (#802): it changes no data on main, so a branch that
+// deleted the person merges clean, as for an import backfill.
+func TestClassifyConflicts_BrickWallBackfillOnMainIsClean(t *testing.T) {
+	person := uuid.New()
+	branch := newEventLog(t).add(person, "person", domain.NewPersonDeleted(person, "duplicate"))
+	main := newEventLog(t).add(person, "person", domain.BrickWallBackfilled{
+		BaseEvent: domain.NewBaseEvent(), PersonID: person, Note: "no baptism found", Since: time.Now().UTC(),
+	})
+
+	assert.Empty(t, classifyConflicts(branch.events, withoutBranchLifecycleEvents(main.events), nil))
+	assert.True(t, driftExcludedEventTypes["BrickWallBackfilled"], "a backfill must not count as main drift")
+}
+
+// TestClassifyConflicts_BrickWallSetOnMainIsDeleteEdit pins the contrast: a
+// brick wall a researcher sets on main is a real change, so it still conflicts
+// with a branch that deleted the person.
+func TestClassifyConflicts_BrickWallSetOnMainIsDeleteEdit(t *testing.T) {
+	person := uuid.New()
+	branch := newEventLog(t).add(person, "person", domain.NewPersonDeleted(person, "duplicate"))
+	main := newEventLog(t).add(person, "person", domain.NewBrickWallSet(person, "no baptism found"))
+
+	conflicts := classifyConflicts(branch.events, withoutBranchLifecycleEvents(main.events), nil)
+	if assert.Len(t, conflicts, 1) {
+		assert.Equal(t, "delete_edit", string(conflicts[0].Kind))
+	}
 }

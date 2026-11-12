@@ -18,6 +18,13 @@ var testDuplicatePair, _ = domain.NewDuplicatePair(
 	uuid.MustParse("11111111-1111-1111-1111-111111111111"),
 	uuid.MustParse("22222222-2222-2222-2222-222222222222"))
 
+// testBrickWallPerson and testBrickWallSince are fixed values for the brick-wall
+// decode cases (#802).
+var (
+	testBrickWallPerson = uuid.MustParse("33333333-3333-3333-3333-333333333333")
+	testBrickWallSince  = time.Date(2020, 3, 1, 12, 0, 0, 0, time.UTC)
+)
+
 func TestEventStore_Append(t *testing.T) {
 	store := memory.NewEventStore()
 	ctx := context.Background()
@@ -996,6 +1003,51 @@ func TestStoredEvent_DecodeEvent_AllTypes(t *testing.T) {
 				}
 			},
 		},
+		{
+			name:      "BrickWallSet",
+			event:     domain.NewBrickWallSet(testBrickWallPerson, "no baptism found"),
+			eventType: "BrickWallSet",
+			validate: func(t *testing.T, decoded domain.Event) {
+				e, ok := decoded.(domain.BrickWallSet)
+				if !ok {
+					t.Fatalf("Expected BrickWallSet, got %T", decoded)
+				}
+				if e.PersonID != testBrickWallPerson || e.Note != "no baptism found" || e.Since.IsZero() {
+					t.Errorf("decoded %+v", e)
+				}
+			},
+		},
+		{
+			name:      "BrickWallResolved",
+			event:     domain.NewBrickWallResolved(testBrickWallPerson, "no baptism found", testBrickWallSince),
+			eventType: "BrickWallResolved",
+			validate: func(t *testing.T, decoded domain.Event) {
+				e, ok := decoded.(domain.BrickWallResolved)
+				if !ok {
+					t.Fatalf("Expected BrickWallResolved, got %T", decoded)
+				}
+				if e.PersonID != testBrickWallPerson || e.Note != "no baptism found" ||
+					!e.Since.Equal(testBrickWallSince) || e.ResolvedAt.IsZero() {
+					t.Errorf("decoded %+v", e)
+				}
+			},
+		},
+		{
+			name: "BrickWallBackfilled",
+			event: domain.BrickWallBackfilled{BaseEvent: domain.NewBaseEvent(), PersonID: testBrickWallPerson,
+				Note: "census gap", Since: testBrickWallSince, ResolvedAt: &testBrickWallSince},
+			eventType: "BrickWallBackfilled",
+			validate: func(t *testing.T, decoded domain.Event) {
+				e, ok := decoded.(domain.BrickWallBackfilled)
+				if !ok {
+					t.Fatalf("Expected BrickWallBackfilled, got %T", decoded)
+				}
+				if e.PersonID != testBrickWallPerson || e.Note != "census gap" ||
+					!e.Since.Equal(testBrickWallSince) || e.ResolvedAt == nil || !e.ResolvedAt.Equal(testBrickWallSince) {
+					t.Errorf("decoded %+v", e)
+				}
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -1093,6 +1145,7 @@ func TestStoredEvent_DecodeEvent_InvalidJSON_AllTypes(t *testing.T) {
 		"ResearchLogCreated", "ResearchLogUpdated", "ResearchLogDeleted",
 		"ProofSummaryCreated", "ProofSummaryUpdated", "ProofSummaryDeleted",
 		"DuplicateDismissed", "DuplicateRestored", "ImportedValuesBackfilled",
+		"BrickWallSet", "BrickWallResolved", "BrickWallBackfilled",
 	}
 
 	for _, eventType := range eventTypes {

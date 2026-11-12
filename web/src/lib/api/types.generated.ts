@@ -444,10 +444,10 @@ export interface paths {
         /**
          * List brick wall research blocks
          * @description Returns the brick wall research blocks. `?branch=` is NOT accepted here
-         *     and is silently ignored if supplied: brick walls are not event-sourced,
-         *     so there is no branch overlay to read
-         *     ([#761](https://github.com/cacack/my-family/issues/761)) and the response
-         *     is always the mainline.
+         *     and is silently ignored if supplied: brick walls are event-sourced
+         *     ([#802](https://github.com/cacack/my-family/issues/802)) but only the
+         *     mainline records them so far, so there is no branch overlay to read and
+         *     the response is always the mainline.
          */
         get: operations["getBrickWalls"];
         put?: never;
@@ -470,21 +470,20 @@ export interface paths {
         get?: never;
         /**
          * Mark person as a brick wall
-         * @description Marks the person as a brick wall. `?branch=` is NOT accepted here and is
-         *     silently ignored if supplied: brick walls are not event-sourced, so there
-         *     is no branch overlay to write to
-         *     ([#761](https://github.com/cacack/my-family/issues/761)) — the mark always
-         *     lands on the mainline and is visible from every branch.
+         * @description Marks the person as a brick wall, logged as a `BrickWallSet` event on the
+         *     person's history ([#802](https://github.com/cacack/my-family/issues/802)).
+         *     `?branch=` is NOT accepted here and is silently ignored if supplied: brick
+         *     walls are not branch-scoped yet, so the mark always lands on the mainline.
          */
         put: operations["setPersonBrickWall"];
         post?: never;
         /**
          * Resolve a brick wall (mark as broken through)
-         * @description Resolves the person's brick wall. `?branch=` is NOT accepted here and is
-         *     silently ignored if supplied: brick walls are not event-sourced, so there
-         *     is no branch overlay to write to
-         *     ([#761](https://github.com/cacack/my-family/issues/761)) — the resolution
-         *     always lands on the mainline and is visible from every branch.
+         * @description Resolves the person's brick wall, logged as a `BrickWallResolved` event on
+         *     the person's history ([#802](https://github.com/cacack/my-family/issues/802)).
+         *     A person with no unresolved brick wall is left as it is. `?branch=` is NOT
+         *     accepted here and is silently ignored if supplied: brick walls are not
+         *     branch-scoped yet, so the resolution always lands on the mainline.
          */
         delete: operations["resolvePersonBrickWall"];
         options?: never;

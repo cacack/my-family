@@ -29,8 +29,8 @@
 	 *   the branch (#1036), and so does a pair's merge page (#834): it shows the
 	 *   two persons as the branch sees them and merges them on the branch only
 	 * - `/history` — the global change feed
-	 * - `/browse/brick-walls` — brick walls are not event-sourced (#761; whether
-	 *   they become event-sourced is #802)
+	 * - `/browse/brick-walls` — brick walls are event-sourced (#802) but not
+	 *   branch-scoped yet (follow-up under #676)
 	 * - `/repositories` (list and detail, including its edit form) —
 	 *   repositories are main-only by decision (ADR-005), so creating, editing
 	 *   or deleting one writes the mainline and every branch sees it
@@ -59,7 +59,8 @@
 	 * Known gap: the brick-wall flag shown on a person page is part of the
 	 * person's row, which a branch copies the first time it writes that person.
 	 * For a person the branch has edited it therefore shows the flag as it stood
-	 * then, not a later mainline change (#802).
+	 * then, not a later mainline change, until brick walls are branch-scoped
+	 * (follow-up under #676).
 	 */
 	import { activeBranch } from '#lib/stores/activeBranch.svelte.js';
 

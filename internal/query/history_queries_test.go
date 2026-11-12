@@ -408,12 +408,6 @@ func (m *mockReadModelStore) GetMapLocations(ctx context.Context, branchID domai
 }
 
 // Brick wall stub methods
-func (m *mockReadModelStore) SetBrickWall(ctx context.Context, personID uuid.UUID, note string) error {
-	return nil
-}
-func (m *mockReadModelStore) ResolveBrickWall(ctx context.Context, personID uuid.UUID) error {
-	return nil
-}
 func (m *mockReadModelStore) GetBrickWalls(ctx context.Context, includeResolved bool) ([]repository.BrickWallEntry, error) {
 	return nil, nil
 }

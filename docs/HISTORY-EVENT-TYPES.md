@@ -31,6 +31,7 @@ mapped or not exercised by the every-type compare fixture
 | `PersonCreated` / `PersonUpdated` / `PersonDeleted` | `person` | created / updated / deleted | person's name | person page |
 | `NameAdded` / `NameUpdated` / `NameRemoved` | `person` | updated | person's name; `changes.name` holds the variant ("Given Surname") before/after | person page |
 | `PersonMerged` | `person` | merged | surviving person; `changes.merged_person` and each resolved field | person page |
+| `BrickWallSet` / `BrickWallResolved` | `person` | updated | person's name; `changes.brick_wall_note` (set) or `changes.brick_wall_resolved_at` (resolved), new value only (#802) | person page |
 | `FamilyCreated` / `FamilyUpdated` / `FamilyDeleted` | `family` | created / updated / deleted | "Partner & Partner" | family page |
 | `ChildLinkedToFamily` / `ChildUnlinkedFromFamily` | `family` | updated | family; `changes.children` names the child | family page |
 | `SourceCreated` / `SourceUpdated` / `SourceDeleted` | `source` | created / updated / deleted | title | source page |
@@ -68,6 +69,7 @@ while the log still names them. Nothing is read per entry.
 | `BranchMergeResumed` | A resume's decision record (#685): part of the merge it finishes, which the history shows once, as `BranchMerged`. Its decisions are on the branch's merge record (`merge_record` in `GET /branches/{id}/compare`). |
 | `BranchUpdated` | A research-record edit (#835): the branch's description, hypothesis, subjects, outcome and linked proof summaries describe the research and are shown on the branch itself; it changes no genealogical data. |
 | `ImportedValuesBackfilled` | A rebuild backfill (#1251): `myfamily rebuild` logs the place coordinates and EXIDs that an import made before #1225 wrote only to the read model. The import set them; the backfill changes no data. |
+| `BrickWallBackfilled` | A rebuild backfill (#802): `myfamily rebuild` logs the brick walls set before #802, when they lived only in the read model. The wall was already set; the backfill changes no data. |
 
 These events remain in the append-only log (ES-002) as the audit record; only the change-log
 views leave them out. The branch diff's `researchMetadataEventTypes` is either excluded here or

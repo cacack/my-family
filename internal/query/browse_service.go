@@ -409,7 +409,8 @@ type BrickWallItem struct {
 
 // GetBrickWalls returns brick wall entries.
 //
-// Main-only: brick walls are not event-sourced, so they have no branch overlay (sub-issue F, #761).
+// Main-only: brick walls are event-sourced (#802) but only main writes them, so
+// they have no branch overlay yet (branch-scoping them is follow-up under #676).
 func (s *BrowseService) GetBrickWalls(ctx context.Context, includeResolved bool) (*BrickWallsResult, error) {
 	// Always fetch all entries so counts are accurate regardless of filter
 	entries, err := s.readStore.GetBrickWalls(ctx, true)
@@ -447,18 +448,4 @@ func (s *BrowseService) GetBrickWalls(ctx context.Context, includeResolved bool)
 		ActiveCount:   activeCount,
 		ResolvedCount: resolvedCount,
 	}, nil
-}
-
-// SetBrickWall marks a person as a brick wall with a note.
-//
-// Main-only: brick walls are not event-sourced, so they have no branch overlay (sub-issue F, #761).
-func (s *BrowseService) SetBrickWall(ctx context.Context, personID uuid.UUID, note string) error {
-	return s.readStore.SetBrickWall(ctx, personID, note)
-}
-
-// ResolveBrickWall resolves a brick wall (marks as broken through).
-//
-// Main-only: brick walls are not event-sourced, so they have no branch overlay (sub-issue F, #761).
-func (s *BrowseService) ResolveBrickWall(ctx context.Context, personID uuid.UUID) error {
-	return s.readStore.ResolveBrickWall(ctx, personID)
 }

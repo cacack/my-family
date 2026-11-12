@@ -502,16 +502,10 @@ func (ss *StrictServer) GetBrickWalls(ctx context.Context, request GetBrickWalls
 
 // SetPersonBrickWall implements StrictServerInterface.
 func (ss *StrictServer) SetPersonBrickWall(ctx context.Context, request SetPersonBrickWallRequestObject) (SetPersonBrickWallResponseObject, error) {
-	// Check person exists
-	rm, err := ss.server.readStore.GetPerson(ctx, domain.MainBranchID, request.Id)
-	if err != nil {
-		return nil, err
-	}
-	if rm == nil {
-		return SetPersonBrickWall404JSONResponse{NotFoundJSONResponse{Message: "person not found"}}, nil
-	}
-
-	if err := ss.server.browseService.SetBrickWall(ctx, request.Id, request.Body.Note); err != nil {
+	if err := ss.server.commandHandler.SetBrickWall(ctx, request.Id, request.Body.Note); err != nil {
+		if errors.Is(err, command.ErrPersonNotFound) {
+			return SetPersonBrickWall404JSONResponse{NotFoundJSONResponse{Message: "person not found"}}, nil
+		}
 		return nil, err
 	}
 
@@ -520,16 +514,10 @@ func (ss *StrictServer) SetPersonBrickWall(ctx context.Context, request SetPerso
 
 // ResolvePersonBrickWall implements StrictServerInterface.
 func (ss *StrictServer) ResolvePersonBrickWall(ctx context.Context, request ResolvePersonBrickWallRequestObject) (ResolvePersonBrickWallResponseObject, error) {
-	// Check person exists
-	rm, err := ss.server.readStore.GetPerson(ctx, domain.MainBranchID, request.Id)
-	if err != nil {
-		return nil, err
-	}
-	if rm == nil {
-		return ResolvePersonBrickWall404JSONResponse{NotFoundJSONResponse{Message: "person not found"}}, nil
-	}
-
-	if err := ss.server.browseService.ResolveBrickWall(ctx, request.Id); err != nil {
+	if err := ss.server.commandHandler.ResolveBrickWall(ctx, request.Id); err != nil {
+		if errors.Is(err, command.ErrPersonNotFound) {
+			return ResolvePersonBrickWall404JSONResponse{NotFoundJSONResponse{Message: "person not found"}}, nil
+		}
 		return nil, err
 	}
 

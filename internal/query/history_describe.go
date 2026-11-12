@@ -433,6 +433,18 @@ var specialFieldChanges = map[string]func(fields map[string]any, prior *streamSt
 	"NameRemoved":              nameRemovedChanges,
 	"PersonMerged":             personMergedChanges,
 	"EvidenceConflictResolved": conflictResolvedChanges,
+	"BrickWallSet":             brickWallSetChanges,
+	"BrickWallResolved":        brickWallResolvedChanges,
+}
+
+// brickWallSetChanges reports the note of a brick wall set (#802).
+func brickWallSetChanges(fields map[string]any, _ *streamState, _ bool) map[string]FieldChange {
+	return map[string]FieldChange{"brick_wall_note": {NewValue: fields["note"]}}
+}
+
+// brickWallResolvedChanges reports when a brick wall was broken through (#802).
+func brickWallResolvedChanges(fields map[string]any, _ *streamState, _ bool) map[string]FieldChange {
+	return map[string]FieldChange{"brick_wall_resolved_at": {NewValue: fields["resolved_at"]}}
 }
 
 func nameAddedChanges(fields map[string]any, _ *streamState, _ bool) map[string]FieldChange {

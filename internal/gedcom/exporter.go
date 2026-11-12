@@ -306,7 +306,6 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 		birthCitations, _ := exp.readStore.GetCitationsForFact(ctx, domain.MainBranchID, domain.FactPersonBirth, p.ID)
 		deathCitations, _ := exp.readStore.GetCitationsForFact(ctx, domain.MainBranchID, domain.FactPersonDeath, p.ID)
 		nameCitations, _ := exp.readStore.GetCitationsForFact(ctx, domain.MainBranchID, domain.FactPersonName, p.ID)
-		result.CitationsExported += len(birthCitations) + len(deathCitations) + len(nameCitations)
 
 		// Fetch this person's names, their NOTE pointers remapped like the person's
 		names, _ := exp.readStore.GetPersonNames(ctx, domain.MainBranchID, p.ID)
@@ -347,6 +346,7 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 		indi.ExternalIDs = externalIDs.persons[p.ID]
 		indi.ChildInFamilies = childLinks[p.ID]
 		indi.SpouseInFamilies = spouseFamilies[p.ID]
+		result.CitationsExported += individualCitations(indi)
 		doc.Records = append(doc.Records, &gedcom.Record{
 			XRef:   xref,
 			Type:   gedcom.RecordTypeIndividual,
@@ -369,7 +369,6 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 		xref := familyXrefs[f.ID]
 		children, _ := exp.readStore.GetFamilyChildren(ctx, domain.MainBranchID, f.ID)
 		marriageCitations, _ := exp.readStore.GetCitationsForFact(ctx, domain.MainBranchID, domain.FactFamilyMarriage, f.ID)
-		result.CitationsExported += len(marriageCitations)
 
 		// Fetch events for this family
 		familyEvents, _ := exp.readStore.ListEventsForFamily(ctx, domain.MainBranchID, f.ID)
@@ -384,6 +383,7 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 
 		fam := toGedcomFamily(f, personXrefs, sourceXrefs, children, marriageCitations, familyEvents, familyLDSOrdinances, externalIDs.citationAPIDs, exp.readStore, ctx)
 		fam.ExternalIDs = externalIDs.families[f.ID]
+		result.CitationsExported += familyCitations(fam)
 		doc.Records = append(doc.Records, &gedcom.Record{
 			XRef:   xref,
 			Type:   gedcom.RecordTypeFamily,
@@ -1087,6 +1087,40 @@ func nameCitationsByName(citations []repository.CitationReadModel, names []repos
 		groups[i] = append(groups[i], c)
 	}
 	return groups
+}
+
+// individualCitations counts the source citations written under indi: the
+// count is taken from what is built, so a citation dropped on the way (its
+// source not exported, or a name citation with no NAME to go under) is not
+// counted, and one on a life event or attribute is (#1354).
+func individualCitations(indi *gedcom.Individual) int {
+	n := len(indi.SourceCitations)
+	for _, nm := range indi.Names {
+		n += len(nm.SourceCitations)
+	}
+	for _, e := range indi.Events {
+		n += len(e.SourceCitations)
+	}
+	for _, a := range indi.Attributes {
+		n += len(a.SourceCitations)
+	}
+	for _, a := range indi.Associations {
+		n += len(a.SourceCitations)
+	}
+	return n
+}
+
+// familyCitations counts the source citations written under fam, as
+// individualCitations does for an individual.
+func familyCitations(fam *gedcom.Family) int {
+	n := len(fam.SourceCitations)
+	for _, e := range fam.Events {
+		n += len(e.SourceCitations)
+	}
+	for _, a := range fam.Attributes {
+		n += len(a.SourceCitations)
+	}
+	return n
 }
 
 // toGedcomSourceCitations converts a slice of CitationReadModel to gedcom.SourceCitation slice.

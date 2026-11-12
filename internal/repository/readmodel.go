@@ -473,13 +473,11 @@ type DuplicateDismissalReadModel struct {
 // docs/adr/005-research-branch-data-model.md, "Entities that stay main-only", which is
 // also where to revisit it if a use case appears.
 //
-// Brick walls sit outside all four categories. SetBrickWall, ResolveBrickWall and
-// GetBrickWalls write and read the read model outside the event store, so there are no
-// branch-tagged events to project and no overlay to resolve; their backends only
-// constrain the query to main. Whether they should become event-sourced first is the
-// same call #624 made for snapshots (it chose to emit events and project the registry).
-// That answer is the precedent, but it has not been applied to brick walls; the open
-// question is recorded in the ADR section above (#761).
+// Brick walls sit outside all four categories. They are event-sourced (#802, following
+// #624's precedent for snapshots): BrickWallSet and BrickWallResolved live on the
+// person's stream and are projected onto the person's row. Only main emits them so far,
+// so GetBrickWalls constrains its query to main; branch-scoping them is an ordinary
+// follow-up under #676, recorded in the ADR section above.
 //
 // The branch SCOPE is the distinct domain.BranchID type (not a bare uuid) so
 // transposing it with an entity id is a compile error; the zero value equals
@@ -861,12 +859,10 @@ type ReadModelStore interface {
 
 	// Brick wall operations
 	//
-	// MAIN-ONLY: brick-wall state is written straight to the read model rather than
-	// projected from events, so there is no overlay to resolve. Branch-scoping them
-	// waits on deciding whether they become event-sourced, as #624 did for snapshots
-	// (ADR-005, "Entities that stay main-only"), not on a #676 sub-issue.
-	SetBrickWall(ctx context.Context, personID uuid.UUID, note string) error
-	ResolveBrickWall(ctx context.Context, personID uuid.UUID) error
+	// Brick walls are event-sourced (#802): BrickWallSet and BrickWallResolved are
+	// projected onto the person's row through SavePerson, so there is no write here.
+	// MAIN-ONLY: only main writes them so far; branch-scoping them is follow-up under
+	// #676 (ADR-005, "Entities that stay main-only").
 	GetBrickWalls(ctx context.Context, includeResolved bool) ([]BrickWallEntry, error)
 
 	// Projection repair (#845)

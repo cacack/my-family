@@ -2443,50 +2443,11 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 	return results, nil
 }
 
-// SetBrickWall marks a person as a brick wall with a note.
-//
-// MAIN-ONLY on purpose: brick-wall state is written straight to the read model rather
-// than projected from an event, so there is no overlay to copy-on-write into and the
-// main row is the only row to write. Whether brick walls should become branch-aware
-// waits on deciding whether they become event-sourced, as #624 did for snapshots
-// (ADR-005, "Entities that stay main-only") -- keep the main pin until that is decided.
-func (s *ReadModelStore) SetBrickWall(ctx context.Context, personID uuid.UUID, note string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	p, exists := s.persons[branchKey{domain.MainBranchID, personID}]
-	if !exists {
-		return nil
-	}
-	now := time.Now()
-	p.BrickWallNote = note
-	p.BrickWallSince = &now
-	p.BrickWallResolvedAt = nil
-	return nil
-}
-
-// ResolveBrickWall marks a brick wall as resolved.
-//
-// MAIN-ONLY on purpose, for the same reason as SetBrickWall: written outside the
-// event store, so there is no overlay to resolve (sub-issue F of #676, #761).
-func (s *ReadModelStore) ResolveBrickWall(ctx context.Context, personID uuid.UUID) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	p, exists := s.persons[branchKey{domain.MainBranchID, personID}]
-	if !exists {
-		return nil
-	}
-	now := time.Now()
-	p.BrickWallResolvedAt = &now
-	return nil
-}
-
 // GetBrickWalls returns persons with brick wall status.
 //
-// MAIN-ONLY for symmetry with SetBrickWall/ResolveBrickWall, which only ever write
-// the main row: reading a branch overlay here would report shadow rows whose
-// brick-wall fields no writer maintains (sub-issue F of #676, #761).
+// MAIN-ONLY: brick walls are event-sourced (#802), but only main writes them so
+// far (branch-scoping them is follow-up under #676), so reading a branch overlay
+// here would report shadow rows whose brick-wall fields no writer maintains.
 func (s *ReadModelStore) GetBrickWalls(ctx context.Context, includeResolved bool) ([]repository.BrickWallEntry, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

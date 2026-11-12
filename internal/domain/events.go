@@ -2006,3 +2006,64 @@ type ImportedValuesBackfilled struct {
 
 func (e ImportedValuesBackfilled) EventType() string      { return "ImportedValuesBackfilled" }
 func (e ImportedValuesBackfilled) AggregateID() uuid.UUID { return e.EntityID }
+
+// BrickWallSet event is emitted when a person is marked as a brick wall: a
+// research dead end, with a note on what was tried (#802). It lives on the
+// person's stream, as the claim is about the person, and replaces any earlier
+// brick wall, resolved or not. Since is when the wall was recorded, the
+// event's own time. A wall set before #802 is logged as BrickWallBackfilled.
+type BrickWallSet struct {
+	BaseEvent
+	PersonID uuid.UUID `json:"person_id"`
+	Note     string    `json:"note"`
+	Since    time.Time `json:"since"`
+}
+
+func (e BrickWallSet) EventType() string      { return "BrickWallSet" }
+func (e BrickWallSet) AggregateID() uuid.UUID { return e.PersonID }
+
+// NewBrickWallSet creates a BrickWallSet event recorded now.
+func NewBrickWallSet(personID uuid.UUID, note string) BrickWallSet {
+	base := NewBaseEvent()
+	return BrickWallSet{BaseEvent: base, PersonID: personID, Note: note, Since: base.Timestamp}
+}
+
+// BrickWallResolved event is emitted when a person's brick wall is broken
+// through (#802). It carries the whole brick wall it resolves (note and
+// since), so it fully states the person's brick-wall status on its own, as
+// BrickWallSet does.
+type BrickWallResolved struct {
+	BaseEvent
+	PersonID   uuid.UUID `json:"person_id"`
+	Note       string    `json:"note"`
+	Since      time.Time `json:"since"`
+	ResolvedAt time.Time `json:"resolved_at"`
+}
+
+func (e BrickWallResolved) EventType() string      { return "BrickWallResolved" }
+func (e BrickWallResolved) AggregateID() uuid.UUID { return e.PersonID }
+
+// NewBrickWallResolved creates a BrickWallResolved event, resolved now, for
+// the brick wall recorded with note at since.
+func NewBrickWallResolved(personID uuid.UUID, note string, since time.Time) BrickWallResolved {
+	base := NewBaseEvent()
+	return BrickWallResolved{BaseEvent: base, PersonID: personID, Note: note, Since: since, ResolvedAt: base.Timestamp}
+}
+
+// BrickWallBackfilled logs a brick wall that was set before #802, when brick
+// walls lived only in the read model (#802). `myfamily rebuild` appends it to
+// the person's main stream so the replay restores the wall. It states the whole
+// status, as BrickWallSet and BrickWallResolved do (ResolvedAt is nil for an
+// open wall), but is its own type because it changes no data: the wall was
+// already set. Like ImportedValuesBackfilled, it must not read as main editing
+// a person a branch deleted, count as drift, or show in history.
+type BrickWallBackfilled struct {
+	BaseEvent
+	PersonID   uuid.UUID  `json:"person_id"`
+	Note       string     `json:"note"`
+	Since      time.Time  `json:"since"`
+	ResolvedAt *time.Time `json:"resolved_at,omitempty"`
+}
+
+func (e BrickWallBackfilled) EventType() string      { return "BrickWallBackfilled" }
+func (e BrickWallBackfilled) AggregateID() uuid.UUID { return e.PersonID }
