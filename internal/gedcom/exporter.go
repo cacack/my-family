@@ -286,6 +286,11 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 		}
 	}
 
+	childLinks, err := pedigreeLinks(ctx, exp.readStore, familyXrefs)
+	if err != nil {
+		return nil, err
+	}
+
 	// Add individual records
 	for i, p := range persons {
 		xref := personXrefs[p.ID]
@@ -322,6 +327,7 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 		p.BirthNotes = notePointers.remap(p.BirthNotes, noteJoin)
 		p.DeathNotes = notePointers.remap(p.DeathNotes, noteJoin)
 		indi := toGedcomIndividual(p, sourceXrefs, personXrefs, birthCitations, deathCitations, events, attributes, associations, ldsOrdinances, exp.readStore, ctx)
+		indi.ChildInFamilies = childLinks[p.ID]
 		doc.Records = append(doc.Records, &gedcom.Record{
 			XRef:   xref,
 			Type:   gedcom.RecordTypeIndividual,
@@ -481,6 +487,9 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 		result.SourceVersion = report.SourceVersion
 		result.DataLoss = toDataLossDetails(report)
 	} else {
+		if targetVersion == gedcom.Version70 {
+			upcasePedigrees(doc)
+		}
 		if err := encoder.EncodeWithOptions(cw, doc, encodeOptions(targetVersion)); err != nil {
 			return result, fmt.Errorf("failed to write GEDCOM: %w", err)
 		}
@@ -494,6 +503,49 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 	}
 
 	return result, nil
+}
+
+// childPedigrees is the GEDCOM 5.5.1 PEDI value of each non-biological child
+// relationship, the one childPedigreeType reads back.
+var childPedigrees = map[domain.ChildRelationType]string{
+	domain.ChildAdopted: "adopted",
+	domain.ChildFoster:  "foster",
+}
+
+// pedigreeLinks returns, per person, a FAMC link with PEDI for each family
+// the person is an adopted or foster child of, in family xref order. A
+// biological child is linked by the family's CHIL alone, as before; without
+// the FAMC an imported adopted child came back biological (#622).
+func pedigreeLinks(ctx context.Context, readStore repository.ReadModelStore, familyXrefs map[uuid.UUID]string) (map[uuid.UUID][]gedcom.FamilyLink, error) {
+	children, err := readStore.ListAllFamilyChildren(ctx, domain.MainBranchID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list family children: %w", err)
+	}
+	links := map[uuid.UUID][]gedcom.FamilyLink{}
+	for _, c := range children {
+		pedigree, ok := childPedigrees[c.RelationshipType]
+		xref := familyXrefs[c.FamilyID]
+		if !ok || xref == "" {
+			continue
+		}
+		links[c.PersonID] = append(links[c.PersonID], gedcom.FamilyLink{FamilyXRef: xref, Pedigree: pedigree})
+	}
+	for _, l := range links {
+		sort.Slice(l, func(i, j int) bool { return l[i].FamilyXRef < l[j].FamilyXRef })
+	}
+	return links, nil
+}
+
+// upcasePedigrees writes each FAMC's PEDI in GEDCOM 7.0's upper-case
+// enumeration form ("ADOPTED" rather than 5.5.1's "adopted").
+func upcasePedigrees(doc *gedcom.Document) {
+	for _, rec := range doc.Records {
+		if indi, ok := rec.GetIndividual(); ok {
+			for i := range indi.ChildInFamilies {
+				indi.ChildInFamilies[i].Pedigree = strings.ToUpper(indi.ChildInFamilies[i].Pedigree)
+			}
+		}
+	}
 }
 
 // citationAncestryAPID returns the citation's Ancestry APID, kept as an

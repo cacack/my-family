@@ -546,3 +546,72 @@ func TestNestedNotes_RoundTrip(t *testing.T) {
 		t.Errorf("the association should keep its NOTE @N3@; got:\n%s", output)
 	}
 }
+
+func TestExport_ChildPedigreeRoundTrips(t *testing.T) {
+	// An adopted or foster child is exported with a FAMC carrying PEDI, so
+	// re-import keeps the relationship; a biological child stays linked by
+	// CHIL alone (#622).
+	ctx := context.Background()
+	readStore := memory.NewReadModelStore()
+	father, adopted, foster, born := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	for id, name := range map[uuid.UUID]string{father: "Father", adopted: "Adopted", foster: "Foster", born: "Born"} {
+		if err := readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
+			ID: id, GivenName: name, Surname: "Smith", FullName: name + " Smith",
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	familyID := uuid.New()
+	if err := readStore.SaveFamily(ctx, domain.MainBranchID, &repository.FamilyReadModel{ID: familyID, Partner1ID: &father}); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]domain.ChildRelationType{"Adopted": domain.ChildAdopted, "Foster": domain.ChildFoster, "Born": domain.ChildBiological}
+	for id, rel := range map[uuid.UUID]domain.ChildRelationType{adopted: domain.ChildAdopted, foster: domain.ChildFoster, born: domain.ChildBiological} {
+		if err := readStore.SaveFamilyChild(ctx, domain.MainBranchID, &repository.FamilyChildReadModel{
+			FamilyID: familyID, PersonID: id, RelationshipType: rel,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	for _, tc := range []struct {
+		version         gcgedcom.Version
+		adoptedPedigree string
+	}{
+		{gcgedcom.Version551, "adopted"},
+		{gcgedcom.Version70, "ADOPTED"},
+	} {
+		t.Run(string(tc.version), func(t *testing.T) {
+			buf := &bytes.Buffer{}
+			if _, err := gedcom.NewExporter(readStore).ExportWithOptions(ctx, buf, gedcom.ExportOptions{TargetVersion: tc.version}); err != nil {
+				t.Fatalf("Export failed: %v", err)
+			}
+			output := buf.String()
+			if !strings.Contains(output, "1 FAMC @F1@\n2 PEDI "+tc.adoptedPedigree+"\n") {
+				t.Errorf("export lacks the adopted child's FAMC with PEDI %s; got:\n%s", tc.adoptedPedigree, output)
+			}
+			if got := strings.Count(output, "1 FAMC "); got != 2 {
+				t.Errorf("export has %d FAMC lines, want 2 (adopted and foster only); got:\n%s", got, output)
+			}
+
+			_, persons, families, _, _, _, _, _, _, _, _, _, _, err := gedcom.NewImporter().Import(ctx, strings.NewReader(output))
+			if err != nil {
+				t.Fatalf("Re-import failed: %v", err)
+			}
+			if len(families) != 1 {
+				t.Fatalf("re-imported %d families, want 1", len(families))
+			}
+			names := map[uuid.UUID]string{}
+			for _, p := range persons {
+				names[p.ID] = p.GivenName
+			}
+			got := map[string]domain.ChildRelationType{}
+			for i, id := range families[0].ChildIDs {
+				got[names[id]] = families[0].ChildRelTypes[i]
+			}
+			if !maps.Equal(got, want) {
+				t.Errorf("re-imported child relationships = %v, want %v", got, want)
+			}
+		})
+	}
+}
