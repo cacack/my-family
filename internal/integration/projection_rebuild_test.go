@@ -97,13 +97,13 @@ func TestProjectionFailure_RecordedAndRepairedByRebuild(t *testing.T) {
 				t.Fatalf("create branch: %v", err)
 			}
 			notes := "branch only"
-			if _, err := h.WithBranch(branch).UpdatePerson(ctx, command.UpdatePersonInput{ID: ada.ID, Notes: &notes, Version: ada.Version}); err != nil {
+			if _, err := h.WithBranch(branch).UpdatePerson(ctx, command.UpdatePersonInput{ID: ada.ID, Notes: command.Set(notes), Version: ada.Version}); err != nil {
 				t.Fatalf("branch update: %v", err)
 			}
 			// John's branch row is copied from main before his brick wall is set,
 			// so it must not carry the brick wall after the rebuild either.
 			johnNotes := "branch edit"
-			if _, err := h.WithBranch(branch).UpdatePerson(ctx, command.UpdatePersonInput{ID: john.ID, Notes: &johnNotes, Version: john.Version}); err != nil {
+			if _, err := h.WithBranch(branch).UpdatePerson(ctx, command.UpdatePersonInput{ID: john.ID, Notes: command.Set(johnNotes), Version: john.Version}); err != nil {
 				t.Fatalf("branch update of John: %v", err)
 			}
 			if err := st.read.SetBrickWall(ctx, john.ID, "no parents found"); err != nil {

@@ -128,8 +128,8 @@ func TestUpdateSource(t *testing.T) {
 			name: "update multiple fields",
 			input: command.UpdateSourceInput{
 				ID:        createResult.ID,
-				Author:    strPtr("New Author"),
-				Publisher: strPtr("New Publisher"),
+				Author:    command.Set("New Author"),
+				Publisher: command.Set("New Publisher"),
 				Version:   2, // version from previous update
 			},
 			wantErr: false,
@@ -422,7 +422,7 @@ func TestUpdateCitation(t *testing.T) {
 			name: "update page",
 			input: command.UpdateCitationInput{
 				ID:      createResult.ID,
-				Page:    strPtr("200"),
+				Page:    command.Set("200"),
 				Version: createResult.Version,
 			},
 			wantErr: false,
@@ -431,9 +431,9 @@ func TestUpdateCitation(t *testing.T) {
 			name: "update GPS fields",
 			input: command.UpdateCitationInput{
 				ID:            createResult.ID,
-				SourceQuality: strPtr("original"),
-				InformantType: strPtr("primary"),
-				EvidenceType:  strPtr("direct"),
+				SourceQuality: command.Set("original"),
+				InformantType: command.Set("primary"),
+				EvidenceType:  command.Set("direct"),
 				Version:       2,
 			},
 			wantErr: false,
@@ -442,7 +442,7 @@ func TestUpdateCitation(t *testing.T) {
 			name: "wrong version",
 			input: command.UpdateCitationInput{
 				ID:      createResult.ID,
-				Page:    strPtr("300"),
+				Page:    command.Set("300"),
 				Version: 999,
 			},
 			wantErr: true,
@@ -451,7 +451,7 @@ func TestUpdateCitation(t *testing.T) {
 			name: "invalid evidence type",
 			input: command.UpdateCitationInput{
 				ID:           createResult.ID,
-				EvidenceType: strPtr("invalid"),
+				EvidenceType: command.Set("invalid"),
 				Version:      3,
 			},
 			wantErr: true,
@@ -575,14 +575,14 @@ func TestUpdateSource_AllFields(t *testing.T) {
 		ID:             createResult.ID,
 		SourceType:     strPtr("archive"),
 		Title:          strPtr("Updated Title"),
-		Author:         strPtr("New Author"),
-		Publisher:      strPtr("New Publisher"),
-		PublishDate:    strPtr("2024"),
-		URL:            strPtr("http://example.com"),
-		RepositoryName: strPtr("National Archives"),
-		CollectionName: strPtr("Census Records"),
-		CallNumber:     strPtr("ABC-123"),
-		Notes:          strPtr("Updated notes"),
+		Author:         command.Set("New Author"),
+		Publisher:      command.Set("New Publisher"),
+		PublishDate:    command.Set("2024"),
+		URL:            command.Set("http://example.com"),
+		RepositoryName: command.Set("National Archives"),
+		CollectionName: command.Set("Census Records"),
+		CallNumber:     command.Set("ABC-123"),
+		Notes:          command.Set("Updated notes"),
 		Version:        createResult.Version,
 	})
 	if err != nil {
@@ -721,7 +721,7 @@ func TestUpdateCitation_NotFound(t *testing.T) {
 	// Try to update non-existent citation
 	_, err := handler.UpdateCitation(ctx, command.UpdateCitationInput{
 		ID:      uuid.New(),
-		Page:    strPtr("Should Fail"),
+		Page:    command.Set("Should Fail"),
 		Version: 1,
 	})
 	if err != command.ErrCitationNotFound {
@@ -796,14 +796,14 @@ func TestUpdateCitation_AllFields(t *testing.T) {
 	// Update all fields
 	result, err := handler.UpdateCitation(ctx, command.UpdateCitationInput{
 		ID:            createResult.ID,
-		Page:          strPtr("123"),
-		Volume:        strPtr("Vol 1"),
-		SourceQuality: strPtr("original"),
-		InformantType: strPtr("primary"),
-		EvidenceType:  strPtr("direct"),
-		QuotedText:    strPtr("John Doe was born..."),
-		Analysis:      strPtr("This is a strong source"),
-		TemplateID:    strPtr("template-123"),
+		Page:          command.Set("123"),
+		Volume:        command.Set("Vol 1"),
+		SourceQuality: command.Set("original"),
+		InformantType: command.Set("primary"),
+		EvidenceType:  command.Set("direct"),
+		QuotedText:    command.Set("John Doe was born..."),
+		Analysis:      command.Set("This is a strong source"),
+		TemplateID:    command.Set("template-123"),
 		Version:       createResult.Version,
 	})
 	if err != nil {
@@ -852,7 +852,7 @@ func TestUpdateCitation_InvalidInformantType(t *testing.T) {
 	// Try to update with invalid informant type
 	_, err := handler.UpdateCitation(ctx, command.UpdateCitationInput{
 		ID:            createResult.ID,
-		InformantType: strPtr("invalid_type"),
+		InformantType: command.Set("invalid_type"),
 		Version:       createResult.Version,
 	})
 	if err == nil {
@@ -888,7 +888,7 @@ func TestUpdateCitation_InvalidSourceQuality(t *testing.T) {
 	// Try to update with invalid source quality
 	_, err := handler.UpdateCitation(ctx, command.UpdateCitationInput{
 		ID:            createResult.ID,
-		SourceQuality: strPtr("invalid_quality"),
+		SourceQuality: command.Set("invalid_quality"),
 		Version:       createResult.Version,
 	})
 	if err == nil {

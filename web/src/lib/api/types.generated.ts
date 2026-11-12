@@ -3363,16 +3363,17 @@ export interface components {
             notes?: string;
             research_status?: components["schemas"]["ResearchStatus"];
         };
+        /** @description Partial update. A field left out stays unchanged; an optional (nullable) field sent as null is cleared. Required fields reject null. */
         PersonUpdate: {
             given_name?: string;
-            surname?: string;
-            gender?: components["schemas"]["Gender"];
-            birth_date?: components["schemas"]["DateInput"];
-            birth_place?: string;
-            death_date?: components["schemas"]["DateInput"];
-            death_place?: string;
-            notes?: string;
-            research_status?: components["schemas"]["ResearchStatus"];
+            surname?: string | null;
+            gender?: components["schemas"]["Gender"] | null;
+            birth_date?: components["schemas"]["DateInput"] | null;
+            birth_place?: string | null;
+            death_date?: components["schemas"]["DateInput"] | null;
+            death_place?: string | null;
+            notes?: string | null;
+            research_status?: components["schemas"]["ResearchStatus"] | null;
             /**
              * Format: int64
              * @description Current version for optimistic locking
@@ -3457,30 +3458,33 @@ export interface components {
             marriage_date?: components["schemas"]["DateInput"];
             marriage_place?: string;
         };
+        /** @description Partial update. A field left out stays unchanged; an optional (nullable) field sent as null is cleared. Required fields reject null. */
         FamilyUpdate: {
             /**
              * Format: uuid
-             * @description Set partner 1 to this person. Omit to leave partner 1 unchanged.
+             * @description Set partner 1 to this person, or null to remove partner 1 from the family. Omit to leave partner 1 unchanged.
              */
-            partner1_id?: string;
+            partner1_id?: string | null;
             /**
              * Format: uuid
-             * @description Set partner 2 to this person. Omit to leave partner 2 unchanged.
+             * @description Set partner 2 to this person, or null to remove partner 2 from the family. Omit to leave partner 2 unchanged.
              */
-            partner2_id?: string;
+            partner2_id?: string | null;
             /**
-             * @description Remove partner 1 from the family. Cannot be combined with partner1_id.
+             * @deprecated
+             * @description Deprecated: send `partner1_id: null`. Remove partner 1 from the family. Cannot be combined with a partner1_id value.
              * @default false
              */
             clear_partner1?: boolean;
             /**
-             * @description Remove partner 2 from the family. Cannot be combined with partner2_id.
+             * @deprecated
+             * @description Deprecated: send `partner2_id: null`. Remove partner 2 from the family. Cannot be combined with a partner2_id value.
              * @default false
              */
             clear_partner2?: boolean;
-            relationship_type?: components["schemas"]["RelationType"];
-            marriage_date?: components["schemas"]["DateInput"];
-            marriage_place?: string;
+            relationship_type?: components["schemas"]["RelationType"] | null;
+            marriage_date?: components["schemas"]["DateInput"] | null;
+            marriage_place?: string | null;
             /** Format: int64 */
             version: number;
         };
@@ -4011,14 +4015,15 @@ export interface components {
             /** @description Total number of media items */
             total: number;
         };
+        /** @description Partial update. A field left out stays unchanged; an optional (nullable) field sent as null is cleared. Required fields reject null. */
         MediaUpdate: {
             title?: string;
-            description?: string;
+            description?: string | null;
             media_type?: components["schemas"]["MediaType"];
-            crop_left?: number;
-            crop_top?: number;
-            crop_width?: number;
-            crop_height?: number;
+            crop_left?: number | null;
+            crop_top?: number | null;
+            crop_width?: number | null;
+            crop_height?: number | null;
             /**
              * Format: int64
              * @description Current version for optimistic locking
@@ -4154,18 +4159,19 @@ export interface components {
             call_number?: string;
             notes?: string;
         };
+        /** @description Partial update. A field left out stays unchanged; an optional (nullable) field sent as null is cleared. Required fields reject null. */
         SourceUpdate: {
             source_type?: components["schemas"]["SourceType"];
             title?: string;
-            author?: string;
-            publisher?: string;
-            publish_date?: components["schemas"]["DateInput"];
+            author?: string | null;
+            publisher?: string | null;
+            publish_date?: components["schemas"]["DateInput"] | null;
             /** Format: uri */
-            url?: string;
-            repository_name?: string;
-            collection_name?: string;
-            call_number?: string;
-            notes?: string;
+            url?: string | null;
+            repository_name?: string | null;
+            collection_name?: string | null;
+            call_number?: string | null;
+            notes?: string | null;
             /**
              * Format: int64
              * @description Current version for optimistic locking
@@ -4219,17 +4225,18 @@ export interface components {
             /** @description Notes on this name (GEDCOM NAME.NOTE). NOTE pointers are kept as their xref. */
             notes?: string;
         };
+        /** @description Partial update. A field left out stays unchanged; an optional (nullable) field sent as null is cleared. Required fields reject null. */
         PersonNameUpdate: {
             given_name?: string;
             surname?: string;
-            name_prefix?: string;
-            name_suffix?: string;
-            surname_prefix?: string;
-            nickname?: string;
+            name_prefix?: string | null;
+            name_suffix?: string | null;
+            surname_prefix?: string | null;
+            nickname?: string | null;
             name_type?: components["schemas"]["NameType"];
             is_primary?: boolean;
             /** @description Notes on this name (GEDCOM NAME.NOTE). NOTE pointers are kept as their xref. */
-            notes?: string;
+            notes?: string | null;
         };
         PersonNameList: {
             items: components["schemas"]["PersonName"][];
@@ -4312,19 +4319,20 @@ export interface components {
             /** @description Optional GEDCOM cross-reference ID for import. Empty, or one @-delimited pointer (e.g. "@R1@") with no whitespace or interior @. */
             gedcom_xref?: string;
         };
+        /** @description Partial update. A field left out stays unchanged; an optional (nullable) field sent as null is cleared. Required fields reject null. */
         CitationUpdate: {
-            page?: string;
-            volume?: string;
-            source_quality?: components["schemas"]["SourceQuality"];
-            informant_type?: components["schemas"]["InformantType"];
-            evidence_type?: components["schemas"]["EvidenceType"];
-            quoted_text?: string;
-            analysis?: string;
-            template_id?: string;
+            page?: string | null;
+            volume?: string | null;
+            source_quality?: components["schemas"]["SourceQuality"] | null;
+            informant_type?: components["schemas"]["InformantType"] | null;
+            evidence_type?: components["schemas"]["EvidenceType"] | null;
+            quoted_text?: string | null;
+            analysis?: string | null;
+            template_id?: string | null;
             /** @description Template-specific field values */
             fields?: {
                 [key: string]: string;
-            };
+            } | null;
             /**
              * Format: int64
              * @description Current version for optimistic locking
@@ -5098,13 +5106,13 @@ export interface components {
             /** @description Proof summaries to link; must exist on the mainline */
             proof_summary_ids?: string[];
         };
-        /** @description Partial update; see `PATCH /branches/{id}`. */
+        /** @description Partial update; see `PATCH /branches/{id}`. A field left out stays unchanged; an optional (nullable) field sent as null is cleared. Required fields reject null. */
         BranchUpdate: {
-            description?: string;
-            hypothesis?: string;
-            subjects?: components["schemas"]["BranchSubjectInput"][];
+            description?: string | null;
+            hypothesis?: string | null;
+            subjects?: components["schemas"]["BranchSubjectInput"][] | null;
             outcome?: components["schemas"]["BranchOutcome"];
-            proof_summary_ids?: string[];
+            proof_summary_ids?: string[] | null;
         };
         BranchList: {
             items: components["schemas"]["Branch"][];
@@ -5854,6 +5862,7 @@ export interface components {
             /** @description Optional GEDCOM cross-reference ID for import. Empty, or one @-delimited pointer (e.g. "@R1@") with no whitespace or interior @. */
             gedcom_xref?: string;
         };
+        /** @description Partial update. A field left out stays unchanged; an optional (nullable) field sent as null is cleared. Required fields reject null. */
         NoteUpdate: {
             /** @description Updated note text */
             text?: string;
@@ -5941,21 +5950,22 @@ export interface components {
             /** @description Optional GEDCOM cross-reference ID for import. Empty, or one @-delimited pointer (e.g. "@R1@") with no whitespace or interior @. */
             gedcom_xref?: string;
         };
+        /** @description Partial update. A field left out stays unchanged; an optional (nullable) field sent as null is cleared. Required fields reject null. */
         SubmitterUpdate: {
             /** @description Updated submitter name */
             name?: string;
-            address?: components["schemas"]["Address"];
+            address?: components["schemas"]["Address"] | null;
             /** @description Updated phone numbers */
-            phone?: string[];
+            phone?: string[] | null;
             /** @description Updated email addresses */
-            email?: string[];
+            email?: string[] | null;
             /** @description Updated preferred language */
-            language?: string;
+            language?: string | null;
             /**
              * Format: uuid
              * @description Updated media ID
              */
-            media_id?: string;
+            media_id?: string | null;
             /**
              * Format: int64
              * @description Current version for optimistic locking
@@ -6001,14 +6011,15 @@ export interface components {
             /** @description Optional GEDCOM cross-reference ID for import. Empty, or one @-delimited pointer (e.g. "@R1@") with no whitespace or interior @. */
             gedcom_xref?: string;
         };
+        /** @description Partial update. A field left out stays unchanged; an optional (nullable) field sent as null is cleared. Required fields reject null. */
         RepositoryUpdate: {
             /** @description Updated repository name */
             name?: string;
-            address?: components["schemas"]["Address"];
+            address?: components["schemas"]["Address"] | null;
             /** @description Updated notes */
-            notes?: string;
+            notes?: string | null;
             /** @description Updated GEDCOM cross-reference ID. Empty, or one @-delimited pointer (e.g. "@R1@") with no whitespace or interior @. */
-            gedcom_xref?: string;
+            gedcom_xref?: string | null;
             /**
              * Format: int64
              * @description Current version for optimistic locking
@@ -6077,15 +6088,16 @@ export interface components {
             /** @description References to Note entities */
             note_ids?: string[];
         };
+        /** @description Partial update. A field left out stays unchanged; an optional (nullable) field sent as null is cleared. Required fields reject null. */
         AssociationUpdate: {
             /** @description Updated role */
             role?: string;
             /** @description Updated phrase */
-            phrase?: string;
+            phrase?: string | null;
             /** @description Updated notes */
-            notes?: string;
+            notes?: string | null;
             /** @description Updated note references */
-            note_ids?: string[];
+            note_ids?: string[] | null;
             /**
              * Format: int64
              * @description Current version for optimistic locking
@@ -6163,13 +6175,14 @@ export interface components {
             temple?: string;
             status?: components["schemas"]["LDSOrdinanceStatus"];
         };
+        /** @description Partial update. A field left out stays unchanged; an optional (nullable) field sent as null is cleared. Required fields reject null. */
         LDSOrdinanceUpdate: {
-            date?: components["schemas"]["DateInput"];
+            date?: components["schemas"]["DateInput"] | null;
             /** @description Updated place */
-            place?: string;
+            place?: string | null;
             /** @description Updated temple code */
-            temple?: string;
-            status?: components["schemas"]["LDSOrdinanceStatus"];
+            temple?: string | null;
+            status?: components["schemas"]["LDSOrdinanceStatus"] | null;
             /**
              * Format: int64
              * @description Current version for optimistic locking
@@ -6292,6 +6305,7 @@ export interface components {
             research_status?: components["schemas"]["ResearchStatus"];
             notes?: string;
         };
+        /** @description Partial update. A field left out stays unchanged; an optional (nullable) field sent as null is cleared. Required fields reject null. */
         EvidenceAnalysisUpdate: {
             fact_type?: components["schemas"]["FactType"];
             /** Format: uuid */
@@ -6302,11 +6316,11 @@ export interface components {
              *     create. Omitted, the link is kept, unless `fact_type` or
              *     `subject_id` changes: then the link is removed.
              */
-            fact_id?: string;
-            citation_ids?: string[];
+            fact_id?: string | null;
+            citation_ids?: string[] | null;
             conclusion?: string;
-            research_status?: components["schemas"]["ResearchStatus"];
-            notes?: string;
+            research_status?: components["schemas"]["ResearchStatus"] | null;
+            notes?: string | null;
             /** Format: int64 */
             version: number;
         };
@@ -6388,6 +6402,7 @@ export interface components {
             /** Format: date-time */
             search_date: string;
         };
+        /** @description Partial update. A field left out stays unchanged; an optional (nullable) field sent as null is cleared. Required fields reject null. */
         ResearchLogUpdate: {
             /** Format: uuid */
             subject_id?: string;
@@ -6395,7 +6410,7 @@ export interface components {
             repository?: string;
             search_description?: string;
             outcome?: components["schemas"]["ResearchOutcome"];
-            notes?: string;
+            notes?: string | null;
             /** Format: date-time */
             search_date?: string;
             /** Format: int64 */
@@ -6450,6 +6465,7 @@ export interface components {
             analysis_ids?: string[];
             research_status?: components["schemas"]["ResearchStatus"];
         };
+        /** @description Partial update. A field left out stays unchanged; an optional (nullable) field sent as null is cleared. Required fields reject null. */
         ProofSummaryUpdate: {
             fact_type?: components["schemas"]["FactType"];
             /** Format: uuid */
@@ -6460,11 +6476,11 @@ export interface components {
              *     create. Omitted, the link is kept, unless `fact_type` or
              *     `subject_id` changes: then the link is removed.
              */
-            fact_id?: string;
+            fact_id?: string | null;
             conclusion?: string;
             argument?: string;
-            analysis_ids?: string[];
-            research_status?: components["schemas"]["ResearchStatus"];
+            analysis_ids?: string[] | null;
+            research_status?: components["schemas"]["ResearchStatus"] | null;
             /** Format: int64 */
             version: number;
         };

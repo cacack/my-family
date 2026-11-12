@@ -54,7 +54,7 @@ func seedDanglingResume(t *testing.T) danglingSeed {
 	}
 	onBranch := f.handler.WithBranch(branch)
 	surname := "Byron"
-	if _, err := onBranch.UpdatePerson(ctx, command.UpdatePersonInput{ID: a.ID, Surname: &surname, Version: a.Version}); err != nil {
+	if _, err := onBranch.UpdatePerson(ctx, command.UpdatePersonInput{ID: a.ID, Surname: command.Set(surname), Version: a.Version}); err != nil {
 		t.Fatalf("branch UpdatePerson failed: %v", err)
 	}
 	if _, err := onBranch.LinkChild(ctx, command.LinkChildInput{FamilyID: family.ID, ChildID: p.ID}); err != nil {
@@ -222,7 +222,7 @@ func TestResumeMerge_DanglingCheckFollowsThisCallsMainResolution(t *testing.T) {
 	}
 	onBranch := f.handler.WithBranch(branch)
 	surname := "Byron"
-	if _, err := onBranch.UpdatePerson(ctx, command.UpdatePersonInput{ID: a.ID, Surname: &surname, Version: a.Version}); err != nil {
+	if _, err := onBranch.UpdatePerson(ctx, command.UpdatePersonInput{ID: a.ID, Surname: command.Set(surname), Version: a.Version}); err != nil {
 		t.Fatalf("branch UpdatePerson A failed: %v", err)
 	}
 	given := "George"
@@ -324,7 +324,7 @@ func seedEditedAndLinked(t *testing.T) (f *branchFixture, branch *domain.Branch,
 	}
 	onBranch := f.handler.WithBranch(branch)
 	surname := "Noel"
-	if _, err := onBranch.UpdatePerson(ctx, command.UpdatePersonInput{ID: person.ID, Surname: &surname, Version: person.Version}); err != nil {
+	if _, err := onBranch.UpdatePerson(ctx, command.UpdatePersonInput{ID: person.ID, Surname: command.Set(surname), Version: person.Version}); err != nil {
 		t.Fatalf("branch UpdatePerson P failed: %v", err)
 	}
 	if _, err := onBranch.LinkChild(ctx, command.LinkChildInput{FamilyID: fam.ID, ChildID: person.ID}); err != nil {
@@ -516,7 +516,7 @@ func TestMergeBranch_RefusesALinkToAPersonMergedAwayOnMain(t *testing.T) {
 	}
 	onBranch := f.handler.WithBranch(branch)
 	surname := "Noel"
-	if _, err := onBranch.UpdatePerson(ctx, command.UpdatePersonInput{ID: p.ID, Surname: &surname, Version: p.Version}); err != nil {
+	if _, err := onBranch.UpdatePerson(ctx, command.UpdatePersonInput{ID: p.ID, Surname: command.Set(surname), Version: p.Version}); err != nil {
 		t.Fatalf("branch UpdatePerson failed: %v", err)
 	}
 	if _, err := onBranch.LinkChild(ctx, command.LinkChildInput{FamilyID: family.ID, ChildID: p.ID}); err != nil {

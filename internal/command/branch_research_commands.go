@@ -52,15 +52,16 @@ type CreateBranchInput struct {
 }
 
 // UpdateBranchInput is a partial update of a branch's description and
-// research record (#835): a nil field is left as it is, a non-nil one
-// replaces the stored value (an empty string or empty slice clears it).
+// research record (#835): an omitted field is left as it is, a set one
+// replaces the stored value, and a clear (or an empty string or slice)
+// empties it. The outcome is required: nil leaves it as it is.
 type UpdateBranchInput struct {
 	BranchID        uuid.UUID
-	Description     *string
-	Hypothesis      *string
-	Subjects        *[]domain.BranchSubject
+	Description     Patch[string]
+	Hypothesis      Patch[string]
+	Subjects        Patch[[]domain.BranchSubject]
 	Outcome         *domain.BranchOutcome
-	ProofSummaryIDs *[]uuid.UUID
+	ProofSummaryIDs Patch[[]uuid.UUID]
 }
 
 // UpdateBranch edits a branch's description and research record (#835) by
@@ -151,8 +152,8 @@ func (h *Handler) UpdateBranch(ctx context.Context, input UpdateBranchInput) (*d
 
 // isEmpty reports whether the update names no field at all.
 func (input UpdateBranchInput) isEmpty() bool {
-	return input.Description == nil && input.Hypothesis == nil && input.Subjects == nil &&
-		input.Outcome == nil && input.ProofSummaryIDs == nil
+	return input.Description.Omitted() && input.Hypothesis.Omitted() && input.Subjects.Omitted() &&
+		input.Outcome == nil && input.ProofSummaryIDs.Omitted()
 }
 
 // allowedOn enforces the per-status rule documented on UpdateBranch.
@@ -161,7 +162,7 @@ func (input UpdateBranchInput) allowedOn(branch *domain.Branch) error {
 	case domain.BranchStatusActive:
 		return nil
 	case domain.BranchStatusMerged:
-		if input.Description != nil || input.Hypothesis != nil || input.Subjects != nil || input.ProofSummaryIDs != nil {
+		if !input.Description.Omitted() || !input.Hypothesis.Omitted() || !input.Subjects.Omitted() || !input.ProofSummaryIDs.Omitted() {
 			return ErrBranchFieldLocked
 		}
 		return nil
@@ -177,24 +178,24 @@ func (input UpdateBranchInput) applyTo(branch *domain.Branch) (*domain.Branch, [
 	updated.ApplyResearch(branch.Research())
 	var changed []string
 
-	if input.Description != nil && *input.Description != branch.Description {
-		updated.Description = *input.Description
+	if description, ok := input.Description.Change(); ok && description != branch.Description {
+		updated.Description = description
 		changed = append(changed, branchFieldDescription)
 	}
-	if input.Hypothesis != nil && *input.Hypothesis != branch.Hypothesis {
-		updated.Hypothesis = *input.Hypothesis
+	if hypothesis, ok := input.Hypothesis.Change(); ok && hypothesis != branch.Hypothesis {
+		updated.Hypothesis = hypothesis
 		changed = append(changed, branchFieldHypothesis)
 	}
-	if input.Subjects != nil && !slices.Equal(*input.Subjects, branch.Subjects) {
-		updated.Subjects = append([]domain.BranchSubject(nil), (*input.Subjects)...)
+	if subjects, ok := input.Subjects.Change(); ok && !slices.Equal(subjects, branch.Subjects) {
+		updated.Subjects = append([]domain.BranchSubject(nil), subjects...)
 		changed = append(changed, branchFieldSubjects)
 	}
 	if input.Outcome != nil && *input.Outcome != branch.Outcome {
 		updated.Outcome = *input.Outcome
 		changed = append(changed, branchFieldOutcome)
 	}
-	if input.ProofSummaryIDs != nil && !slices.Equal(*input.ProofSummaryIDs, branch.ProofSummaryIDs) {
-		updated.ProofSummaryIDs = append([]uuid.UUID(nil), (*input.ProofSummaryIDs)...)
+	if ids, ok := input.ProofSummaryIDs.Change(); ok && !slices.Equal(ids, branch.ProofSummaryIDs) {
+		updated.ProofSummaryIDs = append([]uuid.UUID(nil), ids...)
 		changed = append(changed, branchFieldProofSummaryIDs)
 	}
 	return &updated, changed

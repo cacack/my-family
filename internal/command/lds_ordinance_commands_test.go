@@ -183,7 +183,7 @@ func TestUpdateLDSOrdinance(t *testing.T) {
 			name: "update temple",
 			input: command.UpdateLDSOrdinanceInput{
 				ID:      createResult.ID,
-				Temple:  strPtr("LOGAN"),
+				Temple:  command.Set("LOGAN"),
 				Version: createResult.Version,
 			},
 			wantErr: false,
@@ -192,7 +192,7 @@ func TestUpdateLDSOrdinance(t *testing.T) {
 			name: "wrong version (optimistic locking)",
 			input: command.UpdateLDSOrdinanceInput{
 				ID:      createResult.ID,
-				Temple:  strPtr("MANTI"),
+				Temple:  command.Set("MANTI"),
 				Version: 999,
 			},
 			wantErr: true,
@@ -275,14 +275,14 @@ func TestLDSOrdinance_InvalidStatus(t *testing.T) {
 	}
 	if _, err := handler.UpdateLDSOrdinance(ctx, command.UpdateLDSOrdinanceInput{
 		ID:      createResult.ID,
-		Status:  strPtr("DONE"),
+		Status:  command.Set("DONE"),
 		Version: createResult.Version,
 	}); !errors.Is(err, command.ErrInvalidInput) {
 		t.Errorf("UpdateLDSOrdinance with an invalid status: err = %v, want ErrInvalidInput", err)
 	}
 	if _, err := handler.UpdateLDSOrdinance(ctx, command.UpdateLDSOrdinanceInput{
 		ID:      createResult.ID,
-		Status:  strPtr(string(domain.LDSStatusCompleted)),
+		Status:  command.Set(string(domain.LDSStatusCompleted)),
 		Version: createResult.Version,
 	}); err != nil {
 		t.Errorf("UpdateLDSOrdinance with a valid status failed: %v", err)
@@ -323,7 +323,7 @@ func TestUpdateLDSOrdinance_ImportedValuesDoNotBlockUnrelatedEdit(t *testing.T) 
 
 	result, err := handler.UpdateLDSOrdinance(ctx, command.UpdateLDSOrdinanceInput{
 		ID:      ord.ID,
-		Place:   strPtr("Logan"),
+		Place:   command.Set("Logan"),
 		Version: ord.Version,
 	})
 	if err != nil {
@@ -335,7 +335,7 @@ func TestUpdateLDSOrdinance_ImportedValuesDoNotBlockUnrelatedEdit(t *testing.T) 
 
 	if _, err := handler.UpdateLDSOrdinance(ctx, command.UpdateLDSOrdinanceInput{
 		ID:      ord.ID,
-		Temple:  strPtr("ANOTHERLONGTEMPLE"),
+		Temple:  command.Set("ANOTHERLONGTEMPLE"),
 		Version: result.Version,
 	}); !errors.Is(err, command.ErrInvalidInput) {
 		t.Errorf("update to an over-long temple: err = %v, want ErrInvalidInput", err)
@@ -352,7 +352,7 @@ func TestUpdateLDSOrdinance_NotFound(t *testing.T) {
 	// Try to update non-existent ordinance
 	_, err := handler.UpdateLDSOrdinance(ctx, command.UpdateLDSOrdinanceInput{
 		ID:      uuid.New(),
-		Temple:  strPtr("SLAKE"),
+		Temple:  command.Set("SLAKE"),
 		Version: 1,
 	})
 	if err != command.ErrLDSOrdinanceNotFound {
@@ -382,10 +382,10 @@ func TestUpdateLDSOrdinance_AllFields(t *testing.T) {
 	// Update all fields
 	result, err := handler.UpdateLDSOrdinance(ctx, command.UpdateLDSOrdinanceInput{
 		ID:      createResult.ID,
-		Date:    strPtr("15 JAN 1900"),
-		Place:   strPtr("Salt Lake Temple"),
-		Temple:  strPtr("SLAKE"),
-		Status:  strPtr("COMPLETED"),
+		Date:    command.Set("15 JAN 1900"),
+		Place:   command.Set("Salt Lake Temple"),
+		Temple:  command.Set("SLAKE"),
+		Status:  command.Set("COMPLETED"),
 		Version: createResult.Version,
 	})
 	if err != nil {

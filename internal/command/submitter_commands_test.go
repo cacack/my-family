@@ -151,14 +151,14 @@ func TestUpdateSubmitter_AllFields(t *testing.T) {
 	updateResult, err := handler.UpdateSubmitter(ctx, command.UpdateSubmitterInput{
 		ID:   createResult.ID,
 		Name: &newName,
-		Address: &domain.Address{
+		Address: command.Set(domain.Address{
 			Line1: "456 Oak Ave",
 			City:  "Boston",
-		},
-		Phone:    []string{"555-9999"},
-		Email:    []string{"jane@example.com"},
-		Language: &newLanguage,
-		MediaID:  &mediaID,
+		}),
+		Phone:    command.Set([]string{"555-9999"}),
+		Email:    command.Set([]string{"jane@example.com"}),
+		Language: command.Set(newLanguage),
+		MediaID:  command.Set(mediaID),
 		Version:  createResult.Version,
 	})
 	require.NoError(t, err)

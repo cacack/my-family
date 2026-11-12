@@ -45,7 +45,7 @@ func TestMergeBranch_RefusesAFamilyPartnerMainDeleted(t *testing.T) {
 		},
 		"updated to the partner": func(t *testing.T, onBranch *command.Handler, _, p uuid.UUID, mainFamily *command.CreateFamilyResult) uuid.UUID {
 			if _, err := onBranch.UpdateFamily(ctx, command.UpdateFamilyInput{
-				ID: mainFamily.ID, Partner2ID: &p, Version: mainFamily.Version,
+				ID: mainFamily.ID, Partner2ID: command.Set(p), Version: mainFamily.Version,
 			}); err != nil {
 				t.Fatalf("branch UpdateFamily failed: %v", err)
 			}
@@ -154,7 +154,7 @@ func TestResumeMerge_FamilyPartnerDeletedAfterTheInterruption(t *testing.T) {
 	}
 	onBranch := f.handler.WithBranch(branch)
 	surname := "Byron"
-	if _, err := onBranch.UpdatePerson(ctx, command.UpdatePersonInput{ID: a.ID, Surname: &surname, Version: a.Version}); err != nil {
+	if _, err := onBranch.UpdatePerson(ctx, command.UpdatePersonInput{ID: a.ID, Surname: command.Set(surname), Version: a.Version}); err != nil {
 		t.Fatalf("branch UpdatePerson failed: %v", err)
 	}
 	family, err := onBranch.CreateFamily(ctx, command.CreateFamilyInput{Partner1ID: &p.ID})

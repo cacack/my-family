@@ -8,5 +8,9 @@ generate:
 output-options:
   skip-prune: false
   skip-fmt: false
+  # Nullable schema properties become nullable.Nullable[T], which tells an
+  # absent field from an explicit null: update requests clear a field with
+  # null (#1359).
+  nullable-type: true
 compatibility:
   always-prefix-enum-values: true

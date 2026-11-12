@@ -258,21 +258,15 @@ func (ss *StrictServer) UpdateBranch(ctx context.Context, request UpdateBranchRe
 
 	body := request.Body
 	input := command.UpdateBranchInput{
-		BranchID:    request.Id,
-		Description: body.Description,
-		Hypothesis:  body.Hypothesis,
-	}
-	if body.Subjects != nil {
-		subjects := convertGeneratedBranchSubjects(*body.Subjects)
-		input.Subjects = &subjects
+		BranchID:        request.Id,
+		Description:     patchOf(body.Description),
+		Hypothesis:      patchOf(body.Hypothesis),
+		Subjects:        patchMap(body.Subjects, convertGeneratedBranchSubjects),
+		ProofSummaryIDs: patchOf(body.ProofSummaryIds),
 	}
 	if body.Outcome != nil {
 		outcome := domain.BranchOutcome(*body.Outcome)
 		input.Outcome = &outcome
-	}
-	if body.ProofSummaryIds != nil {
-		ids := append([]uuid.UUID{}, (*body.ProofSummaryIds)...)
-		input.ProofSummaryIDs = &ids
 	}
 
 	branch, err := ss.server.commandHandler.UpdateBranch(ctx, input)
@@ -985,9 +979,9 @@ func convertQueryMergeConflictsToGenerated(conflicts []query.MergeConflict) []Me
 				values[j] = MergeConflictField{
 					Field:       v.Field,
 					Label:       v.Label,
-					BaseValue:   v.BaseValue,
-					BranchValue: v.BranchValue,
-					MainValue:   v.MainValue,
+					BaseValue:   nullIfNil(v.BaseValue),
+					BranchValue: nullIfNil(v.BranchValue),
+					MainValue:   nullIfNil(v.MainValue),
 				}
 				if v.BaseUnknown {
 					unknown := true

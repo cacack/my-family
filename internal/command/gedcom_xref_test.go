@@ -37,7 +37,7 @@ func TestGedcomXref_ValidatedOnInput(t *testing.T) {
 			if err != nil {
 				return err
 			}
-			_, err = h.UpdateRepository(ctx, command.UpdateRepositoryInput{ID: created.ID, GedcomXref: &xref, Version: created.Version})
+			_, err = h.UpdateRepository(ctx, command.UpdateRepositoryInput{ID: created.ID, GedcomXref: command.Set(xref), Version: created.Version})
 			return err
 		},
 		"CreateNote": func(xref string) error {
@@ -98,7 +98,7 @@ func TestUpdateRepository_KeepsStoredLegacyXref(t *testing.T) {
 
 	legacy, renamed := "@R 1@", "Archive"
 	result, err := h.UpdateRepository(ctx, command.UpdateRepositoryInput{
-		ID: created.ID, Name: &renamed, GedcomXref: &legacy, Version: created.Version,
+		ID: created.ID, Name: &renamed, GedcomXref: command.Set(legacy), Version: created.Version,
 	})
 	if err != nil {
 		t.Fatalf("rename with the stored xref unchanged: %v", err)
@@ -106,7 +106,7 @@ func TestUpdateRepository_KeepsStoredLegacyXref(t *testing.T) {
 
 	cleared := ""
 	if _, err := h.UpdateRepository(ctx, command.UpdateRepositoryInput{
-		ID: created.ID, GedcomXref: &cleared, Version: result.Version,
+		ID: created.ID, GedcomXref: command.Set(cleared), Version: result.Version,
 	}); err != nil {
 		t.Fatalf("clear the stored xref: %v", err)
 	}

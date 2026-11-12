@@ -150,9 +150,9 @@
 		try {
 			await api.updateRepository(repository.id, {
 				name: formData.name.trim(),
-				// An empty address or string clears the field; an omitted one is
-				// left unchanged.
-				address: buildAddress(formData) ?? (repository.address ? {} : undefined),
+				// An emptied address is sent as null, which clears it (#1359); an
+				// empty string clears a text field.
+				address: buildAddress(formData) ?? null,
 				notes: formData.notes.trim(),
 				gedcom_xref: formData.gedcom_xref.trim(),
 				version: repository.version

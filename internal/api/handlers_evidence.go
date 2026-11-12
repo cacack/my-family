@@ -147,9 +147,12 @@ func (ss *StrictServer) UpdateEvidenceAnalysis(ctx context.Context, request Upda
 	}
 
 	input := command.UpdateEvidenceAnalysisInput{
-		ID:      request.Id,
-		FactID:  request.Body.FactId,
-		Version: request.Body.Version,
+		ID:             request.Id,
+		FactID:         patchOf(request.Body.FactId),
+		CitationIDs:    patchOf(request.Body.CitationIds),
+		ResearchStatus: patchString(request.Body.ResearchStatus),
+		Notes:          patchOf(request.Body.Notes),
+		Version:        request.Body.Version,
 	}
 	if request.Body.FactType != nil {
 		input.FactType = (*string)(request.Body.FactType)
@@ -158,18 +161,8 @@ func (ss *StrictServer) UpdateEvidenceAnalysis(ctx context.Context, request Upda
 		sid := *request.Body.SubjectId
 		input.SubjectID = &sid
 	}
-	if request.Body.CitationIds != nil {
-		input.CitationIDs = *request.Body.CitationIds
-	}
 	if request.Body.Conclusion != nil {
 		input.Conclusion = request.Body.Conclusion
-	}
-	if request.Body.ResearchStatus != nil {
-		rs := string(*request.Body.ResearchStatus)
-		input.ResearchStatus = &rs
-	}
-	if request.Body.Notes != nil {
-		input.Notes = request.Body.Notes
 	}
 
 	result, err := ss.branchWriter(branch).UpdateEvidenceAnalysis(ctx, input)
@@ -536,9 +529,7 @@ func (ss *StrictServer) UpdateResearchLog(ctx context.Context, request UpdateRes
 		o := string(*request.Body.Outcome)
 		input.Outcome = &o
 	}
-	if request.Body.Notes != nil {
-		input.Notes = request.Body.Notes
-	}
+	input.Notes = patchOf(request.Body.Notes)
 	if request.Body.SearchDate != nil {
 		input.SearchDate = request.Body.SearchDate
 	}
@@ -753,9 +744,11 @@ func (ss *StrictServer) UpdateProofSummary(ctx context.Context, request UpdatePr
 	}
 
 	input := command.UpdateProofSummaryInput{
-		ID:      request.Id,
-		FactID:  request.Body.FactId,
-		Version: request.Body.Version,
+		ID:             request.Id,
+		FactID:         patchOf(request.Body.FactId),
+		AnalysisIDs:    patchOf(request.Body.AnalysisIds),
+		ResearchStatus: patchString(request.Body.ResearchStatus),
+		Version:        request.Body.Version,
 	}
 	if request.Body.FactType != nil {
 		input.FactType = (*string)(request.Body.FactType)
@@ -769,13 +762,6 @@ func (ss *StrictServer) UpdateProofSummary(ctx context.Context, request UpdatePr
 	}
 	if request.Body.Argument != nil {
 		input.Argument = request.Body.Argument
-	}
-	if request.Body.AnalysisIds != nil {
-		input.AnalysisIDs = *request.Body.AnalysisIds
-	}
-	if request.Body.ResearchStatus != nil {
-		rs := string(*request.Body.ResearchStatus)
-		input.ResearchStatus = &rs
 	}
 
 	_, err = ss.branchWriter(branch).UpdateProofSummary(ctx, input)

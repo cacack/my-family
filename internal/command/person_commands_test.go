@@ -200,7 +200,7 @@ func TestUpdatePerson_ClearSurname(t *testing.T) {
 	empty := ""
 	if _, err := handler.UpdatePerson(ctx, command.UpdatePersonInput{
 		ID:      createResult.ID,
-		Surname: &empty,
+		Surname: command.Set(empty),
 		Version: createResult.Version,
 	}); err != nil {
 		t.Fatalf("UpdatePerson clearing surname failed: %v", err)
@@ -415,13 +415,13 @@ func TestUpdatePerson_AllFields(t *testing.T) {
 	updateResult, err := handler.UpdatePerson(ctx, command.UpdatePersonInput{
 		ID:         createResult.ID,
 		GivenName:  &newGiven,
-		Surname:    &newSurname,
-		Gender:     &newGender,
-		BirthDate:  &newBirthDate,
-		BirthPlace: &newBirthPlace,
-		DeathDate:  &newDeathDate,
-		DeathPlace: &newDeathPlace,
-		Notes:      &newNotes,
+		Surname:    command.Set(newSurname),
+		Gender:     command.Set(newGender),
+		BirthDate:  command.Set(newBirthDate),
+		BirthPlace: command.Set(newBirthPlace),
+		DeathDate:  command.Set(newDeathDate),
+		DeathPlace: command.Set(newDeathPlace),
+		Notes:      command.Set(newNotes),
 		Version:    createResult.Version,
 	})
 	if err != nil {
@@ -744,7 +744,7 @@ func TestPersonVersionConflictNoPartialState(t *testing.T) {
 	newPlace := "New York"
 	_, err = handler.UpdatePerson(ctx, command.UpdatePersonInput{
 		ID:         createResult.ID,
-		BirthPlace: &newPlace,
+		BirthPlace: command.Set(newPlace),
 		Version:    createResult.Version,
 	})
 	if err != nil {
@@ -758,8 +758,8 @@ func TestPersonVersionConflictNoPartialState(t *testing.T) {
 	_, err = handler.UpdatePerson(ctx, command.UpdatePersonInput{
 		ID:         createResult.ID,
 		GivenName:  &staleName,
-		BirthPlace: &stalePlace,
-		Notes:      &staleNotes,
+		BirthPlace: command.Set(stalePlace),
+		Notes:      command.Set(staleNotes),
 		Version:    1, // Stale version
 	})
 	if err == nil {

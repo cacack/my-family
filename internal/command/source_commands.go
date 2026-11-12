@@ -103,16 +103,16 @@ func (h *Handler) CreateSource(ctx context.Context, input CreateSourceInput) (*C
 // UpdateSourceInput contains the data for updating a source.
 type UpdateSourceInput struct {
 	ID             uuid.UUID
-	SourceType     *string
-	Title          *string
-	Author         *string
-	Publisher      *string
-	PublishDate    *string
-	URL            *string
-	RepositoryName *string
-	CollectionName *string
-	CallNumber     *string
-	Notes          *string
+	SourceType     *string // required: cannot be cleared
+	Title          *string // required: cannot be cleared
+	Author         Patch[string]
+	Publisher      Patch[string]
+	PublishDate    Patch[string]
+	URL            Patch[string]
+	RepositoryName Patch[string]
+	CollectionName Patch[string]
+	CallNumber     Patch[string]
+	Notes          Patch[string]
 	Version        int64 // Required for optimistic locking
 }
 
@@ -160,8 +160,8 @@ func (h *Handler) UpdateSource(ctx context.Context, input UpdateSourceInput) (*U
 		testSource.PublishDate = &pd
 	}
 
-	recordChange(changes, "source_type", input.SourceType, &testSource.SourceType)
-	recordChange(changes, "title", input.Title, &testSource.Title)
+	recordChange(changes, "source_type", SetPtr(input.SourceType), &testSource.SourceType)
+	recordChange(changes, "title", SetPtr(input.Title), &testSource.Title)
 	recordChange(changes, "author", input.Author, &testSource.Author)
 	recordChange(changes, "publisher", input.Publisher, &testSource.Publisher)
 	publishDate, publishChanged, err := changedDate("publish_date", input.PublishDate, current.PublishDateRaw)
@@ -390,19 +390,19 @@ func (h *Handler) checkFactInstance(ctx context.Context, factID uuid.UUID, factT
 // UpdateCitationInput contains the data for updating a citation.
 type UpdateCitationInput struct {
 	ID            uuid.UUID
-	SourceID      *uuid.UUID
-	FactType      *string
-	FactOwnerID   *uuid.UUID
-	Page          *string
-	Volume        *string
-	SourceQuality *string
-	InformantType *string
-	EvidenceType  *string
-	QuotedText    *string
-	Analysis      *string
-	TemplateID    *string
-	Fields        map[string]string // nil means no change; empty map clears fields
-	Version       int64             // Required for optimistic locking
+	SourceID      *uuid.UUID // required: cannot be cleared
+	FactType      *string    // required: cannot be cleared
+	FactOwnerID   *uuid.UUID // required: cannot be cleared
+	Page          Patch[string]
+	Volume        Patch[string]
+	SourceQuality Patch[string]
+	InformantType Patch[string]
+	EvidenceType  Patch[string]
+	QuotedText    Patch[string]
+	Analysis      Patch[string]
+	TemplateID    Patch[string]
+	Fields        Patch[map[string]string] // a clear (or an empty map) removes every field
+	Version       int64                    // Required for optimistic locking
 }
 
 // UpdateCitationResult contains the result of updating a citation.
@@ -473,39 +473,18 @@ func (h *Handler) UpdateCitation(ctx context.Context, input UpdateCitationInput)
 	if current.FactID != nil && (typeChanged || ownerChanged) {
 		changes["fact_id"] = nil
 	}
-	if input.Page != nil && *input.Page != current.Page {
-		testCitation.Page = *input.Page
-		changes["page"] = *input.Page
-	}
-	if input.Volume != nil && *input.Volume != current.Volume {
-		testCitation.Volume = *input.Volume
-		changes["volume"] = *input.Volume
-	}
-	if input.SourceQuality != nil && domain.SourceQuality(*input.SourceQuality) != current.SourceQuality {
-		testCitation.SourceQuality = domain.SourceQuality(*input.SourceQuality)
-		changes["source_quality"] = *input.SourceQuality
-	}
-	if input.InformantType != nil && domain.InformantType(*input.InformantType) != current.InformantType {
-		testCitation.InformantType = domain.InformantType(*input.InformantType)
-		changes["informant_type"] = *input.InformantType
-	}
-	if input.EvidenceType != nil && domain.EvidenceType(*input.EvidenceType) != current.EvidenceType {
-		testCitation.EvidenceType = domain.EvidenceType(*input.EvidenceType)
-		changes["evidence_type"] = *input.EvidenceType
-	}
-	if input.QuotedText != nil && *input.QuotedText != current.QuotedText {
-		testCitation.QuotedText = *input.QuotedText
-		changes["quoted_text"] = *input.QuotedText
-	}
-	if input.Analysis != nil && *input.Analysis != current.Analysis {
-		testCitation.Analysis = *input.Analysis
-		changes["analysis"] = *input.Analysis
-	}
-	if input.TemplateID != nil && *input.TemplateID != current.TemplateID {
-		testCitation.TemplateID = *input.TemplateID
-		changes["template_id"] = *input.TemplateID
-	}
-	if input.Fields != nil {
+	recordChange(changes, "page", input.Page, &testCitation.Page)
+	recordChange(changes, "volume", input.Volume, &testCitation.Volume)
+	recordChange(changes, "source_quality", input.SourceQuality, &testCitation.SourceQuality)
+	recordChange(changes, "informant_type", input.InformantType, &testCitation.InformantType)
+	recordChange(changes, "evidence_type", input.EvidenceType, &testCitation.EvidenceType)
+	recordChange(changes, "quoted_text", input.QuotedText, &testCitation.QuotedText)
+	recordChange(changes, "analysis", input.Analysis, &testCitation.Analysis)
+	recordChange(changes, "template_id", input.TemplateID, &testCitation.TemplateID)
+	if fields, ok := input.Fields.Change(); ok {
+		if fields == nil {
+			fields = map[string]string{}
+		}
 		// No stored fields compares as an empty map, so a form that sends none
 		// for a citation without any records no change.
 		var currentFields map[string]string
@@ -514,9 +493,9 @@ func (h *Handler) UpdateCitation(ctx context.Context, input UpdateCitationInput)
 				return nil, fmt.Errorf("decoding citation fields: %w", err)
 			}
 		}
-		if !maps.Equal(input.Fields, currentFields) {
-			testCitation.Fields = input.Fields
-			changes["fields"] = input.Fields
+		if !maps.Equal(fields, currentFields) {
+			testCitation.Fields = fields
+			changes["fields"] = fields
 		}
 	}
 

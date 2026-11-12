@@ -121,16 +121,12 @@ func (h *Handler) CreateFamily(ctx context.Context, input CreateFamilyInput) (*C
 
 // UpdateFamilyInput contains the data for updating a family.
 type UpdateFamilyInput struct {
-	ID         uuid.UUID
-	Partner1ID *uuid.UUID
-	Partner2ID *uuid.UUID
-	// ClearPartner1 and ClearPartner2 remove a partner from the family. Each is
-	// exclusive with setting the same partner in the same update.
-	ClearPartner1    bool
-	ClearPartner2    bool
-	RelationshipType *string
-	MarriageDate     *string
-	MarriagePlace    *string
+	ID               uuid.UUID
+	Partner1ID       Patch[uuid.UUID] // a clear removes the partner from the family
+	Partner2ID       Patch[uuid.UUID]
+	RelationshipType Patch[string]
+	MarriageDate     Patch[string]
+	MarriagePlace    Patch[string]
 	Version          int64
 }
 
@@ -170,13 +166,13 @@ func (h *Handler) UpdateFamily(ctx context.Context, input UpdateFamilyInput) (*U
 	// A field equal to its current value is not a change (the edit form sends
 	// every field), so only differing fields are recorded.
 	changes := make(map[string]any)
-	recordPartnerChange(changes, "partner1_id", family.Partner1ID, input.Partner1ID, input.ClearPartner1)
-	recordPartnerChange(changes, "partner2_id", family.Partner2ID, input.Partner2ID, input.ClearPartner2)
-	if input.RelationshipType != nil && domain.RelationType(*input.RelationshipType) != family.RelationshipType {
-		changes["relationship_type"] = *input.RelationshipType
+	recordIDChange(changes, "partner1_id", input.Partner1ID, family.Partner1ID)
+	recordIDChange(changes, "partner2_id", input.Partner2ID, family.Partner2ID)
+	if relType, ok := input.RelationshipType.Change(); ok && domain.RelationType(relType) != family.RelationshipType {
+		changes["relationship_type"] = relType
 	}
-	if input.MarriageDate != nil && *input.MarriageDate != family.MarriageDateRaw {
-		marriageDate, err := normalizeDateInput("marriage_date", *input.MarriageDate)
+	if date, ok := input.MarriageDate.Change(); ok && date != family.MarriageDateRaw {
+		marriageDate, err := normalizeDateInput("marriage_date", date)
 		if err != nil {
 			return nil, err
 		}
@@ -186,8 +182,8 @@ func (h *Handler) UpdateFamily(ctx context.Context, input UpdateFamilyInput) (*U
 			changes["marriage_date"] = marriageDate
 		}
 	}
-	if input.MarriagePlace != nil && *input.MarriagePlace != family.MarriagePlace {
-		changes["marriage_place"] = *input.MarriagePlace
+	if place, ok := input.MarriagePlace.Change(); ok && place != family.MarriagePlace {
+		changes["marriage_place"] = place
 	}
 
 	if len(changes) == 0 {
@@ -211,33 +207,16 @@ func (h *Handler) UpdateFamily(ctx context.Context, input UpdateFamilyInput) (*U
 	}, nil
 }
 
-// recordPartnerChange records under key a partner slot's new id, or nil when
-// the update clears a slot that has a partner. Setting the current partner
-// again, or clearing an empty slot, is not a change.
-func recordPartnerChange(changes map[string]any, key string, current, input *uuid.UUID, clearSlot bool) {
-	if input != nil && !samePartner(current, *input) {
-		changes[key] = input.String()
-	}
-	if clearSlot && current != nil {
-		changes[key] = nil
-	}
-}
-
-// samePartner reports whether a family's current partner is id.
-func samePartner(current *uuid.UUID, id uuid.UUID) bool {
-	return current != nil && *current == id
-}
-
-// validateFamilyUpdate checks an update against the family it changes: a
-// partner cannot be both set and cleared, a new partner must exist on the
+// validateFamilyUpdate checks an update against the family it changes: a new
+// partner must exist on the
 // handler's scope, at least one partner must remain and the two partners must
 // differ once the update is applied (the same rule CreateFamily and
 // domain.Family.Validate enforce), a new partner must not be one of the family's
 // children or their descendant (the same circular-ancestry rule LinkChild
 // enforces from the other side), and the relationship type must be known.
 func (h *Handler) validateFamilyUpdate(ctx context.Context, family *repository.FamilyReadModel, input UpdateFamilyInput) error {
-	if input.RelationshipType != nil && !domain.RelationType(*input.RelationshipType).IsValid() {
-		return fmt.Errorf("%w: invalid relationship_type %q", ErrInvalidFamilyInput, *input.RelationshipType)
+	if relType, ok := input.RelationshipType.Value(); ok && !domain.RelationType(relType).IsValid() {
+		return fmt.Errorf("%w: invalid relationship_type %q", ErrInvalidFamilyInput, relType)
 	}
 
 	if err := checkPartnersAfterUpdate(family, input); err != nil {
@@ -246,49 +225,32 @@ func (h *Handler) validateFamilyUpdate(ctx context.Context, family *repository.F
 
 	for _, change := range []struct {
 		field string
-		id    *uuid.UUID
+		id    Patch[uuid.UUID]
 	}{{"partner1_id", input.Partner1ID}, {"partner2_id", input.Partner2ID}} {
-		if change.id == nil {
+		id, ok := change.id.Value()
+		if !ok {
 			continue
 		}
-		person, err := h.readStore.GetPerson(ctx, h.branchID, *change.id)
+		person, err := h.readStore.GetPerson(ctx, h.branchID, id)
 		if err != nil {
 			return fmt.Errorf("getting %s: %w", change.field, err)
 		}
 		if person == nil {
 			return fmt.Errorf("%w: %s not found", ErrInvalidFamilyInput, change.field)
 		}
-		if err := h.checkPartnerNotDescendant(ctx, family.ID, *change.id); err != nil {
+		if err := h.checkPartnerNotDescendant(ctx, family.ID, id); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// checkPartnersAfterUpdate checks the partner slots an update leaves: a
-// partner cannot be both set and cleared in one update, at least one partner
-// must remain, and the two partners must be different people.
+// checkPartnersAfterUpdate checks the partner slots an update leaves: at
+// least one partner must remain, and the two partners must be different
+// people.
 func checkPartnersAfterUpdate(family *repository.FamilyReadModel, input UpdateFamilyInput) error {
-	if input.ClearPartner1 && input.Partner1ID != nil {
-		return fmt.Errorf("%w: partner1_id cannot be set and cleared in one update", ErrInvalidFamilyInput)
-	}
-	if input.ClearPartner2 && input.Partner2ID != nil {
-		return fmt.Errorf("%w: partner2_id cannot be set and cleared in one update", ErrInvalidFamilyInput)
-	}
-
-	partner1, partner2 := family.Partner1ID, family.Partner2ID
-	if input.Partner1ID != nil {
-		partner1 = input.Partner1ID
-	}
-	if input.Partner2ID != nil {
-		partner2 = input.Partner2ID
-	}
-	if input.ClearPartner1 {
-		partner1 = nil
-	}
-	if input.ClearPartner2 {
-		partner2 = nil
-	}
+	partner1 := partnerAfterUpdate(family.Partner1ID, input.Partner1ID)
+	partner2 := partnerAfterUpdate(family.Partner2ID, input.Partner2ID)
 	if partner1 == nil && partner2 == nil {
 		return fmt.Errorf("%w: a family must keep at least one partner", ErrInvalidFamilyInput)
 	}
@@ -297,6 +259,17 @@ func checkPartnersAfterUpdate(family *repository.FamilyReadModel, input UpdateFa
 	}
 
 	return nil
+}
+
+// partnerAfterUpdate returns the partner a slot holds once input is applied.
+func partnerAfterUpdate(current *uuid.UUID, input Patch[uuid.UUID]) *uuid.UUID {
+	if input.Cleared() {
+		return nil
+	}
+	if id, ok := input.Value(); ok {
+		return &id
+	}
+	return current
 }
 
 // checkPartnerNotDescendant refuses a partner who is one of the family's

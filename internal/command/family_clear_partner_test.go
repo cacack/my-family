@@ -17,7 +17,7 @@ import (
 func TestUpdateFamily_ClearsPartner(t *testing.T) {
 	f := newFamilyFixture(t)
 	if _, err := f.handler.UpdateFamily(f.ctx, command.UpdateFamilyInput{
-		ID: f.familyID, ClearPartner2: true, Version: f.version,
+		ID: f.familyID, Partner2ID: command.Clear[uuid.UUID](), Version: f.version,
 	}); err != nil {
 		t.Fatalf("UpdateFamily: %v", err)
 	}
@@ -52,7 +52,7 @@ func TestUpdateFamily_ClearsPartner(t *testing.T) {
 
 	// Clearing an already-empty slot is a no-op: nothing is appended.
 	if _, err := f.handler.UpdateFamily(f.ctx, command.UpdateFamilyInput{
-		ID: f.familyID, ClearPartner2: true, Version: f.version + 1,
+		ID: f.familyID, Partner2ID: command.Clear[uuid.UUID](), Version: f.version + 1,
 	}); err != nil {
 		t.Fatalf("second clear: %v", err)
 	}
@@ -71,7 +71,7 @@ func TestUpdateFamily_ClearsPartner(t *testing.T) {
 func TestUpdateFamily_ClearAndSwapPartners(t *testing.T) {
 	f := newFamilyFixture(t)
 	if _, err := f.handler.UpdateFamily(f.ctx, command.UpdateFamilyInput{
-		ID: f.familyID, ClearPartner1: true, Partner2ID: &f.p1, Version: f.version,
+		ID: f.familyID, Partner1ID: command.Clear[uuid.UUID](), Partner2ID: command.Set(f.p1), Version: f.version,
 	}); err != nil {
 		t.Fatalf("UpdateFamily: %v", err)
 	}
@@ -87,38 +87,6 @@ func TestUpdateFamily_ClearAndSwapPartners(t *testing.T) {
 	}
 }
 
-// TestUpdateFamily_SetAndClearSamePartnerRefused: one update cannot both set
-// and clear the same partner.
-func TestUpdateFamily_SetAndClearSamePartnerRefused(t *testing.T) {
-	for _, tc := range []struct {
-		name  string
-		input func(f *familyFixture) command.UpdateFamilyInput
-	}{
-		{"partner1", func(f *familyFixture) command.UpdateFamilyInput {
-			return command.UpdateFamilyInput{Partner1ID: &f.p3, ClearPartner1: true}
-		}},
-		{"partner2", func(f *familyFixture) command.UpdateFamilyInput {
-			return command.UpdateFamilyInput{Partner2ID: &f.p3, ClearPartner2: true}
-		}},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			f := newFamilyFixture(t)
-			input := tc.input(f)
-			input.ID, input.Version = f.familyID, f.version
-			if _, err := f.handler.UpdateFamily(f.ctx, input); !errors.Is(err, command.ErrInvalidFamilyInput) {
-				t.Fatalf("UpdateFamily error = %v, want ErrInvalidFamilyInput", err)
-			}
-			stream, err := f.events.ReadStream(f.ctx, f.familyID)
-			if err != nil {
-				t.Fatalf("ReadStream: %v", err)
-			}
-			if len(stream) != 1 {
-				t.Errorf("stream has %d events, want only the create", len(stream))
-			}
-		})
-	}
-}
-
 // TestUpdateFamily_CannotClearLastPartner (#826): a family must keep at least
 // one partner, the rule CreateFamily and domain.Family.Validate enforce.
 // Clearing both at once, or clearing the only remaining one, is refused and
@@ -127,7 +95,7 @@ func TestUpdateFamily_CannotClearLastPartner(t *testing.T) {
 	t.Run("both at once", func(t *testing.T) {
 		f := newFamilyFixture(t)
 		_, err := f.handler.UpdateFamily(f.ctx, command.UpdateFamilyInput{
-			ID: f.familyID, ClearPartner1: true, ClearPartner2: true, Version: f.version,
+			ID: f.familyID, Partner1ID: command.Clear[uuid.UUID](), Partner2ID: command.Clear[uuid.UUID](), Version: f.version,
 		})
 		if !errors.Is(err, command.ErrInvalidFamilyInput) {
 			t.Fatalf("UpdateFamily error = %v, want ErrInvalidFamilyInput", err)
@@ -137,12 +105,12 @@ func TestUpdateFamily_CannotClearLastPartner(t *testing.T) {
 	t.Run("last remaining", func(t *testing.T) {
 		f := newFamilyFixture(t)
 		if _, err := f.handler.UpdateFamily(f.ctx, command.UpdateFamilyInput{
-			ID: f.familyID, ClearPartner2: true, Version: f.version,
+			ID: f.familyID, Partner2ID: command.Clear[uuid.UUID](), Version: f.version,
 		}); err != nil {
 			t.Fatalf("clear partner2: %v", err)
 		}
 		_, err := f.handler.UpdateFamily(f.ctx, command.UpdateFamilyInput{
-			ID: f.familyID, ClearPartner1: true, Version: f.version + 1,
+			ID: f.familyID, Partner1ID: command.Clear[uuid.UUID](), Version: f.version + 1,
 		})
 		if !errors.Is(err, command.ErrInvalidFamilyInput) {
 			t.Fatalf("UpdateFamily error = %v, want ErrInvalidFamilyInput", err)

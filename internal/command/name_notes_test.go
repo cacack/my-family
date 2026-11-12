@@ -91,7 +91,7 @@ func TestNameNotes(t *testing.T) {
 	}
 
 	notes := "Spelling varies."
-	if _, err := handler.UpdateName(ctx, command.UpdateNameInput{PersonID: person.ID, NameID: alias.ID, Notes: &notes}); err != nil {
+	if _, err := handler.UpdateName(ctx, command.UpdateNameInput{PersonID: person.ID, NameID: alias.ID, Notes: command.Set(notes)}); err != nil {
 		t.Fatalf("update name: %v", err)
 	}
 	if got := notesOf(alias.ID); got != notes {

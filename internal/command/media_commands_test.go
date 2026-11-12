@@ -193,7 +193,7 @@ func TestUpdateMedia(t *testing.T) {
 			name: "update multiple fields",
 			input: command.UpdateMediaInput{
 				ID:          uploadResult.ID,
-				Description: strPtr("Updated Description"),
+				Description: command.Set("Updated Description"),
 				MediaType:   strPtr("document"),
 				Version:     2,
 			},
@@ -203,10 +203,10 @@ func TestUpdateMedia(t *testing.T) {
 			name: "update crop region",
 			input: command.UpdateMediaInput{
 				ID:         uploadResult.ID,
-				CropLeft:   intPtr(10),
-				CropTop:    intPtr(20),
-				CropWidth:  intPtr(100),
-				CropHeight: intPtr(150),
+				CropLeft:   command.Set(10),
+				CropTop:    command.Set(20),
+				CropWidth:  command.Set(100),
+				CropHeight: command.Set(150),
 				Version:    3,
 			},
 			wantErr: false,
@@ -381,11 +381,6 @@ func TestRollbackMedia(t *testing.T) {
 	if media.Title != "Original Title" {
 		t.Errorf("Title should be 'Original Title' after rollback, got %s", media.Title)
 	}
-}
-
-// Helper function to create *int pointers.
-func intPtr(i int) *int {
-	return &i
 }
 
 // TestUploadMedia_WithPDF tests uploading a PDF document.

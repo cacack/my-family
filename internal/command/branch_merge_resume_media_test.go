@@ -78,7 +78,7 @@ func (e evidenceResume) renameOnBranch(t *testing.T, h *command.Handler, branchI
 		t.Fatalf("GetPerson(%s) = %v, %v", id, p, err)
 	}
 	surname := "Revised"
-	if _, err := h.UpdatePerson(context.Background(), command.UpdatePersonInput{ID: id, Surname: &surname, Version: p.Version}); err != nil {
+	if _, err := h.UpdatePerson(context.Background(), command.UpdatePersonInput{ID: id, Surname: command.Set(surname), Version: p.Version}); err != nil {
 		t.Fatalf("branch UpdatePerson failed: %v", err)
 	}
 }

@@ -17,9 +17,9 @@ describe('partnerChanges', () => {
 
 	it('clears a removed partner rather than omitting it', () => {
 		expect(partnerChanges({ partner1_id: 'john-id', partner2_id: 'ann-id' }, john, null)).toEqual({
-			clear_partner2: true
+			partner2_id: null
 		});
-		expect(partnerChanges({ partner1_id: 'john-id' }, null, null)).toEqual({ clear_partner1: true });
+		expect(partnerChanges({ partner1_id: 'john-id' }, null, null)).toEqual({ partner1_id: null });
 	});
 
 	it('sends both ids for a swap', () => {

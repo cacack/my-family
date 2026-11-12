@@ -155,12 +155,12 @@ func TestUpdateRepository_AllFields(t *testing.T) {
 	updateResult, err := handler.UpdateRepository(ctx, command.UpdateRepositoryInput{
 		ID:   createResult.ID,
 		Name: &newName,
-		Address: &domain.Address{
+		Address: command.Set(domain.Address{
 			Line1: "789 Pine St",
 			City:  "Chicago",
-		},
-		Notes:      &newNotes,
-		GedcomXref: &newXref,
+		}),
+		Notes:      command.Set(newNotes),
+		GedcomXref: command.Set(newXref),
 		Version:    createResult.Version,
 	})
 	require.NoError(t, err)
