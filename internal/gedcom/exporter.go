@@ -385,7 +385,8 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 
 		// Notes carrying GEDCOM 7.0 metadata (MIME, language, or translations)
 		// round-trip as SNOTE records; plain notes stay as NOTE records for
-		// GEDCOM 5.5.1 compatibility.
+		// GEDCOM 5.5.1 compatibility, and become SNOTE records in a 7.0
+		// export (shareNoteRecords).
 		doc.Records = append(doc.Records, toGedcomNoteRecord(xref, n))
 		result.NotesExported++
 		processedItems++
@@ -489,6 +490,7 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 	} else {
 		if targetVersion == gedcom.Version70 {
 			upcasePedigrees(doc)
+			shareNoteRecords(doc)
 		}
 		if err := encoder.EncodeWithOptions(cw, doc, encodeOptions(targetVersion)); err != nil {
 			return result, fmt.Errorf("failed to write GEDCOM: %w", err)
@@ -544,6 +546,19 @@ func upcasePedigrees(doc *gedcom.Document) {
 			for i := range indi.ChildInFamilies {
 				indi.ChildInFamilies[i].Pedigree = strings.ToUpper(indi.ChildInFamilies[i].Pedigree)
 			}
+		}
+	}
+}
+
+// shareNoteRecords turns each plain NOTE record into an SNOTE record with the
+// same xref and text. GEDCOM 7.0 has no NOTE record, and its NOTE takes text,
+// so a pointer left as "NOTE @N1@" is read as the text "@N1@" (#622). The
+// encoder writes a 7.0 pointer to an SNOTE record as SNOTE.
+func shareNoteRecords(doc *gedcom.Document) {
+	for _, rec := range doc.Records {
+		if note, ok := rec.Entity.(*gedcom.Note); ok && rec.Type == gedcom.RecordTypeNote {
+			rec.Type = gedcom.RecordTypeSharedNote
+			rec.Entity = &gedcom.SharedNote{XRef: rec.XRef, Text: note.Text}
 		}
 	}
 }

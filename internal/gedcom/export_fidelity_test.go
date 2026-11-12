@@ -18,6 +18,15 @@ import (
 	"github.com/cacack/my-family/internal/repository/memory"
 )
 
+// notePointerTag is the tag a pointer to a shared note is written with at
+// version: GEDCOM 7.0's NOTE takes text, so 7.0 points with SNOTE (#622).
+func notePointerTag(version gcgedcom.Version) string {
+	if version == gcgedcom.Version70 {
+		return "SNOTE"
+	}
+	return "NOTE"
+}
+
 func TestExport_MultipleNotePointers(t *testing.T) {
 	// The importer joins a record's NOTE values into one Notes string, so a
 	// record with two shared-note pointers stores "@N1@\n\n@N2@". Export must
@@ -63,7 +72,12 @@ func TestExport_MultipleNotePointers(t *testing.T) {
 			}
 			output := buf.String()
 			// Three records (person, source, repository) each point at both notes.
-			for _, want := range []string{"1 NOTE @N1@\n", "1 NOTE @N2@\n"} {
+			ptr := notePointerTag(version)
+			// 7.0 has no NOTE record: a plain note is written as SNOTE there.
+			if want := "0 @N1@ " + ptr + " First note\n"; !strings.Contains(output, want) {
+				t.Errorf("export lacks note record %q; got:\n%s", want, output)
+			}
+			for _, want := range []string{"1 " + ptr + " @N1@\n", "1 " + ptr + " @N2@\n"} {
 				if got := strings.Count(output, want); got != 3 {
 					t.Errorf("export has %d %q lines, want 3; got:\n%s", got, want, output)
 				}
@@ -148,10 +162,11 @@ func TestExport_MixedNotePointerAndText(t *testing.T) {
 			output := buf.String()
 			// Person, source and repository each write the pointer with no
 			// subordinate CONT, then the text as its own NOTE.
-			if got := strings.Count(output, "1 NOTE @N1@\n1 NOTE some text\n"); got != 3 {
+			ptr := notePointerTag(version)
+			if got := strings.Count(output, "1 "+ptr+" @N1@\n1 NOTE some text\n"); got != 3 {
 				t.Errorf("export has %d pointer+text NOTE pairs, want 3; got:\n%s", got, output)
 			}
-			if strings.Contains(output, "1 NOTE @N1@\n2 CONT") {
+			if strings.Contains(output, "1 "+ptr+" @N1@\n2 CONT") {
 				t.Errorf("a note pointer must not carry CONT lines; got:\n%s", output)
 			}
 			if !strings.Contains(output, "1 NOTE plain text\n") {

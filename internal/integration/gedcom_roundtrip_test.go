@@ -63,6 +63,9 @@ func TestGedcomRoundTrip_FixturesKeepTheirTree(t *testing.T) {
 					if want := "2 VERS " + string(fixture.version) + "\n"; !strings.Contains(exported, want) {
 						t.Fatalf("export lacks %q:\n%s", want, exported)
 					}
+					if fixture.version == gcgedcom.Version70 {
+						assertSharedNotesExportedAsSNOTE(t, exported)
+					}
 
 					second := backend.setup(t)
 					importInto(t, ctx, second, []byte(exported))
@@ -97,6 +100,25 @@ func exportAt(t *testing.T, ctx context.Context, rs repository.ReadModelStore, v
 		t.Fatalf("export: %v", err)
 	}
 	return buf.String()
+}
+
+// noteRecordOrPointer matches a 5.5 NOTE record or NOTE pointer line. 7.0 has
+// neither: its NOTE takes text, so another reader takes "NOTE @N1@" as the
+// text "@N1@". The re-import cannot catch this, as it accepts both forms.
+var noteRecordOrPointer = regexp.MustCompile(`(?m)^(0 @[^@]+@ NOTE( |$)|\d+ NOTE @[^@]+@$)`)
+
+// assertSharedNotesExportedAsSNOTE checks a 7.0 export writes the fixture's
+// shared notes and the pointers to them as SNOTE, as the fixture does.
+func assertSharedNotesExportedAsSNOTE(t *testing.T, exported string) {
+	t.Helper()
+	for _, want := range []string{"\n0 @N1@ SNOTE ", "\n0 @N2@ SNOTE ", "\n1 SNOTE @N1@\n", "\n1 SNOTE @N2@\n", "\n2 SNOTE @N1@\n"} {
+		if !strings.Contains(exported, want) {
+			t.Errorf("7.0 export lacks %q:\n%s", strings.TrimSpace(want), exported)
+		}
+	}
+	if bad := noteRecordOrPointer.FindAllString(exported, -1); len(bad) > 0 {
+		t.Errorf("7.0 export has NOTE records or pointers %q:\n%s", bad, exported)
+	}
 }
 
 // assertGedcom7FixtureImported checks the first import kept what the 7.0
