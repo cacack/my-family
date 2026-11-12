@@ -93,10 +93,10 @@ func TestUpdatePerson_RejectsInvalidDates(t *testing.T) {
 		t.Fatalf("CreatePerson: %v", err)
 	}
 
-	_, err = handler.UpdatePerson(ctx, command.UpdatePersonInput{ID: created.ID, BirthDate: strPtr("garbage"), Version: created.Version})
+	_, err = handler.UpdatePerson(ctx, command.UpdatePersonInput{ID: created.ID, BirthDate: command.Set("garbage"), Version: created.Version})
 	requireDateError(t, err, "birth_date", "is not a recognized date")
 
-	_, err = handler.UpdatePerson(ctx, command.UpdatePersonInput{ID: created.ID, DeathDate: strPtr("31 FEB 19xx"), Version: created.Version})
+	_, err = handler.UpdatePerson(ctx, command.UpdatePersonInput{ID: created.ID, DeathDate: command.Set("31 FEB 19xx"), Version: created.Version})
 	requireDateError(t, err, "death_date", "is not a recognized date")
 }
 
@@ -117,7 +117,7 @@ func TestUpdatePerson_UnreadableStoredDateDoesNotBlockOtherEdits(t *testing.T) {
 		t.Fatalf("SavePerson: %v", err)
 	}
 
-	if _, err := handler.UpdatePerson(ctx, command.UpdatePersonInput{ID: created.ID, Notes: strPtr("edited"), Version: created.Version}); err != nil {
+	if _, err := handler.UpdatePerson(ctx, command.UpdatePersonInput{ID: created.ID, Notes: command.Set("edited"), Version: created.Version}); err != nil {
 		t.Errorf("UpdatePerson of notes = %v, want nil", err)
 	}
 }
@@ -138,11 +138,11 @@ func TestFamily_RejectsInvalidMarriageDate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateFamily: %v", err)
 	}
-	_, err = handler.UpdateFamily(ctx, command.UpdateFamilyInput{ID: family.ID, MarriageDate: strPtr("31 FEB 1900"), Version: family.Version})
+	_, err = handler.UpdateFamily(ctx, command.UpdateFamilyInput{ID: family.ID, MarriageDate: command.Set("31 FEB 1900"), Version: family.Version})
 	requireDateError(t, err, "marriage_date", "is not a real calendar date")
 
 	// Clearing the date stays allowed.
-	if _, err := handler.UpdateFamily(ctx, command.UpdateFamilyInput{ID: family.ID, MarriageDate: strPtr(""), Version: family.Version}); err != nil {
+	if _, err := handler.UpdateFamily(ctx, command.UpdateFamilyInput{ID: family.ID, MarriageDate: command.Set(""), Version: family.Version}); err != nil {
 		t.Errorf("clearing marriage_date = %v, want nil", err)
 	}
 }
@@ -163,7 +163,7 @@ func TestLDSOrdinance_RejectsInvalidDate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateLDSOrdinance: %v", err)
 	}
-	_, err = handler.UpdateLDSOrdinance(ctx, command.UpdateLDSOrdinanceInput{ID: ord.ID, Date: strPtr("garbage"), Version: ord.Version})
+	_, err = handler.UpdateLDSOrdinance(ctx, command.UpdateLDSOrdinanceInput{ID: ord.ID, Date: command.Set("garbage"), Version: ord.Version})
 	requireDateError(t, err, "date", "is not a recognized date")
 }
 
@@ -189,14 +189,14 @@ func TestSource_RejectsInvalidPublishDate(t *testing.T) {
 		t.Errorf("PublishDateRaw = %q, want 15 MAR 1920", source.PublishDateRaw)
 	}
 
-	_, err = handler.UpdateSource(ctx, command.UpdateSourceInput{ID: created.ID, PublishDate: strPtr("31 FEB 1900"), Version: created.Version})
+	_, err = handler.UpdateSource(ctx, command.UpdateSourceInput{ID: created.ID, PublishDate: command.Set("31 FEB 1900"), Version: created.Version})
 	requireDateError(t, err, "publish_date", "is not a real calendar date")
 
-	_, err = handler.UpdateSource(ctx, command.UpdateSourceInput{ID: created.ID, PublishDate: strPtr("garbage"), Version: created.Version})
+	_, err = handler.UpdateSource(ctx, command.UpdateSourceInput{ID: created.ID, PublishDate: command.Set("garbage"), Version: created.Version})
 	requireDateError(t, err, "publish_date", "is not a recognized date")
 
 	// Retyping the stored date in English is not a change.
-	same, err := handler.UpdateSource(ctx, command.UpdateSourceInput{ID: created.ID, PublishDate: strPtr("15 March 1920"), Version: created.Version})
+	same, err := handler.UpdateSource(ctx, command.UpdateSourceInput{ID: created.ID, PublishDate: command.Set("15 March 1920"), Version: created.Version})
 	if err != nil {
 		t.Fatalf("UpdateSource with the same date: %v", err)
 	}
@@ -204,7 +204,7 @@ func TestSource_RejectsInvalidPublishDate(t *testing.T) {
 		t.Errorf("version = %d, want unchanged %d", same.Version, created.Version)
 	}
 
-	if _, err := handler.UpdateSource(ctx, command.UpdateSourceInput{ID: created.ID, PublishDate: strPtr("(second edition, undated)"), Version: created.Version}); err != nil {
+	if _, err := handler.UpdateSource(ctx, command.UpdateSourceInput{ID: created.ID, PublishDate: command.Set("(second edition, undated)"), Version: created.Version}); err != nil {
 		t.Fatalf("UpdateSource with a date phrase: %v", err)
 	}
 	source, _ = readStore.GetSource(ctx, domain.MainBranchID, created.ID)
@@ -229,7 +229,7 @@ func TestDateInput_StoresEnglishAsGEDCOM(t *testing.T) {
 		t.Errorf("created dates = %q, %q, want ABT 1850, BEF SEP 1900", person.BirthDateRaw, person.DeathDateRaw)
 	}
 
-	updated, err := handler.UpdatePerson(ctx, command.UpdatePersonInput{ID: created.ID, BirthDate: strPtr("circa 1851"), DeathDate: strPtr("between 1900 and 1905"), Version: created.Version})
+	updated, err := handler.UpdatePerson(ctx, command.UpdatePersonInput{ID: created.ID, BirthDate: command.Set("circa 1851"), DeathDate: command.Set("between 1900 and 1905"), Version: created.Version})
 	if err != nil {
 		t.Fatalf("UpdatePerson: %v", err)
 	}
@@ -239,7 +239,7 @@ func TestDateInput_StoresEnglishAsGEDCOM(t *testing.T) {
 	}
 
 	// Typing the stored date in English again is not a change.
-	same, err := handler.UpdatePerson(ctx, command.UpdatePersonInput{ID: created.ID, BirthDate: strPtr("c. 1851"), Version: updated.Version})
+	same, err := handler.UpdatePerson(ctx, command.UpdatePersonInput{ID: created.ID, BirthDate: command.Set("c. 1851"), Version: updated.Version})
 	if err != nil {
 		t.Fatalf("UpdatePerson with the same date: %v", err)
 	}
@@ -255,7 +255,7 @@ func TestDateInput_StoresEnglishAsGEDCOM(t *testing.T) {
 	if f.MarriageDateRaw != "5 JUN 1875" {
 		t.Errorf("created marriage date = %q, want 5 JUN 1875", f.MarriageDateRaw)
 	}
-	if _, err := handler.UpdateFamily(ctx, command.UpdateFamilyInput{ID: family.ID, MarriageDate: strPtr("after 1875"), Version: family.Version}); err != nil {
+	if _, err := handler.UpdateFamily(ctx, command.UpdateFamilyInput{ID: family.ID, MarriageDate: command.Set("after 1875"), Version: family.Version}); err != nil {
 		t.Fatalf("UpdateFamily: %v", err)
 	}
 	f, _ = readStore.GetFamily(ctx, domain.MainBranchID, family.ID)
@@ -271,7 +271,7 @@ func TestDateInput_StoresEnglishAsGEDCOM(t *testing.T) {
 	if o.DateRaw != "FROM 1860 TO 1861" {
 		t.Errorf("created ordinance date = %q, want FROM 1860 TO 1861", o.DateRaw)
 	}
-	if _, err := handler.UpdateLDSOrdinance(ctx, command.UpdateLDSOrdinanceInput{ID: ord.ID, Date: strPtr("about Jan 1862"), Version: ord.Version}); err != nil {
+	if _, err := handler.UpdateLDSOrdinance(ctx, command.UpdateLDSOrdinanceInput{ID: ord.ID, Date: command.Set("about Jan 1862"), Version: ord.Version}); err != nil {
 		t.Fatalf("UpdateLDSOrdinance: %v", err)
 	}
 	o, _ = readStore.GetLDSOrdinance(ctx, ord.ID)

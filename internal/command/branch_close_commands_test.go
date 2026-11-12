@@ -206,7 +206,7 @@ func newClosedResearchFixture(t *testing.T) closedResearchFixture {
 		t.Fatalf("CreateResearchLog about branch person: %v", err)
 	}
 	notes := "Re-checked"
-	if _, err := onBranch.UpdateResearchLog(ctx, command.UpdateResearchLogInput{ID: mainLog.ID, Notes: &notes, Version: mainLog.Version}); err != nil {
+	if _, err := onBranch.UpdateResearchLog(ctx, command.UpdateResearchLogInput{ID: mainLog.ID, Notes: command.Set(notes), Version: mainLog.Version}); err != nil {
 		t.Fatalf("UpdateResearchLog on branch: %v", err)
 	}
 	if err := f.handler.CloseBranch(ctx, branch.ID, domain.BranchOutcomeDisproved, "Other parents named"); err != nil {

@@ -93,10 +93,10 @@ func (h *Handler) CreateAssociation(ctx context.Context, input CreateAssociation
 // UpdateAssociationInput contains the data for updating an association.
 type UpdateAssociationInput struct {
 	ID      uuid.UUID
-	Role    *string
-	Phrase  *string
-	Notes   *string
-	NoteIDs *[]uuid.UUID
+	Role    *string // required: cannot be cleared
+	Phrase  Patch[string]
+	Notes   Patch[string]
+	NoteIDs Patch[[]uuid.UUID]
 	Version int64 // Required for optimistic locking
 }
 
@@ -136,37 +136,21 @@ func (h *Handler) UpdateAssociation(ctx context.Context, input UpdateAssociation
 		testAssociation.Role = *input.Role
 	}
 
-	if input.Phrase != nil && *input.Phrase != current.Phrase {
-		changes["phrase"] = *input.Phrase
-		testAssociation.Phrase = *input.Phrase
+	recordChange(changes, "phrase", input.Phrase, &testAssociation.Phrase)
+	if notes, ok := input.Notes.Change(); ok && notes != current.Notes {
+		changes["notes"] = notes
 	}
-
-	if input.Notes != nil && *input.Notes != current.Notes {
-		changes["notes"] = *input.Notes
-	}
-
-	if input.NoteIDs != nil {
-		// Convert to string slice for comparison
-		currentNoteIDs := make([]string, len(current.NoteIDs))
-		for i, id := range current.NoteIDs {
-			currentNoteIDs[i] = id.String()
-		}
-		newNoteIDs := make([]string, len(*input.NoteIDs))
-		for i, id := range *input.NoteIDs {
-			newNoteIDs[i] = id.String()
-		}
-		if !equalStringSlices(currentNoteIDs, newNoteIDs) {
-			changes["note_ids"] = *input.NoteIDs
-		}
-	}
+	recordListChange(changes, "note_ids", input.NoteIDs, current.NoteIDs)
 
 	// No changes?
 	if len(changes) == 0 {
 		return &UpdateAssociationResult{Version: current.Version}, nil
 	}
 
-	// Validate updated association
-	if err := testAssociation.Validate(); err != nil {
+	// Only the fields this update changes are validated: GEDCOM import stores
+	// RELA/ROLE text and self-references as written, and those stored values
+	// must not block an unrelated edit (e.g. notes only).
+	if err := changedFieldErrors(testAssociation.Validate(), changes); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidInput, err)
 	}
 
@@ -209,15 +193,25 @@ func (h *Handler) DeleteAssociation(ctx context.Context, id uuid.UUID, version i
 	return nil
 }
 
-// equalStringSlices compares two string slices for equality.
-func equalStringSlices(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
+// changedFieldErrors keeps the association validation errors whose field is
+// one of the changed fields and drops those on fields the update left alone.
+func changedFieldErrors(err error, changes map[string]any) error {
+	if err == nil {
+		return nil
 	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
+	errs := []error{err}
+	if joined, ok := err.(interface{ Unwrap() []error }); ok {
+		errs = joined.Unwrap()
+	}
+	var kept []error
+	for _, e := range errs {
+		var fieldErr domain.AssociationValidationError
+		if errors.As(e, &fieldErr) {
+			if _, changed := changes[fieldErr.Field]; !changed {
+				continue
+			}
 		}
+		kept = append(kept, e)
 	}
-	return true
+	return errors.Join(kept...)
 }

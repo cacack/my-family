@@ -63,7 +63,10 @@
 		{ id: 'relationship_type', label: 'Relationship Type' },
 		{ id: 'marriage_date', label: 'Marriage Date' },
 		{ id: 'marriage_place', label: 'Marriage Place' },
-		{ id: 'child_count', label: 'Child Count' }
+		{ id: 'marriage_type_detail', label: 'Marriage Type' },
+		{ id: 'marriage_notes', label: 'Marriage Notes' },
+		{ id: 'child_count', label: 'Child Count' },
+		{ id: 'notes', label: 'Notes' }
 	];
 
 	const sourceFields = [
@@ -102,6 +105,7 @@
 		{ id: 'owner_type', label: 'Owner Type' },
 		{ id: 'owner_id', label: 'Owner ID' },
 		{ id: 'fact_type', label: 'Event Type' },
+		{ id: 'type_detail', label: 'Event Type Detail' },
 		{ id: 'date', label: 'Date' },
 		{ id: 'place', label: 'Place' },
 		{ id: 'description', label: 'Description' },

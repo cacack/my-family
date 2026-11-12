@@ -417,3 +417,112 @@ THIS IS NOT A VALID GEDCOM LINE
 		t.Error("Expected warnings or errors about malformed GEDCOM lines")
 	}
 }
+
+// A family's own NOTEs, its marriage NOTEs and its marriage TYPE come back
+// from both the family list and the family detail, and are omitted when the
+// family has none. A NOTE pointer is returned verbatim, as Person.notes
+// returns one (#1350).
+func TestImportGedcom_FamilyNotesReturned(t *testing.T) {
+	server := setupImportTestServer(t)
+
+	const gedcom = `0 HEAD
+1 SOUR Test
+1 GEDC
+2 VERS 5.5
+2 FORM LINEAGE-LINKED
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME John /Doe/
+0 @I2@ INDI
+1 NAME Will /Roe/
+0 @I3@ INDI
+1 NAME Sam /Poe/
+0 @N1@ NOTE Shared family note
+0 @F1@ FAM
+1 HUSB @I1@
+1 MARR
+2 TYPE Civil
+2 NOTE Married at the town hall
+1 NOTE Lived on the farm
+0 @F2@ FAM
+1 HUSB @I2@
+1 NOTE @N1@
+0 @F3@ FAM
+1 HUSB @I3@
+0 TRLR
+`
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	part, _ := writer.CreateFormFile("file", "test.ged")
+	io.WriteString(part, gedcom)
+	writer.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/gedcom/import", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Import failed: %d: %s", rec.Code, rec.Body.String())
+	}
+
+	want := map[string]map[string]string{
+		"John": {"notes": "Lived on the farm", "marriage_notes": "Married at the town hall", "marriage_type_detail": "Civil"},
+		"Will": {"notes": "@N1@"},
+		"Sam":  {},
+	}
+	keys := []string{"notes", "marriage_notes", "marriage_type_detail"}
+	check := func(label string, family map[string]interface{}, expected map[string]string) {
+		t.Helper()
+		for _, key := range keys {
+			value, present := family[key]
+			wantValue, wantPresent := expected[key]
+			switch {
+			case wantPresent && value != wantValue:
+				t.Errorf("%s: %s = %v, want %q", label, key, value, wantValue)
+			case !wantPresent && present:
+				t.Errorf("%s: %s = %v, want it omitted", label, key, value)
+			}
+		}
+	}
+	partnerName := func(family map[string]interface{}) string {
+		partner, _ := family["partner1"].(map[string]interface{})
+		name, _ := partner["given_name"].(string)
+		return name
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/families", http.NoBody)
+	rec = httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("List families failed: %d: %s", rec.Code, rec.Body.String())
+	}
+	var list struct {
+		Items []map[string]interface{} `json:"items"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil {
+		t.Fatalf("unmarshal list: %v", err)
+	}
+	if len(list.Items) != len(want) {
+		t.Fatalf("got %d families, want %d", len(list.Items), len(want))
+	}
+	for _, item := range list.Items {
+		name := partnerName(item)
+		expected, ok := want[name]
+		if !ok {
+			t.Fatalf("unexpected family with partner %q", name)
+		}
+		check("list "+name, item, expected)
+
+		req = httptest.NewRequest(http.MethodGet, "/api/v1/families/"+item["id"].(string), http.NoBody)
+		rec = httptest.NewRecorder()
+		server.Echo().ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("Get family failed: %d: %s", rec.Code, rec.Body.String())
+		}
+		var detail map[string]interface{}
+		if err := json.Unmarshal(rec.Body.Bytes(), &detail); err != nil {
+			t.Fatalf("unmarshal detail: %v", err)
+		}
+		check("detail "+name, detail, expected)
+	}
+}

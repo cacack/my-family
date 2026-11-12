@@ -58,7 +58,7 @@ func TestUpdateFamily_ReflectedInReadModel(t *testing.T) {
 	f := newFamilyFixture(t)
 	rel, date := "partnership", "ABT 1880"
 	if _, err := f.handler.UpdateFamily(f.ctx, command.UpdateFamilyInput{
-		ID: f.familyID, Partner1ID: &f.p3, Partner2ID: &f.p1, RelationshipType: &rel, MarriageDate: &date, Version: f.version,
+		ID: f.familyID, Partner1ID: command.Set(f.p3), Partner2ID: command.Set(f.p1), RelationshipType: command.Set(rel), MarriageDate: command.Set(date), Version: f.version,
 	}); err != nil {
 		t.Fatalf("UpdateFamily: %v", err)
 	}
@@ -88,7 +88,7 @@ func TestUpdateFamily_StoresJSONShapedChanges(t *testing.T) {
 	f := newFamilyFixture(t)
 	rel, date := "unknown", "12 MAR 1881"
 	if _, err := f.handler.UpdateFamily(f.ctx, command.UpdateFamilyInput{
-		ID: f.familyID, Partner1ID: &f.p3, RelationshipType: &rel, MarriageDate: &date, Version: f.version,
+		ID: f.familyID, Partner1ID: command.Set(f.p3), RelationshipType: command.Set(rel), MarriageDate: command.Set(date), Version: f.version,
 	}); err != nil {
 		t.Fatalf("UpdateFamily: %v", err)
 	}
@@ -117,7 +117,7 @@ func TestUpdateFamily_StoresJSONShapedChanges(t *testing.T) {
 
 	// Clearing stores an explicit null.
 	empty := ""
-	if _, err := f.handler.UpdateFamily(f.ctx, command.UpdateFamilyInput{ID: f.familyID, MarriageDate: &empty, Version: f.version + 1}); err != nil {
+	if _, err := f.handler.UpdateFamily(f.ctx, command.UpdateFamilyInput{ID: f.familyID, MarriageDate: command.Set(empty), Version: f.version + 1}); err != nil {
 		t.Fatalf("clear date: %v", err)
 	}
 	stream, _ = f.events.ReadStream(f.ctx, f.familyID)
@@ -144,33 +144,35 @@ func TestUpdateFamily_ValidatesPartnersAndType(t *testing.T) {
 		{
 			name: "unknown partner1",
 			input: func(f *familyFixture) command.UpdateFamilyInput {
-				return command.UpdateFamilyInput{Partner1ID: &missing}
+				return command.UpdateFamilyInput{Partner1ID: command.Set(missing)}
 			},
 			wantErr: command.ErrInvalidFamilyInput,
 		},
 		{
 			name: "unknown partner2",
 			input: func(f *familyFixture) command.UpdateFamilyInput {
-				return command.UpdateFamilyInput{Partner2ID: &missing}
+				return command.UpdateFamilyInput{Partner2ID: command.Set(missing)}
 			},
 			wantErr: command.ErrInvalidFamilyInput,
 		},
 		{
-			name:    "partner1 set to the existing partner2",
-			input:   func(f *familyFixture) command.UpdateFamilyInput { return command.UpdateFamilyInput{Partner1ID: &f.p2} },
+			name: "partner1 set to the existing partner2",
+			input: func(f *familyFixture) command.UpdateFamilyInput {
+				return command.UpdateFamilyInput{Partner1ID: command.Set(f.p2)}
+			},
 			wantErr: command.ErrInvalidFamilyInput,
 		},
 		{
 			name: "both partners the same person",
 			input: func(f *familyFixture) command.UpdateFamilyInput {
-				return command.UpdateFamilyInput{Partner1ID: &f.p3, Partner2ID: &f.p3}
+				return command.UpdateFamilyInput{Partner1ID: command.Set(f.p3), Partner2ID: command.Set(f.p3)}
 			},
 			wantErr: command.ErrInvalidFamilyInput,
 		},
 		{
 			name: "invalid relationship type",
 			input: func(f *familyFixture) command.UpdateFamilyInput {
-				return command.UpdateFamilyInput{RelationshipType: &badType}
+				return command.UpdateFamilyInput{RelationshipType: command.Set(badType)}
 			},
 			wantErr: command.ErrInvalidFamilyInput,
 		},
@@ -204,7 +206,7 @@ func TestUpdateFamily_PartnerCannotBeDescendant(t *testing.T) {
 	fam, _ := f.read.GetFamily(f.ctx, domain.MainBranchID, f.familyID)
 
 	// The child itself.
-	if _, err := f.handler.UpdateFamily(f.ctx, command.UpdateFamilyInput{ID: f.familyID, Partner2ID: &f.p3, Version: fam.Version}); !errors.Is(err, command.ErrCircularAncestry) {
+	if _, err := f.handler.UpdateFamily(f.ctx, command.UpdateFamilyInput{ID: f.familyID, Partner2ID: command.Set(f.p3), Version: fam.Version}); !errors.Is(err, command.ErrCircularAncestry) {
 		t.Fatalf("child as partner: error = %v, want ErrCircularAncestry", err)
 	}
 
@@ -220,7 +222,7 @@ func TestUpdateFamily_PartnerCannotBeDescendant(t *testing.T) {
 	if _, err := f.handler.LinkChild(f.ctx, command.LinkChildInput{FamilyID: sub.ID, ChildID: g.ID}); err != nil {
 		t.Fatalf("link grandchild: %v", err)
 	}
-	if _, err := f.handler.UpdateFamily(f.ctx, command.UpdateFamilyInput{ID: f.familyID, Partner1ID: &g.ID, Version: fam.Version}); !errors.Is(err, command.ErrCircularAncestry) {
+	if _, err := f.handler.UpdateFamily(f.ctx, command.UpdateFamilyInput{ID: f.familyID, Partner1ID: command.Set(g.ID), Version: fam.Version}); !errors.Is(err, command.ErrCircularAncestry) {
 		t.Fatalf("grandchild as partner: error = %v, want ErrCircularAncestry", err)
 	}
 
@@ -229,7 +231,7 @@ func TestUpdateFamily_PartnerCannotBeDescendant(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create unrelated person: %v", err)
 	}
-	if _, err := f.handler.UpdateFamily(f.ctx, command.UpdateFamilyInput{ID: f.familyID, Partner2ID: &other.ID, Version: fam.Version}); err != nil {
+	if _, err := f.handler.UpdateFamily(f.ctx, command.UpdateFamilyInput{ID: f.familyID, Partner2ID: command.Set(other.ID), Version: fam.Version}); err != nil {
 		t.Fatalf("unrelated partner: %v", err)
 	}
 }

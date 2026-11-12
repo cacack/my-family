@@ -73,7 +73,7 @@ func TestMergeBranch_BranchCreatedSurvivorLandsBeforeItsReferences(t *testing.T)
 	family := familyOf(t, scoped, &survivor.ID, nil)
 	linkChild(t, scoped, family, child.ID)
 	notes := "touched on the branch"
-	if _, err := scoped.UpdatePerson(ctx, command.UpdatePersonInput{ID: merged, Notes: &notes, Version: 2}); err != nil {
+	if _, err := scoped.UpdatePerson(ctx, command.UpdatePersonInput{ID: merged, Notes: command.Set(notes), Version: 2}); err != nil {
 		t.Fatalf("branch UpdatePerson failed: %v", err)
 	}
 	mergeOn(t, f, scoped, onBranch, survivor.ID, merged)

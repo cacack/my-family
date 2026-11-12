@@ -73,6 +73,22 @@ func TestPointerTargets(t *testing.T) {
 	}
 }
 
+func TestPointerTargets_RemapNotesDropsDangling(t *testing.T) {
+	var warnings []string
+	notes := newPointerTargets("NOTE", &warnings)
+	notes.add("@N2@", "@N3@")
+
+	if r := notes.remapNotes("@N9@\n\n@N2@\n\ntext", noteJoin, "INDI @I1@"); r != "@N3@\n\ntext" {
+		t.Errorf("remapNotes = %q, want the dangling @N9@ dropped and @N2@ remapped", r)
+	}
+	if r := notes.remapNotes("@N9@", noteJoin, "FAM @F1@"); r != "" {
+		t.Errorf("remapNotes = %q, want empty", r)
+	}
+	if len(warnings) != 2 || !strings.Contains(warnings[0], "INDI @I1@") || !strings.Contains(warnings[1], "FAM @F1@ points to NOTE @N9@") {
+		t.Errorf("warnings = %q, want one per dangling pointer naming record and xref", warnings)
+	}
+}
+
 func TestSplitNotes(t *testing.T) {
 	tests := []struct {
 		name, notes   string

@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -104,13 +103,13 @@ func (h *Handler) CreateEvidenceAnalysis(ctx context.Context, input CreateEviden
 // UpdateEvidenceAnalysisInput contains the data for updating an evidence analysis.
 type UpdateEvidenceAnalysisInput struct {
 	ID             uuid.UUID
-	FactType       *string
-	SubjectID      *uuid.UUID
-	FactID         *uuid.UUID  // nil means no change, unless FactType or SubjectID changes (#1304)
-	CitationIDs    []uuid.UUID // nil means no change
-	Conclusion     *string
-	ResearchStatus *string
-	Notes          *string
+	FactType       *string          // required: cannot be cleared
+	SubjectID      *uuid.UUID       // required: cannot be cleared
+	FactID         Patch[uuid.UUID] // omitted means no change, unless FactType or SubjectID changes (#1304)
+	CitationIDs    Patch[[]uuid.UUID]
+	Conclusion     *string // required: cannot be cleared
+	ResearchStatus Patch[string]
+	Notes          Patch[string]
 	Version        int64 // Required for optimistic locking
 }
 
@@ -159,16 +158,16 @@ func (h *Handler) UpdateEvidenceAnalysis(ctx context.Context, input UpdateEviden
 		}
 	}
 
-	recordChange(changes, "fact_type", input.FactType, &testAnalysis.FactType)
+	recordChange(changes, "fact_type", SetPtr(input.FactType), &testAnalysis.FactType)
 	if input.SubjectID != nil && *input.SubjectID != current.SubjectID {
 		testAnalysis.SubjectID = *input.SubjectID
 		changes["subject_id"] = input.SubjectID.String()
 	}
-	if input.CitationIDs != nil && !slices.Equal(input.CitationIDs, testAnalysis.CitationIDs) {
-		testAnalysis.CitationIDs = input.CitationIDs
-		changes["citation_ids"] = input.CitationIDs
+	recordListChange(changes, "citation_ids", input.CitationIDs, testAnalysis.CitationIDs)
+	if _, ok := changes["citation_ids"]; ok {
+		testAnalysis.CitationIDs, _ = input.CitationIDs.Change()
 	}
-	recordChange(changes, "conclusion", input.Conclusion, &testAnalysis.Conclusion)
+	recordChange(changes, "conclusion", SetPtr(input.Conclusion), &testAnalysis.Conclusion)
 	recordChange(changes, "research_status", input.ResearchStatus, &testAnalysis.ResearchStatus)
 	recordChange(changes, "notes", input.Notes, &testAnalysis.Notes)
 	testAnalysis.FactID = changeFactID(changes, current.FactID, input.FactID)
@@ -316,13 +315,13 @@ func (h *Handler) CreateResearchLog(ctx context.Context, input CreateResearchLog
 // UpdateResearchLogInput contains the data for updating a research log entry.
 type UpdateResearchLogInput struct {
 	ID                uuid.UUID
-	SubjectID         *uuid.UUID
-	SubjectType       *string
-	Repository        *string
-	SearchDescription *string
-	Outcome           *string
-	Notes             *string
-	SearchDate        *time.Time
+	SubjectID         *uuid.UUID // required: cannot be cleared
+	SubjectType       *string    // required: cannot be cleared
+	Repository        *string    // required: cannot be cleared
+	SearchDescription *string    // required: cannot be cleared
+	Outcome           *string    // required: cannot be cleared
+	Notes             Patch[string]
+	SearchDate        *time.Time // required: cannot be cleared
 	Version           int64
 }
 
@@ -363,10 +362,10 @@ func (h *Handler) UpdateResearchLog(ctx context.Context, input UpdateResearchLog
 		testLog.SubjectID = *input.SubjectID
 		changes["subject_id"] = input.SubjectID.String()
 	}
-	recordChange(changes, "subject_type", input.SubjectType, &testLog.SubjectType)
-	recordChange(changes, "repository", input.Repository, &testLog.Repository)
-	recordChange(changes, "search_description", input.SearchDescription, &testLog.SearchDescription)
-	recordChange(changes, "outcome", input.Outcome, &testLog.Outcome)
+	recordChange(changes, "subject_type", SetPtr(input.SubjectType), &testLog.SubjectType)
+	recordChange(changes, "repository", SetPtr(input.Repository), &testLog.Repository)
+	recordChange(changes, "search_description", SetPtr(input.SearchDescription), &testLog.SearchDescription)
+	recordChange(changes, "outcome", SetPtr(input.Outcome), &testLog.Outcome)
 	recordChange(changes, "notes", input.Notes, &testLog.Notes)
 	if input.SearchDate != nil && !input.SearchDate.Equal(current.SearchDate) {
 		testLog.SearchDate = *input.SearchDate
@@ -471,13 +470,13 @@ func (h *Handler) CreateProofSummary(ctx context.Context, input CreateProofSumma
 // UpdateProofSummaryInput contains the data for updating a proof summary.
 type UpdateProofSummaryInput struct {
 	ID             uuid.UUID
-	FactType       *string
-	SubjectID      *uuid.UUID
-	FactID         *uuid.UUID // nil means no change, unless FactType or SubjectID changes (#1304)
-	Conclusion     *string
-	Argument       *string
-	AnalysisIDs    []uuid.UUID // nil means no change
-	ResearchStatus *string
+	FactType       *string          // required: cannot be cleared
+	SubjectID      *uuid.UUID       // required: cannot be cleared
+	FactID         Patch[uuid.UUID] // omitted means no change, unless FactType or SubjectID changes (#1304)
+	Conclusion     *string          // required: cannot be cleared
+	Argument       *string          // required: cannot be cleared
+	AnalysisIDs    Patch[[]uuid.UUID]
+	ResearchStatus Patch[string]
 	Version        int64
 }
 
@@ -521,16 +520,16 @@ func (h *Handler) UpdateProofSummary(ctx context.Context, input UpdateProofSumma
 		}
 	}
 
-	recordChange(changes, "fact_type", input.FactType, &testSummary.FactType)
+	recordChange(changes, "fact_type", SetPtr(input.FactType), &testSummary.FactType)
 	if input.SubjectID != nil && *input.SubjectID != current.SubjectID {
 		testSummary.SubjectID = *input.SubjectID
 		changes["subject_id"] = input.SubjectID.String()
 	}
-	recordChange(changes, "conclusion", input.Conclusion, &testSummary.Conclusion)
-	recordChange(changes, "argument", input.Argument, &testSummary.Argument)
-	if input.AnalysisIDs != nil && !slices.Equal(input.AnalysisIDs, testSummary.AnalysisIDs) {
-		testSummary.AnalysisIDs = input.AnalysisIDs
-		changes["analysis_ids"] = input.AnalysisIDs
+	recordChange(changes, "conclusion", SetPtr(input.Conclusion), &testSummary.Conclusion)
+	recordChange(changes, "argument", SetPtr(input.Argument), &testSummary.Argument)
+	recordListChange(changes, "analysis_ids", input.AnalysisIDs, testSummary.AnalysisIDs)
+	if _, ok := changes["analysis_ids"]; ok {
+		testSummary.AnalysisIDs, _ = input.AnalysisIDs.Change()
 	}
 	recordChange(changes, "research_status", input.ResearchStatus, &testSummary.ResearchStatus)
 	testSummary.FactID = changeFactID(changes, current.FactID, input.FactID)
@@ -646,14 +645,21 @@ func (h *Handler) detectEvidenceConflicts(ctx context.Context, analysis *domain.
 // analysis or proof summary leaves it with, and returns that fact_id. A
 // requested fact_id that differs from current is recorded as its string; an
 // artifact moved to another fact type or subject without one no longer names
-// its old life event or attribute, so its link is recorded as removed (nil).
-// Call it after the fact_type and subject_id changes are recorded.
-func changeFactID(changes map[string]any, current, requested *uuid.UUID) *uuid.UUID {
-	if requested != nil {
-		if !sameFactInstance(current, requested) {
-			changes["fact_id"] = requested.String()
+// its old life event or attribute, so its link is recorded as removed (nil),
+// as is a link the update clears. Call it after the fact_type and subject_id
+// changes are recorded.
+func changeFactID(changes map[string]any, current *uuid.UUID, input Patch[uuid.UUID]) *uuid.UUID {
+	if input.Cleared() {
+		if current != nil {
+			changes["fact_id"] = nil
 		}
-		return requested
+		return nil
+	}
+	if id, ok := input.Value(); ok {
+		if !sameFactInstance(current, &id) {
+			changes["fact_id"] = id.String()
+		}
+		return &id
 	}
 	_, typeChanged := changes["fact_type"]
 	_, subjectChanged := changes["subject_id"]

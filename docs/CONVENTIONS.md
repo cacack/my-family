@@ -119,6 +119,23 @@ internal/
 - Standard HTTP methods: GET (read), POST (create), PUT (replace), PATCH (update), DELETE
 - Return appropriate status codes: 200, 201, 204, 400, 404, 500
 
+### Update Requests: Omit, Set, Clear
+
+Update endpoints (the `*Update` schemas) follow PATCH semantics (#1359):
+
+- A field left out of the body stays unchanged.
+- A value sets the field.
+- An explicit JSON `null` clears an optional field. Text fields read back empty; other fields (address, ids, crop, lists) read back absent.
+- A required field (one the create schema requires, or the `version`) refuses `null` with 400. `refuseNullOnRequiredFields` in `internal/api/null_fields.go` enforces this from the spec, so the rule lives in one place.
+
+How to add an optional update field:
+
+- **Spec:** mark it `nullable: true`. Wrap a `$ref` as `allOf: [{$ref: ...}]` with `nullable: true`, since OpenAPI 3.0 ignores a sibling of a plain `$ref`. With `nullable-type` on, oapi-codegen makes it a `nullable.Nullable[T]`, which tells absent, null and a value apart.
+- **API:** map it with `patchOf`, `patchString` or `patchMap` (`internal/api/patch.go`).
+- **Command:** the `Update*Input` field is a `command.Patch[T]`, built with `Set(v)` or `Clear[T]()`; the zero value means omitted. A required field stays a `*T`. Don't add `**T` or clear flags.
+- **Event:** the clear goes into the `*Updated` changes map, so it survives `myfamily rebuild`. Text, enums and lists record their zero value (`""`, `[]`); a field the read model stores as optional records `nil`. The projection applies the clear on every backend (`TestUpdateClears_SurviveRebuild`).
+- **Frontend:** an edit form that empties an optional non-text field sends `null`.
+
 ### Response Format
 
 ```json

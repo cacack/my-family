@@ -68,6 +68,7 @@ var DefaultEventFields = []string{
 	"owner_type",
 	"owner_id",
 	"fact_type",
+	"type_detail",
 	"date",
 	"place",
 	"description",
@@ -104,21 +105,24 @@ var AvailablePersonFields = map[string]bool{
 // backward compatibility with saved export configurations from before #483;
 // they render the trimmed "given surname" concatenation.
 var AvailableFamilyFields = map[string]bool{
-	"id":                  true,
-	"partner1_id":         true,
-	"partner1_given_name": true,
-	"partner1_surname":    true,
-	"partner1_name":       true, // deprecated alias, kept for backcompat
-	"partner2_id":         true,
-	"partner2_given_name": true,
-	"partner2_surname":    true,
-	"partner2_name":       true, // deprecated alias, kept for backcompat
-	"relationship_type":   true,
-	"marriage_date":       true,
-	"marriage_place":      true,
-	"child_count":         true,
-	"version":             true,
-	"updated_at":          true,
+	"id":                   true,
+	"partner1_id":          true,
+	"partner1_given_name":  true,
+	"partner1_surname":     true,
+	"partner1_name":        true, // deprecated alias, kept for backcompat
+	"partner2_id":          true,
+	"partner2_given_name":  true,
+	"partner2_surname":     true,
+	"partner2_name":        true, // deprecated alias, kept for backcompat
+	"relationship_type":    true,
+	"marriage_date":        true,
+	"marriage_place":       true,
+	"marriage_type_detail": true,
+	"marriage_notes":       true,
+	"notes":                true,
+	"child_count":          true,
+	"version":              true,
+	"updated_at":           true,
 }
 
 // AvailableSourceFields lists all fields that can be exported for sources.
@@ -164,6 +168,7 @@ var AvailableEventFields = map[string]bool{
 	"owner_type":      true,
 	"owner_id":        true,
 	"fact_type":       true,
+	"type_detail":     true,
 	"date":            true,
 	"place":           true,
 	"description":     true,
@@ -384,6 +389,32 @@ func getFamilyFieldValue(f repository.FamilyReadModel, field string) string {
 	switch field {
 	case "id":
 		return f.ID.String()
+	case "relationship_type":
+		return string(f.RelationshipType)
+	case "marriage_date":
+		return f.MarriageDateRaw
+	case "marriage_place":
+		return f.MarriagePlace
+	case "marriage_type_detail":
+		return f.MarriageTypeDetail
+	case "marriage_notes":
+		return f.MarriageNotes
+	case "notes":
+		return f.Notes
+	case "child_count":
+		return strconv.Itoa(f.ChildCount)
+	case "version":
+		return strconv.FormatInt(f.Version, 10)
+	case "updated_at":
+		return f.UpdatedAt.Format("2006-01-02T15:04:05Z07:00")
+	default:
+		return getFamilyPartnerFieldValue(f, field)
+	}
+}
+
+// getFamilyPartnerFieldValue returns the value of a family's partner field.
+func getFamilyPartnerFieldValue(f repository.FamilyReadModel, field string) string {
+	switch field {
 	case "partner1_id":
 		if f.Partner1ID != nil {
 			return f.Partner1ID.String()
@@ -406,18 +437,6 @@ func getFamilyFieldValue(f repository.FamilyReadModel, field string) string {
 		return f.Partner2Surname
 	case "partner2_name": // deprecated; concatenated for callers using the pre-#483 field
 		return domain.JoinFullName(f.Partner2GivenName, f.Partner2Surname)
-	case "relationship_type":
-		return string(f.RelationshipType)
-	case "marriage_date":
-		return f.MarriageDateRaw
-	case "marriage_place":
-		return f.MarriagePlace
-	case "child_count":
-		return strconv.Itoa(f.ChildCount)
-	case "version":
-		return strconv.FormatInt(f.Version, 10)
-	case "updated_at":
-		return f.UpdatedAt.Format("2006-01-02T15:04:05Z07:00")
 	default:
 		return ""
 	}
@@ -652,6 +671,8 @@ func getEventFieldValue(e repository.EventReadModel, field string) string {
 		return e.OwnerID.String()
 	case "fact_type":
 		return string(e.FactType)
+	case "type_detail":
+		return e.TypeDetail
 	case "date":
 		return e.DateRaw
 	case "place":

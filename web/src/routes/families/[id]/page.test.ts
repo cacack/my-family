@@ -507,8 +507,6 @@ describe('Family Detail Page: partners and children (#826)', () => {
 		const body = vi.mocked(api.updateFamily).mock.calls[0][1];
 		expect(body).not.toHaveProperty('partner1_id');
 		expect(body).not.toHaveProperty('partner2_id');
-		expect(body).not.toHaveProperty('clear_partner1');
-		expect(body).not.toHaveProperty('clear_partner2');
 	});
 
 	it('sends a cleared marriage place as an empty string, and no unchanged type', async () => {
@@ -537,7 +535,7 @@ describe('Family Detail Page: partners and children (#826)', () => {
 		await waitFor(() =>
 			expect(api.updateFamily).toHaveBeenCalledWith(
 				'test-family-id',
-				expect.objectContaining({ partner1_id: 'partner3-id', clear_partner2: true, version: 1 })
+				expect.objectContaining({ partner1_id: 'partner3-id', partner2_id: null, version: 1 })
 			)
 		);
 	});
@@ -790,7 +788,6 @@ describe('Family Detail Page: failed actions (#899)', () => {
 		const sent = vi.mocked(api.updateFamily).mock.calls[1][1];
 		expect(sent).toMatchObject({ marriage_place: 'Evanston, IL', marriage_date: '2 FEB 1902', version: 2 });
 		expect(sent).not.toHaveProperty('partner2_id');
-		expect(sent).not.toHaveProperty('clear_partner2');
 	});
 
 	it('shows a 409 that is not a change elsewhere, such as circular ancestry, as it came', async () => {

@@ -62,7 +62,6 @@ func TestBranchEditAfterMainCorrection(t *testing.T) {
 func runBranchEditAfterMainCorrection(t *testing.T, h *command.Handler, readStore repository.ReadModelStore) {
 	t.Helper()
 	ctx := context.Background()
-	str := func(s string) *string { return &s }
 
 	// --- Main: a person at version 3 before the fork (the issue's steps 1-2;
 	// CreatePerson writes versions 1-2),
@@ -71,7 +70,7 @@ func runBranchEditAfterMainCorrection(t *testing.T, h *command.Handler, readStor
 	if err != nil {
 		t.Fatalf("CreatePerson: %v", err)
 	}
-	if _, err := h.UpdatePerson(ctx, command.UpdatePersonInput{ID: person.ID, BirthPlace: str("Placeville"), Version: 2}); err != nil {
+	if _, err := h.UpdatePerson(ctx, command.UpdatePersonInput{ID: person.ID, BirthPlace: command.Set("Placeville"), Version: 2}); err != nil {
 		t.Fatalf("pre-fork UpdatePerson: %v", err)
 	}
 	family, err := h.CreateFamily(ctx, command.CreateFamilyInput{Partner1ID: &person.ID, RelationshipType: "marriage"})
@@ -95,13 +94,13 @@ func runBranchEditAfterMainCorrection(t *testing.T, h *command.Handler, readStor
 	branchID := domain.BranchID(branch.ID)
 
 	// --- Main corrects every entity AFTER the fork (step 3). ---
-	if _, err := h.UpdatePerson(ctx, command.UpdatePersonInput{ID: person.ID, Surname: str("Mainfix"), Version: 3}); err != nil {
+	if _, err := h.UpdatePerson(ctx, command.UpdatePersonInput{ID: person.ID, Surname: command.Set("Mainfix"), Version: 3}); err != nil {
 		t.Fatalf("post-fork main UpdatePerson: %v", err)
 	}
-	if _, err := h.UpdateFamily(ctx, command.UpdateFamilyInput{ID: family.ID, MarriagePlace: str("Mainville"), Version: 1}); err != nil {
+	if _, err := h.UpdateFamily(ctx, command.UpdateFamilyInput{ID: family.ID, MarriagePlace: command.Set("Mainville"), Version: 1}); err != nil {
 		t.Fatalf("post-fork main UpdateFamily: %v", err)
 	}
-	if _, err := h.UpdateSource(ctx, command.UpdateSourceInput{ID: source.ID, Author: str("Main Author"), Version: 1}); err != nil {
+	if _, err := h.UpdateSource(ctx, command.UpdateSourceInput{ID: source.ID, Author: command.Set("Main Author"), Version: 1}); err != nil {
 		t.Fatalf("post-fork main UpdateSource: %v", err)
 	}
 
@@ -115,12 +114,12 @@ func runBranchEditAfterMainCorrection(t *testing.T, h *command.Handler, readStor
 	}
 
 	// --- The as-of-fork version is stale: the branch never showed it. ---
-	if _, err := onBranch.UpdatePerson(ctx, command.UpdatePersonInput{ID: person.ID, Surname: str("Stale"), Version: 3}); !errors.Is(err, repository.ErrConcurrencyConflict) {
+	if _, err := onBranch.UpdatePerson(ctx, command.UpdatePersonInput{ID: person.ID, Surname: command.Set("Stale"), Version: 3}); !errors.Is(err, repository.ErrConcurrencyConflict) {
 		t.Fatalf("branch UpdatePerson at the as-of-fork version: want ErrConcurrencyConflict, got %v", err)
 	}
 
 	// --- Step 5: the edit succeeds with the version the branch displayed. ---
-	res, err := onBranch.UpdatePerson(ctx, command.UpdatePersonInput{ID: person.ID, Surname: str("Branchfix"), Version: shown.Version})
+	res, err := onBranch.UpdatePerson(ctx, command.UpdatePersonInput{ID: person.ID, Surname: command.Set("Branchfix"), Version: shown.Version})
 	if err != nil {
 		t.Fatalf("branch UpdatePerson at the displayed version: %v", err)
 	}
@@ -144,7 +143,7 @@ func runBranchEditAfterMainCorrection(t *testing.T, h *command.Handler, readStor
 	}
 
 	// --- A second edit on the branch continues the branch's own line. ---
-	if _, err := onBranch.UpdatePerson(ctx, command.UpdatePersonInput{ID: person.ID, Notes: str("branch note"), Version: 5}); err != nil {
+	if _, err := onBranch.UpdatePerson(ctx, command.UpdatePersonInput{ID: person.ID, Notes: command.Set("branch note"), Version: 5}); err != nil {
 		t.Fatalf("second branch UpdatePerson: %v", err)
 	}
 
@@ -155,30 +154,30 @@ func runBranchEditAfterMainCorrection(t *testing.T, h *command.Handler, readStor
 	if err != nil || shownFamily == nil || shownFamily.Version != 2 {
 		t.Fatalf("branch GetFamily = %+v (err %v), want main's current version 2", shownFamily, err)
 	}
-	if _, err := onBranch.UpdateFamily(ctx, command.UpdateFamilyInput{ID: family.ID, MarriagePlace: str("Branchtown"), Version: 1}); !errors.Is(err, repository.ErrConcurrencyConflict) {
+	if _, err := onBranch.UpdateFamily(ctx, command.UpdateFamilyInput{ID: family.ID, MarriagePlace: command.Set("Branchtown"), Version: 1}); !errors.Is(err, repository.ErrConcurrencyConflict) {
 		t.Fatalf("branch UpdateFamily at the as-of-fork version: want ErrConcurrencyConflict, got %v", err)
 	}
 	// A main write landing between the branch's read and its write makes the
 	// displayed version stale, exactly as it would on main.
-	if _, err := h.UpdateFamily(ctx, command.UpdateFamilyInput{ID: family.ID, MarriagePlace: str("Mainville Again"), Version: 2}); err != nil {
+	if _, err := h.UpdateFamily(ctx, command.UpdateFamilyInput{ID: family.ID, MarriagePlace: command.Set("Mainville Again"), Version: 2}); err != nil {
 		t.Fatalf("racing main UpdateFamily: %v", err)
 	}
-	if _, err := onBranch.UpdateFamily(ctx, command.UpdateFamilyInput{ID: family.ID, MarriagePlace: str("Branchtown"), Version: shownFamily.Version}); !errors.Is(err, repository.ErrConcurrencyConflict) {
+	if _, err := onBranch.UpdateFamily(ctx, command.UpdateFamilyInput{ID: family.ID, MarriagePlace: command.Set("Branchtown"), Version: shownFamily.Version}); !errors.Is(err, repository.ErrConcurrencyConflict) {
 		t.Fatalf("branch UpdateFamily after a racing main write: want ErrConcurrencyConflict, got %v", err)
 	}
-	if _, err := onBranch.UpdateFamily(ctx, command.UpdateFamilyInput{ID: family.ID, MarriagePlace: str("Branchtown"), Version: 3}); err != nil {
+	if _, err := onBranch.UpdateFamily(ctx, command.UpdateFamilyInput{ID: family.ID, MarriagePlace: command.Set("Branchtown"), Version: 3}); err != nil {
 		t.Fatalf("branch UpdateFamily at the re-read version: %v", err)
 	}
 	shownSource, err := readStore.GetSource(ctx, branchID, source.ID)
 	if err != nil || shownSource == nil || shownSource.Version != 2 {
 		t.Fatalf("branch GetSource = %+v (err %v), want main's current version 2", shownSource, err)
 	}
-	if _, err := onBranch.UpdateSource(ctx, command.UpdateSourceInput{ID: source.ID, CallNumber: str("B-1"), Version: shownSource.Version}); err != nil {
+	if _, err := onBranch.UpdateSource(ctx, command.UpdateSourceInput{ID: source.ID, CallNumber: command.Set("B-1"), Version: shownSource.Version}); err != nil {
 		t.Fatalf("branch UpdateSource at the displayed version: %v", err)
 	}
 
 	// --- Main keeps editing the source after the branch did (another field). ---
-	if _, err := h.UpdateSource(ctx, command.UpdateSourceInput{ID: source.ID, Notes: str("main again"), Version: 2}); err != nil {
+	if _, err := h.UpdateSource(ctx, command.UpdateSourceInput{ID: source.ID, Notes: command.Set("main again"), Version: 2}); err != nil {
 		t.Fatalf("main UpdateSource after branch edit: %v", err)
 	}
 
@@ -191,7 +190,7 @@ func runBranchEditAfterMainCorrection(t *testing.T, h *command.Handler, readStor
 	if _, err := onBranch.CreateCitation(ctx, command.CreateCitationInput{SourceID: cited.ID, FactType: "person_birth", FactOwnerID: person.ID}); err != nil {
 		t.Fatalf("branch CreateCitation: %v", err)
 	}
-	if _, err := h.UpdateSource(ctx, command.UpdateSourceInput{ID: cited.ID, Author: str("Main Author"), Version: 1}); err != nil {
+	if _, err := h.UpdateSource(ctx, command.UpdateSourceInput{ID: cited.ID, Author: command.Set("Main Author"), Version: 1}); err != nil {
 		t.Fatalf("post-citation main UpdateSource: %v", err)
 	}
 	shownCited, err := readStore.GetSource(ctx, branchID, cited.ID)
@@ -202,10 +201,10 @@ func runBranchEditAfterMainCorrection(t *testing.T, h *command.Handler, readStor
 		t.Fatalf("branch cited source = version %d citations %d author %q, want the branch's copy: 1, 1, %q",
 			shownCited.Version, shownCited.CitationCount, shownCited.Author, "")
 	}
-	if _, err := onBranch.UpdateSource(ctx, command.UpdateSourceInput{ID: cited.ID, CallNumber: str("B-2"), Version: 2}); !errors.Is(err, repository.ErrConcurrencyConflict) {
+	if _, err := onBranch.UpdateSource(ctx, command.UpdateSourceInput{ID: cited.ID, CallNumber: command.Set("B-2"), Version: 2}); !errors.Is(err, repository.ErrConcurrencyConflict) {
 		t.Fatalf("branch UpdateSource at main's version, which the branch never showed: want ErrConcurrencyConflict, got %v", err)
 	}
-	citedRes, err := onBranch.UpdateSource(ctx, command.UpdateSourceInput{ID: cited.ID, CallNumber: str("B-2"), Version: shownCited.Version})
+	citedRes, err := onBranch.UpdateSource(ctx, command.UpdateSourceInput{ID: cited.ID, CallNumber: command.Set("B-2"), Version: shownCited.Version})
 	if err != nil {
 		t.Fatalf("branch UpdateSource of a shadowed source at the displayed version: %v", err)
 	}
@@ -220,7 +219,7 @@ func runBranchEditAfterMainCorrection(t *testing.T, h *command.Handler, readStor
 		t.Fatalf("branch cited source after edit = version %d call number %q citations %d, want 2 %q 1",
 			afterCited.Version, afterCited.CallNumber, afterCited.CitationCount, "B-2")
 	}
-	if _, err := onBranch.UpdateSource(ctx, command.UpdateSourceInput{ID: cited.ID, Notes: str("stale"), Version: 1}); !errors.Is(err, repository.ErrConcurrencyConflict) {
+	if _, err := onBranch.UpdateSource(ctx, command.UpdateSourceInput{ID: cited.ID, Notes: command.Set("stale"), Version: 1}); !errors.Is(err, repository.ErrConcurrencyConflict) {
 		t.Fatalf("branch UpdateSource (cited) at the now-stale version: want ErrConcurrencyConflict, got %v", err)
 	}
 

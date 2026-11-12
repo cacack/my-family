@@ -200,7 +200,7 @@ func TestUpdatePerson_ClearSurname(t *testing.T) {
 	empty := ""
 	if _, err := handler.UpdatePerson(ctx, command.UpdatePersonInput{
 		ID:      createResult.ID,
-		Surname: &empty,
+		Surname: command.Set(empty),
 		Version: createResult.Version,
 	}); err != nil {
 		t.Fatalf("UpdatePerson clearing surname failed: %v", err)
@@ -415,13 +415,13 @@ func TestUpdatePerson_AllFields(t *testing.T) {
 	updateResult, err := handler.UpdatePerson(ctx, command.UpdatePersonInput{
 		ID:         createResult.ID,
 		GivenName:  &newGiven,
-		Surname:    &newSurname,
-		Gender:     &newGender,
-		BirthDate:  &newBirthDate,
-		BirthPlace: &newBirthPlace,
-		DeathDate:  &newDeathDate,
-		DeathPlace: &newDeathPlace,
-		Notes:      &newNotes,
+		Surname:    command.Set(newSurname),
+		Gender:     command.Set(newGender),
+		BirthDate:  command.Set(newBirthDate),
+		BirthPlace: command.Set(newBirthPlace),
+		DeathDate:  command.Set(newDeathDate),
+		DeathPlace: command.Set(newDeathPlace),
+		Notes:      command.Set(newNotes),
 		Version:    createResult.Version,
 	})
 	if err != nil {
@@ -744,7 +744,7 @@ func TestPersonVersionConflictNoPartialState(t *testing.T) {
 	newPlace := "New York"
 	_, err = handler.UpdatePerson(ctx, command.UpdatePersonInput{
 		ID:         createResult.ID,
-		BirthPlace: &newPlace,
+		BirthPlace: command.Set(newPlace),
 		Version:    createResult.Version,
 	})
 	if err != nil {
@@ -758,8 +758,8 @@ func TestPersonVersionConflictNoPartialState(t *testing.T) {
 	_, err = handler.UpdatePerson(ctx, command.UpdatePersonInput{
 		ID:         createResult.ID,
 		GivenName:  &staleName,
-		BirthPlace: &stalePlace,
-		Notes:      &staleNotes,
+		BirthPlace: command.Set(stalePlace),
+		Notes:      command.Set(staleNotes),
 		Version:    1, // Stale version
 	})
 	if err == nil {
@@ -776,5 +776,34 @@ func TestPersonVersionConflictNoPartialState(t *testing.T) {
 	}
 	if person.Notes != "" {
 		t.Errorf("Notes = %s, want empty (stale update should not apply)", person.Notes)
+	}
+}
+
+// TestUpdatePerson_ClearResearchStatus: a clear unsets the status rather than
+// setting it to "unknown", and clearing an unset status is no change (#1359).
+func TestUpdatePerson_ClearResearchStatus(t *testing.T) {
+	ctx, _, readStore, handler := newTestHandler()
+	created, err := handler.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ada", ResearchStatus: "probable"})
+	if err != nil {
+		t.Fatalf("CreatePerson: %v", err)
+	}
+
+	cleared, err := handler.UpdatePerson(ctx, command.UpdatePersonInput{ID: created.ID,
+		ResearchStatus: command.Clear[string](), Version: created.Version})
+	if err != nil {
+		t.Fatalf("UpdatePerson clear: %v", err)
+	}
+	person, _ := readStore.GetPerson(ctx, domain.MainBranchID, created.ID)
+	if person.ResearchStatus != "" {
+		t.Errorf("ResearchStatus = %q, want unset", person.ResearchStatus)
+	}
+
+	again, err := handler.UpdatePerson(ctx, command.UpdatePersonInput{ID: created.ID,
+		ResearchStatus: command.Clear[string](), Version: cleared.Version})
+	if err != nil {
+		t.Fatalf("UpdatePerson clear again: %v", err)
+	}
+	if again.Version != cleared.Version {
+		t.Errorf("version = %d, want %d: clearing an unset status is no change", again.Version, cleared.Version)
 	}
 }

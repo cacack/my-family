@@ -3915,6 +3915,12 @@ func TestAssociationNotes_RoundTrip(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
+			// The note @N1@ points at; a pointer to no note is dropped (#1353).
+			if err := readStore.SaveNote(ctx, domain.MainBranchID, &repository.NoteReadModel{
+				ID: uuid.New(), Text: "Baptism", GedcomXref: "@N1@",
+			}); err != nil {
+				t.Fatal(err)
+			}
 			if err := readStore.SaveAssociation(ctx, domain.MainBranchID, &repository.AssociationReadModel{
 				ID: uuid.New(), PersonID: personID, AssociateID: associateID,
 				Role: domain.RoleWitness, Notes: tt.notes, Version: 1,

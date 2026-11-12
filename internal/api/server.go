@@ -211,6 +211,8 @@ func (s *Server) registerRoutes() {
 	// handler (#825). Registered on the Echo instance, not the group, because
 	// the generated strict routes are registered on the instance too.
 	s.echo.Use(refuseBranchScopedImport)
+	// Refuse a JSON null on an update field that cannot be cleared (#1359).
+	s.echo.Use(refuseNullOnRequiredFields)
 
 	// Health check (outside generated routes)
 	api.GET("/health", s.healthCheck)

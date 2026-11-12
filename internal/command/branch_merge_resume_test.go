@@ -256,7 +256,7 @@ func seedResume(t *testing.T) resumeSeed {
 		surname := "Byron"
 		if _, err := f.handler.WithBranch(branch).UpdatePerson(ctx, command.UpdatePersonInput{
 			ID:      person.ID,
-			Surname: &surname,
+			Surname: command.Set(surname),
 			Version: person.Version,
 		}); err != nil {
 			t.Fatalf("branch UpdatePerson failed: %v", err)
@@ -850,7 +850,7 @@ func TestResumeMerge_BranchResolutionLapsesWhenMainMovesAgain(t *testing.T) {
 		t.Fatalf("GetStreamVersion failed: %v", err)
 	}
 	if _, err := s.handler.UpdatePerson(ctx, command.UpdatePersonInput{
-		ID: s.second, Surname: strPtr("Murray"), Version: version,
+		ID: s.second, Surname: command.Set("Murray"), Version: version,
 	}); err != nil {
 		t.Fatalf("mainline UpdatePerson failed: %v", err)
 	}

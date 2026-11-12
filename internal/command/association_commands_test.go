@@ -310,9 +310,9 @@ func TestUpdateAssociation_AllFields(t *testing.T) {
 	_, err := handler.UpdateAssociation(ctx, command.UpdateAssociationInput{
 		ID:      createResult.ID,
 		Role:    &newRole,
-		Phrase:  &newPhrase,
-		Notes:   &newNotes,
-		NoteIDs: &noteIDs,
+		Phrase:  command.Set(newPhrase),
+		Notes:   command.Set(newNotes),
+		NoteIDs: command.Set(noteIDs),
 		Version: createResult.Version,
 	})
 	if err != nil {
@@ -548,7 +548,7 @@ func TestUpdateAssociation_NoteIDs(t *testing.T) {
 	noteIDs := []uuid.UUID{note1Result.ID, note2Result.ID}
 	_, err := handler.UpdateAssociation(ctx, command.UpdateAssociationInput{
 		ID:      createResult.ID,
-		NoteIDs: &noteIDs,
+		NoteIDs: command.Set(noteIDs),
 		Version: createResult.Version,
 	})
 	if err != nil {

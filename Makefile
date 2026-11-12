@@ -4,7 +4,7 @@
 .DEFAULT_GOAL := help
 
 # Tool versions - update these when upgrading
-# Keep in sync with the lint job in .github/workflows/ci.yml.
+# Keep in sync with the lint job in .github/workflows/ci.yml and CONTRIBUTING.md.
 GOLANGCI_LINT_VERSION := v2.14.0
 GO_TEST_COVERAGE_VERSION := latest
 

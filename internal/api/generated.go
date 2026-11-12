@@ -15,25 +15,26 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
+	"github.com/oapi-codegen/nullable"
 	"github.com/oapi-codegen/runtime"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 // Defines values for BranchMergeState.
 const (
-	MergeStateComplete   BranchMergeState = "complete"
-	MergeStateIncomplete BranchMergeState = "incomplete"
-	MergeStateUnknown    BranchMergeState = "unknown"
+	BranchMergeStateMergeStateComplete   BranchMergeState = "complete"
+	BranchMergeStateMergeStateIncomplete BranchMergeState = "incomplete"
+	BranchMergeStateMergeStateUnknown    BranchMergeState = "unknown"
 )
 
 // Valid indicates whether the value is a known member of the BranchMergeState enum.
 func (e BranchMergeState) Valid() bool {
 	switch e {
-	case MergeStateComplete:
+	case BranchMergeStateMergeStateComplete:
 		return true
-	case MergeStateIncomplete:
+	case BranchMergeStateMergeStateIncomplete:
 		return true
-	case MergeStateUnknown:
+	case BranchMergeStateMergeStateUnknown:
 		return true
 	default:
 		return false
@@ -42,19 +43,19 @@ func (e BranchMergeState) Valid() bool {
 
 // Defines values for BranchChangedFactKind.
 const (
-	Deletion     BranchChangedFactKind = "deletion"
-	Fact         BranchChangedFactKind = "fact"
-	Relationship BranchChangedFactKind = "relationship"
+	BranchChangedFactKindDeletion     BranchChangedFactKind = "deletion"
+	BranchChangedFactKindFact         BranchChangedFactKind = "fact"
+	BranchChangedFactKindRelationship BranchChangedFactKind = "relationship"
 )
 
 // Valid indicates whether the value is a known member of the BranchChangedFactKind enum.
 func (e BranchChangedFactKind) Valid() bool {
 	switch e {
-	case Deletion:
+	case BranchChangedFactKindDeletion:
 		return true
-	case Fact:
+	case BranchChangedFactKindFact:
 		return true
-	case Relationship:
+	case BranchChangedFactKindRelationship:
 		return true
 	default:
 		return false
@@ -87,34 +88,34 @@ func (e BranchCloseOutcome) Valid() bool {
 
 // Defines values for BranchMergeConflictErrorCode.
 const (
-	BranchNotActive        BranchMergeConflictErrorCode = "branch_not_active"
-	BranchTooLarge         BranchMergeConflictErrorCode = "branch_too_large"
-	MainTooFarAhead        BranchMergeConflictErrorCode = "main_too_far_ahead"
-	MergeAlreadyClaimed    BranchMergeConflictErrorCode = "merge_already_claimed"
-	MergeConflicts         BranchMergeConflictErrorCode = "merge_conflicts"
-	MergeDanglingReference BranchMergeConflictErrorCode = "merge_dangling_reference"
-	MergeEmpty             BranchMergeConflictErrorCode = "merge_empty"
-	MergePlanStale         BranchMergeConflictErrorCode = "merge_plan_stale"
+	BranchMergeConflictErrorCodeBranchNotActive        BranchMergeConflictErrorCode = "branch_not_active"
+	BranchMergeConflictErrorCodeBranchTooLarge         BranchMergeConflictErrorCode = "branch_too_large"
+	BranchMergeConflictErrorCodeMainTooFarAhead        BranchMergeConflictErrorCode = "main_too_far_ahead"
+	BranchMergeConflictErrorCodeMergeAlreadyClaimed    BranchMergeConflictErrorCode = "merge_already_claimed"
+	BranchMergeConflictErrorCodeMergeConflicts         BranchMergeConflictErrorCode = "merge_conflicts"
+	BranchMergeConflictErrorCodeMergeDanglingReference BranchMergeConflictErrorCode = "merge_dangling_reference"
+	BranchMergeConflictErrorCodeMergeEmpty             BranchMergeConflictErrorCode = "merge_empty"
+	BranchMergeConflictErrorCodeMergePlanStale         BranchMergeConflictErrorCode = "merge_plan_stale"
 )
 
 // Valid indicates whether the value is a known member of the BranchMergeConflictErrorCode enum.
 func (e BranchMergeConflictErrorCode) Valid() bool {
 	switch e {
-	case BranchNotActive:
+	case BranchMergeConflictErrorCodeBranchNotActive:
 		return true
-	case BranchTooLarge:
+	case BranchMergeConflictErrorCodeBranchTooLarge:
 		return true
-	case MainTooFarAhead:
+	case BranchMergeConflictErrorCodeMainTooFarAhead:
 		return true
-	case MergeAlreadyClaimed:
+	case BranchMergeConflictErrorCodeMergeAlreadyClaimed:
 		return true
-	case MergeConflicts:
+	case BranchMergeConflictErrorCodeMergeConflicts:
 		return true
-	case MergeDanglingReference:
+	case BranchMergeConflictErrorCodeMergeDanglingReference:
 		return true
-	case MergeEmpty:
+	case BranchMergeConflictErrorCodeMergeEmpty:
 		return true
-	case MergePlanStale:
+	case BranchMergeConflictErrorCodeMergePlanStale:
 		return true
 	default:
 		return false
@@ -123,25 +124,25 @@ func (e BranchMergeConflictErrorCode) Valid() bool {
 
 // Defines values for BranchMergeResumeErrorCode.
 const (
-	ResumeBranchTooLarge    BranchMergeResumeErrorCode = "branch_too_large"
-	ResumeConcurrent        BranchMergeResumeErrorCode = "merge_resume_concurrent"
-	ResumeDanglingReference BranchMergeResumeErrorCode = "merge_dangling_reference"
-	ResumeMergeNotClaimed   BranchMergeResumeErrorCode = "merge_not_claimed"
-	ResumeNeedsResolution   BranchMergeResumeErrorCode = "merge_resume_needs_resolution"
+	BranchMergeResumeErrorCodeResumeBranchTooLarge    BranchMergeResumeErrorCode = "branch_too_large"
+	BranchMergeResumeErrorCodeResumeConcurrent        BranchMergeResumeErrorCode = "merge_resume_concurrent"
+	BranchMergeResumeErrorCodeResumeDanglingReference BranchMergeResumeErrorCode = "merge_dangling_reference"
+	BranchMergeResumeErrorCodeResumeMergeNotClaimed   BranchMergeResumeErrorCode = "merge_not_claimed"
+	BranchMergeResumeErrorCodeResumeNeedsResolution   BranchMergeResumeErrorCode = "merge_resume_needs_resolution"
 )
 
 // Valid indicates whether the value is a known member of the BranchMergeResumeErrorCode enum.
 func (e BranchMergeResumeErrorCode) Valid() bool {
 	switch e {
-	case ResumeBranchTooLarge:
+	case BranchMergeResumeErrorCodeResumeBranchTooLarge:
 		return true
-	case ResumeConcurrent:
+	case BranchMergeResumeErrorCodeResumeConcurrent:
 		return true
-	case ResumeDanglingReference:
+	case BranchMergeResumeErrorCodeResumeDanglingReference:
 		return true
-	case ResumeMergeNotClaimed:
+	case BranchMergeResumeErrorCodeResumeMergeNotClaimed:
 		return true
-	case ResumeNeedsResolution:
+	case BranchMergeResumeErrorCodeResumeNeedsResolution:
 		return true
 	default:
 		return false
@@ -411,19 +412,19 @@ func (e ChangeEntryParentEntityType) Valid() bool {
 
 // Defines values for ChildRelationType.
 const (
-	Adopted    ChildRelationType = "adopted"
-	Biological ChildRelationType = "biological"
-	Foster     ChildRelationType = "foster"
+	ChildRelationTypeAdopted    ChildRelationType = "adopted"
+	ChildRelationTypeBiological ChildRelationType = "biological"
+	ChildRelationTypeFoster     ChildRelationType = "foster"
 )
 
 // Valid indicates whether the value is a known member of the ChildRelationType enum.
 func (e ChildRelationType) Valid() bool {
 	switch e {
-	case Adopted:
+	case ChildRelationTypeAdopted:
 		return true
-	case Biological:
+	case ChildRelationTypeBiological:
 		return true
-	case Foster:
+	case ChildRelationTypeFoster:
 		return true
 	default:
 		return false
@@ -471,40 +472,40 @@ func (e ConflictStatus) Valid() bool {
 
 // Defines values for DateQualifier.
 const (
-	Abt   DateQualifier = "abt"
-	Aft   DateQualifier = "aft"
-	Bef   DateQualifier = "bef"
-	Bet   DateQualifier = "bet"
-	Cal   DateQualifier = "cal"
-	Est   DateQualifier = "est"
-	Exact DateQualifier = "exact"
-	From  DateQualifier = "from"
-	Int   DateQualifier = "int"
-	To    DateQualifier = "to"
+	DateQualifierAbt   DateQualifier = "abt"
+	DateQualifierAft   DateQualifier = "aft"
+	DateQualifierBef   DateQualifier = "bef"
+	DateQualifierBet   DateQualifier = "bet"
+	DateQualifierCal   DateQualifier = "cal"
+	DateQualifierEst   DateQualifier = "est"
+	DateQualifierExact DateQualifier = "exact"
+	DateQualifierFrom  DateQualifier = "from"
+	DateQualifierInt   DateQualifier = "int"
+	DateQualifierTo    DateQualifier = "to"
 )
 
 // Valid indicates whether the value is a known member of the DateQualifier enum.
 func (e DateQualifier) Valid() bool {
 	switch e {
-	case Abt:
+	case DateQualifierAbt:
 		return true
-	case Aft:
+	case DateQualifierAft:
 		return true
-	case Bef:
+	case DateQualifierBef:
 		return true
-	case Bet:
+	case DateQualifierBet:
 		return true
-	case Cal:
+	case DateQualifierCal:
 		return true
-	case Est:
+	case DateQualifierEst:
 		return true
-	case Exact:
+	case DateQualifierExact:
 		return true
-	case From:
+	case DateQualifierFrom:
 		return true
-	case Int:
+	case DateQualifierInt:
 		return true
-	case To:
+	case DateQualifierTo:
 		return true
 	default:
 		return false
@@ -540,19 +541,19 @@ func (e DiscoverySuggestionType) Valid() bool {
 
 // Defines values for EvidenceType.
 const (
-	Direct   EvidenceType = "direct"
-	Indirect EvidenceType = "indirect"
-	Negative EvidenceType = "negative"
+	EvidenceTypeDirect   EvidenceType = "direct"
+	EvidenceTypeIndirect EvidenceType = "indirect"
+	EvidenceTypeNegative EvidenceType = "negative"
 )
 
 // Valid indicates whether the value is a known member of the EvidenceType enum.
 func (e EvidenceType) Valid() bool {
 	switch e {
-	case Direct:
+	case EvidenceTypeDirect:
 		return true
-	case Indirect:
+	case EvidenceTypeIndirect:
 		return true
-	case Negative:
+	case EvidenceTypeNegative:
 		return true
 	default:
 		return false
@@ -765,19 +766,19 @@ func (e Gender) Valid() bool {
 
 // Defines values for InformantType.
 const (
-	Indeterminate InformantType = "indeterminate"
-	Primary       InformantType = "primary"
-	Secondary     InformantType = "secondary"
+	InformantTypeIndeterminate InformantType = "indeterminate"
+	InformantTypePrimary       InformantType = "primary"
+	InformantTypeSecondary     InformantType = "secondary"
 )
 
 // Valid indicates whether the value is a known member of the InformantType enum.
 func (e InformantType) Valid() bool {
 	switch e {
-	case Indeterminate:
+	case InformantTypeIndeterminate:
 		return true
-	case Primary:
+	case InformantTypePrimary:
 		return true
-	case Secondary:
+	case InformantTypeSecondary:
 		return true
 	default:
 		return false
@@ -786,46 +787,46 @@ func (e InformantType) Valid() bool {
 
 // Defines values for LDSOrdinanceStatus.
 const (
-	BIC       LDSOrdinanceStatus = "BIC"
-	CANCELED  LDSOrdinanceStatus = "CANCELED"
-	CHILD     LDSOrdinanceStatus = "CHILD"
-	COMPLETED LDSOrdinanceStatus = "COMPLETED"
-	DNS       LDSOrdinanceStatus = "DNS"
-	DNSCAN    LDSOrdinanceStatus = "DNS_CAN"
-	EXCLUDED  LDSOrdinanceStatus = "EXCLUDED"
-	INFANT    LDSOrdinanceStatus = "INFANT"
-	PRE1970   LDSOrdinanceStatus = "PRE_1970"
-	STILLBORN LDSOrdinanceStatus = "STILLBORN"
-	SUBMITTED LDSOrdinanceStatus = "SUBMITTED"
-	UNCLEARED LDSOrdinanceStatus = "UNCLEARED"
+	LDSOrdinanceStatusBIC       LDSOrdinanceStatus = "BIC"
+	LDSOrdinanceStatusCANCELED  LDSOrdinanceStatus = "CANCELED"
+	LDSOrdinanceStatusCHILD     LDSOrdinanceStatus = "CHILD"
+	LDSOrdinanceStatusCOMPLETED LDSOrdinanceStatus = "COMPLETED"
+	LDSOrdinanceStatusDNS       LDSOrdinanceStatus = "DNS"
+	LDSOrdinanceStatusDNSCAN    LDSOrdinanceStatus = "DNS_CAN"
+	LDSOrdinanceStatusEXCLUDED  LDSOrdinanceStatus = "EXCLUDED"
+	LDSOrdinanceStatusINFANT    LDSOrdinanceStatus = "INFANT"
+	LDSOrdinanceStatusPRE1970   LDSOrdinanceStatus = "PRE_1970"
+	LDSOrdinanceStatusSTILLBORN LDSOrdinanceStatus = "STILLBORN"
+	LDSOrdinanceStatusSUBMITTED LDSOrdinanceStatus = "SUBMITTED"
+	LDSOrdinanceStatusUNCLEARED LDSOrdinanceStatus = "UNCLEARED"
 )
 
 // Valid indicates whether the value is a known member of the LDSOrdinanceStatus enum.
 func (e LDSOrdinanceStatus) Valid() bool {
 	switch e {
-	case BIC:
+	case LDSOrdinanceStatusBIC:
 		return true
-	case CANCELED:
+	case LDSOrdinanceStatusCANCELED:
 		return true
-	case CHILD:
+	case LDSOrdinanceStatusCHILD:
 		return true
-	case COMPLETED:
+	case LDSOrdinanceStatusCOMPLETED:
 		return true
-	case DNS:
+	case LDSOrdinanceStatusDNS:
 		return true
-	case DNSCAN:
+	case LDSOrdinanceStatusDNSCAN:
 		return true
-	case EXCLUDED:
+	case LDSOrdinanceStatusEXCLUDED:
 		return true
-	case INFANT:
+	case LDSOrdinanceStatusINFANT:
 		return true
-	case PRE1970:
+	case LDSOrdinanceStatusPRE1970:
 		return true
-	case STILLBORN:
+	case LDSOrdinanceStatusSTILLBORN:
 		return true
-	case SUBMITTED:
+	case LDSOrdinanceStatusSUBMITTED:
 		return true
-	case UNCLEARED:
+	case LDSOrdinanceStatusUNCLEARED:
 		return true
 	default:
 		return false
@@ -834,25 +835,25 @@ func (e LDSOrdinanceStatus) Valid() bool {
 
 // Defines values for LDSOrdinanceType.
 const (
-	BAPL LDSOrdinanceType = "BAPL"
-	CONL LDSOrdinanceType = "CONL"
-	ENDL LDSOrdinanceType = "ENDL"
-	SLGC LDSOrdinanceType = "SLGC"
-	SLGS LDSOrdinanceType = "SLGS"
+	LDSOrdinanceTypeBAPL LDSOrdinanceType = "BAPL"
+	LDSOrdinanceTypeCONL LDSOrdinanceType = "CONL"
+	LDSOrdinanceTypeENDL LDSOrdinanceType = "ENDL"
+	LDSOrdinanceTypeSLGC LDSOrdinanceType = "SLGC"
+	LDSOrdinanceTypeSLGS LDSOrdinanceType = "SLGS"
 )
 
 // Valid indicates whether the value is a known member of the LDSOrdinanceType enum.
 func (e LDSOrdinanceType) Valid() bool {
 	switch e {
-	case BAPL:
+	case LDSOrdinanceTypeBAPL:
 		return true
-	case CONL:
+	case LDSOrdinanceTypeCONL:
 		return true
-	case ENDL:
+	case LDSOrdinanceTypeENDL:
 		return true
-	case SLGC:
+	case LDSOrdinanceTypeSLGC:
 		return true
-	case SLGS:
+	case LDSOrdinanceTypeSLGS:
 		return true
 	default:
 		return false
@@ -900,25 +901,25 @@ func (e MediaEntityType) Valid() bool {
 
 // Defines values for MediaType.
 const (
-	Audio       MediaType = "audio"
-	Certificate MediaType = "certificate"
-	Document    MediaType = "document"
-	Photo       MediaType = "photo"
-	Video       MediaType = "video"
+	MediaTypeAudio       MediaType = "audio"
+	MediaTypeCertificate MediaType = "certificate"
+	MediaTypeDocument    MediaType = "document"
+	MediaTypePhoto       MediaType = "photo"
+	MediaTypeVideo       MediaType = "video"
 )
 
 // Valid indicates whether the value is a known member of the MediaType enum.
 func (e MediaType) Valid() bool {
 	switch e {
-	case Audio:
+	case MediaTypeAudio:
 		return true
-	case Certificate:
+	case MediaTypeCertificate:
 		return true
-	case Document:
+	case MediaTypeDocument:
 		return true
-	case Photo:
+	case MediaTypePhoto:
 		return true
-	case Video:
+	case MediaTypeVideo:
 		return true
 	default:
 		return false
@@ -927,37 +928,37 @@ func (e MediaType) Valid() bool {
 
 // Defines values for MergeBlockerKind.
 const (
-	MissingGpsArtifact          MergeBlockerKind = "missing_gps_artifact"
-	MissingGpsSubject           MergeBlockerKind = "missing_gps_subject"
-	MissingMediaOwner           MergeBlockerKind = "missing_media_owner"
-	MissingPerson               MergeBlockerKind = "missing_person"
-	MissingSource               MergeBlockerKind = "missing_source"
-	OwnerDeleteOrphansMedia     MergeBlockerKind = "owner_delete_orphans_media"
-	PersonMergeConflictsMain    MergeBlockerKind = "person_merge_conflicts_main"
-	SourceDeleteOrphansCitation MergeBlockerKind = "source_delete_orphans_citation"
-	SubjectDeleteOrphansGps     MergeBlockerKind = "subject_delete_orphans_gps"
+	MergeBlockerKindMissingGpsArtifact          MergeBlockerKind = "missing_gps_artifact"
+	MergeBlockerKindMissingGpsSubject           MergeBlockerKind = "missing_gps_subject"
+	MergeBlockerKindMissingMediaOwner           MergeBlockerKind = "missing_media_owner"
+	MergeBlockerKindMissingPerson               MergeBlockerKind = "missing_person"
+	MergeBlockerKindMissingSource               MergeBlockerKind = "missing_source"
+	MergeBlockerKindOwnerDeleteOrphansMedia     MergeBlockerKind = "owner_delete_orphans_media"
+	MergeBlockerKindPersonMergeConflictsMain    MergeBlockerKind = "person_merge_conflicts_main"
+	MergeBlockerKindSourceDeleteOrphansCitation MergeBlockerKind = "source_delete_orphans_citation"
+	MergeBlockerKindSubjectDeleteOrphansGps     MergeBlockerKind = "subject_delete_orphans_gps"
 )
 
 // Valid indicates whether the value is a known member of the MergeBlockerKind enum.
 func (e MergeBlockerKind) Valid() bool {
 	switch e {
-	case MissingGpsArtifact:
+	case MergeBlockerKindMissingGpsArtifact:
 		return true
-	case MissingGpsSubject:
+	case MergeBlockerKindMissingGpsSubject:
 		return true
-	case MissingMediaOwner:
+	case MergeBlockerKindMissingMediaOwner:
 		return true
-	case MissingPerson:
+	case MergeBlockerKindMissingPerson:
 		return true
-	case MissingSource:
+	case MergeBlockerKindMissingSource:
 		return true
-	case OwnerDeleteOrphansMedia:
+	case MergeBlockerKindOwnerDeleteOrphansMedia:
 		return true
-	case PersonMergeConflictsMain:
+	case MergeBlockerKindPersonMergeConflictsMain:
 		return true
-	case SourceDeleteOrphansCitation:
+	case MergeBlockerKindSourceDeleteOrphansCitation:
 		return true
-	case SubjectDeleteOrphansGps:
+	case MergeBlockerKindSubjectDeleteOrphansGps:
 		return true
 	default:
 		return false
@@ -966,16 +967,16 @@ func (e MergeBlockerKind) Valid() bool {
 
 // Defines values for MergeBlockerSuggestedResolution.
 const (
-	IncludeReferenced MergeBlockerSuggestedResolution = "include_referenced"
-	LeaveOut          MergeBlockerSuggestedResolution = "leave_out"
+	MergeBlockerSuggestedResolutionIncludeReferenced MergeBlockerSuggestedResolution = "include_referenced"
+	MergeBlockerSuggestedResolutionLeaveOut          MergeBlockerSuggestedResolution = "leave_out"
 )
 
 // Valid indicates whether the value is a known member of the MergeBlockerSuggestedResolution enum.
 func (e MergeBlockerSuggestedResolution) Valid() bool {
 	switch e {
-	case IncludeReferenced:
+	case MergeBlockerSuggestedResolutionIncludeReferenced:
 		return true
-	case LeaveOut:
+	case MergeBlockerSuggestedResolutionLeaveOut:
 		return true
 	default:
 		return false
@@ -1041,28 +1042,28 @@ func (e MergeConflictSupportedResolutions) Valid() bool {
 
 // Defines values for MergePendingEntityReason.
 const (
-	PendingBreaksReference MergePendingEntityReason = "breaks_reference"
-	PendingMainChanged     MergePendingEntityReason = "main_changed"
-	PendingMainRemoved     MergePendingEntityReason = "main_removed"
-	PendingNeedsRepair     MergePendingEntityReason = "needs_repair"
-	PendingNoPlan          MergePendingEntityReason = "no_plan"
-	PendingReady           MergePendingEntityReason = "ready"
+	MergePendingEntityReasonPendingBreaksReference MergePendingEntityReason = "breaks_reference"
+	MergePendingEntityReasonPendingMainChanged     MergePendingEntityReason = "main_changed"
+	MergePendingEntityReasonPendingMainRemoved     MergePendingEntityReason = "main_removed"
+	MergePendingEntityReasonPendingNeedsRepair     MergePendingEntityReason = "needs_repair"
+	MergePendingEntityReasonPendingNoPlan          MergePendingEntityReason = "no_plan"
+	MergePendingEntityReasonPendingReady           MergePendingEntityReason = "ready"
 )
 
 // Valid indicates whether the value is a known member of the MergePendingEntityReason enum.
 func (e MergePendingEntityReason) Valid() bool {
 	switch e {
-	case PendingBreaksReference:
+	case MergePendingEntityReasonPendingBreaksReference:
 		return true
-	case PendingMainChanged:
+	case MergePendingEntityReasonPendingMainChanged:
 		return true
-	case PendingMainRemoved:
+	case MergePendingEntityReasonPendingMainRemoved:
 		return true
-	case PendingNeedsRepair:
+	case MergePendingEntityReasonPendingNeedsRepair:
 		return true
-	case PendingNoPlan:
+	case MergePendingEntityReasonPendingNoPlan:
 		return true
-	case PendingReady:
+	case MergePendingEntityReasonPendingReady:
 		return true
 	default:
 		return false
@@ -1107,16 +1108,16 @@ func (e MergePersonsRequestFieldResolution) Valid() bool {
 
 // Defines values for MergeRecordDecisionDecidedAt.
 const (
-	Merge  MergeRecordDecisionDecidedAt = "merge"
-	Resume MergeRecordDecisionDecidedAt = "resume"
+	MergeRecordDecisionDecidedAtMerge  MergeRecordDecisionDecidedAt = "merge"
+	MergeRecordDecisionDecidedAtResume MergeRecordDecisionDecidedAt = "resume"
 )
 
 // Valid indicates whether the value is a known member of the MergeRecordDecisionDecidedAt enum.
 func (e MergeRecordDecisionDecidedAt) Valid() bool {
 	switch e {
-	case Merge:
+	case MergeRecordDecisionDecidedAtMerge:
 		return true
-	case Resume:
+	case MergeRecordDecisionDecidedAtResume:
 		return true
 	default:
 		return false
@@ -1389,19 +1390,19 @@ func (e RollbackResponseEntityType) Valid() bool {
 
 // Defines values for SourceQuality.
 const (
-	Authored   SourceQuality = "authored"
-	Derivative SourceQuality = "derivative"
-	Original   SourceQuality = "original"
+	SourceQualityAuthored   SourceQuality = "authored"
+	SourceQualityDerivative SourceQuality = "derivative"
+	SourceQualityOriginal   SourceQuality = "original"
 )
 
 // Valid indicates whether the value is a known member of the SourceQuality enum.
 func (e SourceQuality) Valid() bool {
 	switch e {
-	case Authored:
+	case SourceQualityAuthored:
 		return true
-	case Derivative:
+	case SourceQualityDerivative:
 		return true
-	case Original:
+	case SourceQualityOriginal:
 		return true
 	default:
 		return false
@@ -1410,43 +1411,43 @@ func (e SourceQuality) Valid() bool {
 
 // Defines values for SourceType.
 const (
-	Archive        SourceType = "archive"
-	Book           SourceType = "book"
-	Census         SourceType = "census"
-	ChurchRecord   SourceType = "church_record"
-	Correspondence SourceType = "correspondence"
-	Interview      SourceType = "interview"
-	Newspaper      SourceType = "newspaper"
-	Other          SourceType = "other"
-	Photograph     SourceType = "photograph"
-	VitalRecord    SourceType = "vital_record"
-	Webpage        SourceType = "webpage"
+	SourceTypeArchive        SourceType = "archive"
+	SourceTypeBook           SourceType = "book"
+	SourceTypeCensus         SourceType = "census"
+	SourceTypeChurchRecord   SourceType = "church_record"
+	SourceTypeCorrespondence SourceType = "correspondence"
+	SourceTypeInterview      SourceType = "interview"
+	SourceTypeNewspaper      SourceType = "newspaper"
+	SourceTypeOther          SourceType = "other"
+	SourceTypePhotograph     SourceType = "photograph"
+	SourceTypeVitalRecord    SourceType = "vital_record"
+	SourceTypeWebpage        SourceType = "webpage"
 )
 
 // Valid indicates whether the value is a known member of the SourceType enum.
 func (e SourceType) Valid() bool {
 	switch e {
-	case Archive:
+	case SourceTypeArchive:
 		return true
-	case Book:
+	case SourceTypeBook:
 		return true
-	case Census:
+	case SourceTypeCensus:
 		return true
-	case ChurchRecord:
+	case SourceTypeChurchRecord:
 		return true
-	case Correspondence:
+	case SourceTypeCorrespondence:
 		return true
-	case Interview:
+	case SourceTypeInterview:
 		return true
-	case Newspaper:
+	case SourceTypeNewspaper:
 		return true
-	case Other:
+	case SourceTypeOther:
 		return true
-	case Photograph:
+	case SourceTypePhotograph:
 		return true
-	case VitalRecord:
+	case SourceTypeVitalRecord:
 		return true
-	case Webpage:
+	case SourceTypeWebpage:
 		return true
 	default:
 		return false
@@ -2317,16 +2318,16 @@ type AssociationList struct {
 	Total int `json:"total"`
 }
 
-// AssociationUpdate defines model for AssociationUpdate.
+// AssociationUpdate Partial update. A field left out stays unchanged; an optional (nullable) field sent as null is cleared. Required fields reject null.
 type AssociationUpdate struct {
 	// NoteIds Updated note references
-	NoteIds *[]openapi_types.UUID `json:"note_ids,omitempty"`
+	NoteIds nullable.Nullable[[]openapi_types.UUID] `json:"note_ids,omitempty"`
 
 	// Notes Updated notes
-	Notes *string `json:"notes,omitempty"`
+	Notes nullable.Nullable[string] `json:"notes,omitempty"`
 
 	// Phrase Updated phrase
-	Phrase *string `json:"phrase,omitempty"`
+	Phrase nullable.Nullable[string] `json:"phrase,omitempty"`
 
 	// Role Updated role
 	Role *string `json:"role,omitempty"`
@@ -2992,19 +2993,19 @@ type BranchSubjectInput struct {
 // BranchSubjectType defines model for BranchSubjectType.
 type BranchSubjectType string
 
-// BranchUpdate Partial update; see `PATCH /branches/{id}`.
+// BranchUpdate Partial update; see `PATCH /branches/{id}`. A field left out stays unchanged; an optional (nullable) field sent as null is cleared. Required fields reject null.
 type BranchUpdate struct {
-	Description *string `json:"description,omitempty"`
-	Hypothesis  *string `json:"hypothesis,omitempty"`
+	Description nullable.Nullable[string] `json:"description,omitempty"`
+	Hypothesis  nullable.Nullable[string] `json:"hypothesis,omitempty"`
 
 	// Outcome The verdict the research reached. Independent of `status`: status says
 	// whether the branch still takes writes, outcome says what it concluded.
 	// `open` means the question is still being worked; `superseded` marks a
 	// question overtaken by other research; `abandoned` marks research
 	// stopped without a verdict.
-	Outcome         *BranchOutcome        `json:"outcome,omitempty"`
-	ProofSummaryIds *[]openapi_types.UUID `json:"proof_summary_ids,omitempty"`
-	Subjects        *[]BranchSubjectInput `json:"subjects,omitempty"`
+	Outcome         *BranchOutcome                          `json:"outcome,omitempty"`
+	ProofSummaryIds nullable.Nullable[[]openapi_types.UUID] `json:"proof_summary_ids,omitempty"`
+	Subjects        nullable.Nullable[[]BranchSubjectInput] `json:"subjects,omitempty"`
 }
 
 // BranchValidationIssue A validation issue a branch introduces, with the records it is about by name.
@@ -3298,28 +3299,22 @@ type CitationTemplateList struct {
 	Templates []CitationTemplate `json:"templates"`
 }
 
-// CitationUpdate defines model for CitationUpdate.
+// CitationUpdate Partial update. A field left out stays unchanged; an optional (nullable) field sent as null is cleared. Required fields reject null.
 type CitationUpdate struct {
-	Analysis *string `json:"analysis,omitempty"`
-
-	// EvidenceType How the evidence bears on the fact per GPS standards
-	EvidenceType *EvidenceType `json:"evidence_type,omitempty"`
+	Analysis     nullable.Nullable[string]       `json:"analysis,omitempty"`
+	EvidenceType nullable.Nullable[EvidenceType] `json:"evidence_type,omitempty"`
 
 	// Fields Template-specific field values
-	Fields *map[string]string `json:"fields,omitempty"`
-
-	// InformantType Informant's relation to the event per GPS standards
-	InformantType *InformantType `json:"informant_type,omitempty"`
-	Page          *string        `json:"page,omitempty"`
-	QuotedText    *string        `json:"quoted_text,omitempty"`
-
-	// SourceQuality Quality of a source per GPS standards
-	SourceQuality *SourceQuality `json:"source_quality,omitempty"`
-	TemplateId    *string        `json:"template_id,omitempty"`
+	Fields        nullable.Nullable[map[string]string] `json:"fields,omitempty"`
+	InformantType nullable.Nullable[InformantType]     `json:"informant_type,omitempty"`
+	Page          nullable.Nullable[string]            `json:"page,omitempty"`
+	QuotedText    nullable.Nullable[string]            `json:"quoted_text,omitempty"`
+	SourceQuality nullable.Nullable[SourceQuality]     `json:"source_quality,omitempty"`
+	TemplateId    nullable.Nullable[string]            `json:"template_id,omitempty"`
 
 	// Version Current version for optimistic locking
-	Version int64   `json:"version"`
-	Volume  *string `json:"volume,omitempty"`
+	Version int64                     `json:"version"`
+	Volume  nullable.Nullable[string] `json:"volume,omitempty"`
 }
 
 // CitationValidationIssue defines model for CitationValidationIssue.
@@ -3579,16 +3574,19 @@ type EventExport struct {
 	Place     *string `json:"place,omitempty"`
 
 	// PlaceLatitude Latitude in GEDCOM format (e.g., "N42.3601")
-	PlaceLatitude *string `json:"place_latitude,omitempty"`
+	PlaceLatitude nullable.Nullable[string] `json:"place_latitude,omitempty"`
 
 	// PlaceLongitude Longitude in GEDCOM format (e.g., "W71.0589")
-	PlaceLongitude *string `json:"place_longitude,omitempty"`
+	PlaceLongitude nullable.Nullable[string] `json:"place_longitude,omitempty"`
 
 	// ResearchStatus Confidence level of genealogical data per GPS standards
 	//
 	// Example: probable
 	ResearchStatus *ResearchStatus `json:"research_status,omitempty"`
-	Version        *int64          `json:"version,omitempty"`
+
+	// TypeDetail The event's GEDCOM TYPE (e.g. "Migration"); omitted when the event has none
+	TypeDetail *string `json:"type_detail,omitempty"`
+	Version    *int64  `json:"version,omitempty"`
 }
 
 // EventsExportResponse defines model for EventsExportResponse.
@@ -3660,26 +3658,22 @@ type EvidenceAnalysisList struct {
 	Total    int                `json:"total"`
 }
 
-// EvidenceAnalysisUpdate defines model for EvidenceAnalysisUpdate.
+// EvidenceAnalysisUpdate Partial update. A field left out stays unchanged; an optional (nullable) field sent as null is cleared. Required fields reject null.
 type EvidenceAnalysisUpdate struct {
-	CitationIds *[]openapi_types.UUID `json:"citation_ids,omitempty"`
-	Conclusion  *string               `json:"conclusion,omitempty"`
+	CitationIds nullable.Nullable[[]openapi_types.UUID] `json:"citation_ids,omitempty"`
+	Conclusion  *string                                 `json:"conclusion,omitempty"`
 
 	// FactId ID of the life event or attribute this is about, checked as on
 	// create. Omitted, the link is kept, unless `fact_type` or
 	// `subject_id` changes: then the link is removed.
-	FactId *openapi_types.UUID `json:"fact_id,omitempty"`
+	FactId nullable.Nullable[openapi_types.UUID] `json:"fact_id,omitempty"`
 
 	// FactType The fact a citation, analysis, conflict or proof summary is about
-	FactType *FactType `json:"fact_type,omitempty"`
-	Notes    *string   `json:"notes,omitempty"`
-
-	// ResearchStatus Confidence level of genealogical data per GPS standards
-	//
-	// Example: probable
-	ResearchStatus *ResearchStatus     `json:"research_status,omitempty"`
-	SubjectId      *openapi_types.UUID `json:"subject_id,omitempty"`
-	Version        int64               `json:"version"`
+	FactType       *FactType                         `json:"fact_type,omitempty"`
+	Notes          nullable.Nullable[string]         `json:"notes,omitempty"`
+	ResearchStatus nullable.Nullable[ResearchStatus] `json:"research_status,omitempty"`
+	SubjectId      *openapi_types.UUID               `json:"subject_id,omitempty"`
+	Version        int64                             `json:"version"`
 }
 
 // EvidenceConflict defines model for EvidenceConflict.
@@ -3824,16 +3818,25 @@ type Family struct {
 	Id openapi_types.UUID `json:"id"`
 
 	// MarriageDate Genealogical date with flexible precision
-	MarriageDate  *GenDate `json:"marriage_date,omitempty"`
-	MarriagePlace *string  `json:"marriage_place,omitempty"`
+	MarriageDate *GenDate `json:"marriage_date,omitempty"`
+
+	// MarriageNotes NOTEs recorded on the marriage event; omitted when it has none
+	MarriageNotes *string `json:"marriage_notes,omitempty"`
+	MarriagePlace *string `json:"marriage_place,omitempty"`
 
 	// MarriagePlaceLatitude Latitude in GEDCOM format (e.g., "N39.7817")
-	MarriagePlaceLatitude *string `json:"marriage_place_latitude,omitempty"`
+	MarriagePlaceLatitude nullable.Nullable[string] `json:"marriage_place_latitude,omitempty"`
 
 	// MarriagePlaceLongitude Longitude in GEDCOM format (e.g., "W89.6501")
-	MarriagePlaceLongitude *string             `json:"marriage_place_longitude,omitempty"`
-	Partner1Id             *openapi_types.UUID `json:"partner1_id,omitempty"`
-	Partner2Id             *openapi_types.UUID `json:"partner2_id,omitempty"`
+	MarriagePlaceLongitude nullable.Nullable[string] `json:"marriage_place_longitude,omitempty"`
+
+	// MarriageTypeDetail The marriage event's GEDCOM TYPE (e.g. "Civil"); omitted when it has none
+	MarriageTypeDetail *string `json:"marriage_type_detail,omitempty"`
+
+	// Notes The family record's own NOTEs; omitted when it has none
+	Notes      *string             `json:"notes,omitempty"`
+	Partner1Id *openapi_types.UUID `json:"partner1_id,omitempty"`
+	Partner2Id *openapi_types.UUID `json:"partner2_id,omitempty"`
 
 	// RelationshipType Relationship between a family's partners
 	RelationshipType *RelationType `json:"relationship_type,omitempty"`
@@ -3900,14 +3903,23 @@ type FamilyDetail struct {
 	Id          openapi_types.UUID `json:"id"`
 
 	// MarriageDate Genealogical date with flexible precision
-	MarriageDate  *GenDate `json:"marriage_date,omitempty"`
-	MarriagePlace *string  `json:"marriage_place,omitempty"`
+	MarriageDate *GenDate `json:"marriage_date,omitempty"`
+
+	// MarriageNotes NOTEs recorded on the marriage event; omitted when it has none
+	MarriageNotes *string `json:"marriage_notes,omitempty"`
+	MarriagePlace *string `json:"marriage_place,omitempty"`
 
 	// MarriagePlaceLatitude Latitude in GEDCOM format (e.g., "N39.7817")
-	MarriagePlaceLatitude *string `json:"marriage_place_latitude,omitempty"`
+	MarriagePlaceLatitude nullable.Nullable[string] `json:"marriage_place_latitude,omitempty"`
 
 	// MarriagePlaceLongitude Longitude in GEDCOM format (e.g., "W89.6501")
-	MarriagePlaceLongitude *string `json:"marriage_place_longitude,omitempty"`
+	MarriagePlaceLongitude nullable.Nullable[string] `json:"marriage_place_longitude,omitempty"`
+
+	// MarriageTypeDetail The marriage event's GEDCOM TYPE (e.g. "Civil"); omitted when it has none
+	MarriageTypeDetail *string `json:"marriage_type_detail,omitempty"`
+
+	// Notes The family record's own NOTEs; omitted when it has none
+	Notes *string `json:"notes,omitempty"`
 
 	// Partner1 Partner 1 summary. Present whenever partner1_id is set; given_name and surname may be empty strings if the partner has no recorded name.
 	Partner1   *PersonSummary      `json:"partner1,omitempty"`
@@ -3957,56 +3969,25 @@ type FamilySummary struct {
 	RelationshipType *RelationType `json:"relationship_type,omitempty"`
 }
 
-// FamilyUpdate defines model for FamilyUpdate.
+// FamilyUpdate Partial update. A field left out stays unchanged; an optional (nullable) field sent as null is cleared. Required fields reject null.
 type FamilyUpdate struct {
-	// ClearPartner1 Remove partner 1 from the family. Cannot be combined with partner1_id.
+	// ClearPartner1 Deprecated: send `partner1_id: null`. Remove partner 1 from the family. Cannot be combined with a partner1_id value.
+	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	ClearPartner1 *bool `json:"clear_partner1,omitempty"`
 
-	// ClearPartner2 Remove partner 2 from the family. Cannot be combined with partner2_id.
-	ClearPartner2 *bool `json:"clear_partner2,omitempty"`
+	// ClearPartner2 Deprecated: send `partner2_id: null`. Remove partner 2 from the family. Cannot be combined with a partner2_id value.
+	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
+	ClearPartner2 *bool                        `json:"clear_partner2,omitempty"`
+	MarriageDate  nullable.Nullable[DateInput] `json:"marriage_date,omitempty"`
+	MarriagePlace nullable.Nullable[string]    `json:"marriage_place,omitempty"`
 
-	// MarriageDate A date as entered, stored in GEDCOM form. Accepted forms:
-	//
-	// - GEDCOM dates: `1850`, `MAR 1850`, `15 MAR 1850`, including dual
-	//   years (`1 JAN 1750/51`) and BC years (`44 BC`).
-	// - GEDCOM qualifiers: `ABT`, `CAL`, `EST`, `BEF`, `AFT`,
-	//   `BET ... AND ...`, `FROM ... TO ...`, `FROM ...`, `TO ...`, and
-	//   interpreted dates such as `INT 1850 (about eighteen fifty)`.
-	// - Calendar escapes: `@#DJULIAN@`, `@#DHEBREW@`, `@#DFRENCH R@`
-	//   (for example `@#DJULIAN@ 29 FEB 1700`).
-	// - Plain English, converted to GEDCOM before it is checked and stored:
-	//   about, circa, c., ca., before, after, `between X and Y`,
-	//   `from X to Y`, and month names in full, as three letters or as
-	//   "Sept". For example `about Sept 1850` is stored as `ABT SEP 1850`.
-	//   Era markers may carry periods (`44 B.C.` is stored as `44 BC`), and
-	//   an AD marker after a year is dropped (`500 A.D.` is stored as `500`).
-	// - A date phrase in parentheses, such as `(about the time of the war)`,
-	//   kept as text.
-	//
-	// An empty string means no date. Any other text (such as `1850-01-01`
-	// or `Sept 5, 1850`), a date without a year, a date that doesn't
-	// exist in the calendar (such as `31 FEB 1900`, `0 JAN 1850` or year
-	// `0`), or a range that ends before it starts (such as
-	// `between 1860 and 1850`) is rejected with 400;
-	// the error's `details` name the field and say whether the text can be
-	// kept as a date phrase. On update, a date identical to the stored value
-	// is not re-checked, so an imported date the parser can't read never
-	// blocks an unrelated edit.
-	//
-	//
-	// Example: 1 JAN 1850
-	MarriageDate  *DateInput `json:"marriage_date,omitempty"`
-	MarriagePlace *string    `json:"marriage_place,omitempty"`
+	// Partner1Id Set partner 1 to this person, or null to remove partner 1 from the family. Omit to leave partner 1 unchanged.
+	Partner1Id nullable.Nullable[openapi_types.UUID] `json:"partner1_id,omitempty"`
 
-	// Partner1Id Set partner 1 to this person. Omit to leave partner 1 unchanged.
-	Partner1Id *openapi_types.UUID `json:"partner1_id,omitempty"`
-
-	// Partner2Id Set partner 2 to this person. Omit to leave partner 2 unchanged.
-	Partner2Id *openapi_types.UUID `json:"partner2_id,omitempty"`
-
-	// RelationshipType Relationship between a family's partners
-	RelationshipType *RelationType `json:"relationship_type,omitempty"`
-	Version          int64         `json:"version"`
+	// Partner2Id Set partner 2 to this person, or null to remove partner 2 from the family. Omit to leave partner 2 unchanged.
+	Partner2Id       nullable.Nullable[openapi_types.UUID] `json:"partner2_id,omitempty"`
+	RelationshipType nullable.Nullable[RelationType]       `json:"relationship_type,omitempty"`
+	Version          int64                                 `json:"version"`
 }
 
 // FieldChange defines model for FieldChange.
@@ -4288,50 +4269,16 @@ type LDSOrdinanceStatus string
 // - SLGS: Sealing to Spouse (family level)
 type LDSOrdinanceType string
 
-// LDSOrdinanceUpdate defines model for LDSOrdinanceUpdate.
+// LDSOrdinanceUpdate Partial update. A field left out stays unchanged; an optional (nullable) field sent as null is cleared. Required fields reject null.
 type LDSOrdinanceUpdate struct {
-	// Date A date as entered, stored in GEDCOM form. Accepted forms:
-	//
-	// - GEDCOM dates: `1850`, `MAR 1850`, `15 MAR 1850`, including dual
-	//   years (`1 JAN 1750/51`) and BC years (`44 BC`).
-	// - GEDCOM qualifiers: `ABT`, `CAL`, `EST`, `BEF`, `AFT`,
-	//   `BET ... AND ...`, `FROM ... TO ...`, `FROM ...`, `TO ...`, and
-	//   interpreted dates such as `INT 1850 (about eighteen fifty)`.
-	// - Calendar escapes: `@#DJULIAN@`, `@#DHEBREW@`, `@#DFRENCH R@`
-	//   (for example `@#DJULIAN@ 29 FEB 1700`).
-	// - Plain English, converted to GEDCOM before it is checked and stored:
-	//   about, circa, c., ca., before, after, `between X and Y`,
-	//   `from X to Y`, and month names in full, as three letters or as
-	//   "Sept". For example `about Sept 1850` is stored as `ABT SEP 1850`.
-	//   Era markers may carry periods (`44 B.C.` is stored as `44 BC`), and
-	//   an AD marker after a year is dropped (`500 A.D.` is stored as `500`).
-	// - A date phrase in parentheses, such as `(about the time of the war)`,
-	//   kept as text.
-	//
-	// An empty string means no date. Any other text (such as `1850-01-01`
-	// or `Sept 5, 1850`), a date without a year, a date that doesn't
-	// exist in the calendar (such as `31 FEB 1900`, `0 JAN 1850` or year
-	// `0`), or a range that ends before it starts (such as
-	// `between 1860 and 1850`) is rejected with 400;
-	// the error's `details` name the field and say whether the text can be
-	// kept as a date phrase. On update, a date identical to the stored value
-	// is not re-checked, so an imported date the parser can't read never
-	// blocks an unrelated edit.
-	//
-	//
-	// Example: 1 JAN 1850
-	Date *DateInput `json:"date,omitempty"`
+	Date nullable.Nullable[DateInput] `json:"date,omitempty"`
 
 	// Place Updated place
-	Place *string `json:"place,omitempty"`
-
-	// Status LDS ordinance status, the GEDCOM 7 STAT enumeration. A GEDCOM import
-	// keeps the file's STAT text as written, so an ordinance imported from
-	// an older file can carry a value outside this list.
-	Status *LDSOrdinanceStatus `json:"status,omitempty"`
+	Place  nullable.Nullable[string]             `json:"place,omitempty"`
+	Status nullable.Nullable[LDSOrdinanceStatus] `json:"status,omitempty"`
 
 	// Temple Updated temple code
-	Temple *string `json:"temple,omitempty"`
+	Temple nullable.Nullable[string] `json:"temple,omitempty"`
 
 	// Version Current version for optimistic locking
 	Version int64 `json:"version"`
@@ -4467,13 +4414,13 @@ type MediaTranslation struct {
 // MediaType Category of media
 type MediaType string
 
-// MediaUpdate defines model for MediaUpdate.
+// MediaUpdate Partial update. A field left out stays unchanged; an optional (nullable) field sent as null is cleared. Required fields reject null.
 type MediaUpdate struct {
-	CropHeight  *int    `json:"crop_height,omitempty"`
-	CropLeft    *int    `json:"crop_left,omitempty"`
-	CropTop     *int    `json:"crop_top,omitempty"`
-	CropWidth   *int    `json:"crop_width,omitempty"`
-	Description *string `json:"description,omitempty"`
+	CropHeight  nullable.Nullable[int]    `json:"crop_height,omitempty"`
+	CropLeft    nullable.Nullable[int]    `json:"crop_left,omitempty"`
+	CropTop     nullable.Nullable[int]    `json:"crop_top,omitempty"`
+	CropWidth   nullable.Nullable[int]    `json:"crop_width,omitempty"`
+	Description nullable.Nullable[string] `json:"description,omitempty"`
 
 	// MediaType Category of media
 	MediaType *MediaType `json:"media_type,omitempty"`
@@ -4685,12 +4632,12 @@ type MergeConflictField struct {
 	//
 	//
 	// Example: Byron
-	BaseValue *string `json:"base_value"`
+	BaseValue nullable.Nullable[string] `json:"base_value"`
 
 	// BranchValue The branch's value. `null` when it is not set, or the branch deleted the entity.
 	//
 	// Example: Lovelace
-	BranchValue *string `json:"branch_value"`
+	BranchValue nullable.Nullable[string] `json:"branch_value"`
 
 	// Field The raw field key, as `MergeConflict.fields` reports it - for
 	// example `surname`, `children[<person-id>]` or `names[<name-id>]`.
@@ -4709,7 +4656,7 @@ type MergeConflictField struct {
 	// MainValue The mainline's value. `null` when it is not set, or the mainline deleted the entity.
 	//
 	// Example: King
-	MainValue *string `json:"main_value"`
+	MainValue nullable.Nullable[string] `json:"main_value"`
 }
 
 // MergeOrigin The merge that brought a mainline change over from a research branch.
@@ -5021,7 +4968,7 @@ type NoteTranslation struct {
 	Text string `json:"text"`
 }
 
-// NoteUpdate defines model for NoteUpdate.
+// NoteUpdate Partial update. A field left out stays unchanged; an optional (nullable) field sent as null is cleared. Required fields reject null.
 type NoteUpdate struct {
 	// Text Updated note text
 	Text *string `json:"text,omitempty"`
@@ -5068,27 +5015,27 @@ type Person struct {
 	BirthPlace *string  `json:"birth_place,omitempty"`
 
 	// BirthPlaceLatitude Latitude in GEDCOM format (e.g., "N42.3601")
-	BirthPlaceLatitude *string `json:"birth_place_latitude,omitempty"`
+	BirthPlaceLatitude nullable.Nullable[string] `json:"birth_place_latitude,omitempty"`
 
 	// BirthPlaceLongitude Longitude in GEDCOM format (e.g., "W71.0589")
-	BirthPlaceLongitude *string    `json:"birth_place_longitude,omitempty"`
-	BrickWallNote       *string    `json:"brick_wall_note,omitempty"`
-	BrickWallResolvedAt *time.Time `json:"brick_wall_resolved_at,omitempty"`
-	BrickWallSince      *time.Time `json:"brick_wall_since,omitempty"`
+	BirthPlaceLongitude nullable.Nullable[string]    `json:"birth_place_longitude,omitempty"`
+	BrickWallNote       nullable.Nullable[string]    `json:"brick_wall_note,omitempty"`
+	BrickWallResolvedAt nullable.Nullable[time.Time] `json:"brick_wall_resolved_at,omitempty"`
+	BrickWallSince      nullable.Nullable[time.Time] `json:"brick_wall_since,omitempty"`
 
 	// DeathDate Genealogical date with flexible precision
 	DeathDate  *GenDate `json:"death_date,omitempty"`
 	DeathPlace *string  `json:"death_place,omitempty"`
 
 	// DeathPlaceLatitude Latitude in GEDCOM format (e.g., "N42.3601")
-	DeathPlaceLatitude *string `json:"death_place_latitude,omitempty"`
+	DeathPlaceLatitude nullable.Nullable[string] `json:"death_place_latitude,omitempty"`
 
 	// DeathPlaceLongitude Longitude in GEDCOM format (e.g., "W71.0589")
-	DeathPlaceLongitude *string            `json:"death_place_longitude,omitempty"`
-	Gender              *Gender            `json:"gender,omitempty"`
-	GivenName           string             `json:"given_name"`
-	Id                  openapi_types.UUID `json:"id"`
-	Notes               *string            `json:"notes,omitempty"`
+	DeathPlaceLongitude nullable.Nullable[string] `json:"death_place_longitude,omitempty"`
+	Gender              *Gender                   `json:"gender,omitempty"`
+	GivenName           string                    `json:"given_name"`
+	Id                  openapi_types.UUID        `json:"id"`
+	Notes               *string                   `json:"notes,omitempty"`
 
 	// ResearchStatus Confidence level of genealogical data per GPS standards
 	//
@@ -5185,23 +5132,23 @@ type PersonDetail struct {
 	BirthPlace *string  `json:"birth_place,omitempty"`
 
 	// BirthPlaceLatitude Latitude in GEDCOM format (e.g., "N42.3601")
-	BirthPlaceLatitude *string `json:"birth_place_latitude,omitempty"`
+	BirthPlaceLatitude nullable.Nullable[string] `json:"birth_place_latitude,omitempty"`
 
 	// BirthPlaceLongitude Longitude in GEDCOM format (e.g., "W71.0589")
-	BirthPlaceLongitude *string    `json:"birth_place_longitude,omitempty"`
-	BrickWallNote       *string    `json:"brick_wall_note,omitempty"`
-	BrickWallResolvedAt *time.Time `json:"brick_wall_resolved_at,omitempty"`
-	BrickWallSince      *time.Time `json:"brick_wall_since,omitempty"`
+	BirthPlaceLongitude nullable.Nullable[string]    `json:"birth_place_longitude,omitempty"`
+	BrickWallNote       nullable.Nullable[string]    `json:"brick_wall_note,omitempty"`
+	BrickWallResolvedAt nullable.Nullable[time.Time] `json:"brick_wall_resolved_at,omitempty"`
+	BrickWallSince      nullable.Nullable[time.Time] `json:"brick_wall_since,omitempty"`
 
 	// DeathDate Genealogical date with flexible precision
 	DeathDate  *GenDate `json:"death_date,omitempty"`
 	DeathPlace *string  `json:"death_place,omitempty"`
 
 	// DeathPlaceLatitude Latitude in GEDCOM format (e.g., "N42.3601")
-	DeathPlaceLatitude *string `json:"death_place_latitude,omitempty"`
+	DeathPlaceLatitude nullable.Nullable[string] `json:"death_place_latitude,omitempty"`
 
 	// DeathPlaceLongitude Longitude in GEDCOM format (e.g., "W71.0589")
-	DeathPlaceLongitude *string `json:"death_place_longitude,omitempty"`
+	DeathPlaceLongitude nullable.Nullable[string] `json:"death_place_longitude,omitempty"`
 
 	// ExternalIds GEDCOM 7.0 external identifiers (EXID) with resolved display label and link. Read-only: populated from GEDCOM import; there is no direct-write endpoint.
 	ExternalIds       *[]ExternalLink    `json:"external_ids,omitempty"`
@@ -5274,19 +5221,19 @@ type PersonNameList struct {
 	Total int          `json:"total"`
 }
 
-// PersonNameUpdate defines model for PersonNameUpdate.
+// PersonNameUpdate Partial update. A field left out stays unchanged; an optional (nullable) field sent as null is cleared. Required fields reject null.
 type PersonNameUpdate struct {
-	GivenName  *string   `json:"given_name,omitempty"`
-	IsPrimary  *bool     `json:"is_primary,omitempty"`
-	NamePrefix *string   `json:"name_prefix,omitempty"`
-	NameSuffix *string   `json:"name_suffix,omitempty"`
-	NameType   *NameType `json:"name_type,omitempty"`
-	Nickname   *string   `json:"nickname,omitempty"`
+	GivenName  *string                   `json:"given_name,omitempty"`
+	IsPrimary  *bool                     `json:"is_primary,omitempty"`
+	NamePrefix nullable.Nullable[string] `json:"name_prefix,omitempty"`
+	NameSuffix nullable.Nullable[string] `json:"name_suffix,omitempty"`
+	NameType   *NameType                 `json:"name_type,omitempty"`
+	Nickname   nullable.Nullable[string] `json:"nickname,omitempty"`
 
 	// Notes Notes on this name (GEDCOM NAME.NOTE). NOTE pointers are kept as their xref.
-	Notes         *string `json:"notes,omitempty"`
-	Surname       *string `json:"surname,omitempty"`
-	SurnamePrefix *string `json:"surname_prefix,omitempty"`
+	Notes         nullable.Nullable[string] `json:"notes,omitempty"`
+	Surname       *string                   `json:"surname,omitempty"`
+	SurnamePrefix nullable.Nullable[string] `json:"surname_prefix,omitempty"`
 }
 
 // PersonQuality defines model for PersonQuality.
@@ -5324,82 +5271,17 @@ type PersonSummary struct {
 	Surname   string             `json:"surname"`
 }
 
-// PersonUpdate defines model for PersonUpdate.
+// PersonUpdate Partial update. A field left out stays unchanged; an optional (nullable) field sent as null is cleared. Required fields reject null.
 type PersonUpdate struct {
-	// BirthDate A date as entered, stored in GEDCOM form. Accepted forms:
-	//
-	// - GEDCOM dates: `1850`, `MAR 1850`, `15 MAR 1850`, including dual
-	//   years (`1 JAN 1750/51`) and BC years (`44 BC`).
-	// - GEDCOM qualifiers: `ABT`, `CAL`, `EST`, `BEF`, `AFT`,
-	//   `BET ... AND ...`, `FROM ... TO ...`, `FROM ...`, `TO ...`, and
-	//   interpreted dates such as `INT 1850 (about eighteen fifty)`.
-	// - Calendar escapes: `@#DJULIAN@`, `@#DHEBREW@`, `@#DFRENCH R@`
-	//   (for example `@#DJULIAN@ 29 FEB 1700`).
-	// - Plain English, converted to GEDCOM before it is checked and stored:
-	//   about, circa, c., ca., before, after, `between X and Y`,
-	//   `from X to Y`, and month names in full, as three letters or as
-	//   "Sept". For example `about Sept 1850` is stored as `ABT SEP 1850`.
-	//   Era markers may carry periods (`44 B.C.` is stored as `44 BC`), and
-	//   an AD marker after a year is dropped (`500 A.D.` is stored as `500`).
-	// - A date phrase in parentheses, such as `(about the time of the war)`,
-	//   kept as text.
-	//
-	// An empty string means no date. Any other text (such as `1850-01-01`
-	// or `Sept 5, 1850`), a date without a year, a date that doesn't
-	// exist in the calendar (such as `31 FEB 1900`, `0 JAN 1850` or year
-	// `0`), or a range that ends before it starts (such as
-	// `between 1860 and 1850`) is rejected with 400;
-	// the error's `details` name the field and say whether the text can be
-	// kept as a date phrase. On update, a date identical to the stored value
-	// is not re-checked, so an imported date the parser can't read never
-	// blocks an unrelated edit.
-	//
-	//
-	// Example: 1 JAN 1850
-	BirthDate  *DateInput `json:"birth_date,omitempty"`
-	BirthPlace *string    `json:"birth_place,omitempty"`
-
-	// DeathDate A date as entered, stored in GEDCOM form. Accepted forms:
-	//
-	// - GEDCOM dates: `1850`, `MAR 1850`, `15 MAR 1850`, including dual
-	//   years (`1 JAN 1750/51`) and BC years (`44 BC`).
-	// - GEDCOM qualifiers: `ABT`, `CAL`, `EST`, `BEF`, `AFT`,
-	//   `BET ... AND ...`, `FROM ... TO ...`, `FROM ...`, `TO ...`, and
-	//   interpreted dates such as `INT 1850 (about eighteen fifty)`.
-	// - Calendar escapes: `@#DJULIAN@`, `@#DHEBREW@`, `@#DFRENCH R@`
-	//   (for example `@#DJULIAN@ 29 FEB 1700`).
-	// - Plain English, converted to GEDCOM before it is checked and stored:
-	//   about, circa, c., ca., before, after, `between X and Y`,
-	//   `from X to Y`, and month names in full, as three letters or as
-	//   "Sept". For example `about Sept 1850` is stored as `ABT SEP 1850`.
-	//   Era markers may carry periods (`44 B.C.` is stored as `44 BC`), and
-	//   an AD marker after a year is dropped (`500 A.D.` is stored as `500`).
-	// - A date phrase in parentheses, such as `(about the time of the war)`,
-	//   kept as text.
-	//
-	// An empty string means no date. Any other text (such as `1850-01-01`
-	// or `Sept 5, 1850`), a date without a year, a date that doesn't
-	// exist in the calendar (such as `31 FEB 1900`, `0 JAN 1850` or year
-	// `0`), or a range that ends before it starts (such as
-	// `between 1860 and 1850`) is rejected with 400;
-	// the error's `details` name the field and say whether the text can be
-	// kept as a date phrase. On update, a date identical to the stored value
-	// is not re-checked, so an imported date the parser can't read never
-	// blocks an unrelated edit.
-	//
-	//
-	// Example: 1 JAN 1850
-	DeathDate  *DateInput `json:"death_date,omitempty"`
-	DeathPlace *string    `json:"death_place,omitempty"`
-	Gender     *Gender    `json:"gender,omitempty"`
-	GivenName  *string    `json:"given_name,omitempty"`
-	Notes      *string    `json:"notes,omitempty"`
-
-	// ResearchStatus Confidence level of genealogical data per GPS standards
-	//
-	// Example: probable
-	ResearchStatus *ResearchStatus `json:"research_status,omitempty"`
-	Surname        *string         `json:"surname,omitempty"`
+	BirthDate      nullable.Nullable[DateInput]      `json:"birth_date,omitempty"`
+	BirthPlace     nullable.Nullable[string]         `json:"birth_place,omitempty"`
+	DeathDate      nullable.Nullable[DateInput]      `json:"death_date,omitempty"`
+	DeathPlace     nullable.Nullable[string]         `json:"death_place,omitempty"`
+	Gender         nullable.Nullable[Gender]         `json:"gender,omitempty"`
+	GivenName      *string                           `json:"given_name,omitempty"`
+	Notes          nullable.Nullable[string]         `json:"notes,omitempty"`
+	ResearchStatus nullable.Nullable[ResearchStatus] `json:"research_status,omitempty"`
+	Surname        nullable.Nullable[string]         `json:"surname,omitempty"`
 
 	// Version Current version for optimistic locking
 	Version int64 `json:"version"`
@@ -5525,26 +5407,22 @@ type ProofSummaryList struct {
 	Total     int            `json:"total"`
 }
 
-// ProofSummaryUpdate defines model for ProofSummaryUpdate.
+// ProofSummaryUpdate Partial update. A field left out stays unchanged; an optional (nullable) field sent as null is cleared. Required fields reject null.
 type ProofSummaryUpdate struct {
-	AnalysisIds *[]openapi_types.UUID `json:"analysis_ids,omitempty"`
-	Argument    *string               `json:"argument,omitempty"`
-	Conclusion  *string               `json:"conclusion,omitempty"`
+	AnalysisIds nullable.Nullable[[]openapi_types.UUID] `json:"analysis_ids,omitempty"`
+	Argument    *string                                 `json:"argument,omitempty"`
+	Conclusion  *string                                 `json:"conclusion,omitempty"`
 
 	// FactId ID of the life event or attribute this is about, checked as on
 	// create. Omitted, the link is kept, unless `fact_type` or
 	// `subject_id` changes: then the link is removed.
-	FactId *openapi_types.UUID `json:"fact_id,omitempty"`
+	FactId nullable.Nullable[openapi_types.UUID] `json:"fact_id,omitempty"`
 
 	// FactType The fact a citation, analysis, conflict or proof summary is about
-	FactType *FactType `json:"fact_type,omitempty"`
-
-	// ResearchStatus Confidence level of genealogical data per GPS standards
-	//
-	// Example: probable
-	ResearchStatus *ResearchStatus     `json:"research_status,omitempty"`
-	SubjectId      *openapi_types.UUID `json:"subject_id,omitempty"`
-	Version        int64               `json:"version"`
+	FactType       *FactType                         `json:"fact_type,omitempty"`
+	ResearchStatus nullable.Nullable[ResearchStatus] `json:"research_status,omitempty"`
+	SubjectId      *openapi_types.UUID               `json:"subject_id,omitempty"`
+	Version        int64                             `json:"version"`
 }
 
 // QualityIssue defines model for QualityIssue.
@@ -5721,19 +5599,18 @@ type RepositoryList struct {
 	Total int `json:"total"`
 }
 
-// RepositoryUpdate defines model for RepositoryUpdate.
+// RepositoryUpdate Partial update. A field left out stays unchanged; an optional (nullable) field sent as null is cleared. Required fields reject null.
 type RepositoryUpdate struct {
-	// Address Structured GEDCOM address (embedded in other entities)
-	Address *Address `json:"address,omitempty"`
+	Address nullable.Nullable[Address] `json:"address,omitempty"`
 
 	// GedcomXref Updated GEDCOM cross-reference ID. Empty, or one @-delimited pointer (e.g. "@R1@") with no whitespace or interior @.
-	GedcomXref *string `json:"gedcom_xref,omitempty"`
+	GedcomXref nullable.Nullable[string] `json:"gedcom_xref,omitempty"`
 
 	// Name Updated repository name
 	Name *string `json:"name,omitempty"`
 
 	// Notes Updated notes
-	Notes *string `json:"notes,omitempty"`
+	Notes nullable.Nullable[string] `json:"notes,omitempty"`
 
 	// Version Current version for optimistic locking
 	Version int64 `json:"version"`
@@ -5788,9 +5665,9 @@ type ResearchLogList struct {
 // ResearchLogSubjectType The kind of record a research log is about.
 type ResearchLogSubjectType string
 
-// ResearchLogUpdate defines model for ResearchLogUpdate.
+// ResearchLogUpdate Partial update. A field left out stays unchanged; an optional (nullable) field sent as null is cleared. Required fields reject null.
 type ResearchLogUpdate struct {
-	Notes *string `json:"notes,omitempty"`
+	Notes nullable.Nullable[string] `json:"notes,omitempty"`
 
 	// Outcome Outcome of a research log entry
 	Outcome           *ResearchOutcome    `json:"outcome,omitempty"`
@@ -6116,51 +5993,20 @@ type SourceSearchResults struct {
 // SourceType Kind of source material
 type SourceType string
 
-// SourceUpdate defines model for SourceUpdate.
+// SourceUpdate Partial update. A field left out stays unchanged; an optional (nullable) field sent as null is cleared. Required fields reject null.
 type SourceUpdate struct {
-	Author         *string `json:"author,omitempty"`
-	CallNumber     *string `json:"call_number,omitempty"`
-	CollectionName *string `json:"collection_name,omitempty"`
-	Notes          *string `json:"notes,omitempty"`
-
-	// PublishDate A date as entered, stored in GEDCOM form. Accepted forms:
-	//
-	// - GEDCOM dates: `1850`, `MAR 1850`, `15 MAR 1850`, including dual
-	//   years (`1 JAN 1750/51`) and BC years (`44 BC`).
-	// - GEDCOM qualifiers: `ABT`, `CAL`, `EST`, `BEF`, `AFT`,
-	//   `BET ... AND ...`, `FROM ... TO ...`, `FROM ...`, `TO ...`, and
-	//   interpreted dates such as `INT 1850 (about eighteen fifty)`.
-	// - Calendar escapes: `@#DJULIAN@`, `@#DHEBREW@`, `@#DFRENCH R@`
-	//   (for example `@#DJULIAN@ 29 FEB 1700`).
-	// - Plain English, converted to GEDCOM before it is checked and stored:
-	//   about, circa, c., ca., before, after, `between X and Y`,
-	//   `from X to Y`, and month names in full, as three letters or as
-	//   "Sept". For example `about Sept 1850` is stored as `ABT SEP 1850`.
-	//   Era markers may carry periods (`44 B.C.` is stored as `44 BC`), and
-	//   an AD marker after a year is dropped (`500 A.D.` is stored as `500`).
-	// - A date phrase in parentheses, such as `(about the time of the war)`,
-	//   kept as text.
-	//
-	// An empty string means no date. Any other text (such as `1850-01-01`
-	// or `Sept 5, 1850`), a date without a year, a date that doesn't
-	// exist in the calendar (such as `31 FEB 1900`, `0 JAN 1850` or year
-	// `0`), or a range that ends before it starts (such as
-	// `between 1860 and 1850`) is rejected with 400;
-	// the error's `details` name the field and say whether the text can be
-	// kept as a date phrase. On update, a date identical to the stored value
-	// is not re-checked, so an imported date the parser can't read never
-	// blocks an unrelated edit.
-	//
-	//
-	// Example: 1 JAN 1850
-	PublishDate    *DateInput `json:"publish_date,omitempty"`
-	Publisher      *string    `json:"publisher,omitempty"`
-	RepositoryName *string    `json:"repository_name,omitempty"`
+	Author         nullable.Nullable[string]    `json:"author,omitempty"`
+	CallNumber     nullable.Nullable[string]    `json:"call_number,omitempty"`
+	CollectionName nullable.Nullable[string]    `json:"collection_name,omitempty"`
+	Notes          nullable.Nullable[string]    `json:"notes,omitempty"`
+	PublishDate    nullable.Nullable[DateInput] `json:"publish_date,omitempty"`
+	Publisher      nullable.Nullable[string]    `json:"publisher,omitempty"`
+	RepositoryName nullable.Nullable[string]    `json:"repository_name,omitempty"`
 
 	// SourceType Kind of source material
-	SourceType *SourceType `json:"source_type,omitempty"`
-	Title      *string     `json:"title,omitempty"`
-	Url        *string     `json:"url,omitempty"`
+	SourceType *SourceType               `json:"source_type,omitempty"`
+	Title      *string                   `json:"title,omitempty"`
+	Url        nullable.Nullable[string] `json:"url,omitempty"`
 
 	// Version Current version for optimistic locking
 	Version int64 `json:"version"`
@@ -6255,25 +6101,24 @@ type SubmitterList struct {
 	Total int `json:"total"`
 }
 
-// SubmitterUpdate defines model for SubmitterUpdate.
+// SubmitterUpdate Partial update. A field left out stays unchanged; an optional (nullable) field sent as null is cleared. Required fields reject null.
 type SubmitterUpdate struct {
-	// Address Structured GEDCOM address (embedded in other entities)
-	Address *Address `json:"address,omitempty"`
+	Address nullable.Nullable[Address] `json:"address,omitempty"`
 
 	// Email Updated email addresses
-	Email *[]string `json:"email,omitempty"`
+	Email nullable.Nullable[[]string] `json:"email,omitempty"`
 
 	// Language Updated preferred language
-	Language *string `json:"language,omitempty"`
+	Language nullable.Nullable[string] `json:"language,omitempty"`
 
 	// MediaId Updated media ID
-	MediaId *openapi_types.UUID `json:"media_id,omitempty"`
+	MediaId nullable.Nullable[openapi_types.UUID] `json:"media_id,omitempty"`
 
 	// Name Updated submitter name
 	Name *string `json:"name,omitempty"`
 
 	// Phone Updated phone numbers
-	Phone *[]string `json:"phone,omitempty"`
+	Phone nullable.Nullable[[]string] `json:"phone,omitempty"`
 
 	// Version Current version for optimistic locking
 	Version int64 `json:"version"`

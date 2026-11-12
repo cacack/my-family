@@ -60,7 +60,7 @@ func TestBranchResearchArchive_RebuildsFromEvents(t *testing.T) {
 	}))
 
 	notes := "Main note before the fork"
-	beforeFork := mustOK(h.UpdateEvidenceAnalysis(ctx, command.UpdateEvidenceAnalysisInput{ID: mainAnalysis.ID, Notes: &notes, Version: mainAnalysis.Version}))
+	beforeFork := mustOK(h.UpdateEvidenceAnalysis(ctx, command.UpdateEvidenceAnalysisInput{ID: mainAnalysis.ID, Notes: command.Set(notes), Version: mainAnalysis.Version}))
 
 	branch := mustOK(h.CreateBranch(ctx, "theory", ""))
 	onBranch := h.WithBranch(branch)
@@ -70,7 +70,7 @@ func TestBranchResearchArchive_RebuildsFromEvents(t *testing.T) {
 	conclusion := "Born 1815, per the branch"
 	mustOK(onBranch.UpdateEvidenceAnalysis(ctx, command.UpdateEvidenceAnalysisInput{ID: mainAnalysis.ID, Conclusion: &conclusion, Version: beforeFork.Version}))
 	late := "Main note after the branch edit"
-	mustOK(h.UpdateEvidenceAnalysis(ctx, command.UpdateEvidenceAnalysisInput{ID: mainAnalysis.ID, Notes: &late, Version: beforeFork.Version}))
+	mustOK(h.UpdateEvidenceAnalysis(ctx, command.UpdateEvidenceAnalysisInput{ID: mainAnalysis.ID, Notes: command.Set(late), Version: beforeFork.Version}))
 
 	// The branch deletes main's proof summary and records its own about a
 	// branch-only family.

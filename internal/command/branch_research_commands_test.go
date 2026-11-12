@@ -118,9 +118,9 @@ func TestUpdateBranch_ActiveBranch(t *testing.T) {
 
 	updated, err := f.handler.UpdateBranch(ctx, command.UpdateBranchInput{
 		BranchID:        branch.ID,
-		Hypothesis:      ptr("Was Ada the daughter of the family?"),
-		Subjects:        &[]domain.BranchSubject{personSubject(seed.person), personSubject(onBranch.ID)},
-		ProofSummaryIDs: &[]uuid.UUID{seed.proof},
+		Hypothesis:      command.Set("Was Ada the daughter of the family?"),
+		Subjects:        command.Set([]domain.BranchSubject{personSubject(seed.person), personSubject(onBranch.ID)}),
+		ProofSummaryIDs: command.Set([]uuid.UUID{seed.proof}),
 	})
 	if err != nil {
 		t.Fatalf("UpdateBranch: %v", err)
@@ -172,8 +172,8 @@ func TestUpdateBranch_ActiveBranch(t *testing.T) {
 
 	// Clearing with empty values.
 	updated, err = f.handler.UpdateBranch(ctx, command.UpdateBranchInput{
-		BranchID: branch.ID, Description: ptr(""), Hypothesis: ptr(""),
-		Subjects: &[]domain.BranchSubject{}, ProofSummaryIDs: &[]uuid.UUID{},
+		BranchID: branch.ID, Description: command.Set(""), Hypothesis: command.Set(""),
+		Subjects: command.Set([]domain.BranchSubject{}), ProofSummaryIDs: command.Set([]uuid.UUID{}),
 	})
 	if err != nil {
 		t.Fatalf("clearing UpdateBranch: %v", err)
@@ -206,12 +206,12 @@ func TestUpdateBranch_ReferenceChecks(t *testing.T) {
 		t.Fatalf("CreatePerson on other branch: %v", err)
 	}
 	if _, err := f.handler.UpdateBranch(ctx, command.UpdateBranchInput{
-		BranchID: branch.ID, Subjects: &[]domain.BranchSubject{personSubject(elsewhere.ID)},
+		BranchID: branch.ID, Subjects: command.Set([]domain.BranchSubject{personSubject(elsewhere.ID)}),
 	}); !errors.Is(err, command.ErrBranchSubjectNotFound) {
 		t.Errorf("other-branch subject = %v, want ErrBranchSubjectNotFound", err)
 	}
 	if _, err := f.handler.UpdateBranch(ctx, command.UpdateBranchInput{
-		BranchID: branch.ID, ProofSummaryIDs: &[]uuid.UUID{uuid.New()},
+		BranchID: branch.ID, ProofSummaryIDs: command.Set([]uuid.UUID{uuid.New()}),
 	}); !errors.Is(err, command.ErrBranchProofSummaryNotFound) {
 		t.Errorf("missing proof = %v, want ErrBranchProofSummaryNotFound", err)
 	}
@@ -219,7 +219,7 @@ func TestUpdateBranch_ReferenceChecks(t *testing.T) {
 	// Link a person, then delete it ON THE BRANCH: the tombstone hides it, so
 	// re-adding it fails, but keeping it while adding another subject does not.
 	if _, err := f.handler.UpdateBranch(ctx, command.UpdateBranchInput{
-		BranchID: branch.ID, Subjects: &[]domain.BranchSubject{personSubject(solo.ID)},
+		BranchID: branch.ID, Subjects: command.Set([]domain.BranchSubject{personSubject(solo.ID)}),
 	}); err != nil {
 		t.Fatalf("link person: %v", err)
 	}
@@ -227,7 +227,7 @@ func TestUpdateBranch_ReferenceChecks(t *testing.T) {
 		t.Fatalf("DeletePerson on branch: %v", err)
 	}
 	if _, err := f.handler.UpdateBranch(ctx, command.UpdateBranchInput{
-		BranchID: branch.ID, Subjects: &[]domain.BranchSubject{personSubject(solo.ID), familySubject(seed.family)},
+		BranchID: branch.ID, Subjects: command.Set([]domain.BranchSubject{personSubject(solo.ID), familySubject(seed.family)}),
 	}); err != nil {
 		t.Errorf("keeping a stale subject while adding a live one = %v, want nil", err)
 	}
@@ -239,7 +239,7 @@ func TestUpdateBranch_ReferenceChecks(t *testing.T) {
 		t.Fatalf("DeletePerson on fresh branch: %v", err)
 	}
 	if _, err := f.handler.UpdateBranch(ctx, command.UpdateBranchInput{
-		BranchID: fresh.ID, Subjects: &[]domain.BranchSubject{personSubject(solo.ID)},
+		BranchID: fresh.ID, Subjects: command.Set([]domain.BranchSubject{personSubject(solo.ID)}),
 	}); !errors.Is(err, command.ErrBranchSubjectNotFound) {
 		t.Errorf("subject deleted on the branch = %v, want ErrBranchSubjectNotFound", err)
 	}
@@ -279,7 +279,7 @@ func TestUpdateBranch_Refusals(t *testing.T) {
 	for i := range long {
 		long[i] = 'a'
 	}
-	if _, err := f.handler.UpdateBranch(ctx, command.UpdateBranchInput{BranchID: branch.ID, Description: ptr(string(long))}); !errors.Is(err, domain.ErrBranchDescTooLong) {
+	if _, err := f.handler.UpdateBranch(ctx, command.UpdateBranchInput{BranchID: branch.ID, Description: command.Set(string(long))}); !errors.Is(err, domain.ErrBranchDescTooLong) {
 		t.Errorf("long description = %v, want ErrBranchDescTooLong", err)
 	}
 
@@ -312,7 +312,7 @@ func TestUpdateBranch_MergedBranch(t *testing.T) {
 		t.Fatalf("CreateBranch: %v", err)
 	}
 	// A research edit alone is not a change to the tree.
-	if _, err := f.handler.UpdateBranch(ctx, command.UpdateBranchInput{BranchID: branch.ID, Hypothesis: ptr("Q2")}); err != nil {
+	if _, err := f.handler.UpdateBranch(ctx, command.UpdateBranchInput{BranchID: branch.ID, Hypothesis: command.Set("Q2")}); err != nil {
 		t.Fatalf("UpdateBranch: %v", err)
 	}
 	svc := query.NewBranchService(f.branchStore, f.eventStore, query.NewHistoryService(f.eventStore, f.readStore))
@@ -348,11 +348,11 @@ func TestUpdateBranch_MergedBranch(t *testing.T) {
 	}
 
 	for name, input := range map[string]command.UpdateBranchInput{
-		"hypothesis":  {BranchID: branch.ID, Hypothesis: ptr("changed")},
-		"description": {BranchID: branch.ID, Description: ptr("changed")},
-		"subjects":    {BranchID: branch.ID, Subjects: &[]domain.BranchSubject{}},
-		"proofs":      {BranchID: branch.ID, ProofSummaryIDs: &[]uuid.UUID{seed.proof}},
-		"mixed":       {BranchID: branch.ID, Outcome: ptr(domain.BranchOutcomeDisproved), Hypothesis: ptr("x")},
+		"hypothesis":  {BranchID: branch.ID, Hypothesis: command.Set("changed")},
+		"description": {BranchID: branch.ID, Description: command.Set("changed")},
+		"subjects":    {BranchID: branch.ID, Subjects: command.Set([]domain.BranchSubject{})},
+		"proofs":      {BranchID: branch.ID, ProofSummaryIDs: command.Set([]uuid.UUID{seed.proof})},
+		"mixed":       {BranchID: branch.ID, Outcome: ptr(domain.BranchOutcomeDisproved), Hypothesis: command.Set("x")},
 	} {
 		if _, err := f.handler.UpdateBranch(ctx, input); !errors.Is(err, command.ErrBranchFieldLocked) {
 			t.Errorf("%s on merged branch = %v, want ErrBranchFieldLocked", name, err)
@@ -384,8 +384,8 @@ func TestResolveBranchLinks(t *testing.T) {
 	}
 	updated, err := f.handler.UpdateBranch(ctx, command.UpdateBranchInput{
 		BranchID:        branch.ID,
-		Subjects:        &[]domain.BranchSubject{personSubject(seed.person), familySubject(seed.family), personSubject(onBranch.ID)},
-		ProofSummaryIDs: &[]uuid.UUID{seed.proof, branchProof.ID},
+		Subjects:        command.Set([]domain.BranchSubject{personSubject(seed.person), familySubject(seed.family), personSubject(onBranch.ID)}),
+		ProofSummaryIDs: command.Set([]uuid.UUID{seed.proof, branchProof.ID}),
 	})
 	if err != nil {
 		t.Fatalf("UpdateBranch: %v", err)
@@ -511,7 +511,7 @@ func TestUpdateBranch_ConcurrentEditIsNotLost(t *testing.T) {
 	}
 
 	_, err = f.handler.UpdateBranch(ctx, command.UpdateBranchInput{
-		BranchID: branch.ID, Hypothesis: ptr("H"), Subjects: &[]domain.BranchSubject{personSubject(seed.person)},
+		BranchID: branch.ID, Hypothesis: command.Set("H"), Subjects: command.Set([]domain.BranchSubject{personSubject(seed.person)}),
 	})
 	if !errors.Is(err, repository.ErrConcurrencyConflict) {
 		t.Fatalf("victim UpdateBranch = %v, want ErrConcurrencyConflict", err)
@@ -529,7 +529,7 @@ func TestUpdateBranch_ConcurrentEditIsNotLost(t *testing.T) {
 	}
 
 	// A retry against the fresh state goes through and keeps the rival's verdict.
-	retried, err := f.handler.UpdateBranch(ctx, command.UpdateBranchInput{BranchID: branch.ID, Hypothesis: ptr("H")})
+	retried, err := f.handler.UpdateBranch(ctx, command.UpdateBranchInput{BranchID: branch.ID, Hypothesis: command.Set("H")})
 	if err != nil {
 		t.Fatalf("retry UpdateBranch: %v", err)
 	}
@@ -563,7 +563,7 @@ func TestUpdateBranch_ConcurrentMergeKeepsTheLock(t *testing.T) {
 	}
 
 	_, err = f.handler.UpdateBranch(ctx, command.UpdateBranchInput{
-		BranchID: branch.ID, Hypothesis: ptr("changed after merge"), Subjects: &[]domain.BranchSubject{personSubject(seed.person)},
+		BranchID: branch.ID, Hypothesis: command.Set("changed after merge"), Subjects: command.Set([]domain.BranchSubject{personSubject(seed.person)}),
 	})
 	if !errors.Is(err, repository.ErrConcurrencyConflict) {
 		t.Fatalf("victim UpdateBranch = %v, want ErrConcurrencyConflict", err)
@@ -580,7 +580,7 @@ func TestUpdateBranch_ConcurrentMergeKeepsTheLock(t *testing.T) {
 		t.Errorf("branch after race = status %q hypothesis %q, want merged with Q", got.Status, got.Hypothesis)
 	}
 	// And the retry now meets the lock.
-	if _, err := f.handler.UpdateBranch(ctx, command.UpdateBranchInput{BranchID: branch.ID, Hypothesis: ptr("changed after merge")}); !errors.Is(err, command.ErrBranchFieldLocked) {
+	if _, err := f.handler.UpdateBranch(ctx, command.UpdateBranchInput{BranchID: branch.ID, Hypothesis: command.Set("changed after merge")}); !errors.Is(err, command.ErrBranchFieldLocked) {
 		t.Errorf("retry on merged branch = %v, want ErrBranchFieldLocked", err)
 	}
 }
@@ -605,7 +605,7 @@ func TestMergeBranch_ConcurrentEditIsAStalePlan(t *testing.T) {
 
 	racing.stream = branch.ID
 	racing.rival = func() {
-		if _, err := f.handler.UpdateBranch(ctx, command.UpdateBranchInput{BranchID: branch.ID, Hypothesis: ptr("Q2")}); err != nil {
+		if _, err := f.handler.UpdateBranch(ctx, command.UpdateBranchInput{BranchID: branch.ID, Hypothesis: command.Set("Q2")}); err != nil {
 			t.Errorf("rival UpdateBranch: %v", err)
 		}
 	}
@@ -642,7 +642,7 @@ func TestUpdateBranch_RefusesWithoutAStream(t *testing.T) {
 	if err := f.branchStore.Create(ctx, orphan); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if _, err := f.handler.UpdateBranch(ctx, command.UpdateBranchInput{BranchID: orphan.ID, Hypothesis: ptr("H")}); err == nil {
+	if _, err := f.handler.UpdateBranch(ctx, command.UpdateBranchInput{BranchID: orphan.ID, Hypothesis: command.Set("H")}); err == nil {
 		t.Fatal("UpdateBranch on a branch with no stream succeeded, want a refusal")
 	}
 	got, err := f.branchStore.Get(ctx, orphan.ID)

@@ -1,14 +1,11 @@
 <script lang="ts" module>
 	import type { FamilyUpdate, PersonSummary } from '#lib/api/client.js';
 
-	type PartnerFields = Pick<
-		FamilyUpdate,
-		'partner1_id' | 'partner2_id' | 'clear_partner1' | 'clear_partner2'
-	>;
+	type PartnerFields = Pick<FamilyUpdate, 'partner1_id' | 'partner2_id'>;
 
 	/**
 	 * The partner part of a family update: only what changed. A partner picked
-	 * sends its id, a partner removed sends `clear_partnerN`, and an untouched
+	 * sends its id, a partner removed sends null (#1359), and an untouched
 	 * slot sends nothing, so an edit of the marriage date alone never rewrites
 	 * the partners.
 	 */
@@ -21,12 +18,10 @@
 		const next1 = partner1?.id;
 		const next2 = partner2?.id;
 		if (next1 !== current.partner1_id) {
-			if (next1) changes.partner1_id = next1;
-			else changes.clear_partner1 = true;
+			changes.partner1_id = next1 ?? null;
 		}
 		if (next2 !== current.partner2_id) {
-			if (next2) changes.partner2_id = next2;
-			else changes.clear_partner2 = true;
+			changes.partner2_id = next2 ?? null;
 		}
 		return changes;
 	}

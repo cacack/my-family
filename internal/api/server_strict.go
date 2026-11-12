@@ -15,6 +15,7 @@ import (
 
 	gcgedcom "github.com/cacack/gedcom-go/v3/gedcom"
 	"github.com/google/uuid"
+	"github.com/oapi-codegen/nullable"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/cacack/my-family/internal/citation"
@@ -614,36 +615,17 @@ func (ss *StrictServer) UpdateCitation(ctx context.Context, request UpdateCitati
 	}
 
 	input := command.UpdateCitationInput{
-		ID:      request.Id,
-		Version: request.Body.Version,
-	}
-
-	if request.Body.Page != nil {
-		input.Page = request.Body.Page
-	}
-	if request.Body.Volume != nil {
-		input.Volume = request.Body.Volume
-	}
-	if request.Body.SourceQuality != nil {
-		input.SourceQuality = (*string)(request.Body.SourceQuality)
-	}
-	if request.Body.InformantType != nil {
-		input.InformantType = (*string)(request.Body.InformantType)
-	}
-	if request.Body.EvidenceType != nil {
-		input.EvidenceType = (*string)(request.Body.EvidenceType)
-	}
-	if request.Body.QuotedText != nil {
-		input.QuotedText = request.Body.QuotedText
-	}
-	if request.Body.Analysis != nil {
-		input.Analysis = request.Body.Analysis
-	}
-	if request.Body.TemplateId != nil {
-		input.TemplateID = request.Body.TemplateId
-	}
-	if request.Body.Fields != nil {
-		input.Fields = *request.Body.Fields
+		ID:            request.Id,
+		Page:          patchOf(request.Body.Page),
+		Volume:        patchOf(request.Body.Volume),
+		SourceQuality: patchString(request.Body.SourceQuality),
+		InformantType: patchString(request.Body.InformantType),
+		EvidenceType:  patchString(request.Body.EvidenceType),
+		QuotedText:    patchOf(request.Body.QuotedText),
+		Analysis:      patchOf(request.Body.Analysis),
+		TemplateID:    patchOf(request.Body.TemplateId),
+		Fields:        patchOf(request.Body.Fields),
+		Version:       request.Body.Version,
 	}
 
 	_, err = ss.branchWriter(branch).UpdateCitation(ctx, input)
@@ -1227,14 +1209,17 @@ func convertEventToExport(e repository.EventReadModel) EventExport {
 		FactType:  FactType(e.FactType),
 	}
 
+	if e.TypeDetail != "" {
+		event.TypeDetail = &e.TypeDetail
+	}
 	if e.DateRaw != "" {
 		event.Date = &e.DateRaw
 	}
 	if e.Place != "" {
 		event.Place = &e.Place
 	}
-	event.PlaceLatitude = nonEmptyString(e.PlaceLat)
-	event.PlaceLongitude = nonEmptyString(e.PlaceLong)
+	event.PlaceLatitude = omitIfNil(nonEmptyString(e.PlaceLat))
+	event.PlaceLongitude = omitIfNil(nonEmptyString(e.PlaceLong))
 	if e.Description != "" {
 		event.Description = &e.Description
 	}
@@ -1390,34 +1375,22 @@ func (ss *StrictServer) UpdateFamily(ctx context.Context, request UpdateFamilyRe
 		return nil, err
 	}
 
+	partner1, err := partnerPatch("partner1_id", request.Body.Partner1Id, request.Body.ClearPartner1)
+	if err != nil {
+		return nil, err
+	}
+	partner2, err := partnerPatch("partner2_id", request.Body.Partner2Id, request.Body.ClearPartner2)
+	if err != nil {
+		return nil, err
+	}
 	input := command.UpdateFamilyInput{
-		ID:      request.Id,
-		Version: request.Body.Version,
-	}
-
-	if request.Body.Partner1Id != nil {
-		id := *request.Body.Partner1Id
-		input.Partner1ID = &id
-	}
-	if request.Body.Partner2Id != nil {
-		id := *request.Body.Partner2Id
-		input.Partner2ID = &id
-	}
-	if request.Body.ClearPartner1 != nil {
-		input.ClearPartner1 = *request.Body.ClearPartner1
-	}
-	if request.Body.ClearPartner2 != nil {
-		input.ClearPartner2 = *request.Body.ClearPartner2
-	}
-	if request.Body.MarriageDate != nil {
-		input.MarriageDate = request.Body.MarriageDate
-	}
-	if request.Body.MarriagePlace != nil {
-		input.MarriagePlace = request.Body.MarriagePlace
-	}
-	if request.Body.RelationshipType != nil {
-		relType := string(*request.Body.RelationshipType)
-		input.RelationshipType = &relType
+		ID:               request.Id,
+		Partner1ID:       partner1,
+		Partner2ID:       partner2,
+		RelationshipType: patchString(request.Body.RelationshipType),
+		MarriageDate:     patchString(request.Body.MarriageDate),
+		MarriagePlace:    patchOf(request.Body.MarriagePlace),
+		Version:          request.Body.Version,
 	}
 
 	_, err = ss.branchWriter(branch).UpdateFamily(ctx, input)
@@ -1443,6 +1416,20 @@ func (ss *StrictServer) UpdateFamily(ctx context.Context, request UpdateFamilyRe
 	}
 
 	return UpdateFamily200JSONResponse(convertQueryFamilyToGenerated(family.Family)), nil
+}
+
+// partnerPatch reads a FamilyUpdate partner slot: the id field (null clears
+// the slot) and its deprecated clear_partner flag, which also clears it and
+// cannot be combined with an id value.
+func partnerPatch(field string, id nullable.Nullable[openapi_types.UUID], clearFlag *bool) (command.Patch[uuid.UUID], error) {
+	patch := patchOf(id)
+	if clearFlag == nil || !*clearFlag {
+		return patch, nil
+	}
+	if _, set := patch.Value(); set {
+		return patch, fmt.Errorf("%w: %s cannot be set and cleared in one update", command.ErrInvalidFamilyInput, field)
+	}
+	return command.Clear[uuid.UUID](), nil
 }
 
 // DeleteFamily implements StrictServerInterface.
@@ -2004,12 +1991,12 @@ func (ss *StrictServer) UpdateMedia(ctx context.Context, request UpdateMediaRequ
 	result, err := ss.branchWriter(branch).UpdateMedia(ctx, command.UpdateMediaInput{
 		ID:          request.Id,
 		Title:       request.Body.Title,
-		Description: request.Body.Description,
+		Description: patchOf(request.Body.Description),
 		MediaType:   mediaType,
-		CropLeft:    request.Body.CropLeft,
-		CropTop:     request.Body.CropTop,
-		CropWidth:   request.Body.CropWidth,
-		CropHeight:  request.Body.CropHeight,
+		CropLeft:    patchOf(request.Body.CropLeft),
+		CropTop:     patchOf(request.Body.CropTop),
+		CropWidth:   patchOf(request.Body.CropWidth),
+		CropHeight:  patchOf(request.Body.CropHeight),
 		Version:     request.Body.Version,
 	})
 	if err != nil {
@@ -2343,32 +2330,14 @@ func (ss *StrictServer) UpdatePerson(ctx context.Context, request UpdatePersonRe
 	if request.Body.GivenName != nil {
 		input.GivenName = request.Body.GivenName
 	}
-	if request.Body.Surname != nil {
-		input.Surname = request.Body.Surname
-	}
-	if request.Body.Gender != nil {
-		g := string(*request.Body.Gender)
-		input.Gender = &g
-	}
-	if request.Body.BirthDate != nil {
-		input.BirthDate = request.Body.BirthDate
-	}
-	if request.Body.BirthPlace != nil {
-		input.BirthPlace = request.Body.BirthPlace
-	}
-	if request.Body.DeathDate != nil {
-		input.DeathDate = request.Body.DeathDate
-	}
-	if request.Body.DeathPlace != nil {
-		input.DeathPlace = request.Body.DeathPlace
-	}
-	if request.Body.Notes != nil {
-		input.Notes = request.Body.Notes
-	}
-	if request.Body.ResearchStatus != nil {
-		rs := string(*request.Body.ResearchStatus)
-		input.ResearchStatus = &rs
-	}
+	input.Surname = patchOf(request.Body.Surname)
+	input.Gender = patchString(request.Body.Gender)
+	input.BirthDate = patchOf(request.Body.BirthDate)
+	input.BirthPlace = patchOf(request.Body.BirthPlace)
+	input.DeathDate = patchOf(request.Body.DeathDate)
+	input.DeathPlace = patchOf(request.Body.DeathPlace)
+	input.Notes = patchOf(request.Body.Notes)
+	input.ResearchStatus = patchString(request.Body.ResearchStatus)
 
 	_, err = ss.branchWriter(branch).UpdatePerson(ctx, input)
 	if err != nil {
@@ -2767,13 +2736,13 @@ func (ss *StrictServer) UpdatePersonName(ctx context.Context, request UpdatePers
 		NameID:        request.NameId,
 		GivenName:     request.Body.GivenName,
 		Surname:       request.Body.Surname,
-		NamePrefix:    request.Body.NamePrefix,
-		NameSuffix:    request.Body.NameSuffix,
-		SurnamePrefix: request.Body.SurnamePrefix,
-		Nickname:      request.Body.Nickname,
+		NamePrefix:    patchOf(request.Body.NamePrefix),
+		NameSuffix:    patchOf(request.Body.NameSuffix),
+		SurnamePrefix: patchOf(request.Body.SurnamePrefix),
+		Nickname:      patchOf(request.Body.Nickname),
 		NameType:      nameType,
 		IsPrimary:     request.Body.IsPrimary,
-		Notes:         request.Body.Notes,
+		Notes:         patchOf(request.Body.Notes),
 	}
 
 	_, err = ss.branchWriter(branch).UpdateName(ctx, input)
@@ -3800,30 +3769,14 @@ func (ss *StrictServer) UpdateSource(ctx context.Context, request UpdateSourceRe
 	if request.Body.Title != nil {
 		input.Title = request.Body.Title
 	}
-	if request.Body.Author != nil {
-		input.Author = request.Body.Author
-	}
-	if request.Body.Publisher != nil {
-		input.Publisher = request.Body.Publisher
-	}
-	if request.Body.PublishDate != nil {
-		input.PublishDate = request.Body.PublishDate
-	}
-	if request.Body.Url != nil {
-		input.URL = request.Body.Url
-	}
-	if request.Body.RepositoryName != nil {
-		input.RepositoryName = request.Body.RepositoryName
-	}
-	if request.Body.CollectionName != nil {
-		input.CollectionName = request.Body.CollectionName
-	}
-	if request.Body.CallNumber != nil {
-		input.CallNumber = request.Body.CallNumber
-	}
-	if request.Body.Notes != nil {
-		input.Notes = request.Body.Notes
-	}
+	input.Author = patchOf(request.Body.Author)
+	input.Publisher = patchOf(request.Body.Publisher)
+	input.PublishDate = patchOf(request.Body.PublishDate)
+	input.URL = patchOf(request.Body.Url)
+	input.RepositoryName = patchOf(request.Body.RepositoryName)
+	input.CollectionName = patchOf(request.Body.CollectionName)
+	input.CallNumber = patchOf(request.Body.CallNumber)
+	input.Notes = patchOf(request.Body.Notes)
 
 	_, err = ss.branchWriter(branch).UpdateSource(ctx, input)
 	if err != nil {
@@ -4124,10 +4077,10 @@ func convertQueryPersonToGenerated(p query.Person) Person {
 	if p.DeathPlace != nil {
 		resp.DeathPlace = p.DeathPlace
 	}
-	resp.BirthPlaceLatitude = p.BirthPlaceLat
-	resp.BirthPlaceLongitude = p.BirthPlaceLong
-	resp.DeathPlaceLatitude = p.DeathPlaceLat
-	resp.DeathPlaceLongitude = p.DeathPlaceLong
+	resp.BirthPlaceLatitude = omitIfNil(p.BirthPlaceLat)
+	resp.BirthPlaceLongitude = omitIfNil(p.BirthPlaceLong)
+	resp.DeathPlaceLatitude = omitIfNil(p.DeathPlaceLat)
+	resp.DeathPlaceLongitude = omitIfNil(p.DeathPlaceLong)
 	if p.Notes != nil {
 		resp.Notes = p.Notes
 	}
@@ -4136,13 +4089,13 @@ func convertQueryPersonToGenerated(p query.Person) Person {
 		resp.ResearchStatus = &rs
 	}
 	if p.BrickWallNote != nil {
-		resp.BrickWallNote = p.BrickWallNote
+		resp.BrickWallNote = omitIfNil(p.BrickWallNote)
 	}
 	if p.BrickWallSince != nil {
-		resp.BrickWallSince = p.BrickWallSince
+		resp.BrickWallSince = omitIfNil(p.BrickWallSince)
 	}
 	if p.BrickWallResolvedAt != nil {
-		resp.BrickWallResolvedAt = p.BrickWallResolvedAt
+		resp.BrickWallResolvedAt = omitIfNil(p.BrickWallResolvedAt)
 	}
 
 	return resp
@@ -4173,10 +4126,10 @@ func convertQueryPersonDetailToGenerated(pd *query.PersonDetail) PersonDetail {
 	if pd.DeathPlace != nil {
 		resp.DeathPlace = pd.DeathPlace
 	}
-	resp.BirthPlaceLatitude = pd.BirthPlaceLat
-	resp.BirthPlaceLongitude = pd.BirthPlaceLong
-	resp.DeathPlaceLatitude = pd.DeathPlaceLat
-	resp.DeathPlaceLongitude = pd.DeathPlaceLong
+	resp.BirthPlaceLatitude = omitIfNil(pd.BirthPlaceLat)
+	resp.BirthPlaceLongitude = omitIfNil(pd.BirthPlaceLong)
+	resp.DeathPlaceLatitude = omitIfNil(pd.DeathPlaceLat)
+	resp.DeathPlaceLongitude = omitIfNil(pd.DeathPlaceLong)
 	if pd.Notes != nil {
 		resp.Notes = pd.Notes
 	}
@@ -4185,13 +4138,13 @@ func convertQueryPersonDetailToGenerated(pd *query.PersonDetail) PersonDetail {
 		resp.ResearchStatus = &rs
 	}
 	if pd.BrickWallNote != nil {
-		resp.BrickWallNote = pd.BrickWallNote
+		resp.BrickWallNote = omitIfNil(pd.BrickWallNote)
 	}
 	if pd.BrickWallSince != nil {
-		resp.BrickWallSince = pd.BrickWallSince
+		resp.BrickWallSince = omitIfNil(pd.BrickWallSince)
 	}
 	if pd.BrickWallResolvedAt != nil {
-		resp.BrickWallResolvedAt = pd.BrickWallResolvedAt
+		resp.BrickWallResolvedAt = omitIfNil(pd.BrickWallResolvedAt)
 	}
 
 	if len(pd.Names) > 0 {
@@ -4323,8 +4276,11 @@ func convertQueryFamilyToGenerated(f query.Family) Family {
 	if f.MarriagePlace != nil {
 		resp.MarriagePlace = f.MarriagePlace
 	}
-	resp.MarriagePlaceLatitude = f.MarriagePlaceLat
-	resp.MarriagePlaceLongitude = f.MarriagePlaceLong
+	resp.MarriagePlaceLatitude = omitIfNil(f.MarriagePlaceLat)
+	resp.MarriagePlaceLongitude = omitIfNil(f.MarriagePlaceLong)
+	resp.MarriageTypeDetail = f.MarriageTypeDetail
+	resp.MarriageNotes = f.MarriageNotes
+	resp.Notes = f.Notes
 
 	return resp
 }
@@ -4368,8 +4324,11 @@ func convertQueryFamilyDetailToGenerated(fd query.FamilyDetail) FamilyDetail {
 	if fd.MarriagePlace != nil {
 		resp.MarriagePlace = fd.MarriagePlace
 	}
-	resp.MarriagePlaceLatitude = fd.MarriagePlaceLat
-	resp.MarriagePlaceLongitude = fd.MarriagePlaceLong
+	resp.MarriagePlaceLatitude = omitIfNil(fd.MarriagePlaceLat)
+	resp.MarriagePlaceLongitude = omitIfNil(fd.MarriagePlaceLong)
+	resp.MarriageTypeDetail = fd.MarriageTypeDetail
+	resp.MarriageNotes = fd.MarriageNotes
+	resp.Notes = fd.Notes
 
 	// Emit the partner summary whenever the partner ID is set so callers can
 	// always pair partner1_id with a partner1 object. Either name part may be
@@ -4425,8 +4384,11 @@ func convertQueryFamilyToFamilyDetail(f query.Family) FamilyDetail {
 	if f.MarriagePlace != nil {
 		resp.MarriagePlace = f.MarriagePlace
 	}
-	resp.MarriagePlaceLatitude = f.MarriagePlaceLat
-	resp.MarriagePlaceLongitude = f.MarriagePlaceLong
+	resp.MarriagePlaceLatitude = omitIfNil(f.MarriagePlaceLat)
+	resp.MarriagePlaceLongitude = omitIfNil(f.MarriagePlaceLong)
+	resp.MarriageTypeDetail = f.MarriageTypeDetail
+	resp.MarriageNotes = f.MarriageNotes
+	resp.Notes = f.Notes
 
 	if f.Partner1ID != nil {
 		resp.Partner1 = personSummary(*f.Partner1ID, stringValue(f.Partner1GivenName), stringValue(f.Partner1Surname), nil)
@@ -5247,22 +5209,11 @@ func (ss *StrictServer) UpdateSubmitter(ctx context.Context, request UpdateSubmi
 	if request.Body.Name != nil {
 		input.Name = request.Body.Name
 	}
-	if request.Body.Address != nil {
-		input.Address = convertGeneratedAddressToDomain(request.Body.Address)
-	}
-	if request.Body.Phone != nil {
-		input.Phone = *request.Body.Phone
-	}
-	if request.Body.Email != nil {
-		input.Email = *request.Body.Email
-	}
-	if request.Body.Language != nil {
-		input.Language = request.Body.Language
-	}
-	if request.Body.MediaId != nil {
-		id := *request.Body.MediaId
-		input.MediaID = &id
-	}
+	input.Address = addressPatch(request.Body.Address)
+	input.Phone = patchOf(request.Body.Phone)
+	input.Email = patchOf(request.Body.Email)
+	input.Language = patchOf(request.Body.Language)
+	input.MediaID = patchOf(request.Body.MediaId)
 
 	result, err := ss.server.commandHandler.UpdateSubmitter(ctx, input)
 	if err != nil {
@@ -5485,15 +5436,9 @@ func (ss *StrictServer) UpdateRepository(ctx context.Context, request UpdateRepo
 	if request.Body.Name != nil {
 		input.Name = request.Body.Name
 	}
-	if request.Body.Address != nil {
-		input.Address = convertGeneratedAddressToDomain(request.Body.Address)
-	}
-	if request.Body.Notes != nil {
-		input.Notes = request.Body.Notes
-	}
-	if request.Body.GedcomXref != nil {
-		input.GedcomXref = request.Body.GedcomXref
-	}
+	input.Address = addressPatch(request.Body.Address)
+	input.Notes = patchOf(request.Body.Notes)
+	input.GedcomXref = patchOf(request.Body.GedcomXref)
 
 	_, err := ss.server.commandHandler.UpdateRepository(ctx, input)
 	if err != nil {
@@ -5719,17 +5664,9 @@ func (ss *StrictServer) UpdateAssociation(ctx context.Context, request UpdateAss
 	if request.Body.Role != nil {
 		input.Role = request.Body.Role
 	}
-	if request.Body.Phrase != nil {
-		input.Phrase = request.Body.Phrase
-	}
-	if request.Body.Notes != nil {
-		input.Notes = request.Body.Notes
-	}
-	if request.Body.NoteIds != nil {
-		noteIDs := make([]uuid.UUID, len(*request.Body.NoteIds))
-		copy(noteIDs, *request.Body.NoteIds)
-		input.NoteIDs = &noteIDs
-	}
+	input.Phrase = patchOf(request.Body.Phrase)
+	input.Notes = patchOf(request.Body.Notes)
+	input.NoteIDs = patchOf(request.Body.NoteIds)
 
 	_, err = ss.branchWriter(branch).UpdateAssociation(ctx, input)
 	if err != nil {
@@ -5861,6 +5798,11 @@ func convertReadModelAssociationToGenerated(a repository.AssociationReadModel) A
 }
 
 // convertGeneratedAddressToDomain converts a generated Address to domain.Address.
+// addressPatch is patchOf for an address field of an update request.
+func addressPatch(n nullable.Nullable[Address]) command.Patch[domain.Address] {
+	return patchMap(n, func(a Address) domain.Address { return *convertGeneratedAddressToDomain(&a) })
+}
+
 func convertGeneratedAddressToDomain(a *Address) *domain.Address {
 	if a == nil {
 		return nil
@@ -6019,19 +5961,10 @@ func (ss *StrictServer) UpdateLDSOrdinance(ctx context.Context, request UpdateLD
 		Version: request.Body.Version,
 	}
 
-	if request.Body.Date != nil {
-		input.Date = request.Body.Date
-	}
-	if request.Body.Place != nil {
-		input.Place = request.Body.Place
-	}
-	if request.Body.Temple != nil {
-		input.Temple = request.Body.Temple
-	}
-	if request.Body.Status != nil {
-		status := string(*request.Body.Status)
-		input.Status = &status
-	}
+	input.Date = patchOf(request.Body.Date)
+	input.Place = patchOf(request.Body.Place)
+	input.Temple = patchOf(request.Body.Temple)
+	input.Status = patchString(request.Body.Status)
 
 	_, err := ss.server.commandHandler.UpdateLDSOrdinance(ctx, input)
 	if err != nil {
@@ -6193,10 +6126,10 @@ func convertReadModelPersonToGenerated(rm repository.PersonReadModel) Person {
 	if rm.DeathPlace != "" {
 		resp.DeathPlace = &rm.DeathPlace
 	}
-	resp.BirthPlaceLatitude = nonEmptyString(rm.BirthPlaceLat)
-	resp.BirthPlaceLongitude = nonEmptyString(rm.BirthPlaceLong)
-	resp.DeathPlaceLatitude = nonEmptyString(rm.DeathPlaceLat)
-	resp.DeathPlaceLongitude = nonEmptyString(rm.DeathPlaceLong)
+	resp.BirthPlaceLatitude = omitIfNil(nonEmptyString(rm.BirthPlaceLat))
+	resp.BirthPlaceLongitude = omitIfNil(nonEmptyString(rm.BirthPlaceLong))
+	resp.DeathPlaceLatitude = omitIfNil(nonEmptyString(rm.DeathPlaceLat))
+	resp.DeathPlaceLongitude = omitIfNil(nonEmptyString(rm.DeathPlaceLong))
 	if rm.Notes != "" {
 		resp.Notes = &rm.Notes
 	}
@@ -6230,8 +6163,17 @@ func convertReadModelFamilyToGenerated(rm repository.FamilyReadModel) Family {
 	if rm.MarriagePlace != "" {
 		resp.MarriagePlace = &rm.MarriagePlace
 	}
-	resp.MarriagePlaceLatitude = nonEmptyString(rm.MarriagePlaceLat)
-	resp.MarriagePlaceLongitude = nonEmptyString(rm.MarriagePlaceLong)
+	resp.MarriagePlaceLatitude = omitIfNil(nonEmptyString(rm.MarriagePlaceLat))
+	resp.MarriagePlaceLongitude = omitIfNil(nonEmptyString(rm.MarriagePlaceLong))
+	if rm.MarriageTypeDetail != "" {
+		resp.MarriageTypeDetail = &rm.MarriageTypeDetail
+	}
+	if rm.MarriageNotes != "" {
+		resp.MarriageNotes = &rm.MarriageNotes
+	}
+	if rm.Notes != "" {
+		resp.Notes = &rm.Notes
+	}
 	return resp
 }
 

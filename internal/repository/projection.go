@@ -438,7 +438,9 @@ func (p *Projector) projectPersonUpdated(ctx context.Context, e domain.PersonUpd
 				person.Notes = v
 			}
 		case "research_status":
-			if v, ok := value.(string); ok {
+			if value == nil {
+				person.ResearchStatus = "" // cleared (#1359)
+			} else if v, ok := value.(string); ok {
 				person.ResearchStatus = domain.ParseResearchStatus(v)
 			}
 		default:

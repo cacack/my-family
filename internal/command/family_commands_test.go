@@ -115,7 +115,7 @@ func TestUpdateFamily(t *testing.T) {
 	newPlace := "New York, NY"
 	updateResult, err := handler.UpdateFamily(ctx, command.UpdateFamilyInput{
 		ID:            createResult.ID,
-		MarriagePlace: &newPlace,
+		MarriagePlace: command.Set(newPlace),
 		Version:       createResult.Version,
 	})
 
@@ -415,7 +415,7 @@ func TestUpdateFamily_NotFound(t *testing.T) {
 	newPlace := "New York"
 	_, err := handler.UpdateFamily(ctx, command.UpdateFamilyInput{
 		ID:            uuid.New(),
-		MarriagePlace: &newPlace,
+		MarriagePlace: command.Set(newPlace),
 		Version:       1,
 	})
 
@@ -475,7 +475,7 @@ func TestUpdateFamily_ClearMarriageDate(t *testing.T) {
 	emptyDate := ""
 	updateResult, err := handler.UpdateFamily(ctx, command.UpdateFamilyInput{
 		ID:           createResult.ID,
-		MarriageDate: &emptyDate,
+		MarriageDate: command.Set(emptyDate),
 		Version:      createResult.Version,
 	})
 	if err != nil {
@@ -514,10 +514,10 @@ func TestUpdateFamily_AllFields(t *testing.T) {
 
 	updateResult, err := handler.UpdateFamily(ctx, command.UpdateFamilyInput{
 		ID:               createResult.ID,
-		Partner2ID:       &p3.ID,
-		RelationshipType: &newRelType,
-		MarriageDate:     &newMarriageDate,
-		MarriagePlace:    &newMarriagePlace,
+		Partner2ID:       command.Set(p3.ID),
+		RelationshipType: command.Set(newRelType),
+		MarriageDate:     command.Set(newMarriageDate),
+		MarriagePlace:    command.Set(newMarriagePlace),
 		Version:          createResult.Version,
 	})
 	if err != nil {
@@ -745,7 +745,7 @@ func TestUpdateFamily_ConcurrencyConflict(t *testing.T) {
 	// Try to update with wrong version
 	_, err := handler.UpdateFamily(ctx, command.UpdateFamilyInput{
 		ID:            family.ID,
-		MarriagePlace: &newPlace,
+		MarriagePlace: command.Set(newPlace),
 		Version:       999, // Wrong version
 	})
 
@@ -1102,8 +1102,8 @@ func TestUpdateFamily_Partner1And2(t *testing.T) {
 	// Update to add partner2 and change partner1
 	updateResult, err := handler.UpdateFamily(ctx, command.UpdateFamilyInput{
 		ID:         createResult.ID,
-		Partner1ID: &p3.ID,
-		Partner2ID: &p2.ID,
+		Partner1ID: command.Set(p3.ID),
+		Partner2ID: command.Set(p2.ID),
 		Version:    createResult.Version,
 	})
 
@@ -1446,7 +1446,7 @@ func TestFamilyUpdateStaleVersion(t *testing.T) {
 	newPlace := "Boston"
 	updateResult, err := handler.UpdateFamily(ctx, command.UpdateFamilyInput{
 		ID:            createResult.ID,
-		MarriagePlace: &newPlace,
+		MarriagePlace: command.Set(newPlace),
 		Version:       1,
 	})
 	if err != nil {
@@ -1460,7 +1460,7 @@ func TestFamilyUpdateStaleVersion(t *testing.T) {
 	stalePlace := "Chicago"
 	_, err = handler.UpdateFamily(ctx, command.UpdateFamilyInput{
 		ID:            createResult.ID,
-		MarriagePlace: &stalePlace,
+		MarriagePlace: command.Set(stalePlace),
 		Version:       1, // Stale version
 	})
 	if err == nil {
@@ -1497,7 +1497,7 @@ func TestFamilyConcurrentModificationScenario(t *testing.T) {
 	place1 := "Boston"
 	_, err := handler.UpdateFamily(ctx, command.UpdateFamilyInput{
 		ID:            createResult.ID,
-		MarriagePlace: &place1,
+		MarriagePlace: command.Set(place1),
 		Version:       baseVersion,
 	})
 	if err != nil {
@@ -1508,7 +1508,7 @@ func TestFamilyConcurrentModificationScenario(t *testing.T) {
 	place2 := "Chicago"
 	_, err = handler.UpdateFamily(ctx, command.UpdateFamilyInput{
 		ID:            createResult.ID,
-		MarriagePlace: &place2,
+		MarriagePlace: command.Set(place2),
 		Version:       baseVersion, // Same stale version
 	})
 	if err == nil {
@@ -1553,7 +1553,7 @@ func TestFamilySequentialUpdatesSucceed(t *testing.T) {
 		newPlace := update.place
 		result, err := handler.UpdateFamily(ctx, command.UpdateFamilyInput{
 			ID:            createResult.ID,
-			MarriagePlace: &newPlace,
+			MarriagePlace: command.Set(newPlace),
 			Version:       currentVersion,
 		})
 		if err != nil {
@@ -1598,7 +1598,7 @@ func TestFamilyDeleteStaleVersion(t *testing.T) {
 	newPlace := "Boston"
 	_, err := handler.UpdateFamily(ctx, command.UpdateFamilyInput{
 		ID:            createResult.ID,
-		MarriagePlace: &newPlace,
+		MarriagePlace: command.Set(newPlace),
 		Version:       1,
 	})
 	if err != nil {
@@ -1641,7 +1641,7 @@ func TestFamilyDeleteWithCorrectVersion(t *testing.T) {
 	newPlace := "Boston"
 	updateResult, err := handler.UpdateFamily(ctx, command.UpdateFamilyInput{
 		ID:            createResult.ID,
-		MarriagePlace: &newPlace,
+		MarriagePlace: command.Set(newPlace),
 		Version:       1,
 	})
 	if err != nil {
@@ -1808,7 +1808,7 @@ func TestFamilyVersionConflictNoPartialState(t *testing.T) {
 	newPlace := "New York"
 	_, err := handler.UpdateFamily(ctx, command.UpdateFamilyInput{
 		ID:            createResult.ID,
-		MarriagePlace: &newPlace,
+		MarriagePlace: command.Set(newPlace),
 		Version:       1,
 	})
 	if err != nil {
@@ -1820,9 +1820,9 @@ func TestFamilyVersionConflictNoPartialState(t *testing.T) {
 	staleDate := "1 JAN 2000"
 	_, err = handler.UpdateFamily(ctx, command.UpdateFamilyInput{
 		ID:            createResult.ID,
-		Partner2ID:    &p2.ID,
-		MarriagePlace: &stalePlace,
-		MarriageDate:  &staleDate,
+		Partner2ID:    command.Set(p2.ID),
+		MarriagePlace: command.Set(stalePlace),
+		MarriageDate:  command.Set(staleDate),
 		Version:       1, // Stale version
 	})
 	if err == nil {
@@ -1875,7 +1875,7 @@ func TestFamilyMultipleUpdatesVersionTracking(t *testing.T) {
 		newPlace := update.place
 		result, err := handler.UpdateFamily(ctx, command.UpdateFamilyInput{
 			ID:            createResult.ID,
-			MarriagePlace: &newPlace,
+			MarriagePlace: command.Set(newPlace),
 			Version:       update.inputVersion,
 		})
 		if err != nil {
@@ -1933,7 +1933,7 @@ func TestFamilyReadModelVersionTracksEventStream(t *testing.T) {
 		p := place
 		res, err := handler.UpdateFamily(ctx, command.UpdateFamilyInput{
 			ID:            created.ID,
-			MarriagePlace: &p,
+			MarriagePlace: command.Set(p),
 			Version:       version,
 		})
 		if err != nil {

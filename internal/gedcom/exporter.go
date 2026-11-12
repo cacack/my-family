@@ -43,7 +43,8 @@ type ExportResult struct {
 	// represent them in the target version. Empty when nothing was lost.
 	DataLoss []DataLossDetail
 	// Warnings lists problems the export could not repair, such as a NOTE
-	// pointer whose stored xref several NOTE records share (#1228).
+	// pointer whose stored xref several NOTE records share (#1228) or that
+	// points to no exported note and was dropped (#1353).
 	Warnings              []string
 	BytesWritten          int64
 	PersonsExported       int
@@ -271,7 +272,7 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 	// Add source records
 	for i, s := range sources {
 		xref := sourceXrefs[s.ID]
-		s.Notes = notePointers.remap(s.Notes, noteJoin)
+		s.Notes = notePointers.remapNotes(s.Notes, noteJoin, "SOUR "+xref)
 		s.RepositoryName = repoPointers.remap(s.RepositoryName, noteJoin)
 		src := toGedcomSource(s, repoIDToXref, repoNameToXref)
 		src.ExternalIDs = externalIDs.sources[s.ID]
@@ -296,6 +297,7 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 	if err != nil {
 		return nil, err
 	}
+	spouseFamilies := spouseLinks(families, familyXrefs)
 
 	// Add individual records
 	for i, p := range persons {
@@ -304,18 +306,20 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 		birthCitations, _ := exp.readStore.GetCitationsForFact(ctx, domain.MainBranchID, domain.FactPersonBirth, p.ID)
 		deathCitations, _ := exp.readStore.GetCitationsForFact(ctx, domain.MainBranchID, domain.FactPersonDeath, p.ID)
 		nameCitations, _ := exp.readStore.GetCitationsForFact(ctx, domain.MainBranchID, domain.FactPersonName, p.ID)
-		result.CitationsExported += len(birthCitations) + len(deathCitations) + len(nameCitations)
 
 		// Fetch this person's names, their NOTE pointers remapped like the person's
 		names, _ := exp.readStore.GetPersonNames(ctx, domain.MainBranchID, p.ID)
 		for j := range names {
-			names[j].Notes = notePointers.remap(names[j].Notes, noteJoin)
+			names[j].Notes = notePointers.remapNotes(names[j].Notes, noteJoin, "INDI "+xref)
 		}
 
 		// Fetch events and attributes for this person
 		events, _ := exp.readStore.ListEventsForPerson(ctx, domain.MainBranchID, p.ID)
-		notePointers.remapEvents(events)
+		notePointers.remapEvents(events, "INDI "+xref)
 		attributes, _ := exp.readStore.ListAttributesForPerson(ctx, domain.MainBranchID, p.ID)
+		for j := range attributes {
+			attributes[j].Notes = notePointers.remapNotes(attributes[j].Notes, noteJoin, "INDI "+xref)
+		}
 		result.EventsExported += len(events)
 		result.AttributesExported += len(attributes)
 
@@ -325,7 +329,7 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 		var associations []repository.AssociationReadModel
 		for _, a := range allAssocs {
 			if a.PersonID == p.ID {
-				a.Notes = notePointers.remap(a.Notes, associationNoteJoin)
+				a.Notes = notePointers.remapNotes(a.Notes, associationNoteJoin, "INDI "+xref)
 				associations = append(associations, a)
 			}
 		}
@@ -335,12 +339,14 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 		ldsOrdinances, _ := exp.readStore.ListLDSOrdinancesForPerson(ctx, p.ID)
 		result.LDSOrdinancesExported += len(ldsOrdinances)
 
-		p.Notes = notePointers.remap(p.Notes, noteJoin)
-		p.BirthNotes = notePointers.remap(p.BirthNotes, noteJoin)
-		p.DeathNotes = notePointers.remap(p.DeathNotes, noteJoin)
+		p.Notes = notePointers.remapNotes(p.Notes, noteJoin, "INDI "+xref)
+		p.BirthNotes = notePointers.remapNotes(p.BirthNotes, noteJoin, "INDI "+xref)
+		p.DeathNotes = notePointers.remapNotes(p.DeathNotes, noteJoin, "INDI "+xref)
 		indi := toGedcomIndividual(p, names, sourceXrefs, personXrefs, nameCitations, birthCitations, deathCitations, events, attributes, associations, ldsOrdinances, externalIDs.citationAPIDs, exp.readStore, ctx)
 		indi.ExternalIDs = externalIDs.persons[p.ID]
 		indi.ChildInFamilies = childLinks[p.ID]
+		indi.SpouseInFamilies = spouseFamilies[p.ID]
+		result.CitationsExported += individualCitations(indi)
 		doc.Records = append(doc.Records, &gedcom.Record{
 			XRef:   xref,
 			Type:   gedcom.RecordTypeIndividual,
@@ -363,13 +369,12 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 		xref := familyXrefs[f.ID]
 		children, _ := exp.readStore.GetFamilyChildren(ctx, domain.MainBranchID, f.ID)
 		marriageCitations, _ := exp.readStore.GetCitationsForFact(ctx, domain.MainBranchID, domain.FactFamilyMarriage, f.ID)
-		result.CitationsExported += len(marriageCitations)
 
 		// Fetch events for this family
 		familyEvents, _ := exp.readStore.ListEventsForFamily(ctx, domain.MainBranchID, f.ID)
-		notePointers.remapEvents(familyEvents)
-		f.MarriageNotes = notePointers.remap(f.MarriageNotes, noteJoin)
-		f.Notes = notePointers.remap(f.Notes, noteJoin)
+		notePointers.remapEvents(familyEvents, "FAM "+xref)
+		f.MarriageNotes = notePointers.remapNotes(f.MarriageNotes, noteJoin, "FAM "+xref)
+		f.Notes = notePointers.remapNotes(f.Notes, noteJoin, "FAM "+xref)
 		result.EventsExported += len(familyEvents)
 
 		// Fetch LDS ordinances for this family
@@ -378,6 +383,7 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 
 		fam := toGedcomFamily(f, personXrefs, sourceXrefs, children, marriageCitations, familyEvents, familyLDSOrdinances, externalIDs.citationAPIDs, exp.readStore, ctx)
 		fam.ExternalIDs = externalIDs.families[f.ID]
+		result.CitationsExported += familyCitations(fam)
 		doc.Records = append(doc.Records, &gedcom.Record{
 			XRef:   xref,
 			Type:   gedcom.RecordTypeFamily,
@@ -441,7 +447,7 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 	// via SOUR.REPO cross-references.
 	for i, r := range repositories {
 		xref := repositoryXrefs[r.ID]
-		r.Notes = notePointers.remap(r.Notes, noteJoin)
+		r.Notes = notePointers.remapNotes(r.Notes, noteJoin, "REPO "+xref)
 		repo := toGedcomRepository(r)
 		repo.ExternalIDs = externalIDs.repositories[r.ID]
 		doc.Records = append(doc.Records, &gedcom.Record{
@@ -552,6 +558,29 @@ func pedigreeLinks(ctx context.Context, readStore repository.ReadModelStore, fam
 		sort.Slice(l, func(i, j int) bool { return l[i].FamilyXRef < l[j].FamilyXRef })
 	}
 	return links, nil
+}
+
+// spouseLinks returns, per person, a FAMS link for each family the person is
+// a partner in, in family record order. GEDCOM 5.5.1 links spouses in both
+// directions, so each HUSB/WIFE has a FAMS pointing back (#1357). families
+// are the exported family records; a family without an xref gets no link.
+func spouseLinks(families []repository.FamilyReadModel, familyXrefs map[uuid.UUID]string) map[uuid.UUID][]gedcom.FamilyLink {
+	links := map[uuid.UUID][]gedcom.FamilyLink{}
+	for _, f := range families {
+		xref := familyXrefs[f.ID]
+		if xref == "" {
+			continue
+		}
+		var linked uuid.UUID
+		for _, partner := range []*uuid.UUID{f.Partner1ID, f.Partner2ID} {
+			if partner == nil || *partner == linked {
+				continue
+			}
+			links[*partner] = append(links[*partner], gedcom.FamilyLink{FamilyXRef: xref})
+			linked = *partner
+		}
+	}
+	return links
 }
 
 // upcasePedigrees writes each FAMC's PEDI in GEDCOM 7.0's upper-case
@@ -1060,6 +1089,40 @@ func nameCitationsByName(citations []repository.CitationReadModel, names []repos
 	return groups
 }
 
+// individualCitations counts the source citations written under indi: the
+// count is taken from what is built, so a citation dropped on the way (its
+// source not exported, or a name citation with no NAME to go under) is not
+// counted, and one on a life event or attribute is (#1354).
+func individualCitations(indi *gedcom.Individual) int {
+	n := len(indi.SourceCitations)
+	for _, nm := range indi.Names {
+		n += len(nm.SourceCitations)
+	}
+	for _, e := range indi.Events {
+		n += len(e.SourceCitations)
+	}
+	for _, a := range indi.Attributes {
+		n += len(a.SourceCitations)
+	}
+	for _, a := range indi.Associations {
+		n += len(a.SourceCitations)
+	}
+	return n
+}
+
+// familyCitations counts the source citations written under fam, as
+// individualCitations does for an individual.
+func familyCitations(fam *gedcom.Family) int {
+	n := len(fam.SourceCitations)
+	for _, e := range fam.Events {
+		n += len(e.SourceCitations)
+	}
+	for _, a := range fam.Attributes {
+		n += len(a.SourceCitations)
+	}
+	return n
+}
+
 // toGedcomSourceCitations converts a slice of CitationReadModel to gedcom.SourceCitation slice.
 // citationAPIDs supplies each citation's Ancestry APID; it may be nil.
 func toGedcomSourceCitations(citations []repository.CitationReadModel, sourceXrefs map[uuid.UUID]string, citationAPIDs map[uuid.UUID]*gedcom.AncestryAPID) []*gedcom.SourceCitation {
@@ -1443,23 +1506,54 @@ func (t *pointerTargets) add(stored, exported string) {
 // hold several NOTE pointers: the importer joins a record's with noteJoin and
 // an association's with "\n".
 func (t *pointerTargets) remap(v, sep string) string {
-	return renameXrefs(v, sep, func(stored string) (string, bool) {
-		xref, ok := t.exported[stored]
-		if ok && t.holders[stored] > 1 && !t.warned[stored] {
-			t.warned[stored] = true
-			*t.warnings = append(*t.warnings, fmt.Sprintf(
-				// %q: a stored xref is not validated and can hold a line break.
-				"%d %s records share the xref %q; pointers to it were linked to the first of them (exported as %s)",
-				t.holders[stored], t.recordType, stored, xref))
+	return renameXrefs(v, sep, t.resolve)
+}
+
+// resolve returns the export xref of the record stored as stored.
+func (t *pointerTargets) resolve(stored string) (string, bool) {
+	xref, ok := t.exported[stored]
+	if ok && t.holders[stored] > 1 && !t.warned[stored] {
+		t.warned[stored] = true
+		*t.warnings = append(*t.warnings, fmt.Sprintf(
+			// %q: a stored xref is not validated and can hold a line break.
+			"%d %s records share the xref %q; pointers to it were linked to the first of them (exported as %s)",
+			t.holders[stored], t.recordType, stored, xref))
+	}
+	return xref, ok
+}
+
+// remapNotes is remap for a Notes value of the record exported as owner (for
+// example "INDI @I1@"), and drops each part that is a pointer to no exported
+// record with a warning naming owner and the pointer. Such a pointer comes
+// from a broken NOTE reference kept by import or a note deleted since: left
+// in, 5.5.1 writes a dangling NOTE pointer and 7.0, whose NOTE takes text,
+// writes the text "@N9@" (#1353).
+func (t *pointerTargets) remapNotes(v, sep, owner string) string {
+	if xref, ok := t.resolve(v); ok {
+		return xref
+	}
+	parts := strings.Split(v, sep)
+	kept := parts[:0]
+	for _, part := range parts {
+		if xref, ok := t.resolve(part); ok {
+			kept = append(kept, xref)
+			continue
 		}
-		return xref, ok
-	})
+		if gedcom.IsPointerXRef(part) {
+			*t.warnings = append(*t.warnings, fmt.Sprintf(
+				"%s points to %s %s, which is not in the export; the pointer was dropped",
+				owner, t.recordType, part))
+			continue
+		}
+		kept = append(kept, part)
+	}
+	return strings.Join(kept, sep)
 }
 
 // remapEvents remaps the NOTE pointers in each event's Notes, in place.
-func (t *pointerTargets) remapEvents(events []repository.EventReadModel) {
+func (t *pointerTargets) remapEvents(events []repository.EventReadModel, owner string) {
 	for i := range events {
-		events[i].Notes = t.remap(events[i].Notes, noteJoin)
+		events[i].Notes = t.remapNotes(events[i].Notes, noteJoin, owner)
 	}
 }
 

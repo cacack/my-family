@@ -84,10 +84,10 @@ func (h *Handler) CreateLDSOrdinance(ctx context.Context, input CreateLDSOrdinan
 // UpdateLDSOrdinanceInput contains the data for updating an LDS ordinance.
 type UpdateLDSOrdinanceInput struct {
 	ID      uuid.UUID
-	Date    *string // Pointer for optional update
-	Place   *string
-	Temple  *string
-	Status  *string
+	Date    Patch[string]
+	Place   Patch[string]
+	Temple  Patch[string]
+	Status  Patch[string]
 	Version int64 // Required for optimistic locking
 }
 
@@ -125,30 +125,28 @@ func (h *Handler) UpdateLDSOrdinance(ctx context.Context, input UpdateLDSOrdinan
 		FamilyID: current.FamilyID,
 	}
 
-	if input.Date != nil && *input.Date != current.DateRaw {
-		date, err := normalizeDateInput("date", *input.Date)
-		if err != nil {
-			return nil, err
-		}
-		if date != current.DateRaw {
-			changes["date"] = date
-			testOrdinance.SetDate(date)
-		}
+	date, dateChanged, err := changedDate("date", input.Date, current.DateRaw)
+	if err != nil {
+		return nil, err
 	}
-	if input.Place != nil && *input.Place != current.Place {
-		changes["place"] = *input.Place
-		testOrdinance.Place = *input.Place
+	if dateChanged {
+		changes["date"] = date
+		testOrdinance.SetDate(date)
 	}
-	if input.Temple != nil && *input.Temple != current.Temple {
-		changes["temple"] = *input.Temple
-		testOrdinance.Temple = *input.Temple
+	if place, ok := input.Place.Change(); ok && place != current.Place {
+		changes["place"] = place
+		testOrdinance.Place = place
 	}
-	if input.Status != nil && *input.Status != current.Status {
-		if !domain.LDSOrdinanceStatus(*input.Status).IsValid() {
-			return nil, fmt.Errorf("%w: status: invalid value: %s", ErrInvalidInput, *input.Status)
+	if temple, ok := input.Temple.Change(); ok && temple != current.Temple {
+		changes["temple"] = temple
+		testOrdinance.Temple = temple
+	}
+	if status, ok := input.Status.Change(); ok && status != current.Status {
+		if !domain.LDSOrdinanceStatus(status).IsValid() {
+			return nil, fmt.Errorf("%w: status: invalid value: %s", ErrInvalidInput, status)
 		}
-		changes["status"] = *input.Status
-		testOrdinance.Status = *input.Status
+		changes["status"] = status
+		testOrdinance.Status = status
 	}
 
 	// No changes?

@@ -6,11 +6,13 @@ import (
 	"encoding/json"
 	"os"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/cacack/gedcom-go/v3/decoder"
 	gcgedcom "github.com/cacack/gedcom-go/v3/gedcom"
 	"github.com/google/uuid"
 
@@ -66,6 +68,7 @@ func TestGedcomRoundTrip_FixturesKeepTheirTree(t *testing.T) {
 					if fixture.version == gcgedcom.Version70 {
 						assertSharedNotesExportedAsSNOTE(t, exported)
 					}
+					assertSameSpouseLinks(t, data, []byte(exported))
 
 					second := backend.setup(t)
 					importInto(t, ctx, second, []byte(exported))
@@ -78,6 +81,49 @@ func TestGedcomRoundTrip_FixturesKeepTheirTree(t *testing.T) {
 			}
 		})
 	}
+}
+
+// assertSameSpouseLinks checks the export keeps every FAMS link of the
+// fixture (#1357). Xrefs are renumbered on export, so each link is named by
+// the individual and the family's partners.
+func assertSameSpouseLinks(t *testing.T, fixture, exported []byte) {
+	t.Helper()
+	want, got := spouseLinks(t, fixture), spouseLinks(t, exported)
+	if len(want) == 0 {
+		t.Fatal("precondition: the fixture has no FAMS links")
+	}
+	if !slices.Equal(want, got) {
+		t.Errorf("FAMS links = %q, want %q", got, want)
+	}
+}
+
+// spouseLinks returns each FAMS link in data as "individual -> partners",
+// sorted.
+func spouseLinks(t *testing.T, data []byte) []string {
+	t.Helper()
+	doc, err := decoder.Decode(bytes.NewReader(data))
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	name := func(xref string) string {
+		if indi := doc.GetIndividual(xref); indi != nil {
+			return indi.FullName()
+		}
+		return ""
+	}
+	var links []string
+	for _, indi := range doc.Individuals() {
+		for _, link := range indi.SpouseInFamilies {
+			fam := doc.GetFamily(link.FamilyXRef)
+			if fam == nil {
+				t.Errorf("%s has FAMS %s, which is not a family record", indi.FullName(), link.FamilyXRef)
+				continue
+			}
+			links = append(links, indi.FullName()+" -> "+name(fam.Husband)+" & "+name(fam.Wife))
+		}
+	}
+	sort.Strings(links)
+	return links
 }
 
 func importInto(t *testing.T, ctx context.Context, st stores, data []byte) *command.ImportGedcomResult {
@@ -114,6 +160,17 @@ func assertSharedNotesExportedAsSNOTE(t *testing.T, exported string) {
 	for _, want := range []string{"\n0 @N1@ SNOTE ", "\n0 @N2@ SNOTE ", "\n1 SNOTE @N1@\n", "\n1 SNOTE @N2@\n", "\n2 SNOTE @N1@\n"} {
 		if !strings.Contains(exported, want) {
 			t.Errorf("7.0 export lacks %q:\n%s", strings.TrimSpace(want), exported)
+		}
+	}
+	// Pointers under a NAME (#1165) and on a FAM record (#1267).
+	for _, want := range []struct{ record, line string }{
+		{"INDI\n1 NAME Anne /Hartwell/\n", "\n2 SNOTE @N2@\n"},
+		{" FAM\n", "\n1 SNOTE @N2@\n"},
+	} {
+		if !slices.ContainsFunc(strings.Split(exported, "\n0 "), func(rec string) bool {
+			return strings.Contains(rec, want.record) && strings.Contains(rec+"\n", want.line)
+		}) {
+			t.Errorf("7.0 export has no record with %q holding %q:\n%s", want.record, strings.TrimSpace(want.line), exported)
 		}
 	}
 	if bad := noteRecordOrPointer.FindAllString(exported, -1); len(bad) > 0 {

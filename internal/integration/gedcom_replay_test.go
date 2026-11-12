@@ -205,7 +205,7 @@ func TestRebuild_BackfillsValuesOnlyTheReadModelHeld(t *testing.T) {
 			}
 			for _, p := range persons {
 				surname := p.Surname + "-edited"
-				if _, err := h.UpdatePerson(ctx, command.UpdatePersonInput{ID: p.ID, Surname: &surname, Version: p.Version}); err != nil {
+				if _, err := h.UpdatePerson(ctx, command.UpdatePersonInput{ID: p.ID, Surname: command.Set(surname), Version: p.Version}); err != nil {
 					t.Errorf("update %s at read-model version %d: %v", p.GivenName, p.Version, err)
 				}
 			}
@@ -245,7 +245,7 @@ func TestRebuild_BackfillsBranchCopiesOfPreImportValues(t *testing.T) {
 			}
 			notes := "checked the census"
 			onBranch, _ := st.read.GetPerson(ctx, domain.BranchID(edited.ID), john.ID)
-			if _, err := h.WithBranch(edited).UpdatePerson(ctx, command.UpdatePersonInput{ID: john.ID, Notes: &notes, Version: onBranch.Version}); err != nil {
+			if _, err := h.WithBranch(edited).UpdatePerson(ctx, command.UpdatePersonInput{ID: john.ID, Notes: command.Set(notes), Version: onBranch.Version}); err != nil {
 				t.Fatalf("edit on branch: %v", err)
 			}
 			want := []*string{john.BirthPlaceLat, john.BirthPlaceLong, john.DeathPlaceLat, john.DeathPlaceLong}
@@ -302,7 +302,7 @@ func TestRebuild_BackfillsBranchCopiesMainDeleted(t *testing.T) {
 			onBranch := domain.BranchID(branch.ID)
 			notes := "checked the census"
 			johnOnBranch, _ := st.read.GetPerson(ctx, onBranch, john.ID)
-			if _, err := h.WithBranch(branch).UpdatePerson(ctx, command.UpdatePersonInput{ID: john.ID, Notes: &notes, Version: johnOnBranch.Version}); err != nil {
+			if _, err := h.WithBranch(branch).UpdatePerson(ctx, command.UpdatePersonInput{ID: john.ID, Notes: command.Set(notes), Version: johnOnBranch.Version}); err != nil {
 				t.Fatalf("edit John on branch: %v", err)
 			}
 			appendAndProject(t, ctx, st, resi.ID, "event", repository.AppendScope{BranchID: onBranch},

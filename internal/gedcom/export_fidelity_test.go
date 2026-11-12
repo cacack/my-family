@@ -5,9 +5,11 @@ import (
 	"context"
 	"maps"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 
+	"github.com/cacack/gedcom-go/v3/decoder"
 	gcgedcom "github.com/cacack/gedcom-go/v3/gedcom"
 	"github.com/google/uuid"
 
@@ -626,6 +628,139 @@ func TestExport_ChildPedigreeRoundTrips(t *testing.T) {
 			}
 			if !maps.Equal(got, want) {
 				t.Errorf("re-imported child relationships = %v, want %v", got, want)
+			}
+		})
+	}
+}
+
+func TestExport_SpouseFamilyLinks(t *testing.T) {
+	// Each partner of a family is exported with a FAMS pointing back to it,
+	// one per family in family record order, at 5.5.1 and 7.0 (#1357).
+	ctx := context.Background()
+	readStore := memory.NewReadModelStore()
+	husband, first, second := uuid.New(), uuid.New(), uuid.New()
+	for id, name := range map[uuid.UUID]string{husband: "Husband", first: "First", second: "Second"} {
+		if err := readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
+			ID: id, GivenName: name, Surname: "Smith", FullName: name + " Smith",
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Family ids are ordered so the second marriage is exported first.
+	firstMarriage := uuid.MustParse("80000000-0000-0000-0000-000000000000")
+	secondMarriage := uuid.MustParse("00000000-0000-0000-0000-000000000001")
+	missing := uuid.New() // a partner with no person record
+	for _, f := range []repository.FamilyReadModel{
+		{ID: firstMarriage, Partner1ID: &husband, Partner2ID: &first},
+		{ID: secondMarriage, Partner1ID: &husband, Partner2ID: &second},
+		{ID: uuid.MustParse("ffffffff-0000-0000-0000-000000000000"), Partner1ID: &missing},
+	} {
+		if err := readStore.SaveFamily(ctx, domain.MainBranchID, &f); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	for _, version := range []gcgedcom.Version{gcgedcom.Version551, gcgedcom.Version70} {
+		t.Run(string(version), func(t *testing.T) {
+			buf := &bytes.Buffer{}
+			if _, err := gedcom.NewExporter(readStore).ExportWithOptions(ctx, buf, gedcom.ExportOptions{TargetVersion: version}); err != nil {
+				t.Fatalf("Export failed: %v", err)
+			}
+			doc, err := decoder.Decode(strings.NewReader(buf.String()))
+			if err != nil {
+				t.Fatalf("decode export: %v", err)
+			}
+			got := map[string][]string{}
+			for _, indi := range doc.Individuals() {
+				for _, link := range indi.SpouseInFamilies {
+					if doc.GetFamily(link.FamilyXRef) == nil {
+						t.Errorf("%s has FAMS %s, which is not an exported family", indi.FullName(), link.FamilyXRef)
+					}
+					got[indi.FullName()] = append(got[indi.FullName()], link.FamilyXRef)
+				}
+			}
+			// Families are exported in id order: @F1@ is the second marriage.
+			want := map[string][]string{
+				"Husband /Smith/": {"@F1@", "@F2@"},
+				"Second /Smith/":  {"@F1@"},
+				"First /Smith/":   {"@F2@"},
+			}
+			if !maps.EqualFunc(got, want, slices.Equal) {
+				t.Errorf("FAMS links = %v, want %v; got:\n%s", got, want, buf.String())
+			}
+			// Every partner of every exported family points back to it.
+			for _, fam := range doc.Families() {
+				for _, partner := range []string{fam.Husband, fam.Wife} {
+					indi := doc.GetIndividual(partner)
+					if partner != "" && !slices.ContainsFunc(indi.SpouseInFamilies, func(l gcgedcom.FamilyLink) bool { return l.FamilyXRef == fam.XRef }) {
+						t.Errorf("partner %s of %s has no FAMS back to it", partner, fam.XRef)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestExport_DanglingNotePointerDropped(t *testing.T) {
+	// A NOTE pointer to no exported note is dropped with a warning naming
+	// the record and the pointer: at 7.0 it would otherwise be written as
+	// "NOTE @N9@", read as the text "@N9@" (#1353). It arises from a broken
+	// reference kept by import (@N9@) and from a note deleted since (@N1@).
+	const file = `0 HEAD
+1 GEDC
+2 VERS 5.5.1
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME Ann /Smith/
+1 NOTE @N9@
+0 @F1@ FAM
+1 HUSB @I1@
+1 NOTE @N1@
+1 NOTE @N2@
+0 @N1@ NOTE Deleted note
+0 @N2@ NOTE Kept note
+0 TRLR
+`
+	ctx := context.Background()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(memory.NewEventStore(), readStore)
+	if _, err := handler.ImportGedcom(ctx, command.ImportGedcomInput{
+		Filename: "dangling.ged", Reader: strings.NewReader(file),
+	}); err != nil {
+		t.Fatalf("ImportGedcom failed: %v", err)
+	}
+	notes, _, err := readStore.ListNotes(ctx, repository.ListOptions{BranchID: domain.MainBranchID, Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range notes {
+		if n.GedcomXref == "@N1@" {
+			if err := handler.DeleteNote(ctx, n.ID, n.Version, "test"); err != nil {
+				t.Fatalf("DeleteNote failed: %v", err)
+			}
+		}
+	}
+
+	for _, version := range []gcgedcom.Version{gcgedcom.Version551, gcgedcom.Version70} {
+		t.Run(string(version), func(t *testing.T) {
+			buf := &bytes.Buffer{}
+			res, err := gedcom.NewExporter(readStore).ExportWithOptions(ctx, buf, gedcom.ExportOptions{TargetVersion: version})
+			if err != nil {
+				t.Fatalf("Export failed: %v", err)
+			}
+			output := buf.String()
+			for _, gone := range []string{"@N9@", "@N1@"} {
+				if strings.Contains(output, gone) {
+					t.Errorf("export should drop the dangling pointer %s; got:\n%s", gone, output)
+				}
+			}
+			if want := "1 " + notePointerTag(version) + " @N2@\n"; !strings.Contains(output, want) {
+				t.Errorf("export should keep %q; got:\n%s", want, output)
+			}
+			for _, want := range []string{"INDI @I1@ points to NOTE @N9@", "FAM @F1@ points to NOTE @N1@"} {
+				if !slices.ContainsFunc(res.Warnings, func(w string) bool { return strings.HasPrefix(w, want) }) {
+					t.Errorf("warnings = %q, want one starting %q", res.Warnings, want)
+				}
 			}
 		})
 	}

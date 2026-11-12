@@ -48,7 +48,7 @@ func seedMergeInto(t *testing.T, f *branchFixture, branchSurname string) mergeSe
 	}
 	if _, err := f.handler.WithBranch(branch).UpdatePerson(ctx, command.UpdatePersonInput{
 		ID:      person.ID,
-		Surname: &branchSurname,
+		Surname: command.Set(branchSurname),
 		Version: person.Version,
 	}); err != nil {
 		t.Fatalf("branch UpdatePerson failed: %v", err)
@@ -263,7 +263,7 @@ func divergeOnMain(t *testing.T, s mergeSeed, surname string) {
 	}
 	if _, err := s.f.handler.UpdatePerson(context.Background(), command.UpdatePersonInput{
 		ID:      s.person,
-		Surname: &surname,
+		Surname: command.Set(surname),
 		Version: person.Version,
 	}); err != nil {
 		t.Fatalf("main UpdatePerson failed: %v", err)
@@ -529,7 +529,7 @@ func TestMergeBranch_ConcurrentClaimLoses(t *testing.T) {
 	byron := "Byron"
 	if _, err := f.handler.WithBranch(branch).UpdatePerson(ctx, command.UpdatePersonInput{
 		ID:      person.ID,
-		Surname: &byron,
+		Surname: command.Set(byron),
 		Version: person.Version,
 	}); err != nil {
 		t.Fatalf("branch UpdatePerson failed: %v", err)
@@ -690,14 +690,14 @@ func TestMergeBranch_MultipleStreams(t *testing.T) {
 	version := keep.Version
 	for _, surname := range []string{"Byron", "Noel"} {
 		s := surname
-		res, err := scoped.UpdatePerson(ctx, command.UpdatePersonInput{ID: keep.ID, Surname: &s, Version: version})
+		res, err := scoped.UpdatePerson(ctx, command.UpdatePersonInput{ID: keep.ID, Surname: command.Set(s), Version: version})
 		if err != nil {
 			t.Fatalf("branch UpdatePerson to %q failed: %v", surname, err)
 		}
 		version = res.Version
 	}
 	milbanke := "Milbanke"
-	if _, err := scoped.UpdatePerson(ctx, command.UpdatePersonInput{ID: drop.ID, Surname: &milbanke, Version: drop.Version}); err != nil {
+	if _, err := scoped.UpdatePerson(ctx, command.UpdatePersonInput{ID: drop.ID, Surname: command.Set(milbanke), Version: drop.Version}); err != nil {
 		t.Fatalf("branch UpdatePerson failed: %v", err)
 	}
 
@@ -908,7 +908,7 @@ func TestMergeBranch_DanglingChildLinkIsRefused(t *testing.T) {
 	}
 	surname := "Byron"
 	if _, err := f.handler.WithBranch(branch).UpdatePerson(ctx, command.UpdatePersonInput{
-		ID: person.ID, Surname: &surname, Version: person.Version,
+		ID: person.ID, Surname: command.Set(surname), Version: person.Version,
 	}); err != nil {
 		t.Fatalf("branch UpdatePerson failed: %v", err)
 	}
@@ -1328,7 +1328,7 @@ func TestMergeBranch_StaleCheckIgnoresMainResolvedStream(t *testing.T) {
 		king := "King"
 		if _, err := s.f.handler.UpdatePerson(ctx, command.UpdatePersonInput{
 			ID:      s.person,
-			Surname: &king,
+			Surname: command.Set(king),
 			Version: person.Version,
 		}); err != nil {
 			t.Errorf("rival UpdatePerson failed: %v", err)
@@ -1484,7 +1484,7 @@ func TestMergeBranch_ReplayFailureAfterProgressReportsPartialApplication(t *test
 		surname := "Byron"
 		if _, err := f.handler.WithBranch(branch).UpdatePerson(ctx, command.UpdatePersonInput{
 			ID:      person.ID,
-			Surname: &surname,
+			Surname: command.Set(surname),
 			Version: person.Version,
 		}); err != nil {
 			t.Fatalf("branch UpdatePerson failed: %v", err)
@@ -1711,16 +1711,16 @@ func TestMergeBranch_RecordsDecisions(t *testing.T) {
 	}
 	onBranch := f.handler.WithBranch(branch)
 	byron, king, clairmont := "Byron", "King", "Clairmont"
-	if _, err := onBranch.UpdatePerson(ctx, command.UpdatePersonInput{ID: contested.ID, Surname: &byron, Version: contested.Version}); err != nil {
+	if _, err := onBranch.UpdatePerson(ctx, command.UpdatePersonInput{ID: contested.ID, Surname: command.Set(byron), Version: contested.Version}); err != nil {
 		t.Fatalf("branch UpdatePerson failed: %v", err)
 	}
-	if _, err := onBranch.UpdatePerson(ctx, command.UpdatePersonInput{ID: left.ID, Surname: &clairmont, Version: left.Version}); err != nil {
+	if _, err := onBranch.UpdatePerson(ctx, command.UpdatePersonInput{ID: left.ID, Surname: command.Set(clairmont), Version: left.Version}); err != nil {
 		t.Fatalf("branch UpdatePerson failed: %v", err)
 	}
 	if _, err := onBranch.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Clara", Surname: "Clairmont"}); err != nil {
 		t.Fatalf("branch CreatePerson failed: %v", err)
 	}
-	if _, err := f.handler.UpdatePerson(ctx, command.UpdatePersonInput{ID: contested.ID, Surname: &king, Version: contested.Version}); err != nil {
+	if _, err := f.handler.UpdatePerson(ctx, command.UpdatePersonInput{ID: contested.ID, Surname: command.Set(king), Version: contested.Version}); err != nil {
 		t.Fatalf("main UpdatePerson failed: %v", err)
 	}
 
@@ -1818,10 +1818,10 @@ func TestMergeBranch_RecordNamingPrecedesStalenessCheck(t *testing.T) {
 	}
 	onBranch := f.handler.WithBranch(branch)
 	byron, clairmont := "Byron", "Clairmont"
-	if _, err := onBranch.UpdatePerson(ctx, command.UpdatePersonInput{ID: kept.ID, Surname: &byron, Version: kept.Version}); err != nil {
+	if _, err := onBranch.UpdatePerson(ctx, command.UpdatePersonInput{ID: kept.ID, Surname: command.Set(byron), Version: kept.Version}); err != nil {
 		t.Fatalf("branch UpdatePerson failed: %v", err)
 	}
-	if _, err := onBranch.UpdatePerson(ctx, command.UpdatePersonInput{ID: left.ID, Surname: &clairmont, Version: left.Version}); err != nil {
+	if _, err := onBranch.UpdatePerson(ctx, command.UpdatePersonInput{ID: left.ID, Surname: command.Set(clairmont), Version: left.Version}); err != nil {
 		t.Fatalf("branch UpdatePerson failed: %v", err)
 	}
 

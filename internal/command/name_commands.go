@@ -128,15 +128,15 @@ func (h *Handler) AddName(ctx context.Context, input AddNameInput) (*AddNameResu
 type UpdateNameInput struct {
 	PersonID      uuid.UUID
 	NameID        uuid.UUID
-	GivenName     *string
-	Surname       *string
-	NamePrefix    *string
-	NameSuffix    *string
-	SurnamePrefix *string
-	Nickname      *string
-	NameType      *string
-	IsPrimary     *bool
-	Notes         *string
+	GivenName     *string // required: cannot be cleared
+	Surname       *string // required: cannot be cleared
+	NamePrefix    Patch[string]
+	NameSuffix    Patch[string]
+	SurnamePrefix Patch[string]
+	Nickname      Patch[string]
+	NameType      *string // required: cannot be cleared
+	IsPrimary     *bool   // required: cannot be cleared
+	Notes         Patch[string]
 }
 
 // UpdateNameResult contains the result of updating a name.
@@ -146,7 +146,7 @@ type UpdateNameResult struct {
 	IsPrimary bool
 }
 
-// applyNameUpdates applies the non-nil fields from input to the PersonName.
+// applyNameUpdates applies the fields input sets or clears to the PersonName.
 func applyNameUpdates(pn *domain.PersonName, input UpdateNameInput) {
 	if input.GivenName != nil {
 		pn.GivenName = *input.GivenName
@@ -154,17 +154,17 @@ func applyNameUpdates(pn *domain.PersonName, input UpdateNameInput) {
 	if input.Surname != nil {
 		pn.Surname = *input.Surname
 	}
-	if input.NamePrefix != nil {
-		pn.NamePrefix = *input.NamePrefix
+	if v, ok := input.NamePrefix.Change(); ok {
+		pn.NamePrefix = v
 	}
-	if input.NameSuffix != nil {
-		pn.NameSuffix = *input.NameSuffix
+	if v, ok := input.NameSuffix.Change(); ok {
+		pn.NameSuffix = v
 	}
-	if input.SurnamePrefix != nil {
-		pn.SurnamePrefix = *input.SurnamePrefix
+	if v, ok := input.SurnamePrefix.Change(); ok {
+		pn.SurnamePrefix = v
 	}
-	if input.Nickname != nil {
-		pn.Nickname = *input.Nickname
+	if v, ok := input.Nickname.Change(); ok {
+		pn.Nickname = v
 	}
 	if input.NameType != nil {
 		pn.NameType = domain.NameType(*input.NameType)
@@ -172,8 +172,8 @@ func applyNameUpdates(pn *domain.PersonName, input UpdateNameInput) {
 	if input.IsPrimary != nil {
 		pn.IsPrimary = *input.IsPrimary
 	}
-	if input.Notes != nil {
-		pn.Notes = *input.Notes
+	if v, ok := input.Notes.Change(); ok {
+		pn.Notes = v
 	}
 }
 

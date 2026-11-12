@@ -643,10 +643,10 @@ func TestUpdateName_AllFields(t *testing.T) {
 		NameID:        nameResult.ID,
 		GivenName:     &givenName,
 		Surname:       &surname,
-		NamePrefix:    &namePrefix,
-		NameSuffix:    &nameSuffix,
-		SurnamePrefix: &surnamePrefix,
-		Nickname:      &nickname,
+		NamePrefix:    command.Set(namePrefix),
+		NameSuffix:    command.Set(nameSuffix),
+		SurnamePrefix: command.Set(surnamePrefix),
+		Nickname:      command.Set(nickname),
 		NameType:      &nameType,
 	}
 	result, err := handler.UpdateName(ctx, updateInput)
