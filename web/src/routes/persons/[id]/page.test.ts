@@ -297,6 +297,12 @@ describe('Person detail edit form', () => {
 		updatePerson.mockResolvedValue({ id: PERSON_ID, version: 4 });
 	});
 
+	async function discard() {
+		const dialog = await screen.findByRole('alertdialog');
+		await fireEvent.click(within(dialog).getByRole('button', { name: 'Discard' }));
+		await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+	}
+
 	async function openEdit() {
 		render(Page);
 		await fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
@@ -408,7 +414,6 @@ describe('Person detail edit form', () => {
 
 	// Escape in a field used to drop every edit unasked (#1097).
 	it('asks before Escape discards edits, and keeps them when declined', async () => {
-		const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
 		getPerson.mockResolvedValue(person());
 		await openEdit();
 
@@ -417,13 +422,15 @@ describe('Person detail edit form', () => {
 		await fireEvent.input(given, { target: { value: 'Augusta' } });
 		await fireEvent.keyDown(given, { key: 'Escape' });
 
-		expect(confirm).toHaveBeenCalledWith('Discard your unsaved changes?');
+		const dialog = await screen.findByRole('alertdialog');
+		expect(dialog.textContent).toContain('Discard your unsaved changes?');
+		await fireEvent.click(within(dialog).getByRole('button', { name: 'Keep editing' }));
+
+		await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
 		expect((screen.getByLabelText('Given Name') as HTMLInputElement).value).toBe('Augusta');
-		confirm.mockRestore();
 	});
 
-	it('leaves edit mode on Escape once the discard is confirmed', async () => {
-		const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+	it('keeps the edits when Escape closes the discard dialog', async () => {
 		getPerson.mockResolvedValue(person());
 		await openEdit();
 
@@ -431,14 +438,28 @@ describe('Person detail edit form', () => {
 		given.focus();
 		await fireEvent.input(given, { target: { value: 'Augusta' } });
 		await fireEvent.keyDown(given, { key: 'Escape' });
+		const dialog = await screen.findByRole('alertdialog');
+		await fireEvent.keyDown(dialog, { key: 'Escape' });
+
+		await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+		expect((screen.getByLabelText('Given Name') as HTMLInputElement).value).toBe('Augusta');
+	});
+
+	it('leaves edit mode on Escape once the discard is confirmed', async () => {
+		getPerson.mockResolvedValue(person());
+		await openEdit();
+
+		const given = screen.getByLabelText('Given Name');
+		given.focus();
+		await fireEvent.input(given, { target: { value: 'Augusta' } });
+		await fireEvent.keyDown(given, { key: 'Escape' });
+		await discard();
 
 		expect(screen.queryByLabelText('Given Name')).toBeNull();
 		await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Edit' })));
-		confirm.mockRestore();
 	});
 
 	it('leaves edit mode on Escape without asking when nothing changed', async () => {
-		const confirm = vi.spyOn(window, 'confirm');
 		getPerson.mockResolvedValue(person());
 		await openEdit();
 
@@ -446,14 +467,12 @@ describe('Person detail edit form', () => {
 		given.focus();
 		await fireEvent.keyDown(given, { key: 'Escape' });
 
-		expect(confirm).not.toHaveBeenCalled();
+		expect(screen.queryByRole('alertdialog')).toBeNull();
 		expect(screen.queryByLabelText('Given Name')).toBeNull();
-		confirm.mockRestore();
 	});
 
 	// Escape on a form button matched the layout's close-modal, not cancel (#1139).
 	it('leaves edit mode on Escape from a form button, after the discard prompt', async () => {
-		const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
 		getPerson.mockResolvedValue(person());
 		await openEdit();
 
@@ -461,15 +480,13 @@ describe('Person detail edit form', () => {
 		const saveButton = screen.getByRole('button', { name: 'Save Changes' });
 		saveButton.focus();
 		await fireEvent.keyDown(saveButton, { key: 'Escape' });
+		await discard();
 
-		expect(confirm).toHaveBeenCalledWith('Discard your unsaved changes?');
 		expect(screen.queryByLabelText('Given Name')).toBeNull();
-		confirm.mockRestore();
 	});
 
 	// An overlay's Escape also reached the page's cancel (#1139).
 	it('keeps edit mode when Escape closes the search dropdown', async () => {
-		const confirm = vi.spyOn(window, 'confirm');
 		getPerson.mockResolvedValue(person());
 		await openEdit();
 		await fireEvent.input(screen.getByLabelText('Given Name'), { target: { value: 'Augusta' } });
@@ -482,13 +499,11 @@ describe('Person detail edit form', () => {
 		await fireEvent.keyDown(search, { key: 'Escape' });
 
 		expect(search.getAttribute('aria-expanded')).toBe('false');
-		expect(confirm).not.toHaveBeenCalled();
+		expect(screen.queryByRole('alertdialog')).toBeNull();
 		expect(screen.getByLabelText('Given Name')).toBeDefined();
-		confirm.mockRestore();
 	});
 
 	it('keeps edit mode when Escape closes the accessibility panel', async () => {
-		const confirm = vi.spyOn(window, 'confirm');
 		getPerson.mockResolvedValue(person());
 		await openEdit();
 		await fireEvent.input(screen.getByLabelText('Given Name'), { target: { value: 'Augusta' } });
@@ -500,9 +515,15 @@ describe('Person detail edit form', () => {
 		await fireEvent.keyDown(closeButton, { key: 'Escape' });
 
 		expect(onClose).toHaveBeenCalled();
-		expect(confirm).not.toHaveBeenCalled();
+		expect(screen.queryByRole('alertdialog')).toBeNull();
 		expect(screen.getByLabelText('Given Name')).toBeDefined();
-		confirm.mockRestore();
+	});
+
+	it('announces a save in the live region', async () => {
+		getPerson.mockResolvedValue(person());
+		await openEdit();
+		await save();
+		await waitFor(() => expect(screen.getByTestId('announcer').textContent).toContain('Person saved'));
 	});
 
 	it('returns focus to Edit after a save', async () => {
@@ -570,7 +591,7 @@ describe('Person detail edit form', () => {
 		await fireEvent.input(screen.getByLabelText('Birth Date'), { target: { value: 'about 1850' } });
 		await save();
 
-		expect((await screen.findByRole('status')).textContent).toContain('Saved as ABT 1850 from “about 1850”');
+		expect(await screen.findByText(/Saved as ABT 1850 from “about 1850”/)).toBeTruthy();
 	});
 
 	// A create that converted a date navigates here with what it stored (#996).
@@ -579,7 +600,7 @@ describe('Person detail edit form', () => {
 		pageState.savedAs = { birth_date: { typed: 'about 1850', stored: 'ABT 1850' } };
 		try {
 			render(Page);
-			expect((await screen.findByRole('status')).textContent).toContain('Saved as ABT 1850 from “about 1850”');
+			expect(await screen.findByText(/Saved as ABT 1850 from “about 1850”/)).toBeTruthy();
 		} finally {
 			delete pageState.savedAs;
 		}
@@ -615,14 +636,45 @@ describe('Person detail delete', () => {
 		getPerson.mockResolvedValue(person());
 	});
 
-	it('confirms a delete on the people list it returns to', async () => {
-		vi.spyOn(window, 'confirm').mockReturnValue(true);
+	it('deletes only once the dialog is confirmed, then says so on the people list', async () => {
 		render(Page);
 		await fireEvent.click(await screen.findByRole('button', { name: 'Delete' }));
+
+		const dialog = await screen.findByRole('alertdialog');
+		expect(dialog.textContent).toContain('Delete Ada Lovelace?');
+		expect(deletePerson).not.toHaveBeenCalled();
+		await fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
 
 		await waitFor(() =>
 			expect(goto).toHaveBeenCalledWith('/persons', { state: { notice: 'Ada Lovelace was deleted.' } })
 		);
+	});
+
+	it('cancelling the dialog deletes nothing', async () => {
+		render(Page);
+		await fireEvent.click(await screen.findByRole('button', { name: 'Delete' }));
+		await fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Cancel' }));
+
+		await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+		expect(deletePerson).not.toHaveBeenCalled();
+	});
+
+	// The refusal used to arrive only after "This cannot be undone." (#1113).
+	it.each([
+		['a partner', { families_as_partner: [{ id: 'f1', partner1_name: 'Ada Lovelace', partner2_name: 'William King' }] }],
+		['a child', { family_as_child: { id: 'f2', partner1_name: 'George Byron' } }]
+	])('says a person who is %s in a family cannot be deleted, instead of offering to', async (_role, linked) => {
+		getPerson.mockResolvedValue(person(linked as Partial<PersonDetail>));
+		render(Page);
+		await fireEvent.click(await screen.findByRole('button', { name: 'Delete' }));
+
+		const dialog = await screen.findByRole('alertdialog');
+		expect(dialog.textContent).toContain('Remove them from their families first');
+		expect(dialog.textContent).not.toContain('This cannot be undone');
+		expect(within(dialog).queryByRole('button', { name: 'Delete' })).toBeNull();
+		await fireEvent.click(within(dialog).getByRole('button', { name: 'Close' }));
+		await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+		expect(deletePerson).not.toHaveBeenCalled();
 	});
 });
 
@@ -723,18 +775,17 @@ describe('Person detail failed actions (#899)', () => {
 		expect(updatePerson).toHaveBeenCalledTimes(1);
 	});
 
-	it('keeps the person, families included, when a delete is refused', async () => {
-		getPerson.mockResolvedValue(
-			person({ families_as_partner: [{ id: 'f1', partner1_name: 'Ada Lovelace', partner2_name: 'William King' }] })
-		);
+	// A refusal the loaded person did not foresee, e.g. a family added elsewhere.
+	it('keeps the person, and the dialog open, when a delete is refused', async () => {
 		deletePerson.mockRejectedValueOnce({ status: 409, message: 'Person is linked to families and cannot be deleted' });
-		vi.spyOn(window, 'confirm').mockReturnValue(true);
 		render(Page);
 		await fireEvent.click(await screen.findByRole('button', { name: 'Delete' }));
+		const dialog = await screen.findByRole('alertdialog');
+		await fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
 
-		expect((await screen.findByRole('alert')).textContent).toContain('linked to families');
-		expect(screen.getByRole('heading', { name: 'Ada Lovelace' })).toBeTruthy();
-		expect(screen.getByRole('link', { name: /William King/ })).toBeTruthy();
+		expect((await within(dialog).findByRole('alert')).textContent).toContain('linked to families');
+		expect(screen.getByRole('alertdialog')).toBeTruthy();
+		expect(goto).not.toHaveBeenCalled();
 	});
 
 	it('says a malformed id is not found, never the raw binding error, and offers Retry', async () => {

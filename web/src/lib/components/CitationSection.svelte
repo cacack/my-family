@@ -13,6 +13,7 @@
 	import FormRow from '#lib/components/FormRow.svelte';
 	import * as Tabs from '#lib/components/ui/tabs/index.js';
 	import ConflictError from './ConflictError.svelte';
+	import ConfirmDialog from './ConfirmDialog.svelte';
 	import CitationTemplateForm from './CitationTemplateForm.svelte';
 	import { PERSON_FACT_TYPES, formatFactTypeShort } from '#lib/utils/evidence.js';
 	import { EVIDENCE_TYPE_OPTIONS, INFORMANT_TYPE_OPTIONS, SOURCE_QUALITY_OPTIONS } from '#lib/utils/enumOptions.js';
@@ -30,7 +31,8 @@
 	// Add citation form state
 	let showAddForm = $state(false);
 	let saving = $state(false);
-	let deleteConfirm: string | null = $state(null);
+	let deleteTarget: Citation | null = $state(null);
+	let deleteOpen = $state(false);
 
 	// Citation entry mode: 'freeform' or 'template'
 	let citationMode: 'freeform' | 'template' = $state('freeform');
@@ -221,10 +223,13 @@
 		}
 	}
 
+	/**
+	 * Run from the delete dialog. A stale version closes it and offers Try
+	 * Again here; any other failure is shown in the dialog.
+	 */
 	async function deleteCitation(citation: Citation) {
 		try {
 			await api.deleteCitation(citation.id, citation.version);
-			deleteConfirm = null;
 			conflictError = false;
 			loadCitations();
 		} catch (e) {
@@ -234,7 +239,6 @@
 					const result = await api.getPersonCitations(personId);
 					const fresh = result.citations.find((c) => c.id === citation.id);
 					if (!fresh) {
-						deleteConfirm = null;
 						conflictError = false;
 						citations = result.citations;
 						return;
@@ -242,7 +246,7 @@
 					await deleteCitation(fresh);
 				};
 			} else {
-				error = (e as { message?: string }).message || 'Failed to delete citation';
+				throw e;
 			}
 		}
 	}
@@ -257,6 +261,13 @@
 		}
 	});
 </script>
+
+<ConfirmDialog
+	bind:open={deleteOpen}
+	title="Delete this citation?"
+	description="This cannot be undone."
+	onconfirm={() => deleteTarget && deleteCitation(deleteTarget)}
+/>
 
 <div class="citation-section">
 	<div class="section-header">
@@ -470,13 +481,14 @@
 					{/if}
 
 					<div class="citation-actions">
-						{#if deleteConfirm === citation.id}
-							<span class="delete-confirm">Delete this citation?</span>
-							<Button variant="destructive" size="sm" onclick={() => deleteCitation(citation)}>Yes, Delete</Button>
-							<Button variant="outline" size="sm" onclick={() => deleteConfirm = null}>Cancel</Button>
-						{:else}
-							<Button variant="ghost" size="sm" onclick={() => deleteConfirm = citation.id}>Delete</Button>
-						{/if}
+						<Button
+							variant="ghost"
+							size="sm"
+							onclick={() => {
+								deleteTarget = citation;
+								deleteOpen = true;
+							}}>Delete</Button
+						>
 					</div>
 				</li>
 			{/each}
@@ -826,10 +838,5 @@
 		margin-top: 0.75rem;
 		padding-top: 0.75rem;
 		border-top: 1px solid #f1f5f9;
-	}
-
-	.delete-confirm {
-		font-size: 0.8125rem;
-		color: #dc2626;
 	}
 </style>

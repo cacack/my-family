@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/svelte';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/svelte';
 import NameSection from './NameSection.svelte';
 import * as apiModule from '#lib/api/client.js';
 
@@ -189,7 +189,7 @@ describe('NameSection', () => {
 			render(NameSection, { personId: PERSON_ID });
 
 			await fireEvent.click(await screen.findByRole('button', { name: 'Delete' }));
-			await fireEvent.click(screen.getByRole('button', { name: 'Yes, Delete' }));
+			await fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Delete' }));
 
 			expect(await screen.findByRole('alert')).toHaveProperty('textContent', message);
 			expect(screen.queryByRole('button', { name: 'Try Again' })).toBeNull();
@@ -208,7 +208,7 @@ describe('NameSection', () => {
 			render(NameSection, { personId: PERSON_ID });
 
 			await fireEvent.click(await screen.findByRole('button', { name: 'Delete' }));
-			await fireEvent.click(screen.getByRole('button', { name: 'Yes, Delete' }));
+			await fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Delete' }));
 
 			expect(await screen.findByRole('button', { name: 'Try Again' })).toBeTruthy();
 		});

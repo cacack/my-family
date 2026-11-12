@@ -24,6 +24,7 @@
 	import { RESEARCH_STATUS_OPTIONS, optionLabel } from '#lib/utils/enumOptions.js';
 	import ErrorState from '#lib/components/ErrorState.svelte';
 	import ActionError from '#lib/components/ActionError.svelte';
+	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
 	import ActionBar from '#lib/components/ActionBar.svelte';
 	import PageHeader from '#lib/components/PageHeader.svelte';
 	import InfoSection from '#lib/components/InfoSection.svelte';
@@ -39,7 +40,7 @@
 	let error: string | null = $state(null);
 	let editing = $state(false);
 	let saving = $state(false);
-	let deleting = $state(false);
+	let deleteOpen = $state(false);
 	let isNew = $state(false);
 
 	let formData = $state({
@@ -246,20 +247,11 @@
 		}
 	}
 
+	/** Run from the delete dialog, which shows a failure. */
 	async function deleteSummary() {
 		if (!summary) return;
-		if (!confirm('Delete this proof summary? This cannot be undone.')) return;
-
-		deleting = true;
-		error = null;
-		try {
-			await api.deleteProofSummary(summary.id, summary.version);
-			await goto('/evidence');
-		} catch (e) {
-			error = (e as { message?: string }).message || 'Failed to delete';
-		} finally {
-			deleting = false;
-		}
+		await api.deleteProofSummary(summary.id, summary.version);
+		await goto('/evidence');
 	}
 
 	$effect(() => {
@@ -278,10 +270,15 @@
 
 {#snippet recordActions()}
 	<Button variant="outline" onclick={startEdit}>Edit</Button>
-	<Button variant="destructive" onclick={deleteSummary} disabled={deleting}>
-		{deleting ? 'Deleting...' : 'Delete'}
-	</Button>
+	<Button variant="destructive" onclick={() => (deleteOpen = true)}>Delete</Button>
 {/snippet}
+
+<ConfirmDialog
+	bind:open={deleteOpen}
+	title="Delete this proof summary?"
+	description="This cannot be undone."
+	onconfirm={deleteSummary}
+/>
 
 {#snippet analysisCard(la: EvidenceAnalysisResponse)}
 	<a

@@ -347,7 +347,13 @@ describe('Snapshots page', () => {
 			await fireEvent.click(await screen.findByRole('button', { name: /^Delete snapshot$/ }));
 
 			await waitFor(() => expect(listSnapshots).toHaveBeenCalledTimes(2));
+			await waitFor(() => expect(screen.queryByText('Delete this snapshot?')).toBeNull());
 			expect(screen.queryByText('Snapshot not found')).toBeNull();
+			await waitFor(() => {
+				expect(screen.getByTestId('announcer').textContent).toContain(
+					'Snapshot Pre-DNA results was already deleted.'
+				);
+			});
 		});
 	});
 

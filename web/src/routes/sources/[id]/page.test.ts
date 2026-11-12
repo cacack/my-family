@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/svelte';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/svelte';
+import { goto } from '$app/navigation';
 import SourcePage from './+page.svelte';
 import * as apiModule from '#lib/api/client.js';
 
@@ -141,5 +142,58 @@ describe('Source detail page: multi-line fields (#1174)', () => {
 
 		await waitFor(() => expect(api.updateSource).toHaveBeenCalledTimes(1));
 		expect(vi.mocked(api.updateSource).mock.calls[0][1]).toMatchObject(multiline);
+	});
+});
+
+describe('Source detail page: save and delete feedback (#1113)', () => {
+	const api = apiModule.api;
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		vi.mocked(api.getSource).mockResolvedValue(source());
+	});
+
+	it('announces a save in the live region', async () => {
+		vi.mocked(api.updateSource).mockResolvedValue({} as apiModule.Source);
+		render(SourcePage);
+		await fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+
+		await waitFor(() => expect(screen.getByTestId('announcer').textContent).toContain('Source saved'));
+	});
+
+	it('deletes only once the dialog is confirmed, then says so on the sources list', async () => {
+		vi.mocked(api.deleteSource).mockResolvedValue(undefined);
+		render(SourcePage);
+		await fireEvent.click(await screen.findByRole('button', { name: 'Delete' }));
+
+		const dialog = await screen.findByRole('alertdialog');
+		expect(dialog.textContent).toContain('Delete "1851 Census"?');
+		expect(api.deleteSource).not.toHaveBeenCalled();
+		await fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
+
+		await waitFor(() => expect(api.deleteSource).toHaveBeenCalledWith('src-1', 1));
+		expect(goto).toHaveBeenCalledWith('/sources', { state: { notice: '"1851 Census" was deleted.' } });
+	});
+
+	it('says a cited source cannot be deleted, instead of offering to', async () => {
+		vi.mocked(api.getSource).mockResolvedValue(source({ citation_count: 2 }));
+		render(SourcePage);
+		await fireEvent.click(await screen.findByRole('button', { name: 'Delete' }));
+
+		const dialog = await screen.findByRole('alertdialog');
+		expect(dialog.textContent).toContain('This source is cited');
+		expect(within(dialog).queryByRole('button', { name: 'Delete' })).toBeNull();
+	});
+
+	it('shows a refused delete in the dialog and stays on the source', async () => {
+		vi.mocked(api.deleteSource).mockRejectedValue({ status: 409, message: 'Source has citations and cannot be deleted' });
+		render(SourcePage);
+		await fireEvent.click(await screen.findByRole('button', { name: 'Delete' }));
+		const dialog = await screen.findByRole('alertdialog');
+		await fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
+
+		expect((await within(dialog).findByRole('alert')).textContent).toContain('has citations');
+		expect(goto).not.toHaveBeenCalled();
 	});
 });

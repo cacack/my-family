@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
+import { goto } from '$app/navigation';
 import FamilyPage from './+page.svelte';
 import SearchBox from '#lib/components/SearchBox.svelte';
 import AccessibilityPanel from '#lib/components/AccessibilityPanel.svelte';
@@ -352,6 +353,19 @@ describe('Family Detail Page: partners and children (#826)', () => {
 		});
 	});
 
+	async function keepEditing() {
+		const dialog = await screen.findByRole('alertdialog');
+		expect(dialog.textContent).toContain('Discard your unsaved changes?');
+		await fireEvent.click(within(dialog).getByRole('button', { name: 'Keep editing' }));
+		await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+	}
+
+	async function discard() {
+		const dialog = await screen.findByRole('alertdialog');
+		await fireEvent.click(within(dialog).getByRole('button', { name: 'Discard' }));
+		await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+	}
+
 	async function openEdit() {
 		render(FamilyPage);
 		await screen.findByText('John Smith & Jane Smith');
@@ -370,7 +384,6 @@ describe('Family Detail Page: partners and children (#826)', () => {
 
 	// Escape in a field used to drop every edit unasked (#1097).
 	it('asks before Escape discards edits, and keeps them when declined', async () => {
-		const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
 		await openEdit();
 
 		const date = screen.getByLabelText('Marriage Date') as HTMLInputElement;
@@ -378,13 +391,11 @@ describe('Family Detail Page: partners and children (#826)', () => {
 		await fireEvent.input(date, { target: { value: '1875' } });
 		await fireEvent.keyDown(date, { key: 'Escape' });
 
-		expect(confirm).toHaveBeenCalledWith('Discard your unsaved changes?');
+		await keepEditing();
 		expect((screen.getByLabelText('Marriage Date') as HTMLInputElement).value).toBe('1875');
-		confirm.mockRestore();
 	});
 
 	it('asks before Escape discards a changed partner', async () => {
-		const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
 		await openEdit();
 
 		await fireEvent.click(screen.getByRole('button', { name: 'Clear Partner 1: John Smith' }));
@@ -392,28 +403,24 @@ describe('Family Detail Page: partners and children (#826)', () => {
 		date.focus();
 		await fireEvent.keyDown(date, { key: 'Escape' });
 
-		expect(confirm).toHaveBeenCalled();
+		await keepEditing();
 		expect(screen.getByLabelText('Marriage Date')).toBeDefined();
-		confirm.mockRestore();
 	});
 
 	it('leaves edit mode on Escape without asking when nothing changed', async () => {
-		const confirm = vi.spyOn(window, 'confirm');
 		await openEdit();
 
 		const date = screen.getByLabelText('Marriage Date');
 		date.focus();
 		await fireEvent.keyDown(date, { key: 'Escape' });
 
-		expect(confirm).not.toHaveBeenCalled();
+		expect(screen.queryByRole('alertdialog')).toBeNull();
 		expect(screen.queryByLabelText('Marriage Date')).toBeNull();
 		await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Edit' })));
-		confirm.mockRestore();
 	});
 
 	// Escape on a form button (the form focuses Clear Partner 1 first) did nothing (#1139).
 	it('leaves edit mode on Escape from a form button, after the discard prompt', async () => {
-		const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
 		await openEdit();
 
 		await fireEvent.input(screen.getByLabelText('Marriage Date'), { target: { value: '1875' } });
@@ -421,14 +428,12 @@ describe('Family Detail Page: partners and children (#826)', () => {
 		clear.focus();
 		await fireEvent.keyDown(clear, { key: 'Escape' });
 
-		expect(confirm).toHaveBeenCalledWith('Discard your unsaved changes?');
+		await discard();
 		expect(screen.queryByLabelText('Marriage Date')).toBeNull();
-		confirm.mockRestore();
 	});
 
 	// An overlay's Escape also reached the page's cancel (#1139).
 	it('keeps edit mode when Escape closes the search dropdown', async () => {
-		const confirm = vi.spyOn(window, 'confirm');
 		vi.mocked(apiModule.api.searchPersons).mockResolvedValue({ items: [], total: 0 });
 		await openEdit();
 		await fireEvent.input(screen.getByLabelText('Marriage Date'), { target: { value: '1875' } });
@@ -440,13 +445,11 @@ describe('Family Detail Page: partners and children (#826)', () => {
 		await fireEvent.keyDown(search, { key: 'Escape' });
 
 		expect(search.getAttribute('aria-expanded')).toBe('false');
-		expect(confirm).not.toHaveBeenCalled();
+		expect(screen.queryByRole('alertdialog')).toBeNull();
 		expect(screen.getByLabelText('Marriage Date')).toBeDefined();
-		confirm.mockRestore();
 	});
 
 	it('keeps edit mode when Escape closes the accessibility panel', async () => {
-		const confirm = vi.spyOn(window, 'confirm');
 		await openEdit();
 		await fireEvent.input(screen.getByLabelText('Marriage Date'), { target: { value: '1875' } });
 		const onClose = vi.fn();
@@ -457,14 +460,12 @@ describe('Family Detail Page: partners and children (#826)', () => {
 		await fireEvent.keyDown(closeButton, { key: 'Escape' });
 
 		expect(onClose).toHaveBeenCalled();
-		expect(confirm).not.toHaveBeenCalled();
+		expect(screen.queryByRole('alertdialog')).toBeNull();
 		expect(screen.getByLabelText('Marriage Date')).toBeDefined();
-		confirm.mockRestore();
 	});
 
 	// PersonSelector consumed every Escape, so a closed partner search swallowed cancel (#1139).
 	it('leaves edit mode on Escape from a closed partner search, after the discard prompt', async () => {
-		const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
 		await openEdit();
 		await fireEvent.click(screen.getByRole('button', { name: 'Clear Partner 1: John Smith' }));
 		const partner = screen.getByRole('combobox', { name: 'Partner 1' });
@@ -472,13 +473,11 @@ describe('Family Detail Page: partners and children (#826)', () => {
 
 		await fireEvent.keyDown(partner, { key: 'Escape' });
 
-		expect(confirm).toHaveBeenCalledWith('Discard your unsaved changes?');
+		await discard();
 		expect(screen.queryByLabelText('Marriage Date')).toBeNull();
-		confirm.mockRestore();
 	});
 
 	it('keeps edit mode when Escape closes the partner search results', async () => {
-		const confirm = vi.spyOn(window, 'confirm');
 		await openEdit();
 		await fireEvent.click(screen.getByRole('button', { name: 'Clear Partner 1: John Smith' }));
 		const partner = screen.getByRole('combobox', { name: 'Partner 1' });
@@ -489,9 +488,8 @@ describe('Family Detail Page: partners and children (#826)', () => {
 		await fireEvent.keyDown(partner, { key: 'Escape' });
 
 		await waitFor(() => expect(screen.queryByRole('listbox')).toBeNull());
-		expect(confirm).not.toHaveBeenCalled();
+		expect(screen.queryByRole('alertdialog')).toBeNull();
 		expect(screen.getByLabelText('Marriage Date')).toBeDefined();
-		confirm.mockRestore();
 	});
 
 	it('shows the current partners in the edit form', async () => {
@@ -541,6 +539,12 @@ describe('Family Detail Page: partners and children (#826)', () => {
 				expect.objectContaining({ partner1_id: 'partner3-id', clear_partner2: true, version: 1 })
 			)
 		);
+	});
+
+	it('announces a save in the live region', async () => {
+		await openEdit();
+		await fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+		await waitFor(() => expect(screen.getByTestId('announcer').textContent).toContain('Family saved'));
 	});
 
 	it('will not save a family with both partners cleared', async () => {
@@ -785,17 +789,52 @@ describe('Family Detail Page: failed actions (#899)', () => {
 		expect((screen.getByLabelText('Marriage Place') as HTMLInputElement).value).toBe('Evanston, IL');
 	});
 
-	it('keeps the family, children included, when a delete is refused', async () => {
+	// The refusal used to arrive only after "This cannot be undone." (#1113).
+	it('says a family with children cannot be deleted, instead of offering to', async () => {
+		render(FamilyPage);
+		await fireEvent.click(await screen.findByRole('button', { name: 'Delete' }));
+
+		const dialog = await screen.findByRole('alertdialog');
+		expect(dialog.textContent).toContain('This family still has children');
+		expect(dialog.textContent).not.toContain('This cannot be undone');
+		expect(within(dialog).queryByRole('button', { name: 'Delete' })).toBeNull();
+		await fireEvent.click(within(dialog).getByRole('button', { name: 'Close' }));
+		await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+		expect(api.deleteFamily).not.toHaveBeenCalled();
+	});
+
+	it('deletes a childless family once confirmed, then says so on the families list', async () => {
+		vi.mocked(api.getFamily).mockResolvedValue(mockFamilyNoChildren);
+		vi.mocked(api.deleteFamily).mockResolvedValue(undefined);
+		render(FamilyPage);
+		await fireEvent.click(await screen.findByRole('button', { name: 'Delete' }));
+
+		const dialog = await screen.findByRole('alertdialog');
+		expect(dialog.textContent).toContain('This cannot be undone');
+		expect(api.deleteFamily).not.toHaveBeenCalled();
+		await fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
+
+		await waitFor(() =>
+			expect(goto).toHaveBeenCalledWith('/families', {
+				state: { notice: `The ${apiModule.formatFamilyName(mockFamilyNoChildren)} family was deleted.` }
+			})
+		);
+	});
+
+	// A refusal the loaded family did not foresee, e.g. a child added elsewhere.
+	it('keeps the family, and the dialog open, when a delete is refused', async () => {
+		vi.mocked(api.getFamily).mockResolvedValue(mockFamilyNoChildren);
 		vi.mocked(api.deleteFamily).mockRejectedValueOnce({
 			status: 409,
 			message: 'Family has children and cannot be deleted'
 		});
-		vi.spyOn(window, 'confirm').mockReturnValue(true);
 		render(FamilyPage);
 		await fireEvent.click(await screen.findByRole('button', { name: 'Delete' }));
+		const dialog = await screen.findByRole('alertdialog');
+		await fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
 
-		expect((await screen.findByRole('alert')).textContent).toContain('has children');
-		expect(screen.getByText('Alice Smith')).toBeDefined();
+		expect((await within(dialog).findByRole('alert')).textContent).toContain('has children');
+		expect(goto).not.toHaveBeenCalled();
 	});
 
 	it('says a missing family is not found and offers Retry', async () => {

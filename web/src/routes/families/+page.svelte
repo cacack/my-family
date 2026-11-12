@@ -3,6 +3,7 @@
 	import { api, type FamilyDetail } from '#lib/api/client.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import PageHeader from '#lib/components/PageHeader.svelte';
+	import NavigationNotice from '#lib/components/NavigationNotice.svelte';
 	import FamilyCard from '#lib/components/FamilyCard.svelte';
 	import { clampPageToTotal, readPositiveInt, setQuery } from '#lib/utils/urlState.js';
 	import ErrorState from '#lib/components/ErrorState.svelte';
@@ -70,6 +71,8 @@
 			<Button href="/families/add">Add Family</Button>
 		{/snippet}
 	</PageHeader>
+
+	<NavigationNotice />
 
 	{#if loading}
 		<div class="loading">Loading...</div>
