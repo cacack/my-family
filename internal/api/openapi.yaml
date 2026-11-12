@@ -6579,7 +6579,7 @@ components:
 
     ChangeHistoryResponse:
       type: object
-      required: [items, total]
+      required: [items, total, limit, offset, has_more]
       properties:
         items:
           type: array
@@ -6672,7 +6672,7 @@ components:
     # Media schemas
     Media:
       type: object
-      required: [id, entity_type, entity_id, title, mime_type, filename, file_size, version]
+      required: [id, entity_type, entity_id, title, mime_type, filename, file_size, version, created_at]
       properties:
         id:
           type: string
@@ -6864,7 +6864,7 @@ components:
 
     PlaceEntry:
       type: object
-      required: [name, count]
+      required: [name, full_name, count, has_children]
       properties:
         name:
           type: string
@@ -6982,7 +6982,7 @@ components:
     # Source schemas
     Source:
       type: object
-      required: [id, source_type, title, version]
+      required: [id, source_type, title, version, citation_count]
       properties:
         id:
           type: string
@@ -7120,7 +7120,7 @@ components:
     # PersonName schemas
     PersonName:
       type: object
-      required: [id, person_id, given_name, surname, is_primary]
+      required: [id, person_id, given_name, surname, full_name, is_primary]
       properties:
         id:
           type: string
@@ -7136,7 +7136,6 @@ components:
           maxLength: 100
         full_name:
           type: string
-          readOnly: true
         name_prefix:
           type: string
         name_suffix:
