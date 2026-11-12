@@ -518,7 +518,7 @@ func (imp *Importer) ImportWithOptions(ctx context.Context, reader io.Reader, im
 
 	warnDroppedNestedNotes(doc, result)
 
-	renameCollidingNotes(doc, importOpts.ExistingXrefs, notes, persons, families, events, sources, repositories, associations, result)
+	renameCollidingNotes(doc, importOpts.ExistingXrefs, notes, persons, families, events, attributes, sources, repositories, associations, result)
 
 	// Eighth pass: parse LDS ordinance records from individuals and families
 	// GEDCOM was originally developed by the LDS Church and includes temple ordinance tags
@@ -883,8 +883,10 @@ func childPedigreeType(indi *gedcom.Individual, familyXRef string) domain.ChildR
 // the tree already holds a fresh @N<n>@ that neither the tree nor this file
 // uses, and rewrites this file's NOTE pointers (kept as raw xrefs in Notes) to
 // match. Without it, a second file's @N1@ is stored beside the tree's and an
-// export cannot tell which one a pointer meant (#1228).
-func renameCollidingNotes(doc *gedcom.Document, existing []string, notes []NoteData, persons []PersonData, families []FamilyData, events []EventData, sources []SourceData, repositories []RepositoryData, associations []AssociationData, result *ImportResult) {
+// export cannot tell which one a pointer meant (#1228). Every note-bearing
+// import type must be rewritten here; TestRenameCollidingNotes_EveryNoteField
+// fails when a new Notes field is not.
+func renameCollidingNotes(doc *gedcom.Document, existing []string, notes []NoteData, persons []PersonData, families []FamilyData, events []EventData, attributes []AttributeData, sources []SourceData, repositories []RepositoryData, associations []AssociationData, result *ImportResult) {
 	inTree := make(map[string]bool, len(existing))
 	for _, xref := range existing {
 		if xref != "" {
@@ -946,6 +948,9 @@ func renameCollidingNotes(doc *gedcom.Document, existing []string, notes []NoteD
 	}
 	for i := range events {
 		events[i].Notes = renameXrefs(events[i].Notes, noteJoin, rename)
+	}
+	for i := range attributes {
+		attributes[i].Notes = renameXrefs(attributes[i].Notes, noteJoin, rename)
 	}
 	for i := range sources {
 		sources[i].Notes = renameXrefs(sources[i].Notes, noteJoin, rename)
