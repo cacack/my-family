@@ -2995,8 +2995,9 @@ func TestExport_RepositoryRoundTrip(t *testing.T) {
 	if !strings.Contains(output, "700 Pennsylvania Ave NW") {
 		t.Error("Round-trip should preserve repository address")
 	}
-	// PHON/EMAIL/WWW are siblings of ADDR on a repository (gedcom-go v3).
-	for _, want := range []string{"1 PHON 202-357-5000\n", "1 EMAIL inquire@nara.gov\n", "1 WWW https://www.archives.gov\n"} {
+	// PHON/EMAIL/WWW are siblings of ADDR on a repository (gedcom-go v3); a
+	// 5.x export doubles the @ in a value (gedcom-go v3.6.0).
+	for _, want := range []string{"1 PHON 202-357-5000\n", "1 EMAIL inquire@@nara.gov\n", "1 WWW https://www.archives.gov\n"} {
 		if !strings.Contains(output, want) {
 			t.Errorf("Round-trip should preserve repository contact %q; got:\n%s", want, output)
 		}
@@ -3640,7 +3641,7 @@ func TestExport_ContactOnlyRepositoryHasNoEmptyAddr(t *testing.T) {
 	}
 
 	output := buf.String()
-	for _, want := range []string{"1 PHON 555-0100\n", "1 EMAIL help@example.org\n", "1 WWW https://example.org\n"} {
+	for _, want := range []string{"1 PHON 555-0100\n", "1 EMAIL help@@example.org\n", "1 WWW https://example.org\n"} {
 		if !strings.Contains(output, want) {
 			t.Errorf("export should contain %q; got:\n%s", want, output)
 		}
@@ -3893,7 +3894,9 @@ func TestAssociationNotes_RoundTrip(t *testing.T) {
 	}{
 		{name: "pointer", notes: "@N1@", wantLines: []string{"2 NOTE @N1@\n"}},
 		{name: "inline", notes: "Met at church", wantLines: []string{"2 NOTE Met at church\n"}},
-		{name: "spaced", notes: "@N 1@", wantLines: []string{"2 NOTE @N 1@\n"}},
+		// Not a valid pointer, so it is inline text, whose @ a 5.x export
+		// doubles (gedcom-go v3.6.0); the import reads it back as "@N 1@".
+		{name: "spaced", notes: "@N 1@", wantLines: []string{"2 NOTE @@N 1@@\n"}},
 		{name: "mixed", notes: "@N1@\nsee baptism", wantLines: []string{"2 NOTE @N1@\n", "2 NOTE see baptism\n"}},
 		{name: "multiline inline", notes: "Met at church\nin 1850", wantLines: []string{"2 NOTE Met at church\n", "3 CONT in 1850\n"}},
 	}
