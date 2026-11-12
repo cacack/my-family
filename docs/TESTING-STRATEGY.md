@@ -208,7 +208,7 @@ Quick reference for which tests verify which invariants.
 | PR-005 | `internal/integration/updated_projection_parity_test.go` - live projection equals replay on every backend | Automated |
 | BR-001 | `internal/command/branch_commands_test.go`, per-backend `branch_scenario_test.go` | Automated |
 | BR-002 | Single `Append` path taking `repository.AppendScope` | Code review |
-| BR-003 | Overlay/tombstone/purge-on-delete: per-backend `branch_scenario_test.go`. Purge-on-merge: `TestProjector_BranchMergedPurgesOverlay` (memory only — **gap** on SQL backends). Isolation: `internal/integration/branch_lifecycle_test.go` | Partial |
+| BR-003 | Overlay/tombstone/purge-on-delete: per-backend `branch_scenario_test.go`. Purge-on-merge: `TestProjector_BranchMergedPurgesOverlay` (memory) and `TestBranchConflict_EditEdit` (`internal/integration`, store-level read on every backend). Isolation: `internal/integration/branch_lifecycle_test.go` | Automated |
 | BR-004 | `internal/command/branch_merge_commands_test.go`, `internal/integration/branch_lifecycle_test.go`, `internal/integration/branch_conflict_test.go` | Automated |
 | BR-005 | `runBranchVersioningScenario` (three copies), `internal/integration/branch_lifecycle_test.go` | Automated |
 | BR-006 | `internal/command/branch_commands_test.go` - rejects non-branch-aware events | Automated |

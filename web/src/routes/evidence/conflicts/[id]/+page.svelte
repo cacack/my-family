@@ -5,6 +5,7 @@
 		api,
 		isVersionConflict,
 		recordLoadError,
+		type LoadFailure,
 		type EvidenceConflictResponse,
 		type EvidenceAnalysisResponse
 	} from '#lib/api/client.js';
@@ -31,6 +32,7 @@
 	let linkedAnalyses: EvidenceAnalysisResponse[] = $state([]);
 	let loading = $state(true);
 	let error: string | null = $state(null);
+	let loadError: LoadFailure | null = $state(null);
 	let resolving = $state(false);
 	let resolutionText = $state('');
 
@@ -54,6 +56,7 @@
 	async function loadConflict(id: string) {
 		loading = true;
 		error = null;
+		loadError = null;
 		linkedAnalyses = [];
 		try {
 			conflict = await api.getEvidenceConflict(id);
@@ -68,7 +71,7 @@
 					.map((r) => r.value);
 			}
 		} catch (e) {
-			error = recordLoadError(e, 'conflict');
+			loadError = recordLoadError(e, 'conflict');
 			conflict = null;
 		} finally {
 			loading = false;
@@ -120,13 +123,17 @@
 	<title>{conflict ? `${formatFactType(conflict.fact_type)} Conflict` : 'Evidence Conflict'} | My Family</title>
 </svelte:head>
 
-<div class="mx-auto max-w-3xl p-6">
+<div class="mx-auto max-w-page-detail p-6">
 	{#if loading}
-		<PageHeader title="Evidence Conflict" back={{ href: '/evidence', label: 'Evidence' }} />
+		<PageHeader title="Evidence Conflict" back={{ href: '/evidence', label: 'Evidence Analysis' }} />
 		<div class="p-12 text-center text-muted-foreground">Loading...</div>
-	{:else if error && !conflict}
-		<PageHeader title="Evidence Conflict" back={{ href: '/evidence', label: 'Evidence' }} />
-		<ErrorState message={error} onRetry={() => loadConflict(page.params.id!)} />
+	{:else if loadError}
+		<PageHeader title={loadError.title} back={{ href: '/evidence', label: 'Evidence Analysis' }} />
+		<ErrorState
+			message={loadError.message}
+			notFound={loadError.notFound}
+			onRetry={() => loadConflict(page.params.id!)}
+		/>
 	{:else if conflict}
 		{@const statusBadge = conflictBadgeProps(conflict.status)}
 		{@const subject = { type: subjectTypeOf(conflict.fact_type), id: conflict.subject_id } as const}
@@ -138,7 +145,7 @@
 		{/snippet}
 		<PageHeader
 			title="Evidence Conflict"
-			back={{ href: '/evidence', label: 'Evidence' }}
+			back={{ href: '/evidence', label: 'Evidence Analysis' }}
 			badges={conflictBadges}
 		/>
 		<div class="rounded-xl border border-slate-200 bg-white p-6">

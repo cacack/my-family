@@ -220,6 +220,21 @@ func (m *mockReadModelStore) ReplaceRepositoryExternalIDs(ctx context.Context, r
 func (m *mockReadModelStore) GetRepositoryExternalIDs(ctx context.Context, repositoryID uuid.UUID) ([]repository.RepositoryExternalIDReadModel, error) {
 	return nil, nil
 }
+func (m *mockReadModelStore) ListPersonExternalIDs(ctx context.Context, _ domain.BranchID) (map[uuid.UUID][]repository.PersonExternalIDReadModel, error) {
+	return nil, nil
+}
+func (m *mockReadModelStore) ListFamilyExternalIDs(ctx context.Context, _ domain.BranchID) (map[uuid.UUID][]repository.FamilyExternalIDReadModel, error) {
+	return nil, nil
+}
+func (m *mockReadModelStore) ListSourceExternalIDs(ctx context.Context, _ domain.BranchID) (map[uuid.UUID][]repository.SourceExternalIDReadModel, error) {
+	return nil, nil
+}
+func (m *mockReadModelStore) ListCitationExternalIDs(ctx context.Context, _ domain.BranchID) (map[uuid.UUID][]repository.CitationExternalIDReadModel, error) {
+	return nil, nil
+}
+func (m *mockReadModelStore) ListRepositoryExternalIDs(ctx context.Context) (map[uuid.UUID][]repository.RepositoryExternalIDReadModel, error) {
+	return nil, nil
+}
 
 func (m *mockReadModelStore) ListFamilies(ctx context.Context, opts repository.ListOptions) ([]repository.FamilyReadModel, int, error) {
 	return nil, 0, nil

@@ -159,6 +159,11 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 		return nil, fmt.Errorf("failed to list repositories: %w", err)
 	}
 
+	externalIDs, err := loadExternalIDs(ctx, exp.readStore)
+	if err != nil {
+		return nil, err
+	}
+
 	// Calculate total items for progress tracking
 	// Weight persons more heavily since they have the most processing
 	totalItems := len(sources) + len(persons)*2 + len(families) + len(notes) + len(submitters) + len(repositories) + 1 // +1 for encoding
@@ -268,7 +273,8 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 		xref := sourceXrefs[s.ID]
 		s.Notes = notePointers.remap(s.Notes, noteJoin)
 		s.RepositoryName = repoPointers.remap(s.RepositoryName, noteJoin)
-		src := toGedcomSource(s, repoIDToXref, repoNameToXref, exp.readStore, ctx)
+		src := toGedcomSource(s, repoIDToXref, repoNameToXref)
+		src.ExternalIDs = externalIDs.sources[s.ID]
 		doc.Records = append(doc.Records, &gedcom.Record{
 			XRef:   xref,
 			Type:   gedcom.RecordTypeSource,
@@ -284,6 +290,11 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 				return result, err
 			}
 		}
+	}
+
+	childLinks, err := pedigreeLinks(ctx, exp.readStore, familyXrefs)
+	if err != nil {
+		return nil, err
 	}
 
 	// Add individual records
@@ -321,7 +332,9 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 		p.Notes = notePointers.remap(p.Notes, noteJoin)
 		p.BirthNotes = notePointers.remap(p.BirthNotes, noteJoin)
 		p.DeathNotes = notePointers.remap(p.DeathNotes, noteJoin)
-		indi := toGedcomIndividual(p, sourceXrefs, personXrefs, birthCitations, deathCitations, events, attributes, associations, ldsOrdinances, exp.readStore, ctx)
+		indi := toGedcomIndividual(p, sourceXrefs, personXrefs, birthCitations, deathCitations, events, attributes, associations, ldsOrdinances, externalIDs.citationAPIDs, exp.readStore, ctx)
+		indi.ExternalIDs = externalIDs.persons[p.ID]
+		indi.ChildInFamilies = childLinks[p.ID]
 		doc.Records = append(doc.Records, &gedcom.Record{
 			XRef:   xref,
 			Type:   gedcom.RecordTypeIndividual,
@@ -357,7 +370,8 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 		familyLDSOrdinances, _ := exp.readStore.ListLDSOrdinancesForFamily(ctx, f.ID)
 		result.LDSOrdinancesExported += len(familyLDSOrdinances)
 
-		fam := toGedcomFamily(f, personXrefs, sourceXrefs, children, marriageCitations, familyEvents, familyLDSOrdinances, exp.readStore, ctx)
+		fam := toGedcomFamily(f, personXrefs, sourceXrefs, children, marriageCitations, familyEvents, familyLDSOrdinances, externalIDs.citationAPIDs, exp.readStore, ctx)
+		fam.ExternalIDs = externalIDs.families[f.ID]
 		doc.Records = append(doc.Records, &gedcom.Record{
 			XRef:   xref,
 			Type:   gedcom.RecordTypeFamily,
@@ -380,7 +394,8 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 
 		// Notes carrying GEDCOM 7.0 metadata (MIME, language, or translations)
 		// round-trip as SNOTE records; plain notes stay as NOTE records for
-		// GEDCOM 5.5.1 compatibility.
+		// GEDCOM 5.5.1 compatibility, and become SNOTE records in a 7.0
+		// export (shareNoteRecords).
 		doc.Records = append(doc.Records, toGedcomNoteRecord(xref, n))
 		result.NotesExported++
 		processedItems++
@@ -421,7 +436,8 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 	for i, r := range repositories {
 		xref := repositoryXrefs[r.ID]
 		r.Notes = notePointers.remap(r.Notes, noteJoin)
-		repo := toGedcomRepository(r, exp.readStore, ctx)
+		repo := toGedcomRepository(r)
+		repo.ExternalIDs = externalIDs.repositories[r.ID]
 		doc.Records = append(doc.Records, &gedcom.Record{
 			XRef:   xref,
 			Type:   gedcom.RecordTypeRepository,
@@ -482,6 +498,10 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 		result.SourceVersion = report.SourceVersion
 		result.DataLoss = toDataLossDetails(report)
 	} else {
+		if targetVersion == gedcom.Version70 {
+			upcasePedigrees(doc)
+			shareNoteRecords(doc)
+		}
 		if err := encoder.EncodeWithOptions(cw, doc, encodeOptions(targetVersion)); err != nil {
 			return result, fmt.Errorf("failed to write GEDCOM: %w", err)
 		}
@@ -497,18 +517,139 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 	return result, nil
 }
 
-// citationAncestryAPID returns the citation's Ancestry APID, kept as an
-// external ID of type ancestryAPIDExternalIDType (#1175), for export as
-// _APID; nil when it has none or readStore is nil. The encoder writes only
-// Raw, so a value ParseAPID rejects is still written back unchanged.
-func citationAncestryAPID(ctx context.Context, readStore repository.ReadModelStore, citationID uuid.UUID) *gedcom.AncestryAPID {
-	if readStore == nil {
-		return nil
-	}
-	ids, err := readStore.GetCitationExternalIDs(ctx, domain.MainBranchID, citationID)
+// childPedigrees is the GEDCOM 5.5.1 PEDI value of each non-biological child
+// relationship, the one childPedigreeType reads back.
+var childPedigrees = map[domain.ChildRelationType]string{
+	domain.ChildAdopted: "adopted",
+	domain.ChildFoster:  "foster",
+}
+
+// pedigreeLinks returns, per person, a FAMC link with PEDI for each family
+// the person is an adopted or foster child of, in family xref order. A
+// biological child is linked by the family's CHIL alone, as before; without
+// the FAMC an imported adopted child came back biological (#622).
+func pedigreeLinks(ctx context.Context, readStore repository.ReadModelStore, familyXrefs map[uuid.UUID]string) (map[uuid.UUID][]gedcom.FamilyLink, error) {
+	children, err := readStore.ListAllFamilyChildren(ctx, domain.MainBranchID)
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("failed to list family children: %w", err)
 	}
+	links := map[uuid.UUID][]gedcom.FamilyLink{}
+	for _, c := range children {
+		pedigree, ok := childPedigrees[c.RelationshipType]
+		xref := familyXrefs[c.FamilyID]
+		if !ok || xref == "" {
+			continue
+		}
+		links[c.PersonID] = append(links[c.PersonID], gedcom.FamilyLink{FamilyXRef: xref, Pedigree: pedigree})
+	}
+	for _, l := range links {
+		sort.Slice(l, func(i, j int) bool { return l[i].FamilyXRef < l[j].FamilyXRef })
+	}
+	return links, nil
+}
+
+// upcasePedigrees writes each FAMC's PEDI in GEDCOM 7.0's upper-case
+// enumeration form ("ADOPTED" rather than 5.5.1's "adopted").
+func upcasePedigrees(doc *gedcom.Document) {
+	for _, rec := range doc.Records {
+		if indi, ok := rec.GetIndividual(); ok {
+			for i := range indi.ChildInFamilies {
+				indi.ChildInFamilies[i].Pedigree = strings.ToUpper(indi.ChildInFamilies[i].Pedigree)
+			}
+		}
+	}
+}
+
+// shareNoteRecords turns each plain NOTE record into an SNOTE record with the
+// same xref and text. GEDCOM 7.0 has no NOTE record, and its NOTE takes text,
+// so a pointer left as "NOTE @N1@" is read as the text "@N1@" (#622). The
+// encoder writes a 7.0 pointer to an SNOTE record as SNOTE.
+func shareNoteRecords(doc *gedcom.Document) {
+	for _, rec := range doc.Records {
+		if note, ok := rec.Entity.(*gedcom.Note); ok && rec.Type == gedcom.RecordTypeNote {
+			rec.Type = gedcom.RecordTypeSharedNote
+			rec.Entity = &gedcom.SharedNote{XRef: rec.XRef, Text: note.Text}
+		}
+	}
+}
+
+// exportExternalIDs is every main-branch external identifier the export
+// writes, keyed by the ID of the record that owns it. Export reads each kind
+// once, before the record loops, rather than once per record (#617), and a
+// failed read fails the export instead of silently dropping identifiers. The
+// encoder emits each EXID as an `EXID <value>` / `TYPE <uri>` structure, which
+// also upgrades the export to GEDCOM 7.0 via RequiresGEDCOM7.
+type exportExternalIDs struct {
+	persons, families, sources, repositories map[uuid.UUID][]*gedcom.ExternalID
+	// citationAPIDs is each citation's Ancestry APID, written as _APID (#1175).
+	citationAPIDs map[uuid.UUID]*gedcom.AncestryAPID
+}
+
+// loadExternalIDs reads every main-branch external identifier, one query per
+// record type.
+func loadExternalIDs(ctx context.Context, rs repository.ReadModelStore) (*exportExternalIDs, error) {
+	persons, err := rs.ListPersonExternalIDs(ctx, domain.MainBranchID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list person external ids: %w", err)
+	}
+	families, err := rs.ListFamilyExternalIDs(ctx, domain.MainBranchID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list family external ids: %w", err)
+	}
+	sources, err := rs.ListSourceExternalIDs(ctx, domain.MainBranchID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list source external ids: %w", err)
+	}
+	citations, err := rs.ListCitationExternalIDs(ctx, domain.MainBranchID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list citation external ids: %w", err)
+	}
+	repositories, err := rs.ListRepositoryExternalIDs(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list repository external ids: %w", err)
+	}
+
+	citationAPIDs := make(map[uuid.UUID]*gedcom.AncestryAPID, len(citations))
+	for citationID, ids := range citations {
+		if apid := citationAncestryAPID(ids); apid != nil {
+			citationAPIDs[citationID] = apid
+		}
+	}
+	return &exportExternalIDs{
+		persons: toGedcomExternalIDs(persons, func(id repository.PersonExternalIDReadModel) (string, string) {
+			return id.Value, id.Type
+		}),
+		families: toGedcomExternalIDs(families, func(id repository.FamilyExternalIDReadModel) (string, string) {
+			return id.Value, id.Type
+		}),
+		sources: toGedcomExternalIDs(sources, func(id repository.SourceExternalIDReadModel) (string, string) {
+			return id.Value, id.Type
+		}),
+		repositories: toGedcomExternalIDs(repositories, func(id repository.RepositoryExternalIDReadModel) (string, string) {
+			return id.Value, id.Type
+		}),
+		citationAPIDs: citationAPIDs,
+	}, nil
+}
+
+// toGedcomExternalIDs converts each owner's read-model external IDs, in
+// sequence order, to GEDCOM EXIDs; field extracts an ID's value and type.
+func toGedcomExternalIDs[T any](byOwner map[uuid.UUID][]T, field func(T) (value, typ string)) map[uuid.UUID][]*gedcom.ExternalID {
+	out := make(map[uuid.UUID][]*gedcom.ExternalID, len(byOwner))
+	for owner, ids := range byOwner {
+		for _, id := range ids {
+			value, typ := field(id)
+			out[owner] = append(out[owner], &gedcom.ExternalID{Value: value, Type: typ})
+		}
+	}
+	return out
+}
+
+// citationAncestryAPID returns a citation's Ancestry APID, kept as an
+// external ID of type ancestryAPIDExternalIDType (#1175), for export as
+// _APID; nil when it has none. The encoder writes only Raw, so a value
+// ParseAPID rejects is still written back unchanged.
+func citationAncestryAPID(ids []repository.CitationExternalIDReadModel) *gedcom.AncestryAPID {
 	for _, ext := range ids {
 		if ext.Type != ancestryAPIDExternalIDType {
 			continue
@@ -650,7 +791,7 @@ func (cw *countingWriter) Write(p []byte) (n int, err error) {
 // RepositoryID. repoNameToXref maps a Repository's name (and any @XREF@ used as a
 // name) to the same xref, used as a fallback for legacy sources linked only by
 // name. When neither resolves, fall back to an inline repository definition.
-func toGedcomSource(s repository.SourceReadModel, repoIDToXref map[uuid.UUID]string, repoNameToXref map[string]string, readStore repository.ReadModelStore, ctx context.Context) *gedcom.Source {
+func toGedcomSource(s repository.SourceReadModel, repoIDToXref map[uuid.UUID]string, repoNameToXref map[string]string) *gedcom.Source {
 	src := &gedcom.Source{}
 
 	// Title
@@ -700,22 +841,12 @@ func toGedcomSource(s repository.SourceReadModel, repoIDToXref map[uuid.UUID]str
 	// Notes - encoder handles CONT/CONC automatically for multiline text
 	src.NoteXRefs, src.InlineNotes = splitNotes(s.Notes, noteJoin)
 
-	// External identifiers (GEDCOM 7.0 EXID), re-emitted from the read model.
-	if externalIDs, err := readStore.GetSourceExternalIDs(ctx, domain.MainBranchID, s.ID); err == nil {
-		for _, ext := range externalIDs {
-			src.ExternalIDs = append(src.ExternalIDs, &gedcom.ExternalID{
-				Value: ext.Value,
-				Type:  ext.Type,
-			})
-		}
-	}
-
 	return src
 }
 
 // toGedcomIndividual converts a repository PersonReadModel to a gedcom.Individual entity.
 // The encoder will automatically convert this to GEDCOM tags, handling CONT/CONC.
-func toGedcomIndividual(p repository.PersonReadModel, sourceXrefs map[uuid.UUID]string, personXrefs map[uuid.UUID]string, birthCitations, deathCitations []repository.CitationReadModel, events []repository.EventReadModel, attributes []repository.AttributeReadModel, associations []repository.AssociationReadModel, ldsOrdinances []repository.LDSOrdinanceReadModel, readStore repository.ReadModelStore, ctx context.Context) *gedcom.Individual {
+func toGedcomIndividual(p repository.PersonReadModel, sourceXrefs map[uuid.UUID]string, personXrefs map[uuid.UUID]string, birthCitations, deathCitations []repository.CitationReadModel, events []repository.EventReadModel, attributes []repository.AttributeReadModel, associations []repository.AssociationReadModel, ldsOrdinances []repository.LDSOrdinanceReadModel, citationAPIDs map[uuid.UUID]*gedcom.AncestryAPID, readStore repository.ReadModelStore, ctx context.Context) *gedcom.Individual {
 	indi := &gedcom.Individual{}
 
 	// Fetch all names for this person
@@ -764,7 +895,7 @@ func toGedcomIndividual(p repository.PersonReadModel, sourceXrefs map[uuid.UUID]
 			}
 		}
 		// Citations for birth
-		birthEvent.SourceCitations = toGedcomSourceCitations(fieldCitations(birthCitations, events), sourceXrefs, readStore, ctx)
+		birthEvent.SourceCitations = toGedcomSourceCitations(fieldCitations(birthCitations, events), sourceXrefs, citationAPIDs)
 		indi.Events = append(indi.Events, birthEvent)
 	}
 
@@ -789,7 +920,7 @@ func toGedcomIndividual(p repository.PersonReadModel, sourceXrefs map[uuid.UUID]
 			}
 		}
 		// Citations for death
-		deathEvent.SourceCitations = toGedcomSourceCitations(fieldCitations(deathCitations, events), sourceXrefs, readStore, ctx)
+		deathEvent.SourceCitations = toGedcomSourceCitations(fieldCitations(deathCitations, events), sourceXrefs, citationAPIDs)
 		indi.Events = append(indi.Events, deathEvent)
 	}
 
@@ -797,14 +928,14 @@ func toGedcomIndividual(p repository.PersonReadModel, sourceXrefs map[uuid.UUID]
 	for _, event := range events {
 		fieldOwnsUnlinked := (event.FactType == domain.FactPersonBirth && hasBirthField(p)) ||
 			(event.FactType == domain.FactPersonDeath && hasDeathField(p))
-		if gedcomEvent := toGedcomEvent(event, fieldOwnsUnlinked, sourceXrefs, readStore, ctx); gedcomEvent != nil {
+		if gedcomEvent := toGedcomEvent(event, fieldOwnsUnlinked, sourceXrefs, citationAPIDs, readStore, ctx); gedcomEvent != nil {
 			indi.Events = append(indi.Events, gedcomEvent)
 		}
 	}
 
 	// Attributes (occupation, residence, education, etc.)
 	for _, attr := range attributes {
-		if gedcomAttr := toGedcomAttribute(attr, sourceXrefs, readStore, ctx); gedcomAttr != nil {
+		if gedcomAttr := toGedcomAttribute(attr, sourceXrefs, citationAPIDs, readStore, ctx); gedcomAttr != nil {
 			indi.Attributes = append(indi.Attributes, gedcomAttr)
 		}
 	}
@@ -825,18 +956,6 @@ func toGedcomIndividual(p repository.PersonReadModel, sourceXrefs map[uuid.UUID]
 		if ord.Type == domain.LDSBaptism || ord.Type == domain.LDSConfirmation ||
 			ord.Type == domain.LDSEndowment || ord.Type == domain.LDSSealingChild {
 			indi.LDSOrdinances = append(indi.LDSOrdinances, toGedcomLDSOrdinance(ord))
-		}
-	}
-
-	// External identifiers (GEDCOM 7.0 EXID). The encoder emits each as an
-	// `EXID <value>` / `TYPE <uri>` structure on the individual (gedcom-go
-	// v2.2.1+), which also upgrades the export to GEDCOM 7.0 via RequiresGEDCOM7.
-	if externalIDs, err := readStore.GetPersonExternalIDs(ctx, domain.MainBranchID, p.ID); err == nil {
-		for _, ext := range externalIDs {
-			indi.ExternalIDs = append(indi.ExternalIDs, &gedcom.ExternalID{
-				Value: ext.Value,
-				Type:  ext.Type,
-			})
 		}
 	}
 
@@ -909,8 +1028,8 @@ func toGedcomPersonalName(nm repository.PersonNameReadModel) *gedcom.PersonalNam
 }
 
 // toGedcomSourceCitations converts a slice of CitationReadModel to gedcom.SourceCitation slice.
-// readStore supplies each citation's external IDs; it may be nil.
-func toGedcomSourceCitations(citations []repository.CitationReadModel, sourceXrefs map[uuid.UUID]string, readStore repository.ReadModelStore, ctx context.Context) []*gedcom.SourceCitation {
+// citationAPIDs supplies each citation's Ancestry APID; it may be nil.
+func toGedcomSourceCitations(citations []repository.CitationReadModel, sourceXrefs map[uuid.UUID]string, citationAPIDs map[uuid.UUID]*gedcom.AncestryAPID) []*gedcom.SourceCitation {
 	var result []*gedcom.SourceCitation
 
 	for _, cit := range citations {
@@ -940,7 +1059,7 @@ func toGedcomSourceCitations(citations []repository.CitationReadModel, sourceXre
 			}
 		}
 
-		citation.AncestryAPID = citationAncestryAPID(ctx, readStore, cit.ID)
+		citation.AncestryAPID = citationAPIDs[cit.ID]
 
 		result = append(result, citation)
 	}
@@ -981,7 +1100,7 @@ func fieldCitations(citations []repository.CitationReadModel, events []repositor
 // fieldOwnsUnlinked is set when the owner also exports a birth, death or
 // marriage of the event's fact type from its own record; citations with no
 // fact_id (imported before #1294) are then written under that one only (#1300).
-func toGedcomEvent(event repository.EventReadModel, fieldOwnsUnlinked bool, sourceXrefs map[uuid.UUID]string, readStore repository.ReadModelStore, ctx context.Context) *gedcom.Event {
+func toGedcomEvent(event repository.EventReadModel, fieldOwnsUnlinked bool, sourceXrefs map[uuid.UUID]string, citationAPIDs map[uuid.UUID]*gedcom.AncestryAPID, readStore repository.ReadModelStore, ctx context.Context) *gedcom.Event {
 	tagName := mapFactTypeToGedcomTag(event.FactType)
 	if tagName == "" {
 		return nil // Skip unknown event types
@@ -1047,7 +1166,7 @@ func toGedcomEvent(event repository.EventReadModel, fieldOwnsUnlinked bool, sour
 		if fieldOwnsUnlinked {
 			citations = slices.DeleteFunc(citations, func(c repository.CitationReadModel) bool { return c.FactID == nil })
 		}
-		ge.SourceCitations = toGedcomSourceCitations(citations, sourceXrefs, readStore, ctx)
+		ge.SourceCitations = toGedcomSourceCitations(citations, sourceXrefs, citationAPIDs)
 	}
 
 	return ge
@@ -1076,7 +1195,7 @@ func convertDomainAddressToGedcom(addr *domain.Address) *gedcom.Address {
 }
 
 // toGedcomAttribute converts an AttributeReadModel to a gedcom.Attribute.
-func toGedcomAttribute(attr repository.AttributeReadModel, sourceXrefs map[uuid.UUID]string, readStore repository.ReadModelStore, ctx context.Context) *gedcom.Attribute {
+func toGedcomAttribute(attr repository.AttributeReadModel, sourceXrefs map[uuid.UUID]string, citationAPIDs map[uuid.UUID]*gedcom.AncestryAPID, readStore repository.ReadModelStore, ctx context.Context) *gedcom.Attribute {
 	tagName := mapFactTypeToGedcomTag(attr.FactType)
 	if tagName == "" {
 		return nil // Skip unknown attribute types
@@ -1108,7 +1227,7 @@ func toGedcomAttribute(attr repository.AttributeReadModel, sourceXrefs map[uuid.
 	// attribute of the same fact type (#1294).
 	if readStore != nil {
 		citations, _ := readStore.GetCitationsForFactInstance(ctx, domain.MainBranchID, attr.FactType, attr.PersonID, attr.ID)
-		ga.SourceCitations = toGedcomSourceCitations(citations, sourceXrefs, readStore, ctx)
+		ga.SourceCitations = toGedcomSourceCitations(citations, sourceXrefs, citationAPIDs)
 	}
 
 	return ga
@@ -1116,7 +1235,7 @@ func toGedcomAttribute(attr repository.AttributeReadModel, sourceXrefs map[uuid.
 
 // toGedcomFamily converts a repository FamilyReadModel to a gedcom.Family entity.
 // The encoder will automatically convert this to GEDCOM tags, handling CONT/CONC.
-func toGedcomFamily(f repository.FamilyReadModel, personXrefs, sourceXrefs map[uuid.UUID]string, children []repository.FamilyChildReadModel, marriageCitations []repository.CitationReadModel, events []repository.EventReadModel, ldsOrdinances []repository.LDSOrdinanceReadModel, readStore repository.ReadModelStore, ctx context.Context) *gedcom.Family {
+func toGedcomFamily(f repository.FamilyReadModel, personXrefs, sourceXrefs map[uuid.UUID]string, children []repository.FamilyChildReadModel, marriageCitations []repository.CitationReadModel, events []repository.EventReadModel, ldsOrdinances []repository.LDSOrdinanceReadModel, citationAPIDs map[uuid.UUID]*gedcom.AncestryAPID, readStore repository.ReadModelStore, ctx context.Context) *gedcom.Family {
 	fam := &gedcom.Family{}
 	fam.NoteXRefs, fam.InlineNotes = splitNotes(f.Notes, noteJoin)
 
@@ -1155,14 +1274,14 @@ func toGedcomFamily(f repository.FamilyReadModel, personXrefs, sourceXrefs map[u
 			}
 		}
 		// Citations for marriage
-		marriageEvent.SourceCitations = toGedcomSourceCitations(fieldCitations(marriageCitations, events), sourceXrefs, readStore, ctx)
+		marriageEvent.SourceCitations = toGedcomSourceCitations(fieldCitations(marriageCitations, events), sourceXrefs, citationAPIDs)
 		fam.Events = append(fam.Events, marriageEvent)
 	}
 
 	// Additional family events (divorce, annulment, engagement, etc.)
 	for _, event := range events {
 		fieldOwnsUnlinked := event.FactType == domain.FactFamilyMarriage && hasMarriageField(f)
-		if gedcomEvent := toGedcomEvent(event, fieldOwnsUnlinked, sourceXrefs, readStore, ctx); gedcomEvent != nil {
+		if gedcomEvent := toGedcomEvent(event, fieldOwnsUnlinked, sourceXrefs, citationAPIDs, readStore, ctx); gedcomEvent != nil {
 			fam.Events = append(fam.Events, gedcomEvent)
 		}
 	}
@@ -1178,16 +1297,6 @@ func toGedcomFamily(f repository.FamilyReadModel, personXrefs, sourceXrefs map[u
 	for _, ord := range ldsOrdinances {
 		if ord.Type == domain.LDSSealingSpouse {
 			fam.LDSOrdinances = append(fam.LDSOrdinances, toGedcomLDSOrdinance(ord))
-		}
-	}
-
-	// External identifiers (GEDCOM 7.0 EXID), re-emitted from the read model.
-	if externalIDs, err := readStore.GetFamilyExternalIDs(ctx, domain.MainBranchID, f.ID); err == nil {
-		for _, ext := range externalIDs {
-			fam.ExternalIDs = append(fam.ExternalIDs, &gedcom.ExternalID{
-				Value: ext.Value,
-				Type:  ext.Type,
-			})
 		}
 	}
 
@@ -1603,7 +1712,7 @@ func toGedcomSubmitter(s repository.SubmitterReadModel) *gedcom.Submitter {
 
 // toGedcomRepository converts a repository RepositoryReadModel to a gedcom.Repository entity.
 // The encoder will automatically convert this to GEDCOM tags (NAME, ADDR, NOTE).
-func toGedcomRepository(r repository.RepositoryReadModel, readStore repository.ReadModelStore, ctx context.Context) *gedcom.Repository {
+func toGedcomRepository(r repository.RepositoryReadModel) *gedcom.Repository {
 	repo := &gedcom.Repository{
 		Name: r.Name,
 	}
@@ -1628,16 +1737,6 @@ func toGedcomRepository(r repository.RepositoryReadModel, readStore repository.R
 
 	// Notes - encoder handles CONT/CONC automatically for multiline text.
 	repo.NoteXRefs, repo.InlineNotes = splitNotes(r.Notes, noteJoin)
-
-	// External identifiers (GEDCOM 7.0 EXID), re-emitted from the read model.
-	if externalIDs, err := readStore.GetRepositoryExternalIDs(ctx, r.ID); err == nil {
-		for _, ext := range externalIDs {
-			repo.ExternalIDs = append(repo.ExternalIDs, &gedcom.ExternalID{
-				Value: ext.Value,
-				Type:  ext.Type,
-			})
-		}
-	}
 
 	return repo
 }

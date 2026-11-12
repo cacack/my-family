@@ -6,6 +6,7 @@
 		api,
 		isVersionConflict,
 		recordLoadError,
+		type LoadFailure,
 		type EvidenceAnalysisResponse,
 		type EvidenceAnalysisCreateRequest,
 		type FactType,
@@ -38,6 +39,7 @@
 	let analysis: EvidenceAnalysisResponse | null = $state(null);
 	let loading = $state(true);
 	let error: string | null = $state(null);
+	let loadError: LoadFailure | null = $state(null);
 	let editing = $state(false);
 	let saving = $state(false);
 	let deleteOpen = $state(false);
@@ -113,6 +115,7 @@
 		if (id === 'new') {
 			analysis = null;
 			error = null;
+			loadError = null;
 			newCitationId = '';
 			formData = emptyFormData(urlSubjectId ?? '', urlFactType ?? '', urlSubjectType ?? '');
 			if (urlFactType && !isFactType(urlFactType)) unknownFactType = urlFactType;
@@ -125,6 +128,7 @@
 		editing = false;
 		loading = true;
 		error = null;
+		loadError = null;
 		try {
 			const result = await api.getEvidenceAnalysis(id);
 			if (seq !== loadSeq) return;
@@ -133,7 +137,7 @@
 			resetForm();
 		} catch (e) {
 			if (seq !== loadSeq) return;
-			error = recordLoadError(e, 'analysis');
+			loadError = recordLoadError(e, 'analysis');
 			analysis = null;
 		} finally {
 			if (seq === loadSeq) loading = false;
@@ -275,16 +279,16 @@
 	onconfirm={deleteAnalysis}
 />
 
-<div class="mx-auto max-w-3xl p-6">
+<div class="mx-auto max-w-page-detail p-6">
 	<ActionBar
-		back={{ href: '/evidence', label: 'Evidence' }}
+		back={{ href: '/evidence', label: 'Evidence Analysis' }}
 		actions={analysis && !editing ? recordActions : undefined}
 	/>
 
 	{#if loading}
 		<div class="p-12 text-center text-muted-foreground">Loading...</div>
-	{:else if error && !analysis && !isNew}
-		<ErrorState message={error} onRetry={() => loadAnalysis(page.params.id!)} />
+	{:else if loadError}
+		<ErrorState {...loadError} onRetry={() => loadAnalysis(page.params.id!)} />
 	{:else if editing}
 		<form
 			class="rounded-xl border border-slate-200 bg-white p-6"

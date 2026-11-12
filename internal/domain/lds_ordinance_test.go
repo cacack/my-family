@@ -198,11 +198,11 @@ func TestLDSOrdinance_Validate(t *testing.T) {
 			errContain: "temple",
 		},
 		{
-			name: "status too long",
+			name: "status not in the GEDCOM 7 list",
 			ordinance: func() *LDSOrdinance {
 				o := NewLDSOrdinance(LDSBaptism)
 				o.SetPersonID(personID)
-				o.Status = strings.Repeat("X", 51)
+				o.Status = "Completed"
 				return o
 			}(),
 			wantErr:    true,

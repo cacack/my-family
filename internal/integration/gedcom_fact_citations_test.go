@@ -231,6 +231,28 @@ func TestAPI_CitationOfOneLifeEvent(t *testing.T) {
 				}
 			}
 
+			// The citation exports say which census each citation supports (#1301).
+			var exported []string
+			for _, item := range jsonArray(t, mustDo(t, server, http.MethodGet, "/api/v1/export/citations", "", http.StatusOK), "citations") {
+				c, _ := item.(map[string]any)
+				exported = append(exported, fmt.Sprint(c["fact_id"]))
+			}
+			slices.Sort(exported)
+			wantFacts := []string{census["1850"].String(), census["1860"].String()}
+			slices.Sort(wantFacts)
+			if !slices.Equal(exported, wantFacts) {
+				t.Errorf("JSON export fact_ids = %v, want %v", exported, wantFacts)
+			}
+			csvRec := do(t, server, http.MethodGet, "/api/v1/export/citations?format=csv", "")
+			if csvRec.Code != http.StatusOK {
+				t.Fatalf("CSV export: status = %d. Body: %s", csvRec.Code, csvRec.Body.String())
+			}
+			for _, id := range wantFacts {
+				if !strings.Contains(csvRec.Body.String(), id) {
+					t.Errorf("CSV export lacks fact_id %s:\n%s", id, csvRec.Body.String())
+				}
+			}
+
 			rec := do(t, server, http.MethodGet, "/api/v1/gedcom/export", "")
 			if rec.Code != http.StatusOK {
 				t.Fatalf("export: status = %d. Body: %s", rec.Code, rec.Body.String())

@@ -38,8 +38,8 @@ function redefinesHighContrast(source: string): boolean {
 	);
 }
 
-// Tokens that are not colours, or are data-series colours charts own.
-const NOT_THEME_COLOURS = /^--(font-size-|transition-|radius$|chart-)/;
+// Tokens that are not colours (sizes, timings, widths), or are data-series colours charts own.
+const NOT_THEME_COLOURS = /^--(font-size-|transition-|page-width-|radius$|chart-)/;
 
 describe('high-contrast definition', () => {
 	it('overrides every colour token the light theme defines, shadcn ones included', () => {

@@ -2,6 +2,8 @@ package command_test
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -242,6 +244,101 @@ func TestUpdateLDSOrdinance_NoChanges(t *testing.T) {
 
 	if result.Version != createResult.Version {
 		t.Errorf("Version changed without updates: got %d, want %d", result.Version, createResult.Version)
+	}
+}
+
+// TestLDSOrdinance_InvalidStatus tests that create and update reject a status
+// outside domain.AllLDSOrdinanceStatuses.
+func TestLDSOrdinance_InvalidStatus(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	personResult, _ := handler.CreatePerson(ctx, command.CreatePersonInput{GivenName: "John", Surname: "Doe"})
+
+	if _, err := handler.CreateLDSOrdinance(ctx, command.CreateLDSOrdinanceInput{
+		Type:     domain.LDSBaptism,
+		PersonID: &personResult.ID,
+		Status:   "DONE",
+	}); !errors.Is(err, command.ErrInvalidInput) {
+		t.Errorf("CreateLDSOrdinance with an invalid status: err = %v, want ErrInvalidInput", err)
+	}
+
+	createResult, err := handler.CreateLDSOrdinance(ctx, command.CreateLDSOrdinanceInput{
+		Type:     domain.LDSBaptism,
+		PersonID: &personResult.ID,
+		Status:   string(domain.LDSStatusSubmitted),
+	})
+	if err != nil {
+		t.Fatalf("CreateLDSOrdinance failed: %v", err)
+	}
+	if _, err := handler.UpdateLDSOrdinance(ctx, command.UpdateLDSOrdinanceInput{
+		ID:      createResult.ID,
+		Status:  strPtr("DONE"),
+		Version: createResult.Version,
+	}); !errors.Is(err, command.ErrInvalidInput) {
+		t.Errorf("UpdateLDSOrdinance with an invalid status: err = %v, want ErrInvalidInput", err)
+	}
+	if _, err := handler.UpdateLDSOrdinance(ctx, command.UpdateLDSOrdinanceInput{
+		ID:      createResult.ID,
+		Status:  strPtr(string(domain.LDSStatusCompleted)),
+		Version: createResult.Version,
+	}); err != nil {
+		t.Errorf("UpdateLDSOrdinance with a valid status failed: %v", err)
+	}
+}
+
+// An imported ordinance keeps STAT and TEMP as written: a GEDCOM 5.5.1
+// status spelling and an over-long temple must not block an edit to an
+// unrelated field, while a changed field is still validated.
+func TestUpdateLDSOrdinance_ImportedValuesDoNotBlockUnrelatedEdit(t *testing.T) {
+	const ged = `0 HEAD
+1 GEDC
+2 VERS 5.5.1
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME A /B/
+1 BAPL
+2 DATE 1 JAN 1900
+2 TEMP SALTLAKECITY
+2 PLAC Salt Lake City
+2 STAT PRE-1970
+0 TRLR
+`
+	ctx := context.Background()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(memory.NewEventStore(), readStore)
+	if _, err := handler.ImportGedcom(ctx, command.ImportGedcomInput{Filename: "t.ged", Reader: strings.NewReader(ged)}); err != nil {
+		t.Fatalf("ImportGedcom failed: %v", err)
+	}
+	ords, _, err := readStore.ListLDSOrdinances(ctx, repository.ListOptions{Limit: 10})
+	if err != nil || len(ords) != 1 {
+		t.Fatalf("ListLDSOrdinances = %d ordinances, err %v; want 1", len(ords), err)
+	}
+	ord := ords[0]
+	if ord.Status != "PRE-1970" || ord.Temple != "SALTLAKECITY" {
+		t.Fatalf("imported status/temple = %q/%q, want PRE-1970/SALTLAKECITY", ord.Status, ord.Temple)
+	}
+
+	result, err := handler.UpdateLDSOrdinance(ctx, command.UpdateLDSOrdinanceInput{
+		ID:      ord.ID,
+		Place:   strPtr("Logan"),
+		Version: ord.Version,
+	})
+	if err != nil {
+		t.Fatalf("place-only update of an imported ordinance failed: %v", err)
+	}
+	if got, _ := readStore.GetLDSOrdinance(ctx, ord.ID); got.Place != "Logan" || got.Status != "PRE-1970" {
+		t.Errorf("after update place/status = %q/%q, want Logan/PRE-1970", got.Place, got.Status)
+	}
+
+	if _, err := handler.UpdateLDSOrdinance(ctx, command.UpdateLDSOrdinanceInput{
+		ID:      ord.ID,
+		Temple:  strPtr("ANOTHERLONGTEMPLE"),
+		Version: result.Version,
+	}); !errors.Is(err, command.ErrInvalidInput) {
+		t.Errorf("update to an over-long temple: err = %v, want ErrInvalidInput", err)
 	}
 }
 

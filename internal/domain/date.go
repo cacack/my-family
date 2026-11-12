@@ -3,6 +3,7 @@ package domain
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -26,14 +27,14 @@ const (
 	DateTo    DateQualifier = "to"    // Period end with no start (TO <date>)
 )
 
-// IsValid checks if the date qualifier is valid.
+// AllDateQualifiers returns every valid DateQualifier value.
+func AllDateQualifiers() []DateQualifier {
+	return []DateQualifier{DateExact, DateAbout, DateCalc, DateEst, DateBef, DateAft, DateBet, DateFrom, DateInt, DateTo}
+}
+
+// IsValid reports whether the value is one of AllDateQualifiers.
 func (d DateQualifier) IsValid() bool {
-	switch d {
-	case DateExact, DateAbout, DateCalc, DateEst, DateBef, DateAft, DateBet, DateFrom, DateInt, DateTo:
-		return true
-	default:
-		return false
-	}
+	return slices.Contains(AllDateQualifiers(), d)
 }
 
 // GenDate represents a genealogical date with flexible precision per GEDCOM 5.5 spec.
@@ -279,6 +280,14 @@ func (g *GenDate) UnmarshalJSON(data []byte) error {
 	if g.Calendar2 == "" {
 		if _, tail := splitAtRangeEnd(strings.ToUpper(g.Raw)); strings.Contains(tail, "@#") {
 			*g = ParseGenDate(g.Raw)
+			return nil
+		}
+	}
+	// A GEDCOM 7.0 calendar keyword ("JULIAN 14 FEB 1689") was not read
+	// before #622: such a date was stored as Gregorian with no year.
+	if g.Year == nil {
+		if parsed := ParseGenDate(g.Raw); parsed.Calendar != g.Calendar {
+			*g = parsed
 		}
 	}
 	return nil
@@ -550,13 +559,33 @@ func parseInterpretedGenDate(s string, gd GenDate) GenDate {
 	return gd
 }
 
+// gedcom7Calendars maps a GEDCOM 7.0 calendar keyword ("JULIAN 14 FEB 1689")
+// to the token of the 5.5.1 escape that names the same calendar.
+var gedcom7Calendars = map[string]string{
+	"GREGORIAN": CalendarGregorian,
+	"JULIAN":    CalendarJulian,
+	"HEBREW":    CalendarHebrew,
+	"FRENCH_R":  CalendarFrench,
+}
+
 // extractCalendarEscape finds and removes a GEDCOM calendar escape sequence
-// (e.g. "@#DJULIAN@") from an upper-cased date string. It returns the calendar
-// token, the remaining string with whitespace normalized, and whether a known
-// escape was found. Unknown escapes are left in place and reported as not found.
+// (e.g. "@#DJULIAN@") or, failing that, a GEDCOM 7.0 calendar keyword (e.g.
+// "JULIAN") from an upper-cased date string. It returns the calendar token,
+// the remaining string with whitespace normalized, and whether a known
+// calendar was found. Unknown escapes are left in place and reported as not
+// found. A keyword is only looked for before an INT date's "(" phrase.
 func extractCalendarEscape(s string) (calendar, rest string, found bool) {
 	start := strings.Index(s, "@#")
 	if start == -1 {
+		fields := strings.Fields(s)
+		for i, field := range fields {
+			if strings.HasPrefix(field, "(") {
+				break
+			}
+			if token, ok := gedcom7Calendars[field]; ok {
+				return token, strings.Join(append(fields[:i:i], fields[i+1:]...), " "), true
+			}
+		}
 		return "", s, false
 	}
 	end := strings.Index(s[start+2:], "@")
