@@ -29,6 +29,7 @@ type AddNameInput struct {
 	Nickname      string
 	NameType      string
 	IsPrimary     bool
+	Notes         string
 }
 
 // AddNameResult contains the result of adding a name.
@@ -70,6 +71,7 @@ func (h *Handler) AddName(ctx context.Context, input AddNameInput) (*AddNameResu
 		pn.NameType = domain.NameType(input.NameType)
 	}
 	pn.IsPrimary = input.IsPrimary
+	pn.Notes = input.Notes
 
 	// Validate the name
 	if err := pn.Validate(); err != nil {
@@ -98,18 +100,8 @@ func (h *Handler) AddName(ctx context.Context, input AddNameInput) (*AddNameResu
 		for _, existing := range existingNames {
 			if existing.IsPrimary {
 				// Create updated name to demote
-				demoted := &domain.PersonName{
-					ID:            existing.ID,
-					PersonID:      existing.PersonID,
-					GivenName:     existing.GivenName,
-					Surname:       existing.Surname,
-					NamePrefix:    existing.NamePrefix,
-					NameSuffix:    existing.NameSuffix,
-					SurnamePrefix: existing.SurnamePrefix,
-					Nickname:      existing.Nickname,
-					NameType:      existing.NameType,
-					IsPrimary:     false,
-				}
+				demoted := personNameFromReadModel(&existing)
+				demoted.IsPrimary = false
 				events = append(events, domain.NewNameUpdated(demoted))
 				break
 			}
@@ -144,6 +136,7 @@ type UpdateNameInput struct {
 	Nickname      *string
 	NameType      *string
 	IsPrimary     *bool
+	Notes         *string
 }
 
 // UpdateNameResult contains the result of updating a name.
@@ -178,6 +171,9 @@ func applyNameUpdates(pn *domain.PersonName, input UpdateNameInput) {
 	}
 	if input.IsPrimary != nil {
 		pn.IsPrimary = *input.IsPrimary
+	}
+	if input.Notes != nil {
+		pn.Notes = *input.Notes
 	}
 }
 
@@ -252,6 +248,7 @@ func personNameFromReadModel(rm *repository.PersonNameReadModel) *domain.PersonN
 		Nickname:      rm.Nickname,
 		NameType:      rm.NameType,
 		IsPrimary:     rm.IsPrimary,
+		Notes:         rm.Notes,
 	}
 }
 

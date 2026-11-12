@@ -303,8 +303,14 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 		// Fetch citations for this person's events
 		birthCitations, _ := exp.readStore.GetCitationsForFact(ctx, domain.MainBranchID, domain.FactPersonBirth, p.ID)
 		deathCitations, _ := exp.readStore.GetCitationsForFact(ctx, domain.MainBranchID, domain.FactPersonDeath, p.ID)
-		allCitations := append(birthCitations, deathCitations...)
-		result.CitationsExported += len(allCitations)
+		nameCitations, _ := exp.readStore.GetCitationsForFact(ctx, domain.MainBranchID, domain.FactPersonName, p.ID)
+		result.CitationsExported += len(birthCitations) + len(deathCitations) + len(nameCitations)
+
+		// Fetch this person's names, their NOTE pointers remapped like the person's
+		names, _ := exp.readStore.GetPersonNames(ctx, domain.MainBranchID, p.ID)
+		for j := range names {
+			names[j].Notes = notePointers.remap(names[j].Notes, noteJoin)
+		}
 
 		// Fetch events and attributes for this person
 		events, _ := exp.readStore.ListEventsForPerson(ctx, domain.MainBranchID, p.ID)
@@ -332,7 +338,7 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 		p.Notes = notePointers.remap(p.Notes, noteJoin)
 		p.BirthNotes = notePointers.remap(p.BirthNotes, noteJoin)
 		p.DeathNotes = notePointers.remap(p.DeathNotes, noteJoin)
-		indi := toGedcomIndividual(p, sourceXrefs, personXrefs, birthCitations, deathCitations, events, attributes, associations, ldsOrdinances, externalIDs.citationAPIDs, exp.readStore, ctx)
+		indi := toGedcomIndividual(p, names, sourceXrefs, personXrefs, nameCitations, birthCitations, deathCitations, events, attributes, associations, ldsOrdinances, externalIDs.citationAPIDs, exp.readStore, ctx)
 		indi.ExternalIDs = externalIDs.persons[p.ID]
 		indi.ChildInFamilies = childLinks[p.ID]
 		doc.Records = append(doc.Records, &gedcom.Record{
@@ -845,22 +851,25 @@ func toGedcomSource(s repository.SourceReadModel, repoIDToXref map[uuid.UUID]str
 
 // toGedcomIndividual converts a repository PersonReadModel to a gedcom.Individual entity.
 // The encoder will automatically convert this to GEDCOM tags, handling CONT/CONC.
-func toGedcomIndividual(p repository.PersonReadModel, sourceXrefs map[uuid.UUID]string, personXrefs map[uuid.UUID]string, birthCitations, deathCitations []repository.CitationReadModel, events []repository.EventReadModel, attributes []repository.AttributeReadModel, associations []repository.AssociationReadModel, ldsOrdinances []repository.LDSOrdinanceReadModel, citationAPIDs map[uuid.UUID]*gedcom.AncestryAPID, readStore repository.ReadModelStore, ctx context.Context) *gedcom.Individual {
+// names are the person's names and nameCitations its person_name citations;
+// each citation is written under the NAME it is linked to (#1165).
+func toGedcomIndividual(p repository.PersonReadModel, names []repository.PersonNameReadModel, sourceXrefs map[uuid.UUID]string, personXrefs map[uuid.UUID]string, nameCitations, birthCitations, deathCitations []repository.CitationReadModel, events []repository.EventReadModel, attributes []repository.AttributeReadModel, associations []repository.AssociationReadModel, ldsOrdinances []repository.LDSOrdinanceReadModel, citationAPIDs map[uuid.UUID]*gedcom.AncestryAPID, readStore repository.ReadModelStore, ctx context.Context) *gedcom.Individual {
 	indi := &gedcom.Individual{}
 
-	// Fetch all names for this person
-	names, err := readStore.GetPersonNames(ctx, domain.MainBranchID, p.ID)
-	if err != nil || len(names) == 0 {
+	if len(names) == 0 {
 		// Fallback to person's primary name fields if no names in person_names table
 		indi.Names = []*gedcom.PersonalName{{
 			Full: formatGedcomName(p.GivenName, p.Surname),
 		}}
 	} else {
 		// Sort names: primary first, then others
-		sortedNames := sortNamesByPrimary(names)
-		for _, nm := range sortedNames {
+		names = sortNamesByPrimary(names)
+		for _, nm := range names {
 			indi.Names = append(indi.Names, toGedcomPersonalName(nm))
 		}
+	}
+	for i, cits := range nameCitationsByName(nameCitations, names, len(indi.Names)) {
+		indi.Names[i].SourceCitations = toGedcomSourceCitations(cits, sourceXrefs, citationAPIDs)
 	}
 
 	// Sex
@@ -1023,7 +1032,31 @@ func toGedcomPersonalName(nm repository.PersonNameReadModel) *gedcom.PersonalNam
 		pn.Nickname = nm.Nickname
 	}
 
+	pn.NoteXRefs, pn.InlineNotes = splitNotes(nm.Notes, noteJoin)
+
 	return pn
+}
+
+// nameCitationsByName groups a person's person_name citations by the NAME
+// they are written under: names, sorted primary first, in that order, and n
+// NAMEs in all. A citation goes under the name its fact_id names; one with no
+// fact_id (cited before #1165) or naming no current name goes under the first,
+// primary NAME, so it is still exported.
+func nameCitationsByName(citations []repository.CitationReadModel, names []repository.PersonNameReadModel, n int) [][]repository.CitationReadModel {
+	groups := make([][]repository.CitationReadModel, n)
+	if n == 0 {
+		return groups
+	}
+	for _, c := range citations {
+		i := 0
+		if c.FactID != nil {
+			if j := slices.IndexFunc(names, func(nm repository.PersonNameReadModel) bool { return nm.ID == *c.FactID }); j >= 0 {
+				i = j
+			}
+		}
+		groups[i] = append(groups[i], c)
+	}
+	return groups
 }
 
 // toGedcomSourceCitations converts a slice of CitationReadModel to gedcom.SourceCitation slice.

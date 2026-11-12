@@ -2738,6 +2738,9 @@ func (ss *StrictServer) AddPersonName(ctx context.Context, request AddPersonName
 	if request.Body.IsPrimary != nil {
 		input.IsPrimary = *request.Body.IsPrimary
 	}
+	if request.Body.Notes != nil {
+		input.Notes = *request.Body.Notes
+	}
 
 	result, err := ss.branchWriter(branch).AddName(ctx, input)
 	if err != nil {
@@ -2782,6 +2785,7 @@ func (ss *StrictServer) UpdatePersonName(ctx context.Context, request UpdatePers
 		Nickname:      request.Body.Nickname,
 		NameType:      nameType,
 		IsPrimary:     request.Body.IsPrimary,
+		Notes:         request.Body.Notes,
 	}
 
 	_, err = ss.branchWriter(branch).UpdateName(ctx, input)
@@ -4284,6 +4288,7 @@ func convertQueryPersonNameToGenerated(n query.PersonName) PersonName {
 		Nickname:      &n.Nickname,
 		NameType:      optionalNameType(n.NameType),
 		IsPrimary:     n.IsPrimary,
+		Notes:         &n.Notes,
 	}
 }
 
@@ -4301,6 +4306,7 @@ func convertPersonNameReadModelToGenerated(n repository.PersonNameReadModel) Per
 		Nickname:      &n.Nickname,
 		NameType:      optionalNameType(string(n.NameType)),
 		IsPrimary:     n.IsPrimary,
+		Notes:         &n.Notes,
 	}
 }
 

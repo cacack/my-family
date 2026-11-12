@@ -329,6 +329,11 @@ func (h *Handler) importPerson(ctx context.Context, p gedcom.PersonData) error {
 	currentVersion := int64(1) // PersonCreated was version 1
 	for _, nameData := range p.Names {
 		personName := domain.NewPersonName(person.ID, nameData.GivenName, nameData.Surname)
+		// Keep the importer's ID: the NAME's citations link to it (#1165).
+		if nameData.ID != uuid.Nil {
+			personName.ID = nameData.ID
+		}
+		personName.Notes = nameData.Notes
 		personName.NamePrefix = nameData.NamePrefix
 		personName.NameSuffix = nameData.NameSuffix
 		personName.SurnamePrefix = nameData.SurnamePrefix

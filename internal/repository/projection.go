@@ -1580,6 +1580,7 @@ func (p *Projector) projectNameAdded(ctx context.Context, e domain.NameAdded, ve
 		Nickname:      e.Nickname,
 		NameType:      e.NameType,
 		IsPrimary:     e.IsPrimary,
+		Notes:         e.Notes,
 		UpdatedAt:     e.OccurredAt(),
 	}
 
@@ -1602,6 +1603,7 @@ func (p *Projector) projectNameUpdated(ctx context.Context, e domain.NameUpdated
 		Nickname:      e.Nickname,
 		NameType:      e.NameType,
 		IsPrimary:     e.IsPrimary,
+		Notes:         e.Notes,
 		UpdatedAt:     e.OccurredAt(),
 	}
 

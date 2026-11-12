@@ -456,7 +456,7 @@ func nameUpdatedChanges(fields map[string]any, prior *streamState, withOld bool)
 	if oldName := formatPersonNameFields(before); oldName != newName {
 		changes["name"] = FieldChange{OldValue: emptyToNil(oldName), NewValue: newName}
 	}
-	for _, key := range []string{"name_type", "is_primary"} {
+	for _, key := range []string{"name_type", "is_primary", "notes"} {
 		if !reflect.DeepEqual(before[key], fields[key]) {
 			changes[key] = FieldChange{OldValue: before[key], NewValue: fields[key]}
 		}

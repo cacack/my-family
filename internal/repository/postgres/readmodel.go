@@ -1009,6 +1009,9 @@ func (s *ReadModelStore) runMigrations() {
 	_, _ = s.db.Exec(`ALTER TABLE attributes ADD COLUMN IF NOT EXISTS notes TEXT`)
 	_, _ = s.db.Exec(`ALTER TABLE attributes ADD COLUMN IF NOT EXISTS type_detail TEXT`)
 
+	// Add the NOTEs under a person's GEDCOM NAME (issue #1165)
+	_, _ = s.db.Exec(`ALTER TABLE person_names ADD COLUMN IF NOT EXISTS notes TEXT`)
+
 	// Add GEDCOM 7.0 shared-note (SNOTE) metadata columns (issue #225)
 	_, _ = s.db.Exec(`ALTER TABLE notes ADD COLUMN IF NOT EXISTS mime VARCHAR(100)`)
 	_, _ = s.db.Exec(`ALTER TABLE notes ADD COLUMN IF NOT EXISTS language VARCHAR(35)`)
@@ -1275,7 +1278,7 @@ const (
 
 	// personNameSelectCols is scanPersonName's column order (unaliased).
 	personNameSelectCols = `id, person_id, given_name, surname, full_name, name_prefix, name_suffix,
-		surname_prefix, nickname, name_type, is_primary, updated_at`
+		surname_prefix, nickname, name_type, is_primary, notes, updated_at`
 
 	// personNameOverlayCols are the person_names columns SearchPersons needs from
 	// the resolved rpn CTE (matching against alternate names). Search matches an
@@ -1893,8 +1896,8 @@ func cascadePersonFacts(ctx context.Context, tx *sql.Tx, branchID domain.BranchI
 func (s *ReadModelStore) SavePersonName(ctx context.Context, branchID domain.BranchID, name *repository.PersonNameReadModel) error {
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO person_names (id, branch_id, person_id, given_name, surname, full_name, name_prefix, name_suffix,
-								  surname_prefix, nickname, name_type, is_primary, updated_at, deleted)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, FALSE)
+								  surname_prefix, nickname, name_type, is_primary, notes, updated_at, deleted)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, FALSE)
 		ON CONFLICT(id, branch_id) DO UPDATE SET
 			person_id = EXCLUDED.person_id,
 			given_name = EXCLUDED.given_name,
@@ -1906,6 +1909,7 @@ func (s *ReadModelStore) SavePersonName(ctx context.Context, branchID domain.Bra
 			nickname = EXCLUDED.nickname,
 			name_type = EXCLUDED.name_type,
 			is_primary = EXCLUDED.is_primary,
+			notes = EXCLUDED.notes,
 			updated_at = EXCLUDED.updated_at,
 			deleted = FALSE
 	`, name.ID, branchID.UUID(), name.PersonID, name.GivenName, name.Surname, name.JoinFullName(),
@@ -1913,7 +1917,7 @@ func (s *ReadModelStore) SavePersonName(ctx context.Context, branchID domain.Bra
 		nullableString(name.SurnamePrefix), nullableString(name.Nickname),
 		// name_type is NOT NULL DEFAULT '' — bind the empty string, not NULL
 		// (matches the SQLite backend; a nil here violates the constraint).
-		string(name.NameType), name.IsPrimary, name.UpdatedAt)
+		string(name.NameType), name.IsPrimary, nullableString(name.Notes), name.UpdatedAt)
 
 	return err
 }
@@ -2261,14 +2265,14 @@ func scanPersonName(row rowScanner) (*repository.PersonNameReadModel, error) {
 		id, personID                                    uuid.UUID
 		givenName, surname, fullName                    string
 		namePrefix, nameSuffix, surnamePrefix, nickname sql.NullString
-		nameType                                        sql.NullString
+		nameType, notes                                 sql.NullString
 		isPrimary                                       bool
 		updatedAt                                       time.Time
 	)
 
 	err := row.Scan(&id, &personID, &givenName, &surname, &fullName,
 		&namePrefix, &nameSuffix, &surnamePrefix, &nickname,
-		&nameType, &isPrimary, &updatedAt)
+		&nameType, &isPrimary, &notes, &updatedAt)
 
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -2289,6 +2293,7 @@ func scanPersonName(row rowScanner) (*repository.PersonNameReadModel, error) {
 		Nickname:      nickname.String,
 		NameType:      domain.NameType(nameType.String),
 		IsPrimary:     isPrimary,
+		Notes:         notes.String,
 		UpdatedAt:     updatedAt,
 	}, nil
 }

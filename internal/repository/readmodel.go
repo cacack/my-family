@@ -956,6 +956,7 @@ type PersonNameReadModel struct {
 	Nickname      string          `json:"nickname,omitempty"`
 	NameType      domain.NameType `json:"name_type"`
 	IsPrimary     bool            `json:"is_primary"`
+	Notes         string          `json:"notes,omitempty"`
 	UpdatedAt     time.Time       `json:"updated_at"`
 }
 

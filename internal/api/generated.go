@@ -3174,7 +3174,8 @@ type Citation struct {
 
 	// FactId ID of the life event or attribute this citation supports, when it
 	// cites one of several facts of the same type (such as one of two
-	// censuses). Absent when it cites the fact as a whole: a birth,
+	// censuses), or of the person name a `person_name` citation
+	// supports. Absent when it cites the fact as a whole: a birth,
 	// death or marriage, or a citation recorded before the link existed.
 	FactId *openapi_types.UUID `json:"fact_id,omitempty"`
 
@@ -3220,9 +3221,10 @@ type CitationCreate struct {
 	// EvidenceType How the evidence bears on the fact per GPS standards
 	EvidenceType *EvidenceType `json:"evidence_type,omitempty"`
 
-	// FactId ID of the life event or attribute this citation supports. It must
-	// belong to `fact_owner_id` and be of `fact_type`. Omit it to cite
-	// the fact as a whole, as for a birth, death or marriage.
+	// FactId ID of the life event or attribute this citation supports, or for
+	// a `person_name` citation the ID of one of the person's names. It
+	// must belong to `fact_owner_id` and be of `fact_type`. Omit it to
+	// cite the fact as a whole, as for a birth, death or marriage.
 	FactId *openapi_types.UUID `json:"fact_id,omitempty"`
 
 	// FactOwnerId ID of the person or family this citation applies to
@@ -5241,8 +5243,11 @@ type PersonName struct {
 	NameSuffix *string            `json:"name_suffix,omitempty"`
 
 	// NameType Omitted when the name has no type (a GEDCOM NAME without TYPE).
-	NameType      *NameType          `json:"name_type,omitempty"`
-	Nickname      *string            `json:"nickname,omitempty"`
+	NameType *NameType `json:"name_type,omitempty"`
+	Nickname *string   `json:"nickname,omitempty"`
+
+	// Notes Notes on this name (GEDCOM NAME.NOTE). NOTE pointers are kept as their xref.
+	Notes         *string            `json:"notes,omitempty"`
 	PersonId      openapi_types.UUID `json:"person_id"`
 	Surname       string             `json:"surname"`
 	SurnamePrefix *string            `json:"surname_prefix,omitempty"`
@@ -5250,14 +5255,17 @@ type PersonName struct {
 
 // PersonNameCreate defines model for PersonNameCreate.
 type PersonNameCreate struct {
-	GivenName     string   `json:"given_name"`
-	IsPrimary     *bool    `json:"is_primary,omitempty"`
-	NamePrefix    *string  `json:"name_prefix,omitempty"`
-	NameSuffix    *string  `json:"name_suffix,omitempty"`
-	NameType      NameType `json:"name_type"`
-	Nickname      *string  `json:"nickname,omitempty"`
-	Surname       string   `json:"surname"`
-	SurnamePrefix *string  `json:"surname_prefix,omitempty"`
+	GivenName  string   `json:"given_name"`
+	IsPrimary  *bool    `json:"is_primary,omitempty"`
+	NamePrefix *string  `json:"name_prefix,omitempty"`
+	NameSuffix *string  `json:"name_suffix,omitempty"`
+	NameType   NameType `json:"name_type"`
+	Nickname   *string  `json:"nickname,omitempty"`
+
+	// Notes Notes on this name (GEDCOM NAME.NOTE). NOTE pointers are kept as their xref.
+	Notes         *string `json:"notes,omitempty"`
+	Surname       string  `json:"surname"`
+	SurnamePrefix *string `json:"surname_prefix,omitempty"`
 }
 
 // PersonNameList defines model for PersonNameList.
@@ -5268,14 +5276,17 @@ type PersonNameList struct {
 
 // PersonNameUpdate defines model for PersonNameUpdate.
 type PersonNameUpdate struct {
-	GivenName     *string   `json:"given_name,omitempty"`
-	IsPrimary     *bool     `json:"is_primary,omitempty"`
-	NamePrefix    *string   `json:"name_prefix,omitempty"`
-	NameSuffix    *string   `json:"name_suffix,omitempty"`
-	NameType      *NameType `json:"name_type,omitempty"`
-	Nickname      *string   `json:"nickname,omitempty"`
-	Surname       *string   `json:"surname,omitempty"`
-	SurnamePrefix *string   `json:"surname_prefix,omitempty"`
+	GivenName  *string   `json:"given_name,omitempty"`
+	IsPrimary  *bool     `json:"is_primary,omitempty"`
+	NamePrefix *string   `json:"name_prefix,omitempty"`
+	NameSuffix *string   `json:"name_suffix,omitempty"`
+	NameType   *NameType `json:"name_type,omitempty"`
+	Nickname   *string   `json:"nickname,omitempty"`
+
+	// Notes Notes on this name (GEDCOM NAME.NOTE). NOTE pointers are kept as their xref.
+	Notes         *string `json:"notes,omitempty"`
+	Surname       *string `json:"surname,omitempty"`
+	SurnamePrefix *string `json:"surname_prefix,omitempty"`
 }
 
 // PersonQuality defines model for PersonQuality.

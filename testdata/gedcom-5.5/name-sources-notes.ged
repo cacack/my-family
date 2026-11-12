@@ -1,0 +1,28 @@
+0 HEAD
+1 SOUR TEST
+1 GEDC
+2 VERS 5.5.1
+2 FORM LINEAGE-LINKED
+1 CHAR UTF-8
+0 @S1@ SOUR
+1 TITL Chronicle of the counts of Vermandois
+0 @S2@ SOUR
+1 TITL Charter of 1150
+0 @N1@ NOTE Anglicized form used by later chroniclers.
+0 @I1@ INDI
+1 NAME Liutgarde /de Vermandois/
+2 SOUR @S1@
+3 PAGE Folio 12
+3 QUAY 3
+2 NOTE Spelling varies.
+1 NAME Liutgarde /of Vermandois/
+2 TYPE aka
+2 SOUR @S2@
+3 PAGE Line 4
+3 QUAY 1
+2 SOUR @S1@
+3 PAGE Folio 30
+2 NOTE @N1@
+2 NOTE Used in the charter.
+1 SEX F
+0 TRLR
