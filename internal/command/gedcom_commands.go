@@ -303,13 +303,15 @@ func (h *Handler) importPerson(ctx context.Context, p gedcom.PersonData) error {
 		person.DeathDate = &dd
 	}
 
-	// Create event. Place coordinates, EXIDs and birth and death notes are not
-	// domain.Person fields, so they are set on the event directly (#1225, #1250).
+	// Create event. Place coordinates, EXIDs and birth and death notes and TYPEs
+	// are not domain.Person fields, so they are set on the event directly
+	// (#1225, #1250, #1284).
 	event := domain.NewPersonCreated(person)
 	event.BirthPlaceLat, event.BirthPlaceLong = p.BirthPlaceLat, p.BirthPlaceLong
 	event.DeathPlaceLat, event.DeathPlaceLong = p.DeathPlaceLat, p.DeathPlaceLong
 	event.ExternalIDs = p.ExternalIDs
 	event.BirthNotes, event.DeathNotes = p.BirthNotes, p.DeathNotes
+	event.BirthTypeDetail, event.DeathTypeDetail = p.BirthTypeDetail, p.DeathTypeDetail
 
 	// Append to event store
 	err := h.eventStore.Append(ctx, person.ID, "person", []domain.Event{event}, -1, repository.MainScope)
@@ -376,12 +378,13 @@ func (h *Handler) importFamily(ctx context.Context, f gedcom.FamilyData) error {
 		return nil
 	}
 
-	// Create event. Marriage place coordinates, EXIDs and marriage notes are
-	// not domain.Family fields (#1225, #1250, #1265).
+	// Create event. Marriage place coordinates, EXIDs and marriage notes and
+	// TYPE are not domain.Family fields (#1225, #1250, #1265, #1284).
 	event := domain.NewFamilyCreated(family)
 	event.MarriagePlaceLat, event.MarriagePlaceLong = f.MarriagePlaceLat, f.MarriagePlaceLong
 	event.ExternalIDs = f.ExternalIDs
 	event.MarriageNotes = f.MarriageNotes
+	event.MarriageTypeDetail = f.MarriageTypeDetail
 
 	// Append to event store
 	err := h.eventStore.Append(ctx, family.ID, "family", []domain.Event{event}, -1, repository.MainScope)
