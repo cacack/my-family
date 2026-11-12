@@ -238,6 +238,76 @@ func TestMergePersons_VersionConflict(t *testing.T) {
 	}
 }
 
+// TestMergePersons_Refused checks that a merge refused for the shape of the
+// tree (not a stale version) answers 409 with the shared CONFLICT code.
+func TestMergePersons_Refused(t *testing.T) {
+	tests := []struct {
+		name string
+		// setup returns the survivor and merged ids.
+		setup func(t *testing.T, server *api.Server) (string, string)
+	}{
+		{
+			name: "circular merge",
+			setup: func(t *testing.T, server *api.Server) (string, string) {
+				parentID := createPerson(t, server, "John", "Doe")
+				otherID := createPerson(t, server, "Jane", "Doe")
+				childID := createPerson(t, server, "Junior", "Doe")
+				addMergeTestChild(t, server, createFamily(t, server, parentID, otherID), childID)
+				return parentID, childID
+			},
+		},
+		{
+			name: "children in different families",
+			setup: func(t *testing.T, server *api.Server) (string, string) {
+				aID := createPerson(t, server, "Junior", "Doe")
+				bID := createPerson(t, server, "Junior", "Doe")
+				addMergeTestChild(t, server, createFamily(t, server,
+					createPerson(t, server, "John", "Doe"), createPerson(t, server, "Jane", "Doe")), aID)
+				addMergeTestChild(t, server, createFamily(t, server,
+					createPerson(t, server, "Jim", "Roe"), createPerson(t, server, "Joan", "Roe")), bID)
+				return aID, bID
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server, _, _ := setupMergeTestServer()
+			survivorID, mergedID := tt.setup(t, server)
+
+			body := `{"survivor_id":"` + survivorID + `","merged_id":"` + mergedID + `",` +
+				`"survivor_version":` + intToString(mergeTestPersonVersion(t, server, survivorID)) + `,` +
+				`"merged_version":` + intToString(mergeTestPersonVersion(t, server, mergedID)) + `}`
+			rec := do(t, server, http.MethodPost, "/api/v1/persons/merge", body)
+			if rec.Code != http.StatusConflict {
+				t.Fatalf("Status = %d, want %d. Body: %s", rec.Code, http.StatusConflict, rec.Body.String())
+			}
+			if code := decodeJSON(t, rec)["code"]; code != "CONFLICT" {
+				t.Errorf("code = %v, want CONFLICT", code)
+			}
+		})
+	}
+}
+
+// addMergeTestChild adds a person to a family as a child.
+func addMergeTestChild(t *testing.T, server *api.Server, familyID, childID string) {
+	t.Helper()
+	rec := do(t, server, http.MethodPost, "/api/v1/families/"+familyID+"/children", `{"person_id":"`+childID+`"}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("AddChild: status = %d. Body: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// mergeTestPersonVersion reads a person's current version.
+func mergeTestPersonVersion(t *testing.T, server *api.Server, personID string) int64 {
+	t.Helper()
+	rec := do(t, server, http.MethodGet, "/api/v1/persons/"+personID, "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GetPerson: status = %d. Body: %s", rec.Code, rec.Body.String())
+	}
+	return int64(decodeJSON(t, rec)["version"].(float64))
+}
+
 // TestDismissDuplicate_Success tests successful dismissal
 func TestDismissDuplicate_Success(t *testing.T) {
 	server, _, _ := setupMergeTestServer()

@@ -421,7 +421,7 @@ func (ss *StrictServer) DeleteBranch(ctx context.Context, request DeleteBranchRe
 		}
 		if errors.Is(err, command.ErrBranchNotActive) {
 			return DeleteBranch409JSONResponse{
-				Code:    "conflict",
+				Code:    CodeConflict,
 				Message: err.Error(),
 			}, nil
 		}
