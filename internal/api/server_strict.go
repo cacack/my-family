@@ -5983,7 +5983,7 @@ func (ss *StrictServer) CreateLDSOrdinance(ctx context.Context, request CreateLD
 		input.Temple = *request.Body.Temple
 	}
 	if request.Body.Status != nil {
-		input.Status = *request.Body.Status
+		input.Status = string(*request.Body.Status)
 	}
 
 	result, err := ss.server.commandHandler.CreateLDSOrdinance(ctx, input)
@@ -6039,7 +6039,8 @@ func (ss *StrictServer) UpdateLDSOrdinance(ctx context.Context, request UpdateLD
 		input.Temple = request.Body.Temple
 	}
 	if request.Body.Status != nil {
-		input.Status = request.Body.Status
+		status := string(*request.Body.Status)
+		input.Status = &status
 	}
 
 	_, err := ss.server.commandHandler.UpdateLDSOrdinance(ctx, input)
@@ -6169,7 +6170,8 @@ func convertQueryLDSOrdinanceToGenerated(o query.LDSOrdinance) LDSOrdinance {
 		resp.Temple = &o.Temple
 	}
 	if o.Status != "" {
-		resp.Status = &o.Status
+		status := LDSOrdinanceStatus(o.Status)
+		resp.Status = &status
 	}
 
 	return resp

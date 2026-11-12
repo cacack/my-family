@@ -3,6 +3,7 @@ package domain
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -26,14 +27,14 @@ const (
 	DateTo    DateQualifier = "to"    // Period end with no start (TO <date>)
 )
 
-// IsValid checks if the date qualifier is valid.
+// AllDateQualifiers returns every valid DateQualifier value.
+func AllDateQualifiers() []DateQualifier {
+	return []DateQualifier{DateExact, DateAbout, DateCalc, DateEst, DateBef, DateAft, DateBet, DateFrom, DateInt, DateTo}
+}
+
+// IsValid reports whether the value is one of AllDateQualifiers.
 func (d DateQualifier) IsValid() bool {
-	switch d {
-	case DateExact, DateAbout, DateCalc, DateEst, DateBef, DateAft, DateBet, DateFrom, DateInt, DateTo:
-		return true
-	default:
-		return false
-	}
+	return slices.Contains(AllDateQualifiers(), d)
 }
 
 // GenDate represents a genealogical date with flexible precision per GEDCOM 5.5 spec.

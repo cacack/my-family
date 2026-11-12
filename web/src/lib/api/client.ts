@@ -394,6 +394,7 @@ export type NameType = Schemas['NameType'];
 export type ResearchStatus = Schemas['ResearchStatus'];
 export type ConflictStatus = Schemas['ConflictStatus'];
 export type ResearchOutcome = Schemas['ResearchOutcome'];
+export type ResearchLogSubjectType = Schemas['ResearchLogSubjectType'];
 export type FactType = Schemas['FactType'];
 
 export type GenDate = Schemas['GenDate'];

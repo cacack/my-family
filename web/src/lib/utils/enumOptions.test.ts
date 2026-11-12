@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { load } from 'js-yaml';
 import spec from '../../../../internal/api/openapi.yaml?raw';
 import {
 	EVIDENCE_TYPE_OPTIONS,
@@ -13,24 +14,15 @@ import {
 import { FACT_TYPES } from './evidence';
 import { SOURCE_TYPES } from './sourceTypes';
 
-const unquote = (v: string) => v.replace(/#.*$/, '').trim().replace(/^(['"])(.*)\1$/, '$2');
+const { schemas } = (
+	load(spec) as { components: { schemas: Record<string, { enum?: unknown[] }> } }
+).components;
 
-/**
- * The values of the named enum schema in openapi.yaml, inline or block list.
- * A light line scan, not a YAML parser (none is a dependency): it fails loudly
- * on a shape it cannot read rather than returning an empty list.
- */
+/** The values of the named enum schema in openapi.yaml. */
 function specEnum(name: string): string[] {
-	const start = spec.indexOf(`\n    ${name}:\n`);
-	expect(start, `schema ${name}`).toBeGreaterThan(-1);
-	const block = spec.slice(start + 1).split(/\n(?=    \S)/)[0];
-	const inline = block.match(/enum:\s*\[([^\]]+)\]/);
-	const found = inline
-		? inline[1].split(',').map(unquote)
-		: [...block.matchAll(/^ {8}- (.+)$/gm)].map((m) => unquote(m[1]));
-	const parsed = found.filter(Boolean);
-	expect(parsed.length, `could not read the enum values of ${name}`).toBeGreaterThan(0);
-	return parsed;
+	const values = schemas[name]?.enum;
+	expect(values, `enum schema ${name}`).toBeDefined();
+	return (values ?? []).map(String);
 }
 
 const values = (options: readonly { value: string }[]) => options.map((o) => o.value);
