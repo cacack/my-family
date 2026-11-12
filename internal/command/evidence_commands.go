@@ -29,6 +29,7 @@ var (
 type CreateEvidenceAnalysisInput struct {
 	FactType       string
 	SubjectID      uuid.UUID
+	FactID         *uuid.UUID // the analyzed life event or attribute, if any (#1304)
 	CitationIDs    []uuid.UUID
 	Conclusion     string
 	ResearchStatus string
@@ -60,10 +61,16 @@ func (h *Handler) CreateEvidenceAnalysis(ctx context.Context, input CreateEviden
 	if input.Notes != "" {
 		analysis.Notes = input.Notes
 	}
+	analysis.FactID = input.FactID
 
 	// Validate
 	if err := analysis.Validate(); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidInput, err)
+	}
+	if analysis.FactID != nil {
+		if err := h.checkFactInstance(ctx, *analysis.FactID, analysis.FactType, analysis.SubjectID); err != nil {
+			return nil, err
+		}
 	}
 
 	// Create event
@@ -83,7 +90,7 @@ func (h *Handler) CreateEvidenceAnalysis(ctx context.Context, input CreateEviden
 	// Auto-detect conflicts: query existing analyses for same FactType + SubjectID.
 	// Non-critical: the analysis is already committed, so a detection failure is
 	// logged rather than failing the create.
-	conflictID, err := h.detectEvidenceConflicts(ctx, analysis.ID, analysis.FactType, analysis.SubjectID, analysis.Conclusion)
+	conflictID, err := h.detectEvidenceConflicts(ctx, analysis)
 	if err != nil {
 		slog.Warn("evidence conflict detection failed after creating an analysis",
 			"analysis_id", analysis.ID, "branch_id", h.branchID, "error", err)
@@ -99,6 +106,7 @@ type UpdateEvidenceAnalysisInput struct {
 	ID             uuid.UUID
 	FactType       *string
 	SubjectID      *uuid.UUID
+	FactID         *uuid.UUID  // nil means no change, unless FactType or SubjectID changes (#1304)
 	CitationIDs    []uuid.UUID // nil means no change
 	Conclusion     *string
 	ResearchStatus *string
@@ -137,6 +145,7 @@ func (h *Handler) UpdateEvidenceAnalysis(ctx context.Context, input UpdateEviden
 		ID:             current.ID,
 		FactType:       current.FactType,
 		SubjectID:      current.SubjectID,
+		FactID:         current.FactID,
 		Conclusion:     current.Conclusion,
 		ResearchStatus: current.ResearchStatus,
 		Notes:          current.Notes,
@@ -162,6 +171,7 @@ func (h *Handler) UpdateEvidenceAnalysis(ctx context.Context, input UpdateEviden
 	recordChange(changes, "conclusion", input.Conclusion, &testAnalysis.Conclusion)
 	recordChange(changes, "research_status", input.ResearchStatus, &testAnalysis.ResearchStatus)
 	recordChange(changes, "notes", input.Notes, &testAnalysis.Notes)
+	testAnalysis.FactID = changeFactID(changes, current.FactID, input.FactID)
 
 	// No changes?
 	if len(changes) == 0 {
@@ -171,6 +181,11 @@ func (h *Handler) UpdateEvidenceAnalysis(ctx context.Context, input UpdateEviden
 	// Validate updated entity
 	if err := testAnalysis.Validate(); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidInput, err)
+	}
+	if factLinkChanged(changes, testAnalysis.FactID) {
+		if err := h.checkFactInstance(ctx, *testAnalysis.FactID, testAnalysis.FactType, testAnalysis.SubjectID); err != nil {
+			return nil, err
+		}
 	}
 
 	// Create event
@@ -185,7 +200,7 @@ func (h *Handler) UpdateEvidenceAnalysis(ctx context.Context, input UpdateEviden
 	result := &UpdateEvidenceAnalysisResult{Version: version}
 
 	// Auto-detect conflicts after update (non-critical, as on create).
-	conflictID, err := h.detectEvidenceConflicts(ctx, testAnalysis.ID, testAnalysis.FactType, testAnalysis.SubjectID, testAnalysis.Conclusion)
+	conflictID, err := h.detectEvidenceConflicts(ctx, testAnalysis)
 	if err != nil {
 		slog.Warn("evidence conflict detection failed after updating an analysis",
 			"analysis_id", testAnalysis.ID, "branch_id", h.branchID, "error", err)
@@ -405,6 +420,7 @@ func (h *Handler) DeleteResearchLog(ctx context.Context, id uuid.UUID, version i
 type CreateProofSummaryInput struct {
 	FactType       string
 	SubjectID      uuid.UUID
+	FactID         *uuid.UUID // the proved life event or attribute, if any (#1304)
 	Conclusion     string
 	Argument       string
 	AnalysisIDs    []uuid.UUID
@@ -432,9 +448,15 @@ func (h *Handler) CreateProofSummary(ctx context.Context, input CreateProofSumma
 	if input.ResearchStatus != "" {
 		summary.ResearchStatus = domain.ResearchStatus(input.ResearchStatus)
 	}
+	summary.FactID = input.FactID
 
 	if err := summary.Validate(); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidInput, err)
+	}
+	if summary.FactID != nil {
+		if err := h.checkFactInstance(ctx, *summary.FactID, summary.FactType, summary.SubjectID); err != nil {
+			return nil, err
+		}
 	}
 
 	event := domain.NewProofSummaryCreated(summary)
@@ -451,6 +473,7 @@ type UpdateProofSummaryInput struct {
 	ID             uuid.UUID
 	FactType       *string
 	SubjectID      *uuid.UUID
+	FactID         *uuid.UUID // nil means no change, unless FactType or SubjectID changes (#1304)
 	Conclusion     *string
 	Argument       *string
 	AnalysisIDs    []uuid.UUID // nil means no change
@@ -484,6 +507,7 @@ func (h *Handler) UpdateProofSummary(ctx context.Context, input UpdateProofSumma
 		ID:             current.ID,
 		FactType:       current.FactType,
 		SubjectID:      current.SubjectID,
+		FactID:         current.FactID,
 		Conclusion:     current.Conclusion,
 		Argument:       current.Argument,
 		ResearchStatus: current.ResearchStatus,
@@ -509,6 +533,7 @@ func (h *Handler) UpdateProofSummary(ctx context.Context, input UpdateProofSumma
 		changes["analysis_ids"] = input.AnalysisIDs
 	}
 	recordChange(changes, "research_status", input.ResearchStatus, &testSummary.ResearchStatus)
+	testSummary.FactID = changeFactID(changes, current.FactID, input.FactID)
 
 	if len(changes) == 0 {
 		return &UpdateProofSummaryResult{Version: current.Version}, nil
@@ -516,6 +541,11 @@ func (h *Handler) UpdateProofSummary(ctx context.Context, input UpdateProofSumma
 
 	if err := testSummary.Validate(); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidInput, err)
+	}
+	if factLinkChanged(changes, testSummary.FactID) {
+		if err := h.checkFactInstance(ctx, *testSummary.FactID, testSummary.FactType, testSummary.SubjectID); err != nil {
+			return nil, err
+		}
 	}
 
 	event := domain.NewProofSummaryUpdated(input.ID, changes)
@@ -551,13 +581,18 @@ func (h *Handler) DeleteProofSummary(ctx context.Context, id uuid.UUID, version 
 // --- Conflict auto-detection helper ---
 
 // detectEvidenceConflicts checks for conflicting conclusions among analyses
-// sharing the same FactType and SubjectID. Returns the conflict ID if one was created.
+// sharing the analysis's FactType and SubjectID and overlapping its fact
+// instance (#1304): an analysis of one census is not compared with one of
+// another census, but is with one of the fact as a whole. Returns the conflict
+// ID if one was created.
 //
 // It reads and writes on the handler's branch (#760): on a branch it compares the
 // analyses the branch sees, and a conflict it records lives on that branch until
 // merged. This is the genealogical evidence conflict (two analyses disagree), not
 // an ADR-005 merge conflict.
-func (h *Handler) detectEvidenceConflicts(ctx context.Context, analysisID uuid.UUID, factType domain.FactType, subjectID uuid.UUID, conclusion string) (*uuid.UUID, error) {
+func (h *Handler) detectEvidenceConflicts(ctx context.Context, analysis *domain.EvidenceAnalysis) (*uuid.UUID, error) {
+	analysisID, factType, subjectID := analysis.ID, analysis.FactType, analysis.SubjectID
+
 	// Get analyses for the same fact type and subject
 	analyses, err := h.readStore.GetAnalysesForFact(ctx, h.branchID, factType, subjectID)
 	if err != nil {
@@ -566,7 +601,7 @@ func (h *Handler) detectEvidenceConflicts(ctx context.Context, analysisID uuid.U
 
 	var conflicting []uuid.UUID
 	for _, a := range analyses {
-		if a.ID != analysisID && a.Conclusion != conclusion {
+		if a.ID != analysisID && a.Conclusion != analysis.Conclusion && domain.FactInstancesOverlap(a.FactID, analysis.FactID) {
 			conflicting = append(conflicting, a.ID)
 		}
 	}
@@ -581,7 +616,7 @@ func (h *Handler) detectEvidenceConflicts(ctx context.Context, analysisID uuid.U
 		return nil, fmt.Errorf("getting conflicts for subject: %w", err)
 	}
 	for _, c := range existingConflicts {
-		if c.FactType == factType && c.Status == domain.ConflictStatusOpen {
+		if c.FactType == factType && sameFactInstance(c.FactID, analysis.FactID) && c.Status == domain.ConflictStatusOpen {
 			return &c.ID, nil
 		}
 	}
@@ -594,6 +629,7 @@ func (h *Handler) detectEvidenceConflicts(ctx context.Context, analysisID uuid.U
 		allIDs,
 		fmt.Sprintf("Conflicting conclusions for %s on subject %s", factType, subjectID),
 	)
+	conflict.FactID = analysis.FactID
 
 	event := domain.NewEvidenceConflictDetected(conflict)
 	_, err = h.execute(ctx, conflict.ID.String(), "EvidenceConflict", []domain.Event{event}, -1)
@@ -602,4 +638,52 @@ func (h *Handler) detectEvidenceConflicts(ctx context.Context, analysisID uuid.U
 	}
 
 	return &conflict.ID, nil
+}
+
+// --- Fact instance helpers (#1304) ---
+
+// changeFactID records in changes the fact_id an update of an evidence
+// analysis or proof summary leaves it with, and returns that fact_id. A
+// requested fact_id that differs from current is recorded as its string; an
+// artifact moved to another fact type or subject without one no longer names
+// its old life event or attribute, so its link is recorded as removed (nil).
+// Call it after the fact_type and subject_id changes are recorded.
+func changeFactID(changes map[string]any, current, requested *uuid.UUID) *uuid.UUID {
+	if requested != nil {
+		if !sameFactInstance(current, requested) {
+			changes["fact_id"] = requested.String()
+		}
+		return requested
+	}
+	_, typeChanged := changes["fact_type"]
+	_, subjectChanged := changes["subject_id"]
+	if current != nil && (typeChanged || subjectChanged) {
+		changes["fact_id"] = nil
+		return nil
+	}
+	return current
+}
+
+// factLinkChanged reports whether an update leaves an artifact linked to
+// factID with a new fact_id, fact_type or subject_id, so the link must be
+// checked again (checkFactInstance).
+func factLinkChanged(changes map[string]any, factID *uuid.UUID) bool {
+	if factID == nil {
+		return false
+	}
+	for _, key := range []string{"fact_id", "fact_type", "subject_id"} {
+		if _, changed := changes[key]; changed {
+			return true
+		}
+	}
+	return false
+}
+
+// sameFactInstance reports whether a and b name the same fact instance, or
+// are both about the fact as a whole.
+func sameFactInstance(a, b *uuid.UUID) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
 }

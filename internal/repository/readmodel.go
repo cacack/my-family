@@ -326,6 +326,7 @@ type EvidenceAnalysisReadModel struct {
 	ID              uuid.UUID             `json:"id"`
 	FactType        domain.FactType       `json:"fact_type"`
 	SubjectID       uuid.UUID             `json:"subject_id"`
+	FactID          *uuid.UUID            `json:"fact_id,omitempty"`           // fact instance; nil for the whole fact (#1304)
 	CitationIDsJSON string                `json:"citation_ids_json,omitempty"` // JSON array of UUIDs
 	Conclusion      string                `json:"conclusion"`
 	ResearchStatus  domain.ResearchStatus `json:"research_status,omitempty"`
@@ -340,6 +341,7 @@ type EvidenceConflictReadModel struct {
 	ID              uuid.UUID             `json:"id"`
 	FactType        domain.FactType       `json:"fact_type"`
 	SubjectID       uuid.UUID             `json:"subject_id"`
+	FactID          *uuid.UUID            `json:"fact_id,omitempty"`           // fact instance; nil for the whole fact (#1304)
 	AnalysisIDsJSON string                `json:"analysis_ids_json,omitempty"` // JSON array of UUIDs
 	Description     string                `json:"description"`
 	Resolution      string                `json:"resolution,omitempty"`
@@ -369,6 +371,7 @@ type ProofSummaryReadModel struct {
 	ID              uuid.UUID             `json:"id"`
 	FactType        domain.FactType       `json:"fact_type"`
 	SubjectID       uuid.UUID             `json:"subject_id"`
+	FactID          *uuid.UUID            `json:"fact_id,omitempty"` // fact instance; nil for the whole fact (#1304)
 	Conclusion      string                `json:"conclusion"`
 	Argument        string                `json:"argument"`
 	AnalysisIDsJSON string                `json:"analysis_ids_json,omitempty"` // JSON array of UUIDs

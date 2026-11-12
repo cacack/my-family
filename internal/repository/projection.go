@@ -2415,6 +2415,7 @@ func (p *Projector) projectEvidenceAnalysisCreated(ctx context.Context, e domain
 		ID:              e.AnalysisID,
 		FactType:        e.FactType,
 		SubjectID:       e.SubjectID,
+		FactID:          e.FactID,
 		CitationIDsJSON: citationIDsJSON,
 		Conclusion:      e.Conclusion,
 		ResearchStatus:  e.ResearchStatus,
@@ -2448,6 +2449,8 @@ func (p *Projector) projectEvidenceAnalysisUpdated(ctx context.Context, e domain
 					analysis.SubjectID = id
 				}
 			}
+		case "fact_id":
+			analysis.FactID = changedFactID(value)
 		case "conclusion":
 			if v, ok := value.(string); ok {
 				analysis.Conclusion = v
@@ -2477,6 +2480,18 @@ func (p *Projector) projectEvidenceAnalysisUpdated(ctx context.Context, e domain
 	return p.readStore.SaveEvidenceAnalysis(ctx, branchID, analysis)
 }
 
+// changedFactID decodes an Updated event's fact_id change (#1304): a UUID
+// string links the artifact to that life event or attribute, and nil (or
+// anything unparseable) unlinks it to the fact as a whole.
+func changedFactID(value any) *uuid.UUID {
+	if v, ok := value.(string); ok {
+		if id, err := uuid.Parse(v); err == nil {
+			return &id
+		}
+	}
+	return nil
+}
+
 func (p *Projector) projectEvidenceAnalysisDeleted(ctx context.Context, e domain.EvidenceAnalysisDeleted, branchID domain.BranchID) error {
 	return p.readStore.DeleteEvidenceAnalysis(ctx, branchID, e.AnalysisID)
 }
@@ -2491,6 +2506,7 @@ func (p *Projector) projectEvidenceConflictDetected(ctx context.Context, e domai
 		ID:              e.ConflictID,
 		FactType:        e.FactType,
 		SubjectID:       e.SubjectID,
+		FactID:          e.FactID,
 		AnalysisIDsJSON: analysisIDsJSON,
 		Description:     e.Description,
 		Status:          e.Status,
@@ -2605,6 +2621,7 @@ func (p *Projector) projectProofSummaryCreated(ctx context.Context, e domain.Pro
 		ID:              e.SummaryID,
 		FactType:        e.FactType,
 		SubjectID:       e.SubjectID,
+		FactID:          e.FactID,
 		Conclusion:      e.Conclusion,
 		Argument:        e.Argument,
 		AnalysisIDsJSON: analysisIDsJSON,
@@ -2638,6 +2655,8 @@ func (p *Projector) projectProofSummaryUpdated(ctx context.Context, e domain.Pro
 					summary.SubjectID = id
 				}
 			}
+		case "fact_id":
+			summary.FactID = changedFactID(value)
 		case "conclusion":
 			if v, ok := value.(string); ok {
 				summary.Conclusion = v

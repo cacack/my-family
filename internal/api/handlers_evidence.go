@@ -80,6 +80,7 @@ func (ss *StrictServer) CreateEvidenceAnalysis(ctx context.Context, request Crea
 	input := command.CreateEvidenceAnalysisInput{
 		FactType:   string(request.Body.FactType),
 		SubjectID:  request.Body.SubjectId,
+		FactID:     request.Body.FactId,
 		Conclusion: request.Body.Conclusion,
 	}
 	if request.Body.CitationIds != nil {
@@ -147,6 +148,7 @@ func (ss *StrictServer) UpdateEvidenceAnalysis(ctx context.Context, request Upda
 
 	input := command.UpdateEvidenceAnalysisInput{
 		ID:      request.Id,
+		FactID:  request.Body.FactId,
 		Version: request.Body.Version,
 	}
 	if request.Body.FactType != nil {
@@ -241,7 +243,7 @@ func (ss *StrictServer) GetAnalysesByFact(ctx context.Context, request GetAnalys
 		return nil, err
 	}
 
-	analyses, err := ss.server.evidenceService.GetAnalysesForFact(ctx, branchScopeID(branch), string(request.Params.FactType), request.Params.SubjectId)
+	analyses, err := ss.server.evidenceService.GetAnalysesForFact(ctx, branchScopeID(branch), string(request.Params.FactType), request.Params.SubjectId, request.Params.FactId)
 	if err != nil {
 		return nil, err
 	}
@@ -690,6 +692,7 @@ func (ss *StrictServer) CreateProofSummary(ctx context.Context, request CreatePr
 	input := command.CreateProofSummaryInput{
 		FactType:   string(request.Body.FactType),
 		SubjectID:  request.Body.SubjectId,
+		FactID:     request.Body.FactId,
 		Conclusion: request.Body.Conclusion,
 		Argument:   request.Body.Argument,
 	}
@@ -750,6 +753,7 @@ func (ss *StrictServer) UpdateProofSummary(ctx context.Context, request UpdatePr
 
 	input := command.UpdateProofSummaryInput{
 		ID:      request.Id,
+		FactID:  request.Body.FactId,
 		Version: request.Body.Version,
 	}
 	if request.Body.FactType != nil {
@@ -839,7 +843,7 @@ func (ss *StrictServer) GetProofSummaryByFact(ctx context.Context, request GetPr
 		return nil, err
 	}
 
-	summaries, err := ss.server.evidenceService.GetProofSummaryForFact(ctx, branchScopeID(branch), string(request.Params.FactType), request.Params.SubjectId)
+	summaries, err := ss.server.evidenceService.GetProofSummaryForFact(ctx, branchScopeID(branch), string(request.Params.FactType), request.Params.SubjectId, request.Params.FactId)
 	if err != nil {
 		return nil, err
 	}
@@ -861,6 +865,7 @@ func convertQueryEvidenceAnalysisToGenerated(a query.EvidenceAnalysis) EvidenceA
 		Id:         a.ID,
 		FactType:   FactType(a.FactType),
 		SubjectId:  a.SubjectID,
+		FactId:     a.FactID,
 		Conclusion: a.Conclusion,
 		Version:    a.Version,
 		CreatedAt:  &a.CreatedAt,
@@ -886,6 +891,7 @@ func convertQueryEvidenceConflictToGenerated(c query.EvidenceConflict) EvidenceC
 		Id:          c.ID,
 		FactType:    FactType(c.FactType),
 		SubjectId:   c.SubjectID,
+		FactId:      c.FactID,
 		AnalysisIds: c.AnalysisIDs,
 		Description: c.Description,
 		Status:      ConflictStatus(c.Status),
@@ -927,6 +933,7 @@ func convertQueryProofSummaryToGenerated(s query.ProofSummaryResult) ProofSummar
 		Id:         s.ID,
 		FactType:   FactType(s.FactType),
 		SubjectId:  s.SubjectID,
+		FactId:     s.FactID,
 		Conclusion: s.Conclusion,
 		Argument:   s.Argument,
 		Version:    s.Version,

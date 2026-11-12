@@ -281,7 +281,7 @@ func (h *Handler) CreateCitation(ctx context.Context, input CreateCitationInput)
 	}
 
 	if input.FactID != nil {
-		if err := h.checkCitedFact(ctx, *input.FactID, domain.FactType(input.FactType), input.FactOwnerID); err != nil {
+		if err := h.checkFactInstance(ctx, *input.FactID, domain.FactType(input.FactType), input.FactOwnerID); err != nil {
 			return nil, err
 		}
 	}
@@ -345,10 +345,11 @@ func (h *Handler) CreateCitation(ctx context.Context, input CreateCitationInput)
 	}, nil
 }
 
-// checkCitedFact verifies that factID is a life event or attribute of
-// factType owned by factOwnerID on the handler's branch, so a citation linked
-// to it is listed with it and with no other fact (#1294).
-func (h *Handler) checkCitedFact(ctx context.Context, factID uuid.UUID, factType domain.FactType, factOwnerID uuid.UUID) error {
+// checkFactInstance verifies that factID is a life event or attribute of
+// factType owned by factOwnerID on the handler's branch, so a citation (#1294)
+// or an evidence analysis or proof summary (#1304) linked to it is listed with
+// it and with no other fact.
+func (h *Handler) checkFactInstance(ctx context.Context, factID uuid.UUID, factType domain.FactType, factOwnerID uuid.UUID) error {
 	event, err := h.readStore.GetEvent(ctx, h.branchID, factID)
 	if err != nil {
 		return fmt.Errorf("getting life event: %w", err)

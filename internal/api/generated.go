@@ -3557,6 +3557,12 @@ type EvidenceAnalysis struct {
 	ConflictId *openapi_types.UUID `json:"conflict_id,omitempty"`
 	CreatedAt  *time.Time          `json:"created_at,omitempty"`
 
+	// FactId ID of the life event or attribute this analysis is about, when it
+	// analyzes one of several facts of the same type (such as one of two
+	// censuses). Absent when it analyzes the fact type of the subject as a
+	// whole.
+	FactId *openapi_types.UUID `json:"fact_id,omitempty"`
+
 	// FactType The fact a citation, analysis, conflict or proof summary is about
 	FactType FactType           `json:"fact_type"`
 	Id       openapi_types.UUID `json:"id"`
@@ -3577,6 +3583,11 @@ type EvidenceAnalysis struct {
 type EvidenceAnalysisCreate struct {
 	CitationIds *[]openapi_types.UUID `json:"citation_ids,omitempty"`
 	Conclusion  string                `json:"conclusion"`
+
+	// FactId ID of the life event or attribute this is about. It must be a fact
+	// of `subject_id` and of `fact_type`, or the request is rejected. Omit
+	// it for the fact type as a whole, as for a birth or death.
+	FactId *openapi_types.UUID `json:"fact_id,omitempty"`
 
 	// FactType The fact a citation, analysis, conflict or proof summary is about
 	FactType FactType `json:"fact_type"`
@@ -3602,6 +3613,11 @@ type EvidenceAnalysisUpdate struct {
 	CitationIds *[]openapi_types.UUID `json:"citation_ids,omitempty"`
 	Conclusion  *string               `json:"conclusion,omitempty"`
 
+	// FactId ID of the life event or attribute this is about, checked as on
+	// create. Omitted, the link is kept, unless `fact_type` or
+	// `subject_id` changes: then the link is removed.
+	FactId *openapi_types.UUID `json:"fact_id,omitempty"`
+
 	// FactType The fact a citation, analysis, conflict or proof summary is about
 	FactType *FactType `json:"fact_type,omitempty"`
 	Notes    *string   `json:"notes,omitempty"`
@@ -3619,6 +3635,10 @@ type EvidenceConflict struct {
 	AnalysisIds []openapi_types.UUID `json:"analysis_ids"`
 	CreatedAt   *time.Time           `json:"created_at,omitempty"`
 	Description string               `json:"description"`
+
+	// FactId ID of the life event or attribute the conflicting analyses are
+	// about, when the analysis that raised the conflict names one.
+	FactId *openapi_types.UUID `json:"fact_id,omitempty"`
 
 	// FactType The fact a citation, analysis, conflict or proof summary is about
 	FactType   FactType           `json:"fact_type"`
@@ -5386,6 +5406,11 @@ type ProofSummary struct {
 	Conclusion string     `json:"conclusion"`
 	CreatedAt  *time.Time `json:"created_at,omitempty"`
 
+	// FactId ID of the life event or attribute this proof is about, when it
+	// proves one of several facts of the same type. Absent when it proves
+	// the fact type of the subject as a whole.
+	FactId *openapi_types.UUID `json:"fact_id,omitempty"`
+
 	// FactType The fact a citation, analysis, conflict or proof summary is about
 	FactType FactType           `json:"fact_type"`
 	Id       openapi_types.UUID `json:"id"`
@@ -5404,6 +5429,11 @@ type ProofSummaryCreate struct {
 	AnalysisIds *[]openapi_types.UUID `json:"analysis_ids,omitempty"`
 	Argument    string                `json:"argument"`
 	Conclusion  string                `json:"conclusion"`
+
+	// FactId ID of the life event or attribute this is about. It must be a fact
+	// of `subject_id` and of `fact_type`, or the request is rejected. Omit
+	// it for the fact type as a whole, as for a birth or death.
+	FactId *openapi_types.UUID `json:"fact_id,omitempty"`
 
 	// FactType The fact a citation, analysis, conflict or proof summary is about
 	FactType FactType `json:"fact_type"`
@@ -5428,6 +5458,11 @@ type ProofSummaryUpdate struct {
 	AnalysisIds *[]openapi_types.UUID `json:"analysis_ids,omitempty"`
 	Argument    *string               `json:"argument,omitempty"`
 	Conclusion  *string               `json:"conclusion,omitempty"`
+
+	// FactId ID of the life event or attribute this is about, checked as on
+	// create. Omitted, the link is kept, unless `fact_type` or
+	// `subject_id` changes: then the link is removed.
+	FactId *openapi_types.UUID `json:"fact_id,omitempty"`
 
 	// FactType The fact a citation, analysis, conflict or proof summary is about
 	FactType *FactType `json:"fact_type,omitempty"`
@@ -6649,6 +6684,11 @@ type GetAnalysesByFactParams struct {
 	Branch    *BranchScope       `form:"branch,omitempty" json:"branch,omitempty"`
 	FactType  FactType           `form:"factType" json:"factType"`
 	SubjectId openapi_types.UUID `form:"subjectId" json:"subjectId"`
+
+	// FactId ID of one life event or attribute of that fact type. The list is
+	// then that fact's own analyses plus those of the fact type as a
+	// whole, not another fact's.
+	FactId *openapi_types.UUID `form:"factId,omitempty" json:"factId,omitempty"`
 }
 
 // DeleteEvidenceAnalysisParams defines parameters for DeleteEvidenceAnalysis.
@@ -7488,6 +7528,11 @@ type GetProofSummaryByFactParams struct {
 	Branch    *BranchScope       `form:"branch,omitempty" json:"branch,omitempty"`
 	FactType  FactType           `form:"factType" json:"factType"`
 	SubjectId openapi_types.UUID `form:"subjectId" json:"subjectId"`
+
+	// FactId ID of one life event or attribute of that fact type. The list is
+	// then that fact's own proof summaries plus those of the fact type as a
+	// whole, not another fact's.
+	FactId *openapi_types.UUID `form:"factId,omitempty" json:"factId,omitempty"`
 }
 
 // DeleteProofSummaryParams defines parameters for DeleteProofSummary.
@@ -9576,6 +9621,13 @@ func (w *ServerInterfaceWrapper) GetAnalysesByFact(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter subjectId: %s", err))
 	}
 
+	// ------------- Optional query parameter "factId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "factId", ctx.QueryParams(), &params.FactId, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter factId: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.GetAnalysesByFact(ctx, params)
 	return err
@@ -11589,6 +11641,13 @@ func (w *ServerInterfaceWrapper) GetProofSummaryByFact(ctx echo.Context) error {
 	err = runtime.BindQueryParameterWithOptions("form", true, true, "subjectId", ctx.QueryParams(), &params.SubjectId, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter subjectId: %s", err))
+	}
+
+	// ------------- Optional query parameter "factId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "factId", ctx.QueryParams(), &params.FactId, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter factId: %s", err))
 	}
 
 	// Invoke the callback with all the unmarshaled arguments
