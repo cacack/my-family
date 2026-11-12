@@ -68,7 +68,7 @@ func TestGedcomRoundTrip_FixturesKeepTheirTree(t *testing.T) {
 					if fixture.version == gcgedcom.Version70 {
 						assertSharedNotesExportedAsSNOTE(t, exported)
 					}
-					assertSameSpouseLinks(t, data, []byte(exported))
+					assertSameFamilyLinks(t, data, []byte(exported))
 
 					second := backend.setup(t)
 					importInto(t, ctx, second, []byte(exported))
@@ -83,23 +83,35 @@ func TestGedcomRoundTrip_FixturesKeepTheirTree(t *testing.T) {
 	}
 }
 
-// assertSameSpouseLinks checks the export keeps every FAMS link of the
-// fixture (#1357). Xrefs are renumbered on export, so each link is named by
-// the individual and the family's partners.
-func assertSameSpouseLinks(t *testing.T, fixture, exported []byte) {
+// assertSameFamilyLinks checks the export keeps every FAMS (#1357) and FAMC
+// (#1374) link of the fixture, and links each family member back to its
+// family: a spouse by FAMS and a child by FAMC. A fixture may leave out a
+// link its family record implies, so the expected links are those of either
+// direction. Xrefs are renumbered on export, so each link is named by its
+// tag, the individual and the family's partners.
+func assertSameFamilyLinks(t *testing.T, fixture, exported []byte) {
 	t.Helper()
-	want, got := spouseLinks(t, fixture), spouseLinks(t, exported)
-	if len(want) == 0 {
-		t.Fatal("precondition: the fixture has no FAMS links")
+	wantPointers, wantMembers := familyLinks(t, fixture)
+	got, gotMembers := familyLinks(t, exported)
+	want := slices.Compact(slices.Sorted(slices.Values(append(wantPointers, wantMembers...))))
+	for _, tag := range []string{"FAMS ", "FAMC "} {
+		if !slices.ContainsFunc(wantPointers, func(l string) bool { return strings.HasPrefix(l, tag) }) {
+			t.Fatalf("precondition: the fixture has no %slinks", tag)
+		}
 	}
 	if !slices.Equal(want, got) {
-		t.Errorf("FAMS links = %q, want %q", got, want)
+		t.Errorf("exported FAMS/FAMC links = %q, want %q", got, want)
+	}
+	if !slices.Equal(gotMembers, got) {
+		t.Errorf("exported family members = %q, want the FAMS/FAMC links %q", gotMembers, got)
 	}
 }
 
-// spouseLinks returns each FAMS link in data as "individual -> partners",
-// sorted.
-func spouseLinks(t *testing.T, data []byte) []string {
+// familyLinks returns, as sorted "TAG individual -> partners" strings, each
+// FAMS and FAMC pointer on the individuals in data, and the same links as
+// the family records imply them: FAMS for each HUSB and WIFE, FAMC for each
+// CHIL.
+func familyLinks(t *testing.T, data []byte) (pointers, members []string) {
 	t.Helper()
 	doc, err := decoder.Decode(bytes.NewReader(data))
 	if err != nil {
@@ -111,19 +123,34 @@ func spouseLinks(t *testing.T, data []byte) []string {
 		}
 		return ""
 	}
-	var links []string
+	link := func(tag, indi string, fam *gcgedcom.Family) string {
+		return tag + " " + indi + " -> " + name(fam.Husband) + " & " + name(fam.Wife)
+	}
 	for _, indi := range doc.Individuals() {
-		for _, link := range indi.SpouseInFamilies {
-			fam := doc.GetFamily(link.FamilyXRef)
-			if fam == nil {
-				t.Errorf("%s has FAMS %s, which is not a family record", indi.FullName(), link.FamilyXRef)
-				continue
+		for tag, famLinks := range map[string][]gcgedcom.FamilyLink{"FAMS": indi.SpouseInFamilies, "FAMC": indi.ChildInFamilies} {
+			for _, l := range famLinks {
+				fam := doc.GetFamily(l.FamilyXRef)
+				if fam == nil {
+					t.Errorf("%s has %s %s, which is not a family record", indi.FullName(), tag, l.FamilyXRef)
+					continue
+				}
+				pointers = append(pointers, link(tag, indi.FullName(), fam))
 			}
-			links = append(links, indi.FullName()+" -> "+name(fam.Husband)+" & "+name(fam.Wife))
 		}
 	}
-	sort.Strings(links)
-	return links
+	for _, fam := range doc.Families() {
+		for _, partner := range []string{fam.Husband, fam.Wife} {
+			if partner != "" {
+				members = append(members, link("FAMS", name(partner), fam))
+			}
+		}
+		for _, child := range fam.Children {
+			members = append(members, link("FAMC", name(child), fam))
+		}
+	}
+	sort.Strings(pointers)
+	sort.Strings(members)
+	return pointers, members
 }
 
 func importInto(t *testing.T, ctx context.Context, st stores, data []byte) *command.ImportGedcomResult {
