@@ -451,15 +451,11 @@ func (ss *StrictServer) GetMapLocations(ctx context.Context, request GetMapLocat
 	}
 
 	for i, item := range result.Items {
-		personIDs := make([]openapi_types.UUID, 0, len(item.Persons))
-		persons := make([]PersonSummary, 0, len(item.Persons))
-		for _, p := range item.Persons {
-			parsed, err := uuid.Parse(p.ID)
-			if err != nil {
-				continue
-			}
-			personIDs = append(personIDs, parsed)
-			persons = append(persons, PersonSummary{Id: parsed, GivenName: p.GivenName, Surname: p.Surname})
+		personIDs := make([]openapi_types.UUID, len(item.Persons))
+		persons := make([]PersonSummary, len(item.Persons))
+		for j, p := range item.Persons {
+			personIDs[j] = p.ID
+			persons[j] = PersonSummary{Id: p.ID, GivenName: p.GivenName, Surname: p.Surname}
 		}
 		response.Items[i] = MapLocation{
 			Place:     item.Place,
