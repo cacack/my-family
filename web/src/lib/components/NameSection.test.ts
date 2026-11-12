@@ -213,4 +213,89 @@ describe('NameSection', () => {
 			expect(await screen.findByRole('button', { name: 'Try Again' })).toBeTruthy();
 		});
 	});
+
+	// A name's notes (#1165) are shown, added and edited (#1351).
+	describe('name notes', () => {
+		const withNotes = (notes: string) => ({ ...surnameless(), notes }) as apiModule.PersonName;
+
+		async function editNotes(text: string) {
+			await fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+			const notes = screen.getByLabelText(/^Notes/) as HTMLTextAreaElement;
+			await fireEvent.input(notes, { target: { value: text } });
+			await fireEvent.submit(notes.closest('form')!);
+			await waitFor(() => expect(apiModule.api.updatePersonName).toHaveBeenCalled());
+			return vi.mocked(apiModule.api.updatePersonName).mock.calls[0][2];
+		}
+
+		it('shows a name\'s notes, and no notes block for a name without any', async () => {
+			vi.mocked(apiModule.api.getPersonNames).mockResolvedValue({
+				items: [withNotes('Spelled Clunch in the 1850 census'), { ...surnameless(), id: 'n2', given_name: 'Drina', is_primary: false }],
+				total: 2
+			});
+			const { container } = render(NameSection, { personId: PERSON_ID });
+
+			expect(await screen.findByText('Spelled Clunch in the 1850 census')).toBeTruthy();
+			expect(container.querySelectorAll('.name-notes')).toHaveLength(1);
+		});
+
+		it('adds a name with notes', async () => {
+			render(NameSection, { personId: PERSON_ID });
+			await fireEvent.click(await screen.findByRole('button', { name: 'Add Name' }));
+			await fireEvent.input(screen.getByLabelText(/^Given Name/), { target: { value: 'Drina' } });
+			await fireEvent.input(screen.getByLabelText(/^Notes/), { target: { value: '  Baptismal name  ' } });
+			await fireEvent.submit(screen.getByLabelText(/^Given Name/).closest('form')!);
+
+			await waitFor(() => expect(apiModule.api.addPersonName).toHaveBeenCalled());
+			expect(vi.mocked(apiModule.api.addPersonName).mock.calls[0][1].notes).toBe('Baptismal name');
+		});
+
+		it('adds a name without notes, sending none', async () => {
+			render(NameSection, { personId: PERSON_ID });
+			await fireEvent.click(await screen.findByRole('button', { name: 'Add Name' }));
+			await fireEvent.input(screen.getByLabelText(/^Given Name/), { target: { value: 'Drina' } });
+			await fireEvent.submit(screen.getByLabelText(/^Given Name/).closest('form')!);
+
+			await waitFor(() => expect(apiModule.api.addPersonName).toHaveBeenCalled());
+			expect(vi.mocked(apiModule.api.addPersonName).mock.calls[0][1].notes).toBeUndefined();
+		});
+
+		it('saves edited notes, and the reloaded name shows them', async () => {
+			vi.mocked(apiModule.api.getPersonNames)
+				.mockResolvedValueOnce({ items: [withNotes('Old note')], total: 1 })
+				.mockResolvedValue({ items: [withNotes('New note')], total: 1 });
+			render(NameSection, { personId: PERSON_ID });
+
+			expect(await screen.findByText('Old note')).toBeTruthy();
+			expect((await editNotes('New note')).notes).toBe('New note');
+			expect(await screen.findByText('New note')).toBeTruthy();
+		});
+
+		it('clears a name\'s notes when the field is emptied', async () => {
+			vi.mocked(apiModule.api.getPersonNames).mockResolvedValue({ items: [withNotes('Old note')], total: 1 });
+			render(NameSection, { personId: PERSON_ID });
+
+			expect((await editNotes('')).notes).toBe('');
+		});
+
+		it('does not send unchanged notes holding a shared-note pointer', async () => {
+			vi.mocked(apiModule.api.getPersonNames).mockResolvedValue({ items: [withNotes('@N1@\n\nInline text')], total: 1 });
+			render(NameSection, { personId: PERSON_ID });
+			await fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+
+			const notes = screen.getByLabelText(/^Notes/) as HTMLTextAreaElement;
+			expect(notes.value).toBe('@N1@\n\nInline text');
+			expect(screen.getByText(/links a shared note/)).toBeTruthy();
+			await fireEvent.submit(notes.closest('form')!);
+
+			await waitFor(() => expect(apiModule.api.updatePersonName).toHaveBeenCalled());
+			expect(vi.mocked(apiModule.api.updatePersonName).mock.calls[0][2].notes).toBeUndefined();
+		});
+
+		it('keeps a shared-note pointer intact when the text beside it is edited', async () => {
+			vi.mocked(apiModule.api.getPersonNames).mockResolvedValue({ items: [withNotes('@N1@\n\nInline text')], total: 1 });
+			render(NameSection, { personId: PERSON_ID });
+
+			expect((await editNotes('@N1@\n\nRevised text')).notes).toBe('@N1@\n\nRevised text');
+		});
+	});
 });
