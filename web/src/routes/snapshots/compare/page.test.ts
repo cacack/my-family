@@ -225,8 +225,19 @@ describe('Snapshot comparison page', () => {
 
 		render(Page);
 
-		expect(await screen.findByText('No changes between these snapshots.')).toBeDefined();
+		const empty = await screen.findByText('No changes between these snapshots.');
+		// Styled as an empty state, not the bold change count (#1108).
+		expect(empty.classList.contains('empty')).toBe(true);
 		expect(screen.queryByRole('list', { name: 'Changes, oldest first' })).toBeNull();
+	});
+
+	it('heads the page with the shared header and its back link (#1108)', async () => {
+		compareSnapshots.mockResolvedValue(comparison({ changes: [] }));
+
+		render(Page);
+
+		expect(screen.getByRole('heading', { level: 1, name: 'Snapshot comparison' })).toBeDefined();
+		expect(screen.getByRole('link', { name: /All snapshots/ }).getAttribute('href')).toBe('/snapshots');
 	});
 
 	it('announces the loaded comparison to assistive tech', async () => {

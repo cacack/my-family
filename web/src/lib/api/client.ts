@@ -2362,6 +2362,19 @@ export function formatPersonName(
 	return parts.length > 0 ? parts.join(' ') : 'Unknown';
 }
 
+/**
+ * Format a family's display name from its partners: `Jane Smith & John Doe`,
+ * one partner's name alone, or `Unknown` with neither.
+ */
+export function formatFamilyName(family: {
+	partner1?: { given_name?: string; surname?: string } | null;
+	partner2?: { given_name?: string; surname?: string } | null;
+}): string {
+	const p1 = family.partner1 ? formatPersonName(family.partner1) : 'Unknown';
+	const p2 = family.partner2 ? formatPersonName(family.partner2) : undefined;
+	return p2 ? `${p1} & ${p2}` : p1;
+}
+
 export function formatLifespan(person: { birth_date?: GenDate; death_date?: GenDate }): string {
 	const birth = person.birth_date?.year;
 	const death = person.death_date?.year;

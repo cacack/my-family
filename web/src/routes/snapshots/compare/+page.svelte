@@ -28,6 +28,7 @@
 	import { page } from '$app/state';
 	import { api, type ApiError, type BranchChangeEntry, type Snapshot } from '#lib/api/client.js';
 	import DiffView from '#lib/components/DiffView.svelte';
+	import PageHeader from '#lib/components/PageHeader.svelte';
 	import MergedFromChip from '#lib/components/MergedFromChip.svelte';
 	import { Badge } from '#lib/components/ui/badge/index.js';
 	import { Label } from '#lib/components/ui/label/index.js';
@@ -259,16 +260,15 @@
 {/snippet}
 
 <div class="compare-page">
-	<a href="/snapshots" class="back-link">&larr; All snapshots</a>
-
-	<h1>Snapshot comparison</h1>
-	{#if activeBranch.id}
-		<p class="scope-note" role="note">
-			Showing the changes as the research branch
-			{activeBranch.branch ? activeBranch.branch.name : ''} sees them: its own edits, and the
-			mainline edits it inherits.
-		</p>
-	{/if}
+	<PageHeader title="Snapshot comparison" back={{ href: '/snapshots', label: 'All snapshots' }}>
+		{#if activeBranch.id}
+			<p class="scope-note" role="note">
+				Showing the changes as the research branch
+				{activeBranch.branch ? activeBranch.branch.name : ''} sees them: its own edits, and the
+				mainline edits it inherits.
+			</p>
+		{/if}
+	</PageHeader>
 
 	{#if invalidReason}
 		<div class="state empty">
@@ -325,7 +325,7 @@
 			</p>
 		{/if}
 
-		<p class="summary">{summary}</p>
+		<p class="summary" class:empty={itemized.length === 0}>{summary}</p>
 		{#if comparison.hasMore}
 			<p class="truncated" role="note">
 				This range holds more changes than can be compared at once, so only the earliest ones are
@@ -399,40 +399,28 @@
 		padding: 1.5rem;
 	}
 
-	.back-link {
-		display: inline-block;
-		margin-bottom: 1rem;
-		font-size: 0.875rem;
-		color: var(--color-text-muted);
-		text-decoration: none;
-	}
-
-	.back-link:hover {
-		color: var(--color-link);
-	}
-
-	h1 {
-		margin: 0 0 1rem;
-		font-size: 1.5rem;
-		color: #1e293b;
-	}
-
 	.scope-note {
-		margin: -0.5rem 0 1rem;
+		margin: 0.25rem 0 0;
 		font-size: 0.8125rem;
-		color: #475569;
+		color: var(--color-text-muted);
 	}
 
+	/* The two cards stack, full width, with the arrow turned down between them,
+	   until there is room for both beside it (#1108). */
 	.endpoints {
-		display: flex;
-		align-items: stretch;
+		display: grid;
+		grid-template-columns: minmax(0, 1fr);
 		gap: 0.75rem;
-		flex-wrap: wrap;
 		margin-bottom: 1rem;
+	}
+
+	@media (min-width: 40rem) {
+		.endpoints {
+			grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+		}
 	}
 
 	.endpoint {
-		flex: 1 1 14rem;
 		min-width: 0;
 		display: flex;
 		flex-direction: column;
@@ -452,13 +440,13 @@
 
 	.endpoint-name {
 		font-weight: 600;
-		color: #1e293b;
+		color: var(--color-text);
 		overflow-wrap: anywhere;
 	}
 
 	.endpoint-description {
 		font-size: 0.8125rem;
-		color: #475569;
+		color: var(--color-text-muted);
 		overflow-wrap: anywhere;
 	}
 
@@ -469,14 +457,28 @@
 
 	.endpoint-arrow {
 		align-self: center;
+		justify-self: center;
 		color: var(--color-text-muted);
 		font-size: 1.25rem;
+		transform: rotate(90deg);
+	}
+
+	@media (min-width: 40rem) {
+		.endpoint-arrow {
+			transform: none;
+		}
 	}
 
 	.summary {
 		margin: 0 0 0.5rem;
 		font-weight: 600;
-		color: #1e293b;
+		color: var(--color-text);
+	}
+
+	/* "No changes..." reads like every other empty state. */
+	.summary.empty {
+		font-weight: normal;
+		color: var(--color-text-muted);
 	}
 
 	.note {
@@ -509,7 +511,7 @@
 		border-radius: 6px;
 		background: white;
 		font-size: 0.875rem;
-		color: #1e293b;
+		color: var(--color-text);
 	}
 
 	.native-select:focus-visible {
@@ -561,7 +563,7 @@
 
 	.entity-name {
 		font-weight: 600;
-		color: #1e293b;
+		color: var(--color-text);
 		text-decoration: none;
 		overflow-wrap: anywhere;
 	}
@@ -595,7 +597,7 @@
 	.state.empty h2 {
 		margin: 0 0 0.375rem;
 		font-size: 1rem;
-		color: #1e293b;
+		color: var(--color-text);
 	}
 
 	.state.empty p {

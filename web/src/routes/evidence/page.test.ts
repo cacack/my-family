@@ -13,7 +13,9 @@ vi.mock('#lib/api/client.js', async (importOriginal) => {
 			listEvidenceAnalyses: vi.fn(),
 			listEvidenceConflicts: vi.fn(),
 			listResearchLogs: vi.fn(),
-			listProofSummaries: vi.fn()
+			listProofSummaries: vi.fn(),
+			getPerson: vi.fn(),
+			getFamily: vi.fn()
 		}
 	};
 });
@@ -59,6 +61,52 @@ describe('Evidence Hub Page', () => {
 		vi.mocked(apiModule.api.listEvidenceConflicts).mockResolvedValue(emptyConflicts);
 		vi.mocked(apiModule.api.listResearchLogs).mockResolvedValue(emptyLogs);
 		vi.mocked(apiModule.api.listProofSummaries).mockResolvedValue(emptySummaries);
+		vi.mocked(apiModule.api.getPerson).mockImplementation(async (id) => {
+			if (id === 'p-1-long-uuid') return { id, given_name: 'Ada', surname: 'Lovelace' } as apiModule.PersonDetail;
+			throw new Error('not found');
+		});
+	});
+
+	it('shows each subject by name, linked, never as an id (#1108)', async () => {
+		render(Page);
+		const links = await screen.findAllByRole('link', { name: 'Ada Lovelace' });
+		expect(links[0].getAttribute('href')).toBe('/persons/p-1-long-uuid');
+		// A subject that can't be read says so rather than showing its id.
+		await screen.findAllByRole('link', { name: 'Unknown person' });
+		expect(document.body.textContent).not.toContain('p-1-long');
+	});
+
+	it('makes each row a real link to its record, not a scripted row (#1108)', async () => {
+		const { container } = render(Page);
+		await screen.findAllByText('Born circa 1850 in Ohio');
+		const rows = [...container.querySelectorAll('tbody tr')];
+		expect(rows).toHaveLength(2);
+		for (const row of rows) expect(row.getAttribute('role')).toBeNull();
+		expect(rows.map((row) => row.querySelector('a[href^="/evidence/"]')?.getAttribute('href'))).toEqual([
+			'/evidence/analyses/ea-1',
+			'/evidence/analyses/ea-2'
+		]);
+	});
+
+	it('names the subject in a conflict description instead of its id (#1108)', async () => {
+		vi.mocked(apiModule.api.listEvidenceConflicts).mockResolvedValue({
+			conflicts: [
+				{
+					id: 'ec-1',
+					fact_type: 'person_birth',
+					subject_id: 'p-1-long-uuid',
+					analysis_ids: ['ea-1', 'ea-2'],
+					description: 'Conflicting conclusions for person_birth on subject p-1-long-uuid',
+					status: 'open',
+					version: 1
+				}
+			],
+			total: 1
+		});
+		resetRouter('/evidence?tab=conflicts');
+		render(Page);
+		const described = await screen.findAllByText('Conflicting conclusions for Person Birth on Ada Lovelace');
+		expect(described.length).toBeGreaterThan(0);
 	});
 
 	it('renders page title and subtitle', async () => {

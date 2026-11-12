@@ -462,3 +462,42 @@ for (const chart of ['pedigree', 'descendancy']) {
 		expect(overflow, 'page scrolls after shrinking the window').toBeLessThanOrEqual(0);
 	});
 }
+
+// The Evidence and Quality tabs once scrolled sideways inside their strip at
+// phone widths with no hint, cutting "Proof Summaries" to "Proof S" (#1108).
+// They wrap instead, so every tab is whole and on screen.
+for (const width of [320, 375]) {
+	for (const route of ['/evidence', '/quality']) {
+		test(`the ${route} tabs are all visible at ${width}px`, async ({ page }) => {
+			await page.setViewportSize({ width, height: 900 });
+			await page.goto(route);
+			const list = page.locator('main [data-slot="tabs-list"]');
+			await expect(list).toBeVisible();
+			const m = await list.evaluate((el) => ({
+				over: el.scrollWidth - el.clientWidth,
+				tabs: [...el.querySelectorAll('[data-slot="tabs-trigger"]')].map((tab) => {
+					const r = tab.getBoundingClientRect();
+					return { left: r.left, right: r.right, over: tab.scrollWidth - tab.clientWidth };
+				})
+			}));
+			expect(m.over, `${route}: the tab strip scrolls sideways`).toBeLessThanOrEqual(0);
+			for (const tab of m.tabs) {
+				expect(tab.left, `${route}: a tab starts off-screen`).toBeGreaterThanOrEqual(0);
+				expect(tab.right, `${route}: a tab runs off-screen`).toBeLessThanOrEqual(width);
+				expect(tab.over, `${route}: a tab's label is cut off`).toBeLessThanOrEqual(0);
+			}
+		});
+	}
+}
+
+// At 375 the From card was narrower than the To card, with the arrow beside
+// only the first (#1108). Stacked, both cards take the full width.
+test('the snapshot comparison cards are the same width at 375px', async ({ page }) => {
+	const seed = readSeed();
+	await page.setViewportSize({ width: 375, height: 900 });
+	await page.goto(`/snapshots/compare?from=${seed.snapshots.beforeId}&to=${seed.snapshots.afterId}`);
+	const cards = page.locator('main .endpoint');
+	await expect(cards).toHaveCount(2);
+	const widths = await cards.evaluateAll((els) => els.map((el) => el.getBoundingClientRect().width));
+	expect(widths[0]).toBeCloseTo(widths[1], 0);
+});

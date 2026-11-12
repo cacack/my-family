@@ -4681,10 +4681,24 @@ export interface components {
              */
             record_id?: string;
             /**
+             * @description Kind of the primary record, present with record_id
+             * @enum {string}
+             */
+            record_type?: "person" | "family" | "source";
+            /** @description Display name of the primary record, present with record_id */
+            record_name?: string;
+            /**
              * Format: uuid
              * @description ID of a related record (if applicable)
              */
             related_record_id?: string;
+            /**
+             * @description Kind of the related record, present with related_record_id
+             * @enum {string}
+             */
+            related_record_type?: "person" | "family" | "source";
+            /** @description Display name of the related record, present with related_record_id */
+            related_record_name?: string;
         };
         /**
          * @description Response containing validation issues categorized by severity.

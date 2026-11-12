@@ -15,6 +15,8 @@
 	import SeverityBadge from '#lib/components/SeverityBadge.svelte';
 	import MainlineNotice from '#lib/components/MainlineNotice.svelte';
 	import ErrorState from '#lib/components/ErrorState.svelte';
+	import ActionError from '#lib/components/ActionError.svelte';
+	import PageHeader from '#lib/components/PageHeader.svelte';
 	import { clampPageToTotal, readEnum, readPositiveInt, setQuery } from '#lib/utils/urlState.js';
 
 	const pageSize = 20;
@@ -28,11 +30,11 @@
 	// page (post-#392 pattern). A future refactor can lift these into a shared
 	// module — kept inline here to limit PR scope.
 	const TH_CLASS =
-		'whitespace-nowrap border-b-2 border-slate-200 px-4 py-3 text-left font-semibold text-slate-600';
-	const TD_CLASS = 'border-b border-slate-100 px-4 py-3 text-slate-800';
+		'whitespace-nowrap border-b-2 border-slate-200 px-4 py-3 text-left font-semibold text-muted-foreground';
+	const TD_CLASS = 'border-b border-slate-100 px-4 py-3 text-foreground';
 	const TD_NOWRAP = `${TD_CLASS} whitespace-nowrap font-medium`;
 	const TD_CENTER = `${TD_CLASS} text-center`;
-	const ROW_CLICKABLE = 'cursor-pointer transition-colors hover:bg-slate-50';
+	const ROW_HOVER = 'transition-colors hover:bg-slate-50';
 	const SUBJECT_LINK = 'text-link no-underline hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500';
 
 	// The active tab, its page and the severity filter live in the URL (see
@@ -97,6 +99,17 @@
 	let restoringKey: string | null = $state(null);
 
 	// --- Helpers ---
+	const RECORD_ROUTES: Record<NonNullable<ValidationIssue['record_type']>, string> = {
+		person: 'persons',
+		family: 'families',
+		source: 'sources'
+	};
+
+	/** The page of the record an issue is about; a record of unknown kind is taken for a person. */
+	function recordHref(issue: ValidationIssue): string {
+		return `/${RECORD_ROUTES[issue.record_type ?? 'person']}/${issue.record_id}`;
+	}
+
 	function pairKey(p1: string, p2: string): string {
 		return `${p1}${PAIR_KEY_SEPARATOR}${p2}`;
 	}
@@ -326,21 +339,18 @@
 	<title>Quality | My Family</title>
 </svelte:head>
 
-<div class="mx-auto max-w-screen-xl p-6">
+<div class="mx-auto max-w-[1200px] p-6">
 	<MainlineNotice
 		message="On a research branch, duplicate pairs and the pairs marked not a duplicate follow your branch, but validation issues still come from the mainline."
 	/>
-	<header class="mb-6">
-		<div>
-			<h1 class="m-0 text-2xl text-slate-800">Quality</h1>
-			<p class="mt-1 text-sm text-muted-foreground">
-				Find and fix data quality issues and potential duplicate persons.
-			</p>
-		</div>
-	</header>
+	<PageHeader
+		title="Quality"
+		description="Find and fix data quality issues and potential duplicate persons."
+	/>
 
 	<Tabs.Root value={activeTab} onValueChange={selectTab}>
-		<Tabs.List class="max-w-full justify-start overflow-x-auto">
+		<!-- Wraps rather than scrolls, so every tab stays visible on a phone. -->
+		<Tabs.List class="max-w-full flex-wrap justify-start group-data-horizontal/tabs:h-auto">
 			<Tabs.Trigger value="validation">
 				Validation Issues
 				{#if totalIssuesCount > 0}
@@ -431,8 +441,8 @@
 									<td class={TD_CLASS}>{issue.message}</td>
 									<td class={TD_CLASS}>
 										{#if issue.record_id}
-											<a href="/persons/{issue.record_id}" class={SUBJECT_LINK}>
-												{issue.record_id.slice(0, 8)}...
+											<a href={recordHref(issue)} class={SUBJECT_LINK}>
+												{issue.record_name || 'Unnamed'}
 											</a>
 										{:else}
 											<span class="text-muted-foreground">—</span>
@@ -493,7 +503,7 @@
 				<div
 					class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-slate-200 bg-slate-50 px-4 py-3"
 				>
-					<span class="text-sm font-medium text-slate-700">
+					<span class="text-sm font-medium text-foreground">
 						{selectedKeys.size} selected
 					</span>
 					<div class="flex gap-2">
@@ -508,11 +518,7 @@
 			{/if}
 
 			{#if dismissError}
-				<div
-					class="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
-				>
-					{dismissError}
-				</div>
+				<ActionError message={dismissError} />
 			{/if}
 
 			{#if duplicatesLoading}
@@ -552,7 +558,7 @@
 								{@const reasons = pair.match_reasons ?? []}
 								{@const visibleReasons = reasons.slice(0, 3)}
 								{@const extraReasonCount = Math.max(0, reasons.length - visibleReasons.length)}
-								<tr class={ROW_CLICKABLE}>
+								<tr class={ROW_HOVER}>
 									<td class={TD_CENTER}>
 										<Checkbox
 											aria-label="Select duplicate pair {pair.person1_name} and {pair.person2_name}"
@@ -653,11 +659,7 @@
 			</div>
 
 			{#if restoreError}
-				<div
-					class="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
-				>
-					{restoreError}
-				</div>
+				<ActionError message={restoreError} />
 			{/if}
 
 			{#if dismissedLoading}

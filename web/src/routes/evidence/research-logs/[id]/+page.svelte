@@ -16,8 +16,14 @@
 	import { Label } from '#lib/components/ui/label/index.js';
 	import { Textarea } from '#lib/components/ui/textarea/index.js';
 	import { toRFC3339, outcomeBadgeProps } from '#lib/utils/evidence.js';
+	import { SubjectNames, subjectHref, type Subject } from '#lib/utils/subjectNames.svelte.js';
 	import { nativeSelectClass } from '#lib/utils/forms.js';
 	import ErrorState from '#lib/components/ErrorState.svelte';
+	import ActionError from '#lib/components/ActionError.svelte';
+	import ActionBar from '#lib/components/ActionBar.svelte';
+	import PageHeader from '#lib/components/PageHeader.svelte';
+	import InfoSection from '#lib/components/InfoSection.svelte';
+	import FormRow from '#lib/components/FormRow.svelte';
 	import SaveConflict from '#lib/components/SaveConflict.svelte';
 	import { SaveConflictFlow, type ConflictRow } from '#lib/utils/saveConflict.svelte.js';
 
@@ -63,6 +69,12 @@
 		{ key: 'notes', label: 'Notes' }
 	];
 
+	// The log stores its subject's id; the page shows the subject's name.
+	const subjects = new SubjectNames();
+	function subjectOf(saved: ResearchLogResponse): Subject {
+		return { type: saved.subject_type === 'family' ? 'family' : 'person', id: saved.subject_id };
+	}
+
 	function formatOutcome(outcome: string): string {
 		return outcome.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 	}
@@ -91,6 +103,7 @@
 		error = null;
 		try {
 			log = await api.getResearchLog(id);
+			subjects.load([subjectOf(log)]);
 			resetForm();
 		} catch (e) {
 			error = recordLoadError(e, 'research log');
@@ -218,20 +231,18 @@
 	<title>{isNew ? 'New Research Log' : log ? `${log.repository} | Research Log` : 'Research Log'} | My Family</title>
 </svelte:head>
 
+{#snippet recordActions()}
+	<Button variant="outline" onclick={startEdit}>Edit</Button>
+	<Button variant="destructive" onclick={deleteLog} disabled={deleting}>
+		{deleting ? 'Deleting...' : 'Delete'}
+	</Button>
+{/snippet}
+
 <div class="mx-auto max-w-3xl p-6">
-	<header class="mb-6 flex items-center justify-between">
-		<a href="/evidence" class="text-sm text-muted-foreground no-underline hover:text-link">
-			&larr; Evidence
-		</a>
-		{#if log && !editing}
-			<div class="flex gap-2">
-				<Button variant="outline" onclick={startEdit}>Edit</Button>
-				<Button variant="destructive" onclick={deleteLog} disabled={deleting}>
-					{deleting ? 'Deleting...' : 'Delete'}
-				</Button>
-			</div>
-		{/if}
-	</header>
+	<ActionBar
+		back={{ href: '/evidence', label: 'Evidence' }}
+		actions={log && !editing ? recordActions : undefined}
+	/>
 
 	{#if loading}
 		<div class="p-12 text-center text-muted-foreground">Loading...</div>
@@ -245,22 +256,15 @@
 				saveLog();
 			}}
 		>
-			<h1 class="m-0 mb-6 text-xl text-slate-800">
-				{isNew ? 'New Research Log' : 'Edit Research Log'}
-			</h1>
+			<PageHeader title={isNew ? 'New Research Log' : 'Edit Research Log'} />
 
 			{#if error}
-				<div
-					class="mb-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-600"
-					role="alert"
-				>
-					{error}
-				</div>
+				<ActionError message={error} />
 			{/if}
 
-			<div class="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+			<FormRow>
 				<div class="flex flex-col gap-1.5">
-					<Label for="subject-id" class="text-sm text-slate-600">
+					<Label for="subject-id" class="text-sm text-muted-foreground">
 						Subject ID <span class="text-red-600">*</span>
 					</Label>
 					<Input
@@ -272,7 +276,7 @@
 					/>
 				</div>
 				<div class="flex flex-col gap-1.5">
-					<Label for="subject-type" class="text-sm text-slate-600">Subject Type</Label>
+					<Label for="subject-type" class="text-sm text-muted-foreground">Subject Type</Label>
 					<select
 						id="subject-type"
 						bind:value={formData.subject_type}
@@ -282,11 +286,11 @@
 						<option value="family">Family</option>
 					</select>
 				</div>
-			</div>
+			</FormRow>
 
-			<div class="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+			<FormRow>
 				<div class="flex flex-col gap-1.5">
-					<Label for="repository" class="text-sm text-slate-600">
+					<Label for="repository" class="text-sm text-muted-foreground">
 						Repository <span class="text-red-600">*</span>
 					</Label>
 					<Input
@@ -298,15 +302,15 @@
 					/>
 				</div>
 				<div class="flex flex-col gap-1.5">
-					<Label for="search-date" class="text-sm text-slate-600">
+					<Label for="search-date" class="text-sm text-muted-foreground">
 						Search Date <span class="text-red-600">*</span>
 					</Label>
 					<Input id="search-date" type="date" bind:value={formData.search_date} required />
 				</div>
-			</div>
+			</FormRow>
 
 			<div class="mb-4 flex flex-col gap-1.5">
-				<Label for="search-description" class="text-sm text-slate-600">
+				<Label for="search-description" class="text-sm text-muted-foreground">
 					Search Description <span class="text-red-600">*</span>
 				</Label>
 				<Textarea
@@ -317,19 +321,19 @@
 				/>
 			</div>
 
-			<div class="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+			<FormRow>
 				<div class="flex flex-col gap-1.5">
-					<Label for="outcome" class="text-sm text-slate-600">Outcome</Label>
+					<Label for="outcome" class="text-sm text-muted-foreground">Outcome</Label>
 					<select id="outcome" bind:value={formData.outcome} class={nativeSelectClass}>
 						{#each outcomes as o}
 							<option value={o}>{formatOutcome(o)}</option>
 						{/each}
 					</select>
 				</div>
-			</div>
+			</FormRow>
 
 			<div class="mb-4 flex flex-col gap-1.5">
-				<Label for="notes" class="text-sm text-slate-600">Notes</Label>
+				<Label for="notes" class="text-sm text-muted-foreground">Notes</Label>
 				<Textarea id="notes" bind:value={formData.notes} rows={3} />
 			</div>
 
@@ -353,69 +357,45 @@
 		</form>
 	{:else if log}
 		{@const outcomeBadge = outcomeBadgeProps(log.outcome)}
+		{@const subject = subjectOf(log)}
 		<div class="rounded-xl border border-slate-200 bg-white p-6">
-			<div class="mb-6 border-b border-slate-200 pb-4">
-				<h1 class="m-0 mb-2 text-2xl text-slate-800">Research Log</h1>
-				<div class="flex items-center gap-2">
-					<Badge variant={outcomeBadge.variant} class={outcomeBadge.class}>
-						{outcomeBadge.label}
-					</Badge>
-				</div>
-			</div>
+			{#snippet logBadges()}
+				<Badge variant={outcomeBadge.variant} class={outcomeBadge.class}>
+					{outcomeBadge.label}
+				</Badge>
+			{/snippet}
+			<PageHeader title="Research Log" badges={logBadges} />
 
-			<div
-				class="mb-6 grid grid-cols-[repeat(auto-fit,minmax(min(250px,100%),1fr))] gap-6"
-			>
-				<div class="mb-6">
-					<h2
-						class="m-0 mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground"
-					>
-						Details
-					</h2>
-					<dl class="m-0 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
-						<dt class="text-[0.8125rem] text-muted-foreground">Subject</dt>
-						<dd class="m-0 text-sm text-slate-800">
-							<a
-								href="/{log.subject_type === 'family' ? 'families' : 'persons'}/{log.subject_id}"
-								class="text-link no-underline hover:underline"
-							>
-								{log.subject_id}
-							</a>
-						</dd>
-						<dt class="text-[0.8125rem] text-muted-foreground">Subject Type</dt>
-						<dd class="m-0 text-sm text-slate-800">
-							{log.subject_type.charAt(0).toUpperCase() + log.subject_type.slice(1)}
-						</dd>
-						<dt class="text-[0.8125rem] text-muted-foreground">Repository</dt>
-						<dd class="m-0 text-sm text-slate-800">{log.repository}</dd>
-						<dt class="text-[0.8125rem] text-muted-foreground">Search Date</dt>
-						<dd class="m-0 text-sm text-slate-800">
-							{new Date(log.search_date).toLocaleDateString()}
-						</dd>
-						<dt class="text-[0.8125rem] text-muted-foreground">Outcome</dt>
-						<dd class="m-0 text-sm text-slate-800">{formatOutcome(log.outcome)}</dd>
-					</dl>
-				</div>
-			</div>
+			{#if error}
+				<ActionError message={error} />
+			{/if}
 
-			<div class="mb-6">
-				<h2 class="m-0 mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-					Search Description
-				</h2>
-				<p class="m-0 whitespace-pre-wrap text-sm leading-relaxed text-slate-600">
+			<InfoSection
+				title="Details"
+				fields={[
+					{ label: 'Subject', value: subjects.label(subject), href: subjectHref(subject) },
+					{
+						label: 'Subject Type',
+						value: log.subject_type.charAt(0).toUpperCase() + log.subject_type.slice(1)
+					},
+					{ label: 'Repository', value: log.repository },
+					{ label: 'Search Date', value: new Date(log.search_date).toLocaleDateString() },
+					{ label: 'Outcome', value: formatOutcome(log.outcome) }
+				]}
+			/>
+
+			<InfoSection title="Search Description">
+				<p class="m-0 whitespace-pre-wrap text-sm leading-relaxed text-foreground">
 					{log.search_description}
 				</p>
-			</div>
+			</InfoSection>
 
 			{#if log.notes}
-				<div class="mb-6">
-					<h2 class="m-0 mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-						Notes
-					</h2>
-					<p class="m-0 whitespace-pre-wrap text-sm leading-relaxed text-slate-600">
+				<InfoSection title="Notes">
+					<p class="m-0 whitespace-pre-wrap text-sm leading-relaxed text-foreground">
 						{log.notes}
 					</p>
-				</div>
+				</InfoSection>
 			{/if}
 
 			<div

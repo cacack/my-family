@@ -3116,13 +3116,21 @@ func (ss *StrictServer) GetValidationIssues(ctx context.Context, request GetVali
 	issues := make([]ValidationIssue, len(page.Issues))
 	for i, r := range page.Issues {
 		issues[i] = ValidationIssue{
-			Severity: ValidationIssueSeverity(r.Severity),
-			Code:     r.Code,
-			Message:  r.Message,
-			RecordId: r.RecordID,
+			Severity:        ValidationIssueSeverity(r.Severity),
+			Code:            r.Code,
+			Message:         r.Message,
+			RecordId:        r.RecordID,
+			RelatedRecordId: r.RelatedRecordID,
 		}
-		if r.RelatedRecordID != nil {
-			issues[i].RelatedRecordId = r.RelatedRecordID
+		if r.RecordType != "" {
+			recordType := ValidationIssueRecordType(r.RecordType)
+			issues[i].RecordType = &recordType
+			issues[i].RecordName = &r.RecordName
+		}
+		if r.RelatedRecordType != "" {
+			relatedType := ValidationIssueRelatedRecordType(r.RelatedRecordType)
+			issues[i].RelatedRecordType = &relatedType
+			issues[i].RelatedRecordName = &r.RelatedRecordName
 		}
 	}
 

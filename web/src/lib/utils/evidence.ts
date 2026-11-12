@@ -51,6 +51,29 @@ export function subjectRoute(factType: string): string {
 	return factType.startsWith('family_') ? 'families' : 'persons';
 }
 
+/** Whether a fact is about a person or a family (person_* or family_*). */
+export function subjectTypeOf(factType: string): 'person' | 'family' {
+	return factType.startsWith('family_') ? 'family' : 'person';
+}
+
+/**
+ * A conflict's description as a reader wants it. The server writes
+ * "Conflicting conclusions for person_birth on subject <uuid>"; this shows the
+ * fact type readably and the subject by name, or as "this subject" until the
+ * name is known, so no raw id reaches the page (#1108).
+ */
+export function readableConflictDescription(
+	description: string,
+	factType: string,
+	subjectId: string,
+	subjectName: string | undefined
+): string {
+	return description
+		.replaceAll(`subject ${subjectId}`, subjectName ?? 'this subject')
+		.replaceAll(subjectId, subjectName ?? 'this subject')
+		.replaceAll(factType, formatFactType(factType));
+}
+
 /** Format a date string for display, with fallback to the raw string. */
 export function formatDate(dateStr: string): string {
 	try {

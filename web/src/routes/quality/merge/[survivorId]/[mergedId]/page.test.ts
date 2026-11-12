@@ -105,6 +105,18 @@ describe('Merge Picker Page', () => {
 		});
 	});
 
+	it('shows the shared header and an empty field as — (#1108)', async () => {
+		const { container } = render(Page);
+		await screen.findByText('Survivor (keeps existing ID)');
+		expect(screen.getByRole('heading', { level: 1, name: 'Merge Persons' })).toBeDefined();
+		expect(screen.getByRole('link', { name: /Quality/ }).getAttribute('href')).toBe('/quality');
+		expect(container.textContent).not.toContain('(empty)');
+		const survivorDeathPlace = [...container.querySelectorAll('dt')].find(
+			(dt) => dt.textContent === 'Death Place'
+		);
+		expect(survivorDeathPlace?.nextElementSibling?.textContent?.trim()).toBe('—');
+	});
+
 	it('rejects self-merge before fetching', async () => {
 		mockPageParams = { survivorId: 'p-same', mergedId: 'p-same' };
 		render(Page);

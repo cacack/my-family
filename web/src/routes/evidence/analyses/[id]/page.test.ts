@@ -16,7 +16,8 @@ vi.mock('#lib/api/client.js', async (importOriginal) => {
 			getEvidenceAnalysis: vi.fn(),
 			createEvidenceAnalysis: vi.fn(),
 			updateEvidenceAnalysis: vi.fn(),
-			deleteEvidenceAnalysis: vi.fn()
+			deleteEvidenceAnalysis: vi.fn(),
+			getPerson: vi.fn()
 		}
 	};
 });
@@ -73,6 +74,19 @@ describe('Analysis Detail Page', () => {
 			const subjectLink = container.querySelector('a[href="/persons/p-1-abcd-efgh"]');
 			expect(subjectLink).not.toBeNull();
 		});
+	});
+
+	it('names the subject instead of showing its id (#1108)', async () => {
+		vi.mocked(apiModule.api.getPerson).mockResolvedValue({
+			id: 'p-1-abcd-efgh',
+			given_name: 'Ada',
+			surname: 'Lovelace'
+		} as apiModule.PersonDetail);
+		render(Page);
+		const link = await screen.findByRole('link', { name: 'Ada Lovelace' });
+		expect(link.getAttribute('href')).toBe('/persons/p-1-abcd-efgh');
+		expect(apiModule.api.getPerson).toHaveBeenCalledWith('p-1-abcd-efgh');
+		expect(document.body.textContent).not.toContain('p-1-abcd-efgh');
 	});
 
 	it('displays notes section', async () => {

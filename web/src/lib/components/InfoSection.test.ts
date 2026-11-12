@@ -35,6 +35,23 @@ describe('InfoSection', () => {
 		]);
 	});
 
+	it('links a field with an href, but not an empty one', () => {
+		const { container } = render(InfoSection, {
+			props: {
+				title: 'Details',
+				fields: [
+					{ label: 'Subject', value: 'Ada Lovelace', href: '/persons/p-1' },
+					{ label: 'Other', value: '', href: '/persons/p-2' }
+				]
+			}
+		});
+		const links = container.querySelectorAll('dd a');
+		expect(links).toHaveLength(1);
+		expect(links[0].getAttribute('href')).toBe('/persons/p-1');
+		expect(links[0].textContent).toBe('Ada Lovelace');
+		expect(rows(container)[1]).toEqual(['Other', '—']);
+	});
+
 	it('leaves out empty fields with hideEmpty', () => {
 		const { container } = render(InfoSection, {
 			props: {
