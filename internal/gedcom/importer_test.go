@@ -2126,7 +2126,6 @@ func TestImportEventWithStructuredAddress(t *testing.T) {
 2 DATE 15 JAN 1850
 2 PLAC First Methodist Church
 2 ADDR 123 Church Street
-3 CONT Building A
 3 ADR1 123 Church Street
 3 ADR2 Building A
 3 CITY Chicago
@@ -2283,7 +2282,6 @@ func TestImportRepositoryWithAddress(t *testing.T) {
 0 @R1@ REPO
 1 NAME Family History Library
 1 ADDR 35 N West Temple St
-2 CONT Suite 100
 2 ADR1 35 N West Temple St
 2 ADR2 Suite 100
 2 CITY Salt Lake City
@@ -2311,7 +2309,8 @@ func TestImportRepositoryWithAddress(t *testing.T) {
 	if repo.Name != "Family History Library" {
 		t.Errorf("Name = %s, want 'Family History Library'", repo.Name)
 	}
-	// Address should be combined from the lines of the ADDR payload
+	// Address should be combined from the ADDR payload and ADR2, which the
+	// payload lacks (#1291)
 	if repo.Address != "35 N West Temple St, Suite 100" {
 		t.Errorf("Address = %s, want '35 N West Temple St, Suite 100'", repo.Address)
 	}

@@ -19,7 +19,8 @@ import (
 // Since gedcom-go v3.6.0 the ADDR payload, the only address text in GEDCOM
 // 7.0 and the common case in 5.x, is in Address.Full, and Line1-Line3 hold
 // only ADR1-ADR3. Ann's residence and the repository give their address only
-// as the payload, Bob's residence only as ADR1.
+// as the payload, Bob's residence only as ADR1. Cal's gives a one-line
+// payload plus an ADR2 the payload lacks, as many 5.x exporters write it.
 
 const addressGedcom = `0 HEAD
 1 GEDC
@@ -39,6 +40,14 @@ const addressGedcom = `0 HEAD
 2 ADDR
 3 ADR1 5 Elm St
 3 CITY Boston
+0 @I3@ INDI
+1 NAME Cal /Doe/
+1 RESI
+2 DATE 1900
+2 ADDR 9 Oak St
+3 ADR1 9 Oak St
+3 ADR2 Rear House
+3 CITY Salem
 0 @R1@ REPO
 1 NAME County Archive
 1 ADDR 1 Archive Way
@@ -62,7 +71,7 @@ func TestGedcomImport_AddressTextSurvivesRoundTrip(t *testing.T) {
 					out := buf.String()
 					// The text is written as the ADDR payload, not as ADR1
 					// under an empty ADDR.
-					for _, want := range []string{"2 ADDR 12 Mill St\n3 CONT Apt 4\n", "2 ADDR 5 Elm St\n", "1 ADDR 1 Archive Way\n"} {
+					for _, want := range []string{"2 ADDR 12 Mill St\n3 CONT Apt 4\n", "2 ADDR 5 Elm St\n", "2 ADDR 9 Oak St\n3 CONT Rear House\n", "1 ADDR 1 Archive Way\n"} {
 						if !strings.Contains(out, want) {
 							t.Errorf("export lacks %q:\n%s", want, out)
 						}
@@ -100,6 +109,7 @@ func assertImportedAddresses(t *testing.T, ctx context.Context, st stores) {
 	}{
 		{"Ann", domain.Address{Line1: "12 Mill St", Line2: "Apt 4", City: "Lowell"}},
 		{"Bob", domain.Address{Line1: "5 Elm St", City: "Boston"}},
+		{"Cal", domain.Address{Line1: "9 Oak St", Line2: "Rear House", City: "Salem"}},
 	} {
 		person := findPerson(t, ctx, st.read, tc.given)
 		events, err := st.read.ListEventsForPerson(ctx, domain.MainBranchID, person.ID)

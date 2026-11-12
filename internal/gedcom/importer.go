@@ -1624,19 +1624,25 @@ func extractEventsFromIndividual(indi *gedcom.Individual, personID uuid.UUID) ([
 }
 
 // gedcomAddressLines returns the non-empty lines of an address's text: the
-// lines of the ADDR payload (Full) when it has one, and otherwise ADR1-ADR3.
-// Since gedcom-go v3.6.0 Line1-Line3 hold only ADR1-ADR3; the payload, the
-// only address text in GEDCOM 7.0, is in Full.
+// lines of the ADDR payload (Full), then each ADR1-ADR3 value that is not
+// already one of them. Since gedcom-go v3.6.0 Line1-Line3 hold only
+// ADR1-ADR3; the payload, the only address text in GEDCOM 7.0, is in Full.
+// 5.x exporters often write a one-line payload and the rest of the address
+// only in ADR2/ADR3, so those values are kept too (#1291).
 func gedcomAddressLines(addr *gedcom.Address) []string {
 	candidates := []string{addr.Line1, addr.Line2, addr.Line3}
 	if addr.Full != "" {
-		candidates = strings.Split(addr.Full, "\n")
+		candidates = append(strings.Split(addr.Full, "\n"), candidates...)
 	}
 	var lines []string
+	seen := make(map[string]bool)
 	for _, line := range candidates {
-		if line != "" {
-			lines = append(lines, line)
+		key := strings.TrimSpace(line)
+		if key == "" || seen[key] {
+			continue
 		}
+		seen[key] = true
+		lines = append(lines, line)
 	}
 	return lines
 }
