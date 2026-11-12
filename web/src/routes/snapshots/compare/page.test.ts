@@ -237,7 +237,7 @@ describe('Snapshot comparison page', () => {
 		render(Page);
 
 		expect(screen.getByRole('heading', { level: 1, name: 'Snapshot comparison' })).toBeDefined();
-		expect(screen.getByRole('link', { name: /All snapshots/ }).getAttribute('href')).toBe('/snapshots');
+		expect(screen.getByRole('link', { name: /Research Snapshots/ }).getAttribute('href')).toBe('/snapshots');
 	});
 
 	it('announces the loaded comparison to assistive tech', async () => {
