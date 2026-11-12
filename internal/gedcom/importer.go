@@ -73,27 +73,29 @@ type PersonNameData struct {
 
 // PersonData contains parsed person data ready for creation.
 type PersonData struct {
-	ID             uuid.UUID
-	GedcomXref     string
-	GivenName      string
-	Surname        string
-	NamePrefix     string          // Dr., Rev., Sir (NPFX)
-	NameSuffix     string          // Jr., III, PhD (NSFX)
-	SurnamePrefix  string          // von, de, van (SPFX)
-	Nickname       string          // Informal name (NICK)
-	NameType       domain.NameType // birth, married, aka (TYPE)
-	Gender         domain.Gender
-	BirthDate      string
-	BirthPlace     string
-	BirthPlaceLat  *string // Latitude in GEDCOM format (e.g., "N42.3601")
-	BirthPlaceLong *string // Longitude in GEDCOM format (e.g., "W71.0589")
-	DeathDate      string
-	DeathPlace     string
-	DeathPlaceLat  *string // Latitude in GEDCOM format
-	DeathPlaceLong *string // Longitude in GEDCOM format
-	Notes          string
-	BirthNotes     string // NOTEs under BIRT, joined with noteJoin (#1250)
-	DeathNotes     string // NOTEs under DEAT, joined with noteJoin (#1250)
+	ID              uuid.UUID
+	GedcomXref      string
+	GivenName       string
+	Surname         string
+	NamePrefix      string          // Dr., Rev., Sir (NPFX)
+	NameSuffix      string          // Jr., III, PhD (NSFX)
+	SurnamePrefix   string          // von, de, van (SPFX)
+	Nickname        string          // Informal name (NICK)
+	NameType        domain.NameType // birth, married, aka (TYPE)
+	Gender          domain.Gender
+	BirthDate       string
+	BirthPlace      string
+	BirthPlaceLat   *string // Latitude in GEDCOM format (e.g., "N42.3601")
+	BirthPlaceLong  *string // Longitude in GEDCOM format (e.g., "W71.0589")
+	DeathDate       string
+	DeathPlace      string
+	DeathPlaceLat   *string // Latitude in GEDCOM format
+	DeathPlaceLong  *string // Longitude in GEDCOM format
+	Notes           string
+	BirthNotes      string // NOTEs under BIRT, joined with noteJoin (#1250)
+	DeathNotes      string // NOTEs under DEAT, joined with noteJoin (#1250)
+	BirthTypeDetail string // TYPE under BIRT (#1284)
+	DeathTypeDetail string // TYPE under DEAT (#1284)
 
 	// Names contains all name variants from the GEDCOM file.
 	// The first name is also stored in the main GivenName/Surname fields.
@@ -111,19 +113,20 @@ type PersonData struct {
 
 // FamilyData contains parsed family data ready for creation.
 type FamilyData struct {
-	ID                uuid.UUID
-	GedcomXref        string
-	Partner1ID        *uuid.UUID
-	Partner2ID        *uuid.UUID
-	RelationshipType  domain.RelationType
-	MarriageDate      string
-	MarriagePlace     string
-	MarriagePlaceLat  *string // Latitude in GEDCOM format (e.g., "N39.7817")
-	MarriagePlaceLong *string // Longitude in GEDCOM format (e.g., "W89.6501")
-	MarriageNotes     string  // NOTEs under MARR, joined with noteJoin (#1250)
-	Notes             string  // the record's own NOTEs, joined with noteJoin (#1267)
-	ChildIDs          []uuid.UUID
-	ChildRelTypes     []domain.ChildRelationType
+	ID                 uuid.UUID
+	GedcomXref         string
+	Partner1ID         *uuid.UUID
+	Partner2ID         *uuid.UUID
+	RelationshipType   domain.RelationType
+	MarriageDate       string
+	MarriagePlace      string
+	MarriagePlaceLat   *string // Latitude in GEDCOM format (e.g., "N39.7817")
+	MarriagePlaceLong  *string // Longitude in GEDCOM format (e.g., "W89.6501")
+	MarriageNotes      string  // NOTEs under MARR, joined with noteJoin (#1250)
+	MarriageTypeDetail string  // TYPE under MARR (#1284)
+	Notes              string  // the record's own NOTEs, joined with noteJoin (#1267)
+	ChildIDs           []uuid.UUID
+	ChildRelTypes      []domain.ChildRelationType
 
 	// ExternalIDs are GEDCOM 7.0 external identifiers (EXID tags) linking this
 	// family to records in external systems.
@@ -627,6 +630,7 @@ func parseIndividual(indi *gedcom.Individual, _ *gedcom.Document, result *Import
 			person.BirthDate = event.Date
 			person.BirthPlace = event.PlaceName()
 			person.BirthNotes = eventNotes(event)
+			person.BirthTypeDetail = event.EventTypeDetail
 			// Extract coordinates from PlaceDetail if available
 			if event.PlaceDetail != nil && event.PlaceDetail.Coordinates != nil {
 				if event.PlaceDetail.Coordinates.Latitude != "" {
@@ -649,6 +653,7 @@ func parseIndividual(indi *gedcom.Individual, _ *gedcom.Document, result *Import
 			person.DeathDate = event.Date
 			person.DeathPlace = event.PlaceName()
 			person.DeathNotes = eventNotes(event)
+			person.DeathTypeDetail = event.EventTypeDetail
 			// Extract coordinates from PlaceDetail if available
 			if event.PlaceDetail != nil && event.PlaceDetail.Coordinates != nil {
 				if event.PlaceDetail.Coordinates.Latitude != "" {
@@ -771,6 +776,7 @@ func parseFamily(fam *gedcom.Family, doc *gedcom.Document, result *ImportResult)
 			family.MarriageDate = event.Date
 			family.MarriagePlace = event.PlaceName()
 			family.MarriageNotes = eventNotes(event)
+			family.MarriageTypeDetail = event.EventTypeDetail
 			// Extract coordinates from PlaceDetail if available
 			if event.PlaceDetail != nil && event.PlaceDetail.Coordinates != nil {
 				if event.PlaceDetail.Coordinates.Latitude != "" {

@@ -76,8 +76,10 @@ type PersonReadModel struct {
 	DeathPlaceLat       *string               `json:"death_place_lat,omitempty"`
 	DeathPlaceLong      *string               `json:"death_place_long,omitempty"`
 	Notes               string                `json:"notes,omitempty"`
-	BirthNotes          string                `json:"birth_notes,omitempty"` // NOTEs under BIRT (#1250)
-	DeathNotes          string                `json:"death_notes,omitempty"` // NOTEs under DEAT (#1250)
+	BirthNotes          string                `json:"birth_notes,omitempty"`       // NOTEs under BIRT (#1250)
+	DeathNotes          string                `json:"death_notes,omitempty"`       // NOTEs under DEAT (#1250)
+	BirthTypeDetail     string                `json:"birth_type_detail,omitempty"` // TYPE under BIRT (#1284)
+	DeathTypeDetail     string                `json:"death_type_detail,omitempty"` // TYPE under DEAT (#1284)
 	ResearchStatus      domain.ResearchStatus `json:"research_status,omitempty"`
 	BrickWallNote       string                `json:"brick_wall_note,omitempty"`
 	BrickWallSince      *time.Time            `json:"brick_wall_since,omitempty"`
@@ -90,24 +92,25 @@ type PersonReadModel struct {
 // not stored: every read resolves them from the person overlay of the branch
 // it reads, and SaveFamily ignores them (#1207, see family_names.go).
 type FamilyReadModel struct {
-	ID                uuid.UUID           `json:"id"`
-	Partner1ID        *uuid.UUID          `json:"partner1_id,omitempty"`
-	Partner1GivenName string              `json:"partner1_given_name,omitempty"`
-	Partner1Surname   string              `json:"partner1_surname,omitempty"`
-	Partner2ID        *uuid.UUID          `json:"partner2_id,omitempty"`
-	Partner2GivenName string              `json:"partner2_given_name,omitempty"`
-	Partner2Surname   string              `json:"partner2_surname,omitempty"`
-	RelationshipType  domain.RelationType `json:"relationship_type,omitempty"`
-	MarriageDateRaw   string              `json:"marriage_date_raw,omitempty"`
-	MarriageDateSort  *time.Time          `json:"-"` // internal sort key; BC years cannot encode as JSON (#1065)
-	MarriagePlace     string              `json:"marriage_place,omitempty"`
-	MarriagePlaceLat  *string             `json:"marriage_place_lat,omitempty"`
-	MarriagePlaceLong *string             `json:"marriage_place_long,omitempty"`
-	MarriageNotes     string              `json:"marriage_notes,omitempty"` // NOTEs under MARR (#1250)
-	Notes             string              `json:"notes,omitempty"`          // the FAM record's own NOTEs (#1267)
-	ChildCount        int                 `json:"child_count"`
-	Version           int64               `json:"version"`
-	UpdatedAt         time.Time           `json:"updated_at"`
+	ID                 uuid.UUID           `json:"id"`
+	Partner1ID         *uuid.UUID          `json:"partner1_id,omitempty"`
+	Partner1GivenName  string              `json:"partner1_given_name,omitempty"`
+	Partner1Surname    string              `json:"partner1_surname,omitempty"`
+	Partner2ID         *uuid.UUID          `json:"partner2_id,omitempty"`
+	Partner2GivenName  string              `json:"partner2_given_name,omitempty"`
+	Partner2Surname    string              `json:"partner2_surname,omitempty"`
+	RelationshipType   domain.RelationType `json:"relationship_type,omitempty"`
+	MarriageDateRaw    string              `json:"marriage_date_raw,omitempty"`
+	MarriageDateSort   *time.Time          `json:"-"` // internal sort key; BC years cannot encode as JSON (#1065)
+	MarriagePlace      string              `json:"marriage_place,omitempty"`
+	MarriagePlaceLat   *string             `json:"marriage_place_lat,omitempty"`
+	MarriagePlaceLong  *string             `json:"marriage_place_long,omitempty"`
+	MarriageNotes      string              `json:"marriage_notes,omitempty"`       // NOTEs under MARR (#1250)
+	MarriageTypeDetail string              `json:"marriage_type_detail,omitempty"` // TYPE under MARR (#1284)
+	Notes              string              `json:"notes,omitempty"`                // the FAM record's own NOTEs (#1267)
+	ChildCount         int                 `json:"child_count"`
+	Version            int64               `json:"version"`
+	UpdatedAt          time.Time           `json:"updated_at"`
 }
 
 // FamilyChildReadModel represents a child in a family. The person names are

@@ -61,6 +61,9 @@ type PersonCreated struct {
 	// Notes under the BIRT and DEAT events come from GEDCOM import (#1250).
 	BirthNotes string `json:"birth_notes,omitempty"`
 	DeathNotes string `json:"death_notes,omitempty"`
+	// The TYPE under the BIRT and DEAT events comes from GEDCOM import (#1284).
+	BirthTypeDetail string `json:"birth_type_detail,omitempty"`
+	DeathTypeDetail string `json:"death_type_detail,omitempty"`
 }
 
 func (e PersonCreated) EventType() string      { return "PersonCreated" }
@@ -144,6 +147,8 @@ type FamilyCreated struct {
 	MarriagePlaceLong *string `json:"marriage_place_long,omitempty"`
 	// MarriageNotes are the notes under the MARR event, set at import (#1250).
 	MarriageNotes string `json:"marriage_notes,omitempty"`
+	// MarriageTypeDetail is the TYPE under the MARR event, set at import (#1284).
+	MarriageTypeDetail string `json:"marriage_type_detail,omitempty"`
 	// Notes are the FAM record's own level-1 NOTEs, set at import (#1267).
 	Notes string `json:"notes,omitempty"`
 }

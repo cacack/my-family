@@ -745,7 +745,7 @@ func toGedcomIndividual(p repository.PersonReadModel, sourceXrefs map[uuid.UUID]
 
 	// Birth event
 	if hasBirthField(p) {
-		birthEvent := &gedcom.Event{Type: gedcom.EventBirth}
+		birthEvent := &gedcom.Event{Type: gedcom.EventBirth, EventTypeDetail: p.BirthTypeDetail}
 		birthEvent.NoteXRefs, birthEvent.InlineNotes = splitNotes(p.BirthNotes, noteJoin)
 		if p.BirthDateRaw != "" {
 			birthEvent.Date = p.BirthDateRaw
@@ -770,7 +770,7 @@ func toGedcomIndividual(p repository.PersonReadModel, sourceXrefs map[uuid.UUID]
 
 	// Death event
 	if hasDeathField(p) {
-		deathEvent := &gedcom.Event{Type: gedcom.EventDeath}
+		deathEvent := &gedcom.Event{Type: gedcom.EventDeath, EventTypeDetail: p.DeathTypeDetail}
 		deathEvent.NoteXRefs, deathEvent.InlineNotes = splitNotes(p.DeathNotes, noteJoin)
 		if p.DeathDateRaw != "" {
 			deathEvent.Date = p.DeathDateRaw
@@ -952,15 +952,15 @@ func toGedcomSourceCitations(citations []repository.CitationReadModel, sourceXre
 // person's birth or death, or the family's marriage, held on the record itself
 // rather than as a life event, is exported.
 func hasBirthField(p repository.PersonReadModel) bool {
-	return p.BirthDateRaw != "" || p.BirthPlace != "" || p.BirthNotes != ""
+	return p.BirthDateRaw != "" || p.BirthPlace != "" || p.BirthNotes != "" || p.BirthTypeDetail != ""
 }
 
 func hasDeathField(p repository.PersonReadModel) bool {
-	return p.DeathDateRaw != "" || p.DeathPlace != "" || p.DeathNotes != ""
+	return p.DeathDateRaw != "" || p.DeathPlace != "" || p.DeathNotes != "" || p.DeathTypeDetail != ""
 }
 
 func hasMarriageField(f repository.FamilyReadModel) bool {
-	return f.RelationshipType == domain.RelationMarriage || f.MarriageDateRaw != "" || f.MarriagePlace != "" || f.MarriageNotes != ""
+	return f.RelationshipType == domain.RelationMarriage || f.MarriageDateRaw != "" || f.MarriagePlace != "" || f.MarriageNotes != "" || f.MarriageTypeDetail != ""
 }
 
 // fieldCitations returns the citations of a birth, death or marriage held on
@@ -1136,7 +1136,7 @@ func toGedcomFamily(f repository.FamilyReadModel, personXrefs, sourceXrefs map[u
 
 	// Marriage event
 	if hasMarriageField(f) {
-		marriageEvent := &gedcom.Event{Type: gedcom.EventMarriage}
+		marriageEvent := &gedcom.Event{Type: gedcom.EventMarriage, EventTypeDetail: f.MarriageTypeDetail}
 		marriageEvent.NoteXRefs, marriageEvent.InlineNotes = splitNotes(f.MarriageNotes, noteJoin)
 		if f.MarriageDateRaw != "" {
 			marriageEvent.Date = f.MarriageDateRaw
