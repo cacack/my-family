@@ -1739,6 +1739,14 @@ func (p *Projector) projectPersonMerged(ctx context.Context, e domain.PersonMerg
 			if v, ok := value.(string); ok {
 				survivor.DeathPlace = v
 			}
+		case "birth_type_detail":
+			if v, ok := value.(string); ok {
+				survivor.BirthTypeDetail = v
+			}
+		case "death_type_detail":
+			if v, ok := value.(string); ok {
+				survivor.DeathTypeDetail = v
+			}
 		case "notes":
 			if v, ok := value.(string); ok {
 				survivor.Notes = v

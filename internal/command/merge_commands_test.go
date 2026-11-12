@@ -609,3 +609,46 @@ func TestMergePersons_SameChildFamily_NoConflict(t *testing.T) {
 		t.Errorf("MergePersons should succeed when merged has no child family, got %v", err)
 	}
 }
+
+func TestMergePersons_TypeDetailFollowsResolvedEvent(t *testing.T) {
+	// The birth/death TYPE goes with the resolved date or place (#1352): an
+	// empty merged TYPE replaces the survivor's when the birth date resolves
+	// to the merged person, and a death kept from the survivor keeps its TYPE.
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	survivor, _ := handler.CreatePerson(ctx, command.CreatePersonInput{GivenName: "John", Surname: "Doe", BirthDate: "1850", DeathDate: "1920"})
+	merged, _ := handler.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Johnny", Surname: "Doe", BirthDate: "1851", DeathDate: "1921"})
+	// TYPE is set only by GEDCOM import; set it on the rows the merge reads.
+	setTypes := func(id uuid.UUID, birth, death string) {
+		p, _ := readStore.GetPerson(ctx, domain.MainBranchID, id)
+		p.BirthTypeDetail, p.DeathTypeDetail = birth, death
+		if err := readStore.SavePerson(ctx, domain.MainBranchID, p); err != nil {
+			t.Fatal(err)
+		}
+	}
+	setTypes(survivor.ID, "Hospital birth", "Accident")
+	setTypes(merged.ID, "", "Illness")
+
+	result, err := handler.MergePersons(ctx, command.MergePersonsInput{
+		SurvivorID: survivor.ID, MergedID: merged.ID,
+		SurvivorVersion: survivor.Version, MergedVersion: merged.Version,
+		FieldResolution: map[string]string{"birth_date": "merged"},
+	})
+	if err != nil {
+		t.Fatalf("MergePersons failed: %v", err)
+	}
+	want := []string{"birth_date", "birth_type_detail"}
+	if len(result.Summary.FieldsUpdated) != len(want) || result.Summary.FieldsUpdated[0] != want[0] || result.Summary.FieldsUpdated[1] != want[1] {
+		t.Errorf("FieldsUpdated = %v, want %v", result.Summary.FieldsUpdated, want)
+	}
+	person, _ := readStore.GetPerson(ctx, domain.MainBranchID, survivor.ID)
+	if person.BirthDateRaw != "1851" || person.BirthTypeDetail != "" {
+		t.Errorf("birth = %q, TYPE %q; want 1851 with no TYPE", person.BirthDateRaw, person.BirthTypeDetail)
+	}
+	if person.DeathDateRaw != "1920" || person.DeathTypeDetail != "Accident" {
+		t.Errorf("death = %q, TYPE %q; want 1920, Accident", person.DeathDateRaw, person.DeathTypeDetail)
+	}
+}
