@@ -159,7 +159,7 @@
 			{/if}
 
 			<Dialog.Footer>
-				<Button type="button" variant="secondary" disabled={closing} onclick={oncancel}>
+				<Button type="button" variant="outline" disabled={closing} onclick={oncancel}>
 					Cancel
 				</Button>
 				<Button type="submit" variant="destructive" disabled={closing || !outcome}>

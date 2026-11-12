@@ -303,9 +303,9 @@
 	</a>
 {/snippet}
 
-<div class="mx-auto max-w-3xl p-6">
+<div class="mx-auto max-w-page-detail p-6">
 	<ActionBar
-		back={{ href: '/evidence', label: 'Evidence' }}
+		back={{ href: '/evidence', label: 'Evidence Analysis' }}
 		actions={summary && !editing ? recordActions : undefined}
 	/>
 

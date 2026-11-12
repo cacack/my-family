@@ -25,7 +25,7 @@
 	const rootName = $derived.by(() => (pedigree?.root ? formatPersonName(pedigree.root) : null));
 	const back = useBackLink(() => ({
 		href: `/persons/${personId}`,
-		label: rootName ? `Back to ${rootName}` : 'Back'
+		label: rootName ?? 'Back'
 	}));
 
 	// Screen reader announcement helper

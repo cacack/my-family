@@ -272,7 +272,7 @@
 	<title>Merge Persons | My Family</title>
 </svelte:head>
 
-<div class="mx-auto max-w-5xl space-y-6 p-6">
+<div class="mx-auto max-w-page-list space-y-6 p-6">
 	<PageHeader title="Merge Persons" back={{ href: '/quality', label: 'Quality' }}>
 		<p class="mt-1 max-w-[46rem] text-sm text-muted-foreground">
 			Choose which value to keep for each field. The merged record will be deleted. If these are

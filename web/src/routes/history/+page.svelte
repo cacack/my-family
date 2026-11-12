@@ -28,7 +28,7 @@
 
 <style>
 	.history-page {
-		max-width: 900px;
+		max-width: var(--page-width-list);
 		margin: 0 auto;
 		padding: 1.5rem;
 	}

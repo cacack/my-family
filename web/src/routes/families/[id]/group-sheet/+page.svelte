@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { api, recordLoadError, type FamilyGroupSheet } from '#lib/api/client.js';
+	import { api, formatPersonName, recordLoadError, type FamilyGroupSheet } from '#lib/api/client.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import ActionBar from '#lib/components/ActionBar.svelte';
 	import FamilyGroupSheetComponent from '#lib/components/FamilyGroupSheet.svelte';
@@ -39,6 +39,14 @@
 		return parts.length > 0 ? `${parts.join(' & ')} - Group Sheet` : 'Family Group Sheet';
 	}
 
+	// The family page's title (its h1), which the back link names.
+	function familyName(): string {
+		if (!data) return 'Family';
+		const p1 = data.husband ? formatPersonName(data.husband) : 'Unknown';
+		const p2 = data.wife ? formatPersonName(data.wife) : undefined;
+		return p2 ? `${p1} & ${p2}` : p1;
+	}
+
 	$effect(() => {
 		const id = page.params.id;
 		if (id) {
@@ -52,7 +60,7 @@
 </svelte:head>
 
 <div class="group-sheet-page">
-	<ActionBar back={{ href: `/families/${page.params.id}`, label: 'Back to Family' }}>
+	<ActionBar back={{ href: `/families/${page.params.id}`, label: familyName() }}>
 		{#snippet actions()}
 			<Button onclick={handlePrint}>Print</Button>
 		{/snippet}
@@ -69,7 +77,7 @@
 
 <style>
 	.group-sheet-page {
-		max-width: 900px;
+		max-width: var(--page-width-detail);
 		margin: 0 auto;
 		padding: 1.5rem;
 	}
