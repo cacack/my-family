@@ -4,10 +4,12 @@
  * heading", "Back links") hold on every route.
  *
  * At 1280px every list page's h1 starts at one x, so moving between two of
- * them does not shift the heading, and every detail page's heading block (its
- * back link, else its h1) starts at one x. A record page (person, family,
- * source, evidence) sets its h1 inside the record's card, so its h1 sits the
- * card's padding further in; the block still starts at the container edge.
+ * them does not shift the heading, and every detail page's h1 starts at one x.
+ * Known exception (#1114, open): a record page (person, family, source,
+ * evidence) and the family group sheet set their h1 inside a card, so the h1
+ * sits the card's padding (and avatar or icon) further in. Those pages are listed in
+ * RECORD_PATHS; only their heading block (the back link) is held to the
+ * detail x, and their h1 must still sit right of it, inside the card.
  * Every h1 has one computed size and weight, and every back link reads its
  * destination's h1. Pages are classified by path below, so a page that picks
  * a third width fails here.
@@ -35,6 +37,19 @@ const DETAIL_PATHS = [
 	/^\/(import|relationship)$/
 ];
 const CHART_PATHS = /^\/(pedigree|descendancy)\//;
+// Detail pages whose h1 sits inside a card (the record card, the evidence
+// form, the group sheet's report card): the open part of #1114.
+const RECORD_PATHS = [
+	/^\/persons\/(?!add$|quick$)[^/]+$/,
+	/^\/families\/(?!add$)[^/]+(\/group-sheet)?$/,
+	/^\/sources\/[^/]+$/,
+	/^\/evidence\/[^/]+\/[^/]+$/
+];
+
+function isRecord(route: string): boolean {
+	const path = route.split('?')[0];
+	return RECORD_PATHS.some((p) => p.test(path));
+}
 
 function widthOf(route: string): Width {
 	const path = route.split('?')[0];
@@ -108,14 +123,22 @@ test.describe('at 1280px', () => {
 			(h) => h.left
 		);
 		expect(Object.keys(listX), `list pages' h1 left x: ${JSON.stringify(listX)}`).toHaveLength(1);
+		const detail = headings.filter((h) => h.width === 'detail');
 		const detailX = grouped(
-			headings.filter((h) => h.width === 'detail'),
-			(h) => h.start
+			detail.filter((h) => !isRecord(h.route)),
+			(h) => h.left
 		);
 		expect(
 			Object.keys(detailX),
-			`detail pages' heading left x: ${JSON.stringify(detailX)}`
+			`detail pages' h1 left x: ${JSON.stringify(detailX)}`
 		).toHaveLength(1);
+		const x = Number(Object.keys(detailX)[0]);
+		const records = detail.filter((h) => isRecord(h.route));
+		expect(records.length, 'record pages measured').toBeGreaterThan(0);
+		for (const { route, start, left } of records) {
+			expect(start, `${route}: heading block left x`).toBe(x);
+			expect(left, `${route}: h1 inside the record card`).toBeGreaterThan(x);
+		}
 		const fonts = grouped(headings, (h) => h.font);
 		expect(Object.keys(fonts), `h1 font size/weight: ${JSON.stringify(fonts)}`).toHaveLength(1);
 
