@@ -165,8 +165,10 @@ func (h *Handler) UpdateAssociation(ctx context.Context, input UpdateAssociation
 		return &UpdateAssociationResult{Version: current.Version}, nil
 	}
 
-	// Validate updated association
-	if err := testAssociation.Validate(); err != nil {
+	// Only the fields this update changes are validated: GEDCOM import stores
+	// RELA/ROLE text and self-references as written, and those stored values
+	// must not block an unrelated edit (e.g. notes only).
+	if err := changedFieldErrors(testAssociation.Validate(), changes); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidInput, err)
 	}
 
@@ -220,4 +222,27 @@ func equalStringSlices(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+// changedFieldErrors keeps the association validation errors whose field is
+// one of the changed fields and drops those on fields the update left alone.
+func changedFieldErrors(err error, changes map[string]any) error {
+	if err == nil {
+		return nil
+	}
+	errs := []error{err}
+	if joined, ok := err.(interface{ Unwrap() []error }); ok {
+		errs = joined.Unwrap()
+	}
+	var kept []error
+	for _, e := range errs {
+		var fieldErr domain.AssociationValidationError
+		if errors.As(e, &fieldErr) {
+			if _, changed := changes[fieldErr.Field]; !changed {
+				continue
+			}
+		}
+		kept = append(kept, e)
+	}
+	return errors.Join(kept...)
 }
