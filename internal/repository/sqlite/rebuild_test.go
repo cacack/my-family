@@ -16,8 +16,8 @@ import (
 
 // logOwnedTables are the tables in the shared database that ResetReadModel
 // keeps: the event log, the branch registry, the snapshot registry and the
-// rebuild state, which must outlive the reset.
-var logOwnedTables = map[string]bool{"events": true, "streams": true, "branches": true, "snapshots": true, "rebuild_state": true}
+// rebuild state and the schema version, which must outlive the reset.
+var logOwnedTables = map[string]bool{"events": true, "streams": true, "branches": true, "snapshots": true, "rebuild_state": true, "read_model_schema": true}
 
 // TestResetReadModel_CoversEveryReadModelTable fails when a read-model table is
 // added without being added to the reset list, which would let a rebuild
@@ -160,5 +160,43 @@ func TestRebuildState_RoundTripAndOutlivesReset(t *testing.T) {
 	}
 	if err := store.ClearRebuildState(ctx); err == nil {
 		t.Error("ClearRebuildState on a closed db succeeded")
+	}
+}
+
+// TestSchemaVersion_RoundTripAndOutlivesReset covers the read-model schema
+// stamp (#680): none on a new database, set, replaced, kept by the reset.
+func TestSchemaVersion_RoundTripAndOutlivesReset(t *testing.T) {
+	ctx := context.Background()
+	db, cleanup := newTempDB(t)
+	defer cleanup()
+	store, err := sqlite.NewReadModelStore(db)
+	if err != nil {
+		t.Fatalf("read model store: %v", err)
+	}
+	if got, err := store.GetSchemaVersion(ctx); err != nil || got != 0 {
+		t.Fatalf("version before stamp = %d, %v; want 0", got, err)
+	}
+	for _, v := range []int{1, 7} {
+		if err := store.SetSchemaVersion(ctx, v); err != nil {
+			t.Fatalf("set %d: %v", v, err)
+		}
+	}
+	if err := store.ResetReadModel(ctx); err != nil {
+		t.Fatalf("reset: %v", err)
+	}
+	if got, err := store.GetSchemaVersion(ctx); err != nil || got != 7 {
+		t.Fatalf("version after reset = %d, %v; want the latest stamp", got, err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	if _, err := store.GetSchemaVersion(ctx); err == nil {
+		t.Error("GetSchemaVersion on a closed db succeeded")
+	}
+	if err := store.SetSchemaVersion(ctx, 1); err == nil {
+		t.Error("SetSchemaVersion on a closed db succeeded")
+	}
+	if err := store.ResetReadModel(ctx); err == nil {
+		t.Error("ResetReadModel on a closed db succeeded")
 	}
 }

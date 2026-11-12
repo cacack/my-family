@@ -418,6 +418,8 @@ func (m *mockReadModelStore) SaveRebuildState(ctx context.Context, state []byte)
 }
 func (m *mockReadModelStore) GetRebuildState(ctx context.Context) ([]byte, error) { return nil, nil }
 func (m *mockReadModelStore) ClearRebuildState(ctx context.Context) error         { return nil }
+func (m *mockReadModelStore) GetSchemaVersion(ctx context.Context) (int, error)   { return 0, nil }
+func (m *mockReadModelStore) SetSchemaVersion(ctx context.Context, v int) error   { return nil }
 func (m *mockReadModelStore) RecordProjectionFailure(ctx context.Context, f repository.ProjectionFailure) error {
 	return nil
 }

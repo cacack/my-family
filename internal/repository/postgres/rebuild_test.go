@@ -42,8 +42,8 @@ func TestResetReadModel_CoversEveryReadModelTable(t *testing.T) {
 		t.Fatalf("list tables: %v", err)
 	}
 	defer rows.Close()
-	// Tables ResetReadModel keeps; rebuild_state must outlive the reset.
-	logOwned := map[string]bool{"events": true, "streams": true, "branches": true, "snapshots": true, "rebuild_state": true}
+	// Tables ResetReadModel keeps; rebuild_state and read_model_schema must outlive the reset.
+	logOwned := map[string]bool{"events": true, "streams": true, "branches": true, "snapshots": true, "rebuild_state": true, "read_model_schema": true}
 	var schema []string
 	for rows.Next() {
 		var name string
@@ -150,5 +150,46 @@ func TestRebuildState_RoundTripAndOutlivesReset(t *testing.T) {
 	}
 	if got, err := store.GetRebuildState(ctx); err != nil || got != nil {
 		t.Fatalf("state after clear = %q, %v; want none", got, err)
+	}
+}
+
+// TestSchemaVersion_RoundTripAndOutlivesReset covers the read-model schema
+// stamp (#680): none on a new database, set, replaced, kept by the reset.
+func TestSchemaVersion_RoundTripAndOutlivesReset(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	db, cleanup := setupPostgres(t)
+	defer cleanup()
+	store, err := pgstore.NewReadModelStore(db)
+	if err != nil {
+		t.Fatalf("read model store: %v", err)
+	}
+	if got, err := store.GetSchemaVersion(ctx); err != nil || got != 0 {
+		t.Fatalf("version before stamp = %d, %v; want 0", got, err)
+	}
+	for _, v := range []int{1, 7} {
+		if err := store.SetSchemaVersion(ctx, v); err != nil {
+			t.Fatalf("set %d: %v", v, err)
+		}
+	}
+	if err := store.ResetReadModel(ctx); err != nil {
+		t.Fatalf("reset: %v", err)
+	}
+	if got, err := store.GetSchemaVersion(ctx); err != nil || got != 7 {
+		t.Fatalf("version after reset = %d, %v; want the latest stamp", got, err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	if _, err := store.GetSchemaVersion(ctx); err == nil {
+		t.Error("GetSchemaVersion on a closed db succeeded")
+	}
+	if err := store.SetSchemaVersion(ctx, 1); err == nil {
+		t.Error("SetSchemaVersion on a closed db succeeded")
+	}
+	if err := store.ResetReadModel(ctx); err == nil {
+		t.Error("ResetReadModel on a closed db succeeded")
 	}
 }

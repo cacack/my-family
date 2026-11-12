@@ -180,6 +180,9 @@ func runRebuild() error {
 	if result.BackfilledBrickWalls > 0 {
 		log.Printf("Logged the brick walls of %d persons marked before brick walls were kept in the event log", result.BackfilledBrickWalls)
 	}
+	if result.BackfilledSnapshots > 0 {
+		log.Printf("Logged %d snapshots created before snapshots were kept in the event log", result.BackfilledSnapshots)
+	}
 	log.Printf("Rebuilt the read model: %d events replayed", result.Events)
 	return nil
 }

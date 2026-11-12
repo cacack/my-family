@@ -11,7 +11,9 @@
 // Every SQL backend keeps all four stores (event log, read model, snapshots,
 // branch registry) in ONE database, which is the only topology the config
 // surface can express (DB-006). Each store runs its own DDL/migrations when it
-// is constructed, so opening the stores also brings the schema up to date.
+// is constructed, so opening the stores also brings the schema up to date. A
+// server's Open then refuses a read model stamped with another schema version
+// than this binary's, and asks for `myfamily rebuild` (#680, ADR-006).
 //
 // There is deliberately no silent fallback: if the selected backend cannot be
 // opened (unreachable PostgreSQL, or a SQLite file in a missing directory) Open
@@ -282,7 +284,8 @@ func OpenPostgres(connStr string, access Access) (*Stores, error) {
 
 // build constructs the four stores over db in a fixed order (read model first)
 // and closes db and releases lock if any construction fails, so a failed Open
-// leaks nothing.
+// leaks nothing. For AccessServe it then refuses a read model whose schema
+// version is not this binary's (repository.CheckReadModelSchema).
 func build(
 	backend Backend,
 	location string,
@@ -313,6 +316,14 @@ func build(
 	}
 	if s.Branches, err = newBranches(db); err != nil {
 		return fail("branch", err)
+	}
+	// A server never runs on a read model of another schema version, which it
+	// might not be able to read or write; the rebuild is what fixes that, so
+	// it is not checked (#680).
+	if access == AccessServe {
+		if err := repository.CheckReadModelSchema(context.Background(), s.Events, s.ReadModel); err != nil {
+			return nil, errors.Join(err, s.Close())
+		}
 	}
 	return s, nil
 }

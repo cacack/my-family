@@ -426,6 +426,20 @@ func (f *failingRead) ClearRebuildState(ctx context.Context) error {
 	return f.ReadModelStore.ClearRebuildState(ctx)
 }
 
+func (f *failingRead) GetSchemaVersion(ctx context.Context) (int, error) {
+	if err := f.err("get version"); err != nil {
+		return 0, err
+	}
+	return f.ReadModelStore.GetSchemaVersion(ctx)
+}
+
+func (f *failingRead) SetSchemaVersion(ctx context.Context, version int) error {
+	if err := f.err("stamp"); err != nil {
+		return err
+	}
+	return f.ReadModelStore.SetSchemaVersion(ctx, version)
+}
+
 func (f *failingRead) RecordProjectionFailure(ctx context.Context, failure repository.ProjectionFailure) error {
 	if err := f.err("record"); err != nil {
 		return err
@@ -435,7 +449,7 @@ func (f *failingRead) RecordProjectionFailure(ctx context.Context, failure repos
 
 func TestRebuildReadModel_ReportsStoreErrors(t *testing.T) {
 	for _, op := range []string{
-		"reset", "list persons", "list repositories", "get state", "save state", "clear state",
+		"reset", "list persons", "list repositories", "get state", "save state", "clear state", "stamp",
 	} {
 		t.Run(op, func(t *testing.T) {
 			ctx := context.Background()

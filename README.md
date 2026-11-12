@@ -125,8 +125,8 @@ no C toolchain.
 The read model is derived from the event log. If projecting an event fails after it was saved,
 the request still succeeds, the failure is logged, and every later `serve` start warns that the
 read model is out of sync. To repair it, stop the server, back up the database, and run
-`myfamily rebuild` with the same `DATABASE_URL` / `SQLITE_PATH`. It empties the read model and
-replays the whole event log into it.
+`myfamily rebuild` with the same `DATABASE_URL` / `SQLITE_PATH`. It drops and re-creates the
+read-model tables and replays the whole event log into them.
 The rebuild refuses to start while a server is running against the same database, and the
 server refuses to start while a rebuild is running; on SQLite the lock is a `.lock` file next to
 the database file, and on PostgreSQL a session advisory lock, so `DATABASE_URL` must not go
@@ -135,7 +135,14 @@ again. Brick walls set by a version from before they were kept in the event log 
 the first rebuild before its reset, so it keeps them. GEDCOM place
 coordinates and external IDs are in the log only for files imported by a version that has
 `myfamily rebuild`. For entities imported by an earlier version, the first rebuild logs them
-before its reset, so it keeps them, and later rebuilds replay them from the log.
+before its reset, so it keeps them, and later rebuilds replay them from the log. Snapshots created by a version
+from before they were kept in the event log are logged by the first rebuild too.
+
+The rebuild is also how a new version changes the read model's schema. The database records the
+read-model schema version, and when it does not match the version the binary needs, `serve`
+refuses to start and asks for `myfamily rebuild`; it never rebuilds on its own. A database
+created by a version from before this check has no recorded version, so the first `serve` of a
+newer version asks for one rebuild.
 
 ## API Endpoints
 

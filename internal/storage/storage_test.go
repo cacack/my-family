@@ -568,6 +568,51 @@ func TestSQLite_RebuildReadModel(t *testing.T) {
 	}
 }
 
+// TestSQLite_ServeRefusesReadModelOfAnotherSchema walks the operator path for
+// a schema change (#680): a database with events but no schema stamp, as
+// every database before #680 is, makes `serve` refuse to start with an
+// instruction to rebuild; the rebuild stamps it and `serve` starts again.
+func TestSQLite_ServeRefusesReadModelOfAnotherSchema(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "myfamily.db")
+	open := func(access Access) *Stores {
+		t.Helper()
+		stores, err := OpenSQLite(path, access)
+		if err != nil {
+			t.Fatalf("OpenSQLite(%v): %v", access, err)
+		}
+		return stores
+	}
+
+	stores := open(AccessServe)
+	createPerson(t, newServer(stores), "Ada", "Stamp")
+	if err := stores.ReadModel.SetSchemaVersion(ctx, 0); err != nil {
+		t.Fatalf("clear stamp: %v", err)
+	}
+	if err := stores.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+
+	_, err := OpenSQLite(path, AccessServe)
+	if !errors.Is(err, repository.ErrReadModelSchemaMismatch) || !strings.Contains(err.Error(), "myfamily rebuild") {
+		t.Fatalf("serve on an unstamped read model = %v, want ErrReadModelSchemaMismatch naming the rebuild", err)
+	}
+
+	stores = open(AccessRebuild)
+	if _, err := stores.RebuildReadModel(ctx); err != nil {
+		t.Fatalf("RebuildReadModel: %v", err)
+	}
+	if err := stores.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+
+	stores = open(AccessServe)
+	t.Cleanup(func() { _ = stores.Close() })
+	if n := countPersons(t, newServer(stores)); n != 1 {
+		t.Errorf("persons after rebuild = %d, want 1", n)
+	}
+}
+
 func TestMemory_RebuildReadModelRefused(t *testing.T) {
 	if _, err := OpenMemory().RebuildReadModel(context.Background()); !errors.Is(err, ErrRebuildMemory) {
 		t.Fatalf("RebuildReadModel on memory = %v, want ErrRebuildMemory", err)

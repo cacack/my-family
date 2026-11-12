@@ -120,6 +120,33 @@ func TestLegacySchemaRefusesBranchWrites(t *testing.T) {
 	}
 }
 
+// TestLegacySchemaResetRestoresBranchWrites proves ResetReadModel re-creates
+// the tables rather than only emptying them (#680): after it, a pre-#669 read
+// model carries the composite key and takes branch writes, so `myfamily
+// rebuild` is the fix the refusal names.
+func TestLegacySchemaResetRestoresBranchWrites(t *testing.T) {
+	store, cleanup := setupLegacyReadModelDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	if err := store.SetSchemaVersion(ctx, repository.ReadModelSchemaVersion); err != nil {
+		t.Fatalf("stamp: %v", err)
+	}
+	if err := store.ResetReadModel(ctx); err != nil {
+		t.Fatalf("ResetReadModel: %v", err)
+	}
+	personID := uuid.New()
+	if err := store.SavePerson(ctx, domain.MainBranchID, branchPersonRM(personID, "Main", "Row")); err != nil {
+		t.Fatalf("main SavePerson after reset: %v", err)
+	}
+	if err := store.SavePerson(ctx, domain.BranchID(uuid.New()), branchPersonRM(personID, "Branch", "Row")); err != nil {
+		t.Fatalf("branch SavePerson after reset: want success, got %v", err)
+	}
+	if v, err := store.GetSchemaVersion(ctx); err != nil || v != repository.ReadModelSchemaVersion {
+		t.Errorf("schema version after reset = %d, %v; want the stamp kept", v, err)
+	}
+}
+
 // TestFreshSchemaAllowsBranchWrites is the control: a freshly created read model
 // has the composite (id, branch_id) key and must NOT be flagged legacy.
 func TestFreshSchemaAllowsBranchWrites(t *testing.T) {

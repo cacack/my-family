@@ -14,21 +14,27 @@ import (
 
 // mainOnlyTables are the read-model tables without a branch_id column, plus the
 // projection-failure markers (#845). repository_external_ids precedes
-// repositories, whose delete would otherwise cascade into it mid-reset.
+// repositories, which it references.
 var mainOnlyTables = []string{
 	"submitters", "repository_external_ids", "repositories", "lds_ordinances",
 	"projection_failures",
 }
 
-// readModelTables is every table ResetReadModel empties, in delete order.
+// readModelTables is every table ResetReadModel drops, in drop order.
 func readModelTables() []string {
 	return append(append([]string{}, branchScopedTables...), mainOnlyTables...)
 }
 
-// ResetReadModel deletes every row of every read-model table in one
-// transaction (#845). The event log, branch registry and snapshot registry
-// live in other tables and are untouched, and so is rebuild_state, which must
-// outlive the reset.
+// ResetReadModel drops every read-model table in one transaction, then
+// re-creates them at this binary's schema (#680), so a rebuild also applies
+// schema changes that ALTER TABLE ADD COLUMN cannot, such as a new primary key.
+// The event log, branch registry and snapshot registry live in other tables and
+// are untouched, and so are rebuild_state, which must outlive the reset, and
+// the schema version, which the rebuild stamps afterwards.
+//
+// The tables are re-created after the drop commits. If that fails, the next
+// start re-creates them, and the saved rebuild state makes `serve` warn until
+// a rebuild finishes.
 func (s *ReadModelStore) ResetReadModel(ctx context.Context) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -38,11 +44,41 @@ func (s *ReadModelStore) ResetReadModel(ctx context.Context) error {
 	for _, table := range readModelTables() {
 		// #nosec G202 -- table is from the fixed readModelTables list, not user input
 		// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
-		if _, err := tx.ExecContext(ctx, "DELETE FROM "+table); err != nil {
-			return fmt.Errorf("reset %s: %w", table, err)
+		if _, err := tx.ExecContext(ctx, "DROP TABLE IF EXISTS "+table); err != nil {
+			return fmt.Errorf("drop %s: %w", table, err)
 		}
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit drop: %w", err)
+	}
+	if err := s.createTables(); err != nil {
+		return fmt.Errorf("re-create read-model tables: %w", err)
+	}
+	s.branchCapable = s.detectBranchCapable()
+	return nil
+}
+
+// GetSchemaVersion returns the stamped read-model schema version, or 0 (#680).
+func (s *ReadModelStore) GetSchemaVersion(ctx context.Context) (int, error) {
+	var version int
+	err := s.db.QueryRowContext(ctx, `SELECT version FROM read_model_schema WHERE id = 1`).Scan(&version)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("get read model schema version: %w", err)
+	}
+	return version, nil
+}
+
+// SetSchemaVersion stamps the read-model schema version (#680).
+func (s *ReadModelStore) SetSchemaVersion(ctx context.Context, version int) error {
+	if _, err := s.db.ExecContext(ctx, `
+		INSERT INTO read_model_schema (id, version) VALUES (1, ?)
+		ON CONFLICT (id) DO UPDATE SET version = excluded.version`, version); err != nil {
+		return fmt.Errorf("set read model schema version: %w", err)
+	}
+	return nil
 }
 
 // RecordProjectionFailure stores a projection-failure marker (#845).

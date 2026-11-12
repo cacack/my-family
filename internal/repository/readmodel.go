@@ -22,11 +22,10 @@ import (
 // shadow row (same id, different branch_id) would violate it. Rather than let such
 // a database look branch-capable and then fail with an opaque constraint error,
 // branch writes are refused up front with this error. Mainline (MainBranchID)
-// reads and writes are unaffected. Recreating the read model from the event store
-// (it is derived data) restores full branch support — see issue #680 for the
-// schema-versioning / rebuild-on-mismatch strategy.
+// reads and writes are unaffected. `myfamily rebuild` re-creates the read-model
+// tables at the current schema and restores full branch support (#680).
 var ErrBranchesUnsupported = errors.New(
-	"read-model schema predates branch support; rebuild the read model from the event store to enable branch writes")
+	"read-model schema predates branch support; stop the server and run `myfamily rebuild` to enable branch writes")
 
 // MarshalNoteTranslations serializes shared-note (SNOTE) translations for storage
 // in a text/JSON column. It returns an empty string when there are none, so
@@ -867,11 +866,18 @@ type ReadModelStore interface {
 
 	// Projection repair (#845)
 
-	// ResetReadModel deletes every row of every read-model table, including the
-	// projection-failure markers, so RebuildReadModel can replay the event log
-	// into an empty read model. The event log, branch registry, snapshot
-	// registry and rebuild state are not touched.
+	// ResetReadModel drops and re-creates every read-model table at this
+	// binary's schema, including the projection-failure markers, so
+	// RebuildReadModel can replay the event log into an empty read model of
+	// the current shape (#680). The event log, branch registry, snapshot
+	// registry, rebuild state and schema version are not touched.
 	ResetReadModel(ctx context.Context) error
+	// GetSchemaVersion returns the read-model schema version stamped in the
+	// database, or 0 when none is (#680, ReadModelSchemaVersion).
+	GetSchemaVersion(ctx context.Context) (int, error)
+	// SetSchemaVersion stamps the read-model schema version, replacing any
+	// earlier stamp.
+	SetSchemaVersion(ctx context.Context, version int) error
 	// SaveRebuildState stores, replacing any earlier one, the state of a
 	// rebuild in progress: the values no event carries, saved before the reset
 	// so an interrupted rebuild can still restore them. While it exists the

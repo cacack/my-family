@@ -245,408 +245,429 @@ type HistoryPage struct {
 	HasMore    bool          `json:"has_more"`
 }
 
-// DecodeEvent decodes the stored event data into a domain event.
+// eventUpcasters upgrade a stored event's JSON from an older shape to the shape
+// its Go type decodes today, by event type (#680, ADR-006). Events are
+// append-only (ES-002), so an event type that renames, removes or changes the
+// meaning of a field keeps its name and gains an upcaster here instead; the
+// log is never rewritten. An upcaster gets the data as stored and must return
+// it unchanged when it is already in the current shape, since nothing marks
+// which shape an event was written in. If two shapes cannot be told apart
+// from the data, add a schema version to the event first.
+//
+// An additive field needs no upcaster: a missing field decodes to its zero
+// value, as BranchID does in a SnapshotCreated written before #839.
+var eventUpcasters = map[string]func(data json.RawMessage) (json.RawMessage, error){}
+
+// DecodeEvent upgrades the stored event data to its current shape
+// (eventUpcasters) and decodes it into a domain event.
 func (e *StoredEvent) DecodeEvent() (domain.Event, error) {
+	data := e.Data
+	if upcast, ok := eventUpcasters[e.EventType]; ok {
+		var err error
+		if data, err = upcast(data); err != nil {
+			return nil, fmt.Errorf("upcast %s: %w", e.EventType, err)
+		}
+	}
 	switch e.EventType {
 	case "PersonCreated":
 		var event domain.PersonCreated
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "PersonUpdated":
 		var event domain.PersonUpdated
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "PersonDeleted":
 		var event domain.PersonDeleted
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "FamilyCreated":
 		var event domain.FamilyCreated
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "FamilyUpdated":
 		var event domain.FamilyUpdated
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "ChildLinkedToFamily":
 		var event domain.ChildLinkedToFamily
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "ChildUnlinkedFromFamily":
 		var event domain.ChildUnlinkedFromFamily
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "FamilyDeleted":
 		var event domain.FamilyDeleted
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "GedcomImported":
 		var event domain.GedcomImported
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "SourceCreated":
 		var event domain.SourceCreated
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "SourceUpdated":
 		var event domain.SourceUpdated
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "SourceDeleted":
 		var event domain.SourceDeleted
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "CitationCreated":
 		var event domain.CitationCreated
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "CitationUpdated":
 		var event domain.CitationUpdated
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "CitationDeleted":
 		var event domain.CitationDeleted
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "MediaCreated":
 		var event domain.MediaCreated
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "MediaUpdated":
 		var event domain.MediaUpdated
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "MediaDeleted":
 		var event domain.MediaDeleted
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "NameAdded":
 		var event domain.NameAdded
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "NameUpdated":
 		var event domain.NameUpdated
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "NameRemoved":
 		var event domain.NameRemoved
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "SnapshotCreated":
 		var event domain.SnapshotCreated
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "SnapshotDeleted":
 		var event domain.SnapshotDeleted
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "BranchCreated":
 		var event domain.BranchCreated
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "BranchUpdated":
 		var event domain.BranchUpdated
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "BranchDeleted":
 		var event domain.BranchDeleted
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "BranchMerged":
 		var event domain.BranchMerged
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "BranchMergeResumed":
 		var event domain.BranchMergeResumed
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "PersonMerged":
 		var event domain.PersonMerged
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "NoteCreated":
 		var event domain.NoteCreated
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "NoteUpdated":
 		var event domain.NoteUpdated
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "NoteDeleted":
 		var event domain.NoteDeleted
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "SubmitterCreated":
 		var event domain.SubmitterCreated
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "SubmitterUpdated":
 		var event domain.SubmitterUpdated
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "SubmitterDeleted":
 		var event domain.SubmitterDeleted
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "AssociationCreated":
 		var event domain.AssociationCreated
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "AssociationUpdated":
 		var event domain.AssociationUpdated
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "AssociationDeleted":
 		var event domain.AssociationDeleted
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "LDSOrdinanceCreated":
 		var event domain.LDSOrdinanceCreated
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "LDSOrdinanceUpdated":
 		var event domain.LDSOrdinanceUpdated
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "LDSOrdinanceDeleted":
 		var event domain.LDSOrdinanceDeleted
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "RepositoryCreated":
 		var event domain.RepositoryCreated
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "RepositoryUpdated":
 		var event domain.RepositoryUpdated
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "RepositoryDeleted":
 		var event domain.RepositoryDeleted
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "LifeEventCreated":
 		var event domain.LifeEventCreated
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "LifeEventUpdated":
 		var event domain.LifeEventUpdated
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "LifeEventDeleted":
 		var event domain.LifeEventDeleted
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "AttributeCreated":
 		var event domain.AttributeCreated
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "AttributeUpdated":
 		var event domain.AttributeUpdated
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "AttributeDeleted":
 		var event domain.AttributeDeleted
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "EvidenceAnalysisCreated":
 		var event domain.EvidenceAnalysisCreated
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "EvidenceAnalysisUpdated":
 		var event domain.EvidenceAnalysisUpdated
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "EvidenceAnalysisDeleted":
 		var event domain.EvidenceAnalysisDeleted
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "EvidenceConflictDetected":
 		var event domain.EvidenceConflictDetected
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "EvidenceConflictResolved":
 		var event domain.EvidenceConflictResolved
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "ResearchLogCreated":
 		var event domain.ResearchLogCreated
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "ResearchLogUpdated":
 		var event domain.ResearchLogUpdated
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "ResearchLogDeleted":
 		var event domain.ResearchLogDeleted
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "ProofSummaryCreated":
 		var event domain.ProofSummaryCreated
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "ProofSummaryUpdated":
 		var event domain.ProofSummaryUpdated
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "ProofSummaryDeleted":
 		var event domain.ProofSummaryDeleted
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "DuplicateDismissed":
 		var event domain.DuplicateDismissed
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "DuplicateRestored":
 		var event domain.DuplicateRestored
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "ImportedValuesBackfilled":
 		var event domain.ImportedValuesBackfilled
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "BrickWallSet":
 		var event domain.BrickWallSet
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "BrickWallResolved":
 		var event domain.BrickWallResolved
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil
 	case "BrickWallBackfilled":
 		var event domain.BrickWallBackfilled
-		if err := json.Unmarshal(e.Data, &event); err != nil {
+		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
 		return event, nil

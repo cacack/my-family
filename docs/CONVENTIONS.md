@@ -281,6 +281,10 @@ A name's `full_name` (`person_names.full_name`) is `domain.JoinPersonName`: pref
 
 - Schema DDL is embedded in each database implementation
 - Both implementations must pass the same shared test suite (invariant DB-001)
+- An additive read-model column goes in each backend's `runMigrations` as `ALTER TABLE ... ADD COLUMN`; no version bump
+- Any other read-model change (key, constraint, type, dropped column, or what an existing event projects) bumps `repository.ReadModelSchemaVersion`; `serve` then asks for `myfamily rebuild`, which re-creates the tables ([ADR-006](./adr/006-schema-evolution.md))
+- A changed event shape keeps its type name and gets an upcaster in `eventUpcasters` (`repository/eventstore.go`), tested on the old and the new shape; the log is never rewritten
+- A value that exists only in the read model must be logged by a rebuild backfill before the reset (`ImportedValuesBackfilled`, `BrickWallBackfilled`, pre-#624 snapshots)
 
 ## Documentation
 
