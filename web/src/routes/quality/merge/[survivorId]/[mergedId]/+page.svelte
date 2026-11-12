@@ -4,6 +4,8 @@
 	import {
 		api,
 		recordLoadError,
+		notFoundFailure,
+		type LoadFailure,
 		formatGenDate,
 		formatPersonName,
 		type GenDate,
@@ -61,6 +63,8 @@
 	let merged = $state<PersonDetail | null>(null);
 	let loading = $state(true);
 	let error = $state<string | null>(null);
+	// Why the pair could not be loaded; `error` is a refused merge or dismissal.
+	let loadError = $state<LoadFailure | null>(null);
 	let submitting = $state(false);
 	let dismissing = $state(false);
 	let result = $state<MergePersonsResponse | null>(null);
@@ -103,6 +107,7 @@
 	async function loadPersons(survivorId: string, mergedId: string) {
 		loading = true;
 		error = null;
+		loadError = null;
 		survivor = null;
 		merged = null;
 		result = null;
@@ -110,13 +115,13 @@
 		routeMergedId = null;
 
 		if (!SAFE_ID_PATTERN.test(survivorId) || !SAFE_ID_PATTERN.test(mergedId)) {
-			error = 'Invalid person ID in URL.';
+			loadError = notFoundFailure('person', 'Invalid person ID in URL.');
 			loading = false;
 			return;
 		}
 
 		if (survivorId === mergedId) {
-			error = 'Cannot merge a person with themselves.';
+			loadError = notFoundFailure('person', 'Cannot merge a person with themselves.');
 			loading = false;
 			return;
 		}
@@ -129,11 +134,10 @@
 			routeMergedId = mergedId;
 			resolution = buildInitialResolution(s, m);
 		} catch (e) {
-			const status = (e as { status?: number })?.status;
-			error =
-				status === 400 || status === 404
-					? recordLoadError(e, 'person')
-					: truncateError(e, 'Failed to load one or both persons.');
+			const failure = recordLoadError(e, 'person');
+			loadError = failure.notFound
+				? failure
+				: { ...failure, message: 'Failed to load one or both persons. Please try again.' };
 			survivor = null;
 			merged = null;
 		} finally {
@@ -295,7 +299,7 @@
 		</div>
 	{/if}
 
-	{#if !result}
+	{#if survivor && merged && !result}
 		<Card>
 			<CardHeader>
 				<CardTitle>Suggested merge</CardTitle>
@@ -311,9 +315,10 @@
 
 	{#if loading}
 		<LoadingState label="Loading people..." />
-	{:else if error && !result && !(survivor && merged)}
+	{:else if loadError}
 		<ErrorState
-			message={error}
+			message={loadError.message}
+			notFound={loadError.notFound}
 			onRetry={() => loadPersons(page.params.survivorId ?? '', page.params.mergedId ?? '')}
 		/>
 	{:else if result}

@@ -4,6 +4,7 @@ package domain
 import (
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/google/uuid"
 )
@@ -21,13 +22,14 @@ const (
 	LDSSealingSpouse LDSOrdinanceType = "SLGS" // Sealing to Spouse - Family
 )
 
-// IsValid returns true if the ordinance type is recognized.
+// AllLDSOrdinanceTypes returns every valid LDSOrdinanceType value.
+func AllLDSOrdinanceTypes() []LDSOrdinanceType {
+	return []LDSOrdinanceType{LDSBaptism, LDSConfirmation, LDSEndowment, LDSSealingChild, LDSSealingSpouse}
+}
+
+// IsValid reports whether the value is one of AllLDSOrdinanceTypes.
 func (t LDSOrdinanceType) IsValid() bool {
-	switch t {
-	case LDSBaptism, LDSConfirmation, LDSEndowment, LDSSealingChild, LDSSealingSpouse:
-		return true
-	}
-	return false
+	return slices.Contains(AllLDSOrdinanceTypes(), t)
 }
 
 // IsIndividual returns true if the ordinance is an individual ordinance (not SLGS).
@@ -51,6 +53,41 @@ func (t LDSOrdinanceType) Label() string {
 	default:
 		return string(t)
 	}
+}
+
+// LDSOrdinanceStatus is the status of an LDS ordinance: the GEDCOM 7 STAT
+// enumeration (g7:enumset-ord-STAT).
+type LDSOrdinanceStatus string
+
+// LDS ordinance status constants.
+const (
+	LDSStatusBIC       LDSOrdinanceStatus = "BIC"       // Born in the covenant
+	LDSStatusCanceled  LDSOrdinanceStatus = "CANCELED"  // Sealing canceled (divorce)
+	LDSStatusChild     LDSOrdinanceStatus = "CHILD"     // Died before age 8
+	LDSStatusCompleted LDSOrdinanceStatus = "COMPLETED" // Completed, date unknown
+	LDSStatusExcluded  LDSOrdinanceStatus = "EXCLUDED"  // Patron excluded from the ordinance
+	LDSStatusDNS       LDSOrdinanceStatus = "DNS"       // Do not seal
+	LDSStatusDNSCan    LDSOrdinanceStatus = "DNS_CAN"   // Do not seal, previous sealing canceled
+	LDSStatusInfant    LDSOrdinanceStatus = "INFANT"    // Died before age 1
+	LDSStatusPre1970   LDSOrdinanceStatus = "PRE_1970"  // Completed before 1970
+	LDSStatusStillborn LDSOrdinanceStatus = "STILLBORN" // Born dead, no ordinance needed
+	LDSStatusSubmitted LDSOrdinanceStatus = "SUBMITTED" // Submitted, not yet approved
+	LDSStatusUncleared LDSOrdinanceStatus = "UNCLEARED" // Data insufficient for clearance
+)
+
+// AllLDSOrdinanceStatuses returns every valid LDSOrdinanceStatus value.
+func AllLDSOrdinanceStatuses() []LDSOrdinanceStatus {
+	return []LDSOrdinanceStatus{
+		LDSStatusBIC, LDSStatusCanceled, LDSStatusChild, LDSStatusCompleted,
+		LDSStatusExcluded, LDSStatusDNS, LDSStatusDNSCan, LDSStatusInfant,
+		LDSStatusPre1970, LDSStatusStillborn, LDSStatusSubmitted, LDSStatusUncleared,
+	}
+}
+
+// IsValid reports whether the value is empty (unset) or one of
+// AllLDSOrdinanceStatuses.
+func (s LDSOrdinanceStatus) IsValid() bool {
+	return s == "" || slices.Contains(AllLDSOrdinanceStatuses(), s)
 }
 
 // LDSOrdinanceValidationError represents a validation error for an LDS Ordinance.
@@ -140,9 +177,8 @@ func (o *LDSOrdinance) Validate() error {
 		errs = append(errs, LDSOrdinanceValidationError{Field: "temple", Message: "temple code cannot exceed 10 characters"})
 	}
 
-	// Status validation (optional but should be reasonable length)
-	if len(o.Status) > 50 {
-		errs = append(errs, LDSOrdinanceValidationError{Field: "status", Message: "status cannot exceed 50 characters"})
+	if !LDSOrdinanceStatus(o.Status).IsValid() {
+		errs = append(errs, LDSOrdinanceValidationError{Field: "status", Message: fmt.Sprintf("invalid value: %s", o.Status)})
 	}
 
 	// Place validation

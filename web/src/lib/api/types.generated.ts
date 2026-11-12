@@ -3288,6 +3288,12 @@ export interface components {
          * @example 1 JAN 1850
          */
         DateInput: string;
+        /**
+         * @description Precision qualifier of a genealogical date (GEDCOM ABT, CAL, EST, BEF, AFT, BET, FROM, INT, TO).
+         * @example abt
+         * @enum {string}
+         */
+        DateQualifier: "exact" | "abt" | "cal" | "est" | "bef" | "aft" | "bet" | "from" | "int" | "to";
         /** @description Genealogical date with flexible precision */
         GenDate: {
             /**
@@ -3295,11 +3301,7 @@ export interface components {
              * @example ABT 1850
              */
             raw?: string;
-            /**
-             * @example abt
-             * @enum {string}
-             */
-            qualifier?: "exact" | "abt" | "cal" | "est" | "bef" | "aft" | "bet" | "from" | "int" | "to";
+            qualifier?: components["schemas"]["DateQualifier"];
             /**
              * @description Calendar system for the date, using the GEDCOM escape token (DGREGORIAN, DJULIAN, DHEBREW, or "DFRENCH R"). Absent or DGREGORIAN means the Gregorian calendar.
              * @example DJULIAN
@@ -3862,9 +3864,9 @@ export interface components {
         ChangeHistoryResponse: {
             items: components["schemas"]["ChangeEntry"][];
             total: number;
-            limit?: number;
-            offset?: number;
-            has_more?: boolean;
+            limit: number;
+            offset: number;
+            has_more: boolean;
         };
         RestorePoint: {
             /**
@@ -3959,7 +3961,7 @@ export interface components {
             /** Format: int64 */
             version: number;
             /** Format: date-time */
-            created_at?: string;
+            created_at: string;
             /** Format: date-time */
             updated_at?: string;
             /** @description Multiple file references (GEDCOM 7.0 support) */
@@ -4046,11 +4048,11 @@ export interface components {
             /** @description Place name at this level */
             name: string;
             /** @description Full place path */
-            full_name?: string;
+            full_name: string;
             /** @description Number of persons associated with this place */
             count: number;
             /** @description Whether this place has sub-locations */
-            has_children?: boolean;
+            has_children: boolean;
         };
         CemeteryIndexResponse: {
             items: components["schemas"]["CemeteryEntry"][];
@@ -4088,7 +4090,10 @@ export interface components {
             event_type: "birth" | "death";
             /** @description Number of persons at this location */
             count: number;
-            /** @description IDs of the persons at this location, in the same order as `persons`. Kept for existing clients; `persons[].id` carries the same IDs. */
+            /**
+             * @deprecated
+             * @description IDs of the persons at this location, in the same order as `persons`. Kept for existing clients; `persons[].id` carries the same IDs.
+             */
             person_ids: string[];
             /** @description Persons at this location, named so a client can list them without a lookup each */
             persons: components["schemas"]["PersonSummary"][];
@@ -4123,7 +4128,7 @@ export interface components {
             call_number?: string;
             notes?: string;
             /** @description Number of citations referencing this source */
-            citation_count?: number;
+            citation_count: number;
             /**
              * Format: int64
              * @description Optimistic locking version
@@ -4184,7 +4189,7 @@ export interface components {
             person_id: string;
             given_name: string;
             surname: string;
-            readonly full_name?: string;
+            full_name: string;
             name_prefix?: string;
             name_suffix?: string;
             surname_prefix?: string;
@@ -4834,14 +4839,7 @@ export interface components {
              * @example 42
              */
             base_position: number;
-            /**
-             * @description Lifecycle state. `merged` and `archived` are terminal — a branch in
-             *     either state accepts no further writes. `archived` is the state a
-             *     deleted branch enters; its events are retained but its overlay rows
-             *     are purged.
-             * @enum {string}
-             */
-            status: "active" | "merged" | "archived";
+            status: components["schemas"]["BranchStatus"];
             /**
              * Format: date-time
              * @description When the branch was created
@@ -4945,6 +4943,14 @@ export interface components {
             /** @description A count hit the server's cap and is a lower bound */
             has_more: boolean;
         };
+        /**
+         * @description Lifecycle state. `merged` and `archived` are terminal — a branch in
+         *     either state accepts no further writes. `archived` is the state a
+         *     deleted branch enters; its events are retained but its overlay rows
+         *     are purged.
+         * @enum {string}
+         */
+        BranchStatus: "active" | "merged" | "archived";
         /**
          * @description The verdict the research reached. Independent of `status`: status says
          *     whether the branch still takes writes, outcome says what it concluded.
@@ -5506,11 +5512,8 @@ export interface components {
              */
             kind: "fact" | "relationship" | "deletion";
             fact_type?: components["schemas"]["FactType"];
-            /**
-             * @description What the fact is about - the subject an analysis of it has.
-             * @enum {string}
-             */
-            subject_type: "person" | "family";
+            /** @description What the fact is about - the subject an analysis of it has. */
+            subject_type: components["schemas"]["ResearchLogSubjectType"];
             /** Format: uuid */
             subject_id: string;
             /** @description The subject's display name as the branch sees it (a deleted one as the mainline has it); empty when nothing names it. */
@@ -6092,6 +6095,13 @@ export interface components {
          * @enum {string}
          */
         LDSOrdinanceType: "BAPL" | "CONL" | "ENDL" | "SLGC" | "SLGS";
+        /**
+         * @description LDS ordinance status, the GEDCOM 7 STAT enumeration. A GEDCOM import
+         *     keeps the file's STAT text as written, so an ordinance imported from
+         *     an older file can carry a value outside this list.
+         * @enum {string}
+         */
+        LDSOrdinanceStatus: "BIC" | "CANCELED" | "CHILD" | "COMPLETED" | "EXCLUDED" | "DNS" | "DNS_CAN" | "INFANT" | "PRE_1970" | "STILLBORN" | "SUBMITTED" | "UNCLEARED";
         LDSOrdinance: {
             /** Format: uuid */
             id: string;
@@ -6115,8 +6125,7 @@ export interface components {
             place?: string;
             /** @description Temple code (GEDCOM TEMP tag) */
             temple?: string;
-            /** @description Status (COMPLETED, BIC, CHILD, EXCLUDED, etc.) */
-            status?: string;
+            status?: components["schemas"]["LDSOrdinanceStatus"];
             /** Format: int64 */
             version: number;
             /** Format: date-time */
@@ -6138,8 +6147,7 @@ export interface components {
             place?: string;
             /** @description Temple code */
             temple?: string;
-            /** @description Ordinance status */
-            status?: string;
+            status?: components["schemas"]["LDSOrdinanceStatus"];
         };
         LDSOrdinanceUpdate: {
             date?: components["schemas"]["DateInput"];
@@ -6147,8 +6155,7 @@ export interface components {
             place?: string;
             /** @description Updated temple code */
             temple?: string;
-            /** @description Updated status */
-            status?: string;
+            status?: components["schemas"]["LDSOrdinanceStatus"];
             /**
              * Format: int64
              * @description Current version for optimistic locking
@@ -6328,13 +6335,17 @@ export interface components {
             limit?: number;
             offset?: number;
         };
+        /**
+         * @description The kind of record a research log is about.
+         * @enum {string}
+         */
+        ResearchLogSubjectType: "person" | "family";
         ResearchLog: {
             /** Format: uuid */
             id: string;
             /** Format: uuid */
             subject_id: string;
-            /** @description Type of subject (person or family) */
-            subject_type: string;
+            subject_type: components["schemas"]["ResearchLogSubjectType"];
             /** @description Name of the repository searched */
             repository: string;
             /** @description Description of the search performed */
@@ -6353,7 +6364,7 @@ export interface components {
         ResearchLogCreate: {
             /** Format: uuid */
             subject_id: string;
-            subject_type: string;
+            subject_type: components["schemas"]["ResearchLogSubjectType"];
             repository: string;
             search_description: string;
             outcome: components["schemas"]["ResearchOutcome"];
@@ -6364,7 +6375,7 @@ export interface components {
         ResearchLogUpdate: {
             /** Format: uuid */
             subject_id?: string;
-            subject_type?: string;
+            subject_type?: components["schemas"]["ResearchLogSubjectType"];
             repository?: string;
             search_description?: string;
             outcome?: components["schemas"]["ResearchOutcome"];

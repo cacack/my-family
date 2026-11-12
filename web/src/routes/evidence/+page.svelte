@@ -154,9 +154,9 @@
 			analyses = result.analyses;
 			subjects.load(result.analyses.map(factSubject));
 			analysesTotal = result.total ?? 0;
-		} catch (e) {
+		} catch {
 			if (seq !== analysesSeq) return;
-			analysesError = (e as { message?: string }).message || 'Failed to load analyses';
+			analysesError = 'Failed to load analyses. Please try again.';
 		} finally {
 			if (seq === analysesSeq) analysesLoading = false;
 		}
@@ -192,9 +192,9 @@
 					// ignore - badge count is non-critical
 				}
 			}
-		} catch (e) {
+		} catch {
 			if (seq !== conflictsSeq) return;
-			conflictsError = (e as { message?: string }).message || 'Failed to load conflicts';
+			conflictsError = 'Failed to load conflicts. Please try again.';
 		} finally {
 			if (seq === conflictsSeq) conflictsLoading = false;
 		}
@@ -215,9 +215,9 @@
 			logs = result.logs;
 			subjects.load(result.logs.map(logSubject));
 			logsTotal = result.total ?? 0;
-		} catch (e) {
+		} catch {
 			if (seq !== logsSeq) return;
-			logsError = (e as { message?: string }).message || 'Failed to load research logs';
+			logsError = 'Failed to load research logs. Please try again.';
 		} finally {
 			if (seq === logsSeq) logsLoading = false;
 		}
@@ -238,9 +238,9 @@
 			summaries = result.summaries;
 			subjects.load(result.summaries.map(factSubject));
 			summariesTotal = result.total ?? 0;
-		} catch (e) {
+		} catch {
 			if (seq !== summariesSeq) return;
-			summariesError = (e as { message?: string }).message || 'Failed to load proof summaries';
+			summariesError = 'Failed to load proof summaries. Please try again.';
 		} finally {
 			if (seq === summariesSeq) summariesLoading = false;
 		}
@@ -343,7 +343,8 @@
 		<Tabs.Content value="analyses">
 			<div class="mb-4 flex flex-wrap items-center justify-between gap-2 pt-2">
 				<span class="text-sm text-muted-foreground">
-					{analysesTotal} {analysesTotal === 1 ? 'analysis' : 'analyses'}
+					<!-- A failed load has no count: a 0 would read like real data (#1096). -->
+					{#if !analysesError}{analysesTotal} {analysesTotal === 1 ? 'analysis' : 'analyses'}{/if}
 				</span>
 				<Button href="/evidence/analyses/new">New Analysis</Button>
 			</div>
@@ -452,7 +453,8 @@
 					{/each}
 				</div>
 				<span class="text-sm text-muted-foreground">
-					{conflictsTotal} {conflictsTotal === 1 ? 'conflict' : 'conflicts'}
+					<!-- A failed load has no count: a 0 would read like real data (#1096). -->
+					{#if !conflictsError}{conflictsTotal} {conflictsTotal === 1 ? 'conflict' : 'conflicts'}{/if}
 				</span>
 			</div>
 
@@ -538,7 +540,8 @@
 		<Tabs.Content value="logs">
 			<div class="mb-4 flex flex-wrap items-center justify-between gap-2 pt-2">
 				<span class="text-sm text-muted-foreground">
-					{logsTotal} {logsTotal === 1 ? 'log entry' : 'log entries'}
+					<!-- A failed load has no count: a 0 would read like real data (#1096). -->
+					{#if !logsError}{logsTotal} {logsTotal === 1 ? 'log entry' : 'log entries'}{/if}
 				</span>
 				<Button href="/evidence/research-logs/new">New Research Log</Button>
 			</div>
@@ -633,7 +636,8 @@
 		<Tabs.Content value="summaries">
 			<div class="mb-4 flex flex-wrap items-center justify-between gap-2 pt-2">
 				<span class="text-sm text-muted-foreground">
-					{summariesTotal} {summariesTotal === 1 ? 'summary' : 'summaries'}
+					<!-- A failed load has no count: a 0 would read like real data (#1096). -->
+					{#if !summariesError}{summariesTotal} {summariesTotal === 1 ? 'summary' : 'summaries'}{/if}
 				</span>
 				<Button href="/evidence/proof-summaries/new">New Proof Summary</Button>
 			</div>

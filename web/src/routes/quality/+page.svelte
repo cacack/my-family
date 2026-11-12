@@ -185,9 +185,9 @@
 			errorCount = result.error_count;
 			warningCount = result.warning_count;
 			infoCount = result.info_count;
-		} catch (e) {
+		} catch {
 			if (seq !== validationSeq) return;
-			validationError = truncateError(e, 'Failed to load validation issues');
+			validationError = 'Failed to load validation issues. Please try again.';
 		} finally {
 			if (seq === validationSeq) validationLoading = false;
 		}
@@ -207,9 +207,9 @@
 			if (clampPageToTotal(page.url, requestedPage, result.total, pageSize)) return;
 			duplicates = result.duplicates;
 			duplicatesTotal = result.total;
-		} catch (e) {
+		} catch {
 			if (seq !== duplicatesSeq) return;
-			duplicatesError = truncateError(e, 'Failed to load duplicates');
+			duplicatesError = 'Failed to load duplicates. Please try again.';
 		} finally {
 			if (seq === duplicatesSeq) duplicatesLoading = false;
 		}
@@ -275,9 +275,9 @@
 			if (clampPageToTotal(page.url, requestedPage, result.total, pageSize)) return;
 			dismissed = result.dismissals;
 			dismissedTotal = result.total;
-		} catch (e) {
+		} catch {
 			if (seq !== dismissedSeq) return;
-			dismissedError = truncateError(e, 'Failed to load pairs marked not a duplicate');
+			dismissedError = 'Failed to load pairs marked not a duplicate. Please try again.';
 		} finally {
 			if (seq === dismissedSeq) dismissedLoading = false;
 		}
@@ -355,19 +355,19 @@
 		<Tabs.List class="max-w-full flex-wrap justify-start group-data-horizontal/tabs:h-auto">
 			<Tabs.Trigger value="validation">
 				Validation Issues
-				{#if totalIssuesCount > 0}
+				{#if totalIssuesCount > 0 && !validationError}
 					<span class="ml-1 text-xs text-muted-foreground">({totalIssuesCount})</span>
 				{/if}
 			</Tabs.Trigger>
 			<Tabs.Trigger value="duplicates">
 				Duplicates
-				{#if duplicatesTotal > 0}
+				{#if duplicatesTotal > 0 && !duplicatesError}
 					<span class="ml-1 text-xs text-muted-foreground">({duplicatesTotal})</span>
 				{/if}
 			</Tabs.Trigger>
 			<Tabs.Trigger value="not-duplicates">
 				Not duplicates
-				{#if dismissedTotal > 0}
+				{#if dismissedTotal > 0 && !dismissedError}
 					<span class="ml-1 text-xs text-muted-foreground">({dismissedTotal})</span>
 				{/if}
 			</Tabs.Trigger>
@@ -384,7 +384,8 @@
 							aria-pressed={severityFilter === filter.key}
 							onclick={() => selectSeverity(filter.key)}
 						>
-							{filter.label} ({filter.count})
+							<!-- A failed load has no counts: a 0 would read like real data (#1096). -->
+							{filter.label}{#if !validationError}{` (${filter.count})`}{/if}
 						</Button>
 					{/each}
 				</div>

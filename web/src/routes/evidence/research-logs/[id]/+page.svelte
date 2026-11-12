@@ -6,8 +6,10 @@
 		api,
 		isVersionConflict,
 		recordLoadError,
+		type LoadFailure,
 		type ResearchLogResponse,
 		type ResearchLogCreateRequest,
+		type ResearchLogSubjectType,
 		type ResearchOutcome
 	} from '#lib/api/client.js';
 	import { Button } from '#lib/components/ui/button/index.js';
@@ -34,6 +36,7 @@
 	let log: ResearchLogResponse | null = $state(null);
 	let loading = $state(true);
 	let error: string | null = $state(null);
+	let loadError: LoadFailure | null = $state(null);
 	let editing = $state(false);
 	let saving = $state(false);
 	let deleteOpen = $state(false);
@@ -41,7 +44,7 @@
 
 	let formData = $state({
 		subject_id: '',
-		subject_type: 'person',
+		subject_type: 'person' as ResearchLogSubjectType,
 		repository: '',
 		search_description: '',
 		outcome: 'inconclusive' as ResearchOutcome,
@@ -85,6 +88,7 @@
 		if (id === 'new') {
 			log = null;
 			error = null;
+			loadError = null;
 			formData = {
 				subject_id: urlSubjectId ?? '',
 				subject_type: 'person',
@@ -103,12 +107,13 @@
 		editing = false;
 		loading = true;
 		error = null;
+		loadError = null;
 		try {
 			log = await api.getResearchLog(id);
 			subjects.load([subjectOf(log)]);
 			resetForm();
 		} catch (e) {
-			error = recordLoadError(e, 'research log');
+			loadError = recordLoadError(e, 'research log');
 			log = null;
 		} finally {
 			loading = false;
@@ -168,7 +173,7 @@
 			if (isNew) {
 				const data: ResearchLogCreateRequest = {
 					subject_id: formData.subject_id.trim(),
-					subject_type: formData.subject_type.trim(),
+					subject_type: formData.subject_type,
 					repository: formData.repository.trim(),
 					search_description: formData.search_description.trim(),
 					outcome: formData.outcome,
@@ -180,7 +185,7 @@
 			} else if (log) {
 				await api.updateResearchLog(log.id, {
 					subject_id: formData.subject_id.trim(),
-					subject_type: formData.subject_type.trim(),
+					subject_type: formData.subject_type,
 					repository: formData.repository.trim(),
 					search_description: formData.search_description.trim(),
 					outcome: formData.outcome,
@@ -244,8 +249,8 @@
 
 	{#if loading}
 		<LoadingState />
-	{:else if error && !log && !isNew}
-		<ErrorState message={error} onRetry={() => loadLog(page.params.id!)} />
+	{:else if loadError}
+		<ErrorState {...loadError} onRetry={() => loadLog(page.params.id!)} />
 	{:else if editing}
 		<form
 			class="rounded-xl border border-slate-200 bg-white p-6"

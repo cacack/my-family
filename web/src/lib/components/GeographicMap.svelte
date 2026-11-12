@@ -56,8 +56,8 @@
 			error = null;
 			const result = await api.getMapLocations();
 			locations = result.items;
-		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to load map data';
+		} catch {
+			error = 'Failed to load map data. Please try again.';
 		} finally {
 			loading = false;
 		}

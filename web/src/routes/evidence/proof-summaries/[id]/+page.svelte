@@ -6,6 +6,7 @@
 		api,
 		isVersionConflict,
 		recordLoadError,
+		type LoadFailure,
 		type ProofSummaryResponse,
 		type ProofSummaryCreateRequest,
 		type EvidenceAnalysisResponse,
@@ -39,6 +40,7 @@
 	let linkedAnalyses: EvidenceAnalysisResponse[] = $state([]);
 	let loading = $state(true);
 	let error: string | null = $state(null);
+	let loadError: LoadFailure | null = $state(null);
 	let editing = $state(false);
 	let saving = $state(false);
 	let deleteOpen = $state(false);
@@ -91,6 +93,7 @@
 			summary = null;
 			linkedAnalyses = [];
 			error = null;
+			loadError = null;
 			newAnalysisId = '';
 			formData = {
 				fact_type: 'person_birth',
@@ -109,6 +112,7 @@
 		editing = false;
 		loading = true;
 		error = null;
+		loadError = null;
 		linkedAnalyses = [];
 		try {
 			const result = await api.getProofSummary(id);
@@ -128,7 +132,7 @@
 			}
 		} catch (e) {
 			if (seq !== loadSeq) return;
-			error = recordLoadError(e, 'proof summary');
+			loadError = recordLoadError(e, 'proof summary');
 			summary = null;
 		} finally {
 			if (seq === loadSeq) loading = false;
@@ -312,8 +316,8 @@
 
 	{#if loading}
 		<LoadingState />
-	{:else if error && !summary && !isNew}
-		<ErrorState message={error} onRetry={() => loadSummary(page.params.id!)} />
+	{:else if loadError}
+		<ErrorState {...loadError} onRetry={() => loadSummary(page.params.id!)} />
 	{:else if editing}
 		<form
 			class="rounded-xl border border-slate-200 bg-white p-6"

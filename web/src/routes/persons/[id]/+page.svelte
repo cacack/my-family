@@ -2,7 +2,7 @@
 	import { tick } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
-	import { api, isVersionConflict, recordLoadError, type PersonDetail, type ChangeHistoryResponse, type Media, type ResearchStatus, type RollbackResponse, formatGenDate, formatPersonName, type Gender } from '#lib/api/client.js';
+	import { api, isVersionConflict, recordLoadError, type LoadFailure, type PersonDetail, type ChangeHistoryResponse, type Media, type ResearchStatus, type RollbackResponse, formatGenDate, formatPersonName, type Gender } from '#lib/api/client.js';
 	import ChangeHistory from '#lib/components/ChangeHistory.svelte';
 	import RestorePointBrowser from '#lib/components/RestorePointBrowser.svelte';
 	import RollbackConfirmDialog from '#lib/components/RollbackConfirmDialog.svelte';
@@ -50,7 +50,7 @@
 	// A failed load replaces the page; a failed save or brick-wall
 	// change is shown inline and leaves the page and the form intact (#899);
 	// a failed delete is shown in its dialog.
-	let loadError: string | null = $state(null);
+	let loadError: LoadFailure | null = $state(null);
 	let actionError: string | null = $state(null);
 	let saveError: string | null = $state(null);
 	// `person` is replaced before "Save my edits" saves because `savePerson`
@@ -493,7 +493,7 @@
 	{#if loading}
 		<LoadingState />
 	{:else if loadError}
-		<ErrorState message={loadError} onRetry={() => loadPerson(page.params.id ?? '')} />
+		<ErrorState {...loadError} onRetry={() => loadPerson(page.params.id ?? '')} />
 	{:else if person}
 		{#if actionError}
 			<ActionError message={actionError} />

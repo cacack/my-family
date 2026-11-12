@@ -26,7 +26,7 @@
 	 * left to count without listing (#827).
 	 */
 	import { page } from '$app/state';
-	import { api, type ApiError, type BranchChangeEntry, type Snapshot } from '#lib/api/client.js';
+	import { api, loadErrorFailure, notFoundFailure, type ApiError, type LoadFailure, type BranchChangeEntry, type Snapshot } from '#lib/api/client.js';
 	import DiffView from '#lib/components/DiffView.svelte';
 	import PageHeader from '#lib/components/PageHeader.svelte';
 	import MergedFromChip from '#lib/components/MergedFromChip.svelte';
@@ -69,8 +69,7 @@
 
 	let comparison = $state<ComparisonView | null>(null);
 	let loading = $state(true);
-	let error: string | null = $state(null);
-	let notFound = $state(false);
+	let loadError: LoadFailure | null = $state(null);
 	/** The snapshots belong to another branch than the active one. */
 	let otherBranch = $state(false);
 	let entityFilter = $state<EntityFilter>('all');
@@ -179,8 +178,7 @@
 	async function loadComparison(a: string, b: string, end: number | null) {
 		const request = ++comparisonRequest;
 		loading = true;
-		error = null;
-		notFound = false;
+		loadError = null;
 		otherBranch = false;
 		entityFilter = 'all';
 		try {
@@ -191,18 +189,24 @@
 			if (request !== comparisonRequest) return;
 			const apiError = e as ApiError;
 			if (apiError.status === 404) {
-				notFound = true;
+				loadError = notFoundFailure(
+					'snapshot',
+					`${toNow ? 'This snapshot' : 'One of these snapshots'} could not be found. It may have been deleted, or taken on another research branch.`
+				);
 			} else if (apiError.status === 409 && apiError.code === 'snapshot_branch_mismatch') {
 				otherBranch = true;
 			} else if (apiError.status === 400) {
 				// Only the server's range refusal means the end lies before the
-				// snapshot; any other 400 is a malformed link, bounded or not.
-				error =
+				// snapshot; any other 400 is a malformed link, bounded or not. A
+				// retry fixes neither, so both read like a missing snapshot.
+				loadError = notFoundFailure(
+					'snapshot',
 					end !== null && apiError.code === 'invalid_range'
 						? 'This range ends before its snapshot, so it holds no changes. Choose the snapshots again.'
-						: 'These snapshot links are malformed. Choose the snapshots again.';
+						: 'These snapshot links are malformed. Choose the snapshots again.'
+				);
 			} else {
-				error = apiError.message || 'Failed to compare snapshots';
+				loadError = loadErrorFailure(e, 'comparison');
 			}
 			comparison = null;
 		} finally {
@@ -278,14 +282,6 @@
 		</div>
 	{:else if loading}
 		<LoadingState label="Loading comparison..." />
-	{:else if notFound}
-		<div class="state empty">
-			<h2>Snapshot not found</h2>
-			<p>
-				{toNow ? 'This snapshot' : 'One of these snapshots'} may have been deleted, or taken on another
-				research branch. <a href="/snapshots">Choose again</a>.
-			</p>
-		</div>
 	{:else if otherBranch}
 		<div class="state empty" role="alert">
 			<h2>Snapshots from another branch</h2>
@@ -294,8 +290,13 @@
 				the mainline), or <a href="/snapshots">choose snapshots from this one</a>.
 			</p>
 		</div>
-	{:else if error}
-		<ErrorState message={error} onRetry={() => loadComparison(fromId, toId, until ?? null)} />
+	{:else if loadError}
+		<!-- The page's h1 stays above, so the state brings no title of its own. -->
+		<ErrorState
+			message={loadError.message}
+			notFound={loadError.notFound}
+			onRetry={() => loadComparison(fromId, toId, until ?? null)}
+		/>
 	{:else if comparison && older}
 		<div class="endpoints">
 			{@render snapshotCard('From (older)', older)}

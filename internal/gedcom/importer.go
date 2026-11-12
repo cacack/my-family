@@ -952,12 +952,13 @@ func renameCollidingNotes(doc *gedcom.Document, existing []string, notes []NoteD
 // and text keep their relative order. A raw tag value excludes its CONT/CONC
 // subordinates, so inline text has them folded back in (CONT as a newline,
 // CONC concatenated); a pointer is kept verbatim. Only the record's own
-// level-1 NOTE lines count: a NOTE nested under an ASSO, event, NAME or other
+// level-1 NOTE lines count, and its GEDCOM 7.0 SNOTE pointers, kept like a
+// NOTE pointer (#622): a NOTE nested under an ASSO, event, NAME or other
 // substructure belongs to that substructure (#1246).
 func recordNotes(tags []*gedcom.Tag) string {
 	var notes []string
 	for i, tag := range tags {
-		if tag.Level != 1 || tag.Tag != "NOTE" {
+		if tag.Level != 1 || (tag.Tag != "NOTE" && tag.Tag != "SNOTE") {
 			continue
 		}
 		if value := noteText(tags, i); value != "" {
@@ -1010,7 +1011,7 @@ var recordLabels = map[gedcom.RecordType]string{
 	gedcom.RecordTypeSubmitter:  "Submitter",
 }
 
-// recordKeepsNotes lists the record types whose own level-1 NOTE lines the
+// recordKeepsNotes lists the record types whose own level-1 NOTE and SNOTE lines the
 // import keeps (recordNotes). A FAM, OBJE or SUBM record has no notes field.
 var recordKeepsNotes = map[gedcom.RecordType]bool{
 	gedcom.RecordTypeIndividual: true,
@@ -1110,8 +1111,7 @@ type droppedNote struct {
 }
 
 // droppedNotes returns the non-empty NOTE and SNOTE lines in a record's tags
-// that the import does not keep: a level-1 line unless keepsOwn and it is a
-// NOTE, a level-2 line unless kept reports true for its level-1 block, and any
+// that the import does not keep: a level-1 line unless keepsOwn, a level-2 line unless kept reports true for its level-1 block, and any
 // deeper one. A level-1 block is named by its tag, a 7.0 negative assertion
 // as "NO <event>".
 func droppedNotes(tags []*gedcom.Tag, keepsOwn bool, kept func(block string, last bool) bool) []droppedNote {
@@ -1141,7 +1141,7 @@ func droppedNotes(tags []*gedcom.Tag, keepsOwn bool, kept func(block string, las
 			var keep bool
 			switch {
 			case tag.Level == 1:
-				keep = keepsOwn && tag.Tag == "NOTE"
+				keep = keepsOwn
 			case tag.Level == 2 && len(path) == 1:
 				keep = kept(path[0], lastBlock[path[0]] == block)
 			}

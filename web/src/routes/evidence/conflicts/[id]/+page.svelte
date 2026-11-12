@@ -5,6 +5,7 @@
 		api,
 		isVersionConflict,
 		recordLoadError,
+		type LoadFailure,
 		type EvidenceConflictResponse,
 		type EvidenceAnalysisResponse
 	} from '#lib/api/client.js';
@@ -32,6 +33,7 @@
 	let linkedAnalyses: EvidenceAnalysisResponse[] = $state([]);
 	let loading = $state(true);
 	let error: string | null = $state(null);
+	let loadError: LoadFailure | null = $state(null);
 	let resolving = $state(false);
 	let resolutionText = $state('');
 
@@ -55,6 +57,7 @@
 	async function loadConflict(id: string) {
 		loading = true;
 		error = null;
+		loadError = null;
 		linkedAnalyses = [];
 		try {
 			conflict = await api.getEvidenceConflict(id);
@@ -69,7 +72,7 @@
 					.map((r) => r.value);
 			}
 		} catch (e) {
-			error = recordLoadError(e, 'conflict');
+			loadError = recordLoadError(e, 'conflict');
 			conflict = null;
 		} finally {
 			loading = false;
@@ -125,9 +128,13 @@
 	{#if loading}
 		<PageHeader title="Evidence Conflict" back={{ href: '/evidence', label: 'Evidence' }} />
 		<LoadingState />
-	{:else if error && !conflict}
-		<PageHeader title="Evidence Conflict" back={{ href: '/evidence', label: 'Evidence' }} />
-		<ErrorState message={error} onRetry={() => loadConflict(page.params.id!)} />
+	{:else if loadError}
+		<PageHeader title={loadError.title} back={{ href: '/evidence', label: 'Evidence' }} />
+		<ErrorState
+			message={loadError.message}
+			notFound={loadError.notFound}
+			onRetry={() => loadConflict(page.params.id!)}
+		/>
 	{:else if conflict}
 		{@const statusBadge = conflictBadgeProps(conflict.status)}
 		{@const subject = { type: subjectTypeOf(conflict.fact_type), id: conflict.subject_id } as const}

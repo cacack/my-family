@@ -332,6 +332,45 @@ func TestConflictValues_CitationFactOwner(t *testing.T) {
 	}, fieldValue(t, f.onlyConflict(t, branch), "fact_owner_id"))
 }
 
+// A citation's fact is a life event or an attribute, with nothing saying
+// which; each is named from its own stream as the type it is (#1301).
+func TestConflictValues_CitationFactID(t *testing.T) {
+	f := newBranchTestFixture(t)
+	owner := f.person(t, "Fact", "Owner")
+	census1850 := uuid.New()
+	f.appendMain(t, census1850, domain.NewLifeEventCreatedFromModel(&domain.LifeEvent{
+		ID: census1850, PersonID: &owner, FactType: domain.FactPersonCensus, Place: "Boston",
+	}))
+	census1860 := uuid.New()
+	f.appendMain(t, census1860, domain.NewLifeEventCreatedFromModel(&domain.LifeEvent{
+		ID: census1860, PersonID: &owner, FactType: domain.FactPersonCensus, Place: "Salem",
+	}))
+	occupation := uuid.New()
+	f.appendMain(t, occupation, domain.NewAttributeCreatedFromModel(&domain.Attribute{
+		ID: occupation, PersonID: owner, FactType: domain.FactPersonOccupation, Value: "Clerk",
+	}))
+	citationID := uuid.New()
+	f.appendMain(t, citationID, domain.NewCitationCreated(&domain.Citation{
+		ID: citationID, SourceID: uuid.New(), FactType: domain.FactPersonCensus, FactOwnerID: owner, FactID: &census1850,
+	}))
+
+	branch := f.forkBranch(t, "fact")
+	f.appendBranch(t, branch, citationID, "citation", domain.NewCitationUpdated(citationID, map[string]any{
+		"fact_id": occupation.String(),
+	}))
+	f.appendMain(t, citationID, domain.NewCitationUpdated(citationID, map[string]any{
+		"fact_id": census1860.String(),
+	}))
+
+	assert.Equal(t, MergeConflictField{
+		Field:       "fact_id",
+		Label:       "Fact",
+		BaseValue:   ptr("Census, Boston"),
+		BranchValue: ptr("Occupation: Clerk"),
+		MainValue:   ptr("Census, Salem"),
+	}, fieldValue(t, f.onlyConflict(t, branch), "fact_id"))
+}
+
 // Notes and media are named from their streams too.
 func TestConflictValues_LinkedNotesAndMedia(t *testing.T) {
 	f := newBranchTestFixture(t)
