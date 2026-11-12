@@ -114,16 +114,16 @@ func (h *Handler) UpdateLDSOrdinance(ctx context.Context, input UpdateLDSOrdinan
 
 	// Build changes map
 	changes := make(map[string]any)
+	// testOrdinance holds only the fields this update changes, so a stored
+	// value that predates validation (GEDCOM import keeps STAT, TEMP and
+	// PLAC as written, e.g. the 5.5.1 status "PRE-1970") cannot block an
+	// edit to an unrelated field.
 	testOrdinance := domain.LDSOrdinance{
 		ID:       current.ID,
 		Type:     current.Type,
 		PersonID: current.PersonID,
 		FamilyID: current.FamilyID,
-		Place:    current.Place,
-		Temple:   current.Temple,
-		Status:   current.Status,
 	}
-	testOrdinance.SetDate(current.DateRaw)
 
 	if input.Date != nil && *input.Date != current.DateRaw {
 		date, err := normalizeDateInput("date", *input.Date)
@@ -153,7 +153,7 @@ func (h *Handler) UpdateLDSOrdinance(ctx context.Context, input UpdateLDSOrdinan
 		return &UpdateLDSOrdinanceResult{Version: current.Version}, nil
 	}
 
-	// Validate updated ordinance
+	// Validate the changed fields
 	if err := testOrdinance.Validate(); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidInput, err)
 	}
