@@ -41,8 +41,15 @@
 		surname_prefix: '',
 		nickname: '',
 		name_type: 'birth' as NameType | '',
-		is_primary: false
+		is_primary: false,
+		notes: ''
 	});
+
+	// The notes a name had when its edit began. Notes may hold shared-note
+	// pointers such as `@N1@` (#1165); an edit that leaves them unchanged
+	// omits `notes`, so the stored text is never rewritten (#1351).
+	let originalNotes = $state('');
+	const NOTE_POINTER = /^@[^@\s]+@$/m;
 
 	async function loadNames() {
 		loading = true;
@@ -66,7 +73,8 @@
 			surname_prefix: '',
 			nickname: '',
 			name_type: 'birth',
-			is_primary: false
+			is_primary: false,
+			notes: ''
 		};
 	}
 
@@ -111,8 +119,10 @@
 			nickname: name.nickname || '',
 			// An untyped name has no name_type (#1121, #1131); keep it untyped.
 			name_type: name.name_type || '',
-			is_primary: name.is_primary
+			is_primary: name.is_primary,
+			notes: name.notes || ''
 		};
+		originalNotes = name.notes || '';
 		showAddForm = false;
 		error = null;
 	}
@@ -143,7 +153,8 @@
 				surname_prefix: formData.surname_prefix.trim() || undefined,
 				nickname: formData.nickname.trim() || undefined,
 				name_type: formData.name_type,
-				is_primary: formData.is_primary
+				is_primary: formData.is_primary,
+				notes: formData.notes.trim() || undefined
 			});
 			showAddForm = false;
 			conflictError = false;
@@ -179,7 +190,8 @@
 				surname_prefix: formData.surname_prefix.trim(),
 				nickname: formData.nickname.trim(),
 				name_type: formData.name_type || undefined,
-				is_primary: formData.is_primary
+				is_primary: formData.is_primary,
+				notes: formData.notes.trim() === originalNotes.trim() ? undefined : formData.notes.trim()
 			});
 			editingId = null;
 			conflictError = false;
@@ -337,6 +349,11 @@
 				<span class="checkbox-note">Setting as primary will demote the current primary name</span>
 			</div>
 
+				<label>
+					Notes
+					<textarea bind:value={formData.notes} rows="3"></textarea>
+				</label>
+
 			<div class="form-actions">
 				<Button type="button" variant="outline" onclick={cancelAdd} disabled={saving}>Cancel</Button>
 				<Button type="submit" disabled={saving}>
@@ -414,6 +431,14 @@
 								<span class="checkbox-note">Setting as primary will demote the current primary name</span>
 							</div>
 
+							<label>
+								Notes
+								<textarea bind:value={formData.notes} rows="3"></textarea>
+								{#if NOTE_POINTER.test(originalNotes)}
+									<span class="field-hint">A reference such as @N1@ links a shared note; keep it to keep the link.</span>
+								{/if}
+							</label>
+
 							<div class="form-actions">
 								<Button type="button" variant="outline" onclick={cancelEdit} disabled={saving}>Cancel</Button>
 								<Button type="submit" disabled={saving}>
@@ -437,6 +462,10 @@
 								<span class="primary-badge">Primary</span>
 							{/if}
 						</div>
+
+						{#if name.notes}
+							<p class="name-notes">{name.notes}</p>
+						{/if}
 
 						<div class="name-actions">
 							<Button variant="ghost" size="sm" onclick={() => startEdit(name)}>Edit</Button>
@@ -537,7 +566,8 @@
 	}
 
 	.add-form input[type="text"],
-	.add-form select {
+	.add-form select,
+	.add-form textarea {
 		padding: 0.5rem 0.75rem;
 		border: 1px solid #e2e8f0;
 		border-radius: 6px;
@@ -546,7 +576,8 @@
 	}
 
 	.add-form input[type="text"]:focus,
-	.add-form select:focus {
+	.add-form select:focus,
+	.add-form textarea:focus {
 		outline: none;
 		border-color: #3b82f6;
 		box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
@@ -571,6 +602,24 @@
 	.checkbox-note {
 		font-size: 0.75rem;
 		color: var(--color-text-muted);
+	}
+
+	.add-form textarea {
+		font-family: inherit;
+		resize: vertical;
+	}
+
+	.field-hint {
+		font-size: 0.75rem;
+		color: var(--color-text-muted);
+	}
+
+	.name-notes {
+		margin: 0.5rem 0 0;
+		white-space: pre-wrap;
+		overflow-wrap: anywhere;
+		font-size: 0.875rem;
+		color: #475569;
 	}
 
 	.form-actions {
