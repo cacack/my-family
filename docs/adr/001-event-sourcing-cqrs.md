@@ -111,7 +111,7 @@ The "lite" in CQRS-lite means we use synchronous projections (see ADR-003) and a
 ### Neutral
 
 - Read models must be kept in sync with events (projection handlers)
-- Event schema changes require migration strategy (versioned event types)
+- Event schema changes require a migration strategy: upcasting on decode, not versioned event types (see [ADR-006](./006-schema-evolution.md))
 
 ## Implementation Notes
 

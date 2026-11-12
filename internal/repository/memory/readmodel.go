@@ -190,6 +190,7 @@ type ReadModelStore struct {
 	duplicateDismissals   map[branchKey]*repository.DuplicateDismissalReadModel // branch-scoped (#1036)
 	projectionFailures    []repository.ProjectionFailure                        // #845
 	rebuildState          []byte                                                // #845; outlives ResetReadModel
+	schemaVersion         int                                                   // #680; outlives ResetReadModel
 }
 
 // NewReadModelStore creates a new in-memory read model store.
@@ -1283,6 +1284,21 @@ func (s *ReadModelStore) Reset() {
 // ResetReadModel empties every table (#845).
 func (s *ReadModelStore) ResetReadModel(ctx context.Context) error {
 	s.Reset()
+	return nil
+}
+
+// GetSchemaVersion returns the stamped read-model schema version, or 0 (#680).
+func (s *ReadModelStore) GetSchemaVersion(ctx context.Context) (int, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.schemaVersion, nil
+}
+
+// SetSchemaVersion stamps the read-model schema version (#680).
+func (s *ReadModelStore) SetSchemaVersion(ctx context.Context, version int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.schemaVersion = version
 	return nil
 }
 

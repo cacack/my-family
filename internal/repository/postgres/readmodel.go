@@ -670,6 +670,13 @@ func (s *ReadModelStore) createTables() error {
 			id SMALLINT PRIMARY KEY CHECK (id = 1),
 			state TEXT NOT NULL
 		);
+
+		-- The read-model schema version the tables were created at (#680,
+		-- repository.ReadModelSchemaVersion). ResetReadModel keeps it.
+		CREATE TABLE IF NOT EXISTS read_model_schema (
+			id SMALLINT PRIMARY KEY CHECK (id = 1),
+			version INTEGER NOT NULL
+		);
 	`)
 	if err != nil {
 		return err

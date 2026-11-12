@@ -70,7 +70,7 @@ func NewReadModelStore(db *sql.DB) (*ReadModelStore, error) {
 	if !store.branchCapable {
 		slog.Warn("sqlite read model predates branch support (single-column primary key): " +
 			"mainline reads and writes work, branch writes are refused; " +
-			"rebuild the read model from the event store to enable branches (see issue #680)")
+			"stop the server and run `myfamily rebuild` to enable branches (#680)")
 	}
 	return store, nil
 }
@@ -729,6 +729,13 @@ func (s *ReadModelStore) createTables() error {
 			id INTEGER PRIMARY KEY CHECK (id = 1),
 			state TEXT NOT NULL
 		);
+
+		-- The read-model schema version the tables were created at (#680,
+		-- repository.ReadModelSchemaVersion). ResetReadModel keeps it.
+		CREATE TABLE IF NOT EXISTS read_model_schema (
+			id INTEGER PRIMARY KEY CHECK (id = 1),
+			version INTEGER NOT NULL
+		);
 	`)
 	if err != nil {
 		return err
@@ -846,10 +853,8 @@ func (s *ReadModelStore) runMigrations() {
 	// only a freshly built read model has. Such a pre-#669 SQLite database therefore
 	// stays main-only for these tables until the read model is recreated from the
 	// event store; the branch_id/deleted columns below keep mainline reads working in
-	// the meantime. NOTE: `myfamily rebuild` (#845) does not help here: it only
-	// deletes rows and replays the log, so these tables keep their lone-id
-	// primary key. Recreation is still manual (delete the read-model DB and let
-	// it re-project on startup). TODO(#680): make the rebuild recreate tables.
+	// the meantime. `myfamily rebuild` re-creates the tables with the composite key
+	// (#680).
 	s.migrateBranchColumns()
 
 	// Secondary indexes leading with branch_id so PurgeBranch's DELETE ... WHERE

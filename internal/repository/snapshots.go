@@ -27,12 +27,10 @@ var (
 // is the pair (branch_id, position). Rows that predate the column are
 // migrated to the mainline, which is what they always were.
 //
-// CAVEAT — rows predating #624. Snapshots created before this store became
-// projection-written were inserted directly and have NO event on their stream,
-// so a replay would not reconstruct them. `myfamily rebuild`
-// (repository.RebuildReadModel, #845) does not empty this registry, so such
-// rows survive it; any future rebuild that recreates the registry from the log
-// must backfill these rows, or deliberately drop them (#680).
+// Rows predating #624. Snapshots created before this store became
+// projection-written were inserted directly with no event on their stream.
+// `myfamily rebuild` (repository.RebuildReadModel) logs a SnapshotCreated for
+// each, so the log reconstructs them too (#680).
 type SnapshotStore interface {
 	// Create stores a new snapshot. It has no production caller since the
 	// registry became projection-written — Upsert is that path — and is retained

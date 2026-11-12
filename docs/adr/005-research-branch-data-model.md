@@ -356,11 +356,10 @@ a branch* points to `(branch_id, position)`") was not implemented: the `snapshot
 now carries the branch and that refusal is gone; see *Implementation Note — branch-scoped
 snapshots and compare to now*.
 
-**Still open — snapshots created before #624.** Rows written by the old direct-store path carry no
-`SnapshotCreated` event, so "the registry rebuilds from the log" holds only for snapshots created
-after this change. Nothing replays the log into a projector today, so no data is at risk yet; the
-constraint is that rebuild tooling (#680) must backfill those rows — or consciously drop them —
-rather than assume the log is complete. Deleting such a snapshot works: `DeleteSnapshot` reads the
+**Snapshots created before #624 — backfilled by #680.** Rows written by the old direct-store path
+carry no `SnapshotCreated` event. `myfamily rebuild` logs one for each, with the snapshot's original
+creation time, before its reset, so the registry rebuilds from the log for every snapshot (see
+[ADR-006](./006-schema-evolution.md)). Deleting such a snapshot before a rebuild has logged it works: `DeleteSnapshot` reads the
 snapshot's stream (`ReadStream`, then `scanSnapshotStream` over its mainline events), finds version
 0 because the stream has no events, and appends the tombstone with `expectedVersion` -1 (a new
 stream).
@@ -559,10 +558,10 @@ regenerated, so a detect-and-refuse guard there would permanently lock every exi
 install out of branches with no path forward. The rebuild is the only option that preserves
 ES-002 while letting existing installs adopt branches.
 
-Both halves of that contrast are inputs to **#680**, which owns the general migration-strategy gap
-(read-model schema versioning + `rebuild-read-model`, and event schema evolution). This ADR does
-not decide that strategy; it records one concrete case where the event store needed real migration
-discipline and got a hand-written one.
+Both halves of that contrast were inputs to **#680**, which settled the general strategy in
+[ADR-006](./006-schema-evolution.md): a read-model schema version with a fail-fast `myfamily
+rebuild`, and event upcasting on decode. This ADR records one concrete case where the event store
+needed real migration discipline and got a hand-written one.
 
 ## Implementation Note — merge (#55, delivered)
 

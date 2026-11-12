@@ -66,6 +66,10 @@ type RebuildResult struct {
 	// read model held (set before #802), and so had it logged in a
 	// BrickWallBackfilled event before the reset.
 	BackfilledBrickWalls int
+	// BackfilledSnapshots is how many snapshots the registry held with no
+	// event behind them (created before #624), and so had a SnapshotCreated
+	// logged for them (#680).
+	BackfilledSnapshots int
 	// DroppedImported is how many main-branch coordinates and EXIDs the read
 	// model held before the reset but not after the replay. The backfill
 	// should leave none; the rebuild warns if it drops any all the same.
@@ -94,6 +98,14 @@ const rebuildPageSize = 1000
 // rebuild logs any the log does not carry yet, one ImportedValuesBackfilled
 // event per entity, so the replay restores them and later rebuilds need no
 // backfill (#1251).
+//
+// Snapshots created before #624 were written only to the snapshot registry.
+// The registry is not reset, but the rebuild logs a SnapshotCreated for each
+// such snapshot, so the log alone can rebuild the registry too (#680).
+//
+// The reset drops and re-creates the read-model tables at this binary's
+// schema and stamps ReadModelSchemaVersion, which is what `serve` asks for when
+// the stamp does not match (#680, ADR-006).
 //
 // The rebuild is safe to abort. Every event is decoded before anything is
 // deleted, so an event the replay could not read fails the rebuild while the
@@ -127,6 +139,11 @@ func RebuildReadModel(ctx context.Context, events EventStore, rs ReadModelStore,
 	if err != nil {
 		return result, fmt.Errorf("log brick walls: %w", err)
 	}
+	snaps, err := backfillSnapshots(ctx, events, snapshots)
+	result.BackfilledSnapshots = snaps
+	if err != nil {
+		return result, fmt.Errorf("log snapshots: %w", err)
+	}
 	importedBefore, err := countImportedValues(ctx, rs)
 	if err != nil {
 		return result, fmt.Errorf("count coordinates and EXIDs: %w", err)
@@ -140,6 +157,9 @@ func RebuildReadModel(ctx context.Context, events EventStore, rs ReadModelStore,
 	}
 	if err := rs.ResetReadModel(ctx); err != nil {
 		return result, fmt.Errorf("reset read model: %w", err)
+	}
+	if err := rs.SetSchemaVersion(ctx, ReadModelSchemaVersion); err != nil {
+		return result, fmt.Errorf("stamp read model schema version: %w", err)
 	}
 
 	projector := NewProjectorWithSnapshots(rs, branches, snapshots)
@@ -291,6 +311,47 @@ func backfillBrickWalls(ctx context.Context, events EventStore, rs ReadModelStor
 	}
 	if appended > 0 {
 		slog.Info("logged brick walls that were set before brick walls were kept in the event log", "persons", appended)
+	}
+	return appended, nil
+}
+
+// snapshotStreamType is the stream type of a snapshot's own stream; it matches
+// the command package's.
+const snapshotStreamType = "snapshot"
+
+// backfillSnapshots appends a SnapshotCreated event to the stream of each
+// mainline snapshot whose stream is empty, and returns how many it appended
+// (#680). Only a snapshot created before #624 has no event, and every snapshot
+// was a mainline one until #839. The event keeps the snapshot's original
+// creation time, so the replay re-projects the same registry row. Every append
+// is durable on its own, so an interrupted backfill is finished by the next
+// rebuild.
+func backfillSnapshots(ctx context.Context, events EventStore, snapshots SnapshotStore) (int, error) {
+	if snapshots == nil {
+		return 0, nil
+	}
+	list, err := snapshots.List(ctx, domain.MainBranchID)
+	if err != nil {
+		return 0, fmt.Errorf("list snapshots: %w", err)
+	}
+	appended := 0
+	for _, snap := range list {
+		stored, err := events.ReadStream(ctx, snap.ID)
+		if err != nil {
+			return appended, fmt.Errorf("read stream %s: %w", snap.ID, err)
+		}
+		if len(stored) > 0 {
+			continue
+		}
+		event := domain.NewSnapshotCreated(snap)
+		event.Timestamp = snap.CreatedAt
+		if err := events.Append(ctx, snap.ID, snapshotStreamType, []domain.Event{event}, -1, MainScope); err != nil {
+			return appended, fmt.Errorf("append snapshot %s: %w", snap.ID, err)
+		}
+		appended++
+	}
+	if appended > 0 {
+		slog.Info("logged snapshots that were created before snapshots were kept in the event log", "snapshots", appended)
 	}
 	return appended, nil
 }
