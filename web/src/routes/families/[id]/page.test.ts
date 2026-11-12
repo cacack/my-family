@@ -238,14 +238,15 @@ describe('Family Detail Page', () => {
 		});
 	});
 
-	it('renders error state on API failure', async () => {
-		vi.mocked(apiModule.api.getFamily).mockRejectedValue({ message: 'Family not found' });
+	it('renders a friendly error state on a load failure, not the raw message (#1096)', async () => {
+		vi.mocked(apiModule.api.getFamily).mockRejectedValue({ status: 500, message: 'boom' });
 
 		render(FamilyPage);
 
 		await waitFor(() => {
-			expect(screen.getByText('Family not found')).toBeDefined();
+			expect(screen.getByText('Failed to load the family. Please try again.')).toBeDefined();
 		});
+		expect(screen.queryByText('boom')).toBeNull();
 	});
 
 	it('renders back link to families list', async () => {
@@ -856,12 +857,12 @@ describe('Family Detail Page: failed actions (#899)', () => {
 		expect(goto).not.toHaveBeenCalled();
 	});
 
-	it('says a missing family is not found and offers Retry', async () => {
+	it('says a missing family is not found, under an h1, with no Retry (#1096)', async () => {
 		vi.mocked(api.getFamily).mockRejectedValueOnce({ status: 404, message: 'Resource not found' });
 		render(FamilyPage);
 
 		expect((await screen.findByRole('alert')).textContent).toContain('This family could not be found');
-		await fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
-		expect(await screen.findByText('John Smith & Jane Smith')).toBeDefined();
+		expect(screen.getByRole('heading', { level: 1, name: 'Family not found' })).toBeTruthy();
+		expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
 	});
 });

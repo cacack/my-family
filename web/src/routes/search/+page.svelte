@@ -221,7 +221,7 @@
 				.filter((place) => place.has_children)
 				.map((place) =>
 					api
-						.getPlaceHierarchy(place.full_name || place.name)
+						.getPlaceHierarchy(place.full_name)
 						.catch(() => ({ items: [] as PlaceEntry[] }))
 				);
 			const childResults = await Promise.all(childPromises);
@@ -237,20 +237,20 @@
 		return allPlaces
 			.filter(
 				(p) =>
-					(p.full_name || p.name).toLowerCase().includes(lower) || p.name.toLowerCase().includes(lower)
+					p.full_name.toLowerCase().includes(lower) || p.name.toLowerCase().includes(lower)
 			)
 			.slice(0, 10);
 	}
 
 	function selectBirthPlace(place: PlaceEntry) {
-		birthPlace = place.full_name || place.name;
+		birthPlace = place.full_name;
 		showBirthPlaceDropdown = false;
 		birthPlaceHighlight = -1;
 		birthPlaceSuggestions = [];
 	}
 
 	function selectDeathPlace(place: PlaceEntry) {
-		deathPlace = place.full_name || place.name;
+		deathPlace = place.full_name;
 		showDeathPlaceDropdown = false;
 		deathPlaceHighlight = -1;
 		deathPlaceSuggestions = [];
@@ -676,7 +676,7 @@
 						<!-- One element whose text changes: a live region inserted together
 						     with its text is often not announced. -->
 						<span class="results-count" aria-live="polite"
-							>{loading ? 'Searching...' : `Showing ${results.length} of ${total} results`}</span
+							>{loading ? 'Searching...' : error ? '' : `Showing ${results.length} of ${total} results`}</span
 						>
 						{#if soundex}
 							<span class="mode-badge">Phonetic</span>

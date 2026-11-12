@@ -2,7 +2,7 @@
 	import MainlineNotice from '#lib/components/MainlineNotice.svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
-	import { api, isVersionConflict, recordLoadError, type RepositoryDetail, type Address } from '#lib/api/client.js';
+	import { api, isVersionConflict, recordLoadError, type LoadFailure, type RepositoryDetail, type Address } from '#lib/api/client.js';
 	import ExternalLinks from '#lib/components/ExternalLinks.svelte';
 	import InfoSection from '#lib/components/InfoSection.svelte';
 	import { Button } from '#lib/components/ui/button/index.js';
@@ -18,6 +18,7 @@
 	let repository: RepositoryDetail | null = $state(null);
 	let loading = $state(true);
 	let error: string | null = $state(null);
+	let loadError: LoadFailure | null = $state(null);
 	let editing = $state(false);
 	let saving = $state(false);
 	let deleteOpen = $state(false);
@@ -70,11 +71,12 @@
 	async function loadRepository(id: string) {
 		loading = true;
 		error = null;
+		loadError = null;
 		try {
 			repository = await api.getRepository(id);
 			resetForm();
 		} catch (e) {
-			error = recordLoadError(e, 'repository');
+			loadError = recordLoadError(e, 'repository');
 			repository = null;
 		} finally {
 			loading = false;
@@ -226,8 +228,8 @@
 
 	{#if loading}
 		<div class="loading">Loading...</div>
-	{:else if error && !repository}
-		<ErrorState message={error} onRetry={() => loadRepository(page.params.id ?? '')} />
+	{:else if loadError}
+		<ErrorState {...loadError} onRetry={() => loadRepository(page.params.id ?? '')} />
 	{:else if repository}
 		<!-- In the form, the error shows in it; out of it, a failed reload shows here. -->
 		{#if error && !editing}

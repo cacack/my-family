@@ -3109,10 +3109,10 @@ type ChangeEntryParentEntityType string
 
 // ChangeHistoryResponse defines model for ChangeHistoryResponse.
 type ChangeHistoryResponse struct {
-	HasMore *bool         `json:"has_more,omitempty"`
+	HasMore bool          `json:"has_more"`
 	Items   []ChangeEntry `json:"items"`
-	Limit   *int          `json:"limit,omitempty"`
-	Offset  *int          `json:"offset,omitempty"`
+	Limit   int           `json:"limit"`
+	Offset  int           `json:"offset"`
 	Total   int           `json:"total"`
 }
 
@@ -4299,6 +4299,7 @@ type MapLocation struct {
 	Longitude float64 `json:"longitude"`
 
 	// PersonIds IDs of the persons at this location, in the same order as `persons`. Kept for existing clients; `persons[].id` carries the same IDs.
+	// Deprecated: Use `persons[].id`, which carries the same IDs in the same order.
 	PersonIds []openapi_types.UUID `json:"person_ids"`
 
 	// Persons Persons at this location, named so a client can list them without a lookup each
@@ -4321,7 +4322,7 @@ type MapLocationsResponse struct {
 
 // Media defines model for Media.
 type Media struct {
-	CreatedAt   *time.Time         `json:"created_at,omitempty"`
+	CreatedAt   time.Time          `json:"created_at"`
 	CropHeight  *int               `json:"crop_height,omitempty"`
 	CropLeft    *int               `json:"crop_left,omitempty"`
 	CropTop     *int               `json:"crop_top,omitempty"`
@@ -5172,7 +5173,7 @@ type PersonList struct {
 
 // PersonName defines model for PersonName.
 type PersonName struct {
-	FullName   *string            `json:"full_name,omitempty"`
+	FullName   string             `json:"full_name"`
 	GivenName  string             `json:"given_name"`
 	Id         openapi_types.UUID `json:"id"`
 	IsPrimary  bool               `json:"is_primary"`
@@ -5339,10 +5340,10 @@ type PlaceEntry struct {
 	Count int `json:"count"`
 
 	// FullName Full place path
-	FullName *string `json:"full_name,omitempty"`
+	FullName string `json:"full_name"`
 
 	// HasChildren Whether this place has sub-locations
-	HasChildren *bool `json:"has_children,omitempty"`
+	HasChildren bool `json:"has_children"`
 
 	// Name Place name at this level
 	Name string `json:"name"`
@@ -5925,7 +5926,7 @@ type Source struct {
 	CallNumber *string `json:"call_number,omitempty"`
 
 	// CitationCount Number of citations referencing this source
-	CitationCount  *int               `json:"citation_count,omitempty"`
+	CitationCount  int                `json:"citation_count"`
 	CollectionName *string            `json:"collection_name,omitempty"`
 	Id             openapi_types.UUID `json:"id"`
 	Notes          *string            `json:"notes,omitempty"`
@@ -5995,7 +5996,7 @@ type SourceDetail struct {
 	CallNumber *string `json:"call_number,omitempty"`
 
 	// CitationCount Number of citations referencing this source
-	CitationCount  *int        `json:"citation_count,omitempty"`
+	CitationCount  int         `json:"citation_count"`
 	Citations      *[]Citation `json:"citations,omitempty"`
 	CollectionName *string     `json:"collection_name,omitempty"`
 

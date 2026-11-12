@@ -268,22 +268,25 @@ describe('Snapshot comparison page', () => {
 		expect(compareSnapshots).not.toHaveBeenCalled();
 	});
 
-	it('explains a deleted snapshot on 404', async () => {
+	it('explains a deleted snapshot on 404, with no Retry (#1096)', async () => {
 		compareSnapshots.mockRejectedValue({ status: 404, code: 'not_found', message: 'Snapshot not found' });
 
 		render(Page);
 
-		expect(await screen.findByText('Snapshot not found')).toBeDefined();
-		expect(screen.getByText(/may have been deleted/)).toBeDefined();
+		expect((await screen.findByRole('alert')).textContent).toMatch(/could not be found. It may have been deleted/);
+		expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+		expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
 	});
 
-	it('surfaces other failures', async () => {
+	it('surfaces other failures in a friendly sentence, with Retry (#1096)', async () => {
 		compareSnapshots.mockRejectedValue({ status: 500, code: 'internal', message: 'boom' });
 
 		render(Page);
 
 		const alert = await screen.findByRole('alert');
-		expect(alert.textContent).toContain('boom');
+		expect(alert.textContent).toContain('Failed to load the comparison. Please try again.');
+		expect(alert.textContent).not.toContain('boom');
+		expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
 	});
 
 	it('ignores a slow response for a pair the user has navigated away from', async () => {

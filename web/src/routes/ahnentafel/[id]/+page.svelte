@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { api, recordLoadError, type AhnentafelResponse, type AhnentafelEntry, formatGenDate, formatPersonName } from '#lib/api/client.js';
+	import { api, recordLoadError, type LoadFailure, type AhnentafelResponse, type AhnentafelEntry, formatGenDate, formatPersonName } from '#lib/api/client.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import ActionBar from '#lib/components/ActionBar.svelte';
 	import { Card, CardHeader, CardContent } from '#lib/components/ui/card/index.js';
@@ -9,7 +9,7 @@
 	import { useBackLink } from '#lib/utils/backLink.svelte.js';
 
 	let report: AhnentafelResponse | null = $state(null);
-	let error: string | null = $state(null);
+	let error: LoadFailure | null = $state(null);
 	// A failed export is shown beside the report, never in place of it (#899).
 	let exportError: string | null = $state(null);
 	let loading = $state(true);
@@ -131,7 +131,7 @@
 			{#snippet actions()}
 				<label class="generations">
 					Generations:
-					<select value={generations} onchange={handleGenerationsChange}>
+					<select value={generations} onchange={handleGenerationsChange} disabled={!report}>
 						{#each Array.from({ length: 9 }, (_, i) => i + 2) as n}
 							<option value={n}>{n}</option>
 						{/each}
@@ -151,7 +151,7 @@
 		{#if loading}
 			<div class="loading">Loading report...</div>
 		{:else if error}
-			<ErrorState message={error} onRetry={() => loadReport(page.params.id ?? '', generations)} />
+			<ErrorState {...error} onRetry={() => loadReport(page.params.id ?? '', generations)} />
 		{:else if report}
 			<div class="report-header">
 				<h1>Ahnentafel Report</h1>

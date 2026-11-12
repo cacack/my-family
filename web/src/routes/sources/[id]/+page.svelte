@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
-	import { api, isVersionConflict, recordLoadError, type SourceDetail, type SourceType, type Citation } from '#lib/api/client.js';
+	import { api, isVersionConflict, recordLoadError, type LoadFailure, type SourceDetail, type SourceType, type Citation } from '#lib/api/client.js';
 	import ExternalLinks from '#lib/components/ExternalLinks.svelte';
 	import InfoSection from '#lib/components/InfoSection.svelte';
 	import { Button } from '#lib/components/ui/button/index.js';
@@ -20,6 +20,7 @@
 	let source: SourceDetail | null = $state(null);
 	let loading = $state(true);
 	let error: string | null = $state(null);
+	let loadError: LoadFailure | null = $state(null);
 	let unreadableDate = $state(false);
 	// The publish date as stored, when that differs from the form typed (#957).
 	let savedAs: SavedAs | undefined = $state();
@@ -81,11 +82,12 @@
 	async function loadSource(id: string) {
 		loading = true;
 		error = null;
+		loadError = null;
 		try {
 			source = await api.getSource(id);
 			resetForm();
 		} catch (e) {
-			error = recordLoadError(e, 'source');
+			loadError = recordLoadError(e, 'source');
 			source = null;
 		} finally {
 			loading = false;
@@ -235,8 +237,8 @@
 
 	{#if loading}
 		<div class="loading">Loading...</div>
-	{:else if error && !source}
-		<ErrorState message={error} onRetry={() => loadSource(page.params.id ?? '')} />
+	{:else if loadError}
+		<ErrorState {...loadError} onRetry={() => loadSource(page.params.id ?? '')} />
 	{:else if source}
 		<!-- In the form, the error shows in it; out of it, a failed reload shows here. -->
 		{#if error && !editing}

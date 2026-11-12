@@ -109,6 +109,9 @@ survives restarts. Delete the file for a clean slate, set `SQLITE_PATH` to use a
 `DEMO_MODE=true make run` for a throwaway in-memory sample tree. The E2E suite never touches it — it
 boots the binary on a fresh temporary database each run.
 
+When adding a new nav page, extend the demo seeder (`internal/demo/seeder.go`) so the page renders
+non-empty under `DEMO_MODE`, and assert it in `internal/demo/seeder_test.go`.
+
 PostgreSQL integration tests need Docker. Without it they skip rather than fail, so `make test`
 still passes — but two backends get exercised instead of three. CI runs with Docker available.
 
