@@ -3234,13 +3234,13 @@ func (ss *StrictServer) MergePersons(ctx context.Context, request MergePersonsRe
 		}
 		if errors.Is(err, command.ErrCircularMerge) {
 			return MergePersons409JSONResponse{
-				Code:    "conflict",
+				Code:    CodeConflict,
 				Message: "Cannot merge: persons have an ancestor-descendant relationship",
 			}, nil
 		}
 		if errors.Is(err, command.ErrChildFamilyConflict) {
 			return MergePersons409JSONResponse{
-				Code:    "conflict",
+				Code:    CodeConflict,
 				Message: "Cannot merge: both persons are children in different families",
 			}, nil
 		}
@@ -4100,7 +4100,7 @@ func handleRollbackErrorStrict[T any](err error, badReq func(Error) T, notFound 
 	case errors.Is(err, command.ErrRollbackInvalidVersion):
 		return badReq(Error{Code: "bad_request", Message: "Invalid target version: must be positive and less than current version"}), nil
 	case errors.Is(err, command.ErrRollbackDeletedEntity):
-		return conflict(Error{Code: "conflict", Message: "Cannot rollback a deleted entity"}), nil
+		return conflict(Error{Code: CodeConflict, Message: "Cannot rollback a deleted entity"}), nil
 	case errors.Is(err, command.ErrRollbackNoChanges):
 		return badReq(Error{Code: "bad_request", Message: "Target version matches current version, no rollback needed"}), nil
 	case errors.Is(err, query.ErrNoEvents):

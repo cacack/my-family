@@ -272,7 +272,10 @@ func TestDeleteBranch_AlreadyArchived(t *testing.T) {
 
 	rec := do(t, server, http.MethodDelete, "/api/v1/branches/"+id, "")
 	if rec.Code != http.StatusConflict {
-		t.Errorf("Second delete: status = %d, want 409. Body: %s", rec.Code, rec.Body.String())
+		t.Fatalf("Second delete: status = %d, want 409. Body: %s", rec.Code, rec.Body.String())
+	}
+	if code := decodeJSON(t, rec)["code"]; code != "CONFLICT" {
+		t.Errorf("Second delete: code = %v, want CONFLICT", code)
 	}
 }
 
