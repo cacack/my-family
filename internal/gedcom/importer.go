@@ -1230,18 +1230,7 @@ func parseRepository(repo *gedcom.Repository, _ *ImportResult) RepositoryData {
 	// Extract address components if available
 	if repo.Address != nil {
 		addr := repo.Address
-		// Combine address lines
-		addrParts := []string{}
-		if addr.Line1 != "" {
-			addrParts = append(addrParts, addr.Line1)
-		}
-		if addr.Line2 != "" {
-			addrParts = append(addrParts, addr.Line2)
-		}
-		if addr.Line3 != "" {
-			addrParts = append(addrParts, addr.Line3)
-		}
-		repository.Address = strings.Join(addrParts, ", ")
+		repository.Address = strings.Join(gedcomAddressLines(addr), ", ")
 		repository.City = addr.City
 		repository.State = addr.State
 		repository.PostalCode = addr.PostalCode
@@ -1634,15 +1623,40 @@ func extractEventsFromIndividual(indi *gedcom.Individual, personID uuid.UUID) ([
 	return events, ids
 }
 
-// convertGedcomAddress converts a gedcom.Address to a domain.Address.
+// gedcomAddressLines returns the non-empty lines of an address's text: the
+// lines of the ADDR payload (Full) when it has one, and otherwise ADR1-ADR3.
+// Since gedcom-go v3.6.0 Line1-Line3 hold only ADR1-ADR3; the payload, the
+// only address text in GEDCOM 7.0, is in Full.
+func gedcomAddressLines(addr *gedcom.Address) []string {
+	candidates := []string{addr.Line1, addr.Line2, addr.Line3}
+	if addr.Full != "" {
+		candidates = strings.Split(addr.Full, "\n")
+	}
+	var lines []string
+	for _, line := range candidates {
+		if line != "" {
+			lines = append(lines, line)
+		}
+	}
+	return lines
+}
+
+// convertGedcomAddress converts a gedcom.Address to a domain.Address. The
+// address text's lines fill Line1-Line3; Line3 keeps any further lines, so
+// the export, which joins the lines back into the ADDR payload, loses none.
 func convertGedcomAddress(addr *gedcom.Address) *domain.Address {
 	if addr == nil {
 		return nil
 	}
+	lines := gedcomAddressLines(addr)
+	if len(lines) > 3 {
+		lines = append(lines[:2], strings.Join(lines[2:], "\n"))
+	}
+	lines = append(lines, "", "", "") // pad so Line1-Line3 can be indexed
 	domainAddr := &domain.Address{
-		Line1:      addr.Line1,
-		Line2:      addr.Line2,
-		Line3:      addr.Line3,
+		Line1:      lines[0],
+		Line2:      lines[1],
+		Line3:      lines[2],
 		City:       addr.City,
 		State:      addr.State,
 		PostalCode: addr.PostalCode,

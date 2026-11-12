@@ -1057,10 +1057,16 @@ func convertDomainAddressToGedcom(addr *domain.Address) *gedcom.Address {
 	if addr == nil {
 		return nil
 	}
+	// The address text goes in Full, the ADDR payload: the encoder writes the
+	// ADDR value from Full alone, and GEDCOM 7.0 has no ADR1-ADR3.
+	var lines []string
+	for _, line := range []string{addr.Line1, addr.Line2, addr.Line3} {
+		if line != "" {
+			lines = append(lines, line)
+		}
+	}
 	return &gedcom.Address{
-		Line1:      addr.Line1,
-		Line2:      addr.Line2,
-		Line3:      addr.Line3,
+		Full:       strings.Join(lines, "\n"),
 		City:       addr.City,
 		State:      addr.State,
 		PostalCode: addr.PostalCode,

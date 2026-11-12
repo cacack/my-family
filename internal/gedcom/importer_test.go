@@ -2126,6 +2126,7 @@ func TestImportEventWithStructuredAddress(t *testing.T) {
 2 DATE 15 JAN 1850
 2 PLAC First Methodist Church
 2 ADDR 123 Church Street
+3 CONT Building A
 3 ADR1 123 Church Street
 3 ADR2 Building A
 3 CITY Chicago
@@ -2187,6 +2188,32 @@ func TestImportEventWithStructuredAddress(t *testing.T) {
 	person := persons[0]
 	if person.GivenName != "John" {
 		t.Errorf("GivenName = %s, want John", person.GivenName)
+	}
+}
+
+func TestImportAddressPayloadOverThreeLines(t *testing.T) {
+	// The ADDR payload's lines fill Line1-Line3, and Line3 keeps the rest, so
+	// none is lost (#1291).
+	gedcomData := `0 HEAD
+1 GEDC
+2 VERS 5.5.1
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME John /Smith/
+1 RESI
+2 ADDR Care of the Rector
+3 CONT The Rectory
+3 CONT Church Lane
+3 CONT Lower Slaughter
+0 TRLR
+`
+	_, _, _, _, _, _, events, _, _, _, _, _, _, err := gedcom.NewImporter().Import(context.Background(), strings.NewReader(gedcomData))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+	want := domain.Address{Line1: "Care of the Rector", Line2: "The Rectory", Line3: "Church Lane\nLower Slaughter"}
+	if len(events) != 1 || events[0].Address == nil || *events[0].Address != want {
+		t.Fatalf("events = %+v, want one with address %+v", events, want)
 	}
 }
 
@@ -2256,6 +2283,7 @@ func TestImportRepositoryWithAddress(t *testing.T) {
 0 @R1@ REPO
 1 NAME Family History Library
 1 ADDR 35 N West Temple St
+2 CONT Suite 100
 2 ADR1 35 N West Temple St
 2 ADR2 Suite 100
 2 CITY Salt Lake City
@@ -2283,7 +2311,7 @@ func TestImportRepositoryWithAddress(t *testing.T) {
 	if repo.Name != "Family History Library" {
 		t.Errorf("Name = %s, want 'Family History Library'", repo.Name)
 	}
-	// Address should be combined from ADR1 and ADR2
+	// Address should be combined from the lines of the ADDR payload
 	if repo.Address != "35 N West Temple St, Suite 100" {
 		t.Errorf("Address = %s, want '35 N West Temple St, Suite 100'", repo.Address)
 	}

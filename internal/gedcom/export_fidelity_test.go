@@ -157,8 +157,11 @@ func TestExport_MixedNotePointerAndText(t *testing.T) {
 			if !strings.Contains(output, "1 NOTE plain text\n") {
 				t.Errorf("a single-line inline note should export unchanged; got:\n%s", output)
 			}
-			if !strings.Contains(output, "1 NOTE Line one\n2 CONT word ") || !strings.Contains(output, "\n2 CONC ") {
-				t.Errorf("a multi-line inline note should export as one NOTE with CONT/CONC; got:\n%s", output)
+			// GEDCOM 7.0 has no CONC, so only 5.x splits the long line
+			// (gedcom-go v3.4.0).
+			wantConc := version != gcgedcom.Version70
+			if !strings.Contains(output, "1 NOTE Line one\n2 CONT word ") || strings.Contains(output, "\n2 CONC ") != wantConc {
+				t.Errorf("a multi-line inline note should export as one NOTE with CONT (and CONC: %v); got:\n%s", wantConc, output)
 			}
 
 			_, persons, _, sources, _, repos, _, _, _, _, _, _, _, err := gedcom.NewImporter().Import(ctx, strings.NewReader(output))
