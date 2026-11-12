@@ -1032,6 +1032,22 @@ func TestStoredEvent_DecodeEvent_AllTypes(t *testing.T) {
 				}
 			},
 		},
+		{
+			name: "BrickWallBackfilled",
+			event: domain.BrickWallBackfilled{BaseEvent: domain.NewBaseEvent(), PersonID: testBrickWallPerson,
+				Note: "census gap", Since: testBrickWallSince, ResolvedAt: &testBrickWallSince},
+			eventType: "BrickWallBackfilled",
+			validate: func(t *testing.T, decoded domain.Event) {
+				e, ok := decoded.(domain.BrickWallBackfilled)
+				if !ok {
+					t.Fatalf("Expected BrickWallBackfilled, got %T", decoded)
+				}
+				if e.PersonID != testBrickWallPerson || e.Note != "census gap" ||
+					!e.Since.Equal(testBrickWallSince) || e.ResolvedAt == nil || !e.ResolvedAt.Equal(testBrickWallSince) {
+					t.Errorf("decoded %+v", e)
+				}
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -1129,7 +1145,7 @@ func TestStoredEvent_DecodeEvent_InvalidJSON_AllTypes(t *testing.T) {
 		"ResearchLogCreated", "ResearchLogUpdated", "ResearchLogDeleted",
 		"ProofSummaryCreated", "ProofSummaryUpdated", "ProofSummaryDeleted",
 		"DuplicateDismissed", "DuplicateRestored", "ImportedValuesBackfilled",
-		"BrickWallSet", "BrickWallResolved",
+		"BrickWallSet", "BrickWallResolved", "BrickWallBackfilled",
 	}
 
 	for _, eventType := range eventTypes {

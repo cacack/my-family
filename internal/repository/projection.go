@@ -169,6 +169,8 @@ func (p *Projector) Project(ctx context.Context, event domain.Event, version int
 		return p.projectBrickWall(ctx, e.PersonID, e.Note, e.Since, nil, version, branchID)
 	case domain.BrickWallResolved:
 		return p.projectBrickWall(ctx, e.PersonID, e.Note, e.Since, &e.ResolvedAt, version, branchID)
+	case domain.BrickWallBackfilled:
+		return p.projectBrickWall(ctx, e.PersonID, e.Note, e.Since, e.ResolvedAt, version, branchID)
 	case domain.BranchCreated:
 		return p.projectBranchCreated(ctx, e)
 	case domain.BranchUpdated:
@@ -2752,7 +2754,7 @@ func SortTime(gd *domain.GenDate) *time.Time {
 }
 
 // projectBrickWall writes a person's brick-wall status from BrickWallSet
-// (resolvedAt nil) or BrickWallResolved (#802). Each event states the whole
+// (resolvedAt nil), BrickWallResolved or BrickWallBackfilled (#802). Each event states the whole
 // status, so the row's three brick-wall fields are set outright. Only the
 // person's row on branchID is written: a branch row copied from main earlier
 // keeps the status it was copied with. The row's UpdatedAt is kept, as the

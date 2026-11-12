@@ -149,8 +149,8 @@ func TestRebuildReadModel_BackfillsLegacyBrickWalls(t *testing.T) {
 	if result.BackfilledBrickWalls != 2 {
 		t.Errorf("BackfilledBrickWalls = %d, want 2", result.BackfilledBrickWalls)
 	}
-	if types := loggedEventTypes(t, s.events); types["BrickWallSet"] != 1 || types["BrickWallResolved"] != 1 {
-		t.Errorf("logged event types = %v, want one BrickWallSet and one BrickWallResolved", types)
+	if types := loggedEventTypes(t, s.events); types["BrickWallBackfilled"] != 2 || types["BrickWallSet"] != 0 || types["BrickWallResolved"] != 0 {
+		t.Errorf("logged event types = %v, want two BrickWallBackfilled and no live brick-wall events", types)
 	}
 	a, _ := s.read.GetPerson(ctx, domain.MainBranchID, active.ID)
 	if a == nil || a.BrickWallNote != "no baptism found" || a.BrickWallSince == nil || !a.BrickWallSince.Equal(since) || a.BrickWallResolvedAt != nil {

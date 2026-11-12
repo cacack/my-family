@@ -423,9 +423,11 @@ is not a position marker that could live outside the log as a ref.
 - **Commands.** `SetBrickWall` / `ResolveBrickWall` are command handlers; the read-model store has no
   brick-wall write any more, only `GetBrickWalls`.
 - **Backfill.** A database from before #802 holds brick walls only in the read model.
-  `myfamily rebuild` logs each one the person's main stream does not carry yet, as a `BrickWallSet`
-  (or `BrickWallResolved`) keeping its original times, before it resets the read model, so the
-  replay restores it — the same pattern as the #1251 backfill of imported coordinates and EXIDs.
+  `myfamily rebuild` logs each one the person's main stream does not carry yet, as a `BrickWallBackfilled`
+  event keeping its original times, before it resets the read model, so the replay restores it —
+  the same pattern as the #1251 backfill of imported coordinates and EXIDs. Like
+  `ImportedValuesBackfilled`, it is research metadata for merge and drift (it changes no data, so it
+  never reads as main editing a person a branch deleted) and is left out of history.
 
 **Still main-only, now as a pending entity.** The events are not on the BR-006 allowlist, so a
 branch-scoped handler refuses them, and the endpoints ignore `?branch=`. Branch scoping them is an

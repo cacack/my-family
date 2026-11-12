@@ -159,8 +159,8 @@ Implemented in `internal/storage` (`storage.Open`), which `serve` calls at start
   into them on the same backend. The branch and snapshot registries are not
   emptied, because their projections are replay-safe upserts. Brick walls are
   event-sourced ([#802](https://github.com/cacack/my-family/issues/802)); one
-  set before that, held only by the read model, is logged as a `BrickWallSet`
-  (or `BrickWallResolved`) event before the reset. GEDCOM place coordinates and external IDs
+  set before that, held only by the read model, is logged as a `BrickWallBackfilled`
+  event before the reset. GEDCOM place coordinates and external IDs
   travel in the entities' created events
   ([#1225](https://github.com/cacack/my-family/issues/1225)), so the replay
   reproduces them. For an entity imported before that change, whose created

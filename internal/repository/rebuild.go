@@ -64,7 +64,7 @@ type RebuildResult struct {
 	Backfilled int
 	// BackfilledBrickWalls is how many persons had a brick wall that only the
 	// read model held (set before #802), and so had it logged in a
-	// BrickWallSet or BrickWallResolved event before the reset.
+	// BrickWallBackfilled event before the reset.
 	BackfilledBrickWalls int
 	// DroppedImported is how many main-branch coordinates and EXIDs the read
 	// model held before the reset but not after the replay. The backfill
@@ -86,8 +86,8 @@ const rebuildPageSize = 1000
 //
 // Brick walls come from the log too (#802), but before #802 they were written
 // only to the read model. Before the reset, the rebuild logs any brick wall the
-// person's main stream does not carry yet, as one BrickWallSet (or, for a
-// resolved one, BrickWallResolved) event, so the replay restores it.
+// person's main stream does not carry yet, as one BrickWallBackfilled event,
+// so the replay restores it.
 //
 // Place coordinates and EXIDs come from the log (#1225), but an import made
 // before #1225 wrote them only to the read model. Before the reset, the
@@ -262,8 +262,8 @@ func loadBrickWalls(ctx context.Context, rs ReadModelStore) (*rebuildState, erro
 	return kept, nil
 }
 
-// backfillBrickWalls appends a BrickWallSet event, or BrickWallResolved for a
-// resolved one, to the main stream of each person whose kept brick wall that
+// backfillBrickWalls appends a BrickWallBackfilled event to the main stream of
+// each person whose kept brick wall that
 // stream does not carry, and returns how many it appended (#802). A stream
 // that carries any brick-wall event already states the person's status, as
 // each such event states it whole. A person with no main stream is skipped.
@@ -280,10 +280,7 @@ func backfillBrickWalls(ctx context.Context, events EventStore, rs ReadModelStor
 		if carried || version == 0 {
 			continue
 		}
-		var event domain.Event = domain.BrickWallSet{BaseEvent: domain.NewBaseEvent(), PersonID: id, Note: bw.Note, Since: *bw.Since}
-		if bw.ResolvedAt != nil {
-			event = domain.BrickWallResolved{BaseEvent: domain.NewBaseEvent(), PersonID: id, Note: bw.Note, Since: *bw.Since, ResolvedAt: *bw.ResolvedAt}
-		}
+		event := domain.BrickWallBackfilled{BaseEvent: domain.NewBaseEvent(), PersonID: id, Note: bw.Note, Since: *bw.Since, ResolvedAt: bw.ResolvedAt}
 		if err := events.Append(ctx, id, "Person", []domain.Event{event}, version, MainScope); err != nil {
 			return appended, fmt.Errorf("append brick wall for person %s: %w", id, err)
 		}
@@ -311,7 +308,7 @@ func mainStreamCarriesBrickWall(ctx context.Context, events EventStore, id uuid.
 			continue
 		}
 		version = max(version, s.Version)
-		carried = carried || s.EventType == "BrickWallSet" || s.EventType == "BrickWallResolved"
+		carried = carried || s.EventType == "BrickWallSet" || s.EventType == "BrickWallResolved" || s.EventType == "BrickWallBackfilled"
 	}
 	return version, carried, nil
 }
