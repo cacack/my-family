@@ -486,6 +486,11 @@ type ReadModelStore interface {
 	// Person external identifier operations (GEDCOM 7.0 EXID; branch-scoped slice entity)
 	ReplacePersonExternalIDs(ctx context.Context, branchID domain.BranchID, personID uuid.UUID, ids []PersonExternalIDReadModel) error
 	GetPersonExternalIDs(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) ([]PersonExternalIDReadModel, error)
+	// ListPersonExternalIDs is GetPersonExternalIDs for every person at once:
+	// ONE read of each bucket visible on branchID, resolved through the same
+	// per-parent overlay, keyed by person ID and ordered by sequence (#617).
+	// Persons with no identifiers are absent from the map.
+	ListPersonExternalIDs(ctx context.Context, branchID domain.BranchID) (map[uuid.UUID][]PersonExternalIDReadModel, error)
 
 	// Family operations (branch-scoped slice entity)
 	GetFamily(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*FamilyReadModel, error)
@@ -506,6 +511,8 @@ type ReadModelStore interface {
 	// Family external identifier operations (GEDCOM 7.0 EXID; branch-scoped slice entity)
 	ReplaceFamilyExternalIDs(ctx context.Context, branchID domain.BranchID, familyID uuid.UUID, ids []FamilyExternalIDReadModel) error
 	GetFamilyExternalIDs(ctx context.Context, branchID domain.BranchID, familyID uuid.UUID) ([]FamilyExternalIDReadModel, error)
+	// ListFamilyExternalIDs is the all-families GetFamilyExternalIDs; see ListPersonExternalIDs.
+	ListFamilyExternalIDs(ctx context.Context, branchID domain.BranchID) (map[uuid.UUID][]FamilyExternalIDReadModel, error)
 
 	// Family children operations (branch-scoped slice entity)
 	// GetFamilyChildren returns one family's child links in the same order
@@ -577,6 +584,8 @@ type ReadModelStore interface {
 	// source bucket, #758 — same model as ReplacePersonExternalIDs)
 	ReplaceSourceExternalIDs(ctx context.Context, branchID domain.BranchID, sourceID uuid.UUID, ids []SourceExternalIDReadModel) error
 	GetSourceExternalIDs(ctx context.Context, branchID domain.BranchID, sourceID uuid.UUID) ([]SourceExternalIDReadModel, error)
+	// ListSourceExternalIDs is the all-sources GetSourceExternalIDs; see ListPersonExternalIDs.
+	ListSourceExternalIDs(ctx context.Context, branchID domain.BranchID) (map[uuid.UUID][]SourceExternalIDReadModel, error)
 
 	// Citation operations (branch-scoped, #758; same shape as life events). The
 	// per-source/per-person/per-fact lists resolve every citation through the
@@ -609,6 +618,8 @@ type ReadModelStore interface {
 	// Ancestry _APID, typed by URI.
 	ReplaceCitationExternalIDs(ctx context.Context, branchID domain.BranchID, citationID uuid.UUID, ids []CitationExternalIDReadModel) error
 	GetCitationExternalIDs(ctx context.Context, branchID domain.BranchID, citationID uuid.UUID) ([]CitationExternalIDReadModel, error)
+	// ListCitationExternalIDs is the all-citations GetCitationExternalIDs; see ListPersonExternalIDs.
+	ListCitationExternalIDs(ctx context.Context, branchID domain.BranchID) (map[uuid.UUID][]CitationExternalIDReadModel, error)
 
 	// Media operations (branch-scoped METADATA, #759)
 	//
@@ -706,6 +717,9 @@ type ReadModelStore interface {
 	// Repository external identifier operations (GEDCOM 7.0 EXID)
 	ReplaceRepositoryExternalIDs(ctx context.Context, repositoryID uuid.UUID, ids []RepositoryExternalIDReadModel) error
 	GetRepositoryExternalIDs(ctx context.Context, repositoryID uuid.UUID) ([]RepositoryExternalIDReadModel, error)
+	// ListRepositoryExternalIDs is the all-repositories GetRepositoryExternalIDs
+	// (main-only, like every repository method); see ListPersonExternalIDs.
+	ListRepositoryExternalIDs(ctx context.Context) (map[uuid.UUID][]RepositoryExternalIDReadModel, error)
 
 	// Association operations (branch-scoped, #757; same shape as life events)
 	GetAssociation(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*AssociationReadModel, error)
