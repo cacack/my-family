@@ -241,27 +241,8 @@ type MergeBranchResult struct {
 // a transaction — which is also what lets a resume classify each stream as
 // wholly replayed or not replayed at all.
 func (h *Handler) MergeBranch(ctx context.Context, input MergeBranchInput) (*MergeBranchResult, error) {
-	if h.branchStore == nil {
-		return nil, ErrBranchStoreRequired
-	}
-	if h.snapshots == nil {
-		return nil, ErrPositionSourceRequired
-	}
-
-	branch, err := h.branchStore.Get(ctx, input.BranchID)
+	branch, err := h.activeBranchToMerge(ctx, input)
 	if err != nil {
-		return nil, err // includes repository.ErrBranchNotFound
-	}
-	if branch.Status != domain.BranchStatusActive {
-		return nil, fmt.Errorf("%w: %s", ErrBranchNotActive, branch.Status)
-	}
-
-	// Validate the note against the domain rule before writing anything, by
-	// asking the branch it will end up on. Cheaper than discovering it when
-	// MarkMerged has already run.
-	candidate := *branch
-	candidate.MergeNote = input.Note
-	if err := candidate.Validate(); err != nil {
 		return nil, err
 	}
 
@@ -273,21 +254,8 @@ func (h *Handler) MergeBranch(ctx context.Context, input MergeBranchInput) (*Mer
 		return nil, err
 	}
 
-	groups, err := orderEvidenceForReplay(groupEventsByStream(plan.ReplayEvents))
+	groups, rationales, err := h.validateMergeRequest(ctx, plan, input)
 	if err != nil {
-		return nil, err
-	}
-	if err := validateResolutions(input.Resolutions, groups); err != nil {
-		return nil, err
-	}
-	rationales, err := validateRationales(input.Rationales, input.Resolutions)
-	if err != nil {
-		return nil, err
-	}
-	if err := validateConflictResolutions(plan.Conflicts, input.Resolutions); err != nil {
-		return nil, err
-	}
-	if err := h.validateNoDanglingReferences(ctx, plan, groups, input.Resolutions); err != nil {
 		return nil, err
 	}
 	if unresolved := unresolvedConflicts(plan.Conflicts, input.Resolutions); unresolved > 0 {
@@ -346,6 +314,60 @@ func (h *Handler) MergeBranch(ctx context.Context, input MergeBranchInput) (*Mer
 		SkippedStreamIDs:   skipped,
 		PreMergeSnapshot:   preMerge,
 	}, nil
+}
+
+// activeBranchToMerge loads the branch MergeBranch promotes and refuses one
+// that is not active or whose merge note fails the domain rule, before
+// anything is written.
+func (h *Handler) activeBranchToMerge(ctx context.Context, input MergeBranchInput) (*domain.Branch, error) {
+	if h.branchStore == nil {
+		return nil, ErrBranchStoreRequired
+	}
+	if h.snapshots == nil {
+		return nil, ErrPositionSourceRequired
+	}
+
+	branch, err := h.branchStore.Get(ctx, input.BranchID)
+	if err != nil {
+		return nil, err // includes repository.ErrBranchNotFound
+	}
+	if branch.Status != domain.BranchStatusActive {
+		return nil, fmt.Errorf("%w: %s", ErrBranchNotActive, branch.Status)
+	}
+
+	// Validate the note against the domain rule before writing anything, by
+	// asking the branch it will end up on. Cheaper than discovering it when
+	// MarkMerged has already run.
+	candidate := *branch
+	candidate.MergeNote = input.Note
+	if err := candidate.Validate(); err != nil {
+		return nil, err
+	}
+	return branch, nil
+}
+
+// validateMergeRequest orders the plan's replay into stream groups and checks
+// the caller's resolutions and rationales against it. It returns the ordered
+// groups and the validated rationales.
+func (h *Handler) validateMergeRequest(ctx context.Context, plan *query.MergePlan, input MergeBranchInput) ([]streamGroup, map[uuid.UUID]string, error) {
+	groups, err := orderEvidenceForReplay(groupEventsByStream(plan.ReplayEvents))
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := validateResolutions(input.Resolutions, groups); err != nil {
+		return nil, nil, err
+	}
+	rationales, err := validateRationales(input.Rationales, input.Resolutions)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := validateConflictResolutions(plan.Conflicts, input.Resolutions); err != nil {
+		return nil, nil, err
+	}
+	if err := h.validateNoDanglingReferences(ctx, plan, groups, input.Resolutions); err != nil {
+		return nil, nil, err
+	}
+	return groups, rationales, nil
 }
 
 // claimFreshMerge runs the staleness check and, only if main has not moved,

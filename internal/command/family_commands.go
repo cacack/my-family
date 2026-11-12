@@ -170,18 +170,8 @@ func (h *Handler) UpdateFamily(ctx context.Context, input UpdateFamilyInput) (*U
 	// A field equal to its current value is not a change (the edit form sends
 	// every field), so only differing fields are recorded.
 	changes := make(map[string]any)
-	if input.Partner1ID != nil && !samePartner(family.Partner1ID, *input.Partner1ID) {
-		changes["partner1_id"] = input.Partner1ID.String()
-	}
-	if input.Partner2ID != nil && !samePartner(family.Partner2ID, *input.Partner2ID) {
-		changes["partner2_id"] = input.Partner2ID.String()
-	}
-	if input.ClearPartner1 && family.Partner1ID != nil {
-		changes["partner1_id"] = nil
-	}
-	if input.ClearPartner2 && family.Partner2ID != nil {
-		changes["partner2_id"] = nil
-	}
+	recordPartnerChange(changes, "partner1_id", family.Partner1ID, input.Partner1ID, input.ClearPartner1)
+	recordPartnerChange(changes, "partner2_id", family.Partner2ID, input.Partner2ID, input.ClearPartner2)
 	if input.RelationshipType != nil && domain.RelationType(*input.RelationshipType) != family.RelationshipType {
 		changes["relationship_type"] = *input.RelationshipType
 	}
@@ -219,6 +209,18 @@ func (h *Handler) UpdateFamily(ctx context.Context, input UpdateFamilyInput) (*U
 	return &UpdateFamilyResult{
 		Version: version,
 	}, nil
+}
+
+// recordPartnerChange records under key a partner slot's new id, or nil when
+// the update clears a slot that has a partner. Setting the current partner
+// again, or clearing an empty slot, is not a change.
+func recordPartnerChange(changes map[string]any, key string, current, input *uuid.UUID, clearSlot bool) {
+	if input != nil && !samePartner(current, *input) {
+		changes[key] = input.String()
+	}
+	if clearSlot && current != nil {
+		changes[key] = nil
+	}
 }
 
 // samePartner reports whether a family's current partner is id.

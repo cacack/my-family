@@ -150,10 +150,7 @@ func (h *Handler) UpdateEvidenceAnalysis(ctx context.Context, input UpdateEviden
 		}
 	}
 
-	if input.FactType != nil && domain.FactType(*input.FactType) != current.FactType {
-		testAnalysis.FactType = domain.FactType(*input.FactType)
-		changes["fact_type"] = *input.FactType
-	}
+	recordChange(changes, "fact_type", input.FactType, &testAnalysis.FactType)
 	if input.SubjectID != nil && *input.SubjectID != current.SubjectID {
 		testAnalysis.SubjectID = *input.SubjectID
 		changes["subject_id"] = input.SubjectID.String()
@@ -162,18 +159,9 @@ func (h *Handler) UpdateEvidenceAnalysis(ctx context.Context, input UpdateEviden
 		testAnalysis.CitationIDs = input.CitationIDs
 		changes["citation_ids"] = input.CitationIDs
 	}
-	if input.Conclusion != nil && *input.Conclusion != current.Conclusion {
-		testAnalysis.Conclusion = *input.Conclusion
-		changes["conclusion"] = *input.Conclusion
-	}
-	if input.ResearchStatus != nil && domain.ResearchStatus(*input.ResearchStatus) != current.ResearchStatus {
-		testAnalysis.ResearchStatus = domain.ResearchStatus(*input.ResearchStatus)
-		changes["research_status"] = *input.ResearchStatus
-	}
-	if input.Notes != nil && *input.Notes != current.Notes {
-		testAnalysis.Notes = *input.Notes
-		changes["notes"] = *input.Notes
-	}
+	recordChange(changes, "conclusion", input.Conclusion, &testAnalysis.Conclusion)
+	recordChange(changes, "research_status", input.ResearchStatus, &testAnalysis.ResearchStatus)
+	recordChange(changes, "notes", input.Notes, &testAnalysis.Notes)
 
 	// No changes?
 	if len(changes) == 0 {
@@ -360,26 +348,11 @@ func (h *Handler) UpdateResearchLog(ctx context.Context, input UpdateResearchLog
 		testLog.SubjectID = *input.SubjectID
 		changes["subject_id"] = input.SubjectID.String()
 	}
-	if input.SubjectType != nil && *input.SubjectType != current.SubjectType {
-		testLog.SubjectType = *input.SubjectType
-		changes["subject_type"] = *input.SubjectType
-	}
-	if input.Repository != nil && *input.Repository != current.Repository {
-		testLog.Repository = *input.Repository
-		changes["repository"] = *input.Repository
-	}
-	if input.SearchDescription != nil && *input.SearchDescription != current.SearchDescription {
-		testLog.SearchDescription = *input.SearchDescription
-		changes["search_description"] = *input.SearchDescription
-	}
-	if input.Outcome != nil && domain.ResearchOutcome(*input.Outcome) != current.Outcome {
-		testLog.Outcome = domain.ResearchOutcome(*input.Outcome)
-		changes["outcome"] = *input.Outcome
-	}
-	if input.Notes != nil && *input.Notes != current.Notes {
-		testLog.Notes = *input.Notes
-		changes["notes"] = *input.Notes
-	}
+	recordChange(changes, "subject_type", input.SubjectType, &testLog.SubjectType)
+	recordChange(changes, "repository", input.Repository, &testLog.Repository)
+	recordChange(changes, "search_description", input.SearchDescription, &testLog.SearchDescription)
+	recordChange(changes, "outcome", input.Outcome, &testLog.Outcome)
+	recordChange(changes, "notes", input.Notes, &testLog.Notes)
 	if input.SearchDate != nil && !input.SearchDate.Equal(current.SearchDate) {
 		testLog.SearchDate = *input.SearchDate
 		// Stored as the RFC 3339 string the projection parses: a time.Time value
@@ -524,30 +497,18 @@ func (h *Handler) UpdateProofSummary(ctx context.Context, input UpdateProofSumma
 		}
 	}
 
-	if input.FactType != nil && domain.FactType(*input.FactType) != current.FactType {
-		testSummary.FactType = domain.FactType(*input.FactType)
-		changes["fact_type"] = *input.FactType
-	}
+	recordChange(changes, "fact_type", input.FactType, &testSummary.FactType)
 	if input.SubjectID != nil && *input.SubjectID != current.SubjectID {
 		testSummary.SubjectID = *input.SubjectID
 		changes["subject_id"] = input.SubjectID.String()
 	}
-	if input.Conclusion != nil && *input.Conclusion != current.Conclusion {
-		testSummary.Conclusion = *input.Conclusion
-		changes["conclusion"] = *input.Conclusion
-	}
-	if input.Argument != nil && *input.Argument != current.Argument {
-		testSummary.Argument = *input.Argument
-		changes["argument"] = *input.Argument
-	}
+	recordChange(changes, "conclusion", input.Conclusion, &testSummary.Conclusion)
+	recordChange(changes, "argument", input.Argument, &testSummary.Argument)
 	if input.AnalysisIDs != nil && !slices.Equal(input.AnalysisIDs, testSummary.AnalysisIDs) {
 		testSummary.AnalysisIDs = input.AnalysisIDs
 		changes["analysis_ids"] = input.AnalysisIDs
 	}
-	if input.ResearchStatus != nil && domain.ResearchStatus(*input.ResearchStatus) != current.ResearchStatus {
-		testSummary.ResearchStatus = domain.ResearchStatus(*input.ResearchStatus)
-		changes["research_status"] = *input.ResearchStatus
-	}
+	recordChange(changes, "research_status", input.ResearchStatus, &testSummary.ResearchStatus)
 
 	if len(changes) == 0 {
 		return &UpdateProofSummaryResult{Version: current.Version}, nil

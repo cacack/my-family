@@ -160,53 +160,24 @@ func (h *Handler) UpdateSource(ctx context.Context, input UpdateSourceInput) (*U
 		testSource.PublishDate = &pd
 	}
 
-	if input.SourceType != nil && domain.SourceType(*input.SourceType) != current.SourceType {
-		testSource.SourceType = domain.SourceType(*input.SourceType)
-		changes["source_type"] = *input.SourceType
+	recordChange(changes, "source_type", input.SourceType, &testSource.SourceType)
+	recordChange(changes, "title", input.Title, &testSource.Title)
+	recordChange(changes, "author", input.Author, &testSource.Author)
+	recordChange(changes, "publisher", input.Publisher, &testSource.Publisher)
+	publishDate, publishChanged, err := changedDate("publish_date", input.PublishDate, current.PublishDateRaw)
+	if err != nil {
+		return nil, err
 	}
-	if input.Title != nil && *input.Title != current.Title {
-		testSource.Title = *input.Title
-		changes["title"] = *input.Title
+	if publishChanged {
+		pd := domain.ParseGenDate(publishDate)
+		testSource.PublishDate = &pd
+		changes["publish_date"] = publishDate
 	}
-	if input.Author != nil && *input.Author != current.Author {
-		testSource.Author = *input.Author
-		changes["author"] = *input.Author
-	}
-	if input.Publisher != nil && *input.Publisher != current.Publisher {
-		testSource.Publisher = *input.Publisher
-		changes["publisher"] = *input.Publisher
-	}
-	if input.PublishDate != nil && *input.PublishDate != current.PublishDateRaw {
-		publishDate, err := normalizeDateInput("publish_date", *input.PublishDate)
-		if err != nil {
-			return nil, err
-		}
-		if publishDate != current.PublishDateRaw {
-			pd := domain.ParseGenDate(publishDate)
-			testSource.PublishDate = &pd
-			changes["publish_date"] = publishDate
-		}
-	}
-	if input.URL != nil && *input.URL != current.URL {
-		testSource.URL = *input.URL
-		changes["url"] = *input.URL
-	}
-	if input.RepositoryName != nil && *input.RepositoryName != current.RepositoryName {
-		testSource.RepositoryName = *input.RepositoryName
-		changes["repository_name"] = *input.RepositoryName
-	}
-	if input.CollectionName != nil && *input.CollectionName != current.CollectionName {
-		testSource.CollectionName = *input.CollectionName
-		changes["collection_name"] = *input.CollectionName
-	}
-	if input.CallNumber != nil && *input.CallNumber != current.CallNumber {
-		testSource.CallNumber = *input.CallNumber
-		changes["call_number"] = *input.CallNumber
-	}
-	if input.Notes != nil && *input.Notes != current.Notes {
-		testSource.Notes = *input.Notes
-		changes["notes"] = *input.Notes
-	}
+	recordChange(changes, "url", input.URL, &testSource.URL)
+	recordChange(changes, "repository_name", input.RepositoryName, &testSource.RepositoryName)
+	recordChange(changes, "collection_name", input.CollectionName, &testSource.CollectionName)
+	recordChange(changes, "call_number", input.CallNumber, &testSource.CallNumber)
+	recordChange(changes, "notes", input.Notes, &testSource.Notes)
 
 	// No changes?
 	if len(changes) == 0 {
