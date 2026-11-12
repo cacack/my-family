@@ -41,8 +41,9 @@ func legacyMixedCalendarRanges() map[string]legacyMixedCalendarRange {
 // with its real start on every backend, without rewriting the event (#1239).
 func TestProjector_ReplayRereadsLegacyMixedCalendarRange(t *testing.T) {
 	for name, tc := range legacyMixedCalendarRanges() {
-		for backend, readStore := range fullNameStores(t) {
+		for backend, open := range fullNameStores() {
 			t.Run(name+"/"+backend, func(t *testing.T) {
+				readStore := open(t)
 				ctx := context.Background()
 				projector := repository.NewProjector(readStore, nil)
 

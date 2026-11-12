@@ -74,15 +74,35 @@ func TestReadModelStore_MigratesPersonFullName(t *testing.T) {
 		}
 	}
 
+	// The migration drops and re-adds full_name, which gives the column a new
+	// attnum, so an unchanged attnum shows a reopen left the column alone.
+	attnum := func(t *testing.T) int {
+		t.Helper()
+		var n int
+		if err := db.QueryRow(`SELECT attnum FROM pg_attribute
+			WHERE attrelid = 'persons'::regclass AND attname = 'full_name' AND NOT attisdropped`).Scan(&n); err != nil {
+			t.Fatalf("read full_name attnum: %v", err)
+		}
+		return n
+	}
+	legacy := attnum(t)
+
 	if _, err := pgstore.NewReadModelStore(db); err != nil {
 		t.Fatalf("open read model over legacy schema: %v", err)
 	}
 	check(t)
+	migrated := attnum(t)
+	if migrated == legacy {
+		t.Fatalf("full_name attnum = %d after migration, want the column re-added", migrated)
+	}
 
 	if _, err := pgstore.NewReadModelStore(db); err != nil {
 		t.Fatalf("reopen migrated read model: %v", err)
 	}
 	check(t)
+	if got := attnum(t); got != migrated {
+		t.Errorf("full_name attnum = %d after reopen, want %d: the reopen rewrote the column again", got, migrated)
+	}
 }
 
 // TestReadModelStore_MigratesPersonNameFullName opens a database whose

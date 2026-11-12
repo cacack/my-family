@@ -18,8 +18,9 @@ import (
 // NameAdded/NameUpdated copies onto the person. Alternate names never move the
 // person, and a person with no names is left as it is.
 func TestProjector_PrimaryNameSync(t *testing.T) {
-	for backend, readStore := range fullNameStores(t) {
+	for backend, open := range fullNameStores() {
 		t.Run(backend, func(t *testing.T) {
+			readStore := open(t)
 			ctx := context.Background()
 			projector := repository.NewProjector(readStore, nil)
 
