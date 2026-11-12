@@ -55,7 +55,7 @@ func convertDomainGenDateToGenerated(qd *domain.GenDate) *GenDate {
 		gd.Day = qd.Day
 	}
 	if qd.Qualifier != "" {
-		q := GenDateQualifier(string(qd.Qualifier))
+		q := DateQualifier(qd.Qualifier)
 		gd.Qualifier = &q
 	}
 	// Expose non-Gregorian calendars so clients can display and convert dates in

@@ -8,6 +8,7 @@
 		recordLoadError,
 		type ResearchLogResponse,
 		type ResearchLogCreateRequest,
+		type ResearchLogSubjectType,
 		type ResearchOutcome
 	} from '#lib/api/client.js';
 	import { Button } from '#lib/components/ui/button/index.js';
@@ -40,7 +41,7 @@
 
 	let formData = $state({
 		subject_id: '',
-		subject_type: 'person',
+		subject_type: 'person' as ResearchLogSubjectType,
 		repository: '',
 		search_description: '',
 		outcome: 'inconclusive' as ResearchOutcome,
@@ -167,7 +168,7 @@
 			if (isNew) {
 				const data: ResearchLogCreateRequest = {
 					subject_id: formData.subject_id.trim(),
-					subject_type: formData.subject_type.trim(),
+					subject_type: formData.subject_type,
 					repository: formData.repository.trim(),
 					search_description: formData.search_description.trim(),
 					outcome: formData.outcome,
@@ -179,7 +180,7 @@
 			} else if (log) {
 				await api.updateResearchLog(log.id, {
 					subject_id: formData.subject_id.trim(),
-					subject_type: formData.subject_type.trim(),
+					subject_type: formData.subject_type,
 					repository: formData.repository.trim(),
 					search_description: formData.search_description.trim(),
 					outcome: formData.outcome,
