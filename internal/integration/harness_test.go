@@ -12,29 +12,19 @@
 package integration_test
 
 import (
-	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
-	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
-
-	"github.com/google/uuid"
-	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/modules/postgres"
-	"github.com/testcontainers/testcontainers-go/wait"
 
 	"github.com/cacack/my-family/internal/api"
 	"github.com/cacack/my-family/internal/config"
 	"github.com/cacack/my-family/internal/repository"
 	"github.com/cacack/my-family/internal/storage"
+	"github.com/cacack/my-family/internal/testutil/pgtest"
 )
 
 // ============================================================================
@@ -104,122 +94,16 @@ func fromStorage(t *testing.T, opened *storage.Stores, err error) stores {
 	}
 }
 
-// setupPostgres builds the bundle over a throwaway PostgreSQL container.
+// setupPostgres builds the bundle over a fresh, empty PostgreSQL database.
 //
-// It skips rather than fails when the environment cannot supply one — the same
-// graceful-skip contract internal/repository/postgres/eventstore_test.go
-// established, so `go test ./...` still passes on a machine without Docker.
-// One container per call keeps the backends independent; it costs a few
-// seconds per subtest and buys a guaranteed-empty database.
+// It skips rather than fails when the environment cannot supply one (see
+// pgtest), so `go test ./...` still passes on a machine without Docker. Each
+// call gets its own database, which keeps the backends independent.
 func setupPostgres(t *testing.T) stores {
 	t.Helper()
-
-	if testing.Short() {
-		t.Skip("skipping PostgreSQL integration test in short mode")
-	}
-	if serverURL := os.Getenv(localPostgresEnv); serverURL != "" {
-		// A local server is shared across tests, so each gets a uniquely
-		// named database, dropped again when the test ends.
-		admin := openPostgres(t, serverURL)
-		name := "t_" + strings.ReplaceAll(uuid.NewString(), "-", "")
-		dsn := createPostgresDatabase(t, admin, serverURL, name)
-		// Registered before the stores' own Close, so it runs after it.
-		t.Cleanup(func() {
-			// #nosec G202 -- name is generated above from a UUID, never external input.
-			_, _ = admin.Exec("DROP DATABASE IF EXISTS " + name + " WITH (FORCE)")
-		})
-		return newPostgresStores(t, dsn)
-	}
-	if !isDockerAvailable() {
-		t.Skip("Docker is not available, skipping PostgreSQL integration test")
-	}
-
-	// Not t.Context(): it is cancelled before t.Cleanup runs, and terminating
-	// the container needs a live context.
-	ctx := context.Background()
-
-	container, err := postgres.Run(ctx,
-		"postgres:16-alpine",
-		postgres.WithDatabase("testdb"),
-		postgres.WithUsername("test"),
-		postgres.WithPassword("test"),
-		testcontainers.WithWaitStrategy(
-			wait.ForLog("database system is ready to accept connections").
-				WithOccurrence(2).
-				WithStartupTimeout(60*time.Second)),
-	)
-	if err != nil {
-		t.Fatalf("start postgres container: %v", err)
-	}
-	t.Cleanup(func() { container.Terminate(ctx) })
-
-	connStr, err := container.ConnectionString(ctx, "sslmode=disable")
-	if err != nil {
-		t.Fatalf("postgres connection string: %v", err)
-	}
-
-	admin := openPostgres(t, connStr)
-	// The container is up but the server may still be finishing startup.
-	var pingErr error
-	for i := 0; i < 30; i++ {
-		if pingErr = admin.Ping(); pingErr == nil {
-			break
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	if pingErr != nil {
-		t.Fatalf("ping postgres: %v", pingErr)
-	}
-
 	// One database for all four stores, as on SQLite (DB-006).
-	return newPostgresStores(t, createPostgresDatabase(t, admin, connStr, "myfamily"))
-}
-
-// localPostgresEnv names an optional PostgreSQL server URL. When set, the
-// PostgreSQL subtests run against that server instead of a testcontainer, so
-// a machine without Docker can still exercise the PostgreSQL backend.
-const localPostgresEnv = "MYFAMILY_TEST_POSTGRES_URL"
-
-// newPostgresStores builds the four PostgreSQL stores over one database.
-func newPostgresStores(t *testing.T, dsn string) stores {
-	t.Helper()
-	opened, err := storage.OpenPostgres(dsn, storage.AccessServe)
+	opened, err := storage.OpenPostgres(pgtest.NewDatabase(t), storage.AccessServe)
 	return fromStorage(t, opened, err)
-}
-
-// createPostgresDatabase creates a database in the running container and
-// returns its connection URL. CREATE DATABASE cannot run inside a transaction
-// and needs a connection to some other database, which is what admin is.
-// name is either a literal from this file or generated from a UUID.
-func createPostgresDatabase(t *testing.T, admin *sql.DB, connStr, name string) string {
-	t.Helper()
-	// #nosec G202 -- name is a literal or UUID-derived, never external input.
-	if _, err := admin.Exec("CREATE DATABASE " + name); err != nil {
-		t.Fatalf("create database %s: %v", name, err)
-	}
-
-	dsn, err := url.Parse(connStr)
-	if err != nil {
-		t.Fatalf("parse postgres connection string: %v", err)
-	}
-	dsn.Path = "/" + name
-	return dsn.String()
-}
-
-// openPostgres opens a connection and closes it when the test ends.
-func openPostgres(t *testing.T, dsn string) *sql.DB {
-	t.Helper()
-	db, err := sql.Open("postgres", dsn)
-	if err != nil {
-		t.Fatalf("connect to postgres: %v", err)
-	}
-	t.Cleanup(func() { db.Close() })
-	return db
-}
-
-// isDockerAvailable reports whether a Docker daemon is reachable.
-func isDockerAvailable() bool {
-	return exec.Command("docker", "info").Run() == nil
 }
 
 // newServer wires a bundle into the real HTTP server, branch registry included

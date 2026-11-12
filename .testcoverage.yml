@@ -58,4 +58,5 @@ exclude:
     - internal/repository/postgres   # integration tests require Docker
     - internal/repository/sqlite     # sqlite requires complex setup
     - internal/integration           # test-only package, no statements to cover
+    - internal/testutil              # test support; its PostgreSQL paths need Docker
     - generated\.go$                 # generated code from oapi-codegen
