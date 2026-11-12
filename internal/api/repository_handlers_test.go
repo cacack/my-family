@@ -161,6 +161,34 @@ func TestUpdateRepository(t *testing.T) {
 	}
 }
 
+// TestRepository_RejectsInvalidInput checks that a malformed gedcom_xref on
+// create or update, and an update that empties the name, are refused with 400
+// rather than stored (#527).
+func TestRepository_RejectsInvalidInput(t *testing.T) {
+	server := setupTestServer()
+	id, version := createRepository(t, server, "Archives")
+
+	tests := []struct {
+		name, method, path, body string
+	}{
+		{"create xref without delimiters", http.MethodPost, "/api/v1/repositories", `{"name":"A","gedcom_xref":"R1"}`},
+		{"create xref with line break", http.MethodPost, "/api/v1/repositories", `{"name":"A","gedcom_xref":"@R1@\n0 INDI"}`},
+		{"update xref with space", http.MethodPut, "/api/v1/repositories/" + id, fmt.Sprintf(`{"gedcom_xref":"@R 1@","version":%d}`, version)},
+		{"update empty name", http.MethodPut, "/api/v1/repositories/" + id, fmt.Sprintf(`{"name":"","version":%d}`, version)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(tt.method, tt.path, strings.NewReader(tt.body))
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+			server.Echo().ServeHTTP(rec, req)
+			if rec.Code != http.StatusBadRequest {
+				t.Errorf("Status = %d, want %d. Body: %s", rec.Code, http.StatusBadRequest, rec.Body.String())
+			}
+		})
+	}
+}
+
 func TestUpdateRepository_VersionConflict(t *testing.T) {
 	server := setupTestServer()
 	id, version := createRepository(t, server, "Conflict Repository")

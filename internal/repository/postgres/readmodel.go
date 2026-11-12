@@ -3985,12 +3985,7 @@ func scanEventRow(row rowScanner) (*repository.EventReadModel, error) {
 		s := placeLong.String
 		event.PlaceLong = &s
 	}
-	if len(addressJSON) > 0 {
-		var addr domain.Address
-		if err := json.Unmarshal(addressJSON, &addr); err == nil {
-			event.Address = &addr
-		}
-	}
+	event.Address = repository.UnmarshalAddress(addressJSON, "events", event.ID)
 	if researchStatus.Valid {
 		event.ResearchStatus = domain.ResearchStatus(researchStatus.String)
 	}
@@ -5298,18 +5293,9 @@ func (s *ReadModelStore) GetSubmitter(ctx context.Context, id uuid.UUID) (*repos
 			submitter.MediaID = &id
 		}
 	}
-	if len(addressJSON) > 0 {
-		var addr domain.Address
-		if err := json.Unmarshal(addressJSON, &addr); err == nil {
-			submitter.Address = &addr
-		}
-	}
-	if len(phoneJSON) > 0 {
-		_ = json.Unmarshal(phoneJSON, &submitter.Phone)
-	}
-	if len(emailJSON) > 0 {
-		_ = json.Unmarshal(emailJSON, &submitter.Email)
-	}
+	submitter.Address = repository.UnmarshalAddress(addressJSON, "submitters", submitter.ID)
+	submitter.Phone = repository.UnmarshalStrings(phoneJSON, "submitters", "phone", submitter.ID)
+	submitter.Email = repository.UnmarshalStrings(emailJSON, "submitters", "email", submitter.ID)
 	return &submitter, nil
 }
 
@@ -5378,18 +5364,9 @@ func (s *ReadModelStore) ListSubmitters(ctx context.Context, opts repository.Lis
 				submitter.MediaID = &id
 			}
 		}
-		if len(addressJSON) > 0 {
-			var addr domain.Address
-			if err := json.Unmarshal(addressJSON, &addr); err == nil {
-				submitter.Address = &addr
-			}
-		}
-		if len(phoneJSON) > 0 {
-			_ = json.Unmarshal(phoneJSON, &submitter.Phone)
-		}
-		if len(emailJSON) > 0 {
-			_ = json.Unmarshal(emailJSON, &submitter.Email)
-		}
+		submitter.Address = repository.UnmarshalAddress(addressJSON, "submitters", submitter.ID)
+		submitter.Phone = repository.UnmarshalStrings(phoneJSON, "submitters", "phone", submitter.ID)
+		submitter.Email = repository.UnmarshalStrings(emailJSON, "submitters", "email", submitter.ID)
 		submitters = append(submitters, submitter)
 	}
 
@@ -5486,12 +5463,7 @@ func (s *ReadModelStore) GetRepository(ctx context.Context, id uuid.UUID) (*repo
 	if gedcomXref.Valid {
 		repo.GedcomXref = gedcomXref.String
 	}
-	if len(addressJSON) > 0 {
-		var addr domain.Address
-		if err := json.Unmarshal(addressJSON, &addr); err == nil {
-			repo.Address = &addr
-		}
-	}
+	repo.Address = repository.UnmarshalAddress(addressJSON, "repositories", repo.ID)
 	return &repo, nil
 }
 
@@ -5551,12 +5523,7 @@ func (s *ReadModelStore) ListRepositories(ctx context.Context, opts repository.L
 		if gedcomXref.Valid {
 			repo.GedcomXref = gedcomXref.String
 		}
-		if len(addressJSON) > 0 {
-			var addr domain.Address
-			if err := json.Unmarshal(addressJSON, &addr); err == nil {
-				repo.Address = &addr
-			}
-		}
+		repo.Address = repository.UnmarshalAddress(addressJSON, "repositories", repo.ID)
 		repositories = append(repositories, repo)
 	}
 

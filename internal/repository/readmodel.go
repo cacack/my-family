@@ -58,6 +58,40 @@ func UnmarshalNoteTranslations(data string) []domain.NoteTranslation {
 	return translations
 }
 
+// UnmarshalAddress parses a structured address from a JSON column. It returns
+// nil for empty input, and logs and returns nil for malformed input so a
+// corrupt row is visible rather than silently read back as "no address".
+func UnmarshalAddress(data []byte, table string, id uuid.UUID) *domain.Address {
+	var addr domain.Address
+	if !unmarshalJSONColumn(data, &addr, table, "address", id) {
+		return nil
+	}
+	return &addr
+}
+
+// UnmarshalStrings parses a JSON string-array column (e.g. a submitter's phone
+// or email list), with the same empty/malformed handling as UnmarshalAddress.
+func UnmarshalStrings(data []byte, table, column string, id uuid.UUID) []string {
+	var values []string
+	if !unmarshalJSONColumn(data, &values, table, column, id) {
+		return nil
+	}
+	return values
+}
+
+// unmarshalJSONColumn decodes data into dst, reporting whether it holds a value.
+func unmarshalJSONColumn(data []byte, dst any, table, column string, id uuid.UUID) bool {
+	if len(data) == 0 {
+		return false
+	}
+	if err := json.Unmarshal(data, dst); err != nil {
+		slog.Warn("failed to unmarshal read-model JSON column; dropping",
+			"table", table, "column", column, "id", id, "error", err)
+		return false
+	}
+	return true
+}
+
 // PersonReadModel represents a person in the read model.
 type PersonReadModel struct {
 	ID                  uuid.UUID             `json:"id"`

@@ -4295,7 +4295,7 @@ export interface components {
             fields?: {
                 [key: string]: string;
             };
-            /** @description Optional GEDCOM cross-reference ID for import */
+            /** @description Optional GEDCOM cross-reference ID for import. Empty, or one @-delimited pointer (e.g. "@R1@") with no whitespace or interior @. */
             gedcom_xref?: string;
         };
         CitationUpdate: {
@@ -5837,7 +5837,7 @@ export interface components {
         NoteCreate: {
             /** @description Note text content */
             text: string;
-            /** @description Optional GEDCOM cross-reference ID for import */
+            /** @description Optional GEDCOM cross-reference ID for import. Empty, or one @-delimited pointer (e.g. "@R1@") with no whitespace or interior @. */
             gedcom_xref?: string;
         };
         NoteUpdate: {
@@ -5924,7 +5924,7 @@ export interface components {
              * @description ID of linked media (submitter photo)
              */
             media_id?: string;
-            /** @description Optional GEDCOM cross-reference ID for import */
+            /** @description Optional GEDCOM cross-reference ID for import. Empty, or one @-delimited pointer (e.g. "@R1@") with no whitespace or interior @. */
             gedcom_xref?: string;
         };
         SubmitterUpdate: {
@@ -5984,7 +5984,7 @@ export interface components {
             address?: components["schemas"]["Address"];
             /** @description Free-form notes about the repository */
             notes?: string;
-            /** @description Optional GEDCOM cross-reference ID for import */
+            /** @description Optional GEDCOM cross-reference ID for import. Empty, or one @-delimited pointer (e.g. "@R1@") with no whitespace or interior @. */
             gedcom_xref?: string;
         };
         RepositoryUpdate: {
@@ -5993,7 +5993,7 @@ export interface components {
             address?: components["schemas"]["Address"];
             /** @description Updated notes */
             notes?: string;
-            /** @description Updated GEDCOM cross-reference ID */
+            /** @description Updated GEDCOM cross-reference ID. Empty, or one @-delimited pointer (e.g. "@R1@") with no whitespace or interior @. */
             gedcom_xref?: string;
             /**
              * Format: int64
