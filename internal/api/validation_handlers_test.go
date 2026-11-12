@@ -371,6 +371,19 @@ func TestGetValidationIssues_WithDateInconsistencies(t *testing.T) {
 		t.Error("Expected issues for person with death before birth")
 	}
 
+	// Each issue names the record it is about (#1108).
+	for _, issue := range resp.Issues {
+		if issue.RecordId == nil {
+			continue
+		}
+		if issue.RecordType == nil || *issue.RecordType != api.ValidationIssueRecordTypePerson {
+			t.Errorf("issue %s record_type = %v, want person", issue.Code, issue.RecordType)
+		}
+		if issue.RecordName == nil || *issue.RecordName != "Invalid Dates" {
+			t.Errorf("issue %s record_name = %v, want Invalid Dates", issue.Code, issue.RecordName)
+		}
+	}
+
 	// ErrorCount should reflect the issues
 	if resp.ErrorCount == 0 && resp.WarningCount == 0 && resp.InfoCount == 0 {
 		t.Error("Expected at least one issue count to be non-zero")

@@ -12,6 +12,7 @@
 		type RollbackResponse,
 		formatGenDate,
 		formatPersonName,
+		formatFamilyName,
 		type RelationType
 	} from '#lib/api/client.js';
 	import AddChildDialog from '#lib/components/AddChildDialog.svelte';
@@ -410,10 +411,7 @@
 	}
 
 	function getPartnerDisplay(): string {
-		if (!family) return '';
-		const p1 = family.partner1 ? formatPersonName(family.partner1) : 'Unknown';
-		const p2 = family.partner2 ? formatPersonName(family.partner2) : undefined;
-		return p2 ? `${p1} & ${p2}` : p1;
+		return family ? formatFamilyName(family) : '';
 	}
 
 	$effect(() => {

@@ -12,8 +12,7 @@ func TestBranchHealth_OrderAndCount(t *testing.T) {
 	issue := func(key, severity, code, record string) BranchValidationIssue {
 		return BranchValidationIssue{
 			Key:                   key,
-			ValidationIssueResult: ValidationIssueResult{Severity: severity, Code: code},
-			RecordName:            record,
+			ValidationIssueResult: ValidationIssueResult{Severity: severity, Code: code, RecordName: record},
 		}
 	}
 	quality := func(key, name string) BranchQualityIssue {

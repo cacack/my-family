@@ -17,10 +17,16 @@
 	import { Label } from '#lib/components/ui/label/index.js';
 	import { Textarea } from '#lib/components/ui/textarea/index.js';
 	import UncertaintyBadge from '#lib/components/UncertaintyBadge.svelte';
-	import { FACT_TYPES, formatFactType, isFactType, subjectRoute } from '#lib/utils/evidence.js';
+	import { FACT_TYPES, formatFactType, isFactType, subjectTypeOf } from '#lib/utils/evidence.js';
+	import { SubjectNames, subjectHref } from '#lib/utils/subjectNames.svelte.js';
 	import { nativeSelectClass } from '#lib/utils/forms.js';
 	import { RESEARCH_STATUS_OPTIONS, optionLabel } from '#lib/utils/enumOptions.js';
 	import ErrorState from '#lib/components/ErrorState.svelte';
+	import ActionError from '#lib/components/ActionError.svelte';
+	import ActionBar from '#lib/components/ActionBar.svelte';
+	import PageHeader from '#lib/components/PageHeader.svelte';
+	import InfoSection from '#lib/components/InfoSection.svelte';
+	import FormRow from '#lib/components/FormRow.svelte';
 	import SaveConflict from '#lib/components/SaveConflict.svelte';
 	import { SaveConflictFlow, type ConflictRow } from '#lib/utils/saveConflict.svelte.js';
 
@@ -58,6 +64,12 @@
 	}
 
 	let formData = $state(emptyFormData());
+
+	// The analysis stores its subject's id; the page shows the subject's name.
+	const subjects = new SubjectNames();
+	function loadSubject(saved: EvidenceAnalysisResponse) {
+		subjects.load([{ type: subjectTypeOf(saved.fact_type), id: saved.subject_id }]);
+	}
 
 	let newCitationId = $state('');
 
@@ -116,6 +128,7 @@
 			const result = await api.getEvidenceAnalysis(id);
 			if (seq !== loadSeq) return;
 			analysis = result;
+			loadSubject(result);
 			resetForm();
 		} catch (e) {
 			if (seq !== loadSeq) return;
@@ -208,6 +221,7 @@
 					version: analysis.version
 				});
 				analysis = updated;
+				loadSubject(updated);
 				resetForm();
 				editing = false;
 			}
@@ -257,20 +271,18 @@
 	<title>{isNew ? 'New Analysis' : analysis ? `${formatFactType(analysis.fact_type)} Analysis` : 'Evidence Analysis'} | My Family</title>
 </svelte:head>
 
+{#snippet recordActions()}
+	<Button variant="outline" onclick={startEdit}>Edit</Button>
+	<Button variant="destructive" onclick={deleteAnalysis} disabled={deleting}>
+		{deleting ? 'Deleting...' : 'Delete'}
+	</Button>
+{/snippet}
+
 <div class="mx-auto max-w-3xl p-6">
-	<header class="mb-6 flex items-center justify-between">
-		<a href="/evidence" class="text-sm text-muted-foreground no-underline hover:text-link">
-			&larr; Evidence
-		</a>
-		{#if analysis && !editing}
-			<div class="flex gap-2">
-				<Button variant="outline" onclick={startEdit}>Edit</Button>
-				<Button variant="destructive" onclick={deleteAnalysis} disabled={deleting}>
-					{deleting ? 'Deleting...' : 'Delete'}
-				</Button>
-			</div>
-		{/if}
-	</header>
+	<ActionBar
+		back={{ href: '/evidence', label: 'Evidence' }}
+		actions={analysis && !editing ? recordActions : undefined}
+	/>
 
 	{#if loading}
 		<div class="p-12 text-center text-muted-foreground">Loading...</div>
@@ -284,22 +296,15 @@
 				saveAnalysis();
 			}}
 		>
-			<h1 class="m-0 mb-6 text-xl text-slate-800">
-				{isNew ? 'New Evidence Analysis' : 'Edit Analysis'}
-			</h1>
+			<PageHeader title={isNew ? 'New Evidence Analysis' : 'Edit Analysis'} />
 
 			{#if error}
-				<div
-					class="mb-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-600"
-					role="alert"
-				>
-					{error}
-				</div>
+				<ActionError message={error} />
 			{/if}
 
-			<div class="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+			<FormRow>
 				<div class="flex flex-col gap-1.5">
-					<Label for="fact-type" class="text-sm text-slate-600">
+					<Label for="fact-type" class="text-sm text-muted-foreground">
 						Fact Type <span class="text-red-600">*</span>
 					</Label>
 					<select
@@ -320,7 +325,7 @@
 					{/if}
 				</div>
 				<div class="flex flex-col gap-1.5">
-					<Label for="subject-id" class="text-sm text-slate-600">
+					<Label for="subject-id" class="text-sm text-muted-foreground">
 						Subject ID <span class="text-red-600">*</span>
 					</Label>
 					<Input
@@ -332,10 +337,10 @@
 						aria-label="Subject ID"
 					/>
 				</div>
-			</div>
+			</FormRow>
 
 			<div class="mb-4 flex flex-col gap-1.5">
-				<Label for="conclusion" class="text-sm text-slate-600">
+				<Label for="conclusion" class="text-sm text-muted-foreground">
 					Conclusion <span class="text-red-600">*</span>
 				</Label>
 				<Textarea
@@ -347,9 +352,9 @@
 				/>
 			</div>
 
-			<div class="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+			<FormRow>
 				<div class="flex flex-col gap-1.5">
-					<Label for="research-status" class="text-sm text-slate-600">Research Status</Label>
+					<Label for="research-status" class="text-sm text-muted-foreground">Research Status</Label>
 					<select
 						id="research-status"
 						bind:value={formData.research_status}
@@ -361,15 +366,15 @@
 						{/each}
 					</select>
 				</div>
-			</div>
+			</FormRow>
 
 			<div class="mb-4 flex flex-col gap-1.5">
-				<Label for="notes" class="text-sm text-slate-600">Notes</Label>
+				<Label for="notes" class="text-sm text-muted-foreground">Notes</Label>
 				<Textarea id="notes" bind:value={formData.notes} rows={3} aria-label="Notes" />
 			</div>
 
 			<div class="mb-4">
-				<h3 class="m-0 mb-2 text-sm text-slate-600">Citation IDs</h3>
+				<h3 class="m-0 mb-2 text-sm text-muted-foreground">Citation IDs</h3>
 				{#if formData.citation_ids.length > 0}
 					<ul class="m-0 mb-2 flex list-none flex-col gap-1 p-0">
 						{#each formData.citation_ids as cid}
@@ -418,87 +423,53 @@
 			</div>
 		</form>
 	{:else if analysis}
+		{@const subject = { type: subjectTypeOf(analysis.fact_type), id: analysis.subject_id } as const}
 		<div class="rounded-xl border border-slate-200 bg-white p-6">
-			<div class="mb-6 border-b border-slate-200 pb-4">
-				<h1 class="m-0 mb-2 text-2xl text-slate-800">Evidence Analysis</h1>
-				<div class="flex items-center gap-2">
-					<Badge variant="secondary">{formatFactType(analysis.fact_type)}</Badge>
-					{#if analysis.research_status}
-						<UncertaintyBadge status={analysis.research_status} showLabel />
-					{/if}
-				</div>
-			</div>
+			{#snippet analysisBadges()}
+				<Badge variant="secondary">{formatFactType(analysis!.fact_type)}</Badge>
+				{#if analysis!.research_status}
+					<UncertaintyBadge status={analysis!.research_status} showLabel />
+				{/if}
+			{/snippet}
+			<PageHeader title="Evidence Analysis" badges={analysisBadges} />
 
 			{#if error}
-				<div
-					class="mb-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-600"
-					role="alert"
-				>
-					{error}
-				</div>
+				<ActionError message={error} />
 			{/if}
 
-			<div
-				class="mb-6 grid grid-cols-[repeat(auto-fit,minmax(min(250px,100%),1fr))] gap-6"
-			>
-				<div class="mb-6">
-					<h2
-						class="m-0 mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground"
-					>
-						Details
-					</h2>
-					<dl class="m-0 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
-						<dt class="text-[0.8125rem] text-muted-foreground">Subject</dt>
-						<dd class="m-0 text-sm text-slate-800">
-							<a
-								href="/{subjectRoute(analysis.fact_type)}/{analysis.subject_id}"
-								class="text-link no-underline hover:underline"
-							>
-								{analysis.subject_id}
-							</a>
-						</dd>
-						<dt class="text-[0.8125rem] text-muted-foreground">Fact Type</dt>
-						<dd class="m-0 text-sm text-slate-800">{formatFactType(analysis.fact_type)}</dd>
-						{#if analysis.conflict_id}
-							<dt class="text-[0.8125rem] text-muted-foreground">Conflict</dt>
-							<dd class="m-0 text-sm text-slate-800">
-								<a
-									href="/evidence/conflicts/{analysis.conflict_id}"
-									class="text-link no-underline hover:underline"
-								>
-									{analysis.conflict_id.slice(0, 8)}...
-								</a>
-							</dd>
-						{/if}
-					</dl>
-				</div>
-			</div>
+			<InfoSection
+				title="Details"
+				fields={[
+					{ label: 'Subject', value: subjects.label(subject), href: subjectHref(subject) },
+					{ label: 'Fact Type', value: formatFactType(analysis.fact_type) },
+					...(analysis.conflict_id
+						? [
+								{
+									label: 'Conflict',
+									value: 'View conflict',
+									href: `/evidence/conflicts/${analysis.conflict_id}`
+								}
+							]
+						: [])
+				]}
+			/>
 
-			<div class="mb-6">
-				<h2 class="m-0 mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-					Conclusion
-				</h2>
-				<p class="m-0 whitespace-pre-wrap text-sm leading-relaxed text-slate-600">
+			<InfoSection title="Conclusion">
+				<p class="m-0 whitespace-pre-wrap text-sm leading-relaxed text-foreground">
 					{analysis.conclusion}
 				</p>
-			</div>
+			</InfoSection>
 
 			{#if analysis.notes}
-				<div class="mb-6">
-					<h2 class="m-0 mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-						Notes
-					</h2>
-					<p class="m-0 whitespace-pre-wrap text-sm leading-relaxed text-slate-600">
+				<InfoSection title="Notes">
+					<p class="m-0 whitespace-pre-wrap text-sm leading-relaxed text-foreground">
 						{analysis.notes}
 					</p>
-				</div>
+				</InfoSection>
 			{/if}
 
 			{#if analysis.citation_ids && analysis.citation_ids.length > 0}
-				<div class="mb-6">
-					<h2 class="m-0 mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-						Citations ({analysis.citation_ids.length})
-					</h2>
+				<InfoSection title={`Citations (${analysis.citation_ids.length})`}>
 					<ul class="m-0 flex list-none flex-col gap-1.5 p-0">
 						{#each analysis.citation_ids as cid}
 							<li>
@@ -506,7 +477,7 @@
 							</li>
 						{/each}
 					</ul>
-				</div>
+				</InfoSection>
 			{/if}
 
 			<div

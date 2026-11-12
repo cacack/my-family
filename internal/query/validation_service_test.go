@@ -536,7 +536,6 @@ func TestValidationService_GetValidationIssues_RecordMapping(t *testing.T) {
 	service, store := setupValidationService()
 	ctx := context.Background()
 
-	// Add a person with issues
 	personID := addPersonWithDeath(store, "Invalid", "Person", "2000", "1900")
 
 	page, err := service.GetValidationIssues(ctx, "", 0, 0)
@@ -544,18 +543,20 @@ func TestValidationService_GetValidationIssues_RecordMapping(t *testing.T) {
 		t.Fatalf("GetValidationIssues returned error: %v", err)
 	}
 
-	// If there are issues related to our person, the RecordID should be mapped
+	// Each issue about the person carries its id, kind and name, so the
+	// quality page can link it by name (#1108).
+	mapped := 0
 	for _, issue := range page.Issues {
-		if issue.RecordID != nil {
-			// Verify it's a valid UUID (not nil)
-			if *issue.RecordID == uuid.Nil {
-				t.Error("RecordID should not be nil UUID")
-			}
-			// It should match our person
-			if *issue.RecordID == personID {
-				t.Log("Successfully mapped issue to person ID")
-			}
+		if issue.RecordID == nil || *issue.RecordID != personID {
+			continue
 		}
+		mapped++
+		if issue.RecordType != "person" || issue.RecordName != "Invalid Person" {
+			t.Errorf("issue %s record = (%q, %q), want (person, Invalid Person)", issue.Code, issue.RecordType, issue.RecordName)
+		}
+	}
+	if mapped == 0 {
+		t.Fatal("no issue was mapped to the person")
 	}
 }
 

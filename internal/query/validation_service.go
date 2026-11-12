@@ -56,13 +56,19 @@ type DuplicateResult struct {
 	MatchReasons []string  `json:"match_reasons"`
 }
 
-// ValidationIssueResult represents a single validation issue.
+// ValidationIssueResult represents a single validation issue. Each record it
+// names carries its kind ("person", "family", "source") and display name, so a
+// caller can show and link it without another read.
 type ValidationIssueResult struct {
-	Severity        string     `json:"severity"`
-	Code            string     `json:"code"`
-	Message         string     `json:"message"`
-	RecordID        *uuid.UUID `json:"record_id,omitempty"`
-	RelatedRecordID *uuid.UUID `json:"related_record_id,omitempty"`
+	Severity          string     `json:"severity"`
+	Code              string     `json:"code"`
+	Message           string     `json:"message"`
+	RecordID          *uuid.UUID `json:"record_id,omitempty"`
+	RecordType        string     `json:"record_type,omitempty"`
+	RecordName        string     `json:"record_name,omitempty"`
+	RelatedRecordID   *uuid.UUID `json:"related_record_id,omitempty"`
+	RelatedRecordType string     `json:"related_record_type,omitempty"`
+	RelatedRecordName string     `json:"related_record_name,omitempty"`
 }
 
 // GetQualityReport returns a comprehensive validation quality report for the
@@ -366,7 +372,7 @@ type recordLabel struct {
 	name string
 }
 
-// issueResult maps a validator issue back onto record ids.
+// issueResult maps a validator issue back onto record ids, kinds and names.
 func (v *gedcomView) issueResult(issue validator.Issue) ValidationIssueResult {
 	result := ValidationIssueResult{
 		Severity: severityConstToString(issue.Severity),
@@ -374,10 +380,14 @@ func (v *gedcomView) issueResult(issue validator.Issue) ValidationIssueResult {
 		Message:  issue.Message,
 	}
 	if id, ok := v.xrefMap[issue.RecordXRef]; ok && issue.RecordXRef != "" {
+		label := v.labels[id]
 		result.RecordID = &id
+		result.RecordType, result.RecordName = label.kind, label.name
 	}
 	if id, ok := v.xrefMap[issue.RelatedXRef]; ok && issue.RelatedXRef != "" {
+		label := v.labels[id]
 		result.RelatedRecordID = &id
+		result.RelatedRecordType, result.RelatedRecordName = label.kind, label.name
 	}
 	return result
 }

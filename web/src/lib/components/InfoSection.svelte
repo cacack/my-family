@@ -3,6 +3,8 @@
 		label: string;
 		/** Shown as `—` when empty. */
 		value?: string | null;
+		/** Makes a non-empty value a link, e.g. to the person a record is about. */
+		href?: string;
 		/** A status line under the value, e.g. how a typed date was saved. */
 		note?: string;
 	}
@@ -66,7 +68,11 @@
 			{#each shownFields as field (field.label)}
 				<dt>{field.label}</dt>
 				<dd>
-					{field.value || '—'}
+					{#if field.href && field.value}
+						<a href={field.href}>{field.value}</a>
+					{:else}
+						{field.value || '—'}
+					{/if}
 					{#if field.note}
 						<span class="note" role="status">{field.note}</span>
 					{/if}

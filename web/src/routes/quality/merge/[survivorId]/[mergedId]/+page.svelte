@@ -23,6 +23,9 @@
 	import { RadioGroup, RadioGroupItem } from '#lib/components/ui/radio-group/index.js';
 	import { Label } from '#lib/components/ui/label/index.js';
 	import ErrorState from '#lib/components/ErrorState.svelte';
+	import ActionError from '#lib/components/ActionError.svelte';
+	import PageHeader from '#lib/components/PageHeader.svelte';
+	import InfoSection from '#lib/components/InfoSection.svelte';
 
 	const MERGEABLE_FIELDS = [
 		'given_name',
@@ -186,11 +189,12 @@
 			.join(' ');
 	}
 
+	// An empty value reads `—`, as on every other page.
 	function displayValue(person: PersonDetail | null, field: MergeableField): string {
 		const raw = rawValue(person, field);
-		if (isEmpty(raw)) return '(empty)';
+		if (isEmpty(raw)) return '—';
 		if (DATE_FIELDS.has(field)) {
-			return formatGenDate(raw as GenDate) || '(empty)';
+			return formatGenDate(raw as GenDate) || '—';
 		}
 		return String(raw);
 	}
@@ -269,20 +273,13 @@
 </svelte:head>
 
 <div class="mx-auto max-w-5xl space-y-6 p-6">
-	<header class="space-y-1">
-		<a
-			href="/quality"
-			class="text-sm text-muted-foreground hover:text-foreground hover:underline"
-		>
-			&larr; Back to Quality
-		</a>
-		<h1 class="text-2xl font-semibold text-foreground">Merge Persons</h1>
-		<p class="text-sm text-muted-foreground">
+	<PageHeader title="Merge Persons" back={{ href: '/quality', label: 'Quality' }}>
+		<p class="mt-1 max-w-[46rem] text-sm text-muted-foreground">
 			Choose which value to keep for each field. The merged record will be deleted. If these are
 			different people, choose <strong>Not a duplicate</strong> and the pair will no longer be
 			suggested.
 		</p>
-	</header>
+	</PageHeader>
 
 	{#if onBranch && !result}
 		<div
@@ -308,12 +305,7 @@
 
 	<!-- A refused merge; a failed load shows in place of the form below. -->
 	{#if error && survivor && merged}
-		<div
-			role="alert"
-			class="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
-		>
-			{error}
-		</div>
+		<ActionError message={error} />
 	{/if}
 
 	{#if loading}
@@ -475,25 +467,19 @@
 		<CardHeader>
 			<CardTitle>{title}</CardTitle>
 			<CardDescription>
-				<span class="block text-base font-medium text-foreground">
+				<a href="/persons/{person.id}" class="block text-base font-medium">
 					{formatPersonName(person)}
-				</span>
-				<span
-					class="mt-1 inline-block rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[0.7rem] text-slate-600"
-				>
-					{person.id}
-				</span>
+				</a>
 			</CardDescription>
 		</CardHeader>
 		<CardContent>
-			<dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
-				{#each MERGEABLE_FIELDS as field (field)}
-					<dt class="text-xs uppercase tracking-wide text-muted-foreground">
-						{formatFieldName(field)}
-					</dt>
-					<dd class="text-foreground break-words">{displayValue(person, field)}</dd>
-				{/each}
-			</dl>
+			<InfoSection
+				title="Current values"
+				fields={MERGEABLE_FIELDS.map((field) => ({
+					label: formatFieldName(field),
+					value: displayValue(person, field)
+				}))}
+			/>
 		</CardContent>
 	</Card>
 {/snippet}

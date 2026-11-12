@@ -1405,6 +1405,48 @@ func (e SourceType) Valid() bool {
 	}
 }
 
+// Defines values for ValidationIssueRecordType.
+const (
+	ValidationIssueRecordTypeFamily ValidationIssueRecordType = "family"
+	ValidationIssueRecordTypePerson ValidationIssueRecordType = "person"
+	ValidationIssueRecordTypeSource ValidationIssueRecordType = "source"
+)
+
+// Valid indicates whether the value is a known member of the ValidationIssueRecordType enum.
+func (e ValidationIssueRecordType) Valid() bool {
+	switch e {
+	case ValidationIssueRecordTypeFamily:
+		return true
+	case ValidationIssueRecordTypePerson:
+		return true
+	case ValidationIssueRecordTypeSource:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ValidationIssueRelatedRecordType.
+const (
+	ValidationIssueRelatedRecordTypeFamily ValidationIssueRelatedRecordType = "family"
+	ValidationIssueRelatedRecordTypePerson ValidationIssueRelatedRecordType = "person"
+	ValidationIssueRelatedRecordTypeSource ValidationIssueRelatedRecordType = "source"
+)
+
+// Valid indicates whether the value is a known member of the ValidationIssueRelatedRecordType enum.
+func (e ValidationIssueRelatedRecordType) Valid() bool {
+	switch e {
+	case ValidationIssueRelatedRecordTypeFamily:
+		return true
+	case ValidationIssueRelatedRecordTypePerson:
+		return true
+	case ValidationIssueRelatedRecordTypeSource:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ValidationIssueSeverity.
 const (
 	ValidationIssueSeverityError   ValidationIssueSeverity = "error"
@@ -6158,12 +6200,30 @@ type ValidationIssue struct {
 	// RecordId ID of the primary record with the issue
 	RecordId *openapi_types.UUID `json:"record_id,omitempty"`
 
+	// RecordName Display name of the primary record, present with record_id
+	RecordName *string `json:"record_name,omitempty"`
+
+	// RecordType Kind of the primary record, present with record_id
+	RecordType *ValidationIssueRecordType `json:"record_type,omitempty"`
+
 	// RelatedRecordId ID of a related record (if applicable)
 	RelatedRecordId *openapi_types.UUID `json:"related_record_id,omitempty"`
+
+	// RelatedRecordName Display name of the related record, present with related_record_id
+	RelatedRecordName *string `json:"related_record_name,omitempty"`
+
+	// RelatedRecordType Kind of the related record, present with related_record_id
+	RelatedRecordType *ValidationIssueRelatedRecordType `json:"related_record_type,omitempty"`
 
 	// Severity Severity level of the issue
 	Severity ValidationIssueSeverity `json:"severity"`
 }
+
+// ValidationIssueRecordType Kind of the primary record, present with record_id
+type ValidationIssueRecordType string
+
+// ValidationIssueRelatedRecordType Kind of the related record, present with related_record_id
+type ValidationIssueRelatedRecordType string
 
 // ValidationIssueSeverity Severity level of the issue
 type ValidationIssueSeverity string

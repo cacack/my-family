@@ -111,6 +111,29 @@ describe('Quality landing page', () => {
 		expect(screen.getByRole('tab', { name: /^not duplicates/i })).toBeDefined();
 	});
 
+	it('names the record an issue is about and links it by kind (#1108)', async () => {
+		vi.mocked(apiModule.api.getValidationIssues).mockResolvedValue({
+			...mockValidationResponse,
+			issues: [
+				{ ...mockValidationResponse.issues[0], record_type: 'person', record_name: 'Ada Lovelace' },
+				{
+					severity: 'warning',
+					code: 'family_issue',
+					message: 'Family has no partners',
+					record_id: '22222222-2222-2222-2222-222222222222',
+					record_type: 'family',
+					record_name: 'Ada Lovelace & William King'
+				}
+			]
+		});
+		render(Page);
+		const person = await screen.findByRole('link', { name: 'Ada Lovelace' });
+		expect(person.getAttribute('href')).toBe('/persons/11111111-1111-1111-1111-111111111111');
+		const family = screen.getByRole('link', { name: 'Ada Lovelace & William King' });
+		expect(family.getAttribute('href')).toBe('/families/22222222-2222-2222-2222-222222222222');
+		expect(document.body.textContent).not.toContain('11111111');
+	});
+
 	it('loads validation issues with no severity filter on mount', async () => {
 		render(Page);
 		await waitFor(() => {

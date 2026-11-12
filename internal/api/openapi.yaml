@@ -7924,10 +7924,24 @@ components:
           type: string
           format: uuid
           description: ID of the primary record with the issue
+        record_type:
+          type: string
+          enum: [person, family, source]
+          description: Kind of the primary record, present with record_id
+        record_name:
+          type: string
+          description: Display name of the primary record, present with record_id
         related_record_id:
           type: string
           format: uuid
           description: ID of a related record (if applicable)
+        related_record_type:
+          type: string
+          enum: [person, family, source]
+          description: Kind of the related record, present with related_record_id
+        related_record_name:
+          type: string
+          description: Display name of the related record, present with related_record_id
 
     ValidationIssuesResponse:
       type: object

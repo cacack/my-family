@@ -15,10 +15,15 @@
 	import UncertaintyBadge from '#lib/components/UncertaintyBadge.svelte';
 	import {
 		formatFactType,
-		subjectRoute,
-		conflictBadgeProps
+		subjectTypeOf,
+		conflictBadgeProps,
+		readableConflictDescription
 	} from '#lib/utils/evidence.js';
+	import { SubjectNames, subjectHref } from '#lib/utils/subjectNames.svelte.js';
 	import ErrorState from '#lib/components/ErrorState.svelte';
+	import ActionError from '#lib/components/ActionError.svelte';
+	import PageHeader from '#lib/components/PageHeader.svelte';
+	import InfoSection from '#lib/components/InfoSection.svelte';
 	import SaveConflict from '#lib/components/SaveConflict.svelte';
 	import { SaveConflictFlow, type ConflictRow } from '#lib/utils/saveConflict.svelte.js';
 
@@ -43,12 +48,16 @@
 	});
 	const conflictRows: ConflictRow<ResolutionForm>[] = [{ key: 'resolution', label: 'Resolution' }];
 
+	// The conflict stores its subject's id; the page shows the subject's name.
+	const subjects = new SubjectNames();
+
 	async function loadConflict(id: string) {
 		loading = true;
 		error = null;
 		linkedAnalyses = [];
 		try {
 			conflict = await api.getEvidenceConflict(id);
+			subjects.load([{ type: subjectTypeOf(conflict.fact_type), id: conflict.subject_id }]);
 			// Fetch linked analyses in parallel
 			if (conflict.analysis_ids && conflict.analysis_ids.length > 0) {
 				const results = await Promise.allSettled(
@@ -112,98 +121,63 @@
 </svelte:head>
 
 <div class="mx-auto max-w-3xl p-6">
-	<header class="mb-6 flex items-center justify-between">
-		<a href="/evidence" class="text-sm text-muted-foreground no-underline hover:text-link">
-			&larr; Evidence
-		</a>
-	</header>
-
 	{#if loading}
+		<PageHeader title="Evidence Conflict" back={{ href: '/evidence', label: 'Evidence' }} />
 		<div class="p-12 text-center text-muted-foreground">Loading...</div>
 	{:else if error && !conflict}
+		<PageHeader title="Evidence Conflict" back={{ href: '/evidence', label: 'Evidence' }} />
 		<ErrorState message={error} onRetry={() => loadConflict(page.params.id!)} />
 	{:else if conflict}
 		{@const statusBadge = conflictBadgeProps(conflict.status)}
+		{@const subject = { type: subjectTypeOf(conflict.fact_type), id: conflict.subject_id } as const}
+		{#snippet conflictBadges()}
+			<Badge variant="secondary">{formatFactType(conflict!.fact_type)}</Badge>
+			<Badge variant={statusBadge.variant} class={statusBadge.class}>
+				{statusBadge.label}
+			</Badge>
+		{/snippet}
+		<PageHeader
+			title="Evidence Conflict"
+			back={{ href: '/evidence', label: 'Evidence' }}
+			badges={conflictBadges}
+		/>
 		<div class="rounded-xl border border-slate-200 bg-white p-6">
-			<div class="mb-6 border-b border-slate-200 pb-4">
-				<h1 class="m-0 mb-2 text-2xl text-slate-800">Evidence Conflict</h1>
-				<div class="flex items-center gap-2">
-					<Badge variant="secondary">{formatFactType(conflict.fact_type)}</Badge>
-					<Badge variant={statusBadge.variant} class={statusBadge.class}>
-						{statusBadge.label}
-					</Badge>
-				</div>
-			</div>
-
 			{#if error}
-				<div
-					class="mb-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-600"
-					role="alert"
-				>
-					{error}
-				</div>
+				<ActionError message={error} />
 			{/if}
 
-			<div
-				class="mb-6 grid grid-cols-[repeat(auto-fit,minmax(min(250px,100%),1fr))] gap-6"
-			>
-				<div class="mb-6">
-					<h2
-						class="m-0 mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground"
-					>
-						Details
-					</h2>
-					<dl class="m-0 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
-						<dt class="text-[0.8125rem] text-muted-foreground">Subject</dt>
-						<dd class="m-0 text-sm text-slate-800">
-							<a
-								href="/{subjectRoute(conflict.fact_type)}/{conflict.subject_id}"
-								class="text-link no-underline hover:underline"
-							>
-								{conflict.subject_id}
-							</a>
-						</dd>
-						<dt class="text-[0.8125rem] text-muted-foreground">Fact Type</dt>
-						<dd class="m-0 text-sm text-slate-800">{formatFactType(conflict.fact_type)}</dd>
-						<dt class="text-[0.8125rem] text-muted-foreground">Status</dt>
-						<dd
-							class="m-0 text-sm font-medium {conflict.status === 'open'
-								? 'text-red-600'
-								: 'text-green-600'}"
-						>
-							{conflict.status.charAt(0).toUpperCase() + conflict.status.slice(1)}
-						</dd>
-					</dl>
-				</div>
-			</div>
+			<InfoSection
+				title="Details"
+				fields={[
+					{ label: 'Subject', value: subjects.label(subject), href: subjectHref(subject) },
+					{ label: 'Fact Type', value: formatFactType(conflict.fact_type) },
+					{ label: 'Status', value: statusBadge.label }
+				]}
+			/>
 
-			<div class="mb-6">
-				<h2 class="m-0 mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-					Description
-				</h2>
-				<p class="m-0 whitespace-pre-wrap text-sm leading-relaxed text-slate-600">
-					{conflict.description}
+			<InfoSection title="Description">
+				<p class="m-0 whitespace-pre-wrap text-sm leading-relaxed text-foreground">
+					{readableConflictDescription(
+						conflict.description,
+						conflict.fact_type,
+						conflict.subject_id,
+						subjects.name(subject)
+					)}
 				</p>
-			</div>
+			</InfoSection>
 
 			{#if conflict.resolution}
 				<div class="mb-6 rounded-lg border border-green-200 bg-green-50 p-4">
-					<h2
-						class="m-0 mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground"
-					>
-						Resolution
-					</h2>
-					<p class="m-0 whitespace-pre-wrap text-sm leading-relaxed text-slate-600">
-						{conflict.resolution}
-					</p>
+					<InfoSection title="Resolution">
+						<p class="m-0 whitespace-pre-wrap text-sm leading-relaxed text-foreground">
+							{conflict.resolution}
+						</p>
+					</InfoSection>
 				</div>
 			{/if}
 
 			{#if linkedAnalyses.length > 0}
-				<div class="mb-6">
-					<h2 class="m-0 mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-						Linked Analyses ({linkedAnalyses.length})
-					</h2>
+				<InfoSection title={`Linked Analyses (${linkedAnalyses.length})`}>
 					<div class="flex flex-col gap-3">
 						{#each linkedAnalyses as la}
 							<a
@@ -212,14 +186,14 @@
 								data-slot="card-link"
 							>
 								<div class="mb-2 flex items-center justify-between">
-									<span class="text-sm font-semibold text-slate-800">
+									<span class="text-sm font-semibold text-foreground">
 										{formatFactType(la.fact_type)}
 									</span>
 									{#if la.research_status}
 										<UncertaintyBadge status={la.research_status} showLabel size="small" />
 									{/if}
 								</div>
-								<p class="m-0 text-[0.8125rem] leading-snug text-slate-600">{la.conclusion}</p>
+								<p class="m-0 text-[0.8125rem] leading-snug text-muted-foreground">{la.conclusion}</p>
 								{#if la.citation_ids && la.citation_ids.length > 0}
 									<span class="mt-2 inline-block text-xs text-muted-foreground">
 										{la.citation_ids.length} citations
@@ -228,35 +202,29 @@
 							</a>
 						{/each}
 					</div>
-				</div>
+				</InfoSection>
 			{:else if conflict.analysis_ids && conflict.analysis_ids.length > 0}
-				<div class="mb-6">
-					<h2 class="m-0 mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-						Linked Analysis IDs ({conflict.analysis_ids.length})
-					</h2>
+				<InfoSection title={`Linked Analysis IDs (${conflict.analysis_ids.length})`}>
 					<ul class="m-0 flex list-none flex-col gap-1.5 p-0">
 						{#each conflict.analysis_ids as aid}
 							<li>
-								<a
-									href="/evidence/analyses/{aid}"
-									class="text-link no-underline hover:underline"
-								>
+								<a href="/evidence/analyses/{aid}" class="text-link no-underline hover:underline">
 									<code class="rounded bg-slate-100 px-2 py-1 text-[0.8125rem]">{aid}</code>
 								</a>
 							</li>
 						{/each}
 					</ul>
-				</div>
+				</InfoSection>
 			{/if}
 
 			{#if conflict.status === 'open'}
 				<div class="mt-6 border-t-2 border-red-200 pt-6">
-					<h2 class="m-0 mb-2 text-base font-semibold text-slate-800">Resolve Conflict</h2>
+					<h2 class="m-0 mb-2 text-base font-semibold text-foreground">Resolve Conflict</h2>
 					<p class="m-0 mb-4 text-[0.8125rem] text-muted-foreground">
 						Provide a resolution explaining how this conflict was addressed.
 					</p>
 					<div class="flex flex-col gap-1.5">
-						<Label for="resolution" class="text-sm text-slate-600">
+						<Label for="resolution" class="text-sm text-muted-foreground">
 							Resolution <span class="text-red-600">*</span>
 						</Label>
 						<Textarea

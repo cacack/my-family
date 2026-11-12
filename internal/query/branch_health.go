@@ -69,15 +69,10 @@ type BranchHealth struct {
 	ResolvedCount int `json:"resolved_count"`
 }
 
-// BranchValidationIssue is a validation issue with its stable key and the
-// display names of the records it is about.
+// BranchValidationIssue is a validation issue with its stable key.
 type BranchValidationIssue struct {
 	Key string `json:"key"`
 	ValidationIssueResult
-	RecordType        string `json:"record_type,omitempty"`
-	RecordName        string `json:"record_name,omitempty"`
-	RelatedRecordType string `json:"related_record_type,omitempty"`
-	RelatedRecordName string `json:"related_record_name,omitempty"`
 }
 
 // BranchQualityIssue is one person's quality issue with its stable key.
@@ -214,14 +209,6 @@ func (s *BranchHealthService) findings(ctx context.Context, scope domain.BranchI
 		keyed := BranchValidationIssue{
 			Key:                   fmt.Sprintf("%s:%d", base, occurrences[base]),
 			ValidationIssueResult: result,
-		}
-		if result.RecordID != nil {
-			label := view.labels[*result.RecordID]
-			keyed.RecordType, keyed.RecordName = label.kind, label.name
-		}
-		if result.RelatedRecordID != nil {
-			label := view.labels[*result.RelatedRecordID]
-			keyed.RelatedRecordType, keyed.RelatedRecordName = label.kind, label.name
 		}
 		found.validation[keyed.Key] = keyed
 	}

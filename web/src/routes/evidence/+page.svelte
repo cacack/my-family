@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import {
 		api,
@@ -16,13 +15,16 @@
 	import UncertaintyBadge from '#lib/components/UncertaintyBadge.svelte';
 	import {
 		formatFactType,
-		subjectRoute,
+		subjectTypeOf,
 		formatDate,
 		outcomeBadgeProps,
-		conflictBadgeProps
+		conflictBadgeProps,
+		readableConflictDescription
 	} from '#lib/utils/evidence.js';
+	import { SubjectNames, subjectHref, type Subject } from '#lib/utils/subjectNames.svelte.js';
 	import { clampPageToTotal, readEnum, readPositiveInt, setQuery } from '#lib/utils/urlState.js';
 	import ErrorState from '#lib/components/ErrorState.svelte';
+	import PageHeader from '#lib/components/PageHeader.svelte';
 
 	const pageSize = 20;
 
@@ -30,13 +32,28 @@
 	// {#snippet pagination} below — single place to change when the table styling
 	// evolves, rather than 20+ <th>/<td> sites.
 	const TH_CLASS =
-		'whitespace-nowrap border-b-2 border-slate-200 px-4 py-3 text-left font-semibold text-slate-600';
-	const TD_CLASS = 'border-b border-slate-100 px-4 py-3 text-slate-800';
+		'whitespace-nowrap border-b-2 border-slate-200 px-4 py-3 text-left font-semibold text-muted-foreground';
+	const TD_CLASS = 'border-b border-slate-100 px-4 py-3 text-foreground';
 	const TD_NOWRAP = `${TD_CLASS} whitespace-nowrap font-medium`;
 	const TD_TRUNCATE = `${TD_CLASS} max-w-xs overflow-hidden text-ellipsis whitespace-nowrap`;
 	const TD_CENTER = `${TD_CLASS} text-center`;
-	const ROW_CLICKABLE = 'cursor-pointer transition-colors hover:bg-slate-50';
-	const SUBJECT_LINK = 'text-link no-underline hover:underline';
+	// Each row's first cell holds a real link to the record (#1108), so a row
+	// can be opened in a new tab; its ::after stretches over the row to keep
+	// the whole row clickable, and the subject link sits above it.
+	const ROW = 'relative transition-colors hover:bg-slate-50';
+	const ROW_LINK = 'text-inherit no-underline after:absolute after:inset-0 hover:underline';
+	const SUBJECT_LINK = 'relative z-10 text-link no-underline hover:underline';
+
+	// Evidence records store a subject id; the page shows the subject's name.
+	const subjects = new SubjectNames();
+	const factSubject = (record: { fact_type: string; subject_id: string }): Subject => ({
+		type: subjectTypeOf(record.fact_type),
+		id: record.subject_id
+	});
+	const logSubject = (log: ResearchLogResponse): Subject => ({
+		type: log.subject_type === 'family' ? 'family' : 'person',
+		id: log.subject_id
+	});
 
 	// The active tab, its page and the Conflicts status filter live in the URL
 	// (see urlState.ts), so Back, reload and a copied link restore the view.
@@ -97,6 +114,15 @@
 	let summariesLoading = $state(false);
 	let summariesError: string | null = $state(null);
 
+	function conflictDescription(conflict: EvidenceConflictResponse): string {
+		return readableConflictDescription(
+			conflict.description,
+			conflict.fact_type,
+			conflict.subject_id,
+			subjects.name(factSubject(conflict))
+		);
+	}
+
 	function truncate(text: string, maxLen = 80): string {
 		if (text.length <= maxLen) return text;
 		return text.slice(0, maxLen) + '...';
@@ -124,6 +150,7 @@
 			if (seq !== analysesSeq) return;
 			if (clampPageToTotal(page.url, requestedPage, result.total ?? 0, pageSize)) return;
 			analyses = result.analyses;
+			subjects.load(result.analyses.map(factSubject));
 			analysesTotal = result.total ?? 0;
 		} catch (e) {
 			if (seq !== analysesSeq) return;
@@ -147,6 +174,7 @@
 			if (seq !== conflictsSeq) return;
 			if (clampPageToTotal(page.url, requestedPage, result.total ?? 0, pageSize)) return;
 			conflicts = result.conflicts;
+			subjects.load(result.conflicts.map(factSubject));
 			conflictsTotal = result.total ?? 0;
 
 			// Get open count for badge
@@ -183,6 +211,7 @@
 			if (seq !== logsSeq) return;
 			if (clampPageToTotal(page.url, requestedPage, result.total ?? 0, pageSize)) return;
 			logs = result.logs;
+			subjects.load(result.logs.map(logSubject));
 			logsTotal = result.total ?? 0;
 		} catch (e) {
 			if (seq !== logsSeq) return;
@@ -205,6 +234,7 @@
 			if (seq !== summariesSeq) return;
 			if (clampPageToTotal(page.url, requestedPage, result.total ?? 0, pageSize)) return;
 			summaries = result.summaries;
+			subjects.load(result.summaries.map(factSubject));
 			summariesTotal = result.total ?? 0;
 		} catch (e) {
 			if (seq !== summariesSeq) return;
@@ -275,28 +305,25 @@
 		data-slot="card-link"
 	>
 		<div class="mb-2 flex items-center justify-between">
-			<span class="text-sm font-semibold text-slate-800">{topLeft}</span>
+			<span class="text-sm font-semibold text-foreground">{topLeft}</span>
 			{@render badge()}
 		</div>
-		<p class="m-0 text-[0.8125rem] leading-snug text-slate-600">{body}</p>
+		<p class="m-0 text-[0.8125rem] leading-snug text-muted-foreground">{body}</p>
 		{#if meta}
 			<div class="mt-2 text-xs text-muted-foreground">{meta}</div>
 		{/if}
 	</a>
 {/snippet}
 
-<div class="mx-auto max-w-screen-xl p-6">
-	<header class="mb-6">
-		<div>
-			<h1 class="m-0 text-2xl text-slate-800">Evidence Analysis</h1>
-			<p class="mt-1 text-sm text-muted-foreground">
-				GPS-compliant research tracking and proof management
-			</p>
-		</div>
-	</header>
+<div class="mx-auto max-w-[1200px] p-6">
+	<PageHeader
+		title="Evidence Analysis"
+		description="GPS-compliant research tracking and proof management"
+	/>
 
 	<Tabs.Root value={activeTab} onValueChange={selectTab}>
-		<Tabs.List class="max-w-full justify-start overflow-x-auto">
+		<!-- Wraps rather than scrolls, so every tab stays visible on a phone (#1108). -->
+		<Tabs.List class="max-w-full flex-wrap justify-start group-data-horizontal/tabs:h-auto">
 			<Tabs.Trigger value="analyses">Analyses</Tabs.Trigger>
 			<Tabs.Trigger value="conflicts">
 				Conflicts
@@ -346,26 +373,15 @@
 						</thead>
 						<tbody>
 							{#each analyses as analysis}
-								<tr
-									class={ROW_CLICKABLE}
-									tabindex="0"
-									role="link"
-									onclick={() => goto(`/evidence/analyses/${analysis.id}`)}
-									onkeydown={(e) => {
-										if (e.key === 'Enter' || e.key === ' ') {
-											e.preventDefault();
-											goto(`/evidence/analyses/${analysis.id}`);
-										}
-									}}
-								>
-									<td class={TD_NOWRAP}>{formatFactType(analysis.fact_type)}</td>
+								<tr class={ROW}>
+									<td class={TD_NOWRAP}>
+										<a href="/evidence/analyses/{analysis.id}" class={ROW_LINK}>
+											{formatFactType(analysis.fact_type)}
+										</a>
+									</td>
 									<td class={TD_CLASS}>
-										<a
-											href="/{subjectRoute(analysis.fact_type)}/{analysis.subject_id}"
-											class={SUBJECT_LINK}
-											onclick={(e) => e.stopPropagation()}
-										>
-											{analysis.subject_id.slice(0, 8)}...
+										<a href={subjectHref(factSubject(analysis))} class={SUBJECT_LINK}>
+											{subjects.label(factSubject(analysis))}
 										</a>
 									</td>
 									<td class={TD_TRUNCATE}>{truncate(analysis.conclusion)}</td>
@@ -399,7 +415,7 @@
 							`/evidence/analyses/${analysis.id}`,
 							formatFactType(analysis.fact_type),
 							truncate(analysis.conclusion, 120),
-							`${analysis.citation_ids?.length ?? 0} citations`,
+							`${subjects.label(factSubject(analysis))} · ${analysis.citation_ids?.length ?? 0} citations`,
 							analysisBadge
 						)}
 					{/each}
@@ -463,29 +479,18 @@
 						<tbody>
 							{#each conflicts as conflict}
 								{@const statusBadge = conflictBadgeProps(conflict.status)}
-								<tr
-									class={ROW_CLICKABLE}
-									tabindex="0"
-									role="link"
-									onclick={() => goto(`/evidence/conflicts/${conflict.id}`)}
-									onkeydown={(e) => {
-										if (e.key === 'Enter' || e.key === ' ') {
-											e.preventDefault();
-											goto(`/evidence/conflicts/${conflict.id}`);
-										}
-									}}
-								>
-									<td class={TD_NOWRAP}>{formatFactType(conflict.fact_type)}</td>
-									<td class={TD_CLASS}>
-										<a
-											href="/{subjectRoute(conflict.fact_type)}/{conflict.subject_id}"
-											class={SUBJECT_LINK}
-											onclick={(e) => e.stopPropagation()}
-										>
-											{conflict.subject_id.slice(0, 8)}...
+								<tr class={ROW}>
+									<td class={TD_NOWRAP}>
+										<a href="/evidence/conflicts/{conflict.id}" class={ROW_LINK}>
+											{formatFactType(conflict.fact_type)}
 										</a>
 									</td>
-									<td class={TD_TRUNCATE}>{truncate(conflict.description)}</td>
+									<td class={TD_CLASS}>
+										<a href={subjectHref(factSubject(conflict))} class={SUBJECT_LINK}>
+											{subjects.label(factSubject(conflict))}
+										</a>
+									</td>
+									<td class={TD_TRUNCATE}>{truncate(conflictDescription(conflict))}</td>
 									<td class={TD_CLASS}>
 										<Badge variant={statusBadge.variant} class={statusBadge.class}>
 											{statusBadge.label}
@@ -509,8 +514,8 @@
 						{@render mobileCard(
 							`/evidence/conflicts/${conflict.id}`,
 							formatFactType(conflict.fact_type),
-							truncate(conflict.description, 120),
-							null,
+							truncate(conflictDescription(conflict), 120),
+							subjects.label(factSubject(conflict)),
 							conflictMobileBadge
 						)}
 					{/each}
@@ -565,28 +570,17 @@
 						<tbody>
 							{#each logs as log}
 								{@const outcomeBadge = outcomeBadgeProps(log.outcome)}
-								<tr
-									class={ROW_CLICKABLE}
-									tabindex="0"
-									role="link"
-									onclick={() => goto(`/evidence/research-logs/${log.id}`)}
-									onkeydown={(e) => {
-										if (e.key === 'Enter' || e.key === ' ') {
-											e.preventDefault();
-											goto(`/evidence/research-logs/${log.id}`);
-										}
-									}}
-								>
+								<tr class={ROW}>
 									<td class={TD_CLASS}>
-										<a
-											href="/{log.subject_type === 'family' ? 'families' : 'persons'}/{log.subject_id}"
-											class={SUBJECT_LINK}
-											onclick={(e) => e.stopPropagation()}
-										>
-											{log.subject_id.slice(0, 8)}...
+										<a href={subjectHref(logSubject(log))} class={SUBJECT_LINK}>
+											{subjects.label(logSubject(log))}
 										</a>
 									</td>
-									<td class={TD_CLASS}>{log.repository}</td>
+									<td class={TD_CLASS}>
+										<a href="/evidence/research-logs/{log.id}" class={ROW_LINK}>
+											{log.repository}
+										</a>
+									</td>
 									<td class={TD_TRUNCATE}>{truncate(log.search_description)}</td>
 									<td class={TD_CLASS}>
 										<Badge variant={outcomeBadge.variant} class={outcomeBadge.class}>
@@ -615,7 +609,7 @@
 							`/evidence/research-logs/${log.id}`,
 							log.repository,
 							truncate(log.search_description, 120),
-							formatDate(log.search_date),
+							`${subjects.label(logSubject(log))} · ${formatDate(log.search_date)}`,
 							logMobileBadge
 						)}
 					{/each}
@@ -669,26 +663,15 @@
 						</thead>
 						<tbody>
 							{#each summaries as summary}
-								<tr
-									class={ROW_CLICKABLE}
-									tabindex="0"
-									role="link"
-									onclick={() => goto(`/evidence/proof-summaries/${summary.id}`)}
-									onkeydown={(e) => {
-										if (e.key === 'Enter' || e.key === ' ') {
-											e.preventDefault();
-											goto(`/evidence/proof-summaries/${summary.id}`);
-										}
-									}}
-								>
-									<td class={TD_NOWRAP}>{formatFactType(summary.fact_type)}</td>
+								<tr class={ROW}>
+									<td class={TD_NOWRAP}>
+										<a href="/evidence/proof-summaries/{summary.id}" class={ROW_LINK}>
+											{formatFactType(summary.fact_type)}
+										</a>
+									</td>
 									<td class={TD_CLASS}>
-										<a
-											href="/{subjectRoute(summary.fact_type)}/{summary.subject_id}"
-											class={SUBJECT_LINK}
-											onclick={(e) => e.stopPropagation()}
-										>
-											{summary.subject_id.slice(0, 8)}...
+										<a href={subjectHref(factSubject(summary))} class={SUBJECT_LINK}>
+											{subjects.label(factSubject(summary))}
 										</a>
 									</td>
 									<td class={TD_TRUNCATE}>{truncate(summary.conclusion)}</td>
@@ -722,7 +705,7 @@
 							`/evidence/proof-summaries/${summary.id}`,
 							formatFactType(summary.fact_type),
 							truncate(summary.conclusion, 120),
-							`${summary.analysis_ids?.length ?? 0} linked analyses`,
+							`${subjects.label(factSubject(summary))} · ${summary.analysis_ids?.length ?? 0} linked analyses`,
 							summaryBadge
 						)}
 					{/each}

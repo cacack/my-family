@@ -18,10 +18,16 @@
 	import { Label } from '#lib/components/ui/label/index.js';
 	import { Textarea } from '#lib/components/ui/textarea/index.js';
 	import UncertaintyBadge from '#lib/components/UncertaintyBadge.svelte';
-	import { FACT_TYPES, formatFactType, subjectRoute } from '#lib/utils/evidence.js';
+	import { FACT_TYPES, formatFactType, subjectTypeOf } from '#lib/utils/evidence.js';
+	import { SubjectNames, subjectHref } from '#lib/utils/subjectNames.svelte.js';
 	import { nativeSelectClass } from '#lib/utils/forms.js';
 	import { RESEARCH_STATUS_OPTIONS, optionLabel } from '#lib/utils/enumOptions.js';
 	import ErrorState from '#lib/components/ErrorState.svelte';
+	import ActionError from '#lib/components/ActionError.svelte';
+	import ActionBar from '#lib/components/ActionBar.svelte';
+	import PageHeader from '#lib/components/PageHeader.svelte';
+	import InfoSection from '#lib/components/InfoSection.svelte';
+	import FormRow from '#lib/components/FormRow.svelte';
 	import SaveConflict from '#lib/components/SaveConflict.svelte';
 	import { SaveConflictFlow, type ConflictRow } from '#lib/utils/saveConflict.svelte.js';
 
@@ -46,6 +52,12 @@
 	});
 
 	let newAnalysisId = $state('');
+
+	// The summary stores its subject's id; the page shows the subject's name.
+	const subjects = new SubjectNames();
+	function loadSubject(saved: ProofSummaryResponse) {
+		subjects.load([{ type: subjectTypeOf(saved.fact_type), id: saved.subject_id }]);
+	}
 
 	const saveConflict = new SaveConflictFlow<ProofSummaryResponse, typeof formData>({
 		base: () => summary,
@@ -100,6 +112,7 @@
 			const result = await api.getProofSummary(id);
 			if (seq !== loadSeq) return;
 			summary = result;
+			loadSubject(result);
 			resetForm();
 			// Fetch linked analyses
 			if (result.analysis_ids && result.analysis_ids.length > 0) {
@@ -206,6 +219,7 @@
 					version: summary.version
 				});
 				summary = updated;
+				loadSubject(updated);
 				resetForm();
 				// Refresh linked analyses since analysis_ids may have changed.
 				if (updated.analysis_ids && updated.analysis_ids.length > 0) {
@@ -262,20 +276,41 @@
 	<title>{isNew ? 'New Proof Summary' : summary ? `${formatFactType(summary.fact_type)} Proof Summary` : 'Proof Summary'} | My Family</title>
 </svelte:head>
 
-<div class="mx-auto max-w-3xl p-6">
-	<header class="mb-6 flex items-center justify-between">
-		<a href="/evidence" class="text-sm text-muted-foreground no-underline hover:text-link">
-			&larr; Evidence
-		</a>
-		{#if summary && !editing}
-			<div class="flex gap-2">
-				<Button variant="outline" onclick={startEdit}>Edit</Button>
-				<Button variant="destructive" onclick={deleteSummary} disabled={deleting}>
-					{deleting ? 'Deleting...' : 'Delete'}
-				</Button>
-			</div>
+{#snippet recordActions()}
+	<Button variant="outline" onclick={startEdit}>Edit</Button>
+	<Button variant="destructive" onclick={deleteSummary} disabled={deleting}>
+		{deleting ? 'Deleting...' : 'Delete'}
+	</Button>
+{/snippet}
+
+{#snippet analysisCard(la: EvidenceAnalysisResponse)}
+	<a
+		href="/evidence/analyses/{la.id}"
+		class="block rounded-lg border border-slate-200 p-4 text-inherit no-underline transition-colors hover:border-blue-500"
+		data-slot="card-link"
+	>
+		<div class="mb-2 flex items-center justify-between">
+			<span class="text-sm font-semibold text-foreground">
+				{formatFactType(la.fact_type)}
+			</span>
+			{#if la.research_status}
+				<UncertaintyBadge status={la.research_status} showLabel size="small" />
+			{/if}
+		</div>
+		<p class="m-0 text-[0.8125rem] leading-snug text-muted-foreground">{la.conclusion}</p>
+		{#if la.citation_ids && la.citation_ids.length > 0}
+			<span class="mt-2 inline-block text-xs text-muted-foreground">
+				{la.citation_ids.length} citations
+			</span>
 		{/if}
-	</header>
+	</a>
+{/snippet}
+
+<div class="mx-auto max-w-3xl p-6">
+	<ActionBar
+		back={{ href: '/evidence', label: 'Evidence' }}
+		actions={summary && !editing ? recordActions : undefined}
+	/>
 
 	{#if loading}
 		<div class="p-12 text-center text-muted-foreground">Loading...</div>
@@ -289,22 +324,15 @@
 				saveSummary();
 			}}
 		>
-			<h1 class="m-0 mb-6 text-xl text-slate-800">
-				{isNew ? 'New Proof Summary' : 'Edit Proof Summary'}
-			</h1>
+			<PageHeader title={isNew ? 'New Proof Summary' : 'Edit Proof Summary'} />
 
 			{#if error}
-				<div
-					class="mb-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-600"
-					role="alert"
-				>
-					{error}
-				</div>
+				<ActionError message={error} />
 			{/if}
 
-			<div class="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+			<FormRow>
 				<div class="flex flex-col gap-1.5">
-					<Label for="fact-type" class="text-sm text-slate-600">
+					<Label for="fact-type" class="text-sm text-muted-foreground">
 						Fact Type <span class="text-red-600">*</span>
 					</Label>
 					<select
@@ -319,7 +347,7 @@
 					</select>
 				</div>
 				<div class="flex flex-col gap-1.5">
-					<Label for="subject-id" class="text-sm text-slate-600">
+					<Label for="subject-id" class="text-sm text-muted-foreground">
 						Subject ID <span class="text-red-600">*</span>
 					</Label>
 					<Input
@@ -331,10 +359,10 @@
 						aria-label="Subject ID"
 					/>
 				</div>
-			</div>
+			</FormRow>
 
 			<div class="mb-4 flex flex-col gap-1.5">
-				<Label for="conclusion" class="text-sm text-slate-600">
+				<Label for="conclusion" class="text-sm text-muted-foreground">
 					Conclusion <span class="text-red-600">*</span>
 				</Label>
 				<Input
@@ -347,7 +375,7 @@
 			</div>
 
 			<div class="mb-4 flex flex-col gap-1.5">
-				<Label for="argument" class="text-sm text-slate-600">
+				<Label for="argument" class="text-sm text-muted-foreground">
 					Argument <span class="text-red-600">*</span>
 				</Label>
 				<Textarea
@@ -360,9 +388,9 @@
 				/>
 			</div>
 
-			<div class="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+			<FormRow>
 				<div class="flex flex-col gap-1.5">
-					<Label for="research-status" class="text-sm text-slate-600">Research Status</Label>
+					<Label for="research-status" class="text-sm text-muted-foreground">Research Status</Label>
 					<select
 						id="research-status"
 						bind:value={formData.research_status}
@@ -374,10 +402,10 @@
 						{/each}
 					</select>
 				</div>
-			</div>
+			</FormRow>
 
 			<div class="mb-4">
-				<h3 class="m-0 mb-2 text-sm text-slate-600">Linked Analysis IDs</h3>
+				<h3 class="m-0 mb-2 text-sm text-muted-foreground">Linked Analysis IDs</h3>
 				{#if formData.analysis_ids.length > 0}
 					<ul class="m-0 mb-2 flex list-none flex-col gap-1 p-0">
 						{#each formData.analysis_ids as aid}
@@ -426,119 +454,62 @@
 			</div>
 		</form>
 	{:else if summary}
+		{@const subject = { type: subjectTypeOf(summary.fact_type), id: summary.subject_id } as const}
 		<div class="rounded-xl border border-slate-200 bg-white p-6">
-			<div class="mb-6 border-b border-slate-200 pb-4">
-				<h1 class="m-0 mb-2 text-2xl text-slate-800">Proof Summary</h1>
-				<div class="flex items-center gap-2">
-					<Badge variant="secondary">{formatFactType(summary.fact_type)}</Badge>
-					{#if summary.research_status}
-						<UncertaintyBadge status={summary.research_status} showLabel />
-					{/if}
-				</div>
-			</div>
+			{#snippet summaryBadges()}
+				<Badge variant="secondary">{formatFactType(summary!.fact_type)}</Badge>
+				{#if summary!.research_status}
+					<UncertaintyBadge status={summary!.research_status} showLabel />
+				{/if}
+			{/snippet}
+			<PageHeader title="Proof Summary" badges={summaryBadges} />
 
 			{#if error}
-				<div
-					class="mb-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-600"
-					role="alert"
-				>
-					{error}
-				</div>
+				<ActionError message={error} />
 			{/if}
 
-			<div
-				class="mb-6 grid grid-cols-[repeat(auto-fit,minmax(min(250px,100%),1fr))] gap-6"
-			>
-				<div class="mb-6">
-					<h2
-						class="m-0 mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground"
-					>
-						Details
-					</h2>
-					<dl class="m-0 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
-						<dt class="text-[0.8125rem] text-muted-foreground">Subject</dt>
-						<dd class="m-0 text-sm text-slate-800">
-							<a
-								href="/{subjectRoute(summary.fact_type)}/{summary.subject_id}"
-								class="text-link no-underline hover:underline"
-							>
-								{summary.subject_id}
-							</a>
-						</dd>
-						<dt class="text-[0.8125rem] text-muted-foreground">Fact Type</dt>
-						<dd class="m-0 text-sm text-slate-800">{formatFactType(summary.fact_type)}</dd>
-					</dl>
-				</div>
-			</div>
+			<InfoSection
+				title="Details"
+				fields={[
+					{ label: 'Subject', value: subjects.label(subject), href: subjectHref(subject) },
+					{ label: 'Fact Type', value: formatFactType(summary.fact_type) }
+				]}
+			/>
 
-			<div class="mb-6">
-				<h2 class="m-0 mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-					Conclusion
-				</h2>
-				<p
-					class="m-0 whitespace-pre-wrap text-base font-medium leading-relaxed text-slate-800"
-				>
+			<InfoSection title="Conclusion">
+				<p class="m-0 whitespace-pre-wrap text-base font-medium leading-relaxed text-foreground">
 					{summary.conclusion}
 				</p>
-			</div>
+			</InfoSection>
 
 			<div class="mb-6 rounded-lg border border-slate-200 bg-slate-50 p-5">
-				<h2 class="m-0 mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-					Argument
-				</h2>
-				<div class="m-0 whitespace-pre-wrap text-[0.9375rem] leading-loose text-slate-700">
-					{summary.argument}
-				</div>
+				<InfoSection title="Argument">
+					<div class="m-0 whitespace-pre-wrap text-[0.9375rem] leading-loose text-foreground">
+						{summary.argument}
+					</div>
+				</InfoSection>
 			</div>
 
 			{#if linkedAnalyses.length > 0}
-				<div class="mb-6">
-					<h2 class="m-0 mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-						Supporting Analyses ({linkedAnalyses.length})
-					</h2>
+				<InfoSection title={`Supporting Analyses (${linkedAnalyses.length})`}>
 					<div class="flex flex-col gap-3">
 						{#each linkedAnalyses as la}
-							<a
-								href="/evidence/analyses/{la.id}"
-								class="block rounded-lg border border-slate-200 p-4 text-inherit no-underline transition-colors hover:border-blue-500"
-								data-slot="card-link"
-							>
-								<div class="mb-2 flex items-center justify-between">
-									<span class="text-sm font-semibold text-slate-800">
-										{formatFactType(la.fact_type)}
-									</span>
-									{#if la.research_status}
-										<UncertaintyBadge status={la.research_status} showLabel size="small" />
-									{/if}
-								</div>
-								<p class="m-0 text-[0.8125rem] leading-snug text-slate-600">{la.conclusion}</p>
-								{#if la.citation_ids && la.citation_ids.length > 0}
-									<span class="mt-2 inline-block text-xs text-muted-foreground">
-										{la.citation_ids.length} citations
-									</span>
-								{/if}
-							</a>
+							{@render analysisCard(la)}
 						{/each}
 					</div>
-				</div>
+				</InfoSection>
 			{:else if summary.analysis_ids && summary.analysis_ids.length > 0}
-				<div class="mb-6">
-					<h2 class="m-0 mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-						Linked Analysis IDs ({summary.analysis_ids.length})
-					</h2>
+				<InfoSection title={`Linked Analysis IDs (${summary.analysis_ids.length})`}>
 					<ul class="m-0 flex list-none flex-col gap-1.5 p-0">
 						{#each summary.analysis_ids as aid}
 							<li>
-								<a
-									href="/evidence/analyses/{aid}"
-									class="text-link no-underline hover:underline"
-								>
+								<a href="/evidence/analyses/{aid}" class="text-link no-underline hover:underline">
 									<code class="rounded bg-slate-100 px-2 py-1 text-[0.8125rem]">{aid}</code>
 								</a>
 							</li>
 						{/each}
 					</ul>
-				</div>
+				</InfoSection>
 			{/if}
 
 			<div
