@@ -52,7 +52,7 @@ func TestBrickWall_SetAndResolveAreLogged(t *testing.T) {
 	}
 
 	// The row's version follows the stream, so an ordinary edit still applies.
-	if _, err := f.handler.UpdatePerson(ctx, command.UpdatePersonInput{ID: id, Version: p.Version, Notes: strPtr("checked the parish")}); err != nil {
+	if _, err := f.handler.UpdatePerson(ctx, command.UpdatePersonInput{ID: id, Version: p.Version, Notes: command.Set("checked the parish")}); err != nil {
 		t.Errorf("UpdatePerson after brick wall: %v", err)
 	}
 }
