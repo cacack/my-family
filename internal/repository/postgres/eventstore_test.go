@@ -1,131 +1,30 @@
-// Package postgres_test provides integration tests using testcontainers.
+// Package postgres_test provides integration tests against a real PostgreSQL server.
 package postgres_test
 
 import (
 	"context"
 	"database/sql"
 	"errors"
-	"net/url"
-	"os"
-	"os/exec"
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/modules/postgres"
-	"github.com/testcontainers/testcontainers-go/wait"
 
 	"github.com/cacack/my-family/internal/domain"
 	"github.com/cacack/my-family/internal/repository"
 	pgstore "github.com/cacack/my-family/internal/repository/postgres"
+	"github.com/cacack/my-family/internal/testutil/pgtest"
 )
 
-// isDockerAvailable checks if Docker is available and running.
-func isDockerAvailable() bool {
-	cmd := exec.Command("docker", "info")
-	return cmd.Run() == nil
-}
-
-// localPostgresEnv names an optional PostgreSQL server URL. When set, the
-// integration tests run against that server instead of a testcontainer, so a
-// machine without Docker (but with PostgreSQL installed) can still exercise
-// the PostgreSQL backend. Each test gets its own freshly created database,
-// dropped again at cleanup, preserving the guaranteed-empty contract.
-const localPostgresEnv = "MYFAMILY_TEST_POSTGRES_URL"
-
-// setupLocalPostgres creates a throwaway database on the server named by
-// localPostgresEnv and returns a connection to it.
-func setupLocalPostgres(t *testing.T, serverURL string) (*sql.DB, func()) {
-	t.Helper()
-
-	admin, err := sql.Open("postgres", serverURL)
-	if err != nil {
-		t.Fatalf("connect to %s: %v", localPostgresEnv, err)
-	}
-	name := "t_" + strings.ReplaceAll(uuid.NewString(), "-", "")
-	// #nosec G202 -- name is generated above from a UUID, never external input.
-	if _, err := admin.Exec("CREATE DATABASE " + name); err != nil {
-		admin.Close()
-		t.Fatalf("create database %s: %v", name, err)
-	}
-
-	dsn, err := url.Parse(serverURL)
-	if err != nil {
-		admin.Close()
-		t.Fatalf("parse %s: %v", localPostgresEnv, err)
-	}
-	dsn.Path = "/" + name
-	db, err := sql.Open("postgres", dsn.String())
-	if err != nil {
-		admin.Close()
-		t.Fatalf("connect to test database: %v", err)
-	}
-
-	cleanup := func() {
-		db.Close()
-		// #nosec G202 -- name is generated above from a UUID, never external input.
-		_, _ = admin.Exec("DROP DATABASE IF EXISTS " + name + " WITH (FORCE)")
-		admin.Close()
-	}
-	return db, cleanup
-}
-
-// setupPostgres creates a PostgreSQL testcontainer and returns a connected database.
-// When MYFAMILY_TEST_POSTGRES_URL is set it uses that server instead.
+// setupPostgres returns a connection to a fresh, empty PostgreSQL database
+// (see pgtest), skipping when none is available.
 func setupPostgres(t *testing.T) (*sql.DB, func()) {
 	t.Helper()
-
-	if serverURL := os.Getenv(localPostgresEnv); serverURL != "" {
-		return setupLocalPostgres(t, serverURL)
-	}
-	if !isDockerAvailable() {
-		t.Skip("Docker is not available, skipping PostgreSQL integration test")
-	}
-
-	ctx := context.Background()
-
-	container, err := postgres.Run(ctx,
-		"postgres:16-alpine",
-		postgres.WithDatabase("testdb"),
-		postgres.WithUsername("test"),
-		postgres.WithPassword("test"),
-		testcontainers.WithWaitStrategy(
-			wait.ForLog("database system is ready to accept connections").
-				WithOccurrence(2).
-				WithStartupTimeout(60*time.Second)),
-	)
+	db, err := sql.Open("postgres", pgtest.NewDatabase(t))
 	if err != nil {
-		t.Fatalf("failed to start postgres container: %v", err)
+		t.Fatalf("connect to postgres: %v", err)
 	}
-
-	connStr, err := container.ConnectionString(ctx, "sslmode=disable")
-	if err != nil {
-		container.Terminate(ctx)
-		t.Fatalf("failed to get connection string: %v", err)
-	}
-
-	db, err := sql.Open("postgres", connStr)
-	if err != nil {
-		container.Terminate(ctx)
-		t.Fatalf("failed to connect to postgres: %v", err)
-	}
-
-	// Wait for database to be ready
-	for i := 0; i < 30; i++ {
-		if err := db.Ping(); err == nil {
-			break
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-
-	cleanup := func() {
-		db.Close()
-		container.Terminate(ctx)
-	}
-
-	return db, cleanup
+	return db, func() { db.Close() }
 }
 
 func TestEventStore_AppendAndRead(t *testing.T) {

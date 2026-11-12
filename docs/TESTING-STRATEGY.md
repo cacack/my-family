@@ -123,9 +123,10 @@ func TestBranchConflict_EditEdit(t *testing.T) {
 ```
 
 `stores` holds the repository *interfaces*, not the concrete types, so a scenario cannot reach for a
-backend-specific method. `setupPostgres` runs a testcontainer and calls `t.Skip` under `-short` or
-when Docker is absent, so `go test ./...` still passes on a machine without Docker — at the cost of
-silently exercising two backends instead of three. CI runs without `-short` and has Docker.
+backend-specific method. `setupPostgres` gets a fresh database from `internal/testutil/pgtest`, which
+calls `t.Skip` under `-short` or when Docker is absent, so `go test ./...` still passes on a machine
+without Docker — at the cost of silently exercising two backends instead of three. CI runs without
+`-short` and has Docker.
 
 ### 2. Byte-identical copies — store-level parity
 
@@ -300,10 +301,12 @@ Frontend coverage is measurable via `npm run test:coverage` but is **not** gated
 ## CI Pipeline Integration
 
 `.github/workflows/ci.yml` runs three test jobs. There is no `integration` build tag and no
-`DATABASE_URL` in tests — PostgreSQL coverage comes from testcontainers, which each Postgres test
-starts for itself and skips when Docker is unavailable. `internal/query` shares one container across
-its tests and, when `CI` is set, fails instead of skipping, so its PostgreSQL leg cannot silently
-drop out of CI (#879). `MYFAMILY_TEST_POSTGRES_URL` points any of these at an existing server instead.
+`DATABASE_URL` in tests — PostgreSQL coverage comes from `internal/testutil/pgtest`, the one place that
+starts the testcontainer. It starts one container per test binary, waits until the port is mapped
+and the server answers a ping (#1299), and hands each test a fresh, uniquely named database. It
+skips when Docker is unavailable, except when `CI` is set, where it fails so the PostgreSQL leg
+cannot silently drop out of CI (#879). `MYFAMILY_TEST_POSTGRES_URL` points it at an existing server
+instead.
 
 ```bash
 # backend job

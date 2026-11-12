@@ -8,22 +8,18 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/testcontainers/testcontainers-go"
-	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
-	"github.com/testcontainers/testcontainers-go/wait"
 
 	"github.com/cacack/my-family/internal/api"
 	"github.com/cacack/my-family/internal/config"
 	"github.com/cacack/my-family/internal/repository"
+	"github.com/cacack/my-family/internal/testutil/pgtest"
 )
 
 // The credentials in these tests are fake. They are assembled from pieces so
@@ -192,7 +188,7 @@ func TestOpenSQLite_SchemaFailureClosesDatabase(t *testing.T) {
 // ============================================================================
 
 func TestOpen_Postgres(t *testing.T) {
-	dsn := postgresDatabase(t)
+	dsn := pgtest.NewDatabase(t)
 	stores, err := Open(&config.Config{DatabaseURL: dsn, SQLitePath: "unused.db"}, AccessServe)
 	if err != nil {
 		t.Fatalf("Open: %v", err)
@@ -212,7 +208,7 @@ func TestOpen_Postgres(t *testing.T) {
 }
 
 func TestPostgres_Restart(t *testing.T) {
-	assertSurvivesRestart(t, &config.Config{DatabaseURL: postgresDatabase(t)})
+	assertSurvivesRestart(t, &config.Config{DatabaseURL: pgtest.NewDatabase(t)})
 }
 
 func TestOpenPostgres_Unreachable(t *testing.T) {
@@ -500,72 +496,6 @@ func countPersons(t *testing.T, server *api.Server) int {
 		t.Fatalf("person list has no total: %v", resp)
 	}
 	return int(total)
-}
-
-// ============================================================================
-// PostgreSQL provisioning
-// ============================================================================
-
-// localPostgresEnv names an optional PostgreSQL server URL; when set, each
-// test gets a fresh database on it. Otherwise a testcontainer is used, and the
-// test skips when Docker is unavailable.
-const localPostgresEnv = "MYFAMILY_TEST_POSTGRES_URL"
-
-// postgresDatabase returns the URL of a fresh, empty PostgreSQL database that
-// is dropped when the test ends.
-func postgresDatabase(t *testing.T) string {
-	t.Helper()
-	if testing.Short() {
-		t.Skip("skipping PostgreSQL test in short mode")
-	}
-	serverURL := os.Getenv(localPostgresEnv)
-	if serverURL == "" {
-		if exec.Command("docker", "info").Run() != nil {
-			t.Skip("Docker is not available and " + localPostgresEnv + " is unset, skipping PostgreSQL test")
-		}
-		// Not t.Context(): it is cancelled before t.Cleanup runs.
-		ctx := context.Background()
-		container, err := tcpostgres.Run(ctx, "postgres:16-alpine",
-			tcpostgres.WithDatabase("testdb"),
-			tcpostgres.WithUsername("test"),
-			tcpostgres.WithPassword("test"),
-			testcontainers.WithWaitStrategy(
-				wait.ForLog("database system is ready to accept connections").
-					WithOccurrence(2).
-					WithStartupTimeout(60*time.Second)),
-		)
-		if err != nil {
-			t.Fatalf("start postgres container: %v", err)
-		}
-		t.Cleanup(func() { _ = container.Terminate(ctx) })
-		serverURL, err = container.ConnectionString(ctx, "sslmode=disable")
-		if err != nil {
-			t.Fatalf("postgres connection string: %v", err)
-		}
-	}
-
-	admin, err := sql.Open("postgres", serverURL)
-	if err != nil {
-		t.Fatalf("connect to postgres: %v", err)
-	}
-	name := "t_" + strings.ReplaceAll(uuid.NewString(), "-", "")
-	// #nosec G202 -- name is generated above from a UUID, never external input.
-	if _, err := admin.Exec("CREATE DATABASE " + name); err != nil { // nosemgrep
-		admin.Close()
-		t.Fatalf("create database %s: %v", name, err)
-	}
-	t.Cleanup(func() {
-		// #nosec G202 -- name is generated above from a UUID, never external input.
-		_, _ = admin.Exec("DROP DATABASE IF EXISTS " + name + " WITH (FORCE)") // nosemgrep
-		admin.Close()
-	})
-
-	dsn, err := url.Parse(serverURL)
-	if err != nil {
-		t.Fatalf("parse postgres URL: %v", err)
-	}
-	dsn.Path = "/" + name
-	return dsn.String()
 }
 
 // ============================================================================

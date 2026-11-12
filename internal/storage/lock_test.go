@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/cacack/my-family/internal/config"
+	"github.com/cacack/my-family/internal/testutil/pgtest"
 )
 
 // Rebuild / serve exclusion (#1232).
@@ -60,7 +61,7 @@ func TestSQLite_LockFollowsSymlinks(t *testing.T) {
 }
 
 func TestPostgres_RebuildAndServeExcludeEachOther(t *testing.T) {
-	assertRebuildAndServeExcludeEachOther(t, &config.Config{DatabaseURL: postgresDatabase(t)})
+	assertRebuildAndServeExcludeEachOther(t, &config.Config{DatabaseURL: pgtest.NewDatabase(t)})
 }
 
 // assertRebuildAndServeExcludeEachOther proves the lock Open takes: servers

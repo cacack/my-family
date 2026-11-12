@@ -15,6 +15,7 @@ import (
 	"github.com/cacack/my-family/internal/repository/memory"
 	"github.com/cacack/my-family/internal/repository/postgres"
 	"github.com/cacack/my-family/internal/repository/sqlite"
+	"github.com/cacack/my-family/internal/testutil/pgtest"
 )
 
 // historyBackend opens a fresh event store and read model on one backend.
@@ -48,7 +49,7 @@ func openHistorySQLite(t *testing.T) (repository.EventStore, repository.ReadMode
 
 func openHistoryPostgres(t *testing.T) (repository.EventStore, repository.ReadModelStore) {
 	t.Helper()
-	db, err := sql.Open("postgres", createTestPostgresDatabase(t))
+	db, err := sql.Open("postgres", pgtest.NewDatabase(t))
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
 	es, err := postgres.NewEventStore(db)
