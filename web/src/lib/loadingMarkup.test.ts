@@ -44,7 +44,7 @@ const LOADING_CLASS = /<[a-z][\w-]*\b[^>]*\bclass="(?:[^"]*\s)?loading[\w-]*(?:\
 export function adHocLoading(source: string): string[] {
 	// Blank out script, style and comments, keeping newlines so line numbers hold.
 	const markup = source.replace(
-		/<script\b[\s\S]*?<\/script>|<style\b[\s\S]*?<\/style>|<!--[\s\S]*?-->/g,
+		/<script\b[\s\S]*?<\/script\s*>|<style\b[\s\S]*?<\/style\s*>|<!--[\s\S]*?-->/gi,
 		(block) => block.replace(/[^\n]/g, ' ')
 	);
 	const lines = markup.split('\n');
