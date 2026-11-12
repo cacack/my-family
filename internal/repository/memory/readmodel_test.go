@@ -3524,7 +3524,7 @@ func TestReadModelStore_GetMapLocations_AxisChecked(t *testing.T) {
 		t.Fatalf("GetMapLocations = %+v, want only the Boston birth and Paris death pins", results)
 	}
 	for _, r := range results {
-		if !(r.Place == "Boston" && r.EventType == "birth") && !(r.Place == "Paris" && r.EventType == "death") {
+		if (r.Place != "Boston" || r.EventType != "birth") && (r.Place != "Paris" || r.EventType != "death") {
 			t.Errorf("unexpected pin %+v", r)
 		}
 	}

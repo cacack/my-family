@@ -110,14 +110,14 @@ func (ss *StrictServer) GetAhnentafel(ctx context.Context, request GetAhnentafel
 		var sb strings.Builder
 		sb.WriteString("AHNENTAFEL REPORT\n")
 		sb.WriteString("=================\n")
-		sb.WriteString(fmt.Sprintf("Subject: %s %s\n\n", subject.GivenName, subject.Surname))
+		fmt.Fprintf(&sb, "Subject: %s %s\n\n", subject.GivenName, subject.Surname)
 
 		for _, entry := range result.Entries {
 			relationLabel := getRelationLabel(entry.Number)
 			if relationLabel != "" {
-				sb.WriteString(fmt.Sprintf("%d. %s %s (%s)\n", entry.Number, entry.GivenName, entry.Surname, relationLabel))
+				fmt.Fprintf(&sb, "%d. %s %s (%s)\n", entry.Number, entry.GivenName, entry.Surname, relationLabel)
 			} else {
-				sb.WriteString(fmt.Sprintf("%d. %s %s\n", entry.Number, entry.GivenName, entry.Surname))
+				fmt.Fprintf(&sb, "%d. %s %s\n", entry.Number, entry.GivenName, entry.Surname)
 			}
 
 			var birthDateStr, deathDateStr string
@@ -127,13 +127,13 @@ func (ss *StrictServer) GetAhnentafel(ctx context.Context, request GetAhnentafel
 			if entry.DeathDate != nil {
 				deathDateStr = entry.DeathDate.String()
 			}
-			sb.WriteString(fmt.Sprintf("   b. %s\n", formatEventLineStr(birthDateStr, entry.BirthPlace)))
-			sb.WriteString(fmt.Sprintf("   d. %s\n\n", formatEventLineStr(deathDateStr, entry.DeathPlace)))
+			fmt.Fprintf(&sb, "   b. %s\n", formatEventLineStr(birthDateStr, entry.BirthPlace))
+			fmt.Fprintf(&sb, "   d. %s\n\n", formatEventLineStr(deathDateStr, entry.DeathPlace))
 		}
 
-		sb.WriteString(fmt.Sprintf("Generated: %s\n", time.Now().Format("2006-01-02")))
-		sb.WriteString(fmt.Sprintf("Total ancestors: %d\n", result.KnownAncestors))
-		sb.WriteString(fmt.Sprintf("Generations: %d\n", result.MaxGeneration))
+		fmt.Fprintf(&sb, "Generated: %s\n", time.Now().Format("2006-01-02"))
+		fmt.Fprintf(&sb, "Total ancestors: %d\n", result.KnownAncestors)
+		fmt.Fprintf(&sb, "Generations: %d\n", result.MaxGeneration)
 
 		return GetAhnentafel200TextResponse(sb.String()), nil
 	}

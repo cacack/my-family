@@ -219,12 +219,12 @@ func parseNullableTimestamp(s sql.NullString) (*time.Time, error) {
 }
 
 // parseNullableSortDate parses a nullable sort date column written by
-// formatSortDate with layout. A NULL column maps to a nil *time.Time.
-func parseNullableSortDate(s sql.NullString, layout string) (*time.Time, error) {
+// formatSortDate with sortDateLayout. A NULL column maps to a nil *time.Time.
+func parseNullableSortDate(s sql.NullString) (*time.Time, error) {
 	if !s.Valid {
 		return nil, nil
 	}
-	t, err := parseSortDate(s.String, layout)
+	t, err := parseSortDate(s.String, sortDateLayout)
 	if err != nil {
 		return nil, err
 	}

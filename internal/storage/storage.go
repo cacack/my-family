@@ -234,8 +234,8 @@ func OpenSQLite(path string, access Access) (*Stores, error) {
 // through its real path would lock different files. A path that does not
 // resolve (no database yet) is used as given.
 func lockPath(path string) string {
-	if real, err := filepath.EvalSymlinks(path); err == nil {
-		path = real
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		path = resolved
 	}
 	return path + ".lock"
 }

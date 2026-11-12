@@ -161,18 +161,7 @@ func (h *Handler) UpdateMedia(ctx context.Context, input UpdateMediaInput) (*Upd
 		changes["media_type"] = *input.MediaType
 		testMedia.MediaType = domain.MediaType(*input.MediaType)
 	}
-	if input.CropLeft != nil && !ptrEqual(input.CropLeft, current.CropLeft) {
-		changes["crop_left"] = *input.CropLeft
-	}
-	if input.CropTop != nil && !ptrEqual(input.CropTop, current.CropTop) {
-		changes["crop_top"] = *input.CropTop
-	}
-	if input.CropWidth != nil && !ptrEqual(input.CropWidth, current.CropWidth) {
-		changes["crop_width"] = *input.CropWidth
-	}
-	if input.CropHeight != nil && !ptrEqual(input.CropHeight, current.CropHeight) {
-		changes["crop_height"] = *input.CropHeight
-	}
+	addCropChanges(changes, input, current)
 
 	// No changes?
 	if len(changes) == 0 {
@@ -194,6 +183,22 @@ func (h *Handler) UpdateMedia(ctx context.Context, input UpdateMediaInput) (*Upd
 	}
 
 	return &UpdateMediaResult{Version: version}, nil
+}
+
+// addCropChanges records each crop field in input that differs from current.
+func addCropChanges(changes map[string]any, input UpdateMediaInput, current *repository.MediaReadModel) {
+	if input.CropLeft != nil && !ptrEqual(input.CropLeft, current.CropLeft) {
+		changes["crop_left"] = *input.CropLeft
+	}
+	if input.CropTop != nil && !ptrEqual(input.CropTop, current.CropTop) {
+		changes["crop_top"] = *input.CropTop
+	}
+	if input.CropWidth != nil && !ptrEqual(input.CropWidth, current.CropWidth) {
+		changes["crop_width"] = *input.CropWidth
+	}
+	if input.CropHeight != nil && !ptrEqual(input.CropHeight, current.CropHeight) {
+		changes["crop_height"] = *input.CropHeight
+	}
 }
 
 // ptrEqual reports whether two optional values hold the same value, treating

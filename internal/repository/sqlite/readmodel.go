@@ -1740,8 +1740,8 @@ func scanSoundexCandidates(rows *sql.Rows) ([]repository.PersonReadModel, error)
 		}
 		p := repository.PersonReadModel{ID: id, GivenName: given, Surname: surname}
 		// An unparseable date column leaves its field unset, as in scanPerson.
-		p.BirthDateSort, _ = parseNullableSortDate(birthSort, sortDateLayout)
-		p.DeathDateSort, _ = parseNullableSortDate(deathSort, sortDateLayout)
+		p.BirthDateSort, _ = parseNullableSortDate(birthSort)
+		p.DeathDateSort, _ = parseNullableSortDate(deathSort)
 		candidates = append(candidates, p)
 	}
 	return candidates, rows.Err()
@@ -3273,8 +3273,8 @@ func scanPerson(row rowScanner, extra ...any) (*repository.PersonReadModel, erro
 	p.DeathPlaceLong = nonEmptyStringPtr(deathPlaceLong)
 
 	// An unparseable date column leaves its field unset, as for NULL.
-	p.BirthDateSort, _ = parseNullableSortDate(birthDateSort, sortDateLayout)
-	p.DeathDateSort, _ = parseNullableSortDate(deathDateSort, sortDateLayout)
+	p.BirthDateSort, _ = parseNullableSortDate(birthDateSort)
+	p.DeathDateSort, _ = parseNullableSortDate(deathDateSort)
 	p.BrickWallSince, _ = parseNullableTimestamp(brickWallSince)
 	p.BrickWallResolvedAt, _ = parseNullableTimestamp(brickWallResolvedAt)
 	if t, err := parseTimestamp(updatedAt); err == nil {
