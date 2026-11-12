@@ -102,7 +102,7 @@
 
 	.hero h1 {
 		margin: 0;
-		font-size: 2rem;
+		font-size: 1.5rem;
 		color: #1e293b;
 	}
 

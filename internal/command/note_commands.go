@@ -34,6 +34,9 @@ func (h *Handler) CreateNote(ctx context.Context, input CreateNoteInput) (*Creat
 	note := domain.NewNote(input.Text)
 
 	if input.GedcomXref != "" {
+		if err := validateGedcomXref(input.GedcomXref); err != nil {
+			return nil, err
+		}
 		note.SetGedcomXref(input.GedcomXref)
 	}
 
@@ -87,14 +90,21 @@ func (h *Handler) UpdateNote(ctx context.Context, input UpdateNoteInput) (*Updat
 
 	// Build changes map
 	changes := make(map[string]any)
+	testNote := domain.Note{ID: current.ID, Text: current.Text}
 
 	if input.Text != nil && *input.Text != current.Text {
 		changes["text"] = *input.Text
+		testNote.Text = *input.Text
 	}
 
 	// No changes?
 	if len(changes) == 0 {
 		return &UpdateNoteResult{Version: current.Version}, nil
+	}
+
+	// Validate updated note
+	if err := testNote.Validate(); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInvalidInput, err)
 	}
 
 	// Create event

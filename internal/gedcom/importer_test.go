@@ -3423,6 +3423,47 @@ func TestImportRecordNotesSkipNestedNotes(t *testing.T) {
 	}
 }
 
+func TestImportRecordSharedNotePointers(t *testing.T) {
+	// A GEDCOM 7.0 record points at a shared note with SNOTE, not NOTE. An
+	// individual, source or repository keeps that pointer in its Notes, beside
+	// its NOTE text in file order, without a dropped-note warning (#622).
+	const data = `0 HEAD
+1 GEDC
+2 VERS 7.0
+0 @N1@ SNOTE Shared text
+0 @R1@ REPO
+1 NAME Archive
+1 SNOTE @N1@
+0 @S1@ SOUR
+1 TITL Register
+1 SNOTE @N1@
+0 @I1@ INDI
+1 NAME Ann /Smith/
+1 NOTE Inline text
+1 SNOTE @N1@
+0 TRLR
+`
+	result, persons, _, sources, _, repositories, _, _, _, _, _, _, _, err := gedcom.NewImporter().Import(context.Background(), strings.NewReader(data))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+	if len(persons) != 1 || len(sources) != 1 || len(repositories) != 1 {
+		t.Fatalf("got %d persons, %d sources, %d repositories; want 1 each", len(persons), len(sources), len(repositories))
+	}
+	if want := "Inline text\n\n@N1@"; persons[0].Notes != want {
+		t.Errorf("person Notes = %q, want %q", persons[0].Notes, want)
+	}
+	if sources[0].Notes != "@N1@" {
+		t.Errorf("source Notes = %q, want %q", sources[0].Notes, "@N1@")
+	}
+	if repositories[0].Notes != "@N1@" {
+		t.Errorf("repository Notes = %q, want %q", repositories[0].Notes, "@N1@")
+	}
+	if len(result.Warnings) != 0 {
+		t.Errorf("Warnings = %q, want none", result.Warnings)
+	}
+}
+
 func TestImport_ExistingXrefsRenameCollidingNotes(t *testing.T) {
 	// The tree already holds @N1@ and @N2@; this file's @N1@ note must get a
 	// fresh xref that neither the tree nor the file uses, and every pointer

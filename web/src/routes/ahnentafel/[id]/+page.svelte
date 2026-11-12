@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { api, recordLoadError, type AhnentafelResponse, type AhnentafelEntry, formatGenDate, formatPersonName } from '#lib/api/client.js';
+	import { api, recordLoadError, type LoadFailure, type AhnentafelResponse, type AhnentafelEntry, formatGenDate, formatPersonName } from '#lib/api/client.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import ActionBar from '#lib/components/ActionBar.svelte';
 	import { Card, CardHeader, CardContent } from '#lib/components/ui/card/index.js';
@@ -9,7 +9,7 @@
 	import { useBackLink } from '#lib/utils/backLink.svelte.js';
 
 	let report: AhnentafelResponse | null = $state(null);
-	let error: string | null = $state(null);
+	let error: LoadFailure | null = $state(null);
 	// A failed export is shown beside the report, never in place of it (#899).
 	let exportError: string | null = $state(null);
 	let loading = $state(true);
@@ -17,7 +17,7 @@
 	let exporting = $state(false);
 	const back = useBackLink(() => ({
 		href: `/persons/${page.params.id}`,
-		label: report?.subject ? `Back to ${formatPersonName(report.subject)}` : 'Back'
+		label: report?.subject ? formatPersonName(report.subject) : 'Back'
 	}));
 
 	async function loadReport(personId: string, gens: number) {
@@ -131,7 +131,7 @@
 			{#snippet actions()}
 				<label class="generations">
 					Generations:
-					<select value={generations} onchange={handleGenerationsChange}>
+					<select value={generations} onchange={handleGenerationsChange} disabled={!report}>
 						{#each Array.from({ length: 9 }, (_, i) => i + 2) as n}
 							<option value={n}>{n}</option>
 						{/each}
@@ -151,18 +151,17 @@
 		{#if loading}
 			<div class="loading">Loading report...</div>
 		{:else if error}
-			<ErrorState message={error} onRetry={() => loadReport(page.params.id ?? '', generations)} />
+			<ErrorState {...error} onRetry={() => loadReport(page.params.id ?? '', generations)} />
 		{:else if report}
+			<div class="report-header">
+				<h1>Ahnentafel Report</h1>
+				<h2>{formatPersonName(report.subject)}</h2>
+				<p class="report-meta">
+					{report.generations} generation{report.generations !== 1 ? 's' : ''} - {report.known_ancestors} of
+					{report.ancestor_slots} ancestors known
+				</p>
+			</div>
 			<div class="report">
-				<div class="report-header">
-					<h1>Ahnentafel Report</h1>
-					<h2>{formatPersonName(report.subject)}</h2>
-					<p class="report-meta">
-						{report.generations} generation{report.generations !== 1 ? 's' : ''} - {report.known_ancestors} of
-						{report.ancestor_slots} ancestors known
-					</p>
-				</div>
-
 				<!-- Desktop table view -->
 				<div class="table-view">
 					{#each [...groupByGeneration(report.entries)] as [gen, entries]}
@@ -315,7 +314,7 @@
 	.report-container {
 		flex: 1;
 		padding: 1.5rem;
-		max-width: 1200px;
+		max-width: var(--page-width-list);
 		margin: 0 auto;
 		width: 100%;
 	}
@@ -338,18 +337,15 @@
 		overflow: hidden;
 	}
 
+	/* Above the report card, so its h1 lines up with every other page's. */
 	.report-header {
-		padding: 1.5rem;
-		text-align: center;
-		border-bottom: 1px solid #e2e8f0;
-		background: #f8fafc;
+		margin-bottom: 1.5rem;
 	}
 
 	.report-header h1 {
 		margin: 0 0 0.5rem;
 		font-size: 1.5rem;
 		color: #1e293b;
-		font-weight: 600;
 	}
 
 	.report-header h2 {
@@ -565,6 +561,7 @@
 			border-bottom: 2px solid #1e293b;
 			padding: 0 0 1rem 0;
 			margin-bottom: 1rem;
+			text-align: center;
 		}
 
 		.report-header h1 {

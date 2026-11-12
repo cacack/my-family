@@ -322,6 +322,7 @@ var (
 		"media_id":      {types: []string{entityTypeMedia}},
 		"subject_id":    {types: personOrFamily, typeField: "subject_type"},
 		"fact_owner_id": {types: personOrFamily},
+		"fact_id":       {types: []string{entityTypeLifeEvent, entityTypeAttribute}},
 		"citation_ids":  {types: []string{entityTypeCitation}, list: true, label: "Citations"},
 		"analysis_ids":  {types: []string{entityTypeEvidenceAnalysis}, list: true, label: "Evidence analyses"},
 		"note_ids":      {types: []string{entityTypeNote}, list: true, label: "Linked notes"},

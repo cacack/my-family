@@ -42,6 +42,9 @@ func (h *Handler) CreateRepository(ctx context.Context, input CreateRepositoryIn
 		repo.Notes = input.Notes
 	}
 	if input.GedcomXref != "" {
+		if err := validateGedcomXref(input.GedcomXref); err != nil {
+			return nil, err
+		}
 		repo.GedcomXref = input.GedcomXref
 	}
 
@@ -103,6 +106,12 @@ func (h *Handler) UpdateRepository(ctx context.Context, input UpdateRepositoryIn
 	changes := make(map[string]any)
 
 	if input.Name != nil && *input.Name != current.Name {
+		// Only a changed name is validated: an imported repository may carry a
+		// stored name (e.g. empty) that must not block an unrelated edit.
+		changed := domain.Repository{ID: current.ID, Name: *input.Name}
+		if err := changed.Validate(); err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrInvalidInput, err)
+		}
 		changes["name"] = *input.Name
 	}
 	// A repository with no address compares as an empty one, so a form that
@@ -118,6 +127,9 @@ func (h *Handler) UpdateRepository(ctx context.Context, input UpdateRepositoryIn
 		changes["notes"] = *input.Notes
 	}
 	if input.GedcomXref != nil && *input.GedcomXref != current.GedcomXref {
+		if err := validateGedcomXref(*input.GedcomXref); err != nil {
+			return nil, err
+		}
 		changes["gedcom_xref"] = *input.GedcomXref
 	}
 

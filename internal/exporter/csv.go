@@ -56,6 +56,7 @@ var DefaultCitationFields = []string{
 	"source_title",
 	"fact_type",
 	"fact_owner_id",
+	"fact_id",
 	"page",
 	"source_quality",
 	"evidence_type",
@@ -145,6 +146,7 @@ var AvailableCitationFields = map[string]bool{
 	"source_title":   true,
 	"fact_type":      true,
 	"fact_owner_id":  true,
+	"fact_id":        true,
 	"page":           true,
 	"volume":         true,
 	"source_quality": true,
@@ -564,6 +566,11 @@ func getCitationFieldValue(c repository.CitationReadModel, field string) string 
 		return string(c.FactType)
 	case "fact_owner_id":
 		return c.FactOwnerID.String()
+	case "fact_id":
+		if c.FactID == nil {
+			return ""
+		}
+		return c.FactID.String()
 	case "page":
 		return c.Page
 	case "volume":

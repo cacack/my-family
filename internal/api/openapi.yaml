@@ -5667,6 +5667,12 @@ components:
         blocks an unrelated edit.
       example: "1 JAN 1850"
 
+    DateQualifier:
+      type: string
+      enum: [exact, abt, cal, est, bef, aft, bet, from, int, to]
+      description: Precision qualifier of a genealogical date (GEDCOM ABT, CAL, EST, BEF, AFT, BET, FROM, INT, TO).
+      example: "abt"
+
     GenDate:
       type: object
       description: Genealogical date with flexible precision
@@ -5676,9 +5682,7 @@ components:
           description: Original date string
           example: "ABT 1850"
         qualifier:
-          type: string
-          enum: [exact, abt, cal, est, bef, aft, bet, from, int, to]
-          example: "abt"
+          $ref: '#/components/schemas/DateQualifier'
         calendar:
           type: string
           description: >-
@@ -6578,7 +6582,7 @@ components:
 
     ChangeHistoryResponse:
       type: object
-      required: [items, total]
+      required: [items, total, limit, offset, has_more]
       properties:
         items:
           type: array
@@ -6671,7 +6675,7 @@ components:
     # Media schemas
     Media:
       type: object
-      required: [id, entity_type, entity_id, title, mime_type, filename, file_size, version]
+      required: [id, entity_type, entity_id, title, mime_type, filename, file_size, version, created_at]
       properties:
         id:
           type: string
@@ -6863,7 +6867,7 @@ components:
 
     PlaceEntry:
       type: object
-      required: [name, count]
+      required: [name, full_name, count, has_children]
       properties:
         name:
           type: string
@@ -6940,6 +6944,8 @@ components:
           items:
             type: string
             format: uuid
+          deprecated: true
+          x-deprecated-reason: Use `persons[].id`, which carries the same IDs in the same order.
           description: IDs of the persons at this location, in the same order as `persons`. Kept for existing clients; `persons[].id` carries the same IDs.
         persons:
           type: array
@@ -6981,7 +6987,7 @@ components:
     # Source schemas
     Source:
       type: object
-      required: [id, source_type, title, version]
+      required: [id, source_type, title, version, citation_count]
       properties:
         id:
           type: string
@@ -7119,7 +7125,7 @@ components:
     # PersonName schemas
     PersonName:
       type: object
-      required: [id, person_id, given_name, surname, is_primary]
+      required: [id, person_id, given_name, surname, full_name, is_primary]
       properties:
         id:
           type: string
@@ -7135,7 +7141,6 @@ components:
           maxLength: 100
         full_name:
           type: string
-          readOnly: true
         name_prefix:
           type: string
         name_suffix:
@@ -7313,7 +7318,9 @@ components:
           description: Template-specific field values
         gedcom_xref:
           type: string
-          description: Optional GEDCOM cross-reference ID for import
+          description: Optional GEDCOM cross-reference ID for import. Empty, or one @-delimited pointer (e.g. "@R1@") with no whitespace or interior @.
+          maxLength: 64
+          pattern: '^(@[^@\s]+@)?$'
 
     CitationUpdate:
       type: object
@@ -8173,13 +8180,7 @@ components:
           description: Mainline event store position the branch forked from
           example: 42
         status:
-          type: string
-          enum: [active, merged, archived]
-          description: |
-            Lifecycle state. `merged` and `archived` are terminal — a branch in
-            either state accepts no further writes. `archived` is the state a
-            deleted branch enters; its events are retained but its overlay rows
-            are purged.
+          $ref: '#/components/schemas/BranchStatus'
         created_at:
           type: string
           format: date-time
@@ -8306,6 +8307,15 @@ components:
         has_more:
           type: boolean
           description: A count hit the server's cap and is a lower bound
+
+    BranchStatus:
+      type: string
+      enum: [active, merged, archived]
+      description: |
+        Lifecycle state. `merged` and `archived` are terminal — a branch in
+        either state accepts no further writes. `archived` is the state a
+        deleted branch enters; its events are retained but its overlay rows
+        are purged.
 
     BranchOutcome:
       type: string
@@ -9100,8 +9110,8 @@ components:
           # The fact changed (e.g. `person_birth`); absent for a relationship or a deletion.
           $ref: '#/components/schemas/FactType'
         subject_type:
-          type: string
-          enum: [person, family]
+          allOf:
+            - $ref: '#/components/schemas/ResearchLogSubjectType'
           description: What the fact is about - the subject an analysis of it has.
         subject_id:
           type: string
@@ -9592,7 +9602,9 @@ components:
           minLength: 1
         gedcom_xref:
           type: string
-          description: Optional GEDCOM cross-reference ID for import
+          description: Optional GEDCOM cross-reference ID for import. Empty, or one @-delimited pointer (e.g. "@R1@") with no whitespace or interior @.
+          maxLength: 64
+          pattern: '^(@[^@\s]+@)?$'
 
     NoteUpdate:
       type: object
@@ -9733,7 +9745,9 @@ components:
           description: ID of linked media (submitter photo)
         gedcom_xref:
           type: string
-          description: Optional GEDCOM cross-reference ID for import
+          description: Optional GEDCOM cross-reference ID for import. Empty, or one @-delimited pointer (e.g. "@R1@") with no whitespace or interior @.
+          maxLength: 64
+          pattern: '^(@[^@\s]+@)?$'
 
     SubmitterUpdate:
       type: object
@@ -9841,7 +9855,9 @@ components:
           description: Free-form notes about the repository
         gedcom_xref:
           type: string
-          description: Optional GEDCOM cross-reference ID for import
+          description: Optional GEDCOM cross-reference ID for import. Empty, or one @-delimited pointer (e.g. "@R1@") with no whitespace or interior @.
+          maxLength: 64
+          pattern: '^(@[^@\s]+@)?$'
 
     RepositoryUpdate:
       type: object
@@ -9859,7 +9875,9 @@ components:
           description: Updated notes
         gedcom_xref:
           type: string
-          description: Updated GEDCOM cross-reference ID
+          description: Updated GEDCOM cross-reference ID. Empty, or one @-delimited pointer (e.g. "@R1@") with no whitespace or interior @.
+          maxLength: 64
+          pattern: '^(@[^@\s]+@)?$'
         version:
           type: integer
           format: int64
@@ -10009,6 +10027,14 @@ components:
         - SLGC: Sealing to Parents
         - SLGS: Sealing to Spouse (family level)
 
+    LDSOrdinanceStatus:
+      type: string
+      enum: [BIC, CANCELED, CHILD, COMPLETED, EXCLUDED, DNS, DNS_CAN, INFANT, PRE_1970, STILLBORN, SUBMITTED, UNCLEARED]
+      description: |
+        LDS ordinance status, the GEDCOM 7 STAT enumeration. A GEDCOM import
+        keeps the file's STAT text as written, so an ordinance imported from
+        an older file can carry a value outside this list.
+
     LDSOrdinance:
       type: object
       required: [id, type, type_label, version, updated_at]
@@ -10041,8 +10067,7 @@ components:
           type: string
           description: Temple code (GEDCOM TEMP tag)
         status:
-          type: string
-          description: Status (COMPLETED, BIC, CHILD, EXCLUDED, etc.)
+          $ref: '#/components/schemas/LDSOrdinanceStatus'
         version:
           type: integer
           format: int64
@@ -10072,8 +10097,7 @@ components:
           type: string
           description: Temple code
         status:
-          type: string
-          description: Ordinance status
+          $ref: '#/components/schemas/LDSOrdinanceStatus'
 
     LDSOrdinanceUpdate:
       type: object
@@ -10088,8 +10112,7 @@ components:
           type: string
           description: Updated temple code
         status:
-          type: string
-          description: Updated status
+          $ref: '#/components/schemas/LDSOrdinanceStatus'
         version:
           type: integer
           format: int64
@@ -10401,6 +10424,11 @@ components:
           type: integer
 
     # Research Log schemas
+    ResearchLogSubjectType:
+      type: string
+      enum: [person, family]
+      description: The kind of record a research log is about.
+
     ResearchLog:
       type: object
       required: [id, subject_id, subject_type, repository, search_description, outcome, search_date, version]
@@ -10412,8 +10440,7 @@ components:
           type: string
           format: uuid
         subject_type:
-          type: string
-          description: Type of subject (person or family)
+          $ref: '#/components/schemas/ResearchLogSubjectType'
         repository:
           type: string
           description: Name of the repository searched
@@ -10445,7 +10472,7 @@ components:
           type: string
           format: uuid
         subject_type:
-          type: string
+          $ref: '#/components/schemas/ResearchLogSubjectType'
         repository:
           type: string
         search_description:
@@ -10466,7 +10493,7 @@ components:
           type: string
           format: uuid
         subject_type:
-          type: string
+          $ref: '#/components/schemas/ResearchLogSubjectType'
         repository:
           type: string
         search_description:

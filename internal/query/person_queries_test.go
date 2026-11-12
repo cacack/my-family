@@ -2,6 +2,7 @@ package query_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/google/uuid"
@@ -865,5 +866,30 @@ func TestPersonService_BranchScope(t *testing.T) {
 	}
 	if _, err := service.GetPerson(ctx, domain.MainBranchID, id); err != nil {
 		t.Errorf("GetPerson main after branch tombstone: %v, want nil", err)
+	}
+}
+
+func TestGetPersonCore(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	service := query.NewPersonService(readStore)
+	ctx := context.Background()
+
+	created, err := handler.CreatePerson(ctx, command.CreatePersonInput{GivenName: "John", Surname: "Doe"})
+	if err != nil {
+		t.Fatalf("CreatePerson failed: %v", err)
+	}
+
+	person, err := service.GetPersonCore(ctx, domain.MainBranchID, created.ID)
+	if err != nil {
+		t.Fatalf("GetPersonCore failed: %v", err)
+	}
+	if person.ID != created.ID || person.GivenName != "John" || person.Surname != "Doe" || person.Version != created.Version {
+		t.Errorf("GetPersonCore = %+v, want John Doe at version %d", person, created.Version)
+	}
+
+	if _, err := service.GetPersonCore(ctx, domain.MainBranchID, uuid.New()); !errors.Is(err, query.ErrNotFound) {
+		t.Errorf("unknown person: err = %v, want ErrNotFound", err)
 	}
 }

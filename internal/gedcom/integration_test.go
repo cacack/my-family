@@ -38,6 +38,15 @@ func TestIntegration_ImportExportRoundTrip(t *testing.T) {
 			minFamilies: 4,
 			checkNames:  []string{"John", "Smith", "Mary", "Johnson", "Robert", "Emily", "Adopted"},
 		},
+		{
+			// Structural equivalence of this fixture's round trip is checked
+			// in internal/integration (TestGedcomRoundTrip_FixturesKeepTheirTree).
+			name:        "comprehensive 7.0",
+			path:        "../../testdata/gedcom-7.0/comprehensive.ged",
+			minPersons:  5,
+			minFamilies: 1,
+			checkNames:  []string{"William", "Hartwell", "Sarah", "Cohen", "Jacques", "Moreau"},
+		},
 	}
 
 	for _, tc := range testFiles {

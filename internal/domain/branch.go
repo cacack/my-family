@@ -3,6 +3,7 @@ package domain
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -118,8 +119,8 @@ const (
 	BranchOutcomeAbandoned BranchOutcome = "abandoned"
 )
 
-// BranchOutcomes lists every valid outcome in display order.
-func BranchOutcomes() []BranchOutcome {
+// AllBranchOutcomes returns every valid BranchOutcome value in display order.
+func AllBranchOutcomes() []BranchOutcome {
 	return []BranchOutcome{
 		BranchOutcomeOpen,
 		BranchOutcomeProved,
@@ -130,28 +131,27 @@ func BranchOutcomes() []BranchOutcome {
 	}
 }
 
-// IsValid checks if the outcome value is one of the defined outcomes.
+// IsValid reports whether the value is one of AllBranchOutcomes.
 func (o BranchOutcome) IsValid() bool {
-	switch o {
-	case BranchOutcomeOpen, BranchOutcomeProved, BranchOutcomeDisproved,
-		BranchOutcomeInconclusive, BranchOutcomeSuperseded, BranchOutcomeAbandoned:
-		return true
-	default:
-		return false
+	return slices.Contains(AllBranchOutcomes(), o)
+}
+
+// AllBranchCloseOutcomes returns the outcomes that can be recorded when a
+// branch is closed without merging (#836): disproved, inconclusive,
+// superseded or abandoned. "open" is no verdict, and a "proved" branch is
+// merged, not closed.
+func AllBranchCloseOutcomes() []BranchOutcome {
+	return []BranchOutcome{
+		BranchOutcomeDisproved,
+		BranchOutcomeInconclusive,
+		BranchOutcomeSuperseded,
+		BranchOutcomeAbandoned,
 	}
 }
 
-// IsCloseOutcome reports whether the outcome can be recorded when a branch is
-// closed without merging (#836): disproved, inconclusive, superseded or
-// abandoned. "open" is no verdict, and a "proved" branch is merged, not closed.
+// IsCloseOutcome reports whether the value is one of AllBranchCloseOutcomes.
 func (o BranchOutcome) IsCloseOutcome() bool {
-	switch o {
-	case BranchOutcomeDisproved, BranchOutcomeInconclusive,
-		BranchOutcomeSuperseded, BranchOutcomeAbandoned:
-		return true
-	default:
-		return false
-	}
+	return slices.Contains(AllBranchCloseOutcomes(), o)
 }
 
 // ValidateBranchClose checks the outcome and reason given when a branch is
@@ -184,9 +184,14 @@ const (
 	BranchSubjectFamily BranchSubjectType = "family"
 )
 
-// IsValid checks if the subject type is person or family.
+// AllBranchSubjectTypes returns every valid BranchSubjectType value.
+func AllBranchSubjectTypes() []BranchSubjectType {
+	return []BranchSubjectType{BranchSubjectPerson, BranchSubjectFamily}
+}
+
+// IsValid reports whether the value is one of AllBranchSubjectTypes.
 func (t BranchSubjectType) IsValid() bool {
-	return t == BranchSubjectPerson || t == BranchSubjectFamily
+	return slices.Contains(AllBranchSubjectTypes(), t)
 }
 
 // BranchSubject is one person or family a branch's hypothesis is about. The
@@ -212,14 +217,14 @@ const (
 	BranchStatusArchived BranchStatus = "archived"
 )
 
-// IsValid checks if the branch status value is valid.
+// AllBranchStatuses returns every valid BranchStatus value.
+func AllBranchStatuses() []BranchStatus {
+	return []BranchStatus{BranchStatusActive, BranchStatusMerged, BranchStatusArchived}
+}
+
+// IsValid reports whether the value is one of AllBranchStatuses.
 func (s BranchStatus) IsValid() bool {
-	switch s {
-	case BranchStatusActive, BranchStatusMerged, BranchStatusArchived:
-		return true
-	default:
-		return false
-	}
+	return slices.Contains(AllBranchStatuses(), s)
 }
 
 // Branch is a lightweight record marking an isolated line of research off a

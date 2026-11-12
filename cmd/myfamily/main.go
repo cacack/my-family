@@ -123,7 +123,7 @@ func runServer() error {
 	serverOpts := []api.ServerOption{api.WithBranchStore(stores.Branches)}
 	if cfg.DemoMode {
 		mem := stores.Memory
-		serverOpts = append(serverOpts, api.WithDemoReset(mem.Events, mem.ReadModel, mem.Snapshots))
+		serverOpts = append(serverOpts, api.WithDemoReset(mem.Events, mem.ReadModel, mem.Snapshots, mem.Branches))
 	}
 
 	// Create server
@@ -131,7 +131,7 @@ func runServer() error {
 
 	// Seed demo data if demo mode is enabled
 	if cfg.DemoMode {
-		if err := demo.SeedDemoData(context.Background(), server.CommandHandler()); err != nil {
+		if err := demo.SeedDemoData(context.Background(), server.CommandHandler(), stores.ReadModel); err != nil {
 			return fmt.Errorf("failed to seed demo data: %w", err)
 		}
 		log.Printf("Demo data loaded: sample family tree ready")

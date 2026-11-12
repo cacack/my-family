@@ -1485,18 +1485,27 @@ func (s *ReadModelStore) searchPersonsFuzzy(ctx context.Context, opts repository
 		return nil, 0, fmt.Errorf("search persons fuzzy: %w", err)
 	}
 	all := orderFuzzyMatches(matched, opts)
-	ranked := repository.Page(all, opts.Offset, limit)
-	if len(ranked) == 0 {
-		return nil, len(all), nil
+	results, err := s.loadPersonPage(ctx, opts.BranchID, repository.Page(all, opts.Offset, limit))
+	if err != nil {
+		return nil, 0, fmt.Errorf("search persons fuzzy: %w", err)
 	}
+	return results, len(all), nil
+}
 
+// loadPersonPage fetches the full rows of a page of ranked search results,
+// which carry only the columns they were scored and sorted on, keeping their
+// order.
+func (s *ReadModelStore) loadPersonPage(ctx context.Context, branchID domain.BranchID, ranked []repository.PersonReadModel) ([]repository.PersonReadModel, error) {
+	if len(ranked) == 0 {
+		return nil, nil
+	}
 	ids := make([]uuid.UUID, len(ranked))
 	for i, p := range ranked {
 		ids[i] = p.ID
 	}
-	full, err := s.GetPersonsByIDs(ctx, opts.BranchID, ids)
+	full, err := s.GetPersonsByIDs(ctx, branchID, ids)
 	if err != nil {
-		return nil, 0, fmt.Errorf("search persons fuzzy: %w", err)
+		return nil, err
 	}
 	byID := make(map[uuid.UUID]repository.PersonReadModel, len(full))
 	for _, p := range full {
@@ -1508,7 +1517,7 @@ func (s *ReadModelStore) searchPersonsFuzzy(ctx context.Context, opts repository
 			results = append(results, p)
 		}
 	}
-	return results, len(all), nil
+	return results, nil
 }
 
 // fuzzyMatch is a person that matched a fuzzy search, with their best score.
@@ -1655,26 +1664,20 @@ func orderFuzzyMatches(matched []fuzzyMatch, opts repository.SearchOptions) []re
 	return results
 }
 
-// searchPersonsSoundex fetches every candidate matching the date/place filters,
-// then post-filters using Soundex in Go. Candidates are not capped, so the
-// total counts every match (like searchPersonsFuzzy).
+// searchPersonsSoundex reads the id, name and sort-date columns of every
+// person matching the date/place filters, Soundex-filters them in Go on their
+// own and alternate names, sorts and pages them, then fetches the full rows of
+// the page only (like searchPersonsFuzzy, #954). Candidates are not capped, so
+// the total counts every match.
 func (s *ReadModelStore) searchPersonsSoundex(ctx context.Context, opts repository.SearchOptions, limit int) ([]repository.PersonReadModel, int, error) {
 	filterSQL, filterArgs := buildDatePlaceFilters(opts)
-
 	overlay, overlayArgs := personOverlaySubquery(opts.BranchID)
 
 	var sb strings.Builder
-	var args []any
-	args = append(args, overlayArgs...)
-
+	args := append([]any{}, overlayArgs...)
 	sb.WriteString(`
-		SELECT p.id, p.given_name, p.surname, p.full_name, p.gender,
-			   p.birth_date_raw, p.birth_date_sort, p.birth_place, p.birth_place_lat, p.birth_place_long,
-			   p.death_date_raw, p.death_date_sort, p.death_place, p.death_place_lat, p.death_place_long,
-			   p.notes, p.birth_notes, p.death_notes, p.birth_type_detail, p.death_type_detail, p.research_status, p.brick_wall_note, p.brick_wall_since, p.brick_wall_resolved_at,
-			   p.version, p.updated_at
+		SELECT p.id, p.given_name, p.surname, p.birth_date_sort, p.death_date_sort
 		FROM ` + overlay + ` p`)
-
 	if filterSQL != "" {
 		sb.WriteString(" WHERE " + filterSQL)
 		args = append(args, filterArgs...)
@@ -1684,37 +1687,58 @@ func (s *ReadModelStore) searchPersonsSoundex(ctx context.Context, opts reposito
 	if err != nil {
 		return nil, 0, fmt.Errorf("search persons soundex: %w", err)
 	}
-	defer rows.Close()
-
-	candidates, err := scanPersonRows(rows)
+	candidates, err := scanSoundexCandidates(rows)
+	rows.Close()
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, fmt.Errorf("search persons soundex: %w", err)
 	}
 
-	// Split query into words for soundex comparison
+	namesByPerson, err := s.loadPersonNamesForSoundex(ctx, opts.BranchID, candidates)
+	if err != nil {
+		return nil, 0, fmt.Errorf("load person names for soundex: %w", err)
+	}
+
+	// Keep persons where any query word Soundex-matches one of their names.
 	queryWords := strings.Fields(opts.Query)
-
-	// Also load person_names for Soundex matching on alternate names
-	namesByPerson := make(map[string][]nameEntry)
-	if len(candidates) > 0 {
-		var err error
-		namesByPerson, err = s.loadPersonNamesForSoundex(ctx, opts.BranchID, candidates)
-		if err != nil {
-			return nil, 0, fmt.Errorf("load person names for soundex: %w", err)
-		}
-	}
-
-	// Post-filter: keep persons where any query word Soundex-matches given_name or surname
-	var results []repository.PersonReadModel
+	var matched []repository.PersonReadModel
 	for _, p := range candidates {
 		if personMatchesSoundex(p, queryWords, namesByPerson[p.ID.String()]) {
-			results = append(results, p)
+			matched = append(matched, p)
 		}
 	}
 
 	// Sort before paging; the total counts every match.
-	sortPersonResults(results, opts)
-	return repository.Page(results, opts.Offset, limit), len(results), nil
+	sortPersonResults(matched, opts)
+	results, err := s.loadPersonPage(ctx, opts.BranchID, repository.Page(matched, opts.Offset, limit))
+	if err != nil {
+		return nil, 0, fmt.Errorf("search persons soundex: %w", err)
+	}
+	return results, len(matched), nil
+}
+
+// scanSoundexCandidates reads searchPersonsSoundex's rows (id, given name,
+// surname, birth and death sort dates). Only those fields are set.
+func scanSoundexCandidates(rows *sql.Rows) ([]repository.PersonReadModel, error) {
+	var candidates []repository.PersonReadModel
+	for rows.Next() {
+		var (
+			idStr, given, surname string
+			birthSort, deathSort  sql.NullString
+		)
+		if err := rows.Scan(&idStr, &given, &surname, &birthSort, &deathSort); err != nil {
+			return nil, err
+		}
+		id, err := uuid.Parse(idStr)
+		if err != nil {
+			return nil, fmt.Errorf("parse person id %q: %w", idStr, err)
+		}
+		p := repository.PersonReadModel{ID: id, GivenName: given, Surname: surname}
+		// An unparseable date column leaves its field unset, as in scanPerson.
+		p.BirthDateSort, _ = parseNullableSortDate(birthSort, sortDateLayout)
+		p.DeathDateSort, _ = parseNullableSortDate(deathSort, sortDateLayout)
+		candidates = append(candidates, p)
+	}
+	return candidates, rows.Err()
 }
 
 // nameEntry holds name fields for Soundex comparison.
@@ -2338,12 +2362,72 @@ func familyExternalIDValues(ids []repository.FamilyExternalIDReadModel) []extIDV
 // mainline bucket. Bind args: parentID, parentID, branch, branch, main.
 func externalIDsOverlayQuery(table, parentCol string) string {
 	// #nosec G201 G202 -- table and parentCol are internal constants, never user input.
-	return "SELECT sequence, value, type FROM " + table + `
+	return "SELECT " + parentCol + ", sequence, value, type FROM " + table + `
 		WHERE ` + parentCol + ` = ? AND deleted = 0
 		  AND branch_id = (
 			CASE WHEN EXISTS(SELECT 1 FROM ` + table + " WHERE " + parentCol + ` = ? AND branch_id = ?)
 				 THEN ? ELSE ? END)
 		ORDER BY sequence`
+}
+
+// allExternalIDsOverlayQuery is externalIDsOverlayQuery for every parent at
+// once (#617): each parent's branch bucket when the branch has one, else its
+// mainline bucket. Bind args: branch, main, branch.
+func allExternalIDsOverlayQuery(table, parentCol string) string {
+	// #nosec G201 G202 -- table and parentCol are internal constants, never user input.
+	return "SELECT " + parentCol + ", sequence, value, type FROM " + table + ` t
+		WHERE deleted = 0
+		  AND (branch_id = ? OR (branch_id = ? AND NOT EXISTS(
+			SELECT 1 FROM ` + table + " b WHERE b." + parentCol + " = t." + parentCol + ` AND b.branch_id = ?)))
+		ORDER BY ` + parentCol + ", sequence"
+}
+
+// queryExternalIDs runs an external-id query selecting (parent, sequence,
+// value, type) and groups the rows by parent, keeping their order. build turns
+// a row into the caller's typed read model; label names the table in errors.
+func queryExternalIDs[T any](ctx context.Context, db *sql.DB, label, query string, args []any, build func(parentID uuid.UUID, seq int, value, typ string) T) (map[uuid.UUID][]T, error) {
+	rows, err := db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query %s: %w", label, err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	result := make(map[uuid.UUID][]T)
+	for rows.Next() {
+		var (
+			parent     string
+			seq        int
+			value, typ string
+		)
+		if err := rows.Scan(&parent, &seq, &value, &typ); err != nil {
+			return nil, fmt.Errorf("scan %s: %w", label, err)
+		}
+		parentID, err := uuid.Parse(parent)
+		if err != nil {
+			return nil, fmt.Errorf("parse %s parent id: %w", label, err)
+		}
+		result[parentID] = append(result[parentID], build(parentID, seq, value, typ))
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate %s: %w", label, err)
+	}
+	return result, nil
+}
+
+// getExternalIDs reads one parent's external-id bucket within the branch overlay.
+func getExternalIDs[T any](ctx context.Context, db *sql.DB, table, parentCol string, branchID domain.BranchID, parentID uuid.UUID, build func(uuid.UUID, int, string, string) T) ([]T, error) {
+	byParent, err := queryExternalIDs(ctx, db, table, externalIDsOverlayQuery(table, parentCol),
+		[]any{parentID.String(), parentID.String(), branchID.String(), branchID.String(), mainBranchID}, build)
+	if err != nil {
+		return nil, err
+	}
+	return byParent[parentID], nil
+}
+
+// listExternalIDs reads every parent's external-id bucket within the branch overlay.
+func listExternalIDs[T any](ctx context.Context, db *sql.DB, table, parentCol string, branchID domain.BranchID, build func(uuid.UUID, int, string, string) T) (map[uuid.UUID][]T, error) {
+	return queryExternalIDs(ctx, db, table, allExternalIDsOverlayQuery(table, parentCol),
+		[]any{branchID.String(), mainBranchID, branchID.String()}, build)
 }
 
 // replaceExternalIDs replaces a parent's external-id bucket on the given branch
@@ -2387,6 +2471,26 @@ func replaceExternalIDs(ctx context.Context, db *sql.DB, table, parentCol string
 	return tx.Commit()
 }
 
+func personExternalID(parentID uuid.UUID, seq int, value, typ string) repository.PersonExternalIDReadModel {
+	return repository.PersonExternalIDReadModel{PersonID: parentID, Sequence: seq, Value: value, Type: typ}
+}
+
+func familyExternalID(parentID uuid.UUID, seq int, value, typ string) repository.FamilyExternalIDReadModel {
+	return repository.FamilyExternalIDReadModel{FamilyID: parentID, Sequence: seq, Value: value, Type: typ}
+}
+
+func sourceExternalID(parentID uuid.UUID, seq int, value, typ string) repository.SourceExternalIDReadModel {
+	return repository.SourceExternalIDReadModel{SourceID: parentID, Sequence: seq, Value: value, Type: typ}
+}
+
+func citationExternalID(parentID uuid.UUID, seq int, value, typ string) repository.CitationExternalIDReadModel {
+	return repository.CitationExternalIDReadModel{CitationID: parentID, Sequence: seq, Value: value, Type: typ}
+}
+
+func repositoryExternalID(parentID uuid.UUID, seq int, value, typ string) repository.RepositoryExternalIDReadModel {
+	return repository.RepositoryExternalIDReadModel{RepositoryID: parentID, Sequence: seq, Value: value, Type: typ}
+}
+
 // ReplacePersonExternalIDs replaces all external identifiers (GEDCOM 7.0 EXID)
 // for a person within a single transaction, scoped to the branch.
 func (s *ReadModelStore) ReplacePersonExternalIDs(ctx context.Context, branchID domain.BranchID, personID uuid.UUID, ids []repository.PersonExternalIDReadModel) error {
@@ -2401,34 +2505,13 @@ func (s *ReadModelStore) ReplacePersonExternalIDs(ctx context.Context, branchID 
 // per-parent bucket (a present branch bucket wins wholesale over the mainline; an
 // empty branch bucket — a single deleted=1 marker row — is a tombstone).
 func (s *ReadModelStore) GetPersonExternalIDs(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) ([]repository.PersonExternalIDReadModel, error) {
-	rows, err := s.db.QueryContext(ctx, externalIDsOverlayQuery("person_external_ids", "person_id"),
-		personID.String(), personID.String(), branchID.String(), branchID.String(), mainBranchID)
-	if err != nil {
-		return nil, fmt.Errorf("query person external ids: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
+	return getExternalIDs(ctx, s.db, "person_external_ids", "person_id", branchID, personID, personExternalID)
+}
 
-	var result []repository.PersonExternalIDReadModel
-	for rows.Next() {
-		var (
-			seq   int
-			value string
-			typ   string
-		)
-		if err := rows.Scan(&seq, &value, &typ); err != nil {
-			return nil, fmt.Errorf("scan person external id: %w", err)
-		}
-		result = append(result, repository.PersonExternalIDReadModel{
-			PersonID: personID,
-			Sequence: seq,
-			Value:    value,
-			Type:     typ,
-		})
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate person external ids: %w", err)
-	}
-	return result, nil
+// ListPersonExternalIDs returns every person's external identifiers visible on
+// the branch, keyed by person ID, in one query.
+func (s *ReadModelStore) ListPersonExternalIDs(ctx context.Context, branchID domain.BranchID) (map[uuid.UUID][]repository.PersonExternalIDReadModel, error) {
+	return listExternalIDs(ctx, s.db, "person_external_ids", "person_id", branchID, personExternalID)
 }
 
 // ReplaceFamilyExternalIDs replaces all external identifiers (GEDCOM 7.0 EXID)
@@ -2444,34 +2527,13 @@ func (s *ReadModelStore) ReplaceFamilyExternalIDs(ctx context.Context, branchID 
 // branch overlay, ordered by their original sequence (per-parent bucket overlay,
 // same model as GetPersonExternalIDs).
 func (s *ReadModelStore) GetFamilyExternalIDs(ctx context.Context, branchID domain.BranchID, familyID uuid.UUID) ([]repository.FamilyExternalIDReadModel, error) {
-	rows, err := s.db.QueryContext(ctx, externalIDsOverlayQuery("family_external_ids", "family_id"),
-		familyID.String(), familyID.String(), branchID.String(), branchID.String(), mainBranchID)
-	if err != nil {
-		return nil, fmt.Errorf("query family external ids: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
+	return getExternalIDs(ctx, s.db, "family_external_ids", "family_id", branchID, familyID, familyExternalID)
+}
 
-	var result []repository.FamilyExternalIDReadModel
-	for rows.Next() {
-		var (
-			seq   int
-			value string
-			typ   string
-		)
-		if err := rows.Scan(&seq, &value, &typ); err != nil {
-			return nil, fmt.Errorf("scan family external id: %w", err)
-		}
-		result = append(result, repository.FamilyExternalIDReadModel{
-			FamilyID: familyID,
-			Sequence: seq,
-			Value:    value,
-			Type:     typ,
-		})
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate family external ids: %w", err)
-	}
-	return result, nil
+// ListFamilyExternalIDs returns every family's external identifiers visible on
+// the branch, keyed by family ID, in one query.
+func (s *ReadModelStore) ListFamilyExternalIDs(ctx context.Context, branchID domain.BranchID) (map[uuid.UUID][]repository.FamilyExternalIDReadModel, error) {
+	return listExternalIDs(ctx, s.db, "family_external_ids", "family_id", branchID, familyExternalID)
 }
 
 // ReplaceSourceExternalIDs replaces all external identifiers (GEDCOM 7.0 EXID)
@@ -2492,34 +2554,13 @@ func (s *ReadModelStore) ReplaceSourceExternalIDs(ctx context.Context, branchID 
 // branch overlay, ordered by their original sequence (per-parent bucket overlay,
 // same model as GetPersonExternalIDs).
 func (s *ReadModelStore) GetSourceExternalIDs(ctx context.Context, branchID domain.BranchID, sourceID uuid.UUID) ([]repository.SourceExternalIDReadModel, error) {
-	rows, err := s.db.QueryContext(ctx, externalIDsOverlayQuery("source_external_ids", "source_id"),
-		sourceID.String(), sourceID.String(), branchID.String(), branchID.String(), mainBranchID)
-	if err != nil {
-		return nil, fmt.Errorf("query source external ids: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
+	return getExternalIDs(ctx, s.db, "source_external_ids", "source_id", branchID, sourceID, sourceExternalID)
+}
 
-	var result []repository.SourceExternalIDReadModel
-	for rows.Next() {
-		var (
-			seq   int
-			value string
-			typ   string
-		)
-		if err := rows.Scan(&seq, &value, &typ); err != nil {
-			return nil, fmt.Errorf("scan source external id: %w", err)
-		}
-		result = append(result, repository.SourceExternalIDReadModel{
-			SourceID: sourceID,
-			Sequence: seq,
-			Value:    value,
-			Type:     typ,
-		})
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate source external ids: %w", err)
-	}
-	return result, nil
+// ListSourceExternalIDs returns every source's external identifiers visible on
+// the branch, keyed by source ID, in one query.
+func (s *ReadModelStore) ListSourceExternalIDs(ctx context.Context, branchID domain.BranchID) (map[uuid.UUID][]repository.SourceExternalIDReadModel, error) {
+	return listExternalIDs(ctx, s.db, "source_external_ids", "source_id", branchID, sourceExternalID)
 }
 
 // ReplaceCitationExternalIDs replaces all external identifiers for a citation
@@ -2540,34 +2581,13 @@ func (s *ReadModelStore) ReplaceCitationExternalIDs(ctx context.Context, branchI
 // within the branch overlay, ordered by their original sequence (per-parent
 // bucket overlay, same model as GetSourceExternalIDs).
 func (s *ReadModelStore) GetCitationExternalIDs(ctx context.Context, branchID domain.BranchID, citationID uuid.UUID) ([]repository.CitationExternalIDReadModel, error) {
-	rows, err := s.db.QueryContext(ctx, externalIDsOverlayQuery("citation_external_ids", "citation_id"),
-		citationID.String(), citationID.String(), branchID.String(), branchID.String(), mainBranchID)
-	if err != nil {
-		return nil, fmt.Errorf("query citation external ids: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
+	return getExternalIDs(ctx, s.db, "citation_external_ids", "citation_id", branchID, citationID, citationExternalID)
+}
 
-	var result []repository.CitationExternalIDReadModel
-	for rows.Next() {
-		var (
-			seq   int
-			value string
-			typ   string
-		)
-		if err := rows.Scan(&seq, &value, &typ); err != nil {
-			return nil, fmt.Errorf("scan citation external id: %w", err)
-		}
-		result = append(result, repository.CitationExternalIDReadModel{
-			CitationID: citationID,
-			Sequence:   seq,
-			Value:      value,
-			Type:       typ,
-		})
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate citation external ids: %w", err)
-	}
-	return result, nil
+// ListCitationExternalIDs returns every citation's external identifiers
+// visible on the branch, keyed by citation ID, in one query.
+func (s *ReadModelStore) ListCitationExternalIDs(ctx context.Context, branchID domain.BranchID) (map[uuid.UUID][]repository.CitationExternalIDReadModel, error) {
+	return listExternalIDs(ctx, s.db, "citation_external_ids", "citation_id", branchID, citationExternalID)
 }
 
 // ReplaceRepositoryExternalIDs replaces all external identifiers (GEDCOM 7.0
@@ -2596,36 +2616,23 @@ func (s *ReadModelStore) ReplaceRepositoryExternalIDs(ctx context.Context, repos
 // GetRepositoryExternalIDs retrieves all external identifiers for a repository,
 // ordered by their original sequence.
 func (s *ReadModelStore) GetRepositoryExternalIDs(ctx context.Context, repositoryID uuid.UUID) ([]repository.RepositoryExternalIDReadModel, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT sequence, value, type FROM repository_external_ids
+	byParent, err := queryExternalIDs(ctx, s.db, "repository_external_ids", `
+		SELECT repository_id, sequence, value, type FROM repository_external_ids
 		WHERE repository_id = ? ORDER BY sequence
-	`, repositoryID.String())
+	`, []any{repositoryID.String()}, repositoryExternalID)
 	if err != nil {
-		return nil, fmt.Errorf("query repository external ids: %w", err)
+		return nil, err
 	}
-	defer func() { _ = rows.Close() }()
+	return byParent[repositoryID], nil
+}
 
-	var result []repository.RepositoryExternalIDReadModel
-	for rows.Next() {
-		var (
-			seq   int
-			value string
-			typ   string
-		)
-		if err := rows.Scan(&seq, &value, &typ); err != nil {
-			return nil, fmt.Errorf("scan repository external id: %w", err)
-		}
-		result = append(result, repository.RepositoryExternalIDReadModel{
-			RepositoryID: repositoryID,
-			Sequence:     seq,
-			Value:        value,
-			Type:         typ,
-		})
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate repository external ids: %w", err)
-	}
-	return result, nil
+// ListRepositoryExternalIDs returns every repository's external identifiers,
+// keyed by repository ID, in one query.
+func (s *ReadModelStore) ListRepositoryExternalIDs(ctx context.Context) (map[uuid.UUID][]repository.RepositoryExternalIDReadModel, error) {
+	return queryExternalIDs(ctx, s.db, "repository_external_ids", `
+		SELECT repository_id, sequence, value, type FROM repository_external_ids
+		ORDER BY repository_id, sequence
+	`, nil, repositoryExternalID)
 }
 
 // scanPersonName scans a single person name row.
@@ -4402,12 +4409,7 @@ func scanEvent(row rowScanner) (*repository.EventReadModel, error) {
 		s := placeLong.String
 		event.PlaceLong = &s
 	}
-	if len(addressJSON) > 0 {
-		var addr domain.Address
-		if err := json.Unmarshal(addressJSON, &addr); err == nil {
-			event.Address = &addr
-		}
-	}
+	event.Address = repository.UnmarshalAddress(addressJSON, "events", event.ID)
 	if researchStatus.Valid {
 		event.ResearchStatus = domain.ResearchStatus(researchStatus.String)
 	}
@@ -5672,18 +5674,9 @@ func (s *ReadModelStore) GetSubmitter(ctx context.Context, id uuid.UUID) (*repos
 			submitter.MediaID = &id
 		}
 	}
-	if len(addressJSON) > 0 {
-		var addr domain.Address
-		if err := json.Unmarshal(addressJSON, &addr); err == nil {
-			submitter.Address = &addr
-		}
-	}
-	if len(phoneJSON) > 0 {
-		_ = json.Unmarshal(phoneJSON, &submitter.Phone)
-	}
-	if len(emailJSON) > 0 {
-		_ = json.Unmarshal(emailJSON, &submitter.Email)
-	}
+	submitter.Address = repository.UnmarshalAddress(addressJSON, "submitters", submitter.ID)
+	submitter.Phone = repository.UnmarshalStrings(phoneJSON, "submitters", "phone", submitter.ID)
+	submitter.Email = repository.UnmarshalStrings(emailJSON, "submitters", "email", submitter.ID)
 	if t, err := parseTimestamp(updatedAtStr); err == nil {
 		submitter.UpdatedAt = t
 	}
@@ -5761,18 +5754,9 @@ func (s *ReadModelStore) ListSubmitters(ctx context.Context, opts repository.Lis
 				submitter.MediaID = &id
 			}
 		}
-		if len(addressJSON) > 0 {
-			var addr domain.Address
-			if err := json.Unmarshal(addressJSON, &addr); err == nil {
-				submitter.Address = &addr
-			}
-		}
-		if len(phoneJSON) > 0 {
-			_ = json.Unmarshal(phoneJSON, &submitter.Phone)
-		}
-		if len(emailJSON) > 0 {
-			_ = json.Unmarshal(emailJSON, &submitter.Email)
-		}
+		submitter.Address = repository.UnmarshalAddress(addressJSON, "submitters", submitter.ID)
+		submitter.Phone = repository.UnmarshalStrings(phoneJSON, "submitters", "phone", submitter.ID)
+		submitter.Email = repository.UnmarshalStrings(emailJSON, "submitters", "email", submitter.ID)
 		if t, err := parseTimestamp(updatedAtStr); err == nil {
 			submitter.UpdatedAt = t
 		}
@@ -5885,12 +5869,7 @@ func (s *ReadModelStore) GetRepository(ctx context.Context, id uuid.UUID) (*repo
 	if gedcomXref.Valid {
 		repo.GedcomXref = gedcomXref.String
 	}
-	if len(addressJSON) > 0 {
-		var addr domain.Address
-		if err := json.Unmarshal(addressJSON, &addr); err == nil {
-			repo.Address = &addr
-		}
-	}
+	repo.Address = repository.UnmarshalAddress(addressJSON, "repositories", repo.ID)
 	if t, err := parseTimestamp(updatedAtStr); err == nil {
 		repo.UpdatedAt = t
 	}
@@ -5959,12 +5938,7 @@ func (s *ReadModelStore) ListRepositories(ctx context.Context, opts repository.L
 		if gedcomXref.Valid {
 			repo.GedcomXref = gedcomXref.String
 		}
-		if len(addressJSON) > 0 {
-			var addr domain.Address
-			if err := json.Unmarshal(addressJSON, &addr); err == nil {
-				repo.Address = &addr
-			}
-		}
+		repo.Address = repository.UnmarshalAddress(addressJSON, "repositories", repo.ID)
 		if t, err := parseTimestamp(updatedAtStr); err == nil {
 			repo.UpdatedAt = t
 		}

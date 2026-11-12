@@ -3,6 +3,7 @@ package domain
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -144,11 +145,29 @@ func (ec *EvidenceConflict) Validate() error {
 	return nil
 }
 
+// ResearchLogSubjectType names the kind of record a research log is about.
+type ResearchLogSubjectType string
+
+const (
+	ResearchLogSubjectPerson ResearchLogSubjectType = "person"
+	ResearchLogSubjectFamily ResearchLogSubjectType = "family"
+)
+
+// AllResearchLogSubjectTypes returns every valid ResearchLogSubjectType value.
+func AllResearchLogSubjectTypes() []ResearchLogSubjectType {
+	return []ResearchLogSubjectType{ResearchLogSubjectPerson, ResearchLogSubjectFamily}
+}
+
+// IsValid reports whether the value is one of AllResearchLogSubjectTypes.
+func (t ResearchLogSubjectType) IsValid() bool {
+	return slices.Contains(AllResearchLogSubjectTypes(), t)
+}
+
 // ResearchLog documents research activity including negative results.
 type ResearchLog struct {
 	ID                uuid.UUID       `json:"id"`
 	SubjectID         uuid.UUID       `json:"subject_id"`
-	SubjectType       string          `json:"subject_type"` // "person" or "family"
+	SubjectType       string          `json:"subject_type"` // a ResearchLogSubjectType
 	Repository        string          `json:"repository"`
 	SearchDescription string          `json:"search_description"`
 	Outcome           ResearchOutcome `json:"outcome"`
@@ -188,7 +207,7 @@ func (rl *ResearchLog) Validate() error {
 	if rl.SubjectID == uuid.Nil {
 		errs = append(errs, ResearchLogValidationError{Field: "subject_id", Message: "cannot be empty"})
 	}
-	if rl.SubjectType != "person" && rl.SubjectType != "family" {
+	if !ResearchLogSubjectType(rl.SubjectType).IsValid() {
 		errs = append(errs, ResearchLogValidationError{Field: "subject_type", Message: "must be 'person' or 'family'"})
 	}
 	if rl.Repository == "" {

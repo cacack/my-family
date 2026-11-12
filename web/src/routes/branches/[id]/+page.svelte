@@ -42,7 +42,10 @@
 	import { page } from '$app/state';
 	import {
 		api,
+		loadErrorFailure,
+		notFoundFailure,
 		type ApiError,
+		type LoadFailure,
 		type Branch,
 		type BranchChangeEntry,
 		type BranchComparisonResult,
@@ -102,8 +105,7 @@
 
 	let comparison: BranchComparisonResult | null = $state(null);
 	let loading = $state(true);
-	let error: string | null = $state(null);
-	let notFound = $state(false);
+	let loadError: LoadFailure | null = $state(null);
 
 	/**
 	 * The conflict list a `409 merge_conflicts` refusal carried, which supersedes
@@ -502,8 +504,7 @@
 	async function loadComparison(id: string) {
 		const request = ++comparisonRequest;
 		loading = true;
-		error = null;
-		notFound = false;
+		loadError = null;
 		// Decisions belong to the comparison they were made against. Clearing them
 		// here, under the same token that gates every other write, is what stops a
 		// late response from repopulating one branch's conflicts while another
@@ -540,11 +541,13 @@
 			if (request !== comparisonRequest) return;
 			const apiError = e as ApiError;
 			// A 400 is a malformed id in the URL, which no branch can have.
-			if (apiError.status === 404 || apiError.status === 400) {
-				notFound = true;
-			} else {
-				error = apiError.message || 'Failed to load branch comparison';
-			}
+			loadError =
+				apiError.status === 404 || apiError.status === 400
+					? notFoundFailure(
+							'branch',
+							'This branch could not be found. It may have been deleted, or the branch registry is not configured on this server.'
+						)
+					: loadErrorFailure(e, 'branch');
 			comparison = null;
 		} finally {
 			if (request === comparisonRequest) {
@@ -871,17 +874,12 @@
 {/snippet}
 
 <div class="compare-page">
-	<a href="/branches" class="back-link">&larr; All branches</a>
+	<a href="/branches" class="back-link">&larr; Research Branches</a>
 
 	{#if loading}
 		<div class="state" role="status" aria-live="polite">Loading comparison...</div>
-	{:else if notFound}
-		<div class="state empty">
-			<h2>Branch not found</h2>
-			<p>It may have been deleted, or the branch registry is not configured on this server.</p>
-		</div>
-	{:else if error}
-		<ErrorState message={error} onRetry={() => loadComparison(branchId)} />
+	{:else if loadError}
+		<ErrorState {...loadError} onRetry={() => loadComparison(branchId)} />
 	{:else if comparison}
 		<!-- A const keeps the null check inside the header snippets. -->
 		{@const branch = comparison.branch}
@@ -1252,7 +1250,7 @@
 	}
 
 	.compare-page {
-		max-width: 1100px;
+		max-width: var(--page-width-list);
 		margin: 0 auto;
 		padding: 1.5rem;
 	}
@@ -1640,17 +1638,5 @@
 		padding: 2rem;
 		text-align: center;
 		color: var(--color-text-muted);
-	}
-
-	.state.empty {
-		background: white;
-		border: 1px dashed #cbd5e1;
-		border-radius: 8px;
-	}
-
-	.state.empty h2 {
-		margin: 0 0 0.375rem;
-		font-size: 1rem;
-		color: #1e293b;
 	}
 </style>

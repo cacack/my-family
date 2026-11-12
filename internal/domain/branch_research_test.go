@@ -12,7 +12,7 @@ import (
 )
 
 func TestBranchOutcome_IsValid(t *testing.T) {
-	for _, outcome := range domain.BranchOutcomes() {
+	for _, outcome := range domain.AllBranchOutcomes() {
 		if !outcome.IsValid() {
 			t.Errorf("%q.IsValid() = false, want true", outcome)
 		}
@@ -185,7 +185,7 @@ func TestBranchOutcome_Close(t *testing.T) {
 		domain.BranchOutcomeDisproved: true, domain.BranchOutcomeInconclusive: true,
 		domain.BranchOutcomeSuperseded: true, domain.BranchOutcomeAbandoned: true,
 	}
-	for _, outcome := range append(domain.BranchOutcomes(), "", "bogus") {
+	for _, outcome := range append(domain.AllBranchOutcomes(), "", "bogus") {
 		if got := outcome.IsCloseOutcome(); got != closing[outcome] {
 			t.Errorf("%q.IsCloseOutcome() = %v, want %v", outcome, got, closing[outcome])
 		}

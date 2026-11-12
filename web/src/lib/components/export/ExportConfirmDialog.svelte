@@ -70,7 +70,7 @@
 		</div>
 
 		<Dialog.Footer>
-			<Button variant="secondary" onclick={onCancel}>Cancel</Button>
+			<Button variant="outline" onclick={onCancel}>Cancel</Button>
 			<Button variant="default" onclick={onConfirm}>Proceed with Export</Button>
 		</Dialog.Footer>
 	</Dialog.Content>

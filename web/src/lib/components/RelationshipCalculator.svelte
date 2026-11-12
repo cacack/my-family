@@ -122,11 +122,6 @@
 </script>
 
 <div class="relationship-calculator">
-	<div class="calculator-header">
-		<h1 class="title">Relationship Calculator</h1>
-		<p class="subtitle">Select two people to discover how they are related</p>
-	</div>
-
 	<div class="selector-section">
 		<div class="selectors-grid">
 			<div class="selector-container">
@@ -314,30 +309,6 @@
 </div>
 
 <style>
-	.relationship-calculator {
-		max-width: 800px;
-		margin: 0 auto;
-		padding: 1.5rem;
-	}
-
-	.calculator-header {
-		text-align: center;
-		margin-bottom: 2rem;
-	}
-
-	.title {
-		margin: 0 0 0.5rem;
-		font-size: 1.75rem;
-		font-weight: 700;
-		color: #1e293b;
-	}
-
-	.subtitle {
-		margin: 0;
-		font-size: 1rem;
-		color: var(--color-text-muted);
-	}
-
 	/* Selector Section */
 	.selector-section {
 		background: white;

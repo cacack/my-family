@@ -384,7 +384,7 @@
 	{/if}
 
 	<div class="actions">
-		<Button type="button" variant="secondary" onclick={oncancel} disabled={saving}>Cancel</Button>
+		<Button type="button" variant="outline" onclick={oncancel} disabled={saving}>Cancel</Button>
 		<Button type="submit" disabled={saving || !dirty || !hypothesisValid || !descriptionValid}>
 			{saving ? 'Saving...' : 'Save research record'}
 		</Button>

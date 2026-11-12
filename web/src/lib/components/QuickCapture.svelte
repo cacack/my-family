@@ -181,7 +181,7 @@
 			<Button type="submit" disabled={saving} class="flex-1">
 				{saving ? 'Adding...' : 'Add & Next'}
 			</Button>
-			<Button variant="secondary" disabled={saving} onclick={() => submit('view')}>
+			<Button variant="outline" disabled={saving} onclick={() => submit('view')}>
 				Add & View
 			</Button>
 		</div>
