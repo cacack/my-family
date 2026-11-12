@@ -394,6 +394,7 @@ export type NameType = Schemas['NameType'];
 export type ResearchStatus = Schemas['ResearchStatus'];
 export type ConflictStatus = Schemas['ConflictStatus'];
 export type ResearchOutcome = Schemas['ResearchOutcome'];
+export type ResearchLogSubjectType = Schemas['ResearchLogSubjectType'];
 export type FactType = Schemas['FactType'];
 
 export type GenDate = Schemas['GenDate'];
@@ -2064,19 +2065,60 @@ export function isStaleVersion(error: unknown): boolean {
 const PATH_ID_BINDING_ERROR = 'Invalid format for parameter id:';
 
 /**
- * Why a record fetched by its id failed to load, in words (#899). A 404, and a
- * 400 for a malformed path id (which no record can have), read as "not found",
- * never as the server's parameter-binding detail ("Invalid format for parameter
- * id: error unmarshaling ..."). Any other 400 passes its message through (#940).
+ * Why a page's record failed to load, as `ErrorState` shows it (#1096): a
+ * heading, a sentence, and whether the record is missing (`notFound`), which a
+ * Retry cannot fix, so none is offered. See docs/CONVENTIONS.md.
  */
-export function recordLoadError(error: unknown, noun: string): string {
+export interface LoadFailure {
+	title: string;
+	message: string;
+	notFound: boolean;
+}
+
+function capitalize(noun: string): string {
+	return noun.charAt(0).toUpperCase() + noun.slice(1);
+}
+
+/** The not-found state of a `noun` page; `message` replaces the default sentence. */
+export function notFoundFailure(noun: string, message?: string): LoadFailure {
+	return {
+		title: `${capitalize(noun)} not found`,
+		message:
+			message ?? `This ${noun} could not be found. It may have been deleted, or the link may be wrong.`,
+		notFound: true
+	};
+}
+
+/**
+ * The load-error state of a `noun` page. A 4xx's message explains a refusal and
+ * passes through (#940); a 5xx or a network failure reads as one friendly
+ * sentence, never the server's or the browser's own text ("Failed to fetch").
+ */
+export function loadErrorFailure(error: unknown, noun: string): LoadFailure {
+	const status = (error as ApiError)?.status;
+	const refusal = status !== undefined && status >= 400 && status < 500;
+	return {
+		title: `${capitalize(noun)} could not be loaded`,
+		message:
+			(refusal && (error as ApiError).message) || `Failed to load the ${noun}. Please try again.`,
+		notFound: false
+	};
+}
+
+/**
+ * Why a record fetched by its id failed to load (#899). A 404, and a 400 for a
+ * malformed path id (which no record can have), read as not found, never as the
+ * server's parameter-binding detail ("Invalid format for parameter id: error
+ * unmarshaling ..."). Anything else is a load error (`loadErrorFailure`).
+ */
+export function recordLoadError(error: unknown, noun: string): LoadFailure {
 	const apiError = error as ApiError;
 	const malformedId =
 		apiError?.status === 400 && (apiError.message ?? '').startsWith(PATH_ID_BINDING_ERROR);
 	if (apiError?.status === 404 || malformedId) {
-		return `This ${noun} could not be found. It may have been deleted, or the link may be wrong.`;
+		return notFoundFailure(noun);
 	}
-	return apiError?.message || `Failed to load the ${noun}.`;
+	return loadErrorFailure(error, noun);
 }
 
 /**

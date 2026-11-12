@@ -15,6 +15,7 @@ import {
 	getClientBranch,
 	onBranchWrite,
 	recordLoadError,
+	notFoundFailure,
 	isVersionConflict,
 	isStaleVersion,
 	type BranchMergeConflictError,
@@ -933,24 +934,47 @@ describe('recordLoadError (#899)', () => {
 			'a 400 from a malformed id',
 			{ status: 400, message: "Invalid format for parameter id: error unmarshaling 'xyz'" }
 		]
-	])('reads %s as not found', (_name, error) => {
-		const message = recordLoadError(error, 'source');
-		expect(message).toBe(
-			'This source could not be found. It may have been deleted, or the link may be wrong.'
-		);
+	])('reads %s as not found, which a Retry cannot fix (#1096)', (_name, error) => {
+		expect(recordLoadError(error, 'proof summary')).toEqual({
+			title: 'Proof summary not found',
+			message:
+				'This proof summary could not be found. It may have been deleted, or the link may be wrong.',
+			notFound: true
+		});
 	});
 
 	it.each([
-		['a 500', { status: 500, message: 'Database unavailable' }],
 		['a 400 for another parameter (#940)', { status: 400, message: 'Invalid format for parameter branch: bad uuid' }],
 		['a 400 with no binding detail (#940)', { status: 400, message: 'Version is required' }]
 	])('passes %s message through', (_name, error) => {
-		expect(recordLoadError(error, 'source')).toBe(error.message);
+		expect(recordLoadError(error, 'source')).toEqual({
+			title: 'Source could not be loaded',
+			message: error.message,
+			notFound: false
+		});
 	});
 
-	it('falls back when the error carries no message', () => {
-		expect(recordLoadError(new TypeError(''), 'person')).toBe('Failed to load the person.');
-		expect(recordLoadError(undefined, 'person')).toBe('Failed to load the person.');
+	it.each([
+		['a 500', { status: 500, message: 'boom' }],
+		['a network failure', new TypeError('Failed to fetch')],
+		['an error with no message', new TypeError('')],
+		['nothing', undefined]
+	])('reads %s as a friendly, retryable load error (#1096)', (_name, error) => {
+		expect(recordLoadError(error, 'person')).toEqual({
+			title: 'Person could not be loaded',
+			message: 'Failed to load the person. Please try again.',
+			notFound: false
+		});
+	});
+});
+
+describe('notFoundFailure (#1096)', () => {
+	it('takes a page-specific sentence', () => {
+		expect(notFoundFailure('branch', 'It may have been deleted.')).toEqual({
+			title: 'Branch not found',
+			message: 'It may have been deleted.',
+			notFound: true
+		});
 	});
 });
 

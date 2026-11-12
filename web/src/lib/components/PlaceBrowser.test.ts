@@ -18,7 +18,7 @@ describe('PlaceBrowser', () => {
 		resetRouter('/browse/places');
 		vi.mocked(apiModule.api.getPlaceHierarchy).mockImplementation(async (parent) =>
 			parent === 'Ohio, USA'
-				? { items: [{ name: 'Columbus', full_name: 'Columbus, Ohio, USA', count: 2 }], total: 1, breadcrumb: ['Ohio', 'USA'] }
+				? { items: [{ name: 'Columbus', full_name: 'Columbus, Ohio, USA', count: 2, has_children: false }], total: 1, breadcrumb: ['Ohio', 'USA'] }
 				: { items: [{ name: 'Ohio', full_name: 'Ohio, USA', count: 5, has_children: true }], total: 1, breadcrumb: [] }
 		);
 	});

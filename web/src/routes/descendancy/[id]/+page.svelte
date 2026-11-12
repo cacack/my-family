@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
-	import { api, formatPersonName, recordLoadError, type Descendancy, type DescendancyNode } from '#lib/api/client.js';
+	import { api, formatPersonName, recordLoadError, type LoadFailure, type Descendancy, type DescendancyNode } from '#lib/api/client.js';
 	import DescendancyChart, { type LayoutMode } from '#lib/components/DescendancyChart.svelte';
 	import { CHART_DEFAULTS, readChartOptions, setQuery } from '#lib/utils/urlState.js';
 	import { createShortcutHandler } from '#lib/keyboard/useShortcuts.svelte.js';
@@ -11,7 +11,7 @@
 	import PageHeader from '#lib/components/PageHeader.svelte';
 
 	let descendancy: Descendancy | null = $state(null);
-	let error: string | null = $state(null);
+	let error: LoadFailure | null = $state(null);
 	let loading = $state(true);
 	// Generations and layout live in the URL (see urlState.ts), so reload, Back
 	// and a copied link keep them; both refine the view, so they replace.
@@ -25,7 +25,7 @@
 	const rootName = $derived.by(() => (descendancy?.root ? formatPersonName(descendancy.root) : null));
 	const back = useBackLink(() => ({
 		href: `/persons/${personId}`,
-		label: rootName ? `Back to ${rootName}` : 'Back'
+		label: rootName ?? 'Back'
 	}));
 
 	// Screen reader announcement helper
@@ -212,7 +212,8 @@
 		<!-- Inside the container on purpose: PageHeader has no padding, so the container's padding is its gutter. -->
 		<PageHeader title="Descendancy Chart" back={back.link}>
 			{#snippet actions()}
-				<div class="controls">
+				<!-- Nothing to steer until a chart has loaded (#1096). -->
+				<fieldset class="controls" disabled={!descendancy}>
 					<label>
 						Generations:
 						<select value={generations} onchange={handleGenerationsChange}>
@@ -255,13 +256,17 @@
 						<button onclick={() => chart?.zoomOut()} title="Zoom Out">-</button>
 						<button onclick={() => chart?.resetZoom()} title="Reset Zoom">Reset</button>
 					</div>
-				</div>
+				</fieldset>
 			{/snippet}
 		</PageHeader>
 		{#if loading}
 			<div class="loading">Loading descendancy...</div>
 		{:else if error}
-			<ErrorState message={error} onRetry={() => loadDescendancy(page.params.id ?? '', generations)} />
+			<ErrorState
+				message={error.message}
+				notFound={error.notFound}
+				onRetry={() => loadDescendancy(page.params.id ?? '', generations)}
+			/>
 		{:else if descendancy}
 			<div class="chart-area">
 				<DescendancyChart
@@ -301,10 +306,18 @@
 	}
 
 	.controls {
+		min-width: 0;
+		margin: 0;
+		padding: 0;
+		border: 0;
 		display: flex;
 		flex-wrap: wrap;
 		align-items: center;
 		gap: 0.75rem 1.5rem;
+	}
+
+	.controls:disabled {
+		opacity: 0.5;
 	}
 
 	.controls label {

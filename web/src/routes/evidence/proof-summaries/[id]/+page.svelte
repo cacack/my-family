@@ -6,6 +6,7 @@
 		api,
 		isVersionConflict,
 		recordLoadError,
+		type LoadFailure,
 		type ProofSummaryResponse,
 		type ProofSummaryCreateRequest,
 		type EvidenceAnalysisResponse,
@@ -38,6 +39,7 @@
 	let linkedAnalyses: EvidenceAnalysisResponse[] = $state([]);
 	let loading = $state(true);
 	let error: string | null = $state(null);
+	let loadError: LoadFailure | null = $state(null);
 	let editing = $state(false);
 	let saving = $state(false);
 	let deleteOpen = $state(false);
@@ -90,6 +92,7 @@
 			summary = null;
 			linkedAnalyses = [];
 			error = null;
+			loadError = null;
 			newAnalysisId = '';
 			formData = {
 				fact_type: 'person_birth',
@@ -108,6 +111,7 @@
 		editing = false;
 		loading = true;
 		error = null;
+		loadError = null;
 		linkedAnalyses = [];
 		try {
 			const result = await api.getProofSummary(id);
@@ -127,7 +131,7 @@
 			}
 		} catch (e) {
 			if (seq !== loadSeq) return;
-			error = recordLoadError(e, 'proof summary');
+			loadError = recordLoadError(e, 'proof summary');
 			summary = null;
 		} finally {
 			if (seq === loadSeq) loading = false;
@@ -303,16 +307,16 @@
 	</a>
 {/snippet}
 
-<div class="mx-auto max-w-3xl p-6">
+<div class="mx-auto max-w-page-detail p-6">
 	<ActionBar
-		back={{ href: '/evidence', label: 'Evidence' }}
+		back={{ href: '/evidence', label: 'Evidence Analysis' }}
 		actions={summary && !editing ? recordActions : undefined}
 	/>
 
 	{#if loading}
 		<div class="p-12 text-center text-muted-foreground">Loading...</div>
-	{:else if error && !summary && !isNew}
-		<ErrorState message={error} onRetry={() => loadSummary(page.params.id!)} />
+	{:else if loadError}
+		<ErrorState {...loadError} onRetry={() => loadSummary(page.params.id!)} />
 	{:else if editing}
 		<form
 			class="rounded-xl border border-slate-200 bg-white p-6"

@@ -96,7 +96,7 @@
 			{/if}
 
 			<Dialog.Footer>
-				<Button type="button" variant="secondary" disabled={saving} onclick={() => (open = false)}>
+				<Button type="button" variant="outline" disabled={saving} onclick={() => (open = false)}>
 					Cancel
 				</Button>
 				<Button type="submit" disabled={saving || !person}>

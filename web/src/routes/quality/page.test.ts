@@ -134,6 +134,19 @@ describe('Quality landing page', () => {
 		expect(document.body.textContent).not.toContain('11111111');
 	});
 
+	it('shows no severity counts and a friendly sentence when validation fails to load (#1096)', async () => {
+		vi.mocked(apiModule.api.getValidationIssues).mockRejectedValue({ status: 500, message: 'boom' });
+		render(Page);
+
+		expect((await screen.findByRole('alert')).textContent).toContain(
+			'Failed to load validation issues. Please try again.'
+		);
+		expect(screen.queryByText('boom')).toBeNull();
+		// "All (0)" would read like real data.
+		expect(screen.getByRole('button', { name: 'All' })).toBeTruthy();
+		expect(screen.queryByText(/\(\d+\)/)).toBeNull();
+	});
+
 	it('loads validation issues with no severity filter on mount', async () => {
 		render(Page);
 		await waitFor(() => {

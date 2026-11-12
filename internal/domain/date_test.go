@@ -915,6 +915,23 @@ func TestGenDate_UnmarshalJSON_LegacyRangeEndEscape(t *testing.T) {
 	}
 }
 
+// TestGenDate_UnmarshalJSON_LegacyGedcom7Calendar: a date in a GEDCOM 7.0
+// calendar ("JULIAN 14 FEB 1689") was stored before #622 as a Gregorian date
+// with no parts. Decoding re-reads it from Raw, so replay sorts it.
+func TestGenDate_UnmarshalJSON_LegacyGedcom7Calendar(t *testing.T) {
+	legacy := `{"raw":"JULIAN 14 FEB 1689","qualifier":"exact","calendar":"DGREGORIAN"}`
+	var gd GenDate
+	if err := json.Unmarshal([]byte(legacy), &gd); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	if !reflect.DeepEqual(gd, ParseGenDate("JULIAN 14 FEB 1689")) {
+		t.Errorf("Unmarshal(%s) = %+v, want the date re-read from Raw", legacy, gd)
+	}
+	if gd.Calendar != CalendarJulian || !intPtrEqual(gd.Year, intPtr(1689)) {
+		t.Errorf("Unmarshal(%s) = %+v, want a Julian date in 1689", legacy, gd)
+	}
+}
+
 // TestGenDate_UnmarshalJSON_Unchanged: dates without an escape on the range
 // end, or already stored with Calendar2, decode exactly as stored, even when
 // the stored parts differ from what Raw would parse to.

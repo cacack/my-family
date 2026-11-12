@@ -857,6 +857,98 @@ func TestContractBrowse(t *testing.T) {
 	}
 }
 
+// TestContractRequiredResponseFields checks that the response fields the spec
+// marks required (#935) are present on every response path that returns them,
+// and that each response validates against the spec.
+func TestContractRequiredResponseFields(t *testing.T) {
+	server := setupTestServer()
+	rec := do(t, server, http.MethodPost, "/api/v1/persons",
+		`{"given_name":"Ada","surname":"Lovelace","gender":"female","birth_place":"Springfield, Illinois"}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create person: status = %d. Body: %s", rec.Code, rec.Body.String())
+	}
+	personID, _ := decodeJSON(t, rec)["id"].(string)
+	sourceID := createSource(t, server, "Parish Register")
+	createCitation(t, server, sourceID, personID)
+	mediaID, _ := uploadMedia(t, server, personID, "", createTestJPEGImage())
+	rec = do(t, server, http.MethodPost, "/api/v1/persons/"+personID+"/names",
+		`{"given_name":"Augusta","surname":"Byron","name_type":"birth"}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("add name: status = %d. Body: %s", rec.Code, rec.Body.String())
+	}
+	if _, ok := decodeJSON(t, rec)["full_name"]; !ok {
+		t.Errorf("add name response missing full_name: %s", rec.Body.String())
+	}
+
+	sourceFields := []string{"citation_count"}
+	historyFields := []string{"limit", "offset", "has_more"}
+	nameFields := []string{"full_name"}
+
+	tests := []struct {
+		path   string
+		items  func(body map[string]any) []any // objects to check; nil means the body itself
+		fields []string
+	}{
+		{"/api/v1/sources", listOf("sources"), sourceFields},
+		{"/api/v1/sources/" + sourceID, nil, sourceFields},
+		{"/api/v1/export/sources", listOf("sources"), sourceFields},
+		{"/api/v1/history", nil, historyFields},
+		{"/api/v1/sources/" + sourceID + "/history", nil, historyFields},
+		{"/api/v1/browse/places", listOf("items"), []string{"full_name", "has_children"}},
+		{"/api/v1/media/" + mediaID, nil, []string{"created_at"}},
+		{"/api/v1/persons/" + personID + "/media", listOf("items"), []string{"created_at"}},
+		{"/api/v1/persons/" + personID + "/names", listOf("items"), nameFields},
+		{"/api/v1/persons/" + personID, listOf("names"), nameFields},
+	}
+	for _, tc := range tests {
+		t.Run(tc.path, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, tc.path, http.NoBody)
+			rec := httptest.NewRecorder()
+			server.Echo().ServeHTTP(rec, req)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("Status = %d, want 200. Body: %s", rec.Code, rec.Body.String())
+			}
+			validateResponse(t, req, rec)
+
+			body := decodeJSON(t, rec)
+			objects := []any{body}
+			if tc.items != nil {
+				objects = tc.items(body)
+			}
+			if len(objects) == 0 {
+				t.Fatalf("no objects to check in %s", rec.Body.String())
+			}
+			for _, o := range objects {
+				obj, _ := o.(map[string]any)
+				for _, f := range tc.fields {
+					if _, ok := obj[f]; !ok {
+						t.Errorf("%s missing from %v", f, obj)
+					}
+				}
+			}
+		})
+	}
+
+	t.Run("export carries the real citation count", func(t *testing.T) {
+		body := decodeJSON(t, do(t, server, http.MethodGet, "/api/v1/export/sources", ""))
+		sources := listOf("sources")(body)
+		if len(sources) != 1 {
+			t.Fatalf("sources = %v, want 1", sources)
+		}
+		if got := sources[0].(map[string]any)["citation_count"]; got != float64(1) {
+			t.Errorf("citation_count = %v, want 1", got)
+		}
+	})
+}
+
+// listOf returns an accessor for the array under key in a JSON body.
+func listOf(key string) func(map[string]any) []any {
+	return func(body map[string]any) []any {
+		items, _ := body[key].([]any)
+		return items
+	}
+}
+
 // TestOpenAPISpecValidity ensures the embedded OpenAPI spec is valid.
 func TestOpenAPISpecValidity(t *testing.T) {
 	// The spec was already validated in init(), but let's add an explicit test

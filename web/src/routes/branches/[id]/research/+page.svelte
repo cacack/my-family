@@ -11,7 +11,10 @@
 	import { page } from '$app/state';
 	import {
 		api,
+		loadErrorFailure,
+		notFoundFailure,
 		type ApiError,
+		type LoadFailure,
 		type Branch,
 		type BranchResearchArchive,
 		type PromoteResearchLogsResult
@@ -32,8 +35,7 @@
 	let branch: Branch | null = $state(null);
 	let archive: BranchResearchArchive | null = $state(null);
 	let loading = $state(true);
-	let error: string | null = $state(null);
-	let notFound = $state(false);
+	let loadError: LoadFailure | null = $state(null);
 
 	let promoting = $state(false);
 	let promotion: PromoteResearchLogsResult | null = $state(null);
@@ -51,8 +53,7 @@
 	async function load(id: string) {
 		const request = ++loadRequest;
 		loading = true;
-		error = null;
-		notFound = false;
+		loadError = null;
 		promotion = null;
 		promoteError = null;
 		try {
@@ -64,11 +65,13 @@
 			if (request !== loadRequest) return;
 			const apiError = e as ApiError;
 			// A 400 is a malformed id in the URL, which no branch can have.
-			if (apiError.status === 404 || apiError.status === 400) {
-				notFound = true;
-			} else {
-				error = apiError.message || "Failed to load the branch's research";
-			}
+			loadError =
+				apiError.status === 404 || apiError.status === 400
+					? notFoundFailure(
+							'branch',
+							'This branch could not be found. It may have been deleted, or the branch registry is not configured on this server.'
+						)
+					: loadErrorFailure(e, 'branch');
 			branch = null;
 			archive = null;
 		} finally {
@@ -118,17 +121,12 @@
 {/snippet}
 
 <div class="research-page">
-	<a href={branchId ? `/branches/${branchId}` : '/branches'} class="back-link">&larr; Branch</a>
+	<a href={branchId ? `/branches/${branchId}` : '/branches'} class="back-link">&larr; {branch?.name ?? 'Branch'}</a>
 
 	{#if loading}
 		<div class="state" role="status" aria-live="polite">Loading research...</div>
-	{:else if notFound}
-		<div class="state empty">
-			<h2>Branch not found</h2>
-			<p>It may not exist, or the branch registry is not configured on this server.</p>
-		</div>
-	{:else if error}
-		<ErrorState message={error} onRetry={() => load(branchId)} />
+	{:else if loadError}
+		<ErrorState {...loadError} onRetry={() => load(branchId)} />
 	{:else if branch && archive}
 		<!-- A const keeps the null check inside the badges snippet. -->
 		{@const record = branch}
@@ -298,7 +296,7 @@
 
 <style>
 	.research-page {
-		max-width: 1000px;
+		max-width: var(--page-width-detail);
 		margin: 0 auto;
 		padding: 1.5rem;
 	}
@@ -489,12 +487,5 @@
 		background: white;
 		border: 1px dashed #cbd5e1;
 		border-radius: 8px;
-	}
-
-	.state.empty h2 {
-		color: #1e293b;
-		text-transform: none;
-		letter-spacing: normal;
-		font-size: 1rem;
 	}
 </style>

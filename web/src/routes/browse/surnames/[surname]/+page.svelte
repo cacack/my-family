@@ -67,7 +67,7 @@
 <div class="surname-detail-page">
 	<PageHeader
 		title={`People with surname "${surname}"`}
-		back={{ href: '/browse/surnames', label: 'Browse Surnames' }}
+		back={{ href: '/browse/surnames', label: 'Browse by Surname' }}
 		description={total > 0 ? `${total} ${total === 1 ? 'person' : 'people'} found` : undefined}
 	/>
 
@@ -99,7 +99,7 @@
 
 <style>
 	.surname-detail-page {
-		max-width: 1200px;
+		max-width: var(--page-width-list);
 		margin: 0 auto;
 		padding: 1.5rem;
 	}

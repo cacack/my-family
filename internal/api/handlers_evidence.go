@@ -456,7 +456,7 @@ func (ss *StrictServer) CreateResearchLog(ctx context.Context, request CreateRes
 
 	input := command.CreateResearchLogInput{
 		SubjectID:         request.Body.SubjectId,
-		SubjectType:       request.Body.SubjectType,
+		SubjectType:       string(request.Body.SubjectType),
 		Repository:        request.Body.Repository,
 		SearchDescription: request.Body.SearchDescription,
 		Outcome:           string(request.Body.Outcome),
@@ -523,7 +523,8 @@ func (ss *StrictServer) UpdateResearchLog(ctx context.Context, request UpdateRes
 		input.SubjectID = &sid
 	}
 	if request.Body.SubjectType != nil {
-		input.SubjectType = request.Body.SubjectType
+		subjectType := string(*request.Body.SubjectType)
+		input.SubjectType = &subjectType
 	}
 	if request.Body.Repository != nil {
 		input.Repository = request.Body.Repository
@@ -911,7 +912,7 @@ func convertQueryResearchLogToGenerated(l query.ResearchLogEntry) ResearchLog {
 	resp := ResearchLog{
 		Id:                l.ID,
 		SubjectId:         l.SubjectID,
-		SubjectType:       l.SubjectType,
+		SubjectType:       ResearchLogSubjectType(l.SubjectType),
 		Repository:        l.Repository,
 		SearchDescription: l.SearchDescription,
 		Outcome:           ResearchOutcome(l.Outcome),
