@@ -875,7 +875,7 @@
 {/snippet}
 
 <div class="compare-page">
-	<a href="/branches" class="back-link">&larr; All branches</a>
+	<a href="/branches" class="back-link">&larr; Research Branches</a>
 
 	{#if loading}
 		<LoadingState label="Loading comparison..." />
@@ -1251,7 +1251,7 @@
 	}
 
 	.compare-page {
-		max-width: 1100px;
+		max-width: var(--page-width-list);
 		margin: 0 auto;
 		padding: 1.5rem;
 	}

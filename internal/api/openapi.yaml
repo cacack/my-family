@@ -7319,7 +7319,9 @@ components:
           description: Template-specific field values
         gedcom_xref:
           type: string
-          description: Optional GEDCOM cross-reference ID for import
+          description: Optional GEDCOM cross-reference ID for import. Empty, or one @-delimited pointer (e.g. "@R1@") with no whitespace or interior @.
+          maxLength: 64
+          pattern: '^(@[^@\s]+@)?$'
 
     CitationUpdate:
       type: object
@@ -9601,7 +9603,9 @@ components:
           minLength: 1
         gedcom_xref:
           type: string
-          description: Optional GEDCOM cross-reference ID for import
+          description: Optional GEDCOM cross-reference ID for import. Empty, or one @-delimited pointer (e.g. "@R1@") with no whitespace or interior @.
+          maxLength: 64
+          pattern: '^(@[^@\s]+@)?$'
 
     NoteUpdate:
       type: object
@@ -9742,7 +9746,9 @@ components:
           description: ID of linked media (submitter photo)
         gedcom_xref:
           type: string
-          description: Optional GEDCOM cross-reference ID for import
+          description: Optional GEDCOM cross-reference ID for import. Empty, or one @-delimited pointer (e.g. "@R1@") with no whitespace or interior @.
+          maxLength: 64
+          pattern: '^(@[^@\s]+@)?$'
 
     SubmitterUpdate:
       type: object
@@ -9850,7 +9856,9 @@ components:
           description: Free-form notes about the repository
         gedcom_xref:
           type: string
-          description: Optional GEDCOM cross-reference ID for import
+          description: Optional GEDCOM cross-reference ID for import. Empty, or one @-delimited pointer (e.g. "@R1@") with no whitespace or interior @.
+          maxLength: 64
+          pattern: '^(@[^@\s]+@)?$'
 
     RepositoryUpdate:
       type: object
@@ -9868,7 +9876,9 @@ components:
           description: Updated notes
         gedcom_xref:
           type: string
-          description: Updated GEDCOM cross-reference ID
+          description: Updated GEDCOM cross-reference ID. Empty, or one @-delimited pointer (e.g. "@R1@") with no whitespace or interior @.
+          maxLength: 64
+          pattern: '^(@[^@\s]+@)?$'
         version:
           type: integer
           format: int64

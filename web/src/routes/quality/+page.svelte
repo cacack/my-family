@@ -341,7 +341,7 @@
 	<title>Quality | My Family</title>
 </svelte:head>
 
-<div class="mx-auto max-w-[1200px] p-6">
+<div class="mx-auto max-w-page-list p-6">
 	<MainlineNotice
 		message="On a research branch, duplicate pairs and the pairs marked not a duplicate follow your branch, but validation issues still come from the mainline."
 	/>

@@ -106,7 +106,7 @@
 
 <style>
 	.families-page {
-		max-width: 1200px;
+		max-width: var(--page-width-list);
 		margin: 0 auto;
 		padding: 1.5rem;
 	}

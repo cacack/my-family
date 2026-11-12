@@ -78,7 +78,7 @@
 
 	<div class="actions">
 		{#if completionData.personId}
-			<Button variant="secondary" href="/persons/{completionData.personId}">
+			<Button variant="outline" href="/persons/{completionData.personId}">
 				View {completionData.personName}'s Profile
 			</Button>
 		{/if}

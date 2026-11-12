@@ -69,7 +69,7 @@
 <div class="place-detail-page">
 	<PageHeader
 		title={`People from "${place}"`}
-		back={{ href: '/browse/places', label: 'Browse Places' }}
+		back={{ href: '/browse/places', label: 'Browse by Place' }}
 		description={total > 0 ? `${total} ${total === 1 ? 'person' : 'people'} found` : undefined}
 	/>
 
@@ -102,7 +102,7 @@
 
 <style>
 	.place-detail-page {
-		max-width: 1200px;
+		max-width: var(--page-width-list);
 		margin: 0 auto;
 		padding: 1.5rem;
 	}

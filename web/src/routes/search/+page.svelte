@@ -661,7 +661,7 @@
 					<Button type="submit" disabled={!hasAnyCriteria || loading}>
 						{loading ? 'Searching...' : 'Search'}
 					</Button>
-					<Button variant="secondary" onclick={clearAll}>Clear All</Button>
+					<Button variant="outline" onclick={clearAll}>Clear All</Button>
 				</div>
 			</form>
 		</CardContent>
@@ -783,7 +783,7 @@
 					<!-- Load more -->
 					{#if results.length < total}
 						<div class="load-more">
-							<Button variant="secondary" onclick={loadMore} disabled={loading}>
+							<Button variant="outline" onclick={loadMore} disabled={loading}>
 								Load more
 							</Button>
 						</div>
@@ -796,7 +796,7 @@
 
 <style>
 	.search-page {
-		max-width: 1000px;
+		max-width: var(--page-width-list);
 		margin: 0 auto;
 		padding: 1.5rem;
 	}

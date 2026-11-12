@@ -3,8 +3,8 @@
 	import { page } from '$app/state';
 	import { api, type Person } from '#lib/api/client.js';
 	import RelationshipCalculator from '#lib/components/RelationshipCalculator.svelte';
-	import ActionBar from '#lib/components/ActionBar.svelte';
 	import LoadingState from '#lib/components/LoadingState.svelte';
+	import PageHeader from '#lib/components/PageHeader.svelte';
 	import { setQuery } from '#lib/utils/urlState.js';
 
 	// The calculated pair lives in the URL (see urlState.ts), so a result can be
@@ -54,31 +54,23 @@
 </svelte:head>
 
 <div class="relationship-page">
-	<div class="page-content">
-		<ActionBar back={{ href: '/', label: 'Back' }} />
-		{#if loading}
-			<LoadingState />
-		{:else}
-			{#key mountKey}
-				<RelationshipCalculator {initialPersonA} {initialPersonB} onCalculate={handleCalculate} />
-			{/key}
-		{/if}
-	</div>
+	<PageHeader
+		title="Relationship Calculator"
+		description="Select two people to discover how they are related"
+	/>
+	{#if loading}
+		<LoadingState />
+	{:else}
+		{#key mountKey}
+			<RelationshipCalculator {initialPersonA} {initialPersonB} onCalculate={handleCalculate} />
+		{/key}
+	{/if}
 </div>
 
 <style>
 	.relationship-page {
-		min-height: 100vh;
-		background: #f8fafc;
-	}
-
-	.page-content {
-		padding: 2rem 1rem;
-	}
-
-	@media (max-width: 640px) {
-		.page-content {
-			padding: 1rem;
-		}
+		max-width: var(--page-width-detail);
+		margin: 0 auto;
+		padding: 1.5rem;
 	}
 </style>

@@ -112,8 +112,8 @@
 <div class="persons-page">
 	<PageHeader title="People">
 		{#snippet actions()}
-			<Button variant="outline" href="/persons/add">Add Person</Button>
-			<Button variant="secondary" href="/persons/quick">Quick Capture</Button>
+			<Button href="/persons/add">Add Person</Button>
+			<Button variant="outline" href="/persons/quick">Quick Capture</Button>
 		{/snippet}
 	</PageHeader>
 
@@ -196,7 +196,7 @@
 
 <style>
 	.persons-page {
-		max-width: 1200px;
+		max-width: var(--page-width-list);
 		margin: 0 auto;
 		padding: 1.5rem;
 	}
