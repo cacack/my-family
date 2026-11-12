@@ -31,8 +31,12 @@ func TestHandleRollbackErrorStrict_NoEventsIsNotFound(t *testing.T) {
 // runs, so this refusal is reached only through a race and is tested here.
 func TestHandleRollbackErrorStrict_DeletedEntity(t *testing.T) {
 	resp, err := handleRollbackErrorStrict[RollbackPersonResponseObject](command.ErrRollbackDeletedEntity,
-		func(e Error) RollbackPersonResponseObject { return RollbackPerson400JSONResponse{BadRequestJSONResponse(e)} },
-		func(e Error) RollbackPersonResponseObject { return RollbackPerson404JSONResponse{NotFoundJSONResponse(e)} },
+		func(e Error) RollbackPersonResponseObject {
+			return RollbackPerson400JSONResponse{BadRequestJSONResponse(e)}
+		},
+		func(e Error) RollbackPersonResponseObject {
+			return RollbackPerson404JSONResponse{NotFoundJSONResponse(e)}
+		},
 		func(e Error) RollbackPersonResponseObject { return RollbackPerson409JSONResponse(e) },
 	)
 	if err != nil {
