@@ -608,34 +608,34 @@ func mergeBranchErrorResponse(result *command.MergeBranchResult, err error) (Mer
 		}
 		converted := convertQueryMergeConflictsToGenerated(conflicts)
 		return MergeBranch409JSONResponse{
-			Code:      MergeConflicts,
+			Code:      BranchMergeConflictErrorCodeMergeConflicts,
 			Message:   err.Error(),
 			Conflicts: &converted,
 		}, nil
 
 	case errors.Is(err, command.ErrBranchNotActive):
-		return refuse(BranchNotActive)
+		return refuse(BranchMergeConflictErrorCodeBranchNotActive)
 
 	case errors.Is(err, command.ErrMergeAlreadyClaimed):
-		return refuse(MergeAlreadyClaimed)
+		return refuse(BranchMergeConflictErrorCodeMergeAlreadyClaimed)
 
 	case errors.Is(err, command.ErrBranchTooLargeToMerge):
 		// A 409 rather than a 422: it is a refusal to act on this branch's
 		// current state, and keeping the refusals in one status family keeps
 		// the client contract simple.
-		return refuse(BranchTooLarge)
+		return refuse(BranchMergeConflictErrorCodeBranchTooLarge)
 
 	case errors.Is(err, command.ErrMainTooFarAheadToMerge):
 		// Distinct from branch_too_large on purpose — same status, different
 		// cause and different remedy. Telling someone their three-event branch
 		// is "too large" points them at the wrong fix.
-		return refuse(MainTooFarAhead)
+		return refuse(BranchMergeConflictErrorCodeMainTooFarAhead)
 
 	case errors.Is(err, command.ErrMergeDanglingReference):
 		// Every blocker travels with the refusal, named, so the review can
 		// show them all and offer each one's fix (#831).
 		return MergeBranch409JSONResponse{
-			Code:     MergeDanglingReference,
+			Code:     BranchMergeConflictErrorCodeMergeDanglingReference,
 			Message:  err.Error(),
 			Blockers: mergeBlockersOf(err),
 		}, nil
@@ -667,12 +667,12 @@ func mergeBranchErrorResponse(result *command.MergeBranchResult, err error) (Mer
 	// safe — the single most dangerous thing this endpoint could say. Reaching
 	// here means the pre-claim check refused, which genuinely wrote nothing.
 	case errors.Is(err, command.ErrMergePlanStale):
-		return refuse(MergePlanStale)
+		return refuse(BranchMergeConflictErrorCodeMergePlanStale)
 
 	case errors.Is(err, command.ErrMergeEmpty):
 		// A refusal like the others: nothing was written and the branch is
 		// still active, so it shares their 409 family.
-		return refuse(MergeEmpty)
+		return refuse(BranchMergeConflictErrorCodeMergeEmpty)
 
 	case errors.Is(err, domain.ErrBranchMergeNoteTooLong),
 		errors.Is(err, domain.ErrResolutionRationaleTooLong):
@@ -729,13 +729,13 @@ func precheckBranchMergeErrorResponse(err error) (PrecheckBranchMergeResponseObj
 	}
 	switch {
 	case errors.Is(err, command.ErrBranchNotActive):
-		return refuse(BranchNotActive)
+		return refuse(BranchMergeConflictErrorCodeBranchNotActive)
 	case errors.Is(err, command.ErrBranchTooLargeToMerge):
-		return refuse(BranchTooLarge)
+		return refuse(BranchMergeConflictErrorCodeBranchTooLarge)
 	case errors.Is(err, command.ErrMainTooFarAheadToMerge):
-		return refuse(MainTooFarAhead)
+		return refuse(BranchMergeConflictErrorCodeMainTooFarAhead)
 	case errors.Is(err, command.ErrMergeEmpty):
-		return refuse(MergeEmpty)
+		return refuse(BranchMergeConflictErrorCodeMergeEmpty)
 	case errors.Is(err, command.ErrUnknownResolution),
 		errors.Is(err, command.ErrUnsupportedResolution):
 		return PrecheckBranchMerge400JSONResponse{BadRequestJSONResponse{
@@ -849,28 +849,28 @@ func resumeBranchMergeErrorResponse(result *command.ResumeMergeResult, err error
 			described = []MergePendingEntity{}
 		}
 		return ResumeBranchMerge409JSONResponse{
-			Code:             ResumeNeedsResolution,
+			Code:             BranchMergeResumeErrorCodeResumeNeedsResolution,
 			Message:          err.Error(),
 			PendingStreamIds: &pending,
 			Pending:          &described,
 		}, nil
 
 	case errors.Is(err, command.ErrMergeNotClaimed):
-		return refuse(ResumeMergeNotClaimed)
+		return refuse(BranchMergeResumeErrorCodeResumeMergeNotClaimed)
 
 	case errors.Is(err, command.ErrMergeDanglingReference):
 		return ResumeBranchMerge409JSONResponse{
-			Code:     ResumeDanglingReference,
+			Code:     BranchMergeResumeErrorCodeResumeDanglingReference,
 			Message:  err.Error(),
 			Blockers: mergeBlockersOf(err),
 		}, nil
 
 	case errors.Is(err, command.ErrBranchTooLargeToMerge):
-		return refuse(ResumeBranchTooLarge)
+		return refuse(BranchMergeResumeErrorCodeResumeBranchTooLarge)
 
 	case errors.Is(err, command.ErrMergeResumeConcurrent),
 		errors.Is(err, command.ErrMergeResumeBranchChanged):
-		return refuse(ResumeConcurrent)
+		return refuse(BranchMergeResumeErrorCodeResumeConcurrent)
 
 	case errors.Is(err, command.ErrUnknownResolution):
 		return ResumeBranchMerge400JSONResponse{BadRequestJSONResponse{
@@ -1016,7 +1016,7 @@ func (ss *StrictServer) addMergeState(ctx context.Context, out *Branch, b *domai
 	completeness, err := ss.server.commandHandler.MergeCompleteness(ctx, b)
 	if err != nil {
 		ss.server.echo.Logger.Errorf("reading the merge state of branch %s: %v", b.ID, err)
-		unknown := MergeStateUnknown
+		unknown := BranchMergeStateMergeStateUnknown
 		out.MergeState = &unknown
 		return
 	}

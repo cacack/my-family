@@ -8,3 +8,5 @@ generate:
 output-options:
   skip-prune: false
   skip-fmt: false
+compatibility:
+  always-prefix-enum-values: true

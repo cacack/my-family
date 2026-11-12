@@ -21,19 +21,19 @@ import (
 
 // Defines values for BranchMergeState.
 const (
-	MergeStateComplete   BranchMergeState = "complete"
-	MergeStateIncomplete BranchMergeState = "incomplete"
-	MergeStateUnknown    BranchMergeState = "unknown"
+	BranchMergeStateMergeStateComplete   BranchMergeState = "complete"
+	BranchMergeStateMergeStateIncomplete BranchMergeState = "incomplete"
+	BranchMergeStateMergeStateUnknown    BranchMergeState = "unknown"
 )
 
 // Valid indicates whether the value is a known member of the BranchMergeState enum.
 func (e BranchMergeState) Valid() bool {
 	switch e {
-	case MergeStateComplete:
+	case BranchMergeStateMergeStateComplete:
 		return true
-	case MergeStateIncomplete:
+	case BranchMergeStateMergeStateIncomplete:
 		return true
-	case MergeStateUnknown:
+	case BranchMergeStateMergeStateUnknown:
 		return true
 	default:
 		return false
@@ -42,19 +42,19 @@ func (e BranchMergeState) Valid() bool {
 
 // Defines values for BranchChangedFactKind.
 const (
-	Deletion     BranchChangedFactKind = "deletion"
-	Fact         BranchChangedFactKind = "fact"
-	Relationship BranchChangedFactKind = "relationship"
+	BranchChangedFactKindDeletion     BranchChangedFactKind = "deletion"
+	BranchChangedFactKindFact         BranchChangedFactKind = "fact"
+	BranchChangedFactKindRelationship BranchChangedFactKind = "relationship"
 )
 
 // Valid indicates whether the value is a known member of the BranchChangedFactKind enum.
 func (e BranchChangedFactKind) Valid() bool {
 	switch e {
-	case Deletion:
+	case BranchChangedFactKindDeletion:
 		return true
-	case Fact:
+	case BranchChangedFactKindFact:
 		return true
-	case Relationship:
+	case BranchChangedFactKindRelationship:
 		return true
 	default:
 		return false
@@ -87,34 +87,34 @@ func (e BranchCloseOutcome) Valid() bool {
 
 // Defines values for BranchMergeConflictErrorCode.
 const (
-	BranchNotActive        BranchMergeConflictErrorCode = "branch_not_active"
-	BranchTooLarge         BranchMergeConflictErrorCode = "branch_too_large"
-	MainTooFarAhead        BranchMergeConflictErrorCode = "main_too_far_ahead"
-	MergeAlreadyClaimed    BranchMergeConflictErrorCode = "merge_already_claimed"
-	MergeConflicts         BranchMergeConflictErrorCode = "merge_conflicts"
-	MergeDanglingReference BranchMergeConflictErrorCode = "merge_dangling_reference"
-	MergeEmpty             BranchMergeConflictErrorCode = "merge_empty"
-	MergePlanStale         BranchMergeConflictErrorCode = "merge_plan_stale"
+	BranchMergeConflictErrorCodeBranchNotActive        BranchMergeConflictErrorCode = "branch_not_active"
+	BranchMergeConflictErrorCodeBranchTooLarge         BranchMergeConflictErrorCode = "branch_too_large"
+	BranchMergeConflictErrorCodeMainTooFarAhead        BranchMergeConflictErrorCode = "main_too_far_ahead"
+	BranchMergeConflictErrorCodeMergeAlreadyClaimed    BranchMergeConflictErrorCode = "merge_already_claimed"
+	BranchMergeConflictErrorCodeMergeConflicts         BranchMergeConflictErrorCode = "merge_conflicts"
+	BranchMergeConflictErrorCodeMergeDanglingReference BranchMergeConflictErrorCode = "merge_dangling_reference"
+	BranchMergeConflictErrorCodeMergeEmpty             BranchMergeConflictErrorCode = "merge_empty"
+	BranchMergeConflictErrorCodeMergePlanStale         BranchMergeConflictErrorCode = "merge_plan_stale"
 )
 
 // Valid indicates whether the value is a known member of the BranchMergeConflictErrorCode enum.
 func (e BranchMergeConflictErrorCode) Valid() bool {
 	switch e {
-	case BranchNotActive:
+	case BranchMergeConflictErrorCodeBranchNotActive:
 		return true
-	case BranchTooLarge:
+	case BranchMergeConflictErrorCodeBranchTooLarge:
 		return true
-	case MainTooFarAhead:
+	case BranchMergeConflictErrorCodeMainTooFarAhead:
 		return true
-	case MergeAlreadyClaimed:
+	case BranchMergeConflictErrorCodeMergeAlreadyClaimed:
 		return true
-	case MergeConflicts:
+	case BranchMergeConflictErrorCodeMergeConflicts:
 		return true
-	case MergeDanglingReference:
+	case BranchMergeConflictErrorCodeMergeDanglingReference:
 		return true
-	case MergeEmpty:
+	case BranchMergeConflictErrorCodeMergeEmpty:
 		return true
-	case MergePlanStale:
+	case BranchMergeConflictErrorCodeMergePlanStale:
 		return true
 	default:
 		return false
@@ -123,25 +123,25 @@ func (e BranchMergeConflictErrorCode) Valid() bool {
 
 // Defines values for BranchMergeResumeErrorCode.
 const (
-	ResumeBranchTooLarge    BranchMergeResumeErrorCode = "branch_too_large"
-	ResumeConcurrent        BranchMergeResumeErrorCode = "merge_resume_concurrent"
-	ResumeDanglingReference BranchMergeResumeErrorCode = "merge_dangling_reference"
-	ResumeMergeNotClaimed   BranchMergeResumeErrorCode = "merge_not_claimed"
-	ResumeNeedsResolution   BranchMergeResumeErrorCode = "merge_resume_needs_resolution"
+	BranchMergeResumeErrorCodeResumeBranchTooLarge    BranchMergeResumeErrorCode = "branch_too_large"
+	BranchMergeResumeErrorCodeResumeConcurrent        BranchMergeResumeErrorCode = "merge_resume_concurrent"
+	BranchMergeResumeErrorCodeResumeDanglingReference BranchMergeResumeErrorCode = "merge_dangling_reference"
+	BranchMergeResumeErrorCodeResumeMergeNotClaimed   BranchMergeResumeErrorCode = "merge_not_claimed"
+	BranchMergeResumeErrorCodeResumeNeedsResolution   BranchMergeResumeErrorCode = "merge_resume_needs_resolution"
 )
 
 // Valid indicates whether the value is a known member of the BranchMergeResumeErrorCode enum.
 func (e BranchMergeResumeErrorCode) Valid() bool {
 	switch e {
-	case ResumeBranchTooLarge:
+	case BranchMergeResumeErrorCodeResumeBranchTooLarge:
 		return true
-	case ResumeConcurrent:
+	case BranchMergeResumeErrorCodeResumeConcurrent:
 		return true
-	case ResumeDanglingReference:
+	case BranchMergeResumeErrorCodeResumeDanglingReference:
 		return true
-	case ResumeMergeNotClaimed:
+	case BranchMergeResumeErrorCodeResumeMergeNotClaimed:
 		return true
-	case ResumeNeedsResolution:
+	case BranchMergeResumeErrorCodeResumeNeedsResolution:
 		return true
 	default:
 		return false
@@ -411,19 +411,19 @@ func (e ChangeEntryParentEntityType) Valid() bool {
 
 // Defines values for ChildRelationType.
 const (
-	Adopted    ChildRelationType = "adopted"
-	Biological ChildRelationType = "biological"
-	Foster     ChildRelationType = "foster"
+	ChildRelationTypeAdopted    ChildRelationType = "adopted"
+	ChildRelationTypeBiological ChildRelationType = "biological"
+	ChildRelationTypeFoster     ChildRelationType = "foster"
 )
 
 // Valid indicates whether the value is a known member of the ChildRelationType enum.
 func (e ChildRelationType) Valid() bool {
 	switch e {
-	case Adopted:
+	case ChildRelationTypeAdopted:
 		return true
-	case Biological:
+	case ChildRelationTypeBiological:
 		return true
-	case Foster:
+	case ChildRelationTypeFoster:
 		return true
 	default:
 		return false
@@ -471,40 +471,40 @@ func (e ConflictStatus) Valid() bool {
 
 // Defines values for DateQualifier.
 const (
-	Abt   DateQualifier = "abt"
-	Aft   DateQualifier = "aft"
-	Bef   DateQualifier = "bef"
-	Bet   DateQualifier = "bet"
-	Cal   DateQualifier = "cal"
-	Est   DateQualifier = "est"
-	Exact DateQualifier = "exact"
-	From  DateQualifier = "from"
-	Int   DateQualifier = "int"
-	To    DateQualifier = "to"
+	DateQualifierAbt   DateQualifier = "abt"
+	DateQualifierAft   DateQualifier = "aft"
+	DateQualifierBef   DateQualifier = "bef"
+	DateQualifierBet   DateQualifier = "bet"
+	DateQualifierCal   DateQualifier = "cal"
+	DateQualifierEst   DateQualifier = "est"
+	DateQualifierExact DateQualifier = "exact"
+	DateQualifierFrom  DateQualifier = "from"
+	DateQualifierInt   DateQualifier = "int"
+	DateQualifierTo    DateQualifier = "to"
 )
 
 // Valid indicates whether the value is a known member of the DateQualifier enum.
 func (e DateQualifier) Valid() bool {
 	switch e {
-	case Abt:
+	case DateQualifierAbt:
 		return true
-	case Aft:
+	case DateQualifierAft:
 		return true
-	case Bef:
+	case DateQualifierBef:
 		return true
-	case Bet:
+	case DateQualifierBet:
 		return true
-	case Cal:
+	case DateQualifierCal:
 		return true
-	case Est:
+	case DateQualifierEst:
 		return true
-	case Exact:
+	case DateQualifierExact:
 		return true
-	case From:
+	case DateQualifierFrom:
 		return true
-	case Int:
+	case DateQualifierInt:
 		return true
-	case To:
+	case DateQualifierTo:
 		return true
 	default:
 		return false
@@ -540,19 +540,19 @@ func (e DiscoverySuggestionType) Valid() bool {
 
 // Defines values for EvidenceType.
 const (
-	Direct   EvidenceType = "direct"
-	Indirect EvidenceType = "indirect"
-	Negative EvidenceType = "negative"
+	EvidenceTypeDirect   EvidenceType = "direct"
+	EvidenceTypeIndirect EvidenceType = "indirect"
+	EvidenceTypeNegative EvidenceType = "negative"
 )
 
 // Valid indicates whether the value is a known member of the EvidenceType enum.
 func (e EvidenceType) Valid() bool {
 	switch e {
-	case Direct:
+	case EvidenceTypeDirect:
 		return true
-	case Indirect:
+	case EvidenceTypeIndirect:
 		return true
-	case Negative:
+	case EvidenceTypeNegative:
 		return true
 	default:
 		return false
@@ -765,19 +765,19 @@ func (e Gender) Valid() bool {
 
 // Defines values for InformantType.
 const (
-	Indeterminate InformantType = "indeterminate"
-	Primary       InformantType = "primary"
-	Secondary     InformantType = "secondary"
+	InformantTypeIndeterminate InformantType = "indeterminate"
+	InformantTypePrimary       InformantType = "primary"
+	InformantTypeSecondary     InformantType = "secondary"
 )
 
 // Valid indicates whether the value is a known member of the InformantType enum.
 func (e InformantType) Valid() bool {
 	switch e {
-	case Indeterminate:
+	case InformantTypeIndeterminate:
 		return true
-	case Primary:
+	case InformantTypePrimary:
 		return true
-	case Secondary:
+	case InformantTypeSecondary:
 		return true
 	default:
 		return false
@@ -786,46 +786,46 @@ func (e InformantType) Valid() bool {
 
 // Defines values for LDSOrdinanceStatus.
 const (
-	BIC       LDSOrdinanceStatus = "BIC"
-	CANCELED  LDSOrdinanceStatus = "CANCELED"
-	CHILD     LDSOrdinanceStatus = "CHILD"
-	COMPLETED LDSOrdinanceStatus = "COMPLETED"
-	DNS       LDSOrdinanceStatus = "DNS"
-	DNSCAN    LDSOrdinanceStatus = "DNS_CAN"
-	EXCLUDED  LDSOrdinanceStatus = "EXCLUDED"
-	INFANT    LDSOrdinanceStatus = "INFANT"
-	PRE1970   LDSOrdinanceStatus = "PRE_1970"
-	STILLBORN LDSOrdinanceStatus = "STILLBORN"
-	SUBMITTED LDSOrdinanceStatus = "SUBMITTED"
-	UNCLEARED LDSOrdinanceStatus = "UNCLEARED"
+	LDSOrdinanceStatusBIC       LDSOrdinanceStatus = "BIC"
+	LDSOrdinanceStatusCANCELED  LDSOrdinanceStatus = "CANCELED"
+	LDSOrdinanceStatusCHILD     LDSOrdinanceStatus = "CHILD"
+	LDSOrdinanceStatusCOMPLETED LDSOrdinanceStatus = "COMPLETED"
+	LDSOrdinanceStatusDNS       LDSOrdinanceStatus = "DNS"
+	LDSOrdinanceStatusDNSCAN    LDSOrdinanceStatus = "DNS_CAN"
+	LDSOrdinanceStatusEXCLUDED  LDSOrdinanceStatus = "EXCLUDED"
+	LDSOrdinanceStatusINFANT    LDSOrdinanceStatus = "INFANT"
+	LDSOrdinanceStatusPRE1970   LDSOrdinanceStatus = "PRE_1970"
+	LDSOrdinanceStatusSTILLBORN LDSOrdinanceStatus = "STILLBORN"
+	LDSOrdinanceStatusSUBMITTED LDSOrdinanceStatus = "SUBMITTED"
+	LDSOrdinanceStatusUNCLEARED LDSOrdinanceStatus = "UNCLEARED"
 )
 
 // Valid indicates whether the value is a known member of the LDSOrdinanceStatus enum.
 func (e LDSOrdinanceStatus) Valid() bool {
 	switch e {
-	case BIC:
+	case LDSOrdinanceStatusBIC:
 		return true
-	case CANCELED:
+	case LDSOrdinanceStatusCANCELED:
 		return true
-	case CHILD:
+	case LDSOrdinanceStatusCHILD:
 		return true
-	case COMPLETED:
+	case LDSOrdinanceStatusCOMPLETED:
 		return true
-	case DNS:
+	case LDSOrdinanceStatusDNS:
 		return true
-	case DNSCAN:
+	case LDSOrdinanceStatusDNSCAN:
 		return true
-	case EXCLUDED:
+	case LDSOrdinanceStatusEXCLUDED:
 		return true
-	case INFANT:
+	case LDSOrdinanceStatusINFANT:
 		return true
-	case PRE1970:
+	case LDSOrdinanceStatusPRE1970:
 		return true
-	case STILLBORN:
+	case LDSOrdinanceStatusSTILLBORN:
 		return true
-	case SUBMITTED:
+	case LDSOrdinanceStatusSUBMITTED:
 		return true
-	case UNCLEARED:
+	case LDSOrdinanceStatusUNCLEARED:
 		return true
 	default:
 		return false
@@ -834,25 +834,25 @@ func (e LDSOrdinanceStatus) Valid() bool {
 
 // Defines values for LDSOrdinanceType.
 const (
-	BAPL LDSOrdinanceType = "BAPL"
-	CONL LDSOrdinanceType = "CONL"
-	ENDL LDSOrdinanceType = "ENDL"
-	SLGC LDSOrdinanceType = "SLGC"
-	SLGS LDSOrdinanceType = "SLGS"
+	LDSOrdinanceTypeBAPL LDSOrdinanceType = "BAPL"
+	LDSOrdinanceTypeCONL LDSOrdinanceType = "CONL"
+	LDSOrdinanceTypeENDL LDSOrdinanceType = "ENDL"
+	LDSOrdinanceTypeSLGC LDSOrdinanceType = "SLGC"
+	LDSOrdinanceTypeSLGS LDSOrdinanceType = "SLGS"
 )
 
 // Valid indicates whether the value is a known member of the LDSOrdinanceType enum.
 func (e LDSOrdinanceType) Valid() bool {
 	switch e {
-	case BAPL:
+	case LDSOrdinanceTypeBAPL:
 		return true
-	case CONL:
+	case LDSOrdinanceTypeCONL:
 		return true
-	case ENDL:
+	case LDSOrdinanceTypeENDL:
 		return true
-	case SLGC:
+	case LDSOrdinanceTypeSLGC:
 		return true
-	case SLGS:
+	case LDSOrdinanceTypeSLGS:
 		return true
 	default:
 		return false
@@ -900,25 +900,25 @@ func (e MediaEntityType) Valid() bool {
 
 // Defines values for MediaType.
 const (
-	Audio       MediaType = "audio"
-	Certificate MediaType = "certificate"
-	Document    MediaType = "document"
-	Photo       MediaType = "photo"
-	Video       MediaType = "video"
+	MediaTypeAudio       MediaType = "audio"
+	MediaTypeCertificate MediaType = "certificate"
+	MediaTypeDocument    MediaType = "document"
+	MediaTypePhoto       MediaType = "photo"
+	MediaTypeVideo       MediaType = "video"
 )
 
 // Valid indicates whether the value is a known member of the MediaType enum.
 func (e MediaType) Valid() bool {
 	switch e {
-	case Audio:
+	case MediaTypeAudio:
 		return true
-	case Certificate:
+	case MediaTypeCertificate:
 		return true
-	case Document:
+	case MediaTypeDocument:
 		return true
-	case Photo:
+	case MediaTypePhoto:
 		return true
-	case Video:
+	case MediaTypeVideo:
 		return true
 	default:
 		return false
@@ -927,37 +927,37 @@ func (e MediaType) Valid() bool {
 
 // Defines values for MergeBlockerKind.
 const (
-	MissingGpsArtifact          MergeBlockerKind = "missing_gps_artifact"
-	MissingGpsSubject           MergeBlockerKind = "missing_gps_subject"
-	MissingMediaOwner           MergeBlockerKind = "missing_media_owner"
-	MissingPerson               MergeBlockerKind = "missing_person"
-	MissingSource               MergeBlockerKind = "missing_source"
-	OwnerDeleteOrphansMedia     MergeBlockerKind = "owner_delete_orphans_media"
-	PersonMergeConflictsMain    MergeBlockerKind = "person_merge_conflicts_main"
-	SourceDeleteOrphansCitation MergeBlockerKind = "source_delete_orphans_citation"
-	SubjectDeleteOrphansGps     MergeBlockerKind = "subject_delete_orphans_gps"
+	MergeBlockerKindMissingGpsArtifact          MergeBlockerKind = "missing_gps_artifact"
+	MergeBlockerKindMissingGpsSubject           MergeBlockerKind = "missing_gps_subject"
+	MergeBlockerKindMissingMediaOwner           MergeBlockerKind = "missing_media_owner"
+	MergeBlockerKindMissingPerson               MergeBlockerKind = "missing_person"
+	MergeBlockerKindMissingSource               MergeBlockerKind = "missing_source"
+	MergeBlockerKindOwnerDeleteOrphansMedia     MergeBlockerKind = "owner_delete_orphans_media"
+	MergeBlockerKindPersonMergeConflictsMain    MergeBlockerKind = "person_merge_conflicts_main"
+	MergeBlockerKindSourceDeleteOrphansCitation MergeBlockerKind = "source_delete_orphans_citation"
+	MergeBlockerKindSubjectDeleteOrphansGps     MergeBlockerKind = "subject_delete_orphans_gps"
 )
 
 // Valid indicates whether the value is a known member of the MergeBlockerKind enum.
 func (e MergeBlockerKind) Valid() bool {
 	switch e {
-	case MissingGpsArtifact:
+	case MergeBlockerKindMissingGpsArtifact:
 		return true
-	case MissingGpsSubject:
+	case MergeBlockerKindMissingGpsSubject:
 		return true
-	case MissingMediaOwner:
+	case MergeBlockerKindMissingMediaOwner:
 		return true
-	case MissingPerson:
+	case MergeBlockerKindMissingPerson:
 		return true
-	case MissingSource:
+	case MergeBlockerKindMissingSource:
 		return true
-	case OwnerDeleteOrphansMedia:
+	case MergeBlockerKindOwnerDeleteOrphansMedia:
 		return true
-	case PersonMergeConflictsMain:
+	case MergeBlockerKindPersonMergeConflictsMain:
 		return true
-	case SourceDeleteOrphansCitation:
+	case MergeBlockerKindSourceDeleteOrphansCitation:
 		return true
-	case SubjectDeleteOrphansGps:
+	case MergeBlockerKindSubjectDeleteOrphansGps:
 		return true
 	default:
 		return false
@@ -966,16 +966,16 @@ func (e MergeBlockerKind) Valid() bool {
 
 // Defines values for MergeBlockerSuggestedResolution.
 const (
-	IncludeReferenced MergeBlockerSuggestedResolution = "include_referenced"
-	LeaveOut          MergeBlockerSuggestedResolution = "leave_out"
+	MergeBlockerSuggestedResolutionIncludeReferenced MergeBlockerSuggestedResolution = "include_referenced"
+	MergeBlockerSuggestedResolutionLeaveOut          MergeBlockerSuggestedResolution = "leave_out"
 )
 
 // Valid indicates whether the value is a known member of the MergeBlockerSuggestedResolution enum.
 func (e MergeBlockerSuggestedResolution) Valid() bool {
 	switch e {
-	case IncludeReferenced:
+	case MergeBlockerSuggestedResolutionIncludeReferenced:
 		return true
-	case LeaveOut:
+	case MergeBlockerSuggestedResolutionLeaveOut:
 		return true
 	default:
 		return false
@@ -1041,28 +1041,28 @@ func (e MergeConflictSupportedResolutions) Valid() bool {
 
 // Defines values for MergePendingEntityReason.
 const (
-	PendingBreaksReference MergePendingEntityReason = "breaks_reference"
-	PendingMainChanged     MergePendingEntityReason = "main_changed"
-	PendingMainRemoved     MergePendingEntityReason = "main_removed"
-	PendingNeedsRepair     MergePendingEntityReason = "needs_repair"
-	PendingNoPlan          MergePendingEntityReason = "no_plan"
-	PendingReady           MergePendingEntityReason = "ready"
+	MergePendingEntityReasonPendingBreaksReference MergePendingEntityReason = "breaks_reference"
+	MergePendingEntityReasonPendingMainChanged     MergePendingEntityReason = "main_changed"
+	MergePendingEntityReasonPendingMainRemoved     MergePendingEntityReason = "main_removed"
+	MergePendingEntityReasonPendingNeedsRepair     MergePendingEntityReason = "needs_repair"
+	MergePendingEntityReasonPendingNoPlan          MergePendingEntityReason = "no_plan"
+	MergePendingEntityReasonPendingReady           MergePendingEntityReason = "ready"
 )
 
 // Valid indicates whether the value is a known member of the MergePendingEntityReason enum.
 func (e MergePendingEntityReason) Valid() bool {
 	switch e {
-	case PendingBreaksReference:
+	case MergePendingEntityReasonPendingBreaksReference:
 		return true
-	case PendingMainChanged:
+	case MergePendingEntityReasonPendingMainChanged:
 		return true
-	case PendingMainRemoved:
+	case MergePendingEntityReasonPendingMainRemoved:
 		return true
-	case PendingNeedsRepair:
+	case MergePendingEntityReasonPendingNeedsRepair:
 		return true
-	case PendingNoPlan:
+	case MergePendingEntityReasonPendingNoPlan:
 		return true
-	case PendingReady:
+	case MergePendingEntityReasonPendingReady:
 		return true
 	default:
 		return false
@@ -1107,16 +1107,16 @@ func (e MergePersonsRequestFieldResolution) Valid() bool {
 
 // Defines values for MergeRecordDecisionDecidedAt.
 const (
-	Merge  MergeRecordDecisionDecidedAt = "merge"
-	Resume MergeRecordDecisionDecidedAt = "resume"
+	MergeRecordDecisionDecidedAtMerge  MergeRecordDecisionDecidedAt = "merge"
+	MergeRecordDecisionDecidedAtResume MergeRecordDecisionDecidedAt = "resume"
 )
 
 // Valid indicates whether the value is a known member of the MergeRecordDecisionDecidedAt enum.
 func (e MergeRecordDecisionDecidedAt) Valid() bool {
 	switch e {
-	case Merge:
+	case MergeRecordDecisionDecidedAtMerge:
 		return true
-	case Resume:
+	case MergeRecordDecisionDecidedAtResume:
 		return true
 	default:
 		return false
@@ -1389,19 +1389,19 @@ func (e RollbackResponseEntityType) Valid() bool {
 
 // Defines values for SourceQuality.
 const (
-	Authored   SourceQuality = "authored"
-	Derivative SourceQuality = "derivative"
-	Original   SourceQuality = "original"
+	SourceQualityAuthored   SourceQuality = "authored"
+	SourceQualityDerivative SourceQuality = "derivative"
+	SourceQualityOriginal   SourceQuality = "original"
 )
 
 // Valid indicates whether the value is a known member of the SourceQuality enum.
 func (e SourceQuality) Valid() bool {
 	switch e {
-	case Authored:
+	case SourceQualityAuthored:
 		return true
-	case Derivative:
+	case SourceQualityDerivative:
 		return true
-	case Original:
+	case SourceQualityOriginal:
 		return true
 	default:
 		return false
@@ -1410,43 +1410,43 @@ func (e SourceQuality) Valid() bool {
 
 // Defines values for SourceType.
 const (
-	Archive        SourceType = "archive"
-	Book           SourceType = "book"
-	Census         SourceType = "census"
-	ChurchRecord   SourceType = "church_record"
-	Correspondence SourceType = "correspondence"
-	Interview      SourceType = "interview"
-	Newspaper      SourceType = "newspaper"
-	Other          SourceType = "other"
-	Photograph     SourceType = "photograph"
-	VitalRecord    SourceType = "vital_record"
-	Webpage        SourceType = "webpage"
+	SourceTypeArchive        SourceType = "archive"
+	SourceTypeBook           SourceType = "book"
+	SourceTypeCensus         SourceType = "census"
+	SourceTypeChurchRecord   SourceType = "church_record"
+	SourceTypeCorrespondence SourceType = "correspondence"
+	SourceTypeInterview      SourceType = "interview"
+	SourceTypeNewspaper      SourceType = "newspaper"
+	SourceTypeOther          SourceType = "other"
+	SourceTypePhotograph     SourceType = "photograph"
+	SourceTypeVitalRecord    SourceType = "vital_record"
+	SourceTypeWebpage        SourceType = "webpage"
 )
 
 // Valid indicates whether the value is a known member of the SourceType enum.
 func (e SourceType) Valid() bool {
 	switch e {
-	case Archive:
+	case SourceTypeArchive:
 		return true
-	case Book:
+	case SourceTypeBook:
 		return true
-	case Census:
+	case SourceTypeCensus:
 		return true
-	case ChurchRecord:
+	case SourceTypeChurchRecord:
 		return true
-	case Correspondence:
+	case SourceTypeCorrespondence:
 		return true
-	case Interview:
+	case SourceTypeInterview:
 		return true
-	case Newspaper:
+	case SourceTypeNewspaper:
 		return true
-	case Other:
+	case SourceTypeOther:
 		return true
-	case Photograph:
+	case SourceTypePhotograph:
 		return true
-	case VitalRecord:
+	case SourceTypeVitalRecord:
 		return true
-	case Webpage:
+	case SourceTypeWebpage:
 		return true
 	default:
 		return false
