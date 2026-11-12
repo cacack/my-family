@@ -17172,7 +17172,7 @@ func (response DeleteNote404JSONResponse) VisitDeleteNoteResponse(w http.Respons
 	return err
 }
 
-type DeleteNote409JSONResponse struct{ ConflictJSONResponse }
+type DeleteNote409JSONResponse Error
 
 func (response DeleteNote409JSONResponse) VisitDeleteNoteResponse(w http.ResponseWriter) error {
 

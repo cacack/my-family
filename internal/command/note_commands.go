@@ -8,13 +8,29 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/cacack/my-family/internal/domain"
+	"github.com/cacack/my-family/internal/gedcom"
 	"github.com/cacack/my-family/internal/repository"
 )
 
 // Note-related errors.
 var (
 	ErrNoteNotFound = errors.New("note not found")
+	// ErrNoteInUse refuses to delete a note that records still point to; the
+	// error that carries it is a *NoteInUseError (#1376).
+	ErrNoteInUse = errors.New("note is referenced and cannot be deleted")
 )
+
+// NoteInUseError refuses to delete a note and lists the records that point
+// to it. It matches ErrNoteInUse with errors.Is.
+type NoteInUseError struct {
+	References []gedcom.NoteReference
+}
+
+func (e *NoteInUseError) Error() string {
+	return fmt.Sprintf("%v: %d records point to it", ErrNoteInUse, len(e.References))
+}
+
+func (e *NoteInUseError) Unwrap() error { return ErrNoteInUse }
 
 // CreateNoteInput contains the data for creating a new note.
 type CreateNoteInput struct {
@@ -119,7 +135,8 @@ func (h *Handler) UpdateNote(ctx context.Context, input UpdateNoteInput) (*Updat
 	return &UpdateNoteResult{Version: version}, nil
 }
 
-// DeleteNote deletes a note record.
+// DeleteNote deletes a note record. It refuses with a *NoteInUseError while
+// any record still points to the note.
 func (h *Handler) DeleteNote(ctx context.Context, id uuid.UUID, version int64, reason string) error {
 	// Get current note from read model
 	current, err := h.readStore.GetNote(ctx, h.branchID, id)
@@ -133,6 +150,16 @@ func (h *Handler) DeleteNote(ctx context.Context, id uuid.UUID, version int64, r
 	// Check version for optimistic locking
 	if current.Version != version {
 		return repository.ErrConcurrencyConflict
+	}
+
+	// Refuse while records still point to the note: deleting it would leave
+	// their pointers dangling (#1376).
+	refs, err := gedcom.NoteReferences(ctx, h.readStore, h.branchID, current)
+	if err != nil {
+		return fmt.Errorf("finding references to note: %w", err)
+	}
+	if len(refs) > 0 {
+		return &NoteInUseError{References: refs}
 	}
 
 	// Create event

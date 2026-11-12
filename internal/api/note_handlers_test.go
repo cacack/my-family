@@ -228,3 +228,49 @@ func TestDeleteNote_NotFound(t *testing.T) {
 		t.Errorf("Status = %d, want %d", rec.Code, http.StatusNotFound)
 	}
 }
+
+// TestDeleteNote_InUse checks a note a person points to is refused with
+// NOTE_IN_USE and the person listed (#1376).
+func TestDeleteNote_InUse(t *testing.T) {
+	server := setupTestServer()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/notes", strings.NewReader(`{"text":"shared","gedcom_xref":"@N1@"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+	var note map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &note); err != nil {
+		t.Fatalf("create note: %v (%s)", err, rec.Body.String())
+	}
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/persons", strings.NewReader(`{"given_name":"Ann","surname":"Lee","notes":"@N1@"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec = httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+	var person map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &person); err != nil {
+		t.Fatalf("create person: %v (%s)", err, rec.Body.String())
+	}
+	personID, _ := person["id"].(string)
+
+	req = httptest.NewRequest(http.MethodDelete, fmt.Sprintf("/api/v1/notes/%s?version=1", note["id"]), http.NoBody)
+	rec = httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("Status = %d, want %d. Body: %s", rec.Code, http.StatusConflict, rec.Body.String())
+	}
+	var body struct {
+		Code    string `json:"code"`
+		Details struct {
+			References []struct{ Type, ID string } `json:"references"`
+		} `json:"details"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("parse body: %v", err)
+	}
+	if body.Code != api.CodeNoteInUse {
+		t.Errorf("code = %q, want %q", body.Code, api.CodeNoteInUse)
+	}
+	refs := body.Details.References
+	if len(refs) != 1 || refs[0].Type != "person" || refs[0].ID != personID {
+		t.Errorf("references = %+v, want the person %s", refs, personID)
+	}
+}

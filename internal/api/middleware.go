@@ -25,10 +25,14 @@ const (
 	CodeNotFound   = "NOT_FOUND"
 	CodeConflict   = "CONFLICT"
 	// CodeVersionConflict marks a 409 for a stale version: the record changed
-	// since the client read it. Every other 409 refusal keeps CodeConflict.
+	// since the client read it. Every other 409 refusal keeps CodeConflict
+	// unless its operation documents its own code.
 	CodeVersionConflict = "VERSION_CONFLICT"
 	CodeInternalError   = "INTERNAL_ERROR"
 	CodeValidation      = "VALIDATION_ERROR"
+	// CodeNoteInUse marks a 409 refusing to delete a note that records still
+	// point to (#1376).
+	CodeNoteInUse = "NOTE_IN_USE"
 )
 
 // customErrorHandler handles errors and returns consistent JSON responses.

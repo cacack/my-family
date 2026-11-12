@@ -2478,7 +2478,12 @@ export interface paths {
         /** Update a note */
         put: operations["updateNote"];
         post?: never;
-        /** Delete a note */
+        /**
+         * Delete a note
+         * @description Deletes a note that no record points to. A note that records still
+         *     point to is refused with a 409 `NOTE_IN_USE`; remove those pointers
+         *     first.
+         */
         delete: operations["deleteNote"];
         options?: never;
         head?: never;
@@ -10935,7 +10940,22 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             404: components["responses"]["NotFound"];
-            409: components["responses"]["Conflict"];
+            /**
+             * @description The note was not deleted. `code` is `VERSION_CONFLICT` for a stale
+             *     `version`, or `NOTE_IN_USE` when records still point to the note.
+             *     A `NOTE_IN_USE` body lists them in `details.references`: an array
+             *     of `{type, id}`, where `type` is one of `person`, `name`, `family`,
+             *     `event`, `attribute`, `source`, `repository` or `association`.
+             *     Nothing was recorded.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     listSubmitters: {
