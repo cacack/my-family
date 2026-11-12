@@ -1,21 +1,26 @@
 package command_test
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
 
+	"github.com/google/uuid"
+
 	"github.com/cacack/my-family/internal/command"
 	"github.com/cacack/my-family/internal/domain"
 	"github.com/cacack/my-family/internal/repository"
+	"github.com/cacack/my-family/internal/repository/memory"
 )
 
 // Update commands validate the fields they change, as the create commands do,
 // so an update can't put an invalid value (an empty name, an over-long field,
 // an unknown enum) into the event stream (#527 item 7). Values GEDCOM import
 // stores as written (LDS status, temple and place; repository and submitter
-// names) are not re-validated when the update leaves them alone, so they
-// can't block an unrelated edit.
+// names; association roles, phrases and self-references) are not
+// re-validated when the update leaves them alone, so they can't block an
+// unrelated edit.
 
 func TestUpdateCommands_RejectInvalidResult(t *testing.T) {
 	long := func(n int) string { return strings.Repeat("x", n) }
@@ -179,5 +184,97 @@ func TestUpdateCommands_ImportedNameDoesNotBlockUnrelatedEdit(t *testing.T) {
 	}
 	if _, err := h.UpdateSubmitter(ctx, command.UpdateSubmitterInput{ID: subs[0].ID, Phone: []string{"555-0100"}, Version: subs[0].Version}); err != nil {
 		t.Errorf("phone-only update of an imported submitter: %v", err)
+	}
+}
+
+// Import stores an association's RELA/ROLE text, PHRASE and associate as
+// written (#1355): an over-long role, an over-long phrase or a self-reference
+// blocks no edit that leaves it alone, and a changed role or phrase is still
+// validated.
+func TestUpdateCommands_ImportedAssociationDoesNotBlockUnrelatedEdit(t *testing.T) {
+	long := func(n int) string { return strings.Repeat("x", n) }
+	ged := `0 HEAD
+1 GEDC
+2 VERS 7.0
+0 @I1@ INDI
+1 NAME Self /Ref/
+1 ASSO @I1@
+2 ROLE FRIEND
+0 @I2@ INDI
+1 NAME Long /Role/
+1 ASSO @I1@
+2 ROLE ` + long(120) + `
+0 @I3@ INDI
+1 NAME Long /Phrase/
+1 ASSO @I1@
+2 PHRASE ` + long(600) + `
+2 ROLE FRIEND
+0 TRLR
+`
+	// imported returns a fresh import's association for which match holds.
+	imported := func(t *testing.T, match func(repository.AssociationReadModel) bool) (*command.Handler, *memory.EventStore, repository.AssociationReadModel) {
+		t.Helper()
+		ctx, events, read, h := newTestHandler()
+		if _, err := h.ImportGedcom(ctx, command.ImportGedcomInput{Filename: "t.ged", Reader: strings.NewReader(ged)}); err != nil {
+			t.Fatalf("ImportGedcom: %v", err)
+		}
+		assocs, _, err := read.ListAssociations(ctx, repository.ListOptions{Limit: 10})
+		if err != nil {
+			t.Fatalf("ListAssociations: %v", err)
+		}
+		for _, a := range assocs {
+			if match(a) {
+				return h, events, a
+			}
+		}
+		t.Fatalf("no matching imported association in %+v", assocs)
+		return nil, nil, repository.AssociationReadModel{}
+	}
+	selfRef := func(a repository.AssociationReadModel) bool { return a.PersonID == a.AssociateID }
+	longRole := func(a repository.AssociationReadModel) bool { return len(a.Role) > 100 }
+	longPhrase := func(a repository.AssociationReadModel) bool { return len(a.Phrase) > 500 }
+
+	for name, match := range map[string]func(repository.AssociationReadModel) bool{
+		"self-reference": selfRef, "over-long role": longRole, "over-long phrase": longPhrase,
+	} {
+		t.Run(name+" notes-only", func(t *testing.T) {
+			h, events, a := imported(t, match)
+			if _, err := h.UpdateAssociation(context.Background(), command.UpdateAssociationInput{ID: a.ID, Notes: ptr("seen"), Version: a.Version}); err != nil {
+				t.Fatalf("notes-only update: %v", err)
+			}
+			checkRecorded(t, events, a.ID, int(a.Version), []string{"notes"})
+		})
+		t.Run(name+" note-IDs-only", func(t *testing.T) {
+			h, events, a := imported(t, match)
+			if _, err := h.UpdateAssociation(context.Background(), command.UpdateAssociationInput{ID: a.ID, NoteIDs: ptr([]uuid.UUID{uuid.New()}), Version: a.Version}); err != nil {
+				t.Fatalf("note-IDs-only update: %v", err)
+			}
+			checkRecorded(t, events, a.ID, int(a.Version), []string{"note_ids"})
+		})
+	}
+
+	t.Run("self-reference role change validates the role only", func(t *testing.T) {
+		h, events, a := imported(t, selfRef)
+		if _, err := h.UpdateAssociation(context.Background(), command.UpdateAssociationInput{ID: a.ID, Role: ptr(domain.RoleWitness), Version: a.Version}); err != nil {
+			t.Fatalf("role update of a self-referencing association: %v", err)
+		}
+		checkRecorded(t, events, a.ID, int(a.Version), []string{"role"})
+	})
+
+	for name, edit := range map[string]func(*command.UpdateAssociationInput){
+		"invalid role":   func(in *command.UpdateAssociationInput) { in.Role = ptr(long(101)) },
+		"empty role":     func(in *command.UpdateAssociationInput) { in.Role = ptr("") },
+		"invalid phrase": func(in *command.UpdateAssociationInput) { in.Phrase = ptr(long(501)) },
+	} {
+		t.Run("self-reference "+name+" refused", func(t *testing.T) {
+			h, events, a := imported(t, selfRef)
+			input := command.UpdateAssociationInput{ID: a.ID, Notes: ptr("seen"), Version: a.Version}
+			edit(&input)
+			_, err := h.UpdateAssociation(context.Background(), input)
+			if !errors.Is(err, command.ErrInvalidInput) {
+				t.Fatalf("err = %v, want ErrInvalidInput", err)
+			}
+			checkRecorded(t, events, a.ID, int(a.Version), nil)
+		})
 	}
 }
