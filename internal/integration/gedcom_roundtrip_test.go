@@ -162,6 +162,17 @@ func assertSharedNotesExportedAsSNOTE(t *testing.T, exported string) {
 			t.Errorf("7.0 export lacks %q:\n%s", strings.TrimSpace(want), exported)
 		}
 	}
+	// Pointers under a NAME (#1165) and on a FAM record (#1267).
+	for _, want := range []struct{ record, line string }{
+		{"INDI\n1 NAME Anne /Hartwell/\n", "\n2 SNOTE @N2@\n"},
+		{" FAM\n", "\n1 SNOTE @N2@\n"},
+	} {
+		if !slices.ContainsFunc(strings.Split(exported, "\n0 "), func(rec string) bool {
+			return strings.Contains(rec, want.record) && strings.Contains(rec+"\n", want.line)
+		}) {
+			t.Errorf("7.0 export has no record with %q holding %q:\n%s", want.record, strings.TrimSpace(want.line), exported)
+		}
+	}
 	if bad := noteRecordOrPointer.FindAllString(exported, -1); len(bad) > 0 {
 		t.Errorf("7.0 export has NOTE records or pointers %q:\n%s", bad, exported)
 	}

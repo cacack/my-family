@@ -86,6 +86,7 @@
 1 NAME Anne /Hartwell/
 2 GIVN Anne
 2 SURN Hartwell
+2 SNOTE @N2@
 1 SEX F
 1 BIRT
 2 DATE BET 1715 AND 1720
@@ -110,4 +111,5 @@
 3 PAGE Folio 30
 1 EXID F-100
 2 TYPE http://example.com/family
+1 SNOTE @N2@
 0 TRLR

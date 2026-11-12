@@ -43,7 +43,8 @@ type ExportResult struct {
 	// represent them in the target version. Empty when nothing was lost.
 	DataLoss []DataLossDetail
 	// Warnings lists problems the export could not repair, such as a NOTE
-	// pointer whose stored xref several NOTE records share (#1228).
+	// pointer whose stored xref several NOTE records share (#1228) or that
+	// points to no exported note and was dropped (#1353).
 	Warnings              []string
 	BytesWritten          int64
 	PersonsExported       int
@@ -271,7 +272,7 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 	// Add source records
 	for i, s := range sources {
 		xref := sourceXrefs[s.ID]
-		s.Notes = notePointers.remap(s.Notes, noteJoin)
+		s.Notes = notePointers.remapNotes(s.Notes, noteJoin, "SOUR "+xref)
 		s.RepositoryName = repoPointers.remap(s.RepositoryName, noteJoin)
 		src := toGedcomSource(s, repoIDToXref, repoNameToXref)
 		src.ExternalIDs = externalIDs.sources[s.ID]
@@ -310,13 +311,16 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 		// Fetch this person's names, their NOTE pointers remapped like the person's
 		names, _ := exp.readStore.GetPersonNames(ctx, domain.MainBranchID, p.ID)
 		for j := range names {
-			names[j].Notes = notePointers.remap(names[j].Notes, noteJoin)
+			names[j].Notes = notePointers.remapNotes(names[j].Notes, noteJoin, "INDI "+xref)
 		}
 
 		// Fetch events and attributes for this person
 		events, _ := exp.readStore.ListEventsForPerson(ctx, domain.MainBranchID, p.ID)
-		notePointers.remapEvents(events)
+		notePointers.remapEvents(events, "INDI "+xref)
 		attributes, _ := exp.readStore.ListAttributesForPerson(ctx, domain.MainBranchID, p.ID)
+		for j := range attributes {
+			attributes[j].Notes = notePointers.remapNotes(attributes[j].Notes, noteJoin, "INDI "+xref)
+		}
 		result.EventsExported += len(events)
 		result.AttributesExported += len(attributes)
 
@@ -326,7 +330,7 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 		var associations []repository.AssociationReadModel
 		for _, a := range allAssocs {
 			if a.PersonID == p.ID {
-				a.Notes = notePointers.remap(a.Notes, associationNoteJoin)
+				a.Notes = notePointers.remapNotes(a.Notes, associationNoteJoin, "INDI "+xref)
 				associations = append(associations, a)
 			}
 		}
@@ -336,9 +340,9 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 		ldsOrdinances, _ := exp.readStore.ListLDSOrdinancesForPerson(ctx, p.ID)
 		result.LDSOrdinancesExported += len(ldsOrdinances)
 
-		p.Notes = notePointers.remap(p.Notes, noteJoin)
-		p.BirthNotes = notePointers.remap(p.BirthNotes, noteJoin)
-		p.DeathNotes = notePointers.remap(p.DeathNotes, noteJoin)
+		p.Notes = notePointers.remapNotes(p.Notes, noteJoin, "INDI "+xref)
+		p.BirthNotes = notePointers.remapNotes(p.BirthNotes, noteJoin, "INDI "+xref)
+		p.DeathNotes = notePointers.remapNotes(p.DeathNotes, noteJoin, "INDI "+xref)
 		indi := toGedcomIndividual(p, names, sourceXrefs, personXrefs, nameCitations, birthCitations, deathCitations, events, attributes, associations, ldsOrdinances, externalIDs.citationAPIDs, exp.readStore, ctx)
 		indi.ExternalIDs = externalIDs.persons[p.ID]
 		indi.ChildInFamilies = childLinks[p.ID]
@@ -369,9 +373,9 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 
 		// Fetch events for this family
 		familyEvents, _ := exp.readStore.ListEventsForFamily(ctx, domain.MainBranchID, f.ID)
-		notePointers.remapEvents(familyEvents)
-		f.MarriageNotes = notePointers.remap(f.MarriageNotes, noteJoin)
-		f.Notes = notePointers.remap(f.Notes, noteJoin)
+		notePointers.remapEvents(familyEvents, "FAM "+xref)
+		f.MarriageNotes = notePointers.remapNotes(f.MarriageNotes, noteJoin, "FAM "+xref)
+		f.Notes = notePointers.remapNotes(f.Notes, noteJoin, "FAM "+xref)
 		result.EventsExported += len(familyEvents)
 
 		// Fetch LDS ordinances for this family
@@ -443,7 +447,7 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 	// via SOUR.REPO cross-references.
 	for i, r := range repositories {
 		xref := repositoryXrefs[r.ID]
-		r.Notes = notePointers.remap(r.Notes, noteJoin)
+		r.Notes = notePointers.remapNotes(r.Notes, noteJoin, "REPO "+xref)
 		repo := toGedcomRepository(r)
 		repo.ExternalIDs = externalIDs.repositories[r.ID]
 		doc.Records = append(doc.Records, &gedcom.Record{
@@ -1468,23 +1472,54 @@ func (t *pointerTargets) add(stored, exported string) {
 // hold several NOTE pointers: the importer joins a record's with noteJoin and
 // an association's with "\n".
 func (t *pointerTargets) remap(v, sep string) string {
-	return renameXrefs(v, sep, func(stored string) (string, bool) {
-		xref, ok := t.exported[stored]
-		if ok && t.holders[stored] > 1 && !t.warned[stored] {
-			t.warned[stored] = true
-			*t.warnings = append(*t.warnings, fmt.Sprintf(
-				// %q: a stored xref is not validated and can hold a line break.
-				"%d %s records share the xref %q; pointers to it were linked to the first of them (exported as %s)",
-				t.holders[stored], t.recordType, stored, xref))
+	return renameXrefs(v, sep, t.resolve)
+}
+
+// resolve returns the export xref of the record stored as stored.
+func (t *pointerTargets) resolve(stored string) (string, bool) {
+	xref, ok := t.exported[stored]
+	if ok && t.holders[stored] > 1 && !t.warned[stored] {
+		t.warned[stored] = true
+		*t.warnings = append(*t.warnings, fmt.Sprintf(
+			// %q: a stored xref is not validated and can hold a line break.
+			"%d %s records share the xref %q; pointers to it were linked to the first of them (exported as %s)",
+			t.holders[stored], t.recordType, stored, xref))
+	}
+	return xref, ok
+}
+
+// remapNotes is remap for a Notes value of the record exported as owner (for
+// example "INDI @I1@"), and drops each part that is a pointer to no exported
+// record with a warning naming owner and the pointer. Such a pointer comes
+// from a broken NOTE reference kept by import or a note deleted since: left
+// in, 5.5.1 writes a dangling NOTE pointer and 7.0, whose NOTE takes text,
+// writes the text "@N9@" (#1353).
+func (t *pointerTargets) remapNotes(v, sep, owner string) string {
+	if xref, ok := t.resolve(v); ok {
+		return xref
+	}
+	parts := strings.Split(v, sep)
+	kept := parts[:0]
+	for _, part := range parts {
+		if xref, ok := t.resolve(part); ok {
+			kept = append(kept, xref)
+			continue
 		}
-		return xref, ok
-	})
+		if gedcom.IsPointerXRef(part) {
+			*t.warnings = append(*t.warnings, fmt.Sprintf(
+				"%s points to %s %s, which is not in the export; the pointer was dropped",
+				owner, t.recordType, part))
+			continue
+		}
+		kept = append(kept, part)
+	}
+	return strings.Join(kept, sep)
 }
 
 // remapEvents remaps the NOTE pointers in each event's Notes, in place.
-func (t *pointerTargets) remapEvents(events []repository.EventReadModel) {
+func (t *pointerTargets) remapEvents(events []repository.EventReadModel, owner string) {
 	for i := range events {
-		events[i].Notes = t.remap(events[i].Notes, noteJoin)
+		events[i].Notes = t.remapNotes(events[i].Notes, noteJoin, owner)
 	}
 }
 
