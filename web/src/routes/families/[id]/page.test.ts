@@ -585,6 +585,25 @@ describe('Family Detail Page: partners and children (#826)', () => {
 		expect(vi.mocked(api.updateFamily).mock.calls[1][1].marriage_date).toBe('(spring 1875)');
 	});
 
+	// Family edit showed a rejected date below the form with the server's raw prefix (#1112).
+	it('shows a rejected date beside its field, tied to it and focused', async () => {
+		vi.mocked(api.updateFamily).mockRejectedValue({
+			code: 'VALIDATION_ERROR',
+			message: 'invalid input: marriage_date: "31 FEB 1900" is not a real calendar date',
+			details: { field: 'marriage_date', unreadable: false }
+		});
+		await openEdit();
+		await fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+
+		const input = screen.getByLabelText('Marriage Date');
+		const message = await screen.findByRole('alert');
+		expect(message.textContent?.trim()).toBe('"31 FEB 1900" is not a real calendar date');
+		expect(input.closest('.date-field')?.contains(message)).toBe(true);
+		expect(input.getAttribute('aria-invalid')).toBe('true');
+		expect(input.getAttribute('aria-describedby')).toBe(message.id);
+		await waitFor(() => expect(document.activeElement).toBe(input));
+	});
+
 	it('offers no Keep as text for a refusal that is not an unreadable date', async () => {
 		vi.mocked(api.updateFamily).mockRejectedValue({
 			code: 'VALIDATION_ERROR',

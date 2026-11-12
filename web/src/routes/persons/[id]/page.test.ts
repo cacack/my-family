@@ -583,6 +583,33 @@ describe('Person detail edit form', () => {
 		expect(screen.queryByRole('button', { name: 'Keep as text' })).toBeNull();
 	});
 
+	// A rejected date was shown below the form with the server's raw prefix (#1112).
+	it('shows a rejected date beside its field, tied to it and focused', async () => {
+		getPerson.mockResolvedValue(person());
+		updatePerson.mockRejectedValue({
+			code: 'VALIDATION_ERROR',
+			message: 'invalid input: birth_date: "31 FEB 1900" is not a real calendar date',
+			details: { field: 'birth_date', unreadable: false }
+		});
+		await openEdit();
+
+		await fireEvent.input(screen.getByLabelText('Birth Date'), { target: { value: '31 FEB 1900' } });
+		await save();
+
+		const input = screen.getByLabelText('Birth Date');
+		const message = await screen.findByRole('alert');
+		expect(message.textContent?.trim()).toBe('"31 FEB 1900" is not a real calendar date');
+		expect(input.closest('.date-field')?.contains(message)).toBe(true);
+		expect(input.getAttribute('aria-invalid')).toBe('true');
+		expect(input.getAttribute('aria-describedby')).toBe(message.id);
+		expect(screen.getByLabelText('Death Date').hasAttribute('aria-invalid')).toBe(false);
+		await waitFor(() => expect(document.activeElement).toBe(input));
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+		expect(screen.getByLabelText('Birth Date').hasAttribute('aria-invalid')).toBe(false);
+	});
+
 	it('says what a converted date was saved as', async () => {
 		getPerson.mockResolvedValueOnce(person());
 		getPerson.mockResolvedValue(person({ birth_date: { raw: 'ABT 1850' }, version: 4 }));
