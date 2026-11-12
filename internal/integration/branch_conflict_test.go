@@ -1,12 +1,16 @@
 package integration_test
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
 	"testing"
 
+	"github.com/google/uuid"
+
 	"github.com/cacack/my-family/internal/api"
+	"github.com/cacack/my-family/internal/domain"
 )
 
 // Merge-conflict detection and resolution, driven through the real HTTP API
@@ -51,11 +55,21 @@ func forEachBackend(t *testing.T, run func(t *testing.T, server *api.Server)) {
 // because a merge is terminal (ADR-005) - there is no un-merge to run the same
 // conflict the other way. The two fork from the same point, before main moves,
 // so each carries the same disagreement.
+//
+// It takes the store bundle as well as the server because the main-wins merge
+// is where purge-on-merge (BR-003) is observable on every backend (#736): the
+// API refuses a merged branch by status before reaching the read model, so only
+// a store-level read can tell a purged overlay from a surviving one.
 func TestBranchConflict_EditEdit(t *testing.T) {
-	forEachBackend(t, runEditEditConflict)
+	for _, backend := range backends {
+		t.Run(backend.name, func(t *testing.T) {
+			st := backend.setup(t)
+			runEditEditConflict(t, newServer(t, st), st)
+		})
+	}
 }
 
-func runEditEditConflict(t *testing.T, server *api.Server) {
+func runEditEditConflict(t *testing.T, server *api.Server, st stores) {
 	t.Helper()
 
 	personID := createPerson(t, server, "Robin", "Original")
@@ -129,6 +143,11 @@ func runEditEditConflict(t *testing.T, server *api.Server) {
 	if kind := second["kind"]; kind != "edit_edit" {
 		t.Errorf("second branch conflict kind = %v, want edit_edit", kind)
 	}
+	// Precondition for the purge check below: the losing branch's overlay row
+	// holds its own value, distinct from main's.
+	if got := storeSurname(t, st, branchLoses, personID); got != "Discarded" {
+		t.Fatalf("store surname on the losing branch before merge = %q, want its overlay value Discarded", got)
+	}
 
 	kept := mustDo(t, server, http.MethodPost, mergePath(branchLoses),
 		mergeBody("main's reading stands", resolution(personID, "main")), http.StatusOK)
@@ -141,6 +160,27 @@ func runEditEditConflict(t *testing.T, server *api.Server) {
 	if got := personSurname(t, server, personID, ""); got != "Branchside" {
 		t.Errorf("main surname = %q, want Branchside - the main resolution did not keep main's value", got)
 	}
+
+	// --- Purge on merge (BR-003): the merged branch's overlay is gone, so a
+	// store read on its id falls back to main. Main won, so the branch's value
+	// was never promoted - a surviving overlay row would still read Discarded. ---
+	if got := storeSurname(t, st, branchLoses, personID); got != "Branchside" {
+		t.Errorf("store surname on the merged branch = %q, want main's Branchside - the overlay was not purged on merge", got)
+	}
+}
+
+// storeSurname reads a person's surname straight from the read model on the
+// given branch, bypassing the API's branch-status guard.
+func storeSurname(t *testing.T, st stores, branchID, personID string) string {
+	t.Helper()
+	person, err := st.read.GetPerson(context.Background(), domain.BranchID(uuid.MustParse(branchID)), uuid.MustParse(personID))
+	if err != nil {
+		t.Fatalf("read person %s on branch %s: %v", personID, branchID, err)
+	}
+	if person == nil {
+		t.Fatalf("person %s on branch %s not found in the read model", personID, branchID)
+	}
+	return person.Surname
 }
 
 // ============================================================================
