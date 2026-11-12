@@ -69,21 +69,6 @@ jobs:
   backend:
     runs-on: ubuntu-latest
 
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: test
-          POSTGRES_PASSWORD: test
-          POSTGRES_DB: myfamily_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
     steps:
       - name: Harden Runner
         uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
@@ -150,12 +135,6 @@ jobs:
         run: go vet ./...
 
       - name: Run tests
-        env:
-          POSTGRES_HOST: localhost
-          POSTGRES_PORT: 5432
-          POSTGRES_USER: test
-          POSTGRES_PASSWORD: test
-          POSTGRES_DB: myfamily_test
         # Scope the build to packages that contribute to coverage. cmd/myfamily
         # and internal/web are excluded in .testcoverage.yml; skipping them here
         # keeps CI in sync with `make check-coverage` and scripts/pre-push (#408).
