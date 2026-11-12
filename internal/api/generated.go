@@ -3234,7 +3234,7 @@ type CitationCreate struct {
 	// Fields Template-specific field values
 	Fields *map[string]string `json:"fields,omitempty"`
 
-	// GedcomXref Optional GEDCOM cross-reference ID for import
+	// GedcomXref Optional GEDCOM cross-reference ID for import. Empty, or one @-delimited pointer (e.g. "@R1@") with no whitespace or interior @.
 	GedcomXref *string `json:"gedcom_xref,omitempty"`
 
 	// InformantType Informant's relation to the event per GPS standards
@@ -4989,7 +4989,7 @@ type Note struct {
 
 // NoteCreate defines model for NoteCreate.
 type NoteCreate struct {
-	// GedcomXref Optional GEDCOM cross-reference ID for import
+	// GedcomXref Optional GEDCOM cross-reference ID for import. Empty, or one @-delimited pointer (e.g. "@R1@") with no whitespace or interior @.
 	GedcomXref *string `json:"gedcom_xref,omitempty"`
 
 	// Text Note text content
@@ -5666,7 +5666,7 @@ type RepositoryCreate struct {
 	// Address Structured GEDCOM address (embedded in other entities)
 	Address *Address `json:"address,omitempty"`
 
-	// GedcomXref Optional GEDCOM cross-reference ID for import
+	// GedcomXref Optional GEDCOM cross-reference ID for import. Empty, or one @-delimited pointer (e.g. "@R1@") with no whitespace or interior @.
 	GedcomXref *string `json:"gedcom_xref,omitempty"`
 
 	// Name Repository's name
@@ -5714,7 +5714,7 @@ type RepositoryUpdate struct {
 	// Address Structured GEDCOM address (embedded in other entities)
 	Address *Address `json:"address,omitempty"`
 
-	// GedcomXref Updated GEDCOM cross-reference ID
+	// GedcomXref Updated GEDCOM cross-reference ID. Empty, or one @-delimited pointer (e.g. "@R1@") with no whitespace or interior @.
 	GedcomXref *string `json:"gedcom_xref,omitempty"`
 
 	// Name Updated repository name
@@ -6217,7 +6217,7 @@ type SubmitterCreate struct {
 	// Email Email addresses
 	Email *[]string `json:"email,omitempty"`
 
-	// GedcomXref Optional GEDCOM cross-reference ID for import
+	// GedcomXref Optional GEDCOM cross-reference ID for import. Empty, or one @-delimited pointer (e.g. "@R1@") with no whitespace or interior @.
 	GedcomXref *string `json:"gedcom_xref,omitempty"`
 
 	// Language Preferred language

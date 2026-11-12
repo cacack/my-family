@@ -123,16 +123,22 @@ func (h *Handler) UpdateAssociation(ctx context.Context, input UpdateAssociation
 
 	// Build changes map
 	changes := make(map[string]any)
+	testAssociation := domain.Association{
+		ID:          current.ID,
+		PersonID:    current.PersonID,
+		AssociateID: current.AssociateID,
+		Role:        current.Role,
+		Phrase:      current.Phrase,
+	}
 
 	if input.Role != nil && *input.Role != current.Role {
-		if *input.Role == "" {
-			return nil, fmt.Errorf("%w: role cannot be empty", ErrInvalidInput)
-		}
 		changes["role"] = *input.Role
+		testAssociation.Role = *input.Role
 	}
 
 	if input.Phrase != nil && *input.Phrase != current.Phrase {
 		changes["phrase"] = *input.Phrase
+		testAssociation.Phrase = *input.Phrase
 	}
 
 	if input.Notes != nil && *input.Notes != current.Notes {
@@ -157,6 +163,11 @@ func (h *Handler) UpdateAssociation(ctx context.Context, input UpdateAssociation
 	// No changes?
 	if len(changes) == 0 {
 		return &UpdateAssociationResult{Version: current.Version}, nil
+	}
+
+	// Validate updated association
+	if err := testAssociation.Validate(); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInvalidInput, err)
 	}
 
 	// Create event
