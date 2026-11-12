@@ -315,7 +315,7 @@
 	</a>
 {/snippet}
 
-<div class="mx-auto max-w-[1200px] p-6">
+<div class="mx-auto max-w-page-list p-6">
 	<PageHeader
 		title="Evidence Analysis"
 		description="GPS-compliant research tracking and proof management"

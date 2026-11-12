@@ -9,6 +9,7 @@
 	import MainlineNotice from '#lib/components/MainlineNotice.svelte';
 	import { activeBranch } from '#lib/stores/activeBranch.svelte.js';
 	import ErrorState from '#lib/components/ErrorState.svelte';
+	import PageHeader from '#lib/components/PageHeader.svelte';
 
 	/**
 	 * The onboarding wizard is for an empty *database*. On a research branch the
@@ -77,10 +78,7 @@
 	<OnboardingWizard onComplete={() => { showOnboarding = false; loadDashboard(); }} />
 {:else}
 <div class="dashboard">
-	<section class="hero">
-		<h1>My Family</h1>
-		<p>Self-hosted genealogy software</p>
-	</section>
+	<PageHeader title="My Family" description="Self-hosted genealogy software" />
 
 	{#if loading}
 		<div class="loading">Loading...</div>
@@ -197,26 +195,9 @@
 
 <style>
 	.dashboard {
-		max-width: 1200px;
+		max-width: var(--page-width-list);
 		margin: 0 auto;
-		padding: 2rem;
-	}
-
-	.hero {
-		text-align: center;
-		padding: 2rem 0 3rem;
-	}
-
-	.hero h1 {
-		margin: 0;
-		font-size: 2.5rem;
-		color: #1e293b;
-	}
-
-	.hero p {
-		margin: 0.5rem 0 0;
-		color: var(--color-text-muted);
-		font-size: 1.125rem;
+		padding: 1.5rem;
 	}
 
 	.loading {

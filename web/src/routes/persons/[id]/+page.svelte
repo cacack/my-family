@@ -878,7 +878,7 @@
 
 <style>
 	.person-page {
-		max-width: 800px;
+		max-width: var(--page-width-detail);
 		margin: 0 auto;
 		padding: 1.5rem;
 	}

@@ -374,8 +374,7 @@
 
 	.sheet-header h1 {
 		margin: 0;
-		font-size: 1.75rem;
-		font-weight: 600;
+		font-size: 1.5rem;
 		color: #1e293b;
 		text-transform: uppercase;
 		letter-spacing: 0.1em;

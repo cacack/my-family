@@ -49,6 +49,17 @@
 	--color-action-hover: #1e40af;
 	--color-success: #15803d;
 
+	/*
+	 * Page container widths (docs/CONVENTIONS.md#ui-building-blocks). A page's
+	 * outer container takes one of these as its max-width, with 1.5rem padding:
+	 *   --page-width-list    pages over many records: lists, browse, search,
+	 *                        reports and comparisons
+	 *   --page-width-detail  one record, or a form
+	 * Tailwind reaches them as max-w-page-list and max-w-page-detail.
+	 */
+	--page-width-list: 1200px;
+	--page-width-detail: 800px;
+
 	/* Transition timing (disabled for reduced motion) */
 	--transition-duration: 0.15s;
 	--background: oklch(1 0 0);
@@ -370,6 +381,8 @@ body.reduced-motion * {
 
 @theme inline {
 	--font-sans: 'Inter Variable', sans-serif;
+	--container-page-list: var(--page-width-list);
+	--container-page-detail: var(--page-width-detail);
 	--color-sidebar-ring: var(--sidebar-ring);
 	--color-sidebar-border: var(--sidebar-border);
 	--color-sidebar-accent-foreground: var(--sidebar-accent-foreground);

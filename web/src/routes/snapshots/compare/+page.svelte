@@ -264,7 +264,7 @@
 {/snippet}
 
 <div class="compare-page">
-	<PageHeader title="Snapshot comparison" back={{ href: '/snapshots', label: 'All snapshots' }}>
+	<PageHeader title="Snapshot comparison" back={{ href: '/snapshots', label: 'Research Snapshots' }}>
 		{#if activeBranch.id}
 			<p class="scope-note" role="note">
 				Showing the changes as the research branch
@@ -395,7 +395,7 @@
 
 <style>
 	.compare-page {
-		max-width: 1000px;
+		max-width: var(--page-width-list);
 		margin: 0 auto;
 		padding: 1.5rem;
 	}

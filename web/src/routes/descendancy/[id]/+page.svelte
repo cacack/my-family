@@ -25,7 +25,7 @@
 	const rootName = $derived.by(() => (descendancy?.root ? formatPersonName(descendancy.root) : null));
 	const back = useBackLink(() => ({
 		href: `/persons/${personId}`,
-		label: rootName ? `Back to ${rootName}` : 'Back'
+		label: rootName ?? 'Back'
 	}));
 
 	// Screen reader announcement helper

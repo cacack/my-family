@@ -123,12 +123,12 @@
 	<title>{conflict ? `${formatFactType(conflict.fact_type)} Conflict` : 'Evidence Conflict'} | My Family</title>
 </svelte:head>
 
-<div class="mx-auto max-w-3xl p-6">
+<div class="mx-auto max-w-page-detail p-6">
 	{#if loading}
-		<PageHeader title="Evidence Conflict" back={{ href: '/evidence', label: 'Evidence' }} />
+		<PageHeader title="Evidence Conflict" back={{ href: '/evidence', label: 'Evidence Analysis' }} />
 		<div class="p-12 text-center text-muted-foreground">Loading...</div>
 	{:else if loadError}
-		<PageHeader title={loadError.title} back={{ href: '/evidence', label: 'Evidence' }} />
+		<PageHeader title={loadError.title} back={{ href: '/evidence', label: 'Evidence Analysis' }} />
 		<ErrorState
 			message={loadError.message}
 			notFound={loadError.notFound}
@@ -145,7 +145,7 @@
 		{/snippet}
 		<PageHeader
 			title="Evidence Conflict"
-			back={{ href: '/evidence', label: 'Evidence' }}
+			back={{ href: '/evidence', label: 'Evidence Analysis' }}
 			badges={conflictBadges}
 		/>
 		<div class="rounded-xl border border-slate-200 bg-white p-6">

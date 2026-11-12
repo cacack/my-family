@@ -121,7 +121,7 @@
 {/snippet}
 
 <div class="research-page">
-	<a href={branchId ? `/branches/${branchId}` : '/branches'} class="back-link">&larr; Branch</a>
+	<a href={branchId ? `/branches/${branchId}` : '/branches'} class="back-link">&larr; {branch?.name ?? 'Branch'}</a>
 
 	{#if loading}
 		<div class="state" role="status" aria-live="polite">Loading research...</div>
@@ -296,7 +296,7 @@
 
 <style>
 	.research-page {
-		max-width: 1000px;
+		max-width: var(--page-width-detail);
 		margin: 0 auto;
 		padding: 1.5rem;
 	}
