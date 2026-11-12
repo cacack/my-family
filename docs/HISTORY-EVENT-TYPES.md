@@ -31,6 +31,7 @@ mapped or not exercised by the every-type compare fixture
 | `PersonCreated` / `PersonUpdated` / `PersonDeleted` | `person` | created / updated / deleted | person's name | person page |
 | `NameAdded` / `NameUpdated` / `NameRemoved` | `person` | updated | person's name; `changes.name` holds the variant ("Given Surname") before/after | person page |
 | `PersonMerged` | `person` | merged | surviving person; `changes.merged_person` and each resolved field | person page |
+| `BrickWallSet` / `BrickWallResolved` | `person` | updated | person's name; `changes.brick_wall_note` (set) or `changes.brick_wall_resolved_at` (resolved), new value only (#802) | person page |
 | `FamilyCreated` / `FamilyUpdated` / `FamilyDeleted` | `family` | created / updated / deleted | "Partner & Partner" | family page |
 | `ChildLinkedToFamily` / `ChildUnlinkedFromFamily` | `family` | updated | family; `changes.children` names the child | family page |
 | `SourceCreated` / `SourceUpdated` / `SourceDeleted` | `source` | created / updated / deleted | title | source page |

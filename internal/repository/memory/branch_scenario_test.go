@@ -200,7 +200,7 @@ type mainAggregateSnapshot struct {
 //     on both sides of the join, the branch sees the shadow's surname and not the
 //     mainline spelling, and the tombstoned person disappears, as they do from the
 //     branch's cemetery index (their burial was tombstoned by the DeletePerson cascade);
-//  4. SetBrickWall / ResolveBrickWall are main-pinned: they leave the shadow alone.
+//  4. BrickWallSet / BrickWallResolved projected on main (#802) leave the shadow alone.
 //
 // Deliberately NOT asserted: GetPlaceHierarchy below the top level. The memory backend
 // ignores the `parent` argument and returns whole place strings where the SQL backends
@@ -257,8 +257,8 @@ func runBranchAggregateScenario(t *testing.T, readStore repository.ReadModelStor
 	// Flag the first as a brick wall BEFORE the branch exists, so the shadow copied
 	// from main in step 3 carries the brick-wall fields and an unscoped GetBrickWalls
 	// would report the person twice.
-	if err := readStore.SetBrickWall(ctx, shadowed.ID, "needs a vital record"); err != nil {
-		t.Fatalf("SetBrickWall on main: %v", err)
+	if err := projector.Project(ctx, domain.NewBrickWallSet(shadowed.ID, "needs a vital record"), 2, domain.MainBranchID); err != nil {
+		t.Fatalf("project BrickWallSet on main: %v", err)
 	}
 
 	// --- Step 2: snapshot every mainline aggregate BEFORE any branch row exists.
@@ -508,11 +508,15 @@ func runBranchAggregateScenario(t *testing.T, readStore repository.ReadModelStor
 			cemetery, mainCemeteryN, mainCemetery)
 	}
 
-	// --- Step 7: brick walls are main-pinned. A second SetBrickWall on a person that
+	// --- Step 7: brick walls are main-pinned. A second BrickWallSet on a person that
 	// HAS a branch shadow must rewrite main's row and leave the shadow's note as it
 	// was when the branch copied it. ---
-	if err := readStore.SetBrickWall(ctx, shadowed.ID, "still unsourced"); err != nil {
-		t.Fatalf("SetBrickWall after shadow: %v", err)
+	wallRow, err := readStore.GetPerson(ctx, domain.MainBranchID, shadowed.ID)
+	if err != nil || wallRow == nil {
+		t.Fatalf("main GetPerson before BrickWallSet: %v (person=%+v)", err, wallRow)
+	}
+	if err := projector.Project(ctx, domain.NewBrickWallSet(shadowed.ID, "still unsourced"), wallRow.Version+1, domain.MainBranchID); err != nil {
+		t.Fatalf("project BrickWallSet after shadow: %v", err)
 	}
 	walls, err := readStore.GetBrickWalls(ctx, false)
 	if err != nil {
@@ -523,29 +527,29 @@ func runBranchAggregateScenario(t *testing.T, readStore repository.ReadModelStor
 	}
 	shadowPerson, err := readStore.GetPerson(ctx, branchID, shadowed.ID)
 	if err != nil || shadowPerson == nil {
-		t.Fatalf("branch GetPerson after SetBrickWall: %v (person=%+v)", err, shadowPerson)
+		t.Fatalf("branch GetPerson after BrickWallSet: %v (person=%+v)", err, shadowPerson)
 	}
 	if shadowPerson.Surname != "Branchline" {
 		t.Fatalf("branch GetPerson resolved to %q, want the shadow row Branchline", shadowPerson.Surname)
 	}
 	if shadowPerson.BrickWallNote != "needs a vital record" {
-		t.Errorf("SetBrickWall wrote the branch shadow row: note = %q, want the copied %q",
+		t.Errorf("BrickWallSet wrote the branch shadow row: note = %q, want the copied %q",
 			shadowPerson.BrickWallNote, "needs a vital record")
 	}
 
-	// ResolveBrickWall is main-pinned for the same reason.
-	if err := readStore.ResolveBrickWall(ctx, shadowed.ID); err != nil {
-		t.Fatalf("ResolveBrickWall: %v", err)
+	// BrickWallResolved is main-pinned for the same reason.
+	if err := projector.Project(ctx, domain.NewBrickWallResolved(shadowed.ID, "still unsourced", now), wallRow.Version+2, domain.MainBranchID); err != nil {
+		t.Fatalf("project BrickWallResolved: %v", err)
 	}
 	if walls, err = readStore.GetBrickWalls(ctx, false); err != nil || len(walls) != 0 {
 		t.Errorf("GetBrickWalls after resolve = %+v (err=%v), want none unresolved", walls, err)
 	}
 	shadowPerson, err = readStore.GetPerson(ctx, branchID, shadowed.ID)
 	if err != nil || shadowPerson == nil {
-		t.Fatalf("branch GetPerson after ResolveBrickWall: %v (person=%+v)", err, shadowPerson)
+		t.Fatalf("branch GetPerson after BrickWallResolved: %v (person=%+v)", err, shadowPerson)
 	}
 	if shadowPerson.BrickWallResolvedAt != nil {
-		t.Errorf("ResolveBrickWall wrote the branch shadow row: resolved_at = %v", shadowPerson.BrickWallResolvedAt)
+		t.Errorf("BrickWallResolved wrote the branch shadow row: resolved_at = %v", shadowPerson.BrickWallResolvedAt)
 	}
 }
 

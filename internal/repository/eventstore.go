@@ -632,6 +632,18 @@ func (e *StoredEvent) DecodeEvent() (domain.Event, error) {
 			return nil, err
 		}
 		return event, nil
+	case "BrickWallSet":
+		var event domain.BrickWallSet
+		if err := json.Unmarshal(e.Data, &event); err != nil {
+			return nil, err
+		}
+		return event, nil
+	case "BrickWallResolved":
+		var event domain.BrickWallResolved
+		if err := json.Unmarshal(e.Data, &event); err != nil {
+			return nil, err
+		}
+		return event, nil
 	default:
 		return nil, errors.New("unknown event type: " + e.EventType)
 	}

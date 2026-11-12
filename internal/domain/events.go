@@ -2006,3 +2006,47 @@ type ImportedValuesBackfilled struct {
 
 func (e ImportedValuesBackfilled) EventType() string      { return "ImportedValuesBackfilled" }
 func (e ImportedValuesBackfilled) AggregateID() uuid.UUID { return e.EntityID }
+
+// BrickWallSet event is emitted when a person is marked as a brick wall: a
+// research dead end, with a note on what was tried (#802). It lives on the
+// person's stream, as the claim is about the person, and replaces any earlier
+// brick wall, resolved or not. Since is when the wall was recorded: the event's
+// own time for a new mark, the read model's original time for one that
+// `myfamily rebuild` logs on behalf of a database from before #802.
+type BrickWallSet struct {
+	BaseEvent
+	PersonID uuid.UUID `json:"person_id"`
+	Note     string    `json:"note"`
+	Since    time.Time `json:"since"`
+}
+
+func (e BrickWallSet) EventType() string      { return "BrickWallSet" }
+func (e BrickWallSet) AggregateID() uuid.UUID { return e.PersonID }
+
+// NewBrickWallSet creates a BrickWallSet event recorded now.
+func NewBrickWallSet(personID uuid.UUID, note string) BrickWallSet {
+	base := NewBaseEvent()
+	return BrickWallSet{BaseEvent: base, PersonID: personID, Note: note, Since: base.Timestamp}
+}
+
+// BrickWallResolved event is emitted when a person's brick wall is broken
+// through (#802). It carries the whole brick wall it resolves (note and
+// since), so it fully states the person's brick-wall status on its own, as
+// BrickWallSet does.
+type BrickWallResolved struct {
+	BaseEvent
+	PersonID   uuid.UUID `json:"person_id"`
+	Note       string    `json:"note"`
+	Since      time.Time `json:"since"`
+	ResolvedAt time.Time `json:"resolved_at"`
+}
+
+func (e BrickWallResolved) EventType() string      { return "BrickWallResolved" }
+func (e BrickWallResolved) AggregateID() uuid.UUID { return e.PersonID }
+
+// NewBrickWallResolved creates a BrickWallResolved event, resolved now, for
+// the brick wall recorded with note at since.
+func NewBrickWallResolved(personID uuid.UUID, note string, since time.Time) BrickWallResolved {
+	base := NewBaseEvent()
+	return BrickWallResolved{BaseEvent: base, PersonID: personID, Note: note, Since: since, ResolvedAt: base.Timestamp}
+}

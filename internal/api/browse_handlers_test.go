@@ -622,8 +622,8 @@ func TestGetPersonsByCemetery_Pagination(t *testing.T) {
 
 // browseBranchScopePaths are the seven browse/map operations that accept ?branch=
 // (six from #756, plus the cemetery index from #757). The three main-only ones
-// (/browse/brick-walls and the two brick-wall writes) are deliberately absent —
-// see sub-issue F (#761).
+// (/browse/brick-walls and the two brick-wall writes) are deliberately absent:
+// brick walls are event-sourced (#802) but not branch-scoped yet.
 func browseBranchScopePaths(branchID string) []struct {
 	name string
 	path string
@@ -784,5 +784,59 @@ func TestGetMapLocations_NamesPersons(t *testing.T) {
 	if len(item.Persons) != 1 || item.Persons[0].Id != id ||
 		item.Persons[0].GivenName != "John" || item.Persons[0].Surname != "Smith" {
 		t.Errorf("persons = %+v, want John Smith (%v)", item.Persons, id)
+	}
+}
+
+// TestBrickWallEndpoints_AreLogged drives the brick-wall writes end to end: a
+// mark and its resolution are logged on the person's stream (#802) and the
+// listing reports them; an unknown person is a 404.
+func TestBrickWallEndpoints_AreLogged(t *testing.T) {
+	server, eventStore := setupBranchTestServerWithEventStore()
+	id := createPerson(t, server, "Heinrich", "Mueller")
+
+	if rec := do(t, server, http.MethodPut, "/api/v1/persons/"+id+"/brick-wall", `{"note":"no baptism found"}`); rec.Code != http.StatusNoContent {
+		t.Fatalf("PUT brick-wall: status = %d, want 204. Body: %s", rec.Code, rec.Body.String())
+	}
+	rec := do(t, server, http.MethodGet, "/api/v1/browse/brick-walls", "")
+	var walls api.BrickWallsResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &walls); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if walls.ActiveCount != 1 || len(walls.Items) != 1 || walls.Items[0].Note != "no baptism found" {
+		t.Fatalf("brick walls = %+v, want the one just set", walls)
+	}
+
+	if rec := do(t, server, http.MethodDelete, "/api/v1/persons/"+id+"/brick-wall", ""); rec.Code != http.StatusNoContent {
+		t.Fatalf("DELETE brick-wall: status = %d, want 204. Body: %s", rec.Code, rec.Body.String())
+	}
+	rec = do(t, server, http.MethodGet, "/api/v1/browse/brick-walls?include_resolved=true", "")
+	if err := json.Unmarshal(rec.Body.Bytes(), &walls); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if walls.ActiveCount != 0 || walls.ResolvedCount != 1 {
+		t.Errorf("brick walls after resolve = %+v, want one resolved", walls)
+	}
+
+	stream, err := eventStore.ReadStream(context.Background(), uuid.MustParse(id))
+	if err != nil {
+		t.Fatalf("ReadStream: %v", err)
+	}
+	var types []string
+	for i := range stream {
+		types = append(types, stream[i].EventType)
+	}
+	if n := len(types); n < 2 || types[n-2] != "BrickWallSet" || types[n-1] != "BrickWallResolved" {
+		t.Errorf("person stream = %v, want it to end BrickWallSet, BrickWallResolved", types)
+	}
+
+	unknown := uuid.New().String()
+	for _, method := range []string{http.MethodPut, http.MethodDelete} {
+		body := ""
+		if method == http.MethodPut {
+			body = `{"note":"x"}`
+		}
+		if rec := do(t, server, method, "/api/v1/persons/"+unknown+"/brick-wall", body); rec.Code != http.StatusNotFound {
+			t.Errorf("%s brick-wall of an unknown person: status = %d, want 404", method, rec.Code)
+		}
 	}
 }

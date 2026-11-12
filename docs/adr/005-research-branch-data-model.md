@@ -375,13 +375,14 @@ read-model entity on `main`, and they must not be confused:
   ([#760](https://github.com/cacack/my-family/issues/760)), is delivered, so no #676 entity is
   pending. (Media metadata, [#759](https://github.com/cacack/my-family/issues/759), is delivered
   too; its file bytes are shared by design, not pending — see the implementation note below.)
-  Snapshots were the last pending entity, though not as a #676 sub-issue: #624 made them
-  event-sourced, and #839 gave the registry its `branch_id` (see *Implementation Note —
-  branch-scoped snapshots and compare to now*). Nothing is pending now.
+  Snapshots were pending too, though not as a #676 sub-issue: #624 made them event-sourced, and
+  #839 gave the registry its `branch_id` (see *Implementation Note — branch-scoped snapshots and
+  compare to now*). **Brick walls are pending now**: [#802](https://github.com/cacack/my-family/issues/802)
+  made them event-sourced (below), so scoping them is ordinary follow-up work under #676.
 - **Blocked** — branch scoping is neither scheduled nor ruled out, because a prior question has to
-  be answered first. This is brick walls, which wait on an event-sourcing decision of their own
-  (below). Snapshots were here until [#624](https://github.com/cacack/my-family/issues/624) made
-  that decision for them.
+  be answered first. No entity is blocked now. Snapshots were here until
+  [#624](https://github.com/cacack/my-family/issues/624) made them event-sourced, and brick walls
+  until #802 did the same for them.
 - **Decided** — the entity will not gain a `branch_id` at all. That set is fixed here.
 
 ### The decided set
@@ -406,25 +407,34 @@ tests — for no expressible research use case.
 ordinary rather than exploratory. This section is the place to revisit it; changing it means
 amending this ADR, not silently adding a column.
 
-### Blocked on an event-sourcing decision — brick walls
+### Brick walls — event-sourced, branch scoping pending
 
-`SetBrickWall` and `ResolveBrickWall` (`internal/repository/{postgres,sqlite,memory}/readmodel.go`)
-**write the read model directly, bypassing the event store.** There is no `BrickWallSet` event and no
-projection handler; the read model is the system of record for brick-wall status.
+**Decided in [#802](https://github.com/cacack/my-family/issues/802): brick walls are event-sourced.**
+Marking a person as a brick wall is a research assertion about that person, the kind of claim the
+event log exists to record, so it belongs in the audit trail ADR-001 promises for every other
+mutation. This follows the precedent [#624](https://github.com/cacack/my-family/issues/624) set for
+snapshots (emit the events, let a projection write the read model); unlike a snapshot, a brick wall
+is not a position marker that could live outside the log as a ref.
 
-An entity whose state never passes through the event log cannot be branch-scoped in the sense this
-ADR defines: there are no branch-tagged events to project, nothing to replay on merge, and nothing
-for conflict detection to compare against the base position. **Branch-scoping brick walls therefore
-means first deciding whether they become event-sourced** — the same call
-[#624](https://github.com/cacack/my-family/issues/624) must make for snapshots, and for the same
-reason (see *Interaction with snapshots and rollback*, above). #624 has since answered it for
-snapshots — emit the events and let a projection write the registry — and that answer is the natural
-precedent for brick walls, but applying it to them is a separate change. This ADR records the
-brick-wall question and its coupling; it does not answer it.
+- **Events.** `BrickWallSet` and `BrickWallResolved` live on the **person's stream**. Each states the
+  whole brick wall (note and since, plus resolved-at for a resolution), so the latest one fully
+  determines the person's status and neither depends on the other being replayed first. They are
+  decoded (ES-007), projected onto the person's row (PR-004), and shown in the person's history.
+- **Commands.** `SetBrickWall` / `ResolveBrickWall` are command handlers; the read-model store has no
+  brick-wall write any more, only `GetBrickWalls`.
+- **Backfill.** A database from before #802 holds brick walls only in the read model.
+  `myfamily rebuild` logs each one the person's main stream does not carry yet, as a `BrickWallSet`
+  (or `BrickWallResolved`) keeping its original times, before it resets the read model, so the
+  replay restores it — the same pattern as the #1251 backfill of imported coordinates and EXIDs.
 
-Until then brick walls stay main-only. Sub-issue A ([#756](https://github.com/cacack/my-family/issues/756))
-applied only the *leak* fix — constraining the mainline UPDATE to mainline rows, so a mainline call
-stops mutating every branch's shadow row (BR-003) — and left the scoping question open.
+**Still main-only, now as a pending entity.** The events are not on the BR-006 allowlist, so a
+branch-scoped handler refuses them, and the endpoints ignore `?branch=`. Branch scoping them is an
+ordinary follow-up under [#676](https://github.com/cacack/my-family/issues/676): the `branch_id` +
+overlay + tombstone + cascade pattern, the allowlist entry and the `MainlineNotice.svelte` coverage
+change together. Until then a branch row of a person copied from main keeps the brick wall it was
+copied with. Sub-issue A ([#756](https://github.com/cacack/my-family/issues/756)) had already
+constrained the mainline brick-wall writes to mainline rows (BR-003); the projection keeps that by
+writing only the row of the branch it is given, which is always main today.
 
 **Snapshots were in the same state, for the same reason, until #624.** `SnapshotService.CreateSnapshot`
 used to write straight to the `SnapshotStore`, so `SnapshotCreated` decoded but was never emitted.
@@ -1120,10 +1130,10 @@ Two browse surfaces stayed main-only in this pass, and said so in the UI via
 - **The cemetery *index*** (`browseCemeteries`) aggregates the `life_events` table, which had no
   `branch_id` yet. Sub-issue B ([#757](https://github.com/cacack/my-family/issues/757)) has since
   given it one — see the next note.
-- **Brick walls** (`getBrickWalls`, `setPersonBrickWall`, `resolvePersonBrickWall`) are not
-  event-sourced, so there is no branch-tagged event for BR-006 to allow and nothing for a merge to
-  replay. This pass fixed only the mainline leak; the scoping question is recorded in
-  *Entities that stay main-only* above.
+- **Brick walls** (`getBrickWalls`, `setPersonBrickWall`, `resolvePersonBrickWall`) were not
+  event-sourced then, so there was no branch-tagged event for BR-006 to allow and nothing for a
+  merge to replay. This pass fixed only the mainline leak. #802 has since made them event-sourced;
+  their scoping is pending — see *Entities that stay main-only* above.
 
 **#676 does not eventually cover every entity.** Submitter, Repository, RepositoryExternalID and
 LDSOrdinance are permanently main-only — see *Entities that stay main-only* above for the set and

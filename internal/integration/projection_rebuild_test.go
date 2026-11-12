@@ -22,8 +22,8 @@ import (
 // RebuildReadModel then replays the log into an emptied read model, which must
 // bring the missing row back and leave every other row exactly as it was —
 // including GEDCOM coordinates and EXIDs, which the created events carry
-// (#1225), and brick walls, which no event carries and the rebuild keeps. The
-// scenario runs on every backend (DB-001).
+// (#1225), and brick walls, which BrickWallSet carries (#802). The scenario runs
+// on every backend (DB-001).
 
 var errInjectedProjection = errors.New("injected projection failure")
 
@@ -106,7 +106,7 @@ func TestProjectionFailure_RecordedAndRepairedByRebuild(t *testing.T) {
 			if _, err := h.WithBranch(branch).UpdatePerson(ctx, command.UpdatePersonInput{ID: john.ID, Notes: &johnNotes, Version: john.Version}); err != nil {
 				t.Fatalf("branch update of John: %v", err)
 			}
-			if err := st.read.SetBrickWall(ctx, john.ID, "no parents found"); err != nil {
+			if err := h.SetBrickWall(ctx, john.ID, "no parents found"); err != nil {
 				t.Fatalf("set brick wall: %v", err)
 			}
 			if _, err := h.CreateSnapshot(ctx, "before rebuild", ""); err != nil {

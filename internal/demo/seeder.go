@@ -51,7 +51,7 @@ type demoCitations struct {
 // of every severity), a snapshot, and a research branch.
 //
 // readStore must be the store cmdHandler projects into: it locates the
-// GEDCOM-imported ancestors and records the brick wall, which is not event-sourced.
+// GEDCOM-imported ancestors.
 // cmdHandler must be wired with branch and snapshot stores
 // (command.NewHandlerWithBranches), as the API server's handler is.
 func SeedDemoData(ctx context.Context, cmdHandler *command.Handler, readStore repository.ReadModelStore) error {
@@ -417,8 +417,7 @@ func seedMuellerAncestors(ctx context.Context, h *command.Handler, readStore rep
 		if _, err := h.LinkChild(ctx, command.LinkChildInput{FamilyID: f.ID, ChildID: p.annaMueller.ID}); err != nil {
 			return uuid.Nil, fmt.Errorf("link Anna to Mueller family: %w", err)
 		}
-		// Brick walls are recorded in the read model only (not event-sourced).
-		if err := readStore.SetBrickWall(ctx, *f.Partner1ID, "[DEMO DATA] No baptism record found for Heinrich Mueller; his parents are unknown."); err != nil {
+		if err := h.SetBrickWall(ctx, *f.Partner1ID, "[DEMO DATA] No baptism record found for Heinrich Mueller; his parents are unknown."); err != nil {
 			return uuid.Nil, fmt.Errorf("mark Heinrich Mueller as brick wall: %w", err)
 		}
 		return *f.Partner1ID, nil

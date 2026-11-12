@@ -157,9 +157,10 @@ Implemented in `internal/storage` (`storage.Open`), which `serve` calls at start
   exists. `myfamily rebuild` is the repair: it empties every
   read-model table, including `projection_failures`, and replays the whole log
   into them on the same backend. The branch and snapshot registries are not
-  emptied, because their projections are replay-safe upserts. Brick walls,
-  the one read-model value no event carries, are read before the reset and
-  written back after the replay; GEDCOM place coordinates and external IDs
+  emptied, because their projections are replay-safe upserts. Brick walls are
+  event-sourced ([#802](https://github.com/cacack/my-family/issues/802)); one
+  set before that, held only by the read model, is logged as a `BrickWallSet`
+  (or `BrickWallResolved`) event before the reset. GEDCOM place coordinates and external IDs
   travel in the entities' created events
   ([#1225](https://github.com/cacack/my-family/issues/1225)), so the replay
   reproduces them. For an entity imported before that change, whose created
@@ -175,8 +176,9 @@ Implemented in `internal/storage` (`storage.Open`), which `serve` calls at start
   brick walls are also saved in the `rebuild_state` table, which the
   reset keeps, and every event is decoded before the reset. A rebuild that
   stops after the reset (an error, Ctrl-C, a crash) therefore leaves that row
-  behind: `serve` warns while it exists, and a rerun restores the values from
-  it. An event that fails to replay is recorded like a live failure and the
+  behind: `serve` warns while it exists, and a rerun finds the brick walls in
+  the log, logging any the saved row holds that a rebuild from before #802
+  had not. An event that fails to replay is recorded like a live failure and the
   replay goes on; the rebuild then exits with an error, and the warning stays
   until a rebuild succeeds
   ([#845](https://github.com/cacack/my-family/issues/845)). `serve` and

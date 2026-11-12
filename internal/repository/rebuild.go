@@ -62,6 +62,10 @@ type RebuildResult struct {
 	// read model held (an import made before #1225), and so had them logged in
 	// an ImportedValuesBackfilled event before the reset (#1251).
 	Backfilled int
+	// BackfilledBrickWalls is how many persons had a brick wall that only the
+	// read model held (set before #802), and so had it logged in a
+	// BrickWallSet or BrickWallResolved event before the reset.
+	BackfilledBrickWalls int
 	// DroppedImported is how many main-branch coordinates and EXIDs the read
 	// model held before the reset but not after the replay. The backfill
 	// should leave none; the rebuild warns if it drops any all the same.
@@ -80,10 +84,10 @@ const rebuildPageSize = 1000
 // The branch and snapshot registries are not emptied: their projections are
 // upserts and replay-safe, so the replay brings them in line as well.
 //
-// Brick walls are the one read-model value no event carries (they are set
-// there directly; #802), so they cannot be rebuilt from the log. They are read
-// before the reset and written back once the replay is done, so a branch row
-// the replay copies from main does not pick up a brick wall set later.
+// Brick walls come from the log too (#802), but before #802 they were written
+// only to the read model. Before the reset, the rebuild logs any brick wall the
+// person's main stream does not carry yet, as one BrickWallSet (or, for a
+// resolved one, BrickWallResolved) event, so the replay restores it.
 //
 // Place coordinates and EXIDs come from the log (#1225), but an import made
 // before #1225 wrote them only to the read model. Before the reset, the
@@ -95,9 +99,10 @@ const rebuildPageSize = 1000
 // deleted, so an event the replay could not read fails the rebuild while the
 // read model is intact. The brick walls are saved as the rebuild state
 // (SaveRebuildState) before the reset, and only a rebuild that succeeds clears
-// it: while it exists `serve` warns that the read model is out of sync, and a
-// rerun after an interrupted rebuild restores them from it, since the reset
-// has removed them from the read model.
+// it: while it exists `serve` warns that the read model is out of sync. A rerun
+// after an interrupted rebuild finds its brick walls in the log; it logs those
+// of the saved state as well, for a rebuild interrupted before #802, whose
+// reset removed brick walls that were not logged.
 //
 // An event that fails to replay is reported like a live projection failure
 // (logged, and recorded as a marker) and the replay goes on, as live writes
@@ -113,9 +118,14 @@ func RebuildReadModel(ctx context.Context, events EventStore, rs ReadModelStore,
 	if err != nil {
 		return result, fmt.Errorf("log imported coordinates and EXIDs: %w", err)
 	}
-	kept, err := loadUnloggedFields(ctx, rs)
+	kept, err := loadBrickWalls(ctx, rs)
 	if err != nil {
 		return result, err
+	}
+	walls, err := backfillBrickWalls(ctx, events, rs, kept)
+	result.BackfilledBrickWalls = walls
+	if err != nil {
+		return result, fmt.Errorf("log brick walls: %w", err)
 	}
 	importedBefore, err := countImportedValues(ctx, rs)
 	if err != nil {
@@ -135,17 +145,11 @@ func RebuildReadModel(ctx context.Context, events EventStore, rs ReadModelStore,
 	projector := NewProjectorWithSnapshots(rs, branches, snapshots)
 	replayErr := replayLog(ctx, events, rs, projector, &result)
 
-	// Write back the brick walls, now that every person that will exist does.
-	// A person who is not in the read model is skipped.
-	var restoreErr error
-	if ctx.Err() == nil {
-		restoreErr = kept.restore(ctx, rs)
-	}
 	if ctx.Err() == nil {
 		reportDroppedImported(ctx, rs, importedBefore, &result)
 	}
-	if err := errors.Join(replayErr, restoreErr); err != nil {
-		return result, err
+	if replayErr != nil {
+		return result, replayErr
 	}
 	if err := rs.ClearRebuildState(ctx); err != nil {
 		return result, fmt.Errorf("clear rebuild state: %w", err)
@@ -212,9 +216,9 @@ func replayLog(ctx context.Context, events EventStore, rs ReadModelStore, projec
 	}
 }
 
-// unloggedFields holds the main-branch read-model values that no event
-// carries, by person id. It is saved as the rebuild state, hence the JSON tags.
-type unloggedFields struct {
+// rebuildState is what a rebuild saves before its reset: the brick walls the
+// main-branch read model held, by person id. Hence the JSON tags.
+type rebuildState struct {
 	BrickWalls map[uuid.UUID]brickWall `json:"brick_walls"`
 }
 
@@ -224,23 +228,26 @@ type brickWall struct {
 	ResolvedAt *time.Time `json:"resolved_at,omitempty"`
 }
 
-// loadUnloggedFields returns the values to carry over: those saved by an
-// unfinished earlier rebuild, whose reset removed them from the read model,
-// overlaid with those the read model holds now.
-func loadUnloggedFields(ctx context.Context, rs ReadModelStore) (*unloggedFields, error) {
-	kept := &unloggedFields{BrickWalls: map[uuid.UUID]brickWall{}}
+// loadBrickWalls returns the brick walls to keep: those saved by an unfinished
+// earlier rebuild, whose reset removed them from the read model, overlaid with
+// those the read model holds now. A person with no brick wall since is left
+// out, as GetBrickWalls leaves them out.
+func loadBrickWalls(ctx context.Context, rs ReadModelStore) (*rebuildState, error) {
+	kept := &rebuildState{BrickWalls: map[uuid.UUID]brickWall{}}
 	saved, err := rs.GetRebuildState(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("read rebuild state: %w", err)
 	}
 	if saved != nil {
-		var prior unloggedFields
+		var prior rebuildState
 		if err := json.Unmarshal(saved, &prior); err != nil {
 			return nil, fmt.Errorf("decode rebuild state: %w", err)
 		}
-		slog.Warn("an earlier rebuild did not finish; restoring the brick walls it saved before its reset")
+		slog.Warn("an earlier rebuild did not finish; logging the brick walls it saved before its reset")
 		for id, bw := range prior.BrickWalls {
-			kept.BrickWalls[id] = bw
+			if bw.Since != nil {
+				kept.BrickWalls[id] = bw
+			}
 		}
 	}
 	persons, err := ListAll(ctx, rebuildPageSize, rs.ListPersons)
@@ -248,28 +255,65 @@ func loadUnloggedFields(ctx context.Context, rs ReadModelStore) (*unloggedFields
 		return nil, fmt.Errorf("read brick walls: list persons: %w", err)
 	}
 	for i := range persons {
-		if p := &persons[i]; p.BrickWallNote != "" || p.BrickWallSince != nil || p.BrickWallResolvedAt != nil {
+		if p := &persons[i]; p.BrickWallSince != nil {
 			kept.BrickWalls[p.ID] = brickWall{Note: p.BrickWallNote, Since: p.BrickWallSince, ResolvedAt: p.BrickWallResolvedAt}
 		}
 	}
 	return kept, nil
 }
 
-// restore writes every kept brick wall back onto its person's main row, if
-// that row exists.
-func (k *unloggedFields) restore(ctx context.Context, rs ReadModelStore) error {
-	var errs []error
-	for id, bw := range k.BrickWalls {
-		row, err := rs.GetPerson(ctx, domain.MainBranchID, id)
-		if err == nil && row != nil {
-			row.BrickWallNote, row.BrickWallSince, row.BrickWallResolvedAt = bw.Note, bw.Since, bw.ResolvedAt
-			err = rs.SavePerson(ctx, domain.MainBranchID, row)
-		}
+// backfillBrickWalls appends a BrickWallSet event, or BrickWallResolved for a
+// resolved one, to the main stream of each person whose kept brick wall that
+// stream does not carry, and returns how many it appended (#802). A stream
+// that carries any brick-wall event already states the person's status, as
+// each such event states it whole. A person with no main stream is skipped.
+// Every append is durable on its own, so an interrupted backfill is finished
+// by the next rebuild.
+func backfillBrickWalls(ctx context.Context, events EventStore, rs ReadModelStore, kept *rebuildState) (int, error) {
+	projector := NewProjector(rs, nil)
+	appended := 0
+	for id, bw := range kept.BrickWalls {
+		version, carried, err := mainStreamCarriesBrickWall(ctx, events, id)
 		if err != nil {
-			errs = append(errs, fmt.Errorf("restore brick wall of %s: %w", id, err))
+			return appended, err
+		}
+		if carried || version == 0 {
+			continue
+		}
+		var event domain.Event = domain.BrickWallSet{BaseEvent: domain.NewBaseEvent(), PersonID: id, Note: bw.Note, Since: *bw.Since}
+		if bw.ResolvedAt != nil {
+			event = domain.BrickWallResolved{BaseEvent: domain.NewBaseEvent(), PersonID: id, Note: bw.Note, Since: *bw.Since, ResolvedAt: *bw.ResolvedAt}
+		}
+		if err := events.Append(ctx, id, "Person", []domain.Event{event}, version, MainScope); err != nil {
+			return appended, fmt.Errorf("append brick wall for person %s: %w", id, err)
+		}
+		appended++
+		if err := projector.Project(ctx, event, version+1, domain.MainBranchID); err != nil {
+			ReportProjectionFailure(ctx, rs, event, version+1, domain.MainBranchID, err)
 		}
 	}
-	return errors.Join(errs...)
+	if appended > 0 {
+		slog.Info("logged brick walls that were set before brick walls were kept in the event log", "persons", appended)
+	}
+	return appended, nil
+}
+
+// mainStreamCarriesBrickWall reads a person's main stream and reports its
+// version and whether it holds a brick-wall event.
+func mainStreamCarriesBrickWall(ctx context.Context, events EventStore, id uuid.UUID) (version int64, carried bool, err error) {
+	stored, err := events.ReadStream(ctx, id)
+	if err != nil {
+		return 0, false, fmt.Errorf("read stream %s: %w", id, err)
+	}
+	for i := range stored {
+		s := &stored[i]
+		if !s.BranchID.IsMain() {
+			continue
+		}
+		version = max(version, s.Version)
+		carried = carried || s.EventType == "BrickWallSet" || s.EventType == "BrickWallResolved"
+	}
+	return version, carried, nil
 }
 
 // countImportedValues counts the coordinates and EXIDs on main-branch rows.

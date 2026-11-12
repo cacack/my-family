@@ -165,6 +165,10 @@ func (p *Projector) Project(ctx context.Context, event domain.Event, version int
 		return p.readStore.DeleteDuplicateDismissal(ctx, branchID, e.PairID)
 	case domain.ImportedValuesBackfilled:
 		return p.projectImportedValuesBackfilled(ctx, e, version, branchID)
+	case domain.BrickWallSet:
+		return p.projectBrickWall(ctx, e.PersonID, e.Note, e.Since, nil, version, branchID)
+	case domain.BrickWallResolved:
+		return p.projectBrickWall(ctx, e.PersonID, e.Note, e.Since, &e.ResolvedAt, version, branchID)
 	case domain.BranchCreated:
 		return p.projectBranchCreated(ctx, e)
 	case domain.BranchUpdated:
@@ -2745,6 +2749,27 @@ func SortTime(gd *domain.GenDate) *time.Time {
 	}
 	t := gd.SortDate()
 	return &t
+}
+
+// projectBrickWall writes a person's brick-wall status from BrickWallSet
+// (resolvedAt nil) or BrickWallResolved (#802). Each event states the whole
+// status, so the row's three brick-wall fields are set outright. Only the
+// person's row on branchID is written: a branch row copied from main earlier
+// keeps the status it was copied with. The row's UpdatedAt is kept, as the
+// person's own fields are unchanged; its version follows the stream.
+func (p *Projector) projectBrickWall(ctx context.Context, personID uuid.UUID, note string, since time.Time, resolvedAt *time.Time, version int64, branchID domain.BranchID) error {
+	person, err := p.readStore.GetPerson(ctx, branchID, personID)
+	if err != nil || person == nil {
+		return err
+	}
+	since = since.UTC()
+	person.BrickWallNote, person.BrickWallSince, person.BrickWallResolvedAt = note, &since, nil
+	if resolvedAt != nil {
+		at := resolvedAt.UTC()
+		person.BrickWallResolvedAt = &at
+	}
+	person.Version = version
+	return p.readStore.SavePerson(ctx, branchID, person)
 }
 
 // projectImportedValuesBackfilled writes the coordinates and EXIDs a pre-#1225

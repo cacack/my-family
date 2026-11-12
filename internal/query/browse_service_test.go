@@ -889,11 +889,9 @@ type branchScopeSpy struct {
 	mapLocations      []domain.BranchID
 	cemeteryIndex     []domain.BranchID
 
-	// The main-only methods carry no scope at all — the counters just prove the
-	// service still reaches them unchanged.
-	brickWallCalls        int
-	setBrickWallCalls     int
-	resolveBrickWallCalls int
+	// The main-only read carries no scope at all — the counter just proves the
+	// service still reaches it unchanged.
+	brickWallCalls int
 }
 
 func (s *branchScopeSpy) GetSurnameIndex(_ context.Context, branchID domain.BranchID) ([]repository.SurnameEntry, []repository.LetterCount, error) {
@@ -939,16 +937,6 @@ func (s *branchScopeSpy) GetCemeteryIndex(_ context.Context, branchID domain.Bra
 func (s *branchScopeSpy) GetBrickWalls(_ context.Context, _ bool) ([]repository.BrickWallEntry, error) {
 	s.brickWallCalls++
 	return nil, nil
-}
-
-func (s *branchScopeSpy) SetBrickWall(_ context.Context, _ uuid.UUID, _ string) error {
-	s.setBrickWallCalls++
-	return nil
-}
-
-func (s *branchScopeSpy) ResolveBrickWall(_ context.Context, _ uuid.UUID) error {
-	s.resolveBrickWallCalls++
-	return nil
 }
 
 // TestBrowseService_BranchScopeReachesStore checks that the scope the caller
@@ -1054,9 +1042,9 @@ func TestBrowseService_BranchScopeReachesStore(t *testing.T) {
 	}
 }
 
-// TestBrowseService_MainOnlyPathsUnscoped pins the three brick-wall paths that
-// stay on the mainline: their store methods take no branch scope at all, so
-// there is nothing for a caller to redirect (sub-issue F/#761).
+// TestBrowseService_MainOnlyPathsUnscoped pins the brick-wall read, which stays
+// on the mainline: its store method takes no branch scope at all, so there is
+// nothing for a caller to redirect. Brick walls are written by commands (#802).
 func TestBrowseService_MainOnlyPathsUnscoped(t *testing.T) {
 	spy := &branchScopeSpy{}
 	service := query.NewBrowseService(spy)
@@ -1065,16 +1053,9 @@ func TestBrowseService_MainOnlyPathsUnscoped(t *testing.T) {
 	if _, err := service.GetBrickWalls(ctx, true); err != nil {
 		t.Fatalf("GetBrickWalls failed: %v", err)
 	}
-	if err := service.SetBrickWall(ctx, uuid.New(), "note"); err != nil {
-		t.Fatalf("SetBrickWall failed: %v", err)
-	}
-	if err := service.ResolveBrickWall(ctx, uuid.New()); err != nil {
-		t.Fatalf("ResolveBrickWall failed: %v", err)
-	}
 
-	if spy.brickWallCalls != 1 || spy.setBrickWallCalls != 1 || spy.resolveBrickWallCalls != 1 {
-		t.Errorf("main-only calls = %d/%d/%d, want 1 each",
-			spy.brickWallCalls, spy.setBrickWallCalls, spy.resolveBrickWallCalls)
+	if spy.brickWallCalls != 1 {
+		t.Errorf("main-only calls = %d, want 1", spy.brickWallCalls)
 	}
 }
 

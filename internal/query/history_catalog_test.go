@@ -99,7 +99,7 @@ func TestHistoryCatalog_ExcludesResearchMetadata(t *testing.T) {
 func TestHistoryCatalog_Lookups(t *testing.T) {
 	assert.Equal(t, []string{"BranchMergeResumed", "BranchUpdated", "GedcomImported", "ImportedValuesBackfilled", "SnapshotCreated", "SnapshotDeleted"}, HistoryExcludedEventTypes())
 	assert.Equal(t, []string{"ChildLinkedToFamily", "ChildUnlinkedFromFamily", "FamilyCreated", "FamilyDeleted", "FamilyUpdated"}, HistoryEventTypesForEntity("family"))
-	assert.Equal(t, []string{"NameAdded", "NameRemoved", "NameUpdated", "PersonCreated", "PersonDeleted", "PersonMerged", "PersonUpdated"}, HistoryEventTypesForEntity("person"))
+	assert.Equal(t, []string{"BrickWallResolved", "BrickWallSet", "NameAdded", "NameRemoved", "NameUpdated", "PersonCreated", "PersonDeleted", "PersonMerged", "PersonUpdated"}, HistoryEventTypesForEntity("person"))
 	assert.Nil(t, HistoryEventTypesForEntity("unknown"))
 
 	entityTypes := HistoryEntityTypes()

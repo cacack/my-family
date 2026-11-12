@@ -186,14 +186,16 @@ it for opposite reasons:
 
 - **❌ = pending.** The entity is destined for branch scoping and simply is not there yet. No row
   is in this state today: Snapshot, the last one, became branch-scoped with
-  [#839](https://github.com/cacack/my-family/issues/839) (see its note below).
+  [#839](https://github.com/cacack/my-family/issues/839) (see its note below). Brick walls are
+  pending too, but they are fields of the person's row rather than an entity, so they have no row
+  here: [#802](https://github.com/cacack/my-family/issues/802) made them event-sourced
+  (`BrickWallSet` / `BrickWallResolved` on the person's stream, decoded, projected onto the
+  person's row and shown in its history), and branch-scoping them is follow-up under
+  [#676](https://github.com/cacack/my-family/issues/676).
 - **⛔ = blocked on a decision.** Branch scoping is neither scheduled nor ruled out, because a prior
-  question has to be answered first. No row is in this state today. Brick walls are — they bypass
-  the event-sourced pipeline, and an entity whose state never passes through the event log has no
-  branch-tagged events to project or replay — but they are operations rather than an entity, so
-  they have no row here. Snapshot left this state when
-  [#624](https://github.com/cacack/my-family/issues/624) made it event-sourced, and was then
-  branch-scoped by [#839](https://github.com/cacack/my-family/issues/839). See
+  question has to be answered first. Nothing is in this state today. Snapshot left it when
+  [#624](https://github.com/cacack/my-family/issues/624) made it event-sourced, and brick walls when
+  #802 did the same for them. See
   [ADR-005, "Entities that stay main-only"](./adr/005-research-branch-data-model.md#entities-that-stay-main-only).
 - **N/A = decided.** Branch scoping does not apply to the entity. Submitter, Repository and
   LDSOrdinance — along with RepositoryExternalID, which has no row in this matrix — are permanently
@@ -398,11 +400,9 @@ each one). With #824, #825 and #829 delivered, no page shows mainline-only data 
 branch. One field still can: the brick-wall flag on a person page is stored on the person's row,
 which a branch copies the first time it writes that person, so for a person the branch has edited
 it shows the flag as it stood then rather than a later mainline change. Within browse and
-map the only mainline-only surface is brick walls (not event-sourced, so branch-scoping them means
-first deciding whether they become event-sourced —
-[ADR-005, "Entities that stay main-only"](./adr/005-research-branch-data-model.md#entities-that-stay-main-only),
-[#761](https://github.com/cacack/my-family/issues/761); the decision is
-[#802](https://github.com/cacack/my-family/issues/802)). The surname index and per-surname list,
+map the only mainline-only surface is brick walls (event-sourced since
+[#802](https://github.com/cacack/my-family/issues/802), with branch scoping pending —
+[ADR-005, "Entities that stay main-only"](./adr/005-research-branch-data-model.md#entities-that-stay-main-only)). The surname index and per-surname list,
 the place index and per-place list, the cemetery index and per-cemetery person list, and the map
 all follow the active branch, and so do the source list and source detail pages (#758), the
 person media gallery (#759) and the `/evidence` pages and person evidence panel (#760). Since #829
