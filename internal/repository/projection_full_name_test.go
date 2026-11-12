@@ -2,6 +2,7 @@ package repository_test
 
 import (
 	"context"
+	"database/sql"
 	"os"
 	"testing"
 
@@ -10,12 +11,24 @@ import (
 	"github.com/cacack/my-family/internal/domain"
 	"github.com/cacack/my-family/internal/repository"
 	"github.com/cacack/my-family/internal/repository/memory"
+	"github.com/cacack/my-family/internal/repository/postgres"
 	"github.com/cacack/my-family/internal/repository/sqlite"
+	"github.com/cacack/my-family/internal/testutil/pgtest"
 )
 
-// fullNameStores returns the read-model backends the full-name projection tests
-// run against, so both stay in sync (DB-001).
-func fullNameStores(t *testing.T) map[string]repository.ReadModelStore {
+// fullNameStores returns an opener for each read-model backend the full-name
+// tests run against, so all three stay in sync (DB-001). Each opener runs
+// inside its backend's subtest, so a missing PostgreSQL skips only that
+// subtest.
+func fullNameStores() map[string]func(t *testing.T) repository.ReadModelStore {
+	return map[string]func(t *testing.T) repository.ReadModelStore{
+		"memory":   func(*testing.T) repository.ReadModelStore { return memory.NewReadModelStore() },
+		"sqlite":   openSQLiteFullNameStore,
+		"postgres": openPostgresFullNameStore,
+	}
+}
+
+func openSQLiteFullNameStore(t *testing.T) repository.ReadModelStore {
 	t.Helper()
 
 	tmpFile, err := os.CreateTemp("", "myfamily-full-name-*.db")
@@ -31,23 +44,38 @@ func fullNameStores(t *testing.T) map[string]repository.ReadModelStore {
 	}
 	t.Cleanup(func() { db.Close() })
 
-	sqliteStore, err := sqlite.NewReadModelStore(db)
+	store, err := sqlite.NewReadModelStore(db)
 	if err != nil {
 		t.Fatalf("create read model store: %v", err)
 	}
+	return store
+}
 
-	return map[string]repository.ReadModelStore{
-		"memory": memory.NewReadModelStore(),
-		"sqlite": sqliteStore,
+// openPostgresFullNameStore skips the test when no PostgreSQL is available
+// (see pgtest.ServerURL).
+func openPostgresFullNameStore(t *testing.T) repository.ReadModelStore {
+	t.Helper()
+
+	db, err := sql.Open("postgres", pgtest.NewDatabase(t))
+	if err != nil {
+		t.Fatalf("connect to postgres: %v", err)
 	}
+	t.Cleanup(func() { db.Close() })
+
+	store, err := postgres.NewReadModelStore(db)
+	if err != nil {
+		t.Fatalf("create read model store: %v", err)
+	}
+	return store
 }
 
 // TestProjector_FullNameHasNoStraySpace proves the projection never stores a
 // full name with a leading or trailing space when a person has no surname or
 // no given name, on create, on update and on merge.
 func TestProjector_FullNameHasNoStraySpace(t *testing.T) {
-	for backend, readStore := range fullNameStores(t) {
+	for backend, open := range fullNameStores() {
 		t.Run(backend, func(t *testing.T) {
+			readStore := open(t)
 			ctx := context.Background()
 			projector := repository.NewProjector(readStore, nil)
 
@@ -152,8 +180,9 @@ func TestReadModel_PersonNameFullName(t *testing.T) {
 		{"no given name", repository.PersonNameReadModel{Surname: "Placeholder"}, "Placeholder"},
 		{"prefix and surname", repository.PersonNameReadModel{NamePrefix: "Rev.", Surname: "Placeholder"}, "Rev. Placeholder"},
 	}
-	for backend, readStore := range fullNameStores(t) {
+	for backend, open := range fullNameStores() {
 		t.Run(backend, func(t *testing.T) {
+			readStore := open(t)
 			ctx := context.Background()
 			for _, tt := range tests {
 				t.Run(tt.name, func(t *testing.T) {

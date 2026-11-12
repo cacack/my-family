@@ -12,8 +12,9 @@ import (
 // BC sort date on every backend and reads back unchanged, alongside the raw
 // date text (#1065).
 func TestProjector_BCDateKeepsSortDate(t *testing.T) {
-	for backend, readStore := range fullNameStores(t) {
+	for backend, open := range fullNameStores() {
 		t.Run(backend, func(t *testing.T) {
+			readStore := open(t)
 			ctx := context.Background()
 			projector := repository.NewProjector(readStore, nil)
 

@@ -16,8 +16,9 @@ import (
 // shows in them, and a person created after the family that names them (the
 // order a branch merge can replay in) fills them in.
 func TestProjector_FamilyMemberNamesFollowThePerson(t *testing.T) {
-	for backend, readStore := range fullNameStores(t) {
+	for backend, open := range fullNameStores() {
 		t.Run(backend, func(t *testing.T) {
+			readStore := open(t)
 			ctx := context.Background()
 			projector := repository.NewProjector(readStore, nil)
 			project := func(t *testing.T, branchID domain.BranchID, event domain.Event, version int64) {
@@ -192,41 +193,39 @@ func TestProjector_FamilyMemberNamesReplay(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	stores := fullNameStores(t)
-	for backend, readStore := range stores {
-		t.Run(backend, func(t *testing.T) {
-			projector := repository.NewProjector(readStore, nil)
-			for _, e := range log {
-				if err := projector.Project(ctx, e.event, e.version, domain.MainBranchID); err != nil {
-					t.Fatalf("Project %s: %v", e.event.EventType(), err)
-				}
+	replay := func(t *testing.T, readStore repository.ReadModelStore) {
+		t.Helper()
+		projector := repository.NewProjector(readStore, nil)
+		for _, e := range log {
+			if err := projector.Project(ctx, e.event, e.version, domain.MainBranchID); err != nil {
+				t.Fatalf("Project %s: %v", e.event.EventType(), err)
 			}
-			assertPartner1(t, readStore, domain.MainBranchID, parents.ID, "Jordan", "Renamed")
-			assertChild(t, readStore, domain.MainBranchID, parents.ID, child.ID, "Kit", "Primary")
-		})
+		}
 	}
-	// A second rebuild of the same log lands on the same rows.
-	for backend, readStore := range fullNameStores(t) {
-		t.Run(backend+" rebuilt", func(t *testing.T) {
-			projector := repository.NewProjector(readStore, nil)
-			for _, e := range log {
-				if err := projector.Project(ctx, e.event, e.version, domain.MainBranchID); err != nil {
-					t.Fatalf("Project %s: %v", e.event.EventType(), err)
+	for backend, open := range fullNameStores() {
+		t.Run(backend, func(t *testing.T) {
+			live := open(t)
+			replay(t, live)
+			assertPartner1(t, live, domain.MainBranchID, parents.ID, "Jordan", "Renamed")
+			assertChild(t, live, domain.MainBranchID, parents.ID, child.ID, "Kit", "Primary")
+
+			// A second rebuild of the same log lands on the same rows.
+			t.Run("rebuilt", func(t *testing.T) {
+				readStore := open(t)
+				replay(t, readStore)
+				wantFamily, _ := live.GetFamily(ctx, domain.MainBranchID, parents.ID)
+				gotFamily, _ := readStore.GetFamily(ctx, domain.MainBranchID, parents.ID)
+				if wantFamily == nil || gotFamily == nil ||
+					gotFamily.Partner1GivenName != wantFamily.Partner1GivenName || gotFamily.Partner1Surname != wantFamily.Partner1Surname ||
+					gotFamily.ChildCount != wantFamily.ChildCount || gotFamily.Version != wantFamily.Version {
+					t.Errorf("rebuilt family = %+v, want %+v", gotFamily, wantFamily)
 				}
-			}
-			live := stores[backend]
-			wantFamily, _ := live.GetFamily(ctx, domain.MainBranchID, parents.ID)
-			gotFamily, _ := readStore.GetFamily(ctx, domain.MainBranchID, parents.ID)
-			if wantFamily == nil || gotFamily == nil ||
-				gotFamily.Partner1GivenName != wantFamily.Partner1GivenName || gotFamily.Partner1Surname != wantFamily.Partner1Surname ||
-				gotFamily.ChildCount != wantFamily.ChildCount || gotFamily.Version != wantFamily.Version {
-				t.Errorf("rebuilt family = %+v, want %+v", gotFamily, wantFamily)
-			}
-			wantChildren, _ := live.GetFamilyChildren(ctx, domain.MainBranchID, parents.ID)
-			gotChildren, _ := readStore.GetFamilyChildren(ctx, domain.MainBranchID, parents.ID)
-			if len(gotChildren) != 1 || len(wantChildren) != 1 || gotChildren[0] != wantChildren[0] {
-				t.Errorf("rebuilt children = %+v, want %+v", gotChildren, wantChildren)
-			}
+				wantChildren, _ := live.GetFamilyChildren(ctx, domain.MainBranchID, parents.ID)
+				gotChildren, _ := readStore.GetFamilyChildren(ctx, domain.MainBranchID, parents.ID)
+				if len(gotChildren) != 1 || len(wantChildren) != 1 || gotChildren[0] != wantChildren[0] {
+					t.Errorf("rebuilt children = %+v, want %+v", gotChildren, wantChildren)
+				}
+			})
 		})
 	}
 }
