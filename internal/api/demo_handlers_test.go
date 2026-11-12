@@ -21,9 +21,11 @@ func setupDemoServer() *api.Server {
 	eventStore := memory.NewEventStore()
 	readStore := memory.NewReadModelStore()
 	snapshotStore := memory.NewSnapshotStore(eventStore)
+	branchStore := memory.NewBranchStore()
 
 	server := api.NewServer(cfg, eventStore, readStore, snapshotStore, nil,
-		api.WithDemoReset(eventStore, readStore, snapshotStore),
+		api.WithBranchStore(branchStore),
+		api.WithDemoReset(eventStore, readStore, snapshotStore, branchStore),
 	)
 
 	// Seed initial demo data (like main.go does)
@@ -101,6 +103,25 @@ func TestResetDemo(t *testing.T) {
 
 	if personsRec.Code != http.StatusOK {
 		t.Errorf("Persons Status = %d, want %d", personsRec.Code, http.StatusOK)
+	}
+
+	// The reset clears the branch registry, so re-seeding leaves exactly the one
+	// demo branch rather than adding a second.
+	branchesReq := httptest.NewRequest(http.MethodGet, "/api/v1/branches", http.NoBody)
+	branchesRec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(branchesRec, branchesReq)
+
+	if branchesRec.Code != http.StatusOK {
+		t.Fatalf("Branches Status = %d, want %d", branchesRec.Code, http.StatusOK)
+	}
+	var branches struct {
+		Total int `json:"total"`
+	}
+	if err := json.Unmarshal(branchesRec.Body.Bytes(), &branches); err != nil {
+		t.Fatalf("Failed to parse branches response: %v", err)
+	}
+	if branches.Total != 1 {
+		t.Errorf("branches total = %d, want 1", branches.Total)
 	}
 }
 

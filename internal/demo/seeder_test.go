@@ -14,21 +14,34 @@ import (
 	"github.com/cacack/my-family/internal/repository/memory"
 )
 
-// seedMemory seeds a fresh in-memory store, as demo mode does.
-func seedMemory(t *testing.T) (*memory.EventStore, *memory.ReadModelStore) {
+// demoStores are the in-memory stores demo mode seeds.
+type demoStores struct {
+	events    *memory.EventStore
+	readModel *memory.ReadModelStore
+	snapshots *memory.SnapshotStore
+	branches  *memory.BranchStore
+}
+
+// seedMemory seeds fresh in-memory stores, wired as the demo-mode server wires them.
+func seedMemory(t *testing.T) demoStores {
 	t.Helper()
 	eventStore := memory.NewEventStore()
-	readStore := memory.NewReadModelStore()
-	cmdHandler := command.NewHandler(eventStore, readStore)
+	s := demoStores{
+		events:    eventStore,
+		readModel: memory.NewReadModelStore(),
+		snapshots: memory.NewSnapshotStore(eventStore),
+		branches:  memory.NewBranchStore(),
+	}
+	cmdHandler := command.NewHandlerWithBranches(s.events, s.readModel, s.branches, s.snapshots)
 
-	if err := SeedDemoData(context.Background(), cmdHandler, readStore); err != nil {
+	if err := SeedDemoData(context.Background(), cmdHandler, s.readModel); err != nil {
 		t.Fatalf("SeedDemoData() failed: %v", err)
 	}
-	return eventStore, readStore
+	return s
 }
 
 func TestSeedDemoData(t *testing.T) {
-	_, readStore := seedMemory(t)
+	readStore := seedMemory(t).readModel
 
 	ctx := context.Background()
 	opts := repository.ListOptions{Limit: 100}
@@ -96,7 +109,8 @@ func TestSeedDemoData(t *testing.T) {
 // TestSeedDemoData_NavSurfaces checks that every global-nav page backed by seeded
 // data has something to render under DEMO_MODE (#495).
 func TestSeedDemoData_NavSurfaces(t *testing.T) {
-	eventStore, readStore := seedMemory(t)
+	stores := seedMemory(t)
+	eventStore, readStore := stores.events, stores.readModel
 	ctx := context.Background()
 	main := domain.MainBranchID
 	browse := query.NewBrowseService(readStore)
@@ -202,6 +216,36 @@ func TestSeedDemoData_NavSurfaces(t *testing.T) {
 		if issues.ErrorCount < 1 || issues.WarningCount < 1 || issues.InfoCount < 1 {
 			t.Errorf("expected a validation issue of every severity, got errors=%d warnings=%d info=%d",
 				issues.ErrorCount, issues.WarningCount, issues.InfoCount)
+		}
+	})
+
+	t.Run("repositories", func(t *testing.T) {
+		res, err := query.NewRepositoryService(readStore).ListRepositories(ctx, query.ListRepositoriesInput{})
+		if err != nil {
+			t.Fatalf("ListRepositories: %v", err)
+		}
+		if res.Total < 1 {
+			t.Error("expected at least 1 repository")
+		}
+	})
+
+	t.Run("snapshots", func(t *testing.T) {
+		snapshots, err := stores.snapshots.List(ctx, main)
+		if err != nil {
+			t.Fatalf("List snapshots: %v", err)
+		}
+		if len(snapshots) < 1 {
+			t.Error("expected at least 1 snapshot")
+		}
+	})
+
+	t.Run("branches", func(t *testing.T) {
+		branches, err := stores.branches.List(ctx)
+		if err != nil {
+			t.Fatalf("List branches: %v", err)
+		}
+		if len(branches) < 1 {
+			t.Error("expected at least 1 research branch")
 		}
 	})
 

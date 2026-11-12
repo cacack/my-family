@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/cacack/my-family/internal/command"
+	"github.com/cacack/my-family/internal/domain"
 	"github.com/cacack/my-family/internal/repository"
 )
 
@@ -44,13 +45,15 @@ type demoCitations struct {
 
 // SeedDemoData populates the application with a multi-generational sample family
 // tree that gives every page in the global nav something to show (#495): 18 persons,
-// 6 families, 1 source with 2 citations, geocoded and burial events, a brick wall,
-// evidence records (analyses, a conflict, a research log, a proof summary), and
-// deliberate data-quality problems (a duplicate pair and validation issues of every
-// severity).
+// 6 families, 1 source with 2 citations, 1 repository, geocoded and burial events,
+// a brick wall, evidence records (analyses, a conflict, a research log, a proof
+// summary), deliberate data-quality problems (a duplicate pair and validation issues
+// of every severity), a snapshot, and a research branch.
 //
 // readStore must be the store cmdHandler projects into: it locates the
 // GEDCOM-imported ancestors and records the brick wall, which is not event-sourced.
+// cmdHandler must be wired with branch and snapshot stores
+// (command.NewHandlerWithBranches), as the API server's handler is.
 func SeedDemoData(ctx context.Context, cmdHandler *command.Handler, readStore repository.ReadModelStore) error {
 	people, err := seedPersons(ctx, cmdHandler)
 	if err != nil {
@@ -75,7 +78,15 @@ func SeedDemoData(ctx context.Context, cmdHandler *command.Handler, readStore re
 		return err
 	}
 
-	return seedDuplicate(ctx, cmdHandler)
+	if err := seedDuplicate(ctx, cmdHandler); err != nil {
+		return err
+	}
+
+	if err := seedRepository(ctx, cmdHandler); err != nil {
+		return err
+	}
+
+	return seedVersionControl(ctx, cmdHandler, heinrichID)
 }
 
 func seedPersons(ctx context.Context, h *command.Handler) (*demoPersons, error) {
@@ -474,6 +485,39 @@ func seedDuplicate(ctx context.Context, h *command.Handler) error {
 		Notes: "[DEMO DATA] Entered from a second record; likely a duplicate of Mary Johnson (b. ABT 1922).", ResearchStatus: "possible",
 	}); err != nil {
 		return fmt.Errorf("create duplicate Mary Johnson: %w", err)
+	}
+	return nil
+}
+
+// seedRepository adds the archive the demo source is held in, for /repositories.
+func seedRepository(ctx context.Context, h *command.Handler) error {
+	if _, err := h.CreateRepository(ctx, command.CreateRepositoryInput{
+		Name:    "Hamburg Staatsarchiv",
+		Address: &domain.Address{City: "Hamburg", Country: "Germany"},
+		Notes:   "[DEMO DATA] State archive holding the Hamburg civil registers.",
+	}); err != nil {
+		return fmt.Errorf("create repository: %w", err)
+	}
+	return nil
+}
+
+// seedVersionControl marks the seeded tree with a snapshot (for /snapshots) and
+// opens a research branch on Heinrich Mueller's unknown parents (for /branches).
+func seedVersionControl(ctx context.Context, h *command.Handler, heinrichID uuid.UUID) error {
+	if _, err := h.CreateSnapshot(ctx, "Demo tree loaded",
+		"[DEMO DATA] The sample tree as seeded; compare against it after making changes."); err != nil {
+		return fmt.Errorf("create snapshot: %w", err)
+	}
+
+	if _, err := h.CreateBranchWithResearch(ctx, command.CreateBranchInput{
+		Name:        "heinrich-mueller-parents",
+		Description: "[DEMO DATA] Exploring who Heinrich Mueller's parents were.",
+		Research: domain.BranchResearch{
+			Hypothesis: "Heinrich Mueller was baptised in Altona rather than Hamburg, so his parents appear in the Altona registers.",
+			Subjects:   []domain.BranchSubject{{Type: domain.BranchSubjectPerson, ID: heinrichID}},
+		},
+	}); err != nil {
+		return fmt.Errorf("create research branch: %w", err)
 	}
 	return nil
 }
