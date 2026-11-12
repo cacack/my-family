@@ -5036,15 +5036,33 @@ func (ss *StrictServer) DeleteNote(ctx context.Context, request DeleteNoteReques
 			}}, nil
 		}
 		if errors.Is(err, repository.ErrConcurrencyConflict) {
-			return DeleteNote409JSONResponse{ConflictJSONResponse{
+			return DeleteNote409JSONResponse{
 				Code:    CodeVersionConflict,
 				Message: "Version conflict",
-			}}, nil
+			}, nil
+		}
+		var inUse *command.NoteInUseError
+		if errors.As(err, &inUse) {
+			return DeleteNote409JSONResponse{
+				Code:    CodeNoteInUse,
+				Message: "Note is referenced by other records and cannot be deleted",
+				Details: optionalDetails(map[string]any{"references": noteReferencesDetail(inUse.References)}),
+			}, nil
 		}
 		return nil, err
 	}
 
 	return DeleteNote204Response{}, nil
+}
+
+// noteReferencesDetail lists the records that point to a note as the
+// {type, id} objects a NOTE_IN_USE body carries.
+func noteReferencesDetail(refs []gedcom.NoteReference) []map[string]string {
+	out := make([]map[string]string, len(refs))
+	for i, r := range refs {
+		out[i] = map[string]string{"type": r.Type, "id": r.ID.String()}
+	}
+	return out
 }
 
 // convertQueryNoteToGenerated converts a query.Note to the generated Note type.

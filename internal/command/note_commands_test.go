@@ -2,12 +2,14 @@ package command_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/google/uuid"
 
 	"github.com/cacack/my-family/internal/command"
 	"github.com/cacack/my-family/internal/domain"
+	"github.com/cacack/my-family/internal/gedcom"
 	"github.com/cacack/my-family/internal/repository"
 	"github.com/cacack/my-family/internal/repository/memory"
 )
@@ -234,6 +236,64 @@ func TestDeleteNote_WrongVersion(t *testing.T) {
 	err := handler.DeleteNote(ctx, createResult.ID, 999, "Should fail")
 	if err != repository.ErrConcurrencyConflict {
 		t.Errorf("DeleteNote should fail with ErrConcurrencyConflict, got: %v", err)
+	}
+}
+
+// TestDeleteNote_RefusedWhileReferenced covers the two ways a record points to
+// a note (#1376): its stored xref as one part of a Notes value, and its id in
+// an association's NoteIDs. A Notes value that only resembles the xref is not
+// a pointer.
+func TestDeleteNote_RefusedWhileReferenced(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	byXref, err := handler.CreateNote(ctx, command.CreateNoteInput{Text: "Shared", GedcomXref: "@N7@"})
+	if err != nil {
+		t.Fatalf("CreateNote: %v", err)
+	}
+	byID, err := handler.CreateNote(ctx, command.CreateNoteInput{Text: "Linked"})
+	if err != nil {
+		t.Fatalf("CreateNote: %v", err)
+	}
+	pointing, err := handler.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ann", Surname: "Lee", Notes: "Some text\n\n@N7@"})
+	if err != nil {
+		t.Fatalf("CreatePerson: %v", err)
+	}
+	other, err := handler.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Bo", Surname: "Lee", Notes: "@N70@\n\nsee @N7@ too"})
+	if err != nil {
+		t.Fatalf("CreatePerson: %v", err)
+	}
+	assoc, err := handler.CreateAssociation(ctx, command.CreateAssociationInput{
+		PersonID: pointing.ID, AssociateID: other.ID, Role: "witness", NoteIDs: []uuid.UUID{byID.ID},
+	})
+	if err != nil {
+		t.Fatalf("CreateAssociation: %v", err)
+	}
+
+	for _, tc := range []struct {
+		noteID uuid.UUID
+		want   gedcom.NoteReference
+	}{
+		{byXref.ID, gedcom.NoteReference{Type: "person", ID: pointing.ID}},
+		{byID.ID, gedcom.NoteReference{Type: "association", ID: assoc.ID}},
+	} {
+		err := handler.DeleteNote(ctx, tc.noteID, 1, "")
+		var inUse *command.NoteInUseError
+		if !errors.As(err, &inUse) || !errors.Is(err, command.ErrNoteInUse) {
+			t.Fatalf("DeleteNote(%s) = %v, want a NoteInUseError", tc.noteID, err)
+		}
+		if len(inUse.References) != 1 || inUse.References[0] != tc.want {
+			t.Errorf("references = %+v, want [%+v]", inUse.References, tc.want)
+		}
+		if note, _ := readStore.GetNote(ctx, domain.MainBranchID, tc.noteID); note == nil {
+			t.Errorf("note %s was deleted despite the refusal", tc.noteID)
+		}
+		stream, err := eventStore.ReadStream(ctx, tc.noteID)
+		if err != nil || len(stream) != 1 {
+			t.Errorf("note stream = %d events (%v), want only its creation", len(stream), err)
+		}
 	}
 }
 

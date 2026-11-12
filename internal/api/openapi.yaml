@@ -3998,6 +3998,10 @@ paths:
     delete:
       operationId: deleteNote
       summary: Delete a note
+      description: |
+        Deletes a note that no record points to. A note that records still
+        point to is refused with a 409 `NOTE_IN_USE`; remove those pointers
+        first.
       tags: [notes]
       parameters:
         - $ref: '#/components/parameters/branchScope'
@@ -4010,7 +4014,17 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          $ref: '#/components/responses/Conflict'
+          description: |
+            The note was not deleted. `code` is `VERSION_CONFLICT` for a stale
+            `version`, or `NOTE_IN_USE` when records still point to the note.
+            A `NOTE_IN_USE` body lists them in `details.references`: an array
+            of `{type, id}`, where `type` is one of `person`, `name`, `family`,
+            `event`, `attribute`, `source`, `repository` or `association`.
+            Nothing was recorded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   # Submitters endpoints
   /submitters:
