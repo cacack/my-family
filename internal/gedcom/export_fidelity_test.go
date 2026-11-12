@@ -18,6 +18,15 @@ import (
 	"github.com/cacack/my-family/internal/repository/memory"
 )
 
+// notePointerTag is the tag a pointer to a shared note is written with at
+// version: GEDCOM 7.0's NOTE takes text, so 7.0 points with SNOTE (#622).
+func notePointerTag(version gcgedcom.Version) string {
+	if version == gcgedcom.Version70 {
+		return "SNOTE"
+	}
+	return "NOTE"
+}
+
 func TestExport_MultipleNotePointers(t *testing.T) {
 	// The importer joins a record's NOTE values into one Notes string, so a
 	// record with two shared-note pointers stores "@N1@\n\n@N2@". Export must
@@ -63,7 +72,12 @@ func TestExport_MultipleNotePointers(t *testing.T) {
 			}
 			output := buf.String()
 			// Three records (person, source, repository) each point at both notes.
-			for _, want := range []string{"1 NOTE @N1@\n", "1 NOTE @N2@\n"} {
+			ptr := notePointerTag(version)
+			// 7.0 has no NOTE record: a plain note is written as SNOTE there.
+			if want := "0 @N1@ " + ptr + " First note\n"; !strings.Contains(output, want) {
+				t.Errorf("export lacks note record %q; got:\n%s", want, output)
+			}
+			for _, want := range []string{"1 " + ptr + " @N1@\n", "1 " + ptr + " @N2@\n"} {
 				if got := strings.Count(output, want); got != 3 {
 					t.Errorf("export has %d %q lines, want 3; got:\n%s", got, want, output)
 				}
@@ -148,10 +162,11 @@ func TestExport_MixedNotePointerAndText(t *testing.T) {
 			output := buf.String()
 			// Person, source and repository each write the pointer with no
 			// subordinate CONT, then the text as its own NOTE.
-			if got := strings.Count(output, "1 NOTE @N1@\n1 NOTE some text\n"); got != 3 {
+			ptr := notePointerTag(version)
+			if got := strings.Count(output, "1 "+ptr+" @N1@\n1 NOTE some text\n"); got != 3 {
 				t.Errorf("export has %d pointer+text NOTE pairs, want 3; got:\n%s", got, output)
 			}
-			if strings.Contains(output, "1 NOTE @N1@\n2 CONT") {
+			if strings.Contains(output, "1 "+ptr+" @N1@\n2 CONT") {
 				t.Errorf("a note pointer must not carry CONT lines; got:\n%s", output)
 			}
 			if !strings.Contains(output, "1 NOTE plain text\n") {
@@ -544,5 +559,74 @@ func TestNestedNotes_RoundTrip(t *testing.T) {
 	}
 	if !strings.Contains(output, "2 NOTE @N3@\n") {
 		t.Errorf("the association should keep its NOTE @N3@; got:\n%s", output)
+	}
+}
+
+func TestExport_ChildPedigreeRoundTrips(t *testing.T) {
+	// An adopted or foster child is exported with a FAMC carrying PEDI, so
+	// re-import keeps the relationship; a biological child stays linked by
+	// CHIL alone (#622).
+	ctx := context.Background()
+	readStore := memory.NewReadModelStore()
+	father, adopted, foster, born := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	for id, name := range map[uuid.UUID]string{father: "Father", adopted: "Adopted", foster: "Foster", born: "Born"} {
+		if err := readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
+			ID: id, GivenName: name, Surname: "Smith", FullName: name + " Smith",
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	familyID := uuid.New()
+	if err := readStore.SaveFamily(ctx, domain.MainBranchID, &repository.FamilyReadModel{ID: familyID, Partner1ID: &father}); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]domain.ChildRelationType{"Adopted": domain.ChildAdopted, "Foster": domain.ChildFoster, "Born": domain.ChildBiological}
+	for id, rel := range map[uuid.UUID]domain.ChildRelationType{adopted: domain.ChildAdopted, foster: domain.ChildFoster, born: domain.ChildBiological} {
+		if err := readStore.SaveFamilyChild(ctx, domain.MainBranchID, &repository.FamilyChildReadModel{
+			FamilyID: familyID, PersonID: id, RelationshipType: rel,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	for _, tc := range []struct {
+		version         gcgedcom.Version
+		adoptedPedigree string
+	}{
+		{gcgedcom.Version551, "adopted"},
+		{gcgedcom.Version70, "ADOPTED"},
+	} {
+		t.Run(string(tc.version), func(t *testing.T) {
+			buf := &bytes.Buffer{}
+			if _, err := gedcom.NewExporter(readStore).ExportWithOptions(ctx, buf, gedcom.ExportOptions{TargetVersion: tc.version}); err != nil {
+				t.Fatalf("Export failed: %v", err)
+			}
+			output := buf.String()
+			if !strings.Contains(output, "1 FAMC @F1@\n2 PEDI "+tc.adoptedPedigree+"\n") {
+				t.Errorf("export lacks the adopted child's FAMC with PEDI %s; got:\n%s", tc.adoptedPedigree, output)
+			}
+			if got := strings.Count(output, "1 FAMC "); got != 2 {
+				t.Errorf("export has %d FAMC lines, want 2 (adopted and foster only); got:\n%s", got, output)
+			}
+
+			_, persons, families, _, _, _, _, _, _, _, _, _, _, err := gedcom.NewImporter().Import(ctx, strings.NewReader(output))
+			if err != nil {
+				t.Fatalf("Re-import failed: %v", err)
+			}
+			if len(families) != 1 {
+				t.Fatalf("re-imported %d families, want 1", len(families))
+			}
+			names := map[uuid.UUID]string{}
+			for _, p := range persons {
+				names[p.ID] = p.GivenName
+			}
+			got := map[string]domain.ChildRelationType{}
+			for i, id := range families[0].ChildIDs {
+				got[names[id]] = families[0].ChildRelTypes[i]
+			}
+			if !maps.Equal(got, want) {
+				t.Errorf("re-imported child relationships = %v, want %v", got, want)
+			}
+		})
 	}
 }
