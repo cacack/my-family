@@ -204,6 +204,48 @@ jobs:
       - name: Build
         run: go build ./...
 
+  # Go lint. .golangci.yml builds with the `dev` tag, which swaps the
+  # `//go:embed all:dist` file for embed_dev.go, so no internal/web/dist is needed.
+  lint:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            github.com:443
+            api.github.com:443
+            codeload.github.com:443
+            objects.githubusercontent.com:443
+            release-assets.githubusercontent.com:443
+            raw.githubusercontent.com:443
+            *.actions.githubusercontent.com:443
+            *.blob.core.windows.net:443
+            actions-results-receiver-production.githubapp.com:443
+            proxy.golang.org:443
+            sum.golang.org:443
+            storage.googleapis.com:443
+            dl.google.com:443
+            golangci-lint.run:443
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26.10'
+          cache: true
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          # Keep in sync with GOLANGCI_LINT_VERSION in the Makefile.
+          version: v2.14.0
+
   # Frontend tests and checks
   frontend:
     runs-on: ubuntu-latest
@@ -659,7 +701,7 @@ jobs:
   ci-success:
     name: CI Success
     runs-on: ubuntu-latest
-    needs: [backend, frontend, e2e, security, integration, docker-smoke-test, dependency-review]
+    needs: [backend, lint, frontend, e2e, security, integration, docker-smoke-test, dependency-review]
     if: always()
     steps:
       - name: Harden Runner
