@@ -101,7 +101,7 @@ func TestUpdateCommands_RejectInvalidResult(t *testing.T) {
 		if err != nil {
 			t.Fatalf("CreateLDSOrdinance: %v", err)
 		}
-		_, err = h.UpdateLDSOrdinance(ctx, command.UpdateLDSOrdinanceInput{ID: created.ID, Temple: ptr(long(11)), Version: created.Version})
+		_, err = h.UpdateLDSOrdinance(ctx, command.UpdateLDSOrdinanceInput{ID: created.ID, Temple: command.Set(long(11)), Version: created.Version})
 		return updateFixture[struct{}]{events: events, stream: created.ID, version: created.Version}, err
 	})
 
@@ -115,7 +115,7 @@ func TestUpdateCommands_RejectInvalidResult(t *testing.T) {
 		if err != nil {
 			t.Fatalf("CreateLDSOrdinance: %v", err)
 		}
-		_, err = h.UpdateLDSOrdinance(ctx, command.UpdateLDSOrdinanceInput{ID: created.ID, Status: ptr("NOPE"), Version: created.Version})
+		_, err = h.UpdateLDSOrdinance(ctx, command.UpdateLDSOrdinanceInput{ID: created.ID, Status: command.Set("NOPE"), Version: created.Version})
 		return updateFixture[struct{}]{events: events, stream: created.ID, version: created.Version}, err
 	})
 
@@ -145,7 +145,7 @@ func TestUpdateCommands_RejectInvalidResult(t *testing.T) {
 		return association(t, func(in *command.UpdateAssociationInput) { in.Role = ptr(long(101)) })
 	})
 	run(t, "association over-long phrase", func(t *testing.T) (updateFixture[struct{}], error) {
-		return association(t, func(in *command.UpdateAssociationInput) { in.Phrase = ptr(long(501)) })
+		return association(t, func(in *command.UpdateAssociationInput) { in.Phrase = command.Set(long(501)) })
 	})
 }
 
@@ -174,7 +174,7 @@ func TestUpdateCommands_ImportedNameDoesNotBlockUnrelatedEdit(t *testing.T) {
 	if err != nil || len(repos) != 1 || repos[0].Name != "" {
 		t.Fatalf("imported repositories = %+v, err %v; want one with an empty name", repos, err)
 	}
-	if _, err := h.UpdateRepository(ctx, command.UpdateRepositoryInput{ID: repos[0].ID, Notes: ptr("seen"), Version: repos[0].Version}); err != nil {
+	if _, err := h.UpdateRepository(ctx, command.UpdateRepositoryInput{ID: repos[0].ID, Notes: command.Set("seen"), Version: repos[0].Version}); err != nil {
 		t.Errorf("notes-only update of an imported repository: %v", err)
 	}
 
@@ -182,7 +182,7 @@ func TestUpdateCommands_ImportedNameDoesNotBlockUnrelatedEdit(t *testing.T) {
 	if err != nil || len(subs) != 1 || subs[0].Name != "" {
 		t.Fatalf("imported submitters = %+v, err %v; want one with an empty name", subs, err)
 	}
-	if _, err := h.UpdateSubmitter(ctx, command.UpdateSubmitterInput{ID: subs[0].ID, Phone: []string{"555-0100"}, Version: subs[0].Version}); err != nil {
+	if _, err := h.UpdateSubmitter(ctx, command.UpdateSubmitterInput{ID: subs[0].ID, Phone: command.Set([]string{"555-0100"}), Version: subs[0].Version}); err != nil {
 		t.Errorf("phone-only update of an imported submitter: %v", err)
 	}
 }
@@ -239,14 +239,14 @@ func TestUpdateCommands_ImportedAssociationDoesNotBlockUnrelatedEdit(t *testing.
 	} {
 		t.Run(name+" notes-only", func(t *testing.T) {
 			h, events, a := imported(t, match)
-			if _, err := h.UpdateAssociation(context.Background(), command.UpdateAssociationInput{ID: a.ID, Notes: ptr("seen"), Version: a.Version}); err != nil {
+			if _, err := h.UpdateAssociation(context.Background(), command.UpdateAssociationInput{ID: a.ID, Notes: command.Set("seen"), Version: a.Version}); err != nil {
 				t.Fatalf("notes-only update: %v", err)
 			}
 			checkRecorded(t, events, a.ID, int(a.Version), []string{"notes"})
 		})
 		t.Run(name+" note-IDs-only", func(t *testing.T) {
 			h, events, a := imported(t, match)
-			if _, err := h.UpdateAssociation(context.Background(), command.UpdateAssociationInput{ID: a.ID, NoteIDs: ptr([]uuid.UUID{uuid.New()}), Version: a.Version}); err != nil {
+			if _, err := h.UpdateAssociation(context.Background(), command.UpdateAssociationInput{ID: a.ID, NoteIDs: command.Set([]uuid.UUID{uuid.New()}), Version: a.Version}); err != nil {
 				t.Fatalf("note-IDs-only update: %v", err)
 			}
 			checkRecorded(t, events, a.ID, int(a.Version), []string{"note_ids"})
@@ -264,11 +264,11 @@ func TestUpdateCommands_ImportedAssociationDoesNotBlockUnrelatedEdit(t *testing.
 	for name, edit := range map[string]func(*command.UpdateAssociationInput){
 		"invalid role":   func(in *command.UpdateAssociationInput) { in.Role = ptr(long(101)) },
 		"empty role":     func(in *command.UpdateAssociationInput) { in.Role = ptr("") },
-		"invalid phrase": func(in *command.UpdateAssociationInput) { in.Phrase = ptr(long(501)) },
+		"invalid phrase": func(in *command.UpdateAssociationInput) { in.Phrase = command.Set(long(501)) },
 	} {
 		t.Run("self-reference "+name+" refused", func(t *testing.T) {
 			h, events, a := imported(t, selfRef)
-			input := command.UpdateAssociationInput{ID: a.ID, Notes: ptr("seen"), Version: a.Version}
+			input := command.UpdateAssociationInput{ID: a.ID, Notes: command.Set("seen"), Version: a.Version}
 			edit(&input)
 			_, err := h.UpdateAssociation(context.Background(), input)
 			if !errors.Is(err, command.ErrInvalidInput) {

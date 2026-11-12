@@ -67,11 +67,11 @@ func TestUpdatePerson_RecordsOnlyChangedFields(t *testing.T) {
 		want []string
 	}{
 		{"unchanged form", func(*command.UpdatePersonInput) {}, nil},
-		{"birth place only", func(in *command.UpdatePersonInput) { in.BirthPlace = ptr("Boston") }, []string{"birth_place"}},
-		{"birth date only", func(in *command.UpdatePersonInput) { in.BirthDate = ptr("1876") }, []string{"birth_date"}},
+		{"birth place only", func(in *command.UpdatePersonInput) { in.BirthPlace = command.Set("Boston") }, []string{"birth_place"}},
+		{"birth date only", func(in *command.UpdatePersonInput) { in.BirthDate = command.Set("1876") }, []string{"birth_date"}},
 		{"gender and status", func(in *command.UpdatePersonInput) {
-			in.Gender = ptr("male")
-			in.ResearchStatus = ptr("certain")
+			in.Gender = command.Set("male")
+			in.ResearchStatus = command.Set("certain")
 		}, []string{"gender", "research_status"}},
 	}
 	for _, tt := range tests {
@@ -88,9 +88,9 @@ func TestUpdatePerson_RecordsOnlyChangedFields(t *testing.T) {
 				t.Fatalf("CreatePerson: %v", err)
 			}
 			input := command.UpdatePersonInput{
-				ID: created.ID, GivenName: ptr("Ada"), Surname: ptr("Lovelace"), Gender: ptr("female"),
-				BirthDate: ptr("1875"), BirthPlace: ptr("London"), DeathDate: ptr("1952"), DeathPlace: ptr("Leeds"),
-				Notes: ptr("notes"), ResearchStatus: ptr("probable"), Version: created.Version,
+				ID: created.ID, GivenName: ptr("Ada"), Surname: command.Set("Lovelace"), Gender: command.Set("female"),
+				BirthDate: command.Set("1875"), BirthPlace: command.Set("London"), DeathDate: command.Set("1952"), DeathPlace: command.Set("Leeds"),
+				Notes: command.Set("notes"), ResearchStatus: command.Set("probable"), Version: created.Version,
 			}
 			tt.edit(&input)
 			if _, err := handler.UpdatePerson(ctx, input); err != nil {
@@ -108,19 +108,19 @@ func TestUpdateFamily_RecordsOnlyChangedFields(t *testing.T) {
 		want []string
 	}{
 		{"unchanged form", func(*command.UpdateFamilyInput, *familyFixture) {}, nil},
-		{"marriage place only", func(in *command.UpdateFamilyInput, _ *familyFixture) { in.MarriagePlace = ptr("York") }, []string{"marriage_place"}},
-		{"partner only", func(in *command.UpdateFamilyInput, f *familyFixture) { in.Partner2ID = &f.p3 }, []string{"partner2_id"}},
+		{"marriage place only", func(in *command.UpdateFamilyInput, _ *familyFixture) { in.MarriagePlace = command.Set("York") }, []string{"marriage_place"}},
+		{"partner only", func(in *command.UpdateFamilyInput, f *familyFixture) { in.Partner2ID = command.Set(f.p3) }, []string{"partner2_id"}},
 		{"type and date", func(in *command.UpdateFamilyInput, _ *familyFixture) {
-			in.RelationshipType = ptr("partnership")
-			in.MarriageDate = ptr("")
+			in.RelationshipType = command.Set("partnership")
+			in.MarriageDate = command.Set("")
 		}, []string{"marriage_date", "relationship_type"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			f := newFamilyFixture(t)
 			input := command.UpdateFamilyInput{
-				ID: f.familyID, Partner1ID: &f.p1, Partner2ID: &f.p2, RelationshipType: ptr("marriage"),
-				MarriageDate: ptr("1 JUN 1875"), MarriagePlace: ptr(""), Version: f.version,
+				ID: f.familyID, Partner1ID: command.Set(f.p1), Partner2ID: command.Set(f.p2), RelationshipType: command.Set("marriage"),
+				MarriageDate: command.Set("1 JUN 1875"), MarriagePlace: command.Set(""), Version: f.version,
 			}
 			tt.edit(&input, f)
 			if _, err := f.handler.UpdateFamily(f.ctx, input); err != nil {
@@ -138,14 +138,14 @@ func TestUpdateFamily_RecordsOnlyChangedFields(t *testing.T) {
 func TestUpdateFamily_StaleVersionUnchangedForm(t *testing.T) {
 	f := newFamilyFixture(t)
 	bumped, err := f.handler.UpdateFamily(f.ctx, command.UpdateFamilyInput{
-		ID: f.familyID, MarriagePlace: ptr("York"), Version: f.version,
+		ID: f.familyID, MarriagePlace: command.Set("York"), Version: f.version,
 	})
 	if err != nil {
 		t.Fatalf("UpdateFamily: %v", err)
 	}
 	_, err = f.handler.UpdateFamily(f.ctx, command.UpdateFamilyInput{
-		ID: f.familyID, Partner1ID: &f.p1, Partner2ID: &f.p2, RelationshipType: ptr("marriage"),
-		MarriageDate: ptr("1 JUN 1875"), MarriagePlace: ptr("York"), Version: f.version,
+		ID: f.familyID, Partner1ID: command.Set(f.p1), Partner2ID: command.Set(f.p2), RelationshipType: command.Set("marriage"),
+		MarriageDate: command.Set("1 JUN 1875"), MarriagePlace: command.Set("York"), Version: f.version,
 	})
 	if !errors.Is(err, repository.ErrConcurrencyConflict) {
 		t.Fatalf("stale unchanged update: err = %v, want ErrConcurrencyConflict", err)
@@ -163,7 +163,7 @@ func TestUpdateSource_RecordsOnlyChangedFields(t *testing.T) {
 		{"title only", func(in *command.UpdateSourceInput) { in.Title = ptr("1881 Census") }, []string{"title"}},
 		{"type and date", func(in *command.UpdateSourceInput) {
 			in.SourceType = ptr("book")
-			in.PublishDate = ptr("1882")
+			in.PublishDate = command.Set("1882")
 		}, []string{"publish_date", "source_type"}},
 	}
 	for _, tt := range tests {
@@ -180,10 +180,10 @@ func TestUpdateSource_RecordsOnlyChangedFields(t *testing.T) {
 				t.Fatalf("CreateSource: %v", err)
 			}
 			input := command.UpdateSourceInput{
-				ID: created.ID, SourceType: ptr("census"), Title: ptr("1880 Census"), Author: ptr("Bureau"),
-				Publisher: ptr("GPO"), PublishDate: ptr("1881"), URL: ptr("https://example.org"),
-				RepositoryName: ptr("Archive"), CollectionName: ptr("Population"), CallNumber: ptr("T9"),
-				Notes: ptr("notes"), Version: created.Version,
+				ID: created.ID, SourceType: ptr("census"), Title: ptr("1880 Census"), Author: command.Set("Bureau"),
+				Publisher: command.Set("GPO"), PublishDate: command.Set("1881"), URL: command.Set("https://example.org"),
+				RepositoryName: command.Set("Archive"), CollectionName: command.Set("Population"), CallNumber: command.Set("T9"),
+				Notes: command.Set("notes"), Version: created.Version,
 			}
 			tt.edit(&input)
 			if _, err := handler.UpdateSource(ctx, input); err != nil {
@@ -202,9 +202,9 @@ func TestUpdateRepository_RecordsOnlyChangedFields(t *testing.T) {
 		want    []string
 	}{
 		{"unchanged form", &domain.Address{City: "Salt Lake City"}, func(*command.UpdateRepositoryInput) {}, nil},
-		{"blank address on none", nil, func(in *command.UpdateRepositoryInput) { in.Address = &domain.Address{} }, nil},
+		{"blank address on none", nil, func(in *command.UpdateRepositoryInput) { in.Address = command.Set(domain.Address{}) }, nil},
 		{"address only", &domain.Address{City: "Salt Lake City"}, func(in *command.UpdateRepositoryInput) {
-			in.Address = &domain.Address{City: "Provo"}
+			in.Address = command.Set(domain.Address{City: "Provo"})
 		}, []string{"address"}},
 		{"name only", &domain.Address{City: "Salt Lake City"}, func(in *command.UpdateRepositoryInput) { in.Name = ptr("FHL") }, []string{"name"}},
 	}
@@ -220,11 +220,11 @@ func TestUpdateRepository_RecordsOnlyChangedFields(t *testing.T) {
 				t.Fatalf("CreateRepository: %v", err)
 			}
 			input := command.UpdateRepositoryInput{
-				ID: created.ID, Name: ptr("Family History Library"), Notes: ptr("notes"), Version: created.Version,
+				ID: created.ID, Name: ptr("Family History Library"), Notes: command.Set("notes"), Version: created.Version,
 			}
 			if tt.address != nil {
 				addr := *tt.address
-				input.Address = &addr
+				input.Address = command.Set(addr)
 			}
 			tt.edit(&input)
 			if _, err := handler.UpdateRepository(ctx, input); err != nil {

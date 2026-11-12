@@ -199,7 +199,7 @@ func repointThenDelete(t *testing.T, touchFirst bool) (evidenceFixture, uuid.UUI
 			t.Fatalf("GetPerson = %+v (err=%v)", p, err)
 		}
 		notes := "Touched first"
-		if _, err := scoped.UpdatePerson(ctx, command.UpdatePersonInput{ID: e.person, Notes: &notes, Version: p.Version}); err != nil {
+		if _, err := scoped.UpdatePerson(ctx, command.UpdatePersonInput{ID: e.person, Notes: command.Set(notes), Version: p.Version}); err != nil {
 			t.Fatalf("UpdatePerson failed: %v", err)
 		}
 	}

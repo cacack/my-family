@@ -71,10 +71,10 @@ func (h *Handler) CreateRepository(ctx context.Context, input CreateRepositoryIn
 // UpdateRepositoryInput contains the data for updating a repository.
 type UpdateRepositoryInput struct {
 	ID         uuid.UUID
-	Name       *string
-	Address    *domain.Address
-	Notes      *string
-	GedcomXref *string
+	Name       *string // required: cannot be cleared
+	Address    Patch[domain.Address]
+	Notes      Patch[string]
+	GedcomXref Patch[string]
 	Version    int64 // Required for optimistic locking
 }
 
@@ -100,9 +100,9 @@ func (h *Handler) UpdateRepository(ctx context.Context, input UpdateRepositoryIn
 	}
 
 	// Build changes map. Keys must match the projection's RepositoryUpdated
-	// handler exactly: name, address (*domain.Address), notes, gedcom_xref.
-	// A field equal to its current value is not a change, so only differing
-	// fields are recorded.
+	// handler exactly: name, address (*domain.Address, nil when cleared),
+	// notes, gedcom_xref. A field equal to its current value is not a change,
+	// so only differing fields are recorded.
 	changes := make(map[string]any)
 
 	if input.Name != nil && *input.Name != current.Name {
@@ -114,23 +114,15 @@ func (h *Handler) UpdateRepository(ctx context.Context, input UpdateRepositoryIn
 		}
 		changes["name"] = *input.Name
 	}
-	// A repository with no address compares as an empty one, so a form that
-	// sends a blank address for it records no change.
-	var currentAddress domain.Address
-	if current.Address != nil {
-		currentAddress = *current.Address
+	recordAddressChange(changes, input.Address, current.Address)
+	if notes, ok := input.Notes.Change(); ok && notes != current.Notes {
+		changes["notes"] = notes
 	}
-	if input.Address != nil && *input.Address != currentAddress {
-		changes["address"] = input.Address
-	}
-	if input.Notes != nil && *input.Notes != current.Notes {
-		changes["notes"] = *input.Notes
-	}
-	if input.GedcomXref != nil && *input.GedcomXref != current.GedcomXref {
-		if err := validateGedcomXref(*input.GedcomXref); err != nil {
+	if xref, ok := input.GedcomXref.Change(); ok && xref != current.GedcomXref {
+		if err := validateGedcomXref(xref); err != nil {
 			return nil, err
 		}
-		changes["gedcom_xref"] = *input.GedcomXref
+		changes["gedcom_xref"] = xref
 	}
 
 	// No changes?
@@ -148,6 +140,29 @@ func (h *Handler) UpdateRepository(ctx context.Context, input UpdateRepositoryIn
 	}
 
 	return &UpdateRepositoryResult{Version: version}, nil
+}
+
+// recordAddressChange records under "address" a changed address, or nil when
+// the update clears an address that is set. A missing address compares as an
+// empty one, so a form that sends a blank address for it records no change.
+func recordAddressChange(changes map[string]any, input Patch[domain.Address], current *domain.Address) {
+	if input.Cleared() {
+		if current != nil {
+			changes["address"] = nil
+		}
+		return
+	}
+	addr, ok := input.Value()
+	if !ok {
+		return
+	}
+	var currentAddress domain.Address
+	if current != nil {
+		currentAddress = *current
+	}
+	if addr != currentAddress {
+		changes["address"] = &addr
+	}
 }
 
 // DeleteRepository deletes a repository record.

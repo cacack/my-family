@@ -595,7 +595,7 @@ func TestResumeMerge_SubjectDeleteOntoMainEditOfLandedLogIsPending(t *testing.T)
 	}
 	notes := "Checked the index too"
 	if _, err := e.f.handler.UpdateResearchLog(ctx, command.UpdateResearchLogInput{
-		ID: logID, Notes: &notes, Version: landed.Version,
+		ID: logID, Notes: command.Set(notes), Version: landed.Version,
 	}); err != nil {
 		t.Fatalf("main UpdateResearchLog failed: %v", err)
 	}

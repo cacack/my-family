@@ -235,7 +235,7 @@ func TestUpdateEvidenceAnalysis(t *testing.T) {
 			name: "update notes",
 			input: command.UpdateEvidenceAnalysisInput{
 				ID:      createResult.ID,
-				Notes:   strPtr("Updated notes"),
+				Notes:   command.Set("Updated notes"),
 				Version: 2,
 			},
 			wantErr: false,
@@ -253,7 +253,7 @@ func TestUpdateEvidenceAnalysis(t *testing.T) {
 			name: "invalid research status",
 			input: command.UpdateEvidenceAnalysisInput{
 				ID:             createResult.ID,
-				ResearchStatus: strPtr("bad_status"),
+				ResearchStatus: command.Set("bad_status"),
 				Version:        3,
 			},
 			wantErr: true,
@@ -621,7 +621,7 @@ func TestUpdateResearchLog(t *testing.T) {
 			name: "update notes",
 			input: command.UpdateResearchLogInput{
 				ID:      createResult.ID,
-				Notes:   strPtr("Updated notes"),
+				Notes:   command.Set("Updated notes"),
 				Version: createResult.Version,
 			},
 			wantErr: false,
@@ -639,7 +639,7 @@ func TestUpdateResearchLog(t *testing.T) {
 			name: "wrong version",
 			input: command.UpdateResearchLogInput{
 				ID:      createResult.ID,
-				Notes:   strPtr("Should fail"),
+				Notes:   command.Set("Should fail"),
 				Version: 999,
 			},
 			wantErr: true,
@@ -696,7 +696,7 @@ func TestUpdateResearchLog_NotFound(t *testing.T) {
 
 	_, err := handler.UpdateResearchLog(ctx, command.UpdateResearchLogInput{
 		ID:      uuid.New(),
-		Notes:   strPtr("Should fail"),
+		Notes:   command.Set("Should fail"),
 		Version: 1,
 	})
 	if err != command.ErrResearchLogNotFound {
@@ -890,7 +890,7 @@ func TestUpdateProofSummary(t *testing.T) {
 			name: "update research status",
 			input: command.UpdateProofSummaryInput{
 				ID:             createResult.ID,
-				ResearchStatus: strPtr("certain"),
+				ResearchStatus: command.Set("certain"),
 				Version:        2,
 			},
 			wantErr: false,
@@ -1040,10 +1040,10 @@ func TestUpdateEvidenceAnalysis_AllFields(t *testing.T) {
 		ID:             createResult.ID,
 		FactType:       strPtr("person_death"),
 		SubjectID:      &newSubjectID,
-		CitationIDs:    newCitationIDs,
+		CitationIDs:    command.Set(newCitationIDs),
 		Conclusion:     strPtr("Died in 1920"),
-		ResearchStatus: strPtr("certain"),
-		Notes:          strPtr("Updated notes"),
+		ResearchStatus: command.Set("certain"),
+		Notes:          command.Set("Updated notes"),
 		Version:        createResult.Version,
 	})
 	if err != nil {
@@ -1088,7 +1088,7 @@ func TestUpdateResearchLog_AllFields(t *testing.T) {
 		Repository:        strPtr("County Clerk"),
 		SearchDescription: strPtr("Marriage records"),
 		Outcome:           strPtr("not_found"),
-		Notes:             strPtr("Searched all years"),
+		Notes:             command.Set("Searched all years"),
 		SearchDate:        &newSearchDate,
 		Version:           createResult.Version,
 	})
@@ -1130,8 +1130,8 @@ func TestUpdateProofSummary_AllFields(t *testing.T) {
 		SubjectID:      &newSubjectID,
 		Conclusion:     strPtr("Died in 1920"),
 		Argument:       strPtr("Death certificate"),
-		AnalysisIDs:    newAnalysisIDs,
-		ResearchStatus: strPtr("certain"),
+		AnalysisIDs:    command.Set(newAnalysisIDs),
+		ResearchStatus: command.Set("certain"),
 		Version:        createResult.Version,
 	})
 	if err != nil {

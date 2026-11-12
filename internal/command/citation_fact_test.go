@@ -89,7 +89,7 @@ func TestCreateCitation_FactID(t *testing.T) {
 
 	// A page edit keeps the link; a move to another owner drops it.
 	page := "p. 3"
-	updated, err := handler.UpdateCitation(ctx, command.UpdateCitationInput{ID: created.ID, Page: &page, Version: created.Version})
+	updated, err := handler.UpdateCitation(ctx, command.UpdateCitationInput{ID: created.ID, Page: command.Set(page), Version: created.Version})
 	if err != nil {
 		t.Fatalf("update page: %v", err)
 	}

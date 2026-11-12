@@ -5800,6 +5800,9 @@ components:
           $ref: '#/components/schemas/ResearchStatus'
 
     PersonUpdate:
+      description: >-
+        Partial update. A field left out stays unchanged; an optional
+        (nullable) field sent as null is cleared. Required fields reject null.
       type: object
       required: [version]
       properties:
@@ -5808,22 +5811,34 @@ components:
           minLength: 1
           maxLength: 100
         surname:
+          nullable: true
           type: string
           maxLength: 100
         gender:
-          $ref: '#/components/schemas/Gender'
+          allOf:
+            - $ref: '#/components/schemas/Gender'
+          nullable: true
         birth_date:
-          $ref: '#/components/schemas/DateInput'
+          allOf:
+            - $ref: '#/components/schemas/DateInput'
+          nullable: true
         birth_place:
+          nullable: true
           type: string
         death_date:
-          $ref: '#/components/schemas/DateInput'
+          allOf:
+            - $ref: '#/components/schemas/DateInput'
+          nullable: true
         death_place:
+          nullable: true
           type: string
         notes:
+          nullable: true
           type: string
         research_status:
-          $ref: '#/components/schemas/ResearchStatus'
+          allOf:
+            - $ref: '#/components/schemas/ResearchStatus'
+          nullable: true
         version:
           type: integer
           format: int64
@@ -5973,32 +5988,50 @@ components:
           type: string
 
     FamilyUpdate:
+      description: >-
+        Partial update. A field left out stays unchanged; an optional
+        (nullable) field sent as null is cleared. Required fields reject null.
       type: object
       required: [version]
       properties:
         partner1_id:
+          nullable: true
           type: string
           format: uuid
-          description: Set partner 1 to this person. Omit to leave partner 1 unchanged.
+          description: >-
+            Set partner 1 to this person, or null to remove partner 1 from the
+            family. Omit to leave partner 1 unchanged.
         partner2_id:
+          nullable: true
           type: string
           format: uuid
-          description: Set partner 2 to this person. Omit to leave partner 2 unchanged.
+          description: >-
+            Set partner 2 to this person, or null to remove partner 2 from the
+            family. Omit to leave partner 2 unchanged.
         clear_partner1:
           type: boolean
           default: false
+          deprecated: true
           description: >-
-            Remove partner 1 from the family. Cannot be combined with partner1_id.
+            Deprecated: send `partner1_id: null`. Remove partner 1 from the
+            family. Cannot be combined with a partner1_id value.
         clear_partner2:
           type: boolean
           default: false
+          deprecated: true
           description: >-
-            Remove partner 2 from the family. Cannot be combined with partner2_id.
+            Deprecated: send `partner2_id: null`. Remove partner 2 from the
+            family. Cannot be combined with a partner2_id value.
         relationship_type:
-          $ref: '#/components/schemas/RelationType'
+          allOf:
+            - $ref: '#/components/schemas/RelationType'
+          nullable: true
         marriage_date:
-          $ref: '#/components/schemas/DateInput'
+          allOf:
+            - $ref: '#/components/schemas/DateInput'
+          nullable: true
         marriage_place:
+          nullable: true
           type: string
         version:
           type: integer
@@ -6794,6 +6827,9 @@ components:
           description: Total number of media items
 
     MediaUpdate:
+      description: >-
+        Partial update. A field left out stays unchanged; an optional
+        (nullable) field sent as null is cleared. Required fields reject null.
       type: object
       required: [version]
       properties:
@@ -6801,16 +6837,21 @@ components:
           type: string
           maxLength: 500
         description:
+          nullable: true
           type: string
         media_type:
           $ref: '#/components/schemas/MediaType'
         crop_left:
+          nullable: true
           type: integer
         crop_top:
+          nullable: true
           type: integer
         crop_width:
+          nullable: true
           type: integer
         crop_height:
+          nullable: true
           type: integer
         version:
           type: integer
@@ -7056,6 +7097,9 @@ components:
           type: string
 
     SourceUpdate:
+      description: >-
+        Partial update. A field left out stays unchanged; an optional
+        (nullable) field sent as null is cleared. Required fields reject null.
       type: object
       required: [version]
       properties:
@@ -7064,21 +7108,30 @@ components:
         title:
           type: string
         author:
+          nullable: true
           type: string
         publisher:
+          nullable: true
           type: string
         publish_date:
-          $ref: '#/components/schemas/DateInput'
+          allOf:
+            - $ref: '#/components/schemas/DateInput'
+          nullable: true
         url:
+          nullable: true
           type: string
           format: uri
         repository_name:
+          nullable: true
           type: string
         collection_name:
+          nullable: true
           type: string
         call_number:
+          nullable: true
           type: string
         notes:
+          nullable: true
           type: string
         version:
           type: integer
@@ -7196,6 +7249,9 @@ components:
           description: Notes on this name (GEDCOM NAME.NOTE). NOTE pointers are kept as their xref.
 
     PersonNameUpdate:
+      description: >-
+        Partial update. A field left out stays unchanged; an optional
+        (nullable) field sent as null is cleared. Required fields reject null.
       type: object
       properties:
         given_name:
@@ -7206,18 +7262,23 @@ components:
           type: string
           maxLength: 100
         name_prefix:
+          nullable: true
           type: string
         name_suffix:
+          nullable: true
           type: string
         surname_prefix:
+          nullable: true
           type: string
         nickname:
+          nullable: true
           type: string
         name_type:
           $ref: '#/components/schemas/NameType'
         is_primary:
           type: boolean
         notes:
+          nullable: true
           type: string
           description: Notes on this name (GEDCOM NAME.NOTE). NOTE pointers are kept as their xref.
 
@@ -7342,26 +7403,41 @@ components:
           pattern: '^(@[^@\s]+@)?$'
 
     CitationUpdate:
+      description: >-
+        Partial update. A field left out stays unchanged; an optional
+        (nullable) field sent as null is cleared. Required fields reject null.
       type: object
       required: [version]
       properties:
         page:
+          nullable: true
           type: string
         volume:
+          nullable: true
           type: string
         source_quality:
-          $ref: '#/components/schemas/SourceQuality'
+          allOf:
+            - $ref: '#/components/schemas/SourceQuality'
+          nullable: true
         informant_type:
-          $ref: '#/components/schemas/InformantType'
+          allOf:
+            - $ref: '#/components/schemas/InformantType'
+          nullable: true
         evidence_type:
-          $ref: '#/components/schemas/EvidenceType'
+          allOf:
+            - $ref: '#/components/schemas/EvidenceType'
+          nullable: true
         quoted_text:
+          nullable: true
           type: string
         analysis:
+          nullable: true
           type: string
         template_id:
+          nullable: true
           type: string
         fields:
+          nullable: true
           type: object
           additionalProperties:
             type: string
@@ -8565,15 +8641,21 @@ components:
     BranchUpdate:
       type: object
       minProperties: 1
-      description: Partial update; see `PATCH /branches/{id}`.
+      description: >-
+        Partial update; see `PATCH /branches/{id}`. A field left out stays
+        unchanged; an optional (nullable) field sent as null is cleared.
+        Required fields reject null.
       properties:
         description:
+          nullable: true
           type: string
           maxLength: 500
         hypothesis:
+          nullable: true
           type: string
           maxLength: 2000
         subjects:
+          nullable: true
           type: array
           maxItems: 50
           items:
@@ -8581,6 +8663,7 @@ components:
         outcome:
           $ref: '#/components/schemas/BranchOutcome'
         proof_summary_ids:
+          nullable: true
           type: array
           maxItems: 20
           items:
@@ -9626,6 +9709,9 @@ components:
           pattern: '^(@[^@\s]+@)?$'
 
     NoteUpdate:
+      description: >-
+        Partial update. A field left out stays unchanged; an optional
+        (nullable) field sent as null is cleared. Required fields reject null.
       type: object
       required: [version]
       properties:
@@ -9769,6 +9855,9 @@ components:
           pattern: '^(@[^@\s]+@)?$'
 
     SubmitterUpdate:
+      description: >-
+        Partial update. A field left out stays unchanged; an optional
+        (nullable) field sent as null is cleared. Required fields reject null.
       type: object
       required: [version]
       properties:
@@ -9778,21 +9867,27 @@ components:
           minLength: 1
           maxLength: 200
         address:
-          $ref: '#/components/schemas/Address'
+          allOf:
+            - $ref: '#/components/schemas/Address'
+          nullable: true
         phone:
+          nullable: true
           type: array
           items:
             type: string
           description: Updated phone numbers
         email:
+          nullable: true
           type: array
           items:
             type: string
           description: Updated email addresses
         language:
+          nullable: true
           type: string
           description: Updated preferred language
         media_id:
+          nullable: true
           type: string
           format: uuid
           description: Updated media ID
@@ -9879,6 +9974,9 @@ components:
           pattern: '^(@[^@\s]+@)?$'
 
     RepositoryUpdate:
+      description: >-
+        Partial update. A field left out stays unchanged; an optional
+        (nullable) field sent as null is cleared. Required fields reject null.
       type: object
       required: [version]
       properties:
@@ -9888,11 +9986,15 @@ components:
           minLength: 1
           maxLength: 200
         address:
-          $ref: '#/components/schemas/Address'
+          allOf:
+            - $ref: '#/components/schemas/Address'
+          nullable: true
         notes:
+          nullable: true
           type: string
           description: Updated notes
         gedcom_xref:
+          nullable: true
           type: string
           description: Updated GEDCOM cross-reference ID. Empty, or one @-delimited pointer (e.g. "@R1@") with no whitespace or interior @.
           maxLength: 64
@@ -9995,6 +10097,9 @@ components:
           description: References to Note entities
 
     AssociationUpdate:
+      description: >-
+        Partial update. A field left out stays unchanged; an optional
+        (nullable) field sent as null is cleared. Required fields reject null.
       type: object
       required: [version]
       properties:
@@ -10002,12 +10107,15 @@ components:
           type: string
           description: Updated role
         phrase:
+          nullable: true
           type: string
           description: Updated phrase
         notes:
+          nullable: true
           type: string
           description: Updated notes
         note_ids:
+          nullable: true
           type: array
           items:
             type: string
@@ -10119,19 +10227,28 @@ components:
           $ref: '#/components/schemas/LDSOrdinanceStatus'
 
     LDSOrdinanceUpdate:
+      description: >-
+        Partial update. A field left out stays unchanged; an optional
+        (nullable) field sent as null is cleared. Required fields reject null.
       type: object
       required: [version]
       properties:
         date:
-          $ref: '#/components/schemas/DateInput'
+          allOf:
+            - $ref: '#/components/schemas/DateInput'
+          nullable: true
         place:
+          nullable: true
           type: string
           description: Updated place
         temple:
+          nullable: true
           type: string
           description: Updated temple code
         status:
-          $ref: '#/components/schemas/LDSOrdinanceStatus'
+          allOf:
+            - $ref: '#/components/schemas/LDSOrdinanceStatus'
+          nullable: true
         version:
           type: integer
           format: int64
@@ -10334,6 +10451,9 @@ components:
           type: string
 
     EvidenceAnalysisUpdate:
+      description: >-
+        Partial update. A field left out stays unchanged; an optional
+        (nullable) field sent as null is cleared. Required fields reject null.
       type: object
       required: [version]
       properties:
@@ -10343,6 +10463,7 @@ components:
           type: string
           format: uuid
         fact_id:
+          nullable: true
           type: string
           format: uuid
           description: |
@@ -10350,6 +10471,7 @@ components:
             create. Omitted, the link is kept, unless `fact_type` or
             `subject_id` changes: then the link is removed.
         citation_ids:
+          nullable: true
           type: array
           items:
             type: string
@@ -10357,8 +10479,11 @@ components:
         conclusion:
           type: string
         research_status:
-          $ref: '#/components/schemas/ResearchStatus'
+          allOf:
+            - $ref: '#/components/schemas/ResearchStatus'
+          nullable: true
         notes:
+          nullable: true
           type: string
         version:
           type: integer
@@ -10508,6 +10633,9 @@ components:
           format: date-time
 
     ResearchLogUpdate:
+      description: >-
+        Partial update. A field left out stays unchanged; an optional
+        (nullable) field sent as null is cleared. Required fields reject null.
       type: object
       required: [version]
       properties:
@@ -10523,6 +10651,7 @@ components:
         outcome:
           $ref: '#/components/schemas/ResearchOutcome'
         notes:
+          nullable: true
           type: string
         search_date:
           type: string
@@ -10619,6 +10748,9 @@ components:
           $ref: '#/components/schemas/ResearchStatus'
 
     ProofSummaryUpdate:
+      description: >-
+        Partial update. A field left out stays unchanged; an optional
+        (nullable) field sent as null is cleared. Required fields reject null.
       type: object
       required: [version]
       properties:
@@ -10628,6 +10760,7 @@ components:
           type: string
           format: uuid
         fact_id:
+          nullable: true
           type: string
           format: uuid
           description: |
@@ -10639,12 +10772,15 @@ components:
         argument:
           type: string
         analysis_ids:
+          nullable: true
           type: array
           items:
             type: string
             format: uuid
         research_status:
-          $ref: '#/components/schemas/ResearchStatus'
+          allOf:
+            - $ref: '#/components/schemas/ResearchStatus'
+          nullable: true
         version:
           type: integer
           format: int64

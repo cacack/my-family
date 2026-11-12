@@ -45,25 +45,29 @@ func normalizeDateInput(field, value string) (string, error) {
 	return normalized, nil
 }
 
-// recordChange is the per-field step of an Update* command: when input is
-// given and differs from *field (which starts as the current value), it sets
-// *field and records the input under key in changes. A field equal to its
-// current value is not a change (the edit form sends every field).
-func recordChange[T ~string](changes map[string]any, key string, input *string, field *T) {
-	if input != nil && T(*input) != *field {
-		*field = T(*input)
-		changes[key] = *input
+// recordChange is the per-field step of an Update* command for a text field:
+// when input is not omitted and its new value (empty for a clear) differs
+// from *field (which starts as the current value), it sets *field and records
+// the new value under key in changes. A field equal to its current value is
+// not a change (the edit form sends every field). A required field passes
+// SetPtr of its pointer.
+func recordChange[T ~string](changes map[string]any, key string, input Patch[string], field *T) {
+	if v, ok := input.Change(); ok && T(v) != *field {
+		*field = T(v)
+		changes[key] = v
 	}
 }
 
 // changedDate normalizes a date field's new input (see normalizeDateInput) and
 // reports whether it differs from the current raw date. An input that is
-// absent or equal to the current text is not a change.
-func changedDate(field string, input *string, current string) (string, bool, error) {
-	if input == nil || *input == current {
+// omitted or equal to the current text is not a change; a clear is the empty
+// date.
+func changedDate(field string, input Patch[string], current string) (string, bool, error) {
+	v, ok := input.Change()
+	if !ok || v == current {
 		return "", false, nil
 	}
-	normalized, err := normalizeDateInput(field, *input)
+	normalized, err := normalizeDateInput(field, v)
 	if err != nil {
 		return "", false, err
 	}
@@ -156,15 +160,15 @@ func (h *Handler) CreatePerson(ctx context.Context, input CreatePersonInput) (*C
 // UpdatePersonInput contains the data for updating a person.
 type UpdatePersonInput struct {
 	ID             uuid.UUID
-	GivenName      *string
-	Surname        *string
-	Gender         *string
-	BirthDate      *string
-	BirthPlace     *string
-	DeathDate      *string
-	DeathPlace     *string
-	Notes          *string
-	ResearchStatus *string
+	GivenName      *string // required: cannot be cleared
+	Surname        Patch[string]
+	Gender         Patch[string]
+	BirthDate      Patch[string]
+	BirthPlace     Patch[string]
+	DeathDate      Patch[string]
+	DeathPlace     Patch[string]
+	Notes          Patch[string]
+	ResearchStatus Patch[string]
 	Version        int64 // Required for optimistic locking
 }
 
@@ -214,7 +218,7 @@ func (h *Handler) UpdatePerson(ctx context.Context, input UpdatePersonInput) (*U
 		testPerson.DeathDate = &dd
 	}
 
-	recordChange(changes, "given_name", input.GivenName, &testPerson.GivenName)
+	recordChange(changes, "given_name", SetPtr(input.GivenName), &testPerson.GivenName)
 	recordChange(changes, "surname", input.Surname, &testPerson.Surname)
 	recordChange(changes, "gender", input.Gender, &testPerson.Gender)
 	birthDate, birthChanged, err := changedDate("birth_date", input.BirthDate, current.BirthDateRaw)
@@ -236,9 +240,16 @@ func (h *Handler) UpdatePerson(ctx context.Context, input UpdatePersonInput) (*U
 	}
 	recordChange(changes, "death_place", input.DeathPlace, &testPerson.DeathPlace)
 	recordChange(changes, "notes", input.Notes, &testPerson.Notes)
-	if input.ResearchStatus != nil && domain.ParseResearchStatus(*input.ResearchStatus) != current.ResearchStatus {
-		testPerson.ResearchStatus = domain.ParseResearchStatus(*input.ResearchStatus)
-		changes["research_status"] = *input.ResearchStatus
+	// A clear leaves the status unset (""), recorded as nil: an empty string
+	// in a stored event has always meant "unknown" (ParseResearchStatus).
+	if input.ResearchStatus.Cleared() {
+		if current.ResearchStatus != "" {
+			testPerson.ResearchStatus = ""
+			changes["research_status"] = nil
+		}
+	} else if status, ok := input.ResearchStatus.Value(); ok && domain.ParseResearchStatus(status) != current.ResearchStatus {
+		testPerson.ResearchStatus = domain.ParseResearchStatus(status)
+		changes["research_status"] = status
 	}
 
 	// No changes?

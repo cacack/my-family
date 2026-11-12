@@ -208,7 +208,7 @@ func TestHandler_Execute_MultipleEvents(t *testing.T) {
 		newNotes := "Update " + string(rune('A'+i))
 		_, err = handler.UpdatePerson(ctx, command.UpdatePersonInput{
 			ID:      createResult.ID,
-			Notes:   &newNotes,
+			Notes:   command.Set(newNotes),
 			Version: createResult.Version + int64(i),
 		})
 		if err != nil {
@@ -465,7 +465,7 @@ func TestRollbackFamily_Success(t *testing.T) {
 	newPlace := "Boston"
 	_, err = handler.UpdateFamily(ctx, command.UpdateFamilyInput{
 		ID:            createResult.ID,
-		MarriagePlace: &newPlace,
+		MarriagePlace: command.Set(newPlace),
 		Version:       createResult.Version,
 	})
 	if err != nil {
@@ -624,7 +624,7 @@ func TestRollbackCitation_Success(t *testing.T) {
 	newPage := "Page 20"
 	_, err = handler.UpdateCitation(ctx, command.UpdateCitationInput{
 		ID:      createResult.ID,
-		Page:    &newPage,
+		Page:    command.Set(newPage),
 		Version: createResult.Version,
 	})
 	if err != nil {
@@ -709,7 +709,7 @@ func TestRollbackPerson_NoChangesNeeded(t *testing.T) {
 	newNotes := "Some notes"
 	_, err = handler.UpdatePerson(ctx, command.UpdatePersonInput{
 		ID:      createResult.ID,
-		Notes:   &newNotes,
+		Notes:   command.Set(newNotes),
 		Version: createResult.Version,
 	})
 	if err != nil {
@@ -720,7 +720,7 @@ func TestRollbackPerson_NoChangesNeeded(t *testing.T) {
 	emptyNotes := ""
 	_, err = handler.UpdatePerson(ctx, command.UpdatePersonInput{
 		ID:      createResult.ID,
-		Notes:   &emptyNotes,
+		Notes:   command.Set(emptyNotes),
 		Version: createResult.Version + 1,
 	})
 	if err != nil {
@@ -783,7 +783,7 @@ func TestRollbackFamily_DeletedEntity(t *testing.T) {
 	newPlace := "Boston"
 	_, err = handler.UpdateFamily(ctx, command.UpdateFamilyInput{
 		ID:            createResult.ID,
-		MarriagePlace: &newPlace,
+		MarriagePlace: command.Set(newPlace),
 		Version:       createResult.Version,
 	})
 	if err != nil {
@@ -885,7 +885,7 @@ func TestRollbackCitation_DeletedEntity(t *testing.T) {
 	newPage := "Page 20"
 	_, err = handler.UpdateCitation(ctx, command.UpdateCitationInput{
 		ID:      createResult.ID,
-		Page:    &newPage,
+		Page:    command.Set(newPage),
 		Version: createResult.Version,
 	})
 	if err != nil {
@@ -1143,7 +1143,7 @@ func TestRollbackFamily_VersionBeyondCurrent(t *testing.T) {
 	newPlace := "Boston"
 	_, err = handler.UpdateFamily(ctx, command.UpdateFamilyInput{
 		ID:            createResult.ID,
-		MarriagePlace: &newPlace,
+		MarriagePlace: command.Set(newPlace),
 		Version:       1,
 	})
 	if err != nil {
@@ -1228,7 +1228,7 @@ func TestRollbackCitation_VersionBeyondCurrent(t *testing.T) {
 	newPage := "Page 20"
 	_, err = handler.UpdateCitation(ctx, command.UpdateCitationInput{
 		ID:      createResult.ID,
-		Page:    &newPage,
+		Page:    command.Set(newPage),
 		Version: 1,
 	})
 	if err != nil {

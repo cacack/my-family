@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 
 	"github.com/google/uuid"
 
@@ -84,12 +83,12 @@ func (h *Handler) CreateSubmitter(ctx context.Context, input CreateSubmitterInpu
 // UpdateSubmitterInput contains the data for updating a submitter.
 type UpdateSubmitterInput struct {
 	ID       uuid.UUID
-	Name     *string
-	Address  *domain.Address
-	Phone    []string
-	Email    []string
-	Language *string
-	MediaID  *uuid.UUID
+	Name     *string // required: cannot be cleared
+	Address  Patch[domain.Address]
+	Phone    Patch[[]string]
+	Email    Patch[[]string]
+	Language Patch[string]
+	MediaID  Patch[uuid.UUID]
 	Version  int64 // Required for optimistic locking
 }
 
@@ -127,27 +126,13 @@ func (h *Handler) UpdateSubmitter(ctx context.Context, input UpdateSubmitterInpu
 		}
 		changes["name"] = *input.Name
 	}
-	// A submitter with no address compares as an empty one, so a form that
-	// sends a blank address for it records no change.
-	var currentAddress domain.Address
-	if current.Address != nil {
-		currentAddress = *current.Address
+	recordAddressChange(changes, input.Address, current.Address)
+	recordListChange(changes, "phone", input.Phone, current.Phone)
+	recordListChange(changes, "email", input.Email, current.Email)
+	if language, ok := input.Language.Change(); ok && language != current.Language {
+		changes["language"] = language
 	}
-	if input.Address != nil && *input.Address != currentAddress {
-		changes["address"] = input.Address
-	}
-	if input.Phone != nil && !slices.Equal(input.Phone, current.Phone) {
-		changes["phone"] = input.Phone
-	}
-	if input.Email != nil && !slices.Equal(input.Email, current.Email) {
-		changes["email"] = input.Email
-	}
-	if input.Language != nil && *input.Language != current.Language {
-		changes["language"] = *input.Language
-	}
-	if input.MediaID != nil && !ptrEqual(input.MediaID, current.MediaID) {
-		changes["media_id"] = input.MediaID
-	}
+	recordIDChange(changes, "media_id", input.MediaID, current.MediaID)
 
 	// No changes?
 	if len(changes) == 0 {

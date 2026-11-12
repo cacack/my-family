@@ -85,7 +85,7 @@ describe('Repository detail page', () => {
 
 		await waitFor(() => expect(apiModule.api.updateRepository).toHaveBeenCalled());
 		const body = vi.mocked(apiModule.api.updateRepository).mock.calls[0][1];
-		expect(body).toMatchObject({ notes: '', gedcom_xref: '', address: {} });
+		expect(body).toMatchObject({ notes: '', gedcom_xref: '', address: null });
 	});
 });
 

@@ -232,7 +232,7 @@ func TestBranchIsolation(t *testing.T) {
 	byron := "Byron"
 	if _, err := f.handler.WithBranch(branch).UpdatePerson(ctx, command.UpdatePersonInput{
 		ID:      person.ID,
-		Surname: &byron,
+		Surname: command.Set(byron),
 		Version: person.Version,
 	}); err != nil {
 		t.Fatalf("branch-scoped UpdatePerson failed: %v", err)
@@ -313,7 +313,7 @@ func TestBranchIsolation_Family(t *testing.T) {
 	bristol := "Bristol"
 	updated, err := f.handler.WithBranch(branch).UpdateFamily(ctx, command.UpdateFamilyInput{
 		ID:            family.ID,
-		MarriagePlace: &bristol,
+		MarriagePlace: command.Set(bristol),
 		Version:       family.Version,
 	})
 	if err != nil {
@@ -717,7 +717,7 @@ func TestDeleteBranch(t *testing.T) {
 	byron := "Byron"
 	if _, err := f.handler.WithBranch(branch).UpdatePerson(ctx, command.UpdatePersonInput{
 		ID:      person.ID,
-		Surname: &byron,
+		Surname: command.Set(byron),
 		Version: person.Version,
 	}); err != nil {
 		t.Fatalf("branch-scoped UpdatePerson failed: %v", err)
@@ -1015,7 +1015,7 @@ func TestBranchSequentialPersonUpdates(t *testing.T) {
 		s := surname
 		res, err := scoped.UpdatePerson(ctx, command.UpdatePersonInput{
 			ID:      person.ID,
-			Surname: &s,
+			Surname: command.Set(s),
 			Version: version,
 		})
 		if err != nil {
@@ -1072,7 +1072,7 @@ func TestBranchOnlyPersonIsEditable(t *testing.T) {
 	place := "Bristol"
 	updated, err := scoped.UpdatePerson(ctx, command.UpdatePersonInput{
 		ID:         person.ID,
-		BirthPlace: &place,
+		BirthPlace: command.Set(place),
 		Version:    person.Version,
 	})
 	if err != nil {
@@ -1128,7 +1128,7 @@ func TestBranchNameLifecycle(t *testing.T) {
 	if _, err := scoped.UpdateName(ctx, command.UpdateNameInput{
 		PersonID: person.ID,
 		NameID:   added.ID,
-		Nickname: &nickname,
+		Nickname: command.Set(nickname),
 	}); err != nil {
 		t.Fatalf("branch UpdateName failed: %v", err)
 	}
@@ -1181,7 +1181,7 @@ func TestBranchDeletePersonAfterEdit(t *testing.T) {
 	note := "duplicate of another record"
 	edited, err := scoped.UpdatePerson(ctx, command.UpdatePersonInput{
 		ID:      person.ID,
-		Notes:   &note,
+		Notes:   command.Set(note),
 		Version: person.Version,
 	})
 	if err != nil {
@@ -1241,7 +1241,7 @@ func TestUnscopedHandler_ReadsResolveMain(t *testing.T) {
 	surname := "Nobody"
 	if _, err := f.handler.UpdatePerson(ctx, command.UpdatePersonInput{
 		ID:      branchOnly.ID,
-		Surname: &surname,
+		Surname: command.Set(surname),
 		Version: branchOnly.Version,
 	}); !errors.Is(err, command.ErrPersonNotFound) {
 		t.Errorf("unscoped UpdatePerson of a branch-only person = %v, want ErrPersonNotFound", err)
@@ -1251,21 +1251,21 @@ func TestUnscopedHandler_ReadsResolveMain(t *testing.T) {
 	byron := "Byron"
 	if _, err := f.handler.WithBranch(branch).UpdatePerson(ctx, command.UpdatePersonInput{
 		ID:      person.ID,
-		Surname: &byron,
+		Surname: command.Set(byron),
 		Version: person.Version,
 	}); err != nil {
 		t.Fatalf("branch UpdatePerson failed: %v", err)
 	}
 	if _, err := f.handler.UpdatePerson(ctx, command.UpdatePersonInput{
 		ID:      person.ID,
-		Surname: &byron,
+		Surname: command.Set(byron),
 		Version: person.Version + 1,
 	}); !errors.Is(err, repository.ErrConcurrencyConflict) {
 		t.Errorf("unscoped UpdatePerson with a branch-derived version = %v, want ErrConcurrencyConflict", err)
 	}
 	res, err := f.handler.UpdatePerson(ctx, command.UpdatePersonInput{
 		ID:      person.ID,
-		Surname: &byron,
+		Surname: command.Set(byron),
 		Version: person.Version,
 	})
 	if err != nil {
@@ -1292,7 +1292,7 @@ func TestRollback_RefusedOnBranchScopedHandler(t *testing.T) {
 	byron := "Byron"
 	updated, err := f.handler.UpdatePerson(ctx, command.UpdatePersonInput{
 		ID:      person.ID,
-		Surname: &byron,
+		Surname: command.Set(byron),
 		Version: person.Version,
 	})
 	if err != nil {

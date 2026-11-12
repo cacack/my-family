@@ -137,7 +137,7 @@ func TestMergePersons_OnBranchChecksBranchVersions(t *testing.T) {
 	}
 	scoped := f.handler.WithBranch(branch)
 	surname := "Branchside"
-	if _, err := scoped.UpdatePerson(ctx, command.UpdatePersonInput{ID: merged, Surname: &surname, Version: 2}); err != nil {
+	if _, err := scoped.UpdatePerson(ctx, command.UpdatePersonInput{ID: merged, Surname: command.Set(surname), Version: 2}); err != nil {
 		t.Fatalf("branch UpdatePerson failed: %v", err)
 	}
 
@@ -172,7 +172,7 @@ func TestMergeBranch_PersonMergeReplaysAfterItsReferences(t *testing.T) {
 	onBranch := domain.BranchID(branch.ID)
 
 	notes := "touched first"
-	if _, err := scoped.UpdatePerson(ctx, command.UpdatePersonInput{ID: survivor, Notes: &notes, Version: 2}); err != nil {
+	if _, err := scoped.UpdatePerson(ctx, command.UpdatePersonInput{ID: survivor, Notes: command.Set(notes), Version: 2}); err != nil {
 		t.Fatalf("branch UpdatePerson failed: %v", err)
 	}
 	dup, err := scoped.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Morgan", Surname: "Dupe", Gender: "male"})
@@ -225,7 +225,7 @@ func TestMergeBranch_PersonMergeChain(t *testing.T) {
 	scoped := f.handler.WithBranch(branch)
 	onBranch := domain.BranchID(branch.ID)
 	notes := "touched first"
-	if _, err := scoped.UpdatePerson(ctx, command.UpdatePersonInput{ID: c, Notes: &notes, Version: personOn(t, f, domain.MainBranchID, c).Version}); err != nil {
+	if _, err := scoped.UpdatePerson(ctx, command.UpdatePersonInput{ID: c, Notes: command.Set(notes), Version: personOn(t, f, domain.MainBranchID, c).Version}); err != nil {
 		t.Fatalf("branch UpdatePerson failed: %v", err)
 	}
 	mergeOn(t, f, scoped, onBranch, b, a)
@@ -263,7 +263,7 @@ func TestMergeBranch_MergedPersonStaleRefuses(t *testing.T) {
 
 	positions.rival = func() {
 		surname := "Rival"
-		if _, err := f.handler.UpdatePerson(ctx, command.UpdatePersonInput{ID: merged, Surname: &surname, Version: 2}); err != nil {
+		if _, err := f.handler.UpdatePerson(ctx, command.UpdatePersonInput{ID: merged, Surname: command.Set(surname), Version: 2}); err != nil {
 			t.Fatalf("rival UpdatePerson failed: %v", err)
 		}
 	}

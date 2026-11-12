@@ -142,7 +142,7 @@ func TestMergeBranch_MediaOfMainPersonEditedThenDeletedOnBranchMerges(t *testing
 		t.Fatalf("GetPerson = %v, %v", current, err)
 	}
 	surname := "Revised"
-	if _, err := scoped.UpdatePerson(ctx, command.UpdatePersonInput{ID: e.person, Surname: &surname, Version: current.Version}); err != nil {
+	if _, err := scoped.UpdatePerson(ctx, command.UpdatePersonInput{ID: e.person, Surname: command.Set(surname), Version: current.Version}); err != nil {
 		t.Fatalf("UpdatePerson failed: %v", err)
 	}
 	mediaID := e.upload(t, scoped, "person", e.person)
@@ -226,7 +226,7 @@ func cropMedia(t *testing.T, h *command.Handler, current *repository.MediaReadMo
 	t.Helper()
 	if _, err := h.UpdateMedia(context.Background(), command.UpdateMediaInput{
 		ID: current.ID, Title: &title, Version: current.Version,
-		CropLeft: &crop, CropTop: &crop, CropWidth: &crop, CropHeight: &crop,
+		CropLeft: command.Set(crop), CropTop: command.Set(crop), CropWidth: command.Set(crop), CropHeight: command.Set(crop),
 	}); err != nil {
 		t.Fatalf("UpdateMedia(%s) failed: %v", current.ID, err)
 	}

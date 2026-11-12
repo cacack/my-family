@@ -79,9 +79,9 @@ func TestUpdateCitation_RecordsOnlyChangedFields(t *testing.T) {
 			events: events, stream: created.ID, version: created.Version,
 			form: command.UpdateCitationInput{
 				ID: created.ID, SourceID: &source.ID, FactType: ptr("person_birth"), FactOwnerID: &owner,
-				Page: ptr("12"), Volume: ptr("3"), SourceQuality: ptr("original"), InformantType: ptr("primary"),
-				EvidenceType: ptr("direct"), QuotedText: ptr("born 1850"), Analysis: ptr("reliable"),
-				TemplateID: ptr("census-us"), Fields: map[string]string{"line": "4"}, Version: created.Version,
+				Page: command.Set("12"), Volume: command.Set("3"), SourceQuality: command.Set("original"), InformantType: command.Set("primary"),
+				EvidenceType: command.Set("direct"), QuotedText: command.Set("born 1850"), Analysis: command.Set("reliable"),
+				TemplateID: command.Set("census-us"), Fields: command.Set(map[string]string{"line": "4"}), Version: created.Version,
 			},
 			update: func(in command.UpdateCitationInput) (int64, error) {
 				r, err := handler.UpdateCitation(ctx, in)
@@ -94,8 +94,8 @@ func TestUpdateCitation_RecordsOnlyChangedFields(t *testing.T) {
 	}
 	runUpdateCases(t, setup, []updateCase[command.UpdateCitationInput]{
 		{"unchanged form", func(*command.UpdateCitationInput) {}, nil},
-		{"page only", func(in *command.UpdateCitationInput) { in.Page = ptr("13") }, []string{"page"}},
-		{"fields only", func(in *command.UpdateCitationInput) { in.Fields = map[string]string{"line": "5"} }, []string{"fields"}},
+		{"page only", func(in *command.UpdateCitationInput) { in.Page = command.Set("13") }, []string{"page"}},
+		{"fields only", func(in *command.UpdateCitationInput) { in.Fields = command.Set(map[string]string{"line": "5"}) }, []string{"fields"}},
 	})
 }
 
@@ -114,8 +114,8 @@ func TestUpdateMedia_RecordsOnlyChangedFields(t *testing.T) {
 			t.Fatalf("UploadMedia: %v", err)
 		}
 		form := command.UpdateMediaInput{
-			ID: uploaded.ID, Title: ptr("Portrait"), Description: ptr("Studio"), MediaType: ptr("photo"),
-			CropLeft: ptr(1), CropTop: ptr(2), CropWidth: ptr(30), CropHeight: ptr(40), Version: uploaded.Version,
+			ID: uploaded.ID, Title: ptr("Portrait"), Description: command.Set("Studio"), MediaType: ptr("photo"),
+			CropLeft: command.Set(1), CropTop: command.Set(2), CropWidth: command.Set(30), CropHeight: command.Set(40), Version: uploaded.Version,
 		}
 		// Store a crop first so the unchanged form compares crop values too.
 		cropped, err := handler.UpdateMedia(ctx, form)
@@ -136,7 +136,7 @@ func TestUpdateMedia_RecordsOnlyChangedFields(t *testing.T) {
 	}
 	runUpdateCases(t, setup, []updateCase[command.UpdateMediaInput]{
 		{"unchanged form", func(*command.UpdateMediaInput) {}, nil},
-		{"crop width only", func(in *command.UpdateMediaInput) { in.CropWidth = ptr(31) }, []string{"crop_width"}},
+		{"crop width only", func(in *command.UpdateMediaInput) { in.CropWidth = command.Set(31) }, []string{"crop_width"}},
 		{"title only", func(in *command.UpdateMediaInput) { in.Title = ptr("Portrait, 1840") }, []string{"title"}},
 	})
 }
@@ -191,7 +191,7 @@ func TestUpdateName_SkipsUnchangedForm(t *testing.T) {
 			events: events, stream: person.ID, version: current.Version,
 			form: command.UpdateNameInput{
 				PersonID: person.ID, NameID: added.ID, GivenName: ptr("Augusta"), Surname: ptr("Byron"),
-				NamePrefix: ptr("Hon."), NameSuffix: ptr(""), SurnamePrefix: ptr(""), Nickname: ptr("Ada"),
+				NamePrefix: command.Set("Hon."), NameSuffix: command.Set(""), SurnamePrefix: command.Set(""), Nickname: command.Set("Ada"),
 				NameType: ptr("birth"), IsPrimary: ptr(false),
 			},
 			update: func(in command.UpdateNameInput) (int64, error) {
@@ -221,7 +221,7 @@ func TestUpdateName_SkipsUnchangedForm(t *testing.T) {
 	t.Run("nickname only", func(t *testing.T) {
 		f, read := setup(t)
 		input := f.form
-		input.Nickname = ptr("Countess")
+		input.Nickname = command.Set("Countess")
 		if _, err := f.update(input); err != nil {
 			t.Fatalf("UpdateName: %v", err)
 		}
@@ -256,8 +256,8 @@ func TestUpdateSubmitter_RecordsOnlyChangedFields(t *testing.T) {
 		return updateFixture[command.UpdateSubmitterInput]{
 			events: events, stream: created.ID, version: created.Version,
 			form: command.UpdateSubmitterInput{
-				ID: created.ID, Name: ptr("Jane"), Address: &domain.Address{City: "Leeds"}, Phone: []string{"555"},
-				Email: []string{"jane@example.org"}, Language: ptr("en"), MediaID: &mediaID, Version: created.Version,
+				ID: created.ID, Name: ptr("Jane"), Address: command.Set(domain.Address{City: "Leeds"}), Phone: command.Set([]string{"555"}),
+				Email: command.Set([]string{"jane@example.org"}), Language: command.Set("en"), MediaID: command.Set(mediaID), Version: created.Version,
 			},
 			update: func(in command.UpdateSubmitterInput) (int64, error) {
 				r, err := handler.UpdateSubmitter(ctx, in)
@@ -270,8 +270,8 @@ func TestUpdateSubmitter_RecordsOnlyChangedFields(t *testing.T) {
 	}
 	runUpdateCases(t, setup, []updateCase[command.UpdateSubmitterInput]{
 		{"unchanged form", func(*command.UpdateSubmitterInput) {}, nil},
-		{"email only", func(in *command.UpdateSubmitterInput) { in.Email = []string{"jane@example.com"} }, []string{"email"}},
-		{"address only", func(in *command.UpdateSubmitterInput) { in.Address = &domain.Address{City: "York"} }, []string{"address"}},
+		{"email only", func(in *command.UpdateSubmitterInput) { in.Email = command.Set([]string{"jane@example.com"}) }, []string{"email"}},
+		{"address only", func(in *command.UpdateSubmitterInput) { in.Address = command.Set(domain.Address{City: "York"}) }, []string{"address"}},
 	})
 }
 
@@ -296,8 +296,8 @@ func TestUpdateAssociation_RecordsOnlyChangedFields(t *testing.T) {
 		return updateFixture[command.UpdateAssociationInput]{
 			events: events, stream: created.ID, version: created.Version,
 			form: command.UpdateAssociationInput{
-				ID: created.ID, Role: ptr("godparent"), Phrase: ptr("friend"), Notes: ptr("notes"),
-				NoteIDs: &noteIDs, Version: created.Version,
+				ID: created.ID, Role: ptr("godparent"), Phrase: command.Set("friend"), Notes: command.Set("notes"),
+				NoteIDs: command.Set(noteIDs), Version: created.Version,
 			},
 			update: func(in command.UpdateAssociationInput) (int64, error) {
 				r, err := handler.UpdateAssociation(ctx, in)
@@ -310,7 +310,7 @@ func TestUpdateAssociation_RecordsOnlyChangedFields(t *testing.T) {
 	}
 	runUpdateCases(t, setup, []updateCase[command.UpdateAssociationInput]{
 		{"unchanged form", func(*command.UpdateAssociationInput) {}, nil},
-		{"phrase only", func(in *command.UpdateAssociationInput) { in.Phrase = ptr("colleague") }, []string{"phrase"}},
+		{"phrase only", func(in *command.UpdateAssociationInput) { in.Phrase = command.Set("colleague") }, []string{"phrase"}},
 	})
 }
 
@@ -331,8 +331,8 @@ func TestUpdateLDSOrdinance_RecordsOnlyChangedFields(t *testing.T) {
 		return updateFixture[command.UpdateLDSOrdinanceInput]{
 			events: events, stream: created.ID, version: created.Version,
 			form: command.UpdateLDSOrdinanceInput{
-				ID: created.ID, Date: ptr("1 JAN 1900"), Place: ptr("Utah"), Temple: ptr("SLAKE"),
-				Status: ptr("COMPLETED"), Version: created.Version,
+				ID: created.ID, Date: command.Set("1 JAN 1900"), Place: command.Set("Utah"), Temple: command.Set("SLAKE"),
+				Status: command.Set("COMPLETED"), Version: created.Version,
 			},
 			update: func(in command.UpdateLDSOrdinanceInput) (int64, error) {
 				r, err := handler.UpdateLDSOrdinance(ctx, in)
@@ -345,7 +345,7 @@ func TestUpdateLDSOrdinance_RecordsOnlyChangedFields(t *testing.T) {
 	}
 	runUpdateCases(t, setup, []updateCase[command.UpdateLDSOrdinanceInput]{
 		{"unchanged form", func(*command.UpdateLDSOrdinanceInput) {}, nil},
-		{"temple only", func(in *command.UpdateLDSOrdinanceInput) { in.Temple = ptr("LOGAN") }, []string{"temple"}},
+		{"temple only", func(in *command.UpdateLDSOrdinanceInput) { in.Temple = command.Set("LOGAN") }, []string{"temple"}},
 	})
 }
 
@@ -365,8 +365,8 @@ func TestUpdateEvidenceAnalysis_RecordsOnlyChangedFields(t *testing.T) {
 			events: events, stream: created.ID, version: created.Version,
 			form: command.UpdateEvidenceAnalysisInput{
 				ID: created.ID, FactType: ptr("person_birth"), SubjectID: &subject,
-				CitationIDs: append([]uuid.UUID(nil), citations...), Conclusion: ptr("Born 1850"),
-				ResearchStatus: ptr("probable"), Notes: ptr("notes"), Version: created.Version,
+				CitationIDs: command.Set(append([]uuid.UUID(nil), citations...)), Conclusion: ptr("Born 1850"),
+				ResearchStatus: command.Set("probable"), Notes: command.Set("notes"), Version: created.Version,
 			},
 			update: func(in command.UpdateEvidenceAnalysisInput) (int64, error) {
 				r, err := handler.UpdateEvidenceAnalysis(ctx, in)
@@ -380,7 +380,10 @@ func TestUpdateEvidenceAnalysis_RecordsOnlyChangedFields(t *testing.T) {
 	runUpdateCases(t, setup, []updateCase[command.UpdateEvidenceAnalysisInput]{
 		{"unchanged form", func(*command.UpdateEvidenceAnalysisInput) {}, nil},
 		{"conclusion only", func(in *command.UpdateEvidenceAnalysisInput) { in.Conclusion = ptr("Born 1851") }, []string{"conclusion"}},
-		{"citations only", func(in *command.UpdateEvidenceAnalysisInput) { in.CitationIDs = in.CitationIDs[:1] }, []string{"citation_ids"}},
+		{"citations only", func(in *command.UpdateEvidenceAnalysisInput) {
+			ids, _ := in.CitationIDs.Value()
+			in.CitationIDs = command.Set(ids[:1])
+		}, []string{"citation_ids"}},
 	})
 }
 
@@ -400,7 +403,7 @@ func TestUpdateResearchLog_RecordsOnlyChangedFields(t *testing.T) {
 			events: events, stream: created.ID, version: created.Version,
 			form: command.UpdateResearchLogInput{
 				ID: created.ID, SubjectID: &subject, SubjectType: ptr("person"), Repository: ptr("Archives"),
-				SearchDescription: ptr("Census"), Outcome: ptr("found"), Notes: ptr("notes"),
+				SearchDescription: ptr("Census"), Outcome: ptr("found"), Notes: command.Set("notes"),
 				SearchDate: &searched, Version: created.Version,
 			},
 			update: func(in command.UpdateResearchLogInput) (int64, error) {
@@ -437,8 +440,8 @@ func TestUpdateProofSummary_RecordsOnlyChangedFields(t *testing.T) {
 			events: events, stream: created.ID, version: created.Version,
 			form: command.UpdateProofSummaryInput{
 				ID: created.ID, FactType: ptr("person_birth"), SubjectID: &subject, Conclusion: ptr("Born 1850"),
-				Argument: ptr("Two records agree"), AnalysisIDs: append([]uuid.UUID(nil), analyses...),
-				ResearchStatus: ptr("probable"), Version: created.Version,
+				Argument: ptr("Two records agree"), AnalysisIDs: command.Set(append([]uuid.UUID(nil), analyses...)),
+				ResearchStatus: command.Set("probable"), Version: created.Version,
 			},
 			update: func(in command.UpdateProofSummaryInput) (int64, error) {
 				r, err := handler.UpdateProofSummary(ctx, in)

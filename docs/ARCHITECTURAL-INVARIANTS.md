@@ -226,7 +226,7 @@ Rules that must hold true in the my-family codebase. Violations break architectu
 | **DI-002** | Date ordering enforced (death >= birth) where applicable | Validation tests |
 | **DI-003** | GEDCOM import/export is lossless for supported entities | Round-trip test |
 | **DI-004** | No data loss on standard operations | Event sourcing ensures (ES-001, ES-002) |
-| **DI-005** | A family always has at least one partner: `CreateFamily` and `UpdateFamily` (including `clear_partnerN`) both refuse a partnerless result with `ErrInvalidFamilyInput` (400) | `TestUpdateFamily_CannotClearLastPartner`, `TestCreateFamily_ValidationErrorsWrapSentinel` |
+| **DI-005** | A family always has at least one partner: `CreateFamily` and `UpdateFamily` (including a `partnerN_id: null` clear) both refuse a partnerless result with `ErrInvalidFamilyInput` (400) | `TestUpdateFamily_CannotClearLastPartner`, `TestCreateFamily_ValidationErrorsWrapSentinel` |
 
 ### API Invariants (API) - Source: [CONVENTIONS.md](./CONVENTIONS.md)
 

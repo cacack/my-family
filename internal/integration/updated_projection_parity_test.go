@@ -88,7 +88,6 @@ func runEveryUpdate(t *testing.T, ctx context.Context, h *command.Handler, rs re
 		}
 	}
 	str := func(s string) *string { return &s }
-	num := func(n int) *int { return &n }
 
 	// --- Persons ---
 	p1, err := h.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Avery", Surname: "Placeholder", Gender: "unknown", BirthDate: "1 JAN 1850"})
@@ -99,9 +98,9 @@ func runEveryUpdate(t *testing.T, ctx context.Context, h *command.Handler, rs re
 	must("create person 3", err)
 
 	_, err = h.UpdatePerson(ctx, command.UpdatePersonInput{
-		ID: p1.ID, GivenName: str("Avery Jo"), Surname: str("Placeholder-Test"), Gender: str("male"),
-		BirthDate: str("ABT 1851"), BirthPlace: str("Testville"), DeathDate: str("12 MAR 1920"),
-		DeathPlace: str("Sampletown"), Notes: str("person notes"), ResearchStatus: str("probable"),
+		ID: p1.ID, GivenName: str("Avery Jo"), Surname: command.Set("Placeholder-Test"), Gender: command.Set("male"),
+		BirthDate: command.Set("ABT 1851"), BirthPlace: command.Set("Testville"), DeathDate: command.Set("12 MAR 1920"),
+		DeathPlace: command.Set("Sampletown"), Notes: command.Set("person notes"), ResearchStatus: command.Set("probable"),
 		Version: p1.Version,
 	})
 	must("update person", err)
@@ -111,7 +110,7 @@ func runEveryUpdate(t *testing.T, ctx context.Context, h *command.Handler, rs re
 	must("add name", err)
 	_, err = h.UpdateName(ctx, command.UpdateNameInput{
 		PersonID: p2.ID, NameID: alt.ID, GivenName: str("Beatrix"), Surname: str("Sample-Alt"),
-		NamePrefix: str("Dr."), NameSuffix: str("Jr."), SurnamePrefix: str("van"), Nickname: str("Bea"),
+		NamePrefix: command.Set("Dr."), NameSuffix: command.Set("Jr."), SurnamePrefix: command.Set("van"), Nickname: command.Set("Bea"),
 		NameType: str("married"), IsPrimary: boolPtr(true),
 	})
 	must("update name", err)
@@ -121,20 +120,20 @@ func runEveryUpdate(t *testing.T, ctx context.Context, h *command.Handler, rs re
 	f1, err := h.CreateFamily(ctx, command.CreateFamilyInput{Partner1ID: &p1.ID, Partner2ID: &p2.ID, RelationshipType: "marriage", MarriageDate: "1 JUN 1875", MarriagePlace: "Old Chapel"})
 	must("create family 1", err)
 	_, err = h.UpdateFamily(ctx, command.UpdateFamilyInput{
-		ID: f1.ID, Partner1ID: &p3.ID, Partner2ID: &p1.ID, RelationshipType: str("partnership"),
-		MarriageDate: str("ABT 1880"), MarriagePlace: str("New Hall"), Version: f1.Version,
+		ID: f1.ID, Partner1ID: command.Set(p3.ID), Partner2ID: command.Set(p1.ID), RelationshipType: command.Set("partnership"),
+		MarriageDate: command.Set("ABT 1880"), MarriagePlace: command.Set("New Hall"), Version: f1.Version,
 	})
 	must("update family 1", err)
 
 	f2, err := h.CreateFamily(ctx, command.CreateFamilyInput{Partner1ID: &p2.ID, RelationshipType: "marriage", MarriageDate: "2 FEB 1890"})
 	must("create family 2", err)
-	_, err = h.UpdateFamily(ctx, command.UpdateFamilyInput{ID: f2.ID, MarriageDate: str(""), Version: f2.Version})
+	_, err = h.UpdateFamily(ctx, command.UpdateFamilyInput{ID: f2.ID, MarriageDate: command.Set(""), Version: f2.Version})
 	must("clear family 2 marriage date", err)
 
 	f3, err := h.CreateFamily(ctx, command.CreateFamilyInput{Partner1ID: &p1.ID, Partner2ID: &p3.ID, RelationshipType: "marriage", MarriageDate: "3 MAR 1895", MarriagePlace: "Harbor"})
 	must("create family 3", err)
 	_, err = h.UpdateFamily(ctx, command.UpdateFamilyInput{
-		ID: f3.ID, Partner1ID: &p2.ID, RelationshipType: str("unknown"), MarriageDate: str("1900"), Version: f3.Version,
+		ID: f3.ID, Partner1ID: command.Set(p2.ID), RelationshipType: command.Set("unknown"), MarriageDate: command.Set("1900"), Version: f3.Version,
 	})
 	must("update family 3", err)
 	_, err = h.RollbackFamily(ctx, f3.ID, 1)
@@ -150,18 +149,18 @@ func runEveryUpdate(t *testing.T, ctx context.Context, h *command.Handler, rs re
 	s2, err := h.CreateSource(ctx, command.CreateSourceInput{SourceType: "census", Title: "Register B"})
 	must("create source 2", err)
 	_, err = h.UpdateSource(ctx, command.UpdateSourceInput{
-		ID: s1.ID, SourceType: str("archive"), Title: str("Register A (rev)"), Author: str("A. Author"),
-		Publisher: str("Test Press"), PublishDate: str("1901"), URL: str("https://example.test/a"),
-		RepositoryName: str("Test Archive"), CollectionName: str("Coll"), CallNumber: str("CN-1"),
-		Notes: str("source notes"), Version: s1.Version,
+		ID: s1.ID, SourceType: str("archive"), Title: str("Register A (rev)"), Author: command.Set("A. Author"),
+		Publisher: command.Set("Test Press"), PublishDate: command.Set("1901"), URL: command.Set("https://example.test/a"),
+		RepositoryName: command.Set("Test Archive"), CollectionName: command.Set("Coll"), CallNumber: command.Set("CN-1"),
+		Notes: command.Set("source notes"), Version: s1.Version,
 	})
 	must("update source", err)
 
 	repo, err := h.CreateRepository(ctx, command.CreateRepositoryInput{Name: "Archive One", Address: &domain.Address{City: "Oldtown"}})
 	must("create repository", err)
 	_, err = h.UpdateRepository(ctx, command.UpdateRepositoryInput{
-		ID: repo.ID, Name: str("Archive One (rev)"), Address: &domain.Address{Line1: "1 Test St", City: "Newtown", Country: "Testland"},
-		Notes: str("repo notes"), GedcomXref: str("@R1@"), Version: repo.Version,
+		ID: repo.ID, Name: str("Archive One (rev)"), Address: command.Set(domain.Address{Line1: "1 Test St", City: "Newtown", Country: "Testland"}),
+		Notes: command.Set("repo notes"), GedcomXref: command.Set("@R1@"), Version: repo.Version,
 	})
 	must("update repository", err)
 
@@ -169,10 +168,10 @@ func runEveryUpdate(t *testing.T, ctx context.Context, h *command.Handler, rs re
 	cit, err := h.CreateCitation(ctx, command.CreateCitationInput{SourceID: s1.ID, FactType: "person_birth", FactOwnerID: p1.ID, Page: "1"})
 	must("create citation", err)
 	_, err = h.UpdateCitation(ctx, command.UpdateCitationInput{
-		ID: cit.ID, SourceID: &s2.ID, FactType: str("person_death"), FactOwnerID: &p2.ID, Page: str("22"),
-		Volume: str("III"), SourceQuality: str("original"), InformantType: str("primary"), EvidenceType: str("direct"),
-		QuotedText: str("quoted"), Analysis: str("analysis"), TemplateID: str("census-1900"),
-		Fields: map[string]string{"line": "7", "sheet": "2B"}, Version: cit.Version,
+		ID: cit.ID, SourceID: &s2.ID, FactType: str("person_death"), FactOwnerID: &p2.ID, Page: command.Set("22"),
+		Volume: command.Set("III"), SourceQuality: command.Set("original"), InformantType: command.Set("primary"), EvidenceType: command.Set("direct"),
+		QuotedText: command.Set("quoted"), Analysis: command.Set("analysis"), TemplateID: command.Set("census-1900"),
+		Fields: command.Set(map[string]string{"line": "7", "sheet": "2B"}), Version: cit.Version,
 	})
 	must("update citation", err)
 
@@ -180,8 +179,8 @@ func runEveryUpdate(t *testing.T, ctx context.Context, h *command.Handler, rs re
 	med, err := h.UploadMedia(ctx, command.UploadMediaInput{EntityType: "person", EntityID: p1.ID, Title: "Portrait", MediaType: "photo", Filename: "p.png", FileData: parityPNG(t)})
 	must("upload media", err)
 	_, err = h.UpdateMedia(ctx, command.UpdateMediaInput{
-		ID: med.ID, Title: str("Portrait (rev)"), Description: str("desc"), MediaType: str("document"),
-		CropLeft: num(1), CropTop: num(2), CropWidth: num(30), CropHeight: num(40), Version: med.Version,
+		ID: med.ID, Title: str("Portrait (rev)"), Description: command.Set("desc"), MediaType: str("document"),
+		CropLeft: command.Set(1), CropTop: command.Set(2), CropWidth: command.Set(30), CropHeight: command.Set(40), Version: med.Version,
 	})
 	must("update media", err)
 
@@ -195,9 +194,9 @@ func runEveryUpdate(t *testing.T, ctx context.Context, h *command.Handler, rs re
 	sub, err := h.CreateSubmitter(ctx, command.CreateSubmitterInput{Name: "Submitter One"})
 	must("create submitter", err)
 	_, err = h.UpdateSubmitter(ctx, command.UpdateSubmitterInput{
-		ID: sub.ID, Name: str("Submitter One (rev)"), Address: &domain.Address{City: "Subcity"},
-		Phone: []string{"555-0100", "555-0101"}, Email: []string{"one@example.test"}, Language: str("English"),
-		MediaID: &med.ID, Version: sub.Version,
+		ID: sub.ID, Name: str("Submitter One (rev)"), Address: command.Set(domain.Address{City: "Subcity"}),
+		Phone: command.Set([]string{"555-0100", "555-0101"}), Email: command.Set([]string{"one@example.test"}), Language: command.Set("English"),
+		MediaID: command.Set(med.ID), Version: sub.Version,
 	})
 	must("update submitter", err)
 	assertSubmitterRow(t, ctx, rs, sub.ID, med.ID)
@@ -206,8 +205,8 @@ func runEveryUpdate(t *testing.T, ctx context.Context, h *command.Handler, rs re
 	assoc, err := h.CreateAssociation(ctx, command.CreateAssociationInput{PersonID: p1.ID, AssociateID: p2.ID, Role: "godparent"})
 	must("create association", err)
 	_, err = h.UpdateAssociation(ctx, command.UpdateAssociationInput{
-		ID: assoc.ID, Role: str("witness"), Phrase: str("witnessed"), Notes: str("assoc notes"),
-		NoteIDs: &[]uuid.UUID{note.ID}, Version: assoc.Version,
+		ID: assoc.ID, Role: str("witness"), Phrase: command.Set("witnessed"), Notes: command.Set("assoc notes"),
+		NoteIDs: command.Set([]uuid.UUID{note.ID}), Version: assoc.Version,
 	})
 	must("update association", err)
 	assertAssociationNotes(t, ctx, rs, assoc.ID, note.ID)
@@ -216,7 +215,7 @@ func runEveryUpdate(t *testing.T, ctx context.Context, h *command.Handler, rs re
 	lds, err := h.CreateLDSOrdinance(ctx, command.CreateLDSOrdinanceInput{Type: domain.LDSBaptism, PersonID: &p1.ID, Date: "1 JAN 1900", Temple: "SLAKE", Status: "COMPLETED"})
 	must("create lds ordinance", err)
 	_, err = h.UpdateLDSOrdinance(ctx, command.UpdateLDSOrdinanceInput{
-		ID: lds.ID, Date: str("2 FEB 1902"), Place: str("Temple City"), Temple: str("LOGAN"), Status: str("SUBMITTED"), Version: lds.Version,
+		ID: lds.ID, Date: command.Set("2 FEB 1902"), Place: command.Set("Temple City"), Temple: command.Set("LOGAN"), Status: command.Set("SUBMITTED"), Version: lds.Version,
 	})
 	must("update lds ordinance", err)
 
@@ -224,8 +223,8 @@ func runEveryUpdate(t *testing.T, ctx context.Context, h *command.Handler, rs re
 	ea, err := h.CreateEvidenceAnalysis(ctx, command.CreateEvidenceAnalysisInput{FactType: "person_birth", SubjectID: p1.ID, CitationIDs: []uuid.UUID{cit.ID}, Conclusion: "born 1850"})
 	must("create evidence analysis", err)
 	_, err = h.UpdateEvidenceAnalysis(ctx, command.UpdateEvidenceAnalysisInput{
-		ID: ea.ID, FactType: str("person_death"), SubjectID: &p2.ID, CitationIDs: []uuid.UUID{cit.ID},
-		Conclusion: str("died 1920"), ResearchStatus: str("certain"), Notes: str("ea notes"), Version: ea.Version,
+		ID: ea.ID, FactType: str("person_death"), SubjectID: &p2.ID, CitationIDs: command.Set([]uuid.UUID{cit.ID}),
+		Conclusion: str("died 1920"), ResearchStatus: command.Set("certain"), Notes: command.Set("ea notes"), Version: ea.Version,
 	})
 	must("update evidence analysis", err)
 
@@ -234,7 +233,7 @@ func runEveryUpdate(t *testing.T, ctx context.Context, h *command.Handler, rs re
 	searchDate := time.Date(2021, 6, 7, 8, 9, 10, 0, time.UTC)
 	_, err = h.UpdateResearchLog(ctx, command.UpdateResearchLogInput{
 		ID: rl.ID, SubjectID: &f1.ID, SubjectType: str("family"), Repository: str("Archive 2"),
-		SearchDescription: str("parish"), Outcome: str("not_found"), Notes: str("rl notes"), SearchDate: &searchDate, Version: rl.Version,
+		SearchDescription: str("parish"), Outcome: str("not_found"), Notes: command.Set("rl notes"), SearchDate: &searchDate, Version: rl.Version,
 	})
 	must("update research log", err)
 
@@ -242,7 +241,7 @@ func runEveryUpdate(t *testing.T, ctx context.Context, h *command.Handler, rs re
 	must("create proof summary", err)
 	_, err = h.UpdateProofSummary(ctx, command.UpdateProofSummaryInput{
 		ID: ps.ID, FactType: str("person_death"), SubjectID: &p2.ID, Conclusion: str("c2"), Argument: str("a2"),
-		AnalysisIDs: []uuid.UUID{ea.ID}, ResearchStatus: str("possible"), Version: ps.Version,
+		AnalysisIDs: command.Set([]uuid.UUID{ea.ID}), ResearchStatus: command.Set("possible"), Version: ps.Version,
 	})
 	must("update proof summary", err)
 

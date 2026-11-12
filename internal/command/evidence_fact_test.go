@@ -80,7 +80,7 @@ func TestEvidenceArtifacts_FactID(t *testing.T) {
 			return err
 		}
 
-		if err := update(command.UpdateEvidenceAnalysisInput{FactID: &first}); err != nil || version != created.Version {
+		if err := update(command.UpdateEvidenceAnalysisInput{FactID: command.Set(first)}); err != nil || version != created.Version {
 			t.Errorf("unchanged fact_id: version %d, err %v; want no new version", version, err)
 		}
 		conclusion := "Ohio, Franklin County"
@@ -90,13 +90,13 @@ func TestEvidenceArtifacts_FactID(t *testing.T) {
 		if got := factIDOf(); got == nil || *got != first {
 			t.Errorf("fact_id after conclusion edit = %v, want %s", got, first)
 		}
-		if err := update(command.UpdateEvidenceAnalysisInput{FactID: &second}); err != nil {
+		if err := update(command.UpdateEvidenceAnalysisInput{FactID: command.Set(second)}); err != nil {
 			t.Fatalf("update fact_id: %v", err)
 		}
 		if got := factIDOf(); got == nil || *got != second {
 			t.Errorf("fact_id after relink = %v, want %s", got, second)
 		}
-		if err := update(command.UpdateEvidenceAnalysisInput{SubjectID: &c, FactID: &second}); !errors.Is(err, command.ErrInvalidInput) {
+		if err := update(command.UpdateEvidenceAnalysisInput{SubjectID: &c, FactID: command.Set(second)}); !errors.Is(err, command.ErrInvalidInput) {
 			t.Errorf("move to another subject keeping a fact of the old one: err = %v, want ErrInvalidInput", err)
 		}
 		if err := update(command.UpdateEvidenceAnalysisInput{SubjectID: &c}); err != nil {

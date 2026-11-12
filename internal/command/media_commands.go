@@ -107,13 +107,13 @@ func (h *Handler) UploadMedia(ctx context.Context, input UploadMediaInput) (*Upl
 // UpdateMediaInput contains the data for updating media metadata.
 type UpdateMediaInput struct {
 	ID          uuid.UUID
-	Title       *string
-	Description *string
-	MediaType   *string
-	CropLeft    *int
-	CropTop     *int
-	CropWidth   *int
-	CropHeight  *int
+	Title       *string // required: cannot be cleared
+	Description Patch[string]
+	MediaType   *string // required: cannot be cleared
+	CropLeft    Patch[int]
+	CropTop     Patch[int]
+	CropWidth   Patch[int]
+	CropHeight  Patch[int]
 	Version     int64 // Required for optimistic locking
 }
 
@@ -154,8 +154,8 @@ func (h *Handler) UpdateMedia(ctx context.Context, input UpdateMediaInput) (*Upd
 		changes["title"] = *input.Title
 		testMedia.Title = *input.Title
 	}
-	if input.Description != nil && *input.Description != current.Description {
-		changes["description"] = *input.Description
+	if description, ok := input.Description.Change(); ok && description != current.Description {
+		changes["description"] = description
 	}
 	if input.MediaType != nil && string(current.MediaType) != *input.MediaType {
 		changes["media_type"] = *input.MediaType
@@ -187,27 +187,10 @@ func (h *Handler) UpdateMedia(ctx context.Context, input UpdateMediaInput) (*Upd
 
 // addCropChanges records each crop field in input that differs from current.
 func addCropChanges(changes map[string]any, input UpdateMediaInput, current *repository.MediaReadModel) {
-	if input.CropLeft != nil && !ptrEqual(input.CropLeft, current.CropLeft) {
-		changes["crop_left"] = *input.CropLeft
-	}
-	if input.CropTop != nil && !ptrEqual(input.CropTop, current.CropTop) {
-		changes["crop_top"] = *input.CropTop
-	}
-	if input.CropWidth != nil && !ptrEqual(input.CropWidth, current.CropWidth) {
-		changes["crop_width"] = *input.CropWidth
-	}
-	if input.CropHeight != nil && !ptrEqual(input.CropHeight, current.CropHeight) {
-		changes["crop_height"] = *input.CropHeight
-	}
-}
-
-// ptrEqual reports whether two optional values hold the same value, treating
-// two nils as equal.
-func ptrEqual[T comparable](a, b *T) bool {
-	if a == nil || b == nil {
-		return a == b
-	}
-	return *a == *b
+	recordOptionalChange(changes, "crop_left", input.CropLeft, current.CropLeft)
+	recordOptionalChange(changes, "crop_top", input.CropTop, current.CropTop)
+	recordOptionalChange(changes, "crop_width", input.CropWidth, current.CropWidth)
+	recordOptionalChange(changes, "crop_height", input.CropHeight, current.CropHeight)
 }
 
 // DeleteMedia deletes a media record.
