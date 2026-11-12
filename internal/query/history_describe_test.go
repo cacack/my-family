@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -122,6 +123,33 @@ func TestTransform_NameChangesWithoutPriorState(t *testing.T) {
 	assert.Equal(t, map[string]FieldChange{"name": {NewValue: "Ann Lee"}}, entries[0].Changes)
 	assert.Empty(t, entries[1].Changes)
 	assert.Equal(t, "person", entries[1].EntityType)
+}
+
+// Brick walls (#802) show in the person's history as updates naming the note
+// set and the time the wall was broken through.
+func TestTransform_BrickWalls(t *testing.T) {
+	ctx := context.Background()
+	es := memory.NewEventStore()
+	person := uuid.New()
+	since := time.Date(2020, 3, 1, 12, 0, 0, 0, time.UTC)
+	resolved := domain.NewBrickWallResolved(person, "no baptism found", since)
+	require.NoError(t, es.Append(ctx, person, "Person", []domain.Event{
+		domain.PersonCreated{BaseEvent: domain.NewBaseEvent(), PersonID: person, GivenName: "Heinrich", Surname: "Mueller"},
+		domain.NewBrickWallSet(person, "no baptism found"),
+		resolved,
+	}, -1, repository.MainScope))
+
+	service := NewHistoryService(es, memory.NewReadModelStore())
+	history, err := service.GetEntityHistory(ctx, "person", person, 10, 0)
+	require.NoError(t, err)
+	require.Len(t, history.Entries, 3)
+	for _, entry := range history.Entries[1:] {
+		assert.Equal(t, "person", entry.EntityType)
+		assert.Equal(t, "updated", entry.Action)
+		assert.Equal(t, "Heinrich Mueller", entry.EntityName)
+	}
+	assert.Equal(t, map[string]FieldChange{"brick_wall_note": {NewValue: "no baptism found"}}, history.Entries[1].Changes)
+	assert.Equal(t, map[string]FieldChange{"brick_wall_resolved_at": {NewValue: resolved.ResolvedAt.Format(time.RFC3339Nano)}}, history.Entries[2].Changes)
 }
 
 func TestConflictEntityType(t *testing.T) {

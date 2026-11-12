@@ -163,6 +163,11 @@ var historyEventCatalog = map[string]historyEventClass{
 	"DuplicateDismissed":       mapped(entityTypeDuplicatePair, actionCreated),
 	"DuplicateRestored":        mapped(entityTypeDuplicatePair, actionDeleted),
 	"ImportedValuesBackfilled": excluded(reasonBackfill),
+	// A brick wall (#802) is a claim about the person, on the person's stream.
+	"BrickWallSet":      mapped(entityTypePerson, actionUpdated),
+	"BrickWallResolved": mapped(entityTypePerson, actionUpdated),
+	// A rebuild's log of a brick wall set before #802; it changes no data.
+	"BrickWallBackfilled": excluded(reasonBackfill),
 }
 
 // classifyHistoryEvent looks an event type up in the table. ok is false only

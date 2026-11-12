@@ -203,7 +203,7 @@ describe('isBranchScopedRequest', () => {
 	});
 
 	it('leaves the main-only browse operations unscoped', () => {
-		// Brick walls are not event-sourced (#761). Sending `?branch=` on these
+		// Brick walls are not branch-scoped yet (#802). Sending `?branch=` on these
 		// would imply a scoping the server does not apply.
 		expect(isBranchScopedRequest('GET', '/browse/brick-walls')).toBe(false);
 		expect(isBranchScopedRequest('PUT', `/persons/${PERSON_ID}/brick-wall`)).toBe(false);

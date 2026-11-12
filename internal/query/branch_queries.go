@@ -36,6 +36,8 @@ var researchMetadataEventTypes = map[string]bool{
 	// (#1251). It lands on main's streams but changes no data, so it must not
 	// read as main editing an entity a branch deleted, nor count as drift.
 	"ImportedValuesBackfilled": true,
+	// Likewise a rebuild's log of a brick wall set before #802.
+	"BrickWallBackfilled": true,
 }
 
 // BranchService provides query operations for research branches.

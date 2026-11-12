@@ -184,8 +184,8 @@ const TEXT_SEGMENT = '[^/]+';
  * scoping them is exactly this parameter and nothing else.
  *
  * Read models and operations still answering only from the mainline, and
- * therefore absent here on purpose: brick walls (not event-sourced — #761;
- * whether they become event-sourced is #802), the entities that stay main-only
+ * therefore absent here on purpose: brick walls (event-sourced since #802, but
+ * not branch-scoped yet — follow-up under #676), the entities that stay main-only
  * by decision (submitters, repositories, LDS ordinances — ADR-005), GEDCOM
  * import and export, the JSON/CSV exports, the global and source history, and
  * the other quality, statistics and discovery checks computed over the mainline.

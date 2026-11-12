@@ -126,12 +126,13 @@ The read model is derived from the event log. If projecting an event fails after
 the request still succeeds, the failure is logged, and every later `serve` start warns that the
 read model is out of sync. To repair it, stop the server, back up the database, and run
 `myfamily rebuild` with the same `DATABASE_URL` / `SQLITE_PATH`. It empties the read model and
-replays the whole event log into it, keeping brick walls, the one value that is not in the log.
+replays the whole event log into it.
 The rebuild refuses to start while a server is running against the same database, and the
 server refuses to start while a rebuild is running; on SQLite the lock is a `.lock` file next to
 the database file, and on PostgreSQL a session advisory lock, so `DATABASE_URL` must not go
 through PgBouncer in transaction or statement pooling mode. If the rebuild is interrupted, `serve` keeps warning; run `myfamily rebuild`
-again and it restores the brick walls from what it saved before the reset. GEDCOM place
+again. Brick walls set by a version from before they were kept in the event log are logged by
+the first rebuild before its reset, so it keeps them. GEDCOM place
 coordinates and external IDs are in the log only for files imported by a version that has
 `myfamily rebuild`. For entities imported by an earlier version, the first rebuild logs them
 before its reset, so it keeps them, and later rebuilds replay them from the log.

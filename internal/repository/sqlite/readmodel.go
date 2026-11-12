@@ -5422,31 +5422,11 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 	return results, nil
 }
 
-// Brick-wall state is written straight to the read model rather than projected from
-// events, so there is no overlay to resolve. All three methods are MAIN-ONLY and say
-// so with an explicit branch_id predicate: without it the UPDATEs would rewrite every
-// branch's shadow row for the person and the SELECT would list shadows and tombstones
-// as extra people (BR-003). Whether brick walls should become branch-aware at all waits
-// on deciding whether they become event-sourced, as #624 did for snapshots (ADR-005,
-// "Entities that stay main-only").
-
-// SetBrickWall marks a person as a brick wall with a note (main only).
-func (s *ReadModelStore) SetBrickWall(ctx context.Context, personID uuid.UUID, note string) error {
-	_, err := s.db.ExecContext(ctx, `
-		UPDATE persons SET brick_wall_note = ?, brick_wall_since = ?, brick_wall_resolved_at = NULL
-		WHERE id = ? AND branch_id = ?
-	`, note, formatTimestamp(time.Now()), personID.String(), mainBranchID)
-	return err
-}
-
-// ResolveBrickWall marks a brick wall as resolved (main only).
-func (s *ReadModelStore) ResolveBrickWall(ctx context.Context, personID uuid.UUID) error {
-	_, err := s.db.ExecContext(ctx, `
-		UPDATE persons SET brick_wall_resolved_at = ?
-		WHERE id = ? AND branch_id = ?
-	`, formatTimestamp(time.Now()), personID.String(), mainBranchID)
-	return err
-}
+// Brick walls are event-sourced (#802): BrickWallSet and BrickWallResolved are
+// projected onto the person's row through SavePerson, so the only brick-wall method
+// here is the read. Only main writes them so far (branch-scoping them is follow-up
+// under #676), so GetBrickWalls is MAIN-ONLY and says so with an explicit branch_id
+// predicate: without it, it would list shadows and tombstones as extra people (BR-003).
 
 // GetBrickWalls returns persons with brick wall status (main only).
 func (s *ReadModelStore) GetBrickWalls(ctx context.Context, includeResolved bool) ([]repository.BrickWallEntry, error) {

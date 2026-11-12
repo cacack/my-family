@@ -177,6 +177,9 @@ func runRebuild() error {
 	if result.Backfilled > 0 {
 		log.Printf("Logged imported coordinates and EXIDs of %d entities imported before they were kept in the event log", result.Backfilled)
 	}
+	if result.BackfilledBrickWalls > 0 {
+		log.Printf("Logged the brick walls of %d persons marked before brick walls were kept in the event log", result.BackfilledBrickWalls)
+	}
 	log.Printf("Rebuilt the read model: %d events replayed", result.Events)
 	return nil
 }

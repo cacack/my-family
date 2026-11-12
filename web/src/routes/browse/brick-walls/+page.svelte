@@ -78,7 +78,7 @@
 <div class="browse-page">
 	<MainlineNotice
 		surface="Brick-wall tracking"
-		detail="Brick-wall flags are not event-sourced yet, so they are not part of a research branch."
+		detail="Brick-wall flags are not branch-scoped yet, so they are not part of a research branch."
 	/>
 	<PageHeader title="Brick Walls" description="Track and celebrate research breakthroughs." />
 

@@ -5072,33 +5072,11 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 	return results, nil
 }
 
-// SetBrickWall marks a person as a brick wall with a note.
-//
-// Main-pinned: brick-wall state is not branch data today, so the UPDATE targets the
-// main row only. Without the branch predicate it rewrites every branch's shadow row
-// for the person. Whether brick walls should become branch-scoped waits on deciding
-// whether they become event-sourced, as #624 did for snapshots (ADR-005, "Entities
-// that stay main-only").
-func (s *ReadModelStore) SetBrickWall(ctx context.Context, personID uuid.UUID, note string) error {
-	_, err := s.db.ExecContext(ctx, `
-		UPDATE persons SET brick_wall_note = $1, brick_wall_since = NOW(), brick_wall_resolved_at = NULL
-		WHERE id = $2 AND branch_id = $3
-	`, note, personID, domain.MainBranchID.UUID())
-	return err
-}
-
-// ResolveBrickWall marks a brick wall as resolved. Main-pinned, like SetBrickWall.
-func (s *ReadModelStore) ResolveBrickWall(ctx context.Context, personID uuid.UUID) error {
-	_, err := s.db.ExecContext(ctx, `
-		UPDATE persons SET brick_wall_resolved_at = NOW()
-		WHERE id = $1 AND branch_id = $2
-	`, personID, domain.MainBranchID.UUID())
-	return err
-}
-
-// GetBrickWalls returns persons with brick wall status. Main-pinned, like
-// SetBrickWall: a branch shadow row must not surface as a second entry for the same
-// person, and a main row is never a tombstone (see DeletePerson).
+// GetBrickWalls returns persons with brick wall status. Brick walls are
+// event-sourced (#802) but only main writes them so far (branch-scoping them is
+// follow-up under #676), so this is main-pinned: a branch shadow row must not
+// surface as a second entry for the same person, and a main row is never a
+// tombstone (see DeletePerson).
 func (s *ReadModelStore) GetBrickWalls(ctx context.Context, includeResolved bool) ([]repository.BrickWallEntry, error) {
 	query := `
 		SELECT id, full_name, brick_wall_note, brick_wall_since, brick_wall_resolved_at

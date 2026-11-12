@@ -34,20 +34,62 @@ func (s rebuildStores) rebuild(t *testing.T, rs repository.ReadModelStore) (repo
 	return repository.RebuildReadModel(context.Background(), s.events, rs, s.branches, s.snapshots)
 }
 
-// TestRebuildReadModel_KeepsBrickWalls covers the one value written straight
-// to the read model, a brick wall: a replay cannot derive it, so the rebuild
-// must carry it over (#845).
+// setLegacyBrickWall writes a brick wall straight to a person's main row, as
+// every brick wall was written before #802, with no event behind it.
+func setLegacyBrickWall(t *testing.T, rs repository.ReadModelStore, id uuid.UUID, note string, since time.Time, resolvedAt *time.Time) {
+	t.Helper()
+	ctx := context.Background()
+	p, err := rs.GetPerson(ctx, domain.MainBranchID, id)
+	if err != nil || p == nil {
+		t.Fatalf("get person %s: %v", id, err)
+	}
+	p.BrickWallNote, p.BrickWallSince, p.BrickWallResolvedAt = note, &since, resolvedAt
+	if err := rs.SavePerson(ctx, domain.MainBranchID, p); err != nil {
+		t.Fatalf("save person: %v", err)
+	}
+}
+
+// loggedEventTypes counts the logged events by type.
+func loggedEventTypes(t *testing.T, events repository.EventStore) map[string]int {
+	t.Helper()
+	logged, err := events.ReadAll(context.Background(), 0, 1000)
+	if err != nil {
+		t.Fatalf("read log: %v", err)
+	}
+	types := map[string]int{}
+	for i := range logged {
+		types[logged[i].EventType]++
+	}
+	return types
+}
+
+// TestRebuildReadModel_KeepsBrickWalls covers brick walls set through the
+// command: they are event-sourced (#802), so the replay restores them and
+// nothing needs backfilling.
 func TestRebuildReadModel_KeepsBrickWalls(t *testing.T) {
 	ctx := context.Background()
 	s := newRebuildStores()
 	h := command.NewHandlerWithBranches(s.events, s.read, s.branches, s.snapshots)
 
-	person, err := h.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ada", Surname: "Example"})
+	stuck, err := h.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ada", Surname: "Example"})
 	if err != nil {
 		t.Fatalf("create person: %v", err)
 	}
-	if err := s.read.SetBrickWall(ctx, person.ID, "stuck"); err != nil {
-		t.Fatalf("set brick wall: %v", err)
+	broken, err := h.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Bea", Surname: "Example"})
+	if err != nil {
+		t.Fatalf("create person: %v", err)
+	}
+	for _, id := range []uuid.UUID{stuck.ID, broken.ID} {
+		if err := h.SetBrickWall(ctx, id, "stuck"); err != nil {
+			t.Fatalf("set brick wall: %v", err)
+		}
+	}
+	if err := h.ResolveBrickWall(ctx, broken.ID); err != nil {
+		t.Fatalf("resolve brick wall: %v", err)
+	}
+	before, err := s.read.GetBrickWalls(ctx, true)
+	if err != nil || len(before) != 2 {
+		t.Fatalf("brick walls before rebuild = %+v, %v; want 2", before, err)
 	}
 
 	result, err := s.rebuild(t, s.read)
@@ -57,12 +99,112 @@ func TestRebuildReadModel_KeepsBrickWalls(t *testing.T) {
 	if logged, _ := s.events.ReadAll(ctx, 0, 100); result.Events != len(logged) {
 		t.Errorf("events replayed = %d, want all %d logged", result.Events, len(logged))
 	}
-	p, _ := s.read.GetPerson(ctx, domain.MainBranchID, person.ID)
-	if p == nil || p.BrickWallNote != "stuck" || p.BrickWallSince == nil {
-		t.Errorf("person after rebuild = %+v, want the brick wall kept", p)
+	if result.BackfilledBrickWalls != 0 {
+		t.Errorf("BackfilledBrickWalls = %d, want 0 for logged brick walls", result.BackfilledBrickWalls)
+	}
+	after, err := s.read.GetBrickWalls(ctx, true)
+	if err != nil {
+		t.Fatalf("brick walls after rebuild: %v", err)
+	}
+	if len(after) != len(before) {
+		t.Fatalf("brick walls after rebuild = %+v, want %+v", after, before)
+	}
+	for i := range before {
+		b, a := before[i], after[i]
+		if a.PersonID != b.PersonID || a.Note != b.Note || !a.Since.Equal(b.Since) ||
+			(a.ResolvedAt == nil) != (b.ResolvedAt == nil) || (a.ResolvedAt != nil && !a.ResolvedAt.Equal(*b.ResolvedAt)) {
+			t.Errorf("brick wall %d after rebuild = %+v, want %+v", i, a, b)
+		}
 	}
 	if result.DroppedImported != 0 {
 		t.Errorf("DroppedImported = %d, want 0", result.DroppedImported)
+	}
+}
+
+// TestRebuildReadModel_BackfillsLegacyBrickWalls covers a database from before
+// #802, whose brick walls only the read model held. The rebuild logs them
+// before its reset, so it keeps them with their original times, and a second
+// rebuild has nothing left to log.
+func TestRebuildReadModel_BackfillsLegacyBrickWalls(t *testing.T) {
+	ctx := context.Background()
+	s := newRebuildStores()
+	h := command.NewHandlerWithBranches(s.events, s.read, s.branches, s.snapshots)
+	active, err := h.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ada", Surname: "Example"})
+	if err != nil {
+		t.Fatalf("create person: %v", err)
+	}
+	resolved, err := h.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Bea", Surname: "Example"})
+	if err != nil {
+		t.Fatalf("create person: %v", err)
+	}
+	since := time.Date(2020, 3, 1, 12, 0, 0, 0, time.UTC)
+	resolvedAt := since.Add(48 * time.Hour)
+	setLegacyBrickWall(t, s.read, active.ID, "no baptism found", since, nil)
+	setLegacyBrickWall(t, s.read, resolved.ID, "census gap", since, &resolvedAt)
+
+	result, err := s.rebuild(t, s.read)
+	if err != nil {
+		t.Fatalf("rebuild: %v", err)
+	}
+	if result.BackfilledBrickWalls != 2 {
+		t.Errorf("BackfilledBrickWalls = %d, want 2", result.BackfilledBrickWalls)
+	}
+	if types := loggedEventTypes(t, s.events); types["BrickWallBackfilled"] != 2 || types["BrickWallSet"] != 0 || types["BrickWallResolved"] != 0 {
+		t.Errorf("logged event types = %v, want two BrickWallBackfilled and no live brick-wall events", types)
+	}
+	a, _ := s.read.GetPerson(ctx, domain.MainBranchID, active.ID)
+	if a == nil || a.BrickWallNote != "no baptism found" || a.BrickWallSince == nil || !a.BrickWallSince.Equal(since) || a.BrickWallResolvedAt != nil {
+		t.Errorf("active brick wall after rebuild = %+v, want it kept with its original time", a)
+	}
+	r, _ := s.read.GetPerson(ctx, domain.MainBranchID, resolved.ID)
+	if r == nil || r.BrickWallNote != "census gap" || r.BrickWallResolvedAt == nil || !r.BrickWallResolvedAt.Equal(resolvedAt) {
+		t.Errorf("resolved brick wall after rebuild = %+v, want it kept resolved", r)
+	}
+	// The person's version follows its stream, so a later edit is not refused.
+	if err := h.SetBrickWall(ctx, active.ID, "still stuck"); err != nil {
+		t.Fatalf("set brick wall after rebuild: %v", err)
+	}
+
+	again, err := s.rebuild(t, s.read)
+	if err != nil {
+		t.Fatalf("second rebuild: %v", err)
+	}
+	if again.BackfilledBrickWalls != 0 {
+		t.Errorf("second rebuild BackfilledBrickWalls = %d, want 0", again.BackfilledBrickWalls)
+	}
+	if a, _ := s.read.GetPerson(ctx, domain.MainBranchID, active.ID); a == nil || a.BrickWallNote != "still stuck" {
+		t.Errorf("brick wall after second rebuild = %+v, want the later note", a)
+	}
+}
+
+// TestRebuildReadModel_BackfillsBrickWallsOfAnInterruptedLegacyRebuild covers
+// a rebuild from before #802 that stopped after its reset: its brick walls are
+// only in the rebuild state it saved. The rerun logs them from there.
+func TestRebuildReadModel_BackfillsBrickWallsOfAnInterruptedLegacyRebuild(t *testing.T) {
+	ctx := context.Background()
+	s := newRebuildStores()
+	h := command.NewHandlerWithBranches(s.events, s.read, s.branches, s.snapshots)
+	person, err := h.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ada", Surname: "Example"})
+	if err != nil {
+		t.Fatalf("create person: %v", err)
+	}
+	if err := s.read.ResetReadModel(ctx); err != nil {
+		t.Fatalf("reset: %v", err)
+	}
+	state := `{"brick_walls":{"` + person.ID.String() + `":{"note":"stuck","since":"2020-03-01T12:00:00Z"}}}`
+	if err := s.read.SaveRebuildState(ctx, []byte(state)); err != nil {
+		t.Fatalf("save state: %v", err)
+	}
+
+	result, err := s.rebuild(t, s.read)
+	if err != nil {
+		t.Fatalf("rebuild: %v", err)
+	}
+	if result.BackfilledBrickWalls != 1 {
+		t.Errorf("BackfilledBrickWalls = %d, want 1", result.BackfilledBrickWalls)
+	}
+	if p, _ := s.read.GetPerson(ctx, domain.MainBranchID, person.ID); p == nil || p.BrickWallNote != "stuck" || p.BrickWallSince == nil {
+		t.Errorf("person after rerun = %+v, want the saved brick wall", p)
 	}
 }
 
@@ -263,16 +405,6 @@ func (f *failingRead) ListPersons(ctx context.Context, opts repository.ListOptio
 	return f.ReadModelStore.ListPersons(ctx, opts)
 }
 
-// SavePerson fails only the write that restores a brick wall.
-func (f *failingRead) SavePerson(ctx context.Context, b domain.BranchID, p *repository.PersonReadModel) error {
-	if p.BrickWallNote != "" {
-		if err := f.err("restore"); err != nil {
-			return err
-		}
-	}
-	return f.ReadModelStore.SavePerson(ctx, b, p)
-}
-
 func (f *failingRead) GetRebuildState(ctx context.Context) ([]byte, error) {
 	if err := f.err("get state"); err != nil {
 		return nil, err
@@ -303,7 +435,7 @@ func (f *failingRead) RecordProjectionFailure(ctx context.Context, failure repos
 
 func TestRebuildReadModel_ReportsStoreErrors(t *testing.T) {
 	for _, op := range []string{
-		"reset", "list persons", "list repositories", "restore", "get state", "save state", "clear state",
+		"reset", "list persons", "list repositories", "get state", "save state", "clear state",
 	} {
 		t.Run(op, func(t *testing.T) {
 			ctx := context.Background()
@@ -313,7 +445,7 @@ func TestRebuildReadModel_ReportsStoreErrors(t *testing.T) {
 			if err != nil {
 				t.Fatalf("create person: %v", err)
 			}
-			if err := s.read.SetBrickWall(ctx, p.ID, "stuck"); err != nil {
+			if err := h.SetBrickWall(ctx, p.ID, "stuck"); err != nil {
 				t.Fatalf("set brick wall: %v", err)
 			}
 			_, err = s.rebuild(t, &failingRead{ReadModelStore: s.read, fail: op})
@@ -395,8 +527,8 @@ func (c *cancelAfterReset) ResetReadModel(ctx context.Context) error {
 
 // TestRebuildReadModel_InterruptedRebuildIsRecoverable stops a rebuild right
 // after its reset. The read model must stay flagged as out of sync, and a
-// rerun must still restore the brick walls, which the reset has already
-// removed from the read model.
+// rerun must still restore a legacy brick wall, which the reset has already
+// removed from the read model: the interrupted rebuild logged it first.
 func TestRebuildReadModel_InterruptedRebuildIsRecoverable(t *testing.T) {
 	ctx := context.Background()
 	s := newRebuildStores()
@@ -405,9 +537,7 @@ func TestRebuildReadModel_InterruptedRebuildIsRecoverable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create person: %v", err)
 	}
-	if err := s.read.SetBrickWall(ctx, person.ID, "stuck"); err != nil {
-		t.Fatalf("set brick wall: %v", err)
-	}
+	setLegacyBrickWall(t, s.read, person.ID, "stuck", time.Now().UTC(), nil)
 
 	aborted, cancel := context.WithCancel(ctx)
 	defer cancel()

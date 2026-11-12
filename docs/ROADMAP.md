@@ -61,8 +61,9 @@ their data model as Phase 1 work.
 
 Still open after v0.12: partial merge ([#684](https://github.com/cacack/my-family/issues/684)),
 reverting a merge ([#842](https://github.com/cacack/my-family/issues/842)), comparing two branches
-([#841](https://github.com/cacack/my-family/issues/841)), and whether brick walls become
-event-sourced so they can follow a branch ([#802](https://github.com/cacack/my-family/issues/802)).
+([#841](https://github.com/cacack/my-family/issues/841)), and branch-scoping brick walls, which
+are event-sourced since [#802](https://github.com/cacack/my-family/issues/802) (follow-up under
+[#676](https://github.com/cacack/my-family/issues/676)).
 
 ### Bringing History to Life
 
