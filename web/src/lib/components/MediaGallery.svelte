@@ -4,6 +4,7 @@
 	import MediaUpload from './MediaUpload.svelte';
 	import MediaLightbox from './MediaLightbox.svelte';
 	import ConflictError from './ConflictError.svelte';
+	import ConfirmDialog from './ConfirmDialog.svelte';
 
 	interface Props {
 		personId: string;
@@ -17,6 +18,8 @@
 	let error: string | null = $state(null);
 	let lightboxMedia: Media | null = $state(null);
 	let deletingId: string | null = $state(null);
+	let deleteTarget: Media | null = $state(null);
+	let deleteOpen = $state(false);
 
 	// Conflict retry state
 	let conflictError = $state(false);
@@ -67,10 +70,19 @@
 		}
 	}
 
-	async function deleteMedia(media: Media, e: MouseEvent) {
+	function askDelete(media: Media, e: MouseEvent) {
 		e.stopPropagation();
-		if (!confirm(`Delete "${media.title}"? This cannot be undone.`)) return;
+		deleteTarget = media;
+		deleteOpen = true;
+	}
 
+	/**
+	 * Run from the delete dialog. A stale version closes it and offers Try
+	 * Again here; any other failure is shown in the dialog.
+	 */
+	async function deleteMedia() {
+		const media = deleteTarget;
+		if (!media) return;
 		deletingId = media.id;
 		try {
 			await api.deleteMedia(media.id, media.version);
@@ -91,7 +103,7 @@
 					}
 				};
 			} else {
-				error = (e as { message?: string }).message || 'Failed to delete media';
+				throw e;
 			}
 		} finally {
 			deletingId = null;
@@ -104,6 +116,13 @@
 		}
 	});
 </script>
+
+<ConfirmDialog
+	bind:open={deleteOpen}
+	title={`Delete "${deleteTarget?.title ?? ''}"?`}
+	description="This cannot be undone."
+	onconfirm={deleteMedia}
+/>
 
 <div class="media-gallery">
 	<MediaUpload {personId} onUpload={handleUpload} />
@@ -167,7 +186,7 @@
 
 					<button
 						class="delete-btn"
-						onclick={(e) => deleteMedia(media, e)}
+						onclick={(e) => askDelete(media, e)}
 						disabled={deletingId === media.id}
 						aria-label="Delete {media.title}"
 					>

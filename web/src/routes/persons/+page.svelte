@@ -7,6 +7,7 @@
 	import { RESEARCH_STATUS_OPTIONS } from '#lib/utils/enumOptions.js';
 	import { clampPageToTotal, readEnum, readPositiveInt, setQuery } from '#lib/utils/urlState.js';
 	import ErrorState from '#lib/components/ErrorState.svelte';
+	import NavigationNotice from '#lib/components/NavigationNotice.svelte';
 
 	let persons: Person[] = $state([]);
 	let total = $state(0);
@@ -114,9 +115,7 @@
 		{/snippet}
 	</PageHeader>
 
-	{#if page.state.notice}
-		<p class="notice" role="status">{page.state.notice}</p>
-	{/if}
+	<NavigationNotice />
 
 	<div class="toolbar">
 		<button
@@ -245,16 +244,6 @@
 		width: 1rem;
 		height: 1rem;
 		color: #64748b;
-	}
-
-	.notice {
-		margin: 0 0 1rem;
-		padding: 0.75rem 1rem;
-		background: #f0fdf4;
-		border: 1px solid #bbf7d0;
-		border-radius: 6px;
-		color: #166534;
-		font-size: 0.875rem;
 	}
 
 	.loading,

@@ -53,6 +53,17 @@ describe('Sources page', () => {
 		expect(API_SOURCE_TYPES).toContain(body.source_type);
 	});
 
+	// As a new person or family does (#1113).
+	it('opens the new source once it is created', async () => {
+		render(SourcesPage);
+		await screen.findByText('No sources found.');
+		await fireEvent.click(screen.getAllByRole('button', { name: 'Add Source' })[0]);
+		await fireEvent.input(screen.getByLabelText(/Title/), { target: { value: 'Parish register' } });
+		await fireEvent.click(screen.getByRole('button', { name: 'Create Source' }));
+
+		await waitFor(() => expect(currentPath()).toBe('/sources/s-1'));
+	});
+
 	// GEDCOM CONT lines fold into these fields; a text input would strip the breaks (#1174).
 	it('creates a source with multi-line title, author and publisher', async () => {
 		render(SourcesPage);

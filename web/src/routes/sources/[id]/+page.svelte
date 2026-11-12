@@ -11,6 +11,8 @@
 	import { SOURCE_TYPES } from '#lib/utils/sourceTypes.js';
 	import ErrorState from '#lib/components/ErrorState.svelte';
 	import ActionError from '#lib/components/ActionError.svelte';
+	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
+	import LiveRegion from '#lib/components/LiveRegion.svelte';
 	import { asDatePhrase, savedAsNotes, savedAsText, unreadableDateField, type SavedAs } from '#lib/utils/dateInput.js';
 	import SaveConflict from '#lib/components/SaveConflict.svelte';
 	import { SaveConflictFlow, type ConflictRow } from '#lib/utils/saveConflict.svelte.js';
@@ -23,7 +25,15 @@
 	let savedAs: SavedAs | undefined = $state();
 	let editing = $state(false);
 	let saving = $state(false);
-	let deleting = $state(false);
+	let deleteOpen = $state(false);
+	let liveRegion: LiveRegion | undefined = $state();
+	// The server refuses deleting a cited source; the loaded source says so
+	// already, so the dialog explains instead of warning (#1113).
+	const deleteRefusal = $derived.by(() =>
+		source?.citation_count
+			? 'This source is cited. Delete or move its citations first.'
+			: null
+	);
 
 	// Form state
 	let formData = $state({
@@ -153,6 +163,7 @@
 			await loadSource(source.id);
 			if (source) savedAs = savedAsNotes(typedDate, { publish_date: source.publish_date || '' }).publish_date;
 			editing = false;
+			liveRegion?.announce('Source saved');
 		} catch (e) {
 			// Only a stale version is compared with the latest (#940); other 409s
 			// are refusals, and a source that can't be re-read shows the refusal.
@@ -172,19 +183,11 @@
 		saveSource();
 	}
 
+	/** Run from the delete dialog, which shows a failure. */
 	async function deleteSource() {
 		if (!source) return;
-		if (!confirm(`Delete "${source.title}"? This cannot be undone.`)) return;
-
-		deleting = true;
-		error = null;
-		try {
-			await api.deleteSource(source.id, source.version);
-			goto('/sources');
-		} catch (e) {
-			error = (e as { message?: string }).message || 'Failed to delete';
-			deleting = false;
-		}
+		await api.deleteSource(source.id, source.version);
+		goto('/sources', { state: { notice: `"${source.title}" was deleted.` } });
 	}
 
 	function formatSourceType(type: string): string {
@@ -214,10 +217,18 @@
 
 {#snippet sourceActions()}
 	<Button variant="outline" onclick={startEdit}>Edit</Button>
-	<Button variant="destructive" onclick={deleteSource} disabled={deleting}>
-		{deleting ? 'Deleting...' : 'Delete'}
-	</Button>
+	<Button variant="destructive" onclick={() => (deleteOpen = true)}>Delete</Button>
 {/snippet}
+
+<LiveRegion bind:this={liveRegion} />
+
+<ConfirmDialog
+	bind:open={deleteOpen}
+	title={`Delete "${source?.title ?? ''}"?`}
+	description="This cannot be undone."
+	refusal={deleteRefusal}
+	onconfirm={deleteSource}
+/>
 
 <div class="source-page">
 	<ActionBar back={{ href: '/sources', label: 'Sources' }} actions={source && !editing ? sourceActions : undefined} />
@@ -227,7 +238,7 @@
 	{:else if error && !source}
 		<ErrorState message={error} onRetry={() => loadSource(page.params.id ?? '')} />
 	{:else if source}
-		<!-- In the form, the error shows in it; out of it, a failed delete shows here. -->
+		<!-- In the form, the error shows in it; out of it, a failed reload shows here. -->
 		{#if error && !editing}
 			<ActionError message={error} />
 		{/if}

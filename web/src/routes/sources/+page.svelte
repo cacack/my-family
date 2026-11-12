@@ -1,8 +1,10 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import { goto } from '$app/navigation';
 	import { api, type Source } from '#lib/api/client.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import PageHeader from '#lib/components/PageHeader.svelte';
+	import NavigationNotice from '#lib/components/NavigationNotice.svelte';
 	import FormRow from '#lib/components/FormRow.svelte';
 	import SourceCard from '#lib/components/SourceCard.svelte';
 	import { DEFAULT_SOURCE_TYPE, SOURCE_TYPES } from '#lib/utils/sourceTypes.js';
@@ -164,7 +166,7 @@
 		error = null;
 		unreadableDate = false;
 		try {
-			await api.createSource({
+			const created = await api.createSource({
 				source_type: newSource.source_type,
 				title: newSource.title.trim(),
 				author: newSource.author.trim() || undefined,
@@ -176,8 +178,8 @@
 				call_number: newSource.call_number.trim() || undefined,
 				notes: newSource.notes.trim() || undefined
 			});
-			showAddForm = false;
-			loadSources();
+			// A new record opens on its own page, as a new person or family does.
+			goto(`/sources/${created.id}`);
 		} catch (e) {
 			error = (e as { message?: string }).message || 'Failed to create source';
 			unreadableDate = unreadableDateField(e, ['publish_date']) !== null;
@@ -254,6 +256,8 @@
 			</div>
 		{/snippet}
 	</PageHeader>
+
+	<NavigationNotice />
 
 	{#if showAddForm}
 		<div class="add-form-container">

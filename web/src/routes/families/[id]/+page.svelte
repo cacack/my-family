@@ -18,7 +18,8 @@
 	import AddChildDialog from '#lib/components/AddChildDialog.svelte';
 	import PartnerPickers, { partnerChanges } from '#lib/components/PartnerPickers.svelte';
 	import PersonCard from '#lib/components/PersonCard.svelte';
-	import * as AlertDialog from '#lib/components/ui/alert-dialog/index.js';
+	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
+	import LiveRegion from '#lib/components/LiveRegion.svelte';
 	import ChangeHistory from '#lib/components/ChangeHistory.svelte';
 	import ExternalLinks from '#lib/components/ExternalLinks.svelte';
 	import InfoSection from '#lib/components/InfoSection.svelte';
@@ -41,8 +42,9 @@
 
 	let family: FamilyDetail | null = $state(null);
 	let loading = $state(true);
-	// A failed load replaces the page; a failed save, delete or refresh is shown
-	// inline and leaves the page and the form intact (#899).
+	// A failed load replaces the page; a failed save or refresh is shown
+	// inline and leaves the page and the form intact (#899); a failed delete
+	// is shown in its dialog.
 	let loadError: string | null = $state(null);
 	let actionError: string | null = $state(null);
 	let editing = $state(false);
@@ -94,18 +96,24 @@
 
 	// Children: the Add child dialog and the Remove child confirmation.
 	let addChildOpen = $state(false);
+	let removeOpen = $state(false);
 	let removeTarget: FamilyChild | null = $state(null);
-	let removing = $state(false);
-	let removeError: string | null = $state(null);
 	let childrenSection: InfoSection | undefined = $state();
 
-	// Polite live region for the outcome of child and partner changes.
-	let announcement = $state('');
+	let deleteOpen = $state(false);
+	let discardOpen = $state(false);
+	// The server refuses deleting a family with children; the loaded family
+	// says so already, so the dialog explains instead of warning (#1113).
+	const deleteRefusal = $derived.by(() =>
+		family?.children?.length
+			? 'This family still has children. Remove them from the family first.'
+			: null
+	);
+
+	// Polite live region for the outcome of saves and child changes.
+	let liveRegion: LiveRegion | undefined = $state();
 	function announce(message: string) {
-		announcement = '';
-		setTimeout(() => {
-			announcement = message;
-		}, 50);
+		liveRegion?.announce(message);
 	}
 
 	// The partner pickers of the edit form.
@@ -353,17 +361,11 @@
 		saveFamily();
 	}
 
+	/** Run from the delete dialog, which shows a failure. */
 	async function deleteFamily() {
 		if (!family) return;
-		if (!confirm('Delete this family? This cannot be undone.')) return;
-
-		actionError = null;
-		try {
-			await api.deleteFamily(family.id);
-			goto('/families');
-		} catch (e) {
-			actionError = (e as { message?: string }).message || 'Failed to delete';
-		}
+		await api.deleteFamily(family.id);
+		goto('/families', { state: { notice: `The ${getPartnerDisplay()} family was deleted.` } });
 	}
 
 	function childName(child: FamilyChild): string {
@@ -384,30 +386,17 @@
 	}
 
 	function openRemoveChild(child: FamilyChild) {
-		removeError = null;
 		removeTarget = child;
+		removeOpen = true;
 	}
 
-	async function confirmRemoveChild(e: Event) {
-		// Keep the dialog open until the request settles, so a failure shows in it.
-		e.preventDefault();
+	/** Run from the remove dialog, which shows a failure. */
+	async function confirmRemoveChild() {
 		if (!family || !removeTarget) return;
 		const target = removeTarget;
-		removing = true;
-		removeError = null;
-		try {
-			await api.removeChildFromFamily(family.id, target.person_id);
-			removeTarget = null;
-			await refreshFamily(family.id);
-			announce(`${childName(target)} removed from this family`);
-			// The row and its button are gone; land focus on the section instead.
-			await tick();
-			childrenSection?.focusHeading();
-		} catch (err) {
-			removeError = (err as { message?: string }).message || 'Failed to remove the child';
-		} finally {
-			removing = false;
-		}
+		await api.removeChildFromFamily(family.id, target.person_id);
+		await refreshFamily(family.id);
+		announce(`${childName(target)} removed from this family`);
 	}
 
 	function getPartnerDisplay(): string {
@@ -437,9 +426,9 @@
 		},
 		// Escape is easy to press by accident, so it asks before dropping edits (#1097).
 		'cancel': () => {
-			if (editing && (!saveConflict.hasEdits() || confirm(DISCARD_EDITS_PROMPT))) {
-				cancelEdit();
-			}
+			if (!editing || discardOpen) return;
+			if (saveConflict.hasEdits()) discardOpen = true;
+			else cancelEdit();
 		}
 	});
 </script>
@@ -450,15 +439,31 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
-<div class="sr-only" role="status" aria-live="polite" aria-atomic="true" data-testid="announcer">
-	{announcement}
-</div>
+<LiveRegion bind:this={liveRegion} />
+
+<ConfirmDialog
+	bind:open={deleteOpen}
+	title={`Delete the ${family ? getPartnerDisplay() : ''} family?`}
+	description="This cannot be undone."
+	refusal={deleteRefusal}
+	onconfirm={deleteFamily}
+/>
+
+<ConfirmDialog
+	bind:open={discardOpen}
+	title={DISCARD_EDITS_PROMPT}
+	description="The changes you made in this form will be lost."
+	confirmLabel="Discard"
+	cancelLabel="Keep editing"
+	onconfirm={cancelEdit}
+	focusAfterConfirm={focusEditButton}
+/>
 
 {#snippet familyActions()}
 	{#if family}
 		<Button variant="outline" href="/families/{family.id}/group-sheet">Group Sheet</Button>
 		<Button variant="outline" onclick={startEdit} bind:ref={editButton}>Edit</Button>
-		<Button variant="destructive" onclick={deleteFamily}>Delete</Button>
+		<Button variant="destructive" onclick={() => (deleteOpen = true)}>Delete</Button>
 	{/if}
 {/snippet}
 
@@ -679,34 +684,15 @@
 					onAdded={handleChildAdded}
 				/>
 
-				<AlertDialog.Root
-					open={removeTarget !== null}
-					onOpenChange={(isOpen) => {
-						if (!isOpen && !removing) removeTarget = null;
-					}}
-				>
-					<AlertDialog.Content>
-						<AlertDialog.Header>
-							<AlertDialog.Title>Remove this child from the family?</AlertDialog.Title>
-							<AlertDialog.Description>
-								{removeTarget ? childName(removeTarget) : ''} will no longer be recorded as a child of
-								{getPartnerDisplay()}. The person is kept; only the link is removed, and it stays in
-								the family's history.
-							</AlertDialog.Description>
-						</AlertDialog.Header>
-
-						{#if removeError}
-							<div class="dialog-error" role="alert">{removeError}</div>
-						{/if}
-
-						<AlertDialog.Footer>
-							<AlertDialog.Cancel disabled={removing}>Cancel</AlertDialog.Cancel>
-							<AlertDialog.Action variant="destructive" disabled={removing} onclick={confirmRemoveChild}>
-								{removing ? 'Removing...' : 'Remove child'}
-							</AlertDialog.Action>
-						</AlertDialog.Footer>
-					</AlertDialog.Content>
-				</AlertDialog.Root>
+				<ConfirmDialog
+					bind:open={removeOpen}
+					title="Remove this child from the family?"
+					description={`${removeTarget ? childName(removeTarget) : ''} will no longer be recorded as a child of ${getPartnerDisplay()}. The person is kept; only the link is removed, and it stays in the family's history.`}
+					confirmLabel="Remove child"
+					busyLabel="Removing..."
+					onconfirm={confirmRemoveChild}
+					focusAfterConfirm={() => childrenSection?.focusHeading()}
+				/>
 			</div>
 		{/if}
 	{/if}
@@ -800,27 +786,6 @@
 	.remove-child:focus-visible {
 		outline: 2px solid var(--color-focus-ring);
 		outline-offset: 1px;
-	}
-
-	.dialog-error {
-		padding: 0.625rem 0.75rem;
-		color: #dc2626;
-		background: #fef2f2;
-		border: 1px solid #fecaca;
-		border-radius: 6px;
-		font-size: 0.875rem;
-	}
-
-	.sr-only {
-		position: absolute;
-		width: 1px;
-		height: 1px;
-		padding: 0;
-		margin: -1px;
-		overflow: hidden;
-		clip: rect(0, 0, 0, 0);
-		white-space: nowrap;
-		border: 0;
 	}
 
 	.children-list {

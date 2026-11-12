@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/svelte';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/svelte';
+import { goto } from '$app/navigation';
 import RepositoryPage from './+page.svelte';
 import * as apiModule from '#lib/api/client.js';
 
@@ -101,14 +102,49 @@ describe('Repository detail page: failed actions (#899)', () => {
 		} as apiModule.RepositoryDetail);
 	});
 
-	it('shows a refused delete beside the repository it kept', async () => {
+	it('shows a refused delete in the dialog, keeping the repository', async () => {
 		vi.mocked(api.deleteRepository).mockRejectedValueOnce({ status: 500, message: 'Database unavailable' });
-		vi.spyOn(window, 'confirm').mockReturnValue(true);
+		render(RepositoryPage);
+		await fireEvent.click(await screen.findByRole('button', { name: 'Delete' }));
+		const dialog = await screen.findByRole('alertdialog');
+		await fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
+
+		expect((await within(dialog).findByRole('alert')).textContent).toContain('Database unavailable');
+		expect(goto).not.toHaveBeenCalled();
+	});
+
+	it('says why a stale delete was refused', async () => {
+		vi.mocked(api.deleteRepository).mockRejectedValueOnce({ status: 409, message: 'Conflict' });
+		render(RepositoryPage);
+		await fireEvent.click(await screen.findByRole('button', { name: 'Delete' }));
+		const dialog = await screen.findByRole('alertdialog');
+		await fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
+
+		expect((await within(dialog).findByRole('alert')).textContent).toContain('modified by someone else');
+	});
+
+	it('deletes only once the dialog is confirmed, then says so on the repositories list', async () => {
+		vi.mocked(api.deleteRepository).mockResolvedValue(undefined);
 		render(RepositoryPage);
 		await fireEvent.click(await screen.findByRole('button', { name: 'Delete' }));
 
-		expect((await screen.findByRole('alert')).textContent).toContain('Database unavailable');
-		expect(screen.getByText('National Archives')).toBeTruthy();
+		const dialog = await screen.findByRole('alertdialog');
+		expect(dialog.textContent).toContain('Delete "National Archives"?');
+		expect(api.deleteRepository).not.toHaveBeenCalled();
+		await fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
+
+		await waitFor(() =>
+			expect(goto).toHaveBeenCalledWith('/repositories', { state: { notice: '"National Archives" was deleted.' } })
+		);
+	});
+
+	it('announces a save in the live region', async () => {
+		vi.mocked(api.updateRepository).mockResolvedValue({} as apiModule.Repository);
+		render(RepositoryPage);
+		await fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+
+		await waitFor(() => expect(screen.getByTestId('announcer').textContent).toContain('Repository saved'));
 	});
 
 	it('says a malformed id is not found, and offers Retry', async () => {

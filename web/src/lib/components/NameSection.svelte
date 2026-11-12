@@ -3,6 +3,7 @@
 	import { Button } from '#lib/components/ui/button/index.js';
 	import FormRow from '#lib/components/FormRow.svelte';
 	import ConflictError from './ConflictError.svelte';
+	import ConfirmDialog from './ConfirmDialog.svelte';
 	import { NAME_TYPE_OPTIONS } from '#lib/utils/enumOptions.js';
 
 	interface Props {
@@ -20,7 +21,8 @@
 	// Add name form state
 	let showAddForm = $state(false);
 	let saving = $state(false);
-	let deleteConfirm: string | null = $state(null);
+	let deleteTarget: PersonName | null = $state(null);
+	let deleteOpen = $state(false);
 	let editingId: string | null = $state(null);
 
 	// Conflict retry state
@@ -195,12 +197,15 @@
 		}
 	}
 
+	/**
+	 * Run from the delete dialog. A stale version closes it and offers Try
+	 * Again here; any other failure is shown in the dialog.
+	 */
 	async function deleteName(name: PersonName) {
 		saving = true;
 		error = null;
 		try {
 			await api.deletePersonName(personId, name.id);
-			deleteConfirm = null;
 			conflictError = false;
 			loadNames();
 			onNamesChanged?.();
@@ -209,7 +214,7 @@
 				conflictError = true;
 				retryAction = () => deleteName(name);
 			} else {
-				error = (e as { message?: string }).message || 'Failed to delete name';
+				throw e;
 			}
 		} finally {
 			saving = false;
@@ -258,12 +263,19 @@
 		if (personId) {
 			showAddForm = false;
 			editingId = null;
-			deleteConfirm = null;
+			deleteOpen = false;
 			resetForm();
 			loadNames();
 		}
 	});
 </script>
+
+<ConfirmDialog
+	bind:open={deleteOpen}
+	title="Delete this name?"
+	description={`${deleteTarget ? formatDisplayName(deleteTarget) : ''} will be removed from this person. This cannot be undone.`}
+	onconfirm={() => deleteTarget && deleteName(deleteTarget)}
+/>
 
 <div class="name-section">
 	<div class="section-header">
@@ -435,17 +447,18 @@
 						</div>
 
 						<div class="name-actions">
-							{#if deleteConfirm === name.id}
-								<span class="delete-confirm">Delete this name?</span>
-								<Button variant="destructive" size="sm" onclick={() => deleteName(name)} disabled={saving}>Yes, Delete</Button>
-								<Button variant="outline" size="sm" onclick={() => deleteConfirm = null}>Cancel</Button>
+							<Button variant="ghost" size="sm" onclick={() => startEdit(name)}>Edit</Button>
+							{#if name.is_primary}
+								<span class="delete-hint">To delete this name, make another name primary first.</span>
 							{:else}
-								<Button variant="ghost" size="sm" onclick={() => startEdit(name)}>Edit</Button>
-								{#if name.is_primary}
-									<span class="delete-hint">To delete this name, make another name primary first.</span>
-								{:else}
-									<Button variant="ghost" size="sm" onclick={() => deleteConfirm = name.id}>Delete</Button>
-								{/if}
+								<Button
+									variant="ghost"
+									size="sm"
+									onclick={() => {
+										deleteTarget = name;
+										deleteOpen = true;
+									}}>Delete</Button
+								>
 							{/if}
 						</div>
 					{/if}
@@ -653,10 +666,5 @@
 	.delete-hint {
 		font-size: 0.75rem;
 		color: var(--color-text-muted);
-	}
-
-	.delete-confirm {
-		font-size: 0.8125rem;
-		color: #dc2626;
 	}
 </style>

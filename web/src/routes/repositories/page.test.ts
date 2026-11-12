@@ -101,7 +101,8 @@ describe('Repositories list page', () => {
 		expect(apiModule.api.createRepository).not.toHaveBeenCalled();
 	});
 
-	it('creates a repository with a nested address and reloads', async () => {
+	// As a new person or family does (#1113).
+	it('creates a repository with a nested address and opens it', async () => {
 		render(RepositoriesPage);
 		await waitFor(() => expect(screen.getByText('Local Library')).toBeTruthy());
 
@@ -120,8 +121,7 @@ describe('Repositories list page', () => {
 				gedcom_xref: undefined
 			});
 		});
-		// Reloaded the list after create (initial load + post-create reload)
-		expect(apiModule.api.listRepositories).toHaveBeenCalledTimes(2);
+		await waitFor(() => expect(currentPath()).toBe('/repositories/repo-3'));
 	});
 
 	const manyRepos: apiModule.RepositoryList = { repositories: mockList.repositories, total: 45 };

@@ -22,6 +22,8 @@
 	import ErrorState from '#lib/components/ErrorState.svelte';
 	import SaveConflict from '#lib/components/SaveConflict.svelte';
 	import ActionError from '#lib/components/ActionError.svelte';
+	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
+	import LiveRegion from '#lib/components/LiveRegion.svelte';
 	import { activeBranch } from '#lib/stores/activeBranch.svelte.js';
 	import { ROLLBACK_MAINLINE_ONLY } from '#lib/utils/rollbackScope.js';
 	import { GENDER_OPTIONS, RESEARCH_STATUS_OPTIONS, optionLabel } from '#lib/utils/enumOptions.js';
@@ -33,8 +35,9 @@
 
 	let person: PersonDetail | null = $state(null);
 	let loading = $state(true);
-	// A failed load replaces the page; a failed save, delete or brick-wall
-	// change is shown inline and leaves the page and the form intact (#899).
+	// A failed load replaces the page; a failed save or brick-wall
+	// change is shown inline and leaves the page and the form intact (#899);
+	// a failed delete is shown in its dialog.
 	let loadError: string | null = $state(null);
 	let actionError: string | null = $state(null);
 	let saveError: string | null = $state(null);
@@ -57,6 +60,16 @@
 	let savedAs: Partial<Record<DateField, SavedAs>> = $state({});
 	let editing = $state(false);
 	let saving = $state(false);
+	let deleteOpen = $state(false);
+	let discardOpen = $state(false);
+	let liveRegion: LiveRegion | undefined = $state();
+	// The server refuses deleting a person in any family; the loaded person
+	// says so already, so the dialog explains instead of warning (#1113).
+	const deleteRefusal = $derived.by(() =>
+		person && (person.families_as_partner?.length || person.family_as_child)
+			? `${formatPersonName(person)} is a partner or child in a family. Remove them from their families first.`
+			: null
+	);
 	let historyExpanded = $state(false);
 	let historyTab: 'history' | 'restore' = $state('history');
 	let historyCount: number | null = $state(null);
@@ -368,6 +381,7 @@
 			}
 			editing = false;
 			focusEditButton();
+			liveRegion?.announce('Person saved');
 		} catch (e) {
 			// Only a stale version is compared with the latest (#940); other 409s
 			// are refusals, and a person that can't be re-read shows the refusal.
@@ -387,17 +401,11 @@
 		savePerson();
 	}
 
+	/** Run from the delete dialog, which shows a failure. */
 	async function deletePerson() {
 		if (!person) return;
-		if (!confirm(`Delete ${formatPersonName(person)}? This cannot be undone.`)) return;
-
-		actionError = null;
-		try {
-			await api.deletePerson(person.id);
-			goto('/persons', { state: { notice: `${formatPersonName(person)} was deleted.` } });
-		} catch (e) {
-			actionError = (e as { message?: string }).message || 'Failed to delete';
-		}
+		await api.deletePerson(person.id);
+		goto('/persons', { state: { notice: `${formatPersonName(person)} was deleted.` } });
 	}
 
 	$effect(() => {
@@ -423,9 +431,9 @@
 		},
 		// Escape is easy to press by accident, so it asks before dropping edits (#1097).
 		'cancel': () => {
-			if (editing && (!saveConflict.hasEdits() || confirm(DISCARD_EDITS_PROMPT))) {
-				cancelEdit();
-			}
+			if (!editing || discardOpen) return;
+			if (saveConflict.hasEdits()) discardOpen = true;
+			else cancelEdit();
 		}
 	});
 </script>
@@ -436,13 +444,33 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
+<LiveRegion bind:this={liveRegion} />
+
+<ConfirmDialog
+	bind:open={deleteOpen}
+	title={`Delete ${person ? formatPersonName(person) : 'this person'}?`}
+	description="This cannot be undone."
+	refusal={deleteRefusal}
+	onconfirm={deletePerson}
+/>
+
+<ConfirmDialog
+	bind:open={discardOpen}
+	title={DISCARD_EDITS_PROMPT}
+	description="The changes you made in this form will be lost."
+	confirmLabel="Discard"
+	cancelLabel="Keep editing"
+	onconfirm={cancelEdit}
+	focusAfterConfirm={focusEditButton}
+/>
+
 {#snippet personActions()}
 	{#if person}
 		<Button variant="outline" href="/pedigree/{person.id}">Pedigree</Button>
 		<Button variant="outline" href="/descendancy/{person.id}">Descendants</Button>
 		<Button variant="outline" href="/ahnentafel/{person.id}">Ahnentafel</Button>
 		<Button variant="outline" onclick={startEdit} bind:ref={editButton}>Edit</Button>
-		<Button variant="destructive" onclick={deletePerson}>Delete</Button>
+		<Button variant="destructive" onclick={() => (deleteOpen = true)}>Delete</Button>
 	{/if}
 {/snippet}
 

@@ -1,7 +1,9 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import { goto } from '$app/navigation';
 	import MainlineNotice from '#lib/components/MainlineNotice.svelte';
 	import PageHeader from '#lib/components/PageHeader.svelte';
+	import NavigationNotice from '#lib/components/NavigationNotice.svelte';
 	import { api, type Repository, type Address } from '#lib/api/client.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import FormRow from '#lib/components/FormRow.svelte';
@@ -129,14 +131,14 @@
 		saving = true;
 		error = null;
 		try {
-			await api.createRepository({
+			const created = await api.createRepository({
 				name: newRepo.name.trim(),
 				address: buildAddress(newRepo),
 				notes: newRepo.notes.trim() || undefined,
 				gedcom_xref: newRepo.gedcom_xref.trim() || undefined
 			});
-			showAddForm = false;
-			loadRepositories();
+			// A new record opens on its own page, as a new person or family does.
+			goto(`/repositories/${created.id}`);
 		} catch (e) {
 			error = (e as { message?: string }).message || 'Failed to create repository';
 		} finally {
@@ -192,6 +194,8 @@
 			</div>
 		{/snippet}
 	</PageHeader>
+
+	<NavigationNotice />
 
 	<MainlineNotice
 		message="Repositories are shared across all branches. Creating, editing or deleting a repository here changes the mainline, and every research branch sees the change."

@@ -10,6 +10,8 @@
 	import FormRow from '#lib/components/FormRow.svelte';
 	import ErrorState from '#lib/components/ErrorState.svelte';
 	import ActionError from '#lib/components/ActionError.svelte';
+	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
+	import LiveRegion from '#lib/components/LiveRegion.svelte';
 	import SaveConflict from '#lib/components/SaveConflict.svelte';
 	import { SaveConflictFlow, type ConflictRow } from '#lib/utils/saveConflict.svelte.js';
 
@@ -18,7 +20,8 @@
 	let error: string | null = $state(null);
 	let editing = $state(false);
 	let saving = $state(false);
-	let deleting = $state(false);
+	let deleteOpen = $state(false);
+	let liveRegion: LiveRegion | undefined = $state();
 
 	const emptyForm = () => ({
 		name: '',
@@ -153,6 +156,7 @@
 			});
 			await loadRepository(repository.id);
 			editing = false;
+			liveRegion?.announce('Repository saved');
 		} catch (e) {
 			// Only a stale version is compared with the latest (#940); other 409s
 			// are refusals, and a repository that can't be re-read shows the refusal.
@@ -165,26 +169,21 @@
 		}
 	}
 
+	/** Run from the delete dialog, which shows a failure. */
 	async function deleteRepository() {
 		if (!repository) return;
-		if (!confirm(`Delete "${repository.name}"? This cannot be undone.`)) return;
-
-		deleting = true;
-		error = null;
 		try {
 			await api.deleteRepository(repository.id, repository.version);
-			goto('/repositories');
 		} catch (e) {
 			const err = e as { message?: string; status?: number };
 			if (err.status === 409) {
-				error = 'This repository was modified by someone else. Reload and try again.';
+				throw new Error('This repository was modified by someone else. Reload and try again.');
 			} else if (err.status === 404) {
-				error = 'This repository no longer exists.';
-			} else {
-				error = err.message || 'Failed to delete';
+				throw new Error('This repository no longer exists.');
 			}
-			deleting = false;
+			throw e;
 		}
+		goto('/repositories', { state: { notice: `"${repository.name}" was deleted.` } });
 	}
 
 	// Whether the repository has any address field populated.
@@ -206,10 +205,17 @@
 
 {#snippet repositoryActions()}
 	<Button variant="outline" onclick={startEdit}>Edit</Button>
-	<Button variant="destructive" onclick={deleteRepository} disabled={deleting}>
-		{deleting ? 'Deleting...' : 'Delete'}
-	</Button>
+	<Button variant="destructive" onclick={() => (deleteOpen = true)}>Delete</Button>
 {/snippet}
+
+<LiveRegion bind:this={liveRegion} />
+
+<ConfirmDialog
+	bind:open={deleteOpen}
+	title={`Delete "${repository?.name ?? ''}"?`}
+	description="This cannot be undone."
+	onconfirm={deleteRepository}
+/>
 
 <div class="repository-page">
 	<ActionBar back={{ href: '/repositories', label: 'Repositories' }} actions={repository && !editing ? repositoryActions : undefined} />
@@ -223,7 +229,7 @@
 	{:else if error && !repository}
 		<ErrorState message={error} onRetry={() => loadRepository(page.params.id ?? '')} />
 	{:else if repository}
-		<!-- In the form, the error shows in it; out of it, a failed delete shows here. -->
+		<!-- In the form, the error shows in it; out of it, a failed reload shows here. -->
 		{#if error && !editing}
 			<ActionError message={error} />
 		{/if}
