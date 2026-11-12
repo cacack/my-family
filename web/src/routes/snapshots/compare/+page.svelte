@@ -40,6 +40,7 @@
 		changeEntryLink
 	} from '#lib/utils/changeEntries.js';
 	import ErrorState from '#lib/components/ErrorState.svelte';
+	import LoadingState from '#lib/components/LoadingState.svelte';
 
 	type EntityType = BranchChangeEntry['entity_type'];
 	type EntityFilter = EntityType | 'all';
@@ -276,7 +277,7 @@
 			<p><a href="/snapshots">Back to snapshots</a></p>
 		</div>
 	{:else if loading}
-		<div class="state" role="status" aria-live="polite">Loading comparison...</div>
+		<LoadingState label="Loading comparison..." />
 	{:else if notFound}
 		<div class="state empty">
 			<h2>Snapshot not found</h2>

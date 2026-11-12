@@ -25,6 +25,7 @@
 	import PageHeader from '#lib/components/PageHeader.svelte';
 	import InfoSection from '#lib/components/InfoSection.svelte';
 	import FormRow from '#lib/components/FormRow.svelte';
+	import LoadingState from '#lib/components/LoadingState.svelte';
 	import SaveConflict from '#lib/components/SaveConflict.svelte';
 	import { SaveConflictFlow, type ConflictRow } from '#lib/utils/saveConflict.svelte.js';
 
@@ -242,7 +243,7 @@
 	/>
 
 	{#if loading}
-		<div class="p-12 text-center text-muted-foreground">Loading...</div>
+		<LoadingState />
 	{:else if error && !log && !isNew}
 		<ErrorState message={error} onRetry={() => loadLog(page.params.id!)} />
 	{:else if editing}

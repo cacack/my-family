@@ -16,6 +16,8 @@
 	} from '#lib/utils/mapClusters.js';
 	import { fitMapProjection, mapHeight } from '#lib/utils/mapProjection.js';
 	import ErrorState from './ErrorState.svelte';
+	import LoadingState from './LoadingState.svelte';
+	import EmptyState from './EmptyState.svelte';
 
 	// Space kept between a marker's centre and the map edge: the largest marker plus its outline
 	const MARKER_MARGIN = 24;
@@ -349,14 +351,14 @@
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="geographic-map" onkeydown={onKeydown}>
 	{#if loading}
-		<div class="loading">Loading map data...</div>
+		<LoadingState label="Loading map data..." />
 	{:else if error}
 		<ErrorState message={error} onRetry={retry} />
 	{:else if locations.length === 0}
-		<div class="empty">
-			<p>No geographic data available.</p>
-			<p class="hint">Import GEDCOM data with coordinates to see locations on the map.</p>
-		</div>
+		<EmptyState
+			message="No geographic data available."
+			description="Import GEDCOM data with coordinates to see locations on the map."
+		/>
 	{:else}
 		<div class="map-container" bind:this={container}>
 			<div class="tooltip" bind:this={tooltipEl}></div>
@@ -711,15 +713,4 @@
 		white-space: nowrap;
 	}
 
-	.loading,
-	.empty {
-		text-align: center;
-		padding: 3rem 1rem;
-		color: var(--color-text-muted);
-	}
-
-	.empty .hint {
-		font-size: 0.875rem;
-		margin-top: 0.5rem;
-	}
 </style>

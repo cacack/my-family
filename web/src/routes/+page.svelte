@@ -9,6 +9,7 @@
 	import MainlineNotice from '#lib/components/MainlineNotice.svelte';
 	import { activeBranch } from '#lib/stores/activeBranch.svelte.js';
 	import ErrorState from '#lib/components/ErrorState.svelte';
+	import LoadingState from '#lib/components/LoadingState.svelte';
 
 	/**
 	 * The onboarding wizard is for an empty *database*. On a research branch the
@@ -83,7 +84,7 @@
 	</section>
 
 	{#if loading}
-		<div class="loading">Loading...</div>
+		<LoadingState />
 	{:else if loadError}
 		<ErrorState message={loadError} onRetry={loadDashboard} />
 	{:else}
@@ -217,12 +218,6 @@
 		margin: 0.5rem 0 0;
 		color: var(--color-text-muted);
 		font-size: 1.125rem;
-	}
-
-	.loading {
-		text-align: center;
-		padding: 3rem;
-		color: var(--color-text-muted);
 	}
 
 	.stats {

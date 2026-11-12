@@ -24,6 +24,7 @@
 	import ExternalLinks from '#lib/components/ExternalLinks.svelte';
 	import InfoSection from '#lib/components/InfoSection.svelte';
 	import ErrorState from '#lib/components/ErrorState.svelte';
+	import LoadingState from '#lib/components/LoadingState.svelte';
 	import SaveConflict from '#lib/components/SaveConflict.svelte';
 	import ActionError from '#lib/components/ActionError.svelte';
 	import RestorePointBrowser from '#lib/components/RestorePointBrowser.svelte';
@@ -483,7 +484,7 @@
 	<ActionBar back={{ href: '/families', label: 'Families' }} actions={family && !editing ? familyActions : undefined} />
 
 	{#if loading}
-		<div class="loading">Loading...</div>
+		<LoadingState />
 	{:else if loadError}
 		<ErrorState message={loadError} onRetry={() => loadFamily(page.params.id ?? '')} />
 	{:else if family}
@@ -729,12 +730,6 @@
 		font-style: italic;
 		color: var(--color-text-muted);
 		line-height: 1.5;
-	}
-
-	.loading {
-		text-align: center;
-		padding: 3rem;
-		color: var(--color-text-muted);
 	}
 
 	.family-detail {

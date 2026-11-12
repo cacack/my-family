@@ -20,6 +20,7 @@
 	import ExternalLinks from '#lib/components/ExternalLinks.svelte';
 	import InfoSection from '#lib/components/InfoSection.svelte';
 	import ErrorState from '#lib/components/ErrorState.svelte';
+	import LoadingState from '#lib/components/LoadingState.svelte';
 	import SaveConflict from '#lib/components/SaveConflict.svelte';
 	import ActionError from '#lib/components/ActionError.svelte';
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
@@ -490,7 +491,7 @@
 	<ActionBar back={{ href: '/persons', label: 'People' }} actions={person && !editing ? personActions : undefined} />
 
 	{#if loading}
-		<div class="loading">Loading...</div>
+		<LoadingState />
 	{:else if loadError}
 		<ErrorState message={loadError} onRetry={() => loadPerson(page.params.id ?? '')} />
 	{:else if person}
@@ -881,12 +882,6 @@
 		max-width: 800px;
 		margin: 0 auto;
 		padding: 1.5rem;
-	}
-
-	.loading {
-		text-align: center;
-		padding: 3rem;
-		color: var(--color-text-muted);
 	}
 
 	.person-detail {

@@ -98,6 +98,7 @@
 	import { blockedEntityIds, blockerFix } from '#lib/utils/mergeBlockers.js';
 	import { isIncompleteMerge, isUnreadableMerge, pendingEntities } from '#lib/utils/mergeState.js';
 	import ErrorState from '#lib/components/ErrorState.svelte';
+	import LoadingState from '#lib/components/LoadingState.svelte';
 	import PageHeader from '#lib/components/PageHeader.svelte';
 
 	let comparison: BranchComparisonResult | null = $state(null);
@@ -874,7 +875,7 @@
 	<a href="/branches" class="back-link">&larr; All branches</a>
 
 	{#if loading}
-		<div class="state" role="status" aria-live="polite">Loading comparison...</div>
+		<LoadingState label="Loading comparison..." />
 	{:else if notFound}
 		<div class="state empty">
 			<h2>Branch not found</h2>

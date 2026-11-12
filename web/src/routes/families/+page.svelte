@@ -7,6 +7,8 @@
 	import FamilyCard from '#lib/components/FamilyCard.svelte';
 	import { clampPageToTotal, readPositiveInt, setQuery } from '#lib/utils/urlState.js';
 	import ErrorState from '#lib/components/ErrorState.svelte';
+	import LoadingState from '#lib/components/LoadingState.svelte';
+	import EmptyState from '#lib/components/EmptyState.svelte';
 
 	let families: FamilyDetail[] = $state([]);
 	let total = $state(0);
@@ -75,17 +77,16 @@
 	<NavigationNotice />
 
 	{#if loading}
-		<div class="loading">Loading...</div>
+		<LoadingState label="Loading families..." />
 	{:else if loadError}
 		<ErrorState message={loadError} onRetry={loadFamilies} />
 	{:else if families.length === 0}
-		<div class="empty">
-			<p>No families found.</p>
-			<div class="empty-actions">
+		<EmptyState message="No families found.">
+			{#snippet actions()}
 				<Button href="/families/add">Add Family</Button>
 				<Button variant="outline" href="/import">Import GEDCOM</Button>
-			</div>
-		</div>
+			{/snippet}
+		</EmptyState>
 	{:else}
 		<div class="families-grid">
 			{#each families as family}
@@ -108,24 +109,6 @@
 		max-width: 1200px;
 		margin: 0 auto;
 		padding: 1.5rem;
-	}
-
-	.loading,
-	.empty {
-		text-align: center;
-		padding: 3rem;
-		color: var(--color-text-muted);
-	}
-
-	.empty p {
-		margin: 0 0 1rem;
-	}
-
-	.empty-actions {
-		display: flex;
-		flex-wrap: wrap;
-		justify-content: center;
-		gap: 0.5rem;
 	}
 
 	.families-grid {

@@ -115,9 +115,9 @@ describe('Families list page', () => {
 	});
 
 	it('offers Add Family and Import GEDCOM in the empty state (#1109)', async () => {
-		const { container } = render(FamiliesPage);
+		render(FamiliesPage);
 		await screen.findByText('No families found.');
-		const empty = container.querySelector('.empty') as HTMLElement;
+		const empty = screen.getByTestId('empty-state');
 		expect(within(empty).getByRole('link', { name: 'Add Family' }).getAttribute('href')).toBe(
 			'/families/add'
 		);

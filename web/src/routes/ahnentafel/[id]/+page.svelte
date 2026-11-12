@@ -5,6 +5,8 @@
 	import ActionBar from '#lib/components/ActionBar.svelte';
 	import { Card, CardHeader, CardContent } from '#lib/components/ui/card/index.js';
 	import ErrorState from '#lib/components/ErrorState.svelte';
+	import LoadingState from '#lib/components/LoadingState.svelte';
+	import EmptyState from '#lib/components/EmptyState.svelte';
 	import ActionError from '#lib/components/ActionError.svelte';
 	import { useBackLink } from '#lib/utils/backLink.svelte.js';
 
@@ -149,7 +151,7 @@
 			<div class="no-print"><ActionError message={exportError} /></div>
 		{/if}
 		{#if loading}
-			<div class="loading">Loading report...</div>
+			<LoadingState label="Loading report..." />
 		{:else if error}
 			<ErrorState message={error} onRetry={() => loadReport(page.params.id ?? '', generations)} />
 		{:else if report}
@@ -283,7 +285,7 @@
 				</footer>
 			</div>
 		{:else}
-			<div class="empty">No data available.</div>
+			<EmptyState message="No data available." />
 		{/if}
 	</div>
 </div>
@@ -318,16 +320,6 @@
 		max-width: 1200px;
 		margin: 0 auto;
 		width: 100%;
-	}
-
-	.loading,
-	.empty {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		height: 200px;
-		color: var(--color-text-muted);
-		font-size: 1rem;
 	}
 
 

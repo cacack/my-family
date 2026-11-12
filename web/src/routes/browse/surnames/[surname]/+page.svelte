@@ -3,6 +3,8 @@
 	import { api, type Person } from '#lib/api/client.js';
 	import PersonCard from '#lib/components/PersonCard.svelte';
 	import ErrorState from '#lib/components/ErrorState.svelte';
+	import LoadingState from '#lib/components/LoadingState.svelte';
+	import EmptyState from '#lib/components/EmptyState.svelte';
 	import PageHeader from '#lib/components/PageHeader.svelte';
 	import { clampPageToTotal, readPositiveInt, setQuery } from '#lib/utils/urlState.js';
 
@@ -72,14 +74,15 @@
 	/>
 
 	{#if loading}
-		<div class="loading">Loading...</div>
+		<LoadingState label="Loading people..." />
 	{:else if loadError}
 		<ErrorState message={loadError} onRetry={loadPersons} />
 	{:else if persons.length === 0}
-		<div class="empty">
-			<p>No people found with surname "{surname}".</p>
-			<a href="/browse/surnames" class="back-link">Back to surname browser</a>
-		</div>
+		<EmptyState message={`No people found with surname "${surname}".`}>
+			{#snippet actions()}
+				<a href="/browse/surnames" class="back-link">Back to surname browser</a>
+			{/snippet}
+		</EmptyState>
 	{:else}
 		<div class="persons-grid">
 			{#each persons as person}
@@ -102,17 +105,6 @@
 		max-width: 1200px;
 		margin: 0 auto;
 		padding: 1.5rem;
-	}
-
-	.loading,
-	.empty {
-		text-align: center;
-		padding: 3rem;
-		color: var(--color-text-muted);
-	}
-
-	.empty p {
-		margin: 0 0 1rem;
 	}
 
 	.back-link {

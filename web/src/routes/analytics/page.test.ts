@@ -117,9 +117,13 @@ describe('Completeness (analytics) page', () => {
 		expect(screen.getByRole('link', { name: 'Quality' }).getAttribute('href')).toBe('/quality');
 	});
 
-	it('offers import on an empty tree', async () => {
+	it('shows the empty state, not 0% cards and charts, on an empty tree (#1115)', async () => {
 		render(AnalyticsPage);
-		expect(await screen.findByRole('link', { name: 'Import a GEDCOM file' })).toBeTruthy();
+		await screen.findByText('No people yet.');
+		expect(screen.getByRole('link', { name: 'Add Person' }).getAttribute('href')).toBe('/persons/add');
+		expect(screen.getByRole('link', { name: 'Import GEDCOM' }).getAttribute('href')).toBe('/import');
+		expect(screen.queryByText('Total Persons')).toBeNull();
+		expect(screen.queryByText('Research Confidence')).toBeNull();
 	});
 
 	it('shows an error when the overview fails to load', async () => {
@@ -130,6 +134,7 @@ describe('Completeness (analytics) page', () => {
 	});
 
 	it('shows no mainline notice on the mainline', async () => {
+		vi.mocked(apiModule.api.getQualityOverview).mockResolvedValue(overview({ total_persons: 1 }));
 		render(AnalyticsPage);
 		await waitFor(() => expect(screen.getByText('Total Persons')).toBeTruthy());
 		expect(screen.queryByRole('note')).toBeNull();
@@ -137,6 +142,7 @@ describe('Completeness (analytics) page', () => {
 
 	it('shows no mainline notice on a branch either: the overview and families both follow it (#829, #894)', async () => {
 		branchState.id = 'b-1';
+		vi.mocked(apiModule.api.getQualityOverview).mockResolvedValue(overview({ total_persons: 1 }));
 		render(AnalyticsPage);
 		await waitFor(() => expect(screen.getByText('Total Persons')).toBeTruthy());
 		expect(screen.queryByRole('note')).toBeNull();

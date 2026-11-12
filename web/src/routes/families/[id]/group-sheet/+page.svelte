@@ -5,6 +5,7 @@
 	import ActionBar from '#lib/components/ActionBar.svelte';
 	import FamilyGroupSheetComponent from '#lib/components/FamilyGroupSheet.svelte';
 	import ErrorState from '#lib/components/ErrorState.svelte';
+	import LoadingState from '#lib/components/LoadingState.svelte';
 
 	let data: FamilyGroupSheet | null = $state(null);
 	let loading = $state(true);
@@ -59,7 +60,7 @@
 	</ActionBar>
 
 	{#if loading}
-		<div class="loading">Loading family group sheet...</div>
+		<LoadingState label="Loading family group sheet..." />
 	{:else if error}
 		<ErrorState message={error} onRetry={() => loadGroupSheet(page.params.id ?? '')} />
 	{:else if data}
@@ -72,12 +73,6 @@
 		max-width: 900px;
 		margin: 0 auto;
 		padding: 1.5rem;
-	}
-
-	.loading {
-		text-align: center;
-		padding: 3rem;
-		color: var(--color-text-muted);
 	}
 
 	@media print {

@@ -5,6 +5,9 @@
 	import QualityChart from '#lib/components/QualityChart.svelte';
 	import UncertaintyBadge from '#lib/components/UncertaintyBadge.svelte';
 	import ErrorState from '#lib/components/ErrorState.svelte';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import LoadingState from '#lib/components/LoadingState.svelte';
+	import EmptyState from '#lib/components/EmptyState.svelte';
 
 	// Every figure here is aggregated by the server over the whole tree (#894);
 	// the page only lays it out.
@@ -69,9 +72,20 @@
 	</PageHeader>
 
 	{#if loading}
-		<div class="loading">Loading completeness metrics...</div>
+		<LoadingState label="Loading completeness metrics..." />
 	{:else if error}
 		<ErrorState message={error} onRetry={loadData} />
+	{:else if overview && totalPersons === 0}
+		<!-- An empty tree has nothing to measure: no 0% cards or charts (#1115). -->
+		<EmptyState
+			message="No people yet."
+			description="Add people or import a GEDCOM file to see how complete your tree is."
+		>
+			{#snippet actions()}
+				<Button href="/persons/add">Add Person</Button>
+				<Button variant="outline" href="/import">Import GEDCOM</Button>
+			{/snippet}
+		</EmptyState>
 	{:else if overview}
 		<!-- Overview Cards -->
 		<section class="stat-cards">
@@ -165,17 +179,9 @@
 					</table>
 				</div>
 			</section>
-		{:else if totalPersons === 0}
-			<section class="section">
-				<div class="empty-state">
-					<p>No people yet. <a href="/import">Import a GEDCOM file</a> or add people to see data quality.</p>
-				</div>
-			</section>
 		{:else}
 			<section class="section">
-				<div class="empty-state">
-					<p>No quality issues found. Your data looks great!</p>
-				</div>
+				<EmptyState message="No quality issues found. Your data looks great!" />
 			</section>
 		{/if}
 	{/if}
@@ -197,12 +203,6 @@
 	.page-description a {
 		color: var(--color-link-hover);
 		text-decoration: underline;
-	}
-
-	.loading {
-		text-align: center;
-		padding: 3rem;
-		color: var(--color-text-muted);
 	}
 
 	/* Stat Cards */
@@ -318,12 +318,6 @@
 
 	.issues-list li {
 		margin: 0.125rem 0;
-	}
-
-	.empty-state {
-		text-align: center;
-		padding: 2rem;
-		color: var(--color-text-muted);
 	}
 
 	/* Research Status Distribution */

@@ -10,6 +10,7 @@
 	import { Badge } from '#lib/components/ui/badge/index.js';
 	import { SOURCE_TYPES } from '#lib/utils/sourceTypes.js';
 	import ErrorState from '#lib/components/ErrorState.svelte';
+	import LoadingState from '#lib/components/LoadingState.svelte';
 	import ActionError from '#lib/components/ActionError.svelte';
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
 	import LiveRegion from '#lib/components/LiveRegion.svelte';
@@ -234,7 +235,7 @@
 	<ActionBar back={{ href: '/sources', label: 'Sources' }} actions={source && !editing ? sourceActions : undefined} />
 
 	{#if loading}
-		<div class="loading">Loading...</div>
+		<LoadingState />
 	{:else if error && !source}
 		<ErrorState message={error} onRetry={() => loadSource(page.params.id ?? '')} />
 	{:else if source}
@@ -448,12 +449,6 @@
 		max-width: 800px;
 		margin: 0 auto;
 		padding: 1.5rem;
-	}
-
-	.loading {
-		text-align: center;
-		padding: 3rem;
-		color: var(--color-text-muted);
 	}
 
 	.source-detail {

@@ -21,6 +21,7 @@
 		type QueryValues
 	} from '#lib/utils/urlState.js';
 	import ErrorState from '#lib/components/ErrorState.svelte';
+	import EmptyState from '#lib/components/EmptyState.svelte';
 
 	const SORTS = ['relevance', 'name', 'birth_date', 'death_date'] as const;
 	const PAGE_SIZE = 20;
@@ -723,9 +724,10 @@
 				{#if error}
 					<ErrorState message={error} onRetry={performSearch} />
 				{:else if !loading && results.length === 0}
-					<div class="empty-state">
-						No results found. Try adjusting your search criteria.
-					</div>
+					<EmptyState
+						message="No results found."
+						description="Try adjusting your search criteria."
+					/>
 				{:else if !loading}
 					<!-- Desktop table -->
 					<div class="results-table-wrapper">
@@ -1087,13 +1089,6 @@
 		border: 1px solid #fecaca;
 		border-radius: 6px;
 		color: #b91c1c;
-		font-size: 0.875rem;
-	}
-
-	.empty-state {
-		text-align: center;
-		padding: 2rem;
-		color: var(--color-text-muted);
 		font-size: 0.875rem;
 	}
 

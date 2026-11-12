@@ -14,6 +14,8 @@
 	} from '#lib/utils/changeEntries.js';
 	import { readEnum, setQuery } from '#lib/utils/urlState.js';
 	import ErrorState from './ErrorState.svelte';
+	import LoadingState from './LoadingState.svelte';
+	import EmptyState from './EmptyState.svelte';
 	import ActionError from './ActionError.svelte';
 
 	interface Props {
@@ -176,7 +178,7 @@
 	{/if}
 
 	{#if loading}
-		<div class="loading" role="status" aria-live="polite">Loading history...</div>
+		<LoadingState label="Loading history..." />
 	{:else if error}
 		<ErrorState message={error} onRetry={loadHistory} />
 	{:else if history && history.items.length > 0}
@@ -240,7 +242,7 @@
 			</div>
 		{/if}
 	{:else}
-		<div class="empty">No changes recorded yet.</div>
+		<EmptyState message="No changes recorded yet." />
 	{/if}
 </div>
 
@@ -276,13 +278,6 @@
 		outline: none;
 		border-color: #3b82f6;
 		box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-	}
-
-	.loading,
-	.empty {
-		text-align: center;
-		padding: 2rem;
-		color: var(--color-text-muted);
 	}
 
 	.timeline {

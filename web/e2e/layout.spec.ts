@@ -163,7 +163,7 @@ test.describe('the People empty state at 375px', () => {
 			}, fontSize);
 			await expectNoHorizontalOverflow(page, '/persons?status=certain');
 			await expect(page.getByText('No people found.')).toBeVisible();
-			const actions = page.locator('main .empty-actions a');
+			const actions = page.locator('main [data-testid="empty-state"] a');
 			await expect(actions).toHaveText(['Add Person', 'Import GEDCOM']);
 			const boxes = await actions.evaluateAll((els) =>
 				els.map((el) => {
