@@ -80,4 +80,21 @@ describe('ConfirmDialog', () => {
 			.map(([file]) => file);
 		expect(callers).toEqual([]);
 	});
+
+	// A hand-built AlertDialog is a second copy of this one. Only the branch
+	// dialogs, which confirm a rollback or a merge rather than a delete, build their own.
+	it('is the only alert dialog: no other component builds one', () => {
+		const allowed = [
+			'/src/lib/components/ConfirmDialog.svelte',
+			'/src/lib/components/RollbackConfirmDialog.svelte',
+			'/src/lib/components/MergeConfirmDialog.svelte',
+			'/src/lib/components/FinishMergeDialog.svelte'
+		];
+		const builders = Object.entries(svelteSources)
+			.filter(([file]) => !file.startsWith('/src/lib/components/ui/alert-dialog/'))
+			.filter(([file]) => !allowed.includes(file))
+			.filter(([, source]) => source.includes('components/ui/alert-dialog'))
+			.map(([file]) => file);
+		expect(builders).toEqual([]);
+	});
 });

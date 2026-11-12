@@ -22,7 +22,7 @@
 	import { Label } from '#lib/components/ui/label/index.js';
 	import { Textarea } from '#lib/components/ui/textarea/index.js';
 	import * as Dialog from '#lib/components/ui/dialog/index.js';
-	import * as AlertDialog from '#lib/components/ui/alert-dialog/index.js';
+	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
 	import {
 		CURRENT_STATE,
 		snapshotCompareHref,
@@ -49,8 +49,6 @@
 
 	/** Focus target after a delete, since the deleted row's Delete button is gone. */
 	let headingEl: HTMLHeadingElement | null = $state(null);
-	/** Set when a delete succeeds, so the dialog's close hands focus to the heading. */
-	let focusHeadingOnClose = false;
 
 	// Create dialog
 	let createOpen = $state(false);
@@ -60,9 +58,8 @@
 	let newDescription = $state('');
 
 	// Delete dialog
+	let deleteOpen = $state(false);
 	let deleteTarget: Snapshot | null = $state(null);
-	let deleting = $state(false);
-	let deleteError: string | null = $state(null);
 
 	// Compare form: ids of the two snapshots to compare. `compareTo` may also be
 	// CURRENT_STATE, to compare with the current state.
@@ -175,39 +172,26 @@
 
 	function openDelete(snapshot: Snapshot) {
 		deleteTarget = snapshot;
-		deleteError = null;
+		deleteOpen = true;
 	}
 
-	async function handleDelete(event: Event) {
-		// Without this, the AlertDialog closes before the request settles and the
-		// error never gets a chance to render.
-		event.preventDefault();
+	/** Runs inside ConfirmDialog: throwing keeps it open with the message. */
+	async function handleDelete() {
 		const target = deleteTarget;
-		if (!target || deleting) return;
-
-		deleting = true;
-		deleteError = null;
+		if (!target) return;
 		try {
 			await api.deleteSnapshot(target.id);
-			focusHeadingOnClose = true;
-			deleteTarget = null;
 			announce(`Snapshot ${target.name} deleted.`);
-			await loadSnapshots();
 		} catch (e) {
 			const apiError = e as ApiError;
-			if (apiError.status === 404) {
-				// Already gone (another tab, another user): the outcome the user asked
-				// for. Refresh rather than show an error they cannot act on.
-				focusHeadingOnClose = true;
-				deleteTarget = null;
-				announce(`Snapshot ${target.name} was already deleted.`);
-				await loadSnapshots();
-			} else {
-				deleteError = apiError.message || 'Failed to delete snapshot';
+			// Already gone (another tab, another user): the outcome the user asked
+			// for. Refresh rather than show an error they cannot act on.
+			if (apiError.status !== 404) {
+				throw new Error(apiError.message || 'Failed to delete snapshot');
 			}
-		} finally {
-			deleting = false;
+			announce(`Snapshot ${target.name} was already deleted.`);
 		}
+		await loadSnapshots();
 	}
 
 	function handleCompare(event: Event) {
@@ -414,42 +398,14 @@
 	</Dialog.Content>
 </Dialog.Root>
 
-<AlertDialog.Root
-	open={deleteTarget !== null}
-	onOpenChange={(isOpen) => {
-		if (!isOpen && !deleting) deleteTarget = null;
-	}}
->
-	<AlertDialog.Content
-		onCloseAutoFocus={(event) => {
-			// The row whose Delete button opened the dialog is gone after a delete,
-			// so focus would otherwise fall to <body>. Land on the page heading.
-			if (!focusHeadingOnClose) return;
-			focusHeadingOnClose = false;
-			event.preventDefault();
-			headingEl?.focus();
-		}}
-	>
-		<AlertDialog.Header>
-			<AlertDialog.Title>Delete this snapshot?</AlertDialog.Title>
-			<AlertDialog.Description>
-				The snapshot {deleteTarget?.name} will be removed, so it can no longer be compared against.
-				Only the marker is deleted: your research data and its change history are untouched.
-			</AlertDialog.Description>
-		</AlertDialog.Header>
-
-		{#if deleteError}
-			<div class="dialog-error" role="alert">{deleteError}</div>
-		{/if}
-
-		<AlertDialog.Footer>
-			<AlertDialog.Cancel disabled={deleting}>Cancel</AlertDialog.Cancel>
-			<AlertDialog.Action variant="destructive" disabled={deleting} onclick={handleDelete}>
-				{deleting ? 'Deleting...' : 'Delete snapshot'}
-			</AlertDialog.Action>
-		</AlertDialog.Footer>
-	</AlertDialog.Content>
-</AlertDialog.Root>
+<ConfirmDialog
+	bind:open={deleteOpen}
+	title="Delete this snapshot?"
+	description="The snapshot {deleteTarget?.name} will be removed, so it can no longer be compared against. Only the marker is deleted: your research data and its change history are untouched."
+	confirmLabel="Delete snapshot"
+	onconfirm={handleDelete}
+	focusAfterConfirm={() => headingEl?.focus()}
+/>
 
 <style>
 	.snapshots-page {
