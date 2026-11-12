@@ -5,9 +5,11 @@ import (
 	"context"
 	"maps"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 
+	"github.com/cacack/gedcom-go/v3/decoder"
 	gcgedcom "github.com/cacack/gedcom-go/v3/gedcom"
 	"github.com/google/uuid"
 
@@ -626,6 +628,74 @@ func TestExport_ChildPedigreeRoundTrips(t *testing.T) {
 			}
 			if !maps.Equal(got, want) {
 				t.Errorf("re-imported child relationships = %v, want %v", got, want)
+			}
+		})
+	}
+}
+
+func TestExport_SpouseFamilyLinks(t *testing.T) {
+	// Each partner of a family is exported with a FAMS pointing back to it,
+	// one per family in family record order, at 5.5.1 and 7.0 (#1357).
+	ctx := context.Background()
+	readStore := memory.NewReadModelStore()
+	husband, first, second := uuid.New(), uuid.New(), uuid.New()
+	for id, name := range map[uuid.UUID]string{husband: "Husband", first: "First", second: "Second"} {
+		if err := readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
+			ID: id, GivenName: name, Surname: "Smith", FullName: name + " Smith",
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Family ids are ordered so the second marriage is exported first.
+	firstMarriage := uuid.MustParse("80000000-0000-0000-0000-000000000000")
+	secondMarriage := uuid.MustParse("00000000-0000-0000-0000-000000000001")
+	missing := uuid.New() // a partner with no person record
+	for _, f := range []repository.FamilyReadModel{
+		{ID: firstMarriage, Partner1ID: &husband, Partner2ID: &first},
+		{ID: secondMarriage, Partner1ID: &husband, Partner2ID: &second},
+		{ID: uuid.MustParse("ffffffff-0000-0000-0000-000000000000"), Partner1ID: &missing},
+	} {
+		if err := readStore.SaveFamily(ctx, domain.MainBranchID, &f); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	for _, version := range []gcgedcom.Version{gcgedcom.Version551, gcgedcom.Version70} {
+		t.Run(string(version), func(t *testing.T) {
+			buf := &bytes.Buffer{}
+			if _, err := gedcom.NewExporter(readStore).ExportWithOptions(ctx, buf, gedcom.ExportOptions{TargetVersion: version}); err != nil {
+				t.Fatalf("Export failed: %v", err)
+			}
+			doc, err := decoder.Decode(strings.NewReader(buf.String()))
+			if err != nil {
+				t.Fatalf("decode export: %v", err)
+			}
+			got := map[string][]string{}
+			for _, indi := range doc.Individuals() {
+				for _, link := range indi.SpouseInFamilies {
+					if doc.GetFamily(link.FamilyXRef) == nil {
+						t.Errorf("%s has FAMS %s, which is not an exported family", indi.FullName(), link.FamilyXRef)
+					}
+					got[indi.FullName()] = append(got[indi.FullName()], link.FamilyXRef)
+				}
+			}
+			// Families are exported in id order: @F1@ is the second marriage.
+			want := map[string][]string{
+				"Husband /Smith/": {"@F1@", "@F2@"},
+				"Second /Smith/":  {"@F1@"},
+				"First /Smith/":   {"@F2@"},
+			}
+			if !maps.EqualFunc(got, want, slices.Equal) {
+				t.Errorf("FAMS links = %v, want %v; got:\n%s", got, want, buf.String())
+			}
+			// Every partner of every exported family points back to it.
+			for _, fam := range doc.Families() {
+				for _, partner := range []string{fam.Husband, fam.Wife} {
+					indi := doc.GetIndividual(partner)
+					if partner != "" && !slices.ContainsFunc(indi.SpouseInFamilies, func(l gcgedcom.FamilyLink) bool { return l.FamilyXRef == fam.XRef }) {
+						t.Errorf("partner %s of %s has no FAMS back to it", partner, fam.XRef)
+					}
+				}
 			}
 		})
 	}

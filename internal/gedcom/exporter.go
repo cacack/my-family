@@ -296,6 +296,7 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 	if err != nil {
 		return nil, err
 	}
+	spouseFamilies := spouseLinks(families, familyXrefs)
 
 	// Add individual records
 	for i, p := range persons {
@@ -341,6 +342,7 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 		indi := toGedcomIndividual(p, names, sourceXrefs, personXrefs, nameCitations, birthCitations, deathCitations, events, attributes, associations, ldsOrdinances, externalIDs.citationAPIDs, exp.readStore, ctx)
 		indi.ExternalIDs = externalIDs.persons[p.ID]
 		indi.ChildInFamilies = childLinks[p.ID]
+		indi.SpouseInFamilies = spouseFamilies[p.ID]
 		doc.Records = append(doc.Records, &gedcom.Record{
 			XRef:   xref,
 			Type:   gedcom.RecordTypeIndividual,
@@ -552,6 +554,29 @@ func pedigreeLinks(ctx context.Context, readStore repository.ReadModelStore, fam
 		sort.Slice(l, func(i, j int) bool { return l[i].FamilyXRef < l[j].FamilyXRef })
 	}
 	return links, nil
+}
+
+// spouseLinks returns, per person, a FAMS link for each family the person is
+// a partner in, in family record order. GEDCOM 5.5.1 links spouses in both
+// directions, so each HUSB/WIFE has a FAMS pointing back (#1357). families
+// are the exported family records; a family without an xref gets no link.
+func spouseLinks(families []repository.FamilyReadModel, familyXrefs map[uuid.UUID]string) map[uuid.UUID][]gedcom.FamilyLink {
+	links := map[uuid.UUID][]gedcom.FamilyLink{}
+	for _, f := range families {
+		xref := familyXrefs[f.ID]
+		if xref == "" {
+			continue
+		}
+		var linked uuid.UUID
+		for _, partner := range []*uuid.UUID{f.Partner1ID, f.Partner2ID} {
+			if partner == nil || *partner == linked {
+				continue
+			}
+			links[*partner] = append(links[*partner], gedcom.FamilyLink{FamilyXRef: xref})
+			linked = *partner
+		}
+	}
+	return links
 }
 
 // upcasePedigrees writes each FAMC's PEDI in GEDCOM 7.0's upper-case
