@@ -4,10 +4,13 @@ package demo
 import (
 	"context"
 	"fmt"
+	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/cacack/my-family/internal/command"
+	"github.com/cacack/my-family/internal/repository"
 )
 
 // personRef holds the result of creating a person for linking into families.
@@ -33,9 +36,22 @@ type demoPersons struct {
 	sarahThompson     personRef
 }
 
-// SeedDemoData populates the application with a multi-generational sample family tree.
-// It creates 13 persons across 4 generations, 4 families, 1 source, and 2 citations.
-func SeedDemoData(ctx context.Context, cmdHandler *command.Handler) error {
+// demoCitations holds the citations created during seeding.
+type demoCitations struct {
+	williamBirth uuid.UUID
+	annaBirth    uuid.UUID
+}
+
+// SeedDemoData populates the application with a multi-generational sample family
+// tree that gives every page in the global nav something to show (#495): 18 persons,
+// 6 families, 1 source with 2 citations, geocoded and burial events, a brick wall,
+// evidence records (analyses, a conflict, a research log, a proof summary), and
+// deliberate data-quality problems (a duplicate pair and validation issues of every
+// severity).
+//
+// readStore must be the store cmdHandler projects into: it locates the
+// GEDCOM-imported ancestors and records the brick wall, which is not event-sourced.
+func SeedDemoData(ctx context.Context, cmdHandler *command.Handler, readStore repository.ReadModelStore) error {
 	people, err := seedPersons(ctx, cmdHandler)
 	if err != nil {
 		return err
@@ -45,7 +61,21 @@ func SeedDemoData(ctx context.Context, cmdHandler *command.Handler) error {
 		return err
 	}
 
-	return seedSources(ctx, cmdHandler, people)
+	citations, err := seedSources(ctx, cmdHandler, people)
+	if err != nil {
+		return err
+	}
+
+	heinrichID, err := seedMuellerAncestors(ctx, cmdHandler, readStore, people)
+	if err != nil {
+		return err
+	}
+
+	if err := seedEvidence(ctx, cmdHandler, people, citations, heinrichID); err != nil {
+		return err
+	}
+
+	return seedDuplicate(ctx, cmdHandler)
 }
 
 func seedPersons(ctx context.Context, h *command.Handler) (*demoPersons, error) {
@@ -239,32 +269,212 @@ func seedFamilies(ctx context.Context, h *command.Handler, p *demoPersons) error
 	return nil
 }
 
-func seedSources(ctx context.Context, h *command.Handler, p *demoPersons) error {
+func seedSources(ctx context.Context, h *command.Handler, p *demoPersons) (*demoCitations, error) {
 	sourceResult, err := h.CreateSource(ctx, command.CreateSourceInput{
 		SourceType: "vital_record", Title: "Hamburg Civil Records, 1874-1920",
 		Author: "Hamburg State Archives", RepositoryName: "Hamburg Staatsarchiv",
 		Notes: "[DEMO DATA] Sample source demonstrating GPS-compliant sourcing.",
 	})
 	if err != nil {
-		return fmt.Errorf("create source: %w", err)
+		return nil, fmt.Errorf("create source: %w", err)
 	}
 
-	if _, err := h.CreateCitation(ctx, command.CreateCitationInput{
+	williamBirth, err := h.CreateCitation(ctx, command.CreateCitationInput{
 		SourceID: sourceResult.ID, FactType: "person_birth", FactOwnerID: p.williamThompson.ID,
 		Page: "Book 12, Page 47", SourceQuality: "original", InformantType: "primary",
 		EvidenceType: "direct", Analysis: "[DEMO DATA] Original birth record from Hamburg civil registry.",
-	}); err != nil {
-		return fmt.Errorf("create citation for William birth: %w", err)
+	})
+	if err != nil {
+		return nil, fmt.Errorf("create citation for William birth: %w", err)
 	}
 
-	if _, err := h.CreateCitation(ctx, command.CreateCitationInput{
+	annaBirth, err := h.CreateCitation(ctx, command.CreateCitationInput{
 		SourceID: sourceResult.ID, FactType: "person_birth", FactOwnerID: p.annaMueller.ID,
 		Page: "Book 15, Page 112", SourceQuality: "original", InformantType: "primary",
 		EvidenceType: "direct", Analysis: "[DEMO DATA] Original birth record from Hamburg civil registry.",
-	}); err != nil {
-		return fmt.Errorf("create citation for Anna birth: %w", err)
+	})
+	if err != nil {
+		return nil, fmt.Errorf("create citation for Anna birth: %w", err)
 	}
 
+	return &demoCitations{williamBirth: williamBirth.ID, annaBirth: annaBirth.ID}, nil
+}
+
+// muellerAncestorsGedcom holds Anna Mueller's ancestors. They are imported as GEDCOM
+// because only an import records place coordinates (for /map), burial events (for
+// /browse/cemeteries), and the inconsistent dates real imported trees carry (for
+// /quality); the create-person command takes the first two and rejects the last.
+// Friedrich's death precedes his birth (a validation error) and Johann's lifespan
+// exceeds 120 years (a warning).
+const muellerAncestorsGedcom = `0 HEAD
+1 GEDC
+2 VERS 5.5.1
+2 FORM LINEAGE-LINKED
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME Heinrich /Mueller/
+1 SEX M
+1 BIRT
+2 DATE 12 APR 1862
+2 PLAC Hamburg, Germany
+3 MAP
+4 LATI N53.5511
+4 LONG E9.9937
+1 DEAT
+2 DATE 3 NOV 1931
+2 PLAC Hamburg, Germany
+3 MAP
+4 LATI N53.5511
+4 LONG E9.9937
+1 BURI
+2 DATE 1931
+2 PLAC Ohlsdorf Cemetery, Hamburg, Germany
+1 NOTE [DEMO DATA] Anna Mueller's father. His own parents are unknown: a brick wall.
+0 @I2@ INDI
+1 NAME Margarethe /Schmidt/
+1 SEX F
+1 BIRT
+2 DATE 1866
+2 PLAC Luebeck, Germany
+3 MAP
+4 LATI N53.8655
+4 LONG E10.6866
+1 DEAT
+2 DATE 1940
+2 PLAC Boston, Massachusetts
+3 MAP
+4 LATI N42.3601
+4 LONG W71.0589
+1 BURI
+2 DATE 1940
+2 PLAC Forest Hills Cemetery, Boston, Massachusetts
+1 NOTE [DEMO DATA] Anna Mueller's mother. Followed her daughter to Boston as a widow.
+0 @I3@ INDI
+1 NAME Friedrich /Mueller/
+1 SEX M
+1 BIRT
+2 DATE 1870
+2 PLAC Hamburg, Germany
+1 DEAT
+2 DATE 1868
+2 PLAC Hamburg, Germany
+1 NOTE [DEMO DATA] Possibly Heinrich's brother. Death year precedes birth year: a transcription error copied from another tree.
+0 @I4@ INDI
+1 NAME Johann /Schmidt/
+1 SEX M
+1 BIRT
+2 DATE 1790
+2 PLAC Luebeck, Germany
+1 DEAT
+2 DATE 1915
+2 PLAC Luebeck, Germany
+1 NOTE [DEMO DATA] Margarethe's father. A 125-year lifespan suggests two men were merged into one record.
+0 @F1@ FAM
+1 HUSB @I1@
+1 WIFE @I2@
+1 MARR
+2 DATE 1890
+2 PLAC Hamburg, Germany
+0 @F2@ FAM
+1 HUSB @I4@
+1 CHIL @I2@
+0 TRLR
+`
+
+// seedMuellerAncestors imports Anna Mueller's parents, links Anna to them, and marks
+// Heinrich Mueller as a brick wall. It returns Heinrich's ID.
+func seedMuellerAncestors(ctx context.Context, h *command.Handler, readStore repository.ReadModelStore, p *demoPersons) (uuid.UUID, error) {
+	result, err := h.ImportGedcom(ctx, command.ImportGedcomInput{
+		Filename: "demo-mueller-ancestors.ged",
+		Reader:   strings.NewReader(muellerAncestorsGedcom),
+	})
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("import Mueller ancestors: %w", err)
+	}
+	if len(result.Errors) > 0 {
+		return uuid.Nil, fmt.Errorf("import Mueller ancestors: %s", strings.Join(result.Errors, "; "))
+	}
+
+	families, err := repository.ListAll(ctx, 100, readStore.ListFamilies)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("list families: %w", err)
+	}
+	for _, f := range families {
+		if f.Partner1ID == nil || f.Partner1GivenName != "Heinrich" || f.Partner1Surname != "Mueller" {
+			continue
+		}
+		if _, err := h.LinkChild(ctx, command.LinkChildInput{FamilyID: f.ID, ChildID: p.annaMueller.ID}); err != nil {
+			return uuid.Nil, fmt.Errorf("link Anna to Mueller family: %w", err)
+		}
+		// Brick walls are recorded in the read model only (not event-sourced).
+		if err := readStore.SetBrickWall(ctx, *f.Partner1ID, "[DEMO DATA] No baptism record found for Heinrich Mueller; his parents are unknown."); err != nil {
+			return uuid.Nil, fmt.Errorf("mark Heinrich Mueller as brick wall: %w", err)
+		}
+		return *f.Partner1ID, nil
+	}
+	return uuid.Nil, fmt.Errorf("imported Mueller family not found")
+}
+
+// seedEvidence records GPS evidence work: agreeing and disagreeing analyses (the
+// disagreement raises an evidence conflict), a proof summary, and a research log.
+func seedEvidence(ctx context.Context, h *command.Handler, p *demoPersons, c *demoCitations, heinrichID uuid.UUID) error {
+	if _, err := h.CreateEvidenceAnalysis(ctx, command.CreateEvidenceAnalysisInput{
+		FactType: "person_birth", SubjectID: p.williamThompson.ID, CitationIDs: []uuid.UUID{c.williamBirth},
+		Conclusion: "Born about 1890 in Hamburg, Germany", ResearchStatus: "probable",
+		Notes: "[DEMO DATA] Supported by the Hamburg civil birth register.",
+	}); err != nil {
+		return fmt.Errorf("create analysis for William birth: %w", err)
+	}
+
+	// A second, disagreeing conclusion for the same fact auto-detects a conflict.
+	if _, err := h.CreateEvidenceAnalysis(ctx, command.CreateEvidenceAnalysisInput{
+		FactType: "person_birth", SubjectID: p.williamThompson.ID,
+		Conclusion: "Born 1888 in Altona, Germany", ResearchStatus: "possible",
+		Notes: "[DEMO DATA] Family recollection, unsourced; conflicts with the civil register.",
+	}); err != nil {
+		return fmt.Errorf("create conflicting analysis for William birth: %w", err)
+	}
+
+	annaAnalysis, err := h.CreateEvidenceAnalysis(ctx, command.CreateEvidenceAnalysisInput{
+		FactType: "person_birth", SubjectID: p.annaMueller.ID, CitationIDs: []uuid.UUID{c.annaBirth},
+		Conclusion: "Born about 1895 in Hamburg, Germany", ResearchStatus: "probable",
+		Notes: "[DEMO DATA] Supported by the Hamburg civil birth register.",
+	})
+	if err != nil {
+		return fmt.Errorf("create analysis for Anna birth: %w", err)
+	}
+
+	if _, err := h.CreateProofSummary(ctx, command.CreateProofSummaryInput{
+		FactType: "person_birth", SubjectID: p.annaMueller.ID,
+		Conclusion:  "Anna Mueller was born about 1895 in Hamburg, Germany",
+		Argument:    "[DEMO DATA] The original civil birth register entry is direct primary evidence, and no source contradicts it.",
+		AnalysisIDs: []uuid.UUID{annaAnalysis.ID}, ResearchStatus: "probable",
+	}); err != nil {
+		return fmt.Errorf("create proof summary for Anna birth: %w", err)
+	}
+
+	if _, err := h.CreateResearchLog(ctx, command.CreateResearchLogInput{
+		SubjectID: heinrichID, SubjectType: "person", Repository: "Hamburg Staatsarchiv",
+		SearchDescription: "Baptism registers 1855-1870 for Heinrich Mueller and his parents",
+		Outcome:           "not_found", Notes: "[DEMO DATA] No matching baptism; the search continues.",
+		SearchDate: time.Date(2024, time.March, 15, 0, 0, 0, 0, time.UTC),
+	}); err != nil {
+		return fmt.Errorf("create research log for Heinrich Mueller: %w", err)
+	}
+
+	return nil
+}
+
+// seedDuplicate adds a second "Mary Johnson" record, which /quality reports as a
+// potential duplicate (an info-severity validation issue).
+func seedDuplicate(ctx context.Context, h *command.Handler) error {
+	if _, err := h.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Mary", Surname: "Johnson", Gender: "female",
+		BirthDate: "1923", BirthPlace: "New York, New York",
+		Notes: "[DEMO DATA] Entered from a second record; likely a duplicate of Mary Johnson (b. ABT 1922).", ResearchStatus: "possible",
+	}); err != nil {
+		return fmt.Errorf("create duplicate Mary Johnson: %w", err)
+	}
 	return nil
 }
 

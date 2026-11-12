@@ -28,7 +28,7 @@ func setupDemoServer() *api.Server {
 
 	// Seed initial demo data (like main.go does)
 	cmdHandler := server.CommandHandler()
-	if err := demo.SeedDemoData(context.Background(), cmdHandler); err != nil {
+	if err := demo.SeedDemoData(context.Background(), cmdHandler, readStore); err != nil {
 		panic("failed to seed demo data: " + err.Error())
 	}
 

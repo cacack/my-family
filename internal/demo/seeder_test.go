@@ -5,41 +5,50 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/uuid"
+
 	"github.com/cacack/my-family/internal/command"
 	"github.com/cacack/my-family/internal/domain"
+	"github.com/cacack/my-family/internal/query"
 	"github.com/cacack/my-family/internal/repository"
 	"github.com/cacack/my-family/internal/repository/memory"
 )
 
-func TestSeedDemoData(t *testing.T) {
+// seedMemory seeds a fresh in-memory store, as demo mode does.
+func seedMemory(t *testing.T) (*memory.EventStore, *memory.ReadModelStore) {
+	t.Helper()
 	eventStore := memory.NewEventStore()
 	readStore := memory.NewReadModelStore()
 	cmdHandler := command.NewHandler(eventStore, readStore)
 
-	err := SeedDemoData(context.Background(), cmdHandler)
-	if err != nil {
+	if err := SeedDemoData(context.Background(), cmdHandler, readStore); err != nil {
 		t.Fatalf("SeedDemoData() failed: %v", err)
 	}
+	return eventStore, readStore
+}
+
+func TestSeedDemoData(t *testing.T) {
+	_, readStore := seedMemory(t)
 
 	ctx := context.Background()
 	opts := repository.ListOptions{Limit: 100}
 
-	// Verify persons were created (13 total)
+	// 13 created persons, 4 GEDCOM-imported Mueller/Schmidt ancestors, 1 duplicate
 	persons, total, err := readStore.ListPersons(ctx, opts)
 	if err != nil {
 		t.Fatalf("ListPersons: %v", err)
 	}
-	if total != 13 {
-		t.Errorf("expected 13 persons, got %d", total)
+	if total != 18 {
+		t.Errorf("expected 18 persons, got %d", total)
 	}
 
-	// Verify families were created (4 total)
+	// 4 created families, 2 imported
 	families, totalFamilies, err := readStore.ListFamilies(ctx, opts)
 	if err != nil {
 		t.Fatalf("ListFamilies: %v", err)
 	}
-	if totalFamilies != 4 {
-		t.Errorf("expected 4 families, got %d", totalFamilies)
+	if totalFamilies != 6 {
+		t.Errorf("expected 6 families, got %d", totalFamilies)
 	}
 
 	// Verify sources were created (1 total)
@@ -77,8 +86,149 @@ func TestSeedDemoData(t *testing.T) {
 		totalChildren += len(children)
 	}
 
-	// Expected children: 1 (family1) + 3 (family2) + 2 (family3) + 2 (family4) = 8
-	if totalChildren != 8 {
-		t.Errorf("expected 8 total family-child links, got %d", totalChildren)
+	// Expected children: 1 (family1) + 3 (family2) + 2 (family3) + 2 (family4)
+	// + Anna (Mueller family) + Margarethe (Schmidt family) = 10
+	if totalChildren != 10 {
+		t.Errorf("expected 10 total family-child links, got %d", totalChildren)
 	}
+}
+
+// TestSeedDemoData_NavSurfaces checks that every global-nav page backed by seeded
+// data has something to render under DEMO_MODE (#495).
+func TestSeedDemoData_NavSurfaces(t *testing.T) {
+	eventStore, readStore := seedMemory(t)
+	ctx := context.Background()
+	main := domain.MainBranchID
+	browse := query.NewBrowseService(readStore)
+
+	t.Run("browse surnames", func(t *testing.T) {
+		res, err := browse.GetSurnameIndex(ctx, query.GetSurnameIndexInput{BranchID: main})
+		if err != nil {
+			t.Fatalf("GetSurnameIndex: %v", err)
+		}
+		if len(res.Items) < 2 {
+			t.Errorf("expected at least 2 surnames, got %d", len(res.Items))
+		}
+	})
+
+	t.Run("browse places", func(t *testing.T) {
+		res, err := browse.GetPlaceHierarchy(ctx, query.GetPlaceHierarchyInput{BranchID: main})
+		if err != nil {
+			t.Fatalf("GetPlaceHierarchy: %v", err)
+		}
+		if len(res.Items) < 2 {
+			t.Errorf("expected at least 2 places, got %d", len(res.Items))
+		}
+	})
+
+	t.Run("browse cemeteries", func(t *testing.T) {
+		res, err := browse.GetCemeteryIndex(ctx, main)
+		if err != nil {
+			t.Fatalf("GetCemeteryIndex: %v", err)
+		}
+		if len(res.Items) < 1 {
+			t.Error("expected at least 1 cemetery")
+		}
+	})
+
+	t.Run("browse brick walls", func(t *testing.T) {
+		res, err := browse.GetBrickWalls(ctx, false)
+		if err != nil {
+			t.Fatalf("GetBrickWalls: %v", err)
+		}
+		if len(res.Items) < 1 {
+			t.Error("expected at least 1 brick wall")
+		}
+	})
+
+	t.Run("map", func(t *testing.T) {
+		res, err := browse.GetMapLocations(ctx, main)
+		if err != nil {
+			t.Fatalf("GetMapLocations: %v", err)
+		}
+		if len(res.Items) < 2 {
+			t.Errorf("expected at least 2 geocoded locations, got %d", len(res.Items))
+		}
+	})
+
+	t.Run("evidence", func(t *testing.T) {
+		evidence := query.NewEvidenceQueryService(readStore)
+		in := query.ListInput{Limit: 100}
+		analyses, err := evidence.ListEvidenceAnalyses(ctx, in)
+		if err != nil {
+			t.Fatalf("ListEvidenceAnalyses: %v", err)
+		}
+		conflicts, err := evidence.ListEvidenceConflicts(ctx, in)
+		if err != nil {
+			t.Fatalf("ListEvidenceConflicts: %v", err)
+		}
+		logs, err := evidence.ListResearchLogs(ctx, in)
+		if err != nil {
+			t.Fatalf("ListResearchLogs: %v", err)
+		}
+		summaries, err := evidence.ListProofSummaries(ctx, in)
+		if err != nil {
+			t.Fatalf("ListProofSummaries: %v", err)
+		}
+		if analyses.Total < 1 || conflicts.Total < 1 || logs.Total < 1 || summaries.Total < 1 {
+			t.Errorf("expected at least 1 of each evidence record, got analyses=%d conflicts=%d logs=%d summaries=%d",
+				analyses.Total, conflicts.Total, logs.Total, summaries.Total)
+		}
+	})
+
+	t.Run("history", func(t *testing.T) {
+		res, err := query.NewHistoryService(eventStore, readStore).GetGlobalHistory(ctx, query.GetGlobalHistoryInput{Limit: 10})
+		if err != nil {
+			t.Fatalf("GetGlobalHistory: %v", err)
+		}
+		if len(res.Entries) == 0 {
+			t.Error("expected history entries")
+		}
+	})
+
+	t.Run("quality", func(t *testing.T) {
+		validation := query.NewValidationService(readStore)
+		_, dupTotal, err := validation.FindDuplicates(ctx, 100, 0)
+		if err != nil {
+			t.Fatalf("FindDuplicates: %v", err)
+		}
+		if dupTotal < 1 {
+			t.Error("expected at least 1 potential duplicate pair")
+		}
+		issues, err := validation.GetValidationIssues(ctx, "", 0, 0)
+		if err != nil {
+			t.Fatalf("GetValidationIssues: %v", err)
+		}
+		if issues.ErrorCount < 1 || issues.WarningCount < 1 || issues.InfoCount < 1 {
+			t.Errorf("expected a validation issue of every severity, got errors=%d warnings=%d info=%d",
+				issues.ErrorCount, issues.WarningCount, issues.InfoCount)
+		}
+	})
+
+	t.Run("relationship", func(t *testing.T) {
+		william := findPerson(t, readStore, "William", "Thompson")
+		emily := findPerson(t, readStore, "Emily", "Thompson")
+		res, err := query.NewRelationshipService(readStore).GetRelationship(ctx, main, william, emily)
+		if err != nil {
+			t.Fatalf("GetRelationship: %v", err)
+		}
+		if !res.IsRelated {
+			t.Error("expected William and Emily Thompson to be related")
+		}
+	})
+}
+
+func findPerson(t *testing.T, readStore repository.ReadModelStore, given, surname string) uuid.UUID {
+	t.Helper()
+	persons, _, err := readStore.ListPersons(context.Background(), repository.ListOptions{Limit: 100})
+	if err != nil {
+		t.Fatalf("ListPersons: %v", err)
+	}
+	for _, p := range persons {
+		if p.GivenName == given && p.Surname == surname {
+			return p.ID
+		}
+	}
+	t.Fatalf("person %s %s not found", given, surname)
+	return uuid.Nil
 }
