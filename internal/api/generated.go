@@ -4299,6 +4299,7 @@ type MapLocation struct {
 	Longitude float64 `json:"longitude"`
 
 	// PersonIds IDs of the persons at this location, in the same order as `persons`. Kept for existing clients; `persons[].id` carries the same IDs.
+	// Deprecated: Use `persons[].id`, which carries the same IDs in the same order.
 	PersonIds []openapi_types.UUID `json:"person_ids"`
 
 	// Persons Persons at this location, named so a client can list them without a lookup each
