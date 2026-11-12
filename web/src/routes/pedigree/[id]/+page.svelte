@@ -8,6 +8,8 @@
 	import { describeContextKeys } from '#lib/keyboard/shortcuts.js';
 	import { useBackLink } from '#lib/utils/backLink.svelte.js';
 	import ErrorState from '#lib/components/ErrorState.svelte';
+	import LoadingState from '#lib/components/LoadingState.svelte';
+	import EmptyState from '#lib/components/EmptyState.svelte';
 	import PageHeader from '#lib/components/PageHeader.svelte';
 
 	let pedigree: Pedigree | null = $state(null);
@@ -229,7 +231,7 @@
 			{/snippet}
 		</PageHeader>
 		{#if loading}
-			<div class="loading">Loading pedigree...</div>
+			<LoadingState label="Loading pedigree..." />
 		{:else if error}
 			<ErrorState
 				message={error.message}
@@ -242,7 +244,7 @@
 			</div>
 			<p class="hint">Click on any person to view their pedigree. Scroll to zoom, drag to pan (two fingers on a touchscreen). Keys: {describeContextKeys('pedigree')}. Press ? for all shortcuts.</p>
 		{:else}
-			<div class="empty">No pedigree data available.</div>
+			<EmptyState message="No pedigree data available." />
 		{/if}
 	</div>
 </div>
@@ -351,16 +353,6 @@
 
 	.chart-area {
 		flex: 1;
-	}
-
-	.loading,
-	.empty {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		height: 100%;
-		color: var(--color-text-muted);
-		font-size: 1rem;
 	}
 
 	.hint {

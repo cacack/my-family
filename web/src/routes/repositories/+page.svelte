@@ -8,6 +8,8 @@
 	import { Button } from '#lib/components/ui/button/index.js';
 	import FormRow from '#lib/components/FormRow.svelte';
 	import ErrorState from '#lib/components/ErrorState.svelte';
+	import LoadingState from '#lib/components/LoadingState.svelte';
+	import EmptyState from '#lib/components/EmptyState.svelte';
 	import { clampPageToTotal, readEnum, readPositiveInt, setQuery } from '#lib/utils/urlState.js';
 
 	let repositories: Repository[] = $state([]);
@@ -286,14 +288,15 @@
 	{/if}
 
 	{#if loading}
-		<div class="loading">Loading...</div>
+		<LoadingState label="Loading repositories..." />
 	{:else if loadError}
 		<ErrorState message={loadError} onRetry={loadRepositories} />
 	{:else if repositories.length === 0}
-		<div class="empty">
-			<p>No repositories found.</p>
-			<Button onclick={openAddForm}>Add Repository</Button>
-		</div>
+		<EmptyState message="No repositories found.">
+			{#snippet actions()}
+				<Button onclick={openAddForm}>Add Repository</Button>
+			{/snippet}
+		</EmptyState>
 	{:else}
 		<table class="repositories-table">
 			<thead>
@@ -458,17 +461,6 @@
 		margin-top: 0.5rem;
 		padding-top: 1rem;
 		border-top: 1px solid #e2e8f0;
-	}
-
-	.loading,
-	.empty {
-		text-align: center;
-		padding: 3rem;
-		color: var(--color-text-muted);
-	}
-
-	.empty p {
-		margin: 0 0 1rem;
 	}
 
 	.repositories-table {

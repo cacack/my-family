@@ -8,6 +8,8 @@
 	import { clampPageToTotal, readEnum, readPositiveInt, setQuery } from '#lib/utils/urlState.js';
 	import ErrorState from '#lib/components/ErrorState.svelte';
 	import NavigationNotice from '#lib/components/NavigationNotice.svelte';
+	import LoadingState from '#lib/components/LoadingState.svelte';
+	import EmptyState from '#lib/components/EmptyState.svelte';
 
 	let persons: Person[] = $state([]);
 	let total = $state(0);
@@ -165,17 +167,16 @@
 	</div>
 
 	{#if loading}
-		<div class="loading">Loading...</div>
+		<LoadingState label="Loading people..." />
 	{:else if loadError}
 		<ErrorState message={loadError} onRetry={loadPersons} />
 	{:else if persons.length === 0}
-		<div class="empty">
-			<p>No people found.</p>
-			<div class="empty-actions">
+		<EmptyState message="No people found.">
+			{#snippet actions()}
 				<Button href="/persons/add">Add Person</Button>
 				<Button variant="outline" href="/import">Import GEDCOM</Button>
-			</div>
-		</div>
+			{/snippet}
+		</EmptyState>
 	{:else}
 		<div class="persons-grid">
 			{#each persons as person}
@@ -244,24 +245,6 @@
 		width: 1rem;
 		height: 1rem;
 		color: #64748b;
-	}
-
-	.loading,
-	.empty {
-		text-align: center;
-		padding: 3rem;
-		color: var(--color-text-muted);
-	}
-
-	.empty p {
-		margin: 0 0 1rem;
-	}
-
-	.empty-actions {
-		display: flex;
-		flex-wrap: wrap;
-		justify-content: center;
-		gap: 0.5rem;
 	}
 
 	.persons-grid {

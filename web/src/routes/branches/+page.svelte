@@ -22,6 +22,8 @@
 	import { branchMergeSummary, isIncompleteMerge } from '#lib/utils/mergeState.js';
 	import BranchDriftIndicator from '#lib/components/BranchDriftIndicator.svelte';
 	import ErrorState from '#lib/components/ErrorState.svelte';
+	import LoadingState from '#lib/components/LoadingState.svelte';
+	import EmptyState from '#lib/components/EmptyState.svelte';
 
 	// Mirrors the maxLength on BranchCreate in openapi.yaml.
 	const NAME_MAX_LENGTH = 100;
@@ -312,22 +314,19 @@
 	</PageHeader>
 
 	{#if loading}
-		<div class="state" role="status" aria-live="polite">Loading branches...</div>
+		<LoadingState label="Loading branches..." />
 	{:else if unavailable}
-		<div class="state empty">
-			<h2>Branches are not configured</h2>
-			<p>
-				The branch registry is not configured on this server, so research branches are
-				unavailable.
-			</p>
-		</div>
+		<EmptyState
+			message="Branches are not configured"
+			description="The branch registry is not configured on this server, so research branches are unavailable."
+		/>
 	{:else if error}
 		<ErrorState message={error} onRetry={loadBranches} />
 	{:else if branches.length === 0}
-		<div class="state empty">
-			<h2>No research branches yet</h2>
-			<p>Create one to explore a speculative line without touching the mainline.</p>
-		</div>
+		<EmptyState
+			message="No research branches yet"
+			description="Create one to explore a speculative line without touching the mainline."
+		/>
 	{:else}
 		{#if closeNotice}
 			<div class="notice" role="status">
@@ -369,9 +368,7 @@
 		</div>
 
 		{#if visibleBranches.length === 0}
-			<div class="state empty">
-				<p>No branches match these filters.</p>
-			</div>
+			<EmptyState message="No branches match these filters." />
 		{/if}
 		{#if activeBranches.length > 0}
 			<section class="branch-group">
@@ -697,29 +694,6 @@
 	.notice-warning {
 		margin-top: 0.375rem !important;
 		color: #92400e;
-	}
-
-	.state {
-		padding: 2rem;
-		text-align: center;
-		color: var(--color-text-muted);
-	}
-
-	.state.empty {
-		background: white;
-		border: 1px dashed #cbd5e1;
-		border-radius: 8px;
-	}
-
-	.state.empty h2 {
-		margin: 0 0 0.375rem;
-		font-size: 1rem;
-		color: #1e293b;
-	}
-
-	.state.empty p {
-		margin: 0;
-		font-size: 0.875rem;
 	}
 
 	.field {

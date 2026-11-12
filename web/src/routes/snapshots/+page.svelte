@@ -29,6 +29,8 @@
 		snapshotCompareToNowHref
 	} from '#lib/utils/snapshots.js';
 	import ErrorState from '#lib/components/ErrorState.svelte';
+	import LoadingState from '#lib/components/LoadingState.svelte';
+	import EmptyState from '#lib/components/EmptyState.svelte';
 
 	// Mirrors the maxLength on SnapshotCreate in openapi.yaml.
 	const NAME_MAX_LENGTH = 100;
@@ -232,14 +234,14 @@
 	</PageHeader>
 
 	{#if loading}
-		<div class="state" role="status" aria-live="polite">Loading snapshots...</div>
+		<LoadingState label="Loading snapshots..." />
 	{:else if error}
 		<ErrorState message={error} onRetry={loadSnapshots} />
 	{:else if snapshots.length === 0}
-		<div class="state empty">
-			<h2>No snapshots yet</h2>
-			<p>Create one to mark where your research stands today.</p>
-		</div>
+		<EmptyState
+			message="No snapshots yet"
+			description="Create one to mark where your research stands today."
+		/>
 	{:else}
 		{#if snapshots.length >= 1}
 			<section class="compare-panel" aria-labelledby="compare-heading">
@@ -546,29 +548,6 @@
 		margin: 0;
 		font-size: 0.8125rem;
 		color: #475569;
-	}
-
-	.state {
-		padding: 2rem;
-		text-align: center;
-		color: var(--color-text-muted);
-	}
-
-	.state.empty {
-		background: white;
-		border: 1px dashed #cbd5e1;
-		border-radius: 8px;
-	}
-
-	.state.empty h2 {
-		margin: 0 0 0.375rem;
-		font-size: 1rem;
-		color: #1e293b;
-	}
-
-	.state.empty p {
-		margin: 0;
-		font-size: 0.875rem;
 	}
 
 	.field {

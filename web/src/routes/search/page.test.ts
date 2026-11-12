@@ -564,7 +564,8 @@ describe('Advanced Search Page', () => {
 			await vi.advanceTimersByTimeAsync(0);
 
 			await waitFor(() => {
-				expect(screen.getByText('No results found. Try adjusting your search criteria.')).toBeDefined();
+				expect(screen.getByText('No results found.')).toBeDefined();
+				expect(screen.getByText('Try adjusting your search criteria.')).toBeDefined();
 			});
 		});
 	});

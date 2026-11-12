@@ -9,6 +9,7 @@
 	import MainlineNotice from '#lib/components/MainlineNotice.svelte';
 	import { activeBranch } from '#lib/stores/activeBranch.svelte.js';
 	import ErrorState from '#lib/components/ErrorState.svelte';
+	import LoadingState from '#lib/components/LoadingState.svelte';
 	import PageHeader from '#lib/components/PageHeader.svelte';
 
 	/**
@@ -81,7 +82,7 @@
 	<PageHeader title="My Family" description="Self-hosted genealogy software" />
 
 	{#if loading}
-		<div class="loading">Loading...</div>
+		<LoadingState />
 	{:else if loadError}
 		<ErrorState message={loadError} onRetry={loadDashboard} />
 	{:else}
@@ -198,12 +199,6 @@
 		max-width: var(--page-width-list);
 		margin: 0 auto;
 		padding: 1.5rem;
-	}
-
-	.loading {
-		text-align: center;
-		padding: 3rem;
-		color: var(--color-text-muted);
 	}
 
 	.stats {

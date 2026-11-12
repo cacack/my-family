@@ -3,6 +3,7 @@
 	import { page } from '$app/state';
 	import { api, type Person } from '#lib/api/client.js';
 	import RelationshipCalculator from '#lib/components/RelationshipCalculator.svelte';
+	import LoadingState from '#lib/components/LoadingState.svelte';
 	import PageHeader from '#lib/components/PageHeader.svelte';
 	import { setQuery } from '#lib/utils/urlState.js';
 
@@ -58,10 +59,7 @@
 		description="Select two people to discover how they are related"
 	/>
 	{#if loading}
-		<div class="loading-container">
-			<div class="loading-spinner"></div>
-			<span>Loading...</span>
-		</div>
+		<LoadingState />
 	{:else}
 		{#key mountKey}
 			<RelationshipCalculator {initialPersonA} {initialPersonB} onCalculate={handleCalculate} />
@@ -74,30 +72,5 @@
 		max-width: var(--page-width-detail);
 		margin: 0 auto;
 		padding: 1.5rem;
-	}
-
-	.loading-container {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		gap: 1rem;
-		padding: 4rem 2rem;
-		color: var(--color-text-muted);
-	}
-
-	.loading-spinner {
-		width: 2rem;
-		height: 2rem;
-		border: 3px solid #e2e8f0;
-		border-top-color: #3b82f6;
-		border-radius: 50%;
-		animation: spin 0.6s linear infinite;
-	}
-
-	@keyframes spin {
-		to {
-			transform: rotate(360deg);
-		}
 	}
 </style>

@@ -5,6 +5,8 @@
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { readEnum, setQuery } from '#lib/utils/urlState.js';
 	import ErrorState from './ErrorState.svelte';
+	import LoadingState from './LoadingState.svelte';
+	import EmptyState from './EmptyState.svelte';
 
 	let letterCounts: LetterCount[] = $state([]);
 	let allSurnames: SurnameEntry[] = $state([]);
@@ -97,7 +99,7 @@
 
 <div class="surname-browser">
 	{#if loading}
-		<div class="loading">Loading surnames...</div>
+		<LoadingState label="Loading surnames..." />
 	{:else if error && letterCounts.length === 0}
 		<ErrorState message={error} onRetry={retry} />
 	{:else}
@@ -124,11 +126,11 @@
 		<!-- Surname List -->
 		<div class="surname-list">
 			{#if loadingSurnames}
-				<div class="loading">Loading...</div>
+				<LoadingState />
 			{:else if error}
 				<ErrorState message={error} onRetry={retry} />
 			{:else if surnames.length === 0}
-				<div class="empty">No surnames found</div>
+				<EmptyState message="No surnames found." />
 			{:else}
 				<div class="surname-grid">
 					{#each surnames as entry}
@@ -152,13 +154,6 @@
 <style>
 	.surname-browser {
 		max-width: 100%;
-	}
-
-	.loading,
-	.empty {
-		text-align: center;
-		padding: 2rem;
-		color: var(--color-text-muted);
 	}
 
 	.letter-nav {

@@ -8,6 +8,8 @@
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { Separator } from '#lib/components/ui/separator/index.js';
 	import ErrorState from '#lib/components/ErrorState.svelte';
+	import LoadingState from '#lib/components/LoadingState.svelte';
+	import EmptyState from '#lib/components/EmptyState.svelte';
 	import { setQuery } from '#lib/utils/urlState.js';
 
 	let templates: CitationTemplate[] = $state([]);
@@ -94,11 +96,11 @@
 	/>
 
 	{#if loading}
-		<div class="loading" role="status" aria-live="polite">Loading citation templates...</div>
+		<LoadingState label="Loading citation templates..." />
 	{:else if error}
 		<ErrorState message={error} onRetry={loadTemplates} />
 	{:else if templates.length === 0}
-		<div class="empty">No citation templates available.</div>
+		<EmptyState message="No citation templates available." />
 	{:else}
 		<!-- Source type filter -->
 		{#if allSourceTypes.length > 0}
@@ -148,7 +150,7 @@
 		<!-- Template grid -->
 		<div class="templates-content" role="region" aria-live="polite">
 			{#if filteredTemplates.length === 0}
-				<div class="empty">No templates match the current filters.</div>
+				<EmptyState message="No templates match the current filters." />
 			{:else}
 				<div class="template-grid">
 					{#each filteredTemplates as template (template.id)}
@@ -225,13 +227,6 @@
 		max-width: var(--page-width-list);
 		margin: 0 auto;
 		padding: 1.5rem;
-	}
-
-	.loading,
-	.empty {
-		text-align: center;
-		padding: 2rem;
-		color: var(--color-text-muted);
 	}
 
 	.filters {

@@ -3,6 +3,8 @@
 	import { api, type PlaceEntry } from '#lib/api/client.js';
 	import { setQuery } from '#lib/utils/urlState.js';
 	import ErrorState from './ErrorState.svelte';
+	import LoadingState from './LoadingState.svelte';
+	import EmptyState from './EmptyState.svelte';
 
 	let places: PlaceEntry[] = $state([]);
 	let breadcrumb: string[] = $state([]);
@@ -66,7 +68,7 @@
 
 <div class="place-browser">
 	{#if loading}
-		<div class="loading" role="status" aria-live="polite">Loading places...</div>
+		<LoadingState label="Loading places..." />
 	{:else if error}
 		<ErrorState message={error} onRetry={loadPlaces} />
 	{:else}
@@ -95,13 +97,11 @@
 		<!-- Place List -->
 		<div class="place-list">
 			{#if places.length === 0}
-				<div class="empty">
-					{#if currentParent}
-						No sub-locations found for this place
-					{:else}
-						No places found in the database
-					{/if}
-				</div>
+				{#if currentParent}
+					<EmptyState message="No sub-locations found for this place." />
+				{:else}
+					<EmptyState message="No places found." />
+				{/if}
 			{:else}
 				<div class="place-grid">
 					{#each places as place}
@@ -150,13 +150,6 @@
 <style>
 	.place-browser {
 		max-width: 100%;
-	}
-
-	.loading,
-	.empty {
-		text-align: center;
-		padding: 2rem;
-		color: var(--color-text-muted);
 	}
 
 	.breadcrumb {

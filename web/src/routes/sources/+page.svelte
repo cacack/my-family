@@ -9,6 +9,8 @@
 	import SourceCard from '#lib/components/SourceCard.svelte';
 	import { DEFAULT_SOURCE_TYPE, SOURCE_TYPES } from '#lib/utils/sourceTypes.js';
 	import ErrorState from '#lib/components/ErrorState.svelte';
+	import LoadingState from '#lib/components/LoadingState.svelte';
+	import EmptyState from '#lib/components/EmptyState.svelte';
 	import ActionError from '#lib/components/ActionError.svelte';
 	import { asDatePhrase, unreadableDateField } from '#lib/utils/dateInput.js';
 	import { clampPageToTotal, readEnum, readPositiveInt, setQuery } from '#lib/utils/urlState.js';
@@ -342,19 +344,23 @@
 	{/if}
 
 	{#if loading}
-		<div class="loading">Loading...</div>
+		<LoadingState label="Loading sources..." />
 	{:else if loadError}
 		<ErrorState message={loadError} onRetry={loadSources} />
 	{:else if sources.length === 0}
-		<div class="empty">
-			{#if searchQuery}
-				<p>No sources found matching "{searchQuery}".</p>
-				<Button variant="outline" onclick={clearSearch}>Clear Search</Button>
-			{:else}
-				<p>No sources found.</p>
-				<Button onclick={openAddForm}>Add Source</Button>
-			{/if}
-		</div>
+		{#if searchQuery}
+			<EmptyState message={`No sources found matching "${searchQuery}".`}>
+				{#snippet actions()}
+					<Button variant="outline" onclick={clearSearch}>Clear Search</Button>
+				{/snippet}
+			</EmptyState>
+		{:else}
+			<EmptyState message="No sources found.">
+				{#snippet actions()}
+					<Button onclick={openAddForm}>Add Source</Button>
+				{/snippet}
+			</EmptyState>
+		{/if}
 	{:else}
 		<div class="sources-grid">
 			{#each sources as source}
@@ -511,17 +517,6 @@
 		margin-top: 1.5rem;
 		padding-top: 1rem;
 		border-top: 1px solid #e2e8f0;
-	}
-
-	.loading,
-	.empty {
-		text-align: center;
-		padding: 3rem;
-		color: var(--color-text-muted);
-	}
-
-	.empty p {
-		margin: 0 0 1rem;
 	}
 
 	.sources-grid {

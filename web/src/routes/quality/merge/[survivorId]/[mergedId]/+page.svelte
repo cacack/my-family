@@ -28,6 +28,7 @@
 	import ActionError from '#lib/components/ActionError.svelte';
 	import PageHeader from '#lib/components/PageHeader.svelte';
 	import InfoSection from '#lib/components/InfoSection.svelte';
+	import LoadingState from '#lib/components/LoadingState.svelte';
 
 	const MERGEABLE_FIELDS = [
 		'given_name',
@@ -313,7 +314,7 @@
 	{/if}
 
 	{#if loading}
-		<div class="py-12 text-center text-sm text-muted-foreground">Loading persons&hellip;</div>
+		<LoadingState label="Loading people..." />
 	{:else if loadError}
 		<ErrorState
 			message={loadError.message}

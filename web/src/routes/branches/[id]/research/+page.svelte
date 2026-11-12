@@ -24,6 +24,7 @@
 	import { Badge } from '#lib/components/ui/badge/index.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import ErrorState from '#lib/components/ErrorState.svelte';
+	import LoadingState from '#lib/components/LoadingState.svelte';
 	import PageHeader from '#lib/components/PageHeader.svelte';
 
 	const LOG_OUTCOME_LABELS: Record<string, string> = {
@@ -124,7 +125,7 @@
 	<a href={branchId ? `/branches/${branchId}` : '/branches'} class="back-link">&larr; {branch?.name ?? 'Branch'}</a>
 
 	{#if loading}
-		<div class="state" role="status" aria-live="polite">Loading research...</div>
+		<LoadingState label="Loading research..." />
 	{:else if loadError}
 		<ErrorState {...loadError} onRetry={() => load(branchId)} />
 	{:else if branch && archive}

@@ -25,6 +25,7 @@
 	import ActionError from '#lib/components/ActionError.svelte';
 	import PageHeader from '#lib/components/PageHeader.svelte';
 	import InfoSection from '#lib/components/InfoSection.svelte';
+	import LoadingState from '#lib/components/LoadingState.svelte';
 	import SaveConflict from '#lib/components/SaveConflict.svelte';
 	import { SaveConflictFlow, type ConflictRow } from '#lib/utils/saveConflict.svelte.js';
 
@@ -126,7 +127,7 @@
 <div class="mx-auto max-w-page-detail p-6">
 	{#if loading}
 		<PageHeader title="Evidence Conflict" back={{ href: '/evidence', label: 'Evidence Analysis' }} />
-		<div class="p-12 text-center text-muted-foreground">Loading...</div>
+		<LoadingState />
 	{:else if loadError}
 		<PageHeader title={loadError.title} back={{ href: '/evidence', label: 'Evidence Analysis' }} />
 		<ErrorState

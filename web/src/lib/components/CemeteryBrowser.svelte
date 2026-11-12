@@ -3,6 +3,8 @@
 	import { api, type CemeteryEntry } from '#lib/api/client.js';
 	import { setQuery } from '#lib/utils/urlState.js';
 	import ErrorState from './ErrorState.svelte';
+	import LoadingState from './LoadingState.svelte';
+	import EmptyState from './EmptyState.svelte';
 
 	let entries: CemeteryEntry[] = $state([]);
 	let loading = $state(true);
@@ -44,11 +46,11 @@
 
 <div class="cemetery-browser">
 	{#if loading}
-		<div class="loading" role="status" aria-live="polite">Loading cemeteries...</div>
+		<LoadingState label="Loading cemeteries..." />
 	{:else if error}
 		<ErrorState message={error} onRetry={loadCemeteries} />
 	{:else if entries.length === 0}
-		<div class="empty">No burial or cremation records found</div>
+		<EmptyState message="No burial or cremation records found." />
 	{:else}
 		<!-- Search Filter -->
 		<div class="search-bar">
@@ -71,7 +73,7 @@
 		<!-- Cemetery List -->
 		<div class="cemetery-list" aria-label="Cemeteries and burial places">
 			{#if filteredEntries.length === 0}
-				<div class="empty">No cemeteries matching "{searchQuery}"</div>
+				<EmptyState message={`No cemeteries matching "${searchQuery}".`} />
 			{:else}
 				<div class="cemetery-grid">
 					{#each filteredEntries as entry}
@@ -95,13 +97,6 @@
 <style>
 	.cemetery-browser {
 		max-width: 100%;
-	}
-
-	.loading,
-	.empty {
-		text-align: center;
-		padding: 2rem;
-		color: var(--color-text-muted);
 	}
 
 	.sr-only {

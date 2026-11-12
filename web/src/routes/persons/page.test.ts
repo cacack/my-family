@@ -183,9 +183,9 @@ describe('People list page: state in the URL (#901)', () => {
 			total: 0
 		} as unknown as Awaited<ReturnType<typeof apiModule.api.listPersons>>);
 		resetRouter('/persons');
-		const { container } = render(PersonsPage);
+		render(PersonsPage);
 		await screen.findByText('No people found.');
-		const empty = container.querySelector('.empty') as HTMLElement;
+		const empty = screen.getByTestId('empty-state');
 		const add = within(empty).getByRole('link', { name: 'Add Person' });
 		expect(add.getAttribute('href')).toBe('/persons/add');
 		expect(add.className).not.toMatch(/border-border/);

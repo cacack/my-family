@@ -17,6 +17,8 @@
 	import ErrorState from '#lib/components/ErrorState.svelte';
 	import ActionError from '#lib/components/ActionError.svelte';
 	import PageHeader from '#lib/components/PageHeader.svelte';
+	import EmptyState from '#lib/components/EmptyState.svelte';
+	import LoadingState from '#lib/components/LoadingState.svelte';
 	import { clampPageToTotal, readEnum, readPositiveInt, setQuery } from '#lib/utils/urlState.js';
 
 	const pageSize = 20;
@@ -409,16 +411,14 @@
 			</div>
 
 			{#if validationLoading}
-				<div class="p-12 text-center text-muted-foreground">Loading validation issues...</div>
+				<LoadingState label="Loading validation issues..." />
 			{:else if validationError}
 				<ErrorState message={validationError} onRetry={loadValidationIssues} />
 			{:else if issues.length === 0}
-				<div class="p-12 text-center text-muted-foreground">
-					<p class="m-0 mb-2">No issues found at this severity.</p>
-					<p class="text-[0.8125rem] text-muted-foreground">
-						Try a different severity filter or run a fresh scan.
-					</p>
-				</div>
+				<EmptyState
+					message="No issues found at this severity."
+					description="Try a different severity filter or run a fresh scan."
+				/>
 			{:else}
 				<div class="overflow-x-auto">
 					<table class="w-full border-collapse text-sm">
@@ -523,16 +523,14 @@
 			{/if}
 
 			{#if duplicatesLoading}
-				<div class="p-12 text-center text-muted-foreground">Loading duplicates...</div>
+				<LoadingState label="Loading duplicates..." />
 			{:else if duplicatesError}
 				<ErrorState message={duplicatesError} onRetry={loadDuplicates} />
 			{:else if duplicates.length === 0}
-				<div class="p-12 text-center text-muted-foreground">
-					<p class="m-0 mb-2">No potential duplicates detected.</p>
-					<p class="text-[0.8125rem] text-muted-foreground">
-						The duplicate detector compares persons by name, dates, and places.
-					</p>
-				</div>
+				<EmptyState
+					message="No potential duplicates detected."
+					description="The duplicate detector compares persons by name, dates, and places."
+				/>
 			{:else}
 				<div class="overflow-x-auto">
 					<table class="w-full border-collapse text-sm">
@@ -664,16 +662,14 @@
 			{/if}
 
 			{#if dismissedLoading}
-				<div class="p-12 text-center text-muted-foreground">Loading…</div>
+				<LoadingState label="Loading dismissed pairs..." />
 			{:else if dismissedError}
 				<ErrorState message={dismissedError} onRetry={loadDismissed} />
 			{:else if dismissed.length === 0}
-				<div class="p-12 text-center text-muted-foreground">
-					<p class="m-0 mb-2">No pairs are marked not a duplicate.</p>
-					<p class="text-[0.8125rem] text-muted-foreground">
-						Pairs you mark "Not a duplicate" on the Duplicates tab are listed here.
-					</p>
-				</div>
+				<EmptyState
+					message="No pairs are marked not a duplicate."
+					description={'Pairs you mark "Not a duplicate" on the Duplicates tab are listed here.'}
+				/>
 			{:else}
 				<div class="overflow-x-auto">
 					<table class="w-full border-collapse text-sm">

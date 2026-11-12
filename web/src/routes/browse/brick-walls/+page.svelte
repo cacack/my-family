@@ -6,6 +6,8 @@
 	import { Card, CardHeader, CardContent, CardFooter } from '#lib/components/ui/card/index.js';
 	import MainlineNotice from '#lib/components/MainlineNotice.svelte';
 	import ErrorState from '#lib/components/ErrorState.svelte';
+	import LoadingState from '#lib/components/LoadingState.svelte';
+	import EmptyState from '#lib/components/EmptyState.svelte';
 	import { readFlag, setQuery } from '#lib/utils/urlState.js';
 
 	let entries: BrickWallEntry[] = $state([]);
@@ -81,11 +83,14 @@
 	<PageHeader title="Brick Walls" description="Track and celebrate research breakthroughs." />
 
 	{#if loading}
-		<div class="loading" role="status" aria-live="polite">Loading brick walls...</div>
+		<LoadingState label="Loading brick walls..." />
 	{:else if error}
 		<ErrorState message={error} onRetry={loadBrickWalls} />
 	{:else if activeCount === 0 && resolvedCount === 0}
-		<div class="empty">No brick walls yet. Mark a person as a brick wall from their profile.</div>
+		<EmptyState
+			message="No brick walls yet."
+			description="Mark a person as a brick wall from their profile."
+		/>
 	{:else}
 		<div class="summary-stats">
 			<Card class="flex flex-col items-center px-8 py-4">
@@ -106,13 +111,14 @@
 		</div>
 
 		{#if entries.length === 0}
-			<div class="empty">
-				{#if includeResolved}
-					No brick walls found.
-				{:else}
-					No active brick walls. Toggle above to see resolved ones.
-				{/if}
-			</div>
+			{#if includeResolved}
+				<EmptyState message="No brick walls found." />
+			{:else}
+				<EmptyState
+					message="No active brick walls."
+					description="Toggle above to see resolved ones."
+				/>
+			{/if}
 		{:else}
 			<div class="brick-wall-grid" aria-label="Brick wall list">
 				{#each entries as entry}
@@ -161,13 +167,6 @@
 		max-width: var(--page-width-list);
 		margin: 0 auto;
 		padding: 1.5rem;
-	}
-
-	.loading,
-	.empty {
-		text-align: center;
-		padding: 2rem;
-		color: var(--color-text-muted);
 	}
 
 	.summary-stats {

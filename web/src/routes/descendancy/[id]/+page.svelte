@@ -8,6 +8,8 @@
 	import { describeContextKeys } from '#lib/keyboard/shortcuts.js';
 	import { useBackLink } from '#lib/utils/backLink.svelte.js';
 	import ErrorState from '#lib/components/ErrorState.svelte';
+	import LoadingState from '#lib/components/LoadingState.svelte';
+	import EmptyState from '#lib/components/EmptyState.svelte';
 	import PageHeader from '#lib/components/PageHeader.svelte';
 
 	let descendancy: Descendancy | null = $state(null);
@@ -260,7 +262,7 @@
 			{/snippet}
 		</PageHeader>
 		{#if loading}
-			<div class="loading">Loading descendancy...</div>
+			<LoadingState label="Loading descendancy..." />
 		{:else if error}
 			<ErrorState
 				message={error.message}
@@ -290,7 +292,7 @@
 				{describeContextKeys('descendancy')}. Press ? for all shortcuts.
 			</p>
 		{:else}
-			<div class="empty">No descendancy data available.</div>
+			<EmptyState message="No descendancy data available." />
 		{/if}
 	</div>
 </div>
@@ -399,16 +401,6 @@
 
 	.chart-area {
 		flex: 1;
-	}
-
-	.loading,
-	.empty {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		height: 100%;
-		color: var(--color-text-muted);
-		font-size: 1rem;
 	}
 
 	.chart-info {

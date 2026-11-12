@@ -3,6 +3,8 @@
 	import { api, type Person } from '#lib/api/client.js';
 	import PersonCard from '#lib/components/PersonCard.svelte';
 	import ErrorState from '#lib/components/ErrorState.svelte';
+	import LoadingState from '#lib/components/LoadingState.svelte';
+	import EmptyState from '#lib/components/EmptyState.svelte';
 	import PageHeader from '#lib/components/PageHeader.svelte';
 	import { clampPageToTotal, readPositiveInt, setQuery } from '#lib/utils/urlState.js';
 
@@ -72,14 +74,15 @@
 	/>
 
 	{#if loading}
-		<div class="loading" role="status" aria-live="polite">Loading...</div>
+		<LoadingState label="Loading people..." />
 	{:else if loadError}
 		<ErrorState message={loadError} onRetry={loadPersons} />
 	{:else if persons.length === 0}
-		<div class="empty">
-			<p>No people found at "{place}".</p>
-			<a href="/browse/cemeteries" class="back-link">Back to cemetery browser</a>
-		</div>
+		<EmptyState message={`No people found at "${place}".`}>
+			{#snippet actions()}
+				<a href="/browse/cemeteries" class="back-link">Back to cemetery browser</a>
+			{/snippet}
+		</EmptyState>
 	{:else}
 		<div class="persons-grid">
 			{#each persons as person}
@@ -102,17 +105,6 @@
 		max-width: var(--page-width-list);
 		margin: 0 auto;
 		padding: 1.5rem;
-	}
-
-	.loading,
-	.empty {
-		text-align: center;
-		padding: 3rem;
-		color: var(--color-text-muted);
-	}
-
-	.empty p {
-		margin: 0 0 1rem;
 	}
 
 	.back-link {

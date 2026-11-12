@@ -25,6 +25,8 @@
 	import { clampPageToTotal, readEnum, readPositiveInt, setQuery } from '#lib/utils/urlState.js';
 	import ErrorState from '#lib/components/ErrorState.svelte';
 	import PageHeader from '#lib/components/PageHeader.svelte';
+	import EmptyState from '#lib/components/EmptyState.svelte';
+	import LoadingState from '#lib/components/LoadingState.svelte';
 
 	const pageSize = 20;
 
@@ -348,17 +350,18 @@
 			</div>
 
 			{#if analysesLoading}
-				<div class="p-12 text-center text-muted-foreground">Loading analyses...</div>
+				<LoadingState label="Loading analyses..." />
 			{:else if analysesError}
 				<ErrorState message={analysesError} onRetry={loadAnalyses} />
 			{:else if analyses.length === 0}
-				<div class="p-12 text-center text-muted-foreground">
-					<p class="m-0 mb-2">No evidence analyses yet.</p>
-					<p class="mb-4 text-[0.8125rem] text-muted-foreground">
-						Create an analysis to evaluate evidence for a genealogical fact.
-					</p>
-					<Button href="/evidence/analyses/new">New Analysis</Button>
-				</div>
+				<EmptyState
+					message="No evidence analyses yet."
+					description="Create an analysis to evaluate evidence for a genealogical fact."
+				>
+					{#snippet actions()}
+						<Button href="/evidence/analyses/new">New Analysis</Button>
+					{/snippet}
+				</EmptyState>
 			{:else}
 				<!-- Desktop table -->
 				<div class="hidden overflow-x-auto md:block">
@@ -456,16 +459,14 @@
 			</div>
 
 			{#if conflictsLoading}
-				<div class="p-12 text-center text-muted-foreground">Loading conflicts...</div>
+				<LoadingState label="Loading conflicts..." />
 			{:else if conflictsError}
 				<ErrorState message={conflictsError} onRetry={loadConflicts} />
 			{:else if conflicts.length === 0}
-				<div class="p-12 text-center text-muted-foreground">
-					<p class="m-0 mb-2">No conflicts found.</p>
-					<p class="mb-4 text-[0.8125rem] text-muted-foreground">
-						Conflicts are auto-detected when analyses for the same fact disagree.
-					</p>
-				</div>
+				<EmptyState
+					message="No conflicts found."
+					description="Conflicts are auto-detected when analyses for the same fact disagree."
+				/>
 			{:else}
 				<!-- Desktop table -->
 				<div class="hidden overflow-x-auto md:block">
@@ -546,17 +547,18 @@
 			</div>
 
 			{#if logsLoading}
-				<div class="p-12 text-center text-muted-foreground">Loading research logs...</div>
+				<LoadingState label="Loading research logs..." />
 			{:else if logsError}
 				<ErrorState message={logsError} onRetry={loadLogs} />
 			{:else if logs.length === 0}
-				<div class="p-12 text-center text-muted-foreground">
-					<p class="m-0 mb-2">No research logs yet.</p>
-					<p class="mb-4 text-[0.8125rem] text-muted-foreground">
-						Log your research activities to track what repositories and records you have searched.
-					</p>
-					<Button href="/evidence/research-logs/new">New Research Log</Button>
-				</div>
+				<EmptyState
+					message="No research logs yet."
+					description="Log your research activities to track what repositories and records you have searched."
+				>
+					{#snippet actions()}
+						<Button href="/evidence/research-logs/new">New Research Log</Button>
+					{/snippet}
+				</EmptyState>
 			{:else}
 				<!-- Desktop table -->
 				<div class="hidden overflow-x-auto md:block">
@@ -641,17 +643,18 @@
 			</div>
 
 			{#if summariesLoading}
-				<div class="p-12 text-center text-muted-foreground">Loading proof summaries...</div>
+				<LoadingState label="Loading proof summaries..." />
 			{:else if summariesError}
 				<ErrorState message={summariesError} onRetry={loadSummaries} />
 			{:else if summaries.length === 0}
-				<div class="p-12 text-center text-muted-foreground">
-					<p class="m-0 mb-2">No proof summaries yet.</p>
-					<p class="mb-4 text-[0.8125rem] text-muted-foreground">
-						Create a proof summary to document your conclusions about a genealogical fact.
-					</p>
-					<Button href="/evidence/proof-summaries/new">New Proof Summary</Button>
-				</div>
+				<EmptyState
+					message="No proof summaries yet."
+					description="Create a proof summary to document your conclusions about a genealogical fact."
+				>
+					{#snippet actions()}
+						<Button href="/evidence/proof-summaries/new">New Proof Summary</Button>
+					{/snippet}
+				</EmptyState>
 			{:else}
 				<!-- Desktop table -->
 				<div class="hidden overflow-x-auto md:block">
