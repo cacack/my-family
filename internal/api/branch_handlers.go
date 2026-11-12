@@ -843,28 +843,28 @@ func resumeBranchMergeErrorResponse(result *command.ResumeMergeResult, err error
 			described = []MergePendingEntity{}
 		}
 		return ResumeBranchMerge409JSONResponse{
-			Code:             BranchMergeResumeErrorCodeResumeNeedsResolution,
+			Code:             BranchMergeResumeErrorCodeNeedsResolution,
 			Message:          err.Error(),
 			PendingStreamIds: &pending,
 			Pending:          &described,
 		}, nil
 
 	case errors.Is(err, command.ErrMergeNotClaimed):
-		return refuse(BranchMergeResumeErrorCodeResumeMergeNotClaimed)
+		return refuse(BranchMergeResumeErrorCodeMergeNotClaimed)
 
 	case errors.Is(err, command.ErrMergeDanglingReference):
 		return ResumeBranchMerge409JSONResponse{
-			Code:     BranchMergeResumeErrorCodeResumeDanglingReference,
+			Code:     BranchMergeResumeErrorCodeDanglingReference,
 			Message:  err.Error(),
 			Blockers: mergeBlockersOf(err),
 		}, nil
 
 	case errors.Is(err, command.ErrBranchTooLargeToMerge):
-		return refuse(BranchMergeResumeErrorCodeResumeBranchTooLarge)
+		return refuse(BranchMergeResumeErrorCodeBranchTooLarge)
 
 	case errors.Is(err, command.ErrMergeResumeConcurrent),
 		errors.Is(err, command.ErrMergeResumeBranchChanged):
-		return refuse(BranchMergeResumeErrorCodeResumeConcurrent)
+		return refuse(BranchMergeResumeErrorCodeConcurrent)
 
 	case errors.Is(err, command.ErrUnknownResolution):
 		return ResumeBranchMerge400JSONResponse{BadRequestJSONResponse{
@@ -1010,7 +1010,7 @@ func (ss *StrictServer) addMergeState(ctx context.Context, out *Branch, b *domai
 	completeness, err := ss.server.commandHandler.MergeCompleteness(ctx, b)
 	if err != nil {
 		ss.server.echo.Logger.Errorf("reading the merge state of branch %s: %v", b.ID, err)
-		unknown := BranchMergeStateMergeStateUnknown
+		unknown := BranchMergeStateUnknown
 		out.MergeState = &unknown
 		return
 	}
