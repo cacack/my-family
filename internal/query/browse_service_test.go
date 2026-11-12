@@ -1077,3 +1077,33 @@ func TestBrowseService_MainOnlyPathsUnscoped(t *testing.T) {
 			spy.brickWallCalls, spy.setBrickWallCalls, spy.resolveBrickWallCalls)
 	}
 }
+
+// TestGetMapLocations_CarriesPersonUUID pins that a mapped person's ID reaches
+// the caller as the read model's uuid.UUID, with no string round trip (#972).
+func TestGetMapLocations_CarriesPersonUUID(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	service := query.NewBrowseService(readStore)
+	ctx := context.Background()
+
+	lat, lon := "N42.3601", "W71.0589"
+	id := uuid.New()
+	if err := readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
+		ID: id, GivenName: "John", Surname: "Smith", FullName: "John Smith",
+		BirthPlace: "Boston, MA", BirthPlaceLat: &lat, BirthPlaceLong: &lon,
+		Version: 1, UpdatedAt: time.Now(),
+	}); err != nil {
+		t.Fatalf("SavePerson: %v", err)
+	}
+
+	result, err := service.GetMapLocations(ctx, domain.MainBranchID)
+	if err != nil {
+		t.Fatalf("GetMapLocations: %v", err)
+	}
+	if len(result.Items) != 1 {
+		t.Fatalf("len(items) = %d, want 1", len(result.Items))
+	}
+	want := query.MapPerson{ID: id, GivenName: "John", Surname: "Smith"}
+	if got := result.Items[0].Persons; len(got) != 1 || got[0] != want {
+		t.Errorf("persons = %+v, want [%+v]", got, want)
+	}
+}

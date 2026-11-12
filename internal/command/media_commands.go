@@ -141,15 +141,25 @@ func (h *Handler) UpdateMedia(ctx context.Context, input UpdateMediaInput) (*Upd
 	// Build changes map. A field equal to its current value is not a change
 	// (the edit form sends every field), so only differing fields are recorded.
 	changes := make(map[string]any)
+	testMedia := domain.Media{
+		ID:         current.ID,
+		EntityType: current.EntityType,
+		EntityID:   current.EntityID,
+		Title:      current.Title,
+		MediaType:  current.MediaType,
+		FileSize:   current.FileSize,
+	}
 
 	if input.Title != nil && *input.Title != current.Title {
 		changes["title"] = *input.Title
+		testMedia.Title = *input.Title
 	}
 	if input.Description != nil && *input.Description != current.Description {
 		changes["description"] = *input.Description
 	}
 	if input.MediaType != nil && string(current.MediaType) != *input.MediaType {
 		changes["media_type"] = *input.MediaType
+		testMedia.MediaType = domain.MediaType(*input.MediaType)
 	}
 	if input.CropLeft != nil && !ptrEqual(input.CropLeft, current.CropLeft) {
 		changes["crop_left"] = *input.CropLeft
@@ -167,6 +177,11 @@ func (h *Handler) UpdateMedia(ctx context.Context, input UpdateMediaInput) (*Upd
 	// No changes?
 	if len(changes) == 0 {
 		return &UpdateMediaResult{Version: current.Version}, nil
+	}
+
+	// Validate updated media
+	if err := testMedia.Validate(); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInvalidInput, err)
 	}
 
 	// Create event

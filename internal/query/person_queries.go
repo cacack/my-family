@@ -146,17 +146,12 @@ func (s *PersonService) ListPersons(ctx context.Context, input ListPersonsInput)
 // never mixes branch and main rows; the zero value (MainBranchID) reproduces
 // the pre-branch main-line behavior.
 func (s *PersonService) GetPerson(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*PersonDetail, error) {
-	rm, err := s.readStore.GetPerson(ctx, branchID, id)
+	person, err := s.GetPersonCore(ctx, branchID, id)
 	if err != nil {
 		return nil, err
 	}
-	if rm == nil {
-		return nil, ErrNotFound
-	}
-
-	person := convertReadModelToPerson(*rm)
 	detail := &PersonDetail{
-		Person: person,
+		Person: *person,
 	}
 
 	// Get all names for the person
@@ -201,6 +196,22 @@ func (s *PersonService) GetPerson(ctx context.Context, branchID domain.BranchID,
 	}
 
 	return detail, nil
+}
+
+// GetPersonCore returns a person's own fields without the names, families and
+// external identifiers that GetPerson assembles. Callers that need only the
+// person (or its version) use it so new PersonDetail sub-resources don't add
+// queries to their path. It returns ErrNotFound for an unknown person.
+func (s *PersonService) GetPersonCore(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*Person, error) {
+	rm, err := s.readStore.GetPerson(ctx, branchID, id)
+	if err != nil {
+		return nil, err
+	}
+	if rm == nil {
+		return nil, ErrNotFound
+	}
+	person := convertReadModelToPerson(*rm)
+	return &person, nil
 }
 
 // SearchPersonsInput contains options for searching persons.

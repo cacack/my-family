@@ -67,6 +67,9 @@ type streamState struct {
 	// mergedName is the display name of a person PersonMerged folded into
 	// this one, from the event's snapshot.
 	mergedName string
+	// entityType is the type the stream's folded events say it is, so an id
+	// that may name several types is labeled only as the one it is.
+	entityType string
 }
 
 func newStreamState() *streamState {
@@ -324,6 +327,7 @@ func (st *streamState) apply(evt *repository.StoredEvent) {
 	if !ok || class.Excluded() {
 		return
 	}
+	st.entityType = class.EntityType
 	switch class.Action {
 	case actionCreated:
 		st.fields = eventFields(evt)
@@ -605,6 +609,9 @@ func (d *historyDescription) stateLabel(entityType string, entityID uuid.UUID) s
 	case entityTypeDuplicatePair:
 		return d.duplicatePairName(state)
 	default:
+		if state != nil && state.entityType != "" && state.entityType != entityType {
+			return ""
+		}
 		if label, ok := stateLabels[entityType]; ok {
 			return label(state)
 		}

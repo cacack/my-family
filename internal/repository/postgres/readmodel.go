@@ -2004,304 +2004,214 @@ func tombstoneExternalIDBucket(ctx context.Context, tx *sql.Tx, table, parentCol
 	return nil
 }
 
-// ReplacePersonExternalIDs replaces all external identifiers (GEDCOM 7.0 EXID)
-// for a person on the given branch within a single transaction (ADR-005). This is
-// a bucket-scoped replace: it clears only the branch's rows and writes the new
-// set as branch rows. On a non-main branch an empty set writes a present-but-empty
-// tombstone bucket so main's identifiers are hidden; on main an empty set is a
-// plain removal.
-func (s *ReadModelStore) ReplacePersonExternalIDs(ctx context.Context, branchID domain.BranchID, personID uuid.UUID, ids []repository.PersonExternalIDReadModel) error {
-	tx, err := s.db.BeginTx(ctx, nil)
+// External identifiers (#617). The person, family, source and citation buckets
+// share one bucket-scoped replace and one overlay read, parameterized on table
+// and parent column; the typed methods only name them.
+
+// replaceExternalIDs replaces a parent's external-id bucket on the given branch
+// within a single transaction (ADR-005). This is a bucket-scoped replace: it
+// clears only the branch's rows and writes the new set as branch rows. On a
+// non-main branch an empty set writes a present-but-empty tombstone bucket so
+// main's identifiers are hidden; on main an empty set is a plain removal.
+func replaceExternalIDs(ctx context.Context, db *sql.DB, table, parentCol string, branchID domain.BranchID, parentID uuid.UUID, ids []extIDValue) error {
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	if _, err := tx.ExecContext(ctx, "DELETE FROM person_external_ids WHERE person_id = $1 AND branch_id = $2", personID, branchID.UUID()); err != nil {
-		return fmt.Errorf("delete person external ids: %w", err)
-	}
-	if len(ids) == 0 {
-		if !branchID.IsMain() {
-			if _, err := tx.ExecContext(ctx, `
-				INSERT INTO person_external_ids (person_id, sequence, branch_id, value, type, deleted)
-				VALUES ($1, 0, $2, '', '', TRUE)
-			`, personID, branchID.UUID()); err != nil {
-				return fmt.Errorf("mark empty person external id bucket: %w", err)
-			}
+	if len(ids) == 0 && !branchID.IsMain() {
+		if err := tombstoneExternalIDBucket(ctx, tx, table, parentCol, parentID, branchID.UUID()); err != nil {
+			return err
 		}
 		return tx.Commit()
 	}
+	// #nosec G201 G202 -- table and parentCol are package-internal literals, not user input
+	if _, err := tx.ExecContext(ctx, "DELETE FROM "+table+" WHERE "+parentCol+" = $1 AND branch_id = $2", parentID, branchID.UUID()); err != nil {
+		return fmt.Errorf("delete %s: %w", table, err)
+	}
 	for i, id := range ids {
-		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO person_external_ids (person_id, sequence, branch_id, value, type, deleted)
-			VALUES ($1, $2, $3, $4, $5, FALSE)
-		`, personID, i, branchID.UUID(), id.Value, id.Type); err != nil {
-			return fmt.Errorf("insert person external id: %w", err)
+		// #nosec G201 G202 -- table and parentCol are package-internal literals, not user input
+		if _, err := tx.ExecContext(ctx, "INSERT INTO "+table+" ("+parentCol+", sequence, branch_id, value, type, deleted) VALUES ($1, $2, $3, $4, $5, FALSE)",
+			parentID, i, branchID.UUID(), id.Value, id.Type); err != nil {
+			return fmt.Errorf("insert %s: %w", table, err)
 		}
 	}
 	return tx.Commit()
+}
+
+// extIDValue is the branch-agnostic payload of an external identifier.
+type extIDValue struct {
+	Value string
+	Type  string
+}
+
+// extIDValues extracts the payloads of typed external ids.
+func extIDValues[T any](ids []T, payload func(T) extIDValue) []extIDValue {
+	out := make([]extIDValue, len(ids))
+	for i, id := range ids {
+		out[i] = payload(id)
+	}
+	return out
+}
+
+// queryExternalIDs runs an external-id query selecting (parent, sequence,
+// value, type) and groups the rows by parent, keeping their order. build turns
+// a row into the caller's typed read model; table names the table in errors.
+func queryExternalIDs[T any](ctx context.Context, db *sql.DB, table, query string, args []any, build func(parentID uuid.UUID, seq int, value, typ string) T) (map[uuid.UUID][]T, error) {
+	rows, err := db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query %s: %w", table, err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	result := make(map[uuid.UUID][]T)
+	for rows.Next() {
+		var (
+			parentID   uuid.UUID
+			seq        int
+			value, typ string
+		)
+		if err := rows.Scan(&parentID, &seq, &value, &typ); err != nil {
+			return nil, fmt.Errorf("scan %s: %w", table, err)
+		}
+		result[parentID] = append(result[parentID], build(parentID, seq, value, typ))
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate %s: %w", table, err)
+	}
+	return result, nil
+}
+
+// getExternalIDs reads one parent's external-id bucket within the branch
+// overlay, ordered by sequence (ADR-005). Bucket-scoped: if the branch has any
+// rows for the parent (including an empty-bucket tombstone marker) the branch
+// bucket wins wholesale; otherwise it falls back to main.
+func getExternalIDs[T any](ctx context.Context, db *sql.DB, table, parentCol string, branchID domain.BranchID, parentID uuid.UUID, build func(uuid.UUID, int, string, string) T) ([]T, error) {
+	// #nosec G201 G202 -- table and parentCol are package-internal literals, not user input
+	query := "SELECT " + parentCol + ", sequence, value, type FROM " + table + `
+		WHERE ` + parentCol + ` = $1 AND NOT deleted AND branch_id = (
+			CASE WHEN EXISTS (SELECT 1 FROM ` + table + " WHERE " + parentCol + ` = $1 AND branch_id = $2)
+			     THEN $2 ELSE $3 END)
+		ORDER BY sequence`
+	byParent, err := queryExternalIDs(ctx, db, table, query, []any{parentID, branchID.UUID(), domain.MainBranchID.UUID()}, build)
+	if err != nil {
+		return nil, err
+	}
+	return byParent[parentID], nil
+}
+
+// listExternalIDs is getExternalIDs for every parent at once, in one query:
+// each parent's branch bucket when the branch has one, else its main bucket.
+func listExternalIDs[T any](ctx context.Context, db *sql.DB, table, parentCol string, branchID domain.BranchID, build func(uuid.UUID, int, string, string) T) (map[uuid.UUID][]T, error) {
+	// #nosec G201 G202 -- table and parentCol are package-internal literals, not user input
+	query := "SELECT " + parentCol + ", sequence, value, type FROM " + table + ` t
+		WHERE NOT deleted
+		  AND (branch_id = $1 OR (branch_id = $2 AND NOT EXISTS (
+			SELECT 1 FROM ` + table + " b WHERE b." + parentCol + " = t." + parentCol + ` AND b.branch_id = $1)))
+		ORDER BY ` + parentCol + ", sequence"
+	return queryExternalIDs(ctx, db, table, query, []any{branchID.UUID(), domain.MainBranchID.UUID()}, build)
+}
+
+func personExternalID(parentID uuid.UUID, seq int, value, typ string) repository.PersonExternalIDReadModel {
+	return repository.PersonExternalIDReadModel{PersonID: parentID, Sequence: seq, Value: value, Type: typ}
+}
+
+func familyExternalID(parentID uuid.UUID, seq int, value, typ string) repository.FamilyExternalIDReadModel {
+	return repository.FamilyExternalIDReadModel{FamilyID: parentID, Sequence: seq, Value: value, Type: typ}
+}
+
+func sourceExternalID(parentID uuid.UUID, seq int, value, typ string) repository.SourceExternalIDReadModel {
+	return repository.SourceExternalIDReadModel{SourceID: parentID, Sequence: seq, Value: value, Type: typ}
+}
+
+func citationExternalID(parentID uuid.UUID, seq int, value, typ string) repository.CitationExternalIDReadModel {
+	return repository.CitationExternalIDReadModel{CitationID: parentID, Sequence: seq, Value: value, Type: typ}
+}
+
+func repositoryExternalID(parentID uuid.UUID, seq int, value, typ string) repository.RepositoryExternalIDReadModel {
+	return repository.RepositoryExternalIDReadModel{RepositoryID: parentID, Sequence: seq, Value: value, Type: typ}
+}
+
+// ReplacePersonExternalIDs replaces all external identifiers (GEDCOM 7.0 EXID)
+// for a person on the given branch; see replaceExternalIDs.
+func (s *ReadModelStore) ReplacePersonExternalIDs(ctx context.Context, branchID domain.BranchID, personID uuid.UUID, ids []repository.PersonExternalIDReadModel) error {
+	return replaceExternalIDs(ctx, s.db, "person_external_ids", "person_id", branchID, personID, extIDValues(ids, func(id repository.PersonExternalIDReadModel) extIDValue {
+		return extIDValue{Value: id.Value, Type: id.Type}
+	}))
 }
 
 // GetPersonExternalIDs retrieves all external identifiers for a person within the
-// branch overlay, ordered by their original sequence (ADR-005). Bucket-scoped: if
-// the branch has any rows for the person (including an empty-bucket tombstone
-// marker) the branch bucket wins wholesale; otherwise it falls back to main.
+// branch overlay, ordered by their original sequence; see getExternalIDs.
 func (s *ReadModelStore) GetPersonExternalIDs(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) ([]repository.PersonExternalIDReadModel, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT sequence, value, type FROM person_external_ids
-		WHERE person_id = $1 AND NOT deleted AND branch_id = (
-			CASE WHEN EXISTS (SELECT 1 FROM person_external_ids WHERE person_id = $1 AND branch_id = $2)
-			     THEN $2 ELSE $3 END)
-		ORDER BY sequence
-	`, personID, branchID.UUID(), domain.MainBranchID.UUID())
-	if err != nil {
-		return nil, fmt.Errorf("query person external ids: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
+	return getExternalIDs(ctx, s.db, "person_external_ids", "person_id", branchID, personID, personExternalID)
+}
 
-	var result []repository.PersonExternalIDReadModel
-	for rows.Next() {
-		var (
-			seq   int
-			value string
-			typ   string
-		)
-		if err := rows.Scan(&seq, &value, &typ); err != nil {
-			return nil, fmt.Errorf("scan person external id: %w", err)
-		}
-		result = append(result, repository.PersonExternalIDReadModel{
-			PersonID: personID,
-			Sequence: seq,
-			Value:    value,
-			Type:     typ,
-		})
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate person external ids: %w", err)
-	}
-	return result, nil
+// ListPersonExternalIDs returns every person's external identifiers visible on
+// the branch, keyed by person ID, in one query.
+func (s *ReadModelStore) ListPersonExternalIDs(ctx context.Context, branchID domain.BranchID) (map[uuid.UUID][]repository.PersonExternalIDReadModel, error) {
+	return listExternalIDs(ctx, s.db, "person_external_ids", "person_id", branchID, personExternalID)
 }
 
 // ReplaceFamilyExternalIDs replaces all external identifiers (GEDCOM 7.0 EXID)
-// for a family on the given branch within a single transaction (ADR-005). Same
-// bucket-scoped semantics as ReplacePersonExternalIDs.
+// for a family on the given branch; see replaceExternalIDs.
 func (s *ReadModelStore) ReplaceFamilyExternalIDs(ctx context.Context, branchID domain.BranchID, familyID uuid.UUID, ids []repository.FamilyExternalIDReadModel) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin tx: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	if _, err := tx.ExecContext(ctx, "DELETE FROM family_external_ids WHERE family_id = $1 AND branch_id = $2", familyID, branchID.UUID()); err != nil {
-		return fmt.Errorf("delete family external ids: %w", err)
-	}
-	if len(ids) == 0 {
-		if !branchID.IsMain() {
-			if _, err := tx.ExecContext(ctx, `
-				INSERT INTO family_external_ids (family_id, sequence, branch_id, value, type, deleted)
-				VALUES ($1, 0, $2, '', '', TRUE)
-			`, familyID, branchID.UUID()); err != nil {
-				return fmt.Errorf("mark empty family external id bucket: %w", err)
-			}
-		}
-		return tx.Commit()
-	}
-	for i, id := range ids {
-		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO family_external_ids (family_id, sequence, branch_id, value, type, deleted)
-			VALUES ($1, $2, $3, $4, $5, FALSE)
-		`, familyID, i, branchID.UUID(), id.Value, id.Type); err != nil {
-			return fmt.Errorf("insert family external id: %w", err)
-		}
-	}
-	return tx.Commit()
+	return replaceExternalIDs(ctx, s.db, "family_external_ids", "family_id", branchID, familyID, extIDValues(ids, func(id repository.FamilyExternalIDReadModel) extIDValue {
+		return extIDValue{Value: id.Value, Type: id.Type}
+	}))
 }
 
 // GetFamilyExternalIDs retrieves all external identifiers for a family within the
-// branch overlay, ordered by their original sequence (ADR-005). Bucket-scoped
-// resolution, matching GetPersonExternalIDs.
+// branch overlay, ordered by their original sequence; see getExternalIDs.
 func (s *ReadModelStore) GetFamilyExternalIDs(ctx context.Context, branchID domain.BranchID, familyID uuid.UUID) ([]repository.FamilyExternalIDReadModel, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT sequence, value, type FROM family_external_ids
-		WHERE family_id = $1 AND NOT deleted AND branch_id = (
-			CASE WHEN EXISTS (SELECT 1 FROM family_external_ids WHERE family_id = $1 AND branch_id = $2)
-			     THEN $2 ELSE $3 END)
-		ORDER BY sequence
-	`, familyID, branchID.UUID(), domain.MainBranchID.UUID())
-	if err != nil {
-		return nil, fmt.Errorf("query family external ids: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
+	return getExternalIDs(ctx, s.db, "family_external_ids", "family_id", branchID, familyID, familyExternalID)
+}
 
-	var result []repository.FamilyExternalIDReadModel
-	for rows.Next() {
-		var (
-			seq   int
-			value string
-			typ   string
-		)
-		if err := rows.Scan(&seq, &value, &typ); err != nil {
-			return nil, fmt.Errorf("scan family external id: %w", err)
-		}
-		result = append(result, repository.FamilyExternalIDReadModel{
-			FamilyID: familyID,
-			Sequence: seq,
-			Value:    value,
-			Type:     typ,
-		})
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate family external ids: %w", err)
-	}
-	return result, nil
+// ListFamilyExternalIDs returns every family's external identifiers visible on
+// the branch, keyed by family ID, in one query.
+func (s *ReadModelStore) ListFamilyExternalIDs(ctx context.Context, branchID domain.BranchID) (map[uuid.UUID][]repository.FamilyExternalIDReadModel, error) {
+	return listExternalIDs(ctx, s.db, "family_external_ids", "family_id", branchID, familyExternalID)
 }
 
 // ReplaceSourceExternalIDs replaces all external identifiers (GEDCOM 7.0 EXID)
-// for a source on the given branch within a single transaction (ADR-005, #758).
-// Same bucket-scoped semantics as ReplacePersonExternalIDs.
+// for a source on the given branch (#758); see replaceExternalIDs.
 func (s *ReadModelStore) ReplaceSourceExternalIDs(ctx context.Context, branchID domain.BranchID, sourceID uuid.UUID, ids []repository.SourceExternalIDReadModel) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin tx: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	if _, err := tx.ExecContext(ctx, "DELETE FROM source_external_ids WHERE source_id = $1 AND branch_id = $2", sourceID, branchID.UUID()); err != nil {
-		return fmt.Errorf("delete source external ids: %w", err)
-	}
-	if len(ids) == 0 {
-		if !branchID.IsMain() {
-			if _, err := tx.ExecContext(ctx, `
-				INSERT INTO source_external_ids (source_id, sequence, branch_id, value, type, deleted)
-				VALUES ($1, 0, $2, '', '', TRUE)
-			`, sourceID, branchID.UUID()); err != nil {
-				return fmt.Errorf("mark empty source external id bucket: %w", err)
-			}
-		}
-		return tx.Commit()
-	}
-	for i, id := range ids {
-		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO source_external_ids (source_id, sequence, branch_id, value, type, deleted)
-			VALUES ($1, $2, $3, $4, $5, FALSE)
-		`, sourceID, i, branchID.UUID(), id.Value, id.Type); err != nil {
-			return fmt.Errorf("insert source external id: %w", err)
-		}
-	}
-	return tx.Commit()
+	return replaceExternalIDs(ctx, s.db, "source_external_ids", "source_id", branchID, sourceID, extIDValues(ids, func(id repository.SourceExternalIDReadModel) extIDValue {
+		return extIDValue{Value: id.Value, Type: id.Type}
+	}))
 }
 
 // GetSourceExternalIDs retrieves all external identifiers for a source within the
-// branch overlay, ordered by their original sequence (ADR-005, #758).
-// Bucket-scoped resolution, matching GetPersonExternalIDs.
+// branch overlay, ordered by their original sequence (#758); see getExternalIDs.
 func (s *ReadModelStore) GetSourceExternalIDs(ctx context.Context, branchID domain.BranchID, sourceID uuid.UUID) ([]repository.SourceExternalIDReadModel, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT sequence, value, type FROM source_external_ids
-		WHERE source_id = $1 AND NOT deleted AND branch_id = (
-			CASE WHEN EXISTS (SELECT 1 FROM source_external_ids WHERE source_id = $1 AND branch_id = $2)
-			     THEN $2 ELSE $3 END)
-		ORDER BY sequence
-	`, sourceID, branchID.UUID(), domain.MainBranchID.UUID())
-	if err != nil {
-		return nil, fmt.Errorf("query source external ids: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
+	return getExternalIDs(ctx, s.db, "source_external_ids", "source_id", branchID, sourceID, sourceExternalID)
+}
 
-	var result []repository.SourceExternalIDReadModel
-	for rows.Next() {
-		var (
-			seq   int
-			value string
-			typ   string
-		)
-		if err := rows.Scan(&seq, &value, &typ); err != nil {
-			return nil, fmt.Errorf("scan source external id: %w", err)
-		}
-		result = append(result, repository.SourceExternalIDReadModel{
-			SourceID: sourceID,
-			Sequence: seq,
-			Value:    value,
-			Type:     typ,
-		})
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate source external ids: %w", err)
-	}
-	return result, nil
+// ListSourceExternalIDs returns every source's external identifiers visible on
+// the branch, keyed by source ID, in one query.
+func (s *ReadModelStore) ListSourceExternalIDs(ctx context.Context, branchID domain.BranchID) (map[uuid.UUID][]repository.SourceExternalIDReadModel, error) {
+	return listExternalIDs(ctx, s.db, "source_external_ids", "source_id", branchID, sourceExternalID)
 }
 
 // ReplaceCitationExternalIDs replaces all external identifiers for a citation
-// on the given branch within a single transaction (#1175). Same bucket-scoped
-// semantics as ReplaceSourceExternalIDs.
+// on the given branch (#1175); see replaceExternalIDs.
 func (s *ReadModelStore) ReplaceCitationExternalIDs(ctx context.Context, branchID domain.BranchID, citationID uuid.UUID, ids []repository.CitationExternalIDReadModel) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin tx: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	if _, err := tx.ExecContext(ctx, "DELETE FROM citation_external_ids WHERE citation_id = $1 AND branch_id = $2", citationID, branchID.UUID()); err != nil {
-		return fmt.Errorf("delete citation external ids: %w", err)
-	}
-	if len(ids) == 0 {
-		if !branchID.IsMain() {
-			if _, err := tx.ExecContext(ctx, `
-				INSERT INTO citation_external_ids (citation_id, sequence, branch_id, value, type, deleted)
-				VALUES ($1, 0, $2, '', '', TRUE)
-			`, citationID, branchID.UUID()); err != nil {
-				return fmt.Errorf("mark empty citation external id bucket: %w", err)
-			}
-		}
-		return tx.Commit()
-	}
-	for i, id := range ids {
-		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO citation_external_ids (citation_id, sequence, branch_id, value, type, deleted)
-			VALUES ($1, $2, $3, $4, $5, FALSE)
-		`, citationID, i, branchID.UUID(), id.Value, id.Type); err != nil {
-			return fmt.Errorf("insert citation external id: %w", err)
-		}
-	}
-	return tx.Commit()
+	return replaceExternalIDs(ctx, s.db, "citation_external_ids", "citation_id", branchID, citationID, extIDValues(ids, func(id repository.CitationExternalIDReadModel) extIDValue {
+		return extIDValue{Value: id.Value, Type: id.Type}
+	}))
 }
 
 // GetCitationExternalIDs retrieves all external identifiers for a citation
-// within the branch overlay, ordered by their original sequence (#1175).
-// Bucket-scoped resolution, matching GetSourceExternalIDs.
+// within the branch overlay, ordered by their original sequence (#1175); see
+// getExternalIDs.
 func (s *ReadModelStore) GetCitationExternalIDs(ctx context.Context, branchID domain.BranchID, citationID uuid.UUID) ([]repository.CitationExternalIDReadModel, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT sequence, value, type FROM citation_external_ids
-		WHERE citation_id = $1 AND NOT deleted AND branch_id = (
-			CASE WHEN EXISTS (SELECT 1 FROM citation_external_ids WHERE citation_id = $1 AND branch_id = $2)
-			     THEN $2 ELSE $3 END)
-		ORDER BY sequence
-	`, citationID, branchID.UUID(), domain.MainBranchID.UUID())
-	if err != nil {
-		return nil, fmt.Errorf("query citation external ids: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
+	return getExternalIDs(ctx, s.db, "citation_external_ids", "citation_id", branchID, citationID, citationExternalID)
+}
 
-	var result []repository.CitationExternalIDReadModel
-	for rows.Next() {
-		var (
-			seq   int
-			value string
-			typ   string
-		)
-		if err := rows.Scan(&seq, &value, &typ); err != nil {
-			return nil, fmt.Errorf("scan citation external id: %w", err)
-		}
-		result = append(result, repository.CitationExternalIDReadModel{
-			CitationID: citationID,
-			Sequence:   seq,
-			Value:      value,
-			Type:       typ,
-		})
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate citation external ids: %w", err)
-	}
-	return result, nil
+// ListCitationExternalIDs returns every citation's external identifiers
+// visible on the branch, keyed by citation ID, in one query.
+func (s *ReadModelStore) ListCitationExternalIDs(ctx context.Context, branchID domain.BranchID) (map[uuid.UUID][]repository.CitationExternalIDReadModel, error) {
+	return listExternalIDs(ctx, s.db, "citation_external_ids", "citation_id", branchID, citationExternalID)
 }
 
 // ReplaceRepositoryExternalIDs replaces all external identifiers (GEDCOM 7.0
@@ -2330,36 +2240,23 @@ func (s *ReadModelStore) ReplaceRepositoryExternalIDs(ctx context.Context, repos
 // GetRepositoryExternalIDs retrieves all external identifiers for a repository,
 // ordered by their original sequence.
 func (s *ReadModelStore) GetRepositoryExternalIDs(ctx context.Context, repositoryID uuid.UUID) ([]repository.RepositoryExternalIDReadModel, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT sequence, value, type FROM repository_external_ids
+	byParent, err := queryExternalIDs(ctx, s.db, "repository_external_ids", `
+		SELECT repository_id, sequence, value, type FROM repository_external_ids
 		WHERE repository_id = $1 ORDER BY sequence
-	`, repositoryID)
+	`, []any{repositoryID}, repositoryExternalID)
 	if err != nil {
-		return nil, fmt.Errorf("query repository external ids: %w", err)
+		return nil, err
 	}
-	defer func() { _ = rows.Close() }()
+	return byParent[repositoryID], nil
+}
 
-	var result []repository.RepositoryExternalIDReadModel
-	for rows.Next() {
-		var (
-			seq   int
-			value string
-			typ   string
-		)
-		if err := rows.Scan(&seq, &value, &typ); err != nil {
-			return nil, fmt.Errorf("scan repository external id: %w", err)
-		}
-		result = append(result, repository.RepositoryExternalIDReadModel{
-			RepositoryID: repositoryID,
-			Sequence:     seq,
-			Value:        value,
-			Type:         typ,
-		})
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate repository external ids: %w", err)
-	}
-	return result, nil
+// ListRepositoryExternalIDs returns every repository's external identifiers,
+// keyed by repository ID, in one query.
+func (s *ReadModelStore) ListRepositoryExternalIDs(ctx context.Context) (map[uuid.UUID][]repository.RepositoryExternalIDReadModel, error) {
+	return queryExternalIDs(ctx, s.db, "repository_external_ids", `
+		SELECT repository_id, sequence, value, type FROM repository_external_ids
+		ORDER BY repository_id, sequence
+	`, nil, repositoryExternalID)
 }
 
 // scanPersonName scans a single person name row.
@@ -4093,12 +3990,7 @@ func scanEventRow(row rowScanner) (*repository.EventReadModel, error) {
 		s := placeLong.String
 		event.PlaceLong = &s
 	}
-	if len(addressJSON) > 0 {
-		var addr domain.Address
-		if err := json.Unmarshal(addressJSON, &addr); err == nil {
-			event.Address = &addr
-		}
-	}
+	event.Address = repository.UnmarshalAddress(addressJSON, "events", event.ID)
 	if researchStatus.Valid {
 		event.ResearchStatus = domain.ResearchStatus(researchStatus.String)
 	}
@@ -5406,18 +5298,9 @@ func (s *ReadModelStore) GetSubmitter(ctx context.Context, id uuid.UUID) (*repos
 			submitter.MediaID = &id
 		}
 	}
-	if len(addressJSON) > 0 {
-		var addr domain.Address
-		if err := json.Unmarshal(addressJSON, &addr); err == nil {
-			submitter.Address = &addr
-		}
-	}
-	if len(phoneJSON) > 0 {
-		_ = json.Unmarshal(phoneJSON, &submitter.Phone)
-	}
-	if len(emailJSON) > 0 {
-		_ = json.Unmarshal(emailJSON, &submitter.Email)
-	}
+	submitter.Address = repository.UnmarshalAddress(addressJSON, "submitters", submitter.ID)
+	submitter.Phone = repository.UnmarshalStrings(phoneJSON, "submitters", "phone", submitter.ID)
+	submitter.Email = repository.UnmarshalStrings(emailJSON, "submitters", "email", submitter.ID)
 	return &submitter, nil
 }
 
@@ -5486,18 +5369,9 @@ func (s *ReadModelStore) ListSubmitters(ctx context.Context, opts repository.Lis
 				submitter.MediaID = &id
 			}
 		}
-		if len(addressJSON) > 0 {
-			var addr domain.Address
-			if err := json.Unmarshal(addressJSON, &addr); err == nil {
-				submitter.Address = &addr
-			}
-		}
-		if len(phoneJSON) > 0 {
-			_ = json.Unmarshal(phoneJSON, &submitter.Phone)
-		}
-		if len(emailJSON) > 0 {
-			_ = json.Unmarshal(emailJSON, &submitter.Email)
-		}
+		submitter.Address = repository.UnmarshalAddress(addressJSON, "submitters", submitter.ID)
+		submitter.Phone = repository.UnmarshalStrings(phoneJSON, "submitters", "phone", submitter.ID)
+		submitter.Email = repository.UnmarshalStrings(emailJSON, "submitters", "email", submitter.ID)
 		submitters = append(submitters, submitter)
 	}
 
@@ -5594,12 +5468,7 @@ func (s *ReadModelStore) GetRepository(ctx context.Context, id uuid.UUID) (*repo
 	if gedcomXref.Valid {
 		repo.GedcomXref = gedcomXref.String
 	}
-	if len(addressJSON) > 0 {
-		var addr domain.Address
-		if err := json.Unmarshal(addressJSON, &addr); err == nil {
-			repo.Address = &addr
-		}
-	}
+	repo.Address = repository.UnmarshalAddress(addressJSON, "repositories", repo.ID)
 	return &repo, nil
 }
 
@@ -5659,12 +5528,7 @@ func (s *ReadModelStore) ListRepositories(ctx context.Context, opts repository.L
 		if gedcomXref.Valid {
 			repo.GedcomXref = gedcomXref.String
 		}
-		if len(addressJSON) > 0 {
-			var addr domain.Address
-			if err := json.Unmarshal(addressJSON, &addr); err == nil {
-				repo.Address = &addr
-			}
-		}
+		repo.Address = repository.UnmarshalAddress(addressJSON, "repositories", repo.ID)
 		repositories = append(repositories, repo)
 	}
 

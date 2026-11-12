@@ -356,9 +356,9 @@ type MapLocation struct {
 
 // MapPerson is a person pinned at a MapLocation.
 type MapPerson struct {
-	ID        string `json:"id"`
-	GivenName string `json:"given_name"`
-	Surname   string `json:"surname"`
+	ID        uuid.UUID `json:"id"`
+	GivenName string    `json:"given_name"`
+	Surname   string    `json:"surname"`
 }
 
 // GetMapLocations returns aggregated geographic locations for map visualization.
@@ -373,7 +373,7 @@ func (s *BrowseService) GetMapLocations(ctx context.Context, branchID domain.Bra
 	for i, loc := range locations {
 		persons := make([]MapPerson, len(loc.Persons))
 		for j, p := range loc.Persons {
-			persons[j] = MapPerson{ID: p.ID.String(), GivenName: p.GivenName, Surname: p.Surname}
+			persons[j] = MapPerson{ID: p.ID, GivenName: p.GivenName, Surname: p.Surname}
 		}
 		items[i] = MapLocation{
 			Place:     loc.Place,

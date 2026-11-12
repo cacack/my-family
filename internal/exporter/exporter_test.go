@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/csv"
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -1087,6 +1088,39 @@ func TestJSONExporter_ExportCitations_WithData(t *testing.T) {
 	assert.Len(t, data, 1)
 }
 
+// A citation of one life event or attribute names it in the JSON export (#1301).
+func TestJSONExporter_ExportCitations_FactID(t *testing.T) {
+	store := setupTestStore(t)
+	source := createTestSource(t, store, "Census", "Author")
+	person := createTestPerson(t, store, "John", "Doe", domain.GenderMale)
+	factID := uuid.New()
+	citation := createTestCitation(t, store, &source, person.ID)
+	citation.FactID = &factID
+	require.NoError(t, store.SaveCitation(context.Background(), domain.MainBranchID, &citation))
+	_ = createTestCitation(t, store, &source, person.ID) // cites the whole fact
+
+	var buf bytes.Buffer
+	_, err := exporter.NewDataExporter(store).Export(context.Background(), &buf, exporter.ExportOptions{
+		Format:     exporter.FormatJSON,
+		EntityType: exporter.EntityTypeCitations,
+	})
+	require.NoError(t, err)
+
+	var data []map[string]any
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &data))
+	require.Len(t, data, 2)
+	byID := map[string]map[string]any{}
+	for _, c := range data {
+		byID[c["id"].(string)] = c
+	}
+	assert.Equal(t, factID.String(), byID[citation.ID.String()]["fact_id"])
+	for id, c := range byID {
+		if id != citation.ID.String() {
+			assert.NotContains(t, c, "fact_id", "a whole-fact citation has no fact_id")
+		}
+	}
+}
+
 func TestJSONExporter_ExportEvents_Empty(t *testing.T) {
 	store := setupTestStore(t)
 	exp := exporter.NewDataExporter(store)
@@ -1378,6 +1412,38 @@ func TestCSVExporter_ExportCitations_CustomFields(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, customFields, records[0])
 	assert.Len(t, records[1], 4)
+}
+
+// fact_id is a default CSV citation field: the cited life event or attribute,
+// empty for a citation of the whole fact (#1301).
+func TestCSVExporter_ExportCitations_FactID(t *testing.T) {
+	store := setupTestStore(t)
+	source := createTestSource(t, store, "Census", "Author")
+	person := createTestPerson(t, store, "John", "Doe", domain.GenderMale)
+	factID := uuid.New()
+	citation := createTestCitation(t, store, &source, person.ID)
+	citation.FactID = &factID
+	require.NoError(t, store.SaveCitation(context.Background(), domain.MainBranchID, &citation))
+	whole := createTestCitation(t, store, &source, person.ID)
+
+	var buf bytes.Buffer
+	_, err := exporter.NewDataExporter(store).Export(context.Background(), &buf, exporter.ExportOptions{
+		Format:     exporter.FormatCSV,
+		EntityType: exporter.EntityTypeCitations,
+	})
+	require.NoError(t, err)
+
+	records, err := csv.NewReader(strings.NewReader(buf.String())).ReadAll()
+	require.NoError(t, err)
+	require.Len(t, records, 3)
+	col := slices.Index(records[0], "fact_id")
+	require.NotEqual(t, -1, col, "fact_id is a default field; header = %v", records[0])
+	byID := map[string]string{}
+	for _, row := range records[1:] {
+		byID[row[0]] = row[col]
+	}
+	assert.Equal(t, factID.String(), byID[citation.ID.String()])
+	assert.Empty(t, byID[whole.ID.String()])
 }
 
 func TestCSVExporter_ExportCitations_InvalidField(t *testing.T) {

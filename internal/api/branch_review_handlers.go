@@ -36,7 +36,7 @@ func (ss *StrictServer) GetBranchEvidenceCoverage(ctx context.Context, request G
 	for _, fact := range coverage.Uncovered {
 		changed := BranchChangedFact{
 			Kind:        BranchChangedFactKind(fact.Kind),
-			SubjectType: BranchChangedFactSubjectType(fact.SubjectType),
+			SubjectType: ResearchLogSubjectType(fact.SubjectType),
 			SubjectId:   fact.SubjectID,
 			SubjectName: fact.SubjectName,
 			ChangeCount: fact.ChangeCount,

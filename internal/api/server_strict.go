@@ -207,13 +207,11 @@ func (ss *StrictServer) BrowsePlaces(ctx context.Context, request BrowsePlacesRe
 	}
 
 	for i, item := range result.Items {
-		fullName := item.FullName
-		hasChildren := item.HasChildren
 		response.Items[i] = PlaceEntry{
 			Name:        item.Name,
-			FullName:    &fullName,
+			FullName:    item.FullName,
 			Count:       item.Count,
-			HasChildren: &hasChildren,
+			HasChildren: item.HasChildren,
 		}
 	}
 
@@ -451,15 +449,11 @@ func (ss *StrictServer) GetMapLocations(ctx context.Context, request GetMapLocat
 	}
 
 	for i, item := range result.Items {
-		personIDs := make([]openapi_types.UUID, 0, len(item.Persons))
-		persons := make([]PersonSummary, 0, len(item.Persons))
-		for _, p := range item.Persons {
-			parsed, err := uuid.Parse(p.ID)
-			if err != nil {
-				continue
-			}
-			personIDs = append(personIDs, parsed)
-			persons = append(persons, PersonSummary{Id: parsed, GivenName: p.GivenName, Surname: p.Surname})
+		personIDs := make([]openapi_types.UUID, len(item.Persons))
+		persons := make([]PersonSummary, len(item.Persons))
+		for j, p := range item.Persons {
+			personIDs[j] = p.ID
+			persons[j] = PersonSummary{Id: p.ID, GivenName: p.GivenName, Surname: p.Surname}
 		}
 		response.Items[i] = MapLocation{
 			Place:     item.Place,
@@ -2317,12 +2311,12 @@ func (ss *StrictServer) CreatePerson(ctx context.Context, request CreatePersonRe
 		return nil, err
 	}
 
-	person, err := ss.server.personService.GetPerson(ctx, scope, result.ID)
+	person, err := ss.server.personService.GetPersonCore(ctx, scope, result.ID)
 	if err != nil {
 		return nil, err
 	}
 
-	return CreatePerson201JSONResponse(convertQueryPersonToGenerated(person.Person)), nil
+	return CreatePerson201JSONResponse(convertQueryPersonToGenerated(*person)), nil
 }
 
 // GetPerson implements StrictServerInterface.
@@ -2405,12 +2399,12 @@ func (ss *StrictServer) UpdatePerson(ctx context.Context, request UpdatePersonRe
 		return nil, err
 	}
 
-	person, err := ss.server.personService.GetPerson(ctx, branchScopeID(branch), request.Id)
+	person, err := ss.server.personService.GetPersonCore(ctx, branchScopeID(branch), request.Id)
 	if err != nil {
 		return nil, err
 	}
 
-	return UpdatePerson200JSONResponse(convertQueryPersonToGenerated(person.Person)), nil
+	return UpdatePerson200JSONResponse(convertQueryPersonToGenerated(*person)), nil
 }
 
 // DeletePerson implements StrictServerInterface.
@@ -2421,7 +2415,7 @@ func (ss *StrictServer) DeletePerson(ctx context.Context, request DeletePersonRe
 	}
 
 	// Get current version since DELETE doesn't accept version parameter per OpenAPI spec
-	person, err := ss.server.personService.GetPerson(ctx, branchScopeID(branch), request.Id)
+	person, err := ss.server.personService.GetPersonCore(ctx, branchScopeID(branch), request.Id)
 	if err != nil {
 		if errors.Is(err, query.ErrNotFound) {
 			return DeletePerson404JSONResponse{NotFoundJSONResponse{
@@ -2489,15 +2483,15 @@ func (ss *StrictServer) GetPersonHistory(ctx context.Context, request GetPersonH
 		return nil, err
 	}
 
-	_, err = ss.server.personService.GetPerson(ctx, branchScopeID(branch), request.Id)
+	person, err := ss.server.readStore.GetPerson(ctx, branchScopeID(branch), request.Id)
 	if err != nil {
-		if errors.Is(err, query.ErrNotFound) {
-			return GetPersonHistory404JSONResponse{NotFoundJSONResponse{
-				Code:    "not_found",
-				Message: "Person not found",
-			}}, nil
-		}
 		return nil, err
+	}
+	if person == nil {
+		return GetPersonHistory404JSONResponse{NotFoundJSONResponse{
+			Code:    "not_found",
+			Message: "Person not found",
+		}}, nil
 	}
 
 	limit := 20
@@ -2862,15 +2856,15 @@ func (ss *StrictServer) GetPersonRestorePoints(ctx context.Context, request GetP
 		return GetPersonRestorePoints409JSONResponse(errRollbackMainlineOnly), nil
 	}
 
-	_, err = ss.server.personService.GetPerson(ctx, domain.MainBranchID, request.Id)
+	person, err := ss.server.readStore.GetPerson(ctx, domain.MainBranchID, request.Id)
 	if err != nil {
-		if errors.Is(err, query.ErrNotFound) {
-			return GetPersonRestorePoints404JSONResponse{NotFoundJSONResponse{
-				Code:    "not_found",
-				Message: "Person not found",
-			}}, nil
-		}
 		return nil, err
+	}
+	if person == nil {
+		return GetPersonRestorePoints404JSONResponse{NotFoundJSONResponse{
+			Code:    "not_found",
+			Message: "Person not found",
+		}}, nil
 	}
 
 	limit := 20
@@ -2911,15 +2905,15 @@ func (ss *StrictServer) RollbackPerson(ctx context.Context, request RollbackPers
 	}
 
 	if branch == nil {
-		_, err = ss.server.personService.GetPerson(ctx, domain.MainBranchID, request.Id)
+		person, err := ss.server.readStore.GetPerson(ctx, domain.MainBranchID, request.Id)
 		if err != nil {
-			if errors.Is(err, query.ErrNotFound) {
-				return RollbackPerson404JSONResponse{NotFoundJSONResponse{
-					Code:    "not_found",
-					Message: "Person not found",
-				}}, nil
-			}
 			return nil, err
+		}
+		if person == nil {
+			return RollbackPerson404JSONResponse{NotFoundJSONResponse{
+				Code:    "not_found",
+				Message: "Person not found",
+			}}, nil
 		}
 
 		if request.Body.TargetVersion < 1 {
@@ -3252,13 +3246,13 @@ func (ss *StrictServer) MergePersons(ctx context.Context, request MergePersonsRe
 	}
 
 	// Get updated survivor person, as the scope the merge was made on sees it.
-	person, err := ss.server.personService.GetPerson(ctx, branchScopeID(branch), result.SurvivorID)
+	person, err := ss.server.personService.GetPersonCore(ctx, branchScopeID(branch), result.SurvivorID)
 	if err != nil {
 		return nil, err
 	}
 
 	return MergePersons200JSONResponse{
-		Person: convertQueryPersonToGenerated(person.Person),
+		Person: convertQueryPersonToGenerated(*person),
 		MergeSummary: MergeSummary{
 			MergedPersonName:     result.Summary.MergedPersonName,
 			FieldsUpdated:        result.Summary.FieldsUpdated,
@@ -4287,7 +4281,7 @@ func convertQueryPersonNameToGenerated(n query.PersonName) PersonName {
 		PersonId:      n.PersonID,
 		GivenName:     n.GivenName,
 		Surname:       n.Surname,
-		FullName:      &n.FullName,
+		FullName:      n.FullName,
 		NamePrefix:    &n.NamePrefix,
 		NameSuffix:    &n.NameSuffix,
 		SurnamePrefix: &n.SurnamePrefix,
@@ -4305,7 +4299,7 @@ func convertPersonNameReadModelToGenerated(n repository.PersonNameReadModel) Per
 		PersonId:      n.PersonID,
 		GivenName:     n.GivenName,
 		Surname:       n.Surname,
-		FullName:      &n.FullName,
+		FullName:      n.FullName,
 		NamePrefix:    &n.NamePrefix,
 		NameSuffix:    &n.NameSuffix,
 		SurnamePrefix: &n.SurnamePrefix,
@@ -4581,7 +4575,6 @@ func convertQueryGroupSheetChildToGenerated(c *query.GroupSheetChild) GroupSheet
 
 // convertQuerySourceToGenerated converts a query.Source to the generated Source type.
 func convertQuerySourceToGenerated(s query.Source) Source {
-	citationCount := s.CitationCount
 	return Source{
 		Id:             s.ID,
 		SourceType:     SourceType(s.SourceType),
@@ -4594,14 +4587,13 @@ func convertQuerySourceToGenerated(s query.Source) Source {
 		CollectionName: s.CollectionName,
 		CallNumber:     s.CallNumber,
 		Notes:          s.Notes,
-		CitationCount:  &citationCount,
+		CitationCount:  s.CitationCount,
 		Version:        s.Version,
 	}
 }
 
 // convertQuerySourceDetailToGenerated converts a query.SourceDetail to the generated SourceDetail type.
 func convertQuerySourceDetailToGenerated(sd query.SourceDetail) SourceDetail {
-	citationCount := sd.CitationCount
 	resp := SourceDetail{
 		Id:             sd.ID,
 		SourceType:     SourceType(sd.SourceType),
@@ -4614,7 +4606,7 @@ func convertQuerySourceDetailToGenerated(sd query.SourceDetail) SourceDetail {
 		CollectionName: sd.CollectionName,
 		CallNumber:     sd.CallNumber,
 		Notes:          sd.Notes,
-		CitationCount:  &citationCount,
+		CitationCount:  sd.CitationCount,
 		Version:        sd.Version,
 	}
 
@@ -4765,15 +4757,12 @@ func convertQueryDescendancyNodeToGenerated(node *query.DescendancyNode) Descend
 
 // convertHistoryResult converts a query.ChangeHistoryResult to the generated ChangeHistoryResponse type.
 func convertHistoryResult(result *query.ChangeHistoryResult) ChangeHistoryResponse {
-	hasMore := result.HasMore
-	limitVal := result.Limit
-	offsetVal := result.Offset
 	resp := ChangeHistoryResponse{
 		Items:   make([]ChangeEntry, len(result.Entries)),
 		Total:   result.TotalCount,
-		Limit:   &limitVal,
-		Offset:  &offsetVal,
-		HasMore: &hasMore,
+		Limit:   result.Limit,
+		Offset:  result.Offset,
+		HasMore: result.HasMore,
 	}
 
 	for i, entry := range result.Entries {
@@ -4827,6 +4816,7 @@ func convertMediaReadModelToGenerated(m repository.MediaReadModel) Media {
 		FileSize:     m.FileSize,
 		HasThumbnail: &hasThumbnail,
 		Version:      m.Version,
+		CreatedAt:    m.CreatedAt,
 	}
 
 	if m.Description != "" {
@@ -4847,9 +4837,6 @@ func convertMediaReadModelToGenerated(m repository.MediaReadModel) Media {
 	}
 	if m.CropHeight != nil {
 		resp.CropHeight = m.CropHeight
-	}
-	if !m.CreatedAt.IsZero() {
-		resp.CreatedAt = &m.CreatedAt
 	}
 	if !m.UpdatedAt.IsZero() {
 		resp.UpdatedAt = &m.UpdatedAt
@@ -5998,7 +5985,7 @@ func (ss *StrictServer) CreateLDSOrdinance(ctx context.Context, request CreateLD
 		input.Temple = *request.Body.Temple
 	}
 	if request.Body.Status != nil {
-		input.Status = *request.Body.Status
+		input.Status = string(*request.Body.Status)
 	}
 
 	result, err := ss.server.commandHandler.CreateLDSOrdinance(ctx, input)
@@ -6054,7 +6041,8 @@ func (ss *StrictServer) UpdateLDSOrdinance(ctx context.Context, request UpdateLD
 		input.Temple = request.Body.Temple
 	}
 	if request.Body.Status != nil {
-		input.Status = request.Body.Status
+		status := string(*request.Body.Status)
+		input.Status = &status
 	}
 
 	_, err := ss.server.commandHandler.UpdateLDSOrdinance(ctx, input)
@@ -6184,7 +6172,8 @@ func convertQueryLDSOrdinanceToGenerated(o query.LDSOrdinance) LDSOrdinance {
 		resp.Temple = &o.Temple
 	}
 	if o.Status != "" {
-		resp.Status = &o.Status
+		status := LDSOrdinanceStatus(o.Status)
+		resp.Status = &status
 	}
 
 	return resp
@@ -6270,10 +6259,11 @@ func nonEmptyString(s *string) *string {
 // convertReadModelSourceToGenerated converts a repository.SourceReadModel to the generated Source type.
 func convertReadModelSourceToGenerated(rm repository.SourceReadModel) Source {
 	resp := Source{
-		Id:         rm.ID,
-		Title:      rm.Title,
-		SourceType: SourceType(rm.SourceType),
-		Version:    rm.Version,
+		Id:            rm.ID,
+		Title:         rm.Title,
+		SourceType:    SourceType(rm.SourceType),
+		Version:       rm.Version,
+		CitationCount: rm.CitationCount,
 	}
 	if rm.Author != "" {
 		resp.Author = &rm.Author

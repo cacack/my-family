@@ -189,9 +189,9 @@ func runBranchLifecycle(t *testing.T, server *api.Server, st stores) {
 	// identical if every overlay row survived. Nor can the purge be observed
 	// through the API here: the merge promotes the branch's values onto main, so
 	// after it a branch-scoped read and a main read resolve to the same values
-	// whether or not the overlay was purged. Purge-on-merge is covered by
-	// TestProjector_BranchMergedPurgesOverlay (memory only); proving it on the
-	// SQL backends needs a store-level row check this harness does not do. ---
+	// whether or not the overlay was purged. Purge-on-merge is proven on every
+	// backend by TestBranchConflict_EditEdit's main-wins path instead, where the
+	// branch's value is never promoted and a store-level read can tell. ---
 	rec := do(t, server, http.MethodGet, scoped(personPath, branchID), "")
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("read of the merged branch: status = %d, want 404. Body: %s", rec.Code, rec.Body.String())

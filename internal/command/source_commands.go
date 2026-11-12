@@ -322,6 +322,9 @@ func (h *Handler) CreateCitation(ctx context.Context, input CreateCitationInput)
 		citation.Fields = input.Fields
 	}
 	if input.GedcomXref != "" {
+		if err := validateGedcomXref(input.GedcomXref); err != nil {
+			return nil, err
+		}
 		citation.GedcomXref = input.GedcomXref
 	}
 

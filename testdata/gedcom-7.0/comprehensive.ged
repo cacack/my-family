@@ -1,0 +1,113 @@
+0 HEAD
+1 GEDC
+2 VERS 7.0
+1 SOUR TestSystem
+2 NAME My Family Test Suite
+1 LANG en
+0 @N1@ SNOTE Family tradition holds that the Hartwell farm
+1 CONT was first settled in 1690.
+1 CONT
+1 CONT Later deeds confirm the purchase.
+0 @N2@ SNOTE <p>Translated from the parish register.</p>
+1 MIME text/html
+1 LANG en
+1 TRAN Traduit du registre paroissial.
+2 MIME text/plain
+2 LANG fr
+0 @R1@ REPO
+1 NAME State Archive
+1 ADDR 100 Archive Way
+2 CITY Springfield
+2 CTRY USA
+1 EXID R-100
+2 TYPE http://example.com/repository
+1 SNOTE @N1@
+0 @S1@ SOUR
+1 TITL Parish Register of St. Mary
+1 AUTH Rev. Thomas Hale
+1 PUBL Diocesan Press, 1900
+1 REPO @R1@
+2 CALN PR-17
+1 EXID S-100
+2 TYPE http://example.com/source
+1 SNOTE @N2@
+0 @S2@ SOUR
+1 TITL Boston Tax Lists
+1 AUTH City of Boston
+0 @I1@ INDI
+1 NAME William /Hartwell/
+2 GIVN William
+2 SURN Hartwell
+1 SEX M
+1 EXID KWCJ-QN7
+2 TYPE http://www.familysearch.org/ark
+1 BIRT
+2 DATE JULIAN 14 FEB 1689
+2 PLAC Plymouth, England
+2 SOUR @S1@
+3 PAGE Folio 12
+1 DEAT
+2 DATE INT 1750 (about seventeen fifty)
+2 PLAC Boston, Massachusetts, USA
+1 OCCU Farmer
+1 SNOTE @N1@
+1 FAMS @F1@
+0 @I2@ INDI
+1 NAME Sarah /Cohen/
+2 GIVN Sarah
+2 SURN Cohen
+1 SEX F
+1 BIRT
+2 DATE HEBREW 15 NSN 5455
+2 PLAC Amsterdam, Netherlands
+1 DEAT
+2 DATE ABT 1760
+1 NOTE Spoke Dutch
+2 CONT and Hebrew.
+1 FAMS @F1@
+0 @I3@ INDI
+1 NAME Thomas /Hartwell/
+2 GIVN Thomas
+2 SURN Hartwell
+1 SEX M
+1 EXID P-300
+2 TYPE http://example.com/person
+1 BIRT
+2 DATE ABT 1714
+2 PLAC Plymouth, England
+1 RESI
+2 DATE 1745
+2 PLAC Boston, Massachusetts, USA
+2 SNOTE @N1@
+2 SOUR @S2@
+3 PAGE Ward 3
+1 FAMC @F1@
+0 @I4@ INDI
+1 NAME Anne /Hartwell/
+2 GIVN Anne
+2 SURN Hartwell
+1 SEX F
+1 BIRT
+2 DATE BET 1715 AND 1720
+1 FAMC @F1@
+0 @I5@ INDI
+1 NAME Jacques /Moreau/
+2 GIVN Jacques
+2 SURN Moreau
+1 SEX M
+1 BIRT
+2 DATE FRENCH_R 1 VEND 2
+2 PLAC Paris, France
+0 @F1@ FAM
+1 HUSB @I1@
+1 WIFE @I2@
+1 CHIL @I3@
+1 CHIL @I4@
+1 MARR
+2 DATE 3 JUN 1712
+2 PLAC Plymouth, England
+2 SOUR @S1@
+3 PAGE Folio 30
+1 EXID F-100
+2 TYPE http://example.com/family
+0 TRLR

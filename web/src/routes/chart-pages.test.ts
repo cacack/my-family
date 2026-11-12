@@ -49,8 +49,11 @@ beforeEach(() => {
 	} as unknown as apiModule.AhnentafelResponse);
 });
 
+// By class, not name: on a deep link it is named for the person, not "Back".
 function backLink(): HTMLAnchorElement {
-	return screen.getByRole('link', { name: /Back/ }) as HTMLAnchorElement;
+	const link = document.querySelector<HTMLAnchorElement>('a.back-link');
+	if (!link) throw new Error('no back link');
+	return link;
 }
 
 describe.each([
@@ -79,7 +82,7 @@ describe.each([
 	it('falls back to the chart person on a deep link', async () => {
 		resetRouter(`/${name}/p-1`, { id: 'p-1' });
 		render(Page);
-		await waitFor(() => expect(backLink().textContent).toContain('Back to Victoria Hanover'));
+		await waitFor(() => expect(backLink().textContent?.trim()).toBe('← Victoria Hanover'));
 		expect(backLink().getAttribute('href')).toBe('/persons/p-1');
 	});
 });

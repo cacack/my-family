@@ -468,7 +468,7 @@
 			<Dialog.Footer>
 				<Button
 					type="button"
-					variant="secondary"
+					variant="outline"
 					disabled={creating}
 					onclick={() => (createOpen = false)}
 				>
@@ -500,7 +500,7 @@
 	}
 
 	.branches-page {
-		max-width: 1000px;
+		max-width: var(--page-width-list);
 		margin: 0 auto;
 		padding: 1.5rem;
 	}

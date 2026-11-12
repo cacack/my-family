@@ -85,7 +85,7 @@ test('Back on a chart returns to the page it was opened from, or its person on a
 	await expect(page).toHaveURL(new RegExp(`/persons/${childId}$`));
 
 	await page.goto(`/descendancy/${fatherId}`);
-	await page.getByRole('link', { name: /Back to Abel/ }).click();
+	await page.getByRole('link', { name: /^← Abel/ }).click();
 	await expect(page).toHaveURL(new RegExp(`/persons/${fatherId}$`));
 	expect(errors, 'uncaught page errors').toEqual([]);
 });

@@ -91,6 +91,48 @@ func TestParseGenDate_Calendars(t *testing.T) {
 			wantMonth:    intPtr(2),
 			wantDay:      intPtr(14),
 		},
+		// GEDCOM 7.0 writes the calendar as a keyword, not an escape (#622).
+		{
+			name:         "7.0 julian keyword",
+			input:        "JULIAN 14 FEB 1689",
+			wantCalendar: CalendarJulian,
+			wantQual:     DateExact,
+			wantYear:     intPtr(1689),
+			wantMonth:    intPtr(2),
+			wantDay:      intPtr(14),
+		},
+		{
+			name:         "7.0 hebrew keyword",
+			input:        "HEBREW 15 NSN 5455",
+			wantCalendar: CalendarHebrew,
+			wantQual:     DateExact,
+			wantYear:     intPtr(5455),
+			wantMonth:    intPtr(8),
+			wantDay:      intPtr(15),
+		},
+		{
+			name:         "7.0 french republican keyword",
+			input:        "FRENCH_R 1 VEND 2",
+			wantCalendar: CalendarFrench,
+			wantQual:     DateExact,
+			wantYear:     intPtr(2),
+			wantMonth:    intPtr(1),
+			wantDay:      intPtr(1),
+		},
+		{
+			name:         "7.0 qualifier before keyword",
+			input:        "ABT GREGORIAN 1776",
+			wantCalendar: CalendarGregorian,
+			wantQual:     DateAbout,
+			wantYear:     intPtr(1776),
+		},
+		{
+			name:         "7.0 keyword inside an INT phrase is not a calendar",
+			input:        "INT 1750 (julian reckoning)",
+			wantCalendar: CalendarGregorian,
+			wantQual:     DateInt,
+			wantYear:     intPtr(1750),
+		},
 	}
 
 	for _, tt := range tests {
@@ -294,6 +336,9 @@ func TestParseGenDate_MixedCalendarRange(t *testing.T) {
 		// Single-calendar ranges are unchanged.
 		{"@#DJULIAN@ BET 1690 AND 1700", CalendarJulian, "", DateBet, intPtr(1690), intPtr(1700), nil},
 		{"BET @#DJULIAN@ 1690 AND 1700", CalendarJulian, "", DateBet, intPtr(1690), intPtr(1700), nil},
+		// GEDCOM 7.0 keywords, on either endpoint (#622).
+		{"BET JULIAN 1700 AND GREGORIAN 1690", CalendarJulian, CalendarGregorian, DateBet, intPtr(1700), intPtr(1690), nil},
+		{"FROM 1690 TO HEBREW NSN 5500", CalendarGregorian, CalendarHebrew, DateFrom, intPtr(1690), intPtr(5500), intPtr(8)},
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {

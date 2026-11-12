@@ -67,7 +67,7 @@
 <div class="cemetery-detail-page">
 	<PageHeader
 		title={`People at "${place}"`}
-		back={{ href: '/browse/cemeteries', label: 'Browse Cemeteries' }}
+		back={{ href: '/browse/cemeteries', label: 'Browse by Cemetery' }}
 		description={total > 0 ? `${total} ${total === 1 ? 'person' : 'people'} found` : undefined}
 	/>
 
@@ -99,7 +99,7 @@
 
 <style>
 	.cemetery-detail-page {
-		max-width: 1200px;
+		max-width: var(--page-width-list);
 		margin: 0 auto;
 		padding: 1.5rem;
 	}

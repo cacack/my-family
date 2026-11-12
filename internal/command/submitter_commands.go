@@ -55,6 +55,9 @@ func (h *Handler) CreateSubmitter(ctx context.Context, input CreateSubmitterInpu
 		submitter.SetMediaID(input.MediaID)
 	}
 	if input.GedcomXref != "" {
+		if err := validateGedcomXref(input.GedcomXref); err != nil {
+			return nil, err
+		}
 		submitter.SetGedcomXref(input.GedcomXref)
 	}
 
@@ -116,6 +119,12 @@ func (h *Handler) UpdateSubmitter(ctx context.Context, input UpdateSubmitterInpu
 	changes := make(map[string]any)
 
 	if input.Name != nil && *input.Name != current.Name {
+		// Only a changed name is validated: an imported submitter may carry a
+		// stored name (e.g. empty) that must not block an unrelated edit.
+		changed := domain.Submitter{ID: current.ID, Name: *input.Name}
+		if err := changed.Validate(); err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrInvalidInput, err)
+		}
 		changes["name"] = *input.Name
 	}
 	// A submitter with no address compares as an empty one, so a form that
