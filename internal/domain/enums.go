@@ -366,6 +366,15 @@ func AllFactTypes() []FactType {
 	}
 }
 
+// IsRecordFact reports whether the fact is held on its owner's own record:
+// a person's birth or death, or a family's marriage. A citation or GPS
+// artifact names that record-level instance with a fact_id equal to its owner's
+// ID, which sets it apart from one with no fact_id, whose instance is unknown
+// (#1319).
+func (f FactType) IsRecordFact() bool {
+	return f == FactPersonBirth || f == FactPersonDeath || f == FactFamilyMarriage
+}
+
 // IsValid reports whether the value is empty (unset) or one of AllFactTypes.
 func (f FactType) IsValid() bool {
 	return f == "" || slices.Contains(AllFactTypes(), f)

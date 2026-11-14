@@ -371,6 +371,33 @@ func TestConflictValues_CitationFactID(t *testing.T) {
 	}, fieldValue(t, f.onlyConflict(t, branch), "fact_id"))
 }
 
+// A fact_id naming the birth held on the owner's record is the owner's own
+// ID (#1319), and is named as the owner.
+func TestConflictValues_CitationFactIDOfRecord(t *testing.T) {
+	f := newBranchTestFixture(t)
+	owner := f.person(t, "Fact", "Owner")
+	noBirth := uuid.New()
+	f.appendMain(t, noBirth, domain.NewLifeEventCreatedFromModel(&domain.LifeEvent{
+		ID: noBirth, PersonID: &owner, FactType: domain.FactPersonBirth, Place: "Boston", IsNegated: true,
+	}))
+	citationID := uuid.New()
+	f.appendMain(t, citationID, domain.NewCitationCreated(&domain.Citation{
+		ID: citationID, SourceID: uuid.New(), FactType: domain.FactPersonBirth, FactOwnerID: owner,
+	}))
+
+	branch := f.forkBranch(t, "fact")
+	f.appendBranch(t, branch, citationID, "citation", domain.NewCitationUpdated(citationID, map[string]any{
+		"fact_id": owner.String(),
+	}))
+	f.appendMain(t, citationID, domain.NewCitationUpdated(citationID, map[string]any{
+		"fact_id": noBirth.String(),
+	}))
+
+	got := fieldValue(t, f.onlyConflict(t, branch), "fact_id")
+	assert.Equal(t, ptr("Fact Owner"), got.BranchValue)
+	assert.NotEqual(t, ptr(noBirth.String()), got.MainValue)
+}
+
 // Notes and media are named from their streams too.
 func TestConflictValues_LinkedNotesAndMedia(t *testing.T) {
 	f := newBranchTestFixture(t)

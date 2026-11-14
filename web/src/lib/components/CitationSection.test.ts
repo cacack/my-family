@@ -37,6 +37,31 @@ describe('CitationSection', () => {
 		expect(select.value).toBe('person_birth');
 	});
 
+	// A birth or death cited from the person names the one on the person's
+	// record (fact_id = the person's ID); any other fact names no instance (#1319).
+	it.each([
+		['person_birth', 'p-1'],
+		['person_death', 'p-1'],
+		['person_occupation', undefined]
+	])('sends fact_id for %s as %s', async (factType, factID) => {
+		vi.mocked(apiModule.api.searchSources).mockResolvedValue({
+			sources: [{ id: 's-1', title: 'Parish register' }],
+			total: 1
+		} as Awaited<ReturnType<typeof apiModule.api.searchSources>>);
+		vi.mocked(apiModule.api.createCitation).mockResolvedValue({} as apiModule.Citation);
+		render(CitationSection, { props: { personId: 'p-1' } });
+		await fireEvent.click(await screen.findByRole('button', { name: 'Add Citation' }));
+
+		await fireEvent.input(screen.getByPlaceholderText('Search for a source...'), { target: { value: 'Parish' } });
+		await fireEvent.click(await screen.findByRole('button', { name: /Parish register/ }));
+		await fireEvent.change(screen.getByLabelText('Fact Type'), { target: { value: factType } });
+		await fireEvent.submit(screen.getByLabelText('Fact Type').closest('form')!);
+
+		expect(apiModule.api.createCitation).toHaveBeenCalledWith(
+			expect.objectContaining({ fact_type: factType, fact_owner_id: 'p-1', fact_id: factID })
+		);
+	});
+
 	// A GEDCOM PAGE can span CONT lines; a text input would strip the breaks (#1174).
 	it('edits the page in a textarea that keeps line breaks', async () => {
 		render(CitationSection, { props: { personId: 'p-1' } });

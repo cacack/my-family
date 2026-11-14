@@ -90,9 +90,10 @@ func TestImport_CitationLinksItsOwnFact(t *testing.T) {
 	for _, c := range citations {
 		fact, ok := want[c.SourceXref]
 		if !ok {
-			// The birth is stored on the person, so its SOUR cites no instance.
-			if c.FactID != nil {
-				t.Errorf("citation of %s: fact_id = %s, want none", c.SourceXref, c.FactID)
+			// The birth is stored on the person, so its SOUR names the
+			// person's own record (#1319).
+			if c.FactID == nil || *c.FactID != c.FactOwnerID {
+				t.Errorf("citation of %s: fact_id = %v, want the owner %s", c.SourceXref, c.FactID, c.FactOwnerID)
 			}
 			continue
 		}

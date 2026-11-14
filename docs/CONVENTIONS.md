@@ -294,6 +294,16 @@ The sync lives only in `repository/projection.go`, not in commands, so a rebuild
 
 A name's `full_name` (`person_names.full_name`) is `domain.JoinPersonName`: prefix, given name, surname prefix, surname and suffix joined by single spaces, empty parts skipped. Every store's `SavePersonName` writes it from the parts. A person's `full_name` stays `domain.JoinFullName` (given name and surname), and search matches alternate names on that same given-name-and-surname join.
 
+### Fact Instances (`fact_id`)
+
+A citation, evidence analysis, evidence conflict or proof summary names which instance of its fact it concerns with `fact_id`:
+
+- **A life event, attribute or name ID**: that instance, such as one of two censuses (#1294, #1304) or one name (#1165).
+- **The owner's own ID** (`fact_id` = `fact_owner_id` / `subject_id`): the birth, death or marriage held on the person or family record (`FactType.IsRecordFact`). This sets it apart from a negated `NO BIRT`/`NO DEAT`/`NO MARR` life event (#1319). The importer and the person page's citation form set it; a person merge re-points it to the survivor. GEDCOM export writes such a citation under the record's event, emitting a bare `BIRT`/`DEAT`/`MARR` if the record holds nothing else of it.
+- **None**: the fact as a whole, or a citation recorded before #1319, whose instance is unknown. Most are citations of the record's own event, so GEDCOM export writes one under the record's event when it is exported, and otherwise under a negated life event of the same fact type (#1300).
+
+`checkFactInstance` (`command/source_commands.go`) validates all three for every command that takes a `fact_id`.
+
 ### Migrations
 
 - Schema DDL is embedded in each database implementation

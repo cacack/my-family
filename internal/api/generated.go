@@ -3176,8 +3176,10 @@ type Citation struct {
 	// FactId ID of the life event or attribute this citation supports, when it
 	// cites one of several facts of the same type (such as one of two
 	// censuses), or of the person name a `person_name` citation
-	// supports. Absent when it cites the fact as a whole: a birth,
-	// death or marriage, or a citation recorded before the link existed.
+	// supports. Equal to `fact_owner_id` when it cites the birth, death
+	// or marriage held on the owner's own record. Absent when it cites
+	// the fact as a whole, as a citation recorded before the link
+	// existed does.
 	FactId *openapi_types.UUID `json:"fact_id,omitempty"`
 
 	// FactOwnerId ID of the person or family this citation applies to
@@ -3224,8 +3226,11 @@ type CitationCreate struct {
 
 	// FactId ID of the life event or attribute this citation supports, or for
 	// a `person_name` citation the ID of one of the person's names. It
-	// must belong to `fact_owner_id` and be of `fact_type`. Omit it to
-	// cite the fact as a whole, as for a birth, death or marriage.
+	// must belong to `fact_owner_id` and be of `fact_type`. For a
+	// `person_birth`, `person_death` or `family_marriage` citation it may
+	// be `fact_owner_id` itself, to cite the event held on the owner's
+	// own record rather than a negated one. Omit it to cite the fact as
+	// a whole.
 	FactId *openapi_types.UUID `json:"fact_id,omitempty"`
 
 	// FactOwnerId ID of the person or family this citation applies to
@@ -3609,8 +3614,9 @@ type EvidenceAnalysis struct {
 
 	// FactId ID of the life event or attribute this analysis is about, when it
 	// analyzes one of several facts of the same type (such as one of two
-	// censuses). Absent when it analyzes the fact type of the subject as a
-	// whole.
+	// censuses). Equal to `subject_id` when it analyzes the birth, death
+	// or marriage held on the subject's own record. Absent when it
+	// analyzes the fact type of the subject as a whole.
 	FactId *openapi_types.UUID `json:"fact_id,omitempty"`
 
 	// FactType The fact a citation, analysis, conflict or proof summary is about
@@ -3635,8 +3641,10 @@ type EvidenceAnalysisCreate struct {
 	Conclusion  string                `json:"conclusion"`
 
 	// FactId ID of the life event or attribute this is about. It must be a fact
-	// of `subject_id` and of `fact_type`, or the request is rejected. Omit
-	// it for the fact type as a whole, as for a birth or death.
+	// of `subject_id` and of `fact_type`, or the request is rejected. For
+	// a birth, death or marriage it may be `subject_id` itself, for the
+	// event held on the subject's own record. Omit it for the fact type
+	// as a whole.
 	FactId *openapi_types.UUID `json:"fact_id,omitempty"`
 
 	// FactType The fact a citation, analysis, conflict or proof summary is about
@@ -3683,7 +3691,9 @@ type EvidenceConflict struct {
 	Description string               `json:"description"`
 
 	// FactId ID of the life event or attribute the conflicting analyses are
-	// about, when the analysis that raised the conflict names one.
+	// about, when the analysis that raised the conflict names one; equal
+	// to `subject_id` for the birth, death or marriage held on the
+	// subject's own record.
 	FactId *openapi_types.UUID `json:"fact_id,omitempty"`
 
 	// FactType The fact a citation, analysis, conflict or proof summary is about
@@ -5361,8 +5371,10 @@ type ProofSummary struct {
 	CreatedAt  *time.Time `json:"created_at,omitempty"`
 
 	// FactId ID of the life event or attribute this proof is about, when it
-	// proves one of several facts of the same type. Absent when it proves
-	// the fact type of the subject as a whole.
+	// proves one of several facts of the same type. Equal to `subject_id`
+	// when it proves the birth, death or marriage held on the subject's
+	// own record. Absent when it proves the fact type of the subject as a
+	// whole.
 	FactId *openapi_types.UUID `json:"fact_id,omitempty"`
 
 	// FactType The fact a citation, analysis, conflict or proof summary is about
@@ -5385,8 +5397,10 @@ type ProofSummaryCreate struct {
 	Conclusion  string                `json:"conclusion"`
 
 	// FactId ID of the life event or attribute this is about. It must be a fact
-	// of `subject_id` and of `fact_type`, or the request is rejected. Omit
-	// it for the fact type as a whole, as for a birth or death.
+	// of `subject_id` and of `fact_type`, or the request is rejected. For
+	// a birth, death or marriage it may be `subject_id` itself, for the
+	// event held on the subject's own record. Omit it for the fact type
+	// as a whole.
 	FactId *openapi_types.UUID `json:"fact_id,omitempty"`
 
 	// FactType The fact a citation, analysis, conflict or proof summary is about

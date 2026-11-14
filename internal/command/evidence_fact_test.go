@@ -181,3 +181,43 @@ func TestDetectEvidenceConflicts_FactInstance(t *testing.T) {
 		t.Errorf("another disagreement about the 1850 census = %v, want the open conflict %s", again, instanceConflict)
 	}
 }
+
+// An evidence analysis or proof summary of the birth held on its subject's
+// own record names the record: fact_id equals subject_id (#1319). No other
+// fact type may name the subject's record.
+func TestEvidenceArtifacts_FactIDRecordFact(t *testing.T) {
+	ctx := context.Background()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(memory.NewEventStore(), readStore)
+	if _, err := handler.ImportGedcom(ctx, command.ImportGedcomInput{Filename: "t.ged", Reader: strings.NewReader(evidenceCensusesGedcom)}); err != nil {
+		t.Fatalf("import: %v", err)
+	}
+	persons, _ := repository.ListAll(ctx, 10, readStore.ListPersons)
+	if len(persons) != 2 {
+		t.Fatalf("persons = %d, want 2", len(persons))
+	}
+	a := persons[0].ID
+	birth, census := string(domain.FactPersonBirth), string(domain.FactPersonCensus)
+
+	analysis, err := handler.CreateEvidenceAnalysis(ctx, command.CreateEvidenceAnalysisInput{FactType: birth, SubjectID: a, FactID: &a, Conclusion: "1830"})
+	if err != nil {
+		t.Fatalf("create analysis: %v", err)
+	}
+	if got, _ := readStore.GetEvidenceAnalysis(ctx, domain.MainBranchID, analysis.ID); got == nil || got.FactID == nil || *got.FactID != a {
+		t.Errorf("analysis fact_id = %+v, want the subject %s", got, a)
+	}
+	summary, err := handler.CreateProofSummary(ctx, command.CreateProofSummaryInput{FactType: birth, SubjectID: a, FactID: &a, Conclusion: "1830", Argument: "One register"})
+	if err != nil {
+		t.Fatalf("create proof summary: %v", err)
+	}
+	if got, _ := readStore.GetProofSummary(ctx, domain.MainBranchID, summary.ID); got == nil || got.FactID == nil || *got.FactID != a {
+		t.Errorf("proof summary fact_id = %+v, want the subject %s", got, a)
+	}
+
+	if _, err := handler.CreateEvidenceAnalysis(ctx, command.CreateEvidenceAnalysisInput{FactType: census, SubjectID: a, FactID: &a, Conclusion: "Ohio"}); !errors.Is(err, command.ErrInvalidInput) {
+		t.Errorf("census analysis naming the subject: err = %v, want ErrInvalidInput", err)
+	}
+	if _, err := handler.CreateProofSummary(ctx, command.CreateProofSummaryInput{FactType: census, SubjectID: a, FactID: &a, Conclusion: "Ohio", Argument: "x"}); !errors.Is(err, command.ErrInvalidInput) {
+		t.Errorf("census proof summary naming the subject: err = %v, want ErrInvalidInput", err)
+	}
+}

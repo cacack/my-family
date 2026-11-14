@@ -913,7 +913,8 @@ func toGedcomIndividual(p repository.PersonReadModel, names []repository.PersonN
 	}
 
 	// Birth event
-	if hasBirthField(p) {
+	hasBirth := hasBirthField(p) || namesRecord(birthCitations, p.ID)
+	if hasBirth {
 		birthEvent := &gedcom.Event{Type: gedcom.EventBirth, EventTypeDetail: p.BirthTypeDetail}
 		birthEvent.NoteXRefs, birthEvent.InlineNotes = splitNotes(p.BirthNotes, noteJoin)
 		if p.BirthDateRaw != "" {
@@ -938,7 +939,8 @@ func toGedcomIndividual(p repository.PersonReadModel, names []repository.PersonN
 	}
 
 	// Death event
-	if hasDeathField(p) {
+	hasDeath := hasDeathField(p) || namesRecord(deathCitations, p.ID)
+	if hasDeath {
 		deathEvent := &gedcom.Event{Type: gedcom.EventDeath, EventTypeDetail: p.DeathTypeDetail}
 		deathEvent.NoteXRefs, deathEvent.InlineNotes = splitNotes(p.DeathNotes, noteJoin)
 		if p.DeathDateRaw != "" {
@@ -964,8 +966,8 @@ func toGedcomIndividual(p repository.PersonReadModel, names []repository.PersonN
 
 	// Additional life events (burial, baptism, emigration, etc.)
 	for _, event := range events {
-		fieldOwnsUnlinked := (event.FactType == domain.FactPersonBirth && hasBirthField(p)) ||
-			(event.FactType == domain.FactPersonDeath && hasDeathField(p))
+		fieldOwnsUnlinked := (event.FactType == domain.FactPersonBirth && hasBirth) ||
+			(event.FactType == domain.FactPersonDeath && hasDeath)
 		if gedcomEvent := toGedcomEvent(event, fieldOwnsUnlinked, sourceXrefs, citationAPIDs, readStore, ctx); gedcomEvent != nil {
 			indi.Events = append(indi.Events, gedcomEvent)
 		}
@@ -1178,9 +1180,18 @@ func hasMarriageField(f repository.FamilyReadModel) bool {
 	return f.RelationshipType == domain.RelationMarriage || f.MarriageDateRaw != "" || f.MarriagePlace != "" || f.MarriageNotes != "" || f.MarriageTypeDetail != ""
 }
 
+// namesRecord reports whether one of the citations names the birth, death or
+// marriage held on the owner's record (fact_id = the owner's ID, #1319). Such
+// a citation is exported under that event even when the record holds nothing
+// else of it, as with a bare "1 BIRT" carrying only a SOUR.
+func namesRecord(citations []repository.CitationReadModel, ownerID uuid.UUID) bool {
+	return slices.ContainsFunc(citations, func(c repository.CitationReadModel) bool { return c.FactID != nil && *c.FactID == ownerID })
+}
+
 // fieldCitations returns the citations of a birth, death or marriage held on
 // the person or family record: those of its fact type not linked to one of
-// the owner's life events, such as a NO BIRT (#1300).
+// the owner's life events, such as a NO BIRT (#1300). That is the ones naming
+// the record itself (#1319) and those with no fact_id.
 func fieldCitations(citations []repository.CitationReadModel, events []repository.EventReadModel) []repository.CitationReadModel {
 	var result []repository.CitationReadModel
 	for _, c := range citations {
@@ -1195,7 +1206,9 @@ func fieldCitations(citations []repository.CitationReadModel, events []repositor
 // toGedcomEvent converts an EventReadModel to a gedcom.Event.
 // fieldOwnsUnlinked is set when the owner also exports a birth, death or
 // marriage of the event's fact type from its own record; citations with no
-// fact_id (imported before #1294) are then written under that one only (#1300).
+// fact_id are then written under that one only (#1300). They are mostly
+// citations of that record event, imported or created before #1319 marked
+// those with the owner's ID.
 func toGedcomEvent(event repository.EventReadModel, fieldOwnsUnlinked bool, sourceXrefs map[uuid.UUID]string, citationAPIDs map[uuid.UUID]*gedcom.AncestryAPID, readStore repository.ReadModelStore, ctx context.Context) *gedcom.Event {
 	tagName := mapFactTypeToGedcomTag(event.FactType)
 	if tagName == "" {
@@ -1256,7 +1269,8 @@ func toGedcomEvent(event repository.EventReadModel, fieldOwnsUnlinked bool, sour
 	ge.NoteXRefs, ge.InlineNotes = splitNotes(notes, noteJoin)
 
 	// Fetch and add this event's citations: not those of another event of
-	// the same fact type (#1294)
+	// the same fact type (#1294) or of the birth, death or marriage held on
+	// the owner's record (#1319)
 	if readStore != nil {
 		citations, _ := readStore.GetCitationsForFactInstance(ctx, domain.MainBranchID, event.FactType, event.OwnerID, event.ID)
 		if fieldOwnsUnlinked {
@@ -1350,7 +1364,8 @@ func toGedcomFamily(f repository.FamilyReadModel, personXrefs, sourceXrefs map[u
 	}
 
 	// Marriage event
-	if hasMarriageField(f) {
+	hasMarriage := hasMarriageField(f) || namesRecord(marriageCitations, f.ID)
+	if hasMarriage {
 		marriageEvent := &gedcom.Event{Type: gedcom.EventMarriage, EventTypeDetail: f.MarriageTypeDetail}
 		marriageEvent.NoteXRefs, marriageEvent.InlineNotes = splitNotes(f.MarriageNotes, noteJoin)
 		if f.MarriageDateRaw != "" {
@@ -1376,7 +1391,7 @@ func toGedcomFamily(f repository.FamilyReadModel, personXrefs, sourceXrefs map[u
 
 	// Additional family events (divorce, annulment, engagement, etc.)
 	for _, event := range events {
-		fieldOwnsUnlinked := event.FactType == domain.FactFamilyMarriage && hasMarriageField(f)
+		fieldOwnsUnlinked := event.FactType == domain.FactFamilyMarriage && hasMarriage
 		if gedcomEvent := toGedcomEvent(event, fieldOwnsUnlinked, sourceXrefs, citationAPIDs, readStore, ctx); gedcomEvent != nil {
 			fam.Events = append(fam.Events, gedcomEvent)
 		}

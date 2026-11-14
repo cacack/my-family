@@ -4264,8 +4264,10 @@ export interface components {
              * @description ID of the life event or attribute this citation supports, when it
              *     cites one of several facts of the same type (such as one of two
              *     censuses), or of the person name a `person_name` citation
-             *     supports. Absent when it cites the fact as a whole: a birth,
-             *     death or marriage, or a citation recorded before the link existed.
+             *     supports. Equal to `fact_owner_id` when it cites the birth, death
+             *     or marriage held on the owner's own record. Absent when it cites
+             *     the fact as a whole, as a citation recorded before the link
+             *     existed does.
              */
             fact_id?: string;
             page?: string;
@@ -4304,8 +4306,11 @@ export interface components {
              * Format: uuid
              * @description ID of the life event or attribute this citation supports, or for
              *     a `person_name` citation the ID of one of the person's names. It
-             *     must belong to `fact_owner_id` and be of `fact_type`. Omit it to
-             *     cite the fact as a whole, as for a birth, death or marriage.
+             *     must belong to `fact_owner_id` and be of `fact_type`. For a
+             *     `person_birth`, `person_death` or `family_marriage` citation it may
+             *     be `fact_owner_id` itself, to cite the event held on the owner's
+             *     own record rather than a negated one. Omit it to cite the fact as
+             *     a whole.
              */
             fact_id?: string;
             page?: string;
@@ -6271,8 +6276,9 @@ export interface components {
              * Format: uuid
              * @description ID of the life event or attribute this analysis is about, when it
              *     analyzes one of several facts of the same type (such as one of two
-             *     censuses). Absent when it analyzes the fact type of the subject as a
-             *     whole.
+             *     censuses). Equal to `subject_id` when it analyzes the birth, death
+             *     or marriage held on the subject's own record. Absent when it
+             *     analyzes the fact type of the subject as a whole.
              */
             fact_id?: string;
             /** @description IDs of citations supporting this analysis */
@@ -6300,8 +6306,10 @@ export interface components {
             /**
              * Format: uuid
              * @description ID of the life event or attribute this is about. It must be a fact
-             *     of `subject_id` and of `fact_type`, or the request is rejected. Omit
-             *     it for the fact type as a whole, as for a birth or death.
+             *     of `subject_id` and of `fact_type`, or the request is rejected. For
+             *     a birth, death or marriage it may be `subject_id` itself, for the
+             *     event held on the subject's own record. Omit it for the fact type
+             *     as a whole.
              */
             fact_id?: string;
             citation_ids?: string[];
@@ -6343,7 +6351,9 @@ export interface components {
             /**
              * Format: uuid
              * @description ID of the life event or attribute the conflicting analyses are
-             *     about, when the analysis that raised the conflict names one.
+             *     about, when the analysis that raised the conflict names one; equal
+             *     to `subject_id` for the birth, death or marriage held on the
+             *     subject's own record.
              */
             fact_id?: string;
             analysis_ids: string[];
@@ -6435,8 +6445,10 @@ export interface components {
             /**
              * Format: uuid
              * @description ID of the life event or attribute this proof is about, when it
-             *     proves one of several facts of the same type. Absent when it proves
-             *     the fact type of the subject as a whole.
+             *     proves one of several facts of the same type. Equal to `subject_id`
+             *     when it proves the birth, death or marriage held on the subject's
+             *     own record. Absent when it proves the fact type of the subject as a
+             *     whole.
              */
             fact_id?: string;
             /** @description The proven conclusion */
@@ -6460,8 +6472,10 @@ export interface components {
             /**
              * Format: uuid
              * @description ID of the life event or attribute this is about. It must be a fact
-             *     of `subject_id` and of `fact_type`, or the request is rejected. Omit
-             *     it for the fact type as a whole, as for a birth or death.
+             *     of `subject_id` and of `fact_type`, or the request is rejected. For
+             *     a birth, death or marriage it may be `subject_id` itself, for the
+             *     event held on the subject's own record. Omit it for the fact type
+             *     as a whole.
              */
             fact_id?: string;
             conclusion: string;

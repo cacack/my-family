@@ -2734,6 +2734,64 @@ func TestProjector_PersonMerged_CitationTransfer(t *testing.T) {
 	if citationRM.FactOwnerID != survivor.ID {
 		t.Errorf("Citation FactOwnerID = %v, want %v", citationRM.FactOwnerID, survivor.ID)
 	}
+	if citationRM.FactID != nil {
+		t.Errorf("unlinked citation FactID = %v, want none", citationRM.FactID)
+	}
+}
+
+// A citation or evidence analysis naming the merged person's own birth
+// (fact_id = the merged ID) names the survivor's after the merge (#1319).
+func TestProjector_PersonMerged_RecordFactFollowsSurvivor(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore, nil)
+	ctx := context.Background()
+	main := domain.MainBranchID
+	mustProject := func(t *testing.T, p *repository.Projector, e domain.Event, version int64) {
+		t.Helper()
+		if err := p.Project(ctx, e, version, main); err != nil {
+			t.Fatalf("project %s: %v", e.EventType(), err)
+		}
+	}
+
+	survivor := domain.NewPerson("John", "Doe")
+	merged := domain.NewPerson("Johnny", "Doe")
+	mustProject(t, projector, domain.NewPersonCreated(survivor), 1)
+	mustProject(t, projector, domain.NewPersonCreated(merged), 1)
+	source := domain.NewSource("Baptismal register", domain.SourceBook)
+	mustProject(t, projector, domain.NewSourceCreated(source), 1)
+
+	citation := domain.NewCitation(source.ID, domain.FactPersonBirth, merged.ID)
+	citation.FactID = &merged.ID
+	mustProject(t, projector, domain.NewCitationCreated(citation), 1)
+	analysis := domain.NewEvidenceAnalysis(domain.FactPersonBirth, merged.ID, "Born 1830")
+	analysis.FactID = &merged.ID
+	mustProject(t, projector, domain.NewEvidenceAnalysisCreated(analysis), 1)
+	conflict := domain.NewEvidenceConflict(domain.FactPersonBirth, merged.ID, []uuid.UUID{analysis.ID}, "Dates disagree")
+	conflict.FactID = &merged.ID
+	mustProject(t, projector, domain.NewEvidenceConflictDetected(conflict), 1)
+	summary := domain.NewProofSummary(domain.FactPersonBirth, merged.ID, "Born 1830", "The register is primary")
+	summary.FactID = &merged.ID
+	mustProject(t, projector, domain.NewProofSummaryCreated(summary), 1)
+
+	mustProject(t, projector, domain.NewPersonMerged(survivor.ID, merged.ID, map[string]any{}, map[string]any{},
+		[]uuid.UUID{}, []uuid.UUID{citation.ID}, []uuid.UUID{}, []uuid.UUID{}, []uuid.UUID{}), 2)
+
+	gotCitation, _ := readStore.GetCitation(ctx, main, citation.ID)
+	if gotCitation == nil || gotCitation.FactID == nil || *gotCitation.FactID != survivor.ID {
+		t.Errorf("citation fact_id = %+v, want the survivor %s", gotCitation, survivor.ID)
+	}
+	gotAnalysis, _ := readStore.GetEvidenceAnalysis(ctx, main, analysis.ID)
+	if gotAnalysis == nil || gotAnalysis.FactID == nil || *gotAnalysis.FactID != survivor.ID {
+		t.Errorf("analysis fact_id = %+v, want the survivor %s", gotAnalysis, survivor.ID)
+	}
+	gotConflict, _ := readStore.GetEvidenceConflict(ctx, main, conflict.ID)
+	if gotConflict == nil || gotConflict.FactID == nil || *gotConflict.FactID != survivor.ID {
+		t.Errorf("conflict fact_id = %+v, want the survivor %s", gotConflict, survivor.ID)
+	}
+	gotSummary, _ := readStore.GetProofSummary(ctx, main, summary.ID)
+	if gotSummary == nil || gotSummary.FactID == nil || *gotSummary.FactID != survivor.ID {
+		t.Errorf("proof summary fact_id = %+v, want the survivor %s", gotSummary, survivor.ID)
+	}
 }
 
 func TestProjector_PersonMerged_NameTransfer(t *testing.T) {

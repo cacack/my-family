@@ -111,3 +111,48 @@ func TestCreateCitation_FactID(t *testing.T) {
 		t.Errorf("fact_id after rollback = %v, want %s", got, occupation)
 	}
 }
+
+// A citation of the birth, death or marriage held on its owner's own record
+// names the record: fact_id equals fact_owner_id (#1319). No other fact type
+// may name its owner's record, and a birth may not name another record.
+func TestCreateCitation_FactIDRecordFact(t *testing.T) {
+	ctx := context.Background()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(memory.NewEventStore(), readStore)
+	if _, err := handler.ImportGedcom(ctx, command.ImportGedcomInput{Filename: "t.ged", Reader: strings.NewReader(citedFactsGedcom)}); err != nil {
+		t.Fatalf("import: %v", err)
+	}
+	persons, _ := repository.ListAll(ctx, 10, readStore.ListPersons)
+	sources, _ := repository.ListAll(ctx, 10, readStore.ListSources)
+	if len(persons) != 2 || len(sources) != 1 {
+		t.Fatalf("persons %d, sources %d; want 2 and 1", len(persons), len(sources))
+	}
+	a, c, sourceID := persons[0].ID, persons[1].ID, sources[0].ID
+	family := uuid.New()
+	input := func(factType domain.FactType, owner, factID uuid.UUID) command.CreateCitationInput {
+		return command.CreateCitationInput{SourceID: sourceID, FactType: string(factType), FactOwnerID: owner, FactID: &factID}
+	}
+
+	for _, ok := range []command.CreateCitationInput{
+		input(domain.FactPersonBirth, a, a),
+		input(domain.FactPersonDeath, a, a),
+		input(domain.FactFamilyMarriage, family, family),
+	} {
+		created, err := handler.CreateCitation(ctx, ok)
+		if err != nil {
+			t.Fatalf("%s: create: %v", ok.FactType, err)
+		}
+		got, _ := readStore.GetCitation(ctx, domain.MainBranchID, created.ID)
+		if got == nil || got.FactID == nil || *got.FactID != ok.FactOwnerID {
+			t.Errorf("%s: fact_id = %+v, want the owner %s", ok.FactType, got, ok.FactOwnerID)
+		}
+	}
+	for name, bad := range map[string]command.CreateCitationInput{
+		"occupation naming the owner's record": input(domain.FactPersonOccupation, a, a),
+		"birth naming another person's record": input(domain.FactPersonBirth, a, c),
+	} {
+		if _, err := handler.CreateCitation(ctx, bad); !errors.Is(err, command.ErrInvalidInput) {
+			t.Errorf("%s: err = %v, want ErrInvalidInput", name, err)
+		}
+	}
+}
