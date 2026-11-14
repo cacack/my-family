@@ -194,7 +194,7 @@ type CitationData struct {
 	SourceXref  string
 	FactType    string
 	FactOwnerID uuid.UUID
-	FactID      *uuid.UUID // The life event or attribute the SOUR is under; nil under a birth, death or marriage (#1294)
+	FactID      *uuid.UUID // The life event or attribute the SOUR is under (#1294), or FactOwnerID under the birth, death or marriage on the record itself (#1319)
 	Page        string
 	Quality     string
 	QuotedText  string
@@ -1354,6 +1354,10 @@ func extractCitationsFromIndividual(indi *gedcom.Individual, personID uuid.UUID,
 		// event's fact type.
 		factType := individualEventFactType(event.Type)
 		factID := factIDOf(eventIDs, event)
+		if factID == nil && !event.IsNegative && factType.IsRecordFact() {
+			// A birth or death held on the person record (#1319).
+			factID = &personID
+		}
 
 		for _, srcCit := range event.SourceCitations {
 			if srcCit.SourceXRef == "" {
@@ -1449,6 +1453,10 @@ func extractCitationsFromFamily(fam *gedcom.Family, familyID uuid.UUID, eventIDs
 			continue // Skip events we don't track citations for
 		}
 		factID := factIDOf(eventIDs, event)
+		if factID == nil && !event.IsNegative && factType.IsRecordFact() {
+			// A marriage held on the family record (#1319).
+			factID = &familyID
+		}
 
 		for _, srcCit := range event.SourceCitations {
 			if srcCit.SourceXRef == "" {

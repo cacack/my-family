@@ -24,6 +24,8 @@
 
 	let { personId }: Props = $props();
 
+	const RECORD_FACT_TYPES: FactType[] = ['person_birth', 'person_death'];
+
 	let citations: Citation[] = $state([]);
 	let loading = $state(true);
 	let error: string | null = $state(null);
@@ -195,6 +197,9 @@
 				source_id: newCitation.source_id,
 				fact_type: newCitation.fact_type,
 				fact_owner_id: personId,
+				// A birth or death cited here is the one held on the person's
+				// record, which fact_id names by the person's own ID (#1319).
+				fact_id: RECORD_FACT_TYPES.includes(newCitation.fact_type) ? personId : undefined,
 				page: newCitation.page.trim() || undefined,
 				volume: newCitation.volume.trim() || undefined,
 				source_quality: newCitation.source_quality || undefined,

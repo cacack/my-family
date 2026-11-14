@@ -71,19 +71,24 @@ func TestRoundTrip_NegatedEventsKeepTheirOwnSources(t *testing.T) {
 	}
 }
 
-// A citation with no fact_id (imported before #1294) is written under the
-// birth, death or marriage held on the record when there is one, and under the
-// negated life event of its fact type when there is not.
+// A citation naming the birth, death or marriage held on the record (fact_id
+// = the owner's ID, #1319) is written under the record's event only, which
+// is exported for it even when the record holds nothing else of it. One with
+// no fact_id is mostly a citation of that record event created before #1319,
+// so it too goes under the record's event when there is one, and otherwise
+// under the NO event of its fact type (#1300).
 func TestExport_UnlinkedCitationsOfNegatedFacts(t *testing.T) {
 	ctx := context.Background()
 	rs := memory.NewReadModelStore()
 	main := domain.MainBranchID
-	sourceID := uuid.New()
+	sourceID, markedSourceID := uuid.New(), uuid.New()
 	mustSave(t, rs.SaveSource(ctx, main, &repository.SourceReadModel{ID: sourceID, Title: "Old source", Version: 1}))
+	mustSave(t, rs.SaveSource(ctx, main, &repository.SourceReadModel{ID: markedSourceID, Title: "Record source", Version: 1}))
 
-	both, negatedOnly := uuid.New(), uuid.New()
+	both, negatedOnly, bare := uuid.New(), uuid.New(), uuid.New()
 	mustSave(t, rs.SavePerson(ctx, main, &repository.PersonReadModel{ID: both, GivenName: "Both", BirthDateRaw: "1830", DeathDateRaw: "1890", Version: 1}))
 	mustSave(t, rs.SavePerson(ctx, main, &repository.PersonReadModel{ID: negatedOnly, GivenName: "Negated", Version: 1}))
+	mustSave(t, rs.SavePerson(ctx, main, &repository.PersonReadModel{ID: bare, GivenName: "Bare", Version: 1}))
 	married, unmarried := uuid.New(), uuid.New()
 	mustSave(t, rs.SaveFamily(ctx, main, &repository.FamilyReadModel{ID: married, Partner1ID: &both, RelationshipType: domain.RelationMarriage, MarriageDateRaw: "1855", Version: 1}))
 	mustSave(t, rs.SaveFamily(ctx, main, &repository.FamilyReadModel{ID: unmarried, Partner1ID: &negatedOnly, RelationshipType: domain.RelationUnknown, Version: 1}))
@@ -92,15 +97,21 @@ func TestExport_UnlinkedCitationsOfNegatedFacts(t *testing.T) {
 		ownerType string
 		id        uuid.UUID
 		facts     []domain.FactType
+		marked    bool
 	}{
-		{"person", both, []domain.FactType{domain.FactPersonBirth, domain.FactPersonDeath}},
-		{"person", negatedOnly, []domain.FactType{domain.FactPersonBirth, domain.FactPersonDeath}},
-		{"family", married, []domain.FactType{domain.FactFamilyMarriage}},
-		{"family", unmarried, []domain.FactType{domain.FactFamilyMarriage}},
+		{"person", both, []domain.FactType{domain.FactPersonBirth, domain.FactPersonDeath}, true},
+		{"person", negatedOnly, []domain.FactType{domain.FactPersonBirth, domain.FactPersonDeath}, false},
+		{"person", bare, []domain.FactType{domain.FactPersonBirth}, true},
+		{"family", married, []domain.FactType{domain.FactFamilyMarriage}, true},
+		{"family", unmarried, []domain.FactType{domain.FactFamilyMarriage}, false},
 	} {
 		for _, ft := range owner.facts {
 			mustSave(t, rs.SaveEvent(ctx, main, &repository.EventReadModel{ID: uuid.New(), OwnerType: owner.ownerType, OwnerID: owner.id, FactType: ft, IsNegated: true, Version: 1}))
 			mustSave(t, rs.SaveCitation(ctx, main, &repository.CitationReadModel{ID: uuid.New(), SourceID: sourceID, SourceTitle: "Old source", FactType: ft, FactOwnerID: owner.id, Version: 1}))
+			if owner.marked {
+				ownerID := owner.id
+				mustSave(t, rs.SaveCitation(ctx, main, &repository.CitationReadModel{ID: uuid.New(), SourceID: markedSourceID, SourceTitle: "Record source", FactType: ft, FactOwnerID: owner.id, FactID: &ownerID, Version: 1}))
+			}
 		}
 	}
 
@@ -109,24 +120,37 @@ func TestExport_UnlinkedCitationsOfNegatedFacts(t *testing.T) {
 		t.Fatalf("export: %v", err)
 	}
 	out := buf.String()
-	// Each record's own event (BIRT, DEAT, MARR) takes the citation when the
-	// record has one; the NO event takes it only when it does not.
+	old, marked := "2 SOUR "+sourceXref(t, out, "Old source"), "2 SOUR "+sourceXref(t, out, "Record source")
 	for _, c := range []struct {
 		marker, without string // the record with a line starting with marker and none equal to without
-		want            map[string]int
+		want            map[string][]string
 	}{
-		{"1 NAME Both", "", map[string]int{"1 BIRT": 1, "1 NO BIRT": 0, "1 DEAT": 1, "1 NO DEAT": 0}},
-		{"1 NAME Negated", "", map[string]int{"1 BIRT": 0, "1 NO BIRT": 1, "1 DEAT": 0, "1 NO DEAT": 1}},
-		{"1 MARR", "", map[string]int{"1 MARR": 1, "1 NO MARR": 0}},
-		{"1 HUSB ", "1 MARR", map[string]int{"1 NO MARR": 1}},
+		{"1 NAME Both", "", map[string][]string{"1 BIRT": {old, marked}, "1 NO BIRT": nil, "1 DEAT": {old, marked}, "1 NO DEAT": nil}},
+		{"1 NAME Negated", "", map[string][]string{"1 BIRT": nil, "1 NO BIRT": {old}, "1 DEAT": nil, "1 NO DEAT": {old}}},
+		{"1 NAME Bare", "", map[string][]string{"1 BIRT": {old, marked}, "1 NO BIRT": nil}},
+		{"1 MARR", "", map[string][]string{"1 MARR": {old, marked}, "1 NO MARR": nil}},
+		{"1 HUSB ", "1 MARR", map[string][]string{"1 NO MARR": {old}}},
 	} {
 		record := recordWith(out, c.marker, c.without)
-		for head, n := range c.want {
-			if got := factSourLines(record, head, ""); len(got) != n {
-				t.Errorf("record with %q: %s SOURs = %q, want %d; record:\n%s", c.marker, head, got, n, record)
+		for head, want := range c.want {
+			got := factSourLines(record, head, "")
+			slices.Sort(got)
+			slices.Sort(want)
+			if !slices.Equal(got, want) {
+				t.Errorf("record with %q: %s SOURs = %q, want %q; record:\n%s", c.marker, head, got, want, record)
 			}
 		}
 	}
+}
+
+// sourceXref returns the xref of the SOUR record titled title in out.
+func sourceXref(t *testing.T, out, title string) string {
+	t.Helper()
+	xref := strings.Fields(recordWith(out, "1 TITL "+title, ""))
+	if len(xref) < 2 {
+		t.Fatalf("no source titled %q in:\n%s", title, out)
+	}
+	return xref[1]
 }
 
 // recordWith returns the first record of out with a line starting with

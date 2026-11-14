@@ -14,9 +14,11 @@ import (
 )
 
 // A birth, death or marriage and its negated counterpart (NO BIRT, NO DEAT,
-// NO MARR) each export their own citations only, after a rebuild and a
-// replay; citations with no fact_id (imported before #1294) export under the
-// record's own event when it has one, else under the negated event (#1300).
+// NO MARR) each export their own citations only, after a rebuild, a replay and
+// a re-import (#1300): a citation of the record's own event names the record
+// (fact_id = the owner's ID, #1319), and is exported even under a bare
+// BIRT. A citation with no fact_id, created before #1319, is taken to be the
+// record's own when the record holds that event.
 
 const negatedFactCitationsGedcom = `0 HEAD
 1 GEDC
@@ -35,6 +37,8 @@ const negatedFactCitationsGedcom = `0 HEAD
 1 TITL Church minutes
 0 @S7@ SOUR
 1 TITL Family bible
+0 @S8@ SOUR
+1 TITL Christening note
 0 @I1@ INDI
 1 NAME A /B/
 1 BIRT
@@ -51,6 +55,10 @@ const negatedFactCitationsGedcom = `0 HEAD
 1 NAME C /D/
 1 NO BIRT
 2 SOUR @S7@
+0 @I3@ INDI
+1 NAME E /F/
+1 BIRT
+2 SOUR @S8@
 0 @F1@ FAM
 1 HUSB @I1@
 1 WIFE @I2@
@@ -91,6 +99,7 @@ func TestGedcomExport_NegatedEventsKeepTheirOwnCitations(t *testing.T) {
 				}
 			}
 			want := []string{
+				"BIRT  <- @S8@", // a bare BIRT
 				"BIRT 1830 <- @S1@",
 				"DEAT 1890 <- @S3@",
 				"MARR 1855 <- @S5@",
@@ -110,13 +119,32 @@ func TestGedcomExport_NegatedEventsKeepTheirOwnCitations(t *testing.T) {
 			replayLog(t, ctx, st.events, fresh)
 			check("replayed", fresh, want)
 
-			// Citations as imported before #1294 carry no fact_id. A NO event
-			// keeps them only when its owner holds no BIRT, DEAT or MARR of
-			// its own, as C /D/'s NO BIRT.
+			// The replayed record-level citations still name their owner.
 			citations, err := repository.ListAll(ctx, 100, fresh.ListCitations)
 			if err != nil {
 				t.Fatalf("list citations: %v", err)
 			}
+			recordLevel := map[string]bool{"Baptismal register": true, "Burial register": true, "Marriage bond": true, "Christening note": true}
+			for _, c := range citations {
+				if recordLevel[c.SourceTitle] != (c.FactID != nil && *c.FactID == c.FactOwnerID) {
+					t.Errorf("replayed citation of %q: fact_id = %v, owner %s", c.SourceTitle, c.FactID, c.FactOwnerID)
+				}
+			}
+
+			// A re-import of the export keeps every citation with its event.
+			var exported bytes.Buffer
+			if _, err := gedcom.NewExporter(st.read).Export(ctx, &exported); err != nil {
+				t.Fatalf("export for re-import: %v", err)
+			}
+			again := backend.setup(t)
+			if _, err := command.NewHandlerWithBranches(again.events, again.read, again.branches, again.snapshots).ImportGedcom(ctx, command.ImportGedcomInput{Filename: "again.ged", Reader: &exported}); err != nil {
+				t.Fatalf("re-import: %v", err)
+			}
+			check("re-imported", again.read, want)
+
+			// Citations created before #1319 carry no fact_id: each is written
+			// under the record's own event when the record holds it, and
+			// otherwise under the NO event of its fact type.
 			for _, c := range citations {
 				c.FactID = nil
 				if err := fresh.SaveCitation(ctx, domain.MainBranchID, &c); err != nil {

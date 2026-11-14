@@ -1894,6 +1894,7 @@ func (p *Projector) projectPersonMerged(ctx context.Context, e domain.PersonMerg
 	}
 	for _, citation := range citations {
 		citation.FactOwnerID = e.SurvivorID
+		citation.FactID = mergedOwnFact(citation.FactID, e)
 		if err := p.readStore.SaveCitation(ctx, branchID, &citation); err != nil {
 			return fmt.Errorf("migrate citation %s for merged person %s: %w", citation.ID, e.MergedID, err)
 		}
@@ -1962,6 +1963,7 @@ func (p *Projector) projectPersonMerged(ctx context.Context, e domain.PersonMerg
 	}
 	for _, analysis := range analyses {
 		analysis.SubjectID = e.SurvivorID
+		analysis.FactID = mergedOwnFact(analysis.FactID, e)
 		if err := p.readStore.SaveEvidenceAnalysis(ctx, branchID, &analysis); err != nil {
 			return fmt.Errorf("migrate evidence analysis %s for merged person %s: %w", analysis.ID, e.MergedID, err)
 		}
@@ -1974,6 +1976,7 @@ func (p *Projector) projectPersonMerged(ctx context.Context, e domain.PersonMerg
 	}
 	for _, conflict := range conflicts {
 		conflict.SubjectID = e.SurvivorID
+		conflict.FactID = mergedOwnFact(conflict.FactID, e)
 		if err := p.readStore.SaveEvidenceConflict(ctx, branchID, &conflict); err != nil {
 			return fmt.Errorf("migrate evidence conflict %s for merged person %s: %w", conflict.ID, e.MergedID, err)
 		}
@@ -1998,6 +2001,7 @@ func (p *Projector) projectPersonMerged(ctx context.Context, e domain.PersonMerg
 	}
 	for _, summary := range summaries {
 		summary.SubjectID = e.SurvivorID
+		summary.FactID = mergedOwnFact(summary.FactID, e)
 		if err := p.readStore.SaveProofSummary(ctx, branchID, &summary); err != nil {
 			return fmt.Errorf("migrate proof summary %s for merged person %s: %w", summary.ID, e.MergedID, err)
 		}
@@ -2905,4 +2909,16 @@ func (p *Projector) backfillBranchCopies(ctx context.Context, branchID domain.Br
 		}
 	}
 	return nil
+}
+
+// mergedOwnFact returns the fact_id a citation or GPS artifact of the merged
+// person keeps when it moves to the survivor. One that named the merged
+// person's own birth or death (fact_id = the merged ID, #1319) names the
+// survivor's; any other is unchanged.
+func mergedOwnFact(factID *uuid.UUID, e domain.PersonMerged) *uuid.UUID {
+	if factID != nil && *factID == e.MergedID {
+		survivor := e.SurvivorID
+		return &survivor
+	}
+	return factID
 }

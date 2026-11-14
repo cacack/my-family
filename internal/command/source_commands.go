@@ -352,8 +352,16 @@ func (h *Handler) CreateCitation(ctx context.Context, input CreateCitationInput)
 // factType owned by factOwnerID on the handler's branch, so a citation (#1294)
 // or an evidence analysis or proof summary (#1304) linked to it is listed with
 // it and with no other fact, or, for a person_name fact, that it is one of the
-// owner's names (#1165).
+// owner's names (#1165). A factID equal to factOwnerID names the birth, death
+// or marriage held on the owner's own record (#1319).
 func (h *Handler) checkFactInstance(ctx context.Context, factID uuid.UUID, factType domain.FactType, factOwnerID uuid.UUID) error {
+	if factID == factOwnerID {
+		// The birth, death or marriage held on the owner's own record (#1319).
+		if !factType.IsRecordFact() {
+			return fmt.Errorf("%w: fact_id names the owner's own record, which holds a birth, death or marriage but no %s; give the ID of a life event, attribute or name instead", ErrInvalidInput, factType)
+		}
+		return nil
+	}
 	if factType == domain.FactPersonName {
 		name, err := h.readStore.GetPersonName(ctx, h.branchID, factID)
 		if err != nil {
