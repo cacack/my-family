@@ -243,12 +243,14 @@ async function expectHeaderUnobstructed(page: import('@playwright/test').Page, l
 			.map((el) => el.textContent?.trim() || el.className);
 		const input = document.querySelector<HTMLInputElement>('.header-controls input')!;
 		const style = getComputedStyle(input);
+		// Measured from the border box: Chromium 158 changed what clientWidth reports for <input>.
+		const inset = ['borderLeftWidth', 'borderRightWidth', 'paddingLeft', 'paddingRight'] as const;
 		const ctx = document.createElement('canvas').getContext('2d')!;
 		ctx.font = style.font;
 		return {
 			covered,
 			placeholder: ctx.measureText(input.placeholder).width,
-			room: input.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight)
+			room: inset.reduce((w, k) => w - parseFloat(style[k]), input.getBoundingClientRect().width)
 		};
 	});
 	expect(m.covered, `${label}: nav entries covered by another element`).toEqual([]);
