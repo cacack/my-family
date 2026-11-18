@@ -20,3 +20,11 @@ id = "GO-2026-4887"
 # Same dependency/reachability story as GO-2026-4883: Moby AuthZ plugin
 # bypass on oversized request bodies, only fixed on the moby/v2 module
 # path, unreachable from this codebase.
+
+[[IgnoredVulns]]
+id = "GHSA-fc5q-39xc-vjpf"
+# picomatch ReDoS through single-branch repeated extglobs. Build tooling
+# only (vite, tinyglobby, fdir, svelte-check): not in the production
+# dependency tree or the built SPA, and it only sees glob patterns from our
+# own config. No fix published (advisory covers <=4.0.7, the latest).
+# Mirrors the entry in web/audit-ci.jsonc; remove both when a fix ships.
