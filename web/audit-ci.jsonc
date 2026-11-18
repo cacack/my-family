@@ -19,5 +19,21 @@
 
   // Review quarterly, in step with osv-scanner.toml. Remove entries as soon as
   // upstreams publish fixes on the versions we actually resolve to.
-  "allowlist": []
+  "allowlist": [
+    {
+      "GHSA-fc5q-39xc-vjpf": {
+        "active": true,
+        // picomatch ReDoS through single-branch repeated extglobs. picomatch is
+        // build tooling only (vite, tinyglobby, fdir, svelte-check): it is absent
+        // from `npm ls --omit=dev` and from the built SPA, and it only ever sees
+        // glob patterns from our own config, never user input.
+        //
+        // No fix exists to take: the advisory covers `<=4.0.7` and 4.0.7 is the
+        // latest published release. Drop this entry when a fixed picomatch ships,
+        // which Dependabot tracks.
+        "notes": "Unpatched upstream (<=4.0.7 is latest). Dev/build-time only; never bundled and never sees user input. Re-check when a fixed release lands.",
+        "expiry": "18 February 2027"
+      }
+    }
+  ]
 }
