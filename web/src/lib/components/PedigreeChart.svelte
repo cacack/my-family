@@ -819,7 +819,7 @@
 	}
 
 	// Zoom control functions
-	// Each step starts from the previous step's target, so rapid clicks add up
+	// Each step starts from a running step's target, so rapid clicks add up; with none running, from the current view
 	function zoomBy(factor: number) {
 		if (!svg || !zoom) return;
 		const [width, height] = viewportSize();
