@@ -231,8 +231,9 @@
 			.transition()
 			.duration(motionDuration(300))
 			.call(zoom.transform, target)
-			.on('end', () => {
-				zoomTarget = null;
+			// A touch on the chart stops the animation (interrupt, or cancel before its first frame); a newer step's target stays
+			.on('end interrupt cancel', () => {
+				if (zoomTarget === target) zoomTarget = null;
 			});
 	}
 

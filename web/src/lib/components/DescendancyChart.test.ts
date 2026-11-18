@@ -5,6 +5,7 @@ import type { DescendancyNode } from '#lib/api/client.js';
 import { CARD_TEXT_INSET, MIN_CARD_FONT_PX } from '#lib/utils/chart.js';
 import { setFontSize, setReducedMotion } from '#lib/stores/accessibilitySettings.svelte.js';
 import { mockTextLength } from '#lib/test/textLength.js';
+import * as d3 from 'd3';
 
 // Card labels are cut to their measured width (#1213)
 let restoreTextLength: () => void;
@@ -605,6 +606,46 @@ describe('DescendancyChart', () => {
 			setFontSize('large');
 			await wait(0);
 			expect(drawnFontSize(container, '.node text')).toBeCloseTo(before * 1.25);
+		});
+	});
+
+	describe('zoom step after an interrupted animation (#969)', () => {
+		it('steps from where the chart stopped, not from the abandoned target', async () => {
+			const { container, component } = render(DescendancyChart, { props: { data: mockThreeGenerations } });
+			const svg = container.querySelector('svg')!;
+			const k = () => d3.zoomTransform(svg).k;
+			component.zoomIn();
+			await wait(60);
+			// A touch on the chart interrupts the running zoom animation (d3-zoom's touchstart)
+			d3.select(svg).interrupt();
+			const stopped = k();
+			component.zoomIn();
+			await wait(500);
+			expect(k()).toBeCloseTo(stopped * 1.2, 2);
+		});
+
+		it('steps from the current view when the touch lands before the animation starts', async () => {
+			const { container, component } = render(DescendancyChart, { props: { data: mockThreeGenerations } });
+			const svg = container.querySelector('svg')!;
+			const start = d3.zoomTransform(svg).k;
+			component.zoomIn();
+			d3.select(svg).interrupt();
+			component.zoomIn();
+			await wait(500);
+			expect(d3.zoomTransform(svg).k).toBeCloseTo(start * 1.2, 2);
+		});
+
+		it('still adds up rapid steps', async () => {
+			const { container, component } = render(DescendancyChart, { props: { data: mockThreeGenerations } });
+			const svg = container.querySelector('svg')!;
+			const start = d3.zoomTransform(svg).k;
+			component.zoomIn();
+			await wait(20);
+			component.zoomIn();
+			await wait(20);
+			component.zoomIn();
+			await wait(500);
+			expect(d3.zoomTransform(svg).k).toBeCloseTo(start * 1.2 ** 3, 2);
 		});
 	});
 
