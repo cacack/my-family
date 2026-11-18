@@ -412,8 +412,9 @@
 			.transition()
 			.duration(motionDuration(300))
 			.call(zoom.transform, target)
-			.on('end', () => {
-				zoomTarget = null;
+			// A touch on the chart stops the animation (interrupt, or cancel before its first frame); a newer step's target stays
+			.on('end interrupt cancel', () => {
+				if (zoomTarget === target) zoomTarget = null;
 			});
 	}
 
@@ -818,7 +819,7 @@
 	}
 
 	// Zoom control functions
-	// Each step starts from the previous step's target, so rapid clicks add up
+	// Each step starts from a running step's target, so rapid clicks add up; with none running, from the current view
 	function zoomBy(factor: number) {
 		if (!svg || !zoom) return;
 		const [width, height] = viewportSize();
