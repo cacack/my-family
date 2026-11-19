@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { can } from '#lib/stores/access.svelte.js';
 	import { api, type ApiError, type Branch, type BranchOutcome } from '#lib/api/client.js';
 	import BranchOutcomeBadge from '#lib/components/branch/BranchOutcomeBadge.svelte';
 	import PageHeader from '#lib/components/PageHeader.svelte';
@@ -212,9 +213,11 @@
 							Switch to branch
 						</Button>
 					{/if}
-					<Button variant="destructive" size="sm" onclick={() => openClose(branch)}>
-						Close
-					</Button>
+					{#if can('editor')}
+						<Button variant="destructive" size="sm" onclick={() => openClose(branch)}>
+							Close
+						</Button>
+					{/if}
 				{/if}
 				{#if branch.status === 'archived'}
 					<Button variant="outline" size="sm" href="/branches/{branch.id}/research">
@@ -307,7 +310,7 @@
 			branch below says how far the mainline has moved since it was created.
 		</p>
 		{#snippet actions()}
-			{#if !unavailable}
+			{#if !unavailable && can('editor')}
 				<Button onclick={openCreate}>New branch</Button>
 			{/if}
 		{/snippet}

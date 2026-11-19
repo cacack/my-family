@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { can } from '#lib/stores/access.svelte.js';
 	import { untrack } from 'svelte';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { page } from '$app/state';
@@ -537,11 +538,13 @@
 						<thead>
 							<tr>
 								<th class="{TH_CLASS} w-10">
-									<Checkbox
-										aria-label="Select all duplicates on this page"
-										checked={pageAllSelected}
-										onCheckedChange={() => togglePageSelection()}
-									/>
+									{#if can('editor')}
+										<Checkbox
+											aria-label="Select all duplicates on this page"
+											checked={pageAllSelected}
+											onCheckedChange={() => togglePageSelection()}
+										/>
+									{/if}
 								</th>
 								<th class={TH_CLASS}>Person 1</th>
 								<th class={TH_CLASS}>Person 2</th>
@@ -559,11 +562,13 @@
 								{@const extraReasonCount = Math.max(0, reasons.length - visibleReasons.length)}
 								<tr class={ROW_HOVER}>
 									<td class={TD_CENTER}>
-										<Checkbox
-											aria-label="Select duplicate pair {pair.person1_name} and {pair.person2_name}"
-											checked={isSelected}
-											onCheckedChange={() => toggleRowSelection(pair.person1_id, pair.person2_id)}
-										/>
+										{#if can('editor')}
+											<Checkbox
+												aria-label="Select duplicate pair {pair.person1_name} and {pair.person2_name}"
+												checked={isSelected}
+												onCheckedChange={() => toggleRowSelection(pair.person1_id, pair.person2_id)}
+											/>
+										{/if}
 									</td>
 									<td class={TD_CLASS}>
 										<a href="/persons/{pair.person1_id}" class={SUBJECT_LINK}>
@@ -597,17 +602,19 @@
 												size="sm"
 												href="/quality/merge/{pair.person1_id}/{pair.person2_id}"
 											>
-												Compare / Merge
+												{can('editor') ? 'Compare / Merge' : 'Compare'}
 											</Button>
-											<Button
-												variant="ghost"
-												size="sm"
-												aria-label="Mark {pair.person1_name} and {pair.person2_name} as not a duplicate"
-												onclick={() => dismissOne(pair.person1_id, pair.person2_id)}
-												disabled={dismissBusy}
-											>
-												{dismissingKey === key ? 'Saving…' : 'Not a duplicate'}
-											</Button>
+											{#if can('editor')}
+												<Button
+													variant="ghost"
+													size="sm"
+													aria-label="Mark {pair.person1_name} and {pair.person2_name} as not a duplicate"
+													onclick={() => dismissOne(pair.person1_id, pair.person2_id)}
+													disabled={dismissBusy}
+												>
+													{dismissingKey === key ? 'Saving…' : 'Not a duplicate'}
+												</Button>
+											{/if}
 										</div>
 									</td>
 								</tr>
@@ -707,15 +714,17 @@
 										{formatDismissedAt(pair.dismissed_at)}
 									</td>
 									<td class={TD_NOWRAP}>
-										<Button
-											variant="outline"
-											size="sm"
-											aria-label="Restore {pair.person1_name} and {pair.person2_name} as a possible duplicate"
-											onclick={() => restoreOne(pair.person1_id, pair.person2_id)}
-											disabled={restoringKey !== null}
-										>
-											{restoringKey === key ? 'Restoring…' : 'Restore'}
-										</Button>
+										{#if can('editor')}
+											<Button
+												variant="outline"
+												size="sm"
+												aria-label="Restore {pair.person1_name} and {pair.person2_name} as a possible duplicate"
+												onclick={() => restoreOne(pair.person1_id, pair.person2_id)}
+												disabled={restoringKey !== null}
+											>
+												{restoringKey === key ? 'Restoring…' : 'Restore'}
+											</Button>
+										{/if}
 									</td>
 								</tr>
 							{/each}

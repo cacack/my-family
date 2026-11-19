@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { can } from '#lib/stores/access.svelte.js';
 	/**
 	 * Research snapshots: named markers ("tags") on the event history, e.g.
 	 * "Pre-DNA results" or "After courthouse trip".
@@ -229,7 +230,7 @@
 			</p>
 		{/if}
 		{#snippet actions()}
-			<Button onclick={openCreate}>New snapshot</Button>
+			{#if can('editor')}<Button onclick={openCreate}>New snapshot</Button>{/if}
 		{/snippet}
 	</PageHeader>
 
@@ -305,14 +306,16 @@
 									Compare with previous
 								</Button>
 							{/if}
-							<Button
-								variant="destructive"
-								size="sm"
-								onclick={() => openDelete(snapshot)}
-								aria-label="Delete snapshot {snapshot.name}"
-							>
-								Delete
-							</Button>
+							{#if can('editor')}
+								<Button
+									variant="destructive"
+									size="sm"
+									onclick={() => openDelete(snapshot)}
+									aria-label="Delete snapshot {snapshot.name}"
+								>
+									Delete
+								</Button>
+							{/if}
 						</div>
 					</div>
 

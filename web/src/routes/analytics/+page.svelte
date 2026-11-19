@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { can } from '#lib/stores/access.svelte.js';
 	import { api, type QualityOverview, type ResearchStatus } from '#lib/api/client.js';
 	import QualityScore from '#lib/components/QualityScore.svelte';
 	import PageHeader from '#lib/components/PageHeader.svelte';
@@ -82,8 +83,8 @@
 			description="Add people or import a GEDCOM file to see how complete your tree is."
 		>
 			{#snippet actions()}
-				<Button href="/persons/add">Add Person</Button>
-				<Button variant="outline" href="/import">Import GEDCOM</Button>
+				{#if can('editor')}<Button href="/persons/add">Add Person</Button>{/if}
+				{#if can('owner')}<Button variant="outline" href="/import">Import GEDCOM</Button>{/if}
 			{/snippet}
 		</EmptyState>
 	{:else if overview}

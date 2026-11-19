@@ -1,10 +1,12 @@
 <script lang="ts">
+	import { can } from '#lib/stores/access.svelte.js';
 	import { api, type ImportResult, type ImportProgress } from '#lib/api/client.js';
 	import { ExportButton } from '#lib/components/export/index.js';
 	import PageHeader from '#lib/components/PageHeader.svelte';
 	import ImportProgressBar from '#lib/components/import/ImportProgress.svelte';
 	import BranchImportBlocked from '#lib/components/import/BranchImportBlocked.svelte';
 	import MainlineNotice from '#lib/components/MainlineNotice.svelte';
+	import RoleNotice from '#lib/components/auth/RoleNotice.svelte';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { activeBranch } from '#lib/stores/activeBranch.svelte.js';
 
@@ -404,7 +406,9 @@
 				families to your database.
 			</p>
 
-			{#if importBlockedByBranch}
+			{#if !can('owner')}
+				<RoleNotice action="Importing GEDCOM" required="owner" />
+			{:else if importBlockedByBranch}
 				<BranchImportBlocked />
 			{:else if result}
 				<div class="result" class:success={result.success}>
@@ -518,6 +522,9 @@
 
 		<section class="export-section">
 			<h2>Export Data</h2>
+			{#if !can('editor')}
+				<RoleNotice action="Exporting the tree" required="editor" />
+			{:else}
 			<MainlineNotice
 				message="Exports always cover the mainline, even while a research branch is active. Changes made on your branch are not included until the branch is merged."
 			/>
@@ -704,6 +711,7 @@
 					{/if}
 				</Button>
 			</div>
+			{/if}
 		</section>
 	</div>
 </div>

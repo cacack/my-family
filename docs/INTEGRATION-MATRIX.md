@@ -84,7 +84,7 @@ New entity types (Person, Family, Source, Citation, Media, Repository) require i
 
 | # | Requirement | Why | Verify |
 |---|-------------|-----|--------|
-| 17 | OpenAPI spec endpoints | API-first architecture | Spec review |
+| 17 | OpenAPI spec endpoints, each with its `x-min-role` | API-first architecture; default-deny roles (AC-004) | Spec review; `TestRoles_EveryRouteForEveryRole` |
 | 18 | Handler implementation with type conversion | Contract compliance | Handler tests |
 
 #### GEDCOM Integration (2 items)

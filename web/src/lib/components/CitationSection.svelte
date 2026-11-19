@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { can } from '#lib/stores/access.svelte.js';
 	import {
 		api,
 		isStaleVersion,
@@ -277,7 +278,7 @@
 <div class="citation-section">
 	<div class="section-header">
 		<h2>Citations <span class="count-badge">{citations.length}</span></h2>
-		{#if !showAddForm}
+		{#if !showAddForm && can('editor')}
 			<Button variant="outline" size="sm" onclick={openAddForm}>Add Citation</Button>
 		{/if}
 	</div>
@@ -431,9 +432,11 @@
 	{:else if citations.length === 0 && !showAddForm}
 		<div class="empty-state">
 			<p>No citations yet.</p>
-			<Button variant="outline" size="sm" class="h-auto min-h-8 whitespace-normal" onclick={openAddForm}
-				>Add the first citation</Button
-			>
+			{#if can('editor')}
+				<Button variant="outline" size="sm" class="h-auto min-h-8 whitespace-normal" onclick={openAddForm}
+					>Add the first citation</Button
+				>
+			{/if}
 		</div>
 	{:else if citations.length > 0}
 		<ul class="citation-list">
@@ -485,16 +488,18 @@
 						<p class="analysis">{citation.analysis}</p>
 					{/if}
 
-					<div class="citation-actions">
-						<Button
-							variant="ghost"
-							size="sm"
-							onclick={() => {
-								deleteTarget = citation;
-								deleteOpen = true;
-							}}>Delete</Button
-						>
-					</div>
+					{#if can('editor')}
+						<div class="citation-actions">
+							<Button
+								variant="ghost"
+								size="sm"
+								onclick={() => {
+									deleteTarget = citation;
+									deleteOpen = true;
+								}}>Delete</Button
+							>
+						</div>
+					{/if}
 				</li>
 			{/each}
 		</ul>

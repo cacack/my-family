@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { can } from '#lib/stores/access.svelte.js';
 	import { untrack } from 'svelte';
 	import { page } from '$app/state';
 	import {
@@ -225,7 +226,7 @@
 				</InfoSection>
 			{/if}
 
-			{#if conflict.status === 'open'}
+			{#if conflict.status === 'open' && can('editor')}
 				<div class="mt-6 border-t-2 border-red-200 pt-6">
 					<h2 class="m-0 mb-2 text-base font-semibold text-foreground">Resolve Conflict</h2>
 					<p class="m-0 mb-4 text-[0.8125rem] text-muted-foreground">

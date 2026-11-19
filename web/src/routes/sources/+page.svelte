@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { can } from '#lib/stores/access.svelte.js';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { api, type Source } from '#lib/api/client.js';
@@ -254,7 +255,7 @@
 						</svg>
 					{/if}
 				</button>
-				<Button onclick={openAddForm}>Add Source</Button>
+				{#if can('editor')}<Button onclick={openAddForm}>Add Source</Button>{/if}
 			</div>
 		{/snippet}
 	</PageHeader>
@@ -357,7 +358,7 @@
 		{:else}
 			<EmptyState message="No sources found.">
 				{#snippet actions()}
-					<Button onclick={openAddForm}>Add Source</Button>
+					{#if can('editor')}<Button onclick={openAddForm}>Add Source</Button>{/if}
 				{/snippet}
 			</EmptyState>
 		{/if}

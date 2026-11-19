@@ -4,8 +4,13 @@
  * menu on narrow ones, so both always offer the same destinations.
  */
 
-/** `match` lists the path prefixes that count as being in a link's section. */
-export type NavLink = { href: string; label: string; match?: string[] };
+import type { Role } from '#lib/stores/access.svelte.js';
+
+/**
+ * `match` lists the path prefixes that count as being in a link's section.
+ * `minRole` hides the link from a role below it (ADR-007).
+ */
+export type NavLink = { href: string; label: string; match?: string[]; minRole?: Role };
 export type NavGroup = { label: string; links: NavLink[] };
 export type NavEntry = NavLink | NavGroup;
 
@@ -43,8 +48,19 @@ export const mainNav: NavEntry[] = [
 			{ href: '/snapshots', label: 'Snapshots' }
 		]
 	},
-	{ href: '/import', label: 'Import' }
+	// The page also exports, which an editor may do; importing needs the owner.
+	{ href: '/import', label: 'Import', minRole: 'editor' }
 ];
+
+/** The navigation without the links `can` refuses, and without groups left empty. */
+export function navFor(can: (role: Role) => boolean): NavEntry[] {
+	const allowed = (link: NavLink) => !link.minRole || can(link.minRole);
+	return mainNav.flatMap((entry): NavEntry[] => {
+		if (!isGroup(entry)) return allowed(entry) ? [entry] : [];
+		const links = entry.links.filter(allowed);
+		return links.length ? [{ ...entry, links }] : [];
+	});
+}
 
 export function isGroup(entry: NavEntry): entry is NavGroup {
 	return 'links' in entry;

@@ -23,18 +23,21 @@ const ownerPassword = "correct horse battery"
 
 // authFixture is a server in accounts mode over memory stores.
 type authFixture struct {
-	server *api.Server
-	auth   *auth.Service
-	events *memory.EventStore
+	server   *api.Server
+	auth     *auth.Service
+	accounts *memory.AccountStore
+	events   *memory.EventStore
 }
 
 func newAuthFixture(t *testing.T) *authFixture {
 	t.Helper()
 	cfg := &config.Config{Port: 8080, LogFormat: "text", AuthMode: config.AuthModeAccounts}
 	events := memory.NewEventStore()
-	svc := auth.NewService(memory.NewAccountStore())
-	server := api.NewServer(cfg, events, memory.NewReadModelStore(), memory.NewSnapshotStore(events), nil, api.WithAuth(svc))
-	return &authFixture{server: server, auth: svc, events: events}
+	accounts := memory.NewAccountStore()
+	svc := auth.NewService(accounts)
+	server := api.NewServer(cfg, events, memory.NewReadModelStore(), memory.NewSnapshotStore(events), nil,
+		api.WithAuth(svc), api.WithBranchStore(memory.NewBranchStore()))
+	return &authFixture{server: server, auth: svc, accounts: accounts, events: events}
 }
 
 // request is one HTTP call to the fixture's server.

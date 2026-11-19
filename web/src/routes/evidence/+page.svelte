@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { can } from '#lib/stores/access.svelte.js';
 	import { untrack } from 'svelte';
 	import { page } from '$app/state';
 	import {
@@ -346,7 +347,7 @@
 					<!-- A failed load has no count: a 0 would read like real data (#1096). -->
 					{#if !analysesError}{analysesTotal} {analysesTotal === 1 ? 'analysis' : 'analyses'}{/if}
 				</span>
-				<Button href="/evidence/analyses/new">New Analysis</Button>
+				{#if can('editor')}<Button href="/evidence/analyses/new">New Analysis</Button>{/if}
 			</div>
 
 			{#if analysesLoading}
@@ -359,7 +360,7 @@
 					description="Create an analysis to evaluate evidence for a genealogical fact."
 				>
 					{#snippet actions()}
-						<Button href="/evidence/analyses/new">New Analysis</Button>
+						{#if can('editor')}<Button href="/evidence/analyses/new">New Analysis</Button>{/if}
 					{/snippet}
 				</EmptyState>
 			{:else}
@@ -543,7 +544,7 @@
 					<!-- A failed load has no count: a 0 would read like real data (#1096). -->
 					{#if !logsError}{logsTotal} {logsTotal === 1 ? 'log entry' : 'log entries'}{/if}
 				</span>
-				<Button href="/evidence/research-logs/new">New Research Log</Button>
+				{#if can('editor')}<Button href="/evidence/research-logs/new">New Research Log</Button>{/if}
 			</div>
 
 			{#if logsLoading}
@@ -556,7 +557,7 @@
 					description="Log your research activities to track what repositories and records you have searched."
 				>
 					{#snippet actions()}
-						<Button href="/evidence/research-logs/new">New Research Log</Button>
+						{#if can('editor')}<Button href="/evidence/research-logs/new">New Research Log</Button>{/if}
 					{/snippet}
 				</EmptyState>
 			{:else}
@@ -639,7 +640,7 @@
 					<!-- A failed load has no count: a 0 would read like real data (#1096). -->
 					{#if !summariesError}{summariesTotal} {summariesTotal === 1 ? 'summary' : 'summaries'}{/if}
 				</span>
-				<Button href="/evidence/proof-summaries/new">New Proof Summary</Button>
+				{#if can('editor')}<Button href="/evidence/proof-summaries/new">New Proof Summary</Button>{/if}
 			</div>
 
 			{#if summariesLoading}
@@ -652,7 +653,7 @@
 					description="Create a proof summary to document your conclusions about a genealogical fact."
 				>
 					{#snippet actions()}
-						<Button href="/evidence/proof-summaries/new">New Proof Summary</Button>
+						{#if can('editor')}<Button href="/evidence/proof-summaries/new">New Proof Summary</Button>{/if}
 					{/snippet}
 				</EmptyState>
 			{:else}

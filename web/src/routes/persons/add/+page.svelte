@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { can } from '#lib/stores/access.svelte.js';
+	import RoleNotice from '#lib/components/auth/RoleNotice.svelte';
 	import { goto } from '$app/navigation';
 	import { api, type PersonCreate } from '#lib/api/client.js';
 	import { Button } from '#lib/components/ui/button/index.js';
@@ -102,6 +104,10 @@
 <div class="person-page">
 	<PageHeader title="Add Person" back={{ href: '/persons', label: 'People' }} />
 
+	{#if !can('editor')}
+		<RoleNotice action="Adding people" required="editor" />
+	{:else}
+
 	<div class="quick-capture-hint">
 		Need to add many people quickly? Try <a href="/persons/quick">Quick Capture mode</a>
 	</div>
@@ -186,6 +192,7 @@
 			</Button>
 		</div>
 	</form>
+	{/if}
 </div>
 
 <style>

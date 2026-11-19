@@ -92,6 +92,7 @@ type Server struct {
 	branchStore         repository.BranchStore   // nil unless WithBranchStore supplied
 	settingsStore       repository.SettingsStore // nil unless WithSettingsStore supplied
 	auth                *auth.Service            // nil only in open mode
+	routes              map[string]bool          // every registered route, by routeKey
 }
 
 // NewServer creates a new API server with all dependencies. Unless
@@ -226,6 +227,8 @@ func (s *Server) registerRoutes() {
 	// (ADR-007). Registered on the Echo instance, like the checks below, so it
 	// covers the generated strict routes too.
 	s.echo.Use(s.authenticate)
+	// GEDCOM exports are costly, so each user may start only a few (#387).
+	s.echo.Use(limitExports())
 
 	// Refuse a branch-scoped GEDCOM import before it reaches either import
 	// handler (#825). Registered on the Echo instance, not the group, because
@@ -257,6 +260,12 @@ func (s *Server) registerRoutes() {
 	strictServer := NewStrictServer(s)
 	strictHandler := NewStrictHandler(strictServer, nil)
 	RegisterHandlersWithBaseURL(s.echo, strictHandler, "/api/v1")
+
+	// authenticate refuses a registered route that declares no role.
+	s.routes = make(map[string]bool)
+	for _, route := range s.echo.Routes() {
+		s.routes[routeKey(route.Method, route.Path)] = true
+	}
 
 	// Serve frontend if available
 	if s.frontendFS != nil {

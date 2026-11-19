@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
@@ -26,17 +27,6 @@ const (
 	CodeInvalidSetupToken  = "INVALID_SETUP_TOKEN"
 	CodeRateLimited        = "RATE_LIMITED"
 )
-
-// publicAPIPaths are the API routes served without a session, compared with
-// the path the router matches (echo.GetPath). Everything else under /api/
-// needs one, so a new route is closed until someone opens it here.
-var publicAPIPaths = map[string]bool{
-	"/api/v1/health":        true,
-	"/api/v1/auth/status":   true,
-	"/api/v1/auth/setup":    true,
-	"/api/v1/auth/sign-in":  true,
-	"/api/v1/auth/sign-out": true,
-}
 
 // WithAuth supplies the sign-in service. The server requires it unless the
 // config is in open mode (ADR-007).
@@ -81,57 +71,89 @@ func refuse(c echo.Context, status int, code, message string) error {
 	return c.JSON(status, APIError{Code: code, Message: message})
 }
 
-// authenticate resolves who is making each request (ADR-007). In open mode
-// that is the owner, with no actor recorded. Otherwise the session cookie is
-// the only source of the user: a valid one puts the user on the request
-// context, and as the actor its changes are attributed to
-// (domain.ContextWithActor). An API request outside publicAPIPaths is then
-// refused with 503 while the tree has no owner and 401 without a session.
+// authenticate resolves who is making each request and refuses it unless their
+// role includes the route's (ADR-007). A route with no declared role in
+// routeRoles is refused for everyone, open mode included (AC-004). In open
+// mode the requester is the owner, with no actor recorded. Otherwise the
+// session cookie is the only source of the user: a valid one puts the user
+// and their role on the request context, and the user as the actor their
+// changes are attributed to (domain.ContextWithActor). A route that is not
+// public is then refused with 503 while the tree has no owner, 401 without a
+// session and 403 below its role; an API path that matches no route is
+// treated as a viewer's, so only a signed-in user learns it is a 404 or 405.
 // Non-API paths (the web UI's files) are always served: the UI shows the
 // setup or sign-in page itself.
 func (s *Server) authenticate(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		req := c.Request()
 		info := requestInfo{clientIP: c.RealIP(), secure: isSecure(req)}
-		path := echo.GetPath(req)
-		ctx := req.Context()
-		if s.config.OpenMode() || !strings.HasPrefix(path, "/api/") {
-			c.SetRequest(req.WithContext(context.WithValue(ctx, requestInfoKey{}, info)))
+		ctx := context.WithValue(req.Context(), requestInfoKey{}, info)
+		if !strings.HasPrefix(echo.GetPath(req), "/api/") {
+			c.SetRequest(req.WithContext(ctx))
+			return next(c)
+		}
+		key := routeKey(req.Method, c.Path())
+		required, declared := routeRoles[key]
+		if !declared {
+			if s.routes[key] {
+				return refuse(c, http.StatusForbidden, CodeForbidden, "This operation declares no role, so no one may call it")
+			}
+			// Not a route: the router answers 404 or 405, to signed-in users.
+			required = repository.RoleViewer
+		}
+		if s.config.OpenMode() {
+			c.SetRequest(req.WithContext(context.WithValue(ctx, roleKey{}, repository.RoleOwner)))
 			return next(c)
 		}
 
 		if cookie, err := req.Cookie(sessionCookieName); err == nil {
 			info.sessionToken = cookie.Value
+			ctx = context.WithValue(ctx, requestInfoKey{}, info)
 		}
-		ctx = context.WithValue(ctx, requestInfoKey{}, info)
 		if info.sessionToken != "" {
 			user, err := s.auth.Authenticate(ctx, info.sessionToken)
 			switch {
 			case err == nil:
+				role, err := s.auth.Role(ctx, repository.DefaultTreeID, user.ID)
+				if err != nil && !errors.Is(err, repository.ErrNotMember) {
+					return err
+				}
 				ctx = context.WithValue(ctx, userKey{}, user)
+				ctx = context.WithValue(ctx, roleKey{}, role)
 				ctx = domain.ContextWithActor(ctx, user.ID.String())
 			case !errors.Is(err, auth.ErrNoSession):
 				return err
 			}
 		}
 		c.SetRequest(req.WithContext(ctx))
-		if publicAPIPaths[path] {
+		if required == rolePublic {
 			return next(c)
 		}
 
-		required, err := s.auth.SetupRequired(ctx)
+		setupRequired, err := s.auth.SetupRequired(ctx)
 		if err != nil {
 			return err
 		}
-		if required {
+		if setupRequired {
 			return refuse(c, http.StatusServiceUnavailable, CodeSetupRequired,
 				"This server has no owner yet. Create one on the setup page or with `myfamily user create`.")
 		}
 		if userFrom(ctx) == nil {
 			return refuse(c, http.StatusUnauthorized, CodeUnauthenticated, "Sign in to continue")
 		}
+		if role := roleFrom(ctx); !role.Includes(required) {
+			return refuse(c, http.StatusForbidden, CodeForbidden, forbiddenMessage(role, required))
+		}
 		return next(c)
 	}
+}
+
+// forbiddenMessage tells a user why their role may not do something.
+func forbiddenMessage(role, required repository.Role) string {
+	if !role.Valid() {
+		return "Your account has no role in this tree. Ask the owner for access."
+	}
+	return fmt.Sprintf("Your role (%s) cannot do this: it needs %s or above. Ask the tree's owner if you need it.", role, required)
 }
 
 // refuseCrossOrigin refuses a state-changing request a browser sent from
@@ -184,11 +206,12 @@ func sessionCookie(token string, secure bool) string {
 	return cookie.String()
 }
 
-func accountOf(user *repository.User) Account {
+func accountOf(user *repository.User, role repository.Role) Account {
 	return Account{
 		Id:          user.ID,
 		Username:    user.Username,
 		DisplayName: user.DisplayName,
+		Role:        AccountRole(role),
 	}
 }
 
@@ -209,7 +232,7 @@ func (ss *StrictServer) GetAuthStatus(ctx context.Context, _ GetAuthStatusReques
 	}
 	status := GetAuthStatus200JSONResponse{Mode: AuthStatusModeAccounts, SetupRequired: required}
 	if user := userFrom(ctx); user != nil {
-		account := accountOf(user)
+		account := accountOf(user, roleFrom(ctx))
 		status.Account = &account
 	}
 	return status, nil
@@ -226,7 +249,7 @@ func (ss *StrictServer) SetupOwner(ctx context.Context, request SetupOwnerReques
 	switch {
 	case err == nil:
 		cookie := sessionCookie(token, info.secure)
-		return SetupOwner201JSONResponse{Body: accountOf(user), Headers: SetupOwner201ResponseHeaders{SetCookie: &cookie}}, nil
+		return SetupOwner201JSONResponse{Body: accountOf(user, repository.RoleOwner), Headers: SetupOwner201ResponseHeaders{SetCookie: &cookie}}, nil
 	case errors.Is(err, auth.ErrInvalidInput):
 		return SetupOwner400JSONResponse{BadRequestJSONResponse(authError(CodeValidation, err.Error()))}, nil
 	case errors.Is(err, auth.ErrInvalidSetupToken):
@@ -249,8 +272,12 @@ func (ss *StrictServer) SignIn(ctx context.Context, request SignInRequestObject)
 	user, token, err := ss.server.auth.SignIn(ctx, request.Body.Username, request.Body.Password, info.clientIP)
 	switch {
 	case err == nil:
+		role, err := ss.server.auth.Role(ctx, repository.DefaultTreeID, user.ID)
+		if err != nil && !errors.Is(err, repository.ErrNotMember) {
+			return nil, err
+		}
 		cookie := sessionCookie(token, info.secure)
-		return SignIn200JSONResponse{Body: accountOf(user), Headers: SignIn200ResponseHeaders{SetCookie: &cookie}}, nil
+		return SignIn200JSONResponse{Body: accountOf(user, role), Headers: SignIn200ResponseHeaders{SetCookie: &cookie}}, nil
 	case errors.Is(err, auth.ErrInvalidCredentials):
 		return SignIn401JSONResponse(authError(CodeInvalidCredentials, "The username or password is wrong")), nil
 	case errors.Is(err, auth.ErrRateLimited):
@@ -283,5 +310,5 @@ func (ss *StrictServer) GetCurrentAccount(ctx context.Context, _ GetCurrentAccou
 		// authenticate refuses this before the handler runs.
 		return nil, echo.NewHTTPError(http.StatusUnauthorized, "Sign in to continue")
 	}
-	return GetCurrentAccount200JSONResponse(accountOf(user)), nil
+	return GetCurrentAccount200JSONResponse(accountOf(user, roleFrom(ctx))), nil
 }

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { can } from '#lib/stores/access.svelte.js';
 	import { api, type Person, type FamilyDetail } from '#lib/api/client.js';
 	import PersonCard from '#lib/components/PersonCard.svelte';
 	import FamilyCard from '#lib/components/FamilyCard.svelte';
@@ -22,7 +23,8 @@
 	 * appears while a branch is active (#825).
 	 */
 	function shouldOnboard(personCount: number): boolean {
-		if (activeBranch.id !== null || onboardingState.completed) return false;
+		// The wizard adds to the tree, so it is only for a role that can (ADR-007).
+		if (activeBranch.id !== null || onboardingState.completed || !can('editor')) return false;
 		return personCount === 0;
 	}
 
@@ -162,7 +164,9 @@
 				</CardHeader>
 				<CardContent>
 					{#if recentPersons.length === 0}
-						<p class="empty">No people yet. <a href="/import">Import a GEDCOM file</a> to get started.</p>
+						<p class="empty">
+							No people yet.{#if can('owner')} <a href="/import">Import a GEDCOM file</a> to get started.{/if}
+						</p>
 					{:else}
 						<div class="card-list">
 							{#each recentPersons as person}
@@ -192,12 +196,14 @@
 			</Card>
 		</div>
 
+		{#if can('editor')}
 		<Card>
 			<CardHeader>
 				<h2 class="m-0 text-base font-semibold text-foreground">Quick Actions</h2>
 			</CardHeader>
 			<CardContent>
 				<div class="action-buttons">
+				{#if can('owner')}
 				<a href="/import" data-slot="action-link" class="action-btn primary">
 					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 						<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -206,6 +212,7 @@
 					</svg>
 					Import GEDCOM
 				</a>
+				{/if}
 				<a href="/persons/add" data-slot="action-link" class="action-btn">
 					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 						<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
@@ -233,6 +240,7 @@
 			</div>
 			</CardContent>
 		</Card>
+		{/if}
 	{/if}
 </div>
 {/if}

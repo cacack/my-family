@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { can } from '#lib/stores/access.svelte.js';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import {
@@ -451,6 +452,7 @@
 
 		<div class="flex items-center justify-end gap-3">
 			<Button variant="outline" onclick={handleCancel} disabled={submitting || dismissing}>Cancel</Button>
+			{#if can('editor')}
 			<Button
 				variant="outline"
 				onclick={handleNotDuplicate}
@@ -464,6 +466,7 @@
 			>
 				{submitting ? 'Merging…' : 'Merge persons'}
 			</Button>
+			{/if}
 		</div>
 	{/if}
 </div>

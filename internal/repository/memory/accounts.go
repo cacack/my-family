@@ -73,6 +73,18 @@ func (s *AccountStore) GetUserByUsername(_ context.Context, username string) (*r
 	return nil, repository.ErrUserNotFound
 }
 
+// MemberRole returns the role userID holds in treeID.
+func (s *AccountStore) MemberRole(_ context.Context, treeID, userID uuid.UUID) (repository.Role, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, m := range s.memberships {
+		if m.treeID == treeID && m.userID == userID {
+			return m.role, nil
+		}
+	}
+	return "", repository.ErrNotMember
+}
+
 // CountMembers returns how many users hold role in treeID.
 func (s *AccountStore) CountMembers(_ context.Context, treeID uuid.UUID, role repository.Role) (int, error) {
 	s.mu.RLock()

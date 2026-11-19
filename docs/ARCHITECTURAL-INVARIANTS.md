@@ -215,7 +215,8 @@ Rules that must hold true in the my-family codebase. Violations break architectu
 |----|------|--------------|
 | **AC-001** | Accounts (`users`, `tree_memberships`, `sessions`) live in plain tables on every backend, never in the event log, and `myfamily rebuild` leaves them untouched. Passwords are stored only as argon2id hashes and session tokens only as SHA-256 hashes | `TestAccountStore_Contract`, `TestRebuild_KeepsAccounts` (`internal/storage`, all backends), `TestAuth_SecretsStayOutOfLogs` (`internal/api`), `TestSignIn_StoresTokenHashed` (`internal/auth`) |
 | **AC-002** | The acting user (`domain.ContextWithActor`) comes only from a valid session cookie, set by the `authenticate` middleware; no request field or header can name it | `TestAuth_ChangesCarryTheSignedInUser`, `TestAuth_SignInAndOut` (`internal/api`) |
-| **AC-003** | The API fails closed: outside open mode, every `/api/` route not in `publicAPIPaths` answers 503 `SETUP_REQUIRED` without an owner and 401 without a session; a `Config` without `AuthMode` requires accounts, and `NewServer` refuses to build one without `WithAuth` | `TestAuth_SetupMode`, `TestAuth_SignInAndOut`, `TestNewServer_RequiresAuthOutsideOpenMode` (`internal/api`), `TestOpenMode_ZeroConfigFailsClosed` (`internal/config`) |
+| **AC-003** | The API fails closed: outside open mode, every `/api/` route whose role is not `public` answers 503 `SETUP_REQUIRED` without an owner and 401 without a session; a `Config` without `AuthMode` requires accounts, and `NewServer` refuses to build one without `WithAuth` | `TestAuth_SetupMode`, `TestAuth_SignInAndOut`, `TestNewServer_RequiresAuthOutsideOpenMode` (`internal/api`), `TestOpenMode_ZeroConfigFailsClosed` (`internal/config`) |
+| **AC-004** | Authorization is default-deny: every operation in `openapi.yaml` declares its minimum role as `x-min-role` (`public`, `viewer`, `editor` or `owner`), and every hand-registered API route has an entry in `handRouteRoles`; the `authenticate` middleware refuses, before any handler runs, a request below the route's role (403 `FORBIDDEN`) and a route that declares no role, for everyone, open mode included | `TestOpenAPI_EveryOperationDeclaresARole`, `TestRouteRoles_CoverEveryRoute`, `TestAuthenticate_RefusesAnUndeclaredRoute`, `TestRoles_EveryRouteForEveryRole` (`internal/api`) |
 
 ### Domain Model Invariants (DM) - Source: [ETHOS.md](./ETHOS.md) + Code Patterns
 
@@ -275,11 +276,11 @@ Rules that must hold true in the my-family codebase. Violations break architectu
 | ADR-003 (Sync Projections) | PR-001 through PR-005 | 5 |
 | ADR-004 (Single Binary) | DP-001 through DP-003 | 3 |
 | ADR-005 (Research Branches) | BR-001 through BR-006 | 6 |
-| ADR-007 (Access Model) | AC-001 through AC-003 | 3 |
+| ADR-007 (Access Model) | AC-001 through AC-004 | 4 |
 | ETHOS.md | DM-001 through DM-006, DI-001 through DI-005, QA-001 through QA-003 | 14 |
 | CONVENTIONS.md | API-001 through API-005 | 5 |
 | CONTRIBUTING.md | TS-001 through TS-003 | 3 |
-| **Total** | | **55** |
+| **Total** | | **56** |
 
 ---
 

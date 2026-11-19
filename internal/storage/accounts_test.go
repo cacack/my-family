@@ -69,6 +69,32 @@ func runAccountStoreContract(t *testing.T, store repository.AccountStore) {
 	if n, err := store.CountMembers(ctx, uuid.New(), repository.RoleOwner); err != nil || n != 0 {
 		t.Errorf("CountMembers of another tree = %d, %v; want 0", n, err)
 	}
+	viewer := &repository.User{
+		ID: uuid.New(), Username: "grace", DisplayName: "Grace Hopper",
+		PasswordHash: "$argon2id$hash", CreatedAt: created,
+	}
+	if err := store.CreateUser(ctx, viewer, repository.DefaultTreeID, repository.RoleViewer); err != nil {
+		t.Fatalf("CreateUser of a viewer: %v", err)
+	}
+	for _, tc := range []struct {
+		name   string
+		treeID uuid.UUID
+		userID uuid.UUID
+		want   repository.Role
+		err    error
+	}{
+		{"owner", repository.DefaultTreeID, owner.ID, repository.RoleOwner, nil},
+		{"viewer", repository.DefaultTreeID, viewer.ID, repository.RoleViewer, nil},
+		{"unknown user", repository.DefaultTreeID, uuid.New(), "", repository.ErrNotMember},
+		{"another tree", uuid.New(), owner.ID, "", repository.ErrNotMember},
+	} {
+		if role, err := store.MemberRole(ctx, tc.treeID, tc.userID); role != tc.want || !errors.Is(err, tc.err) {
+			t.Errorf("MemberRole of %s = %q, %v; want %q, %v", tc.name, role, err, tc.want, tc.err)
+		}
+	}
+	if n, err := store.CountMembers(ctx, repository.DefaultTreeID, repository.RoleOwner); err != nil || n != 1 {
+		t.Errorf("CountMembers of owners with a viewer present = %d, %v; want 1", n, err)
+	}
 
 	duplicate := *owner
 	duplicate.ID = uuid.New()

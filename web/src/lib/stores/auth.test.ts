@@ -23,9 +23,9 @@ vi.mock('#lib/api/client.js', async (importOriginal) => {
 	};
 });
 
-import { auth, loadAuth, signIn, signOut, completeSetup, markSignedOut } from './auth.svelte.js';
+import { auth, loadAuth, signIn, signOut, completeSetup, markSignedOut, can, currentRole } from './auth.svelte.js';
 
-const ADA = { id: '11111111-1111-1111-1111-111111111111', username: 'ada', display_name: 'Ada' };
+const ADA = { id: '11111111-1111-1111-1111-111111111111', username: 'ada', display_name: 'Ada', role: 'owner' as const };
 
 describe('auth store', () => {
 	beforeEach(() => {
@@ -100,5 +100,25 @@ describe('auth store', () => {
 		auth.phase = 'open';
 		markSignedOut();
 		expect(auth.phase).toBe('open');
+	});
+
+	it.each([
+		['viewer', [true, false, false]],
+		['editor', [true, true, false]],
+		['owner', [true, true, true]]
+	] as const)('lets a signed-in %s do what its role includes', (role, expected) => {
+		auth.phase = 'signed-in';
+		auth.account = { ...ADA, role };
+		expect(currentRole()).toBe(role);
+		expect([can('viewer'), can('editor'), can('owner')]).toEqual(expected);
+	});
+
+	it('treats open mode as the owner and no one signed in as no role', () => {
+		auth.phase = 'open';
+		expect(currentRole()).toBe('owner');
+		expect(can('owner')).toBe(true);
+		auth.phase = 'signed-out';
+		expect(currentRole()).toBeNull();
+		expect(can('viewer')).toBe(false);
 	});
 });

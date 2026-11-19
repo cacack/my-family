@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { can } from '#lib/stores/access.svelte.js';
+	import RoleNotice from '#lib/components/auth/RoleNotice.svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import {
@@ -153,6 +155,10 @@
 <div class="add-family-page">
 	<PageHeader title="Add Family" back={{ href: '/families', label: 'Families' }} />
 
+	{#if !can('editor')}
+		<RoleNotice action="Adding families" required="editor" />
+	{:else}
+
 	{#if error && createdFamilyId}
 		<div class="error" role="alert">
 			{error}
@@ -230,6 +236,7 @@
 			</Button>
 		</div>
 	</form>
+	{/if}
 </div>
 
 <style>

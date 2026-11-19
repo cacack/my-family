@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { can } from '#lib/stores/access.svelte.js';
 	import { page } from '$app/state';
 	import { api, type FamilyDetail } from '#lib/api/client.js';
 	import { Button } from '#lib/components/ui/button/index.js';
@@ -70,7 +71,7 @@
 <div class="families-page">
 	<PageHeader title="Families">
 		{#snippet actions()}
-			<Button href="/families/add">Add Family</Button>
+			{#if can('editor')}<Button href="/families/add">Add Family</Button>{/if}
 		{/snippet}
 	</PageHeader>
 
@@ -83,8 +84,8 @@
 	{:else if families.length === 0}
 		<EmptyState message="No families found.">
 			{#snippet actions()}
-				<Button href="/families/add">Add Family</Button>
-				<Button variant="outline" href="/import">Import GEDCOM</Button>
+				{#if can('editor')}<Button href="/families/add">Add Family</Button>{/if}
+				{#if can('owner')}<Button variant="outline" href="/import">Import GEDCOM</Button>{/if}
 			{/snippet}
 		</EmptyState>
 	{:else}

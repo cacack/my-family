@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { can } from '#lib/stores/access.svelte.js';
 	import { tick } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
@@ -109,6 +110,9 @@
 	// are withdrawn (the API refuses a branch-scoped rollback as a backstop). The
 	// change log stays: on a branch it is the branch's view of the person.
 	const rollbackOnMainlineOnly = $derived(activeBranch.id !== null);
+	// Rolling back needs the owner (ADR-007); for anyone else the history is
+	// only the change log.
+	const canRollback = $derived(can('owner') && !rollbackOnMainlineOnly);
 
 	// Rollback state
 	let rollbackDialog = $state({ open: false, targetVersion: 0, targetSummary: '' });
@@ -178,7 +182,7 @@
 	}
 
 	function handleSelectVersion(version: number, summary: string) {
-		if (rollbackOnMainlineOnly) return;
+		if (!canRollback) return;
 		rollbackDialog = { open: true, targetVersion: version, targetSummary: summary };
 	}
 
@@ -483,8 +487,10 @@
 		<Button variant="outline" href="/pedigree/{person.id}">Pedigree</Button>
 		<Button variant="outline" href="/descendancy/{person.id}">Descendants</Button>
 		<Button variant="outline" href="/ahnentafel/{person.id}">Ahnentafel</Button>
-		<Button variant="outline" onclick={startEdit} bind:ref={editButton}>Edit</Button>
-		<Button variant="destructive" onclick={() => (deleteOpen = true)}>Delete</Button>
+		{#if can('editor')}
+			<Button variant="outline" onclick={startEdit} bind:ref={editButton}>Edit</Button>
+			<Button variant="destructive" onclick={() => (deleteOpen = true)}>Delete</Button>
+		{/if}
 	{/if}
 {/snippet}
 
@@ -676,7 +682,9 @@
 								{/if}
 							</div>
 							<p class="brick-wall-note">{person.brick_wall_note}</p>
-							{#if brickWallOnMainlineOnly}
+							{#if !can('editor')}
+								<!-- A viewer cannot resolve it. -->
+							{:else if brickWallOnMainlineOnly}
 								<p class="brick-wall-mainline-only" role="note">{BRICK_WALL_MAINLINE_ONLY}</p>
 							{:else}
 								<Button
@@ -704,6 +712,8 @@
 								<p class="brick-wall-note">{person.brick_wall_note}</p>
 							{/if}
 						</div>
+					{:else if !can('editor')}
+						<!-- No brick wall, and a viewer cannot mark one. -->
 					{:else if brickWallOnMainlineOnly}
 						<p class="brick-wall-mainline-only" role="note">{BRICK_WALL_MAINLINE_ONLY}</p>
 					{:else}
@@ -745,7 +755,7 @@
 
 				<InfoSection title="Families">
 					{#snippet actions()}
-						{#if person}
+						{#if person && can('editor')}
 							<Button variant="outline" size="sm" href="/families/add?partner1={person.id}">
 								Add family
 							</Button>
@@ -772,7 +782,7 @@
 
 				<InfoSection title="Parents">
 					{#snippet actions()}
-						{#if person && !person.family_as_child}
+						{#if person && !person.family_as_child && can('editor')}
 							<Button variant="outline" size="sm" href="/families/add?child={person.id}">
 								Add parents
 							</Button>
@@ -824,7 +834,9 @@
 						<span class="expand-icon">{historyExpanded ? '−' : '+'}</span>
 					</button>
 					{#if historyExpanded}
-						{#if rollbackOnMainlineOnly}
+						{#if !can('owner')}
+							<!-- Only the owner rolls back, so there is no Restore tab. -->
+						{:else if rollbackOnMainlineOnly}
 							<p class="rollback-mainline-only" role="note">{ROLLBACK_MAINLINE_ONLY}</p>
 						{:else}
 							<div class="history-tabs" role="group" aria-label="History view">
@@ -847,7 +859,7 @@
 							</div>
 						{/if}
 						<div class="history-content">
-							{#if historyTab === 'history' || rollbackOnMainlineOnly}
+							{#if historyTab === 'history' || !canRollback}
 								<ChangeHistory entityType="person" entityId={person.id} />
 							{:else}
 								<RestorePointBrowser
@@ -861,7 +873,7 @@
 					{/if}
 				</div>
 
-				{#if !rollbackOnMainlineOnly}
+				{#if canRollback}
 					<RollbackConfirmDialog
 						open={rollbackDialog.open}
 						entityType="person"

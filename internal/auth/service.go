@@ -368,3 +368,8 @@ func (s *Service) SignOut(ctx context.Context, token string) error {
 func (s *Service) DisplayNames(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]string, error) {
 	return s.store.DisplayNames(ctx, ids)
 }
+
+// Role returns the role userID holds in treeID, or repository.ErrNotMember.
+func (s *Service) Role(ctx context.Context, treeID, userID uuid.UUID) (repository.Role, error) {
+	return s.store.MemberRole(ctx, treeID, userID)
+}

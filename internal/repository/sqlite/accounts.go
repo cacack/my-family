@@ -129,6 +129,21 @@ func (s *AccountStore) GetUserByUsername(ctx context.Context, username string) (
 	return s.getUser(ctx, "username", username)
 }
 
+// MemberRole returns the role userID holds in treeID.
+func (s *AccountStore) MemberRole(ctx context.Context, treeID, userID uuid.UUID) (repository.Role, error) {
+	var role string
+	err := s.db.QueryRowContext(ctx,
+		`SELECT role FROM tree_memberships WHERE tree_id = ? AND user_id = ?`, treeID.String(), userID.String(),
+	).Scan(&role)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", repository.ErrNotMember
+	}
+	if err != nil {
+		return "", fmt.Errorf("get member role: %w", err)
+	}
+	return repository.Role(role), nil
+}
+
 // CountMembers returns how many users hold role in treeID.
 func (s *AccountStore) CountMembers(ctx context.Context, treeID uuid.UUID, role repository.Role) (int, error) {
 	var count int

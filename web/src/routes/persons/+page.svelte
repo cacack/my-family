@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { can } from '#lib/stores/access.svelte.js';
 	import { page } from '$app/state';
 	import { api, type Person } from '#lib/api/client.js';
 	import { Button } from '#lib/components/ui/button/index.js';
@@ -112,8 +113,10 @@
 <div class="persons-page">
 	<PageHeader title="People">
 		{#snippet actions()}
-			<Button href="/persons/add">Add Person</Button>
-			<Button variant="outline" href="/persons/quick">Quick Capture</Button>
+			{#if can('editor')}
+				<Button href="/persons/add">Add Person</Button>
+				<Button variant="outline" href="/persons/quick">Quick Capture</Button>
+			{/if}
 		{/snippet}
 	</PageHeader>
 
@@ -173,8 +176,8 @@
 	{:else if persons.length === 0}
 		<EmptyState message="No people found.">
 			{#snippet actions()}
-				<Button href="/persons/add">Add Person</Button>
-				<Button variant="outline" href="/import">Import GEDCOM</Button>
+				{#if can('editor')}<Button href="/persons/add">Add Person</Button>{/if}
+				{#if can('owner')}<Button variant="outline" href="/import">Import GEDCOM</Button>{/if}
 			{/snippet}
 		</EmptyState>
 	{:else}

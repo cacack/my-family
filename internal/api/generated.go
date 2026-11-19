@@ -20,6 +20,27 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for AccountRole.
+const (
+	AccountRoleEditor AccountRole = "editor"
+	AccountRoleOwner  AccountRole = "owner"
+	AccountRoleViewer AccountRole = "viewer"
+)
+
+// Valid indicates whether the value is a known member of the AccountRole enum.
+func (e AccountRole) Valid() bool {
+	switch e {
+	case AccountRoleEditor:
+		return true
+	case AccountRoleOwner:
+		return true
+	case AccountRoleViewer:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AuthStatusMode.
 const (
 	AuthStatusModeAccounts AuthStatusMode = "accounts"
@@ -2127,9 +2148,21 @@ type Account struct {
 	// Id The user ID history entries and merge records carry
 	Id openapi_types.UUID `json:"id"`
 
+	// Role What the user may do in the tree (ADR-007): a `viewer` reads it, an
+	// `editor` also changes it, works in research branches and exports,
+	// and an `owner` also imports GEDCOM and rolls records back. Each
+	// operation's `x-min-role` names the least role it needs.
+	Role AccountRole `json:"role"`
+
 	// Username The sign-in name, lowercase
 	Username string `json:"username"`
 }
+
+// AccountRole What the user may do in the tree (ADR-007): a `viewer` reads it, an
+// `editor` also changes it, works in research branches and exports,
+// and an `owner` also imports GEDCOM and rolls records back. Each
+// operation's `x-min-role` names the least role it needs.
+type AccountRole string
 
 // AddChild defines model for AddChild.
 type AddChild struct {
@@ -16831,6 +16864,20 @@ func (response ExportGedcom400JSONResponse) VisitExportGedcomResponse(w http.Res
 	return err
 }
 
+type ExportGedcom429JSONResponse Error
+
+func (response ExportGedcom429JSONResponse) VisitExportGedcomResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PreviewGedcomExportRequestObject struct {
 	Params PreviewGedcomExportParams
 }
@@ -16863,6 +16910,20 @@ func (response PreviewGedcomExport400JSONResponse) VisitPreviewGedcomExportRespo
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PreviewGedcomExport429JSONResponse Error
+
+func (response PreviewGedcomExport429JSONResponse) VisitPreviewGedcomExportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(429)
 	_, err := buf.WriteTo(w)
 	return err
 }

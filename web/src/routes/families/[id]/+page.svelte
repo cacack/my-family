@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { can } from '#lib/stores/access.svelte.js';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { tick } from 'svelte';
@@ -102,6 +103,9 @@
 
 	// Rollback is mainline-only (ADR-005, #824); see ROLLBACK_MAINLINE_ONLY.
 	const rollbackOnMainlineOnly = $derived(activeBranch.id !== null);
+	// Rolling back needs the owner (ADR-007); for anyone else the history is
+	// only the change log.
+	const canRollback = $derived(can('owner') && !rollbackOnMainlineOnly);
 
 	// Rollback state
 	let rollbackDialog = $state({ open: false, targetVersion: 0, targetSummary: '' });
@@ -211,7 +215,7 @@
 	}
 
 	function handleSelectVersion(version: number, summary: string) {
-		if (rollbackOnMainlineOnly) return;
+		if (!canRollback) return;
 		rollbackDialog = { open: true, targetVersion: version, targetSummary: summary };
 	}
 
@@ -476,8 +480,10 @@
 {#snippet familyActions()}
 	{#if family}
 		<Button variant="outline" href="/families/{family.id}/group-sheet">Group Sheet</Button>
-		<Button variant="outline" onclick={startEdit} bind:ref={editButton}>Edit</Button>
-		<Button variant="destructive" onclick={() => (deleteOpen = true)}>Delete</Button>
+		{#if can('editor')}
+			<Button variant="outline" onclick={startEdit} bind:ref={editButton}>Edit</Button>
+			<Button variant="destructive" onclick={() => (deleteOpen = true)}>Delete</Button>
+		{/if}
 	{/if}
 {/snippet}
 
@@ -590,7 +596,9 @@
 					title={`Children${family.children && family.children.length > 0 ? `\u00a0(${family.children.length})` : ''}`}
 				>
 					{#snippet actions()}
-						<Button variant="outline" size="sm" onclick={() => (addChildOpen = true)}>Add child</Button>
+						{#if can('editor')}
+							<Button variant="outline" size="sm" onclick={() => (addChildOpen = true)}>Add child</Button>
+						{/if}
 					{/snippet}
 					{#if family.children && family.children.length > 0}
 						<ul class="children-list">
@@ -602,14 +610,16 @@
 									{#if child.relationship_type && child.relationship_type !== 'biological'}
 										<span class="child-type">({child.relationship_type})</span>
 									{/if}
-									<button
-										type="button"
-										class="remove-child"
-										aria-label="Remove {childName(child)} from this family"
-										onclick={() => openRemoveChild(child)}
-									>
-										Remove
-									</button>
+									{#if can('editor')}
+										<button
+											type="button"
+											class="remove-child"
+											aria-label="Remove {childName(child)} from this family"
+											onclick={() => openRemoveChild(child)}
+										>
+											Remove
+										</button>
+									{/if}
 								</li>
 							{/each}
 						</ul>
@@ -645,7 +655,9 @@
 						<span class="expand-icon">{historyExpanded ? '−' : '+'}</span>
 					</button>
 					{#if historyExpanded}
-						{#if rollbackOnMainlineOnly}
+						{#if !can('owner')}
+							<!-- Only the owner rolls back, so there is no Restore tab. -->
+						{:else if rollbackOnMainlineOnly}
 							<p class="rollback-mainline-only" role="note">{ROLLBACK_MAINLINE_ONLY}</p>
 						{:else}
 							<div class="history-tabs" role="group" aria-label="History view">
@@ -668,7 +680,7 @@
 							</div>
 						{/if}
 						<div class="history-content">
-							{#if historyTab === 'history' || rollbackOnMainlineOnly}
+							{#if historyTab === 'history' || !canRollback}
 								<ChangeHistory entityType="family" entityId={family.id} />
 							{:else}
 								<RestorePointBrowser
@@ -682,7 +694,7 @@
 					{/if}
 				</div>
 
-				{#if !rollbackOnMainlineOnly}
+				{#if canRollback}
 					<RollbackConfirmDialog
 						open={rollbackDialog.open}
 						entityType="family"

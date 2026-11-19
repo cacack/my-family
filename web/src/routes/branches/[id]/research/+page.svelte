@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { can } from '#lib/stores/access.svelte.js';
 	/**
 	 * A branch's research record, read-only (#836): the research logs -
 	 * including the searches that found nothing - evidence analyses and proof
@@ -169,7 +170,7 @@
 		<section aria-labelledby="logs-heading">
 			<div class="section-head">
 				<h2 id="logs-heading">Research log</h2>
-				{#if promotable}
+				{#if promotable && can('editor')}
 					<Button size="sm" variant="outline" disabled={promoting} onclick={handlePromote}>
 						{promoting ? 'Copying...' : 'Copy research logs to the mainline'}
 					</Button>
