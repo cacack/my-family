@@ -1333,6 +1333,19 @@ describe('Merged branch record (#832)', () => {
 		expect(within(record).getByText('user-b')).toBeDefined();
 	});
 
+	it('names the merger by display name when known (#1408)', async () => {
+		const base = mergedComparison().merge_record!;
+		compareBranch.mockResolvedValue(
+			mergedComparison({ merge_record: { ...base, merged_by: 'user-b', merged_by_name: 'Grace Hopper' } })
+		);
+
+		render(Page);
+
+		const record = await screen.findByTestId('merge-record');
+		expect(within(record).getByText('Grace Hopper')).toBeDefined();
+		expect(within(record).queryByText('user-b')).toBeNull();
+	});
+
 	describe("the merge's effect (#833)", () => {
 		const SNAPSHOT_ID = 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee';
 		function withSnapshot(extra: Record<string, unknown> = {}) {

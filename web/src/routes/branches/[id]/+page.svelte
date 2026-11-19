@@ -776,7 +776,7 @@
 			{#if record.merged_by}
 				<div>
 					<dt>Merged by</dt>
-					<dd>{record.merged_by}</dd>
+					<dd>{record.merged_by_name ?? record.merged_by}</dd>
 				</div>
 			{/if}
 			<div>

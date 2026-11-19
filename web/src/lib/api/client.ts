@@ -119,6 +119,18 @@ export type SnapshotCurrentComparisonResult =
 
 const API_BASE = '/api/v1';
 
+/**
+ * Called when a request comes back 401: the session expired or was revoked.
+ * The auth store registers it to show the sign-in page; it lives here, like
+ * the branch scope below, so `request()` never imports the store.
+ */
+let onUnauthorized: (() => void) | null = null;
+
+/** Register what to do when the server says the session is gone. */
+export function setUnauthorizedHandler(handler: (() => void) | null): void {
+	onUnauthorized = handler;
+}
+
 // ---------------------------------------------------------------------------
 // Research branch scoping
 // ---------------------------------------------------------------------------
@@ -464,6 +476,12 @@ export interface ExportProgress {
 /** The API's error body, plus the HTTP status the client saw it with. */
 export type ApiError = Schemas['Error'] & { status?: number };
 
+// Accounts and sign-in (ADR-007)
+export type Account = Schemas['Account'];
+export type AuthStatus = Schemas['AuthStatus'];
+export type SetupRequest = Schemas['SetupRequest'];
+export type SignInRequest = Schemas['SignInRequest'];
+
 // GPS evidence: analyses, conflicts, research logs and proof summaries
 export type EvidenceAnalysisResponse = Schemas['EvidenceAnalysis'];
 export type EvidenceAnalysisCreateRequest = Schemas['EvidenceAnalysisCreate'];
@@ -586,6 +604,9 @@ class ApiClient {
 				message: response.statusText
 			}));
 			error.status = response.status;
+			if (response.status === 401 && error.code === 'UNAUTHENTICATED') {
+				onUnauthorized?.();
+			}
 			throw error;
 		}
 
@@ -631,6 +652,23 @@ class ApiClient {
 			}
 			throw error;
 		}
+	}
+
+	// Auth endpoints (ADR-007)
+	async getAuthStatus(): Promise<AuthStatus> {
+		return this.request<AuthStatus>('GET', '/auth/status');
+	}
+
+	async signIn(input: SignInRequest): Promise<Account> {
+		return this.request<Account>('POST', '/auth/sign-in', input);
+	}
+
+	async setupOwner(input: SetupRequest): Promise<Account> {
+		return this.request<Account>('POST', '/auth/setup', input);
+	}
+
+	async signOut(): Promise<void> {
+		return this.request<void>('POST', '/auth/sign-out');
 	}
 
 	// Person endpoints

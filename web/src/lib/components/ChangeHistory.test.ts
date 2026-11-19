@@ -90,8 +90,9 @@ describe("ChangeHistory actor (#1407)", () => {
       items: [
         entry({ action: "created" }),
         entry({ user_id: "user-1407" }),
+        entry({ user_id: "user-1408", user_name: "Grace Hopper" }),
       ],
-      total: 2,
+      total: 3,
       limit: 20,
       offset: 0,
       has_more: false,
@@ -101,6 +102,9 @@ describe("ChangeHistory actor (#1407)", () => {
 
     expect(await screen.findByText("Owner (before accounts)")).toBeDefined();
     expect(screen.getByText("user-1407")).toBeDefined();
+    // A known user is shown by display name, not ID (#1408).
+    expect(screen.getByText("Grace Hopper")).toBeDefined();
+    expect(screen.queryByText("user-1408")).toBeNull();
   });
 });
 

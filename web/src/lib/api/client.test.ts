@@ -12,6 +12,7 @@ import {
 	isBranchMergeRefusal,
 	isBranchScopedRequest,
 	setClientBranch,
+	setUnauthorizedHandler,
 	getClientBranch,
 	onBranchWrite,
 	recordLoadError,
@@ -1045,5 +1046,37 @@ describe('person sub-resource conflict retry', () => {
 			status: 409,
 			code: 'CONFLICT_RETRY_FAILED'
 		});
+	});
+});
+
+describe('unauthorized handler (#1408)', () => {
+	afterEach(() => {
+		setUnauthorizedHandler(null);
+		vi.unstubAllGlobals();
+	});
+
+	function respond(status: number, body: unknown) {
+		vi.stubGlobal(
+			'fetch',
+			vi.fn().mockResolvedValue({ ok: status < 400, status, json: async () => body })
+		);
+	}
+
+	it('fires when the session is gone', async () => {
+		const handler = vi.fn();
+		setUnauthorizedHandler(handler);
+		respond(401, { code: 'UNAUTHENTICATED', message: 'Sign in to continue' });
+		await expect(api.listPersons()).rejects.toMatchObject({ status: 401 });
+		expect(handler).toHaveBeenCalledOnce();
+	});
+
+	it('does not fire for a wrong password, which is the form\'s to show', async () => {
+		const handler = vi.fn();
+		setUnauthorizedHandler(handler);
+		respond(401, { code: 'INVALID_CREDENTIALS', message: 'The username or password is wrong' });
+		await expect(api.signIn({ username: 'ada', password: 'x' })).rejects.toMatchObject({
+			code: 'INVALID_CREDENTIALS'
+		});
+		expect(handler).not.toHaveBeenCalled();
 	});
 });
