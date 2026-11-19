@@ -1,10 +1,10 @@
 <script lang="ts">
 	/**
 	 * Users (owner only, ADR-007): invite someone with a role, change a role,
-	 * disable or re-enable an account, and issue a password reset link. No
-	 * email is sent: an invite or reset link is shown once, to copy and pass
-	 * on. The server keeps the tree's last active owner from being demoted or
-	 * disabled, and says so here.
+	 * disable or re-enable an account, issue a password reset link, and revoke
+	 * a pending link. No email is sent: an invite or reset link is shown once,
+	 * to copy and pass on. The server keeps the tree's last active owner from
+	 * being demoted or disabled, and says so here.
 	 */
 	import PageHeader from '#lib/components/PageHeader.svelte';
 	import ActionError from '#lib/components/ActionError.svelte';
@@ -14,6 +14,7 @@
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
 	import RoleNotice from '#lib/components/auth/RoleNotice.svelte';
 	import AccountLinkBox from '#lib/components/auth/AccountLinkBox.svelte';
+	import PendingLinks from '#lib/components/auth/PendingLinks.svelte';
 	import { Badge } from '#lib/components/ui/badge/index.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { Label } from '#lib/components/ui/label/index.js';
@@ -28,6 +29,7 @@
 	];
 
 	let liveRegion: LiveRegion | undefined = $state();
+	let pendingLinks: PendingLinks | undefined = $state();
 
 	let users: User[] = $state([]);
 	let loading = $state(true);
@@ -79,6 +81,7 @@
 		try {
 			invite = { link: await api.createInvite(inviteRole), role: inviteRole };
 			liveRegion?.announce(`Invite link for a new ${inviteRole} created`);
+			pendingLinks?.reload();
 		} catch (e) {
 			inviteError = (e as ApiError).message || 'Could not create the invite. Try again.';
 		} finally {
@@ -133,6 +136,7 @@
 		try {
 			resets[user.id] = await api.createPasswordReset(user.id);
 			liveRegion?.announce(`Password reset link for ${user.display_name} created`);
+			pendingLinks?.reload();
 		} catch (e) {
 			rowErrors[user.id] = (e as ApiError).message || 'Could not create the reset link. Try again.';
 		} finally {
@@ -266,6 +270,8 @@
 				{/each}
 			</ul>
 		{/if}
+
+		<PendingLinks bind:this={pendingLinks} announce={(message) => liveRegion?.announce(message)} />
 	{/if}
 </div>
 
@@ -348,7 +354,7 @@
 
 	.user-list {
 		list-style: none;
-		margin: 0;
+		margin: 0 0 1.5rem;
 		padding: 0;
 		display: flex;
 		flex-direction: column;

@@ -506,6 +506,8 @@ export type UserUpdate = Schemas['UserUpdate'];
 export type PrivacySettings = Schemas['PrivacySettings'];
 export type LivingOverride = Schemas['LivingOverride'];
 export type AccountLink = Schemas['AccountLink'];
+export type PendingInvite = Schemas['PendingInvite'];
+export type PendingPasswordReset = Schemas['PendingPasswordReset'];
 export type AuthAuditEntry = Schemas['AuthAuditEntry'];
 export type AuthAuditList = Schemas['AuthAuditList'];
 
@@ -725,6 +727,22 @@ class ApiClient {
 
 	async createPasswordReset(id: string): Promise<AccountLink> {
 		return this.request<AccountLink>('POST', `/users/${encodeURIComponent(id)}/password-reset`);
+	}
+
+	async listInvites(): Promise<PendingInvite[]> {
+		return (await this.request<Schemas['PendingInviteList']>('GET', '/invites')).items;
+	}
+
+	async revokeInvite(id: string): Promise<void> {
+		return this.request<void>('DELETE', `/invites/${encodeURIComponent(id)}`);
+	}
+
+	async listPasswordResets(): Promise<PendingPasswordReset[]> {
+		return (await this.request<Schemas['PendingPasswordResetList']>('GET', '/password-resets')).items;
+	}
+
+	async revokePasswordReset(id: string): Promise<void> {
+		return this.request<void>('DELETE', `/password-resets/${encodeURIComponent(id)}`);
 	}
 
 	async listAuthAudit(params: { limit?: number; offset?: number } = {}): Promise<AuthAuditList> {
