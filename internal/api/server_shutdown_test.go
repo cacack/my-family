@@ -21,7 +21,7 @@ import (
 func startBlockingServer(t *testing.T, release <-chan struct{}) (*api.Server, string, <-chan struct{}) {
 	t.Helper()
 	events := memory.NewEventStore()
-	srv := api.NewServer(&config.Config{Port: 0, LogFormat: "text"},
+	srv := api.NewServer(&config.Config{Port: 0, LogFormat: "text", AuthMode: config.AuthModeOpen},
 		events, memory.NewReadModelStore(), memory.NewSnapshotStore(events), nil)
 	entered := make(chan struct{}, 1)
 	srv.Echo().GET("/slow", func(c echo.Context) error {

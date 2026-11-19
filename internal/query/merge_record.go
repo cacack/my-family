@@ -33,6 +33,9 @@ type MergeRecord struct {
 	// envelope metadata (#1407). Empty for a merge made before accounts
 	// existed or in open mode.
 	MergedBy string `json:"merged_by,omitempty"`
+	// MergedByName is the display name of the user MergedBy names, when that
+	// user still exists.
+	MergedByName string `json:"merged_by_name,omitempty"`
 
 	// Recorded is false for a claim written before #832, which recorded only
 	// its note and replay plan. Its decisions are then derived from that plan:
@@ -248,6 +251,9 @@ func (s *BranchService) buildMergeRecord(ctx context.Context, branch *domain.Bra
 
 	if err := s.nameMergeRecord(ctx, branch, record); err != nil {
 		return nil, err
+	}
+	if record.MergedBy != "" {
+		record.MergedByName = s.historyService.displayNames(ctx, []string{record.MergedBy})[record.MergedBy]
 	}
 	return record, nil
 }

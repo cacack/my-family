@@ -21,7 +21,7 @@ import (
 // server-resolved display label, and a browsable URL only when the type URI
 // maps to a known system.
 func TestGetPerson_ExternalLinks(t *testing.T) {
-	cfg := &config.Config{Port: 8080, LogFormat: "text"}
+	cfg := &config.Config{Port: 8080, LogFormat: "text", AuthMode: config.AuthModeOpen}
 	eventStore := memory.NewEventStore()
 	readStore := memory.NewReadModelStore()
 	snapshotStore := memory.NewSnapshotStore(eventStore)
@@ -106,7 +106,7 @@ func TestGetPerson_ExternalLinks(t *testing.T) {
 // details expose stored GEDCOM 7.0 external identifiers with server-resolved
 // labels and URLs, mirroring the person behavior above.
 func TestGetEntity_ExternalLinks(t *testing.T) {
-	cfg := &config.Config{Port: 8080, LogFormat: "text"}
+	cfg := &config.Config{Port: 8080, LogFormat: "text", AuthMode: config.AuthModeOpen}
 	eventStore := memory.NewEventStore()
 	readStore := memory.NewReadModelStore()
 	snapshotStore := memory.NewSnapshotStore(eventStore)

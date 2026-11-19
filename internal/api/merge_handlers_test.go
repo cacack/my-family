@@ -17,6 +17,7 @@ import (
 
 func setupMergeTestServer() (*api.Server, *memory.ReadModelStore, *memory.EventStore) {
 	cfg := &config.Config{
+		AuthMode:  config.AuthModeOpen,
 		Port:      8080,
 		LogFormat: "text",
 	}

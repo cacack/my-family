@@ -13,6 +13,7 @@ import (
 
 func setupMiddlewareTestServer() *api.Server {
 	cfg := &config.Config{
+		AuthMode:  config.AuthModeOpen,
 		Port:      8080,
 		LogFormat: "text",
 	}
@@ -85,6 +86,7 @@ func TestWithDetails(t *testing.T) {
 
 func TestServerWithJSONLogging(t *testing.T) {
 	cfg := &config.Config{
+		AuthMode:  config.AuthModeOpen,
 		Port:      8080,
 		LogFormat: "json",
 	}
@@ -103,18 +105,18 @@ func TestServerWithJSONLogging(t *testing.T) {
 	}
 }
 
-func TestCORSHeaders(t *testing.T) {
+// The API allows no other origin: a CORS preflight gets no
+// Access-Control-Allow-Origin, so no foreign page can read a response (#1408).
+func TestCORS_AllowsNoOtherOrigin(t *testing.T) {
 	server := setupMiddlewareTestServer()
 
-	// OPTIONS request to check CORS
 	req := httptest.NewRequest(http.MethodOptions, "/api/v1/persons", http.NoBody)
 	req.Header.Set("Origin", "http://example.com")
 	req.Header.Set("Access-Control-Request-Method", "POST")
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
-	// Check CORS headers are present
-	if rec.Header().Get("Access-Control-Allow-Origin") == "" {
-		t.Error("Expected Access-Control-Allow-Origin header")
+	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "" {
+		t.Errorf("Access-Control-Allow-Origin = %q, want none", got)
 	}
 }

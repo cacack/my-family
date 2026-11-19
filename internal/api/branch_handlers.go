@@ -498,6 +498,10 @@ func convertQueryMergeRecordToGenerated(record *query.MergeRecord) *MergeRecord 
 		mergedBy := record.MergedBy
 		out.MergedBy = &mergedBy
 	}
+	if record.MergedByName != "" {
+		mergedByName := record.MergedByName
+		out.MergedByName = &mergedByName
+	}
 	for _, d := range record.Decisions {
 		decision := MergeRecordDecision{
 			StreamId:   d.StreamID,

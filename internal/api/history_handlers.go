@@ -18,6 +18,7 @@ func convertQueryChangeEntryToGenerated(entry query.ChangeEntry) ChangeEntry {
 		EntityName: &entityName,
 		Action:     ChangeEntryAction(entry.Action),
 		UserId:     entry.UserID,
+		UserName:   entry.UserName,
 	}
 	if entry.ParentEntityType != "" && entry.ParentEntityID != nil {
 		parentType := ChangeEntryParentEntityType(entry.ParentEntityType)

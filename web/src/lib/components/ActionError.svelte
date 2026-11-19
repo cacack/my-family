@@ -33,7 +33,8 @@
 		background: #fef2f2;
 		border: 1px solid #fecaca;
 		border-radius: 8px;
-		color: #dc2626;
+		/* red-700: 5.9:1 on the red-50 background; red-600 fell short of 4.5:1. */
+		color: #b91c1c;
 		font-size: 0.875rem;
 		overflow-wrap: anywhere;
 	}

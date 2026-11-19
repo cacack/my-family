@@ -188,7 +188,7 @@ func (s *failingMainMediaStore) SaveMedia(ctx context.Context, branchID domain.B
 // survivor, as the person merge would have: the merge completes and the item
 // is served on main, attached to the survivor.
 func TestResumeBranchMerge_MediaOfMergedAwayOwner(t *testing.T) {
-	cfg := &config.Config{Port: 8080, LogFormat: "text"}
+	cfg := &config.Config{Port: 8080, LogFormat: "text", AuthMode: config.AuthModeOpen}
 	events := memory.NewEventStore()
 	reads := &failingMainMediaStore{ReadModelStore: memory.NewReadModelStore()}
 	server := api.NewServer(cfg, events, reads, memory.NewSnapshotStore(events), nil,

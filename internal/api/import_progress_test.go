@@ -17,7 +17,7 @@ import (
 
 func setupStreamTestServer(t *testing.T) *api.Server {
 	t.Helper()
-	cfg := &config.Config{Port: 8080, LogFormat: "text"}
+	cfg := &config.Config{Port: 8080, LogFormat: "text", AuthMode: config.AuthModeOpen}
 	eventStore := memory.NewEventStore()
 	snapshotStore := memory.NewSnapshotStore(eventStore)
 	readStore := memory.NewReadModelStore()

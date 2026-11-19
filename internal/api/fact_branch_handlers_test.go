@@ -24,7 +24,7 @@ import (
 // setupFactBranchTestServer is setupBranchTestServer plus a handle on the read
 // model, for seeding life events (which have no create endpoint of their own).
 func setupFactBranchTestServer() (*api.Server, *memory.ReadModelStore) {
-	cfg := &config.Config{Port: 8080, LogFormat: "text"}
+	cfg := &config.Config{Port: 8080, LogFormat: "text", AuthMode: config.AuthModeOpen}
 	eventStore := memory.NewEventStore()
 	readStore := memory.NewReadModelStore()
 	snapshotStore := memory.NewSnapshotStore(eventStore)

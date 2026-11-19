@@ -30,7 +30,7 @@ func setupBranchTestServer() *api.Server {
 // the event store, for the two merge refusals that can only be provoked by
 // writing to the log behind the API's back (see their tests).
 func setupBranchTestServerWithEventStore() (*api.Server, *memory.EventStore) {
-	cfg := &config.Config{Port: 8080, LogFormat: "text"}
+	cfg := &config.Config{Port: 8080, LogFormat: "text", AuthMode: config.AuthModeOpen}
 	eventStore := memory.NewEventStore()
 	readStore := memory.NewReadModelStore()
 	snapshotStore := memory.NewSnapshotStore(eventStore)
@@ -852,7 +852,7 @@ func (s *driftFailingEventStore) CountMainDrift(context.Context, []repository.Dr
 }
 
 func TestBranchDrift_StoreError(t *testing.T) {
-	cfg := &config.Config{Port: 8080, LogFormat: "text"}
+	cfg := &config.Config{Port: 8080, LogFormat: "text", AuthMode: config.AuthModeOpen}
 	base := memory.NewEventStore()
 	server := api.NewServer(cfg, &driftFailingEventStore{base}, memory.NewReadModelStore(),
 		memory.NewSnapshotStore(base), nil, api.WithBranchStore(memory.NewBranchStore()))
@@ -1211,7 +1211,7 @@ func (s *lostClaimEventStore) Append(ctx context.Context, streamID uuid.UUID, st
 }
 
 func TestMergeBranch_AlreadyClaimed(t *testing.T) {
-	cfg := &config.Config{Port: 8080, LogFormat: "text"}
+	cfg := &config.Config{Port: 8080, LogFormat: "text", AuthMode: config.AuthModeOpen}
 	base := memory.NewEventStore()
 	server := api.NewServer(cfg, &lostClaimEventStore{base}, memory.NewReadModelStore(),
 		memory.NewSnapshotStore(base), nil, api.WithBranchStore(memory.NewBranchStore()))
@@ -1422,7 +1422,7 @@ func (s *failingReplayEventStore) Append(ctx context.Context, streamID uuid.UUID
 // means nothing was written, and folding this one in would tell a client it is
 // safe to retry when the branch is already terminal and main is half-updated.
 func TestMergeBranch_PartiallyApplied(t *testing.T) {
-	cfg := &config.Config{Port: 8080, LogFormat: "text"}
+	cfg := &config.Config{Port: 8080, LogFormat: "text", AuthMode: config.AuthModeOpen}
 	base := memory.NewEventStore()
 	readStore := memory.NewReadModelStore()
 	branchStore := memory.NewBranchStore()
@@ -1483,7 +1483,7 @@ func (s *stalePlanEventStore) GetStreamVersion(ctx context.Context, streamID uui
 // backwards would tell a client with a half-merged mainline that a retry is
 // safe, which is why the handler's switch checks merge_partially_applied first.
 func TestMergeBranch_PlanStale(t *testing.T) {
-	cfg := &config.Config{Port: 8080, LogFormat: "text"}
+	cfg := &config.Config{Port: 8080, LogFormat: "text", AuthMode: config.AuthModeOpen}
 	base := memory.NewEventStore()
 	server := api.NewServer(cfg, &stalePlanEventStore{EventStore: base}, memory.NewReadModelStore(),
 		memory.NewSnapshotStore(base), nil, api.WithBranchStore(memory.NewBranchStore()))
@@ -1534,7 +1534,7 @@ func (s *switchableReplayEventStore) Append(ctx context.Context, streamID uuid.U
 // setupSwitchableReplayServer builds a server whose replay onto main can be
 // made to fail.
 func setupSwitchableReplayServer() (*api.Server, *switchableReplayEventStore) {
-	cfg := &config.Config{Port: 8080, LogFormat: "text"}
+	cfg := &config.Config{Port: 8080, LogFormat: "text", AuthMode: config.AuthModeOpen}
 	base := memory.NewEventStore()
 	store := &switchableReplayEventStore{EventStore: base}
 	server := api.NewServer(cfg, store, memory.NewReadModelStore(),

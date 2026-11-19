@@ -15,6 +15,7 @@ import (
 
 func setupSnapshotTestServer() *api.Server {
 	cfg := &config.Config{
+		AuthMode:  config.AuthModeOpen,
 		Port:      8080,
 		LogFormat: "text",
 	}
@@ -385,7 +386,7 @@ func TestCreateSnapshot_InvalidJSON(t *testing.T) {
 // create and delete endpoints must go through the command handler, so the
 // lifecycle lands on the event log rather than writing the registry directly.
 func TestSnapshotEndpointsAppendEvents(t *testing.T) {
-	cfg := &config.Config{Port: 8080, LogFormat: "text"}
+	cfg := &config.Config{Port: 8080, LogFormat: "text", AuthMode: config.AuthModeOpen}
 	eventStore := memory.NewEventStore()
 	snapshotStore := memory.NewSnapshotStore(eventStore)
 	server := api.NewServer(cfg, eventStore, memory.NewReadModelStore(), snapshotStore, nil)

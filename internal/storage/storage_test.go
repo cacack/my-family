@@ -334,7 +334,7 @@ func TestRedactPostgres(t *testing.T) {
 
 func TestBuild_ClosesDatabaseOnEachFailure(t *testing.T) {
 	boom := errors.New("boom")
-	stages := []string{"read model", "event", "snapshot", "branch", "settings"}
+	stages := []string{"read model", "event", "snapshot", "branch", "settings", "account"}
 	for i, stage := range stages {
 		t.Run(stage, func(t *testing.T) {
 			db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "x.db"))
@@ -353,6 +353,7 @@ func TestBuild_ClosesDatabaseOnEachFailure(t *testing.T) {
 				func(*sql.DB) (repository.SnapshotStore, error) { return nil, failAt(2) },
 				func(*sql.DB) (repository.BranchStore, error) { return nil, failAt(3) },
 				func(*sql.DB) (repository.SettingsStore, error) { return nil, failAt(4) },
+				func(*sql.DB) (repository.AccountStore, error) { return nil, failAt(5) },
 			)
 			if !errors.Is(err, boom) {
 				t.Fatalf("build: err = %v, want boom", err)
@@ -451,13 +452,13 @@ func assertSurvivesRestart(t *testing.T, cfg *config.Config) {
 
 func assertComplete(t *testing.T, s *Stores) {
 	t.Helper()
-	if s.Events == nil || s.ReadModel == nil || s.Snapshots == nil || s.Branches == nil || s.Settings == nil {
+	if s.Events == nil || s.ReadModel == nil || s.Snapshots == nil || s.Branches == nil || s.Settings == nil || s.Accounts == nil {
 		t.Fatalf("incomplete stores: %+v", s)
 	}
 }
 
 func newServer(s *Stores) *api.Server {
-	cfg := &config.Config{Port: 8080, LogFormat: "text"}
+	cfg := &config.Config{Port: 8080, LogFormat: "text", AuthMode: config.AuthModeOpen}
 	return api.NewServer(cfg, s.Events, s.ReadModel, s.Snapshots, nil, api.WithBranchStore(s.Branches), api.WithSettingsStore(s.Settings))
 }
 

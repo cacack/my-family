@@ -12,6 +12,11 @@
 	import BranchSwitcher from '#lib/components/BranchSwitcher.svelte';
 	import MainNav from '#lib/components/MainNav.svelte';
 	import TooltipProvider from '#lib/components/ui/tooltip/tooltip-provider.svelte';
+	import AccountMenu from '#lib/components/auth/AccountMenu.svelte';
+	import SetupForm from '#lib/components/auth/SetupForm.svelte';
+	import SignInForm from '#lib/components/auth/SignInForm.svelte';
+	import ErrorState from '#lib/components/ErrorState.svelte';
+	import { auth, loadAuth } from '#lib/stores/auth.svelte.js';
 	import { createShortcutHandler } from '#lib/keyboard/useShortcuts.svelte.js';
 	import { loadAppConfig, getAppConfig } from '#lib/stores/appConfig.svelte.js';
 	import { revalidateActiveBranch } from '#lib/stores/activeBranch.svelte.js';
@@ -22,7 +27,16 @@
 
 	const appConfig = getAppConfig();
 
+	// Who is using the app decides what it shows: the setup page, the sign-in
+	// page, or the app itself (ADR-007). Nothing below asks the API for tree
+	// data until the app is shown, so a signed-out visitor triggers no 401s.
 	$effect(() => {
+		loadAuth();
+	});
+	const appReady = $derived(auth.phase === 'open' || auth.phase === 'signed-in');
+
+	$effect(() => {
+		if (!appReady) return;
 		loadAppConfig();
 		loadHomePerson();
 	});
@@ -32,7 +46,7 @@
 	// A persisted branch that is gone or terminal must fall back to the mainline
 	// before the user makes a write believing otherwise.
 	$effect(() => {
-		revalidateActiveBranch();
+		if (appReady) revalidateActiveBranch();
 	});
 
 	// Chart pages fill the viewport under the header instead of growing with content
@@ -80,7 +94,17 @@
 	<link rel="icon" href={favicon} />
 </svelte:head>
 
-<svelte:window onkeydown={handleKeydown} />
+<svelte:window onkeydown={appReady ? handleKeydown : undefined} />
+
+{#if auth.phase === 'setup'}
+	<SetupForm />
+{:else if auth.phase === 'signed-out'}
+	<SignInForm />
+{:else if auth.phase === 'error'}
+	<main id="main-content" class="auth-error">
+		<ErrorState title="My Family" message="Could not reach the server. Check that it is running." onRetry={() => loadAuth()} />
+	</main>
+{:else if appReady}
 
 <!-- Skip link for keyboard navigation -->
 <a
@@ -140,6 +164,7 @@
 					<path d="M9 18l3-4 3 4" />
 				</svg>
 			</button>
+			<AccountMenu />
 		</div>
 	</header>
 	<main id="main-content" class="app-main" tabindex="-1">
@@ -152,6 +177,7 @@
 <!-- Modals/Overlays -->
 <KeyboardHelp bind:open={helpOpen} onClose={() => helpOpen = false} />
 <AccessibilityPanel bind:open={accessibilityPanelOpen} onClose={() => accessibilityPanelOpen = false} />
+{/if}
 
 <style>
 	:global(*, *::before, *::after) {
@@ -371,6 +397,12 @@
 	.app-main {
 		flex: 1;
 		overflow: auto;
+	}
+
+	.auth-error {
+		max-width: 40rem;
+		margin: 4rem auto;
+		padding: 0 1rem;
 	}
 
 	/* Focused only as the skip link's target; children keep their own outlines. */

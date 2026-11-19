@@ -50,7 +50,7 @@ var branchChildLinkBackends = []struct {
 	{"memory", func(t *testing.T) (*api.Server, *rivalChildLinkEventStore) {
 		base := memory.NewEventStore()
 		events := &rivalChildLinkEventStore{EventStore: base}
-		server := api.NewServer(&config.Config{Port: 8080, LogFormat: "text"}, events,
+		server := api.NewServer(&config.Config{Port: 8080, LogFormat: "text", AuthMode: config.AuthModeOpen}, events,
 			memory.NewReadModelStore(), memory.NewSnapshotStore(base), nil,
 			api.WithBranchStore(memory.NewBranchStore()))
 		return server, events
@@ -78,7 +78,7 @@ var branchChildLinkBackends = []struct {
 			t.Fatalf("branch store: %v", err)
 		}
 		events := &rivalChildLinkEventStore{EventStore: base}
-		server := api.NewServer(&config.Config{Port: 8080, LogFormat: "text"}, events,
+		server := api.NewServer(&config.Config{Port: 8080, LogFormat: "text", AuthMode: config.AuthModeOpen}, events,
 			readStore, snapshots, nil, api.WithBranchStore(branches))
 		return server, events
 	}},

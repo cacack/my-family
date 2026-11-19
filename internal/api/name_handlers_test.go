@@ -14,6 +14,7 @@ import (
 
 func setupNameTestServer() *api.Server {
 	cfg := &config.Config{
+		AuthMode:  config.AuthModeOpen,
 		Port:      8080,
 		LogFormat: "text",
 	}

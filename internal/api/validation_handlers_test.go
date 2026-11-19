@@ -19,6 +19,7 @@ import (
 
 func setupValidationTestServer() (*api.Server, *memory.ReadModelStore) {
 	cfg := &config.Config{
+		AuthMode:  config.AuthModeOpen,
 		Port:      8080,
 		LogFormat: "text",
 	}

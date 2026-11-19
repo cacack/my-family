@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/cacack/my-family/internal/api"
+	"github.com/cacack/my-family/internal/auth"
 	"github.com/cacack/my-family/internal/config"
 	"github.com/cacack/my-family/internal/demo"
 	"github.com/cacack/my-family/internal/storage"
@@ -41,6 +42,10 @@ func main() {
 		if err := runRebuild(); err != nil {
 			log.Fatal(err)
 		}
+	case "user":
+		if err := runUser(os.Args[2:]); err != nil {
+			log.Fatal(err)
+		}
 	case "version":
 		fmt.Printf("my-family %s (commit: %s, built: %s)\n", version, commit, date)
 	case "help", "-h", "--help":
@@ -61,6 +66,8 @@ Usage:
 Commands:
   serve     Start the HTTP server
   rebuild   Rebuild the read model from the event log (refused while the server runs)
+  user create [--username NAME] [--display-name NAME]
+            Create an owner account; asks for the password, or reads it from stdin
   version   Show version information
   help      Show this help message
 
@@ -71,7 +78,9 @@ Environment Variables:
   LOG_LEVEL      Log level: debug, info, warn, error (default: info)
   LOG_FORMAT     Log format: text, json (default: text)
   DEMO_MODE      Run in memory with sample data, no persistence; overrides
-                 DATABASE_URL and SQLITE_PATH (default: false)`)
+                 DATABASE_URL and SQLITE_PATH; implies AUTH_MODE=open (default: false)
+  AUTH_MODE      accounts: everyone signs in (default). open: every request is
+                 treated as the owner, with no sign-in; only for a trusted network`)
 }
 
 // runServer opens the configured store, serves until SIGINT/SIGTERM, then
@@ -80,6 +89,9 @@ Environment Variables:
 func runServer() error {
 	// Load configuration
 	cfg := config.Load()
+	if err := cfg.Validate(); err != nil {
+		return err
+	}
 
 	// Open the configured store: DEMO_MODE -> memory, DATABASE_URL -> PostgreSQL,
 	// otherwise SQLite at SQLITE_PATH. A backend that cannot be opened stops the
@@ -119,8 +131,13 @@ func runServer() error {
 		log.Printf("Frontend: Not available (API only)")
 	}
 
+	authService := auth.NewService(stores.Accounts)
+	if err := logAuthMode(cfg, authService, log.Default()); err != nil {
+		return err
+	}
+
 	// Build server options
-	serverOpts := []api.ServerOption{api.WithBranchStore(stores.Branches), api.WithSettingsStore(stores.Settings)}
+	serverOpts := []api.ServerOption{api.WithBranchStore(stores.Branches), api.WithSettingsStore(stores.Settings), api.WithAuth(authService)}
 	if cfg.DemoMode {
 		mem := stores.Memory
 		serverOpts = append(serverOpts, api.WithDemoReset(mem.Events, mem.ReadModel, mem.Snapshots, mem.Branches, mem.Settings))

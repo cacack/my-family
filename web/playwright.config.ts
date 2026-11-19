@@ -97,7 +97,9 @@ export default defineConfig({
 		// SQLITE_PATH as well as PORT: see SQLITE_PATH above. DATABASE_URL and
 		// DEMO_MODE are pinned empty so an exported value in the developer's shell
 		// cannot redirect the suite to a real database or the demo tree.
-		env: { PORT: String(E2E_PORT), SQLITE_PATH, DATABASE_URL: '', DEMO_MODE: '' },
+		// AUTH_MODE=open: the specs exercise the tree, not sign-in, which the Go
+		// API tests and the auth component tests cover (ADR-007).
+		env: { PORT: String(E2E_PORT), SQLITE_PATH, DATABASE_URL: '', DEMO_MODE: '', AUTH_MODE: 'open' },
 		// In CI a stray listener on this port is a bug, not a convenience.
 		reuseExistingServer: !process.env.CI,
 		// Echo logs one line per asset request; piping them buries the test

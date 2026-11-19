@@ -20,6 +20,7 @@ import (
 
 func setupBrowseTestServer() *api.Server {
 	cfg := &config.Config{
+		AuthMode:  config.AuthModeOpen,
 		Port:      8080,
 		LogFormat: "text",
 	}
@@ -378,6 +379,7 @@ func TestBrowsePlaces_EmptyDatabase(t *testing.T) {
 // so tests can directly insert life events for cemetery testing.
 func setupBrowseTestServerWithStore() (*api.Server, *memory.ReadModelStore) {
 	cfg := &config.Config{
+		AuthMode:  config.AuthModeOpen,
 		Port:      8080,
 		LogFormat: "text",
 	}
@@ -748,7 +750,7 @@ func TestBrowseMainOnlyOperations_IgnoreBranch(t *testing.T) {
 // TestGetMapLocations_NamesPersons checks each pin carries its persons' names, so
 // the map's detail panel can list them without a lookup per person (#909).
 func TestGetMapLocations_NamesPersons(t *testing.T) {
-	cfg := &config.Config{Port: 8080, LogFormat: "text"}
+	cfg := &config.Config{Port: 8080, LogFormat: "text", AuthMode: config.AuthModeOpen}
 	eventStore := memory.NewEventStore()
 	readStore := memory.NewReadModelStore()
 	server := api.NewServer(cfg, eventStore, readStore, memory.NewSnapshotStore(eventStore), nil)

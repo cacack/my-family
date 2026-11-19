@@ -20,6 +20,24 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for AuthStatusMode.
+const (
+	AuthStatusModeAccounts AuthStatusMode = "accounts"
+	AuthStatusModeOpen     AuthStatusMode = "open"
+)
+
+// Valid indicates whether the value is a known member of the AuthStatusMode enum.
+func (e AuthStatusMode) Valid() bool {
+	switch e {
+	case AuthStatusModeAccounts:
+		return true
+	case AuthStatusModeOpen:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for BranchMergeState.
 const (
 	BranchMergeStateComplete   BranchMergeState = "complete"
@@ -2102,6 +2120,17 @@ func (e ListSubmittersParamsOrder) Valid() bool {
 	}
 }
 
+// Account defines model for Account.
+type Account struct {
+	DisplayName string `json:"display_name"`
+
+	// Id The user ID history entries and merge records carry
+	Id openapi_types.UUID `json:"id"`
+
+	// Username The sign-in name, lowercase
+	Username string `json:"username"`
+}
+
 // AddChild defines model for AddChild.
 type AddChild struct {
 	PersonId openapi_types.UUID `json:"person_id"`
@@ -2357,6 +2386,24 @@ type AttributesExportResponse struct {
 	Attributes []AttributeExport `json:"attributes"`
 	Total      int               `json:"total"`
 }
+
+// AuthStatus defines model for AuthStatus.
+type AuthStatus struct {
+	Account *Account `json:"account,omitempty"`
+
+	// Mode `accounts`: every request needs a signed-in session. `open`: every
+	// request is treated as the owner (`AUTH_MODE=open` or `DEMO_MODE`),
+	// set only from the server's environment.
+	Mode AuthStatusMode `json:"mode"`
+
+	// SetupRequired True while the tree has no owner; only setup is served
+	SetupRequired bool `json:"setup_required"`
+}
+
+// AuthStatusMode `accounts`: every request needs a signed-in session. `open`: every
+// request is treated as the owner (`AUTH_MODE=open` or `DEMO_MODE`),
+// set only from the server's environment.
+type AuthStatusMode string
 
 // BatchDismissRequest Request to dismiss multiple duplicate pairs
 type BatchDismissRequest struct {
@@ -3127,6 +3174,10 @@ type ChangeEntry struct {
 	// absent for changes made before accounts existed or in open mode.
 	// A change a merge replayed keeps its original author.
 	UserId *string `json:"user_id,omitempty"`
+
+	// UserName Display name of the user `user_id` names; absent when there is no
+	// `user_id` or that user no longer exists.
+	UserName *string `json:"user_name,omitempty"`
 }
 
 // ChangeEntryAction `merged` is a person merge, reported on the surviving person, or a
@@ -4816,6 +4867,10 @@ type MergeRecord struct {
 	// absent for a merge made before accounts existed or in open mode.
 	MergedBy *string `json:"merged_by,omitempty"`
 
+	// MergedByName Display name of the user `merged_by` names; absent when there is
+	// no `merged_by` or that user no longer exists.
+	MergedByName *string `json:"merged_by_name,omitempty"`
+
 	// Note The merge note
 	Note *string `json:"note,omitempty"`
 
@@ -5824,6 +5879,24 @@ type SearchResults struct {
 	Total int `json:"total"`
 }
 
+// SetupRequest defines model for SetupRequest.
+type SetupRequest struct {
+	DisplayName string `json:"display_name"`
+	Password    string `json:"password"`
+
+	// Token The one-time setup token from the server log
+	Token string `json:"token"`
+
+	// Username Letters, digits and `. _ - @`; stored lowercase
+	Username string `json:"username"`
+}
+
+// SignInRequest defines model for SignInRequest.
+type SignInRequest struct {
+	Password string `json:"password"`
+	Username string `json:"username"`
+}
+
 // Snapshot defines model for Snapshot.
 type Snapshot struct {
 	// BranchId The research branch whose view this snapshot marks. Absent for a
@@ -6303,6 +6376,9 @@ type Conflict = Error
 
 // NotFound defines model for NotFound.
 type NotFound = Error
+
+// RateLimited defines model for RateLimited.
+type RateLimited = Error
 
 // SettingsUnavailable defines model for SettingsUnavailable.
 type SettingsUnavailable = Error
@@ -7939,6 +8015,12 @@ type CreateAssociationJSONRequestBody = AssociationCreate
 // UpdateAssociationJSONRequestBody defines body for UpdateAssociation for application/json ContentType.
 type UpdateAssociationJSONRequestBody = AssociationUpdate
 
+// SetupOwnerJSONRequestBody defines body for SetupOwner for application/json ContentType.
+type SetupOwnerJSONRequestBody = SetupRequest
+
+// SignInJSONRequestBody defines body for SignIn for application/json ContentType.
+type SignInJSONRequestBody = SignInRequest
+
 // CreateBranchJSONRequestBody defines body for CreateBranch for application/json ContentType.
 type CreateBranchJSONRequestBody = BranchCreate
 
@@ -8106,6 +8188,21 @@ type ServerInterface interface {
 	// UpdateAssociation Update an association
 	// (PUT /associations/{id})
 	UpdateAssociation(ctx echo.Context, id AssociationId, params UpdateAssociationParams) error
+	// GetCurrentAccount The signed-in account
+	// (GET /auth/me)
+	GetCurrentAccount(ctx echo.Context) error
+	// SetupOwner Create the first owner and sign them in
+	// (POST /auth/setup)
+	SetupOwner(ctx echo.Context) error
+	// SignIn Sign in with a username and password
+	// (POST /auth/sign-in)
+	SignIn(ctx echo.Context) error
+	// SignOut Sign out, revoking the session on the server
+	// (POST /auth/sign-out)
+	SignOut(ctx echo.Context) error
+	// GetAuthStatus How this server signs people in, and who is signed in
+	// (GET /auth/status)
+	GetAuthStatus(ctx echo.Context) error
 	// ListBranches List all branches
 	// (GET /branches)
 	ListBranches(ctx echo.Context, params ListBranchesParams) error
@@ -8787,6 +8884,51 @@ func (w *ServerInterfaceWrapper) UpdateAssociation(ctx echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.UpdateAssociation(ctx, id, params)
+	return err
+}
+
+// GetCurrentAccount converts echo context to params.
+func (w *ServerInterfaceWrapper) GetCurrentAccount(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.GetCurrentAccount(ctx)
+	return err
+}
+
+// SetupOwner converts echo context to params.
+func (w *ServerInterfaceWrapper) SetupOwner(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.SetupOwner(ctx)
+	return err
+}
+
+// SignIn converts echo context to params.
+func (w *ServerInterfaceWrapper) SignIn(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.SignIn(ctx)
+	return err
+}
+
+// SignOut converts echo context to params.
+func (w *ServerInterfaceWrapper) SignOut(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.SignOut(ctx)
+	return err
+}
+
+// GetAuthStatus converts echo context to params.
+func (w *ServerInterfaceWrapper) GetAuthStatus(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.GetAuthStatus(ctx)
 	return err
 }
 
@@ -13009,6 +13151,11 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 	router.GET(options.BaseURL+"/proof-summaries/:id", wrapper.GetProofSummary, options.OperationMiddlewares["getProofSummary"]...)
 	router.PUT(options.BaseURL+"/proof-summaries/:id", wrapper.UpdateProofSummary, options.OperationMiddlewares["updateProofSummary"]...)
 	router.GET(options.BaseURL+"/proof-summaries/by-fact", wrapper.GetProofSummaryByFact, options.OperationMiddlewares["getProofSummaryByFact"]...)
+	router.GET(options.BaseURL+"/auth/status", wrapper.GetAuthStatus, options.OperationMiddlewares["getAuthStatus"]...)
+	router.POST(options.BaseURL+"/auth/setup", wrapper.SetupOwner, options.OperationMiddlewares["setupOwner"]...)
+	router.POST(options.BaseURL+"/auth/sign-in", wrapper.SignIn, options.OperationMiddlewares["signIn"]...)
+	router.POST(options.BaseURL+"/auth/sign-out", wrapper.SignOut, options.OperationMiddlewares["signOut"]...)
+	router.GET(options.BaseURL+"/auth/me", wrapper.GetCurrentAccount, options.OperationMiddlewares["getCurrentAccount"]...)
 
 }
 
@@ -13019,6 +13166,8 @@ type BranchesUnavailableJSONResponse Error
 type ConflictJSONResponse Error
 
 type NotFoundJSONResponse Error
+
+type RateLimitedJSONResponse Error
 
 type SettingsUnavailableJSONResponse Error
 
@@ -13337,6 +13486,247 @@ func (response UpdateAssociation409JSONResponse) VisitUpdateAssociationResponse(
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCurrentAccountRequestObject struct {
+}
+
+type GetCurrentAccountResponseObject interface {
+	VisitGetCurrentAccountResponse(w http.ResponseWriter) error
+}
+
+type GetCurrentAccount200JSONResponse Account
+
+func (response GetCurrentAccount200JSONResponse) VisitGetCurrentAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCurrentAccount404JSONResponse Error
+
+func (response GetCurrentAccount404JSONResponse) VisitGetCurrentAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetupOwnerRequestObject struct {
+	Body *SetupOwnerJSONRequestBody
+}
+
+type SetupOwnerResponseObject interface {
+	VisitSetupOwnerResponse(w http.ResponseWriter) error
+}
+
+type SetupOwner201ResponseHeaders struct {
+	SetCookie *string
+}
+
+type SetupOwner201JSONResponse struct {
+	Body    Account
+	Headers SetupOwner201ResponseHeaders
+}
+
+func (response SetupOwner201JSONResponse) VisitSetupOwnerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.SetCookie != nil {
+		w.Header().Set("Set-Cookie", fmt.Sprint(*response.Headers.SetCookie))
+	}
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetupOwner400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response SetupOwner400JSONResponse) VisitSetupOwnerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetupOwner403JSONResponse Error
+
+func (response SetupOwner403JSONResponse) VisitSetupOwnerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetupOwner409JSONResponse Error
+
+func (response SetupOwner409JSONResponse) VisitSetupOwnerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetupOwner429JSONResponse struct{ RateLimitedJSONResponse }
+
+func (response SetupOwner429JSONResponse) VisitSetupOwnerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SignInRequestObject struct {
+	Body *SignInJSONRequestBody
+}
+
+type SignInResponseObject interface {
+	VisitSignInResponse(w http.ResponseWriter) error
+}
+
+type SignIn200ResponseHeaders struct {
+	SetCookie *string
+}
+
+type SignIn200JSONResponse struct {
+	Body    Account
+	Headers SignIn200ResponseHeaders
+}
+
+func (response SignIn200JSONResponse) VisitSignInResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.SetCookie != nil {
+		w.Header().Set("Set-Cookie", fmt.Sprint(*response.Headers.SetCookie))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SignIn401JSONResponse Error
+
+func (response SignIn401JSONResponse) VisitSignInResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SignIn409JSONResponse Error
+
+func (response SignIn409JSONResponse) VisitSignInResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SignIn429JSONResponse struct{ RateLimitedJSONResponse }
+
+func (response SignIn429JSONResponse) VisitSignInResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SignOutRequestObject struct {
+}
+
+type SignOutResponseObject interface {
+	VisitSignOutResponse(w http.ResponseWriter) error
+}
+
+type SignOut204ResponseHeaders struct {
+	SetCookie *string
+}
+
+type SignOut204Response struct {
+	Headers SignOut204ResponseHeaders
+}
+
+func (response SignOut204Response) VisitSignOutResponse(w http.ResponseWriter) error {
+	if response.Headers.SetCookie != nil {
+		w.Header().Set("Set-Cookie", fmt.Sprint(*response.Headers.SetCookie))
+	}
+	w.WriteHeader(204)
+	return nil
+}
+
+type GetAuthStatusRequestObject struct {
+}
+
+type GetAuthStatusResponseObject interface {
+	VisitGetAuthStatusResponse(w http.ResponseWriter) error
+}
+
+type GetAuthStatus200JSONResponse AuthStatus
+
+func (response GetAuthStatus200JSONResponse) VisitGetAuthStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -20708,6 +21098,21 @@ type StrictServerInterface interface {
 	// UpdateAssociation Update an association
 	// (PUT /associations/{id})
 	UpdateAssociation(ctx context.Context, request UpdateAssociationRequestObject) (UpdateAssociationResponseObject, error)
+	// GetCurrentAccount The signed-in account
+	// (GET /auth/me)
+	GetCurrentAccount(ctx context.Context, request GetCurrentAccountRequestObject) (GetCurrentAccountResponseObject, error)
+	// SetupOwner Create the first owner and sign them in
+	// (POST /auth/setup)
+	SetupOwner(ctx context.Context, request SetupOwnerRequestObject) (SetupOwnerResponseObject, error)
+	// SignIn Sign in with a username and password
+	// (POST /auth/sign-in)
+	SignIn(ctx context.Context, request SignInRequestObject) (SignInResponseObject, error)
+	// SignOut Sign out, revoking the session on the server
+	// (POST /auth/sign-out)
+	SignOut(ctx context.Context, request SignOutRequestObject) (SignOutResponseObject, error)
+	// GetAuthStatus How this server signs people in, and who is signed in
+	// (GET /auth/status)
+	GetAuthStatus(ctx context.Context, request GetAuthStatusRequestObject) (GetAuthStatusResponseObject, error)
 	// ListBranches List all branches
 	// (GET /branches)
 	ListBranches(ctx context.Context, request ListBranchesRequestObject) (ListBranchesResponseObject, error)
@@ -21415,6 +21820,167 @@ func (sh *strictHandler) UpdateAssociation(ctx echo.Context, id AssociationId, p
 		return err
 	} else if validResponse, ok := response.(UpdateAssociationResponseObject); ok {
 		return validResponse.VisitUpdateAssociationResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// GetCurrentAccount operation middleware
+func (sh *strictHandler) GetCurrentAccount(ctx echo.Context) error {
+	var request GetCurrentAccountRequestObject
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.GetCurrentAccount(ctx.Request().Context(), request.(GetCurrentAccountRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetCurrentAccount")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(GetCurrentAccountResponseObject); ok {
+		return validResponse.VisitGetCurrentAccountResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// SetupOwner operation middleware
+func (sh *strictHandler) SetupOwner(ctx echo.Context) error {
+	var request SetupOwnerRequestObject
+
+	var body SetupOwnerJSONRequestBody
+	var err error
+	if binder, ok := ctx.Echo().Binder.(*echo.DefaultBinder); ok {
+		// A request validator built on kin-openapi's openapi3filter with
+		// KeepValidatedValue leaves the value it validated on the body. Bind
+		// that value, matching member names exactly, so the handler receives
+		// what was validated instead of a second, case-insensitive decode.
+		// Otherwise bind only the request body, so that path and query
+		// parameters are not also bound into the body struct.
+		if vb, ok := ctx.Request().Body.(interface{ ValidatedValue() any }); !ok || runtime.BindJSONValue(vb.ValidatedValue(), &body) != nil {
+			err = binder.BindBody(ctx, &body)
+		}
+	} else {
+		// A custom binder is installed on the Echo instance; defer to it
+		// entirely, since echo.Binder does not expose body-only binding and
+		// the binder may do more than decode (for example call ctx.Validate).
+		err = ctx.Bind(&body)
+	}
+	if err != nil {
+		return err
+	}
+	request.Body = &body
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.SetupOwner(ctx.Request().Context(), request.(SetupOwnerRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetupOwner")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(SetupOwnerResponseObject); ok {
+		return validResponse.VisitSetupOwnerResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// SignIn operation middleware
+func (sh *strictHandler) SignIn(ctx echo.Context) error {
+	var request SignInRequestObject
+
+	var body SignInJSONRequestBody
+	var err error
+	if binder, ok := ctx.Echo().Binder.(*echo.DefaultBinder); ok {
+		// A request validator built on kin-openapi's openapi3filter with
+		// KeepValidatedValue leaves the value it validated on the body. Bind
+		// that value, matching member names exactly, so the handler receives
+		// what was validated instead of a second, case-insensitive decode.
+		// Otherwise bind only the request body, so that path and query
+		// parameters are not also bound into the body struct.
+		if vb, ok := ctx.Request().Body.(interface{ ValidatedValue() any }); !ok || runtime.BindJSONValue(vb.ValidatedValue(), &body) != nil {
+			err = binder.BindBody(ctx, &body)
+		}
+	} else {
+		// A custom binder is installed on the Echo instance; defer to it
+		// entirely, since echo.Binder does not expose body-only binding and
+		// the binder may do more than decode (for example call ctx.Validate).
+		err = ctx.Bind(&body)
+	}
+	if err != nil {
+		return err
+	}
+	request.Body = &body
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.SignIn(ctx.Request().Context(), request.(SignInRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SignIn")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(SignInResponseObject); ok {
+		return validResponse.VisitSignInResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// SignOut operation middleware
+func (sh *strictHandler) SignOut(ctx echo.Context) error {
+	var request SignOutRequestObject
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.SignOut(ctx.Request().Context(), request.(SignOutRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SignOut")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(SignOutResponseObject); ok {
+		return validResponse.VisitSignOutResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// GetAuthStatus operation middleware
+func (sh *strictHandler) GetAuthStatus(ctx echo.Context) error {
+	var request GetAuthStatusRequestObject
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAuthStatus(ctx.Request().Context(), request.(GetAuthStatusRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAuthStatus")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(GetAuthStatusResponseObject); ok {
+		return validResponse.VisitGetAuthStatusResponse(ctx.Response())
 	} else if response != nil {
 		return fmt.Errorf("unexpected response type: %T", response)
 	}

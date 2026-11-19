@@ -28,6 +28,9 @@ type HistoryService struct {
 	// branchStore names the branches in lifecycle entries (#832). Optional:
 	// without it a branch is named only by its BranchCreated event.
 	branchStore repository.BranchStore
+	// userNames names who made each change (ADR-007). Optional: without it
+	// an entry carries only the user ID.
+	userNames UserNames
 }
 
 // NewHistoryService creates a new history query service.
@@ -54,6 +57,9 @@ type ChangeEntry struct {
 	Action     string                 `json:"action"`      // "created", "updated", "deleted", "merged"
 	Changes    map[string]FieldChange `json:"changes,omitempty"`
 	UserID     *string                `json:"user_id,omitempty"`
+	// UserName is the display name of the user UserID names, when that user
+	// still exists and the service can look it up (UseUserNames).
+	UserName *string `json:"user_name,omitempty"`
 	// ParentEntityType and ParentEntityID name the entity whose page presents
 	// a sub-record that has no page of its own: a life event's or LDS
 	// ordinance's person or family, an attribute's or association's person, a
@@ -369,6 +375,7 @@ func (s *HistoryService) transformStoredEventsOn(ctx context.Context, branchID d
 		}
 		sort.SliceStable(entries, func(i, j int) bool { return order[entries[i].ID] < order[entries[j].ID] })
 	}
+	s.nameUsers(ctx, entries)
 	return entries, nil
 }
 

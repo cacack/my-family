@@ -102,7 +102,52 @@ Environment variables:
 | `PORT` | `8080` | HTTP server port |
 | `LOG_LEVEL` | `info` | Logging level (debug, info, warn, error) |
 | `LOG_FORMAT` | `text` | Log format (text, json) |
-| `DEMO_MODE` | `false` | Run in memory with a sample family tree and a reset button. Nothing is persisted; overrides `DATABASE_URL` and `SQLITE_PATH` |
+| `DEMO_MODE` | `false` | Run in memory with a sample family tree and a reset button. Nothing is persisted; overrides `DATABASE_URL` and `SQLITE_PATH`, and implies `AUTH_MODE=open` |
+| `AUTH_MODE` | `accounts` | `accounts`: everyone signs in. `open`: every request is treated as the owner, with no sign-in; only for a trusted network. See [Accounts and sign-in](#accounts-and-sign-in) |
+
+### Accounts and sign-in
+
+Every request needs a signed-in account. The first time the server starts on a database with no
+owner account, it serves only a setup page and writes a one-time setup token to its log:
+
+```
+Setup required: there is no owner account, so the server answers only its setup page. Open the web UI and enter the setup token 3f9c..., or run `myfamily user create`. ...
+```
+
+Open the web UI, enter the token, and choose the owner's username, display name and password. Or
+create the owner from the command line, with the same `DATABASE_URL` / `SQLITE_PATH` as `serve`
+(it works while the server runs):
+
+```bash
+myfamily user create --username ada --display-name "Ada Lovelace"   # asks for the password
+echo "$PASSWORD" | myfamily user create --username ada                # or reads it from stdin
+```
+
+Sessions last 7 days without use and 30 days at most; signing out ends the session on the server.
+The session cookie is `HttpOnly` and `SameSite=Lax`, and `Secure` when the request arrived over
+TLS (directly, or through a proxy that sets `X-Forwarded-Proto: https`). Repeated failed sign-ins
+are refused for 15 minutes: 5 per username, from anyone, and 20 per client address. So anyone who
+can reach the server can keep a known username locked out, and behind a reverse proxy every client
+shares the proxy's address and so the per-client limit. The API accepts no cross-origin browser
+requests: a write whose `Origin` is not the server's host is refused, so a proxy must pass the
+original `Host` through or set `X-Forwarded-Host`.
+
+`AUTH_MODE=open` skips sign-in and treats every request as the owner, for a trusted home network,
+demo mode and end-to-end tests. It can only be set in the environment, never from the UI, the
+server logs a warning when it starts in it, and changes made in it record no user. `DEMO_MODE`
+always runs open.
+
+Accounts are kept in their own tables (`users`, `tree_memberships`, `sessions`), not in the event
+log, so `myfamily rebuild` leaves them alone; back them up with the rest of the database. See
+[ADR-007](./docs/adr/007-access-model.md).
+
+#### Upgrading from a version without accounts
+
+An upgraded server starts in setup mode: until an owner exists, the API answers every request
+with `503 SETUP_REQUIRED`. Either create the owner (setup page or `myfamily user create`), or set
+`AUTH_MODE=open` to keep the old behaviour on a trusted network. Scripts that call the API need a
+signed-in session cookie, or open mode, until API tokens exist. Changes made before accounts are
+shown in history as the owner's.
 
 ### Storage
 

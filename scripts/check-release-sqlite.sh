@@ -39,7 +39,8 @@ start_server() {
 	fi
 	# env -u: DEMO_MODE or DATABASE_URL in the caller's environment would select
 	# another backend, and the check would pass without touching SQLite.
-	env -u DEMO_MODE -u DATABASE_URL SQLITE_PATH="$db" PORT="$port" \
+	# AUTH_MODE=open: this checks storage, not sign-in.
+	env -u DEMO_MODE -u DATABASE_URL AUTH_MODE=open SQLITE_PATH="$db" PORT="$port" \
 		"$work/myfamily" serve >"$work/serve.log" 2>&1 &
 	server_pid=$!
 	for _ in $(seq 1 50); do
