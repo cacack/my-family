@@ -131,6 +131,23 @@ export function setUnauthorizedHandler(handler: (() => void) | null): void {
 	onUnauthorized = handler;
 }
 
+/**
+ * The `ApiError` a failed response carries, read from its JSON body. Every
+ * request path, the JSON helper and the raw `fetch` calls alike, builds its
+ * error here, so a 401 `UNAUTHENTICATED` always reaches `onUnauthorized`.
+ */
+async function responseError(response: Response): Promise<ApiError> {
+	const error: ApiError = await response.json().catch(() => ({
+		code: 'UNKNOWN_ERROR',
+		message: response.statusText
+	}));
+	error.status = response.status;
+	if (response.status === 401 && error.code === 'UNAUTHENTICATED') {
+		onUnauthorized?.();
+	}
+	return error;
+}
+
 // ---------------------------------------------------------------------------
 // Research branch scoping
 // ---------------------------------------------------------------------------
@@ -609,15 +626,7 @@ class ApiClient {
 		const response = await fetch(url, options);
 
 		if (!response.ok) {
-			const error: ApiError = await response.json().catch(() => ({
-				code: 'UNKNOWN_ERROR',
-				message: response.statusText
-			}));
-			error.status = response.status;
-			if (response.status === 401 && error.code === 'UNAUTHENTICATED') {
-				onUnauthorized?.();
-			}
-			throw error;
+			throw await responseError(response);
 		}
 
 		notifyBranchWrite(scope, method, path);
@@ -846,12 +855,7 @@ class ApiClient {
 		);
 
 		if (!response.ok) {
-			const error: ApiError = await response.json().catch(() => ({
-				code: 'UNKNOWN_ERROR',
-				message: response.statusText
-			}));
-			error.status = response.status;
-			throw error;
+			throw await responseError(response);
 		}
 
 		return response.text();
@@ -910,12 +914,7 @@ class ApiClient {
 		});
 
 		if (!response.ok) {
-			const error: ApiError = await response.json().catch(() => ({
-				code: 'UNKNOWN_ERROR',
-				message: response.statusText
-			}));
-			error.status = response.status;
-			throw error;
+			throw await responseError(response);
 		}
 
 		return response.json();
@@ -940,12 +939,7 @@ class ApiClient {
 		});
 
 		if (!response.ok || !response.body) {
-			const error: ApiError = await response.json().catch(() => ({
-				code: 'UNKNOWN_ERROR',
-				message: response.statusText
-			}));
-			error.status = response.status;
-			throw error;
+			throw await responseError(response);
 		}
 
 		const reader = response.body.getReader();
@@ -1003,12 +997,7 @@ class ApiClient {
 		const response = await fetch(`${API_BASE}/gedcom/export${query}`);
 
 		if (!response.ok) {
-			const error: ApiError = await response.json().catch(() => ({
-				code: 'UNKNOWN_ERROR',
-				message: response.statusText
-			}));
-			error.status = response.status;
-			throw error;
+			throw await responseError(response);
 		}
 
 		return response.text();
@@ -1025,12 +1014,7 @@ class ApiClient {
 		const response = await fetch(`${API_BASE}/gedcom/export/preview${query}`, { signal });
 
 		if (!response.ok) {
-			const error: ApiError = await response.json().catch(() => ({
-				code: 'UNKNOWN_ERROR',
-				message: response.statusText
-			}));
-			error.status = response.status;
-			throw error;
+			throw await responseError(response);
 		}
 
 		return response.json();
@@ -1040,12 +1024,7 @@ class ApiClient {
 		const response = await fetch(`${API_BASE}/export/tree`);
 
 		if (!response.ok) {
-			const error: ApiError = await response.json().catch(() => ({
-				code: 'UNKNOWN_ERROR',
-				message: response.statusText
-			}));
-			error.status = response.status;
-			throw error;
+			throw await responseError(response);
 		}
 
 		return response.text();
@@ -1058,12 +1037,7 @@ class ApiClient {
 		const response = await fetch(`${API_BASE}/export/persons?${params}`);
 
 		if (!response.ok) {
-			const error: ApiError = await response.json().catch(() => ({
-				code: 'UNKNOWN_ERROR',
-				message: response.statusText
-			}));
-			error.status = response.status;
-			throw error;
+			throw await responseError(response);
 		}
 
 		return response.text();
@@ -1076,12 +1050,7 @@ class ApiClient {
 		const response = await fetch(`${API_BASE}/export/families?${params}`);
 
 		if (!response.ok) {
-			const error: ApiError = await response.json().catch(() => ({
-				code: 'UNKNOWN_ERROR',
-				message: response.statusText
-			}));
-			error.status = response.status;
-			throw error;
+			throw await responseError(response);
 		}
 
 		return response.text();
@@ -1094,12 +1063,7 @@ class ApiClient {
 		const response = await fetch(`${API_BASE}/export/sources?${params}`);
 
 		if (!response.ok) {
-			const error: ApiError = await response.json().catch(() => ({
-				code: 'UNKNOWN_ERROR',
-				message: response.statusText
-			}));
-			error.status = response.status;
-			throw error;
+			throw await responseError(response);
 		}
 
 		return response.text();
@@ -1112,12 +1076,7 @@ class ApiClient {
 		const response = await fetch(`${API_BASE}/export/citations?${params}`);
 
 		if (!response.ok) {
-			const error: ApiError = await response.json().catch(() => ({
-				code: 'UNKNOWN_ERROR',
-				message: response.statusText
-			}));
-			error.status = response.status;
-			throw error;
+			throw await responseError(response);
 		}
 
 		return response.text();
@@ -1130,12 +1089,7 @@ class ApiClient {
 		const response = await fetch(`${API_BASE}/export/events?${params}`);
 
 		if (!response.ok) {
-			const error: ApiError = await response.json().catch(() => ({
-				code: 'UNKNOWN_ERROR',
-				message: response.statusText
-			}));
-			error.status = response.status;
-			throw error;
+			throw await responseError(response);
 		}
 
 		return response.text();
@@ -1148,12 +1102,7 @@ class ApiClient {
 		const response = await fetch(`${API_BASE}/export/attributes?${params}`);
 
 		if (!response.ok) {
-			const error: ApiError = await response.json().catch(() => ({
-				code: 'UNKNOWN_ERROR',
-				message: response.statusText
-			}));
-			error.status = response.status;
-			throw error;
+			throw await responseError(response);
 		}
 
 		return response.text();
@@ -1338,12 +1287,7 @@ class ApiClient {
 		});
 
 		if (!response.ok) {
-			const error: ApiError = await response.json().catch(() => ({
-				code: 'UNKNOWN_ERROR',
-				message: response.statusText
-			}));
-			error.status = response.status;
-			throw error;
+			throw await responseError(response);
 		}
 
 		notifyBranchWrite(scope, 'POST', mediaPath);
