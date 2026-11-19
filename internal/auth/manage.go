@@ -40,6 +40,10 @@ type Actor struct {
 	ClientIP string
 }
 
+// CommandLine is the actor of `myfamily user` commands: no signed-in user,
+// and "cli" in place of a client address.
+var CommandLine = Actor{ClientIP: "cli"}
+
 // Link is a single-use invite or password reset token and when it expires.
 // The token is shown once, to whoever issued it; only its hash is stored.
 type Link struct {
