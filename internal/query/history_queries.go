@@ -430,19 +430,22 @@ func (d *historyDescription) entryChanges(evt *repository.StoredEvent) map[strin
 	return d.changes[evt.ID]
 }
 
+// decodeEventMetadata decodes a stored event's envelope metadata. Metadata
+// that does not decode is logged and read as absent: it annotates what a
+// reader reports, it never decides whether the event is shown.
+func decodeEventMetadata(evt *repository.StoredEvent) domain.EventMetadata {
+	metadata, err := evt.DecodeMetadata()
+	if err != nil {
+		slog.Warn("history: event metadata does not decode", "event_id", evt.ID, "error", err)
+	}
+	return metadata
+}
+
 // applyEventMetadata copies what an entry reports from its event's envelope
 // metadata: the user, and for a merge's replayed event the merge it came with
-// (#832). Metadata that does not decode is logged and ignored, as absent
-// metadata is: it annotates an entry, it never decides whether it is shown.
+// (#832).
 func applyEventMetadata(entry *ChangeEntry, evt *repository.StoredEvent) {
-	if len(evt.Metadata) == 0 {
-		return
-	}
-	var metadata domain.EventMetadata
-	if err := json.Unmarshal(evt.Metadata, &metadata); err != nil {
-		slog.Warn("history: event metadata does not decode", "event_id", evt.ID, "error", err)
-		return
-	}
+	metadata := decodeEventMetadata(evt)
 	if metadata.UserID != "" {
 		entry.UserID = &metadata.UserID
 	}

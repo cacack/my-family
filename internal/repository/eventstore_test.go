@@ -2,6 +2,7 @@ package repository_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -12,6 +13,32 @@ import (
 	"github.com/cacack/my-family/internal/repository"
 	"github.com/cacack/my-family/internal/repository/memory"
 )
+
+func TestStoredEvent_DecodeMetadata(t *testing.T) {
+	tests := []struct {
+		name     string
+		metadata json.RawMessage
+		wantUser string
+		wantCorr string
+		wantErr  bool
+	}{
+		{name: "none"},
+		{name: "user and correlation", metadata: json.RawMessage(`{"user_id":"u1","correlation_id":"c1"}`), wantUser: "u1", wantCorr: "c1"},
+		{name: "undecodable", metadata: json.RawMessage(`{not json`), wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			evt := repository.StoredEvent{EventType: "PersonCreated", Metadata: tt.metadata}
+			got, err := evt.DecodeMetadata()
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("DecodeMetadata() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if got.UserID != tt.wantUser || got.CorrelationID != tt.wantCorr {
+				t.Errorf("DecodeMetadata() = %+v, want user %q correlation %q", got, tt.wantUser, tt.wantCorr)
+			}
+		})
+	}
+}
 
 // testDuplicatePair is a fixed pair for the duplicate dismissal decode cases.
 var testDuplicatePair, _ = domain.NewDuplicatePair(

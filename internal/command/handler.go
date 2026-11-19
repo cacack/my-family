@@ -161,6 +161,9 @@ type RollbackResult struct {
 // branchID is domain.MainBranchID, which is exactly repository.MainScope, so a
 // handler built by any constructor behaves as it did before branches existed. WithBranch returns a scoped copy.
 type Handler struct {
+	// eventStore is always an attributingEventStore (#1407): every constructor
+	// wraps the store it is given, so every append a command makes records the
+	// context's actor (invariant ES-009).
 	eventStore  repository.EventStore
 	readStore   repository.ReadModelStore
 	branchStore repository.BranchStore
@@ -211,6 +214,7 @@ func NewHandlerWithBranchStore(eventStore repository.EventStore, readStore repos
 // position. Either argument may be nil; the affected commands then return a typed
 // error rather than panicking.
 func NewHandlerWithBranches(eventStore repository.EventStore, readStore repository.ReadModelStore, branchStore repository.BranchStore, snapshots repository.SnapshotStore) *Handler {
+	eventStore = withAttribution(eventStore)
 	return &Handler{
 		eventStore:      eventStore,
 		readStore:       readStore,
@@ -226,6 +230,7 @@ func NewHandlerWithBranches(eventStore repository.EventStore, readStore reposito
 // NewHandlerWithRollbackService creates a new command handler with a custom rollback service.
 // This is primarily useful for testing.
 func NewHandlerWithRollbackService(eventStore repository.EventStore, readStore repository.ReadModelStore, rollbackService *query.RollbackService) *Handler {
+	eventStore = withAttribution(eventStore)
 	return &Handler{
 		eventStore:      eventStore,
 		readStore:       readStore,

@@ -27,6 +27,7 @@ Rules that must hold true in the my-family codebase. Violations break architectu
 | **ES-006** | Event factories use `NewBaseEvent()` for consistent timestamps | Code review; factory tests |
 | **ES-007** | `DecodeEvent()` handles all event types | Integration test with all event types |
 | **ES-008** | Every event type is classified in the history catalog — mapped to a `ChangeEntry` type and action, or explicitly excluded — and the global history filters exclusions in the store, before pagination ([HISTORY-EVENT-TYPES.md](./HISTORY-EVENT-TYPES.md)) | `TestHistoryCatalog_CoversEveryEventType`, `TestGetGlobalHistory_PaginatesOverShownEntries` (`internal/query`, all backends) |
+| **ES-009** | Every command append goes through the handler's attributing event store, which records the context's actor (`domain.ContextWithActor`) as `EventMetadata.UserID`; an explicitly stamped event's metadata is never overwritten, so a merge's replayed change keeps its original author (#1407). Until sign-in (#1408) puts an actor on the request, nothing sets one and events are written authorless | `TestHandlerConstructors_AttributeAppends`, `TestAttribution_EveryCommandRecordsTheActor`, `TestAttribution_MergeKeepsTheOriginalAuthor`, `TestAttributingEventStore_NeverOverwritesAStamp` (`internal/command`) |
 
 ### Database Invariants (DB) - Source: [ADR-002](./adr/002-dual-database-strategy.md)
 

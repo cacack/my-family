@@ -346,6 +346,10 @@ func (s StampedEvent) OccurredAt() time.Time  { return s.Event.OccurredAt() }
 
 // Stamp wraps event with the metadata the store keeps beside it and the time
 // the store records it at. A zero recordedAt records it at its OccurredAt.
+//
+// A stamped event's metadata is final: the command handler's attribution
+// (#1407) does not add the acting user to it, so a caller that stamps an event
+// a user is making must set UserID itself (from ActorFromContext).
 func Stamp(event Event, metadata EventMetadata, recordedAt time.Time) Event {
 	return StampedEvent{Event: event, Metadata: metadata, RecordedAt: recordedAt}
 }

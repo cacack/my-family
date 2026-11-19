@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"slices"
 	"sort"
 	"strings"
@@ -715,7 +716,7 @@ func (h *Handler) replayStream(ctx context.Context, group streamGroup, plannedVe
 		}
 		events = append(events, decoded)
 		stamped = append(stamped, domain.Stamp(decoded,
-			domain.EventMetadata{MergedFromBranch: provenance}, provenance.MergedAt))
+			replayMetadata(&group.events[i], provenance), provenance.MergedAt))
 	}
 
 	currentVersion, err := h.eventStore.GetStreamVersion(ctx, group.streamID, domain.MainBranchID)
@@ -748,6 +749,25 @@ func (h *Handler) replayStream(ctx context.Context, group streamGroup, plannedVe
 		}
 	}
 	return len(events), nil
+}
+
+// replayMetadata is the envelope a replayed copy of a branch event carries: the
+// branch event's own metadata, so its author (#1407) and any correlation stay
+// with the change, plus the merge it came with. The merger is named on the
+// claim, never credited with the change, and an authorless event stays
+// authorless.
+//
+// Metadata that does not decode is logged and replayed as authorless rather
+// than failing the merge: the claim is already written, so a refusal here would
+// make every resume refuse the same event, and an author is an annotation, not
+// part of the change (the history reader treats it the same way).
+func replayMetadata(event *repository.StoredEvent, provenance *domain.MergeProvenance) domain.EventMetadata {
+	metadata, err := event.DecodeMetadata()
+	if err != nil {
+		slog.Warn("merge: replaying branch event without its metadata", "event_id", event.ID, "error", err)
+	}
+	metadata.MergedFromBranch = provenance
+	return metadata
 }
 
 // replayPlan is the replay plan a claim records: every stream the merge will

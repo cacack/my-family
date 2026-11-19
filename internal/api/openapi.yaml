@@ -6590,7 +6590,10 @@ components:
           description: The id of the entity `parent_entity_type` names.
         user_id:
           type: string
-          description: ID of user who made the change (null if single-user)
+          description: |
+            Opaque ID of the user who made the change, not a display name;
+            absent for changes made before accounts existed or in open mode.
+            A change a merge replayed keeps its original author.
         origin:
           type: string
           enum: [main, branch]
@@ -8789,6 +8792,11 @@ components:
         note:
           type: string
           description: The merge note
+        merged_by:
+          type: string
+          description: |
+            Opaque ID of the user who merged the branch, not a display name;
+            absent for a merge made before accounts existed or in open mode.
         recorded:
           type: boolean
           description: |

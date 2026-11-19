@@ -54,6 +54,10 @@
 		});
 	}
 
+	// A change made before accounts existed, or in open mode, has no user_id:
+	// it was the owner's (ADR-007). Display names arrive with sign-in (#1408).
+	const OWNER_BEFORE_ACCOUNTS = 'Owner (before accounts)';
+
 	function getActionBadgeVariant(action: string): 'destructive' | undefined {
 		return action === 'deleted' ? 'destructive' : undefined;
 	}
@@ -191,6 +195,7 @@
 				<div class="timeline-entry">
 					<div class="entry-header">
 						<span class="timestamp">{formatTimestamp(entry.timestamp)}</span>
+						<span class="actor" title="Who made this change">{entry.user_id ?? OWNER_BEFORE_ACCOUNTS}</span>
 						<Badge variant={getActionBadgeVariant(entry.action)} class="capitalize {getActionBadgeClass(entry.action)}">{changeActionLabel(entry)}</Badge>
 						{#if entry.origin === 'branch'}
 							<Badge variant="outline" class="origin-badge" title="Made on this research branch">This branch</Badge>
@@ -301,7 +306,8 @@
 		margin-bottom: 0.5rem;
 	}
 
-	.timestamp {
+	.timestamp,
+	.actor {
 		font-size: 0.8125rem;
 		color: var(--color-text-muted);
 	}

@@ -3123,7 +3123,9 @@ type ChangeEntry struct {
 	// made on the branch is `merged_from.original_timestamp`.
 	Timestamp time.Time `json:"timestamp"`
 
-	// UserId ID of user who made the change (null if single-user)
+	// UserId Opaque ID of the user who made the change, not a display name;
+	// absent for changes made before accounts existed or in open mode.
+	// A change a merge replayed keeps its original author.
 	UserId *string `json:"user_id,omitempty"`
 }
 
@@ -4799,6 +4801,10 @@ type MergeRecord struct {
 	Exclusions       []MergeRecordExclusion `json:"exclusions"`
 	MergedAt         time.Time              `json:"merged_at"`
 	MergedAtPosition int64                  `json:"merged_at_position"`
+
+	// MergedBy Opaque ID of the user who merged the branch, not a display name;
+	// absent for a merge made before accounts existed or in open mode.
+	MergedBy *string `json:"merged_by,omitempty"`
 
 	// Note The merge note
 	Note *string `json:"note,omitempty"`

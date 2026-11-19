@@ -17,7 +17,7 @@ func TestConvertQueryMergeRecordToGenerated(t *testing.T) {
 	stream, left := uuid.New(), uuid.New()
 	count := 3
 	record := &query.MergeRecord{
-		ClaimID: uuid.New(), MergedAt: time.Now().UTC(), MergedAtPosition: 9, Note: "why",
+		ClaimID: uuid.New(), MergedAt: time.Now().UTC(), MergedAtPosition: 9, Note: "why", MergedBy: "user-b",
 		Recorded: true, ReplayedEventCount: &count, SkippedStreamIDs: []uuid.UUID{left}, ResumeCount: 1,
 		Decisions: []query.MergeRecordDecision{
 			{StreamID: stream, EntityType: "person", EntityName: "Ada", Kind: "delete_edit", Fields: []string{"surname"},
@@ -28,7 +28,8 @@ func TestConvertQueryMergeRecordToGenerated(t *testing.T) {
 	}
 	got := convertQueryMergeRecordToGenerated(record)
 	if got.Note == nil || *got.Note != "why" || got.ReplayedEventCount == nil || *got.ReplayedEventCount != 3 ||
-		len(got.SkippedStreamIds) != 1 || got.ResumeCount != 1 || !got.Recorded {
+		len(got.SkippedStreamIds) != 1 || got.ResumeCount != 1 || !got.Recorded ||
+		got.MergedBy == nil || *got.MergedBy != "user-b" {
 		t.Errorf("record = %+v", got)
 	}
 	full := got.Decisions[0]
@@ -46,8 +47,8 @@ func TestConvertQueryMergeRecordToGenerated(t *testing.T) {
 	}
 
 	empty := convertQueryMergeRecordToGenerated(&query.MergeRecord{})
-	if empty.SkippedStreamIds == nil || empty.Decisions == nil || empty.Exclusions == nil || empty.Note != nil {
-		t.Errorf("an empty record must serialise its arrays as [] and omit the note: %+v", empty)
+	if empty.SkippedStreamIds == nil || empty.Decisions == nil || empty.Exclusions == nil || empty.Note != nil || empty.MergedBy != nil {
+		t.Errorf("an empty record must serialise its arrays as [] and omit the note and merger: %+v", empty)
 	}
 }
 
