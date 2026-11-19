@@ -11,6 +11,9 @@
 	import ErrorState from '#lib/components/ErrorState.svelte';
 	import LoadingState from '#lib/components/LoadingState.svelte';
 	import PageHeader from '#lib/components/PageHeader.svelte';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import ActionError from '#lib/components/ActionError.svelte';
+	import { homePerson, clearHomePerson } from '#lib/stores/homePerson.svelte.js';
 
 	/**
 	 * The onboarding wizard is for an empty *database*. On a research branch the
@@ -30,6 +33,20 @@
 	let loadError: string | null = $state(null);
 	let showOnboarding = $state(false);
 	let hasSuggestions = $state(false);
+	let clearing = $state(false);
+	let clearError: string | null = $state(null);
+
+	async function clearYou() {
+		clearing = true;
+		clearError = null;
+		try {
+			await clearHomePerson();
+		} catch {
+			clearError = 'Could not clear who you are. Please try again.';
+		} finally {
+			clearing = false;
+		}
+	}
 
 	async function loadDashboard() {
 		loading = true;
@@ -99,6 +116,32 @@
 				<span class="mt-1 text-sm text-muted-foreground">Families</span>
 			</Card>
 		</section>
+
+		{#if homePerson.loaded && (homePerson.person || stats.persons > 0)}
+			<Card class="mb-8" data-testid="home-person-card">
+				<CardHeader>
+					<h2 class="m-0 text-base font-semibold text-foreground">You in the tree</h2>
+				</CardHeader>
+				<CardContent>
+					{#if homePerson.person}
+						<PersonCard person={homePerson.person} href="/persons/{homePerson.person.id}" variant="compact" />
+						<div class="you-actions">
+							<Button variant="outline" size="sm" href="/pedigree">Your pedigree</Button>
+							<Button variant="outline" size="sm" href="/descendancy">Your descendants</Button>
+							<Button variant="ghost" size="sm" onclick={clearYou} disabled={clearing}>Not me</Button>
+						</div>
+						{#if clearError}
+							<ActionError message={clearError} />
+						{/if}
+					{:else}
+						<p class="empty">
+							Choose who you are to see how everyone relates to you: open your own person page and
+							choose “This is me”. <a href="/persons">Browse people</a>
+						</p>
+					{/if}
+				</CardContent>
+			</Card>
+		{/if}
 
 		{#if hasSuggestions}
 			<Card class="mb-8">
@@ -214,6 +257,13 @@
 		grid-template-columns: repeat(auto-fit, minmax(min(22rem, 100%), 1fr));
 		gap: 1.5rem;
 		margin-bottom: 2rem;
+	}
+
+	.you-actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.5rem;
+		margin-top: 0.75rem;
 	}
 
 	.card-list {

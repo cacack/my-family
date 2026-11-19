@@ -21,6 +21,7 @@ Completed features in my-family genealogy software.
 - **Ahnentafel Report** - Traditional numbered ancestor list with configurable generations (2-10), print support, and text export
 - **Geographic Heat Map** - Interactive world map showing birth and death locations with color-coded markers, zoom/pan, and click-through to person details
 - **Person Detail View** - Complete view of individual records with all associated data
+- **You in the Tree** - Mark one person as "me" from their page or clear it from the dashboard; every person page then says how that person relates to you ("Your 3rd great-grandmother"), linked to the full path in the relationship calculator, and the pedigree, descendancy and Ahnentafel charts start from you. It is one site-wide setting until accounts arrive, when each account gets its own
 - **Family View** - View family units with partners and children
 
 ## Research Quality

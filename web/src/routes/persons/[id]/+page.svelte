@@ -12,6 +12,7 @@
 	import EvidencePanel from '#lib/components/EvidencePanel.svelte';
 	import NameSection from '#lib/components/NameSection.svelte';
 	import UncertaintyBadge from '#lib/components/UncertaintyBadge.svelte';
+	import RelationshipToYou from '#lib/components/RelationshipToYou.svelte';
 	import { createShortcutHandler } from '#lib/keyboard/useShortcuts.svelte.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import ActionBar from '#lib/components/ActionBar.svelte';
@@ -614,6 +615,7 @@
 						{#if person.gender}
 							<span class="gender-badge">{person.gender}</span>
 						{/if}
+						<RelationshipToYou {person} />
 					</div>
 				</div>
 
