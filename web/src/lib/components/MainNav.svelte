@@ -1,7 +1,7 @@
 <script lang="ts">
 	import * as DropdownMenu from '#lib/components/ui/dropdown-menu/index.js';
 	import { Button } from '#lib/components/ui/button/index.js';
-	import { can } from '#lib/stores/access.svelte.js';
+	import { can, isVisitor } from '#lib/stores/access.svelte.js';
 	import {
 		navFor,
 		isGroup,
@@ -17,8 +17,8 @@
 
 	let { pathname }: Props = $props();
 
-	// Only the destinations the signed-in role can use (ADR-007).
-	const entries = $derived(navFor(can));
+	// Only the destinations the signed-in role, or a visitor, can use (ADR-007).
+	const entries = $derived(navFor(can, isVisitor()));
 
 	const triggerClass = 'gap-1 px-3 py-2 text-sm font-medium';
 	const activeClass = 'nav-active bg-[#eff6ff] text-[#1d4ed8]';

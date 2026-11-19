@@ -77,4 +77,12 @@ describe('navFor', () => {
 	it('keeps every destination for the owner', () => {
 		expect(navFor(() => true)).toEqual(mainNav);
 	});
+
+	it('hides the change log from a visitor, dropping the empty History group', () => {
+		const visitor = navFor((role) => role === 'viewer', true);
+		for (const href of ['/history', '/branches', '/snapshots']) expect(hrefs(visitor)).not.toContain(href);
+		expect(visitor.map((e) => (isGroup(e) ? e.label : e.href))).not.toContain('History');
+		expect(hrefs(visitor)).toContain('/persons');
+		expect(hrefs(navFor((role) => role === 'viewer'))).toContain('/history');
+	});
 });

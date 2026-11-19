@@ -42,7 +42,9 @@ func unauthenticated(rec *httptest.ResponseRecorder) bool {
 var accountRoutes = routeSet("GET /api/v1/auth/me", "PATCH /api/v1/auth/me")
 
 // changeLogRoutes read change records, which name who made each change, so
-// a visitor may not call them (ADR-008 §4).
+// a visitor may not call them (ADR-008 §4). With accountRoutes, it restates
+// the server's signedInRoutes on purpose, as an oracle independent of the code
+// under test: change both together, and do not derive one from the other.
 var changeLogRoutes = routeSet(
 	"GET /api/v1/history",
 	"GET /api/v1/persons/:id/history",
@@ -258,3 +260,4 @@ func TestAnonymous_ChangeLogNeedsSignIn(t *testing.T) {
 		}
 	}
 }
+
