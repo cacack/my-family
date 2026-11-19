@@ -1,6 +1,13 @@
 package api
 
-import "github.com/cacack/my-family/internal/domain"
+import (
+	"context"
+
+	"github.com/google/uuid"
+
+	"github.com/cacack/my-family/internal/domain"
+	"github.com/cacack/my-family/internal/repository"
+)
 
 // privateFlag is a record's private flag as the API sends it: true, or
 // omitted when the record is not private (ADR-008 §2).
@@ -28,4 +35,42 @@ func livingFields(living bool, recorded domain.LivingOverride) (*bool, *LivingOv
 		override = LivingOverride(recorded)
 	}
 	return &living, &override
+}
+
+// familyEventLogHidden reports whether the change history and restore points
+// of family id are hidden from the principal on ctx: the family is not shown
+// to them, or a partner is protected. The event log is not redacted yet, so
+// such a family's log is not found (ADR-008 read-surface table).
+func (s *Server) familyEventLogHidden(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (bool, error) {
+	family, err := s.readStore.GetFamily(ctx, branchID, id)
+	if err != nil || family == nil {
+		return true, err
+	}
+	var partners []uuid.UUID
+	for _, p := range []*uuid.UUID{family.Partner1ID, family.Partner2ID} {
+		if p != nil {
+			partners = append(partners, *p)
+		}
+	}
+	if len(partners) == 0 {
+		return false, nil
+	}
+	people, err := s.readStore.GetPersonsByIDs(ctx, branchID, partners)
+	if err != nil {
+		return true, err
+	}
+	shown := 0
+	for i := range people {
+		if people[i].Visibility == repository.Visible {
+			shown++
+		}
+	}
+	return shown != len(partners), nil
+}
+
+// personFound is the existence check of the routes under /persons/{id}: a
+// private person, whom the read store returns as a Hidden placeholder, is not
+// found there, as on their own page (ADR-008 §3).
+func personFound(p *repository.PersonReadModel) bool {
+	return p != nil && p.Visibility != repository.Hidden
 }

@@ -1569,15 +1569,17 @@ func (ss *StrictServer) GetFamilyHistory(ctx context.Context, request GetFamilyH
 		return nil, err
 	}
 
-	_, err = ss.server.familyService.GetFamily(ctx, branchScopeID(branch), request.Id)
+	// The event log is not redacted yet: it is not found when the family's
+	// own facts are hidden.
+	hidden, err := ss.server.familyEventLogHidden(ctx, branchScopeID(branch), request.Id)
 	if err != nil {
-		if errors.Is(err, query.ErrNotFound) {
-			return GetFamilyHistory404JSONResponse{NotFoundJSONResponse{
-				Code:    "not_found",
-				Message: "Family not found",
-			}}, nil
-		}
 		return nil, err
+	}
+	if hidden {
+		return GetFamilyHistory404JSONResponse{NotFoundJSONResponse{
+			Code:    "not_found",
+			Message: "Family not found",
+		}}, nil
 	}
 
 	limit := 20
@@ -1610,15 +1612,17 @@ func (ss *StrictServer) GetFamilyRestorePoints(ctx context.Context, request GetF
 		return GetFamilyRestorePoints409JSONResponse(errRollbackMainlineOnly), nil
 	}
 
-	_, err = ss.server.familyService.GetFamily(ctx, domain.MainBranchID, request.Id)
+	// The event log is not redacted yet: it is not found when the family's
+	// own facts are hidden.
+	hidden, err := ss.server.familyEventLogHidden(ctx, domain.MainBranchID, request.Id)
 	if err != nil {
-		if errors.Is(err, query.ErrNotFound) {
-			return GetFamilyRestorePoints404JSONResponse{NotFoundJSONResponse{
-				Code:    "not_found",
-				Message: "Family not found",
-			}}, nil
-		}
 		return nil, err
+	}
+	if hidden {
+		return GetFamilyRestorePoints404JSONResponse{NotFoundJSONResponse{
+			Code:    "not_found",
+			Message: "Family not found",
+		}}, nil
 	}
 
 	limit := 20
@@ -2454,7 +2458,7 @@ func (ss *StrictServer) GetPersonHistory(ctx context.Context, request GetPersonH
 	if err != nil {
 		return nil, err
 	}
-	if person == nil {
+	if !personFound(person) {
 		return GetPersonHistory404JSONResponse{NotFoundJSONResponse{
 			Code:    "not_found",
 			Message: "Person not found",
@@ -2468,6 +2472,11 @@ func (ss *StrictServer) GetPersonHistory(ctx context.Context, request GetPersonH
 	}
 	if request.Params.Offset != nil {
 		offset = *request.Params.Offset
+	}
+
+	// The event log is not redacted yet: a protected person's is empty.
+	if person.Visibility != repository.Visible {
+		return GetPersonHistory200JSONResponse(convertHistoryResult(&query.ChangeHistoryResult{Limit: limit, Offset: offset})), nil
 	}
 
 	result, err := ss.server.historyService.GetEntityHistoryOn(ctx, branchScopeID(branch), "person", request.Id, limit, offset)
@@ -2489,7 +2498,7 @@ func (ss *StrictServer) ListPersonMedia(ctx context.Context, request ListPersonM
 	if err != nil {
 		return nil, err
 	}
-	if person == nil {
+	if !personFound(person) {
 		return ListPersonMedia404JSONResponse{NotFoundJSONResponse{
 			Code:    "not_found",
 			Message: "Person not found",
@@ -2827,7 +2836,7 @@ func (ss *StrictServer) GetPersonRestorePoints(ctx context.Context, request GetP
 	if err != nil {
 		return nil, err
 	}
-	if person == nil {
+	if !personFound(person) {
 		return GetPersonRestorePoints404JSONResponse{NotFoundJSONResponse{
 			Code:    "not_found",
 			Message: "Person not found",
@@ -2841,6 +2850,11 @@ func (ss *StrictServer) GetPersonRestorePoints(ctx context.Context, request GetP
 	}
 	if request.Params.Offset != nil {
 		offset = *request.Params.Offset
+	}
+
+	// The event log is not redacted yet: a protected person's is empty.
+	if person.Visibility != repository.Visible {
+		return GetPersonRestorePoints200JSONResponse(convertRestorePointsResult(&query.RestorePointsResult{Limit: limit, Offset: offset})), nil
 	}
 
 	result, err := ss.server.rollbackService.GetRestorePoints(ctx, "Person", request.Id, limit, offset)
@@ -5800,7 +5814,7 @@ func (ss *StrictServer) ListAssociationsForPerson(ctx context.Context, request L
 	if err != nil {
 		return nil, err
 	}
-	if person == nil {
+	if !personFound(person) {
 		return ListAssociationsForPerson404JSONResponse{NotFoundJSONResponse{
 			Code:    "not_found",
 			Message: "Person not found",

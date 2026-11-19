@@ -217,6 +217,21 @@ func TestPrivacyRedaction_PersonSurfaces(t *testing.T) {
 					if rec := p.get(t, f, "/api/v1/quality/persons/"+tr.living); (rec.Code == http.StatusOK) != p.seesLiving {
 						t.Errorf("living person's quality: %d, want shown %v", rec.Code, p.seesLiving)
 					}
+
+					// The event log is not redacted yet: a protected person's
+					// is empty, and a private person's sub-resources are not
+					// found, as their page is not.
+					for _, sub := range []string{"history", "restore-points"} {
+						log := p.getJSON(t, f, "/api/v1/persons/"+tr.living+"/"+sub)
+						if items, _ := log["items"].([]any); (len(items) > 0) != p.seesLiving {
+							t.Errorf("living person's %s = %v, want shown %v", sub, log, p.seesLiving)
+						}
+					}
+					for _, sub := range []string{"history", "restore-points", "media", "associations"} {
+						if rec := p.get(t, f, "/api/v1/persons/"+tr.private+"/"+sub); (rec.Code == http.StatusOK) != p.seesPrivate {
+							t.Errorf("private person's %s: %d, want shown %v", sub, rec.Code, p.seesPrivate)
+						}
+					}
 				})
 			}
 		})
@@ -269,6 +284,13 @@ func TestPrivacyRedaction_FamiliesAndCharts(t *testing.T) {
 			} else if family["partner1_id"] != tr.dead || family["partner2_id"] != tr.living ||
 				family["marriage_date"] != nil || family["marriage_place"] != nil {
 				t.Errorf("family = %v, want its partners kept and its facts hidden", family)
+			}
+			// The event log is not redacted yet: a family with a protected
+			// partner has none to show.
+			for _, sub := range []string{"history", "restore-points"} {
+				if rec := p.get(t, f, "/api/v1/families/"+tr.family+"/"+sub); (rec.Code == http.StatusOK) != p.seesLiving {
+					t.Errorf("family %s: %d, want shown %v", sub, rec.Code, p.seesLiving)
+				}
 			}
 			for _, path := range []string{
 				"/api/v1/families/" + tr.family,

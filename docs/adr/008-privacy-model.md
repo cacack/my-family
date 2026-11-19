@@ -335,8 +335,8 @@ decorator, b = event-output redactor, — = no tree data. "Protected" means a pl
 | listAssociationsForPerson | GET /persons/{id}/associations | Associations | RM | a | Protected → empty; drop when the other end is protected |
 | listLDSOrdinancesForPerson | GET /persons/{id}/lds-ordinances | LDS ordinances | RM | a | Protected → empty |
 | getPersonQuality | GET /quality/persons/{id} | Completeness score | RM | a | Protected or private → 404 |
-| getPersonHistory | GET /persons/{id}/history | Change entries | EL | b | Protected or private → empty |
-| getPersonRestorePoints | GET /persons/{id}/restore-points | Restore points | EL (+RM existence) | b | Protected or private → empty |
+| getPersonHistory | GET /persons/{id}/history | Change entries | EL | b | Protected → empty; private → hidden |
+| getPersonRestorePoints | GET /persons/{id}/restore-points | Restore points | EL (+RM existence) | b | Protected → empty; private → hidden |
 
 ### Families
 
