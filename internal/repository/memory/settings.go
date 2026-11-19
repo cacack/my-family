@@ -37,3 +37,10 @@ func (s *SettingsStore) SetHomePerson(_ context.Context, id uuid.UUID) error {
 	s.homePerson = id
 	return nil
 }
+
+// Reset clears all settings (demo mode).
+func (s *SettingsStore) Reset() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.homePerson = uuid.Nil
+}

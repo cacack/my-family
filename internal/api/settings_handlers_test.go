@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -147,5 +148,70 @@ func TestHomePerson_StoreErrors(t *testing.T) {
 		if code, _ := homePersonRequest(t, server, tc.method, tc.body); code != http.StatusInternalServerError {
 			t.Errorf("%s with a failing store = %d, want 500", tc.method, code)
 		}
+	}
+}
+
+func setupMergeSettingsServer(settings repository.SettingsStore) *api.Server {
+	eventStore := memory.NewEventStore()
+	return api.NewServer(&config.Config{Port: 8080, LogFormat: "text"}, eventStore,
+		memory.NewReadModelStore(), memory.NewSnapshotStore(eventStore), nil,
+		api.WithBranchStore(memory.NewBranchStore()), api.WithSettingsStore(settings))
+}
+
+// Merging the home person into a duplicate on the mainline moves "me" to the
+// survivor; a branch-scoped merge leaves main, and so the setting, alone.
+func TestHomePerson_FollowsMerge(t *testing.T) {
+	tests := []struct {
+		name     string
+		batch    bool
+		onBranch bool
+		wantMove bool
+	}{
+		{"single merge", false, false, true},
+		{"batch merge", true, false, true},
+		{"branch merge", false, true, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			settings := memory.NewSettingsStore()
+			server := setupMergeSettingsServer(settings)
+			survivorID, sv := createMergeTestPerson(t, server, "Morgan", "Duplicate")
+			mergedID, mv := createMergeTestPerson(t, server, "Morgan", "Duplicat")
+			if err := settings.SetHomePerson(ctx, uuid.MustParse(mergedID)); err != nil {
+				t.Fatal(err)
+			}
+
+			merge := fmt.Sprintf(`{"survivor_id":%q,"merged_id":%q,"survivor_version":%d,"merged_version":%d}`, survivorID, mergedID, sv, mv)
+			path, body := "/api/v1/persons/merge", merge
+			if tt.batch {
+				path, body = "/api/v1/persons/merge/batch", `{"merges":[`+merge+`]}`
+			}
+			if tt.onBranch {
+				path += "?branch=" + createBranch(t, server, "same person")
+			}
+			if rec := do(t, server, http.MethodPost, path, body); rec.Code != http.StatusOK {
+				t.Fatalf("merge = %d. Body: %s", rec.Code, rec.Body.String())
+			}
+
+			want := mergedID
+			if tt.wantMove {
+				want = survivorID
+			}
+			if got, _ := settings.HomePerson(ctx); got.String() != want {
+				t.Errorf("home person after merge = %s, want %s", got, want)
+			}
+		})
+	}
+}
+
+// A settings failure after a merge has landed does not fail the merge.
+func TestHomePerson_MergeSurvivesSettingsFailure(t *testing.T) {
+	server := setupMergeSettingsServer(failingSettings{})
+	survivorID, sv := createMergeTestPerson(t, server, "Morgan", "Duplicate")
+	mergedID, mv := createMergeTestPerson(t, server, "Morgan", "Duplicat")
+	body := fmt.Sprintf(`{"survivor_id":%q,"merged_id":%q,"survivor_version":%d,"merged_version":%d}`, survivorID, mergedID, sv, mv)
+	if rec := do(t, server, http.MethodPost, "/api/v1/persons/merge", body); rec.Code != http.StatusOK {
+		t.Errorf("merge with a failing settings store = %d, want 200. Body: %s", rec.Code, rec.Body.String())
 	}
 }

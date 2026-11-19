@@ -30,6 +30,7 @@ func (s *Server) resetDemo(c echo.Context) error {
 	s.demo.readStore.Reset()
 	s.demo.snapshotStore.Reset()
 	s.demo.branchStore.Reset()
+	s.demo.settingsStore.Reset()
 
 	// Re-seed demo data
 	if err := demo.SeedDemoData(context.Background(), s.commandHandler, s.readStore); err != nil {

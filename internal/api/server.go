@@ -29,19 +29,21 @@ type demoResetter struct {
 	readStore     Resetter
 	snapshotStore Resetter
 	branchStore   Resetter
+	settingsStore Resetter
 }
 
 // ServerOption configures optional server behavior.
 type ServerOption func(*Server)
 
 // WithDemoReset enables the demo reset endpoint by providing resettable stores.
-func WithDemoReset(eventStore, readStore, snapshotStore, branchStore Resetter) ServerOption {
+func WithDemoReset(eventStore, readStore, snapshotStore, branchStore, settingsStore Resetter) ServerOption {
 	return func(s *Server) {
 		s.demo = &demoResetter{
 			eventStore:    eventStore,
 			readStore:     readStore,
 			snapshotStore: snapshotStore,
 			branchStore:   branchStore,
+			settingsStore: settingsStore,
 		}
 	}
 }

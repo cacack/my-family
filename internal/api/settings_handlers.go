@@ -99,3 +99,21 @@ func (ss *StrictServer) ClearHomePerson(ctx context.Context, _ ClearHomePersonRe
 	}
 	return ClearHomePerson204Response{}, nil
 }
+
+// followHomePersonMerge moves the home person to the survivor when a mainline
+// merge removes them, so merging away a duplicate of "me" keeps the choice. A
+// branch-scoped merge leaves main, and so the setting, untouched. The merge has
+// already landed, so a failure here is logged rather than failing the request.
+func (ss *StrictServer) followHomePersonMerge(ctx context.Context, branch *domain.Branch, mergedID, survivorID uuid.UUID) {
+	store := ss.server.settingsStore
+	if store == nil || branch != nil {
+		return
+	}
+	home, err := store.HomePerson(ctx)
+	if err == nil && home == mergedID {
+		err = store.SetHomePerson(ctx, survivorID)
+	}
+	if err != nil {
+		ss.server.echo.Logger.Errorf("moving the home person to merge survivor %s: %v", survivorID, err)
+	}
+}
