@@ -28,6 +28,7 @@ type Note struct {
 	Language     string                   `json:"language,omitempty"`     // GEDCOM 7.0 SNOTE BCP 47 language tag
 	Translations []domain.NoteTranslation `json:"translations,omitempty"` // GEDCOM 7.0 SNOTE alternate-language renderings
 	GedcomXref   *string                  `json:"gedcom_xref,omitempty"`
+	Private      bool                     `json:"private,omitempty"` // ADR-008 §2
 	Version      int64                    `json:"version"`
 	UpdatedAt    time.Time                `json:"updated_at"`
 }
@@ -111,6 +112,7 @@ func convertReadModelToNote(rm repository.NoteReadModel) Note {
 		MIME:         rm.MIME,
 		Language:     rm.Language,
 		Translations: rm.Translations,
+		Private:      rm.Restriction.IsPrivate(),
 		Version:      rm.Version,
 		UpdatedAt:    rm.UpdatedAt,
 	}

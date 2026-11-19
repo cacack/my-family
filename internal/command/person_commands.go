@@ -169,7 +169,9 @@ type UpdatePersonInput struct {
 	DeathPlace     Patch[string]
 	Notes          Patch[string]
 	ResearchStatus Patch[string]
-	Version        int64 // Required for optimistic locking
+	LivingOverride Patch[string] // auto (or a clear), living or deceased
+	Private        *bool         // marks or unmarks the person private
+	Version        int64         // Required for optimistic locking
 }
 
 // UpdatePersonResult contains the result of updating a person.
@@ -251,6 +253,10 @@ func (h *Handler) UpdatePerson(ctx context.Context, input UpdatePersonInput) (*U
 		testPerson.ResearchStatus = domain.ParseResearchStatus(status)
 		changes["research_status"] = status
 	}
+	if err := recordLivingOverride(changes, input.LivingOverride, current.LivingOverride); err != nil {
+		return nil, err
+	}
+	recordPrivate(changes, input.Private, current.Restriction)
 
 	// No changes?
 	if len(changes) == 0 {

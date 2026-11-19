@@ -625,6 +625,7 @@ func (ss *StrictServer) UpdateCitation(ctx context.Context, request UpdateCitati
 		Analysis:      patchOf(request.Body.Analysis),
 		TemplateID:    patchOf(request.Body.TemplateId),
 		Fields:        patchOf(request.Body.Fields),
+		Private:       request.Body.Private,
 		Version:       request.Body.Version,
 	}
 
@@ -1390,6 +1391,7 @@ func (ss *StrictServer) UpdateFamily(ctx context.Context, request UpdateFamilyRe
 		RelationshipType: patchString(request.Body.RelationshipType),
 		MarriageDate:     patchString(request.Body.MarriageDate),
 		MarriagePlace:    patchOf(request.Body.MarriagePlace),
+		Private:          request.Body.Private,
 		Version:          request.Body.Version,
 	}
 
@@ -1997,6 +1999,7 @@ func (ss *StrictServer) UpdateMedia(ctx context.Context, request UpdateMediaRequ
 		CropTop:     patchOf(request.Body.CropTop),
 		CropWidth:   patchOf(request.Body.CropWidth),
 		CropHeight:  patchOf(request.Body.CropHeight),
+		Private:     request.Body.Private,
 		Version:     request.Body.Version,
 	})
 	if err != nil {
@@ -2338,6 +2341,8 @@ func (ss *StrictServer) UpdatePerson(ctx context.Context, request UpdatePersonRe
 	input.DeathPlace = patchOf(request.Body.DeathPlace)
 	input.Notes = patchOf(request.Body.Notes)
 	input.ResearchStatus = patchString(request.Body.ResearchStatus)
+	input.LivingOverride = patchString(request.Body.LivingOverride)
+	input.Private = request.Body.Private
 
 	_, err = ss.branchWriter(branch).UpdatePerson(ctx, input)
 	if err != nil {
@@ -3779,6 +3784,7 @@ func (ss *StrictServer) UpdateSource(ctx context.Context, request UpdateSourceRe
 	input.CollectionName = patchOf(request.Body.CollectionName)
 	input.CallNumber = patchOf(request.Body.CallNumber)
 	input.Notes = patchOf(request.Body.Notes)
+	input.Private = request.Body.Private
 
 	_, err = ss.branchWriter(branch).UpdateSource(ctx, input)
 	if err != nil {
@@ -4099,6 +4105,8 @@ func convertQueryPersonToGenerated(p query.Person) Person {
 	if p.BrickWallResolvedAt != nil {
 		resp.BrickWallResolvedAt = omitIfNil(p.BrickWallResolvedAt)
 	}
+	resp.Living, resp.LivingOverride = livingFields(p)
+	resp.Private = privateFlag(p.Private)
 
 	return resp
 }
@@ -4148,6 +4156,8 @@ func convertQueryPersonDetailToGenerated(pd *query.PersonDetail) PersonDetail {
 	if pd.BrickWallResolvedAt != nil {
 		resp.BrickWallResolvedAt = omitIfNil(pd.BrickWallResolvedAt)
 	}
+	resp.Living, resp.LivingOverride = livingFields(pd.Person)
+	resp.Private = privateFlag(pd.Private)
 
 	if len(pd.Names) > 0 {
 		names := make([]PersonName, len(pd.Names))
@@ -4257,6 +4267,7 @@ func convertPersonNameReadModelToGenerated(n repository.PersonNameReadModel) Per
 func convertQueryFamilyToGenerated(f query.Family) Family {
 	resp := Family{
 		Id:      f.ID,
+		Private: privateFlag(f.Private),
 		Version: f.Version,
 	}
 
@@ -4305,6 +4316,7 @@ func personSummary(id uuid.UUID, given, surname string, gender *string) *PersonS
 func convertQueryFamilyDetailToGenerated(fd query.FamilyDetail) FamilyDetail {
 	resp := FamilyDetail{
 		Id:      fd.ID,
+		Private: privateFlag(fd.Private),
 		Version: fd.Version,
 	}
 
@@ -4365,6 +4377,7 @@ func convertQueryFamilyDetailToGenerated(fd query.FamilyDetail) FamilyDetail {
 func convertQueryFamilyToFamilyDetail(f query.Family) FamilyDetail {
 	resp := FamilyDetail{
 		Id:      f.ID,
+		Private: privateFlag(f.Private),
 		Version: f.Version,
 	}
 
@@ -4539,6 +4552,7 @@ func convertQuerySourceToGenerated(s query.Source) Source {
 		CollectionName: s.CollectionName,
 		CallNumber:     s.CallNumber,
 		Notes:          s.Notes,
+		Private:        privateFlag(s.Private),
 		CitationCount:  s.CitationCount,
 		Version:        s.Version,
 	}
@@ -4558,6 +4572,7 @@ func convertQuerySourceDetailToGenerated(sd query.SourceDetail) SourceDetail {
 		CollectionName: sd.CollectionName,
 		CallNumber:     sd.CallNumber,
 		Notes:          sd.Notes,
+		Private:        privateFlag(sd.Private),
 		CitationCount:  sd.CitationCount,
 		Version:        sd.Version,
 	}
@@ -4594,6 +4609,7 @@ func convertQueryCitationToGenerated(c query.Citation) Citation {
 		TemplateId:    c.TemplateID,
 		Fields:        fieldsToPtr(c.Fields),
 		GedcomXref:    c.GedcomXref,
+		Private:       privateFlag(c.Private),
 		Version:       c.Version,
 	}
 }
@@ -4767,6 +4783,7 @@ func convertMediaReadModelToGenerated(m repository.MediaReadModel) Media {
 		Filename:     m.Filename,
 		FileSize:     m.FileSize,
 		HasThumbnail: &hasThumbnail,
+		Private:      privateFlag(m.Restriction.IsPrivate()),
 		Version:      m.Version,
 		CreatedAt:    m.CreatedAt,
 	}
@@ -4984,6 +5001,7 @@ func (ss *StrictServer) UpdateNote(ctx context.Context, request UpdateNoteReques
 
 	input := command.UpdateNoteInput{
 		ID:      request.Id,
+		Private: request.Body.Private,
 		Version: request.Body.Version,
 	}
 	if request.Body.Text != nil {
@@ -5072,6 +5090,7 @@ func convertQueryNoteToGenerated(n query.Note) Note {
 	resp := Note{
 		Id:        n.ID,
 		Text:      n.Text,
+		Private:   privateFlag(n.Private),
 		Version:   n.Version,
 		UpdatedAt: &n.UpdatedAt,
 	}
@@ -6164,6 +6183,7 @@ func convertReadModelPersonToGenerated(rm repository.PersonReadModel) Person {
 func convertReadModelFamilyToGenerated(rm repository.FamilyReadModel) Family {
 	resp := Family{
 		Id:      rm.ID,
+		Private: privateFlag(rm.Restriction.IsPrivate()),
 		Version: rm.Version,
 	}
 	if rm.Partner1ID != nil {
@@ -6212,6 +6232,7 @@ func convertReadModelSourceToGenerated(rm repository.SourceReadModel) Source {
 		Id:            rm.ID,
 		Title:         rm.Title,
 		SourceType:    SourceType(rm.SourceType),
+		Private:       privateFlag(rm.Restriction.IsPrivate()),
 		Version:       rm.Version,
 		CitationCount: rm.CitationCount,
 	}
@@ -6238,6 +6259,7 @@ func convertReadModelCitationToGenerated(rm repository.CitationReadModel) Citati
 		FactType:    FactType(rm.FactType),
 		FactOwnerId: rm.FactOwnerID,
 		FactId:      rm.FactID,
+		Private:     privateFlag(rm.Restriction.IsPrivate()),
 		Version:     rm.Version,
 	}
 	if rm.Page != "" {

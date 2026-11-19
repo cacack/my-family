@@ -25,6 +25,7 @@ const (
 		birth_date_raw, birth_date_sort, birth_place, birth_place_lat, birth_place_long,
 		death_date_raw, death_date_sort, death_place, death_place_lat, death_place_long,
 		notes, birth_notes, death_notes, birth_type_detail, death_type_detail, research_status, brick_wall_note, brick_wall_since, brick_wall_resolved_at,
+		restriction, living_override, death_evidence, living_ref_date,
 		version, updated_at`
 
 	// familySelectCols is scanFamily's column order (unaliased). The partner
@@ -32,7 +33,7 @@ const (
 	// names from the persons (#1207).
 	familySelectCols = `id, partner1_id, partner2_id,
 		relationship_type, marriage_date_raw, marriage_date_sort, marriage_place,
-		marriage_place_lat, marriage_place_long, marriage_notes, marriage_type_detail, notes,
+		marriage_place_lat, marriage_place_long, marriage_notes, marriage_type_detail, notes, restriction,
 		child_count, version, updated_at`
 
 	// idSetFilter narrows an overlay subquery to the ids in its one bound JSON

@@ -127,6 +127,7 @@ type UpdateFamilyInput struct {
 	RelationshipType Patch[string]
 	MarriageDate     Patch[string]
 	MarriagePlace    Patch[string]
+	Private          *bool // marks or unmarks the family private
 	Version          int64
 }
 
@@ -185,6 +186,7 @@ func (h *Handler) UpdateFamily(ctx context.Context, input UpdateFamilyInput) (*U
 	if place, ok := input.MarriagePlace.Change(); ok && place != family.MarriagePlace {
 		changes["marriage_place"] = place
 	}
+	recordPrivate(changes, input.Private, family.Restriction)
 
 	if len(changes) == 0 {
 		return &UpdateFamilyResult{Version: family.Version}, nil

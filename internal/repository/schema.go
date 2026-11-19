@@ -19,7 +19,9 @@ import (
 // Versions:
 //   - 0: no stamp. Every database from before #680, whatever its schema.
 //   - 1: the first stamped version (#680).
-const ReadModelSchemaVersion = 1
+//   - 2: persons store the living rule's inputs, derived from existing events
+//     (death evidence and reference date, ADR-008 / #1412).
+const ReadModelSchemaVersion = 2
 
 // ErrReadModelSchemaMismatch is returned by CheckReadModelSchema when the
 // database's read model is not at ReadModelSchemaVersion.

@@ -114,6 +114,7 @@ type UpdateMediaInput struct {
 	CropTop     Patch[int]
 	CropWidth   Patch[int]
 	CropHeight  Patch[int]
+	Private     *bool // marks or unmarks the media private
 	Version     int64 // Required for optimistic locking
 }
 
@@ -162,6 +163,7 @@ func (h *Handler) UpdateMedia(ctx context.Context, input UpdateMediaInput) (*Upd
 		testMedia.MediaType = domain.MediaType(*input.MediaType)
 	}
 	addCropChanges(changes, input, current)
+	recordPrivate(changes, input.Private, current.Restriction)
 
 	// No changes?
 	if len(changes) == 0 {

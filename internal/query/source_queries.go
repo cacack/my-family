@@ -34,6 +34,7 @@ type Source struct {
 	CollectionName *string   `json:"collection_name,omitempty"`
 	CallNumber     *string   `json:"call_number,omitempty"`
 	Notes          *string   `json:"notes,omitempty"`
+	Private        bool      `json:"private,omitempty"` // ADR-008 §2
 	CitationCount  int       `json:"citation_count"`
 	Version        int64     `json:"version"`
 	UpdatedAt      time.Time `json:"updated_at"`
@@ -57,6 +58,7 @@ type Citation struct {
 	TemplateID    *string           `json:"template_id,omitempty"`
 	Fields        map[string]string `json:"fields,omitempty"`
 	GedcomXref    *string           `json:"gedcom_xref,omitempty"`
+	Private       bool              `json:"private,omitempty"` // ADR-008 §2
 	Version       int64             `json:"version"`
 	CreatedAt     time.Time         `json:"created_at"`
 }
@@ -250,6 +252,7 @@ func convertReadModelToSource(rm repository.SourceReadModel) Source {
 		SourceType:    string(rm.SourceType),
 		Title:         rm.Title,
 		CitationCount: rm.CitationCount,
+		Private:       rm.Restriction.IsPrivate(),
 		Version:       rm.Version,
 		UpdatedAt:     rm.UpdatedAt,
 	}
@@ -291,6 +294,7 @@ func convertReadModelToCitation(rm repository.CitationReadModel) Citation {
 		FactType:    string(rm.FactType),
 		FactOwnerID: rm.FactOwnerID,
 		FactID:      rm.FactID,
+		Private:     rm.Restriction.IsPrivate(),
 		Version:     rm.Version,
 		CreatedAt:   rm.CreatedAt,
 	}

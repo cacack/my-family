@@ -354,8 +354,15 @@ func (p *Projector) projectPersonCreated(ctx context.Context, e domain.PersonCre
 		BirthTypeDetail: e.BirthTypeDetail,
 		DeathTypeDetail: e.DeathTypeDetail,
 		ResearchStatus:  e.ResearchStatus,
+		Restriction:     e.Restriction,
+		LivingOverride:  e.LivingOverride,
 		Version:         version,
 		UpdatedAt:       e.OccurredAt(),
+	}
+	// A re-projected PersonCreated (a resumed merge, #685) can find the
+	// person's life events already there.
+	if err := p.setLivingFacts(ctx, branchID, person); err != nil {
+		return err
 	}
 
 	if err := p.readStore.SavePerson(ctx, branchID, person); err != nil {
@@ -443,6 +450,14 @@ func (p *Projector) projectPersonUpdated(ctx context.Context, e domain.PersonUpd
 			} else if v, ok := value.(string); ok {
 				person.ResearchStatus = domain.ParseResearchStatus(v)
 			}
+		case "restriction":
+			if v, ok := changeText(value); ok {
+				person.Restriction = domain.Restriction(v)
+			}
+		case "living_override":
+			if v, ok := changeText(value); ok {
+				person.LivingOverride = domain.LivingOverride(v)
+			}
 		default:
 			slog.Warn("projection: ignoring unknown change key", "event", "PersonUpdated", "key", key)
 		}
@@ -450,6 +465,9 @@ func (p *Projector) projectPersonUpdated(ctx context.Context, e domain.PersonUpd
 
 	person.Version = version
 	person.UpdatedAt = e.OccurredAt()
+	if err := p.setLivingFacts(ctx, branchID, person); err != nil {
+		return err
+	}
 
 	// Name side effects run before SavePerson records the version (see
 	// projectPersonCreated).
@@ -494,6 +512,7 @@ func (p *Projector) projectFamilyCreated(ctx context.Context, e domain.FamilyCre
 		MarriageNotes:      e.MarriageNotes,
 		MarriageTypeDetail: e.MarriageTypeDetail,
 		Notes:              e.Notes,
+		Restriction:        e.Restriction,
 		ChildCount:         0,
 		Version:            version,
 		UpdatedAt:          e.OccurredAt(),
@@ -555,6 +574,10 @@ func (p *Projector) projectFamilyUpdated(ctx context.Context, e domain.FamilyUpd
 		case "marriage_place":
 			if v, ok := value.(string); ok {
 				family.MarriagePlace = v
+			}
+		case "restriction":
+			if v, ok := changeText(value); ok {
+				family.Restriction = domain.Restriction(v)
 			}
 		default:
 			slog.Warn("projection: ignoring unknown change key", "event", "FamilyUpdated", "key", key)
@@ -860,6 +883,7 @@ func (p *Projector) projectSourceCreated(ctx context.Context, e domain.SourceCre
 		CallNumber:      e.CallNumber,
 		Notes:           e.Notes,
 		GedcomXref:      e.GedcomXref,
+		Restriction:     e.Restriction,
 		CitationCount:   0,
 		Version:         version,
 		UpdatedAt:       e.OccurredAt(),
@@ -933,6 +957,10 @@ func (p *Projector) projectSourceUpdated(ctx context.Context, e domain.SourceUpd
 			if v, ok := value.(string); ok {
 				source.Notes = v
 			}
+		case "restriction":
+			if v, ok := changeText(value); ok {
+				source.Restriction = domain.Restriction(v)
+			}
 		default:
 			slog.Warn("projection: ignoring unknown change key", "event", "SourceUpdated", "key", key)
 		}
@@ -988,6 +1016,7 @@ func (p *Projector) projectCitationCreated(ctx context.Context, e domain.Citatio
 		TemplateID:    e.TemplateID,
 		FieldsJSON:    fieldsJSON,
 		GedcomXref:    e.GedcomXref,
+		Restriction:   e.Restriction,
 		Version:       version,
 		CreatedAt:     e.OccurredAt(),
 	}
@@ -1094,6 +1123,10 @@ func (p *Projector) projectCitationUpdated(ctx context.Context, e domain.Citatio
 				return fmt.Errorf("marshal citation %s fields: %w", e.CitationID, err)
 			}
 			citation.FieldsJSON = string(b)
+		case "restriction":
+			if v, ok := changeText(value); ok {
+				citation.Restriction = domain.Restriction(v)
+			}
 		default:
 			slog.Warn("projection: ignoring unknown change key", "event", "CitationUpdated", "key", key)
 		}
@@ -1176,6 +1209,7 @@ func (p *Projector) projectMediaCreated(ctx context.Context, e domain.MediaCreat
 		FileData:      e.FileData,
 		ThumbnailData: e.ThumbnailData,
 		GedcomXref:    e.GedcomXref,
+		Restriction:   e.Restriction,
 		Version:       version,
 		CreatedAt:     e.OccurredAt(),
 		UpdatedAt:     e.OccurredAt(),
@@ -1246,6 +1280,10 @@ func (p *Projector) projectMediaUpdated(ctx context.Context, e domain.MediaUpdat
 		case "translations":
 			if err := decodeChangeValue(value, &media.Translations); err != nil {
 				return fmt.Errorf("media %s change %q: %w", e.MediaID, key, err)
+			}
+		case "restriction":
+			if v, ok := changeText(value); ok {
+				media.Restriction = domain.Restriction(v)
 			}
 		default:
 			slog.Warn("projection: ignoring unknown change key", "event", "MediaUpdated", "key", key)
@@ -1357,11 +1395,75 @@ func (p *Projector) projectLifeEventCreated(ctx context.Context, e domain.LifeEv
 		CreatedAt:   e.OccurredAt(),
 	}
 
-	return p.readStore.SaveEvent(ctx, branchID, event)
+	if err := p.readStore.SaveEvent(ctx, branchID, event); err != nil {
+		return err
+	}
+	if ownerType == "person" && livingFactTypes[e.FactType] {
+		return p.refreshLivingFacts(ctx, branchID, ownerID)
+	}
+	return nil
 }
 
 func (p *Projector) projectLifeEventDeleted(ctx context.Context, e domain.LifeEventDeleted, branchID domain.BranchID) error {
-	return p.readStore.DeleteEvent(ctx, branchID, e.EventID)
+	event, err := p.readStore.GetEvent(ctx, branchID, e.EventID)
+	if err != nil {
+		return err
+	}
+	if err := p.readStore.DeleteEvent(ctx, branchID, e.EventID); err != nil {
+		return err
+	}
+	if event != nil && event.OwnerType == "person" && livingFactTypes[event.FactType] {
+		return p.refreshLivingFacts(ctx, branchID, event.OwnerID)
+	}
+	return nil
+}
+
+// changeText reads a text change whose clear is nil (a rollback removes a
+// field that way): nil is the empty text.
+func changeText(value any) (string, bool) {
+	if value == nil {
+		return "", true
+	}
+	v, ok := value.(string)
+	return v, ok
+}
+
+// setLivingFacts derives person's living-rule inputs (SetLivingFacts) from
+// its life events on branchID.
+func (p *Projector) setLivingFacts(ctx context.Context, branchID domain.BranchID, person *PersonReadModel) error {
+	events, err := p.readStore.ListEventsForPerson(ctx, branchID, person.ID)
+	if err != nil {
+		return err
+	}
+	SetLivingFacts(person, events)
+	return nil
+}
+
+// refreshLivingFacts re-derives a person's living-rule inputs after a change
+// to one of its life events, saving the person only when they changed, so an
+// unrelated event never writes a branch shadow of the person. A person the
+// branch does not see is skipped.
+func (p *Projector) refreshLivingFacts(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) error {
+	person, err := p.readStore.GetPerson(ctx, branchID, personID)
+	if err != nil || person == nil {
+		return err
+	}
+	before := person.LivingFacts()
+	if err := p.setLivingFacts(ctx, branchID, person); err != nil {
+		return err
+	}
+	after := person.LivingFacts()
+	if before.DeathEvidence == after.DeathEvidence && equalTimePtr(before.ReferenceDate, after.ReferenceDate) {
+		return nil
+	}
+	return p.readStore.SavePerson(ctx, branchID, person)
+}
+
+func equalTimePtr(a, b *time.Time) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return a.Equal(*b)
 }
 
 func (p *Projector) projectAttributeCreated(ctx context.Context, e domain.AttributeCreated, version int64, branchID domain.BranchID) error {
@@ -1405,6 +1507,7 @@ func (p *Projector) projectLifeEventUpdated(ctx context.Context, e domain.LifeEv
 		return nil // Event doesn't exist in read model, skip
 	}
 
+	oldFactType := event.FactType
 	for key, value := range e.Changes {
 		switch key {
 		case "fact_type":
@@ -1449,7 +1552,13 @@ func (p *Projector) projectLifeEventUpdated(ctx context.Context, e domain.LifeEv
 
 	event.Version = version
 
-	return p.readStore.SaveEvent(ctx, branchID, event)
+	if err := p.readStore.SaveEvent(ctx, branchID, event); err != nil {
+		return err
+	}
+	if event.OwnerType == "person" && (livingFactTypes[oldFactType] || livingFactTypes[event.FactType]) {
+		return p.refreshLivingFacts(ctx, branchID, event.OwnerID)
+	}
+	return nil
 }
 
 func (p *Projector) projectAttributeUpdated(ctx context.Context, e domain.AttributeUpdated, version int64, branchID domain.BranchID) error {
@@ -2012,7 +2121,11 @@ func (p *Projector) projectPersonMerged(ctx context.Context, e domain.PersonMerg
 		return fmt.Errorf("delete merged person %s: %w", e.MergedID, err)
 	}
 
-	// 14. Save the survivor, version included (see step 1).
+	// 14. Save the survivor, version included (see step 1), with the living
+	// rule's inputs re-derived from the events it now holds.
+	if err := p.setLivingFacts(ctx, branchID, survivor); err != nil {
+		return err
+	}
 	return p.readStore.SavePerson(ctx, branchID, survivor)
 }
 
@@ -2134,6 +2247,7 @@ func (p *Projector) projectNoteCreated(ctx context.Context, e domain.NoteCreated
 		Language:     e.Language,
 		Translations: e.Translations,
 		GedcomXref:   e.GedcomXref,
+		Restriction:  e.Restriction,
 		Version:      version,
 		UpdatedAt:    e.OccurredAt(),
 	}
@@ -2152,9 +2266,14 @@ func (p *Projector) projectNoteUpdated(ctx context.Context, e domain.NoteUpdated
 
 	// Apply changes
 	for key, value := range e.Changes {
-		if key == "text" {
+		switch key {
+		case "text":
 			if v, ok := value.(string); ok {
 				note.Text = v
+			}
+		case "restriction":
+			if v, ok := changeText(value); ok {
+				note.Restriction = domain.Restriction(v)
 			}
 		}
 	}
