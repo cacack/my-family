@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/svelte';
 import MergeConflictResolver from './MergeConflictResolver.svelte';
 import type { MergeConflict, MergeResolution } from '#lib/api/client.js';
+import { signInAs } from '#lib/test/roles.js';
 
 const EDIT_EDIT: MergeConflict = {
 	stream_id: '11111111-1111-1111-1111-111111111111',
@@ -151,6 +152,34 @@ describe('MergeConflictResolver', () => {
 		expect(radios).toHaveLength(3);
 		for (const radio of radios) {
 			expect(radio.hasAttribute('disabled')).toBe(true);
+		}
+	});
+
+	it('shows a viewer the decisions with no enabled control to change them (#1426)', () => {
+		signInAs('viewer');
+		const { container } = renderResolver([EDIT_EDIT, CREATE_CREATE], {
+			onrationale: vi.fn()
+		});
+
+		const controls = container.querySelectorAll<HTMLElement>(
+			'[role="radio"], button, textarea'
+		);
+		expect(controls.length).toBeGreaterThan(0);
+		for (const control of controls) {
+			expect(control.hasAttribute('disabled')).toBe(true);
+		}
+	});
+
+	it('leaves the controls enabled for an editor', () => {
+		signInAs('editor');
+		const { container } = renderResolver([EDIT_EDIT, CREATE_CREATE], {
+			onrationale: vi.fn()
+		});
+
+		const controls = container.querySelectorAll<HTMLElement>('[role="radio"], textarea');
+		expect(controls.length).toBeGreaterThan(0);
+		for (const control of controls) {
+			expect(control.hasAttribute('disabled')).toBe(false);
 		}
 	});
 

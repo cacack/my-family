@@ -18,6 +18,7 @@ import type {
 	MergeConflict
 } from '#lib/api/client.js';
 import { resetRouter } from '#lib/test/fakeRouter.svelte.js';
+import { signInAs } from '#lib/test/roles.js';
 
 const BRANCH_ID = '11111111-1111-1111-1111-111111111111';
 const PERSON_ID = '99999999-9999-9999-9999-999999999999';
@@ -416,6 +417,22 @@ describe('Branch comparison page', () => {
 	});
 
 	describe('merge review', () => {
+		it('offers a viewer no "Leave out of the merge" choice (#1426)', async () => {
+			signInAs('viewer');
+			compareBranch.mockResolvedValue(
+				comparison({
+					branch_changes: [
+						branchEntry('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', PERSON_ID, 'Ada Lovelace')
+					],
+					branch_change_count: 1
+				})
+			);
+			render(Page);
+			await screen.findByRole('heading', { name: 'Maternal Smith line' });
+
+			expect(screen.queryAllByRole('checkbox', { name: /Leave out of the merge/ })).toHaveLength(0);
+		});
+
 		it('gates "Review & merge" on every conflict carrying a decision', async () => {
 			const { container } = render(Page);
 			await screen.findByRole('heading', { name: 'Maternal Smith line' });

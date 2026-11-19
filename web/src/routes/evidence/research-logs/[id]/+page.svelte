@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { can } from '#lib/stores/access.svelte.js';
+	import RoleNotice from '#lib/components/auth/RoleNotice.svelte';
 	import { untrack } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
@@ -252,6 +253,8 @@
 		<LoadingState />
 	{:else if loadError}
 		<ErrorState {...loadError} onRetry={() => loadLog(page.params.id!)} />
+	{:else if editing && !can('editor')}
+		<RoleNotice action="Adding research logs" required="editor" />
 	{:else if editing}
 		<form
 			class="rounded-xl border border-slate-200 bg-white p-6"

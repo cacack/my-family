@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/svelte';
 import Page from './+page.svelte';
 import * as apiModule from '#lib/api/client.js';
+import { signInAs } from '#lib/test/roles.js';
 
 // Configurable page params
 let mockPageParams = { id: 'ps-1' };
@@ -136,6 +137,20 @@ describe('Proof Summary Detail Page - New Mode', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		mockPageParams = { id: 'new' };
+	});
+
+	it('shows a viewer a role notice instead of the create form (#1426)', async () => {
+		signInAs('viewer');
+		const { container } = render(Page);
+		expect(await screen.findByTestId('role-notice')).toBeDefined();
+		expect(container.querySelector('form')).toBeNull();
+	});
+
+	it('shows an editor the create form', async () => {
+		signInAs('editor');
+		const { container } = render(Page);
+		await waitFor(() => expect(container.querySelector('form')).not.toBeNull());
+		expect(screen.queryByTestId('role-notice')).toBeNull();
 	});
 
 	it('shows create form when id is "new"', async () => {

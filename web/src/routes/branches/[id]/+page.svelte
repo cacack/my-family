@@ -734,12 +734,13 @@
 							<DiffView changes={entry.changes} />
 						</div>
 					{/if}
-					{#if excludable && mergeable}
+					{#if excludable && mergeable && can('editor')}
 						<!--
 							Keyed by `entity_id`, so an entity changed several times on this
 							branch toggles and reads back as one decision across all of its
 							entries. The visible text opens the accessible name so the two
-							cannot disagree (WCAG 2.5.3).
+							cannot disagree (WCAG 2.5.3). Editor-only, like the merge it
+							feeds (#1426).
 						-->
 						<div class="exclude-row">
 							<Checkbox
