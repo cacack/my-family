@@ -42,7 +42,7 @@ func TestCreateOwner_FromPipedInput(t *testing.T) {
 	}
 	entries, _, _ := svc.AuthAudit(context.Background(), 10, 0)
 	if len(entries) != 1 || entries[0].Action != repository.AuthActionUserCreated ||
-		entries[0].ActorID != uuid.Nil || entries[0].ClientIP != "cli" {
+		entries[0].ActorID != uuid.Nil || entries[0].ClientIP != auth.CommandLine.ClientIP {
 		t.Errorf("audit = %+v, want one owner created from the command line", entries)
 	}
 	if _, _, err := svc.SignIn(context.Background(), "ada", "correct horse battery", "cli"); err != nil {
@@ -121,8 +121,8 @@ func TestResetPassword_PrintsASingleUseLink(t *testing.T) {
 	token := strings.TrimSpace(out.String()[i+len(prefix):])
 	entries, _, _ := svc.AuthAudit(ctx, 10, 0)
 	if len(entries) != 2 || entries[0].Action != repository.AuthActionResetIssued ||
-		entries[0].ActorID != uuid.Nil || entries[0].ClientIP != entries[1].ClientIP {
-		t.Errorf("audit = %+v, want the reset marked as the owner's creation is, from the command line", entries)
+		entries[0].ActorID != uuid.Nil || entries[0].ClientIP != auth.CommandLine.ClientIP {
+		t.Errorf("audit = %+v, want the reset issued from the command line", entries)
 	}
 	if err := svc.ResetPassword(ctx, token, "a brand new password", "test"); err != nil {
 		t.Fatalf("the printed link does not reset the password: %v", err)
