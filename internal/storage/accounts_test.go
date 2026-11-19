@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -337,6 +338,27 @@ func runAccountStoreContract(t *testing.T, store repository.AccountStore) {
 	}
 	if n, err := store.CountMembers(ctx, repository.DefaultTreeID, repository.RoleOwner); err != nil || n != 1 {
 		t.Errorf("CountMembers of owners with a viewer present = %d, %v; want 1", n, err)
+	}
+
+	// Members sort by username byte for byte on every backend: "_" sorts
+	// before "a", where a PostgreSQL locale collation would ignore it.
+	punctuated := &repository.User{
+		ID: uuid.New(), Username: "ad_z", DisplayName: "Ad Z",
+		PasswordHash: "$argon2id$hash", CreatedAt: created,
+	}
+	if err := store.CreateUser(ctx, punctuated, repository.DefaultTreeID, repository.RoleViewer); err != nil {
+		t.Fatalf("CreateUser of a punctuated username: %v", err)
+	}
+	members, err := store.ListMembers(ctx, repository.DefaultTreeID)
+	if err != nil {
+		t.Fatalf("ListMembers: %v", err)
+	}
+	var usernames []string
+	for _, m := range members {
+		usernames = append(usernames, m.User.Username)
+	}
+	if want := []string{"ad_z", "ada", "grace"}; !slices.Equal(usernames, want) {
+		t.Errorf("ListMembers usernames = %v, want %v", usernames, want)
 	}
 
 	duplicate := *owner

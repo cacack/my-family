@@ -192,7 +192,8 @@ type AccountStore interface {
 	// keepTokenHash ("" keeps none).
 	DeleteUserSessions(ctx context.Context, userID uuid.UUID, keepTokenHash string) error
 
-	// ListMembers returns every member of treeID, by username.
+	// ListMembers returns every member of treeID, by username compared byte
+	// for byte.
 	ListMembers(ctx context.Context, treeID uuid.UUID) ([]Member, error)
 
 	// SetMemberRole changes the role userID holds in treeID, or returns
