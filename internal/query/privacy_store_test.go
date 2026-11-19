@@ -182,8 +182,10 @@ func TestPrivacyStore_Persons(t *testing.T) {
 			ctx := tt.ctx
 			list := repository.ListOptions{Limit: 10}
 			for what, call := range map[string]func() ([]repository.PersonReadModel, int, error){
-				"ListPersons":   func() ([]repository.PersonReadModel, int, error) { return tr.store.ListPersons(ctx, list) },
-				"SearchPersons": func() ([]repository.PersonReadModel, int, error) { return tr.store.SearchPersons(ctx, repository.SearchOptions{Query: "Smith", Limit: 10}) },
+				"ListPersons": func() ([]repository.PersonReadModel, int, error) { return tr.store.ListPersons(ctx, list) },
+				"SearchPersons": func() ([]repository.PersonReadModel, int, error) {
+					return tr.store.SearchPersons(ctx, repository.SearchOptions{Query: "Smith", Limit: 10})
+				},
 				"GetPersonsBySurname": func() ([]repository.PersonReadModel, int, error) {
 					return tr.store.GetPersonsBySurname(ctx, "Smith", list)
 				},
@@ -329,8 +331,10 @@ func TestPrivacyStore_Families(t *testing.T) {
 		"GetFamiliesByIDs": func() ([]repository.FamilyReadModel, error) {
 			return tr.store.GetFamiliesByIDs(ctx, main, []uuid.UUID{tr.open, tr.closed, tr.withPrivate})
 		},
-		"GetFamiliesForPerson":  func() ([]repository.FamilyReadModel, error) { return tr.store.GetFamiliesForPerson(ctx, main, tr.dead) },
-		"GetFamiliesForPersons": func() ([]repository.FamilyReadModel, error) { return tr.store.GetFamiliesForPersons(ctx, main, []uuid.UUID{tr.dead}) },
+		"GetFamiliesForPerson": func() ([]repository.FamilyReadModel, error) { return tr.store.GetFamiliesForPerson(ctx, main, tr.dead) },
+		"GetFamiliesForPersons": func() ([]repository.FamilyReadModel, error) {
+			return tr.store.GetFamiliesForPersons(ctx, main, []uuid.UUID{tr.dead})
+		},
 	} {
 		families, err := call()
 		if err != nil || len(families) != 2 || slices.ContainsFunc(families, func(f repository.FamilyReadModel) bool { return f.ID == tr.closed }) {
