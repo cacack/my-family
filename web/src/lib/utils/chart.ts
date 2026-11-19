@@ -6,9 +6,9 @@ import * as d3 from 'd3';
 import { formatPersonName } from '#lib/api/client.js';
 import { getReducedMotion } from '#lib/stores/accessibilitySettings.svelte.js';
 import {
-	LIVING_BADGE_NAME,
 	personBadgeNames,
-	privateBadgeName,
+	personBadges,
+	type PersonBadge,
 	type PrivacyMarked
 } from '#lib/utils/privacy.js';
 
@@ -282,10 +282,10 @@ export function cardTitle(person: { given_name?: string; surname?: string } & Pr
 }
 
 /** Lucide's shield (living) and lock (private), drawn on a 24-unit grid. */
-const PRIVACY_ICONS: Record<string, string> = {
-	[LIVING_BADGE_NAME]:
+const PRIVACY_ICONS: Record<PersonBadge['kind'], string> = {
+	living:
 		'M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z',
-	[privateBadgeName()]: 'M5 11h14a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2zM7 11V7a5 5 0 0 1 10 0v4'
+	private: 'M5 11h14a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2zM7 11V7a5 5 0 0 1 10 0v4'
 };
 
 /** Size of a privacy marker icon, and the padding around it, in chart units. */
@@ -305,12 +305,12 @@ export function appendPrivacyMarkers<D>(
 	cardHeight: number
 ): void {
 	nodes
-		.filter((d) => personBadgeNames(person(d)).length > 0)
+		.filter((d) => personBadges(person(d)).length > 0)
 		.append('g')
 		.attr('class', 'privacy-marker')
 		.each(function (d) {
-			const names = personBadgeNames(person(d));
-			const width = names.length * (MARKER_ICON + MARKER_PAD) + MARKER_PAD;
+			const badges = personBadges(person(d));
+			const width = badges.length * (MARKER_ICON + MARKER_PAD) + MARKER_PAD;
 			const height = MARKER_ICON + 2 * MARKER_PAD;
 			const marker = d3
 				.select(this)
@@ -322,12 +322,12 @@ export function appendPrivacyMarkers<D>(
 				.attr('rx', height / 2)
 				.attr('fill', '#f8fafc')
 				.attr('stroke', '#94a3b8');
-			names.forEach((name, i) => {
+			badges.forEach(({ kind, name }, i) => {
 				const icon = marker
 					.append('g')
 					.attr('role', 'img')
 					.attr('aria-label', name)
-					.attr('data-testid', name === LIVING_BADGE_NAME ? 'living-marker' : 'private-marker')
+					.attr('data-testid', `${kind}-marker`)
 					.attr(
 						'transform',
 						`translate(${MARKER_PAD + i * (MARKER_ICON + MARKER_PAD)}, ${MARKER_PAD}) scale(${MARKER_ICON / 24})`
@@ -335,7 +335,7 @@ export function appendPrivacyMarkers<D>(
 				icon.append('title').text(name);
 				icon
 					.append('path')
-					.attr('d', PRIVACY_ICONS[name])
+					.attr('d', PRIVACY_ICONS[kind])
 					.attr('fill', 'none')
 					.attr('stroke', '#334155')
 					.attr('stroke-width', 2.5)

@@ -5390,11 +5390,11 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 	agg := make(map[locKey]*locData)
 
 	for rows.Next() {
-		person, place, latStr, lonStr, err := scanMapPerson(rows)
+		person, place, latStr, lonStr, ok, err := scanMapPerson(rows)
 		if err != nil {
 			return nil, fmt.Errorf("scan birth map location: %w", err)
 		}
-		if person == nil {
+		if !ok {
 			continue
 		}
 		lat, lon, ok := repository.ParseMapCoordinates(person.ID, "birth", latStr, lonStr)
@@ -5403,9 +5403,9 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 		}
 		key := locKey{place: place, eventType: "birth"}
 		if d, ok := agg[key]; ok {
-			d.persons = append(d.persons, *person)
+			d.persons = append(d.persons, person)
 		} else {
-			agg[key] = &locData{lat: lat, lon: lon, persons: []repository.MapPerson{*person}}
+			agg[key] = &locData{lat: lat, lon: lon, persons: []repository.MapPerson{person}}
 		}
 	}
 	if err := rows.Err(); err != nil {
@@ -5428,11 +5428,11 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 	defer rows2.Close()
 
 	for rows2.Next() {
-		person, place, latStr, lonStr, err := scanMapPerson(rows2)
+		person, place, latStr, lonStr, ok, err := scanMapPerson(rows2)
 		if err != nil {
 			return nil, fmt.Errorf("scan death map location: %w", err)
 		}
-		if person == nil {
+		if !ok {
 			continue
 		}
 		lat, lon, ok := repository.ParseMapCoordinates(person.ID, "death", latStr, lonStr)
@@ -5441,9 +5441,9 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 		}
 		key := locKey{place: place, eventType: "death"}
 		if d, ok := agg[key]; ok {
-			d.persons = append(d.persons, *person)
+			d.persons = append(d.persons, person)
 		} else {
-			agg[key] = &locData{lat: lat, lon: lon, persons: []repository.MapPerson{*person}}
+			agg[key] = &locData{lat: lat, lon: lon, persons: []repository.MapPerson{person}}
 		}
 	}
 	if err := rows2.Err(); err != nil {
@@ -5472,21 +5472,24 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 }
 
 // scanMapPerson scans one GetMapLocations row: the person, then the place and
-// its coordinates. The person is nil when the row's id is not a UUID.
-func scanMapPerson(rows *sql.Rows) (person *repository.MapPerson, place, lat, lon string, err error) {
+// its coordinates. ok is false, with a nil error, when the row's id is not a
+// UUID and the row should be skipped.
+func scanMapPerson(rows *sql.Rows) (person repository.MapPerson, place, lat, lon string, ok bool, err error) {
 	var idStr, givenName, surname string
 	var restriction, livingOverride, livingRefDate sql.NullString
 	var deathEvidence bool
 	if err := rows.Scan(&idStr, &givenName, &surname, &place, &lat, &lon,
 		&restriction, &livingOverride, &deathEvidence, &livingRefDate); err != nil {
-		return nil, "", "", "", err
+		return repository.MapPerson{}, "", "", "", false, err
 	}
 	personID, err := uuid.Parse(idStr)
 	if err != nil {
-		return nil, "", "", "", nil
+		return repository.MapPerson{}, "", "", "", false, nil
 	}
+	// A malformed date reads as none, as in scanPerson; the writer always
+	// stores formatSortDate's form.
 	refDate, _ := parseNullableSortDate(livingRefDate)
-	return &repository.MapPerson{
+	return repository.MapPerson{
 		ID: personID, GivenName: givenName, Surname: surname,
 		Restriction: domain.Restriction(restriction.String),
 		LivingFacts: domain.LivingFacts{
@@ -5494,7 +5497,7 @@ func scanMapPerson(rows *sql.Rows) (person *repository.MapPerson, place, lat, lo
 			DeathEvidence: deathEvidence,
 			ReferenceDate: refDate,
 		},
-	}, place, lat, lon, nil
+	}, place, lat, lon, true, nil
 }
 
 // Brick walls are event-sourced (#802): BrickWallSet and BrickWallResolved are

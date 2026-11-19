@@ -17,10 +17,21 @@ export function privateBadgeName(noun = 'person'): string {
 	return `Private ${noun}`;
 }
 
+/** One badge a person carries: which mark it is, and its accessible name. */
+export interface PersonBadge {
+	kind: 'living' | 'private';
+	name: string;
+}
+
+/** The badges a person carries, living first. */
+export function personBadges(person: PrivacyMarked): PersonBadge[] {
+	const badges: PersonBadge[] = [];
+	if (person.living) badges.push({ kind: 'living', name: LIVING_BADGE_NAME });
+	if (person.private) badges.push({ kind: 'private', name: privateBadgeName() });
+	return badges;
+}
+
 /** The accessible names of the badges a person carries, living first. */
 export function personBadgeNames(person: PrivacyMarked): string[] {
-	const names: string[] = [];
-	if (person.living) names.push(LIVING_BADGE_NAME);
-	if (person.private) names.push(privateBadgeName());
-	return names;
+	return personBadges(person).map((badge) => badge.name);
 }
