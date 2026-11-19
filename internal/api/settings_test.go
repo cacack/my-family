@@ -138,7 +138,8 @@ func (brokenSettings) GetTreeSettings(context.Context, uuid.UUID) (repository.Tr
 
 // A failing settings store fails only the routes that read the tree, and
 // requests without a session, whose answer depends on the anonymous-access
-// setting: health and sign-in keep working.
+// setting: health, sign-in and the auth status (which reports visitors
+// refused) keep working.
 func TestPrivacySettings_StoreFailureSparesPublicRoutes(t *testing.T) {
 	cfg := &config.Config{Port: 8080, LogFormat: "text", AuthMode: config.AuthModeAccounts}
 	events := memory.NewEventStore()
@@ -154,6 +155,9 @@ func TestPrivacySettings_StoreFailureSparesPublicRoutes(t *testing.T) {
 	}
 	if rec := f.do(t, request{method: http.MethodGet, path: "/api/v1/persons"}); rec.Code != http.StatusInternalServerError {
 		t.Errorf("persons signed out: %d, want 500", rec.Code)
+	}
+	if status := decode[api.AuthStatus](t, f.do(t, request{method: http.MethodGet, path: "/api/v1/auth/status"})); status.AnonymousAccess == nil || *status.AnonymousAccess != api.AnonymousAccessNone {
+		t.Errorf("auth status = %+v, want anonymous access none", status)
 	}
 	owner := f.signIn(t)
 	if rec := f.do(t, request{method: http.MethodGet, path: "/api/v1/persons", cookie: owner}); rec.Code != http.StatusInternalServerError {

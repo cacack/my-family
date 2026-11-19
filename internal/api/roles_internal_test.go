@@ -122,3 +122,16 @@ func TestAnonymousCostlyRoutes_AreViewerRoutes(t *testing.T) {
 		}
 	}
 }
+
+// TestAnonymousRouteSets fails when a hand-kept visitor route set names a
+// route that does not exist or is not a viewer read, so a renamed or
+// re-roled route cannot silently drop out of it.
+func TestAnonymousRouteSets(t *testing.T) {
+	for name, set := range map[string]map[string]bool{"anonymousCostlyRoutes": anonymousCostlyRoutes, "accountRoutes": accountRoutes} {
+		for key := range set {
+			if role, ok := routeRoles[key]; !ok || role != repository.RoleViewer {
+				t.Errorf("%s: %s has role %q (declared %v), want a viewer route", name, key, role, ok)
+			}
+		}
+	}
+}

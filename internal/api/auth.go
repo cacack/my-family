@@ -270,11 +270,14 @@ func (ss *StrictServer) GetAuthStatus(ctx context.Context, _ GetAuthStatusReques
 	if err != nil {
 		return nil, err
 	}
-	settings, err := ss.server.treeSettings(ctx)
-	if err != nil {
-		return nil, err
+	// A public route the web app needs to start: a settings failure reports
+	// visitors as refused (the fail-closed value) rather than failing it.
+	access := AnonymousAccessNone
+	if settings, err := ss.server.treeSettings(ctx); err != nil {
+		ss.server.echo.Logger.Errorf("reading the tree settings for the auth status: %v", err)
+	} else {
+		access = AnonymousAccess(settings.AnonymousAccess)
 	}
-	access := AnonymousAccess(settings.AnonymousAccess)
 	status := GetAuthStatus200JSONResponse{Mode: AuthStatusModeAccounts, SetupRequired: required, AnonymousAccess: &access}
 	if user := userFrom(ctx); user != nil {
 		account := accountOf(user, roleFrom(ctx))
