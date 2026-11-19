@@ -37,8 +37,12 @@
 	 * does not own the decisions. The page owns that map because it has to
 	 * survive a `409 merge_conflicts` re-render and be serialized into the merge
 	 * request. The same goes for `rationales`.
+	 *
+	 * Read-only below the editor role: merging is an editor operation, so a
+	 * viewer sees the decisions but cannot change them (#1426).
 	 */
 	import type { MergeResolution } from '#lib/api/client.js';
+	import { can } from '#lib/stores/access.svelte.js';
 	import ConflictValues from '#lib/components/ConflictValues.svelte';
 	import { Badge } from '#lib/components/ui/badge/index.js';
 	import { Button } from '#lib/components/ui/button/index.js';
@@ -89,6 +93,9 @@
 		badgeOf = (conflict) => conflictLabel(conflict.kind),
 		soleOptionReasonOf = soleOptionReason
 	}: Props = $props();
+
+	/** Inert while a merge is in flight, or for a role that cannot merge. */
+	const locked = $derived(disabled || !can('editor'));
 
 	/** Entity types among the conflicts, in first-seen order, with their counts. */
 	const conflictTypes = $derived.by(() => {
@@ -193,7 +200,7 @@
 			<Button
 				variant="outline"
 				size="sm"
-				disabled={disabled || !acceptsAny(null, 'branch')}
+				disabled={locked || !acceptsAny(null, 'branch')}
 				onclick={() => decideAll('branch', null)}
 			>
 				Take the branch's version for all
@@ -201,7 +208,7 @@
 			<Button
 				variant="outline"
 				size="sm"
-				disabled={disabled || !acceptsAny(null, 'main')}
+				disabled={locked || !acceptsAny(null, 'main')}
 				onclick={() => decideAll('main', null)}
 			>
 				Keep the mainline's version for all
@@ -215,7 +222,7 @@
 					<Button
 						variant="ghost"
 						size="sm"
-						disabled={disabled || !acceptsAny(entityType, 'branch')}
+						disabled={locked || !acceptsAny(entityType, 'branch')}
 						aria-label="Take branch for every {typeLabel.toLowerCase()} {noun}"
 						onclick={() => decideAll('branch', entityType)}
 					>
@@ -224,7 +231,7 @@
 					<Button
 						variant="ghost"
 						size="sm"
-						disabled={disabled || !acceptsAny(entityType, 'main')}
+						disabled={locked || !acceptsAny(entityType, 'main')}
 						aria-label="Keep mainline for every {typeLabel.toLowerCase()} {noun}"
 						onclick={() => decideAll('main', entityType)}
 					>
@@ -278,7 +285,7 @@
 				<RadioGroup
 					value={decided ?? ''}
 					onValueChange={(value) => onresolve(conflict.stream_id, value as MergeResolution)}
-					{disabled}
+					disabled={locked}
 					aria-labelledby={headingId(conflict.stream_id)}
 					class="mt-3 gap-2"
 				>
@@ -312,7 +319,7 @@
 								onrationale(conflict.stream_id, (event.currentTarget as HTMLTextAreaElement).value)}
 							maxlength={RATIONALE_MAX_LENGTH}
 							rows={2}
-							{disabled}
+							disabled={locked}
 							placeholder="The evidence you weighed, e.g. the 1881 census gives her birthplace as..."
 						/>
 					</div>
