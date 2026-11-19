@@ -219,6 +219,14 @@ Rules that must hold true in the my-family codebase. Violations break architectu
 | **AC-004** | Authorization is default-deny: every operation in `openapi.yaml` declares its minimum role as `x-min-role` (`public`, `viewer`, `editor` or `owner`), and every hand-registered API route has an entry in `handRouteRoles`; the `authenticate` middleware refuses, before any handler runs, a request below the route's role (403 `FORBIDDEN`) and a route that declares no role, for everyone, open mode included | `TestOpenAPI_EveryOperationDeclaresARole`, `TestRouteRoles_CoverEveryRoute`, `TestAuthenticate_RefusesAnUndeclaredRoute`, `TestRoles_EveryRouteForEveryRole` (`internal/api`) |
 | **AC-005** | A tree always keeps an active owner: the last owner who is not disabled can be neither demoted nor disabled. Accounts are created only by setup, `myfamily user create` or a single-use, expiring invite; there is no self-registration. Disabling a user or resetting their password ends their sessions, and changing their own password ends their others. Disabling or demoting an owner revokes the invite and reset links they issued, and an owner can revoke any pending link, which then fails as an expired one does. The `auth_audit` log is append-only: `AccountStore` can only add to it and read it | `TestSetRole_AndLastOwner`, `TestSetDisabled_EndsSessionsAndRefusesSignIn`, `TestPasswordReset`, `TestUpdateAccount`, `TestAuthAudit_RecordsEachAction`, `TestLinks_RevokedWhenIssuerDisabledOrDemoted`, `TestLinks_ListAndRevokePending` (`internal/auth`), `TestUsers_NoSelfRegistration`, `TestUsers_InviteAcceptAndManage` (`internal/api`) |
 
+### Privacy Invariants (PV) - Source: [ADR-008](./adr/008-privacy-model.md)
+
+| ID | Rule | Verification |
+|----|------|--------------|
+| **PV-001** | Every query service and read handler reads the read model through `query.PrivacyStore`, which applies `repository.Privacy` for the principal on the context; only the command handler and the demo seeder hold the raw store. The decorator does not embed `ReadModelStore`, so a new store method must decide its redaction. A context with no principal is anonymous | `TestPrivacy_QueryServicesReadThroughTheDecorator` (`internal/api`), `TestPrivacyFrom_MissingPrincipalFailsSafe` (`internal/repository`) |
+| **PV-002** | Lists and searches exclude protected records in the query (`ListOptions.Privacy`, `SearchOptions.Privacy`), never by filtering a page, so totals count only what is listed; the Go form (`repository.Privacy`) and each backend's SQL form agree on one table of cases | `TestPrivacy_GoAndSQLFormsAgree`, `TestPrivacy_ListsTestTheBranchRow` (`internal/integration`, all backends) |
+| **PV-003** | Every `operationId` in `openapi.yaml` has a row in ADR-008's read-surface table, except editor- and owner-only writes | `TestPrivacy_EveryOperationHasAReadSurfaceRow` (`internal/api`) |
+
 ### Domain Model Invariants (DM) - Source: [ETHOS.md](./ETHOS.md) + Code Patterns
 
 | ID | Rule | Verification |
@@ -278,10 +286,11 @@ Rules that must hold true in the my-family codebase. Violations break architectu
 | ADR-004 (Single Binary) | DP-001 through DP-003 | 3 |
 | ADR-005 (Research Branches) | BR-001 through BR-006 | 6 |
 | ADR-007 (Access Model) | AC-001 through AC-005 | 5 |
+| ADR-008 (Privacy Model) | PV-001 through PV-003 | 3 |
 | ETHOS.md | DM-001 through DM-006, DI-001 through DI-005, QA-001 through QA-003 | 14 |
 | CONVENTIONS.md | API-001 through API-005 | 5 |
 | CONTRIBUTING.md | TS-001 through TS-003 | 3 |
-| **Total** | | **57** |
+| **Total** | | **60** |
 
 ---
 

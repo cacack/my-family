@@ -194,8 +194,16 @@ than 110 years ago. Owners change that threshold (50 to 150 years) and whether v
 people under **Settings**. Editors set `living_override` (`auto`, `living`, `deceased`) to decide
 for the rule, and mark a record private, when editing it. Persons, families, sources, citations, notes and media carry a `private` mark,
 which is their GEDCOM restriction notice (`RESN`); it round-trips through GEDCOM import and export
-for persons, families, sources and notes. These marks are recorded but not yet enforced: every
-role still sees every record ([ADR-008](./docs/adr/008-privacy-model.md), #1412).
+for persons, families, sources and notes.
+
+Viewers do not see private people, families or media, and see a living person as a placeholder
+named "Living" (same place in charts and families, no names, dates, places, facts, citations or
+media) when the owner turns **Viewers see living people** off; editors and owners see everything.
+A family with a protected partner keeps its shape but hides its own facts. Protected people are
+left out of person lists and searches, totals included, and media of protected people and private
+media return 404, file and thumbnail included. Private sources, citations and notes, the browse
+indexes, the map, evidence, exports and change history are not redacted yet: every role still sees
+them ([ADR-008](./docs/adr/008-privacy-model.md), #1412).
 
 The app marks a living or private person with a **Living** or **Private** badge on their page and
 person cards, in search results, on the pedigree and descendancy charts, on the family group
