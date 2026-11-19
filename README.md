@@ -220,8 +220,8 @@ comparisons, which name who made each change); sees a **Sign in** link instead o
 menu, and gets no editing controls. Reads whose cost grows with the tree (lists, search, charts,
 browse indexes and their people, the map, statistics, reports and media files) are limited to 30
 at once and one more per second per client address. The change applies to the next request and
-is written to the audit log. Until living people and private records are protected from visitors (#1412), the server
-refuses to turn it on.
+is written to the audit log. Until living people and private records are protected from visitors
+(#1412), the server refuses to turn it on.
 
 #### Upgrading from a version without accounts
 
