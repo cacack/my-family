@@ -27,7 +27,7 @@ Rules that must hold true in the my-family codebase. Violations break architectu
 | **ES-006** | Event factories use `NewBaseEvent()` for consistent timestamps | Code review; factory tests |
 | **ES-007** | `DecodeEvent()` handles all event types | Integration test with all event types |
 | **ES-008** | Every event type is classified in the history catalog — mapped to a `ChangeEntry` type and action, or explicitly excluded — and the global history filters exclusions in the store, before pagination ([HISTORY-EVENT-TYPES.md](./HISTORY-EVENT-TYPES.md)) | `TestHistoryCatalog_CoversEveryEventType`, `TestGetGlobalHistory_PaginatesOverShownEntries` (`internal/query`, all backends) |
-| **ES-009** | Every command append goes through the handler's attributing event store, which records the context's actor (`domain.ContextWithActor`) as `EventMetadata.UserID`; an explicitly stamped event's metadata is never overwritten, so a merge's replayed change keeps its original author (#1407). Until sign-in (#1408) puts an actor on the request, nothing sets one and events are written authorless | `TestHandlerConstructors_AttributeAppends`, `TestAttribution_EveryCommandRecordsTheActor`, `TestAttribution_MergeKeepsTheOriginalAuthor`, `TestAttributingEventStore_NeverOverwritesAStamp` (`internal/command`) |
+| **ES-009** | Every command append goes through the handler's attributing event store, which records the context's actor (`domain.ContextWithActor`) as `EventMetadata.UserID`; an explicitly stamped event's metadata is never overwritten, so a merge's replayed change keeps its original author (#1407). The sign-in middleware sets the actor from the session (AC-002); in open mode none is set and events are written authorless | `TestHandlerConstructors_AttributeAppends`, `TestAttribution_EveryCommandRecordsTheActor`, `TestAttribution_MergeKeepsTheOriginalAuthor`, `TestAttributingEventStore_NeverOverwritesAStamp` (`internal/command`) |
 
 ### Database Invariants (DB) - Source: [ADR-002](./adr/002-dual-database-strategy.md)
 
@@ -209,6 +209,14 @@ Rules that must hold true in the my-family codebase. Violations break architectu
 > BR-003's terminal-status purge now also fires on merge.
 > Partial merge / cherry-pick remains out of scope, per ADR-005 §Merge.
 
+### Access Invariants (AC) - Source: [ADR-007](./adr/007-access-model.md)
+
+| ID | Rule | Verification |
+|----|------|--------------|
+| **AC-001** | Accounts (`users`, `tree_memberships`, `sessions`) live in plain tables on every backend, never in the event log, and `myfamily rebuild` leaves them untouched. Passwords are stored only as argon2id hashes and session tokens only as SHA-256 hashes | `TestAccountStore_Contract`, `TestRebuild_KeepsAccounts` (`internal/storage`, all backends), `TestAuth_SecretsStayOutOfLogs` (`internal/api`), `TestSignIn_StoresTokenHashed` (`internal/auth`) |
+| **AC-002** | The acting user (`domain.ContextWithActor`) comes only from a valid session cookie, set by the `authenticate` middleware; no request field or header can name it | `TestAuth_ChangesCarryTheSignedInUser`, `TestAuth_SignInAndOut` (`internal/api`) |
+| **AC-003** | The API fails closed: outside open mode, every `/api/` route not in `publicAPIPaths` answers 503 `SETUP_REQUIRED` without an owner and 401 without a session; a `Config` without `AuthMode` requires accounts, and `NewServer` refuses to build one without `WithAuth` | `TestAuth_SetupMode`, `TestAuth_SignInAndOut`, `TestNewServer_RequiresAuthOutsideOpenMode` (`internal/api`), `TestOpenMode_ZeroConfigFailsClosed` (`internal/config`) |
+
 ### Domain Model Invariants (DM) - Source: [ETHOS.md](./ETHOS.md) + Code Patterns
 
 | ID | Rule | Verification |
@@ -267,10 +275,11 @@ Rules that must hold true in the my-family codebase. Violations break architectu
 | ADR-003 (Sync Projections) | PR-001 through PR-005 | 5 |
 | ADR-004 (Single Binary) | DP-001 through DP-003 | 3 |
 | ADR-005 (Research Branches) | BR-001 through BR-006 | 6 |
+| ADR-007 (Access Model) | AC-001 through AC-003 | 3 |
 | ETHOS.md | DM-001 through DM-006, DI-001 through DI-005, QA-001 through QA-003 | 14 |
 | CONVENTIONS.md | API-001 through API-005 | 5 |
 | CONTRIBUTING.md | TS-001 through TS-003 | 3 |
-| **Total** | | **52** |
+| **Total** | | **55** |
 
 ---
 
