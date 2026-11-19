@@ -22,6 +22,7 @@
 	} from '#lib/utils/urlState.js';
 	import ErrorState from '#lib/components/ErrorState.svelte';
 	import EmptyState from '#lib/components/EmptyState.svelte';
+	import PrivacyBadges from '#lib/components/PrivacyBadges.svelte';
 
 	const SORTS = ['relevance', 'name', 'birth_date', 'death_date'] as const;
 	const PAGE_SIZE = 20;
@@ -747,6 +748,7 @@
 											<a href="/persons/{person.id}" class="person-link">
 												{formatPersonName(person)}
 											</a>
+											<PrivacyBadges living={person.living} private={person.private} />
 										</td>
 										<td class="date-cell">{formatGenDate(person.birth_date)}</td>
 										<td class="date-cell">{formatGenDate(person.death_date)}</td>
@@ -766,9 +768,10 @@
 						{#each results as person}
 							<a href="/persons/{person.id}" class="result-card" data-slot="card-link">
 								<div class="result-card-top">
-									<span class="result-card-name"
-										>{formatPersonName(person)}</span
-									>
+									<span class="result-card-name">
+										{formatPersonName(person)}
+										<PrivacyBadges living={person.living} private={person.private} />
+									</span>
 									<span class="score-badge {scoreColor(person.score)}"
 										>{scoreLabel(person.score)}</span
 									>

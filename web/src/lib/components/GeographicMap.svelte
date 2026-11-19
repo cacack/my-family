@@ -5,6 +5,7 @@
 	import * as topojson from 'topojson-client';
 	import type { Topology, GeometryCollection as TopoGeometryCollection } from 'topojson-specification';
 	import { motionDuration, observeChartResize } from '#lib/utils/chart.js';
+	import PrivacyBadges from './PrivacyBadges.svelte';
 	import { getReducedMotion } from '#lib/stores/accessibilitySettings.svelte.js';
 	import { loadWorldAtlas } from '#lib/utils/worldAtlas.js';
 	import {
@@ -411,7 +412,10 @@
 						</p>
 						<ul class="person-list">
 							{#each location.persons as person (person.id)}
-								<li><a href="/persons/{person.id}">{formatPersonName(person)}</a></li>
+								<li>
+									<a href="/persons/{person.id}">{formatPersonName(person)}</a>
+									<PrivacyBadges living={person.living} private={person.private} />
+								</li>
 							{/each}
 						</ul>
 					</section>

@@ -26,7 +26,7 @@ const LOCATIONS = [
 		count: 2,
 		person_ids: ['p1', 'p2'],
 		persons: [
-			{ id: 'p1', given_name: 'John', surname: 'Smith' },
+			{ id: 'p1', given_name: 'John', surname: 'Smith', living: true, private: true },
 			{ id: 'p2', given_name: 'James', surname: 'Smith' }
 		]
 	},
@@ -91,6 +91,12 @@ describe('GeographicMap', () => {
 			['James Smith', '/persons/p2'],
 			['Mary Jones', '/persons/p3']
 		]);
+
+		// A protected person carries named badges beside their link (#1413)
+		const john = links[0].closest('li') as HTMLElement;
+		expect(within(john).getByRole('img', { name: 'Living person' })).toBeDefined();
+		expect(within(john).getByRole('img', { name: 'Private person' })).toBeDefined();
+		expect(within(links[1].closest('li') as HTMLElement).queryByRole('img')).toBeNull();
 
 		await fireEvent.click(within(details).getByRole('button', { name: 'Close details' }));
 		expect(screen.queryByRole('heading', { name: '2 locations' })).toBeNull();

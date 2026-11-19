@@ -9,6 +9,7 @@
 	import Lock from '@lucide/svelte/icons/lock';
 	import Shield from '@lucide/svelte/icons/shield';
 	import { Badge } from '#lib/components/ui/badge/index.js';
+	import { LIVING_BADGE_NAME, privateBadgeName } from '#lib/utils/privacy.js';
 
 	interface Props {
 		living?: boolean;
@@ -26,7 +27,7 @@
 			<Badge
 				variant="outline"
 				role="img"
-				aria-label="Living person"
+				aria-label={LIVING_BADGE_NAME}
 				title="Counts as living under the living rule"
 				class="privacy-badge"
 				data-testid="living-badge"
@@ -39,7 +40,7 @@
 			<Badge
 				variant="outline"
 				role="img"
-				aria-label="Private {noun}"
+				aria-label={privateBadgeName(noun)}
 				title="Marked private"
 				class="privacy-badge"
 				data-testid="private-badge"

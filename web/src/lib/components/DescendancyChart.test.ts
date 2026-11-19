@@ -186,6 +186,25 @@ describe('DescendancyChart', () => {
 		expect(nodes.length).toBe(1);
 	});
 
+	it('marks a living, private person with named images (#1413)', () => {
+		const { container } = render(DescendancyChart, {
+			props: { data: { ...mockSinglePerson, living: true, private: true } }
+		});
+		const node = container.querySelector('.node');
+		const names = [...(node?.querySelectorAll('.privacy-marker [role="img"]') ?? [])].map((m) =>
+			m.getAttribute('aria-label')
+		);
+		expect(names).toEqual(['Living person', 'Private person']);
+		expect(node?.querySelector(':scope > title')?.textContent).toBe(
+			'John Doe, Living person, Private person'
+		);
+	});
+
+	it('draws no privacy marker for an unprotected person', () => {
+		const { container } = render(DescendancyChart, { props: { data: mockSinglePerson } });
+		expect(container.querySelector('.privacy-marker')).toBeNull();
+	});
+
 	it('renders nodes for person with children', () => {
 		const { container } = render(DescendancyChart, { props: { data: mockPersonWithChildren } });
 		const nodes = container.querySelectorAll('.node');

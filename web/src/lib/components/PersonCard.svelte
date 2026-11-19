@@ -28,7 +28,8 @@
 		'research_status' in person ? person.research_status : undefined
 	);
 
-	// The privacy marks, where the person carries them (PersonSummary doesn't).
+	// The privacy marks, where the person carries them (a family's partner and
+	// child summaries don't).
 	const living = $derived('living' in person && person.living === true);
 	const isPrivate = $derived('private' in person && person.private === true);
 
