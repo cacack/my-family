@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -29,12 +30,12 @@ func TestConverters_PersonPlaceCoordinates(t *testing.T) {
 
 	assertJSONCoordinates(t, "query person", convertQueryPersonToGenerated(qp), personCoordinateKeys, want)
 	assertJSONCoordinates(t, "query person detail", convertQueryPersonDetailToGenerated(&query.PersonDetail{Person: qp}), personCoordinateKeys, want)
-	assertJSONCoordinates(t, "read model person", convertReadModelPersonToGenerated(rm), personCoordinateKeys, want)
+	assertJSONCoordinates(t, "read model person", convertReadModelPersonToGenerated(rm, time.Time{}), personCoordinateKeys, want)
 
 	assertJSONCoordinates(t, "query person without", convertQueryPersonToGenerated(query.Person{ID: uuid.New()}), personCoordinateKeys, nil)
 	assertJSONCoordinates(t, "query person detail without", convertQueryPersonDetailToGenerated(&query.PersonDetail{}), personCoordinateKeys, nil)
 	assertJSONCoordinates(t, "read model person without",
-		convertReadModelPersonToGenerated(repository.PersonReadModel{ID: uuid.New(), BirthPlaceLat: &empty}), personCoordinateKeys, nil)
+		convertReadModelPersonToGenerated(repository.PersonReadModel{ID: uuid.New(), BirthPlaceLat: &empty}, time.Time{}), personCoordinateKeys, nil)
 }
 
 func TestConverters_FamilyPlaceCoordinates(t *testing.T) {

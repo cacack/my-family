@@ -3,7 +3,7 @@
 	import { tick } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
-	import { api, isVersionConflict, recordLoadError, type LoadFailure, type PersonDetail, type ChangeHistoryResponse, type Media, type ResearchStatus, type RollbackResponse, formatGenDate, formatPersonName, type Gender } from '#lib/api/client.js';
+	import { api, isVersionConflict, recordLoadError, type LoadFailure, type PersonDetail, type ChangeHistoryResponse, type Media, type ResearchStatus, type LivingOverride, type RollbackResponse, formatGenDate, formatPersonName, type Gender } from '#lib/api/client.js';
 	import ChangeHistory from '#lib/components/ChangeHistory.svelte';
 	import RestorePointBrowser from '#lib/components/RestorePointBrowser.svelte';
 	import RollbackConfirmDialog from '#lib/components/RollbackConfirmDialog.svelte';
@@ -13,6 +13,8 @@
 	import EvidencePanel from '#lib/components/EvidencePanel.svelte';
 	import NameSection from '#lib/components/NameSection.svelte';
 	import UncertaintyBadge from '#lib/components/UncertaintyBadge.svelte';
+	import PrivacyBadges from '#lib/components/PrivacyBadges.svelte';
+	import PrivacyFields from '#lib/components/PrivacyFields.svelte';
 	import RelationshipToYou from '#lib/components/RelationshipToYou.svelte';
 	import { createShortcutHandler } from '#lib/keyboard/useShortcuts.svelte.js';
 	import { Button } from '#lib/components/ui/button/index.js';
@@ -29,7 +31,7 @@
 	import LiveRegion from '#lib/components/LiveRegion.svelte';
 	import { activeBranch } from '#lib/stores/activeBranch.svelte.js';
 	import { ROLLBACK_MAINLINE_ONLY } from '#lib/utils/rollbackScope.js';
-	import { GENDER_OPTIONS, RESEARCH_STATUS_OPTIONS, optionLabel } from '#lib/utils/enumOptions.js';
+	import { GENDER_OPTIONS, LIVING_OVERRIDE_OPTIONS, RESEARCH_STATUS_OPTIONS, optionLabel } from '#lib/utils/enumOptions.js';
 	import { DISCARD_EDITS_PROMPT, SaveConflictFlow, type ConflictRow } from '#lib/utils/saveConflict.svelte.js';
 	import {
 		asDatePhrase,
@@ -128,7 +130,9 @@
 		death_date: '',
 		death_place: '',
 		notes: '',
-		research_status: 'unknown' as ResearchStatus
+		research_status: 'unknown' as ResearchStatus,
+		private: false,
+		living_override: 'auto' as LivingOverride
 	});
 
 	async function loadPerson(id: string) {
@@ -303,7 +307,9 @@
 			death_date: saved.death_date?.raw || '',
 			death_place: saved.death_place || '',
 			notes: saved.notes || '',
-			research_status: saved.research_status || 'unknown'
+			research_status: saved.research_status || 'unknown',
+			private: saved.private === true,
+			living_override: saved.living_override || 'auto'
 		};
 	}
 
@@ -319,13 +325,15 @@
 	const conflictRows: ConflictRow<typeof formData>[] = [
 		{ key: 'given_name', label: 'Given Name' },
 		{ key: 'surname', label: 'Surname' },
-		{ key: 'gender', label: 'Gender', format: (value) => optionLabel(GENDER_OPTIONS, value) },
-		{ key: 'research_status', label: 'Research Status', format: (value) => optionLabel(RESEARCH_STATUS_OPTIONS, value) },
+		{ key: 'gender', label: 'Gender', format: (value) => optionLabel(GENDER_OPTIONS, String(value)) },
+		{ key: 'research_status', label: 'Research Status', format: (value) => optionLabel(RESEARCH_STATUS_OPTIONS, String(value)) },
 		{ key: 'birth_date', label: 'Birth Date' },
 		{ key: 'birth_place', label: 'Birth Place' },
 		{ key: 'death_date', label: 'Death Date' },
 		{ key: 'death_place', label: 'Death Place' },
-		{ key: 'notes', label: 'Notes' }
+		{ key: 'notes', label: 'Notes' },
+		{ key: 'private', label: 'Private', format: (value) => (value ? 'Yes' : 'No') },
+		{ key: 'living_override', label: 'Living status', format: (value) => optionLabel(LIVING_OVERRIDE_OPTIONS, String(value)) }
 	];
 
 	// The Edit button and the form replace each other, so focus is moved
@@ -389,6 +397,12 @@
 				research_status:
 					formData.research_status !== (person.research_status || 'unknown')
 						? formData.research_status
+						: undefined,
+				// Sent only when changed, like the fields above.
+				private: formData.private !== (person.private === true) ? formData.private : undefined,
+				living_override:
+					formData.living_override !== (person.living_override || 'auto')
+						? formData.living_override
 						: undefined,
 				version: person.version
 			});
@@ -582,6 +596,13 @@
 					<textarea bind:value={formData.notes} rows="4"></textarea>
 				</label>
 
+				<PrivacyFields
+					noun="person"
+					bind:private={formData.private}
+					bind:livingOverride={formData.living_override}
+					living={person.living}
+				/>
+
 				<!-- Beside the Save button, where the user is looking when it fails. -->
 				{#if saveConflict.latest}
 					<SaveConflict
@@ -617,6 +638,7 @@
 						<div class="name-row">
 							<h1>{formatPersonName(person)}</h1>
 							<UncertaintyBadge status={person.research_status || 'unknown'} showLabel={true} />
+							<PrivacyBadges living={person.living} private={person.private} />
 						</div>
 						{#if person.gender}
 							<span class="gender-badge">{person.gender}</span>

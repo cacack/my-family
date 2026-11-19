@@ -9,6 +9,8 @@
 	import ActionBar from '#lib/components/ActionBar.svelte';
 	import FormRow from '#lib/components/FormRow.svelte';
 	import { Badge } from '#lib/components/ui/badge/index.js';
+	import PrivacyBadges from '#lib/components/PrivacyBadges.svelte';
+	import PrivacyFields from '#lib/components/PrivacyFields.svelte';
 	import { SOURCE_TYPES } from '#lib/utils/sourceTypes.js';
 	import ErrorState from '#lib/components/ErrorState.svelte';
 	import LoadingState from '#lib/components/LoadingState.svelte';
@@ -49,7 +51,8 @@
 		repository_name: '',
 		collection_name: '',
 		call_number: '',
-		notes: ''
+		notes: '',
+		private: false
 	});
 
 	const saveConflict = new SaveConflictFlow<SourceDetail, typeof formData>({
@@ -74,7 +77,8 @@
 		{ key: 'repository_name', label: 'Repository Name' },
 		{ key: 'collection_name', label: 'Collection Name' },
 		{ key: 'call_number', label: 'Call Number' },
-		{ key: 'notes', label: 'Notes' }
+		{ key: 'notes', label: 'Notes' },
+		{ key: 'private', label: 'Private', format: (value) => (value ? 'Yes' : 'No') }
 	];
 
 	function sourceTypeLabel(value: string): string {
@@ -108,7 +112,8 @@
 			repository_name: saved.repository_name || '',
 			collection_name: saved.collection_name || '',
 			call_number: saved.call_number || '',
-			notes: saved.notes || ''
+			notes: saved.notes || '',
+			private: saved.private === true
 		};
 	}
 
@@ -162,6 +167,8 @@
 				collection_name: formData.collection_name.trim(),
 				call_number: formData.call_number.trim(),
 				notes: formData.notes.trim(),
+				// Sent only when changed, so saving leaves the restriction alone.
+				private: formData.private !== (source.private === true) ? formData.private : undefined,
 				version: source.version
 			});
 			await loadSource(source.id);
@@ -315,6 +322,8 @@
 					<textarea bind:value={formData.notes} rows="4"></textarea>
 				</label>
 
+				<PrivacyFields noun="source" bind:private={formData.private} />
+
 				<!-- Beside the Save button, where the user is looking when it fails. -->
 				{#if saveConflict.latest}
 					<SaveConflict
@@ -344,6 +353,7 @@
 					<div class="source-title">
 						<h1>{source.title}</h1>
 						<Badge variant="secondary">{formatSourceType(source.source_type)}</Badge>
+						<PrivacyBadges private={source.private} noun="source" />
 						{#if source.citation_count}
 							<span class="citation-badge">{source.citation_count} {source.citation_count === 1 ? 'citation' : 'citations'}</span>
 						{/if}

@@ -1,7 +1,7 @@
 <script lang="ts">
 	/**
 	 * The signed-in user's menu in the header (ADR-007): who, their account
-	 * page, the users page for an owner, and sign out.
+	 * page, the users and settings pages for an owner, and sign out.
 	 */
 	import { goto } from '$app/navigation';
 	import * as DropdownMenu from '#lib/components/ui/dropdown-menu/index.js';
@@ -31,6 +31,7 @@
 			<DropdownMenu.Item onSelect={() => goto('/account')}>Account</DropdownMenu.Item>
 			{#if can('owner')}
 				<DropdownMenu.Item onSelect={() => goto('/users')}>Users</DropdownMenu.Item>
+				<DropdownMenu.Item onSelect={() => goto('/settings')}>Settings</DropdownMenu.Item>
 			{/if}
 			<DropdownMenu.Separator />
 			<DropdownMenu.Item onSelect={() => signOut()}>Sign out</DropdownMenu.Item>

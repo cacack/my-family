@@ -77,7 +77,7 @@ func (s *RelationshipService) GetRelationship(ctx context.Context, branchID doma
 	if personARM == nil {
 		return nil, ErrNotFound
 	}
-	personA := convertReadModelToPerson(*personARM)
+	personA := convertReadModelToPerson(*personARM, livingCutoff(ctx))
 
 	// Get person B
 	personBRM, err := s.readStore.GetPerson(ctx, branchID, personID2)
@@ -87,7 +87,7 @@ func (s *RelationshipService) GetRelationship(ctx context.Context, branchID doma
 	if personBRM == nil {
 		return nil, ErrNotFound
 	}
-	personB := convertReadModelToPerson(*personBRM)
+	personB := convertReadModelToPerson(*personBRM, livingCutoff(ctx))
 
 	result := &RelationshipResult{
 		PersonA: &personA,
@@ -225,7 +225,7 @@ func (s *RelationshipService) buildAncestorMap(ctx context.Context, branchID dom
 		}
 		parentByID := make(map[uuid.UUID]Person, len(parents))
 		for _, p := range parents {
-			parentByID[p.ID] = convertReadModelToPerson(p)
+			parentByID[p.ID] = convertReadModelToPerson(p, livingCutoff(ctx))
 		}
 
 		next := make([]frontierNode, 0, len(found))

@@ -36,7 +36,7 @@ func newAuthFixture(t *testing.T) *authFixture {
 	accounts := memory.NewAccountStore()
 	svc := auth.NewService(accounts)
 	server := api.NewServer(cfg, events, memory.NewReadModelStore(), memory.NewSnapshotStore(events), nil,
-		api.WithAuth(svc), api.WithBranchStore(memory.NewBranchStore()))
+		api.WithAuth(svc), api.WithBranchStore(memory.NewBranchStore()), api.WithTreeSettings(accounts))
 	return &authFixture{server: server, auth: svc, accounts: accounts, events: events}
 }
 

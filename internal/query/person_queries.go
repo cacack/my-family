@@ -134,7 +134,7 @@ func (s *PersonService) ListPersons(ctx context.Context, input ListPersonsInput)
 
 	persons := make([]Person, len(readModels))
 	for i, rm := range readModels {
-		persons[i] = convertReadModelToPerson(rm)
+		persons[i] = convertReadModelToPerson(rm, livingCutoff(ctx))
 	}
 
 	return &PersonListResult{
@@ -215,7 +215,7 @@ func (s *PersonService) GetPersonCore(ctx context.Context, branchID domain.Branc
 	if rm == nil {
 		return nil, ErrNotFound
 	}
-	person := convertReadModelToPerson(*rm)
+	person := convertReadModelToPerson(*rm, livingCutoff(ctx))
 	return &person, nil
 }
 
@@ -287,7 +287,7 @@ func (s *PersonService) SearchPersons(ctx context.Context, input SearchPersonsIn
 	results := make([]SearchResult, len(readModels))
 	for i, rm := range readModels {
 		results[i] = SearchResult{
-			Person: convertReadModelToPerson(rm),
+			Person: convertReadModelToPerson(rm, livingCutoff(ctx)),
 			Score:  1.0, // In-memory search doesn't have scoring; SQLite/PostgreSQL would provide this
 		}
 	}
@@ -299,8 +299,9 @@ func (s *PersonService) SearchPersons(ctx context.Context, input SearchPersonsIn
 	}, nil
 }
 
-// Helper function to convert read model to query result.
-func convertReadModelToPerson(rm repository.PersonReadModel) Person {
+// convertReadModelToPerson converts a read-model person to a query result,
+// judging the living rule against cutoff (see livingCutoff).
+func convertReadModelToPerson(rm repository.PersonReadModel, cutoff time.Time) Person {
 	p := Person{
 		ID:        rm.ID,
 		GivenName: rm.GivenName,
@@ -346,17 +347,17 @@ func convertReadModelToPerson(rm repository.PersonReadModel) Person {
 	if rm.BrickWallResolvedAt != nil {
 		p.BrickWallResolvedAt = rm.BrickWallResolvedAt
 	}
-	p.Living = rm.LivingFacts().IsLiving(LivingCutoff(time.Now()))
+	p.Living = rm.LivingFacts().IsLiving(cutoff)
 	p.LivingOverride = string(rm.LivingOverride)
 	p.Private = rm.Restriction.IsPrivate()
 
 	return p
 }
 
-// LivingCutoff is the living rule's cutoff on now's date at the tree's
-// threshold, which is the default until tree settings exist (ADR-008 §6).
-func LivingCutoff(now time.Time) time.Time {
-	return domain.LivingCutoff(now, domain.DefaultLivingThresholdYears)
+// livingCutoff is today's living-rule cutoff at the threshold of the tree
+// settings on ctx (ADR-008 §6).
+func livingCutoff(ctx context.Context) time.Time {
+	return repository.TreeSettingsFrom(ctx).LivingCutoff(time.Now())
 }
 
 // nonEmpty returns a copy of an optional read-model string, or nil when it is

@@ -30,6 +30,7 @@ type AccountStore struct {
 	invites     map[string]repository.Invite
 	resets      map[string]repository.PasswordReset
 	audit       []repository.AuthAuditEntry
+	settings    map[uuid.UUID]repository.TreeSettings
 }
 
 // NewAccountStore creates an empty in-memory account store.
@@ -39,6 +40,7 @@ func NewAccountStore() *AccountStore {
 		sessions: make(map[string]repository.Session),
 		invites:  make(map[string]repository.Invite),
 		resets:   make(map[string]repository.PasswordReset),
+		settings: make(map[uuid.UUID]repository.TreeSettings),
 	}
 }
 
@@ -320,4 +322,22 @@ func (s *AccountStore) ListAuthAudit(_ context.Context, limit, offset int) ([]re
 		entries = append(entries, s.audit[i])
 	}
 	return entries, len(s.audit), nil
+}
+
+// GetTreeSettings returns treeID's settings, or the defaults.
+func (s *AccountStore) GetTreeSettings(_ context.Context, treeID uuid.UUID) (repository.TreeSettings, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if settings, ok := s.settings[treeID]; ok {
+		return settings, nil
+	}
+	return repository.DefaultTreeSettings(), nil
+}
+
+// SaveTreeSettings stores treeID's settings.
+func (s *AccountStore) SaveTreeSettings(_ context.Context, treeID uuid.UUID, settings repository.TreeSettings) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.settings[treeID] = settings
+	return nil
 }

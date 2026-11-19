@@ -1026,8 +1026,9 @@ func (ss *StrictServer) ExportPersons(ctx context.Context, request ExportPersons
 	}
 
 	persons := make([]Person, len(readModels))
+	cutoff := repository.TreeSettingsFrom(ctx).LivingCutoff(time.Now())
 	for i, rm := range readModels {
-		persons[i] = convertReadModelPersonToGenerated(rm)
+		persons[i] = convertReadModelPersonToGenerated(rm, cutoff)
 	}
 
 	total := len(persons)
@@ -1045,8 +1046,9 @@ func (ss *StrictServer) ExportTree(ctx context.Context, _ ExportTreeRequestObjec
 	}
 
 	persons := make([]Person, len(personModels))
+	cutoff := repository.TreeSettingsFrom(ctx).LivingCutoff(time.Now())
 	for i, rm := range personModels {
-		persons[i] = convertReadModelPersonToGenerated(rm)
+		persons[i] = convertReadModelPersonToGenerated(rm, cutoff)
 	}
 
 	familyModels, err := repository.ListAll(ctx, 1000, ss.server.readStore.ListFamilies)
@@ -6139,8 +6141,9 @@ func convertQueryLDSOrdinanceToGenerated(o query.LDSOrdinance) LDSOrdinance {
 	return resp
 }
 
-// convertReadModelPersonToGenerated converts a repository.PersonReadModel to the generated Person type.
-func convertReadModelPersonToGenerated(rm repository.PersonReadModel) Person {
+// convertReadModelPersonToGenerated converts a repository.PersonReadModel to
+// the generated Person type, judging the living rule against cutoff.
+func convertReadModelPersonToGenerated(rm repository.PersonReadModel, cutoff time.Time) Person {
 	resp := Person{
 		Id:        rm.ID,
 		GivenName: rm.GivenName,
@@ -6176,7 +6179,7 @@ func convertReadModelPersonToGenerated(rm repository.PersonReadModel) Person {
 		rs := ResearchStatus(rm.ResearchStatus)
 		resp.ResearchStatus = &rs
 	}
-	resp.Living, resp.LivingOverride = livingFields(rm.LivingFacts().IsLiving(query.LivingCutoff(time.Now())), rm.LivingOverride)
+	resp.Living, resp.LivingOverride = livingFields(rm.LivingFacts().IsLiving(cutoff), rm.LivingOverride)
 	resp.Private = privateFlag(rm.Restriction.IsPrivate())
 	return resp
 }

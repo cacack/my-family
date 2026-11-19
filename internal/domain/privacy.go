@@ -84,8 +84,8 @@ func (o LivingOverride) IsValid() bool {
 }
 
 // DefaultLivingThresholdYears is N in the living rule: a person born more than
-// N years ago is not presumed living. It is a tree setting whose store arrives
-// with #1408; until then the default applies (ADR-008 §6).
+// N years ago is not presumed living, unless the owner sets another N in the
+// tree settings (repository.TreeSettings, ADR-008 §6).
 const DefaultLivingThresholdYears = 110
 
 // LivingFacts are the time-independent inputs of the living rule, which the

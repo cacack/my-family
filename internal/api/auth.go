@@ -103,8 +103,7 @@ func (s *Server) authenticate(next echo.HandlerFunc) echo.HandlerFunc {
 			required = repository.RoleViewer
 		}
 		if s.config.OpenMode() {
-			c.SetRequest(req.WithContext(context.WithValue(ctx, roleKey{}, repository.RoleOwner)))
-			return next(c)
+			return s.serveTree(context.WithValue(ctx, roleKey{}, repository.RoleOwner), c, next)
 		}
 
 		if cookie, err := req.Cookie(sessionCookieName); err == nil {
@@ -145,8 +144,21 @@ func (s *Server) authenticate(next echo.HandlerFunc) echo.HandlerFunc {
 		if role := roleFrom(ctx); !role.Includes(required) {
 			return refuse(c, http.StatusForbidden, CodeForbidden, forbiddenMessage(role, required))
 		}
-		return next(c)
+		return s.serveTree(ctx, c, next)
 	}
+}
+
+// serveTree calls a handler that may read the tree, with the owner's privacy
+// settings on its context (ADR-008 §6). Public routes (health, sign-in, setup)
+// read no tree data, so they skip this lookup and keep working when the
+// settings store does not.
+func (s *Server) serveTree(ctx context.Context, c echo.Context, next echo.HandlerFunc) error {
+	settings, err := s.treeSettings(ctx)
+	if err != nil {
+		return err
+	}
+	c.SetRequest(c.Request().WithContext(repository.ContextWithTreeSettings(ctx, settings)))
+	return next(c)
 }
 
 // forbiddenMessage tells a user why their role may not do something.

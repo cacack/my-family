@@ -185,8 +185,9 @@ which owners read under **Users > Audit log**.
 
 Each person has a computed `living` flag: a recorded death, burial or cremation makes them
 deceased; otherwise they count as living unless their birth (else christening or baptism) is more
-than 110 years ago. Editors can set `living_override` (`auto`, `living`, `deceased`) to decide
-for the rule. Persons, families, sources, citations, notes and media carry a `private` mark,
+than 110 years ago. Owners change that threshold (50 to 150 years) and whether viewers see living
+people under **Settings**. Editors set `living_override` (`auto`, `living`, `deceased`) to decide
+for the rule, and mark a record private, when editing it. Persons, families, sources, citations, notes and media carry a `private` mark,
 which is their GEDCOM restriction notice (`RESN`); it round-trips through GEDCOM import and export
 for persons, families, sources and notes. These marks are recorded but not yet enforced: every
 role still sees every record ([ADR-008](./docs/adr/008-privacy-model.md), #1412).

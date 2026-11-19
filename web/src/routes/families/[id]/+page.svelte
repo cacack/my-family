@@ -20,6 +20,8 @@
 	import AddChildDialog from '#lib/components/AddChildDialog.svelte';
 	import PartnerPickers, { partnerChanges } from '#lib/components/PartnerPickers.svelte';
 	import PersonCard from '#lib/components/PersonCard.svelte';
+	import PrivacyBadges from '#lib/components/PrivacyBadges.svelte';
+	import PrivacyFields from '#lib/components/PrivacyFields.svelte';
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
 	import LiveRegion from '#lib/components/LiveRegion.svelte';
 	import ChangeHistory from '#lib/components/ChangeHistory.svelte';
@@ -160,7 +162,8 @@
 	let formData = $state({
 		relationship_type: 'unknown' as RelationType,
 		marriage_date: '',
-		marriage_place: ''
+		marriage_place: '',
+		private: false
 	});
 
 	async function loadFamily(id: string) {
@@ -255,7 +258,8 @@
 		return {
 			relationship_type: saved.relationship_type || 'unknown',
 			marriage_date: saved.marriage_date?.raw || '',
-			marriage_place: saved.marriage_place || ''
+			marriage_place: saved.marriage_place || '',
+			private: saved.private === true
 		};
 	}
 
@@ -294,7 +298,8 @@
 		{ key: 'partner2_id', label: 'Partner 2', format: partnerNameById },
 		{ key: 'relationship_type', label: 'Relationship Type', format: (value) => relationLabel(String(value)) },
 		{ key: 'marriage_date', label: 'Marriage Date' },
-		{ key: 'marriage_place', label: 'Marriage Place' }
+		{ key: 'marriage_place', label: 'Marriage Place' },
+		{ key: 'private', label: 'Private', format: (value) => (value ? 'Yes' : 'No') }
 	];
 
 	// The Edit button and the form replace each other, so focus is moved
@@ -351,6 +356,8 @@
 				// An empty string clears the field; an omitted one is left unchanged.
 				marriage_date: formData.marriage_date,
 				marriage_place: formData.marriage_place,
+				// Sent only when changed, like the relationship type.
+				private: formData.private !== (family.private === true) ? formData.private : undefined,
 				...partnerChanges(family, partner1, partner2),
 				version: family.version
 			});
@@ -535,6 +542,8 @@
 					</label>
 				</FormRow>
 
+				<PrivacyFields noun="family" bind:private={formData.private} />
+
 				<!-- Beside the Save button, where the user is looking when it fails. -->
 				{#if saveConflict.latest}
 					<SaveConflict
@@ -565,6 +574,7 @@
 					{#if family.relationship_type}
 						<span class="relationship-badge">{family.relationship_type}</span>
 					{/if}
+					<PrivacyBadges private={family.private} noun="family" />
 				</div>
 
 				<div class="partners-section">

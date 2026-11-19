@@ -8,6 +8,7 @@ import type {
 	EvidenceType,
 	Gender,
 	InformantType,
+	LivingOverride,
 	MediaType,
 	NameType,
 	RelationType,
@@ -29,6 +30,13 @@ export const GENDER_OPTIONS:readonly EnumOption<Gender>[] = [
 	{ value: 'unknown', label: 'Unknown' },
 	{ value: 'male', label: 'Male' },
 	{ value: 'female', label: 'Female' }
+];
+
+/** Who decides whether a person counts as living (ADR-008 §1). */
+export const LIVING_OVERRIDE_OPTIONS: readonly EnumOption<LivingOverride>[] = [
+	{ value: 'auto', label: 'Decided by the living rule' },
+	{ value: 'living', label: 'Living' },
+	{ value: 'deceased', label: 'Deceased' }
 ];
 
 export const RELATION_TYPE_OPTIONS: readonly EnumOption<RelationType>[] = [

@@ -82,6 +82,12 @@ func NewAccountStore(db *sql.DB) (*AccountStore, error) {
 			detail TEXT NOT NULL,
 			client_ip TEXT NOT NULL
 		);
+
+		CREATE TABLE IF NOT EXISTS tree_settings (
+			tree_id UUID PRIMARY KEY,
+			living_threshold_years INTEGER NOT NULL,
+			viewers_see_living BOOLEAN NOT NULL
+		);
 	`); err != nil {
 		return nil, fmt.Errorf("create account tables: %w", err)
 	}
@@ -484,4 +490,32 @@ func (s *AccountStore) ListAuthAudit(ctx context.Context, limit, offset int) ([]
 		return nil, 0, fmt.Errorf("list auth audit: %w", err)
 	}
 	return entries, total, nil
+}
+
+// GetTreeSettings returns treeID's settings, or the defaults when none were
+// saved.
+func (s *AccountStore) GetTreeSettings(ctx context.Context, treeID uuid.UUID) (repository.TreeSettings, error) {
+	var settings repository.TreeSettings
+	err := s.db.QueryRowContext(ctx, `
+		SELECT living_threshold_years, viewers_see_living FROM tree_settings WHERE tree_id = $1`, treeID).
+		Scan(&settings.LivingThresholdYears, &settings.ViewersSeeLiving)
+	if errors.Is(err, sql.ErrNoRows) {
+		return repository.DefaultTreeSettings(), nil
+	}
+	if err != nil {
+		return repository.TreeSettings{}, fmt.Errorf("get tree settings: %w", err)
+	}
+	return settings, nil
+}
+
+// SaveTreeSettings stores treeID's settings, replacing any saved before.
+func (s *AccountStore) SaveTreeSettings(ctx context.Context, treeID uuid.UUID, settings repository.TreeSettings) error {
+	if _, err := s.db.ExecContext(ctx, `
+		INSERT INTO tree_settings (tree_id, living_threshold_years, viewers_see_living) VALUES ($1, $2, $3)
+		ON CONFLICT (tree_id) DO UPDATE SET living_threshold_years = EXCLUDED.living_threshold_years,
+			viewers_see_living = EXCLUDED.viewers_see_living`,
+		treeID, settings.LivingThresholdYears, settings.ViewersSeeLiving); err != nil {
+		return fmt.Errorf("save tree settings: %w", err)
+	}
+	return nil
 }

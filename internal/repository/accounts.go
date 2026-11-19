@@ -141,9 +141,12 @@ var (
 )
 
 // AccountStore keeps users, their tree memberships and sessions, invites,
-// password resets and the auth audit log (ADR-007). Every backend implements it over plain tables beside the event
+// password resets, the auth audit log (ADR-007) and the tree settings
+// (ADR-008). Every backend implements it over plain tables beside the event
 // log; none of it is event-sourced or rebuilt.
 type AccountStore interface {
+	TreeSettingsStore
+
 	// CreateUser stores user and its membership of treeID with role, both or
 	// neither. It returns ErrUsernameTaken when the username is in use.
 	CreateUser(ctx context.Context, user *User, treeID uuid.UUID, role Role) error

@@ -689,6 +689,52 @@ describe('Person detail edit form', () => {
 
 		expect(body.gender).toBeUndefined();
 	});
+
+	// ADR-008: an editor marks a person private and overrides the living rule.
+	describe('privacy', () => {
+		it('sends no privacy change when the controls are untouched', async () => {
+			getPerson.mockResolvedValue(person({ living: true, living_override: 'auto' }));
+			await openEdit();
+
+			const body = await save();
+
+			expect(body.private).toBeUndefined();
+			expect(body.living_override).toBeUndefined();
+		});
+
+		it('marks the person private and overrides the living rule', async () => {
+			getPerson.mockResolvedValue(person({ living: true, living_override: 'auto' }));
+			await openEdit();
+
+			expect(screen.getByText(/The rule currently counts this person as living/)).toBeDefined();
+			await fireEvent.click(screen.getByLabelText('Private person'));
+			await fireEvent.change(screen.getByLabelText('Living status'), { target: { value: 'deceased' } });
+			const body = await save();
+
+			expect(body).toMatchObject({ private: true, living_override: 'deceased' });
+		});
+
+		it('unmarks a private person and resets the override to the rule', async () => {
+			getPerson.mockResolvedValue(person({ private: true, living: false, living_override: 'deceased' }));
+			await openEdit();
+
+			const checkbox = screen.getByLabelText('Private person') as HTMLInputElement;
+			expect(checkbox.checked).toBe(true);
+			await fireEvent.click(checkbox);
+			await fireEvent.change(screen.getByLabelText('Living status'), { target: { value: 'auto' } });
+			const body = await save();
+
+			expect(body).toMatchObject({ private: false, living_override: 'auto' });
+		});
+
+		it('marks a living, private person in the header', async () => {
+			getPerson.mockResolvedValue(person({ private: true, living: true }));
+			render(Page);
+
+			expect(await screen.findByRole('img', { name: 'Living person' })).toBeDefined();
+			expect(screen.getByRole('img', { name: 'Private person' })).toBeDefined();
+		});
+	});
 });
 
 describe('Person detail delete', () => {

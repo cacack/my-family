@@ -486,6 +486,8 @@ export type AcceptInviteRequest = Schemas['AcceptInviteRequest'];
 export type PasswordResetRequest = Schemas['PasswordResetRequest'];
 export type User = Schemas['User'];
 export type UserUpdate = Schemas['UserUpdate'];
+export type PrivacySettings = Schemas['PrivacySettings'];
+export type LivingOverride = Schemas['LivingOverride'];
 export type AccountLink = Schemas['AccountLink'];
 export type AuthAuditEntry = Schemas['AuthAuditEntry'];
 export type AuthAuditList = Schemas['AuthAuditList'];
@@ -698,6 +700,14 @@ class ApiClient {
 
 	async updateUser(id: string, input: UserUpdate): Promise<User> {
 		return this.request<User>('PATCH', `/users/${encodeURIComponent(id)}`, input);
+	}
+
+	async getPrivacySettings(): Promise<PrivacySettings> {
+		return this.request<PrivacySettings>('GET', '/settings/privacy');
+	}
+
+	async updatePrivacySettings(settings: PrivacySettings): Promise<PrivacySettings> {
+		return this.request<PrivacySettings>('PUT', '/settings/privacy', settings);
 	}
 
 	async createInvite(role: User['role']): Promise<AccountLink> {
