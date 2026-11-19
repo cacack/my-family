@@ -1185,21 +1185,24 @@ func (s *ReadModelStore) migratePersonNameFullName() error {
 // own row when it has one, else the mainline row, with deleted=1 tombstones
 // removed. For MainBranchID this is exactly the set of mainline rows, reproducing
 // pre-branch behavior. The three placeholders bind (branch, branch, main).
-func personOverlaySubquery(branchID domain.BranchID) (string, []any) {
+func personOverlaySubquery(branchID domain.BranchID, privacy repository.Privacy) (string, []any) {
+	visible := personPrivacySQL(privacy)
 	if branchID.IsMain() {
 		// Main fast path (issue #669): main never shadows itself, so persons holds
 		// exactly one row per id. Skip the ROW_NUMBER window (which materializes and
 		// sorts the whole table, defeating index-driven pagination) and filter the
 		// table directly; the plain subquery flattens into the caller so its ORDER
 		// BY/LIMIT can use the sort indexes and short-circuit.
-		return `(SELECT * FROM persons WHERE branch_id = ? AND deleted = 0)`, []any{mainBranchID}
+		return `(SELECT * FROM persons WHERE branch_id = ? AND deleted = 0` + visible + `)`, []any{mainBranchID}
 	}
+	// The privacy conditions test the resolved row, after the branch row has
+	// won: filtering before would let a hidden branch row's main row through.
 	sub := `(
 			SELECT * FROM (
 				SELECT *, ROW_NUMBER() OVER (PARTITION BY id ORDER BY (branch_id = ?) DESC) AS rn
 				FROM persons
 				WHERE branch_id IN (?, ?)
-			) WHERE rn = 1 AND deleted = 0
+			) WHERE rn = 1 AND deleted = 0` + visible + `
 		)`
 	return sub, []any{branchID.String(), branchID.String(), mainBranchID}
 }
@@ -1219,7 +1222,7 @@ func personOverlaySubquery(branchID domain.BranchID) (string, []any) {
 // Exactly one of cteArgs/legArgs is non-empty, so callers interleave both in
 // statement order.
 func personOverlayCTE(branchID domain.BranchID) (withClause, src string, cteArgs, legArgs []any) {
-	sub, args := personOverlaySubquery(branchID)
+	sub, args := personOverlaySubquery(branchID, repository.Privacy{})
 	if branchID.IsMain() {
 		return "WITH ", sub, nil, args
 	}
@@ -1238,7 +1241,7 @@ func (s *ReadModelStore) GetPerson(ctx context.Context, branchID domain.BranchID
 // ListPersons returns a paginated list of persons within the branch overlay.
 func (s *ReadModelStore) ListPersons(ctx context.Context, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
 	// Resolve the branch overlay first, then filter/count/sort/paginate over it.
-	overlay, overlayArgs := personOverlaySubquery(opts.BranchID)
+	overlay, overlayArgs := personOverlaySubquery(opts.BranchID, opts.Privacy)
 
 	// Build WHERE clause for research_status filter
 	whereClause := ""
@@ -1412,7 +1415,7 @@ func (s *ReadModelStore) queryPersonPage(ctx context.Context, query string, args
 func searchPersonsLikeSQL(opts repository.SearchOptions) (string, []any) {
 	filterSQL, filterArgs := buildDatePlaceFilters(opts)
 	orderClause := searchOrderClause(opts, "p.")
-	overlay, overlayArgs := personOverlaySubquery(opts.BranchID)
+	overlay, overlayArgs := personOverlaySubquery(opts.BranchID, opts.Privacy)
 	namesOverlay, namesArgs := personNamesOverlaySubquery(opts.BranchID)
 
 	var sb strings.Builder
@@ -1484,7 +1487,7 @@ func personNamesOverlaySubquery(branchID domain.BranchID) (string, []any) {
 // unless a name or date sort is requested.
 func (s *ReadModelStore) searchPersonsFuzzy(ctx context.Context, opts repository.SearchOptions, limit int) ([]repository.PersonReadModel, int, error) {
 	filterSQL, filterArgs := buildDatePlaceFilters(opts)
-	overlay, overlayArgs := personOverlaySubquery(opts.BranchID)
+	overlay, overlayArgs := personOverlaySubquery(opts.BranchID, opts.Privacy)
 	namesOverlay, namesArgs := personNamesOverlaySubquery(opts.BranchID)
 
 	var sb strings.Builder
@@ -1695,7 +1698,7 @@ func orderFuzzyMatches(matched []fuzzyMatch, opts repository.SearchOptions) []re
 // the total counts every match.
 func (s *ReadModelStore) searchPersonsSoundex(ctx context.Context, opts repository.SearchOptions, limit int) ([]repository.PersonReadModel, int, error) {
 	filterSQL, filterArgs := buildDatePlaceFilters(opts)
-	overlay, overlayArgs := personOverlaySubquery(opts.BranchID)
+	overlay, overlayArgs := personOverlaySubquery(opts.BranchID, opts.Privacy)
 
 	var sb strings.Builder
 	args := append([]any{}, overlayArgs...)
@@ -1851,7 +1854,7 @@ func personMatchesSoundex(p repository.PersonReadModel, queryWords []string, alt
 func (s *ReadModelStore) searchPersonsFiltersOnly(ctx context.Context, opts repository.SearchOptions, limit int) ([]repository.PersonReadModel, int, error) {
 	filterSQL, filterArgs := buildDatePlaceFilters(opts)
 	orderClause := searchOrderClause(opts, "p.")
-	overlay, overlayArgs := personOverlaySubquery(opts.BranchID)
+	overlay, overlayArgs := personOverlaySubquery(opts.BranchID, opts.Privacy)
 
 	var sb strings.Builder
 	var args []any
@@ -2753,9 +2756,12 @@ func (s *ReadModelStore) GetFamily(ctx context.Context, branchID domain.BranchID
 // ListFamilies returns a paginated list of families within the branch overlay.
 func (s *ReadModelStore) ListFamilies(ctx context.Context, opts repository.ListOptions) ([]repository.FamilyReadModel, int, error) {
 	overlay, overlayArgs := familyOverlaySubquery(opts.BranchID)
+	// Private families are excluded in the query, so the total counts only
+	// the families listed (ADR-008 §5).
+	where := "WHERE 1 = 1" + recordPrivacySQL(opts.Privacy)
 
 	var total int
-	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+overlay, overlayArgs...).Scan(&total)
+	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+overlay+" "+where, overlayArgs...).Scan(&total)
 	if err != nil {
 		return nil, 0, fmt.Errorf("count families: %w", err)
 	}
@@ -2765,6 +2771,7 @@ func (s *ReadModelStore) ListFamilies(ctx context.Context, opts repository.ListO
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT `+familySelectCols+`
 		FROM `+overlay+`
+		`+where+`
 		ORDER BY updated_at DESC, id DESC
 		LIMIT ? OFFSET ?
 	`, queryArgs...)
@@ -3009,7 +3016,7 @@ func scanFamilyChildRows(rows *sql.Rows) ([]repository.FamilyChildReadModel, err
 // GetChildrenOfFamily returns person read models for all children in a family,
 // resolving both the children set and each person through the branch overlay.
 func (s *ReadModelStore) GetChildrenOfFamily(ctx context.Context, branchID domain.BranchID, familyID uuid.UUID) ([]repository.PersonReadModel, error) {
-	personOverlay, personArgs := personOverlaySubquery(branchID)
+	personOverlay, personArgs := personOverlaySubquery(branchID, repository.Privacy{})
 	// #nosec G201 G202 -- personOverlay is a fixed internal subquery, not user input.
 	query := `
 		SELECT p.id, p.given_name, p.surname, p.full_name, p.gender,
@@ -4671,11 +4678,13 @@ func (s *ReadModelStore) GetMediaThumbnail(ctx context.Context, branchID domain.
 func (s *ReadModelStore) ListMediaForEntity(ctx context.Context, entityType string, entityID uuid.UUID, opts repository.ListOptions) ([]repository.MediaReadModel, int, error) {
 	sub, args := overlayColsSubquery("media", mediaSelectCols, entityMediaFilter,
 		[]any{entityType, entityID.String()}, opts.BranchID)
+	// Private media are excluded in the query (ADR-008 §5).
+	where := "WHERE 1 = 1" + recordPrivacySQL(opts.Privacy)
 
 	var total int
 	// #nosec G202 -- sub is built from package constants; every value is a bound ? placeholder
 	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
-	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+sub+" md", args...).Scan(&total); err != nil {
+	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+sub+" md "+where, args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count media: %w", err)
 	}
 
@@ -4685,6 +4694,7 @@ func (s *ReadModelStore) ListMediaForEntity(ctx context.Context, entityType stri
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT `+mediaSelectCols+`, `+mediaHasThumbnail+`
 		FROM `+sub+` md
+		`+where+`
 		ORDER BY created_at DESC, id DESC
 		LIMIT ? OFFSET ?
 	`, append(queryArgs, opts.Limit, opts.Offset)...)
@@ -4967,7 +4977,7 @@ func nullIntPtr(v sql.NullInt64) *int {
 // the branch overlay (ADR-005 / #756): a branch sees its own shadow rows in place
 // of main's and never counts a tombstoned person.
 func (s *ReadModelStore) GetSurnameIndex(ctx context.Context, branchID domain.BranchID) ([]repository.SurnameEntry, []repository.LetterCount, error) {
-	overlay, overlayArgs := personOverlaySubquery(branchID)
+	overlay, overlayArgs := personOverlaySubquery(branchID, repository.Privacy{})
 
 	// Get surname counts
 	// #nosec G202 -- overlay is one of two constant subquery literals returned by personOverlaySubquery; every value is a bound ? placeholder
@@ -5023,7 +5033,7 @@ func (s *ReadModelStore) GetSurnameIndex(ctx context.Context, branchID domain.Br
 // GetSurnamesByLetter returns surnames starting with a specific letter within the
 // branch overlay (ADR-005 / #756).
 func (s *ReadModelStore) GetSurnamesByLetter(ctx context.Context, branchID domain.BranchID, letter string) ([]repository.SurnameEntry, error) {
-	overlay, overlayArgs := personOverlaySubquery(branchID)
+	overlay, overlayArgs := personOverlaySubquery(branchID, repository.Privacy{})
 
 	args := append(append([]any{}, overlayArgs...), letter)
 	// #nosec G202 -- overlay is one of two constant subquery literals returned by personOverlaySubquery; every value is a bound ? placeholder
@@ -5055,7 +5065,7 @@ func (s *ReadModelStore) GetSurnamesByLetter(ctx context.Context, branchID domai
 // overlay carried on opts.BranchID (ADR-005 / #756). Count and page resolve the
 // same overlay so they always agree on scope.
 func (s *ReadModelStore) GetPersonsBySurname(ctx context.Context, surname string, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
-	overlay, overlayArgs := personOverlaySubquery(opts.BranchID)
+	overlay, overlayArgs := personOverlaySubquery(opts.BranchID, opts.Privacy)
 
 	// Count total
 	var total int
@@ -5223,7 +5233,7 @@ func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, branchID domain.
 // GetPersonsByPlace returns persons associated with a place within the branch
 // overlay carried on opts.BranchID (ADR-005 / #756).
 func (s *ReadModelStore) GetPersonsByPlace(ctx context.Context, place string, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
-	overlay, overlayArgs := personOverlaySubquery(opts.BranchID)
+	overlay, overlayArgs := personOverlaySubquery(opts.BranchID, opts.Privacy)
 
 	// Count total - match place at any position in birth_place or death_place.
 	// place is usually a GetPlaceHierarchy full_name (parts joined with ", "), so
@@ -5309,7 +5319,7 @@ func (s *ReadModelStore) GetCemeteryIndex(ctx context.Context, branchID domain.B
 // (ADR-005): the branch-visible life events select the owners, and the persons
 // returned are the branch's view of them.
 func (s *ReadModelStore) GetPersonsByCemetery(ctx context.Context, place string, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
-	overlay, overlayArgs := personOverlaySubquery(opts.BranchID)
+	overlay, overlayArgs := personOverlaySubquery(opts.BranchID, opts.Privacy)
 	events, eventArgs := factOverlaySubquery("life_events", "fact_type IN (?, ?) AND LOWER(place) = LOWER(?)",
 		[]any{string(domain.FactPersonBurial), string(domain.FactPersonCremation), place}, opts.BranchID)
 	joinArgs := append(append([]any{}, overlayArgs...), eventArgs...)
@@ -5361,7 +5371,7 @@ func (s *ReadModelStore) GetPersonsByCemetery(ctx context.Context, place string,
 // GetMapLocations returns aggregated geographic locations from person birth/death
 // coordinates within the branch overlay (ADR-005 / #756).
 func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.BranchID) ([]repository.MapLocation, error) {
-	overlay, overlayArgs := personOverlaySubquery(branchID)
+	overlay, overlayArgs := personOverlaySubquery(branchID, repository.Privacy{})
 
 	// Query birth locations
 	// #nosec G202 -- overlay is one of two constant subquery literals returned by personOverlaySubquery; every value is a bound ? placeholder
