@@ -37,22 +37,26 @@ describe('AccountMenu', () => {
 		expect(signOut).toHaveBeenCalledOnce();
 	});
 
-	it('opens the account page, and the users page for an owner', async () => {
+	it('opens the account page, and the users and settings pages for an owner', async () => {
 		render(AccountMenu);
 		await open();
 		await fireEvent.click(await screen.findByRole('menuitem', { name: 'Users' }));
 		expect(goto).toHaveBeenCalledWith('/users');
 		await open();
+		await fireEvent.click(await screen.findByRole('menuitem', { name: 'Settings' }));
+		expect(goto).toHaveBeenCalledWith('/settings');
+		await open();
 		await fireEvent.click(await screen.findByRole('menuitem', { name: 'Account' }));
 		expect(goto).toHaveBeenCalledWith('/account');
 	});
 
-	it('offers no users page below owner', async () => {
+	it('offers no users or settings page below owner', async () => {
 		state.account = { id: '1', username: 'ada', display_name: 'Ada Lovelace', role: 'editor' };
 		render(AccountMenu);
 		await open();
 		expect(await screen.findByRole('menuitem', { name: 'Account' })).toBeDefined();
 		expect(screen.queryByRole('menuitem', { name: 'Users' })).toBeNull();
+		expect(screen.queryByRole('menuitem', { name: 'Settings' })).toBeNull();
 	});
 
 	it('renders nothing without an account (open mode)', () => {

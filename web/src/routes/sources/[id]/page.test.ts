@@ -145,6 +145,38 @@ describe('Source detail page: multi-line fields (#1174)', () => {
 	});
 });
 
+describe('Source detail page: private mark (ADR-008)', () => {
+	const api = apiModule.api;
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		vi.mocked(api.updateSource).mockResolvedValue({} as apiModule.Source);
+	});
+
+	async function saveWith(change?: () => Promise<unknown>) {
+		render(SourcePage);
+		await fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+		if (change) await change();
+		await fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+		await waitFor(() => expect(api.updateSource).toHaveBeenCalledTimes(1));
+		return vi.mocked(api.updateSource).mock.calls[0][1];
+	}
+
+	it('marks the source private', async () => {
+		vi.mocked(api.getSource).mockResolvedValue(source());
+		const body = await saveWith(() => fireEvent.click(screen.getByLabelText('Private source')));
+		expect(body.private).toBe(true);
+	});
+
+	it('leaves the mark alone when it is untouched, and shows it', async () => {
+		vi.mocked(api.getSource).mockResolvedValue(source({ private: true }));
+		render(SourcePage);
+		expect(await screen.findByRole('img', { name: 'Private source' })).toBeDefined();
+		const body = await saveWith();
+		expect(body.private).toBeUndefined();
+	});
+});
+
 describe('Source detail page: save and delete feedback (#1113)', () => {
 	const api = apiModule.api;
 

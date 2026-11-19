@@ -2,6 +2,7 @@
 	import type { Person, PersonSummary } from '#lib/api/client.js';
 	import { formatGenDate, formatPersonName, formatLifespan } from '#lib/api/client.js';
 	import UncertaintyBadge from './UncertaintyBadge.svelte';
+	import PrivacyBadges from './PrivacyBadges.svelte';
 	import { Card, CardContent } from '#lib/components/ui/card/index.js';
 
 	interface Props {
@@ -26,6 +27,10 @@
 	const researchStatus = $derived(
 		'research_status' in person ? person.research_status : undefined
 	);
+
+	// The privacy marks, where the person carries them (PersonSummary doesn't).
+	const living = $derived('living' in person && person.living === true);
+	const isPrivate = $derived('private' in person && person.private === true);
 
 	const cardSize = $derived(variant === 'compact' ? 'sm' : 'default');
 </script>
@@ -58,6 +63,7 @@
 			{#if researchStatus}
 				<UncertaintyBadge status={researchStatus} size="small" />
 			{/if}
+			<PrivacyBadges {living} private={isPrivate} />
 		</div>
 		{#if variant === 'default'}
 			{#if birthDate}
@@ -153,6 +159,7 @@
 	.name-row {
 		display: flex;
 		align-items: center;
+		flex-wrap: wrap;
 		gap: 0.5rem;
 	}
 

@@ -373,6 +373,23 @@ describe('Family Detail Page: partners and children (#826)', () => {
 		await fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
 	}
 
+	it('marks the family private (ADR-008)', async () => {
+		await openEdit();
+		await fireEvent.click(screen.getByLabelText('Private family'));
+		await fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+		await waitFor(() => expect(api.updateFamily).toHaveBeenCalledTimes(1));
+		expect(vi.mocked(api.updateFamily).mock.calls[0][1].private).toBe(true);
+	});
+
+	it('shows a private family as private and sends no change when untouched', async () => {
+		vi.mocked(api.getFamily).mockResolvedValue({ ...mockFamilyWithChildren, private: true });
+		await openEdit();
+		expect((screen.getByLabelText('Private family') as HTMLInputElement).checked).toBe(true);
+		await fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+		await waitFor(() => expect(api.updateFamily).toHaveBeenCalledTimes(1));
+		expect(vi.mocked(api.updateFamily).mock.calls[0][1].private).toBeUndefined();
+	});
+
 	it('moves focus into the form on Edit and back to Edit on Cancel', async () => {
 		await openEdit();
 		await waitFor(() =>

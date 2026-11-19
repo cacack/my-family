@@ -19,4 +19,23 @@ describe('PersonCard', () => {
 		expect(screen.queryByText('John Smith')).toBeNull();
 		expect(container.querySelector('.avatar')?.getAttribute('data-gender')).toBe('female');
 	});
+
+	it('marks a living or private person, in the link name too', () => {
+		render(PersonCard, {
+			person: { id: 'a', given_name: 'Edith', surname: 'Holt', living: true, private: true, version: 1 },
+			href: '/persons/a'
+		});
+		expect(screen.getByRole('img', { name: 'Living person' })).toBeDefined();
+		expect(screen.getByRole('img', { name: 'Private person' })).toBeDefined();
+		expect(screen.getByRole('link').textContent).toContain('Edith Holt');
+		expect(screen.getByRole('link', { name: /Edith Holt.*Living person/ })).toBeDefined();
+	});
+
+	it('shows no privacy badge for a deceased public person', () => {
+		render(PersonCard, {
+			person: { id: 'a', given_name: 'Old', surname: 'Holt', living: false, version: 1 },
+			href: '/persons/a'
+		});
+		expect(screen.queryByRole('img', { name: 'Living person' })).toBeNull();
+	});
 });
