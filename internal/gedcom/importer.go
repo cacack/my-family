@@ -659,6 +659,9 @@ func parseIndividual(indi *gedcom.Individual, _ *gedcom.Document, result *Import
 				}
 			}
 		case gedcom.EventDeath:
+			if bareDeath(event) {
+				continue // imported as a life event (extractEventsFromIndividual)
+			}
 			person.DeathDate = event.Date
 			person.DeathPlace = event.PlaceName()
 			person.DeathNotes = eventNotes(event)
@@ -1608,12 +1611,31 @@ func individualEventFactType(t gedcom.EventType) domain.FactType {
 	return domain.FactPersonGenericEvent
 }
 
+// bareDeath reports whether event is a DEAT asserting only that the death
+// happened, such as "1 DEAT Y": not negated, and with none of what the person
+// record holds of a death (date, place, notes, TYPE). The record cannot hold
+// such a death as evidence, so unless the individual has a death the record
+// does hold, it is imported as a life event instead and stays death evidence
+// for the living rule (#1436); its citations follow that life event. The
+// exporter writes "1 DEAT Y" for any dateless, placeless death (toGedcomEvent):
+// one that also has notes or TYPE re-imports to the record, which counts those
+// as evidence too.
+func bareDeath(event *gedcom.Event) bool {
+	return event.Type == gedcom.EventDeath && !event.IsNegative && event.Date == "" &&
+		event.PlaceName() == "" && eventNotes(event) == "" && event.EventTypeDetail == ""
+}
+
+// recordDeath reports whether event is a death the person record holds.
+func recordDeath(event *gedcom.Event) bool {
+	return event.Type == gedcom.EventDeath && !event.IsNegative && !bareDeath(event)
+}
+
 // extractEventsFromIndividual extracts all life events from an individual,
 // and returns with them the ID each GEDCOM event is imported with, for its
 // citations (#1294).
 // Birth and Death are excluded as they are stored on Person directly,
 // unless they are negated (NO BIRT / NO DEAT), which represent negative assertions
-// and must be stored as LifeEvents.
+// and must be stored as LifeEvents, or are a bare death (see bareDeath).
 func extractEventsFromIndividual(indi *gedcom.Individual, personID uuid.UUID) ([]EventData, map[*gedcom.Event]uuid.UUID) {
 	var events []EventData
 	ids := make(map[*gedcom.Event]uuid.UUID)
@@ -1662,8 +1684,12 @@ func extractEventsFromIndividual(indi *gedcom.Individual, personID uuid.UUID) ([
 			continue
 		}
 
-		switch event.Type {
-		case gedcom.EventBirth, gedcom.EventDeath:
+		switch {
+		case bareDeath(event) && !slices.ContainsFunc(indi.Events, recordDeath):
+			// A bare death the person record cannot hold is kept as a life
+			// event, so it is still death evidence (#1436).
+			factType = domain.FactPersonDeath
+		case event.Type == gedcom.EventBirth, event.Type == gedcom.EventDeath:
 			// Non-negated birth and death are stored on Person entity, skip
 			continue
 		default:
