@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { can } from '#lib/stores/access.svelte.js';
 	/**
 	 * The merge review's evidence-coverage warning (#838): the facts and
 	 * relationships this branch changed that have no evidence analysis or proof
@@ -114,7 +115,7 @@
 								>{fact.change_count} change{fact.change_count === 1 ? '' : 's'}</span
 							>
 						</div>
-						{#if onBranch}
+						{#if onBranch && can('editor')}
 							<a class="add-link" href={addAnalysisHref(fact)}
 								>Add analysis<span class="sr-only">
 									for {changedFactLabel(fact)} of {fact.subject_name || fact.subject_type}</span

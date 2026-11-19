@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { can } from '#lib/stores/access.svelte.js';
 	import { api, isStaleVersion, type Media } from '#lib/api/client.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import MediaUpload from './MediaUpload.svelte';
@@ -125,7 +126,9 @@
 />
 
 <div class="media-gallery">
-	<MediaUpload {personId} onUpload={handleUpload} />
+	{#if can('editor')}
+		<MediaUpload {personId} onUpload={handleUpload} />
+	{/if}
 
 	{#if conflictError}
 		<ConflictError onRetry={handleRetry} {retrying} />
@@ -148,7 +151,7 @@
 				<circle cx="8.5" cy="8.5" r="1.5" />
 				<polyline points="21 15 16 10 5 21" />
 			</svg>
-			<p>No media yet. Upload photos and documents.</p>
+			<p>No media yet.{#if can('editor')} Upload photos and documents.{/if}</p>
 		</div>
 	{:else}
 		<div class="gallery-grid" role="list" aria-label="Media gallery">
@@ -184,6 +187,7 @@
 						</div>
 					</button>
 
+					{#if can('editor')}
 					<button
 						class="delete-btn"
 						onclick={(e) => askDelete(media, e)}
@@ -199,6 +203,7 @@
 							</svg>
 						{/if}
 					</button>
+					{/if}
 				</div>
 			{/each}
 		</div>

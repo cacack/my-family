@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import ImportPage from './+page.svelte';
 import * as apiModule from '#lib/api/client.js';
+import { signInAs } from '#lib/test/roles.js';
 
 vi.mock('#lib/api/client.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof apiModule>();
@@ -50,6 +51,23 @@ describe('Import & Export page', () => {
 		expect(container.querySelector('input[type="file"]')).toBeTruthy();
 		expect(screen.queryByText('Import is unavailable on a research branch')).toBeNull();
 		expect(screen.queryByText(/Exports always cover the mainline/)).toBeNull();
+	});
+
+	it('offers an editor the exports but not the import (ADR-007)', () => {
+		signInAs('editor');
+		const { container } = render(ImportPage);
+		expect(container.querySelector('input[type="file"]')).toBeNull();
+		expect(screen.getByText('Importing GEDCOM needs the owner role')).toBeTruthy();
+		expect(screen.getByRole('button', { name: /Export GEDCOM/ })).toBeTruthy();
+	});
+
+	it('offers a viewer neither import nor export, and asks nothing of the server', () => {
+		signInAs('viewer');
+		const { container } = render(ImportPage);
+		expect(container.querySelector('input[type="file"]')).toBeNull();
+		expect(screen.getByText('Exporting the tree needs the editor role or above')).toBeTruthy();
+		expect(screen.queryByRole('button', { name: /Export GEDCOM/ })).toBeNull();
+		expect(apiModule.api.getExportEstimate).not.toHaveBeenCalled();
 	});
 
 	it('withdraws the GEDCOM upload on a research branch (#825)', () => {

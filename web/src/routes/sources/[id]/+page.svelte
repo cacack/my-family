@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { can } from '#lib/stores/access.svelte.js';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { api, isVersionConflict, recordLoadError, type LoadFailure, type SourceDetail, type SourceType, type Citation } from '#lib/api/client.js';
@@ -234,7 +235,7 @@
 />
 
 <div class="source-page">
-	<ActionBar back={{ href: '/sources', label: 'Sources' }} actions={source && !editing ? sourceActions : undefined} />
+	<ActionBar back={{ href: '/sources', label: 'Sources' }} actions={source && !editing && can('editor') ? sourceActions : undefined} />
 
 	{#if loading}
 		<LoadingState />

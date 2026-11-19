@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/svelte';
 import MainNav from './MainNav.svelte';
 import { mainNav, isGroup } from '#lib/navigation.js';
+import { signInAs } from '#lib/test/roles.js';
 
 // jsdom applies no media queries, so both the wide row and the narrow menu
 // trigger are in the DOM; queries scope to one or the other.
@@ -69,5 +70,13 @@ describe('MainNav', () => {
 	])('names the current section on the narrow-screen Menu button at %s', (pathname, name) => {
 		render(MainNav, { pathname });
 		expect(screen.getByRole('button', { name })).toBeDefined();
+	});
+
+	it('leaves Import out for a viewer, who can neither import nor export (ADR-007)', () => {
+		signInAs('viewer');
+		const { container } = render(MainNav, { pathname: '/' });
+		const row = within(wideRow(container));
+		expect(row.queryByRole('link', { name: 'Import' })).toBeNull();
+		expect(row.getByRole('link', { name: 'People' })).toBeDefined();
 	});
 });

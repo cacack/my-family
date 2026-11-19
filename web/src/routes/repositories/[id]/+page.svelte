@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { can } from '#lib/stores/access.svelte.js';
 	import MainlineNotice from '#lib/components/MainlineNotice.svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
@@ -221,7 +222,7 @@
 />
 
 <div class="repository-page">
-	<ActionBar back={{ href: '/repositories', label: 'Repositories' }} actions={repository && !editing ? repositoryActions : undefined} />
+	<ActionBar back={{ href: '/repositories', label: 'Repositories' }} actions={repository && !editing && can('editor') ? repositoryActions : undefined} />
 
 	<MainlineNotice
 		message="Repositories are shared across all branches. Creating, editing or deleting a repository here changes the mainline, and every research branch sees the change."

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mainNav, isGroup, isEntryActive, isLinkActive, type NavEntry } from './navigation';
+import { mainNav, navFor, isGroup, isEntryActive, isLinkActive, type NavEntry } from './navigation';
 
 function entry(label: string): NavEntry {
 	const found = mainNav.find((e) => e.label === label);
@@ -63,5 +63,18 @@ describe('main navigation', () => {
 	it('offers each destination once', () => {
 		const hrefs = mainNav.flatMap((e) => (isGroup(e) ? e.links : [e])).map((l) => l.href);
 		expect(new Set(hrefs).size).toBe(hrefs.length);
+	});
+});
+
+describe('navFor', () => {
+	const hrefs = (entries: NavEntry[]) => entries.flatMap((e) => (isGroup(e) ? e.links : [e])).map((l) => l.href);
+
+	it('hides Import from a viewer and keeps it for an editor', () => {
+		expect(hrefs(navFor((role) => role === 'viewer'))).not.toContain('/import');
+		expect(hrefs(navFor((role) => role !== 'owner'))).toContain('/import');
+	});
+
+	it('keeps every destination for the owner', () => {
+		expect(navFor(() => true)).toEqual(mainNav);
 	});
 });

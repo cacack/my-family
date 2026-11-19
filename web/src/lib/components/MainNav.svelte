@@ -1,8 +1,9 @@
 <script lang="ts">
 	import * as DropdownMenu from '#lib/components/ui/dropdown-menu/index.js';
 	import { Button } from '#lib/components/ui/button/index.js';
+	import { can } from '#lib/stores/access.svelte.js';
 	import {
-		mainNav,
+		navFor,
 		isGroup,
 		isEntryActive,
 		isLinkActive,
@@ -16,12 +17,15 @@
 
 	let { pathname }: Props = $props();
 
+	// Only the destinations the signed-in role can use (ADR-007).
+	const entries = $derived(navFor(can));
+
 	const triggerClass = 'gap-1 px-3 py-2 text-sm font-medium';
 	const activeClass = 'nav-active bg-[#eff6ff] text-[#1d4ed8]';
 	const idleClass = 'text-muted-foreground hover:bg-[#f1f5f9] hover:text-[#1e293b]';
 
 	// The narrow-screen Menu button names the section you are in (#1116).
-	const currentSection = $derived(mainNav.find((entry) => isEntryActive(entry, pathname))?.label);
+	const currentSection = $derived(entries.find((entry) => isEntryActive(entry, pathname))?.label);
 </script>
 
 <!-- `child` on Triggers and Items for the reasons given in BranchSwitcher.svelte:
@@ -49,7 +53,7 @@
 <nav class="main-nav" aria-label="Main navigation">
 	<!-- Wide screens: top-level links and one menu per group, on one row. -->
 	<div class="nav-wide">
-		{#each mainNav as entry (entry.label)}
+		{#each entries as entry (entry.label)}
 			{@const active = isEntryActive(entry, pathname)}
 			{#if isGroup(entry)}
 				<DropdownMenu.Root>
@@ -95,10 +99,10 @@
 				{/snippet}
 			</DropdownMenu.Trigger>
 			<DropdownMenu.Content class="max-h-(--bits-dropdown-menu-content-available-height) w-64">
-				{#each mainNav as entry, i (entry.label)}
+				{#each entries as entry, i (entry.label)}
 					<!-- Separators fence each group off, so a plain link after one
 					     does not read as part of it. -->
-					{#if i > 0 && (isGroup(entry) || isGroup(mainNav[i - 1]))}
+					{#if i > 0 && (isGroup(entry) || isGroup(entries[i - 1]))}
 						<DropdownMenu.Separator />
 					{/if}
 					{#if isGroup(entry)}

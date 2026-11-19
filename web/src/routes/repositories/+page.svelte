@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { can } from '#lib/stores/access.svelte.js';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import MainlineNotice from '#lib/components/MainlineNotice.svelte';
@@ -192,7 +193,7 @@
 						</svg>
 					{/if}
 				</button>
-				<Button onclick={openAddForm}>Add Repository</Button>
+				{#if can('editor')}<Button onclick={openAddForm}>Add Repository</Button>{/if}
 			</div>
 		{/snippet}
 	</PageHeader>
@@ -294,7 +295,7 @@
 	{:else if repositories.length === 0}
 		<EmptyState message="No repositories found.">
 			{#snippet actions()}
-				<Button onclick={openAddForm}>Add Repository</Button>
+				{#if can('editor')}<Button onclick={openAddForm}>Add Repository</Button>{/if}
 			{/snippet}
 		</EmptyState>
 	{:else}

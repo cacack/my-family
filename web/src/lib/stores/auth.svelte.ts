@@ -12,15 +12,9 @@
  * - `error`: the status could not be read; `retry` with `loadAuth`
  */
 import { api, setUnauthorizedHandler, type Account, type SetupRequest } from '#lib/api/client.js';
+import { auth } from './access.svelte.js';
 
-export type AuthPhase = 'loading' | 'open' | 'setup' | 'signed-out' | 'signed-in' | 'error';
-
-interface AuthState {
-	phase: AuthPhase;
-	account: Account | null;
-}
-
-export const auth = $state<AuthState>({ phase: 'loading', account: null });
+export { auth, can, currentRole, type AuthPhase, type Role } from './access.svelte.js';
 
 function signedIn(account: Account): void {
 	auth.account = account;

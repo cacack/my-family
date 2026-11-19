@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { can } from '#lib/stores/access.svelte.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import type { SavedAs } from '#lib/utils/dateInput.js';
 
@@ -56,6 +57,7 @@
 			<p>Create families and connect relationships.</p>
 		</a>
 
+		{#if can('editor')}
 		<a href="/import" class="feature-card" data-slot="card-link">
 			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 				<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -65,6 +67,7 @@
 			<h3>Import & Export</h3>
 			<p>Import GEDCOM files or export your data.</p>
 		</a>
+		{/if}
 
 		<a href="/sources" class="feature-card" data-slot="card-link">
 			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

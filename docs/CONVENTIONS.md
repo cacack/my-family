@@ -169,6 +169,7 @@ How to add an optional update field:
 - Go server code generated via `make generate-api` (oapi-codegen)
 - TypeScript types generated via `make generate-types`
 - Never hand-edit `internal/api/generated.go` or `web/src/lib/api/types.generated.ts`
+- Every operation declares `x-min-role` (`public`, `viewer`, `editor` or `owner`): a GET that reads the tree is `viewer`, a change is `editor`, and import, rollback, user management and settings are `owner`. An operation without one is refused for everyone (AC-004); a route registered by hand declares its role in `handRouteRoles` (`internal/api/roles.go`). In the web UI, hide a control the role cannot use with `can(...)` from `#lib/stores/access.svelte.js`
 - Each validated domain value set (an `All*()` list that `IsValid` checks, in `internal/domain/enums.go` or beside its type) has a named schema that properties `$ref`; `internal/api/enums_contract_test.go` fails when the two value sets diverge, or when an inline `enum` copies a named one
 - `web/src/lib/api/client.ts` exports aliases of the generated types, never hand-written request/response shapes
 - Option lists for enum-valued form controls are typed against the generated unions (`web/src/lib/utils/enumOptions.ts`), so an invalid option fails `svelte-check`

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { can } from '#lib/stores/access.svelte.js';
 	import { untrack } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
@@ -283,7 +284,7 @@
 <div class="mx-auto max-w-page-detail p-6">
 	<ActionBar
 		back={{ href: '/evidence', label: 'Evidence Analysis' }}
-		actions={analysis && !editing ? recordActions : undefined}
+		actions={analysis && !editing && can('editor') ? recordActions : undefined}
 	/>
 
 	{#if loading}

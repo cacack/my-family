@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { can } from '#lib/stores/access.svelte.js';
 	import { api, isStaleVersion, type PersonName, type NameType } from '#lib/api/client.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import FormRow from '#lib/components/FormRow.svelte';
@@ -284,7 +285,7 @@
 <div class="name-section">
 	<div class="section-header">
 		<h2>Names <span class="count-badge">{names.length}</span></h2>
-		{#if !showAddForm}
+		{#if !showAddForm && can('editor')}
 			<Button variant="outline" size="sm" onclick={openAddForm}>Add Name</Button>
 		{/if}
 	</div>
@@ -368,7 +369,9 @@
 	{:else if names.length === 0 && !showAddForm}
 		<div class="empty-state">
 			<p>No name variants yet.</p>
-			<Button variant="outline" size="sm" onclick={openAddForm}>Add the first name</Button>
+			{#if can('editor')}
+				<Button variant="outline" size="sm" onclick={openAddForm}>Add the first name</Button>
+			{/if}
 		</div>
 	{:else if names.length > 0}
 		<ul class="name-list">
@@ -467,6 +470,7 @@
 							<p class="name-notes">{name.notes}</p>
 						{/if}
 
+						{#if can('editor')}
 						<div class="name-actions">
 							<Button variant="ghost" size="sm" onclick={() => startEdit(name)}>Edit</Button>
 							{#if name.is_primary}
@@ -482,6 +486,7 @@
 								>
 							{/if}
 						</div>
+						{/if}
 					{/if}
 				</li>
 			{/each}

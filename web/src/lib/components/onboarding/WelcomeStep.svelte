@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { can } from '#lib/stores/access.svelte.js';
 	interface Props {
 		onSelectImport: () => void;
 		onSelectCreate: () => void;
@@ -22,6 +23,7 @@
 	</div>
 
 	<div class="action-cards">
+		{#if can('owner')}
 		<button class="action-card" onclick={onSelectImport}>
 			<div class="card-icon">
 				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -33,6 +35,7 @@
 			<h2>Import GEDCOM</h2>
 			<p>Already have family tree data? Import a GEDCOM file to get started quickly.</p>
 		</button>
+		{/if}
 
 		<button class="action-card" onclick={onSelectCreate}>
 			<div class="card-icon">

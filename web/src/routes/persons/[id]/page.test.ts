@@ -8,6 +8,7 @@ import { cn } from '#lib/utils.js';
 import type * as apiModule from '#lib/api/client.js';
 import type { PersonDetail } from '#lib/api/client.js';
 import { goto } from '$app/navigation';
+import { signInAs } from '#lib/test/roles.js';
 
 const PERSON_ID = '11111111-1111-1111-1111-111111111111';
 const BRANCH_ID = '44444444-4444-4444-4444-444444444444';
@@ -246,6 +247,40 @@ describe('Person detail rollback on a branch (#824)', () => {
 		expect(screen.queryByRole('button', { name: 'Change Log' })).toBeNull();
 		await waitFor(() => expect(getPersonHistory).toHaveBeenCalledWith(PERSON_ID, { limit: 20, offset: 0 }));
 		expect(getPersonRestorePoints).not.toHaveBeenCalled();
+	});
+});
+
+describe('Person detail by role (ADR-007)', () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		branchState.id = null;
+		getPerson.mockResolvedValue(person());
+		getPersonHistory.mockResolvedValue({ ...EMPTY_RESPONSE });
+		listPersonMedia.mockResolvedValue({ ...EMPTY_RESPONSE });
+	});
+
+	it('shows a viewer the person with no control that changes it', async () => {
+		signInAs('viewer');
+		render(Page);
+
+		expect(await screen.findByRole('heading', { name: 'Ada Lovelace' })).toBeDefined();
+		for (const name of ['Edit', 'Delete', 'Mark as Brick Wall', 'Add family', 'Add parents']) {
+			expect(screen.queryByRole('button', { name })).toBeNull();
+		}
+		await fireEvent.click(screen.getByRole('button', { name: /History/ }));
+		expect(screen.queryByRole('button', { name: 'Restore' })).toBeNull();
+		expect(getPersonRestorePoints).not.toHaveBeenCalled();
+	});
+
+	it('lets an editor change the person but not roll it back', async () => {
+		signInAs('editor');
+		render(Page);
+
+		expect(await screen.findByRole('button', { name: 'Edit' })).toBeDefined();
+		expect(screen.getByRole('button', { name: 'Mark as Brick Wall' })).toBeDefined();
+		await fireEvent.click(screen.getByRole('button', { name: /History/ }));
+		expect(screen.queryByRole('button', { name: 'Restore' })).toBeNull();
+		expect(screen.queryByText(/work on the mainline only/)).toBeNull();
 	});
 });
 

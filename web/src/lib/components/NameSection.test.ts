@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/svelte';
 import NameSection from './NameSection.svelte';
 import * as apiModule from '#lib/api/client.js';
+import { signInAs } from '#lib/test/roles.js';
 
 vi.mock('#lib/api/client.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof apiModule>();
@@ -297,5 +298,14 @@ describe('NameSection', () => {
 
 			expect((await editNotes('@N1@\n\nRevised text')).notes).toBe('@N1@\n\nRevised text');
 		});
+	});
+
+	it('shows a viewer the names without the controls to change them (ADR-007)', async () => {
+		signInAs('viewer');
+		render(NameSection, { personId: PERSON_ID });
+
+		expect(await screen.findByText('Victoria')).toBeDefined();
+		expect(screen.queryByRole('button', { name: 'Add Name' })).toBeNull();
+		expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
 	});
 });

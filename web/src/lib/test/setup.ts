@@ -1,6 +1,15 @@
 import '@testing-library/svelte/vitest';
 import { cleanup } from '@testing-library/svelte';
-import { afterEach, vi } from 'vitest';
+import { afterEach, beforeEach, vi } from 'vitest';
+import { auth } from '#lib/stores/access.svelte.js';
+
+// Components hide what the signed-in role cannot use (ADR-007). Most tests are
+// about what the controls do, so each starts as the owner, in open mode; a test
+// of a lesser role sets `auth` itself.
+beforeEach(() => {
+	auth.phase = 'open';
+	auth.account = null;
+});
 
 // Drain bits-ui's deferred body-scroll-lock cleanup before vitest tears jsdom down (#741).
 //

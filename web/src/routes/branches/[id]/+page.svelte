@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { can } from '#lib/stores/access.svelte.js';
 	/**
 	 * Compare a research branch against the mainline, and merge it.
 	 *
@@ -908,12 +909,12 @@
 				{#if branch.status !== 'archived'}
 					<Button variant="ghost" href="/branches/{branch.id}/research">Research</Button>
 				{/if}
-				{#if mergeable}
+				{#if mergeable && can('editor')}
 					<Button variant="outline" onclick={() => (closeOpen = true)} disabled={merging}>
 						Close branch
 					</Button>
 				{/if}
-				{#if mergeable}
+				{#if mergeable && can('editor')}
 					<div class="merge-bar">
 						<p class="undecided" role="status">{undecidedLabel}</p>
 						{#if blockerLabel}
@@ -977,7 +978,7 @@
 				/>
 			{:else}
 				<BranchResearchSummary branch={comparison.branch} scopeNote={researchScopeNote} />
-				{#if researchEditable}
+				{#if researchEditable && can('editor')}
 					<Button
 						variant="outline"
 						size="sm"
@@ -990,7 +991,7 @@
 			{/if}
 		</PageHeader>
 
-		{#if isIncompleteMerge(comparison.branch)}
+		{#if isIncompleteMerge(comparison.branch) && can('editor')}
 			<IncompleteMergeCallout
 				pending={pendingEntities(comparison.branch)}
 				unreadable={isUnreadableMerge(comparison.branch)}
