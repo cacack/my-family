@@ -3214,6 +3214,156 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /**
+         * Change the signed-in user's display name or password
+         * @description Each field left out is kept. A new password needs the current one, and
+         *     ends every other session of the user; this one stays signed in.
+         */
+        patch: operations["updateCurrentAccount"];
+        trace?: never;
+    };
+    "/auth/invites/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create an account from an invite link and sign it in
+         * @description Needs no session. The account gets the invite's role. An invite is
+         *     single-use and expires; there is no other way to register.
+         */
+        post: operations["acceptInvite"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/password-reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set a password from a reset link
+         * @description Needs no session. The link is single-use and expires. Every session of
+         *     the user ends; they then sign in with the new password.
+         */
+        post: operations["resetPassword"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the tree's users */
+        get: operations["listUsers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Change a user's role, or disable or re-enable their account
+         * @description Each field left out is kept. Disabling ends every session of the user
+         *     and refuses their sign-in. The last active owner can be neither
+         *     demoted nor disabled (`LAST_OWNER`).
+         */
+        patch: operations["updateUser"];
+        trace?: never;
+    };
+    "/users/{id}/password-reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Issue a password reset link for a user
+         * @description Returns a single-use token, valid for 24 hours, to pass on to the user
+         *     yourself: no email is sent. Only its hash is stored, so it is shown
+         *     this once.
+         */
+        post: operations["createPasswordReset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/invites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Issue an invite link that creates an account with a role
+         * @description Returns a single-use token, valid for 7 days, to pass on yourself: no
+         *     email is sent. Only its hash is stored, so it is shown this once.
+         */
+        post: operations["createInvite"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth-audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the auth audit log
+         * @description Sign-ins, failed sign-ins, invites, role changes, disables, enables and
+         *     password resets and changes, newest first. The log is append-only.
+         */
+        get: operations["listAuthAudit"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
         patch?: never;
         trace?: never;
     };
@@ -3233,8 +3383,8 @@ export interface components {
             /**
              * @description What the user may do in the tree (ADR-007): a `viewer` reads it, an
              *     `editor` also changes it, works in research branches and exports,
-             *     and an `owner` also imports GEDCOM and rolls records back. Each
-             *     operation's `x-min-role` names the least role it needs.
+             *     and an `owner` also manages users, imports GEDCOM and rolls records
+             *     back. Each operation's `x-min-role` names the least role it needs.
              * @enum {string}
              */
             role: "viewer" | "editor" | "owner";
@@ -3259,6 +3409,96 @@ export interface components {
             display_name: string;
             /** Format: password */
             password: string;
+        };
+        AccountUpdate: {
+            display_name?: string;
+            /**
+             * Format: password
+             * @description Needed with `new_password`
+             */
+            current_password?: string;
+            /** Format: password */
+            new_password?: string;
+        };
+        AcceptInviteRequest: {
+            /** @description The token from the invite link */
+            token: string;
+            /** @description Letters, digits and `. _ - @`; stored lowercase */
+            username: string;
+            display_name: string;
+            /** Format: password */
+            password: string;
+        };
+        PasswordResetRequest: {
+            /** @description The token from the reset link */
+            token: string;
+            /** Format: password */
+            password: string;
+        };
+        User: {
+            /** Format: uuid */
+            id: string;
+            username: string;
+            display_name: string;
+            /** @enum {string} */
+            role: "viewer" | "editor" | "owner";
+            /** @description A disabled user cannot sign in */
+            disabled: boolean;
+            /** Format: date-time */
+            created_at: string;
+        };
+        UserList: {
+            items: components["schemas"]["User"][];
+        };
+        UserUpdate: {
+            /** @enum {string} */
+            role?: "viewer" | "editor" | "owner";
+            disabled?: boolean;
+        };
+        InviteRequest: {
+            /**
+             * @description The role the new account gets
+             * @enum {string}
+             */
+            role: "viewer" | "editor" | "owner";
+        };
+        AccountLink: {
+            /**
+             * @description The single-use token. The web UI's link is `/join#token=<token>`
+             *     for an invite and `/reset-password#token=<token>` for a reset; the
+             *     fragment never reaches the server's logs.
+             */
+            token: string;
+            /** Format: date-time */
+            expires_at: string;
+        };
+        AuthAuditEntry: {
+            /** Format: date-time */
+            at: string;
+            /** @enum {string} */
+            action: "sign_in" | "sign_in_failed" | "user_created" | "invite_created" | "invite_accepted" | "role_changed" | "user_disabled" | "user_enabled" | "password_reset_issued" | "password_reset" | "password_changed";
+            /**
+             * Format: uuid
+             * @description Who did it; absent for a failed sign-in or the CLI
+             */
+            actor_id?: string;
+            /** @description The actor's display name */
+            actor_name?: string;
+            /**
+             * Format: uuid
+             * @description The account it was done to, if any
+             */
+            subject_id?: string;
+            /** @description The username a sign-in was tried with, or the subject's */
+            username: string;
+            /** @description For example the new role, or why a sign-in failed */
+            detail: string;
+            /** @description The client's address, or `cli` */
+            client_ip: string;
+        };
+        AuthAuditList: {
+            items: components["schemas"]["AuthAuditEntry"][];
+            total: number;
         };
         SignInRequest: {
             username: string;
@@ -6763,6 +7003,15 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
+        /** @description The server is in open mode, which has no accounts (`CONFLICT`) */
+        AccountsOnly: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
         /** @description Too many failed attempts (`RATE_LIMITED`); try again later */
         RateLimited: {
             headers: {
@@ -6782,6 +7031,7 @@ export interface components {
          */
         exportFields: string[];
         personId: string;
+        userId: string;
         familyId: string;
         limitParam: number;
         offsetParam: number;
@@ -12819,6 +13069,18 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+            /**
+             * @description The password is right but an owner disabled the account
+             *     (`ACCOUNT_DISABLED`)
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
             /** @description The server is in open mode, where no one signs in */
             409: {
                 headers: {
@@ -12878,6 +13140,277 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+        };
+    };
+    updateCurrentAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountUpdate"];
+            };
+        };
+        responses: {
+            /** @description The updated account */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Account"];
+                };
+            };
+            /**
+             * @description Invalid input (`VALIDATION_ERROR`), or the current password is
+             *     wrong (`INVALID_CREDENTIALS`)
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The server is in open mode, which has no accounts */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    acceptInvite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AcceptInviteRequest"];
+            };
+        };
+        responses: {
+            /** @description The account was created and signed in */
+            201: {
+                headers: {
+                    /** @description The session cookie (`HttpOnly`, `SameSite=Lax`, `Secure` over TLS) */
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Account"];
+                };
+            };
+            /**
+             * @description Invalid input (`VALIDATION_ERROR`), or the invite is unknown,
+             *     expired or used (`INVALID_LINK`)
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The server is in open mode, where no one signs in */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    resetPassword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordResetRequest"];
+            };
+        };
+        responses: {
+            /** @description The password was set */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /**
+             * @description Invalid input (`VALIDATION_ERROR`), or the link is unknown, expired
+             *     or used (`INVALID_LINK`)
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The server is in open mode, where no one signs in */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listUsers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every user, by username */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserList"];
+                };
+            };
+            409: components["responses"]["AccountsOnly"];
+        };
+    };
+    updateUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["userId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserUpdate"];
+            };
+        };
+        responses: {
+            /** @description The updated user */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["User"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            404: components["responses"]["NotFound"];
+            /**
+             * @description The change would leave no active owner (`LAST_OWNER`), or the server
+             *     is in open mode (`CONFLICT`)
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    createPasswordReset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["userId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The reset link's token */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountLink"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["AccountsOnly"];
+        };
+    };
+    createInvite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InviteRequest"];
+            };
+        };
+        responses: {
+            /** @description The invite link's token */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountLink"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            409: components["responses"]["AccountsOnly"];
+        };
+    };
+    listAuthAudit: {
+        parameters: {
+            query?: {
+                limit?: components["parameters"]["limitParam"];
+                offset?: components["parameters"]["offsetParam"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of the log */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthAuditList"];
+                };
+            };
+            409: components["responses"]["AccountsOnly"];
         };
     };
 }

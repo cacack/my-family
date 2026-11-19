@@ -31,6 +31,8 @@ var (
 		"POST /api/v1/auth/setup",
 		"POST /api/v1/auth/sign-in",
 		"POST /api/v1/auth/sign-out",
+		"POST /api/v1/auth/invites/accept",
+		"POST /api/v1/auth/password-reset",
 	)
 	ownerRoutes = routeSet(
 		"POST /api/v1/gedcom/import",
@@ -40,6 +42,11 @@ var (
 		"POST /api/v1/families/:id/rollback",
 		"POST /api/v1/sources/:id/rollback",
 		"POST /api/v1/citations/:id/rollback",
+		"GET /api/v1/users",
+		"PATCH /api/v1/users/:id",
+		"POST /api/v1/users/:id/password-reset",
+		"POST /api/v1/invites",
+		"GET /api/v1/auth-audit",
 		// A site-wide setting until it becomes each account's own (#1443).
 		"PUT /api/v1/settings/home-person",
 		"DELETE /api/v1/settings/home-person",
@@ -57,9 +64,10 @@ var (
 		"GET /api/v1/export/attributes",
 		"GET /api/v1/export/estimate",
 	)
-	// Posts that change nothing.
+	// Posts that change nothing in the tree, and a user's own account.
 	viewerWrites = routeSet(
 		"POST /api/v1/citation-templates/:id/preview",
+		"PATCH /api/v1/auth/me",
 	)
 )
 

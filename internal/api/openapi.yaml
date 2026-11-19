@@ -77,6 +77,10 @@ tags:
     description: Research log entries tracking searches and outcomes
   - name: proof-summaries
     description: Proof summary management (GPS-compliant proof arguments)
+  - name: users
+    description: |
+      Managing the tree's users (ADR-007): invites, roles, disabling, password
+      reset links and the auth audit log. Owners only.
   - name: auth
     description: |
       Accounts and sign-in (ADR-007). Every other operation needs a signed-in
@@ -5529,6 +5533,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '403':
+          description: |
+            The password is right but an owner disabled the account
+            (`ACCOUNT_DISABLED`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '409':
           description: The server is in open mode, where no one signs in
           content:
@@ -5573,6 +5585,246 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+    patch:
+      operationId: updateCurrentAccount
+      x-min-role: viewer
+      summary: Change the signed-in user's display name or password
+      description: |
+        Each field left out is kept. A new password needs the current one, and
+        ends every other session of the user; this one stays signed in.
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccountUpdate'
+      responses:
+        '200':
+          description: The updated account
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Account'
+        '400':
+          description: |
+            Invalid input (`VALIDATION_ERROR`), or the current password is
+            wrong (`INVALID_CREDENTIALS`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: The server is in open mode, which has no accounts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /auth/invites/accept:
+    post:
+      operationId: acceptInvite
+      x-min-role: public
+      summary: Create an account from an invite link and sign it in
+      description: |
+        Needs no session. The account gets the invite's role. An invite is
+        single-use and expires; there is no other way to register.
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AcceptInviteRequest'
+      responses:
+        '201':
+          description: The account was created and signed in
+          headers:
+            Set-Cookie:
+              description: The session cookie (`HttpOnly`, `SameSite=Lax`, `Secure` over TLS)
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Account'
+        '400':
+          description: |
+            Invalid input (`VALIDATION_ERROR`), or the invite is unknown,
+            expired or used (`INVALID_LINK`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: The server is in open mode, where no one signs in
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/password-reset:
+    post:
+      operationId: resetPassword
+      x-min-role: public
+      summary: Set a password from a reset link
+      description: |
+        Needs no session. The link is single-use and expires. Every session of
+        the user ends; they then sign in with the new password.
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordResetRequest'
+      responses:
+        '204':
+          description: The password was set
+        '400':
+          description: |
+            Invalid input (`VALIDATION_ERROR`), or the link is unknown, expired
+            or used (`INVALID_LINK`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: The server is in open mode, where no one signs in
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /users:
+    get:
+      operationId: listUsers
+      x-min-role: owner
+      summary: List the tree's users
+      tags: [users]
+      responses:
+        '200':
+          description: Every user, by username
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserList'
+        '409':
+          $ref: '#/components/responses/AccountsOnly'
+
+  /users/{id}:
+    patch:
+      operationId: updateUser
+      x-min-role: owner
+      summary: Change a user's role, or disable or re-enable their account
+      description: |
+        Each field left out is kept. Disabling ends every session of the user
+        and refuses their sign-in. The last active owner can be neither
+        demoted nor disabled (`LAST_OWNER`).
+      tags: [users]
+      parameters:
+        - $ref: '#/components/parameters/userId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserUpdate'
+      responses:
+        '200':
+          description: The updated user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: |
+            The change would leave no active owner (`LAST_OWNER`), or the server
+            is in open mode (`CONFLICT`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /users/{id}/password-reset:
+    post:
+      operationId: createPasswordReset
+      x-min-role: owner
+      summary: Issue a password reset link for a user
+      description: |
+        Returns a single-use token, valid for 24 hours, to pass on to the user
+        yourself: no email is sent. Only its hash is stored, so it is shown
+        this once.
+      tags: [users]
+      parameters:
+        - $ref: '#/components/parameters/userId'
+      responses:
+        '201':
+          description: The reset link's token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountLink'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/AccountsOnly'
+
+  /invites:
+    post:
+      operationId: createInvite
+      x-min-role: owner
+      summary: Issue an invite link that creates an account with a role
+      description: |
+        Returns a single-use token, valid for 7 days, to pass on yourself: no
+        email is sent. Only its hash is stored, so it is shown this once.
+      tags: [users]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InviteRequest'
+      responses:
+        '201':
+          description: The invite link's token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountLink'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/AccountsOnly'
+
+  /auth-audit:
+    get:
+      operationId: listAuthAudit
+      x-min-role: owner
+      summary: Read the auth audit log
+      description: |
+        Sign-ins, failed sign-ins, invites, role changes, disables, enables and
+        password resets and changes, newest first. The log is append-only.
+      tags: [users]
+      parameters:
+        - $ref: '#/components/parameters/limitParam'
+        - $ref: '#/components/parameters/offsetParam'
+      responses:
+        '200':
+          description: A page of the log
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthAuditList'
+        '409':
+          $ref: '#/components/responses/AccountsOnly'
+
 components:
   parameters:
     exportFormat:
@@ -5596,6 +5848,14 @@ components:
           type: string
 
     personId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+    userId:
       name: id
       in: path
       required: true
@@ -5794,6 +6054,13 @@ components:
           schema:
             $ref: '#/components/schemas/Error'
 
+    AccountsOnly:
+      description: The server is in open mode, which has no accounts (`CONFLICT`)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
     RateLimited:
       description: Too many failed attempts (`RATE_LIMITED`); try again later
       content:
@@ -5821,8 +6088,8 @@ components:
           description: |
             What the user may do in the tree (ADR-007): a `viewer` reads it, an
             `editor` also changes it, works in research branches and exports,
-            and an `owner` also imports GEDCOM and rolls records back. Each
-            operation's `x-min-role` names the least role it needs.
+            and an `owner` also manages users, imports GEDCOM and rolls records
+            back. Each operation's `x-min-role` names the least role it needs.
 
     AuthStatus:
       type: object
@@ -5860,6 +6127,170 @@ components:
           format: password
           minLength: 8
           maxLength: 256
+
+    AccountUpdate:
+      type: object
+      properties:
+        display_name:
+          type: string
+          maxLength: 100
+        current_password:
+          type: string
+          format: password
+          description: Needed with `new_password`
+        new_password:
+          type: string
+          format: password
+          minLength: 8
+          maxLength: 256
+
+    AcceptInviteRequest:
+      type: object
+      required: [token, username, display_name, password]
+      properties:
+        token:
+          type: string
+          description: The token from the invite link
+        username:
+          type: string
+          maxLength: 64
+          description: Letters, digits and `. _ - @`; stored lowercase
+        display_name:
+          type: string
+          maxLength: 100
+        password:
+          type: string
+          format: password
+          minLength: 8
+          maxLength: 256
+
+    PasswordResetRequest:
+      type: object
+      required: [token, password]
+      properties:
+        token:
+          type: string
+          description: The token from the reset link
+        password:
+          type: string
+          format: password
+          minLength: 8
+          maxLength: 256
+
+    User:
+      type: object
+      required: [id, username, display_name, role, disabled, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        username:
+          type: string
+        display_name:
+          type: string
+        role:
+          type: string
+          enum: [viewer, editor, owner]
+        disabled:
+          type: boolean
+          description: A disabled user cannot sign in
+        created_at:
+          type: string
+          format: date-time
+
+    UserList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/User'
+
+    UserUpdate:
+      type: object
+      properties:
+        role:
+          type: string
+          enum: [viewer, editor, owner]
+        disabled:
+          type: boolean
+
+    InviteRequest:
+      type: object
+      required: [role]
+      properties:
+        role:
+          type: string
+          enum: [viewer, editor, owner]
+          description: The role the new account gets
+
+    AccountLink:
+      type: object
+      required: [token, expires_at]
+      properties:
+        token:
+          type: string
+          description: |
+            The single-use token. The web UI's link is `/join#token=<token>`
+            for an invite and `/reset-password#token=<token>` for a reset; the
+            fragment never reaches the server's logs.
+        expires_at:
+          type: string
+          format: date-time
+
+    AuthAuditEntry:
+      type: object
+      required: [at, action, username, detail, client_ip]
+      properties:
+        at:
+          type: string
+          format: date-time
+        action:
+          type: string
+          enum:
+            - sign_in
+            - sign_in_failed
+            - user_created
+            - invite_created
+            - invite_accepted
+            - role_changed
+            - user_disabled
+            - user_enabled
+            - password_reset_issued
+            - password_reset
+            - password_changed
+        actor_id:
+          type: string
+          format: uuid
+          description: Who did it; absent for a failed sign-in or the CLI
+        actor_name:
+          type: string
+          description: The actor's display name
+        subject_id:
+          type: string
+          format: uuid
+          description: The account it was done to, if any
+        username:
+          type: string
+          description: The username a sign-in was tried with, or the subject's
+        detail:
+          type: string
+          description: For example the new role, or why a sign-in failed
+        client_ip:
+          type: string
+          description: The client's address, or `cli`
+
+    AuthAuditList:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuthAuditEntry'
+        total:
+          type: integer
 
     SignInRequest:
       type: object

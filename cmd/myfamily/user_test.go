@@ -95,3 +95,39 @@ func TestLogAuthMode(t *testing.T) {
 		})
 	}
 }
+
+func TestResetPassword_PrintsASingleUseLink(t *testing.T) {
+	ctx := context.Background()
+	svc := auth.NewService(memory.NewAccountStore())
+	if _, err := svc.CreateOwner(ctx, "ada", "Ada", "correct horse battery"); err != nil {
+		t.Fatalf("CreateOwner: %v", err)
+	}
+	var out bytes.Buffer
+	if err := resetPassword(ctx, svc, &out, "Ada", "https://tree.example/"); err != nil {
+		t.Fatalf("resetPassword: %v", err)
+	}
+	const prefix = "https://tree.example/reset-password#token="
+	i := strings.Index(out.String(), prefix)
+	if i < 0 {
+		t.Fatalf("output %q has no link starting %s", out.String(), prefix)
+	}
+	token := strings.TrimSpace(out.String()[i+len(prefix):])
+	if err := svc.ResetPassword(ctx, token, "a brand new password", "test"); err != nil {
+		t.Fatalf("the printed link does not reset the password: %v", err)
+	}
+	if _, _, err := svc.SignIn(ctx, "ada", "a brand new password", "test"); err != nil {
+		t.Errorf("SignIn with the new password: %v", err)
+	}
+	if err := svc.ResetPassword(ctx, token, "yet another password", "test"); err == nil {
+		t.Error("the link worked twice")
+	}
+}
+
+func TestResetPassword_Refusals(t *testing.T) {
+	svc := auth.NewService(memory.NewAccountStore())
+	for _, username := range []string{"", "nobody"} {
+		if err := resetPassword(context.Background(), svc, &bytes.Buffer{}, username, "http://localhost:8080"); err == nil {
+			t.Errorf("resetPassword(%q) succeeded", username)
+		}
+	}
+}
