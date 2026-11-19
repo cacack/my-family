@@ -495,6 +495,25 @@ decorator, b = event-output redactor, — = no tree data. "Protected" means a pl
 | rollbackSource | POST /sources/{id}/rollback | As above | EL | b | As rollbackPerson |
 | rollbackCitation | POST /citations/{id}/rollback | As above | EL | b | As rollbackPerson |
 
+### Settings and accounts
+
+Added after this ADR's date, when #1412 made the table a test (§7).
+
+| Operation | Path | Returns | Source | Choke | Special handling |
+|-----------|------|---------|--------|-------|------------------|
+| getHomePerson | GET /settings/home-person | The person marked as "me" | settings + RM | a | Living → placeholder; private → absent |
+| getPrivacySettings | GET /settings/privacy | Tree privacy settings | settings | — | No tree data |
+| getAuthStatus | GET /auth/status | Mode, setup state, the caller's account | accounts | — | No tree data |
+| setupOwner | POST /auth/setup | The new owner's account | accounts | — | No tree data |
+| signIn | POST /auth/sign-in | The caller's account | accounts | — | No tree data |
+| signOut | POST /auth/sign-out | Empty | accounts | — | No tree data |
+| getCurrentAccount | GET /auth/me | The caller's account | accounts | — | No tree data |
+| updateCurrentAccount | PATCH /auth/me | The caller's account | accounts | — | No tree data |
+| acceptInvite | POST /auth/invites/accept | The new account | accounts | — | No tree data |
+| resetPassword | POST /auth/password-reset | The caller's account | accounts | — | No tree data |
+| listUsers | GET /users | Accounts and roles | accounts | — | Owner-only; no tree data |
+| listAuthAudit | GET /auth-audit | Sign-in and account events | accounts | — | Owner-only; no tree data |
+
 ### Writes and operations outside the spec
 
 | Operation | Path | Returns | Source | Choke | Special handling |

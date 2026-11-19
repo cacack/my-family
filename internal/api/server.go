@@ -61,9 +61,13 @@ func WithBranchStore(branchStore repository.BranchStore) ServerOption {
 
 // Server wraps the Echo server with application dependencies.
 type Server struct {
-	echo                *echo.Echo
-	config              *config.Config
+	echo   *echo.Echo
+	config *config.Config
+	// readStore is the store every read goes through: the privacy
+	// decorator over rawReadStore (ADR-008 §5). rawReadStore is for the
+	// command handler and the demo seeder, which write.
 	readStore           repository.ReadModelStore
+	rawReadStore        repository.ReadModelStore
 	commandHandler      *command.Handler
 	personService       *query.PersonService
 	familyService       *query.FamilyService
@@ -140,10 +144,10 @@ func NewServer(
 	// projector can route branch-lifecycle events into the configured branch
 	// registry store (set via WithBranchStore).
 	server := &Server{
-		echo:       e,
-		config:     cfg,
-		readStore:  readStore,
-		frontendFS: frontendFS,
+		echo:         e,
+		config:       cfg,
+		rawReadStore: readStore,
+		frontendFS:   frontendFS,
 	}
 	for _, opt := range opts {
 		opt(server)
@@ -159,6 +163,9 @@ func NewServer(
 	// their projection (issue #624), and it reports the head of the event log,
 	// which is what pins a new branch's base position.
 	cmdHandler := command.NewHandlerWithBranches(eventStore, readStore, server.branchStore, snapshotStore)
+	// Every read from here on shows the requester only what they may see.
+	readStore = query.NewPrivacyStore(readStore)
+	server.readStore = readStore
 	personSvc := query.NewPersonService(readStore)
 	familySvc := query.NewFamilyService(readStore)
 	pedigreeSvc := query.NewPedigreeService(readStore)

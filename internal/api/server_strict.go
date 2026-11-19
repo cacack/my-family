@@ -4114,6 +4114,7 @@ func convertQueryPersonToGenerated(p query.Person) Person {
 	}
 	resp.Living, resp.LivingOverride = livingFields(p.Living, domain.LivingOverride(p.LivingOverride))
 	resp.Private = privateFlag(p.Private)
+	resp.Redacted = redactedFlag(p.Redacted)
 
 	return resp
 }
@@ -4165,6 +4166,7 @@ func convertQueryPersonDetailToGenerated(pd *query.PersonDetail) PersonDetail {
 	}
 	resp.Living, resp.LivingOverride = livingFields(pd.Living, domain.LivingOverride(pd.LivingOverride))
 	resp.Private = privateFlag(pd.Private)
+	resp.Redacted = redactedFlag(pd.Redacted)
 
 	if len(pd.Names) > 0 {
 		names := make([]PersonName, len(pd.Names))
@@ -6196,6 +6198,7 @@ func convertReadModelPersonToGenerated(rm repository.PersonReadModel, cutoff tim
 	}
 	resp.Living, resp.LivingOverride = livingFields(rm.LivingFacts().IsLiving(cutoff), rm.LivingOverride)
 	resp.Private = privateFlag(rm.Restriction.IsPrivate())
+	resp.Redacted = redactedFlag(rm.Visibility != repository.Visible)
 	return resp
 }
 

@@ -5533,6 +5533,9 @@ type Person struct {
 	// Private Whether the record is private: its GEDCOM restriction notice (RESN) holds confidential or privacy (ADR-008). Omitted when it is not.
 	Private *bool `json:"private,omitempty"`
 
+	// Redacted Set on the placeholder shown instead of a person the caller may not see (ADR-008 §3): only its ID, sex and the given name "Living" are real, and it has nothing more to show. Omitted otherwise.
+	Redacted *bool `json:"redacted,omitempty"`
+
 	// ResearchStatus Confidence level of genealogical data per GPS standards
 	//
 	// Example: probable
@@ -5666,6 +5669,9 @@ type PersonDetail struct {
 
 	// Private Whether the record is private: its GEDCOM restriction notice (RESN) holds confidential or privacy (ADR-008). Omitted when it is not.
 	Private *bool `json:"private,omitempty"`
+
+	// Redacted Set on the placeholder shown instead of a person the caller may not see (ADR-008 §3): only its ID, sex and the given name "Living" are real, and it has nothing more to show. Omitted otherwise.
+	Redacted *bool `json:"redacted,omitempty"`
 
 	// ResearchStatus Confidence level of genealogical data per GPS standards
 	//

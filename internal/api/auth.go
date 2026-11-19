@@ -104,7 +104,7 @@ func (s *Server) authenticate(next echo.HandlerFunc) echo.HandlerFunc {
 			required = repository.RoleViewer
 		}
 		if s.config.OpenMode() {
-			return s.serveTree(context.WithValue(ctx, roleKey{}, repository.RoleOwner), c, next)
+			return s.serveTree(withRole(ctx, repository.RoleOwner, false), c, next)
 		}
 
 		if cookie, err := req.Cookie(sessionCookieName); err == nil {
@@ -120,7 +120,7 @@ func (s *Server) authenticate(next echo.HandlerFunc) echo.HandlerFunc {
 					return err
 				}
 				ctx = context.WithValue(ctx, userKey{}, user)
-				ctx = context.WithValue(ctx, roleKey{}, role)
+				ctx = withRole(ctx, role, false)
 				ctx = domain.ContextWithActor(ctx, user.ID.String())
 			case !errors.Is(err, auth.ErrNoSession):
 				return err
@@ -164,7 +164,7 @@ func (s *Server) serveVisitor(ctx context.Context, c echo.Context, next echo.Han
 	if settings.AnonymousAccess != repository.AnonymousAccessViewer || required != repository.RoleViewer || accountRoutes[key] {
 		return refuse(c, http.StatusUnauthorized, CodeUnauthenticated, "Sign in to continue")
 	}
-	ctx = context.WithValue(ctx, roleKey{}, repository.RoleViewer)
+	ctx = withRole(ctx, repository.RoleViewer, true)
 	c.SetRequest(c.Request().WithContext(repository.ContextWithTreeSettings(ctx, settings)))
 	return next(c)
 }
