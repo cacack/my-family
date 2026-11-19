@@ -35,7 +35,8 @@
 			Private {noun}
 		</label>
 		<p id="{id}-private-hint" class="hint">
-			Only editors and owners see a private {noun}. It is exported to GEDCOM as a restriction notice.
+			Exported to GEDCOM as a restriction notice. Hiding a private {noun} from viewers is not enforced
+			yet: every role still sees it.
 		</p>
 	</div>
 	{#if livingOverride !== undefined}
@@ -50,7 +51,7 @@
 				{#if living !== undefined}
 					The rule currently counts this {noun} as {living ? 'living' : 'deceased'}.
 				{/if}
-				Living people are shown to anonymous visitors only as "Living".
+				Hiding living people from visitors and viewers is not enforced yet.
 			</p>
 		</div>
 	{/if}

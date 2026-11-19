@@ -37,6 +37,13 @@ describe('Settings page', () => {
 		expect(saveButton().disabled).toBe(true);
 	});
 
+	it('says the viewers setting is not enforced yet', async () => {
+		render(SettingsPage);
+		await waitFor(() => expect(viewers()).toBeTruthy());
+		expect(viewers().getAttribute('aria-describedby')).toBe('viewers-see-living-hint');
+		expect(document.getElementById('viewers-see-living-hint')?.textContent).toMatch(/not enforced yet/i);
+	});
+
 	it('saves changed settings and announces it', async () => {
 		api.updatePrivacySettings.mockResolvedValue({ living_threshold_years: 100, viewers_see_living: false });
 		render(SettingsPage);

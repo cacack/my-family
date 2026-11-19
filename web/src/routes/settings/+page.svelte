@@ -127,8 +127,8 @@
 						Viewers see living people
 					</label>
 					<p id="viewers-see-living-hint" class="hint">
-						When off, viewers see a living person as "Living", as anonymous visitors do. Editors and owners
-						always see everyone.
+						When off, viewers will see a living person as "Living". Not enforced yet: every role still sees
+						everyone.
 					</p>
 				</div>
 				{#if saveError}

@@ -1,11 +1,17 @@
 package api_test
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"testing"
 
+	"github.com/google/uuid"
+
 	"github.com/cacack/my-family/internal/api"
+	"github.com/cacack/my-family/internal/auth"
 	"github.com/cacack/my-family/internal/config"
+	"github.com/cacack/my-family/internal/repository"
 	"github.com/cacack/my-family/internal/repository/memory"
 )
 
@@ -118,5 +124,36 @@ func TestPrivacySettings_WithoutAStoreTheDefaultsApply(t *testing.T) {
 		body: `{"living_threshold_years":90,"viewers_see_living":true}`})
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Errorf("PUT settings without a store: %d, want 503", rec.Code)
+	}
+}
+
+// brokenSettings is a settings store whose reads fail.
+type brokenSettings struct{ repository.TreeSettingsStore }
+
+func (brokenSettings) GetTreeSettings(context.Context, uuid.UUID) (repository.TreeSettings, error) {
+	return repository.TreeSettings{}, errors.New("settings table is locked")
+}
+
+// A failing settings store fails only the routes that read the tree: health
+// and sign-in keep working, and nothing is read for a refused request.
+func TestPrivacySettings_StoreFailureSparesPublicRoutes(t *testing.T) {
+	cfg := &config.Config{Port: 8080, LogFormat: "text", AuthMode: config.AuthModeAccounts}
+	events := memory.NewEventStore()
+	accounts := memory.NewAccountStore()
+	svc := auth.NewService(accounts)
+	server := api.NewServer(cfg, events, memory.NewReadModelStore(), memory.NewSnapshotStore(events), nil,
+		api.WithAuth(svc), api.WithBranchStore(memory.NewBranchStore()), api.WithTreeSettings(brokenSettings{accounts}))
+	f := &authFixture{server: server, auth: svc, accounts: accounts, events: events}
+	f.createOwner(t)
+
+	if rec := f.do(t, request{method: http.MethodGet, path: "/api/v1/health"}); rec.Code != http.StatusOK {
+		t.Errorf("health: %d %s", rec.Code, rec.Body)
+	}
+	if rec := f.do(t, request{method: http.MethodGet, path: "/api/v1/persons"}); rec.Code != http.StatusUnauthorized {
+		t.Errorf("persons signed out: %d, want 401", rec.Code)
+	}
+	owner := f.signIn(t)
+	if rec := f.do(t, request{method: http.MethodGet, path: "/api/v1/persons", cookie: owner}); rec.Code != http.StatusInternalServerError {
+		t.Errorf("persons signed in: %d, want 500", rec.Code)
 	}
 }
