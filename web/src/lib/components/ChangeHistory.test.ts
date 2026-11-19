@@ -80,6 +80,30 @@ describe("ChangeHistory origin labels (#824)", () => {
   });
 });
 
+describe("ChangeHistory actor (#1407)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("names who made each change, or the owner before accounts existed", async () => {
+    vi.mocked(apiModule.api.getPersonHistory).mockResolvedValue({
+      items: [
+        entry({ action: "created" }),
+        entry({ user_id: "user-1407" }),
+      ],
+      total: 2,
+      limit: 20,
+      offset: 0,
+      has_more: false,
+    });
+
+    render(ChangeHistory, { entityType: "person", entityId: PERSON_ID });
+
+    expect(await screen.findByText("Owner (before accounts)")).toBeDefined();
+    expect(screen.getByText("user-1407")).toBeDefined();
+  });
+});
+
 describe("ChangeHistory global log (#739)", () => {
   beforeEach(() => {
     vi.clearAllMocks();

@@ -29,6 +29,11 @@ type MergeRecord struct {
 	MergedAtPosition int64     `json:"merged_at_position"`
 	Note             string    `json:"note,omitempty"`
 
+	// MergedBy is the user ID of who merged the branch, read from the claim's
+	// envelope metadata (#1407). Empty for a merge made before accounts
+	// existed or in open mode.
+	MergedBy string `json:"merged_by,omitempty"`
+
 	// Recorded is false for a claim written before #832, which recorded only
 	// its note and replay plan. Its decisions are then derived from that plan:
 	// every entity the branch changed that the plan left out was kept as the
@@ -99,7 +104,9 @@ type mergeMarkers struct {
 	// claimPosition is the claim's own log position: after the pre-merge
 	// snapshot and before the first replayed change.
 	claimPosition int64
-	resumes       []domain.BranchMergeResumed
+	// claimedBy is the user ID the claim's envelope metadata records.
+	claimedBy string
+	resumes   []domain.BranchMergeResumed
 }
 
 // replayPlan is the replay plan as it now stands: the latest resume's, or
@@ -141,6 +148,7 @@ func (s *BranchService) readMergeMarkers(ctx context.Context, branchID uuid.UUID
 				return mergeMarkers{}, false, fmt.Errorf("decode merge claim: %w", err)
 			}
 			markers.claimPosition = own[i].Position
+			markers.claimedBy = decodeEventMetadata(&own[i]).UserID
 			claimed = true
 		case "BranchMergeResumed":
 			var resumed domain.BranchMergeResumed
@@ -165,6 +173,7 @@ func (s *BranchService) buildMergeRecord(ctx context.Context, branch *domain.Bra
 		MergedAt:           claim.Timestamp,
 		MergedAtPosition:   claim.MergedAtPosition,
 		Note:               claim.Note,
+		MergedBy:           markers.claimedBy,
 		Recorded:           claim.HasRecord(),
 		ReplayedEventCount: claim.ReplayedEventCount,
 		SkippedStreamIDs:   []uuid.UUID{},
@@ -338,13 +347,10 @@ func withoutReplayedCopies(branchID uuid.UUID, branchEvents, mainEvents []reposi
 // isReplayedCopy reports whether a main event is branchID's merge replaying
 // one of originals.
 func isReplayedCopy(branchID uuid.UUID, originals map[uuid.UUID]bool, evt *repository.StoredEvent) bool {
-	if len(evt.Metadata) > 0 {
-		// Metadata that does not decode says nothing either way, so the
-		// payload-id test below decides, as it does for an unstamped copy.
-		var meta domain.EventMetadata
-		if err := json.Unmarshal(evt.Metadata, &meta); err == nil && meta.MergedFromBranch != nil {
-			return meta.MergedFromBranch.BranchID == branchID
-		}
+	// Metadata that does not decode says nothing either way, so the
+	// payload-id test below decides, as it does for an unstamped copy.
+	if meta, err := evt.DecodeMetadata(); err == nil && meta.MergedFromBranch != nil {
+		return meta.MergedFromBranch.BranchID == branchID
 	}
 	id, ok := payloadID(evt)
 	return ok && originals[id]
@@ -407,11 +413,8 @@ func replayedThroughPosition(markers *mergeMarkers, diff *branchDiffSources) (po
 // was stamped, or a replay that has not yet reached the mainline.
 func lastReplayedPosition(claimID uuid.UUID, mainEvents []repository.StoredEvent) (position int64, ok bool, count int) {
 	for i := range mainEvents {
-		if len(mainEvents[i].Metadata) == 0 {
-			continue
-		}
-		var meta domain.EventMetadata
-		if err := json.Unmarshal(mainEvents[i].Metadata, &meta); err != nil || meta.MergedFromBranch == nil {
+		meta, err := mainEvents[i].DecodeMetadata()
+		if err != nil || meta.MergedFromBranch == nil {
 			continue
 		}
 		if meta.MergedFromBranch.ClaimID == claimID {

@@ -258,6 +258,20 @@ type HistoryPage struct {
 // value, as BranchID does in a SnapshotCreated written before #839.
 var eventUpcasters = map[string]func(data json.RawMessage) (json.RawMessage, error){}
 
+// DecodeMetadata decodes the event's envelope metadata. An event stored with
+// none decodes to the zero EventMetadata. Every reader of the envelope decodes
+// it here; each decides for itself what an error means.
+func (e *StoredEvent) DecodeMetadata() (domain.EventMetadata, error) {
+	var metadata domain.EventMetadata
+	if len(e.Metadata) == 0 {
+		return metadata, nil
+	}
+	if err := json.Unmarshal(e.Metadata, &metadata); err != nil {
+		return domain.EventMetadata{}, fmt.Errorf("decoding %s event metadata: %w", e.EventType, err)
+	}
+	return metadata, nil
+}
+
 // DecodeEvent upgrades the stored event data to its current shape
 // (eventUpcasters) and decodes it into a domain event.
 func (e *StoredEvent) DecodeEvent() (domain.Event, error) {

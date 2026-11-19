@@ -3837,7 +3837,11 @@ export interface components {
              * @description The id of the entity `parent_entity_type` names.
              */
             parent_entity_id?: string;
-            /** @description ID of user who made the change (null if single-user) */
+            /**
+             * @description Opaque ID of the user who made the change, not a display name;
+             *     absent for changes made before accounts existed or in open mode.
+             *     A change a merge replayed keeps its original author.
+             */
             user_id?: string;
             /**
              * @description Set only on branch-scoped entity history and branch-scoped snapshot
@@ -5186,6 +5190,11 @@ export interface components {
             merged_at_position: number;
             /** @description The merge note */
             note?: string;
+            /**
+             * @description Opaque ID of the user who merged the branch, not a display name;
+             *     absent for a merge made before accounts existed or in open mode.
+             */
+            merged_by?: string;
             /**
              * @description `false` for a merge made before decisions were recorded: its
              *     `exclusions` are then derived from the replay plan (every entity

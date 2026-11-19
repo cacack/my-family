@@ -1312,10 +1312,25 @@ describe('Merged branch record (#832)', () => {
 		expect(within(record).getByText('Allegra Clairmont')).toBeDefined();
 		expect(within(record).getByText('Not merged')).toBeDefined();
 		expect(within(record).getByText('Why: Not yet proven')).toBeDefined();
+		// A merge made before accounts existed names no merger (#1407).
+		expect(within(record).queryByText('Merged by')).toBeNull();
 		// The record replaces the recomputed verdict, which would describe a
 		// mainline the merge itself changed.
 		expect(screen.queryByRole('heading', { name: 'Conflicts' })).toBeNull();
 		expect(screen.queryByText(/merge/i, { selector: 'button' })).toBeNull();
+	});
+
+	it('names who merged the branch (#1407)', async () => {
+		const base = mergedComparison().merge_record!;
+		compareBranch.mockResolvedValue(
+			mergedComparison({ merge_record: { ...base, merged_by: 'user-b' } })
+		);
+
+		render(Page);
+
+		const record = await screen.findByTestId('merge-record');
+		expect(within(record).getByText('Merged by')).toBeDefined();
+		expect(within(record).getByText('user-b')).toBeDefined();
 	});
 
 	describe("the merge's effect (#833)", () => {

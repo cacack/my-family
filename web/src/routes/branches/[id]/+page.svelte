@@ -773,6 +773,12 @@
 				<dt>Merged</dt>
 				<dd>{formatTimestamp(record.merged_at)}</dd>
 			</div>
+			{#if record.merged_by}
+				<div>
+					<dt>Merged by</dt>
+					<dd>{record.merged_by}</dd>
+				</div>
+			{/if}
 			<div>
 				<dt>Note</dt>
 				<dd>
