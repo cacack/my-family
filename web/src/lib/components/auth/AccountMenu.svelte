@@ -2,7 +2,8 @@
 	/**
 	 * The signed-in user's menu in the header (ADR-007): who, their account
 	 * page, the users and settings pages for an owner, and sign out. A
-	 * visitor gets a sign-in button in its place.
+	 * visitor gets a sign-in button in its place. Open mode has no account
+	 * and everyone is the owner, so it gets a link to the settings page.
 	 */
 	import { goto } from '$app/navigation';
 	import * as DropdownMenu from '#lib/components/ui/dropdown-menu/index.js';
@@ -13,6 +14,15 @@
 
 {#if auth.phase === 'visitor'}
 	<button type="button" class="sign-in-btn" onclick={() => showSignIn()}>Sign in</button>
+{:else if auth.phase === 'open'}
+	<a href="/settings" class="account-btn" data-slot="action-link" aria-label="Settings" title="Settings">
+		<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+			<circle cx="12" cy="12" r="3" />
+			<path
+				d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1.08-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1.08 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
+			/>
+		</svg>
+	</a>
 {:else if auth.account}
 	<DropdownMenu.Root>
 		<DropdownMenu.Trigger>

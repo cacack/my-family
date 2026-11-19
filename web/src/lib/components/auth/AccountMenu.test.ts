@@ -62,8 +62,8 @@ describe('AccountMenu', () => {
 		expect(goto).toHaveBeenCalledWith('/account');
 	});
 
-	it('offers no users or settings page below owner', async () => {
-		state.account = { id: '1', username: 'ada', display_name: 'Ada Lovelace', role: 'editor' };
+	it.each(['editor', 'viewer'])('offers no users or settings page to an %s', async (role) => {
+		state.account = { id: '1', username: 'ada', display_name: 'Ada Lovelace', role };
 		render(AccountMenu);
 		await open();
 		expect(await screen.findByRole('menuitem', { name: 'Account' })).toBeDefined();
@@ -71,9 +71,19 @@ describe('AccountMenu', () => {
 		expect(screen.queryByRole('menuitem', { name: 'Settings' })).toBeNull();
 	});
 
-	it('renders nothing without an account (open mode)', () => {
+	it('links to the settings page in open mode, where everyone is the owner', () => {
+		state.phase = 'open';
 		state.account = null;
 		render(AccountMenu);
+		const link = screen.getByRole('link', { name: 'Settings' });
+		expect(link.getAttribute('href')).toBe('/settings');
 		expect(screen.queryByRole('button')).toBeNull();
+	});
+
+	it.each(['signed-out', 'visitor', 'loading'])('offers no settings link when %s', (phase) => {
+		state.phase = phase;
+		state.account = null;
+		render(AccountMenu);
+		expect(screen.queryByRole('link', { name: 'Settings' })).toBeNull();
 	});
 });
