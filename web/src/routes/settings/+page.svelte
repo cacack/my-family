@@ -135,8 +135,8 @@
 						Viewers see living people
 					</label>
 					<p id="viewers-see-living-hint" class="hint">
-						When off, viewers will see a living person as "Living". Not enforced yet: every role still sees
-						everyone.
+						When off, viewers see a living person as "Living", with no dates, places or other details, as
+						visitors do. Editors and the owner always see everyone.
 					</p>
 				</div>
 				<fieldset class="field visitors" aria-describedby="visitors-hint">
