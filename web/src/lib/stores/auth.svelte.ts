@@ -40,6 +40,27 @@ export function markSignedOut(): void {
 
 setUnauthorizedHandler(markSignedOut);
 
+/**
+ * Ask the server whether a signed-in user is still signed in, and show the
+ * sign-in page if not. While visitors are let in, an expired session's reads
+ * are served as a visitor's rather than refused, so no 401 would tell the app
+ * until a write; the root layout calls this whenever the window regains focus.
+ */
+export async function recheckSession(): Promise<void> {
+	if (auth.phase !== 'signed-in') return;
+	try {
+		const status = await api.getAuthStatus();
+		auth.visitorsWelcome = status.anonymous_access === 'viewer';
+		if (status.account) {
+			auth.account = status.account;
+		} else {
+			markSignedOut();
+		}
+	} catch {
+		// Unreachable for now: keep the session; the next request will tell.
+	}
+}
+
 /** Where someone who is not signed in lands: browsing as a visitor, or the sign-in page. */
 function signedOutPhase(): AuthPhase {
 	return auth.visitorsWelcome ? 'visitor' : 'signed-out';

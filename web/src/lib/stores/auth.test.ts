@@ -33,7 +33,8 @@ import {
 	can,
 	currentRole,
 	showSignIn,
-	browseAsVisitor
+	browseAsVisitor,
+	recheckSession
 } from './auth.svelte.js';
 
 const ADA = { id: '11111111-1111-1111-1111-111111111111', username: 'ada', display_name: 'Ada', role: 'owner' as const };
@@ -136,6 +137,45 @@ describe('auth store', () => {
 		markSignedOut();
 		expect(auth.phase).toBe('signed-out');
 		expect(auth.account).toBeNull();
+	});
+
+	it('shows a user whose session expired while visitors are let in as signed out', async () => {
+		getAuthStatus.mockResolvedValue({ mode: 'accounts', setup_required: false, anonymous_access: 'viewer', account: ADA });
+		await loadAuth();
+		expect(auth.phase).toBe('signed-in');
+
+		// Reads still succeed (as a visitor's), so only the status tells.
+		getAuthStatus.mockResolvedValue({ mode: 'accounts', setup_required: false, anonymous_access: 'viewer' });
+		await recheckSession();
+		expect(auth.phase).toBe('signed-out');
+		expect(auth.account).toBeNull();
+		browseAsVisitor();
+		expect(auth.phase).toBe('visitor');
+	});
+
+	it('keeps a live session, with its current role, on a recheck', async () => {
+		auth.phase = 'signed-in';
+		auth.account = ADA;
+		getAuthStatus.mockResolvedValue({ mode: 'accounts', setup_required: false, account: { ...ADA, role: 'viewer' } });
+		await recheckSession();
+		expect(auth.phase).toBe('signed-in');
+		expect(currentRole()).toBe('viewer');
+	});
+
+	it('keeps the session when the recheck cannot reach the server', async () => {
+		auth.phase = 'signed-in';
+		auth.account = ADA;
+		getAuthStatus.mockRejectedValue(new TypeError('Failed to fetch'));
+		await recheckSession();
+		expect(auth.phase).toBe('signed-in');
+		expect(auth.account).toEqual(ADA);
+	});
+
+	it.each(['visitor', 'signed-out', 'open'] as const)('does not recheck when %s', async (phase) => {
+		auth.phase = phase;
+		await recheckSession();
+		expect(getAuthStatus).not.toHaveBeenCalled();
+		expect(auth.phase).toBe(phase);
 	});
 
 	it('leaves open mode alone on a stray 401', () => {
