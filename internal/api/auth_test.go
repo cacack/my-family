@@ -79,7 +79,7 @@ func (f *authFixture) do(t *testing.T, r request) *httptest.ResponseRecorder {
 
 func (f *authFixture) createOwner(t *testing.T) {
 	t.Helper()
-	if _, err := f.auth.CreateOwner(context.Background(), "ada", "Ada Lovelace", ownerPassword); err != nil {
+	if _, err := f.auth.CreateOwner(context.Background(), auth.Actor{}, "ada", "Ada Lovelace", ownerPassword); err != nil {
 		t.Fatalf("CreateOwner: %v", err)
 	}
 }

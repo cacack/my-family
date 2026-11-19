@@ -21,7 +21,7 @@ type managed struct {
 func newManaged(t *testing.T) *managed {
 	t.Helper()
 	svc, _, c := newTestService(t)
-	owner, err := svc.CreateOwner(context.Background(), "ada", "Ada", testPassword)
+	owner, err := svc.CreateOwner(context.Background(), Actor{}, "ada", "Ada", testPassword)
 	if err != nil {
 		t.Fatalf("CreateOwner: %v", err)
 	}
@@ -234,7 +234,7 @@ func TestPasswordReset(t *testing.T) {
 	if _, _, err := m.svc.IssuePasswordResetFor(ctx, Actor{}, "nobody"); !errors.Is(err, ErrUserNotFound) {
 		t.Errorf("IssuePasswordResetFor an unknown name: err = %v, want ErrUserNotFound", err)
 	}
-	user, cliLink, err := m.svc.IssuePasswordResetFor(ctx, Actor{ClientIP: "cli"}, " Grace ")
+	user, cliLink, err := m.svc.IssuePasswordResetFor(ctx, CommandLine, " Grace ")
 	if err != nil || user.ID != grace.ID || cliLink.Token == "" {
 		t.Errorf("IssuePasswordResetFor = %v, %v, %v", user, cliLink, err)
 	}
@@ -375,7 +375,7 @@ func (failingAudit) AppendAuthAudit(context.Context, *repository.AuthAuditEntry)
 func TestAudit_FailureDoesNotFailTheAction(t *testing.T) {
 	svc, store, _ := newTestService(t)
 	svc.store = failingAudit{store}
-	if _, err := svc.CreateOwner(context.Background(), "ada", "Ada", testPassword); err != nil {
+	if _, err := svc.CreateOwner(context.Background(), Actor{}, "ada", "Ada", testPassword); err != nil {
 		t.Fatalf("CreateOwner with a failing audit log: %v", err)
 	}
 	if _, _, err := svc.SignIn(context.Background(), "ada", testPassword, "x"); err != nil {

@@ -158,10 +158,21 @@ func validatePassword(password string) error {
 	return nil
 }
 
-// CreateOwner creates an owner account of the tree. It is what setup and
-// `myfamily user create` share; it signs no one in. It does no setup gating:
-// each call adds another owner, which is how the CLI adds one after setup.
-func (s *Service) CreateOwner(ctx context.Context, username, displayName, password string) (*repository.User, error) {
+// CreateOwner creates an owner account of the tree, recording by as who did
+// it. It signs no one in and does no setup gating: each call adds another
+// owner, which is how `myfamily user create` adds one after setup.
+func (s *Service) CreateOwner(ctx context.Context, by Actor, username, displayName, password string) (*repository.User, error) {
+	user, err := s.createOwner(ctx, username, displayName, password)
+	if err != nil {
+		return nil, err
+	}
+	s.audit(ctx, by, repository.AuthActionUserCreated, user, string(repository.RoleOwner))
+	return user, nil
+}
+
+// createOwner creates an owner account, unaudited. It is what CreateOwner
+// and setup share.
+func (s *Service) createOwner(ctx context.Context, username, displayName, password string) (*repository.User, error) {
 	user, err := s.newUser(username, displayName, password)
 	if err != nil {
 		return nil, err
@@ -173,7 +184,6 @@ func (s *Service) CreateOwner(ctx context.Context, username, displayName, passwo
 		return nil, fmt.Errorf("create owner: %w", err)
 	}
 	s.hasOwner.Store(true)
-	s.audit(ctx, Actor{}, repository.AuthActionUserCreated, user, string(repository.RoleOwner))
 	return user, nil
 }
 
@@ -263,10 +273,12 @@ func (s *Service) CompleteSetup(ctx context.Context, token, username, displayNam
 		return nil, "", ErrInvalidSetupToken // stays counted as a failure
 	}
 	s.limiter.release(now, limitKey)
-	user, err := s.CreateOwner(ctx, username, displayName, password)
+	user, err := s.createOwner(ctx, username, displayName, password)
 	if err != nil {
 		return nil, "", err
 	}
+	// Whoever holds the setup token acts as the owner it creates.
+	s.audit(ctx, Actor{UserID: user.ID, ClientIP: clientKey}, repository.AuthActionUserCreated, user, string(repository.RoleOwner))
 	s.setupToken = ""
 	sessionToken, err := s.startSession(ctx, user.ID)
 	if err != nil {

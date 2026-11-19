@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/uuid"
+
 	"github.com/cacack/my-family/internal/auth"
 	"github.com/cacack/my-family/internal/config"
 	"github.com/cacack/my-family/internal/repository"
@@ -37,6 +39,11 @@ func TestCreateOwner_FromPipedInput(t *testing.T) {
 	}
 	if n, _ := store.CountMembers(context.Background(), repository.DefaultTreeID, repository.RoleOwner); n != 1 {
 		t.Errorf("owners = %d, want 1", n)
+	}
+	entries, _, _ := svc.AuthAudit(context.Background(), 10, 0)
+	if len(entries) != 1 || entries[0].Action != repository.AuthActionUserCreated ||
+		entries[0].ActorID != uuid.Nil || entries[0].ClientIP != auth.CommandLine.ClientIP {
+		t.Errorf("audit = %+v, want one owner created from the command line", entries)
 	}
 	if _, _, err := svc.SignIn(context.Background(), "ada", "correct horse battery", "cli"); err != nil {
 		t.Errorf("the created owner cannot sign in: %v", err)
@@ -75,7 +82,7 @@ func TestLogAuthMode(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			svc := auth.NewService(memory.NewAccountStore())
 			if tt.owner {
-				if _, err := svc.CreateOwner(context.Background(), "ada", "Ada", "correct horse battery"); err != nil {
+				if _, err := svc.CreateOwner(context.Background(), auth.CommandLine, "ada", "Ada", "correct horse battery"); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -99,7 +106,7 @@ func TestLogAuthMode(t *testing.T) {
 func TestResetPassword_PrintsASingleUseLink(t *testing.T) {
 	ctx := context.Background()
 	svc := auth.NewService(memory.NewAccountStore())
-	if _, err := svc.CreateOwner(ctx, "ada", "Ada", "correct horse battery"); err != nil {
+	if _, err := svc.CreateOwner(ctx, auth.CommandLine, "ada", "Ada", "correct horse battery"); err != nil {
 		t.Fatalf("CreateOwner: %v", err)
 	}
 	var out bytes.Buffer
@@ -112,6 +119,11 @@ func TestResetPassword_PrintsASingleUseLink(t *testing.T) {
 		t.Fatalf("output %q has no link starting %s", out.String(), prefix)
 	}
 	token := strings.TrimSpace(out.String()[i+len(prefix):])
+	entries, _, _ := svc.AuthAudit(ctx, 10, 0)
+	if len(entries) != 2 || entries[0].Action != repository.AuthActionResetIssued ||
+		entries[0].ActorID != uuid.Nil || entries[0].ClientIP != auth.CommandLine.ClientIP {
+		t.Errorf("audit = %+v, want the reset issued from the command line", entries)
+	}
 	if err := svc.ResetPassword(ctx, token, "a brand new password", "test"); err != nil {
 		t.Fatalf("the printed link does not reset the password: %v", err)
 	}

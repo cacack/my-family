@@ -16,7 +16,7 @@ export const AUTH_ACTION_LABELS: Record<AuthAuditEntry['action'], string> = {
 	anonymous_access_changed: 'Visitor access changed'
 };
 
-/** Who did it: the actor's name, the CLI, or no one signed in (a failed sign-in, setup). */
+/** Who did it: the actor's name, the CLI, or no one signed in (a failed sign-in). */
 export function auditActor(entry: AuthAuditEntry): string {
 	if (entry.actor_name) return entry.actor_name;
 	if (entry.client_ip === 'cli') return 'Command line';

@@ -99,7 +99,7 @@ func TestCreateOwner_Validation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			svc, store, _ := newTestService(t)
-			user, err := svc.CreateOwner(context.Background(), tt.username, tt.displayName, tt.password)
+			user, err := svc.CreateOwner(context.Background(), Actor{}, tt.username, tt.displayName, tt.password)
 			if tt.wantErr {
 				if !errors.Is(err, ErrInvalidInput) {
 					t.Fatalf("err = %v, want ErrInvalidInput", err)
@@ -122,13 +122,28 @@ func TestCreateOwner_Validation(t *testing.T) {
 	}
 }
 
+func TestCreateOwner_AuditsActor(t *testing.T) {
+	svc, _, _ := newTestService(t)
+	ctx := context.Background()
+	user, err := svc.CreateOwner(ctx, CommandLine, "ada", "Ada", testPassword)
+	if err != nil {
+		t.Fatalf("CreateOwner: %v", err)
+	}
+	entries, _, _ := svc.AuthAudit(ctx, 10, 0)
+	if len(entries) != 1 || entries[0].Action != repository.AuthActionUserCreated ||
+		entries[0].ActorID != uuid.Nil || entries[0].ClientIP != CommandLine.ClientIP ||
+		entries[0].SubjectID != user.ID || entries[0].Detail != string(repository.RoleOwner) {
+		t.Errorf("audit = %+v, want the command line creating owner ada", entries)
+	}
+}
+
 func TestCreateOwner_TakenUsername(t *testing.T) {
 	svc, _, _ := newTestService(t)
 	ctx := context.Background()
-	if _, err := svc.CreateOwner(ctx, "ada", "Ada", testPassword); err != nil {
+	if _, err := svc.CreateOwner(ctx, Actor{}, "ada", "Ada", testPassword); err != nil {
 		t.Fatalf("CreateOwner: %v", err)
 	}
-	if _, err := svc.CreateOwner(ctx, "ADA", "Another Ada", testPassword); !errors.Is(err, ErrInvalidInput) {
+	if _, err := svc.CreateOwner(ctx, Actor{}, "ADA", "Another Ada", testPassword); !errors.Is(err, ErrInvalidInput) {
 		t.Errorf("second CreateOwner of the same name: err = %v, want ErrInvalidInput", err)
 	}
 }
@@ -165,6 +180,11 @@ func TestSetup(t *testing.T) {
 	if got, err := svc.Authenticate(ctx, session); err != nil || got.ID != user.ID {
 		t.Errorf("Authenticate(setup session) = %v, %v; want the owner", got, err)
 	}
+	entries, _, _ := svc.AuthAudit(ctx, 10, 0)
+	if len(entries) != 1 || entries[0].Action != repository.AuthActionUserCreated ||
+		entries[0].ActorID != user.ID || entries[0].SubjectID != user.ID || entries[0].ClientIP != "ip" {
+		t.Errorf("setup audit = %+v, want the new owner creating themselves from ip", entries)
+	}
 	if required, _ := svc.SetupRequired(ctx); required {
 		t.Error("SetupRequired after setup = true")
 	}
@@ -183,7 +203,7 @@ func TestSetupRequired_SeesOwnerCreatedElsewhere(t *testing.T) {
 	if required, _ := svc.SetupRequired(ctx); !required {
 		t.Fatal("SetupRequired on a fresh store = false")
 	}
-	if _, err := NewService(store).CreateOwner(ctx, "ada", "Ada", testPassword); err != nil {
+	if _, err := NewService(store).CreateOwner(ctx, Actor{}, "ada", "Ada", testPassword); err != nil {
 		t.Fatalf("CreateOwner: %v", err)
 	}
 	if required, _ := svc.SetupRequired(ctx); required {
@@ -206,7 +226,7 @@ func TestSetup_RateLimited(t *testing.T) {
 func TestSignIn(t *testing.T) {
 	svc, _, _ := newTestService(t)
 	ctx := context.Background()
-	owner, err := svc.CreateOwner(ctx, "ada", "Ada", testPassword)
+	owner, err := svc.CreateOwner(ctx, Actor{}, "ada", "Ada", testPassword)
 	if err != nil {
 		t.Fatalf("CreateOwner: %v", err)
 	}
@@ -255,7 +275,7 @@ func TestSignIn(t *testing.T) {
 func TestSignIn_StoresTokenHashed(t *testing.T) {
 	svc, store, _ := newTestService(t)
 	ctx := context.Background()
-	if _, err := svc.CreateOwner(ctx, "ada", "Ada", testPassword); err != nil {
+	if _, err := svc.CreateOwner(ctx, Actor{}, "ada", "Ada", testPassword); err != nil {
 		t.Fatalf("CreateOwner: %v", err)
 	}
 	_, token, err := svc.SignIn(ctx, "ada", testPassword, "ip")
@@ -273,7 +293,7 @@ func TestSignIn_StoresTokenHashed(t *testing.T) {
 func TestSignIn_RateLimited(t *testing.T) {
 	svc, _, c := newTestService(t)
 	ctx := context.Background()
-	if _, err := svc.CreateOwner(ctx, "ada", "Ada", testPassword); err != nil {
+	if _, err := svc.CreateOwner(ctx, Actor{}, "ada", "Ada", testPassword); err != nil {
 		t.Fatalf("CreateOwner: %v", err)
 	}
 	for range maxFailuresPerName {
@@ -301,7 +321,7 @@ func TestSignIn_RateLimited(t *testing.T) {
 func TestSignIn_RateLimitHoldsUnderParallelAttempts(t *testing.T) {
 	svc, _, _ := newTestService(t)
 	ctx := context.Background()
-	if _, err := svc.CreateOwner(ctx, "ada", "Ada", testPassword); err != nil {
+	if _, err := svc.CreateOwner(ctx, Actor{}, "ada", "Ada", testPassword); err != nil {
 		t.Fatalf("CreateOwner: %v", err)
 	}
 	const attempts = 4 * maxFailuresPerName
@@ -333,7 +353,7 @@ func TestSignIn_RateLimitHoldsUnderParallelAttempts(t *testing.T) {
 func TestSignIn_SuccessDoesNotCountAgainstClient(t *testing.T) {
 	svc, _, _ := newTestService(t)
 	ctx := context.Background()
-	if _, err := svc.CreateOwner(ctx, "ada", "Ada", testPassword); err != nil {
+	if _, err := svc.CreateOwner(ctx, Actor{}, "ada", "Ada", testPassword); err != nil {
 		t.Fatalf("CreateOwner: %v", err)
 	}
 	for range maxFailuresPerClient + 1 {
@@ -358,7 +378,7 @@ func TestAuthenticate_Expiry(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			svc, store, c := newTestService(t)
 			ctx := context.Background()
-			if _, err := svc.CreateOwner(ctx, "ada", "Ada", testPassword); err != nil {
+			if _, err := svc.CreateOwner(ctx, Actor{}, "ada", "Ada", testPassword); err != nil {
 				t.Fatalf("CreateOwner: %v", err)
 			}
 			_, token, err := svc.SignIn(ctx, "ada", testPassword, "ip")
@@ -389,7 +409,7 @@ func TestAuthenticate_Expiry(t *testing.T) {
 func TestSignIn_DeletesExpiredSessions(t *testing.T) {
 	svc, store, c := newTestService(t)
 	ctx := context.Background()
-	if _, err := svc.CreateOwner(ctx, "ada", "Ada", testPassword); err != nil {
+	if _, err := svc.CreateOwner(ctx, Actor{}, "ada", "Ada", testPassword); err != nil {
 		t.Fatalf("CreateOwner: %v", err)
 	}
 	_, stale, _ := svc.SignIn(ctx, "ada", testPassword, "ip")
@@ -418,7 +438,7 @@ func TestAuthenticate_DeletedUser(t *testing.T) {
 func TestDisplayNames(t *testing.T) {
 	svc, _, _ := newTestService(t)
 	ctx := context.Background()
-	owner, err := svc.CreateOwner(ctx, "ada", "Ada Lovelace", testPassword)
+	owner, err := svc.CreateOwner(ctx, Actor{}, "ada", "Ada Lovelace", testPassword)
 	if err != nil {
 		t.Fatalf("CreateOwner: %v", err)
 	}

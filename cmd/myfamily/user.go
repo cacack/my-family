@@ -95,7 +95,7 @@ func resetPassword(ctx context.Context, svc *auth.Service, out io.Writer, userna
 	if username == "" {
 		return errors.New("--username is required")
 	}
-	user, link, err := svc.IssuePasswordResetFor(ctx, auth.Actor{ClientIP: "cli"}, username)
+	user, link, err := svc.IssuePasswordResetFor(ctx, auth.CommandLine, username)
 	if err != nil {
 		return err
 	}
@@ -175,7 +175,7 @@ func createOwner(ctx context.Context, svc *auth.Service, ask accountPrompter, ou
 	if err != nil {
 		return err
 	}
-	user, err := svc.CreateOwner(ctx, username, displayName, password)
+	user, err := svc.CreateOwner(ctx, auth.CommandLine, username, displayName, password)
 	if err != nil {
 		return err
 	}
