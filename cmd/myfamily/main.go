@@ -139,7 +139,7 @@ func runServer() error {
 	}
 
 	// Build server options
-	serverOpts := []api.ServerOption{api.WithBranchStore(stores.Branches), api.WithSettingsStore(stores.Settings), api.WithAuth(authService)}
+	serverOpts := []api.ServerOption{api.WithBranchStore(stores.Branches), api.WithSettingsStore(stores.Settings), api.WithAuth(authService), api.WithTreeSettings(stores.Accounts)}
 	if cfg.DemoMode {
 		mem := stores.Memory
 		serverOpts = append(serverOpts, api.WithDemoReset(mem.Events, mem.ReadModel, mem.Snapshots, mem.Branches, mem.Settings))

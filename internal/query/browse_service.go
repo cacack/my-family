@@ -149,7 +149,7 @@ func (s *BrowseService) GetPersonsBySurname(ctx context.Context, input GetPerson
 
 	items := make([]Person, len(persons))
 	for i, p := range persons {
-		items[i] = convertReadModelToPerson(p)
+		items[i] = convertReadModelToPerson(p, livingCutoff(ctx))
 	}
 
 	return &PersonListResult{
@@ -242,7 +242,7 @@ func (s *BrowseService) GetPersonsByPlace(ctx context.Context, input GetPersonsB
 
 	items := make([]Person, len(persons))
 	for i, p := range persons {
-		items[i] = convertReadModelToPerson(p)
+		items[i] = convertReadModelToPerson(p, livingCutoff(ctx))
 	}
 
 	return &PersonListResult{
@@ -327,7 +327,7 @@ func (s *BrowseService) GetPersonsByCemetery(ctx context.Context, input GetPerso
 
 	items := make([]Person, len(persons))
 	for i, p := range persons {
-		items[i] = convertReadModelToPerson(p)
+		items[i] = convertReadModelToPerson(p, livingCutoff(ctx))
 	}
 
 	return &PersonListResult{

@@ -81,6 +81,9 @@ tags:
     description: |
       Managing the tree's users (ADR-007): invites, roles, disabling, password
       reset links and the auth audit log. Owners only.
+  - name: settings
+    description: |
+      The tree's privacy settings (ADR-008 §6). Owners only.
   - name: auth
     description: |
       Accounts and sign-in (ADR-007). Every other operation needs a signed-in
@@ -5807,6 +5810,43 @@ paths:
         '409':
           $ref: '#/components/responses/AccountsOnly'
 
+  /settings/privacy:
+    get:
+      operationId: getPrivacySettings
+      x-min-role: owner
+      summary: Read the tree's privacy settings
+      tags: [settings]
+      responses:
+        '200':
+          description: The privacy settings, or the defaults when none were saved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PrivacySettings'
+    put:
+      operationId: updatePrivacySettings
+      x-min-role: owner
+      summary: Change the tree's privacy settings
+      description: |
+        Replaces every privacy setting. They are kept beside the accounts, not
+        in the event log, so they survive restarts and `myfamily rebuild`.
+      tags: [settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PrivacySettings'
+      responses:
+        '200':
+          description: The saved settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PrivacySettings'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
   /auth-audit:
     get:
       operationId: listAuthAudit
@@ -6201,6 +6241,24 @@ components:
         created_at:
           type: string
           format: date-time
+
+    PrivacySettings:
+      type: object
+      required: [living_threshold_years, viewers_see_living]
+      properties:
+        living_threshold_years:
+          type: integer
+          minimum: 50
+          maximum: 150
+          description: >-
+            N in the living rule (ADR-008 §1): a person born (else christened or
+            baptized) more than N years ago, with no evidence of death, is no
+            longer presumed living. Default 110.
+        viewers_see_living:
+          type: boolean
+          description: >-
+            Whether viewers see living people in full. When false they see the
+            placeholder anonymous visitors see. Default true.
 
     UserList:
       type: object

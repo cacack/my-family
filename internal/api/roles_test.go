@@ -47,6 +47,8 @@ var (
 		"POST /api/v1/users/:id/password-reset",
 		"POST /api/v1/invites",
 		"GET /api/v1/auth-audit",
+		"GET /api/v1/settings/privacy",
+		"PUT /api/v1/settings/privacy",
 		// A site-wide setting until it becomes each account's own (#1443).
 		"PUT /api/v1/settings/home-person",
 		"DELETE /api/v1/settings/home-person",

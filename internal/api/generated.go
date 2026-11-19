@@ -5689,6 +5689,15 @@ type PlaceIndexResponse struct {
 	Total int `json:"total"`
 }
 
+// PrivacySettings defines model for PrivacySettings.
+type PrivacySettings struct {
+	// LivingThresholdYears N in the living rule (ADR-008 §1): a person born (else christened or baptized) more than N years ago, with no evidence of death, is no longer presumed living. Default 110.
+	LivingThresholdYears int `json:"living_threshold_years"`
+
+	// ViewersSeeLiving Whether viewers see living people in full. When false they see the placeholder anonymous visitors see. Default true.
+	ViewersSeeLiving bool `json:"viewers_see_living"`
+}
+
 // PromoteResearchLogsRequest defines model for PromoteResearchLogsRequest.
 type PromoteResearchLogsRequest struct {
 	// LogIds The research logs to promote. Omitted or empty promotes every
@@ -8505,6 +8514,9 @@ type UpdateResearchLogJSONRequestBody = ResearchLogUpdate
 // SetHomePersonJSONRequestBody defines body for SetHomePerson for application/json ContentType.
 type SetHomePersonJSONRequestBody = HomePersonUpdate
 
+// UpdatePrivacySettingsJSONRequestBody defines body for UpdatePrivacySettings for application/json ContentType.
+type UpdatePrivacySettingsJSONRequestBody = PrivacySettings
+
 // CreateSnapshotJSONRequestBody defines body for CreateSnapshot for application/json ContentType.
 type CreateSnapshotJSONRequestBody = SnapshotCreate
 
@@ -8987,6 +8999,12 @@ type ServerInterface interface {
 	// SetHomePerson Set the home person
 	// (PUT /settings/home-person)
 	SetHomePerson(ctx echo.Context) error
+	// GetPrivacySettings Read the tree's privacy settings
+	// (GET /settings/privacy)
+	GetPrivacySettings(ctx echo.Context) error
+	// UpdatePrivacySettings Change the tree's privacy settings
+	// (PUT /settings/privacy)
+	UpdatePrivacySettings(ctx echo.Context) error
 	// ListSnapshots List the snapshots of the mainline or a branch
 	// (GET /snapshots)
 	ListSnapshots(ctx echo.Context, params ListSnapshotsParams) error
@@ -12814,6 +12832,24 @@ func (w *ServerInterfaceWrapper) SetHomePerson(ctx echo.Context) error {
 	return err
 }
 
+// GetPrivacySettings converts echo context to params.
+func (w *ServerInterfaceWrapper) GetPrivacySettings(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.GetPrivacySettings(ctx)
+	return err
+}
+
+// UpdatePrivacySettings converts echo context to params.
+func (w *ServerInterfaceWrapper) UpdatePrivacySettings(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.UpdatePrivacySettings(ctx)
+	return err
+}
+
 // ListSnapshots converts echo context to params.
 func (w *ServerInterfaceWrapper) ListSnapshots(ctx echo.Context) error {
 	var err error
@@ -13650,6 +13686,8 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 	router.PATCH(options.BaseURL+"/users/:id", wrapper.UpdateUser, options.OperationMiddlewares["updateUser"]...)
 	router.POST(options.BaseURL+"/users/:id/password-reset", wrapper.CreatePasswordReset, options.OperationMiddlewares["createPasswordReset"]...)
 	router.POST(options.BaseURL+"/invites", wrapper.CreateInvite, options.OperationMiddlewares["createInvite"]...)
+	router.GET(options.BaseURL+"/settings/privacy", wrapper.GetPrivacySettings, options.OperationMiddlewares["getPrivacySettings"]...)
+	router.PUT(options.BaseURL+"/settings/privacy", wrapper.UpdatePrivacySettings, options.OperationMiddlewares["updatePrivacySettings"]...)
 	router.GET(options.BaseURL+"/auth-audit", wrapper.ListAuthAudit, options.OperationMiddlewares["listAuthAudit"]...)
 
 }
@@ -20881,6 +20919,63 @@ func (response SetHomePerson503JSONResponse) VisitSetHomePersonResponse(w http.R
 	return err
 }
 
+type GetPrivacySettingsRequestObject struct {
+}
+
+type GetPrivacySettingsResponseObject interface {
+	VisitGetPrivacySettingsResponse(w http.ResponseWriter) error
+}
+
+type GetPrivacySettings200JSONResponse PrivacySettings
+
+func (response GetPrivacySettings200JSONResponse) VisitGetPrivacySettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdatePrivacySettingsRequestObject struct {
+	Body *UpdatePrivacySettingsJSONRequestBody
+}
+
+type UpdatePrivacySettingsResponseObject interface {
+	VisitUpdatePrivacySettingsResponse(w http.ResponseWriter) error
+}
+
+type UpdatePrivacySettings200JSONResponse PrivacySettings
+
+func (response UpdatePrivacySettings200JSONResponse) VisitUpdatePrivacySettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdatePrivacySettings400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response UpdatePrivacySettings400JSONResponse) VisitUpdatePrivacySettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListSnapshotsRequestObject struct {
 	Params ListSnapshotsParams
 }
@@ -22507,6 +22602,12 @@ type StrictServerInterface interface {
 	// SetHomePerson Set the home person
 	// (PUT /settings/home-person)
 	SetHomePerson(ctx context.Context, request SetHomePersonRequestObject) (SetHomePersonResponseObject, error)
+	// GetPrivacySettings Read the tree's privacy settings
+	// (GET /settings/privacy)
+	GetPrivacySettings(ctx context.Context, request GetPrivacySettingsRequestObject) (GetPrivacySettingsResponseObject, error)
+	// UpdatePrivacySettings Change the tree's privacy settings
+	// (PUT /settings/privacy)
+	UpdatePrivacySettings(ctx context.Context, request UpdatePrivacySettingsRequestObject) (UpdatePrivacySettingsResponseObject, error)
 	// ListSnapshots List the snapshots of the mainline or a branch
 	// (GET /snapshots)
 	ListSnapshots(ctx context.Context, request ListSnapshotsRequestObject) (ListSnapshotsResponseObject, error)
@@ -27578,6 +27679,75 @@ func (sh *strictHandler) SetHomePerson(ctx echo.Context) error {
 		return err
 	} else if validResponse, ok := response.(SetHomePersonResponseObject); ok {
 		return validResponse.VisitSetHomePersonResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// GetPrivacySettings operation middleware
+func (sh *strictHandler) GetPrivacySettings(ctx echo.Context) error {
+	var request GetPrivacySettingsRequestObject
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.GetPrivacySettings(ctx.Request().Context(), request.(GetPrivacySettingsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetPrivacySettings")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(GetPrivacySettingsResponseObject); ok {
+		return validResponse.VisitGetPrivacySettingsResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// UpdatePrivacySettings operation middleware
+func (sh *strictHandler) UpdatePrivacySettings(ctx echo.Context) error {
+	var request UpdatePrivacySettingsRequestObject
+
+	var body UpdatePrivacySettingsJSONRequestBody
+	var err error
+	if binder, ok := ctx.Echo().Binder.(*echo.DefaultBinder); ok {
+		// A request validator built on kin-openapi's openapi3filter with
+		// KeepValidatedValue leaves the value it validated on the body. Bind
+		// that value, matching member names exactly, so the handler receives
+		// what was validated instead of a second, case-insensitive decode.
+		// Otherwise bind only the request body, so that path and query
+		// parameters are not also bound into the body struct.
+		if vb, ok := ctx.Request().Body.(interface{ ValidatedValue() any }); !ok || runtime.BindJSONValue(vb.ValidatedValue(), &body) != nil {
+			err = binder.BindBody(ctx, &body)
+		}
+	} else {
+		// A custom binder is installed on the Echo instance; defer to it
+		// entirely, since echo.Binder does not expose body-only binding and
+		// the binder may do more than decode (for example call ctx.Validate).
+		err = ctx.Bind(&body)
+	}
+	if err != nil {
+		return err
+	}
+	request.Body = &body
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdatePrivacySettings(ctx.Request().Context(), request.(UpdatePrivacySettingsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdatePrivacySettings")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(UpdatePrivacySettingsResponseObject); ok {
+		return validResponse.VisitUpdatePrivacySettingsResponse(ctx.Response())
 	} else if response != nil {
 		return fmt.Errorf("unexpected response type: %T", response)
 	}

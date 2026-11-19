@@ -205,7 +205,7 @@ func (s *PedigreeService) collectAncestors(ctx context.Context, branchID domain.
 	if edge.FatherID != nil {
 		father, err := s.readStore.GetPerson(ctx, branchID, *edge.FatherID)
 		if err == nil && father != nil {
-			*ancestors = append(*ancestors, convertReadModelToPerson(*father))
+			*ancestors = append(*ancestors, convertReadModelToPerson(*father, livingCutoff(ctx)))
 			s.collectAncestors(ctx, branchID, *edge.FatherID, generation+1, maxGen, visited, ancestors)
 		}
 	}
@@ -214,7 +214,7 @@ func (s *PedigreeService) collectAncestors(ctx context.Context, branchID domain.
 	if edge.MotherID != nil {
 		mother, err := s.readStore.GetPerson(ctx, branchID, *edge.MotherID)
 		if err == nil && mother != nil {
-			*ancestors = append(*ancestors, convertReadModelToPerson(*mother))
+			*ancestors = append(*ancestors, convertReadModelToPerson(*mother, livingCutoff(ctx)))
 			s.collectAncestors(ctx, branchID, *edge.MotherID, generation+1, maxGen, visited, ancestors)
 		}
 	}

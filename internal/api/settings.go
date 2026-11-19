@@ -1,0 +1,62 @@
+package api
+
+import (
+	"context"
+	"net/http"
+
+	"github.com/labstack/echo/v4"
+
+	"github.com/cacack/my-family/internal/repository"
+)
+
+// WithTreeSettings supplies the store of the tree's privacy settings
+// (ADR-008 §6). It is optional: without it the defaults apply and cannot be
+// changed.
+func WithTreeSettings(store repository.TreeSettingsStore) ServerOption {
+	return func(s *Server) {
+		s.settings = store
+	}
+}
+
+// treeSettings returns the tree's saved settings, or the defaults when the
+// server has no settings store.
+func (s *Server) treeSettings(ctx context.Context) (repository.TreeSettings, error) {
+	if s.settings == nil {
+		return repository.DefaultTreeSettings(), nil
+	}
+	return s.settings.GetTreeSettings(ctx, repository.DefaultTreeID)
+}
+
+func privacySettingsOf(settings repository.TreeSettings) PrivacySettings {
+	return PrivacySettings{
+		LivingThresholdYears: settings.LivingThresholdYears,
+		ViewersSeeLiving:     settings.ViewersSeeLiving,
+	}
+}
+
+// GetPrivacySettings implements StrictServerInterface.
+func (ss *StrictServer) GetPrivacySettings(ctx context.Context, _ GetPrivacySettingsRequestObject) (GetPrivacySettingsResponseObject, error) {
+	settings, err := ss.server.treeSettings(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return GetPrivacySettings200JSONResponse(privacySettingsOf(settings)), nil
+}
+
+// UpdatePrivacySettings implements StrictServerInterface.
+func (ss *StrictServer) UpdatePrivacySettings(ctx context.Context, request UpdatePrivacySettingsRequestObject) (UpdatePrivacySettingsResponseObject, error) {
+	if ss.server.settings == nil {
+		return nil, echo.NewHTTPError(http.StatusServiceUnavailable, "This server keeps no settings")
+	}
+	settings := repository.TreeSettings{
+		LivingThresholdYears: request.Body.LivingThresholdYears,
+		ViewersSeeLiving:     request.Body.ViewersSeeLiving,
+	}
+	if err := settings.Validate(); err != nil {
+		return UpdatePrivacySettings400JSONResponse{BadRequestJSONResponse(Error{Code: CodeValidation, Message: err.Error()})}, nil
+	}
+	if err := ss.server.settings.SaveTreeSettings(ctx, repository.DefaultTreeID, settings); err != nil {
+		return nil, err
+	}
+	return UpdatePrivacySettings200JSONResponse(privacySettingsOf(settings)), nil
+}

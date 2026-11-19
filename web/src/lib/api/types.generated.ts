@@ -3346,6 +3346,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/settings/privacy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read the tree's privacy settings */
+        get: operations["getPrivacySettings"];
+        /**
+         * Change the tree's privacy settings
+         * @description Replaces every privacy setting. They are kept beside the accounts, not
+         *     in the event log, so they survive restarts and `myfamily rebuild`.
+         */
+        put: operations["updatePrivacySettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth-audit": {
         parameters: {
             query?: never;
@@ -3446,6 +3468,12 @@ export interface components {
             disabled: boolean;
             /** Format: date-time */
             created_at: string;
+        };
+        PrivacySettings: {
+            /** @description N in the living rule (ADR-008 §1): a person born (else christened or baptized) more than N years ago, with no evidence of death, is no longer presumed living. Default 110. */
+            living_threshold_years: number;
+            /** @description Whether viewers see living people in full. When false they see the placeholder anonymous visitors see. Default true. */
+            viewers_see_living: boolean;
         };
         UserList: {
             items: components["schemas"]["User"][];
@@ -13423,6 +13451,51 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             409: components["responses"]["AccountsOnly"];
+        };
+    };
+    getPrivacySettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The privacy settings, or the defaults when none were saved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PrivacySettings"];
+                };
+            };
+        };
+    };
+    updatePrivacySettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PrivacySettings"];
+            };
+        };
+        responses: {
+            /** @description The saved settings */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PrivacySettings"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
         };
     };
     listAuthAudit: {

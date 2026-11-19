@@ -93,6 +93,12 @@ func (s *Server) authenticate(next echo.HandlerFunc) echo.HandlerFunc {
 			c.SetRequest(req.WithContext(ctx))
 			return next(c)
 		}
+		// The read side applies the owner's privacy settings (ADR-008 §6).
+		settings, err := s.treeSettings(ctx)
+		if err != nil {
+			return err
+		}
+		ctx = repository.ContextWithTreeSettings(ctx, settings)
 		key := routeKey(req.Method, c.Path())
 		required, declared := routeRoles[key]
 		if !declared {

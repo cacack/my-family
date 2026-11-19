@@ -88,11 +88,12 @@ type Server struct {
 	exportService       *query.ExportService
 	evidenceService     *query.EvidenceQueryService
 	frontendFS          fs.FS
-	demo                *demoResetter            // nil when not in demo mode
-	branchStore         repository.BranchStore   // nil unless WithBranchStore supplied
-	settingsStore       repository.SettingsStore // nil unless WithSettingsStore supplied
-	auth                *auth.Service            // nil only in open mode
-	routes              map[string]bool          // every registered route, by routeKey
+	demo                *demoResetter                // nil when not in demo mode
+	branchStore         repository.BranchStore       // nil unless WithBranchStore supplied
+	settingsStore       repository.SettingsStore     // nil unless WithSettingsStore supplied
+	auth                *auth.Service                // nil only in open mode
+	settings            repository.TreeSettingsStore // nil unless WithTreeSettings supplied
+	routes              map[string]bool              // every registered route, by routeKey
 }
 
 // NewServer creates a new API server with all dependencies. Unless

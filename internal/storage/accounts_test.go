@@ -55,6 +55,36 @@ func TestAccountStore_ManagementContract(t *testing.T) {
 	}
 }
 
+func TestTreeSettingsStore_Contract(t *testing.T) {
+	for backend, open := range accountBackends() {
+		t.Run(string(backend), func(t *testing.T) {
+			stores := open(t)
+			t.Cleanup(func() { _ = stores.Close() })
+			ctx := context.Background()
+			store := stores.Accounts
+
+			got, err := store.GetTreeSettings(ctx, repository.DefaultTreeID)
+			if err != nil || got != repository.DefaultTreeSettings() {
+				t.Fatalf("GetTreeSettings before any save = %+v, %v; want the defaults", got, err)
+			}
+			for _, want := range []repository.TreeSettings{
+				{LivingThresholdYears: 100, ViewersSeeLiving: false},
+				{LivingThresholdYears: 120, ViewersSeeLiving: true},
+			} {
+				if err := store.SaveTreeSettings(ctx, repository.DefaultTreeID, want); err != nil {
+					t.Fatalf("SaveTreeSettings(%+v): %v", want, err)
+				}
+				if got, err := store.GetTreeSettings(ctx, repository.DefaultTreeID); err != nil || got != want {
+					t.Errorf("GetTreeSettings = %+v, %v; want %+v", got, err, want)
+				}
+			}
+			if got, err := store.GetTreeSettings(ctx, uuid.New()); err != nil || got != repository.DefaultTreeSettings() {
+				t.Errorf("GetTreeSettings of another tree = %+v, %v; want the defaults", got, err)
+			}
+		})
+	}
+}
+
 // runAccountManagementContract covers members, invites, password resets and
 // the auth audit log (#1410).
 func runAccountManagementContract(t *testing.T, store repository.AccountStore) {
@@ -409,8 +439,8 @@ func runAccountStoreContract(t *testing.T, store repository.AccountStore) {
 	}
 }
 
-// TestRebuild_KeepsAccounts proves `myfamily rebuild` leaves the account
-// tables alone on each SQL backend: they are neither event log nor read model
+// TestRebuild_KeepsAccounts proves the account tables, tree settings included,
+// survive a restart and `myfamily rebuild` leaves them alone on each SQL backend: they are neither event log nor read model
 // (ADR-007).
 func TestRebuild_KeepsAccounts(t *testing.T) {
 	backends := map[Backend]func(t *testing.T) func(Access) (*Stores, error){
@@ -440,6 +470,10 @@ func TestRebuild_KeepsAccounts(t *testing.T) {
 			if err := stores.Accounts.CreateSession(ctx, &repository.Session{TokenHash: "s", UserID: user.ID, CreatedAt: now, LastSeenAt: now}); err != nil {
 				t.Fatalf("CreateSession: %v", err)
 			}
+			settings := repository.TreeSettings{LivingThresholdYears: 95, ViewersSeeLiving: false}
+			if err := stores.Accounts.SaveTreeSettings(ctx, repository.DefaultTreeID, settings); err != nil {
+				t.Fatalf("SaveTreeSettings: %v", err)
+			}
 			if err := stores.Close(); err != nil {
 				t.Fatalf("Close: %v", err)
 			}
@@ -460,6 +494,9 @@ func TestRebuild_KeepsAccounts(t *testing.T) {
 			}
 			if _, err := rebuild.Accounts.GetSession(ctx, "s"); err != nil {
 				t.Errorf("session gone after rebuild: %v", err)
+			}
+			if got, err := rebuild.Accounts.GetTreeSettings(ctx, repository.DefaultTreeID); err != nil || got != settings {
+				t.Errorf("tree settings after reopen and rebuild = %+v, %v; want %+v", got, err, settings)
 			}
 		})
 	}
