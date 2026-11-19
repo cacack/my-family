@@ -45,6 +45,219 @@ func TestAccountStore_Contract(t *testing.T) {
 	}
 }
 
+func TestAccountStore_ManagementContract(t *testing.T) {
+	for backend, open := range accountBackends() {
+		t.Run(string(backend), func(t *testing.T) {
+			stores := open(t)
+			t.Cleanup(func() { _ = stores.Close() })
+			runAccountManagementContract(t, stores.Accounts)
+		})
+	}
+}
+
+// runAccountManagementContract covers members, invites, password resets and
+// the auth audit log (#1410).
+func runAccountManagementContract(t *testing.T, store repository.AccountStore) {
+	ctx := context.Background()
+	now := at(time.Now())
+	owner := &repository.User{ID: uuid.New(), Username: "ada", DisplayName: "Ada", PasswordHash: "h1", CreatedAt: now}
+	if err := store.CreateUser(ctx, owner, repository.DefaultTreeID, repository.RoleOwner); err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+
+	// Invites: an expired one and an unknown one are refused; a valid one
+	// creates the user with its role, once.
+	invite := &repository.Invite{TokenHash: "inv", TreeID: repository.DefaultTreeID, Role: repository.RoleEditor,
+		CreatedBy: owner.ID, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}
+	expired := &repository.Invite{TokenHash: "old", TreeID: repository.DefaultTreeID, Role: repository.RoleOwner,
+		CreatedBy: owner.ID, CreatedAt: now.Add(-2 * time.Hour), ExpiresAt: now.Add(-time.Hour)}
+	for _, inv := range []*repository.Invite{invite, expired} {
+		if err := store.CreateInvite(ctx, inv); err != nil {
+			t.Fatalf("CreateInvite(%s): %v", inv.TokenHash, err)
+		}
+	}
+	newUser := func(name string) *repository.User {
+		return &repository.User{ID: uuid.New(), Username: name, DisplayName: name, PasswordHash: "h", CreatedAt: now}
+	}
+	for _, hash := range []string{"old", "missing"} {
+		if _, err := store.AcceptInvite(ctx, hash, now, newUser("x-"+hash)); !errors.Is(err, repository.ErrLinkNotFound) {
+			t.Errorf("AcceptInvite(%s): err = %v, want ErrLinkNotFound", hash, err)
+		}
+	}
+	if _, err := store.AcceptInvite(ctx, "inv", now, newUser("ada")); !errors.Is(err, repository.ErrUsernameTaken) {
+		t.Errorf("AcceptInvite with a taken username: err = %v, want ErrUsernameTaken", err)
+	}
+	grace := newUser("grace")
+	got, err := store.AcceptInvite(ctx, "inv", now, grace)
+	if err != nil {
+		t.Fatalf("AcceptInvite: %v (a refused username must leave the invite usable)", err)
+	}
+	if got.Role != repository.RoleEditor || got.CreatedBy != owner.ID || got.TreeID != repository.DefaultTreeID || !got.ExpiresAt.Equal(invite.ExpiresAt) {
+		t.Errorf("AcceptInvite = %+v, want %+v", got, invite)
+	}
+	if role, err := store.MemberRole(ctx, repository.DefaultTreeID, grace.ID); err != nil || role != repository.RoleEditor {
+		t.Errorf("invited member's role = %q, %v; want editor", role, err)
+	}
+	if _, err := store.AcceptInvite(ctx, "inv", now, newUser("again")); !errors.Is(err, repository.ErrLinkNotFound) {
+		t.Errorf("AcceptInvite twice: err = %v, want ErrLinkNotFound", err)
+	}
+
+	// Members, roles and the disabled flag.
+	members, err := store.ListMembers(ctx, repository.DefaultTreeID)
+	if err != nil {
+		t.Fatalf("ListMembers: %v", err)
+	}
+	if len(members) != 2 || members[0].User.ID != owner.ID || members[0].Role != repository.RoleOwner ||
+		members[1].User.ID != grace.ID || members[1].Role != repository.RoleEditor || !members[0].User.CreatedAt.Equal(now) {
+		t.Errorf("ListMembers = %+v, want ada (owner) then grace (editor)", members)
+	}
+	if members, err := store.ListMembers(ctx, uuid.New()); err != nil || len(members) != 0 {
+		t.Errorf("ListMembers of another tree = %v, %v; want none", members, err)
+	}
+	if err := store.SetMemberRole(ctx, repository.DefaultTreeID, grace.ID, repository.RoleViewer); err != nil {
+		t.Fatalf("SetMemberRole: %v", err)
+	}
+	if role, _ := store.MemberRole(ctx, repository.DefaultTreeID, grace.ID); role != repository.RoleViewer {
+		t.Errorf("role after SetMemberRole = %q, want viewer", role)
+	}
+	if err := store.SetMemberRole(ctx, repository.DefaultTreeID, uuid.New(), repository.RoleViewer); !errors.Is(err, repository.ErrNotMember) {
+		t.Errorf("SetMemberRole of a non-member: err = %v, want ErrNotMember", err)
+	}
+	changed := *grace
+	changed.DisplayName, changed.PasswordHash, changed.Disabled = "Grace H", "h2", true
+	if err := store.UpdateUser(ctx, &changed); err != nil {
+		t.Fatalf("UpdateUser: %v", err)
+	}
+	if u, err := store.GetUser(ctx, grace.ID); err != nil || u.DisplayName != "Grace H" || u.PasswordHash != "h2" || !u.Disabled || u.Username != "grace" {
+		t.Errorf("after UpdateUser, GetUser = %+v, %v", u, err)
+	}
+	if members, _ := store.ListMembers(ctx, repository.DefaultTreeID); len(members) != 2 || !members[1].User.Disabled {
+		t.Errorf("ListMembers after disabling = %+v, want grace disabled", members)
+	}
+	missing := newUser("nobody")
+	if err := store.UpdateUser(ctx, missing); !errors.Is(err, repository.ErrUserNotFound) {
+		t.Errorf("UpdateUser of an unknown user: err = %v, want ErrUserNotFound", err)
+	}
+
+	// Sessions of one user, keeping one.
+	for _, hash := range []string{"g1", "g2", "g3"} {
+		if err := store.CreateSession(ctx, &repository.Session{TokenHash: hash, UserID: grace.ID, CreatedAt: now, LastSeenAt: now}); err != nil {
+			t.Fatalf("CreateSession: %v", err)
+		}
+	}
+	if err := store.CreateSession(ctx, &repository.Session{TokenHash: "a1", UserID: owner.ID, CreatedAt: now, LastSeenAt: now}); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	if err := store.DeleteUserSessions(ctx, grace.ID, "g2"); err != nil {
+		t.Fatalf("DeleteUserSessions: %v", err)
+	}
+	for hash, want := range map[string]bool{"g1": false, "g2": true, "g3": false, "a1": true} {
+		if _, err := store.GetSession(ctx, hash); (err == nil) != want {
+			t.Errorf("after DeleteUserSessions, session %s exists = %v, want %v", hash, err == nil, want)
+		}
+	}
+
+	// Password resets: expired and unknown refused; a valid one sets the
+	// password, ends every session and uses up every reset of the user.
+	for _, r := range []*repository.PasswordReset{
+		{TokenHash: "r1", UserID: grace.ID, CreatedBy: owner.ID, CreatedAt: now, ExpiresAt: now.Add(time.Hour)},
+		{TokenHash: "r2", UserID: grace.ID, CreatedAt: now, ExpiresAt: now.Add(time.Hour)},
+		{TokenHash: "r-old", UserID: grace.ID, CreatedAt: now, ExpiresAt: now.Add(-time.Second)},
+	} {
+		if err := store.CreatePasswordReset(ctx, r); err != nil {
+			t.Fatalf("CreatePasswordReset(%s): %v", r.TokenHash, err)
+		}
+	}
+	for _, hash := range []string{"r-old", "missing"} {
+		if _, err := store.UsePasswordReset(ctx, hash, now, "bad"); !errors.Is(err, repository.ErrLinkNotFound) {
+			t.Errorf("UsePasswordReset(%s): err = %v, want ErrLinkNotFound", hash, err)
+		}
+	}
+	userID, err := store.UsePasswordReset(ctx, "r1", now, "h3")
+	if err != nil || userID != grace.ID {
+		t.Fatalf("UsePasswordReset = %v, %v; want %v", userID, err, grace.ID)
+	}
+	if u, _ := store.GetUser(ctx, grace.ID); u == nil || u.PasswordHash != "h3" {
+		t.Errorf("password hash after reset = %+v, want h3", u)
+	}
+	if _, err := store.GetSession(ctx, "g2"); !errors.Is(err, repository.ErrSessionNotFound) {
+		t.Errorf("a reset left a session: err = %v", err)
+	}
+	if _, err := store.GetSession(ctx, "a1"); err != nil {
+		t.Errorf("a reset ended another user's session: %v", err)
+	}
+	if _, err := store.UsePasswordReset(ctx, "r2", now, "h4"); !errors.Is(err, repository.ErrLinkNotFound) {
+		t.Errorf("a second reset of the same user: err = %v, want ErrLinkNotFound", err)
+	}
+
+	// Revoking the links one user issued leaves everyone else's.
+	other := uuid.New()
+	for _, inv := range []*repository.Invite{
+		{TokenHash: "rev-inv", TreeID: repository.DefaultTreeID, Role: repository.RoleOwner, CreatedBy: owner.ID, CreatedAt: now, ExpiresAt: now.Add(time.Hour)},
+		{TokenHash: "keep-inv", TreeID: repository.DefaultTreeID, Role: repository.RoleViewer, CreatedBy: other, CreatedAt: now, ExpiresAt: now.Add(time.Hour)},
+	} {
+		if err := store.CreateInvite(ctx, inv); err != nil {
+			t.Fatalf("CreateInvite(%s): %v", inv.TokenHash, err)
+		}
+	}
+	for _, r := range []*repository.PasswordReset{
+		{TokenHash: "rev-r", UserID: grace.ID, CreatedBy: owner.ID, CreatedAt: now, ExpiresAt: now.Add(time.Hour)},
+		{TokenHash: "keep-r", UserID: owner.ID, CreatedAt: now, ExpiresAt: now.Add(time.Hour)},
+	} {
+		if err := store.CreatePasswordReset(ctx, r); err != nil {
+			t.Fatalf("CreatePasswordReset(%s): %v", r.TokenHash, err)
+		}
+	}
+	if err := store.DeleteLinksIssuedBy(ctx, owner.ID); err != nil {
+		t.Fatalf("DeleteLinksIssuedBy: %v", err)
+	}
+	if _, err := store.AcceptInvite(ctx, "rev-inv", now, newUser("rev")); !errors.Is(err, repository.ErrLinkNotFound) {
+		t.Errorf("a revoked invite: err = %v, want ErrLinkNotFound", err)
+	}
+	if _, err := store.UsePasswordReset(ctx, "rev-r", now, "h5"); !errors.Is(err, repository.ErrLinkNotFound) {
+		t.Errorf("a revoked reset: err = %v, want ErrLinkNotFound", err)
+	}
+	if _, err := store.AcceptInvite(ctx, "keep-inv", now, newUser("kept")); err != nil {
+		t.Errorf("another issuer's invite was revoked: %v", err)
+	}
+	if _, err := store.UsePasswordReset(ctx, "keep-r", now, "h6"); err != nil {
+		t.Errorf("a reset issued by no one was revoked: %v", err)
+	}
+
+	// The audit log: newest first, paged, with absent IDs kept absent.
+	if entries, total, err := store.ListAuthAudit(ctx, 10, 0); err != nil || total != 0 || len(entries) != 0 {
+		t.Errorf("ListAuthAudit on an empty log = %v, %d, %v", entries, total, err)
+	}
+	appended := []repository.AuthAuditEntry{
+		{At: now, Action: repository.AuthActionSignInFailed, Username: "eve", ClientIP: "192.0.2.1"},
+		{At: now.Add(time.Second), Action: repository.AuthActionSignIn, ActorID: owner.ID, SubjectID: owner.ID, Username: "ada", ClientIP: "192.0.2.2"},
+		{At: now.Add(2 * time.Second), Action: repository.AuthActionRoleChanged, ActorID: owner.ID, SubjectID: grace.ID, Username: "grace", Detail: "editor -> viewer"},
+	}
+	for i := range appended {
+		if err := store.AppendAuthAudit(ctx, &appended[i]); err != nil {
+			t.Fatalf("AppendAuthAudit: %v", err)
+		}
+	}
+	entries, total, err := store.ListAuthAudit(ctx, 2, 0)
+	if err != nil || total != 3 || len(entries) != 2 {
+		t.Fatalf("ListAuthAudit(2, 0) = %d entries, total %d, %v; want 2 of 3", len(entries), total, err)
+	}
+	if e := entries[0]; e.Action != repository.AuthActionRoleChanged || e.ActorID != owner.ID || e.SubjectID != grace.ID ||
+		e.Username != "grace" || e.Detail != "editor -> viewer" || !e.At.Equal(appended[2].At) {
+		t.Errorf("newest entry = %+v, want %+v", e, appended[2])
+	}
+	if entries[1].Action != repository.AuthActionSignIn || entries[1].ClientIP != "192.0.2.2" {
+		t.Errorf("second entry = %+v, want the sign-in", entries[1])
+	}
+	entries, _, err = store.ListAuthAudit(ctx, 2, 2)
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("ListAuthAudit(2, 2) = %v, %v; want the oldest entry", entries, err)
+	}
+	if e := entries[0]; e.Action != repository.AuthActionSignInFailed || e.ActorID != uuid.Nil || e.SubjectID != uuid.Nil || e.Username != "eve" {
+		t.Errorf("oldest entry = %+v, want the failed sign-in with no actor or subject", e)
+	}
+}
+
 // at returns a UTC time truncated to microseconds, the finest resolution every
 // backend stores.
 func at(t time.Time) time.Time { return t.UTC().Truncate(time.Microsecond) }

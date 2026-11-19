@@ -17,6 +17,7 @@
 	import SignInForm from '#lib/components/auth/SignInForm.svelte';
 	import ErrorState from '#lib/components/ErrorState.svelte';
 	import { auth, loadAuth } from '#lib/stores/auth.svelte.js';
+	import { LINK_PAGES } from '#lib/utils/accountLinks.js';
 	import { createShortcutHandler } from '#lib/keyboard/useShortcuts.svelte.js';
 	import { loadAppConfig, getAppConfig } from '#lib/stores/appConfig.svelte.js';
 	import { revalidateActiveBranch } from '#lib/stores/activeBranch.svelte.js';
@@ -96,7 +97,10 @@
 
 <svelte:window onkeydown={appReady ? handleKeydown : undefined} />
 
-{#if auth.phase === 'setup'}
+{#if LINK_PAGES.has(page.url.pathname)}
+	<!-- An invite or reset link works whether or not anyone is signed in. -->
+	{@render children()}
+{:else if auth.phase === 'setup'}
 	<SetupForm />
 {:else if auth.phase === 'signed-out'}
 	<SignInForm />

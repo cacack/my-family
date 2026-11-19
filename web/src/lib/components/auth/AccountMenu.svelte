@@ -1,7 +1,11 @@
 <script lang="ts">
-	/** The signed-in user's menu in the header: who, and sign out (ADR-007). */
+	/**
+	 * The signed-in user's menu in the header (ADR-007): who, their account
+	 * page, the users page for an owner, and sign out.
+	 */
+	import { goto } from '$app/navigation';
 	import * as DropdownMenu from '#lib/components/ui/dropdown-menu/index.js';
-	import { auth, signOut } from '#lib/stores/auth.svelte.js';
+	import { auth, can, signOut } from '#lib/stores/auth.svelte.js';
 
 	const name = $derived(auth.account?.display_name ?? '');
 </script>
@@ -23,6 +27,11 @@
 				<span class="block truncate">{name}</span>
 				<span class="block truncate text-xs font-normal text-muted-foreground">{auth.account.username}</span>
 			</DropdownMenu.Label>
+			<DropdownMenu.Separator />
+			<DropdownMenu.Item onSelect={() => goto('/account')}>Account</DropdownMenu.Item>
+			{#if can('owner')}
+				<DropdownMenu.Item onSelect={() => goto('/users')}>Users</DropdownMenu.Item>
+			{/if}
 			<DropdownMenu.Separator />
 			<DropdownMenu.Item onSelect={() => signOut()}>Sign out</DropdownMenu.Item>
 		</DropdownMenu.Content>

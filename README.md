@@ -137,8 +137,8 @@ demo mode and end-to-end tests. It can only be set in the environment, never fro
 server logs a warning when it starts in it, and changes made in it record no user. `DEMO_MODE`
 always runs open.
 
-Accounts are kept in their own tables (`users`, `tree_memberships`, `sessions`), not in the event
-log, so `myfamily rebuild` leaves them alone; back them up with the rest of the database. See
+Accounts are kept in their own tables (`users`, `tree_memberships`, `sessions`, `invites`,
+`password_resets` and `auth_audit`), not in the event log, so `myfamily rebuild` leaves them alone; back them up with the rest of the database. See
 [ADR-007](./docs/adr/007-access-model.md).
 
 #### Roles
@@ -149,13 +149,37 @@ Each account holds one role in the tree, and each role can do everything the one
 |------|-----|
 | Viewer | Read the tree |
 | Editor | Change tree data; create, merge and close research branches; export |
-| Owner | Import GEDCOM; roll records back (and, later, manage users and settings) |
+| Owner | Manage users; import GEDCOM; roll records back |
 
 The server refuses anything above a user's role with `403 FORBIDDEN`, and the web UI hides what a
 role cannot use. Every API operation declares the role it needs as `x-min-role` in the
 [OpenAPI spec](./internal/api/openapi.yaml). Each user may start 5 GEDCOM exports or export
 previews at once and one more every 10 seconds; beyond that the API answers
 `429 RATE_LIMITED`. Open mode treats every request as the owner and does not limit exports.
+
+#### Managing users
+
+There is no self-registration: an owner adds people from **Users** in the account menu. No email
+is sent, so each link below is shown once, for the owner to copy and pass on.
+
+- **Invite**: choose a role and create an invite link (`/join#token=...`). It works once, for 7
+  days, and creates an account with that role, signed in.
+- **Change a role, disable, re-enable**: disabling ends the user's sessions and refuses their
+  sign-in until an owner re-enables the account. Disabling or demoting an owner also cancels the
+  invite and reset links they created. The tree's last active owner can be neither demoted nor
+  disabled.
+- **Reset a password**: create a reset link (`/reset-password#token=...`). It works once, for 24
+  hours, and setting the password ends all of that user's sessions. From the command line, with
+  the same storage settings as `serve`:
+
+  ```bash
+  myfamily user reset-password --username ada --url https://tree.example
+  ```
+
+Each user changes their own display name and password on **Account**; a new password needs the
+current one and signs them out everywhere else. Sign-ins, failed sign-ins, invites, role changes,
+disables, re-enables and password resets and changes are written to an append-only audit log,
+which owners read under **Users > Audit log**.
 
 #### Upgrading from a version without accounts
 

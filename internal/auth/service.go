@@ -74,6 +74,9 @@ var (
 	ErrInvalidSetupToken = errors.New("invalid setup token")
 	// ErrInvalidInput wraps a rejected username, display name or password.
 	ErrInvalidInput = errors.New("invalid input")
+	// ErrAccountDisabled refuses a sign-in with the right password to a
+	// disabled account.
+	ErrAccountDisabled = errors.New("this account is disabled")
 )
 
 // Service signs people in. It is safe for concurrent use.
@@ -82,8 +85,8 @@ type Service struct {
 	now     func() time.Time
 	limiter *limiter
 
-	// hasOwner caches a true CountMembers: owners are never removed, so once
-	// one exists setup is over for good. While it is false every check asks
+	// hasOwner caches a true CountMembers: the last owner can be neither
+	// demoted nor disabled, so once one exists setup is over for good. While it is false every check asks
 	// the store, so an owner created by `myfamily user create` against a
 	// running server ends setup there too.
 	hasOwner atomic.Bool
@@ -91,6 +94,12 @@ type Service struct {
 	// setupMu serializes setup, so the one-time token admits one owner.
 	setupMu    sync.Mutex
 	setupToken string
+
+	// manageMu serializes role changes, disabling and other writes of a user
+	// row, so two at once cannot both pass the last-owner check or overwrite
+	// each other. It is per process: the guard holds for one server (ADR-004),
+	// not for several servers sharing one database.
+	manageMu sync.Mutex
 
 	dummyOnce sync.Once
 	dummyHash string
@@ -114,6 +123,16 @@ func invalid(format string, args ...any) error {
 // validateAccount checks a normalized username, a trimmed display name and a
 // password.
 func validateAccount(username, displayName, password string) error {
+	if err := validateUsername(username); err != nil {
+		return err
+	}
+	if err := validateDisplayName(displayName); err != nil {
+		return err
+	}
+	return validatePassword(password)
+}
+
+func validateUsername(username string) error {
 	if username == "" || utf8.RuneCountInString(username) > maxUsernameLen {
 		return invalid("username must be 1 to %d characters", maxUsernameLen)
 	}
@@ -122,9 +141,17 @@ func validateAccount(username, displayName, password string) error {
 			return invalid("username may contain only letters, digits and . _ - @")
 		}
 	}
+	return nil
+}
+
+func validateDisplayName(displayName string) error {
 	if displayName == "" || utf8.RuneCountInString(displayName) > maxDisplayNameLen {
 		return invalid("display name must be 1 to %d characters", maxDisplayNameLen)
 	}
+	return nil
+}
+
+func validatePassword(password string) error {
 	if n := utf8.RuneCountInString(password); n < minPasswordLen || n > maxPasswordLen {
 		return invalid("password must be %d to %d characters", minPasswordLen, maxPasswordLen)
 	}
@@ -135,6 +162,24 @@ func validateAccount(username, displayName, password string) error {
 // `myfamily user create` share; it signs no one in. It does no setup gating:
 // each call adds another owner, which is how the CLI adds one after setup.
 func (s *Service) CreateOwner(ctx context.Context, username, displayName, password string) (*repository.User, error) {
+	user, err := s.newUser(username, displayName, password)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.store.CreateUser(ctx, user, repository.DefaultTreeID, repository.RoleOwner); err != nil {
+		if errors.Is(err, repository.ErrUsernameTaken) {
+			return nil, invalid("username %q is already taken", user.Username)
+		}
+		return nil, fmt.Errorf("create owner: %w", err)
+	}
+	s.hasOwner.Store(true)
+	s.audit(ctx, Actor{}, repository.AuthActionUserCreated, user, string(repository.RoleOwner))
+	return user, nil
+}
+
+// newUser validates the details of a new account and builds it, with its
+// password hashed.
+func (s *Service) newUser(username, displayName, password string) (*repository.User, error) {
 	username = NormalizeUsername(username)
 	displayName = strings.TrimSpace(displayName)
 	if err := validateAccount(username, displayName, password); err != nil {
@@ -144,21 +189,13 @@ func (s *Service) CreateOwner(ctx context.Context, username, displayName, passwo
 	if err != nil {
 		return nil, err
 	}
-	user := &repository.User{
+	return &repository.User{
 		ID:           uuid.New(),
 		Username:     username,
 		DisplayName:  displayName,
 		PasswordHash: hash,
 		CreatedAt:    s.now().UTC(),
-	}
-	if err := s.store.CreateUser(ctx, user, repository.DefaultTreeID, repository.RoleOwner); err != nil {
-		if errors.Is(err, repository.ErrUsernameTaken) {
-			return nil, invalid("username %q is already taken", username)
-		}
-		return nil, fmt.Errorf("create owner: %w", err)
-	}
-	s.hasOwner.Store(true)
-	return user, nil
+	}, nil
 }
 
 // SetupRequired reports whether the tree has no owner yet, in which case the
@@ -243,6 +280,7 @@ func (s *Service) CompleteSetup(ctx context.Context, token, username, displayNam
 func (s *Service) SignIn(ctx context.Context, username, password, clientKey string) (*repository.User, string, error) {
 	now := s.now()
 	username = NormalizeUsername(username)
+	by := Actor{ClientIP: clientKey}
 	nameKey, clientLimitKey := "name:"+username, "client:"+clientKey
 	if !s.limiter.acquire(now, limit{nameKey, maxFailuresPerName}, limit{clientLimitKey, maxFailuresPerClient}) {
 		return nil, "", ErrRateLimited
@@ -264,10 +302,16 @@ func (s *Service) SignIn(ctx context.Context, username, password, clientKey stri
 		slog.Error("auth: stored password hash does not parse", "user_id", user.ID, "error", verifyErr)
 	}
 	if user == nil || !ok {
+		s.auditEntry(ctx, repository.AuthAuditEntry{Action: repository.AuthActionSignInFailed, Username: username, ClientIP: clientKey})
 		return nil, "", ErrInvalidCredentials // stays counted as a failure
 	}
 	s.limiter.release(now, clientLimitKey)
 	s.limiter.reset(nameKey)
+	if user.Disabled {
+		s.auditEntry(ctx, repository.AuthAuditEntry{Action: repository.AuthActionSignInFailed, SubjectID: user.ID,
+			Username: username, Detail: "account disabled", ClientIP: clientKey})
+		return nil, "", ErrAccountDisabled
+	}
 
 	if _, err := s.store.DeleteExpiredSessions(ctx, now.Add(-IdleTimeout), now.Add(-AbsoluteTimeout)); err != nil {
 		slog.Warn("auth: could not delete expired sessions", "error", err)
@@ -276,6 +320,8 @@ func (s *Service) SignIn(ctx context.Context, username, password, clientKey stri
 	if err != nil {
 		return nil, "", err
 	}
+	by.UserID = user.ID
+	s.audit(ctx, by, repository.AuthActionSignIn, user, "")
 	return user, token, nil
 }
 
@@ -295,11 +341,10 @@ func (s *Service) dummyPasswordHash() string {
 
 // startSession stores a new session for userID and returns its token.
 func (s *Service) startSession(ctx context.Context, userID uuid.UUID) (string, error) {
-	raw := make([]byte, 32)
-	if _, err := rand.Read(raw); err != nil {
-		return "", fmt.Errorf("generate session token: %w", err)
+	token, err := newToken()
+	if err != nil {
+		return "", err
 	}
-	token := base64.RawURLEncoding.EncodeToString(raw)
 	now := s.now().UTC()
 	if err := s.store.CreateSession(ctx, &repository.Session{
 		TokenHash: hashToken(token), UserID: userID, CreatedAt: now, LastSeenAt: now,
@@ -309,7 +354,17 @@ func (s *Service) startSession(ctx context.Context, userID uuid.UUID) (string, e
 	return token, nil
 }
 
-// hashToken is the stored form of a session token.
+// newToken returns a random token for a session, invite or password reset
+// link.
+func newToken() (string, error) {
+	raw := make([]byte, 32)
+	if _, err := rand.Read(raw); err != nil {
+		return "", fmt.Errorf("generate token: %w", err)
+	}
+	return base64.RawURLEncoding.EncodeToString(raw), nil
+}
+
+// hashToken is the stored form of a session, invite or reset token.
 func hashToken(token string) string {
 	sum := sha256.Sum256([]byte(token))
 	return hex.EncodeToString(sum[:])
@@ -342,6 +397,11 @@ func (s *Service) Authenticate(ctx context.Context, token string) (*repository.U
 	}
 	if err != nil {
 		return nil, fmt.Errorf("authenticate: %w", err)
+	}
+	if user.Disabled {
+		// Disabling ends the user's sessions; this refuses any that a race
+		// left behind.
+		return nil, ErrNoSession
 	}
 	if now.Sub(session.LastSeenAt) >= touchInterval {
 		if err := s.store.TouchSession(ctx, tokenHash, now); err != nil && !errors.Is(err, repository.ErrSessionNotFound) {

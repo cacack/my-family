@@ -52,6 +52,72 @@ type User struct {
 	// PasswordHash is an argon2id hash in PHC string form, never the password.
 	PasswordHash string
 	CreatedAt    time.Time
+	// Disabled refuses the user sign-in and any session; an owner sets it.
+	Disabled bool
+}
+
+// Member is a user and the role they hold in a tree.
+type Member struct {
+	User User
+	Role Role
+}
+
+// Invite is an owner-issued link that creates an account with Role when it
+// is accepted (ADR-007). The store keeps only a hash of the link's token; an
+// accepted invite is deleted, so each is used at most once.
+type Invite struct {
+	TokenHash string
+	TreeID    uuid.UUID
+	Role      Role
+	CreatedBy uuid.UUID
+	CreatedAt time.Time
+	ExpiresAt time.Time
+}
+
+// PasswordReset is an owner- or CLI-issued link that sets a user's password.
+// Like an invite it is stored as a token hash and deleted once used.
+type PasswordReset struct {
+	TokenHash string
+	UserID    uuid.UUID
+	// CreatedBy is the owner who issued it, or uuid.Nil from the CLI.
+	CreatedBy uuid.UUID
+	CreatedAt time.Time
+	ExpiresAt time.Time
+}
+
+// AuthAction is what an auth audit entry records.
+type AuthAction string
+
+// The audited actions.
+const (
+	AuthActionSignIn          AuthAction = "sign_in"
+	AuthActionSignInFailed    AuthAction = "sign_in_failed"
+	AuthActionUserCreated     AuthAction = "user_created"
+	AuthActionInviteCreated   AuthAction = "invite_created"
+	AuthActionInviteAccepted  AuthAction = "invite_accepted"
+	AuthActionRoleChanged     AuthAction = "role_changed"
+	AuthActionUserDisabled    AuthAction = "user_disabled"
+	AuthActionUserEnabled     AuthAction = "user_enabled"
+	AuthActionResetIssued     AuthAction = "password_reset_issued"
+	AuthActionPasswordReset   AuthAction = "password_reset"
+	AuthActionPasswordChanged AuthAction = "password_changed"
+)
+
+// AuthAuditEntry is one row of the append-only auth audit log. The log is
+// only ever appended to and read: the store has no way to change or remove a
+// row.
+type AuthAuditEntry struct {
+	At     time.Time
+	Action AuthAction
+	// ActorID is who did it, or uuid.Nil (a failed sign-in, the CLI).
+	ActorID uuid.UUID
+	// SubjectID is the account it was done to, or uuid.Nil.
+	SubjectID uuid.UUID
+	// Username is the name a sign-in was attempted with, or the subject's.
+	Username string
+	// Detail adds what the action alone does not say, such as a new role.
+	Detail   string
+	ClientIP string
 }
 
 // Session is a signed-in browser. The store keeps only a hash of the token
@@ -69,10 +135,13 @@ var (
 	ErrUsernameTaken   = errors.New("username already taken")
 	ErrSessionNotFound = errors.New("session not found")
 	ErrNotMember       = errors.New("user is not a member of the tree")
+	// ErrLinkNotFound is an invite or password reset that is unknown,
+	// expired or already used.
+	ErrLinkNotFound = errors.New("link is unknown, expired or already used")
 )
 
-// AccountStore keeps users, their tree memberships and their sessions
-// (ADR-007). Every backend implements it over plain tables beside the event
+// AccountStore keeps users, their tree memberships and sessions, invites,
+// password resets and the auth audit log (ADR-007). Every backend implements it over plain tables beside the event
 // log; none of it is event-sourced or rebuilt.
 type AccountStore interface {
 	// CreateUser stores user and its membership of treeID with role, both or
@@ -112,4 +181,47 @@ type AccountStore interface {
 	// DeleteExpiredSessions removes every session last seen before idleBefore
 	// or created before createdBefore, returning how many it removed.
 	DeleteExpiredSessions(ctx context.Context, idleBefore, createdBefore time.Time) (int, error)
+
+	// DeleteUserSessions removes every session of userID except the one with
+	// keepTokenHash ("" keeps none).
+	DeleteUserSessions(ctx context.Context, userID uuid.UUID, keepTokenHash string) error
+
+	// ListMembers returns every member of treeID, by username.
+	ListMembers(ctx context.Context, treeID uuid.UUID) ([]Member, error)
+
+	// SetMemberRole changes the role userID holds in treeID, or returns
+	// ErrNotMember.
+	SetMemberRole(ctx context.Context, treeID, userID uuid.UUID, role Role) error
+
+	// UpdateUser stores user's display name, password hash and disabled flag,
+	// or returns ErrUserNotFound. Its username and creation time are fixed.
+	UpdateUser(ctx context.Context, user *User) error
+
+	// CreateInvite stores invite.
+	CreateInvite(ctx context.Context, invite *Invite) error
+
+	// AcceptInvite uses up the invite with tokenHash, if it expires after now,
+	// and creates user with the invite's tree and role, all or nothing. It
+	// returns the invite, ErrLinkNotFound, or ErrUsernameTaken (leaving the
+	// invite unused).
+	AcceptInvite(ctx context.Context, tokenHash string, now time.Time, user *User) (*Invite, error)
+
+	// DeleteLinksIssuedBy removes every invite and password reset userID
+	// issued, so links from an owner who is disabled or demoted stop working.
+	DeleteLinksIssuedBy(ctx context.Context, userID uuid.UUID) error
+
+	// CreatePasswordReset stores reset.
+	CreatePasswordReset(ctx context.Context, reset *PasswordReset) error
+
+	// UsePasswordReset uses up the reset with tokenHash, if it expires after
+	// now: it sets the user's password hash and removes all their sessions
+	// and resets, all or nothing. It returns the user's ID or ErrLinkNotFound.
+	UsePasswordReset(ctx context.Context, tokenHash string, now time.Time, passwordHash string) (uuid.UUID, error)
+
+	// AppendAuthAudit adds entry to the auth audit log.
+	AppendAuthAudit(ctx context.Context, entry *AuthAuditEntry) error
+
+	// ListAuthAudit returns up to limit entries, newest first, after skipping
+	// offset, and how many there are in all.
+	ListAuthAudit(ctx context.Context, limit, offset int) ([]AuthAuditEntry, int, error)
 }

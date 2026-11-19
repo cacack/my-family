@@ -41,6 +41,51 @@ func (e AccountRole) Valid() bool {
 	}
 }
 
+// Defines values for AuthAuditEntryAction.
+const (
+	AuthAuditEntryActionInviteAccepted      AuthAuditEntryAction = "invite_accepted"
+	AuthAuditEntryActionInviteCreated       AuthAuditEntryAction = "invite_created"
+	AuthAuditEntryActionPasswordChanged     AuthAuditEntryAction = "password_changed"
+	AuthAuditEntryActionPasswordReset       AuthAuditEntryAction = "password_reset"
+	AuthAuditEntryActionPasswordResetIssued AuthAuditEntryAction = "password_reset_issued"
+	AuthAuditEntryActionRoleChanged         AuthAuditEntryAction = "role_changed"
+	AuthAuditEntryActionSignIn              AuthAuditEntryAction = "sign_in"
+	AuthAuditEntryActionSignInFailed        AuthAuditEntryAction = "sign_in_failed"
+	AuthAuditEntryActionUserCreated         AuthAuditEntryAction = "user_created"
+	AuthAuditEntryActionUserDisabled        AuthAuditEntryAction = "user_disabled"
+	AuthAuditEntryActionUserEnabled         AuthAuditEntryAction = "user_enabled"
+)
+
+// Valid indicates whether the value is a known member of the AuthAuditEntryAction enum.
+func (e AuthAuditEntryAction) Valid() bool {
+	switch e {
+	case AuthAuditEntryActionInviteAccepted:
+		return true
+	case AuthAuditEntryActionInviteCreated:
+		return true
+	case AuthAuditEntryActionPasswordChanged:
+		return true
+	case AuthAuditEntryActionPasswordReset:
+		return true
+	case AuthAuditEntryActionPasswordResetIssued:
+		return true
+	case AuthAuditEntryActionRoleChanged:
+		return true
+	case AuthAuditEntryActionSignIn:
+		return true
+	case AuthAuditEntryActionSignInFailed:
+		return true
+	case AuthAuditEntryActionUserCreated:
+		return true
+	case AuthAuditEntryActionUserDisabled:
+		return true
+	case AuthAuditEntryActionUserEnabled:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AuthStatusMode.
 const (
 	AuthStatusModeAccounts AuthStatusMode = "accounts"
@@ -824,6 +869,27 @@ func (e InformantType) Valid() bool {
 	}
 }
 
+// Defines values for InviteRequestRole.
+const (
+	InviteRequestRoleEditor InviteRequestRole = "editor"
+	InviteRequestRoleOwner  InviteRequestRole = "owner"
+	InviteRequestRoleViewer InviteRequestRole = "viewer"
+)
+
+// Valid indicates whether the value is a known member of the InviteRequestRole enum.
+func (e InviteRequestRole) Valid() bool {
+	switch e {
+	case InviteRequestRoleEditor:
+		return true
+	case InviteRequestRoleOwner:
+		return true
+	case InviteRequestRoleViewer:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for LDSOrdinanceStatus.
 const (
 	LDSOrdinanceStatusBIC       LDSOrdinanceStatus = "BIC"
@@ -1493,6 +1559,48 @@ func (e SourceType) Valid() bool {
 	}
 }
 
+// Defines values for UserRole.
+const (
+	UserRoleEditor UserRole = "editor"
+	UserRoleOwner  UserRole = "owner"
+	UserRoleViewer UserRole = "viewer"
+)
+
+// Valid indicates whether the value is a known member of the UserRole enum.
+func (e UserRole) Valid() bool {
+	switch e {
+	case UserRoleEditor:
+		return true
+	case UserRoleOwner:
+		return true
+	case UserRoleViewer:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for UserUpdateRole.
+const (
+	UserUpdateRoleEditor UserUpdateRole = "editor"
+	UserUpdateRoleOwner  UserUpdateRole = "owner"
+	UserUpdateRoleViewer UserUpdateRole = "viewer"
+)
+
+// Valid indicates whether the value is a known member of the UserUpdateRole enum.
+func (e UserUpdateRole) Valid() bool {
+	switch e {
+	case UserUpdateRoleEditor:
+		return true
+	case UserUpdateRoleOwner:
+		return true
+	case UserUpdateRoleViewer:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ValidationIssueRecordType.
 const (
 	ValidationIssueRecordTypeFamily ValidationIssueRecordType = "family"
@@ -2141,6 +2249,18 @@ func (e ListSubmittersParamsOrder) Valid() bool {
 	}
 }
 
+// AcceptInviteRequest defines model for AcceptInviteRequest.
+type AcceptInviteRequest struct {
+	DisplayName string `json:"display_name"`
+	Password    string `json:"password"`
+
+	// Token The token from the invite link
+	Token string `json:"token"`
+
+	// Username Letters, digits and `. _ - @`; stored lowercase
+	Username string `json:"username"`
+}
+
 // Account defines model for Account.
 type Account struct {
 	DisplayName string `json:"display_name"`
@@ -2150,8 +2270,8 @@ type Account struct {
 
 	// Role What the user may do in the tree (ADR-007): a `viewer` reads it, an
 	// `editor` also changes it, works in research branches and exports,
-	// and an `owner` also imports GEDCOM and rolls records back. Each
-	// operation's `x-min-role` names the least role it needs.
+	// and an `owner` also manages users, imports GEDCOM and rolls records
+	// back. Each operation's `x-min-role` names the least role it needs.
 	Role AccountRole `json:"role"`
 
 	// Username The sign-in name, lowercase
@@ -2160,9 +2280,27 @@ type Account struct {
 
 // AccountRole What the user may do in the tree (ADR-007): a `viewer` reads it, an
 // `editor` also changes it, works in research branches and exports,
-// and an `owner` also imports GEDCOM and rolls records back. Each
-// operation's `x-min-role` names the least role it needs.
+// and an `owner` also manages users, imports GEDCOM and rolls records
+// back. Each operation's `x-min-role` names the least role it needs.
 type AccountRole string
+
+// AccountLink defines model for AccountLink.
+type AccountLink struct {
+	ExpiresAt time.Time `json:"expires_at"`
+
+	// Token The single-use token. The web UI's link is `/join#token=<token>`
+	// for an invite and `/reset-password#token=<token>` for a reset; the
+	// fragment never reaches the server's logs.
+	Token string `json:"token"`
+}
+
+// AccountUpdate defines model for AccountUpdate.
+type AccountUpdate struct {
+	// CurrentPassword Needed with `new_password`
+	CurrentPassword *string `json:"current_password,omitempty"`
+	DisplayName     *string `json:"display_name,omitempty"`
+	NewPassword     *string `json:"new_password,omitempty"`
+}
 
 // AddChild defines model for AddChild.
 type AddChild struct {
@@ -2418,6 +2556,39 @@ type AttributeExport struct {
 type AttributesExportResponse struct {
 	Attributes []AttributeExport `json:"attributes"`
 	Total      int               `json:"total"`
+}
+
+// AuthAuditEntry defines model for AuthAuditEntry.
+type AuthAuditEntry struct {
+	Action AuthAuditEntryAction `json:"action"`
+
+	// ActorId Who did it; absent for a failed sign-in or the CLI
+	ActorId *openapi_types.UUID `json:"actor_id,omitempty"`
+
+	// ActorName The actor's display name
+	ActorName *string   `json:"actor_name,omitempty"`
+	At        time.Time `json:"at"`
+
+	// ClientIp The client's address, or `cli`
+	ClientIp string `json:"client_ip"`
+
+	// Detail For example the new role, or why a sign-in failed
+	Detail string `json:"detail"`
+
+	// SubjectId The account it was done to, if any
+	SubjectId *openapi_types.UUID `json:"subject_id,omitempty"`
+
+	// Username The username a sign-in was tried with, or the subject's
+	Username string `json:"username"`
+}
+
+// AuthAuditEntryAction defines model for AuthAuditEntry.Action.
+type AuthAuditEntryAction string
+
+// AuthAuditList defines model for AuthAuditList.
+type AuthAuditList struct {
+	Items []AuthAuditEntry `json:"items"`
+	Total int              `json:"total"`
 }
 
 // AuthStatus defines model for AuthStatus.
@@ -4254,6 +4425,15 @@ type ImportWarning struct {
 // InformantType Informant's relation to the event per GPS standards
 type InformantType string
 
+// InviteRequest defines model for InviteRequest.
+type InviteRequest struct {
+	// Role The role the new account gets
+	Role InviteRequestRole `json:"role"`
+}
+
+// InviteRequestRole The role the new account gets
+type InviteRequestRole string
+
 // LDSOrdinance defines model for LDSOrdinance.
 type LDSOrdinance struct {
 	// Date Genealogical date with flexible precision
@@ -5089,6 +5269,14 @@ type NoteUpdate struct {
 
 	// Version Current version for optimistic locking
 	Version int64 `json:"version"`
+}
+
+// PasswordResetRequest defines model for PasswordResetRequest.
+type PasswordResetRequest struct {
+	Password string `json:"password"`
+
+	// Token The token from the reset link
+	Token string `json:"token"`
 }
 
 // Pedigree defines model for Pedigree.
@@ -6284,6 +6472,35 @@ type SurnameIndexResponse struct {
 	Total int `json:"total"`
 }
 
+// User defines model for User.
+type User struct {
+	CreatedAt time.Time `json:"created_at"`
+
+	// Disabled A disabled user cannot sign in
+	Disabled    bool               `json:"disabled"`
+	DisplayName string             `json:"display_name"`
+	Id          openapi_types.UUID `json:"id"`
+	Role        UserRole           `json:"role"`
+	Username    string             `json:"username"`
+}
+
+// UserRole defines model for User.Role.
+type UserRole string
+
+// UserList defines model for UserList.
+type UserList struct {
+	Items []User `json:"items"`
+}
+
+// UserUpdate defines model for UserUpdate.
+type UserUpdate struct {
+	Disabled *bool           `json:"disabled,omitempty"`
+	Role     *UserUpdateRole `json:"role,omitempty"`
+}
+
+// UserUpdateRole defines model for UserUpdate.Role.
+type UserUpdateRole string
+
 // ValidationIssue A single validation issue detected in the data
 type ValidationIssue struct {
 	// Code Issue code identifier
@@ -6395,8 +6612,14 @@ type SnapshotId = openapi_types.UUID
 // SubmitterId defines model for submitterId.
 type SubmitterId = openapi_types.UUID
 
+// UserId defines model for userId.
+type UserId = openapi_types.UUID
+
 // VersionParam defines model for versionParam.
 type VersionParam = int64
+
+// AccountsOnly defines model for AccountsOnly.
+type AccountsOnly = Error
 
 // BadRequest defines model for BadRequest.
 type BadRequest = Error
@@ -6507,6 +6730,12 @@ type UpdateAssociationParams struct {
 	// return 409; reads of one return 404, because its overlay rows are purged
 	// on archive and it therefore has no view to return.
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+}
+
+// ListAuthAuditParams defines parameters for ListAuthAudit.
+type ListAuthAuditParams struct {
+	Limit  *LimitParam  `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *OffsetParam `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
 // ListBranchesParams defines parameters for ListBranches.
@@ -8048,6 +8277,15 @@ type CreateAssociationJSONRequestBody = AssociationCreate
 // UpdateAssociationJSONRequestBody defines body for UpdateAssociation for application/json ContentType.
 type UpdateAssociationJSONRequestBody = AssociationUpdate
 
+// AcceptInviteJSONRequestBody defines body for AcceptInvite for application/json ContentType.
+type AcceptInviteJSONRequestBody = AcceptInviteRequest
+
+// UpdateCurrentAccountJSONRequestBody defines body for UpdateCurrentAccount for application/json ContentType.
+type UpdateCurrentAccountJSONRequestBody = AccountUpdate
+
+// ResetPasswordJSONRequestBody defines body for ResetPassword for application/json ContentType.
+type ResetPasswordJSONRequestBody = PasswordResetRequest
+
 // SetupOwnerJSONRequestBody defines body for SetupOwner for application/json ContentType.
 type SetupOwnerJSONRequestBody = SetupRequest
 
@@ -8110,6 +8348,9 @@ type RollbackFamilyJSONRequestBody = RollbackRequest
 
 // ImportGedcomMultipartRequestBody defines body for ImportGedcom for multipart/form-data ContentType.
 type ImportGedcomMultipartRequestBody ImportGedcomMultipartBody
+
+// CreateInviteJSONRequestBody defines body for CreateInvite for application/json ContentType.
+type CreateInviteJSONRequestBody = InviteRequest
 
 // CreateLDSOrdinanceJSONRequestBody defines body for CreateLDSOrdinance for application/json ContentType.
 type CreateLDSOrdinanceJSONRequestBody = LDSOrdinanceCreate
@@ -8198,6 +8439,9 @@ type CreateSubmitterJSONRequestBody = SubmitterCreate
 // UpdateSubmitterJSONRequestBody defines body for UpdateSubmitter for application/json ContentType.
 type UpdateSubmitterJSONRequestBody = SubmitterUpdate
 
+// UpdateUserJSONRequestBody defines body for UpdateUser for application/json ContentType.
+type UpdateUserJSONRequestBody = UserUpdate
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// GetAhnentafel Get Ahnentafel (ancestor table) report for a person
@@ -8221,9 +8465,21 @@ type ServerInterface interface {
 	// UpdateAssociation Update an association
 	// (PUT /associations/{id})
 	UpdateAssociation(ctx echo.Context, id AssociationId, params UpdateAssociationParams) error
+	// ListAuthAudit Read the auth audit log
+	// (GET /auth-audit)
+	ListAuthAudit(ctx echo.Context, params ListAuthAuditParams) error
+	// AcceptInvite Create an account from an invite link and sign it in
+	// (POST /auth/invites/accept)
+	AcceptInvite(ctx echo.Context) error
 	// GetCurrentAccount The signed-in account
 	// (GET /auth/me)
 	GetCurrentAccount(ctx echo.Context) error
+	// UpdateCurrentAccount Change the signed-in user's display name or password
+	// (PATCH /auth/me)
+	UpdateCurrentAccount(ctx echo.Context) error
+	// ResetPassword Set a password from a reset link
+	// (POST /auth/password-reset)
+	ResetPassword(ctx echo.Context) error
 	// SetupOwner Create the first owner and sign them in
 	// (POST /auth/setup)
 	SetupOwner(ctx echo.Context) error
@@ -8437,6 +8693,9 @@ type ServerInterface interface {
 	// ListHistory List global change history
 	// (GET /history)
 	ListHistory(ctx echo.Context, params ListHistoryParams) error
+	// CreateInvite Issue an invite link that creates an account with a role
+	// (POST /invites)
+	CreateInvite(ctx echo.Context) error
 	// ListLDSOrdinances List all LDS ordinances
 	// (GET /lds-ordinances)
 	ListLDSOrdinances(ctx echo.Context, params ListLDSOrdinancesParams) error
@@ -8710,6 +8969,15 @@ type ServerInterface interface {
 	// UpdateSubmitter Update a submitter
 	// (PUT /submitters/{id})
 	UpdateSubmitter(ctx echo.Context, id SubmitterId) error
+	// ListUsers List the tree's users
+	// (GET /users)
+	ListUsers(ctx echo.Context) error
+	// UpdateUser Change a user's role, or disable or re-enable their account
+	// (PATCH /users/{id})
+	UpdateUser(ctx echo.Context, id UserId) error
+	// CreatePasswordReset Issue a password reset link for a user
+	// (POST /users/{id}/password-reset)
+	CreatePasswordReset(ctx echo.Context, id UserId) error
 }
 
 // ServerInterfaceWrapper converts echo contexts to parameters.
@@ -8920,12 +9188,64 @@ func (w *ServerInterfaceWrapper) UpdateAssociation(ctx echo.Context) error {
 	return err
 }
 
+// ListAuthAudit converts echo context to params.
+func (w *ServerInterfaceWrapper) ListAuthAudit(ctx echo.Context) error {
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListAuthAuditParams
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", ctx.QueryParams(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter limit: %s", err))
+	}
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "offset", ctx.QueryParams(), &params.Offset, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter offset: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.ListAuthAudit(ctx, params)
+	return err
+}
+
+// AcceptInvite converts echo context to params.
+func (w *ServerInterfaceWrapper) AcceptInvite(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.AcceptInvite(ctx)
+	return err
+}
+
 // GetCurrentAccount converts echo context to params.
 func (w *ServerInterfaceWrapper) GetCurrentAccount(ctx echo.Context) error {
 	var err error
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.GetCurrentAccount(ctx)
+	return err
+}
+
+// UpdateCurrentAccount converts echo context to params.
+func (w *ServerInterfaceWrapper) UpdateCurrentAccount(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.UpdateCurrentAccount(ctx)
+	return err
+}
+
+// ResetPassword converts echo context to params.
+func (w *ServerInterfaceWrapper) ResetPassword(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.ResetPassword(ctx)
 	return err
 }
 
@@ -10556,6 +10876,15 @@ func (w *ServerInterfaceWrapper) ListHistory(ctx echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.ListHistory(ctx, params)
+	return err
+}
+
+// CreateInvite converts echo context to params.
+func (w *ServerInterfaceWrapper) CreateInvite(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.CreateInvite(ctx)
 	return err
 }
 
@@ -12972,6 +13301,47 @@ func (w *ServerInterfaceWrapper) UpdateSubmitter(ctx echo.Context) error {
 	return err
 }
 
+// ListUsers converts echo context to params.
+func (w *ServerInterfaceWrapper) ListUsers(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.ListUsers(ctx)
+	return err
+}
+
+// UpdateUser converts echo context to params.
+func (w *ServerInterfaceWrapper) UpdateUser(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id UserId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: ctx.Request().URL.RawPath == ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.UpdateUser(ctx, id)
+	return err
+}
+
+// CreatePasswordReset converts echo context to params.
+func (w *ServerInterfaceWrapper) CreatePasswordReset(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id UserId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: ctx.Request().URL.RawPath == ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.CreatePasswordReset(ctx, id)
+	return err
+}
+
 // This is a simple interface which specifies echo.Route addition functions which
 // are present on both echo.Echo and echo.Group, since we want to allow using
 // either of them for path registration
@@ -13189,8 +13559,18 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 	router.POST(options.BaseURL+"/auth/sign-in", wrapper.SignIn, options.OperationMiddlewares["signIn"]...)
 	router.POST(options.BaseURL+"/auth/sign-out", wrapper.SignOut, options.OperationMiddlewares["signOut"]...)
 	router.GET(options.BaseURL+"/auth/me", wrapper.GetCurrentAccount, options.OperationMiddlewares["getCurrentAccount"]...)
+	router.PATCH(options.BaseURL+"/auth/me", wrapper.UpdateCurrentAccount, options.OperationMiddlewares["updateCurrentAccount"]...)
+	router.POST(options.BaseURL+"/auth/invites/accept", wrapper.AcceptInvite, options.OperationMiddlewares["acceptInvite"]...)
+	router.POST(options.BaseURL+"/auth/password-reset", wrapper.ResetPassword, options.OperationMiddlewares["resetPassword"]...)
+	router.GET(options.BaseURL+"/users", wrapper.ListUsers, options.OperationMiddlewares["listUsers"]...)
+	router.PATCH(options.BaseURL+"/users/:id", wrapper.UpdateUser, options.OperationMiddlewares["updateUser"]...)
+	router.POST(options.BaseURL+"/users/:id/password-reset", wrapper.CreatePasswordReset, options.OperationMiddlewares["createPasswordReset"]...)
+	router.POST(options.BaseURL+"/invites", wrapper.CreateInvite, options.OperationMiddlewares["createInvite"]...)
+	router.GET(options.BaseURL+"/auth-audit", wrapper.ListAuthAudit, options.OperationMiddlewares["listAuthAudit"]...)
 
 }
+
+type AccountsOnlyJSONResponse Error
 
 type BadRequestJSONResponse Error
 
@@ -13523,6 +13903,116 @@ func (response UpdateAssociation409JSONResponse) VisitUpdateAssociationResponse(
 	return err
 }
 
+type ListAuthAuditRequestObject struct {
+	Params ListAuthAuditParams
+}
+
+type ListAuthAuditResponseObject interface {
+	VisitListAuthAuditResponse(w http.ResponseWriter) error
+}
+
+type ListAuthAudit200JSONResponse AuthAuditList
+
+func (response ListAuthAudit200JSONResponse) VisitListAuthAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAuthAudit409JSONResponse struct{ AccountsOnlyJSONResponse }
+
+func (response ListAuthAudit409JSONResponse) VisitListAuthAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptInviteRequestObject struct {
+	Body *AcceptInviteJSONRequestBody
+}
+
+type AcceptInviteResponseObject interface {
+	VisitAcceptInviteResponse(w http.ResponseWriter) error
+}
+
+type AcceptInvite201ResponseHeaders struct {
+	SetCookie *string
+}
+
+type AcceptInvite201JSONResponse struct {
+	Body    Account
+	Headers AcceptInvite201ResponseHeaders
+}
+
+func (response AcceptInvite201JSONResponse) VisitAcceptInviteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.SetCookie != nil {
+		w.Header().Set("Set-Cookie", fmt.Sprint(*response.Headers.SetCookie))
+	}
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptInvite400JSONResponse Error
+
+func (response AcceptInvite400JSONResponse) VisitAcceptInviteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptInvite409JSONResponse Error
+
+func (response AcceptInvite409JSONResponse) VisitAcceptInviteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptInvite429JSONResponse struct{ RateLimitedJSONResponse }
+
+func (response AcceptInvite429JSONResponse) VisitAcceptInviteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetCurrentAccountRequestObject struct {
 }
 
@@ -13554,6 +14044,128 @@ func (response GetCurrentAccount404JSONResponse) VisitGetCurrentAccountResponse(
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateCurrentAccountRequestObject struct {
+	Body *UpdateCurrentAccountJSONRequestBody
+}
+
+type UpdateCurrentAccountResponseObject interface {
+	VisitUpdateCurrentAccountResponse(w http.ResponseWriter) error
+}
+
+type UpdateCurrentAccount200JSONResponse Account
+
+func (response UpdateCurrentAccount200JSONResponse) VisitUpdateCurrentAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateCurrentAccount400JSONResponse Error
+
+func (response UpdateCurrentAccount400JSONResponse) VisitUpdateCurrentAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateCurrentAccount404JSONResponse Error
+
+func (response UpdateCurrentAccount404JSONResponse) VisitUpdateCurrentAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateCurrentAccount429JSONResponse struct{ RateLimitedJSONResponse }
+
+func (response UpdateCurrentAccount429JSONResponse) VisitUpdateCurrentAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResetPasswordRequestObject struct {
+	Body *ResetPasswordJSONRequestBody
+}
+
+type ResetPasswordResponseObject interface {
+	VisitResetPasswordResponse(w http.ResponseWriter) error
+}
+
+type ResetPassword204Response struct {
+}
+
+func (response ResetPassword204Response) VisitResetPasswordResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type ResetPassword400JSONResponse Error
+
+func (response ResetPassword400JSONResponse) VisitResetPasswordResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResetPassword409JSONResponse Error
+
+func (response ResetPassword409JSONResponse) VisitResetPasswordResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResetPassword429JSONResponse struct{ RateLimitedJSONResponse }
+
+func (response ResetPassword429JSONResponse) VisitResetPasswordResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(429)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -13688,6 +14300,20 @@ func (response SignIn401JSONResponse) VisitSignInResponse(w http.ResponseWriter)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SignIn403JSONResponse Error
+
+func (response SignIn403JSONResponse) VisitSignInResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -16996,6 +17622,56 @@ func (response ListHistory400JSONResponse) VisitListHistoryResponse(w http.Respo
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateInviteRequestObject struct {
+	Body *CreateInviteJSONRequestBody
+}
+
+type CreateInviteResponseObject interface {
+	VisitCreateInviteResponse(w http.ResponseWriter) error
+}
+
+type CreateInvite201JSONResponse AccountLink
+
+func (response CreateInvite201JSONResponse) VisitCreateInviteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateInvite400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreateInvite400JSONResponse) VisitCreateInviteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateInvite409JSONResponse struct{ AccountsOnlyJSONResponse }
+
+func (response CreateInvite409JSONResponse) VisitCreateInviteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -21136,6 +21812,156 @@ func (response UpdateSubmitter409JSONResponse) VisitUpdateSubmitterResponse(w ht
 	return err
 }
 
+type ListUsersRequestObject struct {
+}
+
+type ListUsersResponseObject interface {
+	VisitListUsersResponse(w http.ResponseWriter) error
+}
+
+type ListUsers200JSONResponse UserList
+
+func (response ListUsers200JSONResponse) VisitListUsersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListUsers409JSONResponse struct{ AccountsOnlyJSONResponse }
+
+func (response ListUsers409JSONResponse) VisitListUsersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateUserRequestObject struct {
+	Id   UserId `json:"id"`
+	Body *UpdateUserJSONRequestBody
+}
+
+type UpdateUserResponseObject interface {
+	VisitUpdateUserResponse(w http.ResponseWriter) error
+}
+
+type UpdateUser200JSONResponse User
+
+func (response UpdateUser200JSONResponse) VisitUpdateUserResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateUser400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response UpdateUser400JSONResponse) VisitUpdateUserResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateUser404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response UpdateUser404JSONResponse) VisitUpdateUserResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateUser409JSONResponse Error
+
+func (response UpdateUser409JSONResponse) VisitUpdateUserResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreatePasswordResetRequestObject struct {
+	Id UserId `json:"id"`
+}
+
+type CreatePasswordResetResponseObject interface {
+	VisitCreatePasswordResetResponse(w http.ResponseWriter) error
+}
+
+type CreatePasswordReset201JSONResponse AccountLink
+
+func (response CreatePasswordReset201JSONResponse) VisitCreatePasswordResetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreatePasswordReset404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response CreatePasswordReset404JSONResponse) VisitCreatePasswordResetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreatePasswordReset409JSONResponse struct{ AccountsOnlyJSONResponse }
+
+func (response CreatePasswordReset409JSONResponse) VisitCreatePasswordResetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// GetAhnentafel Get Ahnentafel (ancestor table) report for a person
@@ -21159,9 +21985,21 @@ type StrictServerInterface interface {
 	// UpdateAssociation Update an association
 	// (PUT /associations/{id})
 	UpdateAssociation(ctx context.Context, request UpdateAssociationRequestObject) (UpdateAssociationResponseObject, error)
+	// ListAuthAudit Read the auth audit log
+	// (GET /auth-audit)
+	ListAuthAudit(ctx context.Context, request ListAuthAuditRequestObject) (ListAuthAuditResponseObject, error)
+	// AcceptInvite Create an account from an invite link and sign it in
+	// (POST /auth/invites/accept)
+	AcceptInvite(ctx context.Context, request AcceptInviteRequestObject) (AcceptInviteResponseObject, error)
 	// GetCurrentAccount The signed-in account
 	// (GET /auth/me)
 	GetCurrentAccount(ctx context.Context, request GetCurrentAccountRequestObject) (GetCurrentAccountResponseObject, error)
+	// UpdateCurrentAccount Change the signed-in user's display name or password
+	// (PATCH /auth/me)
+	UpdateCurrentAccount(ctx context.Context, request UpdateCurrentAccountRequestObject) (UpdateCurrentAccountResponseObject, error)
+	// ResetPassword Set a password from a reset link
+	// (POST /auth/password-reset)
+	ResetPassword(ctx context.Context, request ResetPasswordRequestObject) (ResetPasswordResponseObject, error)
 	// SetupOwner Create the first owner and sign them in
 	// (POST /auth/setup)
 	SetupOwner(ctx context.Context, request SetupOwnerRequestObject) (SetupOwnerResponseObject, error)
@@ -21375,6 +22213,9 @@ type StrictServerInterface interface {
 	// ListHistory List global change history
 	// (GET /history)
 	ListHistory(ctx context.Context, request ListHistoryRequestObject) (ListHistoryResponseObject, error)
+	// CreateInvite Issue an invite link that creates an account with a role
+	// (POST /invites)
+	CreateInvite(ctx context.Context, request CreateInviteRequestObject) (CreateInviteResponseObject, error)
 	// ListLDSOrdinances List all LDS ordinances
 	// (GET /lds-ordinances)
 	ListLDSOrdinances(ctx context.Context, request ListLDSOrdinancesRequestObject) (ListLDSOrdinancesResponseObject, error)
@@ -21648,6 +22489,15 @@ type StrictServerInterface interface {
 	// UpdateSubmitter Update a submitter
 	// (PUT /submitters/{id})
 	UpdateSubmitter(ctx context.Context, request UpdateSubmitterRequestObject) (UpdateSubmitterResponseObject, error)
+	// ListUsers List the tree's users
+	// (GET /users)
+	ListUsers(ctx context.Context, request ListUsersRequestObject) (ListUsersResponseObject, error)
+	// UpdateUser Change a user's role, or disable or re-enable their account
+	// (PATCH /users/{id})
+	UpdateUser(ctx context.Context, request UpdateUserRequestObject) (UpdateUserResponseObject, error)
+	// CreatePasswordReset Issue a password reset link for a user
+	// (POST /users/{id}/password-reset)
+	CreatePasswordReset(ctx context.Context, request CreatePasswordResetRequestObject) (CreatePasswordResetResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx echo.Context, request any) (any, error)
@@ -21887,6 +22737,77 @@ func (sh *strictHandler) UpdateAssociation(ctx echo.Context, id AssociationId, p
 	return nil
 }
 
+// ListAuthAudit operation middleware
+func (sh *strictHandler) ListAuthAudit(ctx echo.Context, params ListAuthAuditParams) error {
+	var request ListAuthAuditRequestObject
+
+	request.Params = params
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.ListAuthAudit(ctx.Request().Context(), request.(ListAuthAuditRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListAuthAudit")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(ListAuthAuditResponseObject); ok {
+		return validResponse.VisitListAuthAuditResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// AcceptInvite operation middleware
+func (sh *strictHandler) AcceptInvite(ctx echo.Context) error {
+	var request AcceptInviteRequestObject
+
+	var body AcceptInviteJSONRequestBody
+	var err error
+	if binder, ok := ctx.Echo().Binder.(*echo.DefaultBinder); ok {
+		// A request validator built on kin-openapi's openapi3filter with
+		// KeepValidatedValue leaves the value it validated on the body. Bind
+		// that value, matching member names exactly, so the handler receives
+		// what was validated instead of a second, case-insensitive decode.
+		// Otherwise bind only the request body, so that path and query
+		// parameters are not also bound into the body struct.
+		if vb, ok := ctx.Request().Body.(interface{ ValidatedValue() any }); !ok || runtime.BindJSONValue(vb.ValidatedValue(), &body) != nil {
+			err = binder.BindBody(ctx, &body)
+		}
+	} else {
+		// A custom binder is installed on the Echo instance; defer to it
+		// entirely, since echo.Binder does not expose body-only binding and
+		// the binder may do more than decode (for example call ctx.Validate).
+		err = ctx.Bind(&body)
+	}
+	if err != nil {
+		return err
+	}
+	request.Body = &body
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.AcceptInvite(ctx.Request().Context(), request.(AcceptInviteRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AcceptInvite")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(AcceptInviteResponseObject); ok {
+		return validResponse.VisitAcceptInviteResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
 // GetCurrentAccount operation middleware
 func (sh *strictHandler) GetCurrentAccount(ctx echo.Context) error {
 	var request GetCurrentAccountRequestObject
@@ -21904,6 +22825,98 @@ func (sh *strictHandler) GetCurrentAccount(ctx echo.Context) error {
 		return err
 	} else if validResponse, ok := response.(GetCurrentAccountResponseObject); ok {
 		return validResponse.VisitGetCurrentAccountResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// UpdateCurrentAccount operation middleware
+func (sh *strictHandler) UpdateCurrentAccount(ctx echo.Context) error {
+	var request UpdateCurrentAccountRequestObject
+
+	var body UpdateCurrentAccountJSONRequestBody
+	var err error
+	if binder, ok := ctx.Echo().Binder.(*echo.DefaultBinder); ok {
+		// A request validator built on kin-openapi's openapi3filter with
+		// KeepValidatedValue leaves the value it validated on the body. Bind
+		// that value, matching member names exactly, so the handler receives
+		// what was validated instead of a second, case-insensitive decode.
+		// Otherwise bind only the request body, so that path and query
+		// parameters are not also bound into the body struct.
+		if vb, ok := ctx.Request().Body.(interface{ ValidatedValue() any }); !ok || runtime.BindJSONValue(vb.ValidatedValue(), &body) != nil {
+			err = binder.BindBody(ctx, &body)
+		}
+	} else {
+		// A custom binder is installed on the Echo instance; defer to it
+		// entirely, since echo.Binder does not expose body-only binding and
+		// the binder may do more than decode (for example call ctx.Validate).
+		err = ctx.Bind(&body)
+	}
+	if err != nil {
+		return err
+	}
+	request.Body = &body
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateCurrentAccount(ctx.Request().Context(), request.(UpdateCurrentAccountRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateCurrentAccount")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(UpdateCurrentAccountResponseObject); ok {
+		return validResponse.VisitUpdateCurrentAccountResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// ResetPassword operation middleware
+func (sh *strictHandler) ResetPassword(ctx echo.Context) error {
+	var request ResetPasswordRequestObject
+
+	var body ResetPasswordJSONRequestBody
+	var err error
+	if binder, ok := ctx.Echo().Binder.(*echo.DefaultBinder); ok {
+		// A request validator built on kin-openapi's openapi3filter with
+		// KeepValidatedValue leaves the value it validated on the body. Bind
+		// that value, matching member names exactly, so the handler receives
+		// what was validated instead of a second, case-insensitive decode.
+		// Otherwise bind only the request body, so that path and query
+		// parameters are not also bound into the body struct.
+		if vb, ok := ctx.Request().Body.(interface{ ValidatedValue() any }); !ok || runtime.BindJSONValue(vb.ValidatedValue(), &body) != nil {
+			err = binder.BindBody(ctx, &body)
+		}
+	} else {
+		// A custom binder is installed on the Echo instance; defer to it
+		// entirely, since echo.Binder does not expose body-only binding and
+		// the binder may do more than decode (for example call ctx.Validate).
+		err = ctx.Bind(&body)
+	}
+	if err != nil {
+		return err
+	}
+	request.Body = &body
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.ResetPassword(ctx.Request().Context(), request.(ResetPasswordRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ResetPassword")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(ResetPasswordResponseObject); ok {
+		return validResponse.VisitResetPasswordResponse(ctx.Response())
 	} else if response != nil {
 		return fmt.Errorf("unexpected response type: %T", response)
 	}
@@ -24167,6 +25180,52 @@ func (sh *strictHandler) ListHistory(ctx echo.Context, params ListHistoryParams)
 		return err
 	} else if validResponse, ok := response.(ListHistoryResponseObject); ok {
 		return validResponse.VisitListHistoryResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// CreateInvite operation middleware
+func (sh *strictHandler) CreateInvite(ctx echo.Context) error {
+	var request CreateInviteRequestObject
+
+	var body CreateInviteJSONRequestBody
+	var err error
+	if binder, ok := ctx.Echo().Binder.(*echo.DefaultBinder); ok {
+		// A request validator built on kin-openapi's openapi3filter with
+		// KeepValidatedValue leaves the value it validated on the body. Bind
+		// that value, matching member names exactly, so the handler receives
+		// what was validated instead of a second, case-insensitive decode.
+		// Otherwise bind only the request body, so that path and query
+		// parameters are not also bound into the body struct.
+		if vb, ok := ctx.Request().Body.(interface{ ValidatedValue() any }); !ok || runtime.BindJSONValue(vb.ValidatedValue(), &body) != nil {
+			err = binder.BindBody(ctx, &body)
+		}
+	} else {
+		// A custom binder is installed on the Echo instance; defer to it
+		// entirely, since echo.Binder does not expose body-only binding and
+		// the binder may do more than decode (for example call ctx.Validate).
+		err = ctx.Bind(&body)
+	}
+	if err != nil {
+		return err
+	}
+	request.Body = &body
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateInvite(ctx.Request().Context(), request.(CreateInviteRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateInvite")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(CreateInviteResponseObject); ok {
+		return validResponse.VisitCreateInviteResponse(ctx.Response())
 	} else if response != nil {
 		return fmt.Errorf("unexpected response type: %T", response)
 	}
@@ -27132,6 +28191,102 @@ func (sh *strictHandler) UpdateSubmitter(ctx echo.Context, id SubmitterId) error
 		return err
 	} else if validResponse, ok := response.(UpdateSubmitterResponseObject); ok {
 		return validResponse.VisitUpdateSubmitterResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// ListUsers operation middleware
+func (sh *strictHandler) ListUsers(ctx echo.Context) error {
+	var request ListUsersRequestObject
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.ListUsers(ctx.Request().Context(), request.(ListUsersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListUsers")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(ListUsersResponseObject); ok {
+		return validResponse.VisitListUsersResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// UpdateUser operation middleware
+func (sh *strictHandler) UpdateUser(ctx echo.Context, id UserId) error {
+	var request UpdateUserRequestObject
+
+	request.Id = id
+
+	var body UpdateUserJSONRequestBody
+	var err error
+	if binder, ok := ctx.Echo().Binder.(*echo.DefaultBinder); ok {
+		// A request validator built on kin-openapi's openapi3filter with
+		// KeepValidatedValue leaves the value it validated on the body. Bind
+		// that value, matching member names exactly, so the handler receives
+		// what was validated instead of a second, case-insensitive decode.
+		// Otherwise bind only the request body, so that path and query
+		// parameters are not also bound into the body struct.
+		if vb, ok := ctx.Request().Body.(interface{ ValidatedValue() any }); !ok || runtime.BindJSONValue(vb.ValidatedValue(), &body) != nil {
+			err = binder.BindBody(ctx, &body)
+		}
+	} else {
+		// A custom binder is installed on the Echo instance; defer to it
+		// entirely, since echo.Binder does not expose body-only binding and
+		// the binder may do more than decode (for example call ctx.Validate).
+		err = ctx.Bind(&body)
+	}
+	if err != nil {
+		return err
+	}
+	request.Body = &body
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateUser(ctx.Request().Context(), request.(UpdateUserRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateUser")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(UpdateUserResponseObject); ok {
+		return validResponse.VisitUpdateUserResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// CreatePasswordReset operation middleware
+func (sh *strictHandler) CreatePasswordReset(ctx echo.Context, id UserId) error {
+	var request CreatePasswordResetRequestObject
+
+	request.Id = id
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.CreatePasswordReset(ctx.Request().Context(), request.(CreatePasswordResetRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreatePasswordReset")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(CreatePasswordResetResponseObject); ok {
+		return validResponse.VisitCreatePasswordResetResponse(ctx.Response())
 	} else if response != nil {
 		return fmt.Errorf("unexpected response type: %T", response)
 	}

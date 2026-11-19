@@ -10,6 +10,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"time"
 
 	"golang.org/x/term"
 
@@ -43,21 +44,26 @@ func logAuthMode(cfg *config.Config, svc *auth.Service, logger *log.Logger) erro
 	return nil
 }
 
+// userUsage lists the `myfamily user` subcommands.
+const userUsage = "usage: myfamily user create [--username NAME] [--display-name NAME]\n" +
+	"       myfamily user reset-password --username NAME [--url URL]"
+
 // runUser runs `myfamily user <subcommand>`.
 func runUser(args []string) error {
-	if len(args) == 0 || args[0] != "create" {
-		return errors.New("usage: myfamily user create [--username NAME] [--display-name NAME]")
+	if len(args) == 0 || (args[0] != "create" && args[0] != "reset-password") {
+		return errors.New(userUsage)
 	}
-	flags := flag.NewFlagSet("user create", flag.ContinueOnError)
-	username := flags.String("username", "", "sign-in name (asked for when omitted)")
+	flags := flag.NewFlagSet("user "+args[0], flag.ContinueOnError)
+	username := flags.String("username", "", "sign-in name (asked for by create when omitted)")
 	displayName := flags.String("display-name", "", "name shown in history (defaults to the username)")
+	baseURL := flags.String("url", "", "the address people open the web UI at (default http://localhost:PORT)")
 	if err := flags.Parse(args[1:]); err != nil {
 		return err
 	}
 
 	cfg := config.Load()
 	if cfg.DemoMode {
-		return errors.New("DEMO_MODE keeps nothing between runs, accounts included; unset it to create an owner")
+		return errors.New("DEMO_MODE keeps nothing between runs, accounts included; unset it to manage accounts")
 	}
 	stores, err := storage.Open(cfg, storage.AccessServe)
 	if err != nil {
@@ -69,8 +75,33 @@ func runUser(args []string) error {
 		}
 	}()
 
+	svc := auth.NewService(stores.Accounts)
+	if args[0] == "reset-password" {
+		if *baseURL == "" {
+			*baseURL = fmt.Sprintf("http://localhost:%d", cfg.Port)
+		}
+		return resetPassword(context.Background(), svc, os.Stdout, *username, *baseURL)
+	}
 	prompt := newPrompter(os.Stdin, os.Stderr)
-	return createOwner(context.Background(), auth.NewService(stores.Accounts), prompt, os.Stdout, *username, *displayName)
+	return createOwner(context.Background(), svc, prompt, os.Stdout, *username, *displayName)
+}
+
+// resetPasswordPath is the web UI page a reset link opens; the token rides in
+// the fragment, which browsers never send to the server.
+const resetPasswordPath = "/reset-password#token="
+
+// resetPassword issues a password reset link for username and prints it.
+func resetPassword(ctx context.Context, svc *auth.Service, out io.Writer, username, baseURL string) error {
+	if username == "" {
+		return errors.New("--username is required")
+	}
+	user, link, err := svc.IssuePasswordResetFor(ctx, auth.Actor{ClientIP: "cli"}, username)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "Password reset link for %q, single-use, valid until %s:\n%s%s%s\n",
+		user.Username, link.ExpiresAt.Local().Format(time.RFC1123), strings.TrimRight(baseURL, "/"), resetPasswordPath, link.Token)
+	return nil
 }
 
 // prompter asks for what the flags left out: on a terminal with prompts and

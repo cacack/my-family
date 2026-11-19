@@ -2,6 +2,7 @@ package memory
 
 import (
 	"context"
+	"sort"
 	"sync"
 	"time"
 
@@ -26,6 +27,9 @@ type AccountStore struct {
 	users       map[uuid.UUID]repository.User
 	memberships []membership
 	sessions    map[string]repository.Session
+	invites     map[string]repository.Invite
+	resets      map[string]repository.PasswordReset
+	audit       []repository.AuthAuditEntry
 }
 
 // NewAccountStore creates an empty in-memory account store.
@@ -33,6 +37,8 @@ func NewAccountStore() *AccountStore {
 	return &AccountStore{
 		users:    make(map[uuid.UUID]repository.User),
 		sessions: make(map[string]repository.Session),
+		invites:  make(map[string]repository.Invite),
+		resets:   make(map[string]repository.PasswordReset),
 	}
 }
 
@@ -40,6 +46,10 @@ func NewAccountStore() *AccountStore {
 func (s *AccountStore) CreateUser(_ context.Context, user *repository.User, treeID uuid.UUID, role repository.Role) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.createUser(user, treeID, role)
+}
+
+func (s *AccountStore) createUser(user *repository.User, treeID uuid.UUID, role repository.Role) error {
 	for _, existing := range s.users {
 		if existing.Username == user.Username {
 			return repository.ErrUsernameTaken
@@ -164,4 +174,150 @@ func (s *AccountStore) DeleteExpiredSessions(_ context.Context, idleBefore, crea
 		}
 	}
 	return removed, nil
+}
+
+// DeleteUserSessions removes every session of userID but keepTokenHash.
+func (s *AccountStore) DeleteUserSessions(_ context.Context, userID uuid.UUID, keepTokenHash string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.deleteUserSessions(userID, keepTokenHash)
+	return nil
+}
+
+func (s *AccountStore) deleteUserSessions(userID uuid.UUID, keepTokenHash string) {
+	for hash, session := range s.sessions {
+		if session.UserID == userID && hash != keepTokenHash {
+			delete(s.sessions, hash)
+		}
+	}
+}
+
+// ListMembers returns every member of treeID, by username.
+func (s *AccountStore) ListMembers(_ context.Context, treeID uuid.UUID) ([]repository.Member, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	members := []repository.Member{}
+	for _, m := range s.memberships {
+		if m.treeID == treeID {
+			members = append(members, repository.Member{User: s.users[m.userID], Role: m.role})
+		}
+	}
+	sort.Slice(members, func(i, j int) bool { return members[i].User.Username < members[j].User.Username })
+	return members, nil
+}
+
+// SetMemberRole changes the role userID holds in treeID.
+func (s *AccountStore) SetMemberRole(_ context.Context, treeID, userID uuid.UUID, role repository.Role) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i, m := range s.memberships {
+		if m.treeID == treeID && m.userID == userID {
+			s.memberships[i].role = role
+			return nil
+		}
+	}
+	return repository.ErrNotMember
+}
+
+// UpdateUser stores user's display name, password hash and disabled flag.
+func (s *AccountStore) UpdateUser(_ context.Context, user *repository.User) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	existing, ok := s.users[user.ID]
+	if !ok {
+		return repository.ErrUserNotFound
+	}
+	existing.DisplayName, existing.PasswordHash, existing.Disabled = user.DisplayName, user.PasswordHash, user.Disabled
+	s.users[user.ID] = existing
+	return nil
+}
+
+// CreateInvite stores invite.
+func (s *AccountStore) CreateInvite(_ context.Context, invite *repository.Invite) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.invites[invite.TokenHash] = *invite
+	return nil
+}
+
+// AcceptInvite uses up the invite with tokenHash and creates user from it.
+func (s *AccountStore) AcceptInvite(_ context.Context, tokenHash string, now time.Time, user *repository.User) (*repository.Invite, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	invite, ok := s.invites[tokenHash]
+	if !ok || !invite.ExpiresAt.After(now) {
+		return nil, repository.ErrLinkNotFound
+	}
+	if err := s.createUser(user, invite.TreeID, invite.Role); err != nil {
+		return nil, err
+	}
+	delete(s.invites, tokenHash)
+	return &invite, nil
+}
+
+// DeleteLinksIssuedBy removes every invite and password reset userID issued.
+func (s *AccountStore) DeleteLinksIssuedBy(_ context.Context, userID uuid.UUID) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for hash, invite := range s.invites {
+		if invite.CreatedBy == userID {
+			delete(s.invites, hash)
+		}
+	}
+	for hash, reset := range s.resets {
+		if reset.CreatedBy == userID {
+			delete(s.resets, hash)
+		}
+	}
+	return nil
+}
+
+// CreatePasswordReset stores reset.
+func (s *AccountStore) CreatePasswordReset(_ context.Context, reset *repository.PasswordReset) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.resets[reset.TokenHash] = *reset
+	return nil
+}
+
+// UsePasswordReset uses up the reset with tokenHash and sets the password.
+func (s *AccountStore) UsePasswordReset(_ context.Context, tokenHash string, now time.Time, passwordHash string) (uuid.UUID, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	reset, ok := s.resets[tokenHash]
+	if !ok || !reset.ExpiresAt.After(now) {
+		return uuid.Nil, repository.ErrLinkNotFound
+	}
+	user, ok := s.users[reset.UserID]
+	if !ok {
+		return uuid.Nil, repository.ErrLinkNotFound
+	}
+	user.PasswordHash = passwordHash
+	s.users[user.ID] = user
+	for hash, r := range s.resets {
+		if r.UserID == user.ID {
+			delete(s.resets, hash)
+		}
+	}
+	s.deleteUserSessions(user.ID, "")
+	return user.ID, nil
+}
+
+// AppendAuthAudit adds entry to the auth audit log.
+func (s *AccountStore) AppendAuthAudit(_ context.Context, entry *repository.AuthAuditEntry) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.audit = append(s.audit, *entry)
+	return nil
+}
+
+// ListAuthAudit returns up to limit entries, newest first, after offset.
+func (s *AccountStore) ListAuthAudit(_ context.Context, limit, offset int) ([]repository.AuthAuditEntry, int, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	entries := []repository.AuthAuditEntry{}
+	for i := len(s.audit) - 1 - offset; i >= 0 && len(entries) < limit; i-- {
+		entries = append(entries, s.audit[i])
+	}
+	return entries, len(s.audit), nil
 }

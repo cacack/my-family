@@ -26,6 +26,7 @@ const (
 	CodeInvalidCredentials = "INVALID_CREDENTIALS" // #nosec G101 -- an error code, not a credential.
 	CodeInvalidSetupToken  = "INVALID_SETUP_TOKEN"
 	CodeRateLimited        = "RATE_LIMITED"
+	CodeAccountDisabled    = "ACCOUNT_DISABLED"
 )
 
 // WithAuth supplies the sign-in service. The server requires it unless the
@@ -280,6 +281,8 @@ func (ss *StrictServer) SignIn(ctx context.Context, request SignInRequestObject)
 		return SignIn200JSONResponse{Body: accountOf(user, role), Headers: SignIn200ResponseHeaders{SetCookie: &cookie}}, nil
 	case errors.Is(err, auth.ErrInvalidCredentials):
 		return SignIn401JSONResponse(authError(CodeInvalidCredentials, "The username or password is wrong")), nil
+	case errors.Is(err, auth.ErrAccountDisabled):
+		return SignIn403JSONResponse(authError(CodeAccountDisabled, "This account is disabled. Ask the tree's owner to re-enable it.")), nil
 	case errors.Is(err, auth.ErrRateLimited):
 		return SignIn429JSONResponse{RateLimitedJSONResponse(authError(CodeRateLimited, err.Error()))}, nil
 	default:

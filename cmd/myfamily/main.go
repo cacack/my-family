@@ -68,6 +68,8 @@ Commands:
   rebuild   Rebuild the read model from the event log (refused while the server runs)
   user create [--username NAME] [--display-name NAME]
             Create an owner account; asks for the password, or reads it from stdin
+  user reset-password --username NAME [--url URL]
+            Print a single-use link, valid 24 hours, that sets NAME's password
   version   Show version information
   help      Show this help message
 
