@@ -3,6 +3,7 @@ package query
 import (
 	"context"
 	"sort"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -39,6 +40,8 @@ type DescendancyNode struct {
 	Spouses    []SpouseInfo       `json:"spouses,omitempty"`
 	Children   []*DescendancyNode `json:"children,omitempty"`
 	Generation int                `json:"generation"`
+	Living     bool               `json:"living"`            // living rule verdict today (ADR-008 §1)
+	Private    bool               `json:"private,omitempty"` // record marked private (ADR-008 §2)
 	// FamilyID is the family through which this node descends from its parent
 	// node, matching one of the parent's Spouses when that family has a second
 	// partner; nil on the root.
@@ -107,7 +110,7 @@ func (s *DescendancyService) GetDescendancy(ctx context.Context, input GetDescen
 // at the shallowest generation that reaches them, under the first parent (in
 // tree order) to claim them.
 func (s *DescendancyService) buildDescendancyTree(ctx context.Context, branchID domain.BranchID, root repository.PersonReadModel, maxGen int) (*DescendancyNode, error) {
-	rootNode := newDescendancyNode(root, 0)
+	rootNode := newDescendancyNode(root, 0, livingCutoff(ctx))
 	visited := map[uuid.UUID]bool{root.ID: true}
 	level := []*DescendancyNode{rootNode}
 
@@ -220,7 +223,7 @@ func (s *DescendancyService) nextGeneration(
 			// family detail does.
 			continue
 		}
-		child := newDescendancyNode(person, generation)
+		child := newDescendancyNode(person, generation, livingCutoff(ctx))
 		familyID := c.familyID
 		child.FamilyID = &familyID
 		c.parent.Children = append(c.parent.Children, child)
@@ -276,13 +279,15 @@ func genDateBefore(a, b *domain.GenDate) bool {
 }
 
 // newDescendancyNode builds the node for person at generation, without spouses
-// or children.
-func newDescendancyNode(person repository.PersonReadModel, generation int) *DescendancyNode {
+// or children, judging the living rule against cutoff (see livingCutoff).
+func newDescendancyNode(person repository.PersonReadModel, generation int, cutoff time.Time) *DescendancyNode {
 	node := &DescendancyNode{
 		ID:         person.ID,
 		GivenName:  person.GivenName,
 		Surname:    person.Surname,
 		Generation: generation,
+		Living:     person.LivingFacts().IsLiving(cutoff),
+		Private:    person.Restriction.IsPrivate(),
 	}
 	if person.Gender != "" {
 		node.Gender = string(person.Gender)

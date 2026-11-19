@@ -5366,7 +5366,8 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 	// Query birth locations
 	// #nosec G202 -- overlay is one of two constant subquery literals returned by personOverlaySubquery; every value is a bound ? placeholder
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, given_name, surname, birth_place, birth_place_lat, birth_place_long
+		SELECT id, given_name, surname, birth_place, birth_place_lat, birth_place_long,
+		       restriction, living_override, death_evidence, living_ref_date
 		FROM `+overlay+`
 		WHERE birth_place_lat IS NOT NULL AND birth_place_long IS NOT NULL
 		  AND birth_place_lat != '' AND birth_place_long != ''
@@ -5389,24 +5390,22 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 	agg := make(map[locKey]*locData)
 
 	for rows.Next() {
-		var idStr, givenName, surname, place, latStr, lonStr string
-		if err := rows.Scan(&idStr, &givenName, &surname, &place, &latStr, &lonStr); err != nil {
+		person, place, latStr, lonStr, err := scanMapPerson(rows)
+		if err != nil {
 			return nil, fmt.Errorf("scan birth map location: %w", err)
 		}
-		personID, err := uuid.Parse(idStr)
-		if err != nil {
+		if person == nil {
 			continue
 		}
-		lat, lon, ok := repository.ParseMapCoordinates(personID, "birth", latStr, lonStr)
+		lat, lon, ok := repository.ParseMapCoordinates(person.ID, "birth", latStr, lonStr)
 		if !ok {
 			continue
 		}
-		person := repository.MapPerson{ID: personID, GivenName: givenName, Surname: surname}
 		key := locKey{place: place, eventType: "birth"}
 		if d, ok := agg[key]; ok {
-			d.persons = append(d.persons, person)
+			d.persons = append(d.persons, *person)
 		} else {
-			agg[key] = &locData{lat: lat, lon: lon, persons: []repository.MapPerson{person}}
+			agg[key] = &locData{lat: lat, lon: lon, persons: []repository.MapPerson{*person}}
 		}
 	}
 	if err := rows.Err(); err != nil {
@@ -5416,7 +5415,8 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 	// Query death locations
 	// #nosec G202 -- overlay is one of two constant subquery literals returned by personOverlaySubquery; every value is a bound ? placeholder
 	rows2, err := s.db.QueryContext(ctx, `
-		SELECT id, given_name, surname, death_place, death_place_lat, death_place_long
+		SELECT id, given_name, surname, death_place, death_place_lat, death_place_long,
+		       restriction, living_override, death_evidence, living_ref_date
 		FROM `+overlay+`
 		WHERE death_place_lat IS NOT NULL AND death_place_long IS NOT NULL
 		  AND death_place_lat != '' AND death_place_long != ''
@@ -5428,24 +5428,22 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 	defer rows2.Close()
 
 	for rows2.Next() {
-		var idStr, givenName, surname, place, latStr, lonStr string
-		if err := rows2.Scan(&idStr, &givenName, &surname, &place, &latStr, &lonStr); err != nil {
+		person, place, latStr, lonStr, err := scanMapPerson(rows2)
+		if err != nil {
 			return nil, fmt.Errorf("scan death map location: %w", err)
 		}
-		personID, err := uuid.Parse(idStr)
-		if err != nil {
+		if person == nil {
 			continue
 		}
-		lat, lon, ok := repository.ParseMapCoordinates(personID, "death", latStr, lonStr)
+		lat, lon, ok := repository.ParseMapCoordinates(person.ID, "death", latStr, lonStr)
 		if !ok {
 			continue
 		}
-		person := repository.MapPerson{ID: personID, GivenName: givenName, Surname: surname}
 		key := locKey{place: place, eventType: "death"}
 		if d, ok := agg[key]; ok {
-			d.persons = append(d.persons, person)
+			d.persons = append(d.persons, *person)
 		} else {
-			agg[key] = &locData{lat: lat, lon: lon, persons: []repository.MapPerson{person}}
+			agg[key] = &locData{lat: lat, lon: lon, persons: []repository.MapPerson{*person}}
 		}
 	}
 	if err := rows2.Err(); err != nil {
@@ -5471,6 +5469,32 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 	})
 
 	return results, nil
+}
+
+// scanMapPerson scans one GetMapLocations row: the person, then the place and
+// its coordinates. The person is nil when the row's id is not a UUID.
+func scanMapPerson(rows *sql.Rows) (person *repository.MapPerson, place, lat, lon string, err error) {
+	var idStr, givenName, surname string
+	var restriction, livingOverride, livingRefDate sql.NullString
+	var deathEvidence bool
+	if err := rows.Scan(&idStr, &givenName, &surname, &place, &lat, &lon,
+		&restriction, &livingOverride, &deathEvidence, &livingRefDate); err != nil {
+		return nil, "", "", "", err
+	}
+	personID, err := uuid.Parse(idStr)
+	if err != nil {
+		return nil, "", "", "", nil
+	}
+	refDate, _ := parseNullableSortDate(livingRefDate)
+	return &repository.MapPerson{
+		ID: personID, GivenName: givenName, Surname: surname,
+		Restriction: domain.Restriction(restriction.String),
+		LivingFacts: domain.LivingFacts{
+			Override:      domain.LivingOverride(livingOverride.String),
+			DeathEvidence: deathEvidence,
+			ReferenceDate: refDate,
+		},
+	}, place, lat, lon, nil
 }
 
 // Brick walls are event-sourced (#802): BrickWallSet and BrickWallResolved are

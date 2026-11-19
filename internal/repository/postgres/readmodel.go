@@ -5012,15 +5012,38 @@ func (s *ReadModelStore) GetPersonsByCemetery(ctx context.Context, place string,
 	return persons, total, rows.Err()
 }
 
+// mapPrivacyCols are the person columns GetMapLocations reads for the living
+// rule and the private mark (ADR-008), in scanMapPerson's order.
+const mapPrivacyCols = "restriction, living_override, death_evidence, living_ref_date"
+
+// scanMapPerson scans one GetMapLocations row: the person, then the place and
+// its coordinates.
+func scanMapPerson(rows *sql.Rows) (person repository.MapPerson, place, lat, lon string, err error) {
+	var restriction, livingOverride sql.NullString
+	var deathEvidence bool
+	var livingRefDate sql.NullTime
+	if err := rows.Scan(&person.ID, &person.GivenName, &person.Surname, &place, &lat, &lon,
+		&restriction, &livingOverride, &deathEvidence, &livingRefDate); err != nil {
+		return person, "", "", "", err
+	}
+	person.Restriction = domain.Restriction(restriction.String)
+	person.LivingFacts = domain.LivingFacts{
+		Override:      domain.LivingOverride(livingOverride.String),
+		DeathEvidence: deathEvidence,
+		ReferenceDate: nullTimePtr(livingRefDate),
+	}
+	return person, place, lat, lon, nil
+}
+
 // GetMapLocations returns aggregated geographic locations from person birth/death
 // coordinates, resolved through the branch overlay (ADR-005).
 func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.BranchID) ([]repository.MapLocation, error) {
 	// Query birth locations — individual rows, aggregate in Go
-	birthSrc, birthArgs, _ := resolvedPersonsSrc("id, given_name, surname, birth_place, birth_place_lat, birth_place_long", branchID)
+	birthSrc, birthArgs, _ := resolvedPersonsSrc("id, given_name, surname, birth_place, birth_place_lat, birth_place_long, "+mapPrivacyCols, branchID)
 	// #nosec G201 G202 -- birthSrc is an internal SQL fragment carrying only $-placeholders, not user input
 	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, given_name, surname, birth_place, birth_place_lat, birth_place_long
+		SELECT id, given_name, surname, birth_place, birth_place_lat, birth_place_long, `+mapPrivacyCols+`
 		FROM `+birthSrc+` p
 		WHERE birth_place_lat IS NOT NULL AND birth_place_long IS NOT NULL
 		  AND birth_place_lat != '' AND birth_place_long != ''
@@ -5043,16 +5066,14 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 	agg := make(map[locKey]*locData)
 
 	for rows.Next() {
-		var personID uuid.UUID
-		var givenName, surname, place, latStr, lonStr string
-		if err := rows.Scan(&personID, &givenName, &surname, &place, &latStr, &lonStr); err != nil {
+		person, place, latStr, lonStr, err := scanMapPerson(rows)
+		if err != nil {
 			return nil, fmt.Errorf("scan birth map location: %w", err)
 		}
-		lat, lon, ok := repository.ParseMapCoordinates(personID, "birth", latStr, lonStr)
+		lat, lon, ok := repository.ParseMapCoordinates(person.ID, "birth", latStr, lonStr)
 		if !ok {
 			continue
 		}
-		person := repository.MapPerson{ID: personID, GivenName: givenName, Surname: surname}
 		key := locKey{place: place, eventType: "birth"}
 		if d, ok := agg[key]; ok {
 			d.persons = append(d.persons, person)
@@ -5065,11 +5086,11 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 	}
 
 	// Query death locations
-	deathSrc, deathArgs, _ := resolvedPersonsSrc("id, given_name, surname, death_place, death_place_lat, death_place_long", branchID)
+	deathSrc, deathArgs, _ := resolvedPersonsSrc("id, given_name, surname, death_place, death_place_lat, death_place_long, "+mapPrivacyCols, branchID)
 	// #nosec G201 G202 -- deathSrc is an internal SQL fragment carrying only $-placeholders, not user input
 	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 	rows2, err := s.db.QueryContext(ctx, `
-		SELECT id, given_name, surname, death_place, death_place_lat, death_place_long
+		SELECT id, given_name, surname, death_place, death_place_lat, death_place_long, `+mapPrivacyCols+`
 		FROM `+deathSrc+` p
 		WHERE death_place_lat IS NOT NULL AND death_place_long IS NOT NULL
 		  AND death_place_lat != '' AND death_place_long != ''
@@ -5081,16 +5102,14 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 	defer rows2.Close()
 
 	for rows2.Next() {
-		var personID uuid.UUID
-		var givenName, surname, place, latStr, lonStr string
-		if err := rows2.Scan(&personID, &givenName, &surname, &place, &latStr, &lonStr); err != nil {
+		person, place, latStr, lonStr, err := scanMapPerson(rows2)
+		if err != nil {
 			return nil, fmt.Errorf("scan death map location: %w", err)
 		}
-		lat, lon, ok := repository.ParseMapCoordinates(personID, "death", latStr, lonStr)
+		lat, lon, ok := repository.ParseMapCoordinates(person.ID, "death", latStr, lonStr)
 		if !ok {
 			continue
 		}
-		person := repository.MapPerson{ID: personID, GivenName: givenName, Surname: surname}
 		key := locKey{place: place, eventType: "death"}
 		if d, ok := agg[key]; ok {
 			d.persons = append(d.persons, person)

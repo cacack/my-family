@@ -3892,6 +3892,10 @@ export interface components {
             gender?: components["schemas"]["Gender"];
             birth_date?: components["schemas"]["GenDate"];
             death_date?: components["schemas"]["GenDate"];
+            /** @description Whether the person counts as living under the living rule (ADR-008), evaluated when the request is served, as on Person. */
+            living?: boolean;
+            /** @description Whether the person's record is private (ADR-008), as on Person. Omitted when it is not. */
+            private?: boolean;
         };
         PersonList: {
             items: components["schemas"]["Person"][];
@@ -4033,6 +4037,10 @@ export interface components {
             mother_name?: string;
             /** Format: uuid */
             mother_id?: string;
+            /** @description Whether the person counts as living under the living rule (ADR-008), evaluated when the request is served, as on Person. */
+            living?: boolean;
+            /** @description Whether the person's record is private (ADR-008), as on Person. Omitted when it is not. */
+            private?: boolean;
         };
         /** @description Event details for group sheet display */
         GroupSheetEvent: {
@@ -4062,6 +4070,10 @@ export interface components {
             spouse_name?: string;
             /** Format: uuid */
             spouse_id?: string;
+            /** @description Whether the person counts as living under the living rule (ADR-008), evaluated when the request is served, as on Person. */
+            living?: boolean;
+            /** @description Whether the person's record is private (ADR-008), as on Person. Omitted when it is not. */
+            private?: boolean;
         };
         /** @description Citation reference for group sheet */
         GroupSheetCitation: {
@@ -4093,6 +4105,10 @@ export interface components {
             gender?: components["schemas"]["Gender"];
             /** @description Generation level (0 = subject, 1 = parents, 2 = grandparents, etc.) */
             generation?: number;
+            /** @description Whether the person counts as living under the living rule (ADR-008), evaluated when the request is served, as on Person. */
+            living?: boolean;
+            /** @description Whether the person's record is private (ADR-008), as on Person. Omitted when it is not. */
+            private?: boolean;
             father?: components["schemas"]["PedigreeNode"];
             mother?: components["schemas"]["PedigreeNode"];
         };
@@ -4117,6 +4133,10 @@ export interface components {
             gender?: components["schemas"]["Gender"];
             /** @description Generation level (0 = root, 1 = children, 2 = grandchildren, etc.) */
             generation?: number;
+            /** @description Whether the person counts as living under the living rule (ADR-008), evaluated when the request is served, as on Person. */
+            living?: boolean;
+            /** @description Whether the person's record is private (ADR-008), as on Person. Omitted when it is not. */
+            private?: boolean;
             /**
              * Format: uuid
              * @description The family through which this person descends from their parent

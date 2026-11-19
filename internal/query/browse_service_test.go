@@ -1071,7 +1071,8 @@ func TestGetMapLocations_CarriesPersonUUID(t *testing.T) {
 	if err := readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
 		ID: id, GivenName: "John", Surname: "Smith", FullName: "John Smith",
 		BirthPlace: "Boston, MA", BirthPlaceLat: &lat, BirthPlaceLong: &lon,
-		Version: 1, UpdatedAt: time.Now(),
+		Restriction: domain.RestrictionConfidential,
+		Version:     1, UpdatedAt: time.Now(),
 	}); err != nil {
 		t.Fatalf("SavePerson: %v", err)
 	}
@@ -1083,7 +1084,8 @@ func TestGetMapLocations_CarriesPersonUUID(t *testing.T) {
 	if len(result.Items) != 1 {
 		t.Fatalf("len(items) = %d, want 1", len(result.Items))
 	}
-	want := query.MapPerson{ID: id, GivenName: "John", Surname: "Smith"}
+	// With no dates the living rule fails safe to living (ADR-008 §1).
+	want := query.MapPerson{ID: id, GivenName: "John", Surname: "Smith", Living: true, Private: true}
 	if got := result.Items[0].Persons; len(got) != 1 || got[0] != want {
 		t.Errorf("persons = %+v, want [%+v]", got, want)
 	}
