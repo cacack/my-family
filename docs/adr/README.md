@@ -31,6 +31,7 @@ See [TEMPLATE.md](./TEMPLATE.md) for the ADR structure.
 - [005-research-branch-data-model.md](./005-research-branch-data-model.md) - Research branches as a shared-log/`branch_id`-overlay model, with merge and conflict semantics
 - [006-schema-evolution.md](./006-schema-evolution.md) - Read-model schema version with fail-fast `myfamily rebuild`, and event upcasting on decode
 - [007-access-model.md](./007-access-model.md) - Mandatory sign-in with anonymous as a configurable principal, owner/editor/viewer roles as tree memberships, and accounts outside the event log (proposed)
+- [008-privacy-model.md](./008-privacy-model.md) - Living-person rule, private flag (GEDCOM `RESN`), "Living" placeholder, and redaction at two choke points (proposed)
 
 ## Related
 
