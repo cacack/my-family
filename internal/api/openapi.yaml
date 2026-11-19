@@ -58,7 +58,9 @@ tags:
   - name: relationships
     description: Relationship calculation between people
   - name: settings
-    description: Site settings, such as the home person
+    description: |
+      Site and tree settings: the home person, and the tree's privacy
+      settings (ADR-008 §6), which only an owner may read or change.
   - name: notes
     description: GEDCOM NOTE record management
   - name: submitters
@@ -81,9 +83,6 @@ tags:
     description: |
       Managing the tree's users (ADR-007): invites, roles, disabling, password
       reset links and the auth audit log. Owners only.
-  - name: settings
-    description: |
-      The tree's privacy settings (ADR-008 §6). Owners only.
   - name: auth
     description: |
       Accounts and sign-in (ADR-007). Every other operation needs a signed-in
