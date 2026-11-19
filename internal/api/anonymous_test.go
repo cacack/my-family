@@ -260,4 +260,3 @@ func TestAnonymous_ChangeLogNeedsSignIn(t *testing.T) {
 		}
 	}
 }
-
