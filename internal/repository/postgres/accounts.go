@@ -281,12 +281,13 @@ func (s *AccountStore) DeleteUserSessions(ctx context.Context, userID uuid.UUID,
 	return nil
 }
 
-// ListMembers returns every member of treeID, by username.
+// ListMembers returns every member of treeID, by username. COLLATE "C" sorts
+// byte for byte, as SQLite does, rather than by the database locale.
 func (s *AccountStore) ListMembers(ctx context.Context, treeID uuid.UUID) ([]repository.Member, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT u.id, u.username, u.display_name, u.password_hash, u.created_at, u.disabled, m.role
 		FROM users u JOIN tree_memberships m ON m.user_id = u.id
-		WHERE m.tree_id = $1 ORDER BY u.username`, treeID)
+		WHERE m.tree_id = $1 ORDER BY u.username COLLATE "C"`, treeID)
 	if err != nil {
 		return nil, fmt.Errorf("list members: %w", err)
 	}
