@@ -1613,14 +1613,16 @@ func individualEventFactType(t gedcom.EventType) domain.FactType {
 
 // bareDeath reports whether event is a DEAT asserting only that the death
 // happened, such as "1 DEAT Y": not negated, and with none of what the person
-// record holds of a death (date, place, notes, TYPE) or a citation, which
-// names the record (#1319). The record cannot hold such a death, so unless
-// the individual has a death the record does hold, it is imported as a life
-// event instead and stays death evidence for the living rule (#1436).
+// record holds of a death (date, place, notes, TYPE). The record cannot hold
+// such a death as evidence, so unless the individual has a death the record
+// does hold, it is imported as a life event instead and stays death evidence
+// for the living rule (#1436); its citations follow that life event. The
+// exporter writes "1 DEAT Y" for any dateless, placeless death (toGedcomEvent):
+// one that also has notes or TYPE re-imports to the record, which counts those
+// as evidence too.
 func bareDeath(event *gedcom.Event) bool {
 	return event.Type == gedcom.EventDeath && !event.IsNegative && event.Date == "" &&
-		event.PlaceName() == "" && eventNotes(event) == "" && event.EventTypeDetail == "" &&
-		len(event.SourceCitations) == 0
+		event.PlaceName() == "" && eventNotes(event) == "" && event.EventTypeDetail == ""
 }
 
 // recordDeath reports whether event is a death the person record holds.

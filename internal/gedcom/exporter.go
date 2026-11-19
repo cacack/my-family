@@ -1270,7 +1270,7 @@ func toGedcomEvent(event repository.EventReadModel, fieldOwnsUnlinked bool, sour
 	// A death with no date or place is written "1 DEAT Y", the flag asserting
 	// that it happened (#1436). gedcom-go has no typed field for the flag, but
 	// its decoder reads a "Y" payload as no description, so it round-trips
-	// (cacack/gedcom-go#865).
+	// (cacack/gedcom-go#865). On import, see bareDeath.
 	if ge.Type == gedcom.EventDeath && !ge.IsNegative && ge.Date == "" && ge.PlaceDetail == nil {
 		ge.Description = "Y"
 	}

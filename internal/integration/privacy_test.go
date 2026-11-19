@@ -73,6 +73,13 @@ const privacyGedcom = `0 HEAD
 1 BIRT
 2 DATE 1990
 1 DEAT Y
+0 @I9@ INDI
+1 NAME Cited /Undated/
+1 SEX U
+1 BIRT
+2 DATE 1990
+1 DEAT Y
+2 SOUR @S1@
 0 @F1@ FAM
 1 RESN confidential
 1 HUSB @I2@
@@ -94,6 +101,7 @@ var privacyPeople = []struct {
 	{"Born", "", false},             // BET 1800 AND 1820 compares 1820
 	{"Recent", "", true},            // baptism 2001 is recent
 	{"Died", "", false},             // a bare DEAT Y is death evidence (#1436)
+	{"Cited", "", false},            // so is a cited one
 }
 
 // importPrivacyTree imports privacyGedcom into st and returns the person IDs
@@ -197,6 +205,7 @@ func TestPrivacy_GedcomRestrictionAndLivingRuleSurviveReplayExportAndReimport(t 
 				{"Private register", "1 _RESN privacy"},
 				{"A private note", "1 _RESN confidential"},
 				{"Died /Undated/", "1 DEAT Y"},
+				{"Cited /Undated/", "1 DEAT Y"},
 			} {
 				if lines := recordLines(out, want.record); !slices.Contains(lines, want.line) {
 					t.Errorf("record %q exported as %q, want a %q line; export:\n%s", want.record, lines, want.line, out)

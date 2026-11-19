@@ -23,12 +23,14 @@ func TestImport_BareDeath(t *testing.T) {
 		wantEvent     bool   // imported as a death life event
 		wantDeathDate string // the person record's death date
 		wantCause     string // the life event's cause
+		wantCitation  bool   // the life event carries the DEAT's citation
 	}{
 		{name: "DEAT Y", deat: "1 DEAT Y\n", wantEvent: true},
 		{name: "DEAT with no payload", deat: "1 DEAT\n", wantEvent: true},
 		{name: "DEAT Y with a cause", deat: "1 DEAT Y\n2 CAUS Fever\n", wantEvent: true, wantCause: "Fever"},
 		{name: "dated DEAT", deat: "1 DEAT\n2 DATE 1890\n", wantDeathDate: "1890"},
-		{name: "DEAT with a citation only", deat: "1 DEAT\n2 SOUR @S1@\n"},
+		{name: "DEAT Y with a citation", deat: "1 DEAT Y\n2 SOUR @S1@\n", wantEvent: true, wantCitation: true},
+		{name: "DEAT with a citation only", deat: "1 DEAT\n2 SOUR @S1@\n", wantEvent: true, wantCitation: true},
 		{name: "DEAT Y after a dated DEAT", deat: "1 DEAT\n2 DATE 1890\n1 DEAT Y\n", wantDeathDate: "1890"},
 		{name: "DEAT Y before a dated DEAT", deat: "1 DEAT Y\n1 DEAT\n2 DATE 1890\n", wantDeathDate: "1890"},
 		{name: "NO DEAT", deat: "1 NO DEAT\n"},
@@ -36,7 +38,7 @@ func TestImport_BareDeath(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			data := "0 HEAD\n1 GEDC\n2 VERS 7.0\n0 @S1@ SOUR\n1 TITL Register\n0 @I1@ INDI\n1 NAME A /B/\n" + tt.deat + "0 TRLR\n"
-			_, persons, _, _, _, _, events, _, _, _, _, _, _, err := gedcom.NewImporter().Import(context.Background(), strings.NewReader(data))
+			_, persons, _, _, citations, _, events, _, _, _, _, _, _, err := gedcom.NewImporter().Import(context.Background(), strings.NewReader(data))
 			if err != nil {
 				t.Fatalf("Import: %v", err)
 			}
@@ -57,6 +59,11 @@ func TestImport_BareDeath(t *testing.T) {
 			}
 			if tt.wantEvent && deaths[0].Cause != tt.wantCause {
 				t.Errorf("Cause = %q, want %q", deaths[0].Cause, tt.wantCause)
+			}
+			if tt.wantCitation {
+				if len(citations) != 1 || citations[0].FactID == nil || *citations[0].FactID != deaths[0].ID {
+					t.Errorf("citations = %+v, want one on the death life event %s", citations, deaths[0].ID)
+				}
 			}
 		})
 	}
