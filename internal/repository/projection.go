@@ -1443,7 +1443,33 @@ func (p *Projector) setLivingFacts(ctx context.Context, branchID domain.BranchID
 // to one of its life events, saving the person only when they changed, so an
 // unrelated event never writes a branch shadow of the person. A person the
 // branch does not see is skipped.
+//
+// A change on main is refreshed on every research branch too: a branch reads
+// main's life events through its overlay, so a branch copy of the person made
+// before the change would otherwise keep inputs that disagree with the events
+// the branch shows. A branch without a copy reads main's row, already
+// refreshed, so its inputs are unchanged and nothing is saved for it.
 func (p *Projector) refreshLivingFacts(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) error {
+	if err := p.refreshLivingFactsOn(ctx, branchID, personID); err != nil {
+		return err
+	}
+	if !branchID.IsMain() || p.branchStore == nil {
+		return nil
+	}
+	branches, err := p.branchStore.List(ctx)
+	if err != nil {
+		return fmt.Errorf("list branches for the living rule: %w", err)
+	}
+	for _, b := range branches {
+		if err := p.refreshLivingFactsOn(ctx, domain.BranchID(b.ID), personID); err != nil {
+			return fmt.Errorf("refresh the living rule on branch %s: %w", b.ID, err)
+		}
+	}
+	return nil
+}
+
+// refreshLivingFactsOn is refreshLivingFacts on one branch.
+func (p *Projector) refreshLivingFactsOn(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) error {
 	person, err := p.readStore.GetPerson(ctx, branchID, personID)
 	if err != nil || person == nil {
 		return err
@@ -1871,6 +1897,14 @@ func (p *Projector) projectPersonMerged(ctx context.Context, e domain.PersonMerg
 		case "research_status":
 			if v, ok := value.(string); ok {
 				survivor.ResearchStatus = domain.ParseResearchStatus(v)
+			}
+		case "restriction":
+			if v, ok := value.(string); ok {
+				survivor.Restriction = domain.Restriction(v)
+			}
+		case "living_override":
+			if v, ok := value.(string); ok {
+				survivor.LivingOverride = domain.LivingOverride(v)
 			}
 		default:
 			slog.Warn("projection: ignoring unknown change key", "event", "PersonMerged", "key", key)

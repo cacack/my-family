@@ -3595,7 +3595,7 @@ type CitationUpdate struct {
 	InformantType nullable.Nullable[InformantType]     `json:"informant_type,omitempty"`
 	Page          nullable.Nullable[string]            `json:"page,omitempty"`
 
-	// Private Mark the record private, which adds confidential to its GEDCOM restriction notice (RESN), or not, which removes confidential and privacy. Other RESN values, such as locked, are kept.
+	// Private Mark the record private, which adds confidential to its GEDCOM restriction notice (RESN), or not, which removes confidential and privacy. Other RESN values, such as locked, are kept. Omit it to leave the mark unchanged.
 	Private       *bool                            `json:"private,omitempty"`
 	QuotedText    nullable.Nullable[string]        `json:"quoted_text,omitempty"`
 	SourceQuality nullable.Nullable[SourceQuality] `json:"source_quality,omitempty"`
@@ -4287,7 +4287,7 @@ type FamilyUpdate struct {
 	// Partner2Id Set partner 2 to this person, or null to remove partner 2 from the family. Omit to leave partner 2 unchanged.
 	Partner2Id nullable.Nullable[openapi_types.UUID] `json:"partner2_id,omitempty"`
 
-	// Private Mark the record private, which adds confidential to its GEDCOM restriction notice (RESN), or not, which removes confidential and privacy. Other RESN values, such as locked, are kept.
+	// Private Mark the record private, which adds confidential to its GEDCOM restriction notice (RESN), or not, which removes confidential and privacy. Other RESN values, such as locked, are kept. Omit it to leave the mark unchanged.
 	Private          *bool                           `json:"private,omitempty"`
 	RelationshipType nullable.Nullable[RelationType] `json:"relationship_type,omitempty"`
 	Version          int64                           `json:"version"`
@@ -4753,7 +4753,7 @@ type MediaUpdate struct {
 	// MediaType Category of media
 	MediaType *MediaType `json:"media_type,omitempty"`
 
-	// Private Mark the record private, which adds confidential to its GEDCOM restriction notice (RESN), or not, which removes confidential and privacy. Other RESN values, such as locked, are kept.
+	// Private Mark the record private, which adds confidential to its GEDCOM restriction notice (RESN), or not, which removes confidential and privacy. Other RESN values, such as locked, are kept. Omit it to leave the mark unchanged.
 	Private *bool   `json:"private,omitempty"`
 	Title   *string `json:"title,omitempty"`
 
@@ -5312,7 +5312,7 @@ type NoteTranslation struct {
 
 // NoteUpdate Partial update. A field left out stays unchanged; an optional (nullable) field sent as null is cleared. Required fields reject null.
 type NoteUpdate struct {
-	// Private Mark the record private, which adds confidential to its GEDCOM restriction notice (RESN), or not, which removes confidential and privacy. Other RESN values, such as locked, are kept.
+	// Private Mark the record private, which adds confidential to its GEDCOM restriction notice (RESN), or not, which removes confidential and privacy. Other RESN values, such as locked, are kept. Omit it to leave the mark unchanged.
 	Private *bool `json:"private,omitempty"`
 
 	// Text Updated note text
@@ -5389,7 +5389,7 @@ type Person struct {
 	GivenName           string                    `json:"given_name"`
 	Id                  openapi_types.UUID        `json:"id"`
 
-	// Living Whether the person counts as living today under the living rule (ADR-008): a death, burial or cremation, or a birth (else christening or baptism) more than 110 years ago, makes them deceased, unless living_override says otherwise.
+	// Living Whether the person counts as living under the living rule (ADR-008), evaluated when the request is served: a death, burial or cremation, or a birth (else christening or baptism) longer ago than the tree's living threshold (110 years by default), makes them deceased, unless living_override says otherwise. It changes as time passes, so do not store it.
 	Living *bool `json:"living,omitempty"`
 
 	// LivingOverride An editor's override of the living rule (ADR-008): auto lets the rule decide; living or deceased decides for it.
@@ -5520,7 +5520,7 @@ type PersonDetail struct {
 	GivenName         string             `json:"given_name"`
 	Id                openapi_types.UUID `json:"id"`
 
-	// Living Whether the person counts as living today under the living rule (ADR-008): a death, burial or cremation, or a birth (else christening or baptism) more than 110 years ago, makes them deceased, unless living_override says otherwise.
+	// Living Whether the person counts as living under the living rule (ADR-008), evaluated when the request is served: a death, burial or cremation, or a birth (else christening or baptism) longer ago than the tree's living threshold (110 years by default), makes them deceased, unless living_override says otherwise. It changes as time passes, so do not store it.
 	Living *bool `json:"living,omitempty"`
 
 	// LivingOverride An editor's override of the living rule (ADR-008): auto lets the rule decide; living or deceased decides for it.
@@ -5651,11 +5651,11 @@ type PersonUpdate struct {
 	Gender     nullable.Nullable[Gender]    `json:"gender,omitempty"`
 	GivenName  *string                      `json:"given_name,omitempty"`
 
-	// LivingOverride Override the living rule for this person; null resets it to auto.
+	// LivingOverride Override the living rule for this person; auto or null resets it to the rule. Omit it to leave the override unchanged.
 	LivingOverride nullable.Nullable[LivingOverride] `json:"living_override,omitempty"`
 	Notes          nullable.Nullable[string]         `json:"notes,omitempty"`
 
-	// Private Mark the record private, which adds confidential to its GEDCOM restriction notice (RESN), or not, which removes confidential and privacy. Other RESN values, such as locked, are kept.
+	// Private Mark the record private, which adds confidential to its GEDCOM restriction notice (RESN), or not, which removes confidential and privacy. Other RESN values, such as locked, are kept. Omit it to leave the mark unchanged.
 	Private        *bool                             `json:"private,omitempty"`
 	ResearchStatus nullable.Nullable[ResearchStatus] `json:"research_status,omitempty"`
 	Surname        nullable.Nullable[string]         `json:"surname,omitempty"`
@@ -6405,7 +6405,7 @@ type SourceUpdate struct {
 	CollectionName nullable.Nullable[string] `json:"collection_name,omitempty"`
 	Notes          nullable.Nullable[string] `json:"notes,omitempty"`
 
-	// Private Mark the record private, which adds confidential to its GEDCOM restriction notice (RESN), or not, which removes confidential and privacy. Other RESN values, such as locked, are kept.
+	// Private Mark the record private, which adds confidential to its GEDCOM restriction notice (RESN), or not, which removes confidential and privacy. Other RESN values, such as locked, are kept. Omit it to leave the mark unchanged.
 	Private        *bool                        `json:"private,omitempty"`
 	PublishDate    nullable.Nullable[DateInput] `json:"publish_date,omitempty"`
 	Publisher      nullable.Nullable[string]    `json:"publisher,omitempty"`

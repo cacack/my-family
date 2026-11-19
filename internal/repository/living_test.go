@@ -9,6 +9,7 @@ import (
 
 	"github.com/cacack/my-family/internal/domain"
 	"github.com/cacack/my-family/internal/repository"
+	"github.com/cacack/my-family/internal/repository/memory"
 )
 
 func TestSetLivingFacts(t *testing.T) {
@@ -124,5 +125,55 @@ func TestProjector_LifeEventsDriveTheLivingRule(t *testing.T) {
 				t.Errorf("after clears: override %q, restriction %q; want both empty", p.LivingOverride, p.Restriction)
 			}
 		})
+	}
+}
+
+// TestProjector_MainLifeEventsRefreshBranchCopies proves a branch's own copy
+// of a person follows a death recorded and removed on main, which the branch
+// sees through its overlay, while a branch without a copy is not given one.
+func TestProjector_MainLifeEventsRefreshBranchCopies(t *testing.T) {
+	ctx := context.Background()
+	rs, branches := memory.NewReadModelStore(), memory.NewBranchStore()
+	copied, _ := domain.NewBranch("copied", "", 0)
+	plain, _ := domain.NewBranch("plain", "", 0)
+	for _, b := range []*domain.Branch{copied, plain} {
+		if err := branches.Create(ctx, b); err != nil {
+			t.Fatalf("create branch: %v", err)
+		}
+	}
+	projector := repository.NewProjector(rs, branches)
+	project := func(e domain.Event, version int64, branchID domain.BranchID) {
+		t.Helper()
+		if err := projector.Project(ctx, e, version, branchID); err != nil {
+			t.Fatalf("Project %s: %v", e.EventType(), err)
+		}
+	}
+	person := domain.NewPerson("Ada", "Lovelace")
+	project(domain.NewPersonCreated(person), 1, domain.MainBranchID)
+	project(domain.NewPersonUpdated(person.ID, map[string]any{"notes": "branch copy"}), 2, domain.BranchID(copied.ID))
+
+	evidence := func(b *domain.Branch) bool {
+		t.Helper()
+		p, err := rs.GetPerson(ctx, domain.BranchID(b.ID), person.ID)
+		if err != nil || p == nil {
+			t.Fatalf("GetPerson on %s: %v, %v", b.Name, p, err)
+		}
+		return p.DeathEvidence
+	}
+	burial := domain.NewLifeEventCreatedFromModel(&domain.LifeEvent{ID: uuid.New(), PersonID: &person.ID, FactType: domain.FactPersonBurial})
+	project(burial, 1, domain.MainBranchID)
+	for _, b := range []*domain.Branch{copied, plain} {
+		if !evidence(b) {
+			t.Errorf("after main's burial: branch %s has no death evidence", b.Name)
+		}
+	}
+	project(domain.NewLifeEventDeleted(burial.EventID, ""), 2, domain.MainBranchID)
+	for _, b := range []*domain.Branch{copied, plain} {
+		if evidence(b) {
+			t.Errorf("after main's burial removed: branch %s keeps death evidence", b.Name)
+		}
+	}
+	if p, _ := rs.GetPerson(ctx, domain.BranchID(copied.ID), person.ID); p == nil || p.Notes != "branch copy" {
+		t.Errorf("branch copy = %+v, want its own notes kept", p)
 	}
 }

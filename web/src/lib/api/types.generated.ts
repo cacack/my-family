@@ -3767,7 +3767,7 @@ export interface components {
             brick_wall_since?: string | null;
             /** Format: date-time */
             brick_wall_resolved_at?: string | null;
-            /** @description Whether the person counts as living today under the living rule (ADR-008): a death, burial or cremation, or a birth (else christening or baptism) more than 110 years ago, makes them deceased, unless living_override says otherwise. */
+            /** @description Whether the person counts as living under the living rule (ADR-008), evaluated when the request is served: a death, burial or cremation, or a birth (else christening or baptism) longer ago than the tree's living threshold (110 years by default), makes them deceased, unless living_override says otherwise. It changes as time passes, so do not store it. */
             living?: boolean;
             living_override?: components["schemas"]["LivingOverride"];
             /** @description Whether the record is private: its GEDCOM restriction notice (RESN) holds confidential or privacy (ADR-008). Omitted when it is not. */
@@ -3800,9 +3800,9 @@ export interface components {
             death_place?: string | null;
             notes?: string | null;
             research_status?: components["schemas"]["ResearchStatus"] | null;
-            /** @description Override the living rule for this person; null resets it to auto. */
+            /** @description Override the living rule for this person; auto or null resets it to the rule. Omit it to leave the override unchanged. */
             living_override?: components["schemas"]["LivingOverride"] | null;
-            /** @description Mark the record private, which adds confidential to its GEDCOM restriction notice (RESN), or not, which removes confidential and privacy. Other RESN values, such as locked, are kept. */
+            /** @description Mark the record private, which adds confidential to its GEDCOM restriction notice (RESN), or not, which removes confidential and privacy. Other RESN values, such as locked, are kept. Omit it to leave the mark unchanged. */
             private?: boolean;
             /**
              * Format: int64
@@ -3917,7 +3917,7 @@ export interface components {
             relationship_type?: components["schemas"]["RelationType"] | null;
             marriage_date?: components["schemas"]["DateInput"] | null;
             marriage_place?: string | null;
-            /** @description Mark the record private, which adds confidential to its GEDCOM restriction notice (RESN), or not, which removes confidential and privacy. Other RESN values, such as locked, are kept. */
+            /** @description Mark the record private, which adds confidential to its GEDCOM restriction notice (RESN), or not, which removes confidential and privacy. Other RESN values, such as locked, are kept. Omit it to leave the mark unchanged. */
             private?: boolean;
             /** Format: int64 */
             version: number;
@@ -4469,7 +4469,7 @@ export interface components {
             crop_top?: number | null;
             crop_width?: number | null;
             crop_height?: number | null;
-            /** @description Mark the record private, which adds confidential to its GEDCOM restriction notice (RESN), or not, which removes confidential and privacy. Other RESN values, such as locked, are kept. */
+            /** @description Mark the record private, which adds confidential to its GEDCOM restriction notice (RESN), or not, which removes confidential and privacy. Other RESN values, such as locked, are kept. Omit it to leave the mark unchanged. */
             private?: boolean;
             /**
              * Format: int64
@@ -4621,7 +4621,7 @@ export interface components {
             collection_name?: string | null;
             call_number?: string | null;
             notes?: string | null;
-            /** @description Mark the record private, which adds confidential to its GEDCOM restriction notice (RESN), or not, which removes confidential and privacy. Other RESN values, such as locked, are kept. */
+            /** @description Mark the record private, which adds confidential to its GEDCOM restriction notice (RESN), or not, which removes confidential and privacy. Other RESN values, such as locked, are kept. Omit it to leave the mark unchanged. */
             private?: boolean;
             /**
              * Format: int64
@@ -4791,7 +4791,7 @@ export interface components {
             fields?: {
                 [key: string]: string;
             } | null;
-            /** @description Mark the record private, which adds confidential to its GEDCOM restriction notice (RESN), or not, which removes confidential and privacy. Other RESN values, such as locked, are kept. */
+            /** @description Mark the record private, which adds confidential to its GEDCOM restriction notice (RESN), or not, which removes confidential and privacy. Other RESN values, such as locked, are kept. Omit it to leave the mark unchanged. */
             private?: boolean;
             /**
              * Format: int64
@@ -6346,7 +6346,7 @@ export interface components {
         NoteUpdate: {
             /** @description Updated note text */
             text?: string;
-            /** @description Mark the record private, which adds confidential to its GEDCOM restriction notice (RESN), or not, which removes confidential and privacy. Other RESN values, such as locked, are kept. */
+            /** @description Mark the record private, which adds confidential to its GEDCOM restriction notice (RESN), or not, which removes confidential and privacy. Other RESN values, such as locked, are kept. Omit it to leave the mark unchanged. */
             private?: boolean;
             /**
              * Format: int64

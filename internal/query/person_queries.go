@@ -346,16 +346,16 @@ func convertReadModelToPerson(rm repository.PersonReadModel) Person {
 	if rm.BrickWallResolvedAt != nil {
 		p.BrickWallResolvedAt = rm.BrickWallResolvedAt
 	}
-	p.Living = rm.LivingFacts().IsLiving(livingCutoff(time.Now()))
+	p.Living = rm.LivingFacts().IsLiving(LivingCutoff(time.Now()))
 	p.LivingOverride = string(rm.LivingOverride)
 	p.Private = rm.Restriction.IsPrivate()
 
 	return p
 }
 
-// livingCutoff is the living rule's cutoff on now's date at the tree's
+// LivingCutoff is the living rule's cutoff on now's date at the tree's
 // threshold, which is the default until tree settings exist (ADR-008 §6).
-func livingCutoff(now time.Time) time.Time {
+func LivingCutoff(now time.Time) time.Time {
 	return domain.LivingCutoff(now, domain.DefaultLivingThresholdYears)
 }
 

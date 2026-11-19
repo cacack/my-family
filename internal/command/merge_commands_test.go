@@ -3,6 +3,7 @@ package command_test
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 
 	"github.com/google/uuid"
@@ -650,5 +651,72 @@ func TestMergePersons_TypeDetailFollowsResolvedEvent(t *testing.T) {
 	}
 	if person.DeathDateRaw != "1920" || person.DeathTypeDetail != "Accident" {
 		t.Errorf("death = %q, TYPE %q; want 1920, Accident", person.DeathDateRaw, person.DeathTypeDetail)
+	}
+}
+
+func TestMergePersons_KeepsTheMoreProtectivePrivacyMarks(t *testing.T) {
+	yes, no := true, false
+	tests := []struct {
+		name                             string
+		survivorPrivate, mergedPrivate   *bool
+		survivorOverride, mergedOverride string
+		wantPrivate                      bool
+		wantOverride                     domain.LivingOverride
+		wantRecorded                     []string
+	}{
+		{name: "merged private", mergedPrivate: &yes, wantPrivate: true, wantRecorded: []string{"restriction"}},
+		{name: "survivor private", survivorPrivate: &yes, mergedPrivate: &no, wantPrivate: true},
+		{name: "merged held living", survivorOverride: "deceased", mergedOverride: "living", wantOverride: domain.LivingOverrideLiving, wantRecorded: []string{"living_override"}},
+		{name: "auto over deceased", survivorOverride: "deceased", wantOverride: domain.LivingOverrideAuto, wantRecorded: []string{"living_override"}},
+		{name: "survivor deceased kept over merged deceased", survivorOverride: "deceased", mergedOverride: "deceased", wantOverride: domain.LivingOverrideDeceased},
+		{name: "survivor living kept", survivorOverride: "living", mergedOverride: "deceased", wantOverride: domain.LivingOverrideLiving},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			eventStore := memory.NewEventStore()
+			readStore := memory.NewReadModelStore()
+			handler := command.NewHandler(eventStore, readStore)
+			ctx := context.Background()
+			create := func(given string, private *bool, override string) (uuid.UUID, int64) {
+				p, err := handler.CreatePerson(ctx, command.CreatePersonInput{GivenName: given, Surname: "Doe"})
+				if err != nil {
+					t.Fatalf("CreatePerson: %v", err)
+				}
+				if private == nil && override == "" {
+					return p.ID, p.Version
+				}
+				input := command.UpdatePersonInput{ID: p.ID, Private: private, Version: p.Version}
+				if override != "" {
+					input.LivingOverride = command.Set(override)
+				}
+				updated, err := handler.UpdatePerson(ctx, input)
+				if err != nil {
+					t.Fatalf("UpdatePerson: %v", err)
+				}
+				return p.ID, updated.Version
+			}
+			survivorID, survivorVersion := create("John", tt.survivorPrivate, tt.survivorOverride)
+			mergedID, mergedVersion := create("Jon", tt.mergedPrivate, tt.mergedOverride)
+
+			result, err := handler.MergePersons(ctx, command.MergePersonsInput{
+				SurvivorID: survivorID, MergedID: mergedID,
+				SurvivorVersion: survivorVersion, MergedVersion: mergedVersion,
+			})
+			if err != nil {
+				t.Fatalf("MergePersons: %v", err)
+			}
+			person, _ := readStore.GetPerson(ctx, domain.MainBranchID, survivorID)
+			if got := person.Restriction.IsPrivate(); got != tt.wantPrivate {
+				t.Errorf("private = %v, want %v (restriction %q)", got, tt.wantPrivate, person.Restriction)
+			}
+			if person.LivingOverride != tt.wantOverride {
+				t.Errorf("living override = %q, want %q", person.LivingOverride, tt.wantOverride)
+			}
+			for _, field := range tt.wantRecorded {
+				if !slices.Contains(result.Summary.FieldsUpdated, field) {
+					t.Errorf("FieldsUpdated = %v, want it to hold %s", result.Summary.FieldsUpdated, field)
+				}
+			}
+		})
 	}
 }

@@ -254,6 +254,13 @@ func buildPersonSnapshot(p *repository.PersonReadModel) map[string]any {
 	if p.DeathTypeDetail != "" {
 		snapshot["death_type_detail"] = p.DeathTypeDetail
 	}
+	// The privacy marks, so the audit trail shows what the merge protected.
+	if p.Restriction != "" {
+		snapshot["restriction"] = string(p.Restriction)
+	}
+	if p.LivingOverride != domain.LivingOverrideAuto {
+		snapshot["living_override"] = string(p.LivingOverride)
+	}
 
 	return snapshot
 }
@@ -324,7 +331,34 @@ func resolveFields(survivor, merged *repository.PersonReadModel, resolution map[
 		}
 	}
 
+	// The privacy marks are not resolvable either: the survivor keeps the more
+	// protective of the two, so a merge never exposes what either person's
+	// record protected (ADR-008). It is private when either is, and its living
+	// override is living over auto over deceased.
+	if merged.Restriction.IsPrivate() && !survivor.Restriction.IsPrivate() {
+		resolved["restriction"] = string(survivor.Restriction.WithPrivate(true))
+		fieldsUpdated = append(fieldsUpdated, "restriction")
+	}
+	if overrideProtection(merged.LivingOverride) > overrideProtection(survivor.LivingOverride) {
+		resolved["living_override"] = string(merged.LivingOverride)
+		fieldsUpdated = append(fieldsUpdated, "living_override")
+	}
+
 	return resolved, fieldsUpdated
+}
+
+// overrideProtection ranks a living override by how much it protects: a
+// person held living is hidden more than one the rule decides, who is hidden
+// more than one held deceased.
+func overrideProtection(o domain.LivingOverride) int {
+	switch o {
+	case domain.LivingOverrideLiving:
+		return 2
+	case domain.LivingOverrideDeceased:
+		return 0
+	default:
+		return 1
+	}
 }
 
 // collectAffectedFamilies returns IDs of families where merged person is a partner.

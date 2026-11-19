@@ -6699,10 +6699,12 @@ components:
         living:
           type: boolean
           description: >-
-            Whether the person counts as living today under the living rule
-            (ADR-008): a death, burial or cremation, or a birth (else
-            christening or baptism) more than 110 years ago, makes them
-            deceased, unless living_override says otherwise.
+            Whether the person counts as living under the living rule
+            (ADR-008), evaluated when the request is served: a death, burial
+            or cremation, or a birth (else christening or baptism) longer ago
+            than the tree's living threshold (110 years by default), makes them
+            deceased, unless living_override says otherwise. It changes as time
+            passes, so do not store it.
         living_override:
           $ref: '#/components/schemas/LivingOverride'
         private:
@@ -6785,13 +6787,16 @@ components:
           allOf:
             - $ref: '#/components/schemas/LivingOverride'
           nullable: true
-          description: Override the living rule for this person; null resets it to auto.
+          description: >-
+            Override the living rule for this person; auto or null resets it to
+            the rule. Omit it to leave the override unchanged.
         private:
           type: boolean
           description: >-
             Mark the record private, which adds confidential to its GEDCOM
             restriction notice (RESN), or not, which removes confidential and
-            privacy. Other RESN values, such as locked, are kept.
+            privacy. Other RESN values, such as locked, are kept. Omit it to
+            leave the mark unchanged.
         version:
           type: integer
           format: int64
@@ -6996,7 +7001,8 @@ components:
           description: >-
             Mark the record private, which adds confidential to its GEDCOM
             restriction notice (RESN), or not, which removes confidential and
-            privacy. Other RESN values, such as locked, are kept.
+            privacy. Other RESN values, such as locked, are kept. Omit it to
+            leave the mark unchanged.
         version:
           type: integer
           format: int64
@@ -7835,7 +7841,8 @@ components:
           description: >-
             Mark the record private, which adds confidential to its GEDCOM
             restriction notice (RESN), or not, which removes confidential and
-            privacy. Other RESN values, such as locked, are kept.
+            privacy. Other RESN values, such as locked, are kept. Omit it to
+            leave the mark unchanged.
         version:
           type: integer
           format: int64
@@ -8126,7 +8133,8 @@ components:
           description: >-
             Mark the record private, which adds confidential to its GEDCOM
             restriction notice (RESN), or not, which removes confidential and
-            privacy. Other RESN values, such as locked, are kept.
+            privacy. Other RESN values, such as locked, are kept. Omit it to
+            leave the mark unchanged.
         version:
           type: integer
           format: int64
@@ -8451,7 +8459,8 @@ components:
           description: >-
             Mark the record private, which adds confidential to its GEDCOM
             restriction notice (RESN), or not, which removes confidential and
-            privacy. Other RESN values, such as locked, are kept.
+            privacy. Other RESN values, such as locked, are kept. Omit it to
+            leave the mark unchanged.
         version:
           type: integer
           format: int64
@@ -10760,7 +10769,8 @@ components:
           description: >-
             Mark the record private, which adds confidential to its GEDCOM
             restriction notice (RESN), or not, which removes confidential and
-            privacy. Other RESN values, such as locked, are kept.
+            privacy. Other RESN values, such as locked, are kept. Omit it to
+            leave the mark unchanged.
         version:
           type: integer
           format: int64

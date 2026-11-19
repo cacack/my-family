@@ -4105,7 +4105,7 @@ func convertQueryPersonToGenerated(p query.Person) Person {
 	if p.BrickWallResolvedAt != nil {
 		resp.BrickWallResolvedAt = omitIfNil(p.BrickWallResolvedAt)
 	}
-	resp.Living, resp.LivingOverride = livingFields(p)
+	resp.Living, resp.LivingOverride = livingFields(p.Living, domain.LivingOverride(p.LivingOverride))
 	resp.Private = privateFlag(p.Private)
 
 	return resp
@@ -4156,7 +4156,7 @@ func convertQueryPersonDetailToGenerated(pd *query.PersonDetail) PersonDetail {
 	if pd.BrickWallResolvedAt != nil {
 		resp.BrickWallResolvedAt = omitIfNil(pd.BrickWallResolvedAt)
 	}
-	resp.Living, resp.LivingOverride = livingFields(pd.Person)
+	resp.Living, resp.LivingOverride = livingFields(pd.Living, domain.LivingOverride(pd.LivingOverride))
 	resp.Private = privateFlag(pd.Private)
 
 	if len(pd.Names) > 0 {
@@ -6176,6 +6176,8 @@ func convertReadModelPersonToGenerated(rm repository.PersonReadModel) Person {
 		rs := ResearchStatus(rm.ResearchStatus)
 		resp.ResearchStatus = &rs
 	}
+	resp.Living, resp.LivingOverride = livingFields(rm.LivingFacts().IsLiving(query.LivingCutoff(time.Now())), rm.LivingOverride)
+	resp.Private = privateFlag(rm.Restriction.IsPrivate())
 	return resp
 }
 
