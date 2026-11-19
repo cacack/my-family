@@ -28,6 +28,7 @@
 		type DescendancyLayoutConfig,
 		type SpouseCard
 	} from '#lib/utils/descendancyLayout.js';
+	import { personBadgeNames } from '#lib/utils/privacy.js';
 	import OffscreenIndicator from './OffscreenIndicator.svelte';
 
 	export type LayoutMode = 'compact' | 'standard' | 'wide';
@@ -341,6 +342,7 @@
 			// Create spouse group
 			const spouseGroup = nodeLayer
 				.append('g')
+				.datum(spouse)
 				.attr('class', 'spouse-group')
 				.attr('transform', `translate(${spouseX},${spouseY})`)
 				.style('cursor', 'pointer')
@@ -392,8 +394,12 @@
 					.attr('stroke-dasharray', '4,2');
 			}
 
-			// Full name on hover, since the lines below may be truncated
-			spouseGroup.append('title').text(spouse.name || 'Unknown');
+			// Full name on hover, since the lines below may be truncated, with the
+			// privacy marks the card carries
+			spouseGroup
+				.append('title')
+				.text([spouse.name || 'Unknown', ...personBadgeNames(spouse)].join(', '));
+			appendPrivacyMarkers(spouseGroup, (s) => s, spouseCardWidth, spouseCardHeight);
 
 			// Spouse name, wrapped over two lines that fit inside the card
 			const nameText1 = spouseGroup

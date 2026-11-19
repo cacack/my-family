@@ -362,6 +362,7 @@ func TestPrivacy_APIMarksProtectedPeopleOnEverySurface(t *testing.T) {
 			droot := descendancy["root"].(map[string]any)
 			note("descendancy", droot)
 			note("descendancy", jsonArray(t, droot, "children")[0].(map[string]any))
+			note("descendancy spouse", jsonArray(t, droot, "spouses")[0].(map[string]any))
 			sheet := getEntity(t, server, "/api/v1/families/"+familyID+"/group-sheet", "")
 			note("group sheet", sheet["husband"].(map[string]any))
 			note("group sheet", sheet["wife"].(map[string]any))
@@ -375,17 +376,18 @@ func TestPrivacy_APIMarksProtectedPeopleOnEverySurface(t *testing.T) {
 
 			livingPrivate, deceased, living := mark{true, true}, mark{false, nil}, mark{true, nil}
 			want := map[string]mark{
-				"search " + alive:       livingPrivate,
-				"pedigree " + recent:    living,
-				"pedigree " + buried:    deceased,
-				"pedigree " + alive:     livingPrivate,
-				"descendancy " + buried: deceased,
-				"descendancy " + recent: living,
-				"group sheet " + buried: deceased,
-				"group sheet " + alive:  livingPrivate,
-				"group sheet " + recent: living,
-				"map " + alive:          livingPrivate,
-				"map " + buried:         deceased,
+				"search " + alive:             livingPrivate,
+				"pedigree " + recent:          living,
+				"pedigree " + buried:          deceased,
+				"pedigree " + alive:           livingPrivate,
+				"descendancy " + buried:       deceased,
+				"descendancy " + recent:       living,
+				"descendancy spouse " + alive: livingPrivate,
+				"group sheet " + buried:       deceased,
+				"group sheet " + alive:        livingPrivate,
+				"group sheet " + recent:       living,
+				"map " + alive:                livingPrivate,
+				"map " + buried:               deceased,
 			}
 			for key, w := range want {
 				if g, ok := got[key]; !ok || g != w {

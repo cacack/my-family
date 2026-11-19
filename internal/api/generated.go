@@ -5697,10 +5697,10 @@ type PersonSummary struct {
 	GivenName string             `json:"given_name"`
 	Id        openapi_types.UUID `json:"id"`
 
-	// Living Whether the person counts as living under the living rule (ADR-008), evaluated when the request is served, as on Person.
+	// Living Whether the person counts as living under the living rule (ADR-008), evaluated when the request is served, as on Person. Set on search results and map persons only; absent on a family's partner and child summaries, where absent means not evaluated.
 	Living *bool `json:"living,omitempty"`
 
-	// Private Whether the person's record is private (ADR-008), as on Person. Omitted when it is not.
+	// Private Whether the person's record is private (ADR-008), as on Person. Omitted when it is not, and on a family's partner and child summaries, where it is not evaluated.
 	Private *bool  `json:"private,omitempty"`
 	Surname string `json:"surname"`
 }
@@ -6239,10 +6239,10 @@ type SearchResult struct {
 	GivenName string             `json:"given_name"`
 	Id        openapi_types.UUID `json:"id"`
 
-	// Living Whether the person counts as living under the living rule (ADR-008), evaluated when the request is served, as on Person.
+	// Living Whether the person counts as living under the living rule (ADR-008), evaluated when the request is served, as on Person. Set on search results and map persons only; absent on a family's partner and child summaries, where absent means not evaluated.
 	Living *bool `json:"living,omitempty"`
 
-	// Private Whether the person's record is private (ADR-008), as on Person. Omitted when it is not.
+	// Private Whether the person's record is private (ADR-008), as on Person. Omitted when it is not, and on a family's partner and child summaries, where it is not evaluated.
 	Private *bool `json:"private,omitempty"`
 
 	// Score Relevance score (0-1)
@@ -6510,9 +6510,15 @@ type SpouseInfo struct {
 	FamilyId openapi_types.UUID `json:"family_id"`
 	Id       openapi_types.UUID `json:"id"`
 
+	// Living Whether the spouse counts as living under the living rule (ADR-008), evaluated when the request is served, as on Person.
+	Living *bool `json:"living,omitempty"`
+
 	// MarriageDate Genealogical date with flexible precision
 	MarriageDate *GenDate `json:"marriage_date,omitempty"`
 	Name         string   `json:"name"`
+
+	// Private Whether the spouse's record is private (ADR-008), as on Person. Omitted when it is not.
+	Private *bool `json:"private,omitempty"`
 }
 
 // Statistics defines model for Statistics.

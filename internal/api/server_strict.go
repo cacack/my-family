@@ -4720,6 +4720,8 @@ func convertQueryDescendancyNodeToGenerated(node *query.DescendancyNode) Descend
 				Id:       s.ID,
 				FamilyId: s.FamilyID,
 				Name:     s.Name,
+				Living:   &s.Living,
+				Private:  privateFlag(s.Private),
 			}
 			if s.MarriageDate != nil {
 				spouses[i].MarriageDate = convertDomainGenDateToGenerated(s.MarriageDate)

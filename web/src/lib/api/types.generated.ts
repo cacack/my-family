@@ -3892,9 +3892,9 @@ export interface components {
             gender?: components["schemas"]["Gender"];
             birth_date?: components["schemas"]["GenDate"];
             death_date?: components["schemas"]["GenDate"];
-            /** @description Whether the person counts as living under the living rule (ADR-008), evaluated when the request is served, as on Person. */
+            /** @description Whether the person counts as living under the living rule (ADR-008), evaluated when the request is served, as on Person. Set on search results and map persons only; absent on a family's partner and child summaries, where absent means not evaluated. */
             living?: boolean;
-            /** @description Whether the person's record is private (ADR-008), as on Person. Omitted when it is not. */
+            /** @description Whether the person's record is private (ADR-008), as on Person. Omitted when it is not, and on a family's partner and child summaries, where it is not evaluated. */
             private?: boolean;
         };
         PersonList: {
@@ -4163,6 +4163,10 @@ export interface components {
             family_id: string;
             name: string;
             marriage_date?: components["schemas"]["GenDate"];
+            /** @description Whether the spouse counts as living under the living rule (ADR-008), evaluated when the request is served, as on Person. */
+            living?: boolean;
+            /** @description Whether the spouse's record is private (ADR-008), as on Person. Omitted when it is not. */
+            private?: boolean;
         };
         /**
          * @description Ahnentafel (ancestor table) report using standard genealogical numbering.
