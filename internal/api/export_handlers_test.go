@@ -27,6 +27,7 @@ import (
 func setupExportTestServer(t *testing.T) *api.Server {
 	t.Helper()
 	cfg := &config.Config{
+		AuthMode:  config.AuthModeOpen,
 		Port:      8080,
 		LogFormat: "text",
 	}
@@ -799,7 +800,7 @@ func TestGedcomExport_SurfacesAmbiguousPointerWarning(t *testing.T) {
 	if err := readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{ID: uuid.New(), GivenName: "Ann", Surname: "Doe", Notes: "@N1@"}); err != nil {
 		t.Fatal(err)
 	}
-	server := api.NewServer(&config.Config{Port: 8080, LogFormat: "text"}, eventStore, readStore, memory.NewSnapshotStore(eventStore), nil)
+	server := api.NewServer(&config.Config{Port: 8080, LogFormat: "text", AuthMode: config.AuthModeOpen}, eventStore, readStore, memory.NewSnapshotStore(eventStore), nil)
 
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/gedcom/export", http.NoBody))
@@ -843,7 +844,7 @@ func TestGedcomExport_BoundsWarningsHeader(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	server := api.NewServer(&config.Config{Port: 8080, LogFormat: "text"}, eventStore, readStore, memory.NewSnapshotStore(eventStore), nil)
+	server := api.NewServer(&config.Config{Port: 8080, LogFormat: "text", AuthMode: config.AuthModeOpen}, eventStore, readStore, memory.NewSnapshotStore(eventStore), nil)
 
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/gedcom/export", http.NoBody))

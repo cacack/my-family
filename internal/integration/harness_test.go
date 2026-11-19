@@ -110,7 +110,7 @@ func setupPostgres(t *testing.T) stores {
 // — the same construction cmd/myfamily/main.go performs.
 func newServer(t *testing.T, st stores) *api.Server {
 	t.Helper()
-	cfg := &config.Config{Port: 8080, LogFormat: "text"}
+	cfg := &config.Config{Port: 8080, LogFormat: "text", AuthMode: config.AuthModeOpen}
 	return api.NewServer(cfg, st.events, st.read, st.snapshots, nil,
 		api.WithBranchStore(st.branches))
 }

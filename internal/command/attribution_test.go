@@ -180,3 +180,63 @@ func TestAttribution_MergeKeepsTheOriginalAuthor(t *testing.T) {
 		t.Errorf("merge record = %+v, want MergedBy user-b", comparison.MergeRecord)
 	}
 }
+
+// staticUserNames is a query.UserNames over a fixed map.
+type staticUserNames map[uuid.UUID]string
+
+func (n staticUserNames) DisplayNames(_ context.Context, ids []uuid.UUID) (map[uuid.UUID]string, error) {
+	out := make(map[uuid.UUID]string)
+	for _, id := range ids {
+		if name, ok := n[id]; ok {
+			out[id] = name
+		}
+	}
+	return out, nil
+}
+
+// History entries and the merge record show the display name of the user
+// whose ID they carry (#1408).
+func TestAttribution_NamesTheUser(t *testing.T) {
+	f := newBranchFixture()
+	bg := context.Background()
+	merger := uuid.New()
+	asMerger := domain.ContextWithActor(bg, merger.String())
+
+	branch, err := f.handler.CreateBranch(bg, "theory", "")
+	if err != nil {
+		t.Fatalf("CreateBranch failed: %v", err)
+	}
+	if _, err := f.handler.WithBranch(branch).CreatePerson(asMerger, command.CreatePersonInput{GivenName: "Ada", Surname: "Lovelace"}); err != nil {
+		t.Fatalf("CreatePerson failed: %v", err)
+	}
+	if _, err := f.handler.MergeBranch(asMerger, command.MergeBranchInput{BranchID: branch.ID, Note: "proved"}); err != nil {
+		t.Fatalf("MergeBranch failed: %v", err)
+	}
+
+	history := query.NewHistoryService(f.eventStore, f.readStore)
+	history.UseUserNames(staticUserNames{merger: "Grace Hopper"})
+	comparison, err := query.NewBranchService(f.branchStore, f.eventStore, history).CompareBranch(bg, branch.ID)
+	if err != nil {
+		t.Fatalf("CompareBranch failed: %v", err)
+	}
+	if comparison.MergeRecord == nil || comparison.MergeRecord.MergedByName != "Grace Hopper" {
+		t.Errorf("merge record = %+v, want MergedByName Grace Hopper", comparison.MergeRecord)
+	}
+
+	global, err := history.GetGlobalHistory(bg, query.GetGlobalHistoryInput{Limit: 50})
+	if err != nil {
+		t.Fatalf("GetGlobalHistory failed: %v", err)
+	}
+	named := 0
+	for _, entry := range global.Entries {
+		if entry.UserID != nil && *entry.UserID == merger.String() {
+			if entry.UserName == nil || *entry.UserName != "Grace Hopper" {
+				t.Errorf("entry %s %s UserName = %v, want Grace Hopper", entry.EntityType, entry.Action, entry.UserName)
+			}
+			named++
+		}
+	}
+	if named == 0 {
+		t.Error("no history entry carries the merger's user ID")
+	}
+}

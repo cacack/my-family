@@ -36,7 +36,7 @@ func (s *losingBranchUpdateEventStore) Append(ctx context.Context, streamID uuid
 // race on PATCH /branches/{id} to 409 branch_changed (#835), with nothing
 // recorded.
 func TestUpdateBranch_ConcurrentWriteIsA409(t *testing.T) {
-	cfg := &config.Config{Port: 8080, LogFormat: "text"}
+	cfg := &config.Config{Port: 8080, LogFormat: "text", AuthMode: config.AuthModeOpen}
 	base := memory.NewEventStore()
 	events := &losingBranchUpdateEventStore{EventStore: base}
 	server := api.NewServer(cfg, events, memory.NewReadModelStore(),

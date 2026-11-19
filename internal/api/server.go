@@ -12,6 +12,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 
+	"github.com/cacack/my-family/internal/auth"
 	"github.com/cacack/my-family/internal/command"
 	"github.com/cacack/my-family/internal/config"
 	"github.com/cacack/my-family/internal/query"
@@ -90,6 +91,7 @@ type Server struct {
 	demo                *demoResetter            // nil when not in demo mode
 	branchStore         repository.BranchStore   // nil unless WithBranchStore supplied
 	settingsStore       repository.SettingsStore // nil unless WithSettingsStore supplied
+	auth                *auth.Service            // nil only in open mode
 }
 
 // NewServer creates a new API server with all dependencies.
@@ -122,11 +124,10 @@ func NewServer(
 		e.Use(middleware.Logger())
 	}
 
-	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
-		AllowOrigins: []string{"*"},
-		AllowMethods: []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodOptions},
-		AllowHeaders: []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization},
-	}))
+	// No CORS: the web UI is served from this origin, and no other origin may
+	// read the API (ADR-007). A state-changing request from another origin is
+	// refused outright.
+	e.Use(refuseCrossOrigin)
 
 	// Custom error handler
 	e.HTTPErrorHandler = customErrorHandler
@@ -142,6 +143,11 @@ func NewServer(
 	}
 	for _, opt := range opts {
 		opt(server)
+	}
+	if server.auth == nil && !cfg.OpenMode() {
+		// Fail closed: without accounts nothing could sign in, and serving
+		// unauthenticated would be open mode the operator did not choose.
+		panic("api: NewServer requires WithAuth unless AUTH_MODE is open")
 	}
 
 	// Create services. The snapshot store serves double duty on the command
@@ -190,6 +196,10 @@ func NewServer(
 		server.branchService = query.NewBranchService(server.branchStore, eventStore, historySvc)
 		server.branchHealthService = query.NewBranchHealthService(validationSvc, qualitySvc)
 	}
+	if server.auth != nil {
+		// History and merge records name who made each change (ADR-007).
+		historySvc.UseUserNames(server.auth)
+	}
 	server.validationService = validationSvc
 	server.relationshipService = relationshipSvc
 	server.noteService = noteSvc
@@ -209,6 +219,11 @@ func NewServer(
 // registerRoutes sets up all API routes.
 func (s *Server) registerRoutes() {
 	api := s.echo.Group("/api/v1")
+
+	// Resolve who is asking before any other check sees the request
+	// (ADR-007). Registered on the Echo instance, like the checks below, so it
+	// covers the generated strict routes too.
+	s.echo.Use(s.authenticate)
 
 	// Refuse a branch-scoped GEDCOM import before it reaches either import
 	// handler (#825). Registered on the Echo instance, not the group, because

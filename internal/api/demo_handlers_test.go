@@ -21,6 +21,7 @@ func setupDemoServer() *api.Server {
 
 func setupDemoServerWithSettings(settings *memory.SettingsStore) *api.Server {
 	cfg := &config.Config{
+		AuthMode: config.AuthModeOpen,
 		Port:     8080,
 		DemoMode: true,
 	}

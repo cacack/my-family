@@ -186,7 +186,7 @@ docker-smoke-test: ## Build and test Docker image
 		exit 1; \
 	fi
 	@echo "Running smoke test..."
-	@curl -sf http://localhost:8080/api/v1/persons > /dev/null || \
+	@curl -sf http://localhost:8080/api/v1/auth/status > /dev/null || \
 		(echo "ERROR: Health endpoint failed"; docker compose logs; docker compose down; exit 1)
 	@echo "Smoke test passed"
 	@docker compose down

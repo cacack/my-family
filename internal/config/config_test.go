@@ -193,3 +193,39 @@ func TestLoad_DemoMode(t *testing.T) {
 		t.Error("expected DemoMode to be true when DEMO_MODE=true")
 	}
 }
+
+func TestAuthMode(t *testing.T) {
+	tests := []struct {
+		name     string
+		authMode string
+		demo     string
+		wantOpen bool
+		wantErr  bool
+	}{
+		{name: "unset requires accounts", wantOpen: false},
+		{name: "accounts", authMode: "accounts", wantOpen: false},
+		{name: "open", authMode: "open", wantOpen: true},
+		{name: "open is case-insensitive", authMode: " OPEN ", wantOpen: true},
+		{name: "demo mode implies open", demo: "true", wantOpen: true},
+		{name: "unknown value is refused", authMode: "off", wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("AUTH_MODE", tt.authMode)
+			t.Setenv("DEMO_MODE", tt.demo)
+			cfg := Load()
+			if got := cfg.OpenMode(); got != tt.wantOpen && !tt.wantErr {
+				t.Errorf("OpenMode() = %v, want %v", got, tt.wantOpen)
+			}
+			if err := cfg.Validate(); (err != nil) != tt.wantErr {
+				t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestOpenMode_ZeroConfigFailsClosed(t *testing.T) {
+	if (&Config{}).OpenMode() {
+		t.Error("a Config built without AuthMode must require accounts")
+	}
+}

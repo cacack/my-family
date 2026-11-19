@@ -38,7 +38,7 @@ func (s *detailCountingStore) GetPersonExternalIDs(ctx context.Context, branchID
 // know a person exists check the read model directly instead of assembling a
 // full PersonDetail (#612), and still answer 404 for an unknown person.
 func TestPersonExistenceChecks_SkipDetailAssembly(t *testing.T) {
-	cfg := &config.Config{Port: 8080, LogFormat: "text"}
+	cfg := &config.Config{Port: 8080, LogFormat: "text", AuthMode: config.AuthModeOpen}
 	events := memory.NewEventStore()
 	reads := &detailCountingStore{ReadModelStore: memory.NewReadModelStore()}
 	server := api.NewServer(cfg, events, reads, memory.NewSnapshotStore(events), nil)
@@ -77,7 +77,7 @@ func TestPersonExistenceChecks_SkipDetailAssembly(t *testing.T) {
 // families themselves, so the guard counts external-ID reads, which only
 // detail assembly makes.
 func TestPersonWriteResponses_SkipDetailAssembly(t *testing.T) {
-	cfg := &config.Config{Port: 8080, LogFormat: "text"}
+	cfg := &config.Config{Port: 8080, LogFormat: "text", AuthMode: config.AuthModeOpen}
 	events := memory.NewEventStore()
 	reads := &detailCountingStore{ReadModelStore: memory.NewReadModelStore()}
 	server := api.NewServer(cfg, events, reads, memory.NewSnapshotStore(events), nil)

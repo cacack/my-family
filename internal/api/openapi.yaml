@@ -71,6 +71,15 @@ tags:
     description: Research log entries tracking searches and outcomes
   - name: proof-summaries
     description: Proof summary management (GPS-compliant proof arguments)
+  - name: auth
+    description: |
+      Accounts and sign-in (ADR-007). Every other operation needs a signed-in
+      session, sent as the `myfamily_session` cookie: without one it returns
+      401 `UNAUTHENTICATED`, and while the tree has no owner it returns 503
+      `SETUP_REQUIRED`. With `AUTH_MODE=open` (or `DEMO_MODE`) every request
+      is treated as the owner and no session is needed. A state-changing
+      request whose `Origin` is not this server's host is refused with 403
+      `FORBIDDEN`.
 
 paths:
   /persons:
@@ -5241,6 +5250,137 @@ paths:
         '400':
           $ref: '#/components/responses/BadRequest'
 
+  /auth/status:
+    get:
+      operationId: getAuthStatus
+      summary: How this server signs people in, and who is signed in
+      description: |
+        Needs no session. The web UI reads it first to choose between the
+        setup page, the sign-in page and the app.
+      tags: [auth]
+      responses:
+        '200':
+          description: The sign-in mode and the signed-in account, if any
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthStatus'
+
+  /auth/setup:
+    post:
+      operationId: setupOwner
+      summary: Create the first owner and sign them in
+      description: |
+        Only while the tree has no owner. Needs the one-time setup token the
+        server writes to its log at startup. Needs no session.
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetupRequest'
+      responses:
+        '201':
+          description: The owner was created and signed in
+          headers:
+            Set-Cookie:
+              description: The session cookie (`HttpOnly`, `SameSite=Lax`, `Secure` over TLS)
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Account'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          description: The setup token is wrong (`INVALID_SETUP_TOKEN`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Setup is already complete, or the server is in open mode
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /auth/sign-in:
+    post:
+      operationId: signIn
+      summary: Sign in with a username and password
+      description: Needs no session. Repeated failures are rate-limited.
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignInRequest'
+      responses:
+        '200':
+          description: Signed in
+          headers:
+            Set-Cookie:
+              description: The session cookie (`HttpOnly`, `SameSite=Lax`, `Secure` over TLS)
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Account'
+        '401':
+          description: The username or password is wrong (`INVALID_CREDENTIALS`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: The server is in open mode, where no one signs in
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /auth/sign-out:
+    post:
+      operationId: signOut
+      summary: Sign out, revoking the session on the server
+      tags: [auth]
+      responses:
+        '204':
+          description: Signed out
+          headers:
+            Set-Cookie:
+              description: Clears the session cookie
+              schema:
+                type: string
+
+  /auth/me:
+    get:
+      operationId: getCurrentAccount
+      summary: The signed-in account
+      tags: [auth]
+      responses:
+        '200':
+          description: The signed-in account
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Account'
+        '404':
+          description: The server is in open mode, which has no accounts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
 components:
   parameters:
     exportFormat:
@@ -5462,7 +5602,75 @@ components:
           schema:
             $ref: '#/components/schemas/Error'
 
+    RateLimited:
+      description: Too many failed attempts (`RATE_LIMITED`); try again later
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
   schemas:
+    Account:
+      type: object
+      required: [id, username, display_name]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: The user ID history entries and merge records carry
+        username:
+          type: string
+          description: The sign-in name, lowercase
+        display_name:
+          type: string
+
+    AuthStatus:
+      type: object
+      required: [mode, setup_required]
+      properties:
+        mode:
+          type: string
+          enum: [accounts, open]
+          description: |
+            `accounts`: every request needs a signed-in session. `open`: every
+            request is treated as the owner (`AUTH_MODE=open` or `DEMO_MODE`),
+            set only from the server's environment.
+        setup_required:
+          type: boolean
+          description: True while the tree has no owner; only setup is served
+        account:
+          $ref: '#/components/schemas/Account'
+
+    SetupRequest:
+      type: object
+      required: [token, username, display_name, password]
+      properties:
+        token:
+          type: string
+          description: The one-time setup token from the server log
+        username:
+          type: string
+          maxLength: 64
+          description: Letters, digits and `. _ - @`; stored lowercase
+        display_name:
+          type: string
+          maxLength: 100
+        password:
+          type: string
+          format: password
+          minLength: 8
+          maxLength: 256
+
+    SignInRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+          format: password
+
     Error:
       type: object
       required: [code, message]
@@ -6658,6 +6866,11 @@ components:
             Opaque ID of the user who made the change, not a display name;
             absent for changes made before accounts existed or in open mode.
             A change a merge replayed keeps its original author.
+        user_name:
+          type: string
+          description: |
+            Display name of the user `user_id` names; absent when there is no
+            `user_id` or that user no longer exists.
         origin:
           type: string
           enum: [main, branch]
@@ -8861,6 +9074,11 @@ components:
           description: |
             Opaque ID of the user who merged the branch, not a display name;
             absent for a merge made before accounts existed or in open mode.
+        merged_by_name:
+          type: string
+          description: |
+            Display name of the user `merged_by` names; absent when there is
+            no `merged_by` or that user no longer exists.
         recorded:
           type: boolean
           description: |

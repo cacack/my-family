@@ -17,6 +17,7 @@ import (
 func setupPedigreeTestServer(t *testing.T) *api.Server {
 	t.Helper()
 	cfg := &config.Config{
+		AuthMode:  config.AuthModeOpen,
 		Port:      8080,
 		LogFormat: "text",
 	}

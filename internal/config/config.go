@@ -2,6 +2,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
@@ -20,6 +21,42 @@ type Config struct {
 
 	// Demo mode
 	DemoMode bool // Run with pre-loaded sample data (ephemeral)
+
+	// AuthMode is AUTH_MODE as given: AuthModeAccounts (also the empty
+	// default) or AuthModeOpen. Read it through OpenMode; Validate rejects
+	// anything else.
+	AuthMode AuthMode
+}
+
+// AuthMode says whether requests must sign in (ADR-007).
+type AuthMode string
+
+// The AUTH_MODE values.
+const (
+	// AuthModeAccounts requires a signed-in user for every request. It is the
+	// default, and the empty value means it too, so a Config built without
+	// one fails closed.
+	AuthModeAccounts AuthMode = "accounts"
+	// AuthModeOpen treats every request as the owner, with no sign-in: for a
+	// trusted network, demo mode and end-to-end tests. Only the environment
+	// can set it, never the UI.
+	AuthModeOpen AuthMode = "open"
+)
+
+// OpenMode reports whether every request is treated as the owner without
+// signing in: AUTH_MODE=open, or DEMO_MODE, which implies it.
+func (c *Config) OpenMode() bool {
+	return c.AuthMode == AuthModeOpen || c.DemoMode
+}
+
+// Validate reports a setting the server must not start with.
+func (c *Config) Validate() error {
+	switch c.AuthMode {
+	case "", AuthModeAccounts, AuthModeOpen:
+		return nil
+	default:
+		return fmt.Errorf("AUTH_MODE must be %q or %q, got %q", AuthModeAccounts, AuthModeOpen, c.AuthMode)
+	}
 }
 
 // Load reads configuration from environment variables.
@@ -31,6 +68,7 @@ func Load() *Config {
 		LogLevel:    getEnvOrDefault("LOG_LEVEL", "info"),
 		LogFormat:   getEnvOrDefault("LOG_FORMAT", "text"),
 		DemoMode:    getEnvBoolOrDefault("DEMO_MODE", false),
+		AuthMode:    AuthMode(strings.ToLower(strings.TrimSpace(os.Getenv("AUTH_MODE")))),
 	}
 	return cfg
 }
