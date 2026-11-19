@@ -135,9 +135,9 @@ section 6.
 A person is **living** unless one of these holds, evaluated on the person's current read-model
 state in the branch being viewed:
 
-1. a death or burial event exists that is not negated, with or without a date; or
-2. the birth date, or the christening date when there is no birth date, is more than **N** years
-   before today. N defaults to **110** and is a tree setting.
+1. a death, burial or cremation event exists that is not negated, with or without a date; or
+2. the birth date, or the christening or baptism date when there is no birth date, is more than
+   **N** years before today. N defaults to **110** and is a tree setting.
 
 A person with no qualifying dates at all is living. For date ranges and approximations the
 comparison uses the latest date the value allows (`BET 1900 AND 1920` → 1920, `BEF 1900` → 1900);
@@ -174,8 +174,8 @@ round-trip but do not drive visibility yet.
 ### 3. Placeholder
 
 A **protected person** is shown as a placeholder: same ID, same family links, given name
-"Living", no surname, and a `redacted` marker the UI uses to render it without links to edit or
-detail. Hidden: names and name variants, dates, places, events, attributes, notes, media,
+"Living", no surname, its sex (so charts lay out and relationship labels read "grandson"), and
+a `redacted` marker the UI uses to render it without links to edit or detail. Hidden: names and name variants, dates, places, events, attributes, notes, media,
 citations, associations, LDS ordinances, external IDs, quality scores and the evidence records
 whose subject is the person.
 
@@ -186,6 +186,8 @@ whose subject is the person.
 - A family with a protected partner keeps its structure; its own facts (marriage date and place,
   family events, notes, media) are hidden.
 - An association, citation or evidence record that attaches to a protected person is hidden.
+- A shared note is hidden from a principal when every record that refers to it is protected or
+  private for that principal.
 - **Private** records other than people are omitted: absent from lists, 404 on direct fetch. A
   private person is hidden the same way, except where a chart or family needs the slot, where it
   is the placeholder.
@@ -202,6 +204,14 @@ Rejected: "Living Smith" (3B) and omitting people (3A).
 | Viewer | Shown (default); placeholder when the owner turns off "viewers see living" | Hidden |
 | Editor | Shown | Shown |
 | Owner | Shown | Shown |
+
+Two kinds of record outside the person rules:
+
+- **Submitters** hold a living researcher's name, address and contact details and have no
+  restriction field. They are hidden from anonymous principals and shown to viewers and up.
+- **Change attribution** (`user_id` on history entries, `merged_by` on merge records, #1407) is
+  account data showing who edited what and when. It is removed for anonymous principals by
+  whichever choke point serves the surface; viewers and up see it.
 
 Open mode (`AUTH_MODE=open`, ADR-007) maps to owner. A context carrying no principal is treated
 as anonymous, so a missing principal fails safe.
@@ -391,9 +401,9 @@ decorator, b = event-output redactor, — = no tree data. "Protected" means a pl
 
 | Operation | Path | Returns | Source | Choke | Special handling |
 |-----------|------|---------|--------|-------|------------------|
-| listNotes | GET /notes | Shared notes | RM | a | Private excluded in the query; see [Open Questions](#open-questions) |
+| listNotes | GET /notes | Shared notes | RM | a | Private excluded in the query; a shared note is hidden when every record referring to it is protected or private (§3) |
 | getNote | GET /notes/{id} | Note | RM | a | Private → 404 |
-| listSubmitters | GET /submitters | Submitters (name, address, contact) | RM | a | Living researchers' contact details; see [Open Questions](#open-questions) |
+| listSubmitters | GET /submitters | Submitters (name, address, contact) | RM | a | Living researchers' contact details: hidden from anonymous, shown to viewers and up (§4) |
 | getSubmitter | GET /submitters/{id} | Submitter | RM | a | As listSubmitters |
 | listRepositories | GET /repositories | Archives and libraries | RM | a | No person data; no restriction field |
 | getRepository | GET /repositories/{id} | Repository | RM | a | As listRepositories |
@@ -455,7 +465,7 @@ decorator, b = event-output redactor, — = no tree data. "Protected" means a pl
 
 | Operation | Path | Returns | Source | Choke | Special handling |
 |-----------|------|---------|--------|-------|------------------|
-| listHistory | GET /history | Global change log | EL | b | Entries for protected or private entities dropped; names blanked |
+| listHistory | GET /history | Global change log | EL | b | Entries for protected or private entities dropped; names blanked; `user_id` removed for anonymous (§4) |
 | listSnapshots | GET /snapshots | Snapshot names and positions | snapshot registry | — | Editor-written free text, not redacted |
 | getSnapshot | GET /snapshots/{id} | Snapshot | snapshot registry | — | As listSnapshots |
 | compareSnapshotToCurrent | GET /snapshots/{id}/compare-current | Change entries | EL | b | As listHistory |
@@ -468,7 +478,7 @@ decorator, b = event-output redactor, — = no tree data. "Protected" means a pl
 | listBranches | GET /branches | Branch metadata, drift counts, linked proof summaries | branch store + RM | a | Linked proof summaries redacted by the decorator; names and descriptions are free text |
 | getBranch | GET /branches/{id} | As above | branch store + RM | a | As listBranches |
 | getBranchDrift | GET /branches/{id}/drift | Event counts | EL (counts) | — | No record content |
-| compareBranch | GET /branches/{id}/compare | Branch and main change entries | EL | b | Protected if protected on either side |
+| compareBranch | GET /branches/{id}/compare | Branch and main change entries, and the merge record of a merged branch | EL | b | Protected if protected on either side; `user_id` and `merged_by` removed for anonymous (§4) |
 | getBranchResearch | GET /branches/{id}/research | Research archive rebuilt from branch events | EL | b | Overlay may be purged: unresolved subjects treated as protected |
 | getBranchEvidenceCoverage | GET /branches/{id}/evidence-coverage | Changed facts without evidence | EL + RM | b | As compareBranch |
 | getBranchHealth | GET /branches/{id}/health | Validation and quality on the branch overlay | RM | a | As getValidationIssues |
@@ -494,22 +504,6 @@ decorator, b = event-output redactor, — = no tree data. "Protected" means a pl
 | (not in spec) | POST /gedcom/import/stream | Import progress | — | — | Owner-only; must get a role declaration under ADR-007 |
 | (not in spec) | GET /health, GET /config, GET /openapi.yaml, GET /docs | Server status, config flags, API description | none | — | No tree data |
 | (not in spec) | POST /demo/reset | Re-seeds demo data | — | — | Demo mode is open mode |
-
-## Open Questions
-
-For the maintainer to settle before or during #1412:
-
-- **Shared notes.** A shared note referenced by a protected person may describe them. Proposed:
-  hide a shared note from a principal when every record referencing it is protected or private.
-- **Submitters.** Submitter records hold a living researcher's name, address and contact details
-  and have no restriction field. Proposed: hidden from anonymous; shown to viewers.
-- **Placeholder sex.** Section 3 does not list sex as hidden. Keeping it lets charts lay out and
-  relationship labels read "grandson"; hiding it is safer. Proposed: keep.
-- **Other evidence of death or birth.** Whether cremation counts with death and burial, and
-  baptism with christening. Proposed: yes to both.
-- **Change attribution.** History entries carry `user_id` and merge records `merged_by` (#1407):
-  account identifiers, not tree data, that show who edited what and when. Proposed: the
-  event-output redactor removes them for anonymous principals; viewers and up see them.
 
 ## References
 
