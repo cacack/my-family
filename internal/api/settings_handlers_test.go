@@ -20,7 +20,7 @@ import (
 
 func setupSettingsServer(settings repository.SettingsStore) *api.Server {
 	eventStore := memory.NewEventStore()
-	return api.NewServer(&config.Config{Port: 8080, LogFormat: "text"}, eventStore,
+	return api.NewServer(&config.Config{Port: 8080, LogFormat: "text", AuthMode: config.AuthModeOpen}, eventStore,
 		memory.NewReadModelStore(), memory.NewSnapshotStore(eventStore), nil, api.WithSettingsStore(settings))
 }
 
@@ -153,7 +153,7 @@ func TestHomePerson_StoreErrors(t *testing.T) {
 
 func setupMergeSettingsServer(settings repository.SettingsStore) *api.Server {
 	eventStore := memory.NewEventStore()
-	return api.NewServer(&config.Config{Port: 8080, LogFormat: "text"}, eventStore,
+	return api.NewServer(&config.Config{Port: 8080, LogFormat: "text", AuthMode: config.AuthModeOpen}, eventStore,
 		memory.NewReadModelStore(), memory.NewSnapshotStore(eventStore), nil,
 		api.WithBranchStore(memory.NewBranchStore()), api.WithSettingsStore(settings))
 }
