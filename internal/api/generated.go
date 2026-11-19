@@ -4132,6 +4132,16 @@ type GroupSheetPerson struct {
 	Surname    string  `json:"surname"`
 }
 
+// HomePerson The site's home person ("me"); `person` is absent when none is set
+type HomePerson struct {
+	Person *Person `json:"person,omitempty"`
+}
+
+// HomePersonUpdate defines model for HomePersonUpdate.
+type HomePersonUpdate struct {
+	PersonId openapi_types.UUID `json:"person_id"`
+}
+
 // ImportError defines model for ImportError.
 type ImportError struct {
 	Line    int     `json:"line"`
@@ -6294,6 +6304,9 @@ type Conflict = Error
 // NotFound defines model for NotFound.
 type NotFound = Error
 
+// SettingsUnavailable defines model for SettingsUnavailable.
+type SettingsUnavailable = Error
+
 // GetAhnentafelParams defines parameters for GetAhnentafel.
 type GetAhnentafelParams struct {
 	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
@@ -8049,6 +8062,9 @@ type CreateResearchLogJSONRequestBody = ResearchLogCreate
 // UpdateResearchLogJSONRequestBody defines body for UpdateResearchLog for application/json ContentType.
 type UpdateResearchLogJSONRequestBody = ResearchLogUpdate
 
+// SetHomePersonJSONRequestBody defines body for SetHomePerson for application/json ContentType.
+type SetHomePersonJSONRequestBody = HomePersonUpdate
+
 // CreateSnapshotJSONRequestBody defines body for CreateSnapshot for application/json ContentType.
 type CreateSnapshotJSONRequestBody = SnapshotCreate
 
@@ -8489,6 +8505,15 @@ type ServerInterface interface {
 	// SearchPersons Search for persons
 	// (GET /search)
 	SearchPersons(ctx echo.Context, params SearchPersonsParams) error
+	// ClearHomePerson Clear the home person
+	// (DELETE /settings/home-person)
+	ClearHomePerson(ctx echo.Context) error
+	// GetHomePerson Get the home person
+	// (GET /settings/home-person)
+	GetHomePerson(ctx echo.Context) error
+	// SetHomePerson Set the home person
+	// (PUT /settings/home-person)
+	SetHomePerson(ctx echo.Context) error
 	// ListSnapshots List the snapshots of the mainline or a branch
 	// (GET /snapshots)
 	ListSnapshots(ctx echo.Context, params ListSnapshotsParams) error
@@ -12174,6 +12199,33 @@ func (w *ServerInterfaceWrapper) SearchPersons(ctx echo.Context) error {
 	return err
 }
 
+// ClearHomePerson converts echo context to params.
+func (w *ServerInterfaceWrapper) ClearHomePerson(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.ClearHomePerson(ctx)
+	return err
+}
+
+// GetHomePerson converts echo context to params.
+func (w *ServerInterfaceWrapper) GetHomePerson(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.GetHomePerson(ctx)
+	return err
+}
+
+// SetHomePerson converts echo context to params.
+func (w *ServerInterfaceWrapper) SetHomePerson(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.SetHomePerson(ctx)
+	return err
+}
+
 // ListSnapshots converts echo context to params.
 func (w *ServerInterfaceWrapper) ListSnapshots(ctx echo.Context) error {
 	var err error
@@ -12904,6 +12956,9 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 	router.GET(options.BaseURL+"/branches/:id/evidence-coverage", wrapper.GetBranchEvidenceCoverage, options.OperationMiddlewares["getBranchEvidenceCoverage"]...)
 	router.GET(options.BaseURL+"/branches/:id/health", wrapper.GetBranchHealth, options.OperationMiddlewares["getBranchHealth"]...)
 	router.GET(options.BaseURL+"/relationship/:personId1/:personId2", wrapper.GetRelationship, options.OperationMiddlewares["getRelationship"]...)
+	router.DELETE(options.BaseURL+"/settings/home-person", wrapper.ClearHomePerson, options.OperationMiddlewares["clearHomePerson"]...)
+	router.GET(options.BaseURL+"/settings/home-person", wrapper.GetHomePerson, options.OperationMiddlewares["getHomePerson"]...)
+	router.PUT(options.BaseURL+"/settings/home-person", wrapper.SetHomePerson, options.OperationMiddlewares["setHomePerson"]...)
 	router.GET(options.BaseURL+"/notes", wrapper.ListNotes, options.OperationMiddlewares["listNotes"]...)
 	router.POST(options.BaseURL+"/notes", wrapper.CreateNote, options.OperationMiddlewares["createNote"]...)
 	router.DELETE(options.BaseURL+"/notes/:id", wrapper.DeleteNote, options.OperationMiddlewares["deleteNote"]...)
@@ -12964,6 +13019,8 @@ type BranchesUnavailableJSONResponse Error
 type ConflictJSONResponse Error
 
 type NotFoundJSONResponse Error
+
+type SettingsUnavailableJSONResponse Error
 
 type GetAhnentafelRequestObject struct {
 	Id     PersonId `json:"id"`
@@ -19479,6 +19536,140 @@ func (response SearchPersons400JSONResponse) VisitSearchPersonsResponse(w http.R
 	return err
 }
 
+type ClearHomePersonRequestObject struct {
+}
+
+type ClearHomePersonResponseObject interface {
+	VisitClearHomePersonResponse(w http.ResponseWriter) error
+}
+
+type ClearHomePerson204Response struct {
+}
+
+func (response ClearHomePerson204Response) VisitClearHomePersonResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type ClearHomePerson503JSONResponse struct {
+	SettingsUnavailableJSONResponse
+}
+
+func (response ClearHomePerson503JSONResponse) VisitClearHomePersonResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetHomePersonRequestObject struct {
+}
+
+type GetHomePersonResponseObject interface {
+	VisitGetHomePersonResponse(w http.ResponseWriter) error
+}
+
+type GetHomePerson200JSONResponse HomePerson
+
+func (response GetHomePerson200JSONResponse) VisitGetHomePersonResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetHomePerson503JSONResponse struct {
+	SettingsUnavailableJSONResponse
+}
+
+func (response GetHomePerson503JSONResponse) VisitGetHomePersonResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetHomePersonRequestObject struct {
+	Body *SetHomePersonJSONRequestBody
+}
+
+type SetHomePersonResponseObject interface {
+	VisitSetHomePersonResponse(w http.ResponseWriter) error
+}
+
+type SetHomePerson200JSONResponse HomePerson
+
+func (response SetHomePerson200JSONResponse) VisitSetHomePersonResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetHomePerson400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response SetHomePerson400JSONResponse) VisitSetHomePersonResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetHomePerson404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response SetHomePerson404JSONResponse) VisitSetHomePersonResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetHomePerson503JSONResponse struct {
+	SettingsUnavailableJSONResponse
+}
+
+func (response SetHomePerson503JSONResponse) VisitSetHomePersonResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListSnapshotsRequestObject struct {
 	Params ListSnapshotsParams
 }
@@ -20916,6 +21107,15 @@ type StrictServerInterface interface {
 	// SearchPersons Search for persons
 	// (GET /search)
 	SearchPersons(ctx context.Context, request SearchPersonsRequestObject) (SearchPersonsResponseObject, error)
+	// ClearHomePerson Clear the home person
+	// (DELETE /settings/home-person)
+	ClearHomePerson(ctx context.Context, request ClearHomePersonRequestObject) (ClearHomePersonResponseObject, error)
+	// GetHomePerson Get the home person
+	// (GET /settings/home-person)
+	GetHomePerson(ctx context.Context, request GetHomePersonRequestObject) (GetHomePersonResponseObject, error)
+	// SetHomePerson Set the home person
+	// (PUT /settings/home-person)
+	SetHomePerson(ctx context.Context, request SetHomePersonRequestObject) (SetHomePersonResponseObject, error)
 	// ListSnapshots List the snapshots of the mainline or a branch
 	// (GET /snapshots)
 	ListSnapshots(ctx context.Context, request ListSnapshotsRequestObject) (ListSnapshotsResponseObject, error)
@@ -25516,6 +25716,98 @@ func (sh *strictHandler) SearchPersons(ctx echo.Context, params SearchPersonsPar
 		return err
 	} else if validResponse, ok := response.(SearchPersonsResponseObject); ok {
 		return validResponse.VisitSearchPersonsResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// ClearHomePerson operation middleware
+func (sh *strictHandler) ClearHomePerson(ctx echo.Context) error {
+	var request ClearHomePersonRequestObject
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.ClearHomePerson(ctx.Request().Context(), request.(ClearHomePersonRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ClearHomePerson")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(ClearHomePersonResponseObject); ok {
+		return validResponse.VisitClearHomePersonResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// GetHomePerson operation middleware
+func (sh *strictHandler) GetHomePerson(ctx echo.Context) error {
+	var request GetHomePersonRequestObject
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.GetHomePerson(ctx.Request().Context(), request.(GetHomePersonRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetHomePerson")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(GetHomePersonResponseObject); ok {
+		return validResponse.VisitGetHomePersonResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// SetHomePerson operation middleware
+func (sh *strictHandler) SetHomePerson(ctx echo.Context) error {
+	var request SetHomePersonRequestObject
+
+	var body SetHomePersonJSONRequestBody
+	var err error
+	if binder, ok := ctx.Echo().Binder.(*echo.DefaultBinder); ok {
+		// A request validator built on kin-openapi's openapi3filter with
+		// KeepValidatedValue leaves the value it validated on the body. Bind
+		// that value, matching member names exactly, so the handler receives
+		// what was validated instead of a second, case-insensitive decode.
+		// Otherwise bind only the request body, so that path and query
+		// parameters are not also bound into the body struct.
+		if vb, ok := ctx.Request().Body.(interface{ ValidatedValue() any }); !ok || runtime.BindJSONValue(vb.ValidatedValue(), &body) != nil {
+			err = binder.BindBody(ctx, &body)
+		}
+	} else {
+		// A custom binder is installed on the Echo instance; defer to it
+		// entirely, since echo.Binder does not expose body-only binding and
+		// the binder may do more than decode (for example call ctx.Validate).
+		err = ctx.Bind(&body)
+	}
+	if err != nil {
+		return err
+	}
+	request.Body = &body
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.SetHomePerson(ctx.Request().Context(), request.(SetHomePersonRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetHomePerson")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(SetHomePersonResponseObject); ok {
+		return validResponse.VisitSetHomePersonResponse(ctx.Response())
 	} else if response != nil {
 		return fmt.Errorf("unexpected response type: %T", response)
 	}

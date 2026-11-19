@@ -2441,6 +2441,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/settings/home-person": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the home person
+         * @description Returns the person marked as "me", the one every person page states a
+         *     relationship to and charts start from by default. It is one site-wide
+         *     setting until accounts exist (#1408), when it becomes a value of each
+         *     account. `person` is absent when none is set, or when the marked
+         *     person no longer exists on the mainline.
+         */
+        get: operations["getHomePerson"];
+        /**
+         * Set the home person
+         * @description Marks a mainline person as "me", replacing any earlier choice.
+         */
+        put: operations["setHomePerson"];
+        post?: never;
+        /**
+         * Clear the home person
+         * @description Unmarks the home person. Clearing when none is set succeeds.
+         */
+        delete: operations["clearHomePerson"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/notes": {
         parameters: {
             query?: never;
@@ -5843,6 +5875,14 @@ export interface components {
             /** @description Human-readable relationship summary */
             summary?: string;
         };
+        /** @description The site's home person ("me"); `person` is absent when none is set */
+        HomePerson: {
+            person?: components["schemas"]["Person"];
+        };
+        HomePersonUpdate: {
+            /** Format: uuid */
+            person_id: string;
+        };
         /** @description A shared GEDCOM NOTE record that can be referenced by multiple entities */
         Note: {
             /** Format: uuid */
@@ -6557,6 +6597,15 @@ export interface components {
         };
         /** @description Branch registry is not configured on this server */
         BranchesUnavailable: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description Settings store is not configured on this server */
+        SettingsUnavailable: {
             headers: {
                 [name: string]: unknown;
             };
@@ -10785,6 +10834,73 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+        };
+    };
+    getHomePerson: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The home person, if any */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HomePerson"];
+                };
+            };
+            503: components["responses"]["SettingsUnavailable"];
+        };
+    };
+    setHomePerson: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HomePersonUpdate"];
+            };
+        };
+        responses: {
+            /** @description The new home person */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HomePerson"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            404: components["responses"]["NotFound"];
+            503: components["responses"]["SettingsUnavailable"];
+        };
+    };
+    clearHomePerson: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Home person cleared */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            503: components["responses"]["SettingsUnavailable"];
         };
     };
     listNotes: {

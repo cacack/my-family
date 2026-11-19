@@ -85,8 +85,9 @@ type Server struct {
 	exportService       *query.ExportService
 	evidenceService     *query.EvidenceQueryService
 	frontendFS          fs.FS
-	demo                *demoResetter          // nil when not in demo mode
-	branchStore         repository.BranchStore // nil unless WithBranchStore supplied
+	demo                *demoResetter            // nil when not in demo mode
+	branchStore         repository.BranchStore   // nil unless WithBranchStore supplied
+	settingsStore       repository.SettingsStore // nil unless WithSettingsStore supplied
 }
 
 // NewServer creates a new API server with all dependencies.

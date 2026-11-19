@@ -120,7 +120,7 @@ func runServer() error {
 	}
 
 	// Build server options
-	serverOpts := []api.ServerOption{api.WithBranchStore(stores.Branches)}
+	serverOpts := []api.ServerOption{api.WithBranchStore(stores.Branches), api.WithSettingsStore(stores.Settings)}
 	if cfg.DemoMode {
 		mem := stores.Memory
 		serverOpts = append(serverOpts, api.WithDemoReset(mem.Events, mem.ReadModel, mem.Snapshots, mem.Branches))
