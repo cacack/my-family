@@ -41,7 +41,9 @@ const (
 )
 
 // Sign-in rate limits: failures within limitWindow per username and per
-// client address. A refused attempt is not checked, so it costs no hash.
+// client address. A refused attempt is not checked, so it costs no hash. An
+// attempt is counted before its hash is checked, which also caps how many
+// checks one client can have running at once.
 const (
 	limitWindow          = 15 * time.Minute
 	maxFailuresPerName   = 5
@@ -130,7 +132,8 @@ func validateAccount(username, displayName, password string) error {
 }
 
 // CreateOwner creates an owner account of the tree. It is what setup and
-// `myfamily user create` share; it signs no one in.
+// `myfamily user create` share; it signs no one in. It does no setup gating:
+// each call adds another owner, which is how the CLI adds one after setup.
 func (s *Service) CreateOwner(ctx context.Context, username, displayName, password string) (*repository.User, error) {
 	username = NormalizeUsername(username)
 	displayName = strings.TrimSpace(displayName)
@@ -198,11 +201,13 @@ func (s *Service) SetupToken(ctx context.Context) (string, error) {
 
 // CompleteSetup creates the first owner with the server's setup token and
 // signs them in, returning the session token. clientKey identifies the
-// caller for rate limiting (its address).
+// caller for rate limiting (its address). The token must already have been
+// issued by SetupToken (the server does so at startup); until then every
+// attempt is ErrInvalidSetupToken.
 func (s *Service) CompleteSetup(ctx context.Context, token, username, displayName, password, clientKey string) (*repository.User, string, error) {
 	now := s.now()
 	limitKey := "setup:" + clientKey
-	if s.limiter.blocked(limitKey, maxFailuresPerClient, now) {
+	if !s.limiter.acquire(now, limit{limitKey, maxFailuresPerClient}) {
 		return nil, "", ErrRateLimited
 	}
 
@@ -210,15 +215,17 @@ func (s *Service) CompleteSetup(ctx context.Context, token, username, displayNam
 	defer s.setupMu.Unlock()
 	required, err := s.SetupRequired(ctx)
 	if err != nil {
+		s.limiter.release(now, limitKey)
 		return nil, "", err
 	}
 	if !required {
+		s.limiter.release(now, limitKey)
 		return nil, "", ErrSetupDone
 	}
 	if s.setupToken == "" || subtle.ConstantTimeCompare([]byte(strings.TrimSpace(token)), []byte(s.setupToken)) != 1 {
-		s.limiter.fail(now, limitKey)
-		return nil, "", ErrInvalidSetupToken
+		return nil, "", ErrInvalidSetupToken // stays counted as a failure
 	}
+	s.limiter.release(now, limitKey)
 	user, err := s.CreateOwner(ctx, username, displayName, password)
 	if err != nil {
 		return nil, "", err
@@ -237,12 +244,13 @@ func (s *Service) SignIn(ctx context.Context, username, password, clientKey stri
 	now := s.now()
 	username = NormalizeUsername(username)
 	nameKey, clientLimitKey := "name:"+username, "client:"+clientKey
-	if s.limiter.blocked(nameKey, maxFailuresPerName, now) || s.limiter.blocked(clientLimitKey, maxFailuresPerClient, now) {
+	if !s.limiter.acquire(now, limit{nameKey, maxFailuresPerName}, limit{clientLimitKey, maxFailuresPerClient}) {
 		return nil, "", ErrRateLimited
 	}
 
 	user, err := s.store.GetUserByUsername(ctx, username)
 	if err != nil && !errors.Is(err, repository.ErrUserNotFound) {
+		s.limiter.release(now, nameKey, clientLimitKey)
 		return nil, "", fmt.Errorf("sign in: %w", err)
 	}
 	hash := s.dummyPasswordHash()
@@ -256,9 +264,9 @@ func (s *Service) SignIn(ctx context.Context, username, password, clientKey stri
 		slog.Error("auth: stored password hash does not parse", "user_id", user.ID, "error", verifyErr)
 	}
 	if user == nil || !ok {
-		s.limiter.fail(now, nameKey, clientLimitKey)
-		return nil, "", ErrInvalidCredentials
+		return nil, "", ErrInvalidCredentials // stays counted as a failure
 	}
+	s.limiter.release(now, clientLimitKey)
 	s.limiter.reset(nameKey)
 
 	if _, err := s.store.DeleteExpiredSessions(ctx, now.Add(-IdleTimeout), now.Add(-AbsoluteTimeout)); err != nil {

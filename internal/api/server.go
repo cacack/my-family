@@ -94,7 +94,9 @@ type Server struct {
 	auth                *auth.Service            // nil only in open mode
 }
 
-// NewServer creates a new API server with all dependencies.
+// NewServer creates a new API server with all dependencies. Unless
+// cfg.OpenMode() is true (AUTH_MODE=open or DEMO_MODE), opts must include
+// WithAuth; a zero AuthMode means accounts, so NewServer panics without it.
 func NewServer(
 	cfg *config.Config,
 	eventStore repository.EventStore,
@@ -147,7 +149,7 @@ func NewServer(
 	if server.auth == nil && !cfg.OpenMode() {
 		// Fail closed: without accounts nothing could sign in, and serving
 		// unauthenticated would be open mode the operator did not choose.
-		panic("api: NewServer requires WithAuth unless AUTH_MODE is open")
+		panic("api: NewServer requires WithAuth unless cfg.OpenMode() (set AuthMode to config.AuthModeOpen or pass WithAuth)")
 	}
 
 	// Create services. The snapshot store serves double duty on the command

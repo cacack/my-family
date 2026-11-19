@@ -126,8 +126,11 @@ echo "$PASSWORD" | myfamily user create --username ada                # or reads
 Sessions last 7 days without use and 30 days at most; signing out ends the session on the server.
 The session cookie is `HttpOnly` and `SameSite=Lax`, and `Secure` when the request arrived over
 TLS (directly, or through a proxy that sets `X-Forwarded-Proto: https`). Repeated failed sign-ins
-are refused for 15 minutes. The API accepts no cross-origin browser requests: a write whose
-`Origin` is not the server's host (or the `X-Forwarded-Host` a proxy sets) is refused.
+are refused for 15 minutes: 5 per username, from anyone, and 20 per client address. So anyone who
+can reach the server can keep a known username locked out, and behind a reverse proxy every client
+shares the proxy's address and so the per-client limit. The API accepts no cross-origin browser
+requests: a write whose `Origin` is not the server's host is refused, so a proxy must pass the
+original `Host` through or set `X-Forwarded-Host`.
 
 `AUTH_MODE=open` skips sign-in and treats every request as the owner, for a trusted home network,
 demo mode and end-to-end tests. It can only be set in the environment, never from the UI, the

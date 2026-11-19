@@ -298,6 +298,51 @@ func TestSignIn_RateLimited(t *testing.T) {
 	}
 }
 
+func TestSignIn_RateLimitHoldsUnderParallelAttempts(t *testing.T) {
+	svc, _, _ := newTestService(t)
+	ctx := context.Background()
+	if _, err := svc.CreateOwner(ctx, "ada", "Ada", testPassword); err != nil {
+		t.Fatalf("CreateOwner: %v", err)
+	}
+	const attempts = 4 * maxFailuresPerName
+	var wg sync.WaitGroup
+	errs := make(chan error, attempts)
+	for i := range attempts {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, _, err := svc.SignIn(ctx, "ada", "wrong password", "ip-"+string(rune('a'+i)))
+			errs <- err
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	checked := 0
+	for err := range errs {
+		if errors.Is(err, ErrInvalidCredentials) {
+			checked++
+		} else if !errors.Is(err, ErrRateLimited) {
+			t.Errorf("parallel sign-in: err = %v", err)
+		}
+	}
+	if checked != maxFailuresPerName {
+		t.Errorf("%d parallel guesses were checked, want %d", checked, maxFailuresPerName)
+	}
+}
+
+func TestSignIn_SuccessDoesNotCountAgainstClient(t *testing.T) {
+	svc, _, _ := newTestService(t)
+	ctx := context.Background()
+	if _, err := svc.CreateOwner(ctx, "ada", "Ada", testPassword); err != nil {
+		t.Fatalf("CreateOwner: %v", err)
+	}
+	for range maxFailuresPerClient + 1 {
+		if _, _, err := svc.SignIn(ctx, "ada", testPassword, "ip-1"); err != nil {
+			t.Fatalf("sign-in: %v", err)
+		}
+	}
+}
+
 func TestAuthenticate_Expiry(t *testing.T) {
 	tests := []struct {
 		name   string

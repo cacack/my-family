@@ -10,9 +10,16 @@ import (
 // which is acceptable for slowing down guessing, and a server instance is
 // the only one answering its sign-ins.
 type limiter struct {
-	mu       sync.Mutex
-	window   time.Duration
-	failures map[string][]time.Time
+	mu        sync.Mutex
+	window    time.Duration
+	failures  map[string][]time.Time
+	lastSweep time.Time
+}
+
+// limit is a key and the failures within the window that block it.
+type limit struct {
+	key string
+	max int
 }
 
 func newLimiter(window time.Duration) *limiter {
@@ -36,23 +43,51 @@ func (l *limiter) recent(key string, now time.Time) []time.Time {
 	return kept
 }
 
-// blocked reports whether key has failed max or more times within the window.
-func (l *limiter) blocked(key string, maxFailures int, now time.Time) bool {
+// acquire admits an attempt unless one of limits is already at its max, and
+// counts the admitted attempt as a failure against every limit until release
+// withdraws it. Checking and counting under one lock means a burst of parallel
+// attempts cannot all pass the check before any of them is counted.
+func (l *limiter) acquire(now time.Time, limits ...limit) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	return len(l.recent(key, now)) >= maxFailures
+	// Sweep keys whose failures have all expired, at most once a window, so
+	// the map does not grow with every name ever tried and a failure does not
+	// cost a pass over every key.
+	if now.Sub(l.lastSweep) >= l.window {
+		for key := range l.failures {
+			l.recent(key, now)
+		}
+		l.lastSweep = now
+	}
+	for _, lim := range limits {
+		if len(l.recent(lim.key, now)) >= lim.max {
+			return false
+		}
+	}
+	for _, lim := range limits {
+		l.failures[lim.key] = append(l.failures[lim.key], now)
+	}
+	return true
 }
 
-// fail records a failure for each of keys. It also sweeps keys whose failures
-// have all expired, so the map does not grow with every name ever tried.
-func (l *limiter) fail(now time.Time, keys ...string) {
+// release withdraws an attempt acquire counted at now, for an attempt that
+// succeeded.
+func (l *limiter) release(now time.Time, keys ...string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	for key := range l.failures {
-		l.recent(key, now)
-	}
 	for _, key := range keys {
-		l.failures[key] = append(l.failures[key], now)
+		failures := l.failures[key]
+		for i := len(failures) - 1; i >= 0; i-- {
+			if failures[i].Equal(now) {
+				failures = append(failures[:i], failures[i+1:]...)
+				break
+			}
+		}
+		if len(failures) == 0 {
+			delete(l.failures, key)
+		} else {
+			l.failures[key] = failures
+		}
 	}
 }
 
