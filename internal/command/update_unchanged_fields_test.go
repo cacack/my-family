@@ -69,6 +69,10 @@ func TestUpdatePerson_RecordsOnlyChangedFields(t *testing.T) {
 		{"unchanged form", func(*command.UpdatePersonInput) {}, nil},
 		{"birth place only", func(in *command.UpdatePersonInput) { in.BirthPlace = command.Set("Boston") }, []string{"birth_place"}},
 		{"birth date only", func(in *command.UpdatePersonInput) { in.BirthDate = command.Set("1876") }, []string{"birth_date"}},
+		{"living override", func(in *command.UpdatePersonInput) { in.LivingOverride = command.Set("deceased") }, []string{"living_override"}},
+		{"auto when auto", func(in *command.UpdatePersonInput) { in.LivingOverride = command.Set("auto") }, nil},
+		{"override cleared when auto", func(in *command.UpdatePersonInput) { in.LivingOverride = command.Clear[string]() }, nil},
+		{"marked private", func(in *command.UpdatePersonInput) { in.Private = ptr(true) }, []string{"restriction"}},
 		{"gender and status", func(in *command.UpdatePersonInput) {
 			in.Gender = command.Set("male")
 			in.ResearchStatus = command.Set("certain")
@@ -109,6 +113,7 @@ func TestUpdateFamily_RecordsOnlyChangedFields(t *testing.T) {
 	}{
 		{"unchanged form", func(*command.UpdateFamilyInput, *familyFixture) {}, nil},
 		{"marriage place only", func(in *command.UpdateFamilyInput, _ *familyFixture) { in.MarriagePlace = command.Set("York") }, []string{"marriage_place"}},
+		{"marked private", func(in *command.UpdateFamilyInput, _ *familyFixture) { in.Private = ptr(true) }, []string{"restriction"}},
 		{"partner only", func(in *command.UpdateFamilyInput, f *familyFixture) { in.Partner2ID = command.Set(f.p3) }, []string{"partner2_id"}},
 		{"type and date", func(in *command.UpdateFamilyInput, _ *familyFixture) {
 			in.RelationshipType = command.Set("partnership")
@@ -161,6 +166,7 @@ func TestUpdateSource_RecordsOnlyChangedFields(t *testing.T) {
 	}{
 		{"unchanged form", func(*command.UpdateSourceInput) {}, nil},
 		{"title only", func(in *command.UpdateSourceInput) { in.Title = ptr("1881 Census") }, []string{"title"}},
+		{"marked private", func(in *command.UpdateSourceInput) { in.Private = ptr(true) }, []string{"restriction"}},
 		{"type and date", func(in *command.UpdateSourceInput) {
 			in.SourceType = ptr("book")
 			in.PublishDate = command.Set("1882")
@@ -232,5 +238,17 @@ func TestUpdateRepository_RecordsOnlyChangedFields(t *testing.T) {
 			}
 			checkRecorded(t, events, created.ID, 1, tt.want)
 		})
+	}
+}
+
+func TestUpdatePerson_RejectsUnknownLivingOverride(t *testing.T) {
+	ctx, _, _, handler := newTestHandler()
+	created, err := handler.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ada"})
+	if err != nil {
+		t.Fatalf("CreatePerson: %v", err)
+	}
+	_, err = handler.UpdatePerson(ctx, command.UpdatePersonInput{ID: created.ID, LivingOverride: command.Set("undead"), Version: created.Version})
+	if !errors.Is(err, command.ErrInvalidInput) {
+		t.Errorf("err = %v, want ErrInvalidInput", err)
 	}
 }

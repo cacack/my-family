@@ -12,6 +12,8 @@ github.com/apapsch/go-jsonmerge/v2 v2.0.0/go.mod h1:lvDnEdqiQrp0O42VQGgmlKpxL1AP
 github.com/bmatcuk/doublestar v1.1.1/go.mod h1:UD6OnuiIn0yFxxA2le/rnRU1G4RaI4UvFv1sNto9p6w=
 github.com/cacack/gedcom-go/v3 v3.6.0 h1:vH6n13qilhpr55y3oEr72CHr261KIPR4plWK+C06oV4=
 github.com/cacack/gedcom-go/v3 v3.6.0/go.mod h1:rkv4irGWx2/mYgw9h2ToltR3eYA4bYrOYpVhWa8BJC8=
+github.com/cacack/gedcom-go/v3 v3.7.0 h1:Hv1G05MqT9ApKJBgFbOqMJGWw7otDbd/kVzOG1oG518=
+github.com/cacack/gedcom-go/v3 v3.7.0/go.mod h1:rkv4irGWx2/mYgw9h2ToltR3eYA4bYrOYpVhWa8BJC8=
 github.com/cenkalti/backoff/v4 v4.3.0 h1:MyRJ/UdXutAwSAT+s3wNd7MfTIcy71VQueUuFK343L8=
 github.com/cenkalti/backoff/v4 v4.3.0/go.mod h1:Y3VNntkOUPxTVeUxJ/G5vcM//AlwfmyYozVcomhLiZE=
 github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=

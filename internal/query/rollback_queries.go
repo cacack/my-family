@@ -277,6 +277,14 @@ func (s *RollbackService) ComputeRollbackChanges(ctx context.Context, entityType
 	}, nil
 }
 
+// setRestrictionState records a created record's restriction in the rollback
+// state, so rolling back to it restores a private flag set at import.
+func setRestrictionState(state map[string]any, r domain.Restriction) {
+	if r != "" {
+		state["restriction"] = string(r)
+	}
+}
+
 // applyEventToState applies a single event to the state map and returns whether the entity is deleted.
 func (s *RollbackService) applyEventToState(evt repository.StoredEvent, state map[string]any) (bool, error) {
 	domainEvent, err := evt.DecodeEvent()
@@ -307,6 +315,10 @@ func (s *RollbackService) applyEventToState(evt repository.StoredEvent, state ma
 		}
 		if e.Notes != "" {
 			state["notes"] = e.Notes
+		}
+		setRestrictionState(state, e.Restriction)
+		if e.LivingOverride != "" {
+			state["living_override"] = string(e.LivingOverride)
 		}
 		return false, nil
 
@@ -343,6 +355,7 @@ func (s *RollbackService) applyEventToState(evt repository.StoredEvent, state ma
 	// Family events
 	case domain.FamilyCreated:
 		state["id"] = e.FamilyID.String()
+		setRestrictionState(state, e.Restriction)
 		if e.Partner1ID != nil {
 			state["partner1_id"] = e.Partner1ID.String()
 		}
@@ -399,6 +412,7 @@ func (s *RollbackService) applyEventToState(evt repository.StoredEvent, state ma
 	// Source events
 	case domain.SourceCreated:
 		state["id"] = e.SourceID.String()
+		setRestrictionState(state, e.Restriction)
 		state["title"] = e.Title
 		if e.SourceType != "" {
 			state["source_type"] = string(e.SourceType)
@@ -445,6 +459,7 @@ func (s *RollbackService) applyEventToState(evt repository.StoredEvent, state ma
 	// Citation events
 	case domain.CitationCreated:
 		state["id"] = e.CitationID.String()
+		setRestrictionState(state, e.Restriction)
 		state["source_id"] = e.SourceID.String()
 		state["fact_type"] = string(e.FactType)
 		state["fact_owner_id"] = e.FactOwnerID.String()

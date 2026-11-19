@@ -80,6 +80,7 @@ func (h *Handler) CreateNote(ctx context.Context, input CreateNoteInput) (*Creat
 type UpdateNoteInput struct {
 	ID      uuid.UUID
 	Text    *string
+	Private *bool // marks or unmarks the note private
 	Version int64 // Required for optimistic locking
 }
 
@@ -112,6 +113,7 @@ func (h *Handler) UpdateNote(ctx context.Context, input UpdateNoteInput) (*Updat
 		changes["text"] = *input.Text
 		testNote.Text = *input.Text
 	}
+	recordPrivate(changes, input.Private, current.Restriction)
 
 	// No changes?
 	if len(changes) == 0 {

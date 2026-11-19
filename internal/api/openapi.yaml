@@ -6635,6 +6635,13 @@ components:
             research transparency (e.g. "about eighteen fifty")
           example: "about eighteen fifty"
 
+    LivingOverride:
+      type: string
+      enum: [auto, living, deceased]
+      description: >-
+        An editor's override of the living rule (ADR-008): auto lets the rule
+        decide; living or deceased decides for it.
+
     Person:
       type: object
       required: [id, given_name, surname, version]
@@ -6689,6 +6696,22 @@ components:
           type: string
           format: date-time
           nullable: true
+        living:
+          type: boolean
+          description: >-
+            Whether the person counts as living under the living rule
+            (ADR-008), evaluated when the request is served: a death, burial
+            or cremation, or a birth (else christening or baptism) longer ago
+            than the tree's living threshold (110 years by default), makes them
+            deceased, unless living_override says otherwise. It changes as time
+            passes, so do not store it.
+        living_override:
+          $ref: '#/components/schemas/LivingOverride'
+        private:
+          type: boolean
+          description: >-
+            Whether the record is private: its GEDCOM restriction notice (RESN)
+            holds confidential or privacy (ADR-008). Omitted when it is not.
         version:
           type: integer
           format: int64
@@ -6760,6 +6783,20 @@ components:
           allOf:
             - $ref: '#/components/schemas/ResearchStatus'
           nullable: true
+        living_override:
+          allOf:
+            - $ref: '#/components/schemas/LivingOverride'
+          nullable: true
+          description: >-
+            Override the living rule for this person; auto or null resets it to
+            the rule. Omit it to leave the override unchanged.
+        private:
+          type: boolean
+          description: >-
+            Mark the record private, which adds confidential to its GEDCOM
+            restriction notice (RESN), or not, which removes confidential and
+            privacy. Other RESN values, such as locked, are kept. Omit it to
+            leave the mark unchanged.
         version:
           type: integer
           format: int64
@@ -6888,6 +6925,11 @@ components:
         notes:
           type: string
           description: The family record's own NOTEs; omitted when it has none
+        private:
+          type: boolean
+          description: >-
+            Whether the record is private: its GEDCOM restriction notice (RESN)
+            holds confidential or privacy (ADR-008). Omitted when it is not.
         version:
           type: integer
           format: int64
@@ -6954,6 +6996,13 @@ components:
         marriage_place:
           nullable: true
           type: string
+        private:
+          type: boolean
+          description: >-
+            Mark the record private, which adds confidential to its GEDCOM
+            restriction notice (RESN), or not, which removes confidential and
+            privacy. Other RESN values, such as locked, are kept. Omit it to
+            leave the mark unchanged.
         version:
           type: integer
           format: int64
@@ -7683,6 +7732,11 @@ components:
           type: integer
         crop_height:
           type: integer
+        private:
+          type: boolean
+          description: >-
+            Whether the record is private: its GEDCOM restriction notice (RESN)
+            holds confidential or privacy (ADR-008). Omitted when it is not.
         version:
           type: integer
           format: int64
@@ -7782,6 +7836,13 @@ components:
         crop_height:
           nullable: true
           type: integer
+        private:
+          type: boolean
+          description: >-
+            Mark the record private, which adds confidential to its GEDCOM
+            restriction notice (RESN), or not, which removes confidential and
+            privacy. Other RESN values, such as locked, are kept. Omit it to
+            leave the mark unchanged.
         version:
           type: integer
           format: int64
@@ -7994,6 +8055,11 @@ components:
         citation_count:
           type: integer
           description: Number of citations referencing this source
+        private:
+          type: boolean
+          description: >-
+            Whether the record is private: its GEDCOM restriction notice (RESN)
+            holds confidential or privacy (ADR-008). Omitted when it is not.
         version:
           type: integer
           format: int64
@@ -8062,6 +8128,13 @@ components:
         notes:
           nullable: true
           type: string
+        private:
+          type: boolean
+          description: >-
+            Mark the record private, which adds confidential to its GEDCOM
+            restriction notice (RESN), or not, which removes confidential and
+            privacy. Other RESN values, such as locked, are kept. Omit it to
+            leave the mark unchanged.
         version:
           type: integer
           format: int64
@@ -8280,6 +8353,11 @@ components:
         gedcom_xref:
           type: string
           description: GEDCOM cross-reference ID (e.g., "@C1@") for round-trip support
+        private:
+          type: boolean
+          description: >-
+            Whether the record is private: its GEDCOM restriction notice (RESN)
+            holds confidential or privacy (ADR-008). Omitted when it is not.
         version:
           type: integer
           format: int64
@@ -8376,6 +8454,13 @@ components:
           additionalProperties:
             type: string
           description: Template-specific field values
+        private:
+          type: boolean
+          description: >-
+            Mark the record private, which adds confidential to its GEDCOM
+            restriction notice (RESN), or not, which removes confidential and
+            privacy. Other RESN values, such as locked, are kept. Omit it to
+            leave the mark unchanged.
         version:
           type: integer
           format: int64
@@ -10627,6 +10712,11 @@ components:
         gedcom_xref:
           type: string
           description: GEDCOM cross-reference ID (e.g., "@N1@") for round-trip support
+        private:
+          type: boolean
+          description: >-
+            Whether the record is private: its GEDCOM restriction notice (RESN)
+            holds confidential or privacy (ADR-008). Omitted when it is not.
         version:
           type: integer
           format: int64
@@ -10674,6 +10764,13 @@ components:
         text:
           type: string
           description: Updated note text
+        private:
+          type: boolean
+          description: >-
+            Mark the record private, which adds confidential to its GEDCOM
+            restriction notice (RESN), or not, which removes confidential and
+            privacy. Other RESN values, such as locked, are kept. Omit it to
+            leave the mark unchanged.
         version:
           type: integer
           format: int64

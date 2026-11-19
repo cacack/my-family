@@ -36,6 +36,7 @@ type Family struct {
 	MarriageTypeDetail *string         `json:"marriage_type_detail,omitempty"`
 	MarriageNotes      *string         `json:"marriage_notes,omitempty"`
 	Notes              *string         `json:"notes,omitempty"`
+	Private            bool            `json:"private,omitempty"` // ADR-008 §2
 	ChildCount         int             `json:"child_count"`
 	Version            int64           `json:"version"`
 }
@@ -222,6 +223,7 @@ func convertReadModelToFamily(rm repository.FamilyReadModel) Family {
 		Partner1ID: rm.Partner1ID,
 		Partner2ID: rm.Partner2ID,
 		ChildCount: rm.ChildCount,
+		Private:    rm.Restriction.IsPrivate(),
 		Version:    rm.Version,
 	}
 

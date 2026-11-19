@@ -312,6 +312,7 @@ func (h *Handler) importPerson(ctx context.Context, p gedcom.PersonData) error {
 	event.ExternalIDs = p.ExternalIDs
 	event.BirthNotes, event.DeathNotes = p.BirthNotes, p.DeathNotes
 	event.BirthTypeDetail, event.DeathTypeDetail = p.BirthTypeDetail, p.DeathTypeDetail
+	event.Restriction = domain.Restriction(p.Restriction)
 
 	// Append to event store
 	err := h.eventStore.Append(ctx, person.ID, "person", []domain.Event{event}, -1, repository.MainScope)
@@ -392,6 +393,7 @@ func (h *Handler) importFamily(ctx context.Context, f gedcom.FamilyData) error {
 	event.MarriageNotes = f.MarriageNotes
 	event.MarriageTypeDetail = f.MarriageTypeDetail
 	event.Notes = f.Notes
+	event.Restriction = domain.Restriction(f.Restriction)
 
 	// Append to event store
 	err := h.eventStore.Append(ctx, family.ID, "family", []domain.Event{event}, -1, repository.MainScope)
@@ -439,6 +441,7 @@ func (h *Handler) importSource(ctx context.Context, s gedcom.SourceData) error {
 	// Create event
 	event := domain.NewSourceCreated(source)
 	event.ExternalIDs = s.ExternalIDs
+	event.Restriction = domain.Restriction(s.Restriction)
 
 	// Append to event store
 	err := h.eventStore.Append(ctx, source.ID, "source", []domain.Event{event}, -1, repository.MainScope)
@@ -666,6 +669,7 @@ func (h *Handler) importNote(ctx context.Context, n gedcom.NoteData) error {
 
 	// Create event
 	event := domain.NewNoteCreated(note)
+	event.Restriction = domain.Restriction(n.Restriction)
 
 	// Append to event store
 	err := h.eventStore.Append(ctx, note.ID, "note", []domain.Event{event}, -1, repository.MainScope)

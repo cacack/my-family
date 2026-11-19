@@ -113,6 +113,7 @@ type UpdateSourceInput struct {
 	CollectionName Patch[string]
 	CallNumber     Patch[string]
 	Notes          Patch[string]
+	Private        *bool // marks or unmarks the source private
 	Version        int64 // Required for optimistic locking
 }
 
@@ -178,6 +179,7 @@ func (h *Handler) UpdateSource(ctx context.Context, input UpdateSourceInput) (*U
 	recordChange(changes, "collection_name", input.CollectionName, &testSource.CollectionName)
 	recordChange(changes, "call_number", input.CallNumber, &testSource.CallNumber)
 	recordChange(changes, "notes", input.Notes, &testSource.Notes)
+	recordPrivate(changes, input.Private, current.Restriction)
 
 	// No changes?
 	if len(changes) == 0 {
@@ -410,6 +412,7 @@ type UpdateCitationInput struct {
 	Analysis      Patch[string]
 	TemplateID    Patch[string]
 	Fields        Patch[map[string]string] // a clear (or an empty map) removes every field
+	Private       *bool                    // marks or unmarks the citation private
 	Version       int64                    // Required for optimistic locking
 }
 
@@ -506,6 +509,7 @@ func (h *Handler) UpdateCitation(ctx context.Context, input UpdateCitationInput)
 			changes["fields"] = fields
 		}
 	}
+	recordPrivate(changes, input.Private, current.Restriction)
 
 	// No changes?
 	if len(changes) == 0 {

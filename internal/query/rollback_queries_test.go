@@ -1912,3 +1912,35 @@ func TestGetRestorePoints_LimitConstraints(t *testing.T) {
 func (m *rollbackMockEventStore) ReadGlobalHistory(_ context.Context, _ repository.GlobalHistoryQuery) (*repository.HistoryPage, error) {
 	return &repository.HistoryPage{}, nil
 }
+
+// A restriction and living override recorded at creation are part of the
+// state a rollback restores (ADR-008), for every record type that rolls back.
+func TestGetStateAtVersion_KeepsCreatedRestriction(t *testing.T) {
+	id := uuid.New()
+	for _, tc := range []struct {
+		entityType string
+		event      domain.Event
+		want       map[string]any
+	}{
+		{"person", domain.PersonCreated{PersonID: id, GivenName: "A", Restriction: "confidential", LivingOverride: domain.LivingOverrideDeceased},
+			map[string]any{"restriction": "confidential", "living_override": "deceased"}},
+		{"family", domain.FamilyCreated{FamilyID: id, Restriction: "privacy"}, map[string]any{"restriction": "privacy"}},
+		{"source", domain.SourceCreated{SourceID: id, Title: "S", Restriction: "confidential"}, map[string]any{"restriction": "confidential"}},
+		{"citation", domain.CitationCreated{CitationID: id, Restriction: "confidential"}, map[string]any{"restriction": "confidential"}},
+	} {
+		t.Run(tc.entityType, func(t *testing.T) {
+			data, err := json.Marshal(tc.event)
+			require.NoError(t, err)
+			events := []repository.StoredEvent{{ID: uuid.New(), StreamID: id, StreamType: tc.entityType,
+				EventType: tc.event.EventType(), Data: data, Version: 1, Position: 1}}
+			service := NewRollbackService(&rollbackMockEventStore{
+				readStreamFunc: func(context.Context, uuid.UUID) ([]repository.StoredEvent, error) { return events, nil },
+			}, &mockReadModelStore{})
+			result, err := service.GetStateAtVersion(context.Background(), tc.entityType, id, 1)
+			require.NoError(t, err)
+			for key, want := range tc.want {
+				assert.Equal(t, want, result.State[key], key)
+			}
+		})
+	}
+}

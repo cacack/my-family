@@ -98,6 +98,7 @@ type PersonData struct {
 	DeathNotes      string // NOTEs under DEAT, joined with noteJoin (#1250)
 	BirthTypeDetail string // TYPE under BIRT (#1284)
 	DeathTypeDetail string // TYPE under DEAT (#1284)
+	Restriction     string // record-level RESN (ADR-008)
 
 	// Names contains all name variants from the GEDCOM file.
 	// The first name is also stored in the main GivenName/Surname fields.
@@ -127,6 +128,7 @@ type FamilyData struct {
 	MarriageNotes      string  // NOTEs under MARR, joined with noteJoin (#1250)
 	MarriageTypeDetail string  // TYPE under MARR (#1284)
 	Notes              string  // the record's own NOTEs, joined with noteJoin (#1267)
+	Restriction        string  // record-level RESN (ADR-008)
 	ChildIDs           []uuid.UUID
 	ChildRelTypes      []domain.ChildRelationType
 
@@ -148,6 +150,7 @@ type SourceData struct {
 	RepositoryName string     // Fallback for unlinked repositories
 	CallNumber     string     // CALN - location within repository
 	Notes          string
+	Restriction    string // _RESN: GEDCOM defines no RESN on a source (ADR-008)
 
 	// ExternalIDs are GEDCOM 7.0 external identifiers (EXID tags) linking this
 	// source to records in external systems.
@@ -273,6 +276,7 @@ type NoteData struct {
 	MIME         string                   // GEDCOM 7.0 SNOTE media type (e.g., "text/html")
 	Language     string                   // GEDCOM 7.0 SNOTE BCP 47 language tag (e.g., "en")
 	Translations []domain.NoteTranslation // GEDCOM 7.0 SNOTE alternate-language renderings
+	Restriction  string                   // _RESN: GEDCOM defines no RESN on a note (ADR-008)
 }
 
 // SubmitterData contains parsed submitter data ready for creation.
@@ -681,6 +685,7 @@ func parseIndividual(indi *gedcom.Individual, _ *gedcom.Document, result *Import
 	}
 
 	person.Notes = recordNotes(indi.Tags)
+	person.Restriction = indi.Restriction
 
 	// Extract FamilySearch Family Tree ID (vendor extension)
 	person.FamilySearchID = indi.FamilySearchID
@@ -761,6 +766,7 @@ func parseFamily(fam *gedcom.Family, doc *gedcom.Document, result *ImportResult)
 		GedcomXref:       fam.XRef,
 		RelationshipType: domain.RelationUnknown,
 		Notes:            recordNotes(fam.Tags),
+		Restriction:      fam.Restriction,
 	}
 
 	// Link husband/wife (partner1/partner2) using gedcom-go's nil-safe
@@ -1231,6 +1237,7 @@ func parseSource(src *gedcom.Source, result *ImportResult) SourceData {
 	}
 
 	source.Notes = recordNotes(src.Tags)
+	source.Restriction = extensionRestriction(src.Tags)
 
 	// Default source type to "other" if not specified
 	source.SourceType = string(domain.SourceOther)
@@ -1284,10 +1291,28 @@ func parseRepository(repo *gedcom.Repository, _ *ImportResult) RepositoryData {
 // gedcom-go folds CONT/CONC lines into Note.Text, the complete text.
 func parseNote(note *gedcom.Note) NoteData {
 	return NoteData{
-		ID:         uuid.New(),
-		GedcomXref: note.XRef,
-		Text:       note.Text,
+		ID:          uuid.New(),
+		GedcomXref:  note.XRef,
+		Text:        note.Text,
+		Restriction: extensionRestriction(note.Tags),
 	}
+}
+
+// extensionRestrictionTag carries a restriction notice on a record type for
+// which neither GEDCOM 5.5.1 nor 7.0 defines RESN: sources and notes
+// (ADR-008 §2).
+const extensionRestrictionTag = "_RESN"
+
+// extensionRestriction returns the restriction notice of a record that GEDCOM
+// gives no RESN: its level-1 _RESN, or a level-1 RESN some vendor wrote there
+// anyway.
+func extensionRestriction(tags []*gedcom.Tag) string {
+	for _, tag := range tags {
+		if tag.Level == 1 && (tag.Tag == extensionRestrictionTag || tag.Tag == "RESN") {
+			return strings.TrimSpace(tag.Value)
+		}
+	}
+	return ""
 }
 
 // parseSharedNote converts a GEDCOM 7.0 shared note (SNOTE) record to NoteData,
@@ -1298,11 +1323,12 @@ func parseNote(note *gedcom.Note) NoteData {
 // under a TRAN sub-value (upstream cacack/gedcom-go#339).
 func parseSharedNote(snote *gedcom.SharedNote) NoteData {
 	data := NoteData{
-		ID:         uuid.New(),
-		GedcomXref: snote.XRef,
-		Text:       snote.Text,
-		MIME:       snote.MIME,
-		Language:   snote.Language,
+		ID:          uuid.New(),
+		GedcomXref:  snote.XRef,
+		Text:        snote.Text,
+		MIME:        snote.MIME,
+		Language:    snote.Language,
+		Restriction: extensionRestriction(snote.Tags),
 	}
 	for _, tran := range snote.Translations {
 		if tran == nil {

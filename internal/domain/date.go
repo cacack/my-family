@@ -427,12 +427,28 @@ func validateDate(s, typed string) error {
 	if s == "" {
 		return nil
 	}
+	gd := ParseGenDate(s)
 	d, err := gedcomlib.ParseDate(s)
 	if err != nil {
+		// gedcom-go refuses a 0 day, month or year (since v3.7.0) with a
+		// reason that names neither the date nor the fix, so those get ours.
+		if reason := zeroComponentReason(s, gd); reason != "" {
+			return &DateInputError{Reason: fmt.Sprintf("%q is not a real calendar date (%s)", typed, reason)}
+		}
 		return &DateInputError{
 			Reason:     fmt.Sprintf("%q is not a recognized date; use a form like \"1 JAN 1850\", \"about 1850\" or \"between 1850 and 1860\", or keep it as text in parentheses as a date phrase", typed),
 			Unreadable: true,
 		}
+	}
+	// gedcom-go's Validate also refuses a reversed range (since v3.7.0); ours
+	// says which endpoint is later.
+	if gd.Year != nil && gd.isReversedRange() {
+		start, end := rangeEndpointText(s)
+		if gd.Calendar2 != "" {
+			start = calendarName(gd.Calendar) + " " + start
+			end = calendarName(gd.endCalendar()) + " " + end
+		}
+		return &DateInputError{Reason: fmt.Sprintf("%q is a reversed range: %s is after %s; put the earlier date first", typed, start, end)}
 	}
 	// Validate checks a range or period's end date too; drop gedcom-go's
 	// "invalid end date: " and "invalid date: " prefixes so the reason reads
@@ -448,30 +464,34 @@ func validateDate(s, typed string) error {
 	// Every accepted date must be stored with a year. ParseGenDate reads one
 	// from every form gedcom-go accepts today; this guards against a form it
 	// doesn't, such as one added by a gedcom-go upgrade.
-	gd := ParseGenDate(s)
 	if gd.Year == nil {
 		return &DateInputError{
 			Reason:     fmt.Sprintf("%q is not a supported date yet; use a form like \"1 JAN 1850\" or \"about 1850\", or keep it as text in parentheses as a date phrase", typed),
 			Unreadable: true,
 		}
 	}
-	// gedcom-go reads a 0 day or year as absent, so "0 JAN 1850" and
-	// "1 JAN 0" get past it.
-	if err := gd.Validate(); err != nil {
-		return &DateInputError{Reason: fmt.Sprintf("%q is not a real calendar date (%s)", typed, err)}
-	}
-	if *gd.Year == 0 || (gd.Year2 != nil && *gd.Year2 == 0) || hasDualYearFromZero(s) {
-		return &DateInputError{Reason: fmt.Sprintf("%q is not a real calendar date (there is no year 0: 1 BC is followed by 1 AD)", typed)}
-	}
-	if gd.isReversedRange() {
-		start, end := rangeEndpointText(s)
-		if gd.Calendar2 != "" {
-			start = calendarName(gd.Calendar) + " " + start
-			end = calendarName(gd.endCalendar()) + " " + end
-		}
-		return &DateInputError{Reason: fmt.Sprintf("%q is a reversed range: %s is after %s; put the earlier date first", typed, start, end)}
+	if reason := zeroComponentReason(s, gd); reason != "" {
+		return &DateInputError{Reason: fmt.Sprintf("%q is not a real calendar date (%s)", typed, reason)}
 	}
 	return nil
+}
+
+// zeroComponentReason explains a 0 day, month or year in the date s, which
+// ParseGenDate read as gd, or returns "" when it has none.
+func zeroComponentReason(s string, gd GenDate) string {
+	if gd.Year == nil {
+		return ""
+	}
+	isZero := func(v *int) bool { return v != nil && *v == 0 }
+	if isZero(gd.Day) || isZero(gd.Day2) || isZero(gd.Month) || isZero(gd.Month2) {
+		if err := gd.Validate(); err != nil {
+			return err.Error()
+		}
+	}
+	if *gd.Year == 0 || isZero(gd.Year2) || hasDualYearFromZero(s) {
+		return "there is no year 0: 1 BC is followed by 1 AD"
+	}
+	return ""
 }
 
 // hasDualYearFromZero reports whether s holds a dual year whose first year is

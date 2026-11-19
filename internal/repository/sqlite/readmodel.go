@@ -803,6 +803,17 @@ func (s *ReadModelStore) runMigrations() {
 	// Link a citation to the life event or attribute it cites (issue #1294).
 	_, _ = s.db.Exec(`ALTER TABLE citations ADD COLUMN fact_id TEXT`)
 
+	// Add the GEDCOM RESN of each record that has one, and the living rule's
+	// projected inputs (ADR-008, issue #1412).
+	for _, tbl := range []string{"persons", "families", "sources", "citations", "notes", "media"} {
+		// #nosec G202 -- tbl comes from the fixed list above, not user input.
+		// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+		_, _ = s.db.Exec(`ALTER TABLE ` + tbl + ` ADD COLUMN restriction TEXT`)
+	}
+	_, _ = s.db.Exec(`ALTER TABLE persons ADD COLUMN living_override TEXT`)
+	_, _ = s.db.Exec(`ALTER TABLE persons ADD COLUMN death_evidence INTEGER NOT NULL DEFAULT 0`)
+	_, _ = s.db.Exec(`ALTER TABLE persons ADD COLUMN living_ref_date TEXT`)
+
 	// Link an evidence analysis, conflict or proof summary to the life event or
 	// attribute it is about (issue #1304).
 	_, _ = s.db.Exec(`ALTER TABLE evidence_analyses ADD COLUMN fact_id TEXT`)
@@ -1276,6 +1287,7 @@ func (s *ReadModelStore) ListPersons(ctx context.Context, opts repository.ListOp
 			   birth_date_raw, birth_date_sort, birth_place, birth_place_lat, birth_place_long,
 			   death_date_raw, death_date_sort, death_place, death_place_lat, death_place_long,
 			   notes, birth_notes, death_notes, birth_type_detail, death_type_detail, research_status, brick_wall_note, brick_wall_since, brick_wall_resolved_at,
+			   restriction, living_override, death_evidence, living_ref_date,
 			   version, updated_at
 		FROM %s
 		%s
@@ -1412,6 +1424,7 @@ func searchPersonsLikeSQL(opts repository.SearchOptions) (string, []any) {
 			   p.birth_date_raw, p.birth_date_sort, p.birth_place, p.birth_place_lat, p.birth_place_long,
 			   p.death_date_raw, p.death_date_sort, p.death_place, p.death_place_lat, p.death_place_long,
 			   p.notes, p.birth_notes, p.death_notes, p.birth_type_detail, p.death_type_detail, p.research_status, p.brick_wall_note, p.brick_wall_since, p.brick_wall_resolved_at,
+			   p.restriction, p.living_override, p.death_evidence, p.living_ref_date,
 			   p.version, p.updated_at
 		FROM ` + overlay + ` p
 		WHERE (` + containsFoldFunc + `(p.full_name, ?)
@@ -1849,6 +1862,7 @@ func (s *ReadModelStore) searchPersonsFiltersOnly(ctx context.Context, opts repo
 			   p.birth_date_raw, p.birth_date_sort, p.birth_place, p.birth_place_lat, p.birth_place_long,
 			   p.death_date_raw, p.death_date_sort, p.death_place, p.death_place_lat, p.death_place_long,
 			   p.notes, p.birth_notes, p.death_notes, p.birth_type_detail, p.death_type_detail, p.research_status, p.brick_wall_note, p.brick_wall_since, p.brick_wall_resolved_at,
+			   p.restriction, p.living_override, p.death_evidence, p.living_ref_date,
 			   p.version, p.updated_at
 		FROM ` + overlay + ` p`)
 
@@ -1993,6 +2007,10 @@ func (s *ReadModelStore) SavePerson(ctx context.Context, branchID domain.BranchI
 	if person.DeathDateSort != nil {
 		deathDateSort = sql.NullString{String: formatSortDate(*person.DeathDateSort, sortDateLayout), Valid: true}
 	}
+	var livingRefDate sql.NullString
+	if person.LivingRefDate != nil {
+		livingRefDate = sql.NullString{String: formatSortDate(*person.LivingRefDate, sortDateLayout), Valid: true}
+	}
 
 	// Convert coordinate pointers to nullable strings
 	var birthPlaceLat, birthPlaceLong, deathPlaceLat, deathPlaceLong sql.NullString
@@ -2023,8 +2041,9 @@ func (s *ReadModelStore) SavePerson(ctx context.Context, branchID domain.BranchI
 							 birth_place_lat, birth_place_long, death_date_raw, death_date_sort, death_place,
 							 death_place_lat, death_place_long, notes, birth_notes, death_notes, birth_type_detail, death_type_detail, research_status,
 							 brick_wall_note, brick_wall_since, brick_wall_resolved_at,
+							 restriction, living_override, death_evidence, living_ref_date,
 							 version, updated_at, branch_id, deleted)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
 		ON CONFLICT(id, branch_id) DO UPDATE SET
 			given_name = excluded.given_name,
 			surname = excluded.surname,
@@ -2048,6 +2067,10 @@ func (s *ReadModelStore) SavePerson(ctx context.Context, branchID domain.BranchI
 			brick_wall_note = excluded.brick_wall_note,
 			brick_wall_since = excluded.brick_wall_since,
 			brick_wall_resolved_at = excluded.brick_wall_resolved_at,
+			restriction = excluded.restriction,
+			living_override = excluded.living_override,
+			death_evidence = excluded.death_evidence,
+			living_ref_date = excluded.living_ref_date,
 			version = excluded.version,
 			updated_at = excluded.updated_at,
 			deleted = 0
@@ -2057,6 +2080,7 @@ func (s *ReadModelStore) SavePerson(ctx context.Context, branchID domain.BranchI
 		person.Notes, person.BirthNotes, person.DeathNotes, person.BirthTypeDetail, person.DeathTypeDetail,
 		string(person.ResearchStatus),
 		person.BrickWallNote, brickWallSince, brickWallResolvedAt,
+		string(person.Restriction), string(person.LivingOverride), person.DeathEvidence, livingRefDate,
 		person.Version, formatTimestamp(person.UpdatedAt), branchID.String())
 
 	return err
@@ -2824,9 +2848,9 @@ func (s *ReadModelStore) SaveFamily(ctx context.Context, branchID domain.BranchI
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO families (id, partner1_id, partner2_id,
 							  relationship_type, marriage_date_raw, marriage_date_sort, marriage_place,
-							  marriage_place_lat, marriage_place_long, marriage_notes, marriage_type_detail, notes,
+							  marriage_place_lat, marriage_place_long, marriage_notes, marriage_type_detail, notes, restriction,
 							  child_count, version, updated_at, branch_id, deleted)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
 		ON CONFLICT(id, branch_id) DO UPDATE SET
 			partner1_id = excluded.partner1_id,
 			partner2_id = excluded.partner2_id,
@@ -2839,6 +2863,7 @@ func (s *ReadModelStore) SaveFamily(ctx context.Context, branchID domain.BranchI
 			marriage_notes = excluded.marriage_notes,
 			marriage_type_detail = excluded.marriage_type_detail,
 			notes = excluded.notes,
+			restriction = excluded.restriction,
 			child_count = excluded.child_count,
 			version = excluded.version,
 			updated_at = excluded.updated_at,
@@ -2846,7 +2871,7 @@ func (s *ReadModelStore) SaveFamily(ctx context.Context, branchID domain.BranchI
 	`, family.ID.String(),
 		partner1ID, partner2ID,
 		string(family.RelationshipType), family.MarriageDateRaw, marriageDateSort, family.MarriagePlace,
-		marriagePlaceLat, marriagePlaceLong, family.MarriageNotes, family.MarriageTypeDetail, family.Notes,
+		marriagePlaceLat, marriagePlaceLong, family.MarriageNotes, family.MarriageTypeDetail, family.Notes, string(family.Restriction),
 		family.ChildCount, family.Version, formatTimestamp(family.UpdatedAt), branchID.String())
 
 	return err
@@ -2991,6 +3016,7 @@ func (s *ReadModelStore) GetChildrenOfFamily(ctx context.Context, branchID domai
 			   p.birth_date_raw, p.birth_date_sort, p.birth_place, p.birth_place_lat, p.birth_place_long,
 			   p.death_date_raw, p.death_date_sort, p.death_place, p.death_place_lat, p.death_place_long,
 			   p.notes, p.birth_notes, p.death_notes, p.birth_type_detail, p.death_type_detail, p.research_status, p.brick_wall_note, p.brick_wall_since, p.brick_wall_resolved_at,
+			   p.restriction, p.living_override, p.death_evidence, p.living_ref_date,
 			   p.version, p.updated_at
 		FROM ` + personOverlay + ` p
 		JOIN (
@@ -3029,7 +3055,7 @@ func (s *ReadModelStore) GetChildFamily(ctx context.Context, branchID domain.Bra
 	query := `
 		SELECT f.id, f.partner1_id, f.partner2_id,
 			   f.relationship_type, f.marriage_date_raw, f.marriage_date_sort, f.marriage_place,
-			   f.marriage_place_lat, f.marriage_place_long, f.marriage_notes, f.marriage_type_detail, f.notes,
+			   f.marriage_place_lat, f.marriage_place_long, f.marriage_notes, f.marriage_type_detail, f.notes, f.restriction,
 			   f.child_count, f.version, f.updated_at
 		FROM ` + familyOverlay + ` f
 		JOIN (
@@ -3232,6 +3258,8 @@ func scanPerson(row rowScanner, extra ...any) (*repository.PersonReadModel, erro
 		researchStatus                                  sql.NullString
 		brickWallNote                                   sql.NullString
 		brickWallSince, brickWallResolvedAt             sql.NullString
+		restriction, livingOverride, livingRefDate      sql.NullString
+		deathEvidence                                   bool
 		version                                         int64
 		updatedAt                                       string
 	)
@@ -3240,6 +3268,7 @@ func scanPerson(row rowScanner, extra ...any) (*repository.PersonReadModel, erro
 		&birthDateRaw, &birthDateSort, &birthPlace, &birthPlaceLat, &birthPlaceLong,
 		&deathDateRaw, &deathDateSort, &deathPlace, &deathPlaceLat, &deathPlaceLong,
 		&notes, &birthNotes, &deathNotes, &birthTypeDetail, &deathTypeDetail, &researchStatus, &brickWallNote, &brickWallSince, &brickWallResolvedAt,
+		&restriction, &livingOverride, &deathEvidence, &livingRefDate,
 		&version, &updatedAt}
 	err := row.Scan(append(dest, extra...)...)
 
@@ -3268,6 +3297,9 @@ func scanPerson(row rowScanner, extra ...any) (*repository.PersonReadModel, erro
 		DeathTypeDetail: deathTypeDetail.String,
 		ResearchStatus:  domain.ResearchStatus(researchStatus.String),
 		BrickWallNote:   brickWallNote.String,
+		Restriction:     domain.Restriction(restriction.String),
+		LivingOverride:  domain.LivingOverride(livingOverride.String),
+		DeathEvidence:   deathEvidence,
 		Version:         version,
 	}
 
@@ -3282,6 +3314,7 @@ func scanPerson(row rowScanner, extra ...any) (*repository.PersonReadModel, erro
 	p.DeathDateSort, _ = parseNullableSortDate(deathDateSort)
 	p.BrickWallSince, _ = parseNullableTimestamp(brickWallSince)
 	p.BrickWallResolvedAt, _ = parseNullableTimestamp(brickWallResolvedAt)
+	p.LivingRefDate, _ = parseNullableSortDate(livingRefDate)
 	if t, err := parseTimestamp(updatedAt); err == nil {
 		p.UpdatedAt = t
 	}
@@ -3299,7 +3332,7 @@ func scanFamily(row rowScanner) (*repository.FamilyReadModel, error) {
 		partner1ID, partner2ID                                    sql.NullString
 		relType, marriageDateRaw, marriageDateSort, marriagePlace sql.NullString
 		marriagePlaceLat, marriagePlaceLong, marriageNotes        sql.NullString
-		marriageTypeDetail, notes                                 sql.NullString
+		marriageTypeDetail, notes, restriction                    sql.NullString
 		childCount                                                int
 		version                                                   int64
 		updatedAt                                                 string
@@ -3307,7 +3340,7 @@ func scanFamily(row rowScanner) (*repository.FamilyReadModel, error) {
 
 	err := row.Scan(&idStr, &partner1ID, &partner2ID,
 		&relType, &marriageDateRaw, &marriageDateSort, &marriagePlace,
-		&marriagePlaceLat, &marriagePlaceLong, &marriageNotes, &marriageTypeDetail, &notes,
+		&marriagePlaceLat, &marriagePlaceLong, &marriageNotes, &marriageTypeDetail, &notes, &restriction,
 		&childCount, &version, &updatedAt)
 
 	if err == sql.ErrNoRows {
@@ -3326,6 +3359,7 @@ func scanFamily(row rowScanner) (*repository.FamilyReadModel, error) {
 		MarriageNotes:      marriageNotes.String,
 		MarriageTypeDetail: marriageTypeDetail.String,
 		Notes:              notes.String,
+		Restriction:        domain.Restriction(restriction.String),
 		ChildCount:         childCount,
 		Version:            version,
 	}
@@ -3403,15 +3437,15 @@ const (
 	// sourceSelectCols is scanSource's column order (unaliased).
 	sourceSelectCols = `id, source_type, title, author, publisher, publish_date_raw, publish_date_sort,
 		url, repository_id, repository_name, collection_name, call_number, notes, gedcom_xref,
-		citation_count, version, updated_at`
+		citation_count, version, updated_at, restriction`
 
 	// citationSelectCols is scanCitation's column order (unaliased).
 	citationSelectCols = `id, source_id, source_title, fact_type, fact_owner_id, fact_id, page, volume,
 		source_quality, informant_type, evidence_type, quoted_text, analysis,
-		template_id, fields_data, gedcom_xref, version, created_at`
+		template_id, fields_data, gedcom_xref, version, created_at, restriction`
 
 	// noteSelectCols is scanNote's column order (unaliased).
-	noteSelectCols = `id, text, mime, language, translations, gedcom_xref, version, updated_at`
+	noteSelectCols = `id, text, mime, language, translations, gedcom_xref, version, updated_at, restriction`
 
 	// citationOrder is the deterministic citation order every backend returns.
 	citationOrder = `source_title ASC, fact_type ASC, id ASC`
@@ -3540,8 +3574,8 @@ func (s *ReadModelStore) SaveSource(ctx context.Context, branchID domain.BranchI
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO sources (id, branch_id, source_type, title, author, publisher, publish_date_raw, publish_date_sort,
 							 url, repository_id, repository_name, collection_name, call_number, notes, gedcom_xref,
-							 citation_count, version, updated_at, deleted)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+							 citation_count, version, updated_at, restriction, deleted)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
 		ON CONFLICT(id, branch_id) DO UPDATE SET
 			source_type = excluded.source_type,
 			title = excluded.title,
@@ -3559,11 +3593,12 @@ func (s *ReadModelStore) SaveSource(ctx context.Context, branchID domain.BranchI
 			citation_count = excluded.citation_count,
 			version = excluded.version,
 			updated_at = excluded.updated_at,
+			restriction = excluded.restriction,
 			deleted = 0
 	`, source.ID.String(), branchID.String(), string(source.SourceType), source.Title, source.Author, source.Publisher,
 		source.PublishDateRaw, publishDateSort, source.URL, repositoryID, source.RepositoryName, source.CollectionName,
 		source.CallNumber, source.Notes, source.GedcomXref, source.CitationCount, source.Version,
-		formatTimestamp(source.UpdatedAt))
+		formatTimestamp(source.UpdatedAt), string(source.Restriction))
 	if err != nil {
 		return fmt.Errorf("save source: %w", err)
 	}
@@ -3719,8 +3754,8 @@ func (s *ReadModelStore) SaveCitation(ctx context.Context, branchID domain.Branc
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO citations (id, branch_id, source_id, source_title, fact_type, fact_owner_id, fact_id, page, volume,
 							   source_quality, informant_type, evidence_type, quoted_text, analysis,
-							   template_id, fields_data, gedcom_xref, version, created_at, deleted)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+							   template_id, fields_data, gedcom_xref, version, created_at, restriction, deleted)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
 		ON CONFLICT(id, branch_id) DO UPDATE SET
 			source_id = excluded.source_id,
 			source_title = excluded.source_title,
@@ -3738,12 +3773,13 @@ func (s *ReadModelStore) SaveCitation(ctx context.Context, branchID domain.Branc
 			fields_data = excluded.fields_data,
 			gedcom_xref = excluded.gedcom_xref,
 			version = excluded.version,
+			restriction = excluded.restriction,
 			deleted = 0
 	`, citation.ID.String(), branchID.String(), citation.SourceID.String(), citation.SourceTitle,
 		string(citation.FactType), citation.FactOwnerID.String(), nullableUUID(citation.FactID), citation.Page, citation.Volume,
 		string(citation.SourceQuality), string(citation.InformantType), string(citation.EvidenceType),
 		citation.QuotedText, citation.Analysis, citation.TemplateID, citation.FieldsJSON,
-		citation.GedcomXref, citation.Version, formatTimestamp(citation.CreatedAt))
+		citation.GedcomXref, citation.Version, formatTimestamp(citation.CreatedAt), string(citation.Restriction))
 	if err != nil {
 		return fmt.Errorf("save citation: %w", err)
 	}
@@ -4255,11 +4291,12 @@ func scanSource(row rowScanner) (*repository.SourceReadModel, error) {
 		citationCount                                               int
 		version                                                     int64
 		updatedAt                                                   string
+		restriction                                                 sql.NullString
 	)
 
 	err := row.Scan(&idStr, &sourceType, &title, &author, &publisher, &publishDateRaw, &publishDateSort,
 		&url, &repoID, &repoName, &collName, &callNum, &notes, &gedcomXref,
-		&citationCount, &version, &updatedAt)
+		&citationCount, &version, &updatedAt, &restriction)
 
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -4282,6 +4319,7 @@ func scanSource(row rowScanner) (*repository.SourceReadModel, error) {
 		CallNumber:     callNum.String,
 		Notes:          notes.String,
 		GedcomXref:     gedcomXref.String,
+		Restriction:    domain.Restriction(restriction.String),
 		CitationCount:  citationCount,
 		Version:        version,
 	}
@@ -4315,11 +4353,12 @@ func scanCitation(row rowScanner) (*repository.CitationReadModel, error) {
 		quotedText, analysis, templateID, fieldsData, gedcomXref  sql.NullString
 		version                                                   int64
 		createdAt                                                 string
+		restriction                                               sql.NullString
 	)
 
 	err := row.Scan(&idStr, &sourceIDStr, &sourceTitle, &factType, &factOwnerIDStr, &factIDStr,
 		&page, &volume, &sourceQuality, &informantType, &evidenceType,
-		&quotedText, &analysis, &templateID, &fieldsData, &gedcomXref, &version, &createdAt)
+		&quotedText, &analysis, &templateID, &fieldsData, &gedcomXref, &version, &createdAt, &restriction)
 
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -4353,6 +4392,7 @@ func scanCitation(row rowScanner) (*repository.CitationReadModel, error) {
 		TemplateID:    templateID.String,
 		FieldsJSON:    fieldsData.String,
 		GedcomXref:    gedcomXref.String,
+		Restriction:   domain.Restriction(restriction.String),
 		Version:       version,
 	}
 
@@ -4513,13 +4553,13 @@ const (
 	// omits file_data and thumbnail_data.
 	mediaSelectCols = `id, entity_type, entity_id, title, description, mime_type, media_type,
 		filename, file_size, crop_left, crop_top, crop_width, crop_height,
-		gedcom_xref, version, created_at, updated_at, files, format, translations`
+		gedcom_xref, version, created_at, updated_at, files, format, translations, restriction`
 
 	// mediaWinnerCols is mediaSelectCols qualified by the w alias the byte reads
 	// join the winning row under.
 	mediaWinnerCols = `w.id, w.entity_type, w.entity_id, w.title, w.description, w.mime_type, w.media_type,
 		w.filename, w.file_size, w.crop_left, w.crop_top, w.crop_width, w.crop_height,
-		w.gedcom_xref, w.version, w.created_at, w.updated_at, w.files, w.format, w.translations`
+		w.gedcom_xref, w.version, w.created_at, w.updated_at, w.files, w.format, w.translations, w.restriction`
 
 	// mediaWinnerJoin resolves the winning row of one media id WITHOUT reading
 	// its bytes (o ranks the rows by (id, branch_id) alone), joins it back as w,
@@ -4704,13 +4744,13 @@ func (s *ReadModelStore) SaveMedia(ctx context.Context, branchID domain.BranchID
 						  filename, file_size,
 						  crop_left, crop_top, crop_width, crop_height,
 						  gedcom_xref, version, created_at, updated_at,
-						  files, format, translations, deleted)
+						  files, format, translations, restriction, deleted)
 		SELECT ?1, ?2,
 			CASE WHEN ?2 <> ?3 AND EXISTS (SELECT 1 FROM media WHERE id = ?1 AND branch_id = ?3) THEN NULL
 				ELSE COALESCE(?4, (SELECT file_data FROM media WHERE id = ?1 AND branch_id = ?2)) END,
 			CASE WHEN ?2 <> ?3 AND EXISTS (SELECT 1 FROM media WHERE id = ?1 AND branch_id = ?3) THEN NULL
 				ELSE ?5 END,
-			?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, 0
+			?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, 0
 		WHERE NOT (?2 <> ?3 AND ?4 IS NULL
 			AND NOT EXISTS (SELECT 1 FROM media WHERE id = ?1 AND branch_id IN (?2, ?3)))
 		ON CONFLICT(id, branch_id) DO UPDATE SET
@@ -4734,6 +4774,7 @@ func (s *ReadModelStore) SaveMedia(ctx context.Context, branchID domain.BranchID
 			files = excluded.files,
 			format = excluded.format,
 			translations = excluded.translations,
+			restriction = excluded.restriction,
 			deleted = 0
 	`, media.ID.String(), branchID.String(), mainBranchID,
 		nullableBlob(media.FileData), nullableBlob(media.ThumbnailData),
@@ -4744,7 +4785,8 @@ func (s *ReadModelStore) SaveMedia(ctx context.Context, branchID domain.BranchID
 		nullableInt(media.CropWidth), nullableInt(media.CropHeight),
 		nullableString(media.GedcomXref), media.Version,
 		formatTimestamp(media.CreatedAt), formatTimestamp(media.UpdatedAt),
-		nullableBytes(filesJSON), nullableString(media.Format), nullableBytes(translationsJSON))
+		nullableBytes(filesJSON), nullableString(media.Format), nullableBytes(translationsJSON),
+		string(media.Restriction))
 	if err != nil {
 		return fmt.Errorf("save media: %w", err)
 	}
@@ -4854,14 +4896,14 @@ func scanMediaRow(row rowScanner, withData bool) (*repository.MediaReadModel, er
 		cropWidth, cropHeight         sql.NullInt64
 		createdAt, updatedAt          string
 		filesJSON, translationsJSON   sql.NullString
-		format                        sql.NullString
+		format, restriction           sql.NullString
 	)
 
 	dest := []any{&idStr, &m.EntityType, &entityIDStr, &m.Title, &description,
 		&m.MimeType, &mediaType, &m.Filename, &m.FileSize,
 		&cropLeft, &cropTop, &cropWidth, &cropHeight,
 		&gedcomXref, &m.Version, &createdAt, &updatedAt,
-		&filesJSON, &format, &translationsJSON}
+		&filesJSON, &format, &translationsJSON, &restriction}
 	if withData {
 		dest = append(dest, &m.FileData, &m.ThumbnailData)
 	} else {
@@ -4898,6 +4940,7 @@ func scanMediaRow(row rowScanner, withData bool) (*repository.MediaReadModel, er
 	m.Description = description.String
 	m.GedcomXref = gedcomXref.String
 	m.Format = format.String
+	m.Restriction = domain.Restriction(restriction.String)
 	m.CropLeft = nullIntPtr(cropLeft)
 	m.CropTop = nullIntPtr(cropTop)
 	m.CropWidth = nullIntPtr(cropWidth)
@@ -5029,6 +5072,7 @@ func (s *ReadModelStore) GetPersonsBySurname(ctx context.Context, surname string
 			   birth_date_raw, birth_date_sort, birth_place, birth_place_lat, birth_place_long,
 			   death_date_raw, death_date_sort, death_place, death_place_lat, death_place_long,
 			   notes, birth_notes, death_notes, birth_type_detail, death_type_detail, research_status, brick_wall_note, brick_wall_since, brick_wall_resolved_at,
+			   restriction, living_override, death_evidence, living_ref_date,
 			   version, updated_at
 		FROM `+overlay+`
 		WHERE LOWER(surname) = LOWER(?)
@@ -5202,6 +5246,7 @@ func (s *ReadModelStore) GetPersonsByPlace(ctx context.Context, place string, op
 			   birth_date_raw, birth_date_sort, birth_place, birth_place_lat, birth_place_long,
 			   death_date_raw, death_date_sort, death_place, death_place_lat, death_place_long,
 			   notes, birth_notes, death_notes, birth_type_detail, death_type_detail, research_status, brick_wall_note, brick_wall_since, brick_wall_resolved_at,
+			   restriction, living_override, death_evidence, living_ref_date,
 			   version, updated_at
 		FROM `+overlay+`
 		WHERE `+placeNormFunc+`(birth_place) LIKE '%' || `+placeNormFunc+`(?) || '%'
@@ -5289,6 +5334,7 @@ func (s *ReadModelStore) GetPersonsByCemetery(ctx context.Context, place string,
 			   p.birth_date_raw, p.birth_date_sort, p.birth_place, p.birth_place_lat, p.birth_place_long,
 			   p.death_date_raw, p.death_date_sort, p.death_place, p.death_place_lat, p.death_place_long,
 			   p.notes, p.birth_notes, p.death_notes, p.birth_type_detail, p.death_type_detail, p.research_status, p.brick_wall_note, p.brick_wall_since, p.brick_wall_resolved_at,
+			   p.restriction, p.living_override, p.death_evidence, p.living_ref_date,
 			   p.version, p.updated_at
 		FROM `+overlay+` p
 		INNER JOIN `+events+` e ON e.owner_id = p.id
@@ -5486,7 +5532,7 @@ func (s *ReadModelStore) GetBrickWalls(ctx context.Context, includeResolved bool
 func scanNote(row rowScanner) (*repository.NoteReadModel, error) {
 	var note repository.NoteReadModel
 	var idStr string
-	var mime, language, translations, gedcomXref sql.NullString
+	var mime, language, translations, gedcomXref, restriction sql.NullString
 	var updatedAtStr string
 
 	err := row.Scan(
@@ -5498,6 +5544,7 @@ func scanNote(row rowScanner) (*repository.NoteReadModel, error) {
 		&gedcomXref,
 		&note.Version,
 		&updatedAtStr,
+		&restriction,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
@@ -5513,6 +5560,7 @@ func scanNote(row rowScanner) (*repository.NoteReadModel, error) {
 	note.Language = language.String
 	note.Translations = repository.UnmarshalNoteTranslations(translations.String)
 	note.GedcomXref = gedcomXref.String
+	note.Restriction = domain.Restriction(restriction.String)
 	if t, err := parseTimestamp(updatedAtStr); err == nil {
 		note.UpdatedAt = t
 	}
@@ -5596,8 +5644,8 @@ func (s *ReadModelStore) SaveNote(ctx context.Context, branchID domain.BranchID,
 	}
 
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO notes (id, branch_id, text, mime, language, translations, gedcom_xref, version, updated_at, deleted)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+		INSERT INTO notes (id, branch_id, text, mime, language, translations, gedcom_xref, version, updated_at, restriction, deleted)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
 		ON CONFLICT (id, branch_id) DO UPDATE SET
 			text = excluded.text,
 			mime = excluded.mime,
@@ -5606,8 +5654,10 @@ func (s *ReadModelStore) SaveNote(ctx context.Context, branchID domain.BranchID,
 			gedcom_xref = excluded.gedcom_xref,
 			version = excluded.version,
 			updated_at = excluded.updated_at,
+			restriction = excluded.restriction,
 			deleted = 0
-	`, note.ID.String(), branchID.String(), note.Text, mime, language, translations, gedcomXref, note.Version, note.UpdatedAt.Format(time.RFC3339))
+	`, note.ID.String(), branchID.String(), note.Text, mime, language, translations, gedcomXref, note.Version, note.UpdatedAt.Format(time.RFC3339),
+		string(note.Restriction))
 	if err != nil {
 		return fmt.Errorf("save note: %w", err)
 	}

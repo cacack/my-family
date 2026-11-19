@@ -117,8 +117,19 @@ type PersonReadModel struct {
 	BrickWallNote       string                `json:"brick_wall_note,omitempty"`
 	BrickWallSince      *time.Time            `json:"brick_wall_since,omitempty"`
 	BrickWallResolvedAt *time.Time            `json:"brick_wall_resolved_at,omitempty"`
-	Version             int64                 `json:"version"`
-	UpdatedAt           time.Time             `json:"updated_at"`
+	Restriction         domain.Restriction    `json:"restriction,omitempty"`     // GEDCOM RESN (ADR-008 §2)
+	LivingOverride      domain.LivingOverride `json:"living_override,omitempty"` // editor's override of the living rule (ADR-008 §1)
+	// DeathEvidence and LivingRefDate are the projected inputs of the living
+	// rule (see SetLivingFacts); LivingFacts assembles them.
+	DeathEvidence bool       `json:"-"`
+	LivingRefDate *time.Time `json:"-"` // BC years cannot encode as JSON (#1065)
+	Version       int64      `json:"version"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+}
+
+// LivingFacts returns the person's living-rule inputs (ADR-008 §1).
+func (p *PersonReadModel) LivingFacts() domain.LivingFacts {
+	return domain.LivingFacts{Override: p.LivingOverride, DeathEvidence: p.DeathEvidence, ReferenceDate: p.LivingRefDate}
 }
 
 // FamilyReadModel represents a family in the read model. The partner names are
@@ -141,6 +152,7 @@ type FamilyReadModel struct {
 	MarriageNotes      string              `json:"marriage_notes,omitempty"`       // NOTEs under MARR (#1250)
 	MarriageTypeDetail string              `json:"marriage_type_detail,omitempty"` // TYPE under MARR (#1284)
 	Notes              string              `json:"notes,omitempty"`                // the FAM record's own NOTEs (#1267)
+	Restriction        domain.Restriction  `json:"restriction,omitempty"`          // GEDCOM RESN (ADR-008 §2)
 	ChildCount         int                 `json:"child_count"`
 	Version            int64               `json:"version"`
 	UpdatedAt          time.Time           `json:"updated_at"`
@@ -170,23 +182,24 @@ type PedigreeEdge struct {
 
 // SourceReadModel represents a source in the read model.
 type SourceReadModel struct {
-	ID              uuid.UUID         `json:"id"`
-	SourceType      domain.SourceType `json:"source_type"`
-	Title           string            `json:"title"`
-	Author          string            `json:"author,omitempty"`
-	Publisher       string            `json:"publisher,omitempty"`
-	PublishDateRaw  string            `json:"publish_date_raw,omitempty"`
-	PublishDateSort *time.Time        `json:"-"` // internal sort key; BC years cannot encode as JSON (#1065)
-	URL             string            `json:"url,omitempty"`
-	RepositoryID    *uuid.UUID        `json:"repository_id,omitempty"`
-	RepositoryName  string            `json:"repository_name,omitempty"`
-	CollectionName  string            `json:"collection_name,omitempty"`
-	CallNumber      string            `json:"call_number,omitempty"`
-	Notes           string            `json:"notes,omitempty"`
-	GedcomXref      string            `json:"gedcom_xref,omitempty"`
-	CitationCount   int               `json:"citation_count"`
-	Version         int64             `json:"version"`
-	UpdatedAt       time.Time         `json:"updated_at"`
+	ID              uuid.UUID          `json:"id"`
+	SourceType      domain.SourceType  `json:"source_type"`
+	Title           string             `json:"title"`
+	Author          string             `json:"author,omitempty"`
+	Publisher       string             `json:"publisher,omitempty"`
+	PublishDateRaw  string             `json:"publish_date_raw,omitempty"`
+	PublishDateSort *time.Time         `json:"-"` // internal sort key; BC years cannot encode as JSON (#1065)
+	URL             string             `json:"url,omitempty"`
+	RepositoryID    *uuid.UUID         `json:"repository_id,omitempty"`
+	RepositoryName  string             `json:"repository_name,omitempty"`
+	CollectionName  string             `json:"collection_name,omitempty"`
+	CallNumber      string             `json:"call_number,omitempty"`
+	Notes           string             `json:"notes,omitempty"`
+	GedcomXref      string             `json:"gedcom_xref,omitempty"`
+	Restriction     domain.Restriction `json:"restriction,omitempty"` // GEDCOM RESN (ADR-008 §2)
+	CitationCount   int                `json:"citation_count"`
+	Version         int64              `json:"version"`
+	UpdatedAt       time.Time          `json:"updated_at"`
 }
 
 // CitationReadModel represents a citation in the read model.
@@ -207,32 +220,34 @@ type CitationReadModel struct {
 	TemplateID    string               `json:"template_id,omitempty"`
 	FieldsJSON    string               `json:"fields_json,omitempty"` // JSON-serialized map[string]string
 	GedcomXref    string               `json:"gedcom_xref,omitempty"`
+	Restriction   domain.Restriction   `json:"restriction,omitempty"` // GEDCOM RESN (ADR-008 §2)
 	Version       int64                `json:"version"`
 	CreatedAt     time.Time            `json:"created_at"`
 }
 
 // MediaReadModel represents a media file in the read model.
 type MediaReadModel struct {
-	ID            uuid.UUID        `json:"id"`
-	EntityType    string           `json:"entity_type"`
-	EntityID      uuid.UUID        `json:"entity_id"`
-	Title         string           `json:"title"`
-	Description   string           `json:"description,omitempty"`
-	MimeType      string           `json:"mime_type"`
-	MediaType     domain.MediaType `json:"media_type"`
-	Filename      string           `json:"filename"`
-	FileSize      int64            `json:"file_size"`
-	FileData      []byte           `json:"-"`             // Excluded from JSON by default
-	ThumbnailData []byte           `json:"-"`             // Excluded from JSON by default
-	HasThumbnail  bool             `json:"has_thumbnail"` // Derived on every read without loading bytes (#903); not stored, so SaveMedia ignores it
-	CropLeft      *int             `json:"crop_left,omitempty"`
-	CropTop       *int             `json:"crop_top,omitempty"`
-	CropWidth     *int             `json:"crop_width,omitempty"`
-	CropHeight    *int             `json:"crop_height,omitempty"`
-	GedcomXref    string           `json:"gedcom_xref,omitempty"`
-	Version       int64            `json:"version"`
-	CreatedAt     time.Time        `json:"created_at"`
-	UpdatedAt     time.Time        `json:"updated_at"`
+	ID            uuid.UUID          `json:"id"`
+	EntityType    string             `json:"entity_type"`
+	EntityID      uuid.UUID          `json:"entity_id"`
+	Title         string             `json:"title"`
+	Description   string             `json:"description,omitempty"`
+	MimeType      string             `json:"mime_type"`
+	MediaType     domain.MediaType   `json:"media_type"`
+	Filename      string             `json:"filename"`
+	FileSize      int64              `json:"file_size"`
+	FileData      []byte             `json:"-"`             // Excluded from JSON by default
+	ThumbnailData []byte             `json:"-"`             // Excluded from JSON by default
+	HasThumbnail  bool               `json:"has_thumbnail"` // Derived on every read without loading bytes (#903); not stored, so SaveMedia ignores it
+	CropLeft      *int               `json:"crop_left,omitempty"`
+	CropTop       *int               `json:"crop_top,omitempty"`
+	CropWidth     *int               `json:"crop_width,omitempty"`
+	CropHeight    *int               `json:"crop_height,omitempty"`
+	GedcomXref    string             `json:"gedcom_xref,omitempty"`
+	Restriction   domain.Restriction `json:"restriction,omitempty"` // GEDCOM RESN (ADR-008 §2)
+	Version       int64              `json:"version"`
+	CreatedAt     time.Time          `json:"created_at"`
+	UpdatedAt     time.Time          `json:"updated_at"`
 	// GEDCOM 7.0 enhanced fields
 	Files        []domain.MediaFile `json:"files,omitempty"`        // Multiple file references (GEDCOM 7.0)
 	Format       string             `json:"format,omitempty"`       // Primary format/MIME type (FORM)
@@ -291,6 +306,7 @@ type NoteReadModel struct {
 	Language     string                   `json:"language,omitempty"`     // GEDCOM 7.0 SNOTE BCP 47 language tag (e.g., "en")
 	Translations []domain.NoteTranslation `json:"translations,omitempty"` // GEDCOM 7.0 SNOTE alternate-language renderings
 	GedcomXref   string                   `json:"gedcom_xref,omitempty"`  // GEDCOM cross-reference ID (e.g., "@N1@")
+	Restriction  domain.Restriction       `json:"restriction,omitempty"`  // GEDCOM RESN (ADR-008 §2)
 	Version      int64                    `json:"version"`
 	UpdatedAt    time.Time                `json:"updated_at"`
 }

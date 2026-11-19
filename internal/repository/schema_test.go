@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -44,7 +45,11 @@ func TestCheckReadModelSchema_MismatchNamesTheRebuild(t *testing.T) {
 	if !errors.Is(err, repository.ErrReadModelSchemaMismatch) {
 		t.Fatalf("check = %v, want ErrReadModelSchemaMismatch", err)
 	}
-	for _, want := range []string{"myfamily rebuild", "version 2", "version 1"} {
+	for _, want := range []string{
+		"myfamily rebuild",
+		fmt.Sprintf("version %d", repository.ReadModelSchemaVersion+1),
+		fmt.Sprintf("version %d", repository.ReadModelSchemaVersion),
+	} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q does not mention %q", err, want)
 		}

@@ -875,8 +875,18 @@ func toGedcomSource(s repository.SourceReadModel, repoIDToXref map[uuid.UUID]str
 
 	// Notes - encoder handles CONT/CONC automatically for multiline text
 	src.NoteXRefs, src.InlineNotes = splitNotes(s.Notes, noteJoin)
+	src.Tags = extensionRestrictionTags(s.Restriction)
 
 	return src
+}
+
+// extensionRestrictionTags returns the _RESN line of a record type GEDCOM
+// gives no RESN (see extensionRestriction), or nil for no restriction.
+func extensionRestrictionTags(r domain.Restriction) []*gedcom.Tag {
+	if r == "" {
+		return nil
+	}
+	return []*gedcom.Tag{{Level: 1, Tag: extensionRestrictionTag, Value: string(r)}}
 }
 
 // toGedcomIndividual converts a repository PersonReadModel to a gedcom.Individual entity.
@@ -884,7 +894,7 @@ func toGedcomSource(s repository.SourceReadModel, repoIDToXref map[uuid.UUID]str
 // names are the person's names and nameCitations its person_name citations;
 // each citation is written under the NAME it is linked to (#1165).
 func toGedcomIndividual(p repository.PersonReadModel, names []repository.PersonNameReadModel, sourceXrefs map[uuid.UUID]string, personXrefs map[uuid.UUID]string, nameCitations, birthCitations, deathCitations []repository.CitationReadModel, events []repository.EventReadModel, attributes []repository.AttributeReadModel, associations []repository.AssociationReadModel, ldsOrdinances []repository.LDSOrdinanceReadModel, citationAPIDs map[uuid.UUID]*gedcom.AncestryAPID, readStore repository.ReadModelStore, ctx context.Context) *gedcom.Individual {
-	indi := &gedcom.Individual{}
+	indi := &gedcom.Individual{Restriction: string(p.Restriction)}
 
 	if len(names) == 0 {
 		// Fallback to person's primary name fields if no names in person_names table
@@ -1346,7 +1356,7 @@ func toGedcomAttribute(attr repository.AttributeReadModel, sourceXrefs map[uuid.
 // toGedcomFamily converts a repository FamilyReadModel to a gedcom.Family entity.
 // The encoder will automatically convert this to GEDCOM tags, handling CONT/CONC.
 func toGedcomFamily(f repository.FamilyReadModel, personXrefs, sourceXrefs map[uuid.UUID]string, children []repository.FamilyChildReadModel, marriageCitations []repository.CitationReadModel, events []repository.EventReadModel, ldsOrdinances []repository.LDSOrdinanceReadModel, citationAPIDs map[uuid.UUID]*gedcom.AncestryAPID, readStore repository.ReadModelStore, ctx context.Context) *gedcom.Family {
-	fam := &gedcom.Family{}
+	fam := &gedcom.Family{Restriction: string(f.Restriction)}
 	fam.NoteXRefs, fam.InlineNotes = splitNotes(f.Notes, noteJoin)
 
 	// Husband (Partner1)
@@ -1786,7 +1796,7 @@ func toGedcomNoteRecord(xref string, n repository.NoteReadModel) *gedcom.Record 
 		return &gedcom.Record{
 			XRef:   xref,
 			Type:   gedcom.RecordTypeNote,
-			Entity: &gedcom.Note{Text: n.Text},
+			Entity: &gedcom.Note{Text: n.Text, Tags: extensionRestrictionTags(n.Restriction)},
 		}
 	}
 
@@ -1801,6 +1811,7 @@ func toGedcomNoteRecord(xref string, n repository.NoteReadModel) *gedcom.Record 
 	if n.Language != "" {
 		tags = append(tags, &gedcom.Tag{Level: 1, Tag: "LANG", Value: n.Language})
 	}
+	tags = append(tags, extensionRestrictionTags(n.Restriction)...)
 	for _, tran := range n.Translations {
 		tranFirst, tranCont := splitNoteText(tran.Text)
 		tags = append(tags, &gedcom.Tag{Level: 1, Tag: "TRAN", Value: tranFirst})

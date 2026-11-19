@@ -96,6 +96,8 @@ func TestUpdateCitation_RecordsOnlyChangedFields(t *testing.T) {
 		{"unchanged form", func(*command.UpdateCitationInput) {}, nil},
 		{"page only", func(in *command.UpdateCitationInput) { in.Page = command.Set("13") }, []string{"page"}},
 		{"fields only", func(in *command.UpdateCitationInput) { in.Fields = command.Set(map[string]string{"line": "5"}) }, []string{"fields"}},
+		{"marked private", func(in *command.UpdateCitationInput) { in.Private = ptr(true) }, []string{"restriction"}},
+		{"not private, already not", func(in *command.UpdateCitationInput) { in.Private = ptr(false) }, nil},
 	})
 }
 
@@ -138,6 +140,7 @@ func TestUpdateMedia_RecordsOnlyChangedFields(t *testing.T) {
 		{"unchanged form", func(*command.UpdateMediaInput) {}, nil},
 		{"crop width only", func(in *command.UpdateMediaInput) { in.CropWidth = command.Set(31) }, []string{"crop_width"}},
 		{"title only", func(in *command.UpdateMediaInput) { in.Title = ptr("Portrait, 1840") }, []string{"title"}},
+		{"marked private", func(in *command.UpdateMediaInput) { in.Private = ptr(true) }, []string{"restriction"}},
 	})
 }
 
@@ -163,6 +166,7 @@ func TestUpdateNote_RecordsOnlyChangedFields(t *testing.T) {
 	runUpdateCases(t, setup, []updateCase[command.UpdateNoteInput]{
 		{"unchanged form", func(*command.UpdateNoteInput) {}, nil},
 		{"text only", func(in *command.UpdateNoteInput) { in.Text = ptr("second") }, []string{"text"}},
+		{"marked private", func(in *command.UpdateNoteInput) { in.Private = ptr(true) }, []string{"restriction"}},
 	})
 }
 

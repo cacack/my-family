@@ -64,6 +64,12 @@ type PersonCreated struct {
 	// The TYPE under the BIRT and DEAT events comes from GEDCOM import (#1284).
 	BirthTypeDetail string `json:"birth_type_detail,omitempty"`
 	DeathTypeDetail string `json:"death_type_detail,omitempty"`
+	// Restriction is the record's GEDCOM RESN, set at import or by marking
+	// the record private (ADR-008 §2).
+	Restriction Restriction `json:"restriction,omitempty"`
+	// LivingOverride is an editor's override of the living rule; empty is
+	// auto (ADR-008 §1).
+	LivingOverride LivingOverride `json:"living_override,omitempty"`
 }
 
 func (e PersonCreated) EventType() string      { return "PersonCreated" }
@@ -151,6 +157,9 @@ type FamilyCreated struct {
 	MarriageTypeDetail string `json:"marriage_type_detail,omitempty"`
 	// Notes are the FAM record's own level-1 NOTEs, set at import (#1267).
 	Notes string `json:"notes,omitempty"`
+	// Restriction is the record's GEDCOM RESN, set at import or by marking
+	// the record private (ADR-008 §2).
+	Restriction Restriction `json:"restriction,omitempty"`
 }
 
 func (e FamilyCreated) EventType() string      { return "FamilyCreated" }
@@ -408,6 +417,9 @@ type SourceCreated struct {
 	GedcomXref     string     `json:"gedcom_xref,omitempty"`
 	// ExternalIDs are GEDCOM 7.0 EXIDs set at import (#1225).
 	ExternalIDs []ExternalIdentifier `json:"external_ids,omitempty"`
+	// Restriction is the record's GEDCOM RESN, set at import or by marking
+	// the record private (ADR-008 §2).
+	Restriction Restriction `json:"restriction,omitempty"`
 }
 
 func (e SourceCreated) EventType() string      { return "SourceCreated" }
@@ -492,6 +504,9 @@ type CitationCreated struct {
 	// ExternalIDs are vendor identifiers set at import, such as an Ancestry
 	// _APID (#1175).
 	ExternalIDs []ExternalIdentifier `json:"external_ids,omitempty"`
+	// Restriction is the record's GEDCOM RESN, set at import or by marking
+	// the record private (ADR-008 §2).
+	Restriction Restriction `json:"restriction,omitempty"`
 }
 
 func (e CitationCreated) EventType() string      { return "CitationCreated" }
@@ -576,6 +591,9 @@ type MediaCreated struct {
 	Files        []MediaFile `json:"files,omitempty"`        // Multiple file references
 	Format       string      `json:"format,omitempty"`       // Primary format/MIME type
 	Translations []string    `json:"translations,omitempty"` // Translated titles
+	// Restriction is the record's GEDCOM RESN, set at import or by marking
+	// the record private (ADR-008 §2).
+	Restriction Restriction `json:"restriction,omitempty"`
 }
 
 func (e MediaCreated) EventType() string      { return "MediaCreated" }
@@ -1412,6 +1430,9 @@ type NoteCreated struct {
 	Language     string            `json:"language,omitempty"`     // GEDCOM 7.0 SNOTE BCP 47 language tag
 	Translations []NoteTranslation `json:"translations,omitempty"` // GEDCOM 7.0 SNOTE alternate-language renderings
 	GedcomXref   string            `json:"gedcom_xref,omitempty"`
+	// Restriction is the record's GEDCOM RESN, set at import or by marking
+	// the record private (ADR-008 §2).
+	Restriction Restriction `json:"restriction,omitempty"`
 }
 
 func (e NoteCreated) EventType() string      { return "NoteCreated" }

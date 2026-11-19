@@ -44,7 +44,12 @@ type Person struct {
 	BrickWallNote       *string         `json:"brick_wall_note,omitempty"`
 	BrickWallSince      *time.Time      `json:"brick_wall_since,omitempty"`
 	BrickWallResolvedAt *time.Time      `json:"brick_wall_resolved_at,omitempty"`
-	Version             int64           `json:"version"`
+	// Living is the living rule's verdict today (ADR-008 §1), and
+	// LivingOverride the editor's override of it ("" is auto).
+	Living         bool   `json:"living"`
+	LivingOverride string `json:"living_override,omitempty"`
+	Private        bool   `json:"private,omitempty"` // restriction marks the person private (ADR-008 §2)
+	Version        int64  `json:"version"`
 }
 
 // PersonName represents a name variant for a person in query results.
@@ -341,8 +346,17 @@ func convertReadModelToPerson(rm repository.PersonReadModel) Person {
 	if rm.BrickWallResolvedAt != nil {
 		p.BrickWallResolvedAt = rm.BrickWallResolvedAt
 	}
+	p.Living = rm.LivingFacts().IsLiving(LivingCutoff(time.Now()))
+	p.LivingOverride = string(rm.LivingOverride)
+	p.Private = rm.Restriction.IsPrivate()
 
 	return p
+}
+
+// LivingCutoff is the living rule's cutoff on now's date at the tree's
+// threshold, which is the default until tree settings exist (ADR-008 §6).
+func LivingCutoff(now time.Time) time.Time {
+	return domain.LivingCutoff(now, domain.DefaultLivingThresholdYears)
 }
 
 // nonEmpty returns a copy of an optional read-model string, or nil when it is
