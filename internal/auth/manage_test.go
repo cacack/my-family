@@ -452,6 +452,13 @@ func TestLinks_ListAndRevokePending(t *testing.T) {
 	if err != nil || len(resets) != 1 || resets[0].UserID != grace.ID || resets[0].CreatedBy != m.owner.ID {
 		t.Fatalf("PendingPasswordResets = %+v, %v; want grace's reset", resets, err)
 	}
+	// A listed ID is the token's hash, not the token, so it cannot redeem the link.
+	if _, _, _, err := m.svc.AcceptInvite(ctx, invites[0].TokenHash, "mallory", "Mallory", testPassword, ""); !errors.Is(err, ErrInvalidLink) {
+		t.Errorf("AcceptInvite with a listed ID: err = %v, want ErrInvalidLink", err)
+	}
+	if err := m.svc.ResetPassword(ctx, resets[0].TokenHash, "a brand new password", ""); !errors.Is(err, ErrInvalidLink) {
+		t.Errorf("ResetPassword with a listed ID: err = %v, want ErrInvalidLink", err)
+	}
 
 	if err := m.svc.RevokeInvite(ctx, m.by, invites[0].TokenHash); err != nil {
 		t.Fatalf("RevokeInvite: %v", err)

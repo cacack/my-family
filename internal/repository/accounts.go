@@ -66,6 +66,9 @@ type Member struct {
 // is accepted (ADR-007). The store keeps only a hash of the link's token; an
 // accepted invite is deleted, so each is used at most once.
 type Invite struct {
+	// TokenHash doubles as the invite's ID in owner-facing listings, which is
+	// safe only while redemption hashes the presented token before lookup:
+	// never accept or compare a TokenHash as a token.
 	TokenHash string
 	TreeID    uuid.UUID
 	Role      Role
@@ -77,6 +80,8 @@ type Invite struct {
 // PasswordReset is an owner- or CLI-issued link that sets a user's password.
 // Like an invite it is stored as a token hash and deleted once used.
 type PasswordReset struct {
+	// TokenHash doubles as the reset's ID, like Invite.TokenHash: never
+	// accept or compare it as a token.
 	TokenHash string
 	UserID    uuid.UUID
 	// CreatedBy is the owner who issued it, or uuid.Nil from the CLI.
