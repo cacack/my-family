@@ -33,6 +33,13 @@ var handRouteRoles = map[string]repository.Role{
 	routeKey(http.MethodPost, apiBase+"/gedcom/import/stream"): repository.RoleOwner,
 }
 
+// accountRoutes act on the signed-in user's own account. They need a viewer,
+// but an anonymous visitor has no account, so serveVisitor refuses them.
+var accountRoutes = map[string]bool{
+	routeKey(http.MethodGet, apiBase+"/auth/me"):   true,
+	routeKey(http.MethodPatch, apiBase+"/auth/me"): true,
+}
+
 // routeRoles is the minimum role of every API route (ADR-007): each
 // operation's x-min-role in openapi.yaml, plus handRouteRoles. A route absent
 // from it is refused for everyone (AC-004).
@@ -125,6 +132,69 @@ func limitExports() echo.MiddlewareFunc {
 		DenyHandler: func(c echo.Context, _ string, _ error) error {
 			return refuse(c, http.StatusTooManyRequests, CodeRateLimited,
 				"Too many GEDCOM exports in a short time; try again in a few seconds")
+		},
+	})
+}
+
+// Anonymous read limits (#1414): a visitor needs no account, so each client
+// address may call the costly reads anonymousBurst times at once and one
+// more every anonymousInterval. Signed-in users are not limited here.
+const (
+	anonymousInterval = time.Second
+	anonymousBurst    = 30
+)
+
+// anonymousCostlyRoutes are the reads a visitor may call that walk or
+// aggregate much of the tree, or serve file bytes; limitAnonymousReads
+// throttles them. Single-record reads are cheap and not listed.
+var anonymousCostlyRoutes = map[string]bool{
+	routeKey(http.MethodGet, apiBase+"/search"):                             true,
+	routeKey(http.MethodGet, apiBase+"/sources/search"):                     true,
+	routeKey(http.MethodGet, apiBase+"/pedigree/:id"):                       true,
+	routeKey(http.MethodGet, apiBase+"/descendancy/:id"):                    true,
+	routeKey(http.MethodGet, apiBase+"/ahnentafel/:id"):                     true,
+	routeKey(http.MethodGet, apiBase+"/relationship/:personId1/:personId2"): true,
+	routeKey(http.MethodGet, apiBase+"/families/:id/group-sheet"):           true,
+	routeKey(http.MethodGet, apiBase+"/browse/surnames"):                    true,
+	routeKey(http.MethodGet, apiBase+"/browse/places"):                      true,
+	routeKey(http.MethodGet, apiBase+"/browse/cemeteries"):                  true,
+	routeKey(http.MethodGet, apiBase+"/browse/brick-walls"):                 true,
+	routeKey(http.MethodGet, apiBase+"/map/locations"):                      true,
+	routeKey(http.MethodGet, apiBase+"/statistics"):                         true,
+	routeKey(http.MethodGet, apiBase+"/analytics/discovery"):                true,
+	routeKey(http.MethodGet, apiBase+"/quality/overview"):                   true,
+	routeKey(http.MethodGet, apiBase+"/quality/report"):                     true,
+	routeKey(http.MethodGet, apiBase+"/quality/validation"):                 true,
+	routeKey(http.MethodGet, apiBase+"/persons/duplicates"):                 true,
+	routeKey(http.MethodGet, apiBase+"/history"):                            true,
+	routeKey(http.MethodGet, apiBase+"/snapshots/:id/compare-current"):      true,
+	routeKey(http.MethodGet, apiBase+"/snapshots/:id1/compare/:id2"):        true,
+	routeKey(http.MethodGet, apiBase+"/branches/:id/compare"):               true,
+	routeKey(http.MethodGet, apiBase+"/branches/:id/drift"):                 true,
+	routeKey(http.MethodGet, apiBase+"/branches/:id/evidence-coverage"):     true,
+	routeKey(http.MethodGet, apiBase+"/branches/:id/health"):                true,
+	routeKey(http.MethodGet, apiBase+"/media/:id/content"):                  true,
+	routeKey(http.MethodGet, apiBase+"/media/:id/thumbnail"):                true,
+}
+
+// limitAnonymousReads rate-limits anonymous visitors' costly reads per client
+// address (the connection's, not a header's: see the server's IPExtractor).
+func limitAnonymousReads() echo.MiddlewareFunc {
+	return middleware.RateLimiterWithConfig(middleware.RateLimiterConfig{
+		Skipper: func(c echo.Context) bool {
+			return !isAnonymous(c.Request().Context()) || !anonymousCostlyRoutes[routeKey(c.Request().Method, c.Path())]
+		},
+		Store: middleware.NewRateLimiterMemoryStoreWithConfig(middleware.RateLimiterMemoryStoreConfig{
+			Rate:      rate.Every(anonymousInterval),
+			Burst:     anonymousBurst,
+			ExpiresIn: time.Duration(anonymousBurst) * anonymousInterval,
+		}),
+		IdentifierExtractor: func(c echo.Context) (string, error) {
+			return c.RealIP(), nil
+		},
+		DenyHandler: func(c echo.Context, _ string, _ error) error {
+			return refuse(c, http.StatusTooManyRequests, CodeRateLimited,
+				"Too many requests in a short time; wait a few seconds, or sign in")
 		},
 	})
 }

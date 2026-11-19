@@ -21,7 +21,7 @@ describe('Settings page', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		signInAs('owner');
-		api.getPrivacySettings.mockResolvedValue({ living_threshold_years: 110, viewers_see_living: true });
+		api.getPrivacySettings.mockResolvedValue({ living_threshold_years: 110, viewers_see_living: true, anonymous_access: 'none' });
 	});
 
 	const threshold = () => screen.getByLabelText('Living threshold (years)') as HTMLInputElement;
@@ -45,7 +45,7 @@ describe('Settings page', () => {
 	});
 
 	it('saves changed settings and announces it', async () => {
-		api.updatePrivacySettings.mockResolvedValue({ living_threshold_years: 100, viewers_see_living: false });
+		api.updatePrivacySettings.mockResolvedValue({ living_threshold_years: 100, viewers_see_living: false, anonymous_access: 'none' });
 		render(SettingsPage);
 		await waitFor(() => expect(threshold().value).toBe('110'));
 
@@ -53,7 +53,11 @@ describe('Settings page', () => {
 		await fireEvent.click(viewers());
 		await fireEvent.click(saveButton());
 
-		expect(api.updatePrivacySettings).toHaveBeenCalledWith({ living_threshold_years: 100, viewers_see_living: false });
+		expect(api.updatePrivacySettings).toHaveBeenCalledWith({
+			living_threshold_years: 100,
+			viewers_see_living: false,
+			anonymous_access: 'none'
+		});
 		await waitFor(() => expect(screen.getByTestId('announcer').textContent).toContain('Privacy settings saved'));
 		expect(saveButton().disabled).toBe(true);
 	});
@@ -68,6 +72,26 @@ describe('Settings page', () => {
 
 		expect(await screen.findByText(/must be between 50 and 150/)).toBeDefined();
 		expect(threshold().value).toBe('120');
+	});
+
+	it('offers visitor access, saying what visitors will and will not see', async () => {
+		api.updatePrivacySettings.mockResolvedValue({ living_threshold_years: 110, viewers_see_living: true, anonymous_access: 'viewer' });
+		render(SettingsPage);
+		const closed = (await screen.findByLabelText('Must sign in to see anything')) as HTMLInputElement;
+		const open = screen.getByLabelText('May browse the tree as viewers') as HTMLInputElement;
+		expect(closed.checked).toBe(true);
+		const group = screen.getByRole('group', { name: 'Visitors who are not signed in' });
+		const hint = document.getElementById(group.getAttribute('aria-describedby') ?? '')?.textContent ?? '';
+		expect(hint).toMatch(/will see people who have died/);
+		expect(hint).toMatch(/will not see living people/);
+
+		await fireEvent.click(open);
+		await fireEvent.click(saveButton());
+		expect(api.updatePrivacySettings).toHaveBeenCalledWith({
+			living_threshold_years: 110,
+			viewers_see_living: true,
+			anonymous_access: 'viewer'
+		});
 	});
 
 	it('tells a non-owner the page needs the owner, and loads nothing', async () => {

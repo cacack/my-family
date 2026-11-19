@@ -1,8 +1,9 @@
 <script lang="ts">
 	/**
 	 * The tree's privacy settings (owner only, ADR-008 §6): the living
-	 * threshold, and whether viewers see living people in full. The server
-	 * keeps them beside the accounts, so they survive restarts.
+	 * threshold, whether viewers see living people in full, and whether
+	 * visitors may browse without signing in (ADR-007). The server keeps them
+	 * beside the accounts, so they survive restarts.
 	 */
 	import PageHeader from '#lib/components/PageHeader.svelte';
 	import ActionError from '#lib/components/ActionError.svelte';
@@ -14,6 +15,8 @@
 	import { Input } from '#lib/components/ui/input/index.js';
 	import { Label } from '#lib/components/ui/label/index.js';
 	import { api, type ApiError, type PrivacySettings } from '#lib/api/client.js';
+
+	type AnonymousAccess = PrivacySettings['anonymous_access'];
 	import { can } from '#lib/stores/access.svelte.js';
 
 	// The range the server accepts (openapi.yaml, PrivacySettings).
@@ -25,6 +28,7 @@
 	let saved = $state<PrivacySettings | null>(null);
 	let thresholdYears = $state(110);
 	let viewersSeeLiving = $state(true);
+	let anonymousAccess = $state<AnonymousAccess>('none');
 	let loading = $state(true);
 	let loadError: string | null = $state(null);
 	let saving = $state(false);
@@ -33,13 +37,16 @@
 	const owner = $derived(can('owner'));
 	const changed = $derived(
 		saved !== null &&
-			(thresholdYears !== saved.living_threshold_years || viewersSeeLiving !== saved.viewers_see_living)
+			(thresholdYears !== saved.living_threshold_years ||
+				viewersSeeLiving !== saved.viewers_see_living ||
+				anonymousAccess !== saved.anonymous_access)
 	);
 
 	function show(settings: PrivacySettings) {
 		saved = settings;
 		thresholdYears = settings.living_threshold_years;
 		viewersSeeLiving = settings.viewers_see_living;
+		anonymousAccess = settings.anonymous_access;
 	}
 
 	async function load() {
@@ -70,7 +77,8 @@
 			show(
 				await api.updatePrivacySettings({
 					living_threshold_years: thresholdYears,
-					viewers_see_living: viewersSeeLiving
+					viewers_see_living: viewersSeeLiving,
+					anonymous_access: anonymousAccess
 				})
 			);
 			liveRegion?.announce('Privacy settings saved');
@@ -89,7 +97,7 @@
 <LiveRegion bind:this={liveRegion} />
 
 <div class="settings-page">
-	<PageHeader title="Settings" description="Who counts as living, and what viewers may see of them." />
+	<PageHeader title="Settings" description="Who counts as living, what viewers may see of them, and whether visitors may look." />
 
 	{#if !owner}
 		<RoleNotice action="Changing the tree's settings" required="owner" />
@@ -131,6 +139,32 @@
 						everyone.
 					</p>
 				</div>
+				<fieldset class="field visitors" aria-describedby="visitors-hint">
+					<legend>Visitors who are not signed in</legend>
+					<label class="check">
+						<input type="radio" name="anonymous-access" value="none" bind:group={anonymousAccess} />
+						Must sign in to see anything
+					</label>
+					<label class="check">
+						<input type="radio" name="anonymous-access" value="viewer" bind:group={anonymousAccess} />
+						May browse the tree as viewers
+					</label>
+					<div id="visitors-hint" class="hint">
+						<p>
+							Visitors will see people who have died, with their names, dates, places, families and sources, and
+							the charts, map and search.
+						</p>
+						<p>
+							Visitors will not see living people (each shows as "Living", with no name or details), records
+							marked private, who made each change, or submitters' contact details. They cannot change, export or
+							import anything.
+						</p>
+						<p>
+							Not available yet: until living people and private records are hidden from visitors, the server
+							refuses to let them in.
+						</p>
+					</div>
+				</fieldset>
 				{#if saveError}
 					<ActionError message={saveError} />
 				{/if}
@@ -206,6 +240,24 @@
 	.check input:focus-visible {
 		outline: 2px solid var(--color-focus-ring);
 		outline-offset: 2px;
+	}
+
+	.visitors {
+		margin: 0;
+		padding: 0;
+		border: 0;
+		min-width: 0;
+	}
+
+	.visitors legend {
+		padding: 0;
+		margin-bottom: 0.375rem;
+		font-size: 0.875rem;
+		font-weight: 500;
+	}
+
+	.hint p {
+		margin: 0 0 0.375rem;
 	}
 
 	.hint {

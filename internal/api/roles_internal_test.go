@@ -10,6 +10,7 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"github.com/cacack/my-family/internal/config"
+	"github.com/cacack/my-family/internal/repository"
 	"github.com/cacack/my-family/internal/repository/memory"
 )
 
@@ -104,5 +105,20 @@ func TestAuthenticate_RefusesAnUndeclaredRoute(t *testing.T) {
 	s.echo.ServeHTTP(rec, httptest.NewRequest(http.MethodPatch, "/api/v1/persons", http.NoBody))
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Errorf("a method a declared path lacks: %d %s, want the router's 405", rec.Code, rec.Body)
+	}
+}
+
+// Every costly route limitAnonymousReads names is a route a visitor may call,
+// so a typo or a renamed path cannot silently leave it unlimited.
+func TestAnonymousCostlyRoutes_AreViewerRoutes(t *testing.T) {
+	for key := range anonymousCostlyRoutes {
+		if role, ok := routeRoles[key]; !ok || role != repository.RoleViewer {
+			t.Errorf("%s: role %q (declared %v), want a viewer route", key, role, ok)
+		}
+	}
+	for key := range accountRoutes {
+		if _, ok := routeRoles[key]; !ok {
+			t.Errorf("account route %s is not a route", key)
+		}
 	}
 }

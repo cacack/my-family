@@ -41,24 +41,45 @@ func (e AccountRole) Valid() bool {
 	}
 }
 
+// Defines values for AnonymousAccess.
+const (
+	AnonymousAccessNone   AnonymousAccess = "none"
+	AnonymousAccessViewer AnonymousAccess = "viewer"
+)
+
+// Valid indicates whether the value is a known member of the AnonymousAccess enum.
+func (e AnonymousAccess) Valid() bool {
+	switch e {
+	case AnonymousAccessNone:
+		return true
+	case AnonymousAccessViewer:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AuthAuditEntryAction.
 const (
-	AuthAuditEntryActionInviteAccepted      AuthAuditEntryAction = "invite_accepted"
-	AuthAuditEntryActionInviteCreated       AuthAuditEntryAction = "invite_created"
-	AuthAuditEntryActionPasswordChanged     AuthAuditEntryAction = "password_changed"
-	AuthAuditEntryActionPasswordReset       AuthAuditEntryAction = "password_reset"
-	AuthAuditEntryActionPasswordResetIssued AuthAuditEntryAction = "password_reset_issued"
-	AuthAuditEntryActionRoleChanged         AuthAuditEntryAction = "role_changed"
-	AuthAuditEntryActionSignIn              AuthAuditEntryAction = "sign_in"
-	AuthAuditEntryActionSignInFailed        AuthAuditEntryAction = "sign_in_failed"
-	AuthAuditEntryActionUserCreated         AuthAuditEntryAction = "user_created"
-	AuthAuditEntryActionUserDisabled        AuthAuditEntryAction = "user_disabled"
-	AuthAuditEntryActionUserEnabled         AuthAuditEntryAction = "user_enabled"
+	AuthAuditEntryActionAnonymousAccessChanged AuthAuditEntryAction = "anonymous_access_changed"
+	AuthAuditEntryActionInviteAccepted         AuthAuditEntryAction = "invite_accepted"
+	AuthAuditEntryActionInviteCreated          AuthAuditEntryAction = "invite_created"
+	AuthAuditEntryActionPasswordChanged        AuthAuditEntryAction = "password_changed"
+	AuthAuditEntryActionPasswordReset          AuthAuditEntryAction = "password_reset"
+	AuthAuditEntryActionPasswordResetIssued    AuthAuditEntryAction = "password_reset_issued"
+	AuthAuditEntryActionRoleChanged            AuthAuditEntryAction = "role_changed"
+	AuthAuditEntryActionSignIn                 AuthAuditEntryAction = "sign_in"
+	AuthAuditEntryActionSignInFailed           AuthAuditEntryAction = "sign_in_failed"
+	AuthAuditEntryActionUserCreated            AuthAuditEntryAction = "user_created"
+	AuthAuditEntryActionUserDisabled           AuthAuditEntryAction = "user_disabled"
+	AuthAuditEntryActionUserEnabled            AuthAuditEntryAction = "user_enabled"
 )
 
 // Valid indicates whether the value is a known member of the AuthAuditEntryAction enum.
 func (e AuthAuditEntryAction) Valid() bool {
 	switch e {
+	case AuthAuditEntryActionAnonymousAccessChanged:
+		return true
 	case AuthAuditEntryActionInviteAccepted:
 		return true
 	case AuthAuditEntryActionInviteCreated:
@@ -2446,6 +2467,12 @@ type AhnentafelSubject struct {
 	Surname   string             `json:"surname"`
 }
 
+// AnonymousAccess What someone who is not signed in may do (ADR-007). `none`: every
+// tree operation needs a session. `viewer`: a visitor may call what a
+// viewer may, and sees living people as placeholders and no private
+// records (ADR-008 §4). Present in `accounts` mode only.
+type AnonymousAccess string
+
 // ArchivedEvidenceAnalysis defines model for ArchivedEvidenceAnalysis.
 type ArchivedEvidenceAnalysis struct {
 	Analysis        EvidenceAnalysis `json:"analysis"`
@@ -2615,6 +2642,12 @@ type AuthAuditList struct {
 // AuthStatus defines model for AuthStatus.
 type AuthStatus struct {
 	Account *Account `json:"account,omitempty"`
+
+	// AnonymousAccess What someone who is not signed in may do (ADR-007). `none`: every
+	// tree operation needs a session. `viewer`: a visitor may call what a
+	// viewer may, and sees living people as placeholders and no private
+	// records (ADR-008 §4). Present in `accounts` mode only.
+	AnonymousAccess *AnonymousAccess `json:"anonymous_access,omitempty"`
 
 	// Mode `accounts`: every request needs a signed-in session. `open`: every
 	// request is treated as the owner (`AUTH_MODE=open` or `DEMO_MODE`),
@@ -5691,6 +5724,12 @@ type PlaceIndexResponse struct {
 
 // PrivacySettings defines model for PrivacySettings.
 type PrivacySettings struct {
+	// AnonymousAccess What someone who is not signed in may do (ADR-007). `none`: every
+	// tree operation needs a session. `viewer`: a visitor may call what a
+	// viewer may, and sees living people as placeholders and no private
+	// records (ADR-008 §4). Present in `accounts` mode only.
+	AnonymousAccess AnonymousAccess `json:"anonymous_access"`
+
 	// LivingThresholdYears N in the living rule (ADR-008 §1): a person born (else christened or baptized) more than N years ago, with no evidence of death, is no longer presumed living. Default 110.
 	LivingThresholdYears int `json:"living_threshold_years"`
 

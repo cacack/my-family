@@ -68,8 +68,8 @@ func TestTreeSettingsStore_Contract(t *testing.T) {
 				t.Fatalf("GetTreeSettings before any save = %+v, %v; want the defaults", got, err)
 			}
 			for _, want := range []repository.TreeSettings{
-				{LivingThresholdYears: 100, ViewersSeeLiving: false},
-				{LivingThresholdYears: 120, ViewersSeeLiving: true},
+				{LivingThresholdYears: 100, ViewersSeeLiving: false, AnonymousAccess: repository.AnonymousAccessViewer},
+				{LivingThresholdYears: 120, ViewersSeeLiving: true, AnonymousAccess: repository.AnonymousAccessNone},
 			} {
 				if err := store.SaveTreeSettings(ctx, repository.DefaultTreeID, want); err != nil {
 					t.Fatalf("SaveTreeSettings(%+v): %v", want, err)
@@ -470,7 +470,7 @@ func TestRebuild_KeepsAccounts(t *testing.T) {
 			if err := stores.Accounts.CreateSession(ctx, &repository.Session{TokenHash: "s", UserID: user.ID, CreatedAt: now, LastSeenAt: now}); err != nil {
 				t.Fatalf("CreateSession: %v", err)
 			}
-			settings := repository.TreeSettings{LivingThresholdYears: 95, ViewersSeeLiving: false}
+			settings := repository.TreeSettings{LivingThresholdYears: 95, ViewersSeeLiving: false, AnonymousAccess: repository.AnonymousAccessViewer}
 			if err := stores.Accounts.SaveTreeSettings(ctx, repository.DefaultTreeID, settings); err != nil {
 				t.Fatalf("SaveTreeSettings: %v", err)
 			}

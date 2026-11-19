@@ -46,6 +46,8 @@ type request struct {
 	cookie             *http.Cookie
 	header             map[string]string
 	tls                bool
+	// remoteAddr is the client's address, or httptest's default.
+	remoteAddr string
 }
 
 func (f *authFixture) do(t *testing.T, r request) *httptest.ResponseRecorder {
@@ -66,6 +68,9 @@ func (f *authFixture) do(t *testing.T, r request) *httptest.ResponseRecorder {
 	}
 	if r.tls {
 		req.TLS = &tls.ConnectionState{}
+	}
+	if r.remoteAddr != "" {
+		req.RemoteAddr = r.remoteAddr
 	}
 	rec := httptest.NewRecorder()
 	f.server.Echo().ServeHTTP(rec, req)

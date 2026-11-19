@@ -28,16 +28,16 @@ func TestPrivacySettings_OwnerReadsAndChangesThem(t *testing.T) {
 		}
 		return decode[api.PrivacySettings](t, rec)
 	}
-	if got := get(); got != (api.PrivacySettings{LivingThresholdYears: 110, ViewersSeeLiving: true}) {
+	if got := get(); got != (api.PrivacySettings{LivingThresholdYears: 110, ViewersSeeLiving: true, AnonymousAccess: api.AnonymousAccessNone}) {
 		t.Errorf("default settings = %+v", got)
 	}
 
 	rec := f.do(t, request{method: http.MethodPut, path: "/api/v1/settings/privacy", cookie: owner,
-		body: `{"living_threshold_years":90,"viewers_see_living":false}`})
+		body: `{"living_threshold_years":90,"viewers_see_living":false,"anonymous_access":"none"}`})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("PUT settings: %d %s", rec.Code, rec.Body)
 	}
-	want := api.PrivacySettings{LivingThresholdYears: 90, ViewersSeeLiving: false}
+	want := api.PrivacySettings{LivingThresholdYears: 90, ViewersSeeLiving: false, AnonymousAccess: api.AnonymousAccessNone}
 	if got := decode[api.PrivacySettings](t, rec); got != want {
 		t.Errorf("PUT response = %+v, want %+v", got, want)
 	}
@@ -46,9 +46,11 @@ func TestPrivacySettings_OwnerReadsAndChangesThem(t *testing.T) {
 	}
 
 	for _, body := range []string{
-		`{"living_threshold_years":49,"viewers_see_living":true}`,
-		`{"living_threshold_years":151,"viewers_see_living":true}`,
-		`{"viewers_see_living":true}`,
+		`{"living_threshold_years":49,"viewers_see_living":true,"anonymous_access":"none"}`,
+		`{"living_threshold_years":151,"viewers_see_living":true,"anonymous_access":"none"}`,
+		`{"viewers_see_living":true,"anonymous_access":"none"}`,
+		`{"living_threshold_years":90,"viewers_see_living":true}`,
+		`{"living_threshold_years":90,"viewers_see_living":true,"anonymous_access":"editor"}`,
 	} {
 		rec := f.do(t, request{method: http.MethodPut, path: "/api/v1/settings/privacy", cookie: owner, body: body})
 		if rec.Code != http.StatusBadRequest {
@@ -68,7 +70,7 @@ func TestPrivacySettings_OwnersOnly(t *testing.T) {
 		cookie := f.inviteAs(t, owner, role, role)
 		for _, r := range []request{
 			{method: http.MethodGet, path: "/api/v1/settings/privacy", cookie: cookie},
-			{method: http.MethodPut, path: "/api/v1/settings/privacy", cookie: cookie, body: `{"living_threshold_years":90,"viewers_see_living":true}`},
+			{method: http.MethodPut, path: "/api/v1/settings/privacy", cookie: cookie, body: `{"living_threshold_years":90,"viewers_see_living":true,"anonymous_access":"none"}`},
 		} {
 			if rec := f.do(t, r); rec.Code != http.StatusForbidden {
 				t.Errorf("%s %s as %s: %d, want 403", r.method, r.path, role, rec.Code)
@@ -102,7 +104,7 @@ func TestPrivacySettings_ThresholdDecidesWhoIsLiving(t *testing.T) {
 		t.Error("born 1930 at the default 110-year threshold: not living")
 	}
 	rec = f.do(t, request{method: http.MethodPut, path: "/api/v1/settings/privacy", cookie: owner,
-		body: `{"living_threshold_years":90,"viewers_see_living":true}`})
+		body: `{"living_threshold_years":90,"viewers_see_living":true,"anonymous_access":"none"}`})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("PUT settings: %d %s", rec.Code, rec.Body)
 	}
@@ -121,7 +123,7 @@ func TestPrivacySettings_WithoutAStoreTheDefaultsApply(t *testing.T) {
 		t.Errorf("GET settings without a store: %d %s", rec.Code, rec.Body)
 	}
 	rec = f.do(t, request{method: http.MethodPut, path: "/api/v1/settings/privacy",
-		body: `{"living_threshold_years":90,"viewers_see_living":true}`})
+		body: `{"living_threshold_years":90,"viewers_see_living":true,"anonymous_access":"none"}`})
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Errorf("PUT settings without a store: %d, want 503", rec.Code)
 	}
@@ -134,8 +136,9 @@ func (brokenSettings) GetTreeSettings(context.Context, uuid.UUID) (repository.Tr
 	return repository.TreeSettings{}, errors.New("settings table is locked")
 }
 
-// A failing settings store fails only the routes that read the tree: health
-// and sign-in keep working, and nothing is read for a refused request.
+// A failing settings store fails only the routes that read the tree, and
+// requests without a session, whose answer depends on the anonymous-access
+// setting: health and sign-in keep working.
 func TestPrivacySettings_StoreFailureSparesPublicRoutes(t *testing.T) {
 	cfg := &config.Config{Port: 8080, LogFormat: "text", AuthMode: config.AuthModeAccounts}
 	events := memory.NewEventStore()
@@ -149,8 +152,8 @@ func TestPrivacySettings_StoreFailureSparesPublicRoutes(t *testing.T) {
 	if rec := f.do(t, request{method: http.MethodGet, path: "/api/v1/health"}); rec.Code != http.StatusOK {
 		t.Errorf("health: %d %s", rec.Code, rec.Body)
 	}
-	if rec := f.do(t, request{method: http.MethodGet, path: "/api/v1/persons"}); rec.Code != http.StatusUnauthorized {
-		t.Errorf("persons signed out: %d, want 401", rec.Code)
+	if rec := f.do(t, request{method: http.MethodGet, path: "/api/v1/persons"}); rec.Code != http.StatusInternalServerError {
+		t.Errorf("persons signed out: %d, want 500", rec.Code)
 	}
 	owner := f.signIn(t)
 	if rec := f.do(t, request{method: http.MethodGet, path: "/api/v1/persons", cookie: owner}); rec.Code != http.StatusInternalServerError {
