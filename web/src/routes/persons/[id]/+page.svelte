@@ -30,6 +30,7 @@
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
 	import LiveRegion from '#lib/components/LiveRegion.svelte';
 	import { activeBranch } from '#lib/stores/activeBranch.svelte.js';
+	import { loadHomePerson } from '#lib/stores/homePerson.svelte.js';
 	import { ROLLBACK_MAINLINE_ONLY } from '#lib/utils/rollbackScope.js';
 	import { GENDER_OPTIONS, LIVING_OVERRIDE_OPTIONS, RESEARCH_STATUS_OPTIONS, optionLabel } from '#lib/utils/enumOptions.js';
 	import { DISCARD_EDITS_PROMPT, SaveConflictFlow, type ConflictRow } from '#lib/utils/saveConflict.svelte.js';
@@ -437,6 +438,8 @@
 	async function deletePerson() {
 		if (!person) return;
 		await api.deletePerson(person.id);
+		// The deleted person may have been "me" (#1444).
+		loadHomePerson();
 		goto('/persons', { state: { notice: `${formatPersonName(person)} was deleted.` } });
 	}
 

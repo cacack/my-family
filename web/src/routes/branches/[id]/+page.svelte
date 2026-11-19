@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { can } from '#lib/stores/access.svelte.js';
+	import { loadHomePerson } from '#lib/stores/homePerson.svelte.js';
 	/**
 	 * Compare a research branch against the mainline, and merge it.
 	 *
@@ -607,6 +608,8 @@
 					return { stream_id, resolution, ...(rationale ? { rationale } : {}) };
 				})
 			});
+			// A person merge the branch made may have moved "me" on main (#1444).
+			loadHomePerson();
 			// Adopt the branch as the merge left it, so the page stops offering
 			// merge affordances behind the still-open success summary. Gated on the
 			// token like every other write: the user may have navigated away while

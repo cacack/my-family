@@ -15,6 +15,7 @@
 		type PersonDetail
 	} from '#lib/api/client.js';
 	import { activeBranch } from '#lib/stores/activeBranch.svelte.js';
+	import { loadHomePerson } from '#lib/stores/homePerson.svelte.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import {
 		Card,
@@ -240,6 +241,8 @@
 				field_resolution: { ...resolution }
 			};
 			result = await api.mergePersons(req);
+			// "Me" follows a merge that removes them (#1444).
+			loadHomePerson();
 			setTimeout(() => {
 				goto(`/persons/${encodeURIComponent(survivorTarget)}`);
 			}, MERGE_REDIRECT_DELAY_MS);

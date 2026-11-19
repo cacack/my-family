@@ -6,7 +6,9 @@
  * (`/settings/home-person`); once accounts exist (#1408) the server answers
  * with the signed-in account's own choice, and this store needs no change.
  *
- * Loaded once by the root layout. The setters are the only mutators.
+ * Loaded by the root layout, and reloaded after a delete or merge that may
+ * have removed the home person, since the server moves or drops them then
+ * (#1444). The setters are the only other mutators.
  */
 
 import { api, type Person } from '#lib/api/client.js';
@@ -24,7 +26,7 @@ const state = $state<HomePersonState>({ person: null, loaded: false });
 export const homePerson: Readonly<HomePersonState> = state;
 
 /**
- * Loads the home person. A failure leaves it unset: a missing "me" only hides
+ * Loads, or reloads, the home person. A failure leaves it unset: a missing "me" only hides
  * the relationship line, so it is not worth an error on every page.
  */
 export async function loadHomePerson(): Promise<void> {

@@ -19,6 +19,7 @@ import type {
 } from '#lib/api/client.js';
 import { resetRouter } from '#lib/test/fakeRouter.svelte.js';
 import { signInAs } from '#lib/test/roles.js';
+import { homePerson, loadHomePerson } from '#lib/stores/homePerson.svelte.js';
 
 const BRANCH_ID = '11111111-1111-1111-1111-111111111111';
 const PERSON_ID = '99999999-9999-9999-9999-999999999999';
@@ -36,7 +37,8 @@ const {
 	getBranchEvidenceCoverage,
 	getBranchHealth,
 	switchBranch,
-	returnToMainline
+	returnToMainline,
+	getHomePerson
 } = vi.hoisted(() => ({
 		mockState: {
 			id: null as string | null,
@@ -52,7 +54,8 @@ const {
 		getBranchEvidenceCoverage: vi.fn(),
 		getBranchHealth: vi.fn(),
 		switchBranch: vi.fn().mockResolvedValue(undefined),
-		returnToMainline: vi.fn()
+		returnToMainline: vi.fn(),
+		getHomePerson: vi.fn()
 	}));
 
 vi.mock('#lib/api/client.js', async (importOriginal) => {
@@ -66,7 +69,8 @@ vi.mock('#lib/api/client.js', async (importOriginal) => {
 				precheckBranchMerge(id, req),
 			resumeBranchMerge: (id: string, req: BranchMergeResumeRequest) => resumeBranchMerge(id, req),
 			getBranchEvidenceCoverage: (id: string) => getBranchEvidenceCoverage(id),
-			getBranchHealth: (id: string) => getBranchHealth(id)
+			getBranchHealth: (id: string) => getBranchHealth(id),
+			getHomePerson: () => getHomePerson()
 		}
 	};
 });
@@ -591,6 +595,21 @@ describe('Branch comparison page', () => {
 				{ stream_id: OTHER_ID, resolution: 'main' },
 				{ stream_id: PERSON_ID, resolution: 'main' }
 			]);
+		});
+
+		it('re-reads "me", which a person merge on the branch may have moved (#1444)', async () => {
+			compareBranch.mockResolvedValue(comparison({ conflicts: [] }));
+			const me = { id: PERSON_ID, given_name: 'Ada', surname: 'Lovelace', version: 1 };
+			const survivor = { ...me, id: OTHER_ID, version: 2 };
+			getHomePerson.mockResolvedValueOnce({ person: me }).mockResolvedValueOnce({ person: survivor });
+			await loadHomePerson();
+			expect(homePerson.person?.id).toBe(PERSON_ID);
+
+			render(Page);
+			await fireEvent.click(await screen.findByRole('button', { name: 'Review & merge' }));
+			await fireEvent.click(await screen.findByRole('button', { name: 'Merge branch' }));
+
+			await waitFor(() => expect(homePerson.person?.id).toBe(OTHER_ID));
 		});
 
 		it('asks for a snapshot before merging by default, and not once it is turned off (#833)', async () => {
