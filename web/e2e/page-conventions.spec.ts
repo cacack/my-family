@@ -34,7 +34,7 @@ const DETAIL_PATHS = [
 	/^\/(sources|repositories)\/[^/]+$/,
 	/^\/branches\/[^/]+\/research$/,
 	/^\/evidence\/[^/]+\/[^/]+$/,
-	/^\/(import|relationship)$/
+	/^\/(import|relationship|account)$/
 ];
 const CHART_PATHS = /^\/(pedigree|descendancy)\//;
 // Detail pages whose h1 sits inside a card (the record card, the evidence

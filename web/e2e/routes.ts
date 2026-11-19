@@ -32,7 +32,10 @@ export const STATIC_ROUTES = [
 	'/descendancy',
 	'/ahnentafel',
 	'/import',
-	'/search'
+	'/search',
+	'/users',
+	'/users/audit',
+	'/account'
 ];
 
 // Detail routes need seeded ids, and the seed can only be read once global

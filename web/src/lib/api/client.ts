@@ -481,6 +481,14 @@ export type Account = Schemas['Account'];
 export type AuthStatus = Schemas['AuthStatus'];
 export type SetupRequest = Schemas['SetupRequest'];
 export type SignInRequest = Schemas['SignInRequest'];
+export type AccountUpdate = Schemas['AccountUpdate'];
+export type AcceptInviteRequest = Schemas['AcceptInviteRequest'];
+export type PasswordResetRequest = Schemas['PasswordResetRequest'];
+export type User = Schemas['User'];
+export type UserUpdate = Schemas['UserUpdate'];
+export type AccountLink = Schemas['AccountLink'];
+export type AuthAuditEntry = Schemas['AuthAuditEntry'];
+export type AuthAuditList = Schemas['AuthAuditList'];
 
 // GPS evidence: analyses, conflicts, research logs and proof summaries
 export type EvidenceAnalysisResponse = Schemas['EvidenceAnalysis'];
@@ -669,6 +677,43 @@ class ApiClient {
 
 	async signOut(): Promise<void> {
 		return this.request<void>('POST', '/auth/sign-out');
+	}
+
+	async updateCurrentAccount(input: AccountUpdate): Promise<Account> {
+		return this.request<Account>('PATCH', '/auth/me', input);
+	}
+
+	async acceptInvite(input: AcceptInviteRequest): Promise<Account> {
+		return this.request<Account>('POST', '/auth/invites/accept', input);
+	}
+
+	async resetPassword(input: PasswordResetRequest): Promise<void> {
+		return this.request<void>('POST', '/auth/password-reset', input);
+	}
+
+	// User management (owner only)
+	async listUsers(): Promise<User[]> {
+		return (await this.request<Schemas['UserList']>('GET', '/users')).items;
+	}
+
+	async updateUser(id: string, input: UserUpdate): Promise<User> {
+		return this.request<User>('PATCH', `/users/${encodeURIComponent(id)}`, input);
+	}
+
+	async createInvite(role: User['role']): Promise<AccountLink> {
+		return this.request<AccountLink>('POST', '/invites', { role });
+	}
+
+	async createPasswordReset(id: string): Promise<AccountLink> {
+		return this.request<AccountLink>('POST', `/users/${encodeURIComponent(id)}/password-reset`);
+	}
+
+	async listAuthAudit(params: { limit?: number; offset?: number } = {}): Promise<AuthAuditList> {
+		const searchParams = new URLSearchParams();
+		if (params.limit !== undefined) searchParams.set('limit', String(params.limit));
+		if (params.offset !== undefined) searchParams.set('offset', String(params.offset));
+		const query = searchParams.toString();
+		return this.request<AuthAuditList>('GET', `/auth-audit${query ? `?${query}` : ''}`);
 	}
 
 	// Person endpoints

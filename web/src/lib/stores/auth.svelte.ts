@@ -11,7 +11,14 @@
  * - `signed-in`: `account` is who
  * - `error`: the status could not be read; `retry` with `loadAuth`
  */
-import { api, setUnauthorizedHandler, type Account, type SetupRequest } from '#lib/api/client.js';
+import {
+	api,
+	setUnauthorizedHandler,
+	type AcceptInviteRequest,
+	type Account,
+	type AccountUpdate,
+	type SetupRequest
+} from '#lib/api/client.js';
 import { auth } from './access.svelte.js';
 
 export { auth, can, currentRole, type AuthPhase, type Role } from './access.svelte.js';
@@ -60,6 +67,16 @@ export async function signIn(username: string, password: string): Promise<void> 
 /** Create the first owner and sign them in; throws the API error for the form to show. */
 export async function completeSetup(input: SetupRequest): Promise<void> {
 	signedIn(await api.setupOwner(input));
+}
+
+/** Create an account from an invite link and sign it in; throws the API error for the form to show. */
+export async function acceptInvite(input: AcceptInviteRequest): Promise<void> {
+	signedIn(await api.acceptInvite(input));
+}
+
+/** Change the signed-in user's display name or password; throws the API error for the form to show. */
+export async function updateOwnAccount(input: AccountUpdate): Promise<void> {
+	signedIn(await api.updateCurrentAccount(input));
 }
 
 /** Sign out on the server, then show the sign-in page whatever it answered. */
