@@ -183,8 +183,8 @@ an append-only audit log, which owners read under **Users > Audit log**.
 
 #### Living people and private records
 
-Each person has a computed `living` flag: a recorded death, burial or cremation makes them
-deceased; otherwise they count as living unless their birth (else christening or baptism) is more
+Each person has a computed `living` flag: a recorded death (including a bare GEDCOM `DEAT Y`, which
+round-trips through import and export), burial or cremation makes them deceased; otherwise they count as living unless their birth (else christening or baptism) is more
 than 110 years ago. Owners change that threshold (50 to 150 years) and whether viewers see living
 people under **Settings**. Editors set `living_override` (`auto`, `living`, `deceased`) to decide
 for the rule, and mark a record private, when editing it. Persons, families, sources, citations, notes and media carry a `private` mark,
