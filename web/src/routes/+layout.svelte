@@ -298,7 +298,9 @@
 	   nav (#1094). On the row they grow, and the search box takes up to 15rem.
 	   Its 12rem floor keeps the placeholder readable, in rem so it scales with
 	   the font size. The min-content width, and so the wrap point, is that
-	   floor plus BranchSwitcher.svelte's label cap, the icon buttons and the
+	   floor plus BranchSwitcher.svelte's label cap (from 1280px; below that
+	   the switcher is icon-only, so the cap adds nothing), the icon buttons,
+	   the account slot (AccountMenu.svelte, filled in every mode) and the
 	   gaps: changing any of them moves where the row wraps, which the e2e
 	   one-row check at the default font size guards.
 	   1024px must match MainNav.svelte's wide-nav breakpoint. */
