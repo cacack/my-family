@@ -319,6 +319,41 @@ test.describe('with a long research branch name active', () => {
 	});
 });
 
+// Signed in, in accounts mode, the account button joins the same row (#1421).
+// The suite's server runs open, so the auth status is stubbed to a signed-in
+// owner: the header is all that changes, and every other call is served for real.
+test.describe('signed in, in accounts mode', () => {
+	test.beforeEach(async ({ page }) => {
+		await page.route('**/api/v1/auth/status', (route) =>
+			route.fulfill({
+				json: {
+					mode: 'accounts',
+					setup_required: false,
+					account: {
+						id: '00000000-0000-4000-8000-000000000001',
+						username: 'owner',
+						display_name: 'Tree Owner',
+						role: 'owner'
+					}
+				}
+			})
+		);
+	});
+
+	for (const width of [1024, 1279, 1280]) {
+		test(`header is a single row at ${width}px`, async ({ page }) => {
+			await page.setViewportSize({ width, height: 900 });
+			await expectNoHorizontalOverflow(page, '/');
+			await expect(page.getByRole('button', { name: 'Account: Tree Owner' })).toBeVisible();
+			await expectHeaderOneRow(page);
+		});
+	}
+
+	test('the header controls never cover the nav, at any font size', async ({ page }) => {
+		await sweepHeader(page);
+	});
+});
+
 // A branch with a name and a research question. On a phone its banner once
 // took 300px+, with the label in a side column squeezing the question to two
 // letters (#1095).

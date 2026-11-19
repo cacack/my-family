@@ -319,8 +319,9 @@
 	}
 
 	/* Between the width where the grouped nav appears and the width where the
-	   wordmark fits beside it, the mark alone and tighter spacing keep the
-	   header on one row at the default font size.
+	   wordmark fits beside it, the mark alone and tighter spacing (here and in
+	   MainNav.svelte) keep the header on one row at the default font size,
+	   with the account button a signed-in user adds (#1421).
 	   Keep 1024px in sync with MainNav.svelte's wide-nav breakpoint. */
 	@media (min-width: 1024px) and (max-width: 1279px) {
 		.app-header {
