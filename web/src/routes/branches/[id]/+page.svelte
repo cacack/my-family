@@ -630,6 +630,8 @@
 	async function performResume(request: BranchMergeResumeRequest): Promise<BranchMergeResumeResult> {
 		const token = comparisonRequest;
 		const result = await api.resumeBranchMerge(branchId, request);
+		// The finished merge's person merges may have moved "me" on main (#1444).
+		loadHomePerson();
 		if (token === comparisonRequest && comparison) {
 			// The result's branch carries merge_state: complete, so the flag and
 			// the action go away behind the still-open summary.

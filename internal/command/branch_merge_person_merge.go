@@ -113,7 +113,13 @@ func replayedPersonMerges(groups []streamGroup, resolutions map[uuid.UUID]MergeR
 			replayed = append(replayed, group)
 		}
 	}
-	into, err := branchPersonMerges(replayed)
+	return finalPersonMerges(replayed)
+}
+
+// finalPersonMerges maps every person the groups' PersonMerged events merge
+// away to the person that finally holds their data, following chains.
+func finalPersonMerges(groups []streamGroup) (map[uuid.UUID]uuid.UUID, error) {
+	into, err := branchPersonMerges(groups)
 	if err != nil {
 		return nil, err
 	}

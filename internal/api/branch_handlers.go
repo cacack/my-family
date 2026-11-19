@@ -815,6 +815,8 @@ func (ss *StrictServer) ResumeBranchMerge(ctx context.Context, request ResumeBra
 	if err != nil {
 		return resumeBranchMergeErrorResponse(result, err)
 	}
+	// The finished merge's person merges are all on main now; "me" follows them.
+	ss.followHomePersonMerges(ctx, result.MergedPersons)
 
 	// The finished merge reads as complete (#830), so a client can adopt the
 	// branch straight from the result.

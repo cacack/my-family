@@ -310,3 +310,33 @@ func TestHomePerson_BranchMergeSurvivesSettingsFailure(t *testing.T) {
 		t.Errorf("branch merge with a failing settings store = %d, want 200. Body: %s", rec.Code, rec.Body.String())
 	}
 }
+
+// A branch merge whose replay fails part-way is finished by a resume, and "me"
+// follows the person merge then (#1444).
+func TestHomePerson_FollowsResumedBranchMerge(t *testing.T) {
+	base := memory.NewEventStore()
+	eventStore := &switchableReplayEventStore{EventStore: base}
+	server := api.NewServer(&config.Config{Port: 8080, LogFormat: "text", AuthMode: config.AuthModeOpen}, eventStore,
+		memory.NewReadModelStore(), memory.NewSnapshotStore(base), nil,
+		api.WithBranchStore(memory.NewBranchStore()), api.WithSettingsStore(memory.NewSettingsStore()))
+	survivorID, sv := createMergeTestPerson(t, server, "Morgan", "Duplicate")
+	mergedID, mv := createMergeTestPerson(t, server, "Morgan", "Duplicat")
+	branchID := createBranch(t, server, "same person")
+	branchPersonMerge(t, server, branchID, survivorID, mergedID, sv, mv)
+	if code, resp := homePersonRequest(t, server, http.MethodPut, `{"person_id":"`+mergedID+`"}`); code != http.StatusOK {
+		t.Fatalf("PUT home person = %d %v", code, resp)
+	}
+
+	eventStore.failing = true
+	if rec := do(t, server, http.MethodPost, "/api/v1/branches/"+branchID+"/merge", `{}`); rec.Code != http.StatusInternalServerError {
+		t.Fatalf("failing branch merge = %d, want 500. Body: %s", rec.Code, rec.Body.String())
+	}
+	eventStore.failing = false
+	if rec := do(t, server, http.MethodPost, "/api/v1/branches/"+branchID+"/merge/resume", ""); rec.Code != http.StatusOK {
+		t.Fatalf("resume = %d. Body: %s", rec.Code, rec.Body.String())
+	}
+
+	if code, resp := homePersonRequest(t, server, http.MethodGet, ""); code != http.StatusOK || homePersonID(resp) != survivorID {
+		t.Errorf("GET home person after resume = %d %v, want %s", code, resp, survivorID)
+	}
+}

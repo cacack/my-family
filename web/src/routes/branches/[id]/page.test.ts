@@ -1735,6 +1735,27 @@ describe('Incomplete merge (#830)', () => {
 		await waitFor(() => expect(resumeBranchMerge).toHaveBeenCalledWith(BRANCH_ID, {}));
 	});
 
+	it('re-reads "me" once a resume finishes the merge (#1444)', async () => {
+		compareBranch
+			.mockResolvedValueOnce(comparison({ branch: { ...incomplete, merge_pending: [] } }))
+			.mockResolvedValue(comparison({ branch: complete }));
+		resumeBranchMerge.mockResolvedValue(resumeResult());
+		const me = { id: PERSON_ID, given_name: 'Ada', surname: 'Lovelace', version: 1 };
+		const survivor = { ...me, id: OTHER_ID, version: 2 };
+		getHomePerson.mockResolvedValueOnce({ person: me }).mockResolvedValueOnce({ person: survivor });
+		await loadHomePerson();
+		expect(homePerson.person?.id).toBe(PERSON_ID);
+
+		render(Page);
+		const flag = await screen.findByTestId('incomplete-merge');
+		await fireEvent.click(within(flag).getByRole('button', { name: 'Finish merge' }));
+		const dialog = await screen.findByRole('alertdialog');
+		await fireEvent.click(within(dialog).getByRole('button', { name: 'Finish merge' }));
+
+		await waitFor(() => expect(resumeBranchMerge).toHaveBeenCalledTimes(1));
+		await waitFor(() => expect(homePerson.person?.id).toBe(OTHER_ID));
+	});
+
 	it('flags a merge whose state could not be read and offers to finish it', async () => {
 		compareBranch.mockResolvedValue(
 			comparison({ branch: { ...merged, merge_state: 'unknown', merge_pending: undefined } })

@@ -146,6 +146,12 @@ type ResumeMergeResult struct {
 	// from the log. Nothing is appended for them.
 	ReprojectedStreamIDs []uuid.UUID
 
+	// MergedPersons maps each person a PersonMerged now on main merged away —
+	// replayed by this call or an earlier attempt — to the person that finally
+	// holds their data, as MergeBranchResult.MergedPersons does (#1444). Empty
+	// on error: a merge that is not yet finished is followed when it is.
+	MergedPersons map[uuid.UUID]uuid.UUID
+
 	// PendingStreamIDs is populated only alongside
 	// ErrMergeResumeNeedsResolution: the streams that need a resolution.
 	PendingStreamIDs []uuid.UUID
@@ -378,6 +384,12 @@ func (h *Handler) ResumeMerge(ctx context.Context, input ResumeMergeInput) (*Res
 	}
 
 	if err := h.finishResumeReplay(ctx, branch, claim, groups, landed, decision.steps, result); err != nil {
+		return nil, err
+	}
+	// Every stream the merge replays is on main now, including any an earlier
+	// attempt landed before it failed, so their person merges all count.
+	result.MergedPersons, err = finalPersonMerges(onMainGroups(groups, landed, decision.steps))
+	if err != nil {
 		return nil, err
 	}
 
@@ -1204,6 +1216,25 @@ func eventPayloadID(evt repository.StoredEvent) (uuid.UUID, error) {
 }
 
 // stepGroups returns the stream groups a resume will replay.
+// onMainGroups returns the groups already on main plus those the steps
+// replayed, in replay-set order.
+func onMainGroups(groups []streamGroup, landed map[uuid.UUID]bool, steps []resumeStep) []streamGroup {
+	onMain := make(map[uuid.UUID]bool, len(landed)+len(steps))
+	for id, done := range landed {
+		onMain[id] = done
+	}
+	for _, step := range steps {
+		onMain[step.group.streamID] = true
+	}
+	out := make([]streamGroup, 0, len(onMain))
+	for _, group := range groups {
+		if onMain[group.streamID] {
+			out = append(out, group)
+		}
+	}
+	return out
+}
+
 func stepGroups(steps []resumeStep) []streamGroup {
 	groups := make([]streamGroup, 0, len(steps))
 	for _, step := range steps {

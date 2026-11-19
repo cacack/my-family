@@ -193,7 +193,8 @@ type MergeBranchResult struct {
 
 	// MergedPersons maps each person a replayed PersonMerged merged away on
 	// main to the person that finally holds their data (#1444), so a caller
-	// can follow references to them, such as the home person.
+	// can follow references to them, such as the home person. A merge that
+	// fails part-way reports them on the ResumeMergeResult that finishes it.
 	MergedPersons map[uuid.UUID]uuid.UUID
 }
 
