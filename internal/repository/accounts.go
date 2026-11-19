@@ -101,6 +101,9 @@ const (
 	AuthActionResetIssued     AuthAction = "password_reset_issued"
 	AuthActionPasswordReset   AuthAction = "password_reset"
 	AuthActionPasswordChanged AuthAction = "password_changed"
+	// AuthActionAnonymousAccessChanged is an owner changing the tree's
+	// anonymous access; the detail is the new value.
+	AuthActionAnonymousAccessChanged AuthAction = "anonymous_access_changed"
 )
 
 // AuthAuditEntry is one row of the append-only auth audit log. The log is

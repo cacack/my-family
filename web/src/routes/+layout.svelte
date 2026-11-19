@@ -29,12 +29,13 @@
 	const appConfig = getAppConfig();
 
 	// Who is using the app decides what it shows: the setup page, the sign-in
-	// page, or the app itself (ADR-007). Nothing below asks the API for tree
-	// data until the app is shown, so a signed-out visitor triggers no 401s.
+	// page, or the app itself (ADR-007), which a visitor sees too when the
+	// owner lets visitors in. Nothing below asks the API for tree data until
+	// the app is shown, so a signed-out visitor triggers no 401s.
 	$effect(() => {
 		loadAuth();
 	});
-	const appReady = $derived(auth.phase === 'open' || auth.phase === 'signed-in');
+	const appReady = $derived(auth.phase === 'open' || auth.phase === 'signed-in' || auth.phase === 'visitor');
 
 	$effect(() => {
 		if (!appReady) return;

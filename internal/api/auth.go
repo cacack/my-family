@@ -80,7 +80,8 @@ func refuse(c echo.Context, status int, code, message string) error {
 // and their role on the request context, and the user as the actor their
 // changes are attributed to (domain.ContextWithActor). A route that is not
 // public is then refused with 503 while the tree has no owner, 401 without a
-// session and 403 below its role; an API path that matches no route is
+// session (unless the owner lets visitors in, see serveVisitor) and 403 below
+// its role; an API path that matches no route is
 // treated as a viewer's, so only a signed-in user learns it is a 404 or 405.
 // Non-API paths (the web UI's files) are always served: the UI shows the
 // setup or sign-in page itself.
@@ -139,13 +140,39 @@ func (s *Server) authenticate(next echo.HandlerFunc) echo.HandlerFunc {
 				"This server has no owner yet. Create one on the setup page or with `myfamily user create`.")
 		}
 		if userFrom(ctx) == nil {
-			return refuse(c, http.StatusUnauthorized, CodeUnauthenticated, "Sign in to continue")
+			return s.serveVisitor(ctx, c, next, required)
 		}
 		if role := roleFrom(ctx); !role.Includes(required) {
 			return refuse(c, http.StatusForbidden, CodeForbidden, forbiddenMessage(role, required))
 		}
 		return s.serveTree(ctx, c, next)
 	}
+}
+
+// serveVisitor serves a request with no session as the anonymous principal
+// (ADR-007): with the tree's anonymous access set to viewer, it may call what
+// a viewer may, except the operations on one's own account; otherwise, or
+// beyond that, it is refused with 401, since signing in may allow it. The
+// anonymous principal holds the viewer role with no user on the context
+// (isAnonymous).
+func (s *Server) serveVisitor(ctx context.Context, c echo.Context, next echo.HandlerFunc, required repository.Role) error {
+	settings, err := s.treeSettings(ctx)
+	if err != nil {
+		return err
+	}
+	key := routeKey(c.Request().Method, c.Path())
+	if settings.AnonymousAccess != repository.AnonymousAccessViewer || required != repository.RoleViewer || accountRoutes[key] {
+		return refuse(c, http.StatusUnauthorized, CodeUnauthenticated, "Sign in to continue")
+	}
+	ctx = context.WithValue(ctx, roleKey{}, repository.RoleViewer)
+	c.SetRequest(c.Request().WithContext(repository.ContextWithTreeSettings(ctx, settings)))
+	return next(c)
+}
+
+// isAnonymous reports whether the request is a visitor's: a role with no
+// signed-in user, which only serveVisitor grants (open mode's owner aside).
+func isAnonymous(ctx context.Context) bool {
+	return userFrom(ctx) == nil && roleFrom(ctx) == repository.RoleViewer
 }
 
 // serveTree calls a handler that may read the tree, with the owner's privacy
@@ -243,7 +270,15 @@ func (ss *StrictServer) GetAuthStatus(ctx context.Context, _ GetAuthStatusReques
 	if err != nil {
 		return nil, err
 	}
-	status := GetAuthStatus200JSONResponse{Mode: AuthStatusModeAccounts, SetupRequired: required}
+	// A public route the web app needs to start: a settings failure reports
+	// visitors as refused (the fail-closed value) rather than failing it.
+	access := AnonymousAccessNone
+	if settings, err := ss.server.treeSettings(ctx); err != nil {
+		ss.server.echo.Logger.Errorf("reading the tree settings for the auth status: %v", err)
+	} else {
+		access = AnonymousAccess(settings.AnonymousAccess)
+	}
+	status := GetAuthStatus200JSONResponse{Mode: AuthStatusModeAccounts, SetupRequired: required, AnonymousAccess: &access}
 	if user := userFrom(ctx); user != nil {
 		account := accountOf(user, roleFrom(ctx))
 		status.Account = &account

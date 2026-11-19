@@ -178,8 +178,8 @@ is sent, so each link below is shown once, for the owner to copy and pass on.
 
 Each user changes their own display name and password on **Account**; a new password needs the
 current one and signs them out everywhere else. Sign-ins, failed sign-ins, invites, role changes,
-disables, re-enables and password resets and changes are written to an append-only audit log,
-which owners read under **Users > Audit log**.
+disables, re-enables, password resets and changes, and changes to visitor access are written to
+an append-only audit log, which owners read under **Users > Audit log**.
 
 #### Living people and private records
 
@@ -191,6 +191,17 @@ for the rule, and mark a record private, when editing it. Persons, families, sou
 which is their GEDCOM restriction notice (`RESN`); it round-trips through GEDCOM import and export
 for persons, families, sources and notes. These marks are recorded but not yet enforced: every
 role still sees every record ([ADR-008](./docs/adr/008-privacy-model.md), #1412).
+
+#### Visitors
+
+Owners choose under **Settings** whether people who are not signed in may browse the tree:
+**No** (the default) or **Yes, as viewers**. With it on, a visitor can call exactly the read
+operations a viewer can (not the account ones), sees a **Sign in** link instead of the account
+menu, and gets no editing controls; costly reads (search, charts, browse indexes, the map,
+statistics, reports, comparisons and media files) are limited to 30 at once and one more per
+second per client address. The change applies to the next request and is written to the audit
+log. Until living people and private records are protected from visitors (#1412), the server
+refuses to turn it on.
 
 #### Upgrading from a version without accounts
 

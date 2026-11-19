@@ -23,7 +23,18 @@ vi.mock('#lib/api/client.js', async (importOriginal) => {
 	};
 });
 
-import { auth, loadAuth, signIn, signOut, completeSetup, markSignedOut, can, currentRole } from './auth.svelte.js';
+import {
+	auth,
+	loadAuth,
+	signIn,
+	signOut,
+	completeSetup,
+	markSignedOut,
+	can,
+	currentRole,
+	showSignIn,
+	browseAsVisitor
+} from './auth.svelte.js';
 
 const ADA = { id: '11111111-1111-1111-1111-111111111111', username: 'ada', display_name: 'Ada', role: 'owner' as const };
 
@@ -32,18 +43,49 @@ describe('auth store', () => {
 		vi.clearAllMocks();
 		auth.phase = 'loading';
 		auth.account = null;
+		auth.visitorsWelcome = false;
 	});
 
 	it.each([
 		[{ mode: 'open', setup_required: false }, 'open', null],
 		[{ mode: 'accounts', setup_required: true }, 'setup', null],
 		[{ mode: 'accounts', setup_required: false }, 'signed-out', null],
-		[{ mode: 'accounts', setup_required: false, account: ADA }, 'signed-in', ADA]
+		[{ mode: 'accounts', setup_required: false, account: ADA }, 'signed-in', ADA],
+		[{ mode: 'accounts', setup_required: false, anonymous_access: 'none' }, 'signed-out', null],
+		[{ mode: 'accounts', setup_required: false, anonymous_access: 'viewer' }, 'visitor', null],
+		[{ mode: 'accounts', setup_required: false, anonymous_access: 'viewer', account: ADA }, 'signed-in', ADA]
 	])('reads status %o as %s', async (status, phase, account) => {
 		getAuthStatus.mockResolvedValue(status);
 		await loadAuth();
 		expect(auth.phase).toBe(phase);
 		expect(auth.account).toEqual(account);
+	});
+
+	it('lets a visitor browse as a viewer, sign in, and come back after signing out', async () => {
+		getAuthStatus.mockResolvedValue({ mode: 'accounts', setup_required: false, anonymous_access: 'viewer' });
+		await loadAuth();
+		expect(currentRole()).toBe('viewer');
+		expect(can('viewer')).toBe(true);
+		expect(can('editor')).toBe(false);
+
+		showSignIn();
+		expect(auth.phase).toBe('signed-out');
+		browseAsVisitor();
+		expect(auth.phase).toBe('visitor');
+
+		signInMock.mockResolvedValue(ADA);
+		await signIn('ada', 'secret password');
+		signOutMock.mockResolvedValue(undefined);
+		await signOut();
+		expect(auth.phase).toBe('visitor');
+	});
+
+	it('keeps the sign-in page when visitors must sign in', async () => {
+		getAuthStatus.mockResolvedValue({ mode: 'accounts', setup_required: false, anonymous_access: 'none' });
+		await loadAuth();
+		browseAsVisitor();
+		expect(auth.phase).toBe('signed-out');
+		expect(currentRole()).toBeNull();
 	});
 
 	it('reports a status it could not read', async () => {

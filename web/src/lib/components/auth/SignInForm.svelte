@@ -5,7 +5,7 @@
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { Input } from '#lib/components/ui/input/index.js';
 	import { Label } from '#lib/components/ui/label/index.js';
-	import { signIn } from '#lib/stores/auth.svelte.js';
+	import { auth, browseAsVisitor, signIn } from '#lib/stores/auth.svelte.js';
 	import type { ApiError } from '#lib/api/client.js';
 
 	let username = $state('');
@@ -51,6 +51,9 @@
 			<ActionError id="signin-error" message={error} />
 		{/if}
 		<Button type="submit" disabled={submitting}>{submitting ? 'Signing in...' : 'Sign in'}</Button>
+		{#if auth.visitorsWelcome}
+			<Button type="button" variant="ghost" onclick={() => browseAsVisitor()}>Browse without signing in</Button>
+		{/if}
 	</form>
 </AuthScreen>
 

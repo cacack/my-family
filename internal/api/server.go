@@ -230,6 +230,9 @@ func (s *Server) registerRoutes() {
 	s.echo.Use(s.authenticate)
 	// GEDCOM exports are costly, so each user may start only a few (#387).
 	s.echo.Use(limitExports())
+	// Visitors need no account, so their costly reads are limited per
+	// client address (#1414).
+	s.echo.Use(limitAnonymousReads())
 
 	// Refuse a branch-scoped GEDCOM import before it reaches either import
 	// handler (#825). Registered on the Echo instance, not the group, because

@@ -31,6 +31,7 @@ func privacySettingsOf(settings repository.TreeSettings) PrivacySettings {
 	return PrivacySettings{
 		LivingThresholdYears: settings.LivingThresholdYears,
 		ViewersSeeLiving:     settings.ViewersSeeLiving,
+		AnonymousAccess:      AnonymousAccess(settings.AnonymousAccess),
 	}
 }
 
@@ -51,12 +52,22 @@ func (ss *StrictServer) UpdatePrivacySettings(ctx context.Context, request Updat
 	settings := repository.TreeSettings{
 		LivingThresholdYears: request.Body.LivingThresholdYears,
 		ViewersSeeLiving:     request.Body.ViewersSeeLiving,
+		AnonymousAccess:      repository.AnonymousAccess(request.Body.AnonymousAccess),
 	}
 	if err := settings.Validate(); err != nil {
 		return UpdatePrivacySettings400JSONResponse{BadRequestJSONResponse(Error{Code: CodeValidation, Message: err.Error()})}, nil
 	}
+	previous, err := ss.server.settings.GetTreeSettings(ctx, repository.DefaultTreeID)
+	if err != nil {
+		return nil, err
+	}
 	if err := ss.server.settings.SaveTreeSettings(ctx, repository.DefaultTreeID, settings); err != nil {
 		return nil, err
+	}
+	// Who may see the tree without signing in is an access change, so it is
+	// audited with the other access changes (ADR-007).
+	if settings.AnonymousAccess != previous.AnonymousAccess && ss.server.auth != nil {
+		ss.server.auth.AuditAnonymousAccess(ctx, actorFrom(ctx), settings.AnonymousAccess)
 	}
 	return UpdatePrivacySettings200JSONResponse(privacySettingsOf(settings)), nil
 }

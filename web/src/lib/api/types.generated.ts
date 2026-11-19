@@ -3359,6 +3359,10 @@ export interface paths {
          * Change the tree's privacy settings
          * @description Replaces every privacy setting. They are kept beside the accounts, not
          *     in the event log, so they survive restarts and `myfamily rebuild`.
+         *     A change to `anonymous_access` takes effect on the next request and is
+         *     written to the auth audit log. `viewer` is refused with 400 until
+         *     living people and private records are protected from visitors
+         *     (#1412).
          */
         put: operations["updatePrivacySettings"];
         post?: never;
@@ -3377,8 +3381,9 @@ export interface paths {
         };
         /**
          * Read the auth audit log
-         * @description Sign-ins, failed sign-ins, invites, role changes, disables, enables and
-         *     password resets and changes, newest first. The log is append-only.
+         * @description Sign-ins, failed sign-ins, invites, role changes, disables, enables,
+         *     password resets and changes, and changes to anonymous access, newest
+         *     first. The log is append-only.
          */
         get: operations["listAuthAudit"];
         put?: never;
@@ -3421,6 +3426,7 @@ export interface components {
             mode: "accounts" | "open";
             /** @description True while the tree has no owner; only setup is served */
             setup_required: boolean;
+            anonymous_access?: components["schemas"]["AnonymousAccess"];
             account?: components["schemas"]["Account"];
         };
         SetupRequest: {
@@ -3469,11 +3475,20 @@ export interface components {
             /** Format: date-time */
             created_at: string;
         };
+        /**
+         * @description What someone who is not signed in may do (ADR-007). `none`: every
+         *     tree operation needs a session. `viewer`: a visitor may call what a
+         *     viewer may, and sees living people as placeholders and no private
+         *     records (ADR-008 §4). Present in `accounts` mode only.
+         * @enum {string}
+         */
+        AnonymousAccess: "none" | "viewer";
         PrivacySettings: {
             /** @description N in the living rule (ADR-008 §1): a person born (else christened or baptized) more than N years ago, with no evidence of death, is no longer presumed living. Default 110. */
             living_threshold_years: number;
             /** @description Whether viewers see living people in full. When false they see the placeholder anonymous visitors see. Default true. */
             viewers_see_living: boolean;
+            anonymous_access: components["schemas"]["AnonymousAccess"];
         };
         UserList: {
             items: components["schemas"]["User"][];
@@ -3504,7 +3519,7 @@ export interface components {
             /** Format: date-time */
             at: string;
             /** @enum {string} */
-            action: "sign_in" | "sign_in_failed" | "user_created" | "invite_created" | "invite_accepted" | "role_changed" | "user_disabled" | "user_enabled" | "password_reset_issued" | "password_reset" | "password_changed";
+            action: "sign_in" | "sign_in_failed" | "user_created" | "invite_created" | "invite_accepted" | "role_changed" | "user_disabled" | "user_enabled" | "password_reset_issued" | "password_reset" | "password_changed" | "anonymous_access_changed";
             /**
              * Format: uuid
              * @description Who did it; absent for a failed sign-in or the CLI

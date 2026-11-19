@@ -12,7 +12,8 @@ export const AUTH_ACTION_LABELS: Record<AuthAuditEntry['action'], string> = {
 	user_enabled: 'Account re-enabled',
 	password_reset_issued: 'Reset link issued',
 	password_reset: 'Password reset',
-	password_changed: 'Password changed'
+	password_changed: 'Password changed',
+	anonymous_access_changed: 'Visitor access changed'
 };
 
 /** Who did it: the actor's name, the CLI, or no one signed in (a failed sign-in, setup). */

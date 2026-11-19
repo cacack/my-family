@@ -65,6 +65,12 @@ func (s *Service) auditEntry(ctx context.Context, entry repository.AuthAuditEntr
 	}
 }
 
+// AuditAnonymousAccess records that by changed the tree's anonymous access
+// to access. The change itself is a tree setting, saved by its caller.
+func (s *Service) AuditAnonymousAccess(ctx context.Context, by Actor, access repository.AnonymousAccess) {
+	s.audit(ctx, by, repository.AuthActionAnonymousAccessChanged, nil, string(access))
+}
+
 // AuthAudit returns up to limit audit entries, newest first, after offset,
 // and how many there are in all.
 func (s *Service) AuthAudit(ctx context.Context, limit, offset int) ([]repository.AuthAuditEntry, int, error) {

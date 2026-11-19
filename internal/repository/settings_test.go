@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 )
@@ -18,13 +19,34 @@ func TestTreeSettings_Validate(t *testing.T) {
 		{MaxLivingThresholdYears + 1, true},
 	}
 	for _, tt := range tests {
-		err := TreeSettings{LivingThresholdYears: tt.years}.Validate()
+		settings := DefaultTreeSettings()
+		settings.LivingThresholdYears = tt.years
+		err := settings.Validate()
 		if (err != nil) != tt.wantErr {
 			t.Errorf("Validate(%d years) = %v, wantErr %v", tt.years, err, tt.wantErr)
 		}
 	}
 	if err := DefaultTreeSettings().Validate(); err != nil {
 		t.Errorf("the defaults are invalid: %v", err)
+	}
+}
+
+func TestTreeSettings_ValidateAnonymousAccess(t *testing.T) {
+	if got := DefaultTreeSettings().AnonymousAccess; got != AnonymousAccessNone {
+		t.Errorf("default anonymous access = %q, want none", got)
+	}
+	for _, access := range []AnonymousAccess{"", "editor", "public"} {
+		settings := DefaultTreeSettings()
+		settings.AnonymousAccess = access
+		if err := settings.Validate(); err == nil {
+			t.Errorf("Validate(anonymous access %q) = nil, want an error", access)
+		}
+	}
+	// Visitors would see living people until the read side redacts them.
+	settings := DefaultTreeSettings()
+	settings.AnonymousAccess = AnonymousAccessViewer
+	if err := settings.Validate(); !AnonymousViewingProtected && !errors.Is(err, ErrAnonymousViewingUnprotected) {
+		t.Errorf("Validate(viewer) while unprotected = %v, want ErrAnonymousViewingUnprotected", err)
 	}
 }
 
