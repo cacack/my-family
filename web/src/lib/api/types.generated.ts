@@ -3332,7 +3332,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * List the pending invites
+         * @description Every invite that has been neither accepted, revoked nor left to
+         *     expire, newest first. A link's token is never shown again: each is
+         *     named by an `id` that can revoke it but not use it.
+         */
+        get: operations["listInvites"];
         put?: never;
         /**
          * Issue an invite link that creates an account with a role
@@ -3341,6 +3347,70 @@ export interface paths {
          */
         post: operations["createInvite"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/invites/{linkId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke a pending invite
+         * @description The invite link then fails as an expired one does. Written to the auth
+         *     audit log.
+         */
+        delete: operations["revokeInvite"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/password-resets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the pending password resets
+         * @description Every reset link that has been neither used, revoked nor left to
+         *     expire, newest first. Like an invite's, its token is never shown
+         *     again.
+         */
+        get: operations["listPasswordResets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/password-resets/{linkId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke a pending password reset
+         * @description The reset link then fails as an expired one does. Written to the auth
+         *     audit log.
+         */
+        delete: operations["revokePasswordReset"];
         options?: never;
         head?: never;
         patch?: never;
@@ -3381,8 +3451,9 @@ export interface paths {
         };
         /**
          * Read the auth audit log
-         * @description Sign-ins, failed sign-ins, invites, role changes, disables, enables,
-         *     password resets and changes, and changes to anonymous access, newest
+         * @description Sign-ins, failed sign-ins, invites and their revocation, role changes,
+         *     disables, enables, password resets (issued, revoked and used) and
+         *     changes, and changes to anonymous access, newest
          *     first. The log is append-only.
          */
         get: operations["listAuthAudit"];
@@ -3515,11 +3586,56 @@ export interface components {
             /** Format: date-time */
             expires_at: string;
         };
+        PendingInvite: {
+            /** @description Names the invite to revoke it; it cannot be used to join */
+            id: string;
+            /** @enum {string} */
+            role: "viewer" | "editor" | "owner";
+            /**
+             * Format: uuid
+             * @description The owner who issued it
+             */
+            created_by: string;
+            /** @description The issuer's display name */
+            created_by_name?: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            expires_at: string;
+        };
+        PendingInviteList: {
+            items: components["schemas"]["PendingInvite"][];
+        };
+        PendingPasswordReset: {
+            /** @description Names the reset to revoke it; it cannot be used to reset */
+            id: string;
+            /**
+             * Format: uuid
+             * @description Whose password the link sets
+             */
+            user_id: string;
+            /** @description That user's display name */
+            user_name?: string;
+            /**
+             * Format: uuid
+             * @description The owner who issued it; absent when issued from the CLI
+             */
+            created_by?: string;
+            /** @description The issuer's display name */
+            created_by_name?: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            expires_at: string;
+        };
+        PendingPasswordResetList: {
+            items: components["schemas"]["PendingPasswordReset"][];
+        };
         AuthAuditEntry: {
             /** Format: date-time */
             at: string;
             /** @enum {string} */
-            action: "sign_in" | "sign_in_failed" | "user_created" | "invite_created" | "invite_accepted" | "role_changed" | "user_disabled" | "user_enabled" | "password_reset_issued" | "password_reset" | "password_changed" | "anonymous_access_changed";
+            action: "sign_in" | "sign_in_failed" | "user_created" | "invite_created" | "invite_accepted" | "invite_revoked" | "role_changed" | "user_disabled" | "user_enabled" | "password_reset_issued" | "password_reset_revoked" | "password_reset" | "password_changed" | "anonymous_access_changed";
             /**
              * Format: uuid
              * @description Who did it; absent for a failed sign-in or the CLI
@@ -7133,6 +7249,8 @@ export interface components {
         exportFields: string[];
         personId: string;
         userId: string;
+        /** @description A pending invite's or password reset's `id` */
+        linkId: string;
         familyId: string;
         limitParam: number;
         offsetParam: number;
@@ -13466,6 +13584,27 @@ export interface operations {
             409: components["responses"]["AccountsOnly"];
         };
     };
+    listInvites: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The pending invites */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PendingInviteList"];
+                };
+            };
+            409: components["responses"]["AccountsOnly"];
+        };
+    };
     createInvite: {
         parameters: {
             query?: never;
@@ -13489,6 +13628,73 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            409: components["responses"]["AccountsOnly"];
+        };
+    };
+    revokeInvite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A pending invite's or password reset's `id` */
+                linkId: components["parameters"]["linkId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Invite revoked */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["AccountsOnly"];
+        };
+    };
+    listPasswordResets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The pending password resets */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PendingPasswordResetList"];
+                };
+            };
+            409: components["responses"]["AccountsOnly"];
+        };
+    };
+    revokePasswordReset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A pending invite's or password reset's `id` */
+                linkId: components["parameters"]["linkId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Password reset revoked */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
             409: components["responses"]["AccountsOnly"];
         };
     };

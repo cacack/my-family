@@ -361,25 +361,74 @@ func (s *AccountStore) AcceptInvite(ctx context.Context, tokenHash string, now t
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	invite := repository.Invite{TokenHash: tokenHash}
-	var role string
-	err = tx.QueryRowContext(ctx,
-		`DELETE FROM invites WHERE token_hash = $1 AND expires_at > $2 RETURNING tree_id, role, created_by, created_at, expires_at`,
-		tokenHash, now).Scan(&invite.TreeID, &role, &invite.CreatedBy, &invite.CreatedAt, &invite.ExpiresAt)
+	invite, err := scanInvite(tx.QueryRowContext(ctx,
+		`DELETE FROM invites WHERE token_hash = $1 AND expires_at > $2 RETURNING `+inviteColumns,
+		tokenHash, now))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, repository.ErrLinkNotFound
 	}
 	if err != nil {
 		return nil, fmt.Errorf("use invite: %w", err)
 	}
-	invite.Role = repository.Role(role)
 	if err := createUser(ctx, tx, user, invite.TreeID, invite.Role); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit accept invite: %w", err)
 	}
+	return invite, nil
+}
+
+// inviteColumns are the columns scanInvite reads, in its order.
+const inviteColumns = `token_hash, tree_id, role, created_by, created_at, expires_at`
+
+// scanInvite reads an invite row of inviteColumns.
+func scanInvite(row interface{ Scan(...any) error }) (*repository.Invite, error) {
+	var invite repository.Invite
+	var role string
+	if err := row.Scan(&invite.TokenHash, &invite.TreeID, &role, &invite.CreatedBy, &invite.CreatedAt, &invite.ExpiresAt); err != nil {
+		return nil, err
+	}
+	invite.Role = repository.Role(role)
 	return &invite, nil
+}
+
+// ListInvites returns the invites to treeID that expire after now, newest
+// first.
+func (s *AccountStore) ListInvites(ctx context.Context, treeID uuid.UUID, now time.Time) ([]repository.Invite, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT `+inviteColumns+` FROM invites WHERE tree_id = $1 AND expires_at > $2 ORDER BY created_at DESC, token_hash`,
+		treeID, now)
+	if err != nil {
+		return nil, fmt.Errorf("list invites: %w", err)
+	}
+	defer rows.Close()
+	invites := []repository.Invite{}
+	for rows.Next() {
+		invite, err := scanInvite(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan invite: %w", err)
+		}
+		invites = append(invites, *invite)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list invites: %w", err)
+	}
+	return invites, nil
+}
+
+// RevokeInvite removes the invite with tokenHash, if it expires after now.
+func (s *AccountStore) RevokeInvite(ctx context.Context, tokenHash string, now time.Time) (*repository.Invite, error) {
+	invite, err := scanInvite(s.db.QueryRowContext(ctx,
+		`DELETE FROM invites WHERE token_hash = $1 AND expires_at > $2 RETURNING `+inviteColumns,
+		tokenHash, now))
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, repository.ErrLinkNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("revoke invite: %w", err)
+	}
+	return invite, nil
 }
 
 // nullableID stores uuid.Nil as NULL.
@@ -449,6 +498,58 @@ func (s *AccountStore) UsePasswordReset(ctx context.Context, tokenHash string, n
 		return uuid.Nil, fmt.Errorf("commit password reset: %w", err)
 	}
 	return userID, nil
+}
+
+// resetColumns are the columns scanPasswordReset reads, in its order.
+const resetColumns = `token_hash, user_id, created_by, created_at, expires_at`
+
+// scanPasswordReset reads a password reset row of resetColumns.
+func scanPasswordReset(row interface{ Scan(...any) error }) (*repository.PasswordReset, error) {
+	var reset repository.PasswordReset
+	var createdBy uuid.NullUUID
+	if err := row.Scan(&reset.TokenHash, &reset.UserID, &createdBy, &reset.CreatedAt, &reset.ExpiresAt); err != nil {
+		return nil, err
+	}
+	reset.CreatedBy = createdBy.UUID
+	return &reset, nil
+}
+
+// ListPasswordResets returns the password resets that expire after now,
+// newest first.
+func (s *AccountStore) ListPasswordResets(ctx context.Context, now time.Time) ([]repository.PasswordReset, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT `+resetColumns+` FROM password_resets WHERE expires_at > $1 ORDER BY created_at DESC, token_hash`, now)
+	if err != nil {
+		return nil, fmt.Errorf("list password resets: %w", err)
+	}
+	defer rows.Close()
+	resets := []repository.PasswordReset{}
+	for rows.Next() {
+		reset, err := scanPasswordReset(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan password reset: %w", err)
+		}
+		resets = append(resets, *reset)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list password resets: %w", err)
+	}
+	return resets, nil
+}
+
+// RevokePasswordReset removes the reset with tokenHash, if it expires after
+// now.
+func (s *AccountStore) RevokePasswordReset(ctx context.Context, tokenHash string, now time.Time) (*repository.PasswordReset, error) {
+	reset, err := scanPasswordReset(s.db.QueryRowContext(ctx,
+		`DELETE FROM password_resets WHERE token_hash = $1 AND expires_at > $2 RETURNING `+resetColumns,
+		tokenHash, now))
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, repository.ErrLinkNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("revoke password reset: %w", err)
+	}
+	return reset, nil
 }
 
 // AppendAuthAudit adds entry to the auth audit log.

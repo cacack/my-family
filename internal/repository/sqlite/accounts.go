@@ -399,18 +399,36 @@ func (s *AccountStore) AcceptInvite(ctx context.Context, tokenHash string, now t
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	invite := repository.Invite{TokenHash: tokenHash}
-	var treeStr, role, createdByStr, createdStr, expiresStr string
-	err = tx.QueryRowContext(ctx,
-		`DELETE FROM invites WHERE token_hash = ? AND expires_at > ? RETURNING tree_id, role, created_by, created_at, expires_at`,
-		tokenHash, sessionTime(now)).Scan(&treeStr, &role, &createdByStr, &createdStr, &expiresStr)
+	invite, err := scanInvite(tx.QueryRowContext(ctx,
+		`DELETE FROM invites WHERE token_hash = ? AND expires_at > ? RETURNING `+inviteColumns,
+		tokenHash, sessionTime(now)))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, repository.ErrLinkNotFound
 	}
 	if err != nil {
 		return nil, fmt.Errorf("use invite: %w", err)
 	}
+	if err := createUser(ctx, tx, user, invite.TreeID, invite.Role); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit accept invite: %w", err)
+	}
+	return invite, nil
+}
+
+// inviteColumns are the columns scanInvite reads, in its order.
+const inviteColumns = `token_hash, tree_id, role, created_by, created_at, expires_at`
+
+// scanInvite reads an invite row of inviteColumns.
+func scanInvite(row interface{ Scan(...any) error }) (*repository.Invite, error) {
+	var invite repository.Invite
+	var treeStr, role, createdByStr, createdStr, expiresStr string
+	if err := row.Scan(&invite.TokenHash, &treeStr, &role, &createdByStr, &createdStr, &expiresStr); err != nil {
+		return nil, err
+	}
 	invite.Role = repository.Role(role)
+	var err error
 	if invite.TreeID, err = uuid.Parse(treeStr); err != nil {
 		return nil, fmt.Errorf("parse invite tree id: %w", err)
 	}
@@ -423,13 +441,45 @@ func (s *AccountStore) AcceptInvite(ctx context.Context, tokenHash string, now t
 	if invite.ExpiresAt, err = parseTimestamp(expiresStr); err != nil {
 		return nil, fmt.Errorf("parse invite expires_at: %w", err)
 	}
-	if err := createUser(ctx, tx, user, invite.TreeID, invite.Role); err != nil {
-		return nil, err
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit accept invite: %w", err)
-	}
 	return &invite, nil
+}
+
+// ListInvites returns the invites to treeID that expire after now, newest
+// first.
+func (s *AccountStore) ListInvites(ctx context.Context, treeID uuid.UUID, now time.Time) ([]repository.Invite, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT `+inviteColumns+` FROM invites WHERE tree_id = ? AND expires_at > ? ORDER BY created_at DESC, token_hash`,
+		treeID.String(), sessionTime(now))
+	if err != nil {
+		return nil, fmt.Errorf("list invites: %w", err)
+	}
+	defer rows.Close()
+	invites := []repository.Invite{}
+	for rows.Next() {
+		invite, err := scanInvite(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan invite: %w", err)
+		}
+		invites = append(invites, *invite)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list invites: %w", err)
+	}
+	return invites, nil
+}
+
+// RevokeInvite removes the invite with tokenHash, if it expires after now.
+func (s *AccountStore) RevokeInvite(ctx context.Context, tokenHash string, now time.Time) (*repository.Invite, error) {
+	invite, err := scanInvite(s.db.QueryRowContext(ctx,
+		`DELETE FROM invites WHERE token_hash = ? AND expires_at > ? RETURNING `+inviteColumns,
+		tokenHash, sessionTime(now)))
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, repository.ErrLinkNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("revoke invite: %w", err)
+	}
+	return invite, nil
 }
 
 // DeleteLinksIssuedBy removes every invite and password reset userID issued.
@@ -507,6 +557,74 @@ func (s *AccountStore) UsePasswordReset(ctx context.Context, tokenHash string, n
 		return uuid.Nil, fmt.Errorf("parse password reset user id: %w", err)
 	}
 	return userID, nil
+}
+
+// resetColumns are the columns scanPasswordReset reads, in its order.
+const resetColumns = `token_hash, user_id, created_by, created_at, expires_at`
+
+// scanPasswordReset reads a password reset row of resetColumns.
+func scanPasswordReset(row interface{ Scan(...any) error }) (*repository.PasswordReset, error) {
+	var reset repository.PasswordReset
+	var userStr, createdStr, expiresStr string
+	var createdBy sql.NullString
+	if err := row.Scan(&reset.TokenHash, &userStr, &createdBy, &createdStr, &expiresStr); err != nil {
+		return nil, err
+	}
+	var err error
+	if reset.UserID, err = uuid.Parse(userStr); err != nil {
+		return nil, fmt.Errorf("parse password reset user id: %w", err)
+	}
+	if createdBy.Valid {
+		if reset.CreatedBy, err = uuid.Parse(createdBy.String); err != nil {
+			return nil, fmt.Errorf("parse password reset created_by: %w", err)
+		}
+	}
+	if reset.CreatedAt, err = parseTimestamp(createdStr); err != nil {
+		return nil, fmt.Errorf("parse password reset created_at: %w", err)
+	}
+	if reset.ExpiresAt, err = parseTimestamp(expiresStr); err != nil {
+		return nil, fmt.Errorf("parse password reset expires_at: %w", err)
+	}
+	return &reset, nil
+}
+
+// ListPasswordResets returns the password resets that expire after now,
+// newest first.
+func (s *AccountStore) ListPasswordResets(ctx context.Context, now time.Time) ([]repository.PasswordReset, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT `+resetColumns+` FROM password_resets WHERE expires_at > ? ORDER BY created_at DESC, token_hash`,
+		sessionTime(now))
+	if err != nil {
+		return nil, fmt.Errorf("list password resets: %w", err)
+	}
+	defer rows.Close()
+	resets := []repository.PasswordReset{}
+	for rows.Next() {
+		reset, err := scanPasswordReset(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan password reset: %w", err)
+		}
+		resets = append(resets, *reset)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list password resets: %w", err)
+	}
+	return resets, nil
+}
+
+// RevokePasswordReset removes the reset with tokenHash, if it expires after
+// now.
+func (s *AccountStore) RevokePasswordReset(ctx context.Context, tokenHash string, now time.Time) (*repository.PasswordReset, error) {
+	reset, err := scanPasswordReset(s.db.QueryRowContext(ctx,
+		`DELETE FROM password_resets WHERE token_hash = ? AND expires_at > ? RETURNING `+resetColumns,
+		tokenHash, sessionTime(now)))
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, repository.ErrLinkNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("revoke password reset: %w", err)
+	}
+	return reset, nil
 }
 
 // AppendAuthAudit adds entry to the auth audit log.

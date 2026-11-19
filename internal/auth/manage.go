@@ -154,6 +154,28 @@ func (s *Service) AcceptInvite(ctx context.Context, token, username, displayName
 	return user, invite.Role, sessionToken, nil
 }
 
+// PendingInvites returns the tree's invites that have not expired, newest
+// first. A pending link's ID is its token's hash, which names the link
+// without being able to use it.
+func (s *Service) PendingInvites(ctx context.Context) ([]repository.Invite, error) {
+	return s.store.ListInvites(ctx, repository.DefaultTreeID, s.now().UTC())
+}
+
+// RevokeInvite withdraws the pending invite with id (its token's hash), so
+// the link fails as an expired one does. It returns ErrInvalidLink when no
+// such invite is pending.
+func (s *Service) RevokeInvite(ctx context.Context, by Actor, id string) error {
+	invite, err := s.store.RevokeInvite(ctx, id, s.now().UTC())
+	if errors.Is(err, repository.ErrLinkNotFound) {
+		return ErrInvalidLink
+	}
+	if err != nil {
+		return fmt.Errorf("revoke invite: %w", err)
+	}
+	s.audit(ctx, by, repository.AuthActionInviteRevoked, nil, string(invite.Role))
+	return nil
+}
+
 // useLink runs use, which redeems an invite or reset link for clientIP, and
 // counts it against clientIP's limit when the link is invalid. Each try
 // hashes a password, so guessing links is throttled like signing in.
@@ -335,6 +357,31 @@ func (s *Service) ResetPassword(ctx context.Context, token, password, clientIP s
 	}
 	// Whoever holds the link acts as its user.
 	s.audit(ctx, Actor{UserID: userID, ClientIP: clientIP}, repository.AuthActionPasswordReset, user, "")
+	return nil
+}
+
+// PendingPasswordResets returns the password resets that have not expired,
+// newest first. Like an invite's, a reset's ID is its token's hash.
+func (s *Service) PendingPasswordResets(ctx context.Context) ([]repository.PasswordReset, error) {
+	return s.store.ListPasswordResets(ctx, s.now().UTC())
+}
+
+// RevokePasswordReset withdraws the pending reset with id (its token's
+// hash), so the link fails as an expired one does. It returns
+// ErrInvalidLink when no such reset is pending.
+func (s *Service) RevokePasswordReset(ctx context.Context, by Actor, id string) error {
+	reset, err := s.store.RevokePasswordReset(ctx, id, s.now().UTC())
+	if errors.Is(err, repository.ErrLinkNotFound) {
+		return ErrInvalidLink
+	}
+	if err != nil {
+		return fmt.Errorf("revoke password reset: %w", err)
+	}
+	user, err := s.store.GetUser(ctx, reset.UserID)
+	if err != nil {
+		user = &repository.User{ID: reset.UserID}
+	}
+	s.audit(ctx, by, repository.AuthActionResetRevoked, user, "")
 	return nil
 }
 

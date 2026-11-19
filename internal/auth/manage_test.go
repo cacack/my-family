@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -428,6 +429,96 @@ func TestLinks_RevokedWhenIssuerDisabledOrDemoted(t *testing.T) {
 	if _, _, _, err := m.svc.AcceptInvite(ctx, invite.Token, "eve", "Eve", testPassword, ""); !errors.Is(err, ErrInvalidLink) {
 		t.Errorf("an invite from a demoted owner: err = %v, want ErrInvalidLink", err)
 	}
+}
+
+func TestLinks_ListAndRevokePending(t *testing.T) {
+	m := newManaged(t)
+	ctx := context.Background()
+	grace, _ := m.invite(t, "grace", repository.RoleViewer)
+
+	invite, err := m.svc.CreateInvite(ctx, m.by, repository.RoleEditor)
+	if err != nil {
+		t.Fatalf("CreateInvite: %v", err)
+	}
+	reset, err := m.svc.IssuePasswordReset(ctx, m.by, grace.ID)
+	if err != nil {
+		t.Fatalf("IssuePasswordReset: %v", err)
+	}
+	invites, err := m.svc.PendingInvites(ctx)
+	if err != nil || len(invites) != 1 || invites[0].TokenHash != hashToken(invite.Token) || invites[0].Role != repository.RoleEditor {
+		t.Fatalf("PendingInvites = %+v, %v; want the editor invite (the accepted one is gone)", invites, err)
+	}
+	resets, err := m.svc.PendingPasswordResets(ctx)
+	if err != nil || len(resets) != 1 || resets[0].UserID != grace.ID || resets[0].CreatedBy != m.owner.ID {
+		t.Fatalf("PendingPasswordResets = %+v, %v; want grace's reset", resets, err)
+	}
+
+	if err := m.svc.RevokeInvite(ctx, m.by, invites[0].TokenHash); err != nil {
+		t.Fatalf("RevokeInvite: %v", err)
+	}
+	if err := m.svc.RevokePasswordReset(ctx, m.by, resets[0].TokenHash); err != nil {
+		t.Fatalf("RevokePasswordReset: %v", err)
+	}
+	if _, _, _, err := m.svc.AcceptInvite(ctx, invite.Token, "eve", "Eve", testPassword, ""); !errors.Is(err, ErrInvalidLink) {
+		t.Errorf("AcceptInvite of a revoked invite: err = %v, want ErrInvalidLink", err)
+	}
+	if err := m.svc.ResetPassword(ctx, reset.Token, "a brand new password", ""); !errors.Is(err, ErrInvalidLink) {
+		t.Errorf("ResetPassword of a revoked reset: err = %v, want ErrInvalidLink", err)
+	}
+	if err := m.svc.RevokeInvite(ctx, m.by, invites[0].TokenHash); !errors.Is(err, ErrInvalidLink) {
+		t.Errorf("RevokeInvite twice: err = %v, want ErrInvalidLink", err)
+	}
+	if err := m.svc.RevokePasswordReset(ctx, m.by, resets[0].TokenHash); !errors.Is(err, ErrInvalidLink) {
+		t.Errorf("RevokePasswordReset twice: err = %v, want ErrInvalidLink", err)
+	}
+
+	entries, _, _ := m.svc.AuthAudit(ctx, 2, 0)
+	if len(entries) != 2 {
+		t.Fatalf("AuthAudit = %+v, want the two revocations", entries)
+	}
+	if e := entries[0]; e.Action != repository.AuthActionResetRevoked || e.ActorID != m.owner.ID || e.SubjectID != grace.ID || e.Username != "grace" {
+		t.Errorf("reset revocation entry = %+v", e)
+	}
+	if e := entries[1]; e.Action != repository.AuthActionInviteRevoked || e.ActorID != m.owner.ID || e.Detail != "editor" {
+		t.Errorf("invite revocation entry = %+v", e)
+	}
+
+	// An expired link is no longer pending, so it cannot be revoked either.
+	expiring, err := m.svc.CreateInvite(ctx, m.by, repository.RoleViewer)
+	if err != nil {
+		t.Fatalf("CreateInvite: %v", err)
+	}
+	m.clock.advance(InviteTTL)
+	if invites, _ := m.svc.PendingInvites(ctx); len(invites) != 0 {
+		t.Errorf("PendingInvites after expiry = %+v, want none", invites)
+	}
+	if err := m.svc.RevokeInvite(ctx, m.by, hashToken(expiring.Token)); !errors.Is(err, ErrInvalidLink) {
+		t.Errorf("RevokeInvite of an expired invite: err = %v, want ErrInvalidLink", err)
+	}
+}
+
+func TestLinks_RevokeStoreFailure(t *testing.T) {
+	svc, store, _ := newTestService(t)
+	svc.store = failingLinks{store}
+	if err := svc.RevokeInvite(context.Background(), Actor{}, "x"); err == nil || errors.Is(err, ErrInvalidLink) {
+		t.Errorf("RevokeInvite with a failing store: err = %v, want the store's error", err)
+	}
+	if err := svc.RevokePasswordReset(context.Background(), Actor{}, "x"); err == nil || errors.Is(err, ErrInvalidLink) {
+		t.Errorf("RevokePasswordReset with a failing store: err = %v, want the store's error", err)
+	}
+}
+
+// failingLinks is a store whose links cannot be revoked.
+type failingLinks struct {
+	repository.AccountStore
+}
+
+func (failingLinks) RevokeInvite(context.Context, string, time.Time) (*repository.Invite, error) {
+	return nil, errors.New("disk full")
+}
+
+func (failingLinks) RevokePasswordReset(context.Context, string, time.Time) (*repository.PasswordReset, error) {
+	return nil, errors.New("disk full")
 }
 
 func TestLinks_RateLimitInvalidTokens(t *testing.T) {
