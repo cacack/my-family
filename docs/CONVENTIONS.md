@@ -205,6 +205,7 @@ web/src/
 
 - `web/src/lib/navigation.ts` is the single source for header destinations; `MainNav.svelte` renders it inline at ≥1024px and as one sectioned Menu below.
 - Add a new page to the group that matches its user intent (Browse, Research, History) rather than as a new top-level link; the header must stay one row at 1024px at the default font size, including with a long research branch name active. At larger font sizes the header controls wrap to a second row rather than cover the nav (`web/e2e/layout.spec.ts`).
+- Account and site-administration pages (account, users, settings) live in the header's account slot (`AccountMenu.svelte`), not the nav: an owner's account menu lists them, and open mode, which has no account, shows a Settings icon link there instead.
 - Use `match` for nested routes that live outside a link's own path; highlighting follows the group, not the URL prefix.
 
 ### UI Building Blocks
