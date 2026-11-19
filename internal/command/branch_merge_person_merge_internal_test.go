@@ -229,3 +229,23 @@ func TestPersonReferences_PersonMergedNamesTheSurvivor(t *testing.T) {
 		t.Errorf("personReferences = %v (err=%v), want the survivor only", got, err)
 	}
 }
+
+func TestReplayedPersonMerges(t *testing.T) {
+	a, b, c, s, m := uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	groups := []streamGroup{mergeGroup(b, a, 1), mergeGroup(c, b, 2), mergeGroup(s, m, 3)}
+
+	got, err := replayedPersonMerges(groups, map[uuid.UUID]MergeResolution{s: ResolveMain, c: ResolveBranch})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[uuid.UUID]uuid.UUID{a: c, b: c}
+	if len(got) != len(want) || got[a] != c || got[b] != c {
+		t.Errorf("replayedPersonMerges = %v, want every link of the chain to reach its end and the merge resolved to main left out (%v)", got, want)
+	}
+
+	bad := mergeGroup(s, m, 1)
+	bad.events[0].Data = []byte("not json")
+	if _, err := replayedPersonMerges([]streamGroup{bad}, nil); err == nil {
+		t.Error("want a decoding error")
+	}
+}

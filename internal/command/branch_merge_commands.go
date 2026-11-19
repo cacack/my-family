@@ -190,6 +190,11 @@ type MergeBranchResult struct {
 	// PreMergeSnapshot is the snapshot taken before the claim when the input
 	// asked for one (SnapshotBefore); nil otherwise.
 	PreMergeSnapshot *domain.Snapshot
+
+	// MergedPersons maps each person a replayed PersonMerged merged away on
+	// main to the person that finally holds their data (#1444), so a caller
+	// can follow references to them, such as the home person.
+	MergedPersons map[uuid.UUID]uuid.UUID
 }
 
 // MergeBranch replays a branch's genealogy-mutation events onto main and marks
@@ -259,6 +264,10 @@ func (h *Handler) MergeBranch(ctx context.Context, input MergeBranchInput) (*Mer
 	if err != nil {
 		return nil, err
 	}
+	mergedPersons, err := replayedPersonMerges(groups, input.Resolutions)
+	if err != nil {
+		return nil, err
+	}
 	if unresolved := unresolvedConflicts(plan.Conflicts, input.Resolutions); unresolved > 0 {
 		// The refusal hands the conflicts back for review, so they carry what
 		// each side says (#828); a merge that goes ahead never reads them.
@@ -314,6 +323,7 @@ func (h *Handler) MergeBranch(ctx context.Context, input MergeBranchInput) (*Mer
 		ReplayedEventCount: replayed,
 		SkippedStreamIDs:   skipped,
 		PreMergeSnapshot:   preMerge,
+		MergedPersons:      mergedPersons,
 	}, nil
 }
 

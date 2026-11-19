@@ -215,3 +215,98 @@ func TestHomePerson_MergeSurvivesSettingsFailure(t *testing.T) {
 		t.Errorf("merge with a failing settings store = %d, want 200. Body: %s", rec.Code, rec.Body.String())
 	}
 }
+
+// branchPersonMerge merges mergedID into survivorID on a branch and returns the
+// survivor's version after it.
+func branchPersonMerge(t *testing.T, server *api.Server, branchID, survivorID, mergedID string, sv, mv int64) int64 {
+	t.Helper()
+	body := fmt.Sprintf(`{"survivor_id":%q,"merged_id":%q,"survivor_version":%d,"merged_version":%d}`, survivorID, mergedID, sv, mv)
+	rec := do(t, server, http.MethodPost, "/api/v1/persons/merge?branch="+branchID, body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("branch person merge = %d. Body: %s", rec.Code, rec.Body.String())
+	}
+	person, _ := decodeJSON(t, rec)["person"].(map[string]any)
+	return int64(person["version"].(float64))
+}
+
+// A person merge made on a research branch reaches main when the branch is
+// merged (#1444): "me" follows it there, through a chain of merges, and a
+// branch merge that does not merge "me" away leaves the setting alone.
+func TestHomePerson_FollowsBranchMerge(t *testing.T) {
+	tests := []struct {
+		name string
+		// setup creates its persons on main, forks a branch after them so main
+		// does not change under it, and returns the branch, the home person and
+		// the one GET /settings/home-person should name after the branch merge.
+		setup func(t *testing.T, server *api.Server) (branchID, home, want string)
+	}{
+		{"home person merged away", func(t *testing.T, server *api.Server) (string, string, string) {
+			survivorID, sv := createMergeTestPerson(t, server, "Morgan", "Duplicate")
+			mergedID, mv := createMergeTestPerson(t, server, "Morgan", "Duplicat")
+			branchID := createBranch(t, server, "same person")
+			branchPersonMerge(t, server, branchID, survivorID, mergedID, sv, mv)
+			return branchID, mergedID, survivorID
+		}},
+		{"home person merged away through a chain", func(t *testing.T, server *api.Server) (string, string, string) {
+			firstID, fv := createMergeTestPerson(t, server, "Morgan", "Duplicat")
+			middleID, mv := createMergeTestPerson(t, server, "Morgan", "Duplicate")
+			lastID, lv := createMergeTestPerson(t, server, "Morgan", "Duplicates")
+			branchID := createBranch(t, server, "same person")
+			mv = branchPersonMerge(t, server, branchID, middleID, firstID, mv, fv)
+			branchPersonMerge(t, server, branchID, lastID, middleID, lv, mv)
+			return branchID, firstID, lastID
+		}},
+		{"home person is the survivor", func(t *testing.T, server *api.Server) (string, string, string) {
+			survivorID, sv := createMergeTestPerson(t, server, "Morgan", "Duplicate")
+			mergedID, mv := createMergeTestPerson(t, server, "Morgan", "Duplicat")
+			branchID := createBranch(t, server, "same person")
+			branchPersonMerge(t, server, branchID, survivorID, mergedID, sv, mv)
+			return branchID, survivorID, survivorID
+		}},
+		{"home person not in the merge", func(t *testing.T, server *api.Server) (string, string, string) {
+			homeID, _ := createMergeTestPerson(t, server, "Ada", "Home")
+			survivorID, sv := createMergeTestPerson(t, server, "Morgan", "Duplicate")
+			mergedID, mv := createMergeTestPerson(t, server, "Morgan", "Duplicat")
+			branchID := createBranch(t, server, "same person")
+			branchPersonMerge(t, server, branchID, survivorID, mergedID, sv, mv)
+			return branchID, homeID, homeID
+		}},
+		{"branch without a person merge", func(t *testing.T, server *api.Server) (string, string, string) {
+			homeID, _ := createMergeTestPerson(t, server, "Ada", "Home")
+			branchID := createBranch(t, server, "same person")
+			if rec := do(t, server, http.MethodPost, "/api/v1/persons?branch="+branchID, `{"given_name":"New","surname":"Cousin"}`); rec.Code != http.StatusCreated {
+				t.Fatalf("branch create = %d. Body: %s", rec.Code, rec.Body.String())
+			}
+			return branchID, homeID, homeID
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := setupMergeSettingsServer(memory.NewSettingsStore())
+			branchID, home, want := tt.setup(t, server)
+			if code, resp := homePersonRequest(t, server, http.MethodPut, `{"person_id":"`+home+`"}`); code != http.StatusOK {
+				t.Fatalf("PUT home person = %d %v", code, resp)
+			}
+
+			if rec := do(t, server, http.MethodPost, "/api/v1/branches/"+branchID+"/merge", `{}`); rec.Code != http.StatusOK {
+				t.Fatalf("branch merge = %d. Body: %s", rec.Code, rec.Body.String())
+			}
+
+			if code, resp := homePersonRequest(t, server, http.MethodGet, ""); code != http.StatusOK || homePersonID(resp) != want {
+				t.Errorf("GET home person after branch merge = %d %v, want %s", code, resp, want)
+			}
+		})
+	}
+}
+
+// A settings failure after a branch merge has landed does not fail the merge.
+func TestHomePerson_BranchMergeSurvivesSettingsFailure(t *testing.T) {
+	server := setupMergeSettingsServer(failingSettings{})
+	survivorID, sv := createMergeTestPerson(t, server, "Morgan", "Duplicate")
+	mergedID, mv := createMergeTestPerson(t, server, "Morgan", "Duplicat")
+	branchID := createBranch(t, server, "same person")
+	branchPersonMerge(t, server, branchID, survivorID, mergedID, sv, mv)
+	if rec := do(t, server, http.MethodPost, "/api/v1/branches/"+branchID+"/merge", `{}`); rec.Code != http.StatusOK {
+		t.Errorf("branch merge with a failing settings store = %d, want 200. Body: %s", rec.Code, rec.Body.String())
+	}
+}
