@@ -21,6 +21,9 @@ import (
 // The role table (ADR-007), written out independently of openapi.yaml so the
 // spec is checked against it: a GET reads the tree and needs a viewer, any
 // other method changes it and needs an editor, except for the routes below.
+// A new route outside those defaults needs an entry here as well as its
+// x-min-role in openapi.yaml (or handRouteRoles in roles.go for a route
+// registered by hand).
 var (
 	publicRoutes = routeSet(
 		"GET /api/v1/health",
@@ -135,6 +138,9 @@ func errorCodeOf(rec *httptest.ResponseRecorder) string {
 
 var routeParam = regexp.MustCompile(`:[A-Za-z0-9]+`)
 
+// specPathParam matches an OpenAPI path parameter, `{id}`.
+var specPathParam = regexp.MustCompile(`\{([^}/]+)\}`)
+
 // TestRoles_EveryRouteForEveryRole calls every API route the server registers
 // as a viewer, an editor and an owner, and checks that the role check refuses
 // exactly the roles below the route's entry in the role table. Path
@@ -144,13 +150,13 @@ func TestRoles_EveryRouteForEveryRole(t *testing.T) {
 	f, cookies := rolesFixture(t)
 	id := uuid.New().String()
 
-	routes := 0
+	visited := make(map[string]bool)
 	for _, route := range f.server.Echo().Routes() {
 		if !strings.HasPrefix(route.Path, "/api/") {
 			continue
 		}
-		routes++
 		key := route.Method + " " + route.Path
+		visited[key] = true
 		want := expectedRole(key)
 		path := routeParam.ReplaceAllString(route.Path, id)
 		body := ""
@@ -173,10 +179,20 @@ func TestRoles_EveryRouteForEveryRole(t *testing.T) {
 			}
 		}
 	}
-	// 167 operations in openapi.yaml plus the hand-registered routes: a
-	// collapse here would make the loop above prove nothing.
-	if routes < 170 {
-		t.Errorf("only %d API routes registered", routes)
+	// Every operation in openapi.yaml must have been called above, or the loop
+	// would prove nothing about it.
+	operations := 0
+	for path, item := range apiSpec.Paths.Map() {
+		echoPath := "/api/v1" + specPathParam.ReplaceAllString(path, ":$1")
+		for method := range item.Operations() {
+			operations++
+			if key := method + " " + echoPath; !visited[key] {
+				t.Errorf("%s is in openapi.yaml but was not called as a registered route", key)
+			}
+		}
+	}
+	if operations == 0 {
+		t.Error("openapi.yaml has no operations")
 	}
 }
 
