@@ -2,8 +2,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/svelte';
 import SignInForm from './SignInForm.svelte';
 
-const { signIn } = vi.hoisted(() => ({ signIn: vi.fn() }));
-vi.mock('#lib/stores/auth.svelte.js', () => ({ signIn: (u: string, p: string) => signIn(u, p) }));
+const { signIn, browseAsVisitor, state } = vi.hoisted(() => ({
+	signIn: vi.fn(),
+	browseAsVisitor: vi.fn(),
+	state: { visitorsWelcome: false }
+}));
+vi.mock('#lib/stores/auth.svelte.js', () => ({
+	auth: state,
+	signIn: (u: string, p: string) => signIn(u, p),
+	browseAsVisitor: () => browseAsVisitor()
+}));
 
 async function submit(username: string, password: string) {
 	await fireEvent.input(screen.getByLabelText('Username'), { target: { value: username } });
@@ -12,7 +20,22 @@ async function submit(username: string, password: string) {
 }
 
 describe('SignInForm', () => {
-	beforeEach(() => vi.clearAllMocks());
+	beforeEach(() => {
+		vi.clearAllMocks();
+		state.visitorsWelcome = false;
+	});
+
+	it('offers no way back to browsing when visitors must sign in', () => {
+		render(SignInForm);
+		expect(screen.queryByRole('button', { name: 'Browse without signing in' })).toBeNull();
+	});
+
+	it('goes back to browsing when visitors are welcome', async () => {
+		state.visitorsWelcome = true;
+		render(SignInForm);
+		await fireEvent.click(screen.getByRole('button', { name: 'Browse without signing in' }));
+		expect(browseAsVisitor).toHaveBeenCalledOnce();
+	});
 
 	it('signs in with the username and password', async () => {
 		signIn.mockResolvedValue(undefined);

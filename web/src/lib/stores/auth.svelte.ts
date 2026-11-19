@@ -8,6 +8,8 @@
  * - `open`: the server runs with AUTH_MODE=open; no one signs in
  * - `setup`: the tree has no owner yet
  * - `signed-out`: sign in to continue
+ * - `visitor`: not signed in, browsing as a viewer because the owner lets
+ *   visitors in (`auth.visitorsWelcome`)
  * - `signed-in`: `account` is who
  * - `error`: the status could not be read; `retry` with `loadAuth`
  */
@@ -19,7 +21,7 @@ import {
 	type AccountUpdate,
 	type SetupRequest
 } from '#lib/api/client.js';
-import { auth } from './access.svelte.js';
+import { auth, type AuthPhase } from './access.svelte.js';
 
 export { auth, can, currentRole, type AuthPhase, type Role } from './access.svelte.js';
 
@@ -38,6 +40,21 @@ export function markSignedOut(): void {
 
 setUnauthorizedHandler(markSignedOut);
 
+/** Where someone who is not signed in lands: browsing as a visitor, or the sign-in page. */
+function signedOutPhase(): AuthPhase {
+	return auth.visitorsWelcome ? 'visitor' : 'signed-out';
+}
+
+/** A visitor asks to sign in: show the sign-in page. */
+export function showSignIn(): void {
+	if (auth.phase === 'visitor') auth.phase = 'signed-out';
+}
+
+/** Back from the sign-in page to browsing, when visitors are welcome. */
+export function browseAsVisitor(): void {
+	if (auth.phase === 'signed-out' && auth.visitorsWelcome) auth.phase = 'visitor';
+}
+
 /** Read how this server signs people in and who is signed in. */
 export async function loadAuth(): Promise<void> {
 	try {
@@ -48,11 +65,14 @@ export async function loadAuth(): Promise<void> {
 		} else if (status.setup_required) {
 			auth.account = null;
 			auth.phase = 'setup';
-		} else if (status.account) {
-			signedIn(status.account);
 		} else {
-			auth.account = null;
-			auth.phase = 'signed-out';
+			auth.visitorsWelcome = status.anonymous_access === 'viewer';
+			if (status.account) {
+				signedIn(status.account);
+			} else {
+				auth.account = null;
+				auth.phase = signedOutPhase();
+			}
 		}
 	} catch {
 		auth.phase = 'error';
@@ -79,12 +99,15 @@ export async function updateOwnAccount(input: AccountUpdate): Promise<void> {
 	signedIn(await api.updateCurrentAccount(input));
 }
 
-/** Sign out on the server, then show the sign-in page whatever it answered. */
+/**
+ * Sign out on the server, then show the sign-in page (or the tree, to a
+ * visitor) whatever it answered.
+ */
 export async function signOut(): Promise<void> {
 	try {
 		await api.signOut();
 	} finally {
 		auth.account = null;
-		auth.phase = 'signed-out';
+		auth.phase = signedOutPhase();
 	}
 }

@@ -2,18 +2,20 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import AccountMenu from './AccountMenu.svelte';
 
-const { state, signOut, goto } = vi.hoisted(() => ({
+const { state, signOut, showSignIn, goto } = vi.hoisted(() => ({
 	state: {
 		phase: 'signed-in',
 		account: null as null | { id: string; username: string; display_name: string; role: string }
 	},
 	signOut: vi.fn(),
+	showSignIn: vi.fn(),
 	goto: vi.fn()
 }));
 vi.mock('#lib/stores/auth.svelte.js', () => ({
 	auth: state,
 	can: (required: string) => required !== 'owner' || state.account?.role === 'owner',
-	signOut: () => signOut()
+	signOut: () => signOut(),
+	showSignIn: () => showSignIn()
 }));
 vi.mock('$app/navigation', () => ({ goto: (href: string) => goto(href) }));
 
@@ -25,7 +27,17 @@ async function open() {
 describe('AccountMenu', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		state.phase = 'signed-in';
 		state.account = { id: '1', username: 'ada', display_name: 'Ada Lovelace', role: 'owner' };
+	});
+
+	it('offers a visitor a sign-in button instead of the menu', async () => {
+		state.phase = 'visitor';
+		state.account = null;
+		render(AccountMenu);
+		expect(screen.queryByRole('button', { name: /^Account/ })).toBeNull();
+		await fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+		expect(showSignIn).toHaveBeenCalledOnce();
 	});
 
 	it('names the signed-in user and signs out', async () => {

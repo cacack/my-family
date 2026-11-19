@@ -1,16 +1,19 @@
 <script lang="ts">
 	/**
 	 * The signed-in user's menu in the header (ADR-007): who, their account
-	 * page, the users and settings pages for an owner, and sign out.
+	 * page, the users and settings pages for an owner, and sign out. A
+	 * visitor gets a sign-in button in its place.
 	 */
 	import { goto } from '$app/navigation';
 	import * as DropdownMenu from '#lib/components/ui/dropdown-menu/index.js';
-	import { auth, can, signOut } from '#lib/stores/auth.svelte.js';
+	import { auth, can, showSignIn, signOut } from '#lib/stores/auth.svelte.js';
 
 	const name = $derived(auth.account?.display_name ?? '');
 </script>
 
-{#if auth.account}
+{#if auth.phase === 'visitor'}
+	<button type="button" class="sign-in-btn" onclick={() => showSignIn()}>Sign in</button>
+{:else if auth.account}
 	<DropdownMenu.Root>
 		<DropdownMenu.Trigger>
 			{#snippet child({ props })}
@@ -66,6 +69,35 @@
 	}
 
 	:global(body.high-contrast) .account-btn {
+		background: var(--color-bg);
+		border-color: var(--a11y-color-border);
+		color: var(--color-text);
+	}
+
+	.sign-in-btn {
+		flex-shrink: 0;
+		height: 2.25rem;
+		padding: 0 0.75rem;
+		border: 1px solid #e2e8f0;
+		border-radius: 6px;
+		background: white;
+		color: #1e293b;
+		font-size: 0.875rem;
+		font-weight: 500;
+		white-space: nowrap;
+		cursor: pointer;
+	}
+
+	.sign-in-btn:hover {
+		background: #f1f5f9;
+	}
+
+	.sign-in-btn:focus-visible {
+		outline: 2px solid var(--color-focus-ring);
+		outline-offset: 2px;
+	}
+
+	:global(body.high-contrast) .sign-in-btn {
 		background: var(--color-bg);
 		border-color: var(--a11y-color-border);
 		color: var(--color-text);

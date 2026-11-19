@@ -8,7 +8,7 @@
  */
 import type { Account } from '#lib/api/client.js';
 
-export type AuthPhase = 'loading' | 'open' | 'setup' | 'signed-out' | 'signed-in' | 'error';
+export type AuthPhase = 'loading' | 'open' | 'setup' | 'signed-out' | 'visitor' | 'signed-in' | 'error';
 
 /** What a user may do in the tree; each role includes the ones before it. */
 export type Role = Account['role'];
@@ -18,16 +18,19 @@ const ROLE_RANK: Record<Role, number> = { viewer: 1, editor: 2, owner: 3 };
 interface AuthState {
 	phase: AuthPhase;
 	account: Account | null;
+	/** The owner lets visitors browse without signing in (anonymous access `viewer`). */
+	visitorsWelcome: boolean;
 }
 
-export const auth = $state<AuthState>({ phase: 'loading', account: null });
+export const auth = $state<AuthState>({ phase: 'loading', account: null, visitorsWelcome: false });
 
 /**
  * The role of whoever is using the app: the signed-in user's, the owner's in
- * open mode, or null before anyone is signed in.
+ * open mode, a viewer's for a visitor, or null before anyone is signed in.
  */
 export function currentRole(): Role | null {
 	if (auth.phase === 'open') return 'owner';
+	if (auth.phase === 'visitor') return 'viewer';
 	return auth.phase === 'signed-in' ? (auth.account?.role ?? null) : null;
 }
 
