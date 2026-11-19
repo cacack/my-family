@@ -402,7 +402,8 @@ func TestValidationService_GetValidationIssues_DateLogicIssues(t *testing.T) {
 }
 
 // A lifespan across BC and AD counts no year 0: 200 BC to AD 10 is 209
-// years, and the impossible-age check reports that, not 210 (#1066).
+// years, and the impossible-age check reports that, not 210 (#1066). Since
+// gedcom-go v3.7.0 a year-only span is reported as an upper bound.
 func TestValidationService_GetValidationIssues_BCLifespan(t *testing.T) {
 	service, store := setupValidationService()
 	ctx := context.Background()
@@ -418,7 +419,7 @@ func TestValidationService_GetValidationIssues_BCLifespan(t *testing.T) {
 			messages = append(messages, issue.Message)
 		}
 	}
-	want := "age of 209 years exceeds maximum reasonable age of 120"
+	want := "age of up to 209 years exceeds maximum reasonable age of 120"
 	if len(messages) != 1 || messages[0] != want {
 		t.Errorf("IMPOSSIBLE_AGE messages = %q, want [%q]", messages, want)
 	}
