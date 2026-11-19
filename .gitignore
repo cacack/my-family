@@ -10,7 +10,7 @@ go.work
 go.work.sum
 
 # Binary
-myfamily
+/myfamily
 
 # Dependencies
 vendor/
