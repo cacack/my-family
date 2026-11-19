@@ -181,6 +181,16 @@ current one and signs them out everywhere else. Sign-ins, failed sign-ins, invit
 disables, re-enables and password resets and changes are written to an append-only audit log,
 which owners read under **Users > Audit log**.
 
+#### Living people and private records
+
+Each person has a computed `living` flag: a recorded death, burial or cremation makes them
+deceased; otherwise they count as living unless their birth (else christening or baptism) is more
+than 110 years ago. Editors can set `living_override` (`auto`, `living`, `deceased`) to decide
+for the rule. Persons, families, sources, citations, notes and media carry a `private` mark,
+which is their GEDCOM restriction notice (`RESN`); it round-trips through GEDCOM import and export
+for persons, families, sources and notes. These marks are recorded but not yet enforced: every
+role still sees every record ([ADR-008](./docs/adr/008-privacy-model.md), #1412).
+
 #### Upgrading from a version without accounts
 
 An upgraded server starts in setup mode: until an owner exists, the API answers every request
