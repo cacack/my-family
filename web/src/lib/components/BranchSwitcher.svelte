@@ -70,15 +70,15 @@
 		     button inside bits-ui's own, and the aria-label would land on the
 		     inner one rather than the control that takes focus.
 		     From 1024px the controls share the nav's row while they fit
-		     (+layout.svelte); below 1280px the label is capped tighter, just
-		     wide enough for "Mainline", so a long branch name does not push them
-		     onto a row of their own. -->
+		     (+layout.svelte), so the label is capped, and below 1280px only the
+		     icon shows (an active branch's banner names it), leaving room for
+		     the account menu or open mode's settings link. -->
 		{#snippet child({ props })}
 			<Button
 				{...props}
 				variant="outline"
 				size="sm"
-				class="max-w-[12rem] gap-1.5 lg:max-xl:max-w-[6.25rem]"
+				class="max-w-[9rem] gap-1.5"
 				aria-label="Switch research branch. Currently on {currentLabel}"
 			>
 				<svg
@@ -94,7 +94,7 @@
 					<circle cx="6" cy="18" r="3" />
 					<path d="M18 9a9 9 0 0 1-9 9" />
 				</svg>
-				<span class="truncate">{currentLabel}</span>
+				<span class="truncate lg:max-xl:sr-only">{currentLabel}</span>
 			</Button>
 		{/snippet}
 	</DropdownMenu.Trigger>
