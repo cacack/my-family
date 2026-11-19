@@ -141,6 +141,22 @@ Accounts are kept in their own tables (`users`, `tree_memberships`, `sessions`),
 log, so `myfamily rebuild` leaves them alone; back them up with the rest of the database. See
 [ADR-007](./docs/adr/007-access-model.md).
 
+#### Roles
+
+Each account holds one role in the tree, and each role can do everything the one before it can:
+
+| Role | Can |
+|------|-----|
+| Viewer | Read the tree |
+| Editor | Change tree data; create, merge and close research branches; export |
+| Owner | Import GEDCOM; roll records back (and, later, manage users and settings) |
+
+The server refuses anything above a user's role with `403 FORBIDDEN`, and the web UI hides what a
+role cannot use. Every API operation declares the role it needs as `x-min-role` in the
+[OpenAPI spec](./internal/api/openapi.yaml). Each user may start 5 GEDCOM exports or export
+previews at once and one more every 10 seconds; beyond that the API answers
+`429 RATE_LIMITED`. Open mode treats every request as the owner and does not limit exports.
+
 #### Upgrading from a version without accounts
 
 An upgraded server starts in setup mode: until an owner exists, the API answers every request

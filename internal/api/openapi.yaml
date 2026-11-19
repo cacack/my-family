@@ -4,6 +4,12 @@ info:
   description: |
     REST API for self-hosted genealogy software. Supports person and family
     management, GEDCOM import/export, pedigree visualization, and search.
+
+    Every operation declares `x-min-role`, the least role that may call it
+    (ADR-007): `public` (no session needed), `viewer`, `editor` or `owner`,
+    each including the ones before it. A signed-in user below an operation's
+    role gets 403 `FORBIDDEN`, and an operation that declares no role is
+    refused for everyone.
   version: 1.0.0
   license:
     name: MIT
@@ -85,6 +91,7 @@ paths:
   /persons:
     get:
       operationId: listPersons
+      x-min-role: viewer
       summary: List all persons
       tags: [persons]
       parameters:
@@ -125,6 +132,7 @@ paths:
 
     post:
       operationId: createPerson
+      x-min-role: editor
       summary: Create a new person
       description: |
         `birth_date` and `death_date` are checked against the accepted date
@@ -159,6 +167,7 @@ paths:
 
     get:
       operationId: getPerson
+      x-min-role: viewer
       summary: Get a person by ID
       tags: [persons]
       parameters:
@@ -175,6 +184,7 @@ paths:
 
     put:
       operationId: updatePerson
+      x-min-role: editor
       summary: Update a person
       description: |
         `birth_date` and `death_date` are checked against the accepted date
@@ -206,6 +216,7 @@ paths:
 
     delete:
       operationId: deletePerson
+      x-min-role: editor
       summary: Delete a person
       tags: [persons]
       parameters:
@@ -225,6 +236,7 @@ paths:
   /families:
     get:
       operationId: listFamilies
+      x-min-role: viewer
       summary: List all families
       tags: [families]
       parameters:
@@ -241,6 +253,7 @@ paths:
 
     post:
       operationId: createFamily
+      x-min-role: editor
       summary: Create a new family
       description: |
         When `branch` is supplied the family is created on that branch only, and
@@ -279,6 +292,7 @@ paths:
 
     get:
       operationId: getFamily
+      x-min-role: viewer
       summary: Get a family by ID
       tags: [families]
       parameters:
@@ -295,6 +309,7 @@ paths:
 
     put:
       operationId: updateFamily
+      x-min-role: editor
       summary: Update a family
       description: |
         `marriage_date` is checked against the accepted date forms (see
@@ -325,6 +340,7 @@ paths:
 
     delete:
       operationId: deleteFamily
+      x-min-role: editor
       summary: Delete a family
       description: |
         When `branch` is supplied the family is deleted on that branch only (the
@@ -352,6 +368,7 @@ paths:
 
     post:
       operationId: addChildToFamily
+      x-min-role: editor
       summary: Add a child to a family
       description: |
         When `branch` is supplied the link is made on that branch only. The
@@ -398,6 +415,7 @@ paths:
 
     delete:
       operationId: removeChildFromFamily
+      x-min-role: editor
       summary: Remove a child from a family
       description: |
         When `branch` is supplied the link is removed on that branch only (the
@@ -424,6 +442,7 @@ paths:
 
     get:
       operationId: getFamilyGroupSheet
+      x-min-role: viewer
       summary: Get family group sheet data
       description: |
         Returns a traditional family group sheet view showing a family unit
@@ -449,6 +468,7 @@ paths:
 
     get:
       operationId: getPedigree
+      x-min-role: viewer
       summary: Get ancestor pedigree for a person
       tags: [pedigree]
       parameters:
@@ -477,6 +497,7 @@ paths:
 
     get:
       operationId: getDescendancy
+      x-min-role: viewer
       summary: Get descendancy tree for a person
       description: |
         Returns the descendant tree for a person, showing children, grandchildren,
@@ -508,6 +529,7 @@ paths:
 
     get:
       operationId: getAhnentafel
+      x-min-role: viewer
       summary: Get Ahnentafel (ancestor table) report for a person
       description: |
         Returns an Ahnentafel report listing ancestors using the standard numbering system:
@@ -550,6 +572,7 @@ paths:
   /search:
     get:
       operationId: searchPersons
+      x-min-role: viewer
       summary: Search for persons
       tags: [search]
       parameters:
@@ -634,6 +657,7 @@ paths:
   /browse/surnames:
     get:
       operationId: browseSurnames
+      x-min-role: viewer
       summary: Get surname index with counts
       description: |
         Returns an alphabetical index of surnames with person counts. With
@@ -666,6 +690,7 @@ paths:
           type: string
     get:
       operationId: getPersonsBySurname
+      x-min-role: viewer
       summary: Get persons with a specific surname
       description: |
         Returns the people carrying the surname. With `?branch=` the results come
@@ -686,6 +711,7 @@ paths:
   /browse/places:
     get:
       operationId: browsePlaces
+      x-min-role: viewer
       summary: Get place hierarchy with counts
       description: |
         Returns hierarchical place data (Country > State > County > City). With
@@ -717,6 +743,7 @@ paths:
           type: string
     get:
       operationId: getPersonsByPlace
+      x-min-role: viewer
       summary: Get persons associated with a place
       description: |
         Returns the people associated with the place. With `?branch=` the results
@@ -737,6 +764,7 @@ paths:
   /browse/cemeteries:
     get:
       operationId: browseCemeteries
+      x-min-role: viewer
       summary: Get cemetery/burial place index with counts
       description: |
         Returns unique burial and cremation places with person counts. With
@@ -765,6 +793,7 @@ paths:
           type: string
     get:
       operationId: getPersonsByCemetery
+      x-min-role: viewer
       summary: Get persons buried or cremated at a place
       description: |
         Returns the people buried or cremated at the place. With `?branch=` both
@@ -787,6 +816,7 @@ paths:
   /map/locations:
     get:
       operationId: getMapLocations
+      x-min-role: viewer
       summary: Get geographic locations for map visualization
       description: |
         Returns aggregated birth and death locations with coordinates for map
@@ -806,6 +836,7 @@ paths:
   /browse/brick-walls:
     get:
       operationId: getBrickWalls
+      x-min-role: viewer
       summary: List brick wall research blocks
       description: |
         Returns the brick wall research blocks. `?branch=` is NOT accepted here
@@ -833,6 +864,7 @@ paths:
       - $ref: '#/components/parameters/personId'
     put:
       operationId: setPersonBrickWall
+      x-min-role: editor
       summary: Mark person as a brick wall
       description: |
         Marks the person as a brick wall, logged as a `BrickWallSet` event on the
@@ -860,6 +892,7 @@ paths:
           $ref: '#/components/responses/NotFound'
     delete:
       operationId: resolvePersonBrickWall
+      x-min-role: editor
       summary: Resolve a brick wall (mark as broken through)
       description: |
         Resolves the person's brick wall, logged as a `BrickWallResolved` event on
@@ -877,6 +910,7 @@ paths:
   /gedcom/import:
     post:
       operationId: importGedcom
+      x-min-role: owner
       summary: Import a GEDCOM file
       tags: [gedcom]
       requestBody:
@@ -908,6 +942,7 @@ paths:
   /gedcom/export:
     get:
       operationId: exportGedcom
+      x-min-role: editor
       summary: Export all data as GEDCOM
       tags: [gedcom]
       parameters:
@@ -942,10 +977,19 @@ paths:
                 type: string
         '400':
           $ref: '#/components/responses/BadRequest'
+        '429':
+          description: >-
+            Too many GEDCOM exports and previews by this user in a short time
+            (`RATE_LIMITED`); try again later
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   /gedcom/export/preview:
     get:
       operationId: previewGedcomExport
+      x-min-role: editor
       summary: Preview a GEDCOM export conversion and report data loss
       description: >-
         Reports what would change if the data were exported at the given GEDCOM
@@ -973,10 +1017,19 @@ paths:
                 $ref: '#/components/schemas/ExportPreview'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '429':
+          description: >-
+            Too many GEDCOM exports and previews by this user in a short time
+            (`RATE_LIMITED`); try again later
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   /history:
     get:
       operationId: listHistory
+      x-min-role: viewer
       summary: List global change history
       tags: [history]
       description: |
@@ -1033,6 +1086,7 @@ paths:
 
     get:
       operationId: getPersonHistory
+      x-min-role: viewer
       summary: Get change history for a person
       tags: [history]
       description: |
@@ -1067,6 +1121,7 @@ paths:
 
     get:
       operationId: getFamilyHistory
+      x-min-role: viewer
       summary: Get change history for a family
       tags: [history]
       description: |
@@ -1106,6 +1161,7 @@ paths:
 
     get:
       operationId: getSourceHistory
+      x-min-role: viewer
       summary: Get change history for a source
       tags: [history]
       parameters:
@@ -1129,6 +1185,7 @@ paths:
 
     get:
       operationId: getPersonRestorePoints
+      x-min-role: viewer
       summary: Get restore points for a person
       description: |
         Returns a list of versions to which the person can be rolled back.
@@ -1180,6 +1237,7 @@ paths:
 
     post:
       operationId: rollbackPerson
+      x-min-role: owner
       summary: Rollback a person to a previous version
       description: |
         Restores the person's data to match the state at the specified version.
@@ -1231,6 +1289,7 @@ paths:
 
     get:
       operationId: getFamilyRestorePoints
+      x-min-role: viewer
       summary: Get restore points for a family
       description: |
         Returns a list of versions to which the family can be rolled back.
@@ -1266,6 +1325,7 @@ paths:
 
     post:
       operationId: rollbackFamily
+      x-min-role: owner
       summary: Rollback a family to a previous version
       description: |
         Restores the family's data to match the state at the specified version.
@@ -1312,6 +1372,7 @@ paths:
 
     get:
       operationId: getSourceRestorePoints
+      x-min-role: viewer
       summary: Get restore points for a source
       description: |
         Returns a list of versions to which the source can be rolled back.
@@ -1352,6 +1413,7 @@ paths:
 
     post:
       operationId: rollbackSource
+      x-min-role: owner
       summary: Rollback a source to a previous version
       description: |
         Restores the source's data to match the state at the specified version.
@@ -1398,6 +1460,7 @@ paths:
 
     get:
       operationId: getCitationRestorePoints
+      x-min-role: viewer
       summary: Get restore points for a citation
       description: |
         Returns a list of versions to which the citation can be rolled back.
@@ -1438,6 +1501,7 @@ paths:
 
     post:
       operationId: rollbackCitation
+      x-min-role: owner
       summary: Rollback a citation to a previous version
       description: |
         Restores the citation's data to match the state at the specified version.
@@ -1477,6 +1541,7 @@ paths:
   /citation-templates:
     get:
       operationId: listCitationTemplates
+      x-min-role: viewer
       summary: List available citation templates
       description: Returns all Evidence Explained citation templates, optionally filtered by source type
       tags: [citation-templates]
@@ -1506,6 +1571,7 @@ paths:
 
     get:
       operationId: getCitationTemplate
+      x-min-role: viewer
       summary: Get a citation template by ID
       tags: [citation-templates]
       responses:
@@ -1529,6 +1595,7 @@ paths:
 
     post:
       operationId: previewCitationTemplate
+      x-min-role: viewer
       summary: Preview a citation template with provided fields
       description: Renders a citation preview without requiring a saved citation. Useful for live preview during editing.
       tags: [citation-templates]
@@ -1568,6 +1635,7 @@ paths:
 
     get:
       operationId: formatCitation
+      x-min-role: viewer
       summary: Format a citation using its template
       description: |
         Renders the citation as full and short formatted text using the
@@ -1593,6 +1661,7 @@ paths:
 
     get:
       operationId: listPersonMedia
+      x-min-role: viewer
       summary: List media attached to a person
       description: |
         Returns the person's media metadata, newest first. With `?branch=` the
@@ -1614,6 +1683,7 @@ paths:
 
     post:
       operationId: uploadPersonMedia
+      x-min-role: editor
       summary: Upload media to a person
       description: |
         Uploads a new media item for the person. With `?branch=` the item is
@@ -1675,6 +1745,7 @@ paths:
 
     get:
       operationId: getMedia
+      x-min-role: viewer
       summary: Get media metadata
       description: |
         Returns the media item's metadata. With `?branch=` it is read from that
@@ -1694,6 +1765,7 @@ paths:
 
     put:
       operationId: updateMedia
+      x-min-role: editor
       summary: Update media metadata
       description: |
         Updates the media item's metadata (never its file). With `?branch=` the
@@ -1724,6 +1796,7 @@ paths:
 
     delete:
       operationId: deleteMedia
+      x-min-role: editor
       summary: Delete media
       description: |
         Deletes the media item. With `?branch=` it is deleted on that branch
@@ -1754,6 +1827,7 @@ paths:
 
     get:
       operationId: downloadMedia
+      x-min-role: viewer
       summary: Download media file
       description: |
         Returns the media file. With `?branch=` the item is resolved through that
@@ -1801,6 +1875,7 @@ paths:
 
     get:
       operationId: getMediaThumbnail
+      x-min-role: viewer
       summary: Get media thumbnail
       description: |
         Returns the media thumbnail. With `?branch=` the item is resolved through
@@ -1824,6 +1899,7 @@ paths:
   /sources:
     get:
       operationId: listSources
+      x-min-role: viewer
       summary: List all sources
       description: |
         Returns a paginated list of sources. With `?branch=` the list is that
@@ -1862,6 +1938,7 @@ paths:
 
     post:
       operationId: createSource
+      x-min-role: editor
       summary: Create a new source
       description: |
         Creates a source. With `?branch=` the source is created on that branch
@@ -1892,6 +1969,7 @@ paths:
   /sources/search:
     get:
       operationId: searchSources
+      x-min-role: viewer
       summary: Search sources
       description: |
         Case-insensitive substring search over source titles and authors. With
@@ -1930,6 +2008,7 @@ paths:
 
     get:
       operationId: getSource
+      x-min-role: viewer
       summary: Get a source by ID
       description: |
         Returns the source with its citations and external identifiers. With
@@ -1949,6 +2028,7 @@ paths:
 
     put:
       operationId: updateSource
+      x-min-role: editor
       summary: Update a source
       description: |
         `publish_date` is checked against the accepted date forms (see
@@ -1979,6 +2059,7 @@ paths:
 
     delete:
       operationId: deleteSource
+      x-min-role: editor
       summary: Delete a source
       description: |
         Deletes a source that has no citations. With `?branch=` the source is
@@ -2009,6 +2090,7 @@ paths:
 
     get:
       operationId: getCitationsForSource
+      x-min-role: viewer
       summary: Get citations for a source
       tags: [sources]
       parameters:
@@ -2027,6 +2109,7 @@ paths:
   /citations:
     post:
       operationId: createCitation
+      x-min-role: editor
       summary: Create a new citation
       description: |
         Creates a citation of a source. With `?branch=` the source must exist on
@@ -2068,6 +2151,7 @@ paths:
 
     get:
       operationId: getCitation
+      x-min-role: viewer
       summary: Get a citation by ID
       tags: [citations]
       parameters:
@@ -2084,6 +2168,7 @@ paths:
 
     put:
       operationId: updateCitation
+      x-min-role: editor
       summary: Update a citation
       tags: [citations]
       parameters:
@@ -2110,6 +2195,7 @@ paths:
 
     delete:
       operationId: deleteCitation
+      x-min-role: editor
       summary: Delete a citation
       tags: [citations]
       parameters:
@@ -2131,6 +2217,7 @@ paths:
 
     get:
       operationId: getCitationsForPerson
+      x-min-role: viewer
       summary: Get citations for a person
       tags: [citations]
       parameters:
@@ -2151,6 +2238,7 @@ paths:
 
     get:
       operationId: getPersonNames
+      x-min-role: viewer
       summary: Get all names for a person
       description: Returns all name variants for a person (birth name, married name, aliases, etc.)
       tags: [persons]
@@ -2168,6 +2256,7 @@ paths:
 
     post:
       operationId: addPersonName
+      x-min-role: editor
       summary: Add a name to a person
       description: |
         Add a new name variant to a person. If is_primary is true, the existing
@@ -2211,6 +2300,7 @@ paths:
 
     put:
       operationId: updatePersonName
+      x-min-role: editor
       summary: Update a person's name
       description: |
         Update an existing name variant. If is_primary is set to true, the existing
@@ -2241,6 +2331,7 @@ paths:
 
     delete:
       operationId: deletePersonName
+      x-min-role: editor
       summary: Remove a name from a person
       description: |
         Remove a name variant from a person. The last remaining name and the
@@ -2269,6 +2360,7 @@ paths:
   /export/tree:
     get:
       operationId: exportTree
+      x-min-role: editor
       summary: Export full family tree
       description: Export the complete family tree data in a structured format
       tags: [export]
@@ -2292,6 +2384,7 @@ paths:
   /export/persons:
     get:
       operationId: exportPersons
+      x-min-role: editor
       summary: Export persons data
       description: Export all persons data in a structured format
       tags: [export]
@@ -2321,6 +2414,7 @@ paths:
   /export/families:
     get:
       operationId: exportFamilies
+      x-min-role: editor
       summary: Export families data
       description: Export all families data in a structured format
       tags: [export]
@@ -2350,6 +2444,7 @@ paths:
   /export/sources:
     get:
       operationId: exportSources
+      x-min-role: editor
       summary: Export sources data
       description: Export all sources data in a structured format
       tags: [export]
@@ -2379,6 +2474,7 @@ paths:
   /export/citations:
     get:
       operationId: exportCitations
+      x-min-role: editor
       summary: Export citations data
       description: Export all citations data in a structured format
       tags: [export]
@@ -2408,6 +2504,7 @@ paths:
   /export/events:
     get:
       operationId: exportEvents
+      x-min-role: editor
       summary: Export events data
       description: Export all life events data in a structured format
       tags: [export]
@@ -2430,6 +2527,7 @@ paths:
   /export/attributes:
     get:
       operationId: exportAttributes
+      x-min-role: editor
       summary: Export attributes data
       description: Export all person attributes data in a structured format
       tags: [export]
@@ -2452,6 +2550,7 @@ paths:
   /export/estimate:
     get:
       operationId: getExportEstimate
+      x-min-role: editor
       summary: Get export size estimation
       description: |
         Returns an estimate of the export file size and record counts.
@@ -2470,6 +2569,7 @@ paths:
   /quality/overview:
     get:
       operationId: getQualityOverview
+      x-min-role: viewer
       summary: Get aggregate quality metrics
       description: |
         Returns overall data quality metrics across all persons in the scoped
@@ -2491,6 +2591,7 @@ paths:
 
     get:
       operationId: getPersonQuality
+      x-min-role: viewer
       summary: Get quality score for a person
       description: Returns data completeness score and issues for a specific person
       tags: [quality]
@@ -2507,6 +2608,7 @@ paths:
   /quality/report:
     get:
       operationId: getQualityReport
+      x-min-role: viewer
       summary: Get full quality report
       description: Returns comprehensive data quality metrics including completeness, coverage, and aggregated issues
       tags: [quality]
@@ -2521,6 +2623,7 @@ paths:
   /quality/validation:
     get:
       operationId: getValidationIssues
+      x-min-role: viewer
       summary: Get validation issues
       description: |
         Returns date logic and reference validation issues categorized by
@@ -2561,6 +2664,7 @@ paths:
   /persons/duplicates:
     get:
       operationId: getPersonsDuplicates
+      x-min-role: viewer
       summary: Find potential duplicate persons
       description: |
         Returns pairs of persons that may be duplicates based on name, date, and
@@ -2596,6 +2700,7 @@ paths:
   /persons/duplicates/dismissed:
     get:
       operationId: listDismissedDuplicates
+      x-min-role: viewer
       summary: List pairs marked "not a duplicate"
       description: |
         Returns the suggested duplicate pairs marked "not a duplicate" in this
@@ -2632,6 +2737,7 @@ paths:
   /persons/merge:
     post:
       operationId: mergePersons
+      x-min-role: editor
       summary: Merge two person records
       description: |
         Merges two person records, consolidating data from the merged person into the survivor.
@@ -2689,6 +2795,7 @@ paths:
           format: uuid
     post:
       operationId: dismissDuplicate
+      x-min-role: editor
       summary: Mark a duplicate pair as not a duplicate
       description: |
         Records that the two persons are not the same person, so the pair is no
@@ -2717,6 +2824,7 @@ paths:
           $ref: '#/components/responses/NotFound'
     delete:
       operationId: restoreDuplicate
+      x-min-role: editor
       summary: Restore a pair marked "not a duplicate"
       description: |
         Undoes a dismissal (`DuplicateRestored`), so duplicate detection may
@@ -2736,6 +2844,7 @@ paths:
   /persons/merge/batch:
     post:
       operationId: batchMergePersons
+      x-min-role: editor
       summary: Batch merge multiple duplicate pairs
       description: |
         Merges multiple duplicate pairs in a single batch operation.
@@ -2765,6 +2874,7 @@ paths:
   /persons/duplicates/dismiss/batch:
     post:
       operationId: batchDismissDuplicates
+      x-min-role: editor
       summary: Mark several duplicate pairs as not duplicates
       description: |
         Dismisses multiple duplicate pairs in a single operation, each recorded
@@ -2793,6 +2903,7 @@ paths:
   /statistics:
     get:
       operationId: getStatistics
+      x-min-role: viewer
       summary: Get tree-wide statistics
       description: Returns aggregate statistics about the family tree
       tags: [statistics]
@@ -2807,6 +2918,7 @@ paths:
   /analytics/discovery:
     get:
       operationId: getDiscoveryFeed
+      x-min-role: viewer
       summary: Get discovery feed suggestions
       description: Returns prioritized research suggestions based on data quality analysis
       tags: [quality]
@@ -2831,6 +2943,7 @@ paths:
   /snapshots:
     get:
       operationId: listSnapshots
+      x-min-role: viewer
       summary: List the snapshots of the mainline or a branch
       description: |
         Returns the research milestone snapshots marked on the requested scope,
@@ -2852,6 +2965,7 @@ paths:
 
     post:
       operationId: createSnapshot
+      x-min-role: editor
       summary: Create a new snapshot
       description: |
         Creates a snapshot marking the current position of the event log in the
@@ -2889,6 +3003,7 @@ paths:
 
     get:
       operationId: getSnapshot
+      x-min-role: viewer
       summary: Get a snapshot by ID
       description: A snapshot marked on another branch than the requested scope is not found.
       tags: [snapshots]
@@ -2906,6 +3021,7 @@ paths:
 
     delete:
       operationId: deleteSnapshot
+      x-min-role: editor
       summary: Delete a snapshot
       description: |
         Removes the snapshot record (events in the store remain untouched). A
@@ -2927,6 +3043,7 @@ paths:
 
     get:
       operationId: compareSnapshotToCurrent
+      x-min-role: viewer
       summary: Compare a snapshot to the current state
       description: |
         Returns the changes recorded between the snapshot's position and the
@@ -2992,6 +3109,7 @@ paths:
 
     get:
       operationId: compareSnapshots
+      x-min-role: viewer
       summary: Compare two snapshots
       description: |
         Returns the list of changes (events) between two snapshot positions, in
@@ -3025,6 +3143,7 @@ paths:
   /branches:
     get:
       operationId: listBranches
+      x-min-role: viewer
       summary: List all branches
       description: |
         Returns every branch in the registry, newest first, including terminal
@@ -3057,6 +3176,7 @@ paths:
 
     post:
       operationId: createBranch
+      x-min-role: editor
       summary: Create a new branch
       description: |
         Forks a new line of research off the current head of the mainline. The
@@ -3099,6 +3219,7 @@ paths:
 
     get:
       operationId: getBranch
+      x-min-role: viewer
       summary: Get a branch by ID
       description: |
         Returns the branch with its research record. Subjects carry their
@@ -3121,6 +3242,7 @@ paths:
 
     patch:
       operationId: updateBranch
+      x-min-role: editor
       summary: Edit a branch's description and research record
       description: |
         Partial update (#835): every field is optional, an absent field is left
@@ -3187,6 +3309,7 @@ paths:
 
     delete:
       operationId: deleteBranch
+      x-min-role: editor
       summary: Close (archive) a branch without recording why
       description: |
         Closes a branch without recording an outcome or a reason. A verdict
@@ -3224,6 +3347,7 @@ paths:
 
     post:
       operationId: closeBranch
+      x-min-role: editor
       summary: Close a branch without merging, recording why
       description: |
         Closes an `active` branch (#836) and records the outcome its research
@@ -3279,6 +3403,7 @@ paths:
 
     get:
       operationId: getBranchResearch
+      x-min-role: viewer
       summary: Read a branch's research, rebuilt from its events
       description: |
         Returns the research logs, evidence analyses and proof summaries the
@@ -3305,6 +3430,7 @@ paths:
 
     post:
       operationId: promoteBranchResearchLogs
+      x-min-role: editor
       summary: Copy a closed branch's research logs to the mainline
       description: |
         Copies research logs a closed branch recorded to the mainline (#836),
@@ -3359,6 +3485,7 @@ paths:
 
     get:
       operationId: getBranchDrift
+      x-min-role: viewer
       summary: Count how far the mainline has moved under a branch
       description: |
         Branches are **live overlays**, not frozen copies (ADR-005): every
@@ -3393,6 +3520,7 @@ paths:
 
     get:
       operationId: compareBranch
+      x-min-role: viewer
       summary: Compare a branch against the mainline
       description: |
         Returns the changes made on the branch since it forked, alongside the
@@ -3434,6 +3562,7 @@ paths:
 
     post:
       operationId: mergeBranch
+      x-min-role: editor
       summary: Merge a branch into the mainline
       description: |
         Promotes a branch's research onto `main` by replaying its events there
@@ -3616,6 +3745,7 @@ paths:
 
     post:
       operationId: precheckBranchMerge
+      x-min-role: editor
       summary: List what would block merging a branch with the proposed resolutions
       description: |
         Runs the merge's cross-entity reference checks for the given
@@ -3680,6 +3810,7 @@ paths:
 
     post:
       operationId: resumeBranchMerge
+      x-min-role: editor
       summary: Finish a merge whose replay onto the mainline was interrupted
       description: |
         Completes a merge that answered `500 merge_partially_applied`: the
@@ -3810,6 +3941,7 @@ paths:
 
     get:
       operationId: getBranchEvidenceCoverage
+      x-min-role: viewer
       summary: List the facts a branch changed without documenting them
       description: |
         The merge review's evidence-coverage warning (#838). Lists the facts
@@ -3847,6 +3979,7 @@ paths:
 
     get:
       operationId: getBranchHealth
+      x-min-role: viewer
       summary: List the validation issues, quality issues and duplicates a branch introduces
       description: |
         Runs the `/quality` checks - validation, per-person quality and
@@ -3878,6 +4011,7 @@ paths:
   /relationship/{personId1}/{personId2}:
     get:
       operationId: getRelationship
+      x-min-role: viewer
       summary: Calculate relationship between two people
       tags:
         - relationships
@@ -3968,6 +4102,7 @@ paths:
   /notes:
     get:
       operationId: listNotes
+      x-min-role: viewer
       summary: List all notes
       description: |
         Returns paginated list of shared GEDCOM NOTE records. With `?branch=`
@@ -3995,6 +4130,7 @@ paths:
 
     post:
       operationId: createNote
+      x-min-role: editor
       summary: Create a new note
       tags: [notes]
       parameters:
@@ -4021,6 +4157,7 @@ paths:
 
     get:
       operationId: getNote
+      x-min-role: viewer
       summary: Get a note by ID
       tags: [notes]
       parameters:
@@ -4037,6 +4174,7 @@ paths:
 
     put:
       operationId: updateNote
+      x-min-role: editor
       summary: Update a note
       tags: [notes]
       parameters:
@@ -4063,6 +4201,7 @@ paths:
 
     delete:
       operationId: deleteNote
+      x-min-role: editor
       summary: Delete a note
       description: |
         Deletes a note that no record points to. A note that records still
@@ -4096,6 +4235,7 @@ paths:
   /submitters:
     get:
       operationId: listSubmitters
+      x-min-role: viewer
       summary: List all submitters
       description: Returns paginated list of GEDCOM SUBM (submitter) records
       tags: [submitters]
@@ -4126,6 +4266,7 @@ paths:
 
     post:
       operationId: createSubmitter
+      x-min-role: editor
       summary: Create a new submitter
       tags: [submitters]
       requestBody:
@@ -4150,6 +4291,7 @@ paths:
 
     get:
       operationId: getSubmitter
+      x-min-role: viewer
       summary: Get a submitter by ID
       tags: [submitters]
       responses:
@@ -4164,6 +4306,7 @@ paths:
 
     put:
       operationId: updateSubmitter
+      x-min-role: editor
       summary: Update a submitter
       tags: [submitters]
       requestBody:
@@ -4188,6 +4331,7 @@ paths:
 
     delete:
       operationId: deleteSubmitter
+      x-min-role: editor
       summary: Delete a submitter
       tags: [submitters]
       parameters:
@@ -4206,6 +4350,7 @@ paths:
   /repositories:
     get:
       operationId: listRepositories
+      x-min-role: viewer
       summary: List all repositories
       description: Returns paginated list of GEDCOM REPO (repository) records
       tags: [repositories]
@@ -4236,6 +4381,7 @@ paths:
 
     post:
       operationId: createRepository
+      x-min-role: editor
       summary: Create a new repository
       tags: [repositories]
       requestBody:
@@ -4260,6 +4406,7 @@ paths:
 
     get:
       operationId: getRepository
+      x-min-role: viewer
       summary: Get a repository by ID
       tags: [repositories]
       responses:
@@ -4274,6 +4421,7 @@ paths:
 
     put:
       operationId: updateRepository
+      x-min-role: editor
       summary: Update a repository
       tags: [repositories]
       requestBody:
@@ -4298,6 +4446,7 @@ paths:
 
     delete:
       operationId: deleteRepository
+      x-min-role: editor
       summary: Delete a repository
       tags: [repositories]
       parameters:
@@ -4316,6 +4465,7 @@ paths:
   /associations:
     get:
       operationId: listAssociations
+      x-min-role: viewer
       summary: List all associations
       description: |
         Returns paginated list of GEDCOM ASSO (association) records. With
@@ -4350,6 +4500,7 @@ paths:
 
     post:
       operationId: createAssociation
+      x-min-role: editor
       summary: Create a new association
       description: |
         Create a GEDCOM ASSO association between two persons. With `?branch=`
@@ -4380,6 +4531,7 @@ paths:
 
     get:
       operationId: getAssociation
+      x-min-role: viewer
       summary: Get an association by ID
       tags: [associations]
       parameters:
@@ -4396,6 +4548,7 @@ paths:
 
     put:
       operationId: updateAssociation
+      x-min-role: editor
       summary: Update an association
       tags: [associations]
       parameters:
@@ -4422,6 +4575,7 @@ paths:
 
     delete:
       operationId: deleteAssociation
+      x-min-role: editor
       summary: Delete an association
       tags: [associations]
       parameters:
@@ -4443,6 +4597,7 @@ paths:
 
     get:
       operationId: listAssociationsForPerson
+      x-min-role: viewer
       summary: List associations for a person
       description: |
         Returns all associations where the person is either the subject or
@@ -4467,6 +4622,7 @@ paths:
   /lds-ordinances:
     get:
       operationId: listLDSOrdinances
+      x-min-role: viewer
       summary: List all LDS ordinances
       description: Returns paginated list of LDS temple ordinance records (BAPL, CONL, ENDL, SLGC, SLGS)
       tags: [lds-ordinances]
@@ -4497,6 +4653,7 @@ paths:
 
     post:
       operationId: createLDSOrdinance
+      x-min-role: editor
       summary: Create a new LDS ordinance
       description: |
         `date` is checked against the accepted date forms (see
@@ -4525,6 +4682,7 @@ paths:
 
     get:
       operationId: getLDSOrdinance
+      x-min-role: viewer
       summary: Get an LDS ordinance by ID
       tags: [lds-ordinances]
       responses:
@@ -4539,6 +4697,7 @@ paths:
 
     put:
       operationId: updateLDSOrdinance
+      x-min-role: editor
       summary: Update an LDS ordinance
       description: |
         `date` is checked against the accepted date forms (see
@@ -4567,6 +4726,7 @@ paths:
 
     delete:
       operationId: deleteLDSOrdinance
+      x-min-role: editor
       summary: Delete an LDS ordinance
       tags: [lds-ordinances]
       parameters:
@@ -4587,6 +4747,7 @@ paths:
 
     get:
       operationId: listLDSOrdinancesForPerson
+      x-min-role: viewer
       summary: List LDS ordinances for a person
       description: Returns all individual LDS ordinances (BAPL, CONL, ENDL, SLGC) for a person
       tags: [lds-ordinances]
@@ -4608,6 +4769,7 @@ paths:
 
     get:
       operationId: listLDSOrdinancesForFamily
+      x-min-role: viewer
       summary: List LDS ordinances for a family
       description: Returns all spouse sealing (SLGS) ordinances for a family
       tags: [lds-ordinances]
@@ -4627,6 +4789,7 @@ paths:
   /evidence-analyses:
     get:
       operationId: listEvidenceAnalyses
+      x-min-role: viewer
       summary: List all evidence analyses
       description: |
         Returns a paginated list of evidence analyses. With `?branch=` the list
@@ -4660,6 +4823,7 @@ paths:
 
     post:
       operationId: createEvidenceAnalysis
+      x-min-role: editor
       summary: Create a new evidence analysis
       description: |
         Creates an evidence analysis. With `?branch=` it is created on that
@@ -4690,6 +4854,7 @@ paths:
 
     get:
       operationId: getEvidenceAnalysis
+      x-min-role: viewer
       summary: Get an evidence analysis by ID
       description: |
         Returns the evidence analysis. With `?branch=` it is read from that
@@ -4709,6 +4874,7 @@ paths:
 
     put:
       operationId: updateEvidenceAnalysis
+      x-min-role: editor
       summary: Update an evidence analysis
       description: |
         Updates an evidence analysis. With `?branch=` the edit lands on that
@@ -4738,6 +4904,7 @@ paths:
 
     delete:
       operationId: deleteEvidenceAnalysis
+      x-min-role: editor
       summary: Delete an evidence analysis
       description: |
         Deletes an evidence analysis. With `?branch=` it is deleted on that
@@ -4759,6 +4926,7 @@ paths:
   /evidence-analyses/by-fact:
     get:
       operationId: getAnalysesByFact
+      x-min-role: viewer
       summary: Get evidence analyses by fact type and subject
       description: |
         Returns the evidence analyses of one fact of one subject. With
@@ -4803,6 +4971,7 @@ paths:
   /evidence-conflicts:
     get:
       operationId: listEvidenceConflicts
+      x-min-role: viewer
       summary: List all evidence conflicts
       description: |
         Returns a paginated list of evidence conflicts (two analyses that
@@ -4836,6 +5005,7 @@ paths:
 
     get:
       operationId: getEvidenceConflict
+      x-min-role: viewer
       summary: Get an evidence conflict by ID
       description: |
         Returns the evidence conflict. With `?branch=` it is read from that
@@ -4859,6 +5029,7 @@ paths:
 
     post:
       operationId: resolveEvidenceConflict
+      x-min-role: editor
       summary: Resolve an evidence conflict
       description: |
         Resolves an evidence conflict. With `?branch=` the resolution lands on
@@ -4898,6 +5069,7 @@ paths:
 
     get:
       operationId: getConflictsBySubject
+      x-min-role: viewer
       summary: Get evidence conflicts for a subject
       description: |
         Returns the evidence conflicts about one subject. With `?branch=` the
@@ -4919,6 +5091,7 @@ paths:
   /research-logs:
     get:
       operationId: listResearchLogs
+      x-min-role: viewer
       summary: List all research log entries
       description: |
         Returns a paginated list of research log entries. With `?branch=` the
@@ -4952,6 +5125,7 @@ paths:
 
     post:
       operationId: createResearchLog
+      x-min-role: editor
       summary: Create a new research log entry
       description: |
         Creates a research log entry. With `?branch=` it is created on that
@@ -4981,6 +5155,7 @@ paths:
 
     get:
       operationId: getResearchLog
+      x-min-role: viewer
       summary: Get a research log entry by ID
       description: |
         Returns the research log entry. With `?branch=` it is read from that
@@ -5000,6 +5175,7 @@ paths:
 
     put:
       operationId: updateResearchLog
+      x-min-role: editor
       summary: Update a research log entry
       description: |
         Updates a research log entry. With `?branch=` the edit lands on that
@@ -5029,6 +5205,7 @@ paths:
 
     delete:
       operationId: deleteResearchLog
+      x-min-role: editor
       summary: Delete a research log entry
       description: |
         Deletes a research log entry. With `?branch=` it is deleted on that
@@ -5058,6 +5235,7 @@ paths:
 
     get:
       operationId: getResearchLogsBySubject
+      x-min-role: viewer
       summary: Get research log entries for a subject
       description: |
         Returns the research log entries about one subject. With `?branch=`
@@ -5079,6 +5257,7 @@ paths:
   /proof-summaries:
     get:
       operationId: listProofSummaries
+      x-min-role: viewer
       summary: List all proof summaries
       description: |
         Returns a paginated list of proof summaries. With `?branch=` the list
@@ -5112,6 +5291,7 @@ paths:
 
     post:
       operationId: createProofSummary
+      x-min-role: editor
       summary: Create a new proof summary
       description: |
         Creates a proof summary. With `?branch=` it is created on that branch
@@ -5141,6 +5321,7 @@ paths:
 
     get:
       operationId: getProofSummary
+      x-min-role: viewer
       summary: Get a proof summary by ID
       description: |
         Returns the proof summary. With `?branch=` it is read from that
@@ -5160,6 +5341,7 @@ paths:
 
     put:
       operationId: updateProofSummary
+      x-min-role: editor
       summary: Update a proof summary
       description: |
         Updates a proof summary. With `?branch=` the edit lands on that branch
@@ -5189,6 +5371,7 @@ paths:
 
     delete:
       operationId: deleteProofSummary
+      x-min-role: editor
       summary: Delete a proof summary
       description: |
         Deletes a proof summary. With `?branch=` it is deleted on that branch
@@ -5210,6 +5393,7 @@ paths:
   /proof-summaries/by-fact:
     get:
       operationId: getProofSummaryByFact
+      x-min-role: viewer
       summary: Get proof summaries by fact type and subject
       description: |
         Returns the proof summaries of one fact of one subject. With
@@ -5253,6 +5437,7 @@ paths:
   /auth/status:
     get:
       operationId: getAuthStatus
+      x-min-role: public
       summary: How this server signs people in, and who is signed in
       description: |
         Needs no session. The web UI reads it first to choose between the
@@ -5269,6 +5454,7 @@ paths:
   /auth/setup:
     post:
       operationId: setupOwner
+      x-min-role: public
       summary: Create the first owner and sign them in
       description: |
         Only while the tree has no owner. Needs the one-time setup token the
@@ -5312,6 +5498,7 @@ paths:
   /auth/sign-in:
     post:
       operationId: signIn
+      x-min-role: public
       summary: Sign in with a username and password
       description: Needs no session. Repeated failures are rate-limited.
       tags: [auth]
@@ -5351,6 +5538,7 @@ paths:
   /auth/sign-out:
     post:
       operationId: signOut
+      x-min-role: public
       summary: Sign out, revoking the session on the server
       tags: [auth]
       responses:
@@ -5365,6 +5553,7 @@ paths:
   /auth/me:
     get:
       operationId: getCurrentAccount
+      x-min-role: viewer
       summary: The signed-in account
       tags: [auth]
       responses:
@@ -5612,7 +5801,7 @@ components:
   schemas:
     Account:
       type: object
-      required: [id, username, display_name]
+      required: [id, username, display_name, role]
       properties:
         id:
           type: string
@@ -5623,6 +5812,14 @@ components:
           description: The sign-in name, lowercase
         display_name:
           type: string
+        role:
+          type: string
+          enum: [viewer, editor, owner]
+          description: |
+            What the user may do in the tree (ADR-007): a `viewer` reads it, an
+            `editor` also changes it, works in research branches and exports,
+            and an `owner` also imports GEDCOM and rolls records back. Each
+            operation's `x-min-role` names the least role it needs.
 
     AuthStatus:
       type: object

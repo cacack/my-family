@@ -3230,6 +3230,14 @@ export interface components {
             /** @description The sign-in name, lowercase */
             username: string;
             display_name: string;
+            /**
+             * @description What the user may do in the tree (ADR-007): a `viewer` reads it, an
+             *     `editor` also changes it, works in research branches and exports,
+             *     and an `owner` also imports GEDCOM and rolls records back. Each
+             *     operation's `x-min-role` names the least role it needs.
+             * @enum {string}
+             */
+            role: "viewer" | "editor" | "owner";
         };
         AuthStatus: {
             /**
@@ -7837,6 +7845,15 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            /** @description Too many GEDCOM exports and previews by this user in a short time (`RATE_LIMITED`); try again later */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     previewGedcomExport: {
@@ -7861,6 +7878,15 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            /** @description Too many GEDCOM exports and previews by this user in a short time (`RATE_LIMITED`); try again later */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     listHistory: {

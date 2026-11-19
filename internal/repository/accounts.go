@@ -12,12 +12,35 @@ import (
 // Memberships carry it so that several trees later add rows, not a migration.
 var DefaultTreeID = uuid.MustParse("00000000-0000-0000-0000-000000000001")
 
-// Role is what a membership lets a user do in a tree (ADR-007).
+// Role is what a membership lets a user do in a tree (ADR-007). Each role
+// includes the abilities of the one before it.
 type Role string
 
-// RoleOwner manages the tree. Every signed-in user still has full access
-// until roles are enforced; the other roles arrive with that.
-const RoleOwner Role = "owner"
+// The roles, least first.
+const (
+	// RoleViewer reads the tree.
+	RoleViewer Role = "viewer"
+	// RoleEditor also changes tree data, works in research branches and
+	// exports.
+	RoleEditor Role = "editor"
+	// RoleOwner also manages users and settings, imports GEDCOM and rolls
+	// records back.
+	RoleOwner Role = "owner"
+)
+
+// roleRank orders the roles; a role absent from it ranks 0 and includes none.
+var roleRank = map[Role]int{RoleViewer: 1, RoleEditor: 2, RoleOwner: 3}
+
+// Valid reports whether r is one of the roles.
+func (r Role) Valid() bool {
+	return roleRank[r] > 0
+}
+
+// Includes reports whether r may do what other may: r is a role and ranks at
+// least as high.
+func (r Role) Includes(other Role) bool {
+	return r.Valid() && roleRank[r] >= roleRank[other]
+}
 
 // User is an account. It is not tree data: it lives in plain tables, never in
 // the event log, and `myfamily rebuild` leaves it alone (ADR-007, 3B).
@@ -45,6 +68,7 @@ var (
 	ErrUserNotFound    = errors.New("user not found")
 	ErrUsernameTaken   = errors.New("username already taken")
 	ErrSessionNotFound = errors.New("session not found")
+	ErrNotMember       = errors.New("user is not a member of the tree")
 )
 
 // AccountStore keeps users, their tree memberships and their sessions
@@ -60,6 +84,9 @@ type AccountStore interface {
 
 	// GetUserByUsername returns the user with username, or ErrUserNotFound.
 	GetUserByUsername(ctx context.Context, username string) (*User, error)
+
+	// MemberRole returns the role userID holds in treeID, or ErrNotMember.
+	MemberRole(ctx context.Context, treeID, userID uuid.UUID) (Role, error)
 
 	// CountMembers returns how many users hold role in treeID.
 	CountMembers(ctx context.Context, treeID uuid.UUID, role Role) (int, error)
