@@ -59,6 +59,8 @@ func (ss *StrictServer) AcceptInvite(ctx context.Context, request AcceptInviteRe
 		return AcceptInvite400JSONResponse(authError(CodeValidation, err.Error())), nil
 	case errors.Is(err, auth.ErrInvalidLink):
 		return AcceptInvite400JSONResponse(authError(CodeInvalidLink, "This invite link is wrong, expired or already used. Ask the owner for a new one.")), nil
+	case errors.Is(err, auth.ErrRateLimited):
+		return AcceptInvite429JSONResponse{RateLimitedJSONResponse(authError(CodeRateLimited, err.Error()))}, nil
 	default:
 		return nil, err
 	}
@@ -77,6 +79,8 @@ func (ss *StrictServer) ResetPassword(ctx context.Context, request ResetPassword
 		return ResetPassword400JSONResponse(authError(CodeValidation, err.Error())), nil
 	case errors.Is(err, auth.ErrInvalidLink):
 		return ResetPassword400JSONResponse(authError(CodeInvalidLink, "This reset link is wrong, expired or already used. Ask the owner for a new one.")), nil
+	case errors.Is(err, auth.ErrRateLimited):
+		return ResetPassword429JSONResponse{RateLimitedJSONResponse(authError(CodeRateLimited, err.Error()))}, nil
 	default:
 		return nil, err
 	}

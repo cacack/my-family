@@ -5664,6 +5664,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '429':
+          $ref: '#/components/responses/RateLimited'
 
   /auth/password-reset:
     post:
@@ -5697,6 +5699,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '429':
+          $ref: '#/components/responses/RateLimited'
 
   /users:
     get:

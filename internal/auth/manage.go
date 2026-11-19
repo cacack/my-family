@@ -23,7 +23,8 @@ const (
 // Errors returned by the account management methods.
 var (
 	// ErrLastOwner refuses demoting or disabling the tree's only active owner,
-	// which would leave no one able to manage it.
+	// which would leave no one able to manage it. It is enforced within one
+	// server process (see Service.manageMu).
 	ErrLastOwner = errors.New("the tree's last owner cannot be demoted or disabled")
 	// ErrInvalidLink is an invite or reset link that is unknown, expired or
 	// already used.
@@ -114,18 +115,26 @@ func (s *Service) CreateInvite(ctx context.Context, by Actor, role repository.Ro
 // role, and signs it in, returning the account, its role and the session
 // token. clientIP is the caller's address.
 func (s *Service) AcceptInvite(ctx context.Context, token, username, displayName, password, clientIP string) (*repository.User, repository.Role, string, error) {
-	user, err := s.newUser(username, displayName, password)
+	var user *repository.User
+	var invite *repository.Invite
+	err := s.useLink(clientIP, func() error {
+		var err error
+		if user, err = s.newUser(username, displayName, password); err != nil {
+			return err
+		}
+		invite, err = s.store.AcceptInvite(ctx, hashToken(strings.TrimSpace(token)), s.now().UTC(), user)
+		switch {
+		case errors.Is(err, repository.ErrLinkNotFound):
+			return ErrInvalidLink
+		case errors.Is(err, repository.ErrUsernameTaken):
+			return invalid("username %q is already taken", user.Username)
+		case err != nil:
+			return fmt.Errorf("accept invite: %w", err)
+		}
+		return nil
+	})
 	if err != nil {
 		return nil, "", "", err
-	}
-	invite, err := s.store.AcceptInvite(ctx, hashToken(strings.TrimSpace(token)), s.now().UTC(), user)
-	switch {
-	case errors.Is(err, repository.ErrLinkNotFound):
-		return nil, "", "", ErrInvalidLink
-	case errors.Is(err, repository.ErrUsernameTaken):
-		return nil, "", "", invalid("username %q is already taken", user.Username)
-	case err != nil:
-		return nil, "", "", fmt.Errorf("accept invite: %w", err)
 	}
 	s.audit(ctx, Actor{UserID: user.ID, ClientIP: clientIP}, repository.AuthActionInviteAccepted, user, string(invite.Role))
 	sessionToken, err := s.startSession(ctx, user.ID)
@@ -133,6 +142,22 @@ func (s *Service) AcceptInvite(ctx context.Context, token, username, displayName
 		return nil, "", "", err
 	}
 	return user, invite.Role, sessionToken, nil
+}
+
+// useLink runs use, which redeems an invite or reset link for clientIP, and
+// counts it against clientIP's limit when the link is invalid. Each try
+// hashes a password, so guessing links is throttled like signing in.
+func (s *Service) useLink(clientIP string, use func() error) error {
+	now := s.now()
+	key := "link:" + clientIP
+	if !s.limiter.acquire(now, limit{key, maxFailuresPerClient}) {
+		return ErrRateLimited
+	}
+	err := use()
+	if !errors.Is(err, ErrInvalidLink) {
+		s.limiter.release(now, key)
+	}
+	return err
 }
 
 // activeOwners counts the members who are owners and not disabled.
@@ -146,10 +171,10 @@ func activeOwners(members []repository.Member) int {
 	return n
 }
 
-// lockMember takes manageMu and returns the member with userID and whether
-// they are the last active owner. The caller unlocks manageMu.
-func (s *Service) lockMember(ctx context.Context, userID uuid.UUID) (*repository.Member, bool, error) {
-	s.manageMu.Lock()
+// memberForChange returns the member with userID and whether they are the
+// last active owner. The caller holds manageMu, so the answer stays true
+// until its change is written.
+func (s *Service) memberForChange(ctx context.Context, userID uuid.UUID) (*repository.Member, bool, error) {
 	members, err := s.Members(ctx)
 	if err != nil {
 		return nil, false, err
@@ -169,8 +194,9 @@ func (s *Service) SetRole(ctx context.Context, by Actor, userID uuid.UUID, role 
 	if !role.Valid() {
 		return nil, invalid("role must be viewer, editor or owner")
 	}
-	m, lastOwner, err := s.lockMember(ctx, userID)
+	s.manageMu.Lock()
 	defer s.manageMu.Unlock()
+	m, lastOwner, err := s.memberForChange(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -183,16 +209,24 @@ func (s *Service) SetRole(ctx context.Context, by Actor, userID uuid.UUID, role 
 	if err := s.store.SetMemberRole(ctx, repository.DefaultTreeID, userID, role); err != nil {
 		return nil, fmt.Errorf("set role: %w", err)
 	}
+	if m.Role == repository.RoleOwner {
+		// Only owners issue links; a former owner's stop working.
+		if err := s.store.DeleteLinksIssuedBy(ctx, userID); err != nil {
+			return nil, fmt.Errorf("revoke links: %w", err)
+		}
+	}
 	s.audit(ctx, by, repository.AuthActionRoleChanged, &m.User, fmt.Sprintf("%s -> %s", m.Role, role))
 	m.Role = role
 	return m, nil
 }
 
 // SetDisabled disables or re-enables userID's account. Disabling ends all
-// their sessions. The last active owner cannot be disabled.
+// their sessions and revokes the invite and reset links they issued. The
+// last active owner cannot be disabled.
 func (s *Service) SetDisabled(ctx context.Context, by Actor, userID uuid.UUID, disabled bool) (*repository.Member, error) {
-	m, lastOwner, err := s.lockMember(ctx, userID)
+	s.manageMu.Lock()
 	defer s.manageMu.Unlock()
+	m, lastOwner, err := s.memberForChange(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -211,6 +245,9 @@ func (s *Service) SetDisabled(ctx context.Context, by Actor, userID uuid.UUID, d
 		action = repository.AuthActionUserDisabled
 		if err := s.store.DeleteUserSessions(ctx, userID, ""); err != nil {
 			return nil, fmt.Errorf("end sessions: %w", err)
+		}
+		if err := s.store.DeleteLinksIssuedBy(ctx, userID); err != nil {
+			return nil, fmt.Errorf("revoke links: %w", err)
 		}
 	}
 	s.audit(ctx, by, action, &m.User, "")
@@ -258,19 +295,29 @@ func (s *Service) IssuePasswordResetFor(ctx context.Context, by Actor, username 
 // ResetPassword sets a password from a reset link and ends every session of
 // its user. It signs no one in.
 func (s *Service) ResetPassword(ctx context.Context, token, password, clientIP string) error {
-	if err := validatePassword(password); err != nil {
-		return err
-	}
-	hash, err := HashPassword(password)
+	var userID uuid.UUID
+	err := s.useLink(clientIP, func() error {
+		if err := validatePassword(password); err != nil {
+			return err
+		}
+		hash, err := HashPassword(password)
+		if err != nil {
+			return err
+		}
+		// Under manageMu, so SetDisabled cannot write back the old hash.
+		s.manageMu.Lock()
+		defer s.manageMu.Unlock()
+		userID, err = s.store.UsePasswordReset(ctx, hashToken(strings.TrimSpace(token)), s.now().UTC(), hash)
+		if errors.Is(err, repository.ErrLinkNotFound) {
+			return ErrInvalidLink
+		}
+		if err != nil {
+			return fmt.Errorf("reset password: %w", err)
+		}
+		return nil
+	})
 	if err != nil {
 		return err
-	}
-	userID, err := s.store.UsePasswordReset(ctx, hashToken(strings.TrimSpace(token)), s.now().UTC(), hash)
-	if errors.Is(err, repository.ErrLinkNotFound) {
-		return ErrInvalidLink
-	}
-	if err != nil {
-		return fmt.Errorf("reset password: %w", err)
 	}
 	user, err := s.store.GetUser(ctx, userID)
 	if err != nil {
@@ -297,12 +344,12 @@ func (s *Service) UpdateAccount(ctx context.Context, by Actor, sessionToken stri
 	if err != nil {
 		return nil, fmt.Errorf("get user: %w", err)
 	}
+	var name, hash string
 	if change.DisplayName != nil {
-		name := strings.TrimSpace(*change.DisplayName)
+		name = strings.TrimSpace(*change.DisplayName)
 		if err := validateDisplayName(name); err != nil {
 			return nil, err
 		}
-		user.DisplayName = name
 	}
 	if change.NewPassword != nil {
 		if err := validatePassword(*change.NewPassword); err != nil {
@@ -317,9 +364,23 @@ func (s *Service) UpdateAccount(ctx context.Context, by Actor, sessionToken stri
 			return nil, ErrInvalidCredentials // stays counted as a failure
 		}
 		s.limiter.reset(key)
-		if user.PasswordHash, err = HashPassword(*change.NewPassword); err != nil {
+		if hash, err = HashPassword(*change.NewPassword); err != nil {
 			return nil, err
 		}
+	}
+
+	// Re-read and write under manageMu, so a disable (or reset) made while the
+	// password was checked is not overwritten with the row read above.
+	s.manageMu.Lock()
+	defer s.manageMu.Unlock()
+	if user, err = s.store.GetUser(ctx, by.UserID); err != nil {
+		return nil, fmt.Errorf("get user: %w", err)
+	}
+	if change.DisplayName != nil {
+		user.DisplayName = name
+	}
+	if change.NewPassword != nil {
+		user.PasswordHash = hash
 	}
 	if err := s.store.UpdateUser(ctx, user); err != nil {
 		return nil, fmt.Errorf("update account: %w", err)

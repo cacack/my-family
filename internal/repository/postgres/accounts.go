@@ -389,6 +389,27 @@ func (s *AccountStore) CreatePasswordReset(ctx context.Context, reset *repositor
 	return nil
 }
 
+// DeleteLinksIssuedBy removes every invite and password reset userID issued.
+func (s *AccountStore) DeleteLinksIssuedBy(ctx context.Context, userID uuid.UUID) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin delete links: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	for _, query := range []string{
+		`DELETE FROM invites WHERE created_by = $1`,
+		`DELETE FROM password_resets WHERE created_by = $1`,
+	} {
+		if _, err := tx.ExecContext(ctx, query, userID); err != nil {
+			return fmt.Errorf("delete links: %w", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit delete links: %w", err)
+	}
+	return nil
+}
+
 // UsePasswordReset uses up the reset with tokenHash and sets the password.
 func (s *AccountStore) UsePasswordReset(ctx context.Context, tokenHash string, now time.Time, passwordHash string) (uuid.UUID, error) {
 	tx, err := s.db.BeginTx(ctx, nil)

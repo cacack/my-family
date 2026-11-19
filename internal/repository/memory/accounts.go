@@ -255,6 +255,23 @@ func (s *AccountStore) AcceptInvite(_ context.Context, tokenHash string, now tim
 	return &invite, nil
 }
 
+// DeleteLinksIssuedBy removes every invite and password reset userID issued.
+func (s *AccountStore) DeleteLinksIssuedBy(_ context.Context, userID uuid.UUID) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for hash, invite := range s.invites {
+		if invite.CreatedBy == userID {
+			delete(s.invites, hash)
+		}
+	}
+	for hash, reset := range s.resets {
+		if reset.CreatedBy == userID {
+			delete(s.resets, hash)
+		}
+	}
+	return nil
+}
+
 // CreatePasswordReset stores reset.
 func (s *AccountStore) CreatePasswordReset(_ context.Context, reset *repository.PasswordReset) error {
 	s.mu.Lock()

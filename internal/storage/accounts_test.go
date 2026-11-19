@@ -190,6 +190,40 @@ func runAccountManagementContract(t *testing.T, store repository.AccountStore) {
 		t.Errorf("a second reset of the same user: err = %v, want ErrLinkNotFound", err)
 	}
 
+	// Revoking the links one user issued leaves everyone else's.
+	other := uuid.New()
+	for _, inv := range []*repository.Invite{
+		{TokenHash: "rev-inv", TreeID: repository.DefaultTreeID, Role: repository.RoleOwner, CreatedBy: owner.ID, CreatedAt: now, ExpiresAt: now.Add(time.Hour)},
+		{TokenHash: "keep-inv", TreeID: repository.DefaultTreeID, Role: repository.RoleViewer, CreatedBy: other, CreatedAt: now, ExpiresAt: now.Add(time.Hour)},
+	} {
+		if err := store.CreateInvite(ctx, inv); err != nil {
+			t.Fatalf("CreateInvite(%s): %v", inv.TokenHash, err)
+		}
+	}
+	for _, r := range []*repository.PasswordReset{
+		{TokenHash: "rev-r", UserID: grace.ID, CreatedBy: owner.ID, CreatedAt: now, ExpiresAt: now.Add(time.Hour)},
+		{TokenHash: "keep-r", UserID: owner.ID, CreatedAt: now, ExpiresAt: now.Add(time.Hour)},
+	} {
+		if err := store.CreatePasswordReset(ctx, r); err != nil {
+			t.Fatalf("CreatePasswordReset(%s): %v", r.TokenHash, err)
+		}
+	}
+	if err := store.DeleteLinksIssuedBy(ctx, owner.ID); err != nil {
+		t.Fatalf("DeleteLinksIssuedBy: %v", err)
+	}
+	if _, err := store.AcceptInvite(ctx, "rev-inv", now, newUser("rev")); !errors.Is(err, repository.ErrLinkNotFound) {
+		t.Errorf("a revoked invite: err = %v, want ErrLinkNotFound", err)
+	}
+	if _, err := store.UsePasswordReset(ctx, "rev-r", now, "h5"); !errors.Is(err, repository.ErrLinkNotFound) {
+		t.Errorf("a revoked reset: err = %v, want ErrLinkNotFound", err)
+	}
+	if _, err := store.AcceptInvite(ctx, "keep-inv", now, newUser("kept")); err != nil {
+		t.Errorf("another issuer's invite was revoked: %v", err)
+	}
+	if _, err := store.UsePasswordReset(ctx, "keep-r", now, "h6"); err != nil {
+		t.Errorf("a reset issued by no one was revoked: %v", err)
+	}
+
 	// The audit log: newest first, paged, with absent IDs kept absent.
 	if entries, total, err := store.ListAuthAudit(ctx, 10, 0); err != nil || total != 0 || len(entries) != 0 {
 		t.Errorf("ListAuthAudit on an empty log = %v, %d, %v", entries, total, err)

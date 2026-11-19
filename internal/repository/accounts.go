@@ -206,6 +206,10 @@ type AccountStore interface {
 	// invite unused).
 	AcceptInvite(ctx context.Context, tokenHash string, now time.Time, user *User) (*Invite, error)
 
+	// DeleteLinksIssuedBy removes every invite and password reset userID
+	// issued, so links from an owner who is disabled or demoted stop working.
+	DeleteLinksIssuedBy(ctx context.Context, userID uuid.UUID) error
+
 	// CreatePasswordReset stores reset.
 	CreatePasswordReset(ctx context.Context, reset *PasswordReset) error
 

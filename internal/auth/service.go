@@ -95,8 +95,10 @@ type Service struct {
 	setupMu    sync.Mutex
 	setupToken string
 
-	// manageMu serializes role changes and disabling, so two at once cannot
-	// both pass the last-owner check.
+	// manageMu serializes role changes, disabling and other writes of a user
+	// row, so two at once cannot both pass the last-owner check or overwrite
+	// each other. It is per process: the guard holds for one server (ADR-004),
+	// not for several servers sharing one database.
 	manageMu sync.Mutex
 
 	dummyOnce sync.Once

@@ -165,8 +165,9 @@ is sent, so each link below is shown once, for the owner to copy and pass on.
 - **Invite**: choose a role and create an invite link (`/join#token=...`). It works once, for 7
   days, and creates an account with that role, signed in.
 - **Change a role, disable, re-enable**: disabling ends the user's sessions and refuses their
-  sign-in until an owner re-enables the account. The tree's last active owner can be neither
-  demoted nor disabled.
+  sign-in until an owner re-enables the account. Disabling or demoting an owner also cancels the
+  invite and reset links they created. The tree's last active owner can be neither demoted nor
+  disabled.
 - **Reset a password**: create a reset link (`/reset-password#token=...`). It works once, for 24
   hours, and setting the password ends all of that user's sessions. From the command line, with
   the same storage settings as `serve`:

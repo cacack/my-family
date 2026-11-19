@@ -266,3 +266,24 @@ func TestUsers_OpenModeHasNoAccounts(t *testing.T) {
 		t.Errorf("PATCH /auth/me in open mode: status %d, want 404", rec.Code)
 	}
 }
+
+func TestUsers_InvalidLinksAreRateLimited(t *testing.T) {
+	f := newAuthFixture(t)
+	f.createOwner(t)
+	var rec *httptest.ResponseRecorder
+	for i := 0; i < 20; i++ {
+		rec = f.do(t, request{method: http.MethodPost, path: "/api/v1/auth/password-reset", body: `{"token":"wrong","password":"a brand new password"}`})
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("attempt %d: status %d, want 400", i, rec.Code)
+		}
+	}
+	rec = f.do(t, request{method: http.MethodPost, path: "/api/v1/auth/password-reset", body: `{"token":"wrong","password":"a brand new password"}`})
+	if rec.Code != http.StatusTooManyRequests || errorCode(t, rec) != api.CodeRateLimited {
+		t.Errorf("reset after 20 invalid links: %d %s, want 429", rec.Code, rec.Body)
+	}
+	rec = f.do(t, request{method: http.MethodPost, path: "/api/v1/auth/invites/accept",
+		body: `{"token":"wrong","username":"eve","display_name":"Eve","password":"a brand new password"}`})
+	if rec.Code != http.StatusTooManyRequests || errorCode(t, rec) != api.CodeRateLimited {
+		t.Errorf("accept after 20 invalid links: %d %s, want 429", rec.Code, rec.Body)
+	}
+}

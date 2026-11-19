@@ -425,6 +425,27 @@ func (s *AccountStore) AcceptInvite(ctx context.Context, tokenHash string, now t
 	return &invite, nil
 }
 
+// DeleteLinksIssuedBy removes every invite and password reset userID issued.
+func (s *AccountStore) DeleteLinksIssuedBy(ctx context.Context, userID uuid.UUID) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin delete links: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	for _, query := range []string{
+		`DELETE FROM invites WHERE created_by = ?`,
+		`DELETE FROM password_resets WHERE created_by = ?`,
+	} {
+		if _, err := tx.ExecContext(ctx, query, userID.String()); err != nil {
+			return fmt.Errorf("delete links: %w", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit delete links: %w", err)
+	}
+	return nil
+}
+
 // nullableID stores uuid.Nil as NULL.
 func nullableID(id uuid.UUID) any {
 	if id == uuid.Nil {

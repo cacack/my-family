@@ -382,3 +382,111 @@ func TestAudit_FailureDoesNotFailTheAction(t *testing.T) {
 		t.Errorf("SignIn with a failing audit log: %v", err)
 	}
 }
+
+func TestLinks_RevokedWhenIssuerDisabledOrDemoted(t *testing.T) {
+	m := newManaged(t)
+	ctx := context.Background()
+	grace, _ := m.invite(t, "grace", repository.RoleOwner)
+	bob, _ := m.invite(t, "bob", repository.RoleViewer)
+	byGrace := Actor{UserID: grace.ID}
+
+	invite, err := m.svc.CreateInvite(ctx, byGrace, repository.RoleOwner)
+	if err != nil {
+		t.Fatalf("CreateInvite: %v", err)
+	}
+	reset, err := m.svc.IssuePasswordReset(ctx, byGrace, bob.ID)
+	if err != nil {
+		t.Fatalf("IssuePasswordReset: %v", err)
+	}
+	kept, err := m.svc.CreateInvite(ctx, m.by, repository.RoleViewer)
+	if err != nil {
+		t.Fatalf("CreateInvite: %v", err)
+	}
+	if _, err := m.svc.SetDisabled(ctx, m.by, grace.ID, true); err != nil {
+		t.Fatalf("SetDisabled: %v", err)
+	}
+	if _, _, _, err := m.svc.AcceptInvite(ctx, invite.Token, "eve", "Eve", testPassword, ""); !errors.Is(err, ErrInvalidLink) {
+		t.Errorf("an invite from a disabled owner: err = %v, want ErrInvalidLink", err)
+	}
+	if err := m.svc.ResetPassword(ctx, reset.Token, "a brand new password", ""); !errors.Is(err, ErrInvalidLink) {
+		t.Errorf("a reset from a disabled owner: err = %v, want ErrInvalidLink", err)
+	}
+	if _, _, _, err := m.svc.AcceptInvite(ctx, kept.Token, "carol", "Carol", testPassword, ""); err != nil {
+		t.Errorf("another owner's invite stopped working: %v", err)
+	}
+
+	if _, err := m.svc.SetDisabled(ctx, m.by, grace.ID, false); err != nil {
+		t.Fatalf("re-enabling: %v", err)
+	}
+	invite, err = m.svc.CreateInvite(ctx, byGrace, repository.RoleOwner)
+	if err != nil {
+		t.Fatalf("CreateInvite: %v", err)
+	}
+	if _, err := m.svc.SetRole(ctx, m.by, grace.ID, repository.RoleEditor); err != nil {
+		t.Fatalf("SetRole: %v", err)
+	}
+	if _, _, _, err := m.svc.AcceptInvite(ctx, invite.Token, "eve", "Eve", testPassword, ""); !errors.Is(err, ErrInvalidLink) {
+		t.Errorf("an invite from a demoted owner: err = %v, want ErrInvalidLink", err)
+	}
+}
+
+func TestLinks_RateLimitInvalidTokens(t *testing.T) {
+	m := newManaged(t)
+	ctx := context.Background()
+	link, err := m.svc.CreateInvite(ctx, m.by, repository.RoleViewer)
+	if err != nil {
+		t.Fatalf("CreateInvite: %v", err)
+	}
+	// A refused password is not a guess and is not counted.
+	if _, _, _, err := m.svc.AcceptInvite(ctx, link.Token, "grace", "Grace", "short", "192.0.2.7"); !errors.Is(err, ErrInvalidInput) {
+		t.Errorf("a short password: err = %v, want ErrInvalidInput", err)
+	}
+	for i := 0; i < maxFailuresPerClient; i++ {
+		if err := m.svc.ResetPassword(ctx, "wrong", "a brand new password", "192.0.2.7"); !errors.Is(err, ErrInvalidLink) {
+			t.Fatalf("attempt %d: err = %v, want ErrInvalidLink", i, err)
+		}
+	}
+	if _, _, _, err := m.svc.AcceptInvite(ctx, link.Token, "grace", "Grace", testPassword, "192.0.2.7"); !errors.Is(err, ErrRateLimited) {
+		t.Errorf("after %d invalid links: err = %v, want ErrRateLimited", maxFailuresPerClient, err)
+	}
+	if _, _, _, err := m.svc.AcceptInvite(ctx, link.Token, "grace", "Grace", testPassword, "192.0.2.8"); err != nil {
+		t.Errorf("another client was limited: %v", err)
+	}
+}
+
+// disableOnRead is a store that disables a user right after UpdateAccount
+// first reads them, as an owner might while the password is being hashed.
+type disableOnRead struct {
+	repository.AccountStore
+	disable func()
+}
+
+func (s *disableOnRead) GetUser(ctx context.Context, id uuid.UUID) (*repository.User, error) {
+	user, err := s.AccountStore.GetUser(ctx, id)
+	if s.disable != nil {
+		disable := s.disable
+		s.disable = nil
+		disable()
+	}
+	return user, err
+}
+
+func TestUpdateAccount_KeepsADisableMadeMeanwhile(t *testing.T) {
+	m := newManaged(t)
+	ctx := context.Background()
+	grace, _ := m.invite(t, "grace", repository.RoleEditor)
+	store := &disableOnRead{AccountStore: m.svc.store}
+	m.svc.store = store
+	store.disable = func() {
+		if _, err := m.svc.SetDisabled(ctx, m.by, grace.ID, true); err != nil {
+			t.Errorf("SetDisabled: %v", err)
+		}
+	}
+	newPassword := "a brand new password"
+	if _, err := m.svc.UpdateAccount(ctx, Actor{UserID: grace.ID}, "", AccountChange{CurrentPassword: testPassword, NewPassword: &newPassword}); err != nil {
+		t.Fatalf("UpdateAccount: %v", err)
+	}
+	if u, err := store.GetUser(ctx, grace.ID); err != nil || !u.Disabled {
+		t.Errorf("after UpdateAccount, grace = %+v, %v; want still disabled", u, err)
+	}
+}
