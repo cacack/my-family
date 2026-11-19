@@ -8,8 +8,8 @@
 //  2. DATABASE_URL set -> PostgreSQL at that URL
 //  3. otherwise        -> SQLite at SQLITE_PATH (default ./myfamily.db)
 //
-// Every SQL backend keeps all four stores (event log, read model, snapshots,
-// branch registry) in ONE database, which is the only topology the config
+// Every SQL backend keeps all five stores (event log, read model, snapshots,
+// branch registry, settings) in ONE database, which is the only topology the config
 // surface can express (DB-006). Each store runs its own DDL/migrations when it
 // is constructed, so opening the stores also brings the schema up to date. A
 // server's Open then refuses a read model stamped with another schema version
@@ -56,6 +56,7 @@ type MemoryStores struct {
 	ReadModel *memory.ReadModelStore
 	Snapshots *memory.SnapshotStore
 	Branches  *memory.BranchStore
+	Settings  *memory.SettingsStore
 }
 
 // Stores is an opened set of repositories plus what is needed to describe and
@@ -71,6 +72,7 @@ type Stores struct {
 	ReadModel repository.ReadModelStore
 	Snapshots repository.SnapshotStore
 	Branches  repository.BranchStore
+	Settings  repository.SettingsStore
 
 	// Memory is non-nil only for BackendMemory.
 	Memory *MemoryStores
@@ -165,7 +167,7 @@ func Select(cfg *config.Config) Backend {
 	}
 }
 
-// Open selects a backend from cfg (see Select) and constructs all four stores
+// Open selects a backend from cfg (see Select) and constructs all five stores
 // over it, running each store's schema setup. A SQL backend is first locked
 // for access (see Access), so Open fails with ErrServerRunning or
 // ErrRebuildRunning, before touching the database, when the two would
@@ -189,6 +191,7 @@ func OpenMemory() *Stores {
 		ReadModel: memory.NewReadModelStore(),
 		Snapshots: memory.NewSnapshotStore(events),
 		Branches:  memory.NewBranchStore(),
+		Settings:  memory.NewSettingsStore(),
 	}
 	return &Stores{
 		Backend:   BackendMemory,
@@ -197,12 +200,13 @@ func OpenMemory() *Stores {
 		ReadModel: mem.ReadModel,
 		Snapshots: mem.Snapshots,
 		Branches:  mem.Branches,
+		Settings:  mem.Settings,
 		Memory:    mem,
 	}
 }
 
 // OpenSQLite opens (creating if needed) the SQLite database at path and
-// constructs all four stores over it, holding the lock for access on the file
+// constructs all five stores over it, holding the lock for access on the file
 // lockPath(path) until Close.
 func OpenSQLite(path string, access Access) (*Stores, error) {
 	if strings.TrimSpace(path) == "" {
@@ -227,6 +231,7 @@ func OpenSQLite(path string, access Access) (*Stores, error) {
 		func(db *sql.DB) (repository.EventStore, error) { return sqlite.NewEventStore(db) },
 		func(db *sql.DB) (repository.SnapshotStore, error) { return sqlite.NewSnapshotStore(db) },
 		func(db *sql.DB) (repository.BranchStore, error) { return sqlite.NewBranchStore(db) },
+		func(db *sql.DB) (repository.SettingsStore, error) { return sqlite.NewSettingsStore(db) },
 	)
 }
 
@@ -243,7 +248,7 @@ func lockPath(path string) string {
 }
 
 // OpenPostgres connects to the PostgreSQL database at connStr and constructs
-// all four stores over it, holding a session advisory lock for access on a
+// all five stores over it, holding a session advisory lock for access on a
 // connection of its own until Close.
 //
 // No error it returns carries the connection string's password: lib/pq repeats
@@ -279,10 +284,11 @@ func OpenPostgres(connStr string, access Access) (*Stores, error) {
 		func(db *sql.DB) (repository.EventStore, error) { return postgres.NewEventStore(db) },
 		func(db *sql.DB) (repository.SnapshotStore, error) { return postgres.NewSnapshotStore(db) },
 		func(db *sql.DB) (repository.BranchStore, error) { return postgres.NewBranchStore(db) },
+		func(db *sql.DB) (repository.SettingsStore, error) { return postgres.NewSettingsStore(db) },
 	)
 }
 
-// build constructs the four stores over db in a fixed order (read model first)
+// build constructs the five stores over db in a fixed order (read model first)
 // and closes db and releases lock if any construction fails, so a failed Open
 // leaks nothing. For AccessServe it then refuses a read model whose schema
 // version is not this binary's (repository.CheckReadModelSchema).
@@ -296,6 +302,7 @@ func build(
 	newEvents func(*sql.DB) (repository.EventStore, error),
 	newSnapshots func(*sql.DB) (repository.SnapshotStore, error),
 	newBranches func(*sql.DB) (repository.BranchStore, error),
+	newSettings func(*sql.DB) (repository.SettingsStore, error),
 ) (*Stores, error) {
 	s := &Stores{Backend: backend, Location: location, db: db, lock: lock, access: access}
 	fail := func(what string, err error) (*Stores, error) {
@@ -316,6 +323,9 @@ func build(
 	}
 	if s.Branches, err = newBranches(db); err != nil {
 		return fail("branch", err)
+	}
+	if s.Settings, err = newSettings(db); err != nil {
+		return fail("settings", err)
 	}
 	// A server never runs on a read model of another schema version, which it
 	// might not be able to read or write; the rebuild is what fixes that, so

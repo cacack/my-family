@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { additionalRelationships, genderedRelationship, relationshipChain } from './relationship';
+import {
+	additionalRelationships,
+	genderedRelationship,
+	relationshipChain,
+	relationshipToYou
+} from './relationship';
 
 describe('relationshipChain', () => {
 	it('lists each person once, from A through the common ancestor to B', () => {
@@ -67,5 +72,35 @@ describe('additionalRelationships', () => {
 
 	it('is empty for a single relationship', () => {
 		expect(additionalRelationships(['mother'])).toEqual([]);
+	});
+});
+
+describe('relationshipToYou', () => {
+	const result = (...names: string[]) => ({ paths: names.map((name) => ({ name })) });
+
+	it('addresses the home person in the gendered form', () => {
+		expect(relationshipToYou(result('3rd great-grandparent'), 'male')).toBe('Your 3rd great-grandfather');
+		expect(relationshipToYou(result('1st cousin twice removed'), 'female')).toBe(
+			'Your 1st cousin twice removed'
+		);
+		expect(relationshipToYou(result('uncle/aunt'), 'unknown')).toBe('Your uncle/aunt');
+	});
+
+	it('names the closest relationship and counts the others', () => {
+		expect(relationshipToYou(result('grandparent', 'grandparent'), 'female')).toBe(
+			'Your grandmother (via 2 paths)'
+		);
+		expect(relationshipToYou(result('1st cousin', '2nd cousin once removed'), 'male')).toBe(
+			'Your 1st cousin, and 1 other relationship'
+		);
+		expect(
+			relationshipToYou(result('3rd great-grandparent', '1st cousin', '1st cousin', '8th cousin'), 'female')
+		).toBe('Your 3rd great-grandmother, and 2 other relationships');
+	});
+
+	it('returns null when there is nothing to say', () => {
+		expect(relationshipToYou(result(), 'male')).toBeNull();
+		expect(relationshipToYou({}, 'male')).toBeNull();
+		expect(relationshipToYou(result('self'), 'male')).toBeNull();
 	});
 });

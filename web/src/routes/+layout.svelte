@@ -15,6 +15,7 @@
 	import { createShortcutHandler } from '#lib/keyboard/useShortcuts.svelte.js';
 	import { loadAppConfig, getAppConfig } from '#lib/stores/appConfig.svelte.js';
 	import { revalidateActiveBranch } from '#lib/stores/activeBranch.svelte.js';
+	import { loadHomePerson } from '#lib/stores/homePerson.svelte.js';
 	import type { SearchResult } from '#lib/api/client.js';
 
 	let { children } = $props();
@@ -23,6 +24,7 @@
 
 	$effect(() => {
 		loadAppConfig();
+		loadHomePerson();
 	});
 
 	// Separate effect: revalidation reads the active branch id, so folding it in

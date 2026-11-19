@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/google/uuid"
+
 	"github.com/cacack/my-family/internal/api"
 	"github.com/cacack/my-family/internal/config"
 	"github.com/cacack/my-family/internal/demo"
@@ -14,6 +16,10 @@ import (
 )
 
 func setupDemoServer() *api.Server {
+	return setupDemoServerWithSettings(memory.NewSettingsStore())
+}
+
+func setupDemoServerWithSettings(settings *memory.SettingsStore) *api.Server {
 	cfg := &config.Config{
 		Port:     8080,
 		DemoMode: true,
@@ -25,7 +31,8 @@ func setupDemoServer() *api.Server {
 
 	server := api.NewServer(cfg, eventStore, readStore, snapshotStore, nil,
 		api.WithBranchStore(branchStore),
-		api.WithDemoReset(eventStore, readStore, snapshotStore, branchStore),
+		api.WithSettingsStore(settings),
+		api.WithDemoReset(eventStore, readStore, snapshotStore, branchStore, settings),
 	)
 
 	// Seed initial demo data (like main.go does)
@@ -122,6 +129,27 @@ func TestResetDemo(t *testing.T) {
 	}
 	if branches.Total != 1 {
 		t.Errorf("branches total = %d, want 1", branches.Total)
+	}
+}
+
+// A reset returns the demo to a clean state, so one visitor's "me" does not
+// carry over to the next.
+func TestResetDemo_ClearsHomePerson(t *testing.T) {
+	settings := memory.NewSettingsStore()
+	server := setupDemoServerWithSettings(settings)
+	if err := settings.SetHomePerson(context.Background(), uuid.New()); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/demo/reset", http.NoBody)
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Status = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	if id, _ := settings.HomePerson(context.Background()); id != uuid.Nil {
+		t.Errorf("home person after reset = %v, want unset", id)
 	}
 }
 

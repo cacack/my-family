@@ -1,7 +1,7 @@
 /**
  * Presentation helpers for relationship calculator results.
  */
-import type { RelationshipPath, RelationshipPathNode } from '#lib/api/client.js';
+import type { RelationshipPath, RelationshipPathNode, RelationshipResult } from '#lib/api/client.js';
 
 export interface ChainNode extends RelationshipPathNode {
 	isCommonAncestor: boolean;
@@ -46,4 +46,24 @@ export function genderedRelationship(name: string, gender?: string): string {
 export function additionalRelationships(names: string[]): string[] {
 	const [primary, ...rest] = names;
 	return [...new Set(rest)].filter((name) => name !== primary);
+}
+
+/**
+ * The relationship as a phrase addressed to the home person ("me", #1034), e.g.
+ * "Your 1st cousin twice removed", with `result` calculated from the home
+ * person to the person of `gender`. Only the closest relationship is named
+ * (paths come closest first); further ones are counted, as the calculator
+ * lists them all. Returns null when the two are not related.
+ */
+export function relationshipToYou(
+	result: Pick<RelationshipResult, 'paths'>,
+	gender?: string
+): string | null {
+	const names = (result.paths ?? []).map((path) => path.name ?? '').filter(Boolean);
+	if (names.length === 0 || names[0] === 'self') return null;
+	const phrase = `Your ${genderedRelationship(names[0], gender)}`;
+	const others = additionalRelationships(names).length;
+	if (others > 0) return `${phrase}, and ${others} other relationship${others === 1 ? '' : 's'}`;
+	if (names.length > 1) return `${phrase} (via ${names.length} paths)`;
+	return phrase;
 }

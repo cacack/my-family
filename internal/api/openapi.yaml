@@ -51,6 +51,8 @@ tags:
     description: Isolated lines of research (ADR-005)
   - name: relationships
     description: Relationship calculation between people
+  - name: settings
+    description: Site settings, such as the home person
   - name: notes
     description: GEDCOM NOTE record management
   - name: submitters
@@ -3898,6 +3900,61 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /settings/home-person:
+    get:
+      operationId: getHomePerson
+      summary: Get the home person
+      description: |
+        Returns the person marked as "me", the one every person page states a
+        relationship to and charts start from by default. It is one site-wide
+        setting until accounts exist (#1408), when it becomes a value of each
+        account. `person` is absent when none is set, or when the marked
+        person no longer exists on the mainline.
+      tags: [settings]
+      responses:
+        '200':
+          description: The home person, if any
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HomePerson'
+        '503':
+          $ref: '#/components/responses/SettingsUnavailable'
+    put:
+      operationId: setHomePerson
+      summary: Set the home person
+      description: Marks a mainline person as "me", replacing any earlier choice.
+      tags: [settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HomePersonUpdate'
+      responses:
+        '200':
+          description: The new home person
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HomePerson'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/SettingsUnavailable'
+    delete:
+      operationId: clearHomePerson
+      summary: Clear the home person
+      description: Unmarks the home person. Clearing when none is set succeeds.
+      tags: [settings]
+      responses:
+        '204':
+          description: Home person cleared
+        '503':
+          $ref: '#/components/responses/SettingsUnavailable'
+
   # Notes endpoints
   /notes:
     get:
@@ -5393,6 +5450,13 @@ components:
 
     BranchesUnavailable:
       description: Branch registry is not configured on this server
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    SettingsUnavailable:
+      description: Settings store is not configured on this server
       content:
         application/json:
           schema:
@@ -9664,6 +9728,21 @@ components:
         summary:
           type: string
           description: Human-readable relationship summary
+
+    HomePerson:
+      type: object
+      description: The site's home person ("me"); `person` is absent when none is set
+      properties:
+        person:
+          $ref: '#/components/schemas/Person'
+
+    HomePersonUpdate:
+      type: object
+      required: [person_id]
+      properties:
+        person_id:
+          type: string
+          format: uuid
 
     # Note schemas
     Note:

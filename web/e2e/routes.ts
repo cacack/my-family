@@ -27,6 +27,10 @@ export const STATIC_ROUTES = [
 	'/analytics',
 	'/quality',
 	'/relationship',
+	// Without a home person (none is left set), the chart routes explain how to pick one.
+	'/pedigree',
+	'/descendancy',
+	'/ahnentafel',
 	'/import',
 	'/search'
 ];

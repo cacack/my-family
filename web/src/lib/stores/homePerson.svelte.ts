@@ -1,0 +1,51 @@
+/**
+ * Home Person Store
+ *
+ * The person marked as "me": person pages state their relationship to them and
+ * charts start from them. It is one site-wide setting kept on the server
+ * (`/settings/home-person`); once accounts exist (#1408) the server answers
+ * with the signed-in account's own choice, and this store needs no change.
+ *
+ * Loaded once by the root layout. The setters are the only mutators.
+ */
+
+import { api, type Person } from '#lib/api/client.js';
+
+interface HomePersonState {
+	/** The home person, or null when none is set (or not loaded yet). */
+	person: Person | null;
+	/** Whether the first load has finished, so pages can tell "unset" from "not yet known". */
+	loaded: boolean;
+}
+
+const state = $state<HomePersonState>({ person: null, loaded: false });
+
+/** Read-only view of the home person. */
+export const homePerson: Readonly<HomePersonState> = state;
+
+/**
+ * Loads the home person. A failure leaves it unset: a missing "me" only hides
+ * the relationship line, so it is not worth an error on every page.
+ */
+export async function loadHomePerson(): Promise<void> {
+	try {
+		const res = await api.getHomePerson();
+		state.person = res.person ?? null;
+	} catch {
+		state.person = null;
+	} finally {
+		state.loaded = true;
+	}
+}
+
+/** Marks personId as the home person. Throws the API error so the caller can show it. */
+export async function setHomePerson(personId: string): Promise<void> {
+	const res = await api.setHomePerson(personId);
+	state.person = res.person ?? null;
+}
+
+/** Clears the home person. Throws the API error so the caller can show it. */
+export async function clearHomePerson(): Promise<void> {
+	await api.clearHomePerson();
+	state.person = null;
+}

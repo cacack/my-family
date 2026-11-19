@@ -509,6 +509,9 @@ export type RelationshipPathNode = Schemas['RelationshipPathNode'];
 export type RelationshipPath = Schemas['RelationshipPath'];
 export type RelationshipResult = Schemas['RelationshipResult'];
 
+// Site settings
+export type HomePerson = Schemas['HomePerson'];
+
 // Browse indexes, map and brick walls
 export type SurnameIndexResponse = Schemas['SurnameIndexResponse'];
 export type SurnameEntry = Schemas['SurnameEntry'];
@@ -1430,6 +1433,19 @@ class ApiClient {
 			'GET',
 			`/relationship/${encodeURIComponent(personId1)}/${encodeURIComponent(personId2)}`
 		);
+	}
+
+	// Home person ("me"): one site-wide setting, read from the mainline
+	async getHomePerson(): Promise<HomePerson> {
+		return this.request<HomePerson>('GET', '/settings/home-person');
+	}
+
+	async setHomePerson(personId: string): Promise<HomePerson> {
+		return this.request<HomePerson>('PUT', '/settings/home-person', { person_id: personId });
+	}
+
+	async clearHomePerson(): Promise<void> {
+		return this.request<void>('DELETE', '/settings/home-person');
 	}
 
 	// Rollback endpoints

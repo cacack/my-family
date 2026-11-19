@@ -3201,6 +3201,7 @@ func (ss *StrictServer) MergePersons(ctx context.Context, request MergePersonsRe
 		}
 		return nil, err
 	}
+	ss.followHomePersonMerge(ctx, branch, request.Body.MergedId, result.SurvivorID)
 
 	// Get updated survivor person, as the scope the merge was made on sees it.
 	person, err := ss.server.personService.GetPersonCore(ctx, branchScopeID(branch), result.SurvivorID)
@@ -3359,6 +3360,7 @@ func (ss *StrictServer) BatchMergePersons(ctx context.Context, request BatchMerg
 		} else {
 			successful++
 			results[i].Success = true
+			ss.followHomePersonMerge(ctx, branch, mergeReq.MergedId, result.SurvivorID)
 			summary := MergeSummary{
 				MergedPersonName:     result.Summary.MergedPersonName,
 				FieldsUpdated:        result.Summary.FieldsUpdated,

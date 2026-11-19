@@ -334,7 +334,7 @@ func TestRedactPostgres(t *testing.T) {
 
 func TestBuild_ClosesDatabaseOnEachFailure(t *testing.T) {
 	boom := errors.New("boom")
-	stages := []string{"read model", "event", "snapshot", "branch"}
+	stages := []string{"read model", "event", "snapshot", "branch", "settings"}
 	for i, stage := range stages {
 		t.Run(stage, func(t *testing.T) {
 			db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "x.db"))
@@ -352,6 +352,7 @@ func TestBuild_ClosesDatabaseOnEachFailure(t *testing.T) {
 				func(*sql.DB) (repository.EventStore, error) { return nil, failAt(1) },
 				func(*sql.DB) (repository.SnapshotStore, error) { return nil, failAt(2) },
 				func(*sql.DB) (repository.BranchStore, error) { return nil, failAt(3) },
+				func(*sql.DB) (repository.SettingsStore, error) { return nil, failAt(4) },
 			)
 			if !errors.Is(err, boom) {
 				t.Fatalf("build: err = %v, want boom", err)
@@ -385,7 +386,7 @@ func TestClose_Idempotent(t *testing.T) {
 
 // assertSurvivesRestart writes through every store via the HTTP API, closes
 // everything, reopens from the same config and reads it all back — a person
-// (event log + read model + search), a snapshot and a branch.
+// (event log + read model + search), a snapshot, a branch and the home person.
 func assertSurvivesRestart(t *testing.T, cfg *config.Config) {
 	t.Helper()
 
@@ -397,6 +398,7 @@ func assertSurvivesRestart(t *testing.T, cfg *config.Config) {
 	personID := createPerson(t, server, "Persistent", "Ancestor")
 	mustDo(t, server, http.MethodPost, "/api/v1/snapshots", `{"name":"Before restart"}`, http.StatusCreated)
 	branch := mustDo(t, server, http.MethodPost, "/api/v1/branches", `{"name":"Restart research"}`, http.StatusCreated)
+	mustDo(t, server, http.MethodPut, "/api/v1/settings/home-person", `{"person_id":"`+personID+`"}`, http.StatusOK)
 	if err := first.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
 	}
@@ -436,6 +438,11 @@ func assertSurvivesRestart(t *testing.T, cfg *config.Config) {
 		t.Errorf("branch %v missing after restart: %v", branch["id"], branches)
 	}
 
+	home := mustDo(t, server, http.MethodGet, "/api/v1/settings/home-person", "", http.StatusOK)
+	if homePerson, _ := home["person"].(map[string]any); homePerson["id"] != personID {
+		t.Errorf("home person after restart = %v, want %s", home, personID)
+	}
+
 	// The event log continues where it left off: an update quoting the
 	// persisted version succeeds.
 	mustDo(t, server, http.MethodPut, "/api/v1/persons/"+personID,
@@ -444,14 +451,14 @@ func assertSurvivesRestart(t *testing.T, cfg *config.Config) {
 
 func assertComplete(t *testing.T, s *Stores) {
 	t.Helper()
-	if s.Events == nil || s.ReadModel == nil || s.Snapshots == nil || s.Branches == nil {
+	if s.Events == nil || s.ReadModel == nil || s.Snapshots == nil || s.Branches == nil || s.Settings == nil {
 		t.Fatalf("incomplete stores: %+v", s)
 	}
 }
 
 func newServer(s *Stores) *api.Server {
 	cfg := &config.Config{Port: 8080, LogFormat: "text"}
-	return api.NewServer(cfg, s.Events, s.ReadModel, s.Snapshots, nil, api.WithBranchStore(s.Branches))
+	return api.NewServer(cfg, s.Events, s.ReadModel, s.Snapshots, nil, api.WithBranchStore(s.Branches), api.WithSettingsStore(s.Settings))
 }
 
 func mustDo(t *testing.T, server *api.Server, method, path, body string, want int) map[string]any {
@@ -513,7 +520,10 @@ func TestSQLite_RebuildReadModel(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = stores.Close() })
 
-	createPerson(t, newServer(stores), "Ada", "Rebuild")
+	adaID := createPerson(t, newServer(stores), "Ada", "Rebuild")
+	if err := stores.Settings.SetHomePerson(ctx, uuid.MustParse(adaID)); err != nil {
+		t.Fatalf("set home person: %v", err)
+	}
 	if got := stores.ProjectionFailureWarning(ctx); got != "" {
 		t.Fatalf("warning with no failures = %q, want none", got)
 	}
@@ -557,6 +567,10 @@ func TestSQLite_RebuildReadModel(t *testing.T) {
 	}
 	if n := countPersons(t, newServer(stores)); n != 1 {
 		t.Errorf("persons after rebuild = %d, want 1", n)
+	}
+	// Settings are not part of the read model, so a rebuild keeps them.
+	if home, err := stores.Settings.HomePerson(ctx); err != nil || home.String() != adaID {
+		t.Errorf("home person after rebuild = %v, %v; want %s", home, err, adaID)
 	}
 
 	// A store that cannot be read is reported rather than taken as healthy.

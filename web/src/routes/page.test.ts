@@ -16,11 +16,15 @@ vi.mock('#lib/api/client.js', async (importOriginal) => {
 	};
 });
 
-const { branchState, returnToMainline, onboarding } = vi.hoisted(() => ({
+const { branchState, returnToMainline, onboarding, home, clearHomePerson } = vi.hoisted(() => ({
 	branchState: { id: null as string | null, branch: null as { name: string } | null },
 	returnToMainline: vi.fn(),
-	onboarding: { completed: false }
+	onboarding: { completed: false },
+	home: { person: null as { id: string; given_name: string; surname: string; version: number } | null, loaded: false },
+	clearHomePerson: vi.fn()
 }));
+
+vi.mock('#lib/stores/homePerson.svelte.js', () => ({ homePerson: home, clearHomePerson }));
 
 vi.mock('#lib/stores/activeBranch.svelte.js', () => ({
 	activeBranch: branchState,
@@ -49,6 +53,8 @@ describe('Dashboard', () => {
 		branchState.id = null;
 		branchState.branch = null;
 		onboarding.completed = false;
+		home.person = null;
+		home.loaded = false;
 		emptyLists();
 		vi.mocked(apiModule.api.getDiscoveryFeed).mockResolvedValue({
 			items: [],
@@ -123,5 +129,58 @@ describe('Dashboard', () => {
 
 		const rule = dashboardSource.match(/\n\t\.empty a \{([^}]*)\}/)?.[1] ?? '';
 		expect(rule).toMatch(/text-decoration:\s*underline/);
+	});
+
+	describe('You in the tree', () => {
+		function somePeople() {
+			vi.mocked(apiModule.api.listPersons).mockResolvedValue({
+				items: [],
+				total: 3
+			} as unknown as apiModule.PersonList);
+		}
+
+		it('shows the home person with chart links and a way to clear them', async () => {
+			somePeople();
+			home.loaded = true;
+			home.person = { id: 'me-1', given_name: 'Ada', surname: 'Home', version: 1 };
+			render(DashboardPage);
+
+			const card = await screen.findByTestId('home-person-card');
+			expect(card.textContent).toContain('Ada');
+			expect(screen.getByRole('link', { name: 'Your pedigree' }).getAttribute('href')).toBe('/pedigree');
+			expect(screen.getByRole('link', { name: 'Your descendants' }).getAttribute('href')).toBe('/descendancy');
+
+			clearHomePerson.mockResolvedValue(undefined);
+			await fireEvent.click(screen.getByRole('button', { name: 'Not me' }));
+			expect(clearHomePerson).toHaveBeenCalled();
+		});
+
+		it('shows a failed clear inline', async () => {
+			somePeople();
+			home.loaded = true;
+			home.person = { id: 'me-1', given_name: 'Ada', surname: 'Home', version: 1 };
+			clearHomePerson.mockRejectedValue(new Error('boom'));
+			render(DashboardPage);
+
+			await fireEvent.click(await screen.findByRole('button', { name: 'Not me' }));
+			expect((await screen.findByRole('alert')).textContent).toContain('Could not clear who you are');
+		});
+
+		it('says how to choose who you are when no one is chosen', async () => {
+			somePeople();
+			home.loaded = true;
+			render(DashboardPage);
+
+			const card = await screen.findByTestId('home-person-card');
+			expect(card.textContent).toContain('This is me');
+			expect(screen.getByRole('link', { name: 'Browse people' }).getAttribute('href')).toBe('/persons');
+		});
+
+		it('is hidden in an empty tree, and until the home person is known', async () => {
+			onboarding.completed = true;
+			render(DashboardPage);
+			await waitFor(() => expect(screen.getByText('Recent People')).toBeTruthy());
+			expect(screen.queryByTestId('home-person-card')).toBeNull();
+		});
 	});
 });
