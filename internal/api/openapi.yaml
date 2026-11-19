@@ -4046,6 +4046,7 @@ paths:
   /settings/home-person:
     get:
       operationId: getHomePerson
+      x-min-role: viewer
       summary: Get the home person
       description: |
         Returns the person marked as "me", the one every person page states a
@@ -4065,6 +4066,7 @@ paths:
           $ref: '#/components/responses/SettingsUnavailable'
     put:
       operationId: setHomePerson
+      x-min-role: owner
       summary: Set the home person
       description: Marks a mainline person as "me", replacing any earlier choice.
       tags: [settings]
@@ -4089,6 +4091,7 @@ paths:
           $ref: '#/components/responses/SettingsUnavailable'
     delete:
       operationId: clearHomePerson
+      x-min-role: owner
       summary: Clear the home person
       description: Unmarks the home person. Clearing when none is set succeeds.
       tags: [settings]

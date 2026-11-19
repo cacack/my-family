@@ -3,6 +3,7 @@
 	import { api, type Person } from '#lib/api/client.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { homePerson, setHomePerson, clearHomePerson } from '#lib/stores/homePerson.svelte.js';
+	import { can } from '#lib/stores/auth.svelte.js';
 	import { relationshipToYou } from '#lib/utils/relationship.js';
 
 	/**
@@ -66,26 +67,30 @@
 	<div class="relationship-to-you" data-testid="relationship-to-you">
 		{#if isHome}
 			<span class="you">This is you</span>
-			<Button
-				variant="outline"
-				size="xs"
-				disabled={busy}
-				onclick={() => change(clearHomePerson, 'Could not clear who you are. Please try again.')}
-			>
-				Not me
-			</Button>
+			{#if can('owner')}
+				<Button
+					variant="outline"
+					size="xs"
+					disabled={busy}
+					onclick={() => change(clearHomePerson, 'Could not clear who you are. Please try again.')}
+				>
+					Not me
+				</Button>
+			{/if}
 		{:else}
 			{#if relation && relation.pair === pair}
 				<a href={calculatorHref} class="relation">{relation.text ?? 'No known relationship to you'}</a>
 			{/if}
-			<Button
-				variant="outline"
-				size="xs"
-				disabled={busy}
-				onclick={() => change(() => setHomePerson(person.id), 'Could not set who you are. Please try again.')}
-			>
-				This is me
-			</Button>
+			{#if can('owner')}
+				<Button
+					variant="outline"
+					size="xs"
+					disabled={busy}
+					onclick={() => change(() => setHomePerson(person.id), 'Could not set who you are. Please try again.')}
+				>
+					This is me
+				</Button>
+			{/if}
 		{/if}
 		{#if error}
 			<span class="error" role="alert">{error}</span>

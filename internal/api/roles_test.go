@@ -40,6 +40,9 @@ var (
 		"POST /api/v1/families/:id/rollback",
 		"POST /api/v1/sources/:id/rollback",
 		"POST /api/v1/citations/:id/rollback",
+		// A site-wide setting until it becomes each account's own (#1443).
+		"PUT /api/v1/settings/home-person",
+		"DELETE /api/v1/settings/home-person",
 	)
 	// Exports are reads an editor needs: a viewer may not take the tree away.
 	editorReads = routeSet(

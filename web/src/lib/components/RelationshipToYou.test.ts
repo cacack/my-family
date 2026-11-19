@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import RelationshipToYou from './RelationshipToYou.svelte';
 import * as apiModule from '#lib/api/client.js';
 import { homePerson, loadHomePerson } from '#lib/stores/homePerson.svelte.js';
+import { auth } from '#lib/stores/auth.svelte.js';
 
 vi.mock('#lib/api/client.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof apiModule>();
@@ -97,5 +98,17 @@ describe('RelationshipToYou', () => {
 		await loadHomePerson();
 		expect(homePerson.person).toBeNull();
 		expect(homePerson.loaded).toBe(true);
+	});
+	it('hides the controls from anyone but an owner, who alone may change the home person', async () => {
+		auth.phase = 'signed-in';
+		auth.account = { id: 'u-1', username: 'v', display_name: 'V', role: 'viewer' } as typeof auth.account;
+		try {
+			render(RelationshipToYou, { person: me });
+			expect(screen.getByText('This is you')).toBeTruthy();
+			expect(screen.queryByRole('button', { name: 'Not me' })).toBeNull();
+		} finally {
+			auth.phase = 'open';
+			auth.account = null;
+		}
 	});
 });
