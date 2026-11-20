@@ -113,7 +113,7 @@ describe('Settings page', () => {
 		const group = await screen.findByRole('group', { name: 'Visitors who are not signed in' });
 		const hint = document.getElementById(group.getAttribute('aria-describedby') ?? '');
 		const link = hint?.querySelector('a');
-		expect(link?.textContent).toBe('Preview the tree as a visitor under the saved settings');
+		expect(link?.textContent).toBe('Preview the tree as a visitor');
 		const target = document.getElementById(link?.getAttribute('href')?.slice(1) ?? '');
 		expect(target?.querySelector('button')?.textContent?.trim()).toBe('Preview as a visitor');
 	});
@@ -121,7 +121,12 @@ describe('Settings page', () => {
 	it.each(['Preview as a visitor', 'Preview as a viewer'])(
 		'%s waits until unsaved changes are saved, saying why (#1542)',
 		async (name) => {
-			api.updatePrivacySettings.mockResolvedValue({ living_threshold_years: 110, viewers_see_living: true, anonymous_access: 'viewer' });
+			// The saved response matches the form after the click, so saving clears the change.
+			api.updatePrivacySettings.mockResolvedValue({
+				living_threshold_years: 110,
+				viewers_see_living: true,
+				anonymous_access: 'viewer'
+			});
 			render(SettingsPage);
 			const button = (await screen.findByRole('button', { name })) as HTMLButtonElement;
 			expect(button.disabled).toBe(false);
@@ -132,6 +137,8 @@ describe('Settings page', () => {
 			const reason = document.getElementById('preview-unsaved');
 			expect(reason?.textContent).toMatch(/unsaved changes/);
 			expect(reason?.textContent).toMatch(/saved\s+settings/);
+			// The visitor choice is put back, not saved, to preview before letting visitors in.
+			expect(reason?.textContent).toMatch(/before\s+letting\s+them\s+in/);
 			expect(button.getAttribute('aria-describedby')?.split(' ')).toContain('preview-unsaved');
 			await fireEvent.click(button);
 			expect(auth.previewAs).toBeNull();
@@ -143,6 +150,16 @@ describe('Settings page', () => {
 			expect(button.getAttribute('aria-describedby')).toBe('preview-hint');
 		}
 	);
+
+	it('only tells the owner to put the visitor choice back when that is what changed (#1542)', async () => {
+		render(SettingsPage);
+		await waitFor(() => expect(threshold().value).toBe('110'));
+
+		await fireEvent.input(threshold(), { target: { value: '120' } });
+		const reason = document.getElementById('preview-unsaved')?.textContent ?? '';
+		expect(reason).toMatch(/unsaved changes/);
+		expect(reason).not.toMatch(/letting them in/);
+	});
 
 	it('tells a non-owner the page needs the owner, and loads nothing', async () => {
 		signInAs('editor');

@@ -48,6 +48,9 @@
 	// The preview shows the saved settings and leaves the page, so it waits
 	// until unsaved changes are saved or put back (#1542).
 	const previewDescribedBy = $derived(changed ? 'preview-hint preview-unsaved' : 'preview-hint');
+	// Saving a new visitor choice would let visitors in before the owner has
+	// previewed them, so that change is put back, not saved, to preview first.
+	const accessChanged = $derived(saved !== null && anonymousAccess !== saved.anonymous_access);
 
 	function show(settings: PrivacySettings) {
 		saved = settings;
@@ -174,8 +177,8 @@
 							import anything.
 						</p>
 						<p>
-							<a href="#preview">Preview the tree as a visitor under the saved settings</a> to see exactly what
-							they will see. Save a change first to preview it.
+							<a href="#preview">Preview the tree as a visitor</a> to see exactly what they will see. The
+							preview uses the saved settings, so preview first, then let visitors in.
 						</p>
 					</div>
 				</fieldset>
@@ -198,8 +201,11 @@
 			</p>
 			{#if changed}
 				<p id="preview-unsaved" class="hint preview-unsaved">
-					You have unsaved changes. Save them, or put them back, before previewing: the preview shows the saved
-					settings and leaving would lose them.
+					You have unsaved changes. The preview shows the saved settings and leaving would lose your changes,
+					so save them or set them back to their saved values first.
+					{#if accessChanged}
+						To preview visitors before letting them in, set "Visitors who are not signed in" back first.
+					{/if}
 				</p>
 			{/if}
 			<div class="preview-actions">
