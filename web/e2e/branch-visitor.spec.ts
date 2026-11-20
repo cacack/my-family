@@ -48,5 +48,6 @@ test('the server refuses a visitor a branch scope', async ({ request }) => {
 
 	expect((await request.get('/api/v1/persons', { headers })).status()).toBe(200);
 	expect((await request.get(`/api/v1/persons?branch=${branchId}`, { headers })).status()).toBe(403);
+	expect((await request.get(`/api/v1/branches/${branchId}/research`, { headers })).status()).toBe(403);
 	expect((await request.get(`/api/v1/persons?branch=${branchId}`)).status()).toBe(200);
 });

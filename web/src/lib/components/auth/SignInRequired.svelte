@@ -14,14 +14,19 @@
 	interface Props {
 		/** What signing in shows, e.g. "the change history". */
 		subject: string;
+		/** Why it needs sign-in; the default explains the change log. */
+		description?: string;
 	}
 
-	let { subject }: Props = $props();
+	let {
+		subject,
+		description = 'Change records name who made each change, so only signed-in users can see them.'
+	}: Props = $props();
 </script>
 
 <EmptyState
 	message="Sign in to see {subject}"
-	description="Change records name who made each change, so only signed-in users can see them."
+	{description}
 >
 	{#snippet actions()}
 		<Button onclick={() => showSignIn()}>Sign in</Button>

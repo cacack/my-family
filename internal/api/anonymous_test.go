@@ -75,6 +75,7 @@ var changeLogRoutes = routeSet(
 var branchViewRoutes = routeSet(
 	"GET /api/v1/branches/:id/evidence-coverage",
 	"GET /api/v1/branches/:id/health",
+	"GET /api/v1/branches/:id/research",
 )
 
 // TestAnonymous_EveryRoute calls every API route without a session, with

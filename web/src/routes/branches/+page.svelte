@@ -190,8 +190,8 @@
 	<article class="branch-card">
 		<div class="branch-head">
 			<div class="branch-title">
-				<!-- A visitor reads the mainline only (ADR-008 §4): a branch's page and
-				     comparison need sign-in, so nothing here leads a visitor there. -->
+				<!-- A visitor reads the mainline only (ADR-008 §4): a branch's page,
+				     comparison and research need sign-in, so nothing here leads a visitor there. -->
 				{#if isVisitor()}
 					<span class="branch-name">{branch.name}</span>
 				{:else}
@@ -225,7 +225,7 @@
 						</Button>
 					{/if}
 				{/if}
-				{#if branch.status === 'archived'}
+				{#if branch.status === 'archived' && !isVisitor()}
 					<Button variant="outline" size="sm" href="/branches/{branch.id}/research">
 						Research
 					</Button>

@@ -2058,6 +2058,11 @@ export interface paths {
          *     from the branch's own events rather than read from its overlay, so the
          *     call works on a closed or merged branch, whose overlay has been purged.
          *     Read-only: nothing is written.
+         *
+         *     Requires a signed-in user: an anonymous visitor is refused with 401,
+         *     since a visitor reads the mainline only, not a research branch's view
+         *     (ADR-008 §4). A closed branch's research logs reach visitors once
+         *     copied to the mainline.
          */
         get: operations["getBranchResearch"];
         put?: never;

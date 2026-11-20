@@ -163,10 +163,7 @@ describe('Branches page', () => {
 		for (const link of screen.queryAllByRole('link')) {
 			expect(link.getAttribute('href')).not.toMatch(/^\/branches\/[^/]+$/);
 		}
-		// A closed branch's research archive is open to visitors.
-		expect(screen.getByRole('link', { name: /^Research$/ }).getAttribute('href')).toBe(
-			`/branches/${archived.id}/research`
-		);
+		expect(screen.queryByRole('link', { name: /^Research$/ })).toBeNull();
 	});
 
 	it('links a signed-in viewer to each branch and its comparison', async () => {

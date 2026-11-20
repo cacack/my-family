@@ -154,7 +154,6 @@ func TestOpenAPI_SignedInRoutesSaySo(t *testing.T) {
 var anonymousCheapRoutes = []string{
 	"GET /api/v1/associations/:id",
 	"GET /api/v1/branches/:id",
-	"GET /api/v1/branches/:id/research",
 	"GET /api/v1/citation-templates",
 	"GET /api/v1/citation-templates/:id",
 	"POST /api/v1/citation-templates/:id/preview",

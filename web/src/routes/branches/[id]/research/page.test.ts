@@ -4,6 +4,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/svelte';
 import Page from './+page.svelte';
+import { auth } from '#lib/stores/access.svelte.js';
 import type * as apiModule from '#lib/api/client.js';
 import type { Branch, BranchResearchArchive } from '#lib/api/client.js';
 
@@ -114,6 +115,15 @@ describe('Branch research page', () => {
 		vi.clearAllMocks();
 		getBranch.mockResolvedValue(closed);
 		getBranchResearch.mockResolvedValue(archive);
+	});
+
+	it('asks a visitor to sign in without reading the research (ADR-008 §4)', async () => {
+		auth.phase = 'visitor';
+		render(Page);
+
+		expect(await screen.findByText("Sign in to see this branch's research")).toBeDefined();
+		expect(getBranchResearch).not.toHaveBeenCalled();
+		expect(screen.queryByTestId('archived-research-log')).toBeNull();
 	});
 
 	it("lists the branch's research logs, including the searches that found nothing", async () => {

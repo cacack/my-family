@@ -34,13 +34,14 @@ var handRouteRoles = map[string]repository.Role{
 }
 
 // signedInRoutes need a viewer who is signed in, so serveVisitor refuses
-// them to a visitor: the operations on one's own account (including its home
-// person), which a visitor does not have, and the change log (history,
-// restore points, snapshots and comparisons), whose change records name who
-// made each change, which ADR-008 §4 hides from anonymous principals, and a
-// research branch's view (health and evidence coverage), since a visitor
-// reads the mainline only. A `?branch=` scope on any route is refused to a
-// visitor too (visitorMayCall).
+// them to a visitor (ADR-008 §4):
+//   - the operations on one's own account (including its home person), which
+//     a visitor does not have;
+//   - the change log (history, restore points, snapshots and comparisons),
+//     whose change records name who made each change;
+//   - a research branch's view (health, evidence coverage and research
+//     archive), since a visitor reads the mainline only. A `?branch=` scope
+//     on any route is refused to a visitor too (visitorMayCall).
 var signedInRoutes = map[string]bool{
 	routeKey(http.MethodGet, apiBase+"/auth/me"):                        true,
 	routeKey(http.MethodPatch, apiBase+"/auth/me"):                      true,
@@ -61,6 +62,7 @@ var signedInRoutes = map[string]bool{
 	routeKey(http.MethodGet, apiBase+"/branches/:id/compare"):           true,
 	routeKey(http.MethodGet, apiBase+"/branches/:id/evidence-coverage"): true,
 	routeKey(http.MethodGet, apiBase+"/branches/:id/health"):            true,
+	routeKey(http.MethodGet, apiBase+"/branches/:id/research"):          true,
 }
 
 // routeRoles is the minimum role of every API route (ADR-007): each

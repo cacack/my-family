@@ -244,7 +244,7 @@ Owners choose under **Settings** whether people who are not signed in may browse
 owner can see what visitors will get before turning it on. With it on, a visitor can call the read operations
 a viewer can, except the account ones and the change log (history, restore points, snapshots and
 comparisons, which name who made each change), and only on the mainline: a research branch's
-view (a `?branch=` scope, its health and evidence coverage) needs sign-in, so the branch menu
+view (a `?branch=` scope, its health, evidence coverage and research archive) needs sign-in, so the branch menu
 offers a visitor no branch. A visitor sees a **Sign in** link instead of the account menu, and
 gets no editing controls. Reads whose cost grows with the tree (lists, search, charts,
 browse indexes and their people, the map, statistics, reports and media files) are limited to 30
