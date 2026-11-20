@@ -194,7 +194,10 @@ than 110 years ago. Owners change that threshold (50 to 150 years) and whether v
 people under **Settings**. Editors set `living_override` (`auto`, `living`, `deceased`) to decide
 for the rule, and mark a record private, when editing it. Persons, families, sources, citations, notes and media carry a `private` mark,
 which is their GEDCOM restriction notice (`RESN`); it round-trips through GEDCOM import and export
-for persons, families, sources and notes.
+for persons, families, sources, notes and media. GEDCOM media records (`OBJE`) import with their
+title, file references and restriction, as one item per person, family or source that links to
+them; a media record nothing links to is skipped with a warning. Export writes an `OBJE` record per
+item, naming an uploaded item's file by its filename; the file content is not included.
 
 Viewers do not see private people, families or media, and see a living person as a placeholder
 named "Living" (same place in charts and families, no names, dates, places, facts, citations or

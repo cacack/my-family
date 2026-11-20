@@ -58,6 +58,7 @@ type ExportResult struct {
 	RepositoriesExported  int
 	AssociationsExported  int
 	LDSOrdinancesExported int
+	MediaExported         int
 }
 
 // ExportProgress represents the current progress of an export operation.
@@ -259,6 +260,25 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 		notePointers.add(n.GedcomXref, noteXrefs[n.ID])
 	}
 
+	// Each media item is written as an OBJE record linked from its owner. Its
+	// xref is generated: an import makes one item per owner of an OBJE record,
+	// so several items can share a stored xref (#1435).
+	media, err := ownedMedia(ctx, exp.readStore, persons, families, sources)
+	if err != nil {
+		return nil, err
+	}
+	mediaLinks := make(map[uuid.UUID][]*gedcom.MediaLink)
+	mediaRecords := make([]*gedcom.Record, 0, len(media))
+	for i, m := range media {
+		xref := xrefs.assign("", "O", i+1)
+		mediaLinks[m.EntityID] = append(mediaLinks[m.EntityID], &gedcom.MediaLink{MediaXRef: xref})
+		mediaRecords = append(mediaRecords, &gedcom.Record{
+			XRef:   xref,
+			Type:   gedcom.RecordTypeMedia,
+			Entity: toGedcomMediaObject(m),
+		})
+	}
+
 	// Build GEDCOM document
 	doc := &gedcom.Document{
 		Header: &gedcom.Header{
@@ -276,6 +296,7 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 		s.RepositoryName = repoPointers.remap(s.RepositoryName, noteJoin)
 		src := toGedcomSource(s, repoIDToXref, repoNameToXref)
 		src.ExternalIDs = externalIDs.sources[s.ID]
+		src.Media = mediaLinks[s.ID]
 		doc.Records = append(doc.Records, &gedcom.Record{
 			XRef:   xref,
 			Type:   gedcom.RecordTypeSource,
@@ -346,6 +367,7 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 		indi.ExternalIDs = externalIDs.persons[p.ID]
 		indi.ChildInFamilies = childLinks[p.ID]
 		indi.SpouseInFamilies = spouseFamilies[p.ID]
+		indi.Media = mediaLinks[p.ID]
 		result.CitationsExported += individualCitations(indi)
 		doc.Records = append(doc.Records, &gedcom.Record{
 			XRef:   xref,
@@ -383,6 +405,7 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 
 		fam := toGedcomFamily(f, personXrefs, sourceXrefs, children, marriageCitations, familyEvents, familyLDSOrdinances, externalIDs.citationAPIDs, exp.readStore, ctx)
 		fam.ExternalIDs = externalIDs.families[f.ID]
+		fam.Media = mediaLinks[f.ID]
 		result.CitationsExported += familyCitations(fam)
 		doc.Records = append(doc.Records, &gedcom.Record{
 			XRef:   xref,
@@ -467,6 +490,9 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 		}
 	}
 
+	doc.Records = append(doc.Records, mediaRecords...)
+	result.MediaExported = len(mediaRecords)
+
 	// Resolve the target GEDCOM version. An explicit caller choice always wins.
 	// Otherwise default to 5.5 and upgrade to 7.0 if the document uses any
 	// 7.0-only structures. The library's RequiresGEDCOM7 inspects the whole
@@ -484,6 +510,9 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 	}
 	result.Version = targetVersion
 	result.SourceVersion = targetVersion
+	if targetVersion == gedcom.Version70 {
+		typeMediaRestrictions(doc)
+	}
 
 	// Report encoding phase
 	if err := reportProgress("encoding", 0, 1, 99.0); err != nil {
@@ -878,6 +907,87 @@ func toGedcomSource(s repository.SourceReadModel, repoIDToXref map[uuid.UUID]str
 	src.Tags = extensionRestrictionTags(s.Restriction)
 
 	return src
+}
+
+// ownedMedia returns the media items of persons, families and sources, owner
+// by owner in the given order.
+func ownedMedia(ctx context.Context, rs repository.ReadModelStore, persons []repository.PersonReadModel, families []repository.FamilyReadModel, sources []repository.SourceReadModel) ([]repository.MediaReadModel, error) {
+	var media []repository.MediaReadModel
+	add := func(entityType string, entityID uuid.UUID) error {
+		items, err := repository.ListAll(ctx, 1000, func(ctx context.Context, opts repository.ListOptions) ([]repository.MediaReadModel, int, error) {
+			return rs.ListMediaForEntity(ctx, entityType, entityID, opts)
+		})
+		if err != nil {
+			return fmt.Errorf("failed to list media of %s %s: %w", entityType, entityID, err)
+		}
+		media = append(media, items...)
+		return nil
+	}
+	for _, p := range persons {
+		if err := add("person", p.ID); err != nil {
+			return nil, err
+		}
+	}
+	for _, f := range families {
+		if err := add("family", f.ID); err != nil {
+			return nil, err
+		}
+	}
+	for _, s := range sources {
+		if err := add("source", s.ID); err != nil {
+			return nil, err
+		}
+	}
+	return media, nil
+}
+
+// gedcomMediaTypes is the MEDI value mapGedcomMediaType reads back as each
+// media type; a document needs none, as it is the default.
+var gedcomMediaTypes = map[domain.MediaType]string{
+	domain.MediaPhoto: "PHOTO",
+	domain.MediaAudio: "AUDIO",
+	domain.MediaVideo: "VIDEO",
+}
+
+// toGedcomMediaObject converts a media item to an OBJE record. An imported
+// item keeps its file references; an uploaded one, which has none, is written
+// as one FILE naming its filename, as the GEDCOM file carries no content. The
+// item's title and media type are written on the first file, where the
+// importer reads them. Its restriction is written as _RESN, which a 7.0
+// export turns into RESN (typeMediaRestrictions): GEDCOM 5.5 and 5.5.1
+// define no RESN on a media record (ADR-008 §2), and a typed one would make
+// the export upgrade to 7.0.
+func toGedcomMediaObject(m repository.MediaReadModel) *gedcom.MediaObject {
+	obj := &gedcom.MediaObject{Tags: extensionRestrictionTags(m.Restriction)}
+	for _, f := range m.Files {
+		file := &gedcom.MediaFile{FileRef: f.Path, Form: f.Format, MediaType: f.MediaType, Title: f.Title}
+		for _, t := range f.Translations {
+			file.Translations = append(file.Translations, &gedcom.MediaTranslation{FileRef: t.Path, Form: t.Format})
+		}
+		obj.Files = append(obj.Files, file)
+	}
+	if len(obj.Files) == 0 {
+		obj.Files = []*gedcom.MediaFile{{FileRef: m.Filename, Form: m.MimeType}}
+	}
+	first := obj.Files[0]
+	first.Title = m.Title
+	if mapGedcomMediaType(first.MediaType) != m.MediaType {
+		first.MediaType = gedcomMediaTypes[m.MediaType]
+	}
+	return obj
+}
+
+// typeMediaRestrictions turns each OBJE record's _RESN into the RESN GEDCOM
+// 7.0 defines there.
+func typeMediaRestrictions(doc *gedcom.Document) {
+	for _, rec := range doc.Records {
+		obj, ok := rec.Entity.(*gedcom.MediaObject)
+		if !ok {
+			continue
+		}
+		obj.Restriction = extensionRestriction(obj.Tags)
+		obj.Tags = slices.DeleteFunc(obj.Tags, func(t *gedcom.Tag) bool { return t.Tag == extensionRestrictionTag })
+	}
 }
 
 // extensionRestrictionTags returns the _RESN line of a record type GEDCOM
