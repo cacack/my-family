@@ -240,7 +240,8 @@ the controls they may not use are hidden. What they may not call is refused with
 #### Visitors
 
 Owners choose under **Settings** whether people who are not signed in may browse the tree:
-**No** (the default) or **Yes, as viewers**. With it on, a visitor can call the read operations
+**No** (the default) or **Yes, as viewers**. The setting links to **Preview as a visitor**, so the
+owner can see what visitors will get before turning it on. With it on, a visitor can call the read operations
 a viewer can, except the account ones and the change log (history, restore points, snapshots and
 comparisons, which name who made each change); sees a **Sign in** link instead of the account
 menu, and gets no editing controls. Reads whose cost grows with the tree (lists, search, charts,
