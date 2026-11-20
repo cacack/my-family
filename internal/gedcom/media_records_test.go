@@ -207,3 +207,50 @@ func TestExport_MediaRecordsReimport(t *testing.T) {
 		})
 	}
 }
+
+// The items of a media group are written as one OBJE record linked from each
+// owner, except an item edited apart from the others, which is written as its
+// own record (#1478).
+func TestExport_MediaGroupRecords(t *testing.T) {
+	ctx := context.Background()
+	rs := memory.NewReadModelStore()
+	now := time.Now()
+	group := uuid.New()
+	for i, title := range []string{"Reunion", "Reunion", "Reunion (cropped)"} {
+		person := &repository.PersonReadModel{ID: uuid.New(), GivenName: "P", Surname: strings.Repeat("x", i+1), Version: 1, UpdatedAt: now}
+		if err := rs.SavePerson(ctx, domain.MainBranchID, person); err != nil {
+			t.Fatalf("SavePerson: %v", err)
+		}
+		m := &repository.MediaReadModel{ID: uuid.New(), EntityType: "person", EntityID: person.ID, Title: title, MediaType: domain.MediaPhoto,
+			GedcomXref: "@M1@", Files: []domain.MediaFile{{Path: "photos/reunion.jpg", Format: "jpg"}},
+			Restriction: "confidential", GroupID: &group, Version: 1, CreatedAt: now, UpdatedAt: now}
+		if err := rs.SaveMedia(ctx, domain.MainBranchID, m); err != nil {
+			t.Fatalf("SaveMedia: %v", err)
+		}
+	}
+
+	var buf bytes.Buffer
+	result, err := gedcom.NewExporter(rs).Export(ctx, &buf)
+	if err != nil {
+		t.Fatalf("export: %v", err)
+	}
+	out := buf.String()
+	if result.MediaExported != 2 {
+		t.Errorf("media exported %d, want 2 (the shared record and the edited copy):\n%s", result.MediaExported, out)
+	}
+	links := map[string]int{}
+	for _, line := range strings.Split(out, "\n") {
+		if strings.HasPrefix(line, "1 OBJE @") {
+			links[line]++
+		}
+	}
+	for _, xref := range []string{"@O1@", "@O2@"} {
+		want := 2
+		if slices.Contains(recordOf(out, "0 "+xref+" OBJE"), "2 TITL Reunion (cropped)") {
+			want = 1
+		}
+		if links["1 OBJE "+xref] != want {
+			t.Errorf("%s is linked %d times, want %d:\n%s", xref, links["1 OBJE "+xref], want, out)
+		}
+	}
+}
