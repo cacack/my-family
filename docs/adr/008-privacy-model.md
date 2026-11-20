@@ -1,6 +1,6 @@
 # ADR-008: Privacy Model — Living People, Private Records and Redaction
 
-**Status:** Proposed
+**Status:** Accepted — implemented in v0.14 (#1411, #1412 and its parts #1514 to #1516)
 **Date:** 2026-11-18
 **Decision Makers:** Project maintainer
 **Related Features:** [#1411](https://github.com/cacack/my-family/issues/1411),
