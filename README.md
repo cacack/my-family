@@ -192,7 +192,9 @@ Each person has a computed `living` flag: a recorded death (including a bare GED
 round-trips through import and export), burial or cremation makes them deceased; otherwise they count as living unless their birth (else christening or baptism) is more
 than 110 years ago. Owners change that threshold (50 to 150 years) and whether viewers see living
 people under **Settings**. Editors set `living_override` (`auto`, `living`, `deceased`) to decide
-for the rule, and mark a record private, when editing it. Persons, families, sources, citations, notes and media carry a `private` mark,
+for the rule, and mark a person, family or source private, when editing it. On a person's page,
+**Mark private** on a citation, or in a media item's viewer, marks that record, and a **Private**
+badge shows on it; notes have no screen yet, so mark them through the API. Persons, families, sources, citations, notes and media carry a `private` mark,
 which is their GEDCOM restriction notice (`RESN`); it round-trips through GEDCOM import and export
 for persons, families, sources, notes and media. GEDCOM media records (`OBJE`) import with their
 title, file references and restriction, as one item per person, family or source that links to

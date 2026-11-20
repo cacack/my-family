@@ -10,6 +10,8 @@ vi.mock('#lib/api/client.js', async (importOriginal) => {
 		...actual,
 		api: {
 			listPersonMedia: vi.fn(),
+			updateMedia: vi.fn(),
+			getMedia: vi.fn(),
 			getMediaThumbnailUrl: (id: string) => `/api/v1/media/${id}/thumbnail`,
 			getMediaContentUrl: (id: string) => `/api/v1/media/${id}/content`
 		}
@@ -104,5 +106,90 @@ describe('MediaGallery', () => {
 		await fireEvent.click(card);
 		const dialog = await screen.findByRole('dialog');
 		expect(within(dialog).getAllByText('photos/wedding.jpg')).toHaveLength(2);
+	});
+	describe('the private mark (#1413)', () => {
+		async function openPortrait(item: Media) {
+			list([item]);
+			render(MediaGallery, { props: { personId: 'p-1' } });
+			await fireEvent.click(await screen.findByRole('button', { name: 'View Portrait' }));
+			return screen.findByRole('dialog');
+		}
+
+		it('marks a private item in the gallery with a named badge', async () => {
+			list([media({ private: true }), media({ id: 'm-2', title: 'Letter' })]);
+			render(MediaGallery, { props: { personId: 'p-1' } });
+
+			expect(await screen.findAllByRole('img', { name: 'Private media item' })).toHaveLength(1);
+		});
+
+		it('marks an item private from its lightbox and shows the badge', async () => {
+			vi.mocked(apiModule.api.updateMedia).mockResolvedValue(media({ private: true, version: 2 }));
+			const dialog = await openPortrait(media({}));
+			expect(within(dialog).getByText('Not private')).toBeDefined();
+
+			await fireEvent.click(within(dialog).getByRole('button', { name: 'Mark private' }));
+
+			expect(apiModule.api.updateMedia).toHaveBeenCalledWith('m-1', { private: true, version: 1 });
+			expect(await within(dialog).findByRole('button', { name: 'Unmark private' })).toBeDefined();
+			expect(within(dialog).getByText(/^Private: viewers and visitors do not see it$/)).toBeDefined();
+			expect(screen.getByRole('img', { name: 'Private media item' })).toBeDefined();
+		});
+
+		it('unmarks a private item with its current version', async () => {
+			vi.mocked(apiModule.api.updateMedia).mockResolvedValue(media({ private: false, version: 4 }));
+			const dialog = await openPortrait(media({ private: true, version: 3 }));
+
+			await fireEvent.click(within(dialog).getByRole('button', { name: 'Unmark private' }));
+
+			expect(apiModule.api.updateMedia).toHaveBeenCalledWith('m-1', { private: false, version: 3 });
+			expect(await within(dialog).findByRole('button', { name: 'Mark private' })).toBeDefined();
+			expect(screen.queryByRole('img', { name: 'Private media item' })).toBeNull();
+		});
+
+		it('reloads a stale item and resends the same mark on Try again', async () => {
+			vi.mocked(apiModule.api.updateMedia).mockRejectedValueOnce({
+				status: 409,
+				code: 'VERSION_CONFLICT',
+				message: 'version conflict'
+			});
+			vi.mocked(apiModule.api.getMedia).mockResolvedValue(media({ version: 5 }));
+			vi.mocked(apiModule.api.updateMedia).mockResolvedValueOnce(media({ private: true, version: 6 }));
+			const dialog = await openPortrait(media({}));
+
+			await fireEvent.click(within(dialog).getByRole('button', { name: 'Mark private' }));
+			expect((await within(dialog).findByRole('alert')).textContent).toMatch(/changed elsewhere/);
+
+			await fireEvent.click(within(dialog).getByRole('button', { name: 'Try again: mark private' }));
+			expect(apiModule.api.updateMedia).toHaveBeenLastCalledWith('m-1', { private: true, version: 5 });
+			expect(await within(dialog).findByRole('button', { name: 'Unmark private' })).toBeDefined();
+			expect(within(dialog).queryByRole('button', { name: /^Try again/ })).toBeNull();
+		});
+
+		it('resends the mark when a grouped copy failed after this item was saved', async () => {
+			// The item itself was saved private before a grouped copy conflicted,
+			// so the reload shows it private; Try again must still send the mark.
+			vi.mocked(apiModule.api.updateMedia).mockRejectedValueOnce({
+				status: 409,
+				code: 'VERSION_CONFLICT',
+				message: 'version conflict'
+			});
+			vi.mocked(apiModule.api.getMedia).mockResolvedValue(media({ private: true, version: 2 }));
+			vi.mocked(apiModule.api.updateMedia).mockResolvedValueOnce(media({ private: true, version: 2 }));
+			const dialog = await openPortrait(media({}));
+
+			await fireEvent.click(within(dialog).getByRole('button', { name: 'Mark private' }));
+			await fireEvent.click(await within(dialog).findByRole('button', { name: 'Try again: mark private' }));
+
+			expect(apiModule.api.updateMedia).toHaveBeenLastCalledWith('m-1', { private: true, version: 2 });
+		});
+
+		it('shows a refusal in the lightbox', async () => {
+			vi.mocked(apiModule.api.updateMedia).mockRejectedValue({ status: 403, message: 'Not allowed' });
+			const dialog = await openPortrait(media({}));
+
+			await fireEvent.click(within(dialog).getByRole('button', { name: 'Mark private' }));
+
+			expect((await within(dialog).findByRole('alert')).textContent).toBe('Not allowed');
+		});
 	});
 });

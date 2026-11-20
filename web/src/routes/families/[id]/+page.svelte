@@ -544,7 +544,7 @@
 					</label>
 				</FormRow>
 
-				<PrivacyFields noun="family" bind:private={formData.private} hiddenFromViewers />
+				<PrivacyFields noun="family" bind:private={formData.private} />
 
 				<!-- Beside the Save button, where the user is looking when it fails. -->
 				{#if saveConflict.latest}

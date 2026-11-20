@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { api, isReferenceOnly, type Media } from '#lib/api/client.js';
+	import { can } from '#lib/stores/access.svelte.js';
+	import { api, isReferenceOnly, isStaleVersion, type Media } from '#lib/api/client.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import * as Dialog from '#lib/components/ui/dialog/index.js';
 
@@ -8,9 +9,49 @@
 		media: Media;
 		allMedia: Media[];
 		onClose: () => void;
+		/** Called with an item this lightbox changed, such as its private mark. */
+		onUpdate?: (media: Media) => void;
 	}
 
-	let { open = $bindable(), media, allMedia, onClose }: Props = $props();
+	let { open = $bindable(), media, allMedia, onClose, onUpdate }: Props = $props();
+
+	let marking = $state(false);
+	let markError: string | null = $state(null);
+	/** The mark a stale save asked for, which Try again resends. */
+	let retryMark: boolean | null = $state(null);
+
+	/**
+	 * Mark the item private, or unmark it (ADR-008). A stale version loads
+	 * the latest one and offers to resend the same mark: the toggle alone
+	 * would flip it when a grouped copy failed after this item was saved,
+	 * and resending is what brings the group back in step.
+	 */
+	async function setPrivate(mark: boolean) {
+		// Required: `aria-disabled` does not block clicks. Not `disabled`
+		// while saving, which would drop the button's focus.
+		if (marking) return;
+		const target = currentMedia;
+		marking = true;
+		markError = null;
+		retryMark = null;
+		try {
+			onUpdate?.(await api.updateMedia(target.id, { private: mark, version: target.version }));
+		} catch (e) {
+			if (isStaleVersion(e)) {
+				markError = 'This item was changed elsewhere and has been reloaded.';
+				retryMark = mark;
+				try {
+					onUpdate?.(await api.getMedia(target.id));
+				} catch {
+					// Keep the notice; Try again reports any failure.
+				}
+			} else {
+				markError = (e as { message?: string }).message || 'Failed to update the item';
+			}
+		} finally {
+			marking = false;
+		}
+	}
 
 	let currentIndex = $derived(allMedia.findIndex((m) => m.id === media.id));
 	let currentMedia = $derived(allMedia[currentIndex] || media);
@@ -36,6 +77,8 @@
 	function navigateTo(index: number) {
 		const newMedia = allMedia[index];
 		if (newMedia) {
+			markError = null;
+			retryMark = null;
 			Object.assign(media, newMedia);
 		}
 	}
@@ -192,7 +235,36 @@
 
 					<dt>{referenceOnly ? 'Imported' : 'Uploaded'}</dt>
 					<dd>{formatDate(currentMedia.created_at)}</dd>
+
+					<dt>Privacy</dt>
+					<dd>{currentMedia.private ? 'Private: viewers and visitors do not see it' : 'Not private'}</dd>
 				</dl>
+
+				{#if can('editor')}
+					<div class="privacy-action">
+						<Button
+							variant="outline"
+							size="sm"
+							class="border-white/40 bg-transparent text-white hover:bg-white/20 hover:text-white"
+							aria-disabled={marking}
+							onclick={() => setPrivate(!currentMedia.private)}
+							>{currentMedia.private ? 'Unmark private' : 'Mark private'}</Button
+						>
+						{#if markError}
+							<p class="mark-error" role="alert">{markError}</p>
+						{/if}
+						{#if retryMark !== null}
+							<Button
+								variant="outline"
+								size="sm"
+								class="border-white/40 bg-transparent text-white hover:bg-white/20 hover:text-white"
+								aria-disabled={marking}
+								onclick={() => retryMark !== null && setPrivate(retryMark)}
+								>{retryMark ? 'Try again: mark private' : 'Try again: unmark private'}</Button
+							>
+						{/if}
+					</div>
+				{/if}
 
 				{#if allMedia.length > 1}
 					<div class="media-counter">
@@ -303,6 +375,20 @@
 
 	.capitalize {
 		text-transform: capitalize;
+	}
+
+	.privacy-action {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 0.5rem;
+		margin-top: 1rem;
+	}
+
+	.mark-error {
+		margin: 0;
+		color: #fecaca;
+		font-size: 0.8125rem;
 	}
 
 	.media-counter {

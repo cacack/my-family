@@ -15,20 +15,13 @@
 		/** Set for a person only; the living status control is shown with it. */
 		livingOverride?: LivingOverride;
 		living?: boolean;
-		/**
-		 * Whether viewers and visitors are already kept from a private record
-		 * of this kind. People and families are; the other records follow
-		 * (#1412).
-		 */
-		hiddenFromViewers?: boolean;
 	}
 
 	let {
 		noun,
 		private: isPrivate = $bindable(),
 		livingOverride = $bindable(),
-		living,
-		hiddenFromViewers = false
+		living
 	}: Props = $props();
 
 	const id = $props.id();
@@ -42,12 +35,8 @@
 			Private {noun}
 		</label>
 		<p id="{id}-private-hint" class="hint">
-			Exported to GEDCOM as a restriction notice.
-			{#if hiddenFromViewers}
-				Viewers and visitors do not see a private {noun}; editors and the owner do.
-			{:else}
-				Hiding a private {noun} from viewers is not enforced yet: every role still sees it.
-			{/if}
+			Exported to GEDCOM as a restriction notice. Viewers and visitors do not see a private {noun};
+			editors and the owner do.
 		</p>
 	</div>
 	{#if livingOverride !== undefined}
