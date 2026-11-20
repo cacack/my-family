@@ -801,3 +801,88 @@ func TestUploadPersonMedia_MissingFile(t *testing.T) {
 		t.Errorf("Status = %d, want %d", rec.Code, http.StatusBadRequest)
 	}
 }
+
+// referenceMediaGedcom links an OBJE record, which carries file references
+// but no file content, from a person (#1477).
+const referenceMediaGedcom = `0 HEAD
+1 GEDC
+2 VERS 7.0
+0 @M1@ OBJE
+1 FILE photos/wedding.jpg
+2 FORM image/jpeg
+2 TITL Wedding
+2 TRAN photos/wedding-small.jpg
+3 FORM image/jpeg
+0 @I1@ INDI
+1 NAME John /Reference/
+1 OBJE @M1@
+0 TRLR
+`
+
+// TestReferenceOnlyMedia_ContentAndThumbnailNotFound checks that a media item
+// imported from GEDCOM, which has no stored content, answers its content and
+// thumbnail with documented 404s rather than an empty 200 (#1477).
+func TestReferenceOnlyMedia_ContentAndThumbnailNotFound(t *testing.T) {
+	server := setupTestServer()
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	part, _ := writer.CreateFormFile("file", "reference.ged")
+	_, _ = io.WriteString(part, referenceMediaGedcom)
+	_ = writer.Close()
+	importReq := httptest.NewRequest(http.MethodPost, "/api/v1/gedcom/import", body)
+	importReq.Header.Set("Content-Type", writer.FormDataContentType())
+	importRec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(importRec, importReq)
+	if importRec.Code != http.StatusOK {
+		t.Fatalf("import status = %d: %s", importRec.Code, importRec.Body.String())
+	}
+
+	search := decodeJSON(t, do(t, server, http.MethodGet, "/api/v1/search?q=Reference", ""))
+	people := search["items"].([]any)
+	if len(people) != 1 {
+		t.Fatalf("search found %d people, want 1", len(people))
+	}
+	personID := people[0].(map[string]any)["id"].(string)
+
+	list := decodeJSON(t, do(t, server, http.MethodGet, "/api/v1/persons/"+personID+"/media", ""))
+	items := list["items"].([]any)
+	if len(items) != 1 {
+		t.Fatalf("person has %d media items, want 1", len(items))
+	}
+	item := items[0].(map[string]any)
+	if item["file_size"] != float64(0) || item["has_thumbnail"] != false {
+		t.Errorf("file_size = %v, has_thumbnail = %v; want 0 and false", item["file_size"], item["has_thumbnail"])
+	}
+	files, _ := item["files"].([]any)
+	if len(files) != 1 || files[0].(map[string]any)["path"] != "photos/wedding.jpg" {
+		t.Fatalf("files = %v, want the one reference photos/wedding.jpg", item["files"])
+	}
+	if tran, _ := files[0].(map[string]any)["translations"].([]any); len(tran) != 1 ||
+		tran[0].(map[string]any)["path"] != "photos/wedding-small.jpg" {
+		t.Errorf("file translations = %v, want photos/wedding-small.jpg", files[0].(map[string]any)["translations"])
+	}
+	if item["format"] != "image/jpeg" {
+		t.Errorf("format = %v, want image/jpeg", item["format"])
+	}
+	mediaID := item["id"].(string)
+
+	tests := []struct {
+		path     string
+		wantCode string
+	}{
+		{"/content", "no_content"},
+		{"/thumbnail", "not_found"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			rec := do(t, server, http.MethodGet, "/api/v1/media/"+mediaID+tt.path, "")
+			if rec.Code != http.StatusNotFound {
+				t.Fatalf("status = %d, want %d", rec.Code, http.StatusNotFound)
+			}
+			if got := decodeJSON(t, rec)["code"]; got != tt.wantCode {
+				t.Errorf("code = %v, want %q", got, tt.wantCode)
+			}
+		})
+	}
+}

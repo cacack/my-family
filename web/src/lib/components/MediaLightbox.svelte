@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { api, type Media } from '#lib/api/client.js';
+	import { api, isReferenceOnly, type Media } from '#lib/api/client.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import * as Dialog from '#lib/components/ui/dialog/index.js';
 
@@ -16,6 +16,10 @@
 	let currentMedia = $derived(allMedia[currentIndex] || media);
 	let isImage = $derived(currentMedia.mime_type.startsWith('image/'));
 	let isPdf = $derived(currentMedia.mime_type === 'application/pdf');
+	let referenceOnly = $derived(isReferenceOnly(currentMedia));
+	let referencePaths = $derived(
+		(currentMedia.files ?? []).map((f) => f.path).filter((p): p is string => !!p)
+	);
 
 	function goToPrevious() {
 		if (currentIndex > 0) {
@@ -100,7 +104,18 @@
 
 		<div class="lightbox-content">
 			<div class="media-container">
-				{#if isImage}
+				{#if referenceOnly}
+					<div class="document-preview">
+						<svg class="document-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+							<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+							<polyline points="14 2 14 8 20 8" />
+						</svg>
+						{#each referencePaths as path, i (i)}
+							<p class="document-name">{path}</p>
+						{/each}
+						<p class="reference-note">The file is not stored here; this item only records where it was.</p>
+					</div>
+				{:else if isImage}
 					<img
 						src={api.getMediaContentUrl(currentMedia.id)}
 						alt={currentMedia.title}
@@ -159,18 +174,23 @@
 				{/if}
 
 				<dl class="metadata-list">
-					<dt>Filename</dt>
-					<dd>{currentMedia.filename}</dd>
+					{#if referenceOnly}
+						<dt>File</dt>
+						<dd>Not stored (reference only)</dd>
+					{:else}
+						<dt>Filename</dt>
+						<dd>{currentMedia.filename}</dd>
 
-					<dt>Size</dt>
-					<dd>{formatFileSize(currentMedia.file_size)}</dd>
+						<dt>Size</dt>
+						<dd>{formatFileSize(currentMedia.file_size)}</dd>
+					{/if}
 
 					{#if currentMedia.media_type}
 						<dt>Type</dt>
 						<dd class="capitalize">{currentMedia.media_type}</dd>
 					{/if}
 
-					<dt>Uploaded</dt>
+					<dt>{referenceOnly ? 'Imported' : 'Uploaded'}</dt>
 					<dd>{formatDate(currentMedia.created_at)}</dd>
 				</dl>
 
@@ -231,6 +251,13 @@
 		font-size: 1rem;
 		margin: 0 0 1.5rem;
 		word-break: break-word;
+	}
+
+	.reference-note {
+		color: white;
+		font-size: 0.875rem;
+		margin: 0;
+		max-width: 28rem;
 	}
 
 	.metadata-panel {

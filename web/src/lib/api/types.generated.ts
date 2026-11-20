@@ -1051,6 +1051,8 @@ export interface paths {
          * @description Returns the media file. With `?branch=` the item is resolved through that
          *     branch's isolated view (a branch-deleted item is not found); the bytes
          *     themselves are shared with the mainline.
+         *     An item with no stored content (one imported from GEDCOM, which keeps
+         *     only file references) returns 404 with code `no_content`.
          */
         get: operations["downloadMedia"];
         put?: never;
@@ -1076,6 +1078,8 @@ export interface paths {
          * @description Returns the media thumbnail. With `?branch=` the item is resolved through
          *     that branch's isolated view; the bytes themselves are shared with the
          *     mainline.
+         *     An item without a thumbnail (a non-image, or one with no stored
+         *     content) returns 404 with code `not_found`.
          */
         get: operations["getMediaThumbnail"];
         put?: never;
@@ -4650,7 +4654,7 @@ export interface components {
             filename: string;
             /**
              * Format: int64
-             * @description File size in bytes
+             * @description File size in bytes. 0 means no file content is stored: the item is a reference only (imported from GEDCOM), its `files` name the referenced paths, and its content and thumbnail return 404.
              */
             file_size: number;
             /** @description Whether a thumbnail is available */

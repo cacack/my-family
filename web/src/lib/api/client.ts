@@ -551,6 +551,15 @@ export type Media = Schemas['Media'];
 export type MediaListResponse = Schemas['MediaList'];
 export type MediaUpdate = Schemas['MediaUpdate'];
 
+/**
+ * Whether a media item is a reference only: it names files (`files`) but has
+ * no stored content, as GEDCOM import creates it, so its content and
+ * thumbnail are not found (#1477). An upload always stores content.
+ */
+export function isReferenceOnly(media: Media): boolean {
+	return media.file_size === 0;
+}
+
 // Relationship calculator
 export type RelationshipPathNode = Schemas['RelationshipPathNode'];
 export type RelationshipPath = Schemas['RelationshipPath'];

@@ -54,6 +54,8 @@ func (h *Handler) UploadMedia(ctx context.Context, input UploadMediaInput) (*Upl
 	if input.EntityID == uuid.Nil {
 		return nil, fmt.Errorf("%w: entity_id is required", ErrInvalidInput)
 	}
+	// Clients read file_size == 0 as a reference-only (GEDCOM-imported) item
+	// with no content (#1477), so an upload must never be empty.
 	if len(input.FileData) == 0 {
 		return nil, fmt.Errorf("%w: file data is required", ErrInvalidInput)
 	}

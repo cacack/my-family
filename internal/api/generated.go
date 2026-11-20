@@ -4756,7 +4756,7 @@ type Media struct {
 	EntityId    openapi_types.UUID `json:"entity_id"`
 	EntityType  MediaEntityType    `json:"entity_type"`
 
-	// FileSize File size in bytes
+	// FileSize File size in bytes. 0 means no file content is stored: the item is a reference only (imported from GEDCOM), its `files` name the referenced paths, and its content and thumbnail return 404.
 	FileSize int64  `json:"file_size"`
 	Filename string `json:"filename"`
 
