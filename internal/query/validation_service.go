@@ -2,6 +2,7 @@ package query
 
 import (
 	"context"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -492,7 +493,57 @@ func loadScopeRecords(ctx context.Context, readStore repository.ReadModelStore, 
 	if err != nil {
 		return nil, err
 	}
-	return &scopeRecords{persons: persons, families: families, sources: sources, links: links}, nil
+	records := &scopeRecords{persons: persons, families: families, sources: sources, links: links}
+	if err := records.dropProtectedLinks(ctx, readStore, branchID); err != nil {
+		return nil, err
+	}
+	return records, nil
+}
+
+// dropProtectedLinks removes the partner and child links to people the store
+// resolves but does not list: those the principal may not see (ADR-008),
+// whose links would otherwise be reported as broken references naming them.
+// A link to a person who does not resolve stays, so a broken reference is
+// still reported.
+func (r *scopeRecords) dropProtectedLinks(ctx context.Context, readStore repository.ReadModelStore, branchID domain.BranchID) error {
+	listed := make(map[uuid.UUID]bool, len(r.persons))
+	for _, p := range r.persons {
+		listed[p.ID] = true
+	}
+	var unlisted []uuid.UUID
+	for _, f := range r.families {
+		for _, id := range []*uuid.UUID{f.Partner1ID, f.Partner2ID} {
+			if id != nil && !listed[*id] {
+				unlisted = append(unlisted, *id)
+			}
+		}
+	}
+	for _, link := range r.links {
+		if !listed[link.PersonID] {
+			unlisted = append(unlisted, link.PersonID)
+		}
+	}
+	if len(unlisted) == 0 {
+		return nil
+	}
+	resolved, err := readStore.GetPersonsByIDs(ctx, branchID, unlisted)
+	if err != nil {
+		return err
+	}
+	protected := make(map[uuid.UUID]bool, len(resolved))
+	for _, p := range resolved {
+		protected[p.ID] = true
+	}
+	for i := range r.families {
+		if id := r.families[i].Partner1ID; id != nil && protected[*id] {
+			r.families[i].Partner1ID = nil
+		}
+		if id := r.families[i].Partner2ID; id != nil && protected[*id] {
+			r.families[i].Partner2ID = nil
+		}
+	}
+	r.links = slices.DeleteFunc(r.links, func(link repository.FamilyChildReadModel) bool { return protected[link.PersonID] })
+	return nil
 }
 
 // gedcomViewOf builds the gedcom view of one scope's already-loaded records.

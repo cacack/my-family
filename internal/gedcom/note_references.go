@@ -30,10 +30,35 @@ const noteReferencePageSize = 1000
 // association also by the note's id in NoteIDs. A note without a stored xref
 // can only be pointed to by id. The result is sorted by type, then id.
 func NoteReferences(ctx context.Context, store repository.ReadModelStore, branchID domain.BranchID, note *repository.NoteReadModel) ([]NoteReference, error) {
-	var refs []NoteReference
-	xref := note.GedcomXref
-	points := func(notes, sep string) bool {
-		return xref != "" && hasXref(notes, sep, xref)
+	refs, err := NotesReferences(ctx, store, branchID, []repository.NoteReadModel{*note})
+	return refs[note.ID], err
+}
+
+// NotesReferences is NoteReferences for each of notes, keyed by note id, in
+// one walk of the records on branchID whatever the number of notes. Only notes
+// at least one record points to have a key, and only ids from notes appear.
+func NotesReferences(ctx context.Context, store repository.ReadModelStore, branchID domain.BranchID, notes []repository.NoteReadModel) (map[uuid.UUID][]NoteReference, error) {
+	byXref := make(map[string][]uuid.UUID)
+	byID := make(map[uuid.UUID]bool, len(notes))
+	for _, n := range notes {
+		byID[n.ID] = true
+		if n.GedcomXref != "" {
+			byXref[n.GedcomXref] = append(byXref[n.GedcomXref], n.ID)
+		}
+	}
+	refs := make(map[uuid.UUID][]NoteReference)
+	// add records ref under each note its Notes values point to, once per
+	// note. values alternate a Notes value and its separator.
+	add := func(ref NoteReference, values ...string) {
+		seen := map[uuid.UUID]bool{}
+		for i := 0; i+1 < len(values); i += 2 {
+			for _, id := range pointedNotes(values[i], values[i+1], byXref) {
+				if !seen[id] {
+					seen[id] = true
+					refs[id] = append(refs[id], ref)
+				}
+			}
+		}
 	}
 
 	associations, err := repository.ListAllOn(ctx, branchID, noteReferencePageSize, store.ListAssociations)
@@ -41,115 +66,111 @@ func NoteReferences(ctx context.Context, store repository.ReadModelStore, branch
 		return nil, fmt.Errorf("listing associations: %w", err)
 	}
 	for _, a := range associations {
-		if points(a.Notes, associationNoteJoin) || slices.Contains(a.NoteIDs, note.ID) {
-			refs = append(refs, NoteReference{Type: "association", ID: a.ID})
+		ref := NoteReference{Type: "association", ID: a.ID}
+		pointed := map[uuid.UUID]bool{}
+		for _, id := range pointedNotes(a.Notes, associationNoteJoin, byXref) {
+			pointed[id] = true
+		}
+		for _, id := range a.NoteIDs {
+			if byID[id] {
+				pointed[id] = true
+			}
+		}
+		for id := range pointed {
+			refs[id] = append(refs[id], ref)
 		}
 	}
 
-	if xref != "" {
-		xrefRefs, err := noteXrefReferences(ctx, store, branchID, points)
-		if err != nil {
+	if len(byXref) > 0 {
+		if err := noteXrefReferences(ctx, store, branchID, add); err != nil {
 			return nil, err
 		}
-		refs = append(refs, xrefRefs...)
 	}
 
-	sort.Slice(refs, func(i, j int) bool {
-		if refs[i].Type != refs[j].Type {
-			return refs[i].Type < refs[j].Type
-		}
-		return refs[i].ID.String() < refs[j].ID.String()
-	})
+	for _, r := range refs {
+		sort.Slice(r, func(i, j int) bool {
+			if r[i].Type != r[j].Type {
+				return r[i].Type < r[j].Type
+			}
+			return r[i].ID.String() < r[j].ID.String()
+		})
+	}
 	return refs, nil
 }
 
-// noteXrefReferences lists the records on branchID other than associations
-// whose Notes values hold a pointer for which points reports true.
-func noteXrefReferences(ctx context.Context, store repository.ReadModelStore, branchID domain.BranchID, points func(notes, sep string) bool) ([]NoteReference, error) {
-	var refs []NoteReference
-
+// noteXrefReferences passes each record on branchID other than associations
+// to add, with its Notes values and their separator.
+func noteXrefReferences(ctx context.Context, store repository.ReadModelStore, branchID domain.BranchID, add func(ref NoteReference, values ...string)) error {
 	persons, err := repository.ListAllOn(ctx, branchID, noteReferencePageSize, store.ListPersons)
 	if err != nil {
-		return nil, fmt.Errorf("listing persons: %w", err)
+		return fmt.Errorf("listing persons: %w", err)
 	}
 	for _, p := range persons {
-		if points(p.Notes, noteJoin) || points(p.BirthNotes, noteJoin) || points(p.DeathNotes, noteJoin) {
-			refs = append(refs, NoteReference{Type: "person", ID: p.ID})
-		}
+		add(NoteReference{Type: "person", ID: p.ID}, p.Notes, noteJoin, p.BirthNotes, noteJoin, p.DeathNotes, noteJoin)
 		names, err := store.GetPersonNames(ctx, branchID, p.ID)
 		if err != nil {
-			return nil, fmt.Errorf("getting names of person %s: %w", p.ID, err)
+			return fmt.Errorf("getting names of person %s: %w", p.ID, err)
 		}
 		for _, n := range names {
-			if points(n.Notes, noteJoin) {
-				refs = append(refs, NoteReference{Type: "name", ID: n.ID})
-			}
+			add(NoteReference{Type: "name", ID: n.ID}, n.Notes, noteJoin)
 		}
 	}
 
 	families, err := repository.ListAllOn(ctx, branchID, noteReferencePageSize, store.ListFamilies)
 	if err != nil {
-		return nil, fmt.Errorf("listing families: %w", err)
+		return fmt.Errorf("listing families: %w", err)
 	}
 	for _, f := range families {
-		if points(f.Notes, noteJoin) || points(f.MarriageNotes, noteJoin) {
-			refs = append(refs, NoteReference{Type: "family", ID: f.ID})
-		}
+		add(NoteReference{Type: "family", ID: f.ID}, f.Notes, noteJoin, f.MarriageNotes, noteJoin)
 	}
 
 	events, err := repository.ListAllOn(ctx, branchID, noteReferencePageSize, store.ListEvents)
 	if err != nil {
-		return nil, fmt.Errorf("listing events: %w", err)
+		return fmt.Errorf("listing events: %w", err)
 	}
 	for _, e := range events {
-		if points(e.Notes, noteJoin) {
-			refs = append(refs, NoteReference{Type: "event", ID: e.ID})
-		}
+		add(NoteReference{Type: "event", ID: e.ID}, e.Notes, noteJoin)
 	}
 
 	attributes, err := repository.ListAllOn(ctx, branchID, noteReferencePageSize, store.ListAttributes)
 	if err != nil {
-		return nil, fmt.Errorf("listing attributes: %w", err)
+		return fmt.Errorf("listing attributes: %w", err)
 	}
 	for _, a := range attributes {
-		if points(a.Notes, noteJoin) {
-			refs = append(refs, NoteReference{Type: "attribute", ID: a.ID})
-		}
+		add(NoteReference{Type: "attribute", ID: a.ID}, a.Notes, noteJoin)
 	}
 
 	sources, err := repository.ListAllOn(ctx, branchID, noteReferencePageSize, store.ListSources)
 	if err != nil {
-		return nil, fmt.Errorf("listing sources: %w", err)
+		return fmt.Errorf("listing sources: %w", err)
 	}
 	for _, s := range sources {
-		if points(s.Notes, noteJoin) {
-			refs = append(refs, NoteReference{Type: "source", ID: s.ID})
-		}
+		add(NoteReference{Type: "source", ID: s.ID}, s.Notes, noteJoin)
 	}
 
 	repositories, err := repository.ListAllOn(ctx, branchID, noteReferencePageSize, store.ListRepositories)
 	if err != nil {
-		return nil, fmt.Errorf("listing repositories: %w", err)
+		return fmt.Errorf("listing repositories: %w", err)
 	}
 	for _, r := range repositories {
-		if points(r.Notes, noteJoin) {
-			refs = append(refs, NoteReference{Type: "repository", ID: r.ID})
-		}
+		add(NoteReference{Type: "repository", ID: r.ID}, r.Notes, noteJoin)
 	}
 
-	return refs, nil
+	return nil
 }
 
-// hasXref reports whether notes, or one of its sep-separated parts, is xref:
-// the parts renameXrefs and remapNotes treat as a pointer.
-func hasXref(notes, sep, xref string) bool {
-	if notes == xref {
-		return true
+// pointedNotes returns the notes of byXref that notes, or one of its
+// sep-separated parts, points to: the parts renameXrefs and remapNotes treat
+// as a pointer.
+func pointedNotes(notes, sep string, byXref map[string][]uuid.UUID) []uuid.UUID {
+	if notes == "" || len(byXref) == 0 {
+		return nil
 	}
+	ids := slices.Clone(byXref[notes])
 	for _, part := range strings.Split(notes, sep) {
-		if part == xref {
-			return true
+		if part != notes {
+			ids = append(ids, byXref[part]...)
 		}
 	}
-	return false
+	return ids
 }

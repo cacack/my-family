@@ -3,12 +3,14 @@ package query
 import (
 	"bytes"
 	"context"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/cacack/my-family/internal/domain"
+	"github.com/cacack/my-family/internal/gedcom"
 	"github.com/cacack/my-family/internal/repository"
 )
 
@@ -35,12 +37,20 @@ import (
 //     thumbnails included.
 //   - The surname, place and cemetery indexes, the map and the brick walls
 //     leave protected people out of their counts and lists, in the query.
+//   - Private sources, citations and notes are hidden. So is a citation of a
+//     private source or of a fact whose owner is hidden, and a shared note
+//     every record pointing to which is hidden (ADR-008 §3); a source's
+//     citation count counts only the citations shown.
+//   - An association, LDS ordinance, evidence record, research log, proof
+//     summary, duplicate dismissal, life event or attribute is hidden when
+//     a person or family it belongs to is.
+//   - Submitters are hidden from anonymous visitors (ADR-008 §4).
 //
-// The methods marked "not yet redacted" pass through for every principal.
-// They serve records other than people and families (sources, citations by
-// source, notes, submitters, repositories, evidence, duplicate dismissals)
-// and whole-tree exports, whose redaction is still to come (#1412). Until it
-// lands anonymous viewing stays off (repository.AnonymousViewingProtected).
+// A list whose rule needs other records (an evidence record's subject, a
+// shared note's referrers) is read whole, filtered, then paged (listShown),
+// so its pages are full and its total counts only what is shown.
+// Repositories hold no person data and pass through. The event log is the
+// other choke point's (ADR-008 §5b).
 type PrivacyStore struct {
 	inner repository.ReadModelStore
 	now   func() time.Time
@@ -170,18 +180,143 @@ func (s *PrivacyStore) familyShown(ctx context.Context, v repository.Privacy, br
 	return shown[id], err
 }
 
-// ownerShown reports whether v may see what is attached to a person or family
-// (ownerType "person" or "family"). Other owners are not redacted yet.
-func (s *PrivacyStore) ownerShown(ctx context.Context, v repository.Privacy, branchID domain.BranchID, ownerType string, id uuid.UUID) (bool, error) {
-	switch ownerType {
-	case "person":
-		protected, err := s.personProtected(ctx, v, branchID, id)
-		return !protected, err
-	case "family":
-		return s.familyShown(ctx, v, branchID, id)
-	default:
-		return true, nil
+// owner is a record others belong to: a person, family or source (typ), and
+// its id.
+type owner struct {
+	typ string
+	id  uuid.UUID
+}
+
+// ownersShown reports, for each of owners, whether v may see what belongs to
+// it: a person shown in full, a family whose own facts are shown (see
+// familiesShown), a source that is not private. Any other owner, or one that
+// does not resolve, is not shown (ADR-008 §3).
+func (s *PrivacyStore) ownersShown(ctx context.Context, v repository.Privacy, branchID domain.BranchID, owners []owner) (map[owner]bool, error) {
+	var people, families, sources []uuid.UUID
+	for _, o := range owners {
+		switch o.typ {
+		case "person":
+			people = append(people, o.id)
+		case "family":
+			families = append(families, o.id)
+		case "source":
+			sources = append(sources, o.id)
+		}
 	}
+	shown := make(map[owner]bool, len(owners))
+	vis, err := s.visibilities(ctx, v, branchID, people)
+	if err != nil {
+		return nil, err
+	}
+	for id, pv := range vis {
+		shown[owner{"person", id}] = pv == repository.Visible
+	}
+	familyShown, err := s.familiesShown(ctx, v, branchID, families)
+	if err != nil {
+		return nil, err
+	}
+	for id := range familyShown {
+		shown[owner{"family", id}] = true
+	}
+	if len(sources) > 0 {
+		rows, err := s.inner.GetSourcesByIDs(ctx, branchID, sources)
+		if err != nil {
+			return nil, err
+		}
+		for _, src := range rows {
+			shown[owner{"source", src.ID}] = !v.Hides(src.Restriction)
+		}
+	}
+	return shown, nil
+}
+
+// ownerShown reports whether v may see what belongs to the record ownerType
+// and id name (see ownersShown).
+func (s *PrivacyStore) ownerShown(ctx context.Context, v repository.Privacy, branchID domain.BranchID, ownerType string, id uuid.UUID) (bool, error) {
+	o := owner{ownerType, id}
+	shown, err := s.ownersShown(ctx, v, branchID, []owner{o})
+	return shown[o], err
+}
+
+// keepShown returns the rows v may see every owner of, in order.
+func keepShown[T any](ctx context.Context, s *PrivacyStore, v repository.Privacy, branchID domain.BranchID, rows []T, owners func(*T) []owner) ([]T, error) {
+	var all []owner
+	for i := range rows {
+		all = append(all, owners(&rows[i])...)
+	}
+	shown, err := s.ownersShown(ctx, v, branchID, all)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]T, 0, len(rows))
+	for i := range rows {
+		if !slices.ContainsFunc(owners(&rows[i]), func(o owner) bool { return !shown[o] }) {
+			out = append(out, rows[i])
+		}
+	}
+	return out, nil
+}
+
+// rowsShown returns the rows the principal on ctx may see every owner of.
+func rowsShown[T any](ctx context.Context, s *PrivacyStore, branchID domain.BranchID, rows []T, err error, owners func(*T) []owner) ([]T, error) {
+	v := s.privacy(ctx)
+	if err != nil || v.SeesAll() {
+		return rows, err
+	}
+	return keepShown(ctx, s, v, branchID, rows, owners)
+}
+
+// rowShown returns row when the principal on ctx may see every owner of it,
+// else nil.
+func rowShown[T any](ctx context.Context, s *PrivacyStore, branchID domain.BranchID, row *T, err error, owners func(*T) []owner) (*T, error) {
+	if err != nil || row == nil {
+		return row, err
+	}
+	rows, err := rowsShown(ctx, s, branchID, []T{*row}, nil, owners)
+	if err != nil || len(rows) == 0 {
+		return nil, err
+	}
+	return &rows[0], nil
+}
+
+// listPageSize is the page size listShown reads a whole list with.
+const listPageSize = 1000
+
+// listShown reads every row list returns for opts, with its filters and
+// order, keeps those keep returns, and pages them as opts asks. The rule is
+// applied to the whole list before paging, never to a page, so pages are full
+// and the total counts only the rows kept (ADR-008 §5).
+func listShown[T any](ctx context.Context, opts repository.ListOptions, list func(context.Context, repository.ListOptions) ([]T, int, error), keep func([]T) ([]T, error)) ([]T, int, error) {
+	var all []T
+	page := opts
+	page.Limit = listPageSize
+	for page.Offset = 0; ; page.Offset += listPageSize {
+		rows, total, err := list(ctx, page)
+		if err != nil {
+			return nil, 0, err
+		}
+		all = append(all, rows...)
+		if len(rows) < listPageSize || len(all) >= total {
+			break
+		}
+	}
+	kept, err := keep(all)
+	if err != nil {
+		return nil, 0, err
+	}
+	return repository.Page(kept, opts.Offset, opts.Limit), len(kept), nil
+}
+
+// pageShown is list for the principal on ctx: the page of the rows whose
+// every owner they may see.
+func pageShown[T any](ctx context.Context, s *PrivacyStore, opts repository.ListOptions, list func(context.Context, repository.ListOptions) ([]T, int, error), owners func(*T) []owner) ([]T, int, error) {
+	v := s.privacy(ctx)
+	if v.SeesAll() {
+		return list(ctx, opts)
+	}
+	return listShown(ctx, opts, list, func(rows []T) ([]T, error) {
+		return keepShown(ctx, s, v, opts.BranchID, rows, owners)
+	})
 }
 
 // factOwnerType returns the kind of record a fact type belongs to.
@@ -202,6 +337,8 @@ func withoutPrivate[T any](v repository.Privacy, records []T, restriction func(*
 }
 
 func citationRestriction(c *repository.CitationReadModel) domain.Restriction { return c.Restriction }
+func sourceRestriction(r *repository.SourceReadModel) domain.Restriction     { return r.Restriction }
+func noteRestriction(n *repository.NoteReadModel) domain.Restriction         { return n.Restriction }
 
 // placeholderName returns the given name and surname to show for a person
 // who appears as vis.
@@ -652,23 +789,85 @@ func (s *PrivacyStore) PurgeBranch(ctx context.Context, branchID domain.BranchID
 }
 
 // ============================================================================
-// Sources (not yet redacted)
+// Sources
 // ============================================================================
 
+// withShownCitationCounts sets each source's citation count to the number
+// of its citations the principal on ctx may see.
+func (s *PrivacyStore) withShownCitationCounts(ctx context.Context, branchID domain.BranchID, sources []repository.SourceReadModel) ([]repository.SourceReadModel, error) {
+	ids := make([]uuid.UUID, len(sources))
+	for i := range sources {
+		ids[i] = sources[i].ID
+	}
+	counts, err := s.CountCitationsBySource(ctx, branchID, ids)
+	if err != nil {
+		return nil, err
+	}
+	for i := range sources {
+		sources[i].CitationCount = counts[sources[i].ID]
+	}
+	return sources, nil
+}
+
+// shownSources drops the private sources and counts only the citations
+// shown.
+func (s *PrivacyStore) shownSources(ctx context.Context, v repository.Privacy, branchID domain.BranchID, sources []repository.SourceReadModel) ([]repository.SourceReadModel, error) {
+	return s.withShownCitationCounts(ctx, branchID, withoutPrivate(v, sources, sourceRestriction))
+}
+
 func (s *PrivacyStore) GetSource(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.SourceReadModel, error) {
-	return s.inner.GetSource(ctx, branchID, id)
+	src, err := s.inner.GetSource(ctx, branchID, id)
+	v := s.privacy(ctx)
+	if err != nil || src == nil || v.SeesAll() {
+		return src, err
+	}
+	shown, err := s.shownSources(ctx, v, branchID, []repository.SourceReadModel{*src})
+	if err != nil || len(shown) == 0 {
+		return nil, err
+	}
+	return &shown[0], nil
 }
 
 func (s *PrivacyStore) GetSourcesByIDs(ctx context.Context, branchID domain.BranchID, ids []uuid.UUID) ([]repository.SourceReadModel, error) {
-	return s.inner.GetSourcesByIDs(ctx, branchID, ids)
+	sources, err := s.inner.GetSourcesByIDs(ctx, branchID, ids)
+	if v := s.privacy(ctx); err == nil && !v.SeesAll() {
+		return s.shownSources(ctx, v, branchID, sources)
+	}
+	return sources, err
 }
 
 func (s *PrivacyStore) ListSources(ctx context.Context, opts repository.ListOptions) ([]repository.SourceReadModel, int, error) {
-	return s.inner.ListSources(ctx, opts)
+	v := s.privacy(ctx)
+	if v.SeesAll() {
+		return s.inner.ListSources(ctx, opts)
+	}
+	sources, total, err := listShown(ctx, opts, s.inner.ListSources, func(rows []repository.SourceReadModel) ([]repository.SourceReadModel, error) {
+		return withoutPrivate(v, rows, sourceRestriction), nil
+	})
+	if err != nil {
+		return nil, 0, err
+	}
+	sources, err = s.withShownCitationCounts(ctx, opts.BranchID, sources)
+	return sources, total, err
 }
 
+// SearchSources asks the store for more matches until limit of them are
+// shown or there are no more, so private sources do not shorten the result.
 func (s *PrivacyStore) SearchSources(ctx context.Context, branchID domain.BranchID, query string, limit int) ([]repository.SourceReadModel, error) {
-	return s.inner.SearchSources(ctx, branchID, query, limit)
+	v := s.privacy(ctx)
+	if v.SeesAll() {
+		return s.inner.SearchSources(ctx, branchID, query, limit)
+	}
+	for n := max(limit, 1); ; n *= 2 {
+		matches, err := s.inner.SearchSources(ctx, branchID, query, n)
+		if err != nil {
+			return nil, err
+		}
+		shown := withoutPrivate(v, matches, sourceRestriction)
+		if len(shown) >= limit || len(matches) < n {
+			return s.withShownCitationCounts(ctx, branchID, shown[:min(len(shown), max(limit, 0))])
+		}
+	}
 }
 
 func (s *PrivacyStore) SaveSource(ctx context.Context, branchID domain.BranchID, source *repository.SourceReadModel) error {
@@ -684,79 +883,118 @@ func (s *PrivacyStore) ReplaceSourceExternalIDs(ctx context.Context, branchID do
 }
 
 func (s *PrivacyStore) GetSourceExternalIDs(ctx context.Context, branchID domain.BranchID, sourceID uuid.UUID) ([]repository.SourceExternalIDReadModel, error) {
+	if v := s.privacy(ctx); !v.SeesAll() {
+		if shown, err := s.ownerShown(ctx, v, branchID, "source", sourceID); err != nil || !shown {
+			return nil, err
+		}
+	}
 	return s.inner.GetSourceExternalIDs(ctx, branchID, sourceID)
 }
 
 func (s *PrivacyStore) ListSourceExternalIDs(ctx context.Context, branchID domain.BranchID) (map[uuid.UUID][]repository.SourceExternalIDReadModel, error) {
-	return s.inner.ListSourceExternalIDs(ctx, branchID)
+	all, err := s.inner.ListSourceExternalIDs(ctx, branchID)
+	v := s.privacy(ctx)
+	if err != nil || v.SeesAll() {
+		return all, err
+	}
+	owners := make([]owner, 0, len(all))
+	for id := range all {
+		owners = append(owners, owner{"source", id})
+	}
+	shown, err := s.ownersShown(ctx, v, branchID, owners)
+	if err != nil {
+		return nil, err
+	}
+	for id := range all {
+		if !shown[owner{"source", id}] {
+			delete(all, id)
+		}
+	}
+	return all, nil
 }
 
 // ============================================================================
 // Citations
 // ============================================================================
 
-// Not yet redacted: GetCitation, GetCitationsByIDs, ListCitations,
-// GetCitationsForSource, CountCitationsBySource and the citation external IDs.
+// citationOwners are the records a citation belongs to: the owner of the
+// cited fact, and the source.
+func citationOwners(c *repository.CitationReadModel) []owner {
+	return []owner{{factOwnerType(c.FactType), c.FactOwnerID}, {"source", c.SourceID}}
+}
+
+// citationsShown drops the private citations, and those of a source or a
+// fact owner the principal on ctx may not see.
+func (s *PrivacyStore) citationsShown(ctx context.Context, branchID domain.BranchID, citations []repository.CitationReadModel, err error) ([]repository.CitationReadModel, error) {
+	if v := s.privacy(ctx); err == nil && !v.SeesAll() {
+		citations = withoutPrivate(v, citations, citationRestriction)
+	}
+	return rowsShown(ctx, s, branchID, citations, err, citationOwners)
+}
 
 func (s *PrivacyStore) GetCitation(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.CitationReadModel, error) {
-	return s.inner.GetCitation(ctx, branchID, id)
+	c, err := s.inner.GetCitation(ctx, branchID, id)
+	if err != nil || c == nil {
+		return c, err
+	}
+	shown, err := s.citationsShown(ctx, branchID, []repository.CitationReadModel{*c}, nil)
+	if err != nil || len(shown) == 0 {
+		return nil, err
+	}
+	return &shown[0], nil
 }
 
 func (s *PrivacyStore) GetCitationsByIDs(ctx context.Context, branchID domain.BranchID, ids []uuid.UUID) ([]repository.CitationReadModel, error) {
-	return s.inner.GetCitationsByIDs(ctx, branchID, ids)
+	citations, err := s.inner.GetCitationsByIDs(ctx, branchID, ids)
+	return s.citationsShown(ctx, branchID, citations, err)
 }
 
 func (s *PrivacyStore) ListCitations(ctx context.Context, opts repository.ListOptions) ([]repository.CitationReadModel, int, error) {
-	return s.inner.ListCitations(ctx, opts)
+	if v := s.privacy(ctx); v.SeesAll() {
+		return s.inner.ListCitations(ctx, opts)
+	}
+	return listShown(ctx, opts, s.inner.ListCitations, func(rows []repository.CitationReadModel) ([]repository.CitationReadModel, error) {
+		return s.citationsShown(ctx, opts.BranchID, rows, nil)
+	})
 }
 
 func (s *PrivacyStore) GetCitationsForSource(ctx context.Context, branchID domain.BranchID, sourceID uuid.UUID) ([]repository.CitationReadModel, error) {
-	return s.inner.GetCitationsForSource(ctx, branchID, sourceID)
+	citations, err := s.inner.GetCitationsForSource(ctx, branchID, sourceID)
+	return s.citationsShown(ctx, branchID, citations, err)
 }
 
+// CountCitationsBySource counts only the citations shown, so it reads each
+// source's citations.
 func (s *PrivacyStore) CountCitationsBySource(ctx context.Context, branchID domain.BranchID, sourceIDs []uuid.UUID) (map[uuid.UUID]int, error) {
-	return s.inner.CountCitationsBySource(ctx, branchID, sourceIDs)
+	if v := s.privacy(ctx); v.SeesAll() {
+		return s.inner.CountCitationsBySource(ctx, branchID, sourceIDs)
+	}
+	counts := make(map[uuid.UUID]int, len(sourceIDs))
+	for _, id := range sourceIDs {
+		citations, err := s.GetCitationsForSource(ctx, branchID, id)
+		if err != nil {
+			return nil, err
+		}
+		if len(citations) > 0 {
+			counts[id] = len(citations)
+		}
+	}
+	return counts, nil
 }
 
-// GetCitationsForPerson hides a protected person's citations and drops
-// private ones.
 func (s *PrivacyStore) GetCitationsForPerson(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) ([]repository.CitationReadModel, error) {
-	v := s.privacy(ctx)
-	if v.SeesAll() {
-		return s.inner.GetCitationsForPerson(ctx, branchID, personID)
-	}
-	if protected, err := s.personProtected(ctx, v, branchID, personID); err != nil || protected {
-		return nil, err
-	}
 	citations, err := s.inner.GetCitationsForPerson(ctx, branchID, personID)
-	return withoutPrivate(v, citations, citationRestriction), err
+	return s.citationsShown(ctx, branchID, citations, err)
 }
 
-// GetCitationsForFact hides the citations of a protected person's facts and
-// of a family's facts it hides, and drops private ones.
 func (s *PrivacyStore) GetCitationsForFact(ctx context.Context, branchID domain.BranchID, factType domain.FactType, factOwnerID uuid.UUID) ([]repository.CitationReadModel, error) {
-	v := s.privacy(ctx)
-	if v.SeesAll() {
-		return s.inner.GetCitationsForFact(ctx, branchID, factType, factOwnerID)
-	}
-	if shown, err := s.ownerShown(ctx, v, branchID, factOwnerType(factType), factOwnerID); err != nil || !shown {
-		return nil, err
-	}
 	citations, err := s.inner.GetCitationsForFact(ctx, branchID, factType, factOwnerID)
-	return withoutPrivate(v, citations, citationRestriction), err
+	return s.citationsShown(ctx, branchID, citations, err)
 }
 
-// GetCitationsForFactInstance is redacted as GetCitationsForFact.
 func (s *PrivacyStore) GetCitationsForFactInstance(ctx context.Context, branchID domain.BranchID, factType domain.FactType, factOwnerID, factID uuid.UUID) ([]repository.CitationReadModel, error) {
-	v := s.privacy(ctx)
-	if v.SeesAll() {
-		return s.inner.GetCitationsForFactInstance(ctx, branchID, factType, factOwnerID, factID)
-	}
-	if shown, err := s.ownerShown(ctx, v, branchID, factOwnerType(factType), factOwnerID); err != nil || !shown {
-		return nil, err
-	}
 	citations, err := s.inner.GetCitationsForFactInstance(ctx, branchID, factType, factOwnerID, factID)
-	return withoutPrivate(v, citations, citationRestriction), err
+	return s.citationsShown(ctx, branchID, citations, err)
 }
 
 func (s *PrivacyStore) SaveCitation(ctx context.Context, branchID domain.BranchID, citation *repository.CitationReadModel) error {
@@ -772,11 +1010,32 @@ func (s *PrivacyStore) ReplaceCitationExternalIDs(ctx context.Context, branchID 
 }
 
 func (s *PrivacyStore) GetCitationExternalIDs(ctx context.Context, branchID domain.BranchID, citationID uuid.UUID) ([]repository.CitationExternalIDReadModel, error) {
+	if v := s.privacy(ctx); !v.SeesAll() {
+		if c, err := s.GetCitation(ctx, branchID, citationID); err != nil || c == nil {
+			return nil, err
+		}
+	}
 	return s.inner.GetCitationExternalIDs(ctx, branchID, citationID)
 }
 
 func (s *PrivacyStore) ListCitationExternalIDs(ctx context.Context, branchID domain.BranchID) (map[uuid.UUID][]repository.CitationExternalIDReadModel, error) {
-	return s.inner.ListCitationExternalIDs(ctx, branchID)
+	all, err := s.inner.ListCitationExternalIDs(ctx, branchID)
+	if v := s.privacy(ctx); err != nil || v.SeesAll() {
+		return all, err
+	}
+	ids := make([]uuid.UUID, 0, len(all))
+	for id := range all {
+		ids = append(ids, id)
+	}
+	shown, err := s.GetCitationsByIDs(ctx, branchID, ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[uuid.UUID][]repository.CitationExternalIDReadModel, len(shown))
+	for _, c := range shown {
+		out[c.ID] = all[c.ID]
+	}
+	return out, nil
 }
 
 // ============================================================================
@@ -878,9 +1137,16 @@ func (s *PrivacyStore) GetEvent(ctx context.Context, branchID domain.BranchID, i
 	return e, nil
 }
 
-// ListEvents is not yet redacted; only the editor-only exports call it.
+// eventOwners is the person or family an event belongs to.
+func eventOwners(e *repository.EventReadModel) []owner { return []owner{{e.OwnerType, e.OwnerID}} }
+
+// attributeOwners is the person an attribute belongs to.
+func attributeOwners(a *repository.AttributeReadModel) []owner {
+	return []owner{{"person", a.PersonID}}
+}
+
 func (s *PrivacyStore) ListEvents(ctx context.Context, opts repository.ListOptions) ([]repository.EventReadModel, int, error) {
-	return s.inner.ListEvents(ctx, opts)
+	return pageShown(ctx, s, opts, s.inner.ListEvents, eventOwners)
 }
 
 func (s *PrivacyStore) ListEventsForPerson(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) ([]repository.EventReadModel, error) {
@@ -921,9 +1187,8 @@ func (s *PrivacyStore) GetAttribute(ctx context.Context, branchID domain.BranchI
 	return a, nil
 }
 
-// ListAttributes is not yet redacted; only the editor-only exports call it.
 func (s *PrivacyStore) ListAttributes(ctx context.Context, opts repository.ListOptions) ([]repository.AttributeReadModel, int, error) {
-	return s.inner.ListAttributes(ctx, opts)
+	return pageShown(ctx, s, opts, s.inner.ListAttributes, attributeOwners)
 }
 
 func (s *PrivacyStore) ListAttributesForPerson(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) ([]repository.AttributeReadModel, error) {
@@ -944,15 +1209,95 @@ func (s *PrivacyStore) DeleteAttribute(ctx context.Context, branchID domain.Bran
 }
 
 // ============================================================================
-// Notes, submitters and repositories (not yet redacted)
+// Notes, submitters and repositories
 // ============================================================================
 
+// notesShown drops the private notes, and the shared notes every record
+// pointing to which the principal may not see (ADR-008 §3). A note nothing
+// points to is shown.
+func (s *PrivacyStore) notesShown(ctx context.Context, v repository.Privacy, branchID domain.BranchID, notes []repository.NoteReadModel) ([]repository.NoteReadModel, error) {
+	notes = withoutPrivate(v, notes, noteRestriction)
+	if len(notes) == 0 {
+		return notes, nil
+	}
+	refs, err := gedcom.NotesReferences(ctx, s.inner, branchID, notes)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]repository.NoteReadModel, 0, len(notes))
+	for _, n := range notes {
+		shown := len(refs[n.ID]) == 0
+		for _, ref := range refs[n.ID] {
+			if shown, err = s.referenceShown(ctx, v, branchID, ref); err != nil {
+				return nil, err
+			}
+			if shown {
+				break
+			}
+		}
+		if shown {
+			out = append(out, n)
+		}
+	}
+	return out, nil
+}
+
+// referenceShown reports whether v may see the record that ref names. A
+// name, event or attribute is shown when its owner is, an association when
+// both its people are; a repository holds no person data.
+func (s *PrivacyStore) referenceShown(ctx context.Context, v repository.Privacy, branchID domain.BranchID, ref gedcom.NoteReference) (bool, error) {
+	switch ref.Type {
+	case "person", "family", "source":
+		return s.ownerShown(ctx, v, branchID, ref.Type, ref.ID)
+	case "repository":
+		return true, nil
+	case "name":
+		n, err := s.inner.GetPersonName(ctx, branchID, ref.ID)
+		if err != nil || n == nil {
+			return false, err
+		}
+		return s.ownerShown(ctx, v, branchID, "person", n.PersonID)
+	case "event":
+		e, err := s.inner.GetEvent(ctx, branchID, ref.ID)
+		if err != nil || e == nil {
+			return false, err
+		}
+		return s.ownerShown(ctx, v, branchID, e.OwnerType, e.OwnerID)
+	case "attribute":
+		a, err := s.inner.GetAttribute(ctx, branchID, ref.ID)
+		if err != nil || a == nil {
+			return false, err
+		}
+		return s.ownerShown(ctx, v, branchID, "person", a.PersonID)
+	case "association":
+		a, err := s.GetAssociation(ctx, branchID, ref.ID)
+		return a != nil, err
+	default:
+		return false, nil
+	}
+}
+
 func (s *PrivacyStore) GetNote(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.NoteReadModel, error) {
-	return s.inner.GetNote(ctx, branchID, id)
+	n, err := s.inner.GetNote(ctx, branchID, id)
+	v := s.privacy(ctx)
+	if err != nil || n == nil || v.SeesAll() {
+		return n, err
+	}
+	shown, err := s.notesShown(ctx, v, branchID, []repository.NoteReadModel{*n})
+	if err != nil || len(shown) == 0 {
+		return nil, err
+	}
+	return &shown[0], nil
 }
 
 func (s *PrivacyStore) ListNotes(ctx context.Context, opts repository.ListOptions) ([]repository.NoteReadModel, int, error) {
-	return s.inner.ListNotes(ctx, opts)
+	v := s.privacy(ctx)
+	if v.SeesAll() {
+		return s.inner.ListNotes(ctx, opts)
+	}
+	return listShown(ctx, opts, s.inner.ListNotes, func(rows []repository.NoteReadModel) ([]repository.NoteReadModel, error) {
+		return s.notesShown(ctx, v, opts.BranchID, rows)
+	})
 }
 
 func (s *PrivacyStore) SaveNote(ctx context.Context, branchID domain.BranchID, note *repository.NoteReadModel) error {
@@ -963,11 +1308,19 @@ func (s *PrivacyStore) DeleteNote(ctx context.Context, branchID domain.BranchID,
 	return s.inner.DeleteNote(ctx, branchID, id)
 }
 
+// GetSubmitter hides submitters from anonymous visitors (ADR-008 §4).
 func (s *PrivacyStore) GetSubmitter(ctx context.Context, id uuid.UUID) (*repository.SubmitterReadModel, error) {
+	if s.privacy(ctx).HideSubmitters {
+		return nil, nil
+	}
 	return s.inner.GetSubmitter(ctx, id)
 }
 
+// ListSubmitters lists none to anonymous visitors (ADR-008 §4).
 func (s *PrivacyStore) ListSubmitters(ctx context.Context, opts repository.ListOptions) ([]repository.SubmitterReadModel, int, error) {
+	if s.privacy(ctx).HideSubmitters {
+		return nil, 0, nil
+	}
 	return s.inner.ListSubmitters(ctx, opts)
 }
 
@@ -1011,15 +1364,30 @@ func (s *PrivacyStore) ListRepositoryExternalIDs(ctx context.Context) (map[uuid.
 // Associations and LDS ordinances
 // ============================================================================
 
-// Not yet redacted: GetAssociation, ListAssociations, GetLDSOrdinance and
-// ListLDSOrdinances.
+// associationOwners are an association's two people.
+func associationOwners(a *repository.AssociationReadModel) []owner {
+	return []owner{{"person", a.PersonID}, {"person", a.AssociateID}}
+}
+
+// ldsOwners are the person or family an ordinance belongs to.
+func ldsOwners(o *repository.LDSOrdinanceReadModel) []owner {
+	var owners []owner
+	if o.PersonID != nil {
+		owners = append(owners, owner{"person", *o.PersonID})
+	}
+	if o.FamilyID != nil {
+		owners = append(owners, owner{"family", *o.FamilyID})
+	}
+	return owners
+}
 
 func (s *PrivacyStore) GetAssociation(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.AssociationReadModel, error) {
-	return s.inner.GetAssociation(ctx, branchID, id)
+	a, err := s.inner.GetAssociation(ctx, branchID, id)
+	return rowShown(ctx, s, branchID, a, err, associationOwners)
 }
 
 func (s *PrivacyStore) ListAssociations(ctx context.Context, opts repository.ListOptions) ([]repository.AssociationReadModel, int, error) {
-	return s.inner.ListAssociations(ctx, opts)
+	return pageShown(ctx, s, opts, s.inner.ListAssociations, associationOwners)
 }
 
 // ListAssociationsForPerson hides a protected person's associations, and
@@ -1055,12 +1423,18 @@ func (s *PrivacyStore) DeleteAssociation(ctx context.Context, branchID domain.Br
 	return s.inner.DeleteAssociation(ctx, branchID, id)
 }
 
+// GetLDSOrdinance hides an ordinance whose person or family is hidden. LDS
+// ordinances are mainline-only, so their owners are resolved on the
+// mainline.
 func (s *PrivacyStore) GetLDSOrdinance(ctx context.Context, id uuid.UUID) (*repository.LDSOrdinanceReadModel, error) {
-	return s.inner.GetLDSOrdinance(ctx, id)
+	o, err := s.inner.GetLDSOrdinance(ctx, id)
+	return rowShown(ctx, s, domain.MainBranchID, o, err, ldsOwners)
 }
 
+// ListLDSOrdinances is redacted as GetLDSOrdinance; its callers list the
+// mainline.
 func (s *PrivacyStore) ListLDSOrdinances(ctx context.Context, opts repository.ListOptions) ([]repository.LDSOrdinanceReadModel, int, error) {
-	return s.inner.ListLDSOrdinances(ctx, opts)
+	return pageShown(ctx, s, opts, s.inner.ListLDSOrdinances, ldsOwners)
 }
 
 // ListLDSOrdinancesForPerson hides a protected person's ordinances. LDS
@@ -1094,23 +1468,49 @@ func (s *PrivacyStore) DeleteLDSOrdinance(ctx context.Context, id uuid.UUID) err
 }
 
 // ============================================================================
-// Evidence and duplicates (not yet redacted)
+// Evidence and duplicates
 // ============================================================================
 
+// Evidence records belong to their subject, a person or family; so does a
+// research log. A duplicate dismissal belongs to its two people.
+
+func analysisOwners(a *repository.EvidenceAnalysisReadModel) []owner {
+	return []owner{{factOwnerType(a.FactType), a.SubjectID}}
+}
+
+func conflictOwners(c *repository.EvidenceConflictReadModel) []owner {
+	return []owner{{factOwnerType(c.FactType), c.SubjectID}}
+}
+
+func researchLogOwners(l *repository.ResearchLogReadModel) []owner {
+	return []owner{{l.SubjectType, l.SubjectID}}
+}
+
+func proofOwners(p *repository.ProofSummaryReadModel) []owner {
+	return []owner{{factOwnerType(p.FactType), p.SubjectID}}
+}
+
+func dismissalOwners(d *repository.DuplicateDismissalReadModel) []owner {
+	return []owner{{"person", d.Person1ID}, {"person", d.Person2ID}}
+}
+
 func (s *PrivacyStore) GetEvidenceAnalysis(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.EvidenceAnalysisReadModel, error) {
-	return s.inner.GetEvidenceAnalysis(ctx, branchID, id)
+	a, err := s.inner.GetEvidenceAnalysis(ctx, branchID, id)
+	return rowShown(ctx, s, branchID, a, err, analysisOwners)
 }
 
 func (s *PrivacyStore) ListEvidenceAnalyses(ctx context.Context, opts repository.ListOptions) ([]repository.EvidenceAnalysisReadModel, int, error) {
-	return s.inner.ListEvidenceAnalyses(ctx, opts)
+	return pageShown(ctx, s, opts, s.inner.ListEvidenceAnalyses, analysisOwners)
 }
 
 func (s *PrivacyStore) GetAnalysesForFact(ctx context.Context, branchID domain.BranchID, factType domain.FactType, subjectID uuid.UUID) ([]repository.EvidenceAnalysisReadModel, error) {
-	return s.inner.GetAnalysesForFact(ctx, branchID, factType, subjectID)
+	analyses, err := s.inner.GetAnalysesForFact(ctx, branchID, factType, subjectID)
+	return rowsShown(ctx, s, branchID, analyses, err, analysisOwners)
 }
 
 func (s *PrivacyStore) GetAnalysesBySubject(ctx context.Context, branchID domain.BranchID, subjectID uuid.UUID) ([]repository.EvidenceAnalysisReadModel, error) {
-	return s.inner.GetAnalysesBySubject(ctx, branchID, subjectID)
+	analyses, err := s.inner.GetAnalysesBySubject(ctx, branchID, subjectID)
+	return rowsShown(ctx, s, branchID, analyses, err, analysisOwners)
 }
 
 func (s *PrivacyStore) SaveEvidenceAnalysis(ctx context.Context, branchID domain.BranchID, analysis *repository.EvidenceAnalysisReadModel) error {
@@ -1122,19 +1522,22 @@ func (s *PrivacyStore) DeleteEvidenceAnalysis(ctx context.Context, branchID doma
 }
 
 func (s *PrivacyStore) GetEvidenceConflict(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.EvidenceConflictReadModel, error) {
-	return s.inner.GetEvidenceConflict(ctx, branchID, id)
+	c, err := s.inner.GetEvidenceConflict(ctx, branchID, id)
+	return rowShown(ctx, s, branchID, c, err, conflictOwners)
 }
 
 func (s *PrivacyStore) ListEvidenceConflicts(ctx context.Context, opts repository.ListOptions) ([]repository.EvidenceConflictReadModel, int, error) {
-	return s.inner.ListEvidenceConflicts(ctx, opts)
+	return pageShown(ctx, s, opts, s.inner.ListEvidenceConflicts, conflictOwners)
 }
 
 func (s *PrivacyStore) GetConflictsForSubject(ctx context.Context, branchID domain.BranchID, subjectID uuid.UUID) ([]repository.EvidenceConflictReadModel, error) {
-	return s.inner.GetConflictsForSubject(ctx, branchID, subjectID)
+	conflicts, err := s.inner.GetConflictsForSubject(ctx, branchID, subjectID)
+	return rowsShown(ctx, s, branchID, conflicts, err, conflictOwners)
 }
 
 func (s *PrivacyStore) ListUnresolvedConflicts(ctx context.Context, branchID domain.BranchID) ([]repository.EvidenceConflictReadModel, error) {
-	return s.inner.ListUnresolvedConflicts(ctx, branchID)
+	conflicts, err := s.inner.ListUnresolvedConflicts(ctx, branchID)
+	return rowsShown(ctx, s, branchID, conflicts, err, conflictOwners)
 }
 
 func (s *PrivacyStore) SaveEvidenceConflict(ctx context.Context, branchID domain.BranchID, conflict *repository.EvidenceConflictReadModel) error {
@@ -1146,15 +1549,17 @@ func (s *PrivacyStore) DeleteEvidenceConflict(ctx context.Context, branchID doma
 }
 
 func (s *PrivacyStore) GetResearchLog(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.ResearchLogReadModel, error) {
-	return s.inner.GetResearchLog(ctx, branchID, id)
+	l, err := s.inner.GetResearchLog(ctx, branchID, id)
+	return rowShown(ctx, s, branchID, l, err, researchLogOwners)
 }
 
 func (s *PrivacyStore) ListResearchLogs(ctx context.Context, opts repository.ListOptions) ([]repository.ResearchLogReadModel, int, error) {
-	return s.inner.ListResearchLogs(ctx, opts)
+	return pageShown(ctx, s, opts, s.inner.ListResearchLogs, researchLogOwners)
 }
 
 func (s *PrivacyStore) GetResearchLogsForSubject(ctx context.Context, branchID domain.BranchID, subjectID uuid.UUID) ([]repository.ResearchLogReadModel, error) {
-	return s.inner.GetResearchLogsForSubject(ctx, branchID, subjectID)
+	logs, err := s.inner.GetResearchLogsForSubject(ctx, branchID, subjectID)
+	return rowsShown(ctx, s, branchID, logs, err, researchLogOwners)
 }
 
 func (s *PrivacyStore) SaveResearchLog(ctx context.Context, branchID domain.BranchID, log *repository.ResearchLogReadModel) error {
@@ -1166,19 +1571,22 @@ func (s *PrivacyStore) DeleteResearchLog(ctx context.Context, branchID domain.Br
 }
 
 func (s *PrivacyStore) GetProofSummary(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.ProofSummaryReadModel, error) {
-	return s.inner.GetProofSummary(ctx, branchID, id)
+	p, err := s.inner.GetProofSummary(ctx, branchID, id)
+	return rowShown(ctx, s, branchID, p, err, proofOwners)
 }
 
 func (s *PrivacyStore) ListProofSummaries(ctx context.Context, opts repository.ListOptions) ([]repository.ProofSummaryReadModel, int, error) {
-	return s.inner.ListProofSummaries(ctx, opts)
+	return pageShown(ctx, s, opts, s.inner.ListProofSummaries, proofOwners)
 }
 
 func (s *PrivacyStore) GetProofSummariesForFact(ctx context.Context, branchID domain.BranchID, factType domain.FactType, subjectID uuid.UUID) ([]repository.ProofSummaryReadModel, error) {
-	return s.inner.GetProofSummariesForFact(ctx, branchID, factType, subjectID)
+	summaries, err := s.inner.GetProofSummariesForFact(ctx, branchID, factType, subjectID)
+	return rowsShown(ctx, s, branchID, summaries, err, proofOwners)
 }
 
 func (s *PrivacyStore) GetProofSummariesBySubject(ctx context.Context, branchID domain.BranchID, subjectID uuid.UUID) ([]repository.ProofSummaryReadModel, error) {
-	return s.inner.GetProofSummariesBySubject(ctx, branchID, subjectID)
+	summaries, err := s.inner.GetProofSummariesBySubject(ctx, branchID, subjectID)
+	return rowsShown(ctx, s, branchID, summaries, err, proofOwners)
 }
 
 func (s *PrivacyStore) SaveProofSummary(ctx context.Context, branchID domain.BranchID, summary *repository.ProofSummaryReadModel) error {
@@ -1190,11 +1598,12 @@ func (s *PrivacyStore) DeleteProofSummary(ctx context.Context, branchID domain.B
 }
 
 func (s *PrivacyStore) GetDuplicateDismissal(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.DuplicateDismissalReadModel, error) {
-	return s.inner.GetDuplicateDismissal(ctx, branchID, id)
+	d, err := s.inner.GetDuplicateDismissal(ctx, branchID, id)
+	return rowShown(ctx, s, branchID, d, err, dismissalOwners)
 }
 
 func (s *PrivacyStore) ListDuplicateDismissals(ctx context.Context, opts repository.ListOptions) ([]repository.DuplicateDismissalReadModel, int, error) {
-	return s.inner.ListDuplicateDismissals(ctx, opts)
+	return pageShown(ctx, s, opts, s.inner.ListDuplicateDismissals, dismissalOwners)
 }
 
 func (s *PrivacyStore) SaveDuplicateDismissal(ctx context.Context, branchID domain.BranchID, dismissal *repository.DuplicateDismissalReadModel) error {
