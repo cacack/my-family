@@ -200,7 +200,8 @@ them; a media record nothing links to is skipped with a warning. The items of on
 their `private` mark: marking one private marks them all (items imported by an earlier version
 are not grouped; if an update fails part way, sending the mark again marks the rest). Imported
 media are references only: they keep the file paths but not the files, so the gallery shows each as its title and path,
-and its content and thumbnail return 404 (`no_content` for the content); upload the file to store it.
+and its content and thumbnail return 404 (`no_content` for the content). Uploading the file creates a new media item;
+the imported reference stays as it is, so you then have both.
 Export writes an `OBJE` record per
 item (one record, linked from each owner, for the items of one record that are still alike), naming
 an uploaded item's file by its filename; the file content is not included.
