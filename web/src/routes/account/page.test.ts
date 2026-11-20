@@ -59,4 +59,15 @@ describe('Account page', () => {
 		render(AccountPage);
 		expect(screen.getByRole('note').textContent).toContain('AUTH_MODE=open');
 	});
+
+	it('offers a visitor the sign-in page, not the open-mode note', async () => {
+		auth.phase = 'visitor';
+		auth.visitorsWelcome = true;
+		auth.account = null;
+		render(AccountPage);
+		expect(screen.getByRole('note').textContent).toContain('browsing as a visitor');
+		expect(screen.queryByText(/AUTH_MODE=open/)).toBeNull();
+		await fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+		expect(auth.phase).toBe('signed-out');
+	});
 });

@@ -5,7 +5,7 @@
 	 * controls are hidden everywhere else. It names the role the action needs
 	 * and the user's own, so they know whom to ask.
 	 */
-	import { currentRole, type Role } from '#lib/stores/access.svelte.js';
+	import { currentRole, isVisitor, type Role } from '#lib/stores/access.svelte.js';
 
 	interface Props {
 		/** What the user cannot do, as the start of a sentence, e.g. "Importing GEDCOM". */
@@ -26,7 +26,11 @@
 >
 	<p class="font-semibold">{action} needs {needs}</p>
 	<p class="mt-1">
-		You are signed in as {currentRole() === 'editor' ? 'an' : 'a'} {currentRole() ?? 'visitor'}. Ask the
-		tree's owner if you need to do this.
+		{#if isVisitor()}
+			You are browsing as a visitor. Sign in if you have an account that may do this.
+		{:else}
+			You are signed in as {currentRole() === 'editor' ? 'an' : 'a'} {currentRole() ?? 'visitor'}. Ask the
+			tree's owner if you need to do this.
+		{/if}
 	</p>
 </div>

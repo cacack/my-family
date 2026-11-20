@@ -158,11 +158,11 @@
 		{/snippet}
 	</PageHeader>
 
-	{#if !auth.account}
+	{#if auth.phase === 'open'}
 		<p class="notice" role="note">
 			This server runs without sign-in (AUTH_MODE=open), so there are no users to manage.
 		</p>
-	{:else if !managing}
+	{:else if !auth.account || !managing}
 		<RoleNotice action="Managing users" required="owner" />
 	{:else}
 		<section class="panel" aria-labelledby="invite-heading">
