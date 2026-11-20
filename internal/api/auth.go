@@ -187,11 +187,10 @@ func (s *Server) servePreview(ctx context.Context, c echo.Context, next echo.Han
 		}
 		ctx = withRole(ctx, repository.RoleViewer, false)
 	case previewVisitor:
-		if required != repository.RoleViewer || signedInRoutes[routeKey(c.Request().Method, c.Path())] {
+		if !visitorMayCall(c, required) {
 			return refuse(c, http.StatusForbidden, CodeForbidden, "A visitor cannot do this."+stop)
 		}
-		ctx = context.WithValue(ctx, userKey{}, (*repository.User)(nil))
-		ctx = withRole(ctx, repository.RoleViewer, true)
+		ctx = asVisitor(ctx)
 	default:
 		return refuse(c, http.StatusBadRequest, CodeBadRequest,
 			fmt.Sprintf("Cannot preview the tree as %q: only as a viewer or a visitor. Stop the preview and start it again.", as))
@@ -209,11 +208,10 @@ func (s *Server) serveVisitor(ctx context.Context, c echo.Context, next echo.Han
 	if err != nil {
 		return err
 	}
-	key := routeKey(c.Request().Method, c.Path())
-	if !s.visitorsLetIn(settings) || required != repository.RoleViewer || signedInRoutes[key] {
+	if !s.visitorsLetIn(settings) || !visitorMayCall(c, required) {
 		return refuse(c, http.StatusUnauthorized, CodeUnauthenticated, "Sign in to continue")
 	}
-	ctx = withRole(ctx, repository.RoleViewer, true)
+	ctx = asVisitor(ctx)
 	c.SetRequest(c.Request().WithContext(repository.ContextWithTreeSettings(ctx, settings)))
 	return next(c)
 }
@@ -227,10 +225,26 @@ func (s *Server) visitorsLetIn(settings repository.TreeSettings) bool {
 	return s.visitorsProtected && settings.AnonymousAccess == repository.AnonymousAccessViewer
 }
 
-// isAnonymous reports whether the request is a visitor's: a role with no
-// signed-in user, which only serveVisitor grants (open mode's owner aside).
+// visitorMayCall reports whether the anonymous principal may call the route,
+// once let in: what a viewer may, except signedInRoutes. serveVisitor and a
+// visitor preview both ask it, so the preview refuses what a visitor is
+// refused.
+func visitorMayCall(c echo.Context, required repository.Role) bool {
+	return required == repository.RoleViewer && !signedInRoutes[routeKey(c.Request().Method, c.Path())]
+}
+
+// asVisitor returns ctx carrying the anonymous principal: the viewer role
+// with no user. serveVisitor grants it, and so does a visitor preview.
+func asVisitor(ctx context.Context) context.Context {
+	ctx = context.WithValue(ctx, userKey{}, (*repository.User)(nil))
+	return withRole(ctx, repository.RoleViewer, true)
+}
+
+// isAnonymous reports whether the request is served as a visitor: the
+// anonymous principal asVisitor puts on the context, for a real visitor or
+// an owner previewing as one.
 func isAnonymous(ctx context.Context) bool {
-	return userFrom(ctx) == nil && roleFrom(ctx) == repository.RoleViewer
+	return roleFrom(ctx) == repository.RoleViewer && repository.PrincipalFrom(ctx).Anonymous
 }
 
 // serveTree calls a handler that may read the tree, with the owner's privacy
