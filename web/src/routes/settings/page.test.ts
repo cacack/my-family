@@ -114,6 +114,8 @@ describe('Settings page', () => {
 		const hint = document.getElementById(group.getAttribute('aria-describedby') ?? '');
 		const link = hint?.querySelector('a');
 		expect(link?.textContent).toBe('Preview the tree as a visitor');
+		// The preview ignores unsaved changes, so the link says it uses the saved settings (#1542).
+		expect(link?.parentElement?.textContent).toMatch(/preview\s+uses\s+the\s+saved\s+settings/);
 		const target = document.getElementById(link?.getAttribute('href')?.slice(1) ?? '');
 		expect(target?.querySelector('button')?.textContent?.trim()).toBe('Preview as a visitor');
 	});
