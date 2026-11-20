@@ -4321,12 +4321,15 @@ func convertQueryFamilyToGenerated(f query.Family) Family {
 }
 
 // personSummary builds a PersonSummary for a family partner or child.
-func personSummary(id uuid.UUID, given, surname string, gender *string, redacted bool) *PersonSummary {
+func personSummary(id uuid.UUID, given, surname string, gender *string, marks query.PersonMarks) *PersonSummary {
+	living := marks.Living
 	s := &PersonSummary{
 		Id:        id,
 		GivenName: given,
 		Surname:   surname,
-		Redacted:  redactedFlag(redacted),
+		Living:    &living,
+		Private:   privateFlag(marks.Private),
+		Redacted:  redactedFlag(marks.Redacted),
 	}
 	if gender != nil {
 		g := Gender(*gender)
@@ -4372,10 +4375,10 @@ func convertQueryFamilyDetailToGenerated(fd query.FamilyDetail) FamilyDetail {
 	// nil for legacy or unprojected data; missing parts render as empty
 	// strings rather than dropping the whole summary.
 	if fd.Partner1ID != nil {
-		resp.Partner1 = personSummary(*fd.Partner1ID, stringValue(fd.Partner1GivenName), stringValue(fd.Partner1Surname), fd.Partner1Gender, fd.Partner1Redacted)
+		resp.Partner1 = personSummary(*fd.Partner1ID, stringValue(fd.Partner1GivenName), stringValue(fd.Partner1Surname), fd.Partner1Gender, fd.Partner1Marks)
 	}
 	if fd.Partner2ID != nil {
-		resp.Partner2 = personSummary(*fd.Partner2ID, stringValue(fd.Partner2GivenName), stringValue(fd.Partner2Surname), fd.Partner2Gender, fd.Partner2Redacted)
+		resp.Partner2 = personSummary(*fd.Partner2ID, stringValue(fd.Partner2GivenName), stringValue(fd.Partner2Surname), fd.Partner2Gender, fd.Partner2Marks)
 	}
 
 	if len(fd.Children) > 0 {
@@ -4384,7 +4387,7 @@ func convertQueryFamilyDetailToGenerated(fd query.FamilyDetail) FamilyDetail {
 			children[i] = FamilyChild{
 				PersonId:         c.ID,
 				RelationshipType: ChildRelationType(c.RelationshipType),
-				Person:           personSummary(c.ID, c.GivenName, c.Surname, c.Gender, c.Redacted),
+				Person:           personSummary(c.ID, c.GivenName, c.Surname, c.Gender, c.PersonMarks),
 			}
 		}
 		resp.Children = &children
@@ -4429,10 +4432,10 @@ func convertQueryFamilyToFamilyDetail(f query.Family) FamilyDetail {
 	resp.Notes = f.Notes
 
 	if f.Partner1ID != nil {
-		resp.Partner1 = personSummary(*f.Partner1ID, stringValue(f.Partner1GivenName), stringValue(f.Partner1Surname), nil, f.Partner1Redacted)
+		resp.Partner1 = personSummary(*f.Partner1ID, stringValue(f.Partner1GivenName), stringValue(f.Partner1Surname), nil, f.Partner1Marks)
 	}
 	if f.Partner2ID != nil {
-		resp.Partner2 = personSummary(*f.Partner2ID, stringValue(f.Partner2GivenName), stringValue(f.Partner2Surname), nil, f.Partner2Redacted)
+		resp.Partner2 = personSummary(*f.Partner2ID, stringValue(f.Partner2GivenName), stringValue(f.Partner2Surname), nil, f.Partner2Marks)
 	}
 
 	return resp
@@ -4502,11 +4505,13 @@ func convertQueryGroupSheetPersonToGenerated(p *query.GroupSheetPerson) *GroupSh
 		id := *p.FatherID
 		resp.FatherId = &id
 		resp.FatherName = &p.FatherName
+		resp.FatherMarks = personMarks(p.FatherMarks)
 	}
 	if p.MotherID != nil {
 		id := *p.MotherID
 		resp.MotherId = &id
 		resp.MotherName = &p.MotherName
+		resp.MotherMarks = personMarks(p.MotherMarks)
 	}
 
 	return resp
@@ -4562,6 +4567,7 @@ func convertQueryGroupSheetChildToGenerated(c *query.GroupSheetChild) GroupSheet
 		id := *c.SpouseID
 		resp.SpouseId = &id
 		resp.SpouseName = &c.SpouseName
+		resp.SpouseMarks = personMarks(c.SpouseMarks)
 	}
 
 	return resp
@@ -4913,11 +4919,11 @@ func (ss *StrictServer) GetRelationship(ctx context.Context, request GetRelation
 	for i, p := range result.Paths {
 		pathFromA := make([]RelationshipPathNode, len(p.PathFromA))
 		for j, node := range p.PathFromA {
-			pathFromA[j] = RelationshipPathNode{Id: node.ID, Name: node.Name}
+			pathFromA[j] = relationshipPathNode(node)
 		}
 		pathFromB := make([]RelationshipPathNode, len(p.PathFromB))
 		for j, node := range p.PathFromB {
-			pathFromB[j] = RelationshipPathNode{Id: node.ID, Name: node.Name}
+			pathFromB[j] = relationshipPathNode(node)
 		}
 
 		name := p.Name

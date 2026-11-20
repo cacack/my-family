@@ -622,7 +622,7 @@
 									{#if child.relationship_type && child.relationship_type !== 'biological'}
 										<span class="child-type">({child.relationship_type})</span>
 									{/if}
-									<PrivacyBadges redacted={child.person?.redacted} />
+									<PrivacyBadges living={child.person?.living} private={child.person?.private} redacted={child.person?.redacted} />
 									{#if can('editor')}
 										<button
 											type="button"

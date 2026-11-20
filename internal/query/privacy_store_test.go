@@ -412,6 +412,83 @@ func TestPrivacyStore_Families(t *testing.T) {
 	}
 }
 
+// The family pages mark each person they name with that person's privacy
+// marks as the reader sees them: a visitor sees a protected partner, parent or
+// spouse as a placeholder, and the owner sees the living verdict and private
+// flag (#1413).
+func TestFamilyService_MarksTheRelativesItNames(t *testing.T) {
+	tr := newPrivacyTree(t)
+	main := domain.MainBranchID
+	kidsMarriage := &repository.FamilyReadModel{ID: uuid.New(), Partner1ID: &tr.kid, Partner2ID: &tr.private,
+		RelationshipType: domain.RelationMarriage, Version: 1, UpdatedAt: time.Now().UTC()}
+	if err := tr.raw.SaveFamily(context.Background(), main, kidsMarriage); err != nil {
+		t.Fatal(err)
+	}
+	service := query.NewFamilyService(tr.store)
+	dead, living := query.PersonMarks{}, query.PersonMarks{Living: true}
+	hidden := query.PersonMarks{Living: true, Redacted: true} // the placeholder's (empty) facts read as living
+	private := query.PersonMarks{Private: true}
+
+	for _, tc := range []struct {
+		name                                   string
+		ctx                                    context.Context
+		livingPartner, privateSpouse, livingMa query.PersonMarks
+	}{
+		{"owner", ownerCtx, living, private, living},
+		{"visitor", visitorCtx, hidden, hidden, hidden},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			family, err := service.GetFamily(tc.ctx, main, tr.open)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if family.Partner1Marks != dead || family.Partner2Marks != tc.livingPartner {
+				t.Errorf("partners = %+v, %+v; want %+v, %+v", family.Partner1Marks, family.Partner2Marks, dead, tc.livingPartner)
+			}
+			if len(family.Children) != 1 || family.Children[0].PersonMarks != tc.livingPartner {
+				t.Errorf("children = %+v; want the kid marked %+v", family.Children, tc.livingPartner)
+			}
+
+			list, err := service.ListFamilies(tc.ctx, query.ListFamiliesInput{Limit: 10})
+			if err != nil {
+				t.Fatal(err)
+			}
+			listed := false
+			for _, f := range list.Items {
+				if f.ID != tr.open {
+					continue
+				}
+				listed = true
+				if f.Partner2Marks != tc.livingPartner {
+					t.Errorf("listed partner2 = %+v, want %+v", f.Partner2Marks, tc.livingPartner)
+				}
+			}
+			if !listed {
+				t.Errorf("ListFamilies did not return family %s", tr.open)
+			}
+
+			sheet, err := service.GetGroupSheet(tc.ctx, main, tr.open)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(sheet.Children) != 1 || sheet.Children[0].SpouseMarks == nil || *sheet.Children[0].SpouseMarks != tc.privateSpouse {
+				t.Errorf("child's spouse marks = %+v; want %+v", sheet.Children, tc.privateSpouse)
+			}
+			sheet, err = service.GetGroupSheet(tc.ctx, main, kidsMarriage.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			kid := sheet.Husband
+			if kid == nil || kid.FatherMarks == nil || *kid.FatherMarks != dead || kid.MotherMarks == nil || *kid.MotherMarks != tc.livingMa {
+				t.Errorf("kid's parents' marks = %+v; want father %+v, mother %+v", kid, dead, tc.livingMa)
+			}
+			if sheet.Wife == nil || sheet.Wife.FatherMarks != nil || sheet.Wife.MotherMarks != nil {
+				t.Errorf("a partner with no parents has marks: %+v", sheet.Wife)
+			}
+		})
+	}
+}
+
 // A private family's child-to-parents link is a gap in the pedigree, even
 // when a visible family of the same partners links another child (ADR-008 §3).
 func TestPrivacyStore_PrivateFamilyParentage(t *testing.T) {

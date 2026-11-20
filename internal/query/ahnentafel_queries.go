@@ -25,6 +25,8 @@ type AhnentafelEntry struct {
 	BirthPlace *string         `json:"birth_place,omitempty"`
 	DeathDate  *domain.GenDate `json:"death_date,omitempty"`
 	DeathPlace *string         `json:"death_place,omitempty"`
+	Living     bool            `json:"living"`             // living rule verdict today (ADR-008 §1)
+	Private    bool            `json:"private,omitempty"`  // record marked private (ADR-008 §2)
 	Redacted   bool            `json:"redacted,omitempty"` // placeholder for a protected person (ADR-008 §3)
 }
 
@@ -111,6 +113,8 @@ func (s *AhnentafelService) traverseTree(node *PedigreeNode, ahnentafelNum int, 
 		BirthPlace: node.BirthPlace,
 		DeathDate:  node.DeathDate,
 		DeathPlace: node.DeathPlace,
+		Living:     node.Living,
+		Private:    node.Private,
 		Redacted:   node.Redacted,
 	}
 	*entries = append(*entries, entry)

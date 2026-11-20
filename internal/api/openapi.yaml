@@ -7189,20 +7189,40 @@ components:
           description: >-
             Whether the person counts as living under the living rule
             (ADR-008), evaluated when the request is served, as on Person.
-            Set on search results and map persons only; absent on a family's
-            partner and child summaries, where absent means not evaluated.
+            Set on search results, map persons and a family's partner and
+            child summaries.
         private:
           type: boolean
           description: >-
             Whether the person's record is private (ADR-008), as on Person.
-            Omitted when it is not, and on a family's partner and child
-            summaries, where it is not evaluated.
+            Omitted when it is not.
         redacted:
           type: boolean
           description: >-
             Set on the placeholder shown instead of a person the caller may not
             see (ADR-008 §3), as on Person. Set on a family's partner and child
             summaries; omitted otherwise.
+
+    PersonMarks:
+      type: object
+      description: >-
+        The privacy marks (ADR-008) of a person named on another record, such
+        as a group sheet partner's parent or a child's spouse.
+      required: [living]
+      properties:
+        living:
+          type: boolean
+          description: >-
+            Whether the person counts as living under the living rule,
+            evaluated when the request is served, as on Person.
+        private:
+          type: boolean
+          description: Whether the person's record is private, as on Person. Omitted when it is not.
+        redacted:
+          type: boolean
+          description: >-
+            Set when the person is shown as the placeholder for a person the
+            caller may not see (ADR-008 §3), as on Person. Omitted otherwise.
 
     PersonList:
       type: object
@@ -7464,12 +7484,20 @@ components:
         father_id:
           type: string
           format: uuid
+        father_marks:
+          allOf:
+            - $ref: '#/components/schemas/PersonMarks'
+          description: The father's privacy marks; set with father_id.
         mother_name:
           type: string
           description: Name of mother (if known)
         mother_id:
           type: string
           format: uuid
+        mother_marks:
+          allOf:
+            - $ref: '#/components/schemas/PersonMarks'
+          description: The mother's privacy marks; set with mother_id.
         living:
           type: boolean
           description: >-
@@ -7533,6 +7561,10 @@ components:
         spouse_id:
           type: string
           format: uuid
+        spouse_marks:
+          allOf:
+            - $ref: '#/components/schemas/PersonMarks'
+          description: The spouse's privacy marks; set with spouse_id.
         living:
           type: boolean
           description: >-
@@ -7813,6 +7845,17 @@ components:
           $ref: '#/components/schemas/GenDate'
         death_place:
           type: string
+        living:
+          type: boolean
+          description: >-
+            Whether the person counts as living under the living rule
+            (ADR-008), evaluated when the request is served, as on Person.
+            Omitted if ancestor is unknown.
+        private:
+          type: boolean
+          description: >-
+            Whether the person's record is private (ADR-008), as on Person.
+            Omitted when it is not.
         redacted:
           type: boolean
           description: >-
@@ -11045,6 +11088,21 @@ components:
         name:
           type: string
           description: Display name of the person (e.g., "John Smith")
+        living:
+          type: boolean
+          description: >-
+            Whether the person counts as living under the living rule
+            (ADR-008), evaluated when the request is served, as on Person.
+        private:
+          type: boolean
+          description: >-
+            Whether the person's record is private (ADR-008), as on Person.
+            Omitted when it is not.
+        redacted:
+          type: boolean
+          description: >-
+            Set on the placeholder shown instead of a person the caller may not
+            see (ADR-008 §3), as on Person. Omitted otherwise.
 
     RelationshipPath:
       type: object

@@ -509,9 +509,11 @@ func TestPrivacy_APIMarksPrivateAndOverridesLiving(t *testing.T) {
 }
 
 // TestPrivacy_APIMarksProtectedPeopleOnEverySurface reads a living, private
-// person and a deceased one through search, the charts, the group sheet and
-// the map: each surface carries the living verdict and the private flag, so
-// the UI can mark the person wherever they appear (#1413).
+// person and a deceased one through search, the charts, the ahnentafel, the
+// relationship path, the family list and page, the group sheet (with its
+// partners' parents and children's spouses) and the map: each surface carries
+// the living verdict and the private flag, so the UI can mark the person
+// wherever they appear (#1413).
 func TestPrivacy_APIMarksProtectedPeopleOnEverySurface(t *testing.T) {
 	for _, backend := range backends {
 		t.Run(backend.name, func(t *testing.T) {
@@ -538,6 +540,12 @@ func TestPrivacy_APIMarksProtectedPeopleOnEverySurface(t *testing.T) {
 			familyID := jsonArray(t, families, "items")[0].(map[string]any)["id"].(string)
 			mustDo(t, server, http.MethodPost, "/api/v1/families/"+familyID+"/children",
 				fmt.Sprintf(`{"person_id":%q}`, recent), http.StatusCreated)
+			// Recent marries, so the first family's sheet names a spouse and
+			// the second's names Recent's parents.
+			spouse := createPerson(t, server, "Spouse", "Doe")
+			second := mustDo(t, server, http.MethodPost, "/api/v1/families",
+				fmt.Sprintf(`{"partner1_id":%q,"partner2_id":%q}`, recent, spouse), http.StatusCreated)
+			secondID := mustString(t, second, "id")
 
 			type mark struct{ living, private any }
 			got := map[string]mark{}
@@ -559,7 +567,43 @@ func TestPrivacy_APIMarksProtectedPeopleOnEverySurface(t *testing.T) {
 			sheet := getEntity(t, server, "/api/v1/families/"+familyID+"/group-sheet", "")
 			note("group sheet", sheet["husband"].(map[string]any))
 			note("group sheet", sheet["wife"].(map[string]any))
-			note("group sheet", jsonArray(t, sheet, "children")[0].(map[string]any))
+			sheetChild := jsonArray(t, sheet, "children")[0].(map[string]any)
+			note("group sheet", sheetChild)
+			noteMarks := func(surface string, holder map[string]any, idKey, marksKey string) {
+				if marks, ok := holder[marksKey].(map[string]any); ok {
+					got[surface+" "+holder[idKey].(string)] = mark{marks["living"], marks["private"]}
+				}
+			}
+			noteMarks("group sheet spouse", sheetChild, "spouse_id", "spouse_marks")
+			secondSheet := getEntity(t, server, "/api/v1/families/"+secondID+"/group-sheet", "")
+			husband := secondSheet["husband"].(map[string]any)
+			noteMarks("group sheet father", husband, "father_id", "father_marks")
+			noteMarks("group sheet mother", husband, "mother_id", "mother_marks")
+			familyList := mustDo(t, server, http.MethodGet, "/api/v1/families", "", http.StatusOK)
+			for _, item := range jsonArray(t, familyList, "items") {
+				for _, key := range []string{"partner1", "partner2"} {
+					if partner, ok := item.(map[string]any)[key].(map[string]any); ok {
+						note("family list", partner)
+					}
+				}
+			}
+			family := getEntity(t, server, "/api/v1/families/"+familyID, "")
+			note("family", family["partner1"].(map[string]any))
+			note("family", family["partner2"].(map[string]any))
+			note("family", jsonArray(t, family, "children")[0].(map[string]any)["person"].(map[string]any))
+			ahnentafel := getEntity(t, server, "/api/v1/ahnentafel/"+recent, "")
+			for _, entry := range jsonArray(t, ahnentafel, "entries") {
+				if e := entry.(map[string]any); e["id"] != nil {
+					note("ahnentafel", e)
+				}
+			}
+			relationship := getEntity(t, server, "/api/v1/relationship/"+recent+"/"+alive, "")
+			path := jsonArray(t, relationship, "paths")[0].(map[string]any)
+			for _, key := range []string{"pathFromA", "pathFromB"} {
+				for _, node := range jsonArray(t, path, key) {
+					note("relationship", node.(map[string]any))
+				}
+			}
 			locations := mustDo(t, server, http.MethodGet, "/api/v1/map/locations", "", http.StatusOK)
 			for _, loc := range jsonArray(t, locations, "items") {
 				for _, person := range jsonArray(t, loc.(map[string]any), "persons") {
@@ -569,18 +613,33 @@ func TestPrivacy_APIMarksProtectedPeopleOnEverySurface(t *testing.T) {
 
 			livingPrivate, deceased, living := mark{true, true}, mark{false, nil}, mark{true, nil}
 			want := map[string]mark{
-				"search " + alive:             livingPrivate,
-				"pedigree " + recent:          living,
-				"pedigree " + buried:          deceased,
-				"pedigree " + alive:           livingPrivate,
-				"descendancy " + buried:       deceased,
-				"descendancy " + recent:       living,
-				"descendancy spouse " + alive: livingPrivate,
-				"group sheet " + buried:       deceased,
-				"group sheet " + alive:        livingPrivate,
-				"group sheet " + recent:       living,
-				"map " + alive:                livingPrivate,
-				"map " + buried:               deceased,
+				"search " + alive:              livingPrivate,
+				"pedigree " + recent:           living,
+				"pedigree " + buried:           deceased,
+				"pedigree " + alive:            livingPrivate,
+				"descendancy " + buried:        deceased,
+				"descendancy " + recent:        living,
+				"descendancy spouse " + alive:  livingPrivate,
+				"group sheet " + buried:        deceased,
+				"group sheet " + alive:         livingPrivate,
+				"group sheet " + recent:        living,
+				"map " + alive:                 livingPrivate,
+				"map " + buried:                deceased,
+				"group sheet spouse " + spouse: living,
+				"group sheet father " + buried: deceased,
+				"group sheet mother " + alive:  livingPrivate,
+				"family list " + alive:         livingPrivate,
+				"family list " + buried:        deceased,
+				"family list " + recent:        living,
+				"family list " + spouse:        living,
+				"family " + alive:              livingPrivate,
+				"family " + buried:             deceased,
+				"family " + recent:             living,
+				"ahnentafel " + recent:         living,
+				"ahnentafel " + buried:         deceased,
+				"ahnentafel " + alive:          livingPrivate,
+				"relationship " + recent:       living,
+				"relationship " + alive:        livingPrivate,
 			}
 			for key, w := range want {
 				if g, ok := got[key]; !ok || g != w {

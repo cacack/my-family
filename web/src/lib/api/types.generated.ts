@@ -4078,11 +4078,20 @@ export interface components {
             gender?: components["schemas"]["Gender"];
             birth_date?: components["schemas"]["GenDate"];
             death_date?: components["schemas"]["GenDate"];
-            /** @description Whether the person counts as living under the living rule (ADR-008), evaluated when the request is served, as on Person. Set on search results and map persons only; absent on a family's partner and child summaries, where absent means not evaluated. */
+            /** @description Whether the person counts as living under the living rule (ADR-008), evaluated when the request is served, as on Person. Set on search results, map persons and a family's partner and child summaries. */
             living?: boolean;
-            /** @description Whether the person's record is private (ADR-008), as on Person. Omitted when it is not, and on a family's partner and child summaries, where it is not evaluated. */
+            /** @description Whether the person's record is private (ADR-008), as on Person. Omitted when it is not. */
             private?: boolean;
             /** @description Set on the placeholder shown instead of a person the caller may not see (ADR-008 §3), as on Person. Set on a family's partner and child summaries; omitted otherwise. */
+            redacted?: boolean;
+        };
+        /** @description The privacy marks (ADR-008) of a person named on another record, such as a group sheet partner's parent or a child's spouse. */
+        PersonMarks: {
+            /** @description Whether the person counts as living under the living rule, evaluated when the request is served, as on Person. */
+            living: boolean;
+            /** @description Whether the person's record is private, as on Person. Omitted when it is not. */
+            private?: boolean;
+            /** @description Set when the person is shown as the placeholder for a person the caller may not see (ADR-008 §3), as on Person. Omitted otherwise. */
             redacted?: boolean;
         };
         PersonList: {
@@ -4221,10 +4230,14 @@ export interface components {
             father_name?: string;
             /** Format: uuid */
             father_id?: string;
+            /** @description The father's privacy marks; set with father_id. */
+            father_marks?: components["schemas"]["PersonMarks"];
             /** @description Name of mother (if known) */
             mother_name?: string;
             /** Format: uuid */
             mother_id?: string;
+            /** @description The mother's privacy marks; set with mother_id. */
+            mother_marks?: components["schemas"]["PersonMarks"];
             /** @description Whether the person counts as living under the living rule (ADR-008), evaluated when the request is served, as on Person. */
             living?: boolean;
             /** @description Whether the person's record is private (ADR-008), as on Person. Omitted when it is not. */
@@ -4260,6 +4273,8 @@ export interface components {
             spouse_name?: string;
             /** Format: uuid */
             spouse_id?: string;
+            /** @description The spouse's privacy marks; set with spouse_id. */
+            spouse_marks?: components["schemas"]["PersonMarks"];
             /** @description Whether the person counts as living under the living rule (ADR-008), evaluated when the request is served, as on Person. */
             living?: boolean;
             /** @description Whether the person's record is private (ADR-008), as on Person. Omitted when it is not. */
@@ -4433,6 +4448,10 @@ export interface components {
             birth_place?: string;
             death_date?: components["schemas"]["GenDate"];
             death_place?: string;
+            /** @description Whether the person counts as living under the living rule (ADR-008), evaluated when the request is served, as on Person. Omitted if ancestor is unknown. */
+            living?: boolean;
+            /** @description Whether the person's record is private (ADR-008), as on Person. Omitted when it is not. */
+            private?: boolean;
             /** @description Set on the placeholder shown instead of a person the caller may not see (ADR-008 §3), as on Person. Omitted otherwise. */
             redacted?: boolean;
             /**
@@ -6543,6 +6562,12 @@ export interface components {
             id: string;
             /** @description Display name of the person (e.g., "John Smith") */
             name: string;
+            /** @description Whether the person counts as living under the living rule (ADR-008), evaluated when the request is served, as on Person. */
+            living?: boolean;
+            /** @description Whether the person's record is private (ADR-008), as on Person. Omitted when it is not. */
+            private?: boolean;
+            /** @description Set on the placeholder shown instead of a person the caller may not see (ADR-008 §3), as on Person. Omitted otherwise. */
+            redacted?: boolean;
         };
         RelationshipPath: {
             /** @description Relationship name (e.g., "1st cousin once removed") */

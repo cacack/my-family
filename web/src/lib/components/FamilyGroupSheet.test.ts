@@ -23,4 +23,43 @@ describe('FamilyGroupSheet', () => {
 		expect(within(row('Cal Lee')).getByRole('img', { name: 'Living person' })).toBeDefined();
 		expect(within(row('Cal Lee')).queryByRole('img', { name: 'Private person' })).toBeNull();
 	});
+
+	it("marks a partner's living or hidden parents and a child's private spouse (#1413)", () => {
+		render(FamilyGroupSheet, {
+			props: {
+				data: {
+					id: 'f1',
+					husband: {
+						id: 'h',
+						given_name: 'Hal',
+						surname: 'Lee',
+						father_id: 'hf',
+						father_name: 'Ford Lee',
+						father_marks: { living: false },
+						mother_id: 'hm',
+						mother_name: 'Living',
+						mother_marks: { living: true, redacted: true }
+					},
+					children: [
+						{
+							id: 'c',
+							given_name: 'Cal',
+							surname: 'Lee',
+							spouse_id: 's',
+							spouse_name: 'Sky Ray',
+							spouse_marks: { living: true, private: true }
+						}
+					]
+				}
+			}
+		});
+
+		const row = (name: string) =>
+			screen.getByRole('link', { name }).parentElement as HTMLElement;
+		expect(within(row('Ford Lee')).queryByRole('img')).toBeNull();
+		expect(within(row('Living')).getByRole('img', { name: 'Details hidden' })).toBeDefined();
+		expect(within(row('Living')).queryByRole('img', { name: 'Living person' })).toBeNull();
+		expect(within(row('Sky Ray')).getByRole('img', { name: 'Living person' })).toBeDefined();
+		expect(within(row('Sky Ray')).getByRole('img', { name: 'Private person' })).toBeDefined();
+	});
 });
