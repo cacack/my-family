@@ -215,8 +215,12 @@ media return 404, file and thumbnail included, and so does the change history of
 or of a family with a protected partner; a living placeholder's history is empty. The surname,
 place and cemetery indexes, the map, brick walls, statistics, the discovery feed and the quality
 overview and report leave protected people out, counts included. Private sources, citations and
-notes, evidence, duplicate dismissals, exports and the global change history are not redacted
-yet: every role still sees them ([ADR-008](./docs/adr/008-privacy-model.md), #1412).
+notes are hidden too, and so are the citations, associations, LDS ordinances, evidence analyses
+and conflicts, research logs, proof summaries and duplicate dismissals of a protected person or
+of a family with a protected partner; a source counts only the citations shown, and validation
+issues and duplicate suggestions leave protected people out. A shared note is hidden when every
+record that points to it is hidden. Visitors do not see submitters. Exports and the global
+change history are not redacted yet ([ADR-008](./docs/adr/008-privacy-model.md), #1412).
 
 The app marks a living or private person with a **Living** or **Private** badge on their page and
 person cards, in search results, on the pedigree and descendancy charts, on the family group
