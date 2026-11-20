@@ -2,7 +2,6 @@ package query
 
 import (
 	"context"
-	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -465,6 +464,10 @@ type scopeRecords struct {
 	families []repository.FamilyReadModel
 	sources  []repository.SourceReadModel
 	links    []repository.FamilyChildReadModel
+	// withheld is the people the families and child links point to that the
+	// store resolves but does not list: those the principal may not see
+	// (ADR-008).
+	withheld map[uuid.UUID]bool
 }
 
 // loadScopeRecords reads branchID's persons, families, sources and child links:
@@ -494,18 +497,16 @@ func loadScopeRecords(ctx context.Context, readStore repository.ReadModelStore, 
 		return nil, err
 	}
 	records := &scopeRecords{persons: persons, families: families, sources: sources, links: links}
-	if err := records.dropProtectedLinks(ctx, readStore, branchID); err != nil {
+	if err := records.findWithheld(ctx, readStore, branchID); err != nil {
 		return nil, err
 	}
 	return records, nil
 }
 
-// dropProtectedLinks removes the partner and child links to people the store
-// resolves but does not list: those the principal may not see (ADR-008),
-// whose links would otherwise be reported as broken references naming them.
-// A link to a person who does not resolve stays, so a broken reference is
-// still reported.
-func (r *scopeRecords) dropProtectedLinks(ctx context.Context, readStore repository.ReadModelStore, branchID domain.BranchID) error {
+// findWithheld sets withheld to the people linked as partners or children
+// whom the store resolves but does not list. A link to a person who does not
+// resolve is not withheld, so a broken reference is still reported.
+func (r *scopeRecords) findWithheld(ctx context.Context, readStore repository.ReadModelStore, branchID domain.BranchID) error {
 	listed := make(map[uuid.UUID]bool, len(r.persons))
 	for _, p := range r.persons {
 		listed[p.ID] = true
@@ -530,21 +531,27 @@ func (r *scopeRecords) dropProtectedLinks(ctx context.Context, readStore reposit
 	if err != nil {
 		return err
 	}
-	protected := make(map[uuid.UUID]bool, len(resolved))
+	r.withheld = make(map[uuid.UUID]bool, len(resolved))
 	for _, p := range resolved {
-		protected[p.ID] = true
+		r.withheld[p.ID] = true
 	}
-	for i := range r.families {
-		if id := r.families[i].Partner1ID; id != nil && protected[*id] {
-			r.families[i].Partner1ID = nil
-		}
-		if id := r.families[i].Partner2ID; id != nil && protected[*id] {
-			r.families[i].Partner2ID = nil
-		}
-	}
-	r.links = slices.DeleteFunc(r.links, func(link repository.FamilyChildReadModel) bool { return protected[link.PersonID] })
 	return nil
 }
+
+// memberXRef is the family member pointer to person id: its XRef, or, for a
+// withheld person, the GEDCOM null pointer. The null pointer keeps the member
+// without naming them, so the validator reports neither a broken reference
+// naming a withheld person nor an empty family the owner does not see (#1518).
+func (r *scopeRecords) memberXRef(id uuid.UUID) string {
+	if r.withheld[id] {
+		return gedcomNullPointer
+	}
+	return personXRef(id)
+}
+
+// gedcomNullPointer is the GEDCOM 7.0 null pointer, which the validator treats
+// as a deliberate absence in a document that declares no version.
+const gedcomNullPointer = "@VOID@"
 
 // gedcomViewOf builds the gedcom view of one scope's already-loaded records.
 func (s *ValidationService) gedcomViewOf(records *scopeRecords) *gedcomView {
@@ -586,7 +593,7 @@ func (s *ValidationService) gedcomViewOf(records *scopeRecords) *gedcomView {
 	// Add families
 	for i := range families {
 		family := &families[i]
-		add(family.ID, gedcom.RecordTypeFamily, s.familyToGedcomFamily(*family, childrenByFamily[family.ID]),
+		add(family.ID, gedcom.RecordTypeFamily, s.familyToGedcomFamily(*family, childrenByFamily[family.ID], records.memberXRef),
 			recordLabel{kind: entityTypeFamily, name: familyReadModelName(family)})
 	}
 
@@ -716,8 +723,9 @@ var approximateModifiers = map[domain.DateQualifier]gedcom.DateModifier{
 	domain.DateEst:   gedcom.ModifierEstimated,
 }
 
-// familyToGedcomFamily converts a FamilyReadModel to a gedcom.Family.
-func (s *ValidationService) familyToGedcomFamily(family repository.FamilyReadModel, children []repository.FamilyChildReadModel) *gedcom.Family {
+// familyToGedcomFamily converts a FamilyReadModel to a gedcom.Family, pointing
+// to each partner and child with memberXRef.
+func (s *ValidationService) familyToGedcomFamily(family repository.FamilyReadModel, children []repository.FamilyChildReadModel, memberXRef func(uuid.UUID) string) *gedcom.Family {
 	gedFamily := &gedcom.Family{
 		XRef:     familyXRef(family.ID),
 		Events:   make([]*gedcom.Event, 0),
@@ -726,15 +734,15 @@ func (s *ValidationService) familyToGedcomFamily(family repository.FamilyReadMod
 
 	// Set spouses
 	if family.Partner1ID != nil {
-		gedFamily.Husband = personXRef(*family.Partner1ID)
+		gedFamily.Husband = memberXRef(*family.Partner1ID)
 	}
 	if family.Partner2ID != nil {
-		gedFamily.Wife = personXRef(*family.Partner2ID)
+		gedFamily.Wife = memberXRef(*family.Partner2ID)
 	}
 
 	// Set children
 	for _, child := range children {
-		gedFamily.Children = append(gedFamily.Children, personXRef(child.PersonID))
+		gedFamily.Children = append(gedFamily.Children, memberXRef(child.PersonID))
 	}
 
 	// Add marriage event
