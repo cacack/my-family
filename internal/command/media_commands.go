@@ -167,26 +167,54 @@ func (h *Handler) UpdateMedia(ctx context.Context, input UpdateMediaInput) (*Upd
 	addCropChanges(changes, input, current)
 	recordPrivate(changes, input.Private, current.Restriction)
 
-	// No changes?
-	if len(changes) == 0 {
-		return &UpdateMediaResult{Version: current.Version}, nil
+	version := current.Version
+	if len(changes) > 0 {
+		// Validate updated media
+		if err := testMedia.Validate(); err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrInvalidInput, err)
+		}
+
+		// Create event
+		event := domain.NewMediaUpdated(input.ID, changes)
+
+		// Execute command
+		version, err = h.execute(ctx, input.ID.String(), "Media", []domain.Event{event}, input.Version)
+		if err != nil {
+			return nil, fmt.Errorf("executing update media command: %w", err)
+		}
 	}
 
-	// Validate updated media
-	if err := testMedia.Validate(); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrInvalidInput, err)
-	}
-
-	// Create event
-	event := domain.NewMediaUpdated(input.ID, changes)
-
-	// Execute command
-	version, err := h.execute(ctx, input.ID.String(), "Media", []domain.Event{event}, input.Version)
-	if err != nil {
-		return nil, fmt.Errorf("executing update media command: %w", err)
+	// Run even when this item is unchanged, so that resending the mark
+	// repairs a group a failed earlier update left out of step.
+	if input.Private != nil && current.GroupID != nil {
+		if err := h.markMediaGroupPrivate(ctx, *current.GroupID, *input.Private); err != nil {
+			return nil, err
+		}
 	}
 
 	return &UpdateMediaResult{Version: version}, nil
+}
+
+// markMediaGroupPrivate marks or unmarks private every item of a media group:
+// the copies an import made of one OBJE record linked from several owners,
+// which show the same file (#1478). An item already marked so is left as is.
+func (h *Handler) markMediaGroupPrivate(ctx context.Context, groupID uuid.UUID, private bool) error {
+	items, err := h.readStore.ListMediaInGroup(ctx, h.branchID, groupID)
+	if err != nil {
+		return fmt.Errorf("listing media group: %w", err)
+	}
+	for _, item := range items {
+		changes := make(map[string]any)
+		recordPrivate(changes, &private, item.Restriction)
+		if len(changes) == 0 {
+			continue
+		}
+		event := domain.NewMediaUpdated(item.ID, changes)
+		if _, err := h.execute(ctx, item.ID.String(), "Media", []domain.Event{event}, item.Version); err != nil {
+			return fmt.Errorf("marking media %s of the group: %w", item.ID, err)
+		}
+	}
+	return nil
 }
 
 // addCropChanges records each crop field in input that differs from current.

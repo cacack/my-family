@@ -233,11 +233,18 @@ func (h *Handler) ImportGedcom(ctx context.Context, input ImportGedcomInput) (*I
 	// Import media (after the persons, families and sources that own them).
 	// An OBJE record linked from several records becomes one item per owner,
 	// as a media item has one owner; one linked from none is not imported.
+	// The items of one record share a group, which keeps their private mark
+	// in step (#1478).
 	for _, m := range media {
 		if len(m.Owners) == 0 {
 			result.Warnings = append(result.Warnings,
 				fmt.Sprintf("Media %s (%s) is linked to no person, family or source; not imported", m.GedcomXref, m.Title))
 			continue
+		}
+		var group *uuid.UUID
+		if len(m.Owners) > 1 {
+			g := uuid.New()
+			group = &g
 		}
 		for i, owner := range m.Owners {
 			if notImported[owner.EntityID] {
@@ -249,7 +256,7 @@ func (h *Handler) ImportGedcom(ctx context.Context, input ImportGedcomInput) (*I
 			if i > 0 {
 				id = uuid.New()
 			}
-			if err := h.importMedia(ctx, id, owner, m); err != nil {
+			if err := h.importMedia(ctx, id, group, owner, m); err != nil {
 				result.Warnings = append(result.Warnings,
 					fmt.Sprintf("Failed to import media %s (%s): %v", m.GedcomXref, m.Title, err))
 				continue
@@ -811,9 +818,10 @@ func (h *Handler) importLDSOrdinance(ctx context.Context, o gedcom.LDSOrdinanceD
 	return h.project(ctx, event, 1, domain.MainBranchID)
 }
 
-// importMedia creates the media item id, owned by owner, from an OBJE record.
-// The file references are kept; no file content is read.
-func (h *Handler) importMedia(ctx context.Context, id uuid.UUID, owner gedcom.MediaOwner, m gedcom.MediaData) error {
+// importMedia creates the media item id, owned by owner and in group (nil for
+// none), from an OBJE record. The file references are kept; no file content is
+// read.
+func (h *Handler) importMedia(ctx context.Context, id uuid.UUID, group *uuid.UUID, owner gedcom.MediaOwner, m gedcom.MediaData) error {
 	item := domain.NewMedia(m.Title, owner.EntityType, owner.EntityID)
 	item.ID = id
 	item.MimeType = m.MimeType
@@ -828,6 +836,7 @@ func (h *Handler) importMedia(ctx context.Context, id uuid.UUID, owner gedcom.Me
 
 	event := domain.NewMediaCreated(item)
 	event.Restriction = domain.Restriction(m.Restriction)
+	event.GroupID = group
 
 	if err := h.eventStore.Append(ctx, item.ID, "media", []domain.Event{event}, -1, repository.MainScope); err != nil {
 		return fmt.Errorf("appending media created event: %w", err)

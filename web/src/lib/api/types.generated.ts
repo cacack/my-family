@@ -4721,7 +4721,7 @@ export interface components {
             crop_top?: number | null;
             crop_width?: number | null;
             crop_height?: number | null;
-            /** @description Mark the record private, which adds confidential to its GEDCOM restriction notice (RESN), or not, which removes confidential and privacy. Other RESN values, such as locked, are kept. Omit it to leave the mark unchanged. */
+            /** @description Mark the record private, which adds confidential to its GEDCOM restriction notice (RESN), or not, which removes confidential and privacy. Other RESN values, such as locked, are kept. Omit it to leave the mark unchanged. The items imported from one GEDCOM media record (OBJE) linked from several owners, one per owner, take the mark together. */
             private?: boolean;
             /**
              * Format: int64
