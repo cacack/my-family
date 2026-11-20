@@ -177,3 +177,65 @@ func TestProjector_MainLifeEventsRefreshBranchCopies(t *testing.T) {
 		t.Errorf("branch copy = %+v, want its own notes kept", p)
 	}
 }
+
+// personAccessLog is a read model that records the branches whose person rows
+// are read or written.
+type personAccessLog struct {
+	*memory.ReadModelStore
+	reads, writes map[domain.BranchID]int
+}
+
+func (s *personAccessLog) GetPerson(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.PersonReadModel, error) {
+	s.reads[branchID]++
+	return s.ReadModelStore.GetPerson(ctx, branchID, id)
+}
+
+func (s *personAccessLog) SavePerson(ctx context.Context, branchID domain.BranchID, p *repository.PersonReadModel) error {
+	s.writes[branchID]++
+	return s.ReadModelStore.SavePerson(ctx, branchID, p)
+}
+
+// TestProjector_MainLifeEventsSkipClosedBranches proves a life event on main
+// refreshes the living rule on an open branch's copy of the person but neither
+// reads nor writes the person on a branch that was merged or abandoned, whose
+// copy was purged when it closed.
+func TestProjector_MainLifeEventsSkipClosedBranches(t *testing.T) {
+	ctx := context.Background()
+	rs := &personAccessLog{ReadModelStore: memory.NewReadModelStore(), reads: map[domain.BranchID]int{}, writes: map[domain.BranchID]int{}}
+	branches := memory.NewBranchStore()
+	projector := repository.NewProjector(rs, branches)
+	project := func(e domain.Event, version int64, branchID domain.BranchID) {
+		t.Helper()
+		if err := projector.Project(ctx, e, version, branchID); err != nil {
+			t.Fatalf("Project %s: %v", e.EventType(), err)
+		}
+	}
+	person := domain.NewPerson("Ada", "Lovelace")
+	project(domain.NewPersonCreated(person), 1, domain.MainBranchID)
+	open, _ := domain.NewBranch("open", "", 0)
+	merged, _ := domain.NewBranch("merged", "", 0)
+	abandoned, _ := domain.NewBranch("abandoned", "", 0)
+	for _, b := range []*domain.Branch{open, merged, abandoned} {
+		project(domain.NewBranchCreated(b), 0, domain.MainBranchID)
+		project(domain.NewPersonUpdated(person.ID, map[string]any{"notes": "copy on " + b.Name}), 2, domain.BranchID(b.ID))
+	}
+	project(domain.NewBranchMerged(merged.ID, 0, 0, "", nil), 0, domain.MainBranchID)
+	project(domain.NewBranchDeleted(abandoned.ID), 0, domain.MainBranchID)
+	clear(rs.reads)
+	clear(rs.writes)
+
+	burial := domain.NewLifeEventCreatedFromModel(&domain.LifeEvent{ID: uuid.New(), PersonID: &person.ID, FactType: domain.FactPersonBurial})
+	project(burial, 1, domain.MainBranchID)
+
+	if rs.writes[domain.BranchID(open.ID)] != 1 {
+		t.Errorf("open branch's copy written %d times, want once", rs.writes[domain.BranchID(open.ID)])
+	}
+	for _, b := range []*domain.Branch{merged, abandoned} {
+		if n, m := rs.reads[domain.BranchID(b.ID)], rs.writes[domain.BranchID(b.ID)]; n != 0 || m != 0 {
+			t.Errorf("%s branch: person read %d and written %d times, want neither", b.Name, n, m)
+		}
+	}
+	if p, _ := rs.GetPerson(ctx, domain.BranchID(open.ID), person.ID); p == nil || !p.DeathEvidence {
+		t.Errorf("open branch's copy = %+v, want death evidence", p)
+	}
+}

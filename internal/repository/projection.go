@@ -1448,7 +1448,9 @@ func (p *Projector) setLivingFacts(ctx context.Context, branchID domain.BranchID
 // main's life events through its overlay, so a branch copy of the person made
 // before the change would otherwise keep inputs that disagree with the events
 // the branch shows. A branch without a copy reads main's row, already
-// refreshed, so its inputs are unchanged and nothing is saved for it.
+// refreshed, so its inputs are unchanged and nothing is saved for it. A merged
+// or archived branch is skipped: its overlay was purged when it closed, so it
+// has no copy to refresh.
 func (p *Projector) refreshLivingFacts(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) error {
 	if err := p.refreshLivingFactsOn(ctx, branchID, personID); err != nil {
 		return err
@@ -1461,6 +1463,9 @@ func (p *Projector) refreshLivingFacts(ctx context.Context, branchID domain.Bran
 		return fmt.Errorf("list branches for the living rule: %w", err)
 	}
 	for _, b := range branches {
+		if b.Status != domain.BranchStatusActive {
+			continue
+		}
 		if err := p.refreshLivingFactsOn(ctx, domain.BranchID(b.ID), personID); err != nil {
 			return fmt.Errorf("refresh the living rule on branch %s: %w", b.ID, err)
 		}
