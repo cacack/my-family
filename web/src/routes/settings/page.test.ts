@@ -50,6 +50,14 @@ describe('Settings page', () => {
 		expect(hint).not.toMatch(/not enforced/i);
 	});
 
+	it('says what visitors see, and no longer that letting them in is unavailable', async () => {
+		render(SettingsPage);
+		await waitFor(() => expect(viewers()).toBeTruthy());
+		const hint = document.getElementById('visitors-hint')?.textContent ?? '';
+		expect(hint).toMatch(/Visitors will not see living people/);
+		expect(hint).not.toMatch(/not available yet/i);
+	});
+
 	it('saves changed settings and announces it', async () => {
 		api.updatePrivacySettings.mockResolvedValue({ living_threshold_years: 100, viewers_see_living: false, anonymous_access: 'none' });
 		render(SettingsPage);
