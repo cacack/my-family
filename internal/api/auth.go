@@ -150,23 +150,31 @@ func (s *Server) authenticate(next echo.HandlerFunc) echo.HandlerFunc {
 }
 
 // serveVisitor serves a request with no session as the anonymous principal
-// (ADR-007): with the tree's anonymous access set to viewer, it may call what
-// a viewer may, except the operations on one's own account; otherwise, or
-// beyond that, it is refused with 401, since signing in may allow it. The
-// anonymous principal holds the viewer role with no user on the context
-// (isAnonymous).
+// (ADR-007): when visitorsLetIn, it may call what a viewer may, except
+// signedInRoutes; otherwise, or beyond that, it is refused with 401, since
+// signing in may allow it. The anonymous principal holds the viewer role with
+// no user on the context (isAnonymous).
 func (s *Server) serveVisitor(ctx context.Context, c echo.Context, next echo.HandlerFunc, required repository.Role) error {
 	settings, err := s.treeSettings(ctx)
 	if err != nil {
 		return err
 	}
 	key := routeKey(c.Request().Method, c.Path())
-	if settings.AnonymousAccess != repository.AnonymousAccessViewer || required != repository.RoleViewer || accountRoutes[key] {
+	if !s.visitorsLetIn(settings) || required != repository.RoleViewer || signedInRoutes[key] {
 		return refuse(c, http.StatusUnauthorized, CodeUnauthenticated, "Sign in to continue")
 	}
 	ctx = withRole(ctx, repository.RoleViewer, true)
 	c.SetRequest(c.Request().WithContext(repository.ContextWithTreeSettings(ctx, settings)))
 	return next(c)
+}
+
+// visitorsLetIn reports whether visitors may browse the tree: its anonymous
+// access is viewer and the read side protects them from living people and
+// private records (repository.AnonymousViewingProtected). The settings API
+// refuses viewer while they are unprotected; this also refuses a viewer
+// written to the store some other way.
+func (s *Server) visitorsLetIn(settings repository.TreeSettings) bool {
+	return s.visitorsProtected && settings.AnonymousAccess == repository.AnonymousAccessViewer
 }
 
 // isAnonymous reports whether the request is a visitor's: a role with no
@@ -275,8 +283,8 @@ func (ss *StrictServer) GetAuthStatus(ctx context.Context, _ GetAuthStatusReques
 	access := AnonymousAccessNone
 	if settings, err := ss.server.treeSettings(ctx); err != nil {
 		ss.server.echo.Logger.Errorf("reading the tree settings for the auth status: %v", err)
-	} else {
-		access = AnonymousAccess(settings.AnonymousAccess)
+	} else if ss.server.visitorsLetIn(settings) {
+		access = AnonymousAccessViewer
 	}
 	status := GetAuthStatus200JSONResponse{Mode: AuthStatusModeAccounts, SetupRequired: required, AnonymousAccess: &access}
 	if user := userFrom(ctx); user != nil {

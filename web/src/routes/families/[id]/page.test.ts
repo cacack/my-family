@@ -5,6 +5,7 @@ import FamilyPage from './+page.svelte';
 import SearchBox from '#lib/components/SearchBox.svelte';
 import AccessibilityPanel from '#lib/components/AccessibilityPanel.svelte';
 import * as apiModule from '#lib/api/client.js';
+import { auth } from '#lib/stores/access.svelte.js';
 
 const { branchState, pageState } = vi.hoisted(() => ({
 	// The real store exposes a read-only view, so the active branch is injected.
@@ -288,6 +289,18 @@ describe('Family Detail Page', () => {
 		await waitFor(() => {
 			expect(screen.getByRole('heading', { name: /History/ }).textContent).toContain('3');
 		});
+	});
+
+	// The server refuses a visitor the change log (ADR-008 §4).
+	it('shows a visitor the family with no History panel and no history read', async () => {
+		auth.phase = 'visitor';
+		vi.mocked(apiModule.api.getFamily).mockResolvedValue(mockFamilyWithChildren);
+
+		render(FamilyPage);
+
+		expect(await screen.findByText('John Smith & Jane Smith')).toBeDefined();
+		expect(screen.queryByRole('button', { name: /History/ })).toBeNull();
+		expect(apiModule.api.getFamilyHistory).not.toHaveBeenCalled();
 	});
 
 	it('offers the Restore tab on the mainline', async () => {

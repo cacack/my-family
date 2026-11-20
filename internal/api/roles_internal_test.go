@@ -108,30 +108,90 @@ func TestAuthenticate_RefusesAnUndeclaredRoute(t *testing.T) {
 	}
 }
 
-// Every costly route limitAnonymousReads names is a route a visitor may call,
-// so a typo or a renamed path cannot silently leave it unlimited.
-func TestAnonymousCostlyRoutes_AreViewerRoutes(t *testing.T) {
-	for key := range anonymousCostlyRoutes {
-		if role, ok := routeRoles[key]; !ok || role != repository.RoleViewer {
-			t.Errorf("%s: role %q (declared %v), want a viewer route", key, role, ok)
-		}
-	}
-	for key := range accountRoutes {
-		if _, ok := routeRoles[key]; !ok {
-			t.Errorf("account route %s is not a route", key)
-		}
-	}
-}
-
 // TestAnonymousRouteSets fails when a hand-kept visitor route set names a
 // route that does not exist or is not a viewer read, so a renamed or
 // re-roled route cannot silently drop out of it.
 func TestAnonymousRouteSets(t *testing.T) {
-	for name, set := range map[string]map[string]bool{"anonymousCostlyRoutes": anonymousCostlyRoutes, "accountRoutes": accountRoutes} {
+	for name, set := range map[string]map[string]bool{"anonymousCostlyRoutes": anonymousCostlyRoutes, "signedInRoutes": signedInRoutes} {
 		for key := range set {
 			if role, ok := routeRoles[key]; !ok || role != repository.RoleViewer {
 				t.Errorf("%s: %s has role %q (declared %v), want a viewer route", name, key, role, ok)
 			}
+		}
+	}
+}
+
+// anonymousCheapRoutes are the viewer routes a visitor may call unlimited:
+// each reads one record, one record's own sub-lists, or a fixed document, so
+// its cost does not grow with the tree.
+var anonymousCheapRoutes = []string{
+	"GET /api/v1/associations/:id",
+	"GET /api/v1/branches/:id",
+	"GET /api/v1/branches/:id/research",
+	"GET /api/v1/citation-templates",
+	"GET /api/v1/citation-templates/:id",
+	"POST /api/v1/citation-templates/:id/preview",
+	"GET /api/v1/citations/:id",
+	"GET /api/v1/citations/:id/format",
+	"GET /api/v1/config",
+	"GET /api/v1/docs",
+	"GET /api/v1/evidence-analyses/:id",
+	"GET /api/v1/evidence-analyses/by-fact",
+	"GET /api/v1/evidence-conflicts/:id",
+	"GET /api/v1/evidence-conflicts/by-subject/:subjectId",
+	"GET /api/v1/families/:id",
+	"GET /api/v1/families/:id/lds-ordinances",
+	"GET /api/v1/lds-ordinances/:id",
+	"GET /api/v1/media/:id",
+	"GET /api/v1/notes/:id",
+	"GET /api/v1/openapi.yaml",
+	"GET /api/v1/persons/:id",
+	"GET /api/v1/persons/:id/associations",
+	"GET /api/v1/persons/:id/citations",
+	"GET /api/v1/persons/:id/lds-ordinances",
+	"GET /api/v1/persons/:id/media",
+	"GET /api/v1/persons/:id/names",
+	"GET /api/v1/proof-summaries/:id",
+	"GET /api/v1/proof-summaries/by-fact",
+	"GET /api/v1/quality/persons/:id",
+	"GET /api/v1/repositories/:id",
+	"GET /api/v1/research-logs/:id",
+	"GET /api/v1/research-logs/by-subject/:subjectId",
+	"GET /api/v1/settings/home-person",
+	"GET /api/v1/sources/:id",
+	"GET /api/v1/submitters/:id",
+}
+
+// TestAnonymousRouteClassification puts every viewer route in exactly one
+// class: refused to visitors (signedInRoutes), limited for them
+// (anonymousCostlyRoutes), or cheap. A new viewer route fails it until it is
+// classified, so a list whose cost grows with the tree cannot be left
+// unlimited by accident.
+func TestAnonymousRouteClassification(t *testing.T) {
+	cheap := make(map[string]bool, len(anonymousCheapRoutes))
+	for _, key := range anonymousCheapRoutes {
+		cheap[key] = true
+	}
+	for key, role := range routeRoles {
+		if role != repository.RoleViewer {
+			if cheap[key] {
+				t.Errorf("%s is listed cheap but needs %s, not viewer", key, role)
+			}
+			continue
+		}
+		classes := 0
+		for _, in := range []bool{signedInRoutes[key], anonymousCostlyRoutes[key], cheap[key]} {
+			if in {
+				classes++
+			}
+		}
+		if classes != 1 {
+			t.Errorf("%s is in %d of signedInRoutes, anonymousCostlyRoutes and anonymousCheapRoutes, want exactly 1", key, classes)
+		}
+	}
+	for key := range cheap {
+		if _, ok := routeRoles[key]; !ok {
+			t.Errorf("cheap route %s is not a route", key)
 		}
 	}
 }

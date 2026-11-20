@@ -35,6 +35,16 @@ export function currentRole(): Role | null {
 }
 
 /**
+ * Whether a visitor is browsing without signing in. The server refuses a
+ * visitor the change log (history, restore points, snapshots and
+ * comparisons), whose records name who made each change (ADR-008 §4), so the
+ * app hides it from them. Reactive, like `can`.
+ */
+export function isVisitor(): boolean {
+	return auth.phase === 'visitor';
+}
+
+/**
  * Whether the current role includes `required`. Controls the server would
  * refuse are hidden with it, so it mirrors each operation's `x-min-role`:
  * `editor` changes data, works in branches and exports; `owner` imports and

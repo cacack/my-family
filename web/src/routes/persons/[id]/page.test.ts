@@ -10,6 +10,7 @@ import type { PersonDetail } from '#lib/api/client.js';
 import { goto } from '$app/navigation';
 import { signInAs } from '#lib/test/roles.js';
 import { homePerson, loadHomePerson } from '#lib/stores/homePerson.svelte.js';
+import { auth } from '#lib/stores/access.svelte.js';
 
 const PERSON_ID = '11111111-1111-1111-1111-111111111111';
 const BRANCH_ID = '44444444-4444-4444-4444-444444444444';
@@ -285,6 +286,17 @@ describe('Person detail by role (ADR-007)', () => {
 		await fireEvent.click(screen.getByRole('button', { name: /History/ }));
 		expect(screen.queryByRole('button', { name: 'Restore' })).toBeNull();
 		expect(screen.queryByText(/work on the mainline only/)).toBeNull();
+	});
+
+	// The server refuses a visitor the change log (ADR-008 §4).
+	it('shows a visitor the person with no History panel and no history read', async () => {
+		auth.phase = 'visitor';
+		render(Page);
+
+		expect(await screen.findByRole('heading', { name: 'Ada Lovelace' })).toBeDefined();
+		await waitFor(() => expect(listPersonMedia).toHaveBeenCalled());
+		expect(screen.queryByRole('button', { name: /History/ })).toBeNull();
+		expect(getPersonHistory).not.toHaveBeenCalled();
 	});
 });
 

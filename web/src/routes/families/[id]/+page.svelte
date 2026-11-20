@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { can } from '#lib/stores/access.svelte.js';
+	import { can, isVisitor } from '#lib/stores/access.svelte.js';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { tick } from 'svelte';
@@ -204,6 +204,8 @@
 	 */
 	async function loadHistoryCount(id: string) {
 		const request = ++historyCountRequest;
+		// A visitor has no History panel.
+		if (isVisitor()) return;
 		try {
 			const response = await api.getFamilyHistory(id, { limit: 1, offset: 0 });
 			if (request === historyCountRequest) historyCount = response.total;
@@ -654,55 +656,58 @@
 					/>
 				{/if}
 
-				<div class="history-section">
-					<button class="history-header" onclick={toggleHistory}>
-						<h2>
-							History
-							{#if historyCount !== null}
-								<Badge variant="outline" class="ml-2">{historyCount}</Badge>
+				<!-- A visitor may not read the change log (ADR-008 §4). -->
+				{#if !isVisitor()}
+					<div class="history-section">
+						<button class="history-header" onclick={toggleHistory}>
+							<h2>
+								History
+								{#if historyCount !== null}
+									<Badge variant="outline" class="ml-2">{historyCount}</Badge>
+								{/if}
+							</h2>
+							<span class="expand-icon">{historyExpanded ? '−' : '+'}</span>
+						</button>
+						{#if historyExpanded}
+							{#if !can('owner')}
+								<!-- Only the owner rolls back, so there is no Restore tab. -->
+							{:else if rollbackOnMainlineOnly}
+								<p class="rollback-mainline-only" role="note">{ROLLBACK_MAINLINE_ONLY}</p>
+							{:else}
+								<div class="history-tabs" role="group" aria-label="History view">
+									<button
+										type="button"
+										class="tab-btn"
+										aria-pressed={historyTab === 'history'}
+										onclick={() => historyTab = 'history'}
+									>
+										Change Log
+									</button>
+									<button
+										type="button"
+										class="tab-btn"
+										aria-pressed={historyTab === 'restore'}
+										onclick={() => historyTab = 'restore'}
+									>
+										Restore
+									</button>
+								</div>
 							{/if}
-						</h2>
-						<span class="expand-icon">{historyExpanded ? '−' : '+'}</span>
-					</button>
-					{#if historyExpanded}
-						{#if !can('owner')}
-							<!-- Only the owner rolls back, so there is no Restore tab. -->
-						{:else if rollbackOnMainlineOnly}
-							<p class="rollback-mainline-only" role="note">{ROLLBACK_MAINLINE_ONLY}</p>
-						{:else}
-							<div class="history-tabs" role="group" aria-label="History view">
-								<button
-									type="button"
-									class="tab-btn"
-									aria-pressed={historyTab === 'history'}
-									onclick={() => historyTab = 'history'}
-								>
-									Change Log
-								</button>
-								<button
-									type="button"
-									class="tab-btn"
-									aria-pressed={historyTab === 'restore'}
-									onclick={() => historyTab = 'restore'}
-								>
-									Restore
-								</button>
+							<div class="history-content">
+								{#if historyTab === 'history' || !canRollback}
+									<ChangeHistory entityType="family" entityId={family.id} />
+								{:else}
+									<RestorePointBrowser
+										entityType="family"
+										entityId={family.id}
+										currentVersion={family.version}
+										onSelectVersion={handleSelectVersion}
+									/>
+								{/if}
 							</div>
 						{/if}
-						<div class="history-content">
-							{#if historyTab === 'history' || !canRollback}
-								<ChangeHistory entityType="family" entityId={family.id} />
-							{:else}
-								<RestorePointBrowser
-									entityType="family"
-									entityId={family.id}
-									currentVersion={family.version}
-									onSelectVersion={handleSelectVersion}
-								/>
-							{/if}
-						</div>
-					{/if}
-				</div>
+					</div>
+				{/if}
 
 				{#if canRollback}
 					<RollbackConfirmDialog

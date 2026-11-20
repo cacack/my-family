@@ -16,7 +16,7 @@
 	import SetupForm from '#lib/components/auth/SetupForm.svelte';
 	import SignInForm from '#lib/components/auth/SignInForm.svelte';
 	import ErrorState from '#lib/components/ErrorState.svelte';
-	import { auth, loadAuth } from '#lib/stores/auth.svelte.js';
+	import { auth, loadAuth, recheckSession } from '#lib/stores/auth.svelte.js';
 	import { LINK_PAGES } from '#lib/utils/accountLinks.js';
 	import { createShortcutHandler } from '#lib/keyboard/useShortcuts.svelte.js';
 	import { loadAppConfig, getAppConfig } from '#lib/stores/appConfig.svelte.js';
@@ -96,7 +96,7 @@
 	<link rel="icon" href={favicon} />
 </svelte:head>
 
-<svelte:window onkeydown={appReady ? handleKeydown : undefined} />
+<svelte:window onkeydown={appReady ? handleKeydown : undefined} onfocus={recheckSession} />
 
 {#if LINK_PAGES.has(page.url.pathname)}
 	<!-- An invite or reset link works whether or not anyone is signed in. -->

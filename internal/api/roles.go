@@ -33,11 +33,27 @@ var handRouteRoles = map[string]repository.Role{
 	routeKey(http.MethodPost, apiBase+"/gedcom/import/stream"): repository.RoleOwner,
 }
 
-// accountRoutes act on the signed-in user's own account. They need a viewer,
-// but an anonymous visitor has no account, so serveVisitor refuses them.
-var accountRoutes = map[string]bool{
-	routeKey(http.MethodGet, apiBase+"/auth/me"):   true,
-	routeKey(http.MethodPatch, apiBase+"/auth/me"): true,
+// signedInRoutes need a viewer who is signed in, so serveVisitor refuses
+// them to a visitor: the operations on one's own account, which a visitor
+// does not have, and the change log (history, restore points, snapshots and
+// comparisons), whose change records name who made each change, which
+// ADR-008 §4 hides from anonymous principals.
+var signedInRoutes = map[string]bool{
+	routeKey(http.MethodGet, apiBase+"/auth/me"):                       true,
+	routeKey(http.MethodPatch, apiBase+"/auth/me"):                     true,
+	routeKey(http.MethodGet, apiBase+"/history"):                       true,
+	routeKey(http.MethodGet, apiBase+"/persons/:id/history"):           true,
+	routeKey(http.MethodGet, apiBase+"/families/:id/history"):          true,
+	routeKey(http.MethodGet, apiBase+"/sources/:id/history"):           true,
+	routeKey(http.MethodGet, apiBase+"/persons/:id/restore-points"):    true,
+	routeKey(http.MethodGet, apiBase+"/families/:id/restore-points"):   true,
+	routeKey(http.MethodGet, apiBase+"/sources/:id/restore-points"):    true,
+	routeKey(http.MethodGet, apiBase+"/citations/:id/restore-points"):  true,
+	routeKey(http.MethodGet, apiBase+"/snapshots"):                     true,
+	routeKey(http.MethodGet, apiBase+"/snapshots/:id"):                 true,
+	routeKey(http.MethodGet, apiBase+"/snapshots/:id/compare-current"): true,
+	routeKey(http.MethodGet, apiBase+"/snapshots/:id1/compare/:id2"):   true,
+	routeKey(http.MethodGet, apiBase+"/branches/:id/compare"):          true,
 }
 
 // routeRoles is the minimum role of every API route (ADR-007): each
@@ -152,10 +168,31 @@ const (
 	anonymousBurst    = 30
 )
 
-// anonymousCostlyRoutes are the reads a visitor may call that walk or
-// aggregate much of the tree, or serve file bytes; limitAnonymousReads
-// throttles them. Single-record reads are cheap and not listed.
+// anonymousCostlyRoutes are the reads a visitor may call whose cost grows
+// with the tree: lists, browse indexes and their drill-downs, searches,
+// charts, aggregates and reports, plus file bytes. limitAnonymousReads
+// throttles them. Reads of one record, or of one record's own sub-lists, are
+// cheap and not listed; TestAnonymousRouteClassification lists those, so a
+// new viewer route must be put in one class or the other.
 var anonymousCostlyRoutes = map[string]bool{
+	routeKey(http.MethodGet, apiBase+"/persons"):                            true,
+	routeKey(http.MethodGet, apiBase+"/families"):                           true,
+	routeKey(http.MethodGet, apiBase+"/sources"):                            true,
+	routeKey(http.MethodGet, apiBase+"/sources/:id/citations"):              true,
+	routeKey(http.MethodGet, apiBase+"/notes"):                              true,
+	routeKey(http.MethodGet, apiBase+"/repositories"):                       true,
+	routeKey(http.MethodGet, apiBase+"/submitters"):                         true,
+	routeKey(http.MethodGet, apiBase+"/associations"):                       true,
+	routeKey(http.MethodGet, apiBase+"/lds-ordinances"):                     true,
+	routeKey(http.MethodGet, apiBase+"/evidence-analyses"):                  true,
+	routeKey(http.MethodGet, apiBase+"/evidence-conflicts"):                 true,
+	routeKey(http.MethodGet, apiBase+"/proof-summaries"):                    true,
+	routeKey(http.MethodGet, apiBase+"/research-logs"):                      true,
+	routeKey(http.MethodGet, apiBase+"/branches"):                           true,
+	routeKey(http.MethodGet, apiBase+"/persons/duplicates/dismissed"):       true,
+	routeKey(http.MethodGet, apiBase+"/browse/surnames/:surname/persons"):   true,
+	routeKey(http.MethodGet, apiBase+"/browse/places/:place/persons"):       true,
+	routeKey(http.MethodGet, apiBase+"/browse/cemeteries/:place/persons"):   true,
 	routeKey(http.MethodGet, apiBase+"/search"):                             true,
 	routeKey(http.MethodGet, apiBase+"/sources/search"):                     true,
 	routeKey(http.MethodGet, apiBase+"/pedigree/:id"):                       true,
@@ -174,10 +211,6 @@ var anonymousCostlyRoutes = map[string]bool{
 	routeKey(http.MethodGet, apiBase+"/quality/report"):                     true,
 	routeKey(http.MethodGet, apiBase+"/quality/validation"):                 true,
 	routeKey(http.MethodGet, apiBase+"/persons/duplicates"):                 true,
-	routeKey(http.MethodGet, apiBase+"/history"):                            true,
-	routeKey(http.MethodGet, apiBase+"/snapshots/:id/compare-current"):      true,
-	routeKey(http.MethodGet, apiBase+"/snapshots/:id1/compare/:id2"):        true,
-	routeKey(http.MethodGet, apiBase+"/branches/:id/compare"):               true,
 	routeKey(http.MethodGet, apiBase+"/branches/:id/drift"):                 true,
 	routeKey(http.MethodGet, apiBase+"/branches/:id/evidence-coverage"):     true,
 	routeKey(http.MethodGet, apiBase+"/branches/:id/health"):                true,

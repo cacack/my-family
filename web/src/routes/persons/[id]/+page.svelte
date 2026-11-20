@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { can } from '#lib/stores/access.svelte.js';
+	import { can, isVisitor } from '#lib/stores/access.svelte.js';
 	import { tick } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
@@ -164,16 +164,16 @@
 	/**
 	 * The badge counts, loaded independently of the person (#823): a count that
 	 * fails to load drops its badge but never blanks the page. The History panel
-	 * reports its own load error when opened.
+	 * reports its own load error when opened. A visitor has no History panel.
 	 */
 	async function loadCounts(id: string) {
 		const request = ++countsRequest;
 		const [history, media] = await Promise.allSettled([
-			api.getPersonHistory(id, { limit: 1, offset: 0 }),
+			isVisitor() ? null : api.getPersonHistory(id, { limit: 1, offset: 0 }),
 			api.listPersonMedia(id, { limit: 1, offset: 0 })
 		]);
 		if (request !== countsRequest) return;
-		historyCount = history.status === 'fulfilled' ? history.value.total : null;
+		historyCount = history.status === 'fulfilled' ? (history.value?.total ?? null) : null;
 		mediaCount = media.status === 'fulfilled' ? media.value.total : null;
 		for (const result of [history, media]) {
 			if (result.status === 'rejected') {
@@ -849,55 +849,58 @@
 					/>
 				{/if}
 
-				<div class="history-section">
-					<button class="history-header" onclick={toggleHistory}>
-						<h2>
-							History
-							{#if historyCount !== null}
-								<Badge variant="outline" class="ml-2">{historyCount}</Badge>
+				<!-- A visitor may not read the change log (ADR-008 §4). -->
+				{#if !isVisitor()}
+					<div class="history-section">
+						<button class="history-header" onclick={toggleHistory}>
+							<h2>
+								History
+								{#if historyCount !== null}
+									<Badge variant="outline" class="ml-2">{historyCount}</Badge>
+								{/if}
+							</h2>
+							<span class="expand-icon">{historyExpanded ? '−' : '+'}</span>
+						</button>
+						{#if historyExpanded}
+							{#if !can('owner')}
+								<!-- Only the owner rolls back, so there is no Restore tab. -->
+							{:else if rollbackOnMainlineOnly}
+								<p class="rollback-mainline-only" role="note">{ROLLBACK_MAINLINE_ONLY}</p>
+							{:else}
+								<div class="history-tabs" role="group" aria-label="History view">
+									<button
+										type="button"
+										class="tab-btn"
+										aria-pressed={historyTab === 'history'}
+										onclick={() => historyTab = 'history'}
+									>
+										Change Log
+									</button>
+									<button
+										type="button"
+										class="tab-btn"
+										aria-pressed={historyTab === 'restore'}
+										onclick={() => historyTab = 'restore'}
+									>
+										Restore
+									</button>
+								</div>
 							{/if}
-						</h2>
-						<span class="expand-icon">{historyExpanded ? '−' : '+'}</span>
-					</button>
-					{#if historyExpanded}
-						{#if !can('owner')}
-							<!-- Only the owner rolls back, so there is no Restore tab. -->
-						{:else if rollbackOnMainlineOnly}
-							<p class="rollback-mainline-only" role="note">{ROLLBACK_MAINLINE_ONLY}</p>
-						{:else}
-							<div class="history-tabs" role="group" aria-label="History view">
-								<button
-									type="button"
-									class="tab-btn"
-									aria-pressed={historyTab === 'history'}
-									onclick={() => historyTab = 'history'}
-								>
-									Change Log
-								</button>
-								<button
-									type="button"
-									class="tab-btn"
-									aria-pressed={historyTab === 'restore'}
-									onclick={() => historyTab = 'restore'}
-								>
-									Restore
-								</button>
+							<div class="history-content">
+								{#if historyTab === 'history' || !canRollback}
+									<ChangeHistory entityType="person" entityId={person.id} />
+								{:else}
+									<RestorePointBrowser
+										entityType="person"
+										entityId={person.id}
+										currentVersion={person.version}
+										onSelectVersion={handleSelectVersion}
+									/>
+								{/if}
 							</div>
 						{/if}
-						<div class="history-content">
-							{#if historyTab === 'history' || !canRollback}
-								<ChangeHistory entityType="person" entityId={person.id} />
-							{:else}
-								<RestorePointBrowser
-									entityType="person"
-									entityId={person.id}
-									currentVersion={person.version}
-									onSelectVersion={handleSelectVersion}
-								/>
-							{/if}
-						</div>
-					{/if}
-				</div>
+					</div>
+				{/if}
 
 				{#if canRollback}
 					<RollbackConfirmDialog

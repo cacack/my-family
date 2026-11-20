@@ -98,6 +98,9 @@ type Server struct {
 	auth                *auth.Service                // nil only in open mode
 	settings            repository.TreeSettingsStore // nil unless WithTreeSettings supplied
 	routes              map[string]bool              // every registered route, by routeKey
+	// visitorsProtected is repository.AnonymousViewingProtected; tests of the
+	// visitor paths set it ahead of the redaction (export_test.go).
+	visitorsProtected bool
 }
 
 // NewServer creates a new API server with all dependencies. Unless
@@ -144,10 +147,11 @@ func NewServer(
 	// projector can route branch-lifecycle events into the configured branch
 	// registry store (set via WithBranchStore).
 	server := &Server{
-		echo:         e,
-		config:       cfg,
-		rawReadStore: readStore,
-		frontendFS:   frontendFS,
+		echo:              e,
+		config:            cfg,
+		rawReadStore:      readStore,
+		frontendFS:        frontendFS,
+		visitorsProtected: repository.AnonymousViewingProtected,
 	}
 	for _, opt := range opts {
 		opt(server)

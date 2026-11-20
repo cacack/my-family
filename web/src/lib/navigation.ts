@@ -8,9 +8,10 @@ import type { Role } from '#lib/stores/access.svelte.js';
 
 /**
  * `match` lists the path prefixes that count as being in a link's section.
- * `minRole` hides the link from a role below it (ADR-007).
+ * `minRole` hides the link from a role below it (ADR-007). `signedIn` hides it
+ * from a visitor, whom the server refuses the change log (ADR-008 §4).
  */
-export type NavLink = { href: string; label: string; match?: string[]; minRole?: Role };
+export type NavLink = { href: string; label: string; match?: string[]; minRole?: Role; signedIn?: boolean };
 export type NavGroup = { label: string; links: NavLink[] };
 export type NavEntry = NavLink | NavGroup;
 
@@ -40,21 +41,25 @@ export const mainNav: NavEntry[] = [
 			{ href: '/analytics', label: 'Completeness' }
 		]
 	},
+	// A branch's page is its comparison, part of the change log.
 	{
 		label: 'History',
 		links: [
-			{ href: '/history', label: 'Change History' },
-			{ href: '/branches', label: 'Branches' },
-			{ href: '/snapshots', label: 'Snapshots' }
+			{ href: '/history', label: 'Change History', signedIn: true },
+			{ href: '/branches', label: 'Branches', signedIn: true },
+			{ href: '/snapshots', label: 'Snapshots', signedIn: true }
 		]
 	},
 	// The page also exports, which an editor may do; importing needs the owner.
 	{ href: '/import', label: 'Import', minRole: 'editor' }
 ];
 
-/** The navigation without the links `can` refuses, and without groups left empty. */
-export function navFor(can: (role: Role) => boolean): NavEntry[] {
-	const allowed = (link: NavLink) => !link.minRole || can(link.minRole);
+/**
+ * The navigation without the links `can` refuses, or that need a signed-in
+ * user when `visitor`, and without groups left empty.
+ */
+export function navFor(can: (role: Role) => boolean, visitor = false): NavEntry[] {
+	const allowed = (link: NavLink) => (!link.minRole || can(link.minRole)) && !(visitor && link.signedIn);
 	return mainNav.flatMap((entry): NavEntry[] => {
 		if (!isGroup(entry)) return allowed(entry) ? [entry] : [];
 		const links = entry.links.filter(allowed);
