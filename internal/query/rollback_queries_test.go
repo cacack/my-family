@@ -1944,3 +1944,32 @@ func TestGetStateAtVersion_KeepsCreatedRestriction(t *testing.T) {
 		})
 	}
 }
+
+// A merge on the survivor's stream sets the fields it resolved, the privacy
+// marks among them, in the state a rollback restores.
+func TestGetStateAtVersion_AppliesAMergesResolvedFields(t *testing.T) {
+	id := uuid.New()
+	created, err := json.Marshal(domain.PersonCreated{PersonID: id, GivenName: "John"})
+	require.NoError(t, err)
+	merged, err := json.Marshal(domain.NewPersonMerged(id, uuid.New(), nil,
+		map[string]any{"given_name": "Jonathan", "restriction": "privacy", "living_override": "living"},
+		nil, nil, nil, nil, nil))
+	require.NoError(t, err)
+	events := []repository.StoredEvent{
+		{ID: uuid.New(), StreamID: id, StreamType: "person", EventType: "PersonCreated", Data: created, Version: 1, Position: 1},
+		{ID: uuid.New(), StreamID: id, StreamType: "person", EventType: "PersonMerged", Data: merged, Version: 2, Position: 2},
+	}
+	service := NewRollbackService(&rollbackMockEventStore{
+		readStreamFunc: func(context.Context, uuid.UUID) ([]repository.StoredEvent, error) { return events, nil },
+	}, &mockReadModelStore{})
+
+	result, err := service.GetStateAtVersion(context.Background(), "person", id, 2)
+	require.NoError(t, err)
+	assert.Equal(t, "Jonathan", result.State["given_name"])
+	assert.Equal(t, "privacy", result.State["restriction"])
+	assert.Equal(t, "living", result.State["living_override"])
+
+	changes, err := service.ComputeRollbackChanges(context.Background(), "person", id, 1)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]any{"given_name": "John", "restriction": nil, "living_override": nil}, changes.Changes)
+}

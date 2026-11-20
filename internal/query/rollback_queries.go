@@ -336,6 +336,14 @@ func (s *RollbackService) applyEventToState(evt repository.StoredEvent, state ma
 		// Mark as deleted but preserve state for potential restore
 		return true, nil
 
+	// A merge is on the survivor's stream and sets the fields it resolved,
+	// the privacy marks among them, as an update would.
+	case domain.PersonMerged:
+		for field, value := range e.ResolvedFields {
+			state[field] = normalizeValue(value)
+		}
+		return false, nil
+
 	// A primary name sets the person's given name and surname, as the
 	// projection does (docs/CONVENTIONS.md "Person Name and Primary Name").
 	case domain.NameAdded:

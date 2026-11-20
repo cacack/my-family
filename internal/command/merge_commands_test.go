@@ -720,3 +720,75 @@ func TestMergePersons_KeepsTheMoreProtectivePrivacyMarks(t *testing.T) {
 		})
 	}
 }
+
+// A rollback across a person merge restores the privacy marks the merge
+// resolved: back to before the merge the survivor loses the marks it took from
+// the merged person, and back to just after it a later unmark is undone.
+func TestRollbackPerson_AcrossAMergeRestoresThePrivacyMarks(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+	yes, no := true, false
+
+	survivor, err := handler.CreatePerson(ctx, command.CreatePersonInput{GivenName: "John", Surname: "Doe"})
+	if err != nil {
+		t.Fatalf("CreatePerson: %v", err)
+	}
+	merged, err := handler.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Jon", Surname: "Doe"})
+	if err != nil {
+		t.Fatalf("CreatePerson: %v", err)
+	}
+	marked, err := handler.UpdatePerson(ctx, command.UpdatePersonInput{ID: merged.ID, Version: merged.Version,
+		Private: &yes, LivingOverride: command.Set(string(domain.LivingOverrideLiving))})
+	if err != nil {
+		t.Fatalf("UpdatePerson: %v", err)
+	}
+	result, err := handler.MergePersons(ctx, command.MergePersonsInput{
+		SurvivorID: survivor.ID, MergedID: merged.ID,
+		SurvivorVersion: survivor.Version, MergedVersion: marked.Version,
+	})
+	if err != nil {
+		t.Fatalf("MergePersons: %v", err)
+	}
+	for _, field := range []string{"restriction", "living_override"} {
+		if !slices.Contains(result.Summary.FieldsUpdated, field) {
+			t.Fatalf("FieldsUpdated = %v, want it to hold %s", result.Summary.FieldsUpdated, field)
+		}
+	}
+	mergeVersion := result.Version
+	unmarked, err := handler.UpdatePerson(ctx, command.UpdatePersonInput{ID: survivor.ID, Version: mergeVersion,
+		Private: &no, LivingOverride: command.Set(string(domain.LivingOverrideAuto))})
+	if err != nil {
+		t.Fatalf("UpdatePerson unmark: %v", err)
+	}
+
+	marks := func() (bool, domain.LivingOverride) {
+		t.Helper()
+		p, err := readStore.GetPerson(ctx, domain.MainBranchID, survivor.ID)
+		if err != nil || p == nil {
+			t.Fatalf("GetPerson: %v, %v", p, err)
+		}
+		return p.Restriction.IsPrivate(), p.LivingOverride
+	}
+	if private, override := marks(); private || override != domain.LivingOverrideAuto {
+		t.Fatalf("after unmarking: private %v, override %q", private, override)
+	}
+
+	if _, err := handler.RollbackPerson(ctx, survivor.ID, mergeVersion); err != nil {
+		t.Fatalf("RollbackPerson to the merge (v%d): %v", mergeVersion, err)
+	}
+	if private, override := marks(); !private || override != domain.LivingOverrideLiving {
+		t.Errorf("rolled back to the merge: private %v, override %q; want private and living", private, override)
+	}
+
+	if unmarked.Version <= mergeVersion {
+		t.Fatalf("unmark version %d not after the merge's %d", unmarked.Version, mergeVersion)
+	}
+	if _, err := handler.RollbackPerson(ctx, survivor.ID, survivor.Version); err != nil {
+		t.Fatalf("RollbackPerson to before the merge (v%d): %v", survivor.Version, err)
+	}
+	if private, override := marks(); private || override != domain.LivingOverrideAuto {
+		t.Errorf("rolled back to before the merge: private %v, override %q; want neither mark", private, override)
+	}
+}
