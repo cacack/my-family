@@ -278,7 +278,8 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 	// so several items can share a stored xref (#1435). Those items share a
 	// group, and the ones that would still write the same record are written
 	// as that one record linked from each owner, so a re-import keeps them a
-	// group (#1478).
+	// group (#1478). An owner holding two such items, as a person merge can
+	// leave, links that record once (#1507).
 	media, err := ownedMedia(ctx, exp.readStore, persons, families, sources)
 	if err != nil {
 		return nil, err
@@ -300,7 +301,9 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 				groupRecords[*m.GroupID] = append(groupRecords[*m.GroupID], rec)
 			}
 		}
-		mediaLinks[m.EntityID] = append(mediaLinks[m.EntityID], &gedcom.MediaLink{MediaXRef: rec.XRef})
+		if !slices.ContainsFunc(mediaLinks[m.EntityID], func(l *gedcom.MediaLink) bool { return l.MediaXRef == rec.XRef }) {
+			mediaLinks[m.EntityID] = append(mediaLinks[m.EntityID], &gedcom.MediaLink{MediaXRef: rec.XRef})
+		}
 	}
 
 	// Build GEDCOM document

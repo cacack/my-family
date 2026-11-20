@@ -254,3 +254,63 @@ func TestExport_MediaGroupRecords(t *testing.T) {
 		}
 	}
 }
+
+// A person holding two alike items of a group, as a person merge can leave,
+// links the group's record once, and a re-import gives that person one item
+// (#1507).
+func TestExport_MediaGroupLinkedOncePerOwner(t *testing.T) {
+	ctx := context.Background()
+	rs := memory.NewReadModelStore()
+	now := time.Now()
+	group := uuid.New()
+	survivor := &repository.PersonReadModel{ID: uuid.New(), GivenName: "Ann", Surname: "Lee", Version: 1, UpdatedAt: now}
+	other := &repository.PersonReadModel{ID: uuid.New(), GivenName: "Bob", Surname: "Lee", Version: 1, UpdatedAt: now}
+	for _, p := range []*repository.PersonReadModel{survivor, other} {
+		if err := rs.SavePerson(ctx, domain.MainBranchID, p); err != nil {
+			t.Fatalf("SavePerson: %v", err)
+		}
+	}
+	for _, owner := range []uuid.UUID{survivor.ID, survivor.ID, other.ID} {
+		m := &repository.MediaReadModel{ID: uuid.New(), EntityType: "person", EntityID: owner, Title: "Reunion", MediaType: domain.MediaPhoto,
+			GedcomXref: "@M1@", Files: []domain.MediaFile{{Path: "photos/reunion.jpg", Format: "jpg"}},
+			GroupID: &group, Version: 1, CreatedAt: now, UpdatedAt: now}
+		if err := rs.SaveMedia(ctx, domain.MainBranchID, m); err != nil {
+			t.Fatalf("SaveMedia: %v", err)
+		}
+	}
+
+	var buf bytes.Buffer
+	result, err := gedcom.NewExporter(rs).Export(ctx, &buf)
+	if err != nil {
+		t.Fatalf("export: %v", err)
+	}
+	out := buf.String()
+	if result.MediaExported != 1 {
+		t.Fatalf("media exported %d, want 1:\n%s", result.MediaExported, out)
+	}
+	for _, head := range []string{"0 @I1@ INDI", "0 @I2@ INDI"} {
+		var links int
+		for _, line := range recordOf(out, head) {
+			if line == "1 OBJE @O1@" {
+				links++
+			}
+		}
+		if links != 1 {
+			t.Errorf("%s links @O1@ %d times, want 1:\n%s", head, links, out)
+		}
+	}
+
+	imported, _, _, _, _, _, _, _, _, _, _, _, media, err := gedcom.NewImporter().Import(ctx, strings.NewReader(out))
+	if err != nil {
+		t.Fatalf("import: %v", err)
+	}
+	if len(media) != 1 || len(media[0].Owners) != 2 {
+		t.Fatalf("re-imported media = %+v, want one record with two owners", media)
+	}
+	for _, xref := range []string{"@I1@", "@I2@"} {
+		id := imported.PersonXrefToID[xref]
+		if n := slices.IndexFunc(media[0].Owners, func(o gedcom.MediaOwner) bool { return o.EntityID == id }); n < 0 {
+			t.Errorf("%s is not an owner of the re-imported record: %+v", xref, media[0].Owners)
+		}
+	}
+}
