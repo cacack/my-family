@@ -32,6 +32,8 @@
 	// child summaries don't).
 	const living = $derived('living' in person && person.living === true);
 	const isPrivate = $derived('private' in person && person.private === true);
+	// A placeholder has nothing more to show than its name (ADR-008 §3).
+	const redacted = $derived(person.redacted === true);
 
 	const cardSize = $derived(variant === 'compact' ? 'sm' : 'default');
 </script>
@@ -61,12 +63,14 @@
 	<div class="info">
 		<div class="name-row">
 			<h3 class="name" class:compact={variant === 'compact'}>{fullName}</h3>
-			{#if researchStatus}
+			{#if researchStatus && !redacted}
 				<UncertaintyBadge status={researchStatus} size="small" />
 			{/if}
-			<PrivacyBadges {living} private={isPrivate} />
+			<PrivacyBadges {living} private={isPrivate} {redacted} />
 		</div>
-		{#if variant === 'default'}
+		{#if redacted}
+			<!-- No dates to show. -->
+		{:else if variant === 'default'}
 			{#if birthDate}
 				<p class="detail">b. {birthDate}</p>
 			{/if}

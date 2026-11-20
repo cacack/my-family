@@ -300,6 +300,47 @@ describe('Person detail by role (ADR-007)', () => {
 	});
 });
 
+// A viewer is shown a placeholder instead of a protected person (ADR-008 §3).
+describe('Person detail placeholder (#1466)', () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		branchState.id = null;
+		getPerson.mockResolvedValue(
+			person({
+				given_name: 'Living',
+				surname: '',
+				gender: 'female',
+				redacted: true,
+				living: true,
+				family_as_child: { id: 'fam-parents', partner1_name: 'John Smith', partner2_name: 'Living' }
+			})
+		);
+	});
+
+	for (const role of ['viewer', 'editor'] as const) {
+		it(`shows a ${role} only the name, a notice and the family links`, async () => {
+			signInAs(role);
+			render(Page);
+
+			expect(await screen.findByRole('heading', { name: 'Living' })).toBeDefined();
+			expect(screen.getByRole('img', { name: 'Details hidden' })).toBeDefined();
+			expect(screen.getByTestId('redacted-notice').textContent).toContain('details are hidden');
+			expect(screen.getByRole('link', { name: /John Smith/ }).getAttribute('href')).toBe('/families/fam-parents');
+			expect(screen.queryByRole('img', { name: 'Living person' })).toBeNull();
+			expect(screen.queryByText('Not assessed')).toBeNull();
+			for (const heading of ['Birth', 'Death', 'Media', 'History']) {
+				expect(screen.queryByRole('heading', { name: new RegExp(`^${heading}`) })).toBeNull();
+			}
+			for (const name of ['Edit', 'Delete', 'Mark as Brick Wall', 'Add family']) {
+				expect(screen.queryByRole('button', { name })).toBeNull();
+				expect(screen.queryByRole('link', { name })).toBeNull();
+			}
+			expect(getPersonHistory).not.toHaveBeenCalled();
+			expect(listPersonMedia).not.toHaveBeenCalled();
+		});
+	}
+});
+
 describe('Person detail family shortcuts (#826)', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();

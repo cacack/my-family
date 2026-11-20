@@ -45,7 +45,7 @@
 					<a href="/persons/{data.husband.id}" class="person-link">
 						{formatPersonName(data.husband)}
 					</a>
-					<PrivacyBadges living={data.husband.living} private={data.husband.private} />
+					<PrivacyBadges living={data.husband.living} private={data.husband.private} redacted={data.husband.redacted} />
 				</div>
 
 				<div class="events-grid">
@@ -113,7 +113,7 @@
 					<a href="/persons/{data.wife.id}" class="person-link">
 						{formatPersonName(data.wife)}
 					</a>
-					<PrivacyBadges living={data.wife.living} private={data.wife.private} />
+					<PrivacyBadges living={data.wife.living} private={data.wife.private} redacted={data.wife.redacted} />
 				</div>
 
 				<div class="events-grid">
@@ -225,7 +225,7 @@
 							<td class="col-num">{child.sequence ?? index + 1}</td>
 							<td class="col-name">
 								<a href="/persons/{child.id}">{formatPersonName(child)}</a>
-								<PrivacyBadges living={child.living} private={child.private} />
+								<PrivacyBadges living={child.living} private={child.private} redacted={child.redacted} />
 								{#if child.relationship_type && child.relationship_type !== 'biological'}
 									<span class="relationship-type">({child.relationship_type})</span>
 								{/if}

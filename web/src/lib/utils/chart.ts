@@ -281,11 +281,13 @@ export function cardTitle(person: { given_name?: string; surname?: string } & Pr
 	return [formatPersonName(person), ...personBadgeNames(person)].join(', ');
 }
 
-/** Lucide's shield (living) and lock (private), drawn on a 24-unit grid. */
+/** Lucide's shield (living), lock (private) and eye-off (redacted), drawn on a 24-unit grid. */
 const PRIVACY_ICONS: Record<PersonBadge['kind'], string> = {
 	living:
 		'M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z',
-	private: 'M5 11h14a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2zM7 11V7a5 5 0 0 1 10 0v4'
+	private: 'M5 11h14a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2zM7 11V7a5 5 0 0 1 10 0v4',
+	redacted:
+		'M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49M14.084 14.158a3 3 0 0 1-4.242-4.242M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143M2 2l20 20'
 };
 
 /** Size of a privacy marker icon, and the padding around it, in chart units. */
@@ -294,8 +296,8 @@ const MARKER_PAD = 3;
 
 /**
  * Marks the cards of protected people (ADR-008): a small pill on the card's
- * top edge, at its right corner, with a shield for a living person and a lock
- * for a private one. Each icon is an image named like the HTML badges
+ * top edge, at its right corner, with a shield for a living person, a lock
+ * for a private one and a crossed-out eye for a placeholder. Each icon is an image named like the HTML badges
  * ("Living person"), so the mark has an accessible name in the chart too.
  */
 export function appendPrivacyMarkers<D>(

@@ -11,6 +11,10 @@ describe('privacy badge names', () => {
 		expect(personBadgeNames({ living: false })).toEqual([]);
 	});
 
+	it('names only the placeholder badge on a redacted person', () => {
+		expect(personBadgeNames({ redacted: true, living: true, private: true })).toEqual(['Details hidden']);
+	});
+
 	it('names a private record by its noun', () => {
 		expect(privateBadgeName('source')).toBe('Private source');
 	});

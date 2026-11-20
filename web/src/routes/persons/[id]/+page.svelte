@@ -52,6 +52,10 @@
 
 	let person: PersonDetail | null = $state(null);
 	let loading = $state(true);
+	// The placeholder shown instead of a person the reader may not see has
+	// only a name and sex, and nothing to edit or research (ADR-008 §3).
+	const redacted = $derived.by(() => person?.redacted === true);
+	const canEdit = $derived(can('editor') && !redacted);
 	// A failed load replaces the page; a failed save or brick-wall
 	// change is shown inline and leaves the page and the form intact (#899);
 	// a failed delete is shown in its dialog.
@@ -153,7 +157,7 @@
 		} finally {
 			loading = false;
 		}
-		if (person) {
+		if (person && !person.redacted) {
 			await loadCounts(id);
 		}
 	}
@@ -455,7 +459,7 @@
 	// Keyboard shortcut handlers
 	const { handleKeydown } = createShortcutHandler('person-detail', {
 		'edit': () => {
-			if (!editing && person && !loading) {
+			if (!editing && person && !loading && canEdit) {
 				startEdit();
 			}
 		},
@@ -504,7 +508,7 @@
 		<Button variant="outline" href="/pedigree/{person.id}">Pedigree</Button>
 		<Button variant="outline" href="/descendancy/{person.id}">Descendants</Button>
 		<Button variant="outline" href="/ahnentafel/{person.id}">Ahnentafel</Button>
-		{#if can('editor')}
+		{#if canEdit}
 			<Button variant="outline" onclick={startEdit} bind:ref={editButton}>Edit</Button>
 			<Button variant="destructive" onclick={() => (deleteOpen = true)}>Delete</Button>
 		{/if}
@@ -641,8 +645,10 @@
 					<div class="person-title">
 						<div class="name-row">
 							<h1>{formatPersonName(person)}</h1>
-							<UncertaintyBadge status={person.research_status || 'unknown'} showLabel={true} />
-							<PrivacyBadges living={person.living} private={person.private} />
+							{#if !redacted}
+								<UncertaintyBadge status={person.research_status || 'unknown'} showLabel={true} />
+							{/if}
+							<PrivacyBadges living={person.living} private={person.private} {redacted} />
 						</div>
 						{#if person.gender}
 							<span class="gender-badge">{person.gender}</span>
@@ -651,137 +657,144 @@
 					</div>
 				</div>
 
-				<div class="info-grid">
-					<InfoSection
-						title="Birth"
-						fields={[
-							{
-								label: 'Date',
-								value: formatGenDate(person.birth_date),
-								note: savedAsText(savedAs.birth_date)
-							},
-							{ label: 'Place', value: person.birth_place }
-						]}
-					/>
+				{#if redacted}
+					<p class="redacted-notice" role="note" data-testid="redacted-notice">
+						This person's details are hidden from you. They appear as a placeholder so the
+						family tree keeps its shape.
+					</p>
+				{:else}
+					<div class="info-grid">
+						<InfoSection
+							title="Birth"
+							fields={[
+								{
+									label: 'Date',
+									value: formatGenDate(person.birth_date),
+									note: savedAsText(savedAs.birth_date)
+								},
+								{ label: 'Place', value: person.birth_place }
+							]}
+						/>
 
-					<InfoSection
-						title="Death"
-						fields={[
-							{
-								label: 'Date',
-								value: formatGenDate(person.death_date),
-								note: savedAsText(savedAs.death_date)
-							},
-							{ label: 'Place', value: person.death_place }
-						]}
-					/>
-				</div>
+						<InfoSection
+							title="Death"
+							fields={[
+								{
+									label: 'Date',
+									value: formatGenDate(person.death_date),
+									note: savedAsText(savedAs.death_date)
+								},
+								{ label: 'Place', value: person.death_place }
+							]}
+						/>
+					</div>
 
-				<!-- Guard here (in addition to ExternalLinks' own empty check) so the
-				     "External links" heading is suppressed when there are none. -->
-				{#if person.external_ids && person.external_ids.length > 0}
-					<InfoSection title="External links">
-						<ExternalLinks externalIds={person.external_ids} />
-					</InfoSection>
-				{/if}
-
-				<!-- Brick Wall Section -->
-				<div class="brick-wall-section" class:celebrating={brickWallCelebrating}>
-					{#if brickWallToast}
-						<div class="brick-wall-toast" role="status" aria-live="polite">
-							{brickWallToast}
-						</div>
+					<!-- Guard here (in addition to ExternalLinks' own empty check) so the
+					     "External links" heading is suppressed when there are none. -->
+					{#if person.external_ids && person.external_ids.length > 0}
+						<InfoSection title="External links">
+							<ExternalLinks externalIds={person.external_ids} />
+						</InfoSection>
 					{/if}
 
-					{#if person.brick_wall_note && !person.brick_wall_resolved_at}
-						<!-- Active brick wall -->
-						<div class="brick-wall-indicator active">
-							<div class="brick-wall-header">
-								<Badge variant="destructive" class="gap-1 uppercase text-[0.6875rem] tracking-wide font-semibold">
-									<svg viewBox="0 0 24 24" fill="currentColor" class="size-3">
-										<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
-									</svg>
-									Brick Wall
-								</Badge>
-								{#if person.brick_wall_since}
-									<span class="brick-wall-since">Since {formatBrickWallDuration(person.brick_wall_since)}</span>
-								{/if}
+					<!-- Brick Wall Section -->
+					<div class="brick-wall-section" class:celebrating={brickWallCelebrating}>
+						{#if brickWallToast}
+							<div class="brick-wall-toast" role="status" aria-live="polite">
+								{brickWallToast}
 							</div>
-							<p class="brick-wall-note">{person.brick_wall_note}</p>
-							{#if !can('editor')}
-								<!-- A viewer cannot resolve it. -->
-							{:else if brickWallOnMainlineOnly}
-								<p class="brick-wall-mainline-only" role="note">{BRICK_WALL_MAINLINE_ONLY}</p>
-							{:else}
-								<Button
-									variant="warning"
-									onclick={resolveBrickWall}
-									disabled={brickWallSaving}
-								>
-									{brickWallSaving ? 'Resolving...' : 'Resolve Brick Wall'}
-								</Button>
-							{/if}
-						</div>
-					{:else if person.brick_wall_resolved_at}
-						<!-- Resolved brick wall -->
-						<div class="brick-wall-indicator resolved">
-							<div class="brick-wall-header">
-								<Badge variant="outline" class="gap-1 border-green-200 bg-green-50 text-green-700 uppercase text-[0.6875rem] tracking-wide font-semibold dark:border-green-800 dark:bg-green-950 dark:text-green-400">
-									<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="size-3">
-										<polyline points="20 6 9 17 4 12" />
-									</svg>
-									Resolved
-								</Badge>
-								<span class="brick-wall-since">Resolved {formatBrickWallDate(person.brick_wall_resolved_at)}</span>
-							</div>
-							{#if person.brick_wall_note}
+						{/if}
+
+						{#if person.brick_wall_note && !person.brick_wall_resolved_at}
+							<!-- Active brick wall -->
+							<div class="brick-wall-indicator active">
+								<div class="brick-wall-header">
+									<Badge variant="destructive" class="gap-1 uppercase text-[0.6875rem] tracking-wide font-semibold">
+										<svg viewBox="0 0 24 24" fill="currentColor" class="size-3">
+											<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+										</svg>
+										Brick Wall
+									</Badge>
+									{#if person.brick_wall_since}
+										<span class="brick-wall-since">Since {formatBrickWallDuration(person.brick_wall_since)}</span>
+									{/if}
+								</div>
 								<p class="brick-wall-note">{person.brick_wall_note}</p>
-							{/if}
-						</div>
-					{:else if !can('editor')}
-						<!-- No brick wall, and a viewer cannot mark one. -->
-					{:else if brickWallOnMainlineOnly}
-						<p class="brick-wall-mainline-only" role="note">{BRICK_WALL_MAINLINE_ONLY}</p>
-					{:else}
-						<!-- No brick wall — show Mark button -->
-						{#if showBrickWallForm}
-							<div class="brick-wall-form">
-								<label class="brick-wall-form-label">
-									Brick wall note
-									<textarea
-										bind:value={brickWallNote}
-										placeholder="Describe the research obstacle..."
-										rows="3"
-									></textarea>
-								</label>
-								<div class="brick-wall-form-actions">
-									<Button variant="outline" onclick={cancelBrickWallForm} disabled={brickWallSaving}>Cancel</Button>
+								{#if !can('editor')}
+									<!-- A viewer cannot resolve it. -->
+								{:else if brickWallOnMainlineOnly}
+									<p class="brick-wall-mainline-only" role="note">{BRICK_WALL_MAINLINE_ONLY}</p>
+								{:else}
 									<Button
 										variant="warning"
-										onclick={markBrickWall}
-										disabled={brickWallSaving || !brickWallNote.trim()}
+										onclick={resolveBrickWall}
+										disabled={brickWallSaving}
 									>
-										{brickWallSaving ? 'Saving...' : 'Mark as Brick Wall'}
+										{brickWallSaving ? 'Resolving...' : 'Resolve Brick Wall'}
 									</Button>
-								</div>
+								{/if}
 							</div>
+						{:else if person.brick_wall_resolved_at}
+							<!-- Resolved brick wall -->
+							<div class="brick-wall-indicator resolved">
+								<div class="brick-wall-header">
+									<Badge variant="outline" class="gap-1 border-green-200 bg-green-50 text-green-700 uppercase text-[0.6875rem] tracking-wide font-semibold dark:border-green-800 dark:bg-green-950 dark:text-green-400">
+										<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="size-3">
+											<polyline points="20 6 9 17 4 12" />
+										</svg>
+										Resolved
+									</Badge>
+									<span class="brick-wall-since">Resolved {formatBrickWallDate(person.brick_wall_resolved_at)}</span>
+								</div>
+								{#if person.brick_wall_note}
+									<p class="brick-wall-note">{person.brick_wall_note}</p>
+								{/if}
+							</div>
+						{:else if !can('editor')}
+							<!-- No brick wall, and a viewer cannot mark one. -->
+						{:else if brickWallOnMainlineOnly}
+							<p class="brick-wall-mainline-only" role="note">{BRICK_WALL_MAINLINE_ONLY}</p>
 						{:else}
-							<Button variant="outline" onclick={() => showBrickWallForm = true}>
-								Mark as Brick Wall
-							</Button>
+							<!-- No brick wall — show Mark button -->
+							{#if showBrickWallForm}
+								<div class="brick-wall-form">
+									<label class="brick-wall-form-label">
+										Brick wall note
+										<textarea
+											bind:value={brickWallNote}
+											placeholder="Describe the research obstacle..."
+											rows="3"
+										></textarea>
+									</label>
+									<div class="brick-wall-form-actions">
+										<Button variant="outline" onclick={cancelBrickWallForm} disabled={brickWallSaving}>Cancel</Button>
+										<Button
+											variant="warning"
+											onclick={markBrickWall}
+											disabled={brickWallSaving || !brickWallNote.trim()}
+										>
+											{brickWallSaving ? 'Saving...' : 'Mark as Brick Wall'}
+										</Button>
+									</div>
+								</div>
+							{:else}
+								<Button variant="outline" onclick={() => showBrickWallForm = true}>
+									Mark as Brick Wall
+								</Button>
+							{/if}
 						{/if}
-					{/if}
-				</div>
+					</div>
 
-				{#if person.notes}
-					<InfoSection title="Notes">
-						<p class="notes">{person.notes}</p>
-					</InfoSection>
+					{#if person.notes}
+						<InfoSection title="Notes">
+							<p class="notes">{person.notes}</p>
+						</InfoSection>
+					{/if}
 				{/if}
 
 				<InfoSection title="Families">
 					{#snippet actions()}
-						{#if person && can('editor')}
+						{#if person && canEdit}
 							<Button variant="outline" size="sm" href="/families/add?partner1={person.id}">
 								Add family
 							</Button>
@@ -808,7 +821,7 @@
 
 				<InfoSection title="Parents">
 					{#snippet actions()}
-						{#if person && !person.family_as_child && can('editor')}
+						{#if person && !person.family_as_child && canEdit}
 							<Button variant="outline" size="sm" href="/families/add?child={person.id}">
 								Add parents
 							</Button>
@@ -824,96 +837,98 @@
 					{/if}
 				</InfoSection>
 
-				<div class="media-section">
-					<InfoSection title="Media">
-						{#snippet badge()}
-							{#if mediaCount !== null && mediaCount > 0}
-								<Badge variant="outline" class="ml-2">{mediaCount}</Badge>
-							{/if}
-						{/snippet}
-						<MediaGallery personId={person.id} onMediaAdded={handleMediaAdded} />
-					</InfoSection>
-				</div>
-
-				<CitationSection personId={person.id} />
-
-				<EvidencePanel subjectId={person.id} />
-
-				<NameSection personId={person.id} onNamesChanged={handleNamesChanged} />
-
-				{#if rollbackSuccess.show}
-					<RollbackSuccessBanner
-						message={rollbackSuccess.message}
-						changes={rollbackSuccess.changes}
-						onDismiss={dismissRollbackSuccess}
-					/>
-				{/if}
-
-				<!-- A visitor may not read the change log (ADR-008 §4). -->
-				{#if !isVisitor()}
-					<div class="history-section">
-						<button class="history-header" onclick={toggleHistory}>
-							<h2>
-								History
-								{#if historyCount !== null}
-									<Badge variant="outline" class="ml-2">{historyCount}</Badge>
+				{#if !redacted}
+					<div class="media-section">
+						<InfoSection title="Media">
+							{#snippet badge()}
+								{#if mediaCount !== null && mediaCount > 0}
+									<Badge variant="outline" class="ml-2">{mediaCount}</Badge>
 								{/if}
-							</h2>
-							<span class="expand-icon">{historyExpanded ? '−' : '+'}</span>
-						</button>
-						{#if historyExpanded}
-							{#if !can('owner')}
-								<!-- Only the owner rolls back, so there is no Restore tab. -->
-							{:else if rollbackOnMainlineOnly}
-								<p class="rollback-mainline-only" role="note">{ROLLBACK_MAINLINE_ONLY}</p>
-							{:else}
-								<div class="history-tabs" role="group" aria-label="History view">
-									<button
-										type="button"
-										class="tab-btn"
-										aria-pressed={historyTab === 'history'}
-										onclick={() => historyTab = 'history'}
-									>
-										Change Log
-									</button>
-									<button
-										type="button"
-										class="tab-btn"
-										aria-pressed={historyTab === 'restore'}
-										onclick={() => historyTab = 'restore'}
-									>
-										Restore
-									</button>
+							{/snippet}
+							<MediaGallery personId={person.id} onMediaAdded={handleMediaAdded} />
+						</InfoSection>
+					</div>
+
+					<CitationSection personId={person.id} />
+
+					<EvidencePanel subjectId={person.id} />
+
+					<NameSection personId={person.id} onNamesChanged={handleNamesChanged} />
+
+					{#if rollbackSuccess.show}
+						<RollbackSuccessBanner
+							message={rollbackSuccess.message}
+							changes={rollbackSuccess.changes}
+							onDismiss={dismissRollbackSuccess}
+						/>
+					{/if}
+
+					<!-- A visitor may not read the change log (ADR-008 §4). -->
+					{#if !isVisitor()}
+						<div class="history-section">
+							<button class="history-header" onclick={toggleHistory}>
+								<h2>
+									History
+									{#if historyCount !== null}
+										<Badge variant="outline" class="ml-2">{historyCount}</Badge>
+									{/if}
+								</h2>
+								<span class="expand-icon">{historyExpanded ? '−' : '+'}</span>
+							</button>
+							{#if historyExpanded}
+								{#if !can('owner')}
+									<!-- Only the owner rolls back, so there is no Restore tab. -->
+								{:else if rollbackOnMainlineOnly}
+									<p class="rollback-mainline-only" role="note">{ROLLBACK_MAINLINE_ONLY}</p>
+								{:else}
+									<div class="history-tabs" role="group" aria-label="History view">
+										<button
+											type="button"
+											class="tab-btn"
+											aria-pressed={historyTab === 'history'}
+											onclick={() => historyTab = 'history'}
+										>
+											Change Log
+										</button>
+										<button
+											type="button"
+											class="tab-btn"
+											aria-pressed={historyTab === 'restore'}
+											onclick={() => historyTab = 'restore'}
+										>
+											Restore
+										</button>
+									</div>
+								{/if}
+								<div class="history-content">
+									{#if historyTab === 'history' || !canRollback}
+										<ChangeHistory entityType="person" entityId={person.id} />
+									{:else}
+										<RestorePointBrowser
+											entityType="person"
+											entityId={person.id}
+											currentVersion={person.version}
+											onSelectVersion={handleSelectVersion}
+										/>
+									{/if}
 								</div>
 							{/if}
-							<div class="history-content">
-								{#if historyTab === 'history' || !canRollback}
-									<ChangeHistory entityType="person" entityId={person.id} />
-								{:else}
-									<RestorePointBrowser
-										entityType="person"
-										entityId={person.id}
-										currentVersion={person.version}
-										onSelectVersion={handleSelectVersion}
-									/>
-								{/if}
-							</div>
-						{/if}
-					</div>
-				{/if}
+						</div>
+					{/if}
 
-				{#if canRollback}
-					<RollbackConfirmDialog
-						open={rollbackDialog.open}
-						entityType="person"
-						entityId={person.id}
-						entityName={formatPersonName(person)}
-						currentVersion={person.version}
-						targetVersion={rollbackDialog.targetVersion}
-						targetSummary={rollbackDialog.targetSummary}
-						onConfirm={handleRollbackConfirm}
-						onCancel={handleRollbackCancel}
-					/>
+					{#if canRollback}
+						<RollbackConfirmDialog
+							open={rollbackDialog.open}
+							entityType="person"
+							entityId={person.id}
+							entityName={formatPersonName(person)}
+							currentVersion={person.version}
+							targetVersion={rollbackDialog.targetVersion}
+							targetSummary={rollbackDialog.targetSummary}
+							onConfirm={handleRollbackConfirm}
+							onCancel={handleRollbackCancel}
+						/>
+					{/if}
 				{/if}
 			</div>
 		{/if}
@@ -1004,6 +1019,20 @@
 		margin-top: 0.25rem;
 	}
 
+	.redacted-notice {
+		margin: 0 0 1.5rem;
+		padding: 0.75rem 1rem;
+		border: 1px solid #e2e8f0;
+		border-radius: 8px;
+		background: #f8fafc;
+		color: #475569;
+		font-size: 0.875rem;
+	}
+	:global(body.high-contrast) .redacted-notice {
+		background: var(--color-bg);
+		border-color: var(--a11y-color-border);
+		color: var(--color-text);
+	}
 	.info-grid {
 		display: grid;
 		grid-template-columns: repeat(auto-fit, minmax(min(16rem, 100%), 1fr));

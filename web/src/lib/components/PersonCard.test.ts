@@ -31,6 +31,26 @@ describe('PersonCard', () => {
 		expect(screen.getByRole('link', { name: /Edith Holt.*Living person/ })).toBeDefined();
 	});
 
+	it('shows a placeholder by name and mark only, with no dates or research status (#1466)', () => {
+		const { container } = render(PersonCard, {
+			person: {
+				id: 'a',
+				given_name: 'Living',
+				surname: '',
+				redacted: true,
+				living: true,
+				research_status: 'unknown',
+				birth_date: { year: 1990 },
+				version: 1
+			},
+			href: '/persons/a'
+		});
+		expect(screen.getByRole('link', { name: /Living.*Details hidden/ })).toBeDefined();
+		expect(screen.queryByRole('img', { name: 'Living person' })).toBeNull();
+		expect(container.querySelector('.detail')).toBeNull();
+		expect(screen.queryByText('Not assessed')).toBeNull();
+	});
+
 	it('shows no privacy badge for a deceased public person', () => {
 		render(PersonCard, {
 			person: { id: 'a', given_name: 'Old', surname: 'Holt', living: false, version: 1 },
