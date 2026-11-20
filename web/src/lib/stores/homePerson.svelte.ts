@@ -6,10 +6,15 @@
  * each signed-in account, or for the site in open mode; a visitor has none
  * (#1443).
  *
- * Loaded by the root layout, again whenever who is signed in changes, and
- * reloaded after a delete or merge that may have removed the home person,
- * since the server moves or drops them then (#1444). The setters are the only
- * other mutators.
+ * Loaded by the root layout whenever who is viewing changes, and reloaded
+ * after a delete or merge that may have removed the home person, since the
+ * server moves or drops them then (#1444). The setters are the only other
+ * mutators.
+ *
+ * Loads are not awaited, so they can overlap each other and the setters. Each
+ * call takes a ticket, and a load's answer is kept only when nothing started
+ * after it: a slow answer never replaces a newer choice, or reaches someone
+ * who signed in after it was asked for.
  */
 
 import { api, type Person } from '#lib/api/client.js';
@@ -23,6 +28,9 @@ interface HomePersonState {
 
 const state = $state<HomePersonState>({ person: null, loaded: false });
 
+/** The latest load, set or clear; plain, so reading it in an effect tracks nothing. */
+let latest = 0;
+
 /** Read-only view of the home person. */
 export const homePerson: Readonly<HomePersonState> = state;
 
@@ -31,24 +39,42 @@ export const homePerson: Readonly<HomePersonState> = state;
  * the relationship line, so it is not worth an error on every page.
  */
 export async function loadHomePerson(): Promise<void> {
+	const ticket = ++latest;
+	let person: Person | null = null;
 	try {
-		const res = await api.getHomePerson();
-		state.person = res.person ?? null;
+		person = (await api.getHomePerson()).person ?? null;
 	} catch {
-		state.person = null;
-	} finally {
-		state.loaded = true;
+		// Leave it unset.
 	}
+	if (ticket !== latest) return;
+	state.person = person;
+	state.loaded = true;
+}
+
+/**
+ * Forgets the home person until the next load, for a new viewer: the last
+ * one's choice may be a person this one may not see.
+ */
+export function resetHomePerson(): void {
+	latest++;
+	state.person = null;
+	state.loaded = false;
 }
 
 /** Marks personId as the home person. Throws the API error so the caller can show it. */
 export async function setHomePerson(personId: string): Promise<void> {
+	const ticket = ++latest;
 	const res = await api.setHomePerson(personId);
+	if (ticket !== latest) return;
 	state.person = res.person ?? null;
+	state.loaded = true;
 }
 
 /** Clears the home person. Throws the API error so the caller can show it. */
 export async function clearHomePerson(): Promise<void> {
+	const ticket = ++latest;
 	await api.clearHomePerson();
+	if (ticket !== latest) return;
 	state.person = null;
+	state.loaded = true;
 }

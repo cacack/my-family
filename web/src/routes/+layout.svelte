@@ -2,7 +2,7 @@
 	import '../app.css';
 	import favicon from '#lib/assets/favicon.svg';
 	import logoMark from '#lib/assets/favicon.svg?raw';
-	import { goto } from '$app/navigation';
+	import { goto, invalidateAll } from '$app/navigation';
 	import { page } from '$app/state';
 	import SearchBox from '#lib/components/SearchBox.svelte';
 	import KeyboardHelp from '#lib/components/KeyboardHelp.svelte';
@@ -21,7 +21,7 @@
 	import { createShortcutHandler } from '#lib/keyboard/useShortcuts.svelte.js';
 	import { loadAppConfig, getAppConfig } from '#lib/stores/appConfig.svelte.js';
 	import { revalidateActiveBranch } from '#lib/stores/activeBranch.svelte.js';
-	import { loadHomePerson } from '#lib/stores/homePerson.svelte.js';
+	import { loadHomePerson, resetHomePerson } from '#lib/stores/homePerson.svelte.js';
 	import type { SearchResult } from '#lib/api/client.js';
 
 	let { children } = $props();
@@ -38,17 +38,23 @@
 	const appReady = $derived(auth.phase === 'open' || auth.phase === 'signed-in' || auth.phase === 'visitor');
 
 	$effect(() => {
-		if (!appReady) return;
-		loadAppConfig();
+		if (appReady) loadAppConfig();
 	});
 
-	// The home person is each account's own (#1443), so it is read again
-	// whenever who is signed in changes, such as signing out to browse as a
-	// visitor.
+	// Who is viewing: each page shows what its viewer may see, so a new viewer
+	// gets everything fetched afresh. Signing out while visitors are let in
+	// keeps the app on screen, so the page is rebuilt (the key block below)
+	// rather than left showing what the signed-in user could see. Route loads
+	// (the charts' home person) may have run before anyone signed in, so they
+	// run again too. The home person is forgotten first, so no page shows the
+	// last viewer's choice while the new one loads.
+	const viewer = $derived(`${auth.phase}:${auth.account?.id ?? ''}`);
 	$effect(() => {
 		if (!appReady) return;
-		void auth.account?.id;
+		void viewer;
+		resetHomePerson();
 		loadHomePerson();
+		invalidateAll();
 	});
 
 	// Separate effect: revalidation reads the active branch id, so folding it in
@@ -182,7 +188,9 @@
 	</header>
 	<main id="main-content" class="app-main" tabindex="-1">
 		<TooltipProvider>
-			{@render children()}
+			{#key viewer}
+				{@render children()}
+			{/key}
 		</TooltipProvider>
 	</main>
 </div>
