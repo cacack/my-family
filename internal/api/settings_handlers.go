@@ -3,8 +3,10 @@ package api
 import (
 	"context"
 	"errors"
+	"net/http"
 
 	"github.com/google/uuid"
+	"github.com/labstack/echo/v4"
 
 	"github.com/cacack/my-family/internal/domain"
 	"github.com/cacack/my-family/internal/query"
@@ -25,8 +27,9 @@ var errSettingsUnavailable = Error{
 }
 
 // errNoAccount is a home-person change with no account to change: an
-// anonymous visitor's, which authenticate refuses before it gets here.
-var errNoAccount = errors.New("an anonymous visitor has no home person")
+// anonymous visitor's, which authenticate refuses before it gets here. Should
+// one get through, it is still a 401, not a 500.
+var errNoAccount = echo.NewHTTPError(http.StatusUnauthorized, "Sign in to continue")
 
 // homePersonAccount returns whose home person a request reads and changes:
 // the site's in open mode, where no one signs in, otherwise the signed-in
