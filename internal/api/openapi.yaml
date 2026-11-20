@@ -6439,8 +6439,13 @@ components:
 
     AccountLink:
       type: object
-      required: [token, expires_at]
+      required: [id, token, expires_at]
       properties:
+        id:
+          type: string
+          description: |
+            The ID the link is listed and revoked by, as in `PendingInvite` and
+            `PendingPasswordReset`; it cannot be used in place of the token.
         token:
           type: string
           description: |

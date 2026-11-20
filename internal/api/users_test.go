@@ -215,7 +215,7 @@ func TestUsers_ListAndRevokePendingLinks(t *testing.T) {
 	}
 	invites := decode[api.PendingInviteList](t, rec).Items
 	if len(invites) != 1 || invites[0].Role != api.PendingInviteRoleEditor || invites[0].CreatedByName == nil ||
-		*invites[0].CreatedByName != "Ada Lovelace" || !invites[0].ExpiresAt.Equal(invite.ExpiresAt) {
+		*invites[0].CreatedByName != "Ada Lovelace" || !invites[0].ExpiresAt.Equal(invite.ExpiresAt) || invites[0].Id != invite.Id {
 		t.Fatalf("pending invites = %+v, want Ada's editor invite (grace's was accepted)", invites)
 	}
 	rec = f.do(t, request{method: http.MethodGet, path: "/api/v1/password-resets", cookie: owner})
@@ -227,7 +227,8 @@ func TestUsers_ListAndRevokePendingLinks(t *testing.T) {
 	}
 	resets := decode[api.PendingPasswordResetList](t, rec).Items
 	if len(resets) != 1 || resets[0].UserId != graceID || resets[0].UserName == nil || *resets[0].UserName != "grace" ||
-		resets[0].CreatedByName == nil || *resets[0].CreatedByName != "Ada Lovelace" || !resets[0].ExpiresAt.Equal(reset.ExpiresAt) {
+		resets[0].CreatedByName == nil || *resets[0].CreatedByName != "Ada Lovelace" || !resets[0].ExpiresAt.Equal(reset.ExpiresAt) ||
+		resets[0].Id != reset.Id {
 		t.Fatalf("pending resets = %+v, want grace's reset issued by Ada", resets)
 	}
 

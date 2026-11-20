@@ -95,6 +95,8 @@
 		try {
 			replace(await api.updateUser(user.id, change));
 			liveRegion?.announce(done);
+			// A demotion or disable revokes the links the user issued.
+			pendingLinks?.reload();
 		} catch (e) {
 			rowErrors[user.id] = (e as ApiError).message || 'Could not change this user. Try again.';
 			throw e;
@@ -127,6 +129,14 @@
 			await update(user, { disabled: true }, `${user.display_name}'s account disabled`);
 		} catch {
 			// The refusal shows on the user's row.
+		}
+	}
+
+	/** Clears a link box once its link is revoked, so it cannot be copied and passed on. */
+	function forgetLink(id: string) {
+		if (invite?.link.id === id) invite = null;
+		for (const [userId, link] of Object.entries(resets)) {
+			if (link.id === id) delete resets[userId];
 		}
 	}
 
@@ -271,7 +281,11 @@
 			</ul>
 		{/if}
 
-		<PendingLinks bind:this={pendingLinks} announce={(message) => liveRegion?.announce(message)} />
+		<PendingLinks
+			bind:this={pendingLinks}
+			announce={(message) => liveRegion?.announce(message)}
+			onrevoke={forgetLink}
+		/>
 	{/if}
 </div>
 
