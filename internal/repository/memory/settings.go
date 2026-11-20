@@ -16,7 +16,8 @@ var _ repository.SettingsStore = (*SettingsStore)(nil)
 type SettingsStore struct {
 	mu sync.RWMutex
 	// homePersons maps an account (or repository.SiteWide) to its home
-	// person; an account with none is absent.
+	// person. One that cleared its choice maps to uuid.Nil; one that never
+	// chose is absent.
 	homePersons map[uuid.UUID]uuid.UUID
 }
 
@@ -36,10 +37,20 @@ func (s *SettingsStore) HomePerson(_ context.Context, accountID uuid.UUID) (uuid
 func (s *SettingsStore) SetHomePerson(_ context.Context, accountID, personID uuid.UUID) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if personID == uuid.Nil {
-		delete(s.homePersons, accountID)
-	} else {
-		s.homePersons[accountID] = personID
+	s.homePersons[accountID] = personID
+	return nil
+}
+
+// SeedHomePerson gives accountID the site's home person unless accountID has
+// chosen or cleared its own.
+func (s *SettingsStore) SeedHomePerson(_ context.Context, accountID uuid.UUID) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, chosen := s.homePersons[accountID]; chosen {
+		return nil
+	}
+	if site := s.homePersons[repository.SiteWide]; site != uuid.Nil {
+		s.homePersons[accountID] = site
 	}
 	return nil
 }

@@ -137,6 +137,9 @@ func runServer() error {
 	if err := logAuthMode(cfg, authService, log.Default()); err != nil {
 		return err
 	}
+	if err := authService.CarryOverHomePerson(context.Background()); err != nil {
+		log.Printf("Warning: %v", err)
+	}
 
 	// Build server options
 	serverOpts := []api.ServerOption{api.WithBranchStore(stores.Branches), api.WithSettingsStore(stores.Settings), api.WithAuth(authService), api.WithTreeSettings(stores.Accounts)}

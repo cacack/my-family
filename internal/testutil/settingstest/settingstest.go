@@ -108,4 +108,62 @@ func Run(t *testing.T, store repository.SettingsStore) {
 			}
 		}
 	})
+	t.Run("a seed copies the site's choice only to an account that never made one", func(t *testing.T) {
+		runSeed(t, store)
+	})
+}
+
+// runSeed exercises SeedHomePerson.
+func runSeed(t *testing.T, store repository.SettingsStore) {
+	t.Helper()
+	ctx := context.Background()
+	get := func(account uuid.UUID) uuid.UUID {
+		t.Helper()
+		id, err := store.HomePerson(ctx, account)
+		if err != nil {
+			t.Fatalf("HomePerson(%v) error = %v", account, err)
+		}
+		return id
+	}
+	set := func(account, id uuid.UUID) {
+		t.Helper()
+		if err := store.SetHomePerson(ctx, account, id); err != nil {
+			t.Fatalf("SetHomePerson(%v, %v) error = %v", account, id, err)
+		}
+	}
+	seed := func(account uuid.UUID) {
+		t.Helper()
+		if err := store.SeedHomePerson(ctx, account); err != nil {
+			t.Fatalf("SeedHomePerson(%v) error = %v", account, err)
+		}
+	}
+
+	site, own := uuid.New(), uuid.New()
+	never, chose, cleared := uuid.New(), uuid.New(), uuid.New()
+	set(repository.SiteWide, uuid.Nil)
+	seed(never) // without a site choice there is nothing to copy
+	if got := get(never); got != uuid.Nil {
+		t.Errorf("HomePerson after a seed with no site choice = %v, want unset", got)
+	}
+
+	set(repository.SiteWide, site)
+	set(chose, own)
+	set(cleared, own)
+	set(cleared, uuid.Nil)
+	for _, account := range []uuid.UUID{never, chose, cleared} {
+		seed(account)
+		seed(account) // seeding again changes nothing
+	}
+	want := map[uuid.UUID]uuid.UUID{never: site, chose: own, cleared: uuid.Nil, repository.SiteWide: site}
+	for account, w := range want {
+		if got := get(account); got != w {
+			t.Errorf("HomePerson(%v) after seeding = %v, want %v", account, got, w)
+		}
+	}
+
+	set(repository.SiteWide, uuid.New())
+	seed(never) // a seeded account has made its choice
+	if got := get(never); got != site {
+		t.Errorf("HomePerson after the site changed and a second seed = %v, want %v", got, site)
+	}
 }

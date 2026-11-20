@@ -132,6 +132,29 @@ func TestHomePerson_FirstOwnerStartsWithSiteChoice(t *testing.T) {
 	}
 }
 
+// An owner set up before home persons were per account has no home person of
+// their own; the carry-over the server runs at startup gives them the site's
+// (#1474).
+func TestHomePerson_OwnerFromBeforeAccountsGetsSiteChoice(t *testing.T) {
+	f := newAuthFixture(t)
+	f.createOwner(t) // no site home person yet, so none is seeded
+	owner := f.signIn(t)
+	ada, _ := f.addPerson(t, owner, "Ada", "Byron")
+	if err := f.settings.SetHomePerson(context.Background(), repository.SiteWide, uuid.MustParse(ada)); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.homeOf(t, owner); got != "" {
+		t.Fatalf("owner's home person before the carry-over = %q, want none", got)
+	}
+
+	if err := f.auth.CarryOverHomePerson(context.Background()); err != nil {
+		t.Fatalf("CarryOverHomePerson: %v", err)
+	}
+	if got := f.homeOf(t, owner); got != ada {
+		t.Errorf("owner's home person after the carry-over = %q, want the site's %s", got, ada)
+	}
+}
+
 // A mainline merge moves every account whose home person was merged away.
 func TestHomePerson_MergeMovesEveryAccount(t *testing.T) {
 	f := newAuthFixture(t)

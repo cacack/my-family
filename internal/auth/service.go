@@ -220,13 +220,37 @@ func (s *Service) seedHomePerson(ctx context.Context, ownerID uuid.UUID) {
 	if s.settings == nil {
 		return
 	}
-	home, err := s.settings.HomePerson(ctx, repository.SiteWide)
-	if err == nil && home != uuid.Nil {
-		err = s.settings.SetHomePerson(ctx, ownerID, home)
-	}
-	if err != nil {
+	if err := s.settings.SeedHomePerson(ctx, ownerID); err != nil {
 		slog.Error("auth: could not give the first owner the site's home person", "error", err)
 	}
+}
+
+// CarryOverHomePerson gives the tree's only owner the site-wide home person
+// if that owner has never chosen or cleared one: an owner set up before home
+// persons were per account (#1474) was never seeded. With more than one
+// owner it does nothing, since the site's choice may be any one of theirs.
+// The server calls it at startup; it is safe to call again.
+func (s *Service) CarryOverHomePerson(ctx context.Context) error {
+	if s.settings == nil {
+		return nil
+	}
+	members, err := s.store.ListMembers(ctx, repository.DefaultTreeID)
+	if err != nil {
+		return fmt.Errorf("carry over home person: %w", err)
+	}
+	var owners []uuid.UUID
+	for _, m := range members {
+		if m.Role == repository.RoleOwner {
+			owners = append(owners, m.User.ID)
+		}
+	}
+	if len(owners) != 1 {
+		return nil
+	}
+	if err := s.settings.SeedHomePerson(ctx, owners[0]); err != nil {
+		return fmt.Errorf("carry over home person: %w", err)
+	}
+	return nil
 }
 
 // newUser validates the details of a new account and builds it, with its

@@ -16,7 +16,8 @@ var _ repository.SettingsStore = (*SettingsStore)(nil)
 
 // SettingsStore is a PostgreSQL implementation of repository.SettingsStore. Each
 // site setting is one row of site_settings, and each account's one row of
-// account_settings, absent while unset.
+// account_settings, absent until the account first chooses and empty once it
+// clears its choice.
 type SettingsStore struct {
 	db *sql.DB
 }
@@ -53,7 +54,7 @@ func (s *SettingsStore) HomePerson(ctx context.Context, accountID uuid.UUID) (uu
 			`SELECT value FROM account_settings WHERE user_id = $1 AND key = $2`, accountID.String(), repository.SettingHomePerson,
 		).Scan(&value)
 	}
-	if errors.Is(err, sql.ErrNoRows) {
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && value == "") {
 		return uuid.Nil, nil
 	}
 	if err != nil {
@@ -77,17 +78,38 @@ func (s *SettingsStore) SetHomePerson(ctx context.Context, accountID, personID u
 			INSERT INTO site_settings (key, value) VALUES ($1, $2)
 			ON CONFLICT (key) DO UPDATE SET value = excluded.value`,
 			repository.SettingHomePerson, personID.String())
-	case personID == uuid.Nil:
-		_, err = s.db.ExecContext(ctx, `DELETE FROM account_settings WHERE user_id = $1 AND key = $2`,
-			accountID.String(), repository.SettingHomePerson)
 	default:
+		// An account's clear keeps its row, empty, so SeedHomePerson can tell
+		// a cleared choice from none ever made.
 		_, err = s.db.ExecContext(ctx, `
 			INSERT INTO account_settings (user_id, key, value) VALUES ($1, $2, $3)
 			ON CONFLICT (user_id, key) DO UPDATE SET value = excluded.value`,
-			accountID.String(), repository.SettingHomePerson, personID.String())
+			accountID.String(), repository.SettingHomePerson, accountValue(personID))
 	}
 	if err != nil {
 		return fmt.Errorf("save home person: %w", err)
+	}
+	return nil
+}
+
+// accountValue is the stored form of an account's home person: its ID, or ""
+// once the account has cleared its choice.
+func accountValue(personID uuid.UUID) string {
+	if personID == uuid.Nil {
+		return ""
+	}
+	return personID.String()
+}
+
+// SeedHomePerson gives accountID the site's home person unless accountID has
+// a row, chosen or cleared.
+func (s *SettingsStore) SeedHomePerson(ctx context.Context, accountID uuid.UUID) error {
+	if _, err := s.db.ExecContext(ctx, `
+		INSERT INTO account_settings (user_id, key, value)
+		SELECT $1, key, value FROM site_settings WHERE key = $2
+		ON CONFLICT (user_id, key) DO NOTHING`,
+		accountID.String(), repository.SettingHomePerson); err != nil {
+		return fmt.Errorf("seed home person: %w", err)
 	}
 	return nil
 }
@@ -131,7 +153,7 @@ func (s *SettingsStore) MoveHomePersons(ctx context.Context, survivors map[uuid.
 	for account, value := range homes {
 		home, err := uuid.Parse(value)
 		if err != nil {
-			continue // a corrupt value is no merged person; HomePerson reports it
+			continue // a cleared or corrupt value is no merged person
 		}
 		survivor, merged := survivors[home]
 		if !merged {
