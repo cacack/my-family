@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { FamilyGroupSheet, GroupSheetPerson, GroupSheetChild, GroupSheetEvent } from '#lib/api/client.js';
+	import PrivacyBadges from './PrivacyBadges.svelte';
 
 	interface Props {
 		data: FamilyGroupSheet;
@@ -44,6 +45,7 @@
 					<a href="/persons/{data.husband.id}" class="person-link">
 						{formatPersonName(data.husband)}
 					</a>
+					<PrivacyBadges living={data.husband.living} private={data.husband.private} />
 				</div>
 
 				<div class="events-grid">
@@ -111,6 +113,7 @@
 					<a href="/persons/{data.wife.id}" class="person-link">
 						{formatPersonName(data.wife)}
 					</a>
+					<PrivacyBadges living={data.wife.living} private={data.wife.private} />
 				</div>
 
 				<div class="events-grid">
@@ -222,6 +225,7 @@
 							<td class="col-num">{child.sequence ?? index + 1}</td>
 							<td class="col-name">
 								<a href="/persons/{child.id}">{formatPersonName(child)}</a>
+								<PrivacyBadges living={child.living} private={child.private} />
 								{#if child.relationship_type && child.relationship_type !== 'biological'}
 									<span class="relationship-type">({child.relationship_type})</span>
 								{/if}

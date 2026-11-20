@@ -5,7 +5,9 @@
 	import { describeContextKeys } from '#lib/keyboard/shortcuts.js';
 	import { getFontScale } from '#lib/stores/accessibilitySettings.svelte.js';
 	import {
+		appendPrivacyMarkers,
 		CARD_TEXT_INSET,
+		cardTitle,
 		centreOnX,
 		fitText,
 		fitTransform,
@@ -26,6 +28,7 @@
 		type DescendancyLayoutConfig,
 		type SpouseCard
 	} from '#lib/utils/descendancyLayout.js';
+	import { personBadgeNames } from '#lib/utils/privacy.js';
 	import OffscreenIndicator from './OffscreenIndicator.svelte';
 
 	export type LayoutMode = 'compact' | 'standard' | 'wide';
@@ -284,10 +287,12 @@
 			.attr('stroke-width', 2)
 			.attr('stroke-dasharray', '4,2');
 
-		// Full name on hover, since the lines below may be truncated
+		// Full name on hover, since the lines below may be truncated, with the
+		// privacy marks the card carries
 		nodeGroups
 			.append('title')
-			.text((d) => formatPersonName(d.data));
+			.text((d) => cardTitle(d.data));
+		appendPrivacyMarkers(nodeGroups, (d) => d.data, cardWidth, cardHeight);
 
 		// Given name (first line)
 		nodeGroups
@@ -337,6 +342,7 @@
 			// Create spouse group
 			const spouseGroup = nodeLayer
 				.append('g')
+				.datum(spouse)
 				.attr('class', 'spouse-group')
 				.attr('transform', `translate(${spouseX},${spouseY})`)
 				.style('cursor', 'pointer')
@@ -388,8 +394,12 @@
 					.attr('stroke-dasharray', '4,2');
 			}
 
-			// Full name on hover, since the lines below may be truncated
-			spouseGroup.append('title').text(spouse.name || 'Unknown');
+			// Full name on hover, since the lines below may be truncated, with the
+			// privacy marks the card carries
+			spouseGroup
+				.append('title')
+				.text([spouse.name || 'Unknown', ...personBadgeNames(spouse)].join(', '));
+			appendPrivacyMarkers(spouseGroup, (s) => s, spouseCardWidth, spouseCardHeight);
 
 			// Spouse name, wrapped over two lines that fit inside the card
 			const nameText1 = spouseGroup

@@ -192,6 +192,11 @@ which is their GEDCOM restriction notice (`RESN`); it round-trips through GEDCOM
 for persons, families, sources and notes. These marks are recorded but not yet enforced: every
 role still sees every record ([ADR-008](./docs/adr/008-privacy-model.md), #1412).
 
+The app marks a living or private person with a **Living** or **Private** badge on their page and
+person cards, in search results, on the pedigree and descendancy charts, on the family group
+sheet and in the map's person lists. Search results, chart nodes, group sheet entries and map
+persons carry the same `living` and `private` fields as a person.
+
 #### Visitors
 
 Owners choose under **Settings** whether people who are not signed in may browse the tree:

@@ -315,6 +315,89 @@ func TestPrivacy_APIMarksPrivateAndOverridesLiving(t *testing.T) {
 	}
 }
 
+// TestPrivacy_APIMarksProtectedPeopleOnEverySurface reads a living, private
+// person and a deceased one through search, the charts, the group sheet and
+// the map: each surface carries the living verdict and the private flag, so
+// the UI can mark the person wherever they appear (#1413).
+func TestPrivacy_APIMarksProtectedPeopleOnEverySurface(t *testing.T) {
+	for _, backend := range backends {
+		t.Run(backend.name, func(t *testing.T) {
+			ctx := context.Background()
+			st := backend.setup(t)
+			ids := importPrivacyTree(t, ctx, st)
+			server := newServer(t, st)
+			alive, buried, recent := ids["Alive"].String(), ids["Buried"].String(), ids["Recent"].String()
+
+			// Pin the two partners on the map; the API has no write for coordinates.
+			for _, id := range []uuid.UUID{ids["Alive"], ids["Buried"]} {
+				p, err := st.read.GetPerson(ctx, domain.MainBranchID, id)
+				if err != nil || p == nil {
+					t.Fatalf("get person: %v, %v", p, err)
+				}
+				lat, long := "N39.8", "W89.6"
+				p.BirthPlace, p.BirthPlaceLat, p.BirthPlaceLong = "Springfield", &lat, &long
+				if err := st.read.SavePerson(ctx, domain.MainBranchID, p); err != nil {
+					t.Fatalf("save person: %v", err)
+				}
+			}
+
+			families := mustDo(t, server, http.MethodGet, "/api/v1/families", "", http.StatusOK)
+			familyID := jsonArray(t, families, "items")[0].(map[string]any)["id"].(string)
+			mustDo(t, server, http.MethodPost, "/api/v1/families/"+familyID+"/children",
+				fmt.Sprintf(`{"person_id":%q}`, recent), http.StatusCreated)
+
+			type mark struct{ living, private any }
+			got := map[string]mark{}
+			note := func(surface string, person map[string]any) {
+				got[surface+" "+person["id"].(string)] = mark{person["living"], person["private"]}
+			}
+			search := mustDo(t, server, http.MethodGet, "/api/v1/search?q=Alive", "", http.StatusOK)
+			note("search", jsonArray(t, search, "items")[0].(map[string]any))
+			pedigree := getEntity(t, server, "/api/v1/pedigree/"+recent, "")
+			root := pedigree["root"].(map[string]any)
+			note("pedigree", root)
+			note("pedigree", root["father"].(map[string]any))
+			note("pedigree", root["mother"].(map[string]any))
+			descendancy := getEntity(t, server, "/api/v1/descendancy/"+buried, "")
+			droot := descendancy["root"].(map[string]any)
+			note("descendancy", droot)
+			note("descendancy", jsonArray(t, droot, "children")[0].(map[string]any))
+			note("descendancy spouse", jsonArray(t, droot, "spouses")[0].(map[string]any))
+			sheet := getEntity(t, server, "/api/v1/families/"+familyID+"/group-sheet", "")
+			note("group sheet", sheet["husband"].(map[string]any))
+			note("group sheet", sheet["wife"].(map[string]any))
+			note("group sheet", jsonArray(t, sheet, "children")[0].(map[string]any))
+			locations := mustDo(t, server, http.MethodGet, "/api/v1/map/locations", "", http.StatusOK)
+			for _, loc := range jsonArray(t, locations, "items") {
+				for _, person := range jsonArray(t, loc.(map[string]any), "persons") {
+					note("map", person.(map[string]any))
+				}
+			}
+
+			livingPrivate, deceased, living := mark{true, true}, mark{false, nil}, mark{true, nil}
+			want := map[string]mark{
+				"search " + alive:             livingPrivate,
+				"pedigree " + recent:          living,
+				"pedigree " + buried:          deceased,
+				"pedigree " + alive:           livingPrivate,
+				"descendancy " + buried:       deceased,
+				"descendancy " + recent:       living,
+				"descendancy spouse " + alive: livingPrivate,
+				"group sheet " + buried:       deceased,
+				"group sheet " + alive:        livingPrivate,
+				"group sheet " + recent:       living,
+				"map " + alive:                livingPrivate,
+				"map " + buried:               deceased,
+			}
+			for key, w := range want {
+				if g, ok := got[key]; !ok || g != w {
+					t.Errorf("%s: living, private = %v, want %v (present %v)", key, g, w, ok)
+				}
+			}
+		})
+	}
+}
+
 // setPrivate marks the record at path private or not.
 func setPrivate(t *testing.T, server *api.Server, path string, private bool) {
 	t.Helper()
@@ -352,8 +435,10 @@ func TestPrivacy_StoresKeepRestrictionAndLivingFacts(t *testing.T) {
 			refDate := time.Date(1890, time.December, 31, 0, 0, 0, 0, time.UTC)
 			for i, branch := range []domain.BranchID{domain.MainBranchID, domain.BranchID(uuid.New())} {
 				name := fmt.Sprintf("Kept%d", i)
+				lat, long := "N39.8", "W89.6"
 				person := &repository.PersonReadModel{ID: uuid.New(), GivenName: name, Restriction: "CONFIDENTIAL, LOCKED",
-					LivingOverride: domain.LivingOverrideDeceased, DeathEvidence: true, LivingRefDate: &refDate, Version: 1, UpdatedAt: now}
+					LivingOverride: domain.LivingOverrideDeceased, DeathEvidence: true, LivingRefDate: &refDate,
+					DeathPlace: "Springfield", DeathPlaceLat: &lat, DeathPlaceLong: &long, Version: 1, UpdatedAt: now}
 				if err := rs.SavePerson(ctx, branch, person); err != nil {
 					t.Fatalf("save person: %v", err)
 				}
@@ -368,6 +453,16 @@ func TestPrivacy_StoresKeepRestrictionAndLivingFacts(t *testing.T) {
 				searched, _, err := rs.SearchPersons(ctx, repository.SearchOptions{Query: name, BranchID: branch, Limit: 10})
 				if err != nil || len(searched) != 1 || searched[0].LivingRefDate == nil || searched[0].Restriction != person.Restriction {
 					t.Errorf("search = %+v, %v; want the person with its privacy fields", searched, err)
+				}
+				locations, err := rs.GetMapLocations(ctx, branch)
+				if err != nil || len(locations) != 1 {
+					t.Fatalf("map locations = %+v, %v; want the death place", locations, err)
+				}
+				pinned := locations[0].Persons[slices.IndexFunc(locations[0].Persons,
+					func(m repository.MapPerson) bool { return m.ID == person.ID })]
+				if facts := pinned.LivingFacts; pinned.Restriction != person.Restriction || facts.Override != person.LivingOverride ||
+					!facts.DeathEvidence || facts.ReferenceDate == nil || !facts.ReferenceDate.Equal(refDate) {
+					t.Errorf("map person = %+v, want the person's privacy fields", pinned)
 				}
 
 				family := &repository.FamilyReadModel{ID: uuid.New(), RelationshipType: domain.RelationMarriage, Restriction: "privacy", Version: 1, UpdatedAt: now}

@@ -938,11 +938,15 @@ type MapLocation struct {
 	Persons   []MapPerson `json:"persons"`
 }
 
-// MapPerson is a person pinned at a MapLocation, named so the map can list them.
+// MapPerson is a person pinned at a MapLocation, named so the map can list them,
+// with the inputs of the living rule and the private mark (ADR-008) so the map
+// can mark protected people.
 type MapPerson struct {
-	ID        uuid.UUID `json:"id"`
-	GivenName string    `json:"given_name"`
-	Surname   string    `json:"surname"`
+	ID          uuid.UUID          `json:"id"`
+	GivenName   string             `json:"given_name"`
+	Surname     string             `json:"surname"`
+	Restriction domain.Restriction `json:"-"`
+	LivingFacts domain.LivingFacts `json:"-"`
 }
 
 // BrickWallEntry represents a person with a brick wall status for browsing.

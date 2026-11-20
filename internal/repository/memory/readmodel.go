@@ -2412,7 +2412,10 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 	agg := make(map[locKey]*locData)
 
 	for _, p := range resolveAllRows(s.persons, branchID) {
-		person := repository.MapPerson{ID: p.ID, GivenName: p.GivenName, Surname: p.Surname}
+		person := repository.MapPerson{
+			ID: p.ID, GivenName: p.GivenName, Surname: p.Surname,
+			Restriction: p.Restriction, LivingFacts: p.LivingFacts(),
+		}
 		// Birth location
 		if p.BirthPlaceLat != nil && p.BirthPlaceLong != nil && *p.BirthPlaceLat != "" && *p.BirthPlaceLong != "" {
 			if lat, lon, ok := repository.ParseMapCoordinates(p.ID, "birth", *p.BirthPlaceLat, *p.BirthPlaceLong); ok {

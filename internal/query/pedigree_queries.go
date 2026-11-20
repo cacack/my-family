@@ -30,6 +30,8 @@ type PedigreeNode struct {
 	DeathDate  *domain.GenDate `json:"death_date,omitempty"`
 	DeathPlace *string         `json:"death_place,omitempty"`
 	Generation int             `json:"generation"`
+	Living     bool            `json:"living"`            // living rule verdict today (ADR-008 §1)
+	Private    bool            `json:"private,omitempty"` // record marked private (ADR-008 §2)
 	Father     *PedigreeNode   `json:"father,omitempty"`
 	Mother     *PedigreeNode   `json:"mother,omitempty"`
 }
@@ -103,6 +105,8 @@ func (s *PedigreeService) buildNode(ctx context.Context, branchID domain.BranchI
 		GivenName:  person.GivenName,
 		Surname:    person.Surname,
 		Generation: generation,
+		Living:     person.LivingFacts().IsLiving(livingCutoff(ctx)),
+		Private:    person.Restriction.IsPrivate(),
 	}
 
 	// Set optional fields

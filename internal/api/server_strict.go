@@ -454,7 +454,10 @@ func (ss *StrictServer) GetMapLocations(ctx context.Context, request GetMapLocat
 		persons := make([]PersonSummary, len(item.Persons))
 		for j, p := range item.Persons {
 			personIDs[j] = p.ID
-			persons[j] = PersonSummary{Id: p.ID, GivenName: p.GivenName, Surname: p.Surname}
+			persons[j] = PersonSummary{
+				Id: p.ID, GivenName: p.GivenName, Surname: p.Surname,
+				Living: &p.Living, Private: privateFlag(p.Private),
+			}
 		}
 		response.Items[i] = MapLocation{
 			Place:     item.Place,
@@ -3543,6 +3546,8 @@ func convertSearchResults(results []query.SearchResult) []SearchResult {
 			Id:        r.ID,
 			GivenName: r.GivenName,
 			Surname:   r.Surname,
+			Living:    &r.Living,
+			Private:   privateFlag(r.Private),
 			Score:     &score,
 		}
 		if r.Gender != nil {
@@ -4462,6 +4467,8 @@ func convertQueryGroupSheetPersonToGenerated(p *query.GroupSheetPerson) *GroupSh
 		Id:        p.ID,
 		GivenName: p.GivenName,
 		Surname:   p.Surname,
+		Living:    &p.Living,
+		Private:   privateFlag(p.Private),
 	}
 
 	if p.Gender != "" {
@@ -4512,6 +4519,8 @@ func convertQueryGroupSheetChildToGenerated(c *query.GroupSheetChild) GroupSheet
 		Id:        c.ID,
 		GivenName: c.GivenName,
 		Surname:   c.Surname,
+		Living:    &c.Living,
+		Private:   privateFlag(c.Private),
 	}
 
 	if c.Gender != "" {
@@ -4642,6 +4651,8 @@ func convertQueryPedigreeNodeToGenerated(node *query.PedigreeNode) PedigreeNode 
 	resp := PedigreeNode{
 		Id:         node.ID,
 		Generation: &gen,
+		Living:     &node.Living,
+		Private:    privateFlag(node.Private),
 	}
 
 	if node.GivenName != "" {
@@ -4682,6 +4693,8 @@ func convertQueryDescendancyNodeToGenerated(node *query.DescendancyNode) Descend
 		Id:         node.ID,
 		Generation: &gen,
 		FamilyId:   node.FamilyID,
+		Living:     &node.Living,
+		Private:    privateFlag(node.Private),
 	}
 
 	if node.GivenName != "" {
@@ -4707,6 +4720,8 @@ func convertQueryDescendancyNodeToGenerated(node *query.DescendancyNode) Descend
 				Id:       s.ID,
 				FamilyId: s.FamilyID,
 				Name:     s.Name,
+				Living:   &s.Living,
+				Private:  privateFlag(s.Private),
 			}
 			if s.MarriageDate != nil {
 				spouses[i].MarriageDate = convertDomainGenDateToGenerated(s.MarriageDate)

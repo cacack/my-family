@@ -1,10 +1,16 @@
 /**
  * Shared helpers for the D3 tree charts and the map: zoom fitting, zoom steps,
- * resize handling, motion preferences and label truncation.
+ * resize handling, motion preferences, label truncation and privacy markers.
  */
 import * as d3 from 'd3';
 import { formatPersonName } from '#lib/api/client.js';
 import { getReducedMotion } from '#lib/stores/accessibilitySettings.svelte.js';
+import {
+	personBadgeNames,
+	personBadges,
+	type PersonBadge,
+	type PrivacyMarked
+} from '#lib/utils/privacy.js';
 
 export type ScaleExtent = [number, number];
 
@@ -265,4 +271,76 @@ export function nameLines(person: { given_name?: string; surname?: string }): [s
 	const surname = (person.surname ?? '').trim();
 	if (!given && !surname) return [formatPersonName(person), ''];
 	return [given, surname];
+}
+
+/**
+ * A chart card's hover title: the full name, then the names of the privacy
+ * badges the person carries ("Ann Lee, Living person").
+ */
+export function cardTitle(person: { given_name?: string; surname?: string } & PrivacyMarked): string {
+	return [formatPersonName(person), ...personBadgeNames(person)].join(', ');
+}
+
+/** Lucide's shield (living) and lock (private), drawn on a 24-unit grid. */
+const PRIVACY_ICONS: Record<PersonBadge['kind'], string> = {
+	living:
+		'M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z',
+	private: 'M5 11h14a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2zM7 11V7a5 5 0 0 1 10 0v4'
+};
+
+/** Size of a privacy marker icon, and the padding around it, in chart units. */
+const MARKER_ICON = 10;
+const MARKER_PAD = 3;
+
+/**
+ * Marks the cards of protected people (ADR-008): a small pill on the card's
+ * top edge, at its right corner, with a shield for a living person and a lock
+ * for a private one. Each icon is an image named like the HTML badges
+ * ("Living person"), so the mark has an accessible name in the chart too.
+ */
+export function appendPrivacyMarkers<D>(
+	nodes: d3.Selection<SVGGElement, D, d3.BaseType, unknown>,
+	person: (d: D) => PrivacyMarked,
+	cardWidth: number,
+	cardHeight: number
+): void {
+	nodes
+		.filter((d) => personBadges(person(d)).length > 0)
+		.append('g')
+		.attr('class', 'privacy-marker')
+		.each(function (d) {
+			const badges = personBadges(person(d));
+			const width = badges.length * (MARKER_ICON + MARKER_PAD) + MARKER_PAD;
+			const height = MARKER_ICON + 2 * MARKER_PAD;
+			const marker = d3
+				.select(this)
+				.attr('transform', `translate(${cardWidth / 2 - width - 6}, ${-cardHeight / 2 - height / 2})`);
+			marker
+				.append('rect')
+				.attr('width', width)
+				.attr('height', height)
+				.attr('rx', height / 2)
+				.attr('fill', '#f8fafc')
+				.attr('stroke', '#94a3b8');
+			badges.forEach(({ kind, name }, i) => {
+				const icon = marker
+					.append('g')
+					.attr('role', 'img')
+					.attr('aria-label', name)
+					.attr('data-testid', `${kind}-marker`)
+					.attr(
+						'transform',
+						`translate(${MARKER_PAD + i * (MARKER_ICON + MARKER_PAD)}, ${MARKER_PAD}) scale(${MARKER_ICON / 24})`
+					);
+				icon.append('title').text(name);
+				icon
+					.append('path')
+					.attr('d', PRIVACY_ICONS[kind])
+					.attr('fill', 'none')
+					.attr('stroke', '#334155')
+					.attr('stroke-width', 2.5)
+					.attr('stroke-linecap', 'round')
+					.attr('stroke-linejoin', 'round');
+			});
+		});
 }

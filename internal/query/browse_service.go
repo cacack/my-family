@@ -359,6 +359,8 @@ type MapPerson struct {
 	ID        uuid.UUID `json:"id"`
 	GivenName string    `json:"given_name"`
 	Surname   string    `json:"surname"`
+	Living    bool      `json:"living"`            // living rule verdict today (ADR-008 §1)
+	Private   bool      `json:"private,omitempty"` // record marked private (ADR-008 §2)
 }
 
 // GetMapLocations returns aggregated geographic locations for map visualization.
@@ -369,11 +371,15 @@ func (s *BrowseService) GetMapLocations(ctx context.Context, branchID domain.Bra
 		return nil, err
 	}
 
+	cutoff := livingCutoff(ctx)
 	items := make([]MapLocation, len(locations))
 	for i, loc := range locations {
 		persons := make([]MapPerson, len(loc.Persons))
 		for j, p := range loc.Persons {
-			persons[j] = MapPerson{ID: p.ID, GivenName: p.GivenName, Surname: p.Surname}
+			persons[j] = MapPerson{
+				ID: p.ID, GivenName: p.GivenName, Surname: p.Surname,
+				Living: p.LivingFacts.IsLiving(cutoff), Private: p.Restriction.IsPrivate(),
+			}
 		}
 		items[i] = MapLocation{
 			Place:     loc.Place,

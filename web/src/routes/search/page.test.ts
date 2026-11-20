@@ -478,6 +478,21 @@ describe('Advanced Search Page', () => {
 			expect(screen.getAllByText('Bob Jones').length).toBeGreaterThanOrEqual(1);
 		});
 
+		it('marks a living, private result in the table and on its card (#1413)', async () => {
+			vi.mocked(apiModule.api.searchPersons).mockResolvedValue({
+				...mockSearchResults,
+				items: mockSearchResults.items.map((p) =>
+					p.id === 'person-2' ? { ...p, living: true, private: true } : { ...p, living: false }
+				)
+			});
+			await performSearch();
+
+			expect(screen.getAllByRole('img', { name: 'Living person' })).toHaveLength(2);
+			expect(screen.getAllByRole('img', { name: 'Private person' })).toHaveLength(2);
+			const row = screen.getByRole('link', { name: 'Jane Doe' }).closest('tr')!;
+			expect(row.querySelector('[data-testid="living-badge"]')).not.toBeNull();
+		});
+
 		it('person names are links to /persons/{id}', async () => {
 			const { container } = render(SearchPage);
 			await vi.advanceTimersByTimeAsync(0);

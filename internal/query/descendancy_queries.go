@@ -3,6 +3,7 @@ package query
 import (
 	"context"
 	"sort"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -26,6 +27,8 @@ type SpouseInfo struct {
 	FamilyID     uuid.UUID       `json:"family_id"`
 	Name         string          `json:"name"`
 	MarriageDate *domain.GenDate `json:"marriage_date,omitempty"`
+	Living       bool            `json:"living"`            // living rule verdict today (ADR-008 §1)
+	Private      bool            `json:"private,omitempty"` // record marked private (ADR-008 §2)
 }
 
 // DescendancyNode represents a person in the descendancy tree.
@@ -39,6 +42,8 @@ type DescendancyNode struct {
 	Spouses    []SpouseInfo       `json:"spouses,omitempty"`
 	Children   []*DescendancyNode `json:"children,omitempty"`
 	Generation int                `json:"generation"`
+	Living     bool               `json:"living"`            // living rule verdict today (ADR-008 §1)
+	Private    bool               `json:"private,omitempty"` // record marked private (ADR-008 §2)
 	// FamilyID is the family through which this node descends from its parent
 	// node, matching one of the parent's Spouses when that family has a second
 	// partner; nil on the root.
@@ -99,15 +104,16 @@ func (s *DescendancyService) GetDescendancy(ctx context.Context, input GetDescen
 }
 
 // buildDescendancyTree builds the descendant tree under root one generation at a
-// time. Each generation costs three set-based reads whatever its size — the
-// generation's families, their child links, and the children not yet seen
-// (#829) — rather than a chain of reads per person.
+// time. Each generation costs four set-based reads whatever its size — the
+// generation's families, its spouses, their child links, and the children not
+// yet seen (#829) — rather than a chain of reads per person.
 //
 // A person reachable along more than one line (pedigree collapse) appears once,
 // at the shallowest generation that reaches them, under the first parent (in
 // tree order) to claim them.
 func (s *DescendancyService) buildDescendancyTree(ctx context.Context, branchID domain.BranchID, root repository.PersonReadModel, maxGen int) (*DescendancyNode, error) {
-	rootNode := newDescendancyNode(root, 0)
+	cutoff := livingCutoff(ctx)
+	rootNode := newDescendancyNode(root, 0, cutoff)
 	visited := map[uuid.UUID]bool{root.ID: true}
 	level := []*DescendancyNode{rootNode}
 
@@ -131,13 +137,18 @@ func (s *DescendancyService) buildDescendancyTree(ctx context.Context, branchID 
 				}
 			}
 		}
+		var spouseIDs []uuid.UUID
 		for _, node := range level {
 			sortFamiliesByMarriage(familiesOf[node.ID])
 			for _, family := range familiesOf[node.ID] {
 				if spouse := s.getSpouseInfo(family, node.ID); spouse != nil {
 					node.Spouses = append(node.Spouses, *spouse)
+					spouseIDs = append(spouseIDs, spouse.ID)
 				}
 			}
+		}
+		if err := s.markSpouses(ctx, branchID, level, spouseIDs, cutoff); err != nil {
+			return nil, err
 		}
 
 		// Don't descend beyond max generations
@@ -145,7 +156,7 @@ func (s *DescendancyService) buildDescendancyTree(ctx context.Context, branchID 
 			break
 		}
 
-		next, err := s.nextGeneration(ctx, branchID, level, familiesOf, families, visited, generation+1)
+		next, err := s.nextGeneration(ctx, branchID, level, familiesOf, families, visited, generation+1, cutoff)
 		if err != nil {
 			return nil, err
 		}
@@ -168,6 +179,7 @@ func (s *DescendancyService) nextGeneration(
 	families []repository.FamilyReadModel,
 	visited map[uuid.UUID]bool,
 	generation int,
+	cutoff time.Time,
 ) ([]*DescendancyNode, error) {
 	familyIDs := make([]uuid.UUID, len(families))
 	for i, family := range families {
@@ -220,7 +232,7 @@ func (s *DescendancyService) nextGeneration(
 			// family detail does.
 			continue
 		}
-		child := newDescendancyNode(person, generation)
+		child := newDescendancyNode(person, generation, cutoff)
 		familyID := c.familyID
 		child.FamilyID = &familyID
 		c.parent.Children = append(c.parent.Children, child)
@@ -230,6 +242,32 @@ func (s *DescendancyService) nextGeneration(
 		sortChildrenWithinFamilies(node.Children)
 	}
 	return next, nil
+}
+
+// markSpouses sets the living verdict (judged against cutoff) and the private
+// mark on the spouses of every level node, reading their persons in one batch.
+// A spouse this view cannot read keeps the zero marks.
+func (s *DescendancyService) markSpouses(ctx context.Context, branchID domain.BranchID, level []*DescendancyNode, spouseIDs []uuid.UUID, cutoff time.Time) error {
+	if len(spouseIDs) == 0 {
+		return nil
+	}
+	persons, err := s.readStore.GetPersonsByIDs(ctx, branchID, spouseIDs)
+	if err != nil {
+		return err
+	}
+	personByID := make(map[uuid.UUID]repository.PersonReadModel, len(persons))
+	for _, p := range persons {
+		personByID[p.ID] = p
+	}
+	for _, node := range level {
+		for i := range node.Spouses {
+			if p, ok := personByID[node.Spouses[i].ID]; ok {
+				node.Spouses[i].Living = p.LivingFacts().IsLiving(cutoff)
+				node.Spouses[i].Private = p.Restriction.IsPrivate()
+			}
+		}
+	}
+	return nil
 }
 
 // sortFamiliesByMarriage orders one person's families by marriage date,
@@ -276,13 +314,15 @@ func genDateBefore(a, b *domain.GenDate) bool {
 }
 
 // newDescendancyNode builds the node for person at generation, without spouses
-// or children.
-func newDescendancyNode(person repository.PersonReadModel, generation int) *DescendancyNode {
+// or children, judging the living rule against cutoff (see livingCutoff).
+func newDescendancyNode(person repository.PersonReadModel, generation int, cutoff time.Time) *DescendancyNode {
 	node := &DescendancyNode{
 		ID:         person.ID,
 		GivenName:  person.GivenName,
 		Surname:    person.Surname,
 		Generation: generation,
+		Living:     person.LivingFacts().IsLiving(cutoff),
+		Private:    person.Restriction.IsPrivate(),
 	}
 	if person.Gender != "" {
 		node.Gender = string(person.Gender)

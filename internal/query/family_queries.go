@@ -300,6 +300,8 @@ type GroupSheetPerson struct {
 	FatherID   *uuid.UUID       `json:"father_id,omitempty"`
 	MotherName string           `json:"mother_name,omitempty"`
 	MotherID   *uuid.UUID       `json:"mother_id,omitempty"`
+	Living     bool             `json:"living"`            // living rule verdict today (ADR-008 §1)
+	Private    bool             `json:"private,omitempty"` // record marked private (ADR-008 §2)
 }
 
 // GroupSheetChild represents a child entry in the group sheet.
@@ -314,6 +316,8 @@ type GroupSheetChild struct {
 	Death            *GroupSheetEvent `json:"death,omitempty"`
 	SpouseName       string           `json:"spouse_name,omitempty"`
 	SpouseID         *uuid.UUID       `json:"spouse_id,omitempty"`
+	Living           bool             `json:"living"`            // living rule verdict today (ADR-008 §1)
+	Private          bool             `json:"private,omitempty"` // record marked private (ADR-008 §2)
 }
 
 // GroupSheet represents a traditional family group sheet.
@@ -405,6 +409,8 @@ func (s *FamilyService) getGroupSheetPerson(ctx context.Context, branchID domain
 		GivenName: person.GivenName,
 		Surname:   person.Surname,
 		Gender:    string(person.Gender),
+		Living:    person.LivingFacts().IsLiving(livingCutoff(ctx)),
+		Private:   person.Restriction.IsPrivate(),
 	}
 
 	// Birth event
@@ -469,6 +475,8 @@ func (s *FamilyService) getGroupSheetChild(ctx context.Context, branchID domain.
 		Gender:           string(person.Gender),
 		RelationshipType: string(child.RelationshipType),
 		Sequence:         child.Sequence,
+		Living:           person.LivingFacts().IsLiving(livingCutoff(ctx)),
+		Private:          person.Restriction.IsPrivate(),
 	}
 
 	// Birth event

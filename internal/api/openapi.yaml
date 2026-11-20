@@ -6949,6 +6949,19 @@ components:
           $ref: '#/components/schemas/GenDate'
         death_date:
           $ref: '#/components/schemas/GenDate'
+        living:
+          type: boolean
+          description: >-
+            Whether the person counts as living under the living rule
+            (ADR-008), evaluated when the request is served, as on Person.
+            Set on search results and map persons only; absent on a family's
+            partner and child summaries, where absent means not evaluated.
+        private:
+          type: boolean
+          description: >-
+            Whether the person's record is private (ADR-008), as on Person.
+            Omitted when it is not, and on a family's partner and child
+            summaries, where it is not evaluated.
 
     PersonList:
       type: object
@@ -7216,6 +7229,16 @@ components:
         mother_id:
           type: string
           format: uuid
+        living:
+          type: boolean
+          description: >-
+            Whether the person counts as living under the living rule
+            (ADR-008), evaluated when the request is served, as on Person.
+        private:
+          type: boolean
+          description: >-
+            Whether the person's record is private (ADR-008), as on Person.
+            Omitted when it is not.
 
     GroupSheetEvent:
       type: object
@@ -7264,6 +7287,16 @@ components:
         spouse_id:
           type: string
           format: uuid
+        living:
+          type: boolean
+          description: >-
+            Whether the person counts as living under the living rule
+            (ADR-008), evaluated when the request is served, as on Person.
+        private:
+          type: boolean
+          description: >-
+            Whether the person's record is private (ADR-008), as on Person.
+            Omitted when it is not.
 
     GroupSheetCitation:
       type: object
@@ -7320,6 +7353,16 @@ components:
         generation:
           type: integer
           description: Generation level (0 = subject, 1 = parents, 2 = grandparents, etc.)
+        living:
+          type: boolean
+          description: >-
+            Whether the person counts as living under the living rule
+            (ADR-008), evaluated when the request is served, as on Person.
+        private:
+          type: boolean
+          description: >-
+            Whether the person's record is private (ADR-008), as on Person.
+            Omitted when it is not.
         father:
           $ref: '#/components/schemas/PedigreeNode'
         mother:
@@ -7363,6 +7406,16 @@ components:
         generation:
           type: integer
           description: Generation level (0 = root, 1 = children, 2 = grandchildren, etc.)
+        living:
+          type: boolean
+          description: >-
+            Whether the person counts as living under the living rule
+            (ADR-008), evaluated when the request is served, as on Person.
+        private:
+          type: boolean
+          description: >-
+            Whether the person's record is private (ADR-008), as on Person.
+            Omitted when it is not.
         family_id:
           type: string
           format: uuid
@@ -7399,6 +7452,16 @@ components:
           type: string
         marriage_date:
           $ref: '#/components/schemas/GenDate'
+        living:
+          type: boolean
+          description: >-
+            Whether the spouse counts as living under the living rule
+            (ADR-008), evaluated when the request is served, as on Person.
+        private:
+          type: boolean
+          description: >-
+            Whether the spouse's record is private (ADR-008), as on Person.
+            Omitted when it is not.
 
     AhnentafelResponse:
       type: object

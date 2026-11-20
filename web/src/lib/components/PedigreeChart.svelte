@@ -5,7 +5,9 @@
 	import { describeContextKeys } from '#lib/keyboard/shortcuts.js';
 	import { getFontScale } from '#lib/stores/accessibilitySettings.svelte.js';
 	import {
+		appendPrivacyMarkers,
 		CARD_TEXT_INSET,
+		cardTitle,
 		cardsInView,
 		centreOnX,
 		firstViewDepth,
@@ -595,10 +597,12 @@
 			.attr('stroke-width', 2)
 			.attr('stroke-dasharray', '4,2');
 
-		// Full name on hover, since the lines below may be truncated
+		// Full name on hover, since the lines below may be truncated, with the
+		// privacy marks the card carries
 		nodeGroups
 			.append('title')
-			.text((d) => formatPersonName(d.data));
+			.text((d) => cardTitle(d.data));
+		appendPrivacyMarkers(nodeGroups, (d) => d.data, cardWidth, cardHeight);
 
 		// Given name (first line)
 		nodeGroups

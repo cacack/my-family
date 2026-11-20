@@ -177,6 +177,28 @@ describe('PedigreeChart', () => {
 		expect(nodes.length).toBe(1);
 	});
 
+	it('marks a living or private ancestor with named images (#1413)', () => {
+		const data: PedigreeNode = {
+			...mockPersonWithParents,
+			living: true,
+			father: { ...mockPersonWithParents.father!, living: false, private: true },
+			mother: { ...mockPersonWithParents.mother!, living: false }
+		};
+		const { container } = render(PedigreeChart, { props: { data } });
+		const nodes = [...container.querySelectorAll('.node')];
+		const marks = (name: string) => {
+			const node = nodes.find((n) => n.querySelector(':scope > title')?.textContent?.startsWith(name));
+			return [...(node?.querySelectorAll('.privacy-marker [role="img"]') ?? [])].map((m) =>
+				m.getAttribute('aria-label')
+			);
+		};
+		expect(marks('John Doe')).toEqual(['Living person']);
+		expect(marks('Robert Doe')).toEqual(['Private person']);
+		expect(marks('Mary Smith')).toEqual([]);
+		const title = nodes.map((n) => n.querySelector(':scope > title')?.textContent);
+		expect(title).toContain('John Doe, Living person');
+	});
+
 	it('renders nodes for person with parents', () => {
 		const { container } = render(PedigreeChart, { props: { data: mockPersonWithParents } });
 		const nodes = container.querySelectorAll('.node');
