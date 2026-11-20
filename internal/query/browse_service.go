@@ -65,7 +65,7 @@ type GetSurnameIndexInput struct {
 func (s *BrowseService) GetSurnameIndex(ctx context.Context, input GetSurnameIndexInput) (*SurnameIndexResult, error) {
 	if input.Letter != "" {
 		// Get surnames for specific letter
-		entries, err := s.readStore.GetSurnamesByLetter(ctx, input.BranchID, input.Letter)
+		entries, err := s.readStore.GetSurnamesByLetter(ctx, input.BranchID, input.Letter, repository.Privacy{})
 		if err != nil {
 			return nil, err
 		}
@@ -85,7 +85,7 @@ func (s *BrowseService) GetSurnameIndex(ctx context.Context, input GetSurnameInd
 	}
 
 	// Get full index
-	entries, letterCounts, err := s.readStore.GetSurnameIndex(ctx, input.BranchID)
+	entries, letterCounts, err := s.readStore.GetSurnameIndex(ctx, input.BranchID, repository.Privacy{})
 	if err != nil {
 		return nil, err
 	}
@@ -168,7 +168,7 @@ type GetPlaceHierarchyInput struct {
 
 // GetPlaceHierarchy returns places at a given level in the hierarchy.
 func (s *BrowseService) GetPlaceHierarchy(ctx context.Context, input GetPlaceHierarchyInput) (*PlaceIndexResult, error) {
-	entries, err := s.readStore.GetPlaceHierarchy(ctx, input.BranchID, input.Parent)
+	entries, err := s.readStore.GetPlaceHierarchy(ctx, input.BranchID, input.Parent, repository.Privacy{})
 	if err != nil {
 		return nil, err
 	}
@@ -268,7 +268,7 @@ type CemeteryEntry struct {
 // GetCemeteryIndex returns the cemetery/burial place index within the branch
 // overlay (ADR-005); the zero branchID (MainBranchID) reads the mainline.
 func (s *BrowseService) GetCemeteryIndex(ctx context.Context, branchID domain.BranchID) (*CemeteryIndexResult, error) {
-	entries, err := s.readStore.GetCemeteryIndex(ctx, branchID)
+	entries, err := s.readStore.GetCemeteryIndex(ctx, branchID, repository.Privacy{})
 	if err != nil {
 		return nil, err
 	}
@@ -366,7 +366,7 @@ type MapPerson struct {
 // GetMapLocations returns aggregated geographic locations for map visualization.
 // branchID selects the branch to read; domain.MainBranchID is the mainline.
 func (s *BrowseService) GetMapLocations(ctx context.Context, branchID domain.BranchID) (*MapLocationsResult, error) {
-	locations, err := s.readStore.GetMapLocations(ctx, branchID)
+	locations, err := s.readStore.GetMapLocations(ctx, branchID, repository.Privacy{})
 	if err != nil {
 		return nil, err
 	}
@@ -419,7 +419,7 @@ type BrickWallItem struct {
 // they have no branch overlay yet (branch-scoping them is follow-up under #676).
 func (s *BrowseService) GetBrickWalls(ctx context.Context, includeResolved bool) (*BrickWallsResult, error) {
 	// Always fetch all entries so counts are accurate regardless of filter
-	entries, err := s.readStore.GetBrickWalls(ctx, true)
+	entries, err := s.readStore.GetBrickWalls(ctx, true, repository.Privacy{})
 	if err != nil {
 		return nil, err
 	}

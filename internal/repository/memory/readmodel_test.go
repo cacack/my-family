@@ -2741,7 +2741,7 @@ func TestReadModelStore_GetSurnameIndex(t *testing.T) {
 	}
 
 	// Get surname index
-	entries, letterCounts, err := store.GetSurnameIndex(ctx, domain.MainBranchID)
+	entries, letterCounts, err := store.GetSurnameIndex(ctx, domain.MainBranchID, repository.Privacy{})
 	if err != nil {
 		t.Fatalf("GetSurnameIndex() failed: %v", err)
 	}
@@ -2788,7 +2788,7 @@ func TestReadModelStore_GetSurnamesByLetter(t *testing.T) {
 	_ = store.SavePerson(ctx, domain.MainBranchID, person)
 
 	// Get surnames starting with S
-	entries, err := store.GetSurnamesByLetter(ctx, domain.MainBranchID, "S")
+	entries, err := store.GetSurnamesByLetter(ctx, domain.MainBranchID, "S", repository.Privacy{})
 	if err != nil {
 		t.Fatalf("GetSurnamesByLetter() failed: %v", err)
 	}
@@ -2871,7 +2871,7 @@ func TestReadModelStore_GetPlaceHierarchy(t *testing.T) {
 	}
 
 	// Get top-level places
-	entries, err := store.GetPlaceHierarchy(ctx, domain.MainBranchID, "")
+	entries, err := store.GetPlaceHierarchy(ctx, domain.MainBranchID, "", repository.Privacy{})
 	if err != nil {
 		t.Fatalf("GetPlaceHierarchy() failed: %v", err)
 	}
@@ -2933,7 +2933,7 @@ func TestReadModelStore_GetCemeteryIndex_Empty(t *testing.T) {
 	store := memory.NewReadModelStore()
 	ctx := context.Background()
 
-	entries, err := store.GetCemeteryIndex(ctx, domain.MainBranchID)
+	entries, err := store.GetCemeteryIndex(ctx, domain.MainBranchID, repository.Privacy{})
 	if err != nil {
 		t.Fatalf("GetCemeteryIndex() failed: %v", err)
 	}
@@ -3022,7 +3022,7 @@ func TestReadModelStore_GetCemeteryIndex(t *testing.T) {
 		}
 	}
 
-	entries, err := store.GetCemeteryIndex(ctx, domain.MainBranchID)
+	entries, err := store.GetCemeteryIndex(ctx, domain.MainBranchID, repository.Privacy{})
 	if err != nil {
 		t.Fatalf("GetCemeteryIndex() failed: %v", err)
 	}
@@ -3079,7 +3079,7 @@ func TestReadModelStore_GetCemeteryIndex_DistinctPersons(t *testing.T) {
 		}
 	}
 
-	entries, err := store.GetCemeteryIndex(ctx, domain.MainBranchID)
+	entries, err := store.GetCemeteryIndex(ctx, domain.MainBranchID, repository.Privacy{})
 	if err != nil {
 		t.Fatalf("GetCemeteryIndex() failed: %v", err)
 	}
@@ -3316,7 +3316,7 @@ func TestReadModelStore_GetMapLocations_Empty(t *testing.T) {
 	store := memory.NewReadModelStore()
 	ctx := context.Background()
 
-	results, err := store.GetMapLocations(ctx, domain.MainBranchID)
+	results, err := store.GetMapLocations(ctx, domain.MainBranchID, repository.Privacy{})
 	if err != nil {
 		t.Fatalf("GetMapLocations() failed: %v", err)
 	}
@@ -3346,7 +3346,7 @@ func TestReadModelStore_GetMapLocations_BirthOnly(t *testing.T) {
 		t.Fatalf("SavePerson() failed: %v", err)
 	}
 
-	results, err := store.GetMapLocations(ctx, domain.MainBranchID)
+	results, err := store.GetMapLocations(ctx, domain.MainBranchID, repository.Privacy{})
 	if err != nil {
 		t.Fatalf("GetMapLocations() failed: %v", err)
 	}
@@ -3398,7 +3398,7 @@ func TestReadModelStore_GetMapLocations_BirthAndDeath(t *testing.T) {
 		t.Fatalf("SavePerson() failed: %v", err)
 	}
 
-	results, err := store.GetMapLocations(ctx, domain.MainBranchID)
+	results, err := store.GetMapLocations(ctx, domain.MainBranchID, repository.Privacy{})
 	if err != nil {
 		t.Fatalf("GetMapLocations() failed: %v", err)
 	}
@@ -3452,7 +3452,7 @@ func TestReadModelStore_GetMapLocations_Aggregation(t *testing.T) {
 		}
 	}
 
-	results, err := store.GetMapLocations(ctx, domain.MainBranchID)
+	results, err := store.GetMapLocations(ctx, domain.MainBranchID, repository.Privacy{})
 	if err != nil {
 		t.Fatalf("GetMapLocations() failed: %v", err)
 	}
@@ -3485,7 +3485,7 @@ func TestReadModelStore_GetMapLocations_NoCoordinates(t *testing.T) {
 		t.Fatalf("SavePerson() failed: %v", err)
 	}
 
-	results, err := store.GetMapLocations(ctx, domain.MainBranchID)
+	results, err := store.GetMapLocations(ctx, domain.MainBranchID, repository.Privacy{})
 	if err != nil {
 		t.Fatalf("GetMapLocations() failed: %v", err)
 	}
@@ -3516,7 +3516,7 @@ func TestReadModelStore_GetMapLocations_AxisChecked(t *testing.T) {
 		}
 	}
 
-	results, err := store.GetMapLocations(ctx, domain.MainBranchID)
+	results, err := store.GetMapLocations(ctx, domain.MainBranchID, repository.Privacy{})
 	if err != nil {
 		t.Fatalf("GetMapLocations() failed: %v", err)
 	}

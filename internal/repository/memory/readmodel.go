@@ -2133,7 +2133,7 @@ func (s *ReadModelStore) DeleteAttribute(ctx context.Context, branchID domain.Br
 
 // GetSurnameIndex returns a list of unique surnames with counts and letter
 // distribution, aggregated over branchID's overlay of persons (ADR-005).
-func (s *ReadModelStore) GetSurnameIndex(ctx context.Context, branchID domain.BranchID) ([]repository.SurnameEntry, []repository.LetterCount, error) {
+func (s *ReadModelStore) GetSurnameIndex(ctx context.Context, branchID domain.BranchID, privacy repository.Privacy) ([]repository.SurnameEntry, []repository.LetterCount, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -2141,6 +2141,9 @@ func (s *ReadModelStore) GetSurnameIndex(ctx context.Context, branchID domain.Br
 	surnamesByLetter := make(map[string]map[string]bool) // letter -> set of surnames
 
 	for _, p := range resolveAllRows(s.persons, branchID) {
+		if privacy.Protects(p) {
+			continue
+		}
 		surname := p.Surname
 		surnameCount[surname]++
 		if surname != "" {
@@ -2173,14 +2176,14 @@ func (s *ReadModelStore) GetSurnameIndex(ctx context.Context, branchID domain.Br
 
 // GetSurnamesByLetter returns surnames starting with a specific letter, aggregated
 // over branchID's overlay of persons (ADR-005).
-func (s *ReadModelStore) GetSurnamesByLetter(ctx context.Context, branchID domain.BranchID, letter string) ([]repository.SurnameEntry, error) {
+func (s *ReadModelStore) GetSurnamesByLetter(ctx context.Context, branchID domain.BranchID, letter string, privacy repository.Privacy) ([]repository.SurnameEntry, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	surnameCount := make(map[string]int)
 	for _, p := range resolveAllRows(s.persons, branchID) {
 		surname := p.Surname
-		if surname != "" && strings.EqualFold(string(surname[0]), letter) {
+		if surname != "" && strings.EqualFold(string(surname[0]), letter) && !privacy.Protects(p) {
 			surnameCount[surname]++
 		}
 	}
@@ -2234,7 +2237,7 @@ func (s *ReadModelStore) GetPersonsBySurname(ctx context.Context, surname string
 
 // GetPlaceHierarchy returns places at a given level of hierarchy, aggregated over
 // branchID's overlay of persons (ADR-005).
-func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, branchID domain.BranchID, parent string) ([]repository.PlaceEntry, error) {
+func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, branchID domain.BranchID, parent string, privacy repository.Privacy) ([]repository.PlaceEntry, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -2242,6 +2245,9 @@ func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, branchID domain.
 	placeCount := make(map[string]int)
 
 	for _, p := range resolveAllRows(s.persons, branchID) {
+		if privacy.Protects(p) {
+			continue
+		}
 		for _, place := range []string{p.BirthPlace, p.DeathPlace} {
 			if place != "" {
 				placeCount[place]++
@@ -2311,9 +2317,19 @@ func (s *ReadModelStore) GetPersonsByPlace(ctx context.Context, place string, op
 // owners placed there, counted over branchID's overlay of life events (ADR-005).
 // A branch that tombstoned a person also tombstoned that person's life events
 // (DeletePerson's cascade), so the index agrees with GetPersonsByCemetery.
-func (s *ReadModelStore) GetCemeteryIndex(ctx context.Context, branchID domain.BranchID) ([]repository.CemeteryEntry, error) {
+func (s *ReadModelStore) GetCemeteryIndex(ctx context.Context, branchID domain.BranchID, privacy repository.Privacy) ([]repository.CemeteryEntry, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+
+	// The owners privacy shows, as the SQL stores join them; nil when it shows
+	// everyone.
+	var shown map[uuid.UUID]bool
+	if !privacy.SeesAll() {
+		shown = make(map[uuid.UUID]bool)
+		for _, p := range resolveAllRows(s.persons, branchID) {
+			shown[p.ID] = !privacy.Protects(p)
+		}
+	}
 
 	// Count distinct persons per place for burial/cremation events
 	placePersons := make(map[string]map[uuid.UUID]struct{})
@@ -2322,6 +2338,9 @@ func (s *ReadModelStore) GetCemeteryIndex(ctx context.Context, branchID domain.B
 			continue
 		}
 		if e.FactType != domain.FactPersonBurial && e.FactType != domain.FactPersonCremation {
+			continue
+		}
+		if shown != nil && !shown[e.OwnerID] {
 			continue
 		}
 		if _, ok := placePersons[e.Place]; !ok {
@@ -2399,7 +2418,7 @@ func (s *ReadModelStore) GetPersonsByCemetery(ctx context.Context, place string,
 
 // GetMapLocations returns aggregated geographic locations from the birth/death
 // coordinates of branchID's overlay of persons (ADR-005).
-func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.BranchID) ([]repository.MapLocation, error) {
+func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.BranchID, privacy repository.Privacy) ([]repository.MapLocation, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -2417,6 +2436,9 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 	agg := make(map[locKey]*locData)
 
 	for _, p := range resolveAllRows(s.persons, branchID) {
+		if privacy.Protects(p) {
+			continue
+		}
 		person := repository.MapPerson{
 			ID: p.ID, GivenName: p.GivenName, Surname: p.Surname,
 			Restriction: p.Restriction, LivingFacts: p.LivingFacts(),
@@ -2472,13 +2494,13 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 // MAIN-ONLY: brick walls are event-sourced (#802), but only main writes them so
 // far (branch-scoping them is follow-up under #676), so reading a branch overlay
 // here would report shadow rows whose brick-wall fields no writer maintains.
-func (s *ReadModelStore) GetBrickWalls(ctx context.Context, includeResolved bool) ([]repository.BrickWallEntry, error) {
+func (s *ReadModelStore) GetBrickWalls(ctx context.Context, includeResolved bool, privacy repository.Privacy) ([]repository.BrickWallEntry, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	var entries []repository.BrickWallEntry
 	for _, p := range resolveAllRows(s.persons, domain.MainBranchID) {
-		if p.BrickWallSince == nil {
+		if p.BrickWallSince == nil || privacy.Protects(p) {
 			continue
 		}
 		if !includeResolved && p.BrickWallResolvedAt != nil {

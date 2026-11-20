@@ -854,37 +854,40 @@ type ReadModelStore interface {
 	//
 	// These aggregate `persons` (and, for the cemetery pair, `life_events`), so they
 	// see the branch overlay (ADR-005): single-row aggregates take an explicit
-	// branchID, the paged ones carry it on opts.BranchID.
+	// branchID, the paged ones carry it on opts.BranchID. The aggregates take the
+	// reader's privacy and leave the people it protects out of their counts, in
+	// the query (ADR-008 §5); the paged ones carry it on opts.Privacy.
 
 	// GetSurnameIndex returns surname and initial-letter counts within the branch
 	// overlay (ADR-005).
-	GetSurnameIndex(ctx context.Context, branchID domain.BranchID) ([]SurnameEntry, []LetterCount, error)
+	GetSurnameIndex(ctx context.Context, branchID domain.BranchID, privacy Privacy) ([]SurnameEntry, []LetterCount, error)
 	// GetSurnamesByLetter returns the surnames starting with letter within the
 	// branch overlay (ADR-005).
-	GetSurnamesByLetter(ctx context.Context, branchID domain.BranchID, letter string) ([]SurnameEntry, error)
+	GetSurnamesByLetter(ctx context.Context, branchID domain.BranchID, letter string, privacy Privacy) ([]SurnameEntry, error)
 	GetPersonsBySurname(ctx context.Context, surname string, opts ListOptions) ([]PersonReadModel, int, error)
 	// GetPlaceHierarchy returns the places directly under parent within the branch
 	// overlay (ADR-005).
-	GetPlaceHierarchy(ctx context.Context, branchID domain.BranchID, parent string) ([]PlaceEntry, error)
+	GetPlaceHierarchy(ctx context.Context, branchID domain.BranchID, parent string, privacy Privacy) ([]PlaceEntry, error)
 	GetPersonsByPlace(ctx context.Context, place string, opts ListOptions) ([]PersonReadModel, int, error)
 	// GetCemeteryIndex returns burial/cremation places with the number of distinct
 	// owners whose branch-visible life events place them there (ADR-005, #757).
-	GetCemeteryIndex(ctx context.Context, branchID domain.BranchID) ([]CemeteryEntry, error)
+	GetCemeteryIndex(ctx context.Context, branchID domain.BranchID, privacy Privacy) ([]CemeteryEntry, error)
 	GetPersonsByCemetery(ctx context.Context, place string, opts ListOptions) ([]PersonReadModel, int, error)
 
 	// Map operations
 
 	// GetMapLocations aggregates person birth/death coordinates within the branch
-	// overlay (ADR-005).
-	GetMapLocations(ctx context.Context, branchID domain.BranchID) ([]MapLocation, error)
+	// overlay (ADR-005), leaving out the people privacy protects (ADR-008).
+	GetMapLocations(ctx context.Context, branchID domain.BranchID, privacy Privacy) ([]MapLocation, error)
 
 	// Brick wall operations
 	//
 	// Brick walls are event-sourced (#802): BrickWallSet and BrickWallResolved are
 	// projected onto the person's row through SavePerson, so there is no write here.
 	// MAIN-ONLY: only main writes them so far; branch-scoping them is follow-up under
-	// #676 (ADR-005, "Entities that stay main-only").
-	GetBrickWalls(ctx context.Context, includeResolved bool) ([]BrickWallEntry, error)
+	// #676 (ADR-005, "Entities that stay main-only"). The people privacy protects
+	// are left out (ADR-008).
+	GetBrickWalls(ctx context.Context, includeResolved bool, privacy Privacy) ([]BrickWallEntry, error)
 
 	// Projection repair (#845)
 

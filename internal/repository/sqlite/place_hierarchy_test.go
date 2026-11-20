@@ -113,7 +113,7 @@ func runPlaceHierarchyScenario(t *testing.T, store repository.ReadModelStore) {
 		{"Nowhere", nil},
 	}
 	for _, tt := range tests {
-		got, err := store.GetPlaceHierarchy(ctx, domain.MainBranchID, tt.parent)
+		got, err := store.GetPlaceHierarchy(ctx, domain.MainBranchID, tt.parent, repository.Privacy{})
 		if err != nil {
 			t.Fatalf("GetPlaceHierarchy(%q): %v", tt.parent, err)
 		}
@@ -143,7 +143,7 @@ func runPlaceHierarchyScenario(t *testing.T, store repository.ReadModelStore) {
 	// children returns some when asked for them by its full_name.
 	var walk func(parent string)
 	walk = func(parent string) {
-		got, err := store.GetPlaceHierarchy(ctx, domain.MainBranchID, parent)
+		got, err := store.GetPlaceHierarchy(ctx, domain.MainBranchID, parent, repository.Privacy{})
 		if err != nil {
 			t.Fatalf("GetPlaceHierarchy(%q): %v", parent, err)
 		}
@@ -154,7 +154,7 @@ func runPlaceHierarchyScenario(t *testing.T, store repository.ReadModelStore) {
 			if !e.HasChildren {
 				continue
 			}
-			children, err := store.GetPlaceHierarchy(ctx, domain.MainBranchID, e.FullName)
+			children, err := store.GetPlaceHierarchy(ctx, domain.MainBranchID, e.FullName, repository.Privacy{})
 			if err != nil {
 				t.Fatalf("GetPlaceHierarchy(%q): %v", e.FullName, err)
 			}

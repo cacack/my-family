@@ -149,7 +149,7 @@ func TestReadModelStore_DeletePersonCascade(t *testing.T) {
 	if kept == nil {
 		t.Error("cascade removed another person's life event")
 	}
-	cemeteries, err := store.GetCemeteryIndex(ctx, main)
+	cemeteries, err := store.GetCemeteryIndex(ctx, main, repository.Privacy{})
 	if err != nil {
 		t.Fatalf("GetCemeteryIndex: %v", err)
 	}
@@ -308,7 +308,7 @@ func TestReadModelStore_BranchDeleteCascadesFacts(t *testing.T) {
 	if len(branchAssocs) != 0 {
 		t.Errorf("branch association (associate_id side) not tombstoned: got %+v", branchAssocs)
 	}
-	branchCemeteries, err := store.GetCemeteryIndex(ctx, branch)
+	branchCemeteries, err := store.GetCemeteryIndex(ctx, branch, repository.Privacy{})
 	if err != nil {
 		t.Fatalf("GetCemeteryIndex branch: %v", err)
 	}
@@ -345,7 +345,7 @@ func TestReadModelStore_BranchDeleteCascadesFacts(t *testing.T) {
 	if len(mainAssocs) != 1 {
 		t.Errorf("main association changed by a branch delete: got %+v", mainAssocs)
 	}
-	mainCemeteries, err := store.GetCemeteryIndex(ctx, main)
+	mainCemeteries, err := store.GetCemeteryIndex(ctx, main, repository.Privacy{})
 	if err != nil {
 		t.Fatalf("GetCemeteryIndex main: %v", err)
 	}

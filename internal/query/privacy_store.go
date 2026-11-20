@@ -32,11 +32,13 @@ import (
 //   - Private media are hidden, and so are media of a hidden owner, bytes and
 //     thumbnails included.
 //
+//   - The surname, place and cemetery indexes, the map and the brick walls
+//     leave protected people out of their counts and lists, in the query.
+//
 // The methods marked "not yet redacted" pass through for every principal.
 // They serve records other than people and families (sources, citations by
-// source, notes, submitters, repositories, evidence), aggregates (surname,
-// place and cemetery indexes, the map, brick walls) and whole-tree exports,
-// whose redaction is still to come (#1412). Until it lands anonymous viewing
+// source, notes, submitters, repositories, evidence, duplicate dismissals)
+// and whole-tree exports, whose redaction is still to come (#1412). Until it lands anonymous viewing
 // stays off (repository.AnonymousViewingProtected).
 type PrivacyStore struct {
 	inner repository.ReadModelStore
@@ -1118,15 +1120,17 @@ func (s *PrivacyStore) DeleteDuplicateDismissal(ctx context.Context, branchID do
 // Browse, map and brick walls
 // ============================================================================
 
-// Not yet redacted: the surname, place and cemetery indexes, the map and the
-// brick walls count and name people in the store's aggregate queries.
+// The surname, place and cemetery indexes, the map and the brick walls count
+// and name people in the store's aggregate queries, so each takes the
+// principal's privacy and leaves protected people out in the query (ADR-008
+// §5). The privacy a caller passes is replaced by the principal's.
 
-func (s *PrivacyStore) GetSurnameIndex(ctx context.Context, branchID domain.BranchID) ([]repository.SurnameEntry, []repository.LetterCount, error) {
-	return s.inner.GetSurnameIndex(ctx, branchID)
+func (s *PrivacyStore) GetSurnameIndex(ctx context.Context, branchID domain.BranchID, _ repository.Privacy) ([]repository.SurnameEntry, []repository.LetterCount, error) {
+	return s.inner.GetSurnameIndex(ctx, branchID, s.privacy(ctx))
 }
 
-func (s *PrivacyStore) GetSurnamesByLetter(ctx context.Context, branchID domain.BranchID, letter string) ([]repository.SurnameEntry, error) {
-	return s.inner.GetSurnamesByLetter(ctx, branchID, letter)
+func (s *PrivacyStore) GetSurnamesByLetter(ctx context.Context, branchID domain.BranchID, letter string, _ repository.Privacy) ([]repository.SurnameEntry, error) {
+	return s.inner.GetSurnamesByLetter(ctx, branchID, letter, s.privacy(ctx))
 }
 
 func (s *PrivacyStore) GetPersonsBySurname(ctx context.Context, surname string, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
@@ -1134,8 +1138,8 @@ func (s *PrivacyStore) GetPersonsBySurname(ctx context.Context, surname string, 
 	return s.inner.GetPersonsBySurname(ctx, surname, opts)
 }
 
-func (s *PrivacyStore) GetPlaceHierarchy(ctx context.Context, branchID domain.BranchID, parent string) ([]repository.PlaceEntry, error) {
-	return s.inner.GetPlaceHierarchy(ctx, branchID, parent)
+func (s *PrivacyStore) GetPlaceHierarchy(ctx context.Context, branchID domain.BranchID, parent string, _ repository.Privacy) ([]repository.PlaceEntry, error) {
+	return s.inner.GetPlaceHierarchy(ctx, branchID, parent, s.privacy(ctx))
 }
 
 func (s *PrivacyStore) GetPersonsByPlace(ctx context.Context, place string, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
@@ -1143,8 +1147,8 @@ func (s *PrivacyStore) GetPersonsByPlace(ctx context.Context, place string, opts
 	return s.inner.GetPersonsByPlace(ctx, place, opts)
 }
 
-func (s *PrivacyStore) GetCemeteryIndex(ctx context.Context, branchID domain.BranchID) ([]repository.CemeteryEntry, error) {
-	return s.inner.GetCemeteryIndex(ctx, branchID)
+func (s *PrivacyStore) GetCemeteryIndex(ctx context.Context, branchID domain.BranchID, _ repository.Privacy) ([]repository.CemeteryEntry, error) {
+	return s.inner.GetCemeteryIndex(ctx, branchID, s.privacy(ctx))
 }
 
 func (s *PrivacyStore) GetPersonsByCemetery(ctx context.Context, place string, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
@@ -1152,12 +1156,12 @@ func (s *PrivacyStore) GetPersonsByCemetery(ctx context.Context, place string, o
 	return s.inner.GetPersonsByCemetery(ctx, place, opts)
 }
 
-func (s *PrivacyStore) GetMapLocations(ctx context.Context, branchID domain.BranchID) ([]repository.MapLocation, error) {
-	return s.inner.GetMapLocations(ctx, branchID)
+func (s *PrivacyStore) GetMapLocations(ctx context.Context, branchID domain.BranchID, _ repository.Privacy) ([]repository.MapLocation, error) {
+	return s.inner.GetMapLocations(ctx, branchID, s.privacy(ctx))
 }
 
-func (s *PrivacyStore) GetBrickWalls(ctx context.Context, includeResolved bool) ([]repository.BrickWallEntry, error) {
-	return s.inner.GetBrickWalls(ctx, includeResolved)
+func (s *PrivacyStore) GetBrickWalls(ctx context.Context, includeResolved bool, _ repository.Privacy) ([]repository.BrickWallEntry, error) {
+	return s.inner.GetBrickWalls(ctx, includeResolved, s.privacy(ctx))
 }
 
 // ============================================================================

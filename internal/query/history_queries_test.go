@@ -382,33 +382,33 @@ func (m *mockReadModelStore) DeleteAttribute(ctx context.Context, _ domain.Branc
 }
 
 // Browse stub methods
-func (m *mockReadModelStore) GetSurnameIndex(ctx context.Context, branchID domain.BranchID) ([]repository.SurnameEntry, []repository.LetterCount, error) {
+func (m *mockReadModelStore) GetSurnameIndex(ctx context.Context, branchID domain.BranchID, _ repository.Privacy) ([]repository.SurnameEntry, []repository.LetterCount, error) {
 	return nil, nil, nil
 }
-func (m *mockReadModelStore) GetSurnamesByLetter(ctx context.Context, branchID domain.BranchID, letter string) ([]repository.SurnameEntry, error) {
+func (m *mockReadModelStore) GetSurnamesByLetter(ctx context.Context, branchID domain.BranchID, letter string, _ repository.Privacy) ([]repository.SurnameEntry, error) {
 	return nil, nil
 }
 func (m *mockReadModelStore) GetPersonsBySurname(ctx context.Context, surname string, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
 	return nil, 0, nil
 }
-func (m *mockReadModelStore) GetPlaceHierarchy(ctx context.Context, branchID domain.BranchID, parent string) ([]repository.PlaceEntry, error) {
+func (m *mockReadModelStore) GetPlaceHierarchy(ctx context.Context, branchID domain.BranchID, parent string, _ repository.Privacy) ([]repository.PlaceEntry, error) {
 	return nil, nil
 }
 func (m *mockReadModelStore) GetPersonsByPlace(ctx context.Context, place string, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
 	return nil, 0, nil
 }
-func (m *mockReadModelStore) GetCemeteryIndex(ctx context.Context, _ domain.BranchID) ([]repository.CemeteryEntry, error) {
+func (m *mockReadModelStore) GetCemeteryIndex(ctx context.Context, _ domain.BranchID, _ repository.Privacy) ([]repository.CemeteryEntry, error) {
 	return nil, nil
 }
 func (m *mockReadModelStore) GetPersonsByCemetery(ctx context.Context, place string, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
 	return nil, 0, nil
 }
-func (m *mockReadModelStore) GetMapLocations(ctx context.Context, branchID domain.BranchID) ([]repository.MapLocation, error) {
+func (m *mockReadModelStore) GetMapLocations(ctx context.Context, branchID domain.BranchID, _ repository.Privacy) ([]repository.MapLocation, error) {
 	return nil, nil
 }
 
 // Brick wall stub methods
-func (m *mockReadModelStore) GetBrickWalls(ctx context.Context, includeResolved bool) ([]repository.BrickWallEntry, error) {
+func (m *mockReadModelStore) GetBrickWalls(ctx context.Context, includeResolved bool, _ repository.Privacy) ([]repository.BrickWallEntry, error) {
 	return nil, nil
 }
 

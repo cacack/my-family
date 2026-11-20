@@ -301,16 +301,16 @@ func runBranchAggregateScenario(t *testing.T, readStore repository.ReadModelStor
 		var s mainAggregateSnapshot
 		var err error
 		mainOpts := repository.ListOptions{Limit: 100, BranchID: domain.MainBranchID}
-		if s.surnames, s.letters, err = readStore.GetSurnameIndex(ctx, domain.MainBranchID); err != nil {
+		if s.surnames, s.letters, err = readStore.GetSurnameIndex(ctx, domain.MainBranchID, repository.Privacy{}); err != nil {
 			t.Fatalf("%s: main GetSurnameIndex: %v", label, err)
 		}
-		if s.byLetter, err = readStore.GetSurnamesByLetter(ctx, domain.MainBranchID, "M"); err != nil {
+		if s.byLetter, err = readStore.GetSurnamesByLetter(ctx, domain.MainBranchID, "M", repository.Privacy{}); err != nil {
 			t.Fatalf("%s: main GetSurnamesByLetter: %v", label, err)
 		}
-		if s.places, err = readStore.GetPlaceHierarchy(ctx, domain.MainBranchID, ""); err != nil {
+		if s.places, err = readStore.GetPlaceHierarchy(ctx, domain.MainBranchID, "", repository.Privacy{}); err != nil {
 			t.Fatalf("%s: main GetPlaceHierarchy: %v", label, err)
 		}
-		if s.locations, err = readStore.GetMapLocations(ctx, domain.MainBranchID); err != nil {
+		if s.locations, err = readStore.GetMapLocations(ctx, domain.MainBranchID, repository.Privacy{}); err != nil {
 			t.Fatalf("%s: main GetMapLocations: %v", label, err)
 		}
 		if s.bySurname, s.bySurnameN, err = readStore.GetPersonsBySurname(ctx, "Mainline", mainOpts); err != nil {
@@ -324,10 +324,10 @@ func runBranchAggregateScenario(t *testing.T, readStore repository.ReadModelStor
 		if s.byCemetery, s.byCemeteryN, err = readStore.GetPersonsByCemetery(ctx, cemetery, mainOpts); err != nil {
 			t.Fatalf("%s: main GetPersonsByCemetery: %v", label, err)
 		}
-		if s.cemeteries, err = readStore.GetCemeteryIndex(ctx, domain.MainBranchID); err != nil {
+		if s.cemeteries, err = readStore.GetCemeteryIndex(ctx, domain.MainBranchID, repository.Privacy{}); err != nil {
 			t.Fatalf("%s: main GetCemeteryIndex: %v", label, err)
 		}
-		if s.brickWalls, err = readStore.GetBrickWalls(ctx, true); err != nil {
+		if s.brickWalls, err = readStore.GetBrickWalls(ctx, true, repository.Privacy{}); err != nil {
 			t.Fatalf("%s: main GetBrickWalls: %v", label, err)
 		}
 		return s
@@ -418,7 +418,7 @@ func runBranchAggregateScenario(t *testing.T, readStore repository.ReadModelStor
 	// row, tombstoned person gone -- one set-based read per aggregate. ---
 	branchOpts := repository.ListOptions{Limit: 100, BranchID: branchID}
 
-	branchSurnames, branchLetters, err := readStore.GetSurnameIndex(ctx, branchID)
+	branchSurnames, branchLetters, err := readStore.GetSurnameIndex(ctx, branchID, repository.Privacy{})
 	if err != nil {
 		t.Fatalf("branch GetSurnameIndex: %v", err)
 	}
@@ -433,7 +433,7 @@ func runBranchAggregateScenario(t *testing.T, readStore repository.ReadModelStor
 		letter string
 		want   int
 	}{{"B", 1}, {"M", 0}, {"S", 0}} {
-		got, err := readStore.GetSurnamesByLetter(ctx, branchID, c.letter)
+		got, err := readStore.GetSurnamesByLetter(ctx, branchID, c.letter, repository.Privacy{})
 		if err != nil {
 			t.Fatalf("branch GetSurnamesByLetter(%s): %v", c.letter, err)
 		}
@@ -442,7 +442,7 @@ func runBranchAggregateScenario(t *testing.T, readStore repository.ReadModelStor
 		}
 	}
 
-	branchPlaces, err := readStore.GetPlaceHierarchy(ctx, branchID, "")
+	branchPlaces, err := readStore.GetPlaceHierarchy(ctx, branchID, "", repository.Privacy{})
 	if err != nil {
 		t.Fatalf("branch GetPlaceHierarchy: %v", err)
 	}
@@ -450,7 +450,7 @@ func runBranchAggregateScenario(t *testing.T, readStore repository.ReadModelStor
 		t.Errorf("branch GetPlaceHierarchy = %+v, want only the shadowed place Westland", branchPlaces)
 	}
 
-	branchLocations, err := readStore.GetMapLocations(ctx, branchID)
+	branchLocations, err := readStore.GetMapLocations(ctx, branchID, repository.Privacy{})
 	if err != nil {
 		t.Fatalf("branch GetMapLocations: %v", err)
 	}
@@ -500,7 +500,7 @@ func runBranchAggregateScenario(t *testing.T, readStore repository.ReadModelStor
 	if want, got := []repository.CemeteryEntry{{Place: cemetery, Count: 2}}, before.cemeteries; !reflect.DeepEqual(got, want) {
 		t.Errorf("main GetCemeteryIndex = %+v, want %+v", got, want)
 	}
-	branchIndex, err := readStore.GetCemeteryIndex(ctx, branchID)
+	branchIndex, err := readStore.GetCemeteryIndex(ctx, branchID, repository.Privacy{})
 	if err != nil {
 		t.Fatalf("branch GetCemeteryIndex: %v", err)
 	}
@@ -551,7 +551,7 @@ func runBranchAggregateScenario(t *testing.T, readStore repository.ReadModelStor
 	if err := projector.Project(ctx, domain.NewBrickWallSet(shadowed.ID, "still unsourced"), wallRow.Version+1, domain.MainBranchID); err != nil {
 		t.Fatalf("project BrickWallSet after shadow: %v", err)
 	}
-	walls, err := readStore.GetBrickWalls(ctx, false)
+	walls, err := readStore.GetBrickWalls(ctx, false, repository.Privacy{})
 	if err != nil {
 		t.Fatalf("GetBrickWalls after set: %v", err)
 	}
@@ -574,7 +574,7 @@ func runBranchAggregateScenario(t *testing.T, readStore repository.ReadModelStor
 	if err := projector.Project(ctx, domain.NewBrickWallResolved(shadowed.ID, "still unsourced", now), wallRow.Version+2, domain.MainBranchID); err != nil {
 		t.Fatalf("project BrickWallResolved: %v", err)
 	}
-	if walls, err = readStore.GetBrickWalls(ctx, false); err != nil || len(walls) != 0 {
+	if walls, err = readStore.GetBrickWalls(ctx, false, repository.Privacy{}); err != nil || len(walls) != 0 {
 		t.Errorf("GetBrickWalls after resolve = %+v (err=%v), want none unresolved", walls, err)
 	}
 	shadowPerson, err = readStore.GetPerson(ctx, branchID, shadowed.ID)
@@ -707,7 +707,7 @@ func runBranchFactScenario(t *testing.T, readStore repository.ReadModelStore, br
 			t.Errorf("%s: main ListAssociations total = %d (err=%v), want 1", label, total, err)
 		}
 		want := []repository.CemeteryEntry{{Place: "Restland Cemetery", Count: 1}}
-		if got, err := readStore.GetCemeteryIndex(ctx, main); err != nil || !reflect.DeepEqual(got, want) {
+		if got, err := readStore.GetCemeteryIndex(ctx, main, repository.Privacy{}); err != nil || !reflect.DeepEqual(got, want) {
 			t.Errorf("%s: main GetCemeteryIndex = %+v (err=%v), want %+v", label, got, err, want)
 		}
 	}
@@ -757,7 +757,7 @@ func runBranchFactScenario(t *testing.T, readStore repository.ReadModelStore, br
 	if rows, total, err := readStore.ListEvents(ctx, branchOpts); err != nil || total != 3 || len(rows) != 3 {
 		t.Errorf("branch ListEvents = total %d, %d rows (err=%v), want 3 (shadowed birth, marriage, baptism)", total, len(rows), err)
 	}
-	if got, err := readStore.GetCemeteryIndex(ctx, branchID); err != nil || len(got) != 0 {
+	if got, err := readStore.GetCemeteryIndex(ctx, branchID, repository.Privacy{}); err != nil || len(got) != 0 {
 		t.Errorf("branch GetCemeteryIndex = %+v (err=%v), want empty (the burial is tombstoned)", got, err)
 	}
 	// Paging walks the branch view without repeating or dropping a row.
@@ -830,7 +830,7 @@ func runBranchFactScenario(t *testing.T, readStore repository.ReadModelStore, br
 		t.Errorf("branch GetEvent(burial) after re-save = %+v (err=%v), want it back", got, err)
 	}
 	want := []repository.CemeteryEntry{{Place: "Restland Cemetery", Count: 1}}
-	if got, err := readStore.GetCemeteryIndex(ctx, branchID); err != nil || !reflect.DeepEqual(got, want) {
+	if got, err := readStore.GetCemeteryIndex(ctx, branchID, repository.Privacy{}); err != nil || !reflect.DeepEqual(got, want) {
 		t.Errorf("branch GetCemeteryIndex after re-save = %+v (err=%v), want %+v", got, err, want)
 	}
 
