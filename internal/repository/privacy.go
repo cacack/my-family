@@ -60,7 +60,8 @@ type Privacy struct {
 	HideLiving   bool
 	LivingCutoff time.Time
 	// HideSubmitters hides submitter records, which hold living researchers'
-	// names and contact details (ADR-008 §4).
+	// names and contact details (ADR-008 §4). Only query.PrivacyStore applies
+	// it; the backends' SQL list and search forms do not read it.
 	HideSubmitters bool
 }
 
@@ -73,13 +74,15 @@ func PrivacyFor(p Principal, settings TreeSettings, now time.Time) Privacy {
 	if p.Anonymous || !role.Valid() {
 		role = ""
 	}
+	// anonymous covers visitors and principals without a valid role.
+	anonymous := role == ""
 	switch {
 	case role.Includes(RoleEditor):
 		return Privacy{}
 	case role == RoleViewer && settings.ViewersSeeLiving:
 		return Privacy{HidePrivate: true}
 	default:
-		return Privacy{HidePrivate: true, HideLiving: true, LivingCutoff: settings.LivingCutoff(now), HideSubmitters: role == ""}
+		return Privacy{HidePrivate: true, HideLiving: true, LivingCutoff: settings.LivingCutoff(now), HideSubmitters: anonymous}
 	}
 }
 

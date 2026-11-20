@@ -35,8 +35,8 @@ func NoteReferences(ctx context.Context, store repository.ReadModelStore, branch
 }
 
 // NotesReferences is NoteReferences for each of notes, keyed by note id, in
-// one walk of the records on branchID whatever the number of notes. A note
-// nothing points to has no key.
+// one walk of the records on branchID whatever the number of notes. Only notes
+// at least one record points to have a key, and only ids from notes appear.
 func NotesReferences(ctx context.Context, store repository.ReadModelStore, branchID domain.BranchID, notes []repository.NoteReadModel) (map[uuid.UUID][]NoteReference, error) {
 	byXref := make(map[string][]uuid.UUID)
 	byID := make(map[uuid.UUID]bool, len(notes))

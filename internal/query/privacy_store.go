@@ -1217,6 +1217,9 @@ func (s *PrivacyStore) DeleteAttribute(ctx context.Context, branchID domain.Bran
 // points to is shown.
 func (s *PrivacyStore) notesShown(ctx context.Context, v repository.Privacy, branchID domain.BranchID, notes []repository.NoteReadModel) ([]repository.NoteReadModel, error) {
 	notes = withoutPrivate(v, notes, noteRestriction)
+	if len(notes) == 0 {
+		return notes, nil
+	}
 	refs, err := gedcom.NotesReferences(ctx, s.inner, branchID, notes)
 	if err != nil {
 		return nil, err

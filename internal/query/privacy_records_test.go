@@ -59,8 +59,8 @@ func TestPrivacyStore_SourcesAndCitations(t *testing.T) {
 	open := all[len(all)-1].ID // "Register" sorts last
 
 	tests := []struct {
-		name                string
-		ctx                 context.Context
+		name       string
+		ctx        context.Context
 		seesLiving bool
 	}{
 		{"viewer", viewerCtx, true},
