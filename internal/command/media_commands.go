@@ -253,12 +253,30 @@ func (h *Handler) DeleteMedia(ctx context.Context, id uuid.UUID, version int64, 
 }
 
 // RollbackMedia rolls back media to a specific version.
+// A rollback that changes the private mark of a group item gives the mark to
+// the whole group, as UpdateMedia does (#1478).
 func (h *Handler) RollbackMedia(ctx context.Context, mediaID uuid.UUID, targetVersion int64) (*RollbackResult, error) {
-	return h.rollbackEntity(ctx, "Media", mediaID, targetVersion, func(id uuid.UUID) (bool, error) {
+	result, err := h.rollbackEntity(ctx, "Media", mediaID, targetVersion, func(id uuid.UUID) (bool, error) {
 		m, err := h.readStore.GetMedia(ctx, domain.MainBranchID, id)
 		if err != nil {
 			return false, err
 		}
 		return m == nil, nil
 	})
+	if err != nil {
+		return nil, err
+	}
+	if _, ok := result.Changes["restriction"]; !ok {
+		return result, nil
+	}
+	m, err := h.readStore.GetMedia(ctx, domain.MainBranchID, mediaID)
+	if err != nil {
+		return nil, fmt.Errorf("getting rolled back media: %w", err)
+	}
+	if m != nil && m.GroupID != nil {
+		if err := h.markMediaGroupPrivate(ctx, *m.GroupID, m.Restriction.IsPrivate()); err != nil {
+			return nil, err
+		}
+	}
+	return result, nil
 }

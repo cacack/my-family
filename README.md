@@ -197,8 +197,9 @@ which is their GEDCOM restriction notice (`RESN`); it round-trips through GEDCOM
 for persons, families, sources, notes and media. GEDCOM media records (`OBJE`) import with their
 title, file references and restriction, as one item per person, family or source that links to
 them; a media record nothing links to is skipped with a warning. The items of one record share
-their `private` mark: marking one private marks them all. Imported media are references
-only: they keep the file paths but not the files, so the gallery shows each as its title and path,
+their `private` mark: marking one private marks them all (items imported by an earlier version
+are not grouped; if an update fails part way, sending the mark again marks the rest). Imported
+media are references only: they keep the file paths but not the files, so the gallery shows each as its title and path,
 and its content and thumbnail return 404 (`no_content` for the content); upload the file to store it.
 Export writes an `OBJE` record per
 item (one record, linked from each owner, for the items of one record that are still alike), naming

@@ -231,3 +231,35 @@ func TestUpdateMedia_ResentPrivateMarkRepairsTheGroup(t *testing.T) {
 		}
 	}
 }
+
+// Rolling a group item back to a version with another private mark gives the
+// mark to the whole group.
+func TestRollbackMedia_PrivateMarkCoversTheGroup(t *testing.T) {
+	ctx := context.Background()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(memory.NewEventStore(), readStore)
+	if _, err := handler.ImportGedcom(ctx, command.ImportGedcomInput{Filename: "m.ged", Reader: strings.NewReader(mediaGedcom)}); err != nil {
+		t.Fatalf("ImportGedcom: %v", err)
+	}
+	target := groupMedia(t, ctx, readStore)[0].ID
+	var privateVersion int64
+	for _, private := range []bool{false, true, false} {
+		m, _ := readStore.GetMedia(ctx, domain.MainBranchID, target)
+		result, err := handler.UpdateMedia(ctx, command.UpdateMediaInput{ID: target, Private: &private, Version: m.Version})
+		if err != nil {
+			t.Fatalf("UpdateMedia: %v", err)
+		}
+		if private {
+			privateVersion = result.Version
+		}
+	}
+
+	if _, err := handler.RollbackMedia(ctx, target, privateVersion); err != nil {
+		t.Fatalf("RollbackMedia: %v", err)
+	}
+	for _, m := range groupMedia(t, ctx, readStore) {
+		if !m.Restriction.IsPrivate() {
+			t.Errorf("item of %s has restriction %q, want private after the rollback", m.EntityType, m.Restriction)
+		}
+	}
+}
