@@ -133,6 +133,15 @@ describe('Users page', () => {
 		expect(api.listInvites).not.toHaveBeenCalled();
 	});
 
+	it('shows a visitor the role notice, not the open-mode note', () => {
+		auth.phase = 'visitor';
+		auth.account = null;
+		render(UsersPage);
+		expect(screen.getByTestId('role-notice').textContent).toContain('browsing as a visitor');
+		expect(screen.queryByText(/AUTH_MODE=open/)).toBeNull();
+		expect(api.listUsers).not.toHaveBeenCalled();
+	});
+
 	it('explains open mode instead of loading', () => {
 		auth.phase = 'open';
 		auth.account = null;

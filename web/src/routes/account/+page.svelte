@@ -11,7 +11,7 @@
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { Input } from '#lib/components/ui/input/index.js';
 	import { Label } from '#lib/components/ui/label/index.js';
-	import { auth, updateOwnAccount } from '#lib/stores/auth.svelte.js';
+	import { auth, showSignIn, updateOwnAccount } from '#lib/stores/auth.svelte.js';
 	import type { ApiError } from '#lib/api/client.js';
 
 	const MIN_PASSWORD = 8;
@@ -72,10 +72,13 @@
 <div class="account-page">
 	<PageHeader title="Account" description="Your name in the tree's history, and the password you sign in with." />
 
-	{#if !auth.account}
+	{#if auth.phase === 'open'}
 		<p class="notice" role="note">
 			This server runs without sign-in (AUTH_MODE=open), so there are no accounts.
 		</p>
+	{:else if !auth.account}
+		<p class="notice" role="note">You are browsing as a visitor, so there is no account to show.</p>
+		<div class="mt-3"><Button variant="outline" onclick={() => showSignIn()}>Sign in</Button></div>
 	{:else}
 		<InfoSection
 			title="Signed in as"

@@ -78,7 +78,7 @@
 		back={{ href: '/users', label: 'Users' }}
 	/>
 
-	{#if !auth.account}
+	{#if auth.phase === 'open'}
 		<p class="notice" role="note">
 			This server runs without sign-in (AUTH_MODE=open), so nothing is recorded here.
 		</p>

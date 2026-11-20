@@ -4,6 +4,7 @@ import AuditPage from './+page.svelte';
 import * as apiModule from '#lib/api/client.js';
 import type { AuthAuditEntry } from '#lib/api/client.js';
 import { signInAs } from '#lib/test/roles.js';
+import { auth } from '#lib/stores/access.svelte.js';
 
 vi.mock('#lib/api/client.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof apiModule>();
@@ -53,6 +54,15 @@ describe('Audit log page', () => {
 		signInAs('viewer');
 		render(AuditPage);
 		expect(screen.getByTestId('role-notice')).toBeDefined();
+		expect(api.listAuthAudit).not.toHaveBeenCalled();
+	});
+
+	it('shows a visitor the role notice, not the open-mode note', () => {
+		auth.phase = 'visitor';
+		auth.account = null;
+		render(AuditPage);
+		expect(screen.getByTestId('role-notice').textContent).toContain('browsing as a visitor');
+		expect(screen.queryByText(/AUTH_MODE=open/)).toBeNull();
 		expect(api.listAuthAudit).not.toHaveBeenCalled();
 	});
 });
