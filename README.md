@@ -201,7 +201,8 @@ item, naming an uploaded item's file by its filename; the file content is not in
 
 Viewers do not see private people, families or media, and see a living person as a placeholder
 named "Living" (same place in charts and families, no names, dates, places, facts, citations or
-media) when the owner turns **Viewers see living people** off; editors and owners see everything.
+media, marked "Details hidden" in the UI) when the owner turns **Viewers see living people** off;
+editors and owners see everything. A private family's parentage is hidden from charts.
 A family with a protected partner keeps its shape but hides its own facts. Protected people are
 left out of person lists and searches, totals included, and media of protected people and private
 media return 404, file and thumbnail included, and so does the change history of a private person
