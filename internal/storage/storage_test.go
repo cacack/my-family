@@ -522,7 +522,7 @@ func TestSQLite_RebuildReadModel(t *testing.T) {
 	t.Cleanup(func() { _ = stores.Close() })
 
 	adaID := createPerson(t, newServer(stores), "Ada", "Rebuild")
-	if err := stores.Settings.SetHomePerson(ctx, uuid.MustParse(adaID)); err != nil {
+	if err := stores.Settings.SetHomePerson(ctx, repository.SiteWide, uuid.MustParse(adaID)); err != nil {
 		t.Fatalf("set home person: %v", err)
 	}
 	if got := stores.ProjectionFailureWarning(ctx); got != "" {
@@ -570,7 +570,7 @@ func TestSQLite_RebuildReadModel(t *testing.T) {
 		t.Errorf("persons after rebuild = %d, want 1", n)
 	}
 	// Settings are not part of the read model, so a rebuild keeps them.
-	if home, err := stores.Settings.HomePerson(ctx); err != nil || home.String() != adaID {
+	if home, err := stores.Settings.HomePerson(ctx, repository.SiteWide); err != nil || home.String() != adaID {
 		t.Errorf("home person after rebuild = %v, %v; want %s", home, err, adaID)
 	}
 

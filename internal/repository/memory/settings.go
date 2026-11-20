@@ -14,27 +14,46 @@ var _ repository.SettingsStore = (*SettingsStore)(nil)
 
 // SettingsStore is an in-memory implementation of repository.SettingsStore.
 type SettingsStore struct {
-	mu         sync.RWMutex
-	homePerson uuid.UUID
+	mu sync.RWMutex
+	// homePersons maps an account (or repository.SiteWide) to its home
+	// person; an account with none is absent.
+	homePersons map[uuid.UUID]uuid.UUID
 }
 
 // NewSettingsStore creates a new in-memory settings store.
 func NewSettingsStore() *SettingsStore {
-	return &SettingsStore{}
+	return &SettingsStore{homePersons: make(map[uuid.UUID]uuid.UUID)}
 }
 
-// HomePerson returns the home person, or uuid.Nil when none is set.
-func (s *SettingsStore) HomePerson(_ context.Context) (uuid.UUID, error) {
+// HomePerson returns accountID's home person, or uuid.Nil when none is set.
+func (s *SettingsStore) HomePerson(_ context.Context, accountID uuid.UUID) (uuid.UUID, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.homePerson, nil
+	return s.homePersons[accountID], nil
 }
 
-// SetHomePerson marks id as the home person; uuid.Nil clears it.
-func (s *SettingsStore) SetHomePerson(_ context.Context, id uuid.UUID) error {
+// SetHomePerson marks personID as accountID's home person; uuid.Nil clears it.
+func (s *SettingsStore) SetHomePerson(_ context.Context, accountID, personID uuid.UUID) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.homePerson = id
+	if personID == uuid.Nil {
+		delete(s.homePersons, accountID)
+	} else {
+		s.homePersons[accountID] = personID
+	}
+	return nil
+}
+
+// MoveHomePersons makes survivors[p] the home person of every account whose
+// home person is p.
+func (s *SettingsStore) MoveHomePersons(_ context.Context, survivors map[uuid.UUID]uuid.UUID) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for account, person := range s.homePersons {
+		if survivor, merged := survivors[person]; merged {
+			s.homePersons[account] = survivor
+		}
+	}
 	return nil
 }
 
@@ -42,5 +61,5 @@ func (s *SettingsStore) SetHomePerson(_ context.Context, id uuid.UUID) error {
 func (s *SettingsStore) Reset() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.homePerson = uuid.Nil
+	clear(s.homePersons)
 }

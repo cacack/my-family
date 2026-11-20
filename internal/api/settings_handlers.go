@@ -3,16 +3,18 @@ package api
 import (
 	"context"
 	"errors"
+	"net/http"
 
 	"github.com/google/uuid"
+	"github.com/labstack/echo/v4"
 
 	"github.com/cacack/my-family/internal/domain"
 	"github.com/cacack/my-family/internal/query"
 	"github.com/cacack/my-family/internal/repository"
 )
 
-// WithSettingsStore supplies the store of site settings backing the /settings
-// endpoints. Without it those endpoints return 503.
+// WithSettingsStore supplies the store of site and account settings backing
+// the /settings/home-person endpoints. Without it those endpoints return 503.
 func WithSettingsStore(store repository.SettingsStore) ServerOption {
 	return func(s *Server) {
 		s.settingsStore = store
@@ -24,9 +26,27 @@ var errSettingsUnavailable = Error{
 	Message: "Settings store is not configured on this server",
 }
 
-// homePerson returns the home person as the API shows it. The setting is
-// site-wide, so the person is read from the mainline; one that no longer exists
-// there reads as unset.
+// errNoAccount is a home-person change with no account to change: an
+// anonymous visitor's, which authenticate refuses before it gets here. Should
+// one get through, it is still a 401, not a 500.
+var errNoAccount = echo.NewHTTPError(http.StatusUnauthorized, "Sign in to continue")
+
+// homePersonAccount returns whose home person a request reads and changes:
+// the site's in open mode, where no one signs in, otherwise the signed-in
+// user's. ok is false for an anonymous visitor, who has none (#1443).
+func (ss *StrictServer) homePersonAccount(ctx context.Context) (account uuid.UUID, ok bool) {
+	if ss.server.config.OpenMode() {
+		return repository.SiteWide, true
+	}
+	if user := userFrom(ctx); user != nil {
+		return user.ID, true
+	}
+	return uuid.Nil, false
+}
+
+// homePerson returns the home person as the API shows it. It is not tied to
+// a branch, so the person is read from the mainline, through the read path
+// every person read takes; one that no longer exists there reads as unset.
 func (ss *StrictServer) homePerson(ctx context.Context, id uuid.UUID) (HomePerson, error) {
 	if id == uuid.Nil {
 		return HomePerson{}, nil
@@ -48,7 +68,11 @@ func (ss *StrictServer) GetHomePerson(ctx context.Context, _ GetHomePersonReques
 	if store == nil {
 		return GetHomePerson503JSONResponse{SettingsUnavailableJSONResponse(errSettingsUnavailable)}, nil
 	}
-	id, err := store.HomePerson(ctx)
+	account, ok := ss.homePersonAccount(ctx)
+	if !ok {
+		return GetHomePerson200JSONResponse(HomePerson{}), nil
+	}
+	id, err := store.HomePerson(ctx, account)
 	if err != nil {
 		return nil, err
 	}
@@ -64,6 +88,10 @@ func (ss *StrictServer) SetHomePerson(ctx context.Context, request SetHomePerson
 	store := ss.server.settingsStore
 	if store == nil {
 		return SetHomePerson503JSONResponse{SettingsUnavailableJSONResponse(errSettingsUnavailable)}, nil
+	}
+	account, ok := ss.homePersonAccount(ctx)
+	if !ok {
+		return nil, errNoAccount
 	}
 	id := request.Body.PersonId
 	if id == uuid.Nil {
@@ -82,7 +110,7 @@ func (ss *StrictServer) SetHomePerson(ctx context.Context, request SetHomePerson
 			Message: "Person not found",
 		}}, nil
 	}
-	if err := store.SetHomePerson(ctx, id); err != nil {
+	if err := store.SetHomePerson(ctx, account, id); err != nil {
 		return nil, err
 	}
 	return SetHomePerson200JSONResponse(home), nil
@@ -94,7 +122,11 @@ func (ss *StrictServer) ClearHomePerson(ctx context.Context, _ ClearHomePersonRe
 	if store == nil {
 		return ClearHomePerson503JSONResponse{SettingsUnavailableJSONResponse(errSettingsUnavailable)}, nil
 	}
-	if err := store.SetHomePerson(ctx, uuid.Nil); err != nil {
+	account, ok := ss.homePersonAccount(ctx)
+	if !ok {
+		return nil, errNoAccount
+	}
+	if err := store.SetHomePerson(ctx, account, uuid.Nil); err != nil {
 		return nil, err
 	}
 	return ClearHomePerson204Response{}, nil
@@ -110,20 +142,17 @@ func (ss *StrictServer) followHomePersonMerge(ctx context.Context, branch *domai
 	ss.followHomePersonMerges(ctx, map[uuid.UUID]uuid.UUID{mergedID: survivorID})
 }
 
-// followHomePersonMerges moves the home person to their survivor when merges
-// that have landed on main removed them; survivors maps each merged-away
-// person to the person now holding their data. The merges have already landed,
-// so a failure here is logged rather than failing the request.
+// followHomePersonMerges moves the home person of the site and of every
+// account to their survivor when merges that have landed on main removed
+// them; survivors maps each merged-away person to the person now holding
+// their data. The merges have already landed, so a failure here is logged
+// rather than failing the request.
 func (ss *StrictServer) followHomePersonMerges(ctx context.Context, survivors map[uuid.UUID]uuid.UUID) {
 	store := ss.server.settingsStore
 	if store == nil || len(survivors) == 0 {
 		return
 	}
-	home, err := store.HomePerson(ctx)
-	if survivor, merged := survivors[home]; err == nil && merged {
-		err = store.SetHomePerson(ctx, survivor)
-	}
-	if err != nil {
+	if err := store.MoveHomePersons(ctx, survivors); err != nil {
 		ss.server.echo.Logger.Errorf("moving the home person to its merge survivor: %v", err)
 	}
 }

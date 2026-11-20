@@ -133,7 +133,7 @@ func runServer() error {
 		log.Printf("Frontend: Not available (API only)")
 	}
 
-	authService := auth.NewService(stores.Accounts)
+	authService := auth.NewService(stores.Accounts, auth.WithSettings(stores.Settings))
 	if err := logAuthMode(cfg, authService, log.Default()); err != nil {
 		return err
 	}

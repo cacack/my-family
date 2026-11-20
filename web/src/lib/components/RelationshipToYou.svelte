@@ -3,7 +3,7 @@
 	import { api, type Person } from '#lib/api/client.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { homePerson, setHomePerson, clearHomePerson } from '#lib/stores/homePerson.svelte.js';
-	import { can } from '#lib/stores/auth.svelte.js';
+	import { canChooseHomePerson } from '#lib/stores/auth.svelte.js';
 	import { relationshipToYou } from '#lib/utils/relationship.js';
 
 	/**
@@ -67,7 +67,7 @@
 	<div class="relationship-to-you" data-testid="relationship-to-you">
 		{#if isHome}
 			<span class="you">This is you</span>
-			{#if can('owner')}
+			{#if canChooseHomePerson()}
 				<Button
 					variant="outline"
 					size="xs"
@@ -81,7 +81,7 @@
 			{#if relation && relation.pair === pair}
 				<a href={calculatorHref} class="relation">{relation.text ?? 'No known relationship to you'}</a>
 			{/if}
-			{#if can('owner')}
+			{#if canChooseHomePerson()}
 				<Button
 					variant="outline"
 					size="xs"

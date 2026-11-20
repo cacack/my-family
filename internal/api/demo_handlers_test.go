@@ -12,6 +12,7 @@ import (
 	"github.com/cacack/my-family/internal/api"
 	"github.com/cacack/my-family/internal/config"
 	"github.com/cacack/my-family/internal/demo"
+	"github.com/cacack/my-family/internal/repository"
 	"github.com/cacack/my-family/internal/repository/memory"
 )
 
@@ -138,7 +139,7 @@ func TestResetDemo(t *testing.T) {
 func TestResetDemo_ClearsHomePerson(t *testing.T) {
 	settings := memory.NewSettingsStore()
 	server := setupDemoServerWithSettings(settings)
-	if err := settings.SetHomePerson(context.Background(), uuid.New()); err != nil {
+	if err := settings.SetHomePerson(context.Background(), repository.SiteWide, uuid.New()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -149,7 +150,7 @@ func TestResetDemo_ClearsHomePerson(t *testing.T) {
 		t.Fatalf("Status = %d, want %d", rec.Code, http.StatusOK)
 	}
 
-	if id, _ := settings.HomePerson(context.Background()); id != uuid.Nil {
+	if id, _ := settings.HomePerson(context.Background(), repository.SiteWide); id != uuid.Nil {
 		t.Errorf("home person after reset = %v, want unset", id)
 	}
 }

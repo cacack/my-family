@@ -501,7 +501,9 @@ Added after this ADR's date, when #1412 made the table a test (§7).
 
 | Operation | Path | Returns | Source | Choke | Special handling |
 |-----------|------|---------|--------|-------|------------------|
-| getHomePerson | GET /settings/home-person | The person marked as "me" | settings + RM | a | Living → placeholder; private → absent |
+| getHomePerson | GET /settings/home-person | The account's home person (the site's in open mode) | settings + RM | a | Person read like getPerson: protected → placeholder; private or gone → none. Anonymous has no home person, so none (#1443) |
+| setHomePerson | PUT /settings/home-person | The new home person | settings + RM | a | As getHomePerson; a private person the caller cannot see is 404. Any signed-in account; anonymous refused (401) |
+| clearHomePerson | DELETE /settings/home-person | Empty body | settings | — | No tree data. Any signed-in account; anonymous refused (401) |
 | getPrivacySettings | GET /settings/privacy | Tree privacy settings | settings | — | No tree data |
 | getAuthStatus | GET /auth/status | Mode, setup state, the caller's account | accounts | — | No tree data |
 | setupOwner | POST /auth/setup | The new owner's account | accounts | — | No tree data |

@@ -21,7 +21,7 @@ A genealogy platform designed for research rigor and data ownership.
 - **Snapshots, history and rollback** - Tag research milestones and compare them with each other or with the current state, browse the change history of the whole tree or of one record, and roll a person, family, source or citation back to an earlier version
 - **Geographic heat map** - Interactive world map showing family locations with zoom/pan
 - **Interactive pedigree chart** - D3.js visualization with pan/zoom and keyboard navigation
-- **Home person** - Mark who you are in the tree; every person page then names their relationship to you, linking to the full path, and the charts open on you by default. One site-wide setting until accounts arrive
+- **Home person** - Mark who you are in the tree; every person page then names their relationship to you, linking to the full path, and the charts open on you by default. Each account has its own; in open mode there is one for the site
 - **Full-text search** - Fast fuzzy matching with keyboard-navigable results
 - **Keyboard shortcuts** - Power user navigation (press `?` for help)
 - **Accessibility** - High contrast, font scaling, screen reader support
@@ -290,7 +290,7 @@ newer version asks for one rebuild.
 - `POST /api/v1/families/{id}/children` - Add child to family
 - `DELETE /api/v1/families/{id}/children/{personId}` - Remove child
 - `GET /api/v1/pedigree/{id}` - Get pedigree chart data
-- `GET /api/v1/settings/home-person` / `PUT` / `DELETE` - Get, set or clear the site-wide home person (always the mainline)
+- `GET /api/v1/settings/home-person` / `PUT` / `DELETE` - Get, set or clear the signed-in account's home person, or the site's in open mode (always the mainline)
 - `GET /api/v1/history` - Global change history of the mainline
 - `GET /api/v1/{persons,families,sources}/{id}/history` - Change history of one record
 - `GET /api/v1/{persons,families,sources,citations}/{id}/restore-points` - List the versions a record can be rolled back to

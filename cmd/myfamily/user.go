@@ -75,7 +75,7 @@ func runUser(args []string) error {
 		}
 	}()
 
-	svc := auth.NewService(stores.Accounts)
+	svc := auth.NewService(stores.Accounts, auth.WithSettings(stores.Settings))
 	if args[0] == "reset-password" {
 		if *baseURL == "" {
 			*baseURL = fmt.Sprintf("http://localhost:%d", cfg.Port)

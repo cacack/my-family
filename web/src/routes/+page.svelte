@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { can } from '#lib/stores/access.svelte.js';
+	import { can, canChooseHomePerson } from '#lib/stores/access.svelte.js';
 	import { api, type Person, type FamilyDetail } from '#lib/api/client.js';
 	import PersonCard from '#lib/components/PersonCard.svelte';
 	import FamilyCard from '#lib/components/FamilyCard.svelte';
@@ -119,7 +119,7 @@
 			</Card>
 		</section>
 
-		{#if homePerson.loaded && (homePerson.person || stats.persons > 0)}
+		{#if canChooseHomePerson() && homePerson.loaded && (homePerson.person || stats.persons > 0)}
 			<Card class="mb-8" data-testid="home-person-card">
 				<CardHeader>
 					<h2 class="m-0 text-base font-semibold text-foreground">You in the tree</h2>

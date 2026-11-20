@@ -99,16 +99,30 @@ describe('RelationshipToYou', () => {
 		expect(homePerson.person).toBeNull();
 		expect(homePerson.loaded).toBe(true);
 	});
-	it('hides the controls from anyone but an owner, who alone may change the home person', async () => {
+	it('lets any signed-in account change its own home person, whatever its role', async () => {
 		auth.phase = 'signed-in';
 		auth.account = { id: 'u-1', username: 'v', display_name: 'V', role: 'viewer' } as typeof auth.account;
 		try {
 			render(RelationshipToYou, { person: me });
 			expect(screen.getByText('This is you')).toBeTruthy();
-			expect(screen.queryByRole('button', { name: 'Not me' })).toBeNull();
+			expect(screen.getByRole('button', { name: 'Not me' })).toBeTruthy();
 		} finally {
 			auth.phase = 'open';
 			auth.account = null;
+		}
+	});
+
+	it('shows a visitor, who has no home person, neither control', async () => {
+		await homeIs(null);
+		relationship('3rd great-grandparent');
+		auth.phase = 'visitor';
+		try {
+			render(RelationshipToYou, { person: ancestor });
+			expect(screen.queryByRole('button', { name: 'This is me' })).toBeNull();
+			expect(screen.queryByRole('button', { name: 'Not me' })).toBeNull();
+			expect(apiModule.api.getRelationship).not.toHaveBeenCalled();
+		} finally {
+			auth.phase = 'open';
 		}
 	});
 });

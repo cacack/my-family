@@ -1,8 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import DashboardPage from './+page.svelte';
 import dashboardSource from './+page.svelte?raw';
 import * as apiModule from '#lib/api/client.js';
+import { auth } from '#lib/stores/access.svelte.js';
 
 vi.mock('#lib/api/client.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof apiModule>();
@@ -132,6 +133,13 @@ describe('Dashboard', () => {
 	});
 
 	describe('You in the tree', () => {
+		beforeEach(() => {
+			auth.phase = 'open';
+		});
+		afterEach(() => {
+			auth.phase = 'loading';
+		});
+
 		function somePeople() {
 			vi.mocked(apiModule.api.listPersons).mockResolvedValue({
 				items: [],
@@ -174,6 +182,15 @@ describe('Dashboard', () => {
 			const card = await screen.findByTestId('home-person-card');
 			expect(card.textContent).toContain('This is me');
 			expect(screen.getByRole('link', { name: 'Browse people' }).getAttribute('href')).toBe('/persons');
+		});
+
+		it('is hidden from a visitor, who has no home person', async () => {
+			somePeople();
+			home.loaded = true;
+			auth.phase = 'visitor';
+			render(DashboardPage);
+			await waitFor(() => expect(screen.getByText('Recent People')).toBeTruthy());
+			expect(screen.queryByTestId('home-person-card')).toBeNull();
 		});
 
 		it('is hidden in an empty tree, and until the home person is known', async () => {
