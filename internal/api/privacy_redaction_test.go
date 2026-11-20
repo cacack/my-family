@@ -93,7 +93,6 @@ func redactionFixture(t *testing.T, viewersSeeLiving bool) (*authFixture, redact
 	t.Helper()
 	f, cookies := rolesFixture(t)
 	tr := buildRedactionTree(t, f, cookies[repository.RoleOwner])
-	f.server.ProtectVisitorsForTest()
 	settings := repository.DefaultTreeSettings()
 	settings.AnonymousAccess = repository.AnonymousAccessViewer
 	settings.ViewersSeeLiving = viewersSeeLiving

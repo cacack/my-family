@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -20,24 +21,15 @@ import (
 	"github.com/cacack/my-family/internal/repository/memory"
 )
 
-// storeVisitorAccess stores anonymous access viewer directly: the settings
-// API refuses it until visitors are protected
-// (repository.AnonymousViewingProtected).
-func (f *authFixture) storeVisitorAccess(t *testing.T) {
+// openToVisitors lets visitors in by storing anonymous access viewer
+// directly, without an owner session or an audit entry.
+func (f *authFixture) openToVisitors(t *testing.T) {
 	t.Helper()
 	settings := repository.DefaultTreeSettings()
 	settings.AnonymousAccess = repository.AnonymousAccessViewer
 	if err := f.accounts.SaveTreeSettings(context.Background(), repository.DefaultTreeID, settings); err != nil {
 		t.Fatalf("SaveTreeSettings: %v", err)
 	}
-}
-
-// openToVisitors lets visitors in: it stores anonymous access viewer and has
-// the server treat them as protected, ahead of the read side's redaction.
-func (f *authFixture) openToVisitors(t *testing.T) {
-	t.Helper()
-	f.server.ProtectVisitorsForTest()
-	f.storeVisitorAccess(t)
 }
 
 // unauthenticated reports whether the sign-in check refused the request.
@@ -158,8 +150,9 @@ func TestAnonymous_AuthStatusSaysWhetherVisitorsMayLook(t *testing.T) {
 	}
 }
 
-// Closing the tree takes effect on the next request and is audited; turning
-// visitors in is refused while they would see everything.
+// The owner lets visitors in and closes the tree again through the settings
+// API: each change takes effect on the next request and writes one audit
+// entry, and saving the same value again writes none.
 func TestAnonymous_OwnerChangesAccess(t *testing.T) {
 	f := newAuthFixture(t)
 	f.createOwner(t)
@@ -179,10 +172,10 @@ func TestAnonymous_OwnerChangesAccess(t *testing.T) {
 		}
 		return out
 	}
-
-	if code := put("viewer"); repository.AnonymousViewingProtected != (code == http.StatusOK) {
-		t.Errorf("PUT viewer: %d, want 200 only once visitors are protected", code)
+	byAda := func(e api.AuthAuditEntry, detail string) bool {
+		return e.Detail == detail && e.ActorName != nil && *e.ActorName == "Ada Lovelace"
 	}
+
 	if code := put("none"); code != http.StatusOK {
 		t.Fatalf("PUT none: %d", code)
 	}
@@ -190,19 +183,25 @@ func TestAnonymous_OwnerChangesAccess(t *testing.T) {
 		t.Errorf("audit after changing nothing: %+v", got)
 	}
 
-	f.openToVisitors(t)
-	if rec := f.do(t, request{method: http.MethodGet, path: "/api/v1/persons"}); rec.Code != http.StatusOK {
-		t.Fatalf("visitor before closing: %d %s", rec.Code, rec.Body)
+	if code := put("viewer"); code != http.StatusOK {
+		t.Fatalf("PUT viewer: %d, want 200", code)
 	}
+	if got := audited(); len(got) != 1 || !byAda(got[0], "viewer") {
+		t.Errorf("audit after opening = %+v, want one change to viewer by Ada", got)
+	}
+	if rec := f.do(t, request{method: http.MethodGet, path: "/api/v1/persons"}); rec.Code != http.StatusOK {
+		t.Fatalf("visitor after opening: %d %s, want 200", rec.Code, rec.Body)
+	}
+
 	if code := put("none"); code != http.StatusOK {
 		t.Fatalf("PUT none: %d", code)
 	}
 	if rec := f.do(t, request{method: http.MethodGet, path: "/api/v1/persons"}); rec.Code != http.StatusUnauthorized {
 		t.Errorf("visitor after closing: %d %s, want 401", rec.Code, rec.Body)
 	}
-	got := audited()
-	if len(got) != 1 || got[0].Detail != "none" || got[0].ActorName == nil || *got[0].ActorName != "Ada Lovelace" {
-		t.Errorf("audit = %+v, want one change to none by Ada", got)
+	closed := slices.ContainsFunc(audited(), func(e api.AuthAuditEntry) bool { return byAda(e, "none") })
+	if got := audited(); len(got) != 2 || !closed {
+		t.Errorf("audit after closing = %+v, want a change to viewer and one to none by Ada", got)
 	}
 }
 
@@ -311,16 +310,14 @@ func TestAnonymous_RateLimitIgnoresForwardingHeaders(t *testing.T) {
 	}
 }
 
-// Until the read side protects visitors, a viewer setting that reached the
-// store without the settings API (an older build, a restored backup, a hand
-// edit) still lets no visitor in, and the auth status says so.
+// With the kill switch off (repository.AnonymousViewingProtected false), a
+// viewer setting already in the store (an older build, a restored backup, a
+// hand edit) lets no visitor in, and the auth status says so.
 func TestAnonymous_UnprotectedServerRefusesVisitors(t *testing.T) {
-	if repository.AnonymousViewingProtected {
-		t.Skip("visitors are protected")
-	}
 	f := newAuthFixture(t)
 	f.createOwner(t)
-	f.storeVisitorAccess(t)
+	f.server.UnprotectVisitorsForTest()
+	f.openToVisitors(t)
 
 	if rec := f.do(t, request{method: http.MethodGet, path: "/api/v1/persons"}); !unauthenticated(rec) {
 		t.Errorf("visitor lists persons: %d %s, want 401 UNAUTHENTICATED", rec.Code, rec.Body)
