@@ -300,7 +300,7 @@ Frontend coverage is measurable via `npm run test:coverage` but is **not** gated
 
 ## CI Pipeline Integration
 
-`.github/workflows/ci.yml` runs three test jobs. There is no `integration` build tag and no
+`.github/workflows/ci.yml` runs the test and check jobs below in parallel. There is no `integration` build tag and no
 `DATABASE_URL` in tests — PostgreSQL coverage comes from `internal/testutil/pgtest`, the one place that
 starts the testcontainer. It starts one container per test binary, waits until the port is mapped
 and the server answers a ping (#1299), and hands each test a fresh, uniquely named database. It
@@ -309,9 +309,15 @@ cannot silently drop out of CI (#879). `MYFAMILY_TEST_POSTGRES_URL` points it at
 instead.
 
 ```bash
-# backend job
+# backend job (every package except internal/integration)
 go test -race -coverprofile=coverage.out $COVERAGE_PKGS   # no -short, so Postgres runs
 make check-coverage                                        # per-package + total thresholds
+
+# go-integration job (test-only package, so no coverage profile)
+go test -race ./internal/integration/...
+
+# release-sqlite job
+make check-release-sqlite                                  # cgo-less binary on SQLite
 
 # frontend job
 npm ci --ignore-scripts && npm run check && npm test -- --run

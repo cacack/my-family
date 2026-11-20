@@ -137,21 +137,19 @@ jobs:
       - name: Run tests
         # Scope the build to packages that contribute to coverage. cmd/myfamily
         # and internal/web are excluded in .testcoverage.yml; skipping them here
-        # keeps CI in sync with `make check-coverage` and scripts/pre-push (#408).
+        # matches `make check-coverage` and scripts/pre-push (#408), with one
+        # deliberate difference: CI also drops internal/integration, which runs
+        # in the go-integration job instead (#1523). Without -coverpkg its profile
+        # covers only itself, a test-only package .testcoverage.yml excludes, so
+        # both lists gate the same statements; locally it simply runs here.
         run: |
           set -euo pipefail
-          COVERAGE_PKGS=$(go list ./... | grep -vE '(cmd/myfamily|internal/web)$')
+          COVERAGE_PKGS=$(go list ./... | grep -vE '(cmd/myfamily|internal/web|internal/integration)$')
           if [ -z "$COVERAGE_PKGS" ]; then
             echo "Error: failed to resolve coverage package list"
             exit 1
           fi
           go test -race -coverprofile=coverage.out $COVERAGE_PKGS
-
-      - name: Verify release builds run on SQLite
-        # Releases are built with CGO_ENABLED=0; this builds the binary the same
-        # way, serves from a fresh SQLite file, and cross-compiles every release
-        # target, so a release that cannot open SQLite fails here (#822).
-        run: make check-release-sqlite
 
       - name: Check coverage threshold
         run: |
@@ -203,6 +201,100 @@ jobs:
 
       - name: Build
         run: go build ./...
+
+  # The Go internal/integration suite (not the `integration` build job below),
+  # split out of `backend` so its ~6 minutes run alongside the other packages'
+  # tests (#1523). Needs Docker for the PostgreSQL leg, which pgtest refuses to
+  # skip when CI is set (#879).
+  go-integration:
+    name: Go Integration Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            github.com:443
+            api.github.com:443
+            codeload.github.com:443
+            objects.githubusercontent.com:443
+            release-assets.githubusercontent.com:443
+            raw.githubusercontent.com:443
+            *.actions.githubusercontent.com:443
+            *.blob.core.windows.net:443
+            actions-results-receiver-production.githubapp.com:443
+            proxy.golang.org:443
+            sum.golang.org:443
+            storage.googleapis.com:443
+            dl.google.com:443
+            auth.docker.io:443
+            index.docker.io:443
+            registry-1.docker.io:443
+            production.cloudflare.docker.com:443
+            production.cloudfront.docker.com:443
+            docker-images-prod.6aa30f8b08e16409b46e0173d6de2f56.r2.cloudflarestorage.com:443
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26.10'
+          cache: true
+
+      - name: Create placeholder for embedded files
+        run: |
+          mkdir -p internal/web/dist
+          echo "placeholder" > internal/web/dist/.gitkeep
+
+      - name: Run integration tests
+        run: go test -race ./internal/integration/...
+
+  # Releases are built with CGO_ENABLED=0; this builds the binary the same way,
+  # serves from a fresh SQLite file, and cross-compiles every release target, so
+  # a release that cannot open SQLite fails here (#822). Its own job so it runs
+  # alongside `backend` rather than after it (#1523).
+  release-sqlite:
+    name: Release SQLite Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            github.com:443
+            api.github.com:443
+            codeload.github.com:443
+            objects.githubusercontent.com:443
+            release-assets.githubusercontent.com:443
+            raw.githubusercontent.com:443
+            *.actions.githubusercontent.com:443
+            *.blob.core.windows.net:443
+            actions-results-receiver-production.githubapp.com:443
+            proxy.golang.org:443
+            sum.golang.org:443
+            storage.googleapis.com:443
+            dl.google.com:443
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26.10'
+          cache: true
+
+      - name: Create placeholder for embedded files
+        run: |
+          mkdir -p internal/web/dist
+          echo "placeholder" > internal/web/dist/.gitkeep
+
+      - name: Verify release builds run on SQLite
+        run: make check-release-sqlite
 
   # Go lint. .golangci.yml builds with the `dev` tag, which swaps the
   # `//go:embed all:dist` file for embed_dev.go, so no internal/web/dist is needed.
@@ -701,7 +793,7 @@ jobs:
   ci-success:
     name: CI Success
     runs-on: ubuntu-latest
-    needs: [backend, lint, frontend, e2e, security, integration, docker-smoke-test, dependency-review]
+    needs: [backend, go-integration, release-sqlite, lint, frontend, e2e, security, integration, docker-smoke-test, dependency-review]
     if: always()
     steps:
       - name: Harden Runner
