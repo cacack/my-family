@@ -104,6 +104,27 @@ describe('PersonSelector', () => {
 		await waitFor(() => expect(screen.queryByRole('listbox')).toBeNull());
 	});
 
+	it('marks living, private and hidden people in the results (#1552)', async () => {
+		searchPersons.mockResolvedValue({
+			items: [
+				{ ...ann, living: true },
+				{ ...john, private: true },
+				{ id: 'hidden-id', given_name: 'Hidden', surname: 'Smith', living: true, private: true, redacted: true }
+			],
+			total: 3
+		});
+		render(PersonSelector, { label: 'Partner 1' });
+
+		await typeQuery(screen.getByRole('combobox', { name: 'Partner 1' }), 'Smith');
+		// Each badge's accessible name is part of its option's name.
+		await screen.findByRole('option', { name: /^Ann Smith Living person\b/ });
+		screen.getByRole('option', { name: /^John Smith Private person\b/ });
+		screen.getByRole('option', { name: /^Hidden Smith Details hidden\b/ });
+		expect(screen.queryByRole('option', { name: /^Ann Smith.*(Private person|Details hidden)/ })).toBeNull();
+		expect(screen.queryByRole('option', { name: /^John Smith.*(Living person|Details hidden)/ })).toBeNull();
+		expect(screen.queryByRole('option', { name: /^Hidden Smith.*(Living person|Private person)/ })).toBeNull();
+	});
+
 	it('names the clear button after the slot and the person in it', async () => {
 		const onSelect = vi.fn();
 		render(PersonSelector, { label: 'Partner 1', selectedPerson: john, onSelect });
