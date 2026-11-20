@@ -4443,6 +4443,9 @@ type GroupSheetChild struct {
 	// Private Whether the person's record is private (ADR-008), as on Person. Omitted when it is not.
 	Private *bool `json:"private,omitempty"`
 
+	// Redacted Set on the placeholder shown instead of a person the caller may not see (ADR-008 §3), as on Person. Omitted otherwise.
+	Redacted *bool `json:"redacted,omitempty"`
+
 	// RelationshipType Relationship between a child and its family
 	RelationshipType *ChildRelationType `json:"relationship_type,omitempty"`
 
@@ -4500,8 +4503,11 @@ type GroupSheetPerson struct {
 	MotherName *string `json:"mother_name,omitempty"`
 
 	// Private Whether the person's record is private (ADR-008), as on Person. Omitted when it is not.
-	Private *bool  `json:"private,omitempty"`
-	Surname string `json:"surname"`
+	Private *bool `json:"private,omitempty"`
+
+	// Redacted Set on the placeholder shown instead of a person the caller may not see (ADR-008 §3), as on Person. Omitted otherwise.
+	Redacted *bool  `json:"redacted,omitempty"`
+	Surname  string `json:"surname"`
 }
 
 // HomePerson The site's home person ("me"); `person` is absent when none is set

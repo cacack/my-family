@@ -4486,6 +4486,7 @@ func convertQueryGroupSheetPersonToGenerated(p *query.GroupSheetPerson) *GroupSh
 		Surname:   p.Surname,
 		Living:    &p.Living,
 		Private:   privateFlag(p.Private),
+		Redacted:  redactedFlag(p.Redacted),
 	}
 
 	if p.Gender != "" {
@@ -4538,6 +4539,7 @@ func convertQueryGroupSheetChildToGenerated(c *query.GroupSheetChild) GroupSheet
 		Surname:   c.Surname,
 		Living:    &c.Living,
 		Private:   privateFlag(c.Private),
+		Redacted:  redactedFlag(c.Redacted),
 	}
 
 	if c.Gender != "" {

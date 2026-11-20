@@ -4166,6 +4166,8 @@ export interface components {
             living?: boolean;
             /** @description Whether the person's record is private (ADR-008), as on Person. Omitted when it is not. */
             private?: boolean;
+            /** @description Set on the placeholder shown instead of a person the caller may not see (ADR-008 §3), as on Person. Omitted otherwise. */
+            redacted?: boolean;
         };
         /** @description Event details for group sheet display */
         GroupSheetEvent: {
@@ -4199,6 +4201,8 @@ export interface components {
             living?: boolean;
             /** @description Whether the person's record is private (ADR-008), as on Person. Omitted when it is not. */
             private?: boolean;
+            /** @description Set on the placeholder shown instead of a person the caller may not see (ADR-008 §3), as on Person. Omitted otherwise. */
+            redacted?: boolean;
         };
         /** @description Citation reference for group sheet */
         GroupSheetCitation: {

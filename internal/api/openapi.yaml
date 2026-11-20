@@ -7415,6 +7415,11 @@ components:
           description: >-
             Whether the person's record is private (ADR-008), as on Person.
             Omitted when it is not.
+        redacted:
+          type: boolean
+          description: >-
+            Set on the placeholder shown instead of a person the caller may not
+            see (ADR-008 §3), as on Person. Omitted otherwise.
 
     GroupSheetEvent:
       type: object
@@ -7473,6 +7478,11 @@ components:
           description: >-
             Whether the person's record is private (ADR-008), as on Person.
             Omitted when it is not.
+        redacted:
+          type: boolean
+          description: >-
+            Set on the placeholder shown instead of a person the caller may not
+            see (ADR-008 §3), as on Person. Omitted otherwise.
 
     GroupSheetCitation:
       type: object
