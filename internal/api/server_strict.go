@@ -2060,6 +2060,14 @@ func (ss *StrictServer) DownloadMedia(ctx context.Context, request DownloadMedia
 			Message: "Media not found",
 		}}, nil
 	}
+	// A GEDCOM-imported item holds file references but no bytes until a file
+	// is uploaded (#1477); an empty 200 would read as a broken file.
+	if len(media.FileData) == 0 {
+		return DownloadMedia404JSONResponse{NotFoundJSONResponse{
+			Code:    "no_content",
+			Message: "Media has no stored file content",
+		}}, nil
+	}
 
 	reader := io.NopCloser(strings.NewReader(string(media.FileData)))
 	contentLength := int64(len(media.FileData))
@@ -4849,8 +4857,39 @@ func convertMediaReadModelToGenerated(m repository.MediaReadModel) Media {
 	if !m.UpdatedAt.IsZero() {
 		resp.UpdatedAt = &m.UpdatedAt
 	}
+	if len(m.Files) > 0 {
+		files := convertMediaFilesToGenerated(m.Files)
+		resp.Files = &files
+	}
+	resp.Format = strPtr(m.Format)
+	if len(m.Translations) > 0 {
+		translations := m.Translations
+		resp.Translations = &translations
+	}
 
 	return resp
+}
+
+// convertMediaFilesToGenerated converts a media item's GEDCOM file references
+// (FILE), which name where an imported item's content lives (#1477).
+func convertMediaFilesToGenerated(files []domain.MediaFile) []MediaFile {
+	out := make([]MediaFile, len(files))
+	for i, f := range files {
+		out[i] = MediaFile{
+			Path:      strPtr(f.Path),
+			Format:    strPtr(f.Format),
+			MediaType: strPtr(f.MediaType),
+			Title:     strPtr(f.Title),
+		}
+		if len(f.Translations) > 0 {
+			translations := make([]MediaTranslation, len(f.Translations))
+			for j, t := range f.Translations {
+				translations[j] = MediaTranslation{Path: strPtr(t.Path), Format: strPtr(t.Format)}
+			}
+			out[i].Translations = &translations
+		}
+	}
+	return out
 }
 
 // ============================================================================
