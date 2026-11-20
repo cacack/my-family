@@ -83,6 +83,7 @@
 							<span class="label">Father:</span>
 							{#if data.husband.father_id}
 								<a href="/persons/{data.husband.father_id}">{data.husband.father_name}</a>
+								<PrivacyBadges living={data.husband.father_marks?.living} private={data.husband.father_marks?.private} redacted={data.husband.father_marks?.redacted} />
 							{:else}
 								<span>{data.husband.father_name || 'Unknown'}</span>
 							{/if}
@@ -91,6 +92,7 @@
 							<span class="label">Mother:</span>
 							{#if data.husband.mother_id}
 								<a href="/persons/{data.husband.mother_id}">{data.husband.mother_name}</a>
+								<PrivacyBadges living={data.husband.mother_marks?.living} private={data.husband.mother_marks?.private} redacted={data.husband.mother_marks?.redacted} />
 							{:else}
 								<span>{data.husband.mother_name || 'Unknown'}</span>
 							{/if}
@@ -151,6 +153,7 @@
 							<span class="label">Father:</span>
 							{#if data.wife.father_id}
 								<a href="/persons/{data.wife.father_id}">{data.wife.father_name}</a>
+								<PrivacyBadges living={data.wife.father_marks?.living} private={data.wife.father_marks?.private} redacted={data.wife.father_marks?.redacted} />
 							{:else}
 								<span>{data.wife.father_name || 'Unknown'}</span>
 							{/if}
@@ -159,6 +162,7 @@
 							<span class="label">Mother:</span>
 							{#if data.wife.mother_id}
 								<a href="/persons/{data.wife.mother_id}">{data.wife.mother_name}</a>
+								<PrivacyBadges living={data.wife.mother_marks?.living} private={data.wife.mother_marks?.private} redacted={data.wife.mother_marks?.redacted} />
 							{:else}
 								<span>{data.wife.mother_name || 'Unknown'}</span>
 							{/if}
@@ -254,6 +258,7 @@
 							<td class="col-spouse">
 								{#if child.spouse_id}
 									<a href="/persons/{child.spouse_id}">{child.spouse_name}</a>
+									<PrivacyBadges living={child.spouse_marks?.living} private={child.spouse_marks?.private} redacted={child.spouse_marks?.redacted} />
 								{:else if child.spouse_name}
 									{child.spouse_name}
 								{:else}
@@ -464,6 +469,8 @@
 	}
 
 	.parent-row a {
+		min-width: 0;
+		overflow-wrap: anywhere;
 		color: #1e293b;
 		text-decoration: none;
 	}

@@ -192,7 +192,7 @@
 													<a href="/persons/{entry.id}" class="person-link">
 														{formatPersonName(entry)}
 													</a>
-													<PrivacyBadges redacted={entry.redacted} />
+													<PrivacyBadges living={entry.living} private={entry.private} redacted={entry.redacted} />
 												{:else}
 													<span class="unknown-person">Unknown</span>
 												{/if}
@@ -247,7 +247,7 @@
 													<a href="/persons/{entry.id}" class="person-link">
 														{formatPersonName(entry)}
 													</a>
-													<PrivacyBadges redacted={entry.redacted} />
+													<PrivacyBadges living={entry.living} private={entry.private} redacted={entry.redacted} />
 												{:else}
 													<span class="unknown-person">Unknown</span>
 												{/if}

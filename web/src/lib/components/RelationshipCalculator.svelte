@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { api, type RelationshipResult, type Person, type SearchResult, formatPersonName } from '#lib/api/client.js';
 	import PersonSelector from './PersonSelector.svelte';
+	import PrivacyBadges from './PrivacyBadges.svelte';
 	import {
 		additionalRelationships,
 		genderedRelationship,
@@ -251,10 +252,12 @@
 												</div>
 											{/if}
 											<span class="node-name">{step.name}</span>
+											<PrivacyBadges living={step.living} private={step.private} redacted={step.redacted} />
 										</div>
 									{:else}
 										<div class="path-step">
 											<span class="step-label">{step.name}</span>
+											<PrivacyBadges living={step.living} private={step.private} redacted={step.redacted} />
 										</div>
 									{/if}
 								{/each}
@@ -624,8 +627,10 @@
 
 	.path-step {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
 		justify-content: center;
+		gap: 0.375rem;
 		padding: 0.5rem 1rem;
 		background: #f1f5f9;
 		border-radius: 9999px;

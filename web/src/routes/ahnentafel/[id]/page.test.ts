@@ -211,6 +211,13 @@ describe("Ahnentafel page: placeholder people (#1492)", () => {
     ).toBe("/persons/p-1");
   });
 
+  it("marks a living, private person in both views (#1413)", async () => {
+    await renderEntry({ given_name: "Ada", living: true, private: true });
+    expect(screen.getAllByRole("img", { name: "Living person" })).toHaveLength(2);
+    expect(screen.getAllByRole("img", { name: "Private person" })).toHaveLength(2);
+    expect(screen.queryByTestId("redacted-badge")).toBeNull();
+  });
+
   it("shows no mark on a person the reader may see", async () => {
     await renderEntry({
       given_name: "Ada",

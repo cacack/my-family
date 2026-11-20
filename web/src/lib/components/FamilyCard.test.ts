@@ -35,6 +35,25 @@ describe('FamilyCard', () => {
 		expect(screen.getAllByTestId('redacted-badge')).toHaveLength(1);
 	});
 
+	it('marks a living or private partner, in the link name too (#1413)', () => {
+		const family: FamilyDetail = {
+			id: 'fam-l',
+			version: 1,
+			partner1_id: 'p1',
+			partner2_id: 'p2',
+			partner1: { id: 'p1', given_name: 'John', surname: 'Smith', living: false },
+			partner2: { id: 'p2', given_name: 'Jane', surname: 'Smith', living: true, private: true }
+		};
+
+		render(FamilyCard, { props: { family, href: '/families/fam-l' } });
+
+		expect(screen.getAllByRole('img', { name: 'Living person' })).toHaveLength(1);
+		expect(screen.getAllByRole('img', { name: 'Private person' })).toHaveLength(1);
+		expect(
+			screen.getByRole('link', { name: /John Smith.*Jane Smith.*Living person.*Private person/ })
+		).toBeTruthy();
+	});
+
 	it('renders single partner without an ampersand when partner2 is missing', () => {
 		const family: FamilyDetail = {
 			id: 'fam-2',

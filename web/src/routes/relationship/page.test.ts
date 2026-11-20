@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import RelationshipPage from './+page.svelte';
 import * as apiModule from '#lib/api/client.js';
 import { back, currentPath, historyLength, resetRouter } from '#lib/test/fakeRouter.svelte.js';
@@ -73,5 +73,56 @@ describe('Relationship page: the pair lives in the URL (#901)', () => {
 		await fireEvent.click(screen.getByRole('button', { name: /Calculate Relationship/ }));
 		await waitFor(() => expect(apiModule.api.getRelationship).toHaveBeenCalledTimes(2));
 		expect(historyLength()).toBe(1);
+	});
+});
+
+describe('Relationship page: privacy marks (#1413)', () => {
+	const ada = { ...people.a, living: true, private: true } as apiModule.Person;
+	const byron = { ...people.b, living: false } as apiModule.Person;
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		vi.mocked(apiModule.api.getPerson).mockImplementation(
+			async (id: string) => ({ a: ada, b: byron })[id] as Awaited<ReturnType<typeof apiModule.api.getPerson>>
+		);
+		vi.mocked(apiModule.api.getRelationship).mockResolvedValue({
+			personA: ada,
+			personB: byron,
+			isRelated: true,
+			paths: [
+				{
+					name: 'sibling',
+					commonAncestorId: 'c',
+					pathFromA: [
+						{ id: 'a', name: 'Ada Lovelace', living: true, private: true },
+						{ id: 'c', name: 'Cora Lovelace', living: false, private: true }
+					],
+					pathFromB: [
+						{ id: 'b', name: 'Byron Lovelace', living: false },
+						{ id: 'c', name: 'Cora Lovelace', living: false, private: true }
+					]
+				}
+			]
+		} as apiModule.RelationshipResult);
+	});
+
+	it('marks a living or private person on the path and in the selectors', async () => {
+		resetRouter('/relationship?personA=a&personB=b');
+		const { container } = render(RelationshipPage);
+		await waitFor(() => expect(container.querySelector('.path-chain')).not.toBeNull());
+
+		const node = (name: string) =>
+			Array.from(container.querySelectorAll<HTMLElement>('.path-chain .path-node')).find((n) =>
+				n.textContent?.includes(name)
+			)!;
+		expect(within(node('Ada Lovelace')).getByRole('img', { name: 'Living person' })).toBeDefined();
+		expect(within(node('Ada Lovelace')).getByRole('img', { name: 'Private person' })).toBeDefined();
+		expect(within(node('Cora Lovelace')).getByRole('img', { name: 'Private person' })).toBeDefined();
+		expect(within(node('Cora Lovelace')).queryByRole('img', { name: 'Living person' })).toBeNull();
+		expect(within(node('Byron Lovelace')).queryByRole('img')).toBeNull();
+
+		const selected = screen.getByRole('group', { name: 'First Person' });
+		expect(within(selected).getByRole('img', { name: 'Living person' })).toBeDefined();
+		expect(within(selected).getByRole('img', { name: 'Private person' })).toBeDefined();
 	});
 });

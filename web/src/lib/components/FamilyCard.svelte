@@ -22,11 +22,11 @@
 {#snippet cardInner()}
 	<div class="partners">
 		<span class="partner">{partner1Name}</span>
-		<PrivacyBadges redacted={family.partner1?.redacted} />
+		<PrivacyBadges living={family.partner1?.living} private={family.partner1?.private} redacted={family.partner1?.redacted} />
 		{#if partner2Name}
 			<span class="connector">&amp;</span>
 			<span class="partner">{partner2Name}</span>
-			<PrivacyBadges redacted={family.partner2?.redacted} />
+			<PrivacyBadges living={family.partner2?.living} private={family.partner2?.private} redacted={family.partner2?.redacted} />
 		{/if}
 	</div>
 	<div class="details">

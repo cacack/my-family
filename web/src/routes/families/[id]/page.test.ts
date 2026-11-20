@@ -152,6 +152,30 @@ describe('Family Detail Page', () => {
 		});
 	});
 
+	it('marks a living or private partner and child (#1413)', async () => {
+		vi.mocked(apiModule.api.getFamily).mockResolvedValue({
+			...mockFamilyWithChildren,
+			partner1: { id: 'partner1-id', given_name: 'John', surname: 'Smith', living: false },
+			partner2: { id: 'partner2-id', given_name: 'Jane', surname: 'Smith', living: true, private: true },
+			children: [
+				{
+					person_id: 'child1-id',
+					relationship_type: 'biological',
+					person: { id: 'child1-id', given_name: 'Alice', surname: 'Smith', living: true }
+				}
+			]
+		});
+
+		render(FamilyPage);
+
+		await waitFor(() => expect(screen.getByText('Alice Smith')).toBeDefined());
+		expect(screen.getByRole('link', { name: /Jane Smith.*Living person.*Private person/ })).toBeDefined();
+		const child = screen.getByText('Alice Smith').closest('li') as HTMLElement;
+		expect(within(child).getByRole('img', { name: 'Living person' })).toBeDefined();
+		expect(within(child).queryByRole('img', { name: 'Private person' })).toBeNull();
+		expect(screen.getAllByRole('img', { name: 'Living person' })).toHaveLength(2);
+	});
+
 	it('shows adopted badge for adopted children', async () => {
 		vi.mocked(apiModule.api.getFamily).mockResolvedValue(mockFamilyWithChildren);
 

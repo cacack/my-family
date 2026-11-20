@@ -6,6 +6,7 @@
 		formatPersonName,
 		formatLifespan
 	} from '#lib/api/client.js';
+	import PrivacyBadges from './PrivacyBadges.svelte';
 
 	interface Props {
 		label: string;
@@ -203,7 +204,10 @@
 				</svg>
 			</div>
 			<div class="person-info">
-				<span class="person-name">{formatPersonName(selectedPerson)}</span>
+				<span class="person-name">
+					{formatPersonName(selectedPerson)}
+					<PrivacyBadges living={selectedPerson.living} private={selectedPerson.private} redacted={selectedPerson.redacted} />
+				</span>
 				<span class="person-lifespan">{formatLifespan(selectedPerson)}</span>
 			</div>
 			<button
