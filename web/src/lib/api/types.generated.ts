@@ -3624,6 +3624,11 @@ export interface components {
         };
         AccountLink: {
             /**
+             * @description The ID the link is listed and revoked by, as in `PendingInvite` and
+             *     `PendingPasswordReset`; it cannot be used in place of the token.
+             */
+            id: string;
+            /**
              * @description The single-use token. The web UI's link is `/join#token=<token>`
              *     for an invite and `/reset-password#token=<token>` for a reset; the
              *     fragment never reaches the server's logs.

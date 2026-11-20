@@ -46,7 +46,9 @@ var CommandLine = Actor{ClientIP: "cli"}
 
 // Link is a single-use invite or password reset token and when it expires.
 // The token is shown once, to whoever issued it; only its hash is stored.
+// ID is that hash, the ID the link is listed and revoked by.
 type Link struct {
+	ID        string
 	Token     string
 	ExpiresAt time.Time
 }
@@ -132,7 +134,7 @@ func (s *Service) CreateInvite(ctx context.Context, by Actor, role repository.Ro
 		return nil, fmt.Errorf("create invite: %w", err)
 	}
 	s.audit(ctx, by, repository.AuthActionInviteCreated, nil, string(role))
-	return &Link{Token: token, ExpiresAt: invite.ExpiresAt}, nil
+	return &Link{ID: invite.TokenHash, Token: token, ExpiresAt: invite.ExpiresAt}, nil
 }
 
 // AcceptInvite creates an account from an invite link, with the invite's
@@ -318,7 +320,7 @@ func (s *Service) IssuePasswordReset(ctx context.Context, by Actor, userID uuid.
 		return nil, fmt.Errorf("create password reset: %w", err)
 	}
 	s.audit(ctx, by, repository.AuthActionResetIssued, &m.User, "")
-	return &Link{Token: token, ExpiresAt: reset.ExpiresAt}, nil
+	return &Link{ID: reset.TokenHash, Token: token, ExpiresAt: reset.ExpiresAt}, nil
 }
 
 // IssuePasswordResetFor issues a reset link for the user named username, for

@@ -2357,6 +2357,10 @@ type AccountRole string
 type AccountLink struct {
 	ExpiresAt time.Time `json:"expires_at"`
 
+	// Id The ID the link is listed and revoked by, as in `PendingInvite` and
+	// `PendingPasswordReset`; it cannot be used in place of the token.
+	Id string `json:"id"`
+
 	// Token The single-use token. The web UI's link is `/join#token=<token>`
 	// for an invite and `/reset-password#token=<token>` for a reset; the
 	// fragment never reaches the server's logs.

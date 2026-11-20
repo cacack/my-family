@@ -452,6 +452,10 @@ func TestLinks_ListAndRevokePending(t *testing.T) {
 	if err != nil || len(resets) != 1 || resets[0].UserID != grace.ID || resets[0].CreatedBy != m.owner.ID {
 		t.Fatalf("PendingPasswordResets = %+v, %v; want grace's reset", resets, err)
 	}
+	// An issued link carries the ID it is listed by.
+	if invite.ID != invites[0].TokenHash || reset.ID != resets[0].TokenHash {
+		t.Errorf("issued link IDs = %q, %q; want the listed IDs", invite.ID, reset.ID)
+	}
 	// A listed ID is the token's hash, not the token, so it cannot redeem the link.
 	if _, _, _, err := m.svc.AcceptInvite(ctx, invites[0].TokenHash, "mallory", "Mallory", testPassword, ""); !errors.Is(err, ErrInvalidLink) {
 		t.Errorf("AcceptInvite with a listed ID: err = %v, want ErrInvalidLink", err)

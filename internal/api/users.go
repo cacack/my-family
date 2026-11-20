@@ -40,7 +40,7 @@ func userOf(m *repository.Member) User {
 }
 
 func linkOf(link *auth.Link) AccountLink {
-	return AccountLink{Token: link.Token, ExpiresAt: link.ExpiresAt}
+	return AccountLink{Id: link.ID, Token: link.Token, ExpiresAt: link.ExpiresAt}
 }
 
 // AcceptInvite implements StrictServerInterface.
