@@ -20,6 +20,21 @@ describe('FamilyCard', () => {
 		expect(screen.getByText('Jane Smith')).toBeTruthy();
 	});
 
+	it('marks a placeholder partner as details hidden', () => {
+		const family: FamilyDetail = {
+			id: 'fam-r',
+			version: 1,
+			partner1_id: 'p1',
+			partner2_id: 'p2',
+			partner1: { id: 'p1', given_name: 'John', surname: 'Smith' },
+			partner2: { id: 'p2', given_name: 'Living', surname: '', redacted: true }
+		};
+
+		render(FamilyCard, { props: { family } });
+
+		expect(screen.getAllByTestId('redacted-badge')).toHaveLength(1);
+	});
+
 	it('renders single partner without an ampersand when partner2 is missing', () => {
 		const family: FamilyDetail = {
 			id: 'fam-2',

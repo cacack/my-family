@@ -320,3 +320,101 @@ func TestPrivacyRedaction_FamiliesAndCharts(t *testing.T) {
 func containsAny(s string, subs ...string) bool {
 	return slices.ContainsFunc(subs, func(sub string) bool { return strings.Contains(s, sub) })
 }
+
+// A placeholder is marked redacted wherever a chart or family shows it, a
+// private parent reached through a visible family keeps its slot as the
+// placeholder, and a private family's parentage is a gap in the pedigree
+// (ADR-008 §3).
+func TestPrivacyRedaction_ChartPlaceholders(t *testing.T) {
+	f, tr, principals := redactionFixture(t, false)
+	owner := principals[0].cookie
+	send := func(method, path, body string, want int) map[string]any {
+		t.Helper()
+		rec := f.do(t, request{method: method, path: path, body: body, cookie: owner})
+		if rec.Code != want {
+			t.Fatalf("%s %s: %d %s", method, path, rec.Code, rec.Body)
+		}
+		return decode[map[string]any](t, rec)
+	}
+	family := func(p1, p2, child string) string {
+		t.Helper()
+		id := send(http.MethodPost, "/api/v1/families", fmt.Sprintf(`{"partner1_id":%q,"partner2_id":%q}`, p1, p2), http.StatusCreated)["id"].(string)
+		send(http.MethodPost, "/api/v1/families/"+id+"/children", fmt.Sprintf(`{"person_id":%q}`, child), http.StatusCreated)
+		return id
+	}
+	person := func(given string) string {
+		return send(http.MethodPost, "/api/v1/persons", fmt.Sprintf(`{"given_name":%q,"surname":"Jones","gender":"male","birth_date":"1880","death_date":"1950"}`, given), http.StatusCreated)["id"].(string)
+	}
+	// Gus's mother is the private Petra; Hal's parents are recorded in a
+	// private family.
+	gus, hal := person("Gus"), person("Hal")
+	family(tr.dead, tr.private, gus)
+	secret := family(tr.dead, gus, hal)
+	version := send(http.MethodGet, "/api/v1/families/"+secret, "", http.StatusOK)["version"]
+	send(http.MethodPut, "/api/v1/families/"+secret, fmt.Sprintf(`{"private":true,"version":%v}`, version), http.StatusOK)
+
+	redacted := func(node any) bool {
+		m, _ := node.(map[string]any)
+		return m["redacted"] == true
+	}
+	// parent returns the father or mother of a pedigree node that is id: the
+	// slots follow sex, and the tree's women share one.
+	parent := func(node map[string]any, id string) map[string]any {
+		for _, slot := range []string{"father", "mother"} {
+			if m, _ := node[slot].(map[string]any); m != nil && m["id"] == id {
+				return m
+			}
+		}
+		return nil
+	}
+	for _, p := range principals {
+		t.Run(p.name, func(t *testing.T) {
+			kid := p.getJSON(t, f, "/api/v1/pedigree/"+tr.kid)["root"].(map[string]any)
+			mother := parent(kid, tr.living)
+			if mother == nil || redacted(mother) == p.seesLiving || redacted(parent(kid, tr.dead)) || (!p.seesLiving && mother["birth_date"] != nil) {
+				t.Errorf("pedigree(kid) = %v; want the living mother redacted %v, the dead one in full", kid, !p.seesLiving)
+			}
+
+			gus := p.getJSON(t, f, "/api/v1/pedigree/"+gus)["root"].(map[string]any)
+			if mother := parent(gus, tr.private); mother == nil || redacted(mother) == p.seesPrivate {
+				t.Errorf("pedigree(gus) = %v; want the private mother, redacted %v", gus, !p.seesPrivate)
+			}
+
+			hal := p.getJSON(t, f, "/api/v1/pedigree/"+hal)["root"].(map[string]any)
+			if hasParents := hal["father"] != nil || hal["mother"] != nil; hasParents != p.seesPrivate {
+				t.Errorf("pedigree(hal) = %v; want parents shown %v", hal, p.seesPrivate)
+			}
+
+			root := p.getJSON(t, f, "/api/v1/descendancy/"+tr.dead)["root"].(map[string]any)
+			for _, s := range root["spouses"].([]any) {
+				spouse := s.(map[string]any)
+				if spouse["id"] == tr.living && redacted(spouse) == p.seesLiving {
+					t.Errorf("descendancy spouse = %v; want redacted %v", spouse, !p.seesLiving)
+				}
+			}
+			for _, c := range root["children"].([]any) {
+				child := c.(map[string]any)
+				if child["id"] == tr.kid && redacted(child) == p.seesLiving {
+					t.Errorf("descendancy child = %v; want redacted %v", child, !p.seesLiving)
+				}
+			}
+
+			fam := p.getJSON(t, f, "/api/v1/families/"+tr.family)
+			child := fam["children"].([]any)[0].(map[string]any)["person"]
+			if redacted(fam["partner2"]) == p.seesLiving || redacted(child) == p.seesLiving || redacted(fam["partner1"]) {
+				t.Errorf("family = %v; want the living partner and kid redacted %v", fam, !p.seesLiving)
+			}
+
+			for _, item := range p.getJSON(t, f, "/api/v1/families?limit=100")["items"].([]any) {
+				if listed := item.(map[string]any); listed["id"] == tr.family && (redacted(listed["partner2"]) == p.seesLiving || redacted(listed["partner1"])) {
+					t.Errorf("listed family = %v; want the living partner redacted %v", listed, !p.seesLiving)
+				}
+			}
+
+			sheet := p.getJSON(t, f, "/api/v1/families/"+tr.family+"/group-sheet")
+			if child := sheet["children"].([]any)[0]; redacted(child) == p.seesLiving {
+				t.Errorf("group sheet child = %v; want redacted %v", child, !p.seesLiving)
+			}
+		})
+	}
+}

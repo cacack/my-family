@@ -15,6 +15,13 @@ describe('PrivacyBadges', () => {
 		expect(screen.queryByRole('img', { name: 'Living person' })).toBeNull();
 	});
 
+	it('shows only "Details hidden" on a placeholder', () => {
+		render(PrivacyBadges, { props: { redacted: true, living: true, private: true } });
+		expect(screen.getByRole('img', { name: 'Details hidden' }).textContent).toContain('Details hidden');
+		expect(screen.queryByRole('img', { name: 'Living person' })).toBeNull();
+		expect(screen.queryByRole('img', { name: 'Private person' })).toBeNull();
+	});
+
 	it('renders nothing for an unprotected record', () => {
 		const { container } = render(PrivacyBadges, { props: { living: false } });
 		expect(container.querySelector('.privacy-badges')).toBeNull();

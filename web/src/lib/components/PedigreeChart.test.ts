@@ -199,6 +199,22 @@ describe('PedigreeChart', () => {
 		expect(title).toContain('John Doe, Living person');
 	});
 
+	it('draws a placeholder ancestor with its own mark and no dates (#1466)', () => {
+		const data: PedigreeNode = {
+			...mockPersonWithParents,
+			mother: { id: mockPersonWithParents.mother!.id, given_name: 'Living', gender: 'female', living: true, redacted: true }
+		};
+		const { container } = render(PedigreeChart, { props: { data } });
+		const node = [...container.querySelectorAll('.node')].find(
+			(n) => n.querySelector(':scope > title')?.textContent?.startsWith('Living')
+		);
+		expect(node?.querySelector(':scope > title')?.textContent).toBe('Living, Details hidden');
+		expect(
+			[...(node?.querySelectorAll('.privacy-marker [role="img"]') ?? [])].map((m) => m.getAttribute('aria-label'))
+		).toEqual(['Details hidden']);
+		expect(node?.querySelector('.dates')?.textContent).toBe('');
+	});
+
 	it('renders nodes for person with parents', () => {
 		const { container } = render(PedigreeChart, { props: { data: mockPersonWithParents } });
 		const nodes = container.querySelectorAll('.node');

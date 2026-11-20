@@ -191,6 +191,11 @@ whose subject is the person.
 - **Private** records other than people are omitted: absent from lists, 404 on direct fetch. A
   private person is hidden the same way, except where a chart or family needs the slot, where it
   is the placeholder.
+- In charts, a private ancestor reached through a family the principal may see is the
+  placeholder, not a gap, so the chart keeps its shape. A **private family** is a gap: its
+  child-to-parents link is hidden from pedigree and relationship walks as it is from family
+  pages and descendancy, so the child shows no parents through it. A pedigree edge carries no
+  family ID, so the link is matched by the child and the family's partners.
 - A record that cannot be resolved against the read model (deleted, or on a purged branch) is
   treated as protected.
 
@@ -353,10 +358,10 @@ decorator, b = event-output redactor, — = no tree data. "Protected" means a pl
 
 | Operation | Path | Returns | Source | Choke | Special handling |
 |-----------|------|---------|--------|-------|------------------|
-| getPedigree | GET /pedigree/{id} | Ancestor tree | RM | a | Placeholders keep IDs and links |
+| getPedigree | GET /pedigree/{id} | Ancestor tree | RM | a | Placeholders keep IDs and links and are marked redacted; a private family's parentage is a gap |
 | getDescendancy | GET /descendancy/{id} | Descendant tree | RM | a | As getPedigree |
 | getAhnentafel | GET /ahnentafel/{id} | Numbered ancestor report | RM | a | Numbering kept; placeholder entries carry no facts |
-| getRelationship | GET /relationship/{personId1}/{personId2} | Paths, labels, summary | RM | a | Path nodes and summary built from placeholder names |
+| getRelationship | GET /relationship/{personId1}/{personId2} | Paths, labels, summary | RM | a | Path nodes and summary built from placeholder names; no path through a private family |
 
 ### Search, browse and map
 

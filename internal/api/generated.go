@@ -3784,6 +3784,9 @@ type DescendancyNode struct {
 	// Private Whether the person's record is private (ADR-008), as on Person. Omitted when it is not.
 	Private *bool `json:"private,omitempty"`
 
+	// Redacted Set on the placeholder shown instead of a person the caller may not see (ADR-008 §3), as on Person. Omitted otherwise.
+	Redacted *bool `json:"redacted,omitempty"`
+
 	// Spouses Spouses ordered by marriage date, undated last.
 	Spouses *[]SpouseInfo `json:"spouses,omitempty"`
 	Surname *string       `json:"surname,omitempty"`
@@ -4440,6 +4443,9 @@ type GroupSheetChild struct {
 	// Private Whether the person's record is private (ADR-008), as on Person. Omitted when it is not.
 	Private *bool `json:"private,omitempty"`
 
+	// Redacted Set on the placeholder shown instead of a person the caller may not see (ADR-008 §3), as on Person. Omitted otherwise.
+	Redacted *bool `json:"redacted,omitempty"`
+
 	// RelationshipType Relationship between a child and its family
 	RelationshipType *ChildRelationType `json:"relationship_type,omitempty"`
 
@@ -4497,8 +4503,11 @@ type GroupSheetPerson struct {
 	MotherName *string `json:"mother_name,omitempty"`
 
 	// Private Whether the person's record is private (ADR-008), as on Person. Omitted when it is not.
-	Private *bool  `json:"private,omitempty"`
-	Surname string `json:"surname"`
+	Private *bool `json:"private,omitempty"`
+
+	// Redacted Set on the placeholder shown instead of a person the caller may not see (ADR-008 §3), as on Person. Omitted otherwise.
+	Redacted *bool  `json:"redacted,omitempty"`
+	Surname  string `json:"surname"`
 }
 
 // HomePerson The site's home person ("me"); `person` is absent when none is set
@@ -5441,8 +5450,11 @@ type PedigreeNode struct {
 	Mother *PedigreeNode `json:"mother,omitempty"`
 
 	// Private Whether the person's record is private (ADR-008), as on Person. Omitted when it is not.
-	Private *bool   `json:"private,omitempty"`
-	Surname *string `json:"surname,omitempty"`
+	Private *bool `json:"private,omitempty"`
+
+	// Redacted Set on the placeholder shown instead of a person the caller may not see (ADR-008 §3), as on Person. Omitted otherwise.
+	Redacted *bool   `json:"redacted,omitempty"`
+	Surname  *string `json:"surname,omitempty"`
 }
 
 // PendingInvite defines model for PendingInvite.
@@ -5784,8 +5796,11 @@ type PersonSummary struct {
 	Living *bool `json:"living,omitempty"`
 
 	// Private Whether the person's record is private (ADR-008), as on Person. Omitted when it is not, and on a family's partner and child summaries, where it is not evaluated.
-	Private *bool  `json:"private,omitempty"`
-	Surname string `json:"surname"`
+	Private *bool `json:"private,omitempty"`
+
+	// Redacted Set on the placeholder shown instead of a person the caller may not see (ADR-008 §3), as on Person. Set on a family's partner and child summaries; omitted otherwise.
+	Redacted *bool  `json:"redacted,omitempty"`
+	Surname  string `json:"surname"`
 }
 
 // PersonUpdate Partial update. A field left out stays unchanged; an optional (nullable) field sent as null is cleared. Required fields reject null.
@@ -6328,6 +6343,9 @@ type SearchResult struct {
 	// Private Whether the person's record is private (ADR-008), as on Person. Omitted when it is not, and on a family's partner and child summaries, where it is not evaluated.
 	Private *bool `json:"private,omitempty"`
 
+	// Redacted Set on the placeholder shown instead of a person the caller may not see (ADR-008 §3), as on Person. Set on a family's partner and child summaries; omitted otherwise.
+	Redacted *bool `json:"redacted,omitempty"`
+
 	// Score Relevance score (0-1)
 	Score   *float32 `json:"score,omitempty"`
 	Surname string   `json:"surname"`
@@ -6602,6 +6620,9 @@ type SpouseInfo struct {
 
 	// Private Whether the spouse's record is private (ADR-008), as on Person. Omitted when it is not.
 	Private *bool `json:"private,omitempty"`
+
+	// Redacted Set on the placeholder shown instead of a person the caller may not see (ADR-008 §3), as on Person. Omitted otherwise.
+	Redacted *bool `json:"redacted,omitempty"`
 }
 
 // Statistics defines model for Statistics.

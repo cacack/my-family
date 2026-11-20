@@ -2,26 +2,44 @@
 	/**
 	 * Marks a protected person or record (ADR-008): "Living" when the living
 	 * rule counts the person as living, "Private" when the record is marked
-	 * private. Each badge is an image with its own accessible name, so a
-	 * screen reader announces it with the name beside it. Renders nothing for
-	 * a record that is neither.
+	 * private, and "Details hidden" alone on the placeholder shown instead of
+	 * a person the reader may not see (ADR-008 §3). Each badge is an image
+	 * with its own accessible name, so a screen reader announces it with the
+	 * name beside it. Renders nothing for a record that is none of these.
 	 */
+	import EyeOff from '@lucide/svelte/icons/eye-off';
 	import Lock from '@lucide/svelte/icons/lock';
 	import Shield from '@lucide/svelte/icons/shield';
 	import { Badge } from '#lib/components/ui/badge/index.js';
-	import { LIVING_BADGE_NAME, privateBadgeName } from '#lib/utils/privacy.js';
+	import { LIVING_BADGE_NAME, REDACTED_BADGE_NAME, privateBadgeName } from '#lib/utils/privacy.js';
 
 	interface Props {
 		living?: boolean;
 		private?: boolean;
+		/** The person is a placeholder; its other marks are not shown. */
+		redacted?: boolean;
 		/** What the record is, for the private badge's name: "person", "family". */
 		noun?: string;
 	}
 
-	let { living = false, private: isPrivate = false, noun = 'person' }: Props = $props();
+	let { living = false, private: isPrivate = false, redacted = false, noun = 'person' }: Props = $props();
 </script>
 
-{#if living || isPrivate}
+{#if redacted}
+	<span class="privacy-badges">
+		<Badge
+			variant="outline"
+			role="img"
+			aria-label={REDACTED_BADGE_NAME}
+			title="Shown as a placeholder: you may not see this person's details"
+			class="privacy-badge"
+			data-testid="redacted-badge"
+		>
+			<EyeOff aria-hidden="true" />
+			<span aria-hidden="true">Details hidden</span>
+		</Badge>
+	</span>
+{:else if living || isPrivate}
 	<span class="privacy-badges">
 		{#if living}
 			<Badge

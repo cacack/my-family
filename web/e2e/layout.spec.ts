@@ -538,3 +538,71 @@ test('the snapshot comparison cards are the same width at 375px', async ({ page 
 	const widths = await cards.evaluateAll((els) => els.map((el) => el.getBoundingClientRect().width));
 	expect(widths[0]).toBeCloseTo(widths[1], 0);
 });
+
+// A viewer is shown a placeholder instead of a protected person (ADR-008 §3,
+// #1466). The suite's server runs open, where everyone sees everything, so the
+// viewer's auth status and the placeholder responses are stubbed; every other
+// call is served for real.
+test.describe('a viewer shown a placeholder', () => {
+	test.beforeEach(async ({ page }) => {
+		const { id } = readSeed().switcher.person;
+		const placeholder = { id, given_name: 'Living', surname: '', gender: 'female', redacted: true };
+		await page.route('**/api/v1/auth/status', (route) =>
+			route.fulfill({
+				json: {
+					mode: 'accounts',
+					setup_required: false,
+					account: {
+						id: '00000000-0000-4000-8000-000000000002',
+						username: 'viewer',
+						display_name: 'Tree Viewer',
+						role: 'viewer'
+					}
+				}
+			})
+		);
+		await page.route(
+			(url) => url.pathname === `/api/v1/persons/${id}`,
+			(route) => route.fulfill({ json: { ...placeholder, version: 1 } })
+		);
+		await page.route(
+			(url) => url.pathname === `/api/v1/pedigree/${id}`,
+			(route) =>
+				route.fulfill({
+					json: {
+						root: {
+							...placeholder,
+							generation: 0,
+							father: { id: '00000000-0000-4000-8000-000000000003', given_name: 'Albert', surname: 'Ashworth', gender: 'male', generation: 1, birth_date: { year: 1890 } },
+							mother: { ...placeholder, id: '00000000-0000-4000-8000-000000000004', generation: 1 }
+						},
+						total_ancestors: 2,
+						max_generation: 1
+					}
+				})
+		);
+	});
+
+	for (const width of [320, 375, 1280]) {
+		test(`the person page shows no detail and does not overflow at ${width}px`, async ({ page }) => {
+			const { id } = readSeed().switcher.person;
+			await page.setViewportSize({ width, height: 900 });
+			await expectNoHorizontalOverflow(page, `/persons/${id}`);
+			await expect(page.getByRole('heading', { name: 'Living', level: 1 })).toBeVisible();
+			await expect(page.getByTestId('redacted-notice')).toBeVisible();
+			await expect(page.getByRole('img', { name: 'Details hidden' })).toBeVisible();
+			for (const name of ['Edit', 'Delete']) {
+				await expect(page.getByRole('button', { name, exact: true })).toHaveCount(0);
+			}
+			await expect(page.getByRole('heading', { name: 'Birth' })).toHaveCount(0);
+			await expect(page.getByText('Not assessed')).toHaveCount(0);
+		});
+
+		test(`the pedigree marks the placeholders and does not overflow at ${width}px`, async ({ page }) => {
+			const { id } = readSeed().switcher.person;
+			await page.setViewportSize({ width, height: 900 });
+			await expectNoHorizontalOverflow(page, `/pedigree/${id}`);
+			await expect(page.locator('[data-testid="redacted-marker"]')).toHaveCount(2);
+		});
+	}
+});
