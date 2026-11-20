@@ -232,7 +232,8 @@ sheet and in the map's person lists. Search results, chart nodes, group sheet en
 persons carry the same `living` and `private` fields as a person.
 
 Owners check what they share with **Preview as a visitor** or **Preview as a viewer** under
-**Settings**, which works before visitors are let in. While a banner says so, the server answers
+**Settings**, which works before visitors are let in. The preview uses the saved settings, so
+both buttons wait while the page has unsaved changes. While a banner says so, the server answers
 the owner as it answers that principal (the `myfamily_preview` cookie, `viewer` or `visitor`,
 which it ignores for anyone else), so every page shows exactly what the API returns to them and
 the controls they may not use are hidden. What they may not call is refused with 403 rather than
