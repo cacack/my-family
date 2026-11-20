@@ -59,12 +59,15 @@ type Privacy struct {
 	// HideLiving hides people the living rule finds living at LivingCutoff.
 	HideLiving   bool
 	LivingCutoff time.Time
+	// HideSubmitters hides submitter records, which hold living researchers'
+	// names and contact details (ADR-008 §4).
+	HideSubmitters bool
 }
 
 // PrivacyFor returns what principal p may not see at now under settings
 // (ADR-008 §4): editors and owners see everything; viewers see living people
 // unless the owner turned that off, and no private records; anonymous
-// visitors, and a principal with no role, see neither.
+// visitors, and a principal with no role, see neither, nor submitters.
 func PrivacyFor(p Principal, settings TreeSettings, now time.Time) Privacy {
 	role := p.Role
 	if p.Anonymous || !role.Valid() {
@@ -76,7 +79,7 @@ func PrivacyFor(p Principal, settings TreeSettings, now time.Time) Privacy {
 	case role == RoleViewer && settings.ViewersSeeLiving:
 		return Privacy{HidePrivate: true}
 	default:
-		return Privacy{HidePrivate: true, HideLiving: true, LivingCutoff: settings.LivingCutoff(now)}
+		return Privacy{HidePrivate: true, HideLiving: true, LivingCutoff: settings.LivingCutoff(now), HideSubmitters: role == ""}
 	}
 }
 
@@ -88,7 +91,7 @@ func PrivacyFrom(ctx context.Context, now time.Time) Privacy {
 
 // SeesAll reports whether nothing is hidden.
 func (v Privacy) SeesAll() bool {
-	return !v.HidePrivate && !v.HideLiving
+	return !v.HidePrivate && !v.HideLiving && !v.HideSubmitters
 }
 
 // Hides reports whether a record with restriction r is hidden.
