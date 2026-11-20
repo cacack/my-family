@@ -225,12 +225,15 @@ func (s *Server) visitorsLetIn(settings repository.TreeSettings) bool {
 	return s.visitorsProtected && settings.AnonymousAccess == repository.AnonymousAccessViewer
 }
 
-// visitorMayCall reports whether the anonymous principal may call the route,
-// once let in: what a viewer may, except signedInRoutes. serveVisitor and a
-// visitor preview both ask it, so the preview refuses what a visitor is
+// visitorMayCall reports whether the anonymous principal may make the
+// request, once let in: what a viewer may, except signedInRoutes, and only on
+// the mainline, so never with a `?branch=` scope (ADR-008 §4). serveVisitor
+// and a visitor preview both ask it, so the preview refuses what a visitor is
 // refused.
 func visitorMayCall(c echo.Context, required repository.Role) bool {
-	return required == repository.RoleViewer && !signedInRoutes[routeKey(c.Request().Method, c.Path())]
+	return required == repository.RoleViewer &&
+		!signedInRoutes[routeKey(c.Request().Method, c.Path())] &&
+		!c.QueryParams().Has("branch")
 }
 
 // asVisitor returns ctx carrying the anonymous principal: the viewer role

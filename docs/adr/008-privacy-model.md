@@ -219,6 +219,12 @@ Two kinds of record outside the person rules:
   log that carries it (history, restore points, snapshots and their comparisons, branch compare)
   and must sign in (#1441); elsewhere it is removed for them by whichever choke point serves the
   surface. Viewers and up see it.
+- **Research branches** hold work in progress, not the tree the owner publishes. Anonymous
+  principals read the mainline only: a `?branch=` scope on any request, and a branch's own
+  view (comparison, health, evidence coverage, research archive), are refused and need
+  sign-in (#1513). They may still list branches and read their names, status and drift
+  counts; a closed branch's research logs reach them once copied to the mainline. The app offers them no branch to switch to and no link that
+  leads only to a sign-in wall. Viewers and up may scope reads to a branch.
 
 Open mode (`AUTH_MODE=open`, ADR-007) maps to owner. A context carrying no principal is treated
 as anonymous, so a missing principal fails safe.
@@ -490,9 +496,9 @@ decorator, b = event-output redactor, — = no tree data. "Protected" means a pl
 | getBranch | GET /branches/{id} | As above | branch store + RM | a | As listBranches |
 | getBranchDrift | GET /branches/{id}/drift | Event counts | EL (counts) | — | No record content |
 | compareBranch | GET /branches/{id}/compare | Branch and main change entries, and the merge record of a merged branch | EL | b | Protected if protected on either side. Anonymous: refused (sign-in required) (§4) |
-| getBranchResearch | GET /branches/{id}/research | Research archive rebuilt from branch events | EL | b | Overlay may be purged: unresolved subjects treated as protected |
-| getBranchEvidenceCoverage | GET /branches/{id}/evidence-coverage | Changed facts without evidence | EL + RM | b | Protected if protected on either side |
-| getBranchHealth | GET /branches/{id}/health | Validation and quality on the branch overlay | RM | a | As getValidationIssues |
+| getBranchResearch | GET /branches/{id}/research | Research archive rebuilt from branch events | EL | b | Overlay may be purged: unresolved subjects treated as protected. Anonymous: refused (sign-in required) (§4) |
+| getBranchEvidenceCoverage | GET /branches/{id}/evidence-coverage | Changed facts without evidence | EL + RM | b | Protected if protected on either side. Anonymous: refused (sign-in required) (§4) |
+| getBranchHealth | GET /branches/{id}/health | Validation and quality on the branch overlay | RM | a | As getValidationIssues. Anonymous: refused (sign-in required) (§4) |
 | precheckBranchMerge | POST /branches/{id}/merge/precheck | Merge plan and conflict values | EL | b | Editor-only; redactor is identity for editors |
 | mergeBranch | POST /branches/{id}/merge | Merge result and conflicts | EL | b | As precheckBranchMerge |
 | resumeBranchMerge | POST /branches/{id}/merge/resume | Merge result and conflicts | EL | b | As precheckBranchMerge |

@@ -1,7 +1,8 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
 import BranchDriftIndicator from './BranchDriftIndicator.svelte';
 import type { BranchDrift } from '#lib/api/client.js';
+import { auth } from '#lib/stores/access.svelte.js';
 
 const BRANCH_ID = '44444444-4444-4444-4444-444444444444';
 
@@ -21,6 +22,20 @@ function text(): string {
 }
 
 describe('BranchDriftIndicator', () => {
+	afterEach(() => {
+		auth.phase = 'loading';
+	});
+
+	it('gives a visitor the counts without a link to the compare page they cannot open', () => {
+		auth.phase = 'visitor';
+		render(BranchDriftIndicator, {
+			props: { drift: drift({ main_change_count: 12, main_change_count_on_branch_entities: 3 }) }
+		});
+
+		expect(text()).toContain('Mainline changed 12 times since you branched');
+		expect(screen.queryByRole('link')).toBeNull();
+	});
+
 	it('says the mainline is unchanged and links nowhere when nothing moved', () => {
 		render(BranchDriftIndicator, { props: { drift: drift({}) } });
 

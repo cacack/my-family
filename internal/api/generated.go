@@ -6934,7 +6934,9 @@ type GetAhnentafelParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 
 	// Generations Number of ancestor generations to include (1-10)
@@ -6959,7 +6961,9 @@ type ListAssociationsParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope                 `form:"branch,omitempty" json:"branch,omitempty"`
 	Limit  *LimitParam                  `form:"limit,omitempty" json:"limit,omitempty"`
 	Offset *OffsetParam                 `form:"offset,omitempty" json:"offset,omitempty"`
@@ -6980,7 +6984,9 @@ type CreateAssociationParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -6991,7 +6997,9 @@ type DeleteAssociationParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 
 	// Version Entity version for optimistic locking
@@ -7005,7 +7013,9 @@ type GetAssociationParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -7016,7 +7026,9 @@ type UpdateAssociationParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -7044,7 +7056,9 @@ type BrowseCemeteriesParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -7055,7 +7069,9 @@ type GetPersonsByCemeteryParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 	Limit  *LimitParam  `form:"limit,omitempty" json:"limit,omitempty"`
 	Offset *OffsetParam `form:"offset,omitempty" json:"offset,omitempty"`
@@ -7068,7 +7084,9 @@ type BrowsePlacesParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 
 	// Parent Parent place to get children for (empty for top-level)
@@ -7082,7 +7100,9 @@ type GetPersonsByPlaceParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 	Limit  *LimitParam  `form:"limit,omitempty" json:"limit,omitempty"`
 	Offset *OffsetParam `form:"offset,omitempty" json:"offset,omitempty"`
@@ -7095,7 +7115,9 @@ type BrowseSurnamesParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 
 	// Letter Filter surnames by starting letter (A-Z)
@@ -7109,7 +7131,9 @@ type GetPersonsBySurnameParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 	Limit  *LimitParam  `form:"limit,omitempty" json:"limit,omitempty"`
 	Offset *OffsetParam `form:"offset,omitempty" json:"offset,omitempty"`
@@ -7134,7 +7158,9 @@ type CreateCitationParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -7145,7 +7171,9 @@ type DeleteCitationParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 
 	// Version Entity version for optimistic locking
@@ -7159,7 +7187,9 @@ type GetCitationParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -7170,7 +7200,9 @@ type UpdateCitationParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -7181,7 +7213,9 @@ type FormatCitationParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -7195,7 +7229,9 @@ type GetCitationRestorePointsParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -7206,7 +7242,9 @@ type RollbackCitationParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -7217,7 +7255,9 @@ type GetDescendancyParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 
 	// Generations Number of descendant generations to include
@@ -7231,7 +7271,9 @@ type ListEvidenceAnalysesParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope                     `form:"branch,omitempty" json:"branch,omitempty"`
 	Limit  *LimitParam                      `form:"limit,omitempty" json:"limit,omitempty"`
 	Offset *OffsetParam                     `form:"offset,omitempty" json:"offset,omitempty"`
@@ -7252,7 +7294,9 @@ type CreateEvidenceAnalysisParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -7263,7 +7307,9 @@ type GetAnalysesByFactParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch    *BranchScope       `form:"branch,omitempty" json:"branch,omitempty"`
 	FactType  FactType           `form:"factType" json:"factType"`
 	SubjectId openapi_types.UUID `form:"subjectId" json:"subjectId"`
@@ -7281,7 +7327,9 @@ type DeleteEvidenceAnalysisParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 
 	// Version Entity version for optimistic locking
@@ -7295,7 +7343,9 @@ type GetEvidenceAnalysisParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -7306,7 +7356,9 @@ type UpdateEvidenceAnalysisParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -7317,7 +7369,9 @@ type ListEvidenceConflictsParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 	Limit  *LimitParam  `form:"limit,omitempty" json:"limit,omitempty"`
 	Offset *OffsetParam `form:"offset,omitempty" json:"offset,omitempty"`
@@ -7333,7 +7387,9 @@ type GetConflictsBySubjectParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -7344,7 +7400,9 @@ type GetEvidenceConflictParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -7355,7 +7413,9 @@ type ResolveEvidenceConflictParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -7426,7 +7486,9 @@ type ListFamiliesParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 	Limit  *LimitParam  `form:"limit,omitempty" json:"limit,omitempty"`
 	Offset *OffsetParam `form:"offset,omitempty" json:"offset,omitempty"`
@@ -7439,7 +7501,9 @@ type CreateFamilyParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -7450,7 +7514,9 @@ type DeleteFamilyParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -7461,7 +7527,9 @@ type GetFamilyParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -7472,7 +7540,9 @@ type UpdateFamilyParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -7483,7 +7553,9 @@ type AddChildToFamilyParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -7494,7 +7566,9 @@ type RemoveChildFromFamilyParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -7505,7 +7579,9 @@ type GetFamilyGroupSheetParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -7519,7 +7595,9 @@ type GetFamilyHistoryParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -7533,7 +7611,9 @@ type GetFamilyRestorePointsParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -7544,7 +7624,9 @@ type RollbackFamilyParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -7618,7 +7700,9 @@ type GetMapLocationsParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -7629,7 +7713,9 @@ type DeleteMediaParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 
 	// Version Entity version for optimistic locking
@@ -7643,7 +7729,9 @@ type GetMediaParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -7654,7 +7742,9 @@ type UpdateMediaParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -7665,7 +7755,9 @@ type DownloadMediaParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -7676,7 +7768,9 @@ type GetMediaThumbnailParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -7687,7 +7781,9 @@ type ListNotesParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope          `form:"branch,omitempty" json:"branch,omitempty"`
 	Limit  *LimitParam           `form:"limit,omitempty" json:"limit,omitempty"`
 	Offset *OffsetParam          `form:"offset,omitempty" json:"offset,omitempty"`
@@ -7704,7 +7800,9 @@ type CreateNoteParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -7715,7 +7813,9 @@ type DeleteNoteParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 
 	// Version Entity version for optimistic locking
@@ -7729,7 +7829,9 @@ type GetNoteParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -7740,7 +7842,9 @@ type UpdateNoteParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -7751,7 +7855,9 @@ type GetPedigreeParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 
 	// Generations Number of ancestor generations to include
@@ -7765,7 +7871,9 @@ type ListPersonsParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope            `form:"branch,omitempty" json:"branch,omitempty"`
 	Limit  *LimitParam             `form:"limit,omitempty" json:"limit,omitempty"`
 	Offset *OffsetParam            `form:"offset,omitempty" json:"offset,omitempty"`
@@ -7792,7 +7900,9 @@ type CreatePersonParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -7803,7 +7913,9 @@ type GetPersonsDuplicatesParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 
 	// Limit Maximum number of duplicate pairs to return
@@ -7820,7 +7932,9 @@ type BatchDismissDuplicatesParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -7831,7 +7945,9 @@ type ListDismissedDuplicatesParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 
 	// Limit Maximum number of pairs to return
@@ -7848,7 +7964,9 @@ type RestoreDuplicateParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -7859,7 +7977,9 @@ type DismissDuplicateParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -7870,7 +7990,9 @@ type MergePersonsParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -7881,7 +8003,9 @@ type BatchMergePersonsParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -7892,7 +8016,9 @@ type DeletePersonParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -7903,7 +8029,9 @@ type GetPersonParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -7914,7 +8042,9 @@ type UpdatePersonParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -7925,7 +8055,9 @@ type ListAssociationsForPersonParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -7942,7 +8074,9 @@ type GetCitationsForPersonParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -7956,7 +8090,9 @@ type GetPersonHistoryParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -7967,7 +8103,9 @@ type ListPersonMediaParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 	Limit  *LimitParam  `form:"limit,omitempty" json:"limit,omitempty"`
 	Offset *OffsetParam `form:"offset,omitempty" json:"offset,omitempty"`
@@ -7995,7 +8133,9 @@ type UploadPersonMediaParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -8006,7 +8146,9 @@ type GetPersonNamesParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -8017,7 +8159,9 @@ type AddPersonNameParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -8028,7 +8172,9 @@ type DeletePersonNameParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -8039,7 +8185,9 @@ type UpdatePersonNameParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -8053,7 +8201,9 @@ type GetPersonRestorePointsParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -8064,7 +8214,9 @@ type RollbackPersonParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -8075,7 +8227,9 @@ type ListProofSummariesParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope                   `form:"branch,omitempty" json:"branch,omitempty"`
 	Limit  *LimitParam                    `form:"limit,omitempty" json:"limit,omitempty"`
 	Offset *OffsetParam                   `form:"offset,omitempty" json:"offset,omitempty"`
@@ -8096,7 +8250,9 @@ type CreateProofSummaryParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -8107,7 +8263,9 @@ type GetProofSummaryByFactParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch    *BranchScope       `form:"branch,omitempty" json:"branch,omitempty"`
 	FactType  FactType           `form:"factType" json:"factType"`
 	SubjectId openapi_types.UUID `form:"subjectId" json:"subjectId"`
@@ -8125,7 +8283,9 @@ type DeleteProofSummaryParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 
 	// Version Entity version for optimistic locking
@@ -8139,7 +8299,9 @@ type GetProofSummaryParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -8150,7 +8312,9 @@ type UpdateProofSummaryParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -8161,7 +8325,9 @@ type GetQualityOverviewParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -8187,7 +8353,9 @@ type GetRelationshipParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -8218,7 +8386,9 @@ type ListResearchLogsParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope                 `form:"branch,omitempty" json:"branch,omitempty"`
 	Limit  *LimitParam                  `form:"limit,omitempty" json:"limit,omitempty"`
 	Offset *OffsetParam                 `form:"offset,omitempty" json:"offset,omitempty"`
@@ -8239,7 +8409,9 @@ type CreateResearchLogParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -8250,7 +8422,9 @@ type GetResearchLogsBySubjectParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -8261,7 +8435,9 @@ type DeleteResearchLogParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 
 	// Version Entity version for optimistic locking
@@ -8275,7 +8451,9 @@ type GetResearchLogParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -8286,7 +8464,9 @@ type UpdateResearchLogParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -8297,7 +8477,9 @@ type SearchPersonsParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 
 	// Q Search query (name)
@@ -8349,7 +8531,9 @@ type ListSnapshotsParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -8360,7 +8544,9 @@ type CreateSnapshotParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -8371,7 +8557,9 @@ type CompareSnapshotsParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -8382,7 +8570,9 @@ type DeleteSnapshotParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -8393,7 +8583,9 @@ type GetSnapshotParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -8404,7 +8596,9 @@ type CompareSnapshotToCurrentParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 
 	// Until The last log position to include. Defaults to the current head.
@@ -8418,7 +8612,9 @@ type ListSourcesParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope            `form:"branch,omitempty" json:"branch,omitempty"`
 	Limit  *LimitParam             `form:"limit,omitempty" json:"limit,omitempty"`
 	Offset *OffsetParam            `form:"offset,omitempty" json:"offset,omitempty"`
@@ -8442,7 +8638,9 @@ type CreateSourceParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -8453,7 +8651,9 @@ type SearchSourcesParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 
 	// Q Search query
@@ -8468,7 +8668,9 @@ type DeleteSourceParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 
 	// Version Entity version for optimistic locking
@@ -8482,7 +8684,9 @@ type GetSourceParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -8493,7 +8697,9 @@ type UpdateSourceParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -8504,7 +8710,9 @@ type GetCitationsForSourceParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -8524,7 +8732,9 @@ type GetSourceRestorePointsParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
@@ -8535,7 +8745,9 @@ type RollbackSourceParams struct {
 	// returns 400 at parameter binding, before the operation runs. An unknown
 	// branch id returns 404. Writes to a non-active (merged or archived) branch
 	// return 409; reads of one return 404, because its overlay rows are purged
-	// on archive and it therefore has no view to return.
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 

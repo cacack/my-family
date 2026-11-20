@@ -101,6 +101,8 @@ func TestPrivacyPreview_RefusesWhatThePrincipalMayNot(t *testing.T) {
 		{"visitor", http.MethodGet, "/api/v1/persons/" + tr.dead + "/history", "", http.StatusForbidden},
 		{"visitor", http.MethodGet, "/api/v1/auth/me", "", http.StatusForbidden},
 		{"visitor", http.MethodGet, "/api/v1/persons", "", http.StatusOK},
+		{"visitor", http.MethodGet, "/api/v1/persons?branch=" + tr.dead, "", http.StatusForbidden},
+		{"visitor", http.MethodGet, "/api/v1/branches/" + tr.dead + "/health", "", http.StatusForbidden},
 		{"stranger", http.MethodGet, "/api/v1/persons", "", http.StatusBadRequest},
 	} {
 		t.Run(tt.as+" "+tt.method+" "+tt.path, func(t *testing.T) {

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { can } from '#lib/stores/access.svelte.js';
+	import { can, isVisitor } from '#lib/stores/access.svelte.js';
 	/**
 	 * A branch's research record, read-only (#836): the research logs -
 	 * including the searches that found nothing - evidence analyses and proof
@@ -27,6 +27,7 @@
 	import ErrorState from '#lib/components/ErrorState.svelte';
 	import LoadingState from '#lib/components/LoadingState.svelte';
 	import PageHeader from '#lib/components/PageHeader.svelte';
+	import SignInRequired from '#lib/components/auth/SignInRequired.svelte';
 
 	const LOG_OUTCOME_LABELS: Record<string, string> = {
 		found: 'Found',
@@ -83,7 +84,8 @@
 
 	$effect(() => {
 		const id = branchId;
-		if (id) load(id);
+		// A visitor reads the mainline only (ADR-008 §4): the server refuses them this.
+		if (id && !isVisitor()) load(id);
 	});
 
 	async function handlePromote() {
@@ -125,7 +127,13 @@
 <div class="research-page">
 	<a href={branchId ? `/branches/${branchId}` : '/branches'} class="back-link">&larr; {branch?.name ?? 'Branch'}</a>
 
-	{#if loading}
+	{#if isVisitor()}
+		<PageHeader title="Branch research" />
+		<SignInRequired
+			subject="this branch's research"
+			description="A research branch is work in progress, so only signed-in users can see it."
+		/>
+	{:else if loading}
 		<LoadingState label="Loading research..." />
 	{:else if loadError}
 		<ErrorState {...loadError} onRetry={() => load(branchId)} />

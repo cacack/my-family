@@ -147,6 +147,36 @@ describe('Branches page', () => {
 		expect(screen.queryByRole('button', { name: /^Close$/ })).toBeNull();
 	});
 
+	it('offers a visitor no link that leads only to a sign-in wall', async () => {
+		auth.phase = 'visitor';
+		listBranches.mockResolvedValue({
+			items: [active, { ...merged, merge_state: 'incomplete' }, archived],
+			total: 3
+		});
+		render(Page);
+
+		await screen.findByText('Maternal Smith line');
+		expect(screen.queryByRole('link', { name: /^Compare$/ })).toBeNull();
+		expect(screen.queryByRole('link', { name: /^Finish merge$/ })).toBeNull();
+		// Branch names are shown, but not as links to the branch's page.
+		expect(screen.queryByRole('link', { name: 'Maternal Smith line' })).toBeNull();
+		for (const link of screen.queryAllByRole('link')) {
+			expect(link.getAttribute('href')).not.toMatch(/^\/branches\/[^/]+$/);
+		}
+		expect(screen.queryByRole('link', { name: /^Research$/ })).toBeNull();
+	});
+
+	it('links a signed-in viewer to each branch and its comparison', async () => {
+		signInAs('viewer');
+		render(Page);
+
+		await screen.findByText('Maternal Smith line');
+		expect(screen.getByRole('link', { name: 'Maternal Smith line' }).getAttribute('href')).toBe(
+			`/branches/${active.id}`
+		);
+		expect(screen.getAllByRole('link', { name: /^Compare$/ }).length).toBeGreaterThan(0);
+	});
+
 	it('still lets a visitor already on a branch return to the mainline', async () => {
 		auth.phase = 'visitor';
 		mockState.id = active.id;

@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/svelte';
 import BranchBanner from './BranchBanner.svelte';
 import type * as apiModule from '#lib/api/client.js';
 import type { Branch, BranchDrift } from '#lib/api/client.js';
+import { auth } from '#lib/stores/access.svelte.js';
 
 // Hoisted so the module mock below (which vitest lifts above the imports) can
 // close over them.
@@ -75,6 +76,10 @@ describe('BranchBanner', () => {
 		getBranchDrift.mockResolvedValue(drift({}));
 	});
 
+	afterEach(() => {
+		auth.phase = 'loading';
+	});
+
 	it('links an unfinished-merge notice to the branch page to finish it (#830)', async () => {
 		mockState.notice = 'Research branch "X" is merged, but its merge did not finish.';
 		mockState.noticeHref = `/branches/${branch.id}`;
@@ -121,6 +126,27 @@ describe('BranchBanner', () => {
 
 		expect(container.querySelector('.branch-banner')).not.toBeNull();
 		expect(screen.getByText('Maternal Smith line')).toBeDefined();
+		expect(screen.getByRole('button', { name: /return to mainline/i })).toBeDefined();
+	});
+
+	it('offers a visitor no link to the compare page, which needs sign-in', async () => {
+		auth.phase = 'visitor';
+		getBranchDrift.mockResolvedValue(drift({ main_change_count: 4, main_change_count_on_branch_entities: 1 }));
+		mockState.id = branch.id;
+		mockState.branch = {
+			...branch,
+			subjects: [1, 2, 3, 4].map((n) => ({ type: 'person' as const, id: `a111111${n}-1111-1111-1111-111111111111`, name: `Person ${n}` }))
+		};
+
+		render(BranchBanner);
+
+		await screen.findAllByTestId('branch-drift');
+		expect(screen.queryByRole('link', { name: 'Compare' })).toBeNull();
+		expect(screen.queryByRole('link', { name: '+1 more' })).toBeNull();
+		expect(screen.getByText('+1 more')).toBeDefined();
+		for (const link of screen.queryAllByRole('link')) {
+			expect(link.getAttribute('href')).not.toContain('/branches/');
+		}
 		expect(screen.getByRole('button', { name: /return to mainline/i })).toBeDefined();
 	});
 

@@ -10,8 +10,12 @@
 	 *
 	 * It inherits its text colour so it sits on the banner and on a branch card
 	 * alike.
+	 *
+	 * A visitor may not open the compare page (ADR-008 §4), so they get the
+	 * counts without the link.
 	 */
 	import type { BranchDrift } from '#lib/api/client.js';
+	import { isVisitor } from '#lib/stores/access.svelte.js';
 
 	interface Props {
 		drift: BranchDrift;
@@ -42,9 +46,11 @@
 			{drift.main_change_count === 1 && !drift.has_more ? 'time' : 'times'} since you branched,
 			<strong>{onBranch}</strong> on entities this branch touched.
 		</span>
-		<a class="drift-link" href="/branches/{drift.branch_id}#main-changes">
-			{touched > 0 ? 'Review mainline changes' : 'Open compare'}
-		</a>
+		{#if !isVisitor()}
+			<a class="drift-link" href="/branches/{drift.branch_id}#main-changes">
+				{touched > 0 ? 'Review mainline changes' : 'Open compare'}
+			</a>
+		{/if}
 	{:else}
 		<span class="drift-text">Mainline unchanged since you branched.</span>
 	{/if}

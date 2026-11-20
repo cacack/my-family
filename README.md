@@ -243,8 +243,10 @@ Owners choose under **Settings** whether people who are not signed in may browse
 **No** (the default) or **Yes, as viewers**. The setting links to **Preview as a visitor**, so the
 owner can see what visitors will get before turning it on. With it on, a visitor can call the read operations
 a viewer can, except the account ones and the change log (history, restore points, snapshots and
-comparisons, which name who made each change); sees a **Sign in** link instead of the account
-menu, and gets no editing controls. Reads whose cost grows with the tree (lists, search, charts,
+comparisons, which name who made each change), and only on the mainline: a research branch's
+view (a `?branch=` scope, its health, evidence coverage and research archive) needs sign-in, so the branch menu
+offers a visitor no branch. A visitor sees a **Sign in** link instead of the account menu, and
+gets no editing controls. Reads whose cost grows with the tree (lists, search, charts,
 browse indexes and their people, the map, statistics, reports and media files) are limited to 30
 at once and one more per second per client address. The change applies to the next request and
 is written to the audit log. Until living people and private records are protected from visitors
