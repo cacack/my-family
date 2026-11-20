@@ -2,7 +2,9 @@
 	import ChangeHistory from '#lib/components/ChangeHistory.svelte';
 	import PageHeader from '#lib/components/PageHeader.svelte';
 	import MainlineNotice from '#lib/components/MainlineNotice.svelte';
+	import SignInRequired from '#lib/components/auth/SignInRequired.svelte';
 	import { Button } from '#lib/components/ui/button/index.js';
+	import { isVisitor } from '#lib/stores/access.svelte.js';
 </script>
 
 <svelte:head>
@@ -23,7 +25,11 @@
 		{/snippet}
 	</PageHeader>
 
-	<ChangeHistory />
+	{#if isVisitor()}
+		<SignInRequired subject="the change history" />
+	{:else}
+		<ChangeHistory />
+	{/if}
 </div>
 
 <style>

@@ -41,6 +41,8 @@
 	} from '#lib/utils/changeEntries.js';
 	import ErrorState from '#lib/components/ErrorState.svelte';
 	import LoadingState from '#lib/components/LoadingState.svelte';
+	import SignInRequired from '#lib/components/auth/SignInRequired.svelte';
+	import { isVisitor } from '#lib/stores/access.svelte.js';
 
 	type EntityType = BranchChangeEntry['entity_type'];
 	type EntityFilter = EntityType | 'all';
@@ -227,7 +229,8 @@
 			loading = false;
 			return;
 		}
-		loadComparison(a, b, end);
+		// The server refuses a visitor the change log; the page says so instead.
+		if (!isVisitor()) loadComparison(a, b, end);
 	});
 
 	// Announce the outcome once per loaded comparison, not on every filter change.
@@ -275,7 +278,9 @@
 		{/if}
 	</PageHeader>
 
-	{#if invalidReason}
+	{#if isVisitor()}
+		<SignInRequired subject="this comparison" />
+	{:else if invalidReason}
 		<div class="state empty">
 			<p>{invalidReason}</p>
 			<p><a href="/snapshots">Back to snapshots</a></p>

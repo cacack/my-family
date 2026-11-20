@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { can } from '#lib/stores/access.svelte.js';
+	import { can, isVisitor } from '#lib/stores/access.svelte.js';
 	import { loadHomePerson } from '#lib/stores/homePerson.svelte.js';
 	/**
 	 * Compare a research branch against the mainline, and merge it.
@@ -103,6 +103,7 @@
 	import { blockedEntityIds, blockerFix } from '#lib/utils/mergeBlockers.js';
 	import { isIncompleteMerge, isUnreadableMerge, pendingEntities } from '#lib/utils/mergeState.js';
 	import ErrorState from '#lib/components/ErrorState.svelte';
+	import SignInRequired from '#lib/components/auth/SignInRequired.svelte';
 	import LoadingState from '#lib/components/LoadingState.svelte';
 	import PageHeader from '#lib/components/PageHeader.svelte';
 
@@ -577,7 +578,8 @@
 
 	$effect(() => {
 		const id = branchId;
-		if (id) {
+		// The server refuses a visitor the comparison; the page says so instead.
+		if (id && !isVisitor()) {
 			loadComparison(id);
 		}
 	});
@@ -890,7 +892,10 @@
 <div class="compare-page">
 	<a href="/branches" class="back-link">&larr; Research Branches</a>
 
-	{#if loading}
+	{#if isVisitor()}
+		<PageHeader title="Research branch" />
+		<SignInRequired subject="what this branch changed" />
+	{:else if loading}
 		<LoadingState label="Loading comparison..." />
 	{:else if loadError}
 		<ErrorState {...loadError} onRetry={() => loadComparison(branchId)} />
