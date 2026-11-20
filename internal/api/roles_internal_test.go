@@ -121,6 +121,33 @@ func TestAnonymousRouteSets(t *testing.T) {
 	}
 }
 
+// TestOpenAPI_SignedInRoutesSaySo fails when an operation refused to visitors
+// (signedInRoutes) does not say so in its openapi.yaml description, so an API
+// client can tell a 401 there means "sign in" (#1469). /auth/me is the
+// signed-in user's own account, which says it in its summary.
+func TestOpenAPI_SignedInRoutesSaySo(t *testing.T) {
+	doc, err := openapi3.NewLoader().LoadFromData(openapiSpec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	documented := make(map[string]bool)
+	for path, item := range doc.Paths.Map() {
+		echoPath := apiBase + specParam.ReplaceAllString(path, ":$1")
+		for method, op := range item.Operations() {
+			description := strings.Join(strings.Fields(op.Description), " ")
+			documented[routeKey(method, echoPath)] = strings.Contains(description, "Requires a signed-in user")
+		}
+	}
+	for key := range signedInRoutes {
+		if strings.HasSuffix(key, " "+apiBase+"/auth/me") {
+			continue
+		}
+		if !documented[key] {
+			t.Errorf("%s is refused to visitors, but its openapi.yaml description does not say \"Requires a signed-in user\"", key)
+		}
+	}
+}
+
 // anonymousCheapRoutes are the viewer routes a visitor may call unlimited:
 // each reads one record, one record's own sub-lists, or a fixed document, so
 // its cost does not grow with the tree.
