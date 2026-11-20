@@ -311,8 +311,13 @@
 	{#if survivor && merged && !result}
 		<Card>
 			<CardHeader>
-				<CardTitle>Suggested merge</CardTitle>
-				<CardDescription>Review fields below before merging.</CardDescription>
+				{#if can('editor')}
+					<CardTitle>Suggested merge</CardTitle>
+					<CardDescription>Review fields below before merging.</CardDescription>
+				{:else}
+					<CardTitle>Possible duplicate</CardTitle>
+					<CardDescription>These two records may describe the same person.</CardDescription>
+				{/if}
 			</CardHeader>
 		</Card>
 	{/if}

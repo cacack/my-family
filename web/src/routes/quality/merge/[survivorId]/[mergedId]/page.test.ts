@@ -119,6 +119,8 @@ describe('Merge Picker Page', () => {
 			expect(screen.getByText('Survivor (keeps existing ID)')).toBeDefined();
 			expect(screen.getByText('Will be merged & deleted')).toBeDefined();
 		});
+		expect(screen.getByText('Suggested merge')).toBeDefined();
+		expect(screen.getByText('Review fields below before merging.')).toBeDefined();
 	});
 
 	it('shows the shared header and an empty field as — (#1108)', async () => {
@@ -305,6 +307,10 @@ describe('Merge Picker Page', () => {
 		await screen.findByText('Survivor (keeps existing ID)');
 		expect(container.textContent).toContain('Compare the two records field by field');
 		expect(container.textContent).not.toContain('Choose which value to keep');
+		expect(screen.queryByText('Suggested merge')).toBeNull();
+		expect(container.textContent).not.toContain('before merging');
+		expect(screen.getByText('Possible duplicate')).toBeDefined();
+		expect(screen.getByText('These two records may describe the same person.')).toBeDefined();
 		const radios = screen.getAllByRole('radio');
 		expect(radios.length).toBeGreaterThan(0);
 		for (const radio of radios) expect(radio.hasAttribute('disabled')).toBe(true);

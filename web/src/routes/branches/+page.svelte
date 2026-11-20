@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { can } from '#lib/stores/access.svelte.js';
+	import { can, isVisitor } from '#lib/stores/access.svelte.js';
 	import { api, type ApiError, type Branch, type BranchOutcome } from '#lib/api/client.js';
 	import BranchOutcomeBadge from '#lib/components/branch/BranchOutcomeBadge.svelte';
 	import PageHeader from '#lib/components/PageHeader.svelte';
@@ -208,7 +208,8 @@
 						<Button variant="outline" size="sm" onclick={() => switchBranch(null)}>
 							Return to mainline
 						</Button>
-					{:else}
+					{:else if !isVisitor()}
+						<!-- A visitor cannot open a branch or its comparison (ADR-008 §4), so it is not offered. -->
 						<Button variant="outline" size="sm" onclick={() => switchBranch(branch)}>
 							Switch to branch
 						</Button>
