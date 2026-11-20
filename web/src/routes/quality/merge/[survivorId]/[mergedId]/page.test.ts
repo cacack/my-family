@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/svelte';
 import Page from './+page.svelte';
 import * as apiModule from '#lib/api/client.js';
+import { homePerson, loadHomePerson } from '#lib/stores/homePerson.svelte.js';
 
 // Configurable page params
 let mockPageParams: Record<string, string> = {
@@ -17,7 +18,8 @@ vi.mock('#lib/api/client.js', async (importOriginal) => {
 		api: {
 			getPerson: vi.fn(),
 			mergePersons: vi.fn(),
-			dismissDuplicate: vi.fn()
+			dismissDuplicate: vi.fn(),
+			getHomePerson: vi.fn()
 		}
 	};
 });
@@ -95,6 +97,19 @@ describe('Merge Picker Page', () => {
 				media_transferred: 0
 			}
 		});
+	});
+
+	it('moves "me" to the survivor when the merged person was the home person (#1444)', async () => {
+		vi.mocked(apiModule.api.getHomePerson)
+			.mockResolvedValueOnce({ person: mergedPerson })
+			.mockResolvedValueOnce({ person: survivorPerson });
+		await loadHomePerson();
+		expect(homePerson.person?.id).toBe('p-merged');
+
+		render(Page);
+		await fireEvent.click(await screen.findByText('Merge persons'));
+
+		await waitFor(() => expect(homePerson.person?.id).toBe('p-survivor'));
 	});
 
 	it('renders both persons side-by-side after load', async () => {

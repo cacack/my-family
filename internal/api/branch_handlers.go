@@ -571,6 +571,8 @@ func (ss *StrictServer) MergeBranch(ctx context.Context, request MergeBranchRequ
 	if err != nil {
 		return mergeBranchErrorResponse(result, err)
 	}
+	// A person merge the branch made now reaches main; "me" follows it.
+	ss.followHomePersonMerges(ctx, result.MergedPersons)
 
 	// The schema requires the skipped array, so serialize [] rather than null.
 	skipped := result.SkippedStreamIDs
@@ -813,6 +815,8 @@ func (ss *StrictServer) ResumeBranchMerge(ctx context.Context, request ResumeBra
 	if err != nil {
 		return resumeBranchMergeErrorResponse(result, err)
 	}
+	// The finished merge's person merges are all on main now; "me" follows them.
+	ss.followHomePersonMerges(ctx, result.MergedPersons)
 
 	// The finished merge reads as complete (#830), so a client can adopt the
 	// branch straight from the result.

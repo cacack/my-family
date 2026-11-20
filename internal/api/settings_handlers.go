@@ -102,18 +102,28 @@ func (ss *StrictServer) ClearHomePerson(ctx context.Context, _ ClearHomePersonRe
 
 // followHomePersonMerge moves the home person to the survivor when a mainline
 // merge removes them, so merging away a duplicate of "me" keeps the choice. A
-// branch-scoped merge leaves main, and so the setting, untouched. The merge has
-// already landed, so a failure here is logged rather than failing the request.
+// branch-scoped merge leaves main, and so the setting, untouched.
 func (ss *StrictServer) followHomePersonMerge(ctx context.Context, branch *domain.Branch, mergedID, survivorID uuid.UUID) {
+	if branch != nil {
+		return
+	}
+	ss.followHomePersonMerges(ctx, map[uuid.UUID]uuid.UUID{mergedID: survivorID})
+}
+
+// followHomePersonMerges moves the home person to their survivor when merges
+// that have landed on main removed them; survivors maps each merged-away
+// person to the person now holding their data. The merges have already landed,
+// so a failure here is logged rather than failing the request.
+func (ss *StrictServer) followHomePersonMerges(ctx context.Context, survivors map[uuid.UUID]uuid.UUID) {
 	store := ss.server.settingsStore
-	if store == nil || branch != nil {
+	if store == nil || len(survivors) == 0 {
 		return
 	}
 	home, err := store.HomePerson(ctx)
-	if err == nil && home == mergedID {
-		err = store.SetHomePerson(ctx, survivorID)
+	if survivor, merged := survivors[home]; err == nil && merged {
+		err = store.SetHomePerson(ctx, survivor)
 	}
 	if err != nil {
-		ss.server.echo.Logger.Errorf("moving the home person to merge survivor %s: %v", survivorID, err)
+		ss.server.echo.Logger.Errorf("moving the home person to its merge survivor: %v", err)
 	}
 }

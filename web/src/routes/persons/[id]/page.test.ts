@@ -9,6 +9,7 @@ import type * as apiModule from '#lib/api/client.js';
 import type { PersonDetail } from '#lib/api/client.js';
 import { goto } from '$app/navigation';
 import { signInAs } from '#lib/test/roles.js';
+import { homePerson, loadHomePerson } from '#lib/stores/homePerson.svelte.js';
 
 const PERSON_ID = '11111111-1111-1111-1111-111111111111';
 const BRANCH_ID = '44444444-4444-4444-4444-444444444444';
@@ -25,6 +26,7 @@ const {
 	deletePerson,
 	getPersonNames,
 	updatePersonName,
+	getHomePerson,
 	pageState
 } = vi.hoisted(() => ({
 	// The real store exposes a read-only view, so the active branch is injected.
@@ -39,6 +41,7 @@ const {
 	deletePerson: vi.fn(),
 	getPersonNames: vi.fn(async () => ({ items: [] as apiModule.PersonName[], total: 0 })),
 	updatePersonName: vi.fn(),
+	getHomePerson: vi.fn(),
 	// The history state a navigation left, e.g. a create's converted dates.
 	pageState: {} as App.PageState
 }));
@@ -74,6 +77,7 @@ vi.mock('#lib/api/client.js', async (importOriginal) => {
 		deletePerson,
 		getPersonNames,
 		updatePersonName,
+		getHomePerson,
 		// These two answer with a bare array rather than a wrapper object.
 		getConflictsBySubject: vi.fn(async () => []),
 		getResearchLogsBySubject: vi.fn(async () => [])
@@ -881,6 +885,20 @@ describe('Person detail failed actions (#899)', () => {
 		expect((screen.getByLabelText('Birth Place') as HTMLInputElement).value).toBe('Westminster');
 		expect(screen.queryByText(/changed elsewhere/)).toBeNull();
 		expect(updatePerson).toHaveBeenCalledTimes(1);
+	});
+
+	it('drops "me" when the deleted person was the home person (#1444)', async () => {
+		getHomePerson.mockResolvedValueOnce({ person: person() }).mockResolvedValueOnce({});
+		await loadHomePerson();
+		expect(homePerson.person?.id).toBe(PERSON_ID);
+
+		render(Page);
+		await fireEvent.click(await screen.findByRole('button', { name: 'Delete' }));
+		const dialog = await screen.findByRole('alertdialog');
+		await fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
+
+		await waitFor(() => expect(homePerson.person).toBeNull());
+		expect(goto).toHaveBeenCalled();
 	});
 
 	// A refusal the loaded person did not foresee, e.g. a family added elsewhere.

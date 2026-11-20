@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { can } from '#lib/stores/access.svelte.js';
+	import { loadHomePerson } from '#lib/stores/homePerson.svelte.js';
 	/**
 	 * Compare a research branch against the mainline, and merge it.
 	 *
@@ -607,6 +608,8 @@
 					return { stream_id, resolution, ...(rationale ? { rationale } : {}) };
 				})
 			});
+			// A person merge the branch made may have moved "me" on main (#1444).
+			loadHomePerson();
 			// Adopt the branch as the merge left it, so the page stops offering
 			// merge affordances behind the still-open success summary. Gated on the
 			// token like every other write: the user may have navigated away while
@@ -627,6 +630,8 @@
 	async function performResume(request: BranchMergeResumeRequest): Promise<BranchMergeResumeResult> {
 		const token = comparisonRequest;
 		const result = await api.resumeBranchMerge(branchId, request);
+		// The finished merge's person merges may have moved "me" on main (#1444).
+		loadHomePerson();
 		if (token === comparisonRequest && comparison) {
 			// The result's branch carries merge_state: complete, so the flag and
 			// the action go away behind the still-open summary.

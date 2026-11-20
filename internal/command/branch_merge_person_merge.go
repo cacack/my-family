@@ -103,6 +103,33 @@ func finalMergeSurvivor(personID uuid.UUID, into map[uuid.UUID]uuid.UUID) (uuid.
 	return current, true
 }
 
+// replayedPersonMerges maps every person a merge's replay merges away on main
+// to the person that finally holds their data, following chains. Streams
+// resolved to main are not replayed, so their person merges are left out.
+func replayedPersonMerges(groups []streamGroup, resolutions map[uuid.UUID]MergeResolution) (map[uuid.UUID]uuid.UUID, error) {
+	replayed := make([]streamGroup, 0, len(groups))
+	for _, group := range groups {
+		if resolutions[group.streamID] != ResolveMain {
+			replayed = append(replayed, group)
+		}
+	}
+	return finalPersonMerges(replayed)
+}
+
+// finalPersonMerges maps every person the groups' PersonMerged events merge
+// away to the person that finally holds their data, following chains.
+func finalPersonMerges(groups []streamGroup) (map[uuid.UUID]uuid.UUID, error) {
+	into, err := branchPersonMerges(groups)
+	if err != nil {
+		return nil, err
+	}
+	final := make(map[uuid.UUID]uuid.UUID, len(into))
+	for mergedID := range into {
+		final[mergedID], _ = finalMergeSurvivor(mergedID, into)
+	}
+	return final, nil
+}
+
 // survivorLookup adapts a merge map to the callback findDanglingReferences
 // takes. A nil map follows nothing.
 func survivorLookup(into map[uuid.UUID]uuid.UUID) func(uuid.UUID) (uuid.UUID, bool) {
