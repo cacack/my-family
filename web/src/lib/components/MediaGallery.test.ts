@@ -146,7 +146,7 @@ describe('MediaGallery', () => {
 			expect(screen.queryByRole('img', { name: 'Private media item' })).toBeNull();
 		});
 
-		it('reloads a stale item and asks the editor to try again', async () => {
+		it('reloads a stale item and resends the same mark on Try again', async () => {
 			vi.mocked(apiModule.api.updateMedia).mockRejectedValueOnce({
 				status: 409,
 				code: 'VERSION_CONFLICT',
@@ -159,9 +159,28 @@ describe('MediaGallery', () => {
 			await fireEvent.click(within(dialog).getByRole('button', { name: 'Mark private' }));
 			expect((await within(dialog).findByRole('alert')).textContent).toMatch(/changed elsewhere/);
 
-			await fireEvent.click(within(dialog).getByRole('button', { name: 'Mark private' }));
+			await fireEvent.click(within(dialog).getByRole('button', { name: 'Try again: mark private' }));
 			expect(apiModule.api.updateMedia).toHaveBeenLastCalledWith('m-1', { private: true, version: 5 });
 			expect(await within(dialog).findByRole('button', { name: 'Unmark private' })).toBeDefined();
+			expect(within(dialog).queryByRole('button', { name: /^Try again/ })).toBeNull();
+		});
+
+		it('resends the mark when a grouped copy failed after this item was saved', async () => {
+			// The item itself was saved private before a grouped copy conflicted,
+			// so the reload shows it private; Try again must still send the mark.
+			vi.mocked(apiModule.api.updateMedia).mockRejectedValueOnce({
+				status: 409,
+				code: 'VERSION_CONFLICT',
+				message: 'version conflict'
+			});
+			vi.mocked(apiModule.api.getMedia).mockResolvedValue(media({ private: true, version: 2 }));
+			vi.mocked(apiModule.api.updateMedia).mockResolvedValueOnce(media({ private: true, version: 2 }));
+			const dialog = await openPortrait(media({}));
+
+			await fireEvent.click(within(dialog).getByRole('button', { name: 'Mark private' }));
+			await fireEvent.click(await within(dialog).findByRole('button', { name: 'Try again: mark private' }));
+
+			expect(apiModule.api.updateMedia).toHaveBeenLastCalledWith('m-1', { private: true, version: 2 });
 		});
 
 		it('shows a refusal in the lightbox', async () => {

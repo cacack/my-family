@@ -264,7 +264,8 @@
 	 * offers Try Again, which applies the same mark to the latest version.
 	 */
 	async function setPrivate(citation: Citation, mark: boolean) {
-		// Not `disabled` while saving: that would drop the button's focus.
+		// Required: `aria-disabled` does not block clicks. Not `disabled`
+		// while saving, which would drop the button's focus.
 		if (markingId === citation.id) return;
 		markingId = citation.id;
 		error = null;

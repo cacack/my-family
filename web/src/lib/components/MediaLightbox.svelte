@@ -17,26 +17,33 @@
 
 	let marking = $state(false);
 	let markError: string | null = $state(null);
+	/** The mark a stale save asked for, which Try again resends. */
+	let retryMark: boolean | null = $state(null);
 
 	/**
 	 * Mark the item private, or unmark it (ADR-008). A stale version loads
-	 * the latest one and asks the editor to try again.
+	 * the latest one and offers to resend the same mark: the toggle alone
+	 * would flip it when a grouped copy failed after this item was saved,
+	 * and resending is what brings the group back in step.
 	 */
 	async function setPrivate(mark: boolean) {
-		// Not `disabled` while saving: that would drop the button's focus.
+		// Required: `aria-disabled` does not block clicks. Not `disabled`
+		// while saving, which would drop the button's focus.
 		if (marking) return;
 		const target = currentMedia;
 		marking = true;
 		markError = null;
+		retryMark = null;
 		try {
 			onUpdate?.(await api.updateMedia(target.id, { private: mark, version: target.version }));
 		} catch (e) {
 			if (isStaleVersion(e)) {
-				markError = 'This item was changed elsewhere. It has been reloaded: try again.';
+				markError = 'This item was changed elsewhere and has been reloaded.';
+				retryMark = mark;
 				try {
 					onUpdate?.(await api.getMedia(target.id));
 				} catch {
-					// Keep the notice; the next try reports any failure.
+					// Keep the notice; Try again reports any failure.
 				}
 			} else {
 				markError = (e as { message?: string }).message || 'Failed to update the item';
@@ -71,6 +78,7 @@
 		const newMedia = allMedia[index];
 		if (newMedia) {
 			markError = null;
+			retryMark = null;
 			Object.assign(media, newMedia);
 		}
 	}
@@ -244,6 +252,16 @@
 						>
 						{#if markError}
 							<p class="mark-error" role="alert">{markError}</p>
+						{/if}
+						{#if retryMark !== null}
+							<Button
+								variant="outline"
+								size="sm"
+								class="border-white/40 bg-transparent text-white hover:bg-white/20 hover:text-white"
+								aria-disabled={marking}
+								onclick={() => retryMark !== null && setPrivate(retryMark)}
+								>{retryMark ? 'Try again: mark private' : 'Try again: unmark private'}</Button
+							>
 						{/if}
 					</div>
 				{/if}
