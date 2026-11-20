@@ -112,7 +112,7 @@
 <Dialog.Root bind:open onOpenChange={(isOpen) => { if (!isOpen) onClose(); }}>
 	<Dialog.Content
 		showCloseButton={false}
-		class="max-w-[95vw] h-[90vh] p-0 sm:max-w-[95vw] bg-black/95 border-none"
+		class="max-w-[95vw] h-[90vh] grid-rows-[minmax(0,1fr)] p-0 sm:max-w-[95vw] bg-black/95 border-none"
 	>
 		<div class="sr-only">
 			<Dialog.Header>
@@ -212,6 +212,33 @@
 			<div class="metadata-panel">
 				<h3>{currentMedia.title}</h3>
 
+				<!-- Under the title, so it is in view on a phone, where the panel scrolls (#1550). -->
+				{#if can('editor')}
+					<div class="privacy-action">
+						<Button
+							variant="outline"
+							size="sm"
+							class="border-white/40 bg-transparent text-white hover:bg-white/20 hover:text-white"
+							aria-disabled={marking}
+							onclick={() => setPrivate(!currentMedia.private)}
+							>{currentMedia.private ? 'Unmark private' : 'Mark private'}</Button
+						>
+						{#if markError}
+							<p class="mark-error" role="alert">{markError}</p>
+						{/if}
+						{#if retryMark !== null}
+							<Button
+								variant="outline"
+								size="sm"
+								class="border-white/40 bg-transparent text-white hover:bg-white/20 hover:text-white"
+								aria-disabled={marking}
+								onclick={() => retryMark !== null && setPrivate(retryMark)}
+								>{retryMark ? 'Try again: mark private' : 'Try again: unmark private'}</Button
+							>
+						{/if}
+					</div>
+				{/if}
+
 				{#if currentMedia.description}
 					<p class="description">{currentMedia.description}</p>
 				{/if}
@@ -239,32 +266,6 @@
 					<dt>Privacy</dt>
 					<dd>{currentMedia.private ? 'Private: viewers and visitors do not see it' : 'Not private'}</dd>
 				</dl>
-
-				{#if can('editor')}
-					<div class="privacy-action">
-						<Button
-							variant="outline"
-							size="sm"
-							class="border-white/40 bg-transparent text-white hover:bg-white/20 hover:text-white"
-							aria-disabled={marking}
-							onclick={() => setPrivate(!currentMedia.private)}
-							>{currentMedia.private ? 'Unmark private' : 'Mark private'}</Button
-						>
-						{#if markError}
-							<p class="mark-error" role="alert">{markError}</p>
-						{/if}
-						{#if retryMark !== null}
-							<Button
-								variant="outline"
-								size="sm"
-								class="border-white/40 bg-transparent text-white hover:bg-white/20 hover:text-white"
-								aria-disabled={marking}
-								onclick={() => retryMark !== null && setPrivate(retryMark)}
-								>{retryMark ? 'Try again: mark private' : 'Try again: unmark private'}</Button
-							>
-						{/if}
-					</div>
-				{/if}
 
 				{#if allMedia.length > 1}
 					<div class="media-counter">
@@ -382,7 +383,7 @@
 		flex-direction: column;
 		align-items: flex-start;
 		gap: 0.5rem;
-		margin-top: 1rem;
+		margin-bottom: 1rem;
 	}
 
 	.mark-error {
@@ -405,6 +406,15 @@
 			flex-direction: column;
 			gap: 1rem;
 			padding: 1rem;
+		}
+
+		/* Shrink a tall image to the space left, rather than push the panel off the dialog. */
+		.media-container {
+			min-height: 0;
+		}
+
+		.media-image {
+			max-height: 100%;
 		}
 
 		.metadata-panel {
