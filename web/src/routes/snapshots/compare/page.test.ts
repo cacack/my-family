@@ -137,6 +137,16 @@ describe('Snapshot comparison page', () => {
 		expect(auth.phase).toBe('signed-out');
 	});
 
+	it('links back to research snapshots, but not for a visitor, who cannot open them', () => {
+		const { unmount } = render(Page);
+		expect(screen.getByRole('link', { name: /Research Snapshots/ })).toBeTruthy();
+		unmount();
+
+		auth.phase = 'visitor';
+		render(Page);
+		expect(screen.queryByRole('link', { name: /Research Snapshots/ })).toBeNull();
+	});
+
 	it('requests the pair from the query string', async () => {
 		render(Page);
 

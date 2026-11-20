@@ -7,6 +7,10 @@
 	import { isVisitor } from '#lib/stores/access.svelte.js';
 </script>
 
+{#snippet snapshotsLink()}
+	<Button variant="outline" size="sm" href="/snapshots">Research snapshots</Button>
+{/snippet}
+
 <svelte:head>
 	<title>Change History | My Family</title>
 </svelte:head>
@@ -19,11 +23,8 @@
 	<PageHeader
 		title="Change History"
 		description="Complete audit trail of all changes to your family tree"
-	>
-		{#snippet actions()}
-			<Button variant="outline" size="sm" href="/snapshots">Research snapshots</Button>
-		{/snippet}
-	</PageHeader>
+		actions={isVisitor() ? undefined : snapshotsLink}
+	/>
 
 	{#if isVisitor()}
 		<SignInRequired subject="the change history" />
