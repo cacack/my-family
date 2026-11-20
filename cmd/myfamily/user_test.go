@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"log"
 	"strings"
 	"testing"
@@ -100,6 +101,67 @@ func TestLogAuthMode(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// failingSeed is a settings store whose SeedHomePerson fails.
+type failingSeed struct{ repository.SettingsStore }
+
+func (failingSeed) SeedHomePerson(context.Context, uuid.UUID) error {
+	return errors.New("store down")
+}
+
+func TestCarryOverHomePerson(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  *config.Config
+		want bool
+	}{
+		{"sign-in on carries the site's choice over", &config.Config{}, true},
+		{"open mode leaves the owner unseeded", &config.Config{AuthMode: config.AuthModeOpen}, false},
+		{"demo mode leaves the owner unseeded", &config.Config{DemoMode: true}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			settings := memory.NewSettingsStore()
+			svc := auth.NewService(memory.NewAccountStore(), auth.WithSettings(settings))
+			// The owner exists before the site has a home person, as on an
+			// install set up before per-account home persons.
+			owner, err := svc.CreateOwner(ctx, auth.CommandLine, "ada", "Ada", "correct horse battery")
+			if err != nil {
+				t.Fatal(err)
+			}
+			site := uuid.New()
+			if err := settings.SetHomePerson(ctx, repository.SiteWide, site); err != nil {
+				t.Fatal(err)
+			}
+			carryOverHomePerson(tt.cfg, svc, log.New(&bytes.Buffer{}, "", 0))
+			got, err := settings.HomePerson(ctx, owner.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := uuid.Nil
+			if tt.want {
+				want = site
+			}
+			if got != want {
+				t.Errorf("owner's home person = %v, want %v", got, want)
+			}
+		})
+	}
+}
+
+func TestCarryOverHomePerson_LogsAFailure(t *testing.T) {
+	ctx := context.Background()
+	svc := auth.NewService(memory.NewAccountStore(), auth.WithSettings(failingSeed{memory.NewSettingsStore()}))
+	if _, err := svc.CreateOwner(ctx, auth.CommandLine, "ada", "Ada", "correct horse battery"); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	carryOverHomePerson(&config.Config{}, svc, log.New(&buf, "", 0))
+	if !strings.Contains(buf.String(), "Warning: carry over home person: store down") {
+		t.Errorf("logged %q, want the failure as a warning", buf.String())
 	}
 }
 

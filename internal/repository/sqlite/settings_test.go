@@ -74,6 +74,9 @@ func TestSQLiteSettingsStore_ClosedDB(t *testing.T) {
 	if err := store.MoveHomePersons(t.Context(), map[uuid.UUID]uuid.UUID{uuid.New(): uuid.New()}); err == nil {
 		t.Error("MoveHomePersons() on a closed database: want error")
 	}
+	if err := store.SeedHomePerson(t.Context(), uuid.New()); err == nil {
+		t.Error("SeedHomePerson() on a closed database: want error")
+	}
 	if _, err := sqlite.NewSettingsStore(db); err == nil {
 		t.Error("NewSettingsStore() on a closed database: want error")
 	}

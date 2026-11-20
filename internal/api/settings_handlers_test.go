@@ -139,6 +139,10 @@ func (failingSettings) SetHomePerson(context.Context, uuid.UUID, uuid.UUID) erro
 	return errSettingsBroken
 }
 
+func (failingSettings) SeedHomePerson(context.Context, uuid.UUID) error {
+	return errSettingsBroken
+}
+
 func (failingSettings) MoveHomePersons(context.Context, map[uuid.UUID]uuid.UUID) error {
 	return errSettingsBroken
 }

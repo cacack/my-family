@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -508,6 +509,95 @@ func TestCreateOwner_NoSiteHomePerson(t *testing.T) {
 	}
 }
 
+// An owner set up before home persons were per account was never seeded; the
+// carry-over gives the tree's only owner the site's home person unless they
+// have chosen or cleared their own (#1474).
+func TestCarryOverHomePerson(t *testing.T) {
+	site, own := uuid.New(), uuid.New()
+	tests := []struct {
+		name     string
+		noSite   bool
+		owners   int
+		editor   bool
+		ownerSet func(ctx context.Context, s *memory.SettingsStore, owner uuid.UUID)
+		want     uuid.UUID
+	}{
+		{name: "only owner with no choice gets the site's", owners: 1, want: site},
+		{name: "other roles do not count as owners", owners: 1, editor: true, want: site},
+		{name: "owner's own choice is kept", owners: 1, want: own,
+			ownerSet: func(ctx context.Context, s *memory.SettingsStore, owner uuid.UUID) {
+				_ = s.SetHomePerson(ctx, owner, own)
+			}},
+		{name: "owner's cleared choice stays cleared", owners: 1, want: uuid.Nil,
+			ownerSet: func(ctx context.Context, s *memory.SettingsStore, owner uuid.UUID) {
+				_ = s.SetHomePerson(ctx, owner, own)
+				_ = s.SetHomePerson(ctx, owner, uuid.Nil)
+			}},
+		{name: "two owners get nothing", owners: 2, want: uuid.Nil},
+		{name: "no site choice copies nothing", owners: 1, noSite: true, want: uuid.Nil},
+		{name: "no owner is no error", owners: 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			accounts, settings := memory.NewAccountStore(), memory.NewSettingsStore()
+			// Owners are created as before #1443: without the settings store.
+			bare := NewService(accounts)
+			var owners []uuid.UUID
+			for i := range tt.owners {
+				u, err := bare.CreateOwner(ctx, CommandLine, fmt.Sprintf("owner%d", i), "Owner", testPassword)
+				if err != nil {
+					t.Fatal(err)
+				}
+				owners = append(owners, u.ID)
+			}
+			if tt.editor {
+				u, err := bare.newUser("ed", "Ed", testPassword)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := accounts.CreateUser(ctx, u, repository.DefaultTreeID, repository.RoleEditor); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if !tt.noSite {
+				_ = settings.SetHomePerson(ctx, repository.SiteWide, site)
+			}
+			if tt.ownerSet != nil {
+				tt.ownerSet(ctx, settings, owners[0])
+			}
+
+			svc := NewService(accounts, WithSettings(settings))
+			for range 2 { // a second run, as at the next startup, changes nothing
+				if err := svc.CarryOverHomePerson(ctx); err != nil {
+					t.Fatalf("CarryOverHomePerson: %v", err)
+				}
+			}
+			for _, owner := range owners {
+				if got, _ := settings.HomePerson(ctx, owner); got != tt.want {
+					t.Errorf("owner's home person = %v, want %v", got, tt.want)
+				}
+			}
+		})
+	}
+}
+
+// Without a settings store there is nothing to carry over; a failing one is
+// reported.
+func TestCarryOverHomePerson_Stores(t *testing.T) {
+	ctx := context.Background()
+	accounts := memory.NewAccountStore()
+	if _, err := NewService(accounts).CreateOwner(ctx, CommandLine, "ada", "Ada", testPassword); err != nil {
+		t.Fatal(err)
+	}
+	if err := NewService(accounts).CarryOverHomePerson(ctx); err != nil {
+		t.Errorf("CarryOverHomePerson without a settings store: %v", err)
+	}
+	if err := NewService(accounts, WithSettings(brokenSettings{})).CarryOverHomePerson(ctx); err == nil {
+		t.Error("CarryOverHomePerson with a failing settings store: want error")
+	}
+}
+
 // brokenSettings fails every call.
 type brokenSettings struct{}
 
@@ -516,6 +606,10 @@ func (brokenSettings) HomePerson(context.Context, uuid.UUID) (uuid.UUID, error) 
 }
 
 func (brokenSettings) SetHomePerson(context.Context, uuid.UUID, uuid.UUID) error {
+	return errors.New("settings table is locked")
+}
+
+func (brokenSettings) SeedHomePerson(context.Context, uuid.UUID) error {
 	return errors.New("settings table is locked")
 }
 

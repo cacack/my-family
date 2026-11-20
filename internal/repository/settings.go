@@ -24,8 +24,15 @@ type SettingsStore interface {
 	HomePerson(ctx context.Context, accountID uuid.UUID) (uuid.UUID, error)
 
 	// SetHomePerson marks personID as accountID's home person, replacing any
-	// earlier choice. uuid.Nil clears it.
+	// earlier choice. uuid.Nil clears it; an account remembers that it cleared
+	// its choice, so SeedHomePerson leaves it cleared.
 	SetHomePerson(ctx context.Context, accountID, personID uuid.UUID) error
+
+	// SeedHomePerson gives accountID the site-wide home person, unless
+	// accountID has chosen one or cleared its choice. It does nothing while
+	// the site has none. A clear made before #1474 left no record, so it
+	// counts as never chosen.
+	SeedHomePerson(ctx context.Context, accountID uuid.UUID) error
 
 	// MoveHomePersons makes survivors[p] the home person of the site and of
 	// every account whose home person is p, as when merges remove each p. It
