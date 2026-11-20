@@ -242,6 +242,25 @@ func (s *BranchService) CompareBranch(ctx context.Context, branchID uuid.UUID) (
 		return nil, fmt.Errorf("describe conflicting values: %w", err)
 	}
 
+	// What leaves for the review is redacted for the principal, a record
+	// being protected if it is on either side (ADR-008 §5b).
+	redactor, scopes := s.redactor(), branchScopes(diff.branch.ID)
+	if branchChanges, err = redactor.entries(ctx, scopes, branchChanges); err != nil {
+		return nil, err
+	}
+	if mainChanges, err = redactor.entries(ctx, scopes, mainChanges); err != nil {
+		return nil, err
+	}
+	if conflicts, err = redactor.conflicts(ctx, scopes, conflicts); err != nil {
+		return nil, err
+	}
+	if err := redactor.mergeRecord(ctx, scopes, record); err != nil {
+		return nil, err
+	}
+	if record != nil {
+		record.SkippedStreamIDs = redactor.streams(ctx, record.SkippedStreamIDs, branchChanges)
+	}
+
 	return &BranchComparisonResult{
 		Branch:               diff.branch,
 		BasePosition:         diff.branch.BasePosition,
@@ -250,7 +269,7 @@ func (s *BranchService) CompareBranch(ctx context.Context, branchID uuid.UUID) (
 		BranchChangeCount:    len(branchChanges),
 		MainChangeCount:      len(mainChanges),
 		HasMore:              diff.branchTruncated || diff.mainTruncated || tailTruncated,
-		OverlappingStreamIDs: overlappingStreamIDs(diff.branchEvents, diff.mainEvents),
+		OverlappingStreamIDs: redactor.streams(ctx, overlappingStreamIDs(diff.branchEvents, diff.mainEvents), branchChanges, mainChanges),
 		Conflicts:            conflicts,
 		ReplayedChangeCount:  replayed,
 		MergeRecord:          record,

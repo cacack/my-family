@@ -70,7 +70,7 @@ func (s *BranchService) NameEntities(ctx context.Context, branchID domain.Branch
 			lookup.add(ref.EntityType, ref.ID)
 		}
 	}
-	desc := &historyDescription{states: make(map[uuid.UUID]*streamState)}
+	desc := &historyDescription{states: make(map[uuid.UUID]*streamState), placeholderUnresolved: hs.redactor.placeholderUnresolved(ctx)}
 	var err error
 	if desc.names, err = hs.resolveEntityNamesOn(ctx, branchID, lookup); err != nil {
 		return nil, err

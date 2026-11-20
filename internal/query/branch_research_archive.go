@@ -152,6 +152,9 @@ func (s *BranchService) BranchResearchArchive(ctx context.Context, branchID uuid
 		return nil, err
 	}
 	names.apply(archive)
+	if err := s.redactor().archive(ctx, branchScopes(branch.ID), archive); err != nil {
+		return nil, err
+	}
 	return archive, nil
 }
 

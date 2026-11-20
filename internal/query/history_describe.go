@@ -99,6 +99,11 @@ type historyDescription struct {
 	names   *entityNames
 	states  map[uuid.UUID]*streamState
 	changes map[uuid.UUID]map[string]FieldChange // by event id
+	// placeholderUnresolved names a person the read model does not hold
+	// (deleted since) as the placeholder rather than from their folded
+	// stream: a record that does not resolve is protected (ADR-008 §3).
+	// Set from the service's changeRedactor.
+	placeholderUnresolved bool
 }
 
 // describeEvents resolves names, field changes and owners for a batch of
@@ -115,8 +120,9 @@ func (s *HistoryService) describeEvents(ctx context.Context, branchID domain.Bra
 	}
 
 	desc := &historyDescription{
-		states:  make(map[uuid.UUID]*streamState, len(streams)),
-		changes: make(map[uuid.UUID]map[string]FieldChange),
+		states:                make(map[uuid.UUID]*streamState, len(streams)),
+		changes:               make(map[uuid.UUID]map[string]FieldChange),
+		placeholderUnresolved: s.redactor.placeholderUnresolved(ctx),
 	}
 	for streamID, streamEvents := range streams {
 		state := newStreamState()
@@ -602,7 +608,7 @@ func (d *historyDescription) stateLabel(entityType string, entityID uuid.UUID) s
 	switch entityType {
 	case entityTypePerson:
 		if d.names.persons[entityID] == nil {
-			return d.personFromState(state)
+			return d.unresolvedPerson(state)
 		}
 	case entityTypeFamily:
 		if d.names.families[entityID] == nil {
@@ -699,16 +705,26 @@ func (d *historyDescription) personFromState(state *streamState) string {
 
 // personLabel names a person another entry refers to (a partner, an
 // associate, a linked child): the read-model name, else the name folded from
-// the person's own stream — a person deleted since is still named — else the
-// id.
+// the person's own stream — a person deleted since is still named, unless
+// placeholderUnresolved — else the id.
 func (d *historyDescription) personLabel(id uuid.UUID) string {
 	if person := d.names.persons[id]; person != nil {
 		return person.FullName
 	}
-	if name := d.personFromState(d.states[id]); name != "" {
+	if name := d.unresolvedPerson(d.states[id]); name != "" {
 		return name
 	}
 	return id.String()
+}
+
+// unresolvedPerson names a person the read model does not hold: the
+// placeholder when placeholderUnresolved is set, else from their folded
+// stream (personFromState).
+func (d *historyDescription) unresolvedPerson(state *streamState) string {
+	if d.placeholderUnresolved {
+		return repository.PlaceholderGivenName
+	}
+	return d.personFromState(state)
 }
 
 func (d *historyDescription) familyFromState(state *streamState) string {

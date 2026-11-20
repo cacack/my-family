@@ -196,6 +196,9 @@ func (s *BranchService) EvidenceCoverage(ctx context.Context, branchID uuid.UUID
 	for _, fact := range uncovered {
 		result.Uncovered = append(result.Uncovered, *fact)
 	}
+	if result.Uncovered, err = s.redactor().changedFacts(ctx, branchScopes(diff.branch.ID), result.Uncovered); err != nil {
+		return nil, err
+	}
 	return result, nil
 }
 
