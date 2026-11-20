@@ -405,6 +405,12 @@ func TestPrivacyRedaction_ChartPlaceholders(t *testing.T) {
 				t.Errorf("family = %v; want the living partner and kid redacted %v", fam, !p.seesLiving)
 			}
 
+			for _, item := range p.getJSON(t, f, "/api/v1/families?limit=100")["items"].([]any) {
+				if listed := item.(map[string]any); listed["id"] == tr.family && (redacted(listed["partner2"]) == p.seesLiving || redacted(listed["partner1"])) {
+					t.Errorf("listed family = %v; want the living partner redacted %v", listed, !p.seesLiving)
+				}
+			}
+
 			sheet := p.getJSON(t, f, "/api/v1/families/"+tr.family+"/group-sheet")
 			if child := sheet["children"].([]any)[0]; redacted(child) == p.seesLiving {
 				t.Errorf("group sheet child = %v; want redacted %v", child, !p.seesLiving)

@@ -37,21 +37,21 @@ type Family struct {
 	MarriageNotes      *string         `json:"marriage_notes,omitempty"`
 	Notes              *string         `json:"notes,omitempty"`
 	Private            bool            `json:"private,omitempty"` // ADR-008 §2
-	ChildCount         int             `json:"child_count"`
-	Version            int64           `json:"version"`
+	// Partner1Redacted and Partner2Redacted mark a partner shown as the
+	// placeholder for a protected person (ADR-008 §3).
+	Partner1Redacted bool  `json:"partner1_redacted,omitempty"`
+	Partner2Redacted bool  `json:"partner2_redacted,omitempty"`
+	ChildCount       int   `json:"child_count"`
+	Version          int64 `json:"version"`
 }
 
 // FamilyDetail includes children information.
 type FamilyDetail struct {
 	Family
-	Partner1Gender *string `json:"partner1_gender,omitempty"`
-	Partner2Gender *string `json:"partner2_gender,omitempty"`
-	// Partner1Redacted and Partner2Redacted mark a partner shown as the
-	// placeholder for a protected person (ADR-008 §3).
-	Partner1Redacted bool                        `json:"partner1_redacted,omitempty"`
-	Partner2Redacted bool                        `json:"partner2_redacted,omitempty"`
-	Children         []FamilyChildInfo           `json:"children,omitempty"`
-	ExternalIDs      []domain.ExternalIdentifier `json:"external_ids,omitempty"`
+	Partner1Gender *string                     `json:"partner1_gender,omitempty"`
+	Partner2Gender *string                     `json:"partner2_gender,omitempty"`
+	Children       []FamilyChildInfo           `json:"children,omitempty"`
+	ExternalIDs    []domain.ExternalIdentifier `json:"external_ids,omitempty"`
 }
 
 // FamilyChildInfo represents a child in a family.
@@ -103,6 +103,9 @@ func (s *FamilyService) ListFamilies(ctx context.Context, input ListFamiliesInpu
 	for i, rm := range readModels {
 		families[i] = convertReadModelToFamily(rm)
 	}
+	if err := s.markRedactedPartners(ctx, opts.BranchID, families); err != nil {
+		return nil, err
+	}
 
 	return &FamilyListResult{
 		Items:  families,
@@ -110,6 +113,39 @@ func (s *FamilyService) ListFamilies(ctx context.Context, input ListFamiliesInpu
 		Limit:  opts.Limit,
 		Offset: opts.Offset,
 	}, nil
+}
+
+// markRedactedPartners marks the partners of families shown as placeholders
+// (ADR-008 §3), from one batched person read.
+func (s *FamilyService) markRedactedPartners(ctx context.Context, branchID domain.BranchID, families []Family) error {
+	var ids []uuid.UUID
+	for _, f := range families {
+		for _, id := range []*uuid.UUID{f.Partner1ID, f.Partner2ID} {
+			if id != nil {
+				ids = append(ids, *id)
+			}
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	persons, err := s.readStore.GetPersonsByIDs(ctx, branchID, ids)
+	if err != nil {
+		return err
+	}
+	redacted := make(map[uuid.UUID]bool, len(persons))
+	for _, p := range persons {
+		redacted[p.ID] = p.Visibility != repository.Visible
+	}
+	for i := range families {
+		if id := families[i].Partner1ID; id != nil {
+			families[i].Partner1Redacted = redacted[*id]
+		}
+		if id := families[i].Partner2ID; id != nil {
+			families[i].Partner2Redacted = redacted[*id]
+		}
+	}
+	return nil
 }
 
 // GetFamily returns a family by ID with children.

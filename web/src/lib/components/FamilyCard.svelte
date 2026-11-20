@@ -3,6 +3,7 @@
 	import { formatGenDate, formatPersonName } from '#lib/api/client.js';
 	import { Badge } from '#lib/components/ui/badge/index.js';
 	import { Card, CardHeader, CardContent } from '#lib/components/ui/card/index.js';
+	import PrivacyBadges from '#lib/components/PrivacyBadges.svelte';
 
 	interface Props {
 		family: FamilyDetail;
@@ -21,9 +22,11 @@
 {#snippet cardInner()}
 	<div class="partners">
 		<span class="partner">{partner1Name}</span>
+		<PrivacyBadges redacted={family.partner1?.redacted} />
 		{#if partner2Name}
 			<span class="connector">&amp;</span>
 			<span class="partner">{partner2Name}</span>
+			<PrivacyBadges redacted={family.partner2?.redacted} />
 		{/if}
 	</div>
 	<div class="details">

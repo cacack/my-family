@@ -4430,10 +4430,10 @@ func convertQueryFamilyToFamilyDetail(f query.Family) FamilyDetail {
 	resp.Notes = f.Notes
 
 	if f.Partner1ID != nil {
-		resp.Partner1 = personSummary(*f.Partner1ID, stringValue(f.Partner1GivenName), stringValue(f.Partner1Surname), nil, false)
+		resp.Partner1 = personSummary(*f.Partner1ID, stringValue(f.Partner1GivenName), stringValue(f.Partner1Surname), nil, f.Partner1Redacted)
 	}
 	if f.Partner2ID != nil {
-		resp.Partner2 = personSummary(*f.Partner2ID, stringValue(f.Partner2GivenName), stringValue(f.Partner2Surname), nil, false)
+		resp.Partner2 = personSummary(*f.Partner2ID, stringValue(f.Partner2GivenName), stringValue(f.Partner2Surname), nil, f.Partner2Redacted)
 	}
 
 	return resp
