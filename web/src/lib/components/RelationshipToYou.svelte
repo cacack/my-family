@@ -9,10 +9,11 @@
 	/**
 	 * How a person relates to the home person ("me"), linked to the full path in
 	 * the relationship calculator, with the control that marks or unmarks them as
-	 * "me" (#1034).
+	 * "me" (#1034). A placeholder (ADR-008 §3) is never offered as "me": the
+	 * viewer may not see who it is (#1492).
 	 */
 	interface Props {
-		person: Pick<Person, 'id' | 'gender'>;
+		person: Pick<Person, 'id' | 'gender' | 'redacted'>;
 	}
 
 	let { person }: Props = $props();
@@ -81,7 +82,7 @@
 			{#if relation && relation.pair === pair}
 				<a href={calculatorHref} class="relation">{relation.text ?? 'No known relationship to you'}</a>
 			{/if}
-			{#if canChooseHomePerson()}
+			{#if canChooseHomePerson() && !person.redacted}
 				<Button
 					variant="outline"
 					size="xs"

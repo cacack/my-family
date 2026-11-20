@@ -5,6 +5,7 @@
 	import ActionBar from '#lib/components/ActionBar.svelte';
 	import { Card, CardHeader, CardContent } from '#lib/components/ui/card/index.js';
 	import ErrorState from '#lib/components/ErrorState.svelte';
+	import PrivacyBadges from '#lib/components/PrivacyBadges.svelte';
 	import LoadingState from '#lib/components/LoadingState.svelte';
 	import EmptyState from '#lib/components/EmptyState.svelte';
 	import ActionError from '#lib/components/ActionError.svelte';
@@ -191,6 +192,7 @@
 													<a href="/persons/{entry.id}" class="person-link">
 														{formatPersonName(entry)}
 													</a>
+													<PrivacyBadges redacted={entry.redacted} />
 												{:else}
 													<span class="unknown-person">Unknown</span>
 												{/if}
@@ -245,6 +247,7 @@
 													<a href="/persons/{entry.id}" class="person-link">
 														{formatPersonName(entry)}
 													</a>
+													<PrivacyBadges redacted={entry.redacted} />
 												{:else}
 													<span class="unknown-person">Unknown</span>
 												{/if}

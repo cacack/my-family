@@ -175,3 +175,47 @@ describe("Ahnentafel page: summary counts ancestors, not the subject (#1119)", (
     ).toBe("2 generations - 2 of 6 ancestors known");
   });
 });
+
+describe("Ahnentafel page: placeholder people (#1492)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  async function renderEntry(entry: Partial<apiModule.AhnentafelEntry>) {
+    vi.mocked(apiModule.api.getAhnentafel).mockResolvedValue(reportWith(entry));
+    resetRouter("/ahnentafel/p-1", { id: "p-1" });
+    const { container } = render(AhnentafelPage);
+    await waitFor(() =>
+      expect(container.querySelector(".person-link")).not.toBeNull(),
+    );
+    return container;
+  }
+
+  it("marks a placeholder 'Details hidden' with no dates, keeping its link", async () => {
+    const container = await renderEntry({
+      given_name: "Living",
+      gender: "female",
+      redacted: true,
+    });
+    // One mark per view: the table and the cards.
+    expect(screen.getAllByTestId("redacted-badge")).toHaveLength(2);
+    expect(
+      screen.getAllByRole("img", { name: "Details hidden" }).length,
+    ).toBeGreaterThan(0);
+    const row = container.querySelector(".ahnentafel-table tbody tr")!;
+    expect(row.querySelector(".col-birth")?.textContent?.trim()).toBe("-");
+    expect(row.querySelector(".col-death")?.textContent?.trim()).toBe("-");
+    expect(container.querySelector(".card-event")).toBeNull();
+    expect(
+      container.querySelector(".person-link")?.getAttribute("href"),
+    ).toBe("/persons/p-1");
+  });
+
+  it("shows no mark on a person the reader may see", async () => {
+    await renderEntry({
+      given_name: "Ada",
+      birth_date: { raw: "1880" } as apiModule.AhnentafelEntry["birth_date"],
+    });
+    expect(screen.queryByTestId("redacted-badge")).toBeNull();
+  });
+});
