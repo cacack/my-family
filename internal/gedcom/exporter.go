@@ -91,7 +91,10 @@ type Exporter struct {
 	readStore repository.ReadModelStore
 }
 
-// NewExporter creates a new GEDCOM exporter.
+// NewExporter creates a new GEDCOM exporter. The export applies no privacy
+// of its own: it writes what readStore returns, so to export as the principal
+// on the call's context, pass a store wrapped by query.NewPrivacyStore. Family
+// members that principal may not see are then written as placeholders.
 func NewExporter(readStore repository.ReadModelStore) *Exporter {
 	return &Exporter{readStore: readStore}
 }
