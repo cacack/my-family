@@ -63,12 +63,17 @@ type Privacy struct {
 	// names and contact details (ADR-008 §4). Only query.PrivacyStore applies
 	// it; the backends' SQL list and search forms do not read it.
 	HideSubmitters bool
+	// HideAttribution hides who made each change (user IDs and names on
+	// change entries and merge records), which is account data (ADR-008 §4).
+	// Only the event-output redactor (query) applies it.
+	HideAttribution bool
 }
 
 // PrivacyFor returns what principal p may not see at now under settings
 // (ADR-008 §4): editors and owners see everything; viewers see living people
 // unless the owner turned that off, and no private records; anonymous
-// visitors, and a principal with no role, see neither, nor submitters.
+// visitors, and a principal with no role, see neither, nor submitters, nor
+// who made each change.
 func PrivacyFor(p Principal, settings TreeSettings, now time.Time) Privacy {
 	role := p.Role
 	if p.Anonymous || !role.Valid() {
@@ -82,7 +87,7 @@ func PrivacyFor(p Principal, settings TreeSettings, now time.Time) Privacy {
 	case role == RoleViewer && settings.ViewersSeeLiving:
 		return Privacy{HidePrivate: true}
 	default:
-		return Privacy{HidePrivate: true, HideLiving: true, LivingCutoff: settings.LivingCutoff(now), HideSubmitters: anonymous}
+		return Privacy{HidePrivate: true, HideLiving: true, LivingCutoff: settings.LivingCutoff(now), HideSubmitters: anonymous, HideAttribution: anonymous}
 	}
 }
 
@@ -94,7 +99,7 @@ func PrivacyFrom(ctx context.Context, now time.Time) Privacy {
 
 // SeesAll reports whether nothing is hidden.
 func (v Privacy) SeesAll() bool {
-	return !v.HidePrivate && !v.HideLiving && !v.HideSubmitters
+	return !v.HidePrivate && !v.HideLiving && !v.HideSubmitters && !v.HideAttribution
 }
 
 // Hides reports whether a record with restriction r is hidden.
