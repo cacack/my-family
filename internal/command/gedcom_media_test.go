@@ -11,6 +11,7 @@ import (
 
 	"github.com/cacack/my-family/internal/command"
 	"github.com/cacack/my-family/internal/domain"
+	"github.com/cacack/my-family/internal/gedcom"
 	"github.com/cacack/my-family/internal/repository"
 	"github.com/cacack/my-family/internal/repository/memory"
 )
@@ -261,5 +262,92 @@ func TestRollbackMedia_PrivateMarkCoversTheGroup(t *testing.T) {
 		if !m.Restriction.IsPrivate() {
 			t.Errorf("item of %s has restriction %q, want private after the rollback", m.EntityType, m.Restriction)
 		}
+	}
+}
+
+// survivorMediaCount imports ged into a fresh store and returns the number of
+// media items the person named given holds, with that store.
+func survivorMediaCount(t *testing.T, ged, given string) (int, *memory.ReadModelStore) {
+	t.Helper()
+	ctx := context.Background()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(memory.NewEventStore(), readStore)
+	if _, err := handler.ImportGedcom(ctx, command.ImportGedcomInput{Filename: "m.ged", Reader: strings.NewReader(ged)}); err != nil {
+		t.Fatalf("ImportGedcom: %v", err)
+	}
+	persons, _, _ := readStore.ListPersons(ctx, repository.DefaultListOptions())
+	for _, p := range persons {
+		if p.GivenName == given {
+			media, _, err := readStore.ListMediaForEntity(ctx, "person", p.ID, repository.DefaultListOptions())
+			if err != nil {
+				t.Fatalf("ListMediaForEntity: %v", err)
+			}
+			return len(media), readStore
+		}
+	}
+	t.Fatalf("no person named %s in\n%s", given, ged)
+	return 0, nil
+}
+
+func exportGedcom(t *testing.T, readStore repository.ReadModelStore) string {
+	t.Helper()
+	var buf strings.Builder
+	if _, err := gedcom.NewExporter(readStore).Export(context.Background(), &buf); err != nil {
+		t.Fatalf("Export: %v", err)
+	}
+	return buf.String()
+}
+
+// Merging two people who both link one OBJE record leaves the survivor with
+// two items of its group; export and re-import give the survivor the same
+// number of items for that photo on every round trip (#1507).
+func TestImportGedcom_MergedSharedMediaRoundTripIsStable(t *testing.T) {
+	const ged = `0 HEAD
+1 GEDC
+2 VERS 7.0
+0 @M1@ OBJE
+1 FILE photos/reunion.jpg
+2 FORM image/jpeg
+2 TITL Reunion
+0 @I1@ INDI
+1 NAME John /Doe/
+1 OBJE @M1@
+0 @I2@ INDI
+1 NAME Johnny /Doe/
+1 OBJE @M1@
+0 TRLR
+`
+	ctx := context.Background()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(memory.NewEventStore(), readStore)
+	if _, err := handler.ImportGedcom(ctx, command.ImportGedcomInput{Filename: "m.ged", Reader: strings.NewReader(ged)}); err != nil {
+		t.Fatalf("ImportGedcom: %v", err)
+	}
+	persons, _, _ := readStore.ListPersons(ctx, repository.DefaultListOptions())
+	if len(persons) != 2 {
+		t.Fatalf("imported %d persons, want 2", len(persons))
+	}
+	survivor, merged := persons[0], persons[1]
+	if survivor.GivenName != "John" {
+		survivor, merged = merged, survivor
+	}
+	if _, err := handler.MergePersons(ctx, command.MergePersonsInput{
+		SurvivorID: survivor.ID, MergedID: merged.ID, SurvivorVersion: survivor.Version, MergedVersion: merged.Version,
+	}); err != nil {
+		t.Fatalf("MergePersons: %v", err)
+	}
+	held, _, _ := readStore.ListMediaForEntity(ctx, "person", survivor.ID, repository.DefaultListOptions())
+	if len(held) != 2 {
+		t.Fatalf("survivor holds %d items after the merge, want 2", len(held))
+	}
+
+	first := exportGedcom(t, readStore)
+	if n := strings.Count(first, "1 OBJE @O1@"); n != 1 {
+		t.Errorf("export links @O1@ %d times, want once:\n%s", n, first)
+	}
+	count1, store1 := survivorMediaCount(t, first, "John")
+	count2, _ := survivorMediaCount(t, exportGedcom(t, store1), "John")
+	if count1 != 1 || count2 != count1 {
+		t.Errorf("survivor holds %d items after one round trip and %d after two, want 1 both times", count1, count2)
 	}
 }
