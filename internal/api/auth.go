@@ -18,6 +18,17 @@ import (
 // sessionCookieName is the cookie a signed-in browser carries.
 const sessionCookieName = "myfamily_session"
 
+// previewCookieName is the cookie an owner's browser carries while the owner
+// previews the tree as someone else (#1413): previewViewer or previewVisitor.
+// The web app sets and clears it; the server only reads it (servePreview).
+const previewCookieName = "myfamily_preview"
+
+// The principals an owner may preview the tree as.
+const (
+	previewViewer  = "viewer"
+	previewVisitor = "visitor"
+)
+
 // Error codes of the sign-in layer.
 const (
 	CodeUnauthenticated    = "UNAUTHENTICATED"
@@ -104,7 +115,11 @@ func (s *Server) authenticate(next echo.HandlerFunc) echo.HandlerFunc {
 			required = repository.RoleViewer
 		}
 		if s.config.OpenMode() {
-			return s.serveTree(withRole(ctx, repository.RoleOwner, false), c, next)
+			ctx = withRole(ctx, repository.RoleOwner, false)
+			if cookie, err := req.Cookie(previewCookieName); err == nil && required != rolePublic {
+				return s.servePreview(ctx, c, next, required, cookie.Value)
+			}
+			return s.serveTree(ctx, c, next)
 		}
 
 		if cookie, err := req.Cookie(sessionCookieName); err == nil {
@@ -142,11 +157,46 @@ func (s *Server) authenticate(next echo.HandlerFunc) echo.HandlerFunc {
 		if userFrom(ctx) == nil {
 			return s.serveVisitor(ctx, c, next, required)
 		}
-		if role := roleFrom(ctx); !role.Includes(required) {
+		role := roleFrom(ctx)
+		if cookie, err := req.Cookie(previewCookieName); err == nil && role == repository.RoleOwner {
+			return s.servePreview(ctx, c, next, required, cookie.Value)
+		}
+		if !role.Includes(required) {
 			return refuse(c, http.StatusForbidden, CodeForbidden, forbiddenMessage(role, required))
 		}
 		return s.serveTree(ctx, c, next)
 	}
+}
+
+// servePreview serves an owner's request as the principal they preview the
+// tree as (#1413), so the preview shows exactly what the API returns to that
+// principal: a viewer's role, or a visitor's (the anonymous principal, with
+// no user on the context, refused the account and change-log routes as
+// serveVisitor refuses them). A visitor preview works whether or not visitors
+// are let in, so the owner can look before letting them in. What the
+// principal may not call is refused with 403, not 401: the owner is still
+// signed in. The cookie is ignored for everyone but the owner, since it can
+// only narrow what they see; a value that is no principal is refused, rather
+// than showing the owner everything while they think they are previewing.
+func (s *Server) servePreview(ctx context.Context, c echo.Context, next echo.HandlerFunc, required repository.Role, as string) error {
+	const stop = " Stop the preview to do it as yourself."
+	switch as {
+	case previewViewer:
+		if !repository.RoleViewer.Includes(required) {
+			return refuse(c, http.StatusForbidden, CodeForbidden, "A viewer cannot do this."+stop)
+		}
+		ctx = withRole(ctx, repository.RoleViewer, false)
+	case previewVisitor:
+		if required != repository.RoleViewer || signedInRoutes[routeKey(c.Request().Method, c.Path())] {
+			return refuse(c, http.StatusForbidden, CodeForbidden, "A visitor cannot do this."+stop)
+		}
+		ctx = context.WithValue(ctx, userKey{}, (*repository.User)(nil))
+		ctx = withRole(ctx, repository.RoleViewer, true)
+	default:
+		return refuse(c, http.StatusBadRequest, CodeBadRequest,
+			fmt.Sprintf("Cannot preview the tree as %q: only as a viewer or a visitor. Stop the preview and start it again.", as))
+	}
+	return s.serveTree(ctx, c, next)
 }
 
 // serveVisitor serves a request with no session as the anonymous principal
