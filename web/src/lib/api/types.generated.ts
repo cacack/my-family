@@ -567,6 +567,9 @@ export interface paths {
          *     A merge's replayed changes are listed at the time of the merge, not
          *     when they were made on the branch, and carry `merged_from`; the `from`
          *     and `to` window selects them by that time too.
+         *
+         *     Requires a signed-in user: an anonymous visitor is refused with 401,
+         *     since change records name who made each change (ADR-008 §4).
          */
         get: operations["listHistory"];
         put?: never;
@@ -599,6 +602,9 @@ export interface paths {
          *     its view (they surface in the branch compare and at merge). Each entry
          *     carries `origin` (`branch` or `main`). A person that exists only on the
          *     branch has only branch entries; one the branch deleted is not found.
+         *
+         *     Requires a signed-in user: an anonymous visitor is refused with 401,
+         *     since change records name who made each change (ADR-008 §4).
          */
         get: operations["getPersonHistory"];
         put?: never;
@@ -631,6 +637,9 @@ export interface paths {
          *     its view (they surface in the branch compare and at merge). Each entry
          *     carries `origin` (`branch` or `main`). A family that exists only on the
          *     branch has only branch entries; one the branch deleted is not found.
+         *
+         *     Requires a signed-in user: an anonymous visitor is refused with 401,
+         *     since change records name who made each change (ADR-008 §4).
          */
         get: operations["getFamilyHistory"];
         put?: never;
@@ -650,7 +659,11 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** Get change history for a source */
+        /**
+         * Get change history for a source
+         * @description Requires a signed-in user: an anonymous visitor is refused with 401,
+         *     since change records name who made each change (ADR-008 §4).
+         */
         get: operations["getSourceHistory"];
         put?: never;
         post?: never;
@@ -675,6 +688,9 @@ export interface paths {
          *
          *     Rollback is mainline-only (ADR-005): with `?branch=` the request is
          *     refused with 409 `rollback_mainline_only` and nothing is read or written.
+         *
+         *     Requires a signed-in user: an anonymous visitor is refused with 401,
+         *     since change records name who made each change (ADR-008 §4).
          */
         get: operations["getPersonRestorePoints"];
         put?: never;
@@ -725,6 +741,9 @@ export interface paths {
          *
          *     Rollback is mainline-only (ADR-005): with `?branch=` the request is
          *     refused with 409 `rollback_mainline_only` and nothing is read or written.
+         *
+         *     Requires a signed-in user: an anonymous visitor is refused with 401,
+         *     since change records name who made each change (ADR-008 §4).
          */
         get: operations["getFamilyRestorePoints"];
         put?: never;
@@ -775,6 +794,9 @@ export interface paths {
          *
          *     Rollback is mainline-only (ADR-005): with `?branch=` the request is
          *     refused with 409 `rollback_mainline_only` and nothing is read or written.
+         *
+         *     Requires a signed-in user: an anonymous visitor is refused with 401,
+         *     since change records name who made each change (ADR-008 §4).
          */
         get: operations["getSourceRestorePoints"];
         put?: never;
@@ -825,6 +847,9 @@ export interface paths {
          *
          *     Rollback is mainline-only (ADR-005): with `?branch=` the request is
          *     refused with 409 `rollback_mainline_only` and nothing is read or written.
+         *
+         *     Requires a signed-in user: an anonymous visitor is refused with 401,
+         *     since change records name who made each change (ADR-008 §4).
          */
         get: operations["getCitationRestorePoints"];
         put?: never;
@@ -1752,6 +1777,9 @@ export interface paths {
          *     newest first. A snapshot marks `(branch_id, position)` (ADR-005): the
          *     mainline's list holds mainline snapshots only, and a branch's list holds
          *     that branch's snapshots only.
+         *
+         *     Requires a signed-in user: an anonymous visitor is refused with 401,
+         *     since change records name who made each change (ADR-008 §4).
          */
         get: operations["listSnapshots"];
         put?: never;
@@ -1780,7 +1808,11 @@ export interface paths {
         };
         /**
          * Get a snapshot by ID
-         * @description A snapshot marked on another branch than the requested scope is not found.
+         * @description A snapshot marked on another branch than the requested scope is not
+         *     found.
+         *
+         *     Requires a signed-in user: an anonymous visitor is refused with 401,
+         *     since change records name who made each change (ADR-008 §4).
          */
         get: operations["getSnapshot"];
         put?: never;
@@ -1822,6 +1854,9 @@ export interface paths {
          *     (`MergeRecord.replayed_through_position`), which lists exactly what the
          *     merge changed. An `until` past the head runs to the head; one before the
          *     snapshot is a 400.
+         *
+         *     Requires a signed-in user: an anonymous visitor is refused with 401,
+         *     since change records name who made each change (ADR-008 §4).
          */
         get: operations["compareSnapshotToCurrent"];
         put?: never;
@@ -1853,6 +1888,9 @@ export interface paths {
          *     marked on the requested scope; comparing snapshots from different
          *     branches is refused with 409 `snapshot_branch_mismatch`. To compare a
          *     snapshot with the current state, use `/snapshots/{id}/compare-current`.
+         *
+         *     Requires a signed-in user: an anonymous visitor is refused with 401,
+         *     since change records name who made each change (ADR-008 §4).
          */
         get: operations["compareSnapshots"];
         put?: never;
@@ -2130,6 +2168,9 @@ export interface paths {
          *     decided, as recorded then - and leaves the merge's own replayed copies
          *     of the branch's changes out of the mainline side
          *     (`replayed_change_count`).
+         *
+         *     Requires a signed-in user: an anonymous visitor is refused with 401,
+         *     since change records name who made each change (ADR-008 §4).
          */
         get: operations["compareBranch"];
         put?: never;
@@ -2461,16 +2502,16 @@ export interface paths {
         /**
          * Set the home person
          * @description Marks a mainline person as "me" for the signed-in account (the site,
-         *     in open mode), replacing any earlier choice. An anonymous visitor is
-         *     refused with 401.
+         *     in open mode), replacing any earlier choice. Requires a signed-in
+         *     user: an anonymous visitor has no home person and is refused with 401.
          */
         put: operations["setHomePerson"];
         post?: never;
         /**
          * Clear the home person
          * @description Unmarks the signed-in account's home person (the site's, in open
-         *     mode). Clearing when none is set succeeds. An anonymous visitor is
-         *     refused with 401.
+         *     mode). Clearing when none is set succeeds. Requires a signed-in user:
+         *     an anonymous visitor has no home person and is refused with 401.
          */
         delete: operations["clearHomePerson"];
         options?: never;

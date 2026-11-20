@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent, within } from '@testing-library/svelte';
 import Page from './+page.svelte';
+import { auth } from '#lib/stores/access.svelte.js';
 import type * as apiModule from '#lib/api/client.js';
 import type { BranchChangeEntry, Snapshot, SnapshotComparisonResult } from '#lib/api/client.js';
 import { resetRouter } from '#lib/test/fakeRouter.svelte.js';
@@ -124,6 +125,16 @@ describe('Snapshot comparison page', () => {
 		branchState.activeBranch.branch = null;
 		navigateTo(`?from=${OLDER_ID}&to=${NEWER_ID}`);
 		compareSnapshots.mockResolvedValue(comparison());
+	});
+
+	it('asks a visitor to sign in instead of loading what the server refuses them', async () => {
+		auth.phase = 'visitor';
+		render(Page);
+
+		expect(screen.getByTestId('empty-state').textContent).toContain('Sign in to see this comparison');
+		expect(compareSnapshots).not.toHaveBeenCalled();
+		await fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+		expect(auth.phase).toBe('signed-out');
 	});
 
 	it('requests the pair from the query string', async () => {

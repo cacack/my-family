@@ -215,8 +215,10 @@ Two kinds of record outside the person rules:
 - **Submitters** hold a living researcher's name, address and contact details and have no
   restriction field. They are hidden from anonymous principals and shown to viewers and up.
 - **Change attribution** (`user_id` on history entries, `merged_by` on merge records, #1407) is
-  account data showing who edited what and when. It is removed for anonymous principals by
-  whichever choke point serves the surface; viewers and up see it.
+  account data showing who edited what and when. Anonymous principals are refused the change
+  log that carries it (history, restore points, snapshots and their comparisons, branch compare)
+  and must sign in (#1441); elsewhere it is removed for them by whichever choke point serves the
+  surface. Viewers and up see it.
 
 Open mode (`AUTH_MODE=open`, ADR-007) maps to owner. A context carrying no principal is treated
 as anonymous, so a missing principal fails safe.
@@ -340,8 +342,8 @@ decorator, b = event-output redactor, — = no tree data. "Protected" means a pl
 | listAssociationsForPerson | GET /persons/{id}/associations | Associations | RM | a | Protected → empty; drop when the other end is protected |
 | listLDSOrdinancesForPerson | GET /persons/{id}/lds-ordinances | LDS ordinances | RM | a | Protected → empty |
 | getPersonQuality | GET /quality/persons/{id} | Completeness score | RM | a | Protected or private → 404 |
-| getPersonHistory | GET /persons/{id}/history | Change entries | EL | b | Protected → empty; private → hidden |
-| getPersonRestorePoints | GET /persons/{id}/restore-points | Restore points | EL (+RM existence) | b | Protected → empty; private → hidden |
+| getPersonHistory | GET /persons/{id}/history | Change entries | EL | b | Protected → empty; private → hidden. Anonymous: refused (sign-in required) |
+| getPersonRestorePoints | GET /persons/{id}/restore-points | Restore points | EL (+RM existence) | b | Protected → empty; private → hidden. Anonymous: refused (sign-in required) |
 
 ### Families
 
@@ -351,8 +353,8 @@ decorator, b = event-output redactor, — = no tree data. "Protected" means a pl
 | getFamily | GET /families/{id} | Family detail | RM | a | Protected partner → placeholder and family facts hidden; private → 404 |
 | getFamilyGroupSheet | GET /families/{id}/group-sheet | Group sheet with members' events and sources | RM | a | Protected members as placeholders with no events or sources |
 | listLDSOrdinancesForFamily | GET /families/{id}/lds-ordinances | LDS ordinances | RM | a | Hidden when a partner is protected |
-| getFamilyHistory | GET /families/{id}/history | Change entries | EL | b | Hidden when private or a partner is protected |
-| getFamilyRestorePoints | GET /families/{id}/restore-points | Restore points | EL (+RM existence) | b | As getFamilyHistory |
+| getFamilyHistory | GET /families/{id}/history | Change entries | EL | b | Hidden when private or a partner is protected. Anonymous: refused (sign-in required) |
+| getFamilyRestorePoints | GET /families/{id}/restore-points | Restore points | EL (+RM existence) | b | As getFamilyHistory. Anonymous: refused (sign-in required) |
 
 ### Charts and relationships
 
@@ -387,9 +389,9 @@ decorator, b = event-output redactor, — = no tree data. "Protected" means a pl
 | getCitationsForSource | GET /sources/{id}/citations | Citations | RM | a | Drop private citations and those on a protected person's facts |
 | getCitation | GET /citations/{id} | Citation | RM | a | 404 when private or attached to a protected person |
 | formatCitation | GET /citations/{id}/format | Formatted citation text | RM | a | As getCitation |
-| getSourceHistory | GET /sources/{id}/history | Change entries | EL | b | Private → empty |
-| getSourceRestorePoints | GET /sources/{id}/restore-points | Restore points | EL (+RM existence) | b | Private → empty |
-| getCitationRestorePoints | GET /citations/{id}/restore-points | Restore points | EL (+RM existence) | b | As getCitation |
+| getSourceHistory | GET /sources/{id}/history | Change entries | EL | b | Private → empty. Anonymous: refused (sign-in required) |
+| getSourceRestorePoints | GET /sources/{id}/restore-points | Restore points | EL (+RM existence) | b | Private → empty. Anonymous: refused (sign-in required) |
+| getCitationRestorePoints | GET /citations/{id}/restore-points | Restore points | EL (+RM existence) | b | As getCitation. Anonymous: refused (sign-in required) |
 | listCitationTemplates | GET /citation-templates | Static templates | none | — | |
 | getCitationTemplate | GET /citation-templates/{id} | Static template | none | — | |
 | previewCitationTemplate | POST /citation-templates/{id}/preview | Formats the request's own fields | none | — | |
@@ -470,11 +472,11 @@ decorator, b = event-output redactor, — = no tree data. "Protected" means a pl
 
 | Operation | Path | Returns | Source | Choke | Special handling |
 |-----------|------|---------|--------|-------|------------------|
-| listHistory | GET /history | Global change log | EL | b | Entries for protected or private entities dropped; names blanked; `user_id` removed for anonymous (§4) |
-| listSnapshots | GET /snapshots | Snapshot names and positions | snapshot registry | — | Editor-written free text, not redacted |
-| getSnapshot | GET /snapshots/{id} | Snapshot | snapshot registry | — | As listSnapshots |
-| compareSnapshotToCurrent | GET /snapshots/{id}/compare-current | Change entries | EL | b | As listHistory |
-| compareSnapshots | GET /snapshots/{id1}/compare/{id2} | Change entries | EL | b | As listHistory |
+| listHistory | GET /history | Global change log | EL | b | Entries for protected or private entities dropped; names blanked. Anonymous: refused (sign-in required) (§4) |
+| listSnapshots | GET /snapshots | Snapshot names and positions | snapshot registry | — | Editor-written free text, not redacted. Anonymous: refused (sign-in required) |
+| getSnapshot | GET /snapshots/{id} | Snapshot | snapshot registry | — | As listSnapshots. Anonymous: refused (sign-in required) |
+| compareSnapshotToCurrent | GET /snapshots/{id}/compare-current | Change entries | EL | b | As listHistory. Anonymous: refused (sign-in required) |
+| compareSnapshots | GET /snapshots/{id1}/compare/{id2} | Change entries | EL | b | As listHistory. Anonymous: refused (sign-in required) |
 
 ### Branches
 
@@ -483,9 +485,9 @@ decorator, b = event-output redactor, — = no tree data. "Protected" means a pl
 | listBranches | GET /branches | Branch metadata, drift counts, linked proof summaries | branch store + RM | a | Linked proof summaries redacted by the decorator; names and descriptions are free text |
 | getBranch | GET /branches/{id} | As above | branch store + RM | a | As listBranches |
 | getBranchDrift | GET /branches/{id}/drift | Event counts | EL (counts) | — | No record content |
-| compareBranch | GET /branches/{id}/compare | Branch and main change entries, and the merge record of a merged branch | EL | b | Protected if protected on either side; `user_id` and `merged_by` removed for anonymous (§4) |
+| compareBranch | GET /branches/{id}/compare | Branch and main change entries, and the merge record of a merged branch | EL | b | Protected if protected on either side. Anonymous: refused (sign-in required) (§4) |
 | getBranchResearch | GET /branches/{id}/research | Research archive rebuilt from branch events | EL | b | Overlay may be purged: unresolved subjects treated as protected |
-| getBranchEvidenceCoverage | GET /branches/{id}/evidence-coverage | Changed facts without evidence | EL + RM | b | As compareBranch |
+| getBranchEvidenceCoverage | GET /branches/{id}/evidence-coverage | Changed facts without evidence | EL + RM | b | Protected if protected on either side |
 | getBranchHealth | GET /branches/{id}/health | Validation and quality on the branch overlay | RM | a | As getValidationIssues |
 | precheckBranchMerge | POST /branches/{id}/merge/precheck | Merge plan and conflict values | EL | b | Editor-only; redactor is identity for editors |
 | mergeBranch | POST /branches/{id}/merge | Merge result and conflicts | EL | b | As precheckBranchMerge |

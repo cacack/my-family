@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { can } from '#lib/stores/access.svelte.js';
+	import { can, isVisitor } from '#lib/stores/access.svelte.js';
 	/**
 	 * Research snapshots: named markers ("tags") on the event history, e.g.
 	 * "Pre-DNA results" or "After courthouse trip".
@@ -32,6 +32,7 @@
 	import ErrorState from '#lib/components/ErrorState.svelte';
 	import LoadingState from '#lib/components/LoadingState.svelte';
 	import EmptyState from '#lib/components/EmptyState.svelte';
+	import SignInRequired from '#lib/components/auth/SignInRequired.svelte';
 
 	// Mirrors the maxLength on SnapshotCreate in openapi.yaml.
 	const NAME_MAX_LENGTH = 100;
@@ -204,7 +205,8 @@
 	}
 
 	$effect(() => {
-		loadSnapshots();
+		// The server refuses a visitor the change log; the page says so instead.
+		if (!isVisitor()) loadSnapshots();
 	});
 </script>
 
@@ -234,7 +236,9 @@
 		{/snippet}
 	</PageHeader>
 
-	{#if loading}
+	{#if isVisitor()}
+		<SignInRequired subject="research snapshots" />
+	{:else if loading}
 		<LoadingState label="Loading snapshots..." />
 	{:else if error}
 		<ErrorState message={error} onRetry={loadSnapshots} />

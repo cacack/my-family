@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/svelte';
 import Page from './+page.svelte';
+import { auth } from '#lib/stores/access.svelte.js';
 import type * as apiModule from '#lib/api/client.js';
 import type { Snapshot } from '#lib/api/client.js';
 
@@ -77,6 +78,16 @@ describe('Snapshots page', () => {
 	// cleanup runs while the DOM still exists (see branches/page.test.ts).
 	afterEach(async () => {
 		await new Promise((resolve) => setTimeout(resolve, 30));
+	});
+
+	it('asks a visitor to sign in instead of loading what the server refuses them', async () => {
+		auth.phase = 'visitor';
+		render(Page);
+
+		expect(screen.getByTestId('empty-state').textContent).toContain('Sign in to see research snapshots');
+		expect(listSnapshots).not.toHaveBeenCalled();
+		await fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+		expect(auth.phase).toBe('signed-out');
 	});
 
 	it('lists each snapshot with its name, description and created date', async () => {
