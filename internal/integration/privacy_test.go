@@ -21,9 +21,9 @@ import (
 
 // Privacy marks and the living rule (ADR-008, #1412), on every backend.
 
-// privacyGedcom carries a restriction notice on a person, a family, a source
-// and a note (the last two as _RESN: GEDCOM defines no RESN on them), and
-// people who exercise each branch of the living rule.
+// privacyGedcom carries a restriction notice on a person, a family, a source,
+// a note and a media object (the last three as _RESN: GEDCOM 5.5.1 defines no
+// RESN on them), and people who exercise each branch of the living rule.
 const privacyGedcom = `0 HEAD
 1 GEDC
 2 VERS 5.5.1
@@ -33,6 +33,12 @@ const privacyGedcom = `0 HEAD
 0 @S1@ SOUR
 1 TITL Private register
 1 _RESN privacy
+0 @M1@ OBJE
+1 FILE photos/baptism.jpg
+2 FORM jpg
+3 TYPE photo
+2 TITL Private portrait
+1 _RESN confidential
 0 @I1@ INDI
 1 RESN confidential
 1 NAME Alive /Private/
@@ -52,6 +58,7 @@ const privacyGedcom = `0 HEAD
 0 @I4@ INDI
 1 NAME Baptized /Long/
 1 SEX F
+1 OBJE @M1@
 1 BAPM
 2 DATE 1850
 0 @I5@ INDI
@@ -129,7 +136,7 @@ func personIDsByGivenName(t *testing.T, ctx context.Context, rs repository.ReadM
 }
 
 // recordRestrictions reads the restriction of every family, source and note
-// in rs, keyed by kind.
+// in rs, and of the media item of the person named Baptized, keyed by kind.
 func recordRestrictions(t *testing.T, ctx context.Context, rs repository.ReadModelStore) map[string]domain.Restriction {
 	t.Helper()
 	out := map[string]domain.Restriction{}
@@ -148,6 +155,14 @@ func recordRestrictions(t *testing.T, ctx context.Context, rs repository.ReadMod
 		t.Fatalf("list notes = %d, %v; want 1", len(notes), err)
 	}
 	out["note"] = notes[0].Restriction
+	media, _, err := rs.ListMediaForEntity(ctx, "person", personIDsByGivenName(t, ctx, rs)["Baptized"], repository.ListOptions{Limit: 10})
+	if err != nil || len(media) != 1 {
+		t.Fatalf("list media = %d, %v; want 1", len(media), err)
+	}
+	if media[0].Title != "Private portrait" || len(media[0].Files) != 1 || media[0].Files[0].Path != "photos/baptism.jpg" {
+		t.Errorf("media = %q with files %+v, want Private portrait with photos/baptism.jpg", media[0].Title, media[0].Files)
+	}
+	out["media"] = media[0].Restriction
 	return out
 }
 
@@ -168,7 +183,7 @@ func assertPrivacyTree(t *testing.T, ctx context.Context, rs repository.ReadMode
 		}
 	}
 	got := recordRestrictions(t, ctx, rs)
-	want := map[string]domain.Restriction{"family": "confidential", "source": "privacy", "note": "confidential"}
+	want := map[string]domain.Restriction{"family": "confidential", "source": "privacy", "note": "confidential", "media": "confidential"}
 	for kind, r := range want {
 		if got[kind] != r {
 			t.Errorf("%s restriction = %q, want %q", kind, got[kind], r)
@@ -177,7 +192,7 @@ func assertPrivacyTree(t *testing.T, ctx context.Context, rs repository.ReadMode
 }
 
 // TestPrivacy_GedcomRestrictionAndLivingRuleSurviveReplayExportAndReimport
-// imports RESN on a person, family, source and note, replays the log into an
+// imports RESN on a person, family, source, note and media item, replays the log into an
 // empty read model, exports it and imports the export again. Each step keeps
 // the restrictions and the living rule's answers.
 func TestPrivacy_GedcomRestrictionAndLivingRuleSurviveReplayExportAndReimport(t *testing.T) {
@@ -204,6 +219,8 @@ func TestPrivacy_GedcomRestrictionAndLivingRuleSurviveReplayExportAndReimport(t 
 				{"0 @F1@ FAM", "1 RESN confidential"},
 				{"Private register", "1 _RESN privacy"},
 				{"A private note", "1 _RESN confidential"},
+				{"Private portrait", "1 _RESN confidential"},
+				{"Baptized /Long/", "1 OBJE @O1@"},
 				{"Died /Undated/", "1 DEAT Y"},
 				{"Cited /Undated/", "1 DEAT Y"},
 			} {
