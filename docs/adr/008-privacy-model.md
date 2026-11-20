@@ -513,6 +513,8 @@ Added after this ADR's date, when #1412 made the table a test (§7).
 | resetPassword | POST /auth/password-reset | The caller's account | accounts | — | No tree data |
 | listUsers | GET /users | Accounts and roles | accounts | — | Owner-only; no tree data |
 | listAuthAudit | GET /auth-audit | Sign-in and account events | accounts | — | Owner-only; no tree data |
+| listInvites | GET /invites | Pending invite links | accounts | — | Owner-only; no tree data |
+| listPasswordResets | GET /password-resets | Pending password reset links | accounts | — | Owner-only; no tree data |
 
 ### Writes and operations outside the spec
 
