@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { can } from '#lib/stores/access.svelte.js';
-	import { api, isStaleVersion, type Media } from '#lib/api/client.js';
+	import { api, isReferenceOnly, isStaleVersion, type Media } from '#lib/api/client.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import MediaUpload from './MediaUpload.svelte';
 	import MediaLightbox from './MediaLightbox.svelte';
@@ -165,9 +165,21 @@
 						type="button"
 						class="thumbnail-button"
 						onclick={() => openLightbox(media)}
-						aria-label="View {media.title}"
+						aria-label={isReferenceOnly(media) ? undefined : `View ${media.title}`}
 					>
-						{#if media.has_thumbnail}
+						{#if isReferenceOnly(media)}
+							<!-- Named by its visible text, so the name holds the path too. -->
+							<div class="reference-card">
+								<span class="sr-only">View</span>
+								<span class="reference-title">{media.title}</span>
+								{#each media.files ?? [] as file (file.path)}
+									{#if file.path}
+										<span class="reference-path">{file.path}</span>
+									{/if}
+								{/each}
+								<span class="reference-note">File not stored</span>
+							</div>
+						{:else if media.has_thumbnail}
 							<img
 								src={api.getMediaThumbnailUrl(media.id)}
 								alt=""
@@ -182,9 +194,11 @@
 							</div>
 						{/if}
 
-						<div class="thumbnail-overlay" aria-hidden="true">
-							<span class="thumbnail-title">{media.title}</span>
-						</div>
+						{#if !isReferenceOnly(media)}
+							<div class="thumbnail-overlay" aria-hidden="true">
+								<span class="thumbnail-title">{media.title}</span>
+							</div>
+						{/if}
 					</button>
 
 					{#if can('editor')}
@@ -285,6 +299,51 @@
 		width: 3rem;
 		height: 3rem;
 		color: var(--color-text-muted);
+	}
+
+	/* A GEDCOM reference with no stored file (#1477): its title and paths. */
+	.reference-card {
+		width: 100%;
+		height: 100%;
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+		padding: 0.75rem;
+		background: #e2e8f0;
+		text-align: left;
+		overflow: hidden;
+	}
+
+	.reference-title {
+		color: var(--color-text);
+		font-size: 0.8125rem;
+		font-weight: 600;
+		overflow-wrap: anywhere;
+		display: -webkit-box;
+		-webkit-box-orient: vertical;
+		-webkit-line-clamp: 2;
+		line-clamp: 2;
+		overflow: hidden;
+		flex-shrink: 0;
+	}
+
+	.reference-path {
+		color: var(--color-text-muted);
+		font-size: 0.75rem;
+		font-family: ui-monospace, monospace;
+		overflow-wrap: anywhere;
+		display: -webkit-box;
+		-webkit-box-orient: vertical;
+		-webkit-line-clamp: 3;
+		line-clamp: 3;
+		overflow: hidden;
+		flex-shrink: 0;
+	}
+
+	.reference-note {
+		color: var(--color-text-muted);
+		font-size: 0.75rem;
+		font-style: italic;
 	}
 
 	.thumbnail-overlay {
