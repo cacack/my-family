@@ -2,13 +2,14 @@
  * Home Person Store
  *
  * The person marked as "me": person pages state their relationship to them and
- * charts start from them. It is one site-wide setting kept on the server
- * (`/settings/home-person`); once accounts exist (#1408) the server answers
- * with the signed-in account's own choice, and this store needs no change.
+ * charts start from them. The server keeps it (`/settings/home-person`) for
+ * each signed-in account, or for the site in open mode; a visitor has none
+ * (#1443).
  *
- * Loaded by the root layout, and reloaded after a delete or merge that may
- * have removed the home person, since the server moves or drops them then
- * (#1444). The setters are the only other mutators.
+ * Loaded by the root layout, again whenever who is signed in changes, and
+ * reloaded after a delete or merge that may have removed the home person,
+ * since the server moves or drops them then (#1444). The setters are the only
+ * other mutators.
  */
 
 import { api, type Person } from '#lib/api/client.js';

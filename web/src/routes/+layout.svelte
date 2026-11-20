@@ -40,6 +40,14 @@
 	$effect(() => {
 		if (!appReady) return;
 		loadAppConfig();
+	});
+
+	// The home person is each account's own (#1443), so it is read again
+	// whenever who is signed in changes, such as signing out to browse as a
+	// visitor.
+	$effect(() => {
+		if (!appReady) return;
+		void auth.account?.id;
 		loadHomePerson();
 	});
 

@@ -23,7 +23,7 @@ import {
 } from '#lib/api/client.js';
 import { auth, type AuthPhase } from './access.svelte.js';
 
-export { auth, can, currentRole, type AuthPhase, type Role } from './access.svelte.js';
+export { auth, can, canChooseHomePerson, currentRole, type AuthPhase, type Role } from './access.svelte.js';
 
 function signedIn(account: Account): void {
 	auth.account = account;

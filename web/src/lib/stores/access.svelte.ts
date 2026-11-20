@@ -54,3 +54,12 @@ export function can(required: Role): boolean {
 	const role = currentRole();
 	return role !== null && ROLE_RANK[role] >= ROLE_RANK[required];
 }
+
+/**
+ * Whether whoever is using the app has a home person ("me") of their own to
+ * choose: each signed-in account does, and the site does in open mode. A
+ * visitor has none, so the server refuses them the control (#1443). Reactive.
+ */
+export function canChooseHomePerson(): boolean {
+	return auth.phase === 'open' || auth.phase === 'signed-in';
+}
