@@ -172,7 +172,7 @@
 							<div class="reference-card">
 								<span class="sr-only">View</span>
 								<span class="reference-title">{media.title}</span>
-								{#each media.files ?? [] as file (file.path)}
+								{#each media.files ?? [] as file, i (i)}
 									{#if file.path}
 										<span class="reference-path">{file.path}</span>
 									{/if}

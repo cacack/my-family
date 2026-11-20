@@ -83,4 +83,26 @@ describe('MediaGallery', () => {
 		expect(dialog.querySelector('img')).toBeNull();
 		expect(dialog.querySelector('a[href*="/content"]')).toBeNull();
 	});
+
+	it('shows a reference whose FILE lines repeat a path or omit it', async () => {
+		list([
+			media({
+				...reference,
+				files: [
+					{ path: 'photos/wedding.jpg', format: 'image/jpeg' },
+					{ path: 'photos/wedding.jpg', format: 'image/png' },
+					{ format: 'image/jpeg' },
+					{ format: 'image/png' }
+				]
+			})
+		]);
+		render(MediaGallery, { props: { personId: 'p-1' } });
+
+		const card = await screen.findByRole('button', { name: /^View Wedding/ });
+		expect(within(card).getAllByText('photos/wedding.jpg')).toHaveLength(2);
+
+		await fireEvent.click(card);
+		const dialog = await screen.findByRole('dialog');
+		expect(within(dialog).getAllByText('photos/wedding.jpg')).toHaveLength(2);
+	});
 });

@@ -2061,7 +2061,9 @@ func (ss *StrictServer) DownloadMedia(ctx context.Context, request DownloadMedia
 		}}, nil
 	}
 	// A GEDCOM-imported item holds file references but no bytes until a file
-	// is uploaded (#1477); an empty 200 would read as a broken file.
+	// is uploaded (#1477); an empty 200 would read as a broken file. The web
+	// client tells these apart by file_size == 0 (isReferenceOnly in
+	// web/src/lib/api/client.ts), which holds because uploads reject empty data.
 	if len(media.FileData) == 0 {
 		return DownloadMedia404JSONResponse{NotFoundJSONResponse{
 			Code:    "no_content",
