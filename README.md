@@ -229,9 +229,12 @@ person who no longer exists as **Living**; visitors are refused it, and never se
 change. Exports are not redacted yet ([ADR-008](./docs/adr/008-privacy-model.md), #1412).
 
 The app marks a living or private person with a **Living** or **Private** badge on their page and
-person cards, in search results, on the pedigree and descendancy charts, on the family group
-sheet and in the map's person lists. Search results, chart nodes, group sheet entries and map
-persons carry the same `living` and `private` fields as a person.
+person cards, in search results and the person picker's chosen person, on the pedigree and descendancy charts,
+in the Ahnentafel report, on the relationship calculator's path, on family cards and pages, on
+the family group sheet and in the map's person lists. Search results, chart nodes, Ahnentafel
+entries, relationship path nodes, family partners and children, group sheet entries and map
+persons carry the same `living` and `private` fields as a person (the group sheet's parents
+and spouses of partners and children as `father_marks`, `mother_marks` and `spouse_marks`).
 
 Owners check what they share with **Preview as a visitor** or **Preview as a viewer** under
 **Settings**, which works before visitors are let in. The preview uses the saved settings, so
