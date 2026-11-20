@@ -722,8 +722,9 @@ func TestMergePersons_KeepsTheMoreProtectivePrivacyMarks(t *testing.T) {
 }
 
 // A rollback across a person merge restores the privacy marks the merge
-// resolved: back to before the merge the survivor loses the marks it took from
-// the merged person, and back to just after it a later unmark is undone.
+// resolved, but never lowers them: back to just after the merge a later unmark
+// is undone, and back to before it the survivor keeps the marks it took from
+// the merged person, whose transfers the rollback does not undo (ADR-008).
 func TestRollbackPerson_AcrossAMergeRestoresThePrivacyMarks(t *testing.T) {
 	eventStore := memory.NewEventStore()
 	readStore := memory.NewReadModelStore()
@@ -788,7 +789,11 @@ func TestRollbackPerson_AcrossAMergeRestoresThePrivacyMarks(t *testing.T) {
 	if _, err := handler.RollbackPerson(ctx, survivor.ID, survivor.Version); err != nil {
 		t.Fatalf("RollbackPerson to before the merge (v%d): %v", survivor.Version, err)
 	}
-	if private, override := marks(); private || override != domain.LivingOverrideAuto {
-		t.Errorf("rolled back to before the merge: private %v, override %q; want neither mark", private, override)
+	if private, override := marks(); !private || override != domain.LivingOverrideLiving {
+		t.Errorf("rolled back to before the merge: private %v, override %q; want private and living", private, override)
+	}
+	p, err := readStore.GetPerson(ctx, domain.MainBranchID, survivor.ID)
+	if err != nil || p == nil || p.GivenName != "John" {
+		t.Errorf("rolled back to before the merge: given name %v (%v), want John", p, err)
 	}
 }

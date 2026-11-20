@@ -339,26 +339,12 @@ func resolveFields(survivor, merged *repository.PersonReadModel, resolution map[
 		resolved["restriction"] = string(survivor.Restriction.WithPrivate(true))
 		fieldsUpdated = append(fieldsUpdated, "restriction")
 	}
-	if overrideProtection(merged.LivingOverride) > overrideProtection(survivor.LivingOverride) {
+	if merged.LivingOverride.Protection() > survivor.LivingOverride.Protection() {
 		resolved["living_override"] = string(merged.LivingOverride)
 		fieldsUpdated = append(fieldsUpdated, "living_override")
 	}
 
 	return resolved, fieldsUpdated
-}
-
-// overrideProtection ranks a living override by how much it protects: a
-// person held living is hidden more than one the rule decides, who is hidden
-// more than one held deceased.
-func overrideProtection(o domain.LivingOverride) int {
-	switch o {
-	case domain.LivingOverrideLiving:
-		return 2
-	case domain.LivingOverrideDeceased:
-		return 0
-	default:
-		return 1
-	}
 }
 
 // collectAffectedFamilies returns IDs of families where merged person is a partner.

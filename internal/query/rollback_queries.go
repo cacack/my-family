@@ -266,6 +266,9 @@ func (s *RollbackService) ComputeRollbackChanges(ctx context.Context, entityType
 
 	// Compute diff: what values from target state differ from current state
 	changes := s.computeStateDiff(currentState.State, targetState.State)
+	if mergedSince(events, targetVersion) {
+		keepPrivacyMarks(changes, currentState.State, targetState.State)
+	}
 
 	return &RollbackChanges{
 		EntityType:     entityType,
@@ -275,6 +278,45 @@ func (s *RollbackService) ComputeRollbackChanges(ctx context.Context, entityType
 		Changes:        changes,
 		IsRecreation:   isCurrentlyDeleted && !targetState.IsDeleted,
 	}, nil
+}
+
+// mergedSince reports whether a person merge comes after the target version.
+func mergedSince(events []repository.StoredEvent, targetVersion int64) bool {
+	for _, evt := range events {
+		if evt.Version > targetVersion && evt.EventType == "PersonMerged" {
+			return true
+		}
+	}
+	return false
+}
+
+// keepPrivacyMarks stops a rollback across a person merge from lowering the
+// privacy marks. The rollback does not undo the merge's transfers, so the
+// survivor still holds what the merged person's record protected; it keeps
+// the more protective of the current and target marks, as the merge did
+// (ADR-008).
+func keepPrivacyMarks(changes, current, target map[string]any) {
+	currentRestriction := domain.Restriction(stateString(current, "restriction"))
+	targetRestriction := domain.Restriction(stateString(target, "restriction"))
+	if currentRestriction.IsPrivate() && !targetRestriction.IsPrivate() {
+		if currentRestriction.WithPrivate(false) == targetRestriction {
+			delete(changes, "restriction")
+		} else {
+			changes["restriction"] = string(targetRestriction.WithPrivate(true))
+		}
+	}
+
+	currentOverride := domain.LivingOverride(stateString(current, "living_override"))
+	targetOverride := domain.LivingOverride(stateString(target, "living_override"))
+	if targetOverride.Protection() < currentOverride.Protection() {
+		delete(changes, "living_override")
+	}
+}
+
+// stateString returns a state field as a string, or "" when it is unset.
+func stateString(state map[string]any, field string) string {
+	s, _ := state[field].(string)
+	return s
 }
 
 // setRestrictionState records a created record's restriction in the rollback

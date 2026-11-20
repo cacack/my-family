@@ -83,6 +83,20 @@ func (o LivingOverride) IsValid() bool {
 	return o == LivingOverrideAuto || o == LivingOverrideLiving || o == LivingOverrideDeceased
 }
 
+// Protection ranks the override by how much it protects: a person held living
+// is hidden more than one the rule decides, who is hidden more than one held
+// deceased.
+func (o LivingOverride) Protection() int {
+	switch o {
+	case LivingOverrideLiving:
+		return 2
+	case LivingOverrideDeceased:
+		return 0
+	default:
+		return 1
+	}
+}
+
 // DefaultLivingThresholdYears is N in the living rule: a person born more than
 // N years ago is not presumed living, unless the owner sets another N in the
 // tree settings (repository.TreeSettings, ADR-008 §6).

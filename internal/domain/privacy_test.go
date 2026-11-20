@@ -163,3 +163,11 @@ func TestLivingFacts_IsLiving(t *testing.T) {
 		})
 	}
 }
+
+func TestLivingOverride_Protection(t *testing.T) {
+	if LivingOverrideLiving.Protection() <= LivingOverrideAuto.Protection() ||
+		LivingOverrideAuto.Protection() <= LivingOverrideDeceased.Protection() {
+		t.Errorf("Protection ranks living %d, auto %d, deceased %d; want living > auto > deceased",
+			LivingOverrideLiving.Protection(), LivingOverrideAuto.Protection(), LivingOverrideDeceased.Protection())
+	}
+}
