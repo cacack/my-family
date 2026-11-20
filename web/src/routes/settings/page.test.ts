@@ -100,6 +100,16 @@ describe('Settings page', () => {
 		});
 	});
 
+	it('links the visitors setting to the visitor preview (#1414)', async () => {
+		render(SettingsPage);
+		const group = await screen.findByRole('group', { name: 'Visitors who are not signed in' });
+		const hint = document.getElementById(group.getAttribute('aria-describedby') ?? '');
+		const link = hint?.querySelector('a');
+		expect(link?.textContent).toBe('Preview the tree as a visitor');
+		const target = document.getElementById(link?.getAttribute('href')?.slice(1) ?? '');
+		expect(target?.querySelector('button')?.textContent?.trim()).toBe('Preview as a visitor');
+	});
+
 	it('tells a non-owner the page needs the owner, and loads nothing', async () => {
 		signInAs('editor');
 		render(SettingsPage);
