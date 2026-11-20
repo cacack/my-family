@@ -196,7 +196,10 @@ for the rule, and mark a record private, when editing it. Persons, families, sou
 which is their GEDCOM restriction notice (`RESN`); it round-trips through GEDCOM import and export
 for persons, families, sources, notes and media. GEDCOM media records (`OBJE`) import with their
 title, file references and restriction, as one item per person, family or source that links to
-them; a media record nothing links to is skipped with a warning. Export writes an `OBJE` record per
+them; a media record nothing links to is skipped with a warning. Imported media are references
+only: they keep the file paths but not the files, so the gallery shows each as its title and path,
+and its content and thumbnail return 404 (`no_content` for the content); upload the file to store it.
+Export writes an `OBJE` record per
 item, naming an uploaded item's file by its filename; the file content is not included.
 
 Viewers do not see private people, families or media, and see a living person as a placeholder
