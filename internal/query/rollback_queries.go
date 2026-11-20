@@ -31,7 +31,9 @@ type RollbackService struct {
 	redactor   changeRedactor
 }
 
-// NewRollbackService creates a new rollback query service.
+// NewRollbackService creates a new rollback query service. Its restore points
+// are redacted for the principal on the context only when readStore is the
+// privacy decorator itself (see NewHistoryService).
 func NewRollbackService(eventStore repository.EventStore, readStore repository.ReadModelStore) *RollbackService {
 	return &RollbackService{
 		eventStore: eventStore,

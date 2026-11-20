@@ -47,7 +47,9 @@ type BranchService struct {
 	historyService *HistoryService
 }
 
-// NewBranchService creates a new branch query service.
+// NewBranchService creates a new branch query service. Its comparisons and
+// merge review are redacted as historyService's output is (see
+// NewHistoryService); without a history service nothing is redacted.
 func NewBranchService(branchStore repository.BranchStore, eventStore repository.EventStore, historyService *HistoryService) *BranchService {
 	return &BranchService{
 		branchStore:    branchStore,

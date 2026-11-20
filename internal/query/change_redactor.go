@@ -35,6 +35,9 @@ type changeRedactor struct {
 
 // redactorFor returns the redactor of a service that reads readStore: active
 // when readStore is the privacy decorator, else one that changes nothing.
+// Wrapping the decorator in another store therefore turns redaction off; the
+// server's wiring is pinned by TestPrivacyRedaction_PersonSurfaces, whose
+// protected person's history and restore points must come back empty.
 func redactorFor(readStore repository.ReadModelStore) changeRedactor {
 	store, _ := readStore.(*PrivacyStore)
 	return changeRedactor{store: store}

@@ -36,7 +36,10 @@ type HistoryService struct {
 	redactor changeRedactor
 }
 
-// NewHistoryService creates a new history query service.
+// NewHistoryService creates a new history query service. It redacts what it
+// returns for the principal on the context (ADR-008 §5b) only when readStore
+// is the privacy decorator itself (*PrivacyStore, not a wrapper around it);
+// any other store, as the command handlers pass, returns the log unredacted.
 func NewHistoryService(eventStore repository.EventStore, readStore repository.ReadModelStore) *HistoryService {
 	return &HistoryService{
 		eventStore: eventStore,
