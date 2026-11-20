@@ -268,7 +268,10 @@
 {/snippet}
 
 <div class="compare-page">
-	<PageHeader title="Snapshot comparison" back={{ href: '/snapshots', label: 'Research Snapshots' }}>
+	<PageHeader
+		title="Snapshot comparison"
+		back={isVisitor() ? undefined : { href: '/snapshots', label: 'Research Snapshots' }}
+	>
 		{#if activeBranch.id}
 			<p class="scope-note" role="note">
 				Showing the changes as the research branch

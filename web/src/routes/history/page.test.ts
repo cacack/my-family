@@ -3,6 +3,7 @@ import { render, screen, fireEvent } from '@testing-library/svelte';
 import Page from './+page.svelte';
 import type * as apiModule from '#lib/api/client.js';
 import { auth } from '#lib/stores/access.svelte.js';
+import { signInAs } from '#lib/test/roles.js';
 
 const { getGlobalHistory } = vi.hoisted(() => ({ getGlobalHistory: vi.fn() }));
 
@@ -37,5 +38,21 @@ describe('Change History page', () => {
 		expect(getGlobalHistory).not.toHaveBeenCalled();
 		await fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
 		expect(auth.phase).toBe('signed-out');
+	});
+
+	it('offers research snapshots to a signed-in user', () => {
+		signInAs('viewer');
+		render(Page);
+
+		expect(screen.getByRole('link', { name: 'Research snapshots' }).getAttribute('href')).toBe(
+			'/snapshots'
+		);
+	});
+
+	it('does not send a visitor on to research snapshots, which also need signing in', () => {
+		auth.phase = 'visitor';
+		render(Page);
+
+		expect(screen.queryByRole('link', { name: 'Research snapshots' })).toBeNull();
 	});
 });
