@@ -289,7 +289,10 @@
 								</svg>
 							</div>
 							<div class="result-info">
-								<span class="result-name">{formatPersonName(person)}</span>
+								<span class="result-name-row">
+									<span class="result-name">{formatPersonName(person)}</span>
+									<PrivacyBadges living={person.living} private={person.private} redacted={person.redacted} />
+								</span>
 								<span class="result-lifespan">{formatLifespan(person)}</span>
 							</div>
 						</button>
@@ -534,7 +537,17 @@
 		gap: 0.125rem;
 	}
 
+	.result-name-row {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.25rem 0.375rem;
+		min-width: 0;
+	}
+
 	.result-name {
+		min-width: 0;
+		max-width: 100%;
 		font-size: 0.875rem;
 		color: #1e293b;
 		white-space: nowrap;

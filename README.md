@@ -229,7 +229,7 @@ person who no longer exists as **Living**; visitors are refused it, and never se
 change. Exports are not redacted yet ([ADR-008](./docs/adr/008-privacy-model.md), #1412).
 
 The app marks a living or private person with a **Living** or **Private** badge on their page and
-person cards, in search results and the person picker's chosen person, on the pedigree and descendancy charts,
+person cards, in search results, in the person picker's results and chosen person, on the pedigree and descendancy charts,
 in the Ahnentafel report, on the relationship calculator's path, on family cards and pages, on
 the family group sheet and in the map's person lists. Search results, chart nodes, Ahnentafel
 entries, relationship path nodes, family partners and children, group sheet entries and map
