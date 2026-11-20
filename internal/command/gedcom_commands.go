@@ -39,7 +39,7 @@ type ImportGedcomResult struct {
 	SubmittersImported    int
 	AssociationsImported  int
 	LDSOrdinancesImported int
-	MediaImported         int
+	MediaImported         int // media items created: one per owner of an OBJE record
 	Warnings              []string
 	Errors                []string
 }
@@ -74,6 +74,10 @@ func (h *Handler) ImportGedcom(ctx context.Context, input ImportGedcomInput) (*I
 		Errors:   importResult.Errors,
 	}
 
+	// notImported holds the sources, persons and families whose import
+	// failed, so that no media item is created for them.
+	notImported := make(map[uuid.UUID]bool)
+
 	// Import repositories first (before sources that reference them)
 	for _, r := range repositories {
 		err := h.importRepository(ctx, r)
@@ -91,6 +95,7 @@ func (h *Handler) ImportGedcom(ctx context.Context, input ImportGedcomInput) (*I
 		if err != nil {
 			result.Errors = append(result.Errors,
 				fmt.Sprintf("Failed to import source %s (%s): %v", s.GedcomXref, s.Title, err))
+			notImported[s.ID] = true
 			continue
 		}
 		result.SourcesImported++
@@ -102,6 +107,7 @@ func (h *Handler) ImportGedcom(ctx context.Context, input ImportGedcomInput) (*I
 		if err != nil {
 			result.Errors = append(result.Errors,
 				fmt.Sprintf("Failed to import person %s (%s %s): %v", p.GedcomXref, p.GivenName, p.Surname, err))
+			notImported[p.ID] = true
 			continue
 		}
 		result.PersonsImported++
@@ -113,6 +119,7 @@ func (h *Handler) ImportGedcom(ctx context.Context, input ImportGedcomInput) (*I
 		if err != nil {
 			result.Errors = append(result.Errors,
 				fmt.Sprintf("Failed to import family %s: %v", f.GedcomXref, err))
+			notImported[f.ID] = true
 			continue
 		}
 		result.FamiliesImported++
@@ -233,6 +240,11 @@ func (h *Handler) ImportGedcom(ctx context.Context, input ImportGedcomInput) (*I
 			continue
 		}
 		for i, owner := range m.Owners {
+			if notImported[owner.EntityID] {
+				result.Warnings = append(result.Warnings,
+					fmt.Sprintf("Media %s (%s) not imported for %s %s, which failed to import", m.GedcomXref, m.Title, owner.EntityType, owner.EntityID))
+				continue
+			}
 			id := m.ID
 			if i > 0 {
 				id = uuid.New()

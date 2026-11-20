@@ -81,12 +81,22 @@ func TestImportGedcom_MediaOneItemPerOwner(t *testing.T) {
 	}
 }
 
+// failingStreamStore fails every append to streams of one type.
+type failingStreamStore struct {
+	*memory.EventStore
+	streamType string
+}
+
+func (s failingStreamStore) Append(ctx context.Context, streamID uuid.UUID, streamType string, events []domain.Event, expectedVersion int64, scope repository.AppendScope) error {
+	if streamType == s.streamType {
+		return io.ErrUnexpectedEOF
+	}
+	return s.EventStore.Append(ctx, streamID, streamType, events, expectedVersion, scope)
+}
+
 func TestImportGedcom_MediaAppendFailureWarns(t *testing.T) {
 	ctx := context.Background()
-	readStore := memory.NewReadModelStore()
-	failing := newMockEventStore()
-	failing.appendError = io.ErrUnexpectedEOF
-	handler := command.NewHandler(failing, readStore)
+	handler := command.NewHandler(failingStreamStore{memory.NewEventStore(), "media"}, memory.NewReadModelStore())
 
 	result, err := handler.ImportGedcom(ctx, command.ImportGedcomInput{Filename: "m.ged", Reader: strings.NewReader(mediaGedcom)})
 	if err != nil {
@@ -97,5 +107,32 @@ func TestImportGedcom_MediaAppendFailureWarns(t *testing.T) {
 	}
 	if !slices.ContainsFunc(result.Warnings, func(w string) bool { return strings.Contains(w, "Failed to import media @M1@") }) {
 		t.Errorf("warnings %q lack the failed media", result.Warnings)
+	}
+}
+
+func TestImportGedcom_MediaSkipsFailedOwner(t *testing.T) {
+	ctx := context.Background()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(failingStreamStore{memory.NewEventStore(), "source"}, readStore)
+
+	result, err := handler.ImportGedcom(ctx, command.ImportGedcomInput{Filename: "m.ged", Reader: strings.NewReader(mediaGedcom)})
+	if err != nil {
+		t.Fatalf("ImportGedcom: %v", err)
+	}
+	if result.SourcesImported != 0 || result.MediaImported != 2 {
+		t.Errorf("SourcesImported = %d, MediaImported = %d; want 0 and 2 (person and family only)", result.SourcesImported, result.MediaImported)
+	}
+	if !slices.ContainsFunc(result.Warnings, func(w string) bool {
+		return strings.Contains(w, "Media @M1@") && strings.Contains(w, "source") && strings.Contains(w, "failed to import")
+	}) {
+		t.Errorf("warnings %q lack the media skipped for the failed source", result.Warnings)
+	}
+	persons, _, _ := readStore.ListPersons(ctx, repository.DefaultListOptions())
+	if len(persons) != 1 {
+		t.Fatalf("imported %d persons, want 1", len(persons))
+	}
+	media, _, err := readStore.ListMediaForEntity(ctx, "person", persons[0].ID, repository.DefaultListOptions())
+	if err != nil || len(media) != 1 {
+		t.Errorf("person media = %d, %v; want 1", len(media), err)
 	}
 }

@@ -30,7 +30,7 @@ type ImportResult struct {
 	FamiliesImported      int
 	SourcesImported       int
 	CitationsImported     int
-	MediaImported         int
+	MediaImported         int // OBJE records parsed, linked or not
 	RepositoriesImported  int
 	EventsImported        int
 	AttributesImported    int
@@ -53,7 +53,7 @@ type ImportResult struct {
 	PersonXrefToID     map[string]uuid.UUID
 	FamilyXrefToID     map[string]uuid.UUID
 	SourceXrefToID     map[string]uuid.UUID
-	MediaXrefToID      map[string]uuid.UUID
+	MediaXrefToID      map[string]uuid.UUID // the first owner's item (see MediaData.ID)
 	RepositoryXrefToID map[string]uuid.UUID
 	NoteXrefToID       map[string]uuid.UUID
 	SubmitterXrefToID  map[string]uuid.UUID
@@ -214,6 +214,9 @@ type CitationData struct {
 
 // MediaData contains parsed media data ready for creation.
 type MediaData struct {
+	// ID is the ID of the item created for the first owner, which
+	// ImportResult.MediaXrefToID maps the OBJE xref to; the import gives the
+	// items of later owners new IDs.
 	ID         uuid.UUID
 	GedcomXref string
 	// Owners are the person, family and source records that link to the OBJE
