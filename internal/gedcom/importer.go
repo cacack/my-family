@@ -214,10 +214,13 @@ type CitationData struct {
 
 // MediaData contains parsed media data ready for creation.
 type MediaData struct {
-	ID          uuid.UUID
-	GedcomXref  string
-	EntityType  string // "person", "family", "source"
-	EntityID    uuid.UUID
+	ID         uuid.UUID
+	GedcomXref string
+	// Owners are the person, family and source records that link to the OBJE
+	// record, in file order, each once. A media item has one owner, so the
+	// import creates one item per owner (#1435).
+	Owners      []MediaOwner
+	Restriction string // record-level RESN (ADR-008), or _RESN in 5.5.x
 	Title       string
 	MimeType    string
 	MediaType   domain.MediaType
@@ -227,6 +230,12 @@ type MediaData struct {
 	Files        []domain.MediaFile // Multiple file references (GEDCOM 7.0)
 	Format       string             // Primary format/MIME type (FORM)
 	Translations []string           // Translated titles (GEDCOM 7.0)
+}
+
+// MediaOwner is a record that links to an OBJE record.
+type MediaOwner struct {
+	EntityType string // "person", "family" or "source"
+	EntityID   uuid.UUID
 }
 
 // EventData contains parsed life event data ready for creation.
@@ -541,8 +550,10 @@ func (imp *Importer) ImportWithOptions(ctx context.Context, reader io.Reader, im
 	// Ninth pass: parse OBJE (media object) records
 	// These contain full media metadata including multiple files and translations
 	var mediaObjects []MediaData
+	owners := mediaOwners(doc, result)
 	for _, media := range doc.MediaObjects() {
 		mediaData := parseMediaObject(media, result)
+		mediaData.Owners = owners[media.XRef]
 		mediaObjects = append(mediaObjects, mediaData)
 		result.MediaXrefToID[media.XRef] = mediaData.ID
 	}
@@ -1302,8 +1313,8 @@ func parseNote(note *gedcom.Note) NoteData {
 }
 
 // extensionRestrictionTag carries a restriction notice on a record type for
-// which neither GEDCOM 5.5.1 nor 7.0 defines RESN: sources and notes
-// (ADR-008 §2).
+// which the GEDCOM version defines no RESN: sources and notes, and media in
+// 5.5 and 5.5.1 (ADR-008 §2).
 const extensionRestrictionTag = "_RESN"
 
 // extensionRestriction returns the restriction notice of a record that GEDCOM
@@ -2129,13 +2140,17 @@ func extractLDSOrdinancesFromFamily(fam *gedcom.Family, familyID uuid.UUID) []LD
 }
 
 // parseMediaObject converts a GEDCOM media object (OBJE) record to MediaData.
-// Note: This parses top-level OBJE records. Entity-specific media links are resolved
-// during entity import by referencing the MediaXrefToID mapping.
+// Note: This parses top-level OBJE records; mediaOwners finds the records that
+// link to them.
 // TODO: result parameter reserved for future error/warning tracking
 func parseMediaObject(media *gedcom.MediaObject, _ *ImportResult) MediaData {
 	mediaData := MediaData{
-		ID:         uuid.New(),
-		GedcomXref: media.XRef,
+		ID:          uuid.New(),
+		GedcomXref:  media.XRef,
+		Restriction: media.Restriction,
+	}
+	if mediaData.Restriction == "" {
+		mediaData.Restriction = extensionRestriction(media.Tags)
 	}
 
 	// Parse all files from the OBJE record
@@ -2180,6 +2195,35 @@ func parseMediaObject(media *gedcom.MediaObject, _ *ImportResult) MediaData {
 	}
 
 	return mediaData
+}
+
+// mediaOwners returns, per OBJE xref, the person, family and source records
+// that link to it with a record-level OBJE pointer, in file order and each
+// once. Links under events, citations and other substructures, and inline
+// OBJE links with no pointer, are not read.
+func mediaOwners(doc *gedcom.Document, result *ImportResult) map[string][]MediaOwner {
+	owners := make(map[string][]MediaOwner)
+	add := func(links []*gedcom.MediaLink, entityType string, entityID uuid.UUID) {
+		for _, link := range links {
+			if link == nil || link.MediaXRef == "" {
+				continue
+			}
+			owner := MediaOwner{EntityType: entityType, EntityID: entityID}
+			if !slices.Contains(owners[link.MediaXRef], owner) {
+				owners[link.MediaXRef] = append(owners[link.MediaXRef], owner)
+			}
+		}
+	}
+	for _, indi := range doc.Individuals() {
+		add(indi.Media, "person", result.PersonXrefToID[indi.XRef])
+	}
+	for _, fam := range doc.Families() {
+		add(fam.Media, "family", result.FamilyXrefToID[fam.XRef])
+	}
+	for _, src := range doc.Sources() {
+		add(src.Media, "source", result.SourceXrefToID[src.XRef])
+	}
+	return owners
 }
 
 // mapGedcomMediaType converts GEDCOM MEDI values to domain MediaType.

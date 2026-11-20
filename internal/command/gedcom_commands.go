@@ -39,6 +39,7 @@ type ImportGedcomResult struct {
 	SubmittersImported    int
 	AssociationsImported  int
 	LDSOrdinancesImported int
+	MediaImported         int
 	Warnings              []string
 	Errors                []string
 }
@@ -53,7 +54,7 @@ func (h *Handler) ImportGedcom(ctx context.Context, input ImportGedcomInput) (*I
 	}
 
 	// Parse the GEDCOM file, forwarding progress callbacks when requested.
-	importResult, persons, families, sources, citations, repositories, events, attributes, notes, submitters, associations, ldsOrdinances, _, err := importer.ImportWithOptions(ctx, input.Reader, gedcom.ImportOptions{
+	importResult, persons, families, sources, citations, repositories, events, attributes, notes, submitters, associations, ldsOrdinances, media, err := importer.ImportWithOptions(ctx, input.Reader, gedcom.ImportOptions{
 		TotalSize:     input.FileSize,
 		OnProgress:    input.OnProgress,
 		ExistingXrefs: existingXrefs,
@@ -220,6 +221,29 @@ func (h *Handler) ImportGedcom(ctx context.Context, input ImportGedcomInput) (*I
 			continue
 		}
 		result.LDSOrdinancesImported++
+	}
+
+	// Import media (after the persons, families and sources that own them).
+	// An OBJE record linked from several records becomes one item per owner,
+	// as a media item has one owner; one linked from none is not imported.
+	for _, m := range media {
+		if len(m.Owners) == 0 {
+			result.Warnings = append(result.Warnings,
+				fmt.Sprintf("Media %s (%s) is linked to no person, family or source; not imported", m.GedcomXref, m.Title))
+			continue
+		}
+		for i, owner := range m.Owners {
+			id := m.ID
+			if i > 0 {
+				id = uuid.New()
+			}
+			if err := h.importMedia(ctx, id, owner, m); err != nil {
+				result.Warnings = append(result.Warnings,
+					fmt.Sprintf("Failed to import media %s (%s): %v", m.GedcomXref, m.Title, err))
+				continue
+			}
+			result.MediaImported++
+		}
 	}
 
 	// Record the import event
@@ -772,5 +796,30 @@ func (h *Handler) importLDSOrdinance(ctx context.Context, o gedcom.LDSOrdinanceD
 	}
 
 	// Project to read model
+	return h.project(ctx, event, 1, domain.MainBranchID)
+}
+
+// importMedia creates the media item id, owned by owner, from an OBJE record.
+// The file references are kept; no file content is read.
+func (h *Handler) importMedia(ctx context.Context, id uuid.UUID, owner gedcom.MediaOwner, m gedcom.MediaData) error {
+	item := domain.NewMedia(m.Title, owner.EntityType, owner.EntityID)
+	item.ID = id
+	item.MimeType = m.MimeType
+	item.MediaType = m.MediaType
+	item.GedcomXref = m.GedcomXref
+	item.Files = m.Files
+	item.Format = m.Format
+	item.Translations = m.Translations
+	if err := item.Validate(); err != nil {
+		return err
+	}
+
+	event := domain.NewMediaCreated(item)
+	event.Restriction = domain.Restriction(m.Restriction)
+
+	if err := h.eventStore.Append(ctx, item.ID, "media", []domain.Event{event}, -1, repository.MainScope); err != nil {
+		return fmt.Errorf("appending media created event: %w", err)
+	}
+
 	return h.project(ctx, event, 1, domain.MainBranchID)
 }
