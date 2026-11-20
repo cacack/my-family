@@ -93,6 +93,7 @@ func redactionFixture(t *testing.T, viewersSeeLiving bool) (*authFixture, redact
 	t.Helper()
 	f, cookies := rolesFixture(t)
 	tr := buildRedactionTree(t, f, cookies[repository.RoleOwner])
+	f.server.ProtectVisitorsForTest()
 	settings := repository.DefaultTreeSettings()
 	settings.AnonymousAccess = repository.AnonymousAccessViewer
 	settings.ViewersSeeLiving = viewersSeeLiving
@@ -220,14 +221,19 @@ func TestPrivacyRedaction_PersonSurfaces(t *testing.T) {
 
 					// The event log is not redacted yet: a protected person's
 					// is empty, and a private person's sub-resources are not
-					// found, as their page is not.
-					for _, sub := range []string{"history", "restore-points"} {
+					// found, as their page is not. Visitors never reach the
+					// change log (TestAnonymous_ChangeLogNeedsSignIn).
+					logSubs := []string{"history", "restore-points"}
+					if p.cookie == nil {
+						logSubs = nil
+					}
+					for _, sub := range logSubs {
 						log := p.getJSON(t, f, "/api/v1/persons/"+tr.living+"/"+sub)
 						if items, _ := log["items"].([]any); (len(items) > 0) != p.seesLiving {
 							t.Errorf("living person's %s = %v, want shown %v", sub, log, p.seesLiving)
 						}
 					}
-					for _, sub := range []string{"history", "restore-points", "media", "associations"} {
+					for _, sub := range append(logSubs, "media", "associations") {
 						if rec := p.get(t, f, "/api/v1/persons/"+tr.private+"/"+sub); (rec.Code == http.StatusOK) != p.seesPrivate {
 							t.Errorf("private person's %s: %d, want shown %v", sub, rec.Code, p.seesPrivate)
 						}
