@@ -285,6 +285,25 @@ func TestRoles_ForbiddenSaysWhy(t *testing.T) {
 	}
 }
 
+// The citation template preview is a POST a viewer may call because it
+// changes nothing: it renders the posted fields against a built-in template
+// and writes no event.
+func TestRoles_ViewerCitationPreviewChangesNothing(t *testing.T) {
+	f, cookies := rolesFixture(t)
+	before := f.events.EventCount()
+	rec := f.do(t, request{method: http.MethodPost, path: "/api/v1/citation-templates/census.us.federal/preview", cookie: cookies[repository.RoleViewer],
+		body: `{"fields":{"year":"1850","state":"Ohio","county":"Adams","person_name":"John Doe"}}`})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("viewer preview: %d %s", rec.Code, rec.Body)
+	}
+	if got := decode[api.FormattedCitation](t, rec).Full; !strings.Contains(got, "1850 U.S. Census, Ohio, Adams County") {
+		t.Errorf("preview = %q, want the rendered census citation", got)
+	}
+	if after := f.events.EventCount(); after != before {
+		t.Errorf("events after a preview = %d, want %d: a preview must not write", after, before)
+	}
+}
+
 func TestRoles_GedcomExportsAreRateLimitedPerUser(t *testing.T) {
 	f, cookies := rolesFixture(t)
 	export := func(path string, cookie *http.Cookie) int {

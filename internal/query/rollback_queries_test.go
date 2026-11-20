@@ -1944,3 +1944,80 @@ func TestGetStateAtVersion_KeepsCreatedRestriction(t *testing.T) {
 		})
 	}
 }
+
+// A merge on the survivor's stream sets the fields it resolved, the privacy
+// marks among them, in the state a rollback restores.
+func TestGetStateAtVersion_AppliesAMergesResolvedFields(t *testing.T) {
+	id := uuid.New()
+	created, err := json.Marshal(domain.PersonCreated{PersonID: id, GivenName: "John"})
+	require.NoError(t, err)
+	merged, err := json.Marshal(domain.NewPersonMerged(id, uuid.New(), nil,
+		map[string]any{"given_name": "Jonathan", "restriction": "privacy", "living_override": "living"},
+		nil, nil, nil, nil, nil))
+	require.NoError(t, err)
+	events := []repository.StoredEvent{
+		{ID: uuid.New(), StreamID: id, StreamType: "person", EventType: "PersonCreated", Data: created, Version: 1, Position: 1},
+		{ID: uuid.New(), StreamID: id, StreamType: "person", EventType: "PersonMerged", Data: merged, Version: 2, Position: 2},
+	}
+	service := NewRollbackService(&rollbackMockEventStore{
+		readStreamFunc: func(context.Context, uuid.UUID) ([]repository.StoredEvent, error) { return events, nil },
+	}, &mockReadModelStore{})
+
+	result, err := service.GetStateAtVersion(context.Background(), "person", id, 2)
+	require.NoError(t, err)
+	assert.Equal(t, "Jonathan", result.State["given_name"])
+	assert.Equal(t, "privacy", result.State["restriction"])
+	assert.Equal(t, "living", result.State["living_override"])
+
+	changes, err := service.ComputeRollbackChanges(context.Background(), "person", id, 1)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]any{"given_name": "John"}, changes.Changes,
+		"a rollback across a merge keeps the marks it resolved")
+}
+
+// A rollback across a merge restores marks that protect more than the current
+// ones, and keeps the current marks where the target's protect less.
+func TestComputeRollbackChanges_AcrossAMergeKeepsTheMoreProtectiveMarks(t *testing.T) {
+	id := uuid.New()
+	tests := []struct {
+		name    string
+		target  map[string]any
+		current map[string]any
+		want    map[string]any
+	}{
+		{"target more protective", map[string]any{"restriction": "privacy", "living_override": "living"},
+			map[string]any{"restriction": nil, "living_override": nil},
+			map[string]any{"restriction": "privacy", "living_override": "living"}},
+		{"target less protective", map[string]any{"restriction": "locked", "living_override": "deceased"},
+			map[string]any{"restriction": "locked, confidential", "living_override": nil},
+			map[string]any{}},
+		{"target keeps its other values", map[string]any{"restriction": "locked"},
+			map[string]any{"restriction": "confidential"},
+			map[string]any{"restriction": "locked, confidential"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			created, err := json.Marshal(domain.PersonCreated{PersonID: id, GivenName: "John"})
+			require.NoError(t, err)
+			target, err := json.Marshal(domain.PersonUpdated{PersonID: id, Changes: tt.target})
+			require.NoError(t, err)
+			merged, err := json.Marshal(domain.NewPersonMerged(id, uuid.New(), nil, nil, nil, nil, nil, nil, nil))
+			require.NoError(t, err)
+			current, err := json.Marshal(domain.PersonUpdated{PersonID: id, Changes: tt.current})
+			require.NoError(t, err)
+			events := []repository.StoredEvent{
+				{ID: uuid.New(), StreamID: id, StreamType: "person", EventType: "PersonCreated", Data: created, Version: 1, Position: 1},
+				{ID: uuid.New(), StreamID: id, StreamType: "person", EventType: "PersonUpdated", Data: target, Version: 2, Position: 2},
+				{ID: uuid.New(), StreamID: id, StreamType: "person", EventType: "PersonMerged", Data: merged, Version: 3, Position: 3},
+				{ID: uuid.New(), StreamID: id, StreamType: "person", EventType: "PersonUpdated", Data: current, Version: 4, Position: 4},
+			}
+			service := NewRollbackService(&rollbackMockEventStore{
+				readStreamFunc: func(context.Context, uuid.UUID) ([]repository.StoredEvent, error) { return events, nil },
+			}, &mockReadModelStore{})
+
+			changes, err := service.ComputeRollbackChanges(context.Background(), "person", id, 2)
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, changes.Changes)
+		})
+	}
+}

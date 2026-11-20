@@ -193,16 +193,14 @@ func (ss *StrictServer) CreateInvite(ctx context.Context, request CreateInviteRe
 	}
 }
 
-// Auth audit page size, when the request names none.
-const defaultAuthAuditLimit = 50
-
 // ListAuthAudit implements StrictServerInterface. Each entry names its actor
 // by display name, as history does.
 func (ss *StrictServer) ListAuthAudit(ctx context.Context, request ListAuthAuditRequestObject) (ListAuthAuditResponseObject, error) {
 	if ss.server.config.OpenMode() {
 		return ListAuthAudit409JSONResponse{accountsOnly}, nil
 	}
-	limit, offset := defaultAuthAuditLimit, 0
+	// The auth service applies the default and clamps both.
+	limit, offset := 0, 0
 	if request.Params.Limit != nil {
 		limit = *request.Params.Limit
 	}

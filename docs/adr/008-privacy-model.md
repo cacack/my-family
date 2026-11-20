@@ -490,7 +490,7 @@ decorator, b = event-output redactor, — = no tree data. "Protected" means a pl
 
 | Operation | Path | Returns | Source | Choke | Special handling |
 |-----------|------|---------|--------|-------|------------------|
-| rollbackPerson | POST /persons/{id}/rollback | Rolled-back changes | EL | b | Owner-only; redactor is identity |
+| rollbackPerson | POST /persons/{id}/rollback | Rolled-back changes | EL | b | Owner-only; redactor is identity. Across a person merge it keeps the more protective of the current and target privacy marks, as the merge does (#1447) |
 | rollbackFamily | POST /families/{id}/rollback | As above | EL | b | As rollbackPerson |
 | rollbackSource | POST /sources/{id}/rollback | As above | EL | b | As rollbackPerson |
 | rollbackCitation | POST /citations/{id}/rollback | As above | EL | b | As rollbackPerson |

@@ -65,7 +65,9 @@ func (ss *StrictServer) UpdatePrivacySettings(ctx context.Context, request Updat
 		return nil, err
 	}
 	// Who may see the tree without signing in is an access change, so it is
-	// audited with the other access changes (ADR-007).
+	// audited with the other access changes (ADR-007). Like theirs, a failed
+	// audit write is logged and leaves the saved change in place, so closing
+	// the tree to visitors never waits on the log.
 	if settings.AnonymousAccess != previous.AnonymousAccess && ss.server.auth != nil {
 		ss.server.auth.AuditAnonymousAccess(ctx, actorFrom(ctx), settings.AnonymousAccess)
 	}
