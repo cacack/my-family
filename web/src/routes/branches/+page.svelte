@@ -190,7 +190,13 @@
 	<article class="branch-card">
 		<div class="branch-head">
 			<div class="branch-title">
-				<a href="/branches/{branch.id}" class="branch-name">{branch.name}</a>
+				<!-- A visitor reads the mainline only (ADR-008 §4): a branch's page and
+				     comparison need sign-in, so nothing here leads a visitor there. -->
+				{#if isVisitor()}
+					<span class="branch-name">{branch.name}</span>
+				{:else}
+					<a href="/branches/{branch.id}" class="branch-name">{branch.name}</a>
+				{/if}
 				<Badge variant={statusVariant(branch.status)} class="capitalize">
 					{statusLabel(branch.status)}
 				</Badge>
@@ -209,7 +215,6 @@
 							Return to mainline
 						</Button>
 					{:else if !isVisitor()}
-						<!-- A visitor cannot open a branch or its comparison (ADR-008 §4), so it is not offered. -->
 						<Button variant="outline" size="sm" onclick={() => switchBranch(branch)}>
 							Switch to branch
 						</Button>
@@ -225,10 +230,12 @@
 						Research
 					</Button>
 				{/if}
-				{#if isIncompleteMerge(branch)}
-					<Button size="sm" href="/branches/{branch.id}">Finish merge</Button>
+				{#if !isVisitor()}
+					{#if isIncompleteMerge(branch)}
+						<Button size="sm" href="/branches/{branch.id}">Finish merge</Button>
+					{/if}
+					<Button variant="ghost" size="sm" href="/branches/{branch.id}">Compare</Button>
 				{/if}
-				<Button variant="ghost" size="sm" href="/branches/{branch.id}">Compare</Button>
 			</div>
 		</div>
 
@@ -561,7 +568,7 @@
 		text-decoration: none;
 	}
 
-	.branch-name:hover {
+	a.branch-name:hover {
 		color: var(--color-link);
 	}
 

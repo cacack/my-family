@@ -88,6 +88,39 @@ describe('activeBranch store', () => {
 		expect(client.getClientBranch()).toBe(BRANCH_ID);
 	});
 
+	it('drops a persisted branch for a visitor, who reads the mainline only', async () => {
+		getBranchMock.mockResolvedValue(activeBranchFixture);
+		const { client, store } = await loadStore(BRANCH_ID);
+		const access = await import('#lib/stores/access.svelte.js');
+		access.auth.phase = 'visitor';
+
+		await store.revalidateActiveBranch();
+
+		expect(getBranchMock).not.toHaveBeenCalled();
+		expect(store.activeBranch.id).toBeNull();
+		expect(client.getClientBranch()).toBeNull();
+		expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+		expect(reloadMock).toHaveBeenCalled();
+		expect(noticeAtReload).toContain('Visitors see the mainline only');
+	});
+
+	it('drops the branch when the owner starts a visitor preview after revalidating', async () => {
+		getBranchMock.mockResolvedValue(activeBranchFixture);
+		const { client, store } = await loadStore(BRANCH_ID);
+		const access = await import('#lib/stores/access.svelte.js');
+		access.auth.phase = 'signed-in';
+		access.auth.account = { role: 'owner' } as apiModule.Account;
+
+		await store.revalidateActiveBranch();
+		expect(store.activeBranch.id).toBe(BRANCH_ID);
+
+		access.auth.previewAs = 'visitor';
+		await store.revalidateActiveBranch();
+
+		expect(store.activeBranch.id).toBeNull();
+		expect(client.getClientBranch()).toBeNull();
+	});
+
 	it('falls back to mainline with a notice when the persisted branch is gone', async () => {
 		getBranchMock.mockRejectedValue({ status: 404, code: 'not_found', message: 'not found' });
 		const { client, store } = await loadStore(BRANCH_ID);

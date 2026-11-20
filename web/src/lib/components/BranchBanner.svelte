@@ -13,6 +13,10 @@
 	 * Branches are live overlays, not frozen copies (ADR-005 §The model), so the
 	 * banner also explains that and says how far the mainline has moved under
 	 * the branch since it forked (#837) - a cheap count, not a compare.
+	 *
+	 * A visitor is dropped to the mainline (revalidateActiveBranch), but while
+	 * one is still on a branch nothing here leads to the compare page, which
+	 * they may not open (ADR-008 §4).
 	 */
 	import { api, onBranchWrite, type BranchDrift } from '#lib/api/client.js';
 	import {
@@ -21,6 +25,7 @@
 		dismissBranchNotice
 	} from '#lib/stores/activeBranch.svelte.js';
 	import { Button } from '#lib/components/ui/button/index.js';
+	import { isVisitor } from '#lib/stores/access.svelte.js';
 	import BranchOutcomeBadge from '#lib/components/branch/BranchOutcomeBadge.svelte';
 	import BranchDriftIndicator from './BranchDriftIndicator.svelte';
 	import { subjectHref, subjectLabel } from '#lib/utils/branchResearch.js';
@@ -179,7 +184,9 @@
 									>{#if i < shownSubjects.length - 1},{/if}</span
 								>
 							{/each}
-							{#if hiddenSubjects > 0}
+							{#if hiddenSubjects > 0 && isVisitor()}
+								<span class="subjects-more">+{hiddenSubjects} more</span>
+							{:else if hiddenSubjects > 0}
 								<a class="subjects-more" href="/branches/{activeBranch.id}">+{hiddenSubjects} more</a>
 							{/if}
 						</span>
@@ -217,7 +224,9 @@
 			</details>
 		</div>
 		<div class="branch-actions">
-			<Button variant="outline" size="sm" href="/branches/{activeBranch.id}">Compare</Button>
+			{#if !isVisitor()}
+				<Button variant="outline" size="sm" href="/branches/{activeBranch.id}">Compare</Button>
+			{/if}
 			<Button variant="outline" size="sm" onclick={handleReturn} disabled={leaving}>
 				{leaving ? 'Returning...' : 'Return to Mainline'}
 			</Button>

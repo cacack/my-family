@@ -33,6 +33,7 @@
  */
 
 import { api, setClientBranch, type ApiError, type Branch } from '#lib/api/client.js';
+import { isVisitor } from '#lib/stores/access.svelte.js';
 
 const STORAGE_KEY = 'active-branch';
 /**
@@ -186,8 +187,18 @@ let revalidationStarted = false;
  * Confirm the persisted branch still exists and still accepts writes. Safe to
  * call repeatedly; only the first call does work, except after an inconclusive
  * failure, which leaves the door open for a retry. No-op on the mainline.
+ *
+ * A visitor reads the mainline only and the server refuses them a branch
+ * scope (ADR-008 §4), so a branch persisted from before they became one
+ * (signed out, or the owner started a visitor preview) is dropped on every
+ * call. The check reads the access store first, so the layout's effect runs
+ * it again whenever who is viewing changes.
  */
 export async function revalidateActiveBranch(): Promise<void> {
+	if (isVisitor() && state.id !== null) {
+		dropStaleBranch('Visitors see the mainline only, so you are back on it. Sign in to work in a research branch.');
+		return;
+	}
 	if (revalidationStarted) {
 		return;
 	}

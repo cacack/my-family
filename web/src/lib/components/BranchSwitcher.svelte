@@ -10,8 +10,12 @@
 	 * Only `active` branches are switch targets: `merged` and `archived` are
 	 * terminal and their overlay rows are purged, so scoping to one would 404
 	 * every person and family page.
+	 *
+	 * A visitor reads the mainline only (ADR-008 §4), so the menu offers them
+	 * no branch and fetches none: just the mainline, and why.
 	 */
 	import { api, type ApiError, type Branch } from '#lib/api/client.js';
+	import { isVisitor } from '#lib/stores/access.svelte.js';
 	import { activeBranch, switchBranch } from '#lib/stores/activeBranch.svelte.js';
 	import * as DropdownMenu from '#lib/components/ui/dropdown-menu/index.js';
 	import { Button } from '#lib/components/ui/button/index.js';
@@ -54,7 +58,7 @@
 
 	function handleOpenChange(isOpen: boolean) {
 		open = isOpen;
-		if (isOpen) {
+		if (isOpen && !isVisitor()) {
 			loadBranches();
 		}
 	}
@@ -106,7 +110,9 @@
 				<span class="truncate">Mainline</span>
 			</DropdownMenu.Item>
 
-			{#if loading}
+			{#if isVisitor()}
+				<DropdownMenu.Item disabled>Sign in to work in a research branch</DropdownMenu.Item>
+			{:else if loading}
 				<DropdownMenu.Item disabled>Loading branches...</DropdownMenu.Item>
 			{:else if error}
 				<DropdownMenu.Item disabled>{error}</DropdownMenu.Item>

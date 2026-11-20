@@ -6,7 +6,8 @@ import type { Branch } from '#lib/api/client.js';
 
 // Hoisted so the module mocks below (which vitest lifts above the imports) can
 // close over them.
-const { mockState, listBranches, switchBranch } = vi.hoisted(() => ({
+const { mockState, listBranches, switchBranch, visitor } = vi.hoisted(() => ({
+	visitor: { value: false },
 	mockState: {
 		id: null as string | null,
 		branch: null as Branch | null,
@@ -25,6 +26,10 @@ vi.mock('#lib/api/client.js', async (importOriginal) => {
 		api: { listBranches: () => listBranches() }
 	};
 });
+
+vi.mock('#lib/stores/access.svelte.js', () => ({
+	isVisitor: () => visitor.value
+}));
 
 vi.mock('#lib/stores/activeBranch.svelte.js', () => ({
 	activeBranch: mockState,
@@ -48,6 +53,7 @@ describe('BranchSwitcher', () => {
 		mockState.id = null;
 		mockState.branch = null;
 		mockState.notice = null;
+		visitor.value = false;
 		listBranches.mockResolvedValue({ items: [branch], total: 1 });
 	});
 
@@ -72,6 +78,18 @@ describe('BranchSwitcher', () => {
 		expect(
 			screen.getByLabelText('Switch research branch. Currently on Maternal Smith line')
 		).toBeDefined();
+	});
+
+	it('offers a visitor no branch, only the mainline and why', async () => {
+		visitor.value = true;
+
+		render(BranchSwitcher);
+		await fireEvent.pointerDown(screen.getByRole('button', { name: /switch research branch/i }));
+
+		expect(await screen.findByRole('menuitem', { name: 'Mainline' })).toBeDefined();
+		expect(screen.getByText('Sign in to work in a research branch')).toBeDefined();
+		expect(screen.queryByRole('menuitem', { name: /Maternal Smith line/ })).toBeNull();
+		expect(listBranches).not.toHaveBeenCalled();
 	});
 
 	it('does not fetch the branch list until the menu is opened', () => {
