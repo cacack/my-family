@@ -9,6 +9,7 @@ import { auth } from '#lib/stores/access.svelte.js';
 beforeEach(() => {
 	auth.phase = 'open';
 	auth.account = null;
+	auth.previewAs = null;
 });
 
 // Drain bits-ui's deferred body-scroll-lock cleanup before vitest tears jsdom down (#741).

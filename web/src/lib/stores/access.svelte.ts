@@ -13,6 +13,9 @@ export type AuthPhase = 'loading' | 'open' | 'setup' | 'signed-out' | 'visitor' 
 /** What a user may do in the tree; each role includes the ones before it. */
 export type Role = Account['role'];
 
+/** Who the owner may preview the tree as (#1413). */
+export type PreviewAs = 'viewer' | 'visitor';
+
 const ROLE_RANK: Record<Role, number> = { viewer: 1, editor: 2, owner: 3 };
 
 interface AuthState {
@@ -20,28 +23,49 @@ interface AuthState {
 	account: Account | null;
 	/** The owner lets visitors browse without signing in (anonymous access `viewer`). */
 	visitorsWelcome: boolean;
+	/**
+	 * Who the owner previews the tree as, or null. The auth store keeps it in
+	 * step with the preview cookie, which makes the server answer as them.
+	 */
+	previewAs: PreviewAs | null;
 }
 
-export const auth = $state<AuthState>({ phase: 'loading', account: null, visitorsWelcome: false });
+export const auth = $state<AuthState>({ phase: 'loading', account: null, visitorsWelcome: false, previewAs: null });
 
-/**
- * The role of whoever is using the app: the signed-in user's, the owner's in
- * open mode, a viewer's for a visitor, or null before anyone is signed in.
- */
-export function currentRole(): Role | null {
+/** The role the account holds: the owner's in open mode, a viewer's for a visitor. */
+function accountRole(): Role | null {
 	if (auth.phase === 'open') return 'owner';
 	if (auth.phase === 'visitor') return 'viewer';
 	return auth.phase === 'signed-in' ? (auth.account?.role ?? null) : null;
 }
 
 /**
+ * Who the owner previews the tree as, or null when they are not previewing.
+ * The server honours the preview for the owner only, so it is null for
+ * anyone else. Reactive.
+ */
+export function previewing(): PreviewAs | null {
+	return accountRole() === 'owner' ? auth.previewAs : null;
+}
+
+/**
+ * The role of whoever is using the app: the signed-in user's, the owner's in
+ * open mode, a viewer's for a visitor or while the owner previews the tree,
+ * or null before anyone is signed in.
+ */
+export function currentRole(): Role | null {
+	return previewing() ? 'viewer' : accountRole();
+}
+
+/**
  * Whether a visitor is browsing without signing in. The server refuses a
  * visitor the change log (history, restore points, snapshots and
  * comparisons), whose records name who made each change (ADR-008 §4), so the
- * app hides it from them. Reactive, like `can`.
+ * app hides it from them, and from the owner previewing as a visitor.
+ * Reactive, like `can`.
  */
 export function isVisitor(): boolean {
-	return auth.phase === 'visitor';
+	return auth.phase === 'visitor' || previewing() === 'visitor';
 }
 
 /**
@@ -61,5 +85,5 @@ export function can(required: Role): boolean {
  * visitor has none, so the server refuses them the control (#1443). Reactive.
  */
 export function canChooseHomePerson(): boolean {
-	return auth.phase === 'open' || auth.phase === 'signed-in';
+	return (auth.phase === 'open' || auth.phase === 'signed-in') && previewing() !== 'visitor';
 }

@@ -3,6 +3,10 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import SettingsPage from './+page.svelte';
 import * as apiModule from '#lib/api/client.js';
 import { signInAs } from '#lib/test/roles.js';
+import { auth } from '#lib/stores/access.svelte.js';
+
+const { goto } = vi.hoisted(() => ({ goto: vi.fn() }));
+vi.mock('$app/navigation', () => ({ goto: (href: string) => goto(href) }));
 
 vi.mock('#lib/api/client.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof apiModule>();
@@ -101,5 +105,18 @@ describe('Settings page', () => {
 		render(SettingsPage);
 		expect(screen.getByTestId('role-notice').textContent).toContain('needs the owner role');
 		expect(api.getPrivacySettings).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		['Preview as a visitor', 'visitor'],
+		['Preview as a viewer', 'viewer']
+	] as const)('%s starts the preview and opens the home page (#1413)', async (name, as) => {
+		render(SettingsPage);
+		const button = await screen.findByRole('button', { name });
+		await fireEvent.click(button);
+		expect(auth.previewAs).toBe(as);
+		expect(document.cookie).toContain(`myfamily_preview=${as}`);
+		expect(goto).toHaveBeenCalledWith('/');
+		document.cookie = 'myfamily_preview=; Path=/; Max-Age=0';
 	});
 });

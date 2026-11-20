@@ -13,10 +13,11 @@
 	import MainNav from '#lib/components/MainNav.svelte';
 	import TooltipProvider from '#lib/components/ui/tooltip/tooltip-provider.svelte';
 	import AccountMenu from '#lib/components/auth/AccountMenu.svelte';
+	import PreviewBanner from '#lib/components/auth/PreviewBanner.svelte';
 	import SetupForm from '#lib/components/auth/SetupForm.svelte';
 	import SignInForm from '#lib/components/auth/SignInForm.svelte';
 	import ErrorState from '#lib/components/ErrorState.svelte';
-	import { auth, loadAuth, recheckSession } from '#lib/stores/auth.svelte.js';
+	import { auth, loadAuth, previewing, recheckSession } from '#lib/stores/auth.svelte.js';
 	import { LINK_PAGES } from '#lib/utils/accountLinks.js';
 	import { createShortcutHandler } from '#lib/keyboard/useShortcuts.svelte.js';
 	import { loadAppConfig, getAppConfig } from '#lib/stores/appConfig.svelte.js';
@@ -47,8 +48,9 @@
 	// rather than left showing what the signed-in user could see. Route loads
 	// (the charts' home person) may have run before anyone signed in, so they
 	// run again too. The home person is forgotten first, so no page shows the
-	// last viewer's choice while the new one loads.
-	const viewer = $derived(`${auth.phase}:${auth.account?.id ?? ''}`);
+	// last viewer's choice while the new one loads. The owner starting or
+	// stopping a preview (#1413) is a new viewer too.
+	const viewer = $derived(`${auth.phase}:${auth.account?.id ?? ''}:${previewing() ?? ''}`);
 	$effect(() => {
 		if (!appReady) return;
 		// Read on purpose: it is what makes this effect re-run for a new viewer.
@@ -137,6 +139,8 @@
 {#if appConfig.demo_mode}
 	<DemoBanner />
 {/if}
+
+<PreviewBanner />
 
 <BranchBanner />
 

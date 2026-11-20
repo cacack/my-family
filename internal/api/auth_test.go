@@ -49,8 +49,10 @@ func newAuthFixture(t *testing.T) *authFixture {
 type request struct {
 	method, path, body string
 	cookie             *http.Cookie
-	header             map[string]string
-	tls                bool
+	// more are cookies sent besides cookie.
+	more   []*http.Cookie
+	header map[string]string
+	tls    bool
 	// remoteAddr is the client's address, or httptest's default.
 	remoteAddr string
 }
@@ -67,6 +69,9 @@ func (f *authFixture) do(t *testing.T, r request) *httptest.ResponseRecorder {
 	}
 	if r.cookie != nil {
 		req.AddCookie(r.cookie)
+	}
+	for _, c := range r.more {
+		req.AddCookie(c)
 	}
 	for k, v := range r.header {
 		req.Header.Set(k, v)

@@ -21,9 +21,61 @@ import {
 	type AccountUpdate,
 	type SetupRequest
 } from '#lib/api/client.js';
-import { auth, type AuthPhase } from './access.svelte.js';
+import { auth, type AuthPhase, type PreviewAs } from './access.svelte.js';
 
-export { auth, can, canChooseHomePerson, currentRole, type AuthPhase, type Role } from './access.svelte.js';
+export {
+	auth,
+	can,
+	canChooseHomePerson,
+	currentRole,
+	previewing,
+	type AuthPhase,
+	type PreviewAs,
+	type Role
+} from './access.svelte.js';
+
+/**
+ * The cookie that makes the server answer the owner as the principal they
+ * preview the tree as (#1413). It is a session cookie, so the preview ends
+ * with the browser, and every request carries it, image loads included.
+ */
+const PREVIEW_COOKIE = 'myfamily_preview';
+const PREVIEW_VALUES: readonly PreviewAs[] = ['viewer', 'visitor'];
+
+function writePreviewCookie(as: PreviewAs | null): void {
+	document.cookie =
+		as === null
+			? `${PREVIEW_COOKIE}=; Path=/; Max-Age=0; SameSite=Strict`
+			: `${PREVIEW_COOKIE}=${as}; Path=/; SameSite=Strict`;
+}
+
+/**
+ * The preview the cookie holds. A value that is no principal (which the
+ * server refuses) is cleared.
+ */
+function readPreviewCookie(): PreviewAs | null {
+	const entry = document.cookie.split('; ').find((c) => c.startsWith(`${PREVIEW_COOKIE}=`));
+	if (entry === undefined) return null;
+	const value = entry.slice(PREVIEW_COOKIE.length + 1);
+	if ((PREVIEW_VALUES as readonly string[]).includes(value)) return value as PreviewAs;
+	writePreviewCookie(null);
+	return null;
+}
+
+/**
+ * The owner starts previewing the tree as a viewer or a visitor: from now on
+ * the server answers as it answers them, and the app shows what they may do.
+ */
+export function startPreview(as: PreviewAs): void {
+	writePreviewCookie(as);
+	auth.previewAs = as;
+}
+
+/** The owner stops previewing and sees the tree as themselves again. */
+export function stopPreview(): void {
+	writePreviewCookie(null);
+	auth.previewAs = null;
+}
 
 function signedIn(account: Account): void {
 	auth.account = account;
@@ -78,6 +130,7 @@ export function browseAsVisitor(): void {
 
 /** Read how this server signs people in and who is signed in. */
 export async function loadAuth(): Promise<void> {
+	auth.previewAs = readPreviewCookie();
 	try {
 		const status = await api.getAuthStatus();
 		if (status.mode === 'open') {
@@ -122,12 +175,14 @@ export async function updateOwnAccount(input: AccountUpdate): Promise<void> {
 
 /**
  * Sign out on the server, then show the sign-in page (or the tree, to a
- * visitor) whatever it answered.
+ * visitor) whatever it answered. A preview ends too, so the next sign-in
+ * starts as themselves.
  */
 export async function signOut(): Promise<void> {
 	try {
 		await api.signOut();
 	} finally {
+		stopPreview();
 		auth.account = null;
 		auth.phase = signedOutPhase();
 	}

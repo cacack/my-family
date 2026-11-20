@@ -223,6 +223,10 @@ Two kinds of record outside the person rules:
 Open mode (`AUTH_MODE=open`, ADR-007) maps to owner. A context carrying no principal is treated
 as anonymous, so a missing principal fails safe.
 
+The owner may preview the tree as an anonymous principal or a viewer (#1413): the sign-in
+middleware then puts that principal, and its role, on the owner's requests, so both choke points
+apply to them unchanged and the preview cannot drift from what that principal is served.
+
 ### 5. Enforcement: two choke points
 
 One policy function decides, for a principal, tree settings and today's date, whether a record

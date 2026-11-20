@@ -3,8 +3,10 @@
 	 * The tree's privacy settings (owner only, ADR-008 §6): the living
 	 * threshold, whether viewers see living people in full, and whether
 	 * visitors may browse without signing in (ADR-007). The server keeps them
-	 * beside the accounts, so they survive restarts.
+	 * beside the accounts, so they survive restarts. From here the owner also
+	 * previews the tree as a viewer or a visitor sees it (#1413).
 	 */
+	import { goto } from '$app/navigation';
 	import PageHeader from '#lib/components/PageHeader.svelte';
 	import ActionError from '#lib/components/ActionError.svelte';
 	import ErrorState from '#lib/components/ErrorState.svelte';
@@ -18,6 +20,7 @@
 
 	type AnonymousAccess = PrivacySettings['anonymous_access'];
 	import { can } from '#lib/stores/access.svelte.js';
+	import { startPreview, type PreviewAs } from '#lib/stores/auth.svelte.js';
 
 	// The range the server accepts (openapi.yaml, PrivacySettings).
 	const MIN_YEARS = 50;
@@ -68,6 +71,12 @@
 	$effect(() => {
 		if (owner) load();
 	});
+
+	/** Start the preview and look at the tree from its home page. */
+	function preview(as: PreviewAs) {
+		startPreview(as);
+		goto('/');
+	}
 
 	async function save(event: SubmitEvent) {
 		event.preventDefault();
@@ -175,6 +184,22 @@
 				</div>
 			</form>
 		</section>
+		<section class="panel" aria-labelledby="preview-heading">
+			<h2 id="preview-heading">Preview</h2>
+			<p id="preview-hint" class="hint preview-intro">
+				See the tree exactly as the server shows it to someone else, under the saved settings: the pages show
+				only what they may see, and the changes they may not make are gone. A banner at the top ends the
+				preview. You can preview visitors before letting them in.
+			</p>
+			<div class="preview-actions">
+				<Button variant="outline" aria-describedby="preview-hint" onclick={() => preview('visitor')}>
+					Preview as a visitor
+				</Button>
+				<Button variant="outline" aria-describedby="preview-hint" onclick={() => preview('viewer')}>
+					Preview as a viewer
+				</Button>
+			</div>
+		</section>
 	{/if}
 </div>
 
@@ -254,6 +279,17 @@
 		margin-bottom: 0.375rem;
 		font-size: 0.875rem;
 		font-weight: 500;
+	}
+
+	.preview-intro {
+		max-width: 32rem;
+	}
+
+	.preview-actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.5rem;
+		margin-top: 0.75rem;
 	}
 
 	.hint p {

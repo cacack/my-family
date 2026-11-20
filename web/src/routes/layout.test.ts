@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render } from '@testing-library/svelte';
+import { render, screen } from '@testing-library/svelte';
 import { createRawSnippet, flushSync } from 'svelte';
 import Layout from './+layout.svelte';
 import { auth } from '#lib/stores/auth.svelte.js';
@@ -87,5 +87,23 @@ describe('root layout: a new viewer', () => {
 		expect(mounts).toBe(1);
 		expect(loadHomePerson).toHaveBeenCalledTimes(1);
 		expect(invalidateAll).toHaveBeenCalledTimes(1);
+	});
+
+	it('rebuilds the page when the owner starts or stops a preview, under its banner (#1413)', () => {
+		render(Layout, { children });
+		flushSync();
+
+		auth.previewAs = 'visitor';
+		flushSync();
+		expect(mounts).toBe(2);
+		expect(loadHomePerson).toHaveBeenCalledTimes(2);
+		expect(invalidateAll).toHaveBeenCalledTimes(2);
+		expect(screen.getByText(/as a visitor who is not signed in does/)).toBeDefined();
+
+		auth.previewAs = null;
+		flushSync();
+		expect(mounts).toBe(3);
+		expect(invalidateAll).toHaveBeenCalledTimes(3);
+		expect(screen.queryByText(/as a visitor who is not signed in does/)).toBeNull();
 	});
 });

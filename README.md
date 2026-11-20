@@ -223,6 +223,13 @@ person cards, in search results, on the pedigree and descendancy charts, on the 
 sheet and in the map's person lists. Search results, chart nodes, group sheet entries and map
 persons carry the same `living` and `private` fields as a person.
 
+Owners check what they share with **Preview as a visitor** or **Preview as a viewer** under
+**Settings**, which works before visitors are let in. While a banner says so, the server answers
+the owner as it answers that principal (the `myfamily_preview` cookie, `viewer` or `visitor`,
+which it ignores for anyone else), so every page shows exactly what the API returns to them and
+the controls they may not use are hidden. What they may not call is refused with 403 rather than
+401, so the owner stays signed in. **Stop preview**, or signing out, ends it.
+
 #### Visitors
 
 Owners choose under **Settings** whether people who are not signed in may browse the tree:
