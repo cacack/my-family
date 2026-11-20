@@ -3,6 +3,8 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/svelte';
 import Page from './+page.svelte';
 import type * as apiModule from '#lib/api/client.js';
 import type { Branch } from '#lib/api/client.js';
+import { auth } from '#lib/stores/access.svelte.js';
+import { signInAs } from '#lib/test/roles.js';
 
 // Hoisted so the module mocks below (which vitest lifts above the imports) can
 // close over them.
@@ -125,6 +127,34 @@ describe('Branches page', () => {
 		expect(screen.getAllByRole('button', { name: /^Switch to branch$/ })).toHaveLength(1);
 		expect(screen.getAllByRole('button', { name: /^Close$/ })).toHaveLength(1);
 		expect(screen.queryByRole('button', { name: /delete/i })).toBeNull();
+	});
+
+	it('offers a signed-in viewer the switch but not the close', async () => {
+		signInAs('viewer');
+		render(Page);
+
+		await screen.findByText('Maternal Smith line');
+		expect(screen.getAllByRole('button', { name: /^Switch to branch$/ })).toHaveLength(1);
+		expect(screen.queryByRole('button', { name: /^Close$/ })).toBeNull();
+	});
+
+	it('does not offer a visitor a switch to a branch they cannot open', async () => {
+		auth.phase = 'visitor';
+		render(Page);
+
+		await screen.findByText('Maternal Smith line');
+		expect(screen.queryByRole('button', { name: /^Switch to branch$/ })).toBeNull();
+		expect(screen.queryByRole('button', { name: /^Close$/ })).toBeNull();
+	});
+
+	it('still lets a visitor already on a branch return to the mainline', async () => {
+		auth.phase = 'visitor';
+		mockState.id = active.id;
+		mockState.branch = active;
+		render(Page);
+
+		await screen.findByText('Maternal Smith line');
+		expect(screen.getByRole('button', { name: /^Return to mainline$/ })).toBeDefined();
 	});
 
 	it("shows a closed branch's outcome, reason and a link to its research", async () => {
