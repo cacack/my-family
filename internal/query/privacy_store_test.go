@@ -453,10 +453,18 @@ func TestFamilyService_MarksTheRelativesItNames(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			listed := false
 			for _, f := range list.Items {
-				if f.ID == tr.open && f.Partner2Marks != tc.livingPartner {
+				if f.ID != tr.open {
+					continue
+				}
+				listed = true
+				if f.Partner2Marks != tc.livingPartner {
 					t.Errorf("listed partner2 = %+v, want %+v", f.Partner2Marks, tc.livingPartner)
 				}
+			}
+			if !listed {
+				t.Errorf("ListFamilies did not return family %s", tr.open)
 			}
 
 			sheet, err := service.GetGroupSheet(tc.ctx, main, tr.open)
