@@ -474,7 +474,8 @@ func (s *QualityService) GetPersonQualityOn(ctx context.Context, branchID domain
 	if err != nil {
 		return nil, err
 	}
-	if person == nil {
+	// A protected person has no score to show (ADR-008, getPersonQuality).
+	if person == nil || person.Visibility != repository.Visible {
 		return nil, ErrNotFound
 	}
 

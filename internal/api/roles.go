@@ -93,6 +93,14 @@ func mustLoadRouteRoles(spec []byte) map[string]repository.Role {
 
 type roleKey struct{}
 
+// withRole returns ctx carrying the requester's role, and the principal the
+// read side shows the tree to (ADR-008 §4): anonymous for a visitor, who holds
+// the viewer role without an account.
+func withRole(ctx context.Context, role repository.Role, anonymous bool) context.Context {
+	ctx = context.WithValue(ctx, roleKey{}, role)
+	return repository.ContextWithPrincipal(ctx, repository.Principal{Role: role, Anonymous: anonymous})
+}
+
 // roleFrom returns the role of whoever is making the request: the signed-in
 // user's role, the owner in open mode, or "" when no one is signed in.
 func roleFrom(ctx context.Context) repository.Role {

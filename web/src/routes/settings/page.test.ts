@@ -37,11 +37,13 @@ describe('Settings page', () => {
 		expect(saveButton().disabled).toBe(true);
 	});
 
-	it('says the viewers setting is not enforced yet', async () => {
+	it('says what viewers see when the viewers setting is off', async () => {
 		render(SettingsPage);
 		await waitFor(() => expect(viewers()).toBeTruthy());
 		expect(viewers().getAttribute('aria-describedby')).toBe('viewers-see-living-hint');
-		expect(document.getElementById('viewers-see-living-hint')?.textContent).toMatch(/not enforced yet/i);
+		const hint = document.getElementById('viewers-see-living-hint')?.textContent ?? '';
+		expect(hint).toMatch(/see a living person as "Living"/);
+		expect(hint).not.toMatch(/not enforced/i);
 	});
 
 	it('saves changed settings and announces it', async () => {

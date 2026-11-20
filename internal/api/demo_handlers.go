@@ -33,7 +33,7 @@ func (s *Server) resetDemo(c echo.Context) error {
 	s.demo.settingsStore.Reset()
 
 	// Re-seed demo data
-	if err := demo.SeedDemoData(context.Background(), s.commandHandler, s.readStore); err != nil {
+	if err := demo.SeedDemoData(context.Background(), s.commandHandler, s.rawReadStore); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{
 			"code":    "seed_failed",
 			"message": "Failed to re-seed demo data: " + err.Error(),

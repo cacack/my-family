@@ -1368,6 +1368,10 @@ func (s *ReadModelStore) ListPersons(ctx context.Context, opts repository.ListOp
 		paramNum = 3
 	}
 
+	// Protected people are excluded in the query, so the total counts only
+	// the people listed (ADR-008 §5).
+	conds = append(conds, personPrivacyConds(opts.Privacy)...)
+
 	// research_status filter (params continue after branch/main).
 	if opts.ResearchStatus != nil {
 		switch *opts.ResearchStatus {
@@ -1494,10 +1498,10 @@ func (s *ReadModelStore) SearchPersons(ctx context.Context, opts repository.Sear
 		// Main fast path (issue #669): main never shadows itself, so rp/rpn are the
 		// raw main-scoped rows and matching can use the GIN/trigram indexes directly
 		// instead of paying the DISTINCT ON overlay's materialize+sort.
-		writeResolvedPersonCTEsMain(&qb, branchN)
+		writeResolvedPersonCTEsMain(&qb, branchN, opts.Privacy)
 	} else {
 		mainN := params.add(domain.MainBranchID.UUID())
-		writeResolvedPersonCTEs(&qb, branchN, mainN)
+		writeResolvedPersonCTEs(&qb, branchN, mainN, opts.Privacy)
 	}
 
 	if hasQuery {
@@ -1546,7 +1550,7 @@ func (s *ReadModelStore) SearchPersons(ctx context.Context, opts repository.Sear
 // main ids. Downstream clauses read from rp/rpn instead of the raw tables so the
 // entire search resolves the overlay in one set-based statement (no per-row
 // branch lookups). When branch == main this collapses to the main rows.
-func writeResolvedPersonCTEs(qb *strings.Builder, branchN, mainN int) {
+func writeResolvedPersonCTEs(qb *strings.Builder, branchN, mainN int, privacy repository.Privacy) {
 	// rp also carries search_vector (needed by the full-text match), which
 	// personSelectCols omits; the final SELECT only reads personCols so the extra
 	// column is harmless.
@@ -1555,14 +1559,14 @@ func writeResolvedPersonCTEs(qb *strings.Builder, branchN, mainN int) {
 			SELECT DISTINCT ON (id) %s, search_vector, deleted
 			FROM persons WHERE branch_id IN ($%d, $%d)
 			ORDER BY id, (branch_id = $%d) DESC
-		) o WHERE NOT deleted
+		) o WHERE NOT deleted%s
 	), rpn AS (
 		SELECT %s FROM (
 			SELECT DISTINCT ON (id) %s, deleted
 			FROM person_names WHERE branch_id IN ($%d, $%d)
 			ORDER BY id, (branch_id = $%d) DESC
 		) o WHERE NOT deleted
-	)`, personSelectCols, personSelectCols, branchN, mainN, branchN,
+	)`, personSelectCols, personSelectCols, branchN, mainN, branchN, personPrivacySQL(privacy),
 		personNameOverlayCols, personNameOverlayCols, branchN, mainN, branchN)
 }
 
@@ -1571,7 +1575,7 @@ func writeResolvedPersonCTEs(qb *strings.Builder, branchN, mainN int) {
 // per id, so the DISTINCT ON overlay is skipped: rp/rpn are the raw rows filtered
 // to the main branch (tombstones excluded), letting the full-text/trigram indexes
 // drive matching. branchN is the $-placeholder for the main branch id.
-func writeResolvedPersonCTEsMain(qb *strings.Builder, branchN int) {
+func writeResolvedPersonCTEsMain(qb *strings.Builder, branchN int, privacy repository.Privacy) {
 	// NOT MATERIALIZED: matched_persons references rp twice (direct match + the
 	// rp JOIN rpn alt-name branch), which would otherwise trigger Postgres 12+'s
 	// default to materialize a CTE used 2+ times. Materializing rp forces a full
@@ -1581,10 +1585,10 @@ func writeResolvedPersonCTEsMain(qb *strings.Builder, branchN int) {
 	// branch-filtered selects; the non-main overlay's DISTINCT ON is left to
 	// materialize (see writeResolvedPersonCTEs).
 	fmt.Fprintf(qb, `WITH rp AS NOT MATERIALIZED (
-		SELECT %s, search_vector FROM persons WHERE branch_id = $%d AND NOT deleted
+		SELECT %s, search_vector FROM persons WHERE branch_id = $%d AND NOT deleted%s
 	), rpn AS NOT MATERIALIZED (
 		SELECT %s FROM person_names WHERE branch_id = $%d AND NOT deleted
-	)`, personSelectCols, branchN, personNameOverlayCols, branchN)
+	)`, personSelectCols, branchN, personPrivacySQL(privacy), personNameOverlayCols, branchN)
 }
 
 // writeNameMatchCTE appends the matched_persons CTE for name matching (fuzzy,
@@ -2359,7 +2363,7 @@ func (s *ReadModelStore) ListFamilies(ctx context.Context, opts repository.ListO
 	var limitParam int
 	if opts.BranchID.IsMain() {
 		fromSrc = "families"
-		whereClause = "WHERE branch_id = $1 AND NOT deleted"
+		whereClause = "WHERE branch_id = $1 AND NOT deleted" + recordPrivacySQL(opts.Privacy)
 		args = []any{domain.MainBranchID.UUID()}
 		limitParam = 2
 	} else {
@@ -2371,6 +2375,8 @@ func (s *ReadModelStore) ListFamilies(ctx context.Context, opts repository.ListO
 				ORDER BY id, (branch_id = $1) DESC
 			) o WHERE NOT deleted
 		)`
+		// Private families are excluded in the query (ADR-008 §5).
+		whereClause = "WHERE TRUE" + recordPrivacySQL(opts.Privacy)
 		args = []any{opts.BranchID.UUID(), domain.MainBranchID.UUID()}
 		limitParam = 3
 	}
@@ -4228,11 +4234,13 @@ func (s *ReadModelStore) ListMediaForEntity(ctx context.Context, entityType stri
 	args, n := overlayArgs(opts.BranchID)
 	src := overlaySrc("media", mediaSelectCols, fmt.Sprintf(entityMediaFilter, n, n+1), opts.BranchID)
 	args = append(args, entityType, entityID)
+	// Private media are excluded in the query (ADR-008 §5).
+	where := "WHERE TRUE" + recordPrivacySQL(opts.Privacy)
 
 	var total int
 	// #nosec G202 -- src is built from package constants carrying only $-placeholders
 	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
-	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+src+" md", args...).Scan(&total); err != nil {
+	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+src+" md "+where, args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count media: %w", err)
 	}
 
@@ -4243,9 +4251,10 @@ func (s *ReadModelStore) ListMediaForEntity(ctx context.Context, entityType stri
 	query := fmt.Sprintf(`
 		SELECT `+mediaSelectCols+`, %s
 		FROM %s md
+		%s
 		ORDER BY created_at DESC, id DESC
 		LIMIT $%d OFFSET $%d
-	`, fmt.Sprintf(mediaHasThumbnail, n+4, n+5), src, n+2, n+3)
+	`, fmt.Sprintf(mediaHasThumbnail, n+4, n+5), src, where, n+2, n+3)
 
 	rows, err := s.db.QueryContext(ctx, query,
 		append(args, opts.Limit, opts.Offset, opts.BranchID.UUID(), domain.MainBranchID.UUID())...)
@@ -4570,17 +4579,24 @@ func nullIntPtr(v sql.NullInt64) *int {
 // inlined by the planner, so a mainline aggregate keeps the plan it had before
 // branches existed. Main rows are hard-deleted (see DeletePerson), so NOT deleted is
 // a no-op there and only guards a rebuilt-from-branch row.
-func resolvedPersonsSrc(cols string, branchID domain.BranchID) (string, []any, int) {
+func resolvedPersonsSrc(cols string, branchID domain.BranchID, privacy repository.Privacy) (string, []any, int) {
+	visible := personPrivacySQL(privacy)
 	if branchID.IsMain() {
-		return "(SELECT " + cols + " FROM persons WHERE branch_id = $1 AND NOT deleted)",
+		return "(SELECT " + cols + " FROM persons WHERE branch_id = $1 AND NOT deleted" + visible + ")",
 			[]any{domain.MainBranchID.UUID()}, 2
+	}
+	// The privacy conditions test the resolved row, after the branch row has
+	// won, and read columns cols may lack.
+	inner := cols + ", deleted"
+	if visible != "" {
+		inner = "*"
 	}
 	return `(
 			SELECT ` + cols + ` FROM (
-				SELECT DISTINCT ON (id) ` + cols + `, deleted
+				SELECT DISTINCT ON (id) ` + inner + `
 				FROM persons WHERE branch_id IN ($1, $2)
 				ORDER BY id, (branch_id = $1) DESC
-			) o WHERE NOT deleted
+			) o WHERE NOT deleted` + visible + `
 		)`, []any{branchID.UUID(), domain.MainBranchID.UUID()}, 3
 }
 
@@ -4600,7 +4616,7 @@ func resolvedPersonsSrc(cols string, branchID domain.BranchID) (string, []any, i
 // free $-placeholder number. The args are the same either way -- $-placeholders are
 // reused, not repeated, so hoisting does not change the arg list.
 func resolvedPersonsCTE(cols string, branchID domain.BranchID) (string, string, []any, int) {
-	src, args, n := resolvedPersonsSrc(cols, branchID)
+	src, args, n := resolvedPersonsSrc(cols, branchID, repository.Privacy{})
 	if branchID.IsMain() {
 		return "WITH ", src, args, n
 	}
@@ -4611,7 +4627,7 @@ func resolvedPersonsCTE(cols string, branchID domain.BranchID) (string, string, 
 // resolved through the branch overlay (ADR-005).
 func (s *ReadModelStore) GetSurnameIndex(ctx context.Context, branchID domain.BranchID) ([]repository.SurnameEntry, []repository.LetterCount, error) {
 	// Both queries read the same resolved source so the counts agree on scope.
-	src, args, _ := resolvedPersonsSrc("surname", branchID)
+	src, args, _ := resolvedPersonsSrc("surname", branchID, repository.Privacy{})
 
 	// Get surname counts
 	// #nosec G201 G202 -- src is an internal SQL fragment carrying only $-placeholders, not user input
@@ -4669,7 +4685,7 @@ func (s *ReadModelStore) GetSurnameIndex(ctx context.Context, branchID domain.Br
 // GetSurnamesByLetter returns surnames starting with a specific letter, resolved
 // through the branch overlay (ADR-005).
 func (s *ReadModelStore) GetSurnamesByLetter(ctx context.Context, branchID domain.BranchID, letter string) ([]repository.SurnameEntry, error) {
-	src, args, n := resolvedPersonsSrc("surname", branchID)
+	src, args, n := resolvedPersonsSrc("surname", branchID, repository.Privacy{})
 
 	// #nosec G201 -- src/n are internal SQL fragments; letter stays a bound parameter
 	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
@@ -4702,7 +4718,7 @@ func (s *ReadModelStore) GetSurnamesByLetter(ctx context.Context, branchID domai
 // opts.BranchID through the branch overlay (ADR-005).
 func (s *ReadModelStore) GetPersonsBySurname(ctx context.Context, surname string, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
 	// One resolved source for both statements so the count and the page agree on scope.
-	src, args, n := resolvedPersonsSrc(personSelectCols, opts.BranchID)
+	src, args, n := resolvedPersonsSrc(personSelectCols, opts.BranchID, opts.Privacy)
 	countArgs := append(args, surname)
 
 	// Count total
@@ -4875,7 +4891,7 @@ func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, branchID domain.
 // opts.BranchID through the branch overlay (ADR-005).
 func (s *ReadModelStore) GetPersonsByPlace(ctx context.Context, place string, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
 	// One resolved source for both statements so the count and the page agree on scope.
-	src, args, n := resolvedPersonsSrc(personSelectCols, opts.BranchID)
+	src, args, n := resolvedPersonsSrc(personSelectCols, opts.BranchID, opts.Privacy)
 	countArgs := append(args, place)
 
 	// Count total - match place at any position in birth_place or death_place.
@@ -4972,7 +4988,7 @@ func (s *ReadModelStore) GetPersonsByCemetery(ctx context.Context, place string,
 	args = append(args, string(domain.FactPersonBurial), string(domain.FactPersonCremation), place)
 
 	// Count total distinct persons
-	countSrc, _, _ := resolvedPersonsSrc("id", opts.BranchID)
+	countSrc, _, _ := resolvedPersonsSrc("id", opts.BranchID, opts.Privacy)
 	var total int
 	// #nosec G202 -- countSrc/eventsSrc are internal SQL fragments; fact types and place stay bound parameters
 	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
@@ -4984,7 +5000,7 @@ func (s *ReadModelStore) GetPersonsByCemetery(ctx context.Context, place string,
 		return nil, 0, fmt.Errorf("count persons by cemetery: %w", err)
 	}
 
-	src, _, _ := resolvedPersonsSrc(personSelectCols, opts.BranchID)
+	src, _, _ := resolvedPersonsSrc(personSelectCols, opts.BranchID, opts.Privacy)
 	// #nosec G201 -- src/eventsSrc/personCols are internal SQL fragments, not user input
 	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 	query := fmt.Sprintf(`
@@ -5039,7 +5055,7 @@ func scanMapPerson(rows *sql.Rows) (person repository.MapPerson, place, lat, lon
 // coordinates, resolved through the branch overlay (ADR-005).
 func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.BranchID) ([]repository.MapLocation, error) {
 	// Query birth locations — individual rows, aggregate in Go
-	birthSrc, birthArgs, _ := resolvedPersonsSrc("id, given_name, surname, birth_place, birth_place_lat, birth_place_long, "+mapPrivacyCols, branchID)
+	birthSrc, birthArgs, _ := resolvedPersonsSrc("id, given_name, surname, birth_place, birth_place_lat, birth_place_long, "+mapPrivacyCols, branchID, repository.Privacy{})
 	// #nosec G201 G202 -- birthSrc is an internal SQL fragment carrying only $-placeholders, not user input
 	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 	rows, err := s.db.QueryContext(ctx, `
@@ -5086,7 +5102,7 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 	}
 
 	// Query death locations
-	deathSrc, deathArgs, _ := resolvedPersonsSrc("id, given_name, surname, death_place, death_place_lat, death_place_long, "+mapPrivacyCols, branchID)
+	deathSrc, deathArgs, _ := resolvedPersonsSrc("id, given_name, surname, death_place, death_place_lat, death_place_long, "+mapPrivacyCols, branchID, repository.Privacy{})
 	// #nosec G201 G202 -- deathSrc is an internal SQL fragment carrying only $-placeholders, not user input
 	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 	rows2, err := s.db.QueryContext(ctx, `

@@ -3931,6 +3931,8 @@ export interface components {
             living_override?: components["schemas"]["LivingOverride"];
             /** @description Whether the record is private: its GEDCOM restriction notice (RESN) holds confidential or privacy (ADR-008). Omitted when it is not. */
             private?: boolean;
+            /** @description Set on the placeholder shown instead of a person the caller may not see (ADR-008 §3): only its ID, sex and the given name "Living" are real, and it has nothing more to show. Omitted otherwise. */
+            redacted?: boolean;
             /**
              * Format: int64
              * @description Optimistic locking version

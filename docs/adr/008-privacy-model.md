@@ -335,8 +335,8 @@ decorator, b = event-output redactor, — = no tree data. "Protected" means a pl
 | listAssociationsForPerson | GET /persons/{id}/associations | Associations | RM | a | Protected → empty; drop when the other end is protected |
 | listLDSOrdinancesForPerson | GET /persons/{id}/lds-ordinances | LDS ordinances | RM | a | Protected → empty |
 | getPersonQuality | GET /quality/persons/{id} | Completeness score | RM | a | Protected or private → 404 |
-| getPersonHistory | GET /persons/{id}/history | Change entries | EL | b | Protected or private → empty |
-| getPersonRestorePoints | GET /persons/{id}/restore-points | Restore points | EL (+RM existence) | b | Protected or private → empty |
+| getPersonHistory | GET /persons/{id}/history | Change entries | EL | b | Protected → empty; private → hidden |
+| getPersonRestorePoints | GET /persons/{id}/restore-points | Restore points | EL (+RM existence) | b | Protected → empty; private → hidden |
 
 ### Families
 
@@ -494,6 +494,27 @@ decorator, b = event-output redactor, — = no tree data. "Protected" means a pl
 | rollbackFamily | POST /families/{id}/rollback | As above | EL | b | As rollbackPerson |
 | rollbackSource | POST /sources/{id}/rollback | As above | EL | b | As rollbackPerson |
 | rollbackCitation | POST /citations/{id}/rollback | As above | EL | b | As rollbackPerson |
+
+### Settings and accounts
+
+Added after this ADR's date, when #1412 made the table a test (§7).
+
+| Operation | Path | Returns | Source | Choke | Special handling |
+|-----------|------|---------|--------|-------|------------------|
+| getHomePerson | GET /settings/home-person | The person marked as "me" | settings + RM | a | Living → placeholder; private → absent |
+| getPrivacySettings | GET /settings/privacy | Tree privacy settings | settings | — | No tree data |
+| getAuthStatus | GET /auth/status | Mode, setup state, the caller's account | accounts | — | No tree data |
+| setupOwner | POST /auth/setup | The new owner's account | accounts | — | No tree data |
+| signIn | POST /auth/sign-in | The caller's account | accounts | — | No tree data |
+| signOut | POST /auth/sign-out | Empty | accounts | — | No tree data |
+| getCurrentAccount | GET /auth/me | The caller's account | accounts | — | No tree data |
+| updateCurrentAccount | PATCH /auth/me | The caller's account | accounts | — | No tree data |
+| acceptInvite | POST /auth/invites/accept | The new account | accounts | — | No tree data |
+| resetPassword | POST /auth/password-reset | The caller's account | accounts | — | No tree data |
+| listUsers | GET /users | Accounts and roles | accounts | — | Owner-only; no tree data |
+| listAuthAudit | GET /auth-audit | Sign-in and account events | accounts | — | Owner-only; no tree data |
+| listInvites | GET /invites | Pending invite links | accounts | — | Owner-only; no tree data |
+| listPasswordResets | GET /password-resets | Pending password reset links | accounts | — | Owner-only; no tree data |
 
 ### Writes and operations outside the spec
 

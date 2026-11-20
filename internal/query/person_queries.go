@@ -49,7 +49,10 @@ type Person struct {
 	Living         bool   `json:"living"`
 	LivingOverride string `json:"living_override,omitempty"`
 	Private        bool   `json:"private,omitempty"` // restriction marks the person private (ADR-008 §2)
-	Version        int64  `json:"version"`
+	// Redacted marks the placeholder shown instead of a protected person
+	// (ADR-008 §3).
+	Redacted bool  `json:"redacted,omitempty"`
+	Version  int64 `json:"version"`
 }
 
 // PersonName represents a name variant for a person in query results.
@@ -212,7 +215,9 @@ func (s *PersonService) GetPersonCore(ctx context.Context, branchID domain.Branc
 	if err != nil {
 		return nil, err
 	}
-	if rm == nil {
+	// A private person keeps a placeholder in charts and families, but is
+	// not found on its own (ADR-008 §3).
+	if rm == nil || rm.Visibility == repository.Hidden {
 		return nil, ErrNotFound
 	}
 	person := convertReadModelToPerson(*rm, livingCutoff(ctx))
@@ -350,6 +355,7 @@ func convertReadModelToPerson(rm repository.PersonReadModel, cutoff time.Time) P
 	p.Living = rm.LivingFacts().IsLiving(cutoff)
 	p.LivingOverride = string(rm.LivingOverride)
 	p.Private = rm.Restriction.IsPrivate()
+	p.Redacted = rm.Visibility != repository.Visible
 
 	return p
 }

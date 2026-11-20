@@ -125,6 +125,12 @@ type PersonReadModel struct {
 	LivingRefDate *time.Time `json:"-"` // BC years cannot encode as JSON (#1065)
 	Version       int64      `json:"version"`
 	UpdatedAt     time.Time  `json:"updated_at"`
+	// Visibility is Visible on every row a store returns. The read side sets
+	// it on the placeholder it shows instead of a protected person
+	// (PlaceholderPerson, ADR-008 §3): Placeholder for a living person, Hidden
+	// for a private one, which keeps its slot in charts and families but is
+	// not found on its own.
+	Visibility Visibility `json:"-"`
 }
 
 // LivingFacts returns the person's living-rule inputs (ADR-008 §1).
@@ -1076,6 +1082,11 @@ type ListOptions struct {
 	// overlay: the branch's row per entity when present, otherwise the main row,
 	// with tombstoned entities resolving as absent.
 	BranchID domain.BranchID
+	// Privacy excludes, in the query, the records the reader may not see
+	// (ADR-008 §5): ListPersons and the browse person lists exclude protected
+	// people, ListFamilies and ListMediaForEntity private records. Other lists
+	// ignore it. The zero value excludes nothing.
+	Privacy Privacy
 }
 
 // SearchOptions contains options for advanced person search.
@@ -1096,6 +1107,10 @@ type SearchOptions struct {
 	// BranchID scopes the search over the branch-aware person overlay (ADR-005).
 	// The zero value (domain.MainBranchID) searches the mainline only.
 	BranchID domain.BranchID
+	// Privacy excludes protected people from the matches, in the query, so
+	// they match by no name, date or place and add nothing to the total
+	// (ADR-008 §5). The zero value excludes no one.
+	Privacy Privacy
 }
 
 // Soundex returns the American Soundex code for a string.

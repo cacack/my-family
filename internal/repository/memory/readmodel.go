@@ -312,7 +312,7 @@ func (s *ReadModelStore) ListPersons(ctx context.Context, opts repository.ListOp
 	resolved := resolveAllRows(s.persons, opts.BranchID)
 	persons := make([]repository.PersonReadModel, 0, len(resolved))
 	for _, p := range resolved {
-		if matchesResearchStatusFilter(p, opts.ResearchStatus) {
+		if matchesResearchStatusFilter(p, opts.ResearchStatus) && !opts.Privacy.Protects(p) {
 			persons = append(persons, *p)
 		}
 	}
@@ -522,6 +522,9 @@ func nameMatchesQuery(name repository.PersonNameReadModel, queryLower string) bo
 
 // matchesSearchFilters checks if a person matches the date/place filters in SearchOptions.
 func (s *ReadModelStore) matchesSearchFilters(p *repository.PersonReadModel, opts repository.SearchOptions) bool {
+	if opts.Privacy.Protects(p) {
+		return false
+	}
 	if opts.BirthDateFrom != nil && (p.BirthDateSort == nil || p.BirthDateSort.Before(*opts.BirthDateFrom)) {
 		return false
 	}
@@ -965,7 +968,9 @@ func (s *ReadModelStore) ListFamilies(ctx context.Context, opts repository.ListO
 	resolved := resolveAllRows(s.families, opts.BranchID)
 	families := make([]repository.FamilyReadModel, 0, len(resolved))
 	for _, f := range resolved {
-		families = append(families, *f)
+		if !opts.Privacy.Hides(f.Restriction) {
+			families = append(families, *f)
+		}
 	}
 
 	total := len(families)
@@ -1760,7 +1765,7 @@ func (s *ReadModelStore) ListMediaForEntity(ctx context.Context, entityType stri
 
 	var results []repository.MediaReadModel
 	for _, r := range s.visibleMedia(opts.BranchID) {
-		if r.m.EntityType == entityType && r.m.EntityID == entityID {
+		if r.m.EntityType == entityType && r.m.EntityID == entityID && !opts.Privacy.Hides(r.m.Restriction) {
 			results = append(results, *s.mediaMetadata(r))
 		}
 	}
@@ -2199,7 +2204,7 @@ func (s *ReadModelStore) GetPersonsBySurname(ctx context.Context, surname string
 
 	var results []repository.PersonReadModel
 	for _, p := range resolveAllRows(s.persons, opts.BranchID) {
-		if strings.EqualFold(p.Surname, surname) {
+		if strings.EqualFold(p.Surname, surname) && !opts.Privacy.Protects(p) {
 			results = append(results, *p)
 		}
 	}
@@ -2271,7 +2276,7 @@ func (s *ReadModelStore) GetPersonsByPlace(ctx context.Context, place string, op
 	want := norm(place)
 	var results []repository.PersonReadModel
 	for _, p := range resolveAllRows(s.persons, opts.BranchID) {
-		if strings.Contains(norm(p.BirthPlace), want) || strings.Contains(norm(p.DeathPlace), want) {
+		if (strings.Contains(norm(p.BirthPlace), want) || strings.Contains(norm(p.DeathPlace), want)) && !opts.Privacy.Protects(p) {
 			results = append(results, *p)
 		}
 	}
@@ -2361,7 +2366,7 @@ func (s *ReadModelStore) GetPersonsByCemetery(ctx context.Context, place string,
 
 	var results []repository.PersonReadModel
 	for _, p := range resolveAllRows(s.persons, opts.BranchID) {
-		if _, ok := matchedIDs[p.ID]; ok {
+		if _, ok := matchedIDs[p.ID]; ok && !opts.Privacy.Protects(p) {
 			results = append(results, *p)
 		}
 	}
