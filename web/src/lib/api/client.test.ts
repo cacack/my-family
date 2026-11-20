@@ -1079,4 +1079,31 @@ describe('unauthorized handler (#1408)', () => {
 		});
 		expect(handler).not.toHaveBeenCalled();
 	});
+
+	// The methods that call `fetch` directly rather than through `request()`
+	// (multipart bodies, text or streamed responses) must fire it too (#1421).
+	const file = new File(['0 HEAD'], 'tree.ged');
+	const rawFetchCalls: Array<[string, () => Promise<unknown>]> = [
+		['importGedcom', () => api.importGedcom(file)],
+		['importGedcomStream', () => api.importGedcomStream(file)],
+		['exportGedcom', () => api.exportGedcom()],
+		['previewGedcomExport', () => api.previewGedcomExport()],
+		['exportTree', () => api.exportTree()],
+		['exportPersons', () => api.exportPersons('csv')],
+		['exportFamilies', () => api.exportFamilies('csv')],
+		['exportSources', () => api.exportSources('json')],
+		['exportCitations', () => api.exportCitations('json')],
+		['exportEvents', () => api.exportEvents('csv')],
+		['exportAttributes', () => api.exportAttributes('csv')],
+		['uploadPersonMedia', () => api.uploadPersonMedia('p1', file, 'Portrait')],
+		['getAhnentafelText', () => api.getAhnentafelText('p1')]
+	];
+
+	it.each(rawFetchCalls)('fires when %s finds the session gone', async (_name, call) => {
+		const handler = vi.fn();
+		setUnauthorizedHandler(handler);
+		respond(401, { code: 'UNAUTHENTICATED', message: 'Sign in to continue' });
+		await expect(call()).rejects.toMatchObject({ status: 401, code: 'UNAUTHENTICATED' });
+		expect(handler).toHaveBeenCalledOnce();
+	});
 });

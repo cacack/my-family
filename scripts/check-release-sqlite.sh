@@ -33,7 +33,9 @@ base="http://127.0.0.1:$port/api/v1"
 db="$work/myfamily.db"
 
 start_server() {
-	if curl -fsS "$base/persons" >/dev/null 2>&1; then
+	# No -f: any HTTP answer means the port is taken, including the 401 a
+	# server in accounts mode gives an anonymous request.
+	if curl -sS -o /dev/null "$base/persons" 2>/dev/null; then
 		echo "::error::something is already listening on port $port; set CHECK_PORT to a free port"
 		exit 1
 	fi

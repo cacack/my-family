@@ -145,6 +145,15 @@
 		}
 	}
 
+	/* Below 1280px the entries sit closer together, so the header row has room
+	   for the account button a signed-in user adds (#1421). Keep in sync with
+	   the matching band in routes/+layout.svelte. */
+	@media (min-width: 1024px) and (max-width: 1279px) {
+		.nav-wide :global(:is(.nav-link, button)) {
+			padding-inline: 0.5rem;
+		}
+	}
+
 	.nav-link {
 		padding: 0.5rem 0.75rem;
 		border-radius: 6px;
