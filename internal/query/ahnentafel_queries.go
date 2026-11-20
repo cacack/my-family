@@ -25,6 +25,7 @@ type AhnentafelEntry struct {
 	BirthPlace *string         `json:"birth_place,omitempty"`
 	DeathDate  *domain.GenDate `json:"death_date,omitempty"`
 	DeathPlace *string         `json:"death_place,omitempty"`
+	Redacted   bool            `json:"redacted,omitempty"` // placeholder for a protected person (ADR-008 §3)
 }
 
 // AhnentafelResult contains the complete Ahnentafel report for a person.
@@ -110,6 +111,7 @@ func (s *AhnentafelService) traverseTree(node *PedigreeNode, ahnentafelNum int, 
 		BirthPlace: node.BirthPlace,
 		DeathDate:  node.DeathDate,
 		DeathPlace: node.DeathPlace,
+		Redacted:   node.Redacted,
 	}
 	*entries = append(*entries, entry)
 

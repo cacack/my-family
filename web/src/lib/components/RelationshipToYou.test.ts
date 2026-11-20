@@ -84,6 +84,21 @@ describe('RelationshipToYou', () => {
 		expect(await screen.findByText('This is you')).toBeTruthy();
 	});
 
+	it('does not offer a placeholder as you, but still states the relationship', async () => {
+		relationship('3rd great-grandparent');
+		render(RelationshipToYou, { person: { ...ancestor, redacted: true } });
+
+		expect(await screen.findByRole('link', { name: 'Your 3rd great-grandfather' })).toBeTruthy();
+		expect(screen.queryByRole('button', { name: 'This is me' })).toBeNull();
+	});
+
+	it('still lets you clear a home person who has become a placeholder', async () => {
+		render(RelationshipToYou, { person: { id: 'me-1', gender: 'female', redacted: true } });
+
+		expect(screen.getByText('This is you')).toBeTruthy();
+		expect(screen.getByRole('button', { name: 'Not me' })).toBeTruthy();
+	});
+
 	it('shows a failed change inline', async () => {
 		await homeIs(null);
 		vi.mocked(apiModule.api.setHomePerson).mockRejectedValue(new Error('boom'));

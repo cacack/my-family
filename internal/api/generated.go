@@ -2447,6 +2447,9 @@ type AhnentafelEntry struct {
 	// Example: 4
 	Number int `json:"number"`
 
+	// Redacted Set on the placeholder shown instead of a person the caller may not see (ADR-008 §3), as on Person. Omitted otherwise.
+	Redacted *bool `json:"redacted,omitempty"`
+
 	// Relationship Human-readable relationship to subject
 	//
 	// Example: Father's Father

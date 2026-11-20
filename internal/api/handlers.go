@@ -21,6 +21,7 @@ func convertQueryAhnentafelEntryToGenerated(entry query.AhnentafelEntry) Ahnenta
 		resp.Surname = &entry.Surname
 		gender := Gender(entry.Gender)
 		resp.Gender = &gender
+		resp.Redacted = redactedFlag(entry.Redacted)
 
 		if entry.BirthDate != nil {
 			resp.BirthDate = convertDomainGenDateToGenerated(entry.BirthDate)
