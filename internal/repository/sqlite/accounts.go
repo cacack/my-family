@@ -3,9 +3,9 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -203,13 +203,17 @@ func (s *AccountStore) DisplayNames(ctx context.Context, ids []uuid.UUID) (map[u
 	if len(ids) == 0 {
 		return names, nil
 	}
-	args := make([]any, len(ids))
+	strs := make([]string, len(ids))
 	for i, id := range ids {
-		args[i] = id.String()
+		strs[i] = id.String()
 	}
-	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",")
-	// #nosec G202 -- only "?" placeholders are concatenated; the ids are bound.
-	rows, err := s.db.QueryContext(ctx, `SELECT id, display_name FROM users WHERE id IN (`+placeholders+`)`, args...)
+	// One JSON-array parameter, as the batched read-model lookups do, so no
+	// bind-variable limit applies however many ids a page names.
+	idsJSON, err := json.Marshal(strs)
+	if err != nil {
+		return nil, fmt.Errorf("encode user ids: %w", err)
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT id, display_name FROM users WHERE id IN (SELECT value FROM json_each(?))`, string(idsJSON))
 	if err != nil {
 		return nil, fmt.Errorf("list display names: %w", err)
 	}

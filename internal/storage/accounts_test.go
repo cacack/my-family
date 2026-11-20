@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"errors"
+	"maps"
 	"path/filepath"
 	"slices"
 	"testing"
@@ -501,6 +502,21 @@ func runAccountStoreContract(t *testing.T, store repository.AccountStore) {
 	}
 	if names, err := store.DisplayNames(ctx, nil); err != nil || len(names) != 0 {
 		t.Errorf("DisplayNames(nil) = %v, %v; want empty", names, err)
+	}
+
+	// History names the users of a whole page of changes at once. More ids
+	// than SQLite's historical bind-variable limit (999) still answer, so no
+	// page size can make the lookup fail.
+	ids := []uuid.UUID{owner.ID, viewer.ID}
+	for range 1200 {
+		ids = append(ids, uuid.New())
+	}
+	many, err := store.DisplayNames(ctx, ids)
+	if err != nil {
+		t.Fatalf("DisplayNames of %d ids: %v", len(ids), err)
+	}
+	if want := map[uuid.UUID]string{owner.ID: "Ada Lovelace", viewer.ID: "Grace Hopper"}; !maps.Equal(many, want) {
+		t.Errorf("DisplayNames of %d ids = %v, want %v", len(ids), many, want)
 	}
 
 	// Sessions.
