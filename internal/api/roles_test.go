@@ -53,9 +53,6 @@ var (
 		"GET /api/v1/auth-audit",
 		"GET /api/v1/settings/privacy",
 		"PUT /api/v1/settings/privacy",
-		// A site-wide setting until it becomes each account's own (#1443).
-		"PUT /api/v1/settings/home-person",
-		"DELETE /api/v1/settings/home-person",
 	)
 	// Exports are reads an editor needs: a viewer may not take the tree away.
 	editorReads = routeSet(
@@ -74,6 +71,9 @@ var (
 	viewerWrites = routeSet(
 		"POST /api/v1/citation-templates/:id/preview",
 		"PATCH /api/v1/auth/me",
+		// Each account's own home person (#1443).
+		"PUT /api/v1/settings/home-person",
+		"DELETE /api/v1/settings/home-person",
 	)
 )
 

@@ -11,21 +11,31 @@ import (
 	"github.com/cacack/my-family/internal/domain"
 )
 
-// SettingsStore keeps the site's settings: choices made in the app that are
-// not genealogical facts. They are not events and not part of the read model,
-// so a `myfamily rebuild` leaves them in place.
+// SettingsStore keeps the choices made in the app that are not genealogical
+// facts: the site's and each account's. They are not events and not part of
+// the read model, so a `myfamily rebuild` leaves them in place.
 //
-// The home person is one site-wide value until accounts exist (#1408). It then
-// becomes a value of each account, and this one remains the value for open mode
-// and the seed for the first owner's account (#1034).
+// The home person ("me") is a value of each account (#1443). The site-wide
+// value, kept under SiteWide, is the home person in open mode, where no one
+// signs in, and the starting value of the first owner's account (#1034).
 type SettingsStore interface {
-	// HomePerson returns the person marked as "me", or uuid.Nil when none is set.
-	HomePerson(ctx context.Context) (uuid.UUID, error)
+	// HomePerson returns the person accountID marked as "me", or uuid.Nil when
+	// none is set. accountID is a user's ID, or SiteWide.
+	HomePerson(ctx context.Context, accountID uuid.UUID) (uuid.UUID, error)
 
-	// SetHomePerson marks id as the home person, replacing any earlier choice.
-	// uuid.Nil clears it.
-	SetHomePerson(ctx context.Context, id uuid.UUID) error
+	// SetHomePerson marks personID as accountID's home person, replacing any
+	// earlier choice. uuid.Nil clears it.
+	SetHomePerson(ctx context.Context, accountID, personID uuid.UUID) error
+
+	// MoveHomePersons makes survivors[p] the home person of the site and of
+	// every account whose home person is p, as when merges remove each p. It
+	// looks each home person up once, so a chain of merges is not followed.
+	MoveHomePersons(ctx context.Context, survivors map[uuid.UUID]uuid.UUID) error
 }
+
+// SiteWide is the account ID under which SettingsStore keeps the site's own
+// home person rather than a user's. No user has it.
+var SiteWide = uuid.Nil
 
 // SettingHomePerson is the settings key under which the SQL stores keep the
 // home person's ID.

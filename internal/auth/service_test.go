@@ -447,3 +447,90 @@ func TestDisplayNames(t *testing.T) {
 		t.Errorf("DisplayNames = %v, %v", names, err)
 	}
 }
+
+// The first owner, whether created by setup or from the CLI, starts with the
+// home person chosen for the site before accounts were enabled; later owners
+// start with none (#1443).
+func TestCreateOwner_FirstOwnerGetsSiteHomePerson(t *testing.T) {
+	for _, viaSetup := range []bool{true, false} {
+		t.Run(map[bool]string{true: "setup", false: "command line"}[viaSetup], func(t *testing.T) {
+			ctx := context.Background()
+			settings := memory.NewSettingsStore()
+			site := uuid.New()
+			if err := settings.SetHomePerson(ctx, repository.SiteWide, site); err != nil {
+				t.Fatal(err)
+			}
+			svc := NewService(memory.NewAccountStore(), WithSettings(settings))
+
+			var first *repository.User
+			var err error
+			if viaSetup {
+				token, _ := svc.SetupToken(ctx)
+				first, _, err = svc.CompleteSetup(ctx, token, "ada", "Ada", testPassword, "ip")
+			} else {
+				first, err = svc.CreateOwner(ctx, CommandLine, "ada", "Ada", testPassword)
+			}
+			if err != nil {
+				t.Fatalf("creating the first owner: %v", err)
+			}
+			second, err := svc.CreateOwner(ctx, CommandLine, "bob", "Bob", testPassword)
+			if err != nil {
+				t.Fatalf("CreateOwner(bob): %v", err)
+			}
+
+			if got, _ := settings.HomePerson(ctx, first.ID); got != site {
+				t.Errorf("first owner's home person = %v, want the site's %v", got, site)
+			}
+			if got, _ := settings.HomePerson(ctx, second.ID); got != uuid.Nil {
+				t.Errorf("second owner's home person = %v, want none", got)
+			}
+			if got, _ := settings.HomePerson(ctx, repository.SiteWide); got != site {
+				t.Errorf("site home person = %v, want it kept for open mode", got)
+			}
+		})
+	}
+}
+
+// With no site home person, or no settings store, the first owner starts
+// with none.
+func TestCreateOwner_NoSiteHomePerson(t *testing.T) {
+	ctx := context.Background()
+	settings := memory.NewSettingsStore()
+	user, err := NewService(memory.NewAccountStore(), WithSettings(settings)).CreateOwner(ctx, CommandLine, "ada", "Ada", testPassword)
+	if err != nil {
+		t.Fatalf("CreateOwner: %v", err)
+	}
+	if got, _ := settings.HomePerson(ctx, user.ID); got != uuid.Nil {
+		t.Errorf("home person = %v, want none", got)
+	}
+	if _, err := NewService(memory.NewAccountStore()).CreateOwner(ctx, CommandLine, "ada", "Ada", testPassword); err != nil {
+		t.Errorf("CreateOwner without a settings store: %v", err)
+	}
+}
+
+// brokenSettings fails every call.
+type brokenSettings struct{}
+
+func (brokenSettings) HomePerson(context.Context, uuid.UUID) (uuid.UUID, error) {
+	return uuid.Nil, errors.New("settings table is locked")
+}
+
+func (brokenSettings) SetHomePerson(context.Context, uuid.UUID, uuid.UUID) error {
+	return errors.New("settings table is locked")
+}
+
+func (brokenSettings) MoveHomePersons(context.Context, map[uuid.UUID]uuid.UUID) error {
+	return errors.New("settings table is locked")
+}
+
+// A settings failure does not undo or fail creating the first owner.
+func TestCreateOwner_SettingsFailureStillCreatesOwner(t *testing.T) {
+	ctx := context.Background()
+	store := memory.NewAccountStore()
+	if _, err := NewService(store, WithSettings(brokenSettings{})).CreateOwner(ctx, CommandLine, "ada", "Ada", testPassword); err != nil {
+		t.Fatalf("CreateOwner with failing settings: %v", err)
+	}
+	if _, err := store.GetUserByUsername(ctx, "ada"); err != nil {
+		t.Errorf("owner not created: %v", err)
+	}
+}

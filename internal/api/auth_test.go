@@ -26,6 +26,7 @@ type authFixture struct {
 	server   *api.Server
 	auth     *auth.Service
 	accounts *memory.AccountStore
+	settings *memory.SettingsStore
 	events   *memory.EventStore
 }
 
@@ -34,10 +35,12 @@ func newAuthFixture(t *testing.T) *authFixture {
 	cfg := &config.Config{Port: 8080, LogFormat: "text", AuthMode: config.AuthModeAccounts}
 	events := memory.NewEventStore()
 	accounts := memory.NewAccountStore()
-	svc := auth.NewService(accounts)
+	settings := memory.NewSettingsStore()
+	svc := auth.NewService(accounts, auth.WithSettings(settings))
 	server := api.NewServer(cfg, events, memory.NewReadModelStore(), memory.NewSnapshotStore(events), nil,
-		api.WithAuth(svc), api.WithBranchStore(memory.NewBranchStore()), api.WithTreeSettings(accounts))
-	return &authFixture{server: server, auth: svc, accounts: accounts, events: events}
+		api.WithAuth(svc), api.WithBranchStore(memory.NewBranchStore()), api.WithTreeSettings(accounts),
+		api.WithSettingsStore(settings))
+	return &authFixture{server: server, auth: svc, accounts: accounts, settings: settings, events: events}
 }
 
 // request is one HTTP call to the fixture's server.

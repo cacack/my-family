@@ -34,13 +34,15 @@ var handRouteRoles = map[string]repository.Role{
 }
 
 // signedInRoutes need a viewer who is signed in, so serveVisitor refuses
-// them to a visitor: the operations on one's own account, which a visitor
-// does not have, and the change log (history, restore points, snapshots and
-// comparisons), whose change records name who made each change, which
-// ADR-008 §4 hides from anonymous principals.
+// them to a visitor: the operations on one's own account (including its home
+// person), which a visitor does not have, and the change log (history,
+// restore points, snapshots and comparisons), whose change records name who
+// made each change, which ADR-008 §4 hides from anonymous principals.
 var signedInRoutes = map[string]bool{
 	routeKey(http.MethodGet, apiBase+"/auth/me"):                       true,
 	routeKey(http.MethodPatch, apiBase+"/auth/me"):                     true,
+	routeKey(http.MethodPut, apiBase+"/settings/home-person"):          true,
+	routeKey(http.MethodDelete, apiBase+"/settings/home-person"):       true,
 	routeKey(http.MethodGet, apiBase+"/history"):                       true,
 	routeKey(http.MethodGet, apiBase+"/persons/:id/history"):           true,
 	routeKey(http.MethodGet, apiBase+"/families/:id/history"):          true,

@@ -81,9 +81,12 @@ var (
 
 // Service signs people in. It is safe for concurrent use.
 type Service struct {
-	store   repository.AccountStore
-	now     func() time.Time
-	limiter *limiter
+	store repository.AccountStore
+	// settings, when set, holds the site-wide home person the first owner's
+	// account starts with.
+	settings repository.SettingsStore
+	now      func() time.Time
+	limiter  *limiter
 
 	// hasOwner caches a true CountMembers: the last owner can be neither
 	// demoted nor disabled, so once one exists setup is over for good. While it is false every check asks
@@ -105,9 +108,25 @@ type Service struct {
 	dummyHash string
 }
 
+// Option configures a Service.
+type Option func(*Service)
+
+// WithSettings supplies the settings store, so the first owner's account
+// starts with the home person chosen for the site before accounts were
+// enabled (#1443). Without it that account starts with none.
+func WithSettings(settings repository.SettingsStore) Option {
+	return func(s *Service) {
+		s.settings = settings
+	}
+}
+
 // NewService returns a Service over store.
-func NewService(store repository.AccountStore) *Service {
-	return &Service{store: store, now: time.Now, limiter: newLimiter(limitWindow)}
+func NewService(store repository.AccountStore, opts ...Option) *Service {
+	s := &Service{store: store, now: time.Now, limiter: newLimiter(limitWindow)}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
 }
 
 // NormalizeUsername is the stored form of a username: trimmed and lowercase,
@@ -171,9 +190,13 @@ func (s *Service) CreateOwner(ctx context.Context, by Actor, username, displayNa
 }
 
 // createOwner creates an owner account, unaudited. It is what CreateOwner
-// and setup share.
+// and setup share. The tree's first owner starts with the site's home person.
 func (s *Service) createOwner(ctx context.Context, username, displayName, password string) (*repository.User, error) {
 	user, err := s.newUser(username, displayName, password)
+	if err != nil {
+		return nil, err
+	}
+	first, err := s.SetupRequired(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -184,7 +207,26 @@ func (s *Service) createOwner(ctx context.Context, username, displayName, passwo
 		return nil, fmt.Errorf("create owner: %w", err)
 	}
 	s.hasOwner.Store(true)
+	if first {
+		s.seedHomePerson(ctx, user.ID)
+	}
 	return user, nil
+}
+
+// seedHomePerson gives the first owner's account the site-wide home person,
+// the one chosen while the server ran in open mode. The account already
+// exists, so a failure is logged, not returned: the owner can choose again.
+func (s *Service) seedHomePerson(ctx context.Context, ownerID uuid.UUID) {
+	if s.settings == nil {
+		return
+	}
+	home, err := s.settings.HomePerson(ctx, repository.SiteWide)
+	if err == nil && home != uuid.Nil {
+		err = s.settings.SetHomePerson(ctx, ownerID, home)
+	}
+	if err != nil {
+		slog.Error("auth: could not give the first owner the site's home person", "error", err)
+	}
 }
 
 // newUser validates the details of a new account and builds it, with its

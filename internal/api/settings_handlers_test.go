@@ -94,7 +94,7 @@ func TestHomePerson_SetRejected(t *testing.T) {
 			if code, resp := homePersonRequest(t, server, http.MethodPut, tt.body); code != tt.want {
 				t.Errorf("PUT %s = %d %v, want %d", tt.body, code, resp, tt.want)
 			}
-			if id, _ := settings.HomePerson(context.Background()); id != uuid.Nil {
+			if id, _ := settings.HomePerson(context.Background(), repository.SiteWide); id != uuid.Nil {
 				t.Errorf("rejected PUT saved %v", id)
 			}
 		})
@@ -105,7 +105,7 @@ func TestHomePerson_SetRejected(t *testing.T) {
 func TestHomePerson_DeletedPersonReadsAsUnset(t *testing.T) {
 	settings := memory.NewSettingsStore()
 	server := setupSettingsServer(settings)
-	if err := settings.SetHomePerson(context.Background(), uuid.New()); err != nil {
+	if err := settings.SetHomePerson(context.Background(), repository.SiteWide, uuid.New()); err != nil {
 		t.Fatal(err)
 	}
 	if code, resp := homePersonRequest(t, server, http.MethodGet, ""); code != http.StatusOK || resp["person"] != nil {
@@ -131,11 +131,17 @@ type failingSettings struct{}
 
 var errSettingsBroken = errors.New("settings table is locked")
 
-func (failingSettings) HomePerson(context.Context) (uuid.UUID, error) {
+func (failingSettings) HomePerson(context.Context, uuid.UUID) (uuid.UUID, error) {
 	return uuid.Nil, errSettingsBroken
 }
 
-func (failingSettings) SetHomePerson(context.Context, uuid.UUID) error { return errSettingsBroken }
+func (failingSettings) SetHomePerson(context.Context, uuid.UUID, uuid.UUID) error {
+	return errSettingsBroken
+}
+
+func (failingSettings) MoveHomePersons(context.Context, map[uuid.UUID]uuid.UUID) error {
+	return errSettingsBroken
+}
 
 func TestHomePerson_StoreErrors(t *testing.T) {
 	server := setupSettingsServer(failingSettings{})
@@ -178,7 +184,7 @@ func TestHomePerson_FollowsMerge(t *testing.T) {
 			server := setupMergeSettingsServer(settings)
 			survivorID, sv := createMergeTestPerson(t, server, "Morgan", "Duplicate")
 			mergedID, mv := createMergeTestPerson(t, server, "Morgan", "Duplicat")
-			if err := settings.SetHomePerson(ctx, uuid.MustParse(mergedID)); err != nil {
+			if err := settings.SetHomePerson(ctx, repository.SiteWide, uuid.MustParse(mergedID)); err != nil {
 				t.Fatal(err)
 			}
 
@@ -198,7 +204,7 @@ func TestHomePerson_FollowsMerge(t *testing.T) {
 			if tt.wantMove {
 				want = survivorID
 			}
-			if got, _ := settings.HomePerson(ctx); got.String() != want {
+			if got, _ := settings.HomePerson(ctx, repository.SiteWide); got.String() != want {
 				t.Errorf("home person after merge = %s, want %s", got, want)
 			}
 		})

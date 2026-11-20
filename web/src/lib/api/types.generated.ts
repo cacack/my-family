@@ -2451,21 +2451,26 @@ export interface paths {
         /**
          * Get the home person
          * @description Returns the person marked as "me", the one every person page states a
-         *     relationship to and charts start from by default. It is one site-wide
-         *     setting until accounts exist (#1408), when it becomes a value of each
-         *     account. `person` is absent when none is set, or when the marked
-         *     person no longer exists on the mainline.
+         *     relationship to and charts start from by default. Each signed-in
+         *     account has its own; in open mode there is one for the site. An
+         *     anonymous visitor has none. `person` is absent when none is set, or
+         *     when the marked person no longer exists on the mainline. The person is
+         *     read like any other, so it follows the privacy rules (ADR-008).
          */
         get: operations["getHomePerson"];
         /**
          * Set the home person
-         * @description Marks a mainline person as "me", replacing any earlier choice.
+         * @description Marks a mainline person as "me" for the signed-in account (the site,
+         *     in open mode), replacing any earlier choice. An anonymous visitor is
+         *     refused with 401.
          */
         put: operations["setHomePerson"];
         post?: never;
         /**
          * Clear the home person
-         * @description Unmarks the home person. Clearing when none is set succeeds.
+         * @description Unmarks the signed-in account's home person (the site's, in open
+         *     mode). Clearing when none is set succeeds. An anonymous visitor is
+         *     refused with 401.
          */
         delete: operations["clearHomePerson"];
         options?: never;
