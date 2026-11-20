@@ -594,6 +594,10 @@ type MediaCreated struct {
 	// Restriction is the record's GEDCOM RESN, set at import or by marking
 	// the record private (ADR-008 §2).
 	Restriction Restriction `json:"restriction,omitempty"`
+	// GroupID links the items a GEDCOM import made from one OBJE record linked
+	// from several owners, one item per owner: marking one private marks them
+	// all (#1478). Nil for an item with no such copies.
+	GroupID *uuid.UUID `json:"group_id,omitempty"`
 }
 
 func (e MediaCreated) EventType() string      { return "MediaCreated" }

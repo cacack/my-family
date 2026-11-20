@@ -239,6 +239,182 @@ func TestPrivacy_GedcomRestrictionAndLivingRuleSurviveReplayExportAndReimport(t 
 	}
 }
 
+// sharedMediaGedcom links one OBJE record from two people, so the import
+// makes one media item for each (#1435).
+const sharedMediaGedcom = `0 HEAD
+1 GEDC
+2 VERS 5.5.1
+0 @M1@ OBJE
+1 FILE photos/reunion.jpg
+2 FORM jpg
+2 TITL Reunion
+0 @I1@ INDI
+1 NAME Ada /Shared/
+1 OBJE @M1@
+0 @I2@ INDI
+1 NAME Bea /Shared/
+1 OBJE @M1@
+0 TRLR
+`
+
+// sharedMedia returns the one media item of each of the people named Ada and
+// Bea, failing unless each has exactly one.
+func sharedMedia(t *testing.T, ctx context.Context, rs repository.ReadModelStore) []repository.MediaReadModel {
+	t.Helper()
+	ids := personIDsByGivenName(t, ctx, rs)
+	var out []repository.MediaReadModel
+	for _, given := range []string{"Ada", "Bea"} {
+		media, _, err := rs.ListMediaForEntity(ctx, "person", ids[given], repository.ListOptions{Limit: 10})
+		if err != nil || len(media) != 1 || media[0].Title != "Reunion" {
+			t.Fatalf("%s media = %+v, %v; want the Reunion photo", given, media, err)
+		}
+		out = append(out, media[0])
+	}
+	return out
+}
+
+// setMediaPrivate marks m private or not through the command handler.
+func setMediaPrivate(t *testing.T, ctx context.Context, st stores, m repository.MediaReadModel, private bool) {
+	t.Helper()
+	h := command.NewHandlerWithBranches(st.events, st.read, st.branches, st.snapshots)
+	if _, err := h.UpdateMedia(ctx, command.UpdateMediaInput{ID: m.ID, Private: &private, Version: m.Version}); err != nil {
+		t.Fatalf("update media: %v", err)
+	}
+}
+
+// assertSharedMediaPrivate checks that both copies of the shared photo are
+// marked private, or both are not.
+func assertSharedMediaPrivate(t *testing.T, ctx context.Context, rs repository.ReadModelStore, private bool) {
+	t.Helper()
+	for i, m := range sharedMedia(t, ctx, rs) {
+		if m.Restriction.IsPrivate() != private {
+			t.Errorf("copy %d restriction = %q, want private %v", i, m.Restriction, private)
+		}
+	}
+}
+
+// TestPrivacy_SharedMediaKeepsOnePrivateMark imports an OBJE record linked
+// from two people and marks the copy of one private: both copies are private,
+// after a replay of the log too, and an export writes them as one record that
+// a re-import makes into copies that again change together (#1478).
+func TestPrivacy_SharedMediaKeepsOnePrivateMark(t *testing.T) {
+	for _, backend := range backends {
+		t.Run(backend.name, func(t *testing.T) {
+			ctx := context.Background()
+			st := backend.setup(t)
+			h := command.NewHandlerWithBranches(st.events, st.read, st.branches, st.snapshots)
+			if _, err := h.ImportGedcom(ctx, command.ImportGedcomInput{Filename: "s.ged", Reader: strings.NewReader(sharedMediaGedcom)}); err != nil {
+				t.Fatalf("import: %v", err)
+			}
+			assertSharedMediaPrivate(t, ctx, st.read, false)
+			setMediaPrivate(t, ctx, st, sharedMedia(t, ctx, st.read)[0], true)
+			assertSharedMediaPrivate(t, ctx, st.read, true)
+
+			fresh := backend.setup(t)
+			replayLog(t, ctx, st.events, fresh.read)
+			assertSharedMediaPrivate(t, ctx, fresh.read, true)
+
+			var buf bytes.Buffer
+			if _, err := gedcom.NewExporter(fresh.read).Export(ctx, &buf); err != nil {
+				t.Fatalf("export: %v", err)
+			}
+			out := buf.String()
+			if n := strings.Count(out, " OBJE\n"); n != 1 {
+				t.Errorf("export has %d OBJE records, want 1:\n%s", n, out)
+			}
+			for _, want := range []struct{ record, line string }{
+				{"Reunion", "1 _RESN confidential"},
+				{"Ada /Shared/", "1 OBJE @O1@"},
+				{"Bea /Shared/", "1 OBJE @O1@"},
+			} {
+				if lines := recordLines(out, want.record); !slices.Contains(lines, want.line) {
+					t.Errorf("record %q exported as %q, want a %q line; export:\n%s", want.record, lines, want.line, out)
+				}
+			}
+
+			again := backend.setup(t)
+			h = command.NewHandlerWithBranches(again.events, again.read, again.branches, again.snapshots)
+			if _, err := h.ImportGedcom(ctx, command.ImportGedcomInput{Filename: "again.ged", Reader: strings.NewReader(out)}); err != nil {
+				t.Fatalf("re-import: %v", err)
+			}
+			assertSharedMediaPrivate(t, ctx, again.read, true)
+			setMediaPrivate(t, ctx, again, sharedMedia(t, ctx, again.read)[1], false)
+			assertSharedMediaPrivate(t, ctx, again.read, false)
+		})
+	}
+}
+
+// TestPrivacy_StoresListMediaGroups saves media in groups on main and on a
+// branch and lists each group as main and the branch see it, on every
+// backend (#1478).
+func TestPrivacy_StoresListMediaGroups(t *testing.T) {
+	for _, backend := range backends {
+		t.Run(backend.name, func(t *testing.T) {
+			ctx := context.Background()
+			rs := backend.setup(t).read
+			main, branch := domain.MainBranchID, domain.BranchID(uuid.New())
+			group, other := uuid.New(), uuid.New()
+			now := time.Now().UTC().Truncate(time.Second)
+			save := func(branchID domain.BranchID, groupID *uuid.UUID) uuid.UUID {
+				t.Helper()
+				m := &repository.MediaReadModel{ID: uuid.New(), EntityType: "person", EntityID: uuid.New(), Title: "M", MimeType: "image/png",
+					MediaType: domain.MediaPhoto, Filename: "m.png", FileSize: 1, FileData: []byte{1}, GroupID: groupID, Version: 1, CreatedAt: now, UpdatedAt: now}
+				if err := rs.SaveMedia(ctx, branchID, m); err != nil {
+					t.Fatalf("save media: %v", err)
+				}
+				return m.ID
+			}
+			listed := func(branchID domain.BranchID, groupID uuid.UUID) []uuid.UUID {
+				t.Helper()
+				items, err := rs.ListMediaInGroup(ctx, branchID, groupID)
+				if err != nil {
+					t.Fatalf("list media group: %v", err)
+				}
+				var ids []uuid.UUID
+				for _, m := range items {
+					if m.GroupID == nil || *m.GroupID != groupID {
+						t.Errorf("listed media %s has group %v, want %s", m.ID, m.GroupID, groupID)
+					}
+					ids = append(ids, m.ID)
+				}
+				slices.SortFunc(ids, func(a, b uuid.UUID) int { return strings.Compare(a.String(), b.String()) })
+				return ids
+			}
+			sorted := func(ids ...uuid.UUID) []uuid.UUID {
+				slices.SortFunc(ids, func(a, b uuid.UUID) int { return strings.Compare(a.String(), b.String()) })
+				return ids
+			}
+
+			a, b := save(main, &group), save(main, &group)
+			c := save(main, &other)
+			ungrouped := save(main, nil)
+			if m, err := rs.GetMedia(ctx, main, ungrouped); err != nil || m == nil || m.GroupID != nil {
+				t.Errorf("ungrouped media = %+v, %v; want no group", m, err)
+			}
+			if err := rs.DeleteMedia(ctx, branch, b); err != nil {
+				t.Fatalf("delete media on branch: %v", err)
+			}
+			e := save(branch, &group)
+
+			for _, tc := range []struct {
+				name     string
+				branchID domain.BranchID
+				groupID  uuid.UUID
+				want     []uuid.UUID
+			}{
+				{"main", main, group, sorted(a, b)},
+				{"main, other group", main, other, []uuid.UUID{c}},
+				{"branch", branch, group, sorted(a, e)},
+				{"no such group", main, uuid.New(), nil},
+			} {
+				if got := listed(tc.branchID, tc.groupID); !slices.Equal(got, tc.want) {
+					t.Errorf("%s: group lists %v, want %v", tc.name, got, tc.want)
+				}
+			}
+		})
+	}
+}
+
 // recordLines returns the lines of the level-0 record of out that contains a
 // line containing marker.
 func recordLines(out, marker string) []string {

@@ -31,6 +31,7 @@ type privacyTree struct {
 	livingName, livingBirth, livingOccupation, deadBirth uuid.UUID
 	livingCitation, deadCitation, deadPrivateCitation    uuid.UUID
 	livingMedia, deadMedia, deadPrivateMedia, openMedia  uuid.UUID
+	mediaGroup                                           uuid.UUID // every media item's group
 	association, livingLDS, openLDS                      uuid.UUID
 }
 
@@ -107,10 +108,11 @@ func newPrivacyTree(t *testing.T) *privacyTree {
 	tr.deadPrivateCitation = citation(tr.dead, domain.FactPersonBirth, "confidential")
 	citation(tr.open, domain.FactFamilyMarriage, "")
 
+	tr.mediaGroup = uuid.New()
 	media := func(entityType string, owner uuid.UUID, restriction domain.Restriction) uuid.UUID {
 		m := &repository.MediaReadModel{ID: uuid.New(), EntityType: entityType, EntityID: owner, Title: "photo", MimeType: "image/png",
 			MediaType: domain.MediaPhoto, Filename: "p.png", FileSize: 1, FileData: []byte{1}, ThumbnailData: []byte{2},
-			Restriction: restriction, Version: 1, CreatedAt: now, UpdatedAt: now}
+			Restriction: restriction, GroupID: &tr.mediaGroup, Version: 1, CreatedAt: now, UpdatedAt: now}
 		must(raw.SaveMedia(ctx, main, m))
 		return m.ID
 	}
@@ -500,6 +502,17 @@ func TestPrivacyStore_Media(t *testing.T) {
 						t.Errorf("ListMediaForEntity(%s) lists hidden media %s", entityType, m.ID)
 					}
 				}
+			}
+			group, err := tr.store.ListMediaInGroup(tt.ctx, main, tr.mediaGroup)
+			if err != nil {
+				t.Fatalf("ListMediaInGroup: %v", err)
+			}
+			var listed []uuid.UUID
+			for _, m := range group {
+				listed = append(listed, m.ID)
+			}
+			if len(listed) != len(tt.shown) || slices.ContainsFunc(listed, func(id uuid.UUID) bool { return !slices.Contains(tt.shown, id) }) {
+				t.Errorf("ListMediaInGroup = %v, want %v", listed, tt.shown)
 			}
 		})
 	}

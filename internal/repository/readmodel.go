@@ -251,6 +251,7 @@ type MediaReadModel struct {
 	CropHeight    *int               `json:"crop_height,omitempty"`
 	GedcomXref    string             `json:"gedcom_xref,omitempty"`
 	Restriction   domain.Restriction `json:"restriction,omitempty"` // GEDCOM RESN (ADR-008 §2)
+	GroupID       *uuid.UUID         `json:"group_id,omitempty"`    // shared by the copies of one imported OBJE record (MediaCreated.GroupID)
 	Version       int64              `json:"version"`
 	CreatedAt     time.Time          `json:"created_at"`
 	UpdatedAt     time.Time          `json:"updated_at"`
@@ -727,6 +728,9 @@ type ReadModelStore interface {
 	GetMediaWithData(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*MediaReadModel, error) // Includes FileData
 	GetMediaThumbnail(ctx context.Context, branchID domain.BranchID, id uuid.UUID) ([]byte, error)
 	ListMediaForEntity(ctx context.Context, entityType string, entityID uuid.UUID, opts ListOptions) ([]MediaReadModel, int, error)
+	// ListMediaInGroup returns every media item branchID sees whose GroupID is
+	// groupID (the copies of one imported OBJE record, #1478), in no set order.
+	ListMediaInGroup(ctx context.Context, branchID domain.BranchID, groupID uuid.UUID) ([]MediaReadModel, error)
 	SaveMedia(ctx context.Context, branchID domain.BranchID, media *MediaReadModel) error
 	DeleteMedia(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error
 

@@ -337,6 +337,9 @@ func (m *mockReadModelStore) GetMediaThumbnail(ctx context.Context, branchID dom
 func (m *mockReadModelStore) ListMediaForEntity(ctx context.Context, entityType string, entityID uuid.UUID, opts repository.ListOptions) ([]repository.MediaReadModel, int, error) {
 	return nil, 0, nil
 }
+func (m *mockReadModelStore) ListMediaInGroup(ctx context.Context, branchID domain.BranchID, groupID uuid.UUID) ([]repository.MediaReadModel, error) {
+	return nil, nil
+}
 func (m *mockReadModelStore) SaveMedia(ctx context.Context, branchID domain.BranchID, media *repository.MediaReadModel) error {
 	return nil
 }

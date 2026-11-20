@@ -4844,7 +4844,7 @@ type MediaUpdate struct {
 	// MediaType Category of media
 	MediaType *MediaType `json:"media_type,omitempty"`
 
-	// Private Mark the record private, which adds confidential to its GEDCOM restriction notice (RESN), or not, which removes confidential and privacy. Other RESN values, such as locked, are kept. Omit it to leave the mark unchanged.
+	// Private Mark the record private, which adds confidential to its GEDCOM restriction notice (RESN), or not, which removes confidential and privacy. Other RESN values, such as locked, are kept. Omit it to leave the mark unchanged. The items imported from one GEDCOM media record (OBJE) linked from several owners, one per owner, take the mark together; items imported by an earlier version are not grouped. If the update fails part way, some items of the group may be marked already; send the same mark again to mark the rest.
 	Private *bool   `json:"private,omitempty"`
 	Title   *string `json:"title,omitempty"`
 

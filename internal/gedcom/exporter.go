@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"reflect"
 	"slices"
 	"sort"
 	"strings"
@@ -262,21 +263,32 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 
 	// Each media item is written as an OBJE record linked from its owner. Its
 	// xref is generated: an import makes one item per owner of an OBJE record,
-	// so several items can share a stored xref (#1435).
+	// so several items can share a stored xref (#1435). Those items share a
+	// group, and the ones that would still write the same record are written
+	// as that one record linked from each owner, so a re-import keeps them a
+	// group (#1478).
 	media, err := ownedMedia(ctx, exp.readStore, persons, families, sources)
 	if err != nil {
 		return nil, err
 	}
 	mediaLinks := make(map[uuid.UUID][]*gedcom.MediaLink)
 	mediaRecords := make([]*gedcom.Record, 0, len(media))
-	for i, m := range media {
-		xref := xrefs.assign("", "O", i+1)
-		mediaLinks[m.EntityID] = append(mediaLinks[m.EntityID], &gedcom.MediaLink{MediaXRef: xref})
-		mediaRecords = append(mediaRecords, &gedcom.Record{
-			XRef:   xref,
-			Type:   gedcom.RecordTypeMedia,
-			Entity: toGedcomMediaObject(m),
-		})
+	groupRecords := make(map[uuid.UUID][]*gedcom.Record)
+	for _, m := range media {
+		obj := toGedcomMediaObject(m)
+		rec := matchingGroupRecord(groupRecords, m.GroupID, obj)
+		if rec == nil {
+			rec = &gedcom.Record{
+				XRef:   xrefs.assign("", "O", len(mediaRecords)+1),
+				Type:   gedcom.RecordTypeMedia,
+				Entity: obj,
+			}
+			mediaRecords = append(mediaRecords, rec)
+			if m.GroupID != nil {
+				groupRecords[*m.GroupID] = append(groupRecords[*m.GroupID], rec)
+			}
+		}
+		mediaLinks[m.EntityID] = append(mediaLinks[m.EntityID], &gedcom.MediaLink{MediaXRef: rec.XRef})
 	}
 
 	// Build GEDCOM document
@@ -939,6 +951,21 @@ func ownedMedia(ctx context.Context, rs repository.ReadModelStore, persons []rep
 		}
 	}
 	return media, nil
+}
+
+// matchingGroupRecord returns the OBJE record already written for an item of
+// group that is equal to obj, or nil when there is none or the item has no
+// group. An item edited apart from its group is written as its own record.
+func matchingGroupRecord(groupRecords map[uuid.UUID][]*gedcom.Record, group *uuid.UUID, obj *gedcom.MediaObject) *gedcom.Record {
+	if group == nil {
+		return nil
+	}
+	for _, rec := range groupRecords[*group] {
+		if reflect.DeepEqual(rec.Entity, obj) {
+			return rec
+		}
+	}
+	return nil
 }
 
 // gedcomMediaTypes is the MEDI value mapGedcomMediaType reads back as each
