@@ -24,12 +24,13 @@ This installs tools and git hooks:
 - Code formatting (`scripts/gofmt`, the gofmt of the go.mod-pinned toolchain)
 - Linting (`golangci-lint`)
 - Static analysis (`go vet`)
-- Tests pass
+- Fast test tier (`go test -short ./...`: skips `internal/integration` and PostgreSQL tests)
 
 **Pre-push** (runs before push):
-- Coverage thresholds (85% per-package, 75% total)
+- Full test suite, with coverage thresholds (85% per-package, 75% total)
 
-This split keeps commits fast while catching coverage issues before CI.
+This split keeps commits fast while catching failures and coverage issues before CI. See
+[Test Tiers](docs/TESTING-STRATEGY.md#test-tiers) for what each tier runs and how to mark a slow test.
 
 ### Manual Tool Installation
 

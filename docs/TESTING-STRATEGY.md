@@ -298,6 +298,38 @@ Frontend coverage is measurable via `npm run test:coverage` but is **not** gated
 
 ---
 
+## Test Tiers
+
+The Go suite runs in two tiers (#1524):
+
+| Tier | Command | Runs in | Leaves out |
+|------|---------|---------|------------|
+| Fast | `go test -short ./...` | pre-commit hook | `internal/integration`, every PostgreSQL test |
+| Full | `go test ./...` (no `-short`) | pre-push hook, `make test`, CI | nothing |
+
+What `-short` skips, and where the skip lives:
+
+- **`internal/integration`** — its `TestMain` (`main_test.go`) exits before any test runs, so a new
+  scenario is covered without a guard of its own.
+- **PostgreSQL** — `pgtest.ServerURL` and `pgtest.NewDatabase` skip under `-short`, so every test
+  that asks for a database is covered, including the integration suite's PostgreSQL leg.
+- **Individual slow tests** — a few guard themselves, e.g. `TestSearchPersons_LargeTree` in
+  `repository/sqlite`.
+
+To move a new test into the full tier, start it with:
+
+```go
+if testing.Short() {
+    t.Skip("skipping <what> in short mode")
+}
+```
+
+Do this for any test that takes more than about two seconds, or that pushes its package past about
+20 seconds. Tests that get their database from `pgtest` need no guard. Commit-time feedback only
+stays fast if slow tests are marked when they are added.
+
+---
+
 ## CI Pipeline Integration
 
 `.github/workflows/ci.yml` runs the test and check jobs below in parallel. There is no `integration` build tag and no
