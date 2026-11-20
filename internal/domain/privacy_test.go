@@ -82,7 +82,17 @@ func TestLatestDate(t *testing.T) {
 		{"AFT 1900", time.Time{}, false},
 		{"FROM 1900", time.Time{}, false},
 		{"MAR", time.Time{}, false},
+		// Other calendars give the last Gregorian day they can mean.
 		{"@#DJULIAN@ 1 JAN 1700", day(1700, time.January, 11), true},
+		{"@#DJULIAN@ FEB 1700", day(1700, time.March, 11), true}, // Julian 29 Feb 1700
+		{"@#DHEBREW@ 15 NSN 5785", day(2025, time.April, 13), true},
+		{"@#DHEBREW@ ELL 5785", day(2025, time.September, 22), true}, // 29 Elul
+		{"@#DHEBREW@ 5500", day(1740, time.September, 21), true},
+		{"@#DHEBREW@ AFT 5785", time.Time{}, false},
+		{"@#DFRENCH R@ 1 VEND 1", day(1792, time.September, 22), true},
+		{"@#DFRENCH R@ 1", day(1793, time.September, 21), true},
+		{"@#DFRENCH R@ BET 1 VEND 1 AND 1 VEND 2", day(1793, time.September, 22), true},
+		{"BET 1790 AND @#DFRENCH R@ 3", day(1795, time.September, 22), true}, // the range end's calendar
 		{"44 BC", day(-43, time.December, 31), true},
 	}
 	for _, tt := range tests {
