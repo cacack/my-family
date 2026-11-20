@@ -1003,6 +1003,9 @@ func (s *ReadModelStore) runMigrations() {
 		// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 		_, _ = s.db.Exec(`ALTER TABLE ` + tbl + ` ADD COLUMN IF NOT EXISTS restriction TEXT`)
 	}
+	// Link the copies of one imported OBJE record (issue #1478)
+	_, _ = s.db.Exec(`ALTER TABLE media ADD COLUMN IF NOT EXISTS group_id UUID`)
+	_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_media_group ON media(group_id)`)
 	_, _ = s.db.Exec(`ALTER TABLE persons ADD COLUMN IF NOT EXISTS living_override TEXT`)
 	_, _ = s.db.Exec(`ALTER TABLE persons ADD COLUMN IF NOT EXISTS death_evidence BOOLEAN NOT NULL DEFAULT FALSE`)
 	_, _ = s.db.Exec(`ALTER TABLE persons ADD COLUMN IF NOT EXISTS living_ref_date DATE`)
@@ -4128,13 +4131,13 @@ const (
 	// omits file_data and thumbnail_data.
 	mediaSelectCols = `id, entity_type, entity_id, title, description, mime_type, media_type,
 		filename, file_size, crop_left, crop_top, crop_width, crop_height,
-		gedcom_xref, version, created_at, updated_at, files, format, translations, restriction`
+		gedcom_xref, version, created_at, updated_at, files, format, translations, restriction, group_id`
 
 	// mediaWinnerCols is mediaSelectCols qualified by the w alias the byte reads
 	// join the winning row under.
 	mediaWinnerCols = `w.id, w.entity_type, w.entity_id, w.title, w.description, w.mime_type, w.media_type,
 		w.filename, w.file_size, w.crop_left, w.crop_top, w.crop_width, w.crop_height,
-		w.gedcom_xref, w.version, w.created_at, w.updated_at, w.files, w.format, w.translations, w.restriction`
+		w.gedcom_xref, w.version, w.created_at, w.updated_at, w.files, w.format, w.translations, w.restriction, w.group_id`
 
 	// mediaWinnerJoin resolves the winning row of one media id WITHOUT reading
 	// its bytes (o picks the row by (id, branch_id) alone), joins it back as w,
@@ -4167,6 +4170,8 @@ const (
 	entityMediaFilter = `entity_type = $%[1]d AND entity_id = $%[2]d`
 	// mediaIDFilter selects one media id for deleteMainMedia.
 	mediaIDFilter = `id = $%[1]d`
+	// mediaGroupFilter backs ListMediaInGroup: %[1]d numbers the group id.
+	mediaGroupFilter = `group_id = $%[1]d`
 
 	// Main-tombstone collection after a branch-side delete: main rows kept alive
 	// only for a shadow the branch has now tombstoned. Bind (branch, main).
@@ -4275,6 +4280,32 @@ func (s *ReadModelStore) ListMediaForEntity(ctx context.Context, entityType stri
 	return items, total, rows.Err()
 }
 
+// ListMediaInGroup returns the media items branchID sees in group groupID
+// (#1478). No byte column is read.
+func (s *ReadModelStore) ListMediaInGroup(ctx context.Context, branchID domain.BranchID, groupID uuid.UUID) ([]repository.MediaReadModel, error) {
+	args, n := overlayArgs(branchID)
+	src := overlaySrc("media", mediaSelectCols, fmt.Sprintf(mediaGroupFilter, n), branchID)
+	args = append(args, groupID, branchID.UUID(), domain.MainBranchID.UUID())
+	// #nosec G202 -- src is built from package constants carrying only $-placeholders
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	rows, err := s.db.QueryContext(ctx, "SELECT "+mediaSelectCols+", "+fmt.Sprintf(mediaHasThumbnail, n+1, n+2)+
+		" FROM "+src+" md", args...)
+	if err != nil {
+		return nil, fmt.Errorf("query media group: %w", err)
+	}
+	defer rows.Close()
+
+	var items []repository.MediaReadModel
+	for rows.Next() {
+		m, err := scanMediaRow(rows, false)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, *m)
+	}
+	return items, rows.Err()
+}
+
 // SaveMedia saves or updates a media record on the given branch (ADR-005, #759).
 // A save always clears any prior tombstone. It enforces the blob rule in the
 // statement itself: on a non-main branch, an id that has a main row gets NULL
@@ -4320,13 +4351,13 @@ func (s *ReadModelStore) SaveMedia(ctx context.Context, branchID domain.BranchID
 						  filename, file_size, file_data, thumbnail_data,
 						  crop_left, crop_top, crop_width, crop_height,
 						  gedcom_xref, version, created_at, updated_at,
-						  files, format, translations, restriction, deleted)
+						  files, format, translations, restriction, group_id, deleted)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
 			CASE WHEN $2::uuid <> $23::uuid AND EXISTS (SELECT 1 FROM media WHERE id = $1 AND branch_id = $23::uuid)
 				THEN NULL ELSE $11::bytea END,
 			CASE WHEN $2::uuid <> $23::uuid AND EXISTS (SELECT 1 FROM media WHERE id = $1 AND branch_id = $23::uuid)
 				THEN NULL ELSE $12::bytea END,
-			$13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $24, $25, FALSE)
+			$13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $24, $25, $26, FALSE)
 		ON CONFLICT (id, branch_id) DO UPDATE SET
 			entity_type = EXCLUDED.entity_type,
 			entity_id = EXCLUDED.entity_id,
@@ -4349,6 +4380,7 @@ func (s *ReadModelStore) SaveMedia(ctx context.Context, branchID domain.BranchID
 			format = EXCLUDED.format,
 			translations = EXCLUDED.translations,
 			restriction = EXCLUDED.restriction,
+			group_id = EXCLUDED.group_id,
 			deleted = FALSE
 	`, media.ID, branchID.UUID(), media.EntityType, media.EntityID, media.Title,
 		nullableString(media.Description), media.MimeType, string(media.MediaType),
@@ -4357,7 +4389,7 @@ func (s *ReadModelStore) SaveMedia(ctx context.Context, branchID domain.BranchID
 		nullableInt(media.CropWidth), nullableInt(media.CropHeight),
 		nullableString(media.GedcomXref), media.Version, media.CreatedAt, media.UpdatedAt,
 		nullableBytes(filesJSON), nullableString(media.Format), domain.MainBranchID.UUID(), nullableBytes(translationsJSON),
-		nullableString(string(media.Restriction)))
+		nullableString(string(media.Restriction)), nullableUUID(media.GroupID))
 	if err != nil {
 		return fmt.Errorf("save media: %w", err)
 	}
@@ -4507,13 +4539,14 @@ func scanMediaRow(row rowScanner, withData bool) (*repository.MediaReadModel, er
 		cropWidth, cropHeight       sql.NullInt64
 		filesJSON, translationsJSON []byte
 		format, restriction         sql.NullString
+		groupID                     uuid.NullUUID
 	)
 
 	dest := []any{&m.ID, &m.EntityType, &m.EntityID, &m.Title, &description,
 		&m.MimeType, &mediaType, &m.Filename, &m.FileSize,
 		&cropLeft, &cropTop, &cropWidth, &cropHeight,
 		&gedcomXref, &m.Version, &m.CreatedAt, &m.UpdatedAt,
-		&filesJSON, &format, &translationsJSON, &restriction}
+		&filesJSON, &format, &translationsJSON, &restriction, &groupID}
 	if withData {
 		dest = append(dest, &m.FileData, &m.ThumbnailData)
 	} else {
@@ -4544,6 +4577,7 @@ func scanMediaRow(row rowScanner, withData bool) (*repository.MediaReadModel, er
 	m.GedcomXref = gedcomXref.String
 	m.Format = format.String
 	m.Restriction = domain.Restriction(restriction.String)
+	m.GroupID = nullUUIDPtr(groupID)
 	m.CropLeft = nullIntPtr(cropLeft)
 	m.CropTop = nullIntPtr(cropTop)
 	m.CropWidth = nullIntPtr(cropWidth)

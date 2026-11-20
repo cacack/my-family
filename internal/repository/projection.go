@@ -1210,6 +1210,7 @@ func (p *Projector) projectMediaCreated(ctx context.Context, e domain.MediaCreat
 		ThumbnailData: e.ThumbnailData,
 		GedcomXref:    e.GedcomXref,
 		Restriction:   e.Restriction,
+		GroupID:       e.GroupID,
 		Version:       version,
 		CreatedAt:     e.OccurredAt(),
 		UpdatedAt:     e.OccurredAt(),

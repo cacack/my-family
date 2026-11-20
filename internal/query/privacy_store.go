@@ -834,6 +834,26 @@ func (s *PrivacyStore) ListMediaForEntity(ctx context.Context, entityType string
 	return s.inner.ListMediaForEntity(ctx, entityType, entityID, opts)
 }
 
+// ListMediaInGroup drops the items a viewer may not see.
+func (s *PrivacyStore) ListMediaInGroup(ctx context.Context, branchID domain.BranchID, groupID uuid.UUID) ([]repository.MediaReadModel, error) {
+	items, err := s.inner.ListMediaInGroup(ctx, branchID, groupID)
+	v := s.privacy(ctx)
+	if err != nil || v.SeesAll() {
+		return items, err
+	}
+	shown := items[:0]
+	for i := range items {
+		ok, err := s.mediaShown(ctx, v, branchID, &items[i])
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			shown = append(shown, items[i])
+		}
+	}
+	return shown, nil
+}
+
 func (s *PrivacyStore) SaveMedia(ctx context.Context, branchID domain.BranchID, media *repository.MediaReadModel) error {
 	return s.inner.SaveMedia(ctx, branchID, media)
 }

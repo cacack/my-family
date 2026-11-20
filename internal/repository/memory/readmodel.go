@@ -1797,6 +1797,21 @@ func (s *ReadModelStore) ListMediaForEntity(ctx context.Context, entityType stri
 	return results, total, nil
 }
 
+// ListMediaInGroup returns the media items branchID sees in group groupID
+// (#1478).
+func (s *ReadModelStore) ListMediaInGroup(ctx context.Context, branchID domain.BranchID, groupID uuid.UUID) ([]repository.MediaReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var results []repository.MediaReadModel
+	for _, r := range s.visibleMedia(branchID) {
+		if r.m.GroupID != nil && *r.m.GroupID == groupID {
+			results = append(results, *s.mediaMetadata(r))
+		}
+	}
+	return results, nil
+}
+
 // SaveMedia saves or updates a media record on the given branch (ADR-005,
 // #759), clearing any prior tombstone. It enforces the blob rule: on a non-main
 // branch an id that has a main row stores no bytes whatever the caller passes,
