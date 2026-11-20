@@ -39,8 +39,8 @@ func livingFields(living bool, recorded domain.LivingOverride) (*bool, *LivingOv
 
 // familyEventLogHidden reports whether the change history and restore points
 // of family id are hidden from the principal on ctx: the family is not shown
-// to them, or a partner is protected. The event log is not redacted yet, so
-// such a family's log is not found (ADR-008 read-surface table).
+// to them, or a partner is protected, so such a family's log is not found
+// (ADR-008 read-surface table).
 func (s *Server) familyEventLogHidden(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (bool, error) {
 	family, err := s.readStore.GetFamily(ctx, branchID, id)
 	if err != nil || family == nil {

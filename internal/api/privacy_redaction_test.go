@@ -219,8 +219,8 @@ func TestPrivacyRedaction_PersonSurfaces(t *testing.T) {
 						t.Errorf("living person's quality: %d, want shown %v", rec.Code, p.seesLiving)
 					}
 
-					// The event log is not redacted yet: a protected person's
-					// is empty, and a private person's sub-resources are not
+					// The event-output redactor empties a protected person's
+					// log, and a private person's sub-resources are not
 					// found, as their page is not. Visitors never reach the
 					// change log (TestAnonymous_ChangeLogNeedsSignIn).
 					logSubs := []string{"history", "restore-points"}
@@ -291,8 +291,7 @@ func TestPrivacyRedaction_FamiliesAndCharts(t *testing.T) {
 				family["marriage_date"] != nil || family["marriage_place"] != nil {
 				t.Errorf("family = %v, want its partners kept and its facts hidden", family)
 			}
-			// The event log is not redacted yet: a family with a protected
-			// partner has none to show.
+			// A family with a protected partner has no log to show.
 			for _, sub := range []string{"history", "restore-points"} {
 				if rec := p.get(t, f, "/api/v1/families/"+tr.family+"/"+sub); (rec.Code == http.StatusOK) != p.seesLiving {
 					t.Errorf("family %s: %d, want shown %v", sub, rec.Code, p.seesLiving)
