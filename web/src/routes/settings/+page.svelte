@@ -168,6 +168,7 @@
 							marked private, who made each change, or submitters' contact details. They cannot change, export or
 							import anything.
 						</p>
+						<p><a href="#preview">Preview the tree as a visitor</a> to see exactly what they will see.</p>
 						<p>
 							Not available yet: until living people and private records are hidden from visitors, the server
 							refuses to let them in.
@@ -184,7 +185,7 @@
 				</div>
 			</form>
 		</section>
-		<section class="panel" aria-labelledby="preview-heading">
+		<section id="preview" class="panel" aria-labelledby="preview-heading">
 			<h2 id="preview-heading">Preview</h2>
 			<p id="preview-hint" class="hint preview-intro">
 				See the tree exactly as the server shows it to someone else, under the saved settings: the pages show
@@ -294,6 +295,15 @@
 
 	.hint p {
 		margin: 0 0 0.375rem;
+	}
+
+	.hint a {
+		color: var(--color-link);
+		text-decoration: underline;
+	}
+
+	.hint a:hover {
+		color: var(--color-link-hover);
 	}
 
 	.hint {
