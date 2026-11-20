@@ -34,8 +34,12 @@ import {
 	currentRole,
 	showSignIn,
 	browseAsVisitor,
-	recheckSession
+	recheckSession,
+	previewing,
+	startPreview,
+	stopPreview
 } from './auth.svelte.js';
+import { canChooseHomePerson, isVisitor } from './access.svelte.js';
 
 const ADA = { id: '11111111-1111-1111-1111-111111111111', username: 'ada', display_name: 'Ada', role: 'owner' as const };
 
@@ -45,6 +49,8 @@ describe('auth store', () => {
 		auth.phase = 'loading';
 		auth.account = null;
 		auth.visitorsWelcome = false;
+		auth.previewAs = null;
+		document.cookie = 'myfamily_preview=; Path=/; Max-Age=0';
 	});
 
 	it.each([
@@ -202,5 +208,72 @@ describe('auth store', () => {
 		auth.phase = 'signed-out';
 		expect(currentRole()).toBeNull();
 		expect(can('viewer')).toBe(false);
+	});
+
+	describe('preview (#1413)', () => {
+		const previewCookie = () =>
+			document.cookie
+				.split('; ')
+				.find((c) => c.startsWith('myfamily_preview='))
+				?.slice('myfamily_preview='.length);
+
+		it('previews as a viewer: the cookie is set and the owner gets a viewer\'s role', () => {
+			auth.phase = 'signed-in';
+			auth.account = ADA;
+			startPreview('viewer');
+			expect(previewCookie()).toBe('viewer');
+			expect(previewing()).toBe('viewer');
+			expect(currentRole()).toBe('viewer');
+			expect(can('editor')).toBe(false);
+			expect(isVisitor()).toBe(false);
+			expect(canChooseHomePerson()).toBe(true);
+
+			stopPreview();
+			expect(previewCookie()).toBeUndefined();
+			expect(previewing()).toBeNull();
+			expect(currentRole()).toBe('owner');
+		});
+
+		it('previews as a visitor, in open mode too', () => {
+			auth.phase = 'open';
+			startPreview('visitor');
+			expect(currentRole()).toBe('viewer');
+			expect(isVisitor()).toBe(true);
+			expect(canChooseHomePerson()).toBe(false);
+		});
+
+		it.each(['editor', 'viewer'] as const)('ignores a preview for a signed-in %s, as the server does', (role) => {
+			auth.phase = 'signed-in';
+			auth.account = { ...ADA, role };
+			auth.previewAs = 'visitor';
+			expect(previewing()).toBeNull();
+			expect(currentRole()).toBe(role);
+			expect(isVisitor()).toBe(false);
+		});
+
+		it('resumes the preview the cookie holds when the app loads', async () => {
+			document.cookie = 'myfamily_preview=visitor; Path=/';
+			getAuthStatus.mockResolvedValue({ mode: 'accounts', setup_required: false, account: ADA });
+			await loadAuth();
+			expect(previewing()).toBe('visitor');
+		});
+
+		it('clears a cookie that names no principal', async () => {
+			document.cookie = 'myfamily_preview=stranger; Path=/';
+			getAuthStatus.mockResolvedValue({ mode: 'accounts', setup_required: false, account: ADA });
+			await loadAuth();
+			expect(previewing()).toBeNull();
+			expect(previewCookie()).toBeUndefined();
+		});
+
+		it('ends the preview on sign-out', async () => {
+			auth.phase = 'signed-in';
+			auth.account = ADA;
+			startPreview('viewer');
+			signOutMock.mockResolvedValue(undefined);
+			await signOut();
+			expect(auth.previewAs).toBeNull();
+			expect(previewCookie()).toBeUndefined();
+		});
 	});
 });

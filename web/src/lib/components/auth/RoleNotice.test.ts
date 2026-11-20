@@ -26,4 +26,13 @@ describe('RoleNotice', () => {
 		expect(text).toContain('browsing as a visitor. Sign in');
 		expect(text).not.toContain('signed in as');
 	});
+
+	it('tells the owner previewing the tree to stop the preview (#1413)', () => {
+		signInAs('owner');
+		auth.previewAs = 'visitor';
+		render(RoleNotice, { action: 'Adding people', required: 'editor' });
+		const text = screen.getByRole('note').textContent ?? '';
+		expect(text).toMatch(/previewing the tree as a visitor\. Stop the preview/);
+		expect(text).not.toContain('Sign in');
+	});
 });
