@@ -69,6 +69,14 @@ var changeLogRoutes = routeSet(
 	"GET /api/v1/branches/:id/compare",
 )
 
+// branchViewRoutes read a research branch's view, which a visitor may not:
+// a visitor reads the mainline only (ADR-008 §4). With accountRoutes and
+// changeLogRoutes it restates the server's signedInRoutes.
+var branchViewRoutes = routeSet(
+	"GET /api/v1/branches/:id/evidence-coverage",
+	"GET /api/v1/branches/:id/health",
+)
+
 // TestAnonymous_EveryRoute calls every API route without a session, with
 // anonymous access none and then viewer. With none, every route that is not
 // public is refused with 401. With viewer, exactly the viewer routes (but the
@@ -97,7 +105,7 @@ func TestAnonymous_EveryRoute(t *testing.T) {
 					body = "{}"
 				}
 				rec := f.do(t, request{method: route.Method, path: routeParam.ReplaceAllString(route.Path, id), body: body})
-				wantServed := access == repository.AnonymousAccessViewer && role == repository.RoleViewer && !accountRoutes[key] && !changeLogRoutes[key]
+				wantServed := access == repository.AnonymousAccessViewer && role == repository.RoleViewer && !accountRoutes[key] && !changeLogRoutes[key] && !branchViewRoutes[key]
 				if got := !unauthenticated(rec) && !forbidden(rec); got != wantServed {
 					t.Errorf("%s anonymously (needs %s): %d %s; served = %v, want %v", key, role, rec.Code, rec.Body, got, wantServed)
 				}
@@ -339,5 +347,36 @@ func TestAnonymous_ChangeLogNeedsSignIn(t *testing.T) {
 		if rec := f.do(t, request{method: http.MethodGet, path: path, cookie: owner}); unauthenticated(rec) || forbidden(rec) {
 			t.Errorf("%s signed in: %d %s, want the handler's answer", key, rec.Code, rec.Body)
 		}
+	}
+}
+
+// A visitor reads the mainline only (ADR-008 §4): a research branch's view,
+// by a `?branch=` scope on any read or by the branch's own view routes, is
+// refused with 401, while a signed-in viewer reaches the handler.
+func TestAnonymous_BranchViewNeedsSignIn(t *testing.T) {
+	f := newAuthFixture(t)
+	f.createOwner(t)
+	owner := f.signIn(t)
+	f.openToVisitors(t)
+	id := uuid.New().String()
+	paths := []string{
+		"/api/v1/persons?branch=" + id,
+		"/api/v1/persons?branch=",
+		"/api/v1/persons/" + id + "?branch=" + id,
+		"/api/v1/map/locations?branch=" + id,
+	}
+	for key := range branchViewRoutes {
+		paths = append(paths, routeParam.ReplaceAllString(strings.TrimPrefix(key, "GET "), id))
+	}
+	for _, path := range paths {
+		if rec := f.do(t, request{method: http.MethodGet, path: path}); !unauthenticated(rec) {
+			t.Errorf("GET %s as a visitor: %d %s, want 401 UNAUTHENTICATED", path, rec.Code, rec.Body)
+		}
+		if rec := f.do(t, request{method: http.MethodGet, path: path, cookie: owner}); unauthenticated(rec) || forbidden(rec) {
+			t.Errorf("GET %s signed in: %d %s, want the handler's answer", path, rec.Code, rec.Body)
+		}
+	}
+	if rec := f.do(t, request{method: http.MethodGet, path: "/api/v1/persons"}); rec.Code != http.StatusOK {
+		t.Errorf("GET /api/v1/persons as a visitor: %d %s, want 200", rec.Code, rec.Body)
 	}
 }

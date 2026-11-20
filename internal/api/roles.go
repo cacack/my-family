@@ -37,25 +37,30 @@ var handRouteRoles = map[string]repository.Role{
 // them to a visitor: the operations on one's own account (including its home
 // person), which a visitor does not have, and the change log (history,
 // restore points, snapshots and comparisons), whose change records name who
-// made each change, which ADR-008 §4 hides from anonymous principals.
+// made each change, which ADR-008 §4 hides from anonymous principals, and a
+// research branch's view (health and evidence coverage), since a visitor
+// reads the mainline only. A `?branch=` scope on any route is refused to a
+// visitor too (visitorMayCall).
 var signedInRoutes = map[string]bool{
-	routeKey(http.MethodGet, apiBase+"/auth/me"):                       true,
-	routeKey(http.MethodPatch, apiBase+"/auth/me"):                     true,
-	routeKey(http.MethodPut, apiBase+"/settings/home-person"):          true,
-	routeKey(http.MethodDelete, apiBase+"/settings/home-person"):       true,
-	routeKey(http.MethodGet, apiBase+"/history"):                       true,
-	routeKey(http.MethodGet, apiBase+"/persons/:id/history"):           true,
-	routeKey(http.MethodGet, apiBase+"/families/:id/history"):          true,
-	routeKey(http.MethodGet, apiBase+"/sources/:id/history"):           true,
-	routeKey(http.MethodGet, apiBase+"/persons/:id/restore-points"):    true,
-	routeKey(http.MethodGet, apiBase+"/families/:id/restore-points"):   true,
-	routeKey(http.MethodGet, apiBase+"/sources/:id/restore-points"):    true,
-	routeKey(http.MethodGet, apiBase+"/citations/:id/restore-points"):  true,
-	routeKey(http.MethodGet, apiBase+"/snapshots"):                     true,
-	routeKey(http.MethodGet, apiBase+"/snapshots/:id"):                 true,
-	routeKey(http.MethodGet, apiBase+"/snapshots/:id/compare-current"): true,
-	routeKey(http.MethodGet, apiBase+"/snapshots/:id1/compare/:id2"):   true,
-	routeKey(http.MethodGet, apiBase+"/branches/:id/compare"):          true,
+	routeKey(http.MethodGet, apiBase+"/auth/me"):                        true,
+	routeKey(http.MethodPatch, apiBase+"/auth/me"):                      true,
+	routeKey(http.MethodPut, apiBase+"/settings/home-person"):           true,
+	routeKey(http.MethodDelete, apiBase+"/settings/home-person"):        true,
+	routeKey(http.MethodGet, apiBase+"/history"):                        true,
+	routeKey(http.MethodGet, apiBase+"/persons/:id/history"):            true,
+	routeKey(http.MethodGet, apiBase+"/families/:id/history"):           true,
+	routeKey(http.MethodGet, apiBase+"/sources/:id/history"):            true,
+	routeKey(http.MethodGet, apiBase+"/persons/:id/restore-points"):     true,
+	routeKey(http.MethodGet, apiBase+"/families/:id/restore-points"):    true,
+	routeKey(http.MethodGet, apiBase+"/sources/:id/restore-points"):     true,
+	routeKey(http.MethodGet, apiBase+"/citations/:id/restore-points"):   true,
+	routeKey(http.MethodGet, apiBase+"/snapshots"):                      true,
+	routeKey(http.MethodGet, apiBase+"/snapshots/:id"):                  true,
+	routeKey(http.MethodGet, apiBase+"/snapshots/:id/compare-current"):  true,
+	routeKey(http.MethodGet, apiBase+"/snapshots/:id1/compare/:id2"):    true,
+	routeKey(http.MethodGet, apiBase+"/branches/:id/compare"):           true,
+	routeKey(http.MethodGet, apiBase+"/branches/:id/evidence-coverage"): true,
+	routeKey(http.MethodGet, apiBase+"/branches/:id/health"):            true,
 }
 
 // routeRoles is the minimum role of every API route (ADR-007): each
@@ -214,8 +219,6 @@ var anonymousCostlyRoutes = map[string]bool{
 	routeKey(http.MethodGet, apiBase+"/quality/validation"):                 true,
 	routeKey(http.MethodGet, apiBase+"/persons/duplicates"):                 true,
 	routeKey(http.MethodGet, apiBase+"/branches/:id/drift"):                 true,
-	routeKey(http.MethodGet, apiBase+"/branches/:id/evidence-coverage"):     true,
-	routeKey(http.MethodGet, apiBase+"/branches/:id/health"):                true,
 	routeKey(http.MethodGet, apiBase+"/media/:id/content"):                  true,
 	routeKey(http.MethodGet, apiBase+"/media/:id/thumbnail"):                true,
 }

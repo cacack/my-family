@@ -2424,6 +2424,10 @@ export interface paths {
          *
          *     This is a soft warning, never a merge gate. It is computed from the
          *     append-only log, so a merged or archived branch still answers.
+         *
+         *     Requires a signed-in user: an anonymous visitor is refused with 401,
+         *     since a visitor reads the mainline only, not a research branch's view
+         *     (ADR-008 §4).
          */
         get: operations["getBranchEvidenceCoverage"];
         put?: never;
@@ -2459,6 +2463,10 @@ export interface paths {
          *
          *     Only an active branch has a view to check: an unknown, merged or
          *     archived branch is `404`, as for a `?branch=` read.
+         *
+         *     Requires a signed-in user: an anonymous visitor is refused with 401,
+         *     since a visitor reads the mainline only, not a research branch's view
+         *     (ADR-008 §4).
          */
         get: operations["getBranchHealth"];
         put?: never;
@@ -7337,7 +7345,9 @@ export interface components {
          *     returns 400 at parameter binding, before the operation runs. An unknown
          *     branch id returns 404. Writes to a non-active (merged or archived) branch
          *     return 409; reads of one return 404, because its overlay rows are purged
-         *     on archive and it therefore has no view to return.
+         *     on archive and it therefore has no view to return. An anonymous visitor
+         *     is refused with 401 whatever the branch: a visitor reads the mainline
+         *     only (ADR-008 §4).
          */
         branchScope: string;
         /** @description Note UUID */
@@ -7374,7 +7384,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
                 limit?: components["parameters"]["limitParam"];
@@ -7412,7 +7424,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -7449,7 +7463,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -7482,7 +7498,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -7521,7 +7539,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -7561,7 +7581,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
                 limit?: components["parameters"]["limitParam"];
@@ -7593,7 +7615,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -7630,7 +7654,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -7663,7 +7689,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -7702,7 +7730,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -7742,7 +7772,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -7792,7 +7824,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -7833,7 +7867,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -7866,7 +7902,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
                 /** @description Number of ancestor generations to include */
@@ -7901,7 +7939,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
                 /** @description Number of descendant generations to include */
@@ -7936,7 +7976,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
                 /** @description Number of ancestor generations to include (1-10) */
@@ -7975,7 +8017,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
                 /** @description Search query (name) */
@@ -8030,7 +8074,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
                 /** @description Filter surnames by starting letter (A-Z) */
@@ -8062,7 +8108,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
                 limit?: components["parameters"]["limitParam"];
@@ -8097,7 +8145,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
                 /** @description Parent place to get children for (empty for top-level) */
@@ -8129,7 +8179,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
                 limit?: components["parameters"]["limitParam"];
@@ -8164,7 +8216,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -8194,7 +8248,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
                 limit?: components["parameters"]["limitParam"];
@@ -8229,7 +8285,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -8474,7 +8532,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -8509,7 +8569,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -8570,7 +8632,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -8641,7 +8705,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -8710,7 +8776,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -8755,7 +8823,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -8807,7 +8877,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -8852,7 +8924,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -8904,7 +8978,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -8949,7 +9025,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -9080,7 +9158,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -9113,7 +9193,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
                 limit?: components["parameters"]["limitParam"];
@@ -9148,7 +9230,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -9206,7 +9290,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -9240,7 +9326,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -9280,7 +9368,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
                 /** @description Entity version for optimistic locking */
@@ -9316,7 +9406,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -9354,7 +9446,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -9388,7 +9482,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
                 limit?: components["parameters"]["limitParam"];
@@ -9425,7 +9521,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -9460,7 +9558,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
                 /** @description Search query */
@@ -9494,7 +9594,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -9527,7 +9629,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -9566,7 +9670,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
                 /** @description Entity version for optimistic locking */
@@ -9601,7 +9707,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -9634,7 +9742,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -9678,7 +9788,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -9711,7 +9823,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -9750,7 +9864,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
                 /** @description Entity version for optimistic locking */
@@ -9785,7 +9901,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -9818,7 +9936,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -9851,7 +9971,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -9890,7 +10012,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -9930,7 +10054,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -10210,7 +10336,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -10310,7 +10438,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
                 /** @description Maximum number of duplicate pairs to return */
@@ -10344,7 +10474,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
                 /** @description Maximum number of pairs to return */
@@ -10378,7 +10510,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -10427,7 +10561,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -10466,7 +10602,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -10501,7 +10639,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -10536,7 +10676,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -10613,7 +10755,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -10644,7 +10788,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -10687,7 +10833,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -10721,7 +10869,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -10754,7 +10904,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
                 /** @description The last log position to include. Defaults to the current head. */
@@ -10800,7 +10952,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -11520,7 +11674,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -11629,7 +11785,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
                 limit?: components["parameters"]["limitParam"];
@@ -11663,7 +11821,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -11698,7 +11858,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -11732,7 +11894,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -11772,7 +11936,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
                 /** @description Entity version for optimistic locking */
@@ -12087,7 +12253,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
                 limit?: components["parameters"]["limitParam"];
@@ -12122,7 +12290,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -12157,7 +12327,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -12191,7 +12363,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -12231,7 +12405,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
                 /** @description Entity version for optimistic locking */
@@ -12267,7 +12443,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -12478,7 +12656,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
                 limit?: components["parameters"]["limitParam"];
@@ -12513,7 +12693,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -12548,7 +12730,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -12582,7 +12766,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -12622,7 +12808,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
                 /** @description Entity version for optimistic locking */
@@ -12658,7 +12846,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
                 factType: components["schemas"]["FactType"];
@@ -12697,7 +12887,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
                 limit?: components["parameters"]["limitParam"];
@@ -12732,7 +12924,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -12766,7 +12960,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -12806,7 +13002,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -12838,7 +13036,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
                 limit?: components["parameters"]["limitParam"];
@@ -12873,7 +13073,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -12908,7 +13110,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -12942,7 +13146,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -12982,7 +13188,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
                 /** @description Entity version for optimistic locking */
@@ -13018,7 +13226,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -13050,7 +13260,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
                 limit?: components["parameters"]["limitParam"];
@@ -13085,7 +13297,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -13120,7 +13334,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -13154,7 +13370,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
             };
@@ -13194,7 +13412,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
                 /** @description Entity version for optimistic locking */
@@ -13230,7 +13450,9 @@ export interface operations {
                  *     returns 400 at parameter binding, before the operation runs. An unknown
                  *     branch id returns 404. Writes to a non-active (merged or archived) branch
                  *     return 409; reads of one return 404, because its overlay rows are purged
-                 *     on archive and it therefore has no view to return.
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
                 factType: components["schemas"]["FactType"];

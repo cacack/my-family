@@ -132,7 +132,7 @@ We chose **1B + 2B + 3B + 4A + 5B**.
 **Anonymous access.** A tree setting the owner changes in the UI: `none` (default) or `viewer`.
 An anonymous viewer never sees more than ADR-008 allows for the public. A visitor may not read the
 change log (history, restore points, snapshots, comparisons), whose entries name who made each
-change, and reads whose cost grows with the tree are rate-limited per client address.
+change, or a research branch's view (ADR-008 §4), and reads whose cost grows with the tree are rate-limited per client address.
 
 **Open mode.** `AUTH_MODE=open` maps the anonymous principal to owner, for a trusted network, demo
 mode and end-to-end tests. It is settable only from the environment, never from the UI, logs a
