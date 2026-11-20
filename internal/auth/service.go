@@ -229,7 +229,9 @@ func (s *Service) seedHomePerson(ctx context.Context, ownerID uuid.UUID) {
 // if that owner has never chosen or cleared one: an owner set up before home
 // persons were per account (#1474) was never seeded. With more than one
 // owner it does nothing, since the site's choice may be any one of theirs.
-// The server calls it at startup; it is safe to call again.
+// The server calls it at every start with sign-in on; it is safe to call
+// again. A clear made before #1474 deleted the account's row, so it reads as
+// never chosen and is replaced once; clears since then are kept.
 func (s *Service) CarryOverHomePerson(ctx context.Context) error {
 	if s.settings == nil {
 		return nil

@@ -30,7 +30,8 @@ type SettingsStore interface {
 
 	// SeedHomePerson gives accountID the site-wide home person, unless
 	// accountID has chosen one or cleared its choice. It does nothing while
-	// the site has none.
+	// the site has none. A clear made before #1474 left no record, so it
+	// counts as never chosen.
 	SeedHomePerson(ctx context.Context, accountID uuid.UUID) error
 
 	// MoveHomePersons makes survivors[p] the home person of the site and of

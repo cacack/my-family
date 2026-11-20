@@ -44,6 +44,20 @@ func logAuthMode(cfg *config.Config, svc *auth.Service, logger *log.Logger) erro
 	return nil
 }
 
+// carryOverHomePerson gives an owner set up before per-account home persons
+// the site's home person (#1474). It runs only with sign-in on: in open mode
+// home-person changes go to the site value alone, so seeding the owner then
+// would fix them to a choice the site may still change before accounts take
+// effect. A failure is logged, not fatal, and the next start retries it.
+func carryOverHomePerson(cfg *config.Config, svc *auth.Service, logger *log.Logger) {
+	if cfg.OpenMode() {
+		return
+	}
+	if err := svc.CarryOverHomePerson(context.Background()); err != nil {
+		logger.Printf("Warning: %v (will retry at next start)", err)
+	}
+}
+
 // userUsage lists the `myfamily user` subcommands.
 const userUsage = "usage: myfamily user create [--username NAME] [--display-name NAME]\n" +
 	"       myfamily user reset-password --username NAME [--url URL]"
