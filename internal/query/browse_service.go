@@ -12,6 +12,10 @@ import (
 )
 
 // BrowseService provides queries for browsing surnames and places.
+//
+// Its readStore is the query.PrivacyStore (PV-001), which replaces the
+// privacy each read is given with the principal's, so the aggregates below
+// pass repository.Privacy{}. Over a raw store they would see everyone.
 type BrowseService struct {
 	readStore repository.ReadModelStore
 }

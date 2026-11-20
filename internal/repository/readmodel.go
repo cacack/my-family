@@ -856,7 +856,10 @@ type ReadModelStore interface {
 	// see the branch overlay (ADR-005): single-row aggregates take an explicit
 	// branchID, the paged ones carry it on opts.BranchID. The aggregates take the
 	// reader's privacy and leave the people it protects out of their counts, in
-	// the query (ADR-008 §5); the paged ones carry it on opts.Privacy.
+	// the query (ADR-008 §5); the paged ones carry it on opts.Privacy. A store
+	// trusts the privacy it is given, and the zero Privacy sees everyone; the
+	// query.PrivacyStore (PV-001) replaces whatever its caller passes with the
+	// principal's, so services above it pass Privacy{}.
 
 	// GetSurnameIndex returns surname and initial-letter counts within the branch
 	// overlay (ADR-005).

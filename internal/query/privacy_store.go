@@ -31,15 +31,14 @@ import (
 //     LDS ordinances and media.
 //   - Private media are hidden, and so are media of a hidden owner, bytes and
 //     thumbnails included.
-//
 //   - The surname, place and cemetery indexes, the map and the brick walls
 //     leave protected people out of their counts and lists, in the query.
 //
 // The methods marked "not yet redacted" pass through for every principal.
 // They serve records other than people and families (sources, citations by
 // source, notes, submitters, repositories, evidence, duplicate dismissals)
-// and whole-tree exports, whose redaction is still to come (#1412). Until it lands anonymous viewing
-// stays off (repository.AnonymousViewingProtected).
+// and whole-tree exports, whose redaction is still to come (#1412). Until it
+// lands anonymous viewing stays off (repository.AnonymousViewingProtected).
 type PrivacyStore struct {
 	inner repository.ReadModelStore
 	now   func() time.Time
