@@ -7132,6 +7132,12 @@ components:
             Whether the person's record is private (ADR-008), as on Person.
             Omitted when it is not, and on a family's partner and child
             summaries, where it is not evaluated.
+        redacted:
+          type: boolean
+          description: >-
+            Set on the placeholder shown instead of a person the caller may not
+            see (ADR-008 §3), as on Person. Set on a family's partner and child
+            summaries; omitted otherwise.
 
     PersonList:
       type: object
@@ -7533,6 +7539,11 @@ components:
           description: >-
             Whether the person's record is private (ADR-008), as on Person.
             Omitted when it is not.
+        redacted:
+          type: boolean
+          description: >-
+            Set on the placeholder shown instead of a person the caller may not
+            see (ADR-008 §3), as on Person. Omitted otherwise.
         father:
           $ref: '#/components/schemas/PedigreeNode'
         mother:
@@ -7586,6 +7597,11 @@ components:
           description: >-
             Whether the person's record is private (ADR-008), as on Person.
             Omitted when it is not.
+        redacted:
+          type: boolean
+          description: >-
+            Set on the placeholder shown instead of a person the caller may not
+            see (ADR-008 §3), as on Person. Omitted otherwise.
         family_id:
           type: string
           format: uuid
@@ -7632,6 +7648,11 @@ components:
           description: >-
             Whether the spouse's record is private (ADR-008), as on Person.
             Omitted when it is not.
+        redacted:
+          type: boolean
+          description: >-
+            Set on the placeholder shown instead of a person the caller may not
+            see (ADR-008 §3), as on Person. Omitted otherwise.
 
     AhnentafelResponse:
       type: object

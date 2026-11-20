@@ -1,6 +1,7 @@
 package query
 
 import (
+	"bytes"
 	"context"
 	"strings"
 	"time"
@@ -26,7 +27,8 @@ import (
 //     query, from person lists and searches (ListOptions.Privacy,
 //     SearchOptions.Privacy). Their names, external IDs, events, attributes,
 //     citations, associations, LDS ordinances and media are hidden.
-//   - A private family is hidden; a family with a protected partner shows the
+//   - A private family is hidden, and so is the child-to-parents link its
+//     pedigree edges carry; a family with a protected partner shows the
 //     partner as a placeholder and hides its own facts, events, external IDs,
 //     LDS ordinances and media.
 //   - Private media are hidden, and so are media of a hidden owner, bytes and
@@ -244,7 +246,9 @@ func (s *PrivacyStore) redactChildren(ctx context.Context, v repository.Privacy,
 	return out, nil
 }
 
-// redactEdges shows protected parents by the placeholder name.
+// redactEdges drops the parents an edge takes from a private family, so a
+// chart shows a gap there as the family pages do, and shows protected parents
+// by the placeholder name (ADR-008 §3).
 func (s *PrivacyStore) redactEdges(ctx context.Context, v repository.Privacy, branchID domain.BranchID, edges []repository.PedigreeEdge) ([]repository.PedigreeEdge, error) {
 	var ids []uuid.UUID
 	for _, e := range edges {
@@ -254,11 +258,20 @@ func (s *PrivacyStore) redactEdges(ctx context.Context, v repository.Privacy, br
 			}
 		}
 	}
+	private, err := s.privateParentage(ctx, v, branchID, ids)
+	if err != nil {
+		return nil, err
+	}
 	vis, err := s.visibilities(ctx, v, branchID, ids)
 	if err != nil {
 		return nil, err
 	}
 	for i := range edges {
+		if private[edgeKey{edges[i].PersonID, partnerSet(edges[i].FatherID, edges[i].MotherID)}] {
+			edges[i].FatherID, edges[i].FatherName = nil, ""
+			edges[i].MotherID, edges[i].MotherName = nil, ""
+			continue
+		}
 		if id := edges[i].FatherID; id != nil && vis[*id] != repository.Visible {
 			edges[i].FatherName = repository.PlaceholderGivenName
 		}
@@ -267,6 +280,63 @@ func (s *PrivacyStore) redactEdges(ctx context.Context, v repository.Privacy, br
 		}
 	}
 	return edges, nil
+}
+
+// edgeKey names a child's link to a pair of parents: the child and the
+// parents' partnerSet.
+type edgeKey struct {
+	child   uuid.UUID
+	parents [2]uuid.UUID
+}
+
+// partnerSet returns a and b in a fixed order, with uuid.Nil for one that is
+// absent, so an edge (father, mother) and a family (partner1, partner2) with
+// the same people compare equal.
+func partnerSet(a, b *uuid.UUID) [2]uuid.UUID {
+	var x, y uuid.UUID
+	if a != nil {
+		x = *a
+	}
+	if b != nil {
+		y = *b
+	}
+	if bytes.Compare(x[:], y[:]) > 0 {
+		x, y = y, x
+	}
+	return [2]uuid.UUID{x, y}
+}
+
+// privateParentage returns the child-to-parents links that a private family
+// of parentIDs records, which v may not see. A pedigree edge carries no
+// family ID, so a link is matched by the child and the family's partners.
+func (s *PrivacyStore) privateParentage(ctx context.Context, v repository.Privacy, branchID domain.BranchID, parentIDs []uuid.UUID) (map[edgeKey]bool, error) {
+	out := make(map[edgeKey]bool)
+	if !v.HidePrivate || len(parentIDs) == 0 {
+		return out, nil
+	}
+	families, err := s.inner.GetFamiliesForPersons(ctx, branchID, parentIDs)
+	if err != nil {
+		return nil, err
+	}
+	partners := make(map[uuid.UUID][2]uuid.UUID)
+	var private []uuid.UUID
+	for _, f := range families {
+		if v.Hides(f.Restriction) {
+			partners[f.ID] = partnerSet(f.Partner1ID, f.Partner2ID)
+			private = append(private, f.ID)
+		}
+	}
+	if len(private) == 0 {
+		return out, nil
+	}
+	children, err := s.inner.GetFamilyChildrenByFamilyIDs(ctx, branchID, private)
+	if err != nil {
+		return nil, err
+	}
+	for _, c := range children {
+		out[edgeKey{c.PersonID, partners[c.FamilyID]}] = true
+	}
+	return out, nil
 }
 
 // placeholders replaces each person v protects by the placeholder.

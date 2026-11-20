@@ -4322,11 +4322,12 @@ func convertQueryFamilyToGenerated(f query.Family) Family {
 }
 
 // personSummary builds a PersonSummary for a family partner or child.
-func personSummary(id uuid.UUID, given, surname string, gender *string) *PersonSummary {
+func personSummary(id uuid.UUID, given, surname string, gender *string, redacted bool) *PersonSummary {
 	s := &PersonSummary{
 		Id:        id,
 		GivenName: given,
 		Surname:   surname,
+		Redacted:  redactedFlag(redacted),
 	}
 	if gender != nil {
 		g := Gender(*gender)
@@ -4372,10 +4373,10 @@ func convertQueryFamilyDetailToGenerated(fd query.FamilyDetail) FamilyDetail {
 	// nil for legacy or unprojected data; missing parts render as empty
 	// strings rather than dropping the whole summary.
 	if fd.Partner1ID != nil {
-		resp.Partner1 = personSummary(*fd.Partner1ID, stringValue(fd.Partner1GivenName), stringValue(fd.Partner1Surname), fd.Partner1Gender)
+		resp.Partner1 = personSummary(*fd.Partner1ID, stringValue(fd.Partner1GivenName), stringValue(fd.Partner1Surname), fd.Partner1Gender, fd.Partner1Redacted)
 	}
 	if fd.Partner2ID != nil {
-		resp.Partner2 = personSummary(*fd.Partner2ID, stringValue(fd.Partner2GivenName), stringValue(fd.Partner2Surname), fd.Partner2Gender)
+		resp.Partner2 = personSummary(*fd.Partner2ID, stringValue(fd.Partner2GivenName), stringValue(fd.Partner2Surname), fd.Partner2Gender, fd.Partner2Redacted)
 	}
 
 	if len(fd.Children) > 0 {
@@ -4384,7 +4385,7 @@ func convertQueryFamilyDetailToGenerated(fd query.FamilyDetail) FamilyDetail {
 			children[i] = FamilyChild{
 				PersonId:         c.ID,
 				RelationshipType: ChildRelationType(c.RelationshipType),
-				Person:           personSummary(c.ID, c.GivenName, c.Surname, c.Gender),
+				Person:           personSummary(c.ID, c.GivenName, c.Surname, c.Gender, c.Redacted),
 			}
 		}
 		resp.Children = &children
@@ -4429,10 +4430,10 @@ func convertQueryFamilyToFamilyDetail(f query.Family) FamilyDetail {
 	resp.Notes = f.Notes
 
 	if f.Partner1ID != nil {
-		resp.Partner1 = personSummary(*f.Partner1ID, stringValue(f.Partner1GivenName), stringValue(f.Partner1Surname), nil)
+		resp.Partner1 = personSummary(*f.Partner1ID, stringValue(f.Partner1GivenName), stringValue(f.Partner1Surname), nil, false)
 	}
 	if f.Partner2ID != nil {
-		resp.Partner2 = personSummary(*f.Partner2ID, stringValue(f.Partner2GivenName), stringValue(f.Partner2Surname), nil)
+		resp.Partner2 = personSummary(*f.Partner2ID, stringValue(f.Partner2GivenName), stringValue(f.Partner2Surname), nil, false)
 	}
 
 	return resp
@@ -4669,6 +4670,7 @@ func convertQueryPedigreeNodeToGenerated(node *query.PedigreeNode) PedigreeNode 
 		Generation: &gen,
 		Living:     &node.Living,
 		Private:    privateFlag(node.Private),
+		Redacted:   redactedFlag(node.Redacted),
 	}
 
 	if node.GivenName != "" {
@@ -4711,6 +4713,7 @@ func convertQueryDescendancyNodeToGenerated(node *query.DescendancyNode) Descend
 		FamilyId:   node.FamilyID,
 		Living:     &node.Living,
 		Private:    privateFlag(node.Private),
+		Redacted:   redactedFlag(node.Redacted),
 	}
 
 	if node.GivenName != "" {
@@ -4738,6 +4741,7 @@ func convertQueryDescendancyNodeToGenerated(node *query.DescendancyNode) Descend
 				Name:     s.Name,
 				Living:   &s.Living,
 				Private:  privateFlag(s.Private),
+				Redacted: redactedFlag(s.Redacted),
 			}
 			if s.MarriageDate != nil {
 				spouses[i].MarriageDate = convertDomainGenDateToGenerated(s.MarriageDate)

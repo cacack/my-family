@@ -4019,6 +4019,8 @@ export interface components {
             living?: boolean;
             /** @description Whether the person's record is private (ADR-008), as on Person. Omitted when it is not, and on a family's partner and child summaries, where it is not evaluated. */
             private?: boolean;
+            /** @description Set on the placeholder shown instead of a person the caller may not see (ADR-008 §3), as on Person. Set on a family's partner and child summaries; omitted otherwise. */
+            redacted?: boolean;
         };
         PersonList: {
             items: components["schemas"]["Person"][];
@@ -4232,6 +4234,8 @@ export interface components {
             living?: boolean;
             /** @description Whether the person's record is private (ADR-008), as on Person. Omitted when it is not. */
             private?: boolean;
+            /** @description Set on the placeholder shown instead of a person the caller may not see (ADR-008 §3), as on Person. Omitted otherwise. */
+            redacted?: boolean;
             father?: components["schemas"]["PedigreeNode"];
             mother?: components["schemas"]["PedigreeNode"];
         };
@@ -4260,6 +4264,8 @@ export interface components {
             living?: boolean;
             /** @description Whether the person's record is private (ADR-008), as on Person. Omitted when it is not. */
             private?: boolean;
+            /** @description Set on the placeholder shown instead of a person the caller may not see (ADR-008 §3), as on Person. Omitted otherwise. */
+            redacted?: boolean;
             /**
              * Format: uuid
              * @description The family through which this person descends from their parent
@@ -4290,6 +4296,8 @@ export interface components {
             living?: boolean;
             /** @description Whether the spouse's record is private (ADR-008), as on Person. Omitted when it is not. */
             private?: boolean;
+            /** @description Set on the placeholder shown instead of a person the caller may not see (ADR-008 §3), as on Person. Omitted otherwise. */
+            redacted?: boolean;
         };
         /**
          * @description Ahnentafel (ancestor table) report using standard genealogical numbering.

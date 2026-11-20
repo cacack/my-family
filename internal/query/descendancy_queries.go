@@ -27,8 +27,9 @@ type SpouseInfo struct {
 	FamilyID     uuid.UUID       `json:"family_id"`
 	Name         string          `json:"name"`
 	MarriageDate *domain.GenDate `json:"marriage_date,omitempty"`
-	Living       bool            `json:"living"`            // living rule verdict today (ADR-008 §1)
-	Private      bool            `json:"private,omitempty"` // record marked private (ADR-008 §2)
+	Living       bool            `json:"living"`             // living rule verdict today (ADR-008 §1)
+	Private      bool            `json:"private,omitempty"`  // record marked private (ADR-008 §2)
+	Redacted     bool            `json:"redacted,omitempty"` // placeholder for a protected person (ADR-008 §3)
 }
 
 // DescendancyNode represents a person in the descendancy tree.
@@ -42,8 +43,9 @@ type DescendancyNode struct {
 	Spouses    []SpouseInfo       `json:"spouses,omitempty"`
 	Children   []*DescendancyNode `json:"children,omitempty"`
 	Generation int                `json:"generation"`
-	Living     bool               `json:"living"`            // living rule verdict today (ADR-008 §1)
-	Private    bool               `json:"private,omitempty"` // record marked private (ADR-008 §2)
+	Living     bool               `json:"living"`             // living rule verdict today (ADR-008 §1)
+	Private    bool               `json:"private,omitempty"`  // record marked private (ADR-008 §2)
+	Redacted   bool               `json:"redacted,omitempty"` // placeholder for a protected person (ADR-008 §3)
 	// FamilyID is the family through which this node descends from its parent
 	// node, matching one of the parent's Spouses when that family has a second
 	// partner; nil on the root.
@@ -264,6 +266,7 @@ func (s *DescendancyService) markSpouses(ctx context.Context, branchID domain.Br
 			if p, ok := personByID[node.Spouses[i].ID]; ok {
 				node.Spouses[i].Living = p.LivingFacts().IsLiving(cutoff)
 				node.Spouses[i].Private = p.Restriction.IsPrivate()
+				node.Spouses[i].Redacted = p.Visibility != repository.Visible
 			}
 		}
 	}
@@ -323,6 +326,7 @@ func newDescendancyNode(person repository.PersonReadModel, generation int, cutof
 		Generation: generation,
 		Living:     person.LivingFacts().IsLiving(cutoff),
 		Private:    person.Restriction.IsPrivate(),
+		Redacted:   person.Visibility != repository.Visible,
 	}
 	if person.Gender != "" {
 		node.Gender = string(person.Gender)

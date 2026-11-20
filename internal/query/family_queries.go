@@ -44,10 +44,14 @@ type Family struct {
 // FamilyDetail includes children information.
 type FamilyDetail struct {
 	Family
-	Partner1Gender *string                     `json:"partner1_gender,omitempty"`
-	Partner2Gender *string                     `json:"partner2_gender,omitempty"`
-	Children       []FamilyChildInfo           `json:"children,omitempty"`
-	ExternalIDs    []domain.ExternalIdentifier `json:"external_ids,omitempty"`
+	Partner1Gender *string `json:"partner1_gender,omitempty"`
+	Partner2Gender *string `json:"partner2_gender,omitempty"`
+	// Partner1Redacted and Partner2Redacted mark a partner shown as the
+	// placeholder for a protected person (ADR-008 §3).
+	Partner1Redacted bool                        `json:"partner1_redacted,omitempty"`
+	Partner2Redacted bool                        `json:"partner2_redacted,omitempty"`
+	Children         []FamilyChildInfo           `json:"children,omitempty"`
+	ExternalIDs      []domain.ExternalIdentifier `json:"external_ids,omitempty"`
 }
 
 // FamilyChildInfo represents a child in a family.
@@ -57,6 +61,7 @@ type FamilyChildInfo struct {
 	Surname          string    `json:"surname"`
 	Gender           *string   `json:"gender,omitempty"`
 	RelationshipType string    `json:"relationship_type"`
+	Redacted         bool      `json:"redacted,omitempty"` // placeholder for a protected person (ADR-008 §3)
 }
 
 // FamilyListResult contains paginated family results.
@@ -140,7 +145,7 @@ func (s *FamilyService) GetFamily(ctx context.Context, branchID domain.BranchID,
 		})
 	}
 
-	if err := s.attachGenders(ctx, branchID, detail); err != nil {
+	if err := s.attachPeople(ctx, branchID, detail); err != nil {
 		return nil, err
 	}
 
@@ -160,9 +165,9 @@ func (s *FamilyService) GetFamily(ctx context.Context, branchID domain.BranchID,
 	return detail, nil
 }
 
-// attachGenders fills the partner and child genders on detail from one batched
-// person read; the family read model carries only their names.
-func (s *FamilyService) attachGenders(ctx context.Context, branchID domain.BranchID, detail *FamilyDetail) error {
+// attachPeople fills the partner and child genders, and marks the ones shown
+// as placeholders (ADR-008 §3), on detail from one batched person read.
+func (s *FamilyService) attachPeople(ctx context.Context, branchID domain.BranchID, detail *FamilyDetail) error {
 	ids := make([]uuid.UUID, 0, len(detail.Children)+2)
 	if detail.Partner1ID != nil {
 		ids = append(ids, *detail.Partner1ID)
@@ -182,21 +187,26 @@ func (s *FamilyService) attachGenders(ctx context.Context, branchID domain.Branc
 		return err
 	}
 	genders := make(map[uuid.UUID]*string, len(persons))
+	redacted := make(map[uuid.UUID]bool, len(persons))
 	for _, p := range persons {
 		if p.Gender != "" {
 			g := string(p.Gender)
 			genders[p.ID] = &g
 		}
+		redacted[p.ID] = p.Visibility != repository.Visible
 	}
 
 	if detail.Partner1ID != nil {
 		detail.Partner1Gender = genders[*detail.Partner1ID]
+		detail.Partner1Redacted = redacted[*detail.Partner1ID]
 	}
 	if detail.Partner2ID != nil {
 		detail.Partner2Gender = genders[*detail.Partner2ID]
+		detail.Partner2Redacted = redacted[*detail.Partner2ID]
 	}
 	for i := range detail.Children {
 		detail.Children[i].Gender = genders[detail.Children[i].ID]
+		detail.Children[i].Redacted = redacted[detail.Children[i].ID]
 	}
 	return nil
 }

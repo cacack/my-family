@@ -410,6 +410,60 @@ func TestPrivacyStore_Families(t *testing.T) {
 	}
 }
 
+// A private family's child-to-parents link is a gap in the pedigree, even
+// when a visible family of the same partners links another child (ADR-008 §3).
+func TestPrivacyStore_PrivateFamilyParentage(t *testing.T) {
+	tr := newPrivacyTree(t)
+	ctx := context.Background()
+	main := domain.MainBranchID
+	hal := &repository.PersonReadModel{ID: uuid.New(), GivenName: "Hal", Surname: "Smith", DeathEvidence: true, Version: 1}
+	secret := &repository.FamilyReadModel{ID: uuid.New(), Partner1ID: &tr.living, Partner2ID: &tr.dead, Restriction: "privacy", Version: 1}
+	for _, err := range []error{
+		tr.raw.SavePerson(ctx, main, hal),
+		tr.raw.SaveFamily(ctx, main, secret),
+		tr.raw.SaveFamilyChild(ctx, main, &repository.FamilyChildReadModel{FamilyID: secret.ID, PersonID: hal.ID}),
+		tr.raw.SavePedigreeEdge(ctx, main, &repository.PedigreeEdge{PersonID: hal.ID, FatherID: &tr.dead, MotherID: &tr.living, FatherName: "Dora", MotherName: "Lena"}),
+	} {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	for _, tc := range []struct {
+		name    string
+		ctx     context.Context
+		seesHal bool
+		seesKid bool
+	}{
+		{"owner", ownerCtx, true, true},
+		{"viewer", viewerCtx, false, true},
+		{"anonymous", visitorCtx, false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			edge, err := tr.store.GetPedigreeEdge(tc.ctx, main, hal.ID)
+			if err != nil || edge == nil || (edge.FatherID != nil) != tc.seesHal || (edge.MotherID != nil) != tc.seesHal {
+				t.Errorf("GetPedigreeEdge(hal) = %+v, %v; want parents shown %v", edge, err, tc.seesHal)
+			}
+			if !tc.seesHal && (edge.FatherName != "" || edge.MotherName != "") {
+				t.Errorf("GetPedigreeEdge(hal) = %+v; want no parent names", edge)
+			}
+			edges, err := tr.store.GetPedigreeEdgesByPersonIDs(tc.ctx, main, []uuid.UUID{hal.ID, tr.kid})
+			if err != nil || len(edges) != 2 {
+				t.Fatalf("GetPedigreeEdgesByPersonIDs = %+v, %v", edges, err)
+			}
+			for _, e := range edges {
+				want := tc.seesKid
+				if e.PersonID == hal.ID {
+					want = tc.seesHal
+				}
+				if (e.FatherID != nil && e.MotherID != nil) != want {
+					t.Errorf("edge %+v; want parents shown %v", e, want)
+				}
+			}
+		})
+	}
+}
+
 func TestPrivacyStore_Media(t *testing.T) {
 	tr := newPrivacyTree(t)
 	main := domain.MainBranchID
