@@ -255,6 +255,8 @@ func runAccountManagementContract(t *testing.T, store repository.AccountStore) {
 		t.Errorf("a reset issued by no one was revoked: %v", err)
 	}
 
+	runPendingLinksContract(t, store, owner.ID, grace.ID, now)
+
 	// The audit log: newest first, paged, with absent IDs kept absent.
 	if entries, total, err := store.ListAuthAudit(ctx, 10, 0); err != nil || total != 0 || len(entries) != 0 {
 		t.Errorf("ListAuthAudit on an empty log = %v, %d, %v", entries, total, err)
@@ -286,6 +288,105 @@ func runAccountManagementContract(t *testing.T, store repository.AccountStore) {
 	}
 	if e := entries[0]; e.Action != repository.AuthActionSignInFailed || e.ActorID != uuid.Nil || e.SubjectID != uuid.Nil || e.Username != "eve" {
 		t.Errorf("oldest entry = %+v, want the failed sign-in with no actor or subject", e)
+	}
+}
+
+// runPendingLinksContract covers listing and revoking pending invites and
+// password resets (#1430). It starts with every link of the store used up.
+func runPendingLinksContract(t *testing.T, store repository.AccountStore, ownerID, userID uuid.UUID, now time.Time) {
+	ctx := context.Background()
+	if invites, err := store.ListInvites(ctx, repository.DefaultTreeID, now); err != nil || len(invites) != 0 {
+		t.Fatalf("ListInvites with none pending = %v, %v; want none", invites, err)
+	}
+	if resets, err := store.ListPasswordResets(ctx, now); err != nil || len(resets) != 0 {
+		t.Fatalf("ListPasswordResets with none pending = %v, %v; want none", resets, err)
+	}
+
+	older := repository.Invite{TokenHash: "p-inv-1", TreeID: repository.DefaultTreeID, Role: repository.RoleViewer,
+		CreatedBy: ownerID, CreatedAt: now.Add(-time.Minute), ExpiresAt: now.Add(time.Hour)}
+	newer := repository.Invite{TokenHash: "p-inv-2", TreeID: repository.DefaultTreeID, Role: repository.RoleOwner,
+		CreatedBy: ownerID, CreatedAt: now, ExpiresAt: now.Add(2 * time.Hour)}
+	for _, inv := range []repository.Invite{
+		older, newer,
+		{TokenHash: "p-inv-old", TreeID: repository.DefaultTreeID, Role: repository.RoleEditor,
+			CreatedBy: ownerID, CreatedAt: now.Add(-2 * time.Hour), ExpiresAt: now},
+		{TokenHash: "p-inv-tree", TreeID: uuid.New(), Role: repository.RoleEditor,
+			CreatedBy: ownerID, CreatedAt: now, ExpiresAt: now.Add(time.Hour)},
+	} {
+		if err := store.CreateInvite(ctx, &inv); err != nil {
+			t.Fatalf("CreateInvite(%s): %v", inv.TokenHash, err)
+		}
+	}
+	invites, err := store.ListInvites(ctx, repository.DefaultTreeID, now)
+	if err != nil || len(invites) != 2 {
+		t.Fatalf("ListInvites = %+v, %v; want the two unexpired invites to the tree", invites, err)
+	}
+	for i, want := range []repository.Invite{newer, older} {
+		got := invites[i]
+		if got.TokenHash != want.TokenHash || got.Role != want.Role || got.CreatedBy != want.CreatedBy ||
+			got.TreeID != want.TreeID || !got.CreatedAt.Equal(want.CreatedAt) || !got.ExpiresAt.Equal(want.ExpiresAt) {
+			t.Errorf("ListInvites[%d] = %+v, want %+v", i, got, want)
+		}
+	}
+
+	for _, hash := range []string{"p-inv-old", "missing"} {
+		if _, err := store.RevokeInvite(ctx, hash, now); !errors.Is(err, repository.ErrLinkNotFound) {
+			t.Errorf("RevokeInvite(%s): err = %v, want ErrLinkNotFound", hash, err)
+		}
+	}
+	revoked, err := store.RevokeInvite(ctx, newer.TokenHash, now)
+	if err != nil || revoked.TokenHash != newer.TokenHash || revoked.Role != repository.RoleOwner || revoked.CreatedBy != ownerID {
+		t.Fatalf("RevokeInvite = %+v, %v; want the owner invite", revoked, err)
+	}
+	if _, err := store.RevokeInvite(ctx, newer.TokenHash, now); !errors.Is(err, repository.ErrLinkNotFound) {
+		t.Errorf("RevokeInvite twice: err = %v, want ErrLinkNotFound", err)
+	}
+	user := &repository.User{ID: uuid.New(), Username: "revoked-invitee", DisplayName: "R", PasswordHash: "h", CreatedAt: now}
+	if _, err := store.AcceptInvite(ctx, newer.TokenHash, now, user); !errors.Is(err, repository.ErrLinkNotFound) {
+		t.Errorf("AcceptInvite of a revoked invite: err = %v, want ErrLinkNotFound", err)
+	}
+	if invites, _ := store.ListInvites(ctx, repository.DefaultTreeID, now); len(invites) != 1 || invites[0].TokenHash != older.TokenHash {
+		t.Errorf("ListInvites after revoking = %+v, want only %s", invites, older.TokenHash)
+	}
+
+	fromOwner := repository.PasswordReset{TokenHash: "p-r-1", UserID: userID, CreatedBy: ownerID,
+		CreatedAt: now, ExpiresAt: now.Add(time.Hour)}
+	fromCLI := repository.PasswordReset{TokenHash: "p-r-2", UserID: ownerID,
+		CreatedAt: now.Add(-time.Minute), ExpiresAt: now.Add(time.Hour)}
+	for _, r := range []repository.PasswordReset{
+		fromOwner, fromCLI,
+		{TokenHash: "p-r-old", UserID: userID, CreatedAt: now.Add(-time.Hour), ExpiresAt: now},
+	} {
+		if err := store.CreatePasswordReset(ctx, &r); err != nil {
+			t.Fatalf("CreatePasswordReset(%s): %v", r.TokenHash, err)
+		}
+	}
+	resets, err := store.ListPasswordResets(ctx, now)
+	if err != nil || len(resets) != 2 {
+		t.Fatalf("ListPasswordResets = %+v, %v; want the two unexpired resets", resets, err)
+	}
+	for i, want := range []repository.PasswordReset{fromOwner, fromCLI} {
+		got := resets[i]
+		if got.TokenHash != want.TokenHash || got.UserID != want.UserID || got.CreatedBy != want.CreatedBy ||
+			!got.CreatedAt.Equal(want.CreatedAt) || !got.ExpiresAt.Equal(want.ExpiresAt) {
+			t.Errorf("ListPasswordResets[%d] = %+v, want %+v", i, got, want)
+		}
+	}
+
+	for _, hash := range []string{"p-r-old", "missing"} {
+		if _, err := store.RevokePasswordReset(ctx, hash, now); !errors.Is(err, repository.ErrLinkNotFound) {
+			t.Errorf("RevokePasswordReset(%s): err = %v, want ErrLinkNotFound", hash, err)
+		}
+	}
+	gotReset, err := store.RevokePasswordReset(ctx, fromCLI.TokenHash, now)
+	if err != nil || gotReset.UserID != ownerID || gotReset.CreatedBy != uuid.Nil {
+		t.Fatalf("RevokePasswordReset = %+v, %v; want the CLI-issued reset", gotReset, err)
+	}
+	if _, err := store.UsePasswordReset(ctx, fromCLI.TokenHash, now, "h-revoked"); !errors.Is(err, repository.ErrLinkNotFound) {
+		t.Errorf("UsePasswordReset of a revoked reset: err = %v, want ErrLinkNotFound", err)
+	}
+	if resets, _ := store.ListPasswordResets(ctx, now); len(resets) != 1 || resets[0].TokenHash != fromOwner.TokenHash {
+		t.Errorf("ListPasswordResets after revoking = %+v, want only %s", resets, fromOwner.TokenHash)
 	}
 }
 

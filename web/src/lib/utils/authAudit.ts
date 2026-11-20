@@ -7,10 +7,12 @@ export const AUTH_ACTION_LABELS: Record<AuthAuditEntry['action'], string> = {
 	user_created: 'Owner created',
 	invite_created: 'Invite created',
 	invite_accepted: 'Invite accepted',
+	invite_revoked: 'Invite revoked',
 	role_changed: 'Role changed',
 	user_disabled: 'Account disabled',
 	user_enabled: 'Account re-enabled',
 	password_reset_issued: 'Reset link issued',
+	password_reset_revoked: 'Reset link revoked',
 	password_reset: 'Password reset',
 	password_changed: 'Password changed',
 	anonymous_access_changed: 'Visitor access changed'

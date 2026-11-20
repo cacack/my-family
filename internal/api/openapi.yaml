@@ -5783,6 +5783,24 @@ paths:
           $ref: '#/components/responses/AccountsOnly'
 
   /invites:
+    get:
+      operationId: listInvites
+      x-min-role: owner
+      summary: List the pending invites
+      description: |
+        Every invite that has been neither accepted, revoked nor left to
+        expire, newest first. A link's token is never shown again: each is
+        named by an `id` that can revoke it but not use it.
+      tags: [users]
+      responses:
+        '200':
+          description: The pending invites
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PendingInviteList'
+        '409':
+          $ref: '#/components/responses/AccountsOnly'
     post:
       operationId: createInvite
       x-min-role: owner
@@ -5806,6 +5824,64 @@ paths:
                 $ref: '#/components/schemas/AccountLink'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/AccountsOnly'
+
+  /invites/{linkId}:
+    delete:
+      operationId: revokeInvite
+      x-min-role: owner
+      summary: Revoke a pending invite
+      description: |
+        The invite link then fails as an expired one does. Written to the auth
+        audit log.
+      tags: [users]
+      parameters:
+        - $ref: '#/components/parameters/linkId'
+      responses:
+        '204':
+          description: Invite revoked
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/AccountsOnly'
+
+  /password-resets:
+    get:
+      operationId: listPasswordResets
+      x-min-role: owner
+      summary: List the pending password resets
+      description: |
+        Every reset link that has been neither used, revoked nor left to
+        expire, newest first. Like an invite's, its token is never shown
+        again.
+      tags: [users]
+      responses:
+        '200':
+          description: The pending password resets
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PendingPasswordResetList'
+        '409':
+          $ref: '#/components/responses/AccountsOnly'
+
+  /password-resets/{linkId}:
+    delete:
+      operationId: revokePasswordReset
+      x-min-role: owner
+      summary: Revoke a pending password reset
+      description: |
+        The reset link then fails as an expired one does. Written to the auth
+        audit log.
+      tags: [users]
+      parameters:
+        - $ref: '#/components/parameters/linkId'
+      responses:
+        '204':
+          description: Password reset revoked
+        '404':
+          $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/AccountsOnly'
 
@@ -5856,8 +5932,9 @@ paths:
       x-min-role: owner
       summary: Read the auth audit log
       description: |
-        Sign-ins, failed sign-ins, invites, role changes, disables, enables,
-        password resets and changes, and changes to anonymous access, newest
+        Sign-ins, failed sign-ins, invites and their revocation, role changes,
+        disables, enables, password resets (issued, revoked and used) and
+        changes, and changes to anonymous access, newest
         first. The log is append-only.
       tags: [users]
       parameters:
@@ -5910,6 +5987,14 @@ components:
       schema:
         type: string
         format: uuid
+
+    linkId:
+      name: linkId
+      in: path
+      required: true
+      description: A pending invite's or password reset's `id`
+      schema:
+        type: string
 
     familyId:
       name: id
@@ -6318,6 +6403,76 @@ components:
           type: string
           format: date-time
 
+    PendingInvite:
+      type: object
+      required: [id, role, created_by, created_at, expires_at]
+      properties:
+        id:
+          type: string
+          description: Names the invite to revoke it; it cannot be used to join
+        role:
+          type: string
+          enum: [viewer, editor, owner]
+        created_by:
+          type: string
+          format: uuid
+          description: The owner who issued it
+        created_by_name:
+          type: string
+          description: The issuer's display name
+        created_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+
+    PendingInviteList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PendingInvite'
+
+    PendingPasswordReset:
+      type: object
+      required: [id, user_id, created_at, expires_at]
+      properties:
+        id:
+          type: string
+          description: Names the reset to revoke it; it cannot be used to reset
+        user_id:
+          type: string
+          format: uuid
+          description: Whose password the link sets
+        user_name:
+          type: string
+          description: That user's display name
+        created_by:
+          type: string
+          format: uuid
+          description: The owner who issued it; absent when issued from the CLI
+        created_by_name:
+          type: string
+          description: The issuer's display name
+        created_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+
+    PendingPasswordResetList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PendingPasswordReset'
+
     AuthAuditEntry:
       type: object
       required: [at, action, username, detail, client_ip]
@@ -6333,10 +6488,12 @@ components:
             - user_created
             - invite_created
             - invite_accepted
+            - invite_revoked
             - role_changed
             - user_disabled
             - user_enabled
             - password_reset_issued
+            - password_reset_revoked
             - password_reset
             - password_changed
             - anonymous_access_changed

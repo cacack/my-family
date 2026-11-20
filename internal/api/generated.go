@@ -64,9 +64,11 @@ const (
 	AuthAuditEntryActionAnonymousAccessChanged AuthAuditEntryAction = "anonymous_access_changed"
 	AuthAuditEntryActionInviteAccepted         AuthAuditEntryAction = "invite_accepted"
 	AuthAuditEntryActionInviteCreated          AuthAuditEntryAction = "invite_created"
+	AuthAuditEntryActionInviteRevoked          AuthAuditEntryAction = "invite_revoked"
 	AuthAuditEntryActionPasswordChanged        AuthAuditEntryAction = "password_changed"
 	AuthAuditEntryActionPasswordReset          AuthAuditEntryAction = "password_reset"
 	AuthAuditEntryActionPasswordResetIssued    AuthAuditEntryAction = "password_reset_issued"
+	AuthAuditEntryActionPasswordResetRevoked   AuthAuditEntryAction = "password_reset_revoked"
 	AuthAuditEntryActionRoleChanged            AuthAuditEntryAction = "role_changed"
 	AuthAuditEntryActionSignIn                 AuthAuditEntryAction = "sign_in"
 	AuthAuditEntryActionSignInFailed           AuthAuditEntryAction = "sign_in_failed"
@@ -84,11 +86,15 @@ func (e AuthAuditEntryAction) Valid() bool {
 		return true
 	case AuthAuditEntryActionInviteCreated:
 		return true
+	case AuthAuditEntryActionInviteRevoked:
+		return true
 	case AuthAuditEntryActionPasswordChanged:
 		return true
 	case AuthAuditEntryActionPasswordReset:
 		return true
 	case AuthAuditEntryActionPasswordResetIssued:
+		return true
+	case AuthAuditEntryActionPasswordResetRevoked:
 		return true
 	case AuthAuditEntryActionRoleChanged:
 		return true
@@ -1370,6 +1376,27 @@ func (e NameType) Valid() bool {
 	case NameTypeProfessional:
 		return true
 	case NameTypeReligious:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PendingInviteRole.
+const (
+	PendingInviteRoleEditor PendingInviteRole = "editor"
+	PendingInviteRoleOwner  PendingInviteRole = "owner"
+	PendingInviteRoleViewer PendingInviteRole = "viewer"
+)
+
+// Valid indicates whether the value is a known member of the PendingInviteRole enum.
+func (e PendingInviteRole) Valid() bool {
+	switch e {
+	case PendingInviteRoleEditor:
+		return true
+	case PendingInviteRoleOwner:
+		return true
+	case PendingInviteRoleViewer:
 		return true
 	default:
 		return false
@@ -5418,6 +5445,56 @@ type PedigreeNode struct {
 	Surname *string `json:"surname,omitempty"`
 }
 
+// PendingInvite defines model for PendingInvite.
+type PendingInvite struct {
+	CreatedAt time.Time `json:"created_at"`
+
+	// CreatedBy The owner who issued it
+	CreatedBy openapi_types.UUID `json:"created_by"`
+
+	// CreatedByName The issuer's display name
+	CreatedByName *string   `json:"created_by_name,omitempty"`
+	ExpiresAt     time.Time `json:"expires_at"`
+
+	// Id Names the invite to revoke it; it cannot be used to join
+	Id   string            `json:"id"`
+	Role PendingInviteRole `json:"role"`
+}
+
+// PendingInviteRole defines model for PendingInvite.Role.
+type PendingInviteRole string
+
+// PendingInviteList defines model for PendingInviteList.
+type PendingInviteList struct {
+	Items []PendingInvite `json:"items"`
+}
+
+// PendingPasswordReset defines model for PendingPasswordReset.
+type PendingPasswordReset struct {
+	CreatedAt time.Time `json:"created_at"`
+
+	// CreatedBy The owner who issued it; absent when issued from the CLI
+	CreatedBy *openapi_types.UUID `json:"created_by,omitempty"`
+
+	// CreatedByName The issuer's display name
+	CreatedByName *string   `json:"created_by_name,omitempty"`
+	ExpiresAt     time.Time `json:"expires_at"`
+
+	// Id Names the reset to revoke it; it cannot be used to reset
+	Id string `json:"id"`
+
+	// UserId Whose password the link sets
+	UserId openapi_types.UUID `json:"user_id"`
+
+	// UserName That user's display name
+	UserName *string `json:"user_name,omitempty"`
+}
+
+// PendingPasswordResetList defines model for PendingPasswordResetList.
+type PendingPasswordResetList struct {
+	Items []PendingPasswordReset `json:"items"`
+}
+
 // Person defines model for Person.
 type Person struct {
 	// BirthDate Genealogical date with flexible precision
@@ -6761,6 +6838,9 @@ type LdsOrdinanceId = openapi_types.UUID
 
 // LimitParam defines model for limitParam.
 type LimitParam = int
+
+// LinkId defines model for linkId.
+type LinkId = string
 
 // NoteId defines model for noteId.
 type NoteId = openapi_types.UUID
@@ -8870,9 +8950,15 @@ type ServerInterface interface {
 	// ListHistory List global change history
 	// (GET /history)
 	ListHistory(ctx echo.Context, params ListHistoryParams) error
+	// ListInvites List the pending invites
+	// (GET /invites)
+	ListInvites(ctx echo.Context) error
 	// CreateInvite Issue an invite link that creates an account with a role
 	// (POST /invites)
 	CreateInvite(ctx echo.Context) error
+	// RevokeInvite Revoke a pending invite
+	// (DELETE /invites/{linkId})
+	RevokeInvite(ctx echo.Context, linkId LinkId) error
 	// ListLDSOrdinances List all LDS ordinances
 	// (GET /lds-ordinances)
 	ListLDSOrdinances(ctx echo.Context, params ListLDSOrdinancesParams) error
@@ -8921,6 +9007,12 @@ type ServerInterface interface {
 	// UpdateNote Update a note
 	// (PUT /notes/{id})
 	UpdateNote(ctx echo.Context, id NoteId, params UpdateNoteParams) error
+	// ListPasswordResets List the pending password resets
+	// (GET /password-resets)
+	ListPasswordResets(ctx echo.Context) error
+	// RevokePasswordReset Revoke a pending password reset
+	// (DELETE /password-resets/{linkId})
+	RevokePasswordReset(ctx echo.Context, linkId LinkId) error
 	// GetPedigree Get ancestor pedigree for a person
 	// (GET /pedigree/{id})
 	GetPedigree(ctx echo.Context, id PersonId, params GetPedigreeParams) error
@@ -11062,12 +11154,37 @@ func (w *ServerInterfaceWrapper) ListHistory(ctx echo.Context) error {
 	return err
 }
 
+// ListInvites converts echo context to params.
+func (w *ServerInterfaceWrapper) ListInvites(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.ListInvites(ctx)
+	return err
+}
+
 // CreateInvite converts echo context to params.
 func (w *ServerInterfaceWrapper) CreateInvite(ctx echo.Context) error {
 	var err error
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.CreateInvite(ctx)
+	return err
+}
+
+// RevokeInvite converts echo context to params.
+func (w *ServerInterfaceWrapper) RevokeInvite(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "linkId" -------------
+	var linkId LinkId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "linkId", ctx.Param("linkId"), &linkId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: ctx.Request().URL.RawPath == ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter linkId: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.RevokeInvite(ctx, linkId)
 	return err
 }
 
@@ -11462,6 +11579,31 @@ func (w *ServerInterfaceWrapper) UpdateNote(ctx echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.UpdateNote(ctx, id, params)
+	return err
+}
+
+// ListPasswordResets converts echo context to params.
+func (w *ServerInterfaceWrapper) ListPasswordResets(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.ListPasswordResets(ctx)
+	return err
+}
+
+// RevokePasswordReset converts echo context to params.
+func (w *ServerInterfaceWrapper) RevokePasswordReset(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "linkId" -------------
+	var linkId LinkId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "linkId", ctx.Param("linkId"), &linkId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: ctx.Request().URL.RawPath == ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter linkId: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.RevokePasswordReset(ctx, linkId)
 	return err
 }
 
@@ -13766,7 +13908,11 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 	router.GET(options.BaseURL+"/users", wrapper.ListUsers, options.OperationMiddlewares["listUsers"]...)
 	router.PATCH(options.BaseURL+"/users/:id", wrapper.UpdateUser, options.OperationMiddlewares["updateUser"]...)
 	router.POST(options.BaseURL+"/users/:id/password-reset", wrapper.CreatePasswordReset, options.OperationMiddlewares["createPasswordReset"]...)
+	router.GET(options.BaseURL+"/invites", wrapper.ListInvites, options.OperationMiddlewares["listInvites"]...)
 	router.POST(options.BaseURL+"/invites", wrapper.CreateInvite, options.OperationMiddlewares["createInvite"]...)
+	router.DELETE(options.BaseURL+"/invites/:linkId", wrapper.RevokeInvite, options.OperationMiddlewares["revokeInvite"]...)
+	router.GET(options.BaseURL+"/password-resets", wrapper.ListPasswordResets, options.OperationMiddlewares["listPasswordResets"]...)
+	router.DELETE(options.BaseURL+"/password-resets/:linkId", wrapper.RevokePasswordReset, options.OperationMiddlewares["revokePasswordReset"]...)
 	router.GET(options.BaseURL+"/settings/privacy", wrapper.GetPrivacySettings, options.OperationMiddlewares["getPrivacySettings"]...)
 	router.PUT(options.BaseURL+"/settings/privacy", wrapper.UpdatePrivacySettings, options.OperationMiddlewares["updatePrivacySettings"]...)
 	router.GET(options.BaseURL+"/auth-audit", wrapper.ListAuthAudit, options.OperationMiddlewares["listAuthAudit"]...)
@@ -17829,6 +17975,41 @@ func (response ListHistory400JSONResponse) VisitListHistoryResponse(w http.Respo
 	return err
 }
 
+type ListInvitesRequestObject struct {
+}
+
+type ListInvitesResponseObject interface {
+	VisitListInvitesResponse(w http.ResponseWriter) error
+}
+
+type ListInvites200JSONResponse PendingInviteList
+
+func (response ListInvites200JSONResponse) VisitListInvitesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListInvites409JSONResponse struct{ AccountsOnlyJSONResponse }
+
+func (response ListInvites409JSONResponse) VisitListInvitesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type CreateInviteRequestObject struct {
 	Body *CreateInviteJSONRequestBody
 }
@@ -17868,6 +18049,50 @@ func (response CreateInvite400JSONResponse) VisitCreateInviteResponse(w http.Res
 type CreateInvite409JSONResponse struct{ AccountsOnlyJSONResponse }
 
 func (response CreateInvite409JSONResponse) VisitCreateInviteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeInviteRequestObject struct {
+	LinkId LinkId `json:"linkId"`
+}
+
+type RevokeInviteResponseObject interface {
+	VisitRevokeInviteResponse(w http.ResponseWriter) error
+}
+
+type RevokeInvite204Response struct {
+}
+
+func (response RevokeInvite204Response) VisitRevokeInviteResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type RevokeInvite404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response RevokeInvite404JSONResponse) VisitRevokeInviteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeInvite409JSONResponse struct{ AccountsOnlyJSONResponse }
+
+func (response RevokeInvite409JSONResponse) VisitRevokeInviteResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -18685,6 +18910,85 @@ func (response UpdateNote404JSONResponse) VisitUpdateNoteResponse(w http.Respons
 type UpdateNote409JSONResponse struct{ ConflictJSONResponse }
 
 func (response UpdateNote409JSONResponse) VisitUpdateNoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPasswordResetsRequestObject struct {
+}
+
+type ListPasswordResetsResponseObject interface {
+	VisitListPasswordResetsResponse(w http.ResponseWriter) error
+}
+
+type ListPasswordResets200JSONResponse PendingPasswordResetList
+
+func (response ListPasswordResets200JSONResponse) VisitListPasswordResetsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPasswordResets409JSONResponse struct{ AccountsOnlyJSONResponse }
+
+func (response ListPasswordResets409JSONResponse) VisitListPasswordResetsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokePasswordResetRequestObject struct {
+	LinkId LinkId `json:"linkId"`
+}
+
+type RevokePasswordResetResponseObject interface {
+	VisitRevokePasswordResetResponse(w http.ResponseWriter) error
+}
+
+type RevokePasswordReset204Response struct {
+}
+
+func (response RevokePasswordReset204Response) VisitRevokePasswordResetResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type RevokePasswordReset404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response RevokePasswordReset404JSONResponse) VisitRevokePasswordResetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokePasswordReset409JSONResponse struct{ AccountsOnlyJSONResponse }
+
+func (response RevokePasswordReset409JSONResponse) VisitRevokePasswordResetResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -22473,9 +22777,15 @@ type StrictServerInterface interface {
 	// ListHistory List global change history
 	// (GET /history)
 	ListHistory(ctx context.Context, request ListHistoryRequestObject) (ListHistoryResponseObject, error)
+	// ListInvites List the pending invites
+	// (GET /invites)
+	ListInvites(ctx context.Context, request ListInvitesRequestObject) (ListInvitesResponseObject, error)
 	// CreateInvite Issue an invite link that creates an account with a role
 	// (POST /invites)
 	CreateInvite(ctx context.Context, request CreateInviteRequestObject) (CreateInviteResponseObject, error)
+	// RevokeInvite Revoke a pending invite
+	// (DELETE /invites/{linkId})
+	RevokeInvite(ctx context.Context, request RevokeInviteRequestObject) (RevokeInviteResponseObject, error)
 	// ListLDSOrdinances List all LDS ordinances
 	// (GET /lds-ordinances)
 	ListLDSOrdinances(ctx context.Context, request ListLDSOrdinancesRequestObject) (ListLDSOrdinancesResponseObject, error)
@@ -22524,6 +22834,12 @@ type StrictServerInterface interface {
 	// UpdateNote Update a note
 	// (PUT /notes/{id})
 	UpdateNote(ctx context.Context, request UpdateNoteRequestObject) (UpdateNoteResponseObject, error)
+	// ListPasswordResets List the pending password resets
+	// (GET /password-resets)
+	ListPasswordResets(ctx context.Context, request ListPasswordResetsRequestObject) (ListPasswordResetsResponseObject, error)
+	// RevokePasswordReset Revoke a pending password reset
+	// (DELETE /password-resets/{linkId})
+	RevokePasswordReset(ctx context.Context, request RevokePasswordResetRequestObject) (RevokePasswordResetResponseObject, error)
 	// GetPedigree Get ancestor pedigree for a person
 	// (GET /pedigree/{id})
 	GetPedigree(ctx context.Context, request GetPedigreeRequestObject) (GetPedigreeResponseObject, error)
@@ -25452,6 +25768,29 @@ func (sh *strictHandler) ListHistory(ctx echo.Context, params ListHistoryParams)
 	return nil
 }
 
+// ListInvites operation middleware
+func (sh *strictHandler) ListInvites(ctx echo.Context) error {
+	var request ListInvitesRequestObject
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.ListInvites(ctx.Request().Context(), request.(ListInvitesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListInvites")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(ListInvitesResponseObject); ok {
+		return validResponse.VisitListInvitesResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
 // CreateInvite operation middleware
 func (sh *strictHandler) CreateInvite(ctx echo.Context) error {
 	var request CreateInviteRequestObject
@@ -25492,6 +25831,31 @@ func (sh *strictHandler) CreateInvite(ctx echo.Context) error {
 		return err
 	} else if validResponse, ok := response.(CreateInviteResponseObject); ok {
 		return validResponse.VisitCreateInviteResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// RevokeInvite operation middleware
+func (sh *strictHandler) RevokeInvite(ctx echo.Context, linkId LinkId) error {
+	var request RevokeInviteRequestObject
+
+	request.LinkId = linkId
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.RevokeInvite(ctx.Request().Context(), request.(RevokeInviteRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RevokeInvite")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(RevokeInviteResponseObject); ok {
+		return validResponse.VisitRevokeInviteResponse(ctx.Response())
 	} else if response != nil {
 		return fmt.Errorf("unexpected response type: %T", response)
 	}
@@ -26014,6 +26378,54 @@ func (sh *strictHandler) UpdateNote(ctx echo.Context, id NoteId, params UpdateNo
 		return err
 	} else if validResponse, ok := response.(UpdateNoteResponseObject); ok {
 		return validResponse.VisitUpdateNoteResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// ListPasswordResets operation middleware
+func (sh *strictHandler) ListPasswordResets(ctx echo.Context) error {
+	var request ListPasswordResetsRequestObject
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.ListPasswordResets(ctx.Request().Context(), request.(ListPasswordResetsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListPasswordResets")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(ListPasswordResetsResponseObject); ok {
+		return validResponse.VisitListPasswordResetsResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// RevokePasswordReset operation middleware
+func (sh *strictHandler) RevokePasswordReset(ctx echo.Context, linkId LinkId) error {
+	var request RevokePasswordResetRequestObject
+
+	request.LinkId = linkId
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.RevokePasswordReset(ctx.Request().Context(), request.(RevokePasswordResetRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RevokePasswordReset")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(RevokePasswordResetResponseObject); ok {
+		return validResponse.VisitRevokePasswordResetResponse(ctx.Response())
 	} else if response != nil {
 		return fmt.Errorf("unexpected response type: %T", response)
 	}

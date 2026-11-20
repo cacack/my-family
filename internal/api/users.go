@@ -243,3 +243,105 @@ func (ss *StrictServer) ListAuthAudit(ctx context.Context, request ListAuthAudit
 	}
 	return ListAuthAudit200JSONResponse{Items: items, Total: total}, nil
 }
+
+// nameIn returns names[id] when it is there, for an optional display name.
+func nameIn(names map[uuid.UUID]string, id uuid.UUID) *string {
+	if name, ok := names[id]; ok {
+		return &name
+	}
+	return nil
+}
+
+// ListInvites implements StrictServerInterface. Each invite names its issuer.
+func (ss *StrictServer) ListInvites(ctx context.Context, _ ListInvitesRequestObject) (ListInvitesResponseObject, error) {
+	if ss.server.config.OpenMode() {
+		return ListInvites409JSONResponse{accountsOnly}, nil
+	}
+	invites, err := ss.server.auth.PendingInvites(ctx)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]uuid.UUID, len(invites))
+	for i := range invites {
+		ids[i] = invites[i].CreatedBy
+	}
+	names, err := ss.server.auth.DisplayNames(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]PendingInvite, len(invites))
+	for i, inv := range invites {
+		items[i] = PendingInvite{
+			Id: inv.TokenHash, Role: PendingInviteRole(inv.Role), CreatedBy: inv.CreatedBy,
+			CreatedByName: nameIn(names, inv.CreatedBy), CreatedAt: inv.CreatedAt, ExpiresAt: inv.ExpiresAt,
+		}
+	}
+	return ListInvites200JSONResponse{Items: items}, nil
+}
+
+// RevokeInvite implements StrictServerInterface.
+func (ss *StrictServer) RevokeInvite(ctx context.Context, request RevokeInviteRequestObject) (RevokeInviteResponseObject, error) {
+	if ss.server.config.OpenMode() {
+		return RevokeInvite409JSONResponse{accountsOnly}, nil
+	}
+	err := ss.server.auth.RevokeInvite(ctx, actorFrom(ctx), request.LinkId)
+	switch {
+	case err == nil:
+		return RevokeInvite204Response{}, nil
+	case errors.Is(err, auth.ErrInvalidLink):
+		return RevokeInvite404JSONResponse{NotFoundJSONResponse(authError(CodeNotFound, "No such invite is pending"))}, nil
+	default:
+		return nil, err
+	}
+}
+
+// ListPasswordResets implements StrictServerInterface. Each reset names its
+// user and, unless the CLI issued it, its issuer.
+func (ss *StrictServer) ListPasswordResets(ctx context.Context, _ ListPasswordResetsRequestObject) (ListPasswordResetsResponseObject, error) {
+	if ss.server.config.OpenMode() {
+		return ListPasswordResets409JSONResponse{accountsOnly}, nil
+	}
+	resets, err := ss.server.auth.PendingPasswordResets(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var ids []uuid.UUID
+	for _, r := range resets {
+		ids = append(ids, r.UserID)
+		if r.CreatedBy != uuid.Nil {
+			ids = append(ids, r.CreatedBy)
+		}
+	}
+	names, err := ss.server.auth.DisplayNames(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]PendingPasswordReset, len(resets))
+	for i, r := range resets {
+		item := PendingPasswordReset{
+			Id: r.TokenHash, UserId: r.UserID, UserName: nameIn(names, r.UserID), CreatedAt: r.CreatedAt, ExpiresAt: r.ExpiresAt,
+		}
+		if r.CreatedBy != uuid.Nil {
+			id := r.CreatedBy
+			item.CreatedBy, item.CreatedByName = &id, nameIn(names, id)
+		}
+		items[i] = item
+	}
+	return ListPasswordResets200JSONResponse{Items: items}, nil
+}
+
+// RevokePasswordReset implements StrictServerInterface.
+func (ss *StrictServer) RevokePasswordReset(ctx context.Context, request RevokePasswordResetRequestObject) (RevokePasswordResetResponseObject, error) {
+	if ss.server.config.OpenMode() {
+		return RevokePasswordReset409JSONResponse{accountsOnly}, nil
+	}
+	err := ss.server.auth.RevokePasswordReset(ctx, actorFrom(ctx), request.LinkId)
+	switch {
+	case err == nil:
+		return RevokePasswordReset204Response{}, nil
+	case errors.Is(err, auth.ErrInvalidLink):
+		return RevokePasswordReset404JSONResponse{NotFoundJSONResponse(authError(CodeNotFound, "No such password reset is pending"))}, nil
+	default:
+		return nil, err
+	}
+}

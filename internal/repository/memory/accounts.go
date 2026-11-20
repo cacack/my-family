@@ -257,6 +257,44 @@ func (s *AccountStore) AcceptInvite(_ context.Context, tokenHash string, now tim
 	return &invite, nil
 }
 
+// ListInvites returns the invites to treeID that expire after now, newest
+// first.
+func (s *AccountStore) ListInvites(_ context.Context, treeID uuid.UUID, now time.Time) ([]repository.Invite, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	invites := []repository.Invite{}
+	for _, invite := range s.invites {
+		if invite.TreeID == treeID && invite.ExpiresAt.After(now) {
+			invites = append(invites, invite)
+		}
+	}
+	sort.Slice(invites, func(i, j int) bool {
+		return newerLink(invites[i].CreatedAt, invites[i].TokenHash, invites[j].CreatedAt, invites[j].TokenHash)
+	})
+	return invites, nil
+}
+
+// RevokeInvite removes the invite with tokenHash, if it expires after now.
+func (s *AccountStore) RevokeInvite(_ context.Context, tokenHash string, now time.Time) (*repository.Invite, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	invite, ok := s.invites[tokenHash]
+	if !ok || !invite.ExpiresAt.After(now) {
+		return nil, repository.ErrLinkNotFound
+	}
+	delete(s.invites, tokenHash)
+	return &invite, nil
+}
+
+// newerLink orders links newest first, then by token hash, as the SQL
+// backends do.
+func newerLink(aCreated time.Time, aHash string, bCreated time.Time, bHash string) bool {
+	if !aCreated.Equal(bCreated) {
+		return aCreated.After(bCreated)
+	}
+	return aHash < bHash
+}
+
 // DeleteLinksIssuedBy removes every invite and password reset userID issued.
 func (s *AccountStore) DeleteLinksIssuedBy(_ context.Context, userID uuid.UUID) error {
 	s.mu.Lock()
@@ -303,6 +341,36 @@ func (s *AccountStore) UsePasswordReset(_ context.Context, tokenHash string, now
 	}
 	s.deleteUserSessions(user.ID, "")
 	return user.ID, nil
+}
+
+// ListPasswordResets returns the password resets that expire after now,
+// newest first.
+func (s *AccountStore) ListPasswordResets(_ context.Context, now time.Time) ([]repository.PasswordReset, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	resets := []repository.PasswordReset{}
+	for _, reset := range s.resets {
+		if reset.ExpiresAt.After(now) {
+			resets = append(resets, reset)
+		}
+	}
+	sort.Slice(resets, func(i, j int) bool {
+		return newerLink(resets[i].CreatedAt, resets[i].TokenHash, resets[j].CreatedAt, resets[j].TokenHash)
+	})
+	return resets, nil
+}
+
+// RevokePasswordReset removes the reset with tokenHash, if it expires after
+// now.
+func (s *AccountStore) RevokePasswordReset(_ context.Context, tokenHash string, now time.Time) (*repository.PasswordReset, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	reset, ok := s.resets[tokenHash]
+	if !ok || !reset.ExpiresAt.After(now) {
+		return nil, repository.ErrLinkNotFound
+	}
+	delete(s.resets, tokenHash)
+	return &reset, nil
 }
 
 // AppendAuthAudit adds entry to the auth audit log.

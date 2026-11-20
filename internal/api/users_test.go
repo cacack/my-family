@@ -182,6 +182,102 @@ func TestUsers_PasswordReset(t *testing.T) {
 	}
 }
 
+func TestUsers_ListAndRevokePendingLinks(t *testing.T) {
+	f := newAuthFixture(t)
+	f.createOwner(t)
+	owner := f.signIn(t)
+	f.inviteAs(t, owner, "viewer", "grace")
+	graceID := f.users(t, owner)["grace"].Id
+
+	rec := f.do(t, request{method: http.MethodPost, path: "/api/v1/invites", body: `{"role":"editor"}`, cookie: owner})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create invite: %d %s", rec.Code, rec.Body)
+	}
+	invite := decode[api.AccountLink](t, rec)
+	rec = f.do(t, request{method: http.MethodPost, path: "/api/v1/users/" + graceID.String() + "/password-reset", cookie: owner})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("issue reset: %d %s", rec.Code, rec.Body)
+	}
+	reset := decode[api.AccountLink](t, rec)
+
+	// The lists name each link's issuer and user, and never its token.
+	rec = f.do(t, request{method: http.MethodGet, path: "/api/v1/invites", cookie: owner})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("list invites: %d %s", rec.Code, rec.Body)
+	}
+	if strings.Contains(rec.Body.String(), invite.Token) {
+		t.Errorf("the invite list shows the token: %s", rec.Body)
+	}
+	invites := decode[api.PendingInviteList](t, rec).Items
+	if len(invites) != 1 || invites[0].Role != api.PendingInviteRoleEditor || invites[0].CreatedByName == nil ||
+		*invites[0].CreatedByName != "Ada Lovelace" || !invites[0].ExpiresAt.Equal(invite.ExpiresAt) {
+		t.Fatalf("pending invites = %+v, want Ada's editor invite (grace's was accepted)", invites)
+	}
+	rec = f.do(t, request{method: http.MethodGet, path: "/api/v1/password-resets", cookie: owner})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("list resets: %d %s", rec.Code, rec.Body)
+	}
+	if strings.Contains(rec.Body.String(), reset.Token) {
+		t.Errorf("the reset list shows the token: %s", rec.Body)
+	}
+	resets := decode[api.PendingPasswordResetList](t, rec).Items
+	if len(resets) != 1 || resets[0].UserId != graceID || resets[0].UserName == nil || *resets[0].UserName != "grace" ||
+		resets[0].CreatedByName == nil || *resets[0].CreatedByName != "Ada Lovelace" || !resets[0].ExpiresAt.Equal(reset.ExpiresAt) {
+		t.Fatalf("pending resets = %+v, want grace's reset issued by Ada", resets)
+	}
+
+	// Editors and viewers may neither list nor revoke.
+	for _, role := range []string{"editor", "viewer"} {
+		cookie := f.inviteAs(t, owner, role, "a-"+role)
+		for _, r := range []request{
+			{method: http.MethodGet, path: "/api/v1/invites"},
+			{method: http.MethodDelete, path: "/api/v1/invites/" + invites[0].Id},
+			{method: http.MethodGet, path: "/api/v1/password-resets"},
+			{method: http.MethodDelete, path: "/api/v1/password-resets/" + resets[0].Id},
+		} {
+			r.cookie = cookie
+			if rec := f.do(t, r); rec.Code != http.StatusForbidden {
+				t.Errorf("%s %s as %s: status %d, want 403", r.method, r.path, role, rec.Code)
+			}
+		}
+	}
+
+	// A revoked link fails as an expired one does, and cannot be revoked again.
+	for _, path := range []string{"/api/v1/invites/" + invites[0].Id, "/api/v1/password-resets/" + resets[0].Id} {
+		if rec := f.do(t, request{method: http.MethodDelete, path: path, cookie: owner}); rec.Code != http.StatusNoContent {
+			t.Fatalf("revoke %s: %d %s", path, rec.Code, rec.Body)
+		}
+		if rec := f.do(t, request{method: http.MethodDelete, path: path, cookie: owner}); rec.Code != http.StatusNotFound || errorCode(t, rec) != api.CodeNotFound {
+			t.Errorf("revoke %s twice: %d %s, want 404", path, rec.Code, rec.Body)
+		}
+	}
+	rec = f.do(t, request{method: http.MethodPost, path: "/api/v1/auth/invites/accept",
+		body: `{"token":"` + invite.Token + `","username":"eve","display_name":"Eve","password":"` + ownerPassword + `"}`})
+	if rec.Code != http.StatusBadRequest || errorCode(t, rec) != api.CodeInvalidLink {
+		t.Errorf("accept a revoked invite: %d %s, want 400 %s", rec.Code, rec.Body, api.CodeInvalidLink)
+	}
+	rec = f.do(t, request{method: http.MethodPost, path: "/api/v1/auth/password-reset",
+		body: `{"token":"` + reset.Token + `","password":"` + ownerPassword + `"}`})
+	if rec.Code != http.StatusBadRequest || errorCode(t, rec) != api.CodeInvalidLink {
+		t.Errorf("use a revoked reset: %d %s, want 400 %s", rec.Code, rec.Body, api.CodeInvalidLink)
+	}
+	for _, path := range []string{"/api/v1/invites", "/api/v1/password-resets"} {
+		rec := f.do(t, request{method: http.MethodGet, path: path, cookie: owner})
+		if !strings.Contains(rec.Body.String(), `"items":[]`) {
+			t.Errorf("GET %s after revoking: %s, want no items", path, rec.Body)
+		}
+	}
+
+	// Each revocation is in the auth audit log.
+	rec = f.do(t, request{method: http.MethodGet, path: "/api/v1/auth-audit?limit=2", cookie: owner})
+	audit := decode[api.AuthAuditList](t, rec).Items
+	if len(audit) != 2 || audit[0].Action != api.AuthAuditEntryActionPasswordResetRevoked || audit[0].Username != "grace" ||
+		audit[1].Action != api.AuthAuditEntryActionInviteRevoked || audit[1].Detail != "editor" ||
+		audit[1].ActorName == nil || *audit[1].ActorName != "Ada Lovelace" {
+		t.Errorf("newest audit entries = %+v, want the two revocations", audit)
+	}
+}
+
 func TestUsers_UpdateOwnAccount(t *testing.T) {
 	f := newAuthFixture(t)
 	f.createOwner(t)
@@ -254,6 +350,10 @@ func TestUsers_OpenModeHasNoAccounts(t *testing.T) {
 		{method: http.MethodPost, path: "/api/v1/users/00000000-0000-0000-0000-00000000abcd/password-reset"},
 		{method: http.MethodPost, path: "/api/v1/invites", body: `{"role":"viewer"}`},
 		{method: http.MethodGet, path: "/api/v1/auth-audit"},
+		{method: http.MethodGet, path: "/api/v1/invites"},
+		{method: http.MethodDelete, path: "/api/v1/invites/x"},
+		{method: http.MethodGet, path: "/api/v1/password-resets"},
+		{method: http.MethodDelete, path: "/api/v1/password-resets/x"},
 		{method: http.MethodPost, path: "/api/v1/auth/invites/accept", body: `{"token":"x","username":"eve","display_name":"Eve","password":"long enough"}`},
 		{method: http.MethodPost, path: "/api/v1/auth/password-reset", body: `{"token":"x","password":"long enough"}`},
 	} {

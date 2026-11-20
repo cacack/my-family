@@ -66,6 +66,9 @@ type Member struct {
 // is accepted (ADR-007). The store keeps only a hash of the link's token; an
 // accepted invite is deleted, so each is used at most once.
 type Invite struct {
+	// TokenHash doubles as the invite's ID in owner-facing listings, which is
+	// safe only while redemption hashes the presented token before lookup:
+	// never accept or compare a TokenHash as a token.
 	TokenHash string
 	TreeID    uuid.UUID
 	Role      Role
@@ -77,6 +80,8 @@ type Invite struct {
 // PasswordReset is an owner- or CLI-issued link that sets a user's password.
 // Like an invite it is stored as a token hash and deleted once used.
 type PasswordReset struct {
+	// TokenHash doubles as the reset's ID, like Invite.TokenHash: never
+	// accept or compare it as a token.
 	TokenHash string
 	UserID    uuid.UUID
 	// CreatedBy is the owner who issued it, or uuid.Nil from the CLI.
@@ -95,10 +100,12 @@ const (
 	AuthActionUserCreated     AuthAction = "user_created"
 	AuthActionInviteCreated   AuthAction = "invite_created"
 	AuthActionInviteAccepted  AuthAction = "invite_accepted"
+	AuthActionInviteRevoked   AuthAction = "invite_revoked"
 	AuthActionRoleChanged     AuthAction = "role_changed"
 	AuthActionUserDisabled    AuthAction = "user_disabled"
 	AuthActionUserEnabled     AuthAction = "user_enabled"
 	AuthActionResetIssued     AuthAction = "password_reset_issued"
+	AuthActionResetRevoked    AuthAction = "password_reset_revoked"
 	AuthActionPasswordReset   AuthAction = "password_reset"
 	AuthActionPasswordChanged AuthAction = "password_changed"
 	// AuthActionAnonymousAccessChanged is an owner changing the tree's
@@ -213,6 +220,14 @@ type AccountStore interface {
 	// invite unused).
 	AcceptInvite(ctx context.Context, tokenHash string, now time.Time, user *User) (*Invite, error)
 
+	// ListInvites returns the invites to treeID that expire after now, newest
+	// first.
+	ListInvites(ctx context.Context, treeID uuid.UUID, now time.Time) ([]Invite, error)
+
+	// RevokeInvite removes the invite with tokenHash, if it expires after now,
+	// and returns it, or ErrLinkNotFound.
+	RevokeInvite(ctx context.Context, tokenHash string, now time.Time) (*Invite, error)
+
 	// DeleteLinksIssuedBy removes every invite and password reset userID
 	// issued, so links from an owner who is disabled or demoted stop working.
 	DeleteLinksIssuedBy(ctx context.Context, userID uuid.UUID) error
@@ -224,6 +239,14 @@ type AccountStore interface {
 	// now: it sets the user's password hash and removes all their sessions
 	// and resets, all or nothing. It returns the user's ID or ErrLinkNotFound.
 	UsePasswordReset(ctx context.Context, tokenHash string, now time.Time, passwordHash string) (uuid.UUID, error)
+
+	// ListPasswordResets returns the password resets that expire after now,
+	// newest first.
+	ListPasswordResets(ctx context.Context, now time.Time) ([]PasswordReset, error)
+
+	// RevokePasswordReset removes the reset with tokenHash, if it expires
+	// after now, and returns it, or ErrLinkNotFound.
+	RevokePasswordReset(ctx context.Context, tokenHash string, now time.Time) (*PasswordReset, error)
 
 	// AppendAuthAudit adds entry to the auth audit log.
 	AppendAuthAudit(ctx context.Context, entry *AuthAuditEntry) error

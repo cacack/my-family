@@ -14,7 +14,11 @@ vi.mock('#lib/api/client.js', async (importOriginal) => {
 			listUsers: vi.fn(),
 			updateUser: vi.fn(),
 			createInvite: vi.fn(),
-			createPasswordReset: vi.fn()
+			createPasswordReset: vi.fn(),
+			listInvites: vi.fn(),
+			listPasswordResets: vi.fn(),
+			revokeInvite: vi.fn(),
+			revokePasswordReset: vi.fn()
 		}
 	};
 });
@@ -40,6 +44,8 @@ describe('Users page', () => {
 		vi.clearAllMocks();
 		signInAs('owner');
 		api.listUsers.mockResolvedValue([owner, grace]);
+		api.listInvites.mockResolvedValue([]);
+		api.listPasswordResets.mockResolvedValue([]);
 	});
 
 	it('lists the users with their roles, marking the signed-in one', async () => {
@@ -58,6 +64,23 @@ describe('Users page', () => {
 		expect(api.createInvite).toHaveBeenCalledWith('editor');
 		const link = (await screen.findByLabelText('Invite link (editor)')) as HTMLInputElement;
 		expect(link.value).toBe(`${window.location.origin}/join#token=tok`);
+		await waitFor(() => expect(api.listInvites).toHaveBeenCalledTimes(2));
+	});
+
+	it('lists the pending links', async () => {
+		api.listInvites.mockResolvedValue([
+			{
+				id: 'h',
+				role: 'viewer',
+				created_by: 'user-owner',
+				created_by_name: 'Ada',
+				created_at: '2026-01-01T00:00:00Z',
+				expires_at: '2026-01-08T00:00:00Z'
+			}
+		]);
+		render(UsersPage);
+		expect(await screen.findByText('Viewer invite')).toBeDefined();
+		expect(screen.getByRole('heading', { name: 'Pending links' })).toBeDefined();
 	});
 
 	it('changes a role, and shows a refusal with the role put back', async () => {
@@ -99,6 +122,7 @@ describe('Users page', () => {
 		await fireEvent.click(screen.getByRole('button', { name: 'Reset password for Grace' }));
 		const link = (await screen.findByLabelText('Password reset link for Grace')) as HTMLInputElement;
 		expect(link.value).toBe(`${window.location.origin}/reset-password#token=reset-tok`);
+		await waitFor(() => expect(api.listPasswordResets).toHaveBeenCalledTimes(2));
 	});
 
 	it('is for owners only', () => {
@@ -106,6 +130,7 @@ describe('Users page', () => {
 		render(UsersPage);
 		expect(screen.getByTestId('role-notice').textContent).toContain('Managing users needs the owner role');
 		expect(api.listUsers).not.toHaveBeenCalled();
+		expect(api.listInvites).not.toHaveBeenCalled();
 	});
 
 	it('explains open mode instead of loading', () => {

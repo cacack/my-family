@@ -176,9 +176,14 @@ is sent, so each link below is shown once, for the owner to copy and pass on.
   myfamily user reset-password --username ada --url https://tree.example
   ```
 
+- **Revoke a link**: **Users** lists the invite and reset links still pending, with who created
+  each and when it expires (never the link itself). Revoking one makes it fail as an expired link
+  does.
+
 Each user changes their own display name and password on **Account**; a new password needs the
-current one and signs them out everywhere else. Sign-ins, failed sign-ins, invites, role changes,
-disables, re-enables, password resets and changes, and changes to visitor access are written to
+current one and signs them out everywhere else. Sign-ins, failed sign-ins, invites, revoked
+links, role changes, disables, re-enables, password resets and changes, and changes to visitor
+access are written to
 an append-only audit log, which owners read under **Users > Audit log**.
 
 #### Living people and private records
