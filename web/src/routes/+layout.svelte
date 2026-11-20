@@ -51,6 +51,7 @@
 	const viewer = $derived(`${auth.phase}:${auth.account?.id ?? ''}`);
 	$effect(() => {
 		if (!appReady) return;
+		// Read on purpose: it is what makes this effect re-run for a new viewer.
 		void viewer;
 		resetHomePerson();
 		loadHomePerson();

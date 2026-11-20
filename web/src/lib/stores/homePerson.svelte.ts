@@ -61,7 +61,11 @@ export function resetHomePerson(): void {
 	state.loaded = false;
 }
 
-/** Marks personId as the home person. Throws the API error so the caller can show it. */
+/**
+ * Marks personId as the home person. Throws the API error so the caller can show it.
+ * Resolving means the server saved it, not that the store shows it: when a newer
+ * load, set, clear or reset started meanwhile, that one's answer stands instead.
+ */
 export async function setHomePerson(personId: string): Promise<void> {
 	const ticket = ++latest;
 	const res = await api.setHomePerson(personId);
@@ -70,7 +74,10 @@ export async function setHomePerson(personId: string): Promise<void> {
 	state.loaded = true;
 }
 
-/** Clears the home person. Throws the API error so the caller can show it. */
+/**
+ * Clears the home person. Throws the API error so the caller can show it. Like
+ * setHomePerson, a newer call started meanwhile decides what the store shows.
+ */
 export async function clearHomePerson(): Promise<void> {
 	const ticket = ++latest;
 	await api.clearHomePerson();
