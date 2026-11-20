@@ -45,6 +45,10 @@
 				anonymousAccess !== saved.anonymous_access)
 	);
 
+	// The preview shows the saved settings and leaves the page, so it waits
+	// until unsaved changes are saved or put back (#1542).
+	const previewDescribedBy = $derived(changed ? 'preview-hint preview-unsaved' : 'preview-hint');
+
 	function show(settings: PrivacySettings) {
 		saved = settings;
 		thresholdYears = settings.living_threshold_years;
@@ -74,6 +78,7 @@
 
 	/** Start the preview and look at the tree from its home page. */
 	function preview(as: PreviewAs) {
+		if (changed) return;
 		startPreview(as);
 		goto('/');
 	}
@@ -168,7 +173,10 @@
 							marked private, who made each change, or submitters' contact details. They cannot change, export or
 							import anything.
 						</p>
-						<p><a href="#preview">Preview the tree as a visitor</a> to see exactly what they will see.</p>
+						<p>
+							<a href="#preview">Preview the tree as a visitor under the saved settings</a> to see exactly what
+							they will see. Save a change first to preview it.
+						</p>
 					</div>
 				</fieldset>
 				{#if saveError}
@@ -188,11 +196,27 @@
 				only what they may see, and the changes they may not make are gone. A banner at the top ends the
 				preview. You can preview visitors before letting them in.
 			</p>
+			{#if changed}
+				<p id="preview-unsaved" class="hint preview-unsaved">
+					You have unsaved changes. Save them, or put them back, before previewing: the preview shows the saved
+					settings and leaving would lose them.
+				</p>
+			{/if}
 			<div class="preview-actions">
-				<Button variant="outline" aria-describedby="preview-hint" onclick={() => preview('visitor')}>
+				<Button
+					variant="outline"
+					disabled={changed}
+					aria-describedby={previewDescribedBy}
+					onclick={() => preview('visitor')}
+				>
 					Preview as a visitor
 				</Button>
-				<Button variant="outline" aria-describedby="preview-hint" onclick={() => preview('viewer')}>
+				<Button
+					variant="outline"
+					disabled={changed}
+					aria-describedby={previewDescribedBy}
+					onclick={() => preview('viewer')}
+				>
 					Preview as a viewer
 				</Button>
 			</div>
@@ -280,6 +304,12 @@
 
 	.preview-intro {
 		max-width: 32rem;
+	}
+
+	.hint.preview-unsaved {
+		max-width: 32rem;
+		margin-top: 0.75rem;
+		color: var(--color-text);
 	}
 
 	.preview-actions {

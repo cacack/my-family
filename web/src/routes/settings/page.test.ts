@@ -113,10 +113,36 @@ describe('Settings page', () => {
 		const group = await screen.findByRole('group', { name: 'Visitors who are not signed in' });
 		const hint = document.getElementById(group.getAttribute('aria-describedby') ?? '');
 		const link = hint?.querySelector('a');
-		expect(link?.textContent).toBe('Preview the tree as a visitor');
+		expect(link?.textContent).toBe('Preview the tree as a visitor under the saved settings');
 		const target = document.getElementById(link?.getAttribute('href')?.slice(1) ?? '');
 		expect(target?.querySelector('button')?.textContent?.trim()).toBe('Preview as a visitor');
 	});
+
+	it.each(['Preview as a visitor', 'Preview as a viewer'])(
+		'%s waits until unsaved changes are saved, saying why (#1542)',
+		async (name) => {
+			api.updatePrivacySettings.mockResolvedValue({ living_threshold_years: 110, viewers_see_living: true, anonymous_access: 'viewer' });
+			render(SettingsPage);
+			const button = (await screen.findByRole('button', { name })) as HTMLButtonElement;
+			expect(button.disabled).toBe(false);
+			expect(document.getElementById('preview-unsaved')).toBeNull();
+
+			await fireEvent.click(screen.getByLabelText('May browse the tree as viewers'));
+			expect(button.disabled).toBe(true);
+			const reason = document.getElementById('preview-unsaved');
+			expect(reason?.textContent).toMatch(/unsaved changes/);
+			expect(reason?.textContent).toMatch(/saved\s+settings/);
+			expect(button.getAttribute('aria-describedby')?.split(' ')).toContain('preview-unsaved');
+			await fireEvent.click(button);
+			expect(auth.previewAs).toBeNull();
+			expect(goto).not.toHaveBeenCalled();
+
+			await fireEvent.click(saveButton());
+			await waitFor(() => expect(button.disabled).toBe(false));
+			expect(document.getElementById('preview-unsaved')).toBeNull();
+			expect(button.getAttribute('aria-describedby')).toBe('preview-hint');
+		}
+	);
 
 	it('tells a non-owner the page needs the owner, and loads nothing', async () => {
 		signInAs('editor');
