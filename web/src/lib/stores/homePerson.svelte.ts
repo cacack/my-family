@@ -11,10 +11,12 @@
  * server moves or drops them then (#1444). The setters are the only other
  * mutators.
  *
- * Loads are not awaited, so they can overlap each other and the setters. Each
- * call takes a ticket, and a load's answer is kept only when nothing started
- * after it: a slow answer never replaces a newer choice, or reaches someone
- * who signed in after it was asked for.
+ * Loads are not awaited, so they can overlap each other and the setters. A
+ * load's answer is kept only when no newer load, reset or saved choice came
+ * after it was asked for; a setter's answer only when no newer set, clear or
+ * reset was started. So a slow answer never replaces a newer choice, or reaches
+ * someone who signed in after it was asked for, while a set or clear that
+ * fails, or is still in flight, never throws away a load's answer.
  */
 
 import { api, type Person } from '#lib/api/client.js';
@@ -28,8 +30,11 @@ interface HomePersonState {
 
 const state = $state<HomePersonState>({ person: null, loaded: false });
 
-/** The latest load, set or clear; plain, so reading it in an effect tracks nothing. */
-let latest = 0;
+// Tickets are plain, so reading them in an effect tracks nothing.
+/** Bumped by each load, reset and saved set or clear: a load's answer needs the latest. */
+let latestLoad = 0;
+/** Bumped by each set, clear and reset as it starts: a setter's answer needs the latest. */
+let latestWrite = 0;
 
 /** Read-only view of the home person. */
 export const homePerson: Readonly<HomePersonState> = state;
@@ -39,24 +44,27 @@ export const homePerson: Readonly<HomePersonState> = state;
  * the relationship line, so it is not worth an error on every page.
  */
 export async function loadHomePerson(): Promise<void> {
-	const ticket = ++latest;
+	const ticket = ++latestLoad;
 	let person: Person | null = null;
 	try {
 		person = (await api.getHomePerson()).person ?? null;
 	} catch {
 		// Leave it unset.
 	}
-	if (ticket !== latest) return;
+	if (ticket !== latestLoad) return;
 	state.person = person;
 	state.loaded = true;
 }
 
 /**
  * Forgets the home person until the next load, for a new viewer: the last
- * one's choice may be a person this one may not see.
+ * one's choice may be a person this one may not see. Answers to calls started
+ * before it are dropped, and `loaded` stays false, so call loadHomePerson()
+ * right after it.
  */
 export function resetHomePerson(): void {
-	latest++;
+	latestLoad++;
+	latestWrite++;
 	state.person = null;
 	state.loaded = false;
 }
@@ -64,24 +72,28 @@ export function resetHomePerson(): void {
 /**
  * Marks personId as the home person. Throws the API error so the caller can show it.
  * Resolving means the server saved it, not that the store shows it: when a newer
- * load, set, clear or reset started meanwhile, that one's answer stands instead.
+ * set, clear or reset started meanwhile, that one's answer stands instead. Once
+ * saved, it replaces the answer of any load still in flight.
  */
 export async function setHomePerson(personId: string): Promise<void> {
-	const ticket = ++latest;
+	const ticket = ++latestWrite;
 	const res = await api.setHomePerson(personId);
-	if (ticket !== latest) return;
+	if (ticket !== latestWrite) return;
+	latestLoad++;
 	state.person = res.person ?? null;
 	state.loaded = true;
 }
 
 /**
  * Clears the home person. Throws the API error so the caller can show it. Like
- * setHomePerson, a newer call started meanwhile decides what the store shows.
+ * setHomePerson, a newer set, clear or reset started meanwhile decides what the
+ * store shows, and once saved it replaces the answer of any load still in flight.
  */
 export async function clearHomePerson(): Promise<void> {
-	const ticket = ++latest;
+	const ticket = ++latestWrite;
 	await api.clearHomePerson();
-	if (ticket !== latest) return;
+	if (ticket !== latestWrite) return;
+	latestLoad++;
 	state.person = null;
 	state.loaded = true;
 }

@@ -81,6 +81,67 @@ describe('home person store', () => {
 		expect(homePerson.loaded).toBe(false);
 	});
 
+	it('keeps an in-flight load when a set started after it fails', async () => {
+		const load = deferred<{ person?: Person }>();
+		api.getHomePerson.mockReturnValueOnce(load.promise);
+		api.setHomePerson.mockRejectedValueOnce({ status: 500 });
+		const loading = loadHomePerson();
+		await expect(setHomePerson('chosen')).rejects.toEqual({ status: 500 });
+		load.resolve({ person: person('loaded') });
+		await loading;
+		expect(homePerson.person?.id).toBe('loaded');
+		expect(homePerson.loaded).toBe(true);
+	});
+
+	it('keeps a load that answers while a set is pending when the set then fails', async () => {
+		let rejectSet!: (e: unknown) => void;
+		const setFails = new Promise<{ person?: Person }>((_, reject) => (rejectSet = reject));
+		api.setHomePerson.mockReturnValueOnce(setFails);
+		api.getHomePerson.mockResolvedValueOnce({ person: person('loaded') });
+		const setting = setHomePerson('chosen');
+		await loadHomePerson();
+		rejectSet({ status: 500 });
+		await expect(setting).rejects.toEqual({ status: 500 });
+		expect(homePerson.person?.id).toBe('loaded');
+		expect(homePerson.loaded).toBe(true);
+	});
+
+	it('keeps an in-flight load when a clear started after it fails', async () => {
+		const load = deferred<{ person?: Person }>();
+		api.getHomePerson.mockReturnValueOnce(load.promise);
+		api.clearHomePerson.mockRejectedValueOnce({ status: 500 });
+		const loading = loadHomePerson();
+		await expect(clearHomePerson()).rejects.toEqual({ status: 500 });
+		load.resolve({ person: person('loaded') });
+		await loading;
+		expect(homePerson.person?.id).toBe('loaded');
+		expect(homePerson.loaded).toBe(true);
+	});
+
+	it('keeps the newer of two overlapping sets when the older answers last', async () => {
+		const first = deferred<{ person?: Person }>();
+		const second = deferred<{ person?: Person }>();
+		api.setHomePerson.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+		const older = setHomePerson('old');
+		const newer = setHomePerson('new');
+		second.resolve({ person: person('new') });
+		await newer;
+		first.resolve({ person: person('old') });
+		await older;
+		expect(homePerson.person?.id).toBe('new');
+	});
+
+	it('drops a set that answers after a reset', async () => {
+		const set = deferred<{ person?: Person }>();
+		api.setHomePerson.mockReturnValueOnce(set.promise);
+		const setting = setHomePerson('theirs');
+		resetHomePerson();
+		set.resolve({ person: person('theirs') });
+		await setting;
+		expect(homePerson.person).toBeNull();
+		expect(homePerson.loaded).toBe(false);
+	});
+
 	it('clears the home person', async () => {
 		api.setHomePerson.mockResolvedValue({ person: person('ada') });
 		api.clearHomePerson.mockResolvedValue(undefined);
