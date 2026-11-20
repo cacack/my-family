@@ -2442,10 +2442,16 @@ type AhnentafelEntry struct {
 	// Id Person ID (omitted if ancestor is unknown)
 	Id *openapi_types.UUID `json:"id,omitempty"`
 
+	// Living Whether the person counts as living under the living rule (ADR-008), evaluated when the request is served, as on Person. Omitted if ancestor is unknown.
+	Living *bool `json:"living,omitempty"`
+
 	// Number Ahnentafel number (1=subject, 2=father, 3=mother, etc.)
 	//
 	// Example: 4
 	Number int `json:"number"`
+
+	// Private Whether the person's record is private (ADR-008), as on Person. Omitted when it is not.
+	Private *bool `json:"private,omitempty"`
 
 	// Redacted Set on the placeholder shown instead of a person the caller may not see (ADR-008 §3), as on Person. Omitted otherwise.
 	Redacted *bool `json:"redacted,omitempty"`
@@ -4460,6 +4466,9 @@ type GroupSheetChild struct {
 	Sequence *int                `json:"sequence,omitempty"`
 	SpouseId *openapi_types.UUID `json:"spouse_id,omitempty"`
 
+	// SpouseMarks The spouse's privacy marks; set with spouse_id.
+	SpouseMarks *PersonMarks `json:"spouse_marks,omitempty"`
+
 	// SpouseName Name of spouse (if married)
 	SpouseName *string `json:"spouse_name,omitempty"`
 	Surname    string  `json:"surname"`
@@ -4496,6 +4505,9 @@ type GroupSheetPerson struct {
 	Death    *GroupSheetEvent    `json:"death,omitempty"`
 	FatherId *openapi_types.UUID `json:"father_id,omitempty"`
 
+	// FatherMarks The father's privacy marks; set with father_id.
+	FatherMarks *PersonMarks `json:"father_marks,omitempty"`
+
 	// FatherName Name of father (if known)
 	FatherName *string            `json:"father_name,omitempty"`
 	Gender     *Gender            `json:"gender,omitempty"`
@@ -4505,6 +4517,9 @@ type GroupSheetPerson struct {
 	// Living Whether the person counts as living under the living rule (ADR-008), evaluated when the request is served, as on Person.
 	Living   *bool               `json:"living,omitempty"`
 	MotherId *openapi_types.UUID `json:"mother_id,omitempty"`
+
+	// MotherMarks The mother's privacy marks; set with mother_id.
+	MotherMarks *PersonMarks `json:"mother_marks,omitempty"`
 
 	// MotherName Name of mother (if known)
 	MotherName *string `json:"mother_name,omitempty"`
@@ -5710,6 +5725,18 @@ type PersonList struct {
 	Total  int      `json:"total"`
 }
 
+// PersonMarks The privacy marks (ADR-008) of a person named on another record, such as a group sheet partner's parent or a child's spouse.
+type PersonMarks struct {
+	// Living Whether the person counts as living under the living rule, evaluated when the request is served, as on Person.
+	Living bool `json:"living"`
+
+	// Private Whether the person's record is private, as on Person. Omitted when it is not.
+	Private *bool `json:"private,omitempty"`
+
+	// Redacted Set when the person is shown as the placeholder for a person the caller may not see (ADR-008 §3), as on Person. Omitted otherwise.
+	Redacted *bool `json:"redacted,omitempty"`
+}
+
 // PersonName defines model for PersonName.
 type PersonName struct {
 	FullName   string             `json:"full_name"`
@@ -5799,10 +5826,10 @@ type PersonSummary struct {
 	GivenName string             `json:"given_name"`
 	Id        openapi_types.UUID `json:"id"`
 
-	// Living Whether the person counts as living under the living rule (ADR-008), evaluated when the request is served, as on Person. Set on search results and map persons only; absent on a family's partner and child summaries, where absent means not evaluated.
+	// Living Whether the person counts as living under the living rule (ADR-008), evaluated when the request is served, as on Person. Set on search results, map persons and a family's partner and child summaries.
 	Living *bool `json:"living,omitempty"`
 
-	// Private Whether the person's record is private (ADR-008), as on Person. Omitted when it is not, and on a family's partner and child summaries, where it is not evaluated.
+	// Private Whether the person's record is private (ADR-008), as on Person. Omitted when it is not.
 	Private *bool `json:"private,omitempty"`
 
 	// Redacted Set on the placeholder shown instead of a person the caller may not see (ADR-008 §3), as on Person. Set on a family's partner and child summaries; omitted otherwise.
@@ -6080,8 +6107,17 @@ type RelationshipPath struct {
 type RelationshipPathNode struct {
 	Id openapi_types.UUID `json:"id"`
 
+	// Living Whether the person counts as living under the living rule (ADR-008), evaluated when the request is served, as on Person.
+	Living *bool `json:"living,omitempty"`
+
 	// Name Display name of the person (e.g., "John Smith")
 	Name string `json:"name"`
+
+	// Private Whether the person's record is private (ADR-008), as on Person. Omitted when it is not.
+	Private *bool `json:"private,omitempty"`
+
+	// Redacted Set on the placeholder shown instead of a person the caller may not see (ADR-008 §3), as on Person. Omitted otherwise.
+	Redacted *bool `json:"redacted,omitempty"`
 }
 
 // RelationshipResult defines model for RelationshipResult.
@@ -6344,10 +6380,10 @@ type SearchResult struct {
 	GivenName string             `json:"given_name"`
 	Id        openapi_types.UUID `json:"id"`
 
-	// Living Whether the person counts as living under the living rule (ADR-008), evaluated when the request is served, as on Person. Set on search results and map persons only; absent on a family's partner and child summaries, where absent means not evaluated.
+	// Living Whether the person counts as living under the living rule (ADR-008), evaluated when the request is served, as on Person. Set on search results, map persons and a family's partner and child summaries.
 	Living *bool `json:"living,omitempty"`
 
-	// Private Whether the person's record is private (ADR-008), as on Person. Omitted when it is not, and on a family's partner and child summaries, where it is not evaluated.
+	// Private Whether the person's record is private (ADR-008), as on Person. Omitted when it is not.
 	Private *bool `json:"private,omitempty"`
 
 	// Redacted Set on the placeholder shown instead of a person the caller may not see (ADR-008 §3), as on Person. Set on a family's partner and child summaries; omitted otherwise.

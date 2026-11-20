@@ -366,6 +366,41 @@ func livingCutoff(ctx context.Context) time.Time {
 	return repository.TreeSettingsFrom(ctx).LivingCutoff(time.Now())
 }
 
+// PersonMarks are the privacy marks of a person named on another record, such
+// as a family's partner or a group sheet's parent (ADR-008), so the reader
+// sees them wherever the person appears.
+type PersonMarks struct {
+	Living   bool `json:"living"`             // living rule verdict today (ADR-008 §1)
+	Private  bool `json:"private,omitempty"`  // record marked private (ADR-008 §2)
+	Redacted bool `json:"redacted,omitempty"` // placeholder for a protected person (ADR-008 §3)
+}
+
+// personMarks returns the privacy marks of p as the reader on ctx sees them.
+func personMarks(ctx context.Context, p *repository.PersonReadModel) PersonMarks {
+	return PersonMarks{
+		Living:   p.LivingFacts().IsLiving(livingCutoff(ctx)),
+		Private:  p.Restriction.IsPrivate(),
+		Redacted: p.Visibility != repository.Visible,
+	}
+}
+
+// personMarksByID reads the people ids name on branchID in one batch and
+// returns each one's privacy marks, keyed by ID.
+func personMarksByID(ctx context.Context, store repository.ReadModelStore, branchID domain.BranchID, ids []uuid.UUID) (map[uuid.UUID]PersonMarks, error) {
+	marks := make(map[uuid.UUID]PersonMarks, len(ids))
+	if len(ids) == 0 {
+		return marks, nil
+	}
+	persons, err := store.GetPersonsByIDs(ctx, branchID, ids)
+	if err != nil {
+		return nil, err
+	}
+	for i := range persons {
+		marks[persons[i].ID] = personMarks(ctx, &persons[i])
+	}
+	return marks, nil
+}
+
 // nonEmpty returns a copy of an optional read-model string, or nil when it is
 // unset or empty, so an absent value is omitted from the response.
 func nonEmpty(s *string) *string {

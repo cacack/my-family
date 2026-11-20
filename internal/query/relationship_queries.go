@@ -28,10 +28,21 @@ func NewRelationshipService(readStore repository.ReadModelStore) *RelationshipSe
 	}
 }
 
-// RelationshipPathNode represents a person in a relationship path with their display name.
+// RelationshipPathNode represents a person in a relationship path with their
+// display name and privacy marks.
 type RelationshipPathNode struct {
 	ID   uuid.UUID `json:"id"`
 	Name string    `json:"name"` // Display name (e.g., "John Smith")
+	PersonMarks
+}
+
+// pathNode returns p as a node of a relationship path.
+func pathNode(p Person) RelationshipPathNode {
+	return RelationshipPathNode{
+		ID:          p.ID,
+		Name:        personDisplayName(p),
+		PersonMarks: PersonMarks{Living: p.Living, Private: p.Private, Redacted: p.Redacted},
+	}
 }
 
 // RelationshipPath represents a single path of relationship through a common ancestor.
@@ -97,7 +108,7 @@ func (s *RelationshipService) GetRelationship(ctx context.Context, branchID doma
 
 	// Handle same person case
 	if personID1 == personID2 {
-		node := RelationshipPathNode{ID: personID1, Name: personDisplayName(personA)}
+		node := pathNode(personA)
 		result.IsRelated = true
 		result.Summary = "same person"
 		result.Paths = []RelationshipPath{{
@@ -173,7 +184,7 @@ func personDisplayName(p Person) string {
 // order, so where two equally short paths reach one ancestor (pedigree collapse)
 // the paternal one is kept.
 func (s *RelationshipService) buildAncestorMap(ctx context.Context, branchID domain.BranchID, person Person) (map[uuid.UUID]ancestorInfo, error) {
-	selfPath := []RelationshipPathNode{{ID: person.ID, Name: personDisplayName(person)}}
+	selfPath := []RelationshipPathNode{pathNode(person)}
 	ancestors := map[uuid.UUID]ancestorInfo{person.ID: {person: person, generation: 0, path: selfPath}}
 	seen := map[uuid.UUID]bool{person.ID: true}
 
@@ -238,7 +249,7 @@ func (s *RelationshipService) buildAncestorMap(ctx context.Context, branchID dom
 			}
 			path := make([]RelationshipPathNode, len(d.child.path), len(d.child.path)+1)
 			copy(path, d.child.path)
-			path = append(path, RelationshipPathNode{ID: parent.ID, Name: personDisplayName(parent)})
+			path = append(path, pathNode(parent))
 			ancestors[parent.ID] = ancestorInfo{person: parent, generation: generation + 1, path: path}
 			next = append(next, frontierNode{id: parent.ID, path: path})
 		}
@@ -413,7 +424,7 @@ func shortestRoute(ancestors map[uuid.UUID]ancestorInfo, target uuid.UUID, avoid
 
 	path := make([]RelationshipPathNode, info.generation+1)
 	for i, id := info.generation, target; i >= 0; i, id = i-1, child[id] {
-		path[i] = RelationshipPathNode{ID: id, Name: personDisplayName(ancestors[id].person)}
+		path[i] = pathNode(ancestors[id].person)
 	}
 	return path
 }

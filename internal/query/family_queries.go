@@ -37,12 +37,11 @@ type Family struct {
 	MarriageNotes      *string         `json:"marriage_notes,omitempty"`
 	Notes              *string         `json:"notes,omitempty"`
 	Private            bool            `json:"private,omitempty"` // ADR-008 §2
-	// Partner1Redacted and Partner2Redacted mark a partner shown as the
-	// placeholder for a protected person (ADR-008 §3).
-	Partner1Redacted bool  `json:"partner1_redacted,omitempty"`
-	Partner2Redacted bool  `json:"partner2_redacted,omitempty"`
-	ChildCount       int   `json:"child_count"`
-	Version          int64 `json:"version"`
+	// Partner1Marks and Partner2Marks are the partners' privacy marks.
+	Partner1Marks PersonMarks `json:"partner1_marks"`
+	Partner2Marks PersonMarks `json:"partner2_marks"`
+	ChildCount    int         `json:"child_count"`
+	Version       int64       `json:"version"`
 }
 
 // FamilyDetail includes children information.
@@ -61,7 +60,7 @@ type FamilyChildInfo struct {
 	Surname          string    `json:"surname"`
 	Gender           *string   `json:"gender,omitempty"`
 	RelationshipType string    `json:"relationship_type"`
-	Redacted         bool      `json:"redacted,omitempty"` // placeholder for a protected person (ADR-008 §3)
+	PersonMarks
 }
 
 // FamilyListResult contains paginated family results.
@@ -103,7 +102,7 @@ func (s *FamilyService) ListFamilies(ctx context.Context, input ListFamiliesInpu
 	for i, rm := range readModels {
 		families[i] = convertReadModelToFamily(rm)
 	}
-	if err := s.markRedactedPartners(ctx, opts.BranchID, families); err != nil {
+	if err := s.markPartners(ctx, opts.BranchID, families); err != nil {
 		return nil, err
 	}
 
@@ -115,9 +114,9 @@ func (s *FamilyService) ListFamilies(ctx context.Context, input ListFamiliesInpu
 	}, nil
 }
 
-// markRedactedPartners marks the partners of families shown as placeholders
-// (ADR-008 §3), from one batched person read.
-func (s *FamilyService) markRedactedPartners(ctx context.Context, branchID domain.BranchID, families []Family) error {
+// markPartners sets the partners' privacy marks on families, from one batched
+// person read.
+func (s *FamilyService) markPartners(ctx context.Context, branchID domain.BranchID, families []Family) error {
 	var ids []uuid.UUID
 	for _, f := range families {
 		for _, id := range []*uuid.UUID{f.Partner1ID, f.Partner2ID} {
@@ -126,23 +125,16 @@ func (s *FamilyService) markRedactedPartners(ctx context.Context, branchID domai
 			}
 		}
 	}
-	if len(ids) == 0 {
-		return nil
-	}
-	persons, err := s.readStore.GetPersonsByIDs(ctx, branchID, ids)
+	marks, err := personMarksByID(ctx, s.readStore, branchID, ids)
 	if err != nil {
 		return err
 	}
-	redacted := make(map[uuid.UUID]bool, len(persons))
-	for _, p := range persons {
-		redacted[p.ID] = p.Visibility != repository.Visible
-	}
 	for i := range families {
 		if id := families[i].Partner1ID; id != nil {
-			families[i].Partner1Redacted = redacted[*id]
+			families[i].Partner1Marks = marks[*id]
 		}
 		if id := families[i].Partner2ID; id != nil {
-			families[i].Partner2Redacted = redacted[*id]
+			families[i].Partner2Marks = marks[*id]
 		}
 	}
 	return nil
@@ -201,8 +193,8 @@ func (s *FamilyService) GetFamily(ctx context.Context, branchID domain.BranchID,
 	return detail, nil
 }
 
-// attachPeople fills the partner and child genders, and marks the ones shown
-// as placeholders (ADR-008 §3), on detail from one batched person read.
+// attachPeople fills the partner and child genders and privacy marks on
+// detail from one batched person read.
 func (s *FamilyService) attachPeople(ctx context.Context, branchID domain.BranchID, detail *FamilyDetail) error {
 	ids := make([]uuid.UUID, 0, len(detail.Children)+2)
 	if detail.Partner1ID != nil {
@@ -223,26 +215,27 @@ func (s *FamilyService) attachPeople(ctx context.Context, branchID domain.Branch
 		return err
 	}
 	genders := make(map[uuid.UUID]*string, len(persons))
-	redacted := make(map[uuid.UUID]bool, len(persons))
-	for _, p := range persons {
+	marks := make(map[uuid.UUID]PersonMarks, len(persons))
+	for i := range persons {
+		p := &persons[i]
 		if p.Gender != "" {
 			g := string(p.Gender)
 			genders[p.ID] = &g
 		}
-		redacted[p.ID] = p.Visibility != repository.Visible
+		marks[p.ID] = personMarks(ctx, p)
 	}
 
 	if detail.Partner1ID != nil {
 		detail.Partner1Gender = genders[*detail.Partner1ID]
-		detail.Partner1Redacted = redacted[*detail.Partner1ID]
+		detail.Partner1Marks = marks[*detail.Partner1ID]
 	}
 	if detail.Partner2ID != nil {
 		detail.Partner2Gender = genders[*detail.Partner2ID]
-		detail.Partner2Redacted = redacted[*detail.Partner2ID]
+		detail.Partner2Marks = marks[*detail.Partner2ID]
 	}
 	for i := range detail.Children {
 		detail.Children[i].Gender = genders[detail.Children[i].ID]
-		detail.Children[i].Redacted = redacted[detail.Children[i].ID]
+		detail.Children[i].PersonMarks = marks[detail.Children[i].ID]
 	}
 	return nil
 }
@@ -336,19 +329,21 @@ type GroupSheetCitation struct {
 
 // GroupSheetPerson represents a person in the group sheet with events.
 type GroupSheetPerson struct {
-	ID         uuid.UUID        `json:"id"`
-	GivenName  string           `json:"given_name"`
-	Surname    string           `json:"surname"`
-	Gender     string           `json:"gender,omitempty"`
-	Birth      *GroupSheetEvent `json:"birth,omitempty"`
-	Death      *GroupSheetEvent `json:"death,omitempty"`
-	FatherName string           `json:"father_name,omitempty"`
-	FatherID   *uuid.UUID       `json:"father_id,omitempty"`
-	MotherName string           `json:"mother_name,omitempty"`
-	MotherID   *uuid.UUID       `json:"mother_id,omitempty"`
-	Living     bool             `json:"living"`             // living rule verdict today (ADR-008 §1)
-	Private    bool             `json:"private,omitempty"`  // record marked private (ADR-008 §2)
-	Redacted   bool             `json:"redacted,omitempty"` // placeholder for a protected person (ADR-008 §3)
+	ID          uuid.UUID        `json:"id"`
+	GivenName   string           `json:"given_name"`
+	Surname     string           `json:"surname"`
+	Gender      string           `json:"gender,omitempty"`
+	Birth       *GroupSheetEvent `json:"birth,omitempty"`
+	Death       *GroupSheetEvent `json:"death,omitempty"`
+	FatherName  string           `json:"father_name,omitempty"`
+	FatherID    *uuid.UUID       `json:"father_id,omitempty"`
+	FatherMarks *PersonMarks     `json:"father_marks,omitempty"` // set with FatherID
+	MotherName  string           `json:"mother_name,omitempty"`
+	MotherID    *uuid.UUID       `json:"mother_id,omitempty"`
+	MotherMarks *PersonMarks     `json:"mother_marks,omitempty"` // set with MotherID
+	Living      bool             `json:"living"`                 // living rule verdict today (ADR-008 §1)
+	Private     bool             `json:"private,omitempty"`      // record marked private (ADR-008 §2)
+	Redacted    bool             `json:"redacted,omitempty"`     // placeholder for a protected person (ADR-008 §3)
 }
 
 // GroupSheetChild represents a child entry in the group sheet.
@@ -363,9 +358,10 @@ type GroupSheetChild struct {
 	Death            *GroupSheetEvent `json:"death,omitempty"`
 	SpouseName       string           `json:"spouse_name,omitempty"`
 	SpouseID         *uuid.UUID       `json:"spouse_id,omitempty"`
-	Living           bool             `json:"living"`             // living rule verdict today (ADR-008 §1)
-	Private          bool             `json:"private,omitempty"`  // record marked private (ADR-008 §2)
-	Redacted         bool             `json:"redacted,omitempty"` // placeholder for a protected person (ADR-008 §3)
+	SpouseMarks      *PersonMarks     `json:"spouse_marks,omitempty"` // set with SpouseID
+	Living           bool             `json:"living"`                 // living rule verdict today (ADR-008 §1)
+	Private          bool             `json:"private,omitempty"`      // record marked private (ADR-008 §2)
+	Redacted         bool             `json:"redacted,omitempty"`     // placeholder for a protected person (ADR-008 §3)
 }
 
 // GroupSheet represents a traditional family group sheet.
@@ -439,7 +435,49 @@ func (s *FamilyService) GetGroupSheet(ctx context.Context, branchID domain.Branc
 		}
 	}
 
+	if err := s.markRelatives(ctx, branchID, gs); err != nil {
+		return nil, err
+	}
+
 	return gs, nil
+}
+
+// markRelatives sets the privacy marks of the partners' parents and the
+// children's spouses named on gs, from one batched person read.
+func (s *FamilyService) markRelatives(ctx context.Context, branchID domain.BranchID, gs *GroupSheet) error {
+	type relative struct {
+		id    *uuid.UUID
+		marks **PersonMarks
+	}
+	var relatives []relative
+	for _, p := range []*GroupSheetPerson{gs.Husband, gs.Wife} {
+		if p != nil {
+			relatives = append(relatives, relative{p.FatherID, &p.FatherMarks}, relative{p.MotherID, &p.MotherMarks})
+		}
+	}
+	for i := range gs.Children {
+		relatives = append(relatives, relative{gs.Children[i].SpouseID, &gs.Children[i].SpouseMarks})
+	}
+
+	var ids []uuid.UUID
+	for _, r := range relatives {
+		if r.id != nil {
+			ids = append(ids, *r.id)
+		}
+	}
+	marks, err := personMarksByID(ctx, s.readStore, branchID, ids)
+	if err != nil {
+		return err
+	}
+	for _, r := range relatives {
+		if r.id == nil {
+			continue
+		}
+		if m, ok := marks[*r.id]; ok {
+			*r.marks = &m
+		}
+	}
+	return nil
 }
 
 // getGroupSheetPerson builds a GroupSheetPerson from a person ID within the given branch.

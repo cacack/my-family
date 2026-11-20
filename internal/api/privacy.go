@@ -6,6 +6,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/cacack/my-family/internal/domain"
+	"github.com/cacack/my-family/internal/query"
 	"github.com/cacack/my-family/internal/repository"
 )
 
@@ -25,6 +26,27 @@ func redactedFlag(redacted bool) *bool {
 		return nil
 	}
 	return &redacted
+}
+
+// personMarks are the privacy marks of a person named on another record as
+// the API sends them, or nil when they were not read.
+func personMarks(m *query.PersonMarks) *PersonMarks {
+	if m == nil {
+		return nil
+	}
+	return &PersonMarks{Living: m.Living, Private: privateFlag(m.Private), Redacted: redactedFlag(m.Redacted)}
+}
+
+// relationshipPathNode is a person on a relationship path as the API sends it.
+func relationshipPathNode(n query.RelationshipPathNode) RelationshipPathNode {
+	living := n.Living
+	return RelationshipPathNode{
+		Id:       n.ID,
+		Name:     n.Name,
+		Living:   &living,
+		Private:  privateFlag(n.Private),
+		Redacted: redactedFlag(n.Redacted),
+	}
 }
 
 // livingFields are a person's living verdict and override as the API sends
