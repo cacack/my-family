@@ -1,6 +1,6 @@
 # ADR-007: Access Model — Accounts, Roles, Sessions and Anonymous Access
 
-**Status:** Proposed
+**Status:** Accepted — implemented in v0.14 (#1407 to #1441)
 **Date:** 2026-11-18
 **Decision Makers:** Project maintainer
 **Related Features:** [#488](https://github.com/cacack/my-family/issues/488)
