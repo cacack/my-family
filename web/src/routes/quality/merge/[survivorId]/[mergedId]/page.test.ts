@@ -3,6 +3,7 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/svelte';
 import Page from './+page.svelte';
 import * as apiModule from '#lib/api/client.js';
 import { homePerson, loadHomePerson } from '#lib/stores/homePerson.svelte.js';
+import { signInAs } from '#lib/test/roles.js';
 
 // Configurable page params
 let mockPageParams: Record<string, string> = {
@@ -296,5 +297,18 @@ describe('Merge Picker Page', () => {
 
 		await screen.findByText('Person 2 not found');
 		expect(goto).not.toHaveBeenCalled();
+	});
+
+	it('shows a viewer the comparison with nothing to choose or submit', async () => {
+		signInAs('viewer');
+		const { container } = render(Page);
+		await screen.findByText('Survivor (keeps existing ID)');
+		expect(container.textContent).toContain('Compare the two records field by field');
+		expect(container.textContent).not.toContain('Choose which value to keep');
+		const radios = screen.getAllByRole('radio');
+		expect(radios.length).toBeGreaterThan(0);
+		for (const radio of radios) expect(radio.hasAttribute('disabled')).toBe(true);
+		expect(screen.queryByRole('button', { name: 'Merge persons' })).toBeNull();
+		expect(screen.queryByRole('button', { name: 'Not a duplicate' })).toBeNull();
 	});
 });

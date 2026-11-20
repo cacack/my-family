@@ -284,9 +284,14 @@
 <div class="mx-auto max-w-page-list space-y-6 p-6">
 	<PageHeader title="Merge Persons" back={{ href: '/quality', label: 'Quality' }}>
 		<p class="mt-1 max-w-[46rem] text-sm text-muted-foreground">
-			Choose which value to keep for each field. The merged record will be deleted. If these are
-			different people, choose <strong>Not a duplicate</strong> and the pair will no longer be
-			suggested.
+			{#if can('editor')}
+				Choose which value to keep for each field. The merged record will be deleted. If these are
+				different people, choose <strong>Not a duplicate</strong> and the pair will no longer be
+				suggested.
+			{:else}
+				Compare the two records field by field. Merging them, or marking them as different
+				people, needs the editor role or above.
+			{/if}
 		</p>
 	</PageHeader>
 
@@ -415,6 +420,7 @@
 						</div>
 						<RadioGroup
 							bind:value={resolution[field]}
+							disabled={!can('editor')}
 							class="grid gap-2 sm:grid-cols-2"
 						>
 							<div class="flex items-start gap-2">
