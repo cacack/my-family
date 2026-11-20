@@ -1,13 +1,18 @@
 package api_test
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cacack/my-family/internal/api"
+	"github.com/cacack/my-family/internal/auth"
 	"github.com/cacack/my-family/internal/config"
+	"github.com/cacack/my-family/internal/repository"
 	"github.com/cacack/my-family/internal/repository/memory"
 )
 
@@ -335,6 +340,46 @@ func TestUsers_AuthAudit(t *testing.T) {
 	items := decode[api.AuthAuditList](t, rec).Items
 	if len(items) != 3 || items[0].Action != api.AuthAuditEntryActionSignInFailed || items[0].ActorId != nil || items[0].Username != "ada" {
 		t.Errorf("older entries = %+v, want the failed sign-in first", items)
+	}
+}
+
+// The audit list clamps its page: a limit over the most one page holds is cut
+// to it, and a limit or offset below the minimum takes the default, so no
+// request reads the whole log at once.
+func TestUsers_AuthAuditClampsThePage(t *testing.T) {
+	f := newAuthFixture(t)
+	f.createOwner(t)
+	owner := f.signIn(t)
+	at := time.Now()
+	for i := range auth.MaxAuthAuditLimit + 20 {
+		entry := repository.AuthAuditEntry{At: at.Add(time.Duration(i) * time.Second), Action: repository.AuthActionSignInFailed, Username: "u" + strconv.Itoa(i)}
+		if err := f.accounts.AppendAuthAudit(context.Background(), &entry); err != nil {
+			t.Fatalf("AppendAuthAudit: %v", err)
+		}
+	}
+	for _, tc := range []struct {
+		query string
+		want  int
+	}{
+		{"limit=100000", auth.MaxAuthAuditLimit},
+		{"limit=" + strconv.Itoa(auth.MaxAuthAuditLimit+1), auth.MaxAuthAuditLimit},
+		{"limit=0", auth.DefaultAuthAuditLimit},
+		{"limit=-1", auth.DefaultAuthAuditLimit},
+		{"", auth.DefaultAuthAuditLimit},
+		{"limit=3&offset=-5", 3},
+	} {
+		rec := f.do(t, request{method: http.MethodGet, path: "/api/v1/auth-audit?" + tc.query, cookie: owner})
+		if rec.Code != http.StatusOK {
+			t.Fatalf("?%s: %d %s", tc.query, rec.Code, rec.Body)
+		}
+		list := decode[api.AuthAuditList](t, rec)
+		if len(list.Items) != tc.want || list.Total <= auth.MaxAuthAuditLimit {
+			t.Errorf("?%s: %d of %d entries, want %d of more than %d", tc.query, len(list.Items), list.Total, tc.want, auth.MaxAuthAuditLimit)
+		}
+	}
+	newest := decode[api.AuthAuditList](t, f.do(t, request{method: http.MethodGet, path: "/api/v1/auth-audit?limit=1&offset=-5", cookie: owner}))
+	if len(newest.Items) != 1 || newest.Items[0].Username != "u"+strconv.Itoa(auth.MaxAuthAuditLimit+19) {
+		t.Errorf("a negative offset: %+v, want the newest entry", newest.Items)
 	}
 }
 

@@ -75,9 +75,23 @@ func (s *Service) AuditAnonymousAccess(ctx context.Context, by Actor, access rep
 	s.audit(ctx, by, repository.AuthActionAnonymousAccessChanged, nil, string(access))
 }
 
+// Auth audit page sizes: the default when none is asked for, and the most
+// one page may hold.
+const (
+	DefaultAuthAuditLimit = 50
+	MaxAuthAuditLimit     = 100
+)
+
 // AuthAudit returns up to limit audit entries, newest first, after offset,
-// and how many there are in all.
+// and how many there are in all. A limit below 1 means DefaultAuthAuditLimit,
+// one above MaxAuthAuditLimit is cut to it, and a negative offset is 0, so no
+// request reads the whole log at once.
 func (s *Service) AuthAudit(ctx context.Context, limit, offset int) ([]repository.AuthAuditEntry, int, error) {
+	if limit < 1 {
+		limit = DefaultAuthAuditLimit
+	}
+	limit = min(limit, MaxAuthAuditLimit)
+	offset = max(offset, 0)
 	return s.store.ListAuthAudit(ctx, limit, offset)
 }
 
