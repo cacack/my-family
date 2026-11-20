@@ -169,10 +169,6 @@
 							import anything.
 						</p>
 						<p><a href="#preview">Preview the tree as a visitor</a> to see exactly what they will see.</p>
-						<p>
-							Not available yet: until living people and private records are hidden from visitors, the server
-							refuses to let them in.
-						</p>
 					</div>
 				</fieldset>
 				{#if saveError}

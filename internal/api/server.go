@@ -98,8 +98,8 @@ type Server struct {
 	auth                *auth.Service                // nil only in open mode
 	settings            repository.TreeSettingsStore // nil unless WithTreeSettings supplied
 	routes              map[string]bool              // every registered route, by routeKey
-	// visitorsProtected is repository.AnonymousViewingProtected; tests of the
-	// visitor paths set it ahead of the redaction (export_test.go).
+	// visitorsProtected is repository.AnonymousViewingProtected; a test of
+	// that kill switch clears it (export_test.go).
 	visitorsProtected bool
 }
 

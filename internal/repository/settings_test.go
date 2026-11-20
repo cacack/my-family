@@ -2,7 +2,6 @@ package repository
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
 )
@@ -42,11 +41,12 @@ func TestTreeSettings_ValidateAnonymousAccess(t *testing.T) {
 			t.Errorf("Validate(anonymous access %q) = nil, want an error", access)
 		}
 	}
-	// Visitors would see living people until the read side redacts them.
+	// The read side redacts living people and private records for visitors,
+	// so an owner may let them in.
 	settings := DefaultTreeSettings()
 	settings.AnonymousAccess = AnonymousAccessViewer
-	if err := settings.Validate(); !AnonymousViewingProtected && !errors.Is(err, ErrAnonymousViewingUnprotected) {
-		t.Errorf("Validate(viewer) while unprotected = %v, want ErrAnonymousViewingUnprotected", err)
+	if err := settings.Validate(); err != nil {
+		t.Errorf("Validate(viewer) = %v, want nil", err)
 	}
 }
 

@@ -74,16 +74,16 @@ func (a AnonymousAccess) Valid() bool {
 }
 
 // AnonymousViewingProtected reports whether the read side redacts living
-// people and private records for anonymous principals (ADR-008 §5). Until it
-// does, anonymous viewing would show visitors everything, so no owner may
-// turn it on (#1414 is blocked on #1412). The change that adds the redaction
-// sets it to true.
-const AnonymousViewingProtected = false
+// people and private records for anonymous principals (ADR-008 §5). It does
+// (#1412), so owners may let visitors in. It is a kill switch: setting it to
+// false refuses anonymous viewing again, in the settings API and for a viewer
+// setting already stored, should a surface be found to leak to visitors.
+const AnonymousViewingProtected = true
 
 // ErrAnonymousViewingUnprotected refuses turning anonymous viewing on while
 // AnonymousViewingProtected is false.
 var ErrAnonymousViewingUnprotected = errors.New(
-	"anonymous viewing cannot be turned on yet: living people and private records are not protected from visitors")
+	"anonymous viewing cannot be turned on: living people and private records are not protected from visitors")
 
 // TreeSettings are a tree's privacy settings (ADR-008 §6), which its owner
 // changes. Like accounts they are not tree data: they live in a plain table,

@@ -3493,9 +3493,9 @@ export interface paths {
          * @description Replaces every privacy setting. They are kept beside the accounts, not
          *     in the event log, so they survive restarts and `myfamily rebuild`.
          *     A change to `anonymous_access` takes effect on the next request and is
-         *     written to the auth audit log. `viewer` is refused with 400 until
-         *     living people and private records are protected from visitors
-         *     (#1412).
+         *     written to the auth audit log. Visitors let in with `viewer` never
+         *     see living people or private records. `viewer` is refused with 400
+         *     only if the server is built with anonymous viewing switched off.
          */
         put: operations["updatePrivacySettings"];
         post?: never;
