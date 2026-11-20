@@ -12,7 +12,8 @@ vi.mock('#lib/api/client.js', async (importOriginal) => {
 			getPersonCitations: vi.fn(),
 			searchSources: vi.fn(),
 			createCitation: vi.fn(),
-			deleteCitation: vi.fn()
+			deleteCitation: vi.fn(),
+			updateCitation: vi.fn()
 		}
 	};
 });
@@ -113,6 +114,71 @@ describe('CitationSection', () => {
 				'This record was updated by another operation'
 			);
 			expect(screen.getByRole('button', { name: 'Try Again' })).toBeTruthy();
+		});
+	});
+	describe('the private mark (#1413)', () => {
+		const citation = {
+			id: 'c-1',
+			source_id: 's-1',
+			source_title: 'Parish register',
+			fact_type: 'person_birth',
+			fact_owner_id: 'p-1',
+			version: 1
+		} as apiModule.Citation;
+
+		function show(...citations: apiModule.Citation[]) {
+			vi.mocked(apiModule.api.getPersonCitations).mockResolvedValue({ citations, total: citations.length });
+			render(CitationSection, { props: { personId: 'p-1' } });
+		}
+
+		it('marks a citation private and shows the named badge', async () => {
+			vi.mocked(apiModule.api.updateCitation).mockResolvedValue({ ...citation, private: true, version: 2 });
+			show(citation);
+			expect(await screen.findByText('Parish register')).toBeDefined();
+			expect(screen.queryByRole('img', { name: 'Private citation' })).toBeNull();
+
+			await fireEvent.click(screen.getByRole('button', { name: 'Mark private' }));
+
+			expect(apiModule.api.updateCitation).toHaveBeenCalledWith('c-1', { private: true, version: 1 });
+			expect(await screen.findByRole('img', { name: 'Private citation' })).toBeDefined();
+			expect(screen.getByRole('button', { name: 'Unmark private' })).toBeDefined();
+		});
+
+		it('unmarks a private citation', async () => {
+			vi.mocked(apiModule.api.updateCitation).mockResolvedValue({ ...citation, private: false, version: 3 });
+			show({ ...citation, private: true, version: 2 });
+
+			await fireEvent.click(await screen.findByRole('button', { name: 'Unmark private' }));
+
+			expect(apiModule.api.updateCitation).toHaveBeenCalledWith('c-1', { private: false, version: 2 });
+			expect(await screen.findByRole('button', { name: 'Mark private' })).toBeDefined();
+			expect(screen.queryByRole('img', { name: 'Private citation' })).toBeNull();
+		});
+
+		it('applies the mark to the latest version on Try Again after a stale version', async () => {
+			vi.mocked(apiModule.api.updateCitation)
+				.mockRejectedValueOnce({ status: 409, code: 'VERSION_CONFLICT', message: 'version conflict' })
+				.mockResolvedValueOnce({ ...citation, private: true, version: 3 });
+			show(citation);
+
+			await fireEvent.click(await screen.findByRole('button', { name: 'Mark private' }));
+			vi.mocked(apiModule.api.getPersonCitations).mockResolvedValue({
+				citations: [{ ...citation, version: 2 }],
+				total: 1
+			});
+			await fireEvent.click(await screen.findByRole('button', { name: 'Try Again' }));
+
+			expect(apiModule.api.updateCitation).toHaveBeenLastCalledWith('c-1', { private: true, version: 2 });
+			expect(await screen.findByRole('img', { name: 'Private citation' })).toBeDefined();
+		});
+
+		it('shows a refusal', async () => {
+			vi.mocked(apiModule.api.updateCitation).mockRejectedValue({ status: 403, message: 'Not allowed' });
+			show(citation);
+
+			await fireEvent.click(await screen.findByRole('button', { name: 'Mark private' }));
+
+			expect((await screen.findByRole('alert')).textContent).toBe('Not allowed');
 		});
 	});
 });

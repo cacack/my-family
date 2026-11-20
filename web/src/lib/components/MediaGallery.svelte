@@ -6,6 +6,7 @@
 	import MediaLightbox from './MediaLightbox.svelte';
 	import ConflictError from './ConflictError.svelte';
 	import ConfirmDialog from './ConfirmDialog.svelte';
+	import PrivacyBadges from './PrivacyBadges.svelte';
 
 	interface Props {
 		personId: string;
@@ -51,6 +52,10 @@
 
 	function closeLightbox() {
 		lightboxMedia = null;
+	}
+
+	function handleUpdate(media: Media) {
+		mediaItems = mediaItems.map((m) => (m.id === media.id ? media : m));
 	}
 
 	async function handleRetry() {
@@ -201,6 +206,10 @@
 						{/if}
 					</button>
 
+					{#if media.private}
+						<span class="private-mark"><PrivacyBadges private noun="media item" /></span>
+					{/if}
+
 					{#if can('editor')}
 					<button
 						class="delete-btn"
@@ -230,6 +239,7 @@
 		media={lightboxMedia}
 		allMedia={mediaItems}
 		onClose={closeLightbox}
+		onUpdate={handleUpdate}
 	/>
 {/if}
 
@@ -368,6 +378,15 @@
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
+	}
+
+	.private-mark {
+		position: absolute;
+		top: 0.5rem;
+		left: 0.5rem;
+		border-radius: 9999px;
+		background: white;
+		pointer-events: none;
 	}
 
 	.delete-btn {

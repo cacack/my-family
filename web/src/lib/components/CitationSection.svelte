@@ -16,6 +16,7 @@
 	import ConflictError from './ConflictError.svelte';
 	import ConfirmDialog from './ConfirmDialog.svelte';
 	import CitationTemplateForm from './CitationTemplateForm.svelte';
+	import PrivacyBadges from './PrivacyBadges.svelte';
 	import { PERSON_FACT_TYPES, formatFactTypeShort } from '#lib/utils/evidence.js';
 	import { EVIDENCE_TYPE_OPTIONS, INFORMANT_TYPE_OPTIONS, SOURCE_QUALITY_OPTIONS } from '#lib/utils/enumOptions.js';
 
@@ -36,6 +37,7 @@
 	let saving = $state(false);
 	let deleteTarget: Citation | null = $state(null);
 	let deleteOpen = $state(false);
+	let markingId: string | null = $state(null);
 
 	// Citation entry mode: 'freeform' or 'template'
 	let citationMode: 'freeform' | 'template' = $state('freeform');
@@ -257,6 +259,43 @@
 		}
 	}
 
+	/**
+	 * Mark the citation private, or unmark it (ADR-008). A stale version
+	 * offers Try Again, which applies the same mark to the latest version.
+	 */
+	async function setPrivate(citation: Citation, mark: boolean) {
+		// Not `disabled` while saving: that would drop the button's focus.
+		if (markingId === citation.id) return;
+		markingId = citation.id;
+		error = null;
+		try {
+			const saved = await api.updateCitation(citation.id, { private: mark, version: citation.version });
+			// In place, so the button keeps focus.
+			citations = citations.map((c) =>
+				c.id === saved.id ? { ...c, private: saved.private, version: saved.version } : c
+			);
+			conflictError = false;
+		} catch (e) {
+			if (isStaleVersion(e)) {
+				conflictError = true;
+				retryAction = async () => {
+					const result = await api.getPersonCitations(personId);
+					citations = result.citations;
+					const fresh = result.citations.find((c) => c.id === citation.id);
+					if (!fresh) {
+						conflictError = false;
+						return;
+					}
+					await setPrivate(fresh, mark);
+				};
+			} else {
+				error = (e as { message?: string }).message || 'Failed to update citation';
+			}
+		} finally {
+			markingId = null;
+		}
+	}
+
 	function formatFactType(type: string): string {
 		return type.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 	}
@@ -447,6 +486,7 @@
 							{citation.source_title}
 						</a>
 						<span class="fact-type">{formatFactType(citation.fact_type)}</span>
+						<PrivacyBadges private={citation.private} noun="citation" />
 					</div>
 
 					{#if citation.page || citation.volume}
@@ -490,6 +530,13 @@
 
 					{#if can('editor')}
 						<div class="citation-actions">
+							<Button
+								variant="ghost"
+								size="sm"
+								aria-disabled={markingId === citation.id}
+								onclick={() => setPrivate(citation, !citation.private)}
+								>{citation.private ? 'Unmark private' : 'Mark private'}</Button
+							>
 							<Button
 								variant="ghost"
 								size="sm"
