@@ -894,12 +894,12 @@ type branchScopeSpy struct {
 	brickWallCalls int
 }
 
-func (s *branchScopeSpy) GetSurnameIndex(_ context.Context, branchID domain.BranchID) ([]repository.SurnameEntry, []repository.LetterCount, error) {
+func (s *branchScopeSpy) GetSurnameIndex(_ context.Context, branchID domain.BranchID, _ repository.Privacy) ([]repository.SurnameEntry, []repository.LetterCount, error) {
 	s.surnameIndex = append(s.surnameIndex, branchID)
 	return nil, nil, nil
 }
 
-func (s *branchScopeSpy) GetSurnamesByLetter(_ context.Context, branchID domain.BranchID, _ string) ([]repository.SurnameEntry, error) {
+func (s *branchScopeSpy) GetSurnamesByLetter(_ context.Context, branchID domain.BranchID, _ string, _ repository.Privacy) ([]repository.SurnameEntry, error) {
 	s.surnamesByLetter = append(s.surnamesByLetter, branchID)
 	return nil, nil
 }
@@ -909,7 +909,7 @@ func (s *branchScopeSpy) GetPersonsBySurname(_ context.Context, _ string, opts r
 	return nil, 0, nil
 }
 
-func (s *branchScopeSpy) GetPlaceHierarchy(_ context.Context, branchID domain.BranchID, _ string) ([]repository.PlaceEntry, error) {
+func (s *branchScopeSpy) GetPlaceHierarchy(_ context.Context, branchID domain.BranchID, _ string, _ repository.Privacy) ([]repository.PlaceEntry, error) {
 	s.placeHierarchy = append(s.placeHierarchy, branchID)
 	return nil, nil
 }
@@ -924,17 +924,17 @@ func (s *branchScopeSpy) GetPersonsByCemetery(_ context.Context, _ string, opts 
 	return nil, 0, nil
 }
 
-func (s *branchScopeSpy) GetMapLocations(_ context.Context, branchID domain.BranchID) ([]repository.MapLocation, error) {
+func (s *branchScopeSpy) GetMapLocations(_ context.Context, branchID domain.BranchID, _ repository.Privacy) ([]repository.MapLocation, error) {
 	s.mapLocations = append(s.mapLocations, branchID)
 	return nil, nil
 }
 
-func (s *branchScopeSpy) GetCemeteryIndex(_ context.Context, branchID domain.BranchID) ([]repository.CemeteryEntry, error) {
+func (s *branchScopeSpy) GetCemeteryIndex(_ context.Context, branchID domain.BranchID, _ repository.Privacy) ([]repository.CemeteryEntry, error) {
 	s.cemeteryIndex = append(s.cemeteryIndex, branchID)
 	return nil, nil
 }
 
-func (s *branchScopeSpy) GetBrickWalls(_ context.Context, _ bool) ([]repository.BrickWallEntry, error) {
+func (s *branchScopeSpy) GetBrickWalls(_ context.Context, _ bool, _ repository.Privacy) ([]repository.BrickWallEntry, error) {
 	s.brickWallCalls++
 	return nil, nil
 }

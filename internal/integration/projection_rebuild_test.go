@@ -250,7 +250,7 @@ func dumpReadModel(t *testing.T, ctx context.Context, st stores, branchID uuid.U
 		must(err)
 		out["person-exids/"+p.ID.String()] = canonicalRowJSON(t, ids)
 	}
-	walls, err := st.read.GetBrickWalls(ctx, true)
+	walls, err := st.read.GetBrickWalls(ctx, true, repository.Privacy{})
 	must(err)
 	out["brick-walls"] = canonicalRowJSON(t, walls)
 	branches, err := st.branches.List(ctx)

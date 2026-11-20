@@ -3,6 +3,7 @@ package integration_test
 import (
 	"context"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -27,8 +28,9 @@ func parityDate(y int, m time.Month, d int) *time.Time {
 
 // parityCases are people who exercise each arm of the living rule and of the
 // private test. Every one is named "<given> Parity", born and buried in
-// places named for the table, so each list and search finds all of them
-// unless the rule excludes them.
+// places named for the table, dies in "<given>, Paritytown" (pinned on the
+// map) and is a brick wall, so each list, search and aggregate finds all of
+// them unless the rule excludes them.
 var parityCases = []struct {
 	given string
 	row   repository.PersonReadModel
@@ -76,6 +78,9 @@ func saveParityPeople(t *testing.T, ctx context.Context, rs repository.ReadModel
 		p.ID, p.GivenName, p.Surname = uuid.New(), c.given, paritySurname
 		p.FullName = domain.JoinFullName(p.GivenName, p.Surname)
 		p.BirthPlace, p.Version, p.UpdatedAt = parityPlace, 1, now
+		lat, long := "N42.3601", "W71.0589"
+		p.DeathPlace, p.DeathPlaceLat, p.DeathPlaceLong = c.given+", "+parityPlace, &lat, &long
+		p.BrickWallNote, p.BrickWallSince = "stuck", &now
 		if err := rs.SavePerson(ctx, branchID, &p); err != nil {
 			t.Fatalf("save %s: %v", c.given, err)
 		}
@@ -133,10 +138,21 @@ func TestPrivacy_GoAndSQLFormsAgree(t *testing.T) {
 			ctx := context.Background()
 			rs := backend.setup(t).read
 			branch := domain.BranchID(uuid.New())
-			for scope, branchID := range map[string]domain.BranchID{"main": domain.MainBranchID, "branch": branch} {
+			var mainPeople []repository.PersonReadModel
+			for _, scope := range []struct {
+				name     string
+				branchID domain.BranchID
+			}{{"main", domain.MainBranchID}, {"branch", branch}} {
+				scope, branchID := scope.name, scope.branchID
 				people := saveParityPeople(t, ctx, rs, branchID)
+				// The branch sees the mainline's people as well as its own.
+				inScope := append(slices.Clone(mainPeople), people...)
+				if branchID.IsMain() {
+					mainPeople = people
+				}
 				for name, v := range parityPrivacies {
 					want := shownNames(v, people)
+					checkParityAggregates(t, ctx, rs, branchID, v, inScope, mainPeople, scope+", "+name)
 					list := repository.ListOptions{Limit: 100, BranchID: branchID, Privacy: v}
 					got := map[string][]string{}
 					page, total, err := rs.ListPersons(ctx, list)
@@ -166,6 +182,99 @@ func TestPrivacy_GoAndSQLFormsAgree(t *testing.T) {
 			}
 		})
 	}
+}
+
+// checkParityAggregates checks that the browse and map aggregates over
+// branchID leave out the people v protects, counts included: inScope are the
+// table's people branchID sees, mainPeople those on the mainline, where brick
+// walls are kept.
+func checkParityAggregates(t *testing.T, ctx context.Context, rs repository.ReadModelStore, branchID domain.BranchID,
+	v repository.Privacy, inScope, mainPeople []repository.PersonReadModel, label string) {
+	t.Helper()
+	shown := len(shownNames(v, inScope))
+
+	surnames, _, err := rs.GetSurnameIndex(ctx, branchID, v)
+	if err != nil {
+		t.Fatalf("GetSurnameIndex: %v", err)
+	}
+	if got := surnameCount(surnames); got != shown {
+		t.Errorf("%s, GetSurnameIndex: %s counts %d, want %d", label, paritySurname, got, shown)
+	}
+	byLetter, err := rs.GetSurnamesByLetter(ctx, branchID, "P", v)
+	if err != nil {
+		t.Fatalf("GetSurnamesByLetter: %v", err)
+	}
+	if got := surnameCount(byLetter); got != shown {
+		t.Errorf("%s, GetSurnamesByLetter: %s counts %d, want %d", label, paritySurname, got, shown)
+	}
+
+	cemeteries, err := rs.GetCemeteryIndex(ctx, branchID, v)
+	if err != nil {
+		t.Fatalf("GetCemeteryIndex: %v", err)
+	}
+	got := 0
+	for _, c := range cemeteries {
+		if c.Place == parityCemetery {
+			got = c.Count
+		}
+	}
+	if got != shown {
+		t.Errorf("%s, GetCemeteryIndex: %s counts %d, want %d", label, parityCemetery, got, shown)
+	}
+
+	// Each person dies in a place of their own under Paritytown, so the
+	// places listed under it are the shown people's given names. The memory
+	// store lists every place in full, so the places are told apart by their
+	// full names.
+	places, err := rs.GetPlaceHierarchy(ctx, branchID, parityPlace, v)
+	if err != nil {
+		t.Fatalf("GetPlaceHierarchy: %v", err)
+	}
+	var placeNames []string
+	for _, p := range places {
+		if given, ok := strings.CutSuffix(p.FullName, ", "+parityPlace); ok {
+			placeNames = append(placeNames, given)
+		}
+	}
+	slices.Sort(placeNames)
+	if want := slices.Compact(shownNames(v, inScope)); !slices.Equal(placeNames, want) {
+		t.Errorf("%s, GetPlaceHierarchy under %s: %v, want %v", label, parityPlace, placeNames, want)
+	}
+
+	locations, err := rs.GetMapLocations(ctx, branchID, v)
+	if err != nil {
+		t.Fatalf("GetMapLocations: %v", err)
+	}
+	pinned := 0
+	for _, loc := range locations {
+		if loc.Count != len(loc.Persons) {
+			t.Errorf("%s, GetMapLocations: %s counts %d of %d people", label, loc.Place, loc.Count, len(loc.Persons))
+		}
+		if loc.EventType == "death" {
+			pinned += loc.Count
+		}
+	}
+	if pinned != shown {
+		t.Errorf("%s, GetMapLocations: %d death pins, want %d", label, pinned, shown)
+	}
+
+	walls, err := rs.GetBrickWalls(ctx, true, v)
+	if err != nil {
+		t.Fatalf("GetBrickWalls: %v", err)
+	}
+	if want := len(shownNames(v, mainPeople)); len(walls) != want {
+		t.Errorf("%s, GetBrickWalls: %d, want %d (brick walls are kept on the mainline)", label, len(walls), want)
+	}
+}
+
+// surnameCount is the count of paritySurname in a surname index.
+func surnameCount(entries []repository.SurnameEntry) int {
+	for _, e := range entries {
+		if e.Surname == paritySurname {
+			return e.Count
+		}
+	}
+	return 0
 }
 
 // A branch that marks a mainline person private hides them on that branch

@@ -471,7 +471,7 @@ func TestPrivacy_StoresKeepRestrictionAndLivingFacts(t *testing.T) {
 				if err != nil || len(searched) != 1 || searched[0].LivingRefDate == nil || searched[0].Restriction != person.Restriction {
 					t.Errorf("search = %+v, %v; want the person with its privacy fields", searched, err)
 				}
-				locations, err := rs.GetMapLocations(ctx, branch)
+				locations, err := rs.GetMapLocations(ctx, branch, repository.Privacy{})
 				if err != nil || len(locations) != 1 {
 					t.Fatalf("map locations = %+v, %v; want the death place", locations, err)
 				}

@@ -87,7 +87,7 @@ func TestRebuildReadModel_KeepsBrickWalls(t *testing.T) {
 	if err := h.ResolveBrickWall(ctx, broken.ID); err != nil {
 		t.Fatalf("resolve brick wall: %v", err)
 	}
-	before, err := s.read.GetBrickWalls(ctx, true)
+	before, err := s.read.GetBrickWalls(ctx, true, repository.Privacy{})
 	if err != nil || len(before) != 2 {
 		t.Fatalf("brick walls before rebuild = %+v, %v; want 2", before, err)
 	}
@@ -102,7 +102,7 @@ func TestRebuildReadModel_KeepsBrickWalls(t *testing.T) {
 	if result.BackfilledBrickWalls != 0 {
 		t.Errorf("BackfilledBrickWalls = %d, want 0 for logged brick walls", result.BackfilledBrickWalls)
 	}
-	after, err := s.read.GetBrickWalls(ctx, true)
+	after, err := s.read.GetBrickWalls(ctx, true, repository.Privacy{})
 	if err != nil {
 		t.Fatalf("brick walls after rebuild: %v", err)
 	}

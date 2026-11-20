@@ -56,7 +56,7 @@ func runMapCoordinateScenario(t *testing.T, store repository.ReadModelStore) {
 		}
 	}
 
-	got, err := store.GetMapLocations(ctx, domain.MainBranchID)
+	got, err := store.GetMapLocations(ctx, domain.MainBranchID, repository.Privacy{})
 	if err != nil {
 		t.Fatalf("GetMapLocations: %v", err)
 	}

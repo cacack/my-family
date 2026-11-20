@@ -1221,8 +1221,8 @@ func personOverlaySubquery(branchID domain.BranchID, privacy repository.Privacy)
 // FROM, the args bound once for the CTE, and the args bound at each FROM reference.
 // Exactly one of cteArgs/legArgs is non-empty, so callers interleave both in
 // statement order.
-func personOverlayCTE(branchID domain.BranchID) (withClause, src string, cteArgs, legArgs []any) {
-	sub, args := personOverlaySubquery(branchID, repository.Privacy{})
+func personOverlayCTE(branchID domain.BranchID, privacy repository.Privacy) (withClause, src string, cteArgs, legArgs []any) {
+	sub, args := personOverlaySubquery(branchID, privacy)
 	if branchID.IsMain() {
 		return "WITH ", sub, nil, args
 	}
@@ -4976,8 +4976,8 @@ func nullIntPtr(v sql.NullInt64) *int {
 // GetSurnameIndex returns unique surnames with counts and letter counts within
 // the branch overlay (ADR-005 / #756): a branch sees its own shadow rows in place
 // of main's and never counts a tombstoned person.
-func (s *ReadModelStore) GetSurnameIndex(ctx context.Context, branchID domain.BranchID) ([]repository.SurnameEntry, []repository.LetterCount, error) {
-	overlay, overlayArgs := personOverlaySubquery(branchID, repository.Privacy{})
+func (s *ReadModelStore) GetSurnameIndex(ctx context.Context, branchID domain.BranchID, privacy repository.Privacy) ([]repository.SurnameEntry, []repository.LetterCount, error) {
+	overlay, overlayArgs := personOverlaySubquery(branchID, privacy)
 
 	// Get surname counts
 	// #nosec G202 -- overlay is one of two constant subquery literals returned by personOverlaySubquery; every value is a bound ? placeholder
@@ -5032,8 +5032,8 @@ func (s *ReadModelStore) GetSurnameIndex(ctx context.Context, branchID domain.Br
 
 // GetSurnamesByLetter returns surnames starting with a specific letter within the
 // branch overlay (ADR-005 / #756).
-func (s *ReadModelStore) GetSurnamesByLetter(ctx context.Context, branchID domain.BranchID, letter string) ([]repository.SurnameEntry, error) {
-	overlay, overlayArgs := personOverlaySubquery(branchID, repository.Privacy{})
+func (s *ReadModelStore) GetSurnamesByLetter(ctx context.Context, branchID domain.BranchID, letter string, privacy repository.Privacy) ([]repository.SurnameEntry, error) {
+	overlay, overlayArgs := personOverlaySubquery(branchID, privacy)
 
 	args := append(append([]any{}, overlayArgs...), letter)
 	// #nosec G202 -- overlay is one of two constant subquery literals returned by personOverlaySubquery; every value is a bound ? placeholder
@@ -5112,11 +5112,11 @@ func (s *ReadModelStore) GetPersonsBySurname(ctx context.Context, surname string
 // Scoped to the branch overlay (ADR-005 / #756): the birth-place and death-place
 // legs of each UNION both read the overlay, so a branch sees its own places and
 // tombstoned persons contribute none.
-func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, branchID domain.BranchID, parent string) ([]repository.PlaceEntry, error) {
+func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, branchID domain.BranchID, parent string, privacy repository.Privacy) ([]repository.PlaceEntry, error) {
 	var rows *sql.Rows
 	var err error
 
-	withClause, src, cteArgs, legArgs := personOverlayCTE(branchID)
+	withClause, src, cteArgs, legArgs := personOverlayCTE(branchID, privacy)
 
 	if parent == "" {
 		// Top-level: get unique countries/top-level places (rightmost part after last comma).
@@ -5285,17 +5285,25 @@ func (s *ReadModelStore) GetPersonsByPlace(ctx context.Context, place string, op
 // counted over branchID's overlay of life events (ADR-005, #757). A branch that
 // tombstoned a person also tombstoned that person's life events (DeletePerson's
 // cascade), so the counts agree with GetPersonsByCemetery on the same scope.
-func (s *ReadModelStore) GetCemeteryIndex(ctx context.Context, branchID domain.BranchID) ([]repository.CemeteryEntry, error) {
+// When privacy protects anyone, the events join the people it shows, so a
+// protected owner is not counted (ADR-008).
+func (s *ReadModelStore) GetCemeteryIndex(ctx context.Context, branchID domain.BranchID, privacy repository.Privacy) ([]repository.CemeteryEntry, error) {
 	sub, args := factOverlaySubquery("life_events", "fact_type IN (?, ?)",
 		[]any{string(domain.FactPersonBurial), string(domain.FactPersonCremation)}, branchID)
-	// #nosec G202 -- sub is built from package constants; every value is a bound ? placeholder
+	shownOwners := ""
+	if !privacy.SeesAll() {
+		overlay, overlayArgs := personOverlaySubquery(branchID, privacy)
+		shownOwners = " INNER JOIN " + overlay + " p ON p.id = e.owner_id"
+		args = append(args, overlayArgs...)
+	}
+	// #nosec G202 -- sub and shownOwners are built from package constants; every value is a bound ? placeholder
 	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT place, COUNT(DISTINCT owner_id) as count
-		FROM `+sub+` e
-		WHERE place != '' AND place IS NOT NULL
-		GROUP BY place
-		ORDER BY place ASC
+		SELECT e.place, COUNT(DISTINCT e.owner_id) as count
+		FROM `+sub+` e`+shownOwners+`
+		WHERE e.place != '' AND e.place IS NOT NULL
+		GROUP BY e.place
+		ORDER BY e.place ASC
 	`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query cemetery index: %w", err)
@@ -5370,8 +5378,8 @@ func (s *ReadModelStore) GetPersonsByCemetery(ctx context.Context, place string,
 
 // GetMapLocations returns aggregated geographic locations from person birth/death
 // coordinates within the branch overlay (ADR-005 / #756).
-func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.BranchID) ([]repository.MapLocation, error) {
-	overlay, overlayArgs := personOverlaySubquery(branchID, repository.Privacy{})
+func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.BranchID, privacy repository.Privacy) ([]repository.MapLocation, error) {
+	overlay, overlayArgs := personOverlaySubquery(branchID, privacy)
 
 	// Query birth locations
 	// #nosec G202 -- overlay is one of two constant subquery literals returned by personOverlaySubquery; every value is a bound ? placeholder
@@ -5517,12 +5525,14 @@ func scanMapPerson(rows *sql.Rows) (person repository.MapPerson, place, lat, lon
 // predicate: without it, it would list shadows and tombstones as extra people (BR-003).
 
 // GetBrickWalls returns persons with brick wall status (main only).
-func (s *ReadModelStore) GetBrickWalls(ctx context.Context, includeResolved bool) ([]repository.BrickWallEntry, error) {
+func (s *ReadModelStore) GetBrickWalls(ctx context.Context, includeResolved bool, privacy repository.Privacy) ([]repository.BrickWallEntry, error) {
+	// Protected people are excluded in the query (ADR-008 §5).
+	// #nosec G202 -- personPrivacySQL is built from package constants and a server-computed date, not user input
 	query := `
 		SELECT id, full_name, brick_wall_note, brick_wall_since, brick_wall_resolved_at
 		FROM persons
 		WHERE branch_id = ? AND deleted = 0
-		  AND brick_wall_since IS NOT NULL AND brick_wall_since != ''`
+		  AND brick_wall_since IS NOT NULL AND brick_wall_since != ''` + personPrivacySQL(privacy)
 	if !includeResolved {
 		query += ` AND (brick_wall_resolved_at IS NULL OR brick_wall_resolved_at = '')`
 	}

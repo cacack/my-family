@@ -205,9 +205,11 @@ media) when the owner turns **Viewers see living people** off; editors and owner
 A family with a protected partner keeps its shape but hides its own facts. Protected people are
 left out of person lists and searches, totals included, and media of protected people and private
 media return 404, file and thumbnail included, and so does the change history of a private person
-or of a family with a protected partner; a living placeholder's history is empty. Private sources,
-citations and notes, the browse indexes, the map, evidence, exports and the global change history
-are not redacted yet: every role still sees them ([ADR-008](./docs/adr/008-privacy-model.md), #1412).
+or of a family with a protected partner; a living placeholder's history is empty. The surname,
+place and cemetery indexes, the map, brick walls, statistics, the discovery feed and the quality
+overview and report leave protected people out, counts included. Private sources, citations and
+notes, evidence, duplicate dismissals, exports and the global change history are not redacted
+yet: every role still sees them ([ADR-008](./docs/adr/008-privacy-model.md), #1412).
 
 The app marks a living or private person with a **Living** or **Private** badge on their page and
 person cards, in search results, on the pedigree and descendancy charts, on the family group

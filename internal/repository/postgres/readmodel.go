@@ -4615,8 +4615,8 @@ func resolvedPersonsSrc(cols string, branchID domain.BranchID, privacy repositor
 // Returns the WITH head, the source to read FROM, the leading query args, and the next
 // free $-placeholder number. The args are the same either way -- $-placeholders are
 // reused, not repeated, so hoisting does not change the arg list.
-func resolvedPersonsCTE(cols string, branchID domain.BranchID) (string, string, []any, int) {
-	src, args, n := resolvedPersonsSrc(cols, branchID, repository.Privacy{})
+func resolvedPersonsCTE(cols string, branchID domain.BranchID, privacy repository.Privacy) (string, string, []any, int) {
+	src, args, n := resolvedPersonsSrc(cols, branchID, privacy)
 	if branchID.IsMain() {
 		return "WITH ", src, args, n
 	}
@@ -4625,9 +4625,9 @@ func resolvedPersonsCTE(cols string, branchID domain.BranchID) (string, string, 
 
 // GetSurnameIndex returns all unique surnames with counts and letter counts,
 // resolved through the branch overlay (ADR-005).
-func (s *ReadModelStore) GetSurnameIndex(ctx context.Context, branchID domain.BranchID) ([]repository.SurnameEntry, []repository.LetterCount, error) {
+func (s *ReadModelStore) GetSurnameIndex(ctx context.Context, branchID domain.BranchID, privacy repository.Privacy) ([]repository.SurnameEntry, []repository.LetterCount, error) {
 	// Both queries read the same resolved source so the counts agree on scope.
-	src, args, _ := resolvedPersonsSrc("surname", branchID, repository.Privacy{})
+	src, args, _ := resolvedPersonsSrc("surname", branchID, privacy)
 
 	// Get surname counts
 	// #nosec G201 G202 -- src is an internal SQL fragment carrying only $-placeholders, not user input
@@ -4684,8 +4684,8 @@ func (s *ReadModelStore) GetSurnameIndex(ctx context.Context, branchID domain.Br
 
 // GetSurnamesByLetter returns surnames starting with a specific letter, resolved
 // through the branch overlay (ADR-005).
-func (s *ReadModelStore) GetSurnamesByLetter(ctx context.Context, branchID domain.BranchID, letter string) ([]repository.SurnameEntry, error) {
-	src, args, n := resolvedPersonsSrc("surname", branchID, repository.Privacy{})
+func (s *ReadModelStore) GetSurnamesByLetter(ctx context.Context, branchID domain.BranchID, letter string, privacy repository.Privacy) ([]repository.SurnameEntry, error) {
+	src, args, n := resolvedPersonsSrc("surname", branchID, privacy)
 
 	// #nosec G201 -- src/n are internal SQL fragments; letter stays a bound parameter
 	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
@@ -4770,7 +4770,7 @@ func placeNormSQL(expr string) string {
 // GetPlaceHierarchy returns places at a given level in the hierarchy.
 // Places are parsed from comma-separated strings like "City, County, State, Country"
 // working from right to left (Country is top level); blank parts are skipped.
-func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, branchID domain.BranchID, parent string) ([]repository.PlaceEntry, error) {
+func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, branchID domain.BranchID, parent string, privacy repository.Privacy) ([]repository.PlaceEntry, error) {
 	var rows *sql.Rows
 	var err error
 
@@ -4778,7 +4778,7 @@ func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, branchID domain.
 	// into a `resolved` CTE so both UNION legs share one resolution pass; main keeps the
 	// inline indexed filter. Either way the UNION is branch-scoped end to end (ADR-005).
 	// Names sort with the "C" collation so the order is bytewise, as it is on SQLite.
-	withClause, src, args, n := resolvedPersonsCTE("birth_place, death_place", branchID)
+	withClause, src, args, n := resolvedPersonsCTE("birth_place, death_place", branchID, privacy)
 
 	if parent == "" {
 		// Top-level: get unique countries/top-level places (rightmost part after last comma)
@@ -4945,19 +4945,27 @@ const cemeteryEventCols = `owner_id, fact_type, place`
 // counted over branchID's overlay of life events (ADR-005, #757). A branch that
 // tombstoned a person also tombstoned that person's life events (DeletePerson's
 // cascade), so the counts agree with GetPersonsByCemetery on the same scope.
-func (s *ReadModelStore) GetCemeteryIndex(ctx context.Context, branchID domain.BranchID) ([]repository.CemeteryEntry, error) {
+// When privacy protects anyone, the events join the people it shows, so a
+// protected owner is not counted (ADR-008). resolvedPersonsSrc and overlaySrc
+// bind the same leading args, so both sources share $1 (and $2 off main).
+func (s *ReadModelStore) GetCemeteryIndex(ctx context.Context, branchID domain.BranchID, privacy repository.Privacy) ([]repository.CemeteryEntry, error) {
 	args, n := overlayArgs(branchID)
 	src := overlaySrc("life_events", cemeteryEventCols, fmt.Sprintf("fact_type IN ($%d, $%d)", n, n+1), branchID)
 	args = append(args, string(domain.FactPersonBurial), string(domain.FactPersonCremation))
+	shownOwners := ""
+	if !privacy.SeesAll() {
+		people, _, _ := resolvedPersonsSrc("id", branchID, privacy)
+		shownOwners = " INNER JOIN " + people + " p ON p.id = e.owner_id"
+	}
 
-	// #nosec G202 -- src is built from package constants carrying only $-placeholders
+	// #nosec G202 -- src and shownOwners are built from package constants carrying only $-placeholders
 	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT place, COUNT(DISTINCT owner_id) as count
-		FROM `+src+` e
-		WHERE place != '' AND place IS NOT NULL
-		GROUP BY place
-		ORDER BY place ASC
+		SELECT e.place, COUNT(DISTINCT e.owner_id) as count
+		FROM `+src+` e`+shownOwners+`
+		WHERE e.place != '' AND e.place IS NOT NULL
+		GROUP BY e.place
+		ORDER BY e.place ASC
 	`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query cemetery index: %w", err)
@@ -5053,9 +5061,9 @@ func scanMapPerson(rows *sql.Rows) (person repository.MapPerson, place, lat, lon
 
 // GetMapLocations returns aggregated geographic locations from person birth/death
 // coordinates, resolved through the branch overlay (ADR-005).
-func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.BranchID) ([]repository.MapLocation, error) {
+func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.BranchID, privacy repository.Privacy) ([]repository.MapLocation, error) {
 	// Query birth locations — individual rows, aggregate in Go
-	birthSrc, birthArgs, _ := resolvedPersonsSrc("id, given_name, surname, birth_place, birth_place_lat, birth_place_long, "+mapPrivacyCols, branchID, repository.Privacy{})
+	birthSrc, birthArgs, _ := resolvedPersonsSrc("id, given_name, surname, birth_place, birth_place_lat, birth_place_long, "+mapPrivacyCols, branchID, privacy)
 	// #nosec G201 G202 -- birthSrc is an internal SQL fragment carrying only $-placeholders, not user input
 	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 	rows, err := s.db.QueryContext(ctx, `
@@ -5102,7 +5110,7 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 	}
 
 	// Query death locations
-	deathSrc, deathArgs, _ := resolvedPersonsSrc("id, given_name, surname, death_place, death_place_lat, death_place_long, "+mapPrivacyCols, branchID, repository.Privacy{})
+	deathSrc, deathArgs, _ := resolvedPersonsSrc("id, given_name, surname, death_place, death_place_lat, death_place_long, "+mapPrivacyCols, branchID, privacy)
 	// #nosec G201 G202 -- deathSrc is an internal SQL fragment carrying only $-placeholders, not user input
 	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 	rows2, err := s.db.QueryContext(ctx, `
@@ -5163,11 +5171,13 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 // follow-up under #676), so this is main-pinned: a branch shadow row must not
 // surface as a second entry for the same person, and a main row is never a
 // tombstone (see DeletePerson).
-func (s *ReadModelStore) GetBrickWalls(ctx context.Context, includeResolved bool) ([]repository.BrickWallEntry, error) {
+func (s *ReadModelStore) GetBrickWalls(ctx context.Context, includeResolved bool, privacy repository.Privacy) ([]repository.BrickWallEntry, error) {
+	// Protected people are excluded in the query (ADR-008 §5).
+	// #nosec G202 -- personPrivacySQL is built from package constants and a server-computed date, not user input
 	query := `
 		SELECT id, full_name, brick_wall_note, brick_wall_since, brick_wall_resolved_at
 		FROM persons
-		WHERE branch_id = $1 AND NOT deleted AND brick_wall_since IS NOT NULL`
+		WHERE branch_id = $1 AND NOT deleted AND brick_wall_since IS NOT NULL` + personPrivacySQL(privacy)
 	if !includeResolved {
 		query += ` AND brick_wall_resolved_at IS NULL`
 	}
