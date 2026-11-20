@@ -19,9 +19,11 @@
 	interface Props {
 		/** Tells screen readers that a link was revoked. */
 		announce?: (message: string) => void;
+		/** Called with a link's ID once it is no longer pending: revoked here, or gone meanwhile. */
+		onrevoke?: (id: string) => void;
 	}
 
-	let { announce }: Props = $props();
+	let { announce, onrevoke }: Props = $props();
 
 	/** A pending link as listed: what it is, who issued it, and how to revoke it. */
 	interface Row {
@@ -99,12 +101,14 @@
 			await row.revoke();
 			invites = invites.filter((r) => r.id !== row.id);
 			resets = resets.filter((r) => r.id !== row.id);
+			onrevoke?.(row.id);
 			announce?.(`${row.title} revoked`);
 		} catch (e) {
 			const apiError = e as ApiError;
 			if (apiError.status === 404) {
 				// Used, expired or revoked meanwhile: it is no longer pending.
 				await reload();
+				onrevoke?.(row.id);
 				announce?.(`${row.title} was no longer pending`);
 			} else {
 				rowErrors[row.id] = apiError.message || 'Could not revoke the link. Try again.';

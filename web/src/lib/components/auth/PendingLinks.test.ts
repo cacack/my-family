@@ -77,9 +77,10 @@ describe('PendingLinks', () => {
 
 	it('revokes an invite and a reset, and announces each', async () => {
 		const announce = vi.fn();
+		const onrevoke = vi.fn();
 		api.revokeInvite.mockResolvedValue(undefined);
 		api.revokePasswordReset.mockResolvedValue(undefined);
-		render(PendingLinks, { announce });
+		render(PendingLinks, { announce, onrevoke });
 		await waitFor(() => expect(screen.getAllByTestId('pending-link')).toHaveLength(3));
 
 		await fireEvent.click(
@@ -88,6 +89,7 @@ describe('PendingLinks', () => {
 		expect(api.revokeInvite).toHaveBeenCalledWith('invite-hash');
 		await waitFor(() => expect(screen.getByText('No invite links are pending.')).toBeDefined());
 		expect(announce).toHaveBeenCalledWith('Editor invite revoked');
+		expect(onrevoke).toHaveBeenCalledWith('invite-hash');
 
 		await fireEvent.click(
 			within(item('Created by Ada')).getByRole('button', { name: /^Revoke password reset for grace/ })
@@ -95,6 +97,7 @@ describe('PendingLinks', () => {
 		expect(api.revokePasswordReset).toHaveBeenCalledWith('reset-hash');
 		await waitFor(() => expect(screen.getAllByTestId('pending-link')).toHaveLength(1));
 		expect(announce).toHaveBeenCalledWith('Password reset for Grace revoked');
+		expect(onrevoke).toHaveBeenLastCalledWith('reset-hash');
 	});
 
 	it('reloads when a link was no longer pending', async () => {
@@ -103,21 +106,25 @@ describe('PendingLinks', () => {
 			code: 'NOT_FOUND',
 			message: 'No such invite is pending'
 		});
-		render(PendingLinks);
+		const onrevoke = vi.fn();
+		render(PendingLinks, { onrevoke });
 		await waitFor(() => expect(screen.getAllByTestId('pending-link')).toHaveLength(3));
 		api.listInvites.mockResolvedValue([]);
 		await fireEvent.click(within(item('Editor invite')).getByRole('button', { name: /^Revoke/ }));
 		expect(await screen.findByText('No invite links are pending.')).toBeDefined();
 		expect(screen.queryByRole('alert')).toBeNull();
+		await waitFor(() => expect(onrevoke).toHaveBeenCalledWith('invite-hash'));
 	});
 
 	it('shows a failed revoke beside the link', async () => {
+		const onrevoke = vi.fn();
 		api.revokeInvite.mockRejectedValue({ status: 500, message: '' });
-		render(PendingLinks);
+		render(PendingLinks, { onrevoke });
 		await waitFor(() => expect(screen.getAllByTestId('pending-link')).toHaveLength(3));
 		await fireEvent.click(within(item('Editor invite')).getByRole('button', { name: /^Revoke/ }));
 		const alert = await within(item('Editor invite')).findByRole('alert');
 		expect(alert.textContent).toContain('Could not revoke the link');
+		expect(onrevoke).not.toHaveBeenCalled();
 	});
 
 	it('offers a retry when the links fail to load', async () => {
