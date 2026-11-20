@@ -140,6 +140,15 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 		return nil, fmt.Errorf("failed to list families: %w", err)
 	}
 
+	children, err := exp.readStore.ListAllFamilyChildren(ctx, domain.MainBranchID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list family children: %w", err)
+	}
+	persons, err = withFamilyMembers(ctx, exp.readStore, persons, families, children)
+	if err != nil {
+		return nil, err
+	}
+
 	// Get all sources
 	sources, err := repository.ListAll(ctx, 1000, exp.readStore.ListSources)
 	if err != nil {
@@ -326,10 +335,7 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 		}
 	}
 
-	childLinks, err := childFamilyLinks(ctx, exp.readStore, familyXrefs)
-	if err != nil {
-		return nil, err
-	}
+	childLinks := childFamilyLinks(children, familyXrefs)
 	spouseFamilies := spouseLinks(families, familyXrefs)
 
 	// Add individual records
@@ -582,11 +588,7 @@ var childPedigrees = map[domain.ChildRelationType]string{
 // in both directions, so each CHIL has a FAMC pointing back (#1374). PEDI is
 // set only for an adopted or foster child; without it an imported adopted
 // child came back biological (#622).
-func childFamilyLinks(ctx context.Context, readStore repository.ReadModelStore, familyXrefs map[uuid.UUID]string) (map[uuid.UUID][]gedcom.FamilyLink, error) {
-	children, err := readStore.ListAllFamilyChildren(ctx, domain.MainBranchID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list family children: %w", err)
-	}
+func childFamilyLinks(children []repository.FamilyChildReadModel, familyXrefs map[uuid.UUID]string) map[uuid.UUID][]gedcom.FamilyLink {
 	links := map[uuid.UUID][]gedcom.FamilyLink{}
 	for _, c := range children {
 		xref := familyXrefs[c.FamilyID]
@@ -598,7 +600,47 @@ func childFamilyLinks(ctx context.Context, readStore repository.ReadModelStore, 
 	for _, l := range links {
 		sort.Slice(l, func(i, j int) bool { return l[i].FamilyXRef < l[j].FamilyXRef })
 	}
-	return links, nil
+	return links
+}
+
+// withFamilyMembers returns persons with each partner and child of families
+// that persons leave out. A person list leaves out the people the principal
+// may not see, but a family still needs their slot (ADR-008 §3), so they are
+// read by ID, which the privacy decorator answers with their placeholders:
+// each is written as an INDI with the name "Living", its sex and its family
+// links, and the family keeps its shape. children are the family-child links
+// of every family, of which only those of families count.
+func withFamilyMembers(ctx context.Context, rs repository.ReadModelStore, persons []repository.PersonReadModel, families []repository.FamilyReadModel, children []repository.FamilyChildReadModel) ([]repository.PersonReadModel, error) {
+	listed := make(map[uuid.UUID]bool, len(persons))
+	for _, p := range persons {
+		listed[p.ID] = true
+	}
+	var missing []uuid.UUID
+	need := func(id *uuid.UUID) {
+		if id != nil && !listed[*id] {
+			listed[*id] = true
+			missing = append(missing, *id)
+		}
+	}
+	exported := make(map[uuid.UUID]bool, len(families))
+	for _, f := range families {
+		exported[f.ID] = true
+		need(f.Partner1ID)
+		need(f.Partner2ID)
+	}
+	for _, c := range children {
+		if exported[c.FamilyID] {
+			need(&c.PersonID)
+		}
+	}
+	if len(missing) == 0 {
+		return persons, nil
+	}
+	members, err := rs.GetPersonsByIDs(ctx, domain.MainBranchID, missing)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read family members: %w", err)
+	}
+	return append(persons, members...), nil
 }
 
 // spouseLinks returns, per person, a FAMS link for each family the person is

@@ -461,7 +461,7 @@ decorator, b = event-output redactor, — = no tree data. "Protected" means a pl
 
 | Operation | Path | Returns | Source | Choke | Special handling |
 |-----------|------|---------|--------|-------|------------------|
-| exportGedcom | GET /gedcom/export | GEDCOM file | RM | a | Writes `RESN`; side tables follow owner protection |
+| exportGedcom | GET /gedcom/export | GEDCOM file | RM | a | Writes `RESN`; a protected or private person an exported family links to is written as the placeholder (an `INDI` with the name "Living", the sex and the family links); side tables follow owner protection |
 | previewGedcomExport | GET /gedcom/export/preview | GEDCOM preview | RM | a | As exportGedcom |
 | exportTree | GET /export/tree | JSON tree | RM | a | Side tables follow owner protection |
 | exportPersons | GET /export/persons | CSV/JSON people | RM | a | As exportTree |
