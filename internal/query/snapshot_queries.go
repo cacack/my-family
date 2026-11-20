@@ -216,7 +216,8 @@ func (s *SnapshotService) CompareSnapshotToPosition(ctx context.Context, branchI
 //
 // A branch snapshot is taken after its branch forked, so both ends of the range
 // are at or after the fork and nothing before base_position is ever in range.
-// Other branches' events never appear.
+// Other branches' events never appear. The changes are redacted for the
+// principal on ctx (changeRedactor), so every comparison is.
 func (s *SnapshotService) changesBetween(ctx context.Context, branchID domain.BranchID, from, to int64) ([]ChangeEntry, bool, error) {
 	if to <= from {
 		return []ChangeEntry{}, false, nil
@@ -234,7 +235,8 @@ func (s *SnapshotService) changesBetween(ctx context.Context, branchID domain.Br
 		if err != nil {
 			return nil, false, fmt.Errorf("transform events: %w", err)
 		}
-		return changes, cut < to, nil
+		changes, err = s.historyService.redactor.entries(ctx, []domain.BranchID{branchID}, changes)
+		return changes, cut < to, err
 	}
 
 	ownEvents, err := s.eventStore.ReadBranch(ctx, branchID, from, maxComparisonEvents)
@@ -272,7 +274,8 @@ func (s *SnapshotService) changesBetween(ctx context.Context, branchID domain.Br
 	for i := range changes {
 		changes[i].Origin = origins[changes[i].ID]
 	}
-	return changes, cut < to, nil
+	changes, err = s.historyService.redactor.entries(ctx, []domain.BranchID{branchID}, changes)
+	return changes, cut < to, err
 }
 
 // inheritedMainEvents filters mainline events in the range (from, cut] down to

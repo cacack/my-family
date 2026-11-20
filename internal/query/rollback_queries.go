@@ -28,13 +28,17 @@ var ErrNoEvents = errors.New("no events found for entity")
 type RollbackService struct {
 	eventStore repository.EventStore
 	readStore  repository.ReadModelStore
+	redactor   changeRedactor
 }
 
-// NewRollbackService creates a new rollback query service.
+// NewRollbackService creates a new rollback query service. Its restore points
+// are redacted for the principal on the context only when readStore is the
+// privacy decorator itself (see NewHistoryService).
 func NewRollbackService(eventStore repository.EventStore, readStore repository.ReadModelStore) *RollbackService {
 	return &RollbackService{
 		eventStore: eventStore,
 		readStore:  readStore,
+		redactor:   redactorFor(readStore),
 	}
 }
 
@@ -132,13 +136,13 @@ func (s *RollbackService) GetRestorePoints(ctx context.Context, entityType strin
 	// Apply pagination
 	start := offset
 	if start >= len(allPoints) {
-		return &RestorePointsResult{
+		return s.redactor.restorePoints(ctx, strings.ToLower(entityType), entityID, &RestorePointsResult{
 			RestorePoints: []RestorePoint{},
 			TotalCount:    totalCount,
 			HasMore:       false,
 			Limit:         limit,
 			Offset:        offset,
-		}, nil
+		})
 	}
 
 	end := start + limit
@@ -146,13 +150,15 @@ func (s *RollbackService) GetRestorePoints(ctx context.Context, entityType strin
 		end = len(allPoints)
 	}
 
-	return &RestorePointsResult{
+	// The entity types are capitalized here ("Person"), lower case in the
+	// history's vocabulary the redactor speaks.
+	return s.redactor.restorePoints(ctx, strings.ToLower(entityType), entityID, &RestorePointsResult{
 		RestorePoints: allPoints[start:end],
 		TotalCount:    totalCount,
 		HasMore:       end < len(allPoints),
 		Limit:         limit,
 		Offset:        offset,
-	}, nil
+	})
 }
 
 // GetStateAtVersion reconstructs the entity state at a specific version.

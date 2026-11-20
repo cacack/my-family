@@ -219,8 +219,11 @@ notes are hidden too, and so are the citations, associations, LDS ordinances, ev
 and conflicts, research logs, proof summaries and duplicate dismissals of a protected person or
 of a family with a protected partner; a source counts only the citations shown, and validation
 issues and duplicate suggestions leave protected people out. A shared note is hidden when every
-record that points to it is hidden. Visitors do not see submitters. Exports and the global
-change history are not redacted yet ([ADR-008](./docs/adr/008-privacy-model.md), #1412).
+record that points to it is hidden. Visitors do not see submitters. The change log (history,
+restore points, snapshot and branch comparisons, merge review, the research archive and the
+evidence-coverage warning) leaves out the changes to protected and private records and names a
+person who no longer exists as **Living**; visitors are refused it, and never see who made a
+change. Exports are not redacted yet ([ADR-008](./docs/adr/008-privacy-model.md), #1412).
 
 The app marks a living or private person with a **Living** or **Private** badge on their page and
 person cards, in search results, on the pedigree and descendancy charts, on the family group

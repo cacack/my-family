@@ -1569,8 +1569,8 @@ func (ss *StrictServer) GetFamilyHistory(ctx context.Context, request GetFamilyH
 		return nil, err
 	}
 
-	// The event log is not redacted yet: it is not found when the family's
-	// own facts are hidden.
+	// A family whose own facts are hidden is not found here, as on its page;
+	// the history service redacts the entries of one that is shown.
 	hidden, err := ss.server.familyEventLogHidden(ctx, branchScopeID(branch), request.Id)
 	if err != nil {
 		return nil, err
@@ -1612,8 +1612,7 @@ func (ss *StrictServer) GetFamilyRestorePoints(ctx context.Context, request GetF
 		return GetFamilyRestorePoints409JSONResponse(errRollbackMainlineOnly), nil
 	}
 
-	// The event log is not redacted yet: it is not found when the family's
-	// own facts are hidden.
+	// A family whose own facts are hidden is not found here, as on its page.
 	hidden, err := ss.server.familyEventLogHidden(ctx, domain.MainBranchID, request.Id)
 	if err != nil {
 		return nil, err
@@ -2484,11 +2483,6 @@ func (ss *StrictServer) GetPersonHistory(ctx context.Context, request GetPersonH
 		offset = *request.Params.Offset
 	}
 
-	// The event log is not redacted yet: a protected person's is empty.
-	if person.Visibility != repository.Visible {
-		return GetPersonHistory200JSONResponse(convertHistoryResult(&query.ChangeHistoryResult{Limit: limit, Offset: offset})), nil
-	}
-
 	result, err := ss.server.historyService.GetEntityHistoryOn(ctx, branchScopeID(branch), "person", request.Id, limit, offset)
 	if err != nil {
 		return nil, err
@@ -2860,11 +2854,6 @@ func (ss *StrictServer) GetPersonRestorePoints(ctx context.Context, request GetP
 	}
 	if request.Params.Offset != nil {
 		offset = *request.Params.Offset
-	}
-
-	// The event log is not redacted yet: a protected person's is empty.
-	if person.Visibility != repository.Visible {
-		return GetPersonRestorePoints200JSONResponse(convertRestorePointsResult(&query.RestorePointsResult{Limit: limit, Offset: offset})), nil
 	}
 
 	result, err := ss.server.rollbackService.GetRestorePoints(ctx, "Person", request.Id, limit, offset)

@@ -144,7 +144,7 @@ func (s *BranchService) describeConflictValues(ctx context.Context, diff *branch
 	valued, refs := foldConflictSides(diff, conflicts, mainStreams, baseKnown)
 
 	branchID := domain.BranchID(diff.branch.ID)
-	desc := &historyDescription{states: map[uuid.UUID]*streamState{}}
+	desc := &historyDescription{states: map[uuid.UUID]*streamState{}, placeholderUnresolved: s.redactor().placeholderUnresolved(ctx)}
 	if desc.names, err = s.historyService.resolveEntityNamesOn(ctx, branchID, refs.named); err != nil {
 		return fmt.Errorf("resolve referenced names: %w", err)
 	}

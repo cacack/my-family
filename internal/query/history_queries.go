@@ -31,13 +31,20 @@ type HistoryService struct {
 	// userNames names who made each change (ADR-007). Optional: without it
 	// an entry carries only the user ID.
 	userNames UserNames
+	// redactor is the event-output choke point (ADR-008 §5b), shared by the
+	// services that describe events through this one.
+	redactor changeRedactor
 }
 
-// NewHistoryService creates a new history query service.
+// NewHistoryService creates a new history query service. It redacts what it
+// returns for the principal on the context (ADR-008 §5b) only when readStore
+// is the privacy decorator itself (*PrivacyStore, not a wrapper around it);
+// any other store, as the command handlers pass, returns the log unredacted.
 func NewHistoryService(eventStore repository.EventStore, readStore repository.ReadModelStore) *HistoryService {
 	return &HistoryService{
 		eventStore: eventStore,
 		readStore:  readStore,
+		redactor:   redactorFor(readStore),
 	}
 }
 
@@ -145,13 +152,13 @@ func (s *HistoryService) GetEntityHistory(ctx context.Context, entityType string
 		return nil, fmt.Errorf("transforming events: %w", err)
 	}
 
-	return &ChangeHistoryResult{
+	return s.redactor.entityHistory(ctx, []domain.BranchID{domain.MainBranchID}, entityType, entityID, &ChangeHistoryResult{
 		Entries:    entries,
 		TotalCount: page.TotalCount,
 		HasMore:    page.HasMore,
 		Limit:      limit,
 		Offset:     offset,
-	}, nil
+	})
 }
 
 // GetEntityHistoryOn retrieves an entity's change history as branchID sees it.
@@ -216,13 +223,13 @@ func (s *HistoryService) GetEntityHistoryOn(ctx context.Context, branchID domain
 		entries[i].Origin = origins[entries[i].ID]
 	}
 
-	return &ChangeHistoryResult{
+	return s.redactor.entityHistory(ctx, []domain.BranchID{branchID}, entityType, entityID, &ChangeHistoryResult{
 		Entries:    entries,
 		TotalCount: total,
 		HasMore:    end < total,
 		Limit:      limit,
 		Offset:     offset,
-	}, nil
+	})
 }
 
 // branchVisibleStreamEvents filters one stream's events (from ReadStream, which
@@ -301,13 +308,13 @@ func (s *HistoryService) GetGlobalHistory(ctx context.Context, input GetGlobalHi
 		return nil, fmt.Errorf("transforming events: %w", err)
 	}
 
-	return &ChangeHistoryResult{
+	return s.redactor.history(ctx, []domain.BranchID{domain.MainBranchID}, &ChangeHistoryResult{
 		Entries:    entries,
 		TotalCount: page.TotalCount,
 		HasMore:    page.HasMore,
 		Limit:      input.Limit,
 		Offset:     input.Offset,
-	}, nil
+	})
 }
 
 // transformStoredEvents converts raw StoredEvents to user-friendly ChangeEntries,

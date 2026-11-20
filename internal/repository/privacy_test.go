@@ -28,11 +28,11 @@ func TestPrivacyFor(t *testing.T) {
 		{"viewer who does not", Principal{Role: RoleViewer}, hideLiving,
 			Privacy{HidePrivate: true, HideLiving: true, LivingCutoff: time.Date(1936, time.November, 19, 0, 0, 0, 0, time.UTC)}},
 		{"anonymous visitor", Principal{Role: RoleViewer, Anonymous: true}, seeLiving,
-			Privacy{HidePrivate: true, HideLiving: true, LivingCutoff: time.Date(1916, time.November, 19, 0, 0, 0, 0, time.UTC), HideSubmitters: true}},
+			Privacy{HidePrivate: true, HideLiving: true, LivingCutoff: time.Date(1916, time.November, 19, 0, 0, 0, 0, time.UTC), HideSubmitters: true, HideAttribution: true}},
 		{"anonymous owner role", Principal{Role: RoleOwner, Anonymous: true}, seeLiving,
-			Privacy{HidePrivate: true, HideLiving: true, LivingCutoff: time.Date(1916, time.November, 19, 0, 0, 0, 0, time.UTC), HideSubmitters: true}},
+			Privacy{HidePrivate: true, HideLiving: true, LivingCutoff: time.Date(1916, time.November, 19, 0, 0, 0, 0, time.UTC), HideSubmitters: true, HideAttribution: true}},
 		{"no role", Principal{}, seeLiving,
-			Privacy{HidePrivate: true, HideLiving: true, LivingCutoff: time.Date(1916, time.November, 19, 0, 0, 0, 0, time.UTC), HideSubmitters: true}},
+			Privacy{HidePrivate: true, HideLiving: true, LivingCutoff: time.Date(1916, time.November, 19, 0, 0, 0, 0, time.UTC), HideSubmitters: true, HideAttribution: true}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
