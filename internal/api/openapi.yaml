@@ -7798,6 +7798,11 @@ components:
           $ref: '#/components/schemas/GenDate'
         death_place:
           type: string
+        redacted:
+          type: boolean
+          description: >-
+            Set on the placeholder shown instead of a person the caller may not
+            see (ADR-008 §3), as on Person. Omitted otherwise.
         relationship:
           type: string
           description: Human-readable relationship to subject

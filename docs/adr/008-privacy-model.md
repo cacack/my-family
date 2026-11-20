@@ -366,7 +366,7 @@ decorator, b = event-output redactor, — = no tree data. "Protected" means a pl
 |-----------|------|---------|--------|-------|------------------|
 | getPedigree | GET /pedigree/{id} | Ancestor tree | RM | a | Placeholders keep IDs and links and are marked redacted; a private family's parentage is a gap |
 | getDescendancy | GET /descendancy/{id} | Descendant tree | RM | a | As getPedigree |
-| getAhnentafel | GET /ahnentafel/{id} | Numbered ancestor report | RM | a | Numbering kept; placeholder entries carry no facts |
+| getAhnentafel | GET /ahnentafel/{id} | Numbered ancestor report | RM | a | Numbering kept; placeholder entries carry no facts and are marked redacted |
 | getRelationship | GET /relationship/{personId1}/{personId2} | Paths, labels, summary | RM | a | Path nodes and summary built from placeholder names; no path through a private family |
 
 ### Search, browse and map

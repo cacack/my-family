@@ -4420,6 +4420,8 @@ export interface components {
             birth_place?: string;
             death_date?: components["schemas"]["GenDate"];
             death_place?: string;
+            /** @description Set on the placeholder shown instead of a person the caller may not see (ADR-008 §3), as on Person. Omitted otherwise. */
+            redacted?: boolean;
             /**
              * @description Human-readable relationship to subject
              * @example Father's Father

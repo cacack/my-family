@@ -374,6 +374,20 @@ func TestPrivacyRedaction_ChartPlaceholders(t *testing.T) {
 				t.Errorf("pedigree(kid) = %v; want the living mother redacted %v, the dead one in full", kid, !p.seesLiving)
 			}
 
+			for _, e := range p.getJSON(t, f, "/api/v1/ahnentafel/"+tr.kid)["entries"].([]any) {
+				entry := e.(map[string]any)
+				switch entry["id"] {
+				case tr.living:
+					if redacted(entry) == p.seesLiving || (!p.seesLiving && entry["birth_date"] != nil) {
+						t.Errorf("ahnentafel living mother = %v; want redacted %v", entry, !p.seesLiving)
+					}
+				case tr.dead:
+					if redacted(entry) {
+						t.Errorf("ahnentafel dead parent = %v; want it in full", entry)
+					}
+				}
+			}
+
 			gus := p.getJSON(t, f, "/api/v1/pedigree/"+gus)["root"].(map[string]any)
 			if mother := parent(gus, tr.private); mother == nil || redacted(mother) == p.seesPrivate {
 				t.Errorf("pedigree(gus) = %v; want the private mother, redacted %v", gus, !p.seesPrivate)
