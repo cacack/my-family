@@ -232,6 +232,10 @@ type AccountStore interface {
 	// issued, so links from an owner who is disabled or demoted stop working.
 	DeleteLinksIssuedBy(ctx context.Context, userID uuid.UUID) error
 
+	// DeleteExpiredLinks removes every invite and password reset that expires
+	// at or before now, returning how many it removed.
+	DeleteExpiredLinks(ctx context.Context, now time.Time) (int, error)
+
 	// CreatePasswordReset stores reset.
 	CreatePasswordReset(ctx context.Context, reset *PasswordReset) error
 

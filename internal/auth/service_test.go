@@ -1,9 +1,11 @@
 package auth
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 	"testing"
@@ -420,6 +422,74 @@ func TestSignIn_DeletesExpiredSessions(t *testing.T) {
 	}
 	if _, err := store.GetSession(ctx, hashToken(stale)); !errors.Is(err, repository.ErrSessionNotFound) {
 		t.Error("sign-in left an expired session in the store")
+	}
+}
+
+func TestSignIn_DeletesExpiredLinks(t *testing.T) {
+	svc, store, c := newTestService(t)
+	ctx := context.Background()
+	owner, err := svc.CreateOwner(ctx, Actor{}, "ada", "Ada", testPassword)
+	if err != nil {
+		t.Fatalf("CreateOwner: %v", err)
+	}
+	now := c.Now()
+	for _, inv := range []*repository.Invite{
+		{TokenHash: "inv-old", TreeID: repository.DefaultTreeID, Role: repository.RoleViewer, CreatedBy: owner.ID, CreatedAt: now, ExpiresAt: now.Add(-time.Minute)},
+		{TokenHash: "inv-new", TreeID: repository.DefaultTreeID, Role: repository.RoleViewer, CreatedBy: owner.ID, CreatedAt: now, ExpiresAt: now.Add(time.Hour)},
+	} {
+		if err := store.CreateInvite(ctx, inv); err != nil {
+			t.Fatalf("CreateInvite: %v", err)
+		}
+	}
+	for _, r := range []*repository.PasswordReset{
+		{TokenHash: "r-old", UserID: owner.ID, CreatedAt: now, ExpiresAt: now.Add(-time.Minute)},
+		{TokenHash: "r-new", UserID: owner.ID, CreatedAt: now, ExpiresAt: now.Add(time.Hour)},
+	} {
+		if err := store.CreatePasswordReset(ctx, r); err != nil {
+			t.Fatalf("CreatePasswordReset: %v", err)
+		}
+	}
+	if _, _, err := svc.SignIn(ctx, "ada", testPassword, "ip"); err != nil {
+		t.Fatalf("SignIn: %v", err)
+	}
+	// Listing from before either expiry shows every row still stored.
+	before := now.Add(-time.Hour)
+	invites, _ := store.ListInvites(ctx, repository.DefaultTreeID, before)
+	if len(invites) != 1 || invites[0].TokenHash != "inv-new" {
+		t.Errorf("invites after sign-in = %+v, want only inv-new", invites)
+	}
+	resets, _ := store.ListPasswordResets(ctx, before)
+	if len(resets) != 1 || resets[0].TokenHash != "r-new" {
+		t.Errorf("password resets after sign-in = %+v, want only r-new", resets)
+	}
+}
+
+// failingPurge is a store whose expired links cannot be deleted.
+type failingPurge struct {
+	repository.AccountStore
+}
+
+func (failingPurge) DeleteExpiredLinks(context.Context, time.Time) (int, error) {
+	return 0, errors.New("disk full")
+}
+
+func TestSignIn_PurgeFailureIsLoggedNotFatal(t *testing.T) {
+	svc, store, _ := newTestService(t)
+	ctx := context.Background()
+	if _, err := svc.CreateOwner(ctx, Actor{}, "ada", "Ada", testPassword); err != nil {
+		t.Fatalf("CreateOwner: %v", err)
+	}
+	svc.store = failingPurge{store}
+	var logged bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logged, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	if _, _, err := svc.SignIn(ctx, "ada", testPassword, "ip"); err != nil {
+		t.Fatalf("SignIn with a failing purge: %v", err)
+	}
+	if got := logged.String(); !strings.Contains(got, "could not delete expired links") || !strings.Contains(got, "disk full") {
+		t.Errorf("log = %q, want the purge failure", got)
 	}
 }
 

@@ -396,6 +396,9 @@ func (s *Service) SignIn(ctx context.Context, username, password, clientKey stri
 	if _, err := s.store.DeleteExpiredSessions(ctx, now.Add(-IdleTimeout), now.Add(-AbsoluteTimeout)); err != nil {
 		slog.Warn("auth: could not delete expired sessions", "error", err)
 	}
+	if _, err := s.store.DeleteExpiredLinks(ctx, now); err != nil {
+		slog.Warn("auth: could not delete expired links", "error", err)
+	}
 	token, err := s.startSession(ctx, user.ID)
 	if err != nil {
 		return nil, "", err

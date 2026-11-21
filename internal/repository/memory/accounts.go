@@ -312,6 +312,27 @@ func (s *AccountStore) DeleteLinksIssuedBy(_ context.Context, userID uuid.UUID) 
 	return nil
 }
 
+// DeleteExpiredLinks removes every invite and password reset that expires at
+// or before now.
+func (s *AccountStore) DeleteExpiredLinks(_ context.Context, now time.Time) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	removed := 0
+	for hash, invite := range s.invites {
+		if !invite.ExpiresAt.After(now) {
+			delete(s.invites, hash)
+			removed++
+		}
+	}
+	for hash, reset := range s.resets {
+		if !reset.ExpiresAt.After(now) {
+			delete(s.resets, hash)
+			removed++
+		}
+	}
+	return removed, nil
+}
+
 // CreatePasswordReset stores reset.
 func (s *AccountStore) CreatePasswordReset(_ context.Context, reset *repository.PasswordReset) error {
 	s.mu.Lock()

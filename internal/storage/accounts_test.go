@@ -88,6 +88,58 @@ func TestTreeSettingsStore_Contract(t *testing.T) {
 	}
 }
 
+func TestAccountStore_ExpiredLinksContract(t *testing.T) {
+	for backend, open := range accountBackends() {
+		t.Run(string(backend), func(t *testing.T) {
+			stores := open(t)
+			t.Cleanup(func() { _ = stores.Close() })
+			runExpiredLinksContract(t, stores.Accounts)
+		})
+	}
+}
+
+// runExpiredLinksContract checks that DeleteExpiredLinks removes the invites
+// and resets that expire at or before now and keeps the rest.
+func runExpiredLinksContract(t *testing.T, store repository.AccountStore) {
+	ctx := context.Background()
+	now := at(time.Now())
+	owner := &repository.User{ID: uuid.New(), Username: "ada", DisplayName: "Ada", PasswordHash: "h", CreatedAt: now}
+	if err := store.CreateUser(ctx, owner, repository.DefaultTreeID, repository.RoleOwner); err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	if removed, err := store.DeleteExpiredLinks(ctx, now); err != nil || removed != 0 {
+		t.Fatalf("DeleteExpiredLinks with none = %d, %v; want 0", removed, err)
+	}
+	expiries := map[string]time.Time{"past": now.Add(-time.Hour), "now": now, "future": now.Add(time.Hour)}
+	for name, expires := range expiries {
+		if err := store.CreateInvite(ctx, &repository.Invite{TokenHash: "inv-" + name, TreeID: repository.DefaultTreeID,
+			Role: repository.RoleViewer, CreatedBy: owner.ID, CreatedAt: now.Add(-2 * time.Hour), ExpiresAt: expires}); err != nil {
+			t.Fatalf("CreateInvite(%s): %v", name, err)
+		}
+		if err := store.CreatePasswordReset(ctx, &repository.PasswordReset{TokenHash: "r-" + name, UserID: owner.ID,
+			CreatedAt: now.Add(-2 * time.Hour), ExpiresAt: expires}); err != nil {
+			t.Fatalf("CreatePasswordReset(%s): %v", name, err)
+		}
+	}
+	removed, err := store.DeleteExpiredLinks(ctx, now)
+	if err != nil {
+		t.Fatalf("DeleteExpiredLinks: %v", err)
+	}
+	if removed != 4 {
+		t.Errorf("DeleteExpiredLinks removed %d, want 4", removed)
+	}
+	// Listing from before every expiry shows what is still stored.
+	before := now.Add(-2 * time.Hour)
+	invites, err := store.ListInvites(ctx, repository.DefaultTreeID, before)
+	if err != nil || len(invites) != 1 || invites[0].TokenHash != "inv-future" {
+		t.Errorf("invites left = %+v, %v; want only inv-future", invites, err)
+	}
+	resets, err := store.ListPasswordResets(ctx, before)
+	if err != nil || len(resets) != 1 || resets[0].TokenHash != "r-future" {
+		t.Errorf("password resets left = %+v, %v; want only r-future", resets, err)
+	}
+}
+
 // runAccountManagementContract covers members, invites, password resets and
 // the auth audit log (#1410).
 func runAccountManagementContract(t *testing.T, store repository.AccountStore) {
