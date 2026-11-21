@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	sqlitedriver "modernc.org/sqlite"
+	sqlite3 "modernc.org/sqlite/lib"
 
 	"github.com/cacack/my-family/internal/repository"
 )
@@ -118,16 +120,15 @@ func (s *AccountStore) CreateUser(ctx context.Context, user *repository.User, tr
 }
 
 func createUser(ctx context.Context, tx *sql.Tx, user *repository.User, treeID uuid.UUID, role repository.Role) error {
-	var taken int
-	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM users WHERE username = ?`, user.Username).Scan(&taken); err != nil {
-		return fmt.Errorf("check username: %w", err)
-	}
-	if taken > 0 {
-		return repository.ErrUsernameTaken
-	}
+	// The UNIQUE constraint on users.username is the only username check, as
+	// on PostgreSQL: a separate pre-check would race a concurrent create.
 	if _, err := tx.ExecContext(ctx,
 		`INSERT INTO users (id, username, display_name, password_hash, created_at, disabled) VALUES (?, ?, ?, ?, ?, ?)`,
 		user.ID.String(), user.Username, user.DisplayName, user.PasswordHash, formatTimestamp(user.CreatedAt), user.Disabled); err != nil {
+		var sqliteErr *sqlitedriver.Error
+		if errors.As(err, &sqliteErr) && sqliteErr.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE {
+			return repository.ErrUsernameTaken
+		}
 		return fmt.Errorf("insert user: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx,

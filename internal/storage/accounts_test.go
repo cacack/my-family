@@ -6,6 +6,7 @@ import (
 	"maps"
 	"path/filepath"
 	"slices"
+	"sync"
 	"testing"
 	"time"
 
@@ -470,6 +471,35 @@ func runAccountStoreContract(t *testing.T, store repository.AccountStore) {
 	}
 	if n, _ := store.CountMembers(ctx, repository.DefaultTreeID, repository.RoleOwner); n != 1 {
 		t.Errorf("a refused CreateUser left a membership: CountMembers = %d, want 1", n)
+	}
+
+	// Racing creates of one new username: exactly one wins and every loser
+	// sees ErrUsernameTaken, never a raw constraint error (#1451).
+	const racers = 8
+	errs := make(chan error, racers)
+	var wg sync.WaitGroup
+	for range racers {
+		wg.Go(func() {
+			racer := &repository.User{
+				ID: uuid.New(), Username: "racer", DisplayName: "Racer",
+				PasswordHash: "$argon2id$hash", CreatedAt: created,
+			}
+			errs <- store.CreateUser(ctx, racer, repository.DefaultTreeID, repository.RoleViewer)
+		})
+	}
+	wg.Wait()
+	close(errs)
+	var won int
+	for err := range errs {
+		switch {
+		case err == nil:
+			won++
+		case !errors.Is(err, repository.ErrUsernameTaken):
+			t.Errorf("racing CreateUser: err = %v, want nil or ErrUsernameTaken", err)
+		}
+	}
+	if won != 1 {
+		t.Errorf("racing CreateUser: %d creates succeeded, want 1", won)
 	}
 
 	for name, get := range map[string]func() (*repository.User, error){
