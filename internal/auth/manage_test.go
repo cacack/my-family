@@ -1,8 +1,11 @@
 package auth
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -373,14 +376,41 @@ func (failingAudit) AppendAuthAudit(context.Context, *repository.AuthAuditEntry)
 	return errors.New("disk full")
 }
 
+// Audit writes are best-effort (AC-005): an action whose entry cannot be
+// written still stands and succeeds, a failed sign-in still fails as it
+// would, and each lost entry is logged at error level, naming its action.
 func TestAudit_FailureDoesNotFailTheAction(t *testing.T) {
+	var logged bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logged, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	ctx := context.Background()
 	svc, store, _ := newTestService(t)
 	svc.store = failingAudit{store}
-	if _, err := svc.CreateOwner(context.Background(), Actor{}, "ada", "Ada", testPassword); err != nil {
+	ada, err := svc.CreateOwner(ctx, Actor{}, "ada", "Ada", testPassword)
+	if err != nil {
 		t.Fatalf("CreateOwner with a failing audit log: %v", err)
 	}
-	if _, _, err := svc.SignIn(context.Background(), "ada", testPassword, "x"); err != nil {
-		t.Errorf("SignIn with a failing audit log: %v", err)
+	if role, err := store.MemberRole(ctx, repository.DefaultTreeID, ada.ID); err != nil || role != repository.RoleOwner {
+		t.Errorf("stored role = %q, %v; want owner", role, err)
+	}
+	_, token, err := svc.SignIn(ctx, "ada", testPassword, "x")
+	if err != nil {
+		t.Fatalf("SignIn with a failing audit log: %v", err)
+	}
+	if _, err := svc.Authenticate(ctx, token); err != nil {
+		t.Errorf("session from a sign-in with a failing audit log: %v", err)
+	}
+	if _, _, err := svc.SignIn(ctx, "ada", "not the password", "x"); !errors.Is(err, ErrInvalidCredentials) {
+		t.Errorf("failed SignIn with a failing audit log: err = %v, want ErrInvalidCredentials", err)
+	}
+
+	out := logged.String()
+	for _, action := range []repository.AuthAction{repository.AuthActionUserCreated, repository.AuthActionSignIn, repository.AuthActionSignInFailed} {
+		if !strings.Contains(out, "level=ERROR") || !strings.Contains(out, "action="+string(action)+" ") {
+			t.Errorf("log = %q, want an error naming %s", out, action)
+		}
 	}
 }
 

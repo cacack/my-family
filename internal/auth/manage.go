@@ -63,7 +63,8 @@ func (s *Service) audit(ctx context.Context, by Actor, action repository.AuthAct
 }
 
 // auditEntry appends entry, stamped now. A failure to record is logged, not
-// returned: the action it describes has already happened.
+// returned: the action it describes has already happened. The log is
+// best-effort by design (AC-005).
 func (s *Service) auditEntry(ctx context.Context, entry repository.AuthAuditEntry) {
 	entry.At = s.now().UTC()
 	if err := s.store.AppendAuthAudit(ctx, &entry); err != nil {
