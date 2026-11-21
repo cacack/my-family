@@ -260,7 +260,9 @@ type AccountStore interface {
 	// after now, and returns it, or ErrLinkNotFound.
 	RevokePasswordReset(ctx context.Context, tokenHash string, now time.Time) (*PasswordReset, error)
 
-	// AppendAuthAudit adds entry to the auth audit log.
+	// AppendAuthAudit adds entry to the auth audit log. Callers append after
+	// the action succeeds, outside its transaction: the log is best-effort
+	// (AC-005).
 	AppendAuthAudit(ctx context.Context, entry *AuthAuditEntry) error
 
 	// ListAuthAudit returns up to limit entries, newest first, after skipping

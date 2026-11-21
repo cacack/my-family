@@ -1,8 +1,11 @@
 package auth
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -373,14 +376,97 @@ func (failingAudit) AppendAuthAudit(context.Context, *repository.AuthAuditEntry)
 	return errors.New("disk full")
 }
 
+// Audit writes are best-effort (AC-005): an action whose entry cannot be
+// written still stands and succeeds, a failed sign-in still fails as it
+// would, and each lost entry is logged at error level, naming its action.
 func TestAudit_FailureDoesNotFailTheAction(t *testing.T) {
+	var logged bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logged, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	ctx := context.Background()
 	svc, store, _ := newTestService(t)
 	svc.store = failingAudit{store}
-	if _, err := svc.CreateOwner(context.Background(), Actor{}, "ada", "Ada", testPassword); err != nil {
+	ada, err := svc.CreateOwner(ctx, Actor{}, "ada", "Ada", testPassword)
+	if err != nil {
 		t.Fatalf("CreateOwner with a failing audit log: %v", err)
 	}
-	if _, _, err := svc.SignIn(context.Background(), "ada", testPassword, "x"); err != nil {
-		t.Errorf("SignIn with a failing audit log: %v", err)
+	if role, err := store.MemberRole(ctx, repository.DefaultTreeID, ada.ID); err != nil || role != repository.RoleOwner {
+		t.Errorf("stored role = %q, %v; want owner", role, err)
+	}
+	_, token, err := svc.SignIn(ctx, "ada", testPassword, "x")
+	if err != nil {
+		t.Fatalf("SignIn with a failing audit log: %v", err)
+	}
+	if _, err := svc.Authenticate(ctx, token); err != nil {
+		t.Errorf("session from a sign-in with a failing audit log: %v", err)
+	}
+	if _, _, err := svc.SignIn(ctx, "ada", "not the password", "x"); !errors.Is(err, ErrInvalidCredentials) {
+		t.Errorf("failed SignIn with a failing audit log: err = %v, want ErrInvalidCredentials", err)
+	}
+
+	lines := strings.Split(logged.String(), "\n")
+	for _, action := range []repository.AuthAction{repository.AuthActionUserCreated, repository.AuthActionSignIn, repository.AuthActionSignInFailed} {
+		found := false
+		for _, line := range lines {
+			if strings.Contains(line, "level=ERROR") && strings.Contains(line, "action="+string(action)+" ") {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("log = %q, want an error line naming %s", logged.String(), action)
+		}
+	}
+}
+
+// failingCleanup is a store whose session and link cleanup cannot be written.
+type failingCleanup struct {
+	repository.AccountStore
+}
+
+func (failingCleanup) DeleteUserSessions(context.Context, uuid.UUID, string) error {
+	return errors.New("disk full")
+}
+
+func (failingCleanup) DeleteLinksIssuedBy(context.Context, uuid.UUID) error {
+	return errors.New("disk full")
+}
+
+// A change that stands is audited even when a cleanup step after it fails
+// (AC-005: the log can miss an entry only through a failed append).
+func TestAudit_RecordsAChangeWhoseCleanupFails(t *testing.T) {
+	m := newManaged(t)
+	ctx := context.Background()
+	grace, graceToken := m.invite(t, "grace", repository.RoleOwner)
+	m.svc.store = failingCleanup{m.svc.store}
+
+	if _, err := m.svc.SetRole(ctx, m.by, grace.ID, repository.RoleEditor); err == nil {
+		t.Error("SetRole with failing link cleanup: want an error")
+	}
+	if _, err := m.svc.SetDisabled(ctx, m.by, grace.ID, true); err == nil {
+		t.Error("SetDisabled with failing session cleanup: want an error")
+	}
+	pw := testPassword + "2"
+	graceBy := Actor{UserID: grace.ID}
+	if _, err := m.svc.SetDisabled(ctx, m.by, grace.ID, false); err != nil {
+		t.Fatalf("re-enable: %v", err)
+	}
+	if _, err := m.svc.UpdateAccount(ctx, graceBy, graceToken, AccountChange{CurrentPassword: testPassword, NewPassword: &pw}); err == nil {
+		t.Error("UpdateAccount with failing session cleanup: want an error")
+	}
+
+	got := m.actions(t)
+	for _, want := range []repository.AuthAction{repository.AuthActionRoleChanged, repository.AuthActionUserDisabled, repository.AuthActionPasswordChanged} {
+		found := false
+		for _, a := range got {
+			if a == want {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("audit actions = %v, want %s", got, want)
+		}
 	}
 }
 

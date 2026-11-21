@@ -63,7 +63,8 @@ func (s *Service) audit(ctx context.Context, by Actor, action repository.AuthAct
 }
 
 // auditEntry appends entry, stamped now. A failure to record is logged, not
-// returned: the action it describes has already happened.
+// returned: the action it describes has already happened. The log is
+// best-effort by design (AC-005).
 func (s *Service) auditEntry(ctx context.Context, entry repository.AuthAuditEntry) {
 	entry.At = s.now().UTC()
 	if err := s.store.AppendAuthAudit(ctx, &entry); err != nil {
@@ -229,13 +230,14 @@ func (s *Service) SetRole(ctx context.Context, by Actor, userID uuid.UUID, role 
 	if err != nil {
 		return nil, fmt.Errorf("set role: %w", err)
 	}
+	// Record the change once it stands, before a cleanup step can fail.
+	s.audit(ctx, by, repository.AuthActionRoleChanged, &m.User, fmt.Sprintf("%s -> %s", m.Role, role))
 	if m.Role == repository.RoleOwner {
 		// Only owners issue links; a former owner's stop working.
 		if err := s.store.DeleteLinksIssuedBy(ctx, userID); err != nil {
 			return nil, fmt.Errorf("revoke links: %w", err)
 		}
 	}
-	s.audit(ctx, by, repository.AuthActionRoleChanged, &m.User, fmt.Sprintf("%s -> %s", m.Role, role))
 	m.Role = role
 	return m, nil
 }
@@ -264,6 +266,10 @@ func (s *Service) SetDisabled(ctx context.Context, by Actor, userID uuid.UUID, d
 	action := repository.AuthActionUserEnabled
 	if disabled {
 		action = repository.AuthActionUserDisabled
+	}
+	// Record the change once it stands, before a cleanup step can fail.
+	s.audit(ctx, by, action, &m.User, "")
+	if disabled {
 		if err := s.store.DeleteUserSessions(ctx, userID, ""); err != nil {
 			return nil, fmt.Errorf("end sessions: %w", err)
 		}
@@ -271,7 +277,6 @@ func (s *Service) SetDisabled(ctx context.Context, by Actor, userID uuid.UUID, d
 			return nil, fmt.Errorf("revoke links: %w", err)
 		}
 	}
-	s.audit(ctx, by, action, &m.User, "")
 	return m, nil
 }
 
@@ -432,10 +437,11 @@ func (s *Service) UpdateAccount(ctx context.Context, by Actor, sessionToken stri
 		return nil, fmt.Errorf("update account: %w", err)
 	}
 	if change.NewPassword != nil {
+		// Record the change once it stands, before a cleanup step can fail.
+		s.audit(ctx, by, repository.AuthActionPasswordChanged, user, "")
 		if err := s.store.DeleteUserSessions(ctx, user.ID, hashToken(sessionToken)); err != nil {
 			return nil, fmt.Errorf("end other sessions: %w", err)
 		}
-		s.audit(ctx, by, repository.AuthActionPasswordChanged, user, "")
 	}
 	return user, nil
 }
