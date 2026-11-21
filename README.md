@@ -284,6 +284,30 @@ with `503 SETUP_REQUIRED`. Either create the owner (setup page or `myfamily user
 signed-in session cookie, or open mode, until API tokens exist. Changes made before accounts are
 shown in history as the owner's.
 
+#### Calling the API from a script
+
+Until API tokens exist ([#1416](https://github.com/cacack/my-family/issues/1416)), a script signs
+in like the web UI does and sends the session cookie back on each request. With `curl`, keep the
+cookie in a jar:
+
+```bash
+jar=$(mktemp)
+curl -sf -c "$jar" -H 'Content-Type: application/json' \
+  -d '{"username":"ada","password":"'"$PASSWORD"'"}' \
+  http://localhost:8080/api/v1/auth/sign-in
+curl -sf -b "$jar" http://localhost:8080/api/v1/persons
+curl -sf -b "$jar" -X POST http://localhost:8080/api/v1/auth/sign-out   # ends the session
+```
+
+The [OpenAPI spec](./internal/api/openapi.yaml) declares the cookie as the `session` security
+scheme. Operations marked `security: []` (health, auth status, setup, sign-in, sign-out, invite
+accept and password reset) need no session. Those marked `security: [{session: []}, {}]` (the
+reads a visitor may make) are served without one when the owner lets visitors in. Every other
+call without a session answers 401 `UNAUTHENTICATED`, and anything but the first group answers
+503 `SETUP_REQUIRED` until an owner exists. In open mode no session is needed, and the account
+operations (`/auth/sign-in`, `/auth/setup`, `/auth/me` and the rest, but not sign-out or auth
+status) answer 409 `CONFLICT`.
+
 ### Storage
 
 `serve` picks one storage backend at startup and logs it (`Database: ...`):

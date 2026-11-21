@@ -250,9 +250,6 @@ func (s *Server) registerRoutes() {
 	// Refuse a JSON null on an update field that cannot be cleared (#1359).
 	s.echo.Use(refuseNullOnRequiredFields)
 
-	// Health check (outside generated routes)
-	api.GET("/health", s.healthCheck)
-
 	// App config (outside generated routes)
 	api.GET("/config", s.getAppConfig)
 
@@ -336,11 +333,6 @@ func (s *Server) Echo() *echo.Echo {
 // CommandHandler returns the command handler (for testing/seeding).
 func (s *Server) CommandHandler() *command.Handler {
 	return s.commandHandler
-}
-
-// Health check handler.
-func (s *Server) healthCheck(c echo.Context) error {
-	return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
 }
 
 // clientIPExtractor says where c.RealIP(), the key of the per-client rate

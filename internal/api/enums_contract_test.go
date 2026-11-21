@@ -99,6 +99,7 @@ var governedProperties = map[string][]string{
 // ungovernedProperties share a governed name but hold a different vocabulary.
 var ungovernedProperties = map[string]bool{
 	"MediaFile.media_type": true, // the raw GEDCOM MEDI tag, e.g. PHOTO
+	"Health.status":        true, // the server's liveness, always "ok"
 }
 
 // enumRef is the schema a property references, directly or through a

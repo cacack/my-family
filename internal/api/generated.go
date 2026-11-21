@@ -4532,6 +4532,14 @@ type GroupSheetPerson struct {
 	Surname  string `json:"surname"`
 }
 
+// Health defines model for Health.
+type Health struct {
+	// Status Always `ok`
+	//
+	// Example: ok
+	Status string `json:"status"`
+}
+
 // HomePerson The site's home person ("me"); `person` is absent when none is set
 type HomePerson struct {
 	Person *Person `json:"person,omitempty"`
@@ -6963,6 +6971,12 @@ type RateLimited = Error
 // SettingsUnavailable defines model for SettingsUnavailable.
 type SettingsUnavailable = Error
 
+// SetupRequired defines model for SetupRequired.
+type SetupRequired = Error
+
+// Unauthenticated defines model for Unauthenticated.
+type Unauthenticated = Error
+
 // GetAhnentafelParams defines parameters for GetAhnentafel.
 type GetAhnentafelParams struct {
 	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
@@ -9229,6 +9243,9 @@ type ServerInterface interface {
 	// ImportGedcom Import a GEDCOM file
 	// (POST /gedcom/import)
 	ImportGedcom(ctx echo.Context) error
+	// GetHealth Report that the server is up
+	// (GET /health)
+	GetHealth(ctx echo.Context) error
 	// ListHistory List global change history
 	// (GET /history)
 	ListHistory(ctx echo.Context, params ListHistoryParams) error
@@ -11387,6 +11404,15 @@ func (w *ServerInterfaceWrapper) ImportGedcom(ctx echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.ImportGedcom(ctx)
+	return err
+}
+
+// GetHealth converts echo context to params.
+func (w *ServerInterfaceWrapper) GetHealth(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.GetHealth(ctx)
 	return err
 }
 
@@ -14014,6 +14040,7 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 		Handler: si,
 	}
 
+	router.GET(options.BaseURL+"/health", wrapper.GetHealth, options.OperationMiddlewares["getHealth"]...)
 	router.GET(options.BaseURL+"/persons", wrapper.ListPersons, options.OperationMiddlewares["listPersons"]...)
 	router.POST(options.BaseURL+"/persons", wrapper.CreatePerson, options.OperationMiddlewares["createPerson"]...)
 	router.DELETE(options.BaseURL+"/persons/:id", wrapper.DeletePerson, options.OperationMiddlewares["deletePerson"]...)
@@ -14215,6 +14242,10 @@ type RateLimitedJSONResponse Error
 
 type SettingsUnavailableJSONResponse Error
 
+type SetupRequiredJSONResponse Error
+
+type UnauthenticatedJSONResponse Error
+
 type GetAhnentafelRequestObject struct {
 	Id     PersonId `json:"id"`
 	Params GetAhnentafelParams
@@ -14263,6 +14294,20 @@ func (response GetAhnentafel400JSONResponse) VisitGetAhnentafelResponse(w http.R
 	return err
 }
 
+type GetAhnentafel401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetAhnentafel401JSONResponse) VisitGetAhnentafelResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetAhnentafel404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response GetAhnentafel404JSONResponse) VisitGetAhnentafelResponse(w http.ResponseWriter) error {
@@ -14273,6 +14318,20 @@ func (response GetAhnentafel404JSONResponse) VisitGetAhnentafelResponse(w http.R
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAhnentafel503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response GetAhnentafel503JSONResponse) VisitGetAhnentafelResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -14295,6 +14354,34 @@ func (response GetDiscoveryFeed200JSONResponse) VisitGetDiscoveryFeedResponse(w 
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDiscoveryFeed401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetDiscoveryFeed401JSONResponse) VisitGetDiscoveryFeedResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDiscoveryFeed503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response GetDiscoveryFeed503JSONResponse) VisitGetDiscoveryFeedResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -14331,6 +14418,34 @@ func (response ListAssociations400JSONResponse) VisitListAssociationsResponse(w 
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAssociations401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListAssociations401JSONResponse) VisitListAssociationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAssociations503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response ListAssociations503JSONResponse) VisitListAssociationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -14372,6 +14487,34 @@ func (response CreateAssociation400JSONResponse) VisitCreateAssociationResponse(
 	return err
 }
 
+type CreateAssociation401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response CreateAssociation401JSONResponse) VisitCreateAssociationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAssociation503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response CreateAssociation503JSONResponse) VisitCreateAssociationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeleteAssociationRequestObject struct {
 	Id     AssociationId `json:"id"`
 	Params DeleteAssociationParams
@@ -14399,6 +14542,20 @@ func (response DeleteAssociation400JSONResponse) VisitDeleteAssociationResponse(
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteAssociation401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response DeleteAssociation401JSONResponse) VisitDeleteAssociationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -14431,6 +14588,20 @@ func (response DeleteAssociation409JSONResponse) VisitDeleteAssociationResponse(
 	return err
 }
 
+type DeleteAssociation503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response DeleteAssociation503JSONResponse) VisitDeleteAssociationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetAssociationRequestObject struct {
 	Id     AssociationId `json:"id"`
 	Params GetAssociationParams
@@ -14454,6 +14625,20 @@ func (response GetAssociation200JSONResponse) VisitGetAssociationResponse(w http
 	return err
 }
 
+type GetAssociation401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetAssociation401JSONResponse) VisitGetAssociationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetAssociation404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response GetAssociation404JSONResponse) VisitGetAssociationResponse(w http.ResponseWriter) error {
@@ -14464,6 +14649,20 @@ func (response GetAssociation404JSONResponse) VisitGetAssociationResponse(w http
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAssociation503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response GetAssociation503JSONResponse) VisitGetAssociationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -14506,6 +14705,20 @@ func (response UpdateAssociation400JSONResponse) VisitUpdateAssociationResponse(
 	return err
 }
 
+type UpdateAssociation401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response UpdateAssociation401JSONResponse) VisitUpdateAssociationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type UpdateAssociation404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response UpdateAssociation404JSONResponse) VisitUpdateAssociationResponse(w http.ResponseWriter) error {
@@ -14534,6 +14747,20 @@ func (response UpdateAssociation409JSONResponse) VisitUpdateAssociationResponse(
 	return err
 }
 
+type UpdateAssociation503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response UpdateAssociation503JSONResponse) VisitUpdateAssociationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListAuthAuditRequestObject struct {
 	Params ListAuthAuditParams
 }
@@ -14556,6 +14783,20 @@ func (response ListAuthAudit200JSONResponse) VisitListAuthAuditResponse(w http.R
 	return err
 }
 
+type ListAuthAudit401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListAuthAudit401JSONResponse) VisitListAuthAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListAuthAudit409JSONResponse struct{ AccountsOnlyJSONResponse }
 
 func (response ListAuthAudit409JSONResponse) VisitListAuthAuditResponse(w http.ResponseWriter) error {
@@ -14566,6 +14807,20 @@ func (response ListAuthAudit409JSONResponse) VisitListAuthAuditResponse(w http.R
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAuthAudit503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response ListAuthAudit503JSONResponse) VisitListAuthAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -14665,16 +14920,44 @@ func (response GetCurrentAccount200JSONResponse) VisitGetCurrentAccountResponse(
 	return err
 }
 
-type GetCurrentAccount404JSONResponse Error
+type GetCurrentAccount401JSONResponse struct{ UnauthenticatedJSONResponse }
 
-func (response GetCurrentAccount404JSONResponse) VisitGetCurrentAccountResponse(w http.ResponseWriter) error {
+func (response GetCurrentAccount401JSONResponse) VisitGetCurrentAccountResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCurrentAccount409JSONResponse struct{ AccountsOnlyJSONResponse }
+
+func (response GetCurrentAccount409JSONResponse) VisitGetCurrentAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCurrentAccount503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response GetCurrentAccount503JSONResponse) VisitGetCurrentAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -14715,16 +14998,30 @@ func (response UpdateCurrentAccount400JSONResponse) VisitUpdateCurrentAccountRes
 	return err
 }
 
-type UpdateCurrentAccount404JSONResponse Error
+type UpdateCurrentAccount401JSONResponse struct{ UnauthenticatedJSONResponse }
 
-func (response UpdateCurrentAccount404JSONResponse) VisitUpdateCurrentAccountResponse(w http.ResponseWriter) error {
+func (response UpdateCurrentAccount401JSONResponse) VisitUpdateCurrentAccountResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateCurrentAccount409JSONResponse struct{ AccountsOnlyJSONResponse }
+
+func (response UpdateCurrentAccount409JSONResponse) VisitUpdateCurrentAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -14739,6 +15036,20 @@ func (response UpdateCurrentAccount429JSONResponse) VisitUpdateCurrentAccountRes
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateCurrentAccount503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response UpdateCurrentAccount503JSONResponse) VisitUpdateCurrentAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -15043,6 +15354,20 @@ func (response ListBranches200JSONResponse) VisitListBranchesResponse(w http.Res
 	return err
 }
 
+type ListBranches401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListBranches401JSONResponse) VisitListBranchesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListBranches503JSONResponse struct {
 	BranchesUnavailableJSONResponse
 }
@@ -15095,6 +15420,20 @@ func (response CreateBranch400JSONResponse) VisitCreateBranchResponse(w http.Res
 	return err
 }
 
+type CreateBranch401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response CreateBranch401JSONResponse) VisitCreateBranchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type CreateBranch503JSONResponse struct {
 	BranchesUnavailableJSONResponse
 }
@@ -15125,6 +15464,20 @@ type DeleteBranch204Response struct {
 func (response DeleteBranch204Response) VisitDeleteBranchResponse(w http.ResponseWriter) error {
 	w.WriteHeader(204)
 	return nil
+}
+
+type DeleteBranch401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response DeleteBranch401JSONResponse) VisitDeleteBranchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type DeleteBranch404JSONResponse struct{ NotFoundJSONResponse }
@@ -15193,6 +15546,20 @@ func (response GetBranch200JSONResponse) VisitGetBranchResponse(w http.ResponseW
 	return err
 }
 
+type GetBranch401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetBranch401JSONResponse) VisitGetBranchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetBranch404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response GetBranch404JSONResponse) VisitGetBranchResponse(w http.ResponseWriter) error {
@@ -15256,6 +15623,20 @@ func (response UpdateBranch400JSONResponse) VisitUpdateBranchResponse(w http.Res
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateBranch401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response UpdateBranch401JSONResponse) VisitUpdateBranchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -15341,6 +15722,20 @@ func (response CloseBranch400JSONResponse) VisitCloseBranchResponse(w http.Respo
 	return err
 }
 
+type CloseBranch401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response CloseBranch401JSONResponse) VisitCloseBranchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type CloseBranch404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response CloseBranch404JSONResponse) VisitCloseBranchResponse(w http.ResponseWriter) error {
@@ -15407,6 +15802,20 @@ func (response CompareBranch200JSONResponse) VisitCompareBranchResponse(w http.R
 	return err
 }
 
+type CompareBranch401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response CompareBranch401JSONResponse) VisitCompareBranchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type CompareBranch404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response CompareBranch404JSONResponse) VisitCompareBranchResponse(w http.ResponseWriter) error {
@@ -15455,6 +15864,20 @@ func (response GetBranchDrift200JSONResponse) VisitGetBranchDriftResponse(w http
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBranchDrift401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetBranchDrift401JSONResponse) VisitGetBranchDriftResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -15511,6 +15934,20 @@ func (response GetBranchEvidenceCoverage200JSONResponse) VisitGetBranchEvidenceC
 	return err
 }
 
+type GetBranchEvidenceCoverage401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetBranchEvidenceCoverage401JSONResponse) VisitGetBranchEvidenceCoverageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetBranchEvidenceCoverage404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response GetBranchEvidenceCoverage404JSONResponse) VisitGetBranchEvidenceCoverageResponse(w http.ResponseWriter) error {
@@ -15559,6 +15996,20 @@ func (response GetBranchHealth200JSONResponse) VisitGetBranchHealthResponse(w ht
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBranchHealth401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetBranchHealth401JSONResponse) VisitGetBranchHealthResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -15626,6 +16077,20 @@ func (response MergeBranch400JSONResponse) VisitMergeBranchResponse(w http.Respo
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MergeBranch401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response MergeBranch401JSONResponse) VisitMergeBranchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -15725,6 +16190,20 @@ func (response PrecheckBranchMerge400JSONResponse) VisitPrecheckBranchMergeRespo
 	return err
 }
 
+type PrecheckBranchMerge401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response PrecheckBranchMerge401JSONResponse) VisitPrecheckBranchMergeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PrecheckBranchMerge404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response PrecheckBranchMerge404JSONResponse) VisitPrecheckBranchMergeResponse(w http.ResponseWriter) error {
@@ -15802,6 +16281,20 @@ func (response ResumeBranchMerge400JSONResponse) VisitResumeBranchMergeResponse(
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResumeBranchMerge401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ResumeBranchMerge401JSONResponse) VisitResumeBranchMergeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -15886,6 +16379,20 @@ func (response GetBranchResearch200JSONResponse) VisitGetBranchResearchResponse(
 	return err
 }
 
+type GetBranchResearch401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetBranchResearch401JSONResponse) VisitGetBranchResearchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetBranchResearch404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response GetBranchResearch404JSONResponse) VisitGetBranchResearchResponse(w http.ResponseWriter) error {
@@ -15949,6 +16456,20 @@ func (response PromoteBranchResearchLogs400JSONResponse) VisitPromoteBranchResea
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PromoteBranchResearchLogs401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response PromoteBranchResearchLogs401JSONResponse) VisitPromoteBranchResearchLogsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -16019,6 +16540,34 @@ func (response GetBrickWalls200JSONResponse) VisitGetBrickWallsResponse(w http.R
 	return err
 }
 
+type GetBrickWalls401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetBrickWalls401JSONResponse) VisitGetBrickWallsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBrickWalls503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response GetBrickWalls503JSONResponse) VisitGetBrickWallsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type BrowseCemeteriesRequestObject struct {
 	Params BrowseCemeteriesParams
 }
@@ -16037,6 +16586,34 @@ func (response BrowseCemeteries200JSONResponse) VisitBrowseCemeteriesResponse(w 
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BrowseCemeteries401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response BrowseCemeteries401JSONResponse) VisitBrowseCemeteriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BrowseCemeteries503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response BrowseCemeteries503JSONResponse) VisitBrowseCemeteriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -16064,6 +16641,34 @@ func (response GetPersonsByCemetery200JSONResponse) VisitGetPersonsByCemeteryRes
 	return err
 }
 
+type GetPersonsByCemetery401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetPersonsByCemetery401JSONResponse) VisitGetPersonsByCemeteryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPersonsByCemetery503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response GetPersonsByCemetery503JSONResponse) VisitGetPersonsByCemeteryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type BrowsePlacesRequestObject struct {
 	Params BrowsePlacesParams
 }
@@ -16082,6 +16687,34 @@ func (response BrowsePlaces200JSONResponse) VisitBrowsePlacesResponse(w http.Res
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BrowsePlaces401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response BrowsePlaces401JSONResponse) VisitBrowsePlacesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BrowsePlaces503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response BrowsePlaces503JSONResponse) VisitBrowsePlacesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -16109,6 +16742,34 @@ func (response GetPersonsByPlace200JSONResponse) VisitGetPersonsByPlaceResponse(
 	return err
 }
 
+type GetPersonsByPlace401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetPersonsByPlace401JSONResponse) VisitGetPersonsByPlaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPersonsByPlace503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response GetPersonsByPlace503JSONResponse) VisitGetPersonsByPlaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type BrowseSurnamesRequestObject struct {
 	Params BrowseSurnamesParams
 }
@@ -16127,6 +16788,34 @@ func (response BrowseSurnames200JSONResponse) VisitBrowseSurnamesResponse(w http
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BrowseSurnames401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response BrowseSurnames401JSONResponse) VisitBrowseSurnamesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BrowseSurnames503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response BrowseSurnames503JSONResponse) VisitBrowseSurnamesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -16154,6 +16843,34 @@ func (response GetPersonsBySurname200JSONResponse) VisitGetPersonsBySurnameRespo
 	return err
 }
 
+type GetPersonsBySurname401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetPersonsBySurname401JSONResponse) VisitGetPersonsBySurnameResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPersonsBySurname503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response GetPersonsBySurname503JSONResponse) VisitGetPersonsBySurnameResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListCitationTemplatesRequestObject struct {
 	Params ListCitationTemplatesParams
 }
@@ -16172,6 +16889,34 @@ func (response ListCitationTemplates200JSONResponse) VisitListCitationTemplatesR
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListCitationTemplates401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListCitationTemplates401JSONResponse) VisitListCitationTemplatesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListCitationTemplates503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response ListCitationTemplates503JSONResponse) VisitListCitationTemplatesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -16198,6 +16943,20 @@ func (response GetCitationTemplate200JSONResponse) VisitGetCitationTemplateRespo
 	return err
 }
 
+type GetCitationTemplate401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetCitationTemplate401JSONResponse) VisitGetCitationTemplateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetCitationTemplate404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response GetCitationTemplate404JSONResponse) VisitGetCitationTemplateResponse(w http.ResponseWriter) error {
@@ -16208,6 +16967,20 @@ func (response GetCitationTemplate404JSONResponse) VisitGetCitationTemplateRespo
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCitationTemplate503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response GetCitationTemplate503JSONResponse) VisitGetCitationTemplateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -16249,6 +17022,20 @@ func (response PreviewCitationTemplate400JSONResponse) VisitPreviewCitationTempl
 	return err
 }
 
+type PreviewCitationTemplate401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response PreviewCitationTemplate401JSONResponse) VisitPreviewCitationTemplateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PreviewCitationTemplate404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response PreviewCitationTemplate404JSONResponse) VisitPreviewCitationTemplateResponse(w http.ResponseWriter) error {
@@ -16259,6 +17046,20 @@ func (response PreviewCitationTemplate404JSONResponse) VisitPreviewCitationTempl
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PreviewCitationTemplate503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response PreviewCitationTemplate503JSONResponse) VisitPreviewCitationTemplateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -16300,6 +17101,20 @@ func (response CreateCitation400JSONResponse) VisitCreateCitationResponse(w http
 	return err
 }
 
+type CreateCitation401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response CreateCitation401JSONResponse) VisitCreateCitationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type CreateCitation404JSONResponse Error
 
 func (response CreateCitation404JSONResponse) VisitCreateCitationResponse(w http.ResponseWriter) error {
@@ -16310,6 +17125,20 @@ func (response CreateCitation404JSONResponse) VisitCreateCitationResponse(w http
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateCitation503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response CreateCitation503JSONResponse) VisitCreateCitationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -16345,6 +17174,20 @@ func (response DeleteCitation400JSONResponse) VisitDeleteCitationResponse(w http
 	return err
 }
 
+type DeleteCitation401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response DeleteCitation401JSONResponse) VisitDeleteCitationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeleteCitation404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response DeleteCitation404JSONResponse) VisitDeleteCitationResponse(w http.ResponseWriter) error {
@@ -16373,6 +17216,20 @@ func (response DeleteCitation409JSONResponse) VisitDeleteCitationResponse(w http
 	return err
 }
 
+type DeleteCitation503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response DeleteCitation503JSONResponse) VisitDeleteCitationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetCitationRequestObject struct {
 	Id     openapi_types.UUID `json:"id"`
 	Params GetCitationParams
@@ -16396,6 +17253,20 @@ func (response GetCitation200JSONResponse) VisitGetCitationResponse(w http.Respo
 	return err
 }
 
+type GetCitation401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetCitation401JSONResponse) VisitGetCitationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetCitation404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response GetCitation404JSONResponse) VisitGetCitationResponse(w http.ResponseWriter) error {
@@ -16406,6 +17277,20 @@ func (response GetCitation404JSONResponse) VisitGetCitationResponse(w http.Respo
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCitation503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response GetCitation503JSONResponse) VisitGetCitationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -16448,6 +17333,20 @@ func (response UpdateCitation400JSONResponse) VisitUpdateCitationResponse(w http
 	return err
 }
 
+type UpdateCitation401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response UpdateCitation401JSONResponse) VisitUpdateCitationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type UpdateCitation404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response UpdateCitation404JSONResponse) VisitUpdateCitationResponse(w http.ResponseWriter) error {
@@ -16476,6 +17375,20 @@ func (response UpdateCitation409JSONResponse) VisitUpdateCitationResponse(w http
 	return err
 }
 
+type UpdateCitation503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response UpdateCitation503JSONResponse) VisitUpdateCitationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type FormatCitationRequestObject struct {
 	Id     openapi_types.UUID `json:"id"`
 	Params FormatCitationParams
@@ -16499,6 +17412,20 @@ func (response FormatCitation200JSONResponse) VisitFormatCitationResponse(w http
 	return err
 }
 
+type FormatCitation401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response FormatCitation401JSONResponse) VisitFormatCitationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type FormatCitation404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response FormatCitation404JSONResponse) VisitFormatCitationResponse(w http.ResponseWriter) error {
@@ -16509,6 +17436,20 @@ func (response FormatCitation404JSONResponse) VisitFormatCitationResponse(w http
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type FormatCitation503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response FormatCitation503JSONResponse) VisitFormatCitationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -16532,6 +17473,20 @@ func (response GetCitationRestorePoints200JSONResponse) VisitGetCitationRestoreP
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCitationRestorePoints401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetCitationRestorePoints401JSONResponse) VisitGetCitationRestorePointsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -16560,6 +17515,20 @@ func (response GetCitationRestorePoints409JSONResponse) VisitGetCitationRestoreP
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCitationRestorePoints503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response GetCitationRestorePoints503JSONResponse) VisitGetCitationRestorePointsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -16602,6 +17571,20 @@ func (response RollbackCitation400JSONResponse) VisitRollbackCitationResponse(w 
 	return err
 }
 
+type RollbackCitation401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response RollbackCitation401JSONResponse) VisitRollbackCitationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type RollbackCitation404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response RollbackCitation404JSONResponse) VisitRollbackCitationResponse(w http.ResponseWriter) error {
@@ -16630,6 +17613,20 @@ func (response RollbackCitation409JSONResponse) VisitRollbackCitationResponse(w 
 	return err
 }
 
+type RollbackCitation503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response RollbackCitation503JSONResponse) VisitRollbackCitationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetDescendancyRequestObject struct {
 	Id     PersonId `json:"id"`
 	Params GetDescendancyParams
@@ -16653,6 +17650,20 @@ func (response GetDescendancy200JSONResponse) VisitGetDescendancyResponse(w http
 	return err
 }
 
+type GetDescendancy401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetDescendancy401JSONResponse) VisitGetDescendancyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetDescendancy404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response GetDescendancy404JSONResponse) VisitGetDescendancyResponse(w http.ResponseWriter) error {
@@ -16663,6 +17674,20 @@ func (response GetDescendancy404JSONResponse) VisitGetDescendancyResponse(w http
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDescendancy503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response GetDescendancy503JSONResponse) VisitGetDescendancyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -16699,6 +17724,34 @@ func (response ListEvidenceAnalyses400JSONResponse) VisitListEvidenceAnalysesRes
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListEvidenceAnalyses401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListEvidenceAnalyses401JSONResponse) VisitListEvidenceAnalysesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListEvidenceAnalyses503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response ListEvidenceAnalyses503JSONResponse) VisitListEvidenceAnalysesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -16740,6 +17793,34 @@ func (response CreateEvidenceAnalysis400JSONResponse) VisitCreateEvidenceAnalysi
 	return err
 }
 
+type CreateEvidenceAnalysis401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response CreateEvidenceAnalysis401JSONResponse) VisitCreateEvidenceAnalysisResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateEvidenceAnalysis503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response CreateEvidenceAnalysis503JSONResponse) VisitCreateEvidenceAnalysisResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetAnalysesByFactRequestObject struct {
 	Params GetAnalysesByFactParams
 }
@@ -16776,6 +17857,34 @@ func (response GetAnalysesByFact400JSONResponse) VisitGetAnalysesByFactResponse(
 	return err
 }
 
+type GetAnalysesByFact401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetAnalysesByFact401JSONResponse) VisitGetAnalysesByFactResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAnalysesByFact503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response GetAnalysesByFact503JSONResponse) VisitGetAnalysesByFactResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeleteEvidenceAnalysisRequestObject struct {
 	Id     EvidenceAnalysisId `json:"id"`
 	Params DeleteEvidenceAnalysisParams
@@ -16803,6 +17912,20 @@ func (response DeleteEvidenceAnalysis400JSONResponse) VisitDeleteEvidenceAnalysi
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteEvidenceAnalysis401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response DeleteEvidenceAnalysis401JSONResponse) VisitDeleteEvidenceAnalysisResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -16835,6 +17958,20 @@ func (response DeleteEvidenceAnalysis409JSONResponse) VisitDeleteEvidenceAnalysi
 	return err
 }
 
+type DeleteEvidenceAnalysis503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response DeleteEvidenceAnalysis503JSONResponse) VisitDeleteEvidenceAnalysisResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetEvidenceAnalysisRequestObject struct {
 	Id     EvidenceAnalysisId `json:"id"`
 	Params GetEvidenceAnalysisParams
@@ -16858,6 +17995,20 @@ func (response GetEvidenceAnalysis200JSONResponse) VisitGetEvidenceAnalysisRespo
 	return err
 }
 
+type GetEvidenceAnalysis401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetEvidenceAnalysis401JSONResponse) VisitGetEvidenceAnalysisResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetEvidenceAnalysis404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response GetEvidenceAnalysis404JSONResponse) VisitGetEvidenceAnalysisResponse(w http.ResponseWriter) error {
@@ -16868,6 +18019,20 @@ func (response GetEvidenceAnalysis404JSONResponse) VisitGetEvidenceAnalysisRespo
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEvidenceAnalysis503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response GetEvidenceAnalysis503JSONResponse) VisitGetEvidenceAnalysisResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -16910,6 +18075,20 @@ func (response UpdateEvidenceAnalysis400JSONResponse) VisitUpdateEvidenceAnalysi
 	return err
 }
 
+type UpdateEvidenceAnalysis401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response UpdateEvidenceAnalysis401JSONResponse) VisitUpdateEvidenceAnalysisResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type UpdateEvidenceAnalysis404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response UpdateEvidenceAnalysis404JSONResponse) VisitUpdateEvidenceAnalysisResponse(w http.ResponseWriter) error {
@@ -16934,6 +18113,20 @@ func (response UpdateEvidenceAnalysis409JSONResponse) VisitUpdateEvidenceAnalysi
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateEvidenceAnalysis503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response UpdateEvidenceAnalysis503JSONResponse) VisitUpdateEvidenceAnalysisResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -16974,6 +18167,34 @@ func (response ListEvidenceConflicts400JSONResponse) VisitListEvidenceConflictsR
 	return err
 }
 
+type ListEvidenceConflicts401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListEvidenceConflicts401JSONResponse) VisitListEvidenceConflictsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListEvidenceConflicts503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response ListEvidenceConflicts503JSONResponse) VisitListEvidenceConflictsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetConflictsBySubjectRequestObject struct {
 	SubjectId openapi_types.UUID `json:"subjectId"`
 	Params    GetConflictsBySubjectParams
@@ -16993,6 +18214,34 @@ func (response GetConflictsBySubject200JSONResponse) VisitGetConflictsBySubjectR
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetConflictsBySubject401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetConflictsBySubject401JSONResponse) VisitGetConflictsBySubjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetConflictsBySubject503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response GetConflictsBySubject503JSONResponse) VisitGetConflictsBySubjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -17020,6 +18269,20 @@ func (response GetEvidenceConflict200JSONResponse) VisitGetEvidenceConflictRespo
 	return err
 }
 
+type GetEvidenceConflict401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetEvidenceConflict401JSONResponse) VisitGetEvidenceConflictResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetEvidenceConflict404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response GetEvidenceConflict404JSONResponse) VisitGetEvidenceConflictResponse(w http.ResponseWriter) error {
@@ -17030,6 +18293,20 @@ func (response GetEvidenceConflict404JSONResponse) VisitGetEvidenceConflictRespo
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEvidenceConflict503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response GetEvidenceConflict503JSONResponse) VisitGetEvidenceConflictResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -17072,6 +18349,20 @@ func (response ResolveEvidenceConflict400JSONResponse) VisitResolveEvidenceConfl
 	return err
 }
 
+type ResolveEvidenceConflict401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ResolveEvidenceConflict401JSONResponse) VisitResolveEvidenceConflictResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ResolveEvidenceConflict404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response ResolveEvidenceConflict404JSONResponse) VisitResolveEvidenceConflictResponse(w http.ResponseWriter) error {
@@ -17096,6 +18387,20 @@ func (response ResolveEvidenceConflict409JSONResponse) VisitResolveEvidenceConfl
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResolveEvidenceConflict503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response ResolveEvidenceConflict503JSONResponse) VisitResolveEvidenceConflictResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -17152,6 +18457,34 @@ func (response ExportAttributes400JSONResponse) VisitExportAttributesResponse(w 
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportAttributes401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ExportAttributes401JSONResponse) VisitExportAttributesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportAttributes503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response ExportAttributes503JSONResponse) VisitExportAttributesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -17215,6 +18548,34 @@ func (response ExportCitations400JSONResponse) VisitExportCitationsResponse(w ht
 	return err
 }
 
+type ExportCitations401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ExportCitations401JSONResponse) VisitExportCitationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportCitations503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response ExportCitations503JSONResponse) VisitExportCitationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetExportEstimateRequestObject struct {
 }
 
@@ -17232,6 +18593,34 @@ func (response GetExportEstimate200JSONResponse) VisitGetExportEstimateResponse(
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetExportEstimate401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetExportEstimate401JSONResponse) VisitGetExportEstimateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetExportEstimate503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response GetExportEstimate503JSONResponse) VisitGetExportEstimateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -17288,6 +18677,34 @@ func (response ExportEvents400JSONResponse) VisitExportEventsResponse(w http.Res
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportEvents401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ExportEvents401JSONResponse) VisitExportEventsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportEvents503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response ExportEvents503JSONResponse) VisitExportEventsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -17351,6 +18768,34 @@ func (response ExportFamilies400JSONResponse) VisitExportFamiliesResponse(w http
 	return err
 }
 
+type ExportFamilies401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ExportFamilies401JSONResponse) VisitExportFamiliesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportFamilies503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response ExportFamilies503JSONResponse) VisitExportFamiliesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ExportPersonsRequestObject struct {
 	Params ExportPersonsParams
 }
@@ -17406,6 +18851,34 @@ func (response ExportPersons400JSONResponse) VisitExportPersonsResponse(w http.R
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportPersons401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ExportPersons401JSONResponse) VisitExportPersonsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportPersons503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response ExportPersons503JSONResponse) VisitExportPersonsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -17469,6 +18942,34 @@ func (response ExportSources400JSONResponse) VisitExportSourcesResponse(w http.R
 	return err
 }
 
+type ExportSources401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ExportSources401JSONResponse) VisitExportSourcesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportSources503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response ExportSources503JSONResponse) VisitExportSourcesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ExportTreeRequestObject struct {
 }
 
@@ -17493,6 +18994,34 @@ func (response ExportTree200JSONResponse) VisitExportTreeResponse(w http.Respons
 	return err
 }
 
+type ExportTree401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ExportTree401JSONResponse) VisitExportTreeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportTree503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response ExportTree503JSONResponse) VisitExportTreeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListFamiliesRequestObject struct {
 	Params ListFamiliesParams
 }
@@ -17511,6 +19040,34 @@ func (response ListFamilies200JSONResponse) VisitListFamiliesResponse(w http.Res
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListFamilies401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListFamilies401JSONResponse) VisitListFamiliesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListFamilies503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response ListFamilies503JSONResponse) VisitListFamiliesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -17552,6 +19109,20 @@ func (response CreateFamily400JSONResponse) VisitCreateFamilyResponse(w http.Res
 	return err
 }
 
+type CreateFamily401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response CreateFamily401JSONResponse) VisitCreateFamilyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type CreateFamily404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response CreateFamily404JSONResponse) VisitCreateFamilyResponse(w http.ResponseWriter) error {
@@ -17580,6 +19151,20 @@ func (response CreateFamily409JSONResponse) VisitCreateFamilyResponse(w http.Res
 	return err
 }
 
+type CreateFamily503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response CreateFamily503JSONResponse) VisitCreateFamilyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeleteFamilyRequestObject struct {
 	Id     FamilyId `json:"id"`
 	Params DeleteFamilyParams
@@ -17595,6 +19180,20 @@ type DeleteFamily204Response struct {
 func (response DeleteFamily204Response) VisitDeleteFamilyResponse(w http.ResponseWriter) error {
 	w.WriteHeader(204)
 	return nil
+}
+
+type DeleteFamily401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response DeleteFamily401JSONResponse) VisitDeleteFamilyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type DeleteFamily404JSONResponse struct{ NotFoundJSONResponse }
@@ -17625,6 +19224,20 @@ func (response DeleteFamily409JSONResponse) VisitDeleteFamilyResponse(w http.Res
 	return err
 }
 
+type DeleteFamily503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response DeleteFamily503JSONResponse) VisitDeleteFamilyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetFamilyRequestObject struct {
 	Id     FamilyId `json:"id"`
 	Params GetFamilyParams
@@ -17648,6 +19261,20 @@ func (response GetFamily200JSONResponse) VisitGetFamilyResponse(w http.ResponseW
 	return err
 }
 
+type GetFamily401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetFamily401JSONResponse) VisitGetFamilyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetFamily404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response GetFamily404JSONResponse) VisitGetFamilyResponse(w http.ResponseWriter) error {
@@ -17658,6 +19285,20 @@ func (response GetFamily404JSONResponse) VisitGetFamilyResponse(w http.ResponseW
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetFamily503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response GetFamily503JSONResponse) VisitGetFamilyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -17700,6 +19341,20 @@ func (response UpdateFamily400JSONResponse) VisitUpdateFamilyResponse(w http.Res
 	return err
 }
 
+type UpdateFamily401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response UpdateFamily401JSONResponse) VisitUpdateFamilyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type UpdateFamily404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response UpdateFamily404JSONResponse) VisitUpdateFamilyResponse(w http.ResponseWriter) error {
@@ -17724,6 +19379,20 @@ func (response UpdateFamily409JSONResponse) VisitUpdateFamilyResponse(w http.Res
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateFamily503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response UpdateFamily503JSONResponse) VisitUpdateFamilyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -17766,6 +19435,20 @@ func (response AddChildToFamily400JSONResponse) VisitAddChildToFamilyResponse(w 
 	return err
 }
 
+type AddChildToFamily401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response AddChildToFamily401JSONResponse) VisitAddChildToFamilyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type AddChildToFamily404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response AddChildToFamily404JSONResponse) VisitAddChildToFamilyResponse(w http.ResponseWriter) error {
@@ -17794,6 +19477,20 @@ func (response AddChildToFamily409JSONResponse) VisitAddChildToFamilyResponse(w 
 	return err
 }
 
+type AddChildToFamily503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response AddChildToFamily503JSONResponse) VisitAddChildToFamilyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type RemoveChildFromFamilyRequestObject struct {
 	Id       FamilyId           `json:"id"`
 	PersonId openapi_types.UUID `json:"personId"`
@@ -17810,6 +19507,20 @@ type RemoveChildFromFamily204Response struct {
 func (response RemoveChildFromFamily204Response) VisitRemoveChildFromFamilyResponse(w http.ResponseWriter) error {
 	w.WriteHeader(204)
 	return nil
+}
+
+type RemoveChildFromFamily401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response RemoveChildFromFamily401JSONResponse) VisitRemoveChildFromFamilyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type RemoveChildFromFamily404JSONResponse struct{ NotFoundJSONResponse }
@@ -17840,6 +19551,20 @@ func (response RemoveChildFromFamily409JSONResponse) VisitRemoveChildFromFamilyR
 	return err
 }
 
+type RemoveChildFromFamily503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response RemoveChildFromFamily503JSONResponse) VisitRemoveChildFromFamilyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetFamilyGroupSheetRequestObject struct {
 	Id     FamilyId `json:"id"`
 	Params GetFamilyGroupSheetParams
@@ -17863,6 +19588,20 @@ func (response GetFamilyGroupSheet200JSONResponse) VisitGetFamilyGroupSheetRespo
 	return err
 }
 
+type GetFamilyGroupSheet401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetFamilyGroupSheet401JSONResponse) VisitGetFamilyGroupSheetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetFamilyGroupSheet404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response GetFamilyGroupSheet404JSONResponse) VisitGetFamilyGroupSheetResponse(w http.ResponseWriter) error {
@@ -17873,6 +19612,20 @@ func (response GetFamilyGroupSheet404JSONResponse) VisitGetFamilyGroupSheetRespo
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetFamilyGroupSheet503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response GetFamilyGroupSheet503JSONResponse) VisitGetFamilyGroupSheetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -17900,6 +19653,20 @@ func (response GetFamilyHistory200JSONResponse) VisitGetFamilyHistoryResponse(w 
 	return err
 }
 
+type GetFamilyHistory401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetFamilyHistory401JSONResponse) VisitGetFamilyHistoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetFamilyHistory404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response GetFamilyHistory404JSONResponse) VisitGetFamilyHistoryResponse(w http.ResponseWriter) error {
@@ -17910,6 +19677,20 @@ func (response GetFamilyHistory404JSONResponse) VisitGetFamilyHistoryResponse(w 
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetFamilyHistory503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response GetFamilyHistory503JSONResponse) VisitGetFamilyHistoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -17936,6 +19717,20 @@ func (response ListLDSOrdinancesForFamily200JSONResponse) VisitListLDSOrdinances
 	return err
 }
 
+type ListLDSOrdinancesForFamily401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListLDSOrdinancesForFamily401JSONResponse) VisitListLDSOrdinancesForFamilyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListLDSOrdinancesForFamily404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response ListLDSOrdinancesForFamily404JSONResponse) VisitListLDSOrdinancesForFamilyResponse(w http.ResponseWriter) error {
@@ -17946,6 +19741,20 @@ func (response ListLDSOrdinancesForFamily404JSONResponse) VisitListLDSOrdinances
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListLDSOrdinancesForFamily503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response ListLDSOrdinancesForFamily503JSONResponse) VisitListLDSOrdinancesForFamilyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -17969,6 +19778,20 @@ func (response GetFamilyRestorePoints200JSONResponse) VisitGetFamilyRestorePoint
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetFamilyRestorePoints401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetFamilyRestorePoints401JSONResponse) VisitGetFamilyRestorePointsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -17997,6 +19820,20 @@ func (response GetFamilyRestorePoints409JSONResponse) VisitGetFamilyRestorePoint
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetFamilyRestorePoints503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response GetFamilyRestorePoints503JSONResponse) VisitGetFamilyRestorePointsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -18039,6 +19876,20 @@ func (response RollbackFamily400JSONResponse) VisitRollbackFamilyResponse(w http
 	return err
 }
 
+type RollbackFamily401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response RollbackFamily401JSONResponse) VisitRollbackFamilyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type RollbackFamily404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response RollbackFamily404JSONResponse) VisitRollbackFamilyResponse(w http.ResponseWriter) error {
@@ -18063,6 +19914,20 @@ func (response RollbackFamily409JSONResponse) VisitRollbackFamilyResponse(w http
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RollbackFamily503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response RollbackFamily503JSONResponse) VisitRollbackFamilyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -18121,6 +19986,20 @@ func (response ExportGedcom400JSONResponse) VisitExportGedcomResponse(w http.Res
 	return err
 }
 
+type ExportGedcom401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ExportGedcom401JSONResponse) VisitExportGedcomResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ExportGedcom429JSONResponse Error
 
 func (response ExportGedcom429JSONResponse) VisitExportGedcomResponse(w http.ResponseWriter) error {
@@ -18131,6 +20010,20 @@ func (response ExportGedcom429JSONResponse) VisitExportGedcomResponse(w http.Res
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportGedcom503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response ExportGedcom503JSONResponse) VisitExportGedcomResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -18171,6 +20064,20 @@ func (response PreviewGedcomExport400JSONResponse) VisitPreviewGedcomExportRespo
 	return err
 }
 
+type PreviewGedcomExport401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response PreviewGedcomExport401JSONResponse) VisitPreviewGedcomExportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PreviewGedcomExport429JSONResponse Error
 
 func (response PreviewGedcomExport429JSONResponse) VisitPreviewGedcomExportResponse(w http.ResponseWriter) error {
@@ -18181,6 +20088,20 @@ func (response PreviewGedcomExport429JSONResponse) VisitPreviewGedcomExportRespo
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PreviewGedcomExport503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response PreviewGedcomExport503JSONResponse) VisitPreviewGedcomExportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -18221,6 +20142,55 @@ func (response ImportGedcom400JSONResponse) VisitImportGedcomResponse(w http.Res
 	return err
 }
 
+type ImportGedcom401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ImportGedcom401JSONResponse) VisitImportGedcomResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ImportGedcom503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response ImportGedcom503JSONResponse) VisitImportGedcomResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetHealthRequestObject struct {
+}
+
+type GetHealthResponseObject interface {
+	VisitGetHealthResponse(w http.ResponseWriter) error
+}
+
+type GetHealth200JSONResponse Health
+
+func (response GetHealth200JSONResponse) VisitGetHealthResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListHistoryRequestObject struct {
 	Params ListHistoryParams
 }
@@ -18257,6 +20227,34 @@ func (response ListHistory400JSONResponse) VisitListHistoryResponse(w http.Respo
 	return err
 }
 
+type ListHistory401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListHistory401JSONResponse) VisitListHistoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListHistory503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response ListHistory503JSONResponse) VisitListHistoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListInvitesRequestObject struct {
 }
 
@@ -18278,6 +20276,20 @@ func (response ListInvites200JSONResponse) VisitListInvitesResponse(w http.Respo
 	return err
 }
 
+type ListInvites401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListInvites401JSONResponse) VisitListInvitesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListInvites409JSONResponse struct{ AccountsOnlyJSONResponse }
 
 func (response ListInvites409JSONResponse) VisitListInvitesResponse(w http.ResponseWriter) error {
@@ -18288,6 +20300,20 @@ func (response ListInvites409JSONResponse) VisitListInvitesResponse(w http.Respo
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListInvites503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response ListInvites503JSONResponse) VisitListInvitesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -18328,6 +20354,20 @@ func (response CreateInvite400JSONResponse) VisitCreateInviteResponse(w http.Res
 	return err
 }
 
+type CreateInvite401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response CreateInvite401JSONResponse) VisitCreateInviteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type CreateInvite409JSONResponse struct{ AccountsOnlyJSONResponse }
 
 func (response CreateInvite409JSONResponse) VisitCreateInviteResponse(w http.ResponseWriter) error {
@@ -18338,6 +20378,20 @@ func (response CreateInvite409JSONResponse) VisitCreateInviteResponse(w http.Res
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateInvite503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response CreateInvite503JSONResponse) VisitCreateInviteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -18356,6 +20410,20 @@ type RevokeInvite204Response struct {
 func (response RevokeInvite204Response) VisitRevokeInviteResponse(w http.ResponseWriter) error {
 	w.WriteHeader(204)
 	return nil
+}
+
+type RevokeInvite401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response RevokeInvite401JSONResponse) VisitRevokeInviteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type RevokeInvite404JSONResponse struct{ NotFoundJSONResponse }
@@ -18382,6 +20450,20 @@ func (response RevokeInvite409JSONResponse) VisitRevokeInviteResponse(w http.Res
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeInvite503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response RevokeInvite503JSONResponse) VisitRevokeInviteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -18422,6 +20504,34 @@ func (response ListLDSOrdinances400JSONResponse) VisitListLDSOrdinancesResponse(
 	return err
 }
 
+type ListLDSOrdinances401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListLDSOrdinances401JSONResponse) VisitListLDSOrdinancesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListLDSOrdinances503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response ListLDSOrdinances503JSONResponse) VisitListLDSOrdinancesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type CreateLDSOrdinanceRequestObject struct {
 	Body *CreateLDSOrdinanceJSONRequestBody
 }
@@ -18458,6 +20568,34 @@ func (response CreateLDSOrdinance400JSONResponse) VisitCreateLDSOrdinanceRespons
 	return err
 }
 
+type CreateLDSOrdinance401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response CreateLDSOrdinance401JSONResponse) VisitCreateLDSOrdinanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateLDSOrdinance503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response CreateLDSOrdinance503JSONResponse) VisitCreateLDSOrdinanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeleteLDSOrdinanceRequestObject struct {
 	Id     LdsOrdinanceId `json:"id"`
 	Params DeleteLDSOrdinanceParams
@@ -18485,6 +20623,20 @@ func (response DeleteLDSOrdinance400JSONResponse) VisitDeleteLDSOrdinanceRespons
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteLDSOrdinance401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response DeleteLDSOrdinance401JSONResponse) VisitDeleteLDSOrdinanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -18517,6 +20669,20 @@ func (response DeleteLDSOrdinance409JSONResponse) VisitDeleteLDSOrdinanceRespons
 	return err
 }
 
+type DeleteLDSOrdinance503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response DeleteLDSOrdinance503JSONResponse) VisitDeleteLDSOrdinanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetLDSOrdinanceRequestObject struct {
 	Id LdsOrdinanceId `json:"id"`
 }
@@ -18539,6 +20705,20 @@ func (response GetLDSOrdinance200JSONResponse) VisitGetLDSOrdinanceResponse(w ht
 	return err
 }
 
+type GetLDSOrdinance401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetLDSOrdinance401JSONResponse) VisitGetLDSOrdinanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetLDSOrdinance404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response GetLDSOrdinance404JSONResponse) VisitGetLDSOrdinanceResponse(w http.ResponseWriter) error {
@@ -18549,6 +20729,20 @@ func (response GetLDSOrdinance404JSONResponse) VisitGetLDSOrdinanceResponse(w ht
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetLDSOrdinance503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response GetLDSOrdinance503JSONResponse) VisitGetLDSOrdinanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -18590,6 +20784,20 @@ func (response UpdateLDSOrdinance400JSONResponse) VisitUpdateLDSOrdinanceRespons
 	return err
 }
 
+type UpdateLDSOrdinance401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response UpdateLDSOrdinance401JSONResponse) VisitUpdateLDSOrdinanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type UpdateLDSOrdinance404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response UpdateLDSOrdinance404JSONResponse) VisitUpdateLDSOrdinanceResponse(w http.ResponseWriter) error {
@@ -18618,6 +20826,20 @@ func (response UpdateLDSOrdinance409JSONResponse) VisitUpdateLDSOrdinanceRespons
 	return err
 }
 
+type UpdateLDSOrdinance503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response UpdateLDSOrdinance503JSONResponse) VisitUpdateLDSOrdinanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetMapLocationsRequestObject struct {
 	Params GetMapLocationsParams
 }
@@ -18636,6 +20858,34 @@ func (response GetMapLocations200JSONResponse) VisitGetMapLocationsResponse(w ht
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMapLocations401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetMapLocations401JSONResponse) VisitGetMapLocationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMapLocations503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response GetMapLocations503JSONResponse) VisitGetMapLocationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -18671,6 +20921,20 @@ func (response DeleteMedia400JSONResponse) VisitDeleteMediaResponse(w http.Respo
 	return err
 }
 
+type DeleteMedia401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response DeleteMedia401JSONResponse) VisitDeleteMediaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeleteMedia404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response DeleteMedia404JSONResponse) VisitDeleteMediaResponse(w http.ResponseWriter) error {
@@ -18699,6 +20963,20 @@ func (response DeleteMedia409JSONResponse) VisitDeleteMediaResponse(w http.Respo
 	return err
 }
 
+type DeleteMedia503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response DeleteMedia503JSONResponse) VisitDeleteMediaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetMediaRequestObject struct {
 	Id     openapi_types.UUID `json:"id"`
 	Params GetMediaParams
@@ -18722,6 +21000,20 @@ func (response GetMedia200JSONResponse) VisitGetMediaResponse(w http.ResponseWri
 	return err
 }
 
+type GetMedia401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetMedia401JSONResponse) VisitGetMediaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetMedia404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response GetMedia404JSONResponse) VisitGetMediaResponse(w http.ResponseWriter) error {
@@ -18732,6 +21024,20 @@ func (response GetMedia404JSONResponse) VisitGetMediaResponse(w http.ResponseWri
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMedia503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response GetMedia503JSONResponse) VisitGetMediaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -18774,6 +21080,20 @@ func (response UpdateMedia400JSONResponse) VisitUpdateMediaResponse(w http.Respo
 	return err
 }
 
+type UpdateMedia401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response UpdateMedia401JSONResponse) VisitUpdateMediaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type UpdateMedia404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response UpdateMedia404JSONResponse) VisitUpdateMediaResponse(w http.ResponseWriter) error {
@@ -18798,6 +21118,20 @@ func (response UpdateMedia409JSONResponse) VisitUpdateMediaResponse(w http.Respo
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateMedia503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response UpdateMedia503JSONResponse) VisitUpdateMediaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -18911,6 +21245,20 @@ func (response DownloadMedia200ImagepngResponse) VisitDownloadMediaResponse(w ht
 	return err
 }
 
+type DownloadMedia401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response DownloadMedia401JSONResponse) VisitDownloadMediaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DownloadMedia404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response DownloadMedia404JSONResponse) VisitDownloadMediaResponse(w http.ResponseWriter) error {
@@ -18921,6 +21269,20 @@ func (response DownloadMedia404JSONResponse) VisitDownloadMediaResponse(w http.R
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DownloadMedia503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response DownloadMedia503JSONResponse) VisitDownloadMediaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -18954,6 +21316,20 @@ func (response GetMediaThumbnail200ImagejpegResponse) VisitGetMediaThumbnailResp
 	return err
 }
 
+type GetMediaThumbnail401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetMediaThumbnail401JSONResponse) VisitGetMediaThumbnailResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetMediaThumbnail404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response GetMediaThumbnail404JSONResponse) VisitGetMediaThumbnailResponse(w http.ResponseWriter) error {
@@ -18964,6 +21340,20 @@ func (response GetMediaThumbnail404JSONResponse) VisitGetMediaThumbnailResponse(
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMediaThumbnail503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response GetMediaThumbnail503JSONResponse) VisitGetMediaThumbnailResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -19000,6 +21390,34 @@ func (response ListNotes400JSONResponse) VisitListNotesResponse(w http.ResponseW
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListNotes401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListNotes401JSONResponse) VisitListNotesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListNotes503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response ListNotes503JSONResponse) VisitListNotesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -19041,6 +21459,34 @@ func (response CreateNote400JSONResponse) VisitCreateNoteResponse(w http.Respons
 	return err
 }
 
+type CreateNote401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response CreateNote401JSONResponse) VisitCreateNoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateNote503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response CreateNote503JSONResponse) VisitCreateNoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeleteNoteRequestObject struct {
 	Id     NoteId `json:"id"`
 	Params DeleteNoteParams
@@ -19068,6 +21514,20 @@ func (response DeleteNote400JSONResponse) VisitDeleteNoteResponse(w http.Respons
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteNote401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response DeleteNote401JSONResponse) VisitDeleteNoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -19100,6 +21560,20 @@ func (response DeleteNote409JSONResponse) VisitDeleteNoteResponse(w http.Respons
 	return err
 }
 
+type DeleteNote503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response DeleteNote503JSONResponse) VisitDeleteNoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetNoteRequestObject struct {
 	Id     NoteId `json:"id"`
 	Params GetNoteParams
@@ -19123,6 +21597,20 @@ func (response GetNote200JSONResponse) VisitGetNoteResponse(w http.ResponseWrite
 	return err
 }
 
+type GetNote401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetNote401JSONResponse) VisitGetNoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetNote404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response GetNote404JSONResponse) VisitGetNoteResponse(w http.ResponseWriter) error {
@@ -19133,6 +21621,20 @@ func (response GetNote404JSONResponse) VisitGetNoteResponse(w http.ResponseWrite
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetNote503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response GetNote503JSONResponse) VisitGetNoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -19175,6 +21677,20 @@ func (response UpdateNote400JSONResponse) VisitUpdateNoteResponse(w http.Respons
 	return err
 }
 
+type UpdateNote401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response UpdateNote401JSONResponse) VisitUpdateNoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type UpdateNote404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response UpdateNote404JSONResponse) VisitUpdateNoteResponse(w http.ResponseWriter) error {
@@ -19203,6 +21719,20 @@ func (response UpdateNote409JSONResponse) VisitUpdateNoteResponse(w http.Respons
 	return err
 }
 
+type UpdateNote503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response UpdateNote503JSONResponse) VisitUpdateNoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListPasswordResetsRequestObject struct {
 }
 
@@ -19224,6 +21754,20 @@ func (response ListPasswordResets200JSONResponse) VisitListPasswordResetsRespons
 	return err
 }
 
+type ListPasswordResets401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListPasswordResets401JSONResponse) VisitListPasswordResetsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListPasswordResets409JSONResponse struct{ AccountsOnlyJSONResponse }
 
 func (response ListPasswordResets409JSONResponse) VisitListPasswordResetsResponse(w http.ResponseWriter) error {
@@ -19234,6 +21778,20 @@ func (response ListPasswordResets409JSONResponse) VisitListPasswordResetsRespons
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPasswordResets503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response ListPasswordResets503JSONResponse) VisitListPasswordResetsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -19252,6 +21810,20 @@ type RevokePasswordReset204Response struct {
 func (response RevokePasswordReset204Response) VisitRevokePasswordResetResponse(w http.ResponseWriter) error {
 	w.WriteHeader(204)
 	return nil
+}
+
+type RevokePasswordReset401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response RevokePasswordReset401JSONResponse) VisitRevokePasswordResetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type RevokePasswordReset404JSONResponse struct{ NotFoundJSONResponse }
@@ -19282,6 +21854,20 @@ func (response RevokePasswordReset409JSONResponse) VisitRevokePasswordResetRespo
 	return err
 }
 
+type RevokePasswordReset503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response RevokePasswordReset503JSONResponse) VisitRevokePasswordResetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetPedigreeRequestObject struct {
 	Id     PersonId `json:"id"`
 	Params GetPedigreeParams
@@ -19305,6 +21891,20 @@ func (response GetPedigree200JSONResponse) VisitGetPedigreeResponse(w http.Respo
 	return err
 }
 
+type GetPedigree401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetPedigree401JSONResponse) VisitGetPedigreeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetPedigree404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response GetPedigree404JSONResponse) VisitGetPedigreeResponse(w http.ResponseWriter) error {
@@ -19315,6 +21915,20 @@ func (response GetPedigree404JSONResponse) VisitGetPedigreeResponse(w http.Respo
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPedigree503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response GetPedigree503JSONResponse) VisitGetPedigreeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -19355,6 +21969,20 @@ func (response ListPersons400JSONResponse) VisitListPersonsResponse(w http.Respo
 	return err
 }
 
+type ListPersons401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListPersons401JSONResponse) VisitListPersonsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListPersons404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response ListPersons404JSONResponse) VisitListPersonsResponse(w http.ResponseWriter) error {
@@ -19365,6 +21993,20 @@ func (response ListPersons404JSONResponse) VisitListPersonsResponse(w http.Respo
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPersons503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response ListPersons503JSONResponse) VisitListPersonsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -19406,6 +22048,20 @@ func (response CreatePerson400JSONResponse) VisitCreatePersonResponse(w http.Res
 	return err
 }
 
+type CreatePerson401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response CreatePerson401JSONResponse) VisitCreatePersonResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type CreatePerson404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response CreatePerson404JSONResponse) VisitCreatePersonResponse(w http.ResponseWriter) error {
@@ -19434,6 +22090,20 @@ func (response CreatePerson409JSONResponse) VisitCreatePersonResponse(w http.Res
 	return err
 }
 
+type CreatePerson503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response CreatePerson503JSONResponse) VisitCreatePersonResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetPersonsDuplicatesRequestObject struct {
 	Params GetPersonsDuplicatesParams
 }
@@ -19452,6 +22122,34 @@ func (response GetPersonsDuplicates200JSONResponse) VisitGetPersonsDuplicatesRes
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPersonsDuplicates401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetPersonsDuplicates401JSONResponse) VisitGetPersonsDuplicatesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPersonsDuplicates503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response GetPersonsDuplicates503JSONResponse) VisitGetPersonsDuplicatesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -19493,6 +22191,34 @@ func (response BatchDismissDuplicates400JSONResponse) VisitBatchDismissDuplicate
 	return err
 }
 
+type BatchDismissDuplicates401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response BatchDismissDuplicates401JSONResponse) VisitBatchDismissDuplicatesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BatchDismissDuplicates503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response BatchDismissDuplicates503JSONResponse) VisitBatchDismissDuplicatesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListDismissedDuplicatesRequestObject struct {
 	Params ListDismissedDuplicatesParams
 }
@@ -19511,6 +22237,34 @@ func (response ListDismissedDuplicates200JSONResponse) VisitListDismissedDuplica
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDismissedDuplicates401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListDismissedDuplicates401JSONResponse) VisitListDismissedDuplicatesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDismissedDuplicates503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response ListDismissedDuplicates503JSONResponse) VisitListDismissedDuplicatesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -19547,6 +22301,20 @@ func (response RestoreDuplicate400JSONResponse) VisitRestoreDuplicateResponse(w 
 	return err
 }
 
+type RestoreDuplicate401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response RestoreDuplicate401JSONResponse) VisitRestoreDuplicateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type RestoreDuplicate404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response RestoreDuplicate404JSONResponse) VisitRestoreDuplicateResponse(w http.ResponseWriter) error {
@@ -19557,6 +22325,20 @@ func (response RestoreDuplicate404JSONResponse) VisitRestoreDuplicateResponse(w 
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RestoreDuplicate503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response RestoreDuplicate503JSONResponse) VisitRestoreDuplicateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -19594,6 +22376,20 @@ func (response DismissDuplicate400JSONResponse) VisitDismissDuplicateResponse(w 
 	return err
 }
 
+type DismissDuplicate401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response DismissDuplicate401JSONResponse) VisitDismissDuplicateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DismissDuplicate404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response DismissDuplicate404JSONResponse) VisitDismissDuplicateResponse(w http.ResponseWriter) error {
@@ -19604,6 +22400,20 @@ func (response DismissDuplicate404JSONResponse) VisitDismissDuplicateResponse(w 
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DismissDuplicate503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response DismissDuplicate503JSONResponse) VisitDismissDuplicateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -19645,6 +22455,20 @@ func (response MergePersons400JSONResponse) VisitMergePersonsResponse(w http.Res
 	return err
 }
 
+type MergePersons401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response MergePersons401JSONResponse) VisitMergePersonsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type MergePersons404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response MergePersons404JSONResponse) VisitMergePersonsResponse(w http.ResponseWriter) error {
@@ -19669,6 +22493,20 @@ func (response MergePersons409JSONResponse) VisitMergePersonsResponse(w http.Res
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MergePersons503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response MergePersons503JSONResponse) VisitMergePersonsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -19710,6 +22548,34 @@ func (response BatchMergePersons400JSONResponse) VisitBatchMergePersonsResponse(
 	return err
 }
 
+type BatchMergePersons401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response BatchMergePersons401JSONResponse) VisitBatchMergePersonsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BatchMergePersons503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response BatchMergePersons503JSONResponse) VisitBatchMergePersonsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeletePersonRequestObject struct {
 	Id     PersonId `json:"id"`
 	Params DeletePersonParams
@@ -19725,6 +22591,20 @@ type DeletePerson204Response struct {
 func (response DeletePerson204Response) VisitDeletePersonResponse(w http.ResponseWriter) error {
 	w.WriteHeader(204)
 	return nil
+}
+
+type DeletePerson401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response DeletePerson401JSONResponse) VisitDeletePersonResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type DeletePerson404JSONResponse struct{ NotFoundJSONResponse }
@@ -19755,6 +22635,20 @@ func (response DeletePerson409JSONResponse) VisitDeletePersonResponse(w http.Res
 	return err
 }
 
+type DeletePerson503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response DeletePerson503JSONResponse) VisitDeletePersonResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetPersonRequestObject struct {
 	Id     PersonId `json:"id"`
 	Params GetPersonParams
@@ -19778,6 +22672,20 @@ func (response GetPerson200JSONResponse) VisitGetPersonResponse(w http.ResponseW
 	return err
 }
 
+type GetPerson401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetPerson401JSONResponse) VisitGetPersonResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetPerson404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response GetPerson404JSONResponse) VisitGetPersonResponse(w http.ResponseWriter) error {
@@ -19788,6 +22696,20 @@ func (response GetPerson404JSONResponse) VisitGetPersonResponse(w http.ResponseW
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPerson503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response GetPerson503JSONResponse) VisitGetPersonResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -19830,6 +22752,20 @@ func (response UpdatePerson400JSONResponse) VisitUpdatePersonResponse(w http.Res
 	return err
 }
 
+type UpdatePerson401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response UpdatePerson401JSONResponse) VisitUpdatePersonResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type UpdatePerson404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response UpdatePerson404JSONResponse) VisitUpdatePersonResponse(w http.ResponseWriter) error {
@@ -19858,6 +22794,20 @@ func (response UpdatePerson409JSONResponse) VisitUpdatePersonResponse(w http.Res
 	return err
 }
 
+type UpdatePerson503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response UpdatePerson503JSONResponse) VisitUpdatePersonResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListAssociationsForPersonRequestObject struct {
 	Id     PersonId `json:"id"`
 	Params ListAssociationsForPersonParams
@@ -19881,6 +22831,20 @@ func (response ListAssociationsForPerson200JSONResponse) VisitListAssociationsFo
 	return err
 }
 
+type ListAssociationsForPerson401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListAssociationsForPerson401JSONResponse) VisitListAssociationsForPersonResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListAssociationsForPerson404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response ListAssociationsForPerson404JSONResponse) VisitListAssociationsForPersonResponse(w http.ResponseWriter) error {
@@ -19891,6 +22855,20 @@ func (response ListAssociationsForPerson404JSONResponse) VisitListAssociationsFo
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAssociationsForPerson503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response ListAssociationsForPerson503JSONResponse) VisitListAssociationsForPersonResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -19911,6 +22889,20 @@ func (response ResolvePersonBrickWall204Response) VisitResolvePersonBrickWallRes
 	return nil
 }
 
+type ResolvePersonBrickWall401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ResolvePersonBrickWall401JSONResponse) VisitResolvePersonBrickWallResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ResolvePersonBrickWall404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response ResolvePersonBrickWall404JSONResponse) VisitResolvePersonBrickWallResponse(w http.ResponseWriter) error {
@@ -19921,6 +22913,20 @@ func (response ResolvePersonBrickWall404JSONResponse) VisitResolvePersonBrickWal
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResolvePersonBrickWall503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response ResolvePersonBrickWall503JSONResponse) VisitResolvePersonBrickWallResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -19942,6 +22948,20 @@ func (response SetPersonBrickWall204Response) VisitSetPersonBrickWallResponse(w 
 	return nil
 }
 
+type SetPersonBrickWall401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response SetPersonBrickWall401JSONResponse) VisitSetPersonBrickWallResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type SetPersonBrickWall404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response SetPersonBrickWall404JSONResponse) VisitSetPersonBrickWallResponse(w http.ResponseWriter) error {
@@ -19952,6 +22972,20 @@ func (response SetPersonBrickWall404JSONResponse) VisitSetPersonBrickWallRespons
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetPersonBrickWall503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response SetPersonBrickWall503JSONResponse) VisitSetPersonBrickWallResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -19979,6 +23013,20 @@ func (response GetCitationsForPerson200JSONResponse) VisitGetCitationsForPersonR
 	return err
 }
 
+type GetCitationsForPerson401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetCitationsForPerson401JSONResponse) VisitGetCitationsForPersonResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetCitationsForPerson404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response GetCitationsForPerson404JSONResponse) VisitGetCitationsForPersonResponse(w http.ResponseWriter) error {
@@ -19989,6 +23037,20 @@ func (response GetCitationsForPerson404JSONResponse) VisitGetCitationsForPersonR
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCitationsForPerson503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response GetCitationsForPerson503JSONResponse) VisitGetCitationsForPersonResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -20016,6 +23078,20 @@ func (response GetPersonHistory200JSONResponse) VisitGetPersonHistoryResponse(w 
 	return err
 }
 
+type GetPersonHistory401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetPersonHistory401JSONResponse) VisitGetPersonHistoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetPersonHistory404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response GetPersonHistory404JSONResponse) VisitGetPersonHistoryResponse(w http.ResponseWriter) error {
@@ -20026,6 +23102,20 @@ func (response GetPersonHistory404JSONResponse) VisitGetPersonHistoryResponse(w 
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPersonHistory503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response GetPersonHistory503JSONResponse) VisitGetPersonHistoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -20052,6 +23142,20 @@ func (response ListLDSOrdinancesForPerson200JSONResponse) VisitListLDSOrdinances
 	return err
 }
 
+type ListLDSOrdinancesForPerson401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListLDSOrdinancesForPerson401JSONResponse) VisitListLDSOrdinancesForPersonResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListLDSOrdinancesForPerson404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response ListLDSOrdinancesForPerson404JSONResponse) VisitListLDSOrdinancesForPersonResponse(w http.ResponseWriter) error {
@@ -20062,6 +23166,20 @@ func (response ListLDSOrdinancesForPerson404JSONResponse) VisitListLDSOrdinances
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListLDSOrdinancesForPerson503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response ListLDSOrdinancesForPerson503JSONResponse) VisitListLDSOrdinancesForPersonResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -20089,6 +23207,20 @@ func (response ListPersonMedia200JSONResponse) VisitListPersonMediaResponse(w ht
 	return err
 }
 
+type ListPersonMedia401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListPersonMedia401JSONResponse) VisitListPersonMediaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListPersonMedia404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response ListPersonMedia404JSONResponse) VisitListPersonMediaResponse(w http.ResponseWriter) error {
@@ -20099,6 +23231,20 @@ func (response ListPersonMedia404JSONResponse) VisitListPersonMediaResponse(w ht
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPersonMedia503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response ListPersonMedia503JSONResponse) VisitListPersonMediaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -20141,6 +23287,20 @@ func (response UploadPersonMedia400JSONResponse) VisitUploadPersonMediaResponse(
 	return err
 }
 
+type UploadPersonMedia401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response UploadPersonMedia401JSONResponse) VisitUploadPersonMediaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type UploadPersonMedia404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response UploadPersonMedia404JSONResponse) VisitUploadPersonMediaResponse(w http.ResponseWriter) error {
@@ -20169,6 +23329,20 @@ func (response UploadPersonMedia413JSONResponse) VisitUploadPersonMediaResponse(
 	return err
 }
 
+type UploadPersonMedia503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response UploadPersonMedia503JSONResponse) VisitUploadPersonMediaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetPersonNamesRequestObject struct {
 	Id     PersonId `json:"id"`
 	Params GetPersonNamesParams
@@ -20192,6 +23366,20 @@ func (response GetPersonNames200JSONResponse) VisitGetPersonNamesResponse(w http
 	return err
 }
 
+type GetPersonNames401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetPersonNames401JSONResponse) VisitGetPersonNamesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetPersonNames404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response GetPersonNames404JSONResponse) VisitGetPersonNamesResponse(w http.ResponseWriter) error {
@@ -20202,6 +23390,20 @@ func (response GetPersonNames404JSONResponse) VisitGetPersonNamesResponse(w http
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPersonNames503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response GetPersonNames503JSONResponse) VisitGetPersonNamesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -20244,6 +23446,20 @@ func (response AddPersonName400JSONResponse) VisitAddPersonNameResponse(w http.R
 	return err
 }
 
+type AddPersonName401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response AddPersonName401JSONResponse) VisitAddPersonNameResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type AddPersonName404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response AddPersonName404JSONResponse) VisitAddPersonNameResponse(w http.ResponseWriter) error {
@@ -20268,6 +23484,20 @@ func (response AddPersonName409JSONResponse) VisitAddPersonNameResponse(w http.R
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddPersonName503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response AddPersonName503JSONResponse) VisitAddPersonNameResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -20304,6 +23534,20 @@ func (response DeletePersonName400JSONResponse) VisitDeletePersonNameResponse(w 
 	return err
 }
 
+type DeletePersonName401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response DeletePersonName401JSONResponse) VisitDeletePersonNameResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeletePersonName404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response DeletePersonName404JSONResponse) VisitDeletePersonNameResponse(w http.ResponseWriter) error {
@@ -20328,6 +23572,20 @@ func (response DeletePersonName409JSONResponse) VisitDeletePersonNameResponse(w 
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeletePersonName503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response DeletePersonName503JSONResponse) VisitDeletePersonNameResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -20371,6 +23629,20 @@ func (response UpdatePersonName400JSONResponse) VisitUpdatePersonNameResponse(w 
 	return err
 }
 
+type UpdatePersonName401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response UpdatePersonName401JSONResponse) VisitUpdatePersonNameResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type UpdatePersonName404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response UpdatePersonName404JSONResponse) VisitUpdatePersonNameResponse(w http.ResponseWriter) error {
@@ -20399,6 +23671,20 @@ func (response UpdatePersonName409JSONResponse) VisitUpdatePersonNameResponse(w 
 	return err
 }
 
+type UpdatePersonName503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response UpdatePersonName503JSONResponse) VisitUpdatePersonNameResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetPersonRestorePointsRequestObject struct {
 	Id     PersonId `json:"id"`
 	Params GetPersonRestorePointsParams
@@ -20418,6 +23704,20 @@ func (response GetPersonRestorePoints200JSONResponse) VisitGetPersonRestorePoint
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPersonRestorePoints401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetPersonRestorePoints401JSONResponse) VisitGetPersonRestorePointsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -20446,6 +23746,20 @@ func (response GetPersonRestorePoints409JSONResponse) VisitGetPersonRestorePoint
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPersonRestorePoints503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response GetPersonRestorePoints503JSONResponse) VisitGetPersonRestorePointsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -20488,6 +23802,20 @@ func (response RollbackPerson400JSONResponse) VisitRollbackPersonResponse(w http
 	return err
 }
 
+type RollbackPerson401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response RollbackPerson401JSONResponse) VisitRollbackPersonResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type RollbackPerson404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response RollbackPerson404JSONResponse) VisitRollbackPersonResponse(w http.ResponseWriter) error {
@@ -20512,6 +23840,20 @@ func (response RollbackPerson409JSONResponse) VisitRollbackPersonResponse(w http
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RollbackPerson503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response RollbackPerson503JSONResponse) VisitRollbackPersonResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -20548,6 +23890,34 @@ func (response ListProofSummaries400JSONResponse) VisitListProofSummariesRespons
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListProofSummaries401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListProofSummaries401JSONResponse) VisitListProofSummariesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListProofSummaries503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response ListProofSummaries503JSONResponse) VisitListProofSummariesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -20589,6 +23959,34 @@ func (response CreateProofSummary400JSONResponse) VisitCreateProofSummaryRespons
 	return err
 }
 
+type CreateProofSummary401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response CreateProofSummary401JSONResponse) VisitCreateProofSummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateProofSummary503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response CreateProofSummary503JSONResponse) VisitCreateProofSummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetProofSummaryByFactRequestObject struct {
 	Params GetProofSummaryByFactParams
 }
@@ -20625,6 +24023,34 @@ func (response GetProofSummaryByFact400JSONResponse) VisitGetProofSummaryByFactR
 	return err
 }
 
+type GetProofSummaryByFact401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetProofSummaryByFact401JSONResponse) VisitGetProofSummaryByFactResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProofSummaryByFact503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response GetProofSummaryByFact503JSONResponse) VisitGetProofSummaryByFactResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeleteProofSummaryRequestObject struct {
 	Id     ProofSummaryId `json:"id"`
 	Params DeleteProofSummaryParams
@@ -20652,6 +24078,20 @@ func (response DeleteProofSummary400JSONResponse) VisitDeleteProofSummaryRespons
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteProofSummary401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response DeleteProofSummary401JSONResponse) VisitDeleteProofSummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -20684,6 +24124,20 @@ func (response DeleteProofSummary409JSONResponse) VisitDeleteProofSummaryRespons
 	return err
 }
 
+type DeleteProofSummary503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response DeleteProofSummary503JSONResponse) VisitDeleteProofSummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetProofSummaryRequestObject struct {
 	Id     ProofSummaryId `json:"id"`
 	Params GetProofSummaryParams
@@ -20707,6 +24161,20 @@ func (response GetProofSummary200JSONResponse) VisitGetProofSummaryResponse(w ht
 	return err
 }
 
+type GetProofSummary401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetProofSummary401JSONResponse) VisitGetProofSummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetProofSummary404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response GetProofSummary404JSONResponse) VisitGetProofSummaryResponse(w http.ResponseWriter) error {
@@ -20717,6 +24185,20 @@ func (response GetProofSummary404JSONResponse) VisitGetProofSummaryResponse(w ht
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProofSummary503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response GetProofSummary503JSONResponse) VisitGetProofSummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -20759,6 +24241,20 @@ func (response UpdateProofSummary400JSONResponse) VisitUpdateProofSummaryRespons
 	return err
 }
 
+type UpdateProofSummary401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response UpdateProofSummary401JSONResponse) VisitUpdateProofSummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type UpdateProofSummary404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response UpdateProofSummary404JSONResponse) VisitUpdateProofSummaryResponse(w http.ResponseWriter) error {
@@ -20787,6 +24283,20 @@ func (response UpdateProofSummary409JSONResponse) VisitUpdateProofSummaryRespons
 	return err
 }
 
+type UpdateProofSummary503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response UpdateProofSummary503JSONResponse) VisitUpdateProofSummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetQualityOverviewRequestObject struct {
 	Params GetQualityOverviewParams
 }
@@ -20805,6 +24315,34 @@ func (response GetQualityOverview200JSONResponse) VisitGetQualityOverviewRespons
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetQualityOverview401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetQualityOverview401JSONResponse) VisitGetQualityOverviewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetQualityOverview503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response GetQualityOverview503JSONResponse) VisitGetQualityOverviewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -20831,6 +24369,20 @@ func (response GetPersonQuality200JSONResponse) VisitGetPersonQualityResponse(w 
 	return err
 }
 
+type GetPersonQuality401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetPersonQuality401JSONResponse) VisitGetPersonQualityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetPersonQuality404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response GetPersonQuality404JSONResponse) VisitGetPersonQualityResponse(w http.ResponseWriter) error {
@@ -20841,6 +24393,20 @@ func (response GetPersonQuality404JSONResponse) VisitGetPersonQualityResponse(w 
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPersonQuality503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response GetPersonQuality503JSONResponse) VisitGetPersonQualityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -20866,6 +24432,34 @@ func (response GetQualityReport200JSONResponse) VisitGetQualityReportResponse(w 
 	return err
 }
 
+type GetQualityReport401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetQualityReport401JSONResponse) VisitGetQualityReportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetQualityReport503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response GetQualityReport503JSONResponse) VisitGetQualityReportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetValidationIssuesRequestObject struct {
 	Params GetValidationIssuesParams
 }
@@ -20884,6 +24478,34 @@ func (response GetValidationIssues200JSONResponse) VisitGetValidationIssuesRespo
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetValidationIssues401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetValidationIssues401JSONResponse) VisitGetValidationIssuesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetValidationIssues503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response GetValidationIssues503JSONResponse) VisitGetValidationIssuesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -20912,6 +24534,20 @@ func (response GetRelationship200JSONResponse) VisitGetRelationshipResponse(w ht
 	return err
 }
 
+type GetRelationship401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetRelationship401JSONResponse) VisitGetRelationshipResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetRelationship404JSONResponse Error
 
 func (response GetRelationship404JSONResponse) VisitGetRelationshipResponse(w http.ResponseWriter) error {
@@ -20922,6 +24558,20 @@ func (response GetRelationship404JSONResponse) VisitGetRelationshipResponse(w ht
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRelationship503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response GetRelationship503JSONResponse) VisitGetRelationshipResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -20962,6 +24612,34 @@ func (response ListRepositories400JSONResponse) VisitListRepositoriesResponse(w 
 	return err
 }
 
+type ListRepositories401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListRepositories401JSONResponse) VisitListRepositoriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRepositories503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response ListRepositories503JSONResponse) VisitListRepositoriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type CreateRepositoryRequestObject struct {
 	Body *CreateRepositoryJSONRequestBody
 }
@@ -20998,6 +24676,34 @@ func (response CreateRepository400JSONResponse) VisitCreateRepositoryResponse(w 
 	return err
 }
 
+type CreateRepository401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response CreateRepository401JSONResponse) VisitCreateRepositoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateRepository503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response CreateRepository503JSONResponse) VisitCreateRepositoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeleteRepositoryRequestObject struct {
 	Id     RepositoryId `json:"id"`
 	Params DeleteRepositoryParams
@@ -21025,6 +24731,20 @@ func (response DeleteRepository400JSONResponse) VisitDeleteRepositoryResponse(w 
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteRepository401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response DeleteRepository401JSONResponse) VisitDeleteRepositoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -21057,6 +24777,20 @@ func (response DeleteRepository409JSONResponse) VisitDeleteRepositoryResponse(w 
 	return err
 }
 
+type DeleteRepository503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response DeleteRepository503JSONResponse) VisitDeleteRepositoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetRepositoryRequestObject struct {
 	Id RepositoryId `json:"id"`
 }
@@ -21079,6 +24813,20 @@ func (response GetRepository200JSONResponse) VisitGetRepositoryResponse(w http.R
 	return err
 }
 
+type GetRepository401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetRepository401JSONResponse) VisitGetRepositoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetRepository404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response GetRepository404JSONResponse) VisitGetRepositoryResponse(w http.ResponseWriter) error {
@@ -21089,6 +24837,20 @@ func (response GetRepository404JSONResponse) VisitGetRepositoryResponse(w http.R
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRepository503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response GetRepository503JSONResponse) VisitGetRepositoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -21130,6 +24892,20 @@ func (response UpdateRepository400JSONResponse) VisitUpdateRepositoryResponse(w 
 	return err
 }
 
+type UpdateRepository401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response UpdateRepository401JSONResponse) VisitUpdateRepositoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type UpdateRepository404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response UpdateRepository404JSONResponse) VisitUpdateRepositoryResponse(w http.ResponseWriter) error {
@@ -21154,6 +24930,20 @@ func (response UpdateRepository409JSONResponse) VisitUpdateRepositoryResponse(w 
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateRepository503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response UpdateRepository503JSONResponse) VisitUpdateRepositoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -21190,6 +24980,34 @@ func (response ListResearchLogs400JSONResponse) VisitListResearchLogsResponse(w 
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListResearchLogs401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListResearchLogs401JSONResponse) VisitListResearchLogsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListResearchLogs503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response ListResearchLogs503JSONResponse) VisitListResearchLogsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -21231,6 +25049,34 @@ func (response CreateResearchLog400JSONResponse) VisitCreateResearchLogResponse(
 	return err
 }
 
+type CreateResearchLog401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response CreateResearchLog401JSONResponse) VisitCreateResearchLogResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateResearchLog503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response CreateResearchLog503JSONResponse) VisitCreateResearchLogResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetResearchLogsBySubjectRequestObject struct {
 	SubjectId openapi_types.UUID `json:"subjectId"`
 	Params    GetResearchLogsBySubjectParams
@@ -21250,6 +25096,34 @@ func (response GetResearchLogsBySubject200JSONResponse) VisitGetResearchLogsBySu
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetResearchLogsBySubject401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetResearchLogsBySubject401JSONResponse) VisitGetResearchLogsBySubjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetResearchLogsBySubject503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response GetResearchLogsBySubject503JSONResponse) VisitGetResearchLogsBySubjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -21285,6 +25159,20 @@ func (response DeleteResearchLog400JSONResponse) VisitDeleteResearchLogResponse(
 	return err
 }
 
+type DeleteResearchLog401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response DeleteResearchLog401JSONResponse) VisitDeleteResearchLogResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeleteResearchLog404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response DeleteResearchLog404JSONResponse) VisitDeleteResearchLogResponse(w http.ResponseWriter) error {
@@ -21313,6 +25201,20 @@ func (response DeleteResearchLog409JSONResponse) VisitDeleteResearchLogResponse(
 	return err
 }
 
+type DeleteResearchLog503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response DeleteResearchLog503JSONResponse) VisitDeleteResearchLogResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetResearchLogRequestObject struct {
 	Id     ResearchLogId `json:"id"`
 	Params GetResearchLogParams
@@ -21336,6 +25238,20 @@ func (response GetResearchLog200JSONResponse) VisitGetResearchLogResponse(w http
 	return err
 }
 
+type GetResearchLog401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetResearchLog401JSONResponse) VisitGetResearchLogResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetResearchLog404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response GetResearchLog404JSONResponse) VisitGetResearchLogResponse(w http.ResponseWriter) error {
@@ -21346,6 +25262,20 @@ func (response GetResearchLog404JSONResponse) VisitGetResearchLogResponse(w http
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetResearchLog503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response GetResearchLog503JSONResponse) VisitGetResearchLogResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -21388,6 +25318,20 @@ func (response UpdateResearchLog400JSONResponse) VisitUpdateResearchLogResponse(
 	return err
 }
 
+type UpdateResearchLog401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response UpdateResearchLog401JSONResponse) VisitUpdateResearchLogResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type UpdateResearchLog404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response UpdateResearchLog404JSONResponse) VisitUpdateResearchLogResponse(w http.ResponseWriter) error {
@@ -21412,6 +25356,20 @@ func (response UpdateResearchLog409JSONResponse) VisitUpdateResearchLogResponse(
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateResearchLog503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response UpdateResearchLog503JSONResponse) VisitUpdateResearchLogResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -21452,6 +25410,34 @@ func (response SearchPersons400JSONResponse) VisitSearchPersonsResponse(w http.R
 	return err
 }
 
+type SearchPersons401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response SearchPersons401JSONResponse) VisitSearchPersonsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SearchPersons503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response SearchPersons503JSONResponse) VisitSearchPersonsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ClearHomePersonRequestObject struct {
 }
 
@@ -21465,6 +25451,20 @@ type ClearHomePerson204Response struct {
 func (response ClearHomePerson204Response) VisitClearHomePersonResponse(w http.ResponseWriter) error {
 	w.WriteHeader(204)
 	return nil
+}
+
+type ClearHomePerson401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ClearHomePerson401JSONResponse) VisitClearHomePersonResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type ClearHomePerson503JSONResponse struct {
@@ -21500,6 +25500,20 @@ func (response GetHomePerson200JSONResponse) VisitGetHomePersonResponse(w http.R
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetHomePerson401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetHomePerson401JSONResponse) VisitGetHomePersonResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -21556,6 +25570,20 @@ func (response SetHomePerson400JSONResponse) VisitSetHomePersonResponse(w http.R
 	return err
 }
 
+type SetHomePerson401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response SetHomePerson401JSONResponse) VisitSetHomePersonResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type SetHomePerson404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response SetHomePerson404JSONResponse) VisitSetHomePersonResponse(w http.ResponseWriter) error {
@@ -21607,6 +25635,34 @@ func (response GetPrivacySettings200JSONResponse) VisitGetPrivacySettingsRespons
 	return err
 }
 
+type GetPrivacySettings401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetPrivacySettings401JSONResponse) VisitGetPrivacySettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPrivacySettings503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response GetPrivacySettings503JSONResponse) VisitGetPrivacySettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type UpdatePrivacySettingsRequestObject struct {
 	Body *UpdatePrivacySettingsJSONRequestBody
 }
@@ -21643,6 +25699,34 @@ func (response UpdatePrivacySettings400JSONResponse) VisitUpdatePrivacySettingsR
 	return err
 }
 
+type UpdatePrivacySettings401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response UpdatePrivacySettings401JSONResponse) VisitUpdatePrivacySettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdatePrivacySettings503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response UpdatePrivacySettings503JSONResponse) VisitUpdatePrivacySettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListSnapshotsRequestObject struct {
 	Params ListSnapshotsParams
 }
@@ -21665,6 +25749,20 @@ func (response ListSnapshots200JSONResponse) VisitListSnapshotsResponse(w http.R
 	return err
 }
 
+type ListSnapshots401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListSnapshots401JSONResponse) VisitListSnapshotsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListSnapshots404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response ListSnapshots404JSONResponse) VisitListSnapshotsResponse(w http.ResponseWriter) error {
@@ -21675,6 +25773,20 @@ func (response ListSnapshots404JSONResponse) VisitListSnapshotsResponse(w http.R
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSnapshots503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response ListSnapshots503JSONResponse) VisitListSnapshotsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -21716,6 +25828,20 @@ func (response CreateSnapshot400JSONResponse) VisitCreateSnapshotResponse(w http
 	return err
 }
 
+type CreateSnapshot401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response CreateSnapshot401JSONResponse) VisitCreateSnapshotResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type CreateSnapshot404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response CreateSnapshot404JSONResponse) VisitCreateSnapshotResponse(w http.ResponseWriter) error {
@@ -21744,6 +25870,20 @@ func (response CreateSnapshot409JSONResponse) VisitCreateSnapshotResponse(w http
 	return err
 }
 
+type CreateSnapshot503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response CreateSnapshot503JSONResponse) VisitCreateSnapshotResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type CompareSnapshotsRequestObject struct {
 	Id1    openapi_types.UUID `json:"id1"`
 	Id2    openapi_types.UUID `json:"id2"`
@@ -21764,6 +25904,20 @@ func (response CompareSnapshots200JSONResponse) VisitCompareSnapshotsResponse(w 
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CompareSnapshots401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response CompareSnapshots401JSONResponse) VisitCompareSnapshotsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -21796,6 +25950,20 @@ func (response CompareSnapshots409JSONResponse) VisitCompareSnapshotsResponse(w 
 	return err
 }
 
+type CompareSnapshots503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response CompareSnapshots503JSONResponse) VisitCompareSnapshotsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeleteSnapshotRequestObject struct {
 	Id     SnapshotId `json:"id"`
 	Params DeleteSnapshotParams
@@ -21811,6 +25979,20 @@ type DeleteSnapshot204Response struct {
 func (response DeleteSnapshot204Response) VisitDeleteSnapshotResponse(w http.ResponseWriter) error {
 	w.WriteHeader(204)
 	return nil
+}
+
+type DeleteSnapshot401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response DeleteSnapshot401JSONResponse) VisitDeleteSnapshotResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type DeleteSnapshot404JSONResponse struct{ NotFoundJSONResponse }
@@ -21841,6 +26023,20 @@ func (response DeleteSnapshot409JSONResponse) VisitDeleteSnapshotResponse(w http
 	return err
 }
 
+type DeleteSnapshot503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response DeleteSnapshot503JSONResponse) VisitDeleteSnapshotResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetSnapshotRequestObject struct {
 	Id     SnapshotId `json:"id"`
 	Params GetSnapshotParams
@@ -21864,6 +26060,20 @@ func (response GetSnapshot200JSONResponse) VisitGetSnapshotResponse(w http.Respo
 	return err
 }
 
+type GetSnapshot401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetSnapshot401JSONResponse) VisitGetSnapshotResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetSnapshot404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response GetSnapshot404JSONResponse) VisitGetSnapshotResponse(w http.ResponseWriter) error {
@@ -21874,6 +26084,20 @@ func (response GetSnapshot404JSONResponse) VisitGetSnapshotResponse(w http.Respo
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSnapshot503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response GetSnapshot503JSONResponse) VisitGetSnapshotResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -21915,6 +26139,20 @@ func (response CompareSnapshotToCurrent400JSONResponse) VisitCompareSnapshotToCu
 	return err
 }
 
+type CompareSnapshotToCurrent401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response CompareSnapshotToCurrent401JSONResponse) VisitCompareSnapshotToCurrentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type CompareSnapshotToCurrent404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response CompareSnapshotToCurrent404JSONResponse) VisitCompareSnapshotToCurrentResponse(w http.ResponseWriter) error {
@@ -21939,6 +26177,20 @@ func (response CompareSnapshotToCurrent409JSONResponse) VisitCompareSnapshotToCu
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CompareSnapshotToCurrent503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response CompareSnapshotToCurrent503JSONResponse) VisitCompareSnapshotToCurrentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -21975,6 +26227,34 @@ func (response ListSources400JSONResponse) VisitListSourcesResponse(w http.Respo
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSources401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListSources401JSONResponse) VisitListSourcesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSources503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response ListSources503JSONResponse) VisitListSourcesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -22016,6 +26296,34 @@ func (response CreateSource400JSONResponse) VisitCreateSourceResponse(w http.Res
 	return err
 }
 
+type CreateSource401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response CreateSource401JSONResponse) VisitCreateSourceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSource503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response CreateSource503JSONResponse) VisitCreateSourceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type SearchSourcesRequestObject struct {
 	Params SearchSourcesParams
 }
@@ -22052,6 +26360,34 @@ func (response SearchSources400JSONResponse) VisitSearchSourcesResponse(w http.R
 	return err
 }
 
+type SearchSources401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response SearchSources401JSONResponse) VisitSearchSourcesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SearchSources503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response SearchSources503JSONResponse) VisitSearchSourcesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeleteSourceRequestObject struct {
 	Id     openapi_types.UUID `json:"id"`
 	Params DeleteSourceParams
@@ -22079,6 +26415,20 @@ func (response DeleteSource400JSONResponse) VisitDeleteSourceResponse(w http.Res
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteSource401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response DeleteSource401JSONResponse) VisitDeleteSourceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -22111,6 +26461,20 @@ func (response DeleteSource409JSONResponse) VisitDeleteSourceResponse(w http.Res
 	return err
 }
 
+type DeleteSource503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response DeleteSource503JSONResponse) VisitDeleteSourceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetSourceRequestObject struct {
 	Id     openapi_types.UUID `json:"id"`
 	Params GetSourceParams
@@ -22134,6 +26498,20 @@ func (response GetSource200JSONResponse) VisitGetSourceResponse(w http.ResponseW
 	return err
 }
 
+type GetSource401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetSource401JSONResponse) VisitGetSourceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetSource404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response GetSource404JSONResponse) VisitGetSourceResponse(w http.ResponseWriter) error {
@@ -22144,6 +26522,20 @@ func (response GetSource404JSONResponse) VisitGetSourceResponse(w http.ResponseW
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSource503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response GetSource503JSONResponse) VisitGetSourceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -22186,6 +26578,20 @@ func (response UpdateSource400JSONResponse) VisitUpdateSourceResponse(w http.Res
 	return err
 }
 
+type UpdateSource401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response UpdateSource401JSONResponse) VisitUpdateSourceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type UpdateSource404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response UpdateSource404JSONResponse) VisitUpdateSourceResponse(w http.ResponseWriter) error {
@@ -22214,6 +26620,20 @@ func (response UpdateSource409JSONResponse) VisitUpdateSourceResponse(w http.Res
 	return err
 }
 
+type UpdateSource503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response UpdateSource503JSONResponse) VisitUpdateSourceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetCitationsForSourceRequestObject struct {
 	Id     openapi_types.UUID `json:"id"`
 	Params GetCitationsForSourceParams
@@ -22237,6 +26657,20 @@ func (response GetCitationsForSource200JSONResponse) VisitGetCitationsForSourceR
 	return err
 }
 
+type GetCitationsForSource401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetCitationsForSource401JSONResponse) VisitGetCitationsForSourceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetCitationsForSource404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response GetCitationsForSource404JSONResponse) VisitGetCitationsForSourceResponse(w http.ResponseWriter) error {
@@ -22247,6 +26681,20 @@ func (response GetCitationsForSource404JSONResponse) VisitGetCitationsForSourceR
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCitationsForSource503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response GetCitationsForSource503JSONResponse) VisitGetCitationsForSourceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -22274,6 +26722,20 @@ func (response GetSourceHistory200JSONResponse) VisitGetSourceHistoryResponse(w 
 	return err
 }
 
+type GetSourceHistory401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetSourceHistory401JSONResponse) VisitGetSourceHistoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetSourceHistory404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response GetSourceHistory404JSONResponse) VisitGetSourceHistoryResponse(w http.ResponseWriter) error {
@@ -22284,6 +26746,20 @@ func (response GetSourceHistory404JSONResponse) VisitGetSourceHistoryResponse(w 
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSourceHistory503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response GetSourceHistory503JSONResponse) VisitGetSourceHistoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -22307,6 +26783,20 @@ func (response GetSourceRestorePoints200JSONResponse) VisitGetSourceRestorePoint
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSourceRestorePoints401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetSourceRestorePoints401JSONResponse) VisitGetSourceRestorePointsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -22335,6 +26825,20 @@ func (response GetSourceRestorePoints409JSONResponse) VisitGetSourceRestorePoint
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSourceRestorePoints503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response GetSourceRestorePoints503JSONResponse) VisitGetSourceRestorePointsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -22377,6 +26881,20 @@ func (response RollbackSource400JSONResponse) VisitRollbackSourceResponse(w http
 	return err
 }
 
+type RollbackSource401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response RollbackSource401JSONResponse) VisitRollbackSourceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type RollbackSource404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response RollbackSource404JSONResponse) VisitRollbackSourceResponse(w http.ResponseWriter) error {
@@ -22405,6 +26923,20 @@ func (response RollbackSource409JSONResponse) VisitRollbackSourceResponse(w http
 	return err
 }
 
+type RollbackSource503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response RollbackSource503JSONResponse) VisitRollbackSourceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetStatisticsRequestObject struct {
 }
 
@@ -22422,6 +26954,34 @@ func (response GetStatistics200JSONResponse) VisitGetStatisticsResponse(w http.R
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStatistics401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetStatistics401JSONResponse) VisitGetStatisticsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetStatistics503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response GetStatistics503JSONResponse) VisitGetStatisticsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -22462,6 +27022,34 @@ func (response ListSubmitters400JSONResponse) VisitListSubmittersResponse(w http
 	return err
 }
 
+type ListSubmitters401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListSubmitters401JSONResponse) VisitListSubmittersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSubmitters503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response ListSubmitters503JSONResponse) VisitListSubmittersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type CreateSubmitterRequestObject struct {
 	Body *CreateSubmitterJSONRequestBody
 }
@@ -22498,6 +27086,34 @@ func (response CreateSubmitter400JSONResponse) VisitCreateSubmitterResponse(w ht
 	return err
 }
 
+type CreateSubmitter401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response CreateSubmitter401JSONResponse) VisitCreateSubmitterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSubmitter503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response CreateSubmitter503JSONResponse) VisitCreateSubmitterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeleteSubmitterRequestObject struct {
 	Id     SubmitterId `json:"id"`
 	Params DeleteSubmitterParams
@@ -22525,6 +27141,20 @@ func (response DeleteSubmitter400JSONResponse) VisitDeleteSubmitterResponse(w ht
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteSubmitter401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response DeleteSubmitter401JSONResponse) VisitDeleteSubmitterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -22557,6 +27187,20 @@ func (response DeleteSubmitter409JSONResponse) VisitDeleteSubmitterResponse(w ht
 	return err
 }
 
+type DeleteSubmitter503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response DeleteSubmitter503JSONResponse) VisitDeleteSubmitterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetSubmitterRequestObject struct {
 	Id SubmitterId `json:"id"`
 }
@@ -22579,6 +27223,20 @@ func (response GetSubmitter200JSONResponse) VisitGetSubmitterResponse(w http.Res
 	return err
 }
 
+type GetSubmitter401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetSubmitter401JSONResponse) VisitGetSubmitterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetSubmitter404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response GetSubmitter404JSONResponse) VisitGetSubmitterResponse(w http.ResponseWriter) error {
@@ -22589,6 +27247,20 @@ func (response GetSubmitter404JSONResponse) VisitGetSubmitterResponse(w http.Res
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSubmitter503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response GetSubmitter503JSONResponse) VisitGetSubmitterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -22630,6 +27302,20 @@ func (response UpdateSubmitter400JSONResponse) VisitUpdateSubmitterResponse(w ht
 	return err
 }
 
+type UpdateSubmitter401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response UpdateSubmitter401JSONResponse) VisitUpdateSubmitterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type UpdateSubmitter404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response UpdateSubmitter404JSONResponse) VisitUpdateSubmitterResponse(w http.ResponseWriter) error {
@@ -22658,6 +27344,20 @@ func (response UpdateSubmitter409JSONResponse) VisitUpdateSubmitterResponse(w ht
 	return err
 }
 
+type UpdateSubmitter503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response UpdateSubmitter503JSONResponse) VisitUpdateSubmitterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListUsersRequestObject struct {
 }
 
@@ -22679,6 +27379,20 @@ func (response ListUsers200JSONResponse) VisitListUsersResponse(w http.ResponseW
 	return err
 }
 
+type ListUsers401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListUsers401JSONResponse) VisitListUsersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListUsers409JSONResponse struct{ AccountsOnlyJSONResponse }
 
 func (response ListUsers409JSONResponse) VisitListUsersResponse(w http.ResponseWriter) error {
@@ -22689,6 +27403,20 @@ func (response ListUsers409JSONResponse) VisitListUsersResponse(w http.ResponseW
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListUsers503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response ListUsers503JSONResponse) VisitListUsersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -22730,6 +27458,20 @@ func (response UpdateUser400JSONResponse) VisitUpdateUserResponse(w http.Respons
 	return err
 }
 
+type UpdateUser401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response UpdateUser401JSONResponse) VisitUpdateUserResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type UpdateUser404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response UpdateUser404JSONResponse) VisitUpdateUserResponse(w http.ResponseWriter) error {
@@ -22758,6 +27500,20 @@ func (response UpdateUser409JSONResponse) VisitUpdateUserResponse(w http.Respons
 	return err
 }
 
+type UpdateUser503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response UpdateUser503JSONResponse) VisitUpdateUserResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type CreatePasswordResetRequestObject struct {
 	Id UserId `json:"id"`
 }
@@ -22776,6 +27532,20 @@ func (response CreatePasswordReset201JSONResponse) VisitCreatePasswordResetRespo
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreatePasswordReset401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response CreatePasswordReset401JSONResponse) VisitCreatePasswordResetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -22804,6 +27574,20 @@ func (response CreatePasswordReset409JSONResponse) VisitCreatePasswordResetRespo
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreatePasswordReset503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response CreatePasswordReset503JSONResponse) VisitCreatePasswordResetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -23056,6 +27840,9 @@ type StrictServerInterface interface {
 	// ImportGedcom Import a GEDCOM file
 	// (POST /gedcom/import)
 	ImportGedcom(ctx context.Context, request ImportGedcomRequestObject) (ImportGedcomResponseObject, error)
+	// GetHealth Report that the server is up
+	// (GET /health)
+	GetHealth(ctx context.Context, request GetHealthRequestObject) (GetHealthResponseObject, error)
 	// ListHistory List global change history
 	// (GET /history)
 	ListHistory(ctx context.Context, request ListHistoryRequestObject) (ListHistoryResponseObject, error)
@@ -26019,6 +30806,29 @@ func (sh *strictHandler) ImportGedcom(ctx echo.Context) error {
 		return err
 	} else if validResponse, ok := response.(ImportGedcomResponseObject); ok {
 		return validResponse.VisitImportGedcomResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// GetHealth operation middleware
+func (sh *strictHandler) GetHealth(ctx echo.Context) error {
+	var request GetHealthRequestObject
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.GetHealth(ctx.Request().Context(), request.(GetHealthRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetHealth")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(GetHealthResponseObject); ok {
+		return validResponse.VisitGetHealthResponse(ctx.Response())
 	} else if response != nil {
 		return fmt.Errorf("unexpected response type: %T", response)
 	}

@@ -4,6 +4,26 @@
  */
 
 export interface paths {
+    "/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Report that the server is up
+         * @description Needs no session. For load balancers and uptime checks.
+         */
+        get: operations["getHealth"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/persons": {
         parameters: {
             query?: never;
@@ -3532,6 +3552,13 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        Health: {
+            /**
+             * @description Always `ok`
+             * @example ok
+             */
+            status: string;
+        };
         Account: {
             /**
              * Format: uuid
@@ -7311,7 +7338,10 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
-        /** @description Branch registry is not configured on this server */
+        /**
+         * @description The tree has no owner yet (`SETUP_REQUIRED`), or the branch registry
+         *     is not configured on this server
+         */
         BranchesUnavailable: {
             headers: {
                 [name: string]: unknown;
@@ -7320,7 +7350,10 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
-        /** @description Settings store is not configured on this server */
+        /**
+         * @description The tree has no owner yet (`SETUP_REQUIRED`), or the settings store
+         *     is not configured on this server
+         */
         SettingsUnavailable: {
             headers: {
                 [name: string]: unknown;
@@ -7340,6 +7373,31 @@ export interface components {
         };
         /** @description Too many failed attempts (`RATE_LIMITED`); try again later */
         RateLimited: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /**
+         * @description No signed-in session (`UNAUTHENTICATED`): sign in and send the session
+         *     cookie. A viewer operation is served without one when the owner lets
+         *     visitors in, except those that say they require a signed-in user.
+         */
+        Unauthenticated: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /**
+         * @description The tree has no owner yet (`SETUP_REQUIRED`): create one on the setup
+         *     page or with `myfamily user create`
+         */
+        SetupRequired: {
             headers: {
                 [name: string]: unknown;
             };
@@ -7405,6 +7463,26 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    getHealth: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The server is up */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Health"];
+                };
+            };
+        };
+    };
     listPersons: {
         parameters: {
             query?: {
@@ -7442,7 +7520,9 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     createPerson: {
@@ -7480,8 +7560,10 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     getPerson: {
@@ -7516,7 +7598,9 @@ export interface operations {
                     "application/json": components["schemas"]["PersonDetail"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     updatePerson: {
@@ -7556,8 +7640,10 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     deletePerson: {
@@ -7590,6 +7676,7 @@ export interface operations {
                 };
                 content?: never;
             };
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             /** @description Person is linked to families, or the target branch is not active */
             409: {
@@ -7600,6 +7687,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+            503: components["responses"]["SetupRequired"];
         };
     };
     listFamilies: {
@@ -7634,6 +7722,8 @@ export interface operations {
                     "application/json": components["schemas"]["FamilyList"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     createFamily: {
@@ -7671,8 +7761,10 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     getFamily: {
@@ -7707,7 +7799,9 @@ export interface operations {
                     "application/json": components["schemas"]["FamilyDetail"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     updateFamily: {
@@ -7747,8 +7841,10 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     deleteFamily: {
@@ -7781,6 +7877,7 @@ export interface operations {
                 };
                 content?: never;
             };
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             /** @description Family has children and cannot be deleted */
             409: {
@@ -7791,6 +7888,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+            503: components["responses"]["SetupRequired"];
         };
     };
     addChildToFamily: {
@@ -7830,6 +7928,7 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             /**
              * @description Child already belongs to a family or circular relationship, or a
@@ -7843,6 +7942,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+            503: components["responses"]["SetupRequired"];
         };
     };
     removeChildFromFamily: {
@@ -7876,6 +7976,7 @@ export interface operations {
                 };
                 content?: never;
             };
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             /** @description Version conflict while unlinking the child (`VERSION_CONFLICT`) */
             409: {
@@ -7886,6 +7987,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+            503: components["responses"]["SetupRequired"];
         };
     };
     getFamilyGroupSheet: {
@@ -7920,7 +8022,9 @@ export interface operations {
                     "application/json": components["schemas"]["FamilyGroupSheet"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     getPedigree: {
@@ -7957,7 +8061,9 @@ export interface operations {
                     "application/json": components["schemas"]["Pedigree"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     getDescendancy: {
@@ -7994,7 +8100,9 @@ export interface operations {
                     "application/json": components["schemas"]["Descendancy"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     getAhnentafel: {
@@ -8035,7 +8143,9 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     searchPersons: {
@@ -8093,6 +8203,8 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     browseSurnames: {
@@ -8127,6 +8239,8 @@ export interface operations {
                     "application/json": components["schemas"]["SurnameIndexResponse"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     getPersonsBySurname: {
@@ -8164,6 +8278,8 @@ export interface operations {
                     "application/json": components["schemas"]["PersonList"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     browsePlaces: {
@@ -8198,6 +8314,8 @@ export interface operations {
                     "application/json": components["schemas"]["PlaceIndexResponse"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     getPersonsByPlace: {
@@ -8235,6 +8353,8 @@ export interface operations {
                     "application/json": components["schemas"]["PersonList"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     browseCemeteries: {
@@ -8267,6 +8387,8 @@ export interface operations {
                     "application/json": components["schemas"]["CemeteryIndexResponse"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     getPersonsByCemetery: {
@@ -8304,6 +8426,8 @@ export interface operations {
                     "application/json": components["schemas"]["PersonList"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     getMapLocations: {
@@ -8336,6 +8460,8 @@ export interface operations {
                     "application/json": components["schemas"]["MapLocationsResponse"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     getBrickWalls: {
@@ -8358,6 +8484,8 @@ export interface operations {
                     "application/json": components["schemas"]["BrickWallsResponse"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     setPersonBrickWall: {
@@ -8385,7 +8513,9 @@ export interface operations {
                 };
                 content?: never;
             };
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     resolvePersonBrickWall: {
@@ -8406,7 +8536,9 @@ export interface operations {
                 };
                 content?: never;
             };
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     importGedcom: {
@@ -8446,6 +8578,8 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     exportGedcom: {
@@ -8473,6 +8607,7 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
             /** @description Too many GEDCOM exports and previews by this user in a short time (`RATE_LIMITED`); try again later */
             429: {
                 headers: {
@@ -8482,6 +8617,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+            503: components["responses"]["SetupRequired"];
         };
     };
     previewGedcomExport: {
@@ -8506,6 +8642,7 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
             /** @description Too many GEDCOM exports and previews by this user in a short time (`RATE_LIMITED`); try again later */
             429: {
                 headers: {
@@ -8515,6 +8652,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+            503: components["responses"]["SetupRequired"];
         };
     };
     listHistory: {
@@ -8549,6 +8687,8 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     getPersonHistory: {
@@ -8585,7 +8725,9 @@ export interface operations {
                     "application/json": components["schemas"]["ChangeHistoryResponse"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     getFamilyHistory: {
@@ -8622,7 +8764,9 @@ export interface operations {
                     "application/json": components["schemas"]["ChangeHistoryResponse"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     getSourceHistory: {
@@ -8648,7 +8792,9 @@ export interface operations {
                     "application/json": components["schemas"]["ChangeHistoryResponse"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     getPersonRestorePoints: {
@@ -8711,6 +8857,7 @@ export interface operations {
                     "application/json": components["schemas"]["RestorePointsResponse"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             /**
              * @description A `?branch=` scope was supplied (`rollback_mainline_only`): restore
@@ -8724,6 +8871,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+            503: components["responses"]["SetupRequired"];
         };
     };
     rollbackPerson: {
@@ -8780,6 +8928,7 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             /**
              * @description Cannot rollback a deleted entity; or a `?branch=` scope was supplied
@@ -8793,6 +8942,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+            503: components["responses"]["SetupRequired"];
         };
     };
     getFamilyRestorePoints: {
@@ -8829,6 +8979,7 @@ export interface operations {
                     "application/json": components["schemas"]["RestorePointsResponse"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             /**
              * @description A `?branch=` scope was supplied (`rollback_mainline_only`): restore
@@ -8842,6 +8993,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+            503: components["responses"]["SetupRequired"];
         };
     };
     rollbackFamily: {
@@ -8881,6 +9033,7 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             /**
              * @description Cannot rollback a deleted entity; or a `?branch=` scope was supplied
@@ -8894,6 +9047,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+            503: components["responses"]["SetupRequired"];
         };
     };
     getSourceRestorePoints: {
@@ -8930,6 +9084,7 @@ export interface operations {
                     "application/json": components["schemas"]["RestorePointsResponse"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             /**
              * @description A `?branch=` scope was supplied (`rollback_mainline_only`): restore
@@ -8943,6 +9098,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+            503: components["responses"]["SetupRequired"];
         };
     };
     rollbackSource: {
@@ -8982,6 +9138,7 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             /**
              * @description Cannot rollback a deleted entity; or a `?branch=` scope was supplied
@@ -8995,6 +9152,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+            503: components["responses"]["SetupRequired"];
         };
     };
     getCitationRestorePoints: {
@@ -9031,6 +9189,7 @@ export interface operations {
                     "application/json": components["schemas"]["RestorePointsResponse"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             /**
              * @description A `?branch=` scope was supplied (`rollback_mainline_only`): restore
@@ -9044,6 +9203,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+            503: components["responses"]["SetupRequired"];
         };
     };
     rollbackCitation: {
@@ -9083,6 +9243,7 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             /**
              * @description Cannot rollback a deleted entity; or a `?branch=` scope was supplied
@@ -9096,6 +9257,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+            503: components["responses"]["SetupRequired"];
         };
     };
     listCitationTemplates: {
@@ -9119,6 +9281,8 @@ export interface operations {
                     "application/json": components["schemas"]["CitationTemplateList"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     getCitationTemplate: {
@@ -9142,7 +9306,9 @@ export interface operations {
                     "application/json": components["schemas"]["CitationTemplate"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     previewCitationTemplate: {
@@ -9176,7 +9342,9 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     formatCitation: {
@@ -9211,7 +9379,9 @@ export interface operations {
                     "application/json": components["schemas"]["FormattedCitation"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     listPersonMedia: {
@@ -9248,7 +9418,9 @@ export interface operations {
                     "application/json": components["schemas"]["MediaList"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     uploadPersonMedia: {
@@ -9299,6 +9471,7 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             /** @description File too large (max 10MB) */
             413: {
@@ -9309,6 +9482,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+            503: components["responses"]["SetupRequired"];
         };
     };
     getMedia: {
@@ -9344,7 +9518,9 @@ export interface operations {
                     "application/json": components["schemas"]["Media"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     updateMedia: {
@@ -9385,8 +9561,10 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     deleteMedia: {
@@ -9423,8 +9601,10 @@ export interface operations {
                 content?: never;
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     downloadMedia: {
@@ -9464,7 +9644,9 @@ export interface operations {
                     "application/pdf": string;
                 };
             };
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     getMediaThumbnail: {
@@ -9500,7 +9682,9 @@ export interface operations {
                     "image/jpeg": string;
                 };
             };
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     listSources: {
@@ -9540,6 +9724,8 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     createSource: {
@@ -9577,6 +9763,8 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     searchSources: {
@@ -9613,6 +9801,8 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     getSource: {
@@ -9647,7 +9837,9 @@ export interface operations {
                     "application/json": components["schemas"]["SourceDetail"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     updateSource: {
@@ -9687,8 +9879,10 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     deleteSource: {
@@ -9724,8 +9918,10 @@ export interface operations {
                 content?: never;
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     getCitationsForSource: {
@@ -9760,7 +9956,9 @@ export interface operations {
                     "application/json": components["schemas"]["CitationList"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     createCitation: {
@@ -9798,6 +9996,7 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
             /** @description Source or fact owner not found */
             404: {
                 headers: {
@@ -9807,6 +10006,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+            503: components["responses"]["SetupRequired"];
         };
     };
     getCitation: {
@@ -9841,7 +10041,9 @@ export interface operations {
                     "application/json": components["schemas"]["Citation"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     updateCitation: {
@@ -9881,8 +10083,10 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     deleteCitation: {
@@ -9918,8 +10122,10 @@ export interface operations {
                 content?: never;
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     getCitationsForPerson: {
@@ -9954,7 +10160,9 @@ export interface operations {
                     "application/json": components["schemas"]["CitationList"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     getPersonNames: {
@@ -9989,7 +10197,9 @@ export interface operations {
                     "application/json": components["schemas"]["PersonNameList"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     addPersonName: {
@@ -10029,8 +10239,10 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     updatePersonName: {
@@ -10071,8 +10283,10 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     deletePersonName: {
@@ -10107,6 +10321,7 @@ export interface operations {
                 content?: never;
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             /**
              * @description The name cannot be deleted: it is the person's only name, or it is
@@ -10120,6 +10335,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+            503: components["responses"]["SetupRequired"];
         };
     };
     exportTree: {
@@ -10143,6 +10359,8 @@ export interface operations {
                     };
                 };
             };
+            401: components["responses"]["Unauthenticated"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     exportPersons: {
@@ -10176,6 +10394,8 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     exportFamilies: {
@@ -10209,6 +10429,8 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     exportSources: {
@@ -10242,6 +10464,8 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     exportCitations: {
@@ -10275,6 +10499,8 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     exportEvents: {
@@ -10305,6 +10531,8 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     exportAttributes: {
@@ -10335,6 +10563,8 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     getExportEstimate: {
@@ -10355,6 +10585,8 @@ export interface operations {
                     "application/json": components["schemas"]["ExportEstimate"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     getQualityOverview: {
@@ -10387,6 +10619,8 @@ export interface operations {
                     "application/json": components["schemas"]["QualityOverview"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     getPersonQuality: {
@@ -10409,7 +10643,9 @@ export interface operations {
                     "application/json": components["schemas"]["PersonQuality"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     getQualityReport: {
@@ -10430,6 +10666,8 @@ export interface operations {
                     "application/json": components["schemas"]["QualityReport"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     getValidationIssues: {
@@ -10457,6 +10695,8 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationIssuesResponse"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     getPersonsDuplicates: {
@@ -10493,6 +10733,8 @@ export interface operations {
                     "application/json": components["schemas"]["DuplicatesResponse"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     listDismissedDuplicates: {
@@ -10529,6 +10771,8 @@ export interface operations {
                     "application/json": components["schemas"]["DismissedDuplicatesResponse"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     mergePersons: {
@@ -10566,6 +10810,7 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             /**
              * @description Conflict - version mismatch (`VERSION_CONFLICT`), or a refused merge
@@ -10580,6 +10825,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+            503: components["responses"]["SetupRequired"];
         };
     };
     dismissDuplicate: {
@@ -10620,7 +10866,9 @@ export interface operations {
                 content?: never;
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     restoreDuplicate: {
@@ -10657,7 +10905,9 @@ export interface operations {
                 content?: never;
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     batchMergePersons: {
@@ -10695,6 +10945,8 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     batchDismissDuplicates: {
@@ -10732,6 +10984,8 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     getStatistics: {
@@ -10752,6 +11006,8 @@ export interface operations {
                     "application/json": components["schemas"]["Statistics"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     getDiscoveryFeed: {
@@ -10774,6 +11030,8 @@ export interface operations {
                     "application/json": components["schemas"]["DiscoveryFeedResponse"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     listSnapshots: {
@@ -10806,7 +11064,9 @@ export interface operations {
                     "application/json": components["schemas"]["SnapshotList"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     createSnapshot: {
@@ -10850,8 +11110,10 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     getSnapshot: {
@@ -10887,7 +11149,9 @@ export interface operations {
                     "application/json": components["schemas"]["Snapshot"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     deleteSnapshot: {
@@ -10921,8 +11185,10 @@ export interface operations {
                 };
                 content?: never;
             };
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     compareSnapshotToCurrent: {
@@ -10961,6 +11227,7 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             /** @description The snapshot is marked on another branch (`snapshot_branch_mismatch`) */
             409: {
@@ -10971,6 +11238,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+            503: components["responses"]["SetupRequired"];
         };
     };
     compareSnapshots: {
@@ -11008,6 +11276,7 @@ export interface operations {
                     "application/json": components["schemas"]["SnapshotComparisonResult"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             /** @description The snapshots are marked on different branches (`snapshot_branch_mismatch`) */
             409: {
@@ -11018,6 +11287,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+            503: components["responses"]["SetupRequired"];
         };
     };
     listBranches: {
@@ -11041,6 +11311,7 @@ export interface operations {
                     "application/json": components["schemas"]["BranchList"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
             503: components["responses"]["BranchesUnavailable"];
         };
     };
@@ -11087,6 +11358,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
             503: components["responses"]["BranchesUnavailable"];
         };
     };
@@ -11111,6 +11383,7 @@ export interface operations {
                     "application/json": components["schemas"]["Branch"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             503: components["responses"]["BranchesUnavailable"];
         };
@@ -11134,6 +11407,7 @@ export interface operations {
                 };
                 content?: never;
             };
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             /** @description Branch is not active (already merged or archived) */
             409: {
@@ -11191,6 +11465,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             /**
              * @description The branch cannot take this edit: `branch_not_active` (archived),
@@ -11244,6 +11519,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             /**
              * @description `branch_not_active` (already merged or closed) or `branch_changed`
@@ -11282,6 +11558,7 @@ export interface operations {
                     "application/json": components["schemas"]["BranchResearchArchive"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             503: components["responses"]["BranchesUnavailable"];
         };
@@ -11320,6 +11597,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             /** @description `branch_not_closed`: the branch is active or merged */
             409: {
@@ -11354,6 +11632,7 @@ export interface operations {
                     "application/json": components["schemas"]["BranchDrift"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             503: components["responses"]["BranchesUnavailable"];
         };
@@ -11379,6 +11658,7 @@ export interface operations {
                     "application/json": components["schemas"]["BranchComparisonResult"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             503: components["responses"]["BranchesUnavailable"];
         };
@@ -11424,6 +11704,7 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             /**
              * @description The merge was refused and nothing was written. `code` says why:
@@ -11542,6 +11823,7 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             /**
              * @description The branch cannot be merged whatever the resolutions, so there is
@@ -11590,6 +11872,7 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             /**
              * @description The resume was refused before writing anything — nothing was
@@ -11666,6 +11949,7 @@ export interface operations {
                     "application/json": components["schemas"]["BranchEvidenceCoverage"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             503: components["responses"]["BranchesUnavailable"];
         };
@@ -11691,6 +11975,7 @@ export interface operations {
                     "application/json": components["schemas"]["BranchHealth"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             503: components["responses"]["BranchesUnavailable"];
         };
@@ -11728,6 +12013,7 @@ export interface operations {
                     "application/json": components["schemas"]["RelationshipResult"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
             /** @description One or both persons not found */
             404: {
                 headers: {
@@ -11737,6 +12023,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+            503: components["responses"]["SetupRequired"];
         };
     };
     getHomePerson: {
@@ -11757,6 +12044,7 @@ export interface operations {
                     "application/json": components["schemas"]["HomePerson"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
             503: components["responses"]["SettingsUnavailable"];
         };
     };
@@ -11783,6 +12071,7 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             503: components["responses"]["SettingsUnavailable"];
         };
@@ -11803,6 +12092,7 @@ export interface operations {
                 };
                 content?: never;
             };
+            401: components["responses"]["Unauthenticated"];
             503: components["responses"]["SettingsUnavailable"];
         };
     };
@@ -11840,6 +12130,8 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     createNote: {
@@ -11877,6 +12169,8 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     getNote: {
@@ -11912,7 +12206,9 @@ export interface operations {
                     "application/json": components["schemas"]["Note"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     updateNote: {
@@ -11953,8 +12249,10 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     deleteNote: {
@@ -11991,6 +12289,7 @@ export interface operations {
                 content?: never;
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             /**
              * @description The note was not deleted. `code` is `VERSION_CONFLICT` for a stale
@@ -12008,6 +12307,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+            503: components["responses"]["SetupRequired"];
         };
     };
     listSubmitters: {
@@ -12034,6 +12334,8 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     createSubmitter: {
@@ -12059,6 +12361,8 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     getSubmitter: {
@@ -12082,7 +12386,9 @@ export interface operations {
                     "application/json": components["schemas"]["Submitter"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     updateSubmitter: {
@@ -12111,8 +12417,10 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     deleteSubmitter: {
@@ -12138,8 +12446,10 @@ export interface operations {
                 content?: never;
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     listRepositories: {
@@ -12166,6 +12476,8 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     createRepository: {
@@ -12191,6 +12503,8 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     getRepository: {
@@ -12214,7 +12528,9 @@ export interface operations {
                     "application/json": components["schemas"]["RepositoryDetail"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     updateRepository: {
@@ -12243,8 +12559,10 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     deleteRepository: {
@@ -12270,8 +12588,10 @@ export interface operations {
                 content?: never;
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     listAssociations: {
@@ -12309,6 +12629,8 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     createAssociation: {
@@ -12346,6 +12668,8 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     getAssociation: {
@@ -12381,7 +12705,9 @@ export interface operations {
                     "application/json": components["schemas"]["Association"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     updateAssociation: {
@@ -12422,8 +12748,10 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     deleteAssociation: {
@@ -12460,8 +12788,10 @@ export interface operations {
                 content?: never;
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     listAssociationsForPerson: {
@@ -12496,7 +12826,9 @@ export interface operations {
                     "application/json": components["schemas"]["Association"][];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     listLDSOrdinances: {
@@ -12523,6 +12855,8 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     createLDSOrdinance: {
@@ -12548,6 +12882,8 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     getLDSOrdinance: {
@@ -12571,7 +12907,9 @@ export interface operations {
                     "application/json": components["schemas"]["LDSOrdinance"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     updateLDSOrdinance: {
@@ -12600,8 +12938,10 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     deleteLDSOrdinance: {
@@ -12627,8 +12967,10 @@ export interface operations {
                 content?: never;
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     listLDSOrdinancesForPerson: {
@@ -12651,7 +12993,9 @@ export interface operations {
                     "application/json": components["schemas"]["LDSOrdinance"][];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     listLDSOrdinancesForFamily: {
@@ -12674,7 +13018,9 @@ export interface operations {
                     "application/json": components["schemas"]["LDSOrdinance"][];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     listEvidenceAnalyses: {
@@ -12712,6 +13058,8 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     createEvidenceAnalysis: {
@@ -12749,6 +13097,8 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     getEvidenceAnalysis: {
@@ -12784,7 +13134,9 @@ export interface operations {
                     "application/json": components["schemas"]["EvidenceAnalysis"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     updateEvidenceAnalysis: {
@@ -12825,8 +13177,10 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     deleteEvidenceAnalysis: {
@@ -12863,8 +13217,10 @@ export interface operations {
                 content?: never;
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     getAnalysesByFact: {
@@ -12906,6 +13262,8 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     listEvidenceConflicts: {
@@ -12943,6 +13301,8 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     getEvidenceConflict: {
@@ -12978,7 +13338,9 @@ export interface operations {
                     "application/json": components["schemas"]["EvidenceConflict"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     resolveEvidenceConflict: {
@@ -13019,8 +13381,10 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     getConflictsBySubject: {
@@ -13055,6 +13419,8 @@ export interface operations {
                     "application/json": components["schemas"]["EvidenceConflict"][];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     listResearchLogs: {
@@ -13092,6 +13458,8 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     createResearchLog: {
@@ -13129,6 +13497,8 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     getResearchLog: {
@@ -13164,7 +13534,9 @@ export interface operations {
                     "application/json": components["schemas"]["ResearchLog"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     updateResearchLog: {
@@ -13205,8 +13577,10 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     deleteResearchLog: {
@@ -13243,8 +13617,10 @@ export interface operations {
                 content?: never;
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     getResearchLogsBySubject: {
@@ -13279,6 +13655,8 @@ export interface operations {
                     "application/json": components["schemas"]["ResearchLog"][];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     listProofSummaries: {
@@ -13316,6 +13694,8 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     createProofSummary: {
@@ -13353,6 +13733,8 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     getProofSummary: {
@@ -13388,7 +13770,9 @@ export interface operations {
                     "application/json": components["schemas"]["ProofSummary"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     updateProofSummary: {
@@ -13429,8 +13813,10 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     deleteProofSummary: {
@@ -13467,8 +13853,10 @@ export interface operations {
                 content?: never;
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     getProofSummaryByFact: {
@@ -13510,6 +13898,8 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     getAuthStatus: {
@@ -13673,15 +14063,9 @@ export interface operations {
                     "application/json": components["schemas"]["Account"];
                 };
             };
-            /** @description The server is in open mode, which has no accounts */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
+            401: components["responses"]["Unauthenticated"];
+            409: components["responses"]["AccountsOnly"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     updateCurrentAccount: {
@@ -13718,16 +14102,10 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description The server is in open mode, which has no accounts */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
+            401: components["responses"]["Unauthenticated"];
+            409: components["responses"]["AccountsOnly"];
             429: components["responses"]["RateLimited"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     acceptInvite: {
@@ -13840,7 +14218,9 @@ export interface operations {
                     "application/json": components["schemas"]["UserList"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
             409: components["responses"]["AccountsOnly"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     updateUser: {
@@ -13868,6 +14248,7 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             /**
              * @description The change would leave no active owner (`LAST_OWNER`), or the server
@@ -13881,6 +14262,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+            503: components["responses"]["SetupRequired"];
         };
     };
     createPasswordReset: {
@@ -13903,8 +14285,10 @@ export interface operations {
                     "application/json": components["schemas"]["AccountLink"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["AccountsOnly"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     listInvites: {
@@ -13925,7 +14309,9 @@ export interface operations {
                     "application/json": components["schemas"]["PendingInviteList"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
             409: components["responses"]["AccountsOnly"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     createInvite: {
@@ -13951,7 +14337,9 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
             409: components["responses"]["AccountsOnly"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     revokeInvite: {
@@ -13973,8 +14361,10 @@ export interface operations {
                 };
                 content?: never;
             };
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["AccountsOnly"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     listPasswordResets: {
@@ -13995,7 +14385,9 @@ export interface operations {
                     "application/json": components["schemas"]["PendingPasswordResetList"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
             409: components["responses"]["AccountsOnly"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     revokePasswordReset: {
@@ -14017,8 +14409,10 @@ export interface operations {
                 };
                 content?: never;
             };
+            401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["AccountsOnly"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     getPrivacySettings: {
@@ -14039,6 +14433,8 @@ export interface operations {
                     "application/json": components["schemas"]["PrivacySettings"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     updatePrivacySettings: {
@@ -14064,6 +14460,8 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            503: components["responses"]["SetupRequired"];
         };
     };
     listAuthAudit: {
@@ -14087,7 +14485,9 @@ export interface operations {
                     "application/json": components["schemas"]["AuthAuditList"];
                 };
             };
+            401: components["responses"]["Unauthenticated"];
             409: components["responses"]["AccountsOnly"];
+            503: components["responses"]["SetupRequired"];
         };
     };
 }

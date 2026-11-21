@@ -25,7 +25,6 @@ const apiBase = "/api/v1"
 // handRouteRoles declares the minimum role of the API routes registered by
 // hand rather than generated from openapi.yaml, keyed like routeRoles.
 var handRouteRoles = map[string]repository.Role{
-	routeKey(http.MethodGet, apiBase+"/health"):                rolePublic,
 	routeKey(http.MethodGet, apiBase+"/config"):                repository.RoleViewer,
 	routeKey(http.MethodGet, apiBase+"/openapi.yaml"):          repository.RoleViewer,
 	routeKey(http.MethodGet, apiBase+"/docs"):                  repository.RoleViewer,
