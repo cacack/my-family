@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.1](https://github.com/cacack/my-family/compare/v0.14.0...v0.14.1) (2026-11-21)
+
+
+### Bug Fixes
+
+* **accounts:** map a racing duplicate username to ErrUsernameTaken on SQLite ([9cb7249](https://github.com/cacack/my-family/commit/9cb7249ec7f2f609a974171fdab658210fd8ca31)), closes [#1451](https://github.com/cacack/my-family/issues/1451)
+
 ## [0.14.0](https://github.com/cacack/my-family/compare/v0.13.1...v0.14.0) (2026-11-21)
 
 
