@@ -516,6 +516,35 @@ func nullableID(id uuid.UUID) any {
 	return id.String()
 }
 
+// DeleteExpiredLinks removes every invite and password reset that expires at
+// or before now.
+func (s *AccountStore) DeleteExpiredLinks(ctx context.Context, now time.Time) (int, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("begin delete expired links: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	removed := 0
+	for _, query := range []string{
+		`DELETE FROM invites WHERE expires_at <= ?`,
+		`DELETE FROM password_resets WHERE expires_at <= ?`,
+	} {
+		result, err := tx.ExecContext(ctx, query, sessionTime(now))
+		if err != nil {
+			return 0, fmt.Errorf("delete expired links: %w", err)
+		}
+		n, err := result.RowsAffected()
+		if err != nil {
+			return 0, fmt.Errorf("delete expired links: %w", err)
+		}
+		removed += int(n)
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("commit delete expired links: %w", err)
+	}
+	return removed, nil
+}
+
 // CreatePasswordReset stores reset.
 func (s *AccountStore) CreatePasswordReset(ctx context.Context, reset *repository.PasswordReset) error {
 	if _, err := s.db.ExecContext(ctx,
