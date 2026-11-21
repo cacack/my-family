@@ -104,6 +104,9 @@ error. CI uses `--with-deps` for this reason.
 If a local run shows stale data (a branch you already merged, say), check for a leftover server on
 port 8181: Playwright reuses an existing one locally rather than booting a clean binary.
 
+One spec (`web/e2e/branch-visitor.spec.ts`) also starts an accounts-mode server of its own on port
+8182 (`E2E_ACCOUNTS_PORT`, default `E2E_PORT + 1`) and fails at once if something already listens there.
+
 `make run` persists to `./myfamily.db` (gitignored, along with its `-wal`/`-shm` sidecars): data
 survives restarts. Delete the file for a clean slate, set `SQLITE_PATH` to use another file, or run
 `DEMO_MODE=true make run` for a throwaway in-memory sample tree. The E2E suite never touches it — it

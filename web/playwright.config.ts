@@ -16,10 +16,7 @@ import { defineConfig, devices } from '@playwright/test';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { BASE_URL, E2E_PORT, OUTPUT_DIR } from './e2e/seed';
-
-const BINARY = fileURLToPath(new URL('../myfamily', import.meta.url));
+import { BASE_URL, BINARY, E2E_PORT, OUTPUT_DIR } from './e2e/seed';
 
 if (!existsSync(BINARY)) {
 	throw new Error(
@@ -98,7 +95,9 @@ export default defineConfig({
 		// DEMO_MODE are pinned empty so an exported value in the developer's shell
 		// cannot redirect the suite to a real database or the demo tree.
 		// AUTH_MODE=open: the specs exercise the tree, not sign-in, which the Go
-		// API tests and the auth component tests cover (ADR-007).
+		// API tests and the auth component tests cover (ADR-007). The one spec
+		// that needs a real visitor starts an accounts-mode server of its own on
+		// E2E_ACCOUNTS_PORT (default E2E_PORT + 1; branch-visitor.spec.ts).
 		env: { PORT: String(E2E_PORT), SQLITE_PATH, DATABASE_URL: '', DEMO_MODE: '', AUTH_MODE: 'open' },
 		// In CI a stray listener on this port is a bug, not a convenience.
 		reuseExistingServer: !process.env.CI,
