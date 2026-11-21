@@ -7,7 +7,12 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
+
+// DefaultAuthAuditRetentionDays is how many days the auth audit log keeps an
+// entry when AUTH_AUDIT_RETENTION_DAYS is unset.
+const DefaultAuthAuditRetentionDays = 365
 
 // Config holds the application configuration.
 type Config struct {
@@ -33,6 +38,11 @@ type Config struct {
 	// believed. Read it through TrustedProxyRanges; Validate rejects an entry
 	// that is neither. Empty trusts no one.
 	TrustedProxies string
+
+	// AuthAuditRetentionDays is AUTH_AUDIT_RETENTION_DAYS: how many days an
+	// auth audit entry is kept before sign-in prunes it. Read it through
+	// AuthAuditRetention; Validate rejects less than one.
+	AuthAuditRetentionDays int
 }
 
 // AuthMode says whether requests must sign in (ADR-007).
@@ -82,12 +92,20 @@ func (c *Config) TrustedProxyRanges() ([]*net.IPNet, error) {
 	return ranges, nil
 }
 
+// AuthAuditRetention is how long the auth audit log keeps an entry.
+func (c *Config) AuthAuditRetention() time.Duration {
+	return time.Duration(c.AuthAuditRetentionDays) * 24 * time.Hour
+}
+
 // Validate reports a setting the server must not start with.
 func (c *Config) Validate() error {
 	switch c.AuthMode {
 	case "", AuthModeAccounts, AuthModeOpen:
 	default:
 		return fmt.Errorf("AUTH_MODE must be %q or %q, got %q", AuthModeAccounts, AuthModeOpen, c.AuthMode)
+	}
+	if c.AuthAuditRetentionDays < 1 {
+		return fmt.Errorf("AUTH_AUDIT_RETENTION_DAYS must be at least 1, got %d", c.AuthAuditRetentionDays)
 	}
 	_, err := c.TrustedProxyRanges()
 	return err
@@ -104,7 +122,8 @@ func Load() *Config {
 		DemoMode:    getEnvBoolOrDefault("DEMO_MODE", false),
 		AuthMode:    AuthMode(strings.ToLower(strings.TrimSpace(os.Getenv("AUTH_MODE")))),
 
-		TrustedProxies: os.Getenv("TRUSTED_PROXIES"),
+		TrustedProxies:         os.Getenv("TRUSTED_PROXIES"),
+		AuthAuditRetentionDays: getEnvIntOrDefault("AUTH_AUDIT_RETENTION_DAYS", DefaultAuthAuditRetentionDays),
 	}
 	return cfg
 }

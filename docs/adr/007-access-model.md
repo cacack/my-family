@@ -164,7 +164,8 @@ signed in before (a second stored credential to issue, expire and revoke), and l
 lockouts (they make the denial worse, not better).
 
 **Storage.** `users`, `tree_memberships`, `sessions`, `invites` and an append-only `auth_audit`
-table, in PostgreSQL, SQLite and memory. They are not in the event log and are not read model:
+table, in PostgreSQL, SQLite and memory. Each successful sign-in prunes audit entries older than
+`AUTH_AUDIT_RETENTION_DAYS` (default 365), beside its cleanup of expired sessions and links (#1433). They are not in the event log and are not read model:
 `myfamily rebuild` leaves them alone.
 
 **Attribution.** A command carries the acting principal, and the handler writes its user ID to

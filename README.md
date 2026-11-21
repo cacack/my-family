@@ -105,6 +105,7 @@ Environment variables:
 | `DEMO_MODE` | `false` | Run in memory with a sample family tree and a reset button. Nothing is persisted; overrides `DATABASE_URL` and `SQLITE_PATH`, and implies `AUTH_MODE=open` |
 | `AUTH_MODE` | `accounts` | `accounts`: everyone signs in. `open`: every request is treated as the owner, with no sign-in; only for a trusted network. See [Accounts and sign-in](#accounts-and-sign-in) |
 | `TRUSTED_PROXIES` | (none) | Comma-separated addresses or CIDR ranges of your reverse proxies, e.g. `10.0.0.2,fd00::/64`. A request from one of them is attributed to the client its `X-Forwarded-For` names, for the per-client rate limits and the audit log. Unset, forwarded headers are ignored. See [Accounts and sign-in](#accounts-and-sign-in) |
+| `AUTH_AUDIT_RETENTION_DAYS` | `365` | Days the account audit log (**Users > Audit log**) keeps an entry. Older entries are removed at each successful sign-in. Must be at least 1 |
 
 ### Accounts and sign-in
 
