@@ -59,7 +59,7 @@ func (ss *StrictServer) AcceptInvite(ctx context.Context, request AcceptInviteRe
 		return AcceptInvite400JSONResponse(authError(CodeValidation, err.Error())), nil
 	case errors.Is(err, auth.ErrInvalidLink):
 		return AcceptInvite400JSONResponse(authError(CodeInvalidLink, "This invite link is wrong, expired or already used. Ask the owner for a new one.")), nil
-	case errors.Is(err, auth.ErrRateLimited), errors.Is(err, auth.ErrBusy):
+	case throttled(err):
 		return AcceptInvite429JSONResponse{RateLimitedJSONResponse(authError(CodeRateLimited, err.Error()))}, nil
 	default:
 		return nil, err
@@ -79,7 +79,7 @@ func (ss *StrictServer) ResetPassword(ctx context.Context, request ResetPassword
 		return ResetPassword400JSONResponse(authError(CodeValidation, err.Error())), nil
 	case errors.Is(err, auth.ErrInvalidLink):
 		return ResetPassword400JSONResponse(authError(CodeInvalidLink, "This reset link is wrong, expired or already used. Ask the owner for a new one.")), nil
-	case errors.Is(err, auth.ErrRateLimited), errors.Is(err, auth.ErrBusy):
+	case throttled(err):
 		return ResetPassword429JSONResponse{RateLimitedJSONResponse(authError(CodeRateLimited, err.Error()))}, nil
 	default:
 		return nil, err
@@ -104,7 +104,7 @@ func (ss *StrictServer) UpdateCurrentAccount(ctx context.Context, request Update
 		return UpdateCurrentAccount400JSONResponse(authError(CodeValidation, err.Error())), nil
 	case errors.Is(err, auth.ErrInvalidCredentials):
 		return UpdateCurrentAccount400JSONResponse(authError(CodeInvalidCredentials, "The current password is wrong")), nil
-	case errors.Is(err, auth.ErrRateLimited), errors.Is(err, auth.ErrBusy):
+	case throttled(err):
 		return UpdateCurrentAccount429JSONResponse{RateLimitedJSONResponse(authError(CodeRateLimited, err.Error()))}, nil
 	default:
 		return nil, err
