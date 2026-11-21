@@ -91,6 +91,18 @@ func runLastOwnerContract(t *testing.T, store repository.AccountStore) {
 	wantLastOwner("demoting the remaining owner", setRole(bob, repository.RoleViewer))
 	wantLastOwner("disabling the remaining owner", update(bob, "Bob", true))
 
+	// The rule is per tree: bob, an active owner of the default tree, does not
+	// keep carl from being the last owner of another tree.
+	other := uuid.New()
+	carl := &repository.User{ID: uuid.New(), Username: "carl", DisplayName: "carl", PasswordHash: "h", CreatedAt: now}
+	mustOK("CreateUser(carl)", store.CreateUser(ctx, carl, other, repository.RoleOwner))
+	wantLastOwner("demoting another tree's last owner", store.SetMemberRole(ctx, other, carl.ID, repository.RoleEditor))
+	wantLastOwner("disabling another tree's last owner", update(carl, "carl", true))
+	dan := &repository.User{ID: uuid.New(), Username: "dan", DisplayName: "dan", PasswordHash: "h", CreatedAt: now}
+	mustOK("CreateUser(dan)", store.CreateUser(ctx, dan, other, repository.RoleOwner))
+	mustOK("disabling one of another tree's two owners", update(carl, "carl", true))
+	wantLastOwner("disabling bob, still the default tree's last owner", update(bob, "Bob", true))
+
 	// Missing rows still report as missing, not as the last owner.
 	if err := store.SetMemberRole(ctx, repository.DefaultTreeID, uuid.New(), repository.RoleViewer); !errors.Is(err, repository.ErrNotMember) {
 		t.Errorf("SetMemberRole of a non-member: err = %v, want ErrNotMember", err)
