@@ -88,8 +88,6 @@ func TestTreeSettingsStore_Contract(t *testing.T) {
 	}
 }
 
-// runAccountManagementContract covers members, invites, password resets and
-// the auth audit log (#1410).
 func TestAccountStore_ExpiredLinksContract(t *testing.T) {
 	for backend, open := range accountBackends() {
 		t.Run(string(backend), func(t *testing.T) {
@@ -142,6 +140,8 @@ func runExpiredLinksContract(t *testing.T, store repository.AccountStore) {
 	}
 }
 
+// runAccountManagementContract covers members, invites, password resets and
+// the auth audit log (#1410).
 func runAccountManagementContract(t *testing.T, store repository.AccountStore) {
 	ctx := context.Background()
 	now := at(time.Now())
