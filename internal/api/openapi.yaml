@@ -18,7 +18,9 @@ servers:
   - url: /api/v1
     description: API version 1
 
-# Every operation needs a signed-in session unless it says `security: []`.
+# Every operation needs a signed-in session unless it says otherwise: `security: []`
+# needs none, and a viewer operation a visitor may call (ADR-007) declares
+# `security: [{session: []}, {}]`, the session being optional.
 security:
   - session: []
 
@@ -93,7 +95,9 @@ tags:
     description: |
       Accounts and sign-in (ADR-007). Every operation needs a signed-in
       session (the `session` security scheme) unless it declares
-      `security: []`: without one it returns 401 `UNAUTHENTICATED`, and while
+      `security: []`, or the session is optional (a viewer operation a
+      visitor may call, served without one when the owner lets visitors in):
+      without one it returns 401 `UNAUTHENTICATED`, and while
       the tree has no owner it returns 503 `SETUP_REQUIRED`. With
       `AUTH_MODE=open` (or `DEMO_MODE`) every request is treated as the owner
       and no session is needed; the account operations then answer 409
@@ -121,6 +125,7 @@ paths:
     get:
       operationId: listPersons
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: List all persons
       tags: [persons]
       parameters:
@@ -205,6 +210,7 @@ paths:
     get:
       operationId: getPerson
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: Get a person by ID
       tags: [persons]
       parameters:
@@ -286,6 +292,7 @@ paths:
     get:
       operationId: listFamilies
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: List all families
       tags: [families]
       parameters:
@@ -350,6 +357,7 @@ paths:
     get:
       operationId: getFamily
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: Get a family by ID
       tags: [families]
       parameters:
@@ -520,6 +528,7 @@ paths:
     get:
       operationId: getFamilyGroupSheet
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: Get family group sheet data
       description: |
         Returns a traditional family group sheet view showing a family unit
@@ -550,6 +559,7 @@ paths:
     get:
       operationId: getPedigree
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: Get ancestor pedigree for a person
       tags: [pedigree]
       parameters:
@@ -583,6 +593,7 @@ paths:
     get:
       operationId: getDescendancy
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: Get descendancy tree for a person
       description: |
         Returns the descendant tree for a person, showing children, grandchildren,
@@ -619,6 +630,7 @@ paths:
     get:
       operationId: getAhnentafel
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: Get Ahnentafel (ancestor table) report for a person
       description: |
         Returns an Ahnentafel report listing ancestors using the standard numbering system:
@@ -666,6 +678,7 @@ paths:
     get:
       operationId: searchPersons
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: Search for persons
       tags: [search]
       parameters:
@@ -755,6 +768,7 @@ paths:
     get:
       operationId: browseSurnames
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: Get surname index with counts
       description: |
         Returns an alphabetical index of surnames with person counts. With
@@ -792,6 +806,7 @@ paths:
     get:
       operationId: getPersonsBySurname
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: Get persons with a specific surname
       description: |
         Returns the people carrying the surname. With `?branch=` the results come
@@ -817,6 +832,7 @@ paths:
     get:
       operationId: browsePlaces
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: Get place hierarchy with counts
       description: |
         Returns hierarchical place data (Country > State > County > City). With
@@ -853,6 +869,7 @@ paths:
     get:
       operationId: getPersonsByPlace
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: Get persons associated with a place
       description: |
         Returns the people associated with the place. With `?branch=` the results
@@ -878,6 +895,7 @@ paths:
     get:
       operationId: browseCemeteries
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: Get cemetery/burial place index with counts
       description: |
         Returns unique burial and cremation places with person counts. With
@@ -911,6 +929,7 @@ paths:
     get:
       operationId: getPersonsByCemetery
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: Get persons buried or cremated at a place
       description: |
         Returns the people buried or cremated at the place. With `?branch=` both
@@ -938,6 +957,7 @@ paths:
     get:
       operationId: getMapLocations
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: Get geographic locations for map visualization
       description: |
         Returns aggregated birth and death locations with coordinates for map
@@ -962,6 +982,7 @@ paths:
     get:
       operationId: getBrickWalls
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: List brick wall research blocks
       description: |
         Returns the brick wall research blocks. `?branch=` is NOT accepted here
@@ -1763,6 +1784,7 @@ paths:
     get:
       operationId: listCitationTemplates
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: List available citation templates
       description: Returns all Evidence Explained citation templates, optionally filtered by source type
       tags: [citation-templates]
@@ -1797,6 +1819,7 @@ paths:
     get:
       operationId: getCitationTemplate
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: Get a citation template by ID
       tags: [citation-templates]
       responses:
@@ -1825,6 +1848,7 @@ paths:
     post:
       operationId: previewCitationTemplate
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: Preview a citation template with provided fields
       description: Renders a citation preview without requiring a saved citation. Useful for live preview during editing.
       tags: [citation-templates]
@@ -1869,6 +1893,7 @@ paths:
     get:
       operationId: formatCitation
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: Format a citation using its template
       description: |
         Renders the citation as full and short formatted text using the
@@ -1899,6 +1924,7 @@ paths:
     get:
       operationId: listPersonMedia
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: List media attached to a person
       description: |
         Returns the person's media metadata, newest first. With `?branch=` the
@@ -1991,6 +2017,7 @@ paths:
     get:
       operationId: getMedia
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: Get media metadata
       description: |
         Returns the media item's metadata. With `?branch=` it is read from that
@@ -2085,6 +2112,7 @@ paths:
     get:
       operationId: downloadMedia
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: Download media file
       description: |
         Returns the media file. With `?branch=` the item is resolved through that
@@ -2139,6 +2167,7 @@ paths:
     get:
       operationId: getMediaThumbnail
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: Get media thumbnail
       description: |
         Returns the media thumbnail. With `?branch=` the item is resolved through
@@ -2169,6 +2198,7 @@ paths:
     get:
       operationId: listSources
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: List all sources
       description: |
         Returns a paginated list of sources. With `?branch=` the list is that
@@ -2247,6 +2277,7 @@ paths:
     get:
       operationId: searchSources
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: Search sources
       description: |
         Case-insensitive substring search over source titles and authors. With
@@ -2290,6 +2321,7 @@ paths:
     get:
       operationId: getSource
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: Get a source by ID
       description: |
         Returns the source with its citations and external identifiers. With
@@ -2384,6 +2416,7 @@ paths:
     get:
       operationId: getCitationsForSource
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: Get citations for a source
       tags: [sources]
       parameters:
@@ -2453,6 +2486,7 @@ paths:
     get:
       operationId: getCitation
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: Get a citation by ID
       tags: [citations]
       parameters:
@@ -2531,6 +2565,7 @@ paths:
     get:
       operationId: getCitationsForPerson
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: Get citations for a person
       tags: [citations]
       parameters:
@@ -2556,6 +2591,7 @@ paths:
     get:
       operationId: getPersonNames
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: Get all names for a person
       description: Returns all name variants for a person (birth name, married name, aliases, etc.)
       tags: [persons]
@@ -2935,6 +2971,7 @@ paths:
     get:
       operationId: getQualityOverview
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: Get aggregate quality metrics
       description: |
         Returns overall data quality metrics across all persons in the scoped
@@ -2961,6 +2998,7 @@ paths:
     get:
       operationId: getPersonQuality
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: Get quality score for a person
       description: Returns data completeness score and issues for a specific person
       tags: [quality]
@@ -2982,6 +3020,7 @@ paths:
     get:
       operationId: getQualityReport
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: Get full quality report
       description: Returns comprehensive data quality metrics including completeness, coverage, and aggregated issues
       tags: [quality]
@@ -3001,6 +3040,7 @@ paths:
     get:
       operationId: getValidationIssues
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: Get validation issues
       description: |
         Returns date logic and reference validation issues categorized by
@@ -3046,6 +3086,7 @@ paths:
     get:
       operationId: getPersonsDuplicates
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: Find potential duplicate persons
       description: |
         Returns pairs of persons that may be duplicates based on name, date, and
@@ -3086,6 +3127,7 @@ paths:
     get:
       operationId: listDismissedDuplicates
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: List pairs marked "not a duplicate"
       description: |
         Returns the suggested duplicate pairs marked "not a duplicate" in this
@@ -3313,6 +3355,7 @@ paths:
     get:
       operationId: getStatistics
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: Get tree-wide statistics
       description: Returns aggregate statistics about the family tree
       tags: [statistics]
@@ -3332,6 +3375,7 @@ paths:
     get:
       operationId: getDiscoveryFeed
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: Get discovery feed suggestions
       description: Returns prioritized research suggestions based on data quality analysis
       tags: [quality]
@@ -3599,6 +3643,7 @@ paths:
     get:
       operationId: listBranches
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: List all branches
       description: |
         Returns every branch in the registry, newest first, including terminal
@@ -3679,6 +3724,7 @@ paths:
     get:
       operationId: getBranch
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: Get a branch by ID
       description: |
         Returns the branch with its research record. Subjects carry their
@@ -3962,6 +4008,7 @@ paths:
     get:
       operationId: getBranchDrift
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: Count how far the mainline has moved under a branch
       description: |
         Branches are **live overlays**, not frozen copies (ADR-005): every
@@ -4513,6 +4560,7 @@ paths:
     get:
       operationId: getRelationship
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: Calculate relationship between two people
       tags:
         - relationships
@@ -4552,6 +4600,7 @@ paths:
     get:
       operationId: getHomePerson
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: Get the home person
       description: |
         Returns the person marked as "me", the one every person page states a
@@ -4624,6 +4673,7 @@ paths:
     get:
       operationId: listNotes
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: List all notes
       description: |
         Returns paginated list of shared GEDCOM NOTE records. With `?branch=`
@@ -4687,6 +4737,7 @@ paths:
     get:
       operationId: getNote
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: Get a note by ID
       tags: [notes]
       parameters:
@@ -4777,6 +4828,7 @@ paths:
     get:
       operationId: listSubmitters
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: List all submitters
       description: Returns paginated list of GEDCOM SUBM (submitter) records
       tags: [submitters]
@@ -4841,6 +4893,7 @@ paths:
     get:
       operationId: getSubmitter
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: Get a submitter by ID
       tags: [submitters]
       responses:
@@ -4912,6 +4965,7 @@ paths:
     get:
       operationId: listRepositories
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: List all repositories
       description: Returns paginated list of GEDCOM REPO (repository) records
       tags: [repositories]
@@ -4976,6 +5030,7 @@ paths:
     get:
       operationId: getRepository
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: Get a repository by ID
       tags: [repositories]
       responses:
@@ -5047,6 +5102,7 @@ paths:
     get:
       operationId: listAssociations
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: List all associations
       description: |
         Returns paginated list of GEDCOM ASSO (association) records. With
@@ -5121,6 +5177,7 @@ paths:
     get:
       operationId: getAssociation
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: Get an association by ID
       tags: [associations]
       parameters:
@@ -5199,6 +5256,7 @@ paths:
     get:
       operationId: listAssociationsForPerson
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: List associations for a person
       description: |
         Returns all associations where the person is either the subject or
@@ -5228,6 +5286,7 @@ paths:
     get:
       operationId: listLDSOrdinances
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: List all LDS ordinances
       description: Returns paginated list of LDS temple ordinance records (BAPL, CONL, ENDL, SLGC, SLGS)
       tags: [lds-ordinances]
@@ -5296,6 +5355,7 @@ paths:
     get:
       operationId: getLDSOrdinance
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: Get an LDS ordinance by ID
       tags: [lds-ordinances]
       responses:
@@ -5373,6 +5433,7 @@ paths:
     get:
       operationId: listLDSOrdinancesForPerson
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: List LDS ordinances for a person
       description: Returns all individual LDS ordinances (BAPL, CONL, ENDL, SLGC) for a person
       tags: [lds-ordinances]
@@ -5399,6 +5460,7 @@ paths:
     get:
       operationId: listLDSOrdinancesForFamily
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: List LDS ordinances for a family
       description: Returns all spouse sealing (SLGS) ordinances for a family
       tags: [lds-ordinances]
@@ -5423,6 +5485,7 @@ paths:
     get:
       operationId: listEvidenceAnalyses
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: List all evidence analyses
       description: |
         Returns a paginated list of evidence analyses. With `?branch=` the list
@@ -5496,6 +5559,7 @@ paths:
     get:
       operationId: getEvidenceAnalysis
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: Get an evidence analysis by ID
       description: |
         Returns the evidence analysis. With `?branch=` it is read from that
@@ -5580,6 +5644,7 @@ paths:
     get:
       operationId: getAnalysesByFact
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: Get evidence analyses by fact type and subject
       description: |
         Returns the evidence analyses of one fact of one subject. With
@@ -5629,6 +5694,7 @@ paths:
     get:
       operationId: listEvidenceConflicts
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: List all evidence conflicts
       description: |
         Returns a paginated list of evidence conflicts (two analyses that
@@ -5667,6 +5733,7 @@ paths:
     get:
       operationId: getEvidenceConflict
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: Get an evidence conflict by ID
       description: |
         Returns the evidence conflict. With `?branch=` it is read from that
@@ -5739,6 +5806,7 @@ paths:
     get:
       operationId: getConflictsBySubject
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: Get evidence conflicts for a subject
       description: |
         Returns the evidence conflicts about one subject. With `?branch=` the
@@ -5765,6 +5833,7 @@ paths:
     get:
       operationId: listResearchLogs
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: List all research log entries
       description: |
         Returns a paginated list of research log entries. With `?branch=` the
@@ -5837,6 +5906,7 @@ paths:
     get:
       operationId: getResearchLog
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: Get a research log entry by ID
       description: |
         Returns the research log entry. With `?branch=` it is read from that
@@ -5929,6 +5999,7 @@ paths:
     get:
       operationId: getResearchLogsBySubject
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: Get research log entries for a subject
       description: |
         Returns the research log entries about one subject. With `?branch=`
@@ -5955,6 +6026,7 @@ paths:
     get:
       operationId: listProofSummaries
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: List all proof summaries
       description: |
         Returns a paginated list of proof summaries. With `?branch=` the list
@@ -6027,6 +6099,7 @@ paths:
     get:
       operationId: getProofSummary
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: Get a proof summary by ID
       description: |
         Returns the proof summary. With `?branch=` it is read from that
@@ -6111,6 +6184,7 @@ paths:
     get:
       operationId: getProofSummaryByFact
       x-min-role: viewer
+      security: [{session: []}, {}]
       summary: Get proof summaries by fact type and subject
       description: |
         Returns the proof summaries of one fact of one subject. With

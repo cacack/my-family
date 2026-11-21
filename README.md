@@ -301,10 +301,12 @@ curl -sf -b "$jar" -X POST http://localhost:8080/api/v1/auth/sign-out   # ends t
 
 The [OpenAPI spec](./internal/api/openapi.yaml) declares the cookie as the `session` security
 scheme. Operations marked `security: []` (health, auth status, setup, sign-in, sign-out, invite
-accept and password reset) need no session; every other one answers 401 `UNAUTHENTICATED`
-without it, and 503 `SETUP_REQUIRED` until an owner exists. In open mode no session is needed, and
-the account operations (`/auth/sign-in`, `/auth/setup`, `/auth/me` and the rest) answer 409
-`CONFLICT`.
+accept and password reset) need no session. Those marked `security: [{session: []}, {}]` (the
+reads a visitor may make) are served without one when the owner lets visitors in. Every other
+call without a session answers 401 `UNAUTHENTICATED`, and anything but the first group answers
+503 `SETUP_REQUIRED` until an owner exists. In open mode no session is needed, and the account
+operations (`/auth/sign-in`, `/auth/setup`, `/auth/me` and the rest, but not sign-out or auth
+status) answer 409 `CONFLICT`.
 
 ### Storage
 

@@ -6,13 +6,17 @@ import (
 	"testing"
 
 	"github.com/getkin/kin-openapi/openapi3"
+
+	"github.com/cacack/my-family/internal/repository"
 )
 
 // authContractViolations lists where an OpenAPI document fails to describe
 // sign-in (#1423): the session cookie must be a security scheme applied to
-// every operation, a public operation must opt out with `security: []`, and
-// every other operation must document the 401 `UNAUTHENTICATED` and 503
-// `SETUP_REQUIRED` refusals authenticate gives it.
+// every operation, a public operation must opt out with `security: []`, a
+// viewer operation a visitor may call (not in signedInRoutes) must make the
+// session optional with `security: [{session: []}, {}]`, and every non-public
+// operation must document the 401 `UNAUTHENTICATED` and 503 `SETUP_REQUIRED`
+// refusals authenticate gives it.
 func authContractViolations(doc *openapi3.T) []string {
 	var problems []string
 	var scheme *openapi3.SecuritySchemeRef
@@ -32,13 +36,19 @@ func authContractViolations(doc *openapi3.T) []string {
 	for path, item := range doc.Paths.Map() {
 		for method, op := range item.Operations() {
 			where := fmt.Sprintf("%s %s (%s)", method, path, op.OperationID)
-			if role, _ := op.Extensions["x-min-role"].(string); role == string(rolePublic) {
+			role, _ := op.Extensions["x-min-role"].(string)
+			if role == string(rolePublic) {
 				if op.Security == nil || len(*op.Security) != 0 {
 					problems = append(problems, where+" is public but does not declare security: []")
 				}
 				continue
 			}
-			if op.Security != nil {
+			key := routeKey(method, apiBase+specParam.ReplaceAllString(path, ":$1"))
+			if role == string(repository.RoleViewer) && !signedInRoutes[key] {
+				if !sessionOptional(op.Security) {
+					problems = append(problems, where+" may be called by a visitor but does not declare security: [{session: []}, {}]")
+				}
+			} else if op.Security != nil {
 				problems = append(problems, where+" needs a session but overrides the top-level security")
 			}
 			if !responds(op, "401", CodeUnauthenticated) {
@@ -50,6 +60,24 @@ func authContractViolations(doc *openapi3.T) []string {
 		}
 	}
 	return problems
+}
+
+// sessionOptional reports whether security is exactly the session scheme or
+// nothing, in either order.
+func sessionOptional(security *openapi3.SecurityRequirements) bool {
+	if security == nil || len(*security) != 2 {
+		return false
+	}
+	var session, none bool
+	for _, req := range *security {
+		switch {
+		case len(req) == 0:
+			none = true
+		case len(req) == 1 && req["session"] != nil:
+			session = true
+		}
+	}
+	return session && none
 }
 
 func TestOpenAPI_DescribesSignIn(t *testing.T) {
@@ -88,6 +116,14 @@ paths:
   /things:
     get:
       x-min-role: viewer
+      security: [{session: []}, {}]
+      responses:
+        '200': {description: ok}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '503': {$ref: '#/components/responses/SetupRequired'}
+  /history:
+    get:
+      x-min-role: viewer
       responses:
         '200': {description: ok}
         '401': {$ref: '#/components/responses/Unauthenticated'}
@@ -103,6 +139,33 @@ paths:
       responses: {'201': {description: ok}}
 `,
 			want: []string{"createThing) does not document 401", "createThing) does not document 503"},
+		},
+		{
+			name: "visitor-callable operation without an optional session",
+			paths: `  /things:
+    get:
+      operationId: listThings
+      x-min-role: viewer
+      responses:
+        '200': {description: ok}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '503': {$ref: '#/components/responses/SetupRequired'}
+`,
+			want: []string{"listThings) may be called by a visitor but does not declare security: [{session: []}, {}]"},
+		},
+		{
+			name: "signed-in operation with an optional session",
+			paths: `  /history:
+    get:
+      operationId: getHistory
+      x-min-role: viewer
+      security: [{session: []}, {}]
+      responses:
+        '200': {description: ok}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '503': {$ref: '#/components/responses/SetupRequired'}
+`,
+			want: []string{"getHistory) needs a session but overrides the top-level security"},
 		},
 		{
 			name: "public operation without security: []",
