@@ -106,6 +106,8 @@ type Server struct {
 // NewServer creates a new API server with all dependencies. Unless
 // cfg.OpenMode() is true (AUTH_MODE=open or DEMO_MODE), opts must include
 // WithAuth; a zero AuthMode means accounts, so NewServer panics without it.
+// It also panics on an invalid cfg.TrustedProxies, so callers run
+// cfg.Validate first.
 func NewServer(
 	cfg *config.Config,
 	eventStore repository.EventStore,
@@ -116,11 +118,7 @@ func NewServer(
 ) *Server {
 	e := echo.New()
 	e.HideBanner = true
-	// Take the client IP from the TCP peer, never from X-Forwarded-For or
-	// X-Real-IP: no trusted proxy is configured, so those headers are
-	// client-controlled (GO-2026-6872, GO-2026-6875). Echo >= 4.16.3 defaults
-	// to this; setting it keeps the guarantee explicit.
-	e.IPExtractor = echo.ExtractIPDirect()
+	e.IPExtractor = clientIPExtractor(cfg)
 
 	// Setup middleware stack (order matters)
 	e.Use(middleware.Recover())
@@ -343,4 +341,29 @@ func (s *Server) CommandHandler() *command.Handler {
 // Health check handler.
 func (s *Server) healthCheck(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// clientIPExtractor says where c.RealIP(), the key of the per-client rate
+// limits and the audit log's address, comes from. With no TRUSTED_PROXIES it
+// is the TCP peer, never X-Forwarded-For or X-Real-IP, since those headers
+// are client-controlled (GO-2026-6872, GO-2026-6875). With them it is the
+// nearest X-Forwarded-For address that is not a trusted proxy, read only when
+// the peer is one; Echo's default trust of loopback and private addresses is
+// turned off, so only the listed ranges are believed. NewServer panics on an
+// invalid list, which Config.Validate refuses at startup.
+func clientIPExtractor(cfg *config.Config) echo.IPExtractor {
+	ranges, err := cfg.TrustedProxyRanges()
+	if err != nil {
+		panic(err)
+	}
+	if len(ranges) == 0 {
+		return echo.ExtractIPDirect()
+	}
+	options := []echo.TrustOption{
+		echo.TrustLoopback(false), echo.TrustLinkLocal(false), echo.TrustPrivateNet(false),
+	}
+	for _, r := range ranges {
+		options = append(options, echo.TrustIPRange(r))
+	}
+	return echo.ExtractIPFromXFFHeader(options...)
 }

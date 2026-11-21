@@ -157,7 +157,7 @@ who knows a username can keep it locked out. We accept that over letting a corre
 client with no recent failures through, because that bypass makes the per-username limit a
 per-address one: a guesser with many addresses (one IPv6 prefix holds billions) gets 5 guesses per
 address, and the per-username limit is the only guard against guessing from many addresses.
-Behind a reverse proxy every client shares one address, so the bypass would not even help the
+Behind a reverse proxy not listed in `TRUSTED_PROXIES` every client shares one address, so the bypass would not even help the
 owner there. The lockout costs little: it refuses only new sign-ins, sessions last up to 30 days,
 and the counts are in memory, so a restart clears them. Rejected: a bypass for a browser that has
 signed in before (a second stored credential to issue, expire and revoke), and longer or growing

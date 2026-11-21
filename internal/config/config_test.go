@@ -1,6 +1,7 @@
 package config
 
 import (
+	"slices"
 	"testing"
 )
 
@@ -227,5 +228,46 @@ func TestAuthMode(t *testing.T) {
 func TestOpenMode_ZeroConfigFailsClosed(t *testing.T) {
 	if (&Config{}).OpenMode() {
 		t.Error("a Config built without AuthMode must require accounts")
+	}
+}
+
+func TestTrustedProxyRanges(t *testing.T) {
+	tests := []struct {
+		name    string
+		value   string
+		want    []string
+		wantErr bool
+	}{
+		{name: "unset trusts no one", want: nil},
+		{name: "blank entries are skipped", value: " , ", want: nil},
+		{name: "single IPv4 address", value: "10.0.0.1", want: []string{"10.0.0.1/32"}},
+		{name: "single IPv6 address", value: "fd00::1", want: []string{"fd00::1/128"}},
+		{name: "CIDR ranges and an address", value: "10.0.0.0/8, 192.168.1.5 ,fd00::/64",
+			want: []string{"10.0.0.0/8", "192.168.1.5/32", "fd00::/64"}},
+		{name: "a hostname is refused", value: "proxy.local", wantErr: true},
+		{name: "a bad prefix is refused", value: "10.0.0.0/33", wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("TRUSTED_PROXIES", tt.value)
+			cfg := Load()
+			if err := cfg.Validate(); (err != nil) != tt.wantErr {
+				t.Fatalf("Validate() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			ranges, err := cfg.TrustedProxyRanges()
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("TrustedProxyRanges() error = nil, want one")
+				}
+				return
+			}
+			var got []string
+			for _, r := range ranges {
+				got = append(got, r.String())
+			}
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("TrustedProxyRanges() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
