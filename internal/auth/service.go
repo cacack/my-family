@@ -66,6 +66,9 @@ var (
 	// ErrRateLimited refuses a sign-in or setup attempt after too many
 	// failures.
 	ErrRateLimited = errors.New("too many failed attempts; try again later")
+	// ErrBusy refuses an attempt that could not get one of the
+	// maxConcurrentHashes password-hashing slots in time.
+	ErrBusy = errors.New("the server is busy; try again shortly")
 	// ErrNoSession is a missing, unknown, expired or revoked session.
 	ErrNoSession = errors.New("not signed in")
 	// ErrSetupDone refuses setup once an owner exists.
@@ -390,6 +393,10 @@ func (s *Service) SignIn(ctx context.Context, username, password, clientKey stri
 	// An unknown username is checked against a dummy hash, so its answer takes
 	// as long as a wrong password's and does not reveal which names exist.
 	ok, verifyErr := VerifyPassword(password, hash)
+	if errors.Is(verifyErr, ErrBusy) {
+		s.limiter.release(now, nameKey, clientLimitKey)
+		return nil, "", ErrBusy
+	}
 	if verifyErr != nil && user != nil {
 		slog.Error("auth: stored password hash does not parse", "user_id", user.ID, "error", verifyErr)
 	}
@@ -425,10 +432,12 @@ func (s *Service) SignIn(ctx context.Context, username, password, clientKey stri
 	return user, token, nil
 }
 
-// dummyPasswordHash is a hash no password is checked against for real.
+// dummyPasswordHash is a hash no password is checked against for real. It is
+// made outside the hashing cap, once, so a busy server cannot leave it
+// malformed; checking against it is capped like any other.
 func (s *Service) dummyPasswordHash() string {
 	s.dummyOnce.Do(func() {
-		hash, err := HashPassword("not a real password")
+		hash, err := hashPassword("not a real password", uncappedKey)
 		if err != nil {
 			// rand.Read does not fail on supported platforms; a malformed
 			// hash still fails every check.

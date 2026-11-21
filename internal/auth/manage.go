@@ -428,7 +428,12 @@ func (s *Service) UpdateAccount(ctx context.Context, by Actor, sessionToken stri
 		if !s.limiter.acquire(now, limit{key, maxFailuresPerName}) {
 			return nil, ErrRateLimited
 		}
-		if ok, _ := VerifyPassword(change.CurrentPassword, user.PasswordHash); !ok {
+		ok, verifyErr := VerifyPassword(change.CurrentPassword, user.PasswordHash)
+		if errors.Is(verifyErr, ErrBusy) {
+			s.limiter.release(now, key)
+			return nil, ErrBusy
+		}
+		if !ok {
 			return nil, ErrInvalidCredentials // stays counted as a failure
 		}
 		s.limiter.reset(key)

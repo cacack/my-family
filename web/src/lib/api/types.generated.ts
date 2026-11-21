@@ -7475,7 +7475,7 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
-        /** @description Too many failed attempts (`RATE_LIMITED`); try again later */
+        /** @description Too many failed attempts, or too many password checks running on the server at once (`RATE_LIMITED`); try again later */
         RateLimited: {
             headers: {
                 [name: string]: unknown;
