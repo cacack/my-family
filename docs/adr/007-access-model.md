@@ -151,6 +151,18 @@ token, stored hashed server-side with idle and absolute expiry, in an `HttpOnly`
 cookie that is `Secure` over TLS. State-changing requests whose `Origin` does not match the host
 are refused, and CORS no longer allows `*`. Sign-in attempts are rate-limited.
 
+**Sign-in limits.** Failed sign-ins are limited per username (5 in 15 minutes, from anyone) and
+per client address (20). A correct password is refused while either limit is reached, so anyone
+who knows a username can keep it locked out. We accept that over letting a correct password from a
+client with no recent failures through, because that bypass makes the per-username limit a
+per-address one: a guesser with many addresses (one IPv6 prefix holds billions) gets 5 guesses per
+address, and the per-username limit is the only guard against guessing from many addresses.
+Behind a reverse proxy every client shares one address, so the bypass would not even help the
+owner there. The lockout costs little: it refuses only new sign-ins, sessions last up to 30 days,
+and the counts are in memory, so a restart clears them. Rejected: a bypass for a browser that has
+signed in before (a second stored credential to issue, expire and revoke), and longer or growing
+lockouts (they make the denial worse, not better).
+
 **Storage.** `users`, `tree_memberships`, `sessions`, `invites` and an append-only `auth_audit`
 table, in PostgreSQL, SQLite and memory. They are not in the event log and are not read model:
 `myfamily rebuild` leaves them alone.
