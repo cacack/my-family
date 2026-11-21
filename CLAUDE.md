@@ -11,6 +11,7 @@ Self-hosted genealogy software written in Go. A premier self-hosted genealogy pl
 - [Project Ethos](./docs/ETHOS.md) - Vision, principles, and differentiators
 - [Roadmap](./docs/ROADMAP.md) - Phased feature plan (Phase 1 = now)
 - [GitHub Issues](https://github.com/cacack/my-family/issues) - Planned features and work
+- [Planning](./docs/PLANNING.md) - Milestones, Rank and two-week sprints in the Roadmap project
 - [Conventions](./docs/CONVENTIONS.md) - **Canonical source** for code patterns, commit types, and standards
 - [Architecture Decisions](./docs/adr/) - Key technical decisions with rationale
 - [Contributing Guide](./CONTRIBUTING.md) - Development workflow
