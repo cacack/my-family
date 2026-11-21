@@ -72,8 +72,10 @@ fi
 echo "  ✓ go vet passed"
 
 # --- Tests ---
-echo "→ Running tests..."
-if ! go test ./...; then
+# Fast tier: -short skips internal/integration and every PostgreSQL test.
+# The pre-push hook runs the full suite (docs/TESTING-STRATEGY.md#test-tiers).
+echo "→ Running tests (short tier)..."
+if ! go test -short ./...; then
   echo "  ✗ Tests failed"
   exit 1
 fi
