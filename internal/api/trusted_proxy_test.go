@@ -75,13 +75,17 @@ func (f *authFixture) failSignIns(t *testing.T, n int, peer string, forwarded fu
 	return status
 }
 
+// signInLimit is the failed sign-ins a client may make before a 429
+// (maxFailuresPerClient in internal/auth/service.go).
+const signInLimit = 20
+
 // Two clients behind one trusted proxy have their own failed-sign-in buckets,
 // and a client cannot leave its bucket with a header entry of its own.
 func TestTrustedProxy_SignInBucketPerForwardedClient(t *testing.T) {
 	f := newProxiedAuthFixture(t)
 	f.createOwner(t)
 	spoofed := func(i int) string { return "198.51.100." + strconv.Itoa(i) + ", 203.0.113.1" }
-	if got := f.failSignIns(t, 20, proxy, spoofed); got != http.StatusUnauthorized {
+	if got := f.failSignIns(t, signInLimit, proxy, spoofed); got != http.StatusUnauthorized {
 		t.Fatalf("20th failed sign-in: %d, want 401", got)
 	}
 	if got := f.failSignIns(t, 1, proxy, spoofed); got != http.StatusTooManyRequests {
@@ -101,7 +105,7 @@ func TestTrustedProxy_UntrustedPeerHeaderIgnored(t *testing.T) {
 			f := newProxiedAuthFixture(t)
 			f.createOwner(t)
 			fresh := func(i int) string { return "203.0.113." + strconv.Itoa(i) }
-			if got := f.failSignIns(t, 21, peer, fresh); got != http.StatusTooManyRequests {
+			if got := f.failSignIns(t, signInLimit+1, peer, fresh); got != http.StatusTooManyRequests {
 				t.Errorf("21st failed sign-in, each forwarded for another address: %d, want 429", got)
 			}
 		})

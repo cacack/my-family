@@ -106,6 +106,8 @@ type Server struct {
 // NewServer creates a new API server with all dependencies. Unless
 // cfg.OpenMode() is true (AUTH_MODE=open or DEMO_MODE), opts must include
 // WithAuth; a zero AuthMode means accounts, so NewServer panics without it.
+// It also panics on an invalid cfg.TrustedProxies, so callers run
+// cfg.Validate first.
 func NewServer(
 	cfg *config.Config,
 	eventStore repository.EventStore,
