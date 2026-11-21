@@ -128,7 +128,16 @@ The session cookie is `HttpOnly` and `SameSite=Lax`, and `Secure` when the reque
 TLS (directly, or through a proxy that sets `X-Forwarded-Proto: https`). Repeated failed sign-ins
 are refused for 15 minutes: 5 per username, from anyone, and 20 per client address. So anyone who
 can reach the server can keep a known username locked out, and behind a reverse proxy every client
-shares the proxy's address and so the per-client limit. The API accepts no cross-origin browser
+shares the proxy's address and so the per-client limit. A correct password does not get past
+either limit (see [ADR-007](./docs/adr/007-access-model.md)). A locked-out owner regains access by:
+
+- using a session already signed in: the lockout refuses only new sign-ins;
+- waiting: each failure stops counting 15 minutes after it was made;
+- restarting the server, which forgets every count, since they are kept in memory;
+- stopping the source: **Users > Audit log** lists the failed sign-ins with their client address
+  (behind a proxy, the proxy's, so look in its access log), to block at the firewall or proxy.
+
+The API accepts no cross-origin browser
 requests: a write whose `Origin` is not the server's host is refused, so a proxy must pass the
 original `Host` through or set `X-Forwarded-Host`.
 
