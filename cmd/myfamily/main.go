@@ -82,7 +82,10 @@ Environment Variables:
   DEMO_MODE      Run in memory with sample data, no persistence; overrides
                  DATABASE_URL and SQLITE_PATH; implies AUTH_MODE=open (default: false)
   AUTH_MODE      accounts: everyone signs in (default). open: every request is
-                 treated as the owner, with no sign-in; only for a trusted network`)
+                 treated as the owner, with no sign-in; only for a trusted network
+  TRUSTED_PROXIES
+                 Comma-separated addresses or CIDR ranges of reverse proxies whose
+                 X-Forwarded-For is believed; unset, it is ignored (default: none)`)
 }
 
 // runServer opens the configured store, serves until SIGINT/SIGTERM, then
