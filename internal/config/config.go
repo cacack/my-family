@@ -14,6 +14,10 @@ import (
 // entry when AUTH_AUDIT_RETENTION_DAYS is unset.
 const DefaultAuthAuditRetentionDays = 365
 
+// MaxAuthAuditRetentionDays is the longest retention Validate accepts, well
+// inside what a time.Duration can hold.
+const MaxAuthAuditRetentionDays = 36500
+
 // Config holds the application configuration.
 type Config struct {
 	// Database configuration
@@ -39,10 +43,12 @@ type Config struct {
 	// that is neither. Empty trusts no one.
 	TrustedProxies string
 
-	// AuthAuditRetentionDays is AUTH_AUDIT_RETENTION_DAYS: how many days an
-	// auth audit entry is kept before sign-in prunes it. Read it through
-	// AuthAuditRetention; Validate rejects less than one.
-	AuthAuditRetentionDays int
+	// AuthAuditRetentionDays is AUTH_AUDIT_RETENTION_DAYS as given: how many
+	// days an auth audit entry is kept before sign-in prunes it. Empty means
+	// DefaultAuthAuditRetentionDays. Read it through AuthAuditRetention;
+	// Validate rejects anything but a whole number from 1 to
+	// MaxAuthAuditRetentionDays.
+	AuthAuditRetentionDays string
 }
 
 // AuthMode says whether requests must sign in (ADR-007).
@@ -92,9 +98,28 @@ func (c *Config) TrustedProxyRanges() ([]*net.IPNet, error) {
 	return ranges, nil
 }
 
-// AuthAuditRetention is how long the auth audit log keeps an entry.
+// AuthAuditRetention is how long the auth audit log keeps an entry. It is
+// zero, which keeps every entry, for a value Validate rejects.
 func (c *Config) AuthAuditRetention() time.Duration {
-	return time.Duration(c.AuthAuditRetentionDays) * 24 * time.Hour
+	days, err := c.authAuditRetentionDays()
+	if err != nil {
+		return 0
+	}
+	return time.Duration(days) * 24 * time.Hour
+}
+
+// authAuditRetentionDays parses AuthAuditRetentionDays.
+func (c *Config) authAuditRetentionDays() (int, error) {
+	value := strings.TrimSpace(c.AuthAuditRetentionDays)
+	if value == "" {
+		return DefaultAuthAuditRetentionDays, nil
+	}
+	days, err := strconv.Atoi(value)
+	if err != nil || days < 1 || days > MaxAuthAuditRetentionDays {
+		return 0, fmt.Errorf("AUTH_AUDIT_RETENTION_DAYS must be a whole number of days from 1 to %d, got %q",
+			MaxAuthAuditRetentionDays, c.AuthAuditRetentionDays)
+	}
+	return days, nil
 }
 
 // Validate reports a setting the server must not start with.
@@ -104,8 +129,8 @@ func (c *Config) Validate() error {
 	default:
 		return fmt.Errorf("AUTH_MODE must be %q or %q, got %q", AuthModeAccounts, AuthModeOpen, c.AuthMode)
 	}
-	if c.AuthAuditRetentionDays < 1 {
-		return fmt.Errorf("AUTH_AUDIT_RETENTION_DAYS must be at least 1, got %d", c.AuthAuditRetentionDays)
+	if _, err := c.authAuditRetentionDays(); err != nil {
+		return err
 	}
 	_, err := c.TrustedProxyRanges()
 	return err
@@ -123,7 +148,7 @@ func Load() *Config {
 		AuthMode:    AuthMode(strings.ToLower(strings.TrimSpace(os.Getenv("AUTH_MODE")))),
 
 		TrustedProxies:         os.Getenv("TRUSTED_PROXIES"),
-		AuthAuditRetentionDays: getEnvIntOrDefault("AUTH_AUDIT_RETENTION_DAYS", DefaultAuthAuditRetentionDays),
+		AuthAuditRetentionDays: os.Getenv("AUTH_AUDIT_RETENTION_DAYS"),
 	}
 	return cfg
 }

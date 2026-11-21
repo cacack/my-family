@@ -284,6 +284,10 @@ func TestAuthAuditRetention(t *testing.T) {
 		{name: "a number of days", value: "90", want: 90 * 24 * time.Hour},
 		{name: "zero is refused", value: "0", wantErr: true},
 		{name: "a negative number is refused", value: "-5", wantErr: true},
+		{name: "a unit suffix is refused", value: "30d", wantErr: true},
+		{name: "a word is refused", value: "forever", wantErr: true},
+		{name: "the maximum is accepted", value: "36500", want: 36500 * 24 * time.Hour},
+		{name: "more than the maximum is refused", value: "213504", wantErr: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -292,7 +296,13 @@ func TestAuthAuditRetention(t *testing.T) {
 			if err := cfg.Validate(); (err != nil) != tt.wantErr {
 				t.Fatalf("Validate() error = %v, wantErr %v", err, tt.wantErr)
 			}
-			if !tt.wantErr && cfg.AuthAuditRetention() != tt.want {
+			if tt.wantErr {
+				if got := cfg.AuthAuditRetention(); got != 0 {
+					t.Errorf("AuthAuditRetention() = %v for a refused value, want 0", got)
+				}
+				return
+			}
+			if cfg.AuthAuditRetention() != tt.want {
 				t.Errorf("AuthAuditRetention() = %v, want %v", cfg.AuthAuditRetention(), tt.want)
 			}
 		})
