@@ -104,6 +104,7 @@ Environment variables:
 | `LOG_FORMAT` | `text` | Log format (text, json) |
 | `DEMO_MODE` | `false` | Run in memory with a sample family tree and a reset button. Nothing is persisted; overrides `DATABASE_URL` and `SQLITE_PATH`, and implies `AUTH_MODE=open` |
 | `AUTH_MODE` | `accounts` | `accounts`: everyone signs in. `open`: every request is treated as the owner, with no sign-in; only for a trusted network. See [Accounts and sign-in](#accounts-and-sign-in) |
+| `TRUSTED_PROXIES` | (none) | Comma-separated addresses or CIDR ranges of your reverse proxies, e.g. `10.0.0.2,fd00::/64`. A request from one of them is attributed to the client its `X-Forwarded-For` names, for the per-client rate limits and the audit log. Unset, forwarded headers are ignored. See [Accounts and sign-in](#accounts-and-sign-in) |
 
 ### Accounts and sign-in
 
@@ -127,15 +128,23 @@ Sessions last 7 days without use and 30 days at most; signing out ends the sessi
 The session cookie is `HttpOnly` and `SameSite=Lax`, and `Secure` when the request arrived over
 TLS (directly, or through a proxy that sets `X-Forwarded-Proto: https`). Repeated failed sign-ins
 are refused for 15 minutes: 5 per username, from anyone, and 20 per client address. So anyone who
-can reach the server can keep a known username locked out, and behind a reverse proxy every client
-shares the proxy's address and so the per-client limit. A correct password does not get past
+can reach the server can keep a known username locked out. A correct password does not get past
 either limit (see [ADR-007](./docs/adr/007-access-model.md)). A locked-out owner regains access by:
 
 - using a session already signed in: the lockout refuses only new sign-ins;
 - waiting: each failure stops counting 15 minutes after it was made;
 - restarting the server, which forgets every count, since they are kept in memory;
-- stopping the source: **Users > Audit log** lists the failed sign-ins with their client address
-  (behind a proxy, the proxy's, so look in its access log), to block at the firewall or proxy.
+- stopping the source: **Users > Audit log** lists the failed sign-ins with their client address,
+  to block at the firewall or proxy.
+
+Without `TRUSTED_PROXIES` the client address is the connection's, so behind a reverse proxy every
+client has the proxy's address and shares its per-client limits, here and for visitors' costly
+reads. Set `TRUSTED_PROXIES` to the proxy's address or range: a request from it is then counted
+under the client its `X-Forwarded-For` header names (the nearest entry that is not a trusted
+proxy, so a client cannot pick its own by sending the header). The header is ignored from every
+other address, private ones included. List only proxies, since anything in a listed range can name
+any client address, and have the proxy append to `X-Forwarded-For` (nginx
+`$proxy_add_x_forwarded_for`; Caddy and Traefik do by default).
 
 The API accepts no cross-origin browser
 requests: a write whose `Origin` is not the server's host is refused, so a proxy must pass the
