@@ -72,7 +72,8 @@ Follow the patterns documented in [docs/CONVENTIONS.md](./docs/CONVENTIONS.md) -
 
 ## Feature Development Workflow
 
-When implementing a feature from [GitHub Issues](https://github.com/cacack/my-family/issues):
+When implementing a feature from [GitHub Issues](https://github.com/cacack/my-family/issues)
+(how issues are grouped and scheduled is in [PLANNING.md](./docs/PLANNING.md)):
 
 ### 1. Create Feature Branch
 
