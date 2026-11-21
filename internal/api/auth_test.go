@@ -33,7 +33,11 @@ type authFixture struct {
 
 func newAuthFixture(t *testing.T) *authFixture {
 	t.Helper()
-	cfg := &config.Config{Port: 8080, LogFormat: "text", AuthMode: config.AuthModeAccounts}
+	return newAuthFixtureWith(t, &config.Config{Port: 8080, LogFormat: "text", AuthMode: config.AuthModeAccounts})
+}
+
+func newAuthFixtureWith(t *testing.T, cfg *config.Config) *authFixture {
+	t.Helper()
 	events := memory.NewEventStore()
 	accounts := memory.NewAccountStore()
 	settings := memory.NewSettingsStore()

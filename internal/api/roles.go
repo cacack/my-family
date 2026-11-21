@@ -226,7 +226,7 @@ var anonymousCostlyRoutes = map[string]bool{
 }
 
 // limitAnonymousReads rate-limits anonymous visitors' costly reads per client
-// address (the connection's, not a header's: see the server's IPExtractor).
+// address (c.RealIP: see clientIPExtractor in server.go).
 func limitAnonymousReads() echo.MiddlewareFunc {
 	return middleware.RateLimiterWithConfig(middleware.RateLimiterConfig{
 		Skipper: func(c echo.Context) bool {

@@ -3,6 +3,7 @@ package config
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -26,6 +27,12 @@ type Config struct {
 	// default) or AuthModeOpen. Read it through OpenMode; Validate rejects
 	// anything else.
 	AuthMode AuthMode
+
+	// TrustedProxies is TRUSTED_PROXIES as given: comma-separated addresses
+	// or CIDR ranges of the reverse proxies whose X-Forwarded-For is
+	// believed. Read it through TrustedProxyRanges; Validate rejects an entry
+	// that is neither. Empty trusts no one.
+	TrustedProxies string
 }
 
 // AuthMode says whether requests must sign in (ADR-007).
@@ -49,14 +56,41 @@ func (c *Config) OpenMode() bool {
 	return c.AuthMode == AuthModeOpen || c.DemoMode
 }
 
+// TrustedProxyRanges parses TrustedProxies: each entry is a CIDR range or a
+// single address (a range of one). It returns nil when no proxy is trusted.
+func (c *Config) TrustedProxyRanges() ([]*net.IPNet, error) {
+	var ranges []*net.IPNet
+	for _, entry := range strings.Split(c.TrustedProxies, ",") {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+		if _, ipNet, err := net.ParseCIDR(entry); err == nil {
+			ranges = append(ranges, ipNet)
+			continue
+		}
+		ip := net.ParseIP(entry)
+		if ip == nil {
+			return nil, fmt.Errorf("TRUSTED_PROXIES: %q is not an address or CIDR range", entry)
+		}
+		bits := 8 * net.IPv6len
+		if ip4 := ip.To4(); ip4 != nil {
+			ip, bits = ip4, 8*net.IPv4len
+		}
+		ranges = append(ranges, &net.IPNet{IP: ip, Mask: net.CIDRMask(bits, bits)})
+	}
+	return ranges, nil
+}
+
 // Validate reports a setting the server must not start with.
 func (c *Config) Validate() error {
 	switch c.AuthMode {
 	case "", AuthModeAccounts, AuthModeOpen:
-		return nil
 	default:
 		return fmt.Errorf("AUTH_MODE must be %q or %q, got %q", AuthModeAccounts, AuthModeOpen, c.AuthMode)
 	}
+	_, err := c.TrustedProxyRanges()
+	return err
 }
 
 // Load reads configuration from environment variables.
@@ -69,6 +103,8 @@ func Load() *Config {
 		LogFormat:   getEnvOrDefault("LOG_FORMAT", "text"),
 		DemoMode:    getEnvBoolOrDefault("DEMO_MODE", false),
 		AuthMode:    AuthMode(strings.ToLower(strings.TrimSpace(os.Getenv("AUTH_MODE")))),
+
+		TrustedProxies: os.Getenv("TRUSTED_PROXIES"),
 	}
 	return cfg
 }
