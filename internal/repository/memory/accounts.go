@@ -437,6 +437,22 @@ func (s *AccountStore) ListAuthAudit(_ context.Context, limit, offset int) ([]re
 	return entries, len(s.audit), nil
 }
 
+// DeleteAuthAuditBefore removes every audit entry recorded before before.
+func (s *AccountStore) DeleteAuthAuditBefore(_ context.Context, before time.Time) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	kept := s.audit[:0]
+	for _, entry := range s.audit {
+		if !entry.At.Before(before) {
+			kept = append(kept, entry)
+		}
+	}
+	removed := len(s.audit) - len(kept)
+	clear(s.audit[len(kept):])
+	s.audit = kept
+	return removed, nil
+}
+
 // GetTreeSettings returns treeID's settings, or the defaults.
 func (s *AccountStore) GetTreeSettings(_ context.Context, treeID uuid.UUID) (repository.TreeSettings, error) {
 	s.mu.RLock()
