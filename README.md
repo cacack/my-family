@@ -178,7 +178,7 @@ is sent, so each link below is shown once, for the owner to copy and pass on.
 
 - **Revoke a link**: **Users** lists the invite and reset links still pending, with who created
   each and when it expires (never the link itself). Revoking one makes it fail as an expired link
-  does.
+  does. Expired links are deleted from the database the next time anyone signs in.
 
 Each user changes their own display name and password on **Account**; a new password needs the
 current one and signs them out everywhere else. Sign-ins, failed sign-ins, invites, revoked
