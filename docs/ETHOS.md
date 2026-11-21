@@ -10,6 +10,18 @@ A premier self-hosted genealogy platform that combines **research rigor** with *
 
 ---
 
+## Our Promise: Your Research Is Yours
+
+This principle outranks the others. Users own their data and their research, and can take all of it out of my-family at any time.
+
+- **Everything comes out.** Whatever a user can put in (people, sources, evidence, analysis, media, history) they can export in open, documented formats, without asking anyone.
+- **No lock-in tricks.** No feature, format, pricing tier or missing export exists to make leaving hard. Leaving is as well supported as arriving.
+- **We compete on features and value.** We want users to stay because my-family is the best place to do their research, never because their work is trapped here.
+
+A feature that stores something users cannot get back out is not finished.
+
+---
+
 ## Core Differentiators
 
 ### 1. Research Rigor (GPS-Compliant)
@@ -50,7 +62,7 @@ Blog posts, progress updates, transparent roadmap. Community forms around openne
 Five serious genealogists providing feedback beats a thousand GitHub stars.
 
 ### 7. Respect the Data
-Genealogy data is irreplaceable. Never lose it, never lock it in, never corrupt it.
+Genealogy data is irreplaceable. Never lose it, never lock it in, never corrupt it. See [Our Promise](#our-promise-your-research-is-yours).
 
 ### 8. Honor the Craft
 Genealogy is a scholarly discipline. Build tools worthy of serious researchers.
@@ -69,7 +81,7 @@ Genealogy is a scholarly discipline. Build tools worthy of serious researchers.
 
 ## Anti-Patterns to Avoid
 
-- **Vendor lock-in** - Data must always be exportable
+- **Vendor lock-in** - Everything a user stores must be exportable ([Our Promise](#our-promise-your-research-is-yours))
 - **Feature bloat** - Do fewer things well
 - **Complexity for its own sake** - Simple by default, powerful when needed
 - **Ignoring standards** - GEDCOM compliance matters
