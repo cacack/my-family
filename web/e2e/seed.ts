@@ -19,6 +19,8 @@ const here = dirname(fileURLToPath(import.meta.url));
 export const E2E_PORT = Number(process.env.E2E_PORT ?? 8181);
 export const BASE_URL = `http://127.0.0.1:${E2E_PORT}`;
 export const API_BASE = `${BASE_URL}/api/v1`;
+/** The accounts-mode server branch-visitor.spec.ts starts beside the suite's own. */
+export const E2E_ACCOUNTS_PORT = Number(process.env.E2E_ACCOUNTS_PORT ?? E2E_PORT + 1);
 
 /** The single binary `make binary` builds at the repository root. */
 export const BINARY = fileURLToPath(new URL('../../myfamily', import.meta.url));

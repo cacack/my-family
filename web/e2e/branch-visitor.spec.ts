@@ -15,7 +15,7 @@ import { randomBytes } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { BASE_URL, BINARY, E2E_PORT, readSeed } from './seed';
+import { BASE_URL, BINARY, E2E_ACCOUNTS_PORT, readSeed } from './seed';
 
 test('a visitor gets the mainline, no branch to switch to, and no compare links', async ({
 	page,
@@ -59,11 +59,11 @@ test('the server refuses a visitor a branch scope', async ({ request }) => {
 
 /**
  * A real visitor needs AUTH_MODE=accounts, which the suite's server does not
- * run, so this block starts one beside it: the same binary on the next port,
+ * run, so this block starts one beside it: the same binary on E2E_ACCOUNTS_PORT,
  * with a fresh SQLite file and an owner made by `myfamily user create`.
  */
 test.describe('a real anonymous visitor', () => {
-	const port = E2E_PORT + 1;
+	const port = E2E_ACCOUNTS_PORT;
 	const baseURL = `http://127.0.0.1:${port}`;
 	const username = 'e2e-owner';
 	// Made at runtime: no password literal lives in the repository.

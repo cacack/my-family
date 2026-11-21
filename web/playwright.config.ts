@@ -96,8 +96,8 @@ export default defineConfig({
 		// cannot redirect the suite to a real database or the demo tree.
 		// AUTH_MODE=open: the specs exercise the tree, not sign-in, which the Go
 		// API tests and the auth component tests cover (ADR-007). The one spec
-		// that needs a real visitor starts an accounts-mode server of its own
-		// (branch-visitor.spec.ts).
+		// that needs a real visitor starts an accounts-mode server of its own on
+		// E2E_ACCOUNTS_PORT (default E2E_PORT + 1; branch-visitor.spec.ts).
 		env: { PORT: String(E2E_PORT), SQLITE_PATH, DATABASE_URL: '', DEMO_MODE: '', AUTH_MODE: 'open' },
 		// In CI a stray listener on this port is a bug, not a convenience.
 		reuseExistingServer: !process.env.CI,
