@@ -311,24 +311,73 @@ func (s *AccountStore) ListMembers(ctx context.Context, treeID uuid.UUID) ([]rep
 	return members, nil
 }
 
-// SetMemberRole changes the role userID holds in treeID.
+// ownersLockKey is the transaction-scoped advisory lock (pg_advisory_xact_lock)
+// every guarded owner change takes first. Under READ COMMITTED two
+// transactions demoting or disabling two different owners would each still
+// see the other's owner as active and both commit, leaving none; under the
+// lock the second sees the first's committed change. One key for all trees
+// keeps it simple and deadlock-free: owner changes are rare. The value is
+// arbitrary ("owners" in ASCII).
+const ownersLockKey int64 = 0x6f776e657273
+
+// SetMemberRole changes the role userID holds in treeID, unless that demotes
+// the tree's last active owner.
 func (s *AccountStore) SetMemberRole(ctx context.Context, treeID, userID uuid.UUID, role repository.Role) error {
-	result, err := s.db.ExecContext(ctx, `UPDATE tree_memberships SET role = $1 WHERE tree_id = $2 AND user_id = $3`,
-		string(role), treeID, userID)
-	if err != nil {
-		return fmt.Errorf("set member role: %w", err)
-	}
-	return requireRow(result, repository.ErrNotMember)
+	return s.guardedUpdate(ctx, repository.ErrNotMember,
+		`UPDATE tree_memberships SET role = $3 WHERE tree_id = $1 AND user_id = $2
+		AND (role <> 'owner' OR $3 = 'owner' OR (SELECT disabled FROM users WHERE id = $2)
+			OR EXISTS (SELECT 1 FROM tree_memberships o JOIN users u ON u.id = o.user_id
+				WHERE o.tree_id = $1 AND o.user_id <> $2 AND o.role = 'owner' AND NOT u.disabled))`,
+		[]any{treeID, userID, string(role)},
+		`SELECT 1 FROM tree_memberships WHERE tree_id = $1 AND user_id = $2`, treeID, userID)
 }
 
-// UpdateUser stores user's display name, password hash and disabled flag.
+// UpdateUser stores user's display name, password hash and disabled flag,
+// unless that disables the last active owner of a tree.
 func (s *AccountStore) UpdateUser(ctx context.Context, user *repository.User) error {
-	result, err := s.db.ExecContext(ctx, `UPDATE users SET display_name = $1, password_hash = $2, disabled = $3 WHERE id = $4`,
-		user.DisplayName, user.PasswordHash, user.Disabled, user.ID)
+	return s.guardedUpdate(ctx, repository.ErrUserNotFound,
+		`UPDATE users SET display_name = $2, password_hash = $3, disabled = $4 WHERE id = $1
+		AND (NOT $4 OR disabled OR NOT EXISTS (SELECT 1 FROM tree_memberships m
+			WHERE m.user_id = $1 AND m.role = 'owner'
+			AND NOT EXISTS (SELECT 1 FROM tree_memberships o JOIN users u ON u.id = o.user_id
+				WHERE o.tree_id = m.tree_id AND o.user_id <> $1 AND o.role = 'owner' AND NOT u.disabled)))`,
+		[]any{user.ID, user.DisplayName, user.PasswordHash, user.Disabled},
+		`SELECT 1 FROM users WHERE id = $1`, user.ID)
+}
+
+// guardedUpdate runs update, an UPDATE of one row whose WHERE clause carries
+// a last-owner guard, under ownersLockKey. When it changes no row it returns
+// ErrLastOwner if the row the exists query looks for is there (so the guard
+// refused it), else notFound.
+func (s *AccountStore) guardedUpdate(ctx context.Context, notFound error, update string, args []any, exists string, existsArgs ...any) error {
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("update user: %w", err)
+		return fmt.Errorf("begin owner change: %w", err)
 	}
-	return requireRow(result, repository.ErrUserNotFound)
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock($1)`, ownersLockKey); err != nil {
+		return fmt.Errorf("lock owners: %w", err)
+	}
+	result, err := tx.ExecContext(ctx, update, args...)
+	if err != nil {
+		return fmt.Errorf("update: %w", err)
+	}
+	if err := requireRow(result, notFound); errors.Is(err, notFound) {
+		var one int
+		switch err := tx.QueryRowContext(ctx, exists, existsArgs...).Scan(&one); {
+		case errors.Is(err, sql.ErrNoRows):
+			return notFound
+		case err != nil:
+			return fmt.Errorf("check row: %w", err)
+		}
+		return repository.ErrLastOwner
+	} else if err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit owner change: %w", err)
+	}
+	return nil
 }
 
 // requireRow returns notFound when result changed no row.

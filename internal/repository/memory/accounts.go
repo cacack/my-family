@@ -214,11 +214,28 @@ func (s *AccountStore) SetMemberRole(_ context.Context, treeID, userID uuid.UUID
 	defer s.mu.Unlock()
 	for i, m := range s.memberships {
 		if m.treeID == treeID && m.userID == userID {
+			if role != repository.RoleOwner && s.lastActiveOwner(m) {
+				return repository.ErrLastOwner
+			}
 			s.memberships[i].role = role
 			return nil
 		}
 	}
 	return repository.ErrNotMember
+}
+
+// lastActiveOwner reports whether m makes its user the last active owner of
+// its tree. The caller holds s.mu.
+func (s *AccountStore) lastActiveOwner(m membership) bool {
+	if m.role != repository.RoleOwner || s.users[m.userID].Disabled {
+		return false
+	}
+	for _, o := range s.memberships {
+		if o.treeID == m.treeID && o.userID != m.userID && o.role == repository.RoleOwner && !s.users[o.userID].Disabled {
+			return false
+		}
+	}
+	return true
 }
 
 // UpdateUser stores user's display name, password hash and disabled flag.
@@ -228,6 +245,13 @@ func (s *AccountStore) UpdateUser(_ context.Context, user *repository.User) erro
 	existing, ok := s.users[user.ID]
 	if !ok {
 		return repository.ErrUserNotFound
+	}
+	if user.Disabled {
+		for _, m := range s.memberships {
+			if m.userID == user.ID && s.lastActiveOwner(m) {
+				return repository.ErrLastOwner
+			}
+		}
 	}
 	existing.DisplayName, existing.PasswordHash, existing.Disabled = user.DisplayName, user.PasswordHash, user.Disabled
 	s.users[user.ID] = existing

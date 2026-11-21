@@ -353,24 +353,57 @@ func (s *AccountStore) ListMembers(ctx context.Context, treeID uuid.UUID) ([]rep
 	return members, nil
 }
 
-// SetMemberRole changes the role userID holds in treeID.
+// The last-owner guards below are part of the UPDATE they guard: SQLite
+// takes the write lock before a write statement reads, so no other writer, in
+// this process or another, can change the owners between the check and the
+// write. Each guard's EXISTS asks whether the tree has another active owner.
+
+// SetMemberRole changes the role userID holds in treeID, unless that demotes
+// the tree's last active owner.
 func (s *AccountStore) SetMemberRole(ctx context.Context, treeID, userID uuid.UUID, role repository.Role) error {
-	result, err := s.db.ExecContext(ctx, `UPDATE tree_memberships SET role = ? WHERE tree_id = ? AND user_id = ?`,
-		string(role), treeID.String(), userID.String())
+	result, err := s.db.ExecContext(ctx, `UPDATE tree_memberships SET role = ?3 WHERE tree_id = ?1 AND user_id = ?2
+		AND (role <> 'owner' OR ?3 = 'owner' OR (SELECT disabled FROM users WHERE id = ?2)
+			OR EXISTS (SELECT 1 FROM tree_memberships o JOIN users u ON u.id = o.user_id
+				WHERE o.tree_id = ?1 AND o.user_id <> ?2 AND o.role = 'owner' AND NOT u.disabled))`,
+		treeID.String(), userID.String(), string(role))
 	if err != nil {
 		return fmt.Errorf("set member role: %w", err)
 	}
-	return requireRow(result, repository.ErrNotMember)
+	return s.refusedOr(ctx, result, repository.ErrNotMember,
+		`SELECT 1 FROM tree_memberships WHERE tree_id = ? AND user_id = ?`, treeID.String(), userID.String())
 }
 
-// UpdateUser stores user's display name, password hash and disabled flag.
+// UpdateUser stores user's display name, password hash and disabled flag,
+// unless that disables the last active owner of a tree.
 func (s *AccountStore) UpdateUser(ctx context.Context, user *repository.User) error {
-	result, err := s.db.ExecContext(ctx, `UPDATE users SET display_name = ?, password_hash = ?, disabled = ? WHERE id = ?`,
-		user.DisplayName, user.PasswordHash, user.Disabled, user.ID.String())
+	result, err := s.db.ExecContext(ctx, `UPDATE users SET display_name = ?2, password_hash = ?3, disabled = ?4 WHERE id = ?1
+		AND (NOT ?4 OR disabled OR NOT EXISTS (SELECT 1 FROM tree_memberships m
+			WHERE m.user_id = ?1 AND m.role = 'owner'
+			AND NOT EXISTS (SELECT 1 FROM tree_memberships o JOIN users u ON u.id = o.user_id
+				WHERE o.tree_id = m.tree_id AND o.user_id <> ?1 AND o.role = 'owner' AND NOT u.disabled)))`,
+		user.ID.String(), user.DisplayName, user.PasswordHash, user.Disabled)
 	if err != nil {
 		return fmt.Errorf("update user: %w", err)
 	}
-	return requireRow(result, repository.ErrUserNotFound)
+	return s.refusedOr(ctx, result, repository.ErrUserNotFound, `SELECT 1 FROM users WHERE id = ?`, user.ID.String())
+}
+
+// refusedOr explains a guarded UPDATE's result: nil when it changed a row,
+// ErrLastOwner when the row the exists query looks for is there (so the
+// last-owner guard refused it), else notFound.
+func (s *AccountStore) refusedOr(ctx context.Context, result sql.Result, notFound error, exists string, args ...any) error {
+	err := requireRow(result, notFound)
+	if !errors.Is(err, notFound) {
+		return err
+	}
+	var one int
+	switch err := s.db.QueryRowContext(ctx, exists, args...).Scan(&one); {
+	case errors.Is(err, sql.ErrNoRows):
+		return notFound
+	case err != nil:
+		return fmt.Errorf("check row: %w", err)
+	}
+	return repository.ErrLastOwner
 }
 
 // requireRow returns notFound when result changed no row.
