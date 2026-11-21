@@ -23,8 +23,8 @@ const (
 // Errors returned by the account management methods.
 var (
 	// ErrLastOwner refuses demoting or disabling the tree's only active owner,
-	// which would leave no one able to manage it. It is enforced within one
-	// server process (see Service.manageMu).
+	// which would leave no one able to manage it. The account store enforces
+	// it in the write itself, so it holds across processes sharing a database.
 	ErrLastOwner = errors.New("the tree's last owner cannot be demoted or disabled")
 	// ErrInvalidLink is an invite or reset link that is unknown, expired or
 	// already used.
@@ -208,35 +208,6 @@ func (s *Service) useLink(clientIP string, use func() error) error {
 	return err
 }
 
-// activeOwners counts the members who are owners and not disabled.
-func activeOwners(members []repository.Member) int {
-	n := 0
-	for _, m := range members {
-		if m.Role == repository.RoleOwner && !m.User.Disabled {
-			n++
-		}
-	}
-	return n
-}
-
-// memberForChange returns the member with userID and whether they are the
-// last active owner. The caller holds manageMu, so the answer stays true
-// until its change is written.
-func (s *Service) memberForChange(ctx context.Context, userID uuid.UUID) (*repository.Member, bool, error) {
-	members, err := s.Members(ctx)
-	if err != nil {
-		return nil, false, err
-	}
-	for i := range members {
-		m := &members[i]
-		if m.User.ID == userID {
-			last := m.Role == repository.RoleOwner && !m.User.Disabled && activeOwners(members) == 1
-			return m, last, nil
-		}
-	}
-	return nil, false, ErrUserNotFound
-}
-
 // SetRole changes the role userID holds. The last active owner keeps theirs.
 func (s *Service) SetRole(ctx context.Context, by Actor, userID uuid.UUID, role repository.Role) (*repository.Member, error) {
 	if !role.Valid() {
@@ -244,17 +215,18 @@ func (s *Service) SetRole(ctx context.Context, by Actor, userID uuid.UUID, role 
 	}
 	s.manageMu.Lock()
 	defer s.manageMu.Unlock()
-	m, lastOwner, err := s.memberForChange(ctx, userID)
+	m, err := s.Member(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
 	if m.Role == role {
 		return m, nil
 	}
-	if lastOwner {
+	err = s.store.SetMemberRole(ctx, repository.DefaultTreeID, userID, role)
+	if errors.Is(err, repository.ErrLastOwner) {
 		return nil, ErrLastOwner
 	}
-	if err := s.store.SetMemberRole(ctx, repository.DefaultTreeID, userID, role); err != nil {
+	if err != nil {
 		return nil, fmt.Errorf("set role: %w", err)
 	}
 	if m.Role == repository.RoleOwner {
@@ -274,18 +246,19 @@ func (s *Service) SetRole(ctx context.Context, by Actor, userID uuid.UUID, role 
 func (s *Service) SetDisabled(ctx context.Context, by Actor, userID uuid.UUID, disabled bool) (*repository.Member, error) {
 	s.manageMu.Lock()
 	defer s.manageMu.Unlock()
-	m, lastOwner, err := s.memberForChange(ctx, userID)
+	m, err := s.Member(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
 	if m.User.Disabled == disabled {
 		return m, nil
 	}
-	if disabled && lastOwner {
+	m.User.Disabled = disabled
+	err = s.store.UpdateUser(ctx, &m.User)
+	if errors.Is(err, repository.ErrLastOwner) {
 		return nil, ErrLastOwner
 	}
-	m.User.Disabled = disabled
-	if err := s.store.UpdateUser(ctx, &m.User); err != nil {
+	if err != nil {
 		return nil, fmt.Errorf("update user: %w", err)
 	}
 	action := repository.AuthActionUserEnabled

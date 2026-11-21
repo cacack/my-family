@@ -148,6 +148,9 @@ var (
 	// ErrLinkNotFound is an invite or password reset that is unknown,
 	// expired or already used.
 	ErrLinkNotFound = errors.New("link is unknown, expired or already used")
+	// ErrLastOwner refuses a change that would leave a tree with no active
+	// owner: one who holds RoleOwner and is not disabled.
+	ErrLastOwner = errors.New("the tree's last active owner cannot be demoted or disabled")
 )
 
 // AccountStore keeps users, their tree memberships and sessions, invites,
@@ -204,11 +207,16 @@ type AccountStore interface {
 	ListMembers(ctx context.Context, treeID uuid.UUID) ([]Member, error)
 
 	// SetMemberRole changes the role userID holds in treeID, or returns
-	// ErrNotMember.
+	// ErrNotMember. It returns ErrLastOwner, changing nothing, when userID is
+	// treeID's last active owner and role is not RoleOwner. The check and the
+	// write are one atomic step, so concurrent writers, even in other
+	// processes, cannot together remove the last owner.
 	SetMemberRole(ctx context.Context, treeID, userID uuid.UUID, role Role) error
 
 	// UpdateUser stores user's display name, password hash and disabled flag,
 	// or returns ErrUserNotFound. Its username and creation time are fixed.
+	// It returns ErrLastOwner, changing nothing, when it would disable the
+	// last active owner of a tree, atomically as SetMemberRole does.
 	UpdateUser(ctx context.Context, user *User) error
 
 	// CreateInvite stores invite.
