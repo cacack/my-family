@@ -20,6 +20,9 @@ export const E2E_PORT = Number(process.env.E2E_PORT ?? 8181);
 export const BASE_URL = `http://127.0.0.1:${E2E_PORT}`;
 export const API_BASE = `${BASE_URL}/api/v1`;
 
+/** The single binary `make binary` builds at the repository root. */
+export const BINARY = fileURLToPath(new URL('../../myfamily', import.meta.url));
+
 /** Playwright's `outputDir`. It is wiped once *before* global setup, never after. */
 export const OUTPUT_DIR = resolve(here, '..', 'test-results');
 const SEED_FILE = resolve(OUTPUT_DIR, 'seed.json');
