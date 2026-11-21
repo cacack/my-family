@@ -522,6 +522,7 @@ Added after this ADR's date, when #1412 made the table a test (§7).
 | setHomePerson | PUT /settings/home-person | The new home person | settings + RM | a | As getHomePerson; a private person the caller cannot see is 404. Any signed-in account; anonymous refused (401) |
 | clearHomePerson | DELETE /settings/home-person | Empty body | settings | — | No tree data. Any signed-in account; anonymous refused (401) |
 | getPrivacySettings | GET /settings/privacy | Tree privacy settings | settings | — | No tree data |
+| getHealth | GET /health | That the server is up | — | — | No tree data |
 | getAuthStatus | GET /auth/status | Mode, setup state, the caller's account | accounts | — | No tree data |
 | setupOwner | POST /auth/setup | The new owner's account | accounts | — | No tree data |
 | signIn | POST /auth/sign-in | The caller's account | accounts | — | No tree data |
@@ -542,7 +543,7 @@ Added after this ADR's date, when #1412 made the table a test (§7).
 | Every create, update, delete, add, remove, merge, dismiss, restore, brick-wall, close, promote, resolve and batch operation | POST, PUT, PATCH, DELETE | The written record or an empty body | RM | a | Editor or owner only, so nothing is redacted; still wired through the decorator |
 | importGedcom | POST /gedcom/import | Import counts and warnings | — | — | Owner-only |
 | (not in spec) | POST /gedcom/import/stream | Import progress | — | — | Owner-only; must get a role declaration under ADR-007 |
-| (not in spec) | GET /health, GET /config, GET /openapi.yaml, GET /docs | Server status, config flags, API description | none | — | No tree data |
+| (not in spec) | GET /config, GET /openapi.yaml, GET /docs | Config flags, API description | none | — | No tree data |
 | (not in spec) | POST /demo/reset | Re-seeds demo data | — | — | Demo mode is open mode |
 
 ## References

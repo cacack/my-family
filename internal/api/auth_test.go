@@ -433,16 +433,20 @@ func TestAuth_OpenMode(t *testing.T) {
 				t.Errorf("open mode change %s %s records user %s, want none", entry.EntityType, entry.Action, *entry.UserId)
 			}
 		}
+		// Every account operation answers open mode alike (#1423).
 		for _, r := range []request{
 			{method: http.MethodPost, path: "/api/v1/auth/sign-in", body: `{"username":"ada","password":"x"}`},
 			{method: http.MethodPost, path: "/api/v1/auth/setup", body: `{"token":"t","username":"ada","display_name":"Ada","password":"` + ownerPassword + `"}`},
+			{method: http.MethodGet, path: "/api/v1/auth/me"},
 		} {
-			if rec := f.do(t, r); rec.Code != http.StatusConflict {
-				t.Errorf("%s in open mode: %d, want 409", r.path, rec.Code)
+			rec := f.do(t, r)
+			if rec.Code != http.StatusConflict {
+				t.Errorf("%s %s in open mode: %d, want 409", r.method, r.path, rec.Code)
+				continue
 			}
-		}
-		if rec := f.do(t, request{method: http.MethodGet, path: "/api/v1/auth/me"}); rec.Code != http.StatusNotFound {
-			t.Errorf("me in open mode: %d, want 404", rec.Code)
+			if got := decode[api.Error](t, rec); got.Code != api.CodeConflict {
+				t.Errorf("%s %s in open mode: code %q, want %q", r.method, r.path, got.Code, api.CodeConflict)
+			}
 		}
 		if rec := f.do(t, request{method: http.MethodPost, path: "/api/v1/auth/sign-out"}); rec.Code != http.StatusNoContent {
 			t.Errorf("sign-out in open mode: %d, want 204", rec.Code)

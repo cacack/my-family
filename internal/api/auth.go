@@ -428,7 +428,7 @@ func (ss *StrictServer) SignOut(ctx context.Context, _ SignOutRequestObject) (Si
 // GetCurrentAccount implements StrictServerInterface.
 func (ss *StrictServer) GetCurrentAccount(ctx context.Context, _ GetCurrentAccountRequestObject) (GetCurrentAccountResponseObject, error) {
 	if ss.server.config.OpenMode() {
-		return GetCurrentAccount404JSONResponse(authError(CodeNotFound, openModeMessage)), nil
+		return GetCurrentAccount409JSONResponse{accountsOnly}, nil
 	}
 	user := userFrom(ctx)
 	if user == nil {

@@ -127,6 +127,9 @@ func validateRequest(t *testing.T, req *http.Request) {
 		Route:      route,
 		Options: &openapi3filter.Options{
 			MultiError: true,
+			// The server under test runs in open mode, where no request
+			// carries the session cookie the spec's security scheme names.
+			AuthenticationFunc: openapi3filter.NoopAuthenticationFunc,
 		},
 	}
 

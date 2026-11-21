@@ -18,6 +18,10 @@ servers:
   - url: /api/v1
     description: API version 1
 
+# Every operation needs a signed-in session unless it says `security: []`.
+security:
+  - session: []
+
 tags:
   - name: persons
     description: Individual person management
@@ -83,17 +87,36 @@ tags:
     description: |
       Managing the tree's users (ADR-007): invites, roles, disabling, password
       reset links and the auth audit log. Owners only.
+  - name: health
+    description: Server liveness
   - name: auth
     description: |
-      Accounts and sign-in (ADR-007). Every other operation needs a signed-in
-      session, sent as the `myfamily_session` cookie: without one it returns
-      401 `UNAUTHENTICATED`, and while the tree has no owner it returns 503
-      `SETUP_REQUIRED`. With `AUTH_MODE=open` (or `DEMO_MODE`) every request
-      is treated as the owner and no session is needed. A state-changing
-      request whose `Origin` is not this server's host is refused with 403
-      `FORBIDDEN`.
+      Accounts and sign-in (ADR-007). Every operation needs a signed-in
+      session (the `session` security scheme) unless it declares
+      `security: []`: without one it returns 401 `UNAUTHENTICATED`, and while
+      the tree has no owner it returns 503 `SETUP_REQUIRED`. With
+      `AUTH_MODE=open` (or `DEMO_MODE`) every request is treated as the owner
+      and no session is needed; the account operations then answer 409
+      `CONFLICT`. A state-changing request whose `Origin` is not this
+      server's host is refused with 403 `FORBIDDEN`.
 
 paths:
+  /health:
+    get:
+      operationId: getHealth
+      x-min-role: public
+      security: []
+      summary: Report that the server is up
+      description: Needs no session. For load balancers and uptime checks.
+      tags: [health]
+      responses:
+        '200':
+          description: The server is up
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+
   /persons:
     get:
       operationId: listPersons
@@ -133,8 +156,12 @@ paths:
                 $ref: '#/components/schemas/PersonList'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
     post:
       operationId: createPerson
@@ -162,10 +189,14 @@ paths:
                 $ref: '#/components/schemas/Person'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /persons/{id}:
     parameters:
@@ -185,8 +216,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PersonDetail'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
     put:
       operationId: updatePerson
@@ -215,10 +250,14 @@ paths:
                 $ref: '#/components/schemas/Person'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
     delete:
       operationId: deletePerson
@@ -230,6 +269,8 @@ paths:
       responses:
         '204':
           description: Person deleted
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -238,6 +279,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /families:
     get:
@@ -256,6 +299,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/FamilyList'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
     post:
       operationId: createFamily
@@ -287,10 +334,14 @@ paths:
                 $ref: '#/components/schemas/Family'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /families/{id}:
     parameters:
@@ -310,8 +361,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/FamilyDetail'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
     put:
       operationId: updateFamily
@@ -339,10 +394,14 @@ paths:
                 $ref: '#/components/schemas/Family'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
     delete:
       operationId: deleteFamily
@@ -359,6 +418,8 @@ paths:
       responses:
         '204':
           description: Family deleted
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -367,6 +428,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /families/{id}/children:
     parameters:
@@ -398,6 +461,8 @@ paths:
                 $ref: '#/components/schemas/FamilyChild'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -408,6 +473,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /families/{id}/children/{personId}:
     parameters:
@@ -433,6 +500,8 @@ paths:
       responses:
         '204':
           description: Child removed
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -441,6 +510,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /families/{id}/group-sheet:
     parameters:
@@ -465,8 +536,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/FamilyGroupSheet'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /pedigree/{id}:
     parameters:
@@ -494,8 +569,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Pedigree'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /descendancy/{id}:
     parameters:
@@ -526,8 +605,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Descendancy'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /ahnentafel/{id}:
     parameters:
@@ -572,8 +655,12 @@ paths:
                 description: Plain text formatted report
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /search:
     get:
@@ -659,6 +746,10 @@ paths:
                 $ref: '#/components/schemas/SearchResults'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /browse/surnames:
     get:
@@ -685,6 +776,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SurnameIndexResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /browse/surnames/{surname}/persons:
     parameters:
@@ -713,6 +808,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PersonList'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /browse/places:
     get:
@@ -738,6 +837,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PlaceIndexResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /browse/places/{place}/persons:
     parameters:
@@ -766,6 +869,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PersonList'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /browse/cemeteries:
     get:
@@ -788,6 +895,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CemeteryIndexResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /browse/cemeteries/{place}/persons:
     parameters:
@@ -818,6 +929,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PersonList'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /map/locations:
     get:
@@ -838,6 +953,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/MapLocationsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /browse/brick-walls:
     get:
@@ -864,6 +983,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/BrickWallsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /persons/{id}/brick-wall:
     parameters:
@@ -894,8 +1017,12 @@ paths:
       responses:
         '204':
           description: Brick wall set
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
     delete:
       operationId: resolvePersonBrickWall
       x-min-role: editor
@@ -910,8 +1037,12 @@ paths:
       responses:
         '204':
           description: Brick wall resolved
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /gedcom/import:
     post:
@@ -944,6 +1075,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /gedcom/export:
     get:
@@ -983,6 +1118,8 @@ paths:
                 type: string
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '429':
           description: >-
             Too many GEDCOM exports and previews by this user in a short time
@@ -991,6 +1128,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /gedcom/export/preview:
     get:
@@ -1023,6 +1162,8 @@ paths:
                 $ref: '#/components/schemas/ExportPreview'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '429':
           description: >-
             Too many GEDCOM exports and previews by this user in a short time
@@ -1031,6 +1172,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /history:
     get:
@@ -1088,6 +1231,10 @@ paths:
                 $ref: '#/components/schemas/ChangeHistoryResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /persons/{id}/history:
     parameters:
@@ -1124,8 +1271,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ChangeHistoryResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /families/{id}/history:
     parameters:
@@ -1162,8 +1313,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ChangeHistoryResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /sources/{id}/history:
     parameters:
@@ -1192,8 +1347,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ChangeHistoryResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   # Rollback endpoints
 
@@ -1241,6 +1400,8 @@ paths:
                     summary: "created John Smith"
                 total: 3
                 has_more: false
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -1251,6 +1412,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /persons/{id}/rollback:
     parameters:
@@ -1293,6 +1456,8 @@ paths:
                 message: "Person rolled back successfully"
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -1303,6 +1468,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /families/{id}/restore-points:
     parameters:
@@ -1332,6 +1499,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/RestorePointsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -1342,6 +1511,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /families/{id}/rollback:
     parameters:
@@ -1374,6 +1545,8 @@ paths:
                 $ref: '#/components/schemas/RollbackResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -1384,6 +1557,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /sources/{id}/restore-points:
     parameters:
@@ -1418,6 +1593,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/RestorePointsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -1428,6 +1605,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /sources/{id}/rollback:
     parameters:
@@ -1465,6 +1644,8 @@ paths:
                 $ref: '#/components/schemas/RollbackResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -1475,6 +1656,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /citations/{id}/restore-points:
     parameters:
@@ -1509,6 +1692,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/RestorePointsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -1519,6 +1704,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /citations/{id}/rollback:
     parameters:
@@ -1556,6 +1743,8 @@ paths:
                 $ref: '#/components/schemas/RollbackResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -1566,6 +1755,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   # Citation template endpoints
   /citation-templates:
@@ -1589,6 +1780,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CitationTemplateList'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /citation-templates/{id}:
     parameters:
@@ -1611,8 +1806,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CitationTemplate'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /citation-templates/{id}/preview:
     parameters:
@@ -1651,8 +1850,12 @@ paths:
                 $ref: '#/components/schemas/FormattedCitation'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /citations/{id}/format:
     parameters:
@@ -1681,8 +1884,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/FormattedCitation'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   # Media endpoints
   /persons/{id}/media:
@@ -1708,8 +1915,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/MediaList'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
     post:
       operationId: uploadPersonMedia
@@ -1754,6 +1965,8 @@ paths:
                 $ref: '#/components/schemas/Media'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '413':
@@ -1762,6 +1975,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /media/{id}:
     parameters:
@@ -1790,8 +2005,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Media'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
     put:
       operationId: updateMedia
@@ -1819,10 +2038,14 @@ paths:
                 $ref: '#/components/schemas/Media'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
     delete:
       operationId: deleteMedia
@@ -1840,10 +2063,14 @@ paths:
           description: Media deleted
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /media/{id}/content:
     parameters:
@@ -1892,8 +2119,12 @@ paths:
               schema:
                 type: string
                 format: binary
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /media/{id}/thumbnail:
     parameters:
@@ -1926,8 +2157,12 @@ paths:
               schema:
                 type: string
                 format: binary
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   # Source endpoints
   /sources:
@@ -1969,6 +2204,10 @@ paths:
                 $ref: '#/components/schemas/SourceList'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
     post:
       operationId: createSource
@@ -1999,6 +2238,10 @@ paths:
                 $ref: '#/components/schemas/SourceDetail'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /sources/search:
     get:
@@ -2030,6 +2273,10 @@ paths:
                 $ref: '#/components/schemas/SourceSearchResults'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /sources/{id}:
     parameters:
@@ -2057,8 +2304,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SourceDetail'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
     put:
       operationId: updateSource
@@ -2086,10 +2337,14 @@ paths:
                 $ref: '#/components/schemas/Source'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
     delete:
       operationId: deleteSource
@@ -2108,10 +2363,14 @@ paths:
           description: Source deleted
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /sources/{id}/citations:
     parameters:
@@ -2136,8 +2395,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CitationList'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   # Citation endpoints
   /citations:
@@ -2167,12 +2430,16 @@ paths:
                 $ref: '#/components/schemas/Citation'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           description: Source or fact owner not found
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /citations/{id}:
     parameters:
@@ -2197,8 +2464,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Citation'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
     put:
       operationId: updateCitation
@@ -2222,10 +2493,14 @@ paths:
                 $ref: '#/components/schemas/Citation'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
     delete:
       operationId: deleteCitation
@@ -2240,10 +2515,14 @@ paths:
           description: Citation deleted
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /persons/{id}/citations:
     parameters:
@@ -2263,8 +2542,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CitationList'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /persons/{id}/names:
     parameters:
@@ -2285,8 +2568,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PersonNameList'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
     post:
       operationId: addPersonName
@@ -2317,10 +2604,14 @@ paths:
                 $ref: '#/components/schemas/PersonName'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /persons/{id}/names/{nameId}:
     parameters:
@@ -2358,10 +2649,14 @@ paths:
                 $ref: '#/components/schemas/PersonName'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
     delete:
       operationId: deletePersonName
@@ -2379,6 +2674,8 @@ paths:
           description: Name removed
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -2389,6 +2686,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   # Export endpoints
   /export/tree:
@@ -2414,6 +2713,10 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/Family'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /export/persons:
     get:
@@ -2444,6 +2747,10 @@ paths:
                 type: string
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /export/families:
     get:
@@ -2474,6 +2781,10 @@ paths:
                 type: string
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /export/sources:
     get:
@@ -2504,6 +2815,10 @@ paths:
                 type: string
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /export/citations:
     get:
@@ -2534,6 +2849,10 @@ paths:
                 type: string
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /export/events:
     get:
@@ -2557,6 +2876,10 @@ paths:
                 type: string
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /export/attributes:
     get:
@@ -2580,6 +2903,10 @@ paths:
                 type: string
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /export/estimate:
     get:
@@ -2598,6 +2925,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ExportEstimate'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   # Quality and Statistics endpoints
   /quality/overview:
@@ -2618,6 +2949,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/QualityOverview'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /quality/persons/{id}:
     parameters:
@@ -2636,8 +2971,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PersonQuality'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /quality/report:
     get:
@@ -2653,6 +2992,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/QualityReport'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /quality/validation:
     get:
@@ -2694,6 +3037,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ValidationIssuesResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /persons/duplicates:
     get:
@@ -2730,6 +3077,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/DuplicatesResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /persons/duplicates/dismissed:
     get:
@@ -2767,6 +3118,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/DismissedDuplicatesResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /persons/merge:
     post:
@@ -2799,6 +3154,8 @@ paths:
                 $ref: '#/components/schemas/MergePersonsResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -2810,6 +3167,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /persons/duplicates/{person1Id}/{person2Id}/dismiss:
     parameters:
@@ -2854,8 +3213,12 @@ paths:
           description: Duplicate pair dismissed
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
     delete:
       operationId: restoreDuplicate
       x-min-role: editor
@@ -2872,8 +3235,12 @@ paths:
           description: Duplicate pair restored
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /persons/merge/batch:
     post:
@@ -2904,6 +3271,10 @@ paths:
                 $ref: '#/components/schemas/BatchMergeResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /persons/duplicates/dismiss/batch:
     post:
@@ -2933,6 +3304,10 @@ paths:
                 $ref: '#/components/schemas/BatchDismissResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /statistics:
     get:
@@ -2948,6 +3323,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Statistics'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /analytics/discovery:
     get:
@@ -2971,6 +3350,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/DiscoveryFeedResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   # Snapshot endpoints
 
@@ -2997,8 +3380,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SnapshotList'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
     post:
       operationId: createSnapshot
@@ -3029,10 +3416,14 @@ paths:
                 $ref: '#/components/schemas/Snapshot'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /snapshots/{id}:
     parameters:
@@ -3058,8 +3449,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Snapshot'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
     delete:
       operationId: deleteSnapshot
@@ -3074,10 +3469,14 @@ paths:
       responses:
         '204':
           description: Snapshot deleted
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /snapshots/{id}/compare-current:
     parameters:
@@ -3126,6 +3525,8 @@ paths:
                 $ref: '#/components/schemas/SnapshotCurrentComparisonResult'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -3134,6 +3535,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /snapshots/{id1}/compare/{id2}:
     parameters:
@@ -3177,6 +3580,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SnapshotComparisonResult'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -3185,6 +3590,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   # Branch endpoints (ADR-005)
 
@@ -3219,6 +3626,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/BranchList'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '503':
           $ref: '#/components/responses/BranchesUnavailable'
 
@@ -3258,6 +3667,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '503':
           $ref: '#/components/responses/BranchesUnavailable'
 
@@ -3283,6 +3694,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Branch'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '503':
@@ -3339,6 +3752,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -3378,6 +3793,8 @@ paths:
       responses:
         '204':
           description: Branch archived
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -3431,6 +3848,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -3472,6 +3891,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/BranchResearchArchive'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '503':
@@ -3521,6 +3942,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -3562,6 +3985,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/BranchDrift'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '503':
@@ -3607,6 +4032,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/BranchComparisonResult'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '503':
@@ -3711,6 +4138,8 @@ paths:
                 $ref: '#/components/schemas/BranchMergeResult'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -3845,6 +4274,8 @@ paths:
                 $ref: '#/components/schemas/BranchMergePrecheckResult'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -3943,6 +4374,8 @@ paths:
                 $ref: '#/components/schemas/BranchMergeResumeResult'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -4028,6 +4461,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/BranchEvidenceCoverage'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '503':
@@ -4067,6 +4502,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/BranchHealth'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '503':
@@ -4100,12 +4537,16 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/RelationshipResult'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           description: One or both persons not found
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /settings/home-person:
     get:
@@ -4127,6 +4568,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HomePerson'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '503':
           $ref: '#/components/responses/SettingsUnavailable'
     put:
@@ -4153,6 +4596,8 @@ paths:
                 $ref: '#/components/schemas/HomePerson'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '503':
@@ -4169,6 +4614,8 @@ paths:
       responses:
         '204':
           description: Home person cleared
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '503':
           $ref: '#/components/responses/SettingsUnavailable'
 
@@ -4201,6 +4648,10 @@ paths:
                 $ref: '#/components/schemas/NoteList'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
     post:
       operationId: createNote
@@ -4224,6 +4675,10 @@ paths:
                 $ref: '#/components/schemas/Note'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /notes/{id}:
     parameters:
@@ -4243,8 +4698,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Note'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
     put:
       operationId: updateNote
@@ -4268,10 +4727,14 @@ paths:
                 $ref: '#/components/schemas/Note'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
     delete:
       operationId: deleteNote
@@ -4290,6 +4753,8 @@ paths:
           description: Note deleted
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -4304,6 +4769,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   # Submitters endpoints
   /submitters:
@@ -4337,6 +4804,10 @@ paths:
                 $ref: '#/components/schemas/SubmitterList'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
     post:
       operationId: createSubmitter
@@ -4358,6 +4829,10 @@ paths:
                 $ref: '#/components/schemas/Submitter'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /submitters/{id}:
     parameters:
@@ -4375,8 +4850,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Submitter'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
     put:
       operationId: updateSubmitter
@@ -4398,10 +4877,14 @@ paths:
                 $ref: '#/components/schemas/Submitter'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
     delete:
       operationId: deleteSubmitter
@@ -4415,10 +4898,14 @@ paths:
           description: Submitter deleted
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   # Repositories endpoints
   /repositories:
@@ -4452,6 +4939,10 @@ paths:
                 $ref: '#/components/schemas/RepositoryList'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
     post:
       operationId: createRepository
@@ -4473,6 +4964,10 @@ paths:
                 $ref: '#/components/schemas/Repository'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /repositories/{id}:
     parameters:
@@ -4490,8 +4985,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/RepositoryDetail'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
     put:
       operationId: updateRepository
@@ -4513,10 +5012,14 @@ paths:
                 $ref: '#/components/schemas/Repository'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
     delete:
       operationId: deleteRepository
@@ -4530,10 +5033,14 @@ paths:
           description: Repository deleted
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   # Associations endpoints
   /associations:
@@ -4571,6 +5078,10 @@ paths:
                 $ref: '#/components/schemas/AssociationList'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
     post:
       operationId: createAssociation
@@ -4598,6 +5109,10 @@ paths:
                 $ref: '#/components/schemas/Association'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /associations/{id}:
     parameters:
@@ -4617,8 +5132,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Association'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
     put:
       operationId: updateAssociation
@@ -4642,10 +5161,14 @@ paths:
                 $ref: '#/components/schemas/Association'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
     delete:
       operationId: deleteAssociation
@@ -4660,10 +5183,14 @@ paths:
           description: Association deleted
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /persons/{id}/associations:
     parameters:
@@ -4689,8 +5216,12 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/Association'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   # LDS Ordinances endpoints
   /lds-ordinances:
@@ -4724,6 +5255,10 @@ paths:
                 $ref: '#/components/schemas/LDSOrdinanceList'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
     post:
       operationId: createLDSOrdinance
@@ -4749,6 +5284,10 @@ paths:
                 $ref: '#/components/schemas/LDSOrdinance'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /lds-ordinances/{id}:
     parameters:
@@ -4766,8 +5305,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/LDSOrdinance'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
     put:
       operationId: updateLDSOrdinance
@@ -4793,10 +5336,14 @@ paths:
                 $ref: '#/components/schemas/LDSOrdinance'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
     delete:
       operationId: deleteLDSOrdinance
@@ -4810,10 +5357,14 @@ paths:
           description: LDS ordinance deleted
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /persons/{id}/lds-ordinances:
     parameters:
@@ -4834,8 +5385,12 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/LDSOrdinance'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /families/{id}/lds-ordinances:
     parameters:
@@ -4856,8 +5411,12 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/LDSOrdinance'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   # Evidence Analysis endpoints
   /evidence-analyses:
@@ -4894,6 +5453,10 @@ paths:
                 $ref: '#/components/schemas/EvidenceAnalysisList'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
     post:
       operationId: createEvidenceAnalysis
@@ -4921,6 +5484,10 @@ paths:
                 $ref: '#/components/schemas/EvidenceAnalysis'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /evidence-analyses/{id}:
     parameters:
@@ -4943,8 +5510,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/EvidenceAnalysis'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
     put:
       operationId: updateEvidenceAnalysis
@@ -4971,10 +5542,14 @@ paths:
                 $ref: '#/components/schemas/EvidenceAnalysis'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
     delete:
       operationId: deleteEvidenceAnalysis
@@ -4992,10 +5567,14 @@ paths:
           description: Evidence analysis deleted
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /evidence-analyses/by-fact:
     get:
@@ -5040,6 +5619,10 @@ paths:
                   $ref: '#/components/schemas/EvidenceAnalysis'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   # Evidence Conflict endpoints
   /evidence-conflicts:
@@ -5072,6 +5655,10 @@ paths:
                 $ref: '#/components/schemas/EvidenceConflictList'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /evidence-conflicts/{id}:
     parameters:
@@ -5094,8 +5681,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/EvidenceConflict'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /evidence-conflicts/{id}/resolve:
     parameters:
@@ -5127,10 +5718,14 @@ paths:
                 $ref: '#/components/schemas/EvidenceConflict'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /evidence-conflicts/by-subject/{subjectId}:
     parameters:
@@ -5160,6 +5755,10 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/EvidenceConflict'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   # Research Log endpoints
   /research-logs:
@@ -5196,6 +5795,10 @@ paths:
                 $ref: '#/components/schemas/ResearchLogList'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
     post:
       operationId: createResearchLog
@@ -5222,6 +5825,10 @@ paths:
                 $ref: '#/components/schemas/ResearchLog'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /research-logs/{id}:
     parameters:
@@ -5244,8 +5851,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ResearchLog'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
     put:
       operationId: updateResearchLog
@@ -5272,10 +5883,14 @@ paths:
                 $ref: '#/components/schemas/ResearchLog'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
     delete:
       operationId: deleteResearchLog
@@ -5293,10 +5908,14 @@ paths:
           description: Research log entry deleted
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /research-logs/by-subject/{subjectId}:
     parameters:
@@ -5326,6 +5945,10 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/ResearchLog'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   # Proof Summary endpoints
   /proof-summaries:
@@ -5362,6 +5985,10 @@ paths:
                 $ref: '#/components/schemas/ProofSummaryList'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
     post:
       operationId: createProofSummary
@@ -5388,6 +6015,10 @@ paths:
                 $ref: '#/components/schemas/ProofSummary'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /proof-summaries/{id}:
     parameters:
@@ -5410,8 +6041,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ProofSummary'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
     put:
       operationId: updateProofSummary
@@ -5438,10 +6073,14 @@ paths:
                 $ref: '#/components/schemas/ProofSummary'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
     delete:
       operationId: deleteProofSummary
@@ -5459,10 +6098,14 @@ paths:
           description: Proof summary deleted
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /proof-summaries/by-fact:
     get:
@@ -5507,11 +6150,16 @@ paths:
                   $ref: '#/components/schemas/ProofSummary'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /auth/status:
     get:
       operationId: getAuthStatus
       x-min-role: public
+      security: []
       summary: How this server signs people in, and who is signed in
       description: |
         Needs no session. The web UI reads it first to choose between the
@@ -5529,6 +6177,7 @@ paths:
     post:
       operationId: setupOwner
       x-min-role: public
+      security: []
       summary: Create the first owner and sign them in
       description: |
         Only while the tree has no owner. Needs the one-time setup token the
@@ -5573,6 +6222,7 @@ paths:
     post:
       operationId: signIn
       x-min-role: public
+      security: []
       summary: Sign in with a username and password
       description: Needs no session. Repeated failures are rate-limited.
       tags: [auth]
@@ -5621,6 +6271,7 @@ paths:
     post:
       operationId: signOut
       x-min-role: public
+      security: []
       summary: Sign out, revoking the session on the server
       tags: [auth]
       responses:
@@ -5645,12 +6296,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Account'
-        '404':
-          description: The server is in open mode, which has no accounts
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '409':
+          $ref: '#/components/responses/AccountsOnly'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
     patch:
       operationId: updateCurrentAccount
@@ -5681,19 +6332,20 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-        '404':
-          description: The server is in open mode, which has no accounts
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '409':
+          $ref: '#/components/responses/AccountsOnly'
         '429':
           $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /auth/invites/accept:
     post:
       operationId: acceptInvite
       x-min-role: public
+      security: []
       summary: Create an account from an invite link and sign it in
       description: |
         Needs no session. The account gets the invite's role. An invite is
@@ -5738,6 +6390,7 @@ paths:
     post:
       operationId: resetPassword
       x-min-role: public
+      security: []
       summary: Set a password from a reset link
       description: |
         Needs no session. The link is single-use and expires. Every session of
@@ -5782,8 +6435,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/UserList'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '409':
           $ref: '#/components/responses/AccountsOnly'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /users/{id}:
     patch:
@@ -5812,6 +6469,8 @@ paths:
                 $ref: '#/components/schemas/User'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -5822,6 +6481,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /users/{id}/password-reset:
     post:
@@ -5842,10 +6503,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AccountLink'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/AccountsOnly'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /invites:
     get:
@@ -5864,8 +6529,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PendingInviteList'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '409':
           $ref: '#/components/responses/AccountsOnly'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
     post:
       operationId: createInvite
       x-min-role: owner
@@ -5889,8 +6558,12 @@ paths:
                 $ref: '#/components/schemas/AccountLink'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '409':
           $ref: '#/components/responses/AccountsOnly'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /invites/{linkId}:
     delete:
@@ -5906,10 +6579,14 @@ paths:
       responses:
         '204':
           description: Invite revoked
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/AccountsOnly'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /password-resets:
     get:
@@ -5928,8 +6605,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PendingPasswordResetList'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '409':
           $ref: '#/components/responses/AccountsOnly'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /password-resets/{linkId}:
     delete:
@@ -5945,10 +6626,14 @@ paths:
       responses:
         '204':
           description: Password reset revoked
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/AccountsOnly'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /settings/privacy:
     get:
@@ -5963,6 +6648,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PrivacySettings'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
     put:
       operationId: updatePrivacySettings
       x-min-role: owner
@@ -5990,6 +6679,10 @@ paths:
                 $ref: '#/components/schemas/PrivacySettings'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /auth-audit:
     get:
@@ -6012,8 +6705,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AuthAuditList'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '409':
           $ref: '#/components/responses/AccountsOnly'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
 components:
   parameters:
@@ -6241,14 +6938,18 @@ components:
             $ref: '#/components/schemas/Error'
 
     BranchesUnavailable:
-      description: Branch registry is not configured on this server
+      description: |
+        The tree has no owner yet (`SETUP_REQUIRED`), or the branch registry
+        is not configured on this server
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/Error'
 
     SettingsUnavailable:
-      description: Settings store is not configured on this server
+      description: |
+        The tree has no owner yet (`SETUP_REQUIRED`), or the settings store
+        is not configured on this server
       content:
         application/json:
           schema:
@@ -6268,7 +6969,46 @@ components:
           schema:
             $ref: '#/components/schemas/Error'
 
+    Unauthenticated:
+      description: |
+        No signed-in session (`UNAUTHENTICATED`): sign in and send the session
+        cookie. A viewer operation is served without one when the owner lets
+        visitors in, except those that say they require a signed-in user.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    SetupRequired:
+      description: |
+        The tree has no owner yet (`SETUP_REQUIRED`): create one on the setup
+        page or with `myfamily user create`
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  securitySchemes:
+    session:
+      type: apiKey
+      in: cookie
+      name: myfamily_session
+      description: |
+        The session cookie that `/auth/setup`, `/auth/sign-in` and
+        `/auth/invites/accept` set. A browser sends it by itself; a script
+        keeps it from the sign-in response and sends it back on each request.
+        Not needed with `AUTH_MODE=open`.
+
   schemas:
+    Health:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          description: Always `ok`
+          example: ok
+
     Account:
       type: object
       required: [id, username, display_name, role]

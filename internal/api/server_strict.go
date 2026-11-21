@@ -40,6 +40,11 @@ func NewStrictServer(server *Server) *StrictServer {
 	return &StrictServer{server: server}
 }
 
+// GetHealth implements StrictServerInterface.
+func (ss *StrictServer) GetHealth(_ context.Context, _ GetHealthRequestObject) (GetHealthResponseObject, error) {
+	return GetHealth200JSONResponse{Status: "ok"}, nil
+}
+
 // validEnumParam reports whether an optional enum query parameter holds a
 // value the spec allows. A nil pointer (parameter omitted) is valid.
 func validEnumParam[T interface{ Valid() bool }](p *T) bool {

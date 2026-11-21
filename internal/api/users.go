@@ -89,7 +89,7 @@ func (ss *StrictServer) ResetPassword(ctx context.Context, request ResetPassword
 // UpdateCurrentAccount implements StrictServerInterface.
 func (ss *StrictServer) UpdateCurrentAccount(ctx context.Context, request UpdateCurrentAccountRequestObject) (UpdateCurrentAccountResponseObject, error) {
 	if ss.server.config.OpenMode() {
-		return UpdateCurrentAccount404JSONResponse(authError(CodeNotFound, openModeMessage)), nil
+		return UpdateCurrentAccount409JSONResponse{accountsOnly}, nil
 	}
 	body := request.Body
 	change := auth.AccountChange{DisplayName: body.DisplayName, NewPassword: body.NewPassword}

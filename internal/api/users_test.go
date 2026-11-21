@@ -402,14 +402,11 @@ func TestUsers_OpenModeHasNoAccounts(t *testing.T) {
 		{method: http.MethodDelete, path: "/api/v1/password-resets/x"},
 		{method: http.MethodPost, path: "/api/v1/auth/invites/accept", body: `{"token":"x","username":"eve","display_name":"Eve","password":"long enough"}`},
 		{method: http.MethodPost, path: "/api/v1/auth/password-reset", body: `{"token":"x","password":"long enough"}`},
+		{method: http.MethodPatch, path: "/api/v1/auth/me", body: `{"display_name":"x"}`},
 	} {
 		if rec := f.do(t, r); rec.Code != http.StatusConflict {
 			t.Errorf("%s %s in open mode: status %d %s, want 409", r.method, r.path, rec.Code, strings.TrimSpace(rec.Body.String()))
 		}
-	}
-	rec := f.do(t, request{method: http.MethodPatch, path: "/api/v1/auth/me", body: `{"display_name":"x"}`})
-	if rec.Code != http.StatusNotFound {
-		t.Errorf("PATCH /auth/me in open mode: status %d, want 404", rec.Code)
 	}
 }
 
