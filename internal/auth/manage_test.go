@@ -406,10 +406,66 @@ func TestAudit_FailureDoesNotFailTheAction(t *testing.T) {
 		t.Errorf("failed SignIn with a failing audit log: err = %v, want ErrInvalidCredentials", err)
 	}
 
-	out := logged.String()
+	lines := strings.Split(logged.String(), "\n")
 	for _, action := range []repository.AuthAction{repository.AuthActionUserCreated, repository.AuthActionSignIn, repository.AuthActionSignInFailed} {
-		if !strings.Contains(out, "level=ERROR") || !strings.Contains(out, "action="+string(action)+" ") {
-			t.Errorf("log = %q, want an error naming %s", out, action)
+		found := false
+		for _, line := range lines {
+			if strings.Contains(line, "level=ERROR") && strings.Contains(line, "action="+string(action)+" ") {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("log = %q, want an error line naming %s", logged.String(), action)
+		}
+	}
+}
+
+// failingCleanup is a store whose session and link cleanup cannot be written.
+type failingCleanup struct {
+	repository.AccountStore
+}
+
+func (failingCleanup) DeleteUserSessions(context.Context, uuid.UUID, string) error {
+	return errors.New("disk full")
+}
+
+func (failingCleanup) DeleteLinksIssuedBy(context.Context, uuid.UUID) error {
+	return errors.New("disk full")
+}
+
+// A change that stands is audited even when a cleanup step after it fails
+// (AC-005: the log can miss an entry only through a failed append).
+func TestAudit_RecordsAChangeWhoseCleanupFails(t *testing.T) {
+	m := newManaged(t)
+	ctx := context.Background()
+	grace, graceToken := m.invite(t, "grace", repository.RoleOwner)
+	m.svc.store = failingCleanup{m.svc.store}
+
+	if _, err := m.svc.SetRole(ctx, m.by, grace.ID, repository.RoleEditor); err == nil {
+		t.Error("SetRole with failing link cleanup: want an error")
+	}
+	if _, err := m.svc.SetDisabled(ctx, m.by, grace.ID, true); err == nil {
+		t.Error("SetDisabled with failing session cleanup: want an error")
+	}
+	pw := testPassword + "2"
+	graceBy := Actor{UserID: grace.ID}
+	if _, err := m.svc.SetDisabled(ctx, m.by, grace.ID, false); err != nil {
+		t.Fatalf("re-enable: %v", err)
+	}
+	if _, err := m.svc.UpdateAccount(ctx, graceBy, graceToken, AccountChange{CurrentPassword: testPassword, NewPassword: &pw}); err == nil {
+		t.Error("UpdateAccount with failing session cleanup: want an error")
+	}
+
+	got := m.actions(t)
+	for _, want := range []repository.AuthAction{repository.AuthActionRoleChanged, repository.AuthActionUserDisabled, repository.AuthActionPasswordChanged} {
+		found := false
+		for _, a := range got {
+			if a == want {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("audit actions = %v, want %s", got, want)
 		}
 	}
 }
