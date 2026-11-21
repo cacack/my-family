@@ -150,6 +150,10 @@ CLI for an owner. No email is sent.
 token, stored hashed server-side with idle and absolute expiry, in an `HttpOnly`, `SameSite=Lax`
 cookie that is `Secure` over TLS. State-changing requests whose `Origin` does not match the host
 are refused, and CORS no longer allows `*`. Sign-in attempts are rate-limited.
+Every argon2id hash and check also takes one of a fixed number of process-wide slots
+(`maxConcurrentHashes` in `internal/auth/password.go`, four), so many clients at once cannot
+exhaust memory through sign-in, setup, invite accept or password reset. One that cannot get a
+slot within a second is refused with `429 RATE_LIMITED` without hashing.
 
 **Sign-in limits.** Failed sign-ins are limited per username (5 in 15 minutes, from anyone) and
 per client address (20). A correct password is refused while either limit is reached, so anyone
