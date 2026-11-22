@@ -22,9 +22,15 @@ What the code does today:
   creation events and on `ImportedValuesBackfilled`. Only GEDCOM import sets them.
   [#1604](https://github.com/cacack/my-family/issues/1604) will let the API set them and
   [#1563](https://github.com/cacack/my-family/issues/1563) will record how each pair was obtained.
-- **Matching.** `repository.NormalizePlace` trims spaces around commas and drops empty parts. It is
-  case-sensitive. SQLite calls it through a registered function, the memory store calls it
-  directly, and PostgreSQL has its own SQL expression (`placeNormSQL`) held to it by a parity test.
+- **Matching.** `repository.NormalizePlace` trims spaces around commas and drops empty parts.
+  SQLite calls it through a registered function, the memory store calls it directly, and
+  PostgreSQL has its own SQL expression (`placeNormSQL`) held to it by a parity test. The browser
+  groups on the result case-sensitively. The per-place person list matches it as a substring, so
+  `Germany` lists everyone beneath it: with `ILIKE` on PostgreSQL, `LIKE` on SQLite (which ignores
+  case for ASCII only) and `strings.Contains` in memory (case-sensitive).
+- **Cemeteries.** A second rule. The cemetery index groups burial and cremation events by exact
+  place text, and the per-cemetery list matches the whole text ignoring case, with no trimming:
+  `LOWER` in both SQL stores and `strings.EqualFold` in memory, which disagree outside ASCII.
 - **Hierarchy.** The place browser splits the normalized text on commas, right to left, inside
   each backend's SQL. It reads birth and death places only. The memory store returns a flat list
   ([#926](https://github.com/cacack/my-family/issues/926)).
@@ -171,12 +177,15 @@ maintainer named; the findings are in sections 6, 7 and 8.
 ### 1. The matching key
 
 One function, `PlaceKey`, turns place text into its key. It is the only place-matching rule in the
-project and replaces `NormalizePlace` and `placeNormSQL`.
+project and replaces `NormalizePlace`, `placeNormSQL` and the cemetery comparison.
 
 1. Split the text on `,`.
-2. Trim Unicode white space from both ends of each part.
-3. Fold letter case code point by code point: Unicode simple case folding (the orbit of
-   `unicode.SimpleFold`), with no locale and no full folding, so `ß` does not become `ss`.
+2. Trim white space from both ends of each part: the code points `unicode.IsSpace` reports, which
+   is what `strings.TrimSpace` removes.
+3. Fold letter case code point by code point, with no locale and no full folding, so `ß` does not
+   become `ss`. Each code point is replaced by the representative of its `unicode.SimpleFold`
+   orbit: the smallest lowercase letter (`unicode.IsLower`) in the orbit, or the smallest code
+   point when the orbit has none.
 4. Join the parts with `,`.
 
 Text whose parts are all empty has no key and no place.
@@ -191,9 +200,18 @@ Text whose parts are all empty has no key and no place.
 | `Köln, Germany` | `köln,germany` | different from `Koln, Germany` |
 | `Straße 1, Wien` | `straße 1,wien` | different from `Strasse 1, Wien` |
 | `Darmstadt,,,Germany` | `darmstadt,,,germany` | different from `Darmstadt, Germany` |
+| `Kiel` (first letter U+212A, Kelvin sign) | `kiel` | same place as `Kiel`: one orbit, `K`, `k`, U+212A |
+| `ΣΟΣ`, `σος` | `ςος` | same place: `Σ`, `σ` and `ς` are one orbit, and `ς` is its smallest lowercase letter |
+| `İzmir` (U+0130) | `İzmir` | different from `Izmir` (`izmir`): `İ` and `ı` have no simple folding |
+| `ǅakovo` (U+01C5) | `ǆakovo` | same place as `Ǆakovo` and `ǆakovo` |
 
 Nothing looser is applied: no accent folding, no Unicode normalization, no collapsing of inner
 spaces, no abbreviations. Those are variant spellings, and the user joins them with an alias.
+
+**The fold table is part of the rule.** A test pins the result of step 3 for every code point (a
+checksum over the whole range), beside the vectors above. A Go upgrade that changes it for any
+code point fails that test, and is resolved by keeping the pinned table in the repository or by
+the re-keying ADR that PL-003 requires. It never changes a key silently.
 
 **Empty parts are kept.** `NormalizePlace` drops them today (#925). The key does not, for two
 reasons. An empty part holds a position in GEDCOM (`, , Utah, USA` leaves the two smallest
@@ -250,10 +268,25 @@ undoes it.
 
 - **No event text changes.** Each record keeps the spelling it was given, in the UI, in history and
   in export.
-- **Aliases are one level deep.** The command rejects a target that is itself an alias, and
-  re-points the aliases of a place that becomes one. Resolution never follows a chain.
+- **Aliases are one level deep.** `place_aliases` keeps each alias as it was stated (key to stated
+  target) and the place it resolves to. Resolution reads the resolved place, so it never follows
+  a chain. The command rejects a target that is itself an alias and an alias that would close a
+  cycle.
+- **The projector decides.** That check reads another place's stream, and an event store cannot
+  make it atomic (the limit that ruled out Option 2A), so two concurrent commands can both pass.
+  The projector applies alias events in log order. It ignores one that would close a cycle, and
+  after each alias or unalias it recomputes the resolved place of every alias whose stated chain
+  passes through the place affected. A command appends one event to one stream; re-pointing is
+  projection, and a rebuild gives the same table.
 - **Facts on an absorbed place are kept and ignored** while the alias stands; the target's facts
   apply. The merge screen shows both so the user can copy one across first.
+- **Reading an absorbed place.** The list of places shows the target, with the absorbed keys as
+  its aliases; an absorbed place is not an entry of its own. A `GET` of an absorbed place's ID
+  returns that place's own facts and the ID of the place it resolves to. It is not a redirect,
+  because the merge screen and unaliasing need the absorbed record. Everywhere else an ID is a
+  resolved one: a record, a map location or a migration-map stop never carries an absorbed ID.
+  IDs are resolved at read time and nothing stored is re-pointed, so an explicit parent that names
+  an absorbed place means its target.
 - **Only the whole key matches.** Aliasing `Hesse, Germany` to `Hessen, Germany` does not rewrite
   `Darmstadt, Hesse, Germany`. That place moves under Hessen in the browser, beside
   `Darmstadt, Hessen, Germany`, where the user can join the two.
@@ -266,14 +299,27 @@ A place has at most one parent place.
   leading empty parts removed, resolved through aliases. `darmstadt,hessen,germany` is in
   `hessen,germany`, which is in `germany`. `darmstadt,,,germany` is in `germany`. A one-part key
   has no parent.
-- **Explicit parent:** a `PlaceUpdated` may set one. The command rejects a cycle.
+- **Explicit parent:** a `PlaceUpdated` may set one. The command rejects a cycle, counted through
+  aliases and default parents, and an alias is rejected when it would create one. As in section
+  3, the projector decides: a parent or an alias that would close a cycle in log order is ignored.
 - **Jurisdiction label:** optional per level. It comes from the place's form when it has one, and
   is never inferred from position. A level with no label shows none.
 
 The browser walks parents, in Go, over places resolved by key. A parent that no record names
 directly (`Hessen, Germany` when only its towns were recorded) is a place like any other. A place's
-count is the records that resolve to it or to a place beneath it. The right-to-left SQL in the two
-SQL stores and the flat list in the memory store are replaced by this one walk.
+count is the records that resolve to it or to a place beneath it, and the list of people behind a
+place is the people of those same records, so the count and the list always agree. The
+right-to-left SQL in the two SQL stores and the flat list in the memory store are replaced by this
+one walk.
+
+The walk runs over places, not records. Each store counts use per distinct key in SQL (grouping
+on the stored key column computes nothing), aliases and explicit parents are each loaded in one
+query, and counts roll up in one pass. Nothing is queried per record or per place.
+
+The count and the list change together in each step of the plan. From step 1 both use default
+parents only: a record is under a place when its key is the place's key or ends with `,` and that
+key. This replaces today's substring match, so `York` no longer lists `New York, NY`. Step 4 adds
+alias resolution to both, and step 5 moves both to the walk.
 
 ### 5. Coordinates
 
@@ -328,8 +374,10 @@ before, the map shows what it showed before, and each place has the ID it will a
 Rebuilding again changes nothing. Once place events exist, their streams are replayed like any
 other and the fact tables come back from them.
 
-One visible change comes with the first rebuild: the browser joins spellings that differ only in
-letter case, and stops joining texts that differ only in empty parts.
+Three visible changes come with the first rebuild. The browser joins spellings that differ only in
+letter case, and stops joining texts that differ only in empty parts. The per-place person list
+matches whole parts where it matched any substring (section 4). Cemeteries whose text differs only
+in letter case or in spacing around commas become one entry, on every store.
 
 ### 8. GEDCOM round trip
 
@@ -377,9 +425,25 @@ implement the pairing itself; labels wait for it.
 ### 10. Privacy
 
 The *use* view reads through the privacy overlay of [ADR-008](./008-privacy-model.md), as the place
-browser does. A place whose only uses are hidden from a principal is absent for that principal,
-facts included, so a name or a pair cannot leak through the fact tables. The read-surface table of
-ADR-008 gains a row for each place operation in the PR that adds it.
+browser does. A place is visible to a principal when a record that principal may see, in the scope
+being read, resolves to it or to a place beneath it. A principal the overlay hides nothing from
+sees every place.
+
+A place that is not visible is absent, facts included, so a name or a pair cannot leak through the
+fact tables. Everything derived is computed from visible uses only:
+
+- **Counts and the fallback display name.** The most-used spelling is the most used among the
+  records the principal may see.
+- **Aliases.** An absorbed key is listed under its target only when a visible record uses it. The
+  merge screen needs both places visible.
+- **Lookup by ID.** A place's ID can be computed from guessed text, so a `GET` of a place that is
+  not visible answers exactly as one for an ID that was never in use.
+- **History.** Place events carry the key and the text. The event-output redactor of ADR-008 drops
+  the entries of a place that is not visible.
+- **Export.** GEDCOM export writes a place's pair, form and external IDs only under events the
+  export's own privacy filter lets through.
+
+The read-surface table of ADR-008 gains a row for each place operation in the PR that adds it.
 
 ### 11. Room for later features
 
@@ -419,6 +483,13 @@ ADR-008 gains a row for each place operation in the PR that adds it.
 - Every install rebuilds once (ADR-006).
 - Export repeats a place's coordinates and form under each event, and a `HEAD.PLAC.FORM` default
   comes back as per-place lines until cacack/gedcom-go#875.
+- A pair set on a place does not come back from a GEDCOM round trip as a place fact. Export writes
+  it under each event that inherits it, and re-import stores each as that record's own pair with
+  origin `imported`. The map is the same, but moving the pin is one edit per record again.
+  - Mitigation: none in this decision. Promoting a pair that every record of a place shares, at
+    import or from the worklist, can be added without a model change.
+- Alias and parent cycles cannot be refused atomically, so a command can succeed and its event
+  then be ignored by the projector (sections 3 and 4).
 - Place facts cannot be tried on a branch.
 - Jurisdiction labels wait for cacack/gedcom-go#874.
 
@@ -441,16 +512,20 @@ PRs that make each one enforceable:
 - **PL-002** `PlaceKey` is the only place-matching rule and no SQL implements it.
 - **PL-003** A place's ID is `UUIDv5(namespace, key)`; the rule and the namespace do not change
   without an ADR.
-- **PL-004** An alias target is never itself an alias.
+- **PL-004** Every row of `place_aliases` resolves to a place that is not itself absorbed, and
+  parents form no cycle. The projector maintains both, in log order.
 - **PL-005** Place events are main-only (not on the BR-006 allowlist).
+- **PL-006** No place read returns a name, a pair, a count, an alias or a history entry derived
+  only from records hidden from the principal.
 
 ## Implementation Plan
 
-To be filed in the *Places & Geography* milestone and added to #540 once this ADR is approved. Each
+To be filed in the *Places & Geography* milestone and added to #540 once this ADR is merged. Each
 is one PR.
 
-1. **Key.** `PlaceKey`, key columns on the five rows in all three stores, schema version bump;
-   the browser and persons-by-place read the key. Removes `NormalizePlace` and `placeNormSQL`.
+1. **Key.** `PlaceKey` with its pinned vectors and fold table, an indexed key column on the five
+   rows in all three stores, schema version bump; the browser, persons-by-place, the cemetery
+   index and the per-cemetery list read the key. Removes `NormalizePlace` and `placeNormSQL`.
 2. **Place list.** Derived places with IDs and use counts; `GET` operations for the list and one
    place; privacy rows.
 3. **Place facts.** `PlaceUpdated`, the `places` table, name and coordinates with origin; effective
@@ -465,13 +540,15 @@ is one PR.
 
 ### Open children of #540 under this decision
 
+Verdicts as of 2026-11-22. Each issue is the authority on its own state.
+
 | Issue | Verdict |
 |---|---|
 | #1604 accept coordinates on updates | Holds. What it writes is the record's own pair. |
 | #1033 coordinates in the forms | Holds. Showing the place's inherited pair beside the inputs comes with step 3. |
 | #1563 origin of each pair | Holds. The origin describes the record's pair; the place's pair reuses the vocabulary. |
 | #1561 no-coordinates worklist | Revise. Matching is `PlaceKey`, so `Boston,MA` and `Boston, MA` are one entry (its second criterion says two). After step 3, "no coordinates" means no effective coordinates. |
-| #1606 apply a pair to every record | Superseded by step 3. One event on the place replaces one per record, so its per-record history criterion no longer applies. Hold until this ADR is approved. |
+| #1606 apply a pair to every record | Superseded by step 3. One event on the place replaces one per record, so its per-record history criterion no longer applies. Not to be started; close it when step 3 is filed. |
 | #1562 geocoder endpoint | Holds. It looks up a name and stores nothing. |
 | #1607 geocoder candidates | Holds, except that a pick in the worklist is saved on the place (step 3), not through #1606. |
 | #1609 queued lookups | Holds. |
