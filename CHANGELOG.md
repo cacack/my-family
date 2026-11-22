@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.16.0](https://github.com/cacack/my-family/compare/v0.15.0...v0.16.0) (2026-11-22)
+
+
+### Features
+
+* **web:** accept a surname-only entry in Quick Capture ([dcfbf2c](https://github.com/cacack/my-family/commit/dcfbf2c7a248eb86bce0b952246eb4d54c0b1f39)), closes [#1709](https://github.com/cacack/my-family/issues/1709)
+
+
+### Bug Fixes
+
+* **api:** refuse an update that makes a named person or name nameless ([2ebfb2a](https://github.com/cacack/my-family/commit/2ebfb2a5484779d427d7e7b77dd7eb0935e64347)), closes [#1709](https://github.com/cacack/my-family/issues/1709)
+* **api:** tell browsers not to keep media bytes ([c737442](https://github.com/cacack/my-family/commit/c7374424e3ace39fd8c3516455bebc60be83a47f)), closes [#1578](https://github.com/cacack/my-family/issues/1578)
+* **gedcom:** export a source's entered publish date in PUBL ([116f7b7](https://github.com/cacack/my-family/commit/116f7b7b4dbeaa452d022f0873770021e8d83807)), closes [#1703](https://github.com/cacack/my-family/issues/1703)
+* **gedcom:** export several dateless deaths of one person as one DEAT ([77e40f7](https://github.com/cacack/my-family/commit/77e40f7209157da927e42a7498e179a7684b2376)), closes [#1706](https://github.com/cacack/my-family/issues/1706)
+* **gedcom:** import one death when an individual has more than one DEAT ([1eea629](https://github.com/cacack/my-family/commit/1eea629a2b1ed041ea8291c4fa58606faba7fedf)), closes [#1456](https://github.com/cacack/my-family/issues/1456)
+* **gedcom:** keep CAUS and AGE under a dated or placed DEAT ([4562c3a](https://github.com/cacack/my-family/commit/4562c3adfbc698db7e1f548b5515eb15e194704c)), closes [#1455](https://github.com/cacack/my-family/issues/1455)
+* **gedcom:** keep the descriptor of a dated DEAT on import ([8a98122](https://github.com/cacack/my-family/commit/8a98122dd7560bcd62f65a502cd8b96cad5a6a6d)), closes [#1707](https://github.com/cacack/my-family/issues/1707)
+* **gedcom:** keep the occurrence flag Y on events other than DEAT ([ba392b4](https://github.com/cacack/my-family/commit/ba392b4cb4f91e8dd833346271b15d50878fd3e8)), closes [#1454](https://github.com/cacack/my-family/issues/1454)
+* **gedcom:** round-trip the private mark on citations ([d31ee2f](https://github.com/cacack/my-family/commit/d31ee2fba9668cfd26c659a154d8f62f1669c4f4)), closes [#1544](https://github.com/cacack/my-family/issues/1544)
+* **gedcom:** store an empty given name instead of inventing "Unknown" ([9ef316f](https://github.com/cacack/my-family/commit/9ef316ffb3a733cb6c7bb301ed13ca5642516527)), closes [#1054](https://github.com/cacack/my-family/issues/1054)
+* refuse making a nameless name primary over a named person ([16522ec](https://github.com/cacack/my-family/commit/16522ec2929a6da9cf0b32deafb3a0a8ef568a66)), closes [#1709](https://github.com/cacack/my-family/issues/1709)
+* **web:** apply the same nameless-update rule in both edit forms ([8e60ac7](https://github.com/cacack/my-family/commit/8e60ac7ceea9d6885401556b5e4f1c2bbc34b7b3)), closes [#1709](https://github.com/cacack/my-family/issues/1709)
+* **web:** drop the close notice's research link when it would go nowhere ([33f66b9](https://github.com/cacack/my-family/commit/33f66b93548d75ca66b0673a2ff0b9cd881a6d22))
+* **web:** keep the Users page's link boxes and pending list in step with the server ([4019d2b](https://github.com/cacack/my-family/commit/4019d2b5bb0ae11dcf56285e2f2809201fd7d913)), closes [#1501](https://github.com/cacack/my-family/issues/1501)
+* **web:** let the person and name forms save a blank given name ([f6c6b4b](https://github.com/cacack/my-family/commit/f6c6b4bfeaf918b158674a8865564b11c9ab2f08)), closes [#1054](https://github.com/cacack/my-family/issues/1054)
+* **web:** link to branch pages through one helper that skips visitors ([779ac04](https://github.com/cacack/my-family/commit/779ac046feba73ddc868d9642958e38a71409301)), closes [#1535](https://github.com/cacack/my-family/issues/1535)
+* **web:** mark the preview cookie Secure over https and drop it at sign-in ([1d3fede](https://github.com/cacack/my-family/commit/1d3fedee2fe808df08216931887a5778c0aa0826)), closes [#1497](https://github.com/cacack/my-family/issues/1497)
+* **web:** offer a visitor the branches list to view, not to manage ([581eab4](https://github.com/cacack/my-family/commit/581eab45a584ca65ee857af8d9bc8a917fc82641)), closes [#1535](https://github.com/cacack/my-family/issues/1535)
+* **web:** skip the merge precheck for a viewer on the branch page ([af64ab4](https://github.com/cacack/my-family/commit/af64ab432ae86ce60f8628fc829b1a87ca6f2da6)), closes [#1461](https://github.com/cacack/my-family/issues/1461)
+* **web:** tell non-editors about the person-merge restriction with RoleNotice ([e893dac](https://github.com/cacack/my-family/commit/e893dac0b42a594a66d0ef9dcd00d7768a7be05b)), closes [#1484](https://github.com/cacack/my-family/issues/1484)
+
 ## [0.15.0](https://github.com/cacack/my-family/compare/v0.14.0...v0.15.0) (2026-11-22)
 
 
