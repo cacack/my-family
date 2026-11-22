@@ -602,14 +602,8 @@ func parseIndividual(indi *gedcom.Individual, _ *gedcom.Document, result *Import
 				Notes:         joinNotes(append(slices.Clone(name.NoteXRefs), name.InlineNotes...)...),
 			}
 
-			// Given name is required - use "Unknown" if missing
-			if nameData.GivenName == "" {
-				nameData.GivenName = "Unknown"
-				if i == 0 {
-					result.Warnings = append(result.Warnings,
-						fmt.Sprintf("Individual %s: missing given name, using 'Unknown'", indi.XRef))
-				}
-			}
+			// A missing name part stays empty: no placeholder is invented
+			// (docs/CONVENTIONS.md "Person names").
 
 			person.Names = append(person.Names, nameData)
 
@@ -625,12 +619,9 @@ func parseIndividual(indi *gedcom.Individual, _ *gedcom.Document, result *Import
 			}
 		}
 		// Surname can be empty (historical records, royalty, single-name individuals)
-	} else {
-		person.GivenName = "Unknown"
-		// Leave surname empty - no name record at all
-		result.Warnings = append(result.Warnings,
-			fmt.Sprintf("Individual %s: no name record, using 'Unknown'", indi.XRef))
 	}
+	// An individual with no NAME keeps both name parts empty; the parser
+	// already warns about it (MISSING_NAME).
 
 	// Parse sex
 	switch strings.ToUpper(indi.Sex) {

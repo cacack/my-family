@@ -220,11 +220,11 @@ func TestAddPersonName_InvalidPersonID(t *testing.T) {
 	}
 }
 
-func TestAddPersonName_MissingGivenName(t *testing.T) {
+func TestAddPersonName_NoNameParts(t *testing.T) {
 	server := setupNameTestServer()
 	personID := createPersonForNameTest(t, server)
 
-	body := `{"surname":"Smith"}`
+	body := `{"given_name":"","surname":"","name_type":"birth"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/persons/"+personID+"/names", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()

@@ -2,6 +2,7 @@ package command_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/google/uuid"
@@ -137,6 +138,32 @@ func TestAddName_FirstAlternateKeepsPersonName(t *testing.T) {
 	}
 }
 
+// A surname-only person has a name, so its first unmarked alternate keeps it
+// rather than renaming it (#1054).
+func TestAddName_FirstAlternateKeepsSurnameOnlyName(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	personID := createPersonWithoutNames(t, eventStore, readStore, "", "Tudor")
+	result, err := handler.AddName(ctx, command.AddNameInput{
+		PersonID: personID,
+		Surname:  "Tydder",
+		NameType: "aka",
+	})
+	if err != nil {
+		t.Fatalf("AddName failed: %v", err)
+	}
+	if result.IsPrimary {
+		t.Error("an unmarked name differing from the person should stay an alternate")
+	}
+	person, _ := readStore.GetPerson(ctx, domain.MainBranchID, personID)
+	if person.GivenName != "" || person.Surname != "Tudor" {
+		t.Errorf("person renamed to %q %q, want \"\" \"Tudor\"", person.GivenName, person.Surname)
+	}
+}
+
 func TestAddName_DemoteExistingPrimary(t *testing.T) {
 	eventStore := memory.NewEventStore()
 	readStore := memory.NewReadModelStore()
@@ -217,16 +244,14 @@ func TestAddName_InvalidInput(t *testing.T) {
 		t.Fatalf("CreatePerson failed: %v", err)
 	}
 
-	// Empty given name should fail
+	// A name with neither a given name nor a surname should fail
 	nameInput := command.AddNameInput{
-		PersonID:  personResult.ID,
-		GivenName: "",
-		Surname:   "Doe",
-		NameType:  "birth",
+		PersonID: personResult.ID,
+		NameType: "birth",
 	}
 	_, err = handler.AddName(ctx, nameInput)
-	if err == nil {
-		t.Fatal("Expected error for empty given_name")
+	if !errors.Is(err, command.ErrInvalidInput) {
+		t.Fatalf("AddName with no name parts error = %v, want ErrInvalidInput", err)
 	}
 }
 

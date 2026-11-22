@@ -5633,7 +5633,7 @@ type Person struct {
 	Version int64 `json:"version"`
 }
 
-// PersonCreate defines model for PersonCreate.
+// PersonCreate A person needs a given name or a surname; one of them may be left out or empty. A create with neither is rejected with 400.
 type PersonCreate struct {
 	// BirthDate A date as entered, stored in GEDCOM form. Accepted forms:
 	//
@@ -5701,7 +5701,7 @@ type PersonCreate struct {
 	DeathDate  *DateInput `json:"death_date,omitempty"`
 	DeathPlace *string    `json:"death_place,omitempty"`
 	Gender     *Gender    `json:"gender,omitempty"`
-	GivenName  string     `json:"given_name"`
+	GivenName  *string    `json:"given_name,omitempty"`
 	Notes      *string    `json:"notes,omitempty"`
 
 	// ResearchStatus Confidence level of genealogical data per GPS standards
@@ -5810,7 +5810,7 @@ type PersonName struct {
 	SurnamePrefix *string            `json:"surname_prefix,omitempty"`
 }
 
-// PersonNameCreate defines model for PersonNameCreate.
+// PersonNameCreate given_name or surname may be empty, but not both: a name with neither is rejected with 400.
 type PersonNameCreate struct {
 	GivenName  string   `json:"given_name"`
 	IsPrimary  *bool    `json:"is_primary,omitempty"`

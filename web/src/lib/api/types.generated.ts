@@ -4142,8 +4142,9 @@ export interface components {
              */
             version: number;
         };
+        /** @description A person needs a given name or a surname; one of them may be left out or empty. A create with neither is rejected with 400. */
         PersonCreate: {
-            given_name: string;
+            given_name?: string;
             surname?: string;
             gender?: components["schemas"]["Gender"];
             birth_date?: components["schemas"]["DateInput"];
@@ -5084,6 +5085,7 @@ export interface components {
             /** @description Notes on this name (GEDCOM NAME.NOTE). NOTE pointers are kept as their xref. */
             notes?: string;
         };
+        /** @description given_name or surname may be empty, but not both: a name with neither is rejected with 400. */
         PersonNameCreate: {
             given_name: string;
             surname: string;
