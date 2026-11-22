@@ -2,6 +2,7 @@ package gedcom
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"fmt"
 	"io"
@@ -1177,16 +1178,24 @@ func toGedcomIndividual(p repository.PersonReadModel, names []repository.PersonN
 		}
 		// Citations for death
 		deathEvent.SourceCitations = toGedcomSourceCitations(fieldCitations(deathCitations, events), sourceXrefs, citationAPIDs)
-		if i := mergeableDeathDetail(events); i >= 0 {
-			// Written into this DEAT, not as a second one (#1455).
-			detail := toGedcomEvent(events[i], true, sourceXrefs, citationAPIDs, readStore, ctx)
-			deathEvent.Cause, deathEvent.Age, deathEvent.Address = detail.Cause, detail.Age, detail.Address
+		merged, rest := mergeableDeathDetails(events)
+		var description string
+		for _, e := range merged {
+			// Written into this DEAT, not as a DEAT of its own (#1455, #1706).
+			detail := toGedcomEvent(e, true, sourceXrefs, citationAPIDs, readStore, ctx)
+			deathEvent.Cause, deathEvent.Age = cmp.Or(deathEvent.Cause, detail.Cause), cmp.Or(deathEvent.Age, detail.Age)
+			if deathEvent.Address == nil {
+				deathEvent.Address = detail.Address
+			}
+			description = cmp.Or(description, e.Description)
+			deathEvent.SourceCitations = append(deathEvent.SourceCitations, detail.SourceCitations...)
+		}
+		if len(merged) > 0 {
 			// GEDCOM has no slot for a named event's descriptor, so it is
 			// written as the DEAT's last NOTE, as toGedcomEvent does (#1707);
 			// re-import reads it into the death notes, moving field once.
-			deathEvent.NoteXRefs, deathEvent.InlineNotes = splitNotes(joinNotes(p.DeathNotes, events[i].Description), noteJoin)
-			deathEvent.SourceCitations = append(deathEvent.SourceCitations, detail.SourceCitations...)
-			events = slices.Delete(slices.Clone(events), i, i+1)
+			deathEvent.NoteXRefs, deathEvent.InlineNotes = splitNotes(joinNotes(p.DeathNotes, description), noteJoin)
+			events = rest
 		}
 		indi.Events = append(indi.Events, deathEvent)
 	}
@@ -1431,24 +1440,32 @@ func fieldCitations(citations []repository.CitationReadModel, events []repositor
 	return result
 }
 
-// mergeableDeathDetail returns the index of the person's one death life event
-// that holds nothing but a cause, age, address or description, which the
-// importer keeps for the DEAT the person record holds (deathLifeEvents), or
-// -1 if there is not exactly one. The exporter writes it into the record's
-// DEAT, so the file has one death.
-func mergeableDeathDetail(events []repository.EventReadModel) int {
-	found := -1
-	for i, e := range events {
+// mergeableDeathDetails splits the person's events into the dateless,
+// placeless death life events that hold nothing but a cause, age, address or
+// description, which the importer keeps for the DEAT the person record holds
+// (deathLifeEvents), and the rest. The exporter writes the first into the
+// record's DEAT, so the file has one death (#1706). Like the importer, it
+// takes them in order and leaves among the rest one whose detail conflicts
+// with those taken before it, so none is dropped.
+func mergeableDeathDetails(events []repository.EventReadModel) (merged, rest []repository.EventReadModel) {
+	conflicts := func(a, b string) bool { return a != "" && b != "" && a != b }
+	var cause, age, description string
+	var address *domain.Address
+	for _, e := range events {
 		if e.FactType != domain.FactPersonDeath || e.IsNegated || e.DateRaw != "" || e.Place != "" ||
-			e.Notes != "" || e.TypeDetail != "" {
+			e.Notes != "" || e.TypeDetail != "" ||
+			conflicts(cause, e.Cause) || conflicts(age, e.Age) || conflicts(description, e.Description) ||
+			address != nil && e.Address != nil && *address != *e.Address {
+			rest = append(rest, e)
 			continue
 		}
-		if found >= 0 {
-			return -1
+		cause, age, description = cmp.Or(cause, e.Cause), cmp.Or(age, e.Age), cmp.Or(description, e.Description)
+		if address == nil {
+			address = e.Address
 		}
-		found = i
+		merged = append(merged, e)
 	}
-	return found
+	return merged, rest
 }
 
 // occurrenceFlagFactTypes holds the fact types of the named event tags the

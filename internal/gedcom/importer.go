@@ -1665,7 +1665,7 @@ func recordDeath(event *gedcom.Event) bool {
 // none is dropped.
 // With a record death, the merged event is kept only if it holds a detail,
 // and the record keeps the merged DEATs' citations; the exporter writes the
-// two back as one DEAT (mergeableDeathDetail). The returned map gives the
+// two back as one DEAT (mergeableDeathDetails). The returned map gives the
 // event each other bare death is kept in, for its citations.
 func deathLifeEvents(indi *gedcom.Individual, personID uuid.UUID) ([]EventData, map[*gedcom.Event]uuid.UUID) {
 	newDeath := func() EventData {
