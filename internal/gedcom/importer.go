@@ -642,6 +642,9 @@ func parseIndividual(indi *gedcom.Individual, _ *gedcom.Document, result *Import
 		}
 		switch event.Type {
 		case gedcom.EventBirth:
+			if bareBirth(event) {
+				continue // imported as a life event (extractEventsFromIndividual)
+			}
 			person.BirthDate = event.Date
 			person.BirthPlace = event.PlaceName()
 			person.BirthNotes = eventNotes(event)
@@ -1585,7 +1588,9 @@ func ValidateImportData(persons []PersonData, families []FamilyData) error {
 
 // individualEventFactTypes maps each individual event tag gedcom-go decodes to
 // its fact type. A tag not listed (EVEN, or a negated attribute such as
-// "NO OCCU") is a generic event.
+// "NO OCCU") is a generic event. The exporter writes the "Y" occurrence flag
+// for every tag here but RESI (occurrenceFlagFactTypes), so a tag whose value
+// is not that flag must be excluded there too.
 var individualEventFactTypes = map[gedcom.EventType]domain.FactType{
 	gedcom.EventBirth:            domain.FactPersonBirth,
 	gedcom.EventDeath:            domain.FactPersonDeath,
@@ -1632,6 +1637,16 @@ func individualEventFactType(t gedcom.EventType) domain.FactType {
 // as evidence too.
 func bareDeath(event *gedcom.Event) bool {
 	return event.Type == gedcom.EventDeath && !event.IsNegative && event.Date == "" &&
+		event.PlaceName() == "" && eventNotes(event) == "" && event.EventTypeDetail == ""
+}
+
+// bareBirth reports whether event is "1 BIRT Y" and nothing the person
+// record holds of a birth (date, place, notes, TYPE): it asserts only that the
+// birth happened (#1454). Unlike a bare death, a BIRT with no "Y" asserts
+// nothing and is not bare. Without a record birth it is imported as a birth
+// life event, which the exporter writes back as "1 BIRT Y" (toGedcomEvent).
+func bareBirth(event *gedcom.Event) bool {
+	return event.Type == gedcom.EventBirth && !event.IsNegative && event.Occurred && event.Date == "" &&
 		event.PlaceName() == "" && eventNotes(event) == "" && event.EventTypeDetail == ""
 }
 
@@ -1718,10 +1733,14 @@ func mergeDeathDetail(into *EventData, event *gedcom.Event) bool {
 // citations (#1294).
 // Birth and Death are excluded as they are stored on Person directly,
 // unless they are negated (NO BIRT / NO DEAT), which represent negative assertions
-// and must be stored as LifeEvents, or are a bare death (see bareDeath).
+// and must be stored as LifeEvents, or are a bare death (see bareDeath), or
+// a bare birth of a person with no record birth (see bareBirth).
 func extractEventsFromIndividual(indi *gedcom.Individual, personID uuid.UUID) ([]EventData, map[*gedcom.Event]uuid.UUID) {
 	var events []EventData
 	deaths, ids := deathLifeEvents(indi, personID)
+	recordBirth := slices.ContainsFunc(indi.Events, func(e *gedcom.Event) bool {
+		return e.Type == gedcom.EventBirth && !e.IsNegative && !bareBirth(e)
+	})
 
 	for _, event := range indi.Events {
 		var factType domain.FactType
@@ -1775,8 +1794,14 @@ func extractEventsFromIndividual(indi *gedcom.Individual, personID uuid.UUID) ([
 			deaths = nil
 			continue
 		case gedcom.EventBirth:
-			// Non-negated birth is stored on Person entity, skip
-			continue
+			// A non-negated birth is stored on the Person entity, except a
+			// bare birth of a person with none, which is kept as a life
+			// event. With a record birth it adds nothing and its citations
+			// go to the record (extractCitationsFromIndividual).
+			if !bareBirth(event) || recordBirth {
+				continue
+			}
+			factType = domain.FactPersonBirth
 		default:
 			// RESI is imported once, as a life event: unlike an attribute, it
 			// keeps the residence's coordinates, address, notes and citations.
@@ -2110,7 +2135,9 @@ func extractEventsFromFamily(fam *gedcom.Family, familyID uuid.UUID) ([]EventDat
 
 // familyEventFactTypes maps each family event tag gedcom-go decodes to its
 // fact type. gedcom-go has no constant for a generic EVEN, so it is spelled
-// out (#1285, cacack/gedcom-go#775).
+// out (#1285, cacack/gedcom-go#775). The exporter writes the "Y" occurrence
+// flag for every tag here but RESI and EVEN (occurrenceFlagFactTypes), so a
+// tag whose value is not that flag must be excluded there too.
 var familyEventFactTypes = map[gedcom.EventType]domain.FactType{
 	gedcom.EventMarriage:           domain.FactFamilyMarriage,
 	gedcom.EventDivorce:            domain.FactFamilyDivorce,

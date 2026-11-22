@@ -86,7 +86,7 @@ func TestGedcomImport_EventNotesSurviveReplayAndExport(t *testing.T) {
 				{"1 NAME John /Doe/", "DEAT", []string{"2 NOTE @N1@", "2 NOTE Died of a fever,", "3 CONT after a week in bed."}},
 				{"1 NAME John /Doe/", "BURI", []string{"2 NOTE Buried beside his wife"}},
 				{"1 HUSB ", "MARR", []string{"2 NOTE Married in the parlour"}},
-				{"1 HUSB ", "ENGA", []string{"2 NOTE Engaged at Easter"}},
+				{"1 HUSB ", "ENGA Y", []string{"2 NOTE Engaged at Easter"}},
 			} {
 				if got := eventNoteLines(out, tc.record, tc.event); !slices.Equal(got, tc.want) {
 					t.Errorf("NOTE lines under %s of the record with %q = %q, want %q; export:\n%s", tc.event, tc.record, got, tc.want, out)
