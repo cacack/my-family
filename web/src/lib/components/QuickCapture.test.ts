@@ -115,3 +115,32 @@ describe('QuickCapture dates (#996)', () => {
 		expect(screen.queryByRole('status')).toBeNull();
 	});
 });
+
+// Quick Capture accepts a surname-only entry, like the other create forms (#1709).
+describe('QuickCapture names (#1709)', () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
+
+	it('creates a person from a surname-only entry', async () => {
+		createPerson.mockResolvedValueOnce({ ...created(), given_name: '', surname: 'Tudor' });
+		render(QuickCapture);
+		await fireEvent.input(screen.getByLabelText('Full Name'), { target: { value: '/Tudor/' } });
+
+		expect(screen.getByText('Surname:')).toBeDefined();
+		expect(screen.queryByText('Given:')).toBeNull();
+		await fireEvent.click(screen.getByRole('button', { name: 'Add & Next' }));
+
+		await waitFor(() => expect(createPerson).toHaveBeenCalled());
+		expect(createPerson.mock.calls[0][0]).toMatchObject({ given_name: '', surname: 'Tudor' });
+	});
+
+	it('asks for a given name or a surname when the entry has neither', async () => {
+		render(QuickCapture);
+		await fireEvent.input(screen.getByLabelText('Full Name'), { target: { value: '/' } });
+		await fireEvent.click(screen.getByRole('button', { name: 'Add & Next' }));
+
+		expect(await screen.findByText('Enter a given name or a surname')).toBeDefined();
+		expect(createPerson).not.toHaveBeenCalled();
+	});
+});

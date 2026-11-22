@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { api, type PersonCreate, type Gender } from '#lib/api/client.js';
+	import { api, missingNameError, type PersonCreate, type Gender } from '#lib/api/client.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { goto } from '$app/navigation';
 	import { parseName } from '#lib/utils/nameParse.js';
@@ -26,8 +26,8 @@
 	let parsed = $derived(parseName(nameInput));
 
 	async function submit(mode: 'next' | 'view') {
-		if (!parsed.givenName) {
-			error = 'Please enter at least a given name.';
+		error = missingNameError({ given_name: parsed.givenName, surname: parsed.surname });
+		if (error) {
 			unreadableDate = false;
 			return;
 		}
@@ -112,7 +112,7 @@
 			<input
 				type="text"
 				bind:value={nameInput}
-				placeholder="e.g., John Smith or Madonna"
+				placeholder="e.g., John Smith, Madonna or /Tudor/"
 				autocomplete="off"
 				required
 			/>
@@ -120,9 +120,13 @@
 
 		{#if nameInput.trim()}
 			<div class="name-preview">
-				<span class="preview-label">Given:</span> {parsed.givenName}
-				{#if parsed.surname}
+				{#if parsed.givenName}
+					<span class="preview-label">Given:</span> {parsed.givenName}
+				{/if}
+				{#if parsed.givenName && parsed.surname}
 					<span class="preview-sep">|</span>
+				{/if}
+				{#if parsed.surname}
 					<span class="preview-label">Surname:</span> {parsed.surname}
 				{/if}
 			</div>
