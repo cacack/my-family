@@ -1670,14 +1670,14 @@ func deathLifeEvents(indi *gedcom.Individual, personID uuid.UUID) ([]EventData, 
 	if held != nil {
 		mergeDeathDetail(&merged, held)
 	}
-	keepMerged := false
+	mergedBare := false
 	var separate []EventData
 	for _, event := range indi.Events {
 		if !bareDeath(event) {
 			continue
 		}
 		if event.Description == "" && mergeDeathDetail(&merged, event) {
-			keepMerged = keepMerged || held == nil
+			mergedBare = true
 			if held == nil {
 				ids[event] = merged.ID
 			}
@@ -1689,8 +1689,10 @@ func deathLifeEvents(indi *gedcom.Individual, personID uuid.UUID) ([]EventData, 
 		separate = append(separate, own)
 		ids[event] = own.ID
 	}
-	keepMerged = keepMerged || merged.Cause != "" || merged.Age != "" || merged.Address != nil
-	if !keepMerged {
+	// Without a record death the merged event is the death itself; with one,
+	// it is kept only to hold detail the record cannot.
+	hasDetail := merged.Cause != "" || merged.Age != "" || merged.Address != nil
+	if !(held == nil && mergedBare || hasDetail) {
 		return separate, ids
 	}
 	return append([]EventData{merged}, separate...), ids
