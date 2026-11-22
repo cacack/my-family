@@ -222,7 +222,7 @@ func TestExport_RecordDeathMergesCauseAndAge(t *testing.T) {
 }
 
 // A record death keeps a death life event that has more than a cause, age or
-// address, or one of several, as a DEAT of its own.
+// address, or detail that conflicts with another's, as a DEAT of its own.
 func TestExport_RecordDeathKeepsOtherDeathEvents(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -233,7 +233,10 @@ func TestExport_RecordDeathKeepsOtherDeathEvents(t *testing.T) {
 		{name: "with a description", events: []repository.EventReadModel{{Description: "Drowned"}}, want: 1},
 		{name: "with notes", events: []repository.EventReadModel{{Cause: "Fever", Notes: "n"}}, want: 2},
 		{name: "dated", events: []repository.EventReadModel{{Cause: "Fever", DateRaw: "1891"}}, want: 2},
-		{name: "two", events: []repository.EventReadModel{{Cause: "Fever"}, {Age: "70y"}}, want: 3},
+		{name: "two", events: []repository.EventReadModel{{Cause: "Fever"}, {Age: "70y"}}, want: 1},
+		{name: "two with conflicting causes", events: []repository.EventReadModel{{Cause: "Fever"}, {Cause: "Cholera"}}, want: 2},
+		{name: "a description and a cause", events: []repository.EventReadModel{{Description: "Drowned"}, {Cause: "Fever"}}, want: 1},
+		{name: "two descriptions", events: []repository.EventReadModel{{Description: "Drowned"}, {Description: "Lost at sea"}}, want: 2},
 		{name: "negated", events: []repository.EventReadModel{{IsNegated: true}}, want: 2},
 	}
 	for _, tt := range tests {
@@ -256,6 +259,100 @@ func TestExport_RecordDeathKeepsOtherDeathEvents(t *testing.T) {
 			}
 			if blocks := deathBlocks(buf.String()); len(blocks) != tt.want {
 				t.Errorf("death blocks = %q, want %d", blocks, tt.want)
+			}
+		})
+	}
+}
+
+// Several dateless death life events of a person with a dated death export
+// as the one DEAT the person record holds, and the export is stable through a
+// re-import. Events whose details conflict are each kept (#1706).
+func TestRoundTrip_SeveralDatelessDeathsWriteOneDeat(t *testing.T) {
+	tests := []struct {
+		name      string
+		events    []repository.EventReadModel
+		wantLines []string // lines the death blocks have, each once
+		want      int      // death blocks
+	}{
+		{
+			name:      "a cause and an age",
+			events:    []repository.EventReadModel{{Cause: "Fever"}, {Age: "70y"}},
+			wantLines: []string{"2 DATE 1890", "2 CAUS Fever", "2 AGE 70y", "2 SOUR @S1@"},
+			want:      1,
+		},
+		{
+			name:      "the same cause, an age and an address",
+			events:    []repository.EventReadModel{{Cause: "Fever"}, {Cause: "Fever", Age: "70y"}, {Address: &domain.Address{Line1: "1 Main St"}}},
+			wantLines: []string{"2 DATE 1890", "2 CAUS Fever", "2 AGE 70y", "2 ADDR 1 Main St", "2 SOUR @S1@"},
+			want:      1,
+		},
+		{
+			name:      "conflicting causes",
+			events:    []repository.EventReadModel{{Cause: "Fever"}, {Cause: "Cholera", Age: "70y"}},
+			wantLines: []string{"2 DATE 1890", "2 CAUS Fever", "2 CAUS Cholera", "2 AGE 70y", "2 SOUR @S1@"},
+			want:      2,
+		},
+		{
+			name:      "conflicting addresses",
+			events:    []repository.EventReadModel{{Address: &domain.Address{Line1: "1 Main St"}}, {Address: &domain.Address{Line1: "2 Elm St"}}},
+			wantLines: []string{"2 DATE 1890", "2 ADDR 1 Main St", "2 ADDR 2 Elm St", "2 SOUR @S1@"},
+			want:      2,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			rs := memory.NewReadModelStore()
+			person := &repository.PersonReadModel{ID: uuid.New(), GivenName: "A", Surname: "B", DeathDateRaw: "1890", Version: 1}
+			if err := rs.SavePerson(ctx, domain.MainBranchID, person); err != nil {
+				t.Fatalf("SavePerson: %v", err)
+			}
+			source := &repository.SourceReadModel{ID: uuid.New(), Title: "Register", Version: 1}
+			if err := rs.SaveSource(ctx, domain.MainBranchID, source); err != nil {
+				t.Fatalf("SaveSource: %v", err)
+			}
+			for i, event := range tt.events {
+				event.ID, event.OwnerType, event.OwnerID, event.FactType = uuid.New(), "person", person.ID, domain.FactPersonDeath
+				if err := rs.SaveEvent(ctx, domain.MainBranchID, &event); err != nil {
+					t.Fatalf("SaveEvent: %v", err)
+				}
+				if i == 0 {
+					citation := &repository.CitationReadModel{ID: uuid.New(), SourceID: source.ID, FactType: domain.FactPersonDeath,
+						FactOwnerID: person.ID, FactID: &event.ID, Version: 1}
+					if err := rs.SaveCitation(ctx, domain.MainBranchID, citation); err != nil {
+						t.Fatalf("SaveCitation: %v", err)
+					}
+				}
+			}
+			var buf bytes.Buffer
+			if _, err := gedcom.NewExporter(rs).Export(ctx, &buf); err != nil {
+				t.Fatalf("Export: %v", err)
+			}
+			first := buf.String()
+			checkDeathBlocks := func(label, out string) {
+				t.Helper()
+				blocks := deathBlocks(out)
+				if len(blocks) != tt.want {
+					t.Fatalf("%s: death blocks = %q, want %d; export:\n%s", label, blocks, tt.want, out)
+				}
+				if !strings.Contains(blocks[0], "\n2 DATE 1890") {
+					t.Errorf("%s: first death block %q lacks the date", label, blocks[0])
+				}
+				all := strings.Split(strings.Join(blocks, "\n"), "\n")
+				for _, want := range tt.wantLines {
+					if n := slices.Index(all, want); n < 0 || slices.Contains(all[n+1:], want) {
+						t.Errorf("%s: death blocks %q, want %q once", label, blocks, want)
+					}
+				}
+			}
+			checkDeathBlocks("first export", first)
+			second := importAndExport(t, first)
+			checkDeathBlocks("second export", second)
+			// Which of two conflicting events the record DEAT takes follows
+			// their IDs, which a re-import renews, so only a merged export is
+			// byte-stable.
+			if tt.want == 1 && second != first {
+				t.Errorf("second export differs from the first:\n%s\nfirst:\n%s", second, first)
 			}
 		})
 	}
