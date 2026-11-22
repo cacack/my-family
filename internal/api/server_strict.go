@@ -2065,9 +2065,8 @@ func (ss *StrictServer) DownloadMedia(ctx context.Context, request DownloadMedia
 		}}, nil
 	}
 	// A GEDCOM-imported item holds file references but no bytes until a file
-	// is uploaded (#1477); an empty 200 would read as a broken file. The web
-	// client tells these apart by file_size == 0 (isReferenceOnly in
-	// web/src/lib/api/client.ts), which holds because uploads reject empty data.
+	// is uploaded (#1477); an empty 200 would read as a broken file. Clients
+	// tell these apart by has_content (mediaHasContent).
 	if len(media.FileData) == 0 {
 		return DownloadMedia404JSONResponse{NotFoundJSONResponse{
 			Code:    "no_content",
@@ -4816,6 +4815,14 @@ func convertRollbackResult(result *command.RollbackResult, message string) Rollb
 	}
 }
 
+// mediaHasContent reports whether file content is stored for m, the API's
+// has_content (#1583). The metadata reads carry no bytes, so it reads the
+// stored size: an upload is never empty (command.UploadMedia) and a
+// GEDCOM-imported reference records size 0.
+func mediaHasContent(m repository.MediaReadModel) bool {
+	return m.FileSize > 0
+}
+
 // convertMediaReadModelToGenerated converts a repository.MediaReadModel to the generated Media type.
 func convertMediaReadModelToGenerated(m repository.MediaReadModel) Media {
 	hasThumbnail := m.HasThumbnail
@@ -4827,6 +4834,7 @@ func convertMediaReadModelToGenerated(m repository.MediaReadModel) Media {
 		MimeType:     m.MimeType,
 		Filename:     m.Filename,
 		FileSize:     m.FileSize,
+		HasContent:   mediaHasContent(m),
 		HasThumbnail: &hasThumbnail,
 		Private:      privateFlag(m.Restriction.IsPrivate()),
 		Version:      m.Version,

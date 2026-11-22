@@ -4827,7 +4827,7 @@ type Media struct {
 	EntityId    openapi_types.UUID `json:"entity_id"`
 	EntityType  MediaEntityType    `json:"entity_type"`
 
-	// FileSize File size in bytes. 0 means no file content is stored: the item is a reference only (imported from GEDCOM), its `files` name the referenced paths, and its content and thumbnail return 404.
+	// FileSize File size in bytes. It does not say whether file content is stored; read `has_content` for that.
 	FileSize int64  `json:"file_size"`
 	Filename string `json:"filename"`
 
@@ -4838,6 +4838,9 @@ type Media struct {
 	//
 	// Example: image/jpeg
 	Format *string `json:"format,omitempty"`
+
+	// HasContent Whether file content is stored. When false the item is a reference only (imported from GEDCOM): its `files` name the referenced paths, and its content and thumbnail return 404.
+	HasContent bool `json:"has_content"`
 
 	// HasThumbnail Whether a thumbnail is available
 	HasThumbnail *bool              `json:"has_thumbnail,omitempty"`

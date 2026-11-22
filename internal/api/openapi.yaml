@@ -9182,7 +9182,7 @@ components:
     # Media schemas
     Media:
       type: object
-      required: [id, entity_type, entity_id, title, mime_type, filename, file_size, version, created_at]
+      required: [id, entity_type, entity_id, title, mime_type, filename, file_size, has_content, version, created_at]
       properties:
         id:
           type: string
@@ -9209,9 +9209,14 @@ components:
           type: integer
           format: int64
           description: >-
-            File size in bytes. 0 means no file content is stored: the item is
-            a reference only (imported from GEDCOM), its `files` name the
-            referenced paths, and its content and thumbnail return 404.
+            File size in bytes. It does not say whether file content is
+            stored; read `has_content` for that.
+        has_content:
+          type: boolean
+          description: >-
+            Whether file content is stored. When false the item is a reference
+            only (imported from GEDCOM): its `files` name the referenced
+            paths, and its content and thumbnail return 404.
         has_thumbnail:
           type: boolean
           description: Whether a thumbnail is available
