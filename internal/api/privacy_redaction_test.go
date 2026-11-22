@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -308,15 +309,65 @@ func TestPrivacyRedaction_FamiliesAndCharts(t *testing.T) {
 				if rec.Code != http.StatusOK {
 					t.Fatalf("GET %s: %d %s", path, rec.Code, rec.Body)
 				}
-				if !p.seesLiving && (containsAny(rec.Body.String(), "Lena", "Kit", "1990", "2015", "Chapel")) {
+				if !p.seesLiving && containsAnyOutsideIDs(rec.Body.String(), livingFacts...) {
 					t.Errorf("GET %s shows a living person: %s", path, rec.Body)
 				}
 			}
 		})
 	}
 }
+
+// livingFacts is what the redaction tree records of its living people and
+// their marriage: the given names, the birth years and the marriage place.
+var livingFacts = []string{"Lena", "Kit", "1990", "2015", "Chapel"}
+
 func containsAny(s string, subs ...string) bool {
 	return slices.ContainsFunc(subs, func(sub string) bool { return strings.Contains(s, sub) })
+}
+
+var uuidPattern = regexp.MustCompile(`(?i)[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}`)
+
+// containsAnyOutsideIDs is containsAny over body with its record IDs taken
+// out. An ID is a random UUID, so its digits can spell a year by chance; use
+// this whenever a sub could occur in one (#1727).
+func containsAnyOutsideIDs(body string, subs ...string) bool {
+	return containsAny(uuidPattern.ReplaceAllString(body, "<id>"), subs...)
+}
+
+func TestContainsAnyOutsideIDs(t *testing.T) {
+	// A redacted family as an anonymous visitor gets it, with IDs that
+	// happen to hold the living people's birth years.
+	const redacted = `{"children":[{"person":{"gender":"male","given_name":"Living","id":"0af02015-e0bf-40de-83bf-6615b6bad6cd","living":true,"redacted":true,"surname":""},` +
+		`"person_id":"0af02015-e0bf-40de-83bf-6615b6bad6cd","relationship_type":"biological"}],"id":"381f636f-1990-44e2-a83a-c79141492015",` +
+		`"partner1":{"birth_date":{"raw":"1850","year":1850},"given_name":"Dora","id":"afbc354c-1ebe-4a45-b86f-5b0287381990","living":false,"surname":"Smith"},` +
+		`"partner2":{"gender":"female","given_name":"Living","id":"0AF01990-E0BF-40DE-83BF-6615B6BAD6CD","living":true,"redacted":true,"surname":""},` +
+		`"relationship_type":"marriage","version":2}`
+	if !containsAny(redacted, "1990") || !containsAny(redacted, "2015") {
+		t.Fatal("the fixture's IDs should hold 1990 and 2015")
+	}
+	if containsAnyOutsideIDs(redacted, livingFacts...) {
+		t.Errorf("a redacted response is taken for a leak because of its IDs: %s", redacted)
+	}
+	for name, leak := range map[string][2]string{
+		"given name":      {`"given_name":"Living","id":"0af02015`, `"given_name":"Kit","id":"0af02015`},
+		"display name":    {`"surname":""},"relationship_type"`, `"surname":"","name":"Lena Smith"},"relationship_type"`},
+		"birth date":      {`"living":true,"redacted":true,"surname":""},"person_id"`, `"living":true,"birth_date":{"raw":"2015"},"surname":""},"person_id"`},
+		"birth year":      {`"living":true,"redacted":true,"surname":""},"relationship_type"`, `"living":true,"birth_date":{"year":1990},"surname":""},"relationship_type"`},
+		"marriage place":  {`"version":2}`, `"marriage_place":"Chapel","version":2}`},
+		"beside an ID":    {`"version":2}`, `"note":"0af02015-e0bf-40de-83bf-6615b6bad6cd born 1990","version":2}`},
+		"in a partial ID": {`"version":2}`, `"note":"0af01990-e0bf","version":2}`},
+		"in a longer run": {`"version":2}`, `"marriage_date":"12 JUN 2015","version":2}`},
+	} {
+		t.Run(name, func(t *testing.T) {
+			body := strings.Replace(redacted, leak[0], leak[1], 1)
+			if body == redacted {
+				t.Fatalf("%q is not in the fixture", leak[0])
+			}
+			if !containsAnyOutsideIDs(body, livingFacts...) {
+				t.Errorf("a leak goes unseen: %s", body)
+			}
+		})
+	}
 }
 
 // A placeholder is marked redacted wherever a chart or family shows it, a
