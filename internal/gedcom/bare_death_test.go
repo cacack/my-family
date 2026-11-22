@@ -113,3 +113,142 @@ func TestExport_BareDeathWritesOccurrenceFlag(t *testing.T) {
 		})
 	}
 }
+
+// The cause, age and address of a DEAT the person record holds are kept on a
+// dateless, placeless death life event, and exported back into that DEAT
+// (#1455).
+func TestImport_RecordDeathKeepsCauseAndAge(t *testing.T) {
+	tests := []struct {
+		name      string
+		deat      string
+		wantEvent bool
+		wantCause string
+		wantAge   string
+		wantAddr  string
+	}{
+		{name: "dated with cause and age", deat: "1 DEAT\n2 DATE 1890\n2 CAUS Fever\n2 AGE 70y\n", wantEvent: true, wantCause: "Fever", wantAge: "70y"},
+		{name: "placed with a cause", deat: "1 DEAT\n2 PLAC Springfield\n2 CAUS Fever\n", wantEvent: true, wantCause: "Fever"},
+		{name: "dated with an address", deat: "1 DEAT\n2 DATE 1890\n2 ADDR 1 Main St\n", wantEvent: true, wantAddr: "1 Main St"},
+		{name: "dated only", deat: "1 DEAT\n2 DATE 1890\n"},
+		{name: "cause on an earlier DEAT the record does not hold", deat: "1 DEAT\n2 DATE 1880\n2 CAUS Fever\n1 DEAT\n2 DATE 1890\n"},
+		{name: "cause on the last of two DEATs", deat: "1 DEAT\n2 DATE 1880\n1 DEAT\n2 DATE 1890\n2 CAUS Fever\n", wantEvent: true, wantCause: "Fever"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data := "0 HEAD\n1 GEDC\n2 VERS 7.0\n0 @S1@ SOUR\n1 TITL Register\n0 @I1@ INDI\n1 NAME A /B/\n" + tt.deat + "0 TRLR\n"
+			_, persons, _, _, _, _, events, _, _, _, _, _, _, err := gedcom.NewImporter().Import(context.Background(), strings.NewReader(data))
+			if err != nil {
+				t.Fatalf("Import: %v", err)
+			}
+			if len(persons) != 1 || persons[0].DeathDate == "" && persons[0].DeathPlace == "" {
+				t.Fatalf("persons = %+v, want one with a record death", persons)
+			}
+			var deaths []gedcom.EventData
+			for _, e := range events {
+				if e.FactType == domain.FactPersonDeath {
+					deaths = append(deaths, e)
+				}
+			}
+			if !tt.wantEvent {
+				if len(deaths) != 0 {
+					t.Fatalf("death life events = %+v, want none", deaths)
+				}
+				return
+			}
+			if len(deaths) != 1 {
+				t.Fatalf("death life events = %+v, want one", deaths)
+			}
+			d := deaths[0]
+			if d.Date != "" || d.Place != "" || d.IsNegated || d.Cause != tt.wantCause || d.Age != tt.wantAge {
+				t.Errorf("death life event = %+v, want no date or place, cause %q, age %q", d, tt.wantCause, tt.wantAge)
+			}
+			if gotAddr := ""; d.Address != nil {
+				gotAddr = d.Address.Line1
+				if gotAddr != tt.wantAddr {
+					t.Errorf("address = %q, want %q", gotAddr, tt.wantAddr)
+				}
+			} else if tt.wantAddr != "" {
+				t.Errorf("address = nil, want %q", tt.wantAddr)
+			}
+		})
+	}
+}
+
+// deathBlocks returns each "1 DEAT" or "1 NO DEAT" block of out, its lines
+// joined by "\n".
+func deathBlocks(out string) []string {
+	var blocks []string
+	in := false
+	for _, line := range strings.Split(out, "\n") {
+		switch {
+		case strings.HasPrefix(line, "1 DEAT") || strings.HasPrefix(line, "1 NO DEAT"):
+			blocks = append(blocks, line)
+			in = true
+		case in && line != "" && line[0] > '1':
+			blocks[len(blocks)-1] += "\n" + line
+		default:
+			in = false
+		}
+	}
+	return blocks
+}
+
+func TestExport_RecordDeathMergesCauseAndAge(t *testing.T) {
+	data := "0 HEAD\n1 GEDC\n2 VERS 7.0\n0 @S1@ SOUR\n1 TITL Register\n0 @I1@ INDI\n1 NAME A /B/\n" +
+		"1 DEAT\n2 DATE 1890\n2 CAUS Fever\n2 AGE 70y\n2 SOUR @S1@\n0 TRLR\n"
+	first := importAndExport(t, data)
+	blocks := deathBlocks(first)
+	if len(blocks) != 1 {
+		t.Fatalf("death blocks = %q, want one; export:\n%s", blocks, first)
+	}
+	for _, want := range []string{"2 DATE 1890", "2 CAUS Fever", "2 AGE 70y", "2 SOUR @S"} {
+		if !strings.Contains(blocks[0]+"\n", want) {
+			t.Errorf("DEAT block %q lacks %q", blocks[0], want)
+		}
+	}
+	if strings.Count(blocks[0], "2 SOUR") != 1 {
+		t.Errorf("DEAT block %q, want its citation once", blocks[0])
+	}
+	if second := importAndExport(t, first); second != first {
+		t.Errorf("second export differs from the first:\n%s\nfirst:\n%s", second, first)
+	}
+}
+
+// A record death keeps a death life event that has more than a cause, age or
+// address, or one of several, as a DEAT of its own.
+func TestExport_RecordDeathKeepsOtherDeathEvents(t *testing.T) {
+	tests := []struct {
+		name   string
+		events []repository.EventReadModel
+		want   int // death blocks
+	}{
+		{name: "merged", events: []repository.EventReadModel{{Cause: "Fever"}}, want: 1},
+		{name: "with notes", events: []repository.EventReadModel{{Cause: "Fever", Notes: "n"}}, want: 2},
+		{name: "dated", events: []repository.EventReadModel{{Cause: "Fever", DateRaw: "1891"}}, want: 2},
+		{name: "two", events: []repository.EventReadModel{{Cause: "Fever"}, {Age: "70y"}}, want: 3},
+		{name: "negated", events: []repository.EventReadModel{{IsNegated: true}}, want: 2},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			rs := memory.NewReadModelStore()
+			person := &repository.PersonReadModel{ID: uuid.New(), GivenName: "A", Surname: "B", DeathDateRaw: "1890", Version: 1}
+			if err := rs.SavePerson(ctx, domain.MainBranchID, person); err != nil {
+				t.Fatalf("SavePerson: %v", err)
+			}
+			for _, event := range tt.events {
+				event.ID, event.OwnerType, event.OwnerID, event.FactType = uuid.New(), "person", person.ID, domain.FactPersonDeath
+				if err := rs.SaveEvent(ctx, domain.MainBranchID, &event); err != nil {
+					t.Fatalf("SaveEvent: %v", err)
+				}
+			}
+			var buf bytes.Buffer
+			if _, err := gedcom.NewExporter(rs).ExportWithOptions(ctx, &buf, gedcom.ExportOptions{TargetVersion: "7.0"}); err != nil {
+				t.Fatalf("Export: %v", err)
+			}
+			if blocks := deathBlocks(buf.String()); len(blocks) != tt.want {
+				t.Errorf("death blocks = %q, want %d", blocks, tt.want)
+			}
+		})
+	}
+}
