@@ -22,6 +22,7 @@
 	} from '#lib/api/client.js';
 	import BranchOutcomeBadge from '#lib/components/branch/BranchOutcomeBadge.svelte';
 	import { promotionSummary } from '#lib/utils/branchResearch.js';
+	import { branchPageHref } from '#lib/utils/branchPages.js';
 	import { Badge } from '#lib/components/ui/badge/index.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import ErrorState from '#lib/components/ErrorState.svelte';
@@ -125,7 +126,7 @@
 {/snippet}
 
 <div class="research-page">
-	<a href={branchId ? `/branches/${branchId}` : '/branches'} class="back-link">&larr; {branch?.name ?? 'Branch'}</a>
+	<a href={(branchId && branchPageHref(branchId)) || '/branches'} class="back-link">&larr; {branch?.name ?? 'Branch'}</a>
 
 	{#if isVisitor()}
 		<PageHeader title="Branch research" />
