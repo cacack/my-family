@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.15.0](https://github.com/cacack/my-family/compare/v0.14.0...v0.15.0) (2026-11-22)
+
+
+### Features
+
+* **api:** authenticate scripts with personal API tokens ([95dffec](https://github.com/cacack/my-family/commit/95dffec2d4ed9f8f98b97bc32b4e74dad0049c59)), closes [#1416](https://github.com/cacack/my-family/issues/1416)
+* **api:** describe sign-in in the OpenAPI contract ([2eda654](https://github.com/cacack/my-family/commit/2eda654f4789c6804cc69982290a385077f4efd0)), closes [#1423](https://github.com/cacack/my-family/issues/1423)
+* **auth:** add TRUSTED_PROXIES for the per-client rate limits ([db13638](https://github.com/cacack/my-family/commit/db13638bcf694418f7f7b88479b1cf1f93a2b3f6)), closes [#1422](https://github.com/cacack/my-family/issues/1422)
+* **auth:** keep the auth audit log for AUTH_AUDIT_RETENTION_DAYS ([d350154](https://github.com/cacack/my-family/commit/d3501548bb7db03e77a9a903661a9edd0dec54e8)), closes [#1433](https://github.com/cacack/my-family/issues/1433)
+* **auth:** page the auth audit log by keyset cursor ([43496c1](https://github.com/cacack/my-family/commit/43496c1d5c244dbba772834a57d3df41fc2754f9)), closes [#1577](https://github.com/cacack/my-family/issues/1577)
+* **auth:** store personal API tokens hashed ([542999b](https://github.com/cacack/my-family/commit/542999bc55055832196565bf99f4a8f0b03cdfcd)), closes [#1416](https://github.com/cacack/my-family/issues/1416)
+* **repository:** prune old auth audit entries and index the cleanups ([cead557](https://github.com/cacack/my-family/commit/cead557d0480888e66f8a087e19c5496f09f5b82)), closes [#1433](https://github.com/cacack/my-family/issues/1433)
+* **web:** manage API tokens on the account page ([4dc6202](https://github.com/cacack/my-family/commit/4dc6202e85032861722f7f3807d3d894100ff1c5)), closes [#1416](https://github.com/cacack/my-family/issues/1416)
+
+
+### Bug Fixes
+
+* **accounts:** enforce the last-owner rule in the account store ([cf66e43](https://github.com/cacack/my-family/commit/cf66e43cbe5630c01e41793dd9686713ff020efc)), closes [#1432](https://github.com/cacack/my-family/issues/1432)
+* **accounts:** map a racing duplicate username to ErrUsernameTaken on SQLite ([9cb7249](https://github.com/cacack/my-family/commit/9cb7249ec7f2f609a974171fdab658210fd8ca31)), closes [#1451](https://github.com/cacack/my-family/issues/1451)
+* **api:** mark the session optional on reads a visitor may make ([16f68b9](https://github.com/cacack/my-family/commit/16f68b98e40bee2245f7bb23f993d49f1e8f880e)), closes [#1423](https://github.com/cacack/my-family/issues/1423)
+* **auth:** audit a change before its cleanup steps can fail ([a6fe16c](https://github.com/cacack/my-family/commit/a6fe16c8522bf30547806b8b9f46407894c9dd52)), closes [#1576](https://github.com/cacack/my-family/issues/1576)
+* **auth:** cap concurrent argon2id hashing across the process ([dfeb948](https://github.com/cacack/my-family/commit/dfeb94859906d9f27a233018ff9caf7768c93800)), closes [#1427](https://github.com/cacack/my-family/issues/1427)
+* **auth:** keep API tokens from minting lasting credentials ([3e03dd5](https://github.com/cacack/my-family/commit/3e03dd58655bde7be868a0cb3a6e1a80dba6926a))
+* **auth:** purge expired invite and password reset rows on sign-in ([5b137c7](https://github.com/cacack/my-family/commit/5b137c78277bc83881ced4701177541488db96c8)), closes [#1464](https://github.com/cacack/my-family/issues/1464)
+* **config:** refuse an unparseable or oversized AUTH_AUDIT_RETENTION_DAYS ([16a2937](https://github.com/cacack/my-family/commit/16a29379b2b955795b68685f240082419d0346c5))
+* **web:** gate the family page's edit shortcut on the editor role ([a6030db](https://github.com/cacack/my-family/commit/a6030dbc5915768e7bf70afbe4b31bad050e6104)), closes [#1493](https://github.com/cacack/my-family/issues/1493)
+* **web:** hide the go-snapshots shortcut from visitors ([0ca56c4](https://github.com/cacack/my-family/commit/0ca56c485924ef022cc1b01a70e64ef5b5922d3f)), closes [#1530](https://github.com/cacack/my-family/issues/1530)
+
 ## [0.14.0](https://github.com/cacack/my-family/compare/v0.13.1...v0.14.0) (2026-11-21)
 
 
