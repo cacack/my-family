@@ -77,3 +77,25 @@ func TestMissingName_ImportedPersonIsEditable(t *testing.T) {
 		t.Errorf("birth_place = %v, want London", got)
 	}
 }
+
+// An update may not make a named person or name nameless (#1709).
+func TestMissingName_UpdateCannotClearBothParts(t *testing.T) {
+	server := setupTestServer()
+
+	person := decodeBody(t, send(server, http.MethodPost, "/api/v1/persons", `{"given_name":"John","surname":"Doe"}`))
+	id := person["id"].(string)
+	rec := send(server, http.MethodPut, "/api/v1/persons/"+id, fmt.Sprintf(`{"given_name":"","surname":null,"version":%v}`, person["version"]))
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("clear both parts of a person: status %d, want 400: %s", rec.Code, rec.Body.String())
+	}
+
+	rec = send(server, http.MethodPost, "/api/v1/persons/"+id+"/names", `{"given_name":"Jack","surname":"Doe","name_type":"aka"}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("add name: status %d: %s", rec.Code, rec.Body.String())
+	}
+	nameID := decodeBody(t, rec)["id"].(string)
+	rec = send(server, http.MethodPut, "/api/v1/persons/"+id+"/names/"+nameID, `{"given_name":"","surname":""}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("clear both parts of a name: status %d, want 400: %s", rec.Code, rec.Body.String())
+	}
+}

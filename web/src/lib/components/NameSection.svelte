@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { can } from '#lib/stores/access.svelte.js';
-	import { api, isStaleVersion, missingNameError, type PersonName, type NameType } from '#lib/api/client.js';
+	import { api, clearedNameError, isStaleVersion, missingNameError, type PersonName, type NameType } from '#lib/api/client.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import FormRow from '#lib/components/FormRow.svelte';
 	import ConflictError from './ConflictError.svelte';
@@ -173,7 +173,13 @@
 
 	async function saveEdit() {
 		if (!editingId) return;
-		error = missingNameError(formData);
+		const original = names.find((n) => n.id === editingId);
+		// A primary name sets the person's name, which mirrors the current
+		// primary, so promoting a nameless name is checked against that too.
+		const primary = formData.is_primary ? names.find((n) => n.is_primary) : undefined;
+		error = original
+			? (clearedNameError(original, formData) ?? (primary ? clearedNameError(primary, formData) : null))
+			: missingNameError(formData);
 		if (error) return;
 
 		saving = true;

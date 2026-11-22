@@ -21,4 +21,23 @@ describe('parseName', () => {
 	it('handles empty string', () => {
 		expect(parseName('')).toEqual({ givenName: '', surname: '' });
 	});
+
+	// A GEDCOM-style slashed surname is taken whole, and may stand alone (#1709).
+	it('takes a slashed surname whole', () => {
+		expect(parseName('Mary /van Buren/')).toEqual({ givenName: 'Mary', surname: 'van Buren' });
+	});
+
+	it('reads a slashed surname alone as a surname-only name', () => {
+		expect(parseName('/Tudor/')).toEqual({ givenName: '', surname: 'Tudor' });
+		expect(parseName(' /Tudor ')).toEqual({ givenName: '', surname: 'Tudor' });
+	});
+
+	it('treats a slash inside a word as an ordinary character', () => {
+		expect(parseName('AC/DC')).toEqual({ givenName: 'AC/DC', surname: '' });
+		expect(parseName('Jean/Jeanne Smith')).toEqual({ givenName: 'Jean/Jeanne', surname: 'Smith' });
+	});
+
+	it('reads a lone slash as no name', () => {
+		expect(parseName('/')).toEqual({ givenName: '', surname: '' });
+	});
 });

@@ -2515,6 +2515,20 @@ export function missingNameError(name: { given_name?: string; surname?: string }
 }
 
 /**
+ * The error for an update that would leave a named person or name with neither
+ * a given name nor a surname, or null. One that was already nameless (an
+ * imported person with no NAME) may stay so (#1709). It mirrors the server's
+ * `checkNameKept` so the form can say so before saving; the server's check is
+ * the authoritative one.
+ */
+export function clearedNameError(
+	before: { given_name?: string; surname?: string },
+	after: { given_name?: string; surname?: string }
+): string | null {
+	return missingNameError(before) ? null : missingNameError(after);
+}
+
+/**
  * Format a family's display name from its partners: `Jane Smith & John Doe`,
  * one partner's name alone, or `Unknown` with neither.
  */

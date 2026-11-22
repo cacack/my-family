@@ -182,6 +182,54 @@ describe('NameSection', () => {
 		expect(apiModule.api.addPersonName).not.toHaveBeenCalled();
 	});
 
+	// An edit may leave a name nameless only if it already was (#1709), the
+	// same rule as the person edit page and the API.
+	it('refuses an edit that clears both parts of a named name', async () => {
+		render(NameSection, { personId: PERSON_ID });
+		await fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+
+		await fireEvent.input(screen.getByLabelText(/^Given Name/), { target: { value: '' } });
+		await fireEvent.submit(screen.getByLabelText(/^Given Name/).closest('form')!);
+
+		expect(await screen.findByRole('alert')).toHaveProperty('textContent', 'Enter a given name or a surname');
+		expect(apiModule.api.updatePersonName).not.toHaveBeenCalled();
+	});
+
+	it('saves an edit to a name that already had neither part', async () => {
+		vi.mocked(apiModule.api.getPersonNames).mockResolvedValue({
+			items: [{ ...surnameless(), given_name: '' }],
+			total: 1
+		});
+		render(NameSection, { personId: PERSON_ID });
+		await fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+
+		await fireEvent.input(screen.getByLabelText(/^Nickname/), { target: { value: 'the Unnamed' } });
+		await fireEvent.submit(screen.getByLabelText(/^Given Name/).closest('form')!);
+
+		await waitFor(() => expect(apiModule.api.updatePersonName).toHaveBeenCalled());
+		expect(vi.mocked(apiModule.api.updatePersonName).mock.calls[0][2]).toMatchObject({
+			given_name: '',
+			surname: '',
+			nickname: 'the Unnamed'
+		});
+	});
+
+	it('refuses making a nameless name primary over a named one', async () => {
+		vi.mocked(apiModule.api.getPersonNames).mockResolvedValue({
+			items: [surnameless(), { ...surnameless(), id: 'n2', given_name: '', is_primary: false }],
+			total: 2
+		});
+		render(NameSection, { personId: PERSON_ID });
+		await screen.findByText('Victoria');
+		await fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[1]);
+
+		await fireEvent.click(screen.getByRole('checkbox', { name: 'Primary name' }));
+		await fireEvent.submit(screen.getByLabelText(/^Given Name/).closest('form')!);
+
+		expect(await screen.findByRole('alert')).toHaveProperty('textContent', 'Enter a given name or a surname');
+		expect(apiModule.api.updatePersonName).not.toHaveBeenCalled();
+	});
+
 	// The server refuses to delete the primary (or only) name (#1106).
 	describe('deleting a name', () => {
 		const alias = {

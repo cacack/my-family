@@ -468,6 +468,20 @@ describe('Person detail edit form', () => {
 		expect(body).toMatchObject({ given_name: '', surname: '', birth_place: 'London' });
 	});
 
+	// An update may leave a person nameless only if it already was (#1709),
+	// the same rule as the name edit form and the API.
+	it('refuses to clear both name parts of a named person', async () => {
+		getPerson.mockResolvedValue(person());
+		await openEdit();
+
+		await fireEvent.input(screen.getByLabelText('Given Name'), { target: { value: '' } });
+		await fireEvent.input(screen.getByLabelText('Surname'), { target: { value: ' ' } });
+		await fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+
+		expect((await screen.findByRole('alert')).textContent?.trim()).toBe('Enter a given name or a surname');
+		expect(updatePerson).not.toHaveBeenCalled();
+	});
+
 	it('sends a cleared surname as an empty string', async () => {
 		getPerson.mockResolvedValue(person());
 		await openEdit();
