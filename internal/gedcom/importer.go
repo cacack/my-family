@@ -1692,7 +1692,8 @@ func deathLifeEvents(indi *gedcom.Individual, personID uuid.UUID) ([]EventData, 
 	// Without a record death the merged event is the death itself; with one,
 	// it is kept only to hold detail the record cannot.
 	hasDetail := merged.Cause != "" || merged.Age != "" || merged.Address != nil
-	if !(held == nil && mergedBare || hasDetail) {
+	keepMerged := held == nil && mergedBare || hasDetail
+	if !keepMerged {
 		return separate, ids
 	}
 	return append([]EventData{merged}, separate...), ids
