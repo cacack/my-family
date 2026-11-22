@@ -54,6 +54,9 @@ func NewAccountStore(db *sql.DB) (*AccountStore, error) {
 		);
 
 		CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
+		-- DeleteExpiredSessions filters on either time.
+		CREATE INDEX IF NOT EXISTS idx_sessions_last_seen_at ON sessions(last_seen_at);
+		CREATE INDEX IF NOT EXISTS idx_sessions_created_at ON sessions(created_at);
 
 		CREATE TABLE IF NOT EXISTS invites (
 			token_hash TEXT PRIMARY KEY,
@@ -82,6 +85,9 @@ func NewAccountStore(db *sql.DB) (*AccountStore, error) {
 			detail TEXT NOT NULL,
 			client_ip TEXT NOT NULL
 		);
+
+		-- DeleteAuthAuditBefore filters on it.
+		CREATE INDEX IF NOT EXISTS idx_auth_audit_at ON auth_audit(at);
 
 		CREATE TABLE IF NOT EXISTS tree_settings (
 			tree_id UUID PRIMARY KEY,
@@ -258,10 +264,16 @@ func (s *AccountStore) DeleteSession(ctx context.Context, tokenHash string) erro
 	return nil
 }
 
+// The cleanup deletes, each served by an index created in NewAccountStore.
+const (
+	deleteExpiredSessionsSQL = `DELETE FROM sessions WHERE last_seen_at < $1 OR created_at < $2`
+	deleteOldAuthAuditSQL    = `DELETE FROM auth_audit WHERE at < $1`
+)
+
 // DeleteExpiredSessions removes every session idle since before idleBefore or
 // created before createdBefore.
 func (s *AccountStore) DeleteExpiredSessions(ctx context.Context, idleBefore, createdBefore time.Time) (int, error) {
-	result, err := s.db.ExecContext(ctx, `DELETE FROM sessions WHERE last_seen_at < $1 OR created_at < $2`, idleBefore, createdBefore)
+	result, err := s.db.ExecContext(ctx, deleteExpiredSessionsSQL, idleBefore, createdBefore)
 	if err != nil {
 		return 0, fmt.Errorf("delete expired sessions: %w", err)
 	}
@@ -671,6 +683,19 @@ func (s *AccountStore) ListAuthAudit(ctx context.Context, limit, offset int) ([]
 		return nil, 0, fmt.Errorf("list auth audit: %w", err)
 	}
 	return entries, total, nil
+}
+
+// DeleteAuthAuditBefore removes every audit entry recorded before before.
+func (s *AccountStore) DeleteAuthAuditBefore(ctx context.Context, before time.Time) (int, error) {
+	result, err := s.db.ExecContext(ctx, deleteOldAuthAuditSQL, before)
+	if err != nil {
+		return 0, fmt.Errorf("delete old auth audit: %w", err)
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("delete old auth audit: %w", err)
+	}
+	return int(n), nil
 }
 
 // GetTreeSettings returns treeID's settings, or the defaults when none were

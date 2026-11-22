@@ -88,6 +88,10 @@ type Service struct {
 	now      func() time.Time
 	limiter  *limiter
 
+	// auditRetention, when positive, is how long the auth audit log keeps an
+	// entry; sign-in prunes older ones.
+	auditRetention time.Duration
+
 	// hasOwner caches a true CountMembers: the last owner can be neither
 	// demoted nor disabled, so once one exists setup is over for good. While it is false every check asks
 	// the store, so an owner created by `myfamily user create` against a
@@ -117,6 +121,14 @@ type Option func(*Service)
 func WithSettings(settings repository.SettingsStore) Option {
 	return func(s *Service) {
 		s.settings = settings
+	}
+}
+
+// WithAuditRetention has each sign-in remove the auth audit entries older
+// than retention (#1433). Without it the log is kept in full.
+func WithAuditRetention(retention time.Duration) Option {
+	return func(s *Service) {
+		s.auditRetention = retention
 	}
 }
 
@@ -398,6 +410,11 @@ func (s *Service) SignIn(ctx context.Context, username, password, clientKey stri
 	}
 	if _, err := s.store.DeleteExpiredLinks(ctx, now); err != nil {
 		slog.Warn("auth: could not delete expired links", "error", err)
+	}
+	if s.auditRetention > 0 {
+		if _, err := s.store.DeleteAuthAuditBefore(ctx, now.Add(-s.auditRetention)); err != nil {
+			slog.Warn("auth: could not delete old audit entries", "error", err)
+		}
 	}
 	token, err := s.startSession(ctx, user.ID)
 	if err != nil {

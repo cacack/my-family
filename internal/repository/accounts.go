@@ -268,4 +268,9 @@ type AccountStore interface {
 	// ListAuthAudit returns up to limit entries, newest first, after skipping
 	// offset, and how many there are in all.
 	ListAuthAudit(ctx context.Context, limit, offset int) ([]AuthAuditEntry, int, error)
+
+	// DeleteAuthAuditBefore removes every audit entry recorded before before,
+	// returning how many it removed. It is the retention prune, the only
+	// removal from the log.
+	DeleteAuthAuditBefore(ctx context.Context, before time.Time) (int, error)
 }

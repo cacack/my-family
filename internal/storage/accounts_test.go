@@ -98,6 +98,55 @@ func TestAccountStore_ExpiredLinksContract(t *testing.T) {
 	}
 }
 
+func TestAccountStore_AuditRetentionContract(t *testing.T) {
+	for backend, open := range accountBackends() {
+		t.Run(string(backend), func(t *testing.T) {
+			stores := open(t)
+			t.Cleanup(func() { _ = stores.Close() })
+			runAuditRetentionContract(t, stores.Accounts)
+		})
+	}
+}
+
+// runAuditRetentionContract checks that DeleteAuthAuditBefore removes the
+// audit entries recorded before the cutoff and keeps the rest (#1433).
+func runAuditRetentionContract(t *testing.T, store repository.AccountStore) {
+	ctx := context.Background()
+	cutoff := at(time.Now())
+	if removed, err := store.DeleteAuthAuditBefore(ctx, cutoff); err != nil || removed != 0 {
+		t.Fatalf("DeleteAuthAuditBefore on an empty log = %d, %v; want 0", removed, err)
+	}
+	for name, recorded := range map[string]time.Time{
+		"old": cutoff.Add(-24 * time.Hour), "just-old": cutoff.Add(-time.Microsecond),
+		"at-cutoff": cutoff, "recent": cutoff.Add(time.Hour),
+	} {
+		if err := store.AppendAuthAudit(ctx, &repository.AuthAuditEntry{
+			At: recorded, Action: repository.AuthActionSignInFailed, Username: name, ClientIP: "192.0.2.1",
+		}); err != nil {
+			t.Fatalf("AppendAuthAudit(%s): %v", name, err)
+		}
+	}
+	removed, err := store.DeleteAuthAuditBefore(ctx, cutoff)
+	if err != nil {
+		t.Fatalf("DeleteAuthAuditBefore: %v", err)
+	}
+	if removed != 2 {
+		t.Errorf("DeleteAuthAuditBefore removed %d, want 2", removed)
+	}
+	entries, total, err := store.ListAuthAudit(ctx, 10, 0)
+	if err != nil {
+		t.Fatalf("ListAuthAudit: %v", err)
+	}
+	var kept []string
+	for _, e := range entries {
+		kept = append(kept, e.Username)
+	}
+	slices.Sort(kept)
+	if total != 2 || !slices.Equal(kept, []string{"at-cutoff", "recent"}) {
+		t.Errorf("entries kept = %v (total %d), want at-cutoff and recent", kept, total)
+	}
+}
+
 // runExpiredLinksContract checks that DeleteExpiredLinks removes the invites
 // and resets that expire at or before now and keeps the rest.
 func runExpiredLinksContract(t *testing.T, store repository.AccountStore) {

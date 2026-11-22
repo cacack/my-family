@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -490,6 +491,83 @@ func TestSignIn_PurgeFailureIsLoggedNotFatal(t *testing.T) {
 	}
 	if got := logged.String(); !strings.Contains(got, "could not delete expired links") || !strings.Contains(got, "disk full") {
 		t.Errorf("log = %q, want the purge failure", got)
+	}
+}
+
+func TestSignIn_PrunesOldAuditEntries(t *testing.T) {
+	const retention = 30 * 24 * time.Hour
+	for _, tt := range []struct {
+		name string
+		opts []Option
+		want []string
+	}{
+		{name: "with a retention", opts: []Option{WithAuditRetention(retention)}, want: []string{"recent"}},
+		{name: "without one the log is kept", want: []string{"old", "recent"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			svc, store, c := newTestService(t)
+			for _, opt := range tt.opts {
+				opt(svc)
+			}
+			ctx := context.Background()
+			if _, err := svc.CreateOwner(ctx, Actor{}, "ada", "Ada", testPassword); err != nil {
+				t.Fatalf("CreateOwner: %v", err)
+			}
+			now := c.Now()
+			for name, recorded := range map[string]time.Time{"old": now.Add(-retention - time.Hour), "recent": now.Add(-retention + time.Hour)} {
+				if err := store.AppendAuthAudit(ctx, &repository.AuthAuditEntry{At: recorded,
+					Action: repository.AuthActionSignInFailed, Username: name}); err != nil {
+					t.Fatalf("AppendAuthAudit: %v", err)
+				}
+			}
+			if _, _, err := svc.SignIn(ctx, "ada", testPassword, "ip"); err != nil {
+				t.Fatalf("SignIn: %v", err)
+			}
+			entries, _, err := store.ListAuthAudit(ctx, 100, 0)
+			if err != nil {
+				t.Fatalf("ListAuthAudit: %v", err)
+			}
+			var failed []string
+			for _, e := range entries {
+				if e.Action == repository.AuthActionSignInFailed {
+					failed = append(failed, e.Username)
+				}
+			}
+			slices.Sort(failed)
+			if !slices.Equal(failed, tt.want) {
+				t.Errorf("failed sign-ins kept = %v, want %v", failed, tt.want)
+			}
+		})
+	}
+}
+
+// failingAuditPrune is a store whose old audit entries cannot be deleted.
+type failingAuditPrune struct {
+	repository.AccountStore
+}
+
+func (failingAuditPrune) DeleteAuthAuditBefore(context.Context, time.Time) (int, error) {
+	return 0, errors.New("disk full")
+}
+
+func TestSignIn_AuditPruneFailureIsLoggedNotFatal(t *testing.T) {
+	svc, store, _ := newTestService(t)
+	WithAuditRetention(time.Hour)(svc)
+	ctx := context.Background()
+	if _, err := svc.CreateOwner(ctx, Actor{}, "ada", "Ada", testPassword); err != nil {
+		t.Fatalf("CreateOwner: %v", err)
+	}
+	svc.store = failingAuditPrune{store}
+	var logged bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logged, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	if _, _, err := svc.SignIn(ctx, "ada", testPassword, "ip"); err != nil {
+		t.Fatalf("SignIn with a failing audit prune: %v", err)
+	}
+	if got := logged.String(); !strings.Contains(got, "could not delete old audit entries") || !strings.Contains(got, "disk full") {
+		t.Errorf("log = %q, want the prune failure", got)
 	}
 }
 

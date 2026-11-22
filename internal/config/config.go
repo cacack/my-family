@@ -7,7 +7,16 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
+
+// DefaultAuthAuditRetentionDays is how many days the auth audit log keeps an
+// entry when AUTH_AUDIT_RETENTION_DAYS is unset.
+const DefaultAuthAuditRetentionDays = 365
+
+// MaxAuthAuditRetentionDays is the longest retention Validate accepts, well
+// inside what a time.Duration can hold.
+const MaxAuthAuditRetentionDays = 36500
 
 // Config holds the application configuration.
 type Config struct {
@@ -33,6 +42,13 @@ type Config struct {
 	// believed. Read it through TrustedProxyRanges; Validate rejects an entry
 	// that is neither. Empty trusts no one.
 	TrustedProxies string
+
+	// AuthAuditRetentionDays is AUTH_AUDIT_RETENTION_DAYS as given: how many
+	// days an auth audit entry is kept before sign-in prunes it. Empty means
+	// DefaultAuthAuditRetentionDays. Read it through AuthAuditRetention;
+	// Validate rejects anything but a whole number from 1 to
+	// MaxAuthAuditRetentionDays.
+	AuthAuditRetentionDays string
 }
 
 // AuthMode says whether requests must sign in (ADR-007).
@@ -82,12 +98,39 @@ func (c *Config) TrustedProxyRanges() ([]*net.IPNet, error) {
 	return ranges, nil
 }
 
+// AuthAuditRetention is how long the auth audit log keeps an entry. It is
+// zero, which keeps every entry, for a value Validate rejects.
+func (c *Config) AuthAuditRetention() time.Duration {
+	days, err := c.authAuditRetentionDays()
+	if err != nil {
+		return 0
+	}
+	return time.Duration(days) * 24 * time.Hour
+}
+
+// authAuditRetentionDays parses AuthAuditRetentionDays.
+func (c *Config) authAuditRetentionDays() (int, error) {
+	value := strings.TrimSpace(c.AuthAuditRetentionDays)
+	if value == "" {
+		return DefaultAuthAuditRetentionDays, nil
+	}
+	days, err := strconv.Atoi(value)
+	if err != nil || days < 1 || days > MaxAuthAuditRetentionDays {
+		return 0, fmt.Errorf("AUTH_AUDIT_RETENTION_DAYS must be a whole number of days from 1 to %d, got %q",
+			MaxAuthAuditRetentionDays, c.AuthAuditRetentionDays)
+	}
+	return days, nil
+}
+
 // Validate reports a setting the server must not start with.
 func (c *Config) Validate() error {
 	switch c.AuthMode {
 	case "", AuthModeAccounts, AuthModeOpen:
 	default:
 		return fmt.Errorf("AUTH_MODE must be %q or %q, got %q", AuthModeAccounts, AuthModeOpen, c.AuthMode)
+	}
+	if _, err := c.authAuditRetentionDays(); err != nil {
+		return err
 	}
 	_, err := c.TrustedProxyRanges()
 	return err
@@ -104,7 +147,8 @@ func Load() *Config {
 		DemoMode:    getEnvBoolOrDefault("DEMO_MODE", false),
 		AuthMode:    AuthMode(strings.ToLower(strings.TrimSpace(os.Getenv("AUTH_MODE")))),
 
-		TrustedProxies: os.Getenv("TRUSTED_PROXIES"),
+		TrustedProxies:         os.Getenv("TRUSTED_PROXIES"),
+		AuthAuditRetentionDays: os.Getenv("AUTH_AUDIT_RETENTION_DAYS"),
 	}
 	return cfg
 }
