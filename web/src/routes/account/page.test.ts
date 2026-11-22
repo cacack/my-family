@@ -7,7 +7,7 @@ import { signInAs } from '#lib/test/roles.js';
 
 vi.mock('#lib/api/client.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof apiModule>();
-	return { ...actual, api: { updateCurrentAccount: vi.fn() } };
+	return { ...actual, api: { updateCurrentAccount: vi.fn(), listAPITokens: vi.fn() } };
 });
 
 const api = vi.mocked(apiModule.api);
@@ -15,7 +15,14 @@ const api = vi.mocked(apiModule.api);
 describe('Account page', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		api.listAPITokens.mockResolvedValue([]);
 		signInAs('editor');
+	});
+
+	it('shows the API tokens section', async () => {
+		render(AccountPage);
+		expect(screen.getByRole('heading', { name: 'API tokens' })).toBeDefined();
+		expect(await screen.findByText('You have no API tokens.')).toBeDefined();
 	});
 
 	it('saves a new display name', async () => {

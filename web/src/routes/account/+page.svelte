@@ -1,13 +1,14 @@
 <script lang="ts">
 	/**
 	 * The signed-in user's own account (ADR-007): their display name, shown in
-	 * history, and their password. A new password signs them out everywhere
-	 * else; this browser stays signed in.
+	 * history, their password, and their API tokens for scripts (#1416). A new
+	 * password signs them out everywhere else; this browser stays signed in.
 	 */
 	import PageHeader from '#lib/components/PageHeader.svelte';
 	import ActionError from '#lib/components/ActionError.svelte';
 	import LiveRegion from '#lib/components/LiveRegion.svelte';
 	import InfoSection from '#lib/components/InfoSection.svelte';
+	import APITokens from '#lib/components/auth/APITokens.svelte';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { Input } from '#lib/components/ui/input/index.js';
 	import { Label } from '#lib/components/ui/label/index.js';
@@ -70,7 +71,7 @@
 <LiveRegion bind:this={liveRegion} />
 
 <div class="account-page">
-	<PageHeader title="Account" description="Your name in the tree's history, and the password you sign in with." />
+	<PageHeader title="Account" description="Your name in the tree's history, the password you sign in with, and API tokens for scripts." />
 
 	{#if auth.phase === 'open'}
 		<p class="notice" role="note">
@@ -134,6 +135,8 @@
 				</div>
 			</form>
 		</section>
+
+		<APITokens announce={(message) => liveRegion?.announce(message)} />
 	{/if}
 </div>
 
