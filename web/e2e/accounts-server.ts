@@ -63,7 +63,12 @@ async function launch(beforeServe?: (env: NodeJS.ProcessEnv) => void): Promise<L
 		DEMO_MODE: '',
 		AUTH_MODE: 'accounts'
 	};
-	beforeServe?.(env);
+	try {
+		beforeServe?.(env);
+	} catch (e) {
+		rmSync(dir, { recursive: true, force: true });
+		throw e;
+	}
 	// Echo's per-request lines go to stdout; startup failures surface on stderr,
 	// which is passed through and kept for the setup token.
 	const server = spawn(BINARY, ['serve'], { env, stdio: ['ignore', 'ignore', 'pipe'] });
