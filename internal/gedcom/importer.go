@@ -202,6 +202,7 @@ type CitationData struct {
 	Quality     string
 	QuotedText  string
 	GedcomXref  string
+	Restriction string // _RESN: GEDCOM defines no RESN on a citation (ADR-008)
 
 	// AncestryAPID is the Ancestry Permanent Identifier from the _APID tag.
 	// This links the citation to a specific record in an Ancestry database.
@@ -1307,8 +1308,8 @@ func parseNote(note *gedcom.Note) NoteData {
 }
 
 // extensionRestrictionTag carries a restriction notice on a record type for
-// which the GEDCOM version defines no RESN: sources and notes, and media in
-// 5.5 and 5.5.1 (ADR-008 §2).
+// which the GEDCOM version defines no RESN: sources, citations and notes, and
+// media in 5.5 and 5.5.1 (ADR-008 §2).
 const extensionRestrictionTag = "_RESN"
 
 // extensionRestriction returns the restriction notice of a record that GEDCOM
@@ -1411,6 +1412,7 @@ func extractCitationsFromIndividual(indi *gedcom.Individual, personID uuid.UUID,
 			// Extract quoted text if available
 			citation.QuotedText = citationQuotedText(srcCit.Data)
 
+			citation.Restriction = extensionRestriction(srcCit.Tags)
 			setAncestryAPID(&citation, srcCit.AncestryAPID)
 
 			citations = append(citations, citation)
@@ -1439,6 +1441,7 @@ func extractCitationsFromIndividual(indi *gedcom.Individual, personID uuid.UUID,
 				Quality:     mapGedcomQualityToGPS(srcCit.Quality),
 				QuotedText:  citationQuotedText(srcCit.Data),
 			}
+			citation.Restriction = extensionRestriction(srcCit.Tags)
 			setAncestryAPID(&citation, srcCit.AncestryAPID)
 			citations = append(citations, citation)
 		}
@@ -1468,6 +1471,7 @@ func extractNameCitations(indi *gedcom.Individual, person PersonData) []Citation
 				Quality:     mapGedcomQualityToGPS(srcCit.Quality),
 				QuotedText:  citationQuotedText(srcCit.Data),
 			}
+			citation.Restriction = extensionRestriction(srcCit.Tags)
 			setAncestryAPID(&citation, srcCit.AncestryAPID)
 			citations = append(citations, citation)
 		}
@@ -1510,6 +1514,7 @@ func extractCitationsFromFamily(fam *gedcom.Family, familyID uuid.UUID, eventIDs
 			// Extract quoted text if available
 			citation.QuotedText = citationQuotedText(srcCit.Data)
 
+			citation.Restriction = extensionRestriction(srcCit.Tags)
 			setAncestryAPID(&citation, srcCit.AncestryAPID)
 
 			citations = append(citations, citation)

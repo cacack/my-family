@@ -215,7 +215,7 @@ for the rule, and mark a person, family or source private, when editing it. On a
 **Mark private** on a citation, or in a media item's viewer, marks that record, and a **Private**
 badge shows on it; notes have no screen yet, so mark them through the API. Persons, families, sources, citations, notes and media carry a `private` mark,
 which is their GEDCOM restriction notice (`RESN`); it round-trips through GEDCOM import and export
-for persons, families, sources, notes and media. GEDCOM media records (`OBJE`) import with their
+for all six. GEDCOM media records (`OBJE`) import with their
 title, file references and restriction, as one item per person, family or source that links to
 them; a media record nothing links to is skipped with a warning. The items of one record share
 their `private` mark: marking one private marks them all (items imported by an earlier version

@@ -1363,6 +1363,7 @@ func toGedcomSourceCitations(citations []repository.CitationReadModel, sourceXre
 		}
 
 		citation.AncestryAPID = citationAPIDs[cit.ID]
+		citation.Tags = extensionRestrictionTags(cit.Restriction)
 
 		result = append(result, citation)
 	}
