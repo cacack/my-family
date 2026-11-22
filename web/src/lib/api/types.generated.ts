@@ -1077,7 +1077,18 @@ export interface paths {
          *     asks, which the owner's preview changes under the same URL.
          */
         get: operations["downloadMedia"];
-        put?: never;
+        /**
+         * Attach a file to a reference-only media item
+         * @description Uploads the file of an item that has no stored content, such as one
+         *     imported from GEDCOM, which keeps only file references (#1504). The
+         *     item keeps its ID, title, owner, GEDCOM link, file references and
+         *     private mark; its MIME type, filename and size become the uploaded
+         *     file's, and an image gets a thumbnail. The file is checked as an
+         *     upload is (`uploadPersonMedia`). An item that already has content is
+         *     refused with 409 and code `has_content`; replacing content is not
+         *     supported. Mainline only: research branches are not supported.
+         */
+        put: operations["attachMediaContent"];
         post?: never;
         delete?: never;
         options?: never;
@@ -9771,6 +9782,44 @@ export interface operations {
             };
             401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
+            503: components["responses"]["SetupRequired"];
+        };
+    };
+    attachMediaContent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Media ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /**
+                     * Format: binary
+                     * @description The file to attach (max 10MB)
+                     */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description File attached */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Media"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             503: components["responses"]["SetupRequired"];
         };
     };
