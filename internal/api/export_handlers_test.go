@@ -1054,3 +1054,42 @@ func TestExportPersons_ExplicitJSONIgnoresFields(t *testing.T) {
 		t.Error("JSON export should keep every field")
 	}
 }
+
+// The cause and age under a dated DEAT are returned by the events export
+// (#1455).
+func TestExportEvents_RecordDeathCauseAndAge(t *testing.T) {
+	server := setupExportTestServer(t)
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	part, _ := writer.CreateFormFile("file", "test.ged")
+	io.WriteString(part, "0 HEAD\n1 GEDC\n2 VERS 7.0\n0 @I1@ INDI\n1 NAME A /B/\n1 DEAT\n2 DATE 1890\n2 CAUS Fever\n2 AGE 70y\n0 TRLR\n")
+	writer.Close()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/gedcom/import", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("import: status %d: %s", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/export/events?format=json", http.NoBody)
+	rec = httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("export events: status %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		Events []struct {
+			FactType string  `json:"fact_type"`
+			Cause    *string `json:"cause"`
+			Age      *string `json:"age"`
+		} `json:"events"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp.Events) != 1 || resp.Events[0].FactType != string(domain.FactPersonDeath) ||
+		resp.Events[0].Cause == nil || *resp.Events[0].Cause != "Fever" || resp.Events[0].Age == nil || *resp.Events[0].Age != "70y" {
+		t.Errorf("events = %s, want one death with cause Fever and age 70y", rec.Body.String())
+	}
+}

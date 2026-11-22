@@ -1643,6 +1643,38 @@ func recordDeath(event *gedcom.Event) bool {
 	return event.Type == gedcom.EventDeath && !event.IsNegative && !bareDeath(event)
 }
 
+// recordDeathDetail returns a death life event holding the cause, age and
+// address of the DEAT the person record holds (the individual's last record
+// death, see parseIndividual), which the record has no fields for (#1455).
+// The life event has no date or place, so the person keeps one death date,
+// and the DEAT's citations stay on the record. The exporter writes the two
+// back as one DEAT (mergeableDeathDetail).
+func recordDeathDetail(indi *gedcom.Individual, event *gedcom.Event, personID uuid.UUID) (EventData, bool) {
+	if !recordDeath(event) {
+		return EventData{}, false
+	}
+	for _, later := range indi.Events[slices.Index(indi.Events, event)+1:] {
+		if recordDeath(later) {
+			return EventData{}, false // the record holds the later one
+		}
+	}
+	detail := EventData{
+		ID:        uuid.New(),
+		OwnerType: "person",
+		OwnerID:   personID,
+		FactType:  domain.FactPersonDeath,
+		Cause:     event.Cause,
+		Age:       event.Age,
+	}
+	if event.Address != nil {
+		detail.Address = convertGedcomAddress(event.Address)
+	}
+	if detail.Cause == "" && detail.Age == "" && detail.Address == nil {
+		return EventData{}, false
+	}
+	return detail, true
+}
+
 // extractEventsFromIndividual extracts all life events from an individual,
 // and returns with them the ID each GEDCOM event is imported with, for its
 // citations (#1294).
@@ -1704,6 +1736,9 @@ func extractEventsFromIndividual(indi *gedcom.Individual, personID uuid.UUID) ([
 			factType = domain.FactPersonDeath
 		case event.Type == gedcom.EventBirth, event.Type == gedcom.EventDeath:
 			// Non-negated birth and death are stored on Person entity, skip
+			if detail, ok := recordDeathDetail(indi, event, personID); ok {
+				events = append(events, detail)
+			}
 			continue
 		default:
 			// RESI is imported once, as a life event: unlike an attribute, it

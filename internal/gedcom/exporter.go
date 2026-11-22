@@ -1156,6 +1156,13 @@ func toGedcomIndividual(p repository.PersonReadModel, names []repository.PersonN
 		}
 		// Citations for death
 		deathEvent.SourceCitations = toGedcomSourceCitations(fieldCitations(deathCitations, events), sourceXrefs, citationAPIDs)
+		if i := mergeableDeathDetail(events); i >= 0 {
+			// Written into this DEAT, not as a second one (#1455).
+			detail := toGedcomEvent(events[i], true, sourceXrefs, citationAPIDs, readStore, ctx)
+			deathEvent.Cause, deathEvent.Age, deathEvent.Address = detail.Cause, detail.Age, detail.Address
+			deathEvent.SourceCitations = append(deathEvent.SourceCitations, detail.SourceCitations...)
+			events = slices.Delete(slices.Clone(events), i, i+1)
+		}
 		indi.Events = append(indi.Events, deathEvent)
 	}
 
@@ -1396,6 +1403,26 @@ func fieldCitations(citations []repository.CitationReadModel, events []repositor
 		result = append(result, c)
 	}
 	return result
+}
+
+// mergeableDeathDetail returns the index of the person's one death life event
+// that holds nothing but a cause, age or address, which the importer keeps
+// for the DEAT the person record holds (recordDeathDetail), or -1 if there is
+// not exactly one. The exporter writes it into the record's DEAT, so the file
+// has one death.
+func mergeableDeathDetail(events []repository.EventReadModel) int {
+	found := -1
+	for i, e := range events {
+		if e.FactType != domain.FactPersonDeath || e.IsNegated || e.DateRaw != "" || e.Place != "" ||
+			e.Notes != "" || e.Description != "" || e.TypeDetail != "" {
+			continue
+		}
+		if found >= 0 {
+			return -1
+		}
+		found = i
+	}
+	return found
 }
 
 // toGedcomEvent converts an EventReadModel to a gedcom.Event.
