@@ -85,7 +85,10 @@ Environment Variables:
                  treated as the owner, with no sign-in; only for a trusted network
   TRUSTED_PROXIES
                  Comma-separated addresses or CIDR ranges of reverse proxies whose
-                 X-Forwarded-For is believed; unset, it is ignored (default: none)`)
+                 X-Forwarded-For is believed; unset, it is ignored (default: none)
+  AUTH_AUDIT_RETENTION_DAYS
+                 Days the account audit log keeps an entry; a whole number
+                 from 1 to 36500 (default: 365)`)
 }
 
 // runServer opens the configured store, serves until SIGINT/SIGTERM, then
