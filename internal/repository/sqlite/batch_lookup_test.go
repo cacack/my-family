@@ -199,6 +199,30 @@ func runBatchLookupScenario(t *testing.T, store repository.ReadModelStore) {
 			t.Fatalf("GetCitationsByIDs(unknown) = %v, %v; want empty", rows, err)
 		}
 	}
+
+	// --- An id set past every bind-parameter limit ---
+	// More ids than PostgreSQL (65,535) or SQLite (32,766) accept as bound
+	// parameters, as a reader who may see only part of a large tree can ask
+	// for (#1559): the lookup still runs and finds exactly the known rows.
+	large := func(i ids) []uuid.UUID {
+		set := lookup(i)
+		for range 70_000 {
+			set = append(set, uuid.New())
+		}
+		return set
+	}
+	got, err = store.GetPersonsByIDs(ctx, domain.MainBranchID, large(p))
+	mustNoErr(t, "large person set on main", err)
+	checkBatch(t, "large person set on main", got, personID, personName, getPerson(domain.MainBranchID),
+		map[uuid.UUID]string{p.kept: "Kept", p.edited: "MainEdit", p.deleted: "Doomed"})
+	got, err = store.GetPersonsByIDs(ctx, branch, large(p))
+	mustNoErr(t, "large person set on branch", err)
+	checkBatch(t, "large person set on branch", got, personID, personName, getPerson(branch),
+		map[uuid.UUID]string{p.kept: "Kept", p.edited: "BranchEdit", p.added: "Added"})
+	fams, err = store.GetFamiliesByIDs(ctx, branch, large(f))
+	mustNoErr(t, "large family set on branch", err)
+	checkBatch(t, "large family set on branch", fams, familyID, familyName, getFamily(branch),
+		map[uuid.UUID]string{f.kept: "Kept", f.edited: "BranchEdit", f.added: "Added"})
 }
 
 // checkBatch asserts a batched lookup returned exactly want (id -> label), in
