@@ -11,7 +11,8 @@
  * Deliberately not a screenshot diff: those break on every intended change.
  */
 import { expect, test } from '@playwright/test';
-import { API_BASE, readSeed } from './seed';
+import { startAccountsServer, type AccountsServer } from './accounts-server';
+import { ACCOUNTS_BASE_URL, API_BASE, readSeed } from './seed';
 import { DETAIL_ROUTES, STATIC_ROUTES } from './routes';
 
 const WIDTHS = [375, 768, 1280, 1440];
@@ -320,31 +321,41 @@ test.describe('with a long research branch name active', () => {
 });
 
 // Signed in, in accounts mode, the account button joins the same row (#1421).
-// The suite's server runs open, so the auth status is stubbed to a signed-in
-// owner: the header is all that changes, and every other call is served for real.
+// The suite's server runs open, so this block signs the owner in on an
+// accounts-mode server beside it (accounts-server.ts, #1424). That store is
+// empty, so it sweeps the static routes; the seeded detail pages are open-mode only.
 test.describe('signed in, in accounts mode', () => {
-	test.beforeEach(async ({ page }) => {
-		await page.route('**/api/v1/auth/status', (route) =>
-			route.fulfill({
-				json: {
-					mode: 'accounts',
-					setup_required: false,
-					account: {
-						id: '00000000-0000-4000-8000-000000000001',
-						username: 'owner',
-						display_name: 'Tree Owner',
-						role: 'owner'
-					}
-				}
-			})
-		);
+	let accounts: AccountsServer;
+
+	test.use({ baseURL: ACCOUNTS_BASE_URL });
+
+	test.beforeAll(async () => {
+		accounts = await startAccountsServer();
 	});
+
+	test.afterAll(async () => {
+		await accounts?.stop();
+	});
+
+	test.beforeEach(async ({ context }) => {
+		await context.addCookies((await accounts.owner.storageState()).cookies);
+	});
+
+	for (const width of WIDTHS) {
+		test(`static routes do not overflow horizontally at ${width}px`, async ({ page }) => {
+			await page.setViewportSize({ width, height: 900 });
+			for (const route of STATIC_ROUTES) {
+				await expectNoHorizontalOverflow(page, route);
+			}
+			await expect(page.getByRole('button', { name: `Account: ${accounts.username}` })).toBeAttached();
+		});
+	}
 
 	for (const width of [1024, 1279, 1280]) {
 		test(`header is a single row at ${width}px`, async ({ page }) => {
 			await page.setViewportSize({ width, height: 900 });
 			await expectNoHorizontalOverflow(page, '/');
-			await expect(page.getByRole('button', { name: 'Account: Tree Owner' })).toBeVisible();
+			await expect(page.getByRole('button', { name: `Account: ${accounts.username}` })).toBeVisible();
 			await expectHeaderOneRow(page);
 		});
 	}
