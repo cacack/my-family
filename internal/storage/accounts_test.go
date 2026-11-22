@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"errors"
+	"fmt"
 	"maps"
 	"path/filepath"
 	"slices"
@@ -133,7 +134,7 @@ func runAuditRetentionContract(t *testing.T, store repository.AccountStore) {
 	if removed != 2 {
 		t.Errorf("DeleteAuthAuditBefore removed %d, want 2", removed)
 	}
-	entries, total, err := store.ListAuthAudit(ctx, 10, 0)
+	entries, err := store.ListAuthAudit(ctx, 10, 0)
 	if err != nil {
 		t.Fatalf("ListAuthAudit: %v", err)
 	}
@@ -142,8 +143,8 @@ func runAuditRetentionContract(t *testing.T, store repository.AccountStore) {
 		kept = append(kept, e.Username)
 	}
 	slices.Sort(kept)
-	if total != 2 || !slices.Equal(kept, []string{"at-cutoff", "recent"}) {
-		t.Errorf("entries kept = %v (total %d), want at-cutoff and recent", kept, total)
+	if !slices.Equal(kept, []string{"at-cutoff", "recent"}) {
+		t.Errorf("entries kept = %v, want at-cutoff and recent", kept)
 	}
 }
 
@@ -361,8 +362,8 @@ func runAccountManagementContract(t *testing.T, store repository.AccountStore) {
 	runPendingLinksContract(t, store, owner.ID, grace.ID, now)
 
 	// The audit log: newest first, paged, with absent IDs kept absent.
-	if entries, total, err := store.ListAuthAudit(ctx, 10, 0); err != nil || total != 0 || len(entries) != 0 {
-		t.Errorf("ListAuthAudit on an empty log = %v, %d, %v", entries, total, err)
+	if entries, err := store.ListAuthAudit(ctx, 10, 0); err != nil || len(entries) != 0 {
+		t.Errorf("ListAuthAudit on an empty log = %v, %v", entries, err)
 	}
 	appended := []repository.AuthAuditEntry{
 		{At: now, Action: repository.AuthActionSignInFailed, Username: "eve", ClientIP: "192.0.2.1"},
@@ -374,9 +375,9 @@ func runAccountManagementContract(t *testing.T, store repository.AccountStore) {
 			t.Fatalf("AppendAuthAudit: %v", err)
 		}
 	}
-	entries, total, err := store.ListAuthAudit(ctx, 2, 0)
-	if err != nil || total != 3 || len(entries) != 2 {
-		t.Fatalf("ListAuthAudit(2, 0) = %d entries, total %d, %v; want 2 of 3", len(entries), total, err)
+	entries, err := store.ListAuthAudit(ctx, 2, 0)
+	if err != nil || len(entries) != 2 {
+		t.Fatalf("ListAuthAudit(2, 0) = %d entries, %v; want 2", len(entries), err)
 	}
 	if e := entries[0]; e.Action != repository.AuthActionRoleChanged || e.ActorID != owner.ID || e.SubjectID != grace.ID ||
 		e.Username != "grace" || e.Detail != "editor -> viewer" || !e.At.Equal(appended[2].At) {
@@ -385,12 +386,75 @@ func runAccountManagementContract(t *testing.T, store repository.AccountStore) {
 	if entries[1].Action != repository.AuthActionSignIn || entries[1].ClientIP != "192.0.2.2" {
 		t.Errorf("second entry = %+v, want the sign-in", entries[1])
 	}
-	entries, _, err = store.ListAuthAudit(ctx, 2, 2)
+	entries, err = store.ListAuthAudit(ctx, 2, entries[1].ID)
 	if err != nil || len(entries) != 1 {
-		t.Fatalf("ListAuthAudit(2, 2) = %v, %v; want the oldest entry", entries, err)
+		t.Fatalf("ListAuthAudit(2, before the sign-in) = %v, %v; want the oldest entry", entries, err)
 	}
 	if e := entries[0]; e.Action != repository.AuthActionSignInFailed || e.ActorID != uuid.Nil || e.SubjectID != uuid.Nil || e.Username != "eve" {
 		t.Errorf("oldest entry = %+v, want the failed sign-in with no actor or subject", e)
+	}
+}
+
+func TestAccountStore_AuthAuditPagingContract(t *testing.T) {
+	for backend, open := range accountBackends() {
+		t.Run(string(backend), func(t *testing.T) {
+			stores := open(t)
+			t.Cleanup(func() { _ = stores.Close() })
+			runAuthAuditPagingContract(t, stores.Accounts)
+		})
+	}
+}
+
+// runAuthAuditPagingContract walks a log of more than two pages by keyset and
+// checks it gets every entry exactly once, newest first, even where entries
+// share a timestamp, so an offset or an "at" cursor would skip or repeat
+// them (#1577).
+func runAuthAuditPagingContract(t *testing.T, store repository.AccountStore) {
+	ctx := context.Background()
+	const total, pageSize = 11, 4
+	at := time.Date(2026, 11, 21, 12, 0, 0, 0, time.UTC)
+	for i := range total {
+		// Three entries to a second: pages end in the middle of a timestamp.
+		entry := repository.AuthAuditEntry{
+			At: at.Add(time.Duration(i/3) * time.Second), Action: repository.AuthActionSignInFailed,
+			Username: fmt.Sprintf("u%02d", i), ClientIP: "192.0.2.1",
+		}
+		if err := store.AppendAuthAudit(ctx, &entry); err != nil {
+			t.Fatalf("AppendAuthAudit(%d): %v", i, err)
+		}
+	}
+	var got []string
+	var before int64
+	pages := 0
+	for {
+		page, err := store.ListAuthAudit(ctx, pageSize, before)
+		if err != nil {
+			t.Fatalf("ListAuthAudit(%d, %d): %v", pageSize, before, err)
+		}
+		if len(page) == 0 {
+			break
+		}
+		pages++
+		for i, e := range page {
+			if before != 0 && e.ID >= before {
+				t.Errorf("page %d: entry %s has ID %d, not below the cursor %d", pages, e.Username, e.ID, before)
+			}
+			if i > 0 && e.ID >= page[i-1].ID {
+				t.Errorf("page %d: IDs not descending at %s", pages, e.Username)
+			}
+			got = append(got, e.Username)
+		}
+		before = page[len(page)-1].ID
+		if pages > total {
+			t.Fatal("paging never ended")
+		}
+	}
+	want := make([]string, total)
+	for i := range want {
+		want[i] = fmt.Sprintf("u%02d", total-1-i)
+	}
+	if pages != 3 || !slices.Equal(got, want) {
+		t.Errorf("walked %d pages: %v; want 3 pages of %v", pages, got, want)
 	}
 }
 

@@ -29,7 +29,8 @@ type AccountStore struct {
 	sessions    map[string]repository.Session
 	invites     map[string]repository.Invite
 	resets      map[string]repository.PasswordReset
-	audit       []repository.AuthAuditEntry
+	audit       []repository.AuthAuditEntry // oldest first
+	lastAuditID int64
 	settings    map[uuid.UUID]repository.TreeSettings
 }
 
@@ -422,19 +423,25 @@ func (s *AccountStore) RevokePasswordReset(_ context.Context, tokenHash string, 
 func (s *AccountStore) AppendAuthAudit(_ context.Context, entry *repository.AuthAuditEntry) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.audit = append(s.audit, *entry)
+	s.lastAuditID++
+	stored := *entry
+	stored.ID = s.lastAuditID
+	s.audit = append(s.audit, stored)
 	return nil
 }
 
-// ListAuthAudit returns up to limit entries, newest first, after offset.
-func (s *AccountStore) ListAuthAudit(_ context.Context, limit, offset int) ([]repository.AuthAuditEntry, int, error) {
+// ListAuthAudit returns up to limit entries with an ID below before (any, for
+// 0), newest first.
+func (s *AccountStore) ListAuthAudit(_ context.Context, limit int, before int64) ([]repository.AuthAuditEntry, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	entries := []repository.AuthAuditEntry{}
-	for i := len(s.audit) - 1 - offset; i >= 0 && len(entries) < limit; i-- {
-		entries = append(entries, s.audit[i])
+	for i := len(s.audit) - 1; i >= 0 && len(entries) < limit; i-- {
+		if before == 0 || s.audit[i].ID < before {
+			entries = append(entries, s.audit[i])
+		}
 	}
-	return entries, len(s.audit), nil
+	return entries, nil
 }
 
 // DeleteAuthAuditBefore removes every audit entry recorded before before.

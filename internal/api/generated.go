@@ -2676,7 +2676,9 @@ type AuthAuditEntryAction string
 // AuthAuditList defines model for AuthAuditList.
 type AuthAuditList struct {
 	Items []AuthAuditEntry `json:"items"`
-	Total int              `json:"total"`
+
+	// NextCursor The `cursor` of the next, older page; absent on the last page
+	NextCursor *string `json:"next_cursor,omitempty"`
 }
 
 // AuthStatus defines model for AuthStatus.
@@ -7084,8 +7086,11 @@ type UpdateAssociationParams struct {
 
 // ListAuthAuditParams defines parameters for ListAuthAudit.
 type ListAuthAuditParams struct {
-	Limit  *LimitParam  `form:"limit,omitempty" json:"limit,omitempty"`
-	Offset *OffsetParam `form:"offset,omitempty" json:"offset,omitempty"`
+	Limit *LimitParam `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Cursor Where the page starts: a `next_cursor` from an earlier page.
+	// Omit it for the newest entries. The value is opaque.
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
 }
 
 // ListBranchesParams defines parameters for ListBranches.
@@ -9775,11 +9780,11 @@ func (w *ServerInterfaceWrapper) ListAuthAudit(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter limit: %s", err))
 	}
 
-	// ------------- Optional query parameter "offset" -------------
+	// ------------- Optional query parameter "cursor" -------------
 
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "offset", ctx.QueryParams(), &params.Offset, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", ctx.QueryParams(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
 	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter offset: %s", err))
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter cursor: %s", err))
 	}
 
 	// Invoke the callback with all the unmarshaled arguments
@@ -14779,6 +14784,20 @@ func (response ListAuthAudit200JSONResponse) VisitListAuthAuditResponse(w http.R
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAuthAudit400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ListAuthAudit400JSONResponse) VisitListAuthAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
 	_, err := buf.WriteTo(w)
 	return err
 }

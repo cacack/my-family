@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/google/uuid"
@@ -653,17 +654,17 @@ func (s *AccountStore) AppendAuthAudit(ctx context.Context, entry *repository.Au
 	return nil
 }
 
-// ListAuthAudit returns up to limit entries, newest first, after offset.
-func (s *AccountStore) ListAuthAudit(ctx context.Context, limit, offset int) ([]repository.AuthAuditEntry, int, error) {
-	var total int
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM auth_audit`).Scan(&total); err != nil {
-		return nil, 0, fmt.Errorf("count auth audit: %w", err)
+// ListAuthAudit returns up to limit entries with an ID below before (any, for
+// 0), newest first. It walks the primary key, so every page costs the same.
+func (s *AccountStore) ListAuthAudit(ctx context.Context, limit int, before int64) ([]repository.AuthAuditEntry, error) {
+	if before == 0 {
+		before = math.MaxInt64 // one plan for every page: id < before
 	}
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT at, action, actor_id, subject_id, username, detail, client_ip
-		FROM auth_audit ORDER BY id DESC LIMIT $1 OFFSET $2`, limit, offset)
+		SELECT id, at, action, actor_id, subject_id, username, detail, client_ip
+		FROM auth_audit WHERE id < $1 ORDER BY id DESC LIMIT $2`, before, limit)
 	if err != nil {
-		return nil, 0, fmt.Errorf("list auth audit: %w", err)
+		return nil, fmt.Errorf("list auth audit: %w", err)
 	}
 	defer rows.Close()
 	entries := []repository.AuthAuditEntry{}
@@ -673,16 +674,16 @@ func (s *AccountStore) ListAuthAudit(ctx context.Context, limit, offset int) ([]
 			action             string
 			actorID, subjectID uuid.NullUUID
 		)
-		if err := rows.Scan(&e.At, &action, &actorID, &subjectID, &e.Username, &e.Detail, &e.ClientIP); err != nil {
-			return nil, 0, fmt.Errorf("scan auth audit: %w", err)
+		if err := rows.Scan(&e.ID, &e.At, &action, &actorID, &subjectID, &e.Username, &e.Detail, &e.ClientIP); err != nil {
+			return nil, fmt.Errorf("scan auth audit: %w", err)
 		}
 		e.Action, e.ActorID, e.SubjectID = repository.AuthAction(action), actorID.UUID, subjectID.UUID
 		entries = append(entries, e)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, 0, fmt.Errorf("list auth audit: %w", err)
+		return nil, fmt.Errorf("list auth audit: %w", err)
 	}
-	return entries, total, nil
+	return entries, nil
 }
 
 // DeleteAuthAuditBefore removes every audit entry recorded before before.

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"strings"
 	"time"
 
@@ -85,17 +86,31 @@ const (
 	MaxAuthAuditLimit     = 100
 )
 
-// AuthAudit returns up to limit audit entries, newest first, after offset,
-// and how many there are in all. A limit below 1 means DefaultAuthAuditLimit,
-// one above MaxAuthAuditLimit is cut to it, and a negative offset is 0, so no
-// request reads the whole log at once.
-func (s *Service) AuthAudit(ctx context.Context, limit, offset int) ([]repository.AuthAuditEntry, int, error) {
+// AuthAudit returns a page of up to limit audit entries, newest first,
+// starting after cursor (the newest, for ""), and the cursor of the next
+// page, or "" on the last. A limit below 1 means DefaultAuthAuditLimit and
+// one above MaxAuthAuditLimit is cut to it, so no request reads the whole log
+// at once. A cursor AuthAudit did not return is ErrInvalidInput.
+func (s *Service) AuthAudit(ctx context.Context, limit int, cursor string) ([]repository.AuthAuditEntry, string, error) {
 	if limit < 1 {
 		limit = DefaultAuthAuditLimit
 	}
 	limit = min(limit, MaxAuthAuditLimit)
-	offset = max(offset, 0)
-	return s.store.ListAuthAudit(ctx, limit, offset)
+	var before int64
+	if cursor != "" {
+		id, err := strconv.ParseInt(cursor, 10, 64)
+		if err != nil || id < 1 {
+			return nil, "", fmt.Errorf("%w: unknown audit cursor", ErrInvalidInput)
+		}
+		before = id
+	}
+	// One more than the page tells whether another page follows.
+	entries, err := s.store.ListAuthAudit(ctx, limit+1, before)
+	if err != nil || len(entries) <= limit {
+		return entries, "", err
+	}
+	entries = entries[:limit]
+	return entries, strconv.FormatInt(entries[limit-1].ID, 10), nil
 }
 
 // Members returns every member of the tree, by username.

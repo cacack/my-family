@@ -2,7 +2,8 @@
 	/**
 	 * The auth audit log (owner only, ADR-007): sign-ins, failed sign-ins,
 	 * invites, role changes, disables and password resets, newest first. The
-	 * log is append-only; this page only reads it, a page at a time.
+	 * log is append-only; this page only reads it, a page at a time, paging by
+	 * cursor (#1577).
 	 */
 	import PageHeader from '#lib/components/PageHeader.svelte';
 	import ActionError from '#lib/components/ActionError.svelte';
@@ -18,20 +19,25 @@
 	const PAGE_SIZE = 50;
 
 	let entries: AuthAuditEntry[] = $state([]);
-	let total = $state(0);
+	// The cursor each page shown so far was read with, newest page first; the
+	// last is the page on screen. Going back to a newer page rereads its cursor.
+	let cursors: (string | undefined)[] = $state([undefined]);
+	let nextCursor: string | undefined = $state(undefined);
 	let loading = $state(true);
 	let loadError: string | null = $state(null);
-	let loadingMore = $state(false);
-	let moreError: string | null = $state(null);
+	let paging = $state(false);
+	let pageError: string | null = $state(null);
 
 	const managing = $derived(auth.account !== null && can('owner'));
+	const pageNumber = $derived(cursors.length);
 
 	async function load() {
 		loading = true;
 		try {
 			const page = await api.listAuthAudit({ limit: PAGE_SIZE });
 			entries = page.items;
-			total = page.total;
+			cursors = [undefined];
+			nextCursor = page.next_cursor;
 			loadError = null;
 		} catch (e) {
 			const apiError = e as ApiError;
@@ -44,19 +50,24 @@
 		}
 	}
 
-	async function loadMore() {
-		loadingMore = true;
-		moreError = null;
+	/** Shows the page read with cursors[cursors.length - 1] of the given stack. */
+	async function show(stack: (string | undefined)[]) {
+		paging = true;
+		pageError = null;
 		try {
-			const page = await api.listAuthAudit({ limit: PAGE_SIZE, offset: entries.length });
-			entries = [...entries, ...page.items];
-			total = page.total;
+			const page = await api.listAuthAudit({ limit: PAGE_SIZE, cursor: stack[stack.length - 1] });
+			entries = page.items;
+			cursors = stack;
+			nextCursor = page.next_cursor;
 		} catch (e) {
-			moreError = (e as ApiError).message || 'Could not load older entries. Try again.';
+			pageError = (e as ApiError).message || 'Could not load that page. Try again.';
 		} finally {
-			loadingMore = false;
+			paging = false;
 		}
 	}
+
+	const older = () => show([...cursors, nextCursor]);
+	const newer = () => show(cursors.slice(0, -1));
 
 	$effect(() => {
 		if (managing) load();
@@ -107,15 +118,14 @@
 				</li>
 			{/each}
 		</ol>
-		<div class="more">
-			<p class="count">Showing {entries.length} of {total}</p>
-			{#if entries.length < total}
-				<Button variant="outline" disabled={loadingMore} onclick={loadMore}>
-					{loadingMore ? 'Loading...' : 'Show older entries'}
-				</Button>
-			{/if}
-			{#if moreError}<ActionError message={moreError} />{/if}
-		</div>
+		{#if pageNumber > 1 || nextCursor !== undefined}
+			<nav class="pager" aria-label="Audit log pages">
+				<Button variant="outline" disabled={paging || pageNumber === 1} onclick={newer}>Newer</Button>
+				<p class="count">Page {pageNumber}</p>
+				<Button variant="outline" disabled={paging || nextCursor === undefined} onclick={older}>Older</Button>
+				{#if pageError}<ActionError message={pageError} />{/if}
+			</nav>
+		{/if}
 	{/if}
 </div>
 
@@ -195,7 +205,7 @@
 		overflow-wrap: anywhere;
 	}
 
-	.more {
+	.pager {
 		display: flex;
 		flex-wrap: wrap;
 		align-items: center;

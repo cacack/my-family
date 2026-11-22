@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strconv"
 	"strings"
 	"testing"
@@ -327,8 +328,8 @@ func TestUsers_AuthAudit(t *testing.T) {
 	}
 	list := decode[api.AuthAuditList](t, rec)
 	// user_created, sign_in, sign_in_failed, invite_created, invite_accepted
-	if list.Total != 5 || len(list.Items) != 2 {
-		t.Fatalf("audit = %d of %d, want 2 of 5: %+v", len(list.Items), list.Total, list.Items)
+	if len(list.Items) != 2 || list.NextCursor == nil {
+		t.Fatalf("audit = %+v, next %v; want 2 entries and a next page", list.Items, list.NextCursor)
 	}
 	accepted, invited := list.Items[0], list.Items[1]
 	if accepted.Action != api.AuthAuditEntryActionInviteAccepted || accepted.Username != "grace" || accepted.ActorName == nil || *accepted.ActorName != "grace" {
@@ -337,16 +338,35 @@ func TestUsers_AuthAudit(t *testing.T) {
 	if invited.Action != api.AuthAuditEntryActionInviteCreated || invited.Detail != "viewer" || invited.ActorName == nil || *invited.ActorName != "Ada Lovelace" {
 		t.Errorf("second entry = %+v, want Ada's invite", invited)
 	}
-	rec = f.do(t, request{method: http.MethodGet, path: "/api/v1/auth-audit?offset=2", cookie: owner})
-	items := decode[api.AuthAuditList](t, rec).Items
-	if len(items) != 3 || items[0].Action != api.AuthAuditEntryActionSignInFailed || items[0].ActorId != nil || items[0].Username != "ada" {
-		t.Errorf("older entries = %+v, want the failed sign-in first", items)
+	rec = f.do(t, request{method: http.MethodGet, path: "/api/v1/auth-audit?cursor=" + url.QueryEscape(*list.NextCursor), cookie: owner})
+	older := decode[api.AuthAuditList](t, rec)
+	items := older.Items
+	if len(items) != 3 || older.NextCursor != nil || items[0].Action != api.AuthAuditEntryActionSignInFailed || items[0].ActorId != nil || items[0].Username != "ada" {
+		t.Errorf("older entries = %+v, next %v; want the failed sign-in first, on the last page", items, older.NextCursor)
+	}
+	// A page that ends on the oldest entry is the last: no empty page follows.
+	exact := decode[api.AuthAuditList](t, f.do(t, request{method: http.MethodGet, path: "/api/v1/auth-audit?limit=5", cookie: owner}))
+	if len(exact.Items) != 5 || exact.NextCursor != nil {
+		t.Errorf("?limit=5 of 5: %d entries, next %v; want all 5 and no next page", len(exact.Items), exact.NextCursor)
+	}
+}
+
+// A cursor the server did not hand out is a 400, not the first page.
+func TestUsers_AuthAuditRejectsAnUnknownCursor(t *testing.T) {
+	f := newAuthFixture(t)
+	f.createOwner(t)
+	owner := f.signIn(t)
+	for _, cursor := range []string{"abc", "0", "-3", "1.5"} {
+		rec := f.do(t, request{method: http.MethodGet, path: "/api/v1/auth-audit?cursor=" + cursor, cookie: owner})
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("?cursor=%s: %d %s, want 400", cursor, rec.Code, rec.Body)
+		}
 	}
 }
 
 // The audit list clamps its page: a limit over the most one page holds is cut
-// to it, and a limit or offset below the minimum takes the default, so no
-// request reads the whole log at once.
+// to it, and a limit below the minimum takes the default, so no request reads
+// the whole log at once.
 func TestUsers_AuthAuditClampsThePage(t *testing.T) {
 	f := newAuthFixture(t)
 	f.createOwner(t)
@@ -367,20 +387,15 @@ func TestUsers_AuthAuditClampsThePage(t *testing.T) {
 		{"limit=0", auth.DefaultAuthAuditLimit},
 		{"limit=-1", auth.DefaultAuthAuditLimit},
 		{"", auth.DefaultAuthAuditLimit},
-		{"limit=3&offset=-5", 3},
 	} {
 		rec := f.do(t, request{method: http.MethodGet, path: "/api/v1/auth-audit?" + tc.query, cookie: owner})
 		if rec.Code != http.StatusOK {
 			t.Fatalf("?%s: %d %s", tc.query, rec.Code, rec.Body)
 		}
 		list := decode[api.AuthAuditList](t, rec)
-		if len(list.Items) != tc.want || list.Total <= auth.MaxAuthAuditLimit {
-			t.Errorf("?%s: %d of %d entries, want %d of more than %d", tc.query, len(list.Items), list.Total, tc.want, auth.MaxAuthAuditLimit)
+		if len(list.Items) != tc.want || list.NextCursor == nil {
+			t.Errorf("?%s: %d entries, next %v; want %d and a next page", tc.query, len(list.Items), list.NextCursor, tc.want)
 		}
-	}
-	newest := decode[api.AuthAuditList](t, f.do(t, request{method: http.MethodGet, path: "/api/v1/auth-audit?limit=1&offset=-5", cookie: owner}))
-	if len(newest.Items) != 1 || newest.Items[0].Username != "u"+strconv.Itoa(auth.MaxAuthAuditLimit+19) {
-		t.Errorf("a negative offset: %+v, want the newest entry", newest.Items)
 	}
 }
 
