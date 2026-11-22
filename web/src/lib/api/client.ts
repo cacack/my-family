@@ -2505,6 +2505,16 @@ export function formatPersonName(
 }
 
 /**
+ * The error for a new person or name with neither a given name nor a surname,
+ * or null when it has one. Either part may be left blank (#1054).
+ */
+export function missingNameError(name: { given_name?: string; surname?: string }): string | null {
+	return (name.given_name ?? '').trim() || (name.surname ?? '').trim()
+		? null
+		: 'Enter a given name or a surname';
+}
+
+/**
  * Format a family's display name from its partners: `Jane Smith & John Doe`,
  * one partner's name alone, or `Unknown` with neither.
  */

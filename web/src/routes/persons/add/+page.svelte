@@ -2,7 +2,7 @@
 	import { can } from '#lib/stores/access.svelte.js';
 	import RoleNotice from '#lib/components/auth/RoleNotice.svelte';
 	import { goto } from '$app/navigation';
-	import { api, type PersonCreate } from '#lib/api/client.js';
+	import { api, missingNameError, type PersonCreate } from '#lib/api/client.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import PageHeader from '#lib/components/PageHeader.svelte';
 	import FormRow from '#lib/components/FormRow.svelte';
@@ -41,9 +41,10 @@
 	});
 
 	async function createPerson() {
-		saving = true;
-		error = null;
 		dateError = null;
+		error = missingNameError(formData);
+		if (error) return;
+		saving = true;
 		try {
 			// Build the create payload, only including non-empty optional fields
 			const payload: PersonCreate = {
@@ -132,7 +133,7 @@
 		<FormRow>
 			<label>
 				Given Name
-				<input type="text" bind:value={formData.given_name} required />
+				<input type="text" bind:value={formData.given_name} />
 			</label>
 			<label>
 				Surname

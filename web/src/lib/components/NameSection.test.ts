@@ -135,13 +135,50 @@ describe('NameSection', () => {
 		expect(pills).toEqual(['AKA']);
 	});
 
-	it('still requires a given name', async () => {
+	// A name may have only a surname, but not neither part (#1054).
+	it('adds a name with a surname and no given name', async () => {
+		render(NameSection, { personId: PERSON_ID });
+		await fireEvent.click(await screen.findByRole('button', { name: 'Add Name' }));
+
+		await fireEvent.input(screen.getByLabelText('Surname'), { target: { value: 'Tudor' } });
+		const form = screen.getByLabelText(/^Given Name/).closest('form')!;
+		expect(form.checkValidity()).toBe(true);
+		await fireEvent.submit(form);
+
+		await waitFor(() => expect(apiModule.api.addPersonName).toHaveBeenCalled());
+		expect(vi.mocked(apiModule.api.addPersonName).mock.calls[0][1]).toMatchObject({
+			given_name: '',
+			surname: 'Tudor'
+		});
+	});
+
+	it('saves an edit that blanks the given name of a name with a surname', async () => {
+		vi.mocked(apiModule.api.getPersonNames).mockResolvedValue({
+			items: [{ ...surnameless(), surname: 'Tudor' }],
+			total: 1
+		});
+		render(NameSection, { personId: PERSON_ID });
+		await fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+
+		await fireEvent.input(screen.getByLabelText(/^Given Name/), { target: { value: '' } });
+		const form = screen.getByLabelText(/^Given Name/).closest('form')!;
+		expect(form.checkValidity()).toBe(true);
+		await fireEvent.submit(form);
+
+		await waitFor(() => expect(apiModule.api.updatePersonName).toHaveBeenCalled());
+		expect(vi.mocked(apiModule.api.updatePersonName).mock.calls[0][2]).toMatchObject({
+			given_name: '',
+			surname: 'Tudor'
+		});
+	});
+
+	it('asks for a given name or a surname when both are blank', async () => {
 		render(NameSection, { personId: PERSON_ID });
 		await fireEvent.click(await screen.findByRole('button', { name: 'Add Name' }));
 
 		await fireEvent.submit(screen.getByLabelText(/^Given Name/).closest('form')!);
 
-		expect(await screen.findByRole('alert')).toHaveProperty('textContent', 'Given name is required');
+		expect(await screen.findByRole('alert')).toHaveProperty('textContent', 'Enter a given name or a surname');
 		expect(apiModule.api.addPersonName).not.toHaveBeenCalled();
 	});
 

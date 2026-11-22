@@ -17,6 +17,35 @@ async function createWithBirthDate(date: string) {
 	await fireEvent.click(screen.getByRole('button', { name: 'Create Person' }));
 }
 
+// Either name part may be blank, but not both (#1054).
+describe('Onboarding first person name', () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
+
+	it('creates a person with a surname and no given name', async () => {
+		createPerson.mockResolvedValue({ id: 'p1', given_name: '', surname: 'Tudor' });
+		const onComplete = vi.fn();
+		render(CreatePersonStep, { props: { onComplete, onBack: vi.fn() } });
+
+		await fireEvent.input(screen.getByLabelText('Surname'), { target: { value: 'Tudor' } });
+		await fireEvent.click(screen.getByRole('button', { name: 'Create Person' }));
+
+		await waitFor(() => expect(onComplete).toHaveBeenCalled());
+		expect(createPerson.mock.calls[0][0]).toMatchObject({ given_name: '', surname: 'Tudor' });
+		expect(onComplete.mock.calls[0][0].personName).toBe('Tudor');
+	});
+
+	it('asks for a given name or a surname when both are blank', async () => {
+		render(CreatePersonStep, { props: { onComplete: vi.fn(), onBack: vi.fn() } });
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Create Person' }));
+
+		expect(await screen.findByText('Enter a given name or a surname')).toBeTruthy();
+		expect(createPerson).not.toHaveBeenCalled();
+	});
+});
+
 // A date the server can't read had no way out but typing parentheses (#996).
 describe('Onboarding first person dates (#996)', () => {
 	const onComplete = vi.fn();

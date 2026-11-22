@@ -445,6 +445,29 @@ describe('Person detail edit form', () => {
 		expect(body).toMatchObject({ given_name: 'Ada', surname: '', notes: 'Monarch' });
 	});
 
+	// An imported person may have only a surname, or no name at all (#1054).
+	it('saves a person with a surname and no given name', async () => {
+		getPerson.mockResolvedValue(person({ given_name: '', surname: 'Tudor' }));
+		await openEdit();
+
+		const form = screen.getByLabelText('Given Name').closest('form')!;
+		expect(form.checkValidity()).toBe(true);
+		await fireEvent.input(screen.getByLabelText('Notes'), { target: { value: 'Surname only' } });
+		const body = await save();
+
+		expect(body).toMatchObject({ given_name: '', surname: 'Tudor', notes: 'Surname only' });
+	});
+
+	it('saves a person with no name at all', async () => {
+		getPerson.mockResolvedValue(person({ given_name: '', surname: '' }));
+		await openEdit();
+
+		await fireEvent.input(screen.getByLabelText('Birth Place'), { target: { value: 'London' } });
+		const body = await save();
+
+		expect(body).toMatchObject({ given_name: '', surname: '', birth_place: 'London' });
+	});
+
 	it('sends a cleared surname as an empty string', async () => {
 		getPerson.mockResolvedValue(person());
 		await openEdit();

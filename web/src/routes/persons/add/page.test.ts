@@ -18,8 +18,8 @@ vi.mock('$app/navigation', () => ({
 	goto: vi.fn()
 }));
 
-// The API requires a given name and accepts an empty surname (PersonCreate);
-// the form enforces the same rule (#911).
+// The API needs a given name or a surname and accepts either empty
+// (PersonCreate); the form enforces the same rule (#911, #1054).
 describe('Add Person form', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
@@ -49,13 +49,27 @@ describe('Add Person form', () => {
 		});
 	});
 
-	it('requires a given name', async () => {
+	it('creates a person with a surname and no given name', async () => {
 		render(Page);
 
-		await fireEvent.input(screen.getByLabelText('Surname'), { target: { value: 'Smith' } });
+		await fireEvent.input(screen.getByLabelText('Surname'), { target: { value: 'Tudor' } });
+		expect(form().checkValidity()).toBe(true);
+		await fireEvent.submit(form());
 
-		expect(form().checkValidity()).toBe(false);
-		expect((screen.getByLabelText('Given Name') as HTMLInputElement).validity.valueMissing).toBe(true);
+		await waitFor(() => expect(apiModule.api.createPerson).toHaveBeenCalled());
+		expect(vi.mocked(apiModule.api.createPerson).mock.calls[0][0]).toMatchObject({
+			given_name: '',
+			surname: 'Tudor'
+		});
+	});
+
+	it('asks for a given name or a surname when both are blank', async () => {
+		render(Page);
+
+		await fireEvent.submit(form());
+
+		expect(await screen.findByText('Enter a given name or a surname')).toBeTruthy();
+		expect(apiModule.api.createPerson).not.toHaveBeenCalled();
 	});
 });
 
