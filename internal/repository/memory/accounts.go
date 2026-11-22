@@ -27,6 +27,7 @@ type AccountStore struct {
 	users       map[uuid.UUID]repository.User
 	memberships []membership
 	sessions    map[string]repository.Session
+	apiTokens   map[string]repository.APIToken // by token hash
 	invites     map[string]repository.Invite
 	resets      map[string]repository.PasswordReset
 	audit       []repository.AuthAuditEntry // oldest first
@@ -37,11 +38,12 @@ type AccountStore struct {
 // NewAccountStore creates an empty in-memory account store.
 func NewAccountStore() *AccountStore {
 	return &AccountStore{
-		users:    make(map[uuid.UUID]repository.User),
-		sessions: make(map[string]repository.Session),
-		invites:  make(map[string]repository.Invite),
-		resets:   make(map[string]repository.PasswordReset),
-		settings: make(map[uuid.UUID]repository.TreeSettings),
+		users:     make(map[uuid.UUID]repository.User),
+		sessions:  make(map[string]repository.Session),
+		apiTokens: make(map[string]repository.APIToken),
+		invites:   make(map[string]repository.Invite),
+		resets:    make(map[string]repository.PasswordReset),
+		settings:  make(map[uuid.UUID]repository.TreeSettings),
 	}
 }
 
@@ -193,6 +195,81 @@ func (s *AccountStore) deleteUserSessions(userID uuid.UUID, keepTokenHash string
 			delete(s.sessions, hash)
 		}
 	}
+}
+
+// copyAPIToken returns token with its own LastUsedAt, so a caller cannot
+// change the stored row through the pointer.
+func copyAPIToken(token repository.APIToken) repository.APIToken {
+	if token.LastUsedAt != nil {
+		lastUsed := *token.LastUsedAt
+		token.LastUsedAt = &lastUsed
+	}
+	return token
+}
+
+// CreateAPIToken stores token.
+func (s *AccountStore) CreateAPIToken(_ context.Context, token *repository.APIToken) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.apiTokens[token.TokenHash] = copyAPIToken(*token)
+	return nil
+}
+
+// GetAPIToken returns the API token with tokenHash.
+func (s *AccountStore) GetAPIToken(_ context.Context, tokenHash string) (*repository.APIToken, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	token, ok := s.apiTokens[tokenHash]
+	if !ok {
+		return nil, repository.ErrAPITokenNotFound
+	}
+	token = copyAPIToken(token)
+	return &token, nil
+}
+
+// ListAPITokens returns userID's API tokens, newest first.
+func (s *AccountStore) ListAPITokens(_ context.Context, userID uuid.UUID) ([]repository.APIToken, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var tokens []repository.APIToken
+	for _, token := range s.apiTokens {
+		if token.UserID == userID {
+			tokens = append(tokens, copyAPIToken(token))
+		}
+	}
+	sort.Slice(tokens, func(i, j int) bool {
+		if !tokens[i].CreatedAt.Equal(tokens[j].CreatedAt) {
+			return tokens[i].CreatedAt.After(tokens[j].CreatedAt)
+		}
+		return tokens[i].ID.String() > tokens[j].ID.String()
+	})
+	return tokens, nil
+}
+
+// TouchAPIToken sets the token's last-used time.
+func (s *AccountStore) TouchAPIToken(_ context.Context, tokenHash string, lastUsed time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	token, ok := s.apiTokens[tokenHash]
+	if !ok {
+		return repository.ErrAPITokenNotFound
+	}
+	token.LastUsedAt = &lastUsed
+	s.apiTokens[tokenHash] = token
+	return nil
+}
+
+// DeleteAPIToken removes userID's API token with id.
+func (s *AccountStore) DeleteAPIToken(_ context.Context, userID, id uuid.UUID) (*repository.APIToken, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for hash, token := range s.apiTokens {
+		if token.ID == id && token.UserID == userID {
+			delete(s.apiTokens, hash)
+			return &token, nil
+		}
+	}
+	return nil, repository.ErrAPITokenNotFound
 }
 
 // ListMembers returns every member of treeID, by username.
