@@ -113,4 +113,5 @@ When changes to gedcom-go are needed:
 - **Run `make generate` after changing `openapi.yaml`**: Both Go server code and TypeScript types must be regenerated. CI will catch drift via `make verify-generated`.
 - **Projection handlers must cover all event types**: When adding new events, add corresponding cases in `repository/projection.go` (invariant PR-004).
 - **`DecodeEvent()` switch must cover all event types**: When adding new events, add a case in `repository/eventstore.go` (invariant ES-007).
+- **Review a milestone before closing it**: run `delivery:milestone-review` on it first (the `deliver-milestone` workflow does this in its wrap-up when given `milestone`). See [PLANNING.md](./docs/PLANNING.md#milestones-rank-and-sprints).
 - **Pre-commit hooks run tests**: If commits seem slow, that's the pre-commit hook running `go fmt`, `go vet`, lint, and the `-short` test tier. Pre-push runs the full suite and checks coverage thresholds. Mark new slow tests with `testing.Short()` (see TESTING-STRATEGY.md#test-tiers).

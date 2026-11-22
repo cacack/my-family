@@ -8,6 +8,10 @@ How work is grouped, ordered and scheduled. Card content follows the issue stand
 - **Milestone**: what. A themed body of work whose description carries a checkable closure
   condition. Every open issue belongs to one. **Backlog** holds only untriaged issues; ungroomed
   future features go in **Future Candidates**.
+- **Milestone review**: a milestone is closed only after `delivery:milestone-review` has run on it
+  and its gaps are filed or fixed. The `deliver-milestone` workflow runs the review in its wrap-up
+  when the milestone it was given has no open issues left; the owner reads it and closes the
+  milestone. A milestone finished any other way gets the review by hand first.
 - **Rank**: order. The single-select `Rank` field on the
   [my-family Roadmap project](https://github.com/users/cacack/projects/3) ranks milestones
   (`01 …`, `02 …`). `v1.0 - Production Ready` is a release gate, not a step in the order. New
@@ -27,7 +31,8 @@ brief` issue (label `planning`) that morning. Planning then:
    active in at most two or three milestones at once. Finishing milestones is what shrinks the
    list.
 4. Plans by issue count: the number closed in recent sprints, not points.
-5. Runs `delivery:milestone-review` on any milestone that closed, then closes the brief.
+5. Checks that every milestone closed since the last planning has its review (see Milestone review above), then
+   closes the brief.
 
 The brief issue is the one kind of open issue with no milestone.
 
