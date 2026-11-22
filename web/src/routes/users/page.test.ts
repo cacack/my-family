@@ -231,7 +231,9 @@ describe('Users page', () => {
 		expect(screen.queryByLabelText('Password reset link for Grace')).toBeNull();
 	});
 
-	it('keeps a link box issued after a reload started', async () => {
+	// The invite's own reload supersedes the older one, whose result is dropped. The
+	// snapshot rule (a link issued mid-reload is not judged) is tested in PendingLinks.test.ts.
+	it('keeps a link box when an older reload answers after the invite is issued', async () => {
 		render(UsersPage);
 		await waitFor(() => expect(screen.getAllByTestId('user-row')).toHaveLength(2));
 		await waitFor(() => expect(screen.getByText('No invite links are pending.')).toBeDefined());
