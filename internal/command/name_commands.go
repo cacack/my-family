@@ -42,8 +42,8 @@ type AddNameResult struct {
 // AddName adds a new name variant to a person.
 func (h *Handler) AddName(ctx context.Context, input AddNameInput) (*AddNameResult, error) {
 	// Validate required fields
-	if input.GivenName == "" && input.Surname == "" {
-		return nil, fmt.Errorf("%w: given_name or surname is required", ErrInvalidInput)
+	if !hasName(input.GivenName, input.Surname) {
+		return nil, errNameRequired
 	}
 
 	// Verify person exists
@@ -194,6 +194,9 @@ func (h *Handler) UpdateName(ctx context.Context, input UpdateNameInput) (*Updat
 		return &UpdateNameResult{ID: pn.ID, PersonID: input.PersonID, IsPrimary: pn.IsPrimary}, nil
 	}
 
+	if err := checkNameKept(existingName.GivenName, existingName.Surname, pn.GivenName, pn.Surname); err != nil {
+		return nil, err
+	}
 	if err := pn.Validate(); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidInput, err)
 	}

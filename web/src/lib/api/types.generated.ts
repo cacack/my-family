@@ -4154,7 +4154,7 @@ export interface components {
             notes?: string;
             research_status?: components["schemas"]["ResearchStatus"];
         };
-        /** @description Partial update. A field left out stays unchanged; an optional (nullable) field sent as null is cleared. Required fields reject null. */
+        /** @description Partial update. A field left out stays unchanged; an optional (nullable) field sent as null is cleared. Required fields reject null. An update may leave given_name and surname both empty only when the person already had neither (an imported person with no NAME stays editable); one that would make a named person nameless is rejected with 400. */
         PersonUpdate: {
             given_name?: string;
             surname?: string | null;
@@ -5099,7 +5099,7 @@ export interface components {
             /** @description Notes on this name (GEDCOM NAME.NOTE). NOTE pointers are kept as their xref. */
             notes?: string;
         };
-        /** @description Partial update. A field left out stays unchanged; an optional (nullable) field sent as null is cleared. Required fields reject null. */
+        /** @description Partial update. A field left out stays unchanged; an optional (nullable) field sent as null is cleared. Required fields reject null. An update may leave given_name and surname both empty only when the name already had neither; one that would make a named name nameless is rejected with 400. */
         PersonNameUpdate: {
             given_name?: string;
             surname?: string;

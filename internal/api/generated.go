@@ -5831,7 +5831,7 @@ type PersonNameList struct {
 	Total int          `json:"total"`
 }
 
-// PersonNameUpdate Partial update. A field left out stays unchanged; an optional (nullable) field sent as null is cleared. Required fields reject null.
+// PersonNameUpdate Partial update. A field left out stays unchanged; an optional (nullable) field sent as null is cleared. Required fields reject null. An update may leave given_name and surname both empty only when the name already had neither; one that would make a named name nameless is rejected with 400.
 type PersonNameUpdate struct {
 	GivenName  *string                   `json:"given_name,omitempty"`
 	IsPrimary  *bool                     `json:"is_primary,omitempty"`
@@ -5890,7 +5890,7 @@ type PersonSummary struct {
 	Surname  string `json:"surname"`
 }
 
-// PersonUpdate Partial update. A field left out stays unchanged; an optional (nullable) field sent as null is cleared. Required fields reject null.
+// PersonUpdate Partial update. A field left out stays unchanged; an optional (nullable) field sent as null is cleared. Required fields reject null. An update may leave given_name and surname both empty only when the person already had neither (an imported person with no NAME stays editable); one that would make a named person nameless is rejected with 400.
 type PersonUpdate struct {
 	BirthDate  nullable.Nullable[DateInput] `json:"birth_date,omitempty"`
 	BirthPlace nullable.Nullable[string]    `json:"birth_place,omitempty"`

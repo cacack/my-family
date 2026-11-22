@@ -93,11 +93,30 @@ type CreatePersonResult struct {
 	Version int64
 }
 
+// errNameRequired rejects a create, or an update of a named person or name,
+// that leaves neither a given name nor a surname.
+var errNameRequired = fmt.Errorf("%w: given_name or surname is required", ErrInvalidInput)
+
+// hasName reports whether a person or name has a given name or a surname.
+func hasName(givenName, surname string) bool {
+	return givenName != "" || surname != ""
+}
+
+// checkNameKept enforces the update rule for names: an update may leave both
+// parts empty only when they were already empty (an imported person with no
+// NAME stays editable), never clear a name that had one.
+func checkNameKept(beforeGiven, beforeSurname, afterGiven, afterSurname string) error {
+	if hasName(beforeGiven, beforeSurname) && !hasName(afterGiven, afterSurname) {
+		return errNameRequired
+	}
+	return nil
+}
+
 // CreatePerson creates a new person record.
 func (h *Handler) CreatePerson(ctx context.Context, input CreatePersonInput) (*CreatePersonResult, error) {
 	// Validate required fields
-	if input.GivenName == "" && input.Surname == "" {
-		return nil, fmt.Errorf("%w: given_name or surname is required", ErrInvalidInput)
+	if !hasName(input.GivenName, input.Surname) {
+		return nil, errNameRequired
 	}
 	birthDate, err := normalizeDateInput("birth_date", input.BirthDate)
 	if err != nil {
@@ -264,6 +283,9 @@ func (h *Handler) UpdatePerson(ctx context.Context, input UpdatePersonInput) (*U
 	}
 
 	// Validate updated person
+	if err := checkNameKept(current.GivenName, current.Surname, testPerson.GivenName, testPerson.Surname); err != nil {
+		return nil, err
+	}
 	if err := testPerson.Validate(); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidInput, err)
 	}
