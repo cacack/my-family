@@ -1235,6 +1235,21 @@ describe('Branch comparison page', () => {
 			await new Promise((resolve) => setTimeout(resolve, 400));
 			expect(precheckBranchMerge).not.toHaveBeenCalled();
 		});
+
+		it('does not check the merge for a viewer, who cannot run it (#1461)', async () => {
+			signInAs('viewer');
+			compareBranch.mockResolvedValue(twoEntityComparison({ conflicts: [] }));
+			// What the server answers a viewer, should the page ask.
+			precheckBranchMerge.mockRejectedValue({ code: 'forbidden', message: 'forbidden' });
+
+			render(Page);
+			await screen.findByRole('heading', { name: 'Maternal Smith line' });
+			// Past the precheck's debounce, so a scheduled check would have run.
+			await new Promise((resolve) => setTimeout(resolve, 400));
+			expect(precheckBranchMerge).not.toHaveBeenCalled();
+			expect(screen.queryByText(/The merge blockers could not be checked/)).toBeNull();
+			expect(screen.queryByTestId('merge-blockers')).toBeNull();
+		});
 	});
 
 	describe('the "main moved" link target (#837)', () => {

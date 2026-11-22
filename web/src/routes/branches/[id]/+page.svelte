@@ -415,8 +415,8 @@
 
 	/**
 	 * Re-checks the merge blockers whenever the decisions that would be sent
-	 * change. Only an active branch with changes can be merged, so only that is
-	 * checked. Writes nothing on the server; a failed check is shown but does
+	 * change. Only an editor can merge, and only an active branch with changes,
+	 * so only that is checked. Writes nothing on the server; a failed check is shown but does
 	 * not hold the merge, which checks for itself.
 	 */
 	async function checkBlockers(id: string, entries: Array<[string, MergeResolution]>) {
@@ -447,7 +447,7 @@
 	$effect(() => {
 		const entries = [...mergeResolutions];
 		const id = comparison?.branch.id;
-		if (!id || !mergeable || !hasChanges) return;
+		if (!id || !mergeable || !hasChanges || !can('editor')) return;
 		const timer = setTimeout(() => checkBlockers(id, entries), PRECHECK_DEBOUNCE_MS);
 		return () => clearTimeout(timer);
 	});
@@ -1018,13 +1018,15 @@
 		{/if}
 
 		{#if mergeable}
-			<MergeBlockersPanel
-				{blockers}
-				checking={checkingBlockers}
-				error={blockerCheckError}
-				onfix={applyBlockerFix}
-				disabled={merging}
-			/>
+			{#if can('editor')}
+				<MergeBlockersPanel
+					{blockers}
+					checking={checkingBlockers}
+					error={blockerCheckError}
+					onfix={applyBlockerFix}
+					disabled={merging}
+				/>
+			{/if}
 			{#if hasChanges}
 				<BranchEvidenceCoveragePanel
 					branchId={comparison.branch.id}
