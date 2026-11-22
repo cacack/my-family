@@ -132,7 +132,15 @@
 		}
 	}
 
-	/** Clears a link box once its link is revoked, so it cannot be copied and passed on. */
+	/** The IDs of the links in the link boxes, for Pending links to check. */
+	function shownLinks(): string[] {
+		return [...(invite ? [invite.link.id] : []), ...Object.values(resets).map((link) => link.id)];
+	}
+
+	/**
+	 * Clears a link box once its link is no longer pending (revoked, or deleted
+	 * by the server, as when its issuer is demoted), so it cannot be passed on.
+	 */
 	function forgetLink(id: string) {
 		if (invite?.link.id === id) invite = null;
 		for (const [userId, link] of Object.entries(resets)) {
@@ -285,6 +293,7 @@
 			bind:this={pendingLinks}
 			announce={(message) => liveRegion?.announce(message)}
 			onrevoke={forgetLink}
+			shown={shownLinks}
 		/>
 	{/if}
 </div>

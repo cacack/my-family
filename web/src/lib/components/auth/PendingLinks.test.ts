@@ -1,3 +1,4 @@
+import { tick } from 'svelte';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import PendingLinks from './PendingLinks.svelte';
@@ -42,6 +43,13 @@ const cliReset: PendingPasswordReset = {
 	created_by: undefined,
 	created_by_name: undefined
 };
+
+/** A promise the test resolves when it chooses. */
+function deferred<T>() {
+	let resolve!: (value: T) => void;
+	const promise = new Promise<T>((r) => (resolve = r));
+	return { promise, resolve };
+}
 
 function item(text: string): HTMLElement {
 	return screen.getAllByTestId('pending-link').find((r) => r.textContent?.includes(text)) as HTMLElement;
@@ -132,5 +140,34 @@ describe('PendingLinks', () => {
 		render(PendingLinks);
 		await fireEvent.click(await screen.findByRole('button', { name: /retry/i }));
 		await waitFor(() => expect(screen.getAllByTestId('pending-link')).toHaveLength(3));
+	});
+
+	it('shows the later reload when two overlap and resolve out of order', async () => {
+		const older = deferred<PendingInvite[]>();
+		const newer = deferred<PendingInvite[]>();
+		api.listInvites.mockReturnValueOnce(older.promise).mockReturnValueOnce(newer.promise);
+		const { component } = render(PendingLinks);
+		component.reload();
+		newer.resolve([]);
+		await waitFor(() => expect(screen.getByText('No invite links are pending.')).toBeDefined());
+		older.resolve([invite]);
+		// Let the older reload settle and render, if it were to.
+		await new Promise((r) => setTimeout(r, 0));
+		await tick();
+		expect(screen.getByText('No invite links are pending.')).toBeDefined();
+		expect(screen.queryByText('Editor invite')).toBeNull();
+	});
+
+	it('passes on the shown links a reload finds gone, as read when it started', async () => {
+		const pending = deferred<PendingInvite[]>();
+		api.listInvites.mockReturnValueOnce(pending.promise);
+		const onrevoke = vi.fn();
+		let shown = ['gone-hash', 'invite-hash'];
+		render(PendingLinks, { onrevoke, shown: () => shown });
+		// Issued after the reload started: not judged by it.
+		shown = [...shown, 'later-hash'];
+		pending.resolve([invite]);
+		await waitFor(() => expect(onrevoke).toHaveBeenCalledWith('gone-hash'));
+		expect(onrevoke).toHaveBeenCalledTimes(1);
 	});
 });

@@ -82,6 +82,7 @@ describe('Users page', () => {
 	it('creates an invite link with the chosen role', async () => {
 		api.createInvite.mockResolvedValue({ id: 'tok-hash', token: 'tok', expires_at: '2026-01-08T00:00:00Z' });
 		render(UsersPage);
+		api.listInvites.mockResolvedValue([pendingInvite('tok-hash')]);
 		await fireEvent.change(screen.getByLabelText('Role', { selector: '#invite-role' }), { target: { value: 'editor' } });
 		await fireEvent.click(screen.getByRole('button', { name: 'Create invite link' }));
 		expect(api.createInvite).toHaveBeenCalledWith('editor');
@@ -142,6 +143,7 @@ describe('Users page', () => {
 		api.createPasswordReset.mockResolvedValue({ id: 'reset-hash', token: 'reset-tok', expires_at: '2026-01-02T00:00:00Z' });
 		render(UsersPage);
 		await waitFor(() => expect(screen.getAllByTestId('user-row')).toHaveLength(2));
+		api.listPasswordResets.mockResolvedValue([pendingReset('reset-hash')]);
 		await fireEvent.click(screen.getByRole('button', { name: 'Reset password for Grace' }));
 		const link = (await screen.findByLabelText('Password reset link for Grace')) as HTMLInputElement;
 		expect(link.value).toBe(`${window.location.origin}/reset-password#token=reset-tok`);
@@ -177,11 +179,14 @@ describe('Users page', () => {
 		api.listInvites.mockResolvedValue([pendingInvite('other-hash')]);
 		api.revokeInvite.mockResolvedValue(undefined);
 		render(UsersPage);
+		await screen.findByRole('button', { name: /^Revoke viewer invite/ });
+		api.listInvites.mockResolvedValue([pendingInvite('other-hash'), pendingInvite('invite-hash')]);
 		await fireEvent.click(screen.getByRole('button', { name: 'Create invite link' }));
 		await screen.findByLabelText('Invite link (viewer)');
-		await fireEvent.click(await screen.findByRole('button', { name: /^Revoke viewer invite/ }));
+		await waitFor(() => expect(screen.getAllByTestId('pending-link')).toHaveLength(2));
+		await fireEvent.click(screen.getAllByRole('button', { name: /^Revoke viewer invite/ })[0]);
 		await waitFor(() => expect(api.revokeInvite).toHaveBeenCalledWith('other-hash'));
-		await waitFor(() => expect(screen.queryAllByTestId('pending-link')).toHaveLength(0));
+		await waitFor(() => expect(screen.queryAllByTestId('pending-link')).toHaveLength(1));
 		expect(screen.getByLabelText('Invite link (viewer)')).toBeDefined();
 	});
 
@@ -202,6 +207,51 @@ describe('Users page', () => {
 		await fireEvent.click(screen.getByRole('button', { name: 'Disable Grace' }));
 		await fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Disable' }));
 		await waitFor(() => expect(api.listInvites).toHaveBeenCalledTimes(3));
+	});
+
+	it('clears the link boxes whose links a reload finds gone', async () => {
+		api.createInvite.mockResolvedValue({ id: 'invite-hash', token: 'tok', expires_at: '2026-01-08T00:00:00Z' });
+		api.createPasswordReset.mockResolvedValue({ id: 'reset-hash', token: 'reset-tok', expires_at: '2026-01-02T00:00:00Z' });
+		render(UsersPage);
+		await waitFor(() => expect(screen.getAllByTestId('user-row')).toHaveLength(2));
+		api.listInvites.mockResolvedValue([pendingInvite('invite-hash')]);
+		api.listPasswordResets.mockResolvedValue([pendingReset('reset-hash')]);
+		await fireEvent.click(screen.getByRole('button', { name: 'Create invite link' }));
+		await screen.findByLabelText('Invite link (viewer)');
+		await fireEvent.click(screen.getByRole('button', { name: 'Reset password for Grace' }));
+		await screen.findByLabelText('Password reset link for Grace');
+		await waitFor(() => expect(screen.getAllByTestId('pending-link')).toHaveLength(2));
+
+		// Ada demotes herself while another owner exists: the server deletes the links she issued.
+		api.listInvites.mockResolvedValue([]);
+		api.listPasswordResets.mockResolvedValue([]);
+		api.updateUser.mockResolvedValueOnce({ ...owner, role: 'editor' });
+		await fireEvent.change(within(row('Ada')).getByLabelText('Role'), { target: { value: 'editor' } });
+		await waitFor(() => expect(screen.queryByLabelText('Invite link (viewer)')).toBeNull());
+		expect(screen.queryByLabelText('Password reset link for Grace')).toBeNull();
+	});
+
+	// The invite's own reload supersedes the older one, whose result is dropped. The
+	// snapshot rule (a link issued mid-reload is not judged) is tested in PendingLinks.test.ts.
+	it('keeps a link box when an older reload answers after the invite is issued', async () => {
+		render(UsersPage);
+		await waitFor(() => expect(screen.getAllByTestId('user-row')).toHaveLength(2));
+		await waitFor(() => expect(screen.getByText('No invite links are pending.')).toBeDefined());
+
+		// A role change starts a reload that answers only after the invite is issued.
+		let answerOlder!: (invites: PendingInvite[]) => void;
+		api.listInvites.mockReturnValueOnce(new Promise((resolve) => (answerOlder = resolve)));
+		api.updateUser.mockResolvedValueOnce({ ...grace, role: 'viewer' });
+		await fireEvent.change(within(row('Grace')).getByLabelText('Role'), { target: { value: 'viewer' } });
+		await waitFor(() => expect(api.listInvites).toHaveBeenCalledTimes(2));
+
+		api.createInvite.mockResolvedValue({ id: 'invite-hash', token: 'tok', expires_at: '2026-01-08T00:00:00Z' });
+		api.listInvites.mockResolvedValue([pendingInvite('invite-hash')]);
+		await fireEvent.click(screen.getByRole('button', { name: 'Create invite link' }));
+		await screen.findByLabelText('Invite link (viewer)');
+		answerOlder([]);
+		await waitFor(() => expect(screen.getAllByTestId('pending-link')).toHaveLength(1));
+		expect(screen.getByLabelText('Invite link (viewer)')).toBeDefined();
 	});
 
 	it('keeps the pending links when a role change is refused', async () => {
