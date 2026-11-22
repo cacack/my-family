@@ -230,6 +230,7 @@ func TestExport_RecordDeathKeepsOtherDeathEvents(t *testing.T) {
 		want   int // death blocks
 	}{
 		{name: "merged", events: []repository.EventReadModel{{Cause: "Fever"}}, want: 1},
+		{name: "with a description", events: []repository.EventReadModel{{Description: "Drowned"}}, want: 1},
 		{name: "with notes", events: []repository.EventReadModel{{Cause: "Fever", Notes: "n"}}, want: 2},
 		{name: "dated", events: []repository.EventReadModel{{Cause: "Fever", DateRaw: "1891"}}, want: 2},
 		{name: "two", events: []repository.EventReadModel{{Cause: "Fever"}, {Age: "70y"}}, want: 3},
@@ -348,6 +349,73 @@ func TestRoundTrip_RecordDeathAddedAfterBareDeath(t *testing.T) {
 	if len(deaths) != 1 || deaths[0].Cause != "Fever" || deaths[0].Age != "70y" ||
 		deaths[0].Address == nil || deaths[0].Address.Line1 != "1 Main St" {
 		t.Errorf("re-imported death life events = %+v, want one with cause, age and address", deaths)
+	}
+	if second := importAndExport(t, first); second != first {
+		t.Errorf("second export differs from the first:\n%s\nfirst:\n%s", second, first)
+	}
+}
+
+// The descriptor of a DEAT the person record holds, as in "1 DEAT Drowned"
+// with a DATE, is kept as the description of a dateless, placeless death life
+// event, since the record has no field for it (#1707).
+func TestImport_RecordDeathKeepsDescriptor(t *testing.T) {
+	tests := []struct {
+		name string
+		deat string
+	}{
+		{name: "dated", deat: "1 DEAT Drowned\n2 DATE 1890\n"},
+		{name: "placed", deat: "1 DEAT Drowned\n2 PLAC Springfield\n"},
+		{name: "dated with a cause", deat: "1 DEAT Drowned\n2 DATE 1890\n2 CAUS Fever\n"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data := "0 HEAD\n1 GEDC\n2 VERS 7.0\n0 @I1@ INDI\n1 NAME A /B/\n" + tt.deat + "0 TRLR\n"
+			_, persons, _, _, _, _, events, _, _, _, _, _, _, err := gedcom.NewImporter().Import(context.Background(), strings.NewReader(data))
+			if err != nil {
+				t.Fatalf("Import: %v", err)
+			}
+			if len(persons) != 1 || persons[0].DeathDate == "" && persons[0].DeathPlace == "" {
+				t.Fatalf("persons = %+v, want one with a record death", persons)
+			}
+			var deaths []gedcom.EventData
+			for _, e := range events {
+				if e.FactType == domain.FactPersonDeath {
+					deaths = append(deaths, e)
+				}
+			}
+			if len(deaths) != 1 {
+				t.Fatalf("death life events = %+v, want one", deaths)
+			}
+			if d := deaths[0]; d.Description != "Drowned" || d.Date != "" || d.Place != "" || d.IsNegated {
+				t.Errorf("death life event = %+v, want description %q and no date or place", d, "Drowned")
+			}
+		})
+	}
+}
+
+// A dated DEAT's descriptor is exported as a NOTE of the one DEAT, and an
+// import of the export keeps it with the date and one death (#1707).
+func TestRoundTrip_RecordDeathDescriptor(t *testing.T) {
+	data := "0 HEAD\n1 GEDC\n2 VERS 7.0\n0 @I1@ INDI\n1 NAME A /B/\n" +
+		"1 DEAT Drowned\n2 DATE 1890\n2 NOTE Found in the river\n0 TRLR\n"
+	first := importAndExport(t, data)
+	blocks := deathBlocks(first)
+	if len(blocks) != 1 || !strings.Contains(blocks[0], "2 DATE 1890") || !strings.Contains(blocks[0], "Drowned") ||
+		!strings.Contains(blocks[0], "Found in the river") {
+		t.Fatalf("death blocks = %q, want one with the date, the note and the descriptor; export:\n%s", blocks, first)
+	}
+
+	_, persons, _, _, _, _, events, _, _, _, _, _, _, err := gedcom.NewImporter().Import(context.Background(), strings.NewReader(first))
+	if err != nil {
+		t.Fatalf("re-import: %v", err)
+	}
+	if len(persons) != 1 || persons[0].DeathDate != "1890" || !strings.Contains(persons[0].DeathNotes, "Drowned") {
+		t.Fatalf("re-imported persons = %+v, want one with death date 1890 and %q in the death notes", persons, "Drowned")
+	}
+	for _, e := range events {
+		if e.FactType == domain.FactPersonDeath {
+			t.Errorf("re-imported death life event %+v, want the record's death only", e)
+		}
 	}
 	if second := importAndExport(t, first); second != first {
 		t.Errorf("second export differs from the first:\n%s\nfirst:\n%s", second, first)
