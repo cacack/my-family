@@ -38,16 +38,20 @@ export {
 /**
  * The cookie that makes the server answer the owner as the principal they
  * preview the tree as (#1413). It is a session cookie, so the preview ends
- * with the browser, and every request carries it, image loads included.
+ * with the browser, and every request carries it, image loads included. Like
+ * the session cookie it is Secure over https. The name and values are also
+ * defined in internal/api/auth.go; TestPreviewCookieMatchesWebApp keeps the
+ * two in step.
  */
 const PREVIEW_COOKIE = 'myfamily_preview';
 const PREVIEW_VALUES: readonly PreviewAs[] = ['viewer', 'visitor'];
 
 function writePreviewCookie(as: PreviewAs | null): void {
+	const secure = location.protocol === 'https:' ? '; Secure' : '';
 	document.cookie =
 		as === null
-			? `${PREVIEW_COOKIE}=; Path=/; Max-Age=0; SameSite=Strict`
-			: `${PREVIEW_COOKIE}=${as}; Path=/; SameSite=Strict`;
+			? `${PREVIEW_COOKIE}=; Path=/; Max-Age=0; SameSite=Strict${secure}`
+			: `${PREVIEW_COOKIE}=${as}; Path=/; SameSite=Strict${secure}`;
 }
 
 /**
@@ -81,6 +85,15 @@ export function stopPreview(): void {
 function signedIn(account: Account): void {
 	auth.account = account;
 	auth.phase = 'signed-in';
+}
+
+/**
+ * Someone just signed in, so they start as themselves: a preview left over
+ * from a session that ended without a sign-out (expired, revoked) is dropped.
+ */
+function startSession(account: Account): void {
+	stopPreview();
+	signedIn(account);
 }
 
 /** The session ended on the server (expired or revoked): show the sign-in page. */
@@ -156,17 +169,17 @@ export async function loadAuth(): Promise<void> {
 
 /** Sign in; throws the API error (wrong password, rate limited) for the form to show. */
 export async function signIn(username: string, password: string): Promise<void> {
-	signedIn(await api.signIn({ username, password }));
+	startSession(await api.signIn({ username, password }));
 }
 
 /** Create the first owner and sign them in; throws the API error for the form to show. */
 export async function completeSetup(input: SetupRequest): Promise<void> {
-	signedIn(await api.setupOwner(input));
+	startSession(await api.setupOwner(input));
 }
 
 /** Create an account from an invite link and sign it in; throws the API error for the form to show. */
 export async function acceptInvite(input: AcceptInviteRequest): Promise<void> {
-	signedIn(await api.acceptInvite(input));
+	startSession(await api.acceptInvite(input));
 }
 
 /** Change the signed-in user's display name or password; throws the API error for the form to show. */

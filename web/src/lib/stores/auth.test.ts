@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type * as apiModule from '#lib/api/client.js';
 
 const { getAuthStatus, signInMock, setupOwner, signOutMock, handlers } = vi.hoisted(() => ({
@@ -266,6 +266,60 @@ describe('auth store', () => {
 			await loadAuth();
 			expect(previewing()).toBeNull();
 			expect(previewCookie()).toBeUndefined();
+		});
+
+		describe('Secure attribute', () => {
+			let written: string[];
+
+			beforeEach(() => {
+				written = [];
+				vi.spyOn(Document.prototype, 'cookie', 'set').mockImplementation((value: string) => {
+					written.push(value);
+				});
+			});
+
+			afterEach(() => {
+				vi.restoreAllMocks();
+				vi.unstubAllGlobals();
+			});
+
+			it.each([
+				['https:', true],
+				['http:', false]
+			])('over %s the cookie is Secure: %s', (protocol, secure) => {
+				vi.stubGlobal('location', { ...window.location, protocol });
+				startPreview('viewer');
+				stopPreview();
+				expect(written).toHaveLength(2);
+				for (const cookie of written) {
+					expect(cookie.split('; ').includes('Secure')).toBe(secure);
+				}
+			});
+		});
+
+		it.each([
+			['signIn', () => signIn('ada', 'pw'), () => signInMock.mockResolvedValue(ADA)],
+			['completeSetup', () => completeSetup({ token: 't', username: 'ada', display_name: 'Ada', password: 'pw' }), () => setupOwner.mockResolvedValue(ADA)]
+		])('a session lost without a sign-out leaves no preview for the next %s', async (_name, signInAgain, answer) => {
+			auth.phase = 'signed-in';
+			auth.account = ADA;
+			startPreview('visitor');
+			markSignedOut();
+			answer();
+			await signInAgain();
+			expect(previewCookie()).toBeUndefined();
+			expect(previewing()).toBeNull();
+			expect(currentRole()).toBe('owner');
+		});
+
+		it('a reload after the session expired, then a sign-in, starts with no preview', async () => {
+			document.cookie = 'myfamily_preview=viewer; Path=/';
+			getAuthStatus.mockResolvedValue({ mode: 'accounts', setup_required: false });
+			await loadAuth();
+			signInMock.mockResolvedValue(ADA);
+			await signIn('ada', 'pw');
+			expect(previewCookie()).toBeUndefined();
+			expect(previewing()).toBeNull();
 		});
 
 		it('ends the preview on sign-out', async () => {
