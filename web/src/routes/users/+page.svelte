@@ -19,7 +19,7 @@
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { Label } from '#lib/components/ui/label/index.js';
 	import { api, type AccountLink, type ApiError, type User } from '#lib/api/client.js';
-	import { auth, can, type Role } from '#lib/stores/auth.svelte.js';
+	import { auth, can, isOpenMode, type Role } from '#lib/stores/auth.svelte.js';
 	import { inviteLink, resetLink } from '#lib/utils/accountLinks.js';
 
 	const ROLES: { value: Role; label: string }[] = [
@@ -168,7 +168,7 @@
 		{/snippet}
 	</PageHeader>
 
-	{#if auth.phase === 'open'}
+	{#if isOpenMode()}
 		<p class="notice" role="note">
 			This server runs without sign-in (AUTH_MODE=open), so there are no users to manage.
 		</p>

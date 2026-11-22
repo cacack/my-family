@@ -129,4 +129,12 @@ describe('Audit log page', () => {
 		expect(screen.queryByText(/AUTH_MODE=open/)).toBeNull();
 		expect(api.listAuthAudit).not.toHaveBeenCalled();
 	});
+
+	it('explains open mode instead of loading', () => {
+		auth.phase = 'open';
+		auth.account = null;
+		render(AuditPage);
+		expect(screen.getByRole('note').textContent).toContain('AUTH_MODE=open');
+		expect(api.listAuthAudit).not.toHaveBeenCalled();
+	});
 });

@@ -13,7 +13,7 @@
 	import RoleNotice from '#lib/components/auth/RoleNotice.svelte';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { api, type ApiError, type AuthAuditEntry } from '#lib/api/client.js';
-	import { auth, can } from '#lib/stores/auth.svelte.js';
+	import { auth, can, isOpenMode } from '#lib/stores/auth.svelte.js';
 	import { AUTH_ACTION_LABELS, auditActor } from '#lib/utils/authAudit.js';
 
 	const PAGE_SIZE = 50;
@@ -89,7 +89,7 @@
 		back={{ href: '/users', label: 'Users' }}
 	/>
 
-	{#if auth.phase === 'open'}
+	{#if isOpenMode()}
 		<p class="notice" role="note">
 			This server runs without sign-in (AUTH_MODE=open), so nothing is recorded here.
 		</p>

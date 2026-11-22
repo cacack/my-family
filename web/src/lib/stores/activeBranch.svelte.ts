@@ -254,10 +254,12 @@ export async function revalidateActiveBranch(): Promise<void> {
  * rows fetched under the previous scope and leaving them there is the UI lying
  * about what the user is looking at.
  *
- * A reload rather than SvelteKit's `invalidateAll()`: this app has no `load`
- * functions at all (`src/routes/+layout.ts` turns off SSR and every route
- * fetches from a client-side `$effect`), so `invalidateAll()` would invalidate
- * nothing. The branch id is persisted before the reload, so it survives.
+ * A reload rather than SvelteKit's `invalidateAll()`: `src/routes/+layout.ts`
+ * turns off SSR and routes fetch their rows from a client-side `$effect`, which
+ * `invalidateAll()` does not re-run. It re-runs only `load` functions, and the
+ * few routes that have one (the home-person chart redirects, e.g.
+ * `pedigree/+page.ts`) load none of the rows on screen. The branch id is
+ * persisted before the reload, so it survives.
  */
 export function switchBranch(branch: Branch | null): void {
 	const id = branch?.id ?? null;
