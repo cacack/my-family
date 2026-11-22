@@ -53,10 +53,8 @@ func NewPerson(givenName, surname string) *Person {
 func (p *Person) Validate() error {
 	var errs []error
 
-	// Required fields
-	if p.GivenName == "" {
-		errs = append(errs, PersonValidationError{Field: "given_name", Message: "cannot be empty"})
-	}
+	// Either name part may be empty: a source can record only a surname, or no
+	// name at all. Creating a person still needs one (command.CreatePerson).
 	if len(p.GivenName) > 100 {
 		errs = append(errs, PersonValidationError{Field: "given_name", Message: "cannot exceed 100 characters"})
 	}
@@ -182,10 +180,7 @@ func NewPersonName(personID uuid.UUID, givenName, surname string) *PersonName {
 func (pn *PersonName) Validate() error {
 	var errs []error
 
-	// GivenName is required
-	if pn.GivenName == "" {
-		errs = append(errs, PersonNameValidationError{Field: "given_name", Message: "cannot be empty"})
-	}
+	// GivenName can be empty (a source may record only a surname)
 	if len(pn.GivenName) > 100 {
 		errs = append(errs, PersonNameValidationError{Field: "given_name", Message: "cannot exceed 100 characters"})
 	}

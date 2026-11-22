@@ -384,9 +384,8 @@
 		const typedDates = { birth_date: formData.birth_date, death_date: formData.death_date };
 		try {
 			await api.updatePerson(person.id, {
-				// The given name is required, so an empty one is never sent. The
-				// surname is optional: an empty string clears it.
-				given_name: formData.given_name || undefined,
+				// Either name part may be blank (#1054): an empty string clears it.
+				given_name: formData.given_name,
 				surname: formData.surname,
 				// Sent only when changed, so saving a person with no gender
 				// doesn't set one.
@@ -543,7 +542,7 @@
 				<FormRow>
 					<label>
 						Given Name
-						<input type="text" bind:value={formData.given_name} required />
+						<input type="text" bind:value={formData.given_name} />
 					</label>
 					<label>
 						Surname

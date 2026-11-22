@@ -37,7 +37,13 @@ func TestPerson_Validate(t *testing.T) {
 		{
 			name:    "empty given name",
 			person:  &Person{ID: uuid.New(), GivenName: "", Surname: "Doe"},
-			wantErr: true,
+			wantErr: false,
+		},
+		{
+			// An imported individual with no NAME has neither part (#1054).
+			name:    "no name at all",
+			person:  &Person{ID: uuid.New()},
+			wantErr: false,
 		},
 		{
 			name:    "empty surname (valid for historical records)",
@@ -232,7 +238,7 @@ func TestPersonName_Validate(t *testing.T) {
 		{
 			name:    "empty given name",
 			pn:      &PersonName{ID: uuid.New(), PersonID: personID, GivenName: "", Surname: "Smith"},
-			wantErr: true,
+			wantErr: false,
 		},
 		{
 			name:    "empty surname (valid for historical records)",

@@ -287,6 +287,23 @@ func TestContractPersons(t *testing.T) {
 			skipResponseVal: true,
 		},
 		{
+			name:            "CreatePerson_Success_SurnameOnly",
+			method:          http.MethodPost,
+			path:            "/api/v1/persons",
+			body:            `{"surname":"Tudor"}`,
+			contentType:     "application/json",
+			wantStatus:      http.StatusCreated,
+			skipResponseVal: true,
+		},
+		{
+			name:        "CreatePerson_NoName",
+			method:      http.MethodPost,
+			path:        "/api/v1/persons",
+			body:        `{"gender":"male"}`,
+			contentType: "application/json",
+			wantStatus:  http.StatusBadRequest,
+		},
+		{
 			name:   "GetPerson_Success",
 			method: http.MethodGet,
 			path:   "/api/v1/persons/{id}",
@@ -331,8 +348,7 @@ func TestContractPersons(t *testing.T) {
 			wantStatus:  http.StatusOK,
 		},
 		{
-			// Given name is required, so the spec rejects an empty one and so
-			// does the handler.
+			// A given name may be empty when a surname is present (#1054).
 			name:   "UpdatePerson_EmptyGivenName",
 			method: http.MethodPut,
 			path:   "/api/v1/persons/{id}",
@@ -340,10 +356,10 @@ func TestContractPersons(t *testing.T) {
 				id := createPerson(t, server, "John", "Doe")
 				return map[string]string{"{id}": id}
 			},
-			body:           `{"given_name":"","version":2}`,
-			contentType:    "application/json",
-			wantStatus:     http.StatusBadRequest,
-			skipRequestVal: true,
+			body:            `{"given_name":"","version":2}`,
+			contentType:     "application/json",
+			wantStatus:      http.StatusOK,
+			skipResponseVal: true,
 		},
 		{
 			name:   "UpdatePerson_Conflict",

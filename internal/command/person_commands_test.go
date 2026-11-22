@@ -2,6 +2,8 @@ package command_test
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -111,13 +113,57 @@ func TestCreatePerson_Validation(t *testing.T) {
 	handler := command.NewHandler(eventStore, readStore)
 	ctx := context.Background()
 
-	// Missing given name
-	_, err := handler.CreatePerson(ctx, command.CreatePersonInput{
-		GivenName: "",
-		Surname:   "Doe",
-	})
-	if err == nil {
-		t.Error("Expected error for empty given name")
+	// Neither a given name nor a surname
+	_, err := handler.CreatePerson(ctx, command.CreatePersonInput{})
+	if !errors.Is(err, command.ErrInvalidInput) {
+		t.Errorf("CreatePerson with no name error = %v, want ErrInvalidInput", err)
+	}
+}
+
+// A source may record only a surname, so a person can be created without a
+// given name (#1054).
+func TestCreatePerson_SurnameOnly(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(memory.NewEventStore(), readStore)
+	ctx := context.Background()
+
+	result, err := handler.CreatePerson(ctx, command.CreatePersonInput{Surname: "Tudor"})
+	if err != nil {
+		t.Fatalf("CreatePerson failed: %v", err)
+	}
+	person, _ := readStore.GetPerson(ctx, domain.MainBranchID, result.ID)
+	if person.GivenName != "" || person.Surname != "Tudor" {
+		t.Errorf("name = %q/%q, want \"\"/\"Tudor\"", person.GivenName, person.Surname)
+	}
+}
+
+// An imported individual with no NAME has neither name part; it must still be
+// editable in its other fields (#1054).
+func TestUpdatePerson_NamelessPerson(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(memory.NewEventStore(), readStore)
+	ctx := context.Background()
+
+	ged := "0 HEAD\n1 GEDC\n2 VERS 5.5\n1 CHAR UTF-8\n0 @I1@ INDI\n1 SEX M\n0 TRLR\n"
+	if _, err := handler.ImportGedcom(ctx, command.ImportGedcomInput{Filename: "t.ged", Reader: strings.NewReader(ged)}); err != nil {
+		t.Fatalf("ImportGedcom failed: %v", err)
+	}
+	persons, _ := repository.ListAll(ctx, 10, readStore.ListPersons)
+	if len(persons) != 1 {
+		t.Fatalf("len(persons) = %d, want 1", len(persons))
+	}
+	p := persons[0]
+	if p.GivenName != "" || p.Surname != "" {
+		t.Fatalf("name = %q/%q, want both empty", p.GivenName, p.Surname)
+	}
+
+	notes := "No name in the source"
+	if _, err := handler.UpdatePerson(ctx, command.UpdatePersonInput{ID: p.ID, Notes: command.Set(notes), Version: p.Version}); err != nil {
+		t.Fatalf("UpdatePerson failed: %v", err)
+	}
+	got, _ := readStore.GetPerson(ctx, domain.MainBranchID, p.ID)
+	if got.Notes != notes || got.GivenName != "" {
+		t.Errorf("after update: notes %q, given name %q", got.Notes, got.GivenName)
 	}
 }
 

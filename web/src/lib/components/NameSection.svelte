@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { can } from '#lib/stores/access.svelte.js';
-	import { api, isStaleVersion, type PersonName, type NameType } from '#lib/api/client.js';
+	import { api, isStaleVersion, missingNameError, type PersonName, type NameType } from '#lib/api/client.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import FormRow from '#lib/components/FormRow.svelte';
 	import ConflictError from './ConflictError.svelte';
@@ -134,10 +134,8 @@
 	}
 
 	async function saveNewName() {
-		if (!formData.given_name.trim()) {
-			error = 'Given name is required';
-			return;
-		}
+		error = missingNameError(formData);
+		if (error) return;
 		if (!formData.name_type) {
 			error = 'Name type is required';
 			return;
@@ -175,10 +173,8 @@
 
 	async function saveEdit() {
 		if (!editingId) return;
-		if (!formData.given_name.trim()) {
-			error = 'Given name is required';
-			return;
-		}
+		error = missingNameError(formData);
+		if (error) return;
 
 		saving = true;
 		error = null;
@@ -300,8 +296,8 @@
 		<form class="add-form" onsubmit={(e) => { e.preventDefault(); saveNewName(); }}>
 			<FormRow>
 				<label>
-					<span>Given Name <span class="required">*</span></span>
-					<input type="text" bind:value={formData.given_name} placeholder="e.g., John" required />
+					Given Name
+					<input type="text" bind:value={formData.given_name} placeholder="e.g., John" />
 				</label>
 				<label>
 					Surname
@@ -381,8 +377,8 @@
 						<form class="add-form edit-form" onsubmit={(e) => { e.preventDefault(); saveEdit(); }}>
 							<FormRow>
 								<label>
-									<span>Given Name <span class="required">*</span></span>
-									<input type="text" bind:value={formData.given_name} required />
+									Given Name
+									<input type="text" bind:value={formData.given_name} />
 								</label>
 								<label>
 									Surname

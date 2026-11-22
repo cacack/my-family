@@ -1082,10 +1082,13 @@ func toGedcomIndividual(p repository.PersonReadModel, names []repository.PersonN
 	indi := &gedcom.Individual{Restriction: string(p.Restriction)}
 
 	if len(names) == 0 {
-		// Fallback to person's primary name fields if no names in person_names table
-		indi.Names = []*gedcom.PersonalName{{
-			Full: formatGedcomName(p.GivenName, p.Surname),
-		}}
+		// Fallback to person's primary name fields if no names in person_names
+		// table. A person with no name at all gets no NAME, as in its source.
+		if p.GivenName != "" || p.Surname != "" {
+			indi.Names = []*gedcom.PersonalName{{
+				Full: formatGedcomName(p.GivenName, p.Surname),
+			}}
+		}
 	} else {
 		// Sort names: primary first, then others
 		names = sortNamesByPrimary(names)
@@ -1849,9 +1852,13 @@ func splitNotes(notes, sep string) (xrefs, inline []string) {
 }
 
 // formatGedcomName formats a name in GEDCOM format (Given /Surname/).
-// GEDCOM requires surname delimiters even when surname is empty.
+// GEDCOM requires surname delimiters even when surname is empty. An empty
+// given name is left out, so a surname-only name is written "/Surname/".
 func formatGedcomName(givenName, surname string) string {
 	// Always include surname delimiters per GEDCOM spec
+	if givenName == "" {
+		return fmt.Sprintf("/%s/", surname)
+	}
 	return fmt.Sprintf("%s /%s/", givenName, surname)
 }
 

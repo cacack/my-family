@@ -8060,12 +8060,13 @@ components:
           description: Optimistic locking version
 
     PersonCreate:
+      description: >-
+        A person needs a given name or a surname; one of them may be left out
+        or empty. A create with neither is rejected with 400.
       type: object
-      required: [given_name]
       properties:
         given_name:
           type: string
-          minLength: 1
           maxLength: 100
         surname:
           type: string
@@ -8094,7 +8095,6 @@ components:
       properties:
         given_name:
           type: string
-          minLength: 1
           maxLength: 100
         surname:
           nullable: true
@@ -9715,12 +9715,14 @@ components:
           description: Notes on this name (GEDCOM NAME.NOTE). NOTE pointers are kept as their xref.
 
     PersonNameCreate:
+      description: >-
+        given_name or surname may be empty, but not both: a name with neither
+        is rejected with 400.
       type: object
       required: [given_name, surname, name_type]
       properties:
         given_name:
           type: string
-          minLength: 1
           maxLength: 100
         surname:
           type: string
@@ -9750,7 +9752,6 @@ components:
       properties:
         given_name:
           type: string
-          minLength: 1
           maxLength: 100
         surname:
           type: string

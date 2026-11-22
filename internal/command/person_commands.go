@@ -96,8 +96,8 @@ type CreatePersonResult struct {
 // CreatePerson creates a new person record.
 func (h *Handler) CreatePerson(ctx context.Context, input CreatePersonInput) (*CreatePersonResult, error) {
 	// Validate required fields
-	if input.GivenName == "" {
-		return nil, fmt.Errorf("%w: given_name is required", ErrInvalidInput)
+	if input.GivenName == "" && input.Surname == "" {
+		return nil, fmt.Errorf("%w: given_name or surname is required", ErrInvalidInput)
 	}
 	birthDate, err := normalizeDateInput("birth_date", input.BirthDate)
 	if err != nil {
@@ -160,7 +160,7 @@ func (h *Handler) CreatePerson(ctx context.Context, input CreatePersonInput) (*C
 // UpdatePersonInput contains the data for updating a person.
 type UpdatePersonInput struct {
 	ID             uuid.UUID
-	GivenName      *string // required: cannot be cleared
+	GivenName      *string // cannot be null; "" stores an empty given name
 	Surname        Patch[string]
 	Gender         Patch[string]
 	BirthDate      Patch[string]

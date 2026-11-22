@@ -2277,13 +2277,9 @@ func (ss *StrictServer) CreatePerson(ctx context.Context, request CreatePersonRe
 	writer := ss.branchWriter(branch)
 	scope := branchScopeID(branch)
 
-	var surname string
-	if request.Body.Surname != nil {
-		surname = *request.Body.Surname
-	}
 	input := command.CreatePersonInput{
-		GivenName: request.Body.GivenName,
-		Surname:   surname,
+		GivenName: stringValue(request.Body.GivenName),
+		Surname:   stringValue(request.Body.Surname),
 	}
 	if request.Body.Gender != nil {
 		input.Gender = string(*request.Body.Gender)

@@ -163,12 +163,16 @@ func TestImportInterpretedDate(t *testing.T) {
 }
 
 func TestImportMissingNames(t *testing.T) {
+	// A missing name part is stored empty, never as an invented placeholder
+	// (#1054).
 	gedcomData := `0 HEAD
 1 GEDC
 2 VERS 5.5
 1 CHAR UTF-8
 0 @I1@ INDI
 1 SEX M
+0 @I2@ INDI
+1 NAME /Tudor/
 0 TRLR
 `
 	importer := gedcom.NewImporter()
@@ -179,21 +183,25 @@ func TestImportMissingNames(t *testing.T) {
 		t.Fatalf("Import failed: %v", err)
 	}
 
-	if len(persons) != 1 {
-		t.Fatalf("len(persons) = %d, want 1", len(persons))
+	if len(persons) != 2 {
+		t.Fatalf("len(persons) = %d, want 2", len(persons))
 	}
 
-	// Given name should default to Unknown, surname can be empty
-	if persons[0].GivenName != "Unknown" {
-		t.Errorf("GivenName = %s, want 'Unknown'", persons[0].GivenName)
+	nameless, tudor := persons[0], persons[1]
+	if nameless.GivenName != "" || nameless.Surname != "" || len(nameless.Names) != 0 {
+		t.Errorf("no-NAME individual = %q/%q with %d names, want no name", nameless.GivenName, nameless.Surname, len(nameless.Names))
 	}
-	if persons[0].Surname != "" {
-		t.Errorf("Surname = %s, want empty string", persons[0].Surname)
+	if tudor.GivenName != "" || tudor.Surname != "Tudor" {
+		t.Errorf("/Tudor/ individual = %q/%q, want \"\"/\"Tudor\"", tudor.GivenName, tudor.Surname)
+	}
+	if len(tudor.Names) != 1 || tudor.Names[0].GivenName != "" || tudor.Names[0].Surname != "Tudor" {
+		t.Errorf("/Tudor/ names = %+v, want one name with surname Tudor only", tudor.Names)
 	}
 
-	// Should have warnings
-	if len(result.Warnings) == 0 {
-		t.Error("Expected warnings for missing name")
+	for _, w := range result.Warnings {
+		if strings.Contains(w, "Unknown") || strings.Contains(w, "given name") {
+			t.Errorf("warning %q reports a substituted name", w)
+		}
 	}
 }
 

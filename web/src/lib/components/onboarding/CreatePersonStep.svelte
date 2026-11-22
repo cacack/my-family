@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { api, formatPersonName, type PersonCreate } from '#lib/api/client.js';
+	import { api, formatPersonName, missingNameError, type PersonCreate } from '#lib/api/client.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import FormRow from '#lib/components/FormRow.svelte';
 	import ActionError from '#lib/components/ActionError.svelte';
@@ -29,9 +29,10 @@
 	});
 
 	async function createPerson() {
-		saving = true;
-		error = null;
 		unreadableDate = false;
+		error = missingNameError(formData);
+		if (error) return;
+		saving = true;
 		try {
 			const payload: PersonCreate = {
 				given_name: formData.given_name,
@@ -91,7 +92,7 @@
 		<FormRow>
 			<label>
 				Given Name
-				<input type="text" bind:value={formData.given_name} required placeholder="e.g., John" />
+				<input type="text" bind:value={formData.given_name} placeholder="e.g., John" />
 			</label>
 			<label>
 				Surname

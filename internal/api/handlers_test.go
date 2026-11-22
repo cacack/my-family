@@ -90,8 +90,8 @@ func TestCreatePerson(t *testing.T) {
 
 func TestCreatePerson_ValidationError(t *testing.T) {
 	server := setupTestServer()
-	// Missing required given_name
-	body := `{"surname":"Doe"}`
+	// Neither a given name nor a surname
+	body := `{"given_name":"","surname":""}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/persons", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()

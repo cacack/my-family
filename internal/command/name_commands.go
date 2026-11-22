@@ -42,8 +42,8 @@ type AddNameResult struct {
 // AddName adds a new name variant to a person.
 func (h *Handler) AddName(ctx context.Context, input AddNameInput) (*AddNameResult, error) {
 	// Validate required fields
-	if input.GivenName == "" {
-		return nil, fmt.Errorf("%w: given_name is required", ErrInvalidInput)
+	if input.GivenName == "" && input.Surname == "" {
+		return nil, fmt.Errorf("%w: given_name or surname is required", ErrInvalidInput)
 	}
 
 	// Verify person exists
@@ -86,7 +86,7 @@ func (h *Handler) AddName(ctx context.Context, input AddNameInput) (*AddNameResu
 	// an alternate, after a primary name recording the person's current name.
 	if len(existingNames) == 0 {
 		sameAsPerson := pn.GivenName == person.GivenName && pn.Surname == person.Surname
-		if pn.IsPrimary || sameAsPerson || person.GivenName == "" {
+		if pn.IsPrimary || sameAsPerson || person.GivenName == "" && person.Surname == "" {
 			pn.IsPrimary = true
 		} else {
 			current := domain.NewPersonName(input.PersonID, person.GivenName, person.Surname)
@@ -128,7 +128,7 @@ func (h *Handler) AddName(ctx context.Context, input AddNameInput) (*AddNameResu
 type UpdateNameInput struct {
 	PersonID      uuid.UUID
 	NameID        uuid.UUID
-	GivenName     *string // required: cannot be cleared
+	GivenName     *string // cannot be null; "" stores an empty given name
 	Surname       *string // required: cannot be cleared
 	NamePrefix    Patch[string]
 	NameSuffix    Patch[string]
