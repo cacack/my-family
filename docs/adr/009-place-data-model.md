@@ -359,8 +359,8 @@ gets a key column like any other row, so the *use* view inherits the overlay and
 named only on a branch is in use on that branch alone, with the same ID it will have after a merge.
 A merge replays person, family and event edits and has nothing place-shaped to order or reconcile.
 
-**Place facts are main-only.** `places`, `place_aliases` and `place_external_ids` have no
-`branch_id`, and `PlaceUpdated`, `PlaceAliased` and `PlaceUnaliased` are not on the BR-006
+**Place facts are main-only.** `places`, `place_aliases`, `place_forms` and `place_external_ids`
+have no `branch_id`, and `PlaceUpdated`, `PlaceAliased` and `PlaceUnaliased` are not on the BR-006
 allowlist. A branch reads `main`'s facts live. This adds Place to the decided main-only set of
 ADR-005, which is amended to say so. The hypothesis a branch can fork is "this record means that
 place", and that is the record's place text. As in ADR-005, the choice is reversible.
