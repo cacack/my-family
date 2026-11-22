@@ -292,6 +292,12 @@ func TestRoundTrip_SeveralDatelessDeathsWriteOneDeat(t *testing.T) {
 			wantLines: []string{"2 DATE 1890", "2 CAUS Fever", "2 CAUS Cholera", "2 AGE 70y", "2 SOUR @S1@"},
 			want:      2,
 		},
+		{
+			name:      "conflicting addresses",
+			events:    []repository.EventReadModel{{Address: &domain.Address{Line1: "1 Main St"}}, {Address: &domain.Address{Line1: "2 Elm St"}}},
+			wantLines: []string{"2 DATE 1890", "2 ADDR 1 Main St", "2 ADDR 2 Elm St", "2 SOUR @S1@"},
+			want:      2,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
