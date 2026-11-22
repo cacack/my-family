@@ -33,9 +33,9 @@ func TestEventTags_RoundTrip(t *testing.T) {
 
 	for _, want := range []string{
 		"1 GRAD\n2 DATE 1900\n",
-		"1 BURI\n2 TYPE Sea burial\n",
+		"1 BURI Y\n2 TYPE Sea burial\n",
 		"1 EVEN Moved west\n2 DATE 1890\n2 TYPE Migration\n",
-		"1 ENGA\n2 TYPE Formal\n",
+		"1 ENGA Y\n2 TYPE Formal\n",
 	} {
 		if !strings.Contains(strings.ReplaceAll(out, "\r\n", "\n"), want) {
 			t.Errorf("export lacks %q:\n%s", want, out)

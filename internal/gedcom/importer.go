@@ -642,6 +642,9 @@ func parseIndividual(indi *gedcom.Individual, _ *gedcom.Document, result *Import
 		}
 		switch event.Type {
 		case gedcom.EventBirth:
+			if bareBirth(event) {
+				continue // imported as a life event (extractEventsFromIndividual)
+			}
 			person.BirthDate = event.Date
 			person.BirthPlace = event.PlaceName()
 			person.BirthNotes = eventNotes(event)
@@ -1635,6 +1638,16 @@ func bareDeath(event *gedcom.Event) bool {
 		event.PlaceName() == "" && eventNotes(event) == "" && event.EventTypeDetail == ""
 }
 
+// bareBirth reports whether event is "1 BIRT Y" and nothing the person
+// record holds of a birth (date, place, notes, TYPE): it asserts only that the
+// birth happened (#1454). Unlike a bare death, a BIRT with no "Y" asserts
+// nothing and is not bare. Without a record birth it is imported as a birth
+// life event, which the exporter writes back as "1 BIRT Y" (toGedcomEvent).
+func bareBirth(event *gedcom.Event) bool {
+	return event.Type == gedcom.EventBirth && !event.IsNegative && event.Occurred && event.Date == "" &&
+		event.PlaceName() == "" && eventNotes(event) == "" && event.EventTypeDetail == ""
+}
+
 // recordDeath reports whether event is a death the person record holds.
 func recordDeath(event *gedcom.Event) bool {
 	return event.Type == gedcom.EventDeath && !event.IsNegative && !bareDeath(event)
@@ -1718,10 +1731,14 @@ func mergeDeathDetail(into *EventData, event *gedcom.Event) bool {
 // citations (#1294).
 // Birth and Death are excluded as they are stored on Person directly,
 // unless they are negated (NO BIRT / NO DEAT), which represent negative assertions
-// and must be stored as LifeEvents, or are a bare death (see bareDeath).
+// and must be stored as LifeEvents, or are a bare death (see bareDeath), or
+// a bare birth of a person with no record birth (see bareBirth).
 func extractEventsFromIndividual(indi *gedcom.Individual, personID uuid.UUID) ([]EventData, map[*gedcom.Event]uuid.UUID) {
 	var events []EventData
 	deaths, ids := deathLifeEvents(indi, personID)
+	recordBirth := slices.ContainsFunc(indi.Events, func(e *gedcom.Event) bool {
+		return e.Type == gedcom.EventBirth && !e.IsNegative && !bareBirth(e)
+	})
 
 	for _, event := range indi.Events {
 		var factType domain.FactType
@@ -1775,8 +1792,14 @@ func extractEventsFromIndividual(indi *gedcom.Individual, personID uuid.UUID) ([
 			deaths = nil
 			continue
 		case gedcom.EventBirth:
-			// Non-negated birth is stored on Person entity, skip
-			continue
+			// A non-negated birth is stored on the Person entity, except a
+			// bare birth of a person with none, which is kept as a life
+			// event. With a record birth it adds nothing and its citations
+			// go to the record (extractCitationsFromIndividual).
+			if !bareBirth(event) || recordBirth {
+				continue
+			}
+			factType = domain.FactPersonBirth
 		default:
 			// RESI is imported once, as a life event: unlike an attribute, it
 			// keeps the residence's coordinates, address, notes and citations.

@@ -1429,6 +1429,22 @@ func mergeableDeathDetail(events []repository.EventReadModel) int {
 	return found
 }
 
+// occurrenceFlagFactTypes holds the fact types of the named event tags the
+// importer maps, whose line value is the [Y|<NULL>] occurrence flag: all but
+// a generic EVEN, whose value is its descriptor, and RESI, which GEDCOM
+// defines as an attribute although it is stored as a life event.
+var occurrenceFlagFactTypes = func() map[domain.FactType]bool {
+	set := make(map[domain.FactType]bool)
+	for _, m := range []map[gedcom.EventType]domain.FactType{individualEventFactTypes, familyEventFactTypes} {
+		for tag, factType := range m {
+			if tag != gedcom.EventResidence && tag != gedcom.EventType("EVEN") {
+				set[factType] = true
+			}
+		}
+	}
+	return set
+}()
+
 // toGedcomEvent converts an EventReadModel to a gedcom.Event.
 // fieldOwnsUnlinked is set when the owner also exports a birth, death or
 // marriage of the event's fact type from its own record; citations with no
@@ -1483,12 +1499,11 @@ func toGedcomEvent(event repository.EventReadModel, fieldOwnsUnlinked bool, sour
 		notes = joinNotes(notes, event.Description)
 	}
 	ge.EventTypeDetail = event.TypeDetail
-	// A death with no date or place is written "1 DEAT Y", the flag asserting
-	// that it happened (#1436). gedcom-go has no typed field for the flag, but
-	// its decoder reads a "Y" payload as no description, so it round-trips
-	// (cacack/gedcom-go#865). On import, see bareDeath.
-	if ge.Type == gedcom.EventDeath && !ge.IsNegative && ge.Date == "" && ge.PlaceDetail == nil {
-		ge.Description = "Y"
+	// A named event with no date or place is written with the "Y" flag
+	// asserting that it happened, as in "1 BURI Y" (#1436, #1454). On import,
+	// see bareDeath and bareBirth.
+	if occurrenceFlagFactTypes[event.FactType] && !ge.IsNegative && ge.Date == "" && ge.PlaceDetail == nil {
+		ge.Occurred = true
 	}
 
 	if event.Cause != "" {

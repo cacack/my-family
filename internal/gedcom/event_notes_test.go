@@ -106,7 +106,7 @@ func TestEventNotes_RoundTrip(t *testing.T) {
 			{"1 NAME John /Doe/", "1 DEAT", []string{"2 NOTE @N1@", "2 NOTE Died of a fever,", "3 CONT after a week in bed."}},
 			{"1 NAME John /Doe/", "1 BURI", []string{"2 NOTE Buried beside his wife"}},
 			{"1 HUSB ", "1 MARR", []string{"2 NOTE Married in the parlour"}},
-			{"1 HUSB ", "1 DIV", []string{"2 NOTE @N1@"}},
+			{"1 HUSB ", "1 DIV Y", []string{"2 NOTE @N1@"}},
 		} {
 			if got := subNoteLines(out, tc.marker, tc.event); !slices.Equal(got, tc.want) {
 				t.Errorf("export %d: NOTE lines under %q = %q, want %q; export:\n%s", i+1, tc.event, got, tc.want, out)
