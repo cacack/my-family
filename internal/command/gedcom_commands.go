@@ -475,12 +475,6 @@ func (h *Handler) importSource(ctx context.Context, s gedcom.SourceData) error {
 		Version:        1,
 	}
 
-	// Parse publish date if provided
-	if s.PublishDate != "" {
-		pd := domain.ParseGenDate(s.PublishDate)
-		source.PublishDate = &pd
-	}
-
 	// Create event
 	event := domain.NewSourceCreated(source)
 	event.ExternalIDs = s.ExternalIDs

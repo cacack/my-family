@@ -1665,8 +1665,10 @@ func TestImportGedcom_CitationWithInvalidFactType(t *testing.T) {
 	}
 }
 
-// TestImportGedcom_SourceWithPublishDate tests source with publish date.
-func TestImportGedcom_SourceWithPublishDate(t *testing.T) {
+// TestImportGedcom_SourcePublicationFacts checks that PUBL is imported as the
+// publisher and that a DATE line under a source, which GEDCOM does not define,
+// does not become a publish date.
+func TestImportGedcom_SourcePublicationFacts(t *testing.T) {
 	eventStore := memory.NewEventStore()
 	readStore := memory.NewReadModelStore()
 	handler := command.NewHandler(eventStore, readStore)
@@ -1712,6 +1714,12 @@ func TestImportGedcom_SourceWithPublishDate(t *testing.T) {
 	}
 	if sources[0].Title != "Census Records 1900" {
 		t.Errorf("Title = %s, want Census Records 1900", sources[0].Title)
+	}
+	if sources[0].Publisher != "Government Printing Office" {
+		t.Errorf("Publisher = %q, want Government Printing Office", sources[0].Publisher)
+	}
+	if sources[0].PublishDateRaw != "" {
+		t.Errorf("PublishDateRaw = %q, want empty", sources[0].PublishDateRaw)
 	}
 }
 

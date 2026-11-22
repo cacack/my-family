@@ -145,7 +145,6 @@ type SourceData struct {
 	Title          string
 	Author         string
 	Publisher      string
-	PublishDate    string
 	RepositoryID   *uuid.UUID // Link to Repository entity
 	RepositoryName string     // Fallback for unlinked repositories
 	CallNumber     string     // CALN - location within repository
