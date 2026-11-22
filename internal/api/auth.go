@@ -383,6 +383,13 @@ func authError(code, message string) Error {
 	return Error{Code: code, Message: message}
 }
 
+// throttled reports whether err refuses an attempt for now: a client over
+// its failure limit, or a server with no password-hashing slot free. Both
+// map to 429 RATE_LIMITED (ADR-007).
+func throttled(err error) bool {
+	return errors.Is(err, auth.ErrRateLimited) || errors.Is(err, auth.ErrBusy)
+}
+
 const openModeMessage = "This server runs with AUTH_MODE=open: no one signs in"
 
 // GetAuthStatus implements StrictServerInterface.
@@ -428,7 +435,7 @@ func (ss *StrictServer) SetupOwner(ctx context.Context, request SetupOwnerReques
 		return SetupOwner403JSONResponse(authError(CodeInvalidSetupToken, "The setup token is wrong. Copy it from the server log.")), nil
 	case errors.Is(err, auth.ErrSetupDone):
 		return SetupOwner409JSONResponse(authError(CodeConflict, "Setup is already complete. Sign in instead.")), nil
-	case errors.Is(err, auth.ErrRateLimited):
+	case throttled(err):
 		return SetupOwner429JSONResponse{RateLimitedJSONResponse(authError(CodeRateLimited, err.Error()))}, nil
 	default:
 		return nil, err
@@ -454,7 +461,7 @@ func (ss *StrictServer) SignIn(ctx context.Context, request SignInRequestObject)
 		return SignIn401JSONResponse(authError(CodeInvalidCredentials, "The username or password is wrong")), nil
 	case errors.Is(err, auth.ErrAccountDisabled):
 		return SignIn403JSONResponse(authError(CodeAccountDisabled, "This account is disabled. Ask the tree's owner to re-enable it.")), nil
-	case errors.Is(err, auth.ErrRateLimited):
+	case throttled(err):
 		return SignIn429JSONResponse{RateLimitedJSONResponse(authError(CodeRateLimited, err.Error()))}, nil
 	default:
 		return nil, err
