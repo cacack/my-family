@@ -127,6 +127,10 @@ func (failingTokens) DeleteAPIToken(context.Context, uuid.UUID, uuid.UUID) (*rep
 	return nil, errDiskFull
 }
 
+func (failingTokens) ListAPITokens(context.Context, uuid.UUID) ([]repository.APIToken, error) {
+	return nil, errDiskFull
+}
+
 func TestAPIToken_StoreFailures(t *testing.T) {
 	svc := NewService(failingTokens{memory.NewAccountStore()})
 	ctx := context.Background()
@@ -138,5 +142,32 @@ func TestAPIToken_StoreFailures(t *testing.T) {
 	}
 	if err := svc.RevokeAPIToken(ctx, Actor{UserID: uuid.New()}, uuid.New()); !errors.Is(err, errDiskFull) || errors.Is(err, ErrAPITokenNotFound) {
 		t.Errorf("RevokeAPIToken: err = %v, want the store's error", err)
+	}
+	if err := svc.revokeAllAPITokens(ctx, Actor{}, &repository.User{ID: uuid.New()}); !errors.Is(err, errDiskFull) {
+		t.Errorf("revokeAllAPITokens: err = %v, want the store's error", err)
+	}
+}
+
+// failingTokenDelete is a store whose API token deletes fail.
+type failingTokenDelete struct {
+	repository.AccountStore
+}
+
+func (failingTokenDelete) DeleteAPIToken(context.Context, uuid.UUID, uuid.UUID) (*repository.APIToken, error) {
+	return nil, errDiskFull
+}
+
+func TestRevokeAllAPITokens_DeleteFailure(t *testing.T) {
+	store := memory.NewAccountStore()
+	ctx := context.Background()
+	userID := uuid.New()
+	if err := store.CreateAPIToken(ctx, &repository.APIToken{
+		ID: uuid.New(), TokenHash: hashToken(APITokenPrefix + "x"), UserID: userID, Name: "x", CreatedAt: time.Now(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	svc := NewService(failingTokenDelete{store})
+	if err := svc.revokeAllAPITokens(ctx, Actor{}, &repository.User{ID: userID}); !errors.Is(err, errDiskFull) {
+		t.Errorf("revokeAllAPITokens: err = %v, want the store's error", err)
 	}
 }

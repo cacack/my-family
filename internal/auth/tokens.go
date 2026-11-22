@@ -81,6 +81,25 @@ func (s *Service) RevokeAPIToken(ctx context.Context, by Actor, id uuid.UUID) er
 	return nil
 }
 
+// revokeAllAPITokens removes every API token of user, as by, auditing each.
+func (s *Service) revokeAllAPITokens(ctx context.Context, by Actor, user *repository.User) error {
+	tokens, err := s.store.ListAPITokens(ctx, user.ID)
+	if err != nil {
+		return fmt.Errorf("list API tokens: %w", err)
+	}
+	for _, token := range tokens {
+		_, err := s.store.DeleteAPIToken(ctx, user.ID, token.ID)
+		if errors.Is(err, repository.ErrAPITokenNotFound) {
+			continue
+		}
+		if err != nil {
+			return fmt.Errorf("revoke API token: %w", err)
+		}
+		s.audit(ctx, by, repository.AuthActionAPITokenRevoked, user, token.Name)
+	}
+	return nil
+}
+
 // AuthenticateAPIToken returns the user an API token belongs to, or
 // ErrNoAPIToken when it is unknown, revoked or its user is disabled.
 func (s *Service) AuthenticateAPIToken(ctx context.Context, token string) (*repository.User, error) {

@@ -302,8 +302,12 @@ token can change the tree, a viewer's gets 403 `FORBIDDEN` on a change, and chan
 appear in history under that user. A token does not expire. Revoke it on the Account page when
 the script is retired or the token may have leaked; a revoked token, or one whose user is
 disabled, gets 401 `UNAUTHENTICATED`. Creating and revoking a token are written to the auth audit
-log. A token cannot list, create or revoke tokens (403), so a leaked one cannot mint its own
-replacement, and it never previews the tree as someone else.
+log. A token cannot list, create or revoke tokens, or issue invites or password resets (403), so
+a leaked one cannot mint a credential that outlives it, and it never previews the tree as someone
+else. Using a password reset link revokes the user's tokens; changing a password keeps them, so
+revoke a leaked one on the Account page. A request with an `Authorization: Bearer` header is
+judged by that token alone, on every route: a session cookie sent with it is ignored, and an
+invalid token gets 401 even on sign-in.
 
 A script can instead sign in like the web UI does and send the session cookie back, keeping it in
 a `curl` cookie jar (`-c "$jar"` on `POST /api/v1/auth/sign-in`, then `-b "$jar"`); the session

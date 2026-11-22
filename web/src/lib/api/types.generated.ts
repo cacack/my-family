@@ -3457,6 +3457,9 @@ export interface paths {
          * @description Returns a single-use token, valid for 24 hours, to pass on to the user
          *     yourself: no email is sent. Only its hash is stored, so it is shown
          *     this once.
+         *
+         *     Requires a signed-in session: an API token cannot issue a link
+         *     (403), so a leaked one cannot mint a lasting credential.
          */
         post: operations["createPasswordReset"];
         delete?: never;
@@ -3484,6 +3487,9 @@ export interface paths {
          * Issue an invite link that creates an account with a role
          * @description Returns a single-use token, valid for 7 days, to pass on yourself: no
          *     email is sent. Only its hash is stored, so it is shown this once.
+         *
+         *     Requires a signed-in session: an API token cannot issue a link
+         *     (403), so a leaked one cannot mint a lasting credential.
          */
         post: operations["createInvite"];
         delete?: never;
@@ -14476,6 +14482,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["SessionRequired"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["AccountsOnly"];
             503: components["responses"]["SetupRequired"];
@@ -14528,6 +14535,7 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["SessionRequired"];
             409: components["responses"]["AccountsOnly"];
             503: components["responses"]["SetupRequired"];
         };

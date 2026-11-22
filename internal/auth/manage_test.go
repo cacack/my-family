@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -199,6 +200,10 @@ func TestPasswordReset(t *testing.T) {
 	m := newManaged(t)
 	ctx := context.Background()
 	grace, token := m.invite(t, "grace", repository.RoleViewer)
+	apiToken, err := m.svc.CreateAPIToken(ctx, Actor{UserID: grace.ID}, "script")
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	link, err := m.svc.IssuePasswordReset(ctx, m.by, grace.ID)
 	if err != nil {
@@ -216,6 +221,12 @@ func TestPasswordReset(t *testing.T) {
 	}
 	if _, err := m.svc.Authenticate(ctx, token); !errors.Is(err, ErrNoSession) {
 		t.Errorf("a reset left the user's session working: err = %v", err)
+	}
+	if _, err := m.svc.AuthenticateAPIToken(ctx, apiToken.Token); !errors.Is(err, ErrNoAPIToken) {
+		t.Errorf("a reset left the user's API token working: err = %v", err)
+	}
+	if !slices.Contains(m.actions(t), repository.AuthActionAPITokenRevoked) {
+		t.Error("a reset revoked an API token without auditing it")
 	}
 	if _, _, err := m.svc.SignIn(ctx, "grace", newPassword, "192.0.2.9"); err != nil {
 		t.Errorf("SignIn with the new password: %v", err)

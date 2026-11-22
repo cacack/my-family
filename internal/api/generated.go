@@ -20739,6 +20739,20 @@ func (response CreateInvite401JSONResponse) VisitCreateInviteResponse(w http.Res
 	return err
 }
 
+type CreateInvite403JSONResponse struct{ SessionRequiredJSONResponse }
+
+func (response CreateInvite403JSONResponse) VisitCreateInviteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type CreateInvite409JSONResponse struct{ AccountsOnlyJSONResponse }
 
 func (response CreateInvite409JSONResponse) VisitCreateInviteResponse(w http.ResponseWriter) error {
@@ -27917,6 +27931,20 @@ func (response CreatePasswordReset401JSONResponse) VisitCreatePasswordResetRespo
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreatePasswordReset403JSONResponse struct{ SessionRequiredJSONResponse }
+
+func (response CreatePasswordReset403JSONResponse) VisitCreatePasswordResetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
 	_, err := buf.WriteTo(w)
 	return err
 }

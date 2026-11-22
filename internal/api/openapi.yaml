@@ -6664,11 +6664,15 @@ paths:
     post:
       operationId: createPasswordReset
       x-min-role: owner
+      security: [{session: []}]
       summary: Issue a password reset link for a user
       description: |
         Returns a single-use token, valid for 24 hours, to pass on to the user
         yourself: no email is sent. Only its hash is stored, so it is shown
         this once.
+
+        Requires a signed-in session: an API token cannot issue a link
+        (403), so a leaked one cannot mint a lasting credential.
       tags: [users]
       parameters:
         - $ref: '#/components/parameters/userId'
@@ -6681,6 +6685,8 @@ paths:
                 $ref: '#/components/schemas/AccountLink'
         '401':
           $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/SessionRequired'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -6714,10 +6720,14 @@ paths:
     post:
       operationId: createInvite
       x-min-role: owner
+      security: [{session: []}]
       summary: Issue an invite link that creates an account with a role
       description: |
         Returns a single-use token, valid for 7 days, to pass on yourself: no
         email is sent. Only its hash is stored, so it is shown this once.
+
+        Requires a signed-in session: an API token cannot issue a link
+        (403), so a leaked one cannot mint a lasting credential.
       tags: [users]
       requestBody:
         required: true
@@ -6736,6 +6746,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/SessionRequired'
         '409':
           $ref: '#/components/responses/AccountsOnly'
         '503':
@@ -7202,9 +7214,14 @@ components:
         scripts. Create one on the account page or with
         `POST /auth/me/tokens`. A request with it acts as the token's user,
         with the role they hold at the time; an unknown or revoked token, or
-        one whose user is disabled, gets 401. A token never previews the tree
-        as someone else and cannot manage API tokens. Not needed with
-        `AUTH_MODE=open`.
+        one whose user is disabled, gets 401. A request carrying a Bearer
+        header is judged by it alone, on every route including public ones:
+        a session cookie sent with it is ignored and an invalid token is never
+        served as a visitor. A token never previews the tree as someone else
+        and cannot manage API tokens or issue invites or password resets.
+        Tokens do not expire and carry no narrower scope. Using a password
+        reset link revokes its user's tokens; changing a password does not.
+        Not needed with `AUTH_MODE=open`.
 
   schemas:
     Health:

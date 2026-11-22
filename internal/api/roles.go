@@ -68,12 +68,19 @@ var signedInRoutes = map[string]bool{
 }
 
 // sessionOnlyRoutes need a signed-in session: authenticate refuses them to a
-// request authenticated by an API token, so a leaked token cannot create
-// another that outlives its own revocation (#1416).
+// request authenticated by an API token, so a leaked token cannot mint a
+// credential that outlives its own revocation (#1416). That is every route
+// that issues one: an API token, an invite (a new account) or a password
+// reset (an existing account's password). A new route that issues a
+// credential belongs here, and declares `security: [{session: []}]`.
+// Other account routes stay open to a token: changing one's password needs
+// the current one.
 var sessionOnlyRoutes = map[string]bool{
 	routeKey(http.MethodGet, apiBase+"/auth/me/tokens"):             true,
 	routeKey(http.MethodPost, apiBase+"/auth/me/tokens"):            true,
 	routeKey(http.MethodDelete, apiBase+"/auth/me/tokens/:tokenId"): true,
+	routeKey(http.MethodPost, apiBase+"/invites"):                   true,
+	routeKey(http.MethodPost, apiBase+"/users/:id/password-reset"):  true,
 }
 
 // routeRoles is the minimum role of every API route (ADR-007): each

@@ -185,9 +185,12 @@ Events, read-model rows and URLs carry no tree dimension.
 its user, with the role they hold at that request, so enforcement and attribution are unchanged.
 The store keeps a SHA-256 of the random 256-bit token, as for sessions: argon2id would add cost to
 every request and protects nothing a random secret needs. An invalid token is refused with 401,
-never served as a visitor. Tokens do not expire and carry no narrower scope; a token never
-previews as someone else and cannot manage tokens, so a leaked one cannot outlive its revocation.
-Disabling a user refuses their tokens without deleting them.
+never served as a visitor, and a Bearer header is judged alone: a session cookie sent with it is
+ignored. Tokens do not expire and carry no narrower scope. A token never previews as someone else
+and cannot call a route that issues a credential (token management, invites, password resets), so
+a leaked one cannot outlive its revocation. Disabling a user refuses their tokens without deleting
+them; using a password reset link revokes them, so recovering an account evicts whoever held it. A
+password change keeps them: its user manages them on the same page.
 
 **Deferred.** OIDC and proxy-header sign-in (#1565), a suggest-only contributor role (#1035),
 permissions scoped to a family line, email delivery, and multi-tree itself.

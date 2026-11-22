@@ -223,8 +223,9 @@ func TestAPITokens_AttributedAndAudited(t *testing.T) {
 	}
 }
 
-// A token cannot manage tokens, so a leaked one cannot outlive its own
-// revocation, and never previews the tree as someone else.
+// A token cannot manage tokens or issue invites or password resets, so a
+// leaked one cannot outlive its own revocation, and never previews the tree
+// as someone else.
 func TestAPITokens_SessionOnlyAndNoPreview(t *testing.T) {
 	f := newAuthFixture(t)
 	f.createOwner(t)
@@ -236,6 +237,8 @@ func TestAPITokens_SessionOnlyAndNoPreview(t *testing.T) {
 		{method: http.MethodGet, path: "/api/v1/auth/me/tokens"},
 		{method: http.MethodPost, path: "/api/v1/auth/me/tokens", body: `{"name":"another"}`},
 		{method: http.MethodDelete, path: "/api/v1/auth/me/tokens/" + created.Id.String()},
+		{method: http.MethodPost, path: "/api/v1/invites", body: `{"role":"owner"}`},
+		{method: http.MethodPost, path: "/api/v1/users/" + created.Id.String() + "/password-reset"},
 	} {
 		r.header = header
 		if rec := f.do(t, r); !forbidden(rec) {
