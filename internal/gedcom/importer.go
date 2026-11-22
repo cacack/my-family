@@ -1588,7 +1588,9 @@ func ValidateImportData(persons []PersonData, families []FamilyData) error {
 
 // individualEventFactTypes maps each individual event tag gedcom-go decodes to
 // its fact type. A tag not listed (EVEN, or a negated attribute such as
-// "NO OCCU") is a generic event.
+// "NO OCCU") is a generic event. The exporter writes the "Y" occurrence flag
+// for every tag here but RESI (occurrenceFlagFactTypes), so a tag whose value
+// is not that flag must be excluded there too.
 var individualEventFactTypes = map[gedcom.EventType]domain.FactType{
 	gedcom.EventBirth:            domain.FactPersonBirth,
 	gedcom.EventDeath:            domain.FactPersonDeath,
@@ -2133,7 +2135,9 @@ func extractEventsFromFamily(fam *gedcom.Family, familyID uuid.UUID) ([]EventDat
 
 // familyEventFactTypes maps each family event tag gedcom-go decodes to its
 // fact type. gedcom-go has no constant for a generic EVEN, so it is spelled
-// out (#1285, cacack/gedcom-go#775).
+// out (#1285, cacack/gedcom-go#775). The exporter writes the "Y" occurrence
+// flag for every tag here but RESI and EVEN (occurrenceFlagFactTypes), so a
+// tag whose value is not that flag must be excluded there too.
 var familyEventFactTypes = map[gedcom.EventType]domain.FactType{
 	gedcom.EventMarriage:           domain.FactFamilyMarriage,
 	gedcom.EventDivorce:            domain.FactFamilyDivorce,
