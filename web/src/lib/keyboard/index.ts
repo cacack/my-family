@@ -31,6 +31,7 @@ export {
 	DEFAULT_SHORTCUTS,
 	getShortcutsForContext,
 	getGlobalShortcuts,
+	availableTo,
 	formatKeySequence,
 	keyLabel,
 	describeContextKeys,
