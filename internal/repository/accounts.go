@@ -117,6 +117,9 @@ const (
 // only ever appended to and read: the store has no way to change or remove a
 // row.
 type AuthAuditEntry struct {
+	// ID orders the log: a later entry has a larger ID. The store assigns it
+	// on append; ListAuthAudit pages by it.
+	ID     int64
 	At     time.Time
 	Action AuthAction
 	// ActorID is who did it, or uuid.Nil (a failed sign-in, the CLI).
@@ -265,9 +268,11 @@ type AccountStore interface {
 	// (AC-005).
 	AppendAuthAudit(ctx context.Context, entry *AuthAuditEntry) error
 
-	// ListAuthAudit returns up to limit entries, newest first, after skipping
-	// offset, and how many there are in all.
-	ListAuthAudit(ctx context.Context, limit, offset int) ([]AuthAuditEntry, int, error)
+	// ListAuthAudit returns up to limit entries with an ID below before,
+	// newest first; a before of 0 starts at the newest entry. Paging by ID
+	// costs the same on every page and skips or repeats no entry, even when
+	// entries share a timestamp.
+	ListAuthAudit(ctx context.Context, limit int, before int64) ([]AuthAuditEntry, error)
 
 	// DeleteAuthAuditBefore removes every audit entry recorded before before,
 	// returning how many it removed. It is the retention prune, the only

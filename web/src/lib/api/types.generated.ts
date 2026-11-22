@@ -3537,7 +3537,8 @@ export interface paths {
          * @description Sign-ins, failed sign-ins, invites and their revocation, role changes,
          *     disables, enables, password resets (issued, revoked and used) and
          *     changes, and changes to anonymous access, newest
-         *     first. The log is append-only.
+         *     first. The log is append-only. It pages by cursor: pass a page's
+         *     `next_cursor` as `cursor` to read the page after it.
          */
         get: operations["listAuthAudit"];
         put?: never;
@@ -3752,7 +3753,8 @@ export interface components {
         };
         AuthAuditList: {
             items: components["schemas"]["AuthAuditEntry"][];
-            total: number;
+            /** @description The `cursor` of the next, older page; absent on the last page */
+            next_cursor?: string;
         };
         SignInRequest: {
             username: string;
@@ -14468,7 +14470,11 @@ export interface operations {
         parameters: {
             query?: {
                 limit?: components["parameters"]["limitParam"];
-                offset?: components["parameters"]["offsetParam"];
+                /**
+                 * @description Where the page starts: a `next_cursor` from an earlier page.
+                 *     Omit it for the newest entries. The value is opaque.
+                 */
+                cursor?: string;
             };
             header?: never;
             path?: never;
@@ -14485,6 +14491,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuthAuditList"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthenticated"];
             409: components["responses"]["AccountsOnly"];
             503: components["responses"]["SetupRequired"];

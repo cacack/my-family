@@ -133,7 +133,7 @@ func TestCreateOwner_AuditsActor(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateOwner: %v", err)
 	}
-	entries, _, _ := svc.AuthAudit(ctx, 10, 0)
+	entries, _, _ := svc.AuthAudit(ctx, 10, "")
 	if len(entries) != 1 || entries[0].Action != repository.AuthActionUserCreated ||
 		entries[0].ActorID != uuid.Nil || entries[0].ClientIP != CommandLine.ClientIP ||
 		entries[0].SubjectID != user.ID || entries[0].Detail != string(repository.RoleOwner) {
@@ -184,7 +184,7 @@ func TestSetup(t *testing.T) {
 	if got, err := svc.Authenticate(ctx, session); err != nil || got.ID != user.ID {
 		t.Errorf("Authenticate(setup session) = %v, %v; want the owner", got, err)
 	}
-	entries, _, _ := svc.AuthAudit(ctx, 10, 0)
+	entries, _, _ := svc.AuthAudit(ctx, 10, "")
 	if len(entries) != 1 || entries[0].Action != repository.AuthActionUserCreated ||
 		entries[0].ActorID != user.ID || entries[0].SubjectID != user.ID || entries[0].ClientIP != "ip" {
 		t.Errorf("setup audit = %+v, want the new owner creating themselves from ip", entries)
@@ -523,7 +523,7 @@ func TestSignIn_PrunesOldAuditEntries(t *testing.T) {
 			if _, _, err := svc.SignIn(ctx, "ada", testPassword, "ip"); err != nil {
 				t.Fatalf("SignIn: %v", err)
 			}
-			entries, _, err := store.ListAuthAudit(ctx, 100, 0)
+			entries, err := store.ListAuthAudit(ctx, 100, 0)
 			if err != nil {
 				t.Fatalf("ListAuthAudit: %v", err)
 			}

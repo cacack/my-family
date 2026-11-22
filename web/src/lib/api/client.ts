@@ -754,10 +754,11 @@ class ApiClient {
 		return this.request<void>('DELETE', `/password-resets/${encodeURIComponent(id)}`);
 	}
 
-	async listAuthAudit(params: { limit?: number; offset?: number } = {}): Promise<AuthAuditList> {
+	/** Pages by cursor: pass a page's `next_cursor` as `cursor` for the page after it. */
+	async listAuthAudit(params: { limit?: number; cursor?: string } = {}): Promise<AuthAuditList> {
 		const searchParams = new URLSearchParams();
 		if (params.limit !== undefined) searchParams.set('limit', String(params.limit));
-		if (params.offset !== undefined) searchParams.set('offset', String(params.offset));
+		if (params.cursor !== undefined) searchParams.set('cursor', params.cursor);
 		const query = searchParams.toString();
 		return this.request<AuthAuditList>('GET', `/auth-audit${query ? `?${query}` : ''}`);
 	}

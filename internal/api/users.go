@@ -199,15 +199,18 @@ func (ss *StrictServer) ListAuthAudit(ctx context.Context, request ListAuthAudit
 	if ss.server.config.OpenMode() {
 		return ListAuthAudit409JSONResponse{accountsOnly}, nil
 	}
-	// The auth service applies the default and clamps both.
-	limit, offset := 0, 0
+	// The auth service applies the default limit and clamps it.
+	limit, cursor := 0, ""
 	if request.Params.Limit != nil {
 		limit = *request.Params.Limit
 	}
-	if request.Params.Offset != nil {
-		offset = *request.Params.Offset
+	if request.Params.Cursor != nil {
+		cursor = *request.Params.Cursor
 	}
-	entries, total, err := ss.server.auth.AuthAudit(ctx, limit, offset)
+	entries, next, err := ss.server.auth.AuthAudit(ctx, limit, cursor)
+	if errors.Is(err, auth.ErrInvalidInput) {
+		return ListAuthAudit400JSONResponse{BadRequestJSONResponse(authError(CodeValidation, err.Error()))}, nil
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -239,7 +242,11 @@ func (ss *StrictServer) ListAuthAudit(ctx context.Context, request ListAuthAudit
 		}
 		items[i] = item
 	}
-	return ListAuthAudit200JSONResponse{Items: items, Total: total}, nil
+	page := ListAuthAudit200JSONResponse{Items: items}
+	if next != "" {
+		page.NextCursor = &next
+	}
+	return page, nil
 }
 
 // nameIn returns names[id] when it is there, for an optional display name.

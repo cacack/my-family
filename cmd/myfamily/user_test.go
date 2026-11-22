@@ -41,7 +41,7 @@ func TestCreateOwner_FromPipedInput(t *testing.T) {
 	if n, _ := store.CountMembers(context.Background(), repository.DefaultTreeID, repository.RoleOwner); n != 1 {
 		t.Errorf("owners = %d, want 1", n)
 	}
-	entries, _, _ := svc.AuthAudit(context.Background(), 10, 0)
+	entries, _, _ := svc.AuthAudit(context.Background(), 10, "")
 	if len(entries) != 1 || entries[0].Action != repository.AuthActionUserCreated ||
 		entries[0].ActorID != uuid.Nil || entries[0].ClientIP != auth.CommandLine.ClientIP {
 		t.Errorf("audit = %+v, want one owner created from the command line", entries)
@@ -181,7 +181,7 @@ func TestResetPassword_PrintsASingleUseLink(t *testing.T) {
 		t.Fatalf("output %q has no link starting %s", out.String(), prefix)
 	}
 	token := strings.TrimSpace(out.String()[i+len(prefix):])
-	entries, _, _ := svc.AuthAudit(ctx, 10, 0)
+	entries, _, _ := svc.AuthAudit(ctx, 10, "")
 	if len(entries) != 2 || entries[0].Action != repository.AuthActionResetIssued ||
 		entries[0].ActorID != uuid.Nil || entries[0].ClientIP != auth.CommandLine.ClientIP {
 		t.Errorf("audit = %+v, want the reset issued from the command line", entries)

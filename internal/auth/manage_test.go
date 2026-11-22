@@ -54,7 +54,7 @@ func (m *managed) invite(t *testing.T, username string, role repository.Role) (*
 // actions returns the audit log's actions, oldest first.
 func (m *managed) actions(t *testing.T) []repository.AuthAction {
 	t.Helper()
-	entries, _, err := m.svc.AuthAudit(context.Background(), 1000, 0)
+	entries, _, err := m.svc.AuthAudit(context.Background(), 1000, "")
 	if err != nil {
 		t.Fatalf("AuthAudit: %v", err)
 	}
@@ -342,9 +342,9 @@ func TestAuthAudit_RecordsEachAction(t *testing.T) {
 		}
 	}
 
-	entries, total, _ := m.svc.AuthAudit(ctx, 100, 0)
-	if total != len(want) {
-		t.Errorf("total = %d, want %d", total, len(want))
+	entries, next, _ := m.svc.AuthAudit(ctx, 100, "")
+	if len(entries) != len(want) || next != "" {
+		t.Errorf("AuthAudit = %d entries, next %q; want %d on one page", len(entries), next, len(want))
 	}
 	byAction := map[repository.AuthAction]repository.AuthAuditEntry{}
 	for _, e := range entries {
@@ -569,7 +569,7 @@ func TestLinks_ListAndRevokePending(t *testing.T) {
 		t.Errorf("RevokePasswordReset twice: err = %v, want ErrInvalidLink", err)
 	}
 
-	entries, _, _ := m.svc.AuthAudit(ctx, 2, 0)
+	entries, _, _ := m.svc.AuthAudit(ctx, 2, "")
 	if len(entries) != 2 {
 		t.Fatalf("AuthAudit = %+v, want the two revocations", entries)
 	}
