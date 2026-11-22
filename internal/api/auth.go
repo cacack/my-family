@@ -87,9 +87,12 @@ func refuse(c echo.Context, status int, code, message string) error {
 // role includes the route's (ADR-007). A route with no declared role in
 // routeRoles is refused for everyone, open mode included (AC-004). In open
 // mode the requester is the owner, with no actor recorded. Otherwise the
-// session cookie is the only source of the user: a valid one puts the user
-// and their role on the request context, and the user as the actor their
-// changes are attributed to (domain.ContextWithActor). A route that is not
+// user comes from an API token (`Authorization: Bearer`, #1416) or else the
+// session cookie: a valid one puts the user and their role on the request
+// context, and the user as the actor their changes are attributed to
+// (domain.ContextWithActor). A token that is not valid is refused with 401
+// at once, never served as a visitor; a token never previews (servePreview)
+// and is refused sessionOnlyRoutes with 403. A route that is not
 // public is then refused with 503 while the tree has no owner, 401 without a
 // session (unless the owner lets visitors in, see serveVisitor) and 403 below
 // its role; an API path that matches no route is
@@ -122,24 +125,13 @@ func (s *Server) authenticate(next echo.HandlerFunc) echo.HandlerFunc {
 			return s.serveTree(ctx, c, next)
 		}
 
-		if cookie, err := req.Cookie(sessionCookieName); err == nil {
-			info.sessionToken = cookie.Value
-			ctx = context.WithValue(ctx, requestInfoKey{}, info)
+		ctx, viaToken, err := s.resolveUser(ctx, req)
+		if errors.Is(err, auth.ErrNoAPIToken) {
+			return refuse(c, http.StatusUnauthorized, CodeUnauthenticated,
+				"This API token is unknown or revoked, or its account is disabled")
 		}
-		if info.sessionToken != "" {
-			user, err := s.auth.Authenticate(ctx, info.sessionToken)
-			switch {
-			case err == nil:
-				role, err := s.auth.Role(ctx, repository.DefaultTreeID, user.ID)
-				if err != nil && !errors.Is(err, repository.ErrNotMember) {
-					return err
-				}
-				ctx = context.WithValue(ctx, userKey{}, user)
-				ctx = withRole(ctx, role, false)
-				ctx = domain.ContextWithActor(ctx, user.ID.String())
-			case !errors.Is(err, auth.ErrNoSession):
-				return err
-			}
+		if err != nil {
+			return err
 		}
 		c.SetRequest(req.WithContext(ctx))
 		if required == rolePublic {
@@ -157,8 +149,11 @@ func (s *Server) authenticate(next echo.HandlerFunc) echo.HandlerFunc {
 		if userFrom(ctx) == nil {
 			return s.serveVisitor(ctx, c, next, required)
 		}
+		if viaToken && sessionOnlyRoutes[key] {
+			return refuse(c, http.StatusForbidden, CodeForbidden, "An API token cannot do this: sign in to do it")
+		}
 		role := roleFrom(ctx)
-		if cookie, err := req.Cookie(previewCookieName); err == nil && role == repository.RoleOwner {
+		if cookie, err := req.Cookie(previewCookieName); err == nil && role == repository.RoleOwner && !viaToken {
 			return s.servePreview(ctx, c, next, required, cookie.Value)
 		}
 		if !role.Includes(required) {
@@ -166,6 +161,60 @@ func (s *Server) authenticate(next echo.HandlerFunc) echo.HandlerFunc {
 		}
 		return s.serveTree(ctx, c, next)
 	}
+}
+
+// resolveUser puts the requester's user on ctx (signedIn) from an API token,
+// or else from the session cookie, and reports whether it came from a token.
+// An API token that is not valid is auth.ErrNoAPIToken; a session that is not
+// leaves ctx without a user.
+func (s *Server) resolveUser(ctx context.Context, req *http.Request) (context.Context, bool, error) {
+	if token, ok := bearerToken(req); ok {
+		user, err := s.auth.AuthenticateAPIToken(ctx, token)
+		if err != nil {
+			return ctx, true, err
+		}
+		ctx, err = s.signedIn(ctx, user)
+		return ctx, true, err
+	}
+	cookie, err := req.Cookie(sessionCookieName)
+	if err != nil || cookie.Value == "" {
+		return ctx, false, nil
+	}
+	info := requestInfoFrom(ctx)
+	info.sessionToken = cookie.Value
+	ctx = context.WithValue(ctx, requestInfoKey{}, info)
+	user, err := s.auth.Authenticate(ctx, cookie.Value)
+	if errors.Is(err, auth.ErrNoSession) {
+		return ctx, false, nil
+	}
+	if err != nil {
+		return ctx, false, err
+	}
+	ctx, err = s.signedIn(ctx, user)
+	return ctx, false, err
+}
+
+// bearerToken returns the API token an `Authorization: Bearer` header
+// carries, and whether the request has one.
+func bearerToken(req *http.Request) (string, bool) {
+	scheme, token, ok := strings.Cut(req.Header.Get(echo.HeaderAuthorization), " ")
+	if !ok || !strings.EqualFold(scheme, "Bearer") {
+		return "", false
+	}
+	return strings.TrimSpace(token), true
+}
+
+// signedIn returns ctx carrying user, signed in by a session or an API token:
+// the user, the role they hold now, and the user as the actor their changes
+// are attributed to.
+func (s *Server) signedIn(ctx context.Context, user *repository.User) (context.Context, error) {
+	role, err := s.auth.Role(ctx, repository.DefaultTreeID, user.ID)
+	if err != nil && !errors.Is(err, repository.ErrNotMember) {
+		return nil, err
+	}
+	ctx = context.WithValue(ctx, userKey{}, user)
+	ctx = withRole(ctx, role, false)
+	return domain.ContextWithActor(ctx, user.ID.String()), nil
 }
 
 // servePreview serves an owner's request as the principal they preview the

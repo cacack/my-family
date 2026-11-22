@@ -111,6 +111,10 @@ const (
 	// AuthActionAnonymousAccessChanged is an owner changing the tree's
 	// anonymous access; the detail is the new value.
 	AuthActionAnonymousAccessChanged AuthAction = "anonymous_access_changed"
+	// AuthActionAPITokenCreated and AuthActionAPITokenRevoked are a user
+	// creating or revoking one of their API tokens; the detail is its name.
+	AuthActionAPITokenCreated AuthAction = "api_token_created"
+	AuthActionAPITokenRevoked AuthAction = "api_token_revoked"
 )
 
 // AuthAuditEntry is one row of the append-only auth audit log. The log is
@@ -142,12 +146,27 @@ type Session struct {
 	LastSeenAt time.Time
 }
 
+// APIToken is a personal API token: a credential a script sends as
+// `Authorization: Bearer <token>` to act as its user, with the user's role
+// (#1416). Like a session, the store keeps only a hash of the token.
+type APIToken struct {
+	// ID names the token in listings and to revoke it; it is not the token.
+	ID        uuid.UUID
+	TokenHash string
+	UserID    uuid.UUID
+	Name      string
+	CreatedAt time.Time
+	// LastUsedAt is when the token last authenticated a request, or nil.
+	LastUsedAt *time.Time
+}
+
 // Errors returned by AccountStore.
 var (
-	ErrUserNotFound    = errors.New("user not found")
-	ErrUsernameTaken   = errors.New("username already taken")
-	ErrSessionNotFound = errors.New("session not found")
-	ErrNotMember       = errors.New("user is not a member of the tree")
+	ErrUserNotFound     = errors.New("user not found")
+	ErrUsernameTaken    = errors.New("username already taken")
+	ErrSessionNotFound  = errors.New("session not found")
+	ErrAPITokenNotFound = errors.New("API token not found")
+	ErrNotMember        = errors.New("user is not a member of the tree")
 	// ErrLinkNotFound is an invite or password reset that is unknown,
 	// expired or already used.
 	ErrLinkNotFound = errors.New("link is unknown, expired or already used")
@@ -156,7 +175,7 @@ var (
 	ErrLastOwner = errors.New("the tree's last active owner cannot be demoted or disabled")
 )
 
-// AccountStore keeps users, their tree memberships and sessions, invites,
+// AccountStore keeps users, their tree memberships, sessions and API tokens, invites,
 // password resets, the auth audit log (ADR-007) and the tree settings
 // (ADR-008). Every backend implements it over plain tables beside the event
 // log; none of it is event-sourced or rebuilt.
@@ -204,6 +223,24 @@ type AccountStore interface {
 	// DeleteUserSessions removes every session of userID except the one with
 	// keepTokenHash ("" keeps none).
 	DeleteUserSessions(ctx context.Context, userID uuid.UUID, keepTokenHash string) error
+
+	// CreateAPIToken stores token.
+	CreateAPIToken(ctx context.Context, token *APIToken) error
+
+	// GetAPIToken returns the API token with tokenHash, or
+	// ErrAPITokenNotFound.
+	GetAPIToken(ctx context.Context, tokenHash string) (*APIToken, error)
+
+	// ListAPITokens returns userID's API tokens, newest first.
+	ListAPITokens(ctx context.Context, userID uuid.UUID) ([]APIToken, error)
+
+	// TouchAPIToken sets the token's last-used time, or returns
+	// ErrAPITokenNotFound.
+	TouchAPIToken(ctx context.Context, tokenHash string, lastUsed time.Time) error
+
+	// DeleteAPIToken removes userID's API token with id and returns it, or
+	// ErrAPITokenNotFound when userID has no such token.
+	DeleteAPIToken(ctx context.Context, userID, id uuid.UUID) (*APIToken, error)
 
 	// ListMembers returns every member of treeID, by username compared byte
 	// for byte.

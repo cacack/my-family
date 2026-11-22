@@ -804,6 +804,9 @@ func TestRebuild_KeepsAccounts(t *testing.T) {
 			if err := stores.Accounts.CreateSession(ctx, &repository.Session{TokenHash: "s", UserID: user.ID, CreatedAt: now, LastSeenAt: now}); err != nil {
 				t.Fatalf("CreateSession: %v", err)
 			}
+			if err := stores.Accounts.CreateAPIToken(ctx, &repository.APIToken{ID: uuid.New(), TokenHash: "t", UserID: user.ID, Name: "script", CreatedAt: now}); err != nil {
+				t.Fatalf("CreateAPIToken: %v", err)
+			}
 			settings := repository.TreeSettings{LivingThresholdYears: 95, ViewersSeeLiving: false, AnonymousAccess: repository.AnonymousAccessViewer}
 			if err := stores.Accounts.SaveTreeSettings(ctx, repository.DefaultTreeID, settings); err != nil {
 				t.Fatalf("SaveTreeSettings: %v", err)
@@ -828,6 +831,9 @@ func TestRebuild_KeepsAccounts(t *testing.T) {
 			}
 			if _, err := rebuild.Accounts.GetSession(ctx, "s"); err != nil {
 				t.Errorf("session gone after rebuild: %v", err)
+			}
+			if _, err := rebuild.Accounts.GetAPIToken(ctx, "t"); err != nil {
+				t.Errorf("API token gone after rebuild: %v", err)
 			}
 			if got, err := rebuild.Accounts.GetTreeSettings(ctx, repository.DefaultTreeID); err != nil || got != settings {
 				t.Errorf("tree settings after reopen and rebuild = %+v, %v; want %+v", got, err, settings)

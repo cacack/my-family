@@ -62,6 +62,8 @@ func (e AnonymousAccess) Valid() bool {
 // Defines values for AuthAuditEntryAction.
 const (
 	AuthAuditEntryActionAnonymousAccessChanged AuthAuditEntryAction = "anonymous_access_changed"
+	AuthAuditEntryActionApiTokenCreated        AuthAuditEntryAction = "api_token_created"
+	AuthAuditEntryActionApiTokenRevoked        AuthAuditEntryAction = "api_token_revoked"
 	AuthAuditEntryActionInviteAccepted         AuthAuditEntryAction = "invite_accepted"
 	AuthAuditEntryActionInviteCreated          AuthAuditEntryAction = "invite_created"
 	AuthAuditEntryActionInviteRevoked          AuthAuditEntryAction = "invite_revoked"
@@ -81,6 +83,10 @@ const (
 func (e AuthAuditEntryAction) Valid() bool {
 	switch e {
 	case AuthAuditEntryActionAnonymousAccessChanged:
+		return true
+	case AuthAuditEntryActionApiTokenCreated:
+		return true
+	case AuthAuditEntryActionApiTokenRevoked:
 		return true
 	case AuthAuditEntryActionInviteAccepted:
 		return true
@@ -2318,6 +2324,32 @@ func (e ListSubmittersParamsOrder) Valid() bool {
 	}
 }
 
+// APIToken defines model for APIToken.
+type APIToken struct {
+	CreatedAt time.Time `json:"created_at"`
+
+	// Id Names the token to revoke it; it cannot authenticate
+	Id openapi_types.UUID `json:"id"`
+
+	// LastUsedAt When the token last authenticated a request, to within a minute;
+	// absent if it never has
+	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
+	Name       string     `json:"name"`
+}
+
+// APITokenList defines model for APITokenList.
+type APITokenList struct {
+	Items []APIToken `json:"items"`
+}
+
+// APITokenRequest defines model for APITokenRequest.
+type APITokenRequest struct {
+	// Name What the token is for, such as the script that uses it
+	//
+	// Example: nightly backup
+	Name string `json:"name"`
+}
+
 // AcceptInviteRequest defines model for AcceptInviteRequest.
 type AcceptInviteRequest struct {
 	DisplayName string `json:"display_name"`
@@ -3693,6 +3725,17 @@ type CitationValidationIssueLevel string
 
 // ConflictStatus defines model for ConflictStatus.
 type ConflictStatus string
+
+// CreatedAPIToken defines model for CreatedAPIToken.
+type CreatedAPIToken struct {
+	CreatedAt time.Time          `json:"created_at"`
+	Id        openapi_types.UUID `json:"id"`
+	Name      string             `json:"name"`
+
+	// Token The token, to send as `Authorization: Bearer <token>`. It is shown
+	// only in this response.
+	Token string `json:"token"`
+}
 
 // DataLossItem defines model for DataLossItem.
 type DataLossItem struct {
@@ -6970,6 +7013,9 @@ type NotFound = Error
 // RateLimited defines model for RateLimited.
 type RateLimited = Error
 
+// SessionRequired defines model for SessionRequired.
+type SessionRequired = Error
+
 // SettingsUnavailable defines model for SettingsUnavailable.
 type SettingsUnavailable = Error
 
@@ -8838,6 +8884,9 @@ type AcceptInviteJSONRequestBody = AcceptInviteRequest
 // UpdateCurrentAccountJSONRequestBody defines body for UpdateCurrentAccount for application/json ContentType.
 type UpdateCurrentAccountJSONRequestBody = AccountUpdate
 
+// CreateAPITokenJSONRequestBody defines body for CreateAPIToken for application/json ContentType.
+type CreateAPITokenJSONRequestBody = APITokenRequest
+
 // ResetPasswordJSONRequestBody defines body for ResetPassword for application/json ContentType.
 type ResetPasswordJSONRequestBody = PasswordResetRequest
 
@@ -9035,6 +9084,15 @@ type ServerInterface interface {
 	// UpdateCurrentAccount Change the signed-in user's display name or password
 	// (PATCH /auth/me)
 	UpdateCurrentAccount(ctx echo.Context) error
+	// ListAPITokens List the signed-in user's API tokens
+	// (GET /auth/me/tokens)
+	ListAPITokens(ctx echo.Context) error
+	// CreateAPIToken Create an API token for scripts
+	// (POST /auth/me/tokens)
+	CreateAPIToken(ctx echo.Context) error
+	// RevokeAPIToken Revoke one of the signed-in user's API tokens
+	// (DELETE /auth/me/tokens/{tokenId})
+	RevokeAPIToken(ctx echo.Context, tokenId openapi_types.UUID) error
 	// ResetPassword Set a password from a reset link
 	// (POST /auth/password-reset)
 	ResetPassword(ctx echo.Context) error
@@ -9816,6 +9874,40 @@ func (w *ServerInterfaceWrapper) UpdateCurrentAccount(ctx echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.UpdateCurrentAccount(ctx)
+	return err
+}
+
+// ListAPITokens converts echo context to params.
+func (w *ServerInterfaceWrapper) ListAPITokens(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.ListAPITokens(ctx)
+	return err
+}
+
+// CreateAPIToken converts echo context to params.
+func (w *ServerInterfaceWrapper) CreateAPIToken(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.CreateAPIToken(ctx)
+	return err
+}
+
+// RevokeAPIToken converts echo context to params.
+func (w *ServerInterfaceWrapper) RevokeAPIToken(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "tokenId" -------------
+	var tokenId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tokenId", ctx.Param("tokenId"), &tokenId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: ctx.Request().URL.RawPath == ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter tokenId: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.RevokeAPIToken(ctx, tokenId)
 	return err
 }
 
@@ -14217,6 +14309,9 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 	router.POST(options.BaseURL+"/auth/sign-out", wrapper.SignOut, options.OperationMiddlewares["signOut"]...)
 	router.GET(options.BaseURL+"/auth/me", wrapper.GetCurrentAccount, options.OperationMiddlewares["getCurrentAccount"]...)
 	router.PATCH(options.BaseURL+"/auth/me", wrapper.UpdateCurrentAccount, options.OperationMiddlewares["updateCurrentAccount"]...)
+	router.GET(options.BaseURL+"/auth/me/tokens", wrapper.ListAPITokens, options.OperationMiddlewares["listAPITokens"]...)
+	router.POST(options.BaseURL+"/auth/me/tokens", wrapper.CreateAPIToken, options.OperationMiddlewares["createAPIToken"]...)
+	router.DELETE(options.BaseURL+"/auth/me/tokens/:tokenId", wrapper.RevokeAPIToken, options.OperationMiddlewares["revokeAPIToken"]...)
 	router.POST(options.BaseURL+"/auth/invites/accept", wrapper.AcceptInvite, options.OperationMiddlewares["acceptInvite"]...)
 	router.POST(options.BaseURL+"/auth/password-reset", wrapper.ResetPassword, options.OperationMiddlewares["resetPassword"]...)
 	router.GET(options.BaseURL+"/users", wrapper.ListUsers, options.OperationMiddlewares["listUsers"]...)
@@ -14244,6 +14339,8 @@ type ConflictJSONResponse Error
 type NotFoundJSONResponse Error
 
 type RateLimitedJSONResponse Error
+
+type SessionRequiredJSONResponse Error
 
 type SettingsUnavailableJSONResponse Error
 
@@ -15062,6 +15159,261 @@ func (response UpdateCurrentAccount429JSONResponse) VisitUpdateCurrentAccountRes
 type UpdateCurrentAccount503JSONResponse struct{ SetupRequiredJSONResponse }
 
 func (response UpdateCurrentAccount503JSONResponse) VisitUpdateCurrentAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAPITokensRequestObject struct {
+}
+
+type ListAPITokensResponseObject interface {
+	VisitListAPITokensResponse(w http.ResponseWriter) error
+}
+
+type ListAPITokens200JSONResponse APITokenList
+
+func (response ListAPITokens200JSONResponse) VisitListAPITokensResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAPITokens401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListAPITokens401JSONResponse) VisitListAPITokensResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAPITokens403JSONResponse struct{ SessionRequiredJSONResponse }
+
+func (response ListAPITokens403JSONResponse) VisitListAPITokensResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAPITokens409JSONResponse struct{ AccountsOnlyJSONResponse }
+
+func (response ListAPITokens409JSONResponse) VisitListAPITokensResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAPITokens503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response ListAPITokens503JSONResponse) VisitListAPITokensResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAPITokenRequestObject struct {
+	Body *CreateAPITokenJSONRequestBody
+}
+
+type CreateAPITokenResponseObject interface {
+	VisitCreateAPITokenResponse(w http.ResponseWriter) error
+}
+
+type CreateAPIToken201JSONResponse CreatedAPIToken
+
+func (response CreateAPIToken201JSONResponse) VisitCreateAPITokenResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAPIToken400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreateAPIToken400JSONResponse) VisitCreateAPITokenResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAPIToken401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response CreateAPIToken401JSONResponse) VisitCreateAPITokenResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAPIToken403JSONResponse struct{ SessionRequiredJSONResponse }
+
+func (response CreateAPIToken403JSONResponse) VisitCreateAPITokenResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAPIToken409JSONResponse struct{ AccountsOnlyJSONResponse }
+
+func (response CreateAPIToken409JSONResponse) VisitCreateAPITokenResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAPIToken503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response CreateAPIToken503JSONResponse) VisitCreateAPITokenResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeAPITokenRequestObject struct {
+	TokenId openapi_types.UUID `json:"tokenId"`
+}
+
+type RevokeAPITokenResponseObject interface {
+	VisitRevokeAPITokenResponse(w http.ResponseWriter) error
+}
+
+type RevokeAPIToken204Response struct {
+}
+
+func (response RevokeAPIToken204Response) VisitRevokeAPITokenResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type RevokeAPIToken401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response RevokeAPIToken401JSONResponse) VisitRevokeAPITokenResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeAPIToken403JSONResponse struct{ SessionRequiredJSONResponse }
+
+func (response RevokeAPIToken403JSONResponse) VisitRevokeAPITokenResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeAPIToken404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response RevokeAPIToken404JSONResponse) VisitRevokeAPITokenResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeAPIToken409JSONResponse struct{ AccountsOnlyJSONResponse }
+
+func (response RevokeAPIToken409JSONResponse) VisitRevokeAPITokenResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeAPIToken503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response RevokeAPIToken503JSONResponse) VisitRevokeAPITokenResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -20383,6 +20735,20 @@ func (response CreateInvite401JSONResponse) VisitCreateInviteResponse(w http.Res
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateInvite403JSONResponse struct{ SessionRequiredJSONResponse }
+
+func (response CreateInvite403JSONResponse) VisitCreateInviteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -27569,6 +27935,20 @@ func (response CreatePasswordReset401JSONResponse) VisitCreatePasswordResetRespo
 	return err
 }
 
+type CreatePasswordReset403JSONResponse struct{ SessionRequiredJSONResponse }
+
+func (response CreatePasswordReset403JSONResponse) VisitCreatePasswordResetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type CreatePasswordReset404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response CreatePasswordReset404JSONResponse) VisitCreatePasswordResetResponse(w http.ResponseWriter) error {
@@ -27646,6 +28026,15 @@ type StrictServerInterface interface {
 	// UpdateCurrentAccount Change the signed-in user's display name or password
 	// (PATCH /auth/me)
 	UpdateCurrentAccount(ctx context.Context, request UpdateCurrentAccountRequestObject) (UpdateCurrentAccountResponseObject, error)
+	// ListAPITokens List the signed-in user's API tokens
+	// (GET /auth/me/tokens)
+	ListAPITokens(ctx context.Context, request ListAPITokensRequestObject) (ListAPITokensResponseObject, error)
+	// CreateAPIToken Create an API token for scripts
+	// (POST /auth/me/tokens)
+	CreateAPIToken(ctx context.Context, request CreateAPITokenRequestObject) (CreateAPITokenResponseObject, error)
+	// RevokeAPIToken Revoke one of the signed-in user's API tokens
+	// (DELETE /auth/me/tokens/{tokenId})
+	RevokeAPIToken(ctx context.Context, request RevokeAPITokenRequestObject) (RevokeAPITokenResponseObject, error)
 	// ResetPassword Set a password from a reset link
 	// (POST /auth/password-reset)
 	ResetPassword(ctx context.Context, request ResetPasswordRequestObject) (ResetPasswordResponseObject, error)
@@ -28541,6 +28930,100 @@ func (sh *strictHandler) UpdateCurrentAccount(ctx echo.Context) error {
 		return err
 	} else if validResponse, ok := response.(UpdateCurrentAccountResponseObject); ok {
 		return validResponse.VisitUpdateCurrentAccountResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// ListAPITokens operation middleware
+func (sh *strictHandler) ListAPITokens(ctx echo.Context) error {
+	var request ListAPITokensRequestObject
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.ListAPITokens(ctx.Request().Context(), request.(ListAPITokensRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListAPITokens")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(ListAPITokensResponseObject); ok {
+		return validResponse.VisitListAPITokensResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// CreateAPIToken operation middleware
+func (sh *strictHandler) CreateAPIToken(ctx echo.Context) error {
+	var request CreateAPITokenRequestObject
+
+	var body CreateAPITokenJSONRequestBody
+	var err error
+	if binder, ok := ctx.Echo().Binder.(*echo.DefaultBinder); ok {
+		// A request validator built on kin-openapi's openapi3filter with
+		// KeepValidatedValue leaves the value it validated on the body. Bind
+		// that value, matching member names exactly, so the handler receives
+		// what was validated instead of a second, case-insensitive decode.
+		// Otherwise bind only the request body, so that path and query
+		// parameters are not also bound into the body struct.
+		if vb, ok := ctx.Request().Body.(interface{ ValidatedValue() any }); !ok || runtime.BindJSONValue(vb.ValidatedValue(), &body) != nil {
+			err = binder.BindBody(ctx, &body)
+		}
+	} else {
+		// A custom binder is installed on the Echo instance; defer to it
+		// entirely, since echo.Binder does not expose body-only binding and
+		// the binder may do more than decode (for example call ctx.Validate).
+		err = ctx.Bind(&body)
+	}
+	if err != nil {
+		return err
+	}
+	request.Body = &body
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateAPIToken(ctx.Request().Context(), request.(CreateAPITokenRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateAPIToken")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(CreateAPITokenResponseObject); ok {
+		return validResponse.VisitCreateAPITokenResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// RevokeAPIToken operation middleware
+func (sh *strictHandler) RevokeAPIToken(ctx echo.Context, tokenId openapi_types.UUID) error {
+	var request RevokeAPITokenRequestObject
+
+	request.TokenId = tokenId
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.RevokeAPIToken(ctx.Request().Context(), request.(RevokeAPITokenRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RevokeAPIToken")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(RevokeAPITokenResponseObject); ok {
+		return validResponse.VisitRevokeAPITokenResponse(ctx.Response())
 	} else if response != nil {
 		return fmt.Errorf("unexpected response type: %T", response)
 	}

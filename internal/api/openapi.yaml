@@ -18,11 +18,13 @@ servers:
   - url: /api/v1
     description: API version 1
 
-# Every operation needs a signed-in session unless it says otherwise: `security: []`
-# needs none, and a viewer operation a visitor may call (ADR-007) declares
-# `security: [{session: []}, {}]`, the session being optional.
+# Every operation needs a signed-in session or an API token unless it says
+# otherwise: `security: []` needs neither, and a viewer operation a visitor may
+# call (ADR-007) declares `security: [{session: []}, {apiToken: []}, {}]`, both
+# being optional.
 security:
   - session: []
+  - apiToken: []
 
 tags:
   - name: persons
@@ -125,7 +127,7 @@ paths:
     get:
       operationId: listPersons
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: List all persons
       tags: [persons]
       parameters:
@@ -210,7 +212,7 @@ paths:
     get:
       operationId: getPerson
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: Get a person by ID
       tags: [persons]
       parameters:
@@ -292,7 +294,7 @@ paths:
     get:
       operationId: listFamilies
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: List all families
       tags: [families]
       parameters:
@@ -357,7 +359,7 @@ paths:
     get:
       operationId: getFamily
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: Get a family by ID
       tags: [families]
       parameters:
@@ -528,7 +530,7 @@ paths:
     get:
       operationId: getFamilyGroupSheet
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: Get family group sheet data
       description: |
         Returns a traditional family group sheet view showing a family unit
@@ -559,7 +561,7 @@ paths:
     get:
       operationId: getPedigree
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: Get ancestor pedigree for a person
       tags: [pedigree]
       parameters:
@@ -593,7 +595,7 @@ paths:
     get:
       operationId: getDescendancy
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: Get descendancy tree for a person
       description: |
         Returns the descendant tree for a person, showing children, grandchildren,
@@ -630,7 +632,7 @@ paths:
     get:
       operationId: getAhnentafel
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: Get Ahnentafel (ancestor table) report for a person
       description: |
         Returns an Ahnentafel report listing ancestors using the standard numbering system:
@@ -678,7 +680,7 @@ paths:
     get:
       operationId: searchPersons
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: Search for persons
       tags: [search]
       parameters:
@@ -768,7 +770,7 @@ paths:
     get:
       operationId: browseSurnames
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: Get surname index with counts
       description: |
         Returns an alphabetical index of surnames with person counts. With
@@ -806,7 +808,7 @@ paths:
     get:
       operationId: getPersonsBySurname
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: Get persons with a specific surname
       description: |
         Returns the people carrying the surname. With `?branch=` the results come
@@ -832,7 +834,7 @@ paths:
     get:
       operationId: browsePlaces
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: Get place hierarchy with counts
       description: |
         Returns hierarchical place data (Country > State > County > City). With
@@ -869,7 +871,7 @@ paths:
     get:
       operationId: getPersonsByPlace
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: Get persons associated with a place
       description: |
         Returns the people associated with the place. With `?branch=` the results
@@ -895,7 +897,7 @@ paths:
     get:
       operationId: browseCemeteries
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: Get cemetery/burial place index with counts
       description: |
         Returns unique burial and cremation places with person counts. With
@@ -929,7 +931,7 @@ paths:
     get:
       operationId: getPersonsByCemetery
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: Get persons buried or cremated at a place
       description: |
         Returns the people buried or cremated at the place. With `?branch=` both
@@ -957,7 +959,7 @@ paths:
     get:
       operationId: getMapLocations
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: Get geographic locations for map visualization
       description: |
         Returns aggregated birth and death locations with coordinates for map
@@ -982,7 +984,7 @@ paths:
     get:
       operationId: getBrickWalls
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: List brick wall research blocks
       description: |
         Returns the brick wall research blocks. `?branch=` is NOT accepted here
@@ -1784,7 +1786,7 @@ paths:
     get:
       operationId: listCitationTemplates
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: List available citation templates
       description: Returns all Evidence Explained citation templates, optionally filtered by source type
       tags: [citation-templates]
@@ -1819,7 +1821,7 @@ paths:
     get:
       operationId: getCitationTemplate
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: Get a citation template by ID
       tags: [citation-templates]
       responses:
@@ -1848,7 +1850,7 @@ paths:
     post:
       operationId: previewCitationTemplate
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: Preview a citation template with provided fields
       description: Renders a citation preview without requiring a saved citation. Useful for live preview during editing.
       tags: [citation-templates]
@@ -1893,7 +1895,7 @@ paths:
     get:
       operationId: formatCitation
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: Format a citation using its template
       description: |
         Renders the citation as full and short formatted text using the
@@ -1924,7 +1926,7 @@ paths:
     get:
       operationId: listPersonMedia
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: List media attached to a person
       description: |
         Returns the person's media metadata, newest first. With `?branch=` the
@@ -2017,7 +2019,7 @@ paths:
     get:
       operationId: getMedia
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: Get media metadata
       description: |
         Returns the media item's metadata. With `?branch=` it is read from that
@@ -2112,7 +2114,7 @@ paths:
     get:
       operationId: downloadMedia
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: Download media file
       description: |
         Returns the media file. With `?branch=` the item is resolved through that
@@ -2167,7 +2169,7 @@ paths:
     get:
       operationId: getMediaThumbnail
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: Get media thumbnail
       description: |
         Returns the media thumbnail. With `?branch=` the item is resolved through
@@ -2198,7 +2200,7 @@ paths:
     get:
       operationId: listSources
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: List all sources
       description: |
         Returns a paginated list of sources. With `?branch=` the list is that
@@ -2277,7 +2279,7 @@ paths:
     get:
       operationId: searchSources
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: Search sources
       description: |
         Case-insensitive substring search over source titles and authors. With
@@ -2321,7 +2323,7 @@ paths:
     get:
       operationId: getSource
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: Get a source by ID
       description: |
         Returns the source with its citations and external identifiers. With
@@ -2416,7 +2418,7 @@ paths:
     get:
       operationId: getCitationsForSource
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: Get citations for a source
       tags: [sources]
       parameters:
@@ -2486,7 +2488,7 @@ paths:
     get:
       operationId: getCitation
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: Get a citation by ID
       tags: [citations]
       parameters:
@@ -2565,7 +2567,7 @@ paths:
     get:
       operationId: getCitationsForPerson
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: Get citations for a person
       tags: [citations]
       parameters:
@@ -2591,7 +2593,7 @@ paths:
     get:
       operationId: getPersonNames
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: Get all names for a person
       description: Returns all name variants for a person (birth name, married name, aliases, etc.)
       tags: [persons]
@@ -2971,7 +2973,7 @@ paths:
     get:
       operationId: getQualityOverview
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: Get aggregate quality metrics
       description: |
         Returns overall data quality metrics across all persons in the scoped
@@ -2998,7 +3000,7 @@ paths:
     get:
       operationId: getPersonQuality
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: Get quality score for a person
       description: Returns data completeness score and issues for a specific person
       tags: [quality]
@@ -3020,7 +3022,7 @@ paths:
     get:
       operationId: getQualityReport
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: Get full quality report
       description: Returns comprehensive data quality metrics including completeness, coverage, and aggregated issues
       tags: [quality]
@@ -3040,7 +3042,7 @@ paths:
     get:
       operationId: getValidationIssues
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: Get validation issues
       description: |
         Returns date logic and reference validation issues categorized by
@@ -3086,7 +3088,7 @@ paths:
     get:
       operationId: getPersonsDuplicates
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: Find potential duplicate persons
       description: |
         Returns pairs of persons that may be duplicates based on name, date, and
@@ -3127,7 +3129,7 @@ paths:
     get:
       operationId: listDismissedDuplicates
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: List pairs marked "not a duplicate"
       description: |
         Returns the suggested duplicate pairs marked "not a duplicate" in this
@@ -3355,7 +3357,7 @@ paths:
     get:
       operationId: getStatistics
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: Get tree-wide statistics
       description: Returns aggregate statistics about the family tree
       tags: [statistics]
@@ -3375,7 +3377,7 @@ paths:
     get:
       operationId: getDiscoveryFeed
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: Get discovery feed suggestions
       description: Returns prioritized research suggestions based on data quality analysis
       tags: [quality]
@@ -3643,7 +3645,7 @@ paths:
     get:
       operationId: listBranches
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: List all branches
       description: |
         Returns every branch in the registry, newest first, including terminal
@@ -3724,7 +3726,7 @@ paths:
     get:
       operationId: getBranch
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: Get a branch by ID
       description: |
         Returns the branch with its research record. Subjects carry their
@@ -4008,7 +4010,7 @@ paths:
     get:
       operationId: getBranchDrift
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: Count how far the mainline has moved under a branch
       description: |
         Branches are **live overlays**, not frozen copies (ADR-005): every
@@ -4560,7 +4562,7 @@ paths:
     get:
       operationId: getRelationship
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: Calculate relationship between two people
       tags:
         - relationships
@@ -4600,7 +4602,7 @@ paths:
     get:
       operationId: getHomePerson
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: Get the home person
       description: |
         Returns the person marked as "me", the one every person page states a
@@ -4673,7 +4675,7 @@ paths:
     get:
       operationId: listNotes
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: List all notes
       description: |
         Returns paginated list of shared GEDCOM NOTE records. With `?branch=`
@@ -4737,7 +4739,7 @@ paths:
     get:
       operationId: getNote
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: Get a note by ID
       tags: [notes]
       parameters:
@@ -4828,7 +4830,7 @@ paths:
     get:
       operationId: listSubmitters
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: List all submitters
       description: Returns paginated list of GEDCOM SUBM (submitter) records
       tags: [submitters]
@@ -4893,7 +4895,7 @@ paths:
     get:
       operationId: getSubmitter
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: Get a submitter by ID
       tags: [submitters]
       responses:
@@ -4965,7 +4967,7 @@ paths:
     get:
       operationId: listRepositories
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: List all repositories
       description: Returns paginated list of GEDCOM REPO (repository) records
       tags: [repositories]
@@ -5030,7 +5032,7 @@ paths:
     get:
       operationId: getRepository
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: Get a repository by ID
       tags: [repositories]
       responses:
@@ -5102,7 +5104,7 @@ paths:
     get:
       operationId: listAssociations
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: List all associations
       description: |
         Returns paginated list of GEDCOM ASSO (association) records. With
@@ -5177,7 +5179,7 @@ paths:
     get:
       operationId: getAssociation
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: Get an association by ID
       tags: [associations]
       parameters:
@@ -5256,7 +5258,7 @@ paths:
     get:
       operationId: listAssociationsForPerson
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: List associations for a person
       description: |
         Returns all associations where the person is either the subject or
@@ -5286,7 +5288,7 @@ paths:
     get:
       operationId: listLDSOrdinances
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: List all LDS ordinances
       description: Returns paginated list of LDS temple ordinance records (BAPL, CONL, ENDL, SLGC, SLGS)
       tags: [lds-ordinances]
@@ -5355,7 +5357,7 @@ paths:
     get:
       operationId: getLDSOrdinance
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: Get an LDS ordinance by ID
       tags: [lds-ordinances]
       responses:
@@ -5433,7 +5435,7 @@ paths:
     get:
       operationId: listLDSOrdinancesForPerson
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: List LDS ordinances for a person
       description: Returns all individual LDS ordinances (BAPL, CONL, ENDL, SLGC) for a person
       tags: [lds-ordinances]
@@ -5460,7 +5462,7 @@ paths:
     get:
       operationId: listLDSOrdinancesForFamily
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: List LDS ordinances for a family
       description: Returns all spouse sealing (SLGS) ordinances for a family
       tags: [lds-ordinances]
@@ -5485,7 +5487,7 @@ paths:
     get:
       operationId: listEvidenceAnalyses
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: List all evidence analyses
       description: |
         Returns a paginated list of evidence analyses. With `?branch=` the list
@@ -5559,7 +5561,7 @@ paths:
     get:
       operationId: getEvidenceAnalysis
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: Get an evidence analysis by ID
       description: |
         Returns the evidence analysis. With `?branch=` it is read from that
@@ -5644,7 +5646,7 @@ paths:
     get:
       operationId: getAnalysesByFact
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: Get evidence analyses by fact type and subject
       description: |
         Returns the evidence analyses of one fact of one subject. With
@@ -5694,7 +5696,7 @@ paths:
     get:
       operationId: listEvidenceConflicts
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: List all evidence conflicts
       description: |
         Returns a paginated list of evidence conflicts (two analyses that
@@ -5733,7 +5735,7 @@ paths:
     get:
       operationId: getEvidenceConflict
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: Get an evidence conflict by ID
       description: |
         Returns the evidence conflict. With `?branch=` it is read from that
@@ -5806,7 +5808,7 @@ paths:
     get:
       operationId: getConflictsBySubject
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: Get evidence conflicts for a subject
       description: |
         Returns the evidence conflicts about one subject. With `?branch=` the
@@ -5833,7 +5835,7 @@ paths:
     get:
       operationId: listResearchLogs
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: List all research log entries
       description: |
         Returns a paginated list of research log entries. With `?branch=` the
@@ -5906,7 +5908,7 @@ paths:
     get:
       operationId: getResearchLog
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: Get a research log entry by ID
       description: |
         Returns the research log entry. With `?branch=` it is read from that
@@ -5999,7 +6001,7 @@ paths:
     get:
       operationId: getResearchLogsBySubject
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: Get research log entries for a subject
       description: |
         Returns the research log entries about one subject. With `?branch=`
@@ -6026,7 +6028,7 @@ paths:
     get:
       operationId: listProofSummaries
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: List all proof summaries
       description: |
         Returns a paginated list of proof summaries. With `?branch=` the list
@@ -6099,7 +6101,7 @@ paths:
     get:
       operationId: getProofSummary
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: Get a proof summary by ID
       description: |
         Returns the proof summary. With `?branch=` it is read from that
@@ -6184,7 +6186,7 @@ paths:
     get:
       operationId: getProofSummaryByFact
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
       summary: Get proof summaries by fact type and subject
       description: |
         Returns the proof summaries of one fact of one subject. With
@@ -6415,6 +6417,106 @@ paths:
         '503':
           $ref: '#/components/responses/SetupRequired'
 
+  /auth/me/tokens:
+    get:
+      operationId: listAPITokens
+      x-min-role: viewer
+      security: [{session: []}]
+      summary: List the signed-in user's API tokens
+      description: |
+        Newest first. A token itself is shown only when it is created; each
+        is named by an `id` that can revoke it but not authenticate.
+
+        Requires a signed-in user, by session: an API token cannot manage API
+        tokens (403).
+      tags: [auth]
+      responses:
+        '200':
+          description: The user's API tokens
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APITokenList'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/SessionRequired'
+        '409':
+          $ref: '#/components/responses/AccountsOnly'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
+    post:
+      operationId: createAPIToken
+      x-min-role: viewer
+      security: [{session: []}]
+      summary: Create an API token for scripts
+      description: |
+        Returns the token, to send as `Authorization: Bearer <token>`. Only
+        its hash is stored, so it is shown this once. The token acts as the
+        signed-in user, with the role they hold at each request, until it is
+        revoked. Written to the auth audit log.
+
+        Requires a signed-in user, by session: an API token cannot manage API
+        tokens (403).
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/APITokenRequest'
+      responses:
+        '201':
+          description: The new token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreatedAPIToken'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/SessionRequired'
+        '409':
+          $ref: '#/components/responses/AccountsOnly'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
+
+  /auth/me/tokens/{tokenId}:
+    delete:
+      operationId: revokeAPIToken
+      x-min-role: viewer
+      security: [{session: []}]
+      summary: Revoke one of the signed-in user's API tokens
+      description: |
+        The token's next request gets 401. Written to the auth audit log.
+
+        Requires a signed-in user, by session: an API token cannot manage API
+        tokens (403).
+      tags: [auth]
+      parameters:
+        - name: tokenId
+          in: path
+          required: true
+          description: The token's `id`
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Token revoked
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/SessionRequired'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/AccountsOnly'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
+
   /auth/invites/accept:
     post:
       operationId: acceptInvite
@@ -6562,11 +6664,15 @@ paths:
     post:
       operationId: createPasswordReset
       x-min-role: owner
+      security: [{session: []}]
       summary: Issue a password reset link for a user
       description: |
         Returns a single-use token, valid for 24 hours, to pass on to the user
         yourself: no email is sent. Only its hash is stored, so it is shown
         this once.
+
+        Requires a signed-in session: an API token cannot issue a link
+        (403), so a leaked one cannot mint a lasting credential.
       tags: [users]
       parameters:
         - $ref: '#/components/parameters/userId'
@@ -6579,6 +6685,8 @@ paths:
                 $ref: '#/components/schemas/AccountLink'
         '401':
           $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/SessionRequired'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -6612,10 +6720,14 @@ paths:
     post:
       operationId: createInvite
       x-min-role: owner
+      security: [{session: []}]
       summary: Issue an invite link that creates an account with a role
       description: |
         Returns a single-use token, valid for 7 days, to pass on yourself: no
         email is sent. Only its hash is stored, so it is shown this once.
+
+        Requires a signed-in session: an API token cannot issue a link
+        (403), so a leaked one cannot mint a lasting credential.
       tags: [users]
       requestBody:
         required: true
@@ -6634,6 +6746,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/SessionRequired'
         '409':
           $ref: '#/components/responses/AccountsOnly'
         '503':
@@ -6766,7 +6880,8 @@ paths:
       description: |
         Sign-ins, failed sign-ins, invites and their revocation, role changes,
         disables, enables, password resets (issued, revoked and used) and
-        changes, and changes to anonymous access, newest
+        changes, changes to anonymous access, and API tokens created and
+        revoked, newest
         first. The log is append-only. It pages by cursor: pass a page's
         `next_cursor` as `cursor` to read the page after it.
       tags: [users]
@@ -7055,8 +7170,18 @@ components:
     Unauthenticated:
       description: |
         No signed-in session (`UNAUTHENTICATED`): sign in and send the session
-        cookie. A viewer operation is served without one when the owner lets
+        cookie, or send an API token. An unknown or revoked API token, or one
+        whose user is disabled, gets this too. A viewer operation is served without one when the owner lets
         visitors in, except those that say they require a signed-in user.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    SessionRequired:
+      description: |
+        The request carries an API token (`FORBIDDEN`): only a signed-in
+        session may do this
       content:
         application/json:
           schema:
@@ -7080,6 +7205,22 @@ components:
         The session cookie that `/auth/setup`, `/auth/sign-in` and
         `/auth/invites/accept` set. A browser sends it by itself; a script
         keeps it from the sign-in response and sends it back on each request.
+        Not needed with `AUTH_MODE=open`.
+    apiToken:
+      type: http
+      scheme: bearer
+      description: |
+        A personal API token, sent as `Authorization: Bearer <token>`, for
+        scripts. Create one on the account page or with
+        `POST /auth/me/tokens`. A request with it acts as the token's user,
+        with the role they hold at the time; an unknown or revoked token, or
+        one whose user is disabled, gets 401. A request carrying a Bearer
+        header is judged by it alone, on every route including public ones:
+        a session cookie sent with it is ignored and an invalid token is never
+        served as a visitor. A token never previews the tree as someone else
+        and cannot manage API tokens or issue invites or password resets.
+        Tokens do not expire and carry no narrower scope. Using a password
+        reset link revokes its user's tokens; changing a password does not.
         Not needed with `AUTH_MODE=open`.
 
   schemas:
@@ -7298,6 +7439,64 @@ components:
           type: string
           format: date-time
 
+    APITokenRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: What the token is for, such as the script that uses it
+          example: nightly backup
+
+    APIToken:
+      type: object
+      required: [id, name, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Names the token to revoke it; it cannot authenticate
+        name:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        last_used_at:
+          type: string
+          format: date-time
+          description: |
+            When the token last authenticated a request, to within a minute;
+            absent if it never has
+
+    APITokenList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/APIToken'
+
+    CreatedAPIToken:
+      type: object
+      required: [id, name, created_at, token]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        token:
+          type: string
+          description: |
+            The token, to send as `Authorization: Bearer <token>`. It is shown
+            only in this response.
+
     PendingInvite:
       type: object
       required: [id, role, created_by, created_at, expires_at]
@@ -7392,6 +7591,8 @@ components:
             - password_reset
             - password_changed
             - anonymous_access_changed
+            - api_token_created
+            - api_token_revoked
         actor_id:
           type: string
           format: uuid

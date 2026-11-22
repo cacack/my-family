@@ -62,6 +62,17 @@ func NewAccountStore(db *sql.DB) (*AccountStore, error) {
 		CREATE INDEX IF NOT EXISTS idx_sessions_last_seen_at ON sessions(last_seen_at);
 		CREATE INDEX IF NOT EXISTS idx_sessions_created_at ON sessions(created_at);
 
+		CREATE TABLE IF NOT EXISTS api_tokens (
+			id TEXT PRIMARY KEY,
+			token_hash TEXT NOT NULL UNIQUE,
+			user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			name TEXT NOT NULL,
+			created_at TEXT NOT NULL,
+			last_used_at TEXT
+		);
+
+		CREATE INDEX IF NOT EXISTS idx_api_tokens_user_id ON api_tokens(user_id);
+
 		CREATE TABLE IF NOT EXISTS invites (
 			token_hash TEXT PRIMARY KEY,
 			tree_id TEXT NOT NULL,
@@ -330,6 +341,115 @@ func (s *AccountStore) DeleteUserSessions(ctx context.Context, userID uuid.UUID,
 		return fmt.Errorf("delete user sessions: %w", err)
 	}
 	return nil
+}
+
+// apiTokenColumns are the columns scanAPIToken reads, in order.
+const apiTokenColumns = `id, token_hash, user_id, name, created_at, last_used_at` // #nosec G101 -- column names, not a credential.
+
+// scanAPIToken reads one api_tokens row selected as apiTokenColumns.
+func scanAPIToken(row interface{ Scan(...any) error }) (*repository.APIToken, error) {
+	var (
+		token                        repository.APIToken
+		idStr, userIDStr, createdStr string
+		lastUsed                     sql.NullString
+	)
+	if err := row.Scan(&idStr, &token.TokenHash, &userIDStr, &token.Name, &createdStr, &lastUsed); err != nil {
+		return nil, err
+	}
+	var err error
+	if token.ID, err = uuid.Parse(idStr); err != nil {
+		return nil, fmt.Errorf("parse API token id: %w", err)
+	}
+	if token.UserID, err = uuid.Parse(userIDStr); err != nil {
+		return nil, fmt.Errorf("parse API token user id: %w", err)
+	}
+	if token.CreatedAt, err = parseTimestamp(createdStr); err != nil {
+		return nil, fmt.Errorf("parse API token created_at: %w", err)
+	}
+	if lastUsed.Valid {
+		t, err := parseTimestamp(lastUsed.String)
+		if err != nil {
+			return nil, fmt.Errorf("parse API token last_used_at: %w", err)
+		}
+		token.LastUsedAt = &t
+	}
+	return &token, nil
+}
+
+// CreateAPIToken stores token.
+func (s *AccountStore) CreateAPIToken(ctx context.Context, token *repository.APIToken) error {
+	var lastUsed sql.NullString
+	if token.LastUsedAt != nil {
+		lastUsed = sql.NullString{String: sessionTime(*token.LastUsedAt), Valid: true}
+	}
+	if _, err := s.db.ExecContext(ctx,
+		`INSERT INTO api_tokens (`+apiTokenColumns+`) VALUES (?, ?, ?, ?, ?, ?)`,
+		token.ID.String(), token.TokenHash, token.UserID.String(), token.Name, sessionTime(token.CreatedAt), lastUsed); err != nil {
+		return fmt.Errorf("insert API token: %w", err)
+	}
+	return nil
+}
+
+// GetAPIToken returns the API token with tokenHash.
+func (s *AccountStore) GetAPIToken(ctx context.Context, tokenHash string) (*repository.APIToken, error) {
+	token, err := scanAPIToken(s.db.QueryRowContext(ctx,
+		`SELECT `+apiTokenColumns+` FROM api_tokens WHERE token_hash = ?`, tokenHash))
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, repository.ErrAPITokenNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get API token: %w", err)
+	}
+	return token, nil
+}
+
+// ListAPITokens returns userID's API tokens, newest first.
+func (s *AccountStore) ListAPITokens(ctx context.Context, userID uuid.UUID) ([]repository.APIToken, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT `+apiTokenColumns+` FROM api_tokens WHERE user_id = ? ORDER BY created_at DESC, id DESC`, userID.String())
+	if err != nil {
+		return nil, fmt.Errorf("list API tokens: %w", err)
+	}
+	defer rows.Close()
+	var tokens []repository.APIToken
+	for rows.Next() {
+		token, err := scanAPIToken(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan API token: %w", err)
+		}
+		tokens = append(tokens, *token)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list API tokens: %w", err)
+	}
+	return tokens, nil
+}
+
+// TouchAPIToken sets the token's last-used time.
+func (s *AccountStore) TouchAPIToken(ctx context.Context, tokenHash string, lastUsed time.Time) error {
+	result, err := s.db.ExecContext(ctx, `UPDATE api_tokens SET last_used_at = ? WHERE token_hash = ?`, sessionTime(lastUsed), tokenHash)
+	if err != nil {
+		return fmt.Errorf("touch API token: %w", err)
+	}
+	if n, err := result.RowsAffected(); err != nil {
+		return fmt.Errorf("touch API token: %w", err)
+	} else if n == 0 {
+		return repository.ErrAPITokenNotFound
+	}
+	return nil
+}
+
+// DeleteAPIToken removes userID's API token with id.
+func (s *AccountStore) DeleteAPIToken(ctx context.Context, userID, id uuid.UUID) (*repository.APIToken, error) {
+	token, err := scanAPIToken(s.db.QueryRowContext(ctx,
+		`DELETE FROM api_tokens WHERE id = ? AND user_id = ? RETURNING `+apiTokenColumns, id.String(), userID.String()))
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, repository.ErrAPITokenNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("delete API token: %w", err)
+	}
+	return token, nil
 }
 
 // ListMembers returns every member of treeID, by username.

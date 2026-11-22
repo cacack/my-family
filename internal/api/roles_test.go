@@ -71,6 +71,9 @@ var (
 	viewerWrites = routeSet(
 		"POST /api/v1/citation-templates/:id/preview",
 		"PATCH /api/v1/auth/me",
+		// Each account's own API tokens (#1416).
+		"POST /api/v1/auth/me/tokens",
+		"DELETE /api/v1/auth/me/tokens/:tokenId",
 		// Each account's own home person (#1443).
 		"PUT /api/v1/settings/home-person",
 		"DELETE /api/v1/settings/home-person",

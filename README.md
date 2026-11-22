@@ -156,8 +156,8 @@ demo mode and end-to-end tests. It can only be set in the environment, never fro
 server logs a warning when it starts in it, and changes made in it record no user. `DEMO_MODE`
 always runs open.
 
-Accounts are kept in their own tables (`users`, `tree_memberships`, `sessions`, `invites`,
-`password_resets` and `auth_audit`), not in the event log, so `myfamily rebuild` leaves them alone; back them up with the rest of the database. See
+Accounts are kept in their own tables (`users`, `tree_memberships`, `sessions`, `api_tokens`,
+`invites`, `password_resets` and `auth_audit`), not in the event log, so `myfamily rebuild` leaves them alone; back them up with the rest of the database. See
 [ADR-007](./docs/adr/007-access-model.md).
 
 #### Roles
@@ -281,31 +281,46 @@ is written to the audit log.
 
 An upgraded server starts in setup mode: until an owner exists, the API answers every request
 with `503 SETUP_REQUIRED`. Either create the owner (setup page or `myfamily user create`), or set
-`AUTH_MODE=open` to keep the old behaviour on a trusted network. Scripts that call the API need a
-signed-in session cookie, or open mode, until API tokens exist. Changes made before accounts are
-shown in history as the owner's.
+`AUTH_MODE=open` to keep the old behavior on a trusted network. Scripts that call the API need an
+API token (see below), or open mode. Changes made before accounts are shown in history as the
+owner's.
 
 #### Calling the API from a script
 
-Until API tokens exist ([#1416](https://github.com/cacack/my-family/issues/1416)), a script signs
-in like the web UI does and sends the session cookie back on each request. With `curl`, keep the
-cookie in a jar:
+A script authenticates with a personal API token. Create one on the **Account** page (API tokens,
+then *Create token*), copy it, and keep it where the script reads it, such as an environment
+variable: the server stores only its hash and shows it once. Send it on each request:
 
 ```bash
-jar=$(mktemp)
-curl -sf -c "$jar" -H 'Content-Type: application/json' \
-  -d '{"username":"ada","password":"'"$PASSWORD"'"}' \
-  http://localhost:8080/api/v1/auth/sign-in
-curl -sf -b "$jar" http://localhost:8080/api/v1/persons
-curl -sf -b "$jar" -X POST http://localhost:8080/api/v1/auth/sign-out   # ends the session
+export MYFAMILY_TOKEN=mf_...   # from the Account page
+curl -sf -H "Authorization: Bearer $MYFAMILY_TOKEN" http://localhost:8080/api/v1/persons
+curl -sf -H "Authorization: Bearer $MYFAMILY_TOKEN" -o tree.ged http://localhost:8080/api/v1/gedcom/export
 ```
 
+A token acts as the user who created it, with the role they hold at each request: an editor's
+token can change the tree, a viewer's gets 403 `FORBIDDEN` on a change, and changes made with it
+appear in history under that user. A token does not expire. Revoke it on the Account page when
+the script is retired or the token may have leaked; a revoked token, or one whose user is
+disabled, gets 401 `UNAUTHENTICATED`. Creating and revoking a token are written to the auth audit
+log. A token cannot list, create or revoke tokens, or issue invites or password resets (403), so
+a leaked one cannot mint a credential that outlives it, and it never previews the tree as someone
+else. Using a password reset link revokes the user's tokens; changing a password keeps them, so
+revoke a leaked one on the Account page. A request with an `Authorization: Bearer` header is
+judged by that token alone, on every route: a session cookie sent with it is ignored, and an
+invalid token gets 401 even on sign-in.
+
+A script can instead sign in like the web UI does and send the session cookie back, keeping it in
+a `curl` cookie jar (`-c "$jar"` on `POST /api/v1/auth/sign-in`, then `-b "$jar"`); the session
+expires like a browser's.
+
 The [OpenAPI spec](./internal/api/openapi.yaml) declares the cookie as the `session` security
-scheme. Operations marked `security: []` (health, auth status, setup, sign-in, sign-out, invite
-accept and password reset) need no session. Those marked `security: [{session: []}, {}]` (the
-reads a visitor may make) are served without one when the owner lets visitors in. Every other
-call without a session answers 401 `UNAUTHENTICATED`, and anything but the first group answers
-503 `SETUP_REQUIRED` until an owner exists. In open mode no session is needed, and the account
+scheme and the token as the `apiToken` (HTTP bearer) scheme; every operation accepts either,
+except the token operations, which say `security: [{session: []}]`. Operations marked
+`security: []` (health, auth status, setup, sign-in, sign-out, invite accept and password reset)
+need neither. Those marked `security: [{session: []}, {apiToken: []}, {}]` (the reads a visitor
+may make) are served without one when the owner lets visitors in. Every other call without a
+session or token answers 401 `UNAUTHENTICATED`, and anything but the first group answers 503
+`SETUP_REQUIRED` until an owner exists. In open mode no session is needed, and the account
 operations (`/auth/sign-in`, `/auth/setup`, `/auth/me` and the rest, but not sign-out or auth
 status) answer 409 `CONFLICT`.
 

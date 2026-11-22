@@ -333,8 +333,9 @@ func (s *Service) IssuePasswordResetFor(ctx context.Context, by Actor, username 
 	return user, link, nil
 }
 
-// ResetPassword sets a password from a reset link and ends every session of
-// its user. It signs no one in.
+// ResetPassword sets a password from a reset link and ends every session and
+// revokes every API token of its user, so recovering an account evicts
+// whoever held it. It signs no one in.
 func (s *Service) ResetPassword(ctx context.Context, token, password, clientIP string) error {
 	var userID uuid.UUID
 	err := s.useLink(clientIP, func() error {
@@ -365,8 +366,9 @@ func (s *Service) ResetPassword(ctx context.Context, token, password, clientIP s
 		user = &repository.User{ID: userID}
 	}
 	// Whoever holds the link acts as its user.
-	s.audit(ctx, Actor{UserID: userID, ClientIP: clientIP}, repository.AuthActionPasswordReset, user, "")
-	return nil
+	by := Actor{UserID: userID, ClientIP: clientIP}
+	s.audit(ctx, by, repository.AuthActionPasswordReset, user, "")
+	return s.revokeAllAPITokens(ctx, by, user)
 }
 
 // PendingPasswordResets returns the password resets that have not expired,

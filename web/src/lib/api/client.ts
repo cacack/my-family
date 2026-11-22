@@ -506,6 +506,8 @@ export type UserUpdate = Schemas['UserUpdate'];
 export type PrivacySettings = Schemas['PrivacySettings'];
 export type LivingOverride = Schemas['LivingOverride'];
 export type AccountLink = Schemas['AccountLink'];
+export type APIToken = Schemas['APIToken'];
+export type CreatedAPIToken = Schemas['CreatedAPIToken'];
 export type PendingInvite = Schemas['PendingInvite'];
 export type PendingPasswordReset = Schemas['PendingPasswordReset'];
 export type AuthAuditEntry = Schemas['AuthAuditEntry'];
@@ -703,6 +705,19 @@ class ApiClient {
 
 	async updateCurrentAccount(input: AccountUpdate): Promise<Account> {
 		return this.request<Account>('PATCH', '/auth/me', input);
+	}
+
+	// The signed-in user's API tokens (#1416)
+	async listAPITokens(): Promise<APIToken[]> {
+		return (await this.request<Schemas['APITokenList']>('GET', '/auth/me/tokens')).items;
+	}
+
+	async createAPIToken(name: string): Promise<CreatedAPIToken> {
+		return this.request<CreatedAPIToken>('POST', '/auth/me/tokens', { name });
+	}
+
+	async revokeAPIToken(id: string): Promise<void> {
+		return this.request<void>('DELETE', `/auth/me/tokens/${encodeURIComponent(id)}`);
 	}
 
 	async acceptInvite(input: AcceptInviteRequest): Promise<Account> {

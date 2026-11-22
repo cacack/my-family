@@ -2,7 +2,8 @@
 	/**
 	 * An invite or password reset link, shown once to the owner who issued it
 	 * (ADR-007): the server keeps only its hash, and sends no email, so the
-	 * owner copies it and passes it on.
+	 * owner copies it and passes it on. An API token is shown once the same
+	 * way, with its own hint.
 	 */
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { Input } from '#lib/components/ui/input/index.js';
@@ -15,15 +16,19 @@
 		label: string;
 		url: string;
 		/** ISO time the link stops working. */
-		expiresAt: string;
+		expiresAt?: string;
+		/** Replaces the hint about passing the link on and when it expires. */
+		hint?: string;
 	}
 
-	let { id, label, url, expiresAt }: Props = $props();
+	let { id, label, url, expiresAt, hint }: Props = $props();
 
 	let copied = $state(false);
 
 	const expires = $derived(
-		new Date(expiresAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+		expiresAt
+			? new Date(expiresAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+			: ''
 	);
 
 	async function copy() {
@@ -44,7 +49,7 @@
 		<Button variant="outline" onclick={copy}>{copied ? 'Copied' : 'Copy'}</Button>
 	</div>
 	<p id="{id}-hint" class="hint">
-		Send it to them yourself. It works once, until {expires}, and is not shown again.
+		{hint ?? `Send it to them yourself. It works once, until ${expires}, and is not shown again.`}
 	</p>
 </div>
 
