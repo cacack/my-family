@@ -92,6 +92,25 @@ describe('BranchSwitcher', () => {
 		expect(listBranches).not.toHaveBeenCalled();
 	});
 
+	it('offers a visitor the list to view, not to manage (#1535)', async () => {
+		visitor.value = true;
+
+		render(BranchSwitcher);
+		await fireEvent.pointerDown(screen.getByRole('button', { name: /switch research branch/i }));
+
+		const link = await screen.findByRole('menuitem', { name: 'View branches' });
+		expect(link.getAttribute('href')).toBe('/branches');
+		expect(screen.queryByText(/Manage/)).toBeNull();
+	});
+
+	it('offers a signed-in user the list to manage', async () => {
+		render(BranchSwitcher);
+		await fireEvent.pointerDown(screen.getByRole('button', { name: /switch research branch/i }));
+
+		const link = await screen.findByRole('menuitem', { name: 'Manage branches' });
+		expect(link.getAttribute('href')).toBe('/branches');
+	});
+
 	it('does not fetch the branch list until the menu is opened', () => {
 		render(BranchSwitcher);
 		expect(listBranches).not.toHaveBeenCalled();
