@@ -559,7 +559,7 @@ export type MediaUpdate = Schemas['MediaUpdate'];
  * thumbnail are not found (#1477). An upload always stores content.
  */
 export function isReferenceOnly(media: Media): boolean {
-	return media.file_size === 0;
+	return !media.has_content;
 }
 
 // Relationship calculator

@@ -27,6 +27,7 @@ function media(overrides: Partial<Media>): Media {
 		mime_type: 'image/jpeg',
 		filename: 'portrait.jpg',
 		file_size: 2048,
+		has_content: true,
 		has_thumbnail: true,
 		version: 1,
 		created_at: '2026-01-01T00:00:00Z',
@@ -40,6 +41,7 @@ const reference = media({
 	title: 'Wedding',
 	filename: '',
 	file_size: 0,
+	has_content: false,
 	has_thumbnail: false,
 	files: [{ path: 'photos/wedding.jpg', format: 'image/jpeg' }]
 });

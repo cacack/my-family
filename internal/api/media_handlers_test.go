@@ -112,6 +112,11 @@ func TestUploadPersonMedia(t *testing.T) {
 		t.Error("Expected non-empty id")
 	}
 
+	// An upload stores content, so it reports has_content (#1583).
+	if mediaResp["has_content"] != true {
+		t.Errorf("upload has_content = %v, want true", mediaResp["has_content"])
+	}
+
 	// An uploaded image reports its thumbnail on upload, get and list (#903).
 	if mediaResp["has_thumbnail"] != true {
 		t.Errorf("upload has_thumbnail = %v, want true", mediaResp["has_thumbnail"])
@@ -121,6 +126,9 @@ func TestUploadPersonMedia(t *testing.T) {
 	var getResp map[string]any
 	if err := json.Unmarshal(getRec.Body.Bytes(), &getResp); err != nil || getResp["has_thumbnail"] != true {
 		t.Errorf("get has_thumbnail = %v (status %d, err %v), want true", getResp["has_thumbnail"], getRec.Code, err)
+	}
+	if getResp["has_content"] != true {
+		t.Errorf("get has_content = %v, want true", getResp["has_content"])
 	}
 	assertUploadedFields(t, "get", getResp)
 	listRec := httptest.NewRecorder()
@@ -851,8 +859,9 @@ func TestReferenceOnlyMedia_ContentAndThumbnailNotFound(t *testing.T) {
 		t.Fatalf("person has %d media items, want 1", len(items))
 	}
 	item := items[0].(map[string]any)
-	if item["file_size"] != float64(0) || item["has_thumbnail"] != false {
-		t.Errorf("file_size = %v, has_thumbnail = %v; want 0 and false", item["file_size"], item["has_thumbnail"])
+	if item["has_content"] != false || item["file_size"] != float64(0) || item["has_thumbnail"] != false {
+		t.Errorf("has_content = %v, file_size = %v, has_thumbnail = %v; want false, 0 and false",
+			item["has_content"], item["file_size"], item["has_thumbnail"])
 	}
 	files, _ := item["files"].([]any)
 	if len(files) != 1 || files[0].(map[string]any)["path"] != "photos/wedding.jpg" {

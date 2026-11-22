@@ -4824,9 +4824,11 @@ export interface components {
             filename: string;
             /**
              * Format: int64
-             * @description File size in bytes. 0 means no file content is stored: the item is a reference only (imported from GEDCOM), its `files` name the referenced paths, and its content and thumbnail return 404.
+             * @description File size in bytes. It does not say whether file content is stored; read `has_content` for that.
              */
             file_size: number;
+            /** @description Whether file content is stored. When false the item is a reference only (imported from GEDCOM): its `files` name the referenced paths, and its content and thumbnail return 404. */
+            has_content: boolean;
             /** @description Whether a thumbnail is available */
             has_thumbnail?: boolean;
             crop_left?: number;
