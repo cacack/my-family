@@ -176,6 +176,8 @@ func TestPrivacyPreview_MediaBytesAreNotCached(t *testing.T) {
 		"/api/v1/media/" + tr.deadMedia + "/thumbnail",
 		"/api/v1/media/" + tr.livingMedia + "/content",
 		"/api/v1/media/" + tr.livingMedia + "/thumbnail",
+		"/api/v1/media/" + tr.deadPrivateMedia + "/content",
+		"/api/v1/media/" + tr.deadPrivateMedia + "/thumbnail",
 	} {
 		for _, as := range []string{"", "viewer", "visitor"} {
 			var more []*http.Cookie
@@ -183,6 +185,11 @@ func TestPrivacyPreview_MediaBytesAreNotCached(t *testing.T) {
 				more = []*http.Cookie{previewCookie(as)}
 			}
 			rec := f.do(t, request{method: http.MethodGet, path: path, cookie: owner, more: more})
+			// The owner is served the bytes, so the header is checked on
+			// what is kept, not only on refusals.
+			if as == "" && rec.Code != http.StatusOK {
+				t.Errorf("GET %s as the owner: %d %s, want 200", path, rec.Code, rec.Body)
+			}
 			if got := rec.Header().Get("Cache-Control"); got != "no-store" {
 				t.Errorf("GET %s previewed as %q: %d with Cache-Control %q, want no-store", path, as, rec.Code, got)
 			}
