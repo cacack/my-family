@@ -273,6 +273,9 @@ func TestPrivacyRedaction_RecordSurfaces(t *testing.T) {
 						if rec.Code != http.StatusOK {
 							t.Fatalf("GET %s: %d %s", path, rec.Code, rec.Body)
 						}
+						// The raw body, IDs and all: hidden is given names,
+						// each with a letter no hex ID holds, and the hidden
+						// people's whole IDs, which no other random ID equals.
 						if len(hidden) > 0 && containsAny(rec.Body.String(), hidden...) {
 							t.Errorf("GET %s names one of %v: %s", path, hidden, rec.Body)
 						}

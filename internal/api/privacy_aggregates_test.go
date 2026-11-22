@@ -124,6 +124,8 @@ func TestPrivacyRedaction_AggregatesAndHomeWidgets(t *testing.T) {
 						if rec.Code != http.StatusOK {
 							t.Fatalf("GET %s: %d %s", path, rec.Code, rec.Body)
 						}
+						// hidden is given names, each with a letter no hex
+						// ID holds, so a random ID cannot match one.
 						if len(hidden) > 0 && containsAny(rec.Body.String(), hidden...) {
 							t.Errorf("GET %s names one of %v: %s", path, hidden, rec.Body)
 						}
