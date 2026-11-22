@@ -21,6 +21,7 @@
 	import { Textarea } from '#lib/components/ui/textarea/index.js';
 	import * as Dialog from '#lib/components/ui/dialog/index.js';
 	import { branchMergeSummary, isIncompleteMerge } from '#lib/utils/mergeState.js';
+	import { branchPageHref } from '#lib/utils/branchPages.js';
 	import BranchDriftIndicator from '#lib/components/BranchDriftIndicator.svelte';
 	import ErrorState from '#lib/components/ErrorState.svelte';
 	import LoadingState from '#lib/components/LoadingState.svelte';
@@ -187,15 +188,17 @@
 </svelte:head>
 
 {#snippet branchCard(branch: Branch)}
+	<!-- A visitor reads the mainline only (ADR-008 §4): branchPageHref gives
+	     them no link to a branch's comparison or research. -->
+	{@const compareHref = branchPageHref(branch.id)}
+	{@const researchHref = branchPageHref(branch.id, 'research')}
 	<article class="branch-card">
 		<div class="branch-head">
 			<div class="branch-title">
-				<!-- A visitor reads the mainline only (ADR-008 §4): a branch's page,
-				     comparison and research need sign-in, so nothing here leads a visitor there. -->
-				{#if isVisitor()}
-					<span class="branch-name">{branch.name}</span>
+				{#if compareHref}
+					<a href={compareHref} class="branch-name">{branch.name}</a>
 				{:else}
-					<a href="/branches/{branch.id}" class="branch-name">{branch.name}</a>
+					<span class="branch-name">{branch.name}</span>
 				{/if}
 				<Badge variant={statusVariant(branch.status)} class="capitalize">
 					{statusLabel(branch.status)}
@@ -225,16 +228,17 @@
 						</Button>
 					{/if}
 				{/if}
-				{#if branch.status === 'archived' && !isVisitor()}
-					<Button variant="outline" size="sm" href="/branches/{branch.id}/research">
+				{#if branch.status === 'archived' && researchHref}
+					<Button variant="outline" size="sm" href={researchHref}>
 						Research
 					</Button>
 				{/if}
-				{#if !isVisitor()}
-					{#if isIncompleteMerge(branch)}
-						<Button size="sm" href="/branches/{branch.id}">Finish merge</Button>
+				{#if compareHref}
+					<!-- Finishing a merge writes to the mainline, an editor's change. -->
+					{#if isIncompleteMerge(branch) && can('editor')}
+						<Button size="sm" href={compareHref}>Finish merge</Button>
 					{/if}
-					<Button variant="ghost" size="sm" href="/branches/{branch.id}">Compare</Button>
+					<Button variant="ghost" size="sm" href={compareHref}>Compare</Button>
 				{/if}
 			</div>
 		</div>
@@ -340,14 +344,16 @@
 		/>
 	{:else}
 		{#if closeNotice}
+			{@const researchHref = branchPageHref(closeNotice.branchId, 'research')}
 			<div class="notice" role="status">
 				<p>
 					{closeNotice.text}
-					<a href="/branches/{closeNotice.branchId}/research">View its research</a>
+					{#if researchHref}<a href={researchHref}>View its research</a>{/if}
 				</p>
 				{#if closeNotice.warning}
 					<p class="notice-warning">
-						{closeNotice.warning} You can copy them from the branch's research page.
+						{closeNotice.warning}
+						{#if researchHref}You can copy them from the branch's research page.{/if}
 					</p>
 				{/if}
 			</div>

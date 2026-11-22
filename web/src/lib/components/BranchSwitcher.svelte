@@ -138,7 +138,8 @@
 		-->
 		<DropdownMenu.Item>
 			{#snippet child({ props })}
-				<a href="/branches" {...props}>Manage branches</a>
+				<!-- A visitor may read the list but not create or switch to a branch. -->
+				<a href="/branches" {...props}>{isVisitor() ? 'View branches' : 'Manage branches'}</a>
 			{/snippet}
 		</DropdownMenu.Item>
 	</DropdownMenu.Content>

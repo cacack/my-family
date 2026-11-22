@@ -9,6 +9,7 @@
  * here until it has a label.
  */
 import type { components } from "#lib/api/types.generated.js";
+import { branchPageHref } from "#lib/utils/branchPages.js";
 
 type Entry = components["schemas"]["ChangeEntry"];
 export type ChangeEntityType = Entry["entity_type"];
@@ -82,7 +83,7 @@ function pageOf(entityType: string, id: string): string | null {
     case "proof_summary":
       return `/evidence/proof-summaries/${id}`;
     case "branch":
-      return `/branches/${id}`;
+      return branchPageHref(id);
     // A pair marked "not a duplicate" (#1036) is listed, and restored, on
     // the Quality page.
     case "duplicate_pair":

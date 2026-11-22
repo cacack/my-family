@@ -177,6 +177,17 @@ describe('Branches page', () => {
 		expect(screen.getAllByRole('link', { name: /^Compare$/ }).length).toBeGreaterThan(0);
 	});
 
+	it('offers a signed-in viewer no "Finish merge", only the comparison (#1535)', async () => {
+		signInAs('viewer');
+		const unfinished: Branch = { ...merged, merge_state: 'incomplete' };
+		listBranches.mockResolvedValue({ items: [unfinished], total: 1 });
+		render(Page);
+
+		expect(await screen.findByText('Merge unfinished')).toBeDefined();
+		expect(screen.queryByRole('link', { name: /^Finish merge$/ })).toBeNull();
+		expect(screen.getByRole('link', { name: /^Compare$/ }).getAttribute('href')).toBe(`/branches/${unfinished.id}`);
+	});
+
 	it('still lets a visitor already on a branch return to the mainline', async () => {
 		auth.phase = 'visitor';
 		mockState.id = active.id;

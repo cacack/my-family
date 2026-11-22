@@ -7,6 +7,7 @@ import {
   mergedFromLabel,
   unnamedEntityLabel,
 } from "./changeEntries";
+import { auth } from "#lib/stores/access.svelte.js";
 
 const ID = "11111111-1111-1111-1111-111111111111";
 const PARENT = "22222222-2222-2222-2222-222222222222";
@@ -107,6 +108,9 @@ describe("branch lifecycle and merge provenance (#832)", () => {
       action: "deleted" as const,
     };
     expect(changeEntryLink(archived)).toBe(`/branches/${ID}`);
+    auth.phase = "visitor";
+    expect(changeEntryLink(archived)).toBeNull();
+    auth.phase = "open";
     expect(changeActionLabel(archived)).toBe("archived");
     expect(
       changeActionLabel({

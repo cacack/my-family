@@ -25,7 +25,7 @@
 		dismissBranchNotice
 	} from '#lib/stores/activeBranch.svelte.js';
 	import { Button } from '#lib/components/ui/button/index.js';
-	import { isVisitor } from '#lib/stores/access.svelte.js';
+	import { branchPageHref } from '#lib/utils/branchPages.js';
 	import BranchOutcomeBadge from '#lib/components/branch/BranchOutcomeBadge.svelte';
 	import BranchDriftIndicator from './BranchDriftIndicator.svelte';
 	import { subjectHref, subjectLabel } from '#lib/utils/branchResearch.js';
@@ -37,6 +37,7 @@
 	const subjects = $derived(activeBranch.branch?.subjects ?? []);
 	const shownSubjects = $derived(subjects.slice(0, BANNER_SUBJECTS));
 	const hiddenSubjects = $derived(subjects.length - shownSubjects.length);
+	const compareHref = $derived(activeBranch.id ? branchPageHref(activeBranch.id) : null);
 
 	/** The whole first line, kept in a title since it is clamped to two lines (#1135). */
 	const identity = $derived(
@@ -184,10 +185,10 @@
 									>{#if i < shownSubjects.length - 1},{/if}</span
 								>
 							{/each}
-							{#if hiddenSubjects > 0 && isVisitor()}
-								<span class="subjects-more">+{hiddenSubjects} more</span>
+							{#if hiddenSubjects > 0 && compareHref}
+								<a class="subjects-more" href={compareHref}>+{hiddenSubjects} more</a>
 							{:else if hiddenSubjects > 0}
-								<a class="subjects-more" href="/branches/{activeBranch.id}">+{hiddenSubjects} more</a>
+								<span class="subjects-more">+{hiddenSubjects} more</span>
 							{/if}
 						</span>
 					{/if}
@@ -224,8 +225,8 @@
 			</details>
 		</div>
 		<div class="branch-actions">
-			{#if !isVisitor()}
-				<Button variant="outline" size="sm" href="/branches/{activeBranch.id}">Compare</Button>
+			{#if compareHref}
+				<Button variant="outline" size="sm" href={compareHref}>Compare</Button>
 			{/if}
 			<Button variant="outline" size="sm" onclick={handleReturn} disabled={leaving}>
 				{leaving ? 'Returning...' : 'Return to Mainline'}

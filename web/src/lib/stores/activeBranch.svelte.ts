@@ -34,6 +34,7 @@
 
 import { api, setClientBranch, type ApiError, type Branch } from '#lib/api/client.js';
 import { isVisitor } from '#lib/stores/access.svelte.js';
+import { branchPageHref } from '#lib/utils/branchPages.js';
 
 const STORAGE_KEY = 'active-branch';
 /**
@@ -223,7 +224,7 @@ export async function revalidateActiveBranch(): Promise<void> {
 				branch.merge_state === 'unknown'
 					? `Research branch "${branch.name}" is merged, but its merge may not have finished. You are back on the mainline; check it from the branch's page.`
 					: `Research branch "${branch.name}" is merged, but its merge did not finish, so only part of its research is on the mainline. You are back on the mainline; finish the merge from the branch's page.`,
-				`/branches/${encodeURIComponent(branch.id)}`
+				branchPageHref(branch.id)
 			);
 		} else {
 			dropStaleBranch(

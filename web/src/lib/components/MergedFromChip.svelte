@@ -2,15 +2,18 @@
 	/**
 	 * Where a mainline change came from (#832): the branch it was researched on
 	 * and the merge note - the "why" of the promotion. Links to the merged
-	 * branch; the title says when the change was made on the branch and when
+	 * branch, except for a visitor, who cannot open it (`branchPageHref`); the title says when the change was made on the branch and when
 	 * the merge brought it over. Shared by entity history and the snapshot
 	 * comparison, where it tells a merge's replayed changes apart from
 	 * mainline edits in the same range (#833).
 	 */
 	import type { MergeOrigin } from '#lib/api/client.js';
 	import { mergedFromLabel } from '#lib/utils/changeEntries.js';
+	import { branchPageHref } from '#lib/utils/branchPages.js';
 
 	let { origin }: { origin: MergeOrigin } = $props();
+
+	const href = $derived(branchPageHref(origin.branch_id));
 
 	function formatTimestamp(iso: string): string {
 		return new Date(iso).toLocaleDateString('en-US', {
@@ -23,8 +26,9 @@
 	}
 </script>
 
-<a
-	href="/branches/{origin.branch_id}"
+<svelte:element
+	this={href ? 'a' : 'span'}
+	{href}
 	class="merge-chip"
 	data-slot="chip"
 	title="Made on the branch {formatTimestamp(origin.original_timestamp)}; merged {formatTimestamp(
@@ -33,7 +37,7 @@
 	data-testid="merged-from"
 >
 	{mergedFromLabel(origin)}
-</a>
+</svelte:element>
 
 <style>
 	.merge-chip {
@@ -50,7 +54,7 @@
 		overflow-wrap: anywhere;
 	}
 
-	.merge-chip:hover {
+	a.merge-chip:hover {
 		border-color: #7c3aed;
 	}
 </style>
