@@ -1657,11 +1657,12 @@ func recordDeath(event *gedcom.Event) bool {
 
 // deathLifeEvents returns the individual's dateless, placeless death life
 // events, so a person has one death through import and export (#1456): one
-// event merges every bare death with the cause, age and address of the DEAT
-// the person record holds (its last record death, see parseIndividual), which
-// the record has no fields for (#1455). A bare death whose details conflict
-// with the merged ones, or that has a descriptor (a payload other than "Y"),
-// is kept as an event of its own, so none is dropped.
+// event merges every bare death with the cause, age, address and descriptor
+// of the DEAT the person record holds (its last record death, see
+// parseIndividual), which the record has no fields for (#1455, #1707). A bare
+// death whose details conflict with the merged ones, or that has a descriptor
+// of its own (a payload other than "Y"), is kept as an event of its own, so
+// none is dropped.
 // With a record death, the merged event is kept only if it holds a detail,
 // and the record keeps the merged DEATs' citations; the exporter writes the
 // two back as one DEAT (mergeableDeathDetail). The returned map gives the
@@ -1680,6 +1681,9 @@ func deathLifeEvents(indi *gedcom.Individual, personID uuid.UUID) ([]EventData, 
 	}
 	if held != nil {
 		mergeDeathDetail(&merged, held)
+		// The record has no field for a descriptor, as in "1 DEAT Drowned"
+		// with a DATE (#1707).
+		merged.Description = held.Description
 	}
 	mergedBare := false
 	var separate []EventData
@@ -1702,7 +1706,7 @@ func deathLifeEvents(indi *gedcom.Individual, personID uuid.UUID) ([]EventData, 
 	}
 	// Without a record death the merged event is the death itself; with one,
 	// it is kept only to hold detail the record cannot.
-	hasDetail := merged.Cause != "" || merged.Age != "" || merged.Address != nil
+	hasDetail := merged.Cause != "" || merged.Age != "" || merged.Address != nil || merged.Description != ""
 	keepMerged := held == nil && mergedBare || hasDetail
 	if !keepMerged {
 		return separate, ids
