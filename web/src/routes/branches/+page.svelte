@@ -344,14 +344,16 @@
 		/>
 	{:else}
 		{#if closeNotice}
+			{@const researchHref = branchPageHref(closeNotice.branchId, 'research')}
 			<div class="notice" role="status">
 				<p>
 					{closeNotice.text}
-					<a href={branchPageHref(closeNotice.branchId, 'research')}>View its research</a>
+					{#if researchHref}<a href={researchHref}>View its research</a>{/if}
 				</p>
 				{#if closeNotice.warning}
 					<p class="notice-warning">
-						{closeNotice.warning} You can copy them from the branch's research page.
+						{closeNotice.warning}
+						{#if researchHref}You can copy them from the branch's research page.{/if}
 					</p>
 				{/if}
 			</div>
