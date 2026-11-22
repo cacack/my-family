@@ -232,6 +232,9 @@ as anonymous, so a missing principal fails safe.
 The owner may preview the tree as an anonymous principal or a viewer (#1413): the sign-in
 middleware then puts that principal, and its role, on the owner's requests, so both choke points
 apply to them unchanged and the preview cannot drift from what that principal is served.
+Media bytes (`/media/{id}/content` and `/media/{id}/thumbnail`) are sent with
+`Cache-Control: no-store`, so the browser never shows one principal's cached bytes to the other
+across a preview toggle (#1578).
 
 ### 5. Enforcement: two choke points
 

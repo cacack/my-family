@@ -1073,6 +1073,8 @@ export interface paths {
          *     themselves are shared with the mainline.
          *     An item with no stored content (one imported from GEDCOM, which keeps
          *     only file references) returns 404 with code `no_content`.
+         *     Sent with `Cache-Control: no-store`: what may be shown depends on who
+         *     asks, which the owner's preview changes under the same URL.
          */
         get: operations["downloadMedia"];
         put?: never;
@@ -1100,6 +1102,8 @@ export interface paths {
          *     mainline.
          *     An item without a thumbnail (a non-image, or one with no stored
          *     content) returns 404 with code `not_found`.
+         *     Sent with `Cache-Control: no-store`: what may be shown depends on who
+         *     asks, which the owner's preview changes under the same URL.
          */
         get: operations["getMediaThumbnail"];
         put?: never;
