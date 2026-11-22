@@ -130,14 +130,24 @@ func TestUploadPersonMedia(t *testing.T) {
 	if getResp["has_content"] != true {
 		t.Errorf("get has_content = %v, want true", getResp["has_content"])
 	}
+	// has_content is derived from the stored size while the download gate
+	// reads the stored bytes; the two must agree. The reference-only half is
+	// TestReferenceOnlyMedia_ContentAndThumbnailNotFound.
+	contentRec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(contentRec, httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/media/%s/content", mediaResp["id"]), http.NoBody))
+	if contentRec.Code != http.StatusOK || contentRec.Body.Len() == 0 {
+		t.Errorf("content status = %d with %d bytes, want %d and the stored bytes for an item with has_content true",
+			contentRec.Code, contentRec.Body.Len(), http.StatusOK)
+	}
 	assertUploadedFields(t, "get", getResp)
 	listRec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(listRec, httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/persons/%s/media", personID), http.NoBody))
 	var listResp struct {
 		Items []map[string]any `json:"items"`
 	}
-	if err := json.Unmarshal(listRec.Body.Bytes(), &listResp); err != nil || len(listResp.Items) != 1 || listResp.Items[0]["has_thumbnail"] != true {
-		t.Errorf("list = %s (err %v), want one item with has_thumbnail true", listRec.Body.String(), err)
+	if err := json.Unmarshal(listRec.Body.Bytes(), &listResp); err != nil || len(listResp.Items) != 1 ||
+		listResp.Items[0]["has_thumbnail"] != true || listResp.Items[0]["has_content"] != true {
+		t.Errorf("list = %s (err %v), want one item with has_thumbnail and has_content true", listRec.Body.String(), err)
 	}
 }
 
