@@ -909,6 +909,31 @@ func TestMediaUpdated_RoundTrip(t *testing.T) {
 	}
 }
 
+func TestMediaContentAttached_RoundTrip(t *testing.T) {
+	mediaID := uuid.New()
+	event := NewMediaContentAttached(mediaID, "image/png", "scan.png", []byte{1, 2, 3}, []byte{4})
+
+	if event.EventType() != "MediaContentAttached" || event.AggregateID() != mediaID {
+		t.Errorf("EventType() = %v, AggregateID() = %v; want MediaContentAttached, %v", event.EventType(), event.AggregateID(), mediaID)
+	}
+	if event.FileSize != 3 {
+		t.Errorf("FileSize = %d, want the 3 bytes given", event.FileSize)
+	}
+
+	data, err := json.Marshal(event)
+	if err != nil {
+		t.Fatalf("Marshal error: %v", err)
+	}
+	var decoded MediaContentAttached
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("Unmarshal error: %v", err)
+	}
+	if decoded.MediaID != mediaID || decoded.MimeType != "image/png" || decoded.Filename != "scan.png" ||
+		decoded.FileSize != 3 || string(decoded.FileData) != "\x01\x02\x03" || string(decoded.ThumbnailData) != "\x04" {
+		t.Errorf("decoded = %+v, want the event as sent", decoded)
+	}
+}
+
 func TestMediaDeleted_RoundTrip(t *testing.T) {
 	mediaID := uuid.New()
 	event := NewMediaDeleted(mediaID, "Duplicate file")

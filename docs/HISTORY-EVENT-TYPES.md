@@ -37,6 +37,7 @@ mapped or not exercised by the every-type compare fixture
 | `SourceCreated` / `SourceUpdated` / `SourceDeleted` | `source` | created / updated / deleted | title | source page |
 | `CitationCreated` / `CitationUpdated` / `CitationDeleted` | `citation` | created / updated / deleted | "Source title (Fact)" | its source (`parent_entity_*`) |
 | `MediaCreated` / `MediaUpdated` / `MediaDeleted` | `media` | created / updated / deleted | title (else filename) | its owner (`parent_entity_*`) |
+| `MediaContentAttached` | `media` | updated | title (else filename); `changes` holds the attached file's `mime_type`, `filename` and `file_size` (#1504) | its owner (`parent_entity_*`) |
 | `NoteCreated` / `NoteUpdated` / `NoteDeleted` | `note` | created / updated / deleted | text excerpt | — (no note page) |
 | `SubmitterCreated` / `SubmitterUpdated` / `SubmitterDeleted` | `submitter` | created / updated / deleted | name | — (no submitter page) |
 | `RepositoryCreated` / `RepositoryUpdated` / `RepositoryDeleted` | `repository` | created / updated / deleted | name | repository page |

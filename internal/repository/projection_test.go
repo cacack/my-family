@@ -1440,6 +1440,51 @@ func TestProjector_MediaUpdated_CropValues(t *testing.T) {
 	}
 }
 
+// TestProjector_MediaContentAttached fills a reference-only item with a file
+// and keeps everything else about it (#1504).
+func TestProjector_MediaContentAttached(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore, nil)
+	ctx := context.Background()
+
+	media := domain.NewMedia("Wedding", "person", uuid.New())
+	media.GedcomXref = "@M1@"
+	media.MimeType = "jpg"
+	media.Files = []domain.MediaFile{{Path: "photos/wedding.jpg", Format: "jpg"}}
+	created := domain.NewMediaCreated(media)
+	created.Restriction = domain.RestrictionPrivacy
+	if err := projector.Project(ctx, created, 1, domain.MainBranchID); err != nil {
+		t.Fatalf("Project MediaCreated: %v", err)
+	}
+
+	attached := domain.NewMediaContentAttached(media.ID, "image/png", "wedding.png", []byte("bytes"), []byte("thumb"))
+	if err := projector.Project(ctx, attached, 2, domain.MainBranchID); err != nil {
+		t.Fatalf("Project MediaContentAttached: %v", err)
+	}
+
+	got, err := readStore.GetMediaWithData(ctx, domain.MainBranchID, media.ID)
+	if err != nil || got == nil {
+		t.Fatalf("GetMediaWithData = %v, %v", got, err)
+	}
+	if got.MimeType != "image/png" || got.Filename != "wedding.png" || got.FileSize != 5 ||
+		string(got.FileData) != "bytes" || got.Version != 2 {
+		t.Errorf("content = %s %s %d %q v%d, want image/png wedding.png 5 \"bytes\" v2",
+			got.MimeType, got.Filename, got.FileSize, got.FileData, got.Version)
+	}
+	if thumb, _ := readStore.GetMediaThumbnail(ctx, domain.MainBranchID, media.ID); string(thumb) != "thumb" {
+		t.Errorf("thumbnail = %q, want \"thumb\"", thumb)
+	}
+	if got.Title != "Wedding" || got.GedcomXref != "@M1@" || got.EntityID != media.EntityID ||
+		len(got.Files) != 1 || got.Files[0].Path != "photos/wedding.jpg" || !got.Restriction.IsPrivate() {
+		t.Errorf("item = %+v, want its title, GEDCOM link, owner, files and private mark kept", got)
+	}
+
+	// An item no longer in the read model is skipped, as for MediaUpdated.
+	if err := projector.Project(ctx, domain.NewMediaContentAttached(uuid.New(), "image/png", "x.png", []byte("x"), nil), 1, domain.MainBranchID); err != nil {
+		t.Errorf("Project for a missing item = %v, want nil", err)
+	}
+}
+
 func TestProjector_MediaDeleted(t *testing.T) {
 	readStore := memory.NewReadModelStore()
 	projector := repository.NewProjector(readStore, nil)

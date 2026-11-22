@@ -690,8 +690,10 @@ type ReadModelStore interface {
 	// copied per branch:
 	//   - The bytes are written once, by MediaCreated, onto the row that created the
 	//     item (its origin row: main for a mainline upload, the branch's row for an
-	//     item uploaded on a branch, which is a new id and so owns its bytes). No
-	//     later event carries bytes.
+	//     item uploaded on a branch, which is a new id and so owns its bytes). The
+	//     one later event that carries bytes is MediaContentAttached, which fills
+	//     an item created with none (a GEDCOM reference, #1504); it is
+	//     mainline-only, so it too writes main's row, the origin row.
 	//   - A branch shadow row of an item that has a main row is METADATA ONLY: its
 	//     byte columns are NULL. SaveMedia on a non-main branch stores no bytes for
 	//     such an id even when handed some, and no SaveMedia ever clears bytes

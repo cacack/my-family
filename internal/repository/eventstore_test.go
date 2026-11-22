@@ -501,6 +501,20 @@ func TestStoredEvent_DecodeEvent_AllTypes(t *testing.T) {
 			},
 		},
 		{
+			name:      "MediaContentAttached",
+			event:     domain.NewMediaContentAttached(uuid.New(), "image/png", "scan.png", []byte{1, 2}, nil),
+			eventType: "MediaContentAttached",
+			validate: func(t *testing.T, decoded domain.Event) {
+				e, ok := decoded.(domain.MediaContentAttached)
+				if !ok {
+					t.Fatalf("Expected MediaContentAttached, got %T", decoded)
+				}
+				if e.Filename != "scan.png" || e.FileSize != 2 || len(e.FileData) != 2 {
+					t.Errorf("decoded = %+v, want scan.png with its 2 bytes", e)
+				}
+			},
+		},
+		{
 			name:      "MediaDeleted",
 			event:     domain.NewMediaDeleted(uuid.New(), "user request"),
 			eventType: "MediaDeleted",
@@ -1156,7 +1170,7 @@ func TestStoredEvent_DecodeEvent_InvalidJSON_AllTypes(t *testing.T) {
 		"GedcomImported",
 		"SourceCreated", "SourceUpdated", "SourceDeleted",
 		"CitationCreated", "CitationUpdated", "CitationDeleted",
-		"MediaCreated", "MediaUpdated", "MediaDeleted",
+		"MediaCreated", "MediaUpdated", "MediaContentAttached", "MediaDeleted",
 		"NameAdded", "NameUpdated", "NameRemoved",
 		"SnapshotCreated", "SnapshotDeleted", "PersonMerged",
 		"BranchCreated", "BranchUpdated", "BranchDeleted", "BranchMerged", "BranchMergeResumed",

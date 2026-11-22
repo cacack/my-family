@@ -385,6 +385,12 @@ func (e *StoredEvent) DecodeEvent() (domain.Event, error) {
 			return nil, err
 		}
 		return event, nil
+	case "MediaContentAttached":
+		var event domain.MediaContentAttached
+		if err := json.Unmarshal(data, &event); err != nil {
+			return nil, err
+		}
+		return event, nil
 	case "MediaDeleted":
 		var event domain.MediaDeleted
 		if err := json.Unmarshal(data, &event); err != nil {

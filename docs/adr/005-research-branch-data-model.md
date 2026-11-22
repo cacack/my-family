@@ -1284,8 +1284,10 @@ The first was chosen because it keeps the invariant both simpler and directly te
 
 - The bytes are written exactly once, by `MediaCreated`, onto the row that created the item — its
   *origin row*: main for a mainline upload, the branch's own row for an item uploaded on a branch
-  (a new id, which owns its bytes). No later event carries bytes: `MediaUpdated` edits metadata
-  only, and `projectMediaUpdated` reads the item with `GetMedia`, never `GetMediaWithData`.
+  (a new id, which owns its bytes). `MediaUpdated` edits metadata only, and `projectMediaUpdated`
+  reads the item with `GetMedia`, never `GetMediaWithData`. The one later event that carries
+  bytes, `MediaContentAttached` (#1504), fills an item created with none (a GEDCOM reference); it
+  is mainline-only, so it too writes main's row, the origin row.
 - A branch shadow row of an item that has a main row is **metadata only** — its byte columns are
   NULL. `SaveMedia` enforces this in the statement itself: on a non-main branch, an id with a main
   row gets NULL bytes whatever the caller passes; and no save ever clears bytes already stored

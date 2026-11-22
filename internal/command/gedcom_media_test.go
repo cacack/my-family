@@ -2,6 +2,7 @@ package command_test
 
 import (
 	"context"
+	"errors"
 	"io"
 	"slices"
 	"strings"
@@ -349,5 +350,87 @@ func TestImportGedcom_MergedSharedMediaRoundTripIsStable(t *testing.T) {
 	count2, _ := survivorMediaCount(t, exportGedcom(t, store1), "John")
 	if count1 != 1 || count2 != count1 {
 		t.Errorf("survivor holds %d items after one round trip and %d after two, want 1 both times", count1, count2)
+	}
+}
+
+// referenceOnlyGedcom has one OBJE record, linked from one person, which an
+// import keeps as a reference with no content.
+const referenceOnlyGedcom = `0 HEAD
+1 GEDC
+2 VERS 7.0
+0 @M1@ OBJE
+1 FILE photos/wedding.jpg
+2 FORM image/jpeg
+2 TITL Wedding
+0 @I1@ INDI
+1 NAME John /Doe/
+1 OBJE @M1@
+0 TRLR
+`
+
+// TestAttachMediaContent covers attaching a file to an imported reference
+// (#1504): it fills the item in place once, and refuses everything else
+// without changing it.
+func TestAttachMediaContent(t *testing.T) {
+	ctx := context.Background()
+	events := memory.NewEventStore()
+	reads := memory.NewReadModelStore()
+	branches := memory.NewBranchStore()
+	h := command.NewHandlerWithBranches(events, reads, branches, memory.NewSnapshotStore(events))
+	if _, err := h.ImportGedcom(ctx, command.ImportGedcomInput{Filename: "t.ged", Reader: strings.NewReader(referenceOnlyGedcom)}); err != nil {
+		t.Fatalf("import: %v", err)
+	}
+	persons, _, _ := reads.ListPersons(ctx, repository.DefaultListOptions())
+	if len(persons) != 1 {
+		t.Fatalf("imported %d persons, want 1", len(persons))
+	}
+	items, _, _ := reads.ListMediaForEntity(ctx, "person", persons[0].ID, repository.DefaultListOptions())
+	if len(items) != 1 {
+		t.Fatalf("imported %d media items, want 1", len(items))
+	}
+	ref := items[0]
+
+	refusals := []struct {
+		name  string
+		input command.AttachMediaContentInput
+		want  error
+	}{
+		{"unknown item", command.AttachMediaContentInput{ID: uuid.New(), FileData: createTestJPEG()}, command.ErrMediaNotFound},
+		{"empty file", command.AttachMediaContentInput{ID: ref.ID}, command.ErrInvalidInput},
+		{"unsupported file", command.AttachMediaContentInput{ID: ref.ID, FileData: []byte("plain text")}, command.ErrInvalidInput},
+	}
+	for _, tt := range refusals {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, err := h.AttachMediaContent(ctx, tt.input); !errors.Is(err, tt.want) {
+				t.Errorf("err = %v, want %v", err, tt.want)
+			}
+		})
+	}
+
+	branch, err := h.CreateBranch(ctx, "research", "")
+	if err != nil {
+		t.Fatalf("create branch: %v", err)
+	}
+	if _, err := h.WithBranch(branch).AttachMediaContent(ctx, command.AttachMediaContentInput{ID: ref.ID, FileData: createTestJPEG()}); !errors.Is(err, command.ErrEventTypeNotBranchAware) {
+		t.Errorf("attach on a branch: err = %v, want %v", err, command.ErrEventTypeNotBranchAware)
+	}
+	if unchanged, _ := reads.GetMedia(ctx, domain.MainBranchID, ref.ID); unchanged.Version != ref.Version || unchanged.FileSize != 0 {
+		t.Fatalf("after the refusals: version %d, size %d; want %d and 0", unchanged.Version, unchanged.FileSize, ref.Version)
+	}
+
+	jpegData := createTestJPEG()
+	result, err := h.AttachMediaContent(ctx, command.AttachMediaContentInput{ID: ref.ID, Filename: "wedding.jpg", FileData: jpegData})
+	if err != nil {
+		t.Fatalf("attach: %v", err)
+	}
+	got, _ := reads.GetMedia(ctx, domain.MainBranchID, ref.ID)
+	if result.Version != ref.Version+1 || got.Version != result.Version || got.FileSize != int64(len(jpegData)) ||
+		got.MimeType != "image/jpeg" || got.Filename != "wedding.jpg" || !got.HasThumbnail {
+		t.Errorf("attached = v%d (result v%d), %d bytes, %s, %q, thumbnail %v; want v%d, %d bytes, image/jpeg, wedding.jpg, a thumbnail",
+			got.Version, result.Version, got.FileSize, got.MimeType, got.Filename, got.HasThumbnail, ref.Version+1, len(jpegData))
+	}
+
+	if _, err := h.AttachMediaContent(ctx, command.AttachMediaContentInput{ID: ref.ID, FileData: jpegData}); !errors.Is(err, command.ErrMediaHasContent) {
+		t.Errorf("second attach: err = %v, want %v", err, command.ErrMediaHasContent)
 	}
 }

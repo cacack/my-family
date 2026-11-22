@@ -379,6 +379,14 @@ func (st *streamState) applyUnclassified(evt *repository.StoredEvent) bool {
 				st.fields[key] = value
 			}
 		}
+	case "MediaContentAttached":
+		st.entityType = entityTypeMedia
+		fields := eventFields(evt)
+		for _, key := range mediaContentFields {
+			if value, ok := fields[key]; ok {
+				st.fields[key] = value
+			}
+		}
 	default:
 		return false
 	}
@@ -439,6 +447,7 @@ var specialFieldChanges = map[string]func(fields map[string]any, prior *streamSt
 	"NameRemoved":              nameRemovedChanges,
 	"PersonMerged":             personMergedChanges,
 	"EvidenceConflictResolved": conflictResolvedChanges,
+	"MediaContentAttached":     mediaContentAttachedChanges,
 	"BrickWallSet":             brickWallSetChanges,
 	"BrickWallResolved":        brickWallResolvedChanges,
 }
@@ -504,6 +513,22 @@ func personMergedChanges(fields map[string]any, prior *streamState, withOld bool
 			continue
 		}
 		changes[key] = FieldChange{OldValue: oldValue(prior.fields[key], withOld), NewValue: value}
+	}
+	return changes
+}
+
+// mediaContentFields are the fields of a media item a MediaContentAttached
+// sets; its bytes are dropped by eventFields.
+var mediaContentFields = []string{"mime_type", "filename", "file_size"}
+
+// mediaContentAttachedChanges reports the file a reference-only media item
+// was given (#1504).
+func mediaContentAttachedChanges(fields map[string]any, prior *streamState, withOld bool) map[string]FieldChange {
+	changes := map[string]FieldChange{}
+	for _, key := range mediaContentFields {
+		if value, ok := fields[key]; ok {
+			changes[key] = FieldChange{OldValue: oldValue(prior.fields[key], withOld), NewValue: value}
+		}
 	}
 	return changes
 }
