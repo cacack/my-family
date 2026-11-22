@@ -3,11 +3,13 @@ package gedcom_test
 import (
 	"bytes"
 	"context"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/google/uuid"
 
+	"github.com/cacack/my-family/internal/command"
 	"github.com/cacack/my-family/internal/domain"
 	"github.com/cacack/my-family/internal/gedcom"
 	"github.com/cacack/my-family/internal/repository"
@@ -34,6 +36,11 @@ func TestImport_BareDeath(t *testing.T) {
 		{name: "DEAT Y after a dated DEAT", deat: "1 DEAT\n2 DATE 1890\n1 DEAT Y\n", wantDeathDate: "1890"},
 		{name: "DEAT Y before a dated DEAT", deat: "1 DEAT Y\n1 DEAT\n2 DATE 1890\n", wantDeathDate: "1890"},
 		{name: "NO DEAT", deat: "1 NO DEAT\n"},
+		// One person, one death (#1456).
+		{name: "two DEAT Y", deat: "1 DEAT Y\n1 DEAT Y\n", wantEvent: true},
+		{name: "two DEAT Y, a cause and a citation", deat: "1 DEAT Y\n2 CAUS Fever\n1 DEAT Y\n2 SOUR @S1@\n", wantEvent: true, wantCause: "Fever", wantCitation: true},
+		{name: "two DEAT Y with the same cause", deat: "1 DEAT Y\n2 CAUS Fever\n1 DEAT Y\n2 CAUS Fever\n", wantEvent: true, wantCause: "Fever"},
+		{name: "DEAT Y with a cause after a dated DEAT", deat: "1 DEAT\n2 DATE 1890\n1 DEAT Y\n2 CAUS Fever\n", wantEvent: true, wantDeathDate: "1890", wantCause: "Fever"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -250,5 +257,99 @@ func TestExport_RecordDeathKeepsOtherDeathEvents(t *testing.T) {
 				t.Errorf("death blocks = %q, want %d", blocks, tt.want)
 			}
 		})
+	}
+}
+
+// Bare deaths whose details conflict are each kept, so neither is dropped
+// (#1456).
+func TestImport_BareDeathsWithConflictingDetails(t *testing.T) {
+	tests := []struct {
+		name       string
+		deat       string
+		wantCauses []string
+	}{
+		{name: "two causes", deat: "1 DEAT Y\n2 CAUS Fever\n1 DEAT Y\n2 CAUS Cholera\n", wantCauses: []string{"Fever", "Cholera"}},
+		{name: "a cause that conflicts with the record's", deat: "1 DEAT\n2 DATE 1890\n2 CAUS Fever\n1 DEAT Y\n2 CAUS Cholera\n1 DEAT Y\n2 AGE 70y\n", wantCauses: []string{"Fever", "Cholera"}},
+		{name: "a descriptor", deat: "1 DEAT Y\n2 CAUS Fever\n1 DEAT Drowned\n", wantCauses: []string{"Fever", ""}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data := "0 HEAD\n1 GEDC\n2 VERS 7.0\n0 @I1@ INDI\n1 NAME A /B/\n" + tt.deat + "0 TRLR\n"
+			_, _, _, _, _, _, events, _, _, _, _, _, _, err := gedcom.NewImporter().Import(context.Background(), strings.NewReader(data))
+			if err != nil {
+				t.Fatalf("Import: %v", err)
+			}
+			var causes []string
+			for _, e := range events {
+				if e.FactType == domain.FactPersonDeath {
+					causes = append(causes, e.Cause)
+				}
+			}
+			if !slices.Equal(causes, tt.wantCauses) {
+				t.Errorf("death life event causes = %q, want %q", causes, tt.wantCauses)
+			}
+		})
+	}
+}
+
+// A file that records a death's date and its cause in separate DEATs exports
+// one DEAT with both (#1456).
+func TestExport_DatedAndBareDeathWriteOneDeat(t *testing.T) {
+	data := "0 HEAD\n1 GEDC\n2 VERS 7.0\n0 @I1@ INDI\n1 NAME A /B/\n" +
+		"1 DEAT\n2 DATE 1890\n1 DEAT Y\n2 CAUS Fever\n0 TRLR\n"
+	out := importAndExport(t, data)
+	blocks := deathBlocks(out)
+	if len(blocks) != 1 || !strings.Contains(blocks[0], "2 DATE 1890") || !strings.Contains(blocks[0], "2 CAUS Fever") {
+		t.Errorf("death blocks = %q, want one with the date and the cause; export:\n%s", blocks, out)
+	}
+}
+
+// A bare death imported with a cause, age and address, whose person is later
+// given a death date, keeps all three through an export and a re-import
+// (#1456).
+func TestRoundTrip_RecordDeathAddedAfterBareDeath(t *testing.T) {
+	ctx := context.Background()
+	data := "0 HEAD\n1 GEDC\n2 VERS 7.0\n0 @I1@ INDI\n1 NAME A /B/\n" +
+		"1 DEAT Y\n2 CAUS Fever\n2 AGE 70y\n2 ADDR 1 Main St\n0 TRLR\n"
+	rs := memory.NewReadModelStore()
+	h := command.NewHandler(memory.NewEventStore(), rs)
+	if _, err := h.ImportGedcom(ctx, command.ImportGedcomInput{Filename: "t.ged", Reader: strings.NewReader(data)}); err != nil {
+		t.Fatalf("import: %v", err)
+	}
+	persons, _, err := rs.ListPersons(ctx, repository.ListOptions{Limit: 10})
+	if err != nil || len(persons) != 1 {
+		t.Fatalf("ListPersons = %+v, %v; want one", persons, err)
+	}
+	if _, err := h.UpdatePerson(ctx, command.UpdatePersonInput{ID: persons[0].ID, DeathDate: command.Set("1890"), Version: persons[0].Version}); err != nil {
+		t.Fatalf("UpdatePerson: %v", err)
+	}
+	var buf bytes.Buffer
+	if _, err := gedcom.NewExporter(rs).Export(ctx, &buf); err != nil {
+		t.Fatalf("export: %v", err)
+	}
+	first := buf.String()
+	if blocks := deathBlocks(first); len(blocks) != 1 {
+		t.Errorf("death blocks = %q, want one", blocks)
+	}
+
+	_, persons2, _, _, _, _, events, _, _, _, _, _, _, err := gedcom.NewImporter().Import(ctx, strings.NewReader(first))
+	if err != nil {
+		t.Fatalf("re-import: %v", err)
+	}
+	if len(persons2) != 1 || persons2[0].DeathDate != "1890" {
+		t.Fatalf("re-imported persons = %+v, want one who died 1890", persons2)
+	}
+	var deaths []gedcom.EventData
+	for _, e := range events {
+		if e.FactType == domain.FactPersonDeath {
+			deaths = append(deaths, e)
+		}
+	}
+	if len(deaths) != 1 || deaths[0].Cause != "Fever" || deaths[0].Age != "70y" ||
+		deaths[0].Address == nil || deaths[0].Address.Line1 != "1 Main St" {
+		t.Errorf("re-imported death life events = %+v, want one with cause, age and address", deaths)
+	}
+	if second := importAndExport(t, first); second != first {
+		t.Errorf("second export differs from the first:\n%s\nfirst:\n%s", second, first)
 	}
 }

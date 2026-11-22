@@ -1407,7 +1407,7 @@ func fieldCitations(citations []repository.CitationReadModel, events []repositor
 
 // mergeableDeathDetail returns the index of the person's one death life event
 // that holds nothing but a cause, age or address, which the importer keeps
-// for the DEAT the person record holds (recordDeathDetail), or -1 if there is
+// for the DEAT the person record holds (deathLifeEvents), or -1 if there is
 // not exactly one. The exporter writes it into the record's DEAT, so the file
 // has one death.
 func mergeableDeathDetail(events []repository.EventReadModel) int {

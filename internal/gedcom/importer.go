@@ -2,6 +2,7 @@
 package gedcom
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -1627,9 +1628,9 @@ func individualEventFactType(t gedcom.EventType) domain.FactType {
 // bareDeath reports whether event is a DEAT asserting only that the death
 // happened, such as "1 DEAT Y": not negated, and with none of what the person
 // record holds of a death (date, place, notes, TYPE). The record cannot hold
-// such a death as evidence, so unless the individual has a death the record
-// does hold, it is imported as a life event instead and stays death evidence
-// for the living rule (#1436); its citations follow that life event. The
+// such a death as evidence, so it is imported as a life event instead and
+// stays death evidence for the living rule (#1436), merged with the
+// individual's other deaths (deathLifeEvents). The
 // exporter writes "1 DEAT Y" for any dateless, placeless death (toGedcomEvent):
 // one that also has notes or TYPE re-imports to the record, which counts those
 // as evidence too.
@@ -1643,36 +1644,77 @@ func recordDeath(event *gedcom.Event) bool {
 	return event.Type == gedcom.EventDeath && !event.IsNegative && !bareDeath(event)
 }
 
-// recordDeathDetail returns a death life event holding the cause, age and
-// address of the DEAT the person record holds (the individual's last record
-// death, see parseIndividual), which the record has no fields for (#1455).
-// The life event has no date or place, so the person keeps one death date,
-// and the DEAT's citations stay on the record. The exporter writes the two
-// back as one DEAT (mergeableDeathDetail).
-func recordDeathDetail(indi *gedcom.Individual, event *gedcom.Event, personID uuid.UUID) (EventData, bool) {
-	if !recordDeath(event) {
-		return EventData{}, false
+// deathLifeEvents returns the individual's dateless, placeless death life
+// events, so a person has one death through import and export (#1456): one
+// event merges every bare death with the cause, age and address of the DEAT
+// the person record holds (its last record death, see parseIndividual), which
+// the record has no fields for (#1455). A bare death whose details conflict
+// with the merged ones, or that has a descriptor (a payload other than "Y"),
+// is kept as an event of its own, so none is dropped.
+// With a record death, the merged event is kept only if it holds a detail,
+// and the record keeps the merged DEATs' citations; the exporter writes the
+// two back as one DEAT (mergeableDeathDetail). The returned map gives the
+// event each other bare death is kept in, for its citations.
+func deathLifeEvents(indi *gedcom.Individual, personID uuid.UUID) ([]EventData, map[*gedcom.Event]uuid.UUID) {
+	newDeath := func() EventData {
+		return EventData{ID: uuid.New(), OwnerType: "person", OwnerID: personID, FactType: domain.FactPersonDeath}
 	}
-	for _, later := range indi.Events[slices.Index(indi.Events, event)+1:] {
-		if recordDeath(later) {
-			return EventData{}, false // the record holds the later one
+	ids := make(map[*gedcom.Event]uuid.UUID)
+	merged := newDeath()
+	var held *gedcom.Event
+	for _, event := range indi.Events {
+		if recordDeath(event) {
+			held = event
 		}
 	}
-	detail := EventData{
-		ID:        uuid.New(),
-		OwnerType: "person",
-		OwnerID:   personID,
-		FactType:  domain.FactPersonDeath,
-		Cause:     event.Cause,
-		Age:       event.Age,
+	if held != nil {
+		mergeDeathDetail(&merged, held)
 	}
-	if event.Address != nil {
-		detail.Address = convertGedcomAddress(event.Address)
+	mergedBare := false
+	var separate []EventData
+	for _, event := range indi.Events {
+		if !bareDeath(event) {
+			continue
+		}
+		if event.Description == "" && mergeDeathDetail(&merged, event) {
+			mergedBare = true
+			if held == nil {
+				ids[event] = merged.ID
+			}
+			continue
+		}
+		own := newDeath()
+		own.Description = event.Description
+		mergeDeathDetail(&own, event)
+		separate = append(separate, own)
+		ids[event] = own.ID
 	}
-	if detail.Cause == "" && detail.Age == "" && detail.Address == nil {
-		return EventData{}, false
+	// Without a record death the merged event is the death itself; with one,
+	// it is kept only to hold detail the record cannot.
+	hasDetail := merged.Cause != "" || merged.Age != "" || merged.Address != nil
+	keepMerged := held == nil && mergedBare || hasDetail
+	if !keepMerged {
+		return separate, ids
 	}
-	return detail, true
+	return append([]EventData{merged}, separate...), ids
+}
+
+// mergeDeathDetail adds the cause, age and address of a DEAT to
+// a death life event, unless one of them conflicts with the event's, and
+// reports whether it did.
+func mergeDeathDetail(into *EventData, event *gedcom.Event) bool {
+	addr := convertGedcomAddress(event.Address)
+	conflicts := func(a, b string) bool { return a != "" && b != "" && a != b }
+	if conflicts(into.Cause, event.Cause) || conflicts(into.Age, event.Age) ||
+		into.Address != nil && addr != nil && *into.Address != *addr {
+		return false
+	}
+	into.Cause = cmp.Or(into.Cause, event.Cause)
+	into.Age = cmp.Or(into.Age, event.Age)
+	if into.Address == nil {
+		into.Address = addr
+	}
+	return true
 }
 
 // extractEventsFromIndividual extracts all life events from an individual,
@@ -1683,7 +1725,7 @@ func recordDeathDetail(indi *gedcom.Individual, event *gedcom.Event, personID uu
 // and must be stored as LifeEvents, or are a bare death (see bareDeath).
 func extractEventsFromIndividual(indi *gedcom.Individual, personID uuid.UUID) ([]EventData, map[*gedcom.Event]uuid.UUID) {
 	var events []EventData
-	ids := make(map[*gedcom.Event]uuid.UUID)
+	deaths, ids := deathLifeEvents(indi, personID)
 
 	for _, event := range indi.Events {
 		var factType domain.FactType
@@ -1729,16 +1771,15 @@ func extractEventsFromIndividual(indi *gedcom.Individual, personID uuid.UUID) ([
 			continue
 		}
 
-		switch {
-		case bareDeath(event) && !slices.ContainsFunc(indi.Events, recordDeath):
-			// A bare death the person record cannot hold is kept as a life
-			// event, so it is still death evidence (#1436).
-			factType = domain.FactPersonDeath
-		case event.Type == gedcom.EventBirth, event.Type == gedcom.EventDeath:
-			// Non-negated birth and death are stored on Person entity, skip
-			if detail, ok := recordDeathDetail(indi, event, personID); ok {
-				events = append(events, detail)
-			}
+		switch event.Type {
+		case gedcom.EventDeath:
+			// A non-negated death is held by the person record or kept on a
+			// dateless death life event (deathLifeEvents), added at the first.
+			events = append(events, deaths...)
+			deaths = nil
+			continue
+		case gedcom.EventBirth:
+			// Non-negated birth is stored on Person entity, skip
 			continue
 		default:
 			// RESI is imported once, as a life event: unlike an attribute, it
