@@ -32,9 +32,18 @@ interface AuthState {
 
 export const auth = $state<AuthState>({ phase: 'loading', account: null, visitorsWelcome: false, previewAs: null });
 
+/**
+ * Whether sign-in is switched off on this instance (open mode, ADR-007):
+ * whoever uses the app acts as the owner and has no account of their own.
+ * Reactive.
+ */
+export function isOpenMode(): boolean {
+	return auth.phase === 'open';
+}
+
 /** The role the account holds: the owner's in open mode, a viewer's for a visitor. */
 function accountRole(): Role | null {
-	if (auth.phase === 'open') return 'owner';
+	if (isOpenMode()) return 'owner';
 	if (auth.phase === 'visitor') return 'viewer';
 	return auth.phase === 'signed-in' ? (auth.account?.role ?? null) : null;
 }
@@ -85,5 +94,5 @@ export function can(required: Role): boolean {
  * visitor has none, so the server refuses them the control (#1443). Reactive.
  */
 export function canChooseHomePerson(): boolean {
-	return (auth.phase === 'open' || auth.phase === 'signed-in') && previewing() !== 'visitor';
+	return (isOpenMode() || auth.phase === 'signed-in') && previewing() !== 'visitor';
 }

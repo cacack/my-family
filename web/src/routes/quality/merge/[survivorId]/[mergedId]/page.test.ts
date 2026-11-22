@@ -306,6 +306,9 @@ describe('Merge Picker Page', () => {
 		const { container } = render(Page);
 		await screen.findByText('Survivor (keeps existing ID)');
 		expect(container.textContent).toContain('Compare the two records field by field');
+		expect(screen.getByTestId('role-notice').textContent).toContain(
+			'Merging these records, or marking them as different people, needs the editor role or above'
+		);
 		expect(container.textContent).not.toContain('Choose which value to keep');
 		expect(screen.queryByText('Suggested merge')).toBeNull();
 		expect(container.textContent).not.toContain('before merging');
@@ -316,5 +319,12 @@ describe('Merge Picker Page', () => {
 		for (const radio of radios) expect(radio.hasAttribute('disabled')).toBe(true);
 		expect(screen.queryByRole('button', { name: 'Merge persons' })).toBeNull();
 		expect(screen.queryByRole('button', { name: 'Not a duplicate' })).toBeNull();
+	});
+
+	it('shows an editor no role notice', async () => {
+		signInAs('editor');
+		render(Page);
+		await screen.findByText('Survivor (keeps existing ID)');
+		expect(screen.queryByTestId('role-notice')).toBeNull();
 	});
 });

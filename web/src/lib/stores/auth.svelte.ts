@@ -28,6 +28,7 @@ export {
 	can,
 	canChooseHomePerson,
 	currentRole,
+	isOpenMode,
 	previewing,
 	type AuthPhase,
 	type PreviewAs,

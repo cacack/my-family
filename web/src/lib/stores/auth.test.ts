@@ -32,6 +32,7 @@ import {
 	markSignedOut,
 	can,
 	currentRole,
+	isOpenMode,
 	showSignIn,
 	browseAsVisitor,
 	recheckSession,
@@ -66,6 +67,7 @@ describe('auth store', () => {
 		await loadAuth();
 		expect(auth.phase).toBe(phase);
 		expect(auth.account).toEqual(account);
+		expect(isOpenMode()).toBe(phase === 'open');
 	});
 
 	it('lets a visitor browse as a viewer, sign in, and come back after signing out', async () => {

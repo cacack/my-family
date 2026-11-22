@@ -29,6 +29,7 @@
 	import ErrorState from '#lib/components/ErrorState.svelte';
 	import ActionError from '#lib/components/ActionError.svelte';
 	import PageHeader from '#lib/components/PageHeader.svelte';
+	import RoleNotice from '#lib/components/auth/RoleNotice.svelte';
 	import InfoSection from '#lib/components/InfoSection.svelte';
 	import LoadingState from '#lib/components/LoadingState.svelte';
 
@@ -289,11 +290,14 @@
 				different people, choose <strong>Not a duplicate</strong> and the pair will no longer be
 				suggested.
 			{:else}
-				Compare the two records field by field. Merging them, or marking them as different
-				people, needs the editor role or above.
+				Compare the two records field by field.
 			{/if}
 		</p>
 	</PageHeader>
+
+	{#if !can('editor')}
+		<RoleNotice action="Merging these records, or marking them as different people," required="editor" />
+	{/if}
 
 	{#if onBranch && !result}
 		<div
