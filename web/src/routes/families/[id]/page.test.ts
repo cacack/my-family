@@ -6,6 +6,7 @@ import SearchBox from '#lib/components/SearchBox.svelte';
 import AccessibilityPanel from '#lib/components/AccessibilityPanel.svelte';
 import * as apiModule from '#lib/api/client.js';
 import { auth } from '#lib/stores/access.svelte.js';
+import { signInAs } from '#lib/test/roles.js';
 
 const { branchState, pageState } = vi.hoisted(() => ({
 	// The real store exposes a read-only view, so the active branch is injected.
@@ -325,6 +326,31 @@ describe('Family Detail Page', () => {
 		expect(await screen.findByText('John Smith & Jane Smith')).toBeDefined();
 		expect(screen.queryByRole('button', { name: /History/ })).toBeNull();
 		expect(apiModule.api.getFamilyHistory).not.toHaveBeenCalled();
+	});
+
+	// The edit shortcut opened the form the Edit button hides from a viewer (#1493).
+	it('ignores the edit shortcut for a viewer', async () => {
+		signInAs('viewer');
+		vi.mocked(apiModule.api.getFamily).mockResolvedValue(mockFamilyWithChildren);
+
+		render(FamilyPage);
+		expect(await screen.findByText('John Smith & Jane Smith')).toBeDefined();
+		await fireEvent.keyDown(window, { key: 'e' });
+		await fireEvent.keyDown(window, { key: 's' });
+
+		expect(screen.queryByLabelText('Marriage Date')).toBeNull();
+		expect(apiModule.api.updateFamily).not.toHaveBeenCalled();
+	});
+
+	it('opens the edit form from the shortcut for an editor', async () => {
+		signInAs('editor');
+		vi.mocked(apiModule.api.getFamily).mockResolvedValue(mockFamilyWithChildren);
+
+		render(FamilyPage);
+		expect(await screen.findByText('John Smith & Jane Smith')).toBeDefined();
+		await fireEvent.keyDown(window, { key: 'e' });
+
+		expect(await screen.findByLabelText('Marriage Date')).toBeDefined();
 	});
 
 	it('offers the Restore tab on the mainline', async () => {
