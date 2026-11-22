@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach, type Mock } from 'vitest';
 import { useShortcuts } from './useShortcuts.svelte';
 import { DEFAULT_SHORTCUTS, type ShortcutContext } from './shortcuts';
+import { auth } from '#lib/stores/access.svelte.js';
 
 function press(handleKeydown: (event: KeyboardEvent) => void, key: string, init: KeyboardEventInit = {}) {
 	const event = new KeyboardEvent('keydown', { key, cancelable: true, ...init });
@@ -200,5 +201,43 @@ describe('useShortcuts', () => {
 		expect(press(handleKeydown, '/').defaultPrevented).toBe(false);
 		expect(press(handleKeydown, 'g').defaultPrevented).toBe(false);
 		cleanup();
+	});
+
+	// The server refuses a visitor the change log, so the snapshots page only
+	// asks them to sign in (#1530).
+	describe('go-snapshots', () => {
+		afterEach(() => {
+			auth.phase = 'loading';
+			auth.previewAs = null;
+		});
+
+		function pressGoSnapshots() {
+			const handlers = { 'go-home': vi.fn(), 'go-snapshots': vi.fn() };
+			const { handleKeydown, cleanup } = useShortcuts('global', handlers);
+			press(handleKeydown, 'g');
+			const event = press(handleKeydown, 't');
+			cleanup();
+			return { handler: handlers['go-snapshots'], event };
+		}
+
+		it('navigates a signed-in user', () => {
+			auth.phase = 'signed-in';
+			const { handler, event } = pressGoSnapshots();
+			expect(handler).toHaveBeenCalledTimes(1);
+			expect(event.defaultPrevented).toBe(true);
+		});
+
+		it('leaves a visitor where they are', () => {
+			auth.phase = 'visitor';
+			const { handler, event } = pressGoSnapshots();
+			expect(handler).not.toHaveBeenCalled();
+			expect(event.defaultPrevented).toBe(false);
+		});
+
+		it('leaves the owner previewing as a visitor where they are', () => {
+			auth.phase = 'open';
+			auth.previewAs = 'visitor';
+			expect(pressGoSnapshots().handler).not.toHaveBeenCalled();
+		});
 	});
 });

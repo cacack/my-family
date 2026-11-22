@@ -6,7 +6,9 @@
  */
 
 import { keyboardState } from '#lib/stores/keyboardSettings.svelte.js';
+import { isVisitor } from '#lib/stores/access.svelte.js';
 import {
+	availableTo,
 	getShortcutsForContext,
 	sequenceMatches,
 	isPartialMatch,
@@ -111,7 +113,7 @@ export function useShortcuts(
 	let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
 	// Shortcuts for this context that this instance can act on
-	const shortcuts = getShortcutsForContext(context).filter((shortcut) => shortcut.action in handlers);
+	const contextShortcuts = getShortcutsForContext(context).filter((shortcut) => shortcut.action in handlers);
 
 	/**
 	 * Run the first of these actions whose handler does not decline.
@@ -139,6 +141,10 @@ export function useShortcuts(
 	 * Handle a keydown event
 	 */
 	function handleKeydown(event: KeyboardEvent): void {
+		// Who is viewing can change at any time, so it is asked per key.
+		const visitor = isVisitor();
+		const shortcuts = contextShortcuts.filter((shortcut) => availableTo(shortcut, visitor));
+
 		// Skip if shortcuts are disabled globally, or another listener (a
 		// dropdown or dialog) already consumed the key
 		if (!keyboardState.shortcutsEnabled || event.defaultPrevented) {

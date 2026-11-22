@@ -17,6 +17,13 @@ export interface Shortcut {
 	description: string;
 	/** Context where this shortcut is active */
 	context: ShortcutContext;
+	/**
+	 * Leads to a page a visitor is refused (the change log, ADR-008 §4), so a
+	 * visitor can neither use it nor see it listed, like a `signedIn` NavLink.
+	 * The lookup helpers do not apply this; every consumer filters with
+	 * `availableTo`.
+	 */
+	signedIn?: boolean;
 }
 
 /**
@@ -76,7 +83,8 @@ export const DEFAULT_SHORTCUTS: Shortcut[] = [
 		keys: ['g', 't'],
 		action: 'go-snapshots',
 		description: 'Go to research snapshots',
-		context: 'global'
+		context: 'global',
+		signedIn: true
 	},
 	{
 		keys: ['g', '/'],
@@ -271,7 +279,8 @@ export const DEFAULT_SHORTCUTS: Shortcut[] = [
  * Get all shortcuts for a specific context
  *
  * @param context - The context to filter by
- * @returns Array of shortcuts active in the given context
+ * @returns Array of shortcuts active in the given context, not filtered by
+ * viewer (see `availableTo`)
  */
 export function getShortcutsForContext(context: ShortcutContext): Shortcut[] {
 	return DEFAULT_SHORTCUTS.filter(
@@ -282,10 +291,18 @@ export function getShortcutsForContext(context: ShortcutContext): Shortcut[] {
 /**
  * Get all global shortcuts
  *
- * @returns Array of global shortcuts
+ * @returns Array of global shortcuts, not filtered by viewer (see `availableTo`)
  */
 export function getGlobalShortcuts(): Shortcut[] {
 	return DEFAULT_SHORTCUTS.filter((shortcut) => shortcut.context === 'global');
+}
+
+/**
+ * Whether a shortcut is offered to the viewer: a visitor is not offered one
+ * marked `signedIn`.
+ */
+export function availableTo(shortcut: Shortcut, visitor: boolean): boolean {
+	return !(visitor && shortcut.signedIn);
 }
 
 /**

@@ -1,10 +1,12 @@
 <script lang="ts">
 	import {
+		availableTo,
 		DEFAULT_SHORTCUTS,
 		type Shortcut,
 		type ShortcutContext
 	} from '#lib/keyboard/shortcuts.js';
 	import * as Dialog from '#lib/components/ui/dialog/index.js';
+	import { isVisitor } from '#lib/stores/access.svelte.js';
 
 	interface Props {
 		open: boolean;
@@ -38,13 +40,13 @@
 	];
 
 	/**
-	 * Group shortcuts by context
+	 * Group the shortcuts offered to the viewer by context
 	 */
-	function getShortcutsByContext(): Map<ShortcutContext, Shortcut[]> {
+	function getShortcutsByContext(visitor: boolean): Map<ShortcutContext, Shortcut[]> {
 		const groups = new Map<ShortcutContext, Shortcut[]>();
 
 		for (const context of contextOrder) {
-			const shortcuts = DEFAULT_SHORTCUTS.filter((s) => s.context === context);
+			const shortcuts = DEFAULT_SHORTCUTS.filter((s) => s.context === context && availableTo(s, visitor));
 			if (shortcuts.length > 0) {
 				groups.set(context, shortcuts);
 			}
@@ -53,7 +55,7 @@
 		return groups;
 	}
 
-	const shortcutGroups = $derived(getShortcutsByContext());
+	const shortcutGroups = $derived(getShortcutsByContext(isVisitor()));
 </script>
 
 <Dialog.Root bind:open onOpenChange={(isOpen) => { if (!isOpen) onClose(); }}>
