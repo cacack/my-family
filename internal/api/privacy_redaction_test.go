@@ -329,7 +329,10 @@ var uuidPattern = regexp.MustCompile(`(?i)[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{
 
 // containsAnyOutsideIDs is containsAny over body with its record IDs taken
 // out. An ID is a random UUID, so its digits can spell a year by chance; use
-// this whenever a sub could occur in one (#1727).
+// this whenever a sub could occur in one (#1727). It takes out UUIDs only: a
+// timestamp's fractional seconds are as random and stay in, so a body that
+// carries one (a person with a brick wall has brick_wall_since) needs those
+// taken out too. The redaction tree sets no brick wall.
 func containsAnyOutsideIDs(body string, subs ...string) bool {
 	return containsAny(uuidPattern.ReplaceAllString(body, "<id>"), subs...)
 }
