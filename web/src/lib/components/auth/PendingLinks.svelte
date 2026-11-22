@@ -5,6 +5,7 @@
 	 * hash). An owner revokes one sent to the wrong person, and it then fails
 	 * as an expired link does.
 	 */
+	import { untrack } from 'svelte';
 	import ActionError from '#lib/components/ActionError.svelte';
 	import ErrorState from '#lib/components/ErrorState.svelte';
 	import LoadingState from '#lib/components/LoadingState.svelte';
@@ -21,9 +22,15 @@
 		announce?: (message: string) => void;
 		/** Called with a link's ID once it is no longer pending: revoked here, or gone meanwhile. */
 		onrevoke?: (id: string) => void;
+		/**
+		 * The IDs of links shown elsewhere on the page, read as a reload starts.
+		 * Any the reload finds no longer pending are passed to onrevoke; a link
+		 * issued after the reload started is not judged by it.
+		 */
+		shown?: () => string[];
 	}
 
-	let { announce, onrevoke }: Props = $props();
+	let { announce, onrevoke, shown }: Props = $props();
 
 	/** A pending link as listed: what it is, who issued it, and how to revoke it. */
 	interface Row {
@@ -64,24 +71,36 @@
 		};
 	}
 
+	/** Counts reloads, so only the latest one's result is shown. */
+	let reloads = 0;
+
 	/** Loads the pending links again, as after issuing one. */
 	export async function reload() {
+		const current = ++reloads;
+		// Untracked: the effect that loads on mount must not rerun as link boxes change.
+		const watched = untrack(() => shown?.() ?? []);
 		try {
 			const [pendingInvites, pendingResets] = await Promise.all([
 				api.listInvites(),
 				api.listPasswordResets()
 			]);
+			if (current !== reloads) return;
 			invites = pendingInvites.map(inviteRow);
 			resets = pendingResets.map(resetRow);
 			loadError = null;
+			const pending = new Set([...invites, ...resets].map((r) => r.id));
+			for (const id of watched) {
+				if (!pending.has(id)) onrevoke?.(id);
+			}
 		} catch (e) {
+			if (current !== reloads) return;
 			const apiError = e as ApiError;
 			loadError =
 				apiError.status && apiError.status < 500
 					? apiError.message
 					: 'Failed to load the pending links. Please try again.';
 		} finally {
-			loading = false;
+			if (current === reloads) loading = false;
 		}
 	}
 
