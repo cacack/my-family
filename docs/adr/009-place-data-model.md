@@ -182,11 +182,12 @@ project and replaces `NormalizePlace`, `placeNormSQL` and the cemetery compariso
 1. Split the text on `,`.
 2. Trim white space from both ends of each part: the code points `unicode.IsSpace` reports, which
    is what `strings.TrimSpace` removes.
-3. Fold letter case code point by code point, with no locale and no full folding, so `ß` does not
+3. Drop every part that is now empty.
+4. Fold letter case code point by code point, with no locale and no full folding, so `ß` does not
    become `ss`. Each code point is replaced by the representative of its `unicode.SimpleFold`
    orbit: the smallest lowercase letter (`unicode.IsLower`) in the orbit, or the smallest code
    point when the orbit has none.
-4. Join the parts with `,`.
+5. Join the parts with `,`.
 
 Text whose parts are all empty has no key and no place.
 
@@ -199,7 +200,8 @@ Text whose parts are all empty has no key and no place.
 | `New  York, NY` (two spaces) | `new  york,ny` | different from `New York, NY` |
 | `Köln, Germany` | `köln,germany` | different from `Koln, Germany` |
 | `Straße 1, Wien` | `straße 1,wien` | different from `Strasse 1, Wien` |
-| `Darmstadt,,,Germany` | `darmstadt,,,germany` | different from `Darmstadt, Germany` |
+| `Darmstadt,,,Germany` | `darmstadt,germany` | same place as `Darmstadt, Germany` |
+| `, , Utah, USA` | `utah,usa` | same place as `Utah, USA` |
 | `Kiel` (first letter U+212A, Kelvin sign) | `kiel` | same place as `Kiel`: one orbit, `K`, `k`, U+212A |
 | `ΣΟΣ`, `σος` | `ςος` | same place: `Σ`, `σ` and `ς` are one orbit, and `ς` is its smallest lowercase letter |
 | `İzmir` (U+0130) | `İzmir` | different from `Izmir` (`izmir`): `İ` and `ı` have no simple folding |
@@ -208,16 +210,24 @@ Text whose parts are all empty has no key and no place.
 Nothing looser is applied: no accent folding, no Unicode normalization, no collapsing of inner
 spaces, no abbreviations. Those are variant spellings, and the user joins them with an alias.
 
-**The fold table is part of the rule.** A test pins the result of step 3 for every code point (a
+**The fold table is part of the rule.** A test pins the result of step 4 for every code point (a
 checksum over the whole range), beside the vectors above. A Go upgrade that changes it for any
 code point fails that test, and is resolved by keeping the pinned table in the repository or by
 the re-keying ADR that PL-003 requires. It never changes a key silently.
 
-**Empty parts are kept.** `NormalizePlace` drops them today (#925). The key does not, for two
-reasons. An empty part holds a position in GEDCOM (`, , Utah, USA` leaves the two smallest
-jurisdictions unknown), and a place's `FORM` labels pair with its parts by position, so two texts
-with one key must have the same number of parts. The browser still never shows an empty level
-(section 4).
+**Empty parts are dropped**, as `NormalizePlace` does today (#925). `Darmstadt,,,Germany` and
+`Darmstadt, Germany` are the padded and unpadded ways of writing one place, and files exported by
+other programs are full of the padded kind. Keeping the parts would make each a second place that
+the user joins by hand. The owner decided this on 2026-11-22.
+
+What the key gives up is position. An empty part says that a jurisdiction level is unknown
+(`, , Utah, USA` leaves the two smallest unnamed), and `FORM` labels pair with a text's parts by
+position. Neither is lost, because every event keeps its text verbatim. But two texts with one key
+can have different numbers of parts, so a form belongs to a part layout and not to the place.
+
+**The positional key** is the same function with step 3 left out (`darmstadt,,,germany`). It
+identifies nothing. It says which texts share a part layout, and it is what a form is filed under
+(sections 2 and 8).
 
 **The key is computed in Go and stored.** Each of the five place-bearing rows gains a key column
 beside its text, filled by the projector. No SQL statement implements the rule, so the stores
@@ -234,7 +244,8 @@ A place carries, all optional:
 - a **name** to display. Without one, the place shows its most-used recorded spelling (ties broken
   bytewise);
 - **coordinates**, with the origin vocabulary of #1563;
-- a **form**: the `PLAC.FORM` labels for its parts;
+- **forms**: the `PLAC.FORM` labels for its parts, one form per part layout of its recorded texts
+  (section 8);
 - a **parent** place, overriding the default of section 4;
 - **external IDs** (GEDCOM 7.0 `EXID`, such as a gazetteer entry).
 
@@ -251,8 +262,9 @@ other items apply (`DecodeEvent`, projection handler, history catalog, both SQL 
 
 **Read model.** Two kinds of data, kept apart:
 
-- *Facts*: tables `places` (ID, key, name, coordinates and origin, form, parent, version),
-  `place_aliases` (alias key to place ID) and `place_external_ids`. They store their own rows.
+- *Facts*: tables `places` (ID, key, name, coordinates and origin, parent, version),
+  `place_aliases` (alias key to place ID), `place_forms` (place ID, positional key, form) and
+  `place_external_ids`. They store their own rows.
 - *Use*: which places are in use, and by how many records, is a view over the key columns of the
   five place-bearing rows. It stores nothing.
 
@@ -295,15 +307,16 @@ undoes it.
 
 A place has at most one parent place.
 
-- **Default parent:** the place whose key is this key with its leftmost part removed, then any
-  leading empty parts removed, resolved through aliases. `darmstadt,hessen,germany` is in
-  `hessen,germany`, which is in `germany`. `darmstadt,,,germany` is in `germany`. A one-part key
-  has no parent.
+- **Default parent:** the place whose key is this key with its leftmost part removed, resolved
+  through aliases. `darmstadt,hessen,germany` is in `hessen,germany`, which is in `germany`. A key
+  has no empty parts (section 1), so `Darmstadt,,,Germany` is `darmstadt,germany` and is in
+  `germany`. A one-part key has no parent.
 - **Explicit parent:** a `PlaceUpdated` may set one. The command rejects a cycle, counted through
   aliases and default parents, and an alias is rejected when it would create one. As in section
   3, the projector decides: a parent or an alias that would close a cycle in log order is ignored.
-- **Jurisdiction label:** optional per level. It comes from the place's form when it has one, and
-  is never inferred from position. A level with no label shows none.
+- **Jurisdiction label:** optional per level. It comes from one of the place's forms, paired by
+  position with the part layout it was recorded for, and is never inferred from position alone.
+  A level with no label shows none, and so does a level that two forms name differently.
 
 The browser walks parents, in Go, over places resolved by key. A parent that no record names
 directly (`Hessen, Germany` when only its towns were recorded) is a place like any other. A place's
@@ -366,7 +379,7 @@ place", and that is the record's place text. As in ADR-005, the choice is revers
 - **Place records** need no migration. Each place in use exists by derivation, with no facts.
   Nothing promotes a record's pair to its place; the user does that from the worklist.
 
-**Result for `myfamily rebuild`.** The key columns and the three fact tables change the read-model
+**Result for `myfamily rebuild`.** The key columns and the four fact tables change the read-model
 schema, so `ReadModelSchemaVersion` is bumped and every install rebuilds once
 ([ADR-006](./006-schema-evolution.md)). The rebuild replays the log and appends nothing for
 places. Afterwards every place-bearing row has its key, every record has the coordinates it had
@@ -375,7 +388,8 @@ Rebuilding again changes nothing. Once place events exist, their streams are rep
 other and the fact tables come back from them.
 
 Three visible changes come with the first rebuild. The browser joins spellings that differ only in
-letter case, and stops joining texts that differ only in empty parts. The per-place person list
+letter case; it still joins texts that differ only in empty parts, as #925 made it. The per-place
+person list
 matches whole parts where it matched any substring (section 4). Cemeteries whose text differs only
 in letter case or in spacing around commas become one entry, on every store.
 
@@ -387,10 +401,12 @@ in letter case or in spacing around commas become one entry, on every store.
   record's *effective* pair. GEDCOM has no shared place record, so a pair set once on a place is
   written under every event that inherits it; leaving it out would lose it. Re-importing that file
   gives each record its own pair and the same map.
-- **`PLAC.FORM`.** Import stores a form on the place: the `PLAC`'s own `FORM`, otherwise the
-  file's `HEAD.PLAC.FORM`. A form is set on a place that has none; a different form for a place
-  that already has one is reported as an import warning and not applied. Export writes `PLAC.FORM`
-  under each event whose place has a form.
+- **`PLAC.FORM`.** A form describes a text's parts by position, so import stores it on the place
+  under the positional key of the text it came with (section 1): the `PLAC`'s own `FORM`,
+  otherwise the file's `HEAD.PLAC.FORM`. A form is set for a part layout that has none; a
+  different form for a layout that already has one is reported as an import warning and not
+  applied. Export writes `PLAC.FORM` under each event whose place holds a form for that event's
+  positional key, so a form is never written against a text with a different number of parts.
 - **`HEAD.PLAC.FORM`.** Not written yet. The file default comes back as a `FORM` under each place,
   which means the same and is not the same bytes. Writing the most common form once in the header,
   and a per-place `FORM` only where it differs, needs
@@ -478,8 +494,13 @@ The read-surface table of ADR-008 gains a row for each place operation in the PR
 - Two different places recorded with the same text are one place.
   - Mitigation: make one text more specific. A per-record place override can be added later
     without disturbing the key path.
-- Texts that differ only in empty parts stop being joined automatically, which #925 did.
-  - Mitigation: an alias, and a dedup suggestion for exactly that case.
+- The key does not record which levels a text left empty, so a place holds one form per part
+  layout (`place_forms`) where it could have held one form.
+  - Mitigation: the layout comes from the event's own text, which is kept verbatim, and most
+    places have one layout.
+- Two texts that differ only in padding are one place even when the padding carried meaning, as in
+  `, Springfield, Illinois` for an unnamed spot within Springfield.
+  - Mitigation: the recorded text is unchanged on each event and in export.
 - Every install rebuilds once (ADR-006).
 - Export repeats a place's coordinates and form under each event, and a `HEAD.PLAC.FORM` default
   comes back as per-place lines until cacack/gedcom-go#875.
