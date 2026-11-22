@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { can } from '#lib/stores/access.svelte.js';
+	import { activeBranch } from '#lib/stores/activeBranch.svelte.js';
 	import { api, isReferenceOnly, isStaleVersion, type Media } from '#lib/api/client.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import * as Dialog from '#lib/components/ui/dialog/index.js';
@@ -53,6 +54,31 @@
 		}
 	}
 
+	let attaching = $state(false);
+	let attachError: string | null = $state(null);
+	let attachInput: HTMLInputElement | undefined = $state();
+
+	/**
+	 * Upload the file of a reference-only item into the item itself (#1504),
+	 * which keeps its title, GEDCOM link and private mark.
+	 */
+	async function attachFile(event: Event) {
+		const input = event.currentTarget as HTMLInputElement;
+		const file = input.files?.[0];
+		input.value = '';
+		if (!file || attaching) return;
+		const target = currentMedia;
+		attaching = true;
+		attachError = null;
+		try {
+			onUpdate?.(await api.attachMediaContent(target.id, file));
+		} catch (e) {
+			attachError = (e as { message?: string }).message || 'Failed to attach the file';
+		} finally {
+			attaching = false;
+		}
+	}
+
 	let currentIndex = $derived(allMedia.findIndex((m) => m.id === media.id));
 	let currentMedia = $derived(allMedia[currentIndex] || media);
 	let isImage = $derived(currentMedia.mime_type.startsWith('image/'));
@@ -79,6 +105,7 @@
 		if (newMedia) {
 			markError = null;
 			retryMark = null;
+			attachError = null;
 			Object.assign(media, newMedia);
 		}
 	}
@@ -157,6 +184,30 @@
 							<p class="document-name">{path}</p>
 						{/each}
 						<p class="reference-note">The file is not stored here; this item only records where it was.</p>
+						<!-- Mainline only: the attach operation takes no branch scope. -->
+						{#if can('editor') && !activeBranch.id}
+							<div class="attach-action">
+								<input
+									bind:this={attachInput}
+									type="file"
+									accept="image/jpeg,image/png,image/gif,image/webp,image/tiff,application/pdf"
+									class="sr-only"
+									tabindex="-1"
+									aria-hidden="true"
+									onchange={attachFile}
+								/>
+								<Button
+									variant="outline"
+									class="border-white/40 bg-transparent text-white hover:bg-white/20 hover:text-white"
+									aria-disabled={attaching}
+									onclick={() => !attaching && attachInput?.click()}
+									>{attaching ? 'Attaching…' : 'Attach file'}</Button
+								>
+								{#if attachError}
+									<p class="mark-error" role="alert">{attachError}</p>
+								{/if}
+							</div>
+						{/if}
 					</div>
 				{:else if isImage}
 					<img
@@ -384,6 +435,14 @@
 		align-items: flex-start;
 		gap: 0.5rem;
 		margin-bottom: 1rem;
+	}
+
+	.attach-action {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.5rem;
+		margin-top: 1.5rem;
 	}
 
 	.mark-error {

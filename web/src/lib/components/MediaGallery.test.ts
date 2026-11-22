@@ -3,6 +3,10 @@ import { render, screen, fireEvent, within } from '@testing-library/svelte';
 import MediaGallery from './MediaGallery.svelte';
 import * as apiModule from '#lib/api/client.js';
 import type { Media } from '#lib/api/client.js';
+import { auth } from '#lib/stores/access.svelte.js';
+
+const branchState = vi.hoisted(() => ({ id: null as string | null }));
+vi.mock('#lib/stores/activeBranch.svelte.js', () => ({ activeBranch: branchState }));
 
 vi.mock('#lib/api/client.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof apiModule>();
@@ -11,6 +15,7 @@ vi.mock('#lib/api/client.js', async (importOriginal) => {
 		api: {
 			listPersonMedia: vi.fn(),
 			updateMedia: vi.fn(),
+			attachMediaContent: vi.fn(),
 			getMedia: vi.fn(),
 			getMediaThumbnailUrl: (id: string) => `/api/v1/media/${id}/thumbnail`,
 			getMediaContentUrl: (id: string) => `/api/v1/media/${id}/content`
@@ -53,6 +58,7 @@ function list(items: Media[]) {
 describe('MediaGallery', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		branchState.id = null;
 	});
 
 	it('shows a reference-only item as a placeholder with its title and path, not an image', async () => {
@@ -192,6 +198,82 @@ describe('MediaGallery', () => {
 			await fireEvent.click(within(dialog).getByRole('button', { name: 'Mark private' }));
 
 			expect((await within(dialog).findByRole('alert')).textContent).toBe('Not allowed');
+		});
+	});
+	describe('attaching a file to a reference (#1504)', () => {
+		async function openReference() {
+			list([reference]);
+			render(MediaGallery, { props: { personId: 'p-1' } });
+			await fireEvent.click(await screen.findByRole('button', { name: /^View Wedding/ }));
+			return screen.findByRole('dialog');
+		}
+
+		function chooseFile(dialog: HTMLElement, file: File) {
+			const input = dialog.querySelector('input[type="file"]') as HTMLInputElement;
+			Object.defineProperty(input, 'files', { value: [file], configurable: true });
+			return fireEvent.change(input);
+		}
+
+		it('attaches a file and then shows the item as its image, not a reference', async () => {
+			const attached = media({
+				...reference,
+				filename: 'wedding.jpg',
+				file_size: 2048,
+				has_content: true,
+				has_thumbnail: true,
+				version: 2
+			});
+			vi.mocked(apiModule.api.attachMediaContent).mockResolvedValue(attached);
+			const dialog = await openReference();
+			expect(within(dialog).getByRole('button', { name: 'Attach file' })).toBeDefined();
+
+			const file = new File(['jpeg'], 'wedding.jpg', { type: 'image/jpeg' });
+			await chooseFile(dialog, file);
+
+			expect(apiModule.api.attachMediaContent).toHaveBeenCalledWith('m-ref', file);
+			const img = await within(dialog).findByRole('img', { name: 'Wedding' });
+			expect(img.getAttribute('src')).toBe('/api/v1/media/m-ref/content');
+			expect(within(dialog).queryByText('Not stored (reference only)')).toBeNull();
+			expect(within(dialog).queryByRole('button', { name: 'Attach file' })).toBeNull();
+			const card = screen.getByRole('button', { name: 'View Wedding' });
+			expect(card.querySelector('img')?.getAttribute('src')).toBe('/api/v1/media/m-ref/thumbnail');
+		});
+
+		it('shows a refused file and keeps the reference', async () => {
+			vi.mocked(apiModule.api.attachMediaContent).mockRejectedValue({
+				status: 400,
+				message: 'unsupported file type'
+			});
+			const dialog = await openReference();
+
+			await chooseFile(dialog, new File(['text'], 'notes.txt', { type: 'text/plain' }));
+
+			expect((await within(dialog).findByRole('alert')).textContent).toBe('unsupported file type');
+			expect(within(dialog).getByText('Not stored (reference only)')).toBeDefined();
+		});
+
+		it('is not offered to a viewer', async () => {
+			auth.phase = 'visitor';
+			const dialog = await openReference();
+
+			expect(within(dialog).queryByRole('button', { name: 'Attach file' })).toBeNull();
+			expect(dialog.querySelector('input[type="file"]')).toBeNull();
+		});
+
+		it('is not offered on a research branch, as attaching is mainline-only', async () => {
+			branchState.id = 'b-1';
+			const dialog = await openReference();
+
+			expect(within(dialog).queryByRole('button', { name: 'Attach file' })).toBeNull();
+		});
+
+		it('is not offered for an item that has its file', async () => {
+			list([media({})]);
+			render(MediaGallery, { props: { personId: 'p-1' } });
+			await fireEvent.click(await screen.findByRole('button', { name: 'View Portrait' }));
+			const dialog = await screen.findByRole('dialog');
+
+			expect(within(dialog).queryByRole('button', { name: 'Attach file' })).toBeNull();
 		});
 	});
 });

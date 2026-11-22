@@ -1337,6 +1337,23 @@ class ApiClient {
 		return response.json();
 	}
 
+	/**
+	 * Upload the file of a reference-only item in place (#1504). Mainline only:
+	 * the operation takes no branch scope.
+	 */
+	async attachMediaContent(id: string, file: File): Promise<Media> {
+		const formData = new FormData();
+		formData.append('file', file);
+		const response = await fetch(`${API_BASE}/media/${id}/content`, {
+			method: 'PUT',
+			body: formData
+		});
+		if (!response.ok) {
+			throw await responseError(response);
+		}
+		return response.json();
+	}
+
 	async getMedia(id: string): Promise<Media> {
 		return this.request<Media>('GET', `/media/${id}`);
 	}
