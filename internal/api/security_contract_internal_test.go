@@ -11,23 +11,29 @@ import (
 )
 
 // authContractViolations lists where an OpenAPI document fails to describe
-// sign-in (#1423): the session cookie must be a security scheme applied to
-// every operation, a public operation must opt out with `security: []`, a
-// viewer operation a visitor may call (not in signedInRoutes) must make the
-// session optional with `security: [{session: []}, {}]`, and every non-public
-// operation must document the 401 `UNAUTHENTICATED` and 503 `SETUP_REQUIRED`
-// refusals authenticate gives it.
+// sign-in (#1423, #1416): the session cookie and the API token must be
+// security schemes, either of which every operation accepts; a public
+// operation must opt out with `security: []`; a viewer operation a visitor
+// may call (not in signedInRoutes) must make both optional with
+// `security: [{session: []}, {apiToken: []}, {}]`; an operation in
+// sessionOnlyRoutes must declare `security: [{session: []}]`; and every
+// non-public operation must document the 401 `UNAUTHENTICATED` and 503
+// `SETUP_REQUIRED` refusals authenticate gives it.
 func authContractViolations(doc *openapi3.T) []string {
 	var problems []string
-	var scheme *openapi3.SecuritySchemeRef
+	var session, token *openapi3.SecuritySchemeRef
 	if doc.Components != nil {
-		scheme = doc.Components.SecuritySchemes["session"]
+		session = doc.Components.SecuritySchemes["session"]
+		token = doc.Components.SecuritySchemes["apiToken"]
 	}
-	if scheme == nil || scheme.Value.Type != "apiKey" || scheme.Value.In != "cookie" || scheme.Value.Name != sessionCookieName {
+	if session == nil || session.Value.Type != "apiKey" || session.Value.In != "cookie" || session.Value.Name != sessionCookieName {
 		problems = append(problems, fmt.Sprintf("components.securitySchemes.session is not the %s cookie", sessionCookieName))
 	}
-	if len(doc.Security) != 1 || len(doc.Security[0]) != 1 || doc.Security[0]["session"] == nil {
-		problems = append(problems, "the top-level security is not the session scheme alone")
+	if token == nil || token.Value.Type != "http" || token.Value.Scheme != "bearer" {
+		problems = append(problems, "components.securitySchemes.apiToken is not an http bearer scheme")
+	}
+	if !securityIs(&doc.Security, "session", "apiToken") {
+		problems = append(problems, "the top-level security is not the session or the API token")
 	}
 	responds := func(op *openapi3.Operation, status, code string) bool {
 		ref := op.Responses.Value(status)
@@ -44,12 +50,17 @@ func authContractViolations(doc *openapi3.T) []string {
 				continue
 			}
 			key := routeKey(method, apiBase+specParam.ReplaceAllString(path, ":$1"))
-			if role == string(repository.RoleViewer) && !signedInRoutes[key] {
-				if !sessionOptional(op.Security) {
-					problems = append(problems, where+" may be called by a visitor but does not declare security: [{session: []}, {}]")
+			switch {
+			case sessionOnlyRoutes[key]:
+				if !securityIs(op.Security, "session") {
+					problems = append(problems, where+" needs a session alone but does not declare security: [{session: []}]")
 				}
-			} else if op.Security != nil {
-				problems = append(problems, where+" needs a session but overrides the top-level security")
+			case role == string(repository.RoleViewer) && !signedInRoutes[key]:
+				if !securityIs(op.Security, "session", "apiToken", "") {
+					problems = append(problems, where+" may be called by a visitor but does not declare security: [{session: []}, {apiToken: []}, {}]")
+				}
+			case op.Security != nil:
+				problems = append(problems, where+" needs a session or a token but overrides the top-level security")
 			}
 			if !responds(op, "401", CodeUnauthenticated) {
 				problems = append(problems, where+" does not document 401 "+CodeUnauthenticated)
@@ -62,22 +73,30 @@ func authContractViolations(doc *openapi3.T) []string {
 	return problems
 }
 
-// sessionOptional reports whether security is exactly the session scheme or
-// nothing, in either order.
-func sessionOptional(security *openapi3.SecurityRequirements) bool {
-	if security == nil || len(*security) != 2 {
+// securityIs reports whether security is exactly the alternatives schemes,
+// in any order, each one scheme alone; "" is the empty requirement (none).
+func securityIs(security *openapi3.SecurityRequirements, schemes ...string) bool {
+	if security == nil || len(*security) != len(schemes) {
 		return false
 	}
-	var session, none bool
-	for _, req := range *security {
-		switch {
-		case len(req) == 0:
-			none = true
-		case len(req) == 1 && req["session"] != nil:
-			session = true
-		}
+	want := make(map[string]bool, len(schemes))
+	for _, scheme := range schemes {
+		want[scheme] = true
 	}
-	return session && none
+	for _, req := range *security {
+		if len(req) > 1 {
+			return false
+		}
+		name := ""
+		for scheme := range req {
+			name = scheme
+		}
+		if !want[name] {
+			return false
+		}
+		delete(want, name)
+	}
+	return len(want) == 0
 }
 
 func TestOpenAPI_DescribesSignIn(t *testing.T) {
@@ -93,10 +112,11 @@ func TestOpenAPI_DescribesSignIn(t *testing.T) {
 func TestAuthContractViolations(t *testing.T) {
 	const head = `openapi: 3.0.3
 info: {title: t, version: "1"}
-security: [{session: []}]
+security: [{session: []}, {apiToken: []}]
 components:
   securitySchemes:
     session: {type: apiKey, in: cookie, name: myfamily_session}
+    apiToken: {type: http, scheme: bearer}
   responses:
     Unauthenticated: {description: "UNAUTHENTICATED"}
     SetupRequired: {description: "SETUP_REQUIRED"}
@@ -116,7 +136,15 @@ paths:
   /things:
     get:
       x-min-role: viewer
-      security: [{session: []}, {}]
+      security: [{session: []}, {apiToken: []}, {}]
+      responses:
+        '200': {description: ok}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '503': {$ref: '#/components/responses/SetupRequired'}
+  /auth/me/tokens:
+    get:
+      x-min-role: viewer
+      security: [{session: []}]
       responses:
         '200': {description: ok}
         '401': {$ref: '#/components/responses/Unauthenticated'}
@@ -151,13 +179,13 @@ paths:
         '401': {$ref: '#/components/responses/Unauthenticated'}
         '503': {$ref: '#/components/responses/SetupRequired'}
 `,
-			want: []string{"listThings) may be called by a visitor but does not declare security: [{session: []}, {}]"},
+			want: []string{"listThings) may be called by a visitor but does not declare security: [{session: []}, {apiToken: []}, {}]"},
 		},
 		{
-			name: "signed-in operation with an optional session",
-			paths: `  /history:
+			name: "visitor-callable operation that refuses API tokens",
+			paths: `  /things:
     get:
-      operationId: getHistory
+      operationId: listThings
       x-min-role: viewer
       security: [{session: []}, {}]
       responses:
@@ -165,7 +193,34 @@ paths:
         '401': {$ref: '#/components/responses/Unauthenticated'}
         '503': {$ref: '#/components/responses/SetupRequired'}
 `,
-			want: []string{"getHistory) needs a session but overrides the top-level security"},
+			want: []string{"listThings) may be called by a visitor but does not declare security: [{session: []}, {apiToken: []}, {}]"},
+		},
+		{
+			name: "session-only operation that accepts API tokens",
+			paths: `  /auth/me/tokens:
+    post:
+      operationId: createAPIToken
+      x-min-role: viewer
+      responses:
+        '201': {description: ok}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '503': {$ref: '#/components/responses/SetupRequired'}
+`,
+			want: []string{"createAPIToken) needs a session alone but does not declare security: [{session: []}]"},
+		},
+		{
+			name: "signed-in operation with an optional session",
+			paths: `  /history:
+    get:
+      operationId: getHistory
+      x-min-role: viewer
+      security: [{session: []}, {apiToken: []}, {}]
+      responses:
+        '200': {description: ok}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '503': {$ref: '#/components/responses/SetupRequired'}
+`,
+			want: []string{"getHistory) needs a session or a token but overrides the top-level security"},
 		},
 		{
 			name: "public operation without security: []",
@@ -198,7 +253,7 @@ paths:
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := len(authContractViolations(doc)); got != 2 {
-		t.Errorf("a spec with no security scheme: %d violations, want 2 (scheme and top-level security)", got)
+	if got := len(authContractViolations(doc)); got != 3 {
+		t.Errorf("a spec with no security scheme: %d violations, want 3 (two schemes and top-level security)", got)
 	}
 }

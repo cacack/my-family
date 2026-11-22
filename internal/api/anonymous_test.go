@@ -39,7 +39,8 @@ func unauthenticated(rec *httptest.ResponseRecorder) bool {
 
 // accountRoutes act on one's own account, which a visitor does not have.
 var accountRoutes = routeSet("GET /api/v1/auth/me", "PATCH /api/v1/auth/me",
-	"PUT /api/v1/settings/home-person", "DELETE /api/v1/settings/home-person")
+	"PUT /api/v1/settings/home-person", "DELETE /api/v1/settings/home-person",
+	"GET /api/v1/auth/me/tokens", "POST /api/v1/auth/me/tokens", "DELETE /api/v1/auth/me/tokens/:tokenId")
 
 // changeLogRoutes read change records, which name who made each change, so
 // a visitor may not call them (ADR-008 §4). With accountRoutes, it restates

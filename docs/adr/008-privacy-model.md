@@ -529,6 +529,9 @@ Added after this ADR's date, when #1412 made the table a test (§7).
 | signOut | POST /auth/sign-out | Empty | accounts | — | No tree data |
 | getCurrentAccount | GET /auth/me | The caller's account | accounts | — | No tree data |
 | updateCurrentAccount | PATCH /auth/me | The caller's account | accounts | — | No tree data |
+| listAPITokens | GET /auth/me/tokens | The caller's API tokens, without their secrets | accounts | — | No tree data; session only (#1416) |
+| createAPIToken | POST /auth/me/tokens | The new API token, its secret shown this once | accounts | — | No tree data; session only (#1416) |
+| revokeAPIToken | DELETE /auth/me/tokens/{tokenId} | Empty body | accounts | — | No tree data; session only (#1416) |
 | acceptInvite | POST /auth/invites/accept | The new account | accounts | — | No tree data |
 | resetPassword | POST /auth/password-reset | The caller's account | accounts | — | No tree data |
 | listUsers | GET /users | Accounts and roles | accounts | — | Owner-only; no tree data |

@@ -15,7 +15,9 @@ export const AUTH_ACTION_LABELS: Record<AuthAuditEntry['action'], string> = {
 	password_reset_revoked: 'Reset link revoked',
 	password_reset: 'Password reset',
 	password_changed: 'Password changed',
-	anonymous_access_changed: 'Visitor access changed'
+	anonymous_access_changed: 'Visitor access changed',
+	api_token_created: 'API token created',
+	api_token_revoked: 'API token revoked'
 };
 
 /** Who did it: the actor's name, the CLI, or no one signed in (a failed sign-in). */

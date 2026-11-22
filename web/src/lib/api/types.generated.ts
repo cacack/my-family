@@ -3305,6 +3305,63 @@ export interface paths {
         patch: operations["updateCurrentAccount"];
         trace?: never;
     };
+    "/auth/me/tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the signed-in user's API tokens
+         * @description Newest first. A token itself is shown only when it is created; each
+         *     is named by an `id` that can revoke it but not authenticate.
+         *
+         *     Requires a signed-in user, by session: an API token cannot manage API
+         *     tokens (403).
+         */
+        get: operations["listAPITokens"];
+        put?: never;
+        /**
+         * Create an API token for scripts
+         * @description Returns the token, to send as `Authorization: Bearer <token>`. Only
+         *     its hash is stored, so it is shown this once. The token acts as the
+         *     signed-in user, with the role they hold at each request, until it is
+         *     revoked. Written to the auth audit log.
+         *
+         *     Requires a signed-in user, by session: an API token cannot manage API
+         *     tokens (403).
+         */
+        post: operations["createAPIToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/me/tokens/{tokenId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke one of the signed-in user's API tokens
+         * @description The token's next request gets 401. Written to the auth audit log.
+         *
+         *     Requires a signed-in user, by session: an API token cannot manage API
+         *     tokens (403).
+         */
+        delete: operations["revokeAPIToken"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/invites/accept": {
         parameters: {
             query?: never;
@@ -3536,7 +3593,8 @@ export interface paths {
          * Read the auth audit log
          * @description Sign-ins, failed sign-ins, invites and their revocation, role changes,
          *     disables, enables, password resets (issued, revoked and used) and
-         *     changes, and changes to anonymous access, newest
+         *     changes, changes to anonymous access, and API tokens created and
+         *     revoked, newest
          *     first. The log is append-only. It pages by cursor: pass a page's
          *     `next_cursor` as `cursor` to read the page after it.
          */
@@ -3682,6 +3740,44 @@ export interface components {
             /** Format: date-time */
             expires_at: string;
         };
+        APITokenRequest: {
+            /**
+             * @description What the token is for, such as the script that uses it
+             * @example nightly backup
+             */
+            name: string;
+        };
+        APIToken: {
+            /**
+             * Format: uuid
+             * @description Names the token to revoke it; it cannot authenticate
+             */
+            id: string;
+            name: string;
+            /** Format: date-time */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description When the token last authenticated a request, to within a minute;
+             *     absent if it never has
+             */
+            last_used_at?: string;
+        };
+        APITokenList: {
+            items: components["schemas"]["APIToken"][];
+        };
+        CreatedAPIToken: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** Format: date-time */
+            created_at: string;
+            /**
+             * @description The token, to send as `Authorization: Bearer <token>`. It is shown
+             *     only in this response.
+             */
+            token: string;
+        };
         PendingInvite: {
             /** @description Names the invite to revoke it; it cannot be used to join */
             id: string;
@@ -3731,7 +3827,7 @@ export interface components {
             /** Format: date-time */
             at: string;
             /** @enum {string} */
-            action: "sign_in" | "sign_in_failed" | "user_created" | "invite_created" | "invite_accepted" | "invite_revoked" | "role_changed" | "user_disabled" | "user_enabled" | "password_reset_issued" | "password_reset_revoked" | "password_reset" | "password_changed" | "anonymous_access_changed";
+            action: "sign_in" | "sign_in_failed" | "user_created" | "invite_created" | "invite_accepted" | "invite_revoked" | "role_changed" | "user_disabled" | "user_enabled" | "password_reset_issued" | "password_reset_revoked" | "password_reset" | "password_changed" | "anonymous_access_changed" | "api_token_created" | "api_token_revoked";
             /**
              * Format: uuid
              * @description Who did it; absent for a failed sign-in or the CLI
@@ -7384,10 +7480,23 @@ export interface components {
         };
         /**
          * @description No signed-in session (`UNAUTHENTICATED`): sign in and send the session
-         *     cookie. A viewer operation is served without one when the owner lets
+         *     cookie, or send an API token. An unknown or revoked API token, or one
+         *     whose user is disabled, gets this too. A viewer operation is served without one when the owner lets
          *     visitors in, except those that say they require a signed-in user.
          */
         Unauthenticated: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /**
+         * @description The request carries an API token (`FORBIDDEN`): only a signed-in
+         *     session may do this
+         */
+        SessionRequired: {
             headers: {
                 [name: string]: unknown;
             };
@@ -14107,6 +14216,85 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             409: components["responses"]["AccountsOnly"];
             429: components["responses"]["RateLimited"];
+            503: components["responses"]["SetupRequired"];
+        };
+    };
+    listAPITokens: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The user's API tokens */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APITokenList"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["SessionRequired"];
+            409: components["responses"]["AccountsOnly"];
+            503: components["responses"]["SetupRequired"];
+        };
+    };
+    createAPIToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["APITokenRequest"];
+            };
+        };
+        responses: {
+            /** @description The new token */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreatedAPIToken"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["SessionRequired"];
+            409: components["responses"]["AccountsOnly"];
+            503: components["responses"]["SetupRequired"];
+        };
+    };
+    revokeAPIToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The token's `id` */
+                tokenId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Token revoked */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["SessionRequired"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["AccountsOnly"];
             503: components["responses"]["SetupRequired"];
         };
     };

@@ -44,6 +44,9 @@ var handRouteRoles = map[string]repository.Role{
 var signedInRoutes = map[string]bool{
 	routeKey(http.MethodGet, apiBase+"/auth/me"):                        true,
 	routeKey(http.MethodPatch, apiBase+"/auth/me"):                      true,
+	routeKey(http.MethodGet, apiBase+"/auth/me/tokens"):                 true,
+	routeKey(http.MethodPost, apiBase+"/auth/me/tokens"):                true,
+	routeKey(http.MethodDelete, apiBase+"/auth/me/tokens/:tokenId"):     true,
 	routeKey(http.MethodPut, apiBase+"/settings/home-person"):           true,
 	routeKey(http.MethodDelete, apiBase+"/settings/home-person"):        true,
 	routeKey(http.MethodGet, apiBase+"/history"):                        true,
@@ -62,6 +65,15 @@ var signedInRoutes = map[string]bool{
 	routeKey(http.MethodGet, apiBase+"/branches/:id/evidence-coverage"): true,
 	routeKey(http.MethodGet, apiBase+"/branches/:id/health"):            true,
 	routeKey(http.MethodGet, apiBase+"/branches/:id/research"):          true,
+}
+
+// sessionOnlyRoutes need a signed-in session: authenticate refuses them to a
+// request authenticated by an API token, so a leaked token cannot create
+// another that outlives its own revocation (#1416).
+var sessionOnlyRoutes = map[string]bool{
+	routeKey(http.MethodGet, apiBase+"/auth/me/tokens"):             true,
+	routeKey(http.MethodPost, apiBase+"/auth/me/tokens"):            true,
+	routeKey(http.MethodDelete, apiBase+"/auth/me/tokens/:tokenId"): true,
 }
 
 // routeRoles is the minimum role of every API route (ADR-007): each

@@ -163,7 +163,7 @@ and the counts are in memory, so a restart clears them. Rejected: a bypass for a
 signed in before (a second stored credential to issue, expire and revoke), and longer or growing
 lockouts (they make the denial worse, not better).
 
-**Storage.** `users`, `tree_memberships`, `sessions`, `invites` and an append-only `auth_audit`
+**Storage.** `users`, `tree_memberships`, `sessions`, `api_tokens`, `invites` and an append-only `auth_audit`
 table, in PostgreSQL, SQLite and memory. Each successful sign-in prunes audit entries older than
 `AUTH_AUDIT_RETENTION_DAYS` (default 365), beside its cleanup of expired sessions and links (#1433). They are not in the event log and are not read model:
 `myfamily rebuild` leaves them alone.
@@ -180,7 +180,16 @@ declaration is refused. Every check takes the tree as an argument.
 (auth mode) and tree settings (anonymous access, privacy rules); authorization takes a tree.
 Events, read-model rows and URLs carry no tree dimension.
 
-**Deferred.** API tokens, OIDC and proxy-header sign-in, a suggest-only contributor role (#1035),
+**API tokens (#1416).** A signed-in user creates named personal tokens for scripts, sent as
+`Authorization: Bearer <token>`. A token resolves in the same middleware as the session cookie to
+its user, with the role they hold at that request, so enforcement and attribution are unchanged.
+The store keeps a SHA-256 of the random 256-bit token, as for sessions: argon2id would add cost to
+every request and protects nothing a random secret needs. An invalid token is refused with 401,
+never served as a visitor. Tokens do not expire and carry no narrower scope; a token never
+previews as someone else and cannot manage tokens, so a leaked one cannot outlive its revocation.
+Disabling a user refuses their tokens without deleting them.
+
+**Deferred.** OIDC and proxy-header sign-in (#1565), a suggest-only contributor role (#1035),
 permissions scoped to a family line, email delivery, and multi-tree itself.
 
 ## Consequences
@@ -197,8 +206,8 @@ permissions scoped to a family line, email delivery, and multi-tree itself.
 
 - Upgrading is a breaking change: the operator must create an owner or set `AUTH_MODE=open`.
   Mitigation: release notes, a startup log line that says which, and API versioning (#393).
-- Scripts that call the API need a signed-in session until API tokens exist. Mitigation: open mode
-  on a trusted network; tokens are the first deferred item.
+- Scripts that call the API need a signed-in session or an API token (#1416); a token is a
+  long-lived credential its user must revoke if it leaks.
 - Account tables are a third storage category that backups (#15) must include and `rebuild` must
   not drop. Mitigation: an invariant and a test for each.
 - Whoever reads the server log during setup can claim the instance. Accepted: log access already

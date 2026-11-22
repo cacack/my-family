@@ -317,8 +317,8 @@ func TestAuth_ChangesCarryTheSignedInUser(t *testing.T) {
 	}
 }
 
-// Neither the password nor the session token reaches the event log or a log
-// line.
+// Neither the password, the session token nor an API token reaches the
+// event log or a log line.
 func TestAuth_SecretsStayOutOfLogs(t *testing.T) {
 	r, w, err := os.Pipe()
 	if err != nil {
@@ -337,6 +337,8 @@ func TestAuth_SecretsStayOutOfLogs(t *testing.T) {
 	f.do(t, request{method: http.MethodPost, path: "/api/v1/auth/sign-in", body: `{"username":"ada","password":"wrong password"}`})
 	cookie := f.signIn(t)
 	f.do(t, request{method: http.MethodPost, path: "/api/v1/persons", cookie: cookie, body: `{"given_name":"Charles"}`})
+	apiToken := f.createToken(t, cookie, "script")
+	f.do(t, request{method: http.MethodPost, path: "/api/v1/persons", header: bearer(apiToken.Token), body: `{"given_name":"Ada"}`})
 	f.do(t, request{method: http.MethodPost, path: "/api/v1/auth/sign-out", cookie: cookie})
 
 	os.Stdout = stdout
@@ -360,7 +362,7 @@ func TestAuth_SecretsStayOutOfLogs(t *testing.T) {
 		eventLog.Write(evt.Data)
 		eventLog.Write(evt.Metadata)
 	}
-	for name, secret := range map[string]string{"password": ownerPassword, "wrong password": "wrong password", "session token": cookie.Value} {
+	for name, secret := range map[string]string{"password": ownerPassword, "wrong password": "wrong password", "session token": cookie.Value, "API token": apiToken.Token} {
 		if bytes.Contains(logged, []byte(secret)) {
 			t.Errorf("the %s appears in a log line", name)
 		}
