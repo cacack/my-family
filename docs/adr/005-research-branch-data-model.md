@@ -406,6 +406,12 @@ tests — for no expressible research use case.
 ordinary rather than exploratory. This section is the place to revisit it; changing it means
 amending this ADR, not silently adding a column.
 
+**Amendment (ADR-009): place facts join the set.** The facts a place record holds (name,
+coordinates, form, parent, external IDs and aliases) are main-only for the same reason: they
+describe the world, not a hypothesis. Which place a record names is that record's own place text,
+which is branch-scoped already, so the list of places in use still follows the overlay. See
+[ADR-009](./009-place-data-model.md), section 6.
+
 ### Brick walls — event-sourced, branch scoping pending
 
 **Decided in [#802](https://github.com/cacack/my-family/issues/802): brick walls are event-sourced.**

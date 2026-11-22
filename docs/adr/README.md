@@ -32,6 +32,7 @@ See [TEMPLATE.md](./TEMPLATE.md) for the ADR structure.
 - [006-schema-evolution.md](./006-schema-evolution.md) - Read-model schema version with fail-fast `myfamily rebuild`, and event upcasting on decode
 - [007-access-model.md](./007-access-model.md) - Mandatory sign-in with anonymous as a configurable principal, owner/editor/viewer roles as tree memberships, and accounts outside the event log
 - [008-privacy-model.md](./008-privacy-model.md) - Living-person rule, private flag (GEDCOM `RESN`), "Living" placeholder, and redaction at two choke points
+- [009-place-data-model.md](./009-place-data-model.md) - Place records resolved from each event's own text by one matching key, with aliases, a parent hierarchy, and coordinates on the place that an event may override
 
 ## Related
 
