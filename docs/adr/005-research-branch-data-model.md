@@ -742,10 +742,11 @@ rolls it forward without the delete, keeping both. Landed
 detection is the usual payload-id scan, and a media stream's `main` row is read with `GetMedia`,
 never the bytes. The read-model repair follows the version rule — every media projection writes the
 row, version included, in one save — and cannot copy or lose file bytes: it projects `main`'s own
-events onto `main` only, the only event carrying bytes is `MediaCreated` (whose bytes are `main`'s
-own, in `main`'s log), `MediaUpdated` re-saves metadata with nil bytes (which keep what is stored),
+events onto `main` only, the only events carrying bytes are `MediaCreated` and the mainline-only
+`MediaContentAttached` (whose bytes are `main`'s own, in `main`'s log), `MediaUpdated` re-saves metadata with nil bytes (which keep what is stored),
 and no branch row is written beyond the byte release every mainline save of a merged upload makes
-(the branch's origin row drops its now-duplicate copy; see the media note below). A missing media row counts as removed for a reason the log
+(the branch's origin row drops its now-duplicate copy) and the content-fact copy onto branch rows
+while `main` holds the bytes (see the media note below). A missing media row counts as removed for a reason the log
 explains when its owner's `main` stream ends in a delete (the owner→media cascade writes nothing to
 the media stream), following a person owner through any person merges `main` recorded since; a
 pending edit of such an item resolves only to `main`, and a landed upload is not resurrected. One

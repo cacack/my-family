@@ -18,12 +18,14 @@ import (
 // found on main by payload id, its main row is read with GetMedia (metadata
 // only — never the bytes), and a row behind main's log is re-projected from
 // main's own events. That repair cannot copy or lose file bytes: every event
-// it re-projects is projected onto MAIN, the only event that carries bytes is
-// MediaCreated (whose bytes are main's own copy, in main's log), and
+// it re-projects is projected onto MAIN, the only events that carry bytes are
+// MediaCreated and the mainline-only MediaContentAttached (whose bytes are
+// main's own copy, in main's log), and
 // MediaUpdated/MediaDeleted re-read and re-save metadata only — a save with
 // nil bytes keeps the bytes already stored, and a main delete of an item a
 // branch still shows keeps main's row as a byte-holding tombstone. No branch
-// row is ever written by a resume.
+// row is written by a resume beyond the byte release and content-fact copy
+// every mainline SaveMedia makes (ADR-005).
 //
 // The one media-specific question is a MISSING main row. Like a citation's,
 // a media row can be removed by a write to ANOTHER stream: deleting its owner
