@@ -296,7 +296,9 @@ const BRANCH_SCOPED_OPERATIONS: ReadonlyArray<{
 	// must 404 there too.
 	{ methods: ['GET', 'POST'], pattern: new RegExp(`^/persons/${UUID_SEGMENT}/media$`) },
 	{ methods: ['GET', 'PUT', 'DELETE'], pattern: new RegExp(`^/media/${UUID_SEGMENT}$`) },
-	{ methods: ['GET'], pattern: new RegExp(`^/media/${UUID_SEGMENT}/content$`) },
+	// PUT declares the scope only so the server can REFUSE it (409
+	// `attach_mainline_only`): an attach stays mainline-only.
+	{ methods: ['GET', 'PUT'], pattern: new RegExp(`^/media/${UUID_SEGMENT}/content$`) },
 	{ methods: ['GET'], pattern: new RegExp(`^/media/${UUID_SEGMENT}/thumbnail$`) },
 	// GPS artifacts (#760): evidence analyses, evidence conflicts, research logs
 	// and proof summaries.
