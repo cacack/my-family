@@ -174,7 +174,12 @@
 	async function saveEdit() {
 		if (!editingId) return;
 		const original = names.find((n) => n.id === editingId);
-		error = original ? clearedNameError(original, formData) : missingNameError(formData);
+		// A primary name sets the person's name, which mirrors the current
+		// primary, so promoting a nameless name is checked against that too.
+		const primary = formData.is_primary ? names.find((n) => n.is_primary) : undefined;
+		error = original
+			? (clearedNameError(original, formData) ?? (primary ? clearedNameError(primary, formData) : null))
+			: missingNameError(formData);
 		if (error) return;
 
 		saving = true;

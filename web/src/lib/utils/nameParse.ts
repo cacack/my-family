@@ -8,9 +8,11 @@ export function parseName(fullName: string): { givenName: string; surname: strin
 	if (!trimmed) {
 		return { givenName: '', surname: '' };
 	}
-	const slashed = /^(.*?)\s*\/([^/]*)\/?$/.exec(trimmed);
+	// The opening slash must start a word and the surname end the entry, so a
+	// slash inside a word (`AC/DC`, `Jean/Jeanne Smith`) is an ordinary character.
+	const slashed = /^(?:(.*) )?\/([^/]*)\/?$/.exec(trimmed);
 	if (slashed) {
-		return { givenName: slashed[1], surname: slashed[2].trim() };
+		return { givenName: slashed[1] ?? '', surname: slashed[2].trim() };
 	}
 	const lastSpace = trimmed.lastIndexOf(' ');
 	if (lastSpace === -1) {

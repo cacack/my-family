@@ -32,6 +32,11 @@ describe('parseName', () => {
 		expect(parseName(' /Tudor ')).toEqual({ givenName: '', surname: 'Tudor' });
 	});
 
+	it('treats a slash inside a word as an ordinary character', () => {
+		expect(parseName('AC/DC')).toEqual({ givenName: 'AC/DC', surname: '' });
+		expect(parseName('Jean/Jeanne Smith')).toEqual({ givenName: 'Jean/Jeanne', surname: 'Smith' });
+	});
+
 	it('reads a lone slash as no name', () => {
 		expect(parseName('/')).toEqual({ givenName: '', surname: '' });
 	});

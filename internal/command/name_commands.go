@@ -197,6 +197,13 @@ func (h *Handler) UpdateName(ctx context.Context, input UpdateNameInput) (*Updat
 	if err := checkNameKept(existingName.GivenName, existingName.Surname, pn.GivenName, pn.Surname); err != nil {
 		return nil, err
 	}
+	// A primary name sets the person's name, so making a nameless name
+	// primary must not leave a named person nameless either.
+	if pn.IsPrimary {
+		if err := checkNameKept(person.GivenName, person.Surname, pn.GivenName, pn.Surname); err != nil {
+			return nil, err
+		}
+	}
 	if err := pn.Validate(); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidInput, err)
 	}

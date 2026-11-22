@@ -76,16 +76,20 @@ func TestUpdatePerson_NamelessRule(t *testing.T) {
 
 // addNameDirectly records a NameAdded without AddName's validation, as an
 // import of `1 NAME //` can leave a name with neither part.
-func addNameDirectly(t *testing.T, eventStore repository.EventStore, readStore repository.ReadModelStore, personID uuid.UUID, given, surname string) uuid.UUID {
+func addNameDirectly(t *testing.T, eventStore repository.EventStore, readStore repository.ReadModelStore, personID uuid.UUID, given, surname string, primary bool) uuid.UUID {
 	t.Helper()
 	ctx := context.Background()
+	person, err := readStore.GetPerson(ctx, domain.MainBranchID, personID)
+	if err != nil || person == nil {
+		t.Fatalf("get person: %v", err)
+	}
 	pn := domain.NewPersonName(personID, given, surname)
-	pn.IsPrimary = true
+	pn.IsPrimary = primary
 	event := domain.NewNameAdded(pn)
-	if err := eventStore.Append(ctx, personID, "Person", []domain.Event{event}, 1, repository.AppendScope{}); err != nil {
+	if err := eventStore.Append(ctx, personID, "Person", []domain.Event{event}, person.Version, repository.AppendScope{}); err != nil {
 		t.Fatalf("append NameAdded: %v", err)
 	}
-	if err := repository.NewProjector(readStore, nil).Project(ctx, event, 2, domain.MainBranchID); err != nil {
+	if err := repository.NewProjector(readStore, nil).Project(ctx, event, person.Version+1, domain.MainBranchID); err != nil {
 		t.Fatalf("project NameAdded: %v", err)
 	}
 	return pn.ID
@@ -125,7 +129,7 @@ func TestUpdateName_NamelessRule(t *testing.T) {
 			ctx := context.Background()
 
 			personID := createPersonWithoutNames(t, eventStore, readStore, tt.given, tt.surname)
-			nameID := addNameDirectly(t, eventStore, readStore, personID, tt.given, tt.surname)
+			nameID := addNameDirectly(t, eventStore, readStore, personID, tt.given, tt.surname, true)
 			input := tt.input
 			input.PersonID = personID
 			input.NameID = nameID
@@ -143,5 +147,28 @@ func TestUpdateName_NamelessRule(t *testing.T) {
 				t.Errorf("name = %q/%q, want %q/%q", got.GivenName, got.Surname, tt.wantGiven, tt.wantSurname)
 			}
 		})
+	}
+}
+
+// Making a nameless alternate name primary would copy its empty parts onto a
+// named person, so it is refused like clearing the person's name (#1709).
+func TestUpdateName_PromotingNamelessNameKeepsPersonNamed(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	personID := createPersonWithoutNames(t, eventStore, readStore, "John", "Doe")
+	addNameDirectly(t, eventStore, readStore, personID, "John", "Doe", true)
+	namelessID := addNameDirectly(t, eventStore, readStore, personID, "", "", false)
+
+	primary := true
+	_, err := handler.UpdateName(ctx, command.UpdateNameInput{PersonID: personID, NameID: namelessID, IsPrimary: &primary})
+	if !errors.Is(err, command.ErrInvalidInput) {
+		t.Fatalf("UpdateName error = %v, want ErrInvalidInput", err)
+	}
+	got, _ := readStore.GetPerson(ctx, domain.MainBranchID, personID)
+	if got.GivenName != "John" || got.Surname != "Doe" {
+		t.Errorf("person name = %q/%q, want John/Doe", got.GivenName, got.Surname)
 	}
 }

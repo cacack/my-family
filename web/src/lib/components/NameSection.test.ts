@@ -214,6 +214,22 @@ describe('NameSection', () => {
 		});
 	});
 
+	it('refuses making a nameless name primary over a named one', async () => {
+		vi.mocked(apiModule.api.getPersonNames).mockResolvedValue({
+			items: [surnameless(), { ...surnameless(), id: 'n2', given_name: '', is_primary: false }],
+			total: 2
+		});
+		render(NameSection, { personId: PERSON_ID });
+		await screen.findByText('Victoria');
+		await fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[1]);
+
+		await fireEvent.click(screen.getByRole('checkbox', { name: 'Primary name' }));
+		await fireEvent.submit(screen.getByLabelText(/^Given Name/).closest('form')!);
+
+		expect(await screen.findByRole('alert')).toHaveProperty('textContent', 'Enter a given name or a surname');
+		expect(apiModule.api.updatePersonName).not.toHaveBeenCalled();
+	});
+
 	// The server refuses to delete the primary (or only) name (#1106).
 	describe('deleting a name', () => {
 		const alias = {
