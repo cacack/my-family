@@ -907,6 +907,23 @@ func (cw *countingWriter) Write(p []byte) (n int, err error) {
 	return n, err
 }
 
+// publicationText builds a source's PUBL value. GEDCOM 5.5.1 and 7 have no tag
+// for a source's publication date; PUBL is free text that conventionally holds
+// publisher, place and date together, so an entered publish date is appended
+// to the publisher ("Government Printing Office, 1901"), or stands alone when
+// there is no publisher (#1703). A publisher that already ends with the date
+// (e.g. imported "London, 1900") is written as is, so the date is not doubled.
+func publicationText(publisher, publishDate string) string {
+	switch {
+	case publishDate == "", strings.HasSuffix(publisher, publishDate):
+		return publisher
+	case publisher == "":
+		return publishDate
+	default:
+		return publisher + ", " + publishDate
+	}
+}
+
 // toGedcomSource converts a repository SourceReadModel to a gedcom.Source entity.
 // The encoder will automatically convert this to GEDCOM tags, handling CONT/CONC.
 //
@@ -928,10 +945,8 @@ func toGedcomSource(s repository.SourceReadModel, repoIDToXref map[uuid.UUID]str
 		src.Author = s.Author
 	}
 
-	// Publisher (as PUBL)
-	if s.Publisher != "" {
-		src.Publication = s.Publisher
-	}
+	// Publisher and publish date (as PUBL)
+	src.Publication = publicationText(s.Publisher, s.PublishDateRaw)
 
 	// Repository. Prefer the authoritative RepositoryID link (issue #525): it is
 	// robust against duplicate or renamed repository names. Fall back to name

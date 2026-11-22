@@ -434,8 +434,8 @@ func TestExport_WithSources(t *testing.T) {
 	if !strings.Contains(output, "1 AUTH John Clerk\n") {
 		t.Error("Output should contain source author")
 	}
-	if !strings.Contains(output, "1 PUBL County Archive\n") {
-		t.Error("Output should contain source publisher")
+	if !strings.Contains(output, "1 PUBL County Archive, 1850\n") {
+		t.Error("Output should contain source publisher and publish date")
 	}
 	if !strings.Contains(output, "1 REPO\n") {
 		t.Error("Output should contain REPO tag")
@@ -445,6 +445,65 @@ func TestExport_WithSources(t *testing.T) {
 	}
 	if !strings.Contains(output, "1 NOTE Important source\n") {
 		t.Error("Output should contain source notes")
+	}
+}
+
+func TestExport_SourcePublishDate(t *testing.T) {
+	// GEDCOM has no tag for a source's publish date, so an entered date goes
+	// into the free-text PUBL value with the publisher (#1703).
+	tests := []struct {
+		name        string
+		publisher   string
+		publishDate string
+		wantPubl    string // "" means no PUBL line
+	}{
+		{"publisher and date", "Government Printing Office", "1901", "1 PUBL Government Printing Office, 1901\n"},
+		{"date only", "", "ABT 1901", "1 PUBL ABT 1901\n"},
+		{"publisher only", "County Archive", "", "1 PUBL County Archive\n"},
+		{"publisher already ends with date", "London, 1900", "1900", "1 PUBL London, 1900\n"},
+		{"neither", "", "", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			readStore := memory.NewReadModelStore()
+			ctx := context.Background()
+			if err := readStore.SaveSource(ctx, domain.MainBranchID, &repository.SourceReadModel{
+				ID:             uuid.New(),
+				SourceType:     "book",
+				Title:          "Census Report",
+				Publisher:      tt.publisher,
+				PublishDateRaw: tt.publishDate,
+				GedcomXref:     "@S1@",
+			}); err != nil {
+				t.Fatal(err)
+			}
+
+			buf := &bytes.Buffer{}
+			if _, err := gedcom.NewExporter(readStore).Export(ctx, buf); err != nil {
+				t.Fatal(err)
+			}
+			output := buf.String()
+
+			// Isolate the 0 @S1@ SOUR record so the PUBL line is checked under it.
+			start := strings.Index(output, "0 @S1@ SOUR\n")
+			if start < 0 {
+				t.Fatalf("output has no 0 @S1@ SOUR record:\n%s", output)
+			}
+			record := output[start+len("0 @S1@ SOUR\n"):]
+			if end := strings.Index(record, "\n0 "); end >= 0 {
+				record = record[:end+1]
+			}
+
+			if tt.wantPubl == "" {
+				if strings.Contains(record, "1 PUBL") {
+					t.Errorf("source record should have no PUBL line:\n%s", record)
+				}
+				return
+			}
+			if !strings.Contains(record, tt.wantPubl) {
+				t.Errorf("source record missing %q:\n%s", tt.wantPubl, record)
+			}
+		})
 	}
 }
 
