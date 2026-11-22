@@ -441,8 +441,9 @@
 
 	// Keyboard shortcut handlers
 	const { handleKeydown } = createShortcutHandler('family-detail', {
+		// The Edit button is hidden from a viewer, so its shortcut is too (#1493).
 		'edit': () => {
-			if (!editing && family && !loading) {
+			if (!editing && family && !loading && can('editor')) {
 				startEdit();
 			}
 		},

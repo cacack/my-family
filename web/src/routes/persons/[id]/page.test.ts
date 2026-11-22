@@ -277,6 +277,18 @@ describe('Person detail by role (ADR-007)', () => {
 		expect(getPersonRestorePoints).not.toHaveBeenCalled();
 	});
 
+	it('ignores the edit and save shortcuts for a viewer (#1493)', async () => {
+		signInAs('viewer');
+		render(Page);
+
+		expect(await screen.findByRole('heading', { name: 'Ada Lovelace' })).toBeDefined();
+		await fireEvent.keyDown(window, { key: 'e' });
+		await fireEvent.keyDown(window, { key: 's' });
+
+		expect(screen.queryByLabelText('Given Name')).toBeNull();
+		expect(updatePerson).not.toHaveBeenCalled();
+	});
+
 	it('lets an editor change the person but not roll it back', async () => {
 		signInAs('editor');
 		render(Page);
