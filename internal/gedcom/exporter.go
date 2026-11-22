@@ -913,6 +913,9 @@ func (cw *countingWriter) Write(p []byte) (n int, err error) {
 // to the publisher ("Government Printing Office, 1901"), or stands alone when
 // there is no publisher (#1703). A publisher that already ends with the date
 // (e.g. imported "London, 1900") is written as is, so the date is not doubled.
+// The fold is one-way: import keeps the whole PUBL text as the publisher and
+// does not split a date back out (parseSource), so a re-imported source has
+// the date only as publisher text, not as a publish date.
 func publicationText(publisher, publishDate string) string {
 	switch {
 	case publishDate == "", strings.HasSuffix(publisher, publishDate):
