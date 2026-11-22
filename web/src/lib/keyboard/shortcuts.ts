@@ -17,6 +17,11 @@ export interface Shortcut {
 	description: string;
 	/** Context where this shortcut is active */
 	context: ShortcutContext;
+	/**
+	 * Leads to a page a visitor is refused (the change log, ADR-008 §4), so a
+	 * visitor can neither use it nor see it listed, like a `signedIn` NavLink.
+	 */
+	signedIn?: boolean;
 }
 
 /**
@@ -76,7 +81,8 @@ export const DEFAULT_SHORTCUTS: Shortcut[] = [
 		keys: ['g', 't'],
 		action: 'go-snapshots',
 		description: 'Go to research snapshots',
-		context: 'global'
+		context: 'global',
+		signedIn: true
 	},
 	{
 		keys: ['g', '/'],
@@ -286,6 +292,14 @@ export function getShortcutsForContext(context: ShortcutContext): Shortcut[] {
  */
 export function getGlobalShortcuts(): Shortcut[] {
 	return DEFAULT_SHORTCUTS.filter((shortcut) => shortcut.context === 'global');
+}
+
+/**
+ * Whether a shortcut is offered to the viewer: a visitor is not offered one
+ * marked `signedIn`.
+ */
+export function availableTo(shortcut: Shortcut, visitor: boolean): boolean {
+	return !(visitor && shortcut.signedIn);
 }
 
 /**
