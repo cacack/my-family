@@ -4399,6 +4399,9 @@ func (s *ReadModelStore) SaveMedia(ctx context.Context, branchID domain.BranchID
 		if _, err := tx.ExecContext(ctx, releaseBranchMediaBytes, media.ID, domain.MainBranchID.UUID()); err != nil {
 			return fmt.Errorf("release branch media bytes: %w", err)
 		}
+		if _, err := tx.ExecContext(ctx, syncBranchMediaContent, media.ID, domain.MainBranchID.UUID()); err != nil {
+			return fmt.Errorf("sync branch media content: %w", err)
+		}
 	}
 	return tx.Commit()
 }
@@ -4413,6 +4416,18 @@ const releaseBranchMediaBytes = `UPDATE media b SET
 	WHERE b.id = $1 AND b.branch_id <> $2 AND m.id = $1 AND m.branch_id = $2
 		AND ((b.file_data IS NOT NULL AND m.file_data IS NOT NULL)
 			OR (b.thumbnail_data IS NOT NULL AND m.thumbnail_data IS NOT NULL))`
+
+// syncBranchMediaContent copies the content facts (mime type, filename, size)
+// of main's row ($2) onto every non-main row of media $1 while main holds the
+// bytes, so a shadow describes the bytes it reads through the main fallback
+// even when a file was attached after the shadow was taken (ADR-005, #1504).
+const syncBranchMediaContent = `UPDATE media b SET
+		mime_type = m.mime_type, filename = m.filename, file_size = m.file_size
+	FROM media m
+	WHERE b.id = $1 AND b.branch_id <> $2 AND m.id = $1 AND m.branch_id = $2
+		AND m.file_data IS NOT NULL
+		AND (b.mime_type IS DISTINCT FROM m.mime_type OR b.filename IS DISTINCT FROM m.filename
+			OR b.file_size IS DISTINCT FROM m.file_size)`
 
 // DeleteMedia removes a media item on the given branch (ADR-005, #759). On a
 // non-main branch it writes a metadata-only tombstone and never touches main's
