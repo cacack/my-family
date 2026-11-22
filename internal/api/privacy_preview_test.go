@@ -164,3 +164,32 @@ func TestPrivacyPreview_OpenMode(t *testing.T) {
 		t.Errorf("health with a bad preview: %d, want 200 (public routes are not previewed)", rec.Code)
 	}
 }
+
+// Media bytes are never kept by the browser (#1578): the same URL serves the
+// owner and, during a preview, the principal they preview as, so a kept copy
+// would cross from one to the other when the preview starts or stops.
+func TestPrivacyPreview_MediaBytesAreNotCached(t *testing.T) {
+	f, tr, principals := redactionFixture(t, false)
+	owner := principals[0].cookie
+	for _, path := range []string{
+		"/api/v1/media/" + tr.deadMedia + "/content",
+		"/api/v1/media/" + tr.deadMedia + "/thumbnail",
+		"/api/v1/media/" + tr.livingMedia + "/content",
+		"/api/v1/media/" + tr.livingMedia + "/thumbnail",
+	} {
+		for _, as := range []string{"", "viewer", "visitor"} {
+			var more []*http.Cookie
+			if as != "" {
+				more = []*http.Cookie{previewCookie(as)}
+			}
+			rec := f.do(t, request{method: http.MethodGet, path: path, cookie: owner, more: more})
+			if got := rec.Header().Get("Cache-Control"); got != "no-store" {
+				t.Errorf("GET %s previewed as %q: %d with Cache-Control %q, want no-store", path, as, rec.Code, got)
+			}
+		}
+	}
+	// Other reads keep the default.
+	if got := f.do(t, request{method: http.MethodGet, path: "/api/v1/media/" + tr.deadMedia, cookie: owner}).Header().Get("Cache-Control"); got != "" {
+		t.Errorf("GET media metadata: Cache-Control %q, want none", got)
+	}
+}

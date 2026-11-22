@@ -249,6 +249,8 @@ func (s *Server) registerRoutes() {
 	s.echo.Use(refuseBranchScopedImport)
 	// Refuse a JSON null on an update field that cannot be cleared (#1359).
 	s.echo.Use(refuseNullOnRequiredFields)
+	// Media bytes depend on who asks, so the browser keeps none (#1578).
+	s.echo.Use(noStoreMedia)
 
 	// App config (outside generated routes)
 	api.GET("/config", s.getAppConfig)
