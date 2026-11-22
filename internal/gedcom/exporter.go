@@ -1182,7 +1182,8 @@ func toGedcomIndividual(p repository.PersonReadModel, names []repository.PersonN
 			detail := toGedcomEvent(events[i], true, sourceXrefs, citationAPIDs, readStore, ctx)
 			deathEvent.Cause, deathEvent.Age, deathEvent.Address = detail.Cause, detail.Age, detail.Address
 			// GEDCOM has no slot for a named event's descriptor, so it is
-			// written as the DEAT's last NOTE, as toGedcomEvent does (#1707).
+			// written as the DEAT's last NOTE, as toGedcomEvent does (#1707);
+			// re-import reads it into the death notes, moving field once.
 			deathEvent.NoteXRefs, deathEvent.InlineNotes = splitNotes(joinNotes(p.DeathNotes, events[i].Description), noteJoin)
 			deathEvent.SourceCitations = append(deathEvent.SourceCitations, detail.SourceCitations...)
 			events = slices.Delete(slices.Clone(events), i, i+1)
