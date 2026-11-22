@@ -193,3 +193,24 @@ func TestPrivacyPreview_MediaBytesAreNotCached(t *testing.T) {
 		t.Errorf("GET media metadata: Cache-Control %q, want none", got)
 	}
 }
+
+// Choosing a living home person during a viewer preview is answered as the
+// viewer's own choice is (#1578): while viewers do not see the living, both
+// get her placeholder back, never her details.
+func TestPrivacyPreview_HomePersonAsAViewer(t *testing.T) {
+	f, tr, principals := redactionFixture(t, false)
+	owner, viewer := principals[0].cookie, principals[2].cookie
+	body := fmt.Sprintf(`{"person_id":%q}`, tr.living)
+	want := f.do(t, request{method: http.MethodPut, path: "/api/v1/settings/home-person", cookie: viewer, body: body})
+	got := f.do(t, request{method: http.MethodPut, path: "/api/v1/settings/home-person", cookie: owner, body: body,
+		more: []*http.Cookie{previewCookie("viewer")}})
+	if got.Code != want.Code || got.Body.String() != want.Body.String() {
+		t.Errorf("PUT home person previewed as viewer: %d %s\nwant %d %s", got.Code, got.Body, want.Code, want.Body)
+	}
+	if want.Code != http.StatusOK {
+		t.Fatalf("viewer PUT home person: %d %s", want.Code, want.Body)
+	}
+	if person := decode[api.HomePerson](t, got).Person; person == nil || person.GivenName != repository.PlaceholderGivenName {
+		t.Errorf("home person previewed as viewer = %+v, want the placeholder", person)
+	}
+}
