@@ -3,7 +3,7 @@
 	import { tick } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
-	import { api, isVersionConflict, recordLoadError, type LoadFailure, type PersonDetail, type ChangeHistoryResponse, type Media, type ResearchStatus, type LivingOverride, type RollbackResponse, formatGenDate, formatPersonName, type Gender } from '#lib/api/client.js';
+	import { api, clearedNameError, isVersionConflict, recordLoadError, type LoadFailure, type PersonDetail, type ChangeHistoryResponse, type Media, type ResearchStatus, type LivingOverride, type RollbackResponse, formatGenDate, formatPersonName, type Gender } from '#lib/api/client.js';
 	import ChangeHistory from '#lib/components/ChangeHistory.svelte';
 	import RestorePointBrowser from '#lib/components/RestorePointBrowser.svelte';
 	import RollbackConfirmDialog from '#lib/components/RollbackConfirmDialog.svelte';
@@ -376,8 +376,9 @@
 
 	async function savePerson() {
 		if (!person) return;
+		saveError = clearedNameError(person, formData);
+		if (saveError) return;
 		saving = true;
-		saveError = null;
 		saveConflict.clear();
 		dateError = null;
 		// Loading the saved person resets the form, so the dates as typed are kept.
