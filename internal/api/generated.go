@@ -7871,6 +7871,19 @@ type AttachMediaContentMultipartBody struct {
 	File openapi_types.File `json:"file"`
 }
 
+// AttachMediaContentParams defines parameters for AttachMediaContent.
+type AttachMediaContentParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+}
+
 // GetMediaThumbnailParams defines parameters for GetMediaThumbnail.
 type GetMediaThumbnailParams struct {
 	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
@@ -9365,7 +9378,7 @@ type ServerInterface interface {
 	DownloadMedia(ctx echo.Context, id openapi_types.UUID, params DownloadMediaParams) error
 	// AttachMediaContent Attach a file to a reference-only media item
 	// (PUT /media/{id}/content)
-	AttachMediaContent(ctx echo.Context, id openapi_types.UUID) error
+	AttachMediaContent(ctx echo.Context, id openapi_types.UUID, params AttachMediaContentParams) error
 	// GetMediaThumbnail Get media thumbnail
 	// (GET /media/{id}/thumbnail)
 	GetMediaThumbnail(ctx echo.Context, id openapi_types.UUID, params GetMediaThumbnailParams) error
@@ -11849,8 +11862,17 @@ func (w *ServerInterfaceWrapper) AttachMediaContent(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params AttachMediaContentParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.AttachMediaContent(ctx, id)
+	err = w.Handler.AttachMediaContent(ctx, id, params)
 	return err
 }
 
@@ -21705,8 +21727,9 @@ func (response DownloadMedia503JSONResponse) VisitDownloadMediaResponse(w http.R
 }
 
 type AttachMediaContentRequestObject struct {
-	Id   openapi_types.UUID `json:"id"`
-	Body *multipart.Reader
+	Id     openapi_types.UUID `json:"id"`
+	Params AttachMediaContentParams
+	Body   *multipart.Reader
 }
 
 type AttachMediaContentResponseObject interface {
@@ -21769,7 +21792,7 @@ func (response AttachMediaContent404JSONResponse) VisitAttachMediaContentRespons
 	return err
 }
 
-type AttachMediaContent409JSONResponse struct{ ConflictJSONResponse }
+type AttachMediaContent409JSONResponse Error
 
 func (response AttachMediaContent409JSONResponse) VisitAttachMediaContentResponse(w http.ResponseWriter) error {
 
@@ -31907,10 +31930,11 @@ func (sh *strictHandler) DownloadMedia(ctx echo.Context, id openapi_types.UUID, 
 }
 
 // AttachMediaContent operation middleware
-func (sh *strictHandler) AttachMediaContent(ctx echo.Context, id openapi_types.UUID) error {
+func (sh *strictHandler) AttachMediaContent(ctx echo.Context, id openapi_types.UUID, params AttachMediaContentParams) error {
 	var request AttachMediaContentRequestObject
 
 	request.Id = id
+	request.Params = params
 
 	if reader, err := ctx.Request().MultipartReader(); err != nil {
 		return err

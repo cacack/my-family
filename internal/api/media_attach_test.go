@@ -164,3 +164,31 @@ func TestAttachMediaContent_Refusals(t *testing.T) {
 		t.Errorf("no file part: status = %d, want 400", rec.Code)
 	}
 }
+
+// TestAttachMediaContent_RefusedOnBranch: attaching is mainline-only, so a
+// ?branch= scope is refused with 409 attach_mainline_only rather than ignored,
+// and the mainline item is left without content.
+func TestAttachMediaContent_RefusedOnBranch(t *testing.T) {
+	server := setupBranchTestServer()
+	ref := importReference(t, server)
+	id := ref["id"].(string)
+	branchID := createBranch(t, server, "Research")
+
+	req, err := createMultipartRequest("/api/v1/media/"+id+"/content?branch="+branchID, "file", "wedding.jpg", createTestJPEGImage(), nil)
+	if err != nil {
+		t.Fatalf("build request: %v", err)
+	}
+	req.Method = http.MethodPut
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("attach on branch: status = %d (%s), want 409", rec.Code, rec.Body.String())
+	}
+	if code := decodeJSON(t, rec)["code"]; code != "attach_mainline_only" {
+		t.Errorf("attach on branch: code = %v, want attach_mainline_only", code)
+	}
+	got := decodeJSON(t, do(t, server, http.MethodGet, "/api/v1/media/"+id, ""))
+	if got["has_content"] != false || got["version"] != ref["version"] {
+		t.Errorf("after the refusal: has_content %v, version %v; want false and %v", got["has_content"], got["version"], ref["version"])
+	}
+}

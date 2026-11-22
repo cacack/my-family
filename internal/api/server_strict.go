@@ -2093,8 +2093,16 @@ func (ss *StrictServer) DownloadMedia(ctx context.Context, request DownloadMedia
 }
 
 // AttachMediaContent implements StrictServerInterface: it uploads the file of
-// a reference-only item in place (#1504). Mainline only, like GEDCOM import.
+// a reference-only item in place (#1504). Mainline-only: a ?branch= scope is
+// refused with 409 attach_mainline_only before the body is read.
 func (ss *StrictServer) AttachMediaContent(ctx context.Context, request AttachMediaContentRequestObject) (AttachMediaContentResponseObject, error) {
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
+	if branch != nil {
+		return AttachMediaContent409JSONResponse(errAttachMainlineOnly), nil
+	}
 	notFound := AttachMediaContent404JSONResponse{NotFoundJSONResponse{
 		Code:    "not_found",
 		Message: "Media not found",
@@ -2126,15 +2134,15 @@ func (ss *StrictServer) AttachMediaContent(ctx context.Context, request AttachMe
 		case isMediaNotFound(err):
 			return notFound, nil
 		case errors.Is(err, command.ErrMediaHasContent):
-			return AttachMediaContent409JSONResponse{ConflictJSONResponse{
+			return AttachMediaContent409JSONResponse{
 				Code:    "has_content",
 				Message: "Media already has stored file content",
-			}}, nil
+			}, nil
 		case errors.Is(err, repository.ErrConcurrencyConflict):
-			return AttachMediaContent409JSONResponse{ConflictJSONResponse{
+			return AttachMediaContent409JSONResponse{
 				Code:    CodeVersionConflict,
 				Message: "Version conflict - entity was modified",
-			}}, nil
+			}, nil
 		}
 		return nil, err
 	}
@@ -4117,6 +4125,14 @@ func (ss *StrictServer) GetStatistics(ctx context.Context, request GetStatistics
 // ============================================================================
 // Conversion helpers
 // ============================================================================
+
+// errAttachMainlineOnly is the 409 body for an attach request that carries a
+// ?branch= scope. Attaching writes the bytes onto main's row, the item's origin
+// row (ADR-005, #1504), so honoring a branch would write to main.
+var errAttachMainlineOnly = Error{
+	Code:    "attach_mainline_only",
+	Message: "Attaching a file is mainline-only; switch to the mainline to attach it",
+}
 
 // errRollbackMainlineOnly is the 409 body for a rollback or restore-point
 // request that carries a ?branch= scope. Rollback stays mainline-only

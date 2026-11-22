@@ -1086,7 +1086,10 @@ export interface paths {
          *     file's, and an image gets a thumbnail. The file is checked as an
          *     upload is (`uploadPersonMedia`). An item that already has content is
          *     refused with 409 and code `has_content`; replacing content is not
-         *     supported. Mainline only: research branches are not supported.
+         *     supported.
+         *
+         *     Attaching is mainline-only (ADR-005): with `?branch=` the request is
+         *     refused with 409 `attach_mainline_only` and nothing is read or written.
          */
         put: operations["attachMediaContent"];
         post?: never;
@@ -9787,7 +9790,19 @@ export interface operations {
     };
     attachMediaContent: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
+                 */
+                branch?: components["parameters"]["branchScope"];
+            };
             header?: never;
             path: {
                 /** @description Media ID */
@@ -9819,7 +9834,19 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
-            409: components["responses"]["Conflict"];
+            /**
+             * @description The item already has content (`has_content`), a concurrent write
+             *     changed it (`VERSION_CONFLICT`), or a `?branch=` scope was supplied
+             *     (`attach_mainline_only`)
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
             503: components["responses"]["SetupRequired"];
         };
     };
