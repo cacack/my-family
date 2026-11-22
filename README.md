@@ -261,7 +261,8 @@ both buttons wait while the page has unsaved changes. While a banner says so, th
 the owner as it answers that principal (the `myfamily_preview` cookie, `viewer` or `visitor`,
 which it ignores for anyone else), so every page shows exactly what the API returns to them and
 the controls they may not use are hidden. What they may not call is refused with 403 rather than
-401, so the owner stays signed in. **Stop preview**, or signing out, ends it.
+401, so the owner stays signed in. **Stop preview**, or signing out, ends it, and the next
+sign-in always starts as the owner, even after a session that expired mid-preview.
 
 #### Visitors
 

@@ -21,6 +21,8 @@ const sessionCookieName = "myfamily_session"
 // previewCookieName is the cookie an owner's browser carries while the owner
 // previews the tree as someone else (#1413): previewViewer or previewVisitor.
 // The web app sets and clears it; the server only reads it (servePreview).
+// The name and values are also defined in web/src/lib/stores/auth.svelte.ts;
+// TestPreviewCookieMatchesWebApp keeps the two in step.
 const previewCookieName = "myfamily_preview"
 
 // The principals an owner may preview the tree as.
