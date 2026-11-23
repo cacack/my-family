@@ -13,7 +13,8 @@ vi.mock('#lib/api/client.js', async (importOriginal) => {
 			getSource: vi.fn(),
 			updateSource: vi.fn(),
 			deleteSource: vi.fn(),
-			listSourceMedia: vi.fn(async () => ({ items: [], total: 0 }))
+			listSourceMedia: vi.fn(async () => ({ items: [], total: 0 })),
+			uploadSourceMedia: vi.fn()
 		}
 	};
 });
@@ -232,7 +233,7 @@ describe('Source detail page: save and delete feedback (#1113)', () => {
 	});
 });
 
-describe('Source detail page: media gallery (#1505)', () => {
+describe('Source detail page: media gallery (#1505, #1538)', () => {
 	const api = apiModule.api;
 	// A GEDCOM-imported reference: a title and a path, no stored file.
 	const scan = {
@@ -265,12 +266,30 @@ describe('Source detail page: media gallery (#1505)', () => {
 		expect(api.listSourceMedia).toHaveBeenCalledWith('src-1');
 	});
 
-	it('offers an editor no upload control until sources take uploads (#1538)', async () => {
+	it('lets an editor upload to the source from its gallery and shows the new item (#1538)', async () => {
 		signInAs('editor');
+		const uploaded = { ...scan, id: 'm-new', title: 'Certificate', has_content: true, files: undefined };
+		vi.mocked(api.uploadSourceMedia).mockResolvedValue(uploaded);
 		render(SourcePage);
 
 		await screen.findByRole('button', { name: /^View Census page/ });
-		expect(screen.getByRole('button', { name: 'Delete Census page' })).toBeDefined();
+		expect(screen.getByRole('heading', { name: 'Upload Media' })).toBeDefined();
+		const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+		const file = new File(['x'], 'certificate.pdf', { type: 'application/pdf' });
+		Object.defineProperty(input, 'files', { value: [file], configurable: true });
+		await fireEvent.change(input);
+		await fireEvent.input(screen.getByPlaceholderText('Enter a title for this media'), { target: { value: 'Certificate' } });
+		await fireEvent.click(screen.getByRole('button', { name: 'Upload' }));
+
+		expect(api.uploadSourceMedia).toHaveBeenCalledWith('src-1', file, 'Certificate', undefined, 'document');
+		expect(await screen.findByRole('button', { name: 'View Certificate' })).toBeDefined();
+	});
+
+	it('offers a viewer no upload control (#1538)', async () => {
+		signInAs('viewer');
+		render(SourcePage);
+
+		await screen.findByRole('button', { name: /^View Census page/ });
 		expect(screen.queryByRole('heading', { name: 'Upload Media' })).toBeNull();
 		expect(document.querySelector('input[type="file"]')).toBeNull();
 	});

@@ -4926,6 +4926,21 @@ type MediaUpdate struct {
 	Version int64 `json:"version"`
 }
 
+// MediaUpload A new media item's file and metadata, uploaded to its owner.
+type MediaUpload struct {
+	// Description Optional description
+	Description *string `json:"description,omitempty"`
+
+	// File The file to upload (max 10MB)
+	File openapi_types.File `json:"file"`
+
+	// MediaType Category of media
+	MediaType *MediaType `json:"media_type,omitempty"`
+
+	// Title Display title for the media
+	Title string `json:"title"`
+}
+
 // MergeBlocker One cross-entity reference a merge (or resume) would break (#831): the
 // entity whose branch changes break it, and the entity it references or
 // would cascade onto.
@@ -7720,6 +7735,19 @@ type ListFamilyMediaParams struct {
 	Offset *OffsetParam `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
+// UploadFamilyMediaParams defines parameters for UploadFamilyMedia.
+type UploadFamilyMediaParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+}
+
 // GetFamilyRestorePointsParams defines parameters for GetFamilyRestorePoints.
 type GetFamilyRestorePointsParams struct {
 	Limit  *LimitParam  `form:"limit,omitempty" json:"limit,omitempty"`
@@ -8247,21 +8275,6 @@ type ListPersonMediaParams struct {
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 	Limit  *LimitParam  `form:"limit,omitempty" json:"limit,omitempty"`
 	Offset *OffsetParam `form:"offset,omitempty" json:"offset,omitempty"`
-}
-
-// UploadPersonMediaMultipartBody defines parameters for UploadPersonMedia.
-type UploadPersonMediaMultipartBody struct {
-	// Description Optional description
-	Description *string `json:"description,omitempty"`
-
-	// File The file to upload (max 10MB)
-	File openapi_types.File `json:"file"`
-
-	// MediaType Category of media
-	MediaType *MediaType `json:"media_type,omitempty"`
-
-	// Title Display title for the media
-	Title string `json:"title"`
 }
 
 // UploadPersonMediaParams defines parameters for UploadPersonMedia.
@@ -8875,6 +8888,19 @@ type ListSourceMediaParams struct {
 	Offset *OffsetParam `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
+// UploadSourceMediaParams defines parameters for UploadSourceMedia.
+type UploadSourceMediaParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+}
+
 // GetSourceRestorePointsParams defines parameters for GetSourceRestorePoints.
 type GetSourceRestorePointsParams struct {
 	Limit  *LimitParam  `form:"limit,omitempty" json:"limit,omitempty"`
@@ -8999,6 +9025,9 @@ type UpdateFamilyJSONRequestBody = FamilyUpdate
 // AddChildToFamilyJSONRequestBody defines body for AddChildToFamily for application/json ContentType.
 type AddChildToFamilyJSONRequestBody = AddChild
 
+// UploadFamilyMediaMultipartRequestBody defines body for UploadFamilyMedia for multipart/form-data ContentType.
+type UploadFamilyMediaMultipartRequestBody = MediaUpload
+
 // RollbackFamilyJSONRequestBody defines body for RollbackFamily for application/json ContentType.
 type RollbackFamilyJSONRequestBody = RollbackRequest
 
@@ -9048,7 +9077,7 @@ type UpdatePersonJSONRequestBody = PersonUpdate
 type SetPersonBrickWallJSONRequestBody SetPersonBrickWallJSONBody
 
 // UploadPersonMediaMultipartRequestBody defines body for UploadPersonMedia for multipart/form-data ContentType.
-type UploadPersonMediaMultipartRequestBody UploadPersonMediaMultipartBody
+type UploadPersonMediaMultipartRequestBody = MediaUpload
 
 // AddPersonNameJSONRequestBody defines body for AddPersonName for application/json ContentType.
 type AddPersonNameJSONRequestBody = PersonNameCreate
@@ -9091,6 +9120,9 @@ type CreateSourceJSONRequestBody = SourceCreate
 
 // UpdateSourceJSONRequestBody defines body for UpdateSource for application/json ContentType.
 type UpdateSourceJSONRequestBody = SourceUpdate
+
+// UploadSourceMediaMultipartRequestBody defines body for UploadSourceMedia for multipart/form-data ContentType.
+type UploadSourceMediaMultipartRequestBody = MediaUpload
 
 // RollbackSourceJSONRequestBody defines body for RollbackSource for application/json ContentType.
 type RollbackSourceJSONRequestBody = RollbackRequest
@@ -9349,6 +9381,9 @@ type ServerInterface interface {
 	// ListFamilyMedia List media attached to a family
 	// (GET /families/{id}/media)
 	ListFamilyMedia(ctx echo.Context, id FamilyId, params ListFamilyMediaParams) error
+	// UploadFamilyMedia Upload media to a family
+	// (POST /families/{id}/media)
+	UploadFamilyMedia(ctx echo.Context, id FamilyId, params UploadFamilyMediaParams) error
 	// GetFamilyRestorePoints Get restore points for a family
 	// (GET /families/{id}/restore-points)
 	GetFamilyRestorePoints(ctx echo.Context, id FamilyId, params GetFamilyRestorePointsParams) error
@@ -9646,6 +9681,9 @@ type ServerInterface interface {
 	// ListSourceMedia List media attached to a source
 	// (GET /sources/{id}/media)
 	ListSourceMedia(ctx echo.Context, id openapi_types.UUID, params ListSourceMediaParams) error
+	// UploadSourceMedia Upload media to a source
+	// (POST /sources/{id}/media)
+	UploadSourceMedia(ctx echo.Context, id openapi_types.UUID, params UploadSourceMediaParams) error
 	// GetSourceRestorePoints Get restore points for a source
 	// (GET /sources/{id}/restore-points)
 	GetSourceRestorePoints(ctx echo.Context, id openapi_types.UUID, params GetSourceRestorePointsParams) error
@@ -11495,6 +11533,31 @@ func (w *ServerInterfaceWrapper) ListFamilyMedia(ctx echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.ListFamilyMedia(ctx, id, params)
+	return err
+}
+
+// UploadFamilyMedia converts echo context to params.
+func (w *ServerInterfaceWrapper) UploadFamilyMedia(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id FamilyId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: ctx.Request().URL.RawPath == ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params UploadFamilyMediaParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.UploadFamilyMedia(ctx, id, params)
 	return err
 }
 
@@ -14038,6 +14101,31 @@ func (w *ServerInterfaceWrapper) ListSourceMedia(ctx echo.Context) error {
 	return err
 }
 
+// UploadSourceMedia converts echo context to params.
+func (w *ServerInterfaceWrapper) UploadSourceMedia(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: ctx.Request().URL.RawPath == ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params UploadSourceMediaParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.UploadSourceMedia(ctx, id, params)
+	return err
+}
+
 // GetSourceRestorePoints converts echo context to params.
 func (w *ServerInterfaceWrapper) GetSourceRestorePoints(ctx echo.Context) error {
 	var err error
@@ -14354,7 +14442,9 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 	router.GET(options.BaseURL+"/persons/:id/media", wrapper.ListPersonMedia, options.OperationMiddlewares["listPersonMedia"]...)
 	router.POST(options.BaseURL+"/persons/:id/media", wrapper.UploadPersonMedia, options.OperationMiddlewares["uploadPersonMedia"]...)
 	router.GET(options.BaseURL+"/families/:id/media", wrapper.ListFamilyMedia, options.OperationMiddlewares["listFamilyMedia"]...)
+	router.POST(options.BaseURL+"/families/:id/media", wrapper.UploadFamilyMedia, options.OperationMiddlewares["uploadFamilyMedia"]...)
 	router.GET(options.BaseURL+"/sources/:id/media", wrapper.ListSourceMedia, options.OperationMiddlewares["listSourceMedia"]...)
+	router.POST(options.BaseURL+"/sources/:id/media", wrapper.UploadSourceMedia, options.OperationMiddlewares["uploadSourceMedia"]...)
 	router.DELETE(options.BaseURL+"/media/:id", wrapper.DeleteMedia, options.OperationMiddlewares["deleteMedia"]...)
 	router.GET(options.BaseURL+"/media/:id", wrapper.GetMedia, options.OperationMiddlewares["getMedia"]...)
 	router.PUT(options.BaseURL+"/media/:id", wrapper.UpdateMedia, options.OperationMiddlewares["updateMedia"]...)
@@ -20354,6 +20444,100 @@ func (response ListFamilyMedia404JSONResponse) VisitListFamilyMediaResponse(w ht
 type ListFamilyMedia503JSONResponse struct{ SetupRequiredJSONResponse }
 
 func (response ListFamilyMedia503JSONResponse) VisitListFamilyMediaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UploadFamilyMediaRequestObject struct {
+	Id     FamilyId `json:"id"`
+	Params UploadFamilyMediaParams
+	Body   *multipart.Reader
+}
+
+type UploadFamilyMediaResponseObject interface {
+	VisitUploadFamilyMediaResponse(w http.ResponseWriter) error
+}
+
+type UploadFamilyMedia201JSONResponse Media
+
+func (response UploadFamilyMedia201JSONResponse) VisitUploadFamilyMediaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UploadFamilyMedia400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response UploadFamilyMedia400JSONResponse) VisitUploadFamilyMediaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UploadFamilyMedia401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response UploadFamilyMedia401JSONResponse) VisitUploadFamilyMediaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UploadFamilyMedia404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response UploadFamilyMedia404JSONResponse) VisitUploadFamilyMediaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UploadFamilyMedia413JSONResponse Error
+
+func (response UploadFamilyMedia413JSONResponse) VisitUploadFamilyMediaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(413)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UploadFamilyMedia503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response UploadFamilyMedia503JSONResponse) VisitUploadFamilyMediaResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -27543,6 +27727,100 @@ func (response ListSourceMedia503JSONResponse) VisitListSourceMediaResponse(w ht
 	return err
 }
 
+type UploadSourceMediaRequestObject struct {
+	Id     openapi_types.UUID `json:"id"`
+	Params UploadSourceMediaParams
+	Body   *multipart.Reader
+}
+
+type UploadSourceMediaResponseObject interface {
+	VisitUploadSourceMediaResponse(w http.ResponseWriter) error
+}
+
+type UploadSourceMedia201JSONResponse Media
+
+func (response UploadSourceMedia201JSONResponse) VisitUploadSourceMediaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UploadSourceMedia400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response UploadSourceMedia400JSONResponse) VisitUploadSourceMediaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UploadSourceMedia401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response UploadSourceMedia401JSONResponse) VisitUploadSourceMediaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UploadSourceMedia404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response UploadSourceMedia404JSONResponse) VisitUploadSourceMediaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UploadSourceMedia413JSONResponse Error
+
+func (response UploadSourceMedia413JSONResponse) VisitUploadSourceMediaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(413)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UploadSourceMedia503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response UploadSourceMedia503JSONResponse) VisitUploadSourceMediaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetSourceRestorePointsRequestObject struct {
 	Id     openapi_types.UUID `json:"id"`
 	Params GetSourceRestorePointsParams
@@ -28630,6 +28908,9 @@ type StrictServerInterface interface {
 	// ListFamilyMedia List media attached to a family
 	// (GET /families/{id}/media)
 	ListFamilyMedia(ctx context.Context, request ListFamilyMediaRequestObject) (ListFamilyMediaResponseObject, error)
+	// UploadFamilyMedia Upload media to a family
+	// (POST /families/{id}/media)
+	UploadFamilyMedia(ctx context.Context, request UploadFamilyMediaRequestObject) (UploadFamilyMediaResponseObject, error)
 	// GetFamilyRestorePoints Get restore points for a family
 	// (GET /families/{id}/restore-points)
 	GetFamilyRestorePoints(ctx context.Context, request GetFamilyRestorePointsRequestObject) (GetFamilyRestorePointsResponseObject, error)
@@ -28927,6 +29208,9 @@ type StrictServerInterface interface {
 	// ListSourceMedia List media attached to a source
 	// (GET /sources/{id}/media)
 	ListSourceMedia(ctx context.Context, request ListSourceMediaRequestObject) (ListSourceMediaResponseObject, error)
+	// UploadSourceMedia Upload media to a source
+	// (POST /sources/{id}/media)
+	UploadSourceMedia(ctx context.Context, request UploadSourceMediaRequestObject) (UploadSourceMediaResponseObject, error)
 	// GetSourceRestorePoints Get restore points for a source
 	// (GET /sources/{id}/restore-points)
 	GetSourceRestorePoints(ctx context.Context, request GetSourceRestorePointsRequestObject) (GetSourceRestorePointsResponseObject, error)
@@ -31583,6 +31867,38 @@ func (sh *strictHandler) ListFamilyMedia(ctx echo.Context, id FamilyId, params L
 		return err
 	} else if validResponse, ok := response.(ListFamilyMediaResponseObject); ok {
 		return validResponse.VisitListFamilyMediaResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// UploadFamilyMedia operation middleware
+func (sh *strictHandler) UploadFamilyMedia(ctx echo.Context, id FamilyId, params UploadFamilyMediaParams) error {
+	var request UploadFamilyMediaRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	if reader, err := ctx.Request().MultipartReader(); err != nil {
+		return err
+	} else {
+		request.Body = reader
+	}
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.UploadFamilyMedia(ctx.Request().Context(), request.(UploadFamilyMediaRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UploadFamilyMedia")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(UploadFamilyMediaResponseObject); ok {
+		return validResponse.VisitUploadFamilyMediaResponse(ctx.Response())
 	} else if response != nil {
 		return fmt.Errorf("unexpected response type: %T", response)
 	}
@@ -34751,6 +35067,38 @@ func (sh *strictHandler) ListSourceMedia(ctx echo.Context, id openapi_types.UUID
 		return err
 	} else if validResponse, ok := response.(ListSourceMediaResponseObject); ok {
 		return validResponse.VisitListSourceMediaResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// UploadSourceMedia operation middleware
+func (sh *strictHandler) UploadSourceMedia(ctx echo.Context, id openapi_types.UUID, params UploadSourceMediaParams) error {
+	var request UploadSourceMediaRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	if reader, err := ctx.Request().MultipartReader(); err != nil {
+		return err
+	} else {
+		request.Body = reader
+	}
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.UploadSourceMedia(ctx.Request().Context(), request.(UploadSourceMediaRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UploadSourceMedia")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(UploadSourceMediaResponseObject); ok {
+		return validResponse.VisitUploadSourceMediaResponse(ctx.Response())
 	} else if response != nil {
 		return fmt.Errorf("unexpected response type: %T", response)
 	}

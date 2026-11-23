@@ -2,14 +2,11 @@
 	import { can } from '#lib/stores/access.svelte.js';
 	import { api, isReferenceOnly, isStaleVersion, type Media } from '#lib/api/client.js';
 	import { Button } from '#lib/components/ui/button/index.js';
-	import MediaUpload from './MediaUpload.svelte';
+	import MediaUpload, { type MediaOwnerType } from './MediaUpload.svelte';
 	import MediaLightbox from './MediaLightbox.svelte';
 	import ConflictError from './ConflictError.svelte';
 	import ConfirmDialog from './ConfirmDialog.svelte';
 	import PrivacyBadges from './PrivacyBadges.svelte';
-
-	/** The record kinds that own media. Only a person takes uploads so far (#1538). */
-	type MediaOwnerType = 'person' | 'family' | 'source';
 
 	interface Props {
 		ownerType: MediaOwnerType;
@@ -25,7 +22,7 @@
 		source: (id: string) => api.listSourceMedia(id)
 	} satisfies Record<MediaOwnerType, (id: string) => Promise<{ items: Media[] }>>;
 
-	let canUpload = $derived(ownerType === 'person' && can('editor'));
+	let canUpload = $derived(can('editor'));
 
 	let mediaItems: Media[] = $state([]);
 	let loading = $state(true);
@@ -144,7 +141,7 @@
 
 <div class="media-gallery">
 	{#if canUpload}
-		<MediaUpload personId={ownerId} onUpload={handleUpload} />
+		<MediaUpload {ownerType} {ownerId} onUpload={handleUpload} />
 	{/if}
 
 	{#if conflictError}
@@ -168,7 +165,7 @@
 				<circle cx="8.5" cy="8.5" r="1.5" />
 				<polyline points="21 15 16 10 5 21" />
 			</svg>
-			<p>No media yet.{#if canUpload} Upload photos and documents.{/if}</p>
+			<p>{canUpload ? 'No media yet. Upload photos and documents.' : 'No media yet.'}</p>
 		</div>
 	{:else}
 		<div class="gallery-grid" role="list" aria-label="Media gallery">

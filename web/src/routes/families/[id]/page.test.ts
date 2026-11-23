@@ -33,7 +33,8 @@ vi.mock('#lib/api/client.js', async (importOriginal) => {
 			addChildToFamily: vi.fn(),
 			removeChildFromFamily: vi.fn(),
 			searchPersons: vi.fn(),
-			listFamilyMedia: vi.fn(async () => ({ items: [], total: 0 }))
+			listFamilyMedia: vi.fn(async () => ({ items: [], total: 0 })),
+			uploadFamilyMedia: vi.fn()
 		}
 	};
 });
@@ -945,7 +946,7 @@ describe('Family Detail Page: failed actions (#899)', () => {
 	});
 });
 
-describe('Family Detail Page: media gallery (#1505)', () => {
+describe('Family Detail Page: media gallery (#1505, #1538)', () => {
 	const api = apiModule.api;
 	// A GEDCOM-imported reference: a title and a path, no stored file.
 	const wedding = {
@@ -980,12 +981,30 @@ describe('Family Detail Page: media gallery (#1505)', () => {
 		expect(api.listFamilyMedia).toHaveBeenCalledWith('test-family-id');
 	});
 
-	it('offers an editor no upload control until families take uploads (#1538)', async () => {
+	it('lets an editor upload to the family from its gallery and shows the new item (#1538)', async () => {
 		signInAs('editor');
+		const uploaded = { ...wedding, id: 'm-new', title: 'Certificate', has_content: true, files: undefined };
+		vi.mocked(api.uploadFamilyMedia).mockResolvedValue(uploaded);
 		render(FamilyPage);
 
 		await screen.findByRole('button', { name: /^View Wedding/ });
-		expect(screen.getByRole('button', { name: 'Delete Wedding' })).toBeDefined();
+		expect(screen.getByRole('heading', { name: 'Upload Media' })).toBeDefined();
+		const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+		const file = new File(['x'], 'certificate.pdf', { type: 'application/pdf' });
+		Object.defineProperty(input, 'files', { value: [file], configurable: true });
+		await fireEvent.change(input);
+		await fireEvent.input(screen.getByPlaceholderText('Enter a title for this media'), { target: { value: 'Certificate' } });
+		await fireEvent.click(screen.getByRole('button', { name: 'Upload' }));
+
+		expect(api.uploadFamilyMedia).toHaveBeenCalledWith('test-family-id', file, 'Certificate', undefined, 'document');
+		expect(await screen.findByRole('button', { name: 'View Certificate' })).toBeDefined();
+	});
+
+	it('offers a viewer no upload control (#1538)', async () => {
+		signInAs('viewer');
+		render(FamilyPage);
+
+		await screen.findByRole('button', { name: /^View Wedding/ });
 		expect(screen.queryByRole('heading', { name: 'Upload Media' })).toBeNull();
 		expect(document.querySelector('input[type="file"]')).toBeNull();
 	});

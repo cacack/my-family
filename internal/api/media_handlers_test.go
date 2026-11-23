@@ -1099,3 +1099,74 @@ func TestListFamilyAndSourceMedia_ViewerPrivacy(t *testing.T) {
 		}
 	}
 }
+
+// uploadForm is a multipart media upload of a JPEG titled title, with its
+// Content-Type header.
+func uploadForm(t *testing.T, title string) (body string, header map[string]string) {
+	t.Helper()
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	part, _ := w.CreateFormFile("file", "scan.jpg")
+	_, _ = part.Write(createTestJPEGImage())
+	_ = w.WriteField("title", title)
+	_ = w.Close()
+	return buf.String(), map[string]string{"Content-Type": w.FormDataContentType()}
+}
+
+// TestUploadFamilyAndSourceMedia uploads to a family and a source as an
+// editor: each item is created for its owner and listed there, an unknown
+// owner is not found, and a viewer is refused (#1538).
+func TestUploadFamilyAndSourceMedia(t *testing.T) {
+	f, cookies := rolesFixture(t)
+	editor, viewer := cookies[repository.RoleEditor], cookies[repository.RoleViewer]
+
+	created := func(path, body string) string {
+		t.Helper()
+		rec := f.do(t, request{method: http.MethodPost, path: path, body: body, cookie: editor})
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("POST %s: %d %s", path, rec.Code, rec.Body)
+		}
+		return decode[map[string]any](t, rec)["id"].(string)
+	}
+	personID := created("/api/v1/persons", `{"given_name":"Ada","surname":"Lovelace"}`)
+	owners := []struct{ entityType, collection, id string }{
+		{"family", "families", created("/api/v1/families", fmt.Sprintf(`{"partner1_id":%q}`, personID))},
+		{"source", "sources", created("/api/v1/sources", `{"source_type":"book","title":"Parish register"}`)},
+	}
+
+	for _, o := range owners {
+		path := "/api/v1/" + o.collection + "/" + o.id + "/media"
+		body, header := uploadForm(t, "Certificate")
+		rec := f.do(t, request{method: http.MethodPost, path: path, body: body, header: header, cookie: editor})
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("editor POST %s: %d %s", path, rec.Code, rec.Body)
+		}
+		item := decode[map[string]any](t, rec)
+		if item["entity_type"] != o.entityType || item["entity_id"] != o.id || item["title"] != "Certificate" || item["has_content"] != true {
+			t.Errorf("POST %s = %v, want a %s item owned by %s with its content", path, item, o.entityType, o.id)
+		}
+
+		list := decode[map[string]any](t, f.do(t, request{method: http.MethodGet, path: path, cookie: viewer}))
+		if items := list["items"].([]any); len(items) != 1 || items[0].(map[string]any)["id"] != item["id"] {
+			t.Errorf("GET %s = %v, want the uploaded item", path, list)
+		}
+
+		body, header = uploadForm(t, "Certificate")
+		if rec := f.do(t, request{method: http.MethodPost, path: path, body: body, header: header, cookie: viewer}); !forbidden(rec) {
+			t.Errorf("viewer POST %s = %d %s, want 403", path, rec.Code, rec.Body)
+		}
+
+		unknown := "/api/v1/" + o.collection + "/00000000-0000-0000-0000-000000000001/media"
+		body, header = uploadForm(t, "Certificate")
+		if rec := f.do(t, request{method: http.MethodPost, path: unknown, body: body, header: header, cookie: editor}); rec.Code != http.StatusNotFound {
+			t.Errorf("editor POST %s = %d %s, want 404", unknown, rec.Code, rec.Body)
+		}
+
+		// A malformed upload is refused as for a person.
+		rec = f.do(t, request{method: http.MethodPost, path: path, body: "--x--\r\n", cookie: editor,
+			header: map[string]string{"Content-Type": "multipart/form-data; boundary=x"}})
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("POST %s with no file = %d %s, want 400", path, rec.Code, rec.Body)
+		}
+	}
+}

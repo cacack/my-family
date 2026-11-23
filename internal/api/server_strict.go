@@ -2681,14 +2681,7 @@ func (ss *StrictServer) UploadPersonMedia(ctx context.Context, request UploadPer
 		}}, nil
 	}
 
-	if request.Body == nil {
-		return UploadPersonMedia400JSONResponse{BadRequestJSONResponse{
-			Code:    "bad_request",
-			Message: "No file uploaded",
-		}}, nil
-	}
-
-	form, badRequest, err := readMediaUploadForm(request.Body)
+	media, badRequest, err := ss.uploadOwnerMedia(ctx, branch, "person", request.Id, request.Body)
 	if err != nil {
 		return nil, err
 	}
@@ -2698,10 +2691,87 @@ func (ss *StrictServer) UploadPersonMedia(ctx context.Context, request UploadPer
 			Message: badRequest,
 		}}, nil
 	}
+	return UploadPersonMedia201JSONResponse(media), nil
+}
+
+// UploadFamilyMedia implements StrictServerInterface (#1538).
+func (ss *StrictServer) UploadFamilyMedia(ctx context.Context, request UploadFamilyMediaRequestObject) (UploadFamilyMediaResponseObject, error) {
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeWrite)
+	if err != nil {
+		return nil, err
+	}
+
+	family, err := ss.server.readStore.GetFamily(ctx, branchScopeID(branch), request.Id)
+	if err != nil {
+		return nil, err
+	}
+	if family == nil {
+		return UploadFamilyMedia404JSONResponse{NotFoundJSONResponse{
+			Code:    "not_found",
+			Message: "Family not found",
+		}}, nil
+	}
+
+	media, badRequest, err := ss.uploadOwnerMedia(ctx, branch, "family", request.Id, request.Body)
+	if err != nil {
+		return nil, err
+	}
+	if badRequest != "" {
+		return UploadFamilyMedia400JSONResponse{BadRequestJSONResponse{
+			Code:    "bad_request",
+			Message: badRequest,
+		}}, nil
+	}
+	return UploadFamilyMedia201JSONResponse(media), nil
+}
+
+// UploadSourceMedia implements StrictServerInterface (#1538).
+func (ss *StrictServer) UploadSourceMedia(ctx context.Context, request UploadSourceMediaRequestObject) (UploadSourceMediaResponseObject, error) {
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeWrite)
+	if err != nil {
+		return nil, err
+	}
+
+	source, err := ss.server.readStore.GetSource(ctx, branchScopeID(branch), request.Id)
+	if err != nil {
+		return nil, err
+	}
+	if source == nil {
+		return UploadSourceMedia404JSONResponse{NotFoundJSONResponse{
+			Code:    "not_found",
+			Message: "Source not found",
+		}}, nil
+	}
+
+	media, badRequest, err := ss.uploadOwnerMedia(ctx, branch, "source", request.Id, request.Body)
+	if err != nil {
+		return nil, err
+	}
+	if badRequest != "" {
+		return UploadSourceMedia400JSONResponse{BadRequestJSONResponse{
+			Code:    "bad_request",
+			Message: badRequest,
+		}}, nil
+	}
+	return UploadSourceMedia201JSONResponse(media), nil
+}
+
+// uploadOwnerMedia creates a media item for the owner ownerType/id from an
+// upload body, in the branch's view, and returns it. The caller has found the
+// owner. It returns a non-empty badRequest message for a malformed upload.
+func (ss *StrictServer) uploadOwnerMedia(ctx context.Context, branch *domain.Branch, ownerType string, id uuid.UUID, body *multipart.Reader) (Media, string, error) {
+	if body == nil {
+		return Media{}, "No file uploaded", nil
+	}
+
+	form, badRequest, err := readMediaUploadForm(body)
+	if err != nil || badRequest != "" {
+		return Media{}, badRequest, err
+	}
 
 	result, err := ss.branchWriter(branch).UploadMedia(ctx, command.UploadMediaInput{
-		EntityType:  "person",
-		EntityID:    request.Id,
+		EntityType:  ownerType,
+		EntityID:    id,
 		Title:       form.title,
 		Description: form.description,
 		MediaType:   form.mediaType,
@@ -2709,18 +2779,17 @@ func (ss *StrictServer) UploadPersonMedia(ctx context.Context, request UploadPer
 		FileData:    form.fileData,
 	})
 	if err != nil {
-		return nil, err
+		return Media{}, "", err
 	}
 
 	media, err := ss.server.readStore.GetMedia(ctx, branchScopeID(branch), result.ID)
 	if err != nil {
-		return nil, err
+		return Media{}, "", err
 	}
 	if media == nil {
-		return nil, errors.New("failed to retrieve created media")
+		return Media{}, "", errors.New("failed to retrieve created media")
 	}
-
-	return UploadPersonMedia201JSONResponse(convertMediaReadModelToGenerated(*media)), nil
+	return convertMediaReadModelToGenerated(*media), "", nil
 }
 
 // maxMediaFormFieldSize caps each text part of a media upload (title,

@@ -1966,24 +1966,7 @@ paths:
         content:
           multipart/form-data:
             schema:
-              type: object
-              required:
-                - title
-                - file
-              properties:
-                title:
-                  type: string
-                  description: Display title for the media
-                  maxLength: 500
-                description:
-                  type: string
-                  description: Optional description
-                media_type:
-                  $ref: '#/components/schemas/MediaType'
-                file:
-                  type: string
-                  format: binary
-                  description: The file to upload (max 10MB)
+              $ref: '#/components/schemas/MediaUpload'
       responses:
         '201':
           description: Media uploaded successfully
@@ -2037,6 +2020,45 @@ paths:
         '503':
           $ref: '#/components/responses/SetupRequired'
 
+    post:
+      operationId: uploadFamilyMedia
+      x-min-role: editor
+      summary: Upload media to a family
+      description: |
+        Uploads a new media item for the family. With `?branch=` the item is
+        created on that branch only (and the family must exist there); the
+        uploaded bytes belong to that new item.
+      tags: [media]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/MediaUpload'
+      responses:
+        '201':
+          description: Media uploaded successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Media'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          description: File too large (max 10MB)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
+
   /sources/{id}/media:
     parameters:
       - name: id
@@ -2070,6 +2092,45 @@ paths:
           $ref: '#/components/responses/Unauthenticated'
         '404':
           $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
+
+    post:
+      operationId: uploadSourceMedia
+      x-min-role: editor
+      summary: Upload media to a source
+      description: |
+        Uploads a new media item for the source. With `?branch=` the item is
+        created on that branch only (and the source must exist there); the
+        uploaded bytes belong to that new item.
+      tags: [media]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/MediaUpload'
+      responses:
+        '201':
+          description: Media uploaded successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Media'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          description: File too large (max 10MB)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '503':
           $ref: '#/components/responses/SetupRequired'
 
@@ -7940,6 +8001,27 @@ components:
       type: string
       description: How the evidence bears on the fact per GPS standards
       enum: [direct, indirect, negative]
+
+    MediaUpload:
+      type: object
+      description: A new media item's file and metadata, uploaded to its owner.
+      required:
+        - title
+        - file
+      properties:
+        title:
+          type: string
+          description: Display title for the media
+          maxLength: 500
+        description:
+          type: string
+          description: Optional description
+        media_type:
+          $ref: '#/components/schemas/MediaType'
+        file:
+          type: string
+          format: binary
+          description: The file to upload (max 10MB)
 
     MediaType:
       type: string
