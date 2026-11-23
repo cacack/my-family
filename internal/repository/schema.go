@@ -21,7 +21,9 @@ import (
 //   - 1: the first stamped version (#680).
 //   - 2: persons store the living rule's inputs, derived from existing events
 //     (death evidence and reference date, ADR-008 / #1412).
-const ReadModelSchemaVersion = 2
+//   - 3: each place text has its matching key beside it, derived from existing
+//     events (ADR-009 §1 / #1733).
+const ReadModelSchemaVersion = 3
 
 // ErrReadModelSchemaMismatch is returned by CheckReadModelSchema when the
 // database's read model is not at ReadModelSchemaVersion.

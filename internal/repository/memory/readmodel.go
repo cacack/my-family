@@ -2273,39 +2273,30 @@ func (s *ReadModelStore) GetPersonsBySurname(ctx context.Context, surname string
 	return results, total, nil
 }
 
-// GetPlaceHierarchy returns places at a given level of hierarchy, aggregated over
-// branchID's overlay of persons (ADR-005).
+// GetPlaceHierarchy returns the places directly under parent, aggregated over
+// branchID's overlay of persons' birth and death places (ADR-005). The levels
+// are built by repository.PlaceLevels, as on the SQL stores; the memory store
+// has no key column and computes each key on read.
 func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, branchID domain.BranchID, parent string, privacy repository.Privacy) ([]repository.PlaceEntry, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	// Simple implementation: extract unique places
-	placeCount := make(map[string]int)
-
+	counts := make(map[string]int)
 	for _, p := range resolveAllRows(s.persons, branchID) {
 		if privacy.Protects(p) {
 			continue
 		}
 		for _, place := range []string{p.BirthPlace, p.DeathPlace} {
 			if place != "" {
-				placeCount[place]++
+				counts[place]++
 			}
 		}
 	}
-
-	entries := make([]repository.PlaceEntry, 0, len(placeCount))
-	for place, count := range placeCount {
-		entries = append(entries, repository.PlaceEntry{
-			Name:     place,
-			FullName: place,
-			Count:    count,
-		})
+	uses := make([]repository.PlaceUse, 0, len(counts))
+	for text, n := range counts {
+		uses = append(uses, repository.PlaceUse{Key: repository.PlaceKey(text), Text: text, Count: n})
 	}
-	sort.Slice(entries, func(i, j int) bool {
-		return entries[i].Name < entries[j].Name
-	})
-
-	return entries, nil
+	return repository.PlaceLevels(uses, parent), nil
 }
 
 // GetPersonsByPlace returns persons associated with a specific place from
@@ -2314,13 +2305,14 @@ func (s *ReadModelStore) GetPersonsByPlace(ctx context.Context, place string, op
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	// Match the SQL stores: compare normalized so a hierarchy full_name finds
-	// places stored without the space or with blank parts.
-	norm := repository.NormalizePlace
-	want := norm(place)
+	// A person is listed when their birth or death place is at or under the
+	// place (repository.PlaceUnder), as on the SQL stores.
+	want := repository.PlaceKey(place)
 	var results []repository.PersonReadModel
 	for _, p := range resolveAllRows(s.persons, opts.BranchID) {
-		if (strings.Contains(norm(p.BirthPlace), want) || strings.Contains(norm(p.DeathPlace), want)) && !opts.Privacy.Protects(p) {
+		under := repository.PlaceUnder(repository.PlaceKey(p.BirthPlace), want) ||
+			repository.PlaceUnder(repository.PlaceKey(p.DeathPlace), want)
+		if under && !opts.Privacy.Protects(p) {
 			results = append(results, *p)
 		}
 	}
@@ -2351,8 +2343,9 @@ func (s *ReadModelStore) GetPersonsByPlace(ctx context.Context, place string, op
 	return results, total, nil
 }
 
-// GetCemeteryIndex returns burial/cremation places with the number of distinct
-// owners placed there, counted over branchID's overlay of life events (ADR-005).
+// GetCemeteryIndex returns burial/cremation places, one per place key
+// (repository.CemeteryIndex), with the number of distinct owners placed there,
+// counted over branchID's overlay of life events (ADR-005).
 // A branch that tombstoned a person also tombstoned that person's life events
 // (DeletePerson's cascade), so the index agrees with GetPersonsByCemetery.
 func (s *ReadModelStore) GetCemeteryIndex(ctx context.Context, branchID domain.BranchID, privacy repository.Privacy) ([]repository.CemeteryEntry, error) {
@@ -2369,36 +2362,17 @@ func (s *ReadModelStore) GetCemeteryIndex(ctx context.Context, branchID domain.B
 		}
 	}
 
-	// Count distinct persons per place for burial/cremation events
-	placePersons := make(map[string]map[uuid.UUID]struct{})
+	var uses []repository.CemeteryUse
 	for _, e := range resolveAllRows(s.events, branchID) {
-		if e.Place == "" {
-			continue
-		}
 		if e.FactType != domain.FactPersonBurial && e.FactType != domain.FactPersonCremation {
 			continue
 		}
 		if shown != nil && !shown[e.OwnerID] {
 			continue
 		}
-		if _, ok := placePersons[e.Place]; !ok {
-			placePersons[e.Place] = make(map[uuid.UUID]struct{})
-		}
-		placePersons[e.Place][e.OwnerID] = struct{}{}
+		uses = append(uses, repository.CemeteryUse{Key: repository.PlaceKey(e.Place), Text: e.Place, OwnerID: e.OwnerID})
 	}
-
-	entries := make([]repository.CemeteryEntry, 0, len(placePersons))
-	for place, persons := range placePersons {
-		entries = append(entries, repository.CemeteryEntry{
-			Place: place,
-			Count: len(persons),
-		})
-	}
-	sort.Slice(entries, func(i, j int) bool {
-		return entries[i].Place < entries[j].Place
-	})
-
-	return entries, nil
+	return repository.CemeteryIndex(uses), nil
 }
 
 // GetPersonsByCemetery returns persons with burial/cremation events at the given
@@ -2409,14 +2383,15 @@ func (s *ReadModelStore) GetPersonsByCemetery(ctx context.Context, place string,
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	// Find distinct person IDs with matching burial/cremation events (exact
-	// case-insensitive match).
+	// Find distinct person IDs with burial/cremation events whose place has
+	// the cemetery's key.
+	want := repository.PlaceKey(place)
 	matchedIDs := make(map[uuid.UUID]struct{})
 	for _, e := range resolveAllRows(s.events, opts.BranchID) {
 		if e.FactType != domain.FactPersonBurial && e.FactType != domain.FactPersonCremation {
 			continue
 		}
-		if strings.EqualFold(e.Place, place) {
+		if want != "" && repository.PlaceKey(e.Place) == want {
 			matchedIDs[e.OwnerID] = struct{}{}
 		}
 	}
