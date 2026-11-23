@@ -11,6 +11,7 @@ import (
 	gedcomgo "github.com/cacack/gedcom-go/v3/gedcom"
 	"github.com/google/uuid"
 
+	"github.com/cacack/my-family/internal/command"
 	"github.com/cacack/my-family/internal/domain"
 	"github.com/cacack/my-family/internal/gedcom"
 	"github.com/cacack/my-family/internal/repository"
@@ -63,6 +64,35 @@ func TestImportMediaObject_RestrictionAndOwners(t *testing.T) {
 	}
 	if m2.Restriction != "" || len(m2.Owners) != 0 {
 		t.Errorf("@M2@ = restriction %q, owners %+v; want neither", m2.Restriction, m2.Owners)
+	}
+}
+
+// An inline OBJE link with no title takes its file's path as the title, and
+// one with no FILE describes no media and is skipped (#1479).
+func TestImportInlineMedia_TitleFallback(t *testing.T) {
+	const input = `0 HEAD
+1 GEDC
+2 VERS 5.5.1
+0 @I1@ INDI
+1 NAME A /B/
+1 OBJE
+2 FILE photos/a.jpg
+3 FORM jpg
+1 OBJE
+2 TITL Nothing here
+0 TRLR
+`
+	result, _, _, _, _, _, _, _, _, _, _, _, media, err := gedcom.NewImporter().Import(context.Background(), strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("import: %v", err)
+	}
+	if len(media) != 1 {
+		t.Fatalf("media = %+v, want one item", media)
+	}
+	m := media[0]
+	want := []gedcom.MediaOwner{{EntityType: "person", EntityID: result.PersonXrefToID["@I1@"]}}
+	if m.Title != "photos/a.jpg" || m.GedcomXref != "" || m.Format != "jpg" || !slices.Equal(m.Owners, want) {
+		t.Errorf("inline media = %+v, want photos/a.jpg owned by @I1@ with no xref", m)
 	}
 }
 
@@ -312,5 +342,102 @@ func TestExport_MediaGroupLinkedOncePerOwner(t *testing.T) {
 		if n := slices.IndexFunc(media[0].Owners, func(o gedcom.MediaOwner) bool { return o.EntityID == id }); n < 0 {
 			t.Errorf("%s is not an owner of the re-imported record: %+v", xref, media[0].Owners)
 		}
+	}
+}
+
+// Media linked below record level or inline imports as items of the record
+// that contains the link; an export writes each as an OBJE record linked from
+// that owner at record level, and re-importing it gives each owner the same
+// number of items (#1479).
+func TestExport_NestedAndInlineMediaRoundTrip(t *testing.T) {
+	const input = `0 HEAD
+1 GEDC
+2 VERS 5.5.1
+2 FORM LINEAGE-LINKED
+1 CHAR UTF-8
+0 @M1@ OBJE
+1 FILE birth.jpg
+2 FORM jpg
+2 TITL Birth certificate
+0 @M2@ OBJE
+1 FILE marriage.jpg
+2 FORM jpg
+2 TITL Marriage record
+0 @M3@ OBJE
+1 FILE census.jpg
+2 FORM jpg
+2 TITL Census page
+0 @S1@ SOUR
+1 TITL Census
+0 @I1@ INDI
+1 NAME John /Doe/
+1 OBJE @M1@
+1 OBJE
+2 FILE photos/john.jpg
+3 FORM jpg
+2 TITL John at ten
+1 BIRT
+2 OBJE @M1@
+2 SOUR @S1@
+3 OBJE @M3@
+1 OCCU Farmer
+2 OBJE
+3 FILE scans/work.pdf
+4 FORM pdf
+3 TITL Work record
+1 FAMS @F1@
+0 @F1@ FAM
+1 HUSB @I1@
+1 MARR
+2 OBJE @M2@
+0 TRLR
+`
+	ctx := context.Background()
+	rs := memory.NewReadModelStore()
+	if _, err := command.NewHandler(memory.NewEventStore(), rs).ImportGedcom(ctx, command.ImportGedcomInput{
+		Filename: "m.ged", Reader: strings.NewReader(input),
+	}); err != nil {
+		t.Fatalf("import: %v", err)
+	}
+	const personItems, familyItems = 4, 1 // @M1@, @M3@ and two inline; @M2@
+
+	for _, version := range []gedcomgo.Version{gedcomgo.Version55, gedcomgo.Version551, gedcomgo.Version70} {
+		t.Run(string(version), func(t *testing.T) {
+			var buf bytes.Buffer
+			result, err := gedcom.NewExporter(rs).ExportWithOptions(ctx, &buf, gedcom.ExportOptions{TargetVersion: version})
+			if err != nil {
+				t.Fatalf("export: %v", err)
+			}
+			out := buf.String()
+			if result.MediaExported != personItems+familyItems {
+				t.Errorf("media exported %d, want %d:\n%s", result.MediaExported, personItems+familyItems, out)
+			}
+			links := func(head string) int {
+				n := 0
+				for _, line := range recordOf(out, head) {
+					if strings.HasPrefix(line, "1 OBJE @") {
+						n++
+					}
+				}
+				return n
+			}
+			if p, f := links("0 @I1@ INDI"), links("0 @F1@ FAM"); p != personItems || f != familyItems {
+				t.Errorf("record-level OBJE links: person %d, family %d; want %d and %d:\n%s", p, f, personItems, familyItems, out)
+			}
+
+			imported, _, _, _, _, _, _, _, _, _, _, _, media, err := gedcom.NewImporter().Import(ctx, strings.NewReader(out))
+			if err != nil {
+				t.Fatalf("re-import: %v", err)
+			}
+			perOwner := map[uuid.UUID]int{}
+			for _, m := range media {
+				for _, o := range m.Owners {
+					perOwner[o.EntityID]++
+				}
+			}
+			if p, f := perOwner[imported.PersonXrefToID["@I1@"]], perOwner[imported.FamilyXrefToID["@F1@"]]; p != personItems || f != familyItems {
+				t.Errorf("re-imported items: person %d, family %d; want %d and %d", p, f, personItems, familyItems)
+			}
+		})
 	}
 }

@@ -233,6 +233,7 @@ func (h *Handler) ImportGedcom(ctx context.Context, input ImportGedcomInput) (*I
 	// Import media (after the persons, families and sources that own them).
 	// An OBJE record linked from several records becomes one item per owner,
 	// as a media item has one owner; one linked from none is not imported.
+	// An inline OBJE link is one item of the record that contains it.
 	// The items of one record share a group, which keeps their private mark
 	// in step (#1478).
 	for _, m := range media {
