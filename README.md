@@ -222,7 +222,10 @@ as GEDCOM 5.5 places them), as one item per person, family or source that links 
 them, whether at record level or under one of its events, attributes or citations; a media record nothing
 links to is skipped with a warning, and one with no `FILE` imports as a document, with a warning; export names an uploaded item that has no filename by its title. An inline `OBJE` (one with no record) that names a file imports as one item of the record
 that contains it. A link's own title (`TITL`) becomes that owner's item title, its note text joins the record's
-in the item's description, and its `CROP` becomes the item's crop; export writes the description as the
+in the item's description, and its `CROP` becomes the item's crop. A shared note the record or link points to
+(`NOTE @N1@`, or `SNOTE @N1@` in 7.0) has its text copied into the description, ahead of the inline text; the item
+keeps no link to the note, so a later edit to the note does not change it. A private note's text is left out, and a
+pointer to no note record is dropped, each with a warning; export writes the description as the
 record's `NOTE` and the crop on the owner's link, as GEDCOM 7.0; where items of one record differ in title or
 description, each one's own is written on its link, so a re-import keeps them one record. Where a link sat within its record is not kept: export links every item at record level. The items of one record share
 their `private` mark: marking one private marks them all (items imported by an earlier version
