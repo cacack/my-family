@@ -386,8 +386,8 @@ read-model entity on `main`, and they must not be confused:
 
 ### The decided set
 
-**Submitter**, **Repository**, **RepositoryExternalID** and **LDSOrdinance** are permanently
-main-only.
+**Submitter**, **Repository**, **RepositoryExternalID**, **LDSOrdinance** and the **place facts**
+are permanently main-only. Place facts joined the set through ADR-009; see the amendment below.
 
 Submitters, repositories and their external identifiers are *file-* and *archive-level metadata* —
 who supplied a GEDCOM, which archive holds a source document, and what that archive calls it. They
@@ -1143,9 +1143,9 @@ Two browse surfaces stayed main-only in this pass, and said so in the UI via
   merge to replay. This pass fixed only the mainline leak. #802 has since made them event-sourced;
   their scoping is pending — see *Entities that stay main-only* above.
 
-**#676 does not eventually cover every entity.** Submitter, Repository, RepositoryExternalID and
-LDSOrdinance are permanently main-only — see *Entities that stay main-only* above for the set and
-the reasoning.
+**#676 does not eventually cover every entity.** Submitter, Repository, RepositoryExternalID,
+LDSOrdinance and the place facts are permanently main-only — see *Entities that stay main-only*
+above for the set and the reasoning, and its ADR-009 amendment for the place facts.
 
 **A caveat on place accuracy, not on branch scoping.** `GetPlaceHierarchy` parses place strings
 differently on SQLite and PostgreSQL — a pre-existing divergence, tracked as

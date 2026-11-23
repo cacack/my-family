@@ -202,6 +202,7 @@ Text whose parts are all empty has no key and no place.
 | `Straße 1, Wien` | `straße 1,wien` | different from `Strasse 1, Wien` |
 | `Darmstadt,,,Germany` | `darmstadt,germany` | same place as `Darmstadt, Germany` |
 | `, , Utah, USA` | `utah,usa` | same place as `Utah, USA` |
+| `Boston,`, `Boston,,` | `boston` | same place as `Boston`: a one-part key, with no parent (section 4) |
 | `Kiel` (first letter U+212A, Kelvin sign) | `kiel` | same place as `Kiel`: one orbit, `K`, `k`, U+212A |
 | `ΣΟΣ`, `σος` | `ςος` | same place: `Σ`, `σ` and `ς` are one orbit, and `ς` is its smallest lowercase letter |
 | `İzmir` (U+0130) | `İzmir` | different from `Izmir` (`izmir`): `İ` and `ı` have no simple folding |
@@ -225,9 +226,9 @@ What the key gives up is position. An empty part says that a jurisdiction level 
 position. Neither is lost, because every event keeps its text verbatim. But two texts with one key
 can have different numbers of parts, so a form belongs to a part layout and not to the place.
 
-**The positional key** is the same function with step 3 left out (`darmstadt,,,germany`). It
-identifies nothing. It says which texts share a part layout, and it is what a form is filed under
-(sections 2 and 8).
+**The positional key** is the same function with step 3 left out (`darmstadt,,,germany`,
+`boston,`). It identifies nothing. It says which texts share a part layout, and it is what a form is
+filed under (sections 2 and 8).
 
 **The key is computed in Go and stored.** Each of the five place-bearing rows gains a key column
 beside its text, filled by the projector. No SQL statement implements the rule, so the stores
@@ -263,10 +264,12 @@ other items apply (`DecodeEvent`, projection handler, history catalog, both SQL 
 **Read model.** Two kinds of data, kept apart:
 
 - *Facts*: tables `places` (ID, key, name, coordinates and origin, parent, version),
-  `place_aliases` (alias key to place ID), `place_forms` (place ID, positional key, form) and
-  `place_external_ids`. They store their own rows.
-- *Use*: which places are in use, and by how many records, is a view over the key columns of the
-  five place-bearing rows. It stores nothing.
+  `place_aliases` (alias key, stated target, and the resolved place's ID and key), `place_forms`
+  (place ID, positional key, form) and `place_external_ids`. They store their own rows.
+- *Use*: which places are in use, and by how many records, is a view over the indexed key columns
+  of the five place-bearing rows. It stores nothing: in the SQL stores it is an ordinary view, not
+  a materialized one, so no write has to refresh it and it cannot go stale; the memory store
+  computes it on read.
 
 The list of places is the union of the two. Resolving a key is one step:
 `place_aliases[key]` if present, otherwise `UUIDv5(namespace, key)`.
@@ -291,7 +294,9 @@ undoes it.
   passes through the place affected. A command appends one event to one stream; re-pointing is
   projection, and a rebuild gives the same table.
 - **Facts on an absorbed place are kept and ignored** while the alias stands; the target's facts
-  apply. The merge screen shows both so the user can copy one across first.
+  apply. The merge screen shows both so the user can copy one across first. Forms are the
+  exception: a form describes the layout of the texts recorded under the absorbed key, which the
+  target's forms cannot, so labels and export keep reading it from the absorbed place.
 - **Reading an absorbed place.** The list of places shows the target, with the absorbed keys as
   its aliases; an absorbed place is not an entry of its own. A `GET` of an absorbed place's ID
   returns that place's own facts and the ID of the place it resolves to. It is not a redirect,
@@ -310,10 +315,17 @@ A place has at most one parent place.
 - **Default parent:** the place whose key is this key with its leftmost part removed, resolved
   through aliases. `darmstadt,hessen,germany` is in `hessen,germany`, which is in `germany`. A key
   has no empty parts (section 1), so `Darmstadt,,,Germany` is `darmstadt,germany` and is in
-  `germany`. A one-part key has no parent.
+  `germany`, and `Boston,` and `Boston,,` are `boston`. A one-part key has no parent.
 - **Explicit parent:** a `PlaceUpdated` may set one. The command rejects a cycle, counted through
   aliases and default parents, and an alias is rejected when it would create one. As in section
   3, the projector decides: a parent or an alias that would close a cycle in log order is ignored.
+- **Parents and aliases.** A parent is read from the resolved place and names a resolved place;
+  nothing stored is re-pointed, so unaliasing restores each case below.
+  - *A place with an explicit parent is aliased.* Its parent is ignored with its other facts
+    (section 3). The target's parent, explicit or default, applies, and the absorbed place's
+    records sit under it.
+  - *A place's explicit parent is aliased.* The parent resolves to the alias target, so the place
+    moves under the target, as a default parent does.
 - **Jurisdiction label:** optional per level. It comes from one of the place's forms, paired by
   position with the part layout it was recorded for, and is never inferred from position alone.
   A level with no label shows none, and so does a level that two forms name differently.
@@ -387,11 +399,16 @@ before, the map shows what it showed before, and each place has the ID it will a
 Rebuilding again changes nothing. Once place events exist, their streams are replayed like any
 other and the fact tables come back from them.
 
-Three visible changes come with the first rebuild. The browser joins spellings that differ only in
-letter case; it still joins texts that differ only in empty parts, as #925 made it. The per-place
-person list
-matches whole parts where it matched any substring (section 4). Cemeteries whose text differs only
-in letter case or in spacing around commas become one entry, on every store.
+Four visible changes come with the first rebuild. The browser joins spellings that differ only in
+letter case; it still joins texts that differ only in empty parts, as #925 made it. On the SQL
+stores its count changes from distinct spellings to records (section 4). Both count
+`COUNT(DISTINCT place)` over the birth and death texts today
+(`internal/repository/sqlite/readmodel.go` lines 5222 and 5273,
+`internal/repository/postgres/readmodel.go` lines 4885 and 4936), so ten people born in
+`Boston, MA` give `Boston` a count of 1. The memory store already counts records
+(`internal/repository/memory/readmodel.go` line 2291). The per-place person list matches whole
+parts where it matched any substring (section 4). Cemeteries whose text differs only in letter case
+or in spacing around commas become one entry, on every store.
 
 ### 8. GEDCOM round trip
 
@@ -402,11 +419,15 @@ in letter case or in spacing around commas become one entry, on every store.
   written under every event that inherits it; leaving it out would lose it. Re-importing that file
   gives each record its own pair and the same map.
 - **`PLAC.FORM`.** A form describes a text's parts by position, so import stores it on the place
-  under the positional key of the text it came with (section 1): the `PLAC`'s own `FORM`,
-  otherwise the file's `HEAD.PLAC.FORM`. A form is set for a part layout that has none; a
-  different form for a layout that already has one is reported as an import warning and not
-  applied. Export writes `PLAC.FORM` under each event whose place holds a form for that event's
-  positional key, so a form is never written against a text with a different number of parts.
+  its key names, before alias resolution (section 3), under the positional key of the text it came
+  with (section 1): the `PLAC`'s own `FORM`, otherwise the file's `HEAD.PLAC.FORM`. A form is set
+  for a part layout that has none; a different form for a layout that already has one is reported
+  as an import warning and not applied. Within one import the first form in file order wins:
+  records in the order the file lists them, and a record's `PLAC` lines in order. The importer
+  reads individuals before families, so it sorts by file position rather than relying on the order
+  it reads them, and the same file into the same database always gives the same forms. Export
+  writes `PLAC.FORM` under each event whose place holds a form for that event's positional key, so
+  a form is never written against a text with a different number of parts.
 - **`HEAD.PLAC.FORM`.** Not written yet. The file default comes back as a `FORM` under each place,
   which means the same and is not the same bytes. Writing the most common form once in the header,
   and a per-place `FORM` only where it differs, needs
@@ -428,8 +449,12 @@ implement the pairing itself; labels wait for it.
 - **`GET /map/locations`** reads every place-bearing record that has effective coordinates,
   through the branch and privacy overlay it uses today, and groups by resolved place, event type
   and effective pair. Each location carries the place ID and name. Two spellings of one place
-  become one pin, and a record with its own, more exact pair gets its own. Which event types are
-  read is still [#1303](https://github.com/cacack/my-family/issues/1303)'s question.
+  become one pin, and a record with its own, more exact pair gets its own. Aliases are resolved in
+  the same SQL statement: each row's key column joins `place_aliases` on the alias key, the
+  resolved key is the matched alias's resolved key or else the row's own key, and `places` joins
+  on the resolved key for the place's pair. No Go call is made per row; the ID of each location is
+  computed once from its resolved key. Which event types are read is still
+  [#1303](https://github.com/cacack/my-family/issues/1303)'s question.
 - **Migration maps** ([#49](https://github.com/cacack/my-family/issues/49), fed by
   [#1623](https://github.com/cacack/my-family/issues/1623)). A stop is a dated record with
   effective coordinates. It carries its resolved place ID, so two consecutive stops at one place,
@@ -517,7 +542,23 @@ The read-surface table of ADR-008 gains a row for each place operation in the PR
 ### Neutral
 
 - Place streams are ordinary `main` streams, so history, snapshots and rollback see them as they
-  see any other main-only entity.
+  see any other main-only entity. None of them needs a stream to start with a created event:
+  - *History* of a place with no events is empty, not an error: `ReadByStream` returns an empty
+    page for a stream it has no events for (`internal/query/history_queries.go` line 144; tested
+    in `internal/repository/sqlite/eventstore_test.go`, `TestEventStore_ReadByStream_Empty`). The
+    describer folds each stream from an empty state (`internal/query/history_describe.go`
+    line 76) and marks it created only when it folds a create event (lines 338 to 340), which it
+    consults only to name a person from its own stream (line 711) and for `DuplicateRestored`
+    (line 372). A first `PlaceUpdated` therefore shows its new values with no old ones. A place
+    entry is named from the key and text its events carry.
+  - *Snapshots* compare by global position over the whole log (`changesBetween`,
+    `internal/query/snapshot_queries.go` line 221) and assume nothing about any stream.
+  - *Rollback* replays a stream from an empty state and skips event types it does not know
+    (`internal/query/rollback_queries.go` lines 194 to 206 and 612). An empty stream is
+    `ErrNoEvents` (lines 105, 179 and 233), and a target version is at least 1 (lines 166 and
+    220), so a place cannot be rolled back to having no facts; a `PlaceUpdated` that clears them
+    does that. Rollback endpoints exist for persons, families, sources and citations only; a place
+    one would add its event cases there.
 - LDS ordinance place text and `PLAC.NOTE` are outside this decision. Neither is in the browser or
   on the map today, and `PLAC.NOTE` is not imported.
 - The *Place Coordinates* work in flight is compatible: what it stores per record is the override
@@ -535,7 +576,12 @@ PRs that make each one enforceable:
   without an ADR.
 - **PL-004** Every row of `place_aliases` resolves to a place that is not itself absorbed, and
   parents form no cycle. The projector maintains both, in log order.
-- **PL-005** Place events are main-only (not on the BR-006 allowlist).
+- **PL-005** Place events are main-only (not on the BR-006 allowlist). Verified by its own tests,
+  not BR-006's, which only show that the allowlist is derived from the projector and enforced: a
+  test in `internal/command` that names every place event type, asserts none is in
+  `BranchAwareEventTypes()` and that each place command on a branch fails with
+  `ErrEventTypeNotBranchAware`, and a schema test in both SQL stores that no place fact table has a
+  `branch_id` column.
 - **PL-006** No place read returns a name, a pair, a count, an alias or a history entry derived
   only from records hidden from the principal.
 
@@ -568,7 +614,7 @@ Verdicts as of 2026-11-22. Each issue is the authority on its own state.
 | #1604 accept coordinates on updates | Holds. What it writes is the record's own pair. |
 | #1033 coordinates in the forms | Holds. Showing the place's inherited pair beside the inputs comes with step 3. |
 | #1563 origin of each pair | Holds. The origin describes the record's pair; the place's pair reuses the vocabulary. |
-| #1561 no-coordinates worklist | Revise. Matching is `PlaceKey`, so `Boston,MA` and `Boston, MA` are one entry (its second criterion says two). After step 3, "no coordinates" means no effective coordinates. |
+| #1561 no-coordinates worklist | Holds for matching: its second criterion uses `PlaceKey` (one entry for `Boston, MA`, ` boston, ma ` and `Boston,MA`, another for `Boston MA`). Revise after step 3: "no coordinates" then means no effective coordinates. |
 | #1606 apply a pair to every record | Superseded by step 3. One event on the place replaces one per record, so its per-record history criterion no longer applies. Not to be started; close it when step 3 is filed. |
 | #1562 geocoder endpoint | Holds. It looks up a name and stores nothing. |
 | #1607 geocoder candidates | Holds, except that a pick in the worklist is saved on the place (step 3), not through #1606. |
