@@ -12,6 +12,9 @@ import (
 // MaxMediaFileSize is the maximum allowed file size (10MB).
 const MaxMediaFileSize = 10 * 1024 * 1024
 
+// MaxMediaTitleLength is the maximum title length, in characters.
+const MaxMediaTitleLength = 500
+
 // ValidEntityTypes for media attachment.
 var ValidEntityTypes = []string{"person", "family", "source"}
 
@@ -82,11 +85,11 @@ func NewMedia(title string, entityType string, entityID uuid.UUID) *Media {
 func (m *Media) Validate() error {
 	var errs []error
 
-	// Title required and max 500 chars
+	// Title required and max MaxMediaTitleLength chars
 	if m.Title == "" {
 		errs = append(errs, MediaValidationError{Field: "title", Message: "cannot be empty"})
-	} else if utf8.RuneCountInString(m.Title) > 500 {
-		errs = append(errs, MediaValidationError{Field: "title", Message: "cannot exceed 500 characters"})
+	} else if utf8.RuneCountInString(m.Title) > MaxMediaTitleLength {
+		errs = append(errs, MediaValidationError{Field: "title", Message: fmt.Sprintf("cannot exceed %d characters", MaxMediaTitleLength)})
 	}
 
 	// EntityType must be valid

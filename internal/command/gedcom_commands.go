@@ -257,10 +257,16 @@ func (h *Handler) ImportGedcom(ctx context.Context, input ImportGedcomInput) (*I
 			if i > 0 {
 				id = uuid.New()
 			}
-			if err := h.importMedia(ctx, id, group, owner, m); err != nil {
+			shortened, err := h.importMedia(ctx, id, group, owner, m)
+			if err != nil {
 				result.Warnings = append(result.Warnings,
 					fmt.Sprintf("Failed to import media %s (%s): %v", m.GedcomXref, m.Title, err))
 				continue
+			}
+			if shortened {
+				result.Warnings = append(result.Warnings,
+					fmt.Sprintf("Media %s title is over %d characters; shortened, with the full title kept at the start of its description",
+						m.GedcomXref, domain.MaxMediaTitleLength))
 			}
 			result.MediaImported++
 		}
@@ -817,8 +823,9 @@ func (h *Handler) importLDSOrdinance(ctx context.Context, o gedcom.LDSOrdinanceD
 // importMedia creates the media item id, owned by owner and in group (nil for
 // none), from an OBJE record. The file references are kept; no file content is
 // read. The owner's link gives the item its title, notes and crop (#1584).
-func (h *Handler) importMedia(ctx context.Context, id uuid.UUID, group *uuid.UUID, owner gedcom.MediaOwner, m gedcom.MediaData) error {
-	title, description := m.OwnerText(owner)
+// shortened reports that an over-long title was shortened (#1761).
+func (h *Handler) importMedia(ctx context.Context, id uuid.UUID, group *uuid.UUID, owner gedcom.MediaOwner, m gedcom.MediaData) (shortened bool, err error) {
+	title, description, shortened := m.OwnerText(owner)
 	item := domain.NewMedia(title, owner.EntityType, owner.EntityID)
 	item.ID = id
 	item.Description = description
@@ -830,7 +837,7 @@ func (h *Handler) importMedia(ctx context.Context, id uuid.UUID, group *uuid.UUI
 	item.Format = m.Format
 	item.Translations = m.Translations
 	if err := item.Validate(); err != nil {
-		return err
+		return false, err
 	}
 
 	event := domain.NewMediaCreated(item)
@@ -838,8 +845,8 @@ func (h *Handler) importMedia(ctx context.Context, id uuid.UUID, group *uuid.UUI
 	event.GroupID = group
 
 	if err := h.eventStore.Append(ctx, item.ID, "media", []domain.Event{event}, -1, repository.MainScope); err != nil {
-		return fmt.Errorf("appending media created event: %w", err)
+		return false, fmt.Errorf("appending media created event: %w", err)
 	}
 
-	return h.project(ctx, event, 1, domain.MainBranchID)
+	return shortened, h.project(ctx, event, 1, domain.MainBranchID)
 }

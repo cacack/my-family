@@ -2406,13 +2406,21 @@ func mediaLinks(doc *gedcom.Document, result *ImportResult) (map[string][]MediaO
 
 // OwnerText returns the title and description of owner's item: the link's
 // title in place of the record's, and the record's notes followed by the
-// link's.
-func (m MediaData) OwnerText(owner MediaOwner) (title, description string) {
+// link's. A title over domain.MaxMediaTitleLength characters is shortened to
+// fit, ending in "…", and kept whole as the description's first paragraph;
+// shortened reports this (#1761).
+func (m MediaData) OwnerText(owner MediaOwner) (title, description string, shortened bool) {
 	title = m.Title
 	if owner.Title != "" {
 		title = owner.Title
 	}
-	return title, joinNotes(m.Description, owner.NoteText)
+	description = joinNotes(m.Description, owner.NoteText)
+	if runes := []rune(title); len(runes) > domain.MaxMediaTitleLength {
+		description = joinNotes(title, description)
+		title = string(runes[:domain.MaxMediaTitleLength-1]) + "…"
+		shortened = true
+	}
+	return title, description, shortened
 }
 
 // linkOwner returns owner with the title, inline notes and crop of its link.

@@ -658,29 +658,34 @@ func TestImportGedcom_MediaWithoutFileReference(t *testing.T) {
 	}
 }
 
-// An OBJE whose title is over the 500-character limit is refused at import
-// with a warning naming it, so no stored item carries a title its edit form
-// could not save (#1750). A title of 500 multi-byte characters imports.
-func TestImportGedcom_MediaTitleOverLimitIsRefused(t *testing.T) {
+// An OBJE whose title is over the 500-character limit imports with its title
+// shortened to fit, ending in "…", and kept whole at the start of its
+// description, with a warning naming it (#1761). A title of 500 multi-byte
+// characters imports unchanged (#1750).
+func TestImportGedcom_MediaTitleOverLimitIsShortened(t *testing.T) {
 	ctx := context.Background()
 	readStore := memory.NewReadModelStore()
 	handler := command.NewHandler(memory.NewEventStore(), readStore)
 
+	fits := strings.Repeat("é", 500)
+	long := strings.Repeat("é", 501)
 	ged := "0 HEAD\n1 GEDC\n2 VERS 5.5.1\n" +
-		"0 @M1@ OBJE\n1 FILE a.jpg\n2 TITL " + strings.Repeat("é", 500) + "\n" +
-		"0 @M2@ OBJE\n1 FILE b.jpg\n2 TITL " + strings.Repeat("é", 501) + "\n" +
+		"0 @M1@ OBJE\n1 FILE a.jpg\n2 TITL " + fits + "\n" +
+		"0 @M2@ OBJE\n1 FILE b.jpg\n2 TITL " + long + "\n1 NOTE A record note.\n" +
 		"0 @I1@ INDI\n1 NAME A /B/\n1 OBJE @M1@\n1 OBJE @M2@\n0 TRLR\n"
 	result, err := handler.ImportGedcom(ctx, command.ImportGedcomInput{Filename: "m.ged", Reader: strings.NewReader(ged)})
 	if err != nil {
 		t.Fatalf("ImportGedcom: %v", err)
 	}
-	if result.MediaImported != 1 {
-		t.Errorf("MediaImported = %d, want 1", result.MediaImported)
+	if result.MediaImported != 2 {
+		t.Errorf("MediaImported = %d, want 2", result.MediaImported)
 	}
-	if !slices.ContainsFunc(result.Warnings, func(w string) bool {
-		return strings.Contains(w, "@M2@") && strings.Contains(w, "cannot exceed 500 characters")
-	}) {
-		t.Errorf("warnings %q lack @M2@'s over-long title", result.Warnings)
+	want := "Media @M2@ title is over 500 characters; shortened, with the full title kept at the start of its description"
+	if !slices.Contains(result.Warnings, want) {
+		t.Errorf("warnings %q lack %q", result.Warnings, want)
+	}
+	if slices.ContainsFunc(result.Warnings, func(w string) bool { return strings.Contains(w, "@M1@") }) {
+		t.Errorf("warnings %q name @M1@, whose title fits", result.Warnings)
 	}
 
 	persons, _, _ := readStore.ListPersons(ctx, repository.DefaultListOptions())
@@ -691,8 +696,61 @@ func TestImportGedcom_MediaTitleOverLimitIsRefused(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListMediaForEntity: %v", err)
 	}
-	if len(media) != 1 || media[0].GedcomXref != "@M1@" {
-		t.Fatalf("media = %+v, want only @M1@", media)
+	byXref := map[string]repository.MediaReadModel{}
+	for _, m := range media {
+		byXref[m.GedcomXref] = m
+	}
+	if m := byXref["@M1@"]; m.Title != fits || m.Description != "" {
+		t.Errorf("@M1@ title %q, description %q; want the title unchanged and no description", m.Title, m.Description)
+	}
+	m, ok := byXref["@M2@"]
+	if !ok {
+		t.Fatalf("media = %+v, want @M2@ imported", media)
+	}
+	if wantTitle := strings.Repeat("é", 499) + "…"; m.Title != wantTitle {
+		t.Errorf("@M2@ title = %q, want %q", m.Title, wantTitle)
+	}
+	if wantDesc := long + "\n\nA record note."; m.Description != wantDesc {
+		t.Errorf("@M2@ description = %q, want %q", m.Description, wantDesc)
+	}
+	if len(m.Files) != 1 || m.Files[0].Path != "b.jpg" {
+		t.Errorf("@M2@ files = %+v, want b.jpg", m.Files)
+	}
+	item := domain.NewMedia(m.Title, m.EntityType, m.EntityID)
+	item.Description = m.Description
+	if err := item.Validate(); err != nil {
+		t.Errorf("@M2@ as stored fails validation: %v", err)
+	}
+}
+
+// A link's over-long TITL, which replaces the record's for that owner, is
+// shortened the same way, ahead of the link's own note (#1761).
+func TestImportGedcom_MediaLinkTitleOverLimitIsShortened(t *testing.T) {
+	ctx := context.Background()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(memory.NewEventStore(), readStore)
+
+	long := strings.Repeat("x", 600)
+	ged := "0 HEAD\n1 GEDC\n2 VERS 7.0\n" +
+		"0 @M1@ OBJE\n1 FILE a.jpg\n2 FORM image/jpeg\n2 TITL Short\n" +
+		"0 @I1@ INDI\n1 NAME A /B/\n1 OBJE @M1@\n2 TITL " + long + "\n2 NOTE Link note.\n0 TRLR\n"
+	result, err := handler.ImportGedcom(ctx, command.ImportGedcomInput{Filename: "m.ged", Reader: strings.NewReader(ged)})
+	if err != nil {
+		t.Fatalf("ImportGedcom: %v", err)
+	}
+	if result.MediaImported != 1 {
+		t.Fatalf("MediaImported = %d, want 1 (warnings %q)", result.MediaImported, result.Warnings)
+	}
+	persons, _, _ := readStore.ListPersons(ctx, repository.DefaultListOptions())
+	media, _, err := readStore.ListMediaForEntity(ctx, "person", persons[0].ID, repository.DefaultListOptions())
+	if err != nil || len(media) != 1 {
+		t.Fatalf("media = %+v, %v; want one item", media, err)
+	}
+	if got, want := media[0].Title, strings.Repeat("x", 499)+"…"; got != want {
+		t.Errorf("title = %q, want %q", got, want)
+	}
+	if got, want := media[0].Description, long+"\n\nLink note."; got != want {
+		t.Errorf("description = %q, want %q", got, want)
 	}
 }
 
