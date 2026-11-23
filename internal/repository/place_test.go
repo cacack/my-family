@@ -163,6 +163,10 @@ func TestCemeteryIndex(t *testing.T) {
 		{Key: "oak hill,boston", Text: "Oak Hill, Boston", OwnerID: c},
 		// One owner with two records under one key counts once.
 		{Key: "oak hill,boston", Text: "OAK HILL, BOSTON", OwnerID: a},
+		// One owner's repeated spelling weighs once: "oak hill,boston" stays
+		// below "Oak Hill, Boston" (two owners).
+		{Key: "oak hill,boston", Text: "oak hill,boston", OwnerID: b},
+		{Key: "oak hill,boston", Text: "oak hill,boston", OwnerID: b},
 		{Key: "elm", Text: "Elm", OwnerID: a},
 		{Key: "", Text: " ", OwnerID: b},
 	}

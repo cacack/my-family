@@ -19,10 +19,11 @@ import (
 )
 
 // matchingPerson is one person of RunMatching: born at birth or died at death,
-// and buried (or cremated) at burial unless it is "".
+// and buried (or cremated) at burial unless it is "", reburied there if
+// reburied.
 type matchingPerson struct {
 	name, birth, death, burial string
-	cremated                   bool
+	cremated, reburied         bool
 }
 
 // matchingPeople are RunMatching's persons, three spellings of Boston, two of
@@ -32,7 +33,7 @@ var matchingPeople = []matchingPerson{
 	{name: "Bob", birth: " BOSTON ,ma ", burial: " BOSTON ,ma "},
 	{name: "Cat", death: "Boston,MA", burial: "Boston,MA", cremated: true},
 	{name: "Dan", burial: "Boston, MA"},
-	{name: "Eve", birth: "Darmstadt,,,Germany", burial: "Darmstadt,,,Germany"},
+	{name: "Eve", birth: "Darmstadt,,,Germany", burial: "Darmstadt,,,Germany", reburied: true},
 	{name: "Fay", birth: "Darmstadt, Germany", burial: "Darmstadt, Germany"},
 	{name: "Gus", birth: "New York, NY", burial: "New York, NY"},
 	{name: "Hal", birth: "York"},
@@ -95,8 +96,9 @@ func RunMatching(t *testing.T, store repository.ReadModelStore) {
 		{" , ", []string{}},
 	})
 
-	// The cemetery index: one entry per key, named by its most-used spelling.
-	// Darmstadt's two spellings tie, so the bytewise smaller one names it.
+	// The cemetery index: one entry per key, named by the spelling the most
+	// owners used. Darmstadt's two spellings tie (Eve's reburial weighs once),
+	// so the bytewise smaller one names it.
 	wantIndex := []repository.CemeteryEntry{
 		{Place: "Boston, MA", Count: 4},
 		{Place: "Darmstadt, Germany", Count: 2},
@@ -153,13 +155,19 @@ func seedMatching(t *testing.T, store repository.ReadModelStore) map[uuid.UUID]s
 		if p.cremated {
 			fact = domain.FactPersonCremation
 		}
-		eventID := uuid.New()
-		burials[eventID] = p.burial
-		if err := store.SaveEvent(ctx, domain.MainBranchID, &repository.EventReadModel{
-			ID: eventID, OwnerType: "person", OwnerID: id, FactType: fact,
-			Place: p.burial, Version: 1, CreatedAt: now,
-		}); err != nil {
-			t.Fatalf("SaveEvent(%s): %v", p.name, err)
+		times := 1
+		if p.reburied {
+			times = 2
+		}
+		for range times {
+			eventID := uuid.New()
+			burials[eventID] = p.burial
+			if err := store.SaveEvent(ctx, domain.MainBranchID, &repository.EventReadModel{
+				ID: eventID, OwnerType: "person", OwnerID: id, FactType: fact,
+				Place: p.burial, Version: 1, CreatedAt: now,
+			}); err != nil {
+				t.Fatalf("SaveEvent(%s): %v", p.name, err)
+			}
 		}
 	}
 	return burials

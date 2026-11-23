@@ -145,8 +145,9 @@ func PlaceLevels(uses []PlaceUse, parent string) []PlaceEntry {
 	return entries
 }
 
-// CemeteryUse is one person buried or cremated at a place recorded as Text,
-// whose stored PlaceKey is Key.
+// CemeteryUse is a person buried or cremated at a place recorded as Text, whose
+// stored PlaceKey is Key. Repeats of one (Key, Text, OwnerID) count once, so a
+// store may pass one use per record or per distinct triple.
 type CemeteryUse struct {
 	Key     string
 	Text    string
@@ -154,18 +155,21 @@ type CemeteryUse struct {
 }
 
 // CemeteryIndex groups burial and cremation uses by place key: one entry per
-// key, named by its most-used spelling (ties broken bytewise) and counting its
-// distinct owners, sorted by name bytewise. Shared by every store (DB-001).
+// key, named by the spelling the most distinct owners used (ties broken
+// bytewise) and counting its distinct owners, sorted by name bytewise. Shared by
+// every store (DB-001).
 func CemeteryIndex(uses []CemeteryUse) []CemeteryEntry {
 	type cemetery struct {
 		spellings map[string]int
 		owners    map[uuid.UUID]struct{}
 	}
 	byKey := make(map[string]*cemetery)
+	seen := make(map[CemeteryUse]struct{}, len(uses))
 	for _, u := range uses {
-		if u.Key == "" {
+		if _, dup := seen[u]; dup || u.Key == "" {
 			continue
 		}
+		seen[u] = struct{}{}
 		c, ok := byKey[u.Key]
 		if !ok {
 			c = &cemetery{spellings: make(map[string]int), owners: make(map[uuid.UUID]struct{})}
