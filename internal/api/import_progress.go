@@ -29,6 +29,7 @@ type importStreamResult struct {
 	Success          bool            `json:"success"`
 	PersonsImported  int             `json:"persons_imported"`
 	FamiliesImported int             `json:"families_imported"`
+	MediaImported    int             `json:"media_imported"`
 	Warnings         []importMessage `json:"warnings,omitempty"`
 	Errors           []importMessage `json:"errors,omitempty"`
 }
@@ -121,6 +122,7 @@ func (s *Server) importGedcomStream(c echo.Context) error {
 		Success:          true,
 		PersonsImported:  result.PersonsImported,
 		FamiliesImported: result.FamiliesImported,
+		MediaImported:    result.MediaImported,
 	}
 	for _, w := range result.Warnings {
 		payload.Warnings = append(payload.Warnings, importMessage{Message: w})

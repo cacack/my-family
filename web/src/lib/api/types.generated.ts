@@ -4698,6 +4698,8 @@ export interface components {
             success: boolean;
             persons_imported: number;
             families_imported: number;
+            /** @description Media items created. A GEDCOM OBJE record linked from several owners creates one item per owner. */
+            media_imported: number;
             warnings?: components["schemas"]["ImportWarning"][];
             errors?: components["schemas"]["ImportError"][];
         };

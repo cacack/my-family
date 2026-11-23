@@ -107,6 +107,58 @@ func TestImportGedcom_Success(t *testing.T) {
 	}
 }
 
+// twoOwnerMediaGedcom has one OBJE record linked from two owners, which the
+// import turns into two media items.
+const twoOwnerMediaGedcom = `0 HEAD
+1 GEDC
+2 VERS 5.5.1
+0 @M1@ OBJE
+1 FILE photos/wedding.jpg
+2 FORM image/jpeg
+0 @I1@ INDI
+1 NAME John /Doe/
+1 OBJE @M1@
+0 @I2@ INDI
+1 NAME Jane /Smith/
+1 OBJE @M1@
+0 TRLR
+`
+
+func TestImportGedcom_ReportsMediaImported(t *testing.T) {
+	server := setupImportTestServer(t)
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	part, err := writer.CreateFormFile("file", "media.ged")
+	if err != nil {
+		t.Fatal(err)
+	}
+	io.WriteString(part, twoOwnerMediaGedcom)
+	writer.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/gedcom/import", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var result struct {
+		MediaImported *int `json:"media_imported"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+	if result.MediaImported == nil {
+		t.Fatalf("response lacks media_imported: %s", rec.Body.String())
+	}
+	if *result.MediaImported != 2 {
+		t.Errorf("media_imported = %d, want 2 (one per owner of @M1@)", *result.MediaImported)
+	}
+}
+
 func TestImportGedcom_NoFile(t *testing.T) {
 	server := setupImportTestServer(t)
 

@@ -9133,7 +9133,7 @@ components:
 
     ImportResult:
       type: object
-      required: [success, persons_imported, families_imported]
+      required: [success, persons_imported, families_imported, media_imported]
       properties:
         success:
           type: boolean
@@ -9141,6 +9141,9 @@ components:
           type: integer
         families_imported:
           type: integer
+        media_imported:
+          type: integer
+          description: Media items created. A GEDCOM OBJE record linked from several owners creates one item per owner.
         warnings:
           type: array
           items:
