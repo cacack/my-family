@@ -217,7 +217,8 @@ for the rule, and mark a person, family or source private, when editing it. On a
 badge shows on it; notes have no screen yet, so mark them through the API. Persons, families, sources, citations, notes and media carry a `private` mark,
 which is their GEDCOM restriction notice (`RESN`); it round-trips through GEDCOM import and export
 for all six. GEDCOM media records (`OBJE`) import with their
-title, file references and restriction, as one item per person, family or source that links to
+title, format, file references and restriction (a title and format under `FILE`, else the record's own,
+as GEDCOM 5.5 places them), as one item per person, family or source that links to
 them, whether at record level or under one of its events, attributes or citations; a media record nothing
 links to is skipped with a warning, and one with no `FILE` imports as a document, with a warning; export names an uploaded item that has no filename by its title. An inline `OBJE` (one with no record) that names a file imports as one item of the record
 that contains it. Where a link sat within its record is not kept: export links every item at record level. The items of one record share
