@@ -314,6 +314,14 @@ is not-found there too:
 | `downloadMedia` | GET | `/media/{id}/content` |
 | `getMediaThumbnail` | GET | `/media/{id}/thumbnail` |
 
+[#1505](https://github.com/cacack/my-family/issues/1505) added the family and source media lists,
+which read the branch's view as the person's does:
+
+| operationId | Method | Path |
+|---|---|---|
+| `listFamilyMedia` | GET | `/families/{id}/media` |
+| `listSourceMedia` | GET | `/sources/{id}/media` |
+
 Sub-issue E ([#760](https://github.com/cacack/my-family/issues/760)) added twenty-two for the GPS
 artifacts:
 

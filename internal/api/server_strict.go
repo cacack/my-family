@@ -2576,33 +2576,91 @@ func (ss *StrictServer) ListPersonMedia(ctx context.Context, request ListPersonM
 		}}, nil
 	}
 
-	limit := 20
-	offset := 0
-	if request.Params.Limit != nil {
-		limit = *request.Params.Limit
+	list, err := ss.listOwnerMedia(ctx, branch, "person", request.Id, request.Params.Limit, request.Params.Offset)
+	if err != nil {
+		return nil, err
 	}
-	if request.Params.Offset != nil {
-		offset = *request.Params.Offset
+	return ListPersonMedia200JSONResponse(list), nil
+}
+
+// ListFamilyMedia implements StrictServerInterface. A private family is not
+// found; a family with a protected partner lists nothing (ADR-008 §3).
+func (ss *StrictServer) ListFamilyMedia(ctx context.Context, request ListFamilyMediaRequestObject) (ListFamilyMediaResponseObject, error) {
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
 	}
 
-	items, total, err := ss.server.readStore.ListMediaForEntity(ctx, "person", request.Id, repository.ListOptions{
+	family, err := ss.server.readStore.GetFamily(ctx, branchScopeID(branch), request.Id)
+	if err != nil {
+		return nil, err
+	}
+	if family == nil {
+		return ListFamilyMedia404JSONResponse{NotFoundJSONResponse{
+			Code:    "not_found",
+			Message: "Family not found",
+		}}, nil
+	}
+
+	list, err := ss.listOwnerMedia(ctx, branch, "family", request.Id, request.Params.Limit, request.Params.Offset)
+	if err != nil {
+		return nil, err
+	}
+	return ListFamilyMedia200JSONResponse(list), nil
+}
+
+// ListSourceMedia implements StrictServerInterface. A source the principal
+// may not see is not found (ADR-008 §3).
+func (ss *StrictServer) ListSourceMedia(ctx context.Context, request ListSourceMediaRequestObject) (ListSourceMediaResponseObject, error) {
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
+
+	source, err := ss.server.readStore.GetSource(ctx, branchScopeID(branch), request.Id)
+	if err != nil {
+		return nil, err
+	}
+	if source == nil {
+		return ListSourceMedia404JSONResponse{NotFoundJSONResponse{
+			Code:    "not_found",
+			Message: "Source not found",
+		}}, nil
+	}
+
+	list, err := ss.listOwnerMedia(ctx, branch, "source", request.Id, request.Params.Limit, request.Params.Offset)
+	if err != nil {
+		return nil, err
+	}
+	return ListSourceMedia200JSONResponse(list), nil
+}
+
+// listOwnerMedia lists one page of the media the owner ownerType/id holds in
+// the branch's view, newest first. The caller has found the owner.
+func (ss *StrictServer) listOwnerMedia(ctx context.Context, branch *domain.Branch, ownerType string, id uuid.UUID, limitParam, offsetParam *int) (MediaList, error) {
+	limit := 20
+	offset := 0
+	if limitParam != nil {
+		limit = *limitParam
+	}
+	if offsetParam != nil {
+		offset = *offsetParam
+	}
+
+	items, total, err := ss.server.readStore.ListMediaForEntity(ctx, ownerType, id, repository.ListOptions{
 		Limit:    limit,
 		Offset:   offset,
 		BranchID: branchScopeID(branch),
 	})
 	if err != nil {
-		return nil, err
+		return MediaList{}, err
 	}
 
 	mediaItems := make([]Media, len(items))
 	for i, m := range items {
 		mediaItems[i] = convertMediaReadModelToGenerated(m)
 	}
-
-	return ListPersonMedia200JSONResponse{
-		Items: mediaItems,
-		Total: total,
-	}, nil
+	return MediaList{Items: mediaItems, Total: total}, nil
 }
 
 // UploadPersonMedia implements StrictServerInterface.

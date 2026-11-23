@@ -32,7 +32,8 @@ vi.mock('#lib/api/client.js', async (importOriginal) => {
 			updateFamily: vi.fn(),
 			addChildToFamily: vi.fn(),
 			removeChildFromFamily: vi.fn(),
-			searchPersons: vi.fn()
+			searchPersons: vi.fn(),
+			listFamilyMedia: vi.fn(async () => ({ items: [], total: 0 }))
 		}
 	};
 });
@@ -941,5 +942,51 @@ describe('Family Detail Page: failed actions (#899)', () => {
 		expect((await screen.findByRole('alert')).textContent).toContain('This family could not be found');
 		expect(screen.getByRole('heading', { level: 1, name: 'Family not found' })).toBeTruthy();
 		expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+	});
+});
+
+describe('Family Detail Page: media gallery (#1505)', () => {
+	const api = apiModule.api;
+	// A GEDCOM-imported reference: a title and a path, no stored file.
+	const wedding = {
+		id: 'm-wedding',
+		entity_type: 'family',
+		entity_id: 'test-family-id',
+		title: 'Wedding',
+		mime_type: '',
+		filename: '',
+		file_size: 0,
+		has_content: false,
+		has_thumbnail: false,
+		files: [{ path: 'photos/wedding.jpg', format: 'image/jpeg' }],
+		version: 1,
+		created_at: '2026-01-01T00:00:00Z'
+	} as apiModule.Media;
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		branchState.id = null;
+		vi.mocked(api.getFamilyHistory).mockResolvedValue(mockEmptyHistory);
+		vi.mocked(api.getFamily).mockResolvedValue(mockFamilyNoChildren);
+		vi.mocked(api.listFamilyMedia).mockResolvedValue({ items: [wedding], total: 1 });
+	});
+
+	it("shows the family's imported reference as its title and path", async () => {
+		render(FamilyPage);
+
+		const card = await screen.findByRole('button', { name: /^View Wedding photos\/wedding\.jpg File not stored$/ });
+		expect(within(card).getByText('photos/wedding.jpg')).toBeDefined();
+		expect(screen.getByRole('heading', { name: 'Media' })).toBeDefined();
+		expect(api.listFamilyMedia).toHaveBeenCalledWith('test-family-id');
+	});
+
+	it('offers an editor no upload control until families take uploads (#1538)', async () => {
+		signInAs('editor');
+		render(FamilyPage);
+
+		await screen.findByRole('button', { name: /^View Wedding/ });
+		expect(screen.getByRole('button', { name: 'Delete Wedding' })).toBeDefined();
+		expect(screen.queryByRole('heading', { name: 'Upload Media' })).toBeNull();
+		expect(document.querySelector('input[type="file"]')).toBeNull();
 	});
 });

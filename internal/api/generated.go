@@ -7705,6 +7705,21 @@ type GetFamilyHistoryParams struct {
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
+// ListFamilyMediaParams defines parameters for ListFamilyMedia.
+type ListFamilyMediaParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+	Limit  *LimitParam  `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *OffsetParam `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
 // GetFamilyRestorePointsParams defines parameters for GetFamilyRestorePoints.
 type GetFamilyRestorePointsParams struct {
 	Limit  *LimitParam  `form:"limit,omitempty" json:"limit,omitempty"`
@@ -8845,6 +8860,21 @@ type GetSourceHistoryParams struct {
 	Offset *OffsetParam `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
+// ListSourceMediaParams defines parameters for ListSourceMedia.
+type ListSourceMediaParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+	Limit  *LimitParam  `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *OffsetParam `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
 // GetSourceRestorePointsParams defines parameters for GetSourceRestorePoints.
 type GetSourceRestorePointsParams struct {
 	Limit  *LimitParam  `form:"limit,omitempty" json:"limit,omitempty"`
@@ -9316,6 +9346,9 @@ type ServerInterface interface {
 	// ListLDSOrdinancesForFamily List LDS ordinances for a family
 	// (GET /families/{id}/lds-ordinances)
 	ListLDSOrdinancesForFamily(ctx echo.Context, id FamilyId) error
+	// ListFamilyMedia List media attached to a family
+	// (GET /families/{id}/media)
+	ListFamilyMedia(ctx echo.Context, id FamilyId, params ListFamilyMediaParams) error
 	// GetFamilyRestorePoints Get restore points for a family
 	// (GET /families/{id}/restore-points)
 	GetFamilyRestorePoints(ctx echo.Context, id FamilyId, params GetFamilyRestorePointsParams) error
@@ -9610,6 +9643,9 @@ type ServerInterface interface {
 	// GetSourceHistory Get change history for a source
 	// (GET /sources/{id}/history)
 	GetSourceHistory(ctx echo.Context, id openapi_types.UUID, params GetSourceHistoryParams) error
+	// ListSourceMedia List media attached to a source
+	// (GET /sources/{id}/media)
+	ListSourceMedia(ctx echo.Context, id openapi_types.UUID, params ListSourceMediaParams) error
 	// GetSourceRestorePoints Get restore points for a source
 	// (GET /sources/{id}/restore-points)
 	GetSourceRestorePoints(ctx echo.Context, id openapi_types.UUID, params GetSourceRestorePointsParams) error
@@ -11420,6 +11456,45 @@ func (w *ServerInterfaceWrapper) ListLDSOrdinancesForFamily(ctx echo.Context) er
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.ListLDSOrdinancesForFamily(ctx, id)
+	return err
+}
+
+// ListFamilyMedia converts echo context to params.
+func (w *ServerInterfaceWrapper) ListFamilyMedia(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id FamilyId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: ctx.Request().URL.RawPath == ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListFamilyMediaParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", ctx.QueryParams(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter limit: %s", err))
+	}
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "offset", ctx.QueryParams(), &params.Offset, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter offset: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.ListFamilyMedia(ctx, id, params)
 	return err
 }
 
@@ -13924,6 +13999,45 @@ func (w *ServerInterfaceWrapper) GetSourceHistory(ctx echo.Context) error {
 	return err
 }
 
+// ListSourceMedia converts echo context to params.
+func (w *ServerInterfaceWrapper) ListSourceMedia(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: ctx.Request().URL.RawPath == ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListSourceMediaParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", ctx.QueryParams(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter limit: %s", err))
+	}
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "offset", ctx.QueryParams(), &params.Offset, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter offset: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.ListSourceMedia(ctx, id, params)
+	return err
+}
+
 // GetSourceRestorePoints converts echo context to params.
 func (w *ServerInterfaceWrapper) GetSourceRestorePoints(ctx echo.Context) error {
 	var err error
@@ -14239,6 +14353,8 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 	router.GET(options.BaseURL+"/citations/:id/format", wrapper.FormatCitation, options.OperationMiddlewares["formatCitation"]...)
 	router.GET(options.BaseURL+"/persons/:id/media", wrapper.ListPersonMedia, options.OperationMiddlewares["listPersonMedia"]...)
 	router.POST(options.BaseURL+"/persons/:id/media", wrapper.UploadPersonMedia, options.OperationMiddlewares["uploadPersonMedia"]...)
+	router.GET(options.BaseURL+"/families/:id/media", wrapper.ListFamilyMedia, options.OperationMiddlewares["listFamilyMedia"]...)
+	router.GET(options.BaseURL+"/sources/:id/media", wrapper.ListSourceMedia, options.OperationMiddlewares["listSourceMedia"]...)
 	router.DELETE(options.BaseURL+"/media/:id", wrapper.DeleteMedia, options.OperationMiddlewares["deleteMedia"]...)
 	router.GET(options.BaseURL+"/media/:id", wrapper.GetMedia, options.OperationMiddlewares["getMedia"]...)
 	router.PUT(options.BaseURL+"/media/:id", wrapper.UpdateMedia, options.OperationMiddlewares["updateMedia"]...)
@@ -20173,6 +20289,71 @@ func (response ListLDSOrdinancesForFamily404JSONResponse) VisitListLDSOrdinances
 type ListLDSOrdinancesForFamily503JSONResponse struct{ SetupRequiredJSONResponse }
 
 func (response ListLDSOrdinancesForFamily503JSONResponse) VisitListLDSOrdinancesForFamilyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListFamilyMediaRequestObject struct {
+	Id     FamilyId `json:"id"`
+	Params ListFamilyMediaParams
+}
+
+type ListFamilyMediaResponseObject interface {
+	VisitListFamilyMediaResponse(w http.ResponseWriter) error
+}
+
+type ListFamilyMedia200JSONResponse MediaList
+
+func (response ListFamilyMedia200JSONResponse) VisitListFamilyMediaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListFamilyMedia401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListFamilyMedia401JSONResponse) VisitListFamilyMediaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListFamilyMedia404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ListFamilyMedia404JSONResponse) VisitListFamilyMediaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListFamilyMedia503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response ListFamilyMedia503JSONResponse) VisitListFamilyMediaResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -27297,6 +27478,71 @@ func (response GetSourceHistory503JSONResponse) VisitGetSourceHistoryResponse(w 
 	return err
 }
 
+type ListSourceMediaRequestObject struct {
+	Id     openapi_types.UUID `json:"id"`
+	Params ListSourceMediaParams
+}
+
+type ListSourceMediaResponseObject interface {
+	VisitListSourceMediaResponse(w http.ResponseWriter) error
+}
+
+type ListSourceMedia200JSONResponse MediaList
+
+func (response ListSourceMedia200JSONResponse) VisitListSourceMediaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSourceMedia401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListSourceMedia401JSONResponse) VisitListSourceMediaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSourceMedia404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ListSourceMedia404JSONResponse) VisitListSourceMediaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSourceMedia503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response ListSourceMedia503JSONResponse) VisitListSourceMediaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetSourceRestorePointsRequestObject struct {
 	Id     openapi_types.UUID `json:"id"`
 	Params GetSourceRestorePointsParams
@@ -28381,6 +28627,9 @@ type StrictServerInterface interface {
 	// ListLDSOrdinancesForFamily List LDS ordinances for a family
 	// (GET /families/{id}/lds-ordinances)
 	ListLDSOrdinancesForFamily(ctx context.Context, request ListLDSOrdinancesForFamilyRequestObject) (ListLDSOrdinancesForFamilyResponseObject, error)
+	// ListFamilyMedia List media attached to a family
+	// (GET /families/{id}/media)
+	ListFamilyMedia(ctx context.Context, request ListFamilyMediaRequestObject) (ListFamilyMediaResponseObject, error)
 	// GetFamilyRestorePoints Get restore points for a family
 	// (GET /families/{id}/restore-points)
 	GetFamilyRestorePoints(ctx context.Context, request GetFamilyRestorePointsRequestObject) (GetFamilyRestorePointsResponseObject, error)
@@ -28675,6 +28924,9 @@ type StrictServerInterface interface {
 	// GetSourceHistory Get change history for a source
 	// (GET /sources/{id}/history)
 	GetSourceHistory(ctx context.Context, request GetSourceHistoryRequestObject) (GetSourceHistoryResponseObject, error)
+	// ListSourceMedia List media attached to a source
+	// (GET /sources/{id}/media)
+	ListSourceMedia(ctx context.Context, request ListSourceMediaRequestObject) (ListSourceMediaResponseObject, error)
 	// GetSourceRestorePoints Get restore points for a source
 	// (GET /sources/{id}/restore-points)
 	GetSourceRestorePoints(ctx context.Context, request GetSourceRestorePointsRequestObject) (GetSourceRestorePointsResponseObject, error)
@@ -31305,6 +31557,32 @@ func (sh *strictHandler) ListLDSOrdinancesForFamily(ctx echo.Context, id FamilyI
 		return err
 	} else if validResponse, ok := response.(ListLDSOrdinancesForFamilyResponseObject); ok {
 		return validResponse.VisitListLDSOrdinancesForFamilyResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// ListFamilyMedia operation middleware
+func (sh *strictHandler) ListFamilyMedia(ctx echo.Context, id FamilyId, params ListFamilyMediaParams) error {
+	var request ListFamilyMediaRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.ListFamilyMedia(ctx.Request().Context(), request.(ListFamilyMediaRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListFamilyMedia")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(ListFamilyMediaResponseObject); ok {
+		return validResponse.VisitListFamilyMediaResponse(ctx.Response())
 	} else if response != nil {
 		return fmt.Errorf("unexpected response type: %T", response)
 	}
@@ -34447,6 +34725,32 @@ func (sh *strictHandler) GetSourceHistory(ctx echo.Context, id openapi_types.UUI
 		return err
 	} else if validResponse, ok := response.(GetSourceHistoryResponseObject); ok {
 		return validResponse.VisitGetSourceHistoryResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// ListSourceMedia operation middleware
+func (sh *strictHandler) ListSourceMedia(ctx echo.Context, id openapi_types.UUID, params ListSourceMediaParams) error {
+	var request ListSourceMediaRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.ListSourceMedia(ctx.Request().Context(), request.(ListSourceMediaRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListSourceMedia")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(ListSourceMediaResponseObject); ok {
+		return validResponse.VisitListSourceMediaResponse(ctx.Response())
 	} else if response != nil {
 		return fmt.Errorf("unexpected response type: %T", response)
 	}

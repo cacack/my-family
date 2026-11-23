@@ -844,7 +844,7 @@
 									<Badge variant="outline" class="ml-2">{mediaCount}</Badge>
 								{/if}
 							{/snippet}
-							<MediaGallery personId={person.id} onMediaAdded={handleMediaAdded} />
+							<MediaGallery ownerType="person" ownerId={person.id} onMediaAdded={handleMediaAdded} />
 						</InfoSection>
 					</div>
 

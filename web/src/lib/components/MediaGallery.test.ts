@@ -14,6 +14,8 @@ vi.mock('#lib/api/client.js', async (importOriginal) => {
 		...actual,
 		api: {
 			listPersonMedia: vi.fn(),
+			listFamilyMedia: vi.fn(),
+			listSourceMedia: vi.fn(),
 			updateMedia: vi.fn(),
 			attachMediaContent: vi.fn(),
 			getMedia: vi.fn(),
@@ -63,7 +65,7 @@ describe('MediaGallery', () => {
 
 	it('shows a reference-only item as a placeholder with its title and path, not an image', async () => {
 		list([reference]);
-		render(MediaGallery, { props: { personId: 'p-1' } });
+		render(MediaGallery, { props: { ownerType: 'person', ownerId: 'p-1' } });
 
 		const card = await screen.findByRole('button', { name: /^View Wedding photos\/wedding\.jpg File not stored$/ });
 		expect(within(card).getByText('Wedding')).toBeDefined();
@@ -74,7 +76,7 @@ describe('MediaGallery', () => {
 
 	it('shows an uploaded item with a thumbnail as its image', async () => {
 		list([media({})]);
-		render(MediaGallery, { props: { personId: 'p-1' } });
+		render(MediaGallery, { props: { ownerType: 'person', ownerId: 'p-1' } });
 
 		const card = await screen.findByRole('button', { name: 'View Portrait' });
 		expect(card.querySelector('img')?.getAttribute('src')).toBe('/api/v1/media/m-1/thumbnail');
@@ -83,7 +85,7 @@ describe('MediaGallery', () => {
 
 	it('opens a reference-only item without loading or offering its content', async () => {
 		list([reference]);
-		render(MediaGallery, { props: { personId: 'p-1' } });
+		render(MediaGallery, { props: { ownerType: 'person', ownerId: 'p-1' } });
 
 		await fireEvent.click(await screen.findByRole('button', { name: /^View Wedding photos\/wedding\.jpg File not stored$/ }));
 
@@ -106,7 +108,7 @@ describe('MediaGallery', () => {
 				]
 			})
 		]);
-		render(MediaGallery, { props: { personId: 'p-1' } });
+		render(MediaGallery, { props: { ownerType: 'person', ownerId: 'p-1' } });
 
 		const card = await screen.findByRole('button', { name: /^View Wedding/ });
 		expect(within(card).getAllByText('photos/wedding.jpg')).toHaveLength(2);
@@ -118,14 +120,14 @@ describe('MediaGallery', () => {
 	describe('the private mark (#1413)', () => {
 		async function openPortrait(item: Media) {
 			list([item]);
-			render(MediaGallery, { props: { personId: 'p-1' } });
+			render(MediaGallery, { props: { ownerType: 'person', ownerId: 'p-1' } });
 			await fireEvent.click(await screen.findByRole('button', { name: 'View Portrait' }));
 			return screen.findByRole('dialog');
 		}
 
 		it('marks a private item in the gallery with a named badge', async () => {
 			list([media({ private: true }), media({ id: 'm-2', title: 'Letter' })]);
-			render(MediaGallery, { props: { personId: 'p-1' } });
+			render(MediaGallery, { props: { ownerType: 'person', ownerId: 'p-1' } });
 
 			expect(await screen.findAllByRole('img', { name: 'Private media item' })).toHaveLength(1);
 		});
@@ -203,7 +205,7 @@ describe('MediaGallery', () => {
 	describe('attaching a file to a reference (#1504)', () => {
 		async function openReference() {
 			list([reference]);
-			render(MediaGallery, { props: { personId: 'p-1' } });
+			render(MediaGallery, { props: { ownerType: 'person', ownerId: 'p-1' } });
 			await fireEvent.click(await screen.findByRole('button', { name: /^View Wedding/ }));
 			return screen.findByRole('dialog');
 		}
@@ -269,11 +271,42 @@ describe('MediaGallery', () => {
 
 		it('is not offered for an item that has its file', async () => {
 			list([media({})]);
-			render(MediaGallery, { props: { personId: 'p-1' } });
+			render(MediaGallery, { props: { ownerType: 'person', ownerId: 'p-1' } });
 			await fireEvent.click(await screen.findByRole('button', { name: 'View Portrait' }));
 			const dialog = await screen.findByRole('dialog');
 
 			expect(within(dialog).queryByRole('button', { name: 'Attach file' })).toBeNull();
+		});
+	});
+
+	describe('the owner (#1505)', () => {
+		it.each([
+			['family', 'f-1', 'listFamilyMedia'],
+			['source', 's-1', 'listSourceMedia']
+		] as const)('lists a %s\'s media, shows its reference and offers no upload', async (ownerType, ownerId, lister) => {
+			vi.mocked(apiModule.api[lister]).mockResolvedValue({ items: [reference], total: 1 });
+			render(MediaGallery, { props: { ownerType, ownerId } });
+
+			const card = await screen.findByRole('button', { name: /^View Wedding photos\/wedding\.jpg File not stored$/ });
+			expect(card).toBeDefined();
+			expect(apiModule.api[lister]).toHaveBeenCalledWith(ownerId);
+			expect(apiModule.api.listPersonMedia).not.toHaveBeenCalled();
+			expect(screen.queryByRole('heading', { name: 'Upload Media' })).toBeNull();
+			expect(document.querySelector('input[type="file"]')).toBeNull();
+		});
+
+		it('says nothing of uploading when a family has no media', async () => {
+			vi.mocked(apiModule.api.listFamilyMedia).mockResolvedValue({ items: [], total: 0 });
+			render(MediaGallery, { props: { ownerType: 'family', ownerId: 'f-1' } });
+
+			expect((await screen.findByText(/No media yet/)).textContent).toBe('No media yet.');
+		});
+
+		it('offers an editor the upload on a person', async () => {
+			list([]);
+			render(MediaGallery, { props: { ownerType: 'person', ownerId: 'p-1' } });
+
+			expect(await screen.findByRole('heading', { name: 'Upload Media' })).toBeDefined();
 		});
 	});
 });

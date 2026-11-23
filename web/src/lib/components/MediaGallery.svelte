@@ -8,12 +8,24 @@
 	import ConfirmDialog from './ConfirmDialog.svelte';
 	import PrivacyBadges from './PrivacyBadges.svelte';
 
+	/** The record kinds that own media. Only a person takes uploads so far (#1538). */
+	type MediaOwnerType = 'person' | 'family' | 'source';
+
 	interface Props {
-		personId: string;
+		ownerType: MediaOwnerType;
+		ownerId: string;
 		onMediaAdded?: (media: Media) => void;
 	}
 
-	let { personId, onMediaAdded }: Props = $props();
+	let { ownerType, ownerId, onMediaAdded }: Props = $props();
+
+	const listers = {
+		person: (id: string) => api.listPersonMedia(id),
+		family: (id: string) => api.listFamilyMedia(id),
+		source: (id: string) => api.listSourceMedia(id)
+	} satisfies Record<MediaOwnerType, (id: string) => Promise<{ items: Media[] }>>;
+
+	let canUpload = $derived(ownerType === 'person' && can('editor'));
 
 	let mediaItems: Media[] = $state([]);
 	let loading = $state(true);
@@ -32,7 +44,7 @@
 		loading = true;
 		error = null;
 		try {
-			const response = await api.listPersonMedia(personId);
+			const response = await listers[ownerType](ownerId);
 			mediaItems = response.items;
 		} catch (e) {
 			error = (e as { message?: string }).message || 'Failed to load media';
@@ -117,7 +129,7 @@
 	}
 
 	$effect(() => {
-		if (personId) {
+		if (ownerId) {
 			loadMedia();
 		}
 	});
@@ -131,8 +143,8 @@
 />
 
 <div class="media-gallery">
-	{#if can('editor')}
-		<MediaUpload {personId} onUpload={handleUpload} />
+	{#if canUpload}
+		<MediaUpload personId={ownerId} onUpload={handleUpload} />
 	{/if}
 
 	{#if conflictError}
@@ -156,7 +168,7 @@
 				<circle cx="8.5" cy="8.5" r="1.5" />
 				<polyline points="21 15 16 10 5 21" />
 			</svg>
-			<p>No media yet.{#if can('editor')} Upload photos and documents.{/if}</p>
+			<p>No media yet.{#if canUpload} Upload photos and documents.{/if}</p>
 		</div>
 	{:else}
 		<div class="gallery-grid" role="list" aria-label="Media gallery">

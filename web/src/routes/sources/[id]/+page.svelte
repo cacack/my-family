@@ -5,6 +5,7 @@
 	import { api, isVersionConflict, recordLoadError, type LoadFailure, type SourceDetail, type SourceType, type Citation } from '#lib/api/client.js';
 	import ExternalLinks from '#lib/components/ExternalLinks.svelte';
 	import InfoSection from '#lib/components/InfoSection.svelte';
+	import MediaGallery from '#lib/components/MediaGallery.svelte';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import ActionBar from '#lib/components/ActionBar.svelte';
 	import FormRow from '#lib/components/FormRow.svelte';
@@ -405,6 +406,10 @@
 						<ExternalLinks externalIds={source.external_ids} />
 					</InfoSection>
 				{/if}
+
+				<InfoSection title="Media">
+					<MediaGallery ownerType="source" ownerId={source.id} />
+				</InfoSection>
 
 				{#if getCitations().length > 0}
 					<InfoSection title={`Citations (${getCitations().length})`}>

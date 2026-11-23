@@ -168,6 +168,43 @@ func TestMedia_BranchScopeRejectsUnknownBranch(t *testing.T) {
 	}
 }
 
+// TestFamilyAndSourceMedia_BranchScope: the family and source media lists
+// read the branch's view, so an owner made on a branch has a list there only,
+// and an unknown branch is not found (#1505).
+func TestFamilyAndSourceMedia_BranchScope(t *testing.T) {
+	server := setupBranchTestServer()
+	personID := createPerson(t, server, "Ada", "Lovelace")
+	branchID := createBranch(t, server, "Owner reading")
+	onBranch := "?branch=" + branchID
+
+	created := func(path, body string) string {
+		t.Helper()
+		rec := do(t, server, http.MethodPost, path+onBranch, body)
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("POST %s on branch: status = %d, want 201. Body: %s", path, rec.Code, rec.Body.String())
+		}
+		id, _ := decodeJSON(t, rec)["id"].(string)
+		return id
+	}
+	familyID := created("/api/v1/families", fmt.Sprintf(`{"partner1_id":%q}`, personID))
+	sourceID := created("/api/v1/sources", `{"source_type":"book","title":"Branch register"}`)
+
+	for _, path := range []string{"/api/v1/families/" + familyID + "/media", "/api/v1/sources/" + sourceID + "/media"} {
+		if got := do(t, server, http.MethodGet, path, "").Code; got != http.StatusNotFound {
+			t.Errorf("Mainline GET %s of a branch-only owner: status = %d, want 404", path, got)
+		}
+		rec := do(t, server, http.MethodGet, path+onBranch, "")
+		if rec.Code != http.StatusOK {
+			t.Errorf("Branch GET %s: status = %d, want 200. Body: %s", path, rec.Code, rec.Body.String())
+		} else if total, _ := decodeJSON(t, rec)["total"].(float64); total != 0 {
+			t.Errorf("Branch GET %s total = %v, want 0", path, total)
+		}
+		if got := do(t, server, http.MethodGet, path+"?branch=00000000-0000-0000-0000-00000000beef", "").Code; got != http.StatusNotFound {
+			t.Errorf("GET %s on an unknown branch: status = %d, want 404", path, got)
+		}
+	}
+}
+
 // failingMainMediaStore fails every mainline SaveMedia while armed, so a merge
 // appends a branch upload to main's log without projecting its row.
 type failingMainMediaStore struct {

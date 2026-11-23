@@ -167,6 +167,7 @@ var anonymousCheapRoutes = []string{
 	"GET /api/v1/evidence-conflicts/by-subject/:subjectId",
 	"GET /api/v1/families/:id",
 	"GET /api/v1/families/:id/lds-ordinances",
+	"GET /api/v1/families/:id/media",
 	"GET /api/v1/lds-ordinances/:id",
 	"GET /api/v1/media/:id",
 	"GET /api/v1/notes/:id",
@@ -185,6 +186,7 @@ var anonymousCheapRoutes = []string{
 	"GET /api/v1/research-logs/by-subject/:subjectId",
 	"GET /api/v1/settings/home-person",
 	"GET /api/v1/sources/:id",
+	"GET /api/v1/sources/:id/media",
 	"GET /api/v1/submitters/:id",
 }
 
