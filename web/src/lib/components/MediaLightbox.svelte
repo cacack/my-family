@@ -137,9 +137,13 @@
 <svelte:window onkeydown={handleKeydown} />
 
 <Dialog.Root bind:open onOpenChange={(isOpen) => { if (!isOpen) onClose(); }}>
+	<!--
+		A phone gets the whole screen, opaque, so the page behind cannot be read (#1555).
+		Width is capped from md up: an sm: cap from the base dialog would beat a max-md: one.
+	-->
 	<Dialog.Content
 		showCloseButton={false}
-		class="max-w-[95vw] h-[90vh] grid-rows-[minmax(0,1fr)] p-0 sm:max-w-[95vw] bg-black/95 border-none"
+		class="max-w-none sm:max-w-none md:max-w-[95vw] h-[90vh] grid-rows-[minmax(0,1fr)] p-0 bg-black/95 border-none max-md:inset-0 max-md:h-dvh max-md:translate-none max-md:rounded-none max-md:bg-black"
 	>
 		<div class="sr-only">
 			<Dialog.Header>
@@ -396,6 +400,8 @@
 
 	.metadata-panel h3 {
 		margin: 0 0 0.75rem;
+		/* Not break-word: anywhere also narrows the dialog's sizing to fit (#1555). */
+		overflow-wrap: anywhere;
 		font-size: 1.125rem;
 		font-weight: 600;
 	}
@@ -464,7 +470,8 @@
 		.lightbox-content {
 			flex-direction: column;
 			gap: 1rem;
-			padding: 1rem;
+			/* The top keeps a tall image clear of the close button (#1555). */
+			padding: 4rem 1rem 1rem;
 		}
 
 		/* Shrink a tall image to the space left, rather than push the panel off the dialog. */
@@ -479,6 +486,10 @@
 		.metadata-panel {
 			width: 100%;
 			max-height: 200px;
+		}
+
+		.document-preview {
+			padding: 1.5rem 1rem;
 		}
 	}
 </style>
