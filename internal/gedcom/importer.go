@@ -2263,10 +2263,40 @@ func parseMediaObject(media *gedcom.MediaObject, result *ImportResult) MediaData
 	if mediaData.Restriction == "" {
 		mediaData.Restriction = extensionRestriction(media.Tags)
 	}
+	applyRecordLevelTitleAndForm(&mediaData, media.Tags)
 	if mediaData.Title == "" {
 		mediaData.Title = media.XRef // Use XRef as fallback
 	}
 	return mediaData
+}
+
+// applyRecordLevelTitleAndForm fills the title and format an OBJE record gives
+// at level 1 in the GEDCOM 5.5 layout, which gedcom-go keeps only as raw tags
+// (#1755). A TITL or FORM under the first FILE takes precedence.
+func applyRecordLevelTitleAndForm(mediaData *MediaData, tags []*gedcom.Tag) {
+	if mediaData.Title == "" {
+		mediaData.Title = levelOneTagValue(tags, "TITL")
+	}
+	if mediaData.Format != "" {
+		return
+	}
+	form := levelOneTagValue(tags, "FORM")
+	mediaData.Format = form
+	mediaData.MimeType = form
+	if len(mediaData.Files) > 0 {
+		mediaData.Files[0].Format = form
+	}
+}
+
+// levelOneTagValue returns the trimmed value of the first level-1 tag named
+// name, or "" if there is none.
+func levelOneTagValue(tags []*gedcom.Tag, name string) string {
+	for _, tag := range tags {
+		if tag.Level == 1 && tag.Tag == name {
+			return strings.TrimSpace(tag.Value)
+		}
+	}
+	return ""
 }
 
 // parseInlineMedia converts an inline OBJE link (no pointer) to MediaData
