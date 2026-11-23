@@ -2006,6 +2006,73 @@ paths:
         '503':
           $ref: '#/components/responses/SetupRequired'
 
+  /families/{id}/media:
+    parameters:
+      - $ref: '#/components/parameters/familyId'
+
+    get:
+      operationId: listFamilyMedia
+      x-min-role: viewer
+      security: [{session: []}, {apiToken: []}, {}]
+      summary: List media attached to a family
+      description: |
+        Returns the family's media metadata, newest first. With `?branch=` the
+        family and the list are read from that branch's isolated view.
+      tags: [media]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
+        - $ref: '#/components/parameters/limitParam'
+        - $ref: '#/components/parameters/offsetParam'
+      responses:
+        '200':
+          description: List of media
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MediaList'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
+
+  /sources/{id}/media:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      operationId: listSourceMedia
+      x-min-role: viewer
+      security: [{session: []}, {apiToken: []}, {}]
+      summary: List media attached to a source
+      description: |
+        Returns the source's media metadata, newest first. With `?branch=` the
+        source and the list are read from that branch's isolated view.
+      tags: [media]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
+        - $ref: '#/components/parameters/limitParam'
+        - $ref: '#/components/parameters/offsetParam'
+      responses:
+        '200':
+          description: List of media
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MediaList'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
+
   /media/{id}:
     parameters:
       - name: id

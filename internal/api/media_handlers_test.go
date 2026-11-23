@@ -12,6 +12,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/cacack/my-family/internal/repository"
 )
 
 // createTestJPEGImage creates a small test JPEG image.
@@ -903,5 +905,165 @@ func TestReferenceOnlyMedia_ContentAndThumbnailNotFound(t *testing.T) {
 				t.Errorf("code = %v, want %q", got, tt.wantCode)
 			}
 		})
+	}
+}
+
+// ownerMediaGedcom gives a family and a source one media reference each, and
+// a private family and a private source one more each (#1505). Everyone is
+// dead, so only the privacy marks hide anything from a viewer.
+const ownerMediaGedcom = `0 HEAD
+1 GEDC
+2 VERS 5.5.1
+0 @M1@ OBJE
+1 FILE photos/wedding.jpg
+2 FORM jpg
+2 TITL Wedding
+0 @M2@ OBJE
+1 FILE scans/census-page.jpg
+2 FORM jpg
+2 TITL Census page
+0 @M3@ OBJE
+1 FILE photos/hidden-family.jpg
+2 FORM jpg
+2 TITL Hidden family
+0 @M4@ OBJE
+1 FILE scans/hidden-register.jpg
+2 FORM jpg
+2 TITL Hidden register
+0 @I1@ INDI
+1 NAME Ada /Owner/
+1 DEAT Y
+0 @I2@ INDI
+1 NAME Bob /Owner/
+1 DEAT Y
+0 @I3@ INDI
+1 NAME Cy /Owner/
+1 DEAT Y
+0 @F1@ FAM
+1 HUSB @I2@
+1 WIFE @I1@
+1 OBJE @M1@
+0 @F2@ FAM
+1 RESN privacy
+1 HUSB @I3@
+1 OBJE @M3@
+0 @S1@ SOUR
+1 TITL 1851 Census
+1 OBJE @M2@
+0 @S2@ SOUR
+1 TITL Hidden register
+1 _RESN privacy
+1 OBJE @M4@
+0 TRLR
+`
+
+// importOwnerMedia imports ownerMediaGedcom as the owner and returns the
+// media list path of each family and source, keyed by its one item's title.
+func importOwnerMedia(t *testing.T, f *authFixture, owner *http.Cookie) map[string]string {
+	t.Helper()
+	var body bytes.Buffer
+	w := multipart.NewWriter(&body)
+	part, _ := w.CreateFormFile("file", "owners.ged")
+	_, _ = part.Write([]byte(ownerMediaGedcom))
+	_ = w.Close()
+	if rec := f.do(t, request{method: http.MethodPost, path: "/api/v1/gedcom/import", body: body.String(), cookie: owner,
+		header: map[string]string{"Content-Type": w.FormDataContentType()}}); rec.Code != http.StatusOK {
+		t.Fatalf("import: %d %s", rec.Code, rec.Body)
+	}
+
+	paths := map[string]string{}
+	// The family list's rows are under "items", the source list's under "sources".
+	for list, key := range map[string]string{"families": "items", "sources": "sources"} {
+		rows := decode[map[string]any](t, f.do(t, request{method: http.MethodGet, path: "/api/v1/" + list, cookie: owner}))
+		for _, row := range rows[key].([]any) {
+			path := "/api/v1/" + list + "/" + row.(map[string]any)["id"].(string) + "/media"
+			rec := f.do(t, request{method: http.MethodGet, path: path, cookie: owner})
+			if rec.Code != http.StatusOK {
+				t.Fatalf("owner GET %s: %d %s", path, rec.Code, rec.Body)
+			}
+			items := decode[map[string]any](t, rec)["items"].([]any)
+			if len(items) != 1 {
+				t.Fatalf("owner GET %s = %v, want one item", path, items)
+			}
+			paths[items[0].(map[string]any)["title"].(string)] = path
+		}
+	}
+	if len(paths) != 4 {
+		t.Fatalf("media lists = %v, want 4", paths)
+	}
+	return paths
+}
+
+// TestListFamilyAndSourceMedia lists the media a family and a source own: each
+// returns its own GEDCOM reference with its path, and an unknown owner is not
+// found (#1505).
+func TestListFamilyAndSourceMedia(t *testing.T) {
+	f, cookies := rolesFixture(t)
+	paths := importOwnerMedia(t, f, cookies[repository.RoleOwner])
+
+	for title, wantPath := range map[string]string{"Wedding": "photos/wedding.jpg", "Census page": "scans/census-page.jpg"} {
+		rec := f.do(t, request{method: http.MethodGet, path: paths[title], cookie: cookies[repository.RoleViewer]})
+		if rec.Code != http.StatusOK {
+			t.Fatalf("viewer GET %s: %d %s", paths[title], rec.Code, rec.Body)
+		}
+		resp := decode[map[string]any](t, rec)
+		items := resp["items"].([]any)
+		if len(items) != 1 || resp["total"] != float64(1) {
+			t.Fatalf("%s = %v, want its one item", title, resp)
+		}
+		item := items[0].(map[string]any)
+		files, _ := item["files"].([]any)
+		if item["title"] != title || item["has_content"] != false || len(files) != 1 || files[0].(map[string]any)["path"] != wantPath {
+			t.Errorf("%s item = %v, want the reference to %s", title, item, wantPath)
+		}
+	}
+
+	for _, path := range []string{
+		"/api/v1/families/00000000-0000-0000-0000-000000000001/media",
+		"/api/v1/sources/00000000-0000-0000-0000-000000000001/media",
+	} {
+		if rec := f.do(t, request{method: http.MethodGet, path: path, cookie: cookies[repository.RoleOwner]}); rec.Code != http.StatusNotFound {
+			t.Errorf("GET %s = %d, want 404", path, rec.Code)
+		}
+	}
+	for _, path := range []string{"/api/v1/families/not-a-uuid/media", "/api/v1/sources/not-a-uuid/media"} {
+		if rec := f.do(t, request{method: http.MethodGet, path: path, cookie: cookies[repository.RoleOwner]}); rec.Code != http.StatusBadRequest {
+			t.Errorf("GET %s = %d, want 400", path, rec.Code)
+		}
+	}
+}
+
+// TestListFamilyAndSourceMedia_ViewerPrivacy checks a viewer gets 404 for a
+// private family or source, as for a hidden person, and no private item from
+// a visible one, while the owner still sees it marked private (#1505).
+func TestListFamilyAndSourceMedia_ViewerPrivacy(t *testing.T) {
+	f, cookies := rolesFixture(t)
+	owner, viewer := cookies[repository.RoleOwner], cookies[repository.RoleViewer]
+	paths := importOwnerMedia(t, f, owner)
+
+	for _, title := range []string{"Hidden family", "Hidden register"} {
+		if rec := f.do(t, request{method: http.MethodGet, path: paths[title], cookie: viewer}); rec.Code != http.StatusNotFound {
+			t.Errorf("viewer GET %s (%s) = %d %s, want 404", paths[title], title, rec.Code, rec.Body)
+		}
+	}
+
+	for _, title := range []string{"Wedding", "Census page"} {
+		item := decode[map[string]any](t, f.do(t, request{method: http.MethodGet, path: paths[title], cookie: owner}))["items"].([]any)[0].(map[string]any)
+		mark := fmt.Sprintf(`{"private":true,"version":%v}`, item["version"])
+		if rec := f.do(t, request{method: http.MethodPut, path: "/api/v1/media/" + item["id"].(string), body: mark, cookie: owner}); rec.Code != http.StatusOK {
+			t.Fatalf("mark %s private: %d %s", title, rec.Code, rec.Body)
+		}
+
+		rec := f.do(t, request{method: http.MethodGet, path: paths[title], cookie: viewer})
+		if rec.Code != http.StatusOK {
+			t.Fatalf("viewer GET %s: %d %s", paths[title], rec.Code, rec.Body)
+		}
+		if resp := decode[map[string]any](t, rec); len(resp["items"].([]any)) != 0 || resp["total"] != float64(0) {
+			t.Errorf("viewer %s = %v, want no private item", title, resp)
+		}
+		got := decode[map[string]any](t, f.do(t, request{method: http.MethodGet, path: paths[title], cookie: owner}))["items"].([]any)
+		if len(got) != 1 || got[0].(map[string]any)["private"] != true {
+			t.Errorf("owner %s = %v, want the item marked private", title, got)
+		}
 	}
 }

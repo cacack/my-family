@@ -365,6 +365,7 @@ decorator, b = event-output redactor, — = no tree data. "Protected" means a pl
 | listFamilies | GET /families | Family list (also home page) | RM | a | Partners as placeholders; private families excluded in the query |
 | getFamily | GET /families/{id} | Family detail | RM | a | Protected partner → placeholder and family facts hidden; private → 404 |
 | getFamilyGroupSheet | GET /families/{id}/group-sheet | Group sheet with members' events and sources | RM | a | Protected members as placeholders with no events or sources |
+| listFamilyMedia | GET /families/{id}/media | Media metadata | RM | a | Private → 404; protected partner → empty; private media dropped |
 | listLDSOrdinancesForFamily | GET /families/{id}/lds-ordinances | LDS ordinances | RM | a | Hidden when a partner is protected |
 | getFamilyHistory | GET /families/{id}/history | Change entries | EL | b | Hidden when private or a partner is protected. Anonymous: refused (sign-in required) |
 | getFamilyRestorePoints | GET /families/{id}/restore-points | Restore points | EL (+RM existence) | b | As getFamilyHistory. Anonymous: refused (sign-in required) |
@@ -399,6 +400,7 @@ decorator, b = event-output redactor, — = no tree data. "Protected" means a pl
 | listSources | GET /sources | Sources with citation counts | RM | a | Private excluded in the query; counts exclude hidden citations |
 | searchSources | GET /sources/search | Sources | RM | a | Private never match |
 | getSource | GET /sources/{id} | Source detail | RM | a | Private → 404 |
+| listSourceMedia | GET /sources/{id}/media | Media metadata | RM | a | Private → 404; private media dropped |
 | getCitationsForSource | GET /sources/{id}/citations | Citations | RM | a | Drop private citations and those on a protected person's facts |
 | getCitation | GET /citations/{id} | Citation | RM | a | 404 when private or attached to a protected person |
 | formatCitation | GET /citations/{id}/format | Formatted citation text | RM | a | As getCitation |
