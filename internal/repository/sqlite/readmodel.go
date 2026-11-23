@@ -4744,6 +4744,30 @@ func (s *ReadModelStore) ListMediaInGroup(ctx context.Context, branchID domain.B
 	return items, rows.Err()
 }
 
+// ListAllMedia returns every media item branchID sees, newest first, in one
+// query (#1480). No byte column is read.
+func (s *ReadModelStore) ListAllMedia(ctx context.Context, branchID domain.BranchID) ([]repository.MediaReadModel, error) {
+	sub, args := overlayColsSubquery("media", mediaSelectCols, "", nil, branchID)
+	// #nosec G202 -- sub is built from package constants; every value is a bound ? placeholder
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	rows, err := s.db.QueryContext(ctx, "SELECT "+mediaSelectCols+", "+mediaHasThumbnail+" FROM "+sub+
+		" md ORDER BY created_at DESC, id DESC", append(mediaHasThumbnailArgs(branchID), args...)...)
+	if err != nil {
+		return nil, fmt.Errorf("query all media: %w", err)
+	}
+	defer rows.Close()
+
+	var items []repository.MediaReadModel
+	for rows.Next() {
+		m, err := scanMediaRow(rows, false)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, *m)
+	}
+	return items, rows.Err()
+}
+
 // SaveMedia saves or updates a media record on the given branch (ADR-005, #759).
 // A save always clears any prior tombstone. It enforces the blob rule in the
 // statement itself: on a non-main branch, an id that has a main row gets NULL

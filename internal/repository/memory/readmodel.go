@@ -1756,6 +1756,18 @@ func (s *ReadModelStore) GetMediaThumbnail(ctx context.Context, branchID domain.
 	return thumb, nil
 }
 
+// sortMediaNewestFirst sorts by created_at DESC, id DESC (the SQL backends'
+// order).
+func sortMediaNewestFirst(items []repository.MediaReadModel) {
+	sort.Slice(items, func(i, j int) bool {
+		cmp := compareTimestamps(items[i].CreatedAt, items[j].CreatedAt)
+		if cmp == 0 {
+			cmp = strings.Compare(items[i].ID.String(), items[j].ID.String())
+		}
+		return cmp > 0
+	})
+}
+
 // ListMediaForEntity returns a paginated list of the media attached to an
 // entity as opts.BranchID sees it (ADR-005, #759), newest first; the entity
 // filter is decided on each item's winning row.
@@ -1771,15 +1783,7 @@ func (s *ReadModelStore) ListMediaForEntity(ctx context.Context, entityType stri
 	}
 
 	total := len(results)
-
-	// Sort by created_at DESC, id DESC (the SQL backends' order).
-	sort.Slice(results, func(i, j int) bool {
-		cmp := compareTimestamps(results[i].CreatedAt, results[j].CreatedAt)
-		if cmp == 0 {
-			cmp = strings.Compare(results[i].ID.String(), results[j].ID.String())
-		}
-		return cmp > 0
-	})
+	sortMediaNewestFirst(results)
 
 	// Apply pagination
 	if opts.Offset > 0 {
@@ -1809,6 +1813,19 @@ func (s *ReadModelStore) ListMediaInGroup(ctx context.Context, branchID domain.B
 			results = append(results, *s.mediaMetadata(r))
 		}
 	}
+	return results, nil
+}
+
+// ListAllMedia returns every media item branchID sees, newest first (#1480).
+func (s *ReadModelStore) ListAllMedia(ctx context.Context, branchID domain.BranchID) ([]repository.MediaReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var results []repository.MediaReadModel
+	for _, r := range s.visibleMedia(branchID) {
+		results = append(results, *s.mediaMetadata(r))
+	}
+	sortMediaNewestFirst(results)
 	return results, nil
 }
 

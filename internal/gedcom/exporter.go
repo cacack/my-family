@@ -989,33 +989,33 @@ func toGedcomSource(s repository.SourceReadModel, repoIDToXref map[uuid.UUID]str
 }
 
 // ownedMedia returns the media items of persons, families and sources, owner
-// by owner in the given order.
+// by owner in the given order, from one listing of every item (#1480). Items
+// whose owner is not among them are left out.
 func ownedMedia(ctx context.Context, rs repository.ReadModelStore, persons []repository.PersonReadModel, families []repository.FamilyReadModel, sources []repository.SourceReadModel) ([]repository.MediaReadModel, error) {
-	var media []repository.MediaReadModel
-	add := func(entityType string, entityID uuid.UUID) error {
-		items, err := repository.ListAll(ctx, 1000, func(ctx context.Context, opts repository.ListOptions) ([]repository.MediaReadModel, int, error) {
-			return rs.ListMediaForEntity(ctx, entityType, entityID, opts)
-		})
-		if err != nil {
-			return fmt.Errorf("failed to list media of %s %s: %w", entityType, entityID, err)
-		}
-		media = append(media, items...)
-		return nil
+	all, err := rs.ListAllMedia(ctx, domain.MainBranchID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list media: %w", err)
 	}
+	type owner struct {
+		typ string
+		id  uuid.UUID
+	}
+	// ListAllMedia lists in ListMediaForEntity's order, so each owner's items
+	// keep the order a per-owner listing gives them.
+	byOwner := make(map[owner][]repository.MediaReadModel)
+	for _, m := range all {
+		o := owner{m.EntityType, m.EntityID}
+		byOwner[o] = append(byOwner[o], m)
+	}
+	media := make([]repository.MediaReadModel, 0, len(all))
 	for _, p := range persons {
-		if err := add("person", p.ID); err != nil {
-			return nil, err
-		}
+		media = append(media, byOwner[owner{"person", p.ID}]...)
 	}
 	for _, f := range families {
-		if err := add("family", f.ID); err != nil {
-			return nil, err
-		}
+		media = append(media, byOwner[owner{"family", f.ID}]...)
 	}
 	for _, s := range sources {
-		if err := add("source", s.ID); err != nil {
-			return nil, err
-		}
+		media = append(media, byOwner[owner{"source", s.ID}]...)
 	}
 	return media, nil
 }

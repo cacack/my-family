@@ -591,6 +591,17 @@ func TestPrivacyStore_Media(t *testing.T) {
 			if len(listed) != len(tt.shown) || slices.ContainsFunc(listed, func(id uuid.UUID) bool { return !slices.Contains(tt.shown, id) }) {
 				t.Errorf("ListMediaInGroup = %v, want %v", listed, tt.shown)
 			}
+			all, err := tr.store.ListAllMedia(tt.ctx, main)
+			if err != nil {
+				t.Fatalf("ListAllMedia: %v", err)
+			}
+			listed = listed[:0]
+			for _, m := range all {
+				listed = append(listed, m.ID)
+			}
+			if len(listed) != len(tt.shown) || slices.ContainsFunc(listed, func(id uuid.UUID) bool { return !slices.Contains(tt.shown, id) }) {
+				t.Errorf("ListAllMedia = %v, want %v", listed, tt.shown)
+			}
 		})
 	}
 }
