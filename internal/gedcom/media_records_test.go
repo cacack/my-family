@@ -318,6 +318,44 @@ func TestExport_MediaRecordsReimport(t *testing.T) {
 	}
 }
 
+// An item with no file references is written with a FILE naming its filename,
+// or, if it has content, its title; one imported with no FILE, and an empty
+// file reference, as Ancestry writes, are written with an empty FILE (#1585).
+func TestExport_MediaWithoutFileReference(t *testing.T) {
+	ctx := context.Background()
+	rs := memory.NewReadModelStore()
+	now := time.Now()
+	person := &repository.PersonReadModel{ID: uuid.New(), GivenName: "Ann", Surname: "Lee", Version: 1, UpdatedAt: now}
+	if err := rs.SavePerson(ctx, domain.MainBranchID, person); err != nil {
+		t.Fatalf("SavePerson: %v", err)
+	}
+	for _, m := range []*repository.MediaReadModel{
+		{Title: "Scan", MimeType: "image/png", MediaType: domain.MediaPhoto, FileSize: 1, FileData: []byte{1}},
+		{Title: "Ancestry photo", MediaType: domain.MediaDocument, GedcomXref: "@M2@", Files: []domain.MediaFile{{Format: "jpg"}}},
+		{Title: "@M1@", MediaType: domain.MediaDocument, GedcomXref: "@M1@"},
+	} {
+		m.ID, m.EntityType, m.EntityID, m.Version, m.CreatedAt, m.UpdatedAt = uuid.New(), "person", person.ID, 1, now, now
+		if err := rs.SaveMedia(ctx, domain.MainBranchID, m); err != nil {
+			t.Fatalf("SaveMedia: %v", err)
+		}
+	}
+
+	var buf bytes.Buffer
+	if _, err := gedcom.NewExporter(rs).Export(ctx, &buf); err != nil {
+		t.Fatalf("export: %v", err)
+	}
+	out := buf.String()
+	for _, want := range []string{
+		"1 FILE Scan\n2 FORM image/png\n3 TYPE PHOTO\n2 TITL Scan",
+		"1 FILE\n2 FORM jpg\n2 TITL Ancestry photo",
+		"1 FILE\n2 TITL @@M1@",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("export lacks\n%s\nin\n%s", want, out)
+		}
+	}
+}
+
 // The items of a media group are written as one OBJE record linked from each
 // owner, except an item edited apart from the others, which is written as its
 // own record (#1478).

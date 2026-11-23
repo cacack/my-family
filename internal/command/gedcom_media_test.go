@@ -594,3 +594,66 @@ func TestAttachMediaContent(t *testing.T) {
 		t.Errorf("second attach: err = %v, want %v", err, command.ErrMediaHasContent)
 	}
 }
+
+// fileLessMediaGedcom has an OBJE record with no FILE and one, as Ancestry
+// writes, whose FILE is empty (#1585).
+const fileLessMediaGedcom = `0 HEAD
+1 GEDC
+2 VERS 5.5.1
+0 @M1@ OBJE
+0 @M2@ OBJE
+1 FILE
+2 FORM jpg
+2 TITL Ancestry photo
+0 @I1@ INDI
+1 NAME A /B/
+1 OBJE @M1@
+1 OBJE @M2@
+0 TRLR
+`
+
+// A record with no FILE imports as a document, with a warning naming it; one
+// whose FILE is empty imports with no warning.
+func TestImportGedcom_MediaWithoutFileReference(t *testing.T) {
+	ctx := context.Background()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(memory.NewEventStore(), readStore)
+
+	result, err := handler.ImportGedcom(ctx, command.ImportGedcomInput{Filename: "m.ged", Reader: strings.NewReader(fileLessMediaGedcom)})
+	if err != nil {
+		t.Fatalf("ImportGedcom: %v", err)
+	}
+	if result.MediaImported != 2 {
+		t.Errorf("MediaImported = %d, want 2", result.MediaImported)
+	}
+	warnsAbout := func(xref string) bool {
+		return slices.ContainsFunc(result.Warnings, func(w string) bool {
+			return strings.Contains(w, xref) && strings.Contains(w, "FILE")
+		})
+	}
+	if !warnsAbout("@M1@") {
+		t.Errorf("warnings %q lack @M1@'s missing FILE", result.Warnings)
+	}
+	if warnsAbout("@M2@") {
+		t.Errorf("warnings %q name @M2@, whose FILE is empty but present", result.Warnings)
+	}
+
+	persons, _, _ := readStore.ListPersons(ctx, repository.DefaultListOptions())
+	if len(persons) != 1 {
+		t.Fatalf("imported %d persons, want 1", len(persons))
+	}
+	media, _, err := readStore.ListMediaForEntity(ctx, "person", persons[0].ID, repository.DefaultListOptions())
+	if err != nil {
+		t.Fatalf("ListMediaForEntity: %v", err)
+	}
+	byXref := map[string]repository.MediaReadModel{}
+	for _, m := range media {
+		byXref[m.GedcomXref] = m
+	}
+	if m := byXref["@M1@"]; m.MediaType != domain.MediaDocument || len(m.Files) != 0 {
+		t.Errorf("@M1@ = %+v, want a document with no files", m)
+	}
+	if m := byXref["@M2@"]; m.MediaType != domain.MediaDocument || len(m.Files) != 1 || m.Files[0].Path != "" {
+		t.Errorf("@M2@ = %+v, want a document with one empty file reference", m)
+	}
+}

@@ -1061,14 +1061,32 @@ func toGedcomMediaObject(m repository.MediaReadModel) *gedcom.MediaObject {
 		obj.Files = append(obj.Files, file)
 	}
 	if len(obj.Files) == 0 {
-		obj.Files = []*gedcom.MediaFile{{FileRef: m.Filename, Form: m.MimeType}}
+		obj.Files = []*gedcom.MediaFile{{FileRef: uploadFileRef(m), Form: m.MimeType}}
 	}
 	first := obj.Files[0]
 	first.Title = m.Title
+	// A document is written with no MEDI: mapGedcomMediaType("") reads it back
+	// as one, so the overwrite below leaves its MediaType empty.
 	if mapGedcomMediaType(first.MediaType) != m.MediaType {
 		first.MediaType = gedcomMediaTypes[m.MediaType]
 	}
 	return obj
+}
+
+// uploadFileRef is the FILE value of an item with no file references: its
+// filename, or, for an item with content but no filename, its title, as FILE
+// must name a file (#1585). The title, unlike the item's ID, is shared by the
+// items of a group, which matchingGroupRecord writes as one record. An item
+// with neither, such as one imported from an OBJE with no FILE, has no file
+// to name and is written with an empty FILE, so no reference is made up.
+func uploadFileRef(m repository.MediaReadModel) string {
+	if m.Filename != "" {
+		return m.Filename
+	}
+	if m.FileSize > 0 {
+		return m.Title
+	}
+	return ""
 }
 
 // typeMediaRestrictions turns each OBJE record's _RESN into the RESN GEDCOM
