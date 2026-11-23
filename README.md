@@ -228,7 +228,9 @@ item keeps its title, owner, GEDCOM link, file paths and `private` mark, and now
 record is attached on its own, and an item that already has a file is refused. People, families and
 sources show their media in the same gallery (`GET /api/v1/persons/{id}/media`, and the same under
 `/families` and `/sources`), and each takes an upload: uploading a file to a person, family or source
-from its gallery (`POST` to the same path) creates a new media item it owns.
+from its gallery (`POST` to the same path) creates a new media item it owns. An editor changes an
+item's title, description and type from its lightbox (**Edit details**, or `PUT /api/v1/media/{id}`), an
+imported reference's included.
 Export writes an `OBJE` record per
 item (one record, linked from each owner, for the items of one record that are still alike), naming
 an uploaded item's file by its filename; the file content is not included.
