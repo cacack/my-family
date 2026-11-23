@@ -218,7 +218,9 @@ badge shows on it; notes have no screen yet, so mark them through the API. Perso
 which is their GEDCOM restriction notice (`RESN`); it round-trips through GEDCOM import and export
 for all six. GEDCOM media records (`OBJE`) import with their
 title, file references and restriction, as one item per person, family or source that links to
-them; a media record nothing links to is skipped with a warning. The items of one record share
+them, whether at record level or under one of its events, attributes or citations; a media record nothing
+links to is skipped with a warning. An inline `OBJE` (one with no record) imports as one item of the record
+that contains it. Where a link sat within its record is not kept: export links every item at record level. The items of one record share
 their `private` mark: marking one private marks them all (items imported by an earlier version
 are not grouped; if an update fails part way, sending the mark again marks the rest). Imported
 media are references only: they keep the file paths but not the files, so the gallery shows each as its title and path,
