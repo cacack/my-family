@@ -219,10 +219,11 @@ type MediaData struct {
 	// ImportResult.MediaXrefToID maps the OBJE xref to; the import gives the
 	// items of later owners new IDs.
 	ID         uuid.UUID
-	GedcomXref string
+	GedcomXref string // empty for an inline OBJE link (#1479)
 	// Owners are the person, family and source records that link to the OBJE
-	// record, in file order, each once. A media item has one owner, so the
-	// import creates one item per owner (#1435).
+	// record, at record level or below it, in file order, each once; for an
+	// inline link, the record that contains it. A media item has one owner,
+	// so the import creates one item per owner (#1435).
 	Owners      []MediaOwner
 	Restriction string // record-level RESN (ADR-008), or _RESN in 5.5.x
 	Title       string
@@ -551,16 +552,18 @@ func (imp *Importer) ImportWithOptions(ctx context.Context, reader io.Reader, im
 		ldsOrdinances = append(ldsOrdinances, familyOrdinances...)
 	}
 
-	// Ninth pass: parse OBJE (media object) records
+	// Ninth pass: parse OBJE (media object) records, then the inline OBJE
+	// links that describe their media in place (#1479)
 	// These contain full media metadata including multiple files and translations
 	var mediaObjects []MediaData
-	owners := mediaOwners(doc, result)
+	owners, inline := mediaLinks(doc, result)
 	for _, media := range doc.MediaObjects() {
 		mediaData := parseMediaObject(media, result)
 		mediaData.Owners = owners[media.XRef]
 		mediaObjects = append(mediaObjects, mediaData)
 		result.MediaXrefToID[media.XRef] = mediaData.ID
 	}
+	mediaObjects = append(mediaObjects, inline...)
 
 	result.PersonsImported = len(persons)
 	result.FamiliesImported = len(families)
@@ -2245,21 +2248,42 @@ func extractLDSOrdinancesFromFamily(fam *gedcom.Family, familyID uuid.UUID) []LD
 }
 
 // parseMediaObject converts a GEDCOM media object (OBJE) record to MediaData.
-// Note: This parses top-level OBJE records; mediaOwners finds the records that
+// Note: This parses top-level OBJE records; mediaLinks finds the records that
 // link to them.
 // TODO: result parameter reserved for future error/warning tracking
 func parseMediaObject(media *gedcom.MediaObject, _ *ImportResult) MediaData {
-	mediaData := MediaData{
-		ID:          uuid.New(),
-		GedcomXref:  media.XRef,
-		Restriction: media.Restriction,
-	}
+	mediaData := parseMediaFiles(media.Files)
+	mediaData.GedcomXref = media.XRef
+	mediaData.Restriction = media.Restriction
 	if mediaData.Restriction == "" {
 		mediaData.Restriction = extensionRestriction(media.Tags)
 	}
+	if mediaData.Title == "" {
+		mediaData.Title = media.XRef // Use XRef as fallback
+	}
+	return mediaData
+}
 
-	// Parse all files from the OBJE record
-	for i, file := range media.Files {
+// parseInlineMedia converts an inline OBJE link (no pointer) to MediaData
+// owned by owner: the link's title, else its first file's, else that file's
+// path.
+func parseInlineMedia(link *gedcom.MediaLink, owner MediaOwner) MediaData {
+	mediaData := parseMediaFiles(link.Files)
+	mediaData.Owners = []MediaOwner{owner}
+	if link.Title != "" {
+		mediaData.Title = link.Title
+	}
+	if mediaData.Title == "" {
+		mediaData.Title = mediaData.FileRef
+	}
+	return mediaData
+}
+
+// parseMediaFiles converts the files of an OBJE record or inline link to a new
+// MediaData; the first file fills the single-file fields and the title.
+func parseMediaFiles(files []*gedcom.MediaFile) MediaData {
+	mediaData := MediaData{ID: uuid.New()}
+	for i, file := range files {
 		domainFile := domain.MediaFile{
 			Path:      file.FileRef,
 			Format:    file.Form,
@@ -2282,53 +2306,123 @@ func parseMediaObject(media *gedcom.MediaObject, _ *ImportResult) MediaData {
 			mediaData.FileRef = file.FileRef
 			mediaData.MimeType = file.Form
 			mediaData.Format = file.Form
-			if file.Title != "" {
-				mediaData.Title = file.Title
-			}
+			mediaData.Title = file.Title
 			// Map GEDCOM media type (MEDI) to domain MediaType
 			mediaData.MediaType = mapGedcomMediaType(file.MediaType)
 		}
 	}
-
-	// Fallback title from the first file or XRef
-	if mediaData.Title == "" {
-		if len(media.Files) > 0 && media.Files[0].Title != "" {
-			mediaData.Title = media.Files[0].Title
-		} else {
-			mediaData.Title = media.XRef // Use XRef as fallback
-		}
-	}
-
 	return mediaData
 }
 
-// mediaOwners returns, per OBJE xref, the person, family and source records
-// that link to it with a record-level OBJE pointer, in file order and each
-// once. Links under events, citations and other substructures, and inline
-// OBJE links with no pointer, are not read.
-func mediaOwners(doc *gedcom.Document, result *ImportResult) map[string][]MediaOwner {
+// mediaLinks follows every OBJE link in the person, family and source records:
+// at record level and under their names, events, attributes, associations and
+// citations. It returns, per OBJE xref, the records that link to it, in file
+// order and each once, and an item for each inline link that names a file,
+// owned by the record that contains it. Where a link sat within its record is not kept.
+func mediaLinks(doc *gedcom.Document, result *ImportResult) (map[string][]MediaOwner, []MediaData) {
 	owners := make(map[string][]MediaOwner)
-	add := func(links []*gedcom.MediaLink, entityType string, entityID uuid.UUID) {
+	var inline []MediaData
+	add := func(links []*gedcom.MediaLink, owner MediaOwner) {
 		for _, link := range links {
-			if link == nil || link.MediaXRef == "" {
-				continue
-			}
-			owner := MediaOwner{EntityType: entityType, EntityID: entityID}
-			if !slices.Contains(owners[link.MediaXRef], owner) {
-				owners[link.MediaXRef] = append(owners[link.MediaXRef], owner)
+			switch {
+			case link == nil:
+			case link.MediaXRef != "":
+				if !slices.Contains(owners[link.MediaXRef], owner) {
+					owners[link.MediaXRef] = append(owners[link.MediaXRef], owner)
+				}
+			case slices.ContainsFunc(link.Files, hasFileRef):
+				inline = append(inline, parseInlineMedia(link, owner))
 			}
 		}
 	}
 	for _, indi := range doc.Individuals() {
-		add(indi.Media, "person", result.PersonXrefToID[indi.XRef])
+		add(individualMediaLinks(indi), MediaOwner{EntityType: "person", EntityID: result.PersonXrefToID[indi.XRef]})
 	}
 	for _, fam := range doc.Families() {
-		add(fam.Media, "family", result.FamilyXrefToID[fam.XRef])
+		add(familyMediaLinks(fam), MediaOwner{EntityType: "family", EntityID: result.FamilyXrefToID[fam.XRef]})
 	}
 	for _, src := range doc.Sources() {
-		add(src.Media, "source", result.SourceXrefToID[src.XRef])
+		add(src.Media, MediaOwner{EntityType: "source", EntityID: result.SourceXrefToID[src.XRef]})
 	}
-	return owners
+	return owners, inline
+}
+
+// hasFileRef reports whether file names a file. A 5.5 inline OBJE with FORM
+// but no FILE (e.g. an embedded BLOB) decodes to a file with an empty FileRef.
+func hasFileRef(file *gedcom.MediaFile) bool {
+	return file != nil && file.FileRef != ""
+}
+
+// individualMediaLinks returns the OBJE links anywhere in a person record,
+// record-level ones first.
+func individualMediaLinks(indi *gedcom.Individual) []*gedcom.MediaLink {
+	links := slices.Clone(indi.Media)
+	links = append(links, citationMediaLinks(indi.SourceCitations)...)
+	for _, name := range indi.Names {
+		if name != nil {
+			links = append(links, citationMediaLinks(name.SourceCitations)...)
+		}
+	}
+	links = append(links, associationMediaLinks(indi.Associations)...)
+	for _, ev := range indi.Events {
+		links = append(links, eventMediaLinks(ev)...)
+	}
+	for _, attr := range indi.Attributes {
+		links = append(links, attributeMediaLinks(attr)...)
+	}
+	return links
+}
+
+// familyMediaLinks returns the OBJE links anywhere in a family record,
+// record-level ones first.
+func familyMediaLinks(fam *gedcom.Family) []*gedcom.MediaLink {
+	links := slices.Clone(fam.Media)
+	links = append(links, citationMediaLinks(fam.SourceCitations)...)
+	for _, ev := range fam.Events {
+		links = append(links, eventMediaLinks(ev)...)
+	}
+	for _, attr := range fam.Attributes {
+		links = append(links, attributeMediaLinks(attr)...)
+	}
+	return links
+}
+
+func eventMediaLinks(ev *gedcom.Event) []*gedcom.MediaLink {
+	if ev == nil {
+		return nil
+	}
+	links := slices.Clone(ev.Media)
+	links = append(links, citationMediaLinks(ev.SourceCitations)...)
+	return append(links, associationMediaLinks(ev.Associations)...)
+}
+
+func attributeMediaLinks(attr *gedcom.Attribute) []*gedcom.MediaLink {
+	if attr == nil {
+		return nil
+	}
+	links := slices.Clone(attr.Media)
+	links = append(links, citationMediaLinks(attr.SourceCitations)...)
+	return append(links, associationMediaLinks(attr.Associations)...)
+}
+
+func associationMediaLinks(assocs []*gedcom.Association) []*gedcom.MediaLink {
+	var links []*gedcom.MediaLink
+	for _, assoc := range assocs {
+		if assoc != nil {
+			links = append(links, citationMediaLinks(assoc.SourceCitations)...)
+		}
+	}
+	return links
+}
+
+func citationMediaLinks(citations []*gedcom.SourceCitation) []*gedcom.MediaLink {
+	var links []*gedcom.MediaLink
+	for _, sc := range citations {
+		if sc != nil {
+			links = append(links, sc.Media...)
+		}
+	}
+	return links
 }
 
 // mapGedcomMediaType converts GEDCOM MEDI values to domain MediaType.

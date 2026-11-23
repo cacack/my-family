@@ -83,6 +83,133 @@ func TestImportGedcom_MediaOneItemPerOwner(t *testing.T) {
 	}
 }
 
+// nestedMediaGedcom links OBJE records below record level, under events, an
+// attribute and citations, and describes media inline at record level and
+// under an event (#1479). @M5@ is linked from John twice.
+const nestedMediaGedcom = `0 HEAD
+1 GEDC
+2 VERS 5.5.1
+2 FORM LINEAGE-LINKED
+1 CHAR UTF-8
+0 @M1@ OBJE
+1 FILE birth.jpg
+2 FORM jpg
+2 TITL Birth certificate
+0 @M2@ OBJE
+1 FILE occupation.jpg
+2 FORM jpg
+2 TITL Work photo
+0 @M3@ OBJE
+1 FILE marriage.jpg
+2 FORM jpg
+2 TITL Marriage record
+0 @M4@ OBJE
+1 FILE census.jpg
+2 FORM jpg
+2 TITL Census page
+0 @M5@ OBJE
+1 FILE portrait.jpg
+2 FORM jpg
+2 TITL Portrait
+0 @M6@ OBJE
+1 FILE banns.jpg
+2 FORM jpg
+2 TITL Banns
+0 @S1@ SOUR
+1 TITL Census
+0 @I1@ INDI
+1 NAME John /Doe/
+1 OBJE @M5@
+1 OBJE
+2 FILE photos/john.jpg
+3 FORM jpg
+2 TITL John at ten
+1 BIRT
+2 DATE 1900
+2 OBJE @M1@
+2 OBJE @M5@
+2 OBJE
+3 FILE scans/baptism.pdf
+4 FORM pdf
+3 TITL Baptism entry
+1 OCCU Farmer
+2 OBJE @M2@
+1 RESI
+2 SOUR @S1@
+3 OBJE @M4@
+1 FAMS @F1@
+0 @F1@ FAM
+1 HUSB @I1@
+1 MARR
+2 OBJE @M3@
+1 SOUR @S1@
+2 OBJE @M6@
+0 TRLR
+`
+
+func TestImportGedcom_MediaBelowRecordLevelAndInline(t *testing.T) {
+	ctx := context.Background()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(memory.NewEventStore(), readStore)
+
+	result, err := handler.ImportGedcom(ctx, command.ImportGedcomInput{Filename: "m.ged", Reader: strings.NewReader(nestedMediaGedcom)})
+	if err != nil {
+		t.Fatalf("ImportGedcom: %v", err)
+	}
+	if slices.ContainsFunc(result.Warnings, func(w string) bool { return strings.Contains(w, "linked to no") }) {
+		t.Errorf("warnings %q report a linked record as unlinked", result.Warnings)
+	}
+	if result.MediaImported != 8 {
+		t.Errorf("MediaImported = %d, want 8", result.MediaImported)
+	}
+
+	persons, _, _ := readStore.ListPersons(ctx, repository.DefaultListOptions())
+	families, _, _ := readStore.ListFamilies(ctx, repository.DefaultListOptions())
+	if len(persons) != 1 || len(families) != 1 {
+		t.Fatalf("imported %d persons, %d families; want 1 each", len(persons), len(families))
+	}
+	titles := func(entityType string, id uuid.UUID) map[string]repository.MediaReadModel {
+		media, _, err := readStore.ListMediaForEntity(ctx, entityType, id, repository.DefaultListOptions())
+		if err != nil {
+			t.Fatalf("ListMediaForEntity(%s): %v", entityType, err)
+		}
+		byTitle := make(map[string]repository.MediaReadModel, len(media))
+		for _, m := range media {
+			byTitle[m.Title] = m
+		}
+		if len(byTitle) != len(media) {
+			t.Errorf("%s holds %d items under %d titles, want one item per title", entityType, len(media), len(byTitle))
+		}
+		return byTitle
+	}
+
+	person := titles("person", persons[0].ID)
+	for title, xref := range map[string]string{
+		"Birth certificate": "@M1@", // under an event
+		"Work photo":        "@M2@", // under an attribute
+		"Census page":       "@M4@", // under an event's citation
+		"Portrait":          "@M5@", // at record level and under an event
+	} {
+		if person[title].GedcomXref != xref {
+			t.Errorf("person item %q = %+v, want the item of %s", title, person[title], xref)
+		}
+	}
+	for title, path := range map[string]string{"John at ten": "photos/john.jpg", "Baptism entry": "scans/baptism.pdf"} {
+		m, ok := person[title]
+		if !ok || m.GedcomXref != "" || len(m.Files) != 1 || m.Files[0].Path != path || m.Format == "" {
+			t.Errorf("person inline item %q = %+v, want %s with its format and no xref", title, m, path)
+		}
+	}
+	if len(person) != 6 {
+		t.Errorf("person holds %d items, want 6", len(person))
+	}
+
+	family := titles("family", families[0].ID)
+	if family["Marriage record"].GedcomXref != "@M3@" || family["Banns"].GedcomXref != "@M6@" || len(family) != 2 {
+		t.Errorf("family items = %+v, want @M3@ (under an event) and @M6@ (under a citation)", family)
+	}
+}
+
 // failingStreamStore fails every append to streams of one type.
 type failingStreamStore struct {
 	*memory.EventStore
