@@ -799,6 +799,38 @@ func TestImportGedcom_MediaLinkTitleNotesAndCrop(t *testing.T) {
 	wantCrop(t, "Will's item", will, [4]*int{new(5), new(6), nil, nil})
 }
 
+// Export writes the link detail of an imported group's items on their links,
+// so a re-import gives every item back its title, description and crop and
+// keeps John's and Mary's items one group (#1478, #1584).
+func TestImportGedcom_MediaLinkDetailRoundTripKeepsTheGroup(t *testing.T) {
+	ctx := context.Background()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(memory.NewEventStore(), readStore)
+	if _, err := handler.ImportGedcom(ctx, command.ImportGedcomInput{Filename: "m.ged", Reader: strings.NewReader(linkDetailGedcom)}); err != nil {
+		t.Fatalf("ImportGedcom: %v", err)
+	}
+	out := exportGedcom(t, readStore)
+	if n := strings.Count(out, " OBJE\n"); n != 2 {
+		t.Errorf("export writes %d OBJE records, want 2 (the shared one and Will's):\n%s", n, out)
+	}
+
+	again := memory.NewReadModelStore()
+	if _, err := command.NewHandler(memory.NewEventStore(), again).ImportGedcom(ctx, command.ImportGedcomInput{Filename: "m.ged", Reader: strings.NewReader(out)}); err != nil {
+		t.Fatalf("re-import: %v", err)
+	}
+	for _, given := range []string{"John", "Mary", "Will"} {
+		before, after := personMedia(t, ctx, readStore, given), personMedia(t, ctx, again, given)
+		if after.Title != before.Title || after.Description != before.Description {
+			t.Errorf("%s's item = title %q, description %q; want %q, %q", given, after.Title, after.Description, before.Title, before.Description)
+		}
+		wantCrop(t, given+"'s re-imported item", after, cropOf(before))
+	}
+	john, mary := personMedia(t, ctx, again, "John"), personMedia(t, ctx, again, "Mary")
+	if john.GroupID == nil || mary.GroupID == nil || *john.GroupID != *mary.GroupID {
+		t.Errorf("re-imported groups John %v, Mary %v; want one group", john.GroupID, mary.GroupID)
+	}
+}
+
 // The crop is part of the imported version 1, so a rollback to it restores
 // a crop an editor cleared (#1584).
 func TestRollbackMedia_ToImportedVersionRestoresTheCrop(t *testing.T) {

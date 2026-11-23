@@ -223,7 +223,8 @@ them, whether at record level or under one of its events, attributes or citation
 links to is skipped with a warning, and one with no `FILE` imports as a document, with a warning; export names an uploaded item that has no filename by its title. An inline `OBJE` (one with no record) that names a file imports as one item of the record
 that contains it. A link's own title (`TITL`) becomes that owner's item title, its note text joins the record's
 in the item's description, and its `CROP` becomes the item's crop; export writes the description as the
-record's `NOTE` and the crop on the owner's link, as GEDCOM 7.0. Where a link sat within its record is not kept: export links every item at record level. The items of one record share
+record's `NOTE` and the crop on the owner's link, as GEDCOM 7.0; where items of one record differ in title or
+description, each one's own is written on its link, so a re-import keeps them one record. Where a link sat within its record is not kept: export links every item at record level. The items of one record share
 their `private` mark: marking one private marks them all (items imported by an earlier version
 are not grouped; if an update fails part way, sending the mark again marks the rest). Imported
 media are references only: they keep the file paths but not the files, so the gallery shows each as its title and path,
