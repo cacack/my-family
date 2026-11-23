@@ -229,7 +229,7 @@ reference itself from its lightbox (**Attach file**, or `PUT /api/v1/media/{id}/
 item keeps its title, owner, GEDCOM link, file paths and `private` mark, and now shows the file. Each item of a
 record is attached on its own, and an item that already has a file is refused. People, families and
 sources show their media in the same gallery (`GET /api/v1/persons/{id}/media`, and the same under
-`/families` and `/sources`), and each takes an upload: uploading a file to a person, family or source
+`/families` and `/sources`), 20 items at a time with **Show more** for the rest, and each takes an upload: uploading a file to a person, family or source
 from its gallery (`POST` to the same path) creates a new media item it owns. An editor changes an
 item's title, description and type from its lightbox (**Edit details**, or `PUT /api/v1/media/{id}`),
 including an imported reference that has no file.
