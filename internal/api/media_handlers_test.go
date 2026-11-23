@@ -2,6 +2,7 @@ package api_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"image"
@@ -909,8 +910,8 @@ func TestReferenceOnlyMedia_ContentAndThumbnailNotFound(t *testing.T) {
 }
 
 // ownerMediaGedcom gives a family and a source one media reference each, and
-// a private family and a private source one more each (#1505). Everyone is
-// dead, so only the privacy marks hide anything from a viewer.
+// a private family and a private source one more each (#1505). Everyone but
+// Dee is dead; Dee is living, so her family has a protected partner.
 const ownerMediaGedcom = `0 HEAD
 1 GEDC
 2 VERS 5.5.1
@@ -930,6 +931,10 @@ const ownerMediaGedcom = `0 HEAD
 1 FILE scans/hidden-register.jpg
 2 FORM jpg
 2 TITL Hidden register
+0 @M5@ OBJE
+1 FILE photos/living-family.jpg
+2 FORM jpg
+2 TITL Living family
 0 @I1@ INDI
 1 NAME Ada /Owner/
 1 DEAT Y
@@ -939,6 +944,10 @@ const ownerMediaGedcom = `0 HEAD
 0 @I3@ INDI
 1 NAME Cy /Owner/
 1 DEAT Y
+0 @I4@ INDI
+1 NAME Dee /Owner/
+1 BIRT
+2 DATE 1990
 0 @F1@ FAM
 1 HUSB @I2@
 1 WIFE @I1@
@@ -947,6 +956,9 @@ const ownerMediaGedcom = `0 HEAD
 1 RESN privacy
 1 HUSB @I3@
 1 OBJE @M3@
+0 @F3@ FAM
+1 WIFE @I4@
+1 OBJE @M5@
 0 @S1@ SOUR
 1 TITL 1851 Census
 1 OBJE @M2@
@@ -988,8 +1000,8 @@ func importOwnerMedia(t *testing.T, f *authFixture, owner *http.Cookie) map[stri
 			paths[items[0].(map[string]any)["title"].(string)] = path
 		}
 	}
-	if len(paths) != 4 {
-		t.Fatalf("media lists = %v, want 4", paths)
+	if len(paths) != 5 {
+		t.Fatalf("media lists = %v, want 5", paths)
 	}
 	return paths
 }
@@ -1034,8 +1046,9 @@ func TestListFamilyAndSourceMedia(t *testing.T) {
 }
 
 // TestListFamilyAndSourceMedia_ViewerPrivacy checks a viewer gets 404 for a
-// private family or source, as for a hidden person, and no private item from
-// a visible one, while the owner still sees it marked private (#1505).
+// private family or source, as for a hidden person, an empty list for a
+// family with a protected partner, and no private item from a visible one,
+// while the owner still sees it marked private (#1505).
 func TestListFamilyAndSourceMedia_ViewerPrivacy(t *testing.T) {
 	f, cookies := rolesFixture(t)
 	owner, viewer := cookies[repository.RoleOwner], cookies[repository.RoleViewer]
@@ -1045,6 +1058,25 @@ func TestListFamilyAndSourceMedia_ViewerPrivacy(t *testing.T) {
 		if rec := f.do(t, request{method: http.MethodGet, path: paths[title], cookie: viewer}); rec.Code != http.StatusNotFound {
 			t.Errorf("viewer GET %s (%s) = %d %s, want 404", paths[title], title, rec.Code, rec.Body)
 		}
+	}
+
+	// With viewers kept from the living, Dee's family resolves with a
+	// placeholder partner, so it is found, but lists none of its media
+	// (ADR-008 §3).
+	settings := repository.DefaultTreeSettings()
+	settings.ViewersSeeLiving = false
+	if err := f.accounts.SaveTreeSettings(context.Background(), repository.DefaultTreeID, settings); err != nil {
+		t.Fatalf("SaveTreeSettings: %v", err)
+	}
+	rec := f.do(t, request{method: http.MethodGet, path: paths["Living family"], cookie: viewer})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("viewer GET %s: %d %s", paths["Living family"], rec.Code, rec.Body)
+	}
+	if resp := decode[map[string]any](t, rec); len(resp["items"].([]any)) != 0 || resp["total"] != float64(0) {
+		t.Errorf("viewer Living family = %v, want nothing listed for a protected partner", resp)
+	}
+	if got := decode[map[string]any](t, f.do(t, request{method: http.MethodGet, path: paths["Living family"], cookie: owner}))["total"]; got != float64(1) {
+		t.Errorf("owner Living family total = %v, want 1", got)
 	}
 
 	for _, title := range []string{"Wedding", "Census page"} {

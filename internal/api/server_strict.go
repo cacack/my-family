@@ -2583,8 +2583,8 @@ func (ss *StrictServer) ListPersonMedia(ctx context.Context, request ListPersonM
 	return ListPersonMedia200JSONResponse(list), nil
 }
 
-// ListFamilyMedia implements StrictServerInterface. A family the principal
-// may not see is not found (ADR-008 §3).
+// ListFamilyMedia implements StrictServerInterface. A private family is not
+// found; a family with a protected partner lists nothing (ADR-008 §3).
 func (ss *StrictServer) ListFamilyMedia(ctx context.Context, request ListFamilyMediaRequestObject) (ListFamilyMediaResponseObject, error) {
 	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
 	if err != nil {
