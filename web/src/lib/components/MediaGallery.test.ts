@@ -511,6 +511,89 @@ describe('MediaGallery', () => {
 		});
 	});
 
+	describe('more items than one page (#1745)', () => {
+		const items = Array.from({ length: 25 }, (_, i) => media({ id: `m-${i + 1}`, title: `Item ${i + 1}` }));
+		const owners = [
+			['person', 'p-1', 'listPersonMedia'],
+			['family', 'f-1', 'listFamilyMedia'],
+			['source', 's-1', 'listSourceMedia']
+		] as const;
+
+		function pages(lister: (typeof owners)[number][2], all: Media[]) {
+			vi.mocked(apiModule.api[lister]).mockImplementation(async (_id, page) => {
+				const offset = page?.offset ?? 0;
+				return { items: all.slice(offset, offset + (page?.limit ?? 20)), total: all.length };
+			});
+		}
+
+		it.each(owners)("reaches all 25 of a %s's items through Show more", async (ownerType, ownerId, lister) => {
+			pages(lister, items);
+			render(MediaGallery, { props: { ownerType, ownerId } });
+
+			expect(await screen.findByText('Showing 20 of 25')).toBeDefined();
+			expect(screen.getAllByRole('listitem')).toHaveLength(20);
+			expect(screen.queryByRole('button', { name: 'View Item 21' })).toBeNull();
+
+			await fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+
+			expect(await screen.findByRole('button', { name: 'View Item 25' })).toBeDefined();
+			for (const item of items) {
+				expect(screen.getByRole('button', { name: `View ${item.title}` })).toBeDefined();
+			}
+			expect(apiModule.api[lister]).toHaveBeenLastCalledWith(ownerId, { limit: 20, offset: 20 });
+			expect(screen.queryByText(/^Showing/)).toBeNull();
+			expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull();
+		});
+
+		it.each(owners)('shows no paging control on a %s with 20 items', async (ownerType, ownerId, lister) => {
+			pages(lister, items.slice(0, 20));
+			render(MediaGallery, { props: { ownerType, ownerId } });
+
+			expect(await screen.findByRole('button', { name: 'View Item 20' })).toBeDefined();
+			expect(screen.queryByText(/^Showing/)).toBeNull();
+			expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull();
+		});
+
+		it('counts an upload, so Show more skips the items already shown', async () => {
+			const uploaded = media({ id: 'm-new', title: 'certificate' });
+			pages('listPersonMedia', items);
+			vi.mocked(apiModule.api.uploadPersonMedia).mockImplementation(async () => {
+				pages('listPersonMedia', [uploaded, ...items]);
+				return uploaded;
+			});
+			render(MediaGallery, { props: { ownerType: 'person', ownerId: 'p-1' } });
+			await screen.findByText('Showing 20 of 25');
+
+			const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+			const file = new File(['x'], 'certificate.jpg', { type: 'image/jpeg' });
+			Object.defineProperty(input, 'files', { value: [file], configurable: true });
+			await fireEvent.change(input);
+			await fireEvent.click(screen.getByRole('button', { name: 'Upload' }));
+			expect(await screen.findByText('Showing 21 of 26')).toBeDefined();
+
+			await fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+			expect(await screen.findByRole('button', { name: 'View Item 25' })).toBeDefined();
+			expect(apiModule.api.listPersonMedia).toHaveBeenLastCalledWith('p-1', { limit: 20, offset: 21 });
+			expect(screen.getAllByRole('listitem')).toHaveLength(26);
+		});
+
+		it('keeps the items shown when Show more fails, and tries again', async () => {
+			pages('listPersonMedia', items);
+			render(MediaGallery, { props: { ownerType: 'person', ownerId: 'p-1' } });
+			await screen.findByText('Showing 20 of 25');
+
+			vi.mocked(apiModule.api.listPersonMedia).mockRejectedValueOnce({ message: 'Network down' });
+			await fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+
+			expect((await screen.findByRole('alert')).textContent).toContain('Network down');
+			expect(screen.getAllByRole('listitem')).toHaveLength(20);
+
+			await fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+			expect(await screen.findByRole('button', { name: 'View Item 25' })).toBeDefined();
+			expect(screen.queryByRole('alert')).toBeNull();
+		});
+	});
+
 	describe('the owner (#1505, #1538)', () => {
 		it.each([
 			['family', 'f-1', 'listFamilyMedia'],
@@ -521,7 +604,7 @@ describe('MediaGallery', () => {
 
 			const card = await screen.findByRole('button', { name: /^View Wedding photos\/wedding\.jpg File not stored$/ });
 			expect(card).toBeDefined();
-			expect(apiModule.api[lister]).toHaveBeenCalledWith(ownerId);
+			expect(apiModule.api[lister]).toHaveBeenCalledWith(ownerId, { limit: 20, offset: 0 });
 			expect(apiModule.api.listPersonMedia).not.toHaveBeenCalled();
 		});
 

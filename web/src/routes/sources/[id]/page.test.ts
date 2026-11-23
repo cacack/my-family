@@ -263,7 +263,7 @@ describe('Source detail page: media gallery (#1505, #1538)', () => {
 		const card = await screen.findByRole('button', { name: /^View Census page scans\/census-page\.jpg File not stored$/ });
 		expect(within(card).getByText('scans/census-page.jpg')).toBeDefined();
 		expect(screen.getByRole('heading', { name: 'Media' })).toBeDefined();
-		expect(api.listSourceMedia).toHaveBeenCalledWith('src-1');
+		expect(api.listSourceMedia).toHaveBeenCalledWith('src-1', { limit: 20, offset: 0 });
 	});
 
 	it('lets an editor upload to the source from its gallery and shows the new item (#1538)', async () => {

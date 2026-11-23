@@ -6,6 +6,7 @@
 	import MediaLightbox from './MediaLightbox.svelte';
 	import ConflictError from './ConflictError.svelte';
 	import ConfirmDialog from './ConfirmDialog.svelte';
+	import ActionError from './ActionError.svelte';
 	import PrivacyBadges from './PrivacyBadges.svelte';
 
 	interface Props {
@@ -16,16 +17,28 @@
 
 	let { ownerType, ownerId, onMediaAdded }: Props = $props();
 
+	type Page = { limit: number; offset: number };
 	const listers = {
-		person: (id: string) => api.listPersonMedia(id),
-		family: (id: string) => api.listFamilyMedia(id),
-		source: (id: string) => api.listSourceMedia(id)
-	} satisfies Record<MediaOwnerType, (id: string) => Promise<{ items: Media[] }>>;
+		person: (id: string, page: Page) => api.listPersonMedia(id, page),
+		family: (id: string, page: Page) => api.listFamilyMedia(id, page),
+		source: (id: string, page: Page) => api.listSourceMedia(id, page)
+	} satisfies Record<
+		MediaOwnerType,
+		(id: string, page: Page) => Promise<{ items: Media[]; total: number }>
+	>;
+
+	// Items load a page at a time, newest first; Show more loads the next (#1745).
+	const PAGE_SIZE = 20;
 
 	let canUpload = $derived(can('editor'));
 
 	let mediaItems: Media[] = $state([]);
+	// How many items the owner has, of which `mediaItems` holds the newest.
+	let total = $state(0);
 	let loading = $state(true);
+	let loadingMore = $state(false);
+	// A failed Show more keeps the items already shown (#899).
+	let loadMoreError: string | null = $state(null);
 	let error: string | null = $state(null);
 	let lightboxMedia: Media | null = $state(null);
 	let deletingId: string | null = $state(null);
@@ -40,9 +53,11 @@
 	async function loadMedia() {
 		loading = true;
 		error = null;
+		loadMoreError = null;
 		try {
-			const response = await listers[ownerType](ownerId);
+			const response = await listers[ownerType](ownerId, { limit: PAGE_SIZE, offset: 0 });
 			mediaItems = response.items;
+			total = response.total;
 		} catch (e) {
 			error = (e as { message?: string }).message || 'Failed to load media';
 		} finally {
@@ -50,8 +65,32 @@
 		}
 	}
 
+	/**
+	 * Load the next page. Uploads and deletes here keep `mediaItems` in step
+	 * with the newest-first list, so its length is the next offset; an item
+	 * already shown is not added twice.
+	 */
+	async function loadMore() {
+		loadingMore = true;
+		loadMoreError = null;
+		try {
+			const response = await listers[ownerType](ownerId, {
+				limit: PAGE_SIZE,
+				offset: mediaItems.length
+			});
+			const shown = new Set(mediaItems.map((m) => m.id));
+			mediaItems = [...mediaItems, ...response.items.filter((m) => !shown.has(m.id))];
+			total = response.total;
+		} catch (e) {
+			loadMoreError = (e as { message?: string }).message || 'Failed to load more media';
+		} finally {
+			loadingMore = false;
+		}
+	}
+
 	function handleUpload(media: Media) {
 		mediaItems = [media, ...mediaItems];
+		total += 1;
 		onMediaAdded?.(media);
 	}
 
@@ -102,6 +141,7 @@
 		try {
 			await api.deleteMedia(media.id, media.version);
 			mediaItems = mediaItems.filter((m) => m.id !== media.id);
+			total -= 1;
 			conflictError = false;
 		} catch (e) {
 			if (isStaleVersion(e)) {
@@ -112,6 +152,7 @@
 						const fresh = await api.getMedia(media.id);
 						await api.deleteMedia(media.id, fresh.version);
 						mediaItems = mediaItems.filter((m) => m.id !== media.id);
+						total -= 1;
 						conflictError = false;
 					} finally {
 						deletingId = null;
@@ -239,6 +280,18 @@
 				</div>
 			{/each}
 		</div>
+
+		{#if total > mediaItems.length}
+			<div class="show-more">
+				<p>Showing {mediaItems.length} of {total}</p>
+				{#if loadMoreError}
+					<ActionError message={loadMoreError} />
+				{/if}
+				<Button variant="outline" onclick={loadMore} disabled={loadingMore}>
+					{loadingMore ? 'Loading...' : 'Show more'}
+				</Button>
+			</div>
+		{/if}
 	{/if}
 </div>
 
@@ -431,6 +484,20 @@
 
 	.delete-btn:disabled {
 		cursor: not-allowed;
+	}
+
+	.show-more {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.5rem;
+		margin-top: 1rem;
+	}
+
+	.show-more p {
+		margin: 0;
+		font-size: 0.875rem;
+		color: var(--color-text-muted);
 	}
 
 	.loading-state,

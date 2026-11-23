@@ -978,7 +978,7 @@ describe('Family Detail Page: media gallery (#1505, #1538)', () => {
 		const card = await screen.findByRole('button', { name: /^View Wedding photos\/wedding\.jpg File not stored$/ });
 		expect(within(card).getByText('photos/wedding.jpg')).toBeDefined();
 		expect(screen.getByRole('heading', { name: 'Media' })).toBeDefined();
-		expect(api.listFamilyMedia).toHaveBeenCalledWith('test-family-id');
+		expect(api.listFamilyMedia).toHaveBeenCalledWith('test-family-id', { limit: 20, offset: 0 });
 	});
 
 	it('lets an editor upload to the family from its gallery and shows the new item (#1538)', async () => {
