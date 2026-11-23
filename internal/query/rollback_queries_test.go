@@ -1927,6 +1927,7 @@ func TestGetStateAtVersion_KeepsCreatedRestriction(t *testing.T) {
 		{"family", domain.FamilyCreated{FamilyID: id, Restriction: "privacy"}, map[string]any{"restriction": "privacy"}},
 		{"source", domain.SourceCreated{SourceID: id, Title: "S", Restriction: "confidential"}, map[string]any{"restriction": "confidential"}},
 		{"citation", domain.CitationCreated{CitationID: id, Restriction: "confidential"}, map[string]any{"restriction": "confidential"}},
+		{"media", domain.MediaCreated{MediaID: id, Title: "M", Restriction: "confidential"}, map[string]any{"restriction": "confidential"}},
 	} {
 		t.Run(tc.entityType, func(t *testing.T) {
 			data, err := json.Marshal(tc.event)
