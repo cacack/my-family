@@ -153,7 +153,10 @@ are refused, and CORS no longer allows `*`. Sign-in attempts are rate-limited.
 Every argon2id hash and check also takes one of a fixed number of process-wide slots
 (`maxConcurrentHashes` in `internal/auth/password.go`, four), so many clients at once cannot
 exhaust memory through sign-in, setup, invite accept or password reset. One that cannot get a
-slot within a second is refused with `429 RATE_LIMITED` without hashing.
+slot within a second is refused with `429 RATE_LIMITED` without hashing. A stored hash that names
+argon2id settings above fixed bounds (`maxArgon*`, today equal to the settings) is refused as
+malformed without hashing, so each slot holds at most that much memory. The bounds never drop below
+a shipped setting, so lowering a setting later still verifies older hashes.
 
 **Sign-in limits.** Failed sign-ins are limited per username (5 in 15 minutes, from anyone) and
 per client address (20). A correct password is refused while either limit is reached, so anyone

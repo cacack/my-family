@@ -169,3 +169,49 @@ func TestHashCap_SetupRefusedWhenBusy(t *testing.T) {
 		t.Errorf("CompleteSetup once a slot is free: err = %v, want nil", err)
 	}
 }
+
+func TestArgonBounds_CoverCurrentSettings(t *testing.T) {
+	if argonMemoryKiB > maxArgonMemoryKiB || argonTime > maxArgonTime || argonThreads > maxArgonThreads {
+		t.Errorf("argon2id settings m=%d,t=%d,p=%d exceed bounds m=%d,t=%d,p=%d; hashes written now would not verify",
+			argonMemoryKiB, argonTime, argonThreads, maxArgonMemoryKiB, maxArgonTime, maxArgonThreads)
+	}
+}
+
+func TestVerifyPassword_RejectsSettingsAboveBounds(t *testing.T) {
+	var runs atomic.Int32
+	oldArgon2id := argon2id
+	argon2id = func(password, salt []byte, passes, memory uint32, threads uint8, keyLen uint32) []byte {
+		runs.Add(1)
+		return oldArgon2id(password, salt, passes, memory, threads, keyLen)
+	}
+	t.Cleanup(func() { argon2id = oldArgon2id })
+
+	tests := []struct {
+		name                    string
+		memory, passes, threads int
+	}{
+		{"memory", maxArgonMemoryKiB + 1, argonTime, argonThreads},
+		{"time", argonMemoryKiB, maxArgonTime + 1, argonThreads},
+		{"threads", argonMemoryKiB, argonTime, maxArgonThreads + 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			hash := fmt.Sprintf("$argon2id$v=19$m=%d,t=%d,p=%d$c2FsdA$a2V5", tt.memory, tt.passes, tt.threads)
+			before := runs.Load()
+			if ok, err := VerifyPassword("x", hash); !errors.Is(err, errMalformedHash) || ok {
+				t.Errorf("VerifyPassword(%q) = %v, %v; want errMalformedHash", hash, ok, err)
+			}
+			if runs.Load() != before {
+				t.Error("argon2id ran for a hash above the bounds")
+			}
+		})
+	}
+
+	hash, err := HashPassword(testPassword)
+	if err != nil {
+		t.Fatalf("HashPassword: %v", err)
+	}
+	if ok, err := VerifyPassword(testPassword, hash); err != nil || !ok {
+		t.Errorf("VerifyPassword(HashPassword hash) = %v, %v; want true", ok, err)
+	}
+}

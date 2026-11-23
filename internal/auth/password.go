@@ -14,7 +14,8 @@ import (
 
 // argon2id parameters: the OWASP Password Storage Cheat Sheet's baseline
 // (19 MiB, two passes, one lane). A stored hash records its own parameters,
-// so raising them later still verifies older hashes.
+// so changing them later still verifies older hashes, as long as the
+// maxArgon* bounds below stay at or above every setting ever shipped.
 const (
 	argonMemoryKiB = 19 * 1024
 	argonTime      = 2
@@ -31,6 +32,17 @@ const (
 const (
 	maxConcurrentHashes = 4
 	hashSlotWait        = time.Second
+)
+
+// Upper bounds on the argon2id parameters a stored hash may name, so the cap
+// above bounds memory per run: VerifyPassword refuses a hash that asks for
+// more rather than running it. They are set apart from the argon* settings on
+// purpose: raise them when raising a setting, but never lower them below a
+// setting that has shipped, or every hash written with it stops verifying.
+const (
+	maxArgonMemoryKiB = 19 * 1024
+	maxArgonTime      = 2
+	maxArgonThreads   = 1
 )
 
 var errMalformedHash = errors.New("malformed password hash")
@@ -90,8 +102,9 @@ func hashPassword(password string, derive keyFunc) (string, error) {
 }
 
 // VerifyPassword reports whether password matches hash, a PHC string from
-// HashPassword. A hash that does not parse is an error, never a match, and so
-// is ErrBusy when the process-wide cap has no slot free.
+// HashPassword. A hash that does not parse, or names argon2id settings above
+// the max bounds, is an error, never a match, and so is ErrBusy when the
+// process-wide cap has no slot free.
 func VerifyPassword(password, hash string) (bool, error) {
 	parts := strings.Split(hash, "$")
 	// "", "argon2id", "v=19", "m=..,t=..,p=..", salt, key
@@ -104,7 +117,9 @@ func VerifyPassword(password, hash string) (bool, error) {
 	}
 	var memory, passes uint32
 	var threads uint8
-	if _, err := fmt.Sscanf(parts[3], "m=%d,t=%d,p=%d", &memory, &passes, &threads); err != nil || passes == 0 || threads == 0 {
+	if _, err := fmt.Sscanf(parts[3], "m=%d,t=%d,p=%d", &memory, &passes, &threads); err != nil ||
+		passes == 0 || threads == 0 ||
+		memory > maxArgonMemoryKiB || passes > maxArgonTime || threads > maxArgonThreads {
 		return false, errMalformedHash
 	}
 	salt, err := b64.DecodeString(parts[4])
