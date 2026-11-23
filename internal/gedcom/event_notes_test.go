@@ -253,7 +253,6 @@ func TestImport_WarnsOnDroppedNotes(t *testing.T) {
 	want := []string{
 		`Repository @R1@: NOTE under ADDR not imported: "Entrance on the side street"`,
 		`Source @S1@: NOTE under REPO not imported: "Microfilm only"`,
-		`Individual @I1@: NOTE under BIRT not imported: "An earlier claim"`,
 		`Individual @I1@: NOTE under BIRT.SOUR not imported: "Page is torn"`,
 		`Media @M1@: NOTE not imported: "A family photo"`,
 		`Submitter @U1@: NOTE not imported: "Contact by mail"`,
@@ -262,10 +261,11 @@ func TestImport_WarnsOnDroppedNotes(t *testing.T) {
 		t.Errorf("dropped-note warnings =\n%q\nwant\n%q", got, want)
 	}
 
-	// Of two BIRT blocks the last supplies the date, place and notes.
+	// Of two dated BIRT blocks the first supplies the record's date, place
+	// and notes; the other is a birth life event with its own (#1766).
 	for _, p := range persons {
-		if p.GivenName == "John" && (p.BirthDate != "1850" || p.BirthNotes != "Born at home") {
-			t.Errorf("John's birth = %q, notes %q; want 1850, %q", p.BirthDate, p.BirthNotes, "Born at home")
+		if p.GivenName == "John" && (p.BirthDate != "1849" || p.BirthNotes != "An earlier claim") {
+			t.Errorf("John's birth = %q, notes %q; want 1849, %q", p.BirthDate, p.BirthNotes, "An earlier claim")
 		}
 	}
 }
