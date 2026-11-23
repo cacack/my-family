@@ -8,7 +8,7 @@ require (
 	github.com/cacack/gedcom-go/v3 v3.10.0
 	github.com/getkin/kin-openapi v0.153.0
 	github.com/google/uuid v1.6.0
-	github.com/labstack/echo/v4 v4.16.3
+	github.com/labstack/echo/v4 v4.16.5
 	github.com/lib/pq v1.12.3
 	github.com/oapi-codegen/nullable v1.2.0
 	github.com/oapi-codegen/oapi-codegen/v2 v2.8.2
