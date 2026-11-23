@@ -50,18 +50,25 @@
 	let retryAction: (() => Promise<void>) | null = $state(null);
 	let retrying = $state(false);
 
+	// Bumped on each (re)load, so a reply for an earlier owner is dropped.
+	let generation = 0;
+
 	async function loadMedia() {
+		const current = ++generation;
 		loading = true;
+		loadingMore = false;
 		error = null;
 		loadMoreError = null;
 		try {
 			const response = await listers[ownerType](ownerId, { limit: PAGE_SIZE, offset: 0 });
+			if (current !== generation) return;
 			mediaItems = response.items;
 			total = response.total;
 		} catch (e) {
+			if (current !== generation) return;
 			error = (e as { message?: string }).message || 'Failed to load media';
 		} finally {
-			loading = false;
+			if (current === generation) loading = false;
 		}
 	}
 
@@ -71,6 +78,7 @@
 	 * already shown is not added twice.
 	 */
 	async function loadMore() {
+		const current = generation;
 		loadingMore = true;
 		loadMoreError = null;
 		try {
@@ -78,13 +86,15 @@
 				limit: PAGE_SIZE,
 				offset: mediaItems.length
 			});
+			if (current !== generation) return;
 			const shown = new Set(mediaItems.map((m) => m.id));
 			mediaItems = [...mediaItems, ...response.items.filter((m) => !shown.has(m.id))];
 			total = response.total;
 		} catch (e) {
+			if (current !== generation) return;
 			loadMoreError = (e as { message?: string }).message || 'Failed to load more media';
 		} finally {
-			loadingMore = false;
+			if (current === generation) loadingMore = false;
 		}
 	}
 

@@ -592,6 +592,29 @@ describe('MediaGallery', () => {
 			expect(await screen.findByRole('button', { name: 'View Item 25' })).toBeDefined();
 			expect(screen.queryByRole('alert')).toBeNull();
 		});
+
+		it('drops a Show more reply for the previous owner once the owner changes', async () => {
+			const other = [media({ id: 'b-1', title: 'Other 1' })];
+			let release: () => void = () => {};
+			vi.mocked(apiModule.api.listPersonMedia).mockImplementation(async (id, page) => {
+				const offset = page?.offset ?? 0;
+				if (id === 'p-2') return { items: other, total: 1 };
+				if (offset > 0) await new Promise<void>((r) => (release = r));
+				return { items: items.slice(offset, offset + 20), total: items.length };
+			});
+			const { rerender } = render(MediaGallery, { props: { ownerType: 'person', ownerId: 'p-1' } });
+			await screen.findByText('Showing 20 of 25');
+
+			await fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+			await rerender({ ownerType: 'person', ownerId: 'p-2' });
+			expect(await screen.findByRole('button', { name: 'View Other 1' })).toBeDefined();
+
+			release();
+			await new Promise((r) => setTimeout(r, 0));
+			expect(screen.getAllByRole('listitem')).toHaveLength(1);
+			expect(screen.queryByRole('button', { name: 'View Item 21' })).toBeNull();
+			expect(screen.queryByText(/^Showing/)).toBeNull();
+		});
 	});
 
 	describe('the owner (#1505, #1538)', () => {
