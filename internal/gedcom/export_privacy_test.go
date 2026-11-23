@@ -65,3 +65,63 @@ func TestExport_FamilyMembersHiddenFromThePrincipalAreWrittenAsPlaceholders(t *t
 		}
 	}
 }
+
+// An export for a viewer leaves out private media and the media of people the
+// viewer may not see in full, listed in bulk through the privacy store
+// (#1480); an owner's export keeps them all.
+func TestExport_MediaHiddenFromThePrincipalIsLeftOut(t *testing.T) {
+	ctx := context.Background()
+	store := memory.NewReadModelStore()
+	main := domain.MainBranchID
+	now := time.Now().UTC()
+	person := func(given string, dead bool) uuid.UUID {
+		p := &repository.PersonReadModel{ID: uuid.New(), GivenName: given, Surname: "Hollis", FullName: given + " Hollis",
+			BirthDateRaw: "1990", DeathEvidence: dead, Version: 1, UpdatedAt: now}
+		if err := store.SavePerson(ctx, main, p); err != nil {
+			t.Fatal(err)
+		}
+		return p.ID
+	}
+	dead := person("Dorian", true)
+	living := person("Lumi", false)
+	for _, m := range []struct {
+		owner       uuid.UUID
+		file        string
+		restriction domain.Restriction
+	}{
+		{dead, "public.jpg", ""},
+		{dead, "private.jpg", "confidential"},
+		{living, "living.jpg", ""},
+	} {
+		item := &repository.MediaReadModel{ID: uuid.New(), EntityType: "person", EntityID: m.owner, Title: m.file,
+			MediaType: domain.MediaPhoto, Filename: m.file, Restriction: m.restriction, Version: 1, CreatedAt: now, UpdatedAt: now}
+		if err := store.SaveMedia(ctx, main, item); err != nil {
+			t.Fatal(err)
+		}
+	}
+	export := func(principal repository.Principal) string {
+		t.Helper()
+		var buf bytes.Buffer
+		if _, err := gedcom.NewExporter(query.NewPrivacyStore(store)).Export(repository.ContextWithPrincipal(ctx, principal), &buf); err != nil {
+			t.Fatalf("export: %v", err)
+		}
+		return buf.String()
+	}
+
+	out := export(repository.Principal{Role: repository.RoleViewer, Anonymous: true})
+	if !strings.Contains(out, "1 FILE public.jpg") {
+		t.Errorf("visitor export has no public photo:\n%s", out)
+	}
+	for _, hidden := range []string{"private.jpg", "living.jpg"} {
+		if strings.Contains(out, hidden) {
+			t.Errorf("visitor export holds %q:\n%s", hidden, out)
+		}
+	}
+
+	out = export(repository.Principal{Role: repository.RoleOwner})
+	for _, file := range []string{"public.jpg", "private.jpg", "living.jpg"} {
+		if !strings.Contains(out, "1 FILE "+file) {
+			t.Errorf("owner export has no %q:\n%s", file, out)
+		}
+	}
+}

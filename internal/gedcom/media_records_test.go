@@ -3,6 +3,7 @@ package gedcom_test
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -557,5 +558,72 @@ func TestExport_NestedAndInlineMediaRoundTrip(t *testing.T) {
 				t.Errorf("re-imported items: person %d, family %d; want %d and %d", p, f, personItems, familyItems)
 			}
 		})
+	}
+}
+
+// mediaListCounter counts the media list calls an export makes.
+type mediaListCounter struct {
+	repository.ReadModelStore
+	calls int
+}
+
+func (c *mediaListCounter) ListMediaForEntity(ctx context.Context, entityType string, entityID uuid.UUID, opts repository.ListOptions) ([]repository.MediaReadModel, int, error) {
+	c.calls++
+	return c.ReadModelStore.ListMediaForEntity(ctx, entityType, entityID, opts)
+}
+
+func (c *mediaListCounter) ListMediaInGroup(ctx context.Context, branchID domain.BranchID, groupID uuid.UUID) ([]repository.MediaReadModel, error) {
+	c.calls++
+	return c.ReadModelStore.ListMediaInGroup(ctx, branchID, groupID)
+}
+
+func (c *mediaListCounter) ListAllMedia(ctx context.Context, branchID domain.BranchID) ([]repository.MediaReadModel, error) {
+	c.calls++
+	return c.ReadModelStore.ListAllMedia(ctx, branchID)
+}
+
+// An export lists media a number of times that does not grow with the number
+// of people, families and sources (#1480).
+func TestExport_MediaReadsDoNotGrowWithOwners(t *testing.T) {
+	exportCalls := func(people int) int {
+		t.Helper()
+		ctx := context.Background()
+		rs := memory.NewReadModelStore()
+		now := time.Now()
+		var first uuid.UUID
+		for i := range people {
+			p := &repository.PersonReadModel{ID: uuid.New(), GivenName: fmt.Sprintf("P%d", i), Surname: "Lee", Version: 1, UpdatedAt: now}
+			if err := rs.SavePerson(ctx, domain.MainBranchID, p); err != nil {
+				t.Fatalf("SavePerson: %v", err)
+			}
+			if i == 0 {
+				first = p.ID
+			}
+			if i%2 == 1 {
+				f := &repository.FamilyReadModel{ID: uuid.New(), Partner1ID: &p.ID, Version: 1, UpdatedAt: now}
+				if err := rs.SaveFamily(ctx, domain.MainBranchID, f); err != nil {
+					t.Fatalf("SaveFamily: %v", err)
+				}
+			}
+		}
+		photo := &repository.MediaReadModel{ID: uuid.New(), EntityType: "person", EntityID: first, Title: "Portrait",
+			MediaType: domain.MediaPhoto, Filename: "portrait.png", Version: 1, CreatedAt: now, UpdatedAt: now}
+		if err := rs.SaveMedia(ctx, domain.MainBranchID, photo); err != nil {
+			t.Fatalf("SaveMedia: %v", err)
+		}
+		counter := &mediaListCounter{ReadModelStore: rs}
+		var buf bytes.Buffer
+		result, err := gedcom.NewExporter(counter).Export(ctx, &buf)
+		if err != nil {
+			t.Fatalf("export: %v", err)
+		}
+		if result.PersonsExported != people || result.MediaExported != 1 {
+			t.Errorf("exported %d people and %d media, want %d and 1", result.PersonsExported, result.MediaExported, people)
+		}
+		return counter.calls
+	}
+	small, large := exportCalls(5), exportCalls(50)
+	if small != large {
+		t.Errorf("an export of 5 people lists media %d times, of 50 people %d times; want the same", small, large)
 	}
 }
