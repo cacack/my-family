@@ -128,3 +128,38 @@ func TestExport_OccurrenceFlagNotWritten(t *testing.T) {
 		t.Errorf("event lines = %q, want %q; export:\n%s", got, want, out)
 	}
 }
+
+// A dated BIRT's descriptor, as in "1 BIRT Something" with a DATE, is kept in
+// the person's birth notes, which the record has instead of a descriptor
+// field, and a round trip keeps it with one birth (#1719).
+func TestRoundTrip_RecordBirthDescriptor(t *testing.T) {
+	data := "0 HEAD\n1 GEDC\n2 VERS 7.0\n0 @I1@ INDI\n1 NAME A /B/\n" +
+		"1 BIRT Something\n2 DATE 1890\n0 TRLR\n"
+	_, persons, _, _, _, _, _, _, _, _, _, _, _, err := gedcom.NewImporter().Import(context.Background(), strings.NewReader(data))
+	if err != nil {
+		t.Fatalf("Import: %v", err)
+	}
+	if len(persons) != 1 || persons[0].BirthDate != "1890" || persons[0].BirthNotes != "Something" {
+		t.Fatalf("persons = %+v, want one with birth date 1890 and birth notes %q", persons, "Something")
+	}
+
+	first := importAndExport(t, data)
+	if births := level1Lines(first, "BIRT"); len(births) != 1 {
+		t.Fatalf("BIRT lines = %q, want one; export:\n%s", births, first)
+	}
+	_, persons, _, _, _, _, events, _, _, _, _, _, _, err := gedcom.NewImporter().Import(context.Background(), strings.NewReader(first))
+	if err != nil {
+		t.Fatalf("re-import: %v", err)
+	}
+	if len(persons) != 1 || persons[0].BirthDate != "1890" || persons[0].BirthNotes != "Something" {
+		t.Fatalf("re-imported persons = %+v, want birth date 1890 and birth notes %q; export:\n%s", persons, "Something", first)
+	}
+	for _, e := range events {
+		if e.FactType == domain.FactPersonBirth {
+			t.Errorf("re-imported birth life event %+v, want the record's birth only", e)
+		}
+	}
+	if second := importAndExport(t, first); second != first {
+		t.Errorf("second export differs from the first:\n%s\nfirst:\n%s", second, first)
+	}
+}

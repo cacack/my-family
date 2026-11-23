@@ -650,7 +650,10 @@ func parseIndividual(indi *gedcom.Individual, _ *gedcom.Document, result *Import
 			}
 			person.BirthDate = event.Date
 			person.BirthPlace = event.PlaceName()
-			person.BirthNotes = eventNotes(event)
+			// The record has no field for a descriptor, as in "1 BIRT
+			// Something" with a DATE, so it is kept as the last birth note,
+			// where the exporter writes a named event's descriptor (#1719).
+			person.BirthNotes = joinNotes(eventNotes(event), event.Description)
 			person.BirthTypeDetail = event.EventTypeDetail
 			// Extract coordinates from PlaceDetail if available
 			if event.PlaceDetail != nil && event.PlaceDetail.Coordinates != nil {
