@@ -195,3 +195,21 @@ func TestRoundTrip_BirthEventBesideRecordBirth(t *testing.T) {
 		})
 	}
 }
+
+// The cause of the record's DEAT stays on its merged death event beside a
+// later dated DEAT, which is a death life event of its own (#1766).
+func TestImport_RecordDeathCauseBesideLaterDatedDeath(t *testing.T) {
+	data := "0 HEAD\n1 GEDC\n2 VERS 7.0\n0 @I1@ INDI\n1 NAME A /B/\n" +
+		"1 DEAT\n2 DATE 1890\n2 CAUS Fever\n1 DEAT\n2 DATE 1891\n0 TRLR\n"
+	person, deaths := importLifeEvents(t, data, domain.FactPersonDeath)
+	if person.DeathDate != "1890" {
+		t.Errorf("record death date = %q, want 1890", person.DeathDate)
+	}
+	if len(deaths) != 2 || deaths[0].Date != "" || deaths[0].Cause != "Fever" || deaths[1].Date != "1891" || deaths[1].Cause != "" {
+		t.Fatalf("death life events = %+v, want a dateless one with cause Fever, then one dated 1891", deaths)
+	}
+	first := importAndExport(t, data)
+	if second := importAndExport(t, first); second != first {
+		t.Errorf("second export differs from the first:\n%s\nfirst:\n%s", second, first)
+	}
+}

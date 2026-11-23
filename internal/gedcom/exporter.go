@@ -1560,7 +1560,8 @@ func fieldCitations(citations []repository.CitationReadModel, events []repositor
 // citations, and the rest. With a record birth the importer drops a bare
 // "1 BIRT Y" and reads a later BIRT with notes as a birth life event
 // (recordEvent), so the exporter writes the first into the record's BIRT, and
-// the file has one birth (#1714).
+// the file has one birth (#1714). One with an age, cause or address stays a
+// BIRT of its own, as the importer keeps it (birthDetail).
 func mergeableBirthEvents(events []repository.EventReadModel) (merged, rest []repository.EventReadModel) {
 	for _, e := range events {
 		if e.FactType == domain.FactPersonBirth && !e.IsNegated && e.DateRaw == "" && e.Place == "" &&

@@ -1124,11 +1124,11 @@ func warnDroppedNestedNotes(doc *gedcom.Document, result *ImportResult) {
 func keptEventNotes(rec *gedcom.Record) func(block string, last bool) bool {
 	if indi, ok := rec.GetIndividual(); ok {
 		return func(block string, _ bool) bool {
-			// Every BIRT and DEAT keeps its notes, on the person record or a
-			// life event (#1766).
 			if block == "ASSO" || block == "NAME" {
 				return true // every ASSO and NAME is imported with its notes (#1165)
 			}
+			// Every event, BIRT and DEAT among them, keeps its notes, on the
+			// person record or a life event (#1766).
 			eventType := gedcom.EventType(strings.TrimPrefix(block, "NO "))
 			if slices.ContainsFunc(indi.Events, func(e *gedcom.Event) bool {
 				return e != nil && e.Type == eventType
@@ -1672,11 +1672,21 @@ func bareBirth(event *gedcom.Event) bool {
 		event.PlaceName() == "" && eventNotes(event) == "" && event.EventTypeDetail == ""
 }
 
+// birthDetail reports whether a BIRT has an age, cause or address, which
+// keeps a bare birth beside a record birth as a life event. It is the
+// counterpart of mergeableBirthEvents: the exporter writes a birth life event
+// with any of them as a BIRT of its own, so the two must agree.
+func birthDetail(event *gedcom.Event) bool {
+	return event.Age != "" || event.Cause != "" || convertGedcomAddress(event.Address) != nil
+}
+
 // recordEvent returns the BIRT or DEAT (by eventType) the person record
 // holds, or nil: the first that is neither negated nor bare and has a date,
 // or with none dated the first that is neither. Every other one that is
 // neither is imported as a life event, so a later BIRT or DEAT does not
-// replace the record's date (#1766); the exporter writes the record's first.
+// replace the record's date (#1766). The exporter writes the record's first,
+// so a dated record keeps its place through a round trip; an undated one
+// beside a dated birth or death life event does not.
 func recordEvent(indi *gedcom.Individual, eventType gedcom.EventType) *gedcom.Event {
 	var first *gedcom.Event
 	for _, event := range indi.Events {
@@ -1840,8 +1850,7 @@ func extractEventsFromIndividual(indi *gedcom.Individual, personID uuid.UUID) ([
 			// kept only for an age, cause or address; otherwise it adds
 			// nothing and its citations go to the record
 			// (extractCitationsFromIndividual).
-			if event == recordBirth || bareBirth(event) && recordBirth != nil &&
-				event.Age == "" && event.Cause == "" && event.Address == nil {
+			if event == recordBirth || (bareBirth(event) && recordBirth != nil && !birthDetail(event)) {
 				continue
 			}
 			factType = domain.FactPersonBirth
