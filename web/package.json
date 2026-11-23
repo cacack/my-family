@@ -45,7 +45,7 @@
 		"jsdom": "^31.0.0",
 		"openapi-typescript": "^7.13.0",
 		"postcss": "^8.5.18",
-		"svelte": "^5.57.3",
+		"svelte": "^5.58.0",
 		"svelte-check": "^4.7.8",
 		"tailwind-merge": "^3.7.0",
 		"tailwind-variants": "^4.0.2",
