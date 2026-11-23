@@ -16,6 +16,9 @@ import (
 // Media command errors.
 var (
 	ErrMediaNotFound = errors.New("media not found")
+	// ErrMediaHasContent refuses attaching a file to an item that already
+	// stores one (#1504): replacing content is not supported.
+	ErrMediaHasContent = errors.New("media already has content")
 )
 
 // Allowed MIME types for upload.
@@ -54,19 +57,9 @@ func (h *Handler) UploadMedia(ctx context.Context, input UploadMediaInput) (*Upl
 	if input.EntityID == uuid.Nil {
 		return nil, fmt.Errorf("%w: entity_id is required", ErrInvalidInput)
 	}
-	// A stored size of 0 marks a reference-only (GEDCOM-imported) item with no
-	// content (#1477); the API derives has_content from it (mediaHasContent in
-	// internal/api), so an upload must never be empty.
-	if len(input.FileData) == 0 {
-		return nil, fmt.Errorf("%w: file data is required", ErrInvalidInput)
-	}
-
-	// Detect MIME type
-	mimeType := http.DetectContentType(input.FileData)
-
-	// Validate MIME type
-	if !allowedMimeTypes[mimeType] {
-		return nil, fmt.Errorf("%w: unsupported file type: %s", ErrInvalidInput, mimeType)
+	mimeType, thumbnail, err := inspectMediaContent(input.FileData)
+	if err != nil {
+		return nil, err
 	}
 
 	// Create media entity
@@ -77,15 +70,7 @@ func (h *Handler) UploadMedia(ctx context.Context, input UploadMediaInput) (*Upl
 	m.Filename = input.Filename
 	m.FileSize = int64(len(input.FileData))
 	m.FileData = input.FileData
-
-	// Generate thumbnail for images
-	if media.IsImageMimeType(mimeType) {
-		opts := media.DefaultThumbnailOptions()
-		thumbnail, err := media.GenerateThumbnail(input.FileData, opts)
-		if err == nil && len(thumbnail) > 0 {
-			m.ThumbnailData = thumbnail
-		}
-	}
+	m.ThumbnailData = thumbnail
 
 	// Validate media
 	if err := m.Validate(); err != nil {
@@ -105,6 +90,66 @@ func (h *Handler) UploadMedia(ctx context.Context, input UploadMediaInput) (*Upl
 		ID:      m.ID,
 		Version: version,
 	}, nil
+}
+
+// inspectMediaContent checks uploaded file bytes and returns their detected
+// MIME type and, for an image, a thumbnail (nil when none could be made).
+func inspectMediaContent(data []byte) (mimeType string, thumbnail []byte, err error) {
+	// A stored size of 0 marks a reference-only (GEDCOM-imported) item with no
+	// content (#1477); the API derives has_content from it (mediaHasContent in
+	// internal/api), so an upload must never be empty.
+	if len(data) == 0 {
+		return "", nil, fmt.Errorf("%w: file data is required", ErrInvalidInput)
+	}
+
+	mimeType = http.DetectContentType(data)
+	if !allowedMimeTypes[mimeType] {
+		return "", nil, fmt.Errorf("%w: unsupported file type: %s", ErrInvalidInput, mimeType)
+	}
+
+	if media.IsImageMimeType(mimeType) {
+		if thumb, err := media.GenerateThumbnail(data, media.DefaultThumbnailOptions()); err == nil && len(thumb) > 0 {
+			thumbnail = thumb
+		}
+	}
+	return mimeType, thumbnail, nil
+}
+
+// AttachMediaContentInput contains a file to store in an existing media item.
+type AttachMediaContentInput struct {
+	ID       uuid.UUID
+	Filename string
+	FileData []byte
+}
+
+// AttachMediaContent stores an uploaded file in an existing item that has
+// none, such as a GEDCOM-imported reference (#1504). Only the content fields
+// change: the item keeps its title, owner, GEDCOM link, file references and
+// private mark. It is mainline-only, like GEDCOM import: MediaContentAttached
+// is not branch-aware, so a branch handler refuses it.
+func (h *Handler) AttachMediaContent(ctx context.Context, input AttachMediaContentInput) (*UpdateMediaResult, error) {
+	current, err := h.readStore.GetMedia(ctx, h.branchID, input.ID)
+	if err != nil {
+		return nil, fmt.Errorf("getting media: %w", err)
+	}
+	if current == nil {
+		return nil, ErrMediaNotFound
+	}
+	if current.FileSize > 0 {
+		return nil, ErrMediaHasContent
+	}
+
+	mimeType, thumbnail, err := inspectMediaContent(input.FileData)
+	if err != nil {
+		return nil, err
+	}
+
+	event := domain.NewMediaContentAttached(input.ID, mimeType, input.Filename, input.FileData, thumbnail)
+	version, err := h.execute(ctx, input.ID.String(), "Media", []domain.Event{event}, current.Version)
+	if err != nil {
+		return nil, fmt.Errorf("executing attach media content command: %w", err)
+	}
+	return &UpdateMediaResult{Version: version}, nil
 }
 
 // UpdateMediaInput contains the data for updating media metadata.

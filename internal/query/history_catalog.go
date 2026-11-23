@@ -109,6 +109,7 @@ var historyEventCatalog = map[string]historyEventClass{
 	"CitationDeleted":         mapped(entityTypeCitation, actionDeleted),
 	"MediaCreated":            mapped(entityTypeMedia, actionCreated),
 	"MediaUpdated":            mapped(entityTypeMedia, actionUpdated),
+	"MediaContentAttached":    mapped(entityTypeMedia, actionUpdated),
 	"MediaDeleted":            mapped(entityTypeMedia, actionDeleted),
 	// A person's names live on the person's stream, so a name change is an
 	// update of the person; the change map carries the name itself.

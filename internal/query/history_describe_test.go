@@ -152,6 +152,32 @@ func TestTransform_BrickWalls(t *testing.T) {
 	assert.Equal(t, map[string]FieldChange{"brick_wall_resolved_at": {NewValue: resolved.ResolvedAt.Format(time.RFC3339Nano)}}, history.Entries[2].Changes)
 }
 
+// A file attached to an imported reference (#1504) shows in the item's
+// history as an update naming the file, never its bytes.
+func TestTransform_MediaContentAttached(t *testing.T) {
+	ctx := context.Background()
+	es := memory.NewEventStore()
+	item := uuid.New()
+	require.NoError(t, es.Append(ctx, item, "media", []domain.Event{
+		domain.MediaCreated{BaseEvent: domain.NewBaseEvent(), MediaID: item, EntityType: "person", EntityID: uuid.New(), Title: "Wedding", MimeType: "jpg"},
+		domain.NewMediaContentAttached(item, "image/jpeg", "wedding.jpg", []byte{1, 2, 3}, []byte{4}),
+	}, -1, repository.MainScope))
+
+	service := NewHistoryService(es, memory.NewReadModelStore())
+	history, err := service.GetEntityHistory(ctx, "media", item, 10, 0)
+	require.NoError(t, err)
+	require.Len(t, history.Entries, 2)
+	attach := history.Entries[1]
+	assert.Equal(t, "media", attach.EntityType)
+	assert.Equal(t, "updated", attach.Action)
+	assert.Equal(t, "Wedding", attach.EntityName)
+	assert.Equal(t, map[string]FieldChange{
+		"mime_type": {OldValue: "jpg", NewValue: "image/jpeg"},
+		"filename":  {OldValue: "", NewValue: "wedding.jpg"},
+		"file_size": {OldValue: float64(0), NewValue: float64(3)},
+	}, attach.Changes)
+}
+
 func TestConflictEntityType(t *testing.T) {
 	assert.Equal(t, "life_event", conflictEntityType(&repository.StoredEvent{EventType: "LifeEventUpdated", StreamType: "event"}))
 	assert.Equal(t, "person", conflictEntityType(&repository.StoredEvent{EventType: "NameAdded", StreamType: "Person"}))

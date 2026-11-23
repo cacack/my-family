@@ -2092,6 +2092,73 @@ func (ss *StrictServer) DownloadMedia(ctx context.Context, request DownloadMedia
 	}
 }
 
+// AttachMediaContent implements StrictServerInterface: it uploads the file of
+// a reference-only item in place (#1504). Mainline-only: a ?branch= scope is
+// refused with 409 attach_mainline_only before the body is read.
+func (ss *StrictServer) AttachMediaContent(ctx context.Context, request AttachMediaContentRequestObject) (AttachMediaContentResponseObject, error) {
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
+	if branch != nil {
+		return AttachMediaContent409JSONResponse(errAttachMainlineOnly), nil
+	}
+	notFound := AttachMediaContent404JSONResponse{NotFoundJSONResponse{
+		Code:    "not_found",
+		Message: "Media not found",
+	}}
+	if request.Body == nil {
+		return AttachMediaContent400JSONResponse{BadRequestJSONResponse{
+			Code:    "bad_request",
+			Message: "No file uploaded",
+		}}, nil
+	}
+	form, badRequest, err := readMediaParts(request.Body)
+	if err != nil {
+		return nil, err
+	}
+	if badRequest != "" {
+		return AttachMediaContent400JSONResponse{BadRequestJSONResponse{
+			Code:    "bad_request",
+			Message: badRequest,
+		}}, nil
+	}
+
+	result, err := ss.server.commandHandler.AttachMediaContent(ctx, command.AttachMediaContentInput{
+		ID:       request.Id,
+		Filename: form.filename,
+		FileData: form.fileData,
+	})
+	if err != nil {
+		switch {
+		case isMediaNotFound(err):
+			return notFound, nil
+		case errors.Is(err, command.ErrMediaHasContent):
+			return AttachMediaContent409JSONResponse{
+				Code:    "has_content",
+				Message: "Media already has stored file content",
+			}, nil
+		case errors.Is(err, repository.ErrConcurrencyConflict):
+			return AttachMediaContent409JSONResponse{
+				Code:    CodeVersionConflict,
+				Message: "Version conflict - entity was modified",
+			}, nil
+		}
+		return nil, err
+	}
+
+	media, err := ss.server.readStore.GetMedia(ctx, domain.MainBranchID, request.Id)
+	if err != nil {
+		return nil, err
+	}
+	if media == nil {
+		return notFound, nil
+	}
+	media.Version = result.Version
+
+	return AttachMediaContent200JSONResponse(convertMediaReadModelToGenerated(*media)), nil
+}
+
 // GetMediaThumbnail implements StrictServerInterface. With ?branch= the item is
 // resolved through that branch's view; the bytes are the shared ones (#759).
 func (ss *StrictServer) GetMediaThumbnail(ctx context.Context, request GetMediaThumbnailRequestObject) (GetMediaThumbnailResponseObject, error) {
@@ -2610,11 +2677,24 @@ type mediaUploadForm struct {
 	fileData                      []byte
 }
 
-// readMediaUploadForm reads every part of a media upload by its form name, in
-// whatever order the client sent them (#1000). It returns a non-empty
-// badRequest message when the upload is malformed: no file, no title (the spec
-// requires one), or a part over its size limit.
+// readMediaUploadForm reads a media upload (readMediaParts) and also refuses
+// one with no title, which the spec requires of a new item.
 func readMediaUploadForm(body *multipart.Reader) (form mediaUploadForm, badRequest string, err error) {
+	form, badRequest, err = readMediaParts(body)
+	if err != nil || badRequest != "" {
+		return form, badRequest, err
+	}
+	if form.title == "" {
+		return form, "title is required", nil
+	}
+	return form, "", nil
+}
+
+// readMediaParts reads every part of a media upload by its form name, in
+// whatever order the client sent them (#1000). It returns a non-empty
+// badRequest message when the upload is malformed: no file, or a part over its
+// size limit.
+func readMediaParts(body *multipart.Reader) (form mediaUploadForm, badRequest string, err error) {
 	hasFile := false
 	for {
 		part, err := body.NextPart()
@@ -2659,9 +2739,6 @@ func readMediaUploadForm(body *multipart.Reader) (form mediaUploadForm, badReque
 
 	if !hasFile {
 		return form, "No file uploaded", nil
-	}
-	if form.title == "" {
-		return form, "title is required", nil
 	}
 	return form, "", nil
 }
@@ -4048,6 +4125,14 @@ func (ss *StrictServer) GetStatistics(ctx context.Context, request GetStatistics
 // ============================================================================
 // Conversion helpers
 // ============================================================================
+
+// errAttachMainlineOnly is the 409 body for an attach request that carries a
+// ?branch= scope. Attaching writes the bytes onto main's row, the item's origin
+// row (ADR-005, #1504), so honoring a branch would write to main.
+var errAttachMainlineOnly = Error{
+	Code:    "attach_mainline_only",
+	Message: "Attaching a file is mainline-only; switch to the mainline to attach it",
+}
 
 // errRollbackMainlineOnly is the 409 body for a rollback or restore-point
 // request that carries a ?branch= scope. Rollback stays mainline-only

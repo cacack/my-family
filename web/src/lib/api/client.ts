@@ -296,7 +296,9 @@ const BRANCH_SCOPED_OPERATIONS: ReadonlyArray<{
 	// must 404 there too.
 	{ methods: ['GET', 'POST'], pattern: new RegExp(`^/persons/${UUID_SEGMENT}/media$`) },
 	{ methods: ['GET', 'PUT', 'DELETE'], pattern: new RegExp(`^/media/${UUID_SEGMENT}$`) },
-	{ methods: ['GET'], pattern: new RegExp(`^/media/${UUID_SEGMENT}/content$`) },
+	// PUT declares the scope only so the server can REFUSE it (409
+	// `attach_mainline_only`): an attach stays mainline-only.
+	{ methods: ['GET', 'PUT'], pattern: new RegExp(`^/media/${UUID_SEGMENT}/content$`) },
 	{ methods: ['GET'], pattern: new RegExp(`^/media/${UUID_SEGMENT}/thumbnail$`) },
 	// GPS artifacts (#760): evidence analyses, evidence conflicts, research logs
 	// and proof summaries.
@@ -1334,6 +1336,23 @@ class ApiClient {
 		}
 
 		notifyBranchWrite(scope, 'POST', mediaPath);
+		return response.json();
+	}
+
+	/**
+	 * Upload the file of a reference-only item in place (#1504). Mainline only:
+	 * the operation takes no branch scope.
+	 */
+	async attachMediaContent(id: string, file: File): Promise<Media> {
+		const formData = new FormData();
+		formData.append('file', file);
+		const response = await fetch(`${API_BASE}/media/${id}/content`, {
+			method: 'PUT',
+			body: formData
+		});
+		if (!response.ok) {
+			throw await responseError(response);
+		}
 		return response.json();
 	}
 

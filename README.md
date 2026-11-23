@@ -222,8 +222,10 @@ them; a media record nothing links to is skipped with a warning. The items of on
 their `private` mark: marking one private marks them all (items imported by an earlier version
 are not grouped; if an update fails part way, sending the mark again marks the rest). Imported
 media are references only: they keep the file paths but not the files, so the gallery shows each as its title and path,
-and its content and thumbnail return 404 (`no_content` for the content). Uploading the file creates a new media item;
-the imported reference stays as it is, so you then have both.
+and its content and thumbnail return 404 (`no_content` for the content). An editor attaches the file to the
+reference itself from its lightbox (**Attach file**, or `PUT /api/v1/media/{id}/content`, on the mainline): the
+item keeps its title, owner, GEDCOM link, file paths and `private` mark, and now shows the file. Each item of a
+record is attached on its own, and an item that already has a file is refused.
 Export writes an `OBJE` record per
 item (one record, linked from each owner, for the items of one record that are still alike), naming
 an uploaded item's file by its filename; the file content is not included.

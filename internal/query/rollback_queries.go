@@ -597,6 +597,10 @@ func (s *RollbackService) applyEventToState(evt repository.StoredEvent, state ma
 		}
 		return false, nil
 
+	case domain.MediaContentAttached:
+		// The attached file is not rolled back: no command removes content.
+		return false, nil
+
 	case domain.MediaDeleted:
 		return true, nil
 

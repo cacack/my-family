@@ -1077,7 +1077,21 @@ export interface paths {
          *     asks, which the owner's preview changes under the same URL.
          */
         get: operations["downloadMedia"];
-        put?: never;
+        /**
+         * Attach a file to a reference-only media item
+         * @description Uploads the file of an item that has no stored content, such as one
+         *     imported from GEDCOM, which keeps only file references (#1504). The
+         *     item keeps its ID, title, owner, GEDCOM link, file references and
+         *     private mark; its MIME type, filename and size become the uploaded
+         *     file's, and an image gets a thumbnail. The file is checked as an
+         *     upload is (`uploadPersonMedia`). An item that already has content is
+         *     refused with 409 and code `has_content`; replacing content is not
+         *     supported.
+         *
+         *     Attaching is mainline-only (ADR-005): with `?branch=` the request is
+         *     refused with 409 `attach_mainline_only` and nothing is read or written.
+         */
+        put: operations["attachMediaContent"];
         post?: never;
         delete?: never;
         options?: never;
@@ -9771,6 +9785,68 @@ export interface operations {
             };
             401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
+            503: components["responses"]["SetupRequired"];
+        };
+    };
+    attachMediaContent: {
+        parameters: {
+            query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
+                 */
+                branch?: components["parameters"]["branchScope"];
+            };
+            header?: never;
+            path: {
+                /** @description Media ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /**
+                     * Format: binary
+                     * @description The file to attach (max 10MB)
+                     */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description File attached */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Media"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            /**
+             * @description The item already has content (`has_content`), a concurrent write
+             *     changed it (`VERSION_CONFLICT`), or a `?branch=` scope was supplied
+             *     (`attach_mainline_only`)
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
             503: components["responses"]["SetupRequired"];
         };
     };

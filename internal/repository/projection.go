@@ -85,6 +85,8 @@ func (p *Projector) Project(ctx context.Context, event domain.Event, version int
 		return p.projectMediaCreated(ctx, e, version, branchID)
 	case domain.MediaUpdated:
 		return p.projectMediaUpdated(ctx, e, version, branchID)
+	case domain.MediaContentAttached:
+		return p.projectMediaContentAttached(ctx, e, version, branchID)
 	case domain.MediaDeleted:
 		return p.projectMediaDeleted(ctx, e, branchID)
 	case domain.LifeEventCreated:
@@ -1291,6 +1293,29 @@ func (p *Projector) projectMediaUpdated(ctx context.Context, e domain.MediaUpdat
 		}
 	}
 
+	media.Version = version
+	media.UpdatedAt = e.OccurredAt()
+
+	return p.readStore.SaveMedia(ctx, branchID, media)
+}
+
+// projectMediaContentAttached stores the file uploaded into a reference-only
+// item (#1504). The command is mainline-only, so this writes the bytes onto
+// main's row, the item's origin row; every other field is kept as read.
+func (p *Projector) projectMediaContentAttached(ctx context.Context, e domain.MediaContentAttached, version int64, branchID domain.BranchID) error {
+	media, err := p.readStore.GetMedia(ctx, branchID, e.MediaID)
+	if err != nil {
+		return err
+	}
+	if media == nil {
+		return nil // Media doesn't exist in read model, skip
+	}
+
+	media.MimeType = e.MimeType
+	media.Filename = e.Filename
+	media.FileSize = e.FileSize
+	media.FileData = e.FileData
+	media.ThumbnailData = e.ThumbnailData
 	media.Version = version
 	media.UpdatedAt = e.OccurredAt()
 

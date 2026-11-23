@@ -644,6 +644,35 @@ func NewMediaUpdated(mediaID uuid.UUID, changes map[string]any) MediaUpdated {
 	}
 }
 
+// MediaContentAttached event is emitted when a file is uploaded into an
+// existing item that had none: a GEDCOM-imported reference (#1504). It carries
+// the bytes as MediaCreated does and changes nothing else about the item.
+type MediaContentAttached struct {
+	BaseEvent
+	MediaID       uuid.UUID `json:"media_id"`
+	MimeType      string    `json:"mime_type"`
+	Filename      string    `json:"filename"`
+	FileSize      int64     `json:"file_size"`
+	FileData      []byte    `json:"file_data"`
+	ThumbnailData []byte    `json:"thumbnail_data,omitempty"`
+}
+
+func (e MediaContentAttached) EventType() string      { return "MediaContentAttached" }
+func (e MediaContentAttached) AggregateID() uuid.UUID { return e.MediaID }
+
+// NewMediaContentAttached creates a MediaContentAttached event.
+func NewMediaContentAttached(mediaID uuid.UUID, mimeType, filename string, fileData, thumbnailData []byte) MediaContentAttached {
+	return MediaContentAttached{
+		BaseEvent:     NewBaseEvent(),
+		MediaID:       mediaID,
+		MimeType:      mimeType,
+		Filename:      filename,
+		FileSize:      int64(len(fileData)),
+		FileData:      fileData,
+		ThumbnailData: thumbnailData,
+	}
+}
+
 // MediaDeleted event is emitted when a media is deleted.
 type MediaDeleted struct {
 	BaseEvent

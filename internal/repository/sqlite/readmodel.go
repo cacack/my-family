@@ -4836,6 +4836,9 @@ func (s *ReadModelStore) SaveMedia(ctx context.Context, branchID domain.BranchID
 		if _, err := tx.ExecContext(ctx, releaseBranchMediaBytes, media.ID.String(), mainBranchID); err != nil {
 			return fmt.Errorf("release branch media bytes: %w", err)
 		}
+		if _, err := tx.ExecContext(ctx, syncBranchMediaContent, media.ID.String(), mainBranchID); err != nil {
+			return fmt.Errorf("sync branch media content: %w", err)
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit save media: %w", err)
@@ -4852,6 +4855,17 @@ const releaseBranchMediaBytes = `UPDATE media SET
 		thumbnail_data = CASE WHEN EXISTS (SELECT 1 FROM media m WHERE m.id = ?1 AND m.branch_id = ?2 AND m.thumbnail_data IS NOT NULL)
 			THEN NULL ELSE thumbnail_data END
 	WHERE id = ?1 AND branch_id <> ?2 AND (file_data IS NOT NULL OR thumbnail_data IS NOT NULL)`
+
+// syncBranchMediaContent copies the content facts (mime type, filename, size)
+// of main's row (?2) onto every non-main row of media ?1 while main holds the
+// bytes, so a shadow describes the bytes it reads through the main fallback
+// even when a file was attached after the shadow was taken (ADR-005, #1504).
+const syncBranchMediaContent = `UPDATE media SET
+		mime_type = (SELECT m.mime_type FROM media m WHERE m.id = ?1 AND m.branch_id = ?2),
+		filename = (SELECT m.filename FROM media m WHERE m.id = ?1 AND m.branch_id = ?2),
+		file_size = (SELECT m.file_size FROM media m WHERE m.id = ?1 AND m.branch_id = ?2)
+	WHERE id = ?1 AND branch_id <> ?2
+		AND EXISTS (SELECT 1 FROM media m WHERE m.id = ?1 AND m.branch_id = ?2 AND m.file_data IS NOT NULL)`
 
 // DeleteMedia removes a media item on the given branch (ADR-005, #759). On a
 // non-main branch it writes a metadata-only tombstone and never touches main's

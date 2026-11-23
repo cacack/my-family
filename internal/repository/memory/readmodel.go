@@ -1863,6 +1863,12 @@ func (s *ReadModelStore) releaseBranchMediaBytes(id uuid.UUID, main *mediaRow) {
 		if main.m.ThumbnailData != nil {
 			r.m.ThumbnailData = nil
 		}
+		// While main holds the bytes, a shadow carries main's content facts, so
+		// it describes the bytes it reads through the fallback even when a file
+		// was attached after the shadow was taken (#1504).
+		if main.m.FileData != nil {
+			r.m.MimeType, r.m.Filename, r.m.FileSize = main.m.MimeType, main.m.Filename, main.m.FileSize
+		}
 	}
 }
 

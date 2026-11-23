@@ -2158,6 +2158,63 @@ paths:
         '503':
           $ref: '#/components/responses/SetupRequired'
 
+    put:
+      operationId: attachMediaContent
+      x-min-role: editor
+      summary: Attach a file to a reference-only media item
+      description: |
+        Uploads the file of an item that has no stored content, such as one
+        imported from GEDCOM, which keeps only file references (#1504). The
+        item keeps its ID, title, owner, GEDCOM link, file references and
+        private mark; its MIME type, filename and size become the uploaded
+        file's, and an image gets a thumbnail. The file is checked as an
+        upload is (`uploadPersonMedia`). An item that already has content is
+        refused with 409 and code `has_content`; replacing content is not
+        supported.
+
+        Attaching is mainline-only (ADR-005): with `?branch=` the request is
+        refused with 409 `attach_mainline_only` and nothing is read or written.
+      tags: [media]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: The file to attach (max 10MB)
+      responses:
+        '200':
+          description: File attached
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Media'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: |
+            The item already has content (`has_content`), a concurrent write
+            changed it (`VERSION_CONFLICT`), or a `?branch=` scope was supplied
+            (`attach_mainline_only`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
+
   /media/{id}/thumbnail:
     parameters:
       - name: id

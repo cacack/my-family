@@ -257,10 +257,14 @@ describe('isBranchScopedRequest', () => {
 		expect(isBranchScopedRequest('GET', '/citations')).toBe(false);
 		expect(isBranchScopedRequest('POST', '/sources/search')).toBe(false);
 		// Media history and rollback stay mainline (#759 scopes the metadata, not
-		// its audit trail), and the content/thumbnail reads take no writes.
+		// its audit trail), and the thumbnail read takes no writes.
 		expect(isBranchScopedRequest('GET', `/media/${NAME_ID}/history`)).toBe(false);
 		expect(isBranchScopedRequest('POST', `/media/${NAME_ID}/rollback`)).toBe(false);
-		expect(isBranchScopedRequest('PUT', `/media/${NAME_ID}/content`)).toBe(false);
+		expect(isBranchScopedRequest('PUT', `/media/${NAME_ID}/thumbnail`)).toBe(false);
+	});
+
+	it('forwards the scope on a media attach so the server can refuse it', () => {
+		expect(isBranchScopedRequest('PUT', `/media/${NAME_ID}/content`)).toBe(true);
 	});
 
 	it('scopes person and family history to the branch (#824)', () => {

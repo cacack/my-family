@@ -742,10 +742,11 @@ rolls it forward without the delete, keeping both. Landed
 detection is the usual payload-id scan, and a media stream's `main` row is read with `GetMedia`,
 never the bytes. The read-model repair follows the version rule — every media projection writes the
 row, version included, in one save — and cannot copy or lose file bytes: it projects `main`'s own
-events onto `main` only, the only event carrying bytes is `MediaCreated` (whose bytes are `main`'s
-own, in `main`'s log), `MediaUpdated` re-saves metadata with nil bytes (which keep what is stored),
+events onto `main` only, the only events carrying bytes are `MediaCreated` and the mainline-only
+`MediaContentAttached` (whose bytes are `main`'s own, in `main`'s log), `MediaUpdated` re-saves metadata with nil bytes (which keep what is stored),
 and no branch row is written beyond the byte release every mainline save of a merged upload makes
-(the branch's origin row drops its now-duplicate copy; see the media note below). A missing media row counts as removed for a reason the log
+(the branch's origin row drops its now-duplicate copy) and the content-fact copy onto branch rows
+while `main` holds the bytes (see the media note below). A missing media row counts as removed for a reason the log
 explains when its owner's `main` stream ends in a delete (the owner→media cascade writes nothing to
 the media stream), following a person owner through any person merges `main` recorded since; a
 pending edit of such an item resolves only to `main`, and a landed upload is not resurrected. One
@@ -1284,8 +1285,13 @@ The first was chosen because it keeps the invariant both simpler and directly te
 
 - The bytes are written exactly once, by `MediaCreated`, onto the row that created the item — its
   *origin row*: main for a mainline upload, the branch's own row for an item uploaded on a branch
-  (a new id, which owns its bytes). No later event carries bytes: `MediaUpdated` edits metadata
-  only, and `projectMediaUpdated` reads the item with `GetMedia`, never `GetMediaWithData`.
+  (a new id, which owns its bytes). `MediaUpdated` edits metadata only, and `projectMediaUpdated`
+  reads the item with `GetMedia`, never `GetMediaWithData`. The one later event that carries
+  bytes, `MediaContentAttached` (#1504), fills an item created with none (a GEDCOM reference); it
+  is mainline-only, so it too writes main's row, the origin row. The content facts that describe
+  the bytes (`mime_type`, `filename`, `file_size`) follow them: while main's row holds the bytes, a
+  mainline `SaveMedia` copies those three columns onto every branch row of the id, so a shadow
+  taken before the attach does not keep saying "no content" while serving main's file.
 - A branch shadow row of an item that has a main row is **metadata only** — its byte columns are
   NULL. `SaveMedia` enforces this in the statement itself: on a non-main branch, an id with a main
   row gets NULL bytes whatever the caller passes; and no save ever clears bytes already stored

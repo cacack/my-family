@@ -7865,6 +7865,25 @@ type DownloadMediaParams struct {
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
+// AttachMediaContentMultipartBody defines parameters for AttachMediaContent.
+type AttachMediaContentMultipartBody struct {
+	// File The file to attach (max 10MB)
+	File openapi_types.File `json:"file"`
+}
+
+// AttachMediaContentParams defines parameters for AttachMediaContent.
+type AttachMediaContentParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+}
+
 // GetMediaThumbnailParams defines parameters for GetMediaThumbnail.
 type GetMediaThumbnailParams struct {
 	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
@@ -8968,6 +8987,9 @@ type UpdateLDSOrdinanceJSONRequestBody = LDSOrdinanceUpdate
 // UpdateMediaJSONRequestBody defines body for UpdateMedia for application/json ContentType.
 type UpdateMediaJSONRequestBody = MediaUpdate
 
+// AttachMediaContentMultipartRequestBody defines body for AttachMediaContent for multipart/form-data ContentType.
+type AttachMediaContentMultipartRequestBody AttachMediaContentMultipartBody
+
 // CreateNoteJSONRequestBody defines body for CreateNote for application/json ContentType.
 type CreateNoteJSONRequestBody = NoteCreate
 
@@ -9354,6 +9376,9 @@ type ServerInterface interface {
 	// DownloadMedia Download media file
 	// (GET /media/{id}/content)
 	DownloadMedia(ctx echo.Context, id openapi_types.UUID, params DownloadMediaParams) error
+	// AttachMediaContent Attach a file to a reference-only media item
+	// (PUT /media/{id}/content)
+	AttachMediaContent(ctx echo.Context, id openapi_types.UUID, params AttachMediaContentParams) error
 	// GetMediaThumbnail Get media thumbnail
 	// (GET /media/{id}/thumbnail)
 	GetMediaThumbnail(ctx echo.Context, id openapi_types.UUID, params GetMediaThumbnailParams) error
@@ -11826,6 +11851,31 @@ func (w *ServerInterfaceWrapper) DownloadMedia(ctx echo.Context) error {
 	return err
 }
 
+// AttachMediaContent converts echo context to params.
+func (w *ServerInterfaceWrapper) AttachMediaContent(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: ctx.Request().URL.RawPath == ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params AttachMediaContentParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.AttachMediaContent(ctx, id, params)
+	return err
+}
+
 // GetMediaThumbnail converts echo context to params.
 func (w *ServerInterfaceWrapper) GetMediaThumbnail(ctx echo.Context) error {
 	var err error
@@ -14193,6 +14243,7 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 	router.GET(options.BaseURL+"/media/:id", wrapper.GetMedia, options.OperationMiddlewares["getMedia"]...)
 	router.PUT(options.BaseURL+"/media/:id", wrapper.UpdateMedia, options.OperationMiddlewares["updateMedia"]...)
 	router.GET(options.BaseURL+"/media/:id/content", wrapper.DownloadMedia, options.OperationMiddlewares["downloadMedia"]...)
+	router.PUT(options.BaseURL+"/media/:id/content", wrapper.AttachMediaContent, options.OperationMiddlewares["attachMediaContent"]...)
 	router.GET(options.BaseURL+"/media/:id/thumbnail", wrapper.GetMediaThumbnail, options.OperationMiddlewares["getMediaThumbnail"]...)
 	router.GET(options.BaseURL+"/sources", wrapper.ListSources, options.OperationMiddlewares["listSources"]...)
 	router.POST(options.BaseURL+"/sources", wrapper.CreateSource, options.OperationMiddlewares["createSource"]...)
@@ -21675,6 +21726,100 @@ func (response DownloadMedia503JSONResponse) VisitDownloadMediaResponse(w http.R
 	return err
 }
 
+type AttachMediaContentRequestObject struct {
+	Id     openapi_types.UUID `json:"id"`
+	Params AttachMediaContentParams
+	Body   *multipart.Reader
+}
+
+type AttachMediaContentResponseObject interface {
+	VisitAttachMediaContentResponse(w http.ResponseWriter) error
+}
+
+type AttachMediaContent200JSONResponse Media
+
+func (response AttachMediaContent200JSONResponse) VisitAttachMediaContentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AttachMediaContent400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response AttachMediaContent400JSONResponse) VisitAttachMediaContentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AttachMediaContent401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response AttachMediaContent401JSONResponse) VisitAttachMediaContentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AttachMediaContent404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response AttachMediaContent404JSONResponse) VisitAttachMediaContentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AttachMediaContent409JSONResponse Error
+
+func (response AttachMediaContent409JSONResponse) VisitAttachMediaContentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AttachMediaContent503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response AttachMediaContent503JSONResponse) VisitAttachMediaContentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetMediaThumbnailRequestObject struct {
 	Id     openapi_types.UUID `json:"id"`
 	Params GetMediaThumbnailParams
@@ -28296,6 +28441,9 @@ type StrictServerInterface interface {
 	// DownloadMedia Download media file
 	// (GET /media/{id}/content)
 	DownloadMedia(ctx context.Context, request DownloadMediaRequestObject) (DownloadMediaResponseObject, error)
+	// AttachMediaContent Attach a file to a reference-only media item
+	// (PUT /media/{id}/content)
+	AttachMediaContent(ctx context.Context, request AttachMediaContentRequestObject) (AttachMediaContentResponseObject, error)
 	// GetMediaThumbnail Get media thumbnail
 	// (GET /media/{id}/thumbnail)
 	GetMediaThumbnail(ctx context.Context, request GetMediaThumbnailRequestObject) (GetMediaThumbnailResponseObject, error)
@@ -31775,6 +31923,38 @@ func (sh *strictHandler) DownloadMedia(ctx echo.Context, id openapi_types.UUID, 
 		return err
 	} else if validResponse, ok := response.(DownloadMediaResponseObject); ok {
 		return validResponse.VisitDownloadMediaResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// AttachMediaContent operation middleware
+func (sh *strictHandler) AttachMediaContent(ctx echo.Context, id openapi_types.UUID, params AttachMediaContentParams) error {
+	var request AttachMediaContentRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	if reader, err := ctx.Request().MultipartReader(); err != nil {
+		return err
+	} else {
+		request.Body = reader
+	}
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.AttachMediaContent(ctx.Request().Context(), request.(AttachMediaContentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AttachMediaContent")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(AttachMediaContentResponseObject); ok {
+		return validResponse.VisitAttachMediaContentResponse(ctx.Response())
 	} else if response != nil {
 		return fmt.Errorf("unexpected response type: %T", response)
 	}
