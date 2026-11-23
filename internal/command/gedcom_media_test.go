@@ -889,6 +889,119 @@ func TestImportGedcom_MediaLinkDetailRoundTripKeepsTheGroup(t *testing.T) {
 	}
 }
 
+// sharedNoteMediaGedcom links @M1@, whose record points to shared note @N1@,
+// from John with a link pointing to @N2@ and from Mary with a plain link, in
+// GEDCOM 7.0 (SNOTE) and 5.5.1 (NOTE) form (#1756).
+var sharedNoteMediaGedcom = map[string]string{
+	"7.0": `0 HEAD
+1 GEDC
+2 VERS 7.0
+0 @N1@ SNOTE Taken at the 1910 reunion.
+0 @N2@ SNOTE Second from the left.
+0 @M1@ OBJE
+1 FILE photos/reunion.jpg
+2 FORM image/jpeg
+2 TITL Reunion
+1 SNOTE @N1@
+1 NOTE Scanned in 2001.
+0 @I1@ INDI
+1 NAME John /Doe/
+1 OBJE @M1@
+2 SNOTE @N2@
+0 @I2@ INDI
+1 NAME Mary /Roe/
+1 OBJE @M1@
+0 TRLR
+`,
+	"5.5.1": `0 HEAD
+1 GEDC
+2 VERS 5.5.1
+2 FORM LINEAGE-LINKED
+1 CHAR UTF-8
+0 @N1@ NOTE Taken at the 1910 reunion.
+0 @N2@ NOTE Second from the left.
+0 @M1@ OBJE
+1 FILE photos/reunion.jpg
+2 FORM jpg
+2 TITL Reunion
+1 NOTE @N1@
+1 NOTE Scanned in 2001.
+0 @I1@ INDI
+1 NAME John /Doe/
+1 OBJE @M1@
+2 NOTE @N2@
+0 @I2@ INDI
+1 NAME Mary /Roe/
+1 OBJE @M1@
+0 TRLR
+`,
+}
+
+// A shared note an OBJE record or link points to gives its text to the
+// description of every owner's item, or of the linking owner's only, and
+// export and re-import keep it (#1756).
+func TestImportGedcom_MediaSharedNotes(t *testing.T) {
+	const (
+		wantJohn = "Taken at the 1910 reunion.\n\nScanned in 2001.\n\nSecond from the left."
+		wantMary = "Taken at the 1910 reunion.\n\nScanned in 2001."
+	)
+	for version, ged := range sharedNoteMediaGedcom {
+		t.Run(version, func(t *testing.T) {
+			ctx := context.Background()
+			readStore := memory.NewReadModelStore()
+			result, err := command.NewHandler(memory.NewEventStore(), readStore).ImportGedcom(ctx, command.ImportGedcomInput{Filename: "m.ged", Reader: strings.NewReader(ged)})
+			if err != nil {
+				t.Fatalf("ImportGedcom: %v", err)
+			}
+			if slices.ContainsFunc(result.Warnings, func(w string) bool { return strings.Contains(w, "points to no note") }) {
+				t.Errorf("warnings %q report a note record as missing", result.Warnings)
+			}
+			if got := personMedia(t, ctx, readStore, "John").Description; got != wantJohn {
+				t.Errorf("John's description = %q, want %q", got, wantJohn)
+			}
+			if got := personMedia(t, ctx, readStore, "Mary").Description; got != wantMary {
+				t.Errorf("Mary's description = %q, want %q", got, wantMary)
+			}
+
+			again := memory.NewReadModelStore()
+			if _, err := command.NewHandler(memory.NewEventStore(), again).ImportGedcom(ctx, command.ImportGedcomInput{Filename: "m.ged", Reader: strings.NewReader(exportGedcom(t, readStore))}); err != nil {
+				t.Fatalf("re-import: %v", err)
+			}
+			if got := personMedia(t, ctx, again, "John").Description; got != wantJohn {
+				t.Errorf("re-imported John's description = %q, want %q", got, wantJohn)
+			}
+			if got := personMedia(t, ctx, again, "Mary").Description; got != wantMary {
+				t.Errorf("re-imported Mary's description = %q, want %q", got, wantMary)
+			}
+		})
+	}
+}
+
+// A media note pointer to no note record is left out of the description with
+// a warning naming where it is (#1756).
+func TestImportGedcom_MediaNotePointerToNoRecordWarns(t *testing.T) {
+	ctx := context.Background()
+	readStore := memory.NewReadModelStore()
+	ged := "0 HEAD\n1 GEDC\n2 VERS 7.0\n" +
+		"0 @M1@ OBJE\n1 FILE a.jpg\n2 FORM image/jpeg\n1 SNOTE @N8@\n1 NOTE Kept.\n" +
+		"0 @I1@ INDI\n1 NAME John /Doe/\n1 OBJE @M1@\n2 SNOTE @N9@\n0 TRLR\n"
+	result, err := command.NewHandler(memory.NewEventStore(), readStore).ImportGedcom(ctx, command.ImportGedcomInput{Filename: "m.ged", Reader: strings.NewReader(ged)})
+	if err != nil {
+		t.Fatalf("ImportGedcom: %v", err)
+	}
+	for _, want := range []string{
+		"Media @M1@: OBJE note @N8@ points to no note record; not imported",
+		"Individual @I1@: OBJE note @N9@ points to no note record; not imported",
+	} {
+		if !slices.Contains(result.Warnings, want) {
+			t.Errorf("warnings %q lack %q", result.Warnings, want)
+		}
+	}
+	if got := personMedia(t, ctx, readStore, "John").Description; got != "Kept." {
+		t.Errorf("John's description = %q, want %q", got, "Kept.")
+	}
+}
+
 // The crop is part of the imported version 1, so a rollback to it restores
 // a crop an editor cleared (#1584).
 func TestRollbackMedia_ToImportedVersionRestoresTheCrop(t *testing.T) {
