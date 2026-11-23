@@ -518,3 +518,34 @@ func TestRoundTrip_RecordDeathDescriptor(t *testing.T) {
 		t.Errorf("second export differs from the first:\n%s\nfirst:\n%s", second, first)
 	}
 }
+
+// A record DEAT with a cause and a separate descriptor death ("1 DEAT Shot")
+// round-trip with the record's death date, the cause and the descriptor all
+// kept, and the export is stable (#1719).
+func TestRoundTrip_RecordDeathAndDescriptorDeath(t *testing.T) {
+	data := "0 HEAD\n1 GEDC\n2 VERS 7.0\n0 @I1@ INDI\n1 NAME A /B/\n" +
+		"1 DEAT\n2 DATE 1890\n2 CAUS Fever\n1 DEAT Shot\n0 TRLR\n"
+	first := importAndExport(t, data)
+
+	_, persons, _, _, _, _, events, _, _, _, _, _, _, err := gedcom.NewImporter().Import(context.Background(), strings.NewReader(first))
+	if err != nil {
+		t.Fatalf("re-import: %v", err)
+	}
+	if len(persons) != 1 || persons[0].DeathDate != "1890" {
+		t.Fatalf("re-imported persons = %+v, want one with death date 1890; export:\n%s", persons, first)
+	}
+	kept := persons[0].DeathNotes
+	for _, e := range events {
+		if e.FactType == domain.FactPersonDeath {
+			kept += "\n" + e.Cause + "\n" + e.Description + "\n" + e.Notes
+		}
+	}
+	for _, want := range []string{"Fever", "Shot"} {
+		if !strings.Contains(kept, want) {
+			t.Errorf("re-imported death keeps %q, want %q in it; export:\n%s", kept, want, first)
+		}
+	}
+	if second := importAndExport(t, first); second != first {
+		t.Errorf("second export differs from the first:\n%s\nfirst:\n%s", second, first)
+	}
+}
