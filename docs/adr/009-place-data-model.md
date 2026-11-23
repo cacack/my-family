@@ -326,9 +326,11 @@ A place has at most one parent place.
     records sit under it.
   - *A place's explicit parent is aliased.* The parent resolves to the alias target, so the place
     moves under the target, as a default parent does.
-- **Jurisdiction label:** optional per level. It comes from one of the place's forms, paired by
-  position with the part layout it was recorded for, and is never inferred from position alone.
-  A level with no label shows none, and so does a level that two forms name differently.
+- **Jurisdiction label:** optional per level. It comes from a form, paired by position with the
+  part layout it was recorded for, and is never inferred from position alone. A place's forms are
+  its own and those of the places aliased to it, each read from the place its key names (section
+  3). A level with no label shows none, and so does a level that two of those forms name
+  differently.
 
 The browser walks parents, in Go, over places resolved by key. A parent that no record names
 directly (`Hessen, Germany` when only its towns were recorded) is a place like any other. A place's
@@ -426,8 +428,9 @@ or in spacing around commas become one entry, on every store.
   records in the order the file lists them, and a record's `PLAC` lines in order. The importer
   reads individuals before families, so it sorts by file position rather than relying on the order
   it reads them, and the same file into the same database always gives the same forms. Export
-  writes `PLAC.FORM` under each event whose place holds a form for that event's positional key, so
-  a form is never written against a text with a different number of parts.
+  writes `PLAC.FORM` under each event whose key's place, before alias resolution, holds a form for
+  that event's positional key, so an alias never drops a form and a form is never written against
+  a text with a different number of parts.
 - **`HEAD.PLAC.FORM`.** Not written yet. The file default comes back as a `FORM` under each place,
   which means the same and is not the same bytes. Writing the most common form once in the header,
   and a per-place `FORM` only where it differs, needs
