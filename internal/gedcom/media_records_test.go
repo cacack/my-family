@@ -722,7 +722,7 @@ func TestExport_MediaCropTitleAndDescriptionRoundTrip(t *testing.T) {
 		t.Fatalf("media = %+v, want one record with one owner", media)
 	}
 	owner := media[0].Owners[0]
-	if title, description := media[0].OwnerText(owner); title != item.Title || description != item.Description {
+	if title, description, _ := media[0].OwnerText(owner); title != item.Title || description != item.Description {
 		t.Errorf("re-imported title %q, description %q; want %q, %q", title, description, item.Title, item.Description)
 	}
 	for name, pair := range map[string][2]*int{
