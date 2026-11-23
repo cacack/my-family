@@ -198,6 +198,57 @@ func TestImportMediaObject_ExtensionRestriction(t *testing.T) {
 	}
 }
 
+// A 5.5 OBJE record gives its TITL and FORM at level 1, which the importer
+// reads when its FILE gives none; a TITL or FORM under FILE takes precedence
+// (#1755).
+func TestImportMediaObject_RecordLevelTitleAndForm(t *testing.T) {
+	const input = `0 HEAD
+1 GEDC
+2 VERS 5.5
+0 @M1@ OBJE
+1 FILE photo.jpg
+1 FORM jpg
+1 TITL Wedding photo
+0 @M2@ OBJE
+1 FORM bmp
+1 TITL Record title
+1 FILE scan.tif
+2 FORM tif
+2 TITL File title
+0 @M3@ OBJE
+1 TITL No file here
+1 FORM pdf
+0 @M4@ OBJE
+1 FILE bare.jpg
+0 TRLR
+`
+	_, _, _, _, _, _, _, _, _, _, _, _, media, err := gedcom.NewImporter().Import(context.Background(), strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("import: %v", err)
+	}
+	if len(media) != 4 {
+		t.Fatalf("len(media) = %d, want 4", len(media))
+	}
+	tests := []struct {
+		xref, title, format, fileFormat string
+	}{
+		{"@M1@", "Wedding photo", "jpg", "jpg"},
+		{"@M2@", "File title", "tif", "tif"},
+		{"@M3@", "No file here", "pdf", ""},
+		{"@M4@", "@M4@", "", ""},
+	}
+	for i, tt := range tests {
+		m := media[i]
+		if m.GedcomXref != tt.xref || m.Title != tt.title || m.Format != tt.format || m.MimeType != tt.format {
+			t.Errorf("media[%d] = xref %q, title %q, format %q, mime %q; want %q, %q, %q",
+				i, m.GedcomXref, m.Title, m.Format, m.MimeType, tt.xref, tt.title, tt.format)
+		}
+		if len(m.Files) > 0 && m.Files[0].Format != tt.fileFormat {
+			t.Errorf("%s file format = %q, want %q", tt.xref, m.Files[0].Format, tt.fileFormat)
+		}
+	}
+}
+
 // mediaExportStore holds a person with an uploaded private photo and a
 // family with an imported document whose title and type were edited since.
 func mediaExportStore(t *testing.T) *memory.ReadModelStore {
