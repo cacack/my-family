@@ -512,15 +512,16 @@ func (imp *Importer) ImportWithOptions(ctx context.Context, reader io.Reader, im
 
 	// Fifth pass: parse shared (top-level) NOTE records
 	// These are NOTE records that can be referenced by multiple entities via XRef
-	// noteTexts maps each note's xref in the file to its text, for the media
-	// pass (mediaNotes); renameCollidingNotes may rename a note's xref later.
+	// noteTexts maps each note's xref as the file's OBJE pointers give it to
+	// the note, for the media pass (mediaNotes); renameCollidingNotes rekeys
+	// NoteXrefToID, so it can't serve there.
 	var notes []NoteData
-	noteTexts := make(map[string]string)
+	noteTexts := make(map[string]NoteData)
 	for _, note := range doc.Notes() {
 		noteData := parseNote(note)
 		notes = append(notes, noteData)
 		result.NoteXrefToID[note.XRef] = noteData.ID
-		noteTexts[note.XRef] = noteData.Text
+		noteTexts[note.XRef] = noteData
 	}
 
 	// Also parse GEDCOM 7.0 shared note (SNOTE) records. Unlike plain NOTE
@@ -530,7 +531,7 @@ func (imp *Importer) ImportWithOptions(ctx context.Context, reader io.Reader, im
 		noteData := parseSharedNote(snote)
 		notes = append(notes, noteData)
 		result.NoteXrefToID[snote.XRef] = noteData.ID
-		noteTexts[snote.XRef] = noteData.Text
+		noteTexts[snote.XRef] = noteData
 	}
 
 	// Sixth pass: parse SUBM (submitter) records
@@ -2276,7 +2277,7 @@ func extractLDSOrdinancesFromFamily(fam *gedcom.Family, familyID uuid.UUID) []LD
 // Note: This parses top-level OBJE records; mediaLinks finds the records that
 // link to them. A record with no FILE is still imported, as a document, with
 // a warning (#1585).
-func parseMediaObject(media *gedcom.MediaObject, noteTexts map[string]string, result *ImportResult) MediaData {
+func parseMediaObject(media *gedcom.MediaObject, noteTexts map[string]NoteData, result *ImportResult) MediaData {
 	mediaData := parseMediaFiles(media.Files)
 	if len(media.Files) == 0 {
 		mediaData.MediaType = mapGedcomMediaType("")
@@ -2381,7 +2382,7 @@ func parseMediaFiles(files []*gedcom.MediaFile) MediaData {
 // citations. It returns, per OBJE xref, the records that link to it, in file
 // order and each once, and an item for each inline link that names a file,
 // owned by the record that contains it. Where a link sat within its record is not kept.
-func mediaLinks(doc *gedcom.Document, noteTexts map[string]string, result *ImportResult) (map[string][]MediaOwner, []MediaData) {
+func mediaLinks(doc *gedcom.Document, noteTexts map[string]NoteData, result *ImportResult) (map[string][]MediaOwner, []MediaData) {
 	owners := make(map[string][]MediaOwner)
 	var inline []MediaData
 	add := func(links []*gedcom.MediaLink, owner MediaOwner, where string) {
@@ -2414,18 +2415,23 @@ func mediaLinks(doc *gedcom.Document, noteTexts map[string]string, result *Impor
 // mediaNotes joins the notes of an OBJE record or link with noteJoin: the
 // text of each shared note it points to, then its inline text (#1756). A
 // media description is plain text, so a pointer is replaced by its note's
-// text; a pointer to no note record in the file is left out with a warning
-// naming where it is.
-func mediaNotes(where string, pointers, inline []string, noteTexts map[string]string, result *ImportResult) string {
+// text. A pointer to no note record in the file, or to a private note (whose
+// text would lose its restriction in the description), is left out with a
+// warning naming where it is.
+func mediaNotes(where string, pointers, inline []string, noteTexts map[string]NoteData, result *ImportResult) string {
 	var notes []string
 	for _, ptr := range pointers {
-		text, ok := noteTexts[ptr]
-		if !ok {
+		note, ok := noteTexts[ptr]
+		switch {
+		case !ok:
 			result.Warnings = append(result.Warnings,
 				fmt.Sprintf("%s: OBJE note %s points to no note record; not imported", where, ptr))
-			continue
+		case domain.Restriction(note.Restriction).IsPrivate():
+			result.Warnings = append(result.Warnings,
+				fmt.Sprintf("%s: OBJE note %s is private; its text is left out of the media description", where, ptr))
+		default:
+			notes = append(notes, note.Text)
 		}
-		notes = append(notes, text)
 	}
 	return joinNotes(append(notes, inline...)...)
 }
@@ -2451,7 +2457,7 @@ func (m MediaData) OwnerText(owner MediaOwner) (title, description string, short
 
 // linkOwner returns owner with the title, notes (mediaNotes) and crop of its
 // link; where names the linking record in a warning.
-func linkOwner(owner MediaOwner, link *gedcom.MediaLink, noteTexts map[string]string, where string, result *ImportResult) MediaOwner {
+func linkOwner(owner MediaOwner, link *gedcom.MediaLink, noteTexts map[string]NoteData, where string, result *ImportResult) MediaOwner {
 	owner.Title = link.Title
 	owner.NoteText = mediaNotes(where, link.NoteXRefs, link.InlineNotes, noteTexts, result)
 	if c := link.Crop; c != nil {

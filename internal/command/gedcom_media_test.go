@@ -1002,6 +1002,43 @@ func TestImportGedcom_MediaNotePointerToNoRecordWarns(t *testing.T) {
 	}
 }
 
+// A private shared note an OBJE record or link points to keeps its text out
+// of the media description, which carries no note restriction, with a
+// warning; the note itself is still imported, private (#1756).
+func TestImportGedcom_MediaPrivateSharedNoteLeftOut(t *testing.T) {
+	ctx := context.Background()
+	readStore := memory.NewReadModelStore()
+	ged := "0 HEAD\n1 GEDC\n2 VERS 7.0\n" +
+		"0 @N1@ SNOTE Adopted.\n1 _RESN confidential\n" +
+		"0 @N2@ SNOTE Birth mother named.\n1 RESN PRIVACY\n" +
+		"0 @M1@ OBJE\n1 FILE a.jpg\n2 FORM image/jpeg\n1 SNOTE @N1@\n1 NOTE Kept.\n" +
+		"0 @I1@ INDI\n1 NAME John /Doe/\n1 OBJE @M1@\n2 SNOTE @N2@\n0 TRLR\n"
+	result, err := command.NewHandler(memory.NewEventStore(), readStore).ImportGedcom(ctx, command.ImportGedcomInput{Filename: "m.ged", Reader: strings.NewReader(ged)})
+	if err != nil {
+		t.Fatalf("ImportGedcom: %v", err)
+	}
+	for _, want := range []string{
+		"Media @M1@: OBJE note @N1@ is private; its text is left out of the media description",
+		"Individual @I1@: OBJE note @N2@ is private; its text is left out of the media description",
+	} {
+		if !slices.Contains(result.Warnings, want) {
+			t.Errorf("warnings %q lack %q", result.Warnings, want)
+		}
+	}
+	if got := personMedia(t, ctx, readStore, "John").Description; got != "Kept." {
+		t.Errorf("John's description = %q, want %q", got, "Kept.")
+	}
+	notes, _, err := readStore.ListNotes(ctx, repository.DefaultListOptions())
+	if err != nil || len(notes) != 2 {
+		t.Fatalf("notes = %d, %v; want 2", len(notes), err)
+	}
+	for _, n := range notes {
+		if !n.Restriction.IsPrivate() {
+			t.Errorf("note %q restriction = %q, want private", n.Text, n.Restriction)
+		}
+	}
+}
+
 // The crop is part of the imported version 1, so a rollback to it restores
 // a crop an editor cleared (#1584).
 func TestRollbackMedia_ToImportedVersionRestoresTheCrop(t *testing.T) {
