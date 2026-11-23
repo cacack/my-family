@@ -14,7 +14,8 @@ import (
 
 // argon2id parameters: the OWASP Password Storage Cheat Sheet's baseline
 // (19 MiB, two passes, one lane). A stored hash records its own parameters,
-// so raising them later still verifies older hashes.
+// so changing them later still verifies older hashes, as long as the
+// maxArgon* bounds below stay at or above every setting ever shipped.
 const (
 	argonMemoryKiB = 19 * 1024
 	argonTime      = 2
@@ -33,14 +34,15 @@ const (
 	hashSlotWait        = time.Second
 )
 
-// Upper bounds on the argon2id parameters a stored hash may name. They are
-// the current settings, so the cap above bounds memory per run: VerifyPassword
-// refuses a hash that asks for more rather than running it. Raise them with
-// the settings.
+// Upper bounds on the argon2id parameters a stored hash may name, so the cap
+// above bounds memory per run: VerifyPassword refuses a hash that asks for
+// more rather than running it. They are set apart from the argon* settings on
+// purpose: raise them when raising a setting, but never lower them below a
+// setting that has shipped, or every hash written with it stops verifying.
 const (
-	maxArgonMemoryKiB = argonMemoryKiB
-	maxArgonTime      = argonTime
-	maxArgonThreads   = argonThreads
+	maxArgonMemoryKiB = 19 * 1024
+	maxArgonTime      = 2
+	maxArgonThreads   = 1
 )
 
 var errMalformedHash = errors.New("malformed password hash")

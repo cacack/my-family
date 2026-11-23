@@ -170,6 +170,13 @@ func TestHashCap_SetupRefusedWhenBusy(t *testing.T) {
 	}
 }
 
+func TestArgonBounds_CoverCurrentSettings(t *testing.T) {
+	if argonMemoryKiB > maxArgonMemoryKiB || argonTime > maxArgonTime || argonThreads > maxArgonThreads {
+		t.Errorf("argon2id settings m=%d,t=%d,p=%d exceed bounds m=%d,t=%d,p=%d; hashes written now would not verify",
+			argonMemoryKiB, argonTime, argonThreads, maxArgonMemoryKiB, maxArgonTime, maxArgonThreads)
+	}
+}
+
 func TestVerifyPassword_RejectsSettingsAboveBounds(t *testing.T) {
 	var runs atomic.Int32
 	oldArgon2id := argon2id
