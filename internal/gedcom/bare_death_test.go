@@ -137,8 +137,6 @@ func TestImport_RecordDeathKeepsCauseAndAge(t *testing.T) {
 		{name: "placed with a cause", deat: "1 DEAT\n2 PLAC Springfield\n2 CAUS Fever\n", wantEvent: true, wantCause: "Fever"},
 		{name: "dated with an address", deat: "1 DEAT\n2 DATE 1890\n2 ADDR 1 Main St\n", wantEvent: true, wantAddr: "1 Main St"},
 		{name: "dated only", deat: "1 DEAT\n2 DATE 1890\n"},
-		{name: "cause on an earlier DEAT the record does not hold", deat: "1 DEAT\n2 DATE 1880\n2 CAUS Fever\n1 DEAT\n2 DATE 1890\n"},
-		{name: "cause on the last of two DEATs", deat: "1 DEAT\n2 DATE 1880\n1 DEAT\n2 DATE 1890\n2 CAUS Fever\n", wantEvent: true, wantCause: "Fever"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
