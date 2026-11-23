@@ -237,10 +237,21 @@ type MediaData struct {
 	Translations []string           // Translated titles (GEDCOM 7.0)
 }
 
-// MediaOwner is a record that links to an OBJE record.
+// MediaOwner is a record that links to an OBJE record, with what its link
+// says about this use of the media (#1584): a title (TITL), the link's inline
+// note text and a crop (CROP). A record linking an OBJE record more than once
+// keeps its first link's.
 type MediaOwner struct {
 	EntityType string // "person", "family" or "source"
 	EntityID   uuid.UUID
+	Title      string
+	// NoteText is the link's inline NOTE text; unlike the *Notes fields it
+	// holds no pointers, so renameCollidingNotes has nothing to rewrite.
+	NoteText string
+	// The crop, nil where the link has none. TOP and LEFT default to 0, so a
+	// crop always has both; WIDTH and HEIGHT are nil when absent (the rest of
+	// the image).
+	CropLeft, CropTop, CropWidth, CropHeight *int
 }
 
 // EventData contains parsed life event data ready for creation.
@@ -2267,6 +2278,7 @@ func parseMediaObject(media *gedcom.MediaObject, result *ImportResult) MediaData
 			fmt.Sprintf("Media %s has no FILE; imported as a document with no file", media.XRef))
 	}
 	mediaData.GedcomXref = media.XRef
+	mediaData.Description = joinNotes(media.InlineNotes...)
 	mediaData.Restriction = media.Restriction
 	if mediaData.Restriction == "" {
 		mediaData.Restriction = extensionRestriction(media.Tags)
@@ -2309,7 +2321,7 @@ func levelOneTagValue(tags []*gedcom.Tag, name string) string {
 
 // parseInlineMedia converts an inline OBJE link (no pointer) to MediaData
 // owned by owner: the link's title, else its first file's, else that file's
-// path.
+// path. The link's notes and crop are owner's (linkOwner).
 func parseInlineMedia(link *gedcom.MediaLink, owner MediaOwner) MediaData {
 	mediaData := parseMediaFiles(link.Files)
 	mediaData.Owners = []MediaOwner{owner}
@@ -2370,11 +2382,13 @@ func mediaLinks(doc *gedcom.Document, result *ImportResult) (map[string][]MediaO
 			switch {
 			case link == nil:
 			case link.MediaXRef != "":
-				if !slices.Contains(owners[link.MediaXRef], owner) {
-					owners[link.MediaXRef] = append(owners[link.MediaXRef], owner)
+				if !slices.ContainsFunc(owners[link.MediaXRef], func(o MediaOwner) bool {
+					return o.EntityType == owner.EntityType && o.EntityID == owner.EntityID
+				}) {
+					owners[link.MediaXRef] = append(owners[link.MediaXRef], linkOwner(owner, link))
 				}
 			case slices.ContainsFunc(link.Files, hasFileRef):
-				inline = append(inline, parseInlineMedia(link, owner))
+				inline = append(inline, parseInlineMedia(link, linkOwner(owner, link)))
 			}
 		}
 	}
@@ -2388,6 +2402,33 @@ func mediaLinks(doc *gedcom.Document, result *ImportResult) (map[string][]MediaO
 		add(src.Media, MediaOwner{EntityType: "source", EntityID: result.SourceXrefToID[src.XRef]})
 	}
 	return owners, inline
+}
+
+// OwnerText returns the title and description of owner's item: the link's
+// title in place of the record's, and the record's notes followed by the
+// link's.
+func (m MediaData) OwnerText(owner MediaOwner) (title, description string) {
+	title = m.Title
+	if owner.Title != "" {
+		title = owner.Title
+	}
+	return title, joinNotes(m.Description, owner.NoteText)
+}
+
+// linkOwner returns owner with the title, inline notes and crop of its link.
+func linkOwner(owner MediaOwner, link *gedcom.MediaLink) MediaOwner {
+	owner.Title = link.Title
+	owner.NoteText = joinNotes(link.InlineNotes...)
+	if c := link.Crop; c != nil {
+		owner.CropLeft, owner.CropTop = new(c.Left), new(c.Top)
+		if c.Width != 0 {
+			owner.CropWidth = new(c.Width)
+		}
+		if c.Height != 0 {
+			owner.CropHeight = new(c.Height)
+		}
+	}
+	return owner
 }
 
 // hasFileRef reports whether file names a file. A 5.5 inline OBJE with FORM

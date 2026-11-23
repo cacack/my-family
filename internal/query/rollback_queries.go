@@ -585,6 +585,10 @@ func (s *RollbackService) applyEventToState(evt repository.StoredEvent, state ma
 		if e.GedcomXref != "" {
 			state["gedcom_xref"] = e.GedcomXref
 		}
+		setCropState(state, "crop_left", e.CropLeft)
+		setCropState(state, "crop_top", e.CropTop)
+		setCropState(state, "crop_width", e.CropWidth)
+		setCropState(state, "crop_height", e.CropHeight)
 		setRestrictionState(state, e.Restriction)
 		return false, nil
 
@@ -608,6 +612,13 @@ func (s *RollbackService) applyEventToState(evt repository.StoredEvent, state ma
 	default:
 		// Unknown event type, skip
 		return false, nil
+	}
+}
+
+// setCropState records a crop field an imported item was created with (#1584).
+func setCropState(state map[string]any, field string, crop *int) {
+	if crop != nil {
+		state[field] = *crop
 	}
 }
 

@@ -816,10 +816,13 @@ func (h *Handler) importLDSOrdinance(ctx context.Context, o gedcom.LDSOrdinanceD
 
 // importMedia creates the media item id, owned by owner and in group (nil for
 // none), from an OBJE record. The file references are kept; no file content is
-// read.
+// read. The owner's link gives the item its title, notes and crop (#1584).
 func (h *Handler) importMedia(ctx context.Context, id uuid.UUID, group *uuid.UUID, owner gedcom.MediaOwner, m gedcom.MediaData) error {
-	item := domain.NewMedia(m.Title, owner.EntityType, owner.EntityID)
+	title, description := m.OwnerText(owner)
+	item := domain.NewMedia(title, owner.EntityType, owner.EntityID)
 	item.ID = id
+	item.Description = description
+	item.CropLeft, item.CropTop, item.CropWidth, item.CropHeight = owner.CropLeft, owner.CropTop, owner.CropWidth, owner.CropHeight
 	item.MimeType = m.MimeType
 	item.MediaType = m.MediaType
 	item.GedcomXref = m.GedcomXref
