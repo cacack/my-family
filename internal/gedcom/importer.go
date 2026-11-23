@@ -1653,6 +1653,9 @@ func bareDeath(event *gedcom.Event) bool {
 // birth happened (#1454). Unlike a bare death, a BIRT with no "Y" asserts
 // nothing and is not bare. Without a record birth it is imported as a birth
 // life event, which the exporter writes back as "1 BIRT Y" (toGedcomEvent).
+// With one it adds nothing, and its citations go to the record; the exporter
+// writes a dateless birth life event of a person with a record birth into
+// that BIRT instead (mergeableBirthEvents, #1714).
 func bareBirth(event *gedcom.Event) bool {
 	return event.Type == gedcom.EventBirth && !event.IsNegative && event.Occurred && event.Date == "" &&
 		event.PlaceName() == "" && eventNotes(event) == "" && event.EventTypeDetail == ""
