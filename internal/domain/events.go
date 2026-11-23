@@ -587,6 +587,12 @@ type MediaCreated struct {
 	FileData      []byte    `json:"file_data"`
 	ThumbnailData []byte    `json:"thumbnail_data,omitempty"`
 	GedcomXref    string    `json:"gedcom_xref,omitempty"`
+	// The crop a GEDCOM import read from the owner's link (#1584), so the
+	// imported state is whole at version 1.
+	CropLeft   *int `json:"crop_left,omitempty"`
+	CropTop    *int `json:"crop_top,omitempty"`
+	CropWidth  *int `json:"crop_width,omitempty"`
+	CropHeight *int `json:"crop_height,omitempty"`
 	// GEDCOM 7.0 enhanced fields
 	Files        []MediaFile `json:"files,omitempty"`        // Multiple file references
 	Format       string      `json:"format,omitempty"`       // Primary format/MIME type
@@ -619,6 +625,10 @@ func NewMediaCreated(m *Media) MediaCreated {
 		FileData:      m.FileData,
 		ThumbnailData: m.ThumbnailData,
 		GedcomXref:    m.GedcomXref,
+		CropLeft:      m.CropLeft,
+		CropTop:       m.CropTop,
+		CropWidth:     m.CropWidth,
+		CropHeight:    m.CropHeight,
 		Files:         m.Files,
 		Format:        m.Format,
 		Translations:  m.Translations,

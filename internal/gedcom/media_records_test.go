@@ -409,20 +409,20 @@ func TestExport_MediaWithoutFileReference(t *testing.T) {
 }
 
 // The items of a media group are written as one OBJE record linked from each
-// owner, except an item edited apart from the others, which is written as its
-// own record (#1478).
+// owner, except an item whose file was edited apart from the others, which is
+// written as its own record (#1478).
 func TestExport_MediaGroupRecords(t *testing.T) {
 	ctx := context.Background()
 	rs := memory.NewReadModelStore()
 	now := time.Now()
 	group := uuid.New()
-	for i, title := range []string{"Reunion", "Reunion", "Reunion (cropped)"} {
+	for i, path := range []string{"photos/reunion.jpg", "photos/reunion.jpg", "photos/reunion-cropped.jpg"} {
 		person := &repository.PersonReadModel{ID: uuid.New(), GivenName: "P", Surname: strings.Repeat("x", i+1), Version: 1, UpdatedAt: now}
 		if err := rs.SavePerson(ctx, domain.MainBranchID, person); err != nil {
 			t.Fatalf("SavePerson: %v", err)
 		}
-		m := &repository.MediaReadModel{ID: uuid.New(), EntityType: "person", EntityID: person.ID, Title: title, MediaType: domain.MediaPhoto,
-			GedcomXref: "@M1@", Files: []domain.MediaFile{{Path: "photos/reunion.jpg", Format: "jpg"}},
+		m := &repository.MediaReadModel{ID: uuid.New(), EntityType: "person", EntityID: person.ID, Title: "Reunion", MediaType: domain.MediaPhoto,
+			GedcomXref: "@M1@", Files: []domain.MediaFile{{Path: path, Format: "jpg"}},
 			Restriction: "confidential", GroupID: &group, Version: 1, CreatedAt: now, UpdatedAt: now}
 		if err := rs.SaveMedia(ctx, domain.MainBranchID, m); err != nil {
 			t.Fatalf("SaveMedia: %v", err)
@@ -446,7 +446,7 @@ func TestExport_MediaGroupRecords(t *testing.T) {
 	}
 	for _, xref := range []string{"@O1@", "@O2@"} {
 		want := 2
-		if slices.Contains(recordOf(out, "0 "+xref+" OBJE"), "2 TITL Reunion (cropped)") {
+		if slices.Contains(recordOf(out, "0 "+xref+" OBJE"), "1 FILE photos/reunion-cropped.jpg") {
 			want = 1
 		}
 		if links["1 OBJE "+xref] != want {
@@ -676,5 +676,92 @@ func TestExport_MediaReadsDoNotGrowWithOwners(t *testing.T) {
 	small, large := exportCalls(5), exportCalls(50)
 	if small != large {
 		t.Errorf("an export of 5 people lists media %d times, of 50 people %d times; want the same", small, large)
+	}
+}
+
+// An item's crop, title and description are exported, the crop on its
+// owner's link as GEDCOM 7.0, and import back equal (#1584).
+func TestExport_MediaCropTitleAndDescriptionRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	rs := memory.NewReadModelStore()
+	now := time.Now()
+	person := &repository.PersonReadModel{ID: uuid.New(), GivenName: "Ann", Surname: "Lee", Version: 1, UpdatedAt: now}
+	if err := rs.SavePerson(ctx, domain.MainBranchID, person); err != nil {
+		t.Fatalf("SavePerson: %v", err)
+	}
+	item := &repository.MediaReadModel{
+		ID: uuid.New(), EntityType: "person", EntityID: person.ID, Title: "Ann at the reunion",
+		Description: "Taken in 1910.\n\nSecond from the left.", MediaType: domain.MediaPhoto,
+		Files:    []domain.MediaFile{{Path: "photos/reunion.jpg", Format: "image/jpeg", Title: "Reunion"}},
+		CropLeft: new(20), CropTop: new(10), CropWidth: new(80), CropHeight: new(100),
+		Version: 1, CreatedAt: now, UpdatedAt: now,
+	}
+	if err := rs.SaveMedia(ctx, domain.MainBranchID, item); err != nil {
+		t.Fatalf("SaveMedia: %v", err)
+	}
+
+	var buf bytes.Buffer
+	result, err := gedcom.NewExporter(rs).Export(ctx, &buf)
+	if err != nil {
+		t.Fatalf("export: %v", err)
+	}
+	out := buf.String()
+	if result.Version != gedcomgo.Version70 {
+		t.Errorf("version = %s, want 7.0 for the crop", result.Version)
+	}
+	link := "1 OBJE @O1@\n2 CROP\n3 TOP 10\n3 LEFT 20\n3 HEIGHT 100\n3 WIDTH 80"
+	if indi := strings.Join(recordOf(out, "0 @I1@ INDI"), "\n"); !strings.Contains(indi, link) {
+		t.Errorf("person record =\n%s\nwant the link\n%s", indi, link)
+	}
+
+	_, _, _, _, _, _, _, _, _, _, _, _, media, err := gedcom.NewImporter().Import(ctx, &buf)
+	if err != nil {
+		t.Fatalf("import: %v", err)
+	}
+	if len(media) != 1 || len(media[0].Owners) != 1 {
+		t.Fatalf("media = %+v, want one record with one owner", media)
+	}
+	owner := media[0].Owners[0]
+	if title, description := media[0].OwnerText(owner); title != item.Title || description != item.Description {
+		t.Errorf("re-imported title %q, description %q; want %q, %q", title, description, item.Title, item.Description)
+	}
+	for name, pair := range map[string][2]*int{
+		"left": {owner.CropLeft, item.CropLeft}, "top": {owner.CropTop, item.CropTop},
+		"width": {owner.CropWidth, item.CropWidth}, "height": {owner.CropHeight, item.CropHeight},
+	} {
+		if pair[0] == nil || *pair[0] != *pair[1] {
+			t.Errorf("re-imported crop %s = %v, want %d", name, pair[0], *pair[1])
+		}
+	}
+}
+
+// An item with no crop is linked with no CROP, and the export stays 5.5; its
+// description is the record's NOTE.
+func TestExport_MediaDescriptionWithoutCrop(t *testing.T) {
+	ctx := context.Background()
+	rs := memory.NewReadModelStore()
+	now := time.Now()
+	person := &repository.PersonReadModel{ID: uuid.New(), GivenName: "Ann", Surname: "Lee", Version: 1, UpdatedAt: now}
+	if err := rs.SavePerson(ctx, domain.MainBranchID, person); err != nil {
+		t.Fatalf("SavePerson: %v", err)
+	}
+	if err := rs.SaveMedia(ctx, domain.MainBranchID, &repository.MediaReadModel{
+		ID: uuid.New(), EntityType: "person", EntityID: person.ID, Title: "Portrait", Description: "Studio portrait.",
+		MimeType: "image/png", MediaType: domain.MediaPhoto, Filename: "portrait.png", FileSize: 1, FileData: []byte{1},
+		Version: 1, CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatalf("SaveMedia: %v", err)
+	}
+	var buf bytes.Buffer
+	result, err := gedcom.NewExporter(rs).Export(ctx, &buf)
+	if err != nil {
+		t.Fatalf("export: %v", err)
+	}
+	out := buf.String()
+	if result.Version != gedcomgo.Version55 || strings.Contains(out, "CROP") {
+		t.Errorf("version %s with CROP %t, want 5.5 and no CROP", result.Version, strings.Contains(out, "CROP"))
+	}
+	if obj := recordOf(out, "0 @O1@ OBJE"); !slices.Contains(obj, "1 NOTE Studio portrait.") {
+		t.Errorf("OBJE record = %q, want the description as its NOTE", obj)
 	}
 }

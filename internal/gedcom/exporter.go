@@ -280,7 +280,10 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 	// group, and the ones that would still write the same record are written
 	// as that one record linked from each owner, so a re-import keeps them a
 	// group (#1478). An owner holding two such items, as a person merge can
-	// leave, links that record once (#1507).
+	// leave, links that record once (#1507). An item's crop is written on its
+	// owner's link, which makes the export GEDCOM 7.0, and so are the title
+	// and notes that set it apart from the other items of its record
+	// (shareMediaText), as an import gives each item its link's (#1584).
 	media, err := ownedMedia(ctx, exp.readStore, persons, families, sources)
 	if err != nil {
 		return nil, err
@@ -288,6 +291,7 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 	mediaLinks := make(map[uuid.UUID][]*gedcom.MediaLink)
 	mediaRecords := make([]*gedcom.Record, 0, len(media))
 	groupRecords := make(map[uuid.UUID][]*gedcom.Record)
+	recordItems := make(map[*gedcom.Record][]linkedMedia)
 	for _, m := range media {
 		obj := toGedcomMediaObject(m)
 		rec := matchingGroupRecord(groupRecords, m.GroupID, obj)
@@ -303,8 +307,13 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 			}
 		}
 		if !slices.ContainsFunc(mediaLinks[m.EntityID], func(l *gedcom.MediaLink) bool { return l.MediaXRef == rec.XRef }) {
-			mediaLinks[m.EntityID] = append(mediaLinks[m.EntityID], &gedcom.MediaLink{MediaXRef: rec.XRef})
+			link := &gedcom.MediaLink{MediaXRef: rec.XRef, Crop: mediaCrop(m)}
+			mediaLinks[m.EntityID] = append(mediaLinks[m.EntityID], link)
+			recordItems[rec] = append(recordItems[rec], linkedMedia{m, link})
 		}
+	}
+	for _, rec := range mediaRecords {
+		shareMediaText(rec, recordItems[rec])
 	}
 
 	// Build GEDCOM document
@@ -1021,18 +1030,74 @@ func ownedMedia(ctx context.Context, rs repository.ReadModelStore, persons []rep
 }
 
 // matchingGroupRecord returns the OBJE record already written for an item of
-// group that is equal to obj, or nil when there is none or the item has no
-// group. An item edited apart from its group is written as its own record.
+// group that is equal to obj apart from its title and notes, which can differ
+// by owner (shareMediaText), or nil when there is none or the item has no
+// group. An item whose files, media type or restriction were edited apart
+// from its group is written as its own record.
 func matchingGroupRecord(groupRecords map[uuid.UUID][]*gedcom.Record, group *uuid.UUID, obj *gedcom.MediaObject) *gedcom.Record {
 	if group == nil {
 		return nil
 	}
 	for _, rec := range groupRecords[*group] {
-		if reflect.DeepEqual(rec.Entity, obj) {
+		if reflect.DeepEqual(withoutMediaText(rec.Entity.(*gedcom.MediaObject)), withoutMediaText(obj)) {
 			return rec
 		}
 	}
 	return nil
+}
+
+// withoutMediaText returns a copy of obj with no title on its first file and
+// no notes.
+func withoutMediaText(obj *gedcom.MediaObject) *gedcom.MediaObject {
+	c := *obj
+	c.InlineNotes = nil
+	c.Files = slices.Clone(obj.Files)
+	first := *c.Files[0]
+	first.Title = ""
+	c.Files[0] = &first
+	return &c
+}
+
+// linkedMedia is a media item and its owner's link to the item's record.
+type linkedMedia struct {
+	item repository.MediaReadModel
+	link *gedcom.MediaLink
+}
+
+// shareMediaText writes on rec, the record of items, the notes the items
+// share: the paragraphs their descriptions begin with in common. Each item's
+// link gets the rest of its description as its NOTE, and its title as TITL
+// where it differs from the record's (its first item's), so a re-import,
+// which gives each owner the link's title and the record's notes followed by
+// the link's (MediaData.OwnerText), restores every item from one record.
+func shareMediaText(rec *gedcom.Record, items []linkedMedia) {
+	if len(items) < 2 {
+		return
+	}
+	obj := rec.Entity.(*gedcom.MediaObject)
+	shared := strings.Split(items[0].item.Description, noteJoin)
+	for _, it := range items[1:] {
+		own := strings.Split(it.item.Description, noteJoin)
+		n := 0
+		for n < len(shared) && n < len(own) && shared[n] == own[n] {
+			n++
+		}
+		shared = shared[:n]
+	}
+	common := strings.Join(shared, noteJoin)
+	obj.InlineNotes = nil
+	if common != "" {
+		obj.InlineNotes = []string{common}
+	}
+	for _, it := range items {
+		if it.item.Title != obj.Files[0].Title {
+			it.link.Title = it.item.Title
+		}
+		rest := strings.TrimPrefix(strings.TrimPrefix(it.item.Description, common), noteJoin)
+		if rest != "" {
+			it.link.InlineNotes = []string{rest}
+		}
+	}
 }
 
 // gedcomMediaTypes is the MEDI value mapGedcomMediaType reads back as each
@@ -1047,7 +1112,7 @@ var gedcomMediaTypes = map[domain.MediaType]string{
 // item keeps its file references; an uploaded one, which has none, is written
 // as one FILE naming its filename, as the GEDCOM file carries no content. The
 // item's title and media type are written on the first file, where the
-// importer reads them. Its restriction is written as _RESN, which a 7.0
+// importer reads them, and its description as the record's NOTE. Its restriction is written as _RESN, which a 7.0
 // export turns into RESN (typeMediaRestrictions): GEDCOM 5.5 and 5.5.1
 // define no RESN on a media record (ADR-008 §2), and a typed one would make
 // the export upgrade to 7.0.
@@ -1070,7 +1135,26 @@ func toGedcomMediaObject(m repository.MediaReadModel) *gedcom.MediaObject {
 	if mapGedcomMediaType(first.MediaType) != m.MediaType {
 		first.MediaType = gedcomMediaTypes[m.MediaType]
 	}
+	if m.Description != "" {
+		obj.InlineNotes = []string{m.Description}
+	}
 	return obj
+}
+
+// mediaCrop is the CROP of the link to m's record, or nil when m has no crop.
+// An absent field is written as 0, which the encoder leaves out: TOP and LEFT
+// default to 0, and WIDTH and HEIGHT to the rest of the image.
+func mediaCrop(m repository.MediaReadModel) *gedcom.CropRegion {
+	if m.CropLeft == nil && m.CropTop == nil && m.CropWidth == nil && m.CropHeight == nil {
+		return nil
+	}
+	value := func(v *int) int {
+		if v == nil {
+			return 0
+		}
+		return *v
+	}
+	return &gedcom.CropRegion{Left: value(m.CropLeft), Top: value(m.CropTop), Width: value(m.CropWidth), Height: value(m.CropHeight)}
 }
 
 // uploadFileRef is the FILE value of an item with no file references: its

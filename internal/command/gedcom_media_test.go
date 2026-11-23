@@ -695,3 +695,162 @@ func TestImportGedcom_MediaTitleOverLimitIsRefused(t *testing.T) {
 		t.Fatalf("media = %+v, want only @M1@", media)
 	}
 }
+
+// linkDetailGedcom links @M1@ from John with a crop, a title and a note, and
+// from Mary with none; Will's inline link has its own (#1584).
+const linkDetailGedcom = `0 HEAD
+1 GEDC
+2 VERS 7.0
+0 @M1@ OBJE
+1 FILE photos/reunion.jpg
+2 FORM image/jpeg
+2 TITL Reunion
+1 NOTE Taken at the 1910 reunion.
+0 @I1@ INDI
+1 NAME John /Doe/
+1 OBJE @M1@
+2 CROP
+3 TOP 10
+3 LEFT 20
+3 HEIGHT 100
+3 WIDTH 80
+2 TITL John at the reunion
+2 NOTE Second from the left.
+0 @I2@ INDI
+1 NAME Mary /Roe/
+1 OBJE @M1@
+0 @I3@ INDI
+1 NAME Will /Doe/
+1 OBJE
+2 FILE photos/will.jpg
+3 FORM image/jpeg
+2 TITL Will at twenty
+2 CROP
+3 TOP 5
+3 LEFT 6
+2 NOTE On the farm.
+0 TRLR
+`
+
+// personMedia returns the one media item of the person named given.
+func personMedia(t *testing.T, ctx context.Context, readStore repository.ReadModelStore, given string) repository.MediaReadModel {
+	t.Helper()
+	persons, _, _ := readStore.ListPersons(ctx, repository.DefaultListOptions())
+	for _, p := range persons {
+		if p.GivenName == given {
+			media, _, err := readStore.ListMediaForEntity(ctx, "person", p.ID, repository.DefaultListOptions())
+			if err != nil || len(media) != 1 {
+				t.Fatalf("%s media = %+v, %v; want one item", given, media, err)
+			}
+			return media[0]
+		}
+	}
+	t.Fatalf("no person named %s", given)
+	return repository.MediaReadModel{}
+}
+
+func cropOf(m repository.MediaReadModel) [4]*int {
+	return [4]*int{m.CropTop, m.CropLeft, m.CropHeight, m.CropWidth}
+}
+
+func wantCrop(t *testing.T, name string, m repository.MediaReadModel, want [4]*int) {
+	t.Helper()
+	got := cropOf(m)
+	for i, field := range []string{"top", "left", "height", "width"} {
+		if (got[i] == nil) != (want[i] == nil) || (got[i] != nil && *got[i] != *want[i]) {
+			t.Errorf("%s crop %s = %v, want %v", name, field, deref(got[i]), deref(want[i]))
+		}
+	}
+}
+
+func deref(v *int) any {
+	if v == nil {
+		return nil
+	}
+	return *v
+}
+
+// A link's CROP, TITL and NOTE reach only the item of the owner whose link
+// carries them, for pointer and inline links alike (#1584).
+func TestImportGedcom_MediaLinkTitleNotesAndCrop(t *testing.T) {
+	ctx := context.Background()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(memory.NewEventStore(), readStore)
+	if _, err := handler.ImportGedcom(ctx, command.ImportGedcomInput{Filename: "m.ged", Reader: strings.NewReader(linkDetailGedcom)}); err != nil {
+		t.Fatalf("ImportGedcom: %v", err)
+	}
+
+	john := personMedia(t, ctx, readStore, "John")
+	if john.Title != "John at the reunion" || john.Description != "Taken at the 1910 reunion.\n\nSecond from the left." {
+		t.Errorf("John's item = title %q, description %q; want the link's title and both notes", john.Title, john.Description)
+	}
+	wantCrop(t, "John's item", john, [4]*int{new(10), new(20), new(100), new(80)})
+
+	mary := personMedia(t, ctx, readStore, "Mary")
+	if mary.Title != "Reunion" || mary.Description != "Taken at the 1910 reunion." {
+		t.Errorf("Mary's item = title %q, description %q; want the file's title and the record's note", mary.Title, mary.Description)
+	}
+	wantCrop(t, "Mary's item", mary, [4]*int{})
+
+	will := personMedia(t, ctx, readStore, "Will")
+	if will.Title != "Will at twenty" || will.Description != "On the farm." {
+		t.Errorf("Will's item = title %q, description %q; want the inline link's title and note", will.Title, will.Description)
+	}
+	wantCrop(t, "Will's item", will, [4]*int{new(5), new(6), nil, nil})
+}
+
+// Export writes the link detail of an imported group's items on their links,
+// so a re-import gives every item back its title, description and crop and
+// keeps John's and Mary's items one group (#1478, #1584).
+func TestImportGedcom_MediaLinkDetailRoundTripKeepsTheGroup(t *testing.T) {
+	ctx := context.Background()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(memory.NewEventStore(), readStore)
+	if _, err := handler.ImportGedcom(ctx, command.ImportGedcomInput{Filename: "m.ged", Reader: strings.NewReader(linkDetailGedcom)}); err != nil {
+		t.Fatalf("ImportGedcom: %v", err)
+	}
+	out := exportGedcom(t, readStore)
+	if n := strings.Count(out, " OBJE\n"); n != 2 {
+		t.Errorf("export writes %d OBJE records, want 2 (the shared one and Will's):\n%s", n, out)
+	}
+
+	again := memory.NewReadModelStore()
+	if _, err := command.NewHandler(memory.NewEventStore(), again).ImportGedcom(ctx, command.ImportGedcomInput{Filename: "m.ged", Reader: strings.NewReader(out)}); err != nil {
+		t.Fatalf("re-import: %v", err)
+	}
+	for _, given := range []string{"John", "Mary", "Will"} {
+		before, after := personMedia(t, ctx, readStore, given), personMedia(t, ctx, again, given)
+		if after.Title != before.Title || after.Description != before.Description {
+			t.Errorf("%s's item = title %q, description %q; want %q, %q", given, after.Title, after.Description, before.Title, before.Description)
+		}
+		wantCrop(t, given+"'s re-imported item", after, cropOf(before))
+	}
+	john, mary := personMedia(t, ctx, again, "John"), personMedia(t, ctx, again, "Mary")
+	if john.GroupID == nil || mary.GroupID == nil || *john.GroupID != *mary.GroupID {
+		t.Errorf("re-imported groups John %v, Mary %v; want one group", john.GroupID, mary.GroupID)
+	}
+}
+
+// The crop is part of the imported version 1, so a rollback to it restores
+// a crop an editor cleared (#1584).
+func TestRollbackMedia_ToImportedVersionRestoresTheCrop(t *testing.T) {
+	ctx := context.Background()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(memory.NewEventStore(), readStore)
+	if _, err := handler.ImportGedcom(ctx, command.ImportGedcomInput{Filename: "m.ged", Reader: strings.NewReader(linkDetailGedcom)}); err != nil {
+		t.Fatalf("ImportGedcom: %v", err)
+	}
+	john := personMedia(t, ctx, readStore, "John")
+	if _, err := handler.UpdateMedia(ctx, command.UpdateMediaInput{
+		ID: john.ID, Version: john.Version,
+		CropTop: command.Clear[int](), CropLeft: command.Set(1), CropHeight: command.Clear[int](), CropWidth: command.Clear[int](),
+	}); err != nil {
+		t.Fatalf("UpdateMedia: %v", err)
+	}
+	wantCrop(t, "edited item", personMedia(t, ctx, readStore, "John"), [4]*int{nil, new(1), nil, nil})
+
+	if _, err := handler.RollbackMedia(ctx, john.ID, 1); err != nil {
+		t.Fatalf("RollbackMedia: %v", err)
+	}
+	wantCrop(t, "rolled back item", personMedia(t, ctx, readStore, "John"), [4]*int{new(10), new(20), new(100), new(80)})
+}
