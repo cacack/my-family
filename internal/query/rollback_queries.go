@@ -585,6 +585,7 @@ func (s *RollbackService) applyEventToState(evt repository.StoredEvent, state ma
 		if e.GedcomXref != "" {
 			state["gedcom_xref"] = e.GedcomXref
 		}
+		setRestrictionState(state, e.Restriction)
 		return false, nil
 
 	case domain.MediaUpdated:

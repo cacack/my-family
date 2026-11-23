@@ -266,6 +266,39 @@ func TestRollbackMedia_PrivateMarkCoversTheGroup(t *testing.T) {
 	}
 }
 
+// Rolling an imported private item back to version 1 makes it and its group
+// private again after an editor unmarked them (#1508).
+func TestRollbackMedia_ToImportedVersionRestoresThePrivateMark(t *testing.T) {
+	ctx := context.Background()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(memory.NewEventStore(), readStore)
+	if _, err := handler.ImportGedcom(ctx, command.ImportGedcomInput{Filename: "m.ged", Reader: strings.NewReader(mediaGedcom)}); err != nil {
+		t.Fatalf("ImportGedcom: %v", err)
+	}
+	target := groupMedia(t, ctx, readStore)[0]
+	public := false
+	if _, err := handler.UpdateMedia(ctx, command.UpdateMediaInput{ID: target.ID, Private: &public, Version: target.Version}); err != nil {
+		t.Fatalf("UpdateMedia: %v", err)
+	}
+	for _, m := range groupMedia(t, ctx, readStore) {
+		if m.Restriction.IsPrivate() {
+			t.Fatalf("item of %s has restriction %q, want none private before the rollback", m.EntityType, m.Restriction)
+		}
+	}
+
+	if _, err := handler.RollbackMedia(ctx, target.ID, 1); err != nil {
+		t.Fatalf("RollbackMedia: %v", err)
+	}
+	if m, _ := readStore.GetMedia(ctx, domain.MainBranchID, target.ID); m == nil || !m.Restriction.IsPrivate() {
+		t.Errorf("rolled back item = %+v, want it private", m)
+	}
+	for _, m := range groupMedia(t, ctx, readStore) {
+		if !m.Restriction.IsPrivate() {
+			t.Errorf("item of %s has restriction %q, want private after the rollback", m.EntityType, m.Restriction)
+		}
+	}
+}
+
 // survivorMediaCount imports ged into a fresh store and returns the number of
 // media items the person named given holds, with that store.
 func survivorMediaCount(t *testing.T, ged, given string) (int, *memory.ReadModelStore) {
