@@ -151,6 +151,77 @@ test.describe('card names and titles at 375px with the Larger font setting', () 
 	});
 });
 
+// A family and a source show their GEDCOM-imported media in a gallery (#1505).
+// The spec imports its own, with an unbroken path, since a reference card
+// shows the path in full and it must wrap rather than push the page sideways.
+test.describe('family and source pages with media at 375px', () => {
+	test.use({ viewport: { width: 375, height: 900 } });
+
+	const SURNAME = 'Gallerywright';
+	const SOURCE_TITLE = 'Gallerywright Estate Papers';
+	const PATH = 'scans/' + 'gallerywright_estate_inventory_'.repeat(3) + 'page01.jpg';
+	let familyId: string;
+	let sourceId: string;
+
+	test.beforeAll(async ({ request }) => {
+		const gedcom = [
+			'0 HEAD',
+			'1 GEDC',
+			'2 VERS 5.5.1',
+			'1 CHAR UTF-8',
+			'0 @M1@ OBJE',
+			`1 FILE ${PATH}`,
+			'2 FORM jpg',
+			'2 TITL Wedding of the Gallerywright family at the old chapel',
+			'0 @M2@ OBJE',
+			`1 FILE ${PATH}`,
+			'2 FORM jpg',
+			'2 TITL Inventory of the Gallerywright estate, first page',
+			'0 @I1@ INDI',
+			`1 NAME Ottoline /${SURNAME}/`,
+			'1 DEAT Y',
+			'0 @F1@ FAM',
+			'1 WIFE @I1@',
+			'1 OBJE @M1@',
+			'0 @S1@ SOUR',
+			`1 TITL ${SOURCE_TITLE}`,
+			'1 OBJE @M2@',
+			'0 TRLR',
+			''
+		].join('\n');
+		const imported = await request.post(`${API_BASE}/gedcom/import`, {
+			multipart: { file: { name: 'gallery.ged', mimeType: 'text/plain', buffer: Buffer.from(gedcom) } }
+		});
+		expect(imported.ok(), await imported.text()).toBe(true);
+
+		const json = async <T>(path: string): Promise<T> => {
+			const response = await request.get(`${API_BASE}${path}`);
+			expect(response.ok(), `GET ${path}: ${await response.text()}`).toBe(true);
+			return (await response.json()) as T;
+		};
+		const people = await json<{ items: { id: string }[] }>(`/browse/surnames/${SURNAME}/persons`);
+		const person = await json<{ families_as_partner?: { id: string }[] }>(`/persons/${people.items[0].id}`);
+		familyId = person.families_as_partner![0].id;
+		const sources = await json<{ sources: { id: string; title: string }[] }>(
+			`/sources/search?q=${encodeURIComponent(SOURCE_TITLE)}`
+		);
+		sourceId = sources.sources.find((s) => s.title === SOURCE_TITLE)!.id;
+	});
+
+	for (const fontSize of ['normal', 'larger']) {
+		test(`do not overflow with the ${fontSize} font setting`, async ({ page }) => {
+			await page.addInitScript((size) => {
+				localStorage.setItem('accessibility-settings', JSON.stringify({ fontSize: size }));
+			}, fontSize);
+			for (const route of [`/families/${familyId}`, `/sources/${sourceId}`]) {
+				await expectNoHorizontalOverflow(page, route);
+				const gallery = page.getByRole('list', { name: 'Media gallery' });
+				await expect(gallery.getByText(PATH), `${route}: no media shown`).toBeVisible();
+			}
+		});
+	}
+});
+
 // The seeded database fills /persons, and no seeded or spec-created person has
 // a research status, so filtering by Certain reaches the empty state (#1156).
 // Its two buttons must wrap onto the screen rather than push the page sideways.

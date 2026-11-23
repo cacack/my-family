@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor, within } from '@testing-library/sve
 import { goto } from '$app/navigation';
 import SourcePage from './+page.svelte';
 import * as apiModule from '#lib/api/client.js';
+import { signInAs } from '#lib/test/roles.js';
 
 vi.mock('#lib/api/client.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof apiModule>();
@@ -11,7 +12,8 @@ vi.mock('#lib/api/client.js', async (importOriginal) => {
 		api: {
 			getSource: vi.fn(),
 			updateSource: vi.fn(),
-			deleteSource: vi.fn()
+			deleteSource: vi.fn(),
+			listSourceMedia: vi.fn(async () => ({ items: [], total: 0 }))
 		}
 	};
 });
@@ -227,5 +229,49 @@ describe('Source detail page: save and delete feedback (#1113)', () => {
 
 		expect((await within(dialog).findByRole('alert')).textContent).toContain('has citations');
 		expect(goto).not.toHaveBeenCalled();
+	});
+});
+
+describe('Source detail page: media gallery (#1505)', () => {
+	const api = apiModule.api;
+	// A GEDCOM-imported reference: a title and a path, no stored file.
+	const scan = {
+		id: 'm-scan',
+		entity_type: 'source',
+		entity_id: 'src-1',
+		title: 'Census page',
+		mime_type: '',
+		filename: '',
+		file_size: 0,
+		has_content: false,
+		has_thumbnail: false,
+		files: [{ path: 'scans/census-page.jpg', format: 'image/jpeg' }],
+		version: 1,
+		created_at: '2026-01-01T00:00:00Z'
+	} as apiModule.Media;
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		vi.mocked(api.getSource).mockResolvedValue(source());
+		vi.mocked(api.listSourceMedia).mockResolvedValue({ items: [scan], total: 1 });
+	});
+
+	it("shows the source's imported reference as its title and path", async () => {
+		render(SourcePage);
+
+		const card = await screen.findByRole('button', { name: /^View Census page scans\/census-page\.jpg File not stored$/ });
+		expect(within(card).getByText('scans/census-page.jpg')).toBeDefined();
+		expect(screen.getByRole('heading', { name: 'Media' })).toBeDefined();
+		expect(api.listSourceMedia).toHaveBeenCalledWith('src-1');
+	});
+
+	it('offers an editor no upload control until sources take uploads (#1538)', async () => {
+		signInAs('editor');
+		render(SourcePage);
+
+		await screen.findByRole('button', { name: /^View Census page/ });
+		expect(screen.getByRole('button', { name: 'Delete Census page' })).toBeDefined();
+		expect(screen.queryByRole('heading', { name: 'Upload Media' })).toBeNull();
+		expect(document.querySelector('input[type="file"]')).toBeNull();
 	});
 });

@@ -295,6 +295,9 @@ const BRANCH_SCOPED_OPERATIONS: ReadonlyArray<{
 	// content and thumbnail reads still take the scope: a branch-deleted item
 	// must 404 there too.
 	{ methods: ['GET', 'POST'], pattern: new RegExp(`^/persons/${UUID_SEGMENT}/media$`) },
+	// The family and source media lists (#1505) follow the branch as the person's does.
+	{ methods: ['GET'], pattern: new RegExp(`^/families/${UUID_SEGMENT}/media$`) },
+	{ methods: ['GET'], pattern: new RegExp(`^/sources/${UUID_SEGMENT}/media$`) },
 	{ methods: ['GET', 'PUT', 'DELETE'], pattern: new RegExp(`^/media/${UUID_SEGMENT}$`) },
 	// PUT declares the scope only so the server can REFUSE it (409
 	// `attach_mainline_only`): an attach stays mainline-only.
@@ -1301,12 +1304,34 @@ class ApiClient {
 		personId: string,
 		params?: { limit?: number; offset?: number }
 	): Promise<MediaListResponse> {
+		return this.listOwnerMedia('persons', personId, params);
+	}
+
+	async listFamilyMedia(
+		familyId: string,
+		params?: { limit?: number; offset?: number }
+	): Promise<MediaListResponse> {
+		return this.listOwnerMedia('families', familyId, params);
+	}
+
+	async listSourceMedia(
+		sourceId: string,
+		params?: { limit?: number; offset?: number }
+	): Promise<MediaListResponse> {
+		return this.listOwnerMedia('sources', sourceId, params);
+	}
+
+	private async listOwnerMedia(
+		collection: 'persons' | 'families' | 'sources',
+		ownerId: string,
+		params?: { limit?: number; offset?: number }
+	): Promise<MediaListResponse> {
 		const searchParams = new URLSearchParams();
 		if (params?.limit) searchParams.set('limit', params.limit.toString());
 		if (params?.offset) searchParams.set('offset', params.offset.toString());
 
 		const query = searchParams.toString();
-		return this.request<MediaListResponse>('GET', `/persons/${personId}/media${query ? `?${query}` : ''}`);
+		return this.request<MediaListResponse>('GET', `/${collection}/${ownerId}/media${query ? `?${query}` : ''}`);
 	}
 
 	async uploadPersonMedia(

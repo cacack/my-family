@@ -27,6 +27,7 @@
 	import ChangeHistory from '#lib/components/ChangeHistory.svelte';
 	import ExternalLinks from '#lib/components/ExternalLinks.svelte';
 	import InfoSection from '#lib/components/InfoSection.svelte';
+	import MediaGallery from '#lib/components/MediaGallery.svelte';
 	import ErrorState from '#lib/components/ErrorState.svelte';
 	import LoadingState from '#lib/components/LoadingState.svelte';
 	import SaveConflict from '#lib/components/SaveConflict.svelte';
@@ -640,6 +641,10 @@
 					{:else}
 						<p class="empty-message">No children recorded</p>
 					{/if}
+				</InfoSection>
+
+				<InfoSection title="Media">
+					<MediaGallery ownerType="family" ownerId={family.id} />
 				</InfoSection>
 
 				<!-- Guard here (in addition to ExternalLinks' own empty check) so the
