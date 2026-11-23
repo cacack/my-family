@@ -1,3 +1,8 @@
+<script lang="ts" module>
+	/** The record kinds that own media, each of which takes an upload (#1538). */
+	export type MediaOwnerType = 'person' | 'family' | 'source';
+</script>
+
 <script lang="ts">
 	import { api, isStaleVersion, type Media, type MediaType } from '#lib/api/client.js';
 	import { Button } from '#lib/components/ui/button/index.js';
@@ -5,11 +10,19 @@
 	import { UPLOAD_MEDIA_TYPE_OPTIONS } from '#lib/utils/enumOptions.js';
 
 	interface Props {
-		personId: string;
+		ownerType: MediaOwnerType;
+		ownerId: string;
 		onUpload?: (media: Media) => void;
 	}
 
-	let { personId, onUpload }: Props = $props();
+	let { ownerType, ownerId, onUpload }: Props = $props();
+
+	type Uploader = (...args: Parameters<typeof api.uploadPersonMedia>) => Promise<Media>;
+	const uploaders = {
+		person: (...args) => api.uploadPersonMedia(...args),
+		family: (...args) => api.uploadFamilyMedia(...args),
+		source: (...args) => api.uploadSourceMedia(...args)
+	} satisfies Record<MediaOwnerType, Uploader>;
 
 	let file: File | null = $state(null);
 	let title = $state('');
@@ -108,8 +121,8 @@
 		success = false;
 
 		try {
-			const media = await api.uploadPersonMedia(
-				personId,
+			const media = await uploaders[ownerType](
+				ownerId,
 				file,
 				title.trim(),
 				description.trim() || undefined,

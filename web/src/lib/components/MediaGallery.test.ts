@@ -16,6 +16,9 @@ vi.mock('#lib/api/client.js', async (importOriginal) => {
 			listPersonMedia: vi.fn(),
 			listFamilyMedia: vi.fn(),
 			listSourceMedia: vi.fn(),
+			uploadPersonMedia: vi.fn(),
+			uploadFamilyMedia: vi.fn(),
+			uploadSourceMedia: vi.fn(),
 			updateMedia: vi.fn(),
 			attachMediaContent: vi.fn(),
 			getMedia: vi.fn(),
@@ -279,11 +282,11 @@ describe('MediaGallery', () => {
 		});
 	});
 
-	describe('the owner (#1505)', () => {
+	describe('the owner (#1505, #1538)', () => {
 		it.each([
 			['family', 'f-1', 'listFamilyMedia'],
 			['source', 's-1', 'listSourceMedia']
-		] as const)('lists a %s\'s media, shows its reference and offers no upload', async (ownerType, ownerId, lister) => {
+		] as const)("lists a %s's media and shows its reference", async (ownerType, ownerId, lister) => {
 			vi.mocked(apiModule.api[lister]).mockResolvedValue({ items: [reference], total: 1 });
 			render(MediaGallery, { props: { ownerType, ownerId } });
 
@@ -291,22 +294,39 @@ describe('MediaGallery', () => {
 			expect(card).toBeDefined();
 			expect(apiModule.api[lister]).toHaveBeenCalledWith(ownerId);
 			expect(apiModule.api.listPersonMedia).not.toHaveBeenCalled();
-			expect(screen.queryByRole('heading', { name: 'Upload Media' })).toBeNull();
-			expect(document.querySelector('input[type="file"]')).toBeNull();
 		});
 
-		it('says nothing of uploading when a family has no media', async () => {
-			vi.mocked(apiModule.api.listFamilyMedia).mockResolvedValue({ items: [], total: 0 });
-			render(MediaGallery, { props: { ownerType: 'family', ownerId: 'f-1' } });
+		it.each([
+			['person', 'p-1', 'listPersonMedia', 'uploadPersonMedia'],
+			['family', 'f-1', 'listFamilyMedia', 'uploadFamilyMedia'],
+			['source', 's-1', 'listSourceMedia', 'uploadSourceMedia']
+		] as const)('uploads to a %s as an editor and shows the new item', async (ownerType, ownerId, lister, uploader) => {
+			vi.mocked(apiModule.api[lister]).mockResolvedValue({ items: [], total: 0 });
+			const uploaded = media({ id: 'm-new', entity_type: ownerType, entity_id: ownerId, title: 'certificate' });
+			vi.mocked(apiModule.api[uploader]).mockResolvedValue(uploaded);
+			render(MediaGallery, { props: { ownerType, ownerId } });
+
+			expect((await screen.findByText(/No media yet/)).textContent).toBe('No media yet. Upload photos and documents.');
+			const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+			const file = new File(['x'], 'certificate.jpg', { type: 'image/jpeg' });
+			Object.defineProperty(input, 'files', { value: [file], configurable: true });
+			await fireEvent.change(input);
+			await fireEvent.click(screen.getByRole('button', { name: 'Upload' }));
+
+			expect(apiModule.api[uploader]).toHaveBeenCalledWith(ownerId, file, 'certificate', undefined, 'photo');
+			expect(await screen.findByRole('button', { name: 'View certificate' })).toBeDefined();
+		});
+
+		it.each(['person', 'family', 'source'] as const)('offers a viewer no upload on a %s', async (ownerType) => {
+			auth.phase = 'visitor';
+			for (const lister of ['listPersonMedia', 'listFamilyMedia', 'listSourceMedia'] as const) {
+				vi.mocked(apiModule.api[lister]).mockResolvedValue({ items: [], total: 0 });
+			}
+			render(MediaGallery, { props: { ownerType, ownerId: 'x-1' } });
 
 			expect((await screen.findByText(/No media yet/)).textContent).toBe('No media yet.');
-		});
-
-		it('offers an editor the upload on a person', async () => {
-			list([]);
-			render(MediaGallery, { props: { ownerType: 'person', ownerId: 'p-1' } });
-
-			expect(await screen.findByRole('heading', { name: 'Upload Media' })).toBeDefined();
+			expect(screen.queryByRole('heading', { name: 'Upload Media' })).toBeNull();
+			expect(document.querySelector('input[type="file"]')).toBeNull();
 		});
 	});
 });

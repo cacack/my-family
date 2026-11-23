@@ -380,6 +380,14 @@ describe('branch scope threading', () => {
 		expect(requestedUrl()).toBe(`/api/v1/persons/${PERSON_ID}/media?branch=${BRANCH_ID}`);
 	});
 
+	it('uploads to a family and a source at their own media path, scoped to the branch (#1538)', async () => {
+		setClientBranch(BRANCH_ID);
+		await api.uploadFamilyMedia(NAME_ID, new File(['x'], 'x.jpg'), 'x');
+		expect(requestedUrl()).toBe(`/api/v1/families/${NAME_ID}/media?branch=${BRANCH_ID}`);
+		await api.uploadSourceMedia(NAME_ID, new File(['x'], 'x.jpg'), 'x');
+		expect(fetchMock.mock.calls[1][0]).toBe(`/api/v1/sources/${NAME_ID}/media?branch=${BRANCH_ID}`);
+	});
+
 	it('never scopes the branch lifecycle endpoints themselves', async () => {
 		setClientBranch(BRANCH_ID);
 		await api.listBranches();
@@ -1100,6 +1108,8 @@ describe('unauthorized handler (#1408)', () => {
 		['exportEvents', () => api.exportEvents('csv')],
 		['exportAttributes', () => api.exportAttributes('csv')],
 		['uploadPersonMedia', () => api.uploadPersonMedia('p1', file, 'Portrait')],
+		['uploadFamilyMedia', () => api.uploadFamilyMedia('f1', file, 'Certificate')],
+		['uploadSourceMedia', () => api.uploadSourceMedia('s1', file, 'Scan')],
 		['getAhnentafelText', () => api.getAhnentafelText('p1')]
 	];
 

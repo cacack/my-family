@@ -295,9 +295,10 @@ const BRANCH_SCOPED_OPERATIONS: ReadonlyArray<{
 	// content and thumbnail reads still take the scope: a branch-deleted item
 	// must 404 there too.
 	{ methods: ['GET', 'POST'], pattern: new RegExp(`^/persons/${UUID_SEGMENT}/media$`) },
-	// The family and source media lists (#1505) follow the branch as the person's does.
-	{ methods: ['GET'], pattern: new RegExp(`^/families/${UUID_SEGMENT}/media$`) },
-	{ methods: ['GET'], pattern: new RegExp(`^/sources/${UUID_SEGMENT}/media$`) },
+	// The family and source media lists (#1505) and uploads (#1538) follow the
+	// branch as the person's do.
+	{ methods: ['GET', 'POST'], pattern: new RegExp(`^/families/${UUID_SEGMENT}/media$`) },
+	{ methods: ['GET', 'POST'], pattern: new RegExp(`^/sources/${UUID_SEGMENT}/media$`) },
 	{ methods: ['GET', 'PUT', 'DELETE'], pattern: new RegExp(`^/media/${UUID_SEGMENT}$`) },
 	// PUT declares the scope only so the server can REFUSE it (409
 	// `attach_mainline_only`): an attach stays mainline-only.
@@ -1341,6 +1342,37 @@ class ApiClient {
 		description?: string,
 		mediaType?: MediaType
 	): Promise<Media> {
+		return this.uploadOwnerMedia('persons', personId, file, title, description, mediaType);
+	}
+
+	async uploadFamilyMedia(
+		familyId: string,
+		file: File,
+		title: string,
+		description?: string,
+		mediaType?: MediaType
+	): Promise<Media> {
+		return this.uploadOwnerMedia('families', familyId, file, title, description, mediaType);
+	}
+
+	async uploadSourceMedia(
+		sourceId: string,
+		file: File,
+		title: string,
+		description?: string,
+		mediaType?: MediaType
+	): Promise<Media> {
+		return this.uploadOwnerMedia('sources', sourceId, file, title, description, mediaType);
+	}
+
+	private async uploadOwnerMedia(
+		collection: 'persons' | 'families' | 'sources',
+		ownerId: string,
+		file: File,
+		title: string,
+		description?: string,
+		mediaType?: MediaType
+	): Promise<Media> {
 		const formData = new FormData();
 		formData.append('file', file);
 		formData.append('title', title);
@@ -1350,7 +1382,7 @@ class ApiClient {
 		// Raw fetch (multipart), so the branch scope is applied here rather than by
 		// request().
 		const scope = activeBranchId;
-		const mediaPath = `/persons/${personId}/media`;
+		const mediaPath = `/${collection}/${ownerId}/media`;
 		const response = await fetch(`${API_BASE}${withBranchScope('POST', mediaPath)}`, {
 			method: 'POST',
 			body: formData
