@@ -4604,11 +4604,14 @@ type ImportError struct {
 
 // ImportResult defines model for ImportResult.
 type ImportResult struct {
-	Errors           *[]ImportError   `json:"errors,omitempty"`
-	FamiliesImported int              `json:"families_imported"`
-	PersonsImported  int              `json:"persons_imported"`
-	Success          bool             `json:"success"`
-	Warnings         *[]ImportWarning `json:"warnings,omitempty"`
+	Errors           *[]ImportError `json:"errors,omitempty"`
+	FamiliesImported int            `json:"families_imported"`
+
+	// MediaImported Media items created. A GEDCOM OBJE record linked from several owners creates one item per owner.
+	MediaImported   int              `json:"media_imported"`
+	PersonsImported int              `json:"persons_imported"`
+	Success         bool             `json:"success"`
+	Warnings        *[]ImportWarning `json:"warnings,omitempty"`
 }
 
 // ImportWarning defines model for ImportWarning.

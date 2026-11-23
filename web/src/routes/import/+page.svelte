@@ -422,6 +422,10 @@
 							<span class="value">{result.families_imported}</span>
 							<span class="label">Families imported</span>
 						</div>
+						<div class="stat">
+							<span class="value">{result.media_imported}</span>
+							<span class="label">Media imported</span>
+						</div>
 					</div>
 
 					{#if result.warnings && result.warnings.length > 0}
@@ -878,7 +882,8 @@
 
 	.stats {
 		display: flex;
-		gap: 2rem;
+		flex-wrap: wrap;
+		gap: 1rem 2rem;
 		margin-bottom: 1rem;
 	}
 

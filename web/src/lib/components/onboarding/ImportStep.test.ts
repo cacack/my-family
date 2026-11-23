@@ -35,7 +35,8 @@ describe('Onboarding ImportStep', () => {
 		vi.mocked(apiModule.api.importGedcom).mockResolvedValue({
 			success: true,
 			persons_imported: 2,
-			families_imported: 1
+			families_imported: 1,
+			media_imported: 4
 		} as apiModule.ImportResult);
 	});
 
@@ -49,6 +50,20 @@ describe('Onboarding ImportStep', () => {
 		await fireEvent.click(screen.getByRole('button', { name: /Import File/ }));
 		await waitFor(() => expect(screen.getByText('Import Successful!')).toBeTruthy());
 		expect(apiModule.api.importGedcom).toHaveBeenCalledTimes(1);
+	});
+
+	it('shows the media count next to people and families (#1586)', async () => {
+		const { container } = render(ImportStep, {
+			props: { onComplete: vi.fn(), onBack: vi.fn() }
+		});
+		const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+		await fireEvent.change(input, { target: { files: [gedFile()] } });
+		await fireEvent.click(screen.getByRole('button', { name: /Import File/ }));
+
+		const label = await screen.findByText('Media imported');
+		expect(label.previousElementSibling?.textContent).toBe('4');
+		expect(screen.getByText('People imported').previousElementSibling?.textContent).toBe('2');
+		expect(screen.getByText('Families imported').previousElementSibling?.textContent).toBe('1');
 	});
 
 	it('withdraws the upload on a research branch and offers the mainline (#825)', async () => {

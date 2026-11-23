@@ -1864,6 +1864,7 @@ func (ss *StrictServer) ImportGedcom(ctx context.Context, request ImportGedcomRe
 
 	response := ImportGedcom200JSONResponse{
 		FamiliesImported: result.FamiliesImported,
+		MediaImported:    result.MediaImported,
 		PersonsImported:  result.PersonsImported,
 		Success:          true,
 		Warnings:         &warnings,

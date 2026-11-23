@@ -130,6 +130,23 @@ describe('Import & Export page', () => {
 		await waitFor(() => expect(apiModule.api.getExportEstimate).toHaveBeenCalledTimes(2));
 	});
 
+	it('shows the media count next to people and families (#1586)', async () => {
+		vi.mocked(apiModule.api.importGedcomStream).mockResolvedValue({
+			success: true,
+			persons_imported: 3,
+			families_imported: 1,
+			media_imported: 5
+		});
+		const { container } = render(ImportPage);
+		await pick(container, 'tree.ged');
+		await fireEvent.click(screen.getByRole('button', { name: /Import File/ }));
+
+		const label = await screen.findByText('Media imported');
+		expect(label.previousElementSibling?.textContent).toBe('5');
+		expect(screen.getByText('People imported').previousElementSibling?.textContent).toBe('3');
+		expect(screen.getByText('Families imported').previousElementSibling?.textContent).toBe('1');
+	});
+
 	it('sends CSV fields in the picker order, not the tick order (#1125)', async () => {
 		vi.mocked(apiModule.api.exportPersons).mockResolvedValue('id,given_name,surname\n');
 		URL.createObjectURL = vi.fn(() => 'blob:x');

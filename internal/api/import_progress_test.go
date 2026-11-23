@@ -91,6 +91,7 @@ func TestImportGedcomStream_Success(t *testing.T) {
 		Success          bool `json:"success"`
 		PersonsImported  int  `json:"persons_imported"`
 		FamiliesImported int  `json:"families_imported"`
+		MediaImported    *int `json:"media_imported"`
 	}
 	if err := json.Unmarshal([]byte(last.data), &result); err != nil {
 		t.Fatalf("Failed to parse result event: %v", err)
@@ -103,6 +104,9 @@ func TestImportGedcomStream_Success(t *testing.T) {
 	}
 	if result.FamiliesImported != 1 {
 		t.Errorf("families_imported = %d, want 1", result.FamiliesImported)
+	}
+	if result.MediaImported == nil || *result.MediaImported != 0 {
+		t.Errorf("media_imported = %v, want 0", result.MediaImported)
 	}
 
 	// Any progress events that were emitted must carry sane percentages.
