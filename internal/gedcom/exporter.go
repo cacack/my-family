@@ -1170,6 +1170,19 @@ func toGedcomIndividual(p repository.PersonReadModel, names []repository.PersonN
 		}
 		// Citations for birth
 		birthEvent.SourceCitations = toGedcomSourceCitations(fieldCitations(birthCitations, events), sourceXrefs, citationAPIDs)
+		merged, rest := mergeableBirthEvents(events)
+		notes := p.BirthNotes
+		for _, e := range merged {
+			// Written into this BIRT, not as a "1 BIRT Y" that re-import
+			// would drop beside it (#1714).
+			detail := toGedcomEvent(e, true, sourceXrefs, citationAPIDs, readStore, ctx)
+			notes = joinNotes(notes, e.Notes, e.Description)
+			birthEvent.SourceCitations = append(birthEvent.SourceCitations, detail.SourceCitations...)
+		}
+		if len(merged) > 0 {
+			birthEvent.NoteXRefs, birthEvent.InlineNotes = splitNotes(notes, noteJoin)
+			events = rest
+		}
 		indi.Events = append(indi.Events, birthEvent)
 	}
 
@@ -1456,6 +1469,24 @@ func fieldCitations(citations []repository.CitationReadModel, events []repositor
 		result = append(result, c)
 	}
 	return result
+}
+
+// mergeableBirthEvents splits the person's events into the dateless,
+// placeless birth life events that hold nothing but notes, a description and
+// citations, and the rest. With a record birth the importer drops a bare
+// "1 BIRT Y" and reads a BIRT with notes as the record birth, so the exporter
+// writes the first into the record's BIRT, and the file has one birth
+// (#1714).
+func mergeableBirthEvents(events []repository.EventReadModel) (merged, rest []repository.EventReadModel) {
+	for _, e := range events {
+		if e.FactType == domain.FactPersonBirth && !e.IsNegated && e.DateRaw == "" && e.Place == "" &&
+			e.TypeDetail == "" && e.Cause == "" && e.Age == "" && (e.Address == nil || e.Address.IsEmpty()) {
+			merged = append(merged, e)
+			continue
+		}
+		rest = append(rest, e)
+	}
+	return merged, rest
 }
 
 // mergeableDeathDetails splits the person's events into the dateless,
