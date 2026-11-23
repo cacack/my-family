@@ -280,7 +280,8 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 	// group, and the ones that would still write the same record are written
 	// as that one record linked from each owner, so a re-import keeps them a
 	// group (#1478). An owner holding two such items, as a person merge can
-	// leave, links that record once (#1507).
+	// leave, links that record once (#1507). An item's crop is written on its
+	// owner's link, which makes the export GEDCOM 7.0 (#1584).
 	media, err := ownedMedia(ctx, exp.readStore, persons, families, sources)
 	if err != nil {
 		return nil, err
@@ -303,7 +304,7 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 			}
 		}
 		if !slices.ContainsFunc(mediaLinks[m.EntityID], func(l *gedcom.MediaLink) bool { return l.MediaXRef == rec.XRef }) {
-			mediaLinks[m.EntityID] = append(mediaLinks[m.EntityID], &gedcom.MediaLink{MediaXRef: rec.XRef})
+			mediaLinks[m.EntityID] = append(mediaLinks[m.EntityID], &gedcom.MediaLink{MediaXRef: rec.XRef, Crop: mediaCrop(m)})
 		}
 	}
 
@@ -1047,7 +1048,7 @@ var gedcomMediaTypes = map[domain.MediaType]string{
 // item keeps its file references; an uploaded one, which has none, is written
 // as one FILE naming its filename, as the GEDCOM file carries no content. The
 // item's title and media type are written on the first file, where the
-// importer reads them. Its restriction is written as _RESN, which a 7.0
+// importer reads them, and its description as the record's NOTE. Its restriction is written as _RESN, which a 7.0
 // export turns into RESN (typeMediaRestrictions): GEDCOM 5.5 and 5.5.1
 // define no RESN on a media record (ADR-008 §2), and a typed one would make
 // the export upgrade to 7.0.
@@ -1070,7 +1071,26 @@ func toGedcomMediaObject(m repository.MediaReadModel) *gedcom.MediaObject {
 	if mapGedcomMediaType(first.MediaType) != m.MediaType {
 		first.MediaType = gedcomMediaTypes[m.MediaType]
 	}
+	if m.Description != "" {
+		obj.InlineNotes = []string{m.Description}
+	}
 	return obj
+}
+
+// mediaCrop is the CROP of the link to m's record, or nil when m has no crop.
+// An absent field is written as 0, which the encoder leaves out: TOP and LEFT
+// default to 0, and WIDTH and HEIGHT to the rest of the image.
+func mediaCrop(m repository.MediaReadModel) *gedcom.CropRegion {
+	if m.CropLeft == nil && m.CropTop == nil && m.CropWidth == nil && m.CropHeight == nil {
+		return nil
+	}
+	value := func(v *int) int {
+		if v == nil {
+			return 0
+		}
+		return *v
+	}
+	return &gedcom.CropRegion{Left: value(m.CropLeft), Top: value(m.CropTop), Width: value(m.CropWidth), Height: value(m.CropHeight)}
 }
 
 // uploadFileRef is the FILE value of an item with no file references: its

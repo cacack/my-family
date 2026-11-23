@@ -221,7 +221,9 @@ title, format, file references and restriction (a title and format under `FILE`,
 as GEDCOM 5.5 places them), as one item per person, family or source that links to
 them, whether at record level or under one of its events, attributes or citations; a media record nothing
 links to is skipped with a warning, and one with no `FILE` imports as a document, with a warning; export names an uploaded item that has no filename by its title. An inline `OBJE` (one with no record) that names a file imports as one item of the record
-that contains it. Where a link sat within its record is not kept: export links every item at record level. The items of one record share
+that contains it. A link's own title (`TITL`) becomes that owner's item title, its note text joins the record's
+in the item's description, and its `CROP` becomes the item's crop; export writes the description as the
+record's `NOTE` and the crop on the owner's link, as GEDCOM 7.0. Where a link sat within its record is not kept: export links every item at record level. The items of one record share
 their `private` mark: marking one private marks them all (items imported by an earlier version
 are not grouped; if an update fails part way, sending the mark again marks the rest). Imported
 media are references only: they keep the file paths but not the files, so the gallery shows each as its title and path,
