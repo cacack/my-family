@@ -1074,14 +1074,19 @@ func toGedcomMediaObject(m repository.MediaReadModel) *gedcom.MediaObject {
 }
 
 // uploadFileRef is the FILE value of an item with no file references: its
-// filename, or its title when it has none, as FILE must name a file (#1585).
-// The title, unlike the item's ID, is shared by the items of a group, which
-// matchingGroupRecord writes as one record.
+// filename, or, for an item with content but no filename, its title, as FILE
+// must name a file (#1585). The title, unlike the item's ID, is shared by the
+// items of a group, which matchingGroupRecord writes as one record. An item
+// with neither, such as one imported from an OBJE with no FILE, has no file
+// to name and is written with an empty FILE, so no reference is made up.
 func uploadFileRef(m repository.MediaReadModel) string {
 	if m.Filename != "" {
 		return m.Filename
 	}
-	return m.Title
+	if m.FileSize > 0 {
+		return m.Title
+	}
+	return ""
 }
 
 // typeMediaRestrictions turns each OBJE record's _RESN into the RESN GEDCOM

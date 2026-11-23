@@ -219,7 +219,7 @@ which is their GEDCOM restriction notice (`RESN`); it round-trips through GEDCOM
 for all six. GEDCOM media records (`OBJE`) import with their
 title, file references and restriction, as one item per person, family or source that links to
 them, whether at record level or under one of its events, attributes or citations; a media record nothing
-links to is skipped with a warning, and one with no `FILE` imports as a document, with a warning; export names an item that has no file or filename by its title. An inline `OBJE` (one with no record) that names a file imports as one item of the record
+links to is skipped with a warning, and one with no `FILE` imports as a document, with a warning; export names an uploaded item that has no filename by its title. An inline `OBJE` (one with no record) that names a file imports as one item of the record
 that contains it. Where a link sat within its record is not kept: export links every item at record level. The items of one record share
 their `private` mark: marking one private marks them all (items imported by an earlier version
 are not grouped; if an update fails part way, sending the mark again marks the rest). Imported
