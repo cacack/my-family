@@ -531,19 +531,20 @@ func TestRoundTrip_RecordDeathAndDescriptorDeath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("re-import: %v", err)
 	}
-	if len(persons) != 1 || persons[0].DeathDate != "1890" {
-		t.Fatalf("re-imported persons = %+v, want one with death date 1890; export:\n%s", persons, first)
+	if deaths := level1Lines(first, "DEAT"); len(deaths) != 1 {
+		t.Fatalf("DEAT lines = %q, want one; export:\n%s", deaths, first)
 	}
-	kept := persons[0].DeathNotes
+	if len(persons) != 1 || persons[0].DeathDate != "1890" || persons[0].DeathNotes != "Shot" {
+		t.Fatalf("re-imported persons = %+v, want one with death date 1890 and death notes %q; export:\n%s", persons, "Shot", first)
+	}
+	var deaths []gedcom.EventData
 	for _, e := range events {
 		if e.FactType == domain.FactPersonDeath {
-			kept += "\n" + e.Cause + "\n" + e.Description + "\n" + e.Notes
+			deaths = append(deaths, e)
 		}
 	}
-	for _, want := range []string{"Fever", "Shot"} {
-		if !strings.Contains(kept, want) {
-			t.Errorf("re-imported death keeps %q, want %q in it; export:\n%s", kept, want, first)
-		}
+	if len(deaths) != 1 || deaths[0].Cause != "Fever" || deaths[0].Description != "" {
+		t.Errorf("re-imported death events = %+v, want one with cause %q; export:\n%s", deaths, "Fever", first)
 	}
 	if second := importAndExport(t, first); second != first {
 		t.Errorf("second export differs from the first:\n%s\nfirst:\n%s", second, first)
