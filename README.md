@@ -225,9 +225,10 @@ media are references only: they keep the file paths but not the files, so the ga
 and its content and thumbnail return 404 (`no_content` for the content). An editor attaches the file to the
 reference itself from its lightbox (**Attach file**, or `PUT /api/v1/media/{id}/content`, on the mainline): the
 item keeps its title, owner, GEDCOM link, file paths and `private` mark, and now shows the file. Each item of a
-record is attached on its own, and an item that already has a file is refused. Family and source
-pages show their media in the same gallery (`GET /api/v1/families/{id}/media`, `GET /api/v1/sources/{id}/media`);
-uploading a new item is on person pages only for now.
+record is attached on its own, and an item that already has a file is refused. People, families and
+sources show their media in the same gallery (`GET /api/v1/persons/{id}/media`, and the same under
+`/families` and `/sources`), and each takes an upload: uploading a file to a person, family or source
+from its gallery (`POST` to the same path) creates a new media item it owns.
 Export writes an `OBJE` record per
 item (one record, linked from each owner, for the items of one record that are still alike), naming
 an uploaded item's file by its filename; the file content is not included.

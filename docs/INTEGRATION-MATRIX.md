@@ -241,7 +241,7 @@ four GPS artifact types of #760. Branch
 | Citation (#758) | ✅ | ✅ | `createCitation` / `updateCitation` / `deleteCitation`; the denormalized source title and the source's citation count resolve on the branch. Known gap: bumping the count writes a branch copy of the source, which then hides later main edits to that source on the branch (stale view, tracked in [#815](https://github.com/cacack/my-family/issues/815)) |
 | CitationExternalID (#1175) | ✅ | ⚠️ | written only by GEDCOM import (main-only; an Ancestry `_APID`); tombstoned by a branch `deleteCitation` |
 | Note (#758) | ✅ | ✅ | `createNote` / `updateNote` / `deleteNote` |
-| Media (#759) | ✅ | ✅ | `uploadPersonMedia` / `updateMedia` / `deleteMedia`; metadata only — a branch row stores no copy of the file or thumbnail, which are read from main's row. Also tombstoned by a branch `deletePerson` / `deleteFamily` / `deleteSource` |
+| Media (#759) | ✅ | ✅ | `uploadPersonMedia` / `uploadFamilyMedia` / `uploadSourceMedia` / `updateMedia` / `deleteMedia`; metadata only — a branch row stores no copy of the file or thumbnail, which are read from main's row. Also tombstoned by a branch `deletePerson` / `deleteFamily` / `deleteSource` |
 | EvidenceAnalysis (#760) | ✅ | ✅ | `createEvidenceAnalysis` / `updateEvidenceAnalysis` / `deleteEvidenceAnalysis`; the automatic evidence-conflict check compares the analyses the branch sees and records its conflict on the branch. Also tombstoned by a branch `deletePerson` / `deleteFamily` of its subject |
 | EvidenceConflict (#760) | ✅ | ✅ | recorded by `createEvidenceAnalysis` / `updateEvidenceAnalysis`; `resolveEvidenceConflict`. `ListUnresolvedConflicts` resolves the overlay before it filters on status, so a branch resolution hides main's open row on the branch only |
 | ResearchLog (#760) | ✅ | ✅ | `createResearchLog` / `updateResearchLog` / `deleteResearchLog` |
@@ -315,12 +315,16 @@ is not-found there too:
 | `getMediaThumbnail` | GET | `/media/{id}/thumbnail` |
 
 [#1505](https://github.com/cacack/my-family/issues/1505) added the family and source media lists,
-which read the branch's view as the person's does:
+which read the branch's view as the person's does, and
+[#1538](https://github.com/cacack/my-family/issues/1538) their uploads, which create the item on the
+branch only as the person's does:
 
 | operationId | Method | Path |
 |---|---|---|
 | `listFamilyMedia` | GET | `/families/{id}/media` |
+| `uploadFamilyMedia` | POST | `/families/{id}/media` |
 | `listSourceMedia` | GET | `/sources/{id}/media` |
+| `uploadSourceMedia` | POST | `/sources/{id}/media` |
 
 Sub-issue E ([#760](https://github.com/cacack/my-family/issues/760)) added twenty-two for the GPS
 artifacts:
