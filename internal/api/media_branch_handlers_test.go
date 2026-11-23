@@ -202,6 +202,28 @@ func TestFamilyAndSourceMedia_BranchScope(t *testing.T) {
 		if got := do(t, server, http.MethodGet, path+"?branch=00000000-0000-0000-0000-00000000beef", "").Code; got != http.StatusNotFound {
 			t.Errorf("GET %s on an unknown branch: status = %d, want 404", path, got)
 		}
+
+		// An upload to the branch-only owner lands on the branch; on main the
+		// owner is not found (#1538).
+		upload := func(suffix string) *httptest.ResponseRecorder {
+			t.Helper()
+			req, err := createMultipartRequest(path+suffix, "file", "scan.jpg", createTestJPEGImage(), map[string]string{"title": "Scan"})
+			if err != nil {
+				t.Fatalf("build upload request: %v", err)
+			}
+			rec := httptest.NewRecorder()
+			server.Echo().ServeHTTP(rec, req)
+			return rec
+		}
+		if rec := upload(""); rec.Code != http.StatusNotFound {
+			t.Errorf("Mainline upload to %s of a branch-only owner: status = %d, want 404", path, rec.Code)
+		}
+		if rec := upload(onBranch); rec.Code != http.StatusCreated {
+			t.Errorf("Branch upload to %s: status = %d, want 201. Body: %s", path, rec.Code, rec.Body.String())
+		}
+		if total, _ := decodeJSON(t, do(t, server, http.MethodGet, path+onBranch, ""))["total"].(float64); total != 1 {
+			t.Errorf("Branch GET %s after upload total = %v, want 1", path, total)
+		}
 	}
 }
 

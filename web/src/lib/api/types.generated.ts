@@ -1037,7 +1037,13 @@ export interface paths {
          */
         get: operations["listFamilyMedia"];
         put?: never;
-        post?: never;
+        /**
+         * Upload media to a family
+         * @description Uploads a new media item for the family. With `?branch=` the item is
+         *     created on that branch only (and the family must exist there); the
+         *     uploaded bytes belong to that new item.
+         */
+        post: operations["uploadFamilyMedia"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1060,7 +1066,13 @@ export interface paths {
          */
         get: operations["listSourceMedia"];
         put?: never;
-        post?: never;
+        /**
+         * Upload media to a source
+         * @description Uploads a new media item for the source. With `?branch=` the item is
+         *     created on that branch only (and the source must exist there); the
+         *     uploaded bytes belong to that new item.
+         */
+        post: operations["uploadSourceMedia"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4076,6 +4088,19 @@ export interface components {
          * @enum {string}
          */
         EvidenceType: "direct" | "indirect" | "negative";
+        /** @description A new media item's file and metadata, uploaded to its owner. */
+        MediaUpload: {
+            /** @description Display title for the media */
+            title: string;
+            /** @description Optional description */
+            description?: string;
+            media_type?: components["schemas"]["MediaType"];
+            /**
+             * Format: binary
+             * @description The file to upload (max 10MB)
+             */
+            file: string;
+        };
         /**
          * @description Category of media
          * @enum {string}
@@ -9631,18 +9656,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "multipart/form-data": {
-                    /** @description Display title for the media */
-                    title: string;
-                    /** @description Optional description */
-                    description?: string;
-                    media_type?: components["schemas"]["MediaType"];
-                    /**
-                     * Format: binary
-                     * @description The file to upload (max 10MB)
-                     */
-                    file: string;
-                };
+                "multipart/form-data": components["schemas"]["MediaUpload"];
             };
         };
         responses: {
@@ -9709,6 +9723,57 @@ export interface operations {
             503: components["responses"]["SetupRequired"];
         };
     };
+    uploadFamilyMedia: {
+        parameters: {
+            query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
+                 */
+                branch?: components["parameters"]["branchScope"];
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["familyId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["MediaUpload"];
+            };
+        };
+        responses: {
+            /** @description Media uploaded successfully */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Media"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            /** @description File too large (max 10MB) */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            503: components["responses"]["SetupRequired"];
+        };
+    };
     listSourceMedia: {
         parameters: {
             query?: {
@@ -9745,6 +9810,57 @@ export interface operations {
             };
             401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
+            503: components["responses"]["SetupRequired"];
+        };
+    };
+    uploadSourceMedia: {
+        parameters: {
+            query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
+                 */
+                branch?: components["parameters"]["branchScope"];
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["MediaUpload"];
+            };
+        };
+        responses: {
+            /** @description Media uploaded successfully */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Media"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            /** @description File too large (max 10MB) */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
             503: components["responses"]["SetupRequired"];
         };
     };
