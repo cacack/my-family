@@ -68,7 +68,8 @@ func TestImportMediaObject_RestrictionAndOwners(t *testing.T) {
 }
 
 // An inline OBJE link with no title takes its file's path as the title, and
-// one with no FILE describes no media and is skipped (#1479).
+// one with no FILE describes no media and is skipped, even with a 5.5 FORM
+// beside it (#1479).
 func TestImportInlineMedia_TitleFallback(t *testing.T) {
 	const input = `0 HEAD
 1 GEDC
@@ -80,6 +81,13 @@ func TestImportInlineMedia_TitleFallback(t *testing.T) {
 3 FORM jpg
 1 OBJE
 2 TITL Nothing here
+1 OBJE
+2 FORM bmp
+1 OBJE
+2 FORM jpg
+2 TITL Embedded
+2 BLOB
+3 CONT .HM.......k.1..F.jwA.Dzzzzw............A....1.........
 0 TRLR
 `
 	result, _, _, _, _, _, _, _, _, _, _, _, media, err := gedcom.NewImporter().Import(context.Background(), strings.NewReader(input))
@@ -93,6 +101,78 @@ func TestImportInlineMedia_TitleFallback(t *testing.T) {
 	want := []gedcom.MediaOwner{{EntityType: "person", EntityID: result.PersonXrefToID["@I1@"]}}
 	if m.Title != "photos/a.jpg" || m.GedcomXref != "" || m.Format != "jpg" || !slices.Equal(m.Owners, want) {
 		t.Errorf("inline media = %+v, want photos/a.jpg owned by @I1@ with no xref", m)
+	}
+}
+
+// In the 5.5 layout a FORM with no FILE beside it decodes to a file with an
+// empty path; such an inline OBJE names no file and is skipped (#1479).
+func TestImportInlineMedia_FormWithoutFile55(t *testing.T) {
+	const input = `0 HEAD
+1 GEDC
+2 VERS 5.5
+0 @I1@ INDI
+1 NAME A /B/
+1 OBJE
+2 FORM bmp
+1 OBJE
+2 FORM jpg
+2 TITL Embedded
+1 OBJE
+2 FORM jpg
+2 FILE photos/a.jpg
+2 TITL Kept
+0 TRLR
+`
+	_, _, _, _, _, _, _, _, _, _, _, _, media, err := gedcom.NewImporter().Import(context.Background(), strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("import: %v", err)
+	}
+	if len(media) != 1 || media[0].Title != "Kept" || media[0].FileRef != "photos/a.jpg" {
+		t.Errorf("media = %+v, want only Kept", media)
+	}
+}
+
+// OBJE links under citations of a name, an association and an attribute make
+// the person an owner (#1479).
+func TestImportMediaObject_LinksUnderNameAssociationAttributeCitations(t *testing.T) {
+	const input = `0 HEAD
+1 GEDC
+2 VERS 5.5.1
+0 @M1@ OBJE
+1 FILE name.jpg
+0 @M2@ OBJE
+1 FILE asso.jpg
+0 @M3@ OBJE
+1 FILE attr.jpg
+0 @S1@ SOUR
+1 TITL Register
+0 @I2@ INDI
+1 NAME God /Father/
+0 @I1@ INDI
+1 NAME A /B/
+2 SOUR @S1@
+3 OBJE @M1@
+1 ASSO @I2@
+2 RELA Godfather
+2 SOUR @S1@
+3 OBJE @M2@
+1 OCCU Farmer
+2 SOUR @S1@
+3 OBJE @M3@
+0 TRLR
+`
+	result, _, _, _, _, _, _, _, _, _, _, _, media, err := gedcom.NewImporter().Import(context.Background(), strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("import: %v", err)
+	}
+	want := []gedcom.MediaOwner{{EntityType: "person", EntityID: result.PersonXrefToID["@I1@"]}}
+	if len(media) != 3 {
+		t.Fatalf("media = %+v, want three records", media)
+	}
+	for _, m := range media {
+		if !slices.Equal(m.Owners, want) {
+			t.Errorf("%s owners = %+v, want %+v", m.GedcomXref, m.Owners, want)
+		}
 	}
 }
 

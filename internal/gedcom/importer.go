@@ -2317,8 +2317,8 @@ func parseMediaFiles(files []*gedcom.MediaFile) MediaData {
 // mediaLinks follows every OBJE link in the person, family and source records:
 // at record level and under their names, events, attributes, associations and
 // citations. It returns, per OBJE xref, the records that link to it, in file
-// order and each once, and an item for each inline link with files, owned by
-// the record that contains it. Where a link sat within its record is not kept.
+// order and each once, and an item for each inline link that names a file,
+// owned by the record that contains it. Where a link sat within its record is not kept.
 func mediaLinks(doc *gedcom.Document, result *ImportResult) (map[string][]MediaOwner, []MediaData) {
 	owners := make(map[string][]MediaOwner)
 	var inline []MediaData
@@ -2330,7 +2330,7 @@ func mediaLinks(doc *gedcom.Document, result *ImportResult) (map[string][]MediaO
 				if !slices.Contains(owners[link.MediaXRef], owner) {
 					owners[link.MediaXRef] = append(owners[link.MediaXRef], owner)
 				}
-			case len(link.Files) > 0:
+			case slices.ContainsFunc(link.Files, hasFileRef):
 				inline = append(inline, parseInlineMedia(link, owner))
 			}
 		}
@@ -2345,6 +2345,12 @@ func mediaLinks(doc *gedcom.Document, result *ImportResult) (map[string][]MediaO
 		add(src.Media, MediaOwner{EntityType: "source", EntityID: result.SourceXrefToID[src.XRef]})
 	}
 	return owners, inline
+}
+
+// hasFileRef reports whether file names a file. A 5.5 inline OBJE with FORM
+// but no FILE (e.g. an embedded BLOB) decodes to a file with an empty FileRef.
+func hasFileRef(file *gedcom.MediaFile) bool {
+	return file != nil && file.FileRef != ""
 }
 
 // individualMediaLinks returns the OBJE links anywhere in a person record,
