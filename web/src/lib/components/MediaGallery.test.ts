@@ -372,6 +372,21 @@ describe('MediaGallery', () => {
 				await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
 				expect(apiModule.api.updateMedia).not.toHaveBeenCalled();
 			});
+
+			it.each(closers)('stays open on %s while a save is in flight, without asking', async (_, close) => {
+				let resolve!: (m: Media) => void;
+				vi.mocked(apiModule.api.updateMedia).mockReturnValue(new Promise((r) => (resolve = r)));
+				const dialog = await open(media({}), 'View Portrait');
+				await fill(dialog, 'Grandma', '', 'photo');
+				await fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+
+				await close(dialog);
+
+				expect(screen.queryByRole('alertdialog')).toBeNull();
+				expect(screen.getByRole('dialog')).toBe(dialog);
+				resolve(media({ title: 'Grandma', version: 2 }));
+				expect(await within(dialog).findByRole('heading', { name: 'Grandma' })).toBeDefined();
+			});
 		});
 
 		it('disables Cancel while a save is in flight', async () => {

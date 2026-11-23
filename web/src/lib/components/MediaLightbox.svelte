@@ -92,9 +92,12 @@
 
 	let discardOpen = $state(false);
 
-	/** Close the lightbox, asking first when it would drop typed edits (#1749). */
+	/**
+	 * Close the lightbox, asking first when it would drop typed edits (#1749).
+	 * A save in flight holds it open, as it does Cancel: its edits are not lost.
+	 */
 	function requestClose() {
-		if (discardOpen) return;
+		if (discardOpen || saving) return;
 		if (hasEdits()) discardOpen = true;
 		else onClose();
 	}
