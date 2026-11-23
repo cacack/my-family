@@ -8,6 +8,8 @@
  * It also covers the rest of the phone layout (#1555): the viewer hides the
  * page, an unbreakable title wraps, the close button clears the image, and a
  * document preview fits the screen.
+ *
+ * Editing an item's details (#1107) is saved through the API and survives a reload.
  */
 import { expect, test, type Page } from '@playwright/test';
 import { API_BASE } from './seed';
@@ -165,6 +167,40 @@ test.describe('at 375x800', () => {
 			})()
 		}));
 		expect(overflow).toEqual({ page: 375, dialog: 0, preview: 0 });
+	});
+});
+
+test.describe('editing the details at 375x800 (#1107)', () => {
+	test.use({ viewport: { width: 375, height: 800 } });
+
+	test('saves a new title, description and type, which survive a reload', async ({ page, request }) => {
+		// Its own item, so the other tests keep their titles.
+		const media = await request.post(`${API_BASE}/persons/${personId}/media`, {
+			multipart: {
+				title: 'Scan 0042',
+				media_type: 'photo',
+				file: { name: 'scan.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4\n%%EOF\n') }
+			}
+		});
+		expect(media.ok(), await media.text()).toBe(true);
+
+		const dialog = await openLightbox(page, 'Scan 0042');
+		await dialog.getByRole('button', { name: 'Edit details' }).click();
+		await dialog.getByRole('textbox', { name: /^Title/ }).fill('Baptism record, 1881');
+		await dialog.getByRole('textbox', { name: 'Description' }).fill('Parish register, page 12');
+		await dialog.getByRole('combobox', { name: 'Type' }).selectOption('certificate');
+		const save = dialog.getByRole('button', { name: 'Save' });
+		const box = await save.boundingBox();
+		if (!box) throw new Error('Save not laid out');
+		expect(box.y + box.height, 'Save ends inside the viewport').toBeLessThanOrEqual(800);
+		await save.click();
+
+		await expect(dialog.getByRole('heading', { name: 'Baptism record, 1881', exact: true })).toBeVisible();
+		await expect(dialog.getByRole('button', { name: 'Edit details' })).toBeFocused();
+
+		const reopened = await openLightbox(page, 'Baptism record, 1881');
+		await expect(reopened.getByText('Parish register, page 12')).toBeVisible();
+		await expect(reopened.locator('.metadata-list')).toContainText('certificate');
 	});
 });
 

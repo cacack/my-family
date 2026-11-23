@@ -63,12 +63,19 @@ export const RESEARCH_STATUS_OPTIONS: readonly (EnumOption<ResearchStatus> & { r
 	{ value: 'unknown', label: 'Not assessed', description: 'No conclusion yet' }
 ];
 
-/** The media types an upload offers: the API also accepts audio and video. */
-export const UPLOAD_MEDIA_TYPE_OPTIONS: readonly EnumOption<MediaType>[] = [
+/** Every media type, which editing an item offers: an imported one may be audio or video. */
+export const MEDIA_TYPE_OPTIONS: readonly EnumOption<MediaType>[] = [
 	{ value: 'photo', label: 'Photo' },
 	{ value: 'document', label: 'Document' },
-	{ value: 'certificate', label: 'Certificate' }
+	{ value: 'certificate', label: 'Certificate' },
+	{ value: 'audio', label: 'Audio' },
+	{ value: 'video', label: 'Video' }
 ];
+
+/** The media types an upload offers, which takes only images and PDFs. */
+export const UPLOAD_MEDIA_TYPE_OPTIONS: readonly EnumOption<MediaType>[] = MEDIA_TYPE_OPTIONS.filter(
+	(o) => o.value !== 'audio' && o.value !== 'video'
+);
 
 export const SOURCE_QUALITY_OPTIONS: readonly EnumOption<SourceQuality>[] = [
 	{ value: 'original', label: 'Original' },

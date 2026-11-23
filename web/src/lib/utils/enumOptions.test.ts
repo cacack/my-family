@@ -5,6 +5,7 @@ import {
 	EVIDENCE_TYPE_OPTIONS,
 	GENDER_OPTIONS,
 	INFORMANT_TYPE_OPTIONS,
+	MEDIA_TYPE_OPTIONS,
 	NAME_TYPE_OPTIONS,
 	RELATION_TYPE_OPTIONS,
 	RESEARCH_STATUS_OPTIONS,
@@ -38,6 +39,7 @@ describe('enum option lists', () => {
 		['SourceQuality', values(SOURCE_QUALITY_OPTIONS)],
 		['InformantType', values(INFORMANT_TYPE_OPTIONS)],
 		['EvidenceType', values(EVIDENCE_TYPE_OPTIONS)],
+		['MediaType', values(MEDIA_TYPE_OPTIONS)],
 		['SourceType', values(SOURCE_TYPES)],
 		['FactType', [...FACT_TYPES]]
 	])('offers every %s value', (name, offered) => {
