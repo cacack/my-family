@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 )
@@ -84,7 +85,7 @@ func (m *Media) Validate() error {
 	// Title required and max 500 chars
 	if m.Title == "" {
 		errs = append(errs, MediaValidationError{Field: "title", Message: "cannot be empty"})
-	} else if len(m.Title) > 500 {
+	} else if utf8.RuneCountInString(m.Title) > 500 {
 		errs = append(errs, MediaValidationError{Field: "title", Message: "cannot exceed 500 characters"})
 	}
 
