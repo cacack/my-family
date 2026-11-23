@@ -316,6 +316,21 @@ describe('MediaGallery', () => {
 			expect(within(dialog).getByRole('button', { name: 'Edit details' })).toBeDefined();
 		});
 
+		it('stays on the item while the form is open, even on an arrow key', async () => {
+			list([media({}), media({ id: 'm-2', title: 'Wedding day' })]);
+			render(MediaGallery, { props: { ownerType: 'person', ownerId: 'p-1' } });
+			await fireEvent.click(await screen.findByRole('button', { name: 'View Portrait' }));
+			const dialog = await screen.findByRole('dialog');
+			expect(within(dialog).getByRole('button', { name: 'Next media' })).toBeDefined();
+
+			await fill(dialog, 'Grandma', '', 'photo');
+			expect(within(dialog).queryByRole('button', { name: 'Next media' })).toBeNull();
+			await fireEvent.keyDown(window, { key: 'ArrowRight' });
+
+			expect(within(dialog).getByRole('heading', { name: 'Portrait' })).toBeDefined();
+			expect((within(dialog).getByRole('textbox', { name: /^Title/ }) as HTMLInputElement).value).toBe('Grandma');
+		});
+
 		it('does not save an empty title', async () => {
 			const dialog = await open(media({}), 'View Portrait');
 
