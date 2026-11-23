@@ -706,7 +706,7 @@ type ReadModelStore interface {
 	//     a mainline SaveMedia clears, on every branch row of that id, each byte
 	//     column main's row now holds. The bytes are then stored once, on main,
 	//     and the branch reads them through the fallback below.
-	//   - GetMedia and ListMediaForEntity never read the byte columns; they set
+	//   - GetMedia and the media lists never read the byte columns; they set
 	//     HasThumbnail by testing them for NULL on the winning and main rows.
 	//     GetMediaWithData and GetMediaThumbnail resolve the metadata through the
 	//     overlay (so a tombstone hides the bytes too) and read the bytes from the
@@ -736,6 +736,10 @@ type ReadModelStore interface {
 	// ListMediaInGroup returns every media item branchID sees whose GroupID is
 	// groupID (the copies of one imported OBJE record, #1478), in no set order.
 	ListMediaInGroup(ctx context.Context, branchID domain.BranchID, groupID uuid.UUID) ([]MediaReadModel, error)
+	// ListAllMedia returns every media item branchID sees, across all owners,
+	// in ListMediaForEntity's order (newest first, then id descending), so
+	// grouping it by owner gives each owner's ListMediaForEntity (#1480).
+	ListAllMedia(ctx context.Context, branchID domain.BranchID) ([]MediaReadModel, error)
 	SaveMedia(ctx context.Context, branchID domain.BranchID, media *MediaReadModel) error
 	DeleteMedia(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error
 

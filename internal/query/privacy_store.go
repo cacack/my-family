@@ -1093,6 +1093,20 @@ func (s *PrivacyStore) ListMediaForEntity(ctx context.Context, entityType string
 	return s.inner.ListMediaForEntity(ctx, entityType, entityID, opts)
 }
 
+// ListAllMedia drops the private items and those whose owner a viewer may not
+// see, checking every owner in one batch.
+func (s *PrivacyStore) ListAllMedia(ctx context.Context, branchID domain.BranchID) ([]repository.MediaReadModel, error) {
+	items, err := s.inner.ListAllMedia(ctx, branchID)
+	v := s.privacy(ctx)
+	if err != nil || v.SeesAll() {
+		return items, err
+	}
+	items = slices.DeleteFunc(items, func(m repository.MediaReadModel) bool { return v.Hides(m.Restriction) })
+	return keepShown(ctx, s, v, branchID, items, func(m *repository.MediaReadModel) []owner {
+		return []owner{{m.EntityType, m.EntityID}}
+	})
+}
+
 // ListMediaInGroup drops the items a viewer may not see.
 func (s *PrivacyStore) ListMediaInGroup(ctx context.Context, branchID domain.BranchID, groupID uuid.UUID) ([]repository.MediaReadModel, error) {
 	items, err := s.inner.ListMediaInGroup(ctx, branchID, groupID)

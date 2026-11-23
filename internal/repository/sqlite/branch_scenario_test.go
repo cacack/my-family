@@ -2200,3 +2200,181 @@ func runBranchPersonMergeScenario(t *testing.T, readStore repository.ReadModelSt
 		t.Errorf("main GetAssociation(witness) = %+v (err=%v), want it between the duplicate and the partner", got, err)
 	}
 }
+
+// TestBranchScenario_ListAllMedia runs the #1480 ListAllMedia scenario against
+// the SQLite backend; the scenario body is identical across all three backends.
+func TestBranchScenario_ListAllMedia(t *testing.T) {
+	tmpFile, err := os.CreateTemp("", "myfamily-media-list-scenario-*.db")
+	if err != nil {
+		t.Fatalf("create temp file: %v", err)
+	}
+	tmpFile.Close()
+	t.Cleanup(func() { os.Remove(tmpFile.Name()) })
+
+	db, err := sqlite.OpenDB(tmpFile.Name())
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+
+	readStore, err := sqlite.NewReadModelStore(db)
+	if err != nil {
+		t.Fatalf("create read model store: %v", err)
+	}
+	branchStore, err := sqlite.NewBranchStore(db)
+	if err != nil {
+		t.Fatalf("create branch store: %v", err)
+	}
+	runListAllMediaScenario(t, readStore, branchStore)
+}
+
+// runListAllMediaScenario is the backend-agnostic ListAllMedia scenario
+// (#1480). Each backend package carries an identical copy, as with
+// runBranchMediaScenario.
+//
+// Shape: media owned by two people, a family and a source on main. A branch
+// retitles one item, uploads one, re-links one and deletes one; main then
+// deletes another. At each step, on main and on the branch, ListAllMedia must
+// hold exactly the items the per-owner ListMediaForEntity lists do, in the
+// same order within each owner.
+func runListAllMediaScenario(t *testing.T, readStore repository.ReadModelStore, branchStore repository.BranchStore) {
+	t.Helper()
+	ctx := context.Background()
+	projector := repository.NewProjector(readStore, branchStore)
+	main := domain.MainBranchID
+
+	project := func(label string, branchID domain.BranchID, events ...domain.Event) {
+		t.Helper()
+		for i, ev := range events {
+			if err := projector.Project(ctx, ev, int64(i+2), branchID); err != nil {
+				t.Fatalf("%s: project %s: %v", label, ev.EventType(), err)
+			}
+		}
+	}
+	type mediaOwner struct {
+		typ string
+		id  uuid.UUID
+	}
+	newMedia := func(title string, o mediaOwner, thumb string) *domain.Media {
+		m := domain.NewMedia(title, o.typ, o.id)
+		m.MimeType = "image/jpeg"
+		m.MediaType = domain.MediaPhoto
+		m.Filename = title + ".jpg"
+		m.FileData = []byte(title + "-FILE")
+		m.ThumbnailData = []byte(thumb)
+		m.FileSize = int64(len(m.FileData))
+		return m
+	}
+
+	alex := domain.NewPerson("Alex", "Original")
+	blair := domain.NewPerson("Blair", "Original")
+	family := domain.NewFamily()
+	family.Partner1ID = &alex.ID
+	register := domain.NewSource("Parish register", domain.SourceChurch)
+	owners := []mediaOwner{{"person", alex.ID}, {"person", blair.ID}, {"family", family.ID}, {"source", register.ID}}
+
+	// sameAsPerOwner checks ListAllMedia on branchID against ListMediaForEntity
+	// for every owner, and returns the ids it lists.
+	sameAsPerOwner := func(label string, branchID domain.BranchID) map[uuid.UUID]bool {
+		t.Helper()
+		all, err := readStore.ListAllMedia(ctx, branchID)
+		if err != nil {
+			t.Fatalf("%s: ListAllMedia: %v", label, err)
+		}
+		byOwner := make(map[mediaOwner][]repository.MediaReadModel)
+		ids := make(map[uuid.UUID]bool, len(all))
+		for _, m := range all {
+			if m.FileData != nil || m.ThumbnailData != nil {
+				t.Errorf("%s: ListAllMedia returned bytes for %s; it must read metadata only", label, m.ID)
+			}
+			o := mediaOwner{m.EntityType, m.EntityID}
+			byOwner[o] = append(byOwner[o], m)
+			ids[m.ID] = true
+		}
+		listed := 0
+		for _, o := range owners {
+			want, _, err := readStore.ListMediaForEntity(ctx, o.typ, o.id, repository.ListOptions{Limit: 100, BranchID: branchID})
+			if err != nil {
+				t.Fatalf("%s: ListMediaForEntity(%s): %v", label, o.typ, err)
+			}
+			listed += len(want)
+			if !reflect.DeepEqual(byOwner[o], want) {
+				t.Errorf("%s: ListAllMedia for %s %s = %+v, want ListMediaForEntity's %+v", label, o.typ, o.id, byOwner[o], want)
+			}
+		}
+		if listed != len(all) {
+			t.Errorf("%s: ListAllMedia lists %d items, the owners' lists %d", label, len(all), listed)
+		}
+		return ids
+	}
+	wantIDs := func(label string, got map[uuid.UUID]bool, want ...*domain.Media) {
+		t.Helper()
+		if len(got) != len(want) {
+			t.Errorf("%s: ListAllMedia lists %d items, want %d", label, len(got), len(want))
+		}
+		for _, m := range want {
+			if !got[m.ID] {
+				t.Errorf("%s: ListAllMedia does not list %q", label, m.Title)
+			}
+		}
+	}
+
+	// --- Step 1: seed main. The note has no thumbnail (HasThumbnail false). ---
+	portrait := newMedia("portrait", owners[0], "PORTRAIT-THUMB")
+	letter := newMedia("letter", owners[0], "LETTER-THUMB")
+	deed := newMedia("deed", owners[1], "DEED-THUMB")
+	wedding := newMedia("wedding", owners[2], "WEDDING-THUMB")
+	page := newMedia("page", owners[3], "")
+	project("seed main", main,
+		domain.NewPersonCreated(alex),
+		domain.NewPersonCreated(blair),
+		domain.NewFamilyCreated(family),
+		domain.NewSourceCreated(register),
+		domain.NewMediaCreated(portrait),
+		domain.NewMediaCreated(letter),
+		domain.NewMediaCreated(deed),
+		domain.NewMediaCreated(wedding),
+		domain.NewMediaCreated(page),
+	)
+	wantIDs("main seeded", sameAsPerOwner("main seeded", main), portrait, letter, deed, wedding, page)
+
+	branch, err := domain.NewBranch("media-list", "lists media across owners", 0)
+	if err != nil {
+		t.Fatalf("NewBranch: %v", err)
+	}
+	project("create branch", main, domain.NewBranchCreated(branch))
+	branchID := domain.BranchID(branch.ID)
+	wantIDs("fresh branch", sameAsPerOwner("fresh branch", branchID), portrait, letter, deed, wedding, page)
+
+	// --- Step 2: the branch retitles, uploads, re-links and deletes. ---
+	project("branch edits", branchID,
+		domain.NewMediaUpdated(portrait.ID, map[string]any{"title": "portrait (branch)"}),
+	)
+	scan := newMedia("scan", owners[2], "SCAN-THUMB")
+	project("branch upload", branchID, domain.NewMediaCreated(scan))
+	relinked, err := readStore.GetMedia(ctx, branchID, letter.ID)
+	if err != nil || relinked == nil {
+		t.Fatalf("branch GetMedia(letter): %+v (err=%v)", relinked, err)
+	}
+	relinked.EntityID = blair.ID
+	if err := readStore.SaveMedia(ctx, branchID, relinked); err != nil {
+		t.Fatalf("branch re-link: %v", err)
+	}
+	project("branch delete", branchID, domain.NewMediaDeleted(deed.ID, "branch hypothesis"))
+	wantIDs("branch edited", sameAsPerOwner("branch edited", branchID), portrait, letter, wedding, page, scan)
+	wantIDs("main beside branch", sameAsPerOwner("main beside branch", main), portrait, letter, deed, wedding, page)
+	if all, err := readStore.ListAllMedia(ctx, branchID); err != nil {
+		t.Fatalf("branch ListAllMedia: %v", err)
+	} else {
+		for _, m := range all {
+			if m.ID == portrait.ID && m.Title != "portrait (branch)" {
+				t.Errorf("branch ListAllMedia portrait title = %q, want the branch's", m.Title)
+			}
+		}
+	}
+
+	// --- Step 3: main deletes an item the branch never touched. ---
+	project("main delete", main, domain.NewMediaDeleted(wedding.ID, "mainline cleanup"))
+	wantIDs("main after delete", sameAsPerOwner("main after delete", main), portrait, letter, deed, page)
+	wantIDs("branch after main delete", sameAsPerOwner("branch after main delete", branchID), portrait, letter, page, scan)
+}
