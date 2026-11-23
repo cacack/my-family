@@ -70,6 +70,17 @@ func TestMedia_Validate(t *testing.T) {
 			errMsg:  "title",
 		},
 		{
+			name:    "title of 500 multi-byte characters",
+			media:   NewMedia(strings.Repeat("é", 500), "person", entityID),
+			wantErr: false,
+		},
+		{
+			name:    "title of 501 multi-byte characters",
+			media:   NewMedia(strings.Repeat("é", 501), "person", entityID),
+			wantErr: true,
+			errMsg:  "title",
+		},
+		{
 			name: "invalid entity type",
 			media: &Media{
 				ID:         uuid.New(),

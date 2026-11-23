@@ -657,3 +657,41 @@ func TestImportGedcom_MediaWithoutFileReference(t *testing.T) {
 		t.Errorf("@M2@ = %+v, want a document with one empty file reference", m)
 	}
 }
+
+// An OBJE whose title is over the 500-character limit is refused at import
+// with a warning naming it, so no stored item carries a title its edit form
+// could not save (#1750). A title of 500 multi-byte characters imports.
+func TestImportGedcom_MediaTitleOverLimitIsRefused(t *testing.T) {
+	ctx := context.Background()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(memory.NewEventStore(), readStore)
+
+	ged := "0 HEAD\n1 GEDC\n2 VERS 5.5.1\n" +
+		"0 @M1@ OBJE\n1 FILE a.jpg\n2 TITL " + strings.Repeat("é", 500) + "\n" +
+		"0 @M2@ OBJE\n1 FILE b.jpg\n2 TITL " + strings.Repeat("é", 501) + "\n" +
+		"0 @I1@ INDI\n1 NAME A /B/\n1 OBJE @M1@\n1 OBJE @M2@\n0 TRLR\n"
+	result, err := handler.ImportGedcom(ctx, command.ImportGedcomInput{Filename: "m.ged", Reader: strings.NewReader(ged)})
+	if err != nil {
+		t.Fatalf("ImportGedcom: %v", err)
+	}
+	if result.MediaImported != 1 {
+		t.Errorf("MediaImported = %d, want 1", result.MediaImported)
+	}
+	if !slices.ContainsFunc(result.Warnings, func(w string) bool {
+		return strings.Contains(w, "@M2@") && strings.Contains(w, "cannot exceed 500 characters")
+	}) {
+		t.Errorf("warnings %q lack @M2@'s over-long title", result.Warnings)
+	}
+
+	persons, _, _ := readStore.ListPersons(ctx, repository.DefaultListOptions())
+	if len(persons) != 1 {
+		t.Fatalf("imported %d persons, want 1", len(persons))
+	}
+	media, _, err := readStore.ListMediaForEntity(ctx, "person", persons[0].ID, repository.DefaultListOptions())
+	if err != nil {
+		t.Fatalf("ListMediaForEntity: %v", err)
+	}
+	if len(media) != 1 || media[0].GedcomXref != "@M1@" {
+		t.Fatalf("media = %+v, want only @M1@", media)
+	}
+}
