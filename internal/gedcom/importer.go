@@ -2249,10 +2249,15 @@ func extractLDSOrdinancesFromFamily(fam *gedcom.Family, familyID uuid.UUID) []LD
 
 // parseMediaObject converts a GEDCOM media object (OBJE) record to MediaData.
 // Note: This parses top-level OBJE records; mediaLinks finds the records that
-// link to them.
-// TODO: result parameter reserved for future error/warning tracking
-func parseMediaObject(media *gedcom.MediaObject, _ *ImportResult) MediaData {
+// link to them. A record with no FILE is still imported, as a document, with
+// a warning (#1585).
+func parseMediaObject(media *gedcom.MediaObject, result *ImportResult) MediaData {
 	mediaData := parseMediaFiles(media.Files)
+	if len(media.Files) == 0 {
+		mediaData.MediaType = mapGedcomMediaType("")
+		result.Warnings = append(result.Warnings,
+			fmt.Sprintf("Media %s has no FILE; imported as a document with no file", media.XRef))
+	}
 	mediaData.GedcomXref = media.XRef
 	mediaData.Restriction = media.Restriction
 	if mediaData.Restriction == "" {
