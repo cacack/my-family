@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, within } from '@testing-library/svelte';
+import { render, screen, fireEvent, within, waitFor } from '@testing-library/svelte';
 import MediaGallery from './MediaGallery.svelte';
 import * as apiModule from '#lib/api/client.js';
 import type { Media } from '#lib/api/client.js';
 import { auth } from '#lib/stores/access.svelte.js';
+import { DISCARD_EDITS_PROMPT } from '#lib/utils/saveConflict.svelte.js';
 
 const branchState = vi.hoisted(() => ({ id: null as string | null }));
 vi.mock('#lib/stores/activeBranch.svelte.js', () => ({ activeBranch: branchState }));
@@ -314,6 +315,77 @@ describe('MediaGallery', () => {
 			expect(apiModule.api.updateMedia).not.toHaveBeenCalled();
 			expect(within(dialog).getByRole('heading', { name: 'Portrait' })).toBeDefined();
 			expect(within(dialog).getByRole('button', { name: 'Edit details' })).toBeDefined();
+		});
+
+		describe('closing with the form open (#1749)', () => {
+			const closers = [
+				['Escape', (dialog: HTMLElement) => fireEvent.keyDown(dialog, { key: 'Escape' })],
+				[
+					'the close button',
+					(dialog: HTMLElement) => fireEvent.click(within(dialog).getByRole('button', { name: 'Close lightbox' }))
+				],
+				[
+					'a click outside',
+					// Off the content's box, which jsdom lays out at 0,0; the dialog
+					// waits 10ms before it treats a pointerdown as outside.
+					async () => {
+						await fireEvent.pointerDown(document.body, { button: 0, clientX: 10, clientY: 10 });
+						await new Promise((r) => setTimeout(r, 20));
+					}
+				]
+			] as const;
+
+			it.each(closers)('asks before %s drops typed edits, and keeps them on Keep editing', async (_, close) => {
+				const dialog = await open(media({}), 'View Portrait');
+				await fill(dialog, 'Grandma', 'On the porch', 'photo');
+
+				await close(dialog);
+				const prompt = await screen.findByRole('alertdialog');
+				expect(within(prompt).getByText(DISCARD_EDITS_PROMPT)).toBeDefined();
+
+				await fireEvent.click(within(prompt).getByRole('button', { name: 'Keep editing' }));
+				await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+				expect(screen.getByRole('dialog')).toBe(dialog);
+				expect((within(dialog).getByRole('textbox', { name: /^Title/ }) as HTMLInputElement).value).toBe('Grandma');
+				expect((within(dialog).getByRole('textbox', { name: 'Description' }) as HTMLTextAreaElement).value).toBe(
+					'On the porch'
+				);
+			});
+
+			it.each(closers)('closes on %s without asking when nothing was changed', async (_, close) => {
+				const dialog = await open(media({}), 'View Portrait');
+				await fireEvent.click(within(dialog).getByRole('button', { name: 'Edit details' }));
+
+				await close(dialog);
+
+				expect(screen.queryByRole('alertdialog')).toBeNull();
+				await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+			});
+
+			it('closes and drops the edits on Discard', async () => {
+				const dialog = await open(media({}), 'View Portrait');
+				await fill(dialog, 'Grandma', '', 'photo');
+
+				await fireEvent.click(within(dialog).getByRole('button', { name: 'Close lightbox' }));
+				await fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Discard' }));
+
+				await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+				expect(apiModule.api.updateMedia).not.toHaveBeenCalled();
+			});
+		});
+
+		it('disables Cancel while a save is in flight', async () => {
+			let resolve!: (m: Media) => void;
+			vi.mocked(apiModule.api.updateMedia).mockReturnValue(new Promise((r) => (resolve = r)));
+			const dialog = await open(media({}), 'View Portrait');
+			await fill(dialog, 'Grandma', '', 'photo');
+
+			await fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+			const cancel = within(dialog).getByRole('button', { name: 'Cancel' }) as HTMLButtonElement;
+			expect(cancel.disabled).toBe(true);
+
+			resolve(media({ title: 'Grandma', version: 2 }));
+			expect(await within(dialog).findByRole('heading', { name: 'Grandma' })).toBeDefined();
 		});
 
 		it('stays on the item while the form is open, even on an arrow key', async () => {

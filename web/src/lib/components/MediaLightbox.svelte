@@ -4,8 +4,10 @@
 	import { tick } from 'svelte';
 	import { api, isReferenceOnly, isStaleVersion, type Media, type MediaType } from '#lib/api/client.js';
 	import { Button } from '#lib/components/ui/button/index.js';
+	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
 	import * as Dialog from '#lib/components/ui/dialog/index.js';
 	import { MEDIA_TYPE_OPTIONS } from '#lib/utils/enumOptions.js';
+	import { DISCARD_EDITS_PROMPT } from '#lib/utils/saveConflict.svelte.js';
 
 	interface Props {
 		open: boolean;
@@ -76,6 +78,31 @@
 		editing = true;
 		await tick();
 		titleInput?.focus();
+	}
+
+	/** Whether the form holds anything the saved item does not. */
+	function hasEdits() {
+		return (
+			editing &&
+			(editTitle !== currentMedia.title ||
+				editDescription !== (currentMedia.description ?? '') ||
+				editMediaType !== (currentMedia.media_type ?? ''))
+		);
+	}
+
+	let discardOpen = $state(false);
+
+	/** Close the lightbox, asking first when it would drop typed edits (#1749). */
+	function requestClose() {
+		if (discardOpen) return;
+		if (hasEdits()) discardOpen = true;
+		else onClose();
+	}
+
+	/** The dialog closes itself on Escape and an outside click; route both through the prompt. */
+	function interceptClose(e: Event) {
+		e.preventDefault();
+		requestClose();
 	}
 
 	async function stopEdit() {
@@ -218,6 +245,8 @@
 	-->
 	<Dialog.Content
 		showCloseButton={false}
+		onEscapeKeydown={interceptClose}
+		onInteractOutside={interceptClose}
 		class="max-w-none sm:max-w-none md:max-w-[95vw] h-[90vh] grid-rows-[minmax(0,1fr)] p-0 bg-black/95 border-none max-md:inset-0 max-md:h-dvh max-md:translate-none max-md:rounded-none max-md:bg-black"
 	>
 		<div class="sr-only">
@@ -227,7 +256,7 @@
 		</div>
 
 		<!-- Close button -->
-		<Button variant="ghost" size="icon" class="absolute top-4 right-4 z-10 rounded-full text-white hover:bg-white/20" onclick={onClose} aria-label="Close lightbox">
+		<Button variant="ghost" size="icon" class="absolute top-4 right-4 z-10 rounded-full text-white hover:bg-white/20" onclick={requestClose} aria-label="Close lightbox">
 			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="size-6">
 				<line x1="18" y1="6" x2="6" y2="18" />
 				<line x1="6" y1="6" x2="18" y2="18" />
@@ -383,6 +412,7 @@
 									variant="outline"
 									size="sm"
 									class="border-white/40 bg-transparent text-white hover:bg-white/20 hover:text-white"
+									disabled={saving}
 									onclick={stopEdit}>Cancel</Button
 								>
 							</div>
@@ -462,6 +492,15 @@
 		</div>
 	</Dialog.Content>
 </Dialog.Root>
+
+<ConfirmDialog
+	bind:open={discardOpen}
+	title={DISCARD_EDITS_PROMPT}
+	description="The changes you made in this form will be lost."
+	confirmLabel="Discard"
+	cancelLabel="Keep editing"
+	onconfirm={onClose}
+/>
 
 <style>
 .lightbox-content {
