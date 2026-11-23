@@ -245,8 +245,9 @@ type MediaOwner struct {
 	EntityType string // "person", "family" or "source"
 	EntityID   uuid.UUID
 	Title      string
-	// NoteText is the link's inline NOTE text; unlike the *Notes fields it
-	// holds no pointers, so renameCollidingNotes has nothing to rewrite.
+	// NoteText is the link's note text, a shared note's text in place of its
+	// pointer (mediaNotes); unlike the *Notes fields it holds no pointers, so
+	// renameCollidingNotes has nothing to rewrite.
 	NoteText string
 	// The crop, nil where the link has none. TOP and LEFT default to 0, so a
 	// crop always has both; WIDTH and HEIGHT are nil when absent (the rest of
@@ -511,11 +512,16 @@ func (imp *Importer) ImportWithOptions(ctx context.Context, reader io.Reader, im
 
 	// Fifth pass: parse shared (top-level) NOTE records
 	// These are NOTE records that can be referenced by multiple entities via XRef
+	// noteTexts maps each note's xref as the file's OBJE pointers give it to
+	// the note, for the media pass (mediaNotes); renameCollidingNotes rekeys
+	// NoteXrefToID, so it can't serve there.
 	var notes []NoteData
+	noteTexts := make(map[string]NoteData)
 	for _, note := range doc.Notes() {
 		noteData := parseNote(note)
 		notes = append(notes, noteData)
 		result.NoteXrefToID[note.XRef] = noteData.ID
+		noteTexts[note.XRef] = noteData
 	}
 
 	// Also parse GEDCOM 7.0 shared note (SNOTE) records. Unlike plain NOTE
@@ -525,6 +531,7 @@ func (imp *Importer) ImportWithOptions(ctx context.Context, reader io.Reader, im
 		noteData := parseSharedNote(snote)
 		notes = append(notes, noteData)
 		result.NoteXrefToID[snote.XRef] = noteData.ID
+		noteTexts[snote.XRef] = noteData
 	}
 
 	// Sixth pass: parse SUBM (submitter) records
@@ -567,9 +574,9 @@ func (imp *Importer) ImportWithOptions(ctx context.Context, reader io.Reader, im
 	// links that describe their media in place (#1479)
 	// These contain full media metadata including multiple files and translations
 	var mediaObjects []MediaData
-	owners, inline := mediaLinks(doc, result)
+	owners, inline := mediaLinks(doc, noteTexts, result)
 	for _, media := range doc.MediaObjects() {
-		mediaData := parseMediaObject(media, result)
+		mediaData := parseMediaObject(media, noteTexts, result)
 		mediaData.Owners = owners[media.XRef]
 		mediaObjects = append(mediaObjects, mediaData)
 		result.MediaXrefToID[media.XRef] = mediaData.ID
@@ -2270,7 +2277,7 @@ func extractLDSOrdinancesFromFamily(fam *gedcom.Family, familyID uuid.UUID) []LD
 // Note: This parses top-level OBJE records; mediaLinks finds the records that
 // link to them. A record with no FILE is still imported, as a document, with
 // a warning (#1585).
-func parseMediaObject(media *gedcom.MediaObject, result *ImportResult) MediaData {
+func parseMediaObject(media *gedcom.MediaObject, noteTexts map[string]NoteData, result *ImportResult) MediaData {
 	mediaData := parseMediaFiles(media.Files)
 	if len(media.Files) == 0 {
 		mediaData.MediaType = mapGedcomMediaType("")
@@ -2278,7 +2285,8 @@ func parseMediaObject(media *gedcom.MediaObject, result *ImportResult) MediaData
 			fmt.Sprintf("Media %s has no FILE; imported as a document with no file", media.XRef))
 	}
 	mediaData.GedcomXref = media.XRef
-	mediaData.Description = joinNotes(media.InlineNotes...)
+	mediaData.Description = mediaNotes("Media "+media.XRef,
+		append(slices.Clone(media.NoteXRefs), media.SharedNoteXRefs...), media.InlineNotes, noteTexts, result)
 	mediaData.Restriction = media.Restriction
 	if mediaData.Restriction == "" {
 		mediaData.Restriction = extensionRestriction(media.Tags)
@@ -2374,10 +2382,10 @@ func parseMediaFiles(files []*gedcom.MediaFile) MediaData {
 // citations. It returns, per OBJE xref, the records that link to it, in file
 // order and each once, and an item for each inline link that names a file,
 // owned by the record that contains it. Where a link sat within its record is not kept.
-func mediaLinks(doc *gedcom.Document, result *ImportResult) (map[string][]MediaOwner, []MediaData) {
+func mediaLinks(doc *gedcom.Document, noteTexts map[string]NoteData, result *ImportResult) (map[string][]MediaOwner, []MediaData) {
 	owners := make(map[string][]MediaOwner)
 	var inline []MediaData
-	add := func(links []*gedcom.MediaLink, owner MediaOwner) {
+	add := func(links []*gedcom.MediaLink, owner MediaOwner, where string) {
 		for _, link := range links {
 			switch {
 			case link == nil:
@@ -2385,23 +2393,47 @@ func mediaLinks(doc *gedcom.Document, result *ImportResult) (map[string][]MediaO
 				if !slices.ContainsFunc(owners[link.MediaXRef], func(o MediaOwner) bool {
 					return o.EntityType == owner.EntityType && o.EntityID == owner.EntityID
 				}) {
-					owners[link.MediaXRef] = append(owners[link.MediaXRef], linkOwner(owner, link))
+					owners[link.MediaXRef] = append(owners[link.MediaXRef], linkOwner(owner, link, noteTexts, where, result))
 				}
 			case slices.ContainsFunc(link.Files, hasFileRef):
-				inline = append(inline, parseInlineMedia(link, linkOwner(owner, link)))
+				inline = append(inline, parseInlineMedia(link, linkOwner(owner, link, noteTexts, where, result)))
 			}
 		}
 	}
 	for _, indi := range doc.Individuals() {
-		add(individualMediaLinks(indi), MediaOwner{EntityType: "person", EntityID: result.PersonXrefToID[indi.XRef]})
+		add(individualMediaLinks(indi), MediaOwner{EntityType: "person", EntityID: result.PersonXrefToID[indi.XRef]}, "Individual "+indi.XRef)
 	}
 	for _, fam := range doc.Families() {
-		add(familyMediaLinks(fam), MediaOwner{EntityType: "family", EntityID: result.FamilyXrefToID[fam.XRef]})
+		add(familyMediaLinks(fam), MediaOwner{EntityType: "family", EntityID: result.FamilyXrefToID[fam.XRef]}, "Family "+fam.XRef)
 	}
 	for _, src := range doc.Sources() {
-		add(src.Media, MediaOwner{EntityType: "source", EntityID: result.SourceXrefToID[src.XRef]})
+		add(src.Media, MediaOwner{EntityType: "source", EntityID: result.SourceXrefToID[src.XRef]}, "Source "+src.XRef)
 	}
 	return owners, inline
+}
+
+// mediaNotes joins the notes of an OBJE record or link with noteJoin: the
+// text of each shared note it points to, then its inline text (#1756). A
+// media description is plain text, so a pointer is replaced by its note's
+// text. A pointer to no note record in the file, or to a private note (whose
+// text would lose its restriction in the description), is left out with a
+// warning naming where it is.
+func mediaNotes(where string, pointers, inline []string, noteTexts map[string]NoteData, result *ImportResult) string {
+	var notes []string
+	for _, ptr := range pointers {
+		note, ok := noteTexts[ptr]
+		switch {
+		case !ok:
+			result.Warnings = append(result.Warnings,
+				fmt.Sprintf("%s: OBJE note %s points to no note record; not imported", where, ptr))
+		case domain.Restriction(note.Restriction).IsPrivate():
+			result.Warnings = append(result.Warnings,
+				fmt.Sprintf("%s: OBJE note %s is private; its text is left out of the media description", where, ptr))
+		default:
+			notes = append(notes, note.Text)
+		}
+	}
+	return joinNotes(append(notes, inline...)...)
 }
 
 // OwnerText returns the title and description of owner's item: the link's
@@ -2423,10 +2455,11 @@ func (m MediaData) OwnerText(owner MediaOwner) (title, description string, short
 	return title, description, shortened
 }
 
-// linkOwner returns owner with the title, inline notes and crop of its link.
-func linkOwner(owner MediaOwner, link *gedcom.MediaLink) MediaOwner {
+// linkOwner returns owner with the title, notes (mediaNotes) and crop of its
+// link; where names the linking record in a warning.
+func linkOwner(owner MediaOwner, link *gedcom.MediaLink, noteTexts map[string]NoteData, where string, result *ImportResult) MediaOwner {
 	owner.Title = link.Title
-	owner.NoteText = joinNotes(link.InlineNotes...)
+	owner.NoteText = mediaNotes(where, link.NoteXRefs, link.InlineNotes, noteTexts, result)
 	if c := link.Crop; c != nil {
 		owner.CropLeft, owner.CropTop = new(c.Left), new(c.Top)
 		if c.Width != 0 {
