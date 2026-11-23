@@ -205,6 +205,133 @@ describe('MediaGallery', () => {
 			expect((await within(dialog).findByRole('alert')).textContent).toBe('Not allowed');
 		});
 	});
+	describe('editing the details (#1107)', () => {
+		async function open(item: Media, name: string | RegExp) {
+			list([item]);
+			render(MediaGallery, { props: { ownerType: 'person', ownerId: 'p-1' } });
+			await fireEvent.click(await screen.findByRole('button', { name }));
+			return screen.findByRole('dialog');
+		}
+
+		async function fill(dialog: HTMLElement, title: string, description: string, type: string) {
+			await fireEvent.click(within(dialog).getByRole('button', { name: 'Edit details' }));
+			await fireEvent.input(within(dialog).getByRole('textbox', { name: /^Title/ }), { target: { value: title } });
+			await fireEvent.input(within(dialog).getByRole('textbox', { name: 'Description' }), {
+				target: { value: description }
+			});
+			await fireEvent.change(within(dialog).getByRole('combobox', { name: 'Type' }), { target: { value: type } });
+		}
+
+		it('saves a new title, description and type with the item version', async () => {
+			vi.mocked(apiModule.api.updateMedia).mockResolvedValue(
+				media({ title: 'Grandma, 1920', description: 'On the porch', media_type: 'document', version: 3 })
+			);
+			const dialog = await open(media({ media_type: 'photo', version: 2 }), 'View Portrait');
+
+			await fill(dialog, 'Grandma, 1920', 'On the porch', 'document');
+			await fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+
+			expect(apiModule.api.updateMedia).toHaveBeenCalledWith('m-1', {
+				title: 'Grandma, 1920',
+				description: 'On the porch',
+				media_type: 'document',
+				version: 2
+			});
+			expect(await within(dialog).findByRole('heading', { name: 'Grandma, 1920' })).toBeDefined();
+			expect(within(dialog).getByText('On the porch')).toBeDefined();
+			expect(within(dialog).getByText('document')).toBeDefined();
+			expect(within(dialog).queryByRole('form', { name: 'Edit details' })).toBeNull();
+			expect(screen.getByRole('button', { name: 'View Grandma, 1920' })).toBeDefined();
+		});
+
+		it('edits a GEDCOM-imported reference, which has no file', async () => {
+			vi.mocked(apiModule.api.updateMedia).mockResolvedValue(
+				media({ ...reference, title: 'Wedding, 1890', media_type: 'certificate', version: 2 })
+			);
+			const dialog = await open(reference, /^View Wedding/);
+
+			await fill(dialog, 'Wedding, 1890', '', 'certificate');
+			await fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+
+			expect(apiModule.api.updateMedia).toHaveBeenCalledWith('m-ref', {
+				title: 'Wedding, 1890',
+				description: null,
+				media_type: 'certificate',
+				version: 1
+			});
+			expect(await within(dialog).findByRole('heading', { name: 'Wedding, 1890' })).toBeDefined();
+			expect(within(dialog).getByText('Not stored (reference only)')).toBeDefined();
+			expect(screen.getByRole('button', { name: /^View Wedding, 1890 photos\/wedding\.jpg/ })).toBeDefined();
+		});
+
+		it('keeps what was typed after a stale save and resends it on Try again', async () => {
+			vi.mocked(apiModule.api.updateMedia).mockRejectedValueOnce({
+				status: 409,
+				code: 'VERSION_CONFLICT',
+				message: 'version conflict'
+			});
+			vi.mocked(apiModule.api.getMedia).mockResolvedValue(media({ title: 'Portrait (edited elsewhere)', version: 5 }));
+			vi.mocked(apiModule.api.updateMedia).mockResolvedValueOnce(media({ title: 'Grandma', version: 6 }));
+			const dialog = await open(media({}), 'View Portrait');
+
+			await fill(dialog, 'Grandma', 'On the porch', 'photo');
+			await fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+
+			expect((await within(dialog).findByRole('alert')).textContent).toMatch(/changed elsewhere/);
+			expect((within(dialog).getByRole('textbox', { name: /^Title/ }) as HTMLInputElement).value).toBe('Grandma');
+			expect((within(dialog).getByRole('textbox', { name: 'Description' }) as HTMLTextAreaElement).value).toBe(
+				'On the porch'
+			);
+
+			await fireEvent.click(within(dialog).getByRole('button', { name: 'Try again' }));
+			expect(apiModule.api.updateMedia).toHaveBeenLastCalledWith('m-1', {
+				title: 'Grandma',
+				description: 'On the porch',
+				media_type: 'photo',
+				version: 5
+			});
+			expect(await within(dialog).findByRole('heading', { name: 'Grandma' })).toBeDefined();
+			expect(within(dialog).queryByRole('button', { name: 'Try again' })).toBeNull();
+		});
+
+		it('shows a refusal and keeps the form', async () => {
+			vi.mocked(apiModule.api.updateMedia).mockRejectedValue({ status: 400, message: 'title too long' });
+			const dialog = await open(media({}), 'View Portrait');
+
+			await fill(dialog, 'Grandma', '', 'photo');
+			await fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+
+			expect((await within(dialog).findByRole('alert')).textContent).toBe('title too long');
+			expect((within(dialog).getByRole('textbox', { name: /^Title/ }) as HTMLInputElement).value).toBe('Grandma');
+		});
+
+		it('leaves the item unchanged on Cancel', async () => {
+			const dialog = await open(media({}), 'View Portrait');
+
+			await fill(dialog, 'Grandma', '', 'photo');
+			await fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+
+			expect(apiModule.api.updateMedia).not.toHaveBeenCalled();
+			expect(within(dialog).getByRole('heading', { name: 'Portrait' })).toBeDefined();
+			expect(within(dialog).getByRole('button', { name: 'Edit details' })).toBeDefined();
+		});
+
+		it('does not save an empty title', async () => {
+			const dialog = await open(media({}), 'View Portrait');
+
+			await fill(dialog, '   ', '', 'photo');
+
+			expect((within(dialog).getByRole('button', { name: 'Save' }) as HTMLButtonElement).disabled).toBe(true);
+		});
+
+		it('is not offered to a viewer', async () => {
+			auth.phase = 'visitor';
+			const dialog = await open(media({}), 'View Portrait');
+
+			expect(within(dialog).queryByRole('button', { name: 'Edit details' })).toBeNull();
+			expect(within(dialog).queryByRole('textbox')).toBeNull();
+		});
+	});
 	describe('attaching a file to a reference (#1504)', () => {
 		async function openReference() {
 			list([reference]);

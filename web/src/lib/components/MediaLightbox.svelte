@@ -1,9 +1,11 @@
 <script lang="ts">
 	import { can } from '#lib/stores/access.svelte.js';
 	import { activeBranch } from '#lib/stores/activeBranch.svelte.js';
-	import { api, isReferenceOnly, isStaleVersion, type Media } from '#lib/api/client.js';
+	import { tick } from 'svelte';
+	import { api, isReferenceOnly, isStaleVersion, type Media, type MediaType } from '#lib/api/client.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import * as Dialog from '#lib/components/ui/dialog/index.js';
+	import { MEDIA_TYPE_OPTIONS } from '#lib/utils/enumOptions.js';
 
 	interface Props {
 		open: boolean;
@@ -54,6 +56,76 @@
 		}
 	}
 
+	let editing = $state(false);
+	let saving = $state(false);
+	let editError: string | null = $state(null);
+	/** Set when a stale save reloaded the item: Save becomes Try again, keeping the form as typed. */
+	let retrySave = $state(false);
+	let editTitle = $state('');
+	let editDescription = $state('');
+	let editMediaType: MediaType | '' = $state('');
+	let editButton: HTMLElement | null = $state(null);
+	let titleInput: HTMLInputElement | undefined = $state();
+
+	async function startEdit() {
+		editTitle = currentMedia.title;
+		editDescription = currentMedia.description ?? '';
+		editMediaType = currentMedia.media_type ?? '';
+		editError = null;
+		retrySave = false;
+		editing = true;
+		await tick();
+		titleInput?.focus();
+	}
+
+	async function stopEdit() {
+		editing = false;
+		editError = null;
+		retrySave = false;
+		await tick();
+		editButton?.focus();
+	}
+
+	/**
+	 * Save the title, description and type. A stale version loads the latest
+	 * one and keeps what was typed, so Try again resends it, as the private
+	 * mark does.
+	 */
+	async function saveEdit(event: SubmitEvent) {
+		event.preventDefault();
+		if (saving || !editTitle.trim()) return;
+		const target = currentMedia;
+		saving = true;
+		editError = null;
+		retrySave = false;
+		try {
+			onUpdate?.(
+				await api.updateMedia(target.id, {
+					title: editTitle.trim(),
+					description: editDescription.trim() || null,
+					...(editMediaType ? { media_type: editMediaType } : {}),
+					version: target.version
+				})
+			);
+			saving = false;
+			await stopEdit();
+		} catch (e) {
+			if (isStaleVersion(e)) {
+				editError = 'This item was changed elsewhere and has been reloaded. Your changes are kept.';
+				retrySave = true;
+				try {
+					onUpdate?.(await api.getMedia(target.id));
+				} catch {
+					// Keep the notice; Try again reports any failure.
+				}
+			} else {
+				editError = (e as { message?: string }).message || 'Failed to save the item';
+			}
+		} finally {
+			saving = false;
+		}
+	}
+
 	let attaching = $state(false);
 	let attachError: string | null = $state(null);
 	let attachInput: HTMLInputElement | undefined = $state();
@@ -89,12 +161,15 @@
 	);
 
 	function goToPrevious() {
+		// Moving on would drop the edit form, and an arrow key there moves the caret.
+		if (editing) return;
 		if (currentIndex > 0) {
 			navigateTo(currentIndex - 1);
 		}
 	}
 
 	function goToNext() {
+		if (editing) return;
 		if (currentIndex < allMedia.length - 1) {
 			navigateTo(currentIndex + 1);
 		}
@@ -160,7 +235,7 @@
 		</Button>
 
 		<!-- Navigation buttons -->
-		{#if allMedia.length > 1 && currentIndex > 0}
+		{#if !editing && allMedia.length > 1 && currentIndex > 0}
 			<Button variant="ghost" size="icon" class="nav-prev absolute top-1/2 left-4 z-10 -translate-y-1/2 rounded-full text-white hover:bg-white/20 h-12 w-12" onclick={goToPrevious} aria-label="Previous media">
 				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="size-6">
 					<polyline points="15 18 9 12 15 6" />
@@ -168,7 +243,7 @@
 			</Button>
 		{/if}
 
-		{#if allMedia.length > 1 && currentIndex < allMedia.length - 1}
+		{#if !editing && allMedia.length > 1 && currentIndex < allMedia.length - 1}
 			<Button variant="ghost" size="icon" class="nav-next absolute top-1/2 right-4 z-10 -translate-y-1/2 rounded-full text-white hover:bg-white/20 h-12 w-12" onclick={goToNext} aria-label="Next media">
 				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="size-6">
 					<polyline points="9 18 15 12 9 6" />
@@ -176,7 +251,7 @@
 			</Button>
 		{/if}
 
-		<div class="lightbox-content">
+		<div class="lightbox-content" class:editing>
 			<div class="media-container">
 				{#if referenceOnly}
 					<div class="document-preview">
@@ -269,15 +344,71 @@
 
 				<!-- Under the title, so it is in view on a phone, where the panel scrolls (#1550). -->
 				{#if can('editor')}
+					{#if editing}
+						<form class="edit-form" onsubmit={saveEdit} aria-label="Edit details">
+							<label class="edit-field">
+								<span>Title <span class="required">*</span></span>
+								<input bind:this={titleInput} type="text" bind:value={editTitle} maxlength="500" required />
+							</label>
+							<label class="edit-field">
+								<span>Description</span>
+								<textarea bind:value={editDescription} rows="3"></textarea>
+							</label>
+							<label class="edit-field">
+								<span>Type</span>
+								<select bind:value={editMediaType}>
+									{#if !editMediaType}
+										<option value="" disabled>Not set</option>
+									{/if}
+									{#each MEDIA_TYPE_OPTIONS as option (option.value)}
+										<option value={option.value}>{option.label}</option>
+									{/each}
+								</select>
+							</label>
+							{#if editError}
+								<p class="mark-error" role="alert">{editError}</p>
+							{/if}
+							<div class="edit-buttons">
+								<!-- Light on the dark panel, where the default fill would not show. -->
+								<Button
+									type="submit"
+									size="sm"
+									class="bg-white text-slate-900 hover:bg-white/90"
+									aria-disabled={saving}
+									disabled={!editTitle.trim()}
+									>{saving ? 'Saving…' : retrySave ? 'Try again' : 'Save'}</Button
+								>
+								<Button
+									type="button"
+									variant="outline"
+									size="sm"
+									class="border-white/40 bg-transparent text-white hover:bg-white/20 hover:text-white"
+									onclick={stopEdit}>Cancel</Button
+								>
+							</div>
+						</form>
+					{/if}
 					<div class="privacy-action">
-						<Button
-							variant="outline"
-							size="sm"
-							class="border-white/40 bg-transparent text-white hover:bg-white/20 hover:text-white"
-							aria-disabled={marking}
-							onclick={() => setPrivate(!currentMedia.private)}
-							>{currentMedia.private ? 'Unmark private' : 'Mark private'}</Button
-						>
+						<!-- One row, so the panel's 200px on a phone still shows Mark private (#1550). -->
+						<div class="detail-buttons">
+							{#if !editing}
+								<Button
+									bind:ref={editButton}
+									variant="outline"
+									size="sm"
+									class="border-white/40 bg-transparent text-white hover:bg-white/20 hover:text-white"
+									onclick={startEdit}>Edit details</Button
+								>
+							{/if}
+							<Button
+								variant="outline"
+								size="sm"
+								class="border-white/40 bg-transparent text-white hover:bg-white/20 hover:text-white"
+								aria-disabled={marking}
+								onclick={() => setPrivate(!currentMedia.private)}
+								>{currentMedia.private ? 'Unmark private' : 'Mark private'}</Button
+							>
+						</div>
 						{#if markError}
 							<p class="mark-error" role="alert">{markError}</p>
 						{/if}
@@ -294,7 +425,7 @@
 					</div>
 				{/if}
 
-				{#if currentMedia.description}
+				{#if currentMedia.description && !editing}
 					<p class="description">{currentMedia.description}</p>
 				{/if}
 
@@ -443,6 +574,48 @@
 		margin-bottom: 1rem;
 	}
 
+	.edit-form {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+		margin-bottom: 1rem;
+	}
+
+	.edit-field {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+		font-size: 0.8125rem;
+	}
+
+	.edit-field input,
+	.edit-field textarea,
+	.edit-field select {
+		width: 100%;
+		min-width: 0;
+		padding: 0.375rem 0.5rem;
+		border: 1px solid rgb(255 255 255 / 0.4);
+		border-radius: 6px;
+		background: white;
+		color: #0f172a;
+		font-size: 0.875rem;
+	}
+
+	.edit-field textarea {
+		resize: vertical;
+	}
+
+	.required {
+		color: #fecaca;
+	}
+
+	.edit-buttons,
+	.detail-buttons {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.5rem;
+	}
+
 	.attach-action {
 		display: flex;
 		flex-direction: column;
@@ -486,6 +659,16 @@
 		.metadata-panel {
 			width: 100%;
 			max-height: 200px;
+		}
+
+		/* The form needs more than the panel's 200px, so it takes the screen while open. */
+		.lightbox-content.editing .media-container {
+			display: none;
+		}
+
+		.lightbox-content.editing .metadata-panel {
+			max-height: none;
+			flex: 1;
 		}
 
 		.document-preview {
