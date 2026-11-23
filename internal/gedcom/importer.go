@@ -95,7 +95,7 @@ type PersonData struct {
 	DeathPlaceLat   *string // Latitude in GEDCOM format
 	DeathPlaceLong  *string // Longitude in GEDCOM format
 	Notes           string
-	BirthNotes      string // NOTEs under BIRT, joined with noteJoin (#1250)
+	BirthNotes      string // NOTEs under BIRT, then a record BIRT's descriptor, joined with noteJoin (#1250, #1719)
 	DeathNotes      string // NOTEs under DEAT, joined with noteJoin (#1250)
 	BirthTypeDetail string // TYPE under BIRT (#1284)
 	DeathTypeDetail string // TYPE under DEAT (#1284)
@@ -650,7 +650,12 @@ func parseIndividual(indi *gedcom.Individual, _ *gedcom.Document, result *Import
 			}
 			person.BirthDate = event.Date
 			person.BirthPlace = event.PlaceName()
-			person.BirthNotes = eventNotes(event)
+			// The record has no field for a descriptor, as in "1 BIRT
+			// Something" with a DATE, so it is kept as the last birth note
+			// (#1719). A death's descriptor takes a longer way: it is held on
+			// a merged death life event (deathLifeEvents), which the exporter
+			// writes as the DEAT's last NOTE, so both end up as a note.
+			person.BirthNotes = joinNotes(eventNotes(event), event.Description)
 			person.BirthTypeDetail = event.EventTypeDetail
 			// Extract coordinates from PlaceDetail if available
 			if event.PlaceDetail != nil && event.PlaceDetail.Coordinates != nil {
