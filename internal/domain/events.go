@@ -2083,6 +2083,55 @@ func NewPlaceUpdated(placeID uuid.UUID, key, text string, changes map[string]any
 	}
 }
 
+// PlaceAliased says that a place's key means another place (ADR-009 §3): it is
+// appended to the stream of the place being absorbed, and from then on every
+// record whose text has Key resolves to the target. No record's text changes.
+// Key and Text name the absorbed place, TargetKey and TargetText the target,
+// as PlaceUpdated names its place.
+type PlaceAliased struct {
+	BaseEvent
+	PlaceID    uuid.UUID `json:"place_id"`
+	Key        string    `json:"key"`
+	Text       string    `json:"text"`
+	TargetID   uuid.UUID `json:"target_id"`
+	TargetKey  string    `json:"target_key"`
+	TargetText string    `json:"target_text"`
+}
+
+func (e PlaceAliased) EventType() string      { return "PlaceAliased" }
+func (e PlaceAliased) AggregateID() uuid.UUID { return e.PlaceID }
+
+// NewPlaceAliased creates a PlaceAliased event absorbing the place with key
+// into the place with targetKey.
+func NewPlaceAliased(key, text, targetKey, targetText string, placeID, targetID uuid.UUID) PlaceAliased {
+	return PlaceAliased{
+		BaseEvent:  NewBaseEvent(),
+		PlaceID:    placeID,
+		Key:        key,
+		Text:       text,
+		TargetID:   targetID,
+		TargetKey:  targetKey,
+		TargetText: targetText,
+	}
+}
+
+// PlaceUnaliased undoes the PlaceAliased on the same stream (ADR-009 §3): the
+// place's key names the place itself again.
+type PlaceUnaliased struct {
+	BaseEvent
+	PlaceID uuid.UUID `json:"place_id"`
+	Key     string    `json:"key"`
+	Text    string    `json:"text"`
+}
+
+func (e PlaceUnaliased) EventType() string      { return "PlaceUnaliased" }
+func (e PlaceUnaliased) AggregateID() uuid.UUID { return e.PlaceID }
+
+// NewPlaceUnaliased creates a PlaceUnaliased event.
+func NewPlaceUnaliased(placeID uuid.UUID, key, text string) PlaceUnaliased {
+	return PlaceUnaliased{BaseEvent: NewBaseEvent(), PlaceID: placeID, Key: key, Text: text}
+}
+
 // Kinds of entity an ImportedValuesBackfilled event can name.
 const (
 	BackfillPerson     = "person"

@@ -17,7 +17,7 @@ import (
 // repositories, which it references.
 var mainOnlyTables = []string{
 	"submitters", "repository_external_ids", "repositories", "lds_ordinances",
-	"places", "projection_failures",
+	"places", "place_aliases", "projection_failures",
 }
 
 // readModelTables is every table ResetReadModel drops, in drop order.

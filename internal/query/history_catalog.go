@@ -170,6 +170,9 @@ var historyEventCatalog = map[string]historyEventClass{
 	// A place has no created event: it exists once its key is in use, so
 	// every fact stated about it is an update (ADR-009 §2).
 	"PlaceUpdated": mapped(entityTypePlace, actionUpdated),
+	// An alias is a fact about the absorbed place, on its own stream (ADR-009 §3).
+	"PlaceAliased":   mapped(entityTypePlace, actionUpdated),
+	"PlaceUnaliased": mapped(entityTypePlace, actionUpdated),
 	// A brick wall (#802) is a claim about the person, on the person's stream.
 	"BrickWallSet":      mapped(entityTypePerson, actionUpdated),
 	"BrickWallResolved": mapped(entityTypePerson, actionUpdated),

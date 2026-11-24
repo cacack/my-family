@@ -942,6 +942,15 @@ type ReadModelStore interface {
 	// privacy decorator judges a place's visibility in.
 	ListPlaceFacts(ctx context.Context, branchID domain.BranchID) ([]PlaceFactsReadModel, error)
 
+	// Place aliases (ADR-009 §3): the place_aliases table, projected from
+	// PlaceAliased and PlaceUnaliased. MAIN-ONLY (PL-005) like the facts, and
+	// small, so the projector rewrites it whole.
+
+	// ListPlaceAliases returns every row of place_aliases, by key.
+	ListPlaceAliases(ctx context.Context) ([]PlaceAliasReadModel, error)
+	// ReplacePlaceAliases replaces every row of place_aliases with aliases.
+	ReplacePlaceAliases(ctx context.Context, aliases []PlaceAliasReadModel) error
+
 	// Map operations
 
 	// GetMapLocations aggregates person birth/death coordinates within the branch

@@ -1675,6 +1675,19 @@ func (s *PrivacyStore) ListPlaces(ctx context.Context, branchID domain.BranchID,
 	return s.inner.ListPlaces(ctx, branchID, s.privacy(ctx))
 }
 
+// ListPlaceAliases passes through: it is read only to resolve the keys of
+// records the principal may already see, and a place such a record resolves
+// to is visible (ADR-009 §10). No read returns its rows; ListPlaces lists an
+// alias only when a visible record uses it.
+func (s *PrivacyStore) ListPlaceAliases(ctx context.Context) ([]repository.PlaceAliasReadModel, error) {
+	return s.inner.ListPlaceAliases(ctx)
+}
+
+// ReplacePlaceAliases is a projection write and passes through.
+func (s *PrivacyStore) ReplacePlaceAliases(ctx context.Context, aliases []repository.PlaceAliasReadModel) error {
+	return s.inner.ReplacePlaceAliases(ctx, aliases)
+}
+
 // SavePlaceFacts is a projection write and passes through.
 func (s *PrivacyStore) SavePlaceFacts(ctx context.Context, facts *repository.PlaceFactsReadModel) error {
 	return s.inner.SavePlaceFacts(ctx, facts)

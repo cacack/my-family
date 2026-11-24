@@ -170,6 +170,18 @@ func (p *Projector) Project(ctx context.Context, event domain.Event, version int
 		return p.projectImportedValuesBackfilled(ctx, e, version, branchID)
 	case domain.PlaceUpdated:
 		return p.projectPlaceUpdated(ctx, e, version)
+	case domain.PlaceAliased:
+		return p.projectPlaceAlias(ctx, e.PlaceID, e.Key, e.OccurredAt(), version, func(rows []PlaceAliasReadModel) []PlaceAliasReadModel {
+			stated, ok := StatePlaceAlias(rows, e.Key, e.TargetKey)
+			if !ok {
+				slog.Warn("projection: ignoring a place alias that would close a cycle", "key", e.Key, "target", e.TargetKey)
+			}
+			return stated
+		})
+	case domain.PlaceUnaliased:
+		return p.projectPlaceAlias(ctx, e.PlaceID, e.Key, e.OccurredAt(), version, func(rows []PlaceAliasReadModel) []PlaceAliasReadModel {
+			return DropPlaceAlias(rows, e.Key)
+		})
 	case domain.BrickWallSet:
 		return p.projectBrickWall(ctx, e.PersonID, e.Note, e.Since, nil, version, branchID)
 	case domain.BrickWallResolved:
@@ -1835,6 +1847,32 @@ func (p *Projector) projectPlaceUpdated(ctx context.Context, e domain.PlaceUpdat
 	facts.Version = version
 	facts.UpdatedAt = e.OccurredAt()
 	return p.readStore.SavePlaceFacts(ctx, facts)
+}
+
+// projectPlaceAlias applies an alias event of the place with id and key
+// (ADR-009 §3): it moves the place's stream version on its places row,
+// creating the row if need be, as PlaceUpdated does, then rewrites
+// place_aliases as change returns it. The projector decides (PL-004): change
+// ignores an alias that would close a cycle, in log order, and every resolved
+// key is recomputed, so a rebuild gives the same rows. MAIN-ONLY (PL-005).
+func (p *Projector) projectPlaceAlias(ctx context.Context, id uuid.UUID, key string, at time.Time, version int64,
+	change func([]PlaceAliasReadModel) []PlaceAliasReadModel) error {
+	facts, err := p.readStore.GetPlaceFacts(ctx, id)
+	if err != nil {
+		return err
+	}
+	if facts == nil {
+		facts = &PlaceFactsReadModel{ID: id, Key: key}
+	}
+	facts.Version, facts.UpdatedAt = version, at
+	if err := p.readStore.SavePlaceFacts(ctx, facts); err != nil {
+		return err
+	}
+	rows, err := p.readStore.ListPlaceAliases(ctx)
+	if err != nil {
+		return err
+	}
+	return p.readStore.ReplacePlaceAliases(ctx, change(rows))
 }
 
 func (p *Projector) projectRepositoryDeleted(ctx context.Context, e domain.RepositoryDeleted) error {

@@ -214,38 +214,67 @@ func PlaceID(key string) uuid.UUID {
 // PlaceReadModel is a place (ADR-009 §2): its ID, its key, the name it shows,
 // the number of place uses at or under it, and the facts stated about it. The
 // name is its display name when one is set, otherwise Spelling: its most-used
-// recorded spelling, or its key when no use names it. Latitude, Longitude and Origin are the place's own pair, nil when
-// it has none; Version is its stream's version, 0 before any fact is stated.
+// recorded spelling, or its key when no use names it. Latitude, Longitude and
+// Origin are the place's own pair, nil when it has none; Version is its
+// stream's version, 0 before any place event is appended to it.
+//
+// An absorbed place (ADR-009 §3) has ResolvesTo, the ID of the place its key
+// resolves to; its facts are its own, kept and ignored while the alias
+// stands. A place that absorbs others lists in Aliases those a visible record
+// uses.
 type PlaceReadModel struct {
-	ID        uuid.UUID
-	Key       string
-	Name      string
-	Spelling  string
-	Count     int
-	Latitude  *string
-	Longitude *string
-	Origin    *domain.CoordinateOrigin
-	Version   int64
+	ID         uuid.UUID
+	Key        string
+	Name       string
+	Spelling   string
+	Count      int
+	Latitude   *string
+	Longitude  *string
+	Origin     *domain.CoordinateOrigin
+	Version    int64
+	ResolvesTo *uuid.UUID
+	Aliases    []PlaceAlias
+}
+
+// PlaceAlias is an absorbed place listed under the place it resolves to: its
+// ID, its key and the name it shows on its own.
+type PlaceAlias struct {
+	ID   uuid.UUID
+	Key  string
+	Name string
 }
 
 // Places builds the list of places from the uses of the records a principal
-// may see and the facts stated about places. A use names its own place and
-// every place its key is under (PlaceUnder): "Boston, MA" makes both
-// "boston,ma" and "ma" in use, and counts toward both. A place's name is its
-// display name when facts set one, otherwise its parts, as recorded and joined
-// with ", ", in the spelling with the most uses (ties broken bytewise). A
-// place with facts and no use is listed, with a count of 0 and its key as its
-// fallback name, only for a principal privacy hides nothing from: for anyone
-// else a place no visible record names is absent, facts included (ADR-009
-// §10, PL-006). The places sort by name bytewise, then by key so the order
-// never depends on map order. It is shared by every store so the list is the
-// same on each (DB-001).
-func Places(uses []PlaceUse, facts []PlaceFactsReadModel, privacy Privacy) []PlaceReadModel {
+// may see, the facts stated about places and the place aliases. A use names
+// its own place and every place its key is under (PlaceUnder): "Boston, MA"
+// makes both "boston,ma" and "ma" in use, and counts toward both. A place
+// whose key is absorbed is in use too, with its own count, and its uses also
+// count toward the place it resolves to, once per use; only a whole key is
+// resolved, so "darmstadt,hesse,germany" does not become
+// "darmstadt,hessen,germany" when "hesse,germany" is absorbed (ADR-009 §3).
+// A place's name is its display name when facts set one, otherwise its own
+// parts, as recorded and joined with ", ", in the spelling with the most uses
+// (ties broken bytewise). A place with facts and no use is listed, with a
+// count of 0 and its key as its fallback name, only for a principal privacy
+// hides nothing from: for anyone else a place no visible record names is
+// absent, facts included (ADR-009 §10, PL-006). An absorbed place a visible
+// record uses is listed among its target's aliases. The places sort by name
+// bytewise, then by key so the order never depends on map order. It is
+// shared by every store so the list is the same on each (DB-001).
+func Places(uses []PlaceUse, facts []PlaceFactsReadModel, aliases PlaceAliases, privacy Privacy) []PlaceReadModel {
 	type place struct {
 		spellings map[string]int
 		count     int
 	}
 	byKey := make(map[string]*place)
+	get := func(key string) *place {
+		p, ok := byKey[key]
+		if !ok {
+			p = &place{spellings: make(map[string]int)}
+			byKey[key] = p
+		}
+		return p
+	}
 	for _, u := range uses {
 		if u.Key == "" {
 			continue
@@ -255,34 +284,43 @@ func Places(uses []PlaceUse, facts []PlaceFactsReadModel, privacy Privacy) []Pla
 		if len(nameParts) != len(keyParts) {
 			nameParts = keyParts
 		}
+		counted := make(map[string]bool, len(keyParts))
 		for i := range keyParts {
 			key := strings.Join(keyParts[i:], ",")
-			p, ok := byKey[key]
-			if !ok {
-				p = &place{spellings: make(map[string]int)}
-				byKey[key] = p
-			}
+			p := get(key)
 			p.spellings[strings.Join(nameParts[i:], ", ")] += u.Count
 			p.count += u.Count
+			counted[key] = true
+		}
+		for i := range keyParts {
+			if target, ok := aliases[strings.Join(keyParts[i:], ",")]; ok && !counted[target] {
+				get(target).count += u.Count
+				counted[target] = true
+			}
 		}
 	}
 	factsByKey := PlaceFactsByKey(facts)
 	if privacy.SeesAll() {
 		for key := range factsByKey {
-			if _, ok := byKey[key]; !ok {
-				byKey[key] = &place{spellings: map[string]int{key: 0}}
-			}
+			get(key)
 		}
 	}
 	places := make([]PlaceReadModel, 0, len(byKey))
 	for key, p := range byKey {
 		spelling := mostUsed(p.spellings)
+		if len(p.spellings) == 0 {
+			spelling = key
+		}
 		pl := PlaceReadModel{ID: PlaceID(key), Key: key, Name: spelling, Spelling: spelling, Count: p.count}
 		if f := factsByKey[key]; f != nil {
 			if f.Name != "" {
 				pl.Name = f.Name
 			}
 			pl.Latitude, pl.Longitude, pl.Origin, pl.Version = f.Latitude, f.Longitude, f.Origin, f.Version
+		}
+		if target, ok := aliases[key]; ok {
+			id := PlaceID(target)
+			pl.ResolvesTo = &id
 		}
 		places = append(places, pl)
 	}
@@ -292,5 +330,22 @@ func Places(uses []PlaceUse, facts []PlaceFactsReadModel, privacy Privacy) []Pla
 		}
 		return places[i].Key < places[j].Key
 	})
+	listAliases(places, aliases)
 	return places
+}
+
+// listAliases lists each absorbed place that has a use among the aliases of
+// the place it resolves to, in the order of places. Its target is in places:
+// the use made it so.
+func listAliases(places []PlaceReadModel, aliases PlaceAliases) {
+	index := make(map[string]int, len(places))
+	for i := range places {
+		index[places[i].Key] = i
+	}
+	for _, p := range places {
+		if target, ok := aliases[p.Key]; ok && p.Count > 0 {
+			t := &places[index[target]]
+			t.Aliases = append(t.Aliases, PlaceAlias{ID: p.ID, Key: p.Key, Name: p.Name})
+		}
+	}
 }

@@ -464,6 +464,15 @@ func (s *ReadModelStore) createTables() error {
 			updated_at TEXT NOT NULL
 		);
 
+		-- Place aliases (ADR-009 §3), projected from PlaceAliased and
+		-- PlaceUnaliased: an absorbed key, the target its alias states and the
+		-- key it resolves to. Main-only (PL-005), like places.
+		CREATE TABLE IF NOT EXISTS place_aliases (
+			key TEXT PRIMARY KEY,
+			target_key TEXT NOT NULL,
+			resolved_key TEXT NOT NULL
+		);
+
 		-- Family external identifiers (GEDCOM 7.0 EXID)
 		CREATE TABLE IF NOT EXISTS family_external_ids (
 			family_id TEXT NOT NULL,
@@ -5341,7 +5350,11 @@ func (s *ReadModelStore) ListPlaces(ctx context.Context, branchID domain.BranchI
 	if err != nil {
 		return nil, err
 	}
-	return repository.Places(uses, facts, privacy), nil
+	aliases, err := s.ListPlaceAliases(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return repository.Places(uses, facts, repository.PlaceAliasesByKey(aliases), privacy), nil
 }
 
 // SavePlaceFacts inserts or replaces a place's facts (main-only, PL-005).
@@ -5419,6 +5432,44 @@ func (s *ReadModelStore) ListPlaceFacts(ctx context.Context, _ domain.BranchID) 
 		facts = append(facts, *f)
 	}
 	return facts, rows.Err()
+}
+
+// ListPlaceAliases returns every row of place_aliases, by key.
+func (s *ReadModelStore) ListPlaceAliases(ctx context.Context) ([]repository.PlaceAliasReadModel, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT key, target_key, resolved_key FROM place_aliases ORDER BY key`)
+	if err != nil {
+		return nil, fmt.Errorf("list place aliases: %w", err)
+	}
+	defer rows.Close()
+	var aliases []repository.PlaceAliasReadModel
+	for rows.Next() {
+		var a repository.PlaceAliasReadModel
+		if err := rows.Scan(&a.Key, &a.TargetKey, &a.ResolvedKey); err != nil {
+			return nil, fmt.Errorf("scan place alias: %w", err)
+		}
+		aliases = append(aliases, a)
+	}
+	return aliases, rows.Err()
+}
+
+// ReplacePlaceAliases replaces every row of place_aliases in one transaction
+// (main-only, PL-005).
+func (s *ReadModelStore) ReplacePlaceAliases(ctx context.Context, aliases []repository.PlaceAliasReadModel) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin replace place aliases: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `DELETE FROM place_aliases`); err != nil {
+		return fmt.Errorf("clear place aliases: %w", err)
+	}
+	for _, a := range aliases {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO place_aliases (key, target_key, resolved_key) VALUES (?, ?, ?)`,
+			a.Key, a.TargetKey, a.ResolvedKey); err != nil {
+			return fmt.Errorf("save place alias: %w", err)
+		}
+	}
+	return tx.Commit()
 }
 
 // placeUnderSQL is the SQL form of repository.PlaceUnder for a key column: it
@@ -5589,7 +5640,8 @@ func (s *ReadModelStore) GetPersonsByCemetery(ctx context.Context, place string,
 
 // GetMapLocations returns aggregated geographic locations from the effective
 // birth/death coordinates of persons within the branch overlay (ADR-005,
-// ADR-009 §9): each place-bearing leg joins the places row of its stored key,
+// ADR-009 §9): each place-bearing leg resolves its stored key through
+// place_aliases (ADR-009 §3), joins the places row of the key it resolves to,
 // keeps the rows with an own pair or a place pair, and
 // repository.MapLocations groups them as on every store.
 func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.BranchID, privacy repository.Privacy) ([]repository.MapLocation, error) {
@@ -5600,12 +5652,13 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 		// #nosec G202 -- overlay is one of two constant subquery literals returned by personOverlaySubquery and col is one of two constants; every value is a bound ? placeholder
 		// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 		rows, err := s.db.QueryContext(ctx, `
-			SELECT p.id, p.given_name, p.surname, p.`+col+`, COALESCE(p.`+col+`_key, ''),
+			SELECT p.id, p.given_name, p.surname, p.`+col+`, COALESCE(pa.resolved_key, p.`+col+`_key, ''),
 			       p.`+col+`_lat, p.`+col+`_long, p.`+col+`_origin,
 			       p.restriction, p.living_override, p.death_evidence, p.living_ref_date,
 			       pl.`+strings.ReplaceAll(placeFactsColumns, ", ", ", pl.")+`
 			FROM `+overlay+` p
-			LEFT JOIN places pl ON pl.key = p.`+col+`_key
+			LEFT JOIN place_aliases pa ON pa.key = p.`+col+`_key
+			LEFT JOIN places pl ON pl.key = COALESCE(pa.resolved_key, p.`+col+`_key)
 			WHERE (p.`+col+`_lat IS NOT NULL AND p.`+col+`_long IS NOT NULL AND p.`+col+`_lat != '' AND p.`+col+`_long != '')
 			   OR (pl.latitude IS NOT NULL AND pl.longitude IS NOT NULL)
 			ORDER BY p.`+col+` ASC, p.id ASC

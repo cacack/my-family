@@ -17,8 +17,8 @@ func TestPlaceFactTables_NoBranchID(t *testing.T) {
 	if _, err := pgstore.NewReadModelStore(db); err != nil {
 		t.Fatal(err)
 	}
-	for _, table := range []string{"places"} {
-		if !hasColumn(t, db, table, "id") {
+	for _, table := range []string{"places", "place_aliases"} {
+		if !hasColumn(t, db, table, "key") {
 			t.Fatalf("place fact table %s does not exist", table)
 		}
 		if hasColumn(t, db, table, "branch_id") {
