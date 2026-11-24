@@ -59,4 +59,17 @@ describe('Browse place detail page', () => {
 		await screen.findByRole('heading', { name: 'People from "Ohio"' });
 		expect(apiModule.api.getPlace).toHaveBeenCalledWith(OHIO);
 	});
+
+	it('shows a link from before places had IDs as not found, with no Retry (#1737)', async () => {
+		resetRouter('/browse/places/Ohio', { id: 'Ohio' });
+		vi.mocked(apiModule.api.getPersonsByPlace).mockRejectedValue({
+			status: 400,
+			code: 'BAD_REQUEST',
+			message: 'Invalid format for parameter id: error unmarshaling \'Ohio\' text as *uuid.UUID'
+		});
+		vi.mocked(apiModule.api.getPlace).mockRejectedValue({ status: 400, code: 'BAD_REQUEST', message: '' });
+		render(Page);
+		await screen.findByText(/This place could not be found/);
+		expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+	});
 });

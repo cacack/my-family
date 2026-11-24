@@ -61,4 +61,24 @@ describe('PlaceBrowser', () => {
 		await waitFor(() => expect(currentPath()).toBe(`/browse/places?parent=${USA}`));
 		await screen.findByText('Ohio');
 	});
+
+	it('shows a parent from before places had IDs as not found, with a way back (#1737)', async () => {
+		resetRouter('/browse/places?parent=Ohio');
+		vi.mocked(apiModule.api.getPlaceHierarchy).mockRejectedValue({
+			status: 400,
+			code: 'BAD_REQUEST',
+			message: 'Invalid format for parameter parent'
+		});
+		render(PlaceBrowser);
+		await screen.findByText('This place link is out of date or wrong.');
+		expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+		expect(screen.getByRole('link', { name: 'Browse all places' }).getAttribute('href')).toBe('/browse/places');
+	});
+
+	it('offers Retry when the places fail to load', async () => {
+		vi.mocked(apiModule.api.getPlaceHierarchy).mockRejectedValue({ status: 500, code: 'INTERNAL', message: 'boom' });
+		render(PlaceBrowser);
+		await screen.findByText('Failed to load the places. Please try again.');
+		expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+	});
 });

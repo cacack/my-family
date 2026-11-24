@@ -933,8 +933,9 @@ type ReadModelStore interface {
 	// family's marriage place, life events and attributes count only where
 	// their owner's own facts are shown: a person shown in full, a family that
 	// is not private and has no protected partner (ADR-008 §3, ADR-009 §10).
-	// GetPlaceHierarchy counts birth and death places only, so its counts can
-	// be lower.
+	// A use counts under its key's suffixes, never an explicit parent;
+	// GetPlaceHierarchy counts birth and death places only and follows
+	// explicit parents, so its counts can differ.
 	ListPlaces(ctx context.Context, branchID domain.BranchID, privacy Privacy) ([]PlaceReadModel, error)
 	// ListUnmappedPlaces returns the no-coordinates worklist (ADR-009 §9),
 	// built by UnmappedPlaces from the same records, with their own pairs, as

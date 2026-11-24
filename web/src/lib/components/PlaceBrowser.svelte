@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { api, type PlaceEntry } from '#lib/api/client.js';
+	import { api, loadErrorFailure, notFoundFailure, type ApiError, type LoadFailure, type PlaceEntry } from '#lib/api/client.js';
 	import { setQuery } from '#lib/utils/urlState.js';
 	import ErrorState from './ErrorState.svelte';
 	import LoadingState from './LoadingState.svelte';
@@ -10,7 +10,7 @@
 	// The places from the top level down to the one being browsed.
 	let breadcrumb: PlaceEntry[] = $state([]);
 	let loading = $state(true);
-	let error: string | null = $state(null);
+	let error: LoadFailure | null = $state(null);
 
 	// The ID of the place being browsed lives in the URL (see urlState.ts), so
 	// Back, reload and a copied link return to it. Drilling in is navigation,
@@ -33,7 +33,12 @@
 		} catch (e) {
 			if (seq !== loadSeq) return;
 			console.error('Failed to load places:', e);
-			error = 'Failed to load places. Please try again.';
+			// The only 400 is a parent that is not an ID: a link from before
+			// places had IDs (#1737), which no retry can load.
+			error =
+				parent && (e as ApiError)?.status === 400
+					? notFoundFailure('place', 'This place link is out of date or wrong.')
+					: loadErrorFailure(e, 'places');
 		} finally {
 			if (seq === loadSeq) loading = false;
 		}
@@ -62,7 +67,12 @@
 	{#if loading}
 		<LoadingState label="Loading places..." />
 	{:else if error}
-		<ErrorState message={error} onRetry={loadPlaces} />
+		<ErrorState message={error.message} notFound={error.notFound} onRetry={loadPlaces} />
+		{#if error.notFound}
+			<div class="view-all">
+				<a href="/browse/places" class="view-all-link" data-slot="action-link">Browse all places</a>
+			</div>
+		{/if}
 	{:else}
 		<!-- Breadcrumb Navigation -->
 		<nav class="breadcrumb" aria-label="Place hierarchy">

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { api, type Person } from '#lib/api/client.js';
+	import { api, recordLoadError, type LoadFailure, type Person } from '#lib/api/client.js';
 	import PersonCard from '#lib/components/PersonCard.svelte';
 	import ErrorState from '#lib/components/ErrorState.svelte';
 	import LoadingState from '#lib/components/LoadingState.svelte';
@@ -15,7 +15,7 @@
 	let persons: Person[] = $state([]);
 	let total = $state(0);
 	let loading = $state(true);
-	let loadError: string | null = $state(null);
+	let loadError: LoadFailure | null = $state(null);
 	const pageSize = 20;
 	// The page lives in the URL (see urlState.ts), so Back and reload restore it.
 	const currentPage = $derived(readPositiveInt(page.url.searchParams, 'page', 1));
@@ -40,7 +40,8 @@
 		} catch (e) {
 			if (seq !== loadSeq) return;
 			console.error('Failed to load persons:', e);
-			loadError = 'Failed to load people. Please try again.';
+			// A link from before places had IDs (#1737) reads as not found.
+			loadError = recordLoadError(e, 'place');
 		} finally {
 			if (seq === loadSeq) loading = false;
 		}
@@ -90,7 +91,7 @@
 	{#if loading}
 		<LoadingState label="Loading people..." />
 	{:else if loadError}
-		<ErrorState message={loadError} onRetry={loadPersons} />
+		<ErrorState message={loadError.message} notFound={loadError.notFound} onRetry={loadPersons} />
 	{:else if persons.length === 0}
 		<EmptyState message={placeName ? `No people found from "${placeName}".` : 'No people found from this place.'}>
 			{#snippet actions()}

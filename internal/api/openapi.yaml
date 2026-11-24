@@ -10114,9 +10114,12 @@ components:
           type: integer
           description: >-
             Number of place uses (birth, death, marriage, life event and
-            attribute places) the caller may see at or under this place. It can
-            be larger than `PlaceEntry.count` from `GET /browse/places`, which
-            counts birth and death places only.
+            attribute places) the caller may see at or under this place, under
+            meaning by key: a use counts toward its own place and each place its
+            key names with leading parts removed, never toward an explicit
+            parent. It can differ from `PlaceEntry.count` from
+            `GET /browse/places`, which counts birth and death places only and
+            follows explicit parents.
         parent_id:
           type: string
           format: uuid

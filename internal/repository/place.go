@@ -188,8 +188,9 @@ type PlaceAlias struct {
 
 // Places builds the list of places from the uses of the records a principal
 // may see, the facts stated about places and the place aliases. A use names
-// its own place and every place its key is under (PlaceUnder): "Boston, MA"
-// makes both "boston,ma" and "ma" in use, and counts toward both. A place
+// its own place and every place its key names with leading parts removed:
+// "Boston, MA" makes both "boston,ma" and "ma" in use, and counts toward both,
+// but never toward an explicit parent (GetPlaceHierarchy follows those). A place
 // whose key is absorbed is in use too, with its own count. A use also counts,
 // once, toward the target of every absorbed key at or above it, but no key is
 // rewritten: when "hesse,germany" is absorbed into "hessen,germany", a
