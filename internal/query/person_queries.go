@@ -40,13 +40,17 @@ type Person struct {
 	DeathPlaceLat  *string         `json:"death_place_latitude,omitempty"`
 	DeathPlaceLong *string         `json:"death_place_longitude,omitempty"`
 	// The origin of each pair as read (domain.EffectiveCoordinateOrigin, #1563).
-	BirthPlaceOrigin    *domain.CoordinateOrigin `json:"birth_place_coordinates_origin,omitempty"`
-	DeathPlaceOrigin    *domain.CoordinateOrigin `json:"death_place_coordinates_origin,omitempty"`
-	Notes               *string                  `json:"notes,omitempty"`
-	ResearchStatus      *string                  `json:"research_status,omitempty"`
-	BrickWallNote       *string                  `json:"brick_wall_note,omitempty"`
-	BrickWallSince      *time.Time               `json:"brick_wall_since,omitempty"`
-	BrickWallResolvedAt *time.Time               `json:"brick_wall_resolved_at,omitempty"`
+	BirthPlaceOrigin *domain.CoordinateOrigin `json:"birth_place_coordinates_origin,omitempty"`
+	DeathPlaceOrigin *domain.CoordinateOrigin `json:"death_place_coordinates_origin,omitempty"`
+	// The places the birth and death texts resolve to (ADR-009 §5), set by
+	// GetPerson and ListPersons.
+	BirthPlaceResolved  *ResolvedPlace `json:"birth_place_resolved,omitempty"`
+	DeathPlaceResolved  *ResolvedPlace `json:"death_place_resolved,omitempty"`
+	Notes               *string        `json:"notes,omitempty"`
+	ResearchStatus      *string        `json:"research_status,omitempty"`
+	BrickWallNote       *string        `json:"brick_wall_note,omitempty"`
+	BrickWallSince      *time.Time     `json:"brick_wall_since,omitempty"`
+	BrickWallResolvedAt *time.Time     `json:"brick_wall_resolved_at,omitempty"`
 	// Living is the living rule's verdict today (ADR-008 §1), and
 	// LivingOverride the editor's override of it ("" is auto).
 	Living         bool   `json:"living"`
@@ -138,9 +142,14 @@ func (s *PersonService) ListPersons(ctx context.Context, input ListPersonsInput)
 		return nil, err
 	}
 
+	places, err := NewPlaceResolver(ctx, s.readStore, opts.BranchID)
+	if err != nil {
+		return nil, err
+	}
 	persons := make([]Person, len(readModels))
 	for i, rm := range readModels {
 		persons[i] = convertReadModelToPerson(rm, livingCutoff(ctx))
+		places.resolvePerson(&persons[i])
 	}
 
 	return &PersonListResult{
@@ -164,6 +173,11 @@ func (s *PersonService) GetPerson(ctx context.Context, branchID domain.BranchID,
 	detail := &PersonDetail{
 		Person: *person,
 	}
+	places, err := NewPlaceResolver(ctx, s.readStore, branchID)
+	if err != nil {
+		return nil, err
+	}
+	places.resolvePerson(&detail.Person)
 
 	// Get all names for the person
 	nameReadModels, err := s.readStore.GetPersonNames(ctx, branchID, id)

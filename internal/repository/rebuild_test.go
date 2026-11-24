@@ -3,6 +3,7 @@ package repository_test
 import (
 	"context"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -1023,4 +1024,42 @@ func TestRebuildReadModel_CoordinateOrigins(t *testing.T) {
 		t.Errorf("rebuild logged %d events (was %d) and backfilled %d; want none appended", len(after), len(logged), result.Backfilled)
 	}
 	check("after rebuild")
+}
+
+// TestRebuildReadModel_PlaceFacts shows that place facts come back from the
+// log alone (ADR-009 §7): rebuilding replays each place's own stream into the
+// same places rows, appends nothing, and a second rebuild changes nothing.
+func TestRebuildReadModel_PlaceFacts(t *testing.T) {
+	ctx := context.Background()
+	s := newRebuildStores()
+	h := command.NewHandlerWithBranches(s.events, s.read, s.branches, s.snapshots)
+
+	_, err := h.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ada", BirthPlace: "Boston, MA"})
+	mustRebuildSetup(t, err)
+	boston := repository.PlaceID("boston,ma")
+	set, err := h.UpdatePlace(ctx, command.UpdatePlaceInput{ID: boston, Name: command.Set("Boston"), Coordinates: coords("N42.3601", "W71.0589")})
+	mustRebuildSetup(t, err)
+	_, err = h.UpdatePlace(ctx, command.UpdatePlaceInput{ID: boston, Version: set.Version, Name: command.Clear[string]()})
+	mustRebuildSetup(t, err)
+
+	before, err := s.read.ListPlaceFacts(ctx, domain.MainBranchID)
+	mustRebuildSetup(t, err)
+	if len(before) != 1 || before[0].Name != "" || !before[0].HasCoordinates() || before[0].Version != 2 {
+		t.Fatalf("places before rebuild = %+v, want Boston's pair, no name, version 2", before)
+	}
+	logged, err := s.events.ReadAll(ctx, 0, 1000)
+	mustRebuildSetup(t, err)
+	for i := range 2 {
+		if _, err := s.rebuild(t, s.read); err != nil {
+			t.Fatalf("rebuild %d: %v", i+1, err)
+		}
+		after, err := s.read.ListPlaceFacts(ctx, domain.MainBranchID)
+		mustRebuildSetup(t, err)
+		if !reflect.DeepEqual(after, before) {
+			t.Errorf("places after rebuild %d =\n  %+v\nwant\n  %+v", i+1, after, before)
+		}
+	}
+	if after, _ := s.events.ReadAll(ctx, 0, 1000); len(after) != len(logged) {
+		t.Errorf("rebuild logged %d events (was %d); want none appended", len(after), len(logged))
+	}
 }

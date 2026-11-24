@@ -167,6 +167,8 @@ func (p *Projector) Project(ctx context.Context, event domain.Event, version int
 		return p.readStore.DeleteDuplicateDismissal(ctx, branchID, e.PairID)
 	case domain.ImportedValuesBackfilled:
 		return p.projectImportedValuesBackfilled(ctx, e, version, branchID)
+	case domain.PlaceUpdated:
+		return p.projectPlaceUpdated(ctx, e, version)
 	case domain.BrickWallSet:
 		return p.projectBrickWall(ctx, e.PersonID, e.Note, e.Since, nil, version, branchID)
 	case domain.BrickWallResolved:
@@ -1793,6 +1795,45 @@ func (p *Projector) projectRepositoryUpdated(ctx context.Context, e domain.Repos
 	repo.UpdatedAt = e.OccurredAt()
 
 	return p.readStore.SaveRepository(ctx, repo)
+}
+
+// projectPlaceUpdated applies a place's stated facts to its places row,
+// creating the row on the place's first event (there is no PlaceCreated,
+// ADR-009 §2). MAIN-ONLY (PL-005): it ignores the branch, and the command
+// layer refuses the event on one.
+func (p *Projector) projectPlaceUpdated(ctx context.Context, e domain.PlaceUpdated, version int64) error {
+	facts, err := p.readStore.GetPlaceFacts(ctx, e.PlaceID)
+	if err != nil {
+		return err
+	}
+	if facts == nil {
+		facts = &PlaceFactsReadModel{ID: e.PlaceID, Key: e.Key}
+	}
+	for key, value := range e.Changes {
+		switch key {
+		case "name":
+			if v, ok := changeText(value); ok {
+				facts.Name = v
+			}
+		case "latitude":
+			if v, ok := changeCoordinate(value); ok {
+				facts.Latitude = v
+			}
+		case "longitude":
+			if v, ok := changeCoordinate(value); ok {
+				facts.Longitude = v
+			}
+		case "coordinates_origin":
+			if v, ok := domain.CoordinateOriginFromChange(value); ok {
+				facts.Origin = v
+			}
+		default:
+			slog.Warn("projection: ignoring unknown change key", "event", "PlaceUpdated", "key", key)
+		}
+	}
+	facts.Version = version
+	facts.UpdatedAt = e.OccurredAt()
+	return p.readStore.SavePlaceFacts(ctx, facts)
 }
 
 func (p *Projector) projectRepositoryDeleted(ctx context.Context, e domain.RepositoryDeleted) error {

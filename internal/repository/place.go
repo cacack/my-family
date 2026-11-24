@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+
+	"github.com/cacack/my-family/internal/domain"
 )
 
 // PlaceKey is the matching key of a recorded place text (ADR-009 §1), the only
@@ -209,25 +211,36 @@ func PlaceID(key string) uuid.UUID {
 	return uuid.NewSHA1(PlaceNamespace, []byte(key))
 }
 
-// PlaceReadModel is a place in use (ADR-009 §2): its ID, its key, the name it
-// shows (its most-used recorded spelling) and the number of place uses at or
-// under it.
+// PlaceReadModel is a place (ADR-009 §2): its ID, its key, the name it shows,
+// the number of place uses at or under it, and the facts stated about it. The
+// name is its display name when one is set, otherwise Spelling: its most-used
+// recorded spelling, or its key when no use names it. Latitude, Longitude and Origin are the place's own pair, nil when
+// it has none; Version is its stream's version, 0 before any fact is stated.
 type PlaceReadModel struct {
-	ID    uuid.UUID
-	Key   string
-	Name  string
-	Count int
+	ID        uuid.UUID
+	Key       string
+	Name      string
+	Spelling  string
+	Count     int
+	Latitude  *string
+	Longitude *string
+	Origin    *domain.CoordinateOrigin
+	Version   int64
 }
 
-// Places builds the list of places in use from the uses of the records a
-// principal may see. A use names its own place and every place its key is
-// under (PlaceUnder): "Boston, MA" makes both "boston,ma" and "ma" in use, and
-// counts toward both. A place's name is its parts, as recorded and joined with
-// ", ", in the spelling with the most uses (ties broken bytewise). The places
-// sort by name bytewise, then by key so the order never depends on map order.
-// It is shared by every store so the list
-// is the same on each (DB-001).
-func Places(uses []PlaceUse) []PlaceReadModel {
+// Places builds the list of places from the uses of the records a principal
+// may see and the facts stated about places. A use names its own place and
+// every place its key is under (PlaceUnder): "Boston, MA" makes both
+// "boston,ma" and "ma" in use, and counts toward both. A place's name is its
+// display name when facts set one, otherwise its parts, as recorded and joined
+// with ", ", in the spelling with the most uses (ties broken bytewise). A
+// place with facts and no use is listed, with a count of 0 and its key as its
+// fallback name, only for a principal privacy hides nothing from: for anyone
+// else a place no visible record names is absent, facts included (ADR-009
+// §10, PL-006). The places sort by name bytewise, then by key so the order
+// never depends on map order. It is shared by every store so the list is the
+// same on each (DB-001).
+func Places(uses []PlaceUse, facts []PlaceFactsReadModel, privacy Privacy) []PlaceReadModel {
 	type place struct {
 		spellings map[string]int
 		count     int
@@ -253,9 +266,25 @@ func Places(uses []PlaceUse) []PlaceReadModel {
 			p.count += u.Count
 		}
 	}
+	factsByKey := PlaceFactsByKey(facts)
+	if privacy.SeesAll() {
+		for key := range factsByKey {
+			if _, ok := byKey[key]; !ok {
+				byKey[key] = &place{spellings: map[string]int{key: 0}}
+			}
+		}
+	}
 	places := make([]PlaceReadModel, 0, len(byKey))
 	for key, p := range byKey {
-		places = append(places, PlaceReadModel{ID: PlaceID(key), Key: key, Name: mostUsed(p.spellings), Count: p.count})
+		spelling := mostUsed(p.spellings)
+		pl := PlaceReadModel{ID: PlaceID(key), Key: key, Name: spelling, Spelling: spelling, Count: p.count}
+		if f := factsByKey[key]; f != nil {
+			if f.Name != "" {
+				pl.Name = f.Name
+			}
+			pl.Latitude, pl.Longitude, pl.Origin, pl.Version = f.Latitude, f.Longitude, f.Origin, f.Version
+		}
+		places = append(places, pl)
 	}
 	sort.Slice(places, func(i, j int) bool {
 		if places[i].Name != places[j].Name {

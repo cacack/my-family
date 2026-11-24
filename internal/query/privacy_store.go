@@ -38,7 +38,8 @@ import (
 //   - The surname, place and cemetery indexes, the place list, the map and
 //     the brick walls leave protected people out of their counts and lists,
 //     in the query; the place list also leaves out what belongs to a hidden
-//     person or family (ADR-009 §10).
+//     person or family (ADR-009 §10), and place facts are returned only for
+//     the places a shown record names (PL-006).
 //   - Private sources, citations and notes are hidden. So is a citation of a
 //     private source or of a fact whose owner is hidden, and a shared note
 //     every record pointing to which is hidden (ADR-008 §3); a source's
@@ -1672,6 +1673,60 @@ func (s *PrivacyStore) GetPersonsByCemetery(ctx context.Context, place string, o
 
 func (s *PrivacyStore) ListPlaces(ctx context.Context, branchID domain.BranchID, _ repository.Privacy) ([]repository.PlaceReadModel, error) {
 	return s.inner.ListPlaces(ctx, branchID, s.privacy(ctx))
+}
+
+// SavePlaceFacts is a projection write and passes through.
+func (s *PrivacyStore) SavePlaceFacts(ctx context.Context, facts *repository.PlaceFactsReadModel) error {
+	return s.inner.SavePlaceFacts(ctx, facts)
+}
+
+// GetPlaceFacts returns a place's facts only when the place is visible to
+// the principal on main (ADR-009 §10, PL-006): a place no visible record
+// names answers as one with no facts.
+func (s *PrivacyStore) GetPlaceFacts(ctx context.Context, id uuid.UUID) (*repository.PlaceFactsReadModel, error) {
+	facts, err := s.inner.GetPlaceFacts(ctx, id)
+	if err != nil || facts == nil || s.privacy(ctx).SeesAll() {
+		return facts, err
+	}
+	visible, err := s.visiblePlaceKeys(ctx, domain.MainBranchID)
+	if err != nil || !visible[facts.Key] {
+		return nil, err
+	}
+	return facts, nil
+}
+
+// ListPlaceFacts returns the facts of the places visible to the principal in
+// branchID (ADR-009 §10, PL-006).
+func (s *PrivacyStore) ListPlaceFacts(ctx context.Context, branchID domain.BranchID) ([]repository.PlaceFactsReadModel, error) {
+	facts, err := s.inner.ListPlaceFacts(ctx, branchID)
+	if err != nil || len(facts) == 0 || s.privacy(ctx).SeesAll() {
+		return facts, err
+	}
+	visible, err := s.visiblePlaceKeys(ctx, branchID)
+	if err != nil {
+		return nil, err
+	}
+	shown := facts[:0]
+	for _, f := range facts {
+		if visible[f.Key] {
+			shown = append(shown, f)
+		}
+	}
+	return shown, nil
+}
+
+// visiblePlaceKeys returns the keys of the places the principal may see in
+// branchID: those a visible record names (ListPlaces).
+func (s *PrivacyStore) visiblePlaceKeys(ctx context.Context, branchID domain.BranchID) (map[string]bool, error) {
+	places, err := s.inner.ListPlaces(ctx, branchID, s.privacy(ctx))
+	if err != nil {
+		return nil, err
+	}
+	keys := make(map[string]bool, len(places))
+	for _, p := range places {
+		keys[p.Key] = true
+	}
+	return keys, nil
 }
 
 func (s *PrivacyStore) GetMapLocations(ctx context.Context, branchID domain.BranchID, _ repository.Privacy) ([]repository.MapLocation, error) {

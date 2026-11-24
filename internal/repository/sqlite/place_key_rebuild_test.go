@@ -3,10 +3,12 @@ package sqlite_test
 import (
 	"context"
 	"database/sql"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/cacack/my-family/internal/command"
+	"github.com/cacack/my-family/internal/domain"
 	"github.com/cacack/my-family/internal/repository"
 	"github.com/cacack/my-family/internal/repository/sqlite"
 )
@@ -134,5 +136,54 @@ func assertPlaceKeys(ctx context.Context, t *testing.T, db *sql.DB, q string) {
 	}
 	if n == 0 {
 		t.Errorf("%s: no rows; the fixture must record this place", q)
+	}
+}
+
+// TestRebuild_PlaceFacts shows that a rebuild drops and refills the places
+// table from the place streams (ADR-009 §7): rebuilding twice gives the same
+// rows as before, and the places table is reset with the read model.
+func TestRebuild_PlaceFacts(t *testing.T) {
+	ctx := context.Background()
+	db, cleanup := newTempDB(t)
+	defer cleanup()
+	read, err := sqlite.NewReadModelStore(db)
+	if err != nil {
+		t.Fatalf("read model store: %v", err)
+	}
+	events, err := sqlite.NewEventStore(db)
+	if err != nil {
+		t.Fatalf("event store: %v", err)
+	}
+	branches, err := sqlite.NewBranchStore(db)
+	if err != nil {
+		t.Fatalf("branch store: %v", err)
+	}
+	snapshots, err := sqlite.NewSnapshotStore(db)
+	if err != nil {
+		t.Fatalf("snapshot store: %v", err)
+	}
+	h := command.NewHandlerWithBranches(events, read, branches, snapshots)
+	if _, err := h.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ada", BirthPlace: "Boston, MA"}); err != nil {
+		t.Fatalf("create person: %v", err)
+	}
+	if _, err := h.UpdatePlace(ctx, command.UpdatePlaceInput{ID: repository.PlaceID("boston,ma"), Name: command.Set("Boston"),
+		Coordinates: command.CoordinatesPatch{Latitude: command.Set("N42.3601"), Longitude: command.Set("W71.0589")}}); err != nil {
+		t.Fatalf("update place: %v", err)
+	}
+	before, err := read.ListPlaceFacts(ctx, domain.MainBranchID)
+	if err != nil || len(before) != 1 {
+		t.Fatalf("places before rebuild = %+v, %v; want one row", before, err)
+	}
+	for i := range 2 {
+		if _, err := repository.RebuildReadModel(ctx, events, read, branches, snapshots); err != nil {
+			t.Fatalf("rebuild %d: %v", i+1, err)
+		}
+		after, err := read.ListPlaceFacts(ctx, domain.MainBranchID)
+		if err != nil {
+			t.Fatalf("list after rebuild %d: %v", i+1, err)
+		}
+		if !reflect.DeepEqual(after, before) {
+			t.Errorf("places after rebuild %d =\n  %+v\nwant\n  %+v", i+1, after, before)
+		}
 	}
 }

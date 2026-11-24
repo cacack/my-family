@@ -35,10 +35,13 @@ type Family struct {
 	MarriagePlaceLong *string         `json:"marriage_place_longitude,omitempty"`
 	// MarriagePlaceOrigin is the pair's origin as read (domain.EffectiveCoordinateOrigin, #1563).
 	MarriagePlaceOrigin *domain.CoordinateOrigin `json:"marriage_place_coordinates_origin,omitempty"`
-	MarriageTypeDetail  *string                  `json:"marriage_type_detail,omitempty"`
-	MarriageNotes       *string                  `json:"marriage_notes,omitempty"`
-	Notes               *string                  `json:"notes,omitempty"`
-	Private             bool                     `json:"private,omitempty"` // ADR-008 §2
+	// MarriagePlaceResolved is the place the marriage text resolves to
+	// (ADR-009 §5), set by GetFamily and ListFamilies.
+	MarriagePlaceResolved *ResolvedPlace `json:"marriage_place_resolved,omitempty"`
+	MarriageTypeDetail    *string        `json:"marriage_type_detail,omitempty"`
+	MarriageNotes         *string        `json:"marriage_notes,omitempty"`
+	Notes                 *string        `json:"notes,omitempty"`
+	Private               bool           `json:"private,omitempty"` // ADR-008 §2
 	// Partner1Marks and Partner2Marks are the partners' privacy marks.
 	Partner1Marks PersonMarks `json:"partner1_marks"`
 	Partner2Marks PersonMarks `json:"partner2_marks"`
@@ -100,9 +103,14 @@ func (s *FamilyService) ListFamilies(ctx context.Context, input ListFamiliesInpu
 		return nil, err
 	}
 
+	places, err := NewPlaceResolver(ctx, s.readStore, opts.BranchID)
+	if err != nil {
+		return nil, err
+	}
 	families := make([]Family, len(readModels))
 	for i, rm := range readModels {
 		families[i] = convertReadModelToFamily(rm)
+		places.resolveFamily(&families[i])
 	}
 	if err := s.markPartners(ctx, opts.BranchID, families); err != nil {
 		return nil, err
@@ -156,6 +164,11 @@ func (s *FamilyService) GetFamily(ctx context.Context, branchID domain.BranchID,
 	}
 
 	family := convertReadModelToFamily(*rm)
+	places, err := NewPlaceResolver(ctx, s.readStore, branchID)
+	if err != nil {
+		return nil, err
+	}
+	places.resolveFamily(&family)
 	detail := &FamilyDetail{
 		Family: family,
 	}

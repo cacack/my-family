@@ -22,7 +22,7 @@ func RunPlaceList(t *testing.T, store repository.ReadModelStore) {
 	t.Helper()
 	branch := seedPlaceList(t, store)
 	place := func(key, name string, count int) repository.PlaceReadModel {
-		return repository.PlaceReadModel{ID: repository.PlaceID(key), Key: key, Name: name, Count: count}
+		return repository.PlaceReadModel{ID: repository.PlaceID(key), Key: key, Name: name, Spelling: name, Count: count}
 	}
 
 	// Everyone: every use counts, toward its place and each place above it.

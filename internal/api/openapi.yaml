@@ -1018,6 +1018,43 @@ paths:
           $ref: '#/components/responses/NotFound'
         '503':
           $ref: '#/components/responses/SetupRequired'
+    put:
+      operationId: updatePlace
+      x-min-role: editor
+      summary: Set or clear a place's name and coordinates
+      description: |
+        Sets or clears facts about a place (ADR-009 §2): its display name and
+        its coordinate pair, with the pair's origin. A change appends one
+        `PlaceUpdated` event to the place's own stream and none to any person
+        or family. Every record at the place is then mapped at the place's
+        pair unless the record has a pair of its own (ADR-009 §5). Place facts
+        are main-only and every branch reads them (ADR-009 §6), so this
+        operation takes no `?branch=`. A place exists once a record on the
+        mainline names it; any other ID answers 404.
+      tags: [places]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlaceUpdate'
+      responses:
+        '200':
+          description: The place, as the mainline reads it after the update
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Place'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
 
   /map/locations:
     get:
@@ -1026,8 +1063,10 @@ paths:
       security: [{session: []}, {apiToken: []}, {}]
       summary: Get geographic locations for map visualization
       description: |
-        Returns aggregated birth and death locations with coordinates for map
-        display. With `?branch=` the locations are aggregated from that branch's
+        Returns aggregated birth and death locations for map display: every
+        record with effective coordinates (its own pair when both halves are
+        set, otherwise its place's pair), grouped by place, event type and
+        pair (ADR-009 §9). With `?branch=` the locations are aggregated from that branch's
         isolated view; omit it for the mainline.
       tags: [browse]
       parameters:
@@ -1294,7 +1333,7 @@ paths:
             matching entries.
           schema:
             type: string
-            enum: [person, family, source, citation, media, note, submitter, repository, association, life_event, attribute, lds_ordinance, evidence_analysis, evidence_conflict, research_log, proof_summary, branch, duplicate_pair]
+            enum: [person, family, source, citation, media, note, submitter, repository, association, life_event, attribute, lds_ordinance, evidence_analysis, evidence_conflict, research_log, proof_summary, branch, duplicate_pair, place]
         - name: from
           in: query
           description: Start date/time for history (ISO 8601)
@@ -8332,6 +8371,18 @@ components:
           allOf:
             - $ref: '#/components/schemas/CoordinateOrigin'
           description: Where the death place coordinates came from; present whenever they are.
+        birth_place_resolved:
+          allOf:
+            - $ref: '#/components/schemas/ResolvedPlace'
+          description: >-
+            The place birth_place resolves to, with its own pair; set on GET
+            /persons and GET /persons/{id} when birth_place names a place.
+        death_place_resolved:
+          allOf:
+            - $ref: '#/components/schemas/ResolvedPlace'
+          description: >-
+            The place death_place resolves to, with its own pair; set on GET
+            /persons and GET /persons/{id} when death_place names a place.
         notes:
           type: string
         research_status:
@@ -8708,6 +8759,13 @@ components:
           allOf:
             - $ref: '#/components/schemas/CoordinateOrigin'
           description: Where the marriage place coordinates came from; present whenever they are.
+        marriage_place_resolved:
+          allOf:
+            - $ref: '#/components/schemas/ResolvedPlace'
+          description: >-
+            The place marriage_place resolves to, with its own pair; set on
+            GET /families and GET /families/{id} when marriage_place names a
+            place.
         marriage_type_detail:
           type: string
           description: The marriage event's GEDCOM TYPE (e.g. "Civil"); omitted when it has none
@@ -9437,7 +9495,7 @@ components:
             made on the branch is `merged_from.original_timestamp`.
         entity_type:
           type: string
-          enum: [person, family, source, citation, media, note, submitter, repository, association, life_event, attribute, lds_ordinance, evidence_analysis, evidence_conflict, research_log, proof_summary, branch, duplicate_pair]
+          enum: [person, family, source, citation, media, note, submitter, repository, association, life_event, attribute, lds_ordinance, evidence_analysis, evidence_conflict, research_log, proof_summary, branch, duplicate_pair, place]
           description: |
             The kind of entity the change is about. A person's name variants
             live on the person, so a name change is a `person` entry whose
@@ -9446,7 +9504,9 @@ components:
             `changes.merge_note` carries the note) and `deleted` (archived).
             `duplicate_pair` is a suggested duplicate pair marked "not a
             duplicate": `created` when dismissed, `deleted` when restored; its
-            id is the pair's id and its name the two persons'.
+            id is the pair's id and its name the two persons'. `place` is a
+            fact stated about a place (ADR-009): always `updated`, since a
+            place exists once a record names it; its id is the place's id.
         entity_id:
           type: string
           format: uuid
@@ -9883,7 +9943,7 @@ components:
 
     Place:
       type: object
-      required: [id, key, name, count]
+      required: [id, key, name, count, version]
       properties:
         id:
           type: string
@@ -9899,7 +9959,8 @@ components:
         name:
           type: string
           description: >-
-            The place's most-used recorded spelling among the records the
+            The place's display name when one is set (PUT /places/{id});
+            otherwise its most-used recorded spelling among the records the
             caller may see, its parts joined with ", " (ties broken bytewise).
         count:
           type: integer
@@ -9908,6 +9969,92 @@ components:
             attribute places) the caller may see at or under this place. It can
             be larger than `PlaceEntry.count` from `GET /browse/places`, which
             counts birth and death places only.
+        latitude:
+          type: string
+          description: >-
+            The place's own latitude in GEDCOM form (e.g. "N42.3601"), given
+            with longitude; omitted when the place has no pair. A parent
+            place's pair is never inherited.
+        longitude:
+          type: string
+          description: The place's own longitude in GEDCOM form (e.g. "W71.0589"), given with latitude.
+        coordinates_origin:
+          allOf:
+            - $ref: '#/components/schemas/CoordinateOrigin'
+          description: Where the place's pair came from; present whenever the pair is.
+        version:
+          type: integer
+          format: int64
+          description: >-
+            Version of the place's own stream for optimistic locking, 0 before
+            any fact about it is stated. Send it with PUT /places/{id}.
+
+    PlaceUpdate:
+      description: >-
+        Partial update. A field left out stays unchanged; a field sent as null
+        is cleared.
+      type: object
+      required: [version]
+      properties:
+        version:
+          type: integer
+          format: int64
+          description: The place's version as last read (0 before any fact is stated)
+        name:
+          type: string
+          nullable: true
+          maxLength: 500
+          description: >-
+            Display name. Null or a blank value clears it, so the place shows
+            its most-used recorded spelling again. No record's place text
+            changes (PL-001).
+        latitude:
+          type: string
+          nullable: true
+          description: >-
+            Latitude in GEDCOM form (e.g. "N42.3601"): N or S, then decimal
+            degrees within 90. Given with longitude; both null clears the pair.
+        longitude:
+          type: string
+          nullable: true
+          description: >-
+            Longitude in GEDCOM form (e.g. "W71.0589"): E or W, then decimal
+            degrees within 180. Given with latitude.
+        coordinates_origin:
+          allOf:
+            - $ref: '#/components/schemas/CoordinateOrigin'
+          description: >-
+            How the pair was obtained, given only with a pair (400 otherwise).
+            Left out, a pair that changes is manual and one left as it is
+            keeps its origin.
+
+    ResolvedPlace:
+      type: object
+      required: [id]
+      description: >-
+        The place a record's place text resolves to (ADR-009 §5), beside the
+        record's own pair. The record's effective coordinates are its own pair
+        when both halves are set, otherwise this place's pair, otherwise none.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: The place's ID (GET /places/{id})
+        name:
+          type: string
+          description: >-
+            The place's display name; omitted when none is set, in which case
+            the place shows its most-used spelling (GET /places/{id}).
+        latitude:
+          type: string
+          description: The place's own latitude in GEDCOM form; omitted when it has no pair.
+        longitude:
+          type: string
+          description: The place's own longitude in GEDCOM form; omitted when it has no pair.
+        coordinates_origin:
+          allOf:
+            - $ref: '#/components/schemas/CoordinateOrigin'
+          description: Where the place's pair came from; present whenever the pair is.
 
     PlaceList:
       type: object
@@ -9966,9 +10113,17 @@ components:
       type: object
       required: [place, latitude, longitude, event_type, count, person_ids, persons, origins]
       properties:
+        place_id:
+          type: string
+          format: uuid
+          description: >-
+            The ID of the place the location groups (GET /places/{id});
+            omitted when the records' place text names no place.
         place:
           type: string
-          description: Place name
+          description: >-
+            The place's display name when one is set, otherwise the spelling
+            most of the location's records give (ties broken bytewise).
         latitude:
           type: number
           format: double
@@ -10002,9 +10157,9 @@ components:
           items:
             $ref: '#/components/schemas/CoordinateSource'
           description: >-
-            The distinct sources of the coordinate pairs this location groups (every person
-            with the same place name and event type), in the order imported, manual, copied,
-            geocoded.
+            The distinct sources of the effective coordinate pairs this location groups
+            (every person whose place resolves to this place, with this event type and this
+            pair), in the order imported, manual, copied, geocoded.
 
     BrickWallsResponse:
       type: object
@@ -13389,6 +13544,10 @@ components:
           type: string
           nullable: true
           description: Longitude in GEDCOM format (e.g., "W71.0589")
+        place_resolved:
+          allOf:
+            - $ref: '#/components/schemas/ResolvedPlace'
+          description: The place `place` resolves to, with its own pair; set when `place` names a place.
         description:
           type: string
         cause:
@@ -13441,6 +13600,18 @@ components:
           description: Date in GEDCOM format
         place:
           type: string
+        place_latitude:
+          type: string
+          nullable: true
+          description: Latitude in GEDCOM format (e.g., "N42.3601")
+        place_longitude:
+          type: string
+          nullable: true
+          description: Longitude in GEDCOM format (e.g., "W71.0589")
+        place_resolved:
+          allOf:
+            - $ref: '#/components/schemas/ResolvedPlace'
+          description: The place `place` resolves to, with its own pair; set when `place` names a place.
         version:
           type: integer
           format: int64

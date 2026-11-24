@@ -437,6 +437,7 @@ const (
 	ChangeEntryEntityTypeMedia            ChangeEntryEntityType = "media"
 	ChangeEntryEntityTypeNote             ChangeEntryEntityType = "note"
 	ChangeEntryEntityTypePerson           ChangeEntryEntityType = "person"
+	ChangeEntryEntityTypePlace            ChangeEntryEntityType = "place"
 	ChangeEntryEntityTypeProofSummary     ChangeEntryEntityType = "proof_summary"
 	ChangeEntryEntityTypeRepository       ChangeEntryEntityType = "repository"
 	ChangeEntryEntityTypeResearchLog      ChangeEntryEntityType = "research_log"
@@ -472,6 +473,8 @@ func (e ChangeEntryEntityType) Valid() bool {
 	case ChangeEntryEntityTypeNote:
 		return true
 	case ChangeEntryEntityTypePerson:
+		return true
+	case ChangeEntryEntityTypePlace:
 		return true
 	case ChangeEntryEntityTypeProofSummary:
 		return true
@@ -1931,6 +1934,7 @@ const (
 	ListHistoryParamsEntityTypeMedia            ListHistoryParamsEntityType = "media"
 	ListHistoryParamsEntityTypeNote             ListHistoryParamsEntityType = "note"
 	ListHistoryParamsEntityTypePerson           ListHistoryParamsEntityType = "person"
+	ListHistoryParamsEntityTypePlace            ListHistoryParamsEntityType = "place"
 	ListHistoryParamsEntityTypeProofSummary     ListHistoryParamsEntityType = "proof_summary"
 	ListHistoryParamsEntityTypeRepository       ListHistoryParamsEntityType = "repository"
 	ListHistoryParamsEntityTypeResearchLog      ListHistoryParamsEntityType = "research_log"
@@ -1966,6 +1970,8 @@ func (e ListHistoryParamsEntityType) Valid() bool {
 	case ListHistoryParamsEntityTypeNote:
 		return true
 	case ListHistoryParamsEntityTypePerson:
+		return true
+	case ListHistoryParamsEntityTypePlace:
 		return true
 	case ListHistoryParamsEntityTypeProofSummary:
 		return true
@@ -2710,8 +2716,17 @@ type AttributeExport struct {
 	Id       openapi_types.UUID `json:"id"`
 	PersonId openapi_types.UUID `json:"person_id"`
 	Place    *string            `json:"place,omitempty"`
-	Value    string             `json:"value"`
-	Version  *int64             `json:"version,omitempty"`
+
+	// PlaceLatitude Latitude in GEDCOM format (e.g., "N42.3601")
+	PlaceLatitude nullable.Nullable[string] `json:"place_latitude,omitempty"`
+
+	// PlaceLongitude Longitude in GEDCOM format (e.g., "W71.0589")
+	PlaceLongitude nullable.Nullable[string] `json:"place_longitude,omitempty"`
+
+	// PlaceResolved The place `place` resolves to, with its own pair; set when `place` names a place.
+	PlaceResolved *ResolvedPlace `json:"place_resolved,omitempty"`
+	Value         string         `json:"value"`
+	Version       *int64         `json:"version,omitempty"`
 }
 
 // AttributesExportResponse defines model for AttributesExportResponse.
@@ -3515,7 +3530,9 @@ type ChangeEntry struct {
 	// `changes.merge_note` carries the note) and `deleted` (archived).
 	// `duplicate_pair` is a suggested duplicate pair marked "not a
 	// duplicate": `created` when dismissed, `deleted` when restored; its
-	// id is the pair's id and its name the two persons'.
+	// id is the pair's id and its name the two persons'. `place` is a
+	// fact stated about a place (ADR-009): always `updated`, since a
+	// place exists once a record names it; its id is the place's id.
 	EntityType ChangeEntryEntityType `json:"entity_type"`
 	Id         openapi_types.UUID    `json:"id"`
 
@@ -3565,7 +3582,9 @@ type ChangeEntryAction string
 // `changes.merge_note` carries the note) and `deleted` (archived).
 // `duplicate_pair` is a suggested duplicate pair marked "not a
 // duplicate": `created` when dismissed, `deleted` when restored; its
-// id is the pair's id and its name the two persons'.
+// id is the pair's id and its name the two persons'. `place` is a
+// fact stated about a place (ADR-009): always `updated`, since a
+// place exists once a record names it; its id is the place's id.
 type ChangeEntryEntityType string
 
 // ChangeEntryOrigin Set only on branch-scoped entity history and branch-scoped snapshot
@@ -4052,6 +4071,9 @@ type EventExport struct {
 	// PlaceLongitude Longitude in GEDCOM format (e.g., "W71.0589")
 	PlaceLongitude nullable.Nullable[string] `json:"place_longitude,omitempty"`
 
+	// PlaceResolved The place `place` resolves to, with its own pair; set when `place` names a place.
+	PlaceResolved *ResolvedPlace `json:"place_resolved,omitempty"`
+
 	// ResearchStatus Confidence level of genealogical data per GPS standards
 	//
 	// Example: probable
@@ -4311,6 +4333,9 @@ type Family struct {
 	// MarriagePlaceLongitude Longitude in GEDCOM format (e.g., "W89.6501")
 	MarriagePlaceLongitude nullable.Nullable[string] `json:"marriage_place_longitude,omitempty"`
 
+	// MarriagePlaceResolved The place marriage_place resolves to, with its own pair; set on GET /families and GET /families/{id} when marriage_place names a place.
+	MarriagePlaceResolved *ResolvedPlace `json:"marriage_place_resolved,omitempty"`
+
 	// MarriageTypeDetail The marriage event's GEDCOM TYPE (e.g. "Civil"); omitted when it has none
 	MarriageTypeDetail *string `json:"marriage_type_detail,omitempty"`
 
@@ -4410,6 +4435,9 @@ type FamilyDetail struct {
 
 	// MarriagePlaceLongitude Longitude in GEDCOM format (e.g., "W89.6501")
 	MarriagePlaceLongitude nullable.Nullable[string] `json:"marriage_place_longitude,omitempty"`
+
+	// MarriagePlaceResolved The place marriage_place resolves to, with its own pair; set on GET /families and GET /families/{id} when marriage_place names a place.
+	MarriagePlaceResolved *ResolvedPlace `json:"marriage_place_resolved,omitempty"`
 
 	// MarriageTypeDetail The marriage event's GEDCOM TYPE (e.g. "Civil"); omitted when it has none
 	MarriageTypeDetail *string `json:"marriage_type_detail,omitempty"`
@@ -4878,7 +4906,7 @@ type MapLocation struct {
 	// Longitude Longitude in decimal degrees
 	Longitude float64 `json:"longitude"`
 
-	// Origins The distinct sources of the coordinate pairs this location groups (every person with the same place name and event type), in the order imported, manual, copied, geocoded.
+	// Origins The distinct sources of the effective coordinate pairs this location groups (every person whose place resolves to this place, with this event type and this pair), in the order imported, manual, copied, geocoded.
 	Origins []CoordinateSource `json:"origins"`
 
 	// PersonIds IDs of the persons at this location, in the same order as `persons`. Kept for existing clients; `persons[].id` carries the same IDs.
@@ -4888,8 +4916,11 @@ type MapLocation struct {
 	// Persons Persons at this location, named so a client can list them without a lookup each
 	Persons []PersonSummary `json:"persons"`
 
-	// Place Place name
+	// Place The place's display name when one is set, otherwise the spelling most of the location's records give (ties broken bytewise).
 	Place string `json:"place"`
+
+	// PlaceId The ID of the place the location groups (GET /places/{id}); omitted when the records' place text names no place.
+	PlaceId *openapi_types.UUID `json:"place_id,omitempty"`
 }
 
 // MapLocationEventType Type of life event at this location
@@ -5703,7 +5734,10 @@ type Person struct {
 	BirthPlaceLatitude nullable.Nullable[string] `json:"birth_place_latitude,omitempty"`
 
 	// BirthPlaceLongitude Longitude in GEDCOM format (e.g., "W71.0589")
-	BirthPlaceLongitude nullable.Nullable[string]    `json:"birth_place_longitude,omitempty"`
+	BirthPlaceLongitude nullable.Nullable[string] `json:"birth_place_longitude,omitempty"`
+
+	// BirthPlaceResolved The place birth_place resolves to, with its own pair; set on GET /persons and GET /persons/{id} when birth_place names a place.
+	BirthPlaceResolved  *ResolvedPlace               `json:"birth_place_resolved,omitempty"`
 	BrickWallNote       nullable.Nullable[string]    `json:"brick_wall_note,omitempty"`
 	BrickWallResolvedAt nullable.Nullable[time.Time] `json:"brick_wall_resolved_at,omitempty"`
 	BrickWallSince      nullable.Nullable[time.Time] `json:"brick_wall_since,omitempty"`
@@ -5720,9 +5754,12 @@ type Person struct {
 
 	// DeathPlaceLongitude Longitude in GEDCOM format (e.g., "W71.0589")
 	DeathPlaceLongitude nullable.Nullable[string] `json:"death_place_longitude,omitempty"`
-	Gender              *Gender                   `json:"gender,omitempty"`
-	GivenName           string                    `json:"given_name"`
-	Id                  openapi_types.UUID        `json:"id"`
+
+	// DeathPlaceResolved The place death_place resolves to, with its own pair; set on GET /persons and GET /persons/{id} when death_place names a place.
+	DeathPlaceResolved *ResolvedPlace     `json:"death_place_resolved,omitempty"`
+	Gender             *Gender            `json:"gender,omitempty"`
+	GivenName          string             `json:"given_name"`
+	Id                 openapi_types.UUID `json:"id"`
 
 	// Living Whether the person counts as living under the living rule (ADR-008), evaluated when the request is served: a death, burial or cremation, or a birth (else christening or baptism) longer ago than the tree's living threshold (110 years by default), makes them deceased, unless living_override says otherwise. It changes as time passes, so do not store it.
 	Living *bool `json:"living,omitempty"`
@@ -5856,7 +5893,10 @@ type PersonDetail struct {
 	BirthPlaceLatitude nullable.Nullable[string] `json:"birth_place_latitude,omitempty"`
 
 	// BirthPlaceLongitude Longitude in GEDCOM format (e.g., "W71.0589")
-	BirthPlaceLongitude nullable.Nullable[string]    `json:"birth_place_longitude,omitempty"`
+	BirthPlaceLongitude nullable.Nullable[string] `json:"birth_place_longitude,omitempty"`
+
+	// BirthPlaceResolved The place birth_place resolves to, with its own pair; set on GET /persons and GET /persons/{id} when birth_place names a place.
+	BirthPlaceResolved  *ResolvedPlace               `json:"birth_place_resolved,omitempty"`
 	BrickWallNote       nullable.Nullable[string]    `json:"brick_wall_note,omitempty"`
 	BrickWallResolvedAt nullable.Nullable[time.Time] `json:"brick_wall_resolved_at,omitempty"`
 	BrickWallSince      nullable.Nullable[time.Time] `json:"brick_wall_since,omitempty"`
@@ -5873,6 +5913,9 @@ type PersonDetail struct {
 
 	// DeathPlaceLongitude Longitude in GEDCOM format (e.g., "W71.0589")
 	DeathPlaceLongitude nullable.Nullable[string] `json:"death_place_longitude,omitempty"`
+
+	// DeathPlaceResolved The place death_place resolves to, with its own pair; set on GET /persons and GET /persons/{id} when death_place names a place.
+	DeathPlaceResolved *ResolvedPlace `json:"death_place_resolved,omitempty"`
 
 	// ExternalIds GEDCOM 7.0 external identifiers (EXID) with resolved display label and link. Read-only: populated from GEDCOM import; there is no direct-write endpoint.
 	ExternalIds       *[]ExternalLink    `json:"external_ids,omitempty"`
@@ -6070,6 +6113,9 @@ type PersonUpdate struct {
 
 // Place defines model for Place.
 type Place struct {
+	// CoordinatesOrigin Where the place's pair came from; present whenever the pair is.
+	CoordinatesOrigin *CoordinateOrigin `json:"coordinates_origin,omitempty"`
+
 	// Count Number of place uses (birth, death, marriage, life event and attribute places) the caller may see at or under this place. It can be larger than `PlaceEntry.count` from `GET /browse/places`, which counts birth and death places only.
 	Count int `json:"count"`
 
@@ -6079,8 +6125,17 @@ type Place struct {
 	// Key The place matching key: the recorded text split on commas, each part trimmed and case-folded, empty parts dropped (ADR-009 §1).
 	Key string `json:"key"`
 
-	// Name The place's most-used recorded spelling among the records the caller may see, its parts joined with ", " (ties broken bytewise).
+	// Latitude The place's own latitude in GEDCOM form (e.g. "N42.3601"), given with longitude; omitted when the place has no pair. A parent place's pair is never inherited.
+	Latitude *string `json:"latitude,omitempty"`
+
+	// Longitude The place's own longitude in GEDCOM form (e.g. "W71.0589"), given with latitude.
+	Longitude *string `json:"longitude,omitempty"`
+
+	// Name The place's display name when one is set (PUT /places/{id}); otherwise its most-used recorded spelling among the records the caller may see, its parts joined with ", " (ties broken bytewise).
 	Name string `json:"name"`
+
+	// Version Version of the place's own stream for optimistic locking, 0 before any fact about it is stated. Send it with PUT /places/{id}.
+	Version int64 `json:"version"`
 }
 
 // PlaceEntry defines model for PlaceEntry.
@@ -6116,6 +6171,24 @@ type PlaceList struct {
 
 	// Total Number of places in use in all
 	Total int `json:"total"`
+}
+
+// PlaceUpdate Partial update. A field left out stays unchanged; a field sent as null is cleared.
+type PlaceUpdate struct {
+	// CoordinatesOrigin How the pair was obtained, given only with a pair (400 otherwise). Left out, a pair that changes is manual and one left as it is keeps its origin.
+	CoordinatesOrigin *CoordinateOrigin `json:"coordinates_origin,omitempty"`
+
+	// Latitude Latitude in GEDCOM form (e.g. "N42.3601"): N or S, then decimal degrees within 90. Given with longitude; both null clears the pair.
+	Latitude nullable.Nullable[string] `json:"latitude,omitempty"`
+
+	// Longitude Longitude in GEDCOM form (e.g. "W71.0589"): E or W, then decimal degrees within 180. Given with latitude.
+	Longitude nullable.Nullable[string] `json:"longitude,omitempty"`
+
+	// Name Display name. Null or a blank value clears it, so the place shows its most-used recorded spelling again. No record's place text changes (PL-001).
+	Name nullable.Nullable[string] `json:"name,omitempty"`
+
+	// Version The place's version as last read (0 before any fact is stated)
+	Version int64 `json:"version"`
 }
 
 // PrivacySettings defines model for PrivacySettings.
@@ -6532,6 +6605,24 @@ type ResearchStatusCounts struct {
 
 	// Unset Persons with no research status recorded
 	Unset int `json:"unset"`
+}
+
+// ResolvedPlace The place a record's place text resolves to (ADR-009 §5), beside the record's own pair. The record's effective coordinates are its own pair when both halves are set, otherwise this place's pair, otherwise none.
+type ResolvedPlace struct {
+	// CoordinatesOrigin Where the place's pair came from; present whenever the pair is.
+	CoordinatesOrigin *CoordinateOrigin `json:"coordinates_origin,omitempty"`
+
+	// Id The place's ID (GET /places/{id})
+	Id openapi_types.UUID `json:"id"`
+
+	// Latitude The place's own latitude in GEDCOM form; omitted when it has no pair.
+	Latitude *string `json:"latitude,omitempty"`
+
+	// Longitude The place's own longitude in GEDCOM form; omitted when it has no pair.
+	Longitude *string `json:"longitude,omitempty"`
+
+	// Name The place's display name; omitted when none is set, in which case the place shows its most-used spelling (GET /places/{id}).
+	Name *string `json:"name,omitempty"`
 }
 
 // RestorePoint defines model for RestorePoint.
@@ -9282,6 +9373,9 @@ type UpdatePersonNameJSONRequestBody = PersonNameUpdate
 // RollbackPersonJSONRequestBody defines body for RollbackPerson for application/json ContentType.
 type RollbackPersonJSONRequestBody = RollbackRequest
 
+// UpdatePlaceJSONRequestBody defines body for UpdatePlace for application/json ContentType.
+type UpdatePlaceJSONRequestBody = PlaceUpdate
+
 // CreateProofSummaryJSONRequestBody defines body for CreateProofSummary for application/json ContentType.
 type CreateProofSummaryJSONRequestBody = ProofSummaryCreate
 
@@ -9752,6 +9846,9 @@ type ServerInterface interface {
 	// GetPlace Get a place in use by ID
 	// (GET /places/{id})
 	GetPlace(ctx echo.Context, id PlaceId, params GetPlaceParams) error
+	// UpdatePlace Set or clear a place's name and coordinates
+	// (PUT /places/{id})
+	UpdatePlace(ctx echo.Context, id PlaceId) error
 	// ListProofSummaries List all proof summaries
 	// (GET /proof-summaries)
 	ListProofSummaries(ctx echo.Context, params ListProofSummariesParams) error
@@ -13203,6 +13300,22 @@ func (w *ServerInterfaceWrapper) GetPlace(ctx echo.Context) error {
 	return err
 }
 
+// UpdatePlace converts echo context to params.
+func (w *ServerInterfaceWrapper) UpdatePlace(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id PlaceId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: ctx.Request().URL.RawPath == ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.UpdatePlace(ctx, id)
+	return err
+}
+
 // ListProofSummaries converts echo context to params.
 func (w *ServerInterfaceWrapper) ListProofSummaries(ctx echo.Context) error {
 	var err error
@@ -14675,6 +14788,7 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 	router.GET(options.BaseURL+"/browse/cemeteries/:place/persons", wrapper.GetPersonsByCemetery, options.OperationMiddlewares["getPersonsByCemetery"]...)
 	router.GET(options.BaseURL+"/places", wrapper.ListPlaces, options.OperationMiddlewares["listPlaces"]...)
 	router.GET(options.BaseURL+"/places/:id", wrapper.GetPlace, options.OperationMiddlewares["getPlace"]...)
+	router.PUT(options.BaseURL+"/places/:id", wrapper.UpdatePlace, options.OperationMiddlewares["updatePlace"]...)
 	router.GET(options.BaseURL+"/map/locations", wrapper.GetMapLocations, options.OperationMiddlewares["getMapLocations"]...)
 	router.GET(options.BaseURL+"/browse/brick-walls", wrapper.GetBrickWalls, options.OperationMiddlewares["getBrickWalls"]...)
 	router.DELETE(options.BaseURL+"/persons/:id/brick-wall", wrapper.ResolvePersonBrickWall, options.OperationMiddlewares["resolvePersonBrickWall"]...)
@@ -25130,6 +25244,99 @@ func (response GetPlace503JSONResponse) VisitGetPlaceResponse(w http.ResponseWri
 	return err
 }
 
+type UpdatePlaceRequestObject struct {
+	Id   PlaceId `json:"id"`
+	Body *UpdatePlaceJSONRequestBody
+}
+
+type UpdatePlaceResponseObject interface {
+	VisitUpdatePlaceResponse(w http.ResponseWriter) error
+}
+
+type UpdatePlace200JSONResponse Place
+
+func (response UpdatePlace200JSONResponse) VisitUpdatePlaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdatePlace400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response UpdatePlace400JSONResponse) VisitUpdatePlaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdatePlace401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response UpdatePlace401JSONResponse) VisitUpdatePlaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdatePlace404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response UpdatePlace404JSONResponse) VisitUpdatePlaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdatePlace409JSONResponse struct{ ConflictJSONResponse }
+
+func (response UpdatePlace409JSONResponse) VisitUpdatePlaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdatePlace503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response UpdatePlace503JSONResponse) VisitUpdatePlaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListProofSummariesRequestObject struct {
 	Params ListProofSummariesParams
 }
@@ -29459,6 +29666,9 @@ type StrictServerInterface interface {
 	// GetPlace Get a place in use by ID
 	// (GET /places/{id})
 	GetPlace(ctx context.Context, request GetPlaceRequestObject) (GetPlaceResponseObject, error)
+	// UpdatePlace Set or clear a place's name and coordinates
+	// (PUT /places/{id})
+	UpdatePlace(ctx context.Context, request UpdatePlaceRequestObject) (UpdatePlaceResponseObject, error)
 	// ListProofSummaries List all proof summaries
 	// (GET /proof-summaries)
 	ListProofSummaries(ctx context.Context, request ListProofSummariesRequestObject) (ListProofSummariesResponseObject, error)
@@ -34163,6 +34373,54 @@ func (sh *strictHandler) GetPlace(ctx echo.Context, id PlaceId, params GetPlaceP
 		return err
 	} else if validResponse, ok := response.(GetPlaceResponseObject); ok {
 		return validResponse.VisitGetPlaceResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// UpdatePlace operation middleware
+func (sh *strictHandler) UpdatePlace(ctx echo.Context, id PlaceId) error {
+	var request UpdatePlaceRequestObject
+
+	request.Id = id
+
+	var body UpdatePlaceJSONRequestBody
+	var err error
+	if binder, ok := ctx.Echo().Binder.(*echo.DefaultBinder); ok {
+		// A request validator built on kin-openapi's openapi3filter with
+		// KeepValidatedValue leaves the value it validated on the body. Bind
+		// that value, matching member names exactly, so the handler receives
+		// what was validated instead of a second, case-insensitive decode.
+		// Otherwise bind only the request body, so that path and query
+		// parameters are not also bound into the body struct.
+		if vb, ok := ctx.Request().Body.(interface{ ValidatedValue() any }); !ok || runtime.BindJSONValue(vb.ValidatedValue(), &body) != nil {
+			err = binder.BindBody(ctx, &body)
+		}
+	} else {
+		// A custom binder is installed on the Echo instance; defer to it
+		// entirely, since echo.Binder does not expose body-only binding and
+		// the binder may do more than decode (for example call ctx.Validate).
+		err = ctx.Bind(&body)
+	}
+	if err != nil {
+		return err
+	}
+	request.Body = &body
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdatePlace(ctx.Request().Context(), request.(UpdatePlaceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdatePlace")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(UpdatePlaceResponseObject); ok {
+		return validResponse.VisitUpdatePlaceResponse(ctx.Response())
 	} else if response != nil {
 		return fmt.Errorf("unexpected response type: %T", response)
 	}

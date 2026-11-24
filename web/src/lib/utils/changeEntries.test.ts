@@ -72,12 +72,19 @@ describe("changeEntryLink", () => {
         action: "updated",
       }),
     ).toBeNull();
+    expect(
+      changeEntryLink({
+        entity_type: "place",
+        entity_id: ID,
+        action: "updated",
+      }),
+    ).toBeNull();
   });
 });
 
 describe("entityTypeLabel", () => {
   it("labels every entity type", () => {
-    expect(CHANGE_ENTITY_TYPES).toHaveLength(18);
+    expect(CHANGE_ENTITY_TYPES).toHaveLength(19);
     for (const type of CHANGE_ENTITY_TYPES) {
       expect(entityTypeLabel(type)).not.toBe(type);
     }

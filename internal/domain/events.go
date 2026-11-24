@@ -2054,6 +2054,35 @@ func NewDuplicateRestored(pair DuplicatePair) DuplicateRestored {
 	}
 }
 
+// PlaceUpdated sets or clears facts about a place on the place's own stream
+// (ADR-009 §2): its display name under "name", and its coordinate pair under
+// "latitude" and "longitude" with the pair's origin under
+// "coordinates_origin", the three always recorded together. There is no
+// PlaceCreated: a place exists once its key is in use. Key and Text are the
+// place's matching key and the text it was computed from, so the log reads
+// without the ID's hash.
+type PlaceUpdated struct {
+	BaseEvent
+	PlaceID uuid.UUID      `json:"place_id"`
+	Key     string         `json:"key"`
+	Text    string         `json:"text"`
+	Changes map[string]any `json:"changes"`
+}
+
+func (e PlaceUpdated) EventType() string      { return "PlaceUpdated" }
+func (e PlaceUpdated) AggregateID() uuid.UUID { return e.PlaceID }
+
+// NewPlaceUpdated creates a PlaceUpdated event.
+func NewPlaceUpdated(placeID uuid.UUID, key, text string, changes map[string]any) PlaceUpdated {
+	return PlaceUpdated{
+		BaseEvent: NewBaseEvent(),
+		PlaceID:   placeID,
+		Key:       key,
+		Text:      text,
+		Changes:   changes,
+	}
+}
+
 // Kinds of entity an ImportedValuesBackfilled event can name.
 const (
 	BackfillPerson     = "person"

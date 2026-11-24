@@ -339,11 +339,15 @@ func (st *streamState) apply(evt *repository.StoredEvent) {
 		st.fields = eventFields(evt)
 		st.created = true
 	case actionUpdated:
-		fields := eventFields(evt)
-		if changes, ok := fields["changes"].(map[string]any); ok {
-			for key, value := range changes {
-				st.fields[key] = normalizeFieldValue(value)
-			}
+		st.applyChanges(eventFields(evt))
+	}
+}
+
+// applyChanges folds an update event's changes map into the state.
+func (st *streamState) applyChanges(fields map[string]any) {
+	if changes, ok := fields["changes"].(map[string]any); ok {
+		for key, value := range changes {
+			st.fields[key] = normalizeFieldValue(value)
 		}
 	}
 }
@@ -379,6 +383,13 @@ func (st *streamState) applyUnclassified(evt *repository.StoredEvent) bool {
 				st.fields[key] = value
 			}
 		}
+	case "PlaceUpdated":
+		// Every place event carries the text beside the place's key, which
+		// names the place until a display name is set (ADR-009 §2).
+		st.entityType = entityTypePlace
+		fields := eventFields(evt)
+		st.fields["text"] = fields["text"]
+		st.applyChanges(fields)
 	case "MediaContentAttached":
 		st.entityType = entityTypeMedia
 		fields := eventFields(evt)
@@ -674,6 +685,14 @@ var stateLabels = map[string]func(*streamState) string{
 	entityTypeNote:       func(st *streamState) string { return excerpt(st.str("text")) },
 	entityTypeSubmitter:  func(st *streamState) string { return st.str("name") },
 	entityTypeRepository: func(st *streamState) string { return st.str("name") },
+	// A place is named by its display name, or else the text its events
+	// carry beside its key (ADR-009, Consequences).
+	entityTypePlace: func(st *streamState) string {
+		if name := st.str("name"); name != "" {
+			return name
+		}
+		return st.str("text")
+	},
 	entityTypeLifeEvent: func(st *streamState) string {
 		return joinLabel(", ", factLabel(st.str("fact_type")), st.str("date"), st.str("place"))
 	},

@@ -188,6 +188,7 @@ type ReadModelStore struct {
 	researchLogs          map[branchKey]*repository.ResearchLogReadModel        // branch-scoped (#760)
 	proofSummaries        map[branchKey]*repository.ProofSummaryReadModel       // branch-scoped (#760)
 	duplicateDismissals   map[branchKey]*repository.DuplicateDismissalReadModel // branch-scoped (#1036)
+	places                map[uuid.UUID]*repository.PlaceFactsReadModel         // main-only (ADR-009, PL-005)
 	projectionFailures    []repository.ProjectionFailure                        // #845
 	rebuildState          []byte                                                // #845; outlives ResetReadModel
 	schemaVersion         int                                                   // #680; outlives ResetReadModel
@@ -228,6 +229,7 @@ func (s *ReadModelStore) clear() {
 	s.researchLogs = make(map[branchKey]*repository.ResearchLogReadModel)
 	s.proofSummaries = make(map[branchKey]*repository.ProofSummaryReadModel)
 	s.duplicateDismissals = make(map[branchKey]*repository.DuplicateDismissalReadModel)
+	s.places = make(map[uuid.UUID]*repository.PlaceFactsReadModel)
 	s.projectionFailures = nil
 }
 
@@ -2420,7 +2422,46 @@ func (s *ReadModelStore) ListPlaces(ctx context.Context, branchID domain.BranchI
 	for text, n := range counts {
 		uses = append(uses, repository.PlaceUse{Key: repository.PlaceKey(text), Text: text, Count: n})
 	}
-	return repository.Places(uses), nil
+	return repository.Places(uses, s.placeFacts(), privacy), nil
+}
+
+// placeFacts returns a copy of every places row. The caller holds s.mu.
+func (s *ReadModelStore) placeFacts() []repository.PlaceFactsReadModel {
+	facts := make([]repository.PlaceFactsReadModel, 0, len(s.places))
+	for _, f := range s.places {
+		facts = append(facts, *f)
+	}
+	sort.Slice(facts, func(i, j int) bool { return facts[i].Key < facts[j].Key })
+	return facts
+}
+
+// SavePlaceFacts inserts or replaces a place's facts (main-only, PL-005).
+func (s *ReadModelStore) SavePlaceFacts(ctx context.Context, facts *repository.PlaceFactsReadModel) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	f := *facts
+	s.places[f.ID] = &f
+	return nil
+}
+
+// GetPlaceFacts returns the facts of the place with id, or nil.
+func (s *ReadModelStore) GetPlaceFacts(ctx context.Context, id uuid.UUID) (*repository.PlaceFactsReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	f, ok := s.places[id]
+	if !ok {
+		return nil, nil
+	}
+	result := *f
+	return &result, nil
+}
+
+// ListPlaceFacts returns the facts of every place that has any, by key; they
+// are main's on every branch (PL-005).
+func (s *ReadModelStore) ListPlaceFacts(ctx context.Context, _ domain.BranchID) ([]repository.PlaceFactsReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.placeFacts(), nil
 }
 
 // GetPersonsByCemetery returns persons with burial/cremation events at the given
@@ -2477,36 +2518,20 @@ func (s *ReadModelStore) GetPersonsByCemetery(ctx context.Context, place string,
 	return results, total, nil
 }
 
-// GetMapLocations returns aggregated geographic locations from the birth/death
-// coordinates of branchID's overlay of persons (ADR-005).
+// GetMapLocations returns aggregated geographic locations from the effective
+// birth/death coordinates of branchID's overlay of persons (ADR-005, ADR-009
+// §9), grouped by repository.MapLocations as on the SQL stores.
 func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.BranchID, privacy repository.Privacy) ([]repository.MapLocation, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	// Key by "place|eventType" to aggregate
-	type locKey struct {
-		place     string
-		eventType string
-	}
-	type locData struct {
-		lat     float64
-		lon     float64
-		persons []repository.MapPerson
-		origins []domain.CoordinateSource
-	}
-	agg := make(map[locKey]*locData)
-	add := func(place, eventType string, lat, lon float64, person repository.MapPerson, origin *domain.CoordinateOrigin) {
-		key := locKey{place: place, eventType: eventType}
-		d, ok := agg[key]
-		if !ok {
-			d = &locData{lat: lat, lon: lon}
-			agg[key] = d
-		}
-		d.persons = append(d.persons, person)
-		d.origins = repository.AddMapOrigin(d.origins, origin)
-	}
-
-	for _, p := range resolveAllRows(s.persons, branchID) {
+	facts := repository.PlaceFactsByKey(s.placeFacts())
+	persons := resolveAllRows(s.persons, branchID)
+	// The SQL stores read the birth uses, then the death uses, each ordered
+	// by place text; so does this one.
+	sort.SliceStable(persons, func(i, j int) bool { return bytes.Compare(persons[i].ID[:], persons[j].ID[:]) < 0 })
+	var births, deaths []repository.MapUse
+	for _, p := range persons {
 		if privacy.Protects(p) {
 			continue
 		}
@@ -2514,41 +2539,21 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 			ID: p.ID, GivenName: p.GivenName, Surname: p.Surname,
 			Restriction: p.Restriction, LivingFacts: p.LivingFacts(),
 		}
-		// Birth location
-		if p.BirthPlaceLat != nil && p.BirthPlaceLong != nil && *p.BirthPlaceLat != "" && *p.BirthPlaceLong != "" {
-			if lat, lon, ok := repository.ParseMapCoordinates(p.ID, "birth", *p.BirthPlaceLat, *p.BirthPlaceLong); ok {
-				add(p.BirthPlace, "birth", lat, lon, person, p.BirthPlaceOrigin)
-			}
+		if key := repository.PlaceKey(p.BirthPlace); key != "" || p.BirthPlaceLat != nil {
+			births = append(births, repository.MapUse{Person: person, EventType: "birth", Text: p.BirthPlace, Key: key,
+				Latitude: p.BirthPlaceLat, Longitude: p.BirthPlaceLong, Origin: p.BirthPlaceOrigin, Place: facts[key]})
 		}
-		// Death location
-		if p.DeathPlaceLat != nil && p.DeathPlaceLong != nil && *p.DeathPlaceLat != "" && *p.DeathPlaceLong != "" {
-			if lat, lon, ok := repository.ParseMapCoordinates(p.ID, "death", *p.DeathPlaceLat, *p.DeathPlaceLong); ok {
-				add(p.DeathPlace, "death", lat, lon, person, p.DeathPlaceOrigin)
-			}
+		if key := repository.PlaceKey(p.DeathPlace); key != "" || p.DeathPlaceLat != nil {
+			deaths = append(deaths, repository.MapUse{Person: person, EventType: "death", Text: p.DeathPlace, Key: key,
+				Latitude: p.DeathPlaceLat, Longitude: p.DeathPlaceLong, Origin: p.DeathPlaceOrigin, Place: facts[key]})
 		}
 	}
-
-	results := make([]repository.MapLocation, 0, len(agg))
-	for key, data := range agg {
-		results = append(results, repository.MapLocation{
-			Place:     key.place,
-			Latitude:  data.lat,
-			Longitude: data.lon,
-			EventType: key.eventType,
-			Count:     len(data.persons),
-			Persons:   data.persons,
-			Origins:   data.origins,
-		})
+	byText := func(uses []repository.MapUse) {
+		sort.SliceStable(uses, func(i, j int) bool { return uses[i].Text < uses[j].Text })
 	}
-
-	sort.Slice(results, func(i, j int) bool {
-		if results[i].Place != results[j].Place {
-			return results[i].Place < results[j].Place
-		}
-		return results[i].EventType < results[j].EventType
-	})
-
-	return results, nil
+	byText(births)
+	byText(deaths)
+	return repository.MapLocations(append(births, deaths...)), nil
 }
 
 // GetBrickWalls returns persons with brick wall status.
