@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -500,6 +501,11 @@ func backfillImportedValues(ctx context.Context, events EventStore, rs ReadModel
 		if carried || version == 0 {
 			continue
 		}
+		if backfill.EntityType == domain.BackfillPerson {
+			if backfill.BranchSetCoordinates, err = branchSetCoordinates(ctx, events, backfill.EntityID); err != nil {
+				return appended, err
+			}
+		}
 		backfill.BaseEvent = domain.NewBaseEvent()
 		if err := events.Append(ctx, backfill.EntityID, backfillStreamType(backfill.EntityType), []domain.Event{backfill}, version, MainScope); err != nil {
 			return appended, fmt.Errorf("append backfill for %s %s: %w", backfill.EntityType, backfill.EntityID, err)
@@ -567,9 +573,10 @@ func coordinatesInReadModel(ctx context.Context, rs ReadModelStore) ([]domain.Im
 // coordinatesMainDeleted returns a backfill for every person and life event
 // that main has deleted but a research branch still holds its own copy of,
 // with the coordinates of that copy (#1255). A copy's coordinates came from
-// main's row unless its branch set them with an update (#1604), so the copy
-// on a branch that did is passed over: its log carries them. Every other copy
-// holds main's, and the first one found stands for all.
+// main's row except those its branch set or cleared with an update (#1604),
+// which its log carries, so the backfill takes each coordinate from a copy
+// whose branch did not (#1797). Every such copy holds main's, and the first
+// one found stands for all.
 // The backfill goes on main's stream, after its delete; its projection finds
 // no main row and fills in the branch copies alone.
 func coordinatesMainDeleted(ctx context.Context, events EventStore, rs ReadModelStore, branches BranchStore) ([]domain.ImportedValuesBackfilled, error) {
@@ -581,16 +588,18 @@ func coordinatesMainDeleted(ctx context.Context, events EventStore, rs ReadModel
 		return nil, fmt.Errorf("list branches: %w", err)
 	}
 	var pending []domain.ImportedValuesBackfilled
+	persons := map[uuid.UUID]*domain.ImportedValuesBackfilled{}
+	var personOrder []uuid.UUID
 	seen := map[uuid.UUID]bool{}
 	for _, b := range all {
 		branchID := domain.BranchID(b.ID)
-		persons, err := ListAllOn(ctx, branchID, rebuildPageSize, rs.ListPersons)
+		copies, err := ListAllOn(ctx, branchID, rebuildPageSize, rs.ListPersons)
 		if err != nil {
 			return nil, fmt.Errorf("list persons on branch %s: %w", b.ID, err)
 		}
-		for i := range persons {
-			p := &persons[i]
-			if seen[p.ID] || countSet(p.BirthPlaceLat, p.BirthPlaceLong, p.DeathPlaceLat, p.DeathPlaceLong) == 0 {
+		for i := range copies {
+			p := &copies[i]
+			if countSet(p.BirthPlaceLat, p.BirthPlaceLong, p.DeathPlaceLat, p.DeathPlaceLong) == 0 {
 				continue
 			}
 			onMain, err := rs.GetPerson(ctx, domain.MainBranchID, p.ID)
@@ -600,19 +609,17 @@ func coordinatesMainDeleted(ctx context.Context, events EventStore, rs ReadModel
 			if onMain != nil {
 				continue
 			}
-			branchSet, err := branchSetCoordinates(ctx, events, p.ID, branchID)
+			branchSet, err := branchSetCoordinates(ctx, events, p.ID)
 			if err != nil {
 				return nil, err
 			}
-			if branchSet {
-				continue
+			backfill, ok := persons[p.ID]
+			if !ok {
+				backfill = &domain.ImportedValuesBackfilled{EntityType: domain.BackfillPerson, EntityID: p.ID}
+				persons[p.ID] = backfill
+				personOrder = append(personOrder, p.ID)
 			}
-			seen[p.ID] = true
-			pending = append(pending, domain.ImportedValuesBackfilled{
-				EntityType: domain.BackfillPerson, EntityID: p.ID,
-				BirthPlaceLat: p.BirthPlaceLat, BirthPlaceLong: p.BirthPlaceLong,
-				DeathPlaceLat: p.DeathPlaceLat, DeathPlaceLong: p.DeathPlaceLong,
-			})
+			takeMainCoordinates(backfill, p, branchSet[b.ID.String()])
 		}
 		lifeEvents, err := ListAllOn(ctx, branchID, rebuildPageSize, rs.ListEvents)
 		if err != nil {
@@ -636,7 +643,32 @@ func coordinatesMainDeleted(ctx context.Context, events EventStore, rs ReadModel
 			})
 		}
 	}
+	for _, id := range personOrder {
+		if b := persons[id]; countSet(b.BirthPlaceLat, b.BirthPlaceLong, b.DeathPlaceLat, b.DeathPlaceLong) > 0 {
+			pending = append(pending, *b)
+		}
+	}
 	return pending, nil
+}
+
+// takeMainCoordinates fills in each coordinate the backfill lacks from a
+// branch copy of the person, past those its branch set or cleared itself
+// (branchSet), which are not main's (#1797).
+func takeMainCoordinates(backfill *domain.ImportedValuesBackfilled, row *PersonReadModel, branchSet []string) {
+	for _, c := range []struct {
+		key      string
+		backfill **string
+		row      *string
+	}{
+		{"birth_place_lat", &backfill.BirthPlaceLat, row.BirthPlaceLat},
+		{"birth_place_long", &backfill.BirthPlaceLong, row.BirthPlaceLong},
+		{"death_place_lat", &backfill.DeathPlaceLat, row.DeathPlaceLat},
+		{"death_place_long", &backfill.DeathPlaceLong, row.DeathPlaceLong},
+	} {
+		if *c.backfill == nil && !slices.Contains(branchSet, c.key) {
+			*c.backfill = c.row
+		}
+	}
 }
 
 // exidsInReadModel returns a backfill for every main-branch family, source and
@@ -748,27 +780,35 @@ func updatesCarry(backfill domain.ImportedValuesBackfilled, updated map[string]b
 	return true
 }
 
-// branchSetCoordinates reports whether an update on the branch sets or clears
-// the person's coordinates (#1604).
-func branchSetCoordinates(ctx context.Context, events EventStore, id uuid.UUID, branchID domain.BranchID) (bool, error) {
+// branchSetCoordinates returns, by branch id, the coordinate change keys that
+// updates on each research branch set or cleared on the person (#1604), or nil
+// if none did.
+func branchSetCoordinates(ctx context.Context, events EventStore, id uuid.UUID) (map[string][]string, error) {
 	stored, err := events.ReadStream(ctx, id)
 	if err != nil {
-		return false, fmt.Errorf("read stream %s: %w", id, err)
+		return nil, fmt.Errorf("read stream %s: %w", id, err)
 	}
+	var set map[string][]string
 	for i := range stored {
 		s := &stored[i]
-		if s.BranchID != branchID {
+		if s.BranchID.IsMain() {
 			continue
 		}
 		decoded, err := s.DecodeEvent()
 		if err != nil {
-			return false, fmt.Errorf("decode %s at position %d: %w", s.EventType, s.Position, err)
+			return nil, fmt.Errorf("decode %s at position %d: %w", s.EventType, s.Position, err)
 		}
-		if len(updatedCoordinateKeys(decoded)) > 0 {
-			return true, nil
+		for _, key := range updatedCoordinateKeys(decoded) {
+			branch := s.BranchID.String()
+			if !slices.Contains(set[branch], key) {
+				if set == nil {
+					set = map[string][]string{}
+				}
+				set[branch] = append(set[branch], key)
+			}
 		}
 	}
-	return false, nil
+	return set, nil
 }
 
 // updatedCoordinateKeys returns the coordinate change keys a person or family

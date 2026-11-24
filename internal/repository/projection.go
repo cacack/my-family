@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -3085,11 +3086,28 @@ func (p *Projector) projectImportedValuesBackfilled(ctx context.Context, e domai
 		hasCoordinates := countSet(e.BirthPlaceLat, e.BirthPlaceLong, e.DeathPlaceLat, e.DeathPlaceLong) > 0
 		if err := p.backfillBranchCopies(ctx, branchID, hasCoordinates, func(ctx context.Context, b domain.BranchID) error {
 			row, err := p.readStore.GetPerson(ctx, b, e.EntityID)
-			if err != nil || row == nil || countSet(row.BirthPlaceLat, row.BirthPlaceLong, row.DeathPlaceLat, row.DeathPlaceLong) > 0 {
+			if err != nil || row == nil {
 				return err
 			}
-			row.BirthPlaceLat, row.BirthPlaceLong = e.BirthPlaceLat, e.BirthPlaceLong
-			row.DeathPlaceLat, row.DeathPlaceLong = e.DeathPlaceLat, e.DeathPlaceLong
+			branchSet := e.BranchSetCoordinates[b.String()]
+			patched := false
+			for _, c := range []struct {
+				key  string
+				row  **string
+				main *string
+			}{
+				{"birth_place_lat", &row.BirthPlaceLat, e.BirthPlaceLat},
+				{"birth_place_long", &row.BirthPlaceLong, e.BirthPlaceLong},
+				{"death_place_lat", &row.DeathPlaceLat, e.DeathPlaceLat},
+				{"death_place_long", &row.DeathPlaceLong, e.DeathPlaceLong},
+			} {
+				if c.main != nil && *c.row == nil && !slices.Contains(branchSet, c.key) {
+					*c.row, patched = c.main, true
+				}
+			}
+			if !patched {
+				return nil
+			}
 			return p.readStore.SavePerson(ctx, b, row)
 		}); err != nil || person == nil || len(e.ExternalIDs) == 0 {
 			return err
@@ -3167,9 +3185,11 @@ func (p *Projector) projectImportedValuesBackfilled(ctx context.Context, e domai
 // copies main's row into a branch row of its own. If that copy was made by a
 // replay before the backfill set main's coordinates, it lacks them, though
 // the branch never changed them (no event but the backfill does). With main's
-// row already set, a branch whose row has no coordinates must have such a
-// copy, since a branch without one reads main's row; patch fills those in and
-// leaves every other branch alone. The rule only holds when the backfill set
+// row already set, a branch whose row lacks a coordinate main's has must have
+// such a copy, since a branch without one reads main's row; patch fills those
+// in and leaves every other branch alone. A person's copy is patched one
+// coordinate at a time, past those its branch set or cleared itself by an
+// update (#1604), which the backfill names (#1797). The rule only holds when the backfill set
 // coordinates (hasCoordinates): for an EXID-only backfill main's row still has
 // none, so a branch reading main's row would look like a copy, and saving it
 // would give that branch a row of its own that hides main's later edits.
