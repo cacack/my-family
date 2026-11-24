@@ -14,6 +14,8 @@ import (
 	"github.com/cacack/my-family/internal/domain"
 	"github.com/cacack/my-family/internal/repository"
 	"github.com/cacack/my-family/internal/repository/memory"
+	"github.com/cacack/my-family/internal/storage"
+	"github.com/cacack/my-family/internal/testutil/pgtest"
 )
 
 var errRebuildTest = errors.New("injected")
@@ -957,9 +959,121 @@ func TestRebuildReadModel_BackfillsMainDeletedFromAnUnsetBranchCopy(t *testing.T
 	if b, _ := s.read.GetPerson(ctx, domain.BranchID(other.ID), person.ID); b == nil || ptrValue(b.BirthPlaceLat) != lat || ptrValue(b.BirthPlaceLong) != long || b.DeathPlaceLat != nil {
 		t.Errorf("other branch copy = %+v, want main's imported birth coordinates only", b)
 	}
-	if b, _ := s.read.GetPerson(ctx, domain.BranchID(placing.ID), person.ID); b == nil || ptrValue(b.DeathPlaceLat) != "S33.8688" {
-		t.Errorf("placing branch copy = %+v, want its own death coordinates", b)
+	if b, _ := s.read.GetPerson(ctx, domain.BranchID(placing.ID), person.ID); b == nil || ptrValue(b.DeathPlaceLat) != "S33.8688" || ptrValue(b.BirthPlaceLat) != lat {
+		t.Errorf("placing branch copy = %+v, want its own death coordinates beside main's birth ones (#1797)", b)
 	}
+}
+
+// rebuildBackends opens each backend's stores, for the rebuild cases that
+// must hold on all of them. PostgreSQL skips without Docker (see pgtest).
+var rebuildBackends = []struct {
+	name string
+	open func(t *testing.T) (*storage.Stores, error)
+}{
+	{"Memory", func(*testing.T) (*storage.Stores, error) { return storage.OpenMemory(), nil }},
+	{"SQLite", func(t *testing.T) (*storage.Stores, error) {
+		return storage.OpenSQLite(t.TempDir()+"/myfamily.db", storage.AccessRebuild)
+	}},
+	{"Postgres", func(t *testing.T) (*storage.Stores, error) {
+		return storage.OpenPostgres(pgtest.NewDatabase(t), storage.AccessRebuild)
+	}},
+}
+
+// forEachRebuildBackend runs test on a fresh set of stores per backend.
+func forEachRebuildBackend(t *testing.T, test func(t *testing.T, st *storage.Stores)) {
+	t.Helper()
+	for _, backend := range rebuildBackends {
+		t.Run(backend.name, func(t *testing.T) {
+			st, err := backend.open(t)
+			if err != nil {
+				t.Fatalf("open stores: %v", err)
+			}
+			t.Cleanup(func() { _ = st.Close() })
+			test(t, st)
+		})
+	}
+}
+
+// setImportedCoordinates writes a pair straight to a person's main row, as
+// import did before #1225, with no event behind it.
+func setImportedCoordinates(t *testing.T, rs repository.ReadModelStore, id uuid.UUID, death bool, lat, long string) {
+	t.Helper()
+	ctx := context.Background()
+	p, err := rs.GetPerson(ctx, domain.MainBranchID, id)
+	if err != nil || p == nil {
+		t.Fatalf("get person %s: %v", id, err)
+	}
+	if death {
+		p.DeathPlaceLat, p.DeathPlaceLong = &lat, &long
+	} else {
+		p.BirthPlaceLat, p.BirthPlaceLong = &lat, &long
+	}
+	mustRebuildSetup(t, rs.SavePerson(ctx, domain.MainBranchID, p))
+}
+
+// TestRebuildReadModel_KeepsBranchClearedCoordinates covers a branch that
+// cleared a person's imported birth pair by an update (#1797): the rebuild
+// backfills the pair on main but leaves the branch's copy without it.
+func TestRebuildReadModel_KeepsBranchClearedCoordinates(t *testing.T) {
+	forEachRebuildBackend(t, func(t *testing.T, st *storage.Stores) {
+		ctx := context.Background()
+		h := command.NewHandlerWithBranches(st.Events, st.ReadModel, st.Branches, st.Snapshots)
+		person, err := h.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ada", Surname: "Example", BirthPlace: "Boston"})
+		mustRebuildSetup(t, err)
+		lat, long := "N42.3601", "W71.0589"
+		setImportedCoordinates(t, st.ReadModel, person.ID, false, lat, long)
+		branch, err := h.CreateBranch(ctx, "clearing", "")
+		mustRebuildSetup(t, err)
+		clearPair := command.CoordinatesPatch{Latitude: command.Clear[string](), Longitude: command.Clear[string]()}
+		_, err = h.WithBranch(branch).UpdatePerson(ctx, command.UpdatePersonInput{ID: person.ID, Version: person.Version, BirthPlaceCoordinates: clearPair})
+		mustRebuildSetup(t, err)
+
+		for _, run := range []string{"first", "second"} {
+			if _, err := repository.RebuildReadModel(ctx, st.Events, st.ReadModel, st.Branches, st.Snapshots); err != nil {
+				t.Fatalf("%s rebuild: %v", run, err)
+			}
+			if b, _ := st.ReadModel.GetPerson(ctx, domain.BranchID(branch.ID), person.ID); b == nil || b.BirthPlaceLat != nil || b.BirthPlaceLong != nil {
+				t.Errorf("after the %s rebuild, branch copy = %+v, want no birth coordinates", run, b)
+			}
+			if m, _ := st.ReadModel.GetPerson(ctx, domain.MainBranchID, person.ID); m == nil || ptrValue(m.BirthPlaceLat) != lat || ptrValue(m.BirthPlaceLong) != long {
+				t.Errorf("after the %s rebuild, main person = %+v, want its imported birth pair", run, m)
+			}
+		}
+	})
+}
+
+// TestRebuildReadModel_BackfillsBesideBranchSetCoordinates covers a person
+// main has deleted, whose copy on a branch holds a birth pair the branch set
+// by an update and main's imported death pair, which no event logs (#1797):
+// the rebuild backfills the death pair, so the copy keeps both.
+func TestRebuildReadModel_BackfillsBesideBranchSetCoordinates(t *testing.T) {
+	forEachRebuildBackend(t, func(t *testing.T, st *storage.Stores) {
+		ctx := context.Background()
+		h := command.NewHandlerWithBranches(st.Events, st.ReadModel, st.Branches, st.Snapshots)
+		person, err := h.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ada", Surname: "Example", BirthPlace: "Boston", DeathPlace: "Sydney"})
+		mustRebuildSetup(t, err)
+		lat, long := "S33.8688", "E151.2093"
+		setImportedCoordinates(t, st.ReadModel, person.ID, true, lat, long)
+		branch, err := h.CreateBranch(ctx, "placing", "")
+		mustRebuildSetup(t, err)
+		_, err = h.WithBranch(branch).UpdatePerson(ctx, command.UpdatePersonInput{ID: person.ID, Version: person.Version, BirthPlaceCoordinates: coords("N42.3601", "W71.0589")})
+		mustRebuildSetup(t, err)
+		mustRebuildSetup(t, h.DeletePerson(ctx, command.DeletePersonInput{ID: person.ID, Version: person.Version}))
+
+		for _, run := range []string{"first", "second"} {
+			if _, err := repository.RebuildReadModel(ctx, st.Events, st.ReadModel, st.Branches, st.Snapshots); err != nil {
+				t.Fatalf("%s rebuild: %v", run, err)
+			}
+			b, _ := st.ReadModel.GetPerson(ctx, domain.BranchID(branch.ID), person.ID)
+			if b == nil || ptrValue(b.BirthPlaceLat) != "N42.3601" || ptrValue(b.BirthPlaceLong) != "W71.0589" ||
+				ptrValue(b.DeathPlaceLat) != lat || ptrValue(b.DeathPlaceLong) != long {
+				t.Errorf("after the %s rebuild, branch copy = %+v, want its own birth pair and main's imported death pair", run, b)
+			}
+		}
+		if got := loggedEventTypes(t, st.Events)["ImportedValuesBackfilled"]; got != 1 {
+			t.Errorf("logged %d backfills, want 1", got)
+		}
+	})
 }
 
 // TestRebuildReadModel_CoordinateOrigins covers the origin of each pair

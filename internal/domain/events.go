@@ -2099,17 +2099,26 @@ const (
 // these values, and only the fields of its kind: birth and death coordinates
 // and EXIDs for a person, place coordinates for a life event, EXIDs for a
 // family, source or repository.
+//
+// For a person, BranchSetCoordinates names, by branch id, the coordinate
+// change keys (birth_place_lat and so on) that each research branch's own
+// updates had set or cleared when the backfill was logged (#1797). Such a
+// branch's copy keeps its own values for those keys, as its log carries them;
+// the backfill fills in only the rest. A backfill logged before #1797 has no
+// map and replays as if no branch had: before #1604 no branch update could
+// set or clear coordinates, so its copies hold only main's.
 type ImportedValuesBackfilled struct {
 	BaseEvent
-	EntityType     string               `json:"entity_type"`
-	EntityID       uuid.UUID            `json:"entity_id"`
-	BirthPlaceLat  *string              `json:"birth_place_lat,omitempty"`
-	BirthPlaceLong *string              `json:"birth_place_long,omitempty"`
-	DeathPlaceLat  *string              `json:"death_place_lat,omitempty"`
-	DeathPlaceLong *string              `json:"death_place_long,omitempty"`
-	PlaceLat       *string              `json:"place_lat,omitempty"`
-	PlaceLong      *string              `json:"place_long,omitempty"`
-	ExternalIDs    []ExternalIdentifier `json:"external_ids,omitempty"`
+	EntityType           string               `json:"entity_type"`
+	EntityID             uuid.UUID            `json:"entity_id"`
+	BirthPlaceLat        *string              `json:"birth_place_lat,omitempty"`
+	BirthPlaceLong       *string              `json:"birth_place_long,omitempty"`
+	DeathPlaceLat        *string              `json:"death_place_lat,omitempty"`
+	DeathPlaceLong       *string              `json:"death_place_long,omitempty"`
+	PlaceLat             *string              `json:"place_lat,omitempty"`
+	PlaceLong            *string              `json:"place_long,omitempty"`
+	ExternalIDs          []ExternalIdentifier `json:"external_ids,omitempty"`
+	BranchSetCoordinates map[string][]string  `json:"branch_set_coordinates,omitempty"`
 }
 
 func (e ImportedValuesBackfilled) EventType() string      { return "ImportedValuesBackfilled" }
