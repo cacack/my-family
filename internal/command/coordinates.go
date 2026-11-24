@@ -119,6 +119,24 @@ type placeCoordinates struct {
 	Origin    *domain.CoordinateOrigin
 }
 
+// equal reports whether c and o hold the same pair with the same origin, an
+// empty half and an unset one alike.
+func (c placeCoordinates) equal(o placeCoordinates) bool {
+	text := func(p *string) string {
+		if p == nil {
+			return ""
+		}
+		return *p
+	}
+	origin := func(p *domain.CoordinateOrigin) domain.CoordinateOrigin {
+		if p == nil {
+			return domain.CoordinateOrigin{}
+		}
+		return *p
+	}
+	return text(c.Lat) == text(o.Lat) && text(c.Long) == text(o.Long) && origin(c.Origin) == origin(o.Origin)
+}
+
 // recordCoordinates records the pair beside an event's place text whose API
 // fields start with prefix (eventPlaceNames), for a place named before and
 // now named place (see recordPair). A pair left out beside a place this

@@ -2049,6 +2049,31 @@ func (p *Projector) projectPersonMerged(ctx context.Context, e domain.PersonMerg
 			if v, ok := value.(string); ok {
 				survivor.DeathPlace = v
 			}
+		// A place's coordinate pair follows the place (#1799); nil clears it.
+		case "birth_place_lat":
+			if v, ok := changeCoordinate(value); ok {
+				survivor.BirthPlaceLat = v
+			}
+		case "birth_place_long":
+			if v, ok := changeCoordinate(value); ok {
+				survivor.BirthPlaceLong = v
+			}
+		case "birth_place_origin":
+			if v, ok := domain.CoordinateOriginFromChange(value); ok {
+				survivor.BirthPlaceOrigin = v
+			}
+		case "death_place_lat":
+			if v, ok := changeCoordinate(value); ok {
+				survivor.DeathPlaceLat = v
+			}
+		case "death_place_long":
+			if v, ok := changeCoordinate(value); ok {
+				survivor.DeathPlaceLong = v
+			}
+		case "death_place_origin":
+			if v, ok := domain.CoordinateOriginFromChange(value); ok {
+				survivor.DeathPlaceOrigin = v
+			}
 		case "birth_type_detail":
 			if v, ok := value.(string); ok {
 				survivor.BirthTypeDetail = v

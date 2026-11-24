@@ -2539,6 +2539,8 @@ func TestProjector_PersonMerged_WithResolvedFields(t *testing.T) {
 	// Create survivor with some fields
 	survivor := domain.NewPerson("John", "Doe")
 	survivor.Gender = domain.GenderMale
+	survivorLat, survivorLong := "N40.7128", "W74.0060"
+	survivor.DeathPlace = "Manhattan"
 
 	// Create merged person with more fields
 	merged := domain.NewPerson("Johnny", "Smith")
@@ -2549,7 +2551,9 @@ func TestProjector_PersonMerged_WithResolvedFields(t *testing.T) {
 	merged.DeathPlace = "New York, NY"
 	merged.Notes = "Important notes"
 
-	projector.Project(ctx, domain.NewPersonCreated(survivor), 1, domain.MainBranchID)
+	survivorCreated := domain.NewPersonCreated(survivor)
+	survivorCreated.DeathPlaceLat, survivorCreated.DeathPlaceLong = &survivorLat, &survivorLong
+	projector.Project(ctx, survivorCreated, 1, domain.MainBranchID)
 	projector.Project(ctx, domain.NewPersonCreated(merged), 1, domain.MainBranchID)
 
 	// Resolve multiple fields from merged
@@ -2565,6 +2569,13 @@ func TestProjector_PersonMerged_WithResolvedFields(t *testing.T) {
 		// The birth and death TYPE follow the resolved date/place (#1352).
 		"birth_type_detail": "Home birth",
 		"death_type_detail": "Illness",
+		// A place's coordinate pair follows the resolved place; nil clears it (#1799).
+		"birth_place_lat":    "N42.3601",
+		"birth_place_long":   "W71.0589",
+		"birth_place_origin": map[string]any{"source": "geocoded", "provider": "Nominatim", "precision": "full"},
+		"death_place_lat":    nil,
+		"death_place_long":   nil,
+		"death_place_origin": nil,
 	}
 
 	event := domain.NewPersonMerged(
@@ -2621,6 +2632,16 @@ func TestProjector_PersonMerged_WithResolvedFields(t *testing.T) {
 	}
 	if survivorRM.BirthTypeDetail != "Home birth" || survivorRM.DeathTypeDetail != "Illness" {
 		t.Errorf("BirthTypeDetail/DeathTypeDetail = %q/%q, want Home birth/Illness", survivorRM.BirthTypeDetail, survivorRM.DeathTypeDetail)
+	}
+	if survivorRM.BirthPlaceLat == nil || *survivorRM.BirthPlaceLat != "N42.3601" || survivorRM.BirthPlaceLong == nil || *survivorRM.BirthPlaceLong != "W71.0589" {
+		t.Errorf("birth pair = %v %v, want N42.3601 W71.0589", survivorRM.BirthPlaceLat, survivorRM.BirthPlaceLong)
+	}
+	wantOrigin := domain.CoordinateOrigin{Source: domain.CoordinateGeocoded, Provider: "Nominatim", Precision: domain.MatchFull}
+	if survivorRM.BirthPlaceOrigin == nil || *survivorRM.BirthPlaceOrigin != wantOrigin {
+		t.Errorf("birth origin = %v, want %v", survivorRM.BirthPlaceOrigin, wantOrigin)
+	}
+	if survivorRM.DeathPlaceLat != nil || survivorRM.DeathPlaceLong != nil || survivorRM.DeathPlaceOrigin != nil {
+		t.Errorf("death pair = %v %v (%v), want cleared", survivorRM.DeathPlaceLat, survivorRM.DeathPlaceLong, survivorRM.DeathPlaceOrigin)
 	}
 }
 

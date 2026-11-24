@@ -331,6 +331,8 @@ func resolveFields(survivor, merged *repository.PersonReadModel, resolution map[
 		}
 	}
 
+	fieldsUpdated = append(fieldsUpdated, resolveCoordinates(resolved, survivor, merged)...)
+
 	// The privacy marks are not resolvable either: the survivor keeps the more
 	// protective of the two, so a merge never exposes what either person's
 	// record protected (ADR-008). It is private when either is, and its living
@@ -345,6 +347,44 @@ func resolveFields(survivor, merged *repository.PersonReadModel, resolution map[
 	}
 
 	return resolved, fieldsUpdated
+}
+
+// resolveCoordinates records in resolved the coordinate pairs that follow a
+// place resolved to the merged person, and returns their keys. A pair is not
+// resolvable on its own: it follows the place it locates. When the birth (or
+// death) place resolves to the merged person, the survivor takes the merged
+// person's pair and its origin too, even an empty pair, which records a
+// clear (nil), so a map pin never sits beside another person's place name
+// (#1799). The pair is recorded whole, as an update records it (recordPair).
+// When the place stays the survivor's, so does its pair.
+func resolveCoordinates(resolved map[string]any, survivor, merged *repository.PersonReadModel) []string {
+	var updated []string
+	pairs := []struct {
+		place            string
+		survivor, merged placeCoordinates
+	}{
+		{"birth_place",
+			placeCoordinates{survivor.BirthPlaceLat, survivor.BirthPlaceLong, survivor.BirthPlaceOrigin},
+			placeCoordinates{merged.BirthPlaceLat, merged.BirthPlaceLong, merged.BirthPlaceOrigin}},
+		{"death_place",
+			placeCoordinates{survivor.DeathPlaceLat, survivor.DeathPlaceLong, survivor.DeathPlaceOrigin},
+			placeCoordinates{merged.DeathPlaceLat, merged.DeathPlaceLong, merged.DeathPlaceOrigin}},
+	}
+	for _, pc := range pairs {
+		if _, fromMerged := resolved[pc.place]; !fromMerged || pc.merged.equal(pc.survivor) {
+			continue
+		}
+		n := eventPlaceNames(pc.place)
+		resolved[n.latKey], resolved[n.longKey], resolved[n.originKey] = nil, nil, nil
+		if pc.merged.Lat != nil && *pc.merged.Lat != "" && pc.merged.Long != nil && *pc.merged.Long != "" {
+			resolved[n.latKey], resolved[n.longKey] = *pc.merged.Lat, *pc.merged.Long
+			if pc.merged.Origin != nil {
+				resolved[n.originKey] = pc.merged.Origin.ChangeValue()
+			}
+		}
+		updated = append(updated, n.latKey, n.longKey)
+	}
+	return updated
 }
 
 // collectAffectedFamilies returns IDs of families where merged person is a partner.
