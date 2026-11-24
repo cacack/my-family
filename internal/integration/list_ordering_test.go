@@ -85,7 +85,7 @@ func TestPagedListsVisitEveryRowOnce(t *testing.T) {
 					return read.GetPersonsBySurname(ctx, "von_Hugel", opts)
 				},
 				"GetPersonsByPlace": func(ctx context.Context, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
-					return read.GetPersonsByPlace(ctx, "Vienna", opts)
+					return read.GetPersonsByPlace(ctx, repository.PlaceID("vienna"), opts)
 				},
 				"GetPersonsByCemetery": func(ctx context.Context, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
 					return read.GetPersonsByCemetery(ctx, "Zentralfriedhof", opts)

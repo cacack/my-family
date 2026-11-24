@@ -345,9 +345,13 @@ export interface paths {
         };
         /**
          * Get place hierarchy with counts
-         * @description Returns hierarchical place data (Country > State > County > City). With
-         *     `?branch=` the places and counts are derived from that branch's isolated
-         *     view; omit it for the mainline.
+         * @description Returns the places directly under a place, with the path down to it
+         *     (ADR-009 §4). A place sits under its explicit parent when one is set
+         *     (`PUT /places/{id}`), otherwise under the place whose key is its key
+         *     with the leftmost part removed, each resolved through aliases; a
+         *     one-part key is at the top level. A parent no record names directly
+         *     is a place like any other. With `?branch=` the places and counts are
+         *     derived from that branch's isolated view; omit it for the mainline.
          */
         get: operations["browsePlaces"];
         put?: never;
@@ -358,20 +362,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/browse/places/{place}/persons": {
+    "/browse/places/{id}/persons": {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                /** @description The place to get people for */
-                place: string;
+                /** @description Place UUID, derived from the place matching key (ADR-009 §2) */
+                id: components["parameters"]["placeId"];
             };
             cookie?: never;
         };
         /**
          * Get persons associated with a place
-         * @description Returns the people associated with the place. With `?branch=` the results
-         *     come from that branch's isolated view; omit it for the mainline.
+         * @description Returns the people whose birth or death place resolves to the place
+         *     or to a place beneath it in the hierarchy of `GET /browse/places`:
+         *     the people of the records the place's `count` counts. With
+         *     `?branch=` the results come from that branch's isolated view; omit it
+         *     for the mainline.
          */
         get: operations["getPersonsByPlace"];
         put?: never;
@@ -515,9 +522,9 @@ export interface paths {
          */
         get: operations["getPlace"];
         /**
-         * Set or clear a place's name and coordinates
-         * @description Sets or clears facts about a place (ADR-009 §2): its display name and
-         *     its coordinate pair, with the pair's origin. A change appends one
+         * Set or clear a place's name, coordinates and parent
+         * @description Sets or clears facts about a place (ADR-009 §2): its display name, its
+         *     coordinate pair, with the pair's origin, and its explicit parent. A change appends one
          *     `PlaceUpdated` event to the place's own stream and none to any person
          *     or family. Every record at the place is then mapped at the place's
          *     pair unless the record has a pair of its own (ADR-009 §5). Place facts
@@ -5225,15 +5232,20 @@ export interface components {
             items: components["schemas"]["PlaceEntry"][];
             /** @description Total number of unique places at this level */
             total: number;
-            /** @description Path from root to current level */
-            breadcrumb?: string[];
+            /** @description The places from the top level down to the parent, ending with the parent itself; omitted at the top level */
+            breadcrumb?: components["schemas"]["PlaceEntry"][];
         };
         PlaceEntry: {
-            /** @description Place name at this level */
+            /**
+             * Format: uuid
+             * @description The place's ID (GET /places/{id}), never an absorbed one
+             */
+            id: string;
+            /** @description The place's display name when one is set, otherwise the first part of its most-used spelling */
             name: string;
-            /** @description Full place path */
+            /** @description The place's display name when one is set, otherwise its most-used spelling, or its key when no record spells it */
             full_name: string;
-            /** @description Number of birth and death records at or under this place. Spellings whose place matching key is the same (differing only in letter case, spacing around commas or empty parts) are one place. This counts fewer uses than `Place.count` from `GET /places`, which also counts marriage, life event and attribute places. */
+            /** @description Number of birth and death records whose place resolves to this place or to a place beneath it. Spellings whose place matching key is the same (differing only in letter case, spacing around commas or empty parts) are one place, and so are spellings joined by an alias. This counts fewer uses than `Place.count` from `GET /places`, which also counts marriage, life event and attribute places. */
             count: number;
             /** @description Whether this place has sub-locations */
             has_children: boolean;
@@ -5250,6 +5262,11 @@ export interface components {
             name: string;
             /** @description Number of place uses (birth, death, marriage, life event and attribute places) the caller may see at or under this place. It can be larger than `PlaceEntry.count` from `GET /browse/places`, which counts birth and death places only. */
             count: number;
+            /**
+             * Format: uuid
+             * @description The ID of the explicit parent set with PUT /places/{id}, as stated; omitted when none is set, in which case the place sits under the place its key names with the leftmost part removed (ADR-009 §4).
+             */
+            parent_id?: string;
             /** @description The place's own latitude in GEDCOM form (e.g. "N42.3601"), given with longitude; omitted when the place has no pair. A parent place's pair is never inherited. */
             latitude?: string;
             /** @description The place's own longitude in GEDCOM form (e.g. "W71.0589"), given with latitude. */
@@ -5301,6 +5318,11 @@ export interface components {
             version: number;
             /** @description Display name. Null or a blank value clears it, so the place shows its most-used recorded spelling again. No record's place text changes (PL-001). */
             name?: string | null;
+            /**
+             * Format: uuid
+             * @description The place to put this one under in the place hierarchy (ADR-009 §4), in place of the place its key names. Null clears it, so the place sits under that default parent again. A place that is not in use, and one that would put this place beneath itself, answer 400.
+             */
+            parent_id?: string | null;
             /** @description Latitude in GEDCOM form (e.g. "N42.3601"): N or S, then decimal degrees within 90. Given with longitude; both null clears the pair. */
             latitude?: string | null;
             /** @description Longitude in GEDCOM form (e.g. "W71.0589"): E or W, then decimal degrees within 180. Given with latitude. */
@@ -8866,7 +8888,7 @@ export interface operations {
                  *     only (ADR-008 §4).
                  */
                 branch?: components["parameters"]["branchScope"];
-                /** @description Parent place to get children for (empty for top-level) */
+                /** @description ID of the place to get the places under; omit it for the top level. An absorbed place's ID names the place it resolves to. An ID no place in the hierarchy has gives no places. */
                 parent?: string;
             };
             header?: never;
@@ -8907,8 +8929,8 @@ export interface operations {
             };
             header?: never;
             path: {
-                /** @description The place to get people for */
-                place: string;
+                /** @description Place UUID, derived from the place matching key (ADR-009 §2) */
+                id: components["parameters"]["placeId"];
             };
             cookie?: never;
         };

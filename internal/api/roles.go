@@ -218,7 +218,7 @@ var anonymousCostlyRoutes = map[string]bool{
 	routeKey(http.MethodGet, apiBase+"/branches"):                           true,
 	routeKey(http.MethodGet, apiBase+"/persons/duplicates/dismissed"):       true,
 	routeKey(http.MethodGet, apiBase+"/browse/surnames/:surname/persons"):   true,
-	routeKey(http.MethodGet, apiBase+"/browse/places/:place/persons"):       true,
+	routeKey(http.MethodGet, apiBase+"/browse/places/:id/persons"):          true,
 	routeKey(http.MethodGet, apiBase+"/browse/cemeteries/:place/persons"):   true,
 	routeKey(http.MethodGet, apiBase+"/search"):                             true,
 	routeKey(http.MethodGet, apiBase+"/sources/search"):                     true,

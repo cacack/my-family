@@ -112,7 +112,7 @@ func TestPrivacyRedaction_AggregatesAndHomeWidgets(t *testing.T) {
 						"/api/v1/browse/surnames",          // browseSurnames
 						"/api/v1/browse/surnames?letter=S", // browseSurnames by letter
 						"/api/v1/browse/places",            // browsePlaces
-						"/api/v1/browse/places?parent=Springfield",
+						"/api/v1/browse/places?parent=" + springfieldPlaceID,
 						"/api/v1/browse/cemeteries",   // browseCemeteries
 						"/api/v1/places?limit=100",    // listPlaces
 						"/api/v1/places/unmapped",     // listUnmappedPlaces
@@ -143,7 +143,7 @@ func TestPrivacyRedaction_AggregatesAndHomeWidgets(t *testing.T) {
 					// The memory store behind the API lists every place in full,
 					// so the places under Springfield are told apart by full name.
 					var places []string
-					for _, full := range listed(p.getJSON(t, f, "/api/v1/browse/places?parent=Springfield"), "items", "full_name") {
+					for _, full := range listed(p.getJSON(t, f, "/api/v1/browse/places?parent="+springfieldPlaceID), "items", "full_name") {
 						if place, ok := strings.CutSuffix(full, ", Springfield"); ok {
 							places = append(places, place)
 						}

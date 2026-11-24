@@ -14,11 +14,13 @@ import (
 // (ADR-009 §2): a row of the places table. It is MAIN-ONLY (PL-005): the table
 // has no branch_id, and a branch reads main's facts. Name is "" when no
 // display name is set; Latitude and Longitude are both set or both nil, with
-// Origin the pair's origin.
+// Origin the pair's origin. ParentKey is the key of the explicit parent it
+// states as stated, "" when it states none (ADR-009 §4).
 type PlaceFactsReadModel struct {
 	ID        uuid.UUID
 	Key       string
 	Name      string
+	ParentKey string
 	Latitude  *string
 	Longitude *string
 	Origin    *domain.CoordinateOrigin

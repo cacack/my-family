@@ -202,7 +202,7 @@ type mainAggregateSnapshot struct {
 	surnames    []repository.SurnameEntry
 	letters     []repository.LetterCount
 	byLetter    []repository.SurnameEntry
-	places      []repository.PlaceEntry
+	places      *repository.PlaceLevel
 	locations   []repository.MapLocation
 	bySurname   []repository.PersonReadModel
 	bySurnameN  int
@@ -236,7 +236,7 @@ type mainAggregateSnapshot struct {
 //  4. BrickWallSet / BrickWallResolved projected on main (#802) leave the shadow alone.
 //
 // The persons' places share the parent "Realm", so the place hierarchy is read one
-// level down and GetPersonsByPlace("Realm") is the multi-row case.
+// level down and GetPersonsByPlace(Realm) is the multi-row case.
 func runBranchAggregateScenario(t *testing.T, readStore repository.ReadModelStore, branchStore repository.BranchStore) {
 	t.Helper()
 	ctx := context.Background()
@@ -304,7 +304,7 @@ func runBranchAggregateScenario(t *testing.T, readStore repository.ReadModelStor
 		if s.byLetter, err = readStore.GetSurnamesByLetter(ctx, domain.MainBranchID, "M", repository.Privacy{}); err != nil {
 			t.Fatalf("%s: main GetSurnamesByLetter: %v", label, err)
 		}
-		if s.places, err = readStore.GetPlaceHierarchy(ctx, domain.MainBranchID, "Realm", repository.Privacy{}); err != nil {
+		if s.places, err = readStore.GetPlaceHierarchy(ctx, domain.MainBranchID, repository.PlaceID("realm"), repository.Privacy{}); err != nil {
 			t.Fatalf("%s: main GetPlaceHierarchy: %v", label, err)
 		}
 		if s.locations, err = readStore.GetMapLocations(ctx, domain.MainBranchID, repository.Privacy{}); err != nil {
@@ -315,7 +315,7 @@ func runBranchAggregateScenario(t *testing.T, readStore repository.ReadModelStor
 		}
 		// "Realm" is the parent of all three fixture places, so this is the multi-row
 		// case: main sees both persons, the branch sees only its shadow.
-		if s.byPlace, s.byPlaceN, err = readStore.GetPersonsByPlace(ctx, "Realm", mainOpts); err != nil {
+		if s.byPlace, s.byPlaceN, err = readStore.GetPersonsByPlace(ctx, repository.PlaceID("realm"), mainOpts); err != nil {
 			t.Fatalf("%s: main GetPersonsByPlace: %v", label, err)
 		}
 		if s.byCemetery, s.byCemeteryN, err = readStore.GetPersonsByCemetery(ctx, cemetery, mainOpts); err != nil {
@@ -333,9 +333,9 @@ func runBranchAggregateScenario(t *testing.T, readStore repository.ReadModelStor
 
 	// Sanity: the baseline sees both main persons, both burials and the brick wall, so
 	// step 4 is comparing real data rather than two empty results.
-	if len(before.surnames) != 2 || len(before.places) != 2 || len(before.locations) != 2 {
+	if len(before.surnames) != 2 || len(before.places.Places) != 2 || len(before.locations) != 2 {
 		t.Fatalf("main baseline: want 2 surnames / 2 places / 2 map locations, got %d/%d/%d",
-			len(before.surnames), len(before.places), len(before.locations))
+			len(before.surnames), len(before.places.Places), len(before.locations))
 	}
 	if before.bySurnameN != 1 || len(before.brickWalls) != 1 {
 		t.Fatalf("main baseline: want 1 Mainline person and 1 brick wall, got %d and %d",
@@ -439,10 +439,11 @@ func runBranchAggregateScenario(t *testing.T, readStore repository.ReadModelStor
 		}
 	}
 
-	branchPlaces, err := readStore.GetPlaceHierarchy(ctx, branchID, "Realm", repository.Privacy{})
+	branchLevel, err := readStore.GetPlaceHierarchy(ctx, branchID, repository.PlaceID("realm"), repository.Privacy{})
 	if err != nil {
 		t.Fatalf("branch GetPlaceHierarchy: %v", err)
 	}
+	branchPlaces := branchLevel.Places
 	if len(branchPlaces) != 1 || branchPlaces[0].Name != "Westland" || branchPlaces[0].Count != 1 {
 		t.Errorf("branch GetPlaceHierarchy = %+v, want only the shadowed place Westland", branchPlaces)
 	}
@@ -479,7 +480,7 @@ func runBranchAggregateScenario(t *testing.T, readStore repository.ReadModelStor
 		place string
 		want  int
 	}{{"Westland, Realm", 1}, {"Northland, Realm", 0}, {"Southland, Realm", 0}, {"Realm", 1}} {
-		rows, total, err := readStore.GetPersonsByPlace(ctx, c.place, branchOpts)
+		rows, total, err := readStore.GetPersonsByPlace(ctx, repository.PlaceID(repository.PlaceKey(c.place)), branchOpts)
 		if err != nil {
 			t.Fatalf("branch GetPersonsByPlace(%s): %v", c.place, err)
 		}

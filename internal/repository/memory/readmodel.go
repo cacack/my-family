@@ -2277,14 +2277,20 @@ func (s *ReadModelStore) GetPersonsBySurname(ctx context.Context, surname string
 	return results, total, nil
 }
 
-// GetPlaceHierarchy returns the places directly under parent, aggregated over
-// branchID's overlay of persons' birth and death places (ADR-005). The levels
-// are built by repository.PlaceLevels, as on the SQL stores; the memory store
-// has no key column and computes each key on read.
-func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, branchID domain.BranchID, parent string, privacy repository.Privacy) ([]repository.PlaceEntry, error) {
+// GetPlaceHierarchy returns the places directly under parent in the
+// repository.PlaceTree of branchID's overlay of persons' birth and death
+// places (ADR-005, ADR-009 §4), as on the SQL stores; the memory store has no
+// key column and computes each key on read.
+func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, branchID domain.BranchID, parent uuid.UUID, privacy repository.Privacy) (*repository.PlaceLevel, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	level, _ := s.placeTree(branchID, privacy).Level(parent)
+	return &level, nil
+}
 
+// placeTree builds the repository.PlaceTree of the birth and death places of
+// branchID's overlay of persons that privacy shows. The caller holds s.mu.
+func (s *ReadModelStore) placeTree(branchID domain.BranchID, privacy repository.Privacy) *repository.PlaceTree {
 	counts := make(map[string]int)
 	for _, p := range resolveAllRows(s.persons, branchID) {
 		if privacy.Protects(p) {
@@ -2300,22 +2306,20 @@ func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, branchID domain.
 	for text, n := range counts {
 		uses = append(uses, repository.PlaceUse{Key: repository.PlaceKey(text), Text: text, Count: n})
 	}
-	return repository.PlaceLevels(uses, parent), nil
+	return repository.BuildPlaceTree(uses, s.placeFacts(), repository.PlaceAliasesByKey(s.placeAliases))
 }
 
-// GetPersonsByPlace returns persons associated with a specific place from
-// opts.BranchID's overlay of persons (ADR-005).
-func (s *ReadModelStore) GetPersonsByPlace(ctx context.Context, place string, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
+// GetPersonsByPlace returns the persons of opts.BranchID's overlay (ADR-005)
+// whose birth or death place is one of the keys at or beneath the place in
+// the same repository.PlaceTree GetPlaceHierarchy reads.
+func (s *ReadModelStore) GetPersonsByPlace(ctx context.Context, place uuid.UUID, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	// A person is listed when their birth or death place is at or under the
-	// place (repository.PlaceUnder), as on the SQL stores.
-	want := repository.PlaceKey(place)
+	keys := s.placeTree(opts.BranchID, opts.Privacy).KeysUnder(place)
 	var results []repository.PersonReadModel
 	for _, p := range resolveAllRows(s.persons, opts.BranchID) {
-		under := repository.PlaceUnder(repository.PlaceKey(p.BirthPlace), want) ||
-			repository.PlaceUnder(repository.PlaceKey(p.DeathPlace), want)
+		under := slices.Contains(keys, repository.PlaceKey(p.BirthPlace)) || slices.Contains(keys, repository.PlaceKey(p.DeathPlace))
 		if under && !opts.Privacy.Protects(p) {
 			results = append(results, *p)
 		}
@@ -2376,7 +2380,7 @@ func (s *ReadModelStore) GetCemeteryIndex(ctx context.Context, branchID domain.B
 		}
 		uses = append(uses, repository.CemeteryUse{Key: repository.PlaceKey(e.Place), Text: e.Place, OwnerID: e.OwnerID})
 	}
-	return repository.CemeteryIndex(uses), nil
+	return repository.CemeteryIndex(uses, repository.PlaceAliasesByKey(s.placeAliases)), nil
 }
 
 // ListPlaces returns the places in use within branchID's overlay, from the
@@ -2532,13 +2536,14 @@ func (s *ReadModelStore) GetPersonsByCemetery(ctx context.Context, place string,
 
 	// Find distinct person IDs with burial/cremation events whose place has
 	// the cemetery's key.
-	want := repository.PlaceKey(place)
+	aliases := repository.PlaceAliasesByKey(s.placeAliases)
+	want := aliases.Resolve(repository.PlaceKey(place))
 	matchedIDs := make(map[uuid.UUID]struct{})
 	for _, e := range resolveAllRows(s.events, opts.BranchID) {
 		if e.FactType != domain.FactPersonBurial && e.FactType != domain.FactPersonCremation {
 			continue
 		}
-		if want != "" && repository.PlaceKey(e.Place) == want {
+		if key := repository.PlaceKey(e.Place); key != "" && aliases.Resolve(key) == want {
 			matchedIDs[e.OwnerID] = struct{}{}
 		}
 	}

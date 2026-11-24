@@ -909,13 +909,23 @@ type ReadModelStore interface {
 	// branch overlay (ADR-005).
 	GetSurnamesByLetter(ctx context.Context, branchID domain.BranchID, letter string, privacy Privacy) ([]SurnameEntry, error)
 	GetPersonsBySurname(ctx context.Context, surname string, opts ListOptions) ([]PersonReadModel, int, error)
-	// GetPlaceHierarchy returns the places directly under parent within the branch
-	// overlay (ADR-005).
-	GetPlaceHierarchy(ctx context.Context, branchID domain.BranchID, parent string, privacy Privacy) ([]PlaceEntry, error)
-	GetPersonsByPlace(ctx context.Context, place string, opts ListOptions) ([]PersonReadModel, int, error)
-	// GetCemeteryIndex returns burial/cremation places with the number of distinct
-	// owners whose branch-visible life events place them there (ADR-005, #757).
+	// GetPlaceHierarchy returns the places directly under the place with ID
+	// parent (uuid.Nil for the top level) and the path down to it, from the
+	// PlaceTree of the birth and death places within the branch overlay
+	// (ADR-005, ADR-009 §4). An ID no place in the tree has gives an empty
+	// level.
+	GetPlaceHierarchy(ctx context.Context, branchID domain.BranchID, parent uuid.UUID, privacy Privacy) (*PlaceLevel, error)
+	// GetPersonsByPlace returns the people whose birth or death place resolves
+	// to the place with ID place or to a place beneath it in the same
+	// PlaceTree, so a person is listed for each place whose count their
+	// records add to.
+	GetPersonsByPlace(ctx context.Context, place uuid.UUID, opts ListOptions) ([]PersonReadModel, int, error)
+	// GetCemeteryIndex returns burial/cremation places, resolved through
+	// place aliases, with the number of distinct owners whose branch-visible
+	// life events place them there (ADR-005, #757).
 	GetCemeteryIndex(ctx context.Context, branchID domain.BranchID, privacy Privacy) ([]CemeteryEntry, error)
+	// GetPersonsByCemetery returns the people with a burial or cremation
+	// whose place resolves, through place aliases, to the place place does.
 	GetPersonsByCemetery(ctx context.Context, place string, opts ListOptions) ([]PersonReadModel, int, error)
 	// ListPlaces returns the places in use within the branch overlay (ADR-009
 	// §2, §6), built by Places from the place of every person's birth and
@@ -923,8 +933,8 @@ type ReadModelStore interface {
 	// family's marriage place, life events and attributes count only where
 	// their owner's own facts are shown: a person shown in full, a family that
 	// is not private and has no protected partner (ADR-008 §3, ADR-009 §10).
-	// GetPlaceHierarchy still counts birth and death places only, so its
-	// counts are lower until it moves onto place IDs (ADR-009 step 5).
+	// GetPlaceHierarchy counts birth and death places only, so its counts can
+	// be lower.
 	ListPlaces(ctx context.Context, branchID domain.BranchID, privacy Privacy) ([]PlaceReadModel, error)
 	// ListUnmappedPlaces returns the no-coordinates worklist (ADR-009 §9),
 	// built by UnmappedPlaces from the same records, with their own pairs, as
@@ -1073,12 +1083,14 @@ type BrickWallEntry struct {
 	ResolvedAt *time.Time `json:"resolved_at,omitempty"`
 }
 
-// PlaceEntry represents a place with count and hierarchy info.
+// PlaceEntry is a place in the place browser (PlaceTree): its ID, the name it
+// shows at its level, its full name, its count and whether places sit under it.
 type PlaceEntry struct {
-	Name        string `json:"name"`
-	FullName    string `json:"full_name"`
-	Count       int    `json:"count"`
-	HasChildren bool   `json:"has_children"`
+	ID          uuid.UUID `json:"id"`
+	Name        string    `json:"name"`
+	FullName    string    `json:"full_name"`
+	Count       int       `json:"count"`
+	HasChildren bool      `json:"has_children"`
 }
 
 // PersonNameReadModel represents a name variant for a person in the read model.

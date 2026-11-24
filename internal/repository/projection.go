@@ -171,8 +171,15 @@ func (p *Projector) Project(ctx context.Context, event domain.Event, version int
 	case domain.PlaceUpdated:
 		return p.projectPlaceUpdated(ctx, e, version)
 	case domain.PlaceAliased:
+		facts, err := p.readStore.ListPlaceFacts(ctx, domain.MainBranchID)
+		if err != nil {
+			return err
+		}
 		return p.projectPlaceAlias(ctx, e.PlaceID, e.Key, e.OccurredAt(), version, func(rows []PlaceAliasReadModel) []PlaceAliasReadModel {
 			stated, ok := StatePlaceAlias(rows, e.Key, e.TargetKey)
+			if ok && PlaceAliasClosesParentCycle(PlaceParentsByKey(facts), PlaceAliasesByKey(stated), e.TargetKey) {
+				stated, ok = rows, false
+			}
 			if !ok {
 				slog.Warn("projection: ignoring a place alias that would close a cycle", "key", e.Key, "target", e.TargetKey)
 			}
@@ -1812,7 +1819,8 @@ func (p *Projector) projectRepositoryUpdated(ctx context.Context, e domain.Repos
 
 // projectPlaceUpdated applies a place's stated facts to its places row,
 // creating the row on the place's first event (there is no PlaceCreated,
-// ADR-009 §2). MAIN-ONLY (PL-005): it ignores the branch, and the command
+// ADR-009 §2). The projector decides (PL-004): a parent that would close a
+// cycle in log order is ignored, and the event's other changes still apply. MAIN-ONLY (PL-005): it ignores the branch, and the command
 // layer refuses the event on one.
 func (p *Projector) projectPlaceUpdated(ctx context.Context, e domain.PlaceUpdated, version int64) error {
 	facts, err := p.readStore.GetPlaceFacts(ctx, e.PlaceID)
@@ -1840,6 +1848,18 @@ func (p *Projector) projectPlaceUpdated(ctx context.Context, e domain.PlaceUpdat
 			if v, ok := domain.CoordinateOriginFromChange(value); ok {
 				facts.Origin = v
 			}
+		case "parent":
+			if v, ok := changeText(value); ok {
+				closes, err := p.placeParentClosesCycle(ctx, e.Key, v)
+				if err != nil {
+					return err
+				}
+				if closes {
+					slog.Warn("projection: ignoring a place parent that would close a cycle", "key", e.Key, "parent", v)
+				} else {
+					facts.ParentKey = v
+				}
+			}
 		default:
 			slog.Warn("projection: ignoring unknown change key", "event", "PlaceUpdated", "key", key)
 		}
@@ -1847,6 +1867,24 @@ func (p *Projector) projectPlaceUpdated(ctx context.Context, e domain.PlaceUpdat
 	facts.Version = version
 	facts.UpdatedAt = e.OccurredAt()
 	return p.readStore.SavePlaceFacts(ctx, facts)
+}
+
+// placeParentClosesCycle reports whether stating parent as the explicit parent
+// of the place with key would close a cycle among main's explicit parents and
+// aliases (PL-004). Clearing a parent ("") never does.
+func (p *Projector) placeParentClosesCycle(ctx context.Context, key, parent string) (bool, error) {
+	if parent == "" {
+		return false, nil
+	}
+	facts, err := p.readStore.ListPlaceFacts(ctx, domain.MainBranchID)
+	if err != nil {
+		return false, err
+	}
+	aliases, err := p.readStore.ListPlaceAliases(ctx)
+	if err != nil {
+		return false, err
+	}
+	return PlaceParentClosesCycle(PlaceParentsByKey(facts), PlaceAliasesByKey(aliases), key, parent), nil
 }
 
 // projectPlaceAlias applies an alias event of the place with id and key

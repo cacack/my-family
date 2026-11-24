@@ -190,7 +190,7 @@ func (ss *StrictServer) BrowsePlaces(ctx context.Context, request BrowsePlacesRe
 		return nil, err
 	}
 
-	parent := ""
+	parent := uuid.Nil
 	if request.Params.Parent != nil {
 		parent = *request.Params.Parent
 	}
@@ -204,36 +204,29 @@ func (ss *StrictServer) BrowsePlaces(ctx context.Context, request BrowsePlacesRe
 	}
 
 	response := PlaceIndexResponse{
-		Items: make([]PlaceEntry, len(result.Items)),
+		Items: convertPlaceEntriesToGenerated(result.Items),
 		Total: result.Total,
 	}
-
 	if len(result.Breadcrumb) > 0 {
-		response.Breadcrumb = &result.Breadcrumb
+		breadcrumb := convertPlaceEntriesToGenerated(result.Breadcrumb)
+		response.Breadcrumb = &breadcrumb
 	}
-
-	for i, item := range result.Items {
-		response.Items[i] = PlaceEntry{
-			Name:        item.Name,
-			FullName:    item.FullName,
-			Count:       item.Count,
-			HasChildren: item.HasChildren,
-		}
-	}
-
 	return BrowsePlaces200JSONResponse(response), nil
+}
+
+// convertPlaceEntriesToGenerated converts place browser entries.
+func convertPlaceEntriesToGenerated(entries []query.PlaceEntry) []PlaceEntry {
+	items := make([]PlaceEntry, len(entries))
+	for i, e := range entries {
+		items[i] = PlaceEntry{Id: e.ID, Name: e.Name, FullName: e.FullName, Count: e.Count, HasChildren: e.HasChildren}
+	}
+	return items
 }
 
 // GetPersonsByPlace implements StrictServerInterface.
 func (ss *StrictServer) GetPersonsByPlace(ctx context.Context, request GetPersonsByPlaceRequestObject) (GetPersonsByPlaceResponseObject, error) {
 	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
 	if err != nil {
-		return nil, err
-	}
-
-	place, err := url.PathUnescape(request.Place)
-	if err != nil {
-		// Since there's no 400 response defined, return a generic error
 		return nil, err
 	}
 
@@ -247,7 +240,7 @@ func (ss *StrictServer) GetPersonsByPlace(ctx context.Context, request GetPerson
 	}
 
 	result, err := ss.server.browseService.GetPersonsByPlace(ctx, query.GetPersonsByPlaceInput{
-		Place:    place,
+		Place:    request.Id,
 		Limit:    limit,
 		Offset:   offset,
 		BranchID: branchScopeID(branch),
@@ -515,6 +508,7 @@ func (ss *StrictServer) UpdatePlace(ctx context.Context, request UpdatePlaceRequ
 			Longitude: patchOf(request.Body.Longitude),
 			Origin:    coordinateOriginFromGenerated(request.Body.CoordinatesOrigin),
 		},
+		Parent: patchOf(request.Body.ParentId),
 	})
 	if err != nil {
 		if errors.Is(err, command.ErrPlaceNotFound) {
@@ -600,6 +594,7 @@ func convertReadModelPlaceToGenerated(p repository.PlaceReadModel) Place {
 		Latitude: p.Latitude, Longitude: p.Longitude,
 		CoordinatesOrigin: coordinateOriginToGenerated(domain.EffectiveCoordinateOrigin(p.Latitude, p.Longitude, p.Origin)),
 		ResolvesTo:        p.ResolvesTo,
+		ParentId:          p.ParentID,
 	}
 	if len(p.Aliases) > 0 {
 		aliases := make([]PlaceAliasEntry, len(p.Aliases))

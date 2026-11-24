@@ -397,10 +397,10 @@ func (m *mockReadModelStore) GetSurnamesByLetter(ctx context.Context, branchID d
 func (m *mockReadModelStore) GetPersonsBySurname(ctx context.Context, surname string, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
 	return nil, 0, nil
 }
-func (m *mockReadModelStore) GetPlaceHierarchy(ctx context.Context, branchID domain.BranchID, parent string, _ repository.Privacy) ([]repository.PlaceEntry, error) {
-	return nil, nil
+func (m *mockReadModelStore) GetPlaceHierarchy(ctx context.Context, branchID domain.BranchID, parent uuid.UUID, _ repository.Privacy) (*repository.PlaceLevel, error) {
+	return &repository.PlaceLevel{}, nil
 }
-func (m *mockReadModelStore) GetPersonsByPlace(ctx context.Context, place string, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
+func (m *mockReadModelStore) GetPersonsByPlace(ctx context.Context, place uuid.UUID, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
 	return nil, 0, nil
 }
 func (m *mockReadModelStore) GetCemeteryIndex(ctx context.Context, _ domain.BranchID, _ repository.Privacy) ([]repository.CemeteryEntry, error) {

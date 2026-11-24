@@ -58,3 +58,11 @@ func TestUnmappedPlaces(t *testing.T) {
 	defer cleanup()
 	placetest.RunUnmappedPlaces(t, store)
 }
+
+// TestPlaceTree runs the shared #1737 suite against the sqlite backend; the
+// memory and postgres packages run the same body (DB-001).
+func TestPlaceTree(t *testing.T) {
+	store, cleanup := setupTestReadModelDB(t)
+	defer cleanup()
+	placetest.RunPlaceTree(t, store)
+}

@@ -2,6 +2,7 @@ package query_test
 
 import (
 	"context"
+	"reflect"
 	"testing"
 	"time"
 
@@ -273,7 +274,7 @@ func TestGetPersonsByPlace(t *testing.T) {
 
 	// Get persons from USA
 	result, err := service.GetPersonsByPlace(ctx, query.GetPersonsByPlaceInput{
-		Place: "USA",
+		Place: repository.PlaceID("usa"),
 	})
 	if err != nil {
 		t.Fatalf("GetPersonsByPlace failed: %v", err)
@@ -300,7 +301,7 @@ func TestGetPersonsByPlace_DeathPlace(t *testing.T) {
 
 	// Get persons from France
 	result, err := service.GetPersonsByPlace(ctx, query.GetPersonsByPlaceInput{
-		Place: "France",
+		Place: repository.PlaceID("france"),
 	})
 	if err != nil {
 		t.Fatalf("GetPersonsByPlace failed: %v", err)
@@ -393,7 +394,7 @@ func TestGetPersonsByPlace_NotFound(t *testing.T) {
 	ctx := context.Background()
 
 	result, err := service.GetPersonsByPlace(ctx, query.GetPersonsByPlaceInput{
-		Place: "Narnia",
+		Place: repository.PlaceID("narnia"),
 	})
 	if err != nil {
 		t.Fatalf("GetPersonsByPlace failed: %v", err)
@@ -401,32 +402,6 @@ func TestGetPersonsByPlace_NotFound(t *testing.T) {
 
 	if result.Total != 0 {
 		t.Errorf("Total = %d, want 0", result.Total)
-	}
-}
-
-// A place that normalizes to "" (e.g. "," or " ") is contained in every
-// normalized place, so it must match nobody rather than everybody.
-func TestGetPersonsByPlace_BlankPlaceMatchesNobody(t *testing.T) {
-	eventStore := memory.NewEventStore()
-	readStore := memory.NewReadModelStore()
-	handler := command.NewHandler(eventStore, readStore)
-	service := query.NewBrowseService(readStore)
-	ctx := context.Background()
-
-	_, _ = handler.CreatePerson(ctx, command.CreatePersonInput{
-		GivenName:  "John",
-		Surname:    "Doe",
-		BirthPlace: "Springfield, Ohio, USA",
-	})
-
-	for _, place := range []string{"", " ", ",", " , , "} {
-		result, err := service.GetPersonsByPlace(ctx, query.GetPersonsByPlaceInput{Place: place})
-		if err != nil {
-			t.Fatalf("GetPersonsByPlace(%q) failed: %v", place, err)
-		}
-		if result.Total != 0 || len(result.Items) != 0 {
-			t.Errorf("GetPersonsByPlace(%q): Total = %d, items = %d, want 0", place, result.Total, len(result.Items))
-		}
 	}
 }
 
@@ -484,7 +459,7 @@ func TestGetPersonsByPlace_LimitCapping(t *testing.T) {
 
 	// Test limit > 100 gets capped to 100
 	result, err := service.GetPersonsByPlace(ctx, query.GetPersonsByPlaceInput{
-		Place: "USA",
+		Place: repository.PlaceID("usa"),
 		Limit: 200,
 	})
 	if err != nil {
@@ -496,7 +471,7 @@ func TestGetPersonsByPlace_LimitCapping(t *testing.T) {
 
 	// Test negative offset defaults to 0
 	result2, err := service.GetPersonsByPlace(ctx, query.GetPersonsByPlaceInput{
-		Place:  "USA",
+		Place:  repository.PlaceID("usa"),
 		Offset: -10,
 	})
 	if err != nil {
@@ -521,28 +496,22 @@ func TestGetPlaceHierarchy_WithBreadcrumb(t *testing.T) {
 		BirthPlace: "Springfield, Illinois, USA",
 	})
 
-	// Get places with parent filter to test breadcrumb
+	// The breadcrumb is the path from the top level down to the parent.
 	result, err := service.GetPlaceHierarchy(ctx, query.GetPlaceHierarchyInput{
-		Parent: "Illinois, USA",
+		Parent: repository.PlaceID("illinois,usa"),
 	})
 	if err != nil {
 		t.Fatalf("GetPlaceHierarchy failed: %v", err)
 	}
-
-	// Should have breadcrumb from parent
-	if len(result.Breadcrumb) == 0 {
-		t.Error("Expected breadcrumb to be populated when parent is specified")
+	want := []query.PlaceEntry{
+		{ID: repository.PlaceID("usa"), Name: "USA", FullName: "USA", Count: 1, HasChildren: true},
+		{ID: repository.PlaceID("illinois,usa"), Name: "Illinois", FullName: "Illinois, USA", Count: 1, HasChildren: true},
 	}
-
-	// Breadcrumb should be in reverse order (most general first)
-	// "Illinois, USA" -> ["USA", "Illinois"]
-	if len(result.Breadcrumb) >= 2 {
-		if result.Breadcrumb[0] != "USA" {
-			t.Errorf("Breadcrumb[0] = %s, want USA", result.Breadcrumb[0])
-		}
-		if result.Breadcrumb[1] != "Illinois" {
-			t.Errorf("Breadcrumb[1] = %s, want Illinois", result.Breadcrumb[1])
-		}
+	if !reflect.DeepEqual(result.Breadcrumb, want) {
+		t.Errorf("Breadcrumb = %+v, want %+v", result.Breadcrumb, want)
+	}
+	if len(result.Items) != 1 || result.Items[0].ID != repository.PlaceID("springfield,illinois,usa") || result.Items[0].Name != "Springfield" {
+		t.Errorf("Items = %+v, want Springfield", result.Items)
 	}
 }
 
@@ -909,12 +878,12 @@ func (s *branchScopeSpy) GetPersonsBySurname(_ context.Context, _ string, opts r
 	return nil, 0, nil
 }
 
-func (s *branchScopeSpy) GetPlaceHierarchy(_ context.Context, branchID domain.BranchID, _ string, _ repository.Privacy) ([]repository.PlaceEntry, error) {
+func (s *branchScopeSpy) GetPlaceHierarchy(_ context.Context, branchID domain.BranchID, _ uuid.UUID, _ repository.Privacy) (*repository.PlaceLevel, error) {
 	s.placeHierarchy = append(s.placeHierarchy, branchID)
-	return nil, nil
+	return &repository.PlaceLevel{}, nil
 }
 
-func (s *branchScopeSpy) GetPersonsByPlace(_ context.Context, _ string, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
+func (s *branchScopeSpy) GetPersonsByPlace(_ context.Context, _ uuid.UUID, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
 	s.personsByPlace = append(s.personsByPlace, opts.BranchID)
 	return nil, 0, nil
 }
@@ -985,7 +954,7 @@ func TestBrowseService_BranchScopeReachesStore(t *testing.T) {
 		{
 			name: "GetPersonsByPlace",
 			call: func(s *query.BrowseService, b domain.BranchID) error {
-				_, err := s.GetPersonsByPlace(context.Background(), query.GetPersonsByPlaceInput{Place: "Ohio", BranchID: b})
+				_, err := s.GetPersonsByPlace(context.Background(), query.GetPersonsByPlaceInput{Place: repository.PlaceID("ohio"), BranchID: b})
 				return err
 			},
 			got: func(s *branchScopeSpy) []domain.BranchID { return s.personsByPlace },

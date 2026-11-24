@@ -159,7 +159,7 @@ func TestPrivacy_GoAndSQLFormsAgree(t *testing.T) {
 					got["ListPersons"] = listedNames(t, "ListPersons", people, page, total, err)
 					page, total, err = rs.GetPersonsBySurname(ctx, paritySurname, list)
 					got["GetPersonsBySurname"] = listedNames(t, "GetPersonsBySurname", people, page, total, err)
-					page, total, err = rs.GetPersonsByPlace(ctx, parityPlace, list)
+					page, total, err = rs.GetPersonsByPlace(ctx, repository.PlaceID(repository.PlaceKey(parityPlace)), list)
 					got["GetPersonsByPlace"] = listedNames(t, "GetPersonsByPlace", people, page, total, err)
 					page, total, err = rs.GetPersonsByCemetery(ctx, parityCemetery, list)
 					got["GetPersonsByCemetery"] = listedNames(t, "GetPersonsByCemetery", people, page, total, err)
@@ -226,12 +226,12 @@ func checkParityAggregates(t *testing.T, ctx context.Context, rs repository.Read
 	// places listed under it are the shown people's given names. The memory
 	// store lists every place in full, so the places are told apart by their
 	// full names.
-	places, err := rs.GetPlaceHierarchy(ctx, branchID, parityPlace, v)
+	level, err := rs.GetPlaceHierarchy(ctx, branchID, repository.PlaceID(repository.PlaceKey(parityPlace)), v)
 	if err != nil {
 		t.Fatalf("GetPlaceHierarchy: %v", err)
 	}
 	var placeNames []string
-	for _, p := range places {
+	for _, p := range level.Places {
 		if given, ok := strings.CutSuffix(p.FullName, ", "+parityPlace); ok {
 			placeNames = append(placeNames, given)
 		}

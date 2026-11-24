@@ -96,3 +96,17 @@ func resolvePlaceAliases(stated map[string]string) []PlaceAliasReadModel {
 	sort.Slice(rows, func(i, j int) bool { return rows[i].Key < rows[j].Key })
 	return rows
 }
+
+// KeysOf returns, sorted, the keys that resolve to the place key resolves to:
+// that place's own key and every key absorbed into it.
+func (a PlaceAliases) KeysOf(key string) []string {
+	resolved := a.Resolve(key)
+	keys := []string{resolved}
+	for absorbed, target := range a {
+		if target == resolved {
+			keys = append(keys, absorbed)
+		}
+	}
+	sort.Strings(keys)
+	return keys
+}

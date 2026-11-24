@@ -45,3 +45,9 @@ func TestPlaceAliases(t *testing.T) {
 func TestUnmappedPlaces(t *testing.T) {
 	placetest.RunUnmappedPlaces(t, memory.NewReadModelStore())
 }
+
+// TestPlaceTree runs the shared #1737 suite against the memory backend; the
+// sqlite and postgres packages run the same body (DB-001).
+func TestPlaceTree(t *testing.T) {
+	placetest.RunPlaceTree(t, memory.NewReadModelStore())
+}

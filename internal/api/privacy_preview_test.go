@@ -39,7 +39,7 @@ func previewPaths(tr redactionTree) []string {
 		"/api/v1/descendancy/" + tr.dead,
 		"/api/v1/relationship/" + tr.dead + "/" + tr.kid,
 		"/api/v1/browse/surnames",
-		"/api/v1/browse/places/Springfield/persons",
+		"/api/v1/browse/places/" + springfieldPlaceID + "/persons",
 		"/api/v1/map/locations",
 		"/api/v1/statistics",
 		"/api/v1/settings/home-person",
