@@ -806,39 +806,32 @@ func parseFamily(fam *gedcom.Family, doc *gedcom.Document, result *ImportResult)
 	family.Partner1ID = resolvePartner(fam.Husband, fam.HusbandIndividual(doc), fam.XRef, "husband", result)
 	family.Partner2ID = resolvePartner(fam.Wife, fam.WifeIndividual(doc), fam.XRef, "wife", result)
 
-	// Parse events for marriage with date validation
-	for _, event := range fam.Events {
-		switch event.Type {
-		case gedcom.EventMarriage:
-			// Negated marriage (NO MARR) is handled as a LifeEvent, not on Family fields
-			if event.IsNegative {
-				continue
+	// Parse events for marriage with date validation. The record holds one
+	// MARR (recordMarriage); negated and other marriages are handled as
+	// LifeEvents (extractEventsFromFamily).
+	if event := recordMarriage(fam); event != nil {
+		family.RelationshipType = domain.RelationMarriage
+		family.MarriageDate = event.Date
+		family.MarriagePlace = event.PlaceName()
+		family.MarriageNotes = eventNotes(event)
+		family.MarriageTypeDetail = event.EventTypeDetail
+		// Extract coordinates from PlaceDetail if available
+		if event.PlaceDetail != nil && event.PlaceDetail.Coordinates != nil {
+			if event.PlaceDetail.Coordinates.Latitude != "" {
+				lat := event.PlaceDetail.Coordinates.Latitude
+				family.MarriagePlaceLat = &lat
 			}
-			family.RelationshipType = domain.RelationMarriage
-			family.MarriageDate = event.Date
-			family.MarriagePlace = event.PlaceName()
-			family.MarriageNotes = eventNotes(event)
-			family.MarriageTypeDetail = event.EventTypeDetail
-			// Extract coordinates from PlaceDetail if available
-			if event.PlaceDetail != nil && event.PlaceDetail.Coordinates != nil {
-				if event.PlaceDetail.Coordinates.Latitude != "" {
-					lat := event.PlaceDetail.Coordinates.Latitude
-					family.MarriagePlaceLat = &lat
-				}
-				if event.PlaceDetail.Coordinates.Longitude != "" {
-					long := event.PlaceDetail.Coordinates.Longitude
-					family.MarriagePlaceLong = &long
-				}
+			if event.PlaceDetail.Coordinates.Longitude != "" {
+				long := event.PlaceDetail.Coordinates.Longitude
+				family.MarriagePlaceLong = &long
 			}
-			// Validate the date if parsed
-			if event.ParsedDate != nil {
-				if err := event.ParsedDate.Validate(); err != nil {
-					result.Warnings = append(result.Warnings,
-						fmt.Sprintf("Family %s: invalid marriage date '%s': %v", fam.XRef, event.Date, err))
-				}
+		}
+		// Validate the date if parsed
+		if event.ParsedDate != nil {
+			if err := event.ParsedDate.Validate(); err != nil {
+				result.Warnings = append(result.Warnings,
+					fmt.Sprintf("Family %s: invalid marriage date '%s': %v", fam.XRef, event.Date, err))
 			}
-		case gedcom.EventDivorce:
-			// Divorce event - we note it but keep as marriage type
 		}
 	}
 
@@ -1085,8 +1078,8 @@ const droppedNotesPerPath = 5
 // import does not keep, naming the record, the substructure and the note, so
 // the loss is visible (#1250). Kept are the level-1 NOTE lines of the record
 // types in recordKeepsNotes, and the NOTEs directly under an individual's ASSO, NAME,
-// events and imported attributes and a family's imported events. Of several MARR
-// blocks only the last is kept, as for their date and place.
+// events and imported attributes and a family's imported events, MARR among
+// them.
 func warnDroppedNestedNotes(doc *gedcom.Document, result *ImportResult) {
 	counts := map[string]int{}
 	var paths []string // keys of counts, in first-seen order
@@ -1143,10 +1136,9 @@ func keptEventNotes(rec *gedcom.Record) func(block string, last bool) bool {
 		}
 	}
 	if rec.IsFamily() {
-		return func(block string, last bool) bool {
-			if block == "MARR" {
-				return last // parseFamily keeps the last one's notes
-			}
+		return func(block string, _ bool) bool {
+			// Every MARR keeps its notes, on the family record or a life
+			// event (#1776).
 			_, ok := familyEventFactType(gedcom.EventType(strings.TrimPrefix(block, "NO ")))
 			return ok
 		}
@@ -1703,6 +1695,43 @@ func recordEvent(indi *gedcom.Individual, eventType gedcom.EventType) *gedcom.Ev
 	return first
 }
 
+// recordMarriage returns the MARR the family record holds, or nil: the first
+// non-negated one that has a date, or with none dated the first that is not
+// bare, or with every one bare the first. Every other non-negated MARR that
+// is not bare is imported as a life event, so a later MARR does not replace
+// the record's date, place, notes and TYPE (#1776). The exporter writes the
+// record's first, then the life events, so a re-import picks the same one.
+func recordMarriage(fam *gedcom.Family) *gedcom.Event {
+	var first, firstBare *gedcom.Event
+	for _, event := range fam.Events {
+		if event.Type != gedcom.EventMarriage || event.IsNegative {
+			continue
+		}
+		switch {
+		case event.Date != "":
+			return event
+		case !bareMarriage(event) && first == nil:
+			first = event
+		case firstBare == nil:
+			firstBare = event
+		}
+	}
+	if first != nil {
+		return first
+	}
+	return firstBare
+}
+
+// bareMarriage reports whether event is a non-negated MARR with nothing the
+// family record or a life event would keep, as in "1 MARR Y": no date,
+// place, notes, TYPE, descriptor or address. It only says the couple
+// married, which the record says for any MARR (recordMarriage).
+func bareMarriage(event *gedcom.Event) bool {
+	return event.Type == gedcom.EventMarriage && !event.IsNegative && event.Date == "" &&
+		event.PlaceName() == "" && eventNotes(event) == "" && event.EventTypeDetail == "" &&
+		event.Description == "" && convertGedcomAddress(event.Address) == nil
+}
+
 // deathLifeEvents returns the individual's dateless, placeless death life
 // events, so a person has one death through import and export (#1456): one
 // event merges every bare death with the cause, age, address and descriptor
@@ -2100,12 +2129,15 @@ func mapAssociationRole(gedcomRole string) string {
 // extractEventsFromFamily extracts all life events from a family, and returns
 // with them the ID each GEDCOM event is imported with, for its citations
 // (#1294).
-// Marriage is excluded as it is stored on Family directly,
-// unless it is negated (NO MARR), which represents a negative assertion
-// and must be stored as a LifeEvent.
+// The marriage the record holds (recordMarriage) is excluded as it is stored
+// on Family directly, as is a bare marriage beside it (see bareMarriage),
+// whose citations go to the record. A negated marriage (NO MARR), which
+// represents a negative assertion, and every other marriage are stored as
+// LifeEvents.
 func extractEventsFromFamily(fam *gedcom.Family, familyID uuid.UUID) ([]EventData, map[*gedcom.Event]uuid.UUID) {
 	var events []EventData
 	ids := make(map[*gedcom.Event]uuid.UUID)
+	marriage := recordMarriage(fam)
 
 	for _, event := range fam.Events {
 		// Negated marriage events (NO MARR) are stored as LifeEvents,
@@ -2141,8 +2173,7 @@ func extractEventsFromFamily(fam *gedcom.Family, familyID uuid.UUID) ([]EventDat
 			continue
 		}
 
-		if event.Type == gedcom.EventMarriage {
-			// Non-negated marriage is stored on Family entity, skip
+		if event == marriage || bareMarriage(event) {
 			continue
 		}
 		factType, ok := familyEventFactType(event.Type)
