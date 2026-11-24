@@ -956,6 +956,10 @@ func TestImportGedcom_MediaSharedNotes(t *testing.T) {
 			if slices.ContainsFunc(result.Warnings, func(w string) bool { return strings.Contains(w, "points to no note") }) {
 				t.Errorf("warnings %q report a note record as missing", result.Warnings)
 			}
+			// The notes are in the descriptions, so none is reported lost (#1773).
+			if slices.ContainsFunc(result.Warnings, func(w string) bool { return strings.Contains(w, "not imported") }) {
+				t.Errorf("warnings %q report an imported note as not imported", result.Warnings)
+			}
 			if got := personMedia(t, ctx, readStore, "John").Description; got != wantJohn {
 				t.Errorf("John's description = %q, want %q", got, wantJohn)
 			}
@@ -974,6 +978,47 @@ func TestImportGedcom_MediaSharedNotes(t *testing.T) {
 				t.Errorf("re-imported Mary's description = %q, want %q", got, wantMary)
 			}
 		})
+	}
+}
+
+// A note under an OBJE link the import does not keep (a second link from the
+// same owner, even with the first's note, a link to no OBJE record, an inline
+// link with no file, a link in a submitter record) is still reported as not
+// imported; the notes of the links it keeps are not, escaped "@@", padded
+// pointer and CONT lines included (#1773).
+func TestImportGedcom_MediaDroppedLinkNotesWarn(t *testing.T) {
+	ged := "0 HEAD\n1 GEDC\n2 VERS 5.5.1\n" +
+		"0 @M1@ OBJE\n1 FILE a.jpg\n2 FORM jpg\n" +
+		"0 @I1@ INDI\n1 NAME John /Doe/\n" +
+		"1 OBJE @M1@\n2 NOTE First link.\n" +
+		"1 BIRT\n2 OBJE @M1@\n3 NOTE Second link.\n" +
+		"1 DEAT\n2 OBJE @M1@\n3 NOTE First link.\n" +
+		"1 OBJE\n2 FILE b.jpg\n3 FORM jpg\n2 NOTE Inline with a file.\n3 CONT Second line.\n" +
+		"1 OBJE\n2 FORM jpg\n2 NOTE Inline with no file.\n" +
+		"1 OBJE @M2@\n2 NOTE Write to jo@@example.com\n2 NOTE  @N1@\n" +
+		"1 OBJE @M9@\n2 NOTE No such record.\n" +
+		"0 @M2@ OBJE\n1 FILE c.jpg\n2 FORM jpg\n" +
+		"0 @N1@ NOTE Shared.\n" +
+		"0 @U1@ SUBM\n1 NAME Ann Smith\n1 OBJE @M1@\n2 NOTE Submitter link.\n0 TRLR\n"
+	result, err := command.NewHandler(memory.NewEventStore(), memory.NewReadModelStore()).ImportGedcom(context.Background(), command.ImportGedcomInput{Filename: "m.ged", Reader: strings.NewReader(ged)})
+	if err != nil {
+		t.Fatalf("ImportGedcom: %v", err)
+	}
+	var got []string
+	for _, w := range result.Warnings {
+		if strings.Contains(w, "not imported") {
+			got = append(got, w)
+		}
+	}
+	want := []string{
+		`Individual @I1@: NOTE under BIRT.OBJE not imported: "Second link."`,
+		`Individual @I1@: NOTE under DEAT.OBJE not imported: "First link."`,
+		`Individual @I1@: NOTE under OBJE not imported: "Inline with no file."`,
+		`Individual @I1@: NOTE under OBJE not imported: "No such record."`,
+		`Submitter @U1@: NOTE under OBJE not imported: "Submitter link."`,
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("not-imported warnings =\n%q\nwant\n%q", got, want)
 	}
 }
 

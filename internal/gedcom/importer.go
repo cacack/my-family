@@ -1058,12 +1058,14 @@ var recordLabels = map[gedcom.RecordType]string{
 }
 
 // recordKeepsNotes lists the record types whose own level-1 NOTE and SNOTE lines the
-// import keeps (recordNotes). An OBJE or SUBM record has no notes field.
+// import keeps: recordNotes, or for an OBJE record its media description
+// (mediaNotes, #1756). A SUBM record has no notes field.
 var recordKeepsNotes = map[gedcom.RecordType]bool{
 	gedcom.RecordTypeIndividual: true,
 	gedcom.RecordTypeFamily:     true,
 	gedcom.RecordTypeSource:     true,
 	gedcom.RecordTypeRepository: true,
+	gedcom.RecordTypeMedia:      true,
 }
 
 // droppedNoteMaxLen caps how much of a dropped note a warning quotes.
@@ -1079,7 +1081,8 @@ const droppedNotesPerPath = 5
 // the loss is visible (#1250). Kept are the level-1 NOTE lines of the record
 // types in recordKeepsNotes, and the NOTEs directly under an individual's ASSO, NAME,
 // events and imported attributes and a family's imported events, MARR among
-// them.
+// them, and the NOTEs directly under the OBJE links the import keeps
+// (keptLinkNotes).
 func warnDroppedNestedNotes(doc *gedcom.Document, result *ImportResult) {
 	counts := map[string]int{}
 	var paths []string // keys of counts, in first-seen order
@@ -1088,7 +1091,7 @@ func warnDroppedNestedNotes(doc *gedcom.Document, result *ImportResult) {
 		if label == "" {
 			label = string(rec.Type)
 		}
-		for _, d := range droppedNotes(rec.Tags, recordKeepsNotes[rec.Type], keptEventNotes(rec)) {
+		for _, d := range droppedNotes(rec.Tags, recordKeepsNotes[rec.Type], keptEventNotes(rec), keptLinkNotes(doc, rec)) {
 			key := strings.Join(append([]string{string(rec.Type)}, d.path...), ".")
 			if counts[key] == 0 {
 				paths = append(paths, key)
@@ -1146,6 +1149,46 @@ func keptEventNotes(rec *gedcom.Record) func(block string) bool {
 	return func(string) bool { return false }
 }
 
+// keptLinkNotes reports, for a record, whether a NOTE directly under one of
+// its OBJE links, given by its text (noteText), is kept: each call takes one
+// note of the links the import keeps (importedMediaLinks) whose OBJE record,
+// if they point to one, is in doc, so a second link to the same OBJE record
+// with the same note, or a link to no record, still reports it dropped. Call
+// it once per note line. The typed links don't say where in the record they
+// sit, so a note is matched by its text alone (linkNoteKey), and when two
+// links share a note the warning may name either one's path.
+func keptLinkNotes(doc *gedcom.Document, rec *gedcom.Record) func(text string) bool {
+	left := map[string]int{}
+	for _, link := range importedMediaLinks(recordMediaLinks(rec)) {
+		if link.MediaXRef != "" && doc.GetMediaObject(link.MediaXRef) == nil {
+			continue
+		}
+		for _, note := range append(slices.Clone(link.NoteXRefs), link.InlineNotes...) {
+			left[linkNoteKey(note)]++
+		}
+	}
+	return func(text string) bool {
+		key := linkNoteKey(text)
+		if left[key] == 0 {
+			return false
+		}
+		left[key]--
+		return true
+	}
+}
+
+// linkNoteKey is the form a link note is matched in by keptLinkNotes: the
+// decoded note (trimmed pointer, "@@" unescaped) and its raw line value
+// (noteText) both come out the same, with surrounding space trimmed and each
+// run of "@" cut to one.
+func linkNoteKey(note string) string {
+	note = strings.TrimSpace(note)
+	for strings.Contains(note, "@@") {
+		note = strings.ReplaceAll(note, "@@", "@")
+	}
+	return note
+}
+
 // droppedNote is a NOTE or SNOTE line the import does not keep: its tag, the
 // path of the substructure it sits under (empty for the record's own), and
 // its text or pointer, cut to droppedNoteMaxLen.
@@ -1156,10 +1199,12 @@ type droppedNote struct {
 }
 
 // droppedNotes returns the non-empty NOTE and SNOTE lines in a record's tags
-// that the import does not keep: a level-1 line unless keepsOwn, a level-2 line unless kept reports true for its level-1 block, and any
-// deeper one. A level-1 block is named by its tag, a 7.0 negative assertion
-// as "NO <event>".
-func droppedNotes(tags []*gedcom.Tag, keepsOwn bool, kept func(block string) bool) []droppedNote {
+// that the import does not keep: a level-1 line unless keepsOwn, a line
+// directly under an OBJE link unless keptLink reports true for its text, a
+// level-2 line unless kept reports true for its level-1 block, and any deeper
+// one. A level-1 block is named by its tag, a 7.0 negative assertion as
+// "NO <event>".
+func droppedNotes(tags []*gedcom.Tag, keepsOwn bool, kept func(block string) bool, keptLink func(text string) bool) []droppedNote {
 	blockName := func(tag *gedcom.Tag) string {
 		if tag.Tag == "NO" {
 			return "NO " + strings.TrimSpace(tag.Value)
@@ -1176,14 +1221,17 @@ func droppedNotes(tags []*gedcom.Tag, keepsOwn bool, kept func(block string) boo
 		}
 		path = path[:min(len(path), tag.Level-1)]
 		if tag.Tag == "NOTE" || tag.Tag == "SNOTE" {
+			text := noteText(tags, i)
 			var keep bool
 			switch {
 			case tag.Level == 1:
 				keep = keepsOwn
+			case len(path) > 0 && path[len(path)-1] == "OBJE":
+				keep = keptLink(text)
 			case tag.Level == 2 && len(path) == 1:
 				keep = kept(path[0])
 			}
-			if text := noteText(tags, i); !keep && text != "" {
+			if !keep && text != "" {
 				if r := []rune(text); len(r) > droppedNoteMaxLen {
 					text = string(r[:droppedNoteMaxLen]) + "..."
 				}
@@ -2432,16 +2480,10 @@ func mediaLinks(doc *gedcom.Document, noteTexts map[string]NoteData, result *Imp
 	owners := make(map[string][]MediaOwner)
 	var inline []MediaData
 	add := func(links []*gedcom.MediaLink, owner MediaOwner, where string) {
-		for _, link := range links {
-			switch {
-			case link == nil:
-			case link.MediaXRef != "":
-				if !slices.ContainsFunc(owners[link.MediaXRef], func(o MediaOwner) bool {
-					return o.EntityType == owner.EntityType && o.EntityID == owner.EntityID
-				}) {
-					owners[link.MediaXRef] = append(owners[link.MediaXRef], linkOwner(owner, link, noteTexts, where, result))
-				}
-			case slices.ContainsFunc(link.Files, hasFileRef):
+		for _, link := range importedMediaLinks(links) {
+			if link.MediaXRef != "" {
+				owners[link.MediaXRef] = append(owners[link.MediaXRef], linkOwner(owner, link, noteTexts, where, result))
+			} else {
 				inline = append(inline, parseInlineMedia(link, linkOwner(owner, link, noteTexts, where, result)))
 			}
 		}
@@ -2456,6 +2498,40 @@ func mediaLinks(doc *gedcom.Document, noteTexts map[string]NoteData, result *Imp
 		add(src.Media, MediaOwner{EntityType: "source", EntityID: result.SourceXrefToID[src.XRef]}, "Source "+src.XRef)
 	}
 	return owners, inline
+}
+
+// importedMediaLinks returns the links of one record that the import keeps,
+// with their notes: the first pointer link to each OBJE record, and each
+// inline link that names a file (#1479).
+func importedMediaLinks(links []*gedcom.MediaLink) []*gedcom.MediaLink {
+	var kept []*gedcom.MediaLink
+	for _, link := range links {
+		switch {
+		case link == nil:
+		case link.MediaXRef != "":
+			if !slices.ContainsFunc(kept, func(k *gedcom.MediaLink) bool { return k.MediaXRef == link.MediaXRef }) {
+				kept = append(kept, link)
+			}
+		case slices.ContainsFunc(link.Files, hasFileRef):
+			kept = append(kept, link)
+		}
+	}
+	return kept
+}
+
+// recordMediaLinks returns the OBJE links mediaLinks follows in rec: those of
+// a person, family or source record, none for another record type.
+func recordMediaLinks(rec *gedcom.Record) []*gedcom.MediaLink {
+	if indi, ok := rec.GetIndividual(); ok {
+		return individualMediaLinks(indi)
+	}
+	if fam, ok := rec.GetFamily(); ok {
+		return familyMediaLinks(fam)
+	}
+	if src, ok := rec.GetSource(); ok {
+		return src.Media
+	}
+	return nil
 }
 
 // mediaNotes joins the notes of an OBJE record or link with noteJoin: the
