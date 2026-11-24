@@ -53,6 +53,7 @@ const LIST_PAGES = [
 	'/browse/citation-templates',
 	'/history',
 	'/map',
+	'/places/unmapped',
 	'/search?q=nobody'
 ];
 

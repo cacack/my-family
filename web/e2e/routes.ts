@@ -24,6 +24,7 @@ export const STATIC_ROUTES = [
 	'/branches',
 	'/snapshots',
 	'/map',
+	'/places/unmapped',
 	'/analytics',
 	'/quality',
 	'/relationship',
