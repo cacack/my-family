@@ -7,12 +7,14 @@
 	import EmptyState from './EmptyState.svelte';
 
 	let places: PlaceEntry[] = $state([]);
-	let breadcrumb: string[] = $state([]);
+	// The places from the top level down to the one being browsed.
+	let breadcrumb: PlaceEntry[] = $state([]);
 	let loading = $state(true);
 	let error: string | null = $state(null);
 
-	// The place being browsed lives in the URL (see urlState.ts), so Back,
-	// reload and a copied link return to it. Drilling in is navigation, so it pushes.
+	// The ID of the place being browsed lives in the URL (see urlState.ts), so
+	// Back, reload and a copied link return to it. Drilling in is navigation,
+	// so it pushes.
 	const currentParent = $derived(page.url.searchParams.get('parent') ?? '');
 
 	// Back/Forward can start loads faster than they finish: only the latest one may land.
@@ -43,22 +45,12 @@
 
 	function navigateToPlace(place: PlaceEntry) {
 		if (place.has_children) {
-			browse(place.full_name);
+			browse(place.id);
 		}
 	}
 
 	function navigateToBreadcrumb(index: number) {
-		if (index < 0) {
-			// Go to root
-			browse('');
-		} else {
-			// Build the path up to this breadcrumb
-			const path = breadcrumb
-				.slice(0, index + 1)
-				.reverse()
-				.join(', ');
-			browse(path);
-		}
+		browse(index < 0 ? '' : breadcrumb[index].id);
 	}
 
 	$effect(() => {
@@ -82,14 +74,14 @@
 				All Places
 			</button>
 
-			{#each breadcrumb as crumb, i}
+			{#each breadcrumb as crumb, i (crumb.id)}
 				<span class="breadcrumb-separator">/</span>
 				<button
 					class="breadcrumb-item"
 					class:active={i === breadcrumb.length - 1}
 					onclick={() => navigateToBreadcrumb(i)}
 				>
-					{crumb}
+					{crumb.name}
 				</button>
 			{/each}
 		</nav>
@@ -104,7 +96,7 @@
 				{/if}
 			{:else}
 				<div class="place-grid">
-					{#each places as place}
+					{#each places as place (place.id)}
 						{#if place.has_children}
 							<button class="place-item expandable" onclick={() => navigateToPlace(place)}>
 								<div class="place-info">
@@ -122,7 +114,7 @@
 							</button>
 						{:else}
 							<a
-								href="/browse/places/{encodeURIComponent(place.full_name)}"
+								href="/browse/places/{place.id}"
 								class="place-item"
 								data-slot="card-link"
 							>
@@ -139,8 +131,8 @@
 
 		{#if currentParent && places.length > 0}
 			<div class="view-all">
-				<a href="/browse/places/{encodeURIComponent(currentParent)}" class="view-all-link" data-slot="action-link">
-					View all people from {breadcrumb[breadcrumb.length - 1] || currentParent}
+				<a href="/browse/places/{currentParent}" class="view-all-link" data-slot="action-link">
+					View all people from {breadcrumb[breadcrumb.length - 1]?.name ?? 'this place'}
 				</a>
 			</div>
 		{/if}

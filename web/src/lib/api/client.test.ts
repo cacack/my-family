@@ -120,7 +120,7 @@ describe('isBranchScopedRequest', () => {
 		['GET', '/browse/surnames'],
 		['GET', '/browse/surnames/Smith/persons'],
 		['GET', '/browse/places'],
-		['GET', '/browse/places/Ohio/persons'],
+		['GET', `/browse/places/${PERSON_ID}/persons`],
 		['GET', '/browse/cemeteries'],
 		['GET', '/browse/cemeteries/Oak%20Hill%20Cemetery/persons'],
 		['GET', '/map/locations'],
@@ -182,14 +182,11 @@ describe('isBranchScopedRequest', () => {
 	});
 
 	it('matches free-text segments the way the client actually encodes them', () => {
-		// The browse client percent-encodes the surname/place segment, so the
+		// The browse client percent-encodes the surname/cemetery segment, so the
 		// pattern has to survive `%20`, `%2C`, non-ASCII and an encoded slash
 		// without either rejecting the path or spilling across a `/`.
 		const place = 'Saint-Étienne, Loire, France / Cimetière';
 		expect(encodeURIComponent(place)).not.toContain('/');
-		expect(
-			isBranchScopedRequest('GET', `/browse/places/${encodeURIComponent(place)}/persons`)
-		).toBe(true);
 		expect(
 			isBranchScopedRequest('GET', `/browse/cemeteries/${encodeURIComponent(place)}/persons`)
 		).toBe(true);
@@ -198,8 +195,12 @@ describe('isBranchScopedRequest', () => {
 		).toBe(true);
 	});
 
+	it('addresses a place by its ID, not its text (#1737)', () => {
+		expect(isBranchScopedRequest('GET', '/browse/places/Ohio/persons')).toBe(false);
+	});
+
 	it('does not let a free-text segment swallow a slash', () => {
-		expect(isBranchScopedRequest('GET', '/browse/places/Ohio/Franklin/persons')).toBe(false);
+		expect(isBranchScopedRequest('GET', '/browse/cemeteries/Ohio/Franklin/persons')).toBe(false);
 		expect(isBranchScopedRequest('GET', '/browse/surnames//persons')).toBe(false);
 	});
 

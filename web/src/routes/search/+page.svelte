@@ -223,7 +223,7 @@
 				.filter((place) => place.has_children)
 				.map((place) =>
 					api
-						.getPlaceHierarchy(place.full_name)
+						.getPlaceHierarchy(place.id)
 						.catch(() => ({ items: [] as PlaceEntry[] }))
 				);
 			const childResults = await Promise.all(childPromises);

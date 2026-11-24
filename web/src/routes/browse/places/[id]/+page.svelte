@@ -8,7 +8,10 @@
 	import PageHeader from '#lib/components/PageHeader.svelte';
 	import { clampPageToTotal, readPositiveInt, setQuery } from '#lib/utils/urlState.js';
 
-	let place = $derived(decodeURIComponent(page.params.place ?? ''));
+	const placeId = $derived(page.params.id ?? '');
+	// The place's name, read beside the people; until it arrives, or when the
+	// place cannot be read, the page names it generically.
+	let placeName = $state('');
 	let persons: Person[] = $state([]);
 	let total = $state(0);
 	let loading = $state(true);
@@ -26,7 +29,7 @@
 		loadError = null;
 		try {
 			const requestedPage = currentPage;
-			const result = await api.getPersonsByPlace(place, {
+			const result = await api.getPersonsByPlace(placeId, {
 				limit: pageSize,
 				offset: (requestedPage - 1) * pageSize
 			});
@@ -59,16 +62,27 @@
 		loadPersons();
 	});
 
+	$effect(() => {
+		const id = placeId;
+		placeName = '';
+		api
+			.getPlace(id)
+			.then((p) => {
+				if (id === placeId) placeName = p.name;
+			})
+			.catch(() => {});
+	});
+
 	const totalPages = $derived(Math.ceil(total / pageSize));
 </script>
 
 <svelte:head>
-	<title>{place} | Browse Places | My Family</title>
+	<title>{placeName || 'Place'} | Browse Places | My Family</title>
 </svelte:head>
 
 <div class="place-detail-page">
 	<PageHeader
-		title={`People from "${place}"`}
+		title={placeName ? `People from "${placeName}"` : 'People from this place'}
 		back={{ href: '/browse/places', label: 'Browse by Place' }}
 		description={total > 0 ? `${total} ${total === 1 ? 'person' : 'people'} found` : undefined}
 	/>
@@ -78,7 +92,7 @@
 	{:else if loadError}
 		<ErrorState message={loadError} onRetry={loadPersons} />
 	{:else if persons.length === 0}
-		<EmptyState message={`No people found from "${place}".`}>
+		<EmptyState message={placeName ? `No people found from "${placeName}".` : 'No people found from this place.'}>
 			{#snippet actions()}
 				<a href="/browse/places" class="back-link">Back to place browser</a>
 			{/snippet}

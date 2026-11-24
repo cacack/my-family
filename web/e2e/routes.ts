@@ -52,6 +52,6 @@ export const DETAIL_ROUTES: ((s: SeedData) => string)[] = [
 	(s) => `/snapshots/compare?from=${s.snapshots.beforeId}&to=${s.snapshots.afterId}`,
 	(s) => `/sources/${s.detail.sourceId}`,
 	(s) => `/browse/cemeteries/${encodeURIComponent(s.detail.cemetery)}`,
-	(s) => `/browse/places/${encodeURIComponent(s.detail.place)}`,
+	(s) => `/browse/places/${s.detail.placeId}`,
 	(s) => `/browse/surnames/${encodeURIComponent(s.detail.surname)}`
 ];

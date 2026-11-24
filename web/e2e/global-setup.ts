@@ -51,6 +51,10 @@ interface PersonList {
 	total: number;
 }
 
+interface PlaceList {
+	items: { id: string; key: string }[];
+}
+
 interface CreatedBranch {
 	id: string;
 	name: string;
@@ -150,10 +154,16 @@ export default async function globalSetup(): Promise<void> {
 	if (imported.persons_imported !== 1) {
 		throw new Error(`E2E seed: GEDCOM import created ${imported.persons_imported} persons, not 1`);
 	}
+	// The place page is addressed by the place's ID.
+	const places = await call<PlaceList>('GET', '/places?limit=100');
+	const detailPlaceId = places.items.find((p) => p.key === 'millbrook,ohio')?.id;
+	if (!detailPlaceId) {
+		throw new Error(`E2E seed: /places does not list ${detailPlace}`);
+	}
 	// A guard visiting an empty page proves little, so check each one has the
 	// imported person to show.
 	for (const [kind, key] of [
-		['places', detailPlace],
+		['places', detailPlaceId],
 		['cemeteries', detailCemetery],
 		['surnames', detailSurname]
 	]) {
@@ -238,7 +248,7 @@ export default async function globalSetup(): Promise<void> {
 		},
 		detail: {
 			sourceId: source.id,
-			place: detailPlace,
+			placeId: detailPlaceId,
 			cemetery: detailCemetery,
 			surname: detailSurname
 		},
