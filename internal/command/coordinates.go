@@ -107,7 +107,8 @@ type placeCoordinates struct {
 // names ("birth_place_lat"), with its origin under prefix+"_origin"; nil
 // records a clear. Recording the pair whole keeps a branch merge from joining
 // one side's latitude to the other's longitude, or a pair to another's
-// origin. A pair left as it is records only a stated origin that differs.
+// origin. A pair left as it is records a stated origin that differs, with the
+// pair it describes, and otherwise nothing.
 func recordCoordinates(changes map[string]any, prefix, place string, input CoordinatesPatch, current placeCoordinates) error {
 	input, err := input.validate(prefix, place)
 	if err != nil {
@@ -118,6 +119,7 @@ func recordCoordinates(changes map[string]any, prefix, place string, input Coord
 	recordOptionalChange(pair, prefix+"_long", input.Longitude, current.Long)
 	if len(pair) == 0 {
 		if input.Origin != nil && *input.Origin != *domain.EffectiveCoordinateOrigin(current.Lat, current.Long, current.Origin) {
+			changes[prefix+"_lat"], changes[prefix+"_long"] = *current.Lat, *current.Long
 			changes[prefix+"_origin"] = input.Origin.ChangeValue()
 		}
 		return nil

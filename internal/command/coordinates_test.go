@@ -359,15 +359,32 @@ func TestRollback_BackfilledCoordinates(t *testing.T) {
 	if bl, bo := birth(); bl != lat || bo != long {
 		t.Errorf("after rollback to the backfilled state = %s %s, want %s %s", bl, bo, lat, long)
 	}
+
+	// A rollback to before the backfill keeps a later pair with its origin
+	// (#1563).
+	p, _ = rs.GetPerson(ctx, domain.MainBranchID, created.ID)
+	copied := &domain.CoordinateOrigin{Source: domain.CoordinateCopied}
+	later := pair("N3", "E3")
+	later.Origin = copied
+	if _, err := h.UpdatePerson(ctx, command.UpdatePersonInput{ID: created.ID, Version: p.Version, BirthPlaceCoordinates: later}); err != nil {
+		t.Fatalf("UpdatePerson coordinates with an origin: %v", err)
+	}
+	if _, err := h.RollbackPerson(ctx, created.ID, created.Version); err != nil {
+		t.Fatalf("RollbackPerson to before the backfill again: %v", err)
+	}
+	if p, _ := rs.GetPerson(ctx, domain.MainBranchID, created.ID); derefOr(p.BirthPlaceLat) != "N3" || !reflect.DeepEqual(p.BirthPlaceOrigin, copied) {
+		t.Errorf("after rollback = %s, %v; want the later pair kept with its copied origin", derefOr(p.BirthPlaceLat), p.BirthPlaceOrigin)
+	}
 }
 
 // A pair given with no origin is manual, one given with an origin keeps it,
-// and an update records the origin with the pair, or alone when only the
-// origin changes (#1563).
+// and an update records the origin with the pair, even when only the origin
+// changes (#1563).
 func TestPlaceCoordinates_Origin(t *testing.T) {
 	ctx := context.Background()
+	es := memory.NewEventStore()
 	rs := memory.NewReadModelStore()
-	h := command.NewHandler(memory.NewEventStore(), rs)
+	h := command.NewHandler(es, rs)
 	manual := &domain.CoordinateOrigin{Source: domain.CoordinateManual}
 	geocoded := &domain.CoordinateOrigin{Source: domain.CoordinateGeocoded, Provider: "Nominatim", Precision: domain.MatchFull}
 	withOrigin := func(lat, long string, origin *domain.CoordinateOrigin) command.CoordinatesPatch {
@@ -408,10 +425,19 @@ func TestPlaceCoordinates_Origin(t *testing.T) {
 	if version != before || !reflect.DeepEqual(get().DeathPlaceOrigin, geocoded) {
 		t.Errorf("resaving the pair: version %d -> %d, origin %v", before, version, get().DeathPlaceOrigin)
 	}
-	// The same pair with a new origin records the origin alone.
+	// The same pair with a new origin records the origin with the pair, so a
+	// branch merge contests the three together.
 	update(command.UpdatePersonInput{DeathPlaceCoordinates: withOrigin("N2", "E2", manual)})
 	if version != before+1 || !reflect.DeepEqual(get().DeathPlaceOrigin, manual) {
 		t.Errorf("restating the origin: version %d -> %d, origin %v", before, version, get().DeathPlaceOrigin)
+	}
+	events, _ := es.ReadStream(ctx, created.ID)
+	decoded, err := events[len(events)-1].DecodeEvent()
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if changes := decoded.(domain.PersonUpdated).Changes; len(changes) != 3 || changes["death_place_lat"] != "N2" || changes["death_place_long"] != "E2" {
+		t.Errorf("origin-only changes = %v, want the pair recorded with its origin", changes)
 	}
 	// A changed pair with no origin is manual.
 	update(command.UpdatePersonInput{BirthPlaceCoordinates: withOrigin("N1", "E1", geocoded)})

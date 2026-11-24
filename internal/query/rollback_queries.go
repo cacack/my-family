@@ -310,8 +310,15 @@ func keepBackfilledCoordinates(events []repository.StoredEvent, targetVersion in
 			setCoordinateState(backfilled, "death_place", e.DeathPlaceLat, e.DeathPlaceLong)
 		}
 		for key := range backfilled {
-			if v, ok := changes[key]; ok && v == nil {
-				delete(changes, key)
+			if v, ok := changes[key]; !ok || v != nil {
+				continue
+			}
+			delete(changes, key)
+			// A kept pair keeps its origin too, or it would read as imported.
+			if prefix, isLat := strings.CutSuffix(key, "_lat"); isLat {
+				if v, ok := changes[prefix+"_origin"]; ok && v == nil {
+					delete(changes, prefix+"_origin")
+				}
 			}
 		}
 		return nil
