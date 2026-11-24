@@ -2492,9 +2492,19 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 		lat     float64
 		lon     float64
 		persons []repository.MapPerson
+		origins []domain.CoordinateSource
 	}
-
 	agg := make(map[locKey]*locData)
+	add := func(place, eventType string, lat, lon float64, person repository.MapPerson, origin *domain.CoordinateOrigin) {
+		key := locKey{place: place, eventType: eventType}
+		d, ok := agg[key]
+		if !ok {
+			d = &locData{lat: lat, lon: lon}
+			agg[key] = d
+		}
+		d.persons = append(d.persons, person)
+		d.origins = repository.AddMapOrigin(d.origins, origin)
+	}
 
 	for _, p := range resolveAllRows(s.persons, branchID) {
 		if privacy.Protects(p) {
@@ -2507,23 +2517,13 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 		// Birth location
 		if p.BirthPlaceLat != nil && p.BirthPlaceLong != nil && *p.BirthPlaceLat != "" && *p.BirthPlaceLong != "" {
 			if lat, lon, ok := repository.ParseMapCoordinates(p.ID, "birth", *p.BirthPlaceLat, *p.BirthPlaceLong); ok {
-				key := locKey{place: p.BirthPlace, eventType: "birth"}
-				if d, ok := agg[key]; ok {
-					d.persons = append(d.persons, person)
-				} else {
-					agg[key] = &locData{lat: lat, lon: lon, persons: []repository.MapPerson{person}}
-				}
+				add(p.BirthPlace, "birth", lat, lon, person, p.BirthPlaceOrigin)
 			}
 		}
 		// Death location
 		if p.DeathPlaceLat != nil && p.DeathPlaceLong != nil && *p.DeathPlaceLat != "" && *p.DeathPlaceLong != "" {
 			if lat, lon, ok := repository.ParseMapCoordinates(p.ID, "death", *p.DeathPlaceLat, *p.DeathPlaceLong); ok {
-				key := locKey{place: p.DeathPlace, eventType: "death"}
-				if d, ok := agg[key]; ok {
-					d.persons = append(d.persons, person)
-				} else {
-					agg[key] = &locData{lat: lat, lon: lon, persons: []repository.MapPerson{person}}
-				}
+				add(p.DeathPlace, "death", lat, lon, person, p.DeathPlaceOrigin)
 			}
 		}
 	}
@@ -2537,6 +2537,7 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 			EventType: key.eventType,
 			Count:     len(data.persons),
 			Persons:   data.persons,
+			Origins:   data.origins,
 		})
 	}
 

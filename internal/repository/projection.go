@@ -335,31 +335,33 @@ func (p *Projector) projectPersonCreated(ctx context.Context, e domain.PersonCre
 	}
 
 	person := &PersonReadModel{
-		ID:              e.PersonID,
-		GivenName:       e.GivenName,
-		Surname:         e.Surname,
-		FullName:        domain.JoinFullName(e.GivenName, e.Surname),
-		Gender:          e.Gender,
-		BirthDateRaw:    birthDateRaw,
-		BirthDateSort:   birthDateSort,
-		BirthPlace:      e.BirthPlace,
-		DeathDateRaw:    deathDateRaw,
-		DeathDateSort:   deathDateSort,
-		DeathPlace:      e.DeathPlace,
-		BirthPlaceLat:   e.BirthPlaceLat,
-		BirthPlaceLong:  e.BirthPlaceLong,
-		DeathPlaceLat:   e.DeathPlaceLat,
-		DeathPlaceLong:  e.DeathPlaceLong,
-		Notes:           e.Notes,
-		BirthNotes:      e.BirthNotes,
-		DeathNotes:      e.DeathNotes,
-		BirthTypeDetail: e.BirthTypeDetail,
-		DeathTypeDetail: e.DeathTypeDetail,
-		ResearchStatus:  e.ResearchStatus,
-		Restriction:     e.Restriction,
-		LivingOverride:  e.LivingOverride,
-		Version:         version,
-		UpdatedAt:       e.OccurredAt(),
+		ID:               e.PersonID,
+		GivenName:        e.GivenName,
+		Surname:          e.Surname,
+		FullName:         domain.JoinFullName(e.GivenName, e.Surname),
+		Gender:           e.Gender,
+		BirthDateRaw:     birthDateRaw,
+		BirthDateSort:    birthDateSort,
+		BirthPlace:       e.BirthPlace,
+		DeathDateRaw:     deathDateRaw,
+		DeathDateSort:    deathDateSort,
+		DeathPlace:       e.DeathPlace,
+		BirthPlaceLat:    e.BirthPlaceLat,
+		BirthPlaceLong:   e.BirthPlaceLong,
+		DeathPlaceLat:    e.DeathPlaceLat,
+		DeathPlaceLong:   e.DeathPlaceLong,
+		BirthPlaceOrigin: e.BirthPlaceOrigin,
+		DeathPlaceOrigin: e.DeathPlaceOrigin,
+		Notes:            e.Notes,
+		BirthNotes:       e.BirthNotes,
+		DeathNotes:       e.DeathNotes,
+		BirthTypeDetail:  e.BirthTypeDetail,
+		DeathTypeDetail:  e.DeathTypeDetail,
+		ResearchStatus:   e.ResearchStatus,
+		Restriction:      e.Restriction,
+		LivingOverride:   e.LivingOverride,
+		Version:          version,
+		UpdatedAt:        e.OccurredAt(),
 	}
 	// A re-projected PersonCreated (a resumed merge, #685) can find the
 	// person's life events already there.
@@ -440,6 +442,10 @@ func (p *Projector) projectPersonUpdated(ctx context.Context, e domain.PersonUpd
 			if v, ok := changeCoordinate(value); ok {
 				person.BirthPlaceLong = v
 			}
+		case "birth_place_origin":
+			if v, ok := domain.CoordinateOriginFromChange(value); ok {
+				person.BirthPlaceOrigin = v
+			}
 		case "death_date":
 			if v, ok := value.(string); ok {
 				person.DeathDateRaw = v
@@ -457,6 +463,10 @@ func (p *Projector) projectPersonUpdated(ctx context.Context, e domain.PersonUpd
 		case "death_place_long":
 			if v, ok := changeCoordinate(value); ok {
 				person.DeathPlaceLong = v
+			}
+		case "death_place_origin":
+			if v, ok := domain.CoordinateOriginFromChange(value); ok {
+				person.DeathPlaceOrigin = v
 			}
 		case "notes":
 			if v, ok := value.(string); ok {
@@ -518,22 +528,23 @@ func (p *Projector) projectFamilyCreated(ctx context.Context, e domain.FamilyCre
 
 	// Partner names are not stored; reads resolve them from the persons (#1207).
 	family := &FamilyReadModel{
-		ID:                 e.FamilyID,
-		Partner1ID:         e.Partner1ID,
-		Partner2ID:         e.Partner2ID,
-		RelationshipType:   e.RelationshipType,
-		MarriageDateRaw:    marriageDateRaw,
-		MarriageDateSort:   marriageDateSort,
-		MarriagePlace:      e.MarriagePlace,
-		MarriagePlaceLat:   e.MarriagePlaceLat,
-		MarriagePlaceLong:  e.MarriagePlaceLong,
-		MarriageNotes:      e.MarriageNotes,
-		MarriageTypeDetail: e.MarriageTypeDetail,
-		Notes:              e.Notes,
-		Restriction:        e.Restriction,
-		ChildCount:         0,
-		Version:            version,
-		UpdatedAt:          e.OccurredAt(),
+		ID:                  e.FamilyID,
+		Partner1ID:          e.Partner1ID,
+		Partner2ID:          e.Partner2ID,
+		RelationshipType:    e.RelationshipType,
+		MarriageDateRaw:     marriageDateRaw,
+		MarriageDateSort:    marriageDateSort,
+		MarriagePlace:       e.MarriagePlace,
+		MarriagePlaceLat:    e.MarriagePlaceLat,
+		MarriagePlaceLong:   e.MarriagePlaceLong,
+		MarriagePlaceOrigin: e.MarriagePlaceOrigin,
+		MarriageNotes:       e.MarriageNotes,
+		MarriageTypeDetail:  e.MarriageTypeDetail,
+		Notes:               e.Notes,
+		Restriction:         e.Restriction,
+		ChildCount:          0,
+		Version:             version,
+		UpdatedAt:           e.OccurredAt(),
 	}
 
 	if err := p.readStore.SaveFamily(ctx, branchID, family); err != nil {
@@ -600,6 +611,10 @@ func (p *Projector) projectFamilyUpdated(ctx context.Context, e domain.FamilyUpd
 		case "marriage_place_long":
 			if v, ok := changeCoordinate(value); ok {
 				family.MarriagePlaceLong = v
+			}
+		case "marriage_place_origin":
+			if v, ok := domain.CoordinateOriginFromChange(value); ok {
+				family.MarriagePlaceOrigin = v
 			}
 		case "restriction":
 			if v, ok := changeText(value); ok {

@@ -55,11 +55,16 @@ type PersonCreated struct {
 	// Place coordinates come from GEDCOM import (#1225) or a create (#1604);
 	// EXIDs from import. A PersonUpdated changes coordinates under the same
 	// keys (birth_place_lat...).
-	BirthPlaceLat  *string              `json:"birth_place_lat,omitempty"`
-	BirthPlaceLong *string              `json:"birth_place_long,omitempty"`
-	DeathPlaceLat  *string              `json:"death_place_lat,omitempty"`
-	DeathPlaceLong *string              `json:"death_place_long,omitempty"`
-	ExternalIDs    []ExternalIdentifier `json:"external_ids,omitempty"`
+	BirthPlaceLat  *string `json:"birth_place_lat,omitempty"`
+	BirthPlaceLong *string `json:"birth_place_long,omitempty"`
+	DeathPlaceLat  *string `json:"death_place_lat,omitempty"`
+	DeathPlaceLong *string `json:"death_place_long,omitempty"`
+	// The origin of each pair (#1563); absent reads as imported, as every
+	// pair logged before it came from an import. A PersonUpdated changes it
+	// under the same keys (birth_place_origin...).
+	BirthPlaceOrigin *CoordinateOrigin    `json:"birth_place_origin,omitempty"`
+	DeathPlaceOrigin *CoordinateOrigin    `json:"death_place_origin,omitempty"`
+	ExternalIDs      []ExternalIdentifier `json:"external_ids,omitempty"`
 	// Notes under the BIRT and DEAT events come from GEDCOM import (#1250).
 	BirthNotes string `json:"birth_notes,omitempty"`
 	DeathNotes string `json:"death_notes,omitempty"`
@@ -154,6 +159,9 @@ type FamilyCreated struct {
 	// (#1604); a FamilyUpdated changes them under the same keys.
 	MarriagePlaceLat  *string `json:"marriage_place_lat,omitempty"`
 	MarriagePlaceLong *string `json:"marriage_place_long,omitempty"`
+	// MarriagePlaceOrigin is the pair's origin (#1563); absent reads as
+	// imported.
+	MarriagePlaceOrigin *CoordinateOrigin `json:"marriage_place_origin,omitempty"`
 	// MarriageNotes are the notes under the MARR event, set at import (#1250).
 	MarriageNotes string `json:"marriage_notes,omitempty"`
 	// MarriageTypeDetail is the TYPE under the MARR event, set at import (#1284).

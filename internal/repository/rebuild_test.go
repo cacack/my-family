@@ -904,6 +904,11 @@ func TestRebuildReadModel_BackfillsBesideCoordinatesSetByUpdate(t *testing.T) {
 	if p == nil || ptrValue(p.BirthPlaceLat) != "N42.3601" || ptrValue(p.DeathPlaceLat) != lat || ptrValue(p.DeathPlaceLong) != long {
 		t.Errorf("person after rebuild = %+v, want the updated birth and imported death coordinates", p)
 	}
+	// The backfill logs the updated birth pair beside the imported death one
+	// but not their origins, so the birth pair stays manual (#1563).
+	if p.BirthPlaceOrigin == nil || p.BirthPlaceOrigin.Source != domain.CoordinateManual || p.DeathPlaceOrigin != nil {
+		t.Errorf("person origins after rebuild = %v, %v; want manual and none (imported)", p.BirthPlaceOrigin, p.DeathPlaceOrigin)
+	}
 	if ids, _ := s.read.GetPersonExternalIDs(ctx, domain.MainBranchID, person.ID); len(ids) != 1 || ids[0].Value != "P-1" {
 		t.Errorf("person exids after rebuild = %+v, want P-1", ids)
 	}
@@ -954,4 +959,68 @@ func TestRebuildReadModel_BackfillsMainDeletedFromAnUnsetBranchCopy(t *testing.T
 	if b, _ := s.read.GetPerson(ctx, domain.BranchID(placing.ID), person.ID); b == nil || ptrValue(b.DeathPlaceLat) != "S33.8688" {
 		t.Errorf("placing branch copy = %+v, want its own death coordinates", b)
 	}
+}
+
+// TestRebuildReadModel_CoordinateOrigins covers the origin of each pair
+// (#1563): a pair logged before origins were recorded has none and reads as
+// imported, before and after a rebuild, which appends no event to make it
+// so; a pair typed in or geocoded keeps its origin through the replay.
+func TestRebuildReadModel_CoordinateOrigins(t *testing.T) {
+	ctx := context.Background()
+	s := newRebuildStores()
+	h := command.NewHandlerWithBranches(s.events, s.read, s.branches, s.snapshots)
+	projector := repository.NewProjector(s.read, s.branches)
+
+	// Logged as an import logged them before #1563: coordinates, no origin.
+	lat, long := "N42.3601", "W71.0589"
+	imported := domain.NewPerson("Mary", "Imported")
+	imported.BirthPlace = "Boston"
+	created := domain.NewPersonCreated(imported)
+	created.BirthPlaceLat, created.BirthPlaceLong = &lat, &long
+	mustRebuildSetup(t, s.events.Append(ctx, imported.ID, "Person", []domain.Event{created}, -1, repository.MainScope))
+	mustRebuildSetup(t, projector.Project(ctx, created, 1, domain.MainBranchID))
+	family := domain.NewFamily()
+	family.Partner1ID, family.MarriagePlace = &imported.ID, "Boston"
+	famCreated := domain.NewFamilyCreated(family)
+	famCreated.MarriagePlaceLat, famCreated.MarriagePlaceLong = &lat, &long
+	mustRebuildSetup(t, s.events.Append(ctx, family.ID, "Family", []domain.Event{famCreated}, -1, repository.MainScope))
+	mustRebuildSetup(t, projector.Project(ctx, famCreated, 1, domain.MainBranchID))
+
+	// Typed in on create, then geocoded on update.
+	geocoded := &domain.CoordinateOrigin{Source: domain.CoordinateGeocoded, Provider: "Nominatim", Precision: domain.MatchFull}
+	typed, err := h.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ada", BirthPlace: "Boston", DeathPlace: "Sydney",
+		BirthPlaceCoordinates: coords(lat, long)})
+	mustRebuildSetup(t, err)
+	death := coords("S33.8688", "E151.2093")
+	death.Origin = geocoded
+	_, err = h.UpdatePerson(ctx, command.UpdatePersonInput{ID: typed.ID, Version: typed.Version, DeathPlaceCoordinates: death})
+	mustRebuildSetup(t, err)
+
+	check := func(stage string) {
+		t.Helper()
+		p, _ := s.read.GetPerson(ctx, domain.MainBranchID, imported.ID)
+		f, _ := s.read.GetFamily(ctx, domain.MainBranchID, family.ID)
+		if p == nil || f == nil || p.BirthPlaceOrigin != nil || f.MarriagePlaceOrigin != nil {
+			t.Fatalf("%s: imported person %+v, family %+v; want both with no origin", stage, p, f)
+		}
+		if got := domain.EffectiveCoordinateOrigin(p.BirthPlaceLat, p.BirthPlaceLong, p.BirthPlaceOrigin); got == nil || got.Source != domain.CoordinateImported {
+			t.Errorf("%s: imported pair reads as %v, want imported", stage, got)
+		}
+		a, _ := s.read.GetPerson(ctx, domain.MainBranchID, typed.ID)
+		if a == nil || a.BirthPlaceOrigin == nil || a.BirthPlaceOrigin.Source != domain.CoordinateManual || a.DeathPlaceOrigin == nil || *a.DeathPlaceOrigin != *geocoded {
+			t.Errorf("%s: typed person origins = %+v, want manual and %v", stage, a, geocoded)
+		}
+	}
+	check("before rebuild")
+	logged, err := s.events.ReadAll(ctx, 0, 1000)
+	mustRebuildSetup(t, err)
+
+	result, err := s.rebuild(t, s.read)
+	if err != nil {
+		t.Fatalf("rebuild: %v", err)
+	}
+	if after, _ := s.events.ReadAll(ctx, 0, 1000); len(after) != len(logged) || result.Backfilled != 0 {
+		t.Errorf("rebuild logged %d events (was %d) and backfilled %d; want none appended", len(after), len(logged), result.Backfilled)
+	}
+	check("after rebuild")
 }

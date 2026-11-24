@@ -356,6 +356,8 @@ type MapLocation struct {
 	EventType string      `json:"event_type"`
 	Count     int         `json:"count"`
 	Persons   []MapPerson `json:"persons"`
+	// Origins are the distinct sources of the pairs it groups (#1563).
+	Origins []domain.CoordinateSource `json:"origins"`
 }
 
 // MapPerson is a person pinned at a MapLocation.
@@ -392,6 +394,7 @@ func (s *BrowseService) GetMapLocations(ctx context.Context, branchID domain.Bra
 			EventType: loc.EventType,
 			Count:     loc.Count,
 			Persons:   persons,
+			Origins:   loc.Origins,
 		}
 	}
 

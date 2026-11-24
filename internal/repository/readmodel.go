@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -78,6 +79,30 @@ func UnmarshalStrings(data []byte, table, column string, id uuid.UUID) []string 
 	return values
 }
 
+// MarshalCoordinateOrigin serializes a coordinate pair's origin (#1563) for
+// a text/JSON column. It returns an empty string for none, so callers store
+// SQL NULL, which reads as imported.
+func MarshalCoordinateOrigin(origin *domain.CoordinateOrigin) string {
+	if origin == nil {
+		return ""
+	}
+	data, err := json.Marshal(origin)
+	if err != nil {
+		return ""
+	}
+	return string(data)
+}
+
+// UnmarshalCoordinateOrigin parses a coordinate pair's origin from a JSON
+// column, with the same empty/malformed handling as UnmarshalAddress.
+func UnmarshalCoordinateOrigin(data []byte, table, column string, id uuid.UUID) *domain.CoordinateOrigin {
+	var origin domain.CoordinateOrigin
+	if !unmarshalJSONColumn(data, &origin, table, column, id) {
+		return nil
+	}
+	return &origin
+}
+
 // unmarshalJSONColumn decodes data into dst, reporting whether it holds a value.
 func unmarshalJSONColumn(data []byte, dst any, table, column string, id uuid.UUID) bool {
 	if len(data) == 0 {
@@ -93,32 +118,34 @@ func unmarshalJSONColumn(data []byte, dst any, table, column string, id uuid.UUI
 
 // PersonReadModel represents a person in the read model.
 type PersonReadModel struct {
-	ID                  uuid.UUID             `json:"id"`
-	GivenName           string                `json:"given_name"`
-	Surname             string                `json:"surname"`
-	FullName            string                `json:"full_name"`
-	Gender              domain.Gender         `json:"gender,omitempty"`
-	BirthDateRaw        string                `json:"birth_date_raw,omitempty"`
-	BirthDateSort       *time.Time            `json:"-"` // internal sort key; BC years cannot encode as JSON (#1065)
-	BirthPlace          string                `json:"birth_place,omitempty"`
-	BirthPlaceLat       *string               `json:"birth_place_lat,omitempty"`
-	BirthPlaceLong      *string               `json:"birth_place_long,omitempty"`
-	DeathDateRaw        string                `json:"death_date_raw,omitempty"`
-	DeathDateSort       *time.Time            `json:"-"` // internal sort key; BC years cannot encode as JSON (#1065)
-	DeathPlace          string                `json:"death_place,omitempty"`
-	DeathPlaceLat       *string               `json:"death_place_lat,omitempty"`
-	DeathPlaceLong      *string               `json:"death_place_long,omitempty"`
-	Notes               string                `json:"notes,omitempty"`
-	BirthNotes          string                `json:"birth_notes,omitempty"`       // NOTEs under BIRT (#1250)
-	DeathNotes          string                `json:"death_notes,omitempty"`       // NOTEs under DEAT (#1250)
-	BirthTypeDetail     string                `json:"birth_type_detail,omitempty"` // TYPE under BIRT (#1284)
-	DeathTypeDetail     string                `json:"death_type_detail,omitempty"` // TYPE under DEAT (#1284)
-	ResearchStatus      domain.ResearchStatus `json:"research_status,omitempty"`
-	BrickWallNote       string                `json:"brick_wall_note,omitempty"`
-	BrickWallSince      *time.Time            `json:"brick_wall_since,omitempty"`
-	BrickWallResolvedAt *time.Time            `json:"brick_wall_resolved_at,omitempty"`
-	Restriction         domain.Restriction    `json:"restriction,omitempty"`     // GEDCOM RESN (ADR-008 §2)
-	LivingOverride      domain.LivingOverride `json:"living_override,omitempty"` // editor's override of the living rule (ADR-008 §1)
+	ID                  uuid.UUID                `json:"id"`
+	GivenName           string                   `json:"given_name"`
+	Surname             string                   `json:"surname"`
+	FullName            string                   `json:"full_name"`
+	Gender              domain.Gender            `json:"gender,omitempty"`
+	BirthDateRaw        string                   `json:"birth_date_raw,omitempty"`
+	BirthDateSort       *time.Time               `json:"-"` // internal sort key; BC years cannot encode as JSON (#1065)
+	BirthPlace          string                   `json:"birth_place,omitempty"`
+	BirthPlaceLat       *string                  `json:"birth_place_lat,omitempty"`
+	BirthPlaceLong      *string                  `json:"birth_place_long,omitempty"`
+	BirthPlaceOrigin    *domain.CoordinateOrigin `json:"birth_place_origin,omitempty"` // nil reads as imported (#1563)
+	DeathDateRaw        string                   `json:"death_date_raw,omitempty"`
+	DeathDateSort       *time.Time               `json:"-"` // internal sort key; BC years cannot encode as JSON (#1065)
+	DeathPlace          string                   `json:"death_place,omitempty"`
+	DeathPlaceLat       *string                  `json:"death_place_lat,omitempty"`
+	DeathPlaceLong      *string                  `json:"death_place_long,omitempty"`
+	DeathPlaceOrigin    *domain.CoordinateOrigin `json:"death_place_origin,omitempty"` // nil reads as imported (#1563)
+	Notes               string                   `json:"notes,omitempty"`
+	BirthNotes          string                   `json:"birth_notes,omitempty"`       // NOTEs under BIRT (#1250)
+	DeathNotes          string                   `json:"death_notes,omitempty"`       // NOTEs under DEAT (#1250)
+	BirthTypeDetail     string                   `json:"birth_type_detail,omitempty"` // TYPE under BIRT (#1284)
+	DeathTypeDetail     string                   `json:"death_type_detail,omitempty"` // TYPE under DEAT (#1284)
+	ResearchStatus      domain.ResearchStatus    `json:"research_status,omitempty"`
+	BrickWallNote       string                   `json:"brick_wall_note,omitempty"`
+	BrickWallSince      *time.Time               `json:"brick_wall_since,omitempty"`
+	BrickWallResolvedAt *time.Time               `json:"brick_wall_resolved_at,omitempty"`
+	Restriction         domain.Restriction       `json:"restriction,omitempty"`     // GEDCOM RESN (ADR-008 §2)
+	LivingOverride      domain.LivingOverride    `json:"living_override,omitempty"` // editor's override of the living rule (ADR-008 §1)
 	// DeathEvidence and LivingRefDate are the projected inputs of the living
 	// rule (see SetLivingFacts); LivingFacts assembles them.
 	DeathEvidence bool       `json:"-"`
@@ -142,26 +169,27 @@ func (p *PersonReadModel) LivingFacts() domain.LivingFacts {
 // not stored: every read resolves them from the person overlay of the branch
 // it reads, and SaveFamily ignores them (#1207, see family_names.go).
 type FamilyReadModel struct {
-	ID                 uuid.UUID           `json:"id"`
-	Partner1ID         *uuid.UUID          `json:"partner1_id,omitempty"`
-	Partner1GivenName  string              `json:"partner1_given_name,omitempty"`
-	Partner1Surname    string              `json:"partner1_surname,omitempty"`
-	Partner2ID         *uuid.UUID          `json:"partner2_id,omitempty"`
-	Partner2GivenName  string              `json:"partner2_given_name,omitempty"`
-	Partner2Surname    string              `json:"partner2_surname,omitempty"`
-	RelationshipType   domain.RelationType `json:"relationship_type,omitempty"`
-	MarriageDateRaw    string              `json:"marriage_date_raw,omitempty"`
-	MarriageDateSort   *time.Time          `json:"-"` // internal sort key; BC years cannot encode as JSON (#1065)
-	MarriagePlace      string              `json:"marriage_place,omitempty"`
-	MarriagePlaceLat   *string             `json:"marriage_place_lat,omitempty"`
-	MarriagePlaceLong  *string             `json:"marriage_place_long,omitempty"`
-	MarriageNotes      string              `json:"marriage_notes,omitempty"`       // NOTEs under MARR (#1250)
-	MarriageTypeDetail string              `json:"marriage_type_detail,omitempty"` // TYPE under MARR (#1284)
-	Notes              string              `json:"notes,omitempty"`                // the FAM record's own NOTEs (#1267)
-	Restriction        domain.Restriction  `json:"restriction,omitempty"`          // GEDCOM RESN (ADR-008 §2)
-	ChildCount         int                 `json:"child_count"`
-	Version            int64               `json:"version"`
-	UpdatedAt          time.Time           `json:"updated_at"`
+	ID                  uuid.UUID                `json:"id"`
+	Partner1ID          *uuid.UUID               `json:"partner1_id,omitempty"`
+	Partner1GivenName   string                   `json:"partner1_given_name,omitempty"`
+	Partner1Surname     string                   `json:"partner1_surname,omitempty"`
+	Partner2ID          *uuid.UUID               `json:"partner2_id,omitempty"`
+	Partner2GivenName   string                   `json:"partner2_given_name,omitempty"`
+	Partner2Surname     string                   `json:"partner2_surname,omitempty"`
+	RelationshipType    domain.RelationType      `json:"relationship_type,omitempty"`
+	MarriageDateRaw     string                   `json:"marriage_date_raw,omitempty"`
+	MarriageDateSort    *time.Time               `json:"-"` // internal sort key; BC years cannot encode as JSON (#1065)
+	MarriagePlace       string                   `json:"marriage_place,omitempty"`
+	MarriagePlaceLat    *string                  `json:"marriage_place_lat,omitempty"`
+	MarriagePlaceLong   *string                  `json:"marriage_place_long,omitempty"`
+	MarriagePlaceOrigin *domain.CoordinateOrigin `json:"marriage_place_origin,omitempty"` // nil reads as imported (#1563)
+	MarriageNotes       string                   `json:"marriage_notes,omitempty"`        // NOTEs under MARR (#1250)
+	MarriageTypeDetail  string                   `json:"marriage_type_detail,omitempty"`  // TYPE under MARR (#1284)
+	Notes               string                   `json:"notes,omitempty"`                 // the FAM record's own NOTEs (#1267)
+	Restriction         domain.Restriction       `json:"restriction,omitempty"`           // GEDCOM RESN (ADR-008 §2)
+	ChildCount          int                      `json:"child_count"`
+	Version             int64                    `json:"version"`
+	UpdatedAt           time.Time                `json:"updated_at"`
 }
 
 // FamilyChildReadModel represents a child in a family. The person names are
@@ -970,6 +998,28 @@ type MapLocation struct {
 	EventType string      `json:"event_type"` // "birth" or "death"
 	Count     int         `json:"count"`
 	Persons   []MapPerson `json:"persons"`
+	// Origins are the distinct sources of the pairs the location groups, in
+	// AllCoordinateSources order (#1563).
+	Origins []domain.CoordinateSource `json:"origins"`
+}
+
+// AddMapOrigin adds the source of a pair with stored origin to a map
+// location's origins, keeping them distinct and in AllCoordinateSources
+// order; a nil origin is imported (domain.EffectiveCoordinateOrigin).
+func AddMapOrigin(origins []domain.CoordinateSource, stored *domain.CoordinateOrigin) []domain.CoordinateSource {
+	source := domain.CoordinateImported
+	if stored != nil {
+		source = stored.Source
+	}
+	if slices.Contains(origins, source) {
+		return origins
+	}
+	origins = append(origins, source)
+	order := domain.AllCoordinateSources()
+	slices.SortFunc(origins, func(a, b domain.CoordinateSource) int {
+		return slices.Index(order, a) - slices.Index(order, b)
+	})
+	return origins
 }
 
 // MapPerson is a person pinned at a MapLocation, named so the map can list them,

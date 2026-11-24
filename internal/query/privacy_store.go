@@ -147,7 +147,7 @@ func redactFamily(f repository.FamilyReadModel, vis map[uuid.UUID]repository.Vis
 	}
 	if protected {
 		f.MarriageDateRaw, f.MarriageDateSort = "", nil
-		f.MarriagePlace, f.MarriagePlaceLat, f.MarriagePlaceLong = "", nil, nil
+		f.MarriagePlace, f.MarriagePlaceLat, f.MarriagePlaceLong, f.MarriagePlaceOrigin = "", nil, nil, nil
 		f.MarriageNotes, f.MarriageTypeDetail, f.Notes = "", "", ""
 	}
 	return f, protected

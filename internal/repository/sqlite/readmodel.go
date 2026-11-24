@@ -789,6 +789,11 @@ func (s *ReadModelStore) runMigrations() {
 	_, _ = s.db.Exec(`ALTER TABLE families ADD COLUMN marriage_place_lat TEXT`)
 	_, _ = s.db.Exec(`ALTER TABLE families ADD COLUMN marriage_place_long TEXT`)
 
+	// Add the origin of each coordinate pair (issue #1563); NULL reads as imported
+	_, _ = s.db.Exec(`ALTER TABLE persons ADD COLUMN birth_place_origin TEXT`)
+	_, _ = s.db.Exec(`ALTER TABLE persons ADD COLUMN death_place_origin TEXT`)
+	_, _ = s.db.Exec(`ALTER TABLE families ADD COLUMN marriage_place_origin TEXT`)
+
 	// Add brick wall columns for research tracking (issue #61)
 	_, _ = s.db.Exec(`ALTER TABLE persons ADD COLUMN brick_wall_note TEXT DEFAULT ''`)
 	_, _ = s.db.Exec(`ALTER TABLE persons ADD COLUMN brick_wall_since TEXT`)
@@ -1315,8 +1320,8 @@ func (s *ReadModelStore) ListPersons(ctx context.Context, opts repository.ListOp
 	// #nosec G201 -- orderColumn and orderDir are validated via switch/if above, not user input
 	query := fmt.Sprintf(`
 		SELECT id, given_name, surname, full_name, gender,
-			   birth_date_raw, birth_date_sort, birth_place, birth_place_lat, birth_place_long,
-			   death_date_raw, death_date_sort, death_place, death_place_lat, death_place_long,
+			   birth_date_raw, birth_date_sort, birth_place, birth_place_lat, birth_place_long, birth_place_origin,
+			   death_date_raw, death_date_sort, death_place, death_place_lat, death_place_long, death_place_origin,
 			   notes, birth_notes, death_notes, birth_type_detail, death_type_detail, research_status, brick_wall_note, brick_wall_since, brick_wall_resolved_at,
 			   restriction, living_override, death_evidence, living_ref_date,
 			   version, updated_at
@@ -1452,8 +1457,8 @@ func searchPersonsLikeSQL(opts repository.SearchOptions) (string, []any) {
 
 	sb.WriteString(`
 		SELECT p.id, p.given_name, p.surname, p.full_name, p.gender,
-			   p.birth_date_raw, p.birth_date_sort, p.birth_place, p.birth_place_lat, p.birth_place_long,
-			   p.death_date_raw, p.death_date_sort, p.death_place, p.death_place_lat, p.death_place_long,
+			   p.birth_date_raw, p.birth_date_sort, p.birth_place, p.birth_place_lat, p.birth_place_long, p.birth_place_origin,
+			   p.death_date_raw, p.death_date_sort, p.death_place, p.death_place_lat, p.death_place_long, p.death_place_origin,
 			   p.notes, p.birth_notes, p.death_notes, p.birth_type_detail, p.death_type_detail, p.research_status, p.brick_wall_note, p.brick_wall_since, p.brick_wall_resolved_at,
 			   p.restriction, p.living_override, p.death_evidence, p.living_ref_date,
 			   p.version, p.updated_at
@@ -1890,8 +1895,8 @@ func (s *ReadModelStore) searchPersonsFiltersOnly(ctx context.Context, opts repo
 
 	sb.WriteString(`
 		SELECT p.id, p.given_name, p.surname, p.full_name, p.gender,
-			   p.birth_date_raw, p.birth_date_sort, p.birth_place, p.birth_place_lat, p.birth_place_long,
-			   p.death_date_raw, p.death_date_sort, p.death_place, p.death_place_lat, p.death_place_long,
+			   p.birth_date_raw, p.birth_date_sort, p.birth_place, p.birth_place_lat, p.birth_place_long, p.birth_place_origin,
+			   p.death_date_raw, p.death_date_sort, p.death_place, p.death_place_lat, p.death_place_long, p.death_place_origin,
 			   p.notes, p.birth_notes, p.death_notes, p.birth_type_detail, p.death_type_detail, p.research_status, p.brick_wall_note, p.brick_wall_since, p.brick_wall_resolved_at,
 			   p.restriction, p.living_override, p.death_evidence, p.living_ref_date,
 			   p.version, p.updated_at
@@ -2069,13 +2074,13 @@ func (s *ReadModelStore) SavePerson(ctx context.Context, branchID domain.BranchI
 
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO persons (id, given_name, surname, gender, birth_date_raw, birth_date_sort, birth_place,
-							 birth_place_lat, birth_place_long, death_date_raw, death_date_sort, death_place,
-							 death_place_lat, death_place_long, notes, birth_notes, death_notes, birth_type_detail, death_type_detail, research_status,
+							 birth_place_lat, birth_place_long, birth_place_origin, death_date_raw, death_date_sort, death_place,
+							 death_place_lat, death_place_long, death_place_origin, notes, birth_notes, death_notes, birth_type_detail, death_type_detail, research_status,
 							 brick_wall_note, brick_wall_since, brick_wall_resolved_at,
 							 restriction, living_override, death_evidence, living_ref_date,
 							 birth_place_key, death_place_key,
 							 version, updated_at, branch_id, deleted)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
 		ON CONFLICT(id, branch_id) DO UPDATE SET
 			given_name = excluded.given_name,
 			surname = excluded.surname,
@@ -2085,11 +2090,13 @@ func (s *ReadModelStore) SavePerson(ctx context.Context, branchID domain.BranchI
 			birth_place = excluded.birth_place,
 			birth_place_lat = excluded.birth_place_lat,
 			birth_place_long = excluded.birth_place_long,
+			birth_place_origin = excluded.birth_place_origin,
 			death_date_raw = excluded.death_date_raw,
 			death_date_sort = excluded.death_date_sort,
 			death_place = excluded.death_place,
 			death_place_lat = excluded.death_place_lat,
 			death_place_long = excluded.death_place_long,
+			death_place_origin = excluded.death_place_origin,
 			notes = excluded.notes,
 			birth_notes = excluded.birth_notes,
 			death_notes = excluded.death_notes,
@@ -2110,7 +2117,9 @@ func (s *ReadModelStore) SavePerson(ctx context.Context, branchID domain.BranchI
 			deleted = 0
 	`, person.ID.String(), person.GivenName, person.Surname, string(person.Gender),
 		person.BirthDateRaw, birthDateSort, person.BirthPlace, birthPlaceLat, birthPlaceLong,
+		nullableString(repository.MarshalCoordinateOrigin(person.BirthPlaceOrigin)),
 		person.DeathDateRaw, deathDateSort, person.DeathPlace, deathPlaceLat, deathPlaceLong,
+		nullableString(repository.MarshalCoordinateOrigin(person.DeathPlaceOrigin)),
 		person.Notes, person.BirthNotes, person.DeathNotes, person.BirthTypeDetail, person.DeathTypeDetail,
 		string(person.ResearchStatus),
 		person.BrickWallNote, brickWallSince, brickWallResolvedAt,
@@ -2887,9 +2896,9 @@ func (s *ReadModelStore) SaveFamily(ctx context.Context, branchID domain.BranchI
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO families (id, partner1_id, partner2_id,
 							  relationship_type, marriage_date_raw, marriage_date_sort, marriage_place,
-							  marriage_place_lat, marriage_place_long, marriage_notes, marriage_type_detail, notes, restriction,
+							  marriage_place_lat, marriage_place_long, marriage_place_origin, marriage_notes, marriage_type_detail, notes, restriction,
 							  marriage_place_key, child_count, version, updated_at, branch_id, deleted)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
 		ON CONFLICT(id, branch_id) DO UPDATE SET
 			partner1_id = excluded.partner1_id,
 			partner2_id = excluded.partner2_id,
@@ -2899,6 +2908,7 @@ func (s *ReadModelStore) SaveFamily(ctx context.Context, branchID domain.BranchI
 			marriage_place = excluded.marriage_place,
 			marriage_place_lat = excluded.marriage_place_lat,
 			marriage_place_long = excluded.marriage_place_long,
+			marriage_place_origin = excluded.marriage_place_origin,
 			marriage_notes = excluded.marriage_notes,
 			marriage_type_detail = excluded.marriage_type_detail,
 			notes = excluded.notes,
@@ -2911,7 +2921,7 @@ func (s *ReadModelStore) SaveFamily(ctx context.Context, branchID domain.BranchI
 	`, family.ID.String(),
 		partner1ID, partner2ID,
 		string(family.RelationshipType), family.MarriageDateRaw, marriageDateSort, family.MarriagePlace,
-		marriagePlaceLat, marriagePlaceLong, family.MarriageNotes, family.MarriageTypeDetail, family.Notes, string(family.Restriction),
+		marriagePlaceLat, marriagePlaceLong, nullableString(repository.MarshalCoordinateOrigin(family.MarriagePlaceOrigin)), family.MarriageNotes, family.MarriageTypeDetail, family.Notes, string(family.Restriction),
 		placeKey(family.MarriagePlace), family.ChildCount, family.Version, formatTimestamp(family.UpdatedAt), branchID.String())
 
 	return err
@@ -3053,8 +3063,8 @@ func (s *ReadModelStore) GetChildrenOfFamily(ctx context.Context, branchID domai
 	// #nosec G201 G202 -- personOverlay is a fixed internal subquery, not user input.
 	query := `
 		SELECT p.id, p.given_name, p.surname, p.full_name, p.gender,
-			   p.birth_date_raw, p.birth_date_sort, p.birth_place, p.birth_place_lat, p.birth_place_long,
-			   p.death_date_raw, p.death_date_sort, p.death_place, p.death_place_lat, p.death_place_long,
+			   p.birth_date_raw, p.birth_date_sort, p.birth_place, p.birth_place_lat, p.birth_place_long, p.birth_place_origin,
+			   p.death_date_raw, p.death_date_sort, p.death_place, p.death_place_lat, p.death_place_long, p.death_place_origin,
 			   p.notes, p.birth_notes, p.death_notes, p.birth_type_detail, p.death_type_detail, p.research_status, p.brick_wall_note, p.brick_wall_since, p.brick_wall_resolved_at,
 			   p.restriction, p.living_override, p.death_evidence, p.living_ref_date,
 			   p.version, p.updated_at
@@ -3095,7 +3105,7 @@ func (s *ReadModelStore) GetChildFamily(ctx context.Context, branchID domain.Bra
 	query := `
 		SELECT f.id, f.partner1_id, f.partner2_id,
 			   f.relationship_type, f.marriage_date_raw, f.marriage_date_sort, f.marriage_place,
-			   f.marriage_place_lat, f.marriage_place_long, f.marriage_notes, f.marriage_type_detail, f.notes, f.restriction,
+			   f.marriage_place_lat, f.marriage_place_long, f.marriage_place_origin, f.marriage_notes, f.marriage_type_detail, f.notes, f.restriction,
 			   f.child_count, f.version, f.updated_at
 		FROM ` + familyOverlay + ` f
 		JOIN (
@@ -3293,6 +3303,7 @@ func scanPerson(row rowScanner, extra ...any) (*repository.PersonReadModel, erro
 		birthPlaceLat, birthPlaceLong                   sql.NullString
 		deathDateRaw, deathDateSort, deathPlace, notes  sql.NullString
 		deathPlaceLat, deathPlaceLong                   sql.NullString
+		birthPlaceOrigin, deathPlaceOrigin              []byte
 		birthNotes, deathNotes                          sql.NullString
 		birthTypeDetail, deathTypeDetail                sql.NullString
 		researchStatus                                  sql.NullString
@@ -3305,8 +3316,8 @@ func scanPerson(row rowScanner, extra ...any) (*repository.PersonReadModel, erro
 	)
 
 	dest := []any{&idStr, &givenName, &surname, &fullName, &gender,
-		&birthDateRaw, &birthDateSort, &birthPlace, &birthPlaceLat, &birthPlaceLong,
-		&deathDateRaw, &deathDateSort, &deathPlace, &deathPlaceLat, &deathPlaceLong,
+		&birthDateRaw, &birthDateSort, &birthPlace, &birthPlaceLat, &birthPlaceLong, &birthPlaceOrigin,
+		&deathDateRaw, &deathDateSort, &deathPlace, &deathPlaceLat, &deathPlaceLong, &deathPlaceOrigin,
 		&notes, &birthNotes, &deathNotes, &birthTypeDetail, &deathTypeDetail, &researchStatus, &brickWallNote, &brickWallSince, &brickWallResolvedAt,
 		&restriction, &livingOverride, &deathEvidence, &livingRefDate,
 		&version, &updatedAt}
@@ -3348,6 +3359,8 @@ func scanPerson(row rowScanner, extra ...any) (*repository.PersonReadModel, erro
 	p.BirthPlaceLong = nonEmptyStringPtr(birthPlaceLong)
 	p.DeathPlaceLat = nonEmptyStringPtr(deathPlaceLat)
 	p.DeathPlaceLong = nonEmptyStringPtr(deathPlaceLong)
+	p.BirthPlaceOrigin = repository.UnmarshalCoordinateOrigin(birthPlaceOrigin, "persons", "birth_place_origin", id)
+	p.DeathPlaceOrigin = repository.UnmarshalCoordinateOrigin(deathPlaceOrigin, "persons", "death_place_origin", id)
 
 	// An unparseable date column leaves its field unset, as for NULL.
 	p.BirthDateSort, _ = parseNullableSortDate(birthDateSort)
@@ -3373,6 +3386,7 @@ func scanFamily(row rowScanner) (*repository.FamilyReadModel, error) {
 		relType, marriageDateRaw, marriageDateSort, marriagePlace sql.NullString
 		marriagePlaceLat, marriagePlaceLong, marriageNotes        sql.NullString
 		marriageTypeDetail, notes, restriction                    sql.NullString
+		marriagePlaceOrigin                                       []byte
 		childCount                                                int
 		version                                                   int64
 		updatedAt                                                 string
@@ -3380,7 +3394,7 @@ func scanFamily(row rowScanner) (*repository.FamilyReadModel, error) {
 
 	err := row.Scan(&idStr, &partner1ID, &partner2ID,
 		&relType, &marriageDateRaw, &marriageDateSort, &marriagePlace,
-		&marriagePlaceLat, &marriagePlaceLong, &marriageNotes, &marriageTypeDetail, &notes, &restriction,
+		&marriagePlaceLat, &marriagePlaceLong, &marriagePlaceOrigin, &marriageNotes, &marriageTypeDetail, &notes, &restriction,
 		&childCount, &version, &updatedAt)
 
 	if err == sql.ErrNoRows {
@@ -3424,6 +3438,7 @@ func scanFamily(row rowScanner) (*repository.FamilyReadModel, error) {
 	if marriagePlaceLong.Valid && marriagePlaceLong.String != "" {
 		f.MarriagePlaceLong = &marriagePlaceLong.String
 	}
+	f.MarriagePlaceOrigin = repository.UnmarshalCoordinateOrigin(marriagePlaceOrigin, "families", "marriage_place_origin", id)
 	if t, err := parseTimestamp(updatedAt); err == nil {
 		f.UpdatedAt = t
 	}
@@ -5182,8 +5197,8 @@ func (s *ReadModelStore) GetPersonsBySurname(ctx context.Context, surname string
 	// #nosec G202 -- overlay is one of two constant subquery literals returned by personOverlaySubquery; every value is a bound ? placeholder
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, given_name, surname, full_name, gender,
-			   birth_date_raw, birth_date_sort, birth_place, birth_place_lat, birth_place_long,
-			   death_date_raw, death_date_sort, death_place, death_place_lat, death_place_long,
+			   birth_date_raw, birth_date_sort, birth_place, birth_place_lat, birth_place_long, birth_place_origin,
+			   death_date_raw, death_date_sort, death_place, death_place_lat, death_place_long, death_place_origin,
 			   notes, birth_notes, death_notes, birth_type_detail, death_type_detail, research_status, brick_wall_note, brick_wall_since, brick_wall_resolved_at,
 			   restriction, living_override, death_evidence, living_ref_date,
 			   version, updated_at
@@ -5348,8 +5363,8 @@ func (s *ReadModelStore) GetPersonsByPlace(ctx context.Context, place string, op
 	// #nosec G202 -- overlay and where are built from package constants; every value is a bound ? placeholder
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, given_name, surname, full_name, gender,
-			   birth_date_raw, birth_date_sort, birth_place, birth_place_lat, birth_place_long,
-			   death_date_raw, death_date_sort, death_place, death_place_lat, death_place_long,
+			   birth_date_raw, birth_date_sort, birth_place, birth_place_lat, birth_place_long, birth_place_origin,
+			   death_date_raw, death_date_sort, death_place, death_place_lat, death_place_long, death_place_origin,
 			   notes, birth_notes, death_notes, birth_type_detail, death_type_detail, research_status, brick_wall_note, brick_wall_since, brick_wall_resolved_at,
 			   restriction, living_override, death_evidence, living_ref_date,
 			   version, updated_at
@@ -5451,8 +5466,8 @@ func (s *ReadModelStore) GetPersonsByCemetery(ctx context.Context, place string,
 	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT DISTINCT p.id, p.given_name, p.surname, p.full_name, p.gender,
-			   p.birth_date_raw, p.birth_date_sort, p.birth_place, p.birth_place_lat, p.birth_place_long,
-			   p.death_date_raw, p.death_date_sort, p.death_place, p.death_place_lat, p.death_place_long,
+			   p.birth_date_raw, p.birth_date_sort, p.birth_place, p.birth_place_lat, p.birth_place_long, p.birth_place_origin,
+			   p.death_date_raw, p.death_date_sort, p.death_place, p.death_place_lat, p.death_place_long, p.death_place_origin,
 			   p.notes, p.birth_notes, p.death_notes, p.birth_type_detail, p.death_type_detail, p.research_status, p.brick_wall_note, p.brick_wall_since, p.brick_wall_resolved_at,
 			   p.restriction, p.living_override, p.death_evidence, p.living_ref_date,
 			   p.version, p.updated_at
@@ -5486,7 +5501,7 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 	// Query birth locations
 	// #nosec G202 -- overlay is one of two constant subquery literals returned by personOverlaySubquery; every value is a bound ? placeholder
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, given_name, surname, birth_place, birth_place_lat, birth_place_long,
+		SELECT id, given_name, surname, birth_place, birth_place_lat, birth_place_long, birth_place_origin,
 		       restriction, living_override, death_evidence, living_ref_date
 		FROM `+overlay+`
 		WHERE birth_place_lat IS NOT NULL AND birth_place_long IS NOT NULL
@@ -5506,11 +5521,12 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 		lat     float64
 		lon     float64
 		persons []repository.MapPerson
+		origins []domain.CoordinateSource
 	}
 	agg := make(map[locKey]*locData)
 
 	for rows.Next() {
-		person, place, latStr, lonStr, ok, err := scanMapPerson(rows)
+		person, place, latStr, lonStr, origin, ok, err := scanMapPerson(rows)
 		if err != nil {
 			return nil, fmt.Errorf("scan birth map location: %w", err)
 		}
@@ -5522,11 +5538,13 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 			continue
 		}
 		key := locKey{place: place, eventType: "birth"}
-		if d, ok := agg[key]; ok {
-			d.persons = append(d.persons, person)
-		} else {
-			agg[key] = &locData{lat: lat, lon: lon, persons: []repository.MapPerson{person}}
+		d, ok := agg[key]
+		if !ok {
+			d = &locData{lat: lat, lon: lon}
+			agg[key] = d
 		}
+		d.persons = append(d.persons, person)
+		d.origins = repository.AddMapOrigin(d.origins, origin)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -5535,7 +5553,7 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 	// Query death locations
 	// #nosec G202 -- overlay is one of two constant subquery literals returned by personOverlaySubquery; every value is a bound ? placeholder
 	rows2, err := s.db.QueryContext(ctx, `
-		SELECT id, given_name, surname, death_place, death_place_lat, death_place_long,
+		SELECT id, given_name, surname, death_place, death_place_lat, death_place_long, death_place_origin,
 		       restriction, living_override, death_evidence, living_ref_date
 		FROM `+overlay+`
 		WHERE death_place_lat IS NOT NULL AND death_place_long IS NOT NULL
@@ -5548,7 +5566,7 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 	defer rows2.Close()
 
 	for rows2.Next() {
-		person, place, latStr, lonStr, ok, err := scanMapPerson(rows2)
+		person, place, latStr, lonStr, origin, ok, err := scanMapPerson(rows2)
 		if err != nil {
 			return nil, fmt.Errorf("scan death map location: %w", err)
 		}
@@ -5560,11 +5578,13 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 			continue
 		}
 		key := locKey{place: place, eventType: "death"}
-		if d, ok := agg[key]; ok {
-			d.persons = append(d.persons, person)
-		} else {
-			agg[key] = &locData{lat: lat, lon: lon, persons: []repository.MapPerson{person}}
+		d, ok := agg[key]
+		if !ok {
+			d = &locData{lat: lat, lon: lon}
+			agg[key] = d
 		}
+		d.persons = append(d.persons, person)
+		d.origins = repository.AddMapOrigin(d.origins, origin)
 	}
 	if err := rows2.Err(); err != nil {
 		return nil, err
@@ -5579,6 +5599,7 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 			EventType: key.eventType,
 			Count:     len(data.persons),
 			Persons:   data.persons,
+			Origins:   data.origins,
 		})
 	}
 	sort.Slice(results, func(i, j int) bool {
@@ -5591,21 +5612,23 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 	return results, nil
 }
 
-// scanMapPerson scans one GetMapLocations row: the person, then the place and
-// its coordinates. ok is false, with a nil error, when the row's id is not a
-// UUID and the row should be skipped.
-func scanMapPerson(rows *sql.Rows) (person repository.MapPerson, place, lat, lon string, ok bool, err error) {
+// scanMapPerson scans one GetMapLocations row: the person, then the place,
+// its coordinates and their origin. ok is false, with a nil error, when the
+// row's id is not a UUID and the row should be skipped.
+func scanMapPerson(rows *sql.Rows) (person repository.MapPerson, place, lat, lon string, origin *domain.CoordinateOrigin, ok bool, err error) {
 	var idStr, givenName, surname string
+	var originJSON []byte
 	var restriction, livingOverride, livingRefDate sql.NullString
 	var deathEvidence bool
-	if err := rows.Scan(&idStr, &givenName, &surname, &place, &lat, &lon,
+	if err := rows.Scan(&idStr, &givenName, &surname, &place, &lat, &lon, &originJSON,
 		&restriction, &livingOverride, &deathEvidence, &livingRefDate); err != nil {
-		return repository.MapPerson{}, "", "", "", false, err
+		return repository.MapPerson{}, "", "", "", nil, false, err
 	}
 	personID, err := uuid.Parse(idStr)
 	if err != nil {
-		return repository.MapPerson{}, "", "", "", false, nil
+		return repository.MapPerson{}, "", "", "", nil, false, nil
 	}
+	origin = repository.UnmarshalCoordinateOrigin(originJSON, "persons", "place_origin", personID)
 	// A malformed date reads as none, as in scanPerson; the writer always
 	// stores formatSortDate's form.
 	refDate, _ := parseNullableSortDate(livingRefDate)
@@ -5617,7 +5640,7 @@ func scanMapPerson(rows *sql.Rows) (person repository.MapPerson, place, lat, lon
 			DeathEvidence: deathEvidence,
 			ReferenceDate: refDate,
 		},
-	}, place, lat, lon, true, nil
+	}, place, lat, lon, origin, true, nil
 }
 
 // Brick walls are event-sourced (#802): BrickWallSet and BrickWallResolved are

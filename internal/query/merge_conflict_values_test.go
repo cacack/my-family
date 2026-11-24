@@ -507,6 +507,21 @@ func TestConflictFieldLabel_Coordinates(t *testing.T) {
 	d := &historyDescription{}
 	assert.Equal(t, "Birth place latitude", d.conflictFieldLabel("birth_place_lat"))
 	assert.Equal(t, "Marriage place longitude", d.conflictFieldLabel("marriage_place_long"))
+	assert.Equal(t, "Death place coordinate origin", d.conflictFieldLabel("death_place_origin"))
+}
+
+// A coordinate origin in a merge conflict reads as words, not JSON (#1563).
+func TestConflictValue_CoordinateOrigin(t *testing.T) {
+	d := &historyDescription{}
+	state := newConflictState()
+	state.st.fields["birth_place_origin"] = domain.CoordinateOrigin{Source: domain.CoordinateGeocoded, Provider: "Nominatim", Precision: domain.MatchFull}.ChangeValue()
+	state.st.fields["death_place_origin"] = map[string]any{"source": "manual"}
+	if got := d.conflictValue(state, "birth_place_origin"); assert.NotNil(t, got) {
+		assert.Equal(t, "geocoded by Nominatim (full match)", *got)
+	}
+	if got := d.conflictValue(state, "death_place_origin"); assert.NotNil(t, got) {
+		assert.Equal(t, "manual", *got)
+	}
 }
 
 func TestFormatConflictScalar(t *testing.T) {
