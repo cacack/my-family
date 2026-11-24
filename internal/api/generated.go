@@ -6119,6 +6119,9 @@ type PersonUpdate struct {
 
 // Place defines model for Place.
 type Place struct {
+	// Aliases The absorbed places that resolve to this one, each listed only when a record the caller may see uses it (ADR-009 §10); omitted when there are none. Sorted by name.
+	Aliases *[]PlaceAliasEntry `json:"aliases,omitempty"`
+
 	// CoordinatesOrigin Where the place's pair came from; present whenever the pair is.
 	CoordinatesOrigin *CoordinateOrigin `json:"coordinates_origin,omitempty"`
 
@@ -6140,7 +6143,31 @@ type Place struct {
 	// Name The place's display name when one is set (PUT /places/{id}); otherwise its most-used recorded spelling among the records the caller may see, its parts joined with ", " (ties broken bytewise).
 	Name string `json:"name"`
 
-	// Version Version of the place's own stream for optimistic locking, 0 before any fact about it is stated. Send it with PUT /places/{id}.
+	// ResolvesTo Present only on an absorbed place (PUT /places/{id}/alias): the ID of the place its key resolves to, which every record, map location and resolved place carries instead of this one. The place's own name, pair and version above are its own, kept and ignored while the alias stands.
+	ResolvesTo *openapi_types.UUID `json:"resolves_to,omitempty"`
+
+	// Version Version of the place's own stream for optimistic locking, 0 before any fact about it is stated or it is aliased. Send it with PUT /places/{id} and the alias operations.
+	Version int64 `json:"version"`
+}
+
+// PlaceAliasEntry defines model for PlaceAliasEntry.
+type PlaceAliasEntry struct {
+	// Id The absorbed place's ID (GET /places/{id})
+	Id openapi_types.UUID `json:"id"`
+
+	// Key The absorbed place's matching key
+	Key string `json:"key"`
+
+	// Name The absorbed place's own name, as GET /places/{id} shows it
+	Name string `json:"name"`
+}
+
+// PlaceAliasRequest defines model for PlaceAliasRequest.
+type PlaceAliasRequest struct {
+	// TargetId The place this one means. It must be in use and not itself an alias.
+	TargetId openapi_types.UUID `json:"target_id"`
+
+	// Version This place's version as last read (0 before any place event)
 	Version int64 `json:"version"`
 }
 
@@ -8662,6 +8689,12 @@ type GetPlaceParams struct {
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
+// UnaliasPlaceParams defines parameters for UnaliasPlace.
+type UnaliasPlaceParams struct {
+	// Version Entity version for optimistic locking
+	Version VersionParam `form:"version" json:"version"`
+}
+
 // ListProofSummariesParams defines parameters for ListProofSummaries.
 type ListProofSummariesParams struct {
 	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
@@ -9382,6 +9415,9 @@ type RollbackPersonJSONRequestBody = RollbackRequest
 // UpdatePlaceJSONRequestBody defines body for UpdatePlace for application/json ContentType.
 type UpdatePlaceJSONRequestBody = PlaceUpdate
 
+// AliasPlaceJSONRequestBody defines body for AliasPlace for application/json ContentType.
+type AliasPlaceJSONRequestBody = PlaceAliasRequest
+
 // CreateProofSummaryJSONRequestBody defines body for CreateProofSummary for application/json ContentType.
 type CreateProofSummaryJSONRequestBody = ProofSummaryCreate
 
@@ -9855,6 +9891,12 @@ type ServerInterface interface {
 	// UpdatePlace Set or clear a place's name and coordinates
 	// (PUT /places/{id})
 	UpdatePlace(ctx echo.Context, id PlaceId) error
+	// UnaliasPlace Separate a place from the place it is an alias of
+	// (DELETE /places/{id}/alias)
+	UnaliasPlace(ctx echo.Context, id PlaceId, params UnaliasPlaceParams) error
+	// AliasPlace Join a place to another as its alias
+	// (PUT /places/{id}/alias)
+	AliasPlace(ctx echo.Context, id PlaceId) error
 	// ListProofSummaries List all proof summaries
 	// (GET /proof-summaries)
 	ListProofSummaries(ctx echo.Context, params ListProofSummariesParams) error
@@ -13322,6 +13364,47 @@ func (w *ServerInterfaceWrapper) UpdatePlace(ctx echo.Context) error {
 	return err
 }
 
+// UnaliasPlace converts echo context to params.
+func (w *ServerInterfaceWrapper) UnaliasPlace(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id PlaceId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: ctx.Request().URL.RawPath == ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params UnaliasPlaceParams
+	// ------------- Required query parameter "version" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "version", ctx.QueryParams(), &params.Version, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter version: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.UnaliasPlace(ctx, id, params)
+	return err
+}
+
+// AliasPlace converts echo context to params.
+func (w *ServerInterfaceWrapper) AliasPlace(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id PlaceId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: ctx.Request().URL.RawPath == ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.AliasPlace(ctx, id)
+	return err
+}
+
 // ListProofSummaries converts echo context to params.
 func (w *ServerInterfaceWrapper) ListProofSummaries(ctx echo.Context) error {
 	var err error
@@ -14795,6 +14878,8 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 	router.GET(options.BaseURL+"/places", wrapper.ListPlaces, options.OperationMiddlewares["listPlaces"]...)
 	router.GET(options.BaseURL+"/places/:id", wrapper.GetPlace, options.OperationMiddlewares["getPlace"]...)
 	router.PUT(options.BaseURL+"/places/:id", wrapper.UpdatePlace, options.OperationMiddlewares["updatePlace"]...)
+	router.DELETE(options.BaseURL+"/places/:id/alias", wrapper.UnaliasPlace, options.OperationMiddlewares["unaliasPlace"]...)
+	router.PUT(options.BaseURL+"/places/:id/alias", wrapper.AliasPlace, options.OperationMiddlewares["aliasPlace"]...)
 	router.GET(options.BaseURL+"/map/locations", wrapper.GetMapLocations, options.OperationMiddlewares["getMapLocations"]...)
 	router.GET(options.BaseURL+"/browse/brick-walls", wrapper.GetBrickWalls, options.OperationMiddlewares["getBrickWalls"]...)
 	router.DELETE(options.BaseURL+"/persons/:id/brick-wall", wrapper.ResolvePersonBrickWall, options.OperationMiddlewares["resolvePersonBrickWall"]...)
@@ -25343,6 +25428,192 @@ func (response UpdatePlace503JSONResponse) VisitUpdatePlaceResponse(w http.Respo
 	return err
 }
 
+type UnaliasPlaceRequestObject struct {
+	Id     PlaceId `json:"id"`
+	Params UnaliasPlaceParams
+}
+
+type UnaliasPlaceResponseObject interface {
+	VisitUnaliasPlaceResponse(w http.ResponseWriter) error
+}
+
+type UnaliasPlace200JSONResponse Place
+
+func (response UnaliasPlace200JSONResponse) VisitUnaliasPlaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnaliasPlace400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response UnaliasPlace400JSONResponse) VisitUnaliasPlaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnaliasPlace401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response UnaliasPlace401JSONResponse) VisitUnaliasPlaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnaliasPlace404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response UnaliasPlace404JSONResponse) VisitUnaliasPlaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnaliasPlace409JSONResponse struct{ ConflictJSONResponse }
+
+func (response UnaliasPlace409JSONResponse) VisitUnaliasPlaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnaliasPlace503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response UnaliasPlace503JSONResponse) VisitUnaliasPlaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AliasPlaceRequestObject struct {
+	Id   PlaceId `json:"id"`
+	Body *AliasPlaceJSONRequestBody
+}
+
+type AliasPlaceResponseObject interface {
+	VisitAliasPlaceResponse(w http.ResponseWriter) error
+}
+
+type AliasPlace200JSONResponse Place
+
+func (response AliasPlace200JSONResponse) VisitAliasPlaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AliasPlace400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response AliasPlace400JSONResponse) VisitAliasPlaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AliasPlace401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response AliasPlace401JSONResponse) VisitAliasPlaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AliasPlace404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response AliasPlace404JSONResponse) VisitAliasPlaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AliasPlace409JSONResponse struct{ ConflictJSONResponse }
+
+func (response AliasPlace409JSONResponse) VisitAliasPlaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AliasPlace503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response AliasPlace503JSONResponse) VisitAliasPlaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListProofSummariesRequestObject struct {
 	Params ListProofSummariesParams
 }
@@ -29675,6 +29946,12 @@ type StrictServerInterface interface {
 	// UpdatePlace Set or clear a place's name and coordinates
 	// (PUT /places/{id})
 	UpdatePlace(ctx context.Context, request UpdatePlaceRequestObject) (UpdatePlaceResponseObject, error)
+	// UnaliasPlace Separate a place from the place it is an alias of
+	// (DELETE /places/{id}/alias)
+	UnaliasPlace(ctx context.Context, request UnaliasPlaceRequestObject) (UnaliasPlaceResponseObject, error)
+	// AliasPlace Join a place to another as its alias
+	// (PUT /places/{id}/alias)
+	AliasPlace(ctx context.Context, request AliasPlaceRequestObject) (AliasPlaceResponseObject, error)
 	// ListProofSummaries List all proof summaries
 	// (GET /proof-summaries)
 	ListProofSummaries(ctx context.Context, request ListProofSummariesRequestObject) (ListProofSummariesResponseObject, error)
@@ -34427,6 +34704,80 @@ func (sh *strictHandler) UpdatePlace(ctx echo.Context, id PlaceId) error {
 		return err
 	} else if validResponse, ok := response.(UpdatePlaceResponseObject); ok {
 		return validResponse.VisitUpdatePlaceResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// UnaliasPlace operation middleware
+func (sh *strictHandler) UnaliasPlace(ctx echo.Context, id PlaceId, params UnaliasPlaceParams) error {
+	var request UnaliasPlaceRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.UnaliasPlace(ctx.Request().Context(), request.(UnaliasPlaceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UnaliasPlace")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(UnaliasPlaceResponseObject); ok {
+		return validResponse.VisitUnaliasPlaceResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// AliasPlace operation middleware
+func (sh *strictHandler) AliasPlace(ctx echo.Context, id PlaceId) error {
+	var request AliasPlaceRequestObject
+
+	request.Id = id
+
+	var body AliasPlaceJSONRequestBody
+	var err error
+	if binder, ok := ctx.Echo().Binder.(*echo.DefaultBinder); ok {
+		// A request validator built on kin-openapi's openapi3filter with
+		// KeepValidatedValue leaves the value it validated on the body. Bind
+		// that value, matching member names exactly, so the handler receives
+		// what was validated instead of a second, case-insensitive decode.
+		// Otherwise bind only the request body, so that path and query
+		// parameters are not also bound into the body struct.
+		if vb, ok := ctx.Request().Body.(interface{ ValidatedValue() any }); !ok || runtime.BindJSONValue(vb.ValidatedValue(), &body) != nil {
+			err = binder.BindBody(ctx, &body)
+		}
+	} else {
+		// A custom binder is installed on the Echo instance; defer to it
+		// entirely, since echo.Binder does not expose body-only binding and
+		// the binder may do more than decode (for example call ctx.Validate).
+		err = ctx.Bind(&body)
+	}
+	if err != nil {
+		return err
+	}
+	request.Body = &body
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.AliasPlace(ctx.Request().Context(), request.(AliasPlaceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AliasPlace")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(AliasPlaceResponseObject); ok {
+		return validResponse.VisitAliasPlaceResponse(ctx.Response())
 	} else if response != nil {
 		return fmt.Errorf("unexpected response type: %T", response)
 	}

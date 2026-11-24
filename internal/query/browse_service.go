@@ -2,6 +2,7 @@ package query
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"time"
 
@@ -468,18 +469,23 @@ func (s *BrowseService) GetBrickWalls(ctx context.Context, includeResolved bool)
 }
 
 // ListPlaces returns one page of the places in use within the branch overlay
-// (ADR-009 §2, §6), sorted by name, and the number of places in all.
+// (ADR-009 §2, §6), sorted by name, and the number of places in all. An
+// absorbed place is not an entry of its own: it is listed among its target's
+// aliases (ADR-009 §3).
 func (s *BrowseService) ListPlaces(ctx context.Context, branchID domain.BranchID, limit, offset int) ([]repository.PlaceReadModel, int, error) {
 	places, err := s.readStore.ListPlaces(ctx, branchID, repository.Privacy{})
 	if err != nil {
 		return nil, 0, err
 	}
+	places = slices.DeleteFunc(places, func(p repository.PlaceReadModel) bool { return p.ResolvesTo != nil })
 	return repository.Page(places, offset, limit), len(places), nil
 }
 
 // GetPlace returns the place in use with ID id within the branch overlay, or
 // nil when there is none. A place only hidden records name is not in use for
 // the principal, so it is nil exactly as an ID never in use is (ADR-009 §10).
+// An absorbed place is returned as itself, with its own facts and the ID it
+// resolves to, not as its target (ADR-009 §3).
 func (s *BrowseService) GetPlace(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.PlaceReadModel, error) {
 	places, err := s.readStore.ListPlaces(ctx, branchID, repository.Privacy{})
 	if err != nil {

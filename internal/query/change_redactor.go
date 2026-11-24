@@ -218,6 +218,27 @@ var recordGetters = map[string]func(context.Context, repository.ReadModelStore, 
 	},
 }
 
+// aliasTargetShown reports whether the place a place alias entry names
+// beside its own place is shown too (ADR-009 §10, PL-006): the alias's
+// change holds that place's recorded spelling, whose key is the place's key.
+// An entry with no alias change is shown.
+func aliasTargetShown(ctx context.Context, check *shownCheck, entry ChangeEntry) (bool, error) {
+	change, ok := entry.Changes[placeAliasField]
+	if !ok || entry.EntityType != entityTypePlace {
+		return true, nil
+	}
+	for _, value := range []any{change.OldValue, change.NewValue} {
+		text, ok := value.(string)
+		if !ok || repository.PlaceKey(text) == "" {
+			continue
+		}
+		if shown, err := check.shown(ctx, entityTypePlace, repository.PlaceID(repository.PlaceKey(text))); err != nil || !shown {
+			return false, err
+		}
+	}
+	return true, nil
+}
+
 func returned[T any](row *T, err error) (bool, error) {
 	return row != nil, err
 }
@@ -242,6 +263,9 @@ func (r changeRedactor) entries(ctx context.Context, scopes []domain.BranchID, e
 			shown, err := check.shown(ctx, entry.EntityType, entry.EntityID)
 			if err == nil && shown && entry.ParentEntityID != nil {
 				shown, err = check.shown(ctx, entry.ParentEntityType, *entry.ParentEntityID)
+			}
+			if err == nil && shown {
+				shown, err = aliasTargetShown(ctx, check, entry)
 			}
 			if err != nil {
 				return nil, err

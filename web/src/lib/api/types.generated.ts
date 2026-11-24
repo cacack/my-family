@@ -445,7 +445,9 @@ export interface paths {
          *     §2): every place a person's birth or death, a family's marriage, a life
          *     event or an attribute names, and every place above one of those. Each
          *     place has an ID derived from its place matching key, so it is the same
-         *     on every install and every branch. Places sort by name. With
+         *     on every install and every branch. Places sort by name. An absorbed
+         *     place is not an entry of its own: it is listed in its target's
+         *     `aliases` (ADR-009 §3). With
          *     `?branch=` the places are that branch's isolated view; omit it for the
          *     mainline.
          */
@@ -472,7 +474,9 @@ export interface paths {
          * Get a place in use by ID
          * @description Returns the place with this ID when a record the caller may see names
          *     it or a place under it. A place only hidden records name answers 404,
-         *     exactly as an ID that was never in use (ADR-009 §10). With `?branch=`
+         *     exactly as an ID that was never in use (ADR-009 §10). An absorbed place
+         *     (`PUT /places/{id}/alias`) is returned as itself, with its own facts
+         *     and `resolves_to`, not redirected to its target. With `?branch=`
          *     the place is read from that branch's isolated view; omit it for the
          *     mainline.
          */
@@ -491,6 +495,47 @@ export interface paths {
         put: operations["updatePlace"];
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/places/{id}/alias": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Place UUID, derived from the place matching key (ADR-009 §2) */
+                id: components["parameters"]["placeId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Join a place to another as its alias
+         * @description Says that this place's key means another place (ADR-009 §3). One
+         *     `PlaceAliased` event is appended to this place's own stream. From
+         *     then on every record whose place text has this key resolves to the
+         *     target: the list of places shows the target, with this place among its
+         *     aliases, and every record, map location and resolved place carries the
+         *     target's ID and reads the target's facts. No record's text changes
+         *     (PL-001), and this place's own facts are kept and ignored while the
+         *     alias stands. Only the whole key is joined: a place under this one
+         *     keeps its own key. A target that is itself an alias, a place that is
+         *     already an alias, and an alias that would close a cycle (this place
+         *     itself included) answer 400. Place aliases are main-only (ADR-009 §6),
+         *     so this operation takes no `?branch=`.
+         */
+        put: operations["aliasPlace"];
+        post?: never;
+        /**
+         * Separate a place from the place it is an alias of
+         * @description Undoes this place's alias (ADR-009 §3): one `PlaceUnaliased` event is
+         *     appended to its own stream, and its key names this place again, with
+         *     its own facts. A place that is not an alias answers 400. Main-only,
+         *     like `PUT /places/{id}/alias`.
+         */
+        delete: operations["unaliasPlace"];
         options?: never;
         head?: never;
         patch?: never;
@@ -5179,7 +5224,37 @@ export interface components {
             coordinates_origin?: components["schemas"]["CoordinateOrigin"];
             /**
              * Format: int64
-             * @description Version of the place's own stream for optimistic locking, 0 before any fact about it is stated. Send it with PUT /places/{id}.
+             * @description Version of the place's own stream for optimistic locking, 0 before any fact about it is stated or it is aliased. Send it with PUT /places/{id} and the alias operations.
+             */
+            version: number;
+            /**
+             * Format: uuid
+             * @description Present only on an absorbed place (PUT /places/{id}/alias): the ID of the place its key resolves to, which every record, map location and resolved place carries instead of this one. The place's own name, pair and version above are its own, kept and ignored while the alias stands.
+             */
+            resolves_to?: string;
+            /** @description The absorbed places that resolve to this one, each listed only when a record the caller may see uses it (ADR-009 §10); omitted when there are none. Sorted by name. */
+            aliases?: components["schemas"]["PlaceAliasEntry"][];
+        };
+        PlaceAliasEntry: {
+            /**
+             * Format: uuid
+             * @description The absorbed place's ID (GET /places/{id})
+             */
+            id: string;
+            /** @description The absorbed place's matching key */
+            key: string;
+            /** @description The absorbed place's own name, as GET /places/{id} shows it */
+            name: string;
+        };
+        PlaceAliasRequest: {
+            /**
+             * Format: uuid
+             * @description The place this one means. It must be in use and not itself an alias.
+             */
+            target_id: string;
+            /**
+             * Format: int64
+             * @description This place's version as last read (0 before any place event)
              */
             version: number;
         };
@@ -8949,6 +9024,69 @@ export interface operations {
         };
         responses: {
             /** @description The place, as the mainline reads it after the update */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Place"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            503: components["responses"]["SetupRequired"];
+        };
+    };
+    aliasPlace: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Place UUID, derived from the place matching key (ADR-009 §2) */
+                id: components["parameters"]["placeId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlaceAliasRequest"];
+            };
+        };
+        responses: {
+            /** @description This place, as the mainline reads it after the alias */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Place"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            503: components["responses"]["SetupRequired"];
+        };
+    };
+    unaliasPlace: {
+        parameters: {
+            query: {
+                /** @description Entity version for optimistic locking */
+                version: components["parameters"]["versionParam"];
+            };
+            header?: never;
+            path: {
+                /** @description Place UUID, derived from the place matching key (ADR-009 §2) */
+                id: components["parameters"]["placeId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description This place, as the mainline reads it after the alias is undone */
             200: {
                 headers: {
                     [name: string]: unknown;
