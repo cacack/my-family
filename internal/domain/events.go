@@ -2104,7 +2104,9 @@ const (
 // change keys (birth_place_lat and so on) that each research branch's own
 // updates had set or cleared when the backfill was logged (#1797). Such a
 // branch's copy keeps its own values for those keys, as its log carries them;
-// the backfill fills in only the rest.
+// the backfill fills in only the rest. A backfill logged before #1797 has no
+// map and replays as if no branch had: before #1604 no branch update could
+// set or clear coordinates, so its copies hold only main's.
 type ImportedValuesBackfilled struct {
 	BaseEvent
 	EntityType           string               `json:"entity_type"`
