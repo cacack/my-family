@@ -534,6 +534,28 @@ describe('Person detail edit form', () => {
 		expect(updatePerson).not.toHaveBeenCalled();
 	});
 
+	// The record's own pair overrides the place's, so empty inputs must not read
+	// as "no coordinates" when the place has a pair (#1033, #1736).
+	it("shows the place's pair as a hint while the record has none", async () => {
+		getPerson.mockResolvedValue(
+			person({
+				birth_place: 'Boston',
+				birth_place_resolved: { id: 'p1', latitude: 'N42.3601', longitude: 'W71.0589' }
+			})
+		);
+		await openEdit();
+
+		const birth = coordinates('Birth Place');
+		const hint = "The place has coordinates, 42.3601, -71.0589. A pair typed here is for this record only.";
+		expect(describedBy(birth.latitude)).toBe(hint);
+		await fireEvent.input(birth.latitude, { target: { value: '1' } });
+		expect(screen.queryByTestId('coordinates-place-hint')).toBeNull();
+		await fireEvent.input(birth.latitude, { target: { value: '' } });
+		// Renamed, the place's pair is no longer this place's.
+		await fireEvent.input(screen.getByLabelText('Birth Place'), { target: { value: 'Salem' } });
+		expect(screen.queryByTestId('coordinates-place-hint')).toBeNull();
+	});
+
 	it('asks for a place name before saving a pair without one', async () => {
 		getPerson.mockResolvedValue(person());
 		await openEdit();

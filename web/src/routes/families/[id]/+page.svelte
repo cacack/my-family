@@ -94,7 +94,9 @@
 			family = latest;
 			formData = fields;
 		},
-		save: () => saveFamily()
+		save: () => saveFamily(),
+		// A coordinate pair is one location (#1033).
+		together: [['marriage_place_latitude', 'marriage_place_longitude']]
 	});
 	// A save refused for the marriage date, shown beside it (#1112); an
 	// unreadable one is offered to keep as text (#978).
@@ -582,6 +584,7 @@
 								longitude: family.marriage_place_longitude,
 								origin: family.marriage_place_coordinates_origin
 							}}
+							placePair={formData.marriage_place === (family.marriage_place || '') ? family.marriage_place_resolved : undefined}
 						/>
 					</div>
 				</FormRow>

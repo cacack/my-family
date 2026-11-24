@@ -3,13 +3,16 @@
 	 * Latitude and longitude inputs under a place in a form (#1033), in signed
 	 * decimal degrees. The page converts and validates the pair with
 	 * `#lib/utils/coordinates`; this shows it, any refusal of one half, and
-	 * where the stored pair came from (#1563) while it is left as stored.
+	 * where the stored pair came from (#1563) while it is left as stored. The
+	 * pair is the record's own: while it has none, the place's own pair (#1736)
+	 * is shown as a hint, so typing one isn't mistaken for filling a gap.
 	 */
 	import type { CoordinateOrigin } from '#lib/api/client.js';
 	import ActionError from '#lib/components/ActionError.svelte';
 	import { coordinateOriginText } from '#lib/utils/coordinateOrigin.js';
 	import {
 		coordinatesChanged,
+		toDecimalDegrees,
 		type CoordinateAxis,
 		type CoordinateError,
 		type GedcomCoordinates
@@ -21,9 +24,10 @@
 		latitude = $bindable(''),
 		longitude = $bindable(''),
 		error = null,
-		saved
+		saved,
+		placePair
 	}: {
-		/** Prefix of the inputs' ids, e.g. `'birth-place'`. */
+		/** Prefix of the ids of the refusal and hint text, e.g. `'birth-place'`. */
 		id: string;
 		/** The place input's label, which names the group: "Birth Place". */
 		place: string;
@@ -32,6 +36,8 @@
 		error?: CoordinateError | null;
 		/** The stored pair and its origin, on an edit form. */
 		saved?: GedcomCoordinates & { origin?: CoordinateOrigin };
+		/** The place's own pair, which the map uses while the record has none. */
+		placePair?: GedcomCoordinates;
 	} = $props();
 
 	const originId = $derived(`${id}-coordinates-origin`);
@@ -41,12 +47,19 @@
 			: null
 	);
 
+	// The place's pair, while the record has none stored or typed.
+	const placeHint = $derived(
+		!origin && placePair?.latitude && placePair.longitude && !saved?.latitude && !saved?.longitude && !latitude && !longitude
+			? `The place has coordinates, ${toDecimalDegrees(placePair.latitude, 'latitude')}, ${toDecimalDegrees(placePair.longitude, 'longitude')}. A pair typed here is for this record only.`
+			: null
+	);
+
 	const errorId = (field: CoordinateAxis) => `${id}-${field}-error`;
 
-	/** An input's ARIA attributes: its refusal, else the stored pair's origin. */
+	/** An input's ARIA attributes: its refusal, else the origin or place hint. */
 	function describe(field: CoordinateAxis) {
 		if (error?.field === field) return { 'aria-invalid': 'true' as const, 'aria-describedby': errorId(field) };
-		return origin ? { 'aria-describedby': originId } : {};
+		return origin || placeHint ? { 'aria-describedby': originId } : {};
 	}
 </script>
 
@@ -74,6 +87,8 @@
 	</div>
 	{#if origin}
 		<p class="origin" id={originId} data-testid="coordinates-origin">{origin}</p>
+	{:else if placeHint}
+		<p class="origin" id={originId} data-testid="coordinates-place-hint">{placeHint}</p>
 	{/if}
 </fieldset>
 

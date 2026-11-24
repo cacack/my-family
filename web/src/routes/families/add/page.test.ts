@@ -236,7 +236,7 @@ describe('Add Family page dates (#996)', () => {
 	});
 });
 
-// A family entered by hand can be put on the map (#1033).
+// A marriage place entered by hand can be given coordinates (#1033).
 describe('Add Family page coordinates (#1033)', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();

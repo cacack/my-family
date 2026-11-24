@@ -1,5 +1,5 @@
 import type { ConflictField } from '#lib/components/SaveConflict.svelte';
-import { rebaseEdits, sameValue } from './rebaseEdits';
+import { editedWith, rebaseEdits } from './rebaseEdits';
 
 /**
  * A whole-record edit form, as the conflict flow sees it: the saved version
@@ -17,6 +17,8 @@ export interface SaveConflictForm<R, F extends Record<string, unknown>> {
 	adopt: (latest: R, form: F) => void;
 	/** Save the form against the version it is open on. */
 	save: () => void;
+	/** Fields that are one value, kept or replaced together (see `rebaseEdits`). */
+	together?: (keyof F)[][];
 }
 
 /** What Escape asks before it closes an edit form that has unsaved edits (#1097). */
@@ -65,10 +67,13 @@ export class SaveConflictFlow<R, F extends Record<string, unknown>> {
 		this.latest = null;
 	}
 
-	/** Whether the user changed a field from the version the form was opened on. */
+	/**
+	 * Whether the user changed a field, or one it goes together with, from the
+	 * version the form was opened on.
+	 */
 	edited(key: keyof F): boolean {
 		const base = this.target.base();
-		return !!base && !sameValue(this.target.form()[key], this.target.formFrom(base)[key]);
+		return !!base && editedWith(key, this.target.form(), this.target.formFrom(base), this.target.together);
 	}
 
 	/** Whether the user changed any field, so leaving the form would lose edits. */
@@ -98,8 +103,8 @@ export class SaveConflictFlow<R, F extends Record<string, unknown>> {
 		const base = this.target.base();
 		const latest = this.latest;
 		if (!base || !latest) return;
-		const { formFrom, form } = this.target;
-		this.target.adopt(latest, rebaseEdits(form(), formFrom(base), formFrom(latest)));
+		const { formFrom, form, together } = this.target;
+		this.target.adopt(latest, rebaseEdits(form(), formFrom(base), formFrom(latest), together));
 		this.latest = null;
 		this.target.save();
 	};

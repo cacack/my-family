@@ -76,7 +76,12 @@
 			person = latest;
 			formData = form;
 		},
-		save: () => savePerson()
+		save: () => savePerson(),
+		// A coordinate pair is one location (#1033).
+		together: [
+			['birth_place_latitude', 'birth_place_longitude'],
+			['death_place_latitude', 'death_place_longitude']
+		]
 	});
 	// The date field a save was refused for, shown beside it (#1112); an
 	// unreadable one is offered to keep as text (#978).
@@ -639,6 +644,7 @@
 								longitude: person.birth_place_longitude,
 								origin: person.birth_place_coordinates_origin
 							}}
+							placePair={formData.birth_place === (person.birth_place || '') ? person.birth_place_resolved : undefined}
 						/>
 					</div>
 				</FormRow>
@@ -667,6 +673,7 @@
 								longitude: person.death_place_longitude,
 								origin: person.death_place_coordinates_origin
 							}}
+							placePair={formData.death_place === (person.death_place || '') ? person.death_place_resolved : undefined}
 						/>
 					</div>
 				</FormRow>
