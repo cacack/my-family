@@ -4506,12 +4506,14 @@ type FamilyUpdate struct {
 	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	ClearPartner2 *bool                        `json:"clear_partner2,omitempty"`
 	MarriageDate  nullable.Nullable[DateInput] `json:"marriage_date,omitempty"`
-	MarriagePlace nullable.Nullable[string]    `json:"marriage_place,omitempty"`
+
+	// MarriagePlace Null or "" clears the place name and with it the marriage_place_latitude and marriage_place_longitude pair and its origin, so a pair does not outlive its name; a pair set beside the clear is rejected with 400. Renaming the place keeps the pair, as does an update to a record whose place was already empty.
+	MarriagePlace nullable.Nullable[string] `json:"marriage_place,omitempty"`
 
 	// MarriagePlaceCoordinatesOrigin How the marriage place coordinates were obtained, given only with both halves set (400 otherwise). Left out, a pair that changes is manual and one left as it is keeps its origin. geocoded without a provider or precision, or a provider or precision on any other source, is rejected with 400.
 	MarriagePlaceCoordinatesOrigin *CoordinateOrigin `json:"marriage_place_coordinates_origin,omitempty"`
 
-	// MarriagePlaceLatitude Latitude in GEDCOM form (e.g., "N39.7817"): N or S, then decimal degrees within 90. Give it with marriage_place_longitude: one half of the pair alone, the wrong axis letter, a value out of range or a pair without a marriage_place is rejected with 400. Stored trimmed, with an upper-case letter. Send both as null to clear the pair; omit both to leave it unchanged, as changing the place name does.
+	// MarriagePlaceLatitude Latitude in GEDCOM form (e.g., "N39.7817"): N or S, then decimal degrees within 90. Give it with marriage_place_longitude: one half of the pair alone, the wrong axis letter, a value out of range or a pair without a marriage_place is rejected with 400. Stored trimmed, with an upper-case letter. Send both as null to clear the pair; omit both to leave it unchanged, as renaming the place does (clearing the place name clears it).
 	MarriagePlaceLatitude nullable.Nullable[string] `json:"marriage_place_latitude,omitempty"`
 
 	// MarriagePlaceLongitude Longitude in GEDCOM form (e.g., "W89.6501"): E or W, then decimal degrees within 180. Given with marriage_place_latitude.
@@ -6073,24 +6075,28 @@ type PersonSummary struct {
 
 // PersonUpdate Partial update. A field left out stays unchanged; an optional (nullable) field sent as null is cleared. Required fields reject null. An update may leave given_name and surname both empty only when the person already had neither (an imported person with no NAME stays editable); one that would make a named person nameless is rejected with 400.
 type PersonUpdate struct {
-	BirthDate  nullable.Nullable[DateInput] `json:"birth_date,omitempty"`
-	BirthPlace nullable.Nullable[string]    `json:"birth_place,omitempty"`
+	BirthDate nullable.Nullable[DateInput] `json:"birth_date,omitempty"`
+
+	// BirthPlace Null or "" clears the place name and with it the birth_place_latitude and birth_place_longitude pair and its origin, so a pair does not outlive its name; a pair set beside the clear is rejected with 400. Renaming the place keeps the pair, as does an update to a record whose place was already empty.
+	BirthPlace nullable.Nullable[string] `json:"birth_place,omitempty"`
 
 	// BirthPlaceCoordinatesOrigin How the birth place coordinates were obtained, given only with both halves set (400 otherwise). Left out, a pair that changes is manual and one left as it is keeps its origin. geocoded without a provider or precision, or a provider or precision on any other source, is rejected with 400.
 	BirthPlaceCoordinatesOrigin *CoordinateOrigin `json:"birth_place_coordinates_origin,omitempty"`
 
-	// BirthPlaceLatitude Latitude in GEDCOM form (e.g., "N42.3601"): N or S, then decimal degrees within 90. Give it with birth_place_longitude: one half of the pair alone, the wrong axis letter, a value out of range or a pair without a birth_place is rejected with 400. Stored trimmed, with an upper-case letter. Send both as null to clear the pair; omit both to leave it unchanged, as changing the place name does.
+	// BirthPlaceLatitude Latitude in GEDCOM form (e.g., "N42.3601"): N or S, then decimal degrees within 90. Give it with birth_place_longitude: one half of the pair alone, the wrong axis letter, a value out of range or a pair without a birth_place is rejected with 400. Stored trimmed, with an upper-case letter. Send both as null to clear the pair; omit both to leave it unchanged, as renaming the place does (clearing the place name clears it).
 	BirthPlaceLatitude nullable.Nullable[string] `json:"birth_place_latitude,omitempty"`
 
 	// BirthPlaceLongitude Longitude in GEDCOM form (e.g., "W71.0589"): E or W, then decimal degrees within 180. Given with birth_place_latitude.
 	BirthPlaceLongitude nullable.Nullable[string]    `json:"birth_place_longitude,omitempty"`
 	DeathDate           nullable.Nullable[DateInput] `json:"death_date,omitempty"`
-	DeathPlace          nullable.Nullable[string]    `json:"death_place,omitempty"`
+
+	// DeathPlace Null or "" clears the place name and with it the death_place_latitude and death_place_longitude pair and its origin, so a pair does not outlive its name; a pair set beside the clear is rejected with 400. Renaming the place keeps the pair, as does an update to a record whose place was already empty.
+	DeathPlace nullable.Nullable[string] `json:"death_place,omitempty"`
 
 	// DeathPlaceCoordinatesOrigin How the death place coordinates were obtained, given only with both halves set (400 otherwise). Left out, a pair that changes is manual and one left as it is keeps its origin. geocoded without a provider or precision, or a provider or precision on any other source, is rejected with 400.
 	DeathPlaceCoordinatesOrigin *CoordinateOrigin `json:"death_place_coordinates_origin,omitempty"`
 
-	// DeathPlaceLatitude Latitude in GEDCOM form (e.g., "N42.3601"): N or S, then decimal degrees within 90. Give it with death_place_longitude: one half of the pair alone, the wrong axis letter, a value out of range or a pair without a death_place is rejected with 400. Stored trimmed, with an upper-case letter. Send both as null to clear the pair; omit both to leave it unchanged, as changing the place name does.
+	// DeathPlaceLatitude Latitude in GEDCOM form (e.g., "N42.3601"): N or S, then decimal degrees within 90. Give it with death_place_longitude: one half of the pair alone, the wrong axis letter, a value out of range or a pair without a death_place is rejected with 400. Stored trimmed, with an upper-case letter. Send both as null to clear the pair; omit both to leave it unchanged, as renaming the place does (clearing the place name clears it).
 	DeathPlaceLatitude nullable.Nullable[string] `json:"death_place_latitude,omitempty"`
 
 	// DeathPlaceLongitude Longitude in GEDCOM form (e.g., "W71.0589"): E or W, then decimal degrees within 180. Given with death_place_latitude.

@@ -329,11 +329,11 @@ func (h *Handler) UpdatePerson(ctx context.Context, input UpdatePersonInput) (*U
 // coordinate pairs of an update (see recordCoordinates); updated holds the
 // places as the update leaves them.
 func recordPersonCoordinates(changes map[string]any, input UpdatePersonInput, current *repository.PersonReadModel, updated *domain.Person) error {
-	if err := recordCoordinates(changes, "birth_place", updated.BirthPlace, input.BirthPlaceCoordinates,
+	if err := recordCoordinates(changes, "birth_place", current.BirthPlace, updated.BirthPlace, input.BirthPlaceCoordinates,
 		placeCoordinates{current.BirthPlaceLat, current.BirthPlaceLong, current.BirthPlaceOrigin}); err != nil {
 		return err
 	}
-	return recordCoordinates(changes, "death_place", updated.DeathPlace, input.DeathPlaceCoordinates,
+	return recordCoordinates(changes, "death_place", current.DeathPlace, updated.DeathPlace, input.DeathPlaceCoordinates,
 		placeCoordinates{current.DeathPlaceLat, current.DeathPlaceLong, current.DeathPlaceOrigin})
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/cacack/my-family/internal/command"
@@ -307,6 +308,85 @@ func TestPlaceCoordinates_NeedAPlace(t *testing.T) {
 	if _, err := h.UpdateFamily(ctx, command.UpdateFamilyInput{ID: fam.ID, Version: fam.Version,
 		MarriagePlace: command.Set("Springfield"), MarriagePlaceCoordinates: pair("N1", "E1")}); err != nil {
 		t.Errorf("UpdateFamily with a place: %v", err)
+	}
+}
+
+// Clearing a place name, by null or "", also clears its pair, so no stored
+// pair is left without a place (#1798). A pair stated beside the clear is
+// still judged as given.
+func TestPlaceCoordinates_ClearedWithPlace(t *testing.T) {
+	ctx := context.Background()
+	rs := memory.NewReadModelStore()
+	h := command.NewHandler(memory.NewEventStore(), rs)
+
+	created, err := h.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ada",
+		BirthPlace: "Boston", BirthPlaceCoordinates: pair("N42.3601", "W71.0589"),
+		DeathPlace: "Sydney", DeathPlaceCoordinates: pair("S33.8688", "E151.2093")})
+	if err != nil {
+		t.Fatalf("CreatePerson: %v", err)
+	}
+	_, err = h.UpdatePerson(ctx, command.UpdatePersonInput{ID: created.ID, Version: created.Version,
+		BirthPlace: command.Clear[string](), BirthPlaceCoordinates: pair("N1", "E1")})
+	assertCoordinateError(t, "UpdatePerson setting a pair beside a cleared place", err, "birth_place")
+
+	res, err := h.UpdatePerson(ctx, command.UpdatePersonInput{ID: created.ID, Version: created.Version,
+		BirthPlace: command.Clear[string](), DeathPlace: command.Set("")})
+	if err != nil {
+		t.Fatalf("UpdatePerson clearing the places: %v", err)
+	}
+	p, _ := rs.GetPerson(ctx, domain.MainBranchID, created.ID)
+	if p.BirthPlaceLat != nil || p.BirthPlaceLong != nil || p.BirthPlaceOrigin != nil ||
+		p.DeathPlaceLat != nil || p.DeathPlaceLong != nil || p.DeathPlaceOrigin != nil {
+		t.Errorf("pairs after clearing the places = %s %s %s %s, want none",
+			derefOr(p.BirthPlaceLat), derefOr(p.BirthPlaceLong), derefOr(p.DeathPlaceLat), derefOr(p.DeathPlaceLong))
+	}
+	// With no pair left, a later update records nothing about one.
+	next, err := h.UpdatePerson(ctx, command.UpdatePersonInput{ID: created.ID, Version: res.Version, BirthPlace: command.Set("")})
+	if err != nil || next.Version != res.Version {
+		t.Errorf("repeat clear = %v, %v; want no change at version %d", next, err, res.Version)
+	}
+
+	fam, err := h.CreateFamily(ctx, command.CreateFamilyInput{Partner1ID: &created.ID,
+		MarriagePlace: "Springfield", MarriagePlaceCoordinates: pair("N39.7817", "W89.6501")})
+	if err != nil {
+		t.Fatalf("CreateFamily: %v", err)
+	}
+	if _, err := h.UpdateFamily(ctx, command.UpdateFamilyInput{ID: fam.ID, Version: fam.Version, MarriagePlace: command.Set("")}); err != nil {
+		t.Fatalf("UpdateFamily clearing the place: %v", err)
+	}
+	f, _ := rs.GetFamily(ctx, domain.MainBranchID, fam.ID)
+	if f.MarriagePlace != "" || f.MarriagePlaceLat != nil || f.MarriagePlaceLong != nil || f.MarriagePlaceOrigin != nil {
+		t.Errorf("family after clearing the place = %q %s %s, want no place or pair",
+			f.MarriagePlace, derefOr(f.MarriagePlaceLat), derefOr(f.MarriagePlaceLong))
+	}
+}
+
+// A pair an import stored without a place name is kept by an update that
+// leaves the place empty: only clearing a name clears its pair (#1798).
+func TestPlaceCoordinates_NamelessPairKept(t *testing.T) {
+	ctx := context.Background()
+	rs := memory.NewReadModelStore()
+	h := command.NewHandler(memory.NewEventStore(), rs)
+	ged := "0 HEAD\n1 GEDC\n2 VERS 5.5.1\n1 CHAR UTF-8\n0 @I1@ INDI\n1 NAME Ada /Lovelace/\n" +
+		"1 BIRT\n2 DATE 1815\n2 PLAC\n3 MAP\n4 LATI N51.5074\n4 LONG W0.1278\n0 TRLR\n"
+	if _, err := h.ImportGedcom(ctx, command.ImportGedcomInput{Filename: "t.ged", FileSize: int64(len(ged)), Reader: strings.NewReader(ged)}); err != nil {
+		t.Fatalf("ImportGedcom: %v", err)
+	}
+	persons, _, _ := rs.ListPersons(ctx, repository.ListOptions{Limit: 10})
+	if len(persons) != 1 || persons[0].BirthPlace != "" || persons[0].BirthPlaceLat == nil {
+		t.Fatalf("imported persons = %+v, want one with a nameless birth pair", persons)
+	}
+	p := persons[0]
+	res, err := h.UpdatePerson(ctx, command.UpdatePersonInput{ID: p.ID, Version: p.Version, BirthPlace: command.Set("")})
+	if err != nil || res.Version != p.Version {
+		t.Errorf("update leaving the place empty = %v, %v; want no change at version %d", res, err, p.Version)
+	}
+	if _, err := h.UpdatePerson(ctx, command.UpdatePersonInput{ID: p.ID, Version: p.Version, Notes: command.Set("note")}); err != nil {
+		t.Fatalf("UpdatePerson notes: %v", err)
+	}
+	got, _ := rs.GetPerson(ctx, domain.MainBranchID, p.ID)
+	if derefOr(got.BirthPlaceLat) != "N51.5074" || derefOr(got.BirthPlaceLong) != "W0.1278" {
+		t.Errorf("pair after a notes update = %s %s, want N51.5074 W0.1278", derefOr(got.BirthPlaceLat), derefOr(got.BirthPlaceLong))
 	}
 }
 

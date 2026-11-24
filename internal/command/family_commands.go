@@ -198,7 +198,7 @@ func (h *Handler) UpdateFamily(ctx context.Context, input UpdateFamilyInput) (*U
 		changes["marriage_place"] = place
 		marriagePlace = place
 	}
-	if err := recordCoordinates(changes, "marriage_place", marriagePlace, input.MarriagePlaceCoordinates,
+	if err := recordCoordinates(changes, "marriage_place", family.MarriagePlace, marriagePlace, input.MarriagePlaceCoordinates,
 		placeCoordinates{family.MarriagePlaceLat, family.MarriagePlaceLong, family.MarriagePlaceOrigin}); err != nil {
 		return nil, err
 	}
