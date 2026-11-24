@@ -460,6 +460,39 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/places/unmapped": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the places that have records without coordinates
+         * @description Returns the no-coordinates worklist (ADR-009 §9): every place with at
+         *     least one record the caller may see (a person's birth or death, a
+         *     family's marriage, a life event or an attribute) that has no
+         *     effective coordinates, that is no pair of its own and none on its
+         *     place. Records are at one place when their texts have the same place
+         *     matching key, or when the user joined the two keys with an alias
+         *     (`PUT /places/{id}/alias`); nothing looser joins them. Each entry
+         *     counts those records and suggests every distinct pair that other
+         *     records at the place carry as their own. A parent place's records and
+         *     pair are not involved. Entries sort by count, highest first, then by
+         *     name. Nothing is written: set the place's pair with
+         *     `PUT /places/{id}` to map all of its records at once. With `?branch=`
+         *     the records are that branch's isolated view (place facts are always
+         *     the mainline's); omit it for the mainline.
+         */
+        get: operations["listUnmappedPlaces"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/places/{id}": {
         parameters: {
             query?: never;
@@ -5298,6 +5331,36 @@ export interface components {
             limit?: number;
             offset?: number;
         };
+        UnmappedPlaceList: {
+            items: components["schemas"]["UnmappedPlace"][];
+            /** @description Number of entries */
+            total: number;
+        };
+        UnmappedPlace: {
+            /**
+             * Format: uuid
+             * @description The ID of the place the records resolve to, as `GET /places` gives it; the target's ID when their key is an alias.
+             */
+            id: string;
+            /** @description The place matching key the records resolve to (ADR-009 §1). */
+            key: string;
+            /** @description The place's display name when one is set; otherwise `spelling`. */
+            name: string;
+            /** @description The most-used recorded spelling among the records without coordinates, its parts joined with ", " (ties broken bytewise). It names a recorded text, so it can be passed to `GET /browse/places/{place}/persons`. */
+            spelling: string;
+            /** @description Number of records the caller may see at the place that have no effective coordinates. */
+            count: number;
+            /** @description Every distinct pair, as recorded, that other records at the place carry as their own, most-used first, then by latitude and longitude; empty when no record there has one. */
+            suggestions: components["schemas"]["CoordinateSuggestion"][];
+        };
+        CoordinateSuggestion: {
+            /** @description The latitude as recorded, in GEDCOM form (e.g. "N42.3601"). */
+            latitude: string;
+            /** @description The longitude as recorded, in GEDCOM form (e.g. "W71.0589"). */
+            longitude: string;
+            /** @description Number of records the caller may see that carry this pair. */
+            count: number;
+        };
         CemeteryIndexResponse: {
             items: components["schemas"]["CemeteryEntry"][];
             /** @description Total number of unique burial/cremation places */
@@ -8964,6 +9027,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PlaceList"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            503: components["responses"]["SetupRequired"];
+        };
+    };
+    listUnmappedPlaces: {
+        parameters: {
+            query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
+                 */
+                branch?: components["parameters"]["branchScope"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The places that have records without coordinates */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnmappedPlaceList"];
                 };
             };
             401: components["responses"]["Unauthenticated"];

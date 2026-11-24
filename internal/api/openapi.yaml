@@ -990,6 +990,42 @@ paths:
         '503':
           $ref: '#/components/responses/SetupRequired'
 
+  /places/unmapped:
+    get:
+      operationId: listUnmappedPlaces
+      x-min-role: viewer
+      security: [{session: []}, {apiToken: []}, {}]
+      summary: List the places that have records without coordinates
+      description: |
+        Returns the no-coordinates worklist (ADR-009 §9): every place with at
+        least one record the caller may see (a person's birth or death, a
+        family's marriage, a life event or an attribute) that has no
+        effective coordinates, that is no pair of its own and none on its
+        place. Records are at one place when their texts have the same place
+        matching key, or when the user joined the two keys with an alias
+        (`PUT /places/{id}/alias`); nothing looser joins them. Each entry
+        counts those records and suggests every distinct pair that other
+        records at the place carry as their own. A parent place's records and
+        pair are not involved. Entries sort by count, highest first, then by
+        name. Nothing is written: set the place's pair with
+        `PUT /places/{id}` to map all of its records at once. With `?branch=`
+        the records are that branch's isolated view (place facts are always
+        the mainline's); omit it for the mainline.
+      tags: [places]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
+      responses:
+        '200':
+          description: The places that have records without coordinates
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnmappedPlaceList'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
+
   /places/{id}:
     parameters:
       - $ref: '#/components/parameters/placeId'
@@ -10212,6 +10248,68 @@ components:
           type: integer
         offset:
           type: integer
+
+    UnmappedPlaceList:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/UnmappedPlace'
+        total:
+          type: integer
+          description: Number of entries
+
+    UnmappedPlace:
+      type: object
+      required: [id, key, name, spelling, count, suggestions]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: >-
+            The ID of the place the records resolve to, as `GET /places`
+            gives it; the target's ID when their key is an alias.
+        key:
+          type: string
+          description: The place matching key the records resolve to (ADR-009 §1).
+        name:
+          type: string
+          description: >-
+            The place's display name when one is set; otherwise `spelling`.
+        spelling:
+          type: string
+          description: >-
+            The most-used recorded spelling among the records without
+            coordinates, its parts joined with ", " (ties broken bytewise).
+            It names a recorded text, so it can be passed to
+            `GET /browse/places/{place}/persons`.
+        count:
+          type: integer
+          description: Number of records the caller may see at the place that have no effective coordinates.
+        suggestions:
+          type: array
+          description: >-
+            Every distinct pair, as recorded, that other records at the place
+            carry as their own, most-used first, then by latitude and
+            longitude; empty when no record there has one.
+          items:
+            $ref: '#/components/schemas/CoordinateSuggestion'
+
+    CoordinateSuggestion:
+      type: object
+      required: [latitude, longitude, count]
+      properties:
+        latitude:
+          type: string
+          description: The latitude as recorded, in GEDCOM form (e.g. "N42.3601").
+        longitude:
+          type: string
+          description: The longitude as recorded, in GEDCOM form (e.g. "W71.0589").
+        count:
+          type: integer
+          description: Number of records the caller may see that carry this pair.
 
     CemeteryIndexResponse:
       type: object

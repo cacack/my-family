@@ -3802,6 +3802,18 @@ type CoordinateOrigin struct {
 // CoordinateSource How a coordinate pair was obtained: read from a GEDCOM file (imported), typed in (manual), copied from another event's place (copied), or guessed by a geocoder from the place name (geocoded). A pair stored before origins were recorded reads as imported.
 type CoordinateSource string
 
+// CoordinateSuggestion defines model for CoordinateSuggestion.
+type CoordinateSuggestion struct {
+	// Count Number of records the caller may see that carry this pair.
+	Count int `json:"count"`
+
+	// Latitude The latitude as recorded, in GEDCOM form (e.g. "N42.3601").
+	Latitude string `json:"latitude"`
+
+	// Longitude The longitude as recorded, in GEDCOM form (e.g. "W71.0589").
+	Longitude string `json:"longitude"`
+}
+
 // CreatedAPIToken defines model for CreatedAPIToken.
 type CreatedAPIToken struct {
 	CreatedAt time.Time          `json:"created_at"`
@@ -7151,6 +7163,35 @@ type SurnameIndexResponse struct {
 	Total int `json:"total"`
 }
 
+// UnmappedPlace defines model for UnmappedPlace.
+type UnmappedPlace struct {
+	// Count Number of records the caller may see at the place that have no effective coordinates.
+	Count int `json:"count"`
+
+	// Id The ID of the place the records resolve to, as `GET /places` gives it; the target's ID when their key is an alias.
+	Id openapi_types.UUID `json:"id"`
+
+	// Key The place matching key the records resolve to (ADR-009 §1).
+	Key string `json:"key"`
+
+	// Name The place's display name when one is set; otherwise `spelling`.
+	Name string `json:"name"`
+
+	// Spelling The most-used recorded spelling among the records without coordinates, its parts joined with ", " (ties broken bytewise). It names a recorded text, so it can be passed to `GET /browse/places/{place}/persons`.
+	Spelling string `json:"spelling"`
+
+	// Suggestions Every distinct pair, as recorded, that other records at the place carry as their own, most-used first, then by latitude and longitude; empty when no record there has one.
+	Suggestions []CoordinateSuggestion `json:"suggestions"`
+}
+
+// UnmappedPlaceList defines model for UnmappedPlaceList.
+type UnmappedPlaceList struct {
+	Items []UnmappedPlace `json:"items"`
+
+	// Total Number of entries
+	Total int `json:"total"`
+}
+
 // User defines model for User.
 type User struct {
 	CreatedAt time.Time `json:"created_at"`
@@ -8676,6 +8717,19 @@ type ListPlacesParams struct {
 	Offset *OffsetParam `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
+// ListUnmappedPlacesParams defines parameters for ListUnmappedPlaces.
+type ListUnmappedPlacesParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+}
+
 // GetPlaceParams defines parameters for GetPlace.
 type GetPlaceParams struct {
 	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
@@ -9885,6 +9939,9 @@ type ServerInterface interface {
 	// ListPlaces List the places in use
 	// (GET /places)
 	ListPlaces(ctx echo.Context, params ListPlacesParams) error
+	// ListUnmappedPlaces List the places that have records without coordinates
+	// (GET /places/unmapped)
+	ListUnmappedPlaces(ctx echo.Context, params ListUnmappedPlacesParams) error
 	// GetPlace Get a place in use by ID
 	// (GET /places/{id})
 	GetPlace(ctx echo.Context, id PlaceId, params GetPlaceParams) error
@@ -13323,6 +13380,24 @@ func (w *ServerInterfaceWrapper) ListPlaces(ctx echo.Context) error {
 	return err
 }
 
+// ListUnmappedPlaces converts echo context to params.
+func (w *ServerInterfaceWrapper) ListUnmappedPlaces(ctx echo.Context) error {
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListUnmappedPlacesParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.ListUnmappedPlaces(ctx, params)
+	return err
+}
+
 // GetPlace converts echo context to params.
 func (w *ServerInterfaceWrapper) GetPlace(ctx echo.Context) error {
 	var err error
@@ -14876,6 +14951,7 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 	router.GET(options.BaseURL+"/browse/cemeteries", wrapper.BrowseCemeteries, options.OperationMiddlewares["browseCemeteries"]...)
 	router.GET(options.BaseURL+"/browse/cemeteries/:place/persons", wrapper.GetPersonsByCemetery, options.OperationMiddlewares["getPersonsByCemetery"]...)
 	router.GET(options.BaseURL+"/places", wrapper.ListPlaces, options.OperationMiddlewares["listPlaces"]...)
+	router.GET(options.BaseURL+"/places/unmapped", wrapper.ListUnmappedPlaces, options.OperationMiddlewares["listUnmappedPlaces"]...)
 	router.GET(options.BaseURL+"/places/:id", wrapper.GetPlace, options.OperationMiddlewares["getPlace"]...)
 	router.PUT(options.BaseURL+"/places/:id", wrapper.UpdatePlace, options.OperationMiddlewares["updatePlace"]...)
 	router.DELETE(options.BaseURL+"/places/:id/alias", wrapper.UnaliasPlace, options.OperationMiddlewares["unaliasPlace"]...)
@@ -25270,6 +25346,56 @@ func (response ListPlaces503JSONResponse) VisitListPlacesResponse(w http.Respons
 	return err
 }
 
+type ListUnmappedPlacesRequestObject struct {
+	Params ListUnmappedPlacesParams
+}
+
+type ListUnmappedPlacesResponseObject interface {
+	VisitListUnmappedPlacesResponse(w http.ResponseWriter) error
+}
+
+type ListUnmappedPlaces200JSONResponse UnmappedPlaceList
+
+func (response ListUnmappedPlaces200JSONResponse) VisitListUnmappedPlacesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListUnmappedPlaces401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListUnmappedPlaces401JSONResponse) VisitListUnmappedPlacesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListUnmappedPlaces503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response ListUnmappedPlaces503JSONResponse) VisitListUnmappedPlacesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetPlaceRequestObject struct {
 	Id     PlaceId `json:"id"`
 	Params GetPlaceParams
@@ -29940,6 +30066,9 @@ type StrictServerInterface interface {
 	// ListPlaces List the places in use
 	// (GET /places)
 	ListPlaces(ctx context.Context, request ListPlacesRequestObject) (ListPlacesResponseObject, error)
+	// ListUnmappedPlaces List the places that have records without coordinates
+	// (GET /places/unmapped)
+	ListUnmappedPlaces(ctx context.Context, request ListUnmappedPlacesRequestObject) (ListUnmappedPlacesResponseObject, error)
 	// GetPlace Get a place in use by ID
 	// (GET /places/{id})
 	GetPlace(ctx context.Context, request GetPlaceRequestObject) (GetPlaceResponseObject, error)
@@ -34630,6 +34759,31 @@ func (sh *strictHandler) ListPlaces(ctx echo.Context, params ListPlacesParams) e
 		return err
 	} else if validResponse, ok := response.(ListPlacesResponseObject); ok {
 		return validResponse.VisitListPlacesResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// ListUnmappedPlaces operation middleware
+func (sh *strictHandler) ListUnmappedPlaces(ctx echo.Context, params ListUnmappedPlacesParams) error {
+	var request ListUnmappedPlacesRequestObject
+
+	request.Params = params
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.ListUnmappedPlaces(ctx.Request().Context(), request.(ListUnmappedPlacesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListUnmappedPlaces")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(ListUnmappedPlacesResponseObject); ok {
+		return validResponse.VisitListUnmappedPlacesResponse(ctx.Response())
 	} else if response != nil {
 		return fmt.Errorf("unexpected response type: %T", response)
 	}

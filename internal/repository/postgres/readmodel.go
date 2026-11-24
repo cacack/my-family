@@ -4940,19 +4940,57 @@ func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, branchID domain.
 	return repository.PlaceLevels(uses, parent), nil
 }
 
-// ListPlaces returns the places in use within the branch overlay: each place
-// text of the five place-bearing rows the overlay and privacy show is counted
-// per distinct key and spelling here, and repository.Places builds the list
-// from those counts, as on every store. When privacy hides anything, a
-// family's marriage place counts only when the family is not private and each
-// partner is a shown person, and a life event or attribute only when its owner
-// is shown (ADR-008 §3); otherwise every row counts, as the decorator passes
-// everything through. Every source binds the same leading overlay args.
+// ListPlaces returns the places in use within the branch overlay, built by
+// repository.Places from placeUses, as on every store.
 func (s *ReadModelStore) ListPlaces(ctx context.Context, branchID domain.BranchID, privacy repository.Privacy) ([]repository.PlaceReadModel, error) {
-	persons, args, _ := resolvedPersonsSrc("id, birth_place_key, birth_place, death_place_key, death_place", branchID, privacy)
-	families := overlaySrc("families", "id, partner1_id, partner2_id, restriction, marriage_place_key, marriage_place", "", branchID)
-	events := overlaySrc("life_events", "owner_type, owner_id, place_key, place", "", branchID)
-	attributes := overlaySrc("attributes", "person_id, place_key, place", "", branchID)
+	uses, facts, aliases, err := s.placeUsesAndFacts(ctx, branchID, privacy)
+	if err != nil {
+		return nil, err
+	}
+	return repository.Places(uses, facts, aliases, privacy), nil
+}
+
+// ListUnmappedPlaces returns the no-coordinates worklist, built by
+// repository.UnmappedPlaces from placeUses, as on every store.
+func (s *ReadModelStore) ListUnmappedPlaces(ctx context.Context, branchID domain.BranchID, privacy repository.Privacy) ([]repository.UnmappedPlace, error) {
+	uses, facts, aliases, err := s.placeUsesAndFacts(ctx, branchID, privacy)
+	if err != nil {
+		return nil, err
+	}
+	return repository.UnmappedPlaces(uses, facts, aliases), nil
+}
+
+// placeUsesAndFacts reads placeUses with the place facts and aliases.
+func (s *ReadModelStore) placeUsesAndFacts(ctx context.Context, branchID domain.BranchID, privacy repository.Privacy) ([]repository.PlaceUse, []repository.PlaceFactsReadModel, repository.PlaceAliases, error) {
+	uses, err := s.placeUses(ctx, branchID, privacy)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	facts, err := s.ListPlaceFacts(ctx, branchID)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	aliases, err := s.ListPlaceAliases(ctx)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return uses, facts, repository.PlaceAliasesByKey(aliases), nil
+}
+
+// placeUses counts each place text of the five place-bearing rows the overlay
+// and privacy show, per distinct key, spelling and own pair. When privacy
+// hides anything, a family's marriage place counts only when the family is
+// not private and each partner is a shown person, and a life event or
+// attribute only when its owner is shown (ADR-008 §3); otherwise every row
+// counts, as the decorator passes everything through. Every source binds the
+// same leading overlay args.
+func (s *ReadModelStore) placeUses(ctx context.Context, branchID domain.BranchID, privacy repository.Privacy) ([]repository.PlaceUse, error) {
+	persons, args, _ := resolvedPersonsSrc("id, birth_place_key, birth_place, birth_place_lat, birth_place_long, "+
+		"death_place_key, death_place, death_place_lat, death_place_long", branchID, privacy)
+	families := overlaySrc("families", "id, partner1_id, partner2_id, restriction, marriage_place_key, marriage_place, "+
+		"marriage_place_lat, marriage_place_long", "", branchID)
+	events := overlaySrc("life_events", "owner_type, owner_id, place_key, place, place_lat, place_long", "", branchID)
+	attributes := overlaySrc("attributes", "person_id, place_key, place, place_lat, place_long", "", branchID)
 
 	shownFamily, shownEventOwner, shownAttributeOwner := "", "", ""
 	if !privacy.SeesAll() {
@@ -4968,19 +5006,22 @@ func (s *ReadModelStore) ListPlaces(ctx context.Context, branchID domain.BranchI
 	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 	rows, err := s.db.QueryContext(ctx, `
 		WITH shown_persons AS (SELECT * FROM `+persons+` p),
-		shown_families AS (SELECT id, marriage_place_key, marriage_place FROM `+families+` f WHERE TRUE`+shownFamily+`),
+		shown_families AS (
+			SELECT id, marriage_place_key, marriage_place, marriage_place_lat, marriage_place_long
+			FROM `+families+` f WHERE TRUE`+shownFamily+`),
 		uses AS (
-			SELECT birth_place_key AS place_key, birth_place AS place FROM shown_persons WHERE birth_place_key IS NOT NULL
+			SELECT birth_place_key AS place_key, birth_place AS place, birth_place_lat AS lat, birth_place_long AS long
+			FROM shown_persons WHERE birth_place_key IS NOT NULL
 			UNION ALL
-			SELECT death_place_key, death_place FROM shown_persons WHERE death_place_key IS NOT NULL
+			SELECT death_place_key, death_place, death_place_lat, death_place_long FROM shown_persons WHERE death_place_key IS NOT NULL
 			UNION ALL
-			SELECT marriage_place_key, marriage_place FROM shown_families WHERE marriage_place_key IS NOT NULL
+			SELECT marriage_place_key, marriage_place, marriage_place_lat, marriage_place_long FROM shown_families WHERE marriage_place_key IS NOT NULL
 			UNION ALL
-			SELECT place_key, place FROM `+events+` e WHERE place_key IS NOT NULL`+shownEventOwner+`
+			SELECT place_key, place, place_lat, place_long FROM `+events+` e WHERE place_key IS NOT NULL`+shownEventOwner+`
 			UNION ALL
-			SELECT place_key, place FROM `+attributes+` a WHERE place_key IS NOT NULL`+shownAttributeOwner+`
+			SELECT place_key, place, place_lat, place_long FROM `+attributes+` a WHERE place_key IS NOT NULL`+shownAttributeOwner+`
 		)
-		SELECT place_key, place, COUNT(*) FROM uses GROUP BY place_key, place
+		SELECT place_key, place, lat, long, COUNT(*) FROM uses GROUP BY place_key, place, lat, long
 	`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query places: %w", err)
@@ -4990,23 +5031,14 @@ func (s *ReadModelStore) ListPlaces(ctx context.Context, branchID domain.BranchI
 	var uses []repository.PlaceUse
 	for rows.Next() {
 		var u repository.PlaceUse
-		if err := rows.Scan(&u.Key, &u.Text, &u.Count); err != nil {
+		var lat, long sql.NullString
+		if err := rows.Scan(&u.Key, &u.Text, &lat, &long, &u.Count); err != nil {
 			return nil, fmt.Errorf("scan place use: %w", err)
 		}
+		u.Latitude, u.Longitude = nonEmptyStringPtr(lat), nonEmptyStringPtr(long)
 		uses = append(uses, u)
 	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	facts, err := s.ListPlaceFacts(ctx, branchID)
-	if err != nil {
-		return nil, err
-	}
-	aliases, err := s.ListPlaceAliases(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return repository.Places(uses, facts, repository.PlaceAliasesByKey(aliases), privacy), nil
+	return uses, rows.Err()
 }
 
 // SavePlaceFacts inserts or replaces a place's facts (main-only, PL-005).

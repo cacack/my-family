@@ -1675,6 +1675,13 @@ func (s *PrivacyStore) ListPlaces(ctx context.Context, branchID domain.BranchID,
 	return s.inner.ListPlaces(ctx, branchID, s.privacy(ctx))
 }
 
+// ListUnmappedPlaces reads only the records the principal may see, so no
+// entry, count, spelling or suggestion comes from a hidden one; a place's
+// facts are consulted only for places those records name (ADR-009 §10).
+func (s *PrivacyStore) ListUnmappedPlaces(ctx context.Context, branchID domain.BranchID, _ repository.Privacy) ([]repository.UnmappedPlace, error) {
+	return s.inner.ListUnmappedPlaces(ctx, branchID, s.privacy(ctx))
+}
+
 // ListPlaceAliases passes through: it is read only to resolve the keys of
 // records the principal may already see, and a place such a record resolves
 // to is visible (ADR-009 §10). No read returns its rows; ListPlaces lists an

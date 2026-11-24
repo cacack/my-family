@@ -481,6 +481,13 @@ func (s *BrowseService) ListPlaces(ctx context.Context, branchID domain.BranchID
 	return repository.Page(places, offset, limit), len(places), nil
 }
 
+// ListUnmappedPlaces returns the no-coordinates worklist within the branch
+// overlay (ADR-009 §9): every place with a record that has no effective
+// coordinates, with the pairs other records there carry as suggestions.
+func (s *BrowseService) ListUnmappedPlaces(ctx context.Context, branchID domain.BranchID) ([]repository.UnmappedPlace, error) {
+	return s.readStore.ListUnmappedPlaces(ctx, branchID, repository.Privacy{})
+}
+
 // GetPlace returns the place in use with ID id within the branch overlay, or
 // nil when there is none. A place only hidden records name is not in use for
 // the principal, so it is nil exactly as an ID never in use is (ADR-009 §10).

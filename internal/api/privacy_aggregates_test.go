@@ -115,6 +115,7 @@ func TestPrivacyRedaction_AggregatesAndHomeWidgets(t *testing.T) {
 						"/api/v1/browse/places?parent=Springfield",
 						"/api/v1/browse/cemeteries",   // browseCemeteries
 						"/api/v1/places?limit=100",    // listPlaces
+						"/api/v1/places/unmapped",     // listUnmappedPlaces
 						"/api/v1/map/locations",       // getMapLocations
 						"/api/v1/browse/brick-walls",  // getBrickWalls
 						"/api/v1/statistics",          // getStatistics
@@ -230,6 +231,70 @@ func TestPrivacyRedaction_Places(t *testing.T) {
 						if rec.Code != http.StatusOK || place["key"] != key || place["name"] != name+"ville, Springfield" || place["count"] != float64(1) {
 							t.Errorf("getPlace(%s) = %d %v", key, rec.Code, place)
 						}
+					}
+				})
+			}
+		})
+	}
+}
+
+// TestPrivacyRedaction_UnmappedPlaces drives listUnmappedPlaces as every
+// principal (ADR-009 §10): an entry, its count and its suggestions come only
+// from the records the principal may see. Each person dies in Shared Town;
+// Dora, whom everyone sees, has no pair there, and each other person carries
+// a pair of their own, which only a principal who may see them is offered.
+func TestPrivacyRedaction_UnmappedPlaces(t *testing.T) {
+	for _, viewersSeeLiving := range []bool{true, false} {
+		t.Run(fmt.Sprintf("viewers see living %v", viewersSeeLiving), func(t *testing.T) {
+			f, tr, principals := redactionFixture(t, viewersSeeLiving)
+			placeTree(t, f, principals[0].cookie, tr)
+			pairs := map[string]string{"Kit": "N2", "Lena": "N3", "Petra": "N4"}
+			for _, id := range []string{tr.dead, tr.private, tr.living, tr.kid} {
+				p, err := f.read.GetPerson(context.Background(), domain.MainBranchID, uuid.MustParse(id))
+				if err != nil || p == nil {
+					t.Fatalf("GetPerson %s: %v", id, err)
+				}
+				p.DeathPlace = "Shared Town"
+				if lat, ok := pairs[p.GivenName]; ok {
+					long := "E1"
+					p.DeathPlaceLat, p.DeathPlaceLong = &lat, &long
+				}
+				if err := f.read.SavePerson(context.Background(), domain.MainBranchID, p); err != nil {
+					t.Fatalf("SavePerson: %v", err)
+				}
+			}
+			for _, p := range principals {
+				t.Run(p.name, func(t *testing.T) {
+					shown := p.shownPeople()
+					body := p.getJSON(t, f, "/api/v1/places/unmapped")
+
+					var churchyards []string
+					for _, name := range listed(body, "items", "spelling") {
+						if strings.HasSuffix(name, " Churchyard") {
+							churchyards = append(churchyards, name)
+						}
+					}
+					if want := suffixed(shown, " Churchyard"); !slices.Equal(churchyards, want) {
+						t.Errorf("listUnmappedPlaces churchyards = %v, want %v", churchyards, want)
+					}
+					if got := countOf(body, "items", "spelling", "Shared Town"); got != 1 {
+						t.Errorf("listUnmappedPlaces: Shared Town counts %v, want 1 (Dora)", got)
+					}
+
+					var want []string
+					for _, name := range shown {
+						if lat, ok := pairs[name]; ok {
+							want = append(want, lat)
+						}
+					}
+					var got []string
+					for _, item := range body["items"].([]any) {
+						if m := item.(map[string]any); m["spelling"] == "Shared Town" {
+							got = listed(m, "suggestions", "latitude")
+						}
+					}
+					if !slices.Equal(got, want) {
+						t.Errorf("listUnmappedPlaces: Shared Town suggests %v, want %v", got, want)
 					}
 				})
 			}

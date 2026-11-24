@@ -232,6 +232,7 @@ var anonymousCostlyRoutes = map[string]bool{
 	routeKey(http.MethodGet, apiBase+"/browse/cemeteries"):                  true,
 	routeKey(http.MethodGet, apiBase+"/places"):                             true,
 	routeKey(http.MethodGet, apiBase+"/places/:id"):                         true, // derived from the whole tree
+	routeKey(http.MethodGet, apiBase+"/places/unmapped"):                    true,
 	routeKey(http.MethodGet, apiBase+"/browse/brick-walls"):                 true,
 	routeKey(http.MethodGet, apiBase+"/map/locations"):                      true,
 	routeKey(http.MethodGet, apiBase+"/statistics"):                         true,

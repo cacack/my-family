@@ -407,10 +407,17 @@ named only on a branch is in use on that branch alone, with the ID it keeps afte
 | `listPlaces` | GET | `/places` |
 | `getPlace` | GET | `/places/{id}` |
 
-That is **100 API operations carrying `?branch=`**. Treat `internal/api/openapi.yaml` as the count
+[#1561](https://github.com/cacack/my-family/issues/1561) added the no-coordinates worklist over the
+same records:
+
+| operationId | Method | Path |
+|---|---|---|
+| `listUnmappedPlaces` | GET | `/places/unmapped` |
+
+That is **114 API operations carrying `?branch=`**. Treat `internal/api/openapi.yaml` as the count
 of record — the drift test described below re-derives it from the spec on every run.
 
-The frontend mirrors exactly those 100 in `isBranchScopedRequest()`
+The frontend mirrors exactly those 114 in `isBranchScopedRequest()`
 (`web/src/lib/api/client.ts`), matching on method as well as path, since two methods on one path
 need not agree. The free-text `{surname}` and `{place}` segments are
 matched as a single non-empty, non-slash segment rather than as a UUID, so a percent-encoded place
