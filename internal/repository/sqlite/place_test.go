@@ -34,3 +34,11 @@ func TestCoordinateOrigins(t *testing.T) {
 	defer cleanup()
 	placetest.RunCoordinateOrigins(t, store)
 }
+
+// TestPlaceFacts runs the shared #1735 suite against the sqlite backend; the
+// memory and postgres packages run the same body (DB-001).
+func TestPlaceFacts(t *testing.T) {
+	store, cleanup := setupTestReadModelDB(t)
+	defer cleanup()
+	placetest.RunPlaceFacts(t, store)
+}

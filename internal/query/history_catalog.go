@@ -49,6 +49,9 @@ const (
 	// as not a duplicate (#1036): created when dismissed, deleted when
 	// restored. Its id is the pair id (domain.DuplicatePair.ID).
 	entityTypeDuplicatePair = "duplicate_pair"
+	// entityTypePlace is a place (ADR-009 §2): its stream holds the facts
+	// stated about it. Its id is the place ID, derived from its key.
+	entityTypePlace = "place"
 )
 
 // ChangeEntry.Action vocabulary.
@@ -164,6 +167,9 @@ var historyEventCatalog = map[string]historyEventClass{
 	"DuplicateDismissed":       mapped(entityTypeDuplicatePair, actionCreated),
 	"DuplicateRestored":        mapped(entityTypeDuplicatePair, actionDeleted),
 	"ImportedValuesBackfilled": excluded(reasonBackfill),
+	// A place has no created event: it exists once its key is in use, so
+	// every fact stated about it is an update (ADR-009 §2).
+	"PlaceUpdated": mapped(entityTypePlace, actionUpdated),
 	// A brick wall (#802) is a claim about the person, on the person's stream.
 	"BrickWallSet":      mapped(entityTypePerson, actionUpdated),
 	"BrickWallResolved": mapped(entityTypePerson, actionUpdated),

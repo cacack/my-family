@@ -927,6 +927,21 @@ type ReadModelStore interface {
 	// counts are lower until it moves onto place IDs (ADR-009 step 5).
 	ListPlaces(ctx context.Context, branchID domain.BranchID, privacy Privacy) ([]PlaceReadModel, error)
 
+	// Place facts (ADR-009 §2): the places table, projected from PlaceUpdated.
+	// MAIN-ONLY (PL-005): the table has no branch_id and every branch reads
+	// main's facts. These reads apply no privacy; the query.PrivacyStore
+	// returns only the facts of places visible to the principal (PL-006).
+
+	// SavePlaceFacts inserts or replaces a place's facts, keyed by ID.
+	SavePlaceFacts(ctx context.Context, facts *PlaceFactsReadModel) error
+	// GetPlaceFacts returns the facts of the place with id, or nil when none
+	// have been stated.
+	GetPlaceFacts(ctx context.Context, id uuid.UUID) (*PlaceFactsReadModel, error)
+	// ListPlaceFacts returns the facts of every place that has any, by key.
+	// The facts are main's on every branch; branchID is the scope the
+	// privacy decorator judges a place's visibility in.
+	ListPlaceFacts(ctx context.Context, branchID domain.BranchID) ([]PlaceFactsReadModel, error)
+
 	// Map operations
 
 	// GetMapLocations aggregates person birth/death coordinates within the branch
@@ -992,6 +1007,9 @@ type CemeteryEntry struct {
 
 // MapLocation represents an aggregated geographic location for map display.
 type MapLocation struct {
+	// PlaceID is the ID of the place the location groups (ADR-009 §9), the
+	// zero UUID when its text names no place; Place is that place's name.
+	PlaceID   uuid.UUID   `json:"place_id"`
 	Place     string      `json:"place"`
 	Latitude  float64     `json:"latitude"`
 	Longitude float64     `json:"longitude"`

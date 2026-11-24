@@ -96,6 +96,12 @@ func writeEveryTypeFixture(t *testing.T, ctx context.Context, es repository.Even
 	main(f.conflict, "EvidenceConflict", domain.EvidenceConflictDetected{BaseEvent: base(), ConflictID: f.conflict, FactType: domain.FactPersonBirth, SubjectID: f.person, Description: "Two birth dates disagree", Status: domain.ConflictStatusOpen})
 	main(f.researchLog, "ResearchLog", domain.ResearchLogCreated{BaseEvent: base(), LogID: f.researchLog, SubjectID: f.person, SubjectType: "person", Repository: "National Archives", SearchDescription: "Searched baptism registers", Outcome: domain.ResearchOutcomeInconclusive, SearchDate: time.Now()})
 	main(f.proofSummary, "ProofSummary", domain.ProofSummaryCreated{BaseEvent: base(), SummaryID: f.proofSummary, FactType: domain.FactPersonBirth, SubjectID: f.person, Conclusion: "Born 1815", Argument: "Census and baptism agree"})
+	// Place facts are main-only (PL-005); London is Ada's birth place.
+	london := repository.PlaceID("london")
+	main(london, "Place", domain.NewPlaceUpdated(london, "london", "London", map[string]any{
+		"name": "London, England", "latitude": "N51.5072", "longitude": "W0.1276",
+		"coordinates_origin": map[string]any{"source": "manual"},
+	}))
 
 	// --- The branch: change every one of them -----------------------------
 	events, err := es.ReadAll(ctx, 0, 1000)
@@ -230,7 +236,7 @@ var (
 		"person": true, "family": true, "source": true, "citation": true, "media": true, "note": true,
 		"submitter": true, "repository": true, "association": true, "life_event": true, "attribute": true,
 		"lds_ordinance": true, "evidence_analysis": true, "evidence_conflict": true, "research_log": true,
-		"proof_summary": true, "branch": true, "duplicate_pair": true,
+		"proof_summary": true, "branch": true, "duplicate_pair": true, "place": true,
 	}
 	validActions = map[string]bool{"created": true, "updated": true, "deleted": true, "merged": true}
 )

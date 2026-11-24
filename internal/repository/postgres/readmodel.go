@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"sort"
 	"strings"
 	"time"
 
@@ -396,6 +395,19 @@ func (s *ReadModelStore) createTables() error {
 		);
 
 		CREATE INDEX IF NOT EXISTS idx_repositories_gedcom_xref ON repositories(gedcom_xref);
+
+		-- Place facts (ADR-009 §2), projected from PlaceUpdated. Main-only
+		-- (PL-005): no branch_id, every branch reads main's facts.
+		CREATE TABLE IF NOT EXISTS places (
+			id UUID PRIMARY KEY,
+			key TEXT NOT NULL UNIQUE,
+			name TEXT,
+			latitude TEXT,
+			longitude TEXT,
+			coordinates_origin JSONB,
+			version BIGINT NOT NULL,
+			updated_at TIMESTAMPTZ NOT NULL
+		);
 
 		-- Family external identifiers (GEDCOM 7.0 EXID)
 		-- Branch-aware (ADR-005): bucket-scoped by (family_id, branch_id); an empty
@@ -4977,7 +4989,85 @@ func (s *ReadModelStore) ListPlaces(ctx context.Context, branchID domain.BranchI
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	return repository.Places(uses), nil
+	facts, err := s.ListPlaceFacts(ctx, branchID)
+	if err != nil {
+		return nil, err
+	}
+	return repository.Places(uses, facts, privacy), nil
+}
+
+// SavePlaceFacts inserts or replaces a place's facts (main-only, PL-005).
+func (s *ReadModelStore) SavePlaceFacts(ctx context.Context, facts *repository.PlaceFactsReadModel) error {
+	var origin any
+	if o := repository.MarshalCoordinateOrigin(facts.Origin); o != "" {
+		origin = o
+	}
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO places (id, key, name, latitude, longitude, coordinates_origin, version, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		ON CONFLICT (id) DO UPDATE SET
+			key = EXCLUDED.key,
+			name = EXCLUDED.name,
+			latitude = EXCLUDED.latitude,
+			longitude = EXCLUDED.longitude,
+			coordinates_origin = EXCLUDED.coordinates_origin,
+			version = EXCLUDED.version,
+			updated_at = EXCLUDED.updated_at
+	`, facts.ID, facts.Key, nullableString(facts.Name),
+		nullableStringPtr(facts.Latitude), nullableStringPtr(facts.Longitude), origin,
+		facts.Version, facts.UpdatedAt)
+	if err != nil {
+		return fmt.Errorf("save place facts: %w", err)
+	}
+	return nil
+}
+
+// placeFactsColumns are the columns scanPlaceFacts reads, in order.
+const placeFactsColumns = `id, key, name, latitude, longitude, coordinates_origin, version, updated_at`
+
+// scanPlaceFacts scans one places row.
+func scanPlaceFacts(row interface{ Scan(...any) error }) (*repository.PlaceFactsReadModel, error) {
+	var name, lat, long sql.NullString
+	var originJSON []byte
+	f := &repository.PlaceFactsReadModel{}
+	if err := row.Scan(&f.ID, &f.Key, &name, &lat, &long, &originJSON, &f.Version, &f.UpdatedAt); err != nil {
+		return nil, err
+	}
+	f.Name = name.String
+	f.Latitude, f.Longitude = nonEmptyStringPtr(lat), nonEmptyStringPtr(long)
+	f.Origin = repository.UnmarshalCoordinateOrigin(originJSON, "places", "coordinates_origin", f.ID)
+	return f, nil
+}
+
+// GetPlaceFacts returns the facts of the place with id, or nil.
+func (s *ReadModelStore) GetPlaceFacts(ctx context.Context, id uuid.UUID) (*repository.PlaceFactsReadModel, error) {
+	f, err := scanPlaceFacts(s.db.QueryRowContext(ctx, `SELECT `+placeFactsColumns+` FROM places WHERE id = $1`, id))
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get place facts: %w", err)
+	}
+	return f, nil
+}
+
+// ListPlaceFacts returns the facts of every place that has any, by key; they
+// are main's on every branch (PL-005).
+func (s *ReadModelStore) ListPlaceFacts(ctx context.Context, _ domain.BranchID) ([]repository.PlaceFactsReadModel, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT `+placeFactsColumns+` FROM places ORDER BY key`)
+	if err != nil {
+		return nil, fmt.Errorf("list place facts: %w", err)
+	}
+	defer rows.Close()
+	var facts []repository.PlaceFactsReadModel
+	for rows.Next() {
+		f, err := scanPlaceFacts(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan place facts: %w", err)
+		}
+		facts = append(facts, *f)
+	}
+	return facts, rows.Err()
 }
 
 // placeUnderSQL is the SQL form of repository.PlaceUnder for a key column, with
@@ -5138,141 +5228,93 @@ func (s *ReadModelStore) GetPersonsByCemetery(ctx context.Context, place string,
 }
 
 // mapPrivacyCols are the person columns GetMapLocations reads for the living
-// rule and the private mark (ADR-008), in scanMapPerson's order.
+// rule and the private mark (ADR-008), in scanMapUse's order.
 const mapPrivacyCols = "restriction, living_override, death_evidence, living_ref_date"
 
-// scanMapPerson scans one GetMapLocations row: the person, then the place,
-// its coordinates and their origin.
-func scanMapPerson(rows *sql.Rows) (person repository.MapPerson, place, lat, lon string, origin *domain.CoordinateOrigin, err error) {
-	var restriction, livingOverride sql.NullString
+// GetMapLocations returns aggregated geographic locations from the effective
+// birth/death coordinates of persons, resolved through the branch overlay
+// (ADR-005, ADR-009 §9): each place-bearing leg joins the places row of its
+// stored key, keeps the rows with an own pair or a place pair, and
+// repository.MapLocations groups them as on every store.
+func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.BranchID, privacy repository.Privacy) ([]repository.MapLocation, error) {
+	var uses []repository.MapUse
+	for _, eventType := range []string{"birth", "death"} {
+		col := eventType + "_place"
+		src, args, _ := resolvedPersonsSrc("id, given_name, surname, "+col+", "+col+"_key, "+col+"_lat, "+col+"_long, "+col+"_origin, "+mapPrivacyCols, branchID, privacy)
+		// #nosec G201 G202 -- src is an internal SQL fragment carrying only $-placeholders and col is one of two constants, not user input
+		// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+		rows, err := s.db.QueryContext(ctx, `
+			SELECT p.id, p.given_name, p.surname, p.`+col+`, COALESCE(p.`+col+`_key, ''),
+			       p.`+col+`_lat, p.`+col+`_long, p.`+col+`_origin,
+			       p.restriction, p.living_override, p.death_evidence, p.living_ref_date,
+			       pl.`+strings.ReplaceAll(placeFactsColumns, ", ", ", pl.")+`
+			FROM `+src+` p
+			LEFT JOIN places pl ON pl.key = p.`+col+`_key
+			WHERE (p.`+col+`_lat IS NOT NULL AND p.`+col+`_long IS NOT NULL AND p.`+col+`_lat != '' AND p.`+col+`_long != '')
+			   OR (pl.latitude IS NOT NULL AND pl.longitude IS NOT NULL)
+			ORDER BY p.`+col+` ASC, p.id ASC
+		`, args...)
+		if err != nil {
+			return nil, fmt.Errorf("query %s map locations: %w", eventType, err)
+		}
+		for rows.Next() {
+			use, err := scanMapUse(rows)
+			if err != nil {
+				rows.Close()
+				return nil, fmt.Errorf("scan %s map location: %w", eventType, err)
+			}
+			use.EventType = eventType
+			uses = append(uses, use)
+		}
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			return nil, err
+		}
+	}
+	return repository.MapLocations(uses), nil
+}
+
+// scanMapUse scans one GetMapLocations row: the person, the place text and
+// key, the record's own pair and origin, then the joined places row (all NULL
+// when the place has no facts).
+func scanMapUse(rows *sql.Rows) (use repository.MapUse, err error) {
+	var p repository.MapPerson
+	var lat, long sql.NullString
 	var originJSON []byte
+	var restriction, livingOverride sql.NullString
 	var deathEvidence bool
 	var livingRefDate sql.NullTime
-	if err := rows.Scan(&person.ID, &person.GivenName, &person.Surname, &place, &lat, &lon, &originJSON,
-		&restriction, &livingOverride, &deathEvidence, &livingRefDate); err != nil {
-		return person, "", "", "", nil, err
+	var placeID uuid.NullUUID
+	var placeKey, placeName, placeLat, placeLong sql.NullString
+	var placeOrigin []byte
+	var placeVersion sql.NullInt64
+	var placeUpdated sql.NullTime
+	var text sql.NullString
+	if err := rows.Scan(&p.ID, &p.GivenName, &p.Surname, &text, &use.Key, &lat, &long, &originJSON,
+		&restriction, &livingOverride, &deathEvidence, &livingRefDate,
+		&placeID, &placeKey, &placeName, &placeLat, &placeLong, &placeOrigin, &placeVersion, &placeUpdated); err != nil {
+		return repository.MapUse{}, err
 	}
-	origin = repository.UnmarshalCoordinateOrigin(originJSON, "persons", "place_origin", person.ID)
-	person.Restriction = domain.Restriction(restriction.String)
-	person.LivingFacts = domain.LivingFacts{
+	use.Text = text.String
+	use.Latitude, use.Longitude = nonEmptyStringPtr(lat), nonEmptyStringPtr(long)
+	use.Origin = repository.UnmarshalCoordinateOrigin(originJSON, "persons", "place_origin", p.ID)
+	if placeID.Valid {
+		use.Place = &repository.PlaceFactsReadModel{
+			ID: placeID.UUID, Key: placeKey.String, Name: placeName.String,
+			Latitude: nonEmptyStringPtr(placeLat), Longitude: nonEmptyStringPtr(placeLong),
+			Origin:  repository.UnmarshalCoordinateOrigin(placeOrigin, "places", "coordinates_origin", placeID.UUID),
+			Version: placeVersion.Int64,
+		}
+	}
+	p.Restriction = domain.Restriction(restriction.String)
+	p.LivingFacts = domain.LivingFacts{
 		Override:      domain.LivingOverride(livingOverride.String),
 		DeathEvidence: deathEvidence,
 		ReferenceDate: nullTimePtr(livingRefDate),
 	}
-	return person, place, lat, lon, origin, nil
-}
-
-// GetMapLocations returns aggregated geographic locations from person birth/death
-// coordinates, resolved through the branch overlay (ADR-005).
-func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.BranchID, privacy repository.Privacy) ([]repository.MapLocation, error) {
-	// Query birth locations — individual rows, aggregate in Go
-	birthSrc, birthArgs, _ := resolvedPersonsSrc("id, given_name, surname, birth_place, birth_place_lat, birth_place_long, birth_place_origin, "+mapPrivacyCols, branchID, privacy)
-	// #nosec G201 G202 -- birthSrc is an internal SQL fragment carrying only $-placeholders, not user input
-	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, given_name, surname, birth_place, birth_place_lat, birth_place_long, birth_place_origin, `+mapPrivacyCols+`
-		FROM `+birthSrc+` p
-		WHERE birth_place_lat IS NOT NULL AND birth_place_long IS NOT NULL
-		  AND birth_place_lat != '' AND birth_place_long != ''
-		ORDER BY birth_place ASC
-	`, birthArgs...)
-	if err != nil {
-		return nil, fmt.Errorf("query birth map locations: %w", err)
-	}
-	defer rows.Close()
-
-	type locKey struct {
-		place     string
-		eventType string
-	}
-	type locData struct {
-		lat     float64
-		lon     float64
-		persons []repository.MapPerson
-		origins []domain.CoordinateSource
-	}
-	agg := make(map[locKey]*locData)
-
-	for rows.Next() {
-		person, place, latStr, lonStr, origin, err := scanMapPerson(rows)
-		if err != nil {
-			return nil, fmt.Errorf("scan birth map location: %w", err)
-		}
-		lat, lon, ok := repository.ParseMapCoordinates(person.ID, "birth", latStr, lonStr)
-		if !ok {
-			continue
-		}
-		key := locKey{place: place, eventType: "birth"}
-		d, ok := agg[key]
-		if !ok {
-			d = &locData{lat: lat, lon: lon}
-			agg[key] = d
-		}
-		d.persons = append(d.persons, person)
-		d.origins = repository.AddMapOrigin(d.origins, origin)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-
-	// Query death locations
-	deathSrc, deathArgs, _ := resolvedPersonsSrc("id, given_name, surname, death_place, death_place_lat, death_place_long, death_place_origin, "+mapPrivacyCols, branchID, privacy)
-	// #nosec G201 G202 -- deathSrc is an internal SQL fragment carrying only $-placeholders, not user input
-	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
-	rows2, err := s.db.QueryContext(ctx, `
-		SELECT id, given_name, surname, death_place, death_place_lat, death_place_long, death_place_origin, `+mapPrivacyCols+`
-		FROM `+deathSrc+` p
-		WHERE death_place_lat IS NOT NULL AND death_place_long IS NOT NULL
-		  AND death_place_lat != '' AND death_place_long != ''
-		ORDER BY death_place ASC
-	`, deathArgs...)
-	if err != nil {
-		return nil, fmt.Errorf("query death map locations: %w", err)
-	}
-	defer rows2.Close()
-
-	for rows2.Next() {
-		person, place, latStr, lonStr, origin, err := scanMapPerson(rows2)
-		if err != nil {
-			return nil, fmt.Errorf("scan death map location: %w", err)
-		}
-		lat, lon, ok := repository.ParseMapCoordinates(person.ID, "death", latStr, lonStr)
-		if !ok {
-			continue
-		}
-		key := locKey{place: place, eventType: "death"}
-		d, ok := agg[key]
-		if !ok {
-			d = &locData{lat: lat, lon: lon}
-			agg[key] = d
-		}
-		d.persons = append(d.persons, person)
-		d.origins = repository.AddMapOrigin(d.origins, origin)
-	}
-	if err := rows2.Err(); err != nil {
-		return nil, err
-	}
-
-	results := make([]repository.MapLocation, 0, len(agg))
-	for key, data := range agg {
-		results = append(results, repository.MapLocation{
-			Place:     key.place,
-			Latitude:  data.lat,
-			Longitude: data.lon,
-			EventType: key.eventType,
-			Count:     len(data.persons),
-			Persons:   data.persons,
-			Origins:   data.origins,
-		})
-	}
-	sort.Slice(results, func(i, j int) bool {
-		if results[i].Place != results[j].Place {
-			return results[i].Place < results[j].Place
-		}
-		return results[i].EventType < results[j].EventType
-	})
-
-	return results, nil
+	use.Person = p
+	return use, nil
 }
 
 // GetBrickWalls returns persons with brick wall status. Brick walls are

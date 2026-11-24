@@ -240,6 +240,15 @@ func nullableString(s string) sql.NullString {
 	return sql.NullString{String: s, Valid: true}
 }
 
+// nullableStringPtr converts a nil or empty *string to NULL and any other to
+// its text.
+func nullableStringPtr(s *string) sql.NullString {
+	if s == nil {
+		return sql.NullString{}
+	}
+	return nullableString(*s)
+}
+
 // nullableUUID converts a nil *uuid.UUID to NULL and any other to its text.
 func nullableUUID(id *uuid.UUID) sql.NullString {
 	if id == nil {

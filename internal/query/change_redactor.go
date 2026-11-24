@@ -3,6 +3,7 @@ package query
 import (
 	"context"
 	"maps"
+	"slices"
 
 	"github.com/google/uuid"
 
@@ -204,6 +205,16 @@ var recordGetters = map[string]func(context.Context, repository.ReadModelStore, 
 	},
 	entityTypeDuplicatePair: func(ctx context.Context, s repository.ReadModelStore, b domain.BranchID, id uuid.UUID) (bool, error) {
 		return returned(s.GetDuplicateDismissal(ctx, b, id))
+	},
+	// A place resolves while a record names it or a fact about it is stated,
+	// and is shown when a record the principal may see names it (ADR-009
+	// §10, PL-006): ListPlaces holds exactly those for each store.
+	entityTypePlace: func(ctx context.Context, s repository.ReadModelStore, b domain.BranchID, id uuid.UUID) (bool, error) {
+		places, err := s.ListPlaces(ctx, b, repository.Privacy{})
+		if err != nil {
+			return false, err
+		}
+		return slices.ContainsFunc(places, func(p repository.PlaceReadModel) bool { return p.ID == id }), nil
 	},
 }
 

@@ -41,6 +41,10 @@ func newRedactorTree(t *testing.T) *redactorTree {
 		return p.ID
 	}
 	tr.dead, tr.living = person("Dora", true), person("Lena", false)
+	dora, err := raw.GetPerson(ctx, main, tr.dead)
+	must(err)
+	dora.BirthPlace = "Boston, MA"
+	must(raw.SavePerson(ctx, main, dora))
 	tr.family = uuid.New()
 	must(raw.SaveFamily(ctx, main, &repository.FamilyReadModel{ID: tr.family, Partner1ID: &tr.dead, Partner2ID: &tr.living, Version: 1, UpdatedAt: now}))
 
@@ -64,6 +68,8 @@ func newRedactorTree(t *testing.T) *redactorTree {
 	must(raw.SaveResearchLog(ctx, main, &repository.ResearchLogReadModel{ID: id(entityTypeResearchLog), SubjectID: tr.dead, SubjectType: "person", Version: 1, CreatedAt: now, UpdatedAt: now}))
 	must(raw.SaveProofSummary(ctx, main, &repository.ProofSummaryReadModel{ID: id(entityTypeProofSummary), FactType: domain.FactPersonBirth, SubjectID: tr.dead, Version: 1, CreatedAt: now, UpdatedAt: now}))
 	must(raw.SaveDuplicateDismissal(ctx, main, &repository.DuplicateDismissalReadModel{ID: id(entityTypeDuplicatePair), Person1ID: tr.dead, Person2ID: tr.dead, CreatedAt: now, UpdatedAt: now}))
+	// A place resolves from its use: Dora's birth place.
+	tr.records[entityTypePlace] = repository.PlaceID("boston,ma")
 	return tr
 }
 

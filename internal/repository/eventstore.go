@@ -667,6 +667,12 @@ func (e *StoredEvent) DecodeEvent() (domain.Event, error) {
 			return nil, err
 		}
 		return event, nil
+	case "PlaceUpdated":
+		var event domain.PlaceUpdated
+		if err := json.Unmarshal(data, &event); err != nil {
+			return nil, err
+		}
+		return event, nil
 	case "ImportedValuesBackfilled":
 		var event domain.ImportedValuesBackfilled
 		if err := json.Unmarshal(data, &event); err != nil {
