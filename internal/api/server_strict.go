@@ -462,6 +462,27 @@ func (ss *StrictServer) ListPlaces(ctx context.Context, request ListPlacesReques
 	return ListPlaces200JSONResponse{Items: items, Total: total, Limit: &limit, Offset: &offset}, nil
 }
 
+// ListUnmappedPlaces implements StrictServerInterface.
+func (ss *StrictServer) ListUnmappedPlaces(ctx context.Context, request ListUnmappedPlacesRequestObject) (ListUnmappedPlacesResponseObject, error) {
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
+	places, err := ss.server.browseService.ListUnmappedPlaces(ctx, branchScopeID(branch))
+	if err != nil {
+		return nil, err
+	}
+	items := make([]UnmappedPlace, len(places))
+	for i, p := range places {
+		suggestions := make([]CoordinateSuggestion, len(p.Suggestions))
+		for j, c := range p.Suggestions {
+			suggestions[j] = CoordinateSuggestion{Latitude: c.Latitude, Longitude: c.Longitude, Count: c.Count}
+		}
+		items[i] = UnmappedPlace{Id: p.ID, Key: p.Key, Name: p.Name, Spelling: p.Spelling, Count: p.Count, Suggestions: suggestions}
+	}
+	return ListUnmappedPlaces200JSONResponse{Items: items, Total: len(items)}, nil
+}
+
 // GetPlace implements StrictServerInterface.
 func (ss *StrictServer) GetPlace(ctx context.Context, request GetPlaceRequestObject) (GetPlaceResponseObject, error) {
 	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)

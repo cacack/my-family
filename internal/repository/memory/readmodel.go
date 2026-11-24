@@ -2385,46 +2385,86 @@ func (s *ReadModelStore) GetCemeteryIndex(ctx context.Context, branchID domain.B
 func (s *ReadModelStore) ListPlaces(ctx context.Context, branchID domain.BranchID, privacy repository.Privacy) ([]repository.PlaceReadModel, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	return repository.Places(s.placeUses(branchID, privacy), s.placeFacts(), repository.PlaceAliasesByKey(s.placeAliases), privacy), nil
+}
 
-	counts := make(map[string]int)
-	use := func(place string) {
+// ListUnmappedPlaces returns the no-coordinates worklist from the records
+// ListPlaces reads (repository.UnmappedPlaces), as on the SQL stores.
+func (s *ReadModelStore) ListUnmappedPlaces(ctx context.Context, branchID domain.BranchID, privacy repository.Privacy) ([]repository.UnmappedPlace, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return repository.UnmappedPlaces(s.placeUses(branchID, privacy), s.placeFacts(), repository.PlaceAliasesByKey(s.placeAliases)), nil
+}
+
+// placeUses counts the place texts, with their own pairs, of the records
+// visitShownPlaces visits. The caller holds s.mu.
+func (s *ReadModelStore) placeUses(branchID domain.BranchID, privacy repository.Privacy) []repository.PlaceUse {
+	// A use is keyed by value; "" stands for an unset half, which is how
+	// repository.ResolveCoordinates reads an empty one too.
+	type use struct{ text, lat, long string }
+	counts := make(map[use]int)
+	s.visitShownPlaces(branchID, privacy, func(place string, lat, long *string) {
 		if place != "" {
-			counts[place]++
+			counts[use{place, valueOrEmpty(lat), valueOrEmpty(long)}]++
 		}
+	})
+	uses := make([]repository.PlaceUse, 0, len(counts))
+	for u, n := range counts {
+		uses = append(uses, repository.PlaceUse{Key: repository.PlaceKey(u.text), Text: u.text,
+			Latitude: nilIfEmpty(u.lat), Longitude: nilIfEmpty(u.long), Count: n})
 	}
+	return uses
+}
+
+// visitShownPlaces calls visit with the place text and own pair of each of
+// the five place-bearing rows of branchID's overlay that privacy shows. A
+// family's marriage place is shown only when the family is not hidden and
+// each partner is shown, and a life event or attribute only when its owner
+// is shown (ADR-008 §3). The caller holds s.mu.
+func (s *ReadModelStore) visitShownPlaces(branchID domain.BranchID, privacy repository.Privacy, visit func(place string, lat, long *string)) {
 	shownPeople := make(map[uuid.UUID]bool)
 	for _, p := range resolveAllRows(s.persons, branchID) {
 		if privacy.Protects(p) {
 			continue
 		}
 		shownPeople[p.ID] = true
-		use(p.BirthPlace)
-		use(p.DeathPlace)
+		visit(p.BirthPlace, p.BirthPlaceLat, p.BirthPlaceLong)
+		visit(p.DeathPlace, p.DeathPlaceLat, p.DeathPlaceLong)
 	}
 	partnerShown := func(id *uuid.UUID) bool { return id == nil || shownPeople[*id] }
 	shownFamilies := make(map[uuid.UUID]bool)
 	for _, f := range resolveAllRows(s.families, branchID) {
 		if privacy.SeesAll() || !privacy.Hides(f.Restriction) && partnerShown(f.Partner1ID) && partnerShown(f.Partner2ID) {
 			shownFamilies[f.ID] = true
-			use(f.MarriagePlace)
+			visit(f.MarriagePlace, f.MarriagePlaceLat, f.MarriagePlaceLong)
 		}
 	}
 	for _, e := range resolveAllRows(s.events, branchID) {
 		if privacy.SeesAll() || e.OwnerType == "person" && shownPeople[e.OwnerID] || e.OwnerType == "family" && shownFamilies[e.OwnerID] {
-			use(e.Place)
+			visit(e.Place, e.PlaceLat, e.PlaceLong)
 		}
 	}
 	for _, a := range resolveAllRows(s.attributes, branchID) {
 		if privacy.SeesAll() || shownPeople[a.PersonID] {
-			use(a.Place)
+			visit(a.Place, a.PlaceLat, a.PlaceLong)
 		}
 	}
+}
 
-	uses := make([]repository.PlaceUse, 0, len(counts))
-	for text, n := range counts {
-		uses = append(uses, repository.PlaceUse{Key: repository.PlaceKey(text), Text: text, Count: n})
+// valueOrEmpty is *v, or "" when v is nil.
+func valueOrEmpty(v *string) string {
+	if v == nil {
+		return ""
 	}
-	return repository.Places(uses, s.placeFacts(), repository.PlaceAliasesByKey(s.placeAliases), privacy), nil
+	return *v
+}
+
+// nilIfEmpty is a pointer to v, or nil when v is "".
+func nilIfEmpty(v string) *string {
+	if v == "" {
+		return nil
+	}
+	return &v
 }
 
 // placeFacts returns a copy of every places row. The caller holds s.mu.

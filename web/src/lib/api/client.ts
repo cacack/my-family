@@ -279,6 +279,8 @@ const BRANCH_SCOPED_OPERATIONS: ReadonlyArray<{
 	// The places in use (#1734): a place named only on a branch is in use there.
 	{ methods: ['GET'], pattern: new RegExp('^/places$') },
 	{ methods: ['GET'], pattern: new RegExp(`^/places/${UUID_SEGMENT}$`) },
+	// The no-coordinates worklist (#1561) reads the same records.
+	{ methods: ['GET'], pattern: new RegExp('^/places/unmapped$') },
 	// Person/family facts (#757).
 	{ methods: ['GET', 'POST'], pattern: new RegExp('^/associations$') },
 	{ methods: ['GET', 'PUT', 'DELETE'], pattern: new RegExp(`^/associations/${UUID_SEGMENT}$`) },
@@ -588,6 +590,8 @@ export type PlaceEntry = Schemas['PlaceEntry'];
 export type Place = Schemas['Place'];
 export type PlaceList = Schemas['PlaceList'];
 export type PlaceAliasEntry = Schemas['PlaceAliasEntry'];
+export type UnmappedPlace = Schemas['UnmappedPlace'];
+export type UnmappedPlaceList = Schemas['UnmappedPlaceList'];
 export type CemeteryIndexResponse = Schemas['CemeteryIndexResponse'];
 export type CemeteryEntry = Schemas['CemeteryEntry'];
 export type MapLocationsResponse = Schemas['MapLocationsResponse'];
@@ -1557,6 +1561,14 @@ class ApiClient {
 		if (params?.offset) searchParams.set('offset', params.offset.toString());
 		const query = searchParams.toString();
 		return this.request<PlaceList>('GET', `/places${query ? `?${query}` : ''}`);
+	}
+
+	/**
+	 * The places with records that have no coordinates (ADR-009 §9), with the
+	 * pairs other records there carry. Branch-scoped: honors the active branch.
+	 */
+	async listUnmappedPlaces(): Promise<UnmappedPlaceList> {
+		return this.request<UnmappedPlaceList>('GET', '/places/unmapped');
 	}
 
 	/** Branch-scoped: honors the active branch (see `BRANCH_SCOPED_OPERATIONS`). */

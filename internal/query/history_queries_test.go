@@ -412,6 +412,9 @@ func (m *mockReadModelStore) GetPersonsByCemetery(ctx context.Context, place str
 func (m *mockReadModelStore) ListPlaces(ctx context.Context, _ domain.BranchID, _ repository.Privacy) ([]repository.PlaceReadModel, error) {
 	return nil, nil
 }
+func (m *mockReadModelStore) ListUnmappedPlaces(ctx context.Context, _ domain.BranchID, _ repository.Privacy) ([]repository.UnmappedPlace, error) {
+	return nil, nil
+}
 func (m *mockReadModelStore) SavePlaceFacts(ctx context.Context, _ *repository.PlaceFactsReadModel) error {
 	return nil
 }

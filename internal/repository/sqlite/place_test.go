@@ -50,3 +50,11 @@ func TestPlaceAliases(t *testing.T) {
 	defer cleanup()
 	placetest.RunPlaceAliases(t, store)
 }
+
+// TestUnmappedPlaces runs the shared #1561 suite against the sqlite backend;
+// the memory and postgres packages run the same body (DB-001).
+func TestUnmappedPlaces(t *testing.T) {
+	store, cleanup := setupTestReadModelDB(t)
+	defer cleanup()
+	placetest.RunUnmappedPlaces(t, store)
+}

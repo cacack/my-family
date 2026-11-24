@@ -926,6 +926,10 @@ type ReadModelStore interface {
 	// GetPlaceHierarchy still counts birth and death places only, so its
 	// counts are lower until it moves onto place IDs (ADR-009 step 5).
 	ListPlaces(ctx context.Context, branchID domain.BranchID, privacy Privacy) ([]PlaceReadModel, error)
+	// ListUnmappedPlaces returns the no-coordinates worklist (ADR-009 §9),
+	// built by UnmappedPlaces from the same records, with their own pairs, as
+	// ListPlaces reads.
+	ListUnmappedPlaces(ctx context.Context, branchID domain.BranchID, privacy Privacy) ([]UnmappedPlace, error)
 
 	// Place facts (ADR-009 §2): the places table, projected from PlaceUpdated.
 	// MAIN-ONLY (PL-005): the table has no branch_id and every branch reads

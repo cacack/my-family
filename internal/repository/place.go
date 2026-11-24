@@ -83,11 +83,15 @@ func foldRune(r rune) rune {
 }
 
 // PlaceUse is one recorded spelling of a place and the number of records that
-// use it. Text is the text as recorded and Key its stored PlaceKey.
+// use it. Text is the text as recorded and Key its stored PlaceKey. Latitude
+// and Longitude are those records' own pair, nil where a record has none; a
+// store that reads no pairs leaves them nil and counts per spelling.
 type PlaceUse struct {
-	Key   string
-	Text  string
-	Count int
+	Key       string
+	Text      string
+	Latitude  *string
+	Longitude *string
+	Count     int
 }
 
 // PlaceLevels builds the place browser's level directly under parent from the
