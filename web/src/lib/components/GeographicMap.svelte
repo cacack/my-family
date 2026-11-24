@@ -6,6 +6,7 @@
 	import type { Topology, GeometryCollection as TopoGeometryCollection } from 'topojson-specification';
 	import { motionDuration, observeChartResize } from '#lib/utils/chart.js';
 	import PrivacyBadges from './PrivacyBadges.svelte';
+	import { coordinateSourcesText } from '#lib/utils/coordinateOrigin.js';
 	import { getReducedMotion } from '#lib/stores/accessibilitySettings.svelte.js';
 	import { loadWorldAtlas } from '#lib/utils/worldAtlas.js';
 	import {
@@ -410,6 +411,11 @@
 							{location.count}
 							{location.count === 1 ? 'person' : 'persons'}
 						</p>
+						{#if location.origins?.length}
+							<p class="panel-origins">
+								Coordinates: {coordinateSourcesText(location.origins)}
+							</p>
+						{/if}
 						<ul class="person-list">
 							{#each location.persons as person (person.id)}
 								<li>
@@ -621,6 +627,12 @@
 	.panel-count {
 		margin: 0.5rem 0;
 		font-size: 0.875rem;
+		color: var(--color-text-muted);
+	}
+
+	.panel-origins {
+		margin: 0 0 0.5rem;
+		font-size: 0.8125rem;
 		color: var(--color-text-muted);
 	}
 

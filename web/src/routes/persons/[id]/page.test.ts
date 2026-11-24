@@ -431,6 +431,37 @@ describe('Person detail edit form', () => {
 		expect(body).toMatchObject({ birth_place: '', notes: '', given_name: 'Ada', surname: 'Lovelace' });
 	});
 
+	// A geocoder's guess must not read as a location taken from a source (#1563).
+	it('shows each place\'s coordinates and their origin beside the place', async () => {
+		getPerson.mockResolvedValue(
+			person({
+				birth_place: 'Boston',
+				birth_place_latitude: 'N42.3601',
+				birth_place_longitude: 'W71.0589',
+				birth_place_coordinates_origin: { source: 'imported' },
+				death_place: 'Sydney',
+				death_place_latitude: 'S33.8688',
+				death_place_longitude: 'E151.2093',
+				death_place_coordinates_origin: { source: 'geocoded', provider: 'Nominatim', precision: 'partial' }
+			})
+		);
+		await openEdit();
+
+		const description = (label: string) => {
+			const id = screen.getByLabelText(label).getAttribute('aria-describedby');
+			return document.getElementById(id ?? '')?.textContent?.replace(/\s+/g, ' ').trim();
+		};
+		expect(description('Birth Place')).toBe('N42.3601, W71.0589 · Imported');
+		expect(description('Death Place')).toBe('S33.8688, E151.2093 · Geocoded by Nominatim, partial match');
+	});
+
+	it('shows no coordinates for a place without them', async () => {
+		getPerson.mockResolvedValue(person({ birth_place: 'Boston' }));
+		await openEdit();
+		expect(screen.getByLabelText('Birth Place').getAttribute('aria-describedby')).toBeNull();
+		expect(screen.queryByTestId('place-coordinates')).toBeNull();
+	});
+
 	// Many real records have no surname (#911); the form must not block saving them.
 	it('saves a person who has no surname', async () => {
 		getPerson.mockResolvedValue(person({ surname: '' }));

@@ -589,6 +589,8 @@ export type CemeteryIndexResponse = Schemas['CemeteryIndexResponse'];
 export type CemeteryEntry = Schemas['CemeteryEntry'];
 export type MapLocationsResponse = Schemas['MapLocationsResponse'];
 export type MapLocation = Schemas['MapLocation'];
+export type CoordinateOrigin = Schemas['CoordinateOrigin'];
+export type CoordinateSource = Schemas['CoordinateSource'];
 export type BrickWallEntry = Schemas['BrickWallEntry'];
 export type BrickWallsResponse = Schemas['BrickWallsResponse'];
 

@@ -39,6 +39,7 @@
 	import { Button } from '#lib/components/ui/button/index.js';
 	import ActionBar from '#lib/components/ActionBar.svelte';
 	import FormRow from '#lib/components/FormRow.svelte';
+	import PlaceCoordinates from '#lib/components/PlaceCoordinates.svelte';
 	import { Badge } from '#lib/components/ui/badge/index.js';
 	import { activeBranch } from '#lib/stores/activeBranch.svelte.js';
 	import { ROLLBACK_MAINLINE_ONLY } from '#lib/utils/rollbackScope.js';
@@ -540,10 +541,22 @@
 							/>
 						{/if}
 					</div>
-					<label>
-						Marriage Place
-						<input type="text" bind:value={formData.marriage_place} />
-					</label>
+					<div class="place-field">
+						<label>
+							Marriage Place
+							<input
+								type="text"
+								bind:value={formData.marriage_place}
+								aria-describedby={family.marriage_place_latitude ? 'marriage-place-coordinates' : undefined}
+							/>
+						</label>
+						<PlaceCoordinates
+							id="marriage-place-coordinates"
+							latitude={family.marriage_place_latitude}
+							longitude={family.marriage_place_longitude}
+							origin={family.marriage_place_coordinates_origin}
+						/>
+					</div>
 				</FormRow>
 
 				<PrivacyFields noun="family" bind:private={formData.private} />
@@ -896,7 +909,8 @@
 	}
 
 	/* The date input's label with any refusal of it underneath (#1112). */
-	.date-field {
+	.date-field,
+	.place-field {
 		display: flex;
 		flex-direction: column;
 		gap: 0.375rem;

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { changeFieldLabel } from '#lib/utils/changeEntries.js';
-	import type { FieldChange } from '#lib/api/client.js';
+	import type { CoordinateOrigin, FieldChange } from '#lib/api/client.js';
+	import { coordinateOriginText } from '#lib/utils/coordinateOrigin.js';
 
 	interface Props {
 		changes: Record<string, FieldChange>;
@@ -8,9 +9,13 @@
 
 	let { changes }: Props = $props();
 
-	function formatValue(value: unknown): string {
+	function formatValue(field: string, value: unknown): string {
 		if (value === null || value === undefined) {
 			return '(empty)';
+		}
+		// A coordinate pair's origin (#1563) reads as words, not JSON
+		if (field.endsWith('_place_origin') && typeof value === 'object') {
+			return coordinateOriginText(value as CoordinateOrigin);
 		}
 		if (typeof value === 'object') {
 			// Handle GenDate objects
@@ -33,13 +38,13 @@
 			<span class="field-name">{changeFieldLabel(field)}</span>
 			<div class="diff-values">
 				{#if change.old_value !== undefined && change.old_value !== null}
-					<span class="old-value">{formatValue(change.old_value)}</span>
+					<span class="old-value">{formatValue(field, change.old_value)}</span>
 				{:else}
 					<span class="empty-value">(empty)</span>
 				{/if}
 				<span class="arrow">→</span>
 				{#if change.new_value !== undefined && change.new_value !== null}
-					<span class="new-value">{formatValue(change.new_value)}</span>
+					<span class="new-value">{formatValue(field, change.new_value)}</span>
 				{:else}
 					<span class="empty-value">(empty)</span>
 				{/if}
