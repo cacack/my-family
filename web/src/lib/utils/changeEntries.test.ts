@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   CHANGE_ENTITY_TYPES,
   changeActionLabel,
+  changeFieldLabel,
   changeEntryLink,
   entityTypeLabel,
   mergedFromLabel,
@@ -148,6 +149,16 @@ describe("branch lifecycle and merge provenance (#832)", () => {
     );
     expect(mergedFromLabel({ ...origin, branch_name: "" })).toBe(
       "via merge of a research branch",
+    );
+  });
+});
+
+describe("changeFieldLabel", () => {
+  it("title-cases a change key and spells out coordinate axes", () => {
+    expect(changeFieldLabel("birth_place")).toBe("Birth Place");
+    expect(changeFieldLabel("birth_place_lat")).toBe("Birth Place Latitude");
+    expect(changeFieldLabel("marriage_place_long")).toBe(
+      "Marriage Place Longitude",
     );
   });
 });

@@ -466,7 +466,21 @@ func (d *historyDescription) conflictFieldLabel(field string) string {
 	if ref, ok := referenceFields[field]; ok && ref.label != "" {
 		return ref.label
 	}
+	if label, ok := coordinateFieldLabels[field]; ok {
+		return label
+	}
 	return humanizeField(field)
+}
+
+// coordinateFieldLabels spell out the place coordinate change keys (#1604),
+// which humanizeField would leave as "Birth place lat".
+var coordinateFieldLabels = map[string]string{
+	"birth_place_lat":     "Birth place latitude",
+	"birth_place_long":    "Birth place longitude",
+	"death_place_lat":     "Death place latitude",
+	"death_place_long":    "Death place longitude",
+	"marriage_place_lat":  "Marriage place latitude",
+	"marriage_place_long": "Marriage place longitude",
 }
 
 // humanizeField turns a snake_case field key into a sentence-case label,

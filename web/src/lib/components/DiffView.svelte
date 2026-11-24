@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { changeFieldLabel } from '#lib/utils/changeEntries.js';
 	import type { FieldChange } from '#lib/api/client.js';
 
 	interface Props {
@@ -21,14 +22,6 @@
 		return String(value);
 	}
 
-	function formatFieldName(field: string): string {
-		// Convert snake_case to Title Case
-		return field
-			.split('_')
-			.map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-			.join(' ');
-	}
-
 	function isDateField(field: string): boolean {
 		return field.includes('date') || field.includes('Date');
 	}
@@ -37,7 +30,7 @@
 <div class="diff-view">
 	{#each Object.entries(changes) as [field, change]}
 		<div class="diff-row">
-			<span class="field-name">{formatFieldName(field)}</span>
+			<span class="field-name">{changeFieldLabel(field)}</span>
 			<div class="diff-values">
 				{#if change.old_value !== undefined && change.old_value !== null}
 					<span class="old-value">{formatValue(change.old_value)}</span>

@@ -1394,6 +1394,10 @@ func (ss *StrictServer) CreateFamily(ctx context.Context, request CreateFamilyRe
 	if request.Body.MarriagePlace != nil {
 		input.MarriagePlace = *request.Body.MarriagePlace
 	}
+	input.MarriagePlaceCoordinates = command.CoordinatesPatch{
+		Latitude:  command.SetPtr(request.Body.MarriagePlaceLatitude),
+		Longitude: command.SetPtr(request.Body.MarriagePlaceLongitude),
+	}
 
 	result, err := ss.branchWriter(branch).CreateFamily(ctx, input)
 	if err != nil {
@@ -1453,6 +1457,10 @@ func (ss *StrictServer) UpdateFamily(ctx context.Context, request UpdateFamilyRe
 		MarriagePlace:    patchOf(request.Body.MarriagePlace),
 		Private:          request.Body.Private,
 		Version:          request.Body.Version,
+		MarriagePlaceCoordinates: command.CoordinatesPatch{
+			Latitude:  patchOf(request.Body.MarriagePlaceLatitude),
+			Longitude: patchOf(request.Body.MarriagePlaceLongitude),
+		},
 	}
 
 	_, err = ss.branchWriter(branch).UpdateFamily(ctx, input)
@@ -2419,6 +2427,14 @@ func (ss *StrictServer) CreatePerson(ctx context.Context, request CreatePersonRe
 	if request.Body.ResearchStatus != nil {
 		input.ResearchStatus = string(*request.Body.ResearchStatus)
 	}
+	input.BirthPlaceCoordinates = command.CoordinatesPatch{
+		Latitude:  command.SetPtr(request.Body.BirthPlaceLatitude),
+		Longitude: command.SetPtr(request.Body.BirthPlaceLongitude),
+	}
+	input.DeathPlaceCoordinates = command.CoordinatesPatch{
+		Latitude:  command.SetPtr(request.Body.DeathPlaceLatitude),
+		Longitude: command.SetPtr(request.Body.DeathPlaceLongitude),
+	}
 
 	result, err := writer.CreatePerson(ctx, input)
 	if err != nil {
@@ -2475,6 +2491,14 @@ func (ss *StrictServer) UpdatePerson(ctx context.Context, request UpdatePersonRe
 	input.BirthPlace = patchOf(request.Body.BirthPlace)
 	input.DeathDate = patchOf(request.Body.DeathDate)
 	input.DeathPlace = patchOf(request.Body.DeathPlace)
+	input.BirthPlaceCoordinates = command.CoordinatesPatch{
+		Latitude:  patchOf(request.Body.BirthPlaceLatitude),
+		Longitude: patchOf(request.Body.BirthPlaceLongitude),
+	}
+	input.DeathPlaceCoordinates = command.CoordinatesPatch{
+		Latitude:  patchOf(request.Body.DeathPlaceLatitude),
+		Longitude: patchOf(request.Body.DeathPlaceLongitude),
+	}
 	input.Notes = patchOf(request.Body.Notes)
 	input.ResearchStatus = patchString(request.Body.ResearchStatus)
 	input.LivingOverride = patchString(request.Body.LivingOverride)

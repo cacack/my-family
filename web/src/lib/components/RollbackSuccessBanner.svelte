@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { changeFieldLabel } from '#lib/utils/changeEntries.js';
+
 	interface Props {
 		message: string;
 		changes?: Record<string, unknown>;
@@ -11,13 +13,6 @@
 		const timer = setTimeout(onDismiss, 5000);
 		return () => clearTimeout(timer);
 	});
-
-	function formatFieldName(field: string): string {
-		return field
-			.split('_')
-			.map((word: string) => word.charAt(0).toUpperCase() + word.slice(1))
-			.join(' ');
-	}
 </script>
 
 <div class="success-banner" role="status" aria-live="polite">
@@ -33,7 +28,7 @@
 				<div class="changes-list">
 					<span class="changes-label">Restored fields:</span>
 					{#each Object.keys(changes) as field}
-						<span class="change-tag">{formatFieldName(field)}</span>
+						<span class="change-tag">{changeFieldLabel(field)}</span>
 					{/each}
 				</div>
 			{/if}

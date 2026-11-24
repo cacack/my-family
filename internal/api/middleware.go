@@ -135,7 +135,7 @@ func customErrorHandler(err error, c echo.Context) {
 		apiErr = APIError{
 			Code:    CodeValidation,
 			Message: err.Error(),
-			Details: invalidDateDetails(err),
+			Details: invalidInputDetails(err),
 		}
 	default:
 		// Check if it's an Echo HTTP error
@@ -165,6 +165,19 @@ func customErrorHandler(err error, c echo.Context) {
 	}
 
 	_ = c.JSON(code, apiErr)
+}
+
+// invalidInputDetails names the field of a rejected date (invalidDateDetails)
+// or place coordinate (#1604), or is nil for any other error.
+func invalidInputDetails(err error) map[string]any {
+	if details := invalidDateDetails(err); details != nil {
+		return details
+	}
+	var coordErr *command.InvalidCoordinateError
+	if errors.As(err, &coordErr) {
+		return map[string]any{"field": coordErr.Field}
+	}
+	return nil
 }
 
 // invalidDateDetails describes a rejected date for the client, or is nil for
