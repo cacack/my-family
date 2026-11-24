@@ -39,7 +39,7 @@
 	import { Button } from '#lib/components/ui/button/index.js';
 	import ActionBar from '#lib/components/ActionBar.svelte';
 	import FormRow from '#lib/components/FormRow.svelte';
-	import PlaceCoordinates from '#lib/components/PlaceCoordinates.svelte';
+	import CoordinateFields from '#lib/components/CoordinateFields.svelte';
 	import { Badge } from '#lib/components/ui/badge/index.js';
 	import { activeBranch } from '#lib/stores/activeBranch.svelte.js';
 	import { ROLLBACK_MAINLINE_ONLY } from '#lib/utils/rollbackScope.js';
@@ -57,6 +57,7 @@
 		type DateFieldError,
 		type SavedAs
 	} from '#lib/utils/dateInput.js';
+	import { coordinateChange, coordinatePairError, toDecimalDegrees, type CoordinateError } from '#lib/utils/coordinates.js';
 
 	let family: FamilyDetail | null = $state(null);
 	let loading = $state(true);
@@ -93,11 +94,15 @@
 			family = latest;
 			formData = fields;
 		},
-		save: () => saveFamily()
+		save: () => saveFamily(),
+		// A coordinate pair is one location (#1033).
+		together: [['marriage_place_latitude', 'marriage_place_longitude']]
 	});
 	// A save refused for the marriage date, shown beside it (#1112); an
 	// unreadable one is offered to keep as text (#978).
 	let dateError: DateFieldError<'marriage_date'> | null = $state(null);
+	// The coordinate input a save was stopped for (#1033).
+	let coordinateError: CoordinateError | null = $state(null);
 	// The marriage date, when the last save stored it in another form than
 	// typed (#978).
 	let savedAs: SavedAs | undefined = $state();
@@ -165,6 +170,9 @@
 		relationship_type: 'unknown' as RelationType,
 		marriage_date: '',
 		marriage_place: '',
+		// In signed decimal degrees, as typed (#1033).
+		marriage_place_latitude: '',
+		marriage_place_longitude: '',
 		private: false
 	});
 
@@ -263,6 +271,8 @@
 			relationship_type: saved.relationship_type || 'unknown',
 			marriage_date: saved.marriage_date?.raw || '',
 			marriage_place: saved.marriage_place || '',
+			marriage_place_latitude: toDecimalDegrees(saved.marriage_place_latitude, 'latitude'),
+			marriage_place_longitude: toDecimalDegrees(saved.marriage_place_longitude, 'longitude'),
 			private: saved.private === true
 		};
 	}
@@ -303,6 +313,8 @@
 		{ key: 'relationship_type', label: 'Relationship Type', format: (value) => relationLabel(String(value)) },
 		{ key: 'marriage_date', label: 'Marriage Date' },
 		{ key: 'marriage_place', label: 'Marriage Place' },
+		{ key: 'marriage_place_latitude', label: 'Marriage Place latitude' },
+		{ key: 'marriage_place_longitude', label: 'Marriage Place longitude' },
 		{ key: 'private', label: 'Private', format: (value) => (value ? 'Yes' : 'No') }
 	];
 
@@ -326,6 +338,7 @@
 		saveError = null;
 		saveConflict.clear();
 		dateError = null;
+		coordinateError = null;
 		savedAs = undefined;
 		actionError = null;
 		editing = true;
@@ -337,12 +350,22 @@
 		saveError = null;
 		saveConflict.clear();
 		dateError = null;
+		coordinateError = null;
 		editing = false;
 		focusEditButton();
 	}
 
 	async function saveFamily() {
 		if (!family || !hasPartner) return;
+		const pair = { latitude: formData.marriage_place_latitude, longitude: formData.marriage_place_longitude };
+		const savedPair = { latitude: family.marriage_place_latitude, longitude: family.marriage_place_longitude };
+		coordinateError = coordinatePairError(pair, formData.marriage_place, savedPair);
+		if (coordinateError) {
+			focusFirstInvalid(editForm);
+			return;
+		}
+		// Left out when it is as stored, so the API keeps it and its origin.
+		const coordinates = coordinateChange(pair, savedPair);
 		saving = true;
 		saveError = null;
 		saveConflict.clear();
@@ -360,6 +383,10 @@
 				// An empty string clears the field; an omitted one is left unchanged.
 				marriage_date: formData.marriage_date,
 				marriage_place: formData.marriage_place,
+				...(coordinates && {
+					marriage_place_latitude: coordinates.latitude,
+					marriage_place_longitude: coordinates.longitude
+				}),
 				// Sent only when changed, like the relationship type.
 				private: formData.private !== (family.private === true) ? formData.private : undefined,
 				...partnerChanges(family, partner1, partner2),
@@ -544,17 +571,20 @@
 					<div class="place-field">
 						<label>
 							Marriage Place
-							<input
-								type="text"
-								bind:value={formData.marriage_place}
-								aria-describedby={family.marriage_place_latitude ? 'marriage-place-coordinates' : undefined}
-							/>
+							<input type="text" bind:value={formData.marriage_place} />
 						</label>
-						<PlaceCoordinates
-							id="marriage-place-coordinates"
-							latitude={family.marriage_place_latitude}
-							longitude={family.marriage_place_longitude}
-							origin={family.marriage_place_coordinates_origin}
+						<CoordinateFields
+							id="marriage-place"
+							place="Marriage Place"
+							bind:latitude={formData.marriage_place_latitude}
+							bind:longitude={formData.marriage_place_longitude}
+							error={coordinateError}
+							saved={{
+								latitude: family.marriage_place_latitude,
+								longitude: family.marriage_place_longitude,
+								origin: family.marriage_place_coordinates_origin
+							}}
+							placePair={formData.marriage_place === (family.marriage_place || '') ? family.marriage_place_resolved : undefined}
 						/>
 					</div>
 				</FormRow>

@@ -99,6 +99,34 @@ describe('SaveConflictFlow', () => {
 		expect(save).not.toHaveBeenCalled();
 	});
 
+	it('lists and keeps both fields of a pair when only one was edited', async () => {
+		type Pair = { version: number; lat: string; long: string };
+		const state = { record: { version: 1, lat: '42', long: '-71' }, form: { lat: '43', long: '-71' } };
+		const flow = new SaveConflictFlow<Pair, { lat: string; long: string }>({
+			base: () => state.record,
+			formFrom: ({ lat, long }) => ({ lat, long }),
+			form: () => state.form,
+			adopt: (latest, form) => {
+				state.record = latest;
+				state.form = form;
+			},
+			save: vi.fn(),
+			together: [['lat', 'long']]
+		});
+		await flow.load(() => Promise.resolve({ version: 2, lat: '-33', long: '151' }));
+		expect(
+			flow.fields([
+				{ key: 'lat', label: 'Latitude' },
+				{ key: 'long', label: 'Longitude' }
+			])
+		).toEqual([
+			{ label: 'Latitude', mine: '43', latest: '-33' },
+			{ label: 'Longitude', mine: '-71', latest: '151' }
+		]);
+		flow.keepMine();
+		expect(state.form).toEqual({ lat: '43', long: '-71' });
+	});
+
 	it('does nothing without a conflict', () => {
 		const { state, save, flow } = setup(opened);
 		flow.keepMine();

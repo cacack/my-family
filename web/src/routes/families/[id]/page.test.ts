@@ -591,20 +591,78 @@ describe('Family Detail Page: partners and children (#826)', () => {
 		expect(body).not.toHaveProperty('partner2_id');
 	});
 
-	// A geocoder's guess must not read as a location taken from a source (#1563).
-	it('shows the marriage place coordinates and their origin beside the place', async () => {
-		vi.mocked(api.getFamily).mockResolvedValue({
-			...mockFamilyWithChildren,
-			marriage_place: 'Springfield',
-			marriage_place_latitude: 'N39.7817',
-			marriage_place_longitude: 'W89.6501',
-			marriage_place_coordinates_origin: { source: 'copied' }
-		});
+	/** The latitude and longitude inputs under the marriage place (#1033). */
+	function coordinates() {
+		const group = within(screen.getByRole('group', { name: 'Marriage Place coordinates' }));
+		return {
+			latitude: group.getByLabelText('Latitude') as HTMLInputElement,
+			longitude: group.getByLabelText('Longitude') as HTMLInputElement
+		};
+	}
+
+	async function saveBody() {
+		await fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+		await waitFor(() => expect(api.updateFamily).toHaveBeenCalled());
+		return vi.mocked(api.updateFamily).mock.calls[0][1];
+	}
+
+	const springfield = {
+		...mockFamilyWithChildren,
+		marriage_place: 'Springfield',
+		marriage_place_latitude: 'N39.7817',
+		marriage_place_longitude: 'W89.6501',
+		marriage_place_coordinates_origin: { source: 'copied' as const }
+	};
+
+	it('shows the stored pair in signed decimal degrees, with its origin (#1033, #1563)', async () => {
+		vi.mocked(api.getFamily).mockResolvedValue(springfield);
 		await openEdit();
-		const id = screen.getByLabelText('Marriage Place').getAttribute('aria-describedby');
-		expect(document.getElementById(id ?? '')?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
-			'N39.7817, W89.6501 · Copied from another place'
+		const { latitude, longitude } = coordinates();
+		expect(latitude.value).toBe('39.7817');
+		expect(longitude.value).toBe('-89.6501');
+		// A geocoder's guess must not read as a location taken from a source.
+		const id = latitude.getAttribute('aria-describedby');
+		expect(document.getElementById(id ?? '')?.textContent?.trim()).toBe('Copied from another place');
+	});
+
+	it('sends typed coordinates in GEDCOM form', async () => {
+		vi.mocked(api.getFamily).mockResolvedValue({ ...mockFamilyWithChildren, marriage_place: 'Boston' });
+		await openEdit();
+		await fireEvent.input(coordinates().latitude, { target: { value: '42.3601' } });
+		await fireEvent.input(coordinates().longitude, { target: { value: '-71.0589' } });
+		const body = await saveBody();
+		expect(body).toMatchObject({ marriage_place_latitude: 'N42.3601', marriage_place_longitude: 'W71.0589' });
+	});
+
+	it('leaves out a pair that is as stored, so it keeps its origin', async () => {
+		vi.mocked(api.getFamily).mockResolvedValue(springfield);
+		await openEdit();
+		expect(await saveBody()).not.toHaveProperty('marriage_place_latitude');
+	});
+
+	it('sends null for both halves of a cleared pair', async () => {
+		vi.mocked(api.getFamily).mockResolvedValue(springfield);
+		await openEdit();
+		await fireEvent.input(coordinates().latitude, { target: { value: '' } });
+		await fireEvent.input(coordinates().longitude, { target: { value: '' } });
+		const body = await saveBody();
+		expect(body.marriage_place_latitude).toBeNull();
+		expect(body.marriage_place_longitude).toBeNull();
+	});
+
+	it('refuses a longitude out of range on its input without saving', async () => {
+		vi.mocked(api.getFamily).mockResolvedValue({ ...mockFamilyWithChildren, marriage_place: 'Boston' });
+		await openEdit();
+		await fireEvent.input(coordinates().latitude, { target: { value: '42' } });
+		await fireEvent.input(coordinates().longitude, { target: { value: '200' } });
+		await fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+
+		const { longitude } = coordinates();
+		await waitFor(() => expect(longitude.getAttribute('aria-invalid')).toBe('true'));
+		expect(document.getElementById(longitude.getAttribute('aria-describedby') ?? '')?.textContent?.trim()).toBe(
+			'Longitude must be between -180 and 180.'
 		);
+		expect(api.updateFamily).not.toHaveBeenCalled();
 	});
 
 	it('sends a cleared marriage place as an empty string, and no unchanged type', async () => {

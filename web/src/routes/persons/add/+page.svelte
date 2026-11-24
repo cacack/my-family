@@ -7,6 +7,7 @@
 	import PageHeader from '#lib/components/PageHeader.svelte';
 	import FormRow from '#lib/components/FormRow.svelte';
 	import ActionError from '#lib/components/ActionError.svelte';
+	import CoordinateFields from '#lib/components/CoordinateFields.svelte';
 	import { GENDER_OPTIONS } from '#lib/utils/enumOptions.js';
 	import {
 		asDatePhrase,
@@ -17,9 +18,12 @@
 		savedAsNotes,
 		type DateFieldError
 	} from '#lib/utils/dateInput.js';
+	import { coordinateChange, coordinatePairError, type CoordinateError, type CoordinateInput } from '#lib/utils/coordinates.js';
 
 	const DATE_FIELDS = ['birth_date', 'death_date'] as const;
 	type DateField = (typeof DATE_FIELDS)[number];
+	const PLACE_FIELDS = ['birth_place', 'death_place'] as const;
+	type PlaceField = (typeof PLACE_FIELDS)[number];
 
 	let saving = $state(false);
 	let error: string | null = $state(null);
@@ -27,6 +31,13 @@
 	// unreadable one is offered to keep as text (#996).
 	let dateError: DateFieldError<DateField> | null = $state(null);
 	let form: HTMLFormElement | null = $state(null);
+	// Each place's pair in signed decimal degrees, and the input a create was
+	// stopped for (#1033).
+	let coordinates: Record<PlaceField, CoordinateInput> = $state({
+		birth_place: { latitude: '', longitude: '' },
+		death_place: { latitude: '', longitude: '' }
+	});
+	let coordinateErrors: Partial<Record<PlaceField, CoordinateError>> = $state({});
 
 	// Form state
 	let formData = $state<PersonCreate>({
@@ -44,6 +55,15 @@
 		dateError = null;
 		error = missingNameError(formData);
 		if (error) return;
+		coordinateErrors = {};
+		for (const field of PLACE_FIELDS) {
+			const coordinateError = coordinatePairError(coordinates[field], formData[field] ?? '');
+			if (coordinateError) coordinateErrors[field] = coordinateError;
+		}
+		if (Object.keys(coordinateErrors).length) {
+			focusFirstInvalid(form);
+			return;
+		}
 		saving = true;
 		try {
 			// Build the create payload, only including non-empty optional fields
@@ -66,6 +86,17 @@
 			}
 			if (formData.death_place) {
 				payload.death_place = formData.death_place;
+			}
+			// A new record has no stored pair, so a change is always a set pair.
+			const birth = coordinateChange(coordinates.birth_place);
+			if (birth?.latitude && birth.longitude) {
+				payload.birth_place_latitude = birth.latitude;
+				payload.birth_place_longitude = birth.longitude;
+			}
+			const death = coordinateChange(coordinates.death_place);
+			if (death?.latitude && death.longitude) {
+				payload.death_place_latitude = death.latitude;
+				payload.death_place_longitude = death.longitude;
 			}
 			if (formData.notes) {
 				payload.notes = formData.notes;
@@ -161,10 +192,19 @@
 				</label>
 				{@render dateMessage('birth_date')}
 			</div>
-			<label>
-				Birth Place
-				<input type="text" bind:value={formData.birth_place} />
-			</label>
+			<div class="place-field">
+				<label>
+					Birth Place
+					<input type="text" bind:value={formData.birth_place} />
+				</label>
+				<CoordinateFields
+					id="birth-place"
+					place="Birth Place"
+					bind:latitude={coordinates.birth_place.latitude}
+					bind:longitude={coordinates.birth_place.longitude}
+					error={coordinateErrors.birth_place}
+				/>
+			</div>
 		</FormRow>
 
 		<FormRow>
@@ -175,10 +215,19 @@
 				</label>
 				{@render dateMessage('death_date')}
 			</div>
-			<label>
-				Death Place
-				<input type="text" bind:value={formData.death_place} />
-			</label>
+			<div class="place-field">
+				<label>
+					Death Place
+					<input type="text" bind:value={formData.death_place} />
+				</label>
+				<CoordinateFields
+					id="death-place"
+					place="Death Place"
+					bind:latitude={coordinates.death_place.latitude}
+					bind:longitude={coordinates.death_place.longitude}
+					error={coordinateErrors.death_place}
+				/>
+			</div>
 		</FormRow>
 
 		<label>
@@ -219,8 +268,10 @@
 		color: #475569;
 	}
 
-	/* A date input's label with any refusal of it underneath (#1112). */
-	.date-field {
+	/* A date input's label with any refusal of it underneath (#1112), and a
+	   place input's with its coordinates (#1033). */
+	.date-field,
+	.place-field {
 		display: flex;
 		flex-direction: column;
 		gap: 0.375rem;

@@ -14,6 +14,7 @@
 	import FormRow from '#lib/components/FormRow.svelte';
 	import PartnerPickers from '#lib/components/PartnerPickers.svelte';
 	import ActionError from '#lib/components/ActionError.svelte';
+	import CoordinateFields from '#lib/components/CoordinateFields.svelte';
 	import { RELATION_TYPE_OPTIONS } from '#lib/utils/enumOptions.js';
 	import {
 		asDatePhrase,
@@ -24,6 +25,7 @@
 		savedAsNotes,
 		type DateFieldError
 	} from '#lib/utils/dateInput.js';
+	import { coordinateChange, coordinatePairError, type CoordinateError, type CoordinateInput } from '#lib/utils/coordinates.js';
 
 	let saving = $state(false);
 	let error: string | null = $state(null);
@@ -31,6 +33,10 @@
 	// unreadable one is offered to keep as text (#996).
 	let dateError: DateFieldError<'marriage_date'> | null = $state(null);
 	let form: HTMLFormElement | null = $state(null);
+	// The marriage place's pair in signed decimal degrees, and the input a
+	// create was stopped for (#1033).
+	let coordinates: CoordinateInput = $state({ latitude: '', longitude: '' });
+	let coordinateError: CoordinateError | null = $state(null);
 
 	// Form state
 	let formData = $state<FamilyCreate>({
@@ -98,6 +104,12 @@
 
 	async function handleSubmit() {
 		if (formLocked || childPending || !hasPartner) return;
+		coordinateError = coordinatePairError(coordinates, formData.marriage_place ?? '');
+		if (coordinateError) {
+			focusFirstInvalid(form);
+			return;
+		}
+		const pair = coordinateChange(coordinates);
 		saving = true;
 		error = null;
 		dateError = null;
@@ -107,7 +119,9 @@
 				partner2_id: partner2?.id,
 				relationship_type: formData.relationship_type || undefined,
 				marriage_date: formData.marriage_date || undefined,
-				marriage_place: formData.marriage_place || undefined
+				marriage_place: formData.marriage_place || undefined,
+				marriage_place_latitude: pair?.latitude ?? undefined,
+				marriage_place_longitude: pair?.longitude ?? undefined
 			};
 			const family = await api.createFamily(payload);
 			if (child) {
@@ -217,10 +231,19 @@
 					/>
 				{/if}
 			</div>
-			<label>
-				Marriage Place
-				<input type="text" bind:value={formData.marriage_place} placeholder="e.g., London, England" />
-			</label>
+			<div class="place-field">
+				<label>
+					Marriage Place
+					<input type="text" bind:value={formData.marriage_place} placeholder="e.g., London, England" />
+				</label>
+				<CoordinateFields
+					id="marriage-place"
+					place="Marriage Place"
+					bind:latitude={coordinates.latitude}
+					bind:longitude={coordinates.longitude}
+					error={coordinateError}
+				/>
+			</div>
 		</FormRow>
 
 		{#if !requestedChildId}
@@ -272,8 +295,10 @@
 		color: #475569;
 	}
 
-	/* The date input's label with any refusal of it underneath (#1112). */
-	.date-field {
+	/* The date input's label with any refusal of it underneath (#1112), and
+	   the place input's with its coordinates (#1033). */
+	.date-field,
+	.place-field {
 		display: flex;
 		flex-direction: column;
 		gap: 0.375rem;

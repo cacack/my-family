@@ -19,7 +19,7 @@ A genealogy platform designed for research rigor and data ownership.
 - **Family relationships** - Biological, adopted, step, and foster qualifiers
 - **Research branches** - Explore an unproven hypothesis in isolation, record the question it tests and the outcome it reached, then review the diff against the mainline and merge it with a per-conflict decision. A branch covers people, families, sources, citations, notes, media, associations, facts, evidence analyses, research logs and proof summaries, and search, browse, the map, the charts and reports all follow it
 - **Snapshots, history and rollback** - Tag research milestones and compare them with each other or with the current state, browse the change history of the whole tree or of one record, and roll a person, family, source or citation back to an earlier version
-- **Geographic heat map** - Interactive world map showing family locations with zoom/pan
+- **Geographic heat map** - Interactive world map showing family locations with zoom/pan. Birth and death places are placed by coordinates from a GEDCOM import or typed beside the place in the person form; the family form records marriage place coordinates the same way
 - **Interactive pedigree chart** - D3.js visualization with pan/zoom and keyboard navigation
 - **Home person** - Mark who you are in the tree; every person page then names their relationship to you, linking to the full path, and the charts open on you by default. Each account has its own; in open mode there is one for the site, and a sole owner who has never chosen one starts with the site's
 - **Full-text search** - Fast fuzzy matching with keyboard-navigable results

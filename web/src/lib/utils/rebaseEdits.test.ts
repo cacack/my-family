@@ -32,3 +32,25 @@ describe('rebaseEdits with lists', () => {
 		expect(rebaseEdits({ ids: ['b', 'a'] }, base, { ids: ['c'] }).ids).toEqual(['b', 'a']);
 	});
 });
+
+describe('rebaseEdits with keys that go together', () => {
+	const base = { lat: '42.3601', long: '-71.0589', notes: '' };
+	const latest = { lat: '-33.8688', long: '151.2093', notes: 'theirs' };
+	const pair: (keyof typeof base)[][] = [['lat', 'long']];
+
+	it('keeps the whole pair when one half was edited', () => {
+		expect(rebaseEdits({ ...base, lat: '42.3602' }, base, latest, pair)).toEqual({
+			lat: '42.3602',
+			long: '-71.0589',
+			notes: 'theirs'
+		});
+	});
+
+	it('takes the whole latest pair when neither half was edited', () => {
+		expect(rebaseEdits({ ...base, notes: 'mine' }, base, latest, pair)).toEqual({
+			lat: '-33.8688',
+			long: '151.2093',
+			notes: 'mine'
+		});
+	});
+});
