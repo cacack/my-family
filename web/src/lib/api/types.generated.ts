@@ -521,10 +521,11 @@ export interface paths {
          *     target's ID and reads the target's facts. No record's text changes
          *     (PL-001), and this place's own facts are kept and ignored while the
          *     alias stands. Only the whole key is joined: a place under this one
-         *     keeps its own key. A target that is itself an alias, a place that is
-         *     already an alias, and an alias that would close a cycle (this place
-         *     itself included) answer 400. Place aliases are main-only (ADR-009 §6),
-         *     so this operation takes no `?branch=`.
+         *     keeps its own key. Places already aliased to this one follow it to the
+         *     target, and return to it when it is separated. A target that is itself
+         *     an alias, a place that is already an alias, and an alias that would
+         *     close a cycle (this place itself included) answer 400. Place aliases
+         *     are main-only (ADR-009 §6), so this operation takes no `?branch=`.
          */
         put: operations["aliasPlace"];
         post?: never;
@@ -5232,7 +5233,7 @@ export interface components {
              * @description Present only on an absorbed place (PUT /places/{id}/alias): the ID of the place its key resolves to, which every record, map location and resolved place carries instead of this one. The place's own name, pair and version above are its own, kept and ignored while the alias stands.
              */
             resolves_to?: string;
-            /** @description The absorbed places that resolve to this one, each listed only when a record the caller may see uses it (ADR-009 §10); omitted when there are none. Sorted by name. */
+            /** @description The absorbed places that resolve to this one, each listed only when a record the caller may see uses it (ADR-009 §10); omitted when there are none. Sorted by name. An alias no record uses still stands but is not listed; its place is read by its ID. */
             aliases?: components["schemas"]["PlaceAliasEntry"][];
         };
         PlaceAliasEntry: {

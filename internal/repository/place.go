@@ -248,10 +248,12 @@ type PlaceAlias struct {
 // may see, the facts stated about places and the place aliases. A use names
 // its own place and every place its key is under (PlaceUnder): "Boston, MA"
 // makes both "boston,ma" and "ma" in use, and counts toward both. A place
-// whose key is absorbed is in use too, with its own count, and its uses also
-// count toward the place it resolves to, once per use; only a whole key is
-// resolved, so "darmstadt,hesse,germany" does not become
-// "darmstadt,hessen,germany" when "hesse,germany" is absorbed (ADR-009 §3).
+// whose key is absorbed is in use too, with its own count. A use also counts,
+// once, toward the target of every absorbed key at or above it, but no key is
+// rewritten: when "hesse,germany" is absorbed into "hessen,germany", a
+// "darmstadt,hesse,germany" use counts toward "hessen,germany" and does not
+// become "darmstadt,hessen,germany". The target's own ancestors are not
+// credited through the alias (ADR-009 §3).
 // A place's name is its display name when facts set one, otherwise its own
 // parts, as recorded and joined with ", ", in the spelling with the most uses
 // (ties broken bytewise). A place with facts and no use is listed, with a

@@ -125,7 +125,8 @@ type AliasPlaceInput struct {
 // absorbed, and to no other stream; no record's text changes (PL-001). It
 // rejects, with ErrInvalidInput, a place that is already an alias, a target
 // that is itself an alias, a target that is not a place, and an alias that
-// would close a cycle, the place itself included. Two concurrent commands
+// would close a cycle, the place itself included. Places already aliased to
+// this one follow it to the target. Two concurrent commands
 // can both pass these checks; the projector then decides, in log order
 // (PL-004). Main-only (PL-005).
 func (h *Handler) AliasPlace(ctx context.Context, input AliasPlaceInput) (*UpdatePlaceResult, error) {

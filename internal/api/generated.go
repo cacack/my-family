@@ -6119,7 +6119,7 @@ type PersonUpdate struct {
 
 // Place defines model for Place.
 type Place struct {
-	// Aliases The absorbed places that resolve to this one, each listed only when a record the caller may see uses it (ADR-009 §10); omitted when there are none. Sorted by name.
+	// Aliases The absorbed places that resolve to this one, each listed only when a record the caller may see uses it (ADR-009 §10); omitted when there are none. Sorted by name. An alias no record uses still stands but is not listed; its place is read by its ID.
 	Aliases *[]PlaceAliasEntry `json:"aliases,omitempty"`
 
 	// CoordinatesOrigin Where the place's pair came from; present whenever the pair is.
