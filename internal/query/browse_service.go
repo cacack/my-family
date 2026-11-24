@@ -227,9 +227,9 @@ func (s *BrowseService) GetPersonsByPlace(ctx context.Context, input GetPersonsB
 		offset = 0
 	}
 
-	// A place with no non-blank parts (e.g. "," or " ") normalizes to "",
-	// which every stored place contains; it names no place, so match nobody.
-	if repository.NormalizePlace(input.Place) == "" {
+	// A place with no non-blank parts (e.g. "," or " ") has no key and names
+	// no place, so it matches nobody.
+	if repository.PlaceKey(input.Place) == "" {
 		return &PersonListResult{Items: []Person{}, Limit: limit, Offset: offset}, nil
 	}
 

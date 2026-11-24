@@ -5018,7 +5018,7 @@ export interface components {
             name: string;
             /** @description Full place path */
             full_name: string;
-            /** @description Number of persons associated with this place */
+            /** @description Number of birth and death records at or under this place. Spellings whose place matching key is the same (differing only in letter case, spacing around commas or empty parts) are one place. */
             count: number;
             /** @description Whether this place has sub-locations */
             has_children: boolean;
@@ -5029,7 +5029,7 @@ export interface components {
             total: number;
         };
         CemeteryEntry: {
-            /** @description Cemetery or burial place name */
+            /** @description Cemetery or burial place name: the most-used spelling of the spellings whose place matching key is the same */
             place: string;
             /** @description Number of persons buried/cremated here */
             count: number;

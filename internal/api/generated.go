@@ -3433,7 +3433,7 @@ type CemeteryEntry struct {
 	// Count Number of persons buried/cremated here
 	Count int `json:"count"`
 
-	// Place Cemetery or burial place name
+	// Place Cemetery or burial place name: the most-used spelling of the spellings whose place matching key is the same
 	Place string `json:"place"`
 }
 
@@ -5935,7 +5935,7 @@ type PersonUpdate struct {
 
 // PlaceEntry defines model for PlaceEntry.
 type PlaceEntry struct {
-	// Count Number of persons associated with this place
+	// Count Number of birth and death records at or under this place. Spellings whose place matching key is the same (differing only in letter case, spacing around commas or empty parts) are one place.
 	Count int `json:"count"`
 
 	// FullName Full place path

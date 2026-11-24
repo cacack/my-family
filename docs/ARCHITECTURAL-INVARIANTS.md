@@ -228,6 +228,14 @@ Rules that must hold true in the my-family codebase. Violations break architectu
 | **PV-003** | Every `operationId` in `openapi.yaml` has a row in ADR-008's read-surface table, except editor- and owner-only writes | `TestPrivacy_EveryOperationHasAReadSurfaceRow` (`internal/api`) |
 | **PV-004** | Every query service method that returns event-log output (change entries, merge conflicts and records, restore points, changed facts, archived research) runs it through the event-output redactor (`changeRedactor`, ADR-008 §5b), which applies `repository.Privacy` through `query.PrivacyStore`: it is active for a service that reads through the decorator, so PV-001 wires it. Only the merge and rollback commands' own inputs are exempt | `TestChangeRedactor_EveryEventLogOutputIsProbed`, `TestChangeRedactor_EveryEventLogSurface` (`internal/query`), `TestPrivacy_EventLogSurfacesOnEveryBackend` (`internal/integration`, all backends) |
 
+### Place Invariants (PL) - Source: [ADR-009](./adr/009-place-data-model.md)
+
+| ID | Rule | Verification |
+|----|------|--------------|
+| **PL-001** | Place text on an event is never rewritten by a place operation: the matching key is stored beside the text, and every read returns the text as recorded | `placetest.RunMatching` (`internal/testutil/placetest`, run by `TestPlaceMatching` in all three backends) checks each person's places and each burial's place come back verbatim |
+| **PL-002** | `repository.PlaceKey` is the only place-matching rule and no SQL implements it: each place-bearing row stores its key in a key column (`birth_place_key`, `death_place_key`, `marriage_place_key`, `place_key`) computed in Go on save, and the place browser, the per-place person list, the cemetery index and the per-cemetery list compare those columns | `TestPlaceMatching` (all three backends), `TestNoSQLPlaceMatchingRule` (`internal/repository`: no SQL store transforms a place text or registers a place function), `TestRebuild_FillsPlaceKeys` (`internal/repository/{sqlite,postgres}`) |
+| **PL-003** | The matching rule does not change without an ADR: its case fold is the pinned `placeFoldTable` (Unicode 15.0, `placefold_gen.go`), not the Go release's tables. The `UUIDv5(namespace, key)` place ID and its namespace join this rule with the place list (#1734) | `TestPlaceKey` (the ADR-009 §1 vectors), `TestPlaceKeyFoldTable` (a checksum of the fold of every code point), `TestPlaceKeyFoldTable_MatchesRule` (`internal/repository`) |
+
 ### Domain Model Invariants (DM) - Source: [ETHOS.md](./ETHOS.md) + Code Patterns
 
 | ID | Rule | Verification |
@@ -288,10 +296,11 @@ Rules that must hold true in the my-family codebase. Violations break architectu
 | ADR-005 (Research Branches) | BR-001 through BR-006 | 6 |
 | ADR-007 (Access Model) | AC-001 through AC-005 | 5 |
 | ADR-008 (Privacy Model) | PV-001 through PV-003 | 3 |
+| ADR-009 (Place Data Model) | PL-001 through PL-003 | 3 |
 | ETHOS.md | DM-001 through DM-006, DI-001 through DI-005, QA-001 through QA-003 | 14 |
 | CONVENTIONS.md | API-001 through API-005 | 5 |
 | CONTRIBUTING.md | TS-001 through TS-003 | 3 |
-| **Total** | | **60** |
+| **Total** | | **63** |
 
 ---
 

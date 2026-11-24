@@ -759,6 +759,22 @@ func (s *ReadModelStore) createTables() error {
 	return nil
 }
 
+// placeKeyColumns are the key columns of the five place-bearing rows: each holds
+// repository.PlaceKey of the place text beside it, NULL when the text has none.
+var placeKeyColumns = []struct{ table, column string }{
+	{"persons", "birth_place_key"},
+	{"persons", "death_place_key"},
+	{"families", "marriage_place_key"},
+	{"life_events", "place_key"},
+	{"attributes", "place_key"},
+}
+
+// placeKey is the value of a place key column for text: its
+// repository.PlaceKey, or NULL when it has none.
+func placeKey(text string) sql.NullString {
+	return nullableString(repository.PlaceKey(text))
+}
+
 // runMigrations applies schema changes for existing databases.
 func (s *ReadModelStore) runMigrations() {
 	// Add research_status column if it doesn't exist (for databases created before this column was added)
@@ -828,6 +844,15 @@ func (s *ReadModelStore) runMigrations() {
 	_, _ = s.db.Exec(`ALTER TABLE attributes ADD COLUMN place_long TEXT`)
 	_, _ = s.db.Exec(`ALTER TABLE attributes ADD COLUMN notes TEXT`)
 	_, _ = s.db.Exec(`ALTER TABLE attributes ADD COLUMN type_detail TEXT`)
+
+	// Add the place matching key beside each place text, filled from the text
+	// by repository.PlaceKey on every save (ADR-009 §1, #1733).
+	for _, col := range placeKeyColumns {
+		// #nosec G202 -- table and column come from the fixed placeKeyColumns list, not user input.
+		_, _ = s.db.Exec(`ALTER TABLE ` + col.table + ` ADD COLUMN ` + col.column + ` TEXT`)
+		// #nosec G202 -- table and column come from the fixed placeKeyColumns list, not user input.
+		_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_` + col.table + `_` + col.column + ` ON ` + col.table + `(` + col.column + `)`)
+	}
 
 	// Add the NOTEs under a person's GEDCOM NAME (issue #1165).
 	_, _ = s.db.Exec(`ALTER TABLE person_names ADD COLUMN notes TEXT`)
@@ -2048,8 +2073,9 @@ func (s *ReadModelStore) SavePerson(ctx context.Context, branchID domain.BranchI
 							 death_place_lat, death_place_long, notes, birth_notes, death_notes, birth_type_detail, death_type_detail, research_status,
 							 brick_wall_note, brick_wall_since, brick_wall_resolved_at,
 							 restriction, living_override, death_evidence, living_ref_date,
+							 birth_place_key, death_place_key,
 							 version, updated_at, branch_id, deleted)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
 		ON CONFLICT(id, branch_id) DO UPDATE SET
 			given_name = excluded.given_name,
 			surname = excluded.surname,
@@ -2077,6 +2103,8 @@ func (s *ReadModelStore) SavePerson(ctx context.Context, branchID domain.BranchI
 			living_override = excluded.living_override,
 			death_evidence = excluded.death_evidence,
 			living_ref_date = excluded.living_ref_date,
+			birth_place_key = excluded.birth_place_key,
+			death_place_key = excluded.death_place_key,
 			version = excluded.version,
 			updated_at = excluded.updated_at,
 			deleted = 0
@@ -2087,6 +2115,7 @@ func (s *ReadModelStore) SavePerson(ctx context.Context, branchID domain.BranchI
 		string(person.ResearchStatus),
 		person.BrickWallNote, brickWallSince, brickWallResolvedAt,
 		string(person.Restriction), string(person.LivingOverride), person.DeathEvidence, livingRefDate,
+		placeKey(person.BirthPlace), placeKey(person.DeathPlace),
 		person.Version, formatTimestamp(person.UpdatedAt), branchID.String())
 
 	return err
@@ -2859,8 +2888,8 @@ func (s *ReadModelStore) SaveFamily(ctx context.Context, branchID domain.BranchI
 		INSERT INTO families (id, partner1_id, partner2_id,
 							  relationship_type, marriage_date_raw, marriage_date_sort, marriage_place,
 							  marriage_place_lat, marriage_place_long, marriage_notes, marriage_type_detail, notes, restriction,
-							  child_count, version, updated_at, branch_id, deleted)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+							  marriage_place_key, child_count, version, updated_at, branch_id, deleted)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
 		ON CONFLICT(id, branch_id) DO UPDATE SET
 			partner1_id = excluded.partner1_id,
 			partner2_id = excluded.partner2_id,
@@ -2874,6 +2903,7 @@ func (s *ReadModelStore) SaveFamily(ctx context.Context, branchID domain.BranchI
 			marriage_type_detail = excluded.marriage_type_detail,
 			notes = excluded.notes,
 			restriction = excluded.restriction,
+			marriage_place_key = excluded.marriage_place_key,
 			child_count = excluded.child_count,
 			version = excluded.version,
 			updated_at = excluded.updated_at,
@@ -2882,7 +2912,7 @@ func (s *ReadModelStore) SaveFamily(ctx context.Context, branchID domain.BranchI
 		partner1ID, partner2ID,
 		string(family.RelationshipType), family.MarriageDateRaw, marriageDateSort, family.MarriagePlace,
 		marriagePlaceLat, marriagePlaceLong, family.MarriageNotes, family.MarriageTypeDetail, family.Notes, string(family.Restriction),
-		family.ChildCount, family.Version, formatTimestamp(family.UpdatedAt), branchID.String())
+		placeKey(family.MarriagePlace), family.ChildCount, family.Version, formatTimestamp(family.UpdatedAt), branchID.String())
 
 	return err
 }
@@ -4130,8 +4160,8 @@ func (s *ReadModelStore) SaveEvent(ctx context.Context, branchID domain.BranchID
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO life_events (id, branch_id, owner_type, owner_id, fact_type, date_raw, date_sort,
 		                    place, place_lat, place_long, address, description, cause,
-		                    age, research_status, is_negated, notes, type_detail, version, created_at, deleted)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+		                    age, research_status, is_negated, notes, type_detail, place_key, version, created_at, deleted)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
 		ON CONFLICT (id, branch_id) DO UPDATE SET
 			owner_type = excluded.owner_type,
 			owner_id = excluded.owner_id,
@@ -4149,11 +4179,12 @@ func (s *ReadModelStore) SaveEvent(ctx context.Context, branchID domain.BranchID
 			is_negated = excluded.is_negated,
 			notes = excluded.notes,
 			type_detail = excluded.type_detail,
+			place_key = excluded.place_key,
 			version = excluded.version,
 			deleted = 0
 	`, event.ID.String(), branchID.String(), event.OwnerType, event.OwnerID.String(), string(event.FactType),
 		event.DateRaw, dateSort, event.Place, placeLat, placeLong, addressJSON,
-		description, cause, age, researchStatus, event.IsNegated, event.Notes, event.TypeDetail, event.Version,
+		description, cause, age, researchStatus, event.IsNegated, event.Notes, event.TypeDetail, placeKey(event.Place), event.Version,
 		formatTimestamp(event.CreatedAt))
 	if err != nil {
 		return fmt.Errorf("save event: %w", err)
@@ -4257,8 +4288,8 @@ func (s *ReadModelStore) SaveAttribute(ctx context.Context, branchID domain.Bran
 
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO attributes (id, branch_id, person_id, fact_type, value, date_raw, date_sort, place,
-		                        place_lat, place_long, notes, type_detail, version, created_at, deleted)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+		                        place_lat, place_long, notes, type_detail, place_key, version, created_at, deleted)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
 		ON CONFLICT (id, branch_id) DO UPDATE SET
 			person_id = excluded.person_id,
 			fact_type = excluded.fact_type,
@@ -4270,11 +4301,12 @@ func (s *ReadModelStore) SaveAttribute(ctx context.Context, branchID domain.Bran
 			place_long = excluded.place_long,
 			notes = excluded.notes,
 			type_detail = excluded.type_detail,
+			place_key = excluded.place_key,
 			version = excluded.version,
 			deleted = 0
 	`, attribute.ID.String(), branchID.String(), attribute.PersonID.String(), string(attribute.FactType),
 		attribute.Value, attribute.DateRaw, dateSort, attribute.Place,
-		placeLat, placeLong, attribute.Notes, attribute.TypeDetail,
+		placeLat, placeLong, attribute.Notes, attribute.TypeDetail, placeKey(attribute.Place),
 		attribute.Version, formatTimestamp(attribute.CreatedAt))
 	if err != nil {
 		return fmt.Errorf("save attribute: %w", err)
@@ -5177,151 +5209,81 @@ func (s *ReadModelStore) GetPersonsBySurname(ctx context.Context, surname string
 	return persons, total, rows.Err()
 }
 
-// GetPlaceHierarchy returns places at a given level in the hierarchy.
-// Places are parsed from comma-separated strings like "City, County, State, Country"
-// working from right to left (Country is top level).
+// GetPlaceHierarchy returns the places directly under parent. Each birth and
+// death place is counted per distinct key and spelling here, and
+// repository.PlaceLevels builds the levels from those counts, as on every store.
 // Scoped to the branch overlay (ADR-005 / #756): the birth-place and death-place
 // legs of each UNION both read the overlay, so a branch sees its own places and
 // tombstoned persons contribute none.
 func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, branchID domain.BranchID, parent string, privacy repository.Privacy) ([]repository.PlaceEntry, error) {
-	var rows *sql.Rows
-	var err error
-
 	withClause, src, cteArgs, legArgs := personOverlayCTE(branchID, privacy)
 
-	if parent == "" {
-		// Top-level: get unique countries/top-level places (rightmost part after last comma).
-		// Places are normalized first, so blank parts never form a level (#925).
-		// SQLite has no reverse split: RTRIM(norm, <every non-comma char>) strips back to
-		// the last comma, so the SUBSTR after that prefix is the last part (or the whole
-		// place when it has no comma). The child level uses the same idiom.
-		// Args in statement order: the CTE's binds (off main), then each leg's own
-		// overlay binds (main only, where the subquery is still inlined per leg).
-		args := append(append([]any{}, cteArgs...), legArgs...)
-		args = append(args, legArgs...)
-		// #nosec G202 -- withClause/src are built from the constant literals returned by personOverlayCTE; every value is a bound ? placeholder
-		rows, err = s.db.QueryContext(ctx, `
-			`+withClause+`all_places AS (
-				SELECT DISTINCT birth_place as place FROM `+src+` WHERE birth_place != '' AND birth_place IS NOT NULL
-				UNION
-				SELECT DISTINCT death_place as place FROM `+src+` WHERE death_place != '' AND death_place IS NOT NULL
-			),
-			normalized AS (
-				SELECT place, `+placeNormFunc+`(place) as norm FROM all_places
-			),
-			parsed AS (
-				SELECT
-					place,
-					norm,
-					SUBSTR(norm, LENGTH(RTRIM(norm, REPLACE(norm, ',', ''))) + 1) as top_level
-				FROM normalized
-			)
-			SELECT
-				top_level as place_name,
-				top_level as full_name,
-				COUNT(DISTINCT place) as count,
-				CASE
-					WHEN COUNT(DISTINCT place) > COUNT(DISTINCT CASE WHEN norm = top_level THEN place END)
-					THEN 1
-					ELSE 0
-				END as has_children
-			FROM parsed
-			WHERE top_level != ''
-			GROUP BY top_level
-			ORDER BY top_level ASC
-		`, args...)
-	} else {
-		// Child level: places whose last parts are parent's parts. parent is a
-		// full_name built with ", " while GEDCOM places may omit the space or carry
-		// blank parts, so both sides compare normalized (repository.NormalizePlace). Args in statement order: the
-		// CTE's binds (off main), each leg's own overlay binds (main only), then
-		// the two parent binds.
-		args := append(append([]any{}, cteArgs...), legArgs...)
-		args = append(args, legArgs...)
-		args = append(args, parent, parent)
-		// #nosec G202 -- withClause/src are built from the constant literals returned by personOverlayCTE; every value is a bound ? placeholder
-		rows, err = s.db.QueryContext(ctx, `
-			`+withClause+`all_places AS (
-				SELECT DISTINCT birth_place as place FROM `+src+` WHERE birth_place != '' AND birth_place IS NOT NULL
-				UNION
-				SELECT DISTINCT death_place as place FROM `+src+` WHERE death_place != '' AND death_place IS NOT NULL
-			),
-			normalized AS (
-				SELECT
-					place,
-					`+placeNormFunc+`(place) as norm,
-					`+placeNormFunc+`(?) as norm_parent
-				FROM all_places
-			),
-			parsed AS (
-				SELECT
-					place,
-					TRIM(SUBSTR(norm, 1, LENGTH(norm) - LENGTH(norm_parent) - 1)) as remainder
-				FROM normalized
-				WHERE SUBSTR(norm, -LENGTH(norm_parent) - 1) = ',' || norm_parent
-			),
-			next_level AS (
-				SELECT
-					place,
-					remainder,
-					TRIM(SUBSTR(remainder, LENGTH(RTRIM(remainder, REPLACE(remainder, ',', ''))) + 1)) as level_name
-				FROM parsed
-			)
-			SELECT
-				level_name as place_name,
-				level_name || ', ' || ? as full_name,
-				COUNT(DISTINCT place) as count,
-				CASE
-					WHEN COUNT(DISTINCT place) > COUNT(DISTINCT CASE WHEN remainder = level_name THEN place END)
-					THEN 1
-					ELSE 0
-				END as has_children
-			FROM next_level
-			WHERE level_name != ''
-			GROUP BY level_name
-			ORDER BY level_name ASC
-		`, args...)
-	}
+	// Args in statement order: the CTE's binds (off main), then each leg's own
+	// overlay binds (main only, where the subquery is still inlined per leg).
+	args := append(append([]any{}, cteArgs...), legArgs...)
+	args = append(args, legArgs...)
+	// #nosec G202 -- withClause/src are built from the constant literals returned by personOverlayCTE; every value is a bound ? placeholder
+	rows, err := s.db.QueryContext(ctx, `
+		`+withClause+`uses AS (
+			SELECT birth_place_key AS place_key, birth_place AS place FROM `+src+` WHERE birth_place_key IS NOT NULL
+			UNION ALL
+			SELECT death_place_key AS place_key, death_place AS place FROM `+src+` WHERE death_place_key IS NOT NULL
+		)
+		SELECT place_key, place, COUNT(*) FROM uses GROUP BY place_key, place
+	`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query place hierarchy: %w", err)
 	}
 	defer rows.Close()
 
-	var places []repository.PlaceEntry
+	var uses []repository.PlaceUse
 	for rows.Next() {
-		var entry repository.PlaceEntry
-		var hasChildrenInt int
-		if err := rows.Scan(&entry.Name, &entry.FullName, &entry.Count, &hasChildrenInt); err != nil {
-			return nil, fmt.Errorf("scan place entry: %w", err)
+		var u repository.PlaceUse
+		if err := rows.Scan(&u.Key, &u.Text, &u.Count); err != nil {
+			return nil, fmt.Errorf("scan place use: %w", err)
 		}
-		entry.HasChildren = hasChildrenInt == 1
-		places = append(places, entry)
+		uses = append(uses, u)
 	}
-
-	return places, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return repository.PlaceLevels(uses, parent), nil
 }
 
-// GetPersonsByPlace returns persons associated with a place within the branch
-// overlay carried on opts.BranchID (ADR-005 / #756).
-func (s *ReadModelStore) GetPersonsByPlace(ctx context.Context, place string, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
-	overlay, overlayArgs := personOverlaySubquery(opts.BranchID, opts.Privacy)
+// placeUnderSQL is the SQL form of repository.PlaceUnder for a key column: it
+// binds the place's key, then "," and that key. It compares stored keys and
+// computes none (PL-002).
+func placeUnderSQL(column string) string {
+	return "(" + column + " = ? OR SUBSTR(" + column + ", -LENGTH(?)) = ?)"
+}
 
-	// Count total - match place at any position in birth_place or death_place.
-	// place is usually a GetPlaceHierarchy full_name (parts joined with ", "), so
-	// both sides compare normalized (repository.NormalizePlace) as the hierarchy does.
+// placeUnderArgs are placeUnderSQL's binds for the place with key.
+func placeUnderArgs(key string) []any {
+	return []any{key, "," + key, "," + key}
+}
+
+// GetPersonsByPlace returns persons whose birth or death place is at or under
+// place (repository.PlaceUnder), within the branch overlay carried on
+// opts.BranchID (ADR-005 / #756).
+func (s *ReadModelStore) GetPersonsByPlace(ctx context.Context, place string, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
+	key := repository.PlaceKey(place)
+	if key == "" {
+		return nil, 0, nil
+	}
+	overlay, overlayArgs := personOverlaySubquery(opts.BranchID, opts.Privacy)
+	where := placeUnderSQL("birth_place_key") + " OR " + placeUnderSQL("death_place_key")
+	whereArgs := append(placeUnderArgs(key), placeUnderArgs(key)...)
+
 	var total int
-	countArgs := append(append([]any{}, overlayArgs...), place, place)
-	err := s.db.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM `+overlay+`
-		WHERE `+placeNormFunc+`(birth_place) LIKE '%' || `+placeNormFunc+`(?) || '%'
-		   OR `+placeNormFunc+`(death_place) LIKE '%' || `+placeNormFunc+`(?) || '%'
-	`, countArgs...).Scan(&total)
+	countArgs := append(append([]any{}, overlayArgs...), whereArgs...)
+	// #nosec G202 -- overlay and where are built from package constants; every value is a bound ? placeholder
+	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM `+overlay+` WHERE `+where, countArgs...).Scan(&total)
 	if err != nil {
 		return nil, 0, fmt.Errorf("count persons by place: %w", err)
 	}
 
-	queryArgs := append(append([]any{}, overlayArgs...), place, place, opts.Limit, opts.Offset)
-	// #nosec G202 -- overlay is one of two constant subquery literals returned by personOverlaySubquery; every value is a bound ? placeholder
+	queryArgs := append(countArgs, opts.Limit, opts.Offset)
+	// #nosec G202 -- overlay and where are built from package constants; every value is a bound ? placeholder
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, given_name, surname, full_name, gender,
 			   birth_date_raw, birth_date_sort, birth_place, birth_place_lat, birth_place_long,
@@ -5330,8 +5292,7 @@ func (s *ReadModelStore) GetPersonsByPlace(ctx context.Context, place string, op
 			   restriction, living_override, death_evidence, living_ref_date,
 			   version, updated_at
 		FROM `+overlay+`
-		WHERE `+placeNormFunc+`(birth_place) LIKE '%' || `+placeNormFunc+`(?) || '%'
-		   OR `+placeNormFunc+`(death_place) LIKE '%' || `+placeNormFunc+`(?) || '%'
+		WHERE `+where+`
 		ORDER BY surname ASC, given_name ASC, id ASC
 		LIMIT ? OFFSET ?
 	`, queryArgs...)
@@ -5352,8 +5313,8 @@ func (s *ReadModelStore) GetPersonsByPlace(ctx context.Context, place string, op
 	return persons, total, rows.Err()
 }
 
-// GetCemeteryIndex returns unique burial/cremation places with person counts,
-// counted over branchID's overlay of life events (ADR-005, #757). A branch that
+// GetCemeteryIndex returns burial/cremation places, one per place key
+// (repository.CemeteryIndex), with person counts, counted over branchID's overlay of life events (ADR-005, #757). A branch that
 // tombstoned a person also tombstoned that person's life events (DeletePerson's
 // cascade), so the counts agree with GetPersonsByCemetery on the same scope.
 // When privacy protects anyone, the events join the people it shows, so a
@@ -5370,37 +5331,45 @@ func (s *ReadModelStore) GetCemeteryIndex(ctx context.Context, branchID domain.B
 	// #nosec G202 -- sub and shownOwners are built from package constants; every value is a bound ? placeholder
 	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT e.place, COUNT(DISTINCT e.owner_id) as count
+		SELECT DISTINCT e.place_key, e.place, e.owner_id
 		FROM `+sub+` e`+shownOwners+`
-		WHERE e.place != '' AND e.place IS NOT NULL
-		GROUP BY e.place
-		ORDER BY e.place ASC
+		WHERE e.place_key IS NOT NULL
 	`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query cemetery index: %w", err)
 	}
 	defer rows.Close()
 
-	var entries []repository.CemeteryEntry
+	var uses []repository.CemeteryUse
 	for rows.Next() {
-		var entry repository.CemeteryEntry
-		if err := rows.Scan(&entry.Place, &entry.Count); err != nil {
-			return nil, fmt.Errorf("scan cemetery entry: %w", err)
+		var u repository.CemeteryUse
+		var owner string
+		if err := rows.Scan(&u.Key, &u.Text, &owner); err != nil {
+			return nil, fmt.Errorf("scan cemetery use: %w", err)
 		}
-		entries = append(entries, entry)
+		if u.OwnerID, err = uuid.Parse(owner); err != nil {
+			return nil, fmt.Errorf("parse cemetery owner id: %w", err)
+		}
+		uses = append(uses, u)
 	}
-
-	return entries, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return repository.CemeteryIndex(uses), nil
 }
 
-// GetPersonsByCemetery returns persons with burial/cremation events at the given
-// place. Both sides of the join resolve through opts.BranchID's overlay
+// GetPersonsByCemetery returns persons with burial/cremation events whose place
+// has the given place's key. Both sides of the join resolve through opts.BranchID's overlay
 // (ADR-005): the branch-visible life events select the owners, and the persons
 // returned are the branch's view of them.
 func (s *ReadModelStore) GetPersonsByCemetery(ctx context.Context, place string, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
 	overlay, overlayArgs := personOverlaySubquery(opts.BranchID, opts.Privacy)
-	events, eventArgs := factOverlaySubquery("life_events", "fact_type IN (?, ?) AND LOWER(place) = LOWER(?)",
-		[]any{string(domain.FactPersonBurial), string(domain.FactPersonCremation), place}, opts.BranchID)
+	key := repository.PlaceKey(place)
+	if key == "" {
+		return nil, 0, nil
+	}
+	events, eventArgs := factOverlaySubquery("life_events", "fact_type IN (?, ?) AND place_key = ?",
+		[]any{string(domain.FactPersonBurial), string(domain.FactPersonCremation), key}, opts.BranchID)
 	joinArgs := append(append([]any{}, overlayArgs...), eventArgs...)
 
 	// Count total distinct persons

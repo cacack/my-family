@@ -202,11 +202,8 @@ type mainAggregateSnapshot struct {
 //     branch's cemetery index (their burial was tombstoned by the DeletePerson cascade);
 //  4. BrickWallSet / BrickWallResolved projected on main (#802) leave the shadow alone.
 //
-// Deliberately NOT asserted: GetPlaceHierarchy below the top level. The memory backend
-// ignores the `parent` argument and returns whole place strings where the SQL backends
-// return hierarchy levels -- the pre-existing place-parsing divergence tracked as #763,
-// not something #756 introduced. Place fixtures are single-component so the top-level
-// call does agree on all three backends.
+// The persons' places share the parent "Realm", so the place hierarchy is read one
+// level down and GetPersonsByPlace("Realm") is the multi-row case.
 func runBranchAggregateScenario(t *testing.T, readStore repository.ReadModelStore, branchStore repository.BranchStore) {
 	t.Helper()
 	ctx := context.Background()
@@ -222,13 +219,13 @@ func runBranchAggregateScenario(t *testing.T, readStore repository.ReadModelStor
 	// coordinates and the map aggregate needs them. ---
 	shadowed := &repository.PersonReadModel{
 		ID: uuid.New(), GivenName: "Robin", Surname: "Mainline", FullName: "Robin Mainline",
-		BirthPlace:    "Northland",
+		BirthPlace:    "Northland, Realm",
 		BirthPlaceLat: strPtr("N42.3601"), BirthPlaceLong: strPtr("W71.0589"),
 		Version: 1, UpdatedAt: now,
 	}
 	tombstoned := &repository.PersonReadModel{
 		ID: uuid.New(), GivenName: "Sky", Surname: "Steadfast", FullName: "Sky Steadfast",
-		BirthPlace:    "Southland",
+		BirthPlace:    "Southland, Realm",
 		BirthPlaceLat: strPtr("N40.7128"), BirthPlaceLong: strPtr("W74.0060"),
 		Version: 1, UpdatedAt: now,
 	}
@@ -274,7 +271,7 @@ func runBranchAggregateScenario(t *testing.T, readStore repository.ReadModelStor
 		if s.byLetter, err = readStore.GetSurnamesByLetter(ctx, domain.MainBranchID, "M", repository.Privacy{}); err != nil {
 			t.Fatalf("%s: main GetSurnamesByLetter: %v", label, err)
 		}
-		if s.places, err = readStore.GetPlaceHierarchy(ctx, domain.MainBranchID, "", repository.Privacy{}); err != nil {
+		if s.places, err = readStore.GetPlaceHierarchy(ctx, domain.MainBranchID, "Realm", repository.Privacy{}); err != nil {
 			t.Fatalf("%s: main GetPlaceHierarchy: %v", label, err)
 		}
 		if s.locations, err = readStore.GetMapLocations(ctx, domain.MainBranchID, repository.Privacy{}); err != nil {
@@ -283,9 +280,9 @@ func runBranchAggregateScenario(t *testing.T, readStore repository.ReadModelStor
 		if s.bySurname, s.bySurnameN, err = readStore.GetPersonsBySurname(ctx, "Mainline", mainOpts); err != nil {
 			t.Fatalf("%s: main GetPersonsBySurname: %v", label, err)
 		}
-		// "land" is a substring of all three fixture places, so this is the multi-row
+		// "Realm" is the parent of all three fixture places, so this is the multi-row
 		// case: main sees both persons, the branch sees only its shadow.
-		if s.byPlace, s.byPlaceN, err = readStore.GetPersonsByPlace(ctx, "land", mainOpts); err != nil {
+		if s.byPlace, s.byPlaceN, err = readStore.GetPersonsByPlace(ctx, "Realm", mainOpts); err != nil {
 			t.Fatalf("%s: main GetPersonsByPlace: %v", label, err)
 		}
 		if s.byCemetery, s.byCemeteryN, err = readStore.GetPersonsByCemetery(ctx, cemetery, mainOpts); err != nil {
@@ -313,7 +310,7 @@ func runBranchAggregateScenario(t *testing.T, readStore repository.ReadModelStor
 	}
 	if before.byPlaceN != 2 || len(before.byPlace) != 2 {
 		t.Fatalf("main baseline: want both persons matching place %q, got total=%d len=%d",
-			"land", before.byPlaceN, len(before.byPlace))
+			"Realm", before.byPlaceN, len(before.byPlace))
 	}
 	if before.byCemeteryN != 2 || len(before.byCemetery) != 2 {
 		t.Fatalf("main baseline: want both buried persons at %q, got total=%d len=%d",
@@ -341,7 +338,7 @@ func runBranchAggregateScenario(t *testing.T, readStore repository.ReadModelStor
 	shadow := *mainRow
 	shadow.Surname = "Branchline"
 	shadow.FullName = "Robin Branchline"
-	shadow.BirthPlace = "Westland"
+	shadow.BirthPlace = "Westland, Realm"
 	shadow.BirthPlaceLat = strPtr("N45.0000")
 	shadow.BirthPlaceLong = strPtr("W93.0000")
 	shadow.Version = mainRow.Version + 1
@@ -409,7 +406,7 @@ func runBranchAggregateScenario(t *testing.T, readStore repository.ReadModelStor
 		}
 	}
 
-	branchPlaces, err := readStore.GetPlaceHierarchy(ctx, branchID, "", repository.Privacy{})
+	branchPlaces, err := readStore.GetPlaceHierarchy(ctx, branchID, "Realm", repository.Privacy{})
 	if err != nil {
 		t.Fatalf("branch GetPlaceHierarchy: %v", err)
 	}
@@ -421,7 +418,7 @@ func runBranchAggregateScenario(t *testing.T, readStore repository.ReadModelStor
 	if err != nil {
 		t.Fatalf("branch GetMapLocations: %v", err)
 	}
-	if len(branchLocations) != 1 || branchLocations[0].Place != "Westland" ||
+	if len(branchLocations) != 1 || branchLocations[0].Place != "Westland, Realm" ||
 		branchLocations[0].EventType != "birth" || branchLocations[0].Count != 1 {
 		t.Errorf("branch GetMapLocations = %+v, want one birth pin at Westland", branchLocations)
 	}
@@ -448,7 +445,7 @@ func runBranchAggregateScenario(t *testing.T, readStore repository.ReadModelStor
 	for _, c := range []struct {
 		place string
 		want  int
-	}{{"Westland", 1}, {"Northland", 0}, {"Southland", 0}, {"land", 1}} {
+	}{{"Westland, Realm", 1}, {"Northland, Realm", 0}, {"Southland, Realm", 0}, {"Realm", 1}} {
 		rows, total, err := readStore.GetPersonsByPlace(ctx, c.place, branchOpts)
 		if err != nil {
 			t.Fatalf("branch GetPersonsByPlace(%s): %v", c.place, err)
