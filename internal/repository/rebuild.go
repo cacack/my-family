@@ -434,6 +434,16 @@ func countImportedValues(ctx context.Context, rs ReadModelStore) (int, error) {
 	return n, nil
 }
 
+// hasAnyKey reports whether changes holds any of keys.
+func hasAnyKey(changes map[string]any, keys ...string) bool {
+	for _, k := range keys {
+		if _, ok := changes[k]; ok {
+			return true
+		}
+	}
+	return false
+}
+
 func countSet(values ...*string) int {
 	n := 0
 	for _, v := range values {
@@ -480,7 +490,7 @@ func backfillImportedValues(ctx context.Context, events EventStore, rs ReadModel
 		return 0, err
 	}
 	pending = append(pending, exids...)
-	deleted, err := coordinatesMainDeleted(ctx, rs, branches)
+	deleted, err := coordinatesMainDeleted(ctx, events, rs, branches)
 	if err != nil {
 		return 0, err
 	}
@@ -566,12 +576,13 @@ func coordinatesInReadModel(ctx context.Context, rs ReadModelStore) ([]domain.Im
 
 // coordinatesMainDeleted returns a backfill for every person and life event
 // that main has deleted but a research branch still holds its own copy of,
-// with the coordinates of that copy (#1255). A branch copy's coordinates can
-// only have come from main's row, as no event but the backfill sets them, so
-// every branch holds the same ones and the first copy found stands for all.
+// with the coordinates of that copy (#1255). A copy's coordinates came from
+// main's row unless a branch set them with an update (#1604), so a person a
+// branch set coordinates on is skipped: its log carries them. Otherwise every
+// branch holds the same ones and the first copy found stands for all.
 // The backfill goes on main's stream, after its delete; its projection finds
 // no main row and fills in the branch copies alone.
-func coordinatesMainDeleted(ctx context.Context, rs ReadModelStore, branches BranchStore) ([]domain.ImportedValuesBackfilled, error) {
+func coordinatesMainDeleted(ctx context.Context, events EventStore, rs ReadModelStore, branches BranchStore) ([]domain.ImportedValuesBackfilled, error) {
 	if branches == nil {
 		return nil, nil
 	}
@@ -600,6 +611,13 @@ func coordinatesMainDeleted(ctx context.Context, rs ReadModelStore, branches Bra
 				continue
 			}
 			seen[p.ID] = true
+			branchSet, err := branchSetImportedValues(ctx, events, p.ID)
+			if err != nil {
+				return nil, err
+			}
+			if branchSet {
+				continue
+			}
 			pending = append(pending, domain.ImportedValuesBackfilled{
 				EntityType: domain.BackfillPerson, EntityID: p.ID,
 				BirthPlaceLat: p.BirthPlaceLat, BirthPlaceLong: p.BirthPlaceLong,
@@ -715,12 +733,40 @@ func mainStreamCarriesImportedValues(ctx context.Context, events EventStore, id 
 	return version, carried, nil
 }
 
+// branchSetImportedValues reports whether an event on a research branch, not
+// main, sets the entity's coordinates or EXIDs.
+func branchSetImportedValues(ctx context.Context, events EventStore, id uuid.UUID) (bool, error) {
+	stored, err := events.ReadStream(ctx, id)
+	if err != nil {
+		return false, fmt.Errorf("read stream %s: %w", id, err)
+	}
+	for i := range stored {
+		s := &stored[i]
+		if s.BranchID.IsMain() {
+			continue
+		}
+		decoded, err := s.DecodeEvent()
+		if err != nil {
+			return false, fmt.Errorf("decode %s at position %d: %w", s.EventType, s.Position, err)
+		}
+		if setsImportedValues(decoded) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // setsImportedValues reports whether a logged event sets place coordinates or
-// EXIDs. Only the created events (#1225) and the backfill do.
+// EXIDs: the created events (#1225), the backfill, and an update that sets or
+// clears coordinates (#1604).
 func setsImportedValues(event domain.Event) bool {
 	switch e := event.(type) {
 	case domain.ImportedValuesBackfilled:
 		return true
+	case domain.PersonUpdated:
+		return hasAnyKey(e.Changes, "birth_place_lat", "birth_place_long", "death_place_lat", "death_place_long")
+	case domain.FamilyUpdated:
+		return hasAnyKey(e.Changes, "marriage_place_lat", "marriage_place_long")
 	case domain.PersonCreated:
 		return countSet(e.BirthPlaceLat, e.BirthPlaceLong, e.DeathPlaceLat, e.DeathPlaceLong)+len(e.ExternalIDs) > 0
 	case domain.LifeEventCreated:

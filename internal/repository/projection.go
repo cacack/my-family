@@ -432,6 +432,14 @@ func (p *Projector) projectPersonUpdated(ctx context.Context, e domain.PersonUpd
 			if v, ok := value.(string); ok {
 				person.BirthPlace = v
 			}
+		case "birth_place_lat":
+			if v, ok := changeCoordinate(value); ok {
+				person.BirthPlaceLat = v
+			}
+		case "birth_place_long":
+			if v, ok := changeCoordinate(value); ok {
+				person.BirthPlaceLong = v
+			}
 		case "death_date":
 			if v, ok := value.(string); ok {
 				person.DeathDateRaw = v
@@ -441,6 +449,14 @@ func (p *Projector) projectPersonUpdated(ctx context.Context, e domain.PersonUpd
 		case "death_place":
 			if v, ok := value.(string); ok {
 				person.DeathPlace = v
+			}
+		case "death_place_lat":
+			if v, ok := changeCoordinate(value); ok {
+				person.DeathPlaceLat = v
+			}
+		case "death_place_long":
+			if v, ok := changeCoordinate(value); ok {
+				person.DeathPlaceLong = v
 			}
 		case "notes":
 			if v, ok := value.(string); ok {
@@ -576,6 +592,14 @@ func (p *Projector) projectFamilyUpdated(ctx context.Context, e domain.FamilyUpd
 		case "marriage_place":
 			if v, ok := value.(string); ok {
 				family.MarriagePlace = v
+			}
+		case "marriage_place_lat":
+			if v, ok := changeCoordinate(value); ok {
+				family.MarriagePlaceLat = v
+			}
+		case "marriage_place_long":
+			if v, ok := changeCoordinate(value); ok {
+				family.MarriagePlaceLong = v
 			}
 		case "restriction":
 			if v, ok := changeText(value); ok {
@@ -1446,6 +1470,19 @@ func (p *Projector) projectLifeEventDeleted(ctx context.Context, e domain.LifeEv
 		return p.refreshLivingFacts(ctx, branchID, event.OwnerID)
 	}
 	return nil
+}
+
+// changeCoordinate reads a place coordinate change (#1604): a GEDCOM value,
+// or nil (or empty text) for a clear.
+func changeCoordinate(value any) (*string, bool) {
+	v, ok := changeText(value)
+	if !ok {
+		return nil, false
+	}
+	if v == "" {
+		return nil, true
+	}
+	return &v, true
 }
 
 // changeText reads a text change whose clear is nil (a rollback removes a

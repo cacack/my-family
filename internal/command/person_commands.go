@@ -85,6 +85,9 @@ type CreatePersonInput struct {
 	DeathPlace     string
 	Notes          string
 	ResearchStatus string
+	// The birth and death place coordinates, each pair given together (#1604).
+	BirthPlaceCoordinates CoordinatesPatch
+	DeathPlaceCoordinates CoordinatesPatch
 }
 
 // CreatePersonResult contains the result of creating a person.
@@ -126,6 +129,14 @@ func (h *Handler) CreatePerson(ctx context.Context, input CreatePersonInput) (*C
 	if err != nil {
 		return nil, err
 	}
+	birthLat, birthLong, err := createdCoordinates("birth_place", input.BirthPlaceCoordinates)
+	if err != nil {
+		return nil, err
+	}
+	deathLat, deathLong, err := createdCoordinates("death_place", input.DeathPlaceCoordinates)
+	if err != nil {
+		return nil, err
+	}
 
 	// Create person entity
 	person := domain.NewPerson(input.GivenName, input.Surname)
@@ -162,7 +173,12 @@ func (h *Handler) CreatePerson(ctx context.Context, input CreatePersonInput) (*C
 	// empty (#1131).
 	primary := domain.NewPersonName(person.ID, person.GivenName, person.Surname)
 	primary.IsPrimary = true
-	events := []domain.Event{domain.NewPersonCreated(person), domain.NewNameAdded(primary)}
+	// Place coordinates are not domain.Person fields, so they are set on the
+	// event directly, as GEDCOM import does.
+	created := domain.NewPersonCreated(person)
+	created.BirthPlaceLat, created.BirthPlaceLong = birthLat, birthLong
+	created.DeathPlaceLat, created.DeathPlaceLong = deathLat, deathLong
+	events := []domain.Event{created, domain.NewNameAdded(primary)}
 
 	// Execute command (append + project)
 	version, err := h.execute(ctx, person.ID.String(), "Person", events, -1)
@@ -191,6 +207,10 @@ type UpdatePersonInput struct {
 	LivingOverride Patch[string] // auto (or a clear), living or deceased
 	Private        *bool         // marks or unmarks the person private
 	Version        int64         // Required for optimistic locking
+	// The birth and death place coordinates, each pair set or cleared
+	// together (#1604).
+	BirthPlaceCoordinates CoordinatesPatch
+	DeathPlaceCoordinates CoordinatesPatch
 }
 
 // UpdatePersonResult contains the result of updating a person.
@@ -260,6 +280,9 @@ func (h *Handler) UpdatePerson(ctx context.Context, input UpdatePersonInput) (*U
 		changes["death_date"] = deathDate
 	}
 	recordChange(changes, "death_place", input.DeathPlace, &testPerson.DeathPlace)
+	if err := recordPersonCoordinates(changes, input, current); err != nil {
+		return nil, err
+	}
 	recordChange(changes, "notes", input.Notes, &testPerson.Notes)
 	// A clear leaves the status unset (""), recorded as nil: an empty string
 	// in a stored event has always meant "unknown" (ParseResearchStatus).
@@ -300,6 +323,15 @@ func (h *Handler) UpdatePerson(ctx context.Context, input UpdatePersonInput) (*U
 	}
 
 	return &UpdatePersonResult{Version: version}, nil
+}
+
+// recordPersonCoordinates validates and records the birth and death place
+// coordinate pairs of an update (see recordCoordinates).
+func recordPersonCoordinates(changes map[string]any, input UpdatePersonInput, current *repository.PersonReadModel) error {
+	if err := recordCoordinates(changes, "birth_place", input.BirthPlaceCoordinates, current.BirthPlaceLat, current.BirthPlaceLong); err != nil {
+		return err
+	}
+	return recordCoordinates(changes, "death_place", input.DeathPlaceCoordinates, current.DeathPlaceLat, current.DeathPlaceLong)
 }
 
 // DeletePersonInput contains the data for deleting a person.
