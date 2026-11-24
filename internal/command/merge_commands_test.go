@@ -654,6 +654,120 @@ func TestMergePersons_TypeDetailFollowsResolvedEvent(t *testing.T) {
 	}
 }
 
+func TestMergePersons_CoordinatesFollowResolvedPlace(t *testing.T) {
+	// A place's coordinate pair goes with the place (#1799): a merged place
+	// brings its pair and origin, an empty merged pair clears the survivor's,
+	// and a place kept from the survivor keeps its pair.
+	coords := func(lat, long string) command.CoordinatesPatch {
+		return command.CoordinatesPatch{Latitude: command.Set(lat), Longitude: command.Set(long)}
+	}
+	tests := []struct {
+		name                     string
+		survivorPair, mergedPair command.CoordinatesPatch
+		resolution               map[string]string
+		wantPlace                string
+		wantLat, wantLong        string
+		wantOrigin               *domain.CoordinateOrigin
+		wantRecorded             []string
+	}{
+		{
+			name: "merged place brings its pair", survivorPair: coords("N42.3601", "W71.0589"), mergedPair: coords("N42.5195", "W70.8967"),
+			resolution: map[string]string{"birth_place": "merged"}, wantPlace: "Salem",
+			wantLat: "N42.5195", wantLong: "W70.8967", wantOrigin: &domain.CoordinateOrigin{Source: domain.CoordinateManual},
+			wantRecorded: []string{"birth_place", "birth_place_lat", "birth_place_long"},
+		},
+		{
+			name: "empty merged pair clears the survivor's", survivorPair: coords("N42.3601", "W71.0589"),
+			resolution: map[string]string{"birth_place": "merged"}, wantPlace: "Salem",
+			wantRecorded: []string{"birth_place", "birth_place_lat", "birth_place_long"},
+		},
+		{
+			name: "survivor's place keeps its pair", survivorPair: coords("N42.3601", "W71.0589"), mergedPair: coords("N42.5195", "W70.8967"),
+			wantPlace: "Boston", wantLat: "N42.3601", wantLong: "W71.0589", wantOrigin: &domain.CoordinateOrigin{Source: domain.CoordinateManual},
+		},
+		{
+			name: "same pair records nothing", survivorPair: coords("N42.3601", "W71.0589"), mergedPair: coords("N42.3601", "W71.0589"),
+			resolution: map[string]string{"birth_place": "merged"}, wantPlace: "Salem",
+			wantLat: "N42.3601", wantLong: "W71.0589", wantOrigin: &domain.CoordinateOrigin{Source: domain.CoordinateManual},
+			wantRecorded: []string{"birth_place"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			readStore := memory.NewReadModelStore()
+			handler := command.NewHandler(memory.NewEventStore(), readStore)
+			ctx := context.Background()
+
+			survivor, err := handler.CreatePerson(ctx, command.CreatePersonInput{GivenName: "John", Surname: "Doe", BirthPlace: "Boston", BirthPlaceCoordinates: tt.survivorPair})
+			if err != nil {
+				t.Fatal(err)
+			}
+			merged, err := handler.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Johnny", Surname: "Doe", BirthPlace: "Salem", BirthPlaceCoordinates: tt.mergedPair})
+			if err != nil {
+				t.Fatal(err)
+			}
+			result, err := handler.MergePersons(ctx, command.MergePersonsInput{
+				SurvivorID: survivor.ID, MergedID: merged.ID,
+				SurvivorVersion: survivor.Version, MergedVersion: merged.Version,
+				FieldResolution: tt.resolution,
+			})
+			if err != nil {
+				t.Fatalf("MergePersons: %v", err)
+			}
+			if !slices.Equal(result.Summary.FieldsUpdated, tt.wantRecorded) {
+				t.Errorf("FieldsUpdated = %v, want %v", result.Summary.FieldsUpdated, tt.wantRecorded)
+			}
+			got, _ := readStore.GetPerson(ctx, domain.MainBranchID, survivor.ID)
+			text := func(p *string) string {
+				if p == nil {
+					return ""
+				}
+				return *p
+			}
+			if got.BirthPlace != tt.wantPlace || text(got.BirthPlaceLat) != tt.wantLat || text(got.BirthPlaceLong) != tt.wantLong {
+				t.Errorf("birth = %q at %q %q, want %q at %q %q", got.BirthPlace, text(got.BirthPlaceLat), text(got.BirthPlaceLong), tt.wantPlace, tt.wantLat, tt.wantLong)
+			}
+			if (got.BirthPlaceOrigin == nil) != (tt.wantOrigin == nil) || (got.BirthPlaceOrigin != nil && *got.BirthPlaceOrigin != *tt.wantOrigin) {
+				t.Errorf("birth origin = %v, want %v", got.BirthPlaceOrigin, tt.wantOrigin)
+			}
+		})
+	}
+}
+
+// The origin goes with the pair it describes, and the death pair follows the
+// death place the same way (#1799).
+func TestMergePersons_DeathCoordinatesCarryTheirOrigin(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(memory.NewEventStore(), readStore)
+	ctx := context.Background()
+	geocoded := domain.CoordinateOrigin{Source: domain.CoordinateGeocoded, Provider: "Nominatim", Precision: domain.MatchPartial}
+
+	survivor, err := handler.CreatePerson(ctx, command.CreatePersonInput{GivenName: "John", Surname: "Doe", DeathPlace: "Boston",
+		DeathPlaceCoordinates: command.CoordinatesPatch{Latitude: command.Set("N42.3601"), Longitude: command.Set("W71.0589")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	merged, err := handler.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Johnny", Surname: "Doe", DeathPlace: "Salem",
+		DeathPlaceCoordinates: command.CoordinatesPatch{Latitude: command.Set("N42.5195"), Longitude: command.Set("W70.8967"), Origin: &geocoded}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := handler.MergePersons(ctx, command.MergePersonsInput{
+		SurvivorID: survivor.ID, MergedID: merged.ID,
+		SurvivorVersion: survivor.Version, MergedVersion: merged.Version,
+		FieldResolution: map[string]string{"death_place": "merged"},
+	}); err != nil {
+		t.Fatalf("MergePersons: %v", err)
+	}
+	got, _ := readStore.GetPerson(ctx, domain.MainBranchID, survivor.ID)
+	if got.DeathPlace != "Salem" || got.DeathPlaceLat == nil || *got.DeathPlaceLat != "N42.5195" || got.DeathPlaceLong == nil || *got.DeathPlaceLong != "W70.8967" {
+		t.Errorf("death = %q at %v %v, want Salem at N42.5195 W70.8967", got.DeathPlace, got.DeathPlaceLat, got.DeathPlaceLong)
+	}
+	if got.DeathPlaceOrigin == nil || *got.DeathPlaceOrigin != geocoded {
+		t.Errorf("death origin = %v, want %v", got.DeathPlaceOrigin, geocoded)
+	}
+}
+
 func TestMergePersons_KeepsTheMoreProtectivePrivacyMarks(t *testing.T) {
 	yes, no := true, false
 	tests := []struct {

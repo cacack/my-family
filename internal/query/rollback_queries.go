@@ -429,10 +429,15 @@ func (s *RollbackService) applyEventToState(evt repository.StoredEvent, state ma
 		return true, nil
 
 	// A merge is on the survivor's stream and sets the fields it resolved,
-	// the privacy marks among them, as an update would.
+	// the privacy marks among them, as an update would; nil clears a field,
+	// as a coordinate pair the merge took empty from the merged person (#1799).
 	case domain.PersonMerged:
 		for field, value := range e.ResolvedFields {
-			state[field] = normalizeValue(value)
+			if value == nil {
+				delete(state, field)
+			} else {
+				state[field] = normalizeValue(value)
+			}
 		}
 		return false, nil
 

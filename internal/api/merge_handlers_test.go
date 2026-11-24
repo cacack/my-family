@@ -1,6 +1,7 @@
 package api_test
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/cacack/my-family/internal/api"
 	"github.com/cacack/my-family/internal/config"
+	"github.com/cacack/my-family/internal/repository"
 	"github.com/cacack/my-family/internal/repository/memory"
 )
 
@@ -718,4 +720,53 @@ func TestDismissDuplicate_InvalidUUID(t *testing.T) {
 // intToString converts int64 to string for JSON
 func intToString(i int64) string {
 	return strconv.FormatInt(i, 10)
+}
+
+// TestMergePersons_MapShowsMergedPlaceCoordinates checks that a birth place
+// resolved to the merged person brings its coordinates (#1799): the map pins
+// the survivor at the merged person's pair, and a rebuild keeps it there.
+func TestMergePersons_MapShowsMergedPlaceCoordinates(t *testing.T) {
+	server, _, eventStore := setupMergeTestServer()
+	survivorID, survivorVersion := createMergeTestPerson(t, server, "John", "Doe",
+		"birth_place", "Boston", "birth_place_latitude", "N42.3601", "birth_place_longitude", "W71.0589")
+	mergedID, mergedVersion := createMergeTestPerson(t, server, "Johnny", "Doe",
+		"birth_place", "Salem", "birth_place_latitude", "N42.5195", "birth_place_longitude", "W70.8967")
+
+	rec := do(t, server, http.MethodPost, "/api/v1/persons/merge", `{
+		"survivor_id": "`+survivorID+`", "merged_id": "`+mergedID+`",
+		"survivor_version": `+intToString(survivorVersion)+`, "merged_version": `+intToString(mergedVersion)+`,
+		"field_resolution": {"birth_place": "merged"}
+	}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("MergePersons: %d - %s", rec.Code, rec.Body.String())
+	}
+
+	checkMap := func(label string, server *api.Server) {
+		t.Helper()
+		rec := do(t, server, http.MethodGet, "/api/v1/map/locations", "")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s: GET map/locations: %d - %s", label, rec.Code, rec.Body.String())
+		}
+		var resp api.MapLocationsResponse
+		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("%s: decode: %v", label, err)
+		}
+		if len(resp.Items) != 1 {
+			t.Fatalf("%s: items = %+v, want one pin", label, resp.Items)
+		}
+		item := resp.Items[0]
+		if item.Latitude != 42.5195 || item.Longitude != -70.8967 || len(item.PersonIds) != 1 || item.PersonIds[0].String() != survivorID {
+			t.Errorf("%s: pin = %v,%v for %v; want 42.5195,-70.8967 for %s", label, item.Latitude, item.Longitude, item.PersonIds, survivorID)
+		}
+	}
+	checkMap("live", server)
+
+	// myfamily rebuild replays the log into the read model.
+	rebuilt := memory.NewReadModelStore()
+	snapshots := memory.NewSnapshotStore(eventStore)
+	if _, err := repository.RebuildReadModel(context.Background(), eventStore, rebuilt, memory.NewBranchStore(), snapshots); err != nil {
+		t.Fatalf("RebuildReadModel: %v", err)
+	}
+	cfg := &config.Config{AuthMode: config.AuthModeOpen, Port: 8080, LogFormat: "text"}
+	checkMap("rebuilt", api.NewServer(cfg, eventStore, rebuilt, snapshots, nil))
 }

@@ -1976,6 +1976,34 @@ func TestGetStateAtVersion_AppliesAMergesResolvedFields(t *testing.T) {
 		"a rollback across a merge keeps the marks it resolved")
 }
 
+// A merge that took an empty coordinate pair from the merged person (#1799)
+// clears the pair from the state, as an update's clear does.
+func TestGetStateAtVersion_AMergeClearsAPairItTookEmpty(t *testing.T) {
+	id := uuid.New()
+	lat, long := "N42.3601", "W71.0589"
+	created, err := json.Marshal(domain.PersonCreated{PersonID: id, GivenName: "John", BirthPlace: "Boston", BirthPlaceLat: &lat, BirthPlaceLong: &long})
+	require.NoError(t, err)
+	merged, err := json.Marshal(domain.NewPersonMerged(id, uuid.New(), nil,
+		map[string]any{"birth_place": "Salem", "birth_place_lat": nil, "birth_place_long": nil, "birth_place_origin": nil},
+		nil, nil, nil, nil, nil))
+	require.NoError(t, err)
+	events := []repository.StoredEvent{
+		{ID: uuid.New(), StreamID: id, StreamType: "person", EventType: "PersonCreated", Data: created, Version: 1, Position: 1},
+		{ID: uuid.New(), StreamID: id, StreamType: "person", EventType: "PersonMerged", Data: merged, Version: 2, Position: 2},
+	}
+	service := NewRollbackService(&rollbackMockEventStore{
+		readStreamFunc: func(context.Context, uuid.UUID) ([]repository.StoredEvent, error) { return events, nil },
+	}, &mockReadModelStore{})
+
+	result, err := service.GetStateAtVersion(context.Background(), "person", id, 2)
+	require.NoError(t, err)
+	assert.Equal(t, "Salem", result.State["birth_place"])
+	for _, key := range []string{"birth_place_lat", "birth_place_long", "birth_place_origin"} {
+		_, present := result.State[key]
+		assert.False(t, present, key)
+	}
+}
+
 // A rollback across a merge restores marks that protect more than the current
 // ones, and keeps the current marks where the target's protect less.
 func TestComputeRollbackChanges_AcrossAMergeKeepsTheMoreProtectiveMarks(t *testing.T) {
