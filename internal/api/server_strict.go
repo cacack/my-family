@@ -482,9 +482,76 @@ func (ss *StrictServer) GetPlace(ctx context.Context, request GetPlaceRequestObj
 	return GetPlace200JSONResponse(convertReadModelPlaceToGenerated(*place)), nil
 }
 
-// convertReadModelPlaceToGenerated converts a place in use to its API form.
+// UpdatePlace implements StrictServerInterface. Place facts are main-only
+// (PL-005), so it writes and re-reads the mainline.
+func (ss *StrictServer) UpdatePlace(ctx context.Context, request UpdatePlaceRequestObject) (UpdatePlaceResponseObject, error) {
+	_, err := ss.server.commandHandler.UpdatePlace(ctx, command.UpdatePlaceInput{
+		ID:      request.Id,
+		Version: request.Body.Version,
+		Name:    patchOf(request.Body.Name),
+		Coordinates: command.CoordinatesPatch{
+			Latitude:  patchOf(request.Body.Latitude),
+			Longitude: patchOf(request.Body.Longitude),
+			Origin:    coordinateOriginFromGenerated(request.Body.CoordinatesOrigin),
+		},
+	})
+	if err != nil {
+		if errors.Is(err, command.ErrPlaceNotFound) {
+			return UpdatePlace404JSONResponse{NotFoundJSONResponse{
+				Code:    "not_found",
+				Message: "Place not found",
+			}}, nil
+		}
+		if errors.Is(err, repository.ErrConcurrencyConflict) {
+			return UpdatePlace409JSONResponse{ConflictJSONResponse{
+				Code:    CodeVersionConflict,
+				Message: "Version conflict",
+			}}, nil
+		}
+		return nil, err
+	}
+
+	place, err := ss.server.browseService.GetPlace(ctx, domain.MainBranchID, request.Id)
+	if err != nil {
+		return nil, err
+	}
+	if place == nil {
+		return UpdatePlace404JSONResponse{NotFoundJSONResponse{
+			Code:    "not_found",
+			Message: "Place not found",
+		}}, nil
+	}
+	return UpdatePlace200JSONResponse(convertReadModelPlaceToGenerated(*place)), nil
+}
+
+// convertReadModelPlaceToGenerated converts a place to its API form.
 func convertReadModelPlaceToGenerated(p repository.PlaceReadModel) Place {
-	return Place{Id: p.ID, Key: p.Key, Name: p.Name, Count: p.Count}
+	return Place{
+		Id: p.ID, Key: p.Key, Name: p.Name, Count: p.Count, Version: p.Version,
+		Latitude: p.Latitude, Longitude: p.Longitude,
+		CoordinatesOrigin: coordinateOriginToGenerated(domain.EffectiveCoordinateOrigin(p.Latitude, p.Longitude, p.Origin)),
+	}
+}
+
+// placeIDOrNil is a map location's place ID, or nil for the zero UUID of a
+// text that names no place.
+func placeIDOrNil(id uuid.UUID) *openapi_types.UUID {
+	if id == uuid.Nil {
+		return nil
+	}
+	return &id
+}
+
+// resolvedPlaceToGenerated converts a resolved place to its API form.
+func resolvedPlaceToGenerated(p *query.ResolvedPlace) *ResolvedPlace {
+	if p == nil {
+		return nil
+	}
+	return &ResolvedPlace{
+		Id: p.ID, Name: nonEmptyString(&p.Name),
+		Latitude: p.Latitude, Longitude: p.Longitude,
+		CoordinatesOrigin: coordinateOriginToGenerated(p.Origin),
+	}
 }
 
 // GetMapLocations implements StrictServerInterface.
@@ -515,6 +582,7 @@ func (ss *StrictServer) GetMapLocations(ctx context.Context, request GetMapLocat
 			}
 		}
 		response.Items[i] = MapLocation{
+			PlaceId:   placeIDOrNil(item.PlaceID),
 			Place:     item.Place,
 			Latitude:  item.Latitude,
 			Longitude: item.Longitude,
@@ -1221,9 +1289,14 @@ func (ss *StrictServer) ExportEvents(ctx context.Context, request ExportEventsRe
 		return nil, err
 	}
 
+	places, err := query.NewPlaceResolver(ctx, ss.server.readStore, domain.MainBranchID)
+	if err != nil {
+		return nil, err
+	}
 	exportEvents := make([]EventExport, len(events))
 	for i, e := range events {
 		exportEvents[i] = convertEventToExport(e)
+		exportEvents[i].PlaceResolved = resolvedPlaceToGenerated(places.Resolve(&e.Place))
 	}
 
 	total := len(exportEvents)
@@ -1250,9 +1323,14 @@ func (ss *StrictServer) ExportAttributes(ctx context.Context, request ExportAttr
 		return nil, err
 	}
 
+	places, err := query.NewPlaceResolver(ctx, ss.server.readStore, domain.MainBranchID)
+	if err != nil {
+		return nil, err
+	}
 	exportAttrs := make([]AttributeExport, len(attributes))
 	for i, a := range attributes {
 		exportAttrs[i] = convertAttributeToExport(a)
+		exportAttrs[i].PlaceResolved = resolvedPlaceToGenerated(places.Resolve(&a.Place))
 	}
 
 	total := len(exportAttrs)
@@ -1319,6 +1397,8 @@ func convertAttributeToExport(a repository.AttributeReadModel) AttributeExport {
 	if a.Place != "" {
 		attr.Place = &a.Place
 	}
+	attr.PlaceLatitude = omitIfNil(nonEmptyString(a.PlaceLat))
+	attr.PlaceLongitude = omitIfNil(nonEmptyString(a.PlaceLong))
 	attr.Version = &a.Version
 	attr.CreatedAt = &a.CreatedAt
 
@@ -4405,6 +4485,8 @@ func convertQueryPersonToGenerated(p query.Person) Person {
 	resp.DeathPlaceLongitude = omitIfNil(p.DeathPlaceLong)
 	resp.BirthPlaceCoordinatesOrigin = coordinateOriginToGenerated(p.BirthPlaceOrigin)
 	resp.DeathPlaceCoordinatesOrigin = coordinateOriginToGenerated(p.DeathPlaceOrigin)
+	resp.BirthPlaceResolved = resolvedPlaceToGenerated(p.BirthPlaceResolved)
+	resp.DeathPlaceResolved = resolvedPlaceToGenerated(p.DeathPlaceResolved)
 	if p.Notes != nil {
 		resp.Notes = p.Notes
 	}
@@ -4459,6 +4541,8 @@ func convertQueryPersonDetailToGenerated(pd *query.PersonDetail) PersonDetail {
 	resp.DeathPlaceLongitude = omitIfNil(pd.DeathPlaceLong)
 	resp.BirthPlaceCoordinatesOrigin = coordinateOriginToGenerated(pd.BirthPlaceOrigin)
 	resp.DeathPlaceCoordinatesOrigin = coordinateOriginToGenerated(pd.DeathPlaceOrigin)
+	resp.BirthPlaceResolved = resolvedPlaceToGenerated(pd.BirthPlaceResolved)
+	resp.DeathPlaceResolved = resolvedPlaceToGenerated(pd.DeathPlaceResolved)
 	if pd.Notes != nil {
 		resp.Notes = pd.Notes
 	}
@@ -4612,6 +4696,7 @@ func convertQueryFamilyToGenerated(f query.Family) Family {
 	resp.MarriagePlaceLatitude = omitIfNil(f.MarriagePlaceLat)
 	resp.MarriagePlaceLongitude = omitIfNil(f.MarriagePlaceLong)
 	resp.MarriagePlaceCoordinatesOrigin = coordinateOriginToGenerated(f.MarriagePlaceOrigin)
+	resp.MarriagePlaceResolved = resolvedPlaceToGenerated(f.MarriagePlaceResolved)
 	resp.MarriageTypeDetail = f.MarriageTypeDetail
 	resp.MarriageNotes = f.MarriageNotes
 	resp.Notes = f.Notes
@@ -4666,6 +4751,7 @@ func convertQueryFamilyDetailToGenerated(fd query.FamilyDetail) FamilyDetail {
 	resp.MarriagePlaceLatitude = omitIfNil(fd.MarriagePlaceLat)
 	resp.MarriagePlaceLongitude = omitIfNil(fd.MarriagePlaceLong)
 	resp.MarriagePlaceCoordinatesOrigin = coordinateOriginToGenerated(fd.MarriagePlaceOrigin)
+	resp.MarriagePlaceResolved = resolvedPlaceToGenerated(fd.MarriagePlaceResolved)
 	resp.MarriageTypeDetail = fd.MarriageTypeDetail
 	resp.MarriageNotes = fd.MarriageNotes
 	resp.Notes = fd.Notes
@@ -4728,6 +4814,7 @@ func convertQueryFamilyToFamilyDetail(f query.Family) FamilyDetail {
 	resp.MarriagePlaceLatitude = omitIfNil(f.MarriagePlaceLat)
 	resp.MarriagePlaceLongitude = omitIfNil(f.MarriagePlaceLong)
 	resp.MarriagePlaceCoordinatesOrigin = coordinateOriginToGenerated(f.MarriagePlaceOrigin)
+	resp.MarriagePlaceResolved = resolvedPlaceToGenerated(f.MarriagePlaceResolved)
 	resp.MarriageTypeDetail = f.MarriageTypeDetail
 	resp.MarriageNotes = f.MarriageNotes
 	resp.Notes = f.Notes

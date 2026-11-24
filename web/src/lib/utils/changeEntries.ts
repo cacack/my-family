@@ -34,6 +34,7 @@ export const ENTITY_TYPE_LABELS: Record<ChangeEntityType, string> = {
   proof_summary: "Proof summary",
   branch: "Research branch",
   duplicate_pair: "Duplicate pair",
+  place: "Place",
 };
 
 /** Every entity type, in label order. */

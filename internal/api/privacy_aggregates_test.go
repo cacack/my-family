@@ -235,3 +235,61 @@ func TestPrivacyRedaction_Places(t *testing.T) {
 		})
 	}
 }
+
+// TestPrivacyRedaction_PlaceFacts is PL-006 for place facts (ADR-009 §10):
+// with a name and pair stated on each person's birthplace, a principal sees
+// them on the place list, a person's resolved place and the place history
+// only for the places of the people they may see. A place only hidden
+// records name shows no name, pair or history entry.
+func TestPrivacyRedaction_PlaceFacts(t *testing.T) {
+	for _, viewersSeeLiving := range []bool{true, false} {
+		t.Run(fmt.Sprintf("viewers see living %v", viewersSeeLiving), func(t *testing.T) {
+			f, tr, principals := redactionFixture(t, viewersSeeLiving)
+			owner := principals[0].cookie
+			placeTree(t, f, owner, tr)
+			ids := map[string]string{"Dora": tr.dead, "Petra": tr.private, "Lena": tr.living, "Kit": tr.kid}
+			for name := range ids {
+				id := repository.PlaceID(strings.ToLower(name) + "ville,springfield").String()
+				if rec := f.do(t, request{method: http.MethodPut, path: "/api/v1/places/" + id, cookie: owner,
+					body: `{"version":0,"name":"` + name + ` Town","latitude":"N1","longitude":"E1"}`}); rec.Code != http.StatusOK {
+					t.Fatalf("updatePlace %s: %d %s", name, rec.Code, rec.Body)
+				}
+			}
+			for _, p := range principals {
+				t.Run(p.name, func(t *testing.T) {
+					shown := p.shownPeople()
+					towns := suffixed(shown, " Town")
+
+					var named []string
+					for _, item := range p.getJSON(t, f, "/api/v1/places?limit=100")["items"].([]any) {
+						if m := item.(map[string]any); strings.HasSuffix(m["name"].(string), " Town") {
+							named = append(named, m["name"].(string))
+							if m["latitude"] != "N1" {
+								t.Errorf("listPlaces %s: latitude %v, want N1", m["name"], m["latitude"])
+							}
+						} else if strings.HasSuffix(m["name"].(string), "ville, Springfield") {
+							t.Errorf("listPlaces holds %s without its stated name", m["name"])
+						}
+					}
+					slices.Sort(named)
+					if !slices.Equal(named, towns) {
+						t.Errorf("listPlaces named places = %v, want %v", named, towns)
+					}
+
+					// The history is for signed-in principals only.
+					if p.cookie != nil {
+						history := p.getJSON(t, f, "/api/v1/history?entity_type=place&limit=100")
+						if got := listed(history, "items", "entity_name"); !slices.Equal(got, towns) {
+							t.Errorf("place history = %v, want %v", got, towns)
+						}
+					}
+
+					dora := p.getJSON(t, f, "/api/v1/persons/"+tr.dead)
+					if r, _ := dora["birth_place_resolved"].(map[string]any); r["name"] != "Dora Town" || r["latitude"] != "N1" {
+						t.Errorf("Dora's resolved birthplace = %v, want Dora Town at N1", dora["birth_place_resolved"])
+					}
+				})
+			}
+		})
+	}
+}
