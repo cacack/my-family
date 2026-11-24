@@ -121,8 +121,13 @@ type placeCoordinates struct {
 
 // recordCoordinates records the pair beside an event's place text whose API
 // fields start with prefix (eventPlaceNames), for a place now named place
-// (see recordPair).
+// (see recordPair). A pair left out beside a place left without a name is
+// cleared (#1798): export and the map both key coordinates by the name, so a
+// pair cannot outlive it.
 func recordCoordinates(changes map[string]any, prefix, place string, input CoordinatesPatch, current placeCoordinates) error {
+	if strings.TrimSpace(place) == "" && input.Latitude.Omitted() && input.Longitude.Omitted() && input.Origin == nil {
+		input.Latitude, input.Longitude = Clear[string](), Clear[string]()
+	}
 	return recordPair(changes, eventPlaceNames(prefix), place, input, current)
 }
 

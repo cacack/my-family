@@ -185,3 +185,48 @@ func TestPlaceCoordinates_MapLocations(t *testing.T) {
 		t.Errorf("main map = %v, want Boston", got)
 	}
 }
+
+// TestPlaceCoordinates_ClearedWithPlace: clearing a place name, by null or
+// "", also clears its pair, so the map returns no location without a place
+// name (#1798). The map shows births and deaths; a family's cleared pair is
+// checked on the family.
+func TestPlaceCoordinates_ClearedWithPlace(t *testing.T) {
+	server := setupBranchTestServer()
+	person := createPerson(t, server, "Ada", "Lovelace")
+	personPath := "/api/v1/persons/" + person
+	if code, body := putRecord(t, server, personPath,
+		`"birth_place":"Boston","birth_place_latitude":"N42.3601","birth_place_longitude":"W71.0589",`); code != http.StatusOK {
+		t.Fatalf("PUT person: status = %d. Body: %v", code, body)
+	}
+	rec := do(t, server, http.MethodPost, "/api/v1/families", fmt.Sprintf(
+		`{"partner1_id":%q,"marriage_place":"Springfield","marriage_place_latitude":"N39.7817","marriage_place_longitude":"W89.6501"}`, person))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("POST family: status = %d. Body: %s", rec.Code, rec.Body.String())
+	}
+	familyPath := "/api/v1/families/" + decodeJSON(t, rec)["id"].(string)
+
+	locations := func() []any {
+		t.Helper()
+		return readRecord(t, server, "/api/v1/map/locations")["items"].([]any)
+	}
+	if got := locations(); len(got) != 1 {
+		t.Fatalf("map before clearing = %v, want Boston", got)
+	}
+
+	if code, body := putRecord(t, server, personPath, `"birth_place":null,`); code != http.StatusOK {
+		t.Fatalf("PUT person null place: status = %d. Body: %v", code, body)
+	}
+	if code, body := putRecord(t, server, familyPath, `"marriage_place":"",`); code != http.StatusOK {
+		t.Fatalf("PUT family empty place: status = %d. Body: %v", code, body)
+	}
+	if got := locations(); len(got) != 0 {
+		t.Errorf("map after clearing the places = %v, want nothing", got)
+	}
+	for path, field := range map[string]string{personPath: "birth_place", familyPath: "marriage_place"} {
+		got := readRecord(t, server, path)
+		if got[field+"_latitude"] != nil || got[field+"_longitude"] != nil || got[field+"_coordinates_origin"] != nil {
+			t.Errorf("%s pair after clearing the place = %v, %v, %v; want none",
+				field, got[field+"_latitude"], got[field+"_longitude"], got[field+"_coordinates_origin"])
+		}
+	}
+}
