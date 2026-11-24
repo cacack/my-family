@@ -390,6 +390,8 @@ decorator, b = event-output redactor, — = no tree data. "Protected" means a pl
 | getPersonsByPlace | GET /browse/places/{place}/persons | People | RM | a | Protected excluded in the query |
 | browseCemeteries | GET /browse/cemeteries | Cemetery index with counts | RM agg | a | Counts exclude protected |
 | getPersonsByCemetery | GET /browse/cemeteries/{place}/persons | People | RM | a | Protected excluded in the query |
+| listPlaces | GET /places | Places in use with IDs, names and counts | RM agg | a | A place, its name and its count come only from records shown: protected people and what they own, private families and families with a protected partner are left out in the query (ADR-009 §10) |
+| getPlace | GET /places/{id} | One place in use | RM agg | a | As listPlaces; a place only hidden records name → 404, the same as an ID never in use |
 | getMapLocations | GET /map/locations | Pins with counts and people | RM agg | a | Protected removed from pins, counts recomputed, empty pins dropped |
 | getBrickWalls | GET /browse/brick-walls | Brick-wall people | RM agg | a | Protected excluded |
 

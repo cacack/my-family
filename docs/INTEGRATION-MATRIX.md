@@ -395,6 +395,14 @@ admitted person merges on a branch:
 | `mergePersons` | POST | `/persons/merge` |
 | `batchMergePersons` | POST | `/persons/merge/batch` |
 
+[#1734](https://github.com/cacack/my-family/issues/1734) added the place list (ADR-009 §6): a place
+named only on a branch is in use on that branch alone, with the ID it keeps after a merge:
+
+| operationId | Method | Path |
+|---|---|---|
+| `listPlaces` | GET | `/places` |
+| `getPlace` | GET | `/places/{id}` |
+
 That is **100 API operations carrying `?branch=`**. Treat `internal/api/openapi.yaml` as the count
 of record — the drift test described below re-derives it from the spec on every run.
 

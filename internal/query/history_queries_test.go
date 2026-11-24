@@ -409,6 +409,9 @@ func (m *mockReadModelStore) GetCemeteryIndex(ctx context.Context, _ domain.Bran
 func (m *mockReadModelStore) GetPersonsByCemetery(ctx context.Context, place string, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
 	return nil, 0, nil
 }
+func (m *mockReadModelStore) ListPlaces(ctx context.Context, _ domain.BranchID, _ repository.Privacy) ([]repository.PlaceReadModel, error) {
+	return nil, nil
+}
 func (m *mockReadModelStore) GetMapLocations(ctx context.Context, branchID domain.BranchID, _ repository.Privacy) ([]repository.MapLocation, error) {
 	return nil, nil
 }

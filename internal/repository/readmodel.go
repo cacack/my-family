@@ -889,6 +889,15 @@ type ReadModelStore interface {
 	// owners whose branch-visible life events place them there (ADR-005, #757).
 	GetCemeteryIndex(ctx context.Context, branchID domain.BranchID, privacy Privacy) ([]CemeteryEntry, error)
 	GetPersonsByCemetery(ctx context.Context, place string, opts ListOptions) ([]PersonReadModel, int, error)
+	// ListPlaces returns the places in use within the branch overlay (ADR-009
+	// §2, §6), built by Places from the place of every person's birth and
+	// death, family marriage, life event and attribute that privacy shows. A
+	// family's marriage place, life events and attributes count only where
+	// their owner's own facts are shown: a person shown in full, a family that
+	// is not private and has no protected partner (ADR-008 §3, ADR-009 §10).
+	// GetPlaceHierarchy still counts birth and death places only, so its
+	// counts are lower until it moves onto place IDs (ADR-009 step 5).
+	ListPlaces(ctx context.Context, branchID domain.BranchID, privacy Privacy) ([]PlaceReadModel, error)
 
 	// Map operations
 

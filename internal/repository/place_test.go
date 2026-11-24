@@ -181,3 +181,57 @@ func TestMostUsed_TieBrokenBytewise(t *testing.T) {
 		t.Errorf("mostUsed = %q, want %q", got, "B")
 	}
 }
+
+// TestPlaceID pins the ID of "boston,ma", so neither the rule nor
+// PlaceNamespace can change unnoticed (PL-003).
+func TestPlaceID(t *testing.T) {
+	want := uuid.MustParse("3eb19023-cd67-5ed4-b651-7782c7691a37")
+	if got := PlaceID("boston,ma"); got != want {
+		t.Errorf("PlaceID(%q) = %s, want %s", "boston,ma", got, want)
+	}
+	if got := PlaceID("boston,ma"); got.Version() != 5 {
+		t.Errorf("PlaceID is version %d, want 5", got.Version())
+	}
+	if PlaceID("boston,ma") == PlaceID("ma") {
+		t.Error("PlaceID gives two keys one ID")
+	}
+}
+
+func TestPlaces(t *testing.T) {
+	uses := []PlaceUse{
+		{Key: "boston,ma", Text: "Boston, MA", Count: 2},
+		{Key: "boston,ma", Text: " BOSTON ,ma ", Count: 1},
+		{Key: "salem,ma", Text: "Salem,Ma", Count: 2},
+		{Key: "darmstadt,germany", Text: "Darmstadt,,,Germany", Count: 1},
+		{Key: "darmstadt,germany", Text: "Darmstadt, Germany", Count: 1},
+		{Key: "", Text: " , ", Count: 4},
+	}
+	place := func(key, name string, count int) PlaceReadModel {
+		return PlaceReadModel{ID: PlaceID(key), Key: key, Name: name, Count: count}
+	}
+	// "MA" (3 uses) outweighs "Ma" (2); Darmstadt's spellings tie and read the
+	// same once their empty parts are dropped.
+	want := []PlaceReadModel{
+		place("boston,ma", "Boston, MA", 3),
+		place("darmstadt,germany", "Darmstadt, Germany", 2),
+		place("germany", "Germany", 2),
+		place("ma", "MA", 5),
+		place("salem,ma", "Salem, Ma", 2),
+	}
+	if got := Places(uses); !reflect.DeepEqual(got, want) {
+		t.Errorf("Places =\n  %+v\nwant\n  %+v", got, want)
+	}
+	if got := Places(nil); len(got) != 0 {
+		t.Errorf("Places(nil) = %+v, want none", got)
+	}
+}
+
+// TestPlaces_TieBrokenBytewise shows that a tie between spellings names the
+// place by the bytewise smaller, "Kiel" before "kiel".
+func TestPlaces_TieBrokenBytewise(t *testing.T) {
+	uses := []PlaceUse{{Key: "kiel", Text: "kiel", Count: 1}, {Key: "kiel", Text: "Kiel", Count: 1}}
+	want := []PlaceReadModel{{ID: PlaceID("kiel"), Key: "kiel", Name: "Kiel", Count: 2}}
+	if got := Places(uses); !reflect.DeepEqual(got, want) {
+		t.Errorf("Places = %+v, want %+v", got, want)
+	}
+}

@@ -2375,6 +2375,54 @@ func (s *ReadModelStore) GetCemeteryIndex(ctx context.Context, branchID domain.B
 	return repository.CemeteryIndex(uses), nil
 }
 
+// ListPlaces returns the places in use within branchID's overlay, from the
+// places of the records privacy shows (repository.Places), as on the SQL
+// stores. The memory store has no key column and computes each key on read.
+func (s *ReadModelStore) ListPlaces(ctx context.Context, branchID domain.BranchID, privacy repository.Privacy) ([]repository.PlaceReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	counts := make(map[string]int)
+	use := func(place string) {
+		if place != "" {
+			counts[place]++
+		}
+	}
+	shownPeople := make(map[uuid.UUID]bool)
+	for _, p := range resolveAllRows(s.persons, branchID) {
+		if privacy.Protects(p) {
+			continue
+		}
+		shownPeople[p.ID] = true
+		use(p.BirthPlace)
+		use(p.DeathPlace)
+	}
+	partnerShown := func(id *uuid.UUID) bool { return id == nil || shownPeople[*id] }
+	shownFamilies := make(map[uuid.UUID]bool)
+	for _, f := range resolveAllRows(s.families, branchID) {
+		if privacy.SeesAll() || !privacy.Hides(f.Restriction) && partnerShown(f.Partner1ID) && partnerShown(f.Partner2ID) {
+			shownFamilies[f.ID] = true
+			use(f.MarriagePlace)
+		}
+	}
+	for _, e := range resolveAllRows(s.events, branchID) {
+		if privacy.SeesAll() || e.OwnerType == "person" && shownPeople[e.OwnerID] || e.OwnerType == "family" && shownFamilies[e.OwnerID] {
+			use(e.Place)
+		}
+	}
+	for _, a := range resolveAllRows(s.attributes, branchID) {
+		if privacy.SeesAll() || shownPeople[a.PersonID] {
+			use(a.Place)
+		}
+	}
+
+	uses := make([]repository.PlaceUse, 0, len(counts))
+	for text, n := range counts {
+		uses = append(uses, repository.PlaceUse{Key: repository.PlaceKey(text), Text: text, Count: n})
+	}
+	return repository.Places(uses), nil
+}
+
 // GetPersonsByCemetery returns persons with burial/cremation events at the given
 // place. Both sides of the join resolve through opts.BranchID's overlay (ADR-005):
 // the branch-visible life events pick the owners, the branch-visible persons are

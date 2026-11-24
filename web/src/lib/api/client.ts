@@ -276,6 +276,9 @@ const BRANCH_SCOPED_OPERATIONS: ReadonlyArray<{
 	{ methods: ['GET'], pattern: new RegExp('^/browse/cemeteries$') },
 	{ methods: ['GET'], pattern: new RegExp(`^/browse/cemeteries/${TEXT_SEGMENT}/persons$`) },
 	{ methods: ['GET'], pattern: new RegExp('^/map/locations$') },
+	// The places in use (#1734): a place named only on a branch is in use there.
+	{ methods: ['GET'], pattern: new RegExp('^/places$') },
+	{ methods: ['GET'], pattern: new RegExp(`^/places/${UUID_SEGMENT}$`) },
 	// Person/family facts (#757).
 	{ methods: ['GET', 'POST'], pattern: new RegExp('^/associations$') },
 	{ methods: ['GET', 'PUT', 'DELETE'], pattern: new RegExp(`^/associations/${UUID_SEGMENT}$`) },
