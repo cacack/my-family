@@ -4312,7 +4312,7 @@ type FamilyCreate struct {
 	MarriageDate  *DateInput `json:"marriage_date,omitempty"`
 	MarriagePlace *string    `json:"marriage_place,omitempty"`
 
-	// MarriagePlaceLatitude Latitude in GEDCOM form (e.g., "N39.7817"): N or S, then decimal degrees within 90. Give it with marriage_place_longitude: one half of the pair alone, the wrong axis letter or a value out of range is rejected with 400.
+	// MarriagePlaceLatitude Latitude in GEDCOM form (e.g., "N39.7817"): N or S, then decimal degrees within 90. Give it with marriage_place_longitude: one half of the pair alone, the wrong axis letter, a value out of range or a pair without a marriage_place is rejected with 400. Stored trimmed, with an upper-case letter.
 	MarriagePlaceLatitude *string `json:"marriage_place_latitude,omitempty"`
 
 	// MarriagePlaceLongitude Longitude in GEDCOM form (e.g., "W89.6501"): E or W, then decimal degrees within 180. Given with marriage_place_latitude.
@@ -4414,7 +4414,7 @@ type FamilyUpdate struct {
 	MarriageDate  nullable.Nullable[DateInput] `json:"marriage_date,omitempty"`
 	MarriagePlace nullable.Nullable[string]    `json:"marriage_place,omitempty"`
 
-	// MarriagePlaceLatitude Latitude in GEDCOM form (e.g., "N39.7817"): N or S, then decimal degrees within 90. Give it with marriage_place_longitude: one half of the pair alone, the wrong axis letter or a value out of range is rejected with 400. Send both as null to clear the pair; omit both to leave it unchanged.
+	// MarriagePlaceLatitude Latitude in GEDCOM form (e.g., "N39.7817"): N or S, then decimal degrees within 90. Give it with marriage_place_longitude: one half of the pair alone, the wrong axis letter, a value out of range or a pair without a marriage_place is rejected with 400. Stored trimmed, with an upper-case letter. Send both as null to clear the pair; omit both to leave it unchanged, as changing the place name does.
 	MarriagePlaceLatitude nullable.Nullable[string] `json:"marriage_place_latitude,omitempty"`
 
 	// MarriagePlaceLongitude Longitude in GEDCOM form (e.g., "W89.6501"): E or W, then decimal degrees within 180. Given with marriage_place_latitude.
@@ -5701,7 +5701,7 @@ type PersonCreate struct {
 	BirthDate  *DateInput `json:"birth_date,omitempty"`
 	BirthPlace *string    `json:"birth_place,omitempty"`
 
-	// BirthPlaceLatitude Latitude in GEDCOM form (e.g., "N42.3601"): N or S, then decimal degrees within 90. Give it with birth_place_longitude: one half of the pair alone, the wrong axis letter or a value out of range is rejected with 400.
+	// BirthPlaceLatitude Latitude in GEDCOM form (e.g., "N42.3601"): N or S, then decimal degrees within 90. Give it with birth_place_longitude: one half of the pair alone, the wrong axis letter, a value out of range or a pair without a birth_place is rejected with 400. Stored trimmed, with an upper-case letter.
 	BirthPlaceLatitude *string `json:"birth_place_latitude,omitempty"`
 
 	// BirthPlaceLongitude Longitude in GEDCOM form (e.g., "W71.0589"): E or W, then decimal degrees within 180. Given with birth_place_latitude.
@@ -5740,7 +5740,7 @@ type PersonCreate struct {
 	DeathDate  *DateInput `json:"death_date,omitempty"`
 	DeathPlace *string    `json:"death_place,omitempty"`
 
-	// DeathPlaceLatitude Latitude in GEDCOM form (e.g., "N42.3601"): N or S, then decimal degrees within 90. Give it with death_place_longitude: one half of the pair alone, the wrong axis letter or a value out of range is rejected with 400.
+	// DeathPlaceLatitude Latitude in GEDCOM form (e.g., "N42.3601"): N or S, then decimal degrees within 90. Give it with death_place_longitude: one half of the pair alone, the wrong axis letter, a value out of range or a pair without a death_place is rejected with 400. Stored trimmed, with an upper-case letter.
 	DeathPlaceLatitude *string `json:"death_place_latitude,omitempty"`
 
 	// DeathPlaceLongitude Longitude in GEDCOM form (e.g., "W71.0589"): E or W, then decimal degrees within 180. Given with death_place_latitude.
@@ -5940,7 +5940,7 @@ type PersonUpdate struct {
 	BirthDate  nullable.Nullable[DateInput] `json:"birth_date,omitempty"`
 	BirthPlace nullable.Nullable[string]    `json:"birth_place,omitempty"`
 
-	// BirthPlaceLatitude Latitude in GEDCOM form (e.g., "N42.3601"): N or S, then decimal degrees within 90. Give it with birth_place_longitude: one half of the pair alone, the wrong axis letter or a value out of range is rejected with 400. Send both as null to clear the pair; omit both to leave it unchanged.
+	// BirthPlaceLatitude Latitude in GEDCOM form (e.g., "N42.3601"): N or S, then decimal degrees within 90. Give it with birth_place_longitude: one half of the pair alone, the wrong axis letter, a value out of range or a pair without a birth_place is rejected with 400. Stored trimmed, with an upper-case letter. Send both as null to clear the pair; omit both to leave it unchanged, as changing the place name does.
 	BirthPlaceLatitude nullable.Nullable[string] `json:"birth_place_latitude,omitempty"`
 
 	// BirthPlaceLongitude Longitude in GEDCOM form (e.g., "W71.0589"): E or W, then decimal degrees within 180. Given with birth_place_latitude.
@@ -5948,7 +5948,7 @@ type PersonUpdate struct {
 	DeathDate           nullable.Nullable[DateInput] `json:"death_date,omitempty"`
 	DeathPlace          nullable.Nullable[string]    `json:"death_place,omitempty"`
 
-	// DeathPlaceLatitude Latitude in GEDCOM form (e.g., "N42.3601"): N or S, then decimal degrees within 90. Give it with death_place_longitude: one half of the pair alone, the wrong axis letter or a value out of range is rejected with 400. Send both as null to clear the pair; omit both to leave it unchanged.
+	// DeathPlaceLatitude Latitude in GEDCOM form (e.g., "N42.3601"): N or S, then decimal degrees within 90. Give it with death_place_longitude: one half of the pair alone, the wrong axis letter, a value out of range or a pair without a death_place is rejected with 400. Stored trimmed, with an upper-case letter. Send both as null to clear the pair; omit both to leave it unchanged, as changing the place name does.
 	DeathPlaceLatitude nullable.Nullable[string] `json:"death_place_latitude,omitempty"`
 
 	// DeathPlaceLongitude Longitude in GEDCOM form (e.g., "W71.0589"): E or W, then decimal degrees within 180. Given with death_place_latitude.

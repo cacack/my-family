@@ -129,11 +129,11 @@ func (h *Handler) CreatePerson(ctx context.Context, input CreatePersonInput) (*C
 	if err != nil {
 		return nil, err
 	}
-	birthLat, birthLong, err := createdCoordinates("birth_place", input.BirthPlaceCoordinates)
+	birthLat, birthLong, err := createdCoordinates("birth_place", input.BirthPlace, input.BirthPlaceCoordinates)
 	if err != nil {
 		return nil, err
 	}
-	deathLat, deathLong, err := createdCoordinates("death_place", input.DeathPlaceCoordinates)
+	deathLat, deathLong, err := createdCoordinates("death_place", input.DeathPlace, input.DeathPlaceCoordinates)
 	if err != nil {
 		return nil, err
 	}
@@ -280,7 +280,7 @@ func (h *Handler) UpdatePerson(ctx context.Context, input UpdatePersonInput) (*U
 		changes["death_date"] = deathDate
 	}
 	recordChange(changes, "death_place", input.DeathPlace, &testPerson.DeathPlace)
-	if err := recordPersonCoordinates(changes, input, current); err != nil {
+	if err := recordPersonCoordinates(changes, input, current, testPerson); err != nil {
 		return nil, err
 	}
 	recordChange(changes, "notes", input.Notes, &testPerson.Notes)
@@ -326,12 +326,13 @@ func (h *Handler) UpdatePerson(ctx context.Context, input UpdatePersonInput) (*U
 }
 
 // recordPersonCoordinates validates and records the birth and death place
-// coordinate pairs of an update (see recordCoordinates).
-func recordPersonCoordinates(changes map[string]any, input UpdatePersonInput, current *repository.PersonReadModel) error {
-	if err := recordCoordinates(changes, "birth_place", input.BirthPlaceCoordinates, current.BirthPlaceLat, current.BirthPlaceLong); err != nil {
+// coordinate pairs of an update (see recordCoordinates); updated holds the
+// places as the update leaves them.
+func recordPersonCoordinates(changes map[string]any, input UpdatePersonInput, current *repository.PersonReadModel, updated *domain.Person) error {
+	if err := recordCoordinates(changes, "birth_place", updated.BirthPlace, input.BirthPlaceCoordinates, current.BirthPlaceLat, current.BirthPlaceLong); err != nil {
 		return err
 	}
-	return recordCoordinates(changes, "death_place", input.DeathPlaceCoordinates, current.DeathPlaceLat, current.DeathPlaceLong)
+	return recordCoordinates(changes, "death_place", updated.DeathPlace, input.DeathPlaceCoordinates, current.DeathPlaceLat, current.DeathPlaceLong)
 }
 
 // DeletePersonInput contains the data for deleting a person.

@@ -94,7 +94,7 @@ func (h *Handler) CreateFamily(ctx context.Context, input CreateFamilyInput) (*C
 	if input.MarriagePlace != "" {
 		family.MarriagePlace = input.MarriagePlace
 	}
-	marriageLat, marriageLong, err := createdCoordinates("marriage_place", input.MarriagePlaceCoordinates)
+	marriageLat, marriageLong, err := createdCoordinates("marriage_place", input.MarriagePlace, input.MarriagePlaceCoordinates)
 	if err != nil {
 		return nil, err
 	}
@@ -193,10 +193,12 @@ func (h *Handler) UpdateFamily(ctx context.Context, input UpdateFamilyInput) (*U
 			changes["marriage_date"] = marriageDate
 		}
 	}
+	marriagePlace := family.MarriagePlace
 	if place, ok := input.MarriagePlace.Change(); ok && place != family.MarriagePlace {
 		changes["marriage_place"] = place
+		marriagePlace = place
 	}
-	if err := recordCoordinates(changes, "marriage_place", input.MarriagePlaceCoordinates, family.MarriagePlaceLat, family.MarriagePlaceLong); err != nil {
+	if err := recordCoordinates(changes, "marriage_place", marriagePlace, input.MarriagePlaceCoordinates, family.MarriagePlaceLat, family.MarriagePlaceLong); err != nil {
 		return nil, err
 	}
 	recordPrivate(changes, input.Private, family.Restriction)

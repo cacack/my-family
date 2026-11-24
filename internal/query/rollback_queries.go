@@ -272,6 +272,9 @@ func (s *RollbackService) ComputeRollbackChanges(ctx context.Context, entityType
 
 	// Compute diff: what values from target state differ from current state
 	changes := s.computeStateDiff(currentState.State, targetState.State)
+	if err := keepBackfilledCoordinates(events, targetVersion, changes); err != nil {
+		return nil, err
+	}
 	if mergedSince(events, targetVersion) {
 		keepPrivacyMarks(changes, currentState.State, targetState.State)
 	}
@@ -284,6 +287,36 @@ func (s *RollbackService) ComputeRollbackChanges(ctx context.Context, entityType
 		Changes:        changes,
 		IsRecreation:   isCurrentlyDeleted && !targetState.IsDeleted,
 	}, nil
+}
+
+// keepBackfilledCoordinates stops a rollback to before an entity's backfill
+// from clearing the coordinates it logged. They came from an import before
+// #1225 and were already in the record at the target, only not in its log.
+func keepBackfilledCoordinates(events []repository.StoredEvent, targetVersion int64, changes map[string]any) error {
+	for _, evt := range events {
+		if evt.EventType != "ImportedValuesBackfilled" {
+			continue
+		}
+		if evt.Version <= targetVersion {
+			return nil
+		}
+		decoded, err := evt.DecodeEvent()
+		if err != nil {
+			return fmt.Errorf("decoding backfill: %w", err)
+		}
+		backfilled := map[string]any{}
+		if e, ok := decoded.(domain.ImportedValuesBackfilled); ok && e.EntityType == domain.BackfillPerson {
+			setCoordinateState(backfilled, "birth_place", e.BirthPlaceLat, e.BirthPlaceLong)
+			setCoordinateState(backfilled, "death_place", e.DeathPlaceLat, e.DeathPlaceLong)
+		}
+		for key := range backfilled {
+			if v, ok := changes[key]; ok && v == nil {
+				delete(changes, key)
+			}
+		}
+		return nil
+	}
+	return nil
 }
 
 // mergedSince reports whether a person merge comes after the target version.

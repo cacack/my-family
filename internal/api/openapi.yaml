@@ -8361,7 +8361,8 @@ components:
           description: >-
             Latitude in GEDCOM form (e.g., "N42.3601"): N or S, then decimal degrees
             within 90. Give it with birth_place_longitude: one half of the pair alone,
-            the wrong axis letter or a value out of range is rejected with 400.
+            the wrong axis letter, a value out of range or a pair without a birth_place
+            is rejected with 400. Stored trimmed, with an upper-case letter.
         birth_place_longitude:
           type: string
           description: >-
@@ -8376,7 +8377,8 @@ components:
           description: >-
             Latitude in GEDCOM form (e.g., "N42.3601"): N or S, then decimal degrees
             within 90. Give it with death_place_longitude: one half of the pair alone,
-            the wrong axis letter or a value out of range is rejected with 400.
+            the wrong axis letter, a value out of range or a pair without a death_place
+            is rejected with 400. Stored trimmed, with an upper-case letter.
         death_place_longitude:
           type: string
           description: >-
@@ -8422,8 +8424,10 @@ components:
           description: >-
             Latitude in GEDCOM form (e.g., "N42.3601"): N or S, then decimal degrees
             within 90. Give it with birth_place_longitude: one half of the pair alone,
-            the wrong axis letter or a value out of range is rejected with 400.
-            Send both as null to clear the pair; omit both to leave it unchanged.
+            the wrong axis letter, a value out of range or a pair without a birth_place
+            is rejected with 400. Stored trimmed, with an upper-case letter.
+            Send both as null to clear the pair; omit both to leave it unchanged,
+            as changing the place name does.
         birth_place_longitude:
           nullable: true
           type: string
@@ -8443,8 +8447,10 @@ components:
           description: >-
             Latitude in GEDCOM form (e.g., "N42.3601"): N or S, then decimal degrees
             within 90. Give it with death_place_longitude: one half of the pair alone,
-            the wrong axis letter or a value out of range is rejected with 400.
-            Send both as null to clear the pair; omit both to leave it unchanged.
+            the wrong axis letter, a value out of range or a pair without a death_place
+            is rejected with 400. Stored trimmed, with an upper-case letter.
+            Send both as null to clear the pair; omit both to leave it unchanged,
+            as changing the place name does.
         death_place_longitude:
           nullable: true
           type: string
@@ -8668,7 +8674,8 @@ components:
           description: >-
             Latitude in GEDCOM form (e.g., "N39.7817"): N or S, then decimal degrees
             within 90. Give it with marriage_place_longitude: one half of the pair alone,
-            the wrong axis letter or a value out of range is rejected with 400.
+            the wrong axis letter, a value out of range or a pair without a marriage_place
+            is rejected with 400. Stored trimmed, with an upper-case letter.
         marriage_place_longitude:
           type: string
           description: >-
@@ -8727,8 +8734,10 @@ components:
           description: >-
             Latitude in GEDCOM form (e.g., "N39.7817"): N or S, then decimal degrees
             within 90. Give it with marriage_place_longitude: one half of the pair alone,
-            the wrong axis letter or a value out of range is rejected with 400.
-            Send both as null to clear the pair; omit both to leave it unchanged.
+            the wrong axis letter, a value out of range or a pair without a marriage_place
+            is rejected with 400. Stored trimmed, with an upper-case letter.
+            Send both as null to clear the pair; omit both to leave it unchanged,
+            as changing the place name does.
         marriage_place_longitude:
           nullable: true
           type: string

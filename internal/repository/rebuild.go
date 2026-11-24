@@ -434,16 +434,6 @@ func countImportedValues(ctx context.Context, rs ReadModelStore) (int, error) {
 	return n, nil
 }
 
-// hasAnyKey reports whether changes holds any of keys.
-func hasAnyKey(changes map[string]any, keys ...string) bool {
-	for _, k := range keys {
-		if _, ok := changes[k]; ok {
-			return true
-		}
-	}
-	return false
-}
-
 func countSet(values ...*string) int {
 	n := 0
 	for _, v := range values {
@@ -501,7 +491,7 @@ func backfillImportedValues(ctx context.Context, events EventStore, rs ReadModel
 	projector := NewProjector(rs, branches)
 	appended := 0
 	for _, backfill := range pending {
-		version, carried, err := mainStreamCarriesImportedValues(ctx, events, backfill.EntityID)
+		version, carried, err := mainStreamCarriesImportedValues(ctx, events, backfill)
 		if err != nil {
 			return appended, err
 		}
@@ -577,9 +567,9 @@ func coordinatesInReadModel(ctx context.Context, rs ReadModelStore) ([]domain.Im
 // coordinatesMainDeleted returns a backfill for every person and life event
 // that main has deleted but a research branch still holds its own copy of,
 // with the coordinates of that copy (#1255). A copy's coordinates came from
-// main's row unless a branch set them with an update (#1604), so a person a
-// branch set coordinates on is skipped: its log carries them. Otherwise every
-// branch holds the same ones and the first copy found stands for all.
+// main's row unless its branch set them with an update (#1604), so the copy
+// on a branch that did is passed over: its log carries them. Every other copy
+// holds main's, and the first one found stands for all.
 // The backfill goes on main's stream, after its delete; its projection finds
 // no main row and fills in the branch copies alone.
 func coordinatesMainDeleted(ctx context.Context, events EventStore, rs ReadModelStore, branches BranchStore) ([]domain.ImportedValuesBackfilled, error) {
@@ -610,14 +600,14 @@ func coordinatesMainDeleted(ctx context.Context, events EventStore, rs ReadModel
 			if onMain != nil {
 				continue
 			}
-			seen[p.ID] = true
-			branchSet, err := branchSetImportedValues(ctx, events, p.ID)
+			branchSet, err := branchSetCoordinates(ctx, events, p.ID, branchID)
 			if err != nil {
 				return nil, err
 			}
 			if branchSet {
 				continue
 			}
+			seen[p.ID] = true
 			pending = append(pending, domain.ImportedValuesBackfilled{
 				EntityType: domain.BackfillPerson, EntityID: p.ID,
 				BirthPlaceLat: p.BirthPlaceLat, BirthPlaceLong: p.BirthPlaceLong,
@@ -711,13 +701,17 @@ func toExternalIDs[T any](rows []T, valueType func(T) (string, string)) []domain
 	return ids
 }
 
-// mainStreamCarriesImportedValues reads an entity's main stream and reports
-// its version and whether any of its events sets coordinates or EXIDs.
-func mainStreamCarriesImportedValues(ctx context.Context, events EventStore, id uuid.UUID) (version int64, carried bool, err error) {
-	stored, err := events.ReadStream(ctx, id)
+// mainStreamCarriesImportedValues reads the backfill's entity's main stream
+// and reports its version and whether its events carry every value the
+// backfill holds. A created event or backfill that sets any carries them all
+// (#1225); an update that sets or clears coordinates (#1604) carries only the
+// pair it names, so a backfill still logs the imported values beside it.
+func mainStreamCarriesImportedValues(ctx context.Context, events EventStore, backfill domain.ImportedValuesBackfilled) (version int64, carried bool, err error) {
+	stored, err := events.ReadStream(ctx, backfill.EntityID)
 	if err != nil {
-		return 0, false, fmt.Errorf("read stream %s: %w", id, err)
+		return 0, false, fmt.Errorf("read stream %s: %w", backfill.EntityID, err)
 	}
+	updated := map[string]bool{}
 	for i := range stored {
 		s := &stored[i]
 		if !s.BranchID.IsMain() {
@@ -729,44 +723,81 @@ func mainStreamCarriesImportedValues(ctx context.Context, events EventStore, id 
 			return 0, false, fmt.Errorf("decode %s at position %d: %w", s.EventType, s.Position, err)
 		}
 		carried = carried || setsImportedValues(decoded)
+		for _, key := range updatedCoordinateKeys(decoded) {
+			updated[key] = true
+		}
 	}
-	return version, carried, nil
+	return version, carried || updatesCarry(backfill, updated), nil
 }
 
-// branchSetImportedValues reports whether an event on a research branch, not
-// main, sets the entity's coordinates or EXIDs.
-func branchSetImportedValues(ctx context.Context, events EventStore, id uuid.UUID) (bool, error) {
+// updatesCarry reports whether updates set every value the backfill holds:
+// each of its coordinates is under a key in updated, and it holds no EXIDs,
+// which no update sets.
+func updatesCarry(backfill domain.ImportedValuesBackfilled, updated map[string]bool) bool {
+	if len(backfill.ExternalIDs) > 0 || backfill.PlaceLat != nil || backfill.PlaceLong != nil {
+		return false
+	}
+	for key, v := range map[string]*string{
+		"birth_place_lat": backfill.BirthPlaceLat, "birth_place_long": backfill.BirthPlaceLong,
+		"death_place_lat": backfill.DeathPlaceLat, "death_place_long": backfill.DeathPlaceLong,
+	} {
+		if v != nil && !updated[key] {
+			return false
+		}
+	}
+	return true
+}
+
+// branchSetCoordinates reports whether an update on the branch sets or clears
+// the person's coordinates (#1604).
+func branchSetCoordinates(ctx context.Context, events EventStore, id uuid.UUID, branchID domain.BranchID) (bool, error) {
 	stored, err := events.ReadStream(ctx, id)
 	if err != nil {
 		return false, fmt.Errorf("read stream %s: %w", id, err)
 	}
 	for i := range stored {
 		s := &stored[i]
-		if s.BranchID.IsMain() {
+		if s.BranchID != branchID {
 			continue
 		}
 		decoded, err := s.DecodeEvent()
 		if err != nil {
 			return false, fmt.Errorf("decode %s at position %d: %w", s.EventType, s.Position, err)
 		}
-		if setsImportedValues(decoded) {
+		if len(updatedCoordinateKeys(decoded)) > 0 {
 			return true, nil
 		}
 	}
 	return false, nil
 }
 
-// setsImportedValues reports whether a logged event sets place coordinates or
-// EXIDs: the created events (#1225), the backfill, and an update that sets or
-// clears coordinates (#1604).
+// updatedCoordinateKeys returns the coordinate change keys a person or family
+// update sets or clears (#1604).
+func updatedCoordinateKeys(event domain.Event) []string {
+	var changes map[string]any
+	var keys []string
+	switch e := event.(type) {
+	case domain.PersonUpdated:
+		changes, keys = e.Changes, []string{"birth_place_lat", "birth_place_long", "death_place_lat", "death_place_long"}
+	case domain.FamilyUpdated:
+		changes, keys = e.Changes, []string{"marriage_place_lat", "marriage_place_long"}
+	}
+	var set []string
+	for _, k := range keys {
+		if _, ok := changes[k]; ok {
+			set = append(set, k)
+		}
+	}
+	return set
+}
+
+// setsImportedValues reports whether a logged event sets the whole of an
+// entity's imported place coordinates and EXIDs: the created events (#1225)
+// and the backfill.
 func setsImportedValues(event domain.Event) bool {
 	switch e := event.(type) {
 	case domain.ImportedValuesBackfilled:
 		return true
-	case domain.PersonUpdated:
-		return hasAnyKey(e.Changes, "birth_place_lat", "birth_place_long", "death_place_lat", "death_place_long")
-	case domain.FamilyUpdated:
-		return hasAnyKey(e.Changes, "marriage_place_lat", "marriage_place_long")
 	case domain.PersonCreated:
 		return countSet(e.BirthPlaceLat, e.BirthPlaceLong, e.DeathPlaceLat, e.DeathPlaceLong)+len(e.ExternalIDs) > 0
 	case domain.LifeEventCreated:

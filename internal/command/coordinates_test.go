@@ -30,6 +30,8 @@ func TestCreate_PlaceCoordinates(t *testing.T) {
 
 	created, err := h.CreatePerson(ctx, command.CreatePersonInput{
 		GivenName:             "Ada",
+		BirthPlace:            "Boston",
+		DeathPlace:            "Sydney",
 		BirthPlaceCoordinates: pair("N42.3601", "W71.0589"),
 		DeathPlaceCoordinates: pair("S33.8688", "E151.2093"),
 	})
@@ -42,7 +44,7 @@ func TestCreate_PlaceCoordinates(t *testing.T) {
 		t.Errorf("person coordinates = %s %s %s %s", derefOr(p.BirthPlaceLat), derefOr(p.BirthPlaceLong), derefOr(p.DeathPlaceLat), derefOr(p.DeathPlaceLong))
 	}
 
-	fam, err := h.CreateFamily(ctx, command.CreateFamilyInput{Partner1ID: &created.ID, MarriagePlaceCoordinates: pair("N39.7817", "W89.6501")})
+	fam, err := h.CreateFamily(ctx, command.CreateFamilyInput{Partner1ID: &created.ID, MarriagePlace: "Springfield", MarriagePlaceCoordinates: pair("N39.7817", "W89.6501")})
 	if err != nil {
 		t.Fatalf("CreateFamily: %v", err)
 	}
@@ -77,13 +79,13 @@ func TestPlaceCoordinates_Rejected(t *testing.T) {
 			rs := memory.NewReadModelStore()
 			h := command.NewHandler(memory.NewEventStore(), rs)
 
-			_, err := h.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ada", BirthPlaceCoordinates: tt.input})
+			_, err := h.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ada", BirthPlace: "Boston", BirthPlaceCoordinates: tt.input})
 			assertCoordinateError(t, "CreatePerson", err, tt.wantField)
 			if persons, total, _ := rs.ListPersons(ctx, repository.ListOptions{Limit: 10}); total != 0 {
 				t.Errorf("CreatePerson stored %d persons, want none", len(persons))
 			}
 
-			created, err := h.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ada", BirthPlaceCoordinates: pair("N1", "E1")})
+			created, err := h.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ada", BirthPlace: "Boston", BirthPlaceCoordinates: pair("N1", "E1")})
 			if err != nil {
 				t.Fatalf("CreatePerson: %v", err)
 			}
@@ -94,9 +96,9 @@ func TestPlaceCoordinates_Rejected(t *testing.T) {
 				t.Errorf("UpdatePerson stored a change: version %d, %s %s", p.Version, derefOr(p.BirthPlaceLat), derefOr(p.BirthPlaceLong))
 			}
 
-			_, err = h.CreateFamily(ctx, command.CreateFamilyInput{Partner1ID: &created.ID, MarriagePlaceCoordinates: tt.input})
+			_, err = h.CreateFamily(ctx, command.CreateFamilyInput{Partner1ID: &created.ID, MarriagePlace: "Springfield", MarriagePlaceCoordinates: tt.input})
 			assertCoordinateError(t, "CreateFamily", err, "marriage"+tt.wantField[len("birth"):])
-			fam, err := h.CreateFamily(ctx, command.CreateFamilyInput{Partner1ID: &created.ID})
+			fam, err := h.CreateFamily(ctx, command.CreateFamilyInput{Partner1ID: &created.ID, MarriagePlace: "Springfield"})
 			if err != nil {
 				t.Fatalf("CreateFamily: %v", err)
 			}
@@ -125,7 +127,7 @@ func TestUpdate_PlaceCoordinates(t *testing.T) {
 	rs := memory.NewReadModelStore()
 	h := command.NewHandler(es, rs)
 
-	created, err := h.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ada"})
+	created, err := h.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ada", BirthPlace: "Boston", DeathPlace: "Sydney"})
 	if err != nil {
 		t.Fatalf("CreatePerson: %v", err)
 	}
@@ -154,7 +156,8 @@ func TestUpdate_PlaceCoordinates(t *testing.T) {
 		t.Errorf("omitted pair changed to %s %s", bl, bo)
 	}
 
-	// Changing one half records only that half.
+	// Changing one half records the whole pair, so a merge cannot join one
+	// side's latitude to the other's longitude.
 	before := version
 	update(command.UpdatePersonInput{BirthPlaceCoordinates: pair("N42.3601", "W70")})
 	events, _ := es.ReadStream(ctx, created.ID)
@@ -164,8 +167,8 @@ func TestUpdate_PlaceCoordinates(t *testing.T) {
 		t.Fatalf("decode: %v", err)
 	}
 	changes := decoded.(domain.PersonUpdated).Changes
-	if version != before+1 || len(changes) != 1 || changes["birth_place_long"] != "W70" {
-		t.Errorf("changes = %v, want only birth_place_long", changes)
+	if version != before+1 || len(changes) != 2 || changes["birth_place_lat"] != "N42.3601" || changes["birth_place_long"] != "W70" {
+		t.Errorf("changes = %v, want the whole birth pair", changes)
 	}
 
 	clearPair := command.CoordinatesPatch{Latitude: command.Clear[string](), Longitude: command.Clear[string]()}
@@ -182,7 +185,7 @@ func TestUpdate_PlaceCoordinates(t *testing.T) {
 	}
 
 	// Family: set, keep, clear.
-	fam, err := h.CreateFamily(ctx, command.CreateFamilyInput{Partner1ID: &created.ID})
+	fam, err := h.CreateFamily(ctx, command.CreateFamilyInput{Partner1ID: &created.ID, MarriagePlace: "Springfield"})
 	if err != nil {
 		t.Fatalf("CreateFamily: %v", err)
 	}
@@ -190,7 +193,7 @@ func TestUpdate_PlaceCoordinates(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UpdateFamily set: %v", err)
 	}
-	res, err = h.UpdateFamily(ctx, command.UpdateFamilyInput{ID: fam.ID, Version: res.Version, MarriagePlace: command.Set("Springfield")})
+	res, err = h.UpdateFamily(ctx, command.UpdateFamilyInput{ID: fam.ID, Version: res.Version, MarriagePlace: command.Set("Springfield, IL")})
 	if err != nil {
 		t.Fatalf("UpdateFamily place: %v", err)
 	}
@@ -214,7 +217,7 @@ func TestRollback_PlaceCoordinates(t *testing.T) {
 	rs := memory.NewReadModelStore()
 	h := command.NewHandler(memory.NewEventStore(), rs)
 
-	created, err := h.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ada", BirthPlaceCoordinates: pair("N1", "E1")})
+	created, err := h.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ada", BirthPlace: "Boston", DeathPlace: "Sydney", BirthPlaceCoordinates: pair("N1", "E1")})
 	if err != nil {
 		t.Fatalf("CreatePerson: %v", err)
 	}
@@ -231,7 +234,7 @@ func TestRollback_PlaceCoordinates(t *testing.T) {
 			derefOr(p.BirthPlaceLat), derefOr(p.BirthPlaceLong), derefOr(p.DeathPlaceLat), derefOr(p.DeathPlaceLong))
 	}
 
-	fam, err := h.CreateFamily(ctx, command.CreateFamilyInput{Partner1ID: &created.ID, MarriagePlaceCoordinates: pair("N4", "E4")})
+	fam, err := h.CreateFamily(ctx, command.CreateFamilyInput{Partner1ID: &created.ID, MarriagePlace: "Springfield", MarriagePlaceCoordinates: pair("N4", "E4")})
 	if err != nil {
 		t.Fatalf("CreateFamily: %v", err)
 	}
@@ -243,5 +246,116 @@ func TestRollback_PlaceCoordinates(t *testing.T) {
 	}
 	if f, _ := rs.GetFamily(ctx, domain.MainBranchID, fam.ID); derefOr(f.MarriagePlaceLat) != "N4" || derefOr(f.MarriagePlaceLong) != "E4" {
 		t.Errorf("family after rollback = %s %s, want N4 E4", derefOr(f.MarriagePlaceLat), derefOr(f.MarriagePlaceLong))
+	}
+}
+
+// Coordinates are stored in canonical GEDCOM form: trimmed, with an
+// upper-case direction letter (#1604).
+func TestPlaceCoordinates_Canonical(t *testing.T) {
+	ctx := context.Background()
+	rs := memory.NewReadModelStore()
+	h := command.NewHandler(memory.NewEventStore(), rs)
+
+	created, err := h.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ada", BirthPlace: "Boston", BirthPlaceCoordinates: pair(" n42.3601\n", "w71.0589 ")})
+	if err != nil {
+		t.Fatalf("CreatePerson: %v", err)
+	}
+	p, _ := rs.GetPerson(ctx, domain.MainBranchID, created.ID)
+	if derefOr(p.BirthPlaceLat) != "N42.3601" || derefOr(p.BirthPlaceLong) != "W71.0589" {
+		t.Errorf("created coordinates = %q %q, want N42.3601 W71.0589", derefOr(p.BirthPlaceLat), derefOr(p.BirthPlaceLong))
+	}
+
+	// The same point typed another way is not a change.
+	res, err := h.UpdatePerson(ctx, command.UpdatePersonInput{ID: created.ID, Version: created.Version, BirthPlaceCoordinates: pair("n42.3601", "w71.0589")})
+	if err != nil || res.Version != created.Version {
+		t.Errorf("UpdatePerson = %+v, %v; want no change", res, err)
+	}
+}
+
+// Coordinates need a place name, as export and the map key them by it; a
+// place set in the same update counts (#1604).
+func TestPlaceCoordinates_NeedAPlace(t *testing.T) {
+	ctx := context.Background()
+	rs := memory.NewReadModelStore()
+	h := command.NewHandler(memory.NewEventStore(), rs)
+
+	_, err := h.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ada", BirthPlaceCoordinates: pair("N1", "E1")})
+	assertCoordinateError(t, "CreatePerson", err, "birth_place")
+
+	created, err := h.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ada", DeathPlace: "Sydney"})
+	if err != nil {
+		t.Fatalf("CreatePerson: %v", err)
+	}
+	_, err = h.CreateFamily(ctx, command.CreateFamilyInput{Partner1ID: &created.ID, MarriagePlaceCoordinates: pair("N1", "E1")})
+	assertCoordinateError(t, "CreateFamily", err, "marriage_place")
+	_, err = h.UpdatePerson(ctx, command.UpdatePersonInput{ID: created.ID, Version: created.Version, BirthPlaceCoordinates: pair("N1", "E1")})
+	assertCoordinateError(t, "UpdatePerson", err, "birth_place")
+	_, err = h.UpdatePerson(ctx, command.UpdatePersonInput{ID: created.ID, Version: created.Version, DeathPlace: command.Clear[string](), DeathPlaceCoordinates: pair("N1", "E1")})
+	assertCoordinateError(t, "UpdatePerson clearing the place", err, "death_place")
+	if _, err := h.UpdatePerson(ctx, command.UpdatePersonInput{ID: created.ID, Version: created.Version,
+		BirthPlace: command.Set("Boston"), BirthPlaceCoordinates: pair("N1", "E1")}); err != nil {
+		t.Errorf("UpdatePerson with a place: %v", err)
+	}
+
+	fam, err := h.CreateFamily(ctx, command.CreateFamilyInput{Partner1ID: &created.ID})
+	if err != nil {
+		t.Fatalf("CreateFamily: %v", err)
+	}
+	_, err = h.UpdateFamily(ctx, command.UpdateFamilyInput{ID: fam.ID, Version: fam.Version, MarriagePlaceCoordinates: pair("N1", "E1")})
+	assertCoordinateError(t, "UpdateFamily", err, "marriage_place")
+	if _, err := h.UpdateFamily(ctx, command.UpdateFamilyInput{ID: fam.ID, Version: fam.Version,
+		MarriagePlace: command.Set("Springfield"), MarriagePlaceCoordinates: pair("N1", "E1")}); err != nil {
+		t.Errorf("UpdateFamily with a place: %v", err)
+	}
+}
+
+// A rollback to before a backfill keeps the imported coordinates it logged,
+// which the record already held; a rollback to the backfill restores them
+// (#1604).
+func TestRollback_BackfilledCoordinates(t *testing.T) {
+	ctx := context.Background()
+	es := memory.NewEventStore()
+	rs := memory.NewReadModelStore()
+	h := command.NewHandler(es, rs)
+
+	created, err := h.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ada", BirthPlace: "Boston"})
+	if err != nil {
+		t.Fatalf("CreatePerson: %v", err)
+	}
+	lat, long := "N1", "E1"
+	backfill := domain.ImportedValuesBackfilled{BaseEvent: domain.NewBaseEvent(), EntityType: domain.BackfillPerson, EntityID: created.ID,
+		BirthPlaceLat: &lat, BirthPlaceLong: &long}
+	if err := es.Append(ctx, created.ID, "Person", []domain.Event{backfill}, created.Version, repository.MainScope); err != nil {
+		t.Fatalf("append backfill: %v", err)
+	}
+	backfillVersion := created.Version + 1
+	if err := repository.NewProjector(rs, nil).Project(ctx, backfill, backfillVersion, domain.MainBranchID); err != nil {
+		t.Fatalf("project backfill: %v", err)
+	}
+	updated, err := h.UpdatePerson(ctx, command.UpdatePersonInput{ID: created.ID, Version: backfillVersion, Notes: command.Set("later")})
+	if err != nil {
+		t.Fatalf("UpdatePerson: %v", err)
+	}
+	birth := func() (string, string) {
+		p, _ := rs.GetPerson(ctx, domain.MainBranchID, created.ID)
+		return derefOr(p.BirthPlaceLat), derefOr(p.BirthPlaceLong)
+	}
+
+	if _, err := h.RollbackPerson(ctx, created.ID, created.Version); err != nil {
+		t.Fatalf("RollbackPerson to before the backfill: %v", err)
+	}
+	if bl, bo := birth(); bl != lat || bo != long {
+		t.Errorf("after rollback to before the backfill = %s %s, want the imported %s %s kept", bl, bo, lat, long)
+	}
+
+	p, _ := rs.GetPerson(ctx, domain.MainBranchID, created.ID)
+	if _, err := h.UpdatePerson(ctx, command.UpdatePersonInput{ID: created.ID, Version: p.Version, BirthPlaceCoordinates: pair("N2", "E2")}); err != nil {
+		t.Fatalf("UpdatePerson coordinates: %v", err)
+	}
+	if _, err := h.RollbackPerson(ctx, created.ID, updated.Version); err != nil {
+		t.Fatalf("RollbackPerson to after the backfill: %v", err)
+	}
+	if bl, bo := birth(); bl != lat || bo != long {
+		t.Errorf("after rollback to the backfilled state = %s %s, want %s %s", bl, bo, lat, long)
 	}
 }

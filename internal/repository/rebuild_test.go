@@ -795,9 +795,9 @@ func TestRebuildReadModel_KeepsCoordinatesSetByUpdate(t *testing.T) {
 	s := newRebuildStores()
 	h := command.NewHandlerWithBranches(s.events, s.read, s.branches, s.snapshots)
 
-	person, err := h.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ada", Surname: "Example"})
+	person, err := h.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ada", Surname: "Example", BirthPlace: "Boston", DeathPlace: "Sydney"})
 	mustRebuildSetup(t, err)
-	family, err := h.CreateFamily(ctx, command.CreateFamilyInput{Partner1ID: &person.ID})
+	family, err := h.CreateFamily(ctx, command.CreateFamilyInput{Partner1ID: &person.ID, MarriagePlace: "Springfield"})
 	mustRebuildSetup(t, err)
 	updated, err := h.UpdatePerson(ctx, command.UpdatePersonInput{ID: person.ID, Version: person.Version, BirthPlaceCoordinates: coords("N42.3601", "W71.0589")})
 	mustRebuildSetup(t, err)
@@ -838,7 +838,7 @@ func TestRebuildReadModel_DoesNotBackfillBranchSetCoordinates(t *testing.T) {
 	s := newRebuildStores()
 	h := command.NewHandlerWithBranches(s.events, s.read, s.branches, s.snapshots)
 
-	person, err := h.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ada", Surname: "Example"})
+	person, err := h.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ada", Surname: "Example", BirthPlace: "Boston"})
 	mustRebuildSetup(t, err)
 	placing, err := h.CreateBranch(ctx, "placing", "")
 	mustRebuildSetup(t, err)
@@ -865,5 +865,93 @@ func TestRebuildReadModel_DoesNotBackfillBranchSetCoordinates(t *testing.T) {
 	}
 	if p, _ := s.read.GetPerson(ctx, domain.BranchID(other.ID), person.ID); p == nil || p.BirthPlaceLat != nil {
 		t.Errorf("other branch copy = %+v, want no coordinates", p)
+	}
+}
+
+// TestRebuildReadModel_BackfillsBesideCoordinatesSetByUpdate covers a record
+// imported before #1225 whose coordinates or EXIDs are still only in the read
+// model, then given coordinates by an update (#1604): the update logs only its
+// own pair, so the backfill still logs the rest and the rebuild keeps them.
+func TestRebuildReadModel_BackfillsBesideCoordinatesSetByUpdate(t *testing.T) {
+	ctx := context.Background()
+	s := newRebuildStores()
+	h := command.NewHandlerWithBranches(s.events, s.read, s.branches, s.snapshots)
+
+	person, err := h.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ada", Surname: "Example", BirthPlace: "Boston", DeathPlace: "Sydney"})
+	mustRebuildSetup(t, err)
+	family, err := h.CreateFamily(ctx, command.CreateFamilyInput{Partner1ID: &person.ID, MarriagePlace: "Springfield"})
+	mustRebuildSetup(t, err)
+	// Write the values straight to the read model, as import did before #1225.
+	p, _ := s.read.GetPerson(ctx, domain.MainBranchID, person.ID)
+	lat, long := "S33.8688", "E151.2093"
+	p.DeathPlaceLat, p.DeathPlaceLong = &lat, &long
+	mustRebuildSetup(t, s.read.SavePerson(ctx, domain.MainBranchID, p))
+	mustRebuildSetup(t, s.read.ReplacePersonExternalIDs(ctx, domain.MainBranchID, person.ID, []repository.PersonExternalIDReadModel{{PersonID: person.ID, Value: "P-1"}}))
+	mustRebuildSetup(t, s.read.ReplaceFamilyExternalIDs(ctx, domain.MainBranchID, family.ID, []repository.FamilyExternalIDReadModel{{FamilyID: family.ID, Value: "F-1"}}))
+	_, err = h.UpdatePerson(ctx, command.UpdatePersonInput{ID: person.ID, Version: person.Version, BirthPlaceCoordinates: coords("N42.3601", "W71.0589")})
+	mustRebuildSetup(t, err)
+	_, err = h.UpdateFamily(ctx, command.UpdateFamilyInput{ID: family.ID, Version: family.Version, MarriagePlaceCoordinates: coords("N39.7817", "W89.6501")})
+	mustRebuildSetup(t, err)
+
+	result, err := s.rebuild(t, s.read)
+	if err != nil {
+		t.Fatalf("rebuild: %v", err)
+	}
+	if result.Backfilled != 2 || result.DroppedImported != 0 {
+		t.Errorf("rebuild = %+v, want the person and family backfilled and nothing dropped", result)
+	}
+	p, _ = s.read.GetPerson(ctx, domain.MainBranchID, person.ID)
+	if p == nil || ptrValue(p.BirthPlaceLat) != "N42.3601" || ptrValue(p.DeathPlaceLat) != lat || ptrValue(p.DeathPlaceLong) != long {
+		t.Errorf("person after rebuild = %+v, want the updated birth and imported death coordinates", p)
+	}
+	if ids, _ := s.read.GetPersonExternalIDs(ctx, domain.MainBranchID, person.ID); len(ids) != 1 || ids[0].Value != "P-1" {
+		t.Errorf("person exids after rebuild = %+v, want P-1", ids)
+	}
+	f, _ := s.read.GetFamily(ctx, domain.MainBranchID, family.ID)
+	if f == nil || ptrValue(f.MarriagePlaceLat) != "N39.7817" {
+		t.Errorf("family after rebuild = %+v, want its marriage coordinates", f)
+	}
+	if ids, _ := s.read.GetFamilyExternalIDs(ctx, domain.MainBranchID, family.ID); len(ids) != 1 || ids[0].Value != "F-1" {
+		t.Errorf("family exids after rebuild = %+v, want F-1", ids)
+	}
+}
+
+// TestRebuildReadModel_BackfillsMainDeletedFromAnUnsetBranchCopy covers a
+// person main has deleted whose imported coordinates are only in the read
+// model, where one branch set coordinates of its own by an update (#1604):
+// another branch's copy, which holds only main's, stands for the backfill.
+func TestRebuildReadModel_BackfillsMainDeletedFromAnUnsetBranchCopy(t *testing.T) {
+	ctx := context.Background()
+	s := newRebuildStores()
+	h := command.NewHandlerWithBranches(s.events, s.read, s.branches, s.snapshots)
+
+	person, err := h.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ada", Surname: "Example", BirthPlace: "Boston", DeathPlace: "Sydney"})
+	mustRebuildSetup(t, err)
+	p, _ := s.read.GetPerson(ctx, domain.MainBranchID, person.ID)
+	lat, long := "N1.5", "W2.5"
+	p.BirthPlaceLat, p.BirthPlaceLong = &lat, &long
+	mustRebuildSetup(t, s.read.SavePerson(ctx, domain.MainBranchID, p))
+	placing, err := h.CreateBranch(ctx, "placing", "")
+	mustRebuildSetup(t, err)
+	other, err := h.CreateBranch(ctx, "other", "")
+	mustRebuildSetup(t, err)
+	_, err = h.WithBranch(placing).UpdatePerson(ctx, command.UpdatePersonInput{ID: person.ID, Version: person.Version, DeathPlaceCoordinates: coords("S33.8688", "E151.2093")})
+	mustRebuildSetup(t, err)
+	_, err = h.WithBranch(other).UpdatePerson(ctx, command.UpdatePersonInput{ID: person.ID, Version: person.Version, Notes: command.Set("other copy")})
+	mustRebuildSetup(t, err)
+	mustRebuildSetup(t, h.DeletePerson(ctx, command.DeletePersonInput{ID: person.ID, Version: person.Version}))
+
+	result, err := s.rebuild(t, s.read)
+	if err != nil {
+		t.Fatalf("rebuild: %v", err)
+	}
+	if result.Backfilled != 1 {
+		t.Errorf("Backfilled = %d, want 1", result.Backfilled)
+	}
+	if b, _ := s.read.GetPerson(ctx, domain.BranchID(other.ID), person.ID); b == nil || ptrValue(b.BirthPlaceLat) != lat || ptrValue(b.BirthPlaceLong) != long || b.DeathPlaceLat != nil {
+		t.Errorf("other branch copy = %+v, want main's imported birth coordinates only", b)
+	}
+	if b, _ := s.read.GetPerson(ctx, domain.BranchID(placing.ID), person.ID); b == nil || ptrValue(b.DeathPlaceLat) != "S33.8688" {
+		t.Errorf("placing branch copy = %+v, want its own death coordinates", b)
 	}
 }

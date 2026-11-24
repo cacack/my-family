@@ -43,7 +43,7 @@ func TestPlaceCoordinates_CreateAndUpdate(t *testing.T) {
 		t.Run(kind, func(t *testing.T) {
 			var members []string
 			for _, f := range coordinateFields[kind] {
-				members = append(members, fmt.Sprintf(`"%s_latitude":"N42.3601","%s_longitude":"W71.0589"`, f, f))
+				members = append(members, fmt.Sprintf(`%q:"Boston","%s_latitude":"N42.3601","%s_longitude":"W71.0589"`, f, f, f))
 			}
 			body := `{"given_name":"Byron",` + strings.Join(members, ",") + `}`
 			if kind == "families" {
