@@ -393,6 +393,8 @@ decorator, b = event-output redactor, — = no tree data. "Protected" means a pl
 | listPlaces | GET /places | Places in use with IDs, names and counts | RM agg | a | A place, its name and its count come only from records shown: protected people and what they own, private families and families with a protected partner are left out in the query (ADR-009 §10) |
 | getPlace | GET /places/{id} | One place in use | RM agg | a | As listPlaces; a place only hidden records name → 404, the same as an ID never in use |
 | updatePlace | PUT /places/{id} | The place after the update | RM agg | a | Editor write; the place it returns is read as getPlace. A person's, family's, life event's or attribute's resolved place carries a place's name and pair only when the place is visible: the decorator returns the facts of visible places only (ADR-009 §10, PL-006) |
+| aliasPlace | PUT /places/{id}/alias | The absorbed place after the alias | RM agg | a | Editor write; the place it returns is read as getPlace. The target lists an absorbed place among its aliases only when a visible record uses it, and a history entry of an alias is dropped unless both places are visible (ADR-009 §10, PL-006) |
+| unaliasPlace | DELETE /places/{id}/alias | The place after the alias is undone | RM agg | a | As aliasPlace |
 | getMapLocations | GET /map/locations | Pins with counts and people | RM agg | a | Protected removed from pins, counts recomputed, empty pins dropped; a place's pair places only the shown records that resolve to it |
 | getBrickWalls | GET /browse/brick-walls | Brick-wall people | RM agg | a | Protected excluded |
 

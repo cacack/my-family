@@ -218,10 +218,10 @@ func TestPlaces(t *testing.T) {
 		place("ma", "MA", 5),
 		place("salem,ma", "Salem, Ma", 2),
 	}
-	if got := Places(uses, nil, Privacy{}); !reflect.DeepEqual(got, want) {
+	if got := Places(uses, nil, nil, Privacy{}); !reflect.DeepEqual(got, want) {
 		t.Errorf("Places =\n  %+v\nwant\n  %+v", got, want)
 	}
-	if got := Places(nil, nil, Privacy{}); len(got) != 0 {
+	if got := Places(nil, nil, nil, Privacy{}); len(got) != 0 {
 		t.Errorf("Places(nil) = %+v, want none", got)
 	}
 }
@@ -231,7 +231,7 @@ func TestPlaces(t *testing.T) {
 func TestPlaces_TieBrokenBytewise(t *testing.T) {
 	uses := []PlaceUse{{Key: "kiel", Text: "kiel", Count: 1}, {Key: "kiel", Text: "Kiel", Count: 1}}
 	want := []PlaceReadModel{{ID: PlaceID("kiel"), Key: "kiel", Name: "Kiel", Spelling: "Kiel", Count: 2}}
-	if got := Places(uses, nil, Privacy{}); !reflect.DeepEqual(got, want) {
+	if got := Places(uses, nil, nil, Privacy{}); !reflect.DeepEqual(got, want) {
 		t.Errorf("Places = %+v, want %+v", got, want)
 	}
 }

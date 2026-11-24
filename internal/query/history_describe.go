@@ -390,6 +390,11 @@ func (st *streamState) applyUnclassified(evt *repository.StoredEvent) bool {
 		fields := eventFields(evt)
 		st.fields["text"] = fields["text"]
 		st.applyChanges(fields)
+	case "PlaceAliased", "PlaceUnaliased":
+		st.entityType = entityTypePlace
+		fields := eventFields(evt)
+		st.fields["text"] = fields["text"]
+		st.fields[placeAliasField] = fields["target_text"]
 	case "MediaContentAttached":
 		st.entityType = entityTypeMedia
 		fields := eventFields(evt)
@@ -461,6 +466,23 @@ var specialFieldChanges = map[string]func(fields map[string]any, prior *streamSt
 	"MediaContentAttached":     mediaContentAttachedChanges,
 	"BrickWallSet":             brickWallSetChanges,
 	"BrickWallResolved":        brickWallResolvedChanges,
+	"PlaceAliased":             placeAliasedChanges,
+	"PlaceUnaliased":           placeUnaliasedChanges,
+}
+
+// placeAliasField is the change of a place alias event (ADR-009 §3): the
+// recorded spelling of the place the absorbed place resolves to.
+const placeAliasField = "alias_of"
+
+// placeAliasedChanges reports the place an alias joins a place to.
+func placeAliasedChanges(fields map[string]any, prior *streamState, withOld bool) map[string]FieldChange {
+	return map[string]FieldChange{placeAliasField: {OldValue: oldValue(prior.fields[placeAliasField], withOld), NewValue: fields["target_text"]}}
+}
+
+// placeUnaliasedChanges reports the place an unalias separates a place from,
+// when the fold that names it is complete.
+func placeUnaliasedChanges(_ map[string]any, prior *streamState, withOld bool) map[string]FieldChange {
+	return map[string]FieldChange{placeAliasField: {OldValue: oldValue(prior.fields[placeAliasField], withOld)}}
 }
 
 // brickWallSetChanges reports the note of a brick wall set (#802).

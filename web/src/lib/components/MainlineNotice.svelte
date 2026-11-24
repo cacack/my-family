@@ -44,7 +44,9 @@
 	 * suppressed on a branch, so an empty branch view never offers to "start" a
 	 * tree. The person page withdraws its brick-wall controls with a note, and
 	 * the person and family pages withdraw their Restore tab and rollback
-	 * dialog, since rollback is mainline-only (#824).
+	 * dialog, since rollback is mainline-only (#824). `/places/join` withdraws
+	 * its controls with a note: place aliases are main-only and every branch
+	 * reads them (#1736).
 	 *
 	 * Not placed, because these surfaces follow the branch: `/browse/surnames`,
 	 * `/browse/places` and `/browse/cemeteries` (indexes and per-entry lists),

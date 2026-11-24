@@ -33,3 +33,9 @@ func TestCoordinateOrigins(t *testing.T) {
 func TestPlaceFacts(t *testing.T) {
 	placetest.RunPlaceFacts(t, memory.NewReadModelStore())
 }
+
+// TestPlaceAliases runs the shared #1736 suite against the memory backend;
+// the sqlite and postgres packages run the same body (DB-001).
+func TestPlaceAliases(t *testing.T) {
+	placetest.RunPlaceAliases(t, memory.NewReadModelStore())
+}

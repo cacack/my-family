@@ -70,11 +70,11 @@ func TestPlaces_Facts(t *testing.T) {
 	lost := PlaceReadModel{ID: PlaceID("lost,ma"), Key: "lost,ma", Name: "lost,ma", Spelling: "lost,ma",
 		Latitude: strPtr("N42"), Longitude: strPtr("W71"), Origin: origin, Version: 1}
 
-	if got, want := Places(uses, facts, Privacy{}), []PlaceReadModel{boston, ma, lost}; !reflect.DeepEqual(got, want) {
+	if got, want := Places(uses, facts, nil, Privacy{}), []PlaceReadModel{boston, ma, lost}; !reflect.DeepEqual(got, want) {
 		t.Errorf("Places (sees all) =\n  %+v\nwant\n  %+v", got, want)
 	}
 	viewer := Privacy{HidePrivate: true, HideLiving: true, LivingCutoff: time.Now()}
-	if got, want := Places(uses, facts, viewer), []PlaceReadModel{boston, ma}; !reflect.DeepEqual(got, want) {
+	if got, want := Places(uses, facts, nil, viewer), []PlaceReadModel{boston, ma}; !reflect.DeepEqual(got, want) {
 		t.Errorf("Places (viewer) =\n  %+v\nwant\n  %+v", got, want)
 	}
 }

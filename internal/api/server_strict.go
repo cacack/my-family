@@ -524,13 +524,70 @@ func (ss *StrictServer) UpdatePlace(ctx context.Context, request UpdatePlaceRequ
 	return UpdatePlace200JSONResponse(convertReadModelPlaceToGenerated(*place)), nil
 }
 
+// AliasPlace implements StrictServerInterface. Place aliases are main-only
+// (PL-005), so it writes and re-reads the mainline.
+func (ss *StrictServer) AliasPlace(ctx context.Context, request AliasPlaceRequestObject) (AliasPlaceResponseObject, error) {
+	_, err := ss.server.commandHandler.AliasPlace(ctx, command.AliasPlaceInput{
+		ID: request.Id, TargetID: request.Body.TargetId, Version: request.Body.Version,
+	})
+	if errors.Is(err, command.ErrPlaceNotFound) {
+		return AliasPlace404JSONResponse{NotFoundJSONResponse{Code: "not_found", Message: "Place not found"}}, nil
+	}
+	if errors.Is(err, repository.ErrConcurrencyConflict) {
+		return AliasPlace409JSONResponse{ConflictJSONResponse{Code: CodeVersionConflict, Message: "Version conflict"}}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	place, err := ss.server.browseService.GetPlace(ctx, domain.MainBranchID, request.Id)
+	if err != nil {
+		return nil, err
+	}
+	if place == nil {
+		return AliasPlace404JSONResponse{NotFoundJSONResponse{Code: "not_found", Message: "Place not found"}}, nil
+	}
+	return AliasPlace200JSONResponse(convertReadModelPlaceToGenerated(*place)), nil
+}
+
+// UnaliasPlace implements StrictServerInterface. Like AliasPlace, it writes
+// and re-reads the mainline.
+func (ss *StrictServer) UnaliasPlace(ctx context.Context, request UnaliasPlaceRequestObject) (UnaliasPlaceResponseObject, error) {
+	_, err := ss.server.commandHandler.UnaliasPlace(ctx, command.UnaliasPlaceInput{ID: request.Id, Version: request.Params.Version})
+	if errors.Is(err, command.ErrPlaceNotFound) {
+		return UnaliasPlace404JSONResponse{NotFoundJSONResponse{Code: "not_found", Message: "Place not found"}}, nil
+	}
+	if errors.Is(err, repository.ErrConcurrencyConflict) {
+		return UnaliasPlace409JSONResponse{ConflictJSONResponse{Code: CodeVersionConflict, Message: "Version conflict"}}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	place, err := ss.server.browseService.GetPlace(ctx, domain.MainBranchID, request.Id)
+	if err != nil {
+		return nil, err
+	}
+	if place == nil {
+		return UnaliasPlace404JSONResponse{NotFoundJSONResponse{Code: "not_found", Message: "Place not found"}}, nil
+	}
+	return UnaliasPlace200JSONResponse(convertReadModelPlaceToGenerated(*place)), nil
+}
+
 // convertReadModelPlaceToGenerated converts a place to its API form.
 func convertReadModelPlaceToGenerated(p repository.PlaceReadModel) Place {
-	return Place{
+	place := Place{
 		Id: p.ID, Key: p.Key, Name: p.Name, Count: p.Count, Version: p.Version,
 		Latitude: p.Latitude, Longitude: p.Longitude,
 		CoordinatesOrigin: coordinateOriginToGenerated(domain.EffectiveCoordinateOrigin(p.Latitude, p.Longitude, p.Origin)),
+		ResolvesTo:        p.ResolvesTo,
 	}
+	if len(p.Aliases) > 0 {
+		aliases := make([]PlaceAliasEntry, len(p.Aliases))
+		for i, a := range p.Aliases {
+			aliases[i] = PlaceAliasEntry{Id: a.ID, Key: a.Key, Name: a.Name}
+		}
+		place.Aliases = &aliases
+	}
+	return place
 }
 
 // placeIDOrNil is a map location's place ID, or nil for the zero UUID of a

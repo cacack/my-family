@@ -76,8 +76,9 @@ func PlaceFactsByKey(facts []PlaceFactsReadModel) map[string]*PlaceFactsReadMode
 }
 
 // MapUse is one birth or death place of a person the map may show: the
-// recorded text and its key, the record's own pair and origin, and the facts
-// of its place (nil when it has none).
+// recorded text and the key it resolves to (PlaceAliases.Resolve of its own
+// key), the record's own pair and origin, and the facts of the place it
+// resolves to (nil when it has none).
 type MapUse struct {
 	Person    MapPerson
 	EventType string

@@ -421,6 +421,12 @@ func (m *mockReadModelStore) GetPlaceFacts(ctx context.Context, _ uuid.UUID) (*r
 func (m *mockReadModelStore) ListPlaceFacts(ctx context.Context, _ domain.BranchID) ([]repository.PlaceFactsReadModel, error) {
 	return nil, nil
 }
+func (m *mockReadModelStore) ListPlaceAliases(ctx context.Context) ([]repository.PlaceAliasReadModel, error) {
+	return nil, nil
+}
+func (m *mockReadModelStore) ReplacePlaceAliases(ctx context.Context, _ []repository.PlaceAliasReadModel) error {
+	return nil
+}
 func (m *mockReadModelStore) GetMapLocations(ctx context.Context, branchID domain.BranchID, _ repository.Privacy) ([]repository.MapLocation, error) {
 	return nil, nil
 }

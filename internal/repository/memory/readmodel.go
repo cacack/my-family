@@ -189,6 +189,7 @@ type ReadModelStore struct {
 	proofSummaries        map[branchKey]*repository.ProofSummaryReadModel       // branch-scoped (#760)
 	duplicateDismissals   map[branchKey]*repository.DuplicateDismissalReadModel // branch-scoped (#1036)
 	places                map[uuid.UUID]*repository.PlaceFactsReadModel         // main-only (ADR-009, PL-005)
+	placeAliases          []repository.PlaceAliasReadModel                      // main-only (ADR-009 §3, PL-005)
 	projectionFailures    []repository.ProjectionFailure                        // #845
 	rebuildState          []byte                                                // #845; outlives ResetReadModel
 	schemaVersion         int                                                   // #680; outlives ResetReadModel
@@ -230,6 +231,7 @@ func (s *ReadModelStore) clear() {
 	s.proofSummaries = make(map[branchKey]*repository.ProofSummaryReadModel)
 	s.duplicateDismissals = make(map[branchKey]*repository.DuplicateDismissalReadModel)
 	s.places = make(map[uuid.UUID]*repository.PlaceFactsReadModel)
+	s.placeAliases = nil
 	s.projectionFailures = nil
 }
 
@@ -2422,7 +2424,7 @@ func (s *ReadModelStore) ListPlaces(ctx context.Context, branchID domain.BranchI
 	for text, n := range counts {
 		uses = append(uses, repository.PlaceUse{Key: repository.PlaceKey(text), Text: text, Count: n})
 	}
-	return repository.Places(uses, s.placeFacts(), privacy), nil
+	return repository.Places(uses, s.placeFacts(), repository.PlaceAliasesByKey(s.placeAliases), privacy), nil
 }
 
 // placeFacts returns a copy of every places row. The caller holds s.mu.
@@ -2462,6 +2464,22 @@ func (s *ReadModelStore) ListPlaceFacts(ctx context.Context, _ domain.BranchID) 
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.placeFacts(), nil
+}
+
+// ListPlaceAliases returns every row of place_aliases, by key.
+func (s *ReadModelStore) ListPlaceAliases(ctx context.Context) ([]repository.PlaceAliasReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return slices.Clone(s.placeAliases), nil
+}
+
+// ReplacePlaceAliases replaces every row of place_aliases (main-only, PL-005).
+func (s *ReadModelStore) ReplacePlaceAliases(ctx context.Context, aliases []repository.PlaceAliasReadModel) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.placeAliases = slices.Clone(aliases)
+	sort.Slice(s.placeAliases, func(i, j int) bool { return s.placeAliases[i].Key < s.placeAliases[j].Key })
+	return nil
 }
 
 // GetPersonsByCemetery returns persons with burial/cremation events at the given
@@ -2526,6 +2544,7 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 	defer s.mu.RUnlock()
 
 	facts := repository.PlaceFactsByKey(s.placeFacts())
+	aliases := repository.PlaceAliasesByKey(s.placeAliases)
 	persons := resolveAllRows(s.persons, branchID)
 	// The SQL stores read the birth uses, then the death uses, each ordered
 	// by place text; so does this one.
@@ -2539,11 +2558,11 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 			ID: p.ID, GivenName: p.GivenName, Surname: p.Surname,
 			Restriction: p.Restriction, LivingFacts: p.LivingFacts(),
 		}
-		if key := repository.PlaceKey(p.BirthPlace); key != "" || p.BirthPlaceLat != nil {
+		if key := aliases.Resolve(repository.PlaceKey(p.BirthPlace)); key != "" || p.BirthPlaceLat != nil {
 			births = append(births, repository.MapUse{Person: person, EventType: "birth", Text: p.BirthPlace, Key: key,
 				Latitude: p.BirthPlaceLat, Longitude: p.BirthPlaceLong, Origin: p.BirthPlaceOrigin, Place: facts[key]})
 		}
-		if key := repository.PlaceKey(p.DeathPlace); key != "" || p.DeathPlaceLat != nil {
+		if key := aliases.Resolve(repository.PlaceKey(p.DeathPlace)); key != "" || p.DeathPlaceLat != nil {
 			deaths = append(deaths, repository.MapUse{Person: person, EventType: "death", Text: p.DeathPlace, Key: key,
 				Latitude: p.DeathPlaceLat, Longitude: p.DeathPlaceLong, Origin: p.DeathPlaceOrigin, Place: facts[key]})
 		}

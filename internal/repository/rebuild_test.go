@@ -1177,3 +1177,41 @@ func TestRebuildReadModel_PlaceFacts(t *testing.T) {
 		t.Errorf("rebuild logged %d events (was %d); want none appended", len(after), len(logged))
 	}
 }
+
+// TestRebuildReadModel_PlaceAliasCycle is PL-004: two alias events that would
+// form a cycle, appended straight to the log as two concurrent commands could
+// leave them, are applied in log order. The projector keeps the first and
+// ignores the second, and a rebuild gives the same place_aliases rows.
+func TestRebuildReadModel_PlaceAliasCycle(t *testing.T) {
+	forEachRebuildBackend(t, func(t *testing.T, st *storage.Stores) {
+		ctx := context.Background()
+		h := command.NewHandlerWithBranches(st.Events, st.ReadModel, st.Branches, st.Snapshots)
+		for _, place := range []string{"Köln, Germany", "Cologne, Germany"} {
+			_, err := h.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ada", BirthPlace: place})
+			mustRebuildSetup(t, err)
+		}
+		koln, cologne := repository.PlaceID("köln,germany"), repository.PlaceID("cologne,germany")
+		projector := repository.NewProjector(st.ReadModel, nil)
+		for _, e := range []domain.PlaceAliased{
+			domain.NewPlaceAliased("köln,germany", "Köln, Germany", "cologne,germany", "Cologne, Germany", koln, cologne),
+			domain.NewPlaceAliased("cologne,germany", "Cologne, Germany", "köln,germany", "Köln, Germany", cologne, koln),
+		} {
+			mustRebuildSetup(t, st.Events.Append(ctx, e.PlaceID, "Place", []domain.Event{e}, 0, repository.AppendScope{}))
+			mustRebuildSetup(t, projector.Project(ctx, e, 1, domain.MainBranchID))
+		}
+		want := []repository.PlaceAliasReadModel{{Key: "köln,germany", TargetKey: "cologne,germany", ResolvedKey: "cologne,germany"}}
+		check := func(when string) {
+			t.Helper()
+			if got, err := st.ReadModel.ListPlaceAliases(ctx); err != nil || !reflect.DeepEqual(got, want) {
+				t.Errorf("place_aliases %s = %+v (err %v), want %+v", when, got, err, want)
+			}
+		}
+		check("as projected")
+		for _, run := range []string{"first", "second"} {
+			if _, err := repository.RebuildReadModel(ctx, st.Events, st.ReadModel, st.Branches, st.Snapshots); err != nil {
+				t.Fatalf("%s rebuild: %v", run, err)
+			}
+			check("after the " + run + " rebuild")
+		}
+	})
+}

@@ -23,28 +23,35 @@ type ResolvedPlace struct {
 }
 
 // PlaceResolver resolves place texts to places from one read of the place
-// facts a branch sees (main's, PL-005). Read through the privacy decorator it
-// holds only the facts of places visible to the principal (PL-006).
+// facts and aliases a branch sees (main's, PL-005). Read through the privacy
+// decorator it holds only the facts of places visible to the principal
+// (PL-006).
 type PlaceResolver struct {
-	facts map[string]*repository.PlaceFactsReadModel
+	facts   map[string]*repository.PlaceFactsReadModel
+	aliases repository.PlaceAliases
 }
 
-// NewPlaceResolver reads the place facts branchID sees from store.
+// NewPlaceResolver reads the place facts and aliases branchID sees from store.
 func NewPlaceResolver(ctx context.Context, store repository.ReadModelStore, branchID domain.BranchID) (*PlaceResolver, error) {
 	facts, err := store.ListPlaceFacts(ctx, branchID)
 	if err != nil {
 		return nil, err
 	}
-	return &PlaceResolver{facts: repository.PlaceFactsByKey(facts)}, nil
+	aliases, err := store.ListPlaceAliases(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &PlaceResolver{facts: repository.PlaceFactsByKey(facts), aliases: repository.PlaceAliasesByKey(aliases)}, nil
 }
 
 // Resolve returns the place text resolves to, or nil for a text that names
-// no place.
+// no place. A text whose key is absorbed resolves to the place the alias
+// resolves to, with that place's facts (ADR-009 §3).
 func (r *PlaceResolver) Resolve(text *string) *ResolvedPlace {
 	if text == nil {
 		return nil
 	}
-	key := repository.PlaceKey(*text)
+	key := r.aliases.Resolve(repository.PlaceKey(*text))
 	if key == "" {
 		return nil
 	}

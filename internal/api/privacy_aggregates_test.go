@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"slices"
 	"strings"
 	"testing"
@@ -287,6 +288,90 @@ func TestPrivacyRedaction_PlaceFacts(t *testing.T) {
 					dora := p.getJSON(t, f, "/api/v1/persons/"+tr.dead)
 					if r, _ := dora["birth_place_resolved"].(map[string]any); r["name"] != "Dora Town" || r["latitude"] != "N1" {
 						t.Errorf("Dora's resolved birthplace = %v, want Dora Town at N1", dora["birth_place_resolved"])
+					}
+				})
+			}
+		})
+	}
+}
+
+// TestPrivacyRedaction_PlaceAliases covers aliases for every principal
+// (ADR-009 §10, PL-006): a target lists an absorbed place only when a record
+// the principal may see uses it, an absorbed place only hidden records name
+// answers 404, and an alias's history is dropped unless both of its places
+// are visible, even after the alias is undone. A viewer may not alias.
+func TestPrivacyRedaction_PlaceAliases(t *testing.T) {
+	for _, viewersSeeLiving := range []bool{true, false} {
+		t.Run(fmt.Sprintf("viewers see living %v", viewersSeeLiving), func(t *testing.T) {
+			f, tr, principals := redactionFixture(t, viewersSeeLiving)
+			owner := principals[0].cookie
+			placeTree(t, f, owner, tr)
+			put := func(cookie *http.Cookie, absorbed, target string) *httptest.ResponseRecorder {
+				return f.do(t, request{method: http.MethodPut, cookie: cookie,
+					path: "/api/v1/places/" + repository.PlaceID(absorbed).String() + "/alias",
+					body: `{"version":0,"target_id":"` + repository.PlaceID(target).String() + `"}`})
+			}
+			if rec := put(principals[2].cookie, "kitville,springfield", "doraville,springfield"); rec.Code != http.StatusForbidden {
+				t.Errorf("aliasPlace as a viewer: %d %s, want 403", rec.Code, rec.Body)
+			}
+			// Everyone's birthplace joins Dora's, which every principal sees.
+			for _, name := range []string{"Kit", "Lena", "Petra"} {
+				if rec := put(owner, strings.ToLower(name)+"ville,springfield", "doraville,springfield"); rec.Code != http.StatusOK {
+					t.Fatalf("aliasPlace %s: %d %s", name, rec.Code, rec.Body)
+				}
+			}
+			// Dora's churchyard is joined to Petra's and separated again.
+			if rec := put(owner, "dora churchyard", "petra churchyard"); rec.Code != http.StatusOK {
+				t.Fatalf("aliasPlace Dora Churchyard: %d %s", rec.Code, rec.Body)
+			}
+			if rec := f.do(t, request{method: http.MethodDelete, cookie: owner,
+				path: "/api/v1/places/" + repository.PlaceID("dora churchyard").String() + "/alias?version=1"}); rec.Code != http.StatusOK {
+				t.Fatalf("unaliasPlace Dora Churchyard: %d %s", rec.Code, rec.Body)
+			}
+
+			for _, p := range principals {
+				t.Run(p.name, func(t *testing.T) {
+					shown := p.shownPeople()
+					var wantAliases []string
+					for _, name := range shown {
+						if name != "Dora" {
+							wantAliases = append(wantAliases, name+"ville, Springfield")
+						}
+					}
+					dora := p.getJSON(t, f, "/api/v1/places/"+repository.PlaceID("doraville,springfield").String())
+					if got := listed(dora, "aliases", "name"); !slices.Equal(got, wantAliases) {
+						t.Errorf("Doraville's aliases = %v, want %v", got, wantAliases)
+					}
+					if dora["count"] != float64(len(shown)) {
+						t.Errorf("Doraville's count = %v, want %d", dora["count"], len(shown))
+					}
+					for _, name := range p.hiddenPeople() {
+						path := "/api/v1/places/" + repository.PlaceID(strings.ToLower(name)+"ville,springfield").String()
+						if rec := p.get(t, f, path); rec.Code != http.StatusNotFound {
+							t.Errorf("getPlace of %s's absorbed birthplace: %d, want 404", name, rec.Code)
+						}
+					}
+					// The history is for signed-in principals only.
+					if p.cookie == nil {
+						return
+					}
+					churchyard := repository.PlaceID("dora churchyard").String()
+					var churchyardEntries int
+					var aliased []string
+					for _, item := range p.getJSON(t, f, "/api/v1/history?entity_type=place&limit=100")["items"].([]any) {
+						e := item.(map[string]any)
+						if e["entity_id"] == churchyard {
+							churchyardEntries++
+						} else {
+							aliased = append(aliased, e["entity_name"].(string))
+						}
+					}
+					slices.Sort(aliased)
+					if !slices.Equal(aliased, wantAliases) {
+						t.Errorf("birthplace alias history = %v, want %v", aliased, wantAliases)
+					}
+					if want := map[bool]int{true: 2, false: 0}[slices.Contains(shown, "Petra")]; churchyardEntries != want {
+						t.Errorf("Dora Churchyard history holds %d entries, want %d", churchyardEntries, want)
 					}
 				})
 			}
