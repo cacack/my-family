@@ -5346,7 +5346,7 @@ export interface components {
             key: string;
             /** @description The place's display name when one is set; otherwise `spelling`. */
             name: string;
-            /** @description The most-used recorded spelling among the records without coordinates, its parts joined with ", " (ties broken bytewise). It names a recorded text, so it can be passed to `GET /browse/places/{place}/persons`. */
+            /** @description The most-used recorded spelling among the records without coordinates, its parts trimmed and joined with ", " (ties broken bytewise); it has the same place matching key as that recorded text. Passed to `GET /browse/places/{place}/persons`, it lists the people born or died at or under that key, which is not the set `count` counts: that list leaves out marriages, life events and attributes and resolves no alias. */
             spelling: string;
             /** @description Number of records the caller may see at the place that have no effective coordinates. */
             count: number;

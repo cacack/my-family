@@ -2,8 +2,10 @@
 	/**
 	 * The no-coordinates worklist (#1561, ADR-009 §9): each place with records
 	 * that have no coordinates, most such records first, with the pairs other
-	 * records there already carry. It only reads; each name links to the place's
-	 * people.
+	 * records there already carry. It only reads. Each entry links to the people
+	 * born or died at or under its spelling (GET /browse/places/{place}/persons),
+	 * which is not the record set it counts: that list leaves out marriages, life
+	 * events and attributes and resolves no alias, so the link says what it shows.
 	 */
 	import { api, type UnmappedPlace } from '#lib/api/client.js';
 	import ErrorState from './ErrorState.svelte';
@@ -51,8 +53,11 @@
 		{#each entries as entry (entry.id)}
 			<li class="unmapped-item">
 				<div class="unmapped-head">
-					<a href="/browse/places/{encodeURIComponent(entry.spelling)}" class="unmapped-name">{entry.name}</a>
+					<span class="unmapped-name">{entry.name}</span>
 					<span class="unmapped-count">{records(entry.count)} without coordinates</span>
+				</div>
+				<div class="unmapped-people">
+					<a href="/browse/places/{encodeURIComponent(entry.spelling)}">People born or died in {entry.name}</a>
 				</div>
 				{#if entry.suggestions.length > 0}
 					<div class="suggestions">
@@ -104,9 +109,18 @@
 
 	.unmapped-name {
 		font-weight: 500;
-		color: var(--color-link);
 		overflow-wrap: anywhere;
 		min-width: 0;
+	}
+
+	.unmapped-people {
+		margin-top: 0.25rem;
+		font-size: 0.875rem;
+	}
+
+	.unmapped-people a {
+		color: var(--color-link);
+		overflow-wrap: anywhere;
 	}
 
 	.unmapped-count {

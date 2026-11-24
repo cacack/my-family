@@ -7177,7 +7177,7 @@ type UnmappedPlace struct {
 	// Name The place's display name when one is set; otherwise `spelling`.
 	Name string `json:"name"`
 
-	// Spelling The most-used recorded spelling among the records without coordinates, its parts joined with ", " (ties broken bytewise). It names a recorded text, so it can be passed to `GET /browse/places/{place}/persons`.
+	// Spelling The most-used recorded spelling among the records without coordinates, its parts trimmed and joined with ", " (ties broken bytewise); it has the same place matching key as that recorded text. Passed to `GET /browse/places/{place}/persons`, it lists the people born or died at or under that key, which is not the set `count` counts: that list leaves out marriages, life events and attributes and resolves no alias.
 	Spelling string `json:"spelling"`
 
 	// Suggestions Every distinct pair, as recorded, that other records at the place carry as their own, most-used first, then by latitude and longitude; empty when no record there has one.

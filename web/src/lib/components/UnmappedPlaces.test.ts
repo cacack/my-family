@@ -36,9 +36,9 @@ describe('UnmappedPlaces', () => {
 
 	it('lists each place in order with its count and suggestions', async () => {
 		render(UnmappedPlaces);
-		await screen.findByRole('link', { name: 'Boston' });
+		await screen.findByText('Boston');
 		const places = Array.from(document.querySelectorAll<HTMLElement>('.unmapped-item'));
-		expect(places.map((li) => within(li).getByRole('link').textContent)).toEqual(['Boston', 'Salem, MA']);
+		expect(places.map((li) => li.querySelector('.unmapped-name')?.textContent)).toEqual(['Boston', 'Salem, MA']);
 
 		const first = within(places[0]);
 		expect(first.getByText('3 records without coordinates')).toBeTruthy();
@@ -51,12 +51,13 @@ describe('UnmappedPlaces', () => {
 		expect(screen.getByText('2 places without coordinates')).toBeTruthy();
 	});
 
-	it('links each name to its people by a recorded spelling, not its display name', async () => {
+	it('links each entry to the people born or died there by a recorded spelling, not its display name', async () => {
 		render(UnmappedPlaces);
-		expect((await screen.findByRole('link', { name: 'Boston' })).getAttribute('href')).toBe(
-			'/browse/places/Boston%2C%20MA'
+		const boston = await screen.findByRole('link', { name: 'People born or died in Boston' });
+		expect(boston.getAttribute('href')).toBe('/browse/places/Boston%2C%20MA');
+		expect(screen.getByRole('link', { name: 'People born or died in Salem, MA' }).getAttribute('href')).toBe(
+			'/browse/places/Salem%2C%20MA'
 		);
-		expect(screen.getByRole('link', { name: 'Salem, MA' }).getAttribute('href')).toBe('/browse/places/Salem%2C%20MA');
 	});
 
 	it('shows the empty state when every place has coordinates', async () => {
@@ -74,6 +75,6 @@ describe('UnmappedPlaces', () => {
 		expect(alert.textContent).toContain('Failed to load places without coordinates. Please try again.');
 		expect(alert.textContent).not.toContain('boom');
 		await fireEvent.click(within(alert).getByRole('button', { name: 'Retry' }));
-		await screen.findByRole('link', { name: 'Boston' });
+		await screen.findByText('Boston');
 	});
 });
