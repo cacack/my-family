@@ -52,7 +52,9 @@ type PersonCreated struct {
 	Notes          string         `json:"notes,omitempty"`
 	ResearchStatus ResearchStatus `json:"research_status,omitempty"`
 	GedcomXref     string         `json:"gedcom_xref,omitempty"`
-	// Place coordinates and EXIDs come from GEDCOM import (#1225).
+	// Place coordinates come from GEDCOM import (#1225) or a create (#1604);
+	// EXIDs from import. A PersonUpdated changes coordinates under the same
+	// keys (birth_place_lat...).
 	BirthPlaceLat  *string              `json:"birth_place_lat,omitempty"`
 	BirthPlaceLong *string              `json:"birth_place_long,omitempty"`
 	DeathPlaceLat  *string              `json:"death_place_lat,omitempty"`
@@ -148,7 +150,8 @@ type FamilyCreated struct {
 	GedcomXref       string       `json:"gedcom_xref,omitempty"`
 	// ExternalIDs are GEDCOM 7.0 EXIDs set at import (#1225).
 	ExternalIDs []ExternalIdentifier `json:"external_ids,omitempty"`
-	// Marriage place coordinates come from GEDCOM import (#1265).
+	// Marriage place coordinates come from GEDCOM import (#1265) or a create
+	// (#1604); a FamilyUpdated changes them under the same keys.
 	MarriagePlaceLat  *string `json:"marriage_place_lat,omitempty"`
 	MarriagePlaceLong *string `json:"marriage_place_long,omitempty"`
 	// MarriageNotes are the notes under the MARR event, set at import (#1250).

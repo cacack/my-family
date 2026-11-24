@@ -503,6 +503,12 @@ func TestHumanizeField(t *testing.T) {
 	}
 }
 
+func TestConflictFieldLabel_Coordinates(t *testing.T) {
+	d := &historyDescription{}
+	assert.Equal(t, "Birth place latitude", d.conflictFieldLabel("birth_place_lat"))
+	assert.Equal(t, "Marriage place longitude", d.conflictFieldLabel("marriage_place_long"))
+}
+
 func TestFormatConflictScalar(t *testing.T) {
 	assert.Nil(t, formatConflictScalar(nil))
 	assert.Nil(t, formatConflictScalar("  "))

@@ -4309,10 +4309,16 @@ type FamilyCreate struct {
 	//
 	//
 	// Example: 1 JAN 1850
-	MarriageDate  *DateInput          `json:"marriage_date,omitempty"`
-	MarriagePlace *string             `json:"marriage_place,omitempty"`
-	Partner1Id    *openapi_types.UUID `json:"partner1_id,omitempty"`
-	Partner2Id    *openapi_types.UUID `json:"partner2_id,omitempty"`
+	MarriageDate  *DateInput `json:"marriage_date,omitempty"`
+	MarriagePlace *string    `json:"marriage_place,omitempty"`
+
+	// MarriagePlaceLatitude Latitude in GEDCOM form (e.g., "N39.7817"): N or S, then decimal degrees within 90. Give it with marriage_place_longitude: one half of the pair alone, the wrong axis letter, a value out of range or a pair without a marriage_place is rejected with 400. Stored trimmed, with an upper-case letter.
+	MarriagePlaceLatitude *string `json:"marriage_place_latitude,omitempty"`
+
+	// MarriagePlaceLongitude Longitude in GEDCOM form (e.g., "W89.6501"): E or W, then decimal degrees within 180. Given with marriage_place_latitude.
+	MarriagePlaceLongitude *string             `json:"marriage_place_longitude,omitempty"`
+	Partner1Id             *openapi_types.UUID `json:"partner1_id,omitempty"`
+	Partner2Id             *openapi_types.UUID `json:"partner2_id,omitempty"`
 
 	// RelationshipType Relationship between a family's partners
 	RelationshipType *RelationType `json:"relationship_type,omitempty"`
@@ -4407,6 +4413,12 @@ type FamilyUpdate struct {
 	ClearPartner2 *bool                        `json:"clear_partner2,omitempty"`
 	MarriageDate  nullable.Nullable[DateInput] `json:"marriage_date,omitempty"`
 	MarriagePlace nullable.Nullable[string]    `json:"marriage_place,omitempty"`
+
+	// MarriagePlaceLatitude Latitude in GEDCOM form (e.g., "N39.7817"): N or S, then decimal degrees within 90. Give it with marriage_place_longitude: one half of the pair alone, the wrong axis letter, a value out of range or a pair without a marriage_place is rejected with 400. Stored trimmed, with an upper-case letter. Send both as null to clear the pair; omit both to leave it unchanged, as changing the place name does.
+	MarriagePlaceLatitude nullable.Nullable[string] `json:"marriage_place_latitude,omitempty"`
+
+	// MarriagePlaceLongitude Longitude in GEDCOM form (e.g., "W89.6501"): E or W, then decimal degrees within 180. Given with marriage_place_latitude.
+	MarriagePlaceLongitude nullable.Nullable[string] `json:"marriage_place_longitude,omitempty"`
 
 	// Partner1Id Set partner 1 to this person, or null to remove partner 1 from the family. Omit to leave partner 1 unchanged.
 	Partner1Id nullable.Nullable[openapi_types.UUID] `json:"partner1_id,omitempty"`
@@ -5689,6 +5701,12 @@ type PersonCreate struct {
 	BirthDate  *DateInput `json:"birth_date,omitempty"`
 	BirthPlace *string    `json:"birth_place,omitempty"`
 
+	// BirthPlaceLatitude Latitude in GEDCOM form (e.g., "N42.3601"): N or S, then decimal degrees within 90. Give it with birth_place_longitude: one half of the pair alone, the wrong axis letter, a value out of range or a pair without a birth_place is rejected with 400. Stored trimmed, with an upper-case letter.
+	BirthPlaceLatitude *string `json:"birth_place_latitude,omitempty"`
+
+	// BirthPlaceLongitude Longitude in GEDCOM form (e.g., "W71.0589"): E or W, then decimal degrees within 180. Given with birth_place_latitude.
+	BirthPlaceLongitude *string `json:"birth_place_longitude,omitempty"`
+
 	// DeathDate A date as entered, stored in GEDCOM form. Accepted forms:
 	//
 	// - GEDCOM dates: `1850`, `MAR 1850`, `15 MAR 1850`, including dual
@@ -5721,9 +5739,15 @@ type PersonCreate struct {
 	// Example: 1 JAN 1850
 	DeathDate  *DateInput `json:"death_date,omitempty"`
 	DeathPlace *string    `json:"death_place,omitempty"`
-	Gender     *Gender    `json:"gender,omitempty"`
-	GivenName  *string    `json:"given_name,omitempty"`
-	Notes      *string    `json:"notes,omitempty"`
+
+	// DeathPlaceLatitude Latitude in GEDCOM form (e.g., "N42.3601"): N or S, then decimal degrees within 90. Give it with death_place_longitude: one half of the pair alone, the wrong axis letter, a value out of range or a pair without a death_place is rejected with 400. Stored trimmed, with an upper-case letter.
+	DeathPlaceLatitude *string `json:"death_place_latitude,omitempty"`
+
+	// DeathPlaceLongitude Longitude in GEDCOM form (e.g., "W71.0589"): E or W, then decimal degrees within 180. Given with death_place_latitude.
+	DeathPlaceLongitude *string `json:"death_place_longitude,omitempty"`
+	Gender              *Gender `json:"gender,omitempty"`
+	GivenName           *string `json:"given_name,omitempty"`
+	Notes               *string `json:"notes,omitempty"`
 
 	// ResearchStatus Confidence level of genealogical data per GPS standards
 	//
@@ -5915,10 +5939,22 @@ type PersonSummary struct {
 type PersonUpdate struct {
 	BirthDate  nullable.Nullable[DateInput] `json:"birth_date,omitempty"`
 	BirthPlace nullable.Nullable[string]    `json:"birth_place,omitempty"`
-	DeathDate  nullable.Nullable[DateInput] `json:"death_date,omitempty"`
-	DeathPlace nullable.Nullable[string]    `json:"death_place,omitempty"`
-	Gender     nullable.Nullable[Gender]    `json:"gender,omitempty"`
-	GivenName  *string                      `json:"given_name,omitempty"`
+
+	// BirthPlaceLatitude Latitude in GEDCOM form (e.g., "N42.3601"): N or S, then decimal degrees within 90. Give it with birth_place_longitude: one half of the pair alone, the wrong axis letter, a value out of range or a pair without a birth_place is rejected with 400. Stored trimmed, with an upper-case letter. Send both as null to clear the pair; omit both to leave it unchanged, as changing the place name does.
+	BirthPlaceLatitude nullable.Nullable[string] `json:"birth_place_latitude,omitempty"`
+
+	// BirthPlaceLongitude Longitude in GEDCOM form (e.g., "W71.0589"): E or W, then decimal degrees within 180. Given with birth_place_latitude.
+	BirthPlaceLongitude nullable.Nullable[string]    `json:"birth_place_longitude,omitempty"`
+	DeathDate           nullable.Nullable[DateInput] `json:"death_date,omitempty"`
+	DeathPlace          nullable.Nullable[string]    `json:"death_place,omitempty"`
+
+	// DeathPlaceLatitude Latitude in GEDCOM form (e.g., "N42.3601"): N or S, then decimal degrees within 90. Give it with death_place_longitude: one half of the pair alone, the wrong axis letter, a value out of range or a pair without a death_place is rejected with 400. Stored trimmed, with an upper-case letter. Send both as null to clear the pair; omit both to leave it unchanged, as changing the place name does.
+	DeathPlaceLatitude nullable.Nullable[string] `json:"death_place_latitude,omitempty"`
+
+	// DeathPlaceLongitude Longitude in GEDCOM form (e.g., "W71.0589"): E or W, then decimal degrees within 180. Given with death_place_latitude.
+	DeathPlaceLongitude nullable.Nullable[string] `json:"death_place_longitude,omitempty"`
+	Gender              nullable.Nullable[Gender] `json:"gender,omitempty"`
+	GivenName           *string                   `json:"given_name,omitempty"`
 
 	// LivingOverride Override the living rule for this person; auto or null resets it to the rule. Omit it to leave the override unchanged.
 	LivingOverride nullable.Nullable[LivingOverride] `json:"living_override,omitempty"`

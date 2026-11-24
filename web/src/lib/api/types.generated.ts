@@ -4287,8 +4287,16 @@ export interface components {
             gender?: components["schemas"]["Gender"];
             birth_date?: components["schemas"]["DateInput"];
             birth_place?: string;
+            /** @description Latitude in GEDCOM form (e.g., "N42.3601"): N or S, then decimal degrees within 90. Give it with birth_place_longitude: one half of the pair alone, the wrong axis letter, a value out of range or a pair without a birth_place is rejected with 400. Stored trimmed, with an upper-case letter. */
+            birth_place_latitude?: string;
+            /** @description Longitude in GEDCOM form (e.g., "W71.0589"): E or W, then decimal degrees within 180. Given with birth_place_latitude. */
+            birth_place_longitude?: string;
             death_date?: components["schemas"]["DateInput"];
             death_place?: string;
+            /** @description Latitude in GEDCOM form (e.g., "N42.3601"): N or S, then decimal degrees within 90. Give it with death_place_longitude: one half of the pair alone, the wrong axis letter, a value out of range or a pair without a death_place is rejected with 400. Stored trimmed, with an upper-case letter. */
+            death_place_latitude?: string;
+            /** @description Longitude in GEDCOM form (e.g., "W71.0589"): E or W, then decimal degrees within 180. Given with death_place_latitude. */
+            death_place_longitude?: string;
             notes?: string;
             research_status?: components["schemas"]["ResearchStatus"];
         };
@@ -4299,8 +4307,16 @@ export interface components {
             gender?: components["schemas"]["Gender"] | null;
             birth_date?: components["schemas"]["DateInput"] | null;
             birth_place?: string | null;
+            /** @description Latitude in GEDCOM form (e.g., "N42.3601"): N or S, then decimal degrees within 90. Give it with birth_place_longitude: one half of the pair alone, the wrong axis letter, a value out of range or a pair without a birth_place is rejected with 400. Stored trimmed, with an upper-case letter. Send both as null to clear the pair; omit both to leave it unchanged, as changing the place name does. */
+            birth_place_latitude?: string | null;
+            /** @description Longitude in GEDCOM form (e.g., "W71.0589"): E or W, then decimal degrees within 180. Given with birth_place_latitude. */
+            birth_place_longitude?: string | null;
             death_date?: components["schemas"]["DateInput"] | null;
             death_place?: string | null;
+            /** @description Latitude in GEDCOM form (e.g., "N42.3601"): N or S, then decimal degrees within 90. Give it with death_place_longitude: one half of the pair alone, the wrong axis letter, a value out of range or a pair without a death_place is rejected with 400. Stored trimmed, with an upper-case letter. Send both as null to clear the pair; omit both to leave it unchanged, as changing the place name does. */
+            death_place_latitude?: string | null;
+            /** @description Longitude in GEDCOM form (e.g., "W71.0589"): E or W, then decimal degrees within 180. Given with death_place_latitude. */
+            death_place_longitude?: string | null;
             notes?: string | null;
             research_status?: components["schemas"]["ResearchStatus"] | null;
             /** @description Override the living rule for this person; auto or null resets it to the rule. Omit it to leave the override unchanged. */
@@ -4407,6 +4423,10 @@ export interface components {
             relationship_type?: components["schemas"]["RelationType"];
             marriage_date?: components["schemas"]["DateInput"];
             marriage_place?: string;
+            /** @description Latitude in GEDCOM form (e.g., "N39.7817"): N or S, then decimal degrees within 90. Give it with marriage_place_longitude: one half of the pair alone, the wrong axis letter, a value out of range or a pair without a marriage_place is rejected with 400. Stored trimmed, with an upper-case letter. */
+            marriage_place_latitude?: string;
+            /** @description Longitude in GEDCOM form (e.g., "W89.6501"): E or W, then decimal degrees within 180. Given with marriage_place_latitude. */
+            marriage_place_longitude?: string;
         };
         /** @description Partial update. A field left out stays unchanged; an optional (nullable) field sent as null is cleared. Required fields reject null. */
         FamilyUpdate: {
@@ -4435,6 +4455,10 @@ export interface components {
             relationship_type?: components["schemas"]["RelationType"] | null;
             marriage_date?: components["schemas"]["DateInput"] | null;
             marriage_place?: string | null;
+            /** @description Latitude in GEDCOM form (e.g., "N39.7817"): N or S, then decimal degrees within 90. Give it with marriage_place_longitude: one half of the pair alone, the wrong axis letter, a value out of range or a pair without a marriage_place is rejected with 400. Stored trimmed, with an upper-case letter. Send both as null to clear the pair; omit both to leave it unchanged, as changing the place name does. */
+            marriage_place_latitude?: string | null;
+            /** @description Longitude in GEDCOM form (e.g., "W89.6501"): E or W, then decimal degrees within 180. Given with marriage_place_latitude. */
+            marriage_place_longitude?: string | null;
             /** @description Mark the record private, which adds confidential to its GEDCOM restriction notice (RESN), or not, which removes confidential and privacy. Other RESN values, such as locked, are kept. Omit it to leave the mark unchanged. */
             private?: boolean;
             /** Format: int64 */

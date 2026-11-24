@@ -10,6 +10,7 @@ import (
 	gcgedcom "github.com/cacack/gedcom-go/v3/gedcom"
 	"github.com/google/uuid"
 
+	"github.com/cacack/my-family/internal/command"
 	"github.com/cacack/my-family/internal/domain"
 	"github.com/cacack/my-family/internal/gedcom"
 	"github.com/cacack/my-family/internal/repository"
@@ -1961,6 +1962,72 @@ func TestExport_MarriagePlaceCoordinates(t *testing.T) {
 	}
 	if !strings.Contains(output, "4 LONG W89.6501\n") {
 		t.Error("Output should contain LONG tag with marriage longitude")
+	}
+}
+
+// Coordinates set through the person and family commands are exported as
+// MAP/LATI/LONG under the event's PLAC and read back equal on import (#1604).
+func TestRoundTrip_PlaceCoordinatesSetByCommand(t *testing.T) {
+	ctx := context.Background()
+	rs := memory.NewReadModelStore()
+	h := command.NewHandler(memory.NewEventStore(), rs)
+	pair := func(lat, long string) command.CoordinatesPatch {
+		return command.CoordinatesPatch{Latitude: command.Set(lat), Longitude: command.Set(long)}
+	}
+
+	person, err := h.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Ada", Surname: "Example", BirthDate: "1850", BirthPlace: "Boston",
+		BirthPlaceCoordinates: pair("N42.3601", "W71.0589"),
+	})
+	if err != nil {
+		t.Fatalf("CreatePerson: %v", err)
+	}
+	if _, err := h.UpdatePerson(ctx, command.UpdatePersonInput{
+		ID: person.ID, Version: person.Version, DeathDate: command.Set("1920"), DeathPlace: command.Set("Sydney"),
+		DeathPlaceCoordinates: pair("S33.8688", "E151.2093"),
+	}); err != nil {
+		t.Fatalf("UpdatePerson: %v", err)
+	}
+	family, err := h.CreateFamily(ctx, command.CreateFamilyInput{Partner1ID: &person.ID, MarriageDate: "1875", MarriagePlace: "Springfield"})
+	if err != nil {
+		t.Fatalf("CreateFamily: %v", err)
+	}
+	if _, err := h.UpdateFamily(ctx, command.UpdateFamilyInput{
+		ID: family.ID, Version: family.Version, MarriagePlaceCoordinates: pair("N39.7817", "W89.6501"),
+	}); err != nil {
+		t.Fatalf("UpdateFamily: %v", err)
+	}
+
+	var buf bytes.Buffer
+	if _, err := gedcom.NewExporter(rs).Export(ctx, &buf); err != nil {
+		t.Fatalf("export: %v", err)
+	}
+	for _, want := range []string{
+		"2 PLAC Boston\n3 MAP\n4 LATI N42.3601\n4 LONG W71.0589\n",
+		"2 PLAC Sydney\n3 MAP\n4 LATI S33.8688\n4 LONG E151.2093\n",
+		"2 PLAC Springfield\n3 MAP\n4 LATI N39.7817\n4 LONG W89.6501\n",
+	} {
+		if !strings.Contains(buf.String(), want) {
+			t.Errorf("export lacks %q:\n%s", want, buf.String())
+		}
+	}
+
+	_, persons, families, _, _, _, _, _, _, _, _, _, _, err := gedcom.NewImporter().Import(ctx, strings.NewReader(buf.String()))
+	if err != nil {
+		t.Fatalf("re-import: %v", err)
+	}
+	str := func(p *string) string {
+		if p == nil {
+			return ""
+		}
+		return *p
+	}
+	if len(persons) != 1 || str(persons[0].BirthPlaceLat) != "N42.3601" || str(persons[0].BirthPlaceLong) != "W71.0589" ||
+		str(persons[0].DeathPlaceLat) != "S33.8688" || str(persons[0].DeathPlaceLong) != "E151.2093" {
+		t.Errorf("re-imported persons = %+v, want the birth and death coordinates", persons)
+	}
+	if len(families) != 1 || str(families[0].MarriagePlaceLat) != "N39.7817" || str(families[0].MarriagePlaceLong) != "W89.6501" {
+		t.Errorf("re-imported families = %+v, want the marriage coordinates", families)
 	}
 }
 

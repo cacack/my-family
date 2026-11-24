@@ -34,6 +34,8 @@ type CreateFamilyInput struct {
 	RelationshipType string
 	MarriageDate     string
 	MarriagePlace    string
+	// The marriage place coordinates, given together (#1604).
+	MarriagePlaceCoordinates CoordinatesPatch
 }
 
 // CreateFamilyResult contains the result of creating a family.
@@ -92,14 +94,20 @@ func (h *Handler) CreateFamily(ctx context.Context, input CreateFamilyInput) (*C
 	if input.MarriagePlace != "" {
 		family.MarriagePlace = input.MarriagePlace
 	}
+	marriageLat, marriageLong, err := createdCoordinates("marriage_place", input.MarriagePlace, input.MarriagePlaceCoordinates)
+	if err != nil {
+		return nil, err
+	}
 
 	// Validate
 	if err := family.Validate(); err != nil {
 		return nil, fmt.Errorf("%w: %s", ErrInvalidFamilyInput, err.Error())
 	}
 
-	// Create event using the helper function
+	// Create event using the helper function. Place coordinates are not
+	// domain.Family fields, so they are set on the event directly.
 	event := domain.NewFamilyCreated(family)
+	event.MarriagePlaceLat, event.MarriagePlaceLong = marriageLat, marriageLong
 
 	// Execute command (append + project) on the handler's branch scope.
 	// expectedVersion 0 matches a fresh stream, as it always has for creates here.
@@ -129,6 +137,8 @@ type UpdateFamilyInput struct {
 	MarriagePlace    Patch[string]
 	Private          *bool // marks or unmarks the family private
 	Version          int64
+	// The marriage place coordinates, set or cleared together (#1604).
+	MarriagePlaceCoordinates CoordinatesPatch
 }
 
 // UpdateFamilyResult contains the result of updating a family.
@@ -183,8 +193,13 @@ func (h *Handler) UpdateFamily(ctx context.Context, input UpdateFamilyInput) (*U
 			changes["marriage_date"] = marriageDate
 		}
 	}
+	marriagePlace := family.MarriagePlace
 	if place, ok := input.MarriagePlace.Change(); ok && place != family.MarriagePlace {
 		changes["marriage_place"] = place
+		marriagePlace = place
+	}
+	if err := recordCoordinates(changes, "marriage_place", marriagePlace, input.MarriagePlaceCoordinates, family.MarriagePlaceLat, family.MarriagePlaceLong); err != nil {
+		return nil, err
 	}
 	recordPrivate(changes, input.Private, family.Restriction)
 

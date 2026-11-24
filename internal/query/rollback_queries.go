@@ -272,6 +272,9 @@ func (s *RollbackService) ComputeRollbackChanges(ctx context.Context, entityType
 
 	// Compute diff: what values from target state differ from current state
 	changes := s.computeStateDiff(currentState.State, targetState.State)
+	if err := keepBackfilledCoordinates(events, targetVersion, changes); err != nil {
+		return nil, err
+	}
 	if mergedSince(events, targetVersion) {
 		keepPrivacyMarks(changes, currentState.State, targetState.State)
 	}
@@ -284,6 +287,36 @@ func (s *RollbackService) ComputeRollbackChanges(ctx context.Context, entityType
 		Changes:        changes,
 		IsRecreation:   isCurrentlyDeleted && !targetState.IsDeleted,
 	}, nil
+}
+
+// keepBackfilledCoordinates stops a rollback to before an entity's backfill
+// from clearing the coordinates it logged. They came from an import before
+// #1225 and were already in the record at the target, only not in its log.
+func keepBackfilledCoordinates(events []repository.StoredEvent, targetVersion int64, changes map[string]any) error {
+	for _, evt := range events {
+		if evt.EventType != "ImportedValuesBackfilled" {
+			continue
+		}
+		if evt.Version <= targetVersion {
+			return nil
+		}
+		decoded, err := evt.DecodeEvent()
+		if err != nil {
+			return fmt.Errorf("decoding backfill: %w", err)
+		}
+		backfilled := map[string]any{}
+		if e, ok := decoded.(domain.ImportedValuesBackfilled); ok && e.EntityType == domain.BackfillPerson {
+			setCoordinateState(backfilled, "birth_place", e.BirthPlaceLat, e.BirthPlaceLong)
+			setCoordinateState(backfilled, "death_place", e.DeathPlaceLat, e.DeathPlaceLong)
+		}
+		for key := range backfilled {
+			if v, ok := changes[key]; ok && v == nil {
+				delete(changes, key)
+			}
+		}
+		return nil
+	}
+	return nil
 }
 
 // mergedSince reports whether a person merge comes after the target version.
@@ -361,6 +394,8 @@ func (s *RollbackService) applyEventToState(evt repository.StoredEvent, state ma
 		if e.DeathPlace != "" {
 			state["death_place"] = e.DeathPlace
 		}
+		setCoordinateState(state, "birth_place", e.BirthPlaceLat, e.BirthPlaceLong)
+		setCoordinateState(state, "death_place", e.DeathPlaceLat, e.DeathPlaceLong)
 		if e.Notes != "" {
 			state["notes"] = e.Notes
 		}
@@ -427,6 +462,7 @@ func (s *RollbackService) applyEventToState(evt repository.StoredEvent, state ma
 		if e.MarriagePlace != "" {
 			state["marriage_place"] = e.MarriagePlace
 		}
+		setCoordinateState(state, "marriage_place", e.MarriagePlaceLat, e.MarriagePlaceLong)
 		return false, nil
 
 	case domain.FamilyUpdated:
@@ -602,6 +638,15 @@ func (s *RollbackService) applyEventToState(evt repository.StoredEvent, state ma
 		}
 		return false, nil
 
+	// A backfill logs a person's imported coordinates, which an update may
+	// since have changed (#1604).
+	case domain.ImportedValuesBackfilled:
+		if e.EntityType == domain.BackfillPerson {
+			setCoordinateState(state, "birth_place", e.BirthPlaceLat, e.BirthPlaceLong)
+			setCoordinateState(state, "death_place", e.DeathPlaceLat, e.DeathPlaceLong)
+		}
+		return false, nil
+
 	case domain.MediaContentAttached:
 		// The attached file is not rolled back: no command removes content.
 		return false, nil
@@ -612,6 +657,19 @@ func (s *RollbackService) applyEventToState(evt repository.StoredEvent, state ma
 	default:
 		// Unknown event type, skip
 		return false, nil
+	}
+}
+
+// setCoordinateState records a place's coordinate pair under the change keys
+// an update writes (prefix+"_lat", prefix+"_long"), so a rollback restores or
+// clears coordinates as it does any other field (#1604).
+func setCoordinateState(state map[string]any, prefix string, lat, long *string) {
+	for key, v := range map[string]*string{prefix + "_lat": lat, prefix + "_long": long} {
+		if v != nil {
+			state[key] = *v
+		} else {
+			delete(state, key)
+		}
 	}
 }
 

@@ -8356,10 +8356,34 @@ components:
           $ref: '#/components/schemas/DateInput'
         birth_place:
           type: string
+        birth_place_latitude:
+          type: string
+          description: >-
+            Latitude in GEDCOM form (e.g., "N42.3601"): N or S, then decimal degrees
+            within 90. Give it with birth_place_longitude: one half of the pair alone,
+            the wrong axis letter, a value out of range or a pair without a birth_place
+            is rejected with 400. Stored trimmed, with an upper-case letter.
+        birth_place_longitude:
+          type: string
+          description: >-
+            Longitude in GEDCOM form (e.g., "W71.0589"): E or W, then decimal degrees
+            within 180. Given with birth_place_latitude.
         death_date:
           $ref: '#/components/schemas/DateInput'
         death_place:
           type: string
+        death_place_latitude:
+          type: string
+          description: >-
+            Latitude in GEDCOM form (e.g., "N42.3601"): N or S, then decimal degrees
+            within 90. Give it with death_place_longitude: one half of the pair alone,
+            the wrong axis letter, a value out of range or a pair without a death_place
+            is rejected with 400. Stored trimmed, with an upper-case letter.
+        death_place_longitude:
+          type: string
+          description: >-
+            Longitude in GEDCOM form (e.g., "W71.0589"): E or W, then decimal degrees
+            within 180. Given with death_place_latitude.
         notes:
           type: string
         research_status:
@@ -8394,6 +8418,22 @@ components:
         birth_place:
           nullable: true
           type: string
+        birth_place_latitude:
+          nullable: true
+          type: string
+          description: >-
+            Latitude in GEDCOM form (e.g., "N42.3601"): N or S, then decimal degrees
+            within 90. Give it with birth_place_longitude: one half of the pair alone,
+            the wrong axis letter, a value out of range or a pair without a birth_place
+            is rejected with 400. Stored trimmed, with an upper-case letter.
+            Send both as null to clear the pair; omit both to leave it unchanged,
+            as changing the place name does.
+        birth_place_longitude:
+          nullable: true
+          type: string
+          description: >-
+            Longitude in GEDCOM form (e.g., "W71.0589"): E or W, then decimal degrees
+            within 180. Given with birth_place_latitude.
         death_date:
           allOf:
             - $ref: '#/components/schemas/DateInput'
@@ -8401,6 +8441,22 @@ components:
         death_place:
           nullable: true
           type: string
+        death_place_latitude:
+          nullable: true
+          type: string
+          description: >-
+            Latitude in GEDCOM form (e.g., "N42.3601"): N or S, then decimal degrees
+            within 90. Give it with death_place_longitude: one half of the pair alone,
+            the wrong axis letter, a value out of range or a pair without a death_place
+            is rejected with 400. Stored trimmed, with an upper-case letter.
+            Send both as null to clear the pair; omit both to leave it unchanged,
+            as changing the place name does.
+        death_place_longitude:
+          nullable: true
+          type: string
+          description: >-
+            Longitude in GEDCOM form (e.g., "W71.0589"): E or W, then decimal degrees
+            within 180. Given with death_place_latitude.
         notes:
           nullable: true
           type: string
@@ -8613,6 +8669,18 @@ components:
           $ref: '#/components/schemas/DateInput'
         marriage_place:
           type: string
+        marriage_place_latitude:
+          type: string
+          description: >-
+            Latitude in GEDCOM form (e.g., "N39.7817"): N or S, then decimal degrees
+            within 90. Give it with marriage_place_longitude: one half of the pair alone,
+            the wrong axis letter, a value out of range or a pair without a marriage_place
+            is rejected with 400. Stored trimmed, with an upper-case letter.
+        marriage_place_longitude:
+          type: string
+          description: >-
+            Longitude in GEDCOM form (e.g., "W89.6501"): E or W, then decimal degrees
+            within 180. Given with marriage_place_latitude.
 
     FamilyUpdate:
       description: >-
@@ -8660,6 +8728,22 @@ components:
         marriage_place:
           nullable: true
           type: string
+        marriage_place_latitude:
+          nullable: true
+          type: string
+          description: >-
+            Latitude in GEDCOM form (e.g., "N39.7817"): N or S, then decimal degrees
+            within 90. Give it with marriage_place_longitude: one half of the pair alone,
+            the wrong axis letter, a value out of range or a pair without a marriage_place
+            is rejected with 400. Stored trimmed, with an upper-case letter.
+            Send both as null to clear the pair; omit both to leave it unchanged,
+            as changing the place name does.
+        marriage_place_longitude:
+          nullable: true
+          type: string
+          description: >-
+            Longitude in GEDCOM form (e.g., "W89.6501"): E or W, then decimal degrees
+            within 180. Given with marriage_place_latitude.
         private:
           type: boolean
           description: >-

@@ -147,3 +147,24 @@ export function mergedFromLabel(origin: MergeOrigin): string {
   const note = origin.note?.trim();
   return note ? `${via}: ${note}` : via;
 }
+
+/** Spelled-out words for the abbreviations in change keys (#1604). */
+const FIELD_WORDS: Record<string, string> = {
+  lat: "Latitude",
+  long: "Longitude",
+};
+
+/**
+ * A change key in Title Case: "birth_place" is "Birth Place", and the place
+ * coordinate keys spell their axis out ("birth_place_lat" is "Birth Place
+ * Latitude").
+ */
+export function changeFieldLabel(field: string): string {
+  return field
+    .split("_")
+    .map(
+      (word) =>
+        FIELD_WORDS[word] ?? word.charAt(0).toUpperCase() + word.slice(1),
+    )
+    .join(" ");
+}
