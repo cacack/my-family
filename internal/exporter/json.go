@@ -7,17 +7,68 @@ import (
 	"io"
 	"sort"
 
+	"github.com/cacack/my-family/internal/domain"
 	"github.com/cacack/my-family/internal/repository"
 )
 
 // TreeExport represents a complete family tree export in JSON format.
 type TreeExport struct {
-	Persons    []repository.PersonReadModel    `json:"persons"`
-	Families   []repository.FamilyReadModel    `json:"families"`
-	Sources    []repository.SourceReadModel    `json:"sources,omitempty"`
-	Citations  []repository.CitationReadModel  `json:"citations,omitempty"`
-	Events     []repository.EventReadModel     `json:"events,omitempty"`
-	Attributes []repository.AttributeReadModel `json:"attributes,omitempty"`
+	Persons    []repository.PersonReadModel   `json:"persons"`
+	Families   []repository.FamilyReadModel   `json:"families"`
+	Sources    []repository.SourceReadModel   `json:"sources,omitempty"`
+	Citations  []repository.CitationReadModel `json:"citations,omitempty"`
+	Events     []EventExport                  `json:"events,omitempty"`
+	Attributes []AttributeExport              `json:"attributes,omitempty"`
+}
+
+// EventExport is a life event as exported, with the origin of its place
+// coordinates (#1563).
+type EventExport struct {
+	repository.EventReadModel
+	PlaceOrigin *domain.CoordinateOrigin `json:"place_origin,omitempty"`
+}
+
+// AttributeExport is an attribute as exported, with the origin of its place
+// coordinates (#1563).
+type AttributeExport struct {
+	repository.AttributeReadModel
+	PlaceOrigin *domain.CoordinateOrigin `json:"place_origin,omitempty"`
+}
+
+// withPersonOrigins sets each coordinate pair's origin as read
+// (domain.EffectiveCoordinateOrigin), so the export writes a pair stored
+// before #1563 as imported rather than with none. The other helpers here do
+// the same for families, life events and attributes; the last two record no
+// origin, as only an import sets their coordinates.
+func withPersonOrigins(persons []repository.PersonReadModel) {
+	for i := range persons {
+		p := &persons[i]
+		p.BirthPlaceOrigin = domain.EffectiveCoordinateOrigin(p.BirthPlaceLat, p.BirthPlaceLong, p.BirthPlaceOrigin)
+		p.DeathPlaceOrigin = domain.EffectiveCoordinateOrigin(p.DeathPlaceLat, p.DeathPlaceLong, p.DeathPlaceOrigin)
+	}
+}
+
+func withFamilyOrigins(families []repository.FamilyReadModel) {
+	for i := range families {
+		f := &families[i]
+		f.MarriagePlaceOrigin = domain.EffectiveCoordinateOrigin(f.MarriagePlaceLat, f.MarriagePlaceLong, f.MarriagePlaceOrigin)
+	}
+}
+
+func eventExports(events []repository.EventReadModel) []EventExport {
+	out := make([]EventExport, len(events))
+	for i, e := range events {
+		out[i] = EventExport{EventReadModel: e, PlaceOrigin: domain.EffectiveCoordinateOrigin(e.PlaceLat, e.PlaceLong, nil)}
+	}
+	return out
+}
+
+func attributeExports(attributes []repository.AttributeReadModel) []AttributeExport {
+	out := make([]AttributeExport, len(attributes))
+	for i, a := range attributes {
+		out[i] = AttributeExport{AttributeReadModel: a, PlaceOrigin: domain.EffectiveCoordinateOrigin(a.PlaceLat, a.PlaceLong, nil)}
+	}
+	return out
 }
 
 // exportJSON exports data in JSON format.
@@ -104,13 +155,15 @@ func (e *DataExporter) exportJSONTree(ctx context.Context, cw *countingWriter, r
 	})
 
 	// Build export structure
+	withPersonOrigins(persons)
+	withFamilyOrigins(families)
 	tree := TreeExport{
 		Persons:    persons,
 		Families:   families,
 		Sources:    sources,
 		Citations:  citations,
-		Events:     events,
-		Attributes: attributes,
+		Events:     eventExports(events),
+		Attributes: attributeExports(attributes),
 	}
 
 	// Encode to JSON
@@ -145,6 +198,7 @@ func (e *DataExporter) exportJSONPersons(ctx context.Context, cw *countingWriter
 
 	encoder := json.NewEncoder(cw)
 	encoder.SetIndent("", "  ")
+	withPersonOrigins(persons)
 	if err := encoder.Encode(persons); err != nil {
 		return result, fmt.Errorf("failed to encode JSON: %w", err)
 	}
@@ -169,6 +223,7 @@ func (e *DataExporter) exportJSONFamilies(ctx context.Context, cw *countingWrite
 
 	encoder := json.NewEncoder(cw)
 	encoder.SetIndent("", "  ")
+	withFamilyOrigins(families)
 	if err := encoder.Encode(families); err != nil {
 		return result, fmt.Errorf("failed to encode JSON: %w", err)
 	}
@@ -241,7 +296,7 @@ func (e *DataExporter) exportJSONEvents(ctx context.Context, cw *countingWriter,
 
 	encoder := json.NewEncoder(cw)
 	encoder.SetIndent("", "  ")
-	if err := encoder.Encode(events); err != nil {
+	if err := encoder.Encode(eventExports(events)); err != nil {
 		return result, fmt.Errorf("failed to encode JSON: %w", err)
 	}
 
@@ -265,7 +320,7 @@ func (e *DataExporter) exportJSONAttributes(ctx context.Context, cw *countingWri
 
 	encoder := json.NewEncoder(cw)
 	encoder.SetIndent("", "  ")
-	if err := encoder.Encode(attributes); err != nil {
+	if err := encoder.Encode(attributeExports(attributes)); err != nil {
 		return result, fmt.Errorf("failed to encode JSON: %w", err)
 	}
 
