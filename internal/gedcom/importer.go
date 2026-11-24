@@ -1091,7 +1091,7 @@ func warnDroppedNestedNotes(doc *gedcom.Document, result *ImportResult) {
 		if label == "" {
 			label = string(rec.Type)
 		}
-		for _, d := range droppedNotes(rec.Tags, recordKeepsNotes[rec.Type], keptEventNotes(rec), keptLinkNotes(rec)) {
+		for _, d := range droppedNotes(rec.Tags, recordKeepsNotes[rec.Type], keptEventNotes(rec), keptLinkNotes(doc, rec)) {
 			key := strings.Join(append([]string{string(rec.Type)}, d.path...), ".")
 			if counts[key] == 0 {
 				paths = append(paths, key)
@@ -1151,24 +1151,42 @@ func keptEventNotes(rec *gedcom.Record) func(block string) bool {
 
 // keptLinkNotes reports, for a record, whether a NOTE directly under one of
 // its OBJE links, given by its text (noteText), is kept: each call takes one
-// note of the links the import keeps (importedMediaLinks), so a second link
-// to the same OBJE record with the same note still reports it dropped. The
-// typed links don't say where in the record they sit, so a note is matched by
-// its text alone.
-func keptLinkNotes(rec *gedcom.Record) func(text string) bool {
+// note of the links the import keeps (importedMediaLinks) whose OBJE record,
+// if they point to one, is in doc, so a second link to the same OBJE record
+// with the same note, or a link to no record, still reports it dropped. Call
+// it once per note line. The typed links don't say where in the record they
+// sit, so a note is matched by its text alone (linkNoteKey), and when two
+// links share a note the warning may name either one's path.
+func keptLinkNotes(doc *gedcom.Document, rec *gedcom.Record) func(text string) bool {
 	left := map[string]int{}
 	for _, link := range importedMediaLinks(recordMediaLinks(rec)) {
+		if link.MediaXRef != "" && doc.GetMediaObject(link.MediaXRef) == nil {
+			continue
+		}
 		for _, note := range append(slices.Clone(link.NoteXRefs), link.InlineNotes...) {
-			left[note]++
+			left[linkNoteKey(note)]++
 		}
 	}
 	return func(text string) bool {
-		if left[text] == 0 {
+		key := linkNoteKey(text)
+		if left[key] == 0 {
 			return false
 		}
-		left[text]--
+		left[key]--
 		return true
 	}
+}
+
+// linkNoteKey is the form a link note is matched in by keptLinkNotes: the
+// decoded note (trimmed pointer, "@@" unescaped) and its raw line value
+// (noteText) both come out the same, with surrounding space trimmed and each
+// run of "@" cut to one.
+func linkNoteKey(note string) string {
+	note = strings.TrimSpace(note)
+	for strings.Contains(note, "@@") {
+		note = strings.ReplaceAll(note, "@@", "@")
+	}
+	return note
 }
 
 // droppedNote is a NOTE or SNOTE line the import does not keep: its tag, the
