@@ -585,6 +585,9 @@ export type SurnameEntry = Schemas['SurnameEntry'];
 export type LetterCount = Schemas['LetterCount'];
 export type PlaceIndexResponse = Schemas['PlaceIndexResponse'];
 export type PlaceEntry = Schemas['PlaceEntry'];
+export type Place = Schemas['Place'];
+export type PlaceList = Schemas['PlaceList'];
+export type PlaceAliasEntry = Schemas['PlaceAliasEntry'];
 export type CemeteryIndexResponse = Schemas['CemeteryIndexResponse'];
 export type CemeteryEntry = Schemas['CemeteryEntry'];
 export type MapLocationsResponse = Schemas['MapLocationsResponse'];
@@ -1545,6 +1548,33 @@ class ApiClient {
 			'GET',
 			`/browse/places/${encodeURIComponent(place)}/persons${query ? `?${query}` : ''}`
 		);
+	}
+
+	/** Branch-scoped: honors the active branch (see `BRANCH_SCOPED_OPERATIONS`). */
+	async listPlaces(params?: { limit?: number; offset?: number }): Promise<PlaceList> {
+		const searchParams = new URLSearchParams();
+		if (params?.limit) searchParams.set('limit', params.limit.toString());
+		if (params?.offset) searchParams.set('offset', params.offset.toString());
+		const query = searchParams.toString();
+		return this.request<PlaceList>('GET', `/places${query ? `?${query}` : ''}`);
+	}
+
+	/** Branch-scoped: honors the active branch (see `BRANCH_SCOPED_OPERATIONS`). */
+	async getPlace(id: string): Promise<Place> {
+		return this.request<Place>('GET', `/places/${encodeURIComponent(id)}`);
+	}
+
+	/** Join a place to `targetId` as its alias (ADR-009 §3). Mainline only. */
+	async aliasPlace(id: string, targetId: string, version: number): Promise<Place> {
+		return this.request<Place>('PUT', `/places/${encodeURIComponent(id)}/alias`, {
+			target_id: targetId,
+			version
+		});
+	}
+
+	/** Separate a place from the place it is an alias of. Mainline only. */
+	async unaliasPlace(id: string, version: number): Promise<Place> {
+		return this.request<Place>('DELETE', `/places/${encodeURIComponent(id)}/alias?version=${version}`);
 	}
 
 	async getCemeteryIndex(): Promise<CemeteryIndexResponse> {

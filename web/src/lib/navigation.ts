@@ -37,6 +37,7 @@ export const mainNav: NavEntry[] = [
 			{ href: '/repositories', label: 'Repositories' },
 			{ href: '/browse/citation-templates', label: 'Citation Templates' },
 			{ href: '/browse/brick-walls', label: 'Brick Walls' },
+			{ href: '/places/join', label: 'Join Places', minRole: 'editor' },
 			{ href: '/quality', label: 'Quality' },
 			{ href: '/analytics', label: 'Completeness' }
 		]
