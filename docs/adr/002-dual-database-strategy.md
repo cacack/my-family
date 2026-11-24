@@ -172,7 +172,10 @@ Implemented in `internal/storage` (`storage.Open`), which `serve` calls at start
   ([#1254](https://github.com/cacack/my-family/issues/1254)). If main has
   since deleted the entity, a branch's own copy of it still gets the backfill,
   on main's stream after the delete, and only that copy is filled in
-  ([#1255](https://github.com/cacack/my-family/issues/1255)). The
+  ([#1255](https://github.com/cacack/my-family/issues/1255)). A coordinate
+  that a branch's own update set or cleared is recorded in the backfill and
+  left alone: only the branch copy's other coordinates are filled in
+  ([#1797](https://github.com/cacack/my-family/issues/1797)). The
   brick walls are also saved in the `rebuild_state` table, which the
   reset keeps, and every event is decoded before the reset. A rebuild that
   stops after the reset (an error, Ctrl-C, a crash) therefore leaves that row
