@@ -15,7 +15,7 @@
 	import UncertaintyBadge from '#lib/components/UncertaintyBadge.svelte';
 	import PrivacyBadges from '#lib/components/PrivacyBadges.svelte';
 	import PrivacyFields from '#lib/components/PrivacyFields.svelte';
-	import PlaceCoordinates from '#lib/components/PlaceCoordinates.svelte';
+	import CoordinateFields from '#lib/components/CoordinateFields.svelte';
 	import RelationshipToYou from '#lib/components/RelationshipToYou.svelte';
 	import { createShortcutHandler } from '#lib/keyboard/useShortcuts.svelte.js';
 	import { Button } from '#lib/components/ui/button/index.js';
@@ -47,9 +47,12 @@
 		type DateFieldError,
 		type SavedAs
 	} from '#lib/utils/dateInput.js';
+	import { coordinateChange, coordinatePairError, toDecimalDegrees, type CoordinateError } from '#lib/utils/coordinates.js';
 	
 	const DATE_FIELDS = ['birth_date', 'death_date'] as const;
 	type DateField = (typeof DATE_FIELDS)[number];
+	const PLACE_FIELDS = ['birth_place', 'death_place'] as const;
+	type PlaceField = (typeof PLACE_FIELDS)[number];
 
 	let person: PersonDetail | null = $state(null);
 	let loading = $state(true);
@@ -80,6 +83,8 @@
 	let dateError: DateFieldError<DateField> | null = $state(null);
 	// The dates the last save stored in another form than typed (#978).
 	let savedAs: Partial<Record<DateField, SavedAs>> = $state({});
+	// The coordinate input a save was stopped for, by place (#1033).
+	let coordinateErrors: Partial<Record<PlaceField, CoordinateError>> = $state({});
 	let editing = $state(false);
 	let saving = $state(false);
 	let deleteOpen = $state(false);
@@ -133,8 +138,13 @@
 		gender: 'unknown' as Gender,
 		birth_date: '',
 		birth_place: '',
+		// In signed decimal degrees, as typed (#1033).
+		birth_place_latitude: '',
+		birth_place_longitude: '',
 		death_date: '',
 		death_place: '',
+		death_place_latitude: '',
+		death_place_longitude: '',
 		notes: '',
 		research_status: 'unknown' as ResearchStatus,
 		private: false,
@@ -310,8 +320,12 @@
 			gender: saved.gender || 'unknown',
 			birth_date: saved.birth_date?.raw || '',
 			birth_place: saved.birth_place || '',
+			birth_place_latitude: toDecimalDegrees(saved.birth_place_latitude, 'latitude'),
+			birth_place_longitude: toDecimalDegrees(saved.birth_place_longitude, 'longitude'),
 			death_date: saved.death_date?.raw || '',
 			death_place: saved.death_place || '',
+			death_place_latitude: toDecimalDegrees(saved.death_place_latitude, 'latitude'),
+			death_place_longitude: toDecimalDegrees(saved.death_place_longitude, 'longitude'),
 			notes: saved.notes || '',
 			research_status: saved.research_status || 'unknown',
 			private: saved.private === true,
@@ -322,6 +336,7 @@
 	function resetForm() {
 		saveError = null;
 		dateError = null;
+		coordinateErrors = {};
 		if (person) {
 			formData = formFrom(person);
 		}
@@ -335,8 +350,12 @@
 		{ key: 'research_status', label: 'Research Status', format: (value) => optionLabel(RESEARCH_STATUS_OPTIONS, String(value)) },
 		{ key: 'birth_date', label: 'Birth Date' },
 		{ key: 'birth_place', label: 'Birth Place' },
+		{ key: 'birth_place_latitude', label: 'Birth Place latitude' },
+		{ key: 'birth_place_longitude', label: 'Birth Place longitude' },
 		{ key: 'death_date', label: 'Death Date' },
 		{ key: 'death_place', label: 'Death Place' },
+		{ key: 'death_place_latitude', label: 'Death Place latitude' },
+		{ key: 'death_place_longitude', label: 'Death Place longitude' },
 		{ key: 'notes', label: 'Notes' },
 		{ key: 'private', label: 'Private', format: (value) => (value ? 'Yes' : 'No') },
 		{ key: 'living_override', label: 'Living status', format: (value) => optionLabel(LIVING_OVERRIDE_OPTIONS, String(value)) }
@@ -375,10 +394,33 @@
 		focusEditButton();
 	}
 
+	/** A place's typed pair, and the pair stored on `saved`. */
+	function coordinatePair(field: PlaceField) {
+		return { latitude: formData[`${field}_latitude`], longitude: formData[`${field}_longitude`] };
+	}
+	function savedPair(saved: PersonDetail, field: PlaceField) {
+		return { latitude: saved[`${field}_latitude`], longitude: saved[`${field}_longitude`] };
+	}
+
+	/** A place's pair as the update sends it: left out when it is as stored. */
+	function coordinatesUpdate(saved: PersonDetail, field: PlaceField) {
+		const change = coordinateChange(coordinatePair(field), savedPair(saved, field));
+		return change ? { [`${field}_latitude`]: change.latitude, [`${field}_longitude`]: change.longitude } : {};
+	}
+
 	async function savePerson() {
 		if (!person) return;
 		saveError = clearedNameError(person, formData);
 		if (saveError) return;
+		coordinateErrors = {};
+		for (const field of PLACE_FIELDS) {
+			const error = coordinatePairError(coordinatePair(field), formData[field], savedPair(person, field));
+			if (error) coordinateErrors[field] = error;
+		}
+		if (Object.keys(coordinateErrors).length) {
+			focusFirstInvalid(editForm);
+			return;
+		}
 		saving = true;
 		saveConflict.clear();
 		dateError = null;
@@ -397,6 +439,8 @@
 				birth_place: formData.birth_place,
 				death_date: formData.death_date,
 				death_place: formData.death_place,
+				...coordinatesUpdate(person, 'birth_place'),
+				...coordinatesUpdate(person, 'death_place'),
 				notes: formData.notes,
 				// Sent only when changed, so saving a person with no status
 				// recorded doesn't set one: both read as "Not assessed".
@@ -582,17 +626,19 @@
 					<div class="place-field">
 						<label>
 							Birth Place
-							<input
-								type="text"
-								bind:value={formData.birth_place}
-								aria-describedby={person.birth_place_latitude ? 'birth-place-coordinates' : undefined}
-							/>
+							<input type="text" bind:value={formData.birth_place} />
 						</label>
-						<PlaceCoordinates
-							id="birth-place-coordinates"
-							latitude={person.birth_place_latitude}
-							longitude={person.birth_place_longitude}
-							origin={person.birth_place_coordinates_origin}
+						<CoordinateFields
+							id="birth-place"
+							place="Birth Place"
+							bind:latitude={formData.birth_place_latitude}
+							bind:longitude={formData.birth_place_longitude}
+							error={coordinateErrors.birth_place}
+							saved={{
+								latitude: person.birth_place_latitude,
+								longitude: person.birth_place_longitude,
+								origin: person.birth_place_coordinates_origin
+							}}
 						/>
 					</div>
 				</FormRow>
@@ -608,17 +654,19 @@
 					<div class="place-field">
 						<label>
 							Death Place
-							<input
-								type="text"
-								bind:value={formData.death_place}
-								aria-describedby={person.death_place_latitude ? 'death-place-coordinates' : undefined}
-							/>
+							<input type="text" bind:value={formData.death_place} />
 						</label>
-						<PlaceCoordinates
-							id="death-place-coordinates"
-							latitude={person.death_place_latitude}
-							longitude={person.death_place_longitude}
-							origin={person.death_place_coordinates_origin}
+						<CoordinateFields
+							id="death-place"
+							place="Death Place"
+							bind:latitude={formData.death_place_latitude}
+							bind:longitude={formData.death_place_longitude}
+							error={coordinateErrors.death_place}
+							saved={{
+								latitude: person.death_place_latitude,
+								longitude: person.death_place_longitude,
+								origin: person.death_place_coordinates_origin
+							}}
 						/>
 					</div>
 				</FormRow>

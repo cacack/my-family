@@ -431,35 +431,120 @@ describe('Person detail edit form', () => {
 		expect(body).toMatchObject({ birth_place: '', notes: '', given_name: 'Ada', surname: 'Lovelace' });
 	});
 
-	// A geocoder's guess must not read as a location taken from a source (#1563).
-	it('shows each place\'s coordinates and their origin beside the place', async () => {
-		getPerson.mockResolvedValue(
-			person({
-				birth_place: 'Boston',
-				birth_place_latitude: 'N42.3601',
-				birth_place_longitude: 'W71.0589',
-				birth_place_coordinates_origin: { source: 'imported' },
-				death_place: 'Sydney',
-				death_place_latitude: 'S33.8688',
-				death_place_longitude: 'E151.2093',
-				death_place_coordinates_origin: { source: 'geocoded', provider: 'Nominatim', precision: 'partial' }
-			})
-		);
+	/** The latitude and longitude inputs under a place (#1033). */
+	function coordinates(place: string) {
+		const group = within(screen.getByRole('group', { name: `${place} coordinates` }));
+		return { latitude: group.getByLabelText('Latitude'), longitude: group.getByLabelText('Longitude') };
+	}
+
+	function describedBy(input: HTMLElement) {
+		const id = input.getAttribute('aria-describedby');
+		return id ? document.getElementById(id)?.textContent?.replace(/\s+/g, ' ').trim() : undefined;
+	}
+
+	const BOSTON_AND_SYDNEY = {
+		birth_place: 'Boston',
+		birth_place_latitude: 'N42.3601',
+		birth_place_longitude: 'W71.0589',
+		birth_place_coordinates_origin: { source: 'imported' as const },
+		death_place: 'Sydney',
+		death_place_latitude: 'S33.8688',
+		death_place_longitude: 'E151.2093',
+		death_place_coordinates_origin: { source: 'geocoded' as const, provider: 'Nominatim', precision: 'partial' as const }
+	};
+
+	it('shows each stored pair in signed decimal degrees, with its origin (#1033, #1563)', async () => {
+		getPerson.mockResolvedValue(person(BOSTON_AND_SYDNEY));
 		await openEdit();
 
-		const description = (label: string) => {
-			const id = screen.getByLabelText(label).getAttribute('aria-describedby');
-			return document.getElementById(id ?? '')?.textContent?.replace(/\s+/g, ' ').trim();
-		};
-		expect(description('Birth Place')).toBe('N42.3601, W71.0589 · Imported');
-		expect(description('Death Place')).toBe('S33.8688, E151.2093 · Geocoded by Nominatim, partial match');
+		const birth = coordinates('Birth Place');
+		const death = coordinates('Death Place');
+		expect((birth.latitude as HTMLInputElement).value).toBe('42.3601');
+		expect((birth.longitude as HTMLInputElement).value).toBe('-71.0589');
+		expect((death.latitude as HTMLInputElement).value).toBe('-33.8688');
+		expect((death.longitude as HTMLInputElement).value).toBe('151.2093');
+		// A geocoder's guess must not read as a location taken from a source.
+		expect(describedBy(birth.latitude)).toBe('Imported');
+		expect(describedBy(death.longitude)).toBe('Geocoded by Nominatim, partial match');
 	});
 
-	it('shows no coordinates for a place without them', async () => {
+	it('sends typed coordinates in GEDCOM form', async () => {
+		getPerson.mockResolvedValue(person({ birth_place: 'Boston', death_place: 'Sydney' }));
+		await openEdit();
+
+		const birth = coordinates('Birth Place');
+		await fireEvent.input(birth.latitude, { target: { value: '42.3601' } });
+		await fireEvent.input(birth.longitude, { target: { value: '-71.0589' } });
+		const death = coordinates('Death Place');
+		await fireEvent.input(death.latitude, { target: { value: '-33.8688' } });
+		await fireEvent.input(death.longitude, { target: { value: '151.2093' } });
+		const body = await save();
+
+		expect(body).toMatchObject({
+			birth_place_latitude: 'N42.3601',
+			birth_place_longitude: 'W71.0589',
+			death_place_latitude: 'S33.8688',
+			death_place_longitude: 'E151.2093'
+		});
+	});
+
+	it('leaves out a pair that is as stored, so it keeps its origin', async () => {
+		getPerson.mockResolvedValue(person(BOSTON_AND_SYDNEY));
+		await openEdit();
+		const body = await save();
+		expect(body).not.toHaveProperty('birth_place_latitude');
+		expect(body).not.toHaveProperty('birth_place_longitude');
+		expect(body).not.toHaveProperty('death_place_latitude');
+	});
+
+	it('sends null for both halves of a cleared pair', async () => {
+		getPerson.mockResolvedValue(person(BOSTON_AND_SYDNEY));
+		await openEdit();
+
+		const birth = coordinates('Birth Place');
+		await fireEvent.input(birth.latitude, { target: { value: '' } });
+		await fireEvent.input(birth.longitude, { target: { value: '' } });
+		// The origin was of the stored pair, so it goes with it.
+		expect(screen.getAllByTestId('coordinates-origin')).toHaveLength(1);
+		const body = await save();
+
+		expect(body.birth_place_latitude).toBeNull();
+		expect(body.birth_place_longitude).toBeNull();
+		expect(body).not.toHaveProperty('death_place_latitude');
+	});
+
+	it.each([
+		['north', '-71.0589', 'latitude', 'Latitude must be a number of degrees, such as 42.3601.'],
+		['91', '-71.0589', 'latitude', 'Latitude must be between -90 and 90.'],
+		['42.3601', '-181', 'longitude', 'Longitude must be between -180 and 180.'],
+		['42.3601', '', 'longitude', 'Enter a longitude too, or clear the latitude.']
+	] as const)('refuses %s, %s on the %s input without saving', async (latitude, longitude, field, message) => {
 		getPerson.mockResolvedValue(person({ birth_place: 'Boston' }));
 		await openEdit();
-		expect(screen.getByLabelText('Birth Place').getAttribute('aria-describedby')).toBeNull();
-		expect(screen.queryByTestId('place-coordinates')).toBeNull();
+
+		const birth = coordinates('Birth Place');
+		await fireEvent.input(birth.latitude, { target: { value: latitude } });
+		await fireEvent.input(birth.longitude, { target: { value: longitude } });
+		await fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+
+		const input = birth[field];
+		await waitFor(() => expect(input.getAttribute('aria-invalid')).toBe('true'));
+		expect(describedBy(input)).toBe(message);
+		await waitFor(() => expect(document.activeElement).toBe(input));
+		expect(updatePerson).not.toHaveBeenCalled();
+	});
+
+	it('asks for a place name before saving a pair without one', async () => {
+		getPerson.mockResolvedValue(person());
+		await openEdit();
+
+		const death = coordinates('Death Place');
+		await fireEvent.input(death.latitude, { target: { value: '1' } });
+		await fireEvent.input(death.longitude, { target: { value: '2' } });
+		await fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+
+		expect(await screen.findByText('Enter a place name for these coordinates.')).toBeTruthy();
+		expect(updatePerson).not.toHaveBeenCalled();
 	});
 
 	// Many real records have no surname (#911); the form must not block saving them.

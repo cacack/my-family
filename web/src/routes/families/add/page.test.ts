@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import AddFamilyPage from './+page.svelte';
 import type * as apiModule from '#lib/api/client.js';
 import { goto } from '$app/navigation';
@@ -233,5 +233,56 @@ describe('Add Family page dates (#996)', () => {
 				state: { savedAs: { marriage_date: { typed: 'circa 1875', stored: 'ABT 1875' } } }
 			})
 		);
+	});
+});
+
+// A family entered by hand can be put on the map (#1033).
+describe('Add Family page coordinates (#1033)', () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		pageState.search = '';
+		createFamily.mockResolvedValue({ id: 'new-fam', version: 1 });
+		searchPersons.mockResolvedValue({ items: [john], total: 1 });
+	});
+
+	function coordinates() {
+		const group = within(screen.getByRole('group', { name: 'Marriage Place coordinates' }));
+		return { latitude: group.getByLabelText('Latitude'), longitude: group.getByLabelText('Longitude') };
+	}
+
+	async function fill(place: string, latitude: string, longitude: string) {
+		render(AddFamilyPage);
+		await pick('Partner 1', 'Smith', /John Smith/);
+		await fireEvent.input(screen.getByLabelText('Marriage Place'), { target: { value: place } });
+		await fireEvent.input(coordinates().latitude, { target: { value: latitude } });
+		await fireEvent.input(coordinates().longitude, { target: { value: longitude } });
+		await fireEvent.click(screen.getByRole('button', { name: 'Create Family' }));
+	}
+
+	it('sends typed coordinates in GEDCOM form', async () => {
+		await fill('Boston', '42.3601', '-71.0589');
+		await waitFor(() => expect(createFamily).toHaveBeenCalled());
+		expect(createFamily.mock.calls[0][0]).toMatchObject({
+			marriage_place: 'Boston',
+			marriage_place_latitude: 'N42.3601',
+			marriage_place_longitude: 'W71.0589'
+		});
+	});
+
+	it('sends no coordinates when none are typed', async () => {
+		await fill('Boston', '', '');
+		await waitFor(() => expect(createFamily).toHaveBeenCalled());
+		expect(createFamily.mock.calls[0][0].marriage_place_latitude).toBeUndefined();
+		expect(createFamily.mock.calls[0][0].marriage_place_longitude).toBeUndefined();
+	});
+
+	it('refuses a latitude that is not a number on its input without creating', async () => {
+		await fill('Boston', 'north', '-71.0589');
+		const { latitude } = coordinates();
+		await waitFor(() => expect(latitude.getAttribute('aria-invalid')).toBe('true'));
+		expect(document.getElementById(latitude.getAttribute('aria-describedby') ?? '')?.textContent?.trim()).toBe(
+			'Latitude must be a number of degrees, such as 42.3601.'
+		);
+		expect(createFamily).not.toHaveBeenCalled();
 	});
 });

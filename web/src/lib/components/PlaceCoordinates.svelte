@@ -1,7 +1,7 @@
 <script lang="ts">
 	/**
-	 * A place's coordinate pair and where it came from (#1563), shown under
-	 * the place in a form. Renders nothing when the place has no pair.
+	 * A place's coordinate pair and where it came from (#1563), as read-only
+	 * text beside the place. Forms edit a pair with `CoordinateFields`. Renders nothing when the place has no pair.
 	 */
 	import type { CoordinateOrigin } from '#lib/api/client.js';
 	import { coordinateOriginText } from '#lib/utils/coordinateOrigin.js';

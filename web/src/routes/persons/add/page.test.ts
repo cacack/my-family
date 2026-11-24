@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/svelte';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/svelte';
 import Page from './+page.svelte';
 import * as apiModule from '#lib/api/client.js';
 import { goto } from '$app/navigation';
@@ -156,5 +156,67 @@ describe('Add Person form dates (#996)', () => {
 				state: { savedAs: { birth_date: { typed: 'about 1850', stored: 'ABT 1850' } } }
 			})
 		);
+	});
+});
+
+// A person entered by hand can be put on the map (#1033).
+describe('Add Person form coordinates (#1033)', () => {
+	const createPerson = vi.mocked(apiModule.api.createPerson);
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		createPerson.mockResolvedValue({ id: 'p1', given_name: 'Ada', surname: '', version: 1 } as apiModule.Person);
+	});
+
+	function coordinates(place: string) {
+		const group = within(screen.getByRole('group', { name: `${place} coordinates` }));
+		return { latitude: group.getByLabelText('Latitude'), longitude: group.getByLabelText('Longitude') };
+	}
+
+	async function fill(place: string, latitude: string, longitude: string) {
+		await fireEvent.input(screen.getByLabelText(place), { target: { value: 'Boston' } });
+		await fireEvent.input(coordinates(place).latitude, { target: { value: latitude } });
+		await fireEvent.input(coordinates(place).longitude, { target: { value: longitude } });
+	}
+
+	it('sends typed coordinates in GEDCOM form', async () => {
+		render(Page);
+		await fireEvent.input(screen.getByLabelText('Given Name'), { target: { value: 'Ada' } });
+		await fill('Birth Place', '42.3601', '-71.0589');
+		await fill('Death Place', '-33.8688', '151.2093');
+		await fireEvent.click(screen.getByRole('button', { name: 'Create Person' }));
+
+		await waitFor(() => expect(createPerson).toHaveBeenCalled());
+		expect(createPerson.mock.calls[0][0]).toMatchObject({
+			birth_place_latitude: 'N42.3601',
+			birth_place_longitude: 'W71.0589',
+			death_place_latitude: 'S33.8688',
+			death_place_longitude: 'E151.2093'
+		});
+	});
+
+	it('sends no coordinates when none are typed', async () => {
+		render(Page);
+		await fireEvent.input(screen.getByLabelText('Given Name'), { target: { value: 'Ada' } });
+		await fireEvent.click(screen.getByRole('button', { name: 'Create Person' }));
+
+		await waitFor(() => expect(createPerson).toHaveBeenCalled());
+		expect(createPerson.mock.calls[0][0]).not.toHaveProperty('birth_place_latitude');
+		expect(createPerson.mock.calls[0][0]).not.toHaveProperty('death_place_longitude');
+	});
+
+	it('refuses half a pair on the empty input without creating', async () => {
+		render(Page);
+		await fireEvent.input(screen.getByLabelText('Given Name'), { target: { value: 'Ada' } });
+		await fill('Death Place', '', '151.2093');
+		await fireEvent.click(screen.getByRole('button', { name: 'Create Person' }));
+
+		const { latitude } = coordinates('Death Place');
+		await waitFor(() => expect(latitude.getAttribute('aria-invalid')).toBe('true'));
+		expect(document.getElementById(latitude.getAttribute('aria-describedby') ?? '')?.textContent?.trim()).toBe(
+			'Enter a latitude too, or clear the longitude.'
+		);
+		await waitFor(() => expect(document.activeElement).toBe(latitude));
+		expect(createPerson).not.toHaveBeenCalled();
 	});
 });
