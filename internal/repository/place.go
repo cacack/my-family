@@ -197,3 +197,71 @@ func mostUsed(spellings map[string]int) string {
 	}
 	return best
 }
+
+// PlaceNamespace is the UUIDv5 namespace of place IDs (ADR-009 §2). It is part
+// of the ID rule and never changes without an ADR (PL-003): TestPlaceID pins
+// the ID it gives "boston,ma".
+var PlaceNamespace = uuid.MustParse("014ff2fb-cd05-48d7-9725-f817296bd750")
+
+// PlaceID is the ID of the place with key: UUIDv5(PlaceNamespace, key), the
+// same on every install and every branch (PL-003).
+func PlaceID(key string) uuid.UUID {
+	return uuid.NewSHA1(PlaceNamespace, []byte(key))
+}
+
+// PlaceReadModel is a place in use (ADR-009 §2): its ID, its key, the name it
+// shows (its most-used recorded spelling) and the number of place uses at or
+// under it.
+type PlaceReadModel struct {
+	ID    uuid.UUID
+	Key   string
+	Name  string
+	Count int
+}
+
+// Places builds the list of places in use from the uses of the records a
+// principal may see. A use names its own place and every place its key is
+// under (PlaceUnder): "Boston, MA" makes both "boston,ma" and "ma" in use, and
+// counts toward both. A place's name is its parts, as recorded and joined with
+// ", ", in the spelling with the most uses (ties broken bytewise). The places
+// sort by name bytewise, then by key so the order never depends on map order.
+// It is shared by every store so the list
+// is the same on each (DB-001).
+func Places(uses []PlaceUse) []PlaceReadModel {
+	type place struct {
+		spellings map[string]int
+		count     int
+	}
+	byKey := make(map[string]*place)
+	for _, u := range uses {
+		if u.Key == "" {
+			continue
+		}
+		keyParts := strings.Split(u.Key, ",")
+		nameParts := placeParts(u.Text, true)
+		if len(nameParts) != len(keyParts) {
+			nameParts = keyParts
+		}
+		for i := range keyParts {
+			key := strings.Join(keyParts[i:], ",")
+			p, ok := byKey[key]
+			if !ok {
+				p = &place{spellings: make(map[string]int)}
+				byKey[key] = p
+			}
+			p.spellings[strings.Join(nameParts[i:], ", ")] += u.Count
+			p.count += u.Count
+		}
+	}
+	places := make([]PlaceReadModel, 0, len(byKey))
+	for key, p := range byKey {
+		places = append(places, PlaceReadModel{ID: PlaceID(key), Key: key, Name: mostUsed(p.spellings), Count: p.count})
+	}
+	sort.Slice(places, func(i, j int) bool {
+		if places[i].Name != places[j].Name {
+			return places[i].Name < places[j].Name
+		}
+		return places[i].Key < places[j].Key
+	})
+	return places
+}

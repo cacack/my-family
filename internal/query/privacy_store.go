@@ -35,8 +35,10 @@ import (
 //     LDS ordinances and media.
 //   - Private media are hidden, and so are media of a hidden owner, bytes and
 //     thumbnails included.
-//   - The surname, place and cemetery indexes, the map and the brick walls
-//     leave protected people out of their counts and lists, in the query.
+//   - The surname, place and cemetery indexes, the place list, the map and
+//     the brick walls leave protected people out of their counts and lists,
+//     in the query; the place list also leaves out what belongs to a hidden
+//     person or family (ADR-009 §10).
 //   - Private sources, citations and notes are hidden. So is a citation of a
 //     private source or of a fact whose owner is hidden, and a shared note
 //     every record pointing to which is hidden (ADR-008 §3); a source's
@@ -1666,6 +1668,10 @@ func (s *PrivacyStore) GetCemeteryIndex(ctx context.Context, branchID domain.Bra
 func (s *PrivacyStore) GetPersonsByCemetery(ctx context.Context, place string, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
 	opts.Privacy = s.privacy(ctx)
 	return s.inner.GetPersonsByCemetery(ctx, place, opts)
+}
+
+func (s *PrivacyStore) ListPlaces(ctx context.Context, branchID domain.BranchID, _ repository.Privacy) ([]repository.PlaceReadModel, error) {
+	return s.inner.ListPlaces(ctx, branchID, s.privacy(ctx))
 }
 
 func (s *PrivacyStore) GetMapLocations(ctx context.Context, branchID domain.BranchID, _ repository.Privacy) ([]repository.MapLocation, error) {
