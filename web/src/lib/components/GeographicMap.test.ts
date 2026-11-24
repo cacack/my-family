@@ -166,6 +166,27 @@ describe('GeographicMap', () => {
 		expect(document.activeElement).toBe(item);
 	});
 
+	it('lists each pin of one place and event type, its own pair apart (ADR-009 §9)', async () => {
+		const pin = (latitude: number, id: string) => ({
+			place_id: 'b0570000-0000-5000-8000-000000000000',
+			place: 'Boston',
+			latitude,
+			longitude: -71.06,
+			event_type: 'birth',
+			count: 1,
+			person_ids: [id],
+			persons: [{ id, given_name: id, surname: 'Lee' }],
+			origins: ['manual']
+		});
+		vi.mocked(apiModule.api.getMapLocations).mockResolvedValue({
+			items: [pin(42.35, 'cy'), pin(42.36, 'ann')],
+			total: 2
+		} as unknown as Awaited<ReturnType<typeof apiModule.api.getMapLocations>>);
+		const { container } = await renderMap();
+		const list = container.querySelector('details.location-list') as HTMLDetailsElement;
+		expect(within(list).getAllByRole('button')).toHaveLength(2);
+	});
+
 	it('draws the bundled world outline under the markers', async () => {
 		const { container } = await renderMap();
 		await waitFor(() => expect(container.querySelectorAll('.country').length).toBeGreaterThan(100));
