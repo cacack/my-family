@@ -1113,10 +1113,10 @@ func warnDroppedNestedNotes(doc *gedcom.Document, result *ImportResult) {
 }
 
 // keptEventNotes reports, for a record, whether the NOTEs directly under a
-// level-1 block are kept; last is true for the last block of its kind.
-func keptEventNotes(rec *gedcom.Record) func(block string, last bool) bool {
+// level-1 block are kept.
+func keptEventNotes(rec *gedcom.Record) func(block string) bool {
 	if indi, ok := rec.GetIndividual(); ok {
-		return func(block string, _ bool) bool {
+		return func(block string) bool {
 			if block == "ASSO" || block == "NAME" {
 				return true // every ASSO and NAME is imported with its notes (#1165)
 			}
@@ -1136,14 +1136,14 @@ func keptEventNotes(rec *gedcom.Record) func(block string, last bool) bool {
 		}
 	}
 	if rec.IsFamily() {
-		return func(block string, _ bool) bool {
+		return func(block string) bool {
 			// Every MARR keeps its notes, on the family record or a life
 			// event (#1776).
 			_, ok := familyEventFactType(gedcom.EventType(strings.TrimPrefix(block, "NO ")))
 			return ok
 		}
 	}
-	return func(string, bool) bool { return false }
+	return func(string) bool { return false }
 }
 
 // droppedNote is a NOTE or SNOTE line the import does not keep: its tag, the
@@ -1159,23 +1159,16 @@ type droppedNote struct {
 // that the import does not keep: a level-1 line unless keepsOwn, a level-2 line unless kept reports true for its level-1 block, and any
 // deeper one. A level-1 block is named by its tag, a 7.0 negative assertion
 // as "NO <event>".
-func droppedNotes(tags []*gedcom.Tag, keepsOwn bool, kept func(block string, last bool) bool) []droppedNote {
+func droppedNotes(tags []*gedcom.Tag, keepsOwn bool, kept func(block string) bool) []droppedNote {
 	blockName := func(tag *gedcom.Tag) string {
 		if tag.Tag == "NO" {
 			return "NO " + strings.TrimSpace(tag.Value)
 		}
 		return tag.Tag
 	}
-	lastBlock := map[string]int{}
-	for i, tag := range tags {
-		if tag.Level == 1 {
-			lastBlock[blockName(tag)] = i
-		}
-	}
 
 	var dropped []droppedNote
 	var path []string // path[l-1] names the open level-l substructure
-	block := -1       // index of the open level-1 block
 	for i, tag := range tags {
 		if tag.Level < 1 {
 			path = path[:0]
@@ -1188,7 +1181,7 @@ func droppedNotes(tags []*gedcom.Tag, keepsOwn bool, kept func(block string, las
 			case tag.Level == 1:
 				keep = keepsOwn
 			case tag.Level == 2 && len(path) == 1:
-				keep = kept(path[0], lastBlock[path[0]] == block)
+				keep = kept(path[0])
 			}
 			if text := noteText(tags, i); !keep && text != "" {
 				if r := []rune(text); len(r) > droppedNoteMaxLen {
@@ -1199,7 +1192,7 @@ func droppedNotes(tags []*gedcom.Tag, keepsOwn bool, kept func(block string, las
 		}
 		name := tag.Tag
 		if tag.Level == 1 {
-			name, block = blockName(tag), i
+			name = blockName(tag)
 		}
 		path = append(path, name)
 	}
@@ -1700,7 +1693,10 @@ func recordEvent(indi *gedcom.Individual, eventType gedcom.EventType) *gedcom.Ev
 // bare, or with every one bare the first. Every other non-negated MARR that
 // is not bare is imported as a life event, so a later MARR does not replace
 // the record's date, place, notes and TYPE (#1776). The exporter writes the
-// record's first, then the life events, so a re-import picks the same one.
+// record's first, then the life events, so a dated record keeps its place
+// through a round trip; an undated one beside a dated marriage life event,
+// or one whose only content is an address or descriptor the record does not
+// keep, does not.
 func recordMarriage(fam *gedcom.Family) *gedcom.Event {
 	var first, firstBare *gedcom.Event
 	for _, event := range fam.Events {
