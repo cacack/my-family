@@ -120,12 +120,14 @@ type placeCoordinates struct {
 }
 
 // recordCoordinates records the pair beside an event's place text whose API
-// fields start with prefix (eventPlaceNames), for a place now named place
-// (see recordPair). A pair left out beside a place left without a name is
-// cleared (#1798): export and the map both key coordinates by the name, so a
-// pair cannot outlive it.
-func recordCoordinates(changes map[string]any, prefix, place string, input CoordinatesPatch, current placeCoordinates) error {
-	if strings.TrimSpace(place) == "" && input.Latitude.Omitted() && input.Longitude.Omitted() && input.Origin == nil {
+// fields start with prefix (eventPlaceNames), for a place named before and
+// now named place (see recordPair). A pair left out beside a place this
+// update clears is cleared with it (#1798), so a pair does not outlive its
+// name. A pair already stored without a name, as an import can leave one, is
+// kept: only clearing the name clears it.
+func recordCoordinates(changes map[string]any, prefix, before, place string, input CoordinatesPatch, current placeCoordinates) error {
+	cleared := strings.TrimSpace(before) != "" && strings.TrimSpace(place) == ""
+	if cleared && input.Latitude.Omitted() && input.Longitude.Omitted() && input.Origin == nil {
 		input.Latitude, input.Longitude = Clear[string](), Clear[string]()
 	}
 	return recordPair(changes, eventPlaceNames(prefix), place, input, current)

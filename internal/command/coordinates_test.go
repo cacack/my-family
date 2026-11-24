@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/cacack/my-family/internal/command"
@@ -357,6 +358,35 @@ func TestPlaceCoordinates_ClearedWithPlace(t *testing.T) {
 	if f.MarriagePlace != "" || f.MarriagePlaceLat != nil || f.MarriagePlaceLong != nil || f.MarriagePlaceOrigin != nil {
 		t.Errorf("family after clearing the place = %q %s %s, want no place or pair",
 			f.MarriagePlace, derefOr(f.MarriagePlaceLat), derefOr(f.MarriagePlaceLong))
+	}
+}
+
+// A pair an import stored without a place name is kept by an update that
+// leaves the place empty: only clearing a name clears its pair (#1798).
+func TestPlaceCoordinates_NamelessPairKept(t *testing.T) {
+	ctx := context.Background()
+	rs := memory.NewReadModelStore()
+	h := command.NewHandler(memory.NewEventStore(), rs)
+	ged := "0 HEAD\n1 GEDC\n2 VERS 5.5.1\n1 CHAR UTF-8\n0 @I1@ INDI\n1 NAME Ada /Lovelace/\n" +
+		"1 BIRT\n2 DATE 1815\n2 PLAC\n3 MAP\n4 LATI N51.5074\n4 LONG W0.1278\n0 TRLR\n"
+	if _, err := h.ImportGedcom(ctx, command.ImportGedcomInput{Filename: "t.ged", FileSize: int64(len(ged)), Reader: strings.NewReader(ged)}); err != nil {
+		t.Fatalf("ImportGedcom: %v", err)
+	}
+	persons, _, _ := rs.ListPersons(ctx, repository.ListOptions{Limit: 10})
+	if len(persons) != 1 || persons[0].BirthPlace != "" || persons[0].BirthPlaceLat == nil {
+		t.Fatalf("imported persons = %+v, want one with a nameless birth pair", persons)
+	}
+	p := persons[0]
+	res, err := h.UpdatePerson(ctx, command.UpdatePersonInput{ID: p.ID, Version: p.Version, BirthPlace: command.Set("")})
+	if err != nil || res.Version != p.Version {
+		t.Errorf("update leaving the place empty = %v, %v; want no change at version %d", res, err, p.Version)
+	}
+	if _, err := h.UpdatePerson(ctx, command.UpdatePersonInput{ID: p.ID, Version: p.Version, Notes: command.Set("note")}); err != nil {
+		t.Fatalf("UpdatePerson notes: %v", err)
+	}
+	got, _ := rs.GetPerson(ctx, domain.MainBranchID, p.ID)
+	if derefOr(got.BirthPlaceLat) != "N51.5074" || derefOr(got.BirthPlaceLong) != "W0.1278" {
+		t.Errorf("pair after a notes update = %s %s, want N51.5074 W0.1278", derefOr(got.BirthPlaceLat), derefOr(got.BirthPlaceLong))
 	}
 }
 

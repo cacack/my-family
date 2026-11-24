@@ -4507,7 +4507,7 @@ type FamilyUpdate struct {
 	ClearPartner2 *bool                        `json:"clear_partner2,omitempty"`
 	MarriageDate  nullable.Nullable[DateInput] `json:"marriage_date,omitempty"`
 
-	// MarriagePlace Null or "" clears the place name and with it the marriage_place_latitude and marriage_place_longitude pair and its origin, as export and the map key coordinates by the place name; a pair set beside the clear is rejected with 400. Renaming the place keeps the pair.
+	// MarriagePlace Null or "" clears the place name and with it the marriage_place_latitude and marriage_place_longitude pair and its origin, so a pair does not outlive its name; a pair set beside the clear is rejected with 400. Renaming the place keeps the pair, as does an update to a record whose place was already empty.
 	MarriagePlace nullable.Nullable[string] `json:"marriage_place,omitempty"`
 
 	// MarriagePlaceCoordinatesOrigin How the marriage place coordinates were obtained, given only with both halves set (400 otherwise). Left out, a pair that changes is manual and one left as it is keeps its origin. geocoded without a provider or precision, or a provider or precision on any other source, is rejected with 400.
@@ -6077,7 +6077,7 @@ type PersonSummary struct {
 type PersonUpdate struct {
 	BirthDate nullable.Nullable[DateInput] `json:"birth_date,omitempty"`
 
-	// BirthPlace Null or "" clears the place name and with it the birth_place_latitude and birth_place_longitude pair and its origin, as export and the map key coordinates by the place name; a pair set beside the clear is rejected with 400. Renaming the place keeps the pair.
+	// BirthPlace Null or "" clears the place name and with it the birth_place_latitude and birth_place_longitude pair and its origin, so a pair does not outlive its name; a pair set beside the clear is rejected with 400. Renaming the place keeps the pair, as does an update to a record whose place was already empty.
 	BirthPlace nullable.Nullable[string] `json:"birth_place,omitempty"`
 
 	// BirthPlaceCoordinatesOrigin How the birth place coordinates were obtained, given only with both halves set (400 otherwise). Left out, a pair that changes is manual and one left as it is keeps its origin. geocoded without a provider or precision, or a provider or precision on any other source, is rejected with 400.
@@ -6090,7 +6090,7 @@ type PersonUpdate struct {
 	BirthPlaceLongitude nullable.Nullable[string]    `json:"birth_place_longitude,omitempty"`
 	DeathDate           nullable.Nullable[DateInput] `json:"death_date,omitempty"`
 
-	// DeathPlace Null or "" clears the place name and with it the death_place_latitude and death_place_longitude pair and its origin, as export and the map key coordinates by the place name; a pair set beside the clear is rejected with 400. Renaming the place keeps the pair.
+	// DeathPlace Null or "" clears the place name and with it the death_place_latitude and death_place_longitude pair and its origin, so a pair does not outlive its name; a pair set beside the clear is rejected with 400. Renaming the place keeps the pair, as does an update to a record whose place was already empty.
 	DeathPlace nullable.Nullable[string] `json:"death_place,omitempty"`
 
 	// DeathPlaceCoordinatesOrigin How the death place coordinates were obtained, given only with both halves set (400 otherwise). Left out, a pair that changes is manual and one left as it is keeps its origin. geocoded without a provider or precision, or a provider or precision on any other source, is rejected with 400.

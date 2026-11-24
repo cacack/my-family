@@ -4348,7 +4348,7 @@ export interface components {
             surname?: string | null;
             gender?: components["schemas"]["Gender"] | null;
             birth_date?: components["schemas"]["DateInput"] | null;
-            /** @description Null or "" clears the place name and with it the birth_place_latitude and birth_place_longitude pair and its origin, as export and the map key coordinates by the place name; a pair set beside the clear is rejected with 400. Renaming the place keeps the pair. */
+            /** @description Null or "" clears the place name and with it the birth_place_latitude and birth_place_longitude pair and its origin, so a pair does not outlive its name; a pair set beside the clear is rejected with 400. Renaming the place keeps the pair, as does an update to a record whose place was already empty. */
             birth_place?: string | null;
             /** @description Latitude in GEDCOM form (e.g., "N42.3601"): N or S, then decimal degrees within 90. Give it with birth_place_longitude: one half of the pair alone, the wrong axis letter, a value out of range or a pair without a birth_place is rejected with 400. Stored trimmed, with an upper-case letter. Send both as null to clear the pair; omit both to leave it unchanged, as renaming the place does (clearing the place name clears it). */
             birth_place_latitude?: string | null;
@@ -4357,7 +4357,7 @@ export interface components {
             /** @description How the birth place coordinates were obtained, given only with both halves set (400 otherwise). Left out, a pair that changes is manual and one left as it is keeps its origin. geocoded without a provider or precision, or a provider or precision on any other source, is rejected with 400. */
             birth_place_coordinates_origin?: components["schemas"]["CoordinateOrigin"];
             death_date?: components["schemas"]["DateInput"] | null;
-            /** @description Null or "" clears the place name and with it the death_place_latitude and death_place_longitude pair and its origin, as export and the map key coordinates by the place name; a pair set beside the clear is rejected with 400. Renaming the place keeps the pair. */
+            /** @description Null or "" clears the place name and with it the death_place_latitude and death_place_longitude pair and its origin, so a pair does not outlive its name; a pair set beside the clear is rejected with 400. Renaming the place keeps the pair, as does an update to a record whose place was already empty. */
             death_place?: string | null;
             /** @description Latitude in GEDCOM form (e.g., "N42.3601"): N or S, then decimal degrees within 90. Give it with death_place_longitude: one half of the pair alone, the wrong axis letter, a value out of range or a pair without a death_place is rejected with 400. Stored trimmed, with an upper-case letter. Send both as null to clear the pair; omit both to leave it unchanged, as renaming the place does (clearing the place name clears it). */
             death_place_latitude?: string | null;
@@ -4508,7 +4508,7 @@ export interface components {
             clear_partner2?: boolean;
             relationship_type?: components["schemas"]["RelationType"] | null;
             marriage_date?: components["schemas"]["DateInput"] | null;
-            /** @description Null or "" clears the place name and with it the marriage_place_latitude and marriage_place_longitude pair and its origin, as export and the map key coordinates by the place name; a pair set beside the clear is rejected with 400. Renaming the place keeps the pair. */
+            /** @description Null or "" clears the place name and with it the marriage_place_latitude and marriage_place_longitude pair and its origin, so a pair does not outlive its name; a pair set beside the clear is rejected with 400. Renaming the place keeps the pair, as does an update to a record whose place was already empty. */
             marriage_place?: string | null;
             /** @description Latitude in GEDCOM form (e.g., "N39.7817"): N or S, then decimal degrees within 90. Give it with marriage_place_longitude: one half of the pair alone, the wrong axis letter, a value out of range or a pair without a marriage_place is rejected with 400. Stored trimmed, with an upper-case letter. Send both as null to clear the pair; omit both to leave it unchanged, as renaming the place does (clearing the place name clears it). */
             marriage_place_latitude?: string | null;

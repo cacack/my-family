@@ -8523,9 +8523,9 @@ components:
           type: string
           description: >-
             Null or "" clears the place name and with it the birth_place_latitude and
-            birth_place_longitude pair and its origin, as export and the map key coordinates
-            by the place name; a pair set beside the clear is rejected with 400.
-            Renaming the place keeps the pair.
+            birth_place_longitude pair and its origin, so a pair does not outlive its name;
+            a pair set beside the clear is rejected with 400. Renaming the place keeps
+            the pair, as does an update to a record whose place was already empty.
         birth_place_latitude:
           nullable: true
           type: string
@@ -8559,9 +8559,9 @@ components:
           type: string
           description: >-
             Null or "" clears the place name and with it the death_place_latitude and
-            death_place_longitude pair and its origin, as export and the map key coordinates
-            by the place name; a pair set beside the clear is rejected with 400.
-            Renaming the place keeps the pair.
+            death_place_longitude pair and its origin, so a pair does not outlive its name;
+            a pair set beside the clear is rejected with 400. Renaming the place keeps
+            the pair, as does an update to a record whose place was already empty.
         death_place_latitude:
           nullable: true
           type: string
@@ -8878,9 +8878,9 @@ components:
           type: string
           description: >-
             Null or "" clears the place name and with it the marriage_place_latitude and
-            marriage_place_longitude pair and its origin, as export and the map key coordinates
-            by the place name; a pair set beside the clear is rejected with 400.
-            Renaming the place keeps the pair.
+            marriage_place_longitude pair and its origin, so a pair does not outlive its name;
+            a pair set beside the clear is rejected with 400. Renaming the place keeps
+            the pair, as does an update to a record whose place was already empty.
         marriage_place_latitude:
           nullable: true
           type: string
