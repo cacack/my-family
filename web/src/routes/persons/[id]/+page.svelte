@@ -15,6 +15,7 @@
 	import UncertaintyBadge from '#lib/components/UncertaintyBadge.svelte';
 	import PrivacyBadges from '#lib/components/PrivacyBadges.svelte';
 	import PrivacyFields from '#lib/components/PrivacyFields.svelte';
+	import PlaceCoordinates from '#lib/components/PlaceCoordinates.svelte';
 	import RelationshipToYou from '#lib/components/RelationshipToYou.svelte';
 	import { createShortcutHandler } from '#lib/keyboard/useShortcuts.svelte.js';
 	import { Button } from '#lib/components/ui/button/index.js';
@@ -578,10 +579,22 @@
 						</label>
 						{@render dateMessage('birth_date')}
 					</div>
-					<label>
-						Birth Place
-						<input type="text" bind:value={formData.birth_place} />
-					</label>
+					<div class="place-field">
+						<label>
+							Birth Place
+							<input
+								type="text"
+								bind:value={formData.birth_place}
+								aria-describedby={person.birth_place_latitude ? 'birth-place-coordinates' : undefined}
+							/>
+						</label>
+						<PlaceCoordinates
+							id="birth-place-coordinates"
+							latitude={person.birth_place_latitude}
+							longitude={person.birth_place_longitude}
+							origin={person.birth_place_coordinates_origin}
+						/>
+					</div>
 				</FormRow>
 
 				<FormRow>
@@ -592,10 +605,22 @@
 						</label>
 						{@render dateMessage('death_date')}
 					</div>
-					<label>
-						Death Place
-						<input type="text" bind:value={formData.death_place} />
-					</label>
+					<div class="place-field">
+						<label>
+							Death Place
+							<input
+								type="text"
+								bind:value={formData.death_place}
+								aria-describedby={person.death_place_latitude ? 'death-place-coordinates' : undefined}
+							/>
+						</label>
+						<PlaceCoordinates
+							id="death-place-coordinates"
+							latitude={person.death_place_latitude}
+							longitude={person.death_place_longitude}
+							origin={person.death_place_coordinates_origin}
+						/>
+					</div>
 				</FormRow>
 
 				<label>
@@ -1153,7 +1178,8 @@
 	}
 
 	/* A date input's label with any refusal of it underneath (#1112). */
-	.date-field {
+	.date-field,
+	.place-field {
 		display: flex;
 		flex-direction: column;
 		gap: 0.375rem;

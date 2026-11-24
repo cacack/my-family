@@ -591,6 +591,22 @@ describe('Family Detail Page: partners and children (#826)', () => {
 		expect(body).not.toHaveProperty('partner2_id');
 	});
 
+	// A geocoder's guess must not read as a location taken from a source (#1563).
+	it('shows the marriage place coordinates and their origin beside the place', async () => {
+		vi.mocked(api.getFamily).mockResolvedValue({
+			...mockFamilyWithChildren,
+			marriage_place: 'Springfield',
+			marriage_place_latitude: 'N39.7817',
+			marriage_place_longitude: 'W89.6501',
+			marriage_place_coordinates_origin: { source: 'copied' }
+		});
+		await openEdit();
+		const id = screen.getByLabelText('Marriage Place').getAttribute('aria-describedby');
+		expect(document.getElementById(id ?? '')?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+			'N39.7817, W89.6501 · Copied from another place'
+		);
+	});
+
 	it('sends a cleared marriage place as an empty string, and no unchanged type', async () => {
 		await openEdit();
 		await fireEvent.input(screen.getByLabelText('Marriage Place'), { target: { value: '' } });

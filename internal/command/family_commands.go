@@ -94,7 +94,7 @@ func (h *Handler) CreateFamily(ctx context.Context, input CreateFamilyInput) (*C
 	if input.MarriagePlace != "" {
 		family.MarriagePlace = input.MarriagePlace
 	}
-	marriageLat, marriageLong, err := createdCoordinates("marriage_place", input.MarriagePlace, input.MarriagePlaceCoordinates)
+	marriage, err := createdCoordinates("marriage_place", input.MarriagePlace, input.MarriagePlaceCoordinates)
 	if err != nil {
 		return nil, err
 	}
@@ -107,7 +107,7 @@ func (h *Handler) CreateFamily(ctx context.Context, input CreateFamilyInput) (*C
 	// Create event using the helper function. Place coordinates are not
 	// domain.Family fields, so they are set on the event directly.
 	event := domain.NewFamilyCreated(family)
-	event.MarriagePlaceLat, event.MarriagePlaceLong = marriageLat, marriageLong
+	event.MarriagePlaceLat, event.MarriagePlaceLong, event.MarriagePlaceOrigin = marriage.Lat, marriage.Long, marriage.Origin
 
 	// Execute command (append + project) on the handler's branch scope.
 	// expectedVersion 0 matches a fresh stream, as it always has for creates here.
@@ -198,7 +198,8 @@ func (h *Handler) UpdateFamily(ctx context.Context, input UpdateFamilyInput) (*U
 		changes["marriage_place"] = place
 		marriagePlace = place
 	}
-	if err := recordCoordinates(changes, "marriage_place", marriagePlace, input.MarriagePlaceCoordinates, family.MarriagePlaceLat, family.MarriagePlaceLong); err != nil {
+	if err := recordCoordinates(changes, "marriage_place", marriagePlace, input.MarriagePlaceCoordinates,
+		placeCoordinates{family.MarriagePlaceLat, family.MarriagePlaceLong, family.MarriagePlaceOrigin}); err != nil {
 		return nil, err
 	}
 	recordPrivate(changes, input.Private, family.Restriction)

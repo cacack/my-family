@@ -27,23 +27,26 @@ func NewPersonService(readStore repository.ReadModelStore) *PersonService {
 
 // Person represents a person in query results.
 type Person struct {
-	ID                  uuid.UUID       `json:"id"`
-	GivenName           string          `json:"given_name"`
-	Surname             string          `json:"surname"`
-	Gender              *string         `json:"gender,omitempty"`
-	BirthDate           *domain.GenDate `json:"birth_date,omitempty"`
-	BirthPlace          *string         `json:"birth_place,omitempty"`
-	BirthPlaceLat       *string         `json:"birth_place_latitude,omitempty"`
-	BirthPlaceLong      *string         `json:"birth_place_longitude,omitempty"`
-	DeathDate           *domain.GenDate `json:"death_date,omitempty"`
-	DeathPlace          *string         `json:"death_place,omitempty"`
-	DeathPlaceLat       *string         `json:"death_place_latitude,omitempty"`
-	DeathPlaceLong      *string         `json:"death_place_longitude,omitempty"`
-	Notes               *string         `json:"notes,omitempty"`
-	ResearchStatus      *string         `json:"research_status,omitempty"`
-	BrickWallNote       *string         `json:"brick_wall_note,omitempty"`
-	BrickWallSince      *time.Time      `json:"brick_wall_since,omitempty"`
-	BrickWallResolvedAt *time.Time      `json:"brick_wall_resolved_at,omitempty"`
+	ID             uuid.UUID       `json:"id"`
+	GivenName      string          `json:"given_name"`
+	Surname        string          `json:"surname"`
+	Gender         *string         `json:"gender,omitempty"`
+	BirthDate      *domain.GenDate `json:"birth_date,omitempty"`
+	BirthPlace     *string         `json:"birth_place,omitempty"`
+	BirthPlaceLat  *string         `json:"birth_place_latitude,omitempty"`
+	BirthPlaceLong *string         `json:"birth_place_longitude,omitempty"`
+	DeathDate      *domain.GenDate `json:"death_date,omitempty"`
+	DeathPlace     *string         `json:"death_place,omitempty"`
+	DeathPlaceLat  *string         `json:"death_place_latitude,omitempty"`
+	DeathPlaceLong *string         `json:"death_place_longitude,omitempty"`
+	// The origin of each pair as read (domain.EffectiveCoordinateOrigin, #1563).
+	BirthPlaceOrigin    *domain.CoordinateOrigin `json:"birth_place_coordinates_origin,omitempty"`
+	DeathPlaceOrigin    *domain.CoordinateOrigin `json:"death_place_coordinates_origin,omitempty"`
+	Notes               *string                  `json:"notes,omitempty"`
+	ResearchStatus      *string                  `json:"research_status,omitempty"`
+	BrickWallNote       *string                  `json:"brick_wall_note,omitempty"`
+	BrickWallSince      *time.Time               `json:"brick_wall_since,omitempty"`
+	BrickWallResolvedAt *time.Time               `json:"brick_wall_resolved_at,omitempty"`
 	// Living is the living rule's verdict today (ADR-008 §1), and
 	// LivingOverride the editor's override of it ("" is auto).
 	Living         bool   `json:"living"`
@@ -336,6 +339,8 @@ func convertReadModelToPerson(rm repository.PersonReadModel, cutoff time.Time) P
 	p.BirthPlaceLong = nonEmpty(rm.BirthPlaceLong)
 	p.DeathPlaceLat = nonEmpty(rm.DeathPlaceLat)
 	p.DeathPlaceLong = nonEmpty(rm.DeathPlaceLong)
+	p.BirthPlaceOrigin = domain.EffectiveCoordinateOrigin(p.BirthPlaceLat, p.BirthPlaceLong, rm.BirthPlaceOrigin)
+	p.DeathPlaceOrigin = domain.EffectiveCoordinateOrigin(p.DeathPlaceLat, p.DeathPlaceLong, rm.DeathPlaceOrigin)
 	if rm.Notes != "" {
 		p.Notes = &rm.Notes
 	}

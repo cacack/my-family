@@ -1911,3 +1911,58 @@ func TestJSONExporter_ExportTree_BCSortDate(t *testing.T) {
 	require.Len(t, data.Persons, 1)
 	assert.Equal(t, "15 MAR 44 BC", data.Persons[0].BirthDateRaw)
 }
+
+// TestJSONExport_CoordinateOrigins: the JSON export writes each coordinate
+// pair's origin as read, so a pair stored with none exports as imported, on
+// persons, families, life events and attributes alike (#1563).
+func TestJSONExport_CoordinateOrigins(t *testing.T) {
+	ctx := context.Background()
+	store := setupTestStore(t)
+	lat, long := "N42.3601", "W71.0589"
+	geocoded := &domain.CoordinateOrigin{Source: domain.CoordinateGeocoded, Provider: "Nominatim", Precision: domain.MatchPartial}
+
+	person := createTestPerson(t, store, "Ada", "Origin", domain.GenderFemale)
+	person.BirthPlaceLat, person.BirthPlaceLong = &lat, &long
+	person.DeathPlaceLat, person.DeathPlaceLong, person.DeathPlaceOrigin = &lat, &long, geocoded
+	require.NoError(t, store.SavePerson(ctx, domain.MainBranchID, &person))
+	family := createTestFamily(t, store, &person, nil)
+	family.MarriagePlaceLat, family.MarriagePlaceLong = &lat, &long
+	require.NoError(t, store.SaveFamily(ctx, domain.MainBranchID, &family))
+	event := repository.EventReadModel{ID: uuid.New(), OwnerType: "person", OwnerID: person.ID, FactType: domain.FactPersonResidence,
+		Place: "Boston", PlaceLat: &lat, PlaceLong: &long, Version: 1}
+	require.NoError(t, store.SaveEvent(ctx, domain.MainBranchID, &event))
+	attribute := repository.AttributeReadModel{ID: uuid.New(), PersonID: person.ID, FactType: domain.FactPersonOccupation,
+		Value: "Clerk", Place: "Boston", PlaceLat: &lat, PlaceLong: &long, Version: 1}
+	require.NoError(t, store.SaveAttribute(ctx, domain.MainBranchID, &attribute))
+
+	var buf bytes.Buffer
+	_, err := exporter.NewDataExporter(store).Export(ctx, &buf, exporter.ExportOptions{Format: exporter.FormatJSON, EntityType: exporter.EntityTypeAll})
+	require.NoError(t, err)
+	var data exporter.TreeExport
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &data))
+
+	imported := &domain.CoordinateOrigin{Source: domain.CoordinateImported}
+	require.Len(t, data.Persons, 1)
+	assert.Equal(t, imported, data.Persons[0].BirthPlaceOrigin)
+	assert.Equal(t, geocoded, data.Persons[0].DeathPlaceOrigin)
+	require.Len(t, data.Families, 1)
+	assert.Equal(t, imported, data.Families[0].MarriagePlaceOrigin)
+	require.Len(t, data.Events, 1)
+	assert.Equal(t, imported, data.Events[0].PlaceOrigin)
+	require.Len(t, data.Attributes, 1)
+	assert.Equal(t, imported, data.Attributes[0].PlaceOrigin)
+
+	// The single-entity exports carry it too.
+	for entity, key := range map[exporter.EntityType]string{
+		exporter.EntityTypePersons: "birth_place_origin", exporter.EntityTypeFamilies: "marriage_place_origin",
+		exporter.EntityTypeEvents: "place_origin", exporter.EntityTypeAttributes: "place_origin",
+	} {
+		buf.Reset()
+		_, err := exporter.NewDataExporter(store).Export(ctx, &buf, exporter.ExportOptions{Format: exporter.FormatJSON, EntityType: entity})
+		require.NoError(t, err)
+		var rows []map[string]any
+		require.NoError(t, json.Unmarshal(buf.Bytes(), &rows))
+		require.Len(t, rows, 1, entity)
+		assert.Equal(t, map[string]any{"source": "imported"}, rows[0][key], entity)
+	}
+}

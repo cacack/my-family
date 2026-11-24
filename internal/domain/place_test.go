@@ -218,3 +218,78 @@ func TestPlace_HasCoordinates(t *testing.T) {
 func strPtr(s string) *string {
 	return &s
 }
+
+func TestCoordinateOrigin_Validate(t *testing.T) {
+	tests := []struct {
+		name    string
+		origin  CoordinateOrigin
+		wantErr bool
+	}{
+		{"imported", CoordinateOrigin{Source: CoordinateImported}, false},
+		{"manual", CoordinateOrigin{Source: CoordinateManual}, false},
+		{"copied", CoordinateOrigin{Source: CoordinateCopied}, false},
+		{"geocoded full", CoordinateOrigin{Source: CoordinateGeocoded, Provider: "Nominatim", Precision: MatchFull}, false},
+		{"geocoded partial", CoordinateOrigin{Source: CoordinateGeocoded, Provider: "Nominatim", Precision: MatchPartial}, false},
+		{"unknown source", CoordinateOrigin{Source: "guessed"}, true},
+		{"empty source", CoordinateOrigin{}, true},
+		{"geocoded without a provider", CoordinateOrigin{Source: CoordinateGeocoded, Precision: MatchFull}, true},
+		{"geocoded without a precision", CoordinateOrigin{Source: CoordinateGeocoded, Provider: "Nominatim"}, true},
+		{"geocoded with an unknown precision", CoordinateOrigin{Source: CoordinateGeocoded, Provider: "Nominatim", Precision: "close"}, true},
+		{"manual with a provider", CoordinateOrigin{Source: CoordinateManual, Provider: "Nominatim"}, true},
+		{"copied with a precision", CoordinateOrigin{Source: CoordinateCopied, Precision: MatchFull}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := tt.origin.Validate(); (err != nil) != tt.wantErr {
+				t.Errorf("Validate() = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestEffectiveCoordinateOrigin(t *testing.T) {
+	lat, long, empty := "N1", "E1", ""
+	manual := &CoordinateOrigin{Source: CoordinateManual}
+	if got := EffectiveCoordinateOrigin(nil, &long, manual); got != nil {
+		t.Errorf("half a pair = %v, want nil", got)
+	}
+	if got := EffectiveCoordinateOrigin(&empty, &long, nil); got != nil {
+		t.Errorf("an empty half = %v, want nil", got)
+	}
+	if got := EffectiveCoordinateOrigin(&lat, &long, nil); got == nil || got.Source != CoordinateImported {
+		t.Errorf("no stored origin = %v, want imported", got)
+	}
+	if got := EffectiveCoordinateOrigin(&lat, &long, manual); got != manual {
+		t.Errorf("stored origin = %v, want it", got)
+	}
+}
+
+func TestCoordinateOrigin_ChangeValueRoundTrip(t *testing.T) {
+	for _, o := range []CoordinateOrigin{
+		{Source: CoordinateManual},
+		{Source: CoordinateGeocoded, Provider: "Nominatim", Precision: MatchPartial},
+	} {
+		got, ok := CoordinateOriginFromChange(o.ChangeValue())
+		if !ok || got == nil || *got != o {
+			t.Errorf("round trip of %v = %v, %v", o, got, ok)
+		}
+	}
+	if got, ok := CoordinateOriginFromChange(nil); !ok || got != nil {
+		t.Errorf("nil change = %v, %v; want a clear", got, ok)
+	}
+	for _, bad := range []any{"manual", map[string]any{"source": "guessed"}, 3} {
+		if _, ok := CoordinateOriginFromChange(bad); ok {
+			t.Errorf("CoordinateOriginFromChange(%v) accepted it", bad)
+		}
+	}
+}
+
+func TestCoordinateOrigin_String(t *testing.T) {
+	if got := (CoordinateOrigin{Source: CoordinateManual}).String(); got != "manual" {
+		t.Errorf("manual = %q", got)
+	}
+	got := (CoordinateOrigin{Source: CoordinateGeocoded, Provider: "Nominatim", Precision: MatchPartial}).String()
+	if got != "geocoded by Nominatim (partial match)" {
+		t.Errorf("geocoded = %q", got)
+	}
+}

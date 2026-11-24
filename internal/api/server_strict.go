@@ -522,6 +522,7 @@ func (ss *StrictServer) GetMapLocations(ctx context.Context, request GetMapLocat
 			Count:     item.Count,
 			PersonIds: personIDs,
 			Persons:   persons,
+			Origins:   coordinateSourcesToGenerated(item.Origins),
 		}
 	}
 
@@ -1397,6 +1398,7 @@ func (ss *StrictServer) CreateFamily(ctx context.Context, request CreateFamilyRe
 	input.MarriagePlaceCoordinates = command.CoordinatesPatch{
 		Latitude:  command.SetPtr(request.Body.MarriagePlaceLatitude),
 		Longitude: command.SetPtr(request.Body.MarriagePlaceLongitude),
+		Origin:    coordinateOriginFromGenerated(request.Body.MarriagePlaceCoordinatesOrigin),
 	}
 
 	result, err := ss.branchWriter(branch).CreateFamily(ctx, input)
@@ -1460,6 +1462,7 @@ func (ss *StrictServer) UpdateFamily(ctx context.Context, request UpdateFamilyRe
 		MarriagePlaceCoordinates: command.CoordinatesPatch{
 			Latitude:  patchOf(request.Body.MarriagePlaceLatitude),
 			Longitude: patchOf(request.Body.MarriagePlaceLongitude),
+			Origin:    coordinateOriginFromGenerated(request.Body.MarriagePlaceCoordinatesOrigin),
 		},
 	}
 
@@ -2430,10 +2433,12 @@ func (ss *StrictServer) CreatePerson(ctx context.Context, request CreatePersonRe
 	input.BirthPlaceCoordinates = command.CoordinatesPatch{
 		Latitude:  command.SetPtr(request.Body.BirthPlaceLatitude),
 		Longitude: command.SetPtr(request.Body.BirthPlaceLongitude),
+		Origin:    coordinateOriginFromGenerated(request.Body.BirthPlaceCoordinatesOrigin),
 	}
 	input.DeathPlaceCoordinates = command.CoordinatesPatch{
 		Latitude:  command.SetPtr(request.Body.DeathPlaceLatitude),
 		Longitude: command.SetPtr(request.Body.DeathPlaceLongitude),
+		Origin:    coordinateOriginFromGenerated(request.Body.DeathPlaceCoordinatesOrigin),
 	}
 
 	result, err := writer.CreatePerson(ctx, input)
@@ -2494,10 +2499,12 @@ func (ss *StrictServer) UpdatePerson(ctx context.Context, request UpdatePersonRe
 	input.BirthPlaceCoordinates = command.CoordinatesPatch{
 		Latitude:  patchOf(request.Body.BirthPlaceLatitude),
 		Longitude: patchOf(request.Body.BirthPlaceLongitude),
+		Origin:    coordinateOriginFromGenerated(request.Body.BirthPlaceCoordinatesOrigin),
 	}
 	input.DeathPlaceCoordinates = command.CoordinatesPatch{
 		Latitude:  patchOf(request.Body.DeathPlaceLatitude),
 		Longitude: patchOf(request.Body.DeathPlaceLongitude),
+		Origin:    coordinateOriginFromGenerated(request.Body.DeathPlaceCoordinatesOrigin),
 	}
 	input.Notes = patchOf(request.Body.Notes)
 	input.ResearchStatus = patchString(request.Body.ResearchStatus)
@@ -4396,6 +4403,8 @@ func convertQueryPersonToGenerated(p query.Person) Person {
 	resp.BirthPlaceLongitude = omitIfNil(p.BirthPlaceLong)
 	resp.DeathPlaceLatitude = omitIfNil(p.DeathPlaceLat)
 	resp.DeathPlaceLongitude = omitIfNil(p.DeathPlaceLong)
+	resp.BirthPlaceCoordinatesOrigin = coordinateOriginToGenerated(p.BirthPlaceOrigin)
+	resp.DeathPlaceCoordinatesOrigin = coordinateOriginToGenerated(p.DeathPlaceOrigin)
 	if p.Notes != nil {
 		resp.Notes = p.Notes
 	}
@@ -4448,6 +4457,8 @@ func convertQueryPersonDetailToGenerated(pd *query.PersonDetail) PersonDetail {
 	resp.BirthPlaceLongitude = omitIfNil(pd.BirthPlaceLong)
 	resp.DeathPlaceLatitude = omitIfNil(pd.DeathPlaceLat)
 	resp.DeathPlaceLongitude = omitIfNil(pd.DeathPlaceLong)
+	resp.BirthPlaceCoordinatesOrigin = coordinateOriginToGenerated(pd.BirthPlaceOrigin)
+	resp.DeathPlaceCoordinatesOrigin = coordinateOriginToGenerated(pd.DeathPlaceOrigin)
 	if pd.Notes != nil {
 		resp.Notes = pd.Notes
 	}
@@ -4600,6 +4611,7 @@ func convertQueryFamilyToGenerated(f query.Family) Family {
 	}
 	resp.MarriagePlaceLatitude = omitIfNil(f.MarriagePlaceLat)
 	resp.MarriagePlaceLongitude = omitIfNil(f.MarriagePlaceLong)
+	resp.MarriagePlaceCoordinatesOrigin = coordinateOriginToGenerated(f.MarriagePlaceOrigin)
 	resp.MarriageTypeDetail = f.MarriageTypeDetail
 	resp.MarriageNotes = f.MarriageNotes
 	resp.Notes = f.Notes
@@ -4653,6 +4665,7 @@ func convertQueryFamilyDetailToGenerated(fd query.FamilyDetail) FamilyDetail {
 	}
 	resp.MarriagePlaceLatitude = omitIfNil(fd.MarriagePlaceLat)
 	resp.MarriagePlaceLongitude = omitIfNil(fd.MarriagePlaceLong)
+	resp.MarriagePlaceCoordinatesOrigin = coordinateOriginToGenerated(fd.MarriagePlaceOrigin)
 	resp.MarriageTypeDetail = fd.MarriageTypeDetail
 	resp.MarriageNotes = fd.MarriageNotes
 	resp.Notes = fd.Notes
@@ -4714,6 +4727,7 @@ func convertQueryFamilyToFamilyDetail(f query.Family) FamilyDetail {
 	}
 	resp.MarriagePlaceLatitude = omitIfNil(f.MarriagePlaceLat)
 	resp.MarriagePlaceLongitude = omitIfNil(f.MarriagePlaceLong)
+	resp.MarriagePlaceCoordinatesOrigin = coordinateOriginToGenerated(f.MarriagePlaceOrigin)
 	resp.MarriageTypeDetail = f.MarriageTypeDetail
 	resp.MarriageNotes = f.MarriageNotes
 	resp.Notes = f.Notes
@@ -6541,6 +6555,8 @@ func convertReadModelPersonToGenerated(rm repository.PersonReadModel, cutoff tim
 	resp.BirthPlaceLongitude = omitIfNil(nonEmptyString(rm.BirthPlaceLong))
 	resp.DeathPlaceLatitude = omitIfNil(nonEmptyString(rm.DeathPlaceLat))
 	resp.DeathPlaceLongitude = omitIfNil(nonEmptyString(rm.DeathPlaceLong))
+	resp.BirthPlaceCoordinatesOrigin = coordinateOriginToGenerated(domain.EffectiveCoordinateOrigin(rm.BirthPlaceLat, rm.BirthPlaceLong, rm.BirthPlaceOrigin))
+	resp.DeathPlaceCoordinatesOrigin = coordinateOriginToGenerated(domain.EffectiveCoordinateOrigin(rm.DeathPlaceLat, rm.DeathPlaceLong, rm.DeathPlaceOrigin))
 	if rm.Notes != "" {
 		resp.Notes = &rm.Notes
 	}
@@ -6580,6 +6596,7 @@ func convertReadModelFamilyToGenerated(rm repository.FamilyReadModel) Family {
 	}
 	resp.MarriagePlaceLatitude = omitIfNil(nonEmptyString(rm.MarriagePlaceLat))
 	resp.MarriagePlaceLongitude = omitIfNil(nonEmptyString(rm.MarriagePlaceLong))
+	resp.MarriagePlaceCoordinatesOrigin = coordinateOriginToGenerated(domain.EffectiveCoordinateOrigin(rm.MarriagePlaceLat, rm.MarriagePlaceLong, rm.MarriagePlaceOrigin))
 	if rm.MarriageTypeDetail != "" {
 		resp.MarriageTypeDetail = &rm.MarriageTypeDetail
 	}
@@ -6666,6 +6683,49 @@ func convertReadModelCitationToGenerated(rm repository.CitationReadModel) Citati
 	}
 	if rm.GedcomXref != "" {
 		resp.GedcomXref = &rm.GedcomXref
+	}
+	return resp
+}
+
+// coordinateOriginToGenerated converts a coordinate pair's origin (#1563) to
+// the API type, or nil for none.
+func coordinateOriginToGenerated(origin *domain.CoordinateOrigin) *CoordinateOrigin {
+	if origin == nil {
+		return nil
+	}
+	resp := CoordinateOrigin{Source: CoordinateSource(origin.Source)}
+	if origin.Provider != "" {
+		resp.Provider = &origin.Provider
+	}
+	if origin.Precision != "" {
+		precision := MatchPrecision(origin.Precision)
+		resp.Precision = &precision
+	}
+	return &resp
+}
+
+// coordinateOriginFromGenerated converts a stated origin to the domain type,
+// or nil when none was stated; the command validates it.
+func coordinateOriginFromGenerated(origin *CoordinateOrigin) *domain.CoordinateOrigin {
+	if origin == nil {
+		return nil
+	}
+	o := domain.CoordinateOrigin{Source: domain.CoordinateSource(origin.Source)}
+	if origin.Provider != nil {
+		o.Provider = *origin.Provider
+	}
+	if origin.Precision != nil {
+		o.Precision = domain.MatchPrecision(*origin.Precision)
+	}
+	return &o
+}
+
+// coordinateSourcesToGenerated converts a map location's origins, always
+// as a list.
+func coordinateSourcesToGenerated(sources []domain.CoordinateSource) []CoordinateSource {
+	resp := make([]CoordinateSource, len(sources))
+	for i, source := range sources {
+		resp[i] = CoordinateSource(source)
 	}
 	return resp
 }

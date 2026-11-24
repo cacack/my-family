@@ -21,3 +21,9 @@ func TestPlaceMatching(t *testing.T) {
 func TestPlaceList(t *testing.T) {
 	placetest.RunPlaceList(t, memory.NewReadModelStore())
 }
+
+// TestCoordinateOrigins runs the shared #1563 suite against the memory
+// backend; the sqlite and postgres packages run the same body (DB-001).
+func TestCoordinateOrigins(t *testing.T) {
+	placetest.RunCoordinateOrigins(t, memory.NewReadModelStore())
+}

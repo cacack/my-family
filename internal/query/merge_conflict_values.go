@@ -472,15 +472,19 @@ func (d *historyDescription) conflictFieldLabel(field string) string {
 	return humanizeField(field)
 }
 
-// coordinateFieldLabels spell out the place coordinate change keys (#1604),
+// coordinateFieldLabels spell out the place coordinate change keys (#1604)
+// and their origins (#1563),
 // which humanizeField would leave as "Birth place lat".
 var coordinateFieldLabels = map[string]string{
-	"birth_place_lat":     "Birth place latitude",
-	"birth_place_long":    "Birth place longitude",
-	"death_place_lat":     "Death place latitude",
-	"death_place_long":    "Death place longitude",
-	"marriage_place_lat":  "Marriage place latitude",
-	"marriage_place_long": "Marriage place longitude",
+	"birth_place_lat":       "Birth place latitude",
+	"birth_place_long":      "Birth place longitude",
+	"death_place_lat":       "Death place latitude",
+	"death_place_long":      "Death place longitude",
+	"marriage_place_lat":    "Marriage place latitude",
+	"marriage_place_long":   "Marriage place longitude",
+	"birth_place_origin":    "Birth place coordinate origin",
+	"death_place_origin":    "Death place coordinate origin",
+	"marriage_place_origin": "Marriage place coordinate origin",
 }
 
 // humanizeField turns a snake_case field key into a sentence-case label,
@@ -536,6 +540,12 @@ func (d *historyDescription) conflictValue(state *conflictState, field string) *
 	if ref, isRef := referenceFields[field]; isRef {
 		if label, ok := d.referenceValue(ref, state, value); ok {
 			return label
+		}
+	}
+	// A coordinate origin (#1563) reads as words, not its JSON.
+	if strings.HasSuffix(field, "_place_origin") {
+		if origin, ok := domain.CoordinateOriginFromChange(value); ok && origin != nil {
+			return strPtr(origin.String())
 		}
 	}
 	return formatConflictScalar(value)

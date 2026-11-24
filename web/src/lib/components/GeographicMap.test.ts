@@ -28,14 +28,16 @@ const LOCATIONS = [
 		persons: [
 			{ id: 'p1', given_name: 'John', surname: 'Smith', living: true, private: true },
 			{ id: 'p2', given_name: 'James', surname: 'Smith' }
-		]
+		],
+		origins: ['imported', 'geocoded']
 	},
 	{
 		...boston,
 		event_type: 'death',
 		count: 1,
 		person_ids: ['p3'],
-		persons: [{ id: 'p3', given_name: 'Mary', surname: 'Jones' }]
+		persons: [{ id: 'p3', given_name: 'Mary', surname: 'Jones' }],
+		origins: ['manual']
 	},
 	{
 		place: 'Sydney, NSW',
@@ -44,7 +46,8 @@ const LOCATIONS = [
 		event_type: 'death',
 		count: 1,
 		person_ids: ['p2'],
-		persons: [{ id: 'p2', given_name: 'James', surname: 'Smith' }]
+		persons: [{ id: 'p2', given_name: 'James', surname: 'Smith' }],
+		origins: ['imported']
 	}
 ];
 
@@ -100,6 +103,18 @@ describe('GeographicMap', () => {
 
 		await fireEvent.click(within(details).getByRole('button', { name: 'Close details' }));
 		expect(screen.queryByRole('heading', { name: '2 locations' })).toBeNull();
+	});
+
+	it('shows where each selected location\'s coordinates came from (#1563)', async () => {
+		await renderMap();
+		await fireEvent.keyDown(screen.getByRole('button', { name: 'Boston, MA: 2 births, 1 death' }), {
+			key: 'Enter'
+		});
+		const panel = await screen.findByRole('heading', { name: '2 locations' });
+		const details = panel.closest('.detail-panel') as HTMLElement;
+		expect(
+			Array.from(details.querySelectorAll('.panel-origins')).map((p) => p.textContent?.trim())
+		).toEqual(['Coordinates: Imported, Geocoded', 'Coordinates: Entered by hand']);
 	});
 
 	it('marks the open marker and returns focus to it when Escape or × closes the panel', async () => {

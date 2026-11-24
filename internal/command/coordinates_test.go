@@ -3,6 +3,7 @@ package command_test
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 
 	"github.com/cacack/my-family/internal/command"
@@ -167,8 +168,8 @@ func TestUpdate_PlaceCoordinates(t *testing.T) {
 		t.Fatalf("decode: %v", err)
 	}
 	changes := decoded.(domain.PersonUpdated).Changes
-	if version != before+1 || len(changes) != 2 || changes["birth_place_lat"] != "N42.3601" || changes["birth_place_long"] != "W70" {
-		t.Errorf("changes = %v, want the whole birth pair", changes)
+	if version != before+1 || len(changes) != 3 || changes["birth_place_lat"] != "N42.3601" || changes["birth_place_long"] != "W70" || changes["birth_place_origin"] == nil {
+		t.Errorf("changes = %v, want the whole birth pair and its origin", changes)
 	}
 
 	clearPair := command.CoordinatesPatch{Latitude: command.Clear[string](), Longitude: command.Clear[string]()}
@@ -357,5 +358,174 @@ func TestRollback_BackfilledCoordinates(t *testing.T) {
 	}
 	if bl, bo := birth(); bl != lat || bo != long {
 		t.Errorf("after rollback to the backfilled state = %s %s, want %s %s", bl, bo, lat, long)
+	}
+
+	// A rollback to before the backfill keeps a later pair with its origin
+	// (#1563).
+	p, _ = rs.GetPerson(ctx, domain.MainBranchID, created.ID)
+	copied := &domain.CoordinateOrigin{Source: domain.CoordinateCopied}
+	later := pair("N3", "E3")
+	later.Origin = copied
+	if _, err := h.UpdatePerson(ctx, command.UpdatePersonInput{ID: created.ID, Version: p.Version, BirthPlaceCoordinates: later}); err != nil {
+		t.Fatalf("UpdatePerson coordinates with an origin: %v", err)
+	}
+	if _, err := h.RollbackPerson(ctx, created.ID, created.Version); err != nil {
+		t.Fatalf("RollbackPerson to before the backfill again: %v", err)
+	}
+	if p, _ := rs.GetPerson(ctx, domain.MainBranchID, created.ID); derefOr(p.BirthPlaceLat) != "N3" || !reflect.DeepEqual(p.BirthPlaceOrigin, copied) {
+		t.Errorf("after rollback = %s, %v; want the later pair kept with its copied origin", derefOr(p.BirthPlaceLat), p.BirthPlaceOrigin)
+	}
+}
+
+// A pair given with no origin is manual, one given with an origin keeps it,
+// and an update records the origin with the pair, even when only the origin
+// changes (#1563).
+func TestPlaceCoordinates_Origin(t *testing.T) {
+	ctx := context.Background()
+	es := memory.NewEventStore()
+	rs := memory.NewReadModelStore()
+	h := command.NewHandler(es, rs)
+	manual := &domain.CoordinateOrigin{Source: domain.CoordinateManual}
+	geocoded := &domain.CoordinateOrigin{Source: domain.CoordinateGeocoded, Provider: "Nominatim", Precision: domain.MatchFull}
+	withOrigin := func(lat, long string, origin *domain.CoordinateOrigin) command.CoordinatesPatch {
+		p := pair(lat, long)
+		p.Origin = origin
+		return p
+	}
+
+	created, err := h.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ada", BirthPlace: "Boston", DeathPlace: "Sydney",
+		BirthPlaceCoordinates: pair("N1", "E1"),
+		DeathPlaceCoordinates: withOrigin("N2", "E2", &domain.CoordinateOrigin{Source: domain.CoordinateGeocoded, Provider: " Nominatim ", Precision: domain.MatchFull})})
+	if err != nil {
+		t.Fatalf("CreatePerson: %v", err)
+	}
+	get := func() *repository.PersonReadModel {
+		p, _ := rs.GetPerson(ctx, domain.MainBranchID, created.ID)
+		return p
+	}
+	if p := get(); !reflect.DeepEqual(p.BirthPlaceOrigin, manual) || !reflect.DeepEqual(p.DeathPlaceOrigin, geocoded) {
+		t.Errorf("created origins = %v, %v; want manual and the geocoded one, provider trimmed", p.BirthPlaceOrigin, p.DeathPlaceOrigin)
+	}
+
+	version := created.Version
+	update := func(in command.UpdatePersonInput) {
+		t.Helper()
+		in.ID, in.Version = created.ID, version
+		res, err := h.UpdatePerson(ctx, in)
+		if err != nil {
+			t.Fatalf("UpdatePerson: %v", err)
+		}
+		version = res.Version
+	}
+
+	// The same pair again with no origin is not a change: a form that
+	// resaves a geocoded pair does not make it manual.
+	before := version
+	update(command.UpdatePersonInput{DeathPlaceCoordinates: pair("N2", "E2")})
+	if version != before || !reflect.DeepEqual(get().DeathPlaceOrigin, geocoded) {
+		t.Errorf("resaving the pair: version %d -> %d, origin %v", before, version, get().DeathPlaceOrigin)
+	}
+	// The same pair with a new origin records the origin with the pair, so a
+	// branch merge contests the three together.
+	update(command.UpdatePersonInput{DeathPlaceCoordinates: withOrigin("N2", "E2", manual)})
+	if version != before+1 || !reflect.DeepEqual(get().DeathPlaceOrigin, manual) {
+		t.Errorf("restating the origin: version %d -> %d, origin %v", before, version, get().DeathPlaceOrigin)
+	}
+	events, _ := es.ReadStream(ctx, created.ID)
+	decoded, err := events[len(events)-1].DecodeEvent()
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if changes := decoded.(domain.PersonUpdated).Changes; len(changes) != 3 || changes["death_place_lat"] != "N2" || changes["death_place_long"] != "E2" {
+		t.Errorf("origin-only changes = %v, want the pair recorded with its origin", changes)
+	}
+	// A changed pair with no origin is manual.
+	update(command.UpdatePersonInput{BirthPlaceCoordinates: withOrigin("N1", "E1", geocoded)})
+	update(command.UpdatePersonInput{BirthPlaceCoordinates: pair("N3", "E3")})
+	if !reflect.DeepEqual(get().BirthPlaceOrigin, manual) {
+		t.Errorf("changed pair origin = %v, want manual", get().BirthPlaceOrigin)
+	}
+	// A cleared pair clears its origin.
+	update(command.UpdatePersonInput{BirthPlaceCoordinates: command.CoordinatesPatch{Latitude: command.Clear[string](), Longitude: command.Clear[string]()}})
+	if p := get(); p.BirthPlaceLat != nil || p.BirthPlaceOrigin != nil {
+		t.Errorf("after clear = %s, %v; want no pair and no origin", derefOr(p.BirthPlaceLat), p.BirthPlaceOrigin)
+	}
+
+	fam, err := h.CreateFamily(ctx, command.CreateFamilyInput{Partner1ID: &created.ID, MarriagePlace: "Springfield",
+		MarriagePlaceCoordinates: withOrigin("N4", "E4", &domain.CoordinateOrigin{Source: domain.CoordinateCopied})})
+	if err != nil {
+		t.Fatalf("CreateFamily: %v", err)
+	}
+	if f, _ := rs.GetFamily(ctx, domain.MainBranchID, fam.ID); f.MarriagePlaceOrigin == nil || f.MarriagePlaceOrigin.Source != domain.CoordinateCopied {
+		t.Errorf("family origin = %v, want copied", f.MarriagePlaceOrigin)
+	}
+	if _, err := h.UpdateFamily(ctx, command.UpdateFamilyInput{ID: fam.ID, Version: fam.Version, MarriagePlaceCoordinates: pair("N5", "E5")}); err != nil {
+		t.Fatalf("UpdateFamily: %v", err)
+	}
+	if f, _ := rs.GetFamily(ctx, domain.MainBranchID, fam.ID); !reflect.DeepEqual(f.MarriagePlaceOrigin, manual) {
+		t.Errorf("family origin after update = %v, want manual", f.MarriagePlaceOrigin)
+	}
+}
+
+// An origin that is not valid, or given without a set pair, is rejected
+// naming the origin field (#1563).
+func TestPlaceCoordinates_OriginRejected(t *testing.T) {
+	tests := []struct {
+		name  string
+		input command.CoordinatesPatch
+	}{
+		{"geocoded without a provider", command.CoordinatesPatch{Latitude: command.Set("N1"), Longitude: command.Set("E1"),
+			Origin: &domain.CoordinateOrigin{Source: domain.CoordinateGeocoded, Precision: domain.MatchFull}}},
+		{"geocoded with a blank provider", command.CoordinatesPatch{Latitude: command.Set("N1"), Longitude: command.Set("E1"),
+			Origin: &domain.CoordinateOrigin{Source: domain.CoordinateGeocoded, Provider: "  ", Precision: domain.MatchFull}}},
+		{"geocoded without a precision", command.CoordinatesPatch{Latitude: command.Set("N1"), Longitude: command.Set("E1"),
+			Origin: &domain.CoordinateOrigin{Source: domain.CoordinateGeocoded, Provider: "Nominatim"}}},
+		{"manual with a provider", command.CoordinatesPatch{Latitude: command.Set("N1"), Longitude: command.Set("E1"),
+			Origin: &domain.CoordinateOrigin{Source: domain.CoordinateManual, Provider: "Nominatim"}}},
+		{"unknown source", command.CoordinatesPatch{Latitude: command.Set("N1"), Longitude: command.Set("E1"),
+			Origin: &domain.CoordinateOrigin{Source: "guessed"}}},
+		{"origin without a pair", command.CoordinatesPatch{Origin: &domain.CoordinateOrigin{Source: domain.CoordinateManual}}},
+		{"origin beside a cleared pair", command.CoordinatesPatch{Latitude: command.Clear[string](), Longitude: command.Clear[string](),
+			Origin: &domain.CoordinateOrigin{Source: domain.CoordinateManual}}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			rs := memory.NewReadModelStore()
+			h := command.NewHandler(memory.NewEventStore(), rs)
+			_, err := h.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ada", BirthPlace: "Boston", BirthPlaceCoordinates: tt.input})
+			assertCoordinateError(t, "CreatePerson", err, "birth_place_coordinates_origin")
+			created, err := h.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ada", BirthPlace: "Boston", BirthPlaceCoordinates: pair("N1", "E1")})
+			if err != nil {
+				t.Fatalf("CreatePerson: %v", err)
+			}
+			_, err = h.UpdatePerson(ctx, command.UpdatePersonInput{ID: created.ID, Version: created.Version, BirthPlaceCoordinates: tt.input})
+			assertCoordinateError(t, "UpdatePerson", err, "birth_place_coordinates_origin")
+		})
+	}
+}
+
+// A rollback restores the origin a pair was created with (#1563).
+func TestRollback_CoordinateOrigin(t *testing.T) {
+	ctx := context.Background()
+	rs := memory.NewReadModelStore()
+	h := command.NewHandler(memory.NewEventStore(), rs)
+	geocoded := &domain.CoordinateOrigin{Source: domain.CoordinateGeocoded, Provider: "Nominatim", Precision: domain.MatchPartial}
+
+	in := pair("N1", "E1")
+	in.Origin = geocoded
+	created, err := h.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ada", BirthPlace: "Boston", BirthPlaceCoordinates: in})
+	if err != nil {
+		t.Fatalf("CreatePerson: %v", err)
+	}
+	if _, err := h.UpdatePerson(ctx, command.UpdatePersonInput{ID: created.ID, Version: created.Version, BirthPlaceCoordinates: pair("N2", "E2")}); err != nil {
+		t.Fatalf("UpdatePerson: %v", err)
+	}
+	if _, err := h.RollbackPerson(ctx, created.ID, 1); err != nil {
+		t.Fatalf("RollbackPerson: %v", err)
+	}
+	p, _ := rs.GetPerson(ctx, domain.MainBranchID, created.ID)
+	if derefOr(p.BirthPlaceLat) != "N1" || !reflect.DeepEqual(p.BirthPlaceOrigin, geocoded) {
+		t.Errorf("after rollback = %s, %v; want N1 and the geocoded origin", derefOr(p.BirthPlaceLat), p.BirthPlaceOrigin)
 	}
 }

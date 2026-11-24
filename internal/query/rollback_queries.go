@@ -310,8 +310,15 @@ func keepBackfilledCoordinates(events []repository.StoredEvent, targetVersion in
 			setCoordinateState(backfilled, "death_place", e.DeathPlaceLat, e.DeathPlaceLong)
 		}
 		for key := range backfilled {
-			if v, ok := changes[key]; ok && v == nil {
-				delete(changes, key)
+			if v, ok := changes[key]; !ok || v != nil {
+				continue
+			}
+			delete(changes, key)
+			// A kept pair keeps its origin too, or it would read as imported.
+			if prefix, isLat := strings.CutSuffix(key, "_lat"); isLat {
+				if v, ok := changes[prefix+"_origin"]; ok && v == nil {
+					delete(changes, prefix+"_origin")
+				}
 			}
 		}
 		return nil
@@ -396,6 +403,8 @@ func (s *RollbackService) applyEventToState(evt repository.StoredEvent, state ma
 		}
 		setCoordinateState(state, "birth_place", e.BirthPlaceLat, e.BirthPlaceLong)
 		setCoordinateState(state, "death_place", e.DeathPlaceLat, e.DeathPlaceLong)
+		setOriginState(state, "birth_place", e.BirthPlaceOrigin)
+		setOriginState(state, "death_place", e.DeathPlaceOrigin)
 		if e.Notes != "" {
 			state["notes"] = e.Notes
 		}
@@ -463,6 +472,7 @@ func (s *RollbackService) applyEventToState(evt repository.StoredEvent, state ma
 			state["marriage_place"] = e.MarriagePlace
 		}
 		setCoordinateState(state, "marriage_place", e.MarriagePlaceLat, e.MarriagePlaceLong)
+		setOriginState(state, "marriage_place", e.MarriagePlaceOrigin)
 		return false, nil
 
 	case domain.FamilyUpdated:
@@ -671,6 +681,18 @@ func setCoordinateState(state map[string]any, prefix string, lat, long *string) 
 			delete(state, key)
 		}
 	}
+}
+
+// setOriginState records the origin a record was created with under the
+// change key an update writes (prefix+"_origin", #1563). None is imported,
+// which an update records as a clear, so it removes the key. A backfill does
+// not set it: its pair is imported unless an update has since said otherwise.
+func setOriginState(state map[string]any, prefix string, origin *domain.CoordinateOrigin) {
+	if origin == nil {
+		delete(state, prefix+"_origin")
+		return
+	}
+	state[prefix+"_origin"] = origin.ChangeValue()
 }
 
 // setCropState records a crop field an imported item was created with (#1584).

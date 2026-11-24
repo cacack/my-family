@@ -129,11 +129,11 @@ func (h *Handler) CreatePerson(ctx context.Context, input CreatePersonInput) (*C
 	if err != nil {
 		return nil, err
 	}
-	birthLat, birthLong, err := createdCoordinates("birth_place", input.BirthPlace, input.BirthPlaceCoordinates)
+	birth, err := createdCoordinates("birth_place", input.BirthPlace, input.BirthPlaceCoordinates)
 	if err != nil {
 		return nil, err
 	}
-	deathLat, deathLong, err := createdCoordinates("death_place", input.DeathPlace, input.DeathPlaceCoordinates)
+	death, err := createdCoordinates("death_place", input.DeathPlace, input.DeathPlaceCoordinates)
 	if err != nil {
 		return nil, err
 	}
@@ -176,8 +176,8 @@ func (h *Handler) CreatePerson(ctx context.Context, input CreatePersonInput) (*C
 	// Place coordinates are not domain.Person fields, so they are set on the
 	// event directly, as GEDCOM import does.
 	created := domain.NewPersonCreated(person)
-	created.BirthPlaceLat, created.BirthPlaceLong = birthLat, birthLong
-	created.DeathPlaceLat, created.DeathPlaceLong = deathLat, deathLong
+	created.BirthPlaceLat, created.BirthPlaceLong, created.BirthPlaceOrigin = birth.Lat, birth.Long, birth.Origin
+	created.DeathPlaceLat, created.DeathPlaceLong, created.DeathPlaceOrigin = death.Lat, death.Long, death.Origin
 	events := []domain.Event{created, domain.NewNameAdded(primary)}
 
 	// Execute command (append + project)
@@ -329,10 +329,12 @@ func (h *Handler) UpdatePerson(ctx context.Context, input UpdatePersonInput) (*U
 // coordinate pairs of an update (see recordCoordinates); updated holds the
 // places as the update leaves them.
 func recordPersonCoordinates(changes map[string]any, input UpdatePersonInput, current *repository.PersonReadModel, updated *domain.Person) error {
-	if err := recordCoordinates(changes, "birth_place", updated.BirthPlace, input.BirthPlaceCoordinates, current.BirthPlaceLat, current.BirthPlaceLong); err != nil {
+	if err := recordCoordinates(changes, "birth_place", updated.BirthPlace, input.BirthPlaceCoordinates,
+		placeCoordinates{current.BirthPlaceLat, current.BirthPlaceLong, current.BirthPlaceOrigin}); err != nil {
 		return err
 	}
-	return recordCoordinates(changes, "death_place", updated.DeathPlace, input.DeathPlaceCoordinates, current.DeathPlaceLat, current.DeathPlaceLong)
+	return recordCoordinates(changes, "death_place", updated.DeathPlace, input.DeathPlaceCoordinates,
+		placeCoordinates{current.DeathPlaceLat, current.DeathPlaceLong, current.DeathPlaceOrigin})
 }
 
 // DeletePersonInput contains the data for deleting a person.
