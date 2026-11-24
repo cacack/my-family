@@ -15,7 +15,7 @@ import (
 
 // placeEventTypes are every place event type (ADR-009 §2). PL-005 holds them
 // all main-only.
-var placeEventTypes = []string{"PlaceUpdated"}
+var placeEventTypes = []string{"PlaceUpdated", "PlaceAliased", "PlaceUnaliased"}
 
 // TestUpdatePlace_OneEventOnThePlaceStream shows that setting a place's pair
 // appends exactly one event, on the place's own stream, and none on any
@@ -160,9 +160,127 @@ func TestPlaceEvents_MainOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	before, _ := f.eventStore.ReadAll(ctx, 0, 1000)
-	_, err = f.handler.WithBranch(branch).UpdatePlace(ctx, command.UpdatePlaceInput{ID: repository.PlaceID("boston,ma"), Name: command.Set("Boston")})
+	onBranch := f.handler.WithBranch(branch)
+	_, err = onBranch.UpdatePlace(ctx, command.UpdatePlaceInput{ID: repository.PlaceID("boston,ma"), Name: command.Set("Boston")})
 	if !errors.Is(err, command.ErrEventTypeNotBranchAware) {
 		t.Errorf("UpdatePlace on a branch error = %v, want ErrEventTypeNotBranchAware", err)
+	}
+	_, err = onBranch.AliasPlace(ctx, command.AliasPlaceInput{ID: repository.PlaceID("boston,ma"), TargetID: repository.PlaceID("ma")})
+	if !errors.Is(err, command.ErrEventTypeNotBranchAware) {
+		t.Errorf("AliasPlace on a branch error = %v, want ErrEventTypeNotBranchAware", err)
+	}
+	if after, _ := f.eventStore.ReadAll(ctx, 0, 1000); len(after) != len(before) {
+		t.Errorf("log grew from %d to %d events, want nothing appended", len(before), len(after))
+	}
+	if _, err := f.handler.AliasPlace(ctx, command.AliasPlaceInput{ID: repository.PlaceID("boston,ma"), TargetID: repository.PlaceID("ma")}); err != nil {
+		t.Fatal(err)
+	}
+	before, _ = f.eventStore.ReadAll(ctx, 0, 1000)
+	_, err = onBranch.UnaliasPlace(ctx, command.UnaliasPlaceInput{ID: repository.PlaceID("boston,ma"), Version: 1})
+	if !errors.Is(err, command.ErrEventTypeNotBranchAware) {
+		t.Errorf("UnaliasPlace on a branch error = %v, want ErrEventTypeNotBranchAware", err)
+	}
+	if after, _ := f.eventStore.ReadAll(ctx, 0, 1000); len(after) != len(before) {
+		t.Errorf("log grew from %d to %d events, want nothing appended", len(before), len(after))
+	}
+}
+
+// TestAliasPlace_OneEventOnTheAbsorbedStream shows that joining two spellings
+// appends one PlaceAliased to the absorbed place's stream and nothing else,
+// that every record keeps its text (PL-001) and resolves to the target, and
+// that separating them appends one PlaceUnaliased.
+func TestAliasPlace_OneEventOnTheAbsorbedStream(t *testing.T) {
+	f := newBranchFixture()
+	ctx := context.Background()
+	ann, err := f.handler.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ann", BirthPlace: "Köln, Germany"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.handler.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Bob", BirthPlace: "Cologne, Germany"}); err != nil {
+		t.Fatal(err)
+	}
+	koln, cologne := repository.PlaceID("köln,germany"), repository.PlaceID("cologne,germany")
+	before, _ := f.eventStore.ReadAll(ctx, 0, 1000)
+
+	result, err := f.handler.AliasPlace(ctx, command.AliasPlaceInput{ID: koln, TargetID: cologne})
+	if err != nil || result.Version != 1 {
+		t.Fatalf("AliasPlace = %+v, %v; want version 1", result, err)
+	}
+	after, _ := f.eventStore.ReadAll(ctx, 0, 1000)
+	added := after[len(before):]
+	if len(added) != 1 || added[0].EventType != "PlaceAliased" || added[0].StreamID != koln || added[0].StreamType != "Place" {
+		t.Fatalf("appended %+v, want one PlaceAliased on Köln's stream", added)
+	}
+	event, err := added[0].DecodeEvent()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e := event.(domain.PlaceAliased); e.Key != "köln,germany" || e.Text != "Köln, Germany" || e.TargetID != cologne ||
+		e.TargetKey != "cologne,germany" || e.TargetText != "Cologne, Germany" {
+		t.Errorf("event = %+v", e)
+	}
+	if person, _ := f.readStore.GetPerson(ctx, domain.MainBranchID, ann.ID); person.BirthPlace != "Köln, Germany" {
+		t.Errorf("Ann's birth place = %q, want Köln, Germany as recorded (PL-001)", person.BirthPlace)
+	}
+	if aliases, _ := f.readStore.ListPlaceAliases(ctx); len(aliases) != 1 || aliases[0].ResolvedKey != "cologne,germany" {
+		t.Errorf("place_aliases = %+v, want Köln resolving to Cologne", aliases)
+	}
+
+	unaliased, err := f.handler.UnaliasPlace(ctx, command.UnaliasPlaceInput{ID: koln, Version: 1})
+	if err != nil || unaliased.Version != 2 {
+		t.Fatalf("UnaliasPlace = %+v, %v; want version 2", unaliased, err)
+	}
+	final, _ := f.eventStore.ReadAll(ctx, 0, 1000)
+	if len(final) != len(after)+1 || final[len(final)-1].EventType != "PlaceUnaliased" || final[len(final)-1].StreamID != koln {
+		t.Errorf("log after UnaliasPlace ends %+v, want one PlaceUnaliased on Köln's stream", final[len(final)-1])
+	}
+	if aliases, _ := f.readStore.ListPlaceAliases(ctx); len(aliases) != 0 {
+		t.Errorf("place_aliases after UnaliasPlace = %+v, want none", aliases)
+	}
+}
+
+// TestAliasPlace_Rejects covers the command's checks (ADR-009 §3): a target
+// that is itself an alias, a place already an alias, the place itself, an
+// unknown place or target, a stale version, and unaliasing a place that is no
+// alias. None appends anything.
+func TestAliasPlace_Rejects(t *testing.T) {
+	f := newBranchFixture()
+	ctx := context.Background()
+	for _, place := range []string{"Köln", "Cologne", "Coeln"} {
+		if _, err := f.handler.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ann", BirthPlace: place}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	koln, cologne, coeln := repository.PlaceID("köln"), repository.PlaceID("cologne"), repository.PlaceID("coeln")
+	if _, err := f.handler.AliasPlace(ctx, command.AliasPlaceInput{ID: koln, TargetID: cologne}); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := f.eventStore.ReadAll(ctx, 0, 1000)
+
+	for name, tc := range map[string]struct {
+		input command.AliasPlaceInput
+		want  error
+	}{
+		"target is an alias": {command.AliasPlaceInput{ID: coeln, TargetID: koln}, command.ErrInvalidInput},
+		"place is an alias":  {command.AliasPlaceInput{ID: koln, TargetID: coeln, Version: 1}, command.ErrInvalidInput},
+		"the place itself":   {command.AliasPlaceInput{ID: coeln, TargetID: coeln}, command.ErrInvalidInput},
+		"closes a cycle":     {command.AliasPlaceInput{ID: cologne, TargetID: koln}, command.ErrInvalidInput},
+		"unknown target":     {command.AliasPlaceInput{ID: coeln, TargetID: uuid.New()}, command.ErrInvalidInput},
+		"unknown place":      {command.AliasPlaceInput{ID: uuid.New(), TargetID: cologne}, command.ErrPlaceNotFound},
+		"stale version":      {command.AliasPlaceInput{ID: coeln, TargetID: cologne, Version: 4}, repository.ErrConcurrencyConflict},
+	} {
+		if _, err := f.handler.AliasPlace(ctx, tc.input); !errors.Is(err, tc.want) {
+			t.Errorf("%s: error = %v, want %v", name, err, tc.want)
+		}
+	}
+	if _, err := f.handler.UnaliasPlace(ctx, command.UnaliasPlaceInput{ID: coeln}); !errors.Is(err, command.ErrInvalidInput) {
+		t.Errorf("unaliasing a place that is no alias: error = %v, want ErrInvalidInput", err)
+	}
+	if _, err := f.handler.UnaliasPlace(ctx, command.UnaliasPlaceInput{ID: uuid.New()}); !errors.Is(err, command.ErrPlaceNotFound) {
+		t.Errorf("unaliasing an unknown place: error = %v, want ErrPlaceNotFound", err)
+	}
+	if _, err := f.handler.UnaliasPlace(ctx, command.UnaliasPlaceInput{ID: koln}); !errors.Is(err, repository.ErrConcurrencyConflict) {
+		t.Errorf("stale unalias: error = %v, want ErrConcurrencyConflict", err)
 	}
 	if after, _ := f.eventStore.ReadAll(ctx, 0, 1000); len(after) != len(before) {
 		t.Errorf("log grew from %d to %d events, want nothing appended", len(before), len(after))

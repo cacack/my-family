@@ -88,18 +88,109 @@ func (h *Handler) UpdatePlace(ctx context.Context, input UpdatePlaceInput) (*Upd
 
 // placeKeyAndText finds the key of the place with id and the text a place
 // event records beside it: the place's recorded spelling on main, never its
-// display name, so the text is what the key was computed from. ListPlaces holds
-// every place main names and, for a principal who sees everything, every
-// place with facts.
+// display name, so the text is what the key was computed from.
 func (h *Handler) placeKeyAndText(ctx context.Context, id uuid.UUID) (key, text string, err error) {
+	p, err := h.mainPlace(ctx, id)
+	if err != nil {
+		return "", "", err
+	}
+	return p.Key, p.Spelling, nil
+}
+
+// mainPlace returns the place with id as main reads it for a principal who
+// sees everything, or ErrPlaceNotFound. ListPlaces holds every place main
+// names, absorbed ones included, and every place with facts.
+func (h *Handler) mainPlace(ctx context.Context, id uuid.UUID) (*repository.PlaceReadModel, error) {
 	places, err := h.readStore.ListPlaces(ctx, domain.MainBranchID, repository.Privacy{})
 	if err != nil {
-		return "", "", fmt.Errorf("listing places: %w", err)
+		return nil, fmt.Errorf("listing places: %w", err)
 	}
-	for _, p := range places {
-		if p.ID == id {
-			return p.Key, p.Spelling, nil
+	for i := range places {
+		if places[i].ID == id {
+			return &places[i], nil
 		}
 	}
-	return "", "", ErrPlaceNotFound
+	return nil, ErrPlaceNotFound
+}
+
+// AliasPlaceInput says that the place with ID means the place with TargetID
+// (ADR-009 §3). Version is the absorbed place's stream version as last read.
+type AliasPlaceInput struct {
+	ID       uuid.UUID
+	TargetID uuid.UUID
+	Version  int64
+}
+
+// AliasPlace appends one PlaceAliased to the stream of the place being
+// absorbed, and to no other stream; no record's text changes (PL-001). It
+// rejects, with ErrInvalidInput, a place that is already an alias, a target
+// that is itself an alias, a target that is not a place, and an alias that
+// would close a cycle, the place itself included. Two concurrent commands
+// can both pass these checks; the projector then decides, in log order
+// (PL-004). Main-only (PL-005).
+func (h *Handler) AliasPlace(ctx context.Context, input AliasPlaceInput) (*UpdatePlaceResult, error) {
+	place, err := h.mainPlace(ctx, input.ID)
+	if err != nil {
+		return nil, err
+	}
+	target, err := h.mainPlace(ctx, input.TargetID)
+	if errors.Is(err, ErrPlaceNotFound) {
+		return nil, fmt.Errorf("%w: target place %s not found", ErrInvalidInput, input.TargetID)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if place.Version != input.Version {
+		return nil, repository.ErrConcurrencyConflict
+	}
+	if place.ResolvesTo != nil {
+		return nil, fmt.Errorf("%w: %s is already an alias of another place; separate it first", ErrInvalidInput, place.Spelling)
+	}
+	if target.ResolvesTo != nil {
+		return nil, fmt.Errorf("%w: %s is itself an alias of another place", ErrInvalidInput, target.Spelling)
+	}
+	aliases, err := h.readStore.ListPlaceAliases(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("listing place aliases: %w", err)
+	}
+	if repository.PlaceAliasClosesCycle(aliases, place.Key, target.Key) {
+		return nil, fmt.Errorf("%w: aliasing %s to %s would close a cycle", ErrInvalidInput, place.Spelling, target.Spelling)
+	}
+
+	event := domain.NewPlaceAliased(place.Key, place.Spelling, target.Key, target.Spelling, place.ID, target.ID)
+	version, err := h.execute(ctx, input.ID.String(), placeStreamType, []domain.Event{event}, input.Version)
+	if err != nil {
+		return nil, fmt.Errorf("executing alias place command: %w", err)
+	}
+	return &UpdatePlaceResult{Version: version}, nil
+}
+
+// UnaliasPlaceInput separates the place with ID from the place it was
+// aliased to. Version is its stream version as last read.
+type UnaliasPlaceInput struct {
+	ID      uuid.UUID
+	Version int64
+}
+
+// UnaliasPlace appends one PlaceUnaliased to the place's stream, so its key
+// names the place itself again (ADR-009 §3). A place that is not an alias is
+// ErrInvalidInput. Main-only (PL-005).
+func (h *Handler) UnaliasPlace(ctx context.Context, input UnaliasPlaceInput) (*UpdatePlaceResult, error) {
+	place, err := h.mainPlace(ctx, input.ID)
+	if err != nil {
+		return nil, err
+	}
+	if place.Version != input.Version {
+		return nil, repository.ErrConcurrencyConflict
+	}
+	if place.ResolvesTo == nil {
+		return nil, fmt.Errorf("%w: %s is not an alias of another place", ErrInvalidInput, place.Spelling)
+	}
+
+	event := domain.NewPlaceUnaliased(place.ID, place.Key, place.Spelling)
+	version, err := h.execute(ctx, input.ID.String(), placeStreamType, []domain.Event{event}, input.Version)
+	if err != nil {
+		return nil, fmt.Errorf("executing unalias place command: %w", err)
+	}
+	return &UpdatePlaceResult{Version: version}, nil
 }
