@@ -33,16 +33,34 @@ type CoordinatesPatch struct {
 	Origin    *domain.CoordinateOrigin
 }
 
-// validate checks the pair for the place whose API fields start with prefix
-// ("birth_place" for birth_place_latitude and birth_place_longitude): both
-// halves left out, both cleared, or both set to a value on the right axis and
-// in range, as the map reads them (gedcom.ParseLatitude, gedcom.ParseLongitude),
-// for a place that has a name: export and the map both key coordinates by it.
-// A stated origin needs a set pair and must be valid (CoordinateOrigin.Validate).
-// It returns the pair with each set value in canonical GEDCOM form: trimmed,
-// with an upper-case direction letter, and the origin's provider trimmed.
-func (p CoordinatesPatch) validate(prefix, place string) (CoordinatesPatch, error) {
-	latField, longField, originField := prefix+"_latitude", prefix+"_longitude", prefix+"_coordinates_origin"
+// coordinateNames name one pair's API fields, which errors report, and its
+// change keys.
+type coordinateNames struct {
+	place, lat, long, origin   string // API fields: the place's text and the pair's
+	latKey, longKey, originKey string // change keys
+}
+
+// eventPlaceNames are the names of the pair beside an event's place text
+// whose API fields start with prefix: "birth_place" has the fields
+// birth_place_latitude, birth_place_longitude and
+// birth_place_coordinates_origin and the change keys birth_place_lat,
+// birth_place_long and birth_place_origin, the created events' JSON names.
+func eventPlaceNames(prefix string) coordinateNames {
+	return coordinateNames{
+		place: prefix, lat: prefix + "_latitude", long: prefix + "_longitude", origin: prefix + "_coordinates_origin",
+		latKey: prefix + "_lat", longKey: prefix + "_long", originKey: prefix + "_origin",
+	}
+}
+
+// validate checks the pair named by n: both halves left out, both cleared,
+// or both set to a value on the right axis and in range, as the map reads
+// them (gedcom.ParseLatitude, gedcom.ParseLongitude), for a place that has a
+// name: export and the map both key coordinates by it. A stated origin needs
+// a set pair and must be valid (CoordinateOrigin.Validate). It returns the
+// pair with each set value in canonical GEDCOM form: trimmed, with an
+// upper-case direction letter, and the origin's provider trimmed.
+func (p CoordinatesPatch) validate(n coordinateNames, place string) (CoordinatesPatch, error) {
+	latField, longField, originField := n.lat, n.long, n.origin
 	if p.Latitude.Omitted() != p.Longitude.Omitted() || p.Latitude.Cleared() != p.Longitude.Cleared() {
 		// Name the half left out, or else the one cleared beside a value.
 		missing := latField
@@ -66,7 +84,7 @@ func (p CoordinatesPatch) validate(prefix, place string) (CoordinatesPatch, erro
 		return p, &InvalidCoordinateError{Field: longField, Reason: err.Error()}
 	}
 	if strings.TrimSpace(place) == "" {
-		return p, &InvalidCoordinateError{Field: prefix, Reason: fmt.Sprintf("%s and %s need a %s", latField, longField, prefix)}
+		return p, &InvalidCoordinateError{Field: n.place, Reason: fmt.Sprintf("%s and %s need a %s", latField, longField, n.place)}
 	}
 	valid := CoordinatesPatch{Latitude: Set(canonicalCoordinate(lat)), Longitude: Set(canonicalCoordinate(long))}
 	if p.Origin != nil {
@@ -101,34 +119,39 @@ type placeCoordinates struct {
 	Origin    *domain.CoordinateOrigin
 }
 
-// recordCoordinates validates the pair for a place now named place (see
-// validate) and, when either half changes, records both under prefix+"_lat"
-// and prefix+"_long", the change keys that match the created events' JSON
-// names ("birth_place_lat"), with its origin under prefix+"_origin"; nil
-// records a clear. Recording the pair whole keeps a branch merge from joining
-// one side's latitude to the other's longitude, or a pair to another's
-// origin. A pair left as it is records a stated origin that differs, with the
-// pair it describes, and otherwise nothing.
+// recordCoordinates records the pair beside an event's place text whose API
+// fields start with prefix (eventPlaceNames), for a place now named place
+// (see recordPair).
 func recordCoordinates(changes map[string]any, prefix, place string, input CoordinatesPatch, current placeCoordinates) error {
-	input, err := input.validate(prefix, place)
+	return recordPair(changes, eventPlaceNames(prefix), place, input, current)
+}
+
+// recordPair validates the pair named by n for a place now named place (see
+// validate) and, when either half changes, records both under n's change
+// keys with its origin; nil records a clear. Recording the pair whole keeps a
+// branch merge from joining one side's latitude to the other's longitude, or
+// a pair to another's origin. A pair left as it is records a stated origin
+// that differs, with the pair it describes, and otherwise nothing.
+func recordPair(changes map[string]any, n coordinateNames, place string, input CoordinatesPatch, current placeCoordinates) error {
+	input, err := input.validate(n, place)
 	if err != nil {
 		return err
 	}
 	pair := map[string]any{}
-	recordOptionalChange(pair, prefix+"_lat", input.Latitude, current.Lat)
-	recordOptionalChange(pair, prefix+"_long", input.Longitude, current.Long)
+	recordOptionalChange(pair, n.latKey, input.Latitude, current.Lat)
+	recordOptionalChange(pair, n.longKey, input.Longitude, current.Long)
 	if len(pair) == 0 {
 		if input.Origin != nil && *input.Origin != *domain.EffectiveCoordinateOrigin(current.Lat, current.Long, current.Origin) {
-			changes[prefix+"_lat"], changes[prefix+"_long"] = *current.Lat, *current.Long
-			changes[prefix+"_origin"] = input.Origin.ChangeValue()
+			changes[n.latKey], changes[n.longKey] = *current.Lat, *current.Long
+			changes[n.originKey] = input.Origin.ChangeValue()
 		}
 		return nil
 	}
-	changes[prefix+"_lat"], changes[prefix+"_long"], changes[prefix+"_origin"] = nil, nil, nil
+	changes[n.latKey], changes[n.longKey], changes[n.originKey] = nil, nil, nil
 	if lat, ok := input.Latitude.Value(); ok {
 		long, _ := input.Longitude.Value()
-		changes[prefix+"_lat"], changes[prefix+"_long"] = lat, long
-		changes[prefix+"_origin"] = statedOrManual(input.Origin).ChangeValue()
+		changes[n.latKey], changes[n.longKey] = lat, long
+		changes[n.originKey] = statedOrManual(input.Origin).ChangeValue()
 	}
 	return nil
 }
@@ -136,7 +159,7 @@ func recordCoordinates(changes map[string]any, prefix, place string, input Coord
 // createdCoordinates validates a create's pair for a place named place (see
 // validate) and returns it as the created event's optional values.
 func createdCoordinates(prefix, place string, input CoordinatesPatch) (placeCoordinates, error) {
-	input, err := input.validate(prefix, place)
+	input, err := input.validate(eventPlaceNames(prefix), place)
 	if err != nil {
 		return placeCoordinates{}, err
 	}
