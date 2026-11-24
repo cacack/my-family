@@ -432,6 +432,59 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/places": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the places in use
+         * @description Returns the places named by the records the caller may see (ADR-009
+         *     §2): every place a person's birth or death, a family's marriage, a life
+         *     event or an attribute names, and every place above one of those. Each
+         *     place has an ID derived from its place matching key, so it is the same
+         *     on every install and every branch. Places sort by name. With
+         *     `?branch=` the places are that branch's isolated view; omit it for the
+         *     mainline.
+         */
+        get: operations["listPlaces"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/places/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Place UUID, derived from the place matching key (ADR-009 §2) */
+                id: components["parameters"]["placeId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Get a place in use by ID
+         * @description Returns the place with this ID when a record the caller may see names
+         *     it or a place under it. A place only hidden records name answers 404,
+         *     exactly as an ID that was never in use (ADR-009 §10). With `?branch=`
+         *     the place is read from that branch's isolated view; omit it for the
+         *     mainline.
+         */
+        get: operations["getPlace"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/map/locations": {
         parameters: {
             query?: never;
@@ -5023,6 +5076,26 @@ export interface components {
             /** @description Whether this place has sub-locations */
             has_children: boolean;
         };
+        Place: {
+            /**
+             * Format: uuid
+             * @description UUIDv5 of the place matching key, the same on every install and every branch.
+             */
+            id: string;
+            /** @description The place matching key: the recorded text split on commas, each part trimmed and case-folded, empty parts dropped (ADR-009 §1). */
+            key: string;
+            /** @description The place's most-used recorded spelling among the records the caller may see, its parts joined with ", " (ties broken bytewise). */
+            name: string;
+            /** @description Number of place uses (birth, death, marriage, life event and attribute places) the caller may see at or under this place. */
+            count: number;
+        };
+        PlaceList: {
+            items: components["schemas"]["Place"][];
+            /** @description Number of places in use in all */
+            total: number;
+            limit?: number;
+            offset?: number;
+        };
         CemeteryIndexResponse: {
             items: components["schemas"]["CemeteryEntry"][];
             /** @description Total number of unique burial/cremation places */
@@ -7656,6 +7729,8 @@ export interface components {
         submitterId: string;
         /** @description Repository UUID */
         repositoryId: string;
+        /** @description Place UUID, derived from the place matching key (ADR-009 §2) */
+        placeId: string;
         /** @description Association UUID */
         associationId: string;
         /** @description LDS Ordinance UUID */
@@ -8639,6 +8714,80 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
+            503: components["responses"]["SetupRequired"];
+        };
+    };
+    listPlaces: {
+        parameters: {
+            query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
+                 */
+                branch?: components["parameters"]["branchScope"];
+                limit?: components["parameters"]["limitParam"];
+                offset?: components["parameters"]["offsetParam"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of the places in use */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaceList"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            503: components["responses"]["SetupRequired"];
+        };
+    };
+    getPlace: {
+        parameters: {
+            query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return. An anonymous visitor
+                 *     is refused with 401 whatever the branch: a visitor reads the mainline
+                 *     only (ADR-008 §4).
+                 */
+                branch?: components["parameters"]["branchScope"];
+            };
+            header?: never;
+            path: {
+                /** @description Place UUID, derived from the place matching key (ADR-009 §2) */
+                id: components["parameters"]["placeId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The place */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Place"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
             503: components["responses"]["SetupRequired"];
         };
     };

@@ -113,6 +113,7 @@ func TestPrivacyRedaction_AggregatesAndHomeWidgets(t *testing.T) {
 						"/api/v1/browse/places",            // browsePlaces
 						"/api/v1/browse/places?parent=Springfield",
 						"/api/v1/browse/cemeteries",   // browseCemeteries
+						"/api/v1/places?limit=100",    // listPlaces
 						"/api/v1/map/locations",       // getMapLocations
 						"/api/v1/browse/brick-walls",  // getBrickWalls
 						"/api/v1/statistics",          // getStatistics
@@ -175,6 +176,59 @@ func TestPrivacyRedaction_AggregatesAndHomeWidgets(t *testing.T) {
 					}
 					if got := listed(p.getJSON(t, f, "/api/v1/analytics/discovery"), "items", "person_name"); !slices.Contains(got, "Dora Smith") {
 						t.Errorf("getDiscoveryFeed names %v, want Dora Smith among them", got)
+					}
+				})
+			}
+		})
+	}
+}
+
+// TestPrivacyRedaction_Places drives listPlaces and getPlace as every
+// principal: a place, its name and its count come only from the records the
+// principal may see, and a GET of a place only hidden records name answers
+// exactly as one of an ID never in use (ADR-009 §10).
+func TestPrivacyRedaction_Places(t *testing.T) {
+	for _, viewersSeeLiving := range []bool{true, false} {
+		t.Run(fmt.Sprintf("viewers see living %v", viewersSeeLiving), func(t *testing.T) {
+			f, tr, principals := redactionFixture(t, viewersSeeLiving)
+			placeTree(t, f, principals[0].cookie, tr)
+			for _, p := range principals {
+				t.Run(p.name, func(t *testing.T) {
+					shown := p.shownPeople()
+					// Each shown person's birthplace and churchyard, the
+					// Springfield above the birthplaces and, while Lena is
+					// shown, her family's Chapel.
+					want := append(suffixed(shown, "ville, Springfield"), suffixed(shown, " Churchyard")...)
+					want = append(want, "Springfield")
+					if p.seesLiving {
+						want = append(want, "Chapel")
+					}
+					slices.Sort(want)
+					body := p.getJSON(t, f, "/api/v1/places?limit=100")
+					if got := listed(body, "items", "name"); !slices.Equal(got, want) || body["total"] != float64(len(want)) {
+						t.Errorf("listPlaces: %v (total %v), want %v", got, body["total"], want)
+					}
+					if got := countOf(body, "items", "name", "Springfield"); got != float64(len(shown)) {
+						t.Errorf("listPlaces: Springfield counts %v, want %v", got, len(shown))
+					}
+
+					never := p.get(t, f, "/api/v1/places/"+repository.PlaceID("never used").String())
+					if never.Code != http.StatusNotFound {
+						t.Fatalf("getPlace of an ID never in use: %d %s", never.Code, never.Body)
+					}
+					for _, name := range []string{"Dora", "Kit", "Lena", "Petra"} {
+						key := strings.ToLower(name) + "ville,springfield"
+						rec := p.get(t, f, "/api/v1/places/"+repository.PlaceID(key).String())
+						if !slices.Contains(shown, name) {
+							if rec.Code != never.Code || rec.Body.String() != never.Body.String() {
+								t.Errorf("getPlace(%s) = %d %s, want %d %s as for an ID never in use", key, rec.Code, rec.Body, never.Code, never.Body)
+							}
+							continue
+						}
+						place := decode[map[string]any](t, rec)
+						if rec.Code != http.StatusOK || place["key"] != key || place["name"] != name+"ville, Springfield" || place["count"] != float64(1) {
+							t.Errorf("getPlace(%s) = %d %v", key, rec.Code, place)
+						}
 					}
 				})
 			}

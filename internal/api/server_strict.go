@@ -437,6 +437,56 @@ func (ss *StrictServer) GetPersonsByCemetery(ctx context.Context, request GetPer
 	}, nil
 }
 
+// ListPlaces implements StrictServerInterface.
+func (ss *StrictServer) ListPlaces(ctx context.Context, request ListPlacesRequestObject) (ListPlacesResponseObject, error) {
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
+	limit, offset := 20, 0
+	if request.Params.Limit != nil {
+		limit = *request.Params.Limit
+	}
+	if request.Params.Offset != nil {
+		offset = *request.Params.Offset
+	}
+
+	places, total, err := ss.server.browseService.ListPlaces(ctx, branchScopeID(branch), limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]Place, len(places))
+	for i, p := range places {
+		items[i] = convertReadModelPlaceToGenerated(p)
+	}
+	return ListPlaces200JSONResponse{Items: items, Total: total, Limit: &limit, Offset: &offset}, nil
+}
+
+// GetPlace implements StrictServerInterface.
+func (ss *StrictServer) GetPlace(ctx context.Context, request GetPlaceRequestObject) (GetPlaceResponseObject, error) {
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
+
+	place, err := ss.server.browseService.GetPlace(ctx, branchScopeID(branch), request.Id)
+	if err != nil {
+		return nil, err
+	}
+	if place == nil {
+		return GetPlace404JSONResponse{NotFoundJSONResponse{
+			Code:    "not_found",
+			Message: "Place not found",
+		}}, nil
+	}
+	return GetPlace200JSONResponse(convertReadModelPlaceToGenerated(*place)), nil
+}
+
+// convertReadModelPlaceToGenerated converts a place in use to its API form.
+func convertReadModelPlaceToGenerated(p repository.PlaceReadModel) Place {
+	return Place{Id: p.ID, Key: p.Key, Name: p.Name, Count: p.Count}
+}
+
 // GetMapLocations implements StrictServerInterface.
 func (ss *StrictServer) GetMapLocations(ctx context.Context, request GetMapLocationsRequestObject) (GetMapLocationsResponseObject, error) {
 	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)

@@ -5933,6 +5933,21 @@ type PersonUpdate struct {
 	Version int64 `json:"version"`
 }
 
+// Place defines model for Place.
+type Place struct {
+	// Count Number of place uses (birth, death, marriage, life event and attribute places) the caller may see at or under this place.
+	Count int `json:"count"`
+
+	// Id UUIDv5 of the place matching key, the same on every install and every branch.
+	Id openapi_types.UUID `json:"id"`
+
+	// Key The place matching key: the recorded text split on commas, each part trimmed and case-folded, empty parts dropped (ADR-009 §1).
+	Key string `json:"key"`
+
+	// Name The place's most-used recorded spelling among the records the caller may see, its parts joined with ", " (ties broken bytewise).
+	Name string `json:"name"`
+}
+
 // PlaceEntry defines model for PlaceEntry.
 type PlaceEntry struct {
 	// Count Number of birth and death records at or under this place. Spellings whose place matching key is the same (differing only in letter case, spacing around commas or empty parts) are one place.
@@ -5955,6 +5970,16 @@ type PlaceIndexResponse struct {
 	Items      []PlaceEntry `json:"items"`
 
 	// Total Total number of unique places at this level
+	Total int `json:"total"`
+}
+
+// PlaceList defines model for PlaceList.
+type PlaceList struct {
+	Items  []Place `json:"items"`
+	Limit  *int    `json:"limit,omitempty"`
+	Offset *int    `json:"offset,omitempty"`
+
+	// Total Number of places in use in all
 	Total int `json:"total"`
 }
 
@@ -6994,6 +7019,9 @@ type OffsetParam = int
 
 // PersonId defines model for personId.
 type PersonId = openapi_types.UUID
+
+// PlaceId defines model for placeId.
+type PlaceId = openapi_types.UUID
 
 // ProofSummaryId defines model for proofSummaryId.
 type ProofSummaryId = openapi_types.UUID
@@ -8374,6 +8402,34 @@ type RollbackPersonParams struct {
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
+// ListPlacesParams defines parameters for ListPlaces.
+type ListPlacesParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+	Limit  *LimitParam  `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *OffsetParam `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// GetPlaceParams defines parameters for GetPlace.
+type GetPlaceParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return. An anonymous visitor
+	// is refused with 401 whatever the branch: a visitor reads the mainline
+	// only (ADR-008 §4).
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+}
+
 // ListProofSummariesParams defines parameters for ListProofSummaries.
 type ListProofSummariesParams struct {
 	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
@@ -9555,6 +9611,12 @@ type ServerInterface interface {
 	// RollbackPerson Rollback a person to a previous version
 	// (POST /persons/{id}/rollback)
 	RollbackPerson(ctx echo.Context, id PersonId, params RollbackPersonParams) error
+	// ListPlaces List the places in use
+	// (GET /places)
+	ListPlaces(ctx echo.Context, params ListPlacesParams) error
+	// GetPlace Get a place in use by ID
+	// (GET /places/{id})
+	GetPlace(ctx echo.Context, id PlaceId, params GetPlaceParams) error
 	// ListProofSummaries List all proof summaries
 	// (GET /proof-summaries)
 	ListProofSummaries(ctx echo.Context, params ListProofSummariesParams) error
@@ -12949,6 +13011,63 @@ func (w *ServerInterfaceWrapper) RollbackPerson(ctx echo.Context) error {
 	return err
 }
 
+// ListPlaces converts echo context to params.
+func (w *ServerInterfaceWrapper) ListPlaces(ctx echo.Context) error {
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListPlacesParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", ctx.QueryParams(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter limit: %s", err))
+	}
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "offset", ctx.QueryParams(), &params.Offset, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter offset: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.ListPlaces(ctx, params)
+	return err
+}
+
+// GetPlace converts echo context to params.
+func (w *ServerInterfaceWrapper) GetPlace(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id PlaceId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: ctx.Request().URL.RawPath == ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetPlaceParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.GetPlace(ctx, id, params)
+	return err
+}
+
 // ListProofSummaries converts echo context to params.
 func (w *ServerInterfaceWrapper) ListProofSummaries(ctx echo.Context) error {
 	var err error
@@ -14419,6 +14538,8 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 	router.GET(options.BaseURL+"/browse/places/:place/persons", wrapper.GetPersonsByPlace, options.OperationMiddlewares["getPersonsByPlace"]...)
 	router.GET(options.BaseURL+"/browse/cemeteries", wrapper.BrowseCemeteries, options.OperationMiddlewares["browseCemeteries"]...)
 	router.GET(options.BaseURL+"/browse/cemeteries/:place/persons", wrapper.GetPersonsByCemetery, options.OperationMiddlewares["getPersonsByCemetery"]...)
+	router.GET(options.BaseURL+"/places", wrapper.ListPlaces, options.OperationMiddlewares["listPlaces"]...)
+	router.GET(options.BaseURL+"/places/:id", wrapper.GetPlace, options.OperationMiddlewares["getPlace"]...)
 	router.GET(options.BaseURL+"/map/locations", wrapper.GetMapLocations, options.OperationMiddlewares["getMapLocations"]...)
 	router.GET(options.BaseURL+"/browse/brick-walls", wrapper.GetBrickWalls, options.OperationMiddlewares["getBrickWalls"]...)
 	router.DELETE(options.BaseURL+"/persons/:id/brick-wall", wrapper.ResolvePersonBrickWall, options.OperationMiddlewares["resolvePersonBrickWall"]...)
@@ -24759,6 +24880,121 @@ func (response RollbackPerson503JSONResponse) VisitRollbackPersonResponse(w http
 	return err
 }
 
+type ListPlacesRequestObject struct {
+	Params ListPlacesParams
+}
+
+type ListPlacesResponseObject interface {
+	VisitListPlacesResponse(w http.ResponseWriter) error
+}
+
+type ListPlaces200JSONResponse PlaceList
+
+func (response ListPlaces200JSONResponse) VisitListPlacesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPlaces401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListPlaces401JSONResponse) VisitListPlacesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPlaces503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response ListPlaces503JSONResponse) VisitListPlacesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPlaceRequestObject struct {
+	Id     PlaceId `json:"id"`
+	Params GetPlaceParams
+}
+
+type GetPlaceResponseObject interface {
+	VisitGetPlaceResponse(w http.ResponseWriter) error
+}
+
+type GetPlace200JSONResponse Place
+
+func (response GetPlace200JSONResponse) VisitGetPlaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPlace401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetPlace401JSONResponse) VisitGetPlaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPlace404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetPlace404JSONResponse) VisitGetPlaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPlace503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response GetPlace503JSONResponse) VisitGetPlaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListProofSummariesRequestObject struct {
 	Params ListProofSummariesParams
 }
@@ -29082,6 +29318,12 @@ type StrictServerInterface interface {
 	// RollbackPerson Rollback a person to a previous version
 	// (POST /persons/{id}/rollback)
 	RollbackPerson(ctx context.Context, request RollbackPersonRequestObject) (RollbackPersonResponseObject, error)
+	// ListPlaces List the places in use
+	// (GET /places)
+	ListPlaces(ctx context.Context, request ListPlacesRequestObject) (ListPlacesResponseObject, error)
+	// GetPlace Get a place in use by ID
+	// (GET /places/{id})
+	GetPlace(ctx context.Context, request GetPlaceRequestObject) (GetPlaceResponseObject, error)
 	// ListProofSummaries List all proof summaries
 	// (GET /proof-summaries)
 	ListProofSummaries(ctx context.Context, request ListProofSummariesRequestObject) (ListProofSummariesResponseObject, error)
@@ -33735,6 +33977,57 @@ func (sh *strictHandler) RollbackPerson(ctx echo.Context, id PersonId, params Ro
 		return err
 	} else if validResponse, ok := response.(RollbackPersonResponseObject); ok {
 		return validResponse.VisitRollbackPersonResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// ListPlaces operation middleware
+func (sh *strictHandler) ListPlaces(ctx echo.Context, params ListPlacesParams) error {
+	var request ListPlacesRequestObject
+
+	request.Params = params
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.ListPlaces(ctx.Request().Context(), request.(ListPlacesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListPlaces")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(ListPlacesResponseObject); ok {
+		return validResponse.VisitListPlacesResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// GetPlace operation middleware
+func (sh *strictHandler) GetPlace(ctx echo.Context, id PlaceId, params GetPlaceParams) error {
+	var request GetPlaceRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.GetPlace(ctx.Request().Context(), request.(GetPlaceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetPlace")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(GetPlaceResponseObject); ok {
+		return validResponse.VisitGetPlaceResponse(ctx.Response())
 	} else if response != nil {
 		return fmt.Errorf("unexpected response type: %T", response)
 	}

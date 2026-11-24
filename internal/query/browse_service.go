@@ -459,3 +459,29 @@ func (s *BrowseService) GetBrickWalls(ctx context.Context, includeResolved bool)
 		ResolvedCount: resolvedCount,
 	}, nil
 }
+
+// ListPlaces returns one page of the places in use within the branch overlay
+// (ADR-009 §2, §6), sorted by name, and the number of places in all.
+func (s *BrowseService) ListPlaces(ctx context.Context, branchID domain.BranchID, limit, offset int) ([]repository.PlaceReadModel, int, error) {
+	places, err := s.readStore.ListPlaces(ctx, branchID, repository.Privacy{})
+	if err != nil {
+		return nil, 0, err
+	}
+	return repository.Page(places, offset, limit), len(places), nil
+}
+
+// GetPlace returns the place in use with ID id within the branch overlay, or
+// nil when there is none. A place only hidden records name is not in use for
+// the principal, so it is nil exactly as an ID never in use is (ADR-009 §10).
+func (s *BrowseService) GetPlace(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.PlaceReadModel, error) {
+	places, err := s.readStore.ListPlaces(ctx, branchID, repository.Privacy{})
+	if err != nil {
+		return nil, err
+	}
+	for i := range places {
+		if places[i].ID == id {
+			return &places[i], nil
+		}
+	}
+	return nil, nil
+}

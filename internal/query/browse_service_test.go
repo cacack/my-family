@@ -1090,3 +1090,32 @@ func TestGetMapLocations_CarriesPersonUUID(t *testing.T) {
 		t.Errorf("persons = %+v, want [%+v]", got, want)
 	}
 }
+
+func TestListPlacesAndGetPlace(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	service := query.NewBrowseService(readStore)
+	ctx := context.Background()
+	for _, place := range []string{"Boston, MA", "Salem, MA"} {
+		if err := readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
+			ID: uuid.New(), GivenName: "P", Surname: "Q", BirthPlace: place, Version: 1,
+		}); err != nil {
+			t.Fatalf("SavePerson: %v", err)
+		}
+	}
+
+	page, total, err := service.ListPlaces(ctx, domain.MainBranchID, 1, 1)
+	if err != nil {
+		t.Fatalf("ListPlaces: %v", err)
+	}
+	if total != 3 || len(page) != 1 || page[0].Key != "ma" || page[0].Count != 2 {
+		t.Errorf("ListPlaces page 2 = %+v (total %d), want MA alone of 3", page, total)
+	}
+
+	got, err := service.GetPlace(ctx, domain.MainBranchID, repository.PlaceID("salem,ma"))
+	if err != nil || got == nil || got.Name != "Salem, MA" || got.Count != 1 {
+		t.Errorf("GetPlace(salem,ma) = %+v, %v", got, err)
+	}
+	if got, err := service.GetPlace(ctx, domain.MainBranchID, repository.PlaceID("worcester,ma")); err != nil || got != nil {
+		t.Errorf("GetPlace of a place not in use = %+v, %v; want nil", got, err)
+	}
+}
