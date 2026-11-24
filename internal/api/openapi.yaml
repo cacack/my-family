@@ -11247,6 +11247,9 @@ components:
             (given_name, surname, gender, birth_date, birth_place,
             death_date, death_place, notes, research_status).
             Default is "survivor" for all fields unless survivor's value is empty.
+            A birth or death place taken from the merged person brings that
+            person's coordinate pair and its origin, even an empty pair;
+            a place kept from the survivor keeps the survivor's pair.
           example:
             birth_date: merged
             death_date: survivor
