@@ -86,7 +86,7 @@ func RunPlaceFacts(t *testing.T, store repository.ReadModelStore) {
 	if err != nil {
 		t.Fatalf("ListPlaces: %v", err)
 	}
-	wantBoston := repository.PlaceReadModel{ID: boston, Key: "boston,ma", Name: "Boston", Count: 3,
+	wantBoston := repository.PlaceReadModel{ID: boston, Key: "boston,ma", Name: "Boston", Spelling: "Boston, MA", Count: 3,
 		Latitude: str("N42.36"), Longitude: str("W71.06"), Origin: geocodedOrigin, Version: 2}
 	if p := findPlace(places, boston); p == nil || !reflect.DeepEqual(*p, wantBoston) {
 		t.Errorf("ListPlaces boston = %+v, want %+v", p, wantBoston)

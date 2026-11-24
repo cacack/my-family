@@ -213,13 +213,14 @@ func PlaceID(key string) uuid.UUID {
 
 // PlaceReadModel is a place (ADR-009 §2): its ID, its key, the name it shows,
 // the number of place uses at or under it, and the facts stated about it. The
-// name is its display name when one is set, otherwise its most-used recorded
-// spelling. Latitude, Longitude and Origin are the place's own pair, nil when
+// name is its display name when one is set, otherwise Spelling: its most-used
+// recorded spelling, or its key when no use names it. Latitude, Longitude and Origin are the place's own pair, nil when
 // it has none; Version is its stream's version, 0 before any fact is stated.
 type PlaceReadModel struct {
 	ID        uuid.UUID
 	Key       string
 	Name      string
+	Spelling  string
 	Count     int
 	Latitude  *string
 	Longitude *string
@@ -275,7 +276,8 @@ func Places(uses []PlaceUse, facts []PlaceFactsReadModel, privacy Privacy) []Pla
 	}
 	places := make([]PlaceReadModel, 0, len(byKey))
 	for key, p := range byKey {
-		pl := PlaceReadModel{ID: PlaceID(key), Key: key, Name: mostUsed(p.spellings), Count: p.count}
+		spelling := mostUsed(p.spellings)
+		pl := PlaceReadModel{ID: PlaceID(key), Key: key, Name: spelling, Spelling: spelling, Count: p.count}
 		if f := factsByKey[key]; f != nil {
 			if f.Name != "" {
 				pl.Name = f.Name

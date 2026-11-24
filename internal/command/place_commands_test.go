@@ -92,8 +92,18 @@ func TestUpdatePlace_OneEventOnThePlaceStream(t *testing.T) {
 	if facts == nil || facts.Name != "" || facts.Latitude != nil || facts.Longitude != nil || facts.Origin != nil {
 		t.Errorf("facts after clear = %+v, want none set", facts)
 	}
-	if final, _ := f.eventStore.ReadAll(ctx, 0, 1000); len(final) != len(after)+1 {
-		t.Errorf("log holds %d events, want %d: one more for the clear", len(final), len(after)+1)
+	final, _ := f.eventStore.ReadAll(ctx, 0, 1000)
+	if len(final) != len(after)+1 {
+		t.Fatalf("log holds %d events, want %d: one more for the clear", len(final), len(after)+1)
+	}
+	// The clear, written while the display name was set, still records the
+	// spelling the key comes from, not the name it removes.
+	clearEvent, err := final[len(final)-1].DecodeEvent()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if text := clearEvent.(domain.PlaceUpdated).Text; text != "Boston, MA" {
+		t.Errorf("clearing event text = %q, want Boston, MA", text)
 	}
 }
 

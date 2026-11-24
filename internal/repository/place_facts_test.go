@@ -64,10 +64,10 @@ func TestPlaces_Facts(t *testing.T) {
 		{ID: PlaceID("boston,ma"), Key: "boston,ma", Name: "Boston", Latitude: strPtr("N42.36"), Longitude: strPtr("W71.06"), Origin: origin, Version: 2},
 		{ID: PlaceID("lost,ma"), Key: "lost,ma", Latitude: strPtr("N42"), Longitude: strPtr("W71"), Origin: origin, Version: 1},
 	}
-	boston := PlaceReadModel{ID: PlaceID("boston,ma"), Key: "boston,ma", Name: "Boston", Count: 2,
+	boston := PlaceReadModel{ID: PlaceID("boston,ma"), Key: "boston,ma", Name: "Boston", Spelling: "Boston, MA", Count: 2,
 		Latitude: strPtr("N42.36"), Longitude: strPtr("W71.06"), Origin: origin, Version: 2}
-	ma := PlaceReadModel{ID: PlaceID("ma"), Key: "ma", Name: "MA", Count: 2}
-	lost := PlaceReadModel{ID: PlaceID("lost,ma"), Key: "lost,ma", Name: "lost,ma",
+	ma := PlaceReadModel{ID: PlaceID("ma"), Key: "ma", Name: "MA", Spelling: "MA", Count: 2}
+	lost := PlaceReadModel{ID: PlaceID("lost,ma"), Key: "lost,ma", Name: "lost,ma", Spelling: "lost,ma",
 		Latitude: strPtr("N42"), Longitude: strPtr("W71"), Origin: origin, Version: 1}
 
 	if got, want := Places(uses, facts, Privacy{}), []PlaceReadModel{boston, ma, lost}; !reflect.DeepEqual(got, want) {

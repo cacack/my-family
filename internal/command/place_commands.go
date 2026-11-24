@@ -87,7 +87,8 @@ func (h *Handler) UpdatePlace(ctx context.Context, input UpdatePlaceInput) (*Upd
 }
 
 // placeKeyAndText finds the key of the place with id and the text a place
-// event records beside it, the name the place shows on main. ListPlaces holds
+// event records beside it: the place's recorded spelling on main, never its
+// display name, so the text is what the key was computed from. ListPlaces holds
 // every place main names and, for a principal who sees everything, every
 // place with facts.
 func (h *Handler) placeKeyAndText(ctx context.Context, id uuid.UUID) (key, text string, err error) {
@@ -97,7 +98,7 @@ func (h *Handler) placeKeyAndText(ctx context.Context, id uuid.UUID) (key, text 
 	}
 	for _, p := range places {
 		if p.ID == id {
-			return p.Key, p.Name, nil
+			return p.Key, p.Spelling, nil
 		}
 	}
 	return "", "", ErrPlaceNotFound

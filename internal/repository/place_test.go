@@ -207,7 +207,7 @@ func TestPlaces(t *testing.T) {
 		{Key: "", Text: " , ", Count: 4},
 	}
 	place := func(key, name string, count int) PlaceReadModel {
-		return PlaceReadModel{ID: PlaceID(key), Key: key, Name: name, Count: count}
+		return PlaceReadModel{ID: PlaceID(key), Key: key, Name: name, Spelling: name, Count: count}
 	}
 	// "MA" (3 uses) outweighs "Ma" (2); Darmstadt's spellings tie and read the
 	// same once their empty parts are dropped.
@@ -230,7 +230,7 @@ func TestPlaces(t *testing.T) {
 // place by the bytewise smaller, "Kiel" before "kiel".
 func TestPlaces_TieBrokenBytewise(t *testing.T) {
 	uses := []PlaceUse{{Key: "kiel", Text: "kiel", Count: 1}, {Key: "kiel", Text: "Kiel", Count: 1}}
-	want := []PlaceReadModel{{ID: PlaceID("kiel"), Key: "kiel", Name: "Kiel", Count: 2}}
+	want := []PlaceReadModel{{ID: PlaceID("kiel"), Key: "kiel", Name: "Kiel", Spelling: "Kiel", Count: 2}}
 	if got := Places(uses, nil, Privacy{}); !reflect.DeepEqual(got, want) {
 		t.Errorf("Places = %+v, want %+v", got, want)
 	}
