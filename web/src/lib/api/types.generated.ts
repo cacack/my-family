@@ -5071,7 +5071,7 @@ export interface components {
             name: string;
             /** @description Full place path */
             full_name: string;
-            /** @description Number of birth and death records at or under this place. Spellings whose place matching key is the same (differing only in letter case, spacing around commas or empty parts) are one place. */
+            /** @description Number of birth and death records at or under this place. Spellings whose place matching key is the same (differing only in letter case, spacing around commas or empty parts) are one place. This counts fewer uses than `Place.count` from `GET /places`, which also counts marriage, life event and attribute places. */
             count: number;
             /** @description Whether this place has sub-locations */
             has_children: boolean;
@@ -5086,7 +5086,7 @@ export interface components {
             key: string;
             /** @description The place's most-used recorded spelling among the records the caller may see, its parts joined with ", " (ties broken bytewise). */
             name: string;
-            /** @description Number of place uses (birth, death, marriage, life event and attribute places) the caller may see at or under this place. */
+            /** @description Number of place uses (birth, death, marriage, life event and attribute places) the caller may see at or under this place. It can be larger than `PlaceEntry.count` from `GET /browse/places`, which counts birth and death places only. */
             count: number;
         };
         PlaceList: {

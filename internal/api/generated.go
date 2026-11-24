@@ -5935,7 +5935,7 @@ type PersonUpdate struct {
 
 // Place defines model for Place.
 type Place struct {
-	// Count Number of place uses (birth, death, marriage, life event and attribute places) the caller may see at or under this place.
+	// Count Number of place uses (birth, death, marriage, life event and attribute places) the caller may see at or under this place. It can be larger than `PlaceEntry.count` from `GET /browse/places`, which counts birth and death places only.
 	Count int `json:"count"`
 
 	// Id UUIDv5 of the place matching key, the same on every install and every branch.
@@ -5950,7 +5950,7 @@ type Place struct {
 
 // PlaceEntry defines model for PlaceEntry.
 type PlaceEntry struct {
-	// Count Number of birth and death records at or under this place. Spellings whose place matching key is the same (differing only in letter case, spacing around commas or empty parts) are one place.
+	// Count Number of birth and death records at or under this place. Spellings whose place matching key is the same (differing only in letter case, spacing around commas or empty parts) are one place. This counts fewer uses than `Place.count` from `GET /places`, which also counts marriage, life event and attribute places.
 	Count int `json:"count"`
 
 	// FullName Full place path

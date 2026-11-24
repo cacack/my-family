@@ -9702,7 +9702,9 @@ components:
           description: >-
             Number of birth and death records at or under this place. Spellings
             whose place matching key is the same (differing only in letter case,
-            spacing around commas or empty parts) are one place.
+            spacing around commas or empty parts) are one place. This counts
+            fewer uses than `Place.count` from `GET /places`, which also counts
+            marriage, life event and attribute places.
         has_children:
           type: boolean
           description: Whether this place has sub-locations
@@ -9731,7 +9733,9 @@ components:
           type: integer
           description: >-
             Number of place uses (birth, death, marriage, life event and
-            attribute places) the caller may see at or under this place.
+            attribute places) the caller may see at or under this place. It can
+            be larger than `PlaceEntry.count` from `GET /browse/places`, which
+            counts birth and death places only.
 
     PlaceList:
       type: object
