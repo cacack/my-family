@@ -235,6 +235,8 @@ Rules that must hold true in the my-family codebase. Violations break architectu
 | **PL-001** | Place text on an event is never rewritten by a place operation: the matching key is stored beside the text, and every read returns the text as recorded | `placetest.RunMatching` (`internal/testutil/placetest`, run by `TestPlaceMatching` in all three backends) checks each person's places and each burial's place come back verbatim |
 | **PL-002** | `repository.PlaceKey` is the only place-matching rule and no SQL implements it: each place-bearing row stores its key in a key column (`birth_place_key`, `death_place_key`, `marriage_place_key`, `place_key`) computed in Go on save, and the place browser, the per-place person list, the cemetery index and the per-cemetery list compare those columns | `TestPlaceMatching` (all three backends), `TestNoSQLPlaceMatchingRule` (`internal/repository`: no SQL store transforms a place text or registers a place function), `TestRebuild_FillsPlaceKeys` (`internal/repository/{sqlite,postgres}`) |
 | **PL-003** | The matching rule and the place ID do not change without an ADR: the rule's case fold is the pinned `placeFoldTable` (Unicode 15.0, `placefold_gen.go`), not the Go release's tables, and a place's ID is `repository.PlaceID`, `UUIDv5(PlaceNamespace, key)`, with `PlaceNamespace` defined beside `PlaceKey` | `TestPlaceKey` (the ADR-009 §1 vectors), `TestPlaceKeyFoldTable` (a checksum of the fold of every code point), `TestPlaceKeyFoldTable_MatchesRule`, `TestPlaceID` (pins the ID of `boston,ma`) (`internal/repository`) |
+| **PL-005** | Place events are main-only: `PlaceUpdated` is not on the BR-006 allowlist, a place command on a branch fails with `command.ErrEventTypeNotBranchAware`, and no place fact table (`places`) has a `branch_id` column, so every branch reads main's facts | `TestPlaceEvents_MainOnly` (`internal/command`: names every place event type, asserts none is in `BranchAwareEventTypes()` and that `UpdatePlace` on a branch fails and appends nothing), `TestPlaceFactTables_NoBranchID` (`internal/repository/{sqlite,postgres}`), `placetest.RunPlaceFacts` (a branch's map reads main's facts, all three backends) |
+| **PL-006** | No place read returns a name, a pair, a count, an alias or a history entry derived only from records hidden from the principal: `repository.Places` lists a place with facts and no visible use only for a principal who sees everything, the privacy decorator returns the facts of visible places only, and the event-output redactor drops the history of a place that is not visible | `TestPrivacyRedaction_Places`, `TestPrivacyRedaction_PlaceFacts` (`internal/api`: every principal), `TestPlaces_Facts` (`internal/repository`), `placetest.RunPlaceFacts` (a hidden place's pin and facts are absent, all three backends) |
 
 ### Domain Model Invariants (DM) - Source: [ETHOS.md](./ETHOS.md) + Code Patterns
 
@@ -296,11 +298,11 @@ Rules that must hold true in the my-family codebase. Violations break architectu
 | ADR-005 (Research Branches) | BR-001 through BR-006 | 6 |
 | ADR-007 (Access Model) | AC-001 through AC-005 | 5 |
 | ADR-008 (Privacy Model) | PV-001 through PV-003 | 3 |
-| ADR-009 (Place Data Model) | PL-001 through PL-003 | 3 |
+| ADR-009 (Place Data Model) | PL-001 through PL-003, PL-005, PL-006 | 5 |
 | ETHOS.md | DM-001 through DM-006, DI-001 through DI-005, QA-001 through QA-003 | 14 |
 | CONVENTIONS.md | API-001 through API-005 | 5 |
 | CONTRIBUTING.md | TS-001 through TS-003 | 3 |
-| **Total** | | **63** |
+| **Total** | | **65** |
 
 ---
 
