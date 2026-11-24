@@ -587,6 +587,30 @@ func (e ConflictStatus) Valid() bool {
 	}
 }
 
+// Defines values for CoordinateSource.
+const (
+	CoordinateSourceCopied   CoordinateSource = "copied"
+	CoordinateSourceGeocoded CoordinateSource = "geocoded"
+	CoordinateSourceImported CoordinateSource = "imported"
+	CoordinateSourceManual   CoordinateSource = "manual"
+)
+
+// Valid indicates whether the value is a known member of the CoordinateSource enum.
+func (e CoordinateSource) Valid() bool {
+	switch e {
+	case CoordinateSourceCopied:
+		return true
+	case CoordinateSourceGeocoded:
+		return true
+	case CoordinateSourceImported:
+		return true
+	case CoordinateSourceManual:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for DateQualifier.
 const (
 	DateQualifierAbt   DateQualifier = "abt"
@@ -1031,6 +1055,24 @@ func (e MapLocationEventType) Valid() bool {
 	case MapLocationEventTypeBirth:
 		return true
 	case MapLocationEventTypeDeath:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for MatchPrecision.
+const (
+	MatchPrecisionFull    MatchPrecision = "full"
+	MatchPrecisionPartial MatchPrecision = "partial"
+)
+
+// Valid indicates whether the value is a known member of the MatchPrecision enum.
+func (e MatchPrecision) Valid() bool {
+	switch e {
+	case MatchPrecisionFull:
+		return true
+	case MatchPrecisionPartial:
 		return true
 	default:
 		return false
@@ -3726,6 +3768,21 @@ type CitationValidationIssueLevel string
 // ConflictStatus defines model for ConflictStatus.
 type ConflictStatus string
 
+// CoordinateOrigin Where a coordinate pair came from. A geocoded origin carries its provider and match precision; no other origin has either.
+type CoordinateOrigin struct {
+	// Precision How much of the place name a geocoder matched: the whole name (full), or only a broader part of it (partial).
+	Precision *MatchPrecision `json:"precision,omitempty"`
+
+	// Provider The geocoder that matched the place name. Required with geocoded.
+	Provider *string `json:"provider,omitempty"`
+
+	// Source How a coordinate pair was obtained: read from a GEDCOM file (imported), typed in (manual), copied from another event's place (copied), or guessed by a geocoder from the place name (geocoded). A pair stored before origins were recorded reads as imported.
+	Source CoordinateSource `json:"source"`
+}
+
+// CoordinateSource How a coordinate pair was obtained: read from a GEDCOM file (imported), typed in (manual), copied from another event's place (copied), or guessed by a geocoder from the place name (geocoded). A pair stored before origins were recorded reads as imported.
+type CoordinateSource string
+
 // CreatedAPIToken defines model for CreatedAPIToken.
 type CreatedAPIToken struct {
 	CreatedAt time.Time          `json:"created_at"`
@@ -4245,6 +4302,9 @@ type Family struct {
 	MarriageNotes *string `json:"marriage_notes,omitempty"`
 	MarriagePlace *string `json:"marriage_place,omitempty"`
 
+	// MarriagePlaceCoordinatesOrigin Where the marriage place coordinates came from; present whenever they are.
+	MarriagePlaceCoordinatesOrigin *CoordinateOrigin `json:"marriage_place_coordinates_origin,omitempty"`
+
 	// MarriagePlaceLatitude Latitude in GEDCOM format (e.g., "N39.7817")
 	MarriagePlaceLatitude nullable.Nullable[string] `json:"marriage_place_latitude,omitempty"`
 
@@ -4312,6 +4372,9 @@ type FamilyCreate struct {
 	MarriageDate  *DateInput `json:"marriage_date,omitempty"`
 	MarriagePlace *string    `json:"marriage_place,omitempty"`
 
+	// MarriagePlaceCoordinatesOrigin How the marriage place coordinates were obtained, given only with both halves set (400 otherwise). Left out, a pair that changes is manual and one left as it is keeps its origin. geocoded without a provider or precision, or a provider or precision on any other source, is rejected with 400.
+	MarriagePlaceCoordinatesOrigin *CoordinateOrigin `json:"marriage_place_coordinates_origin,omitempty"`
+
 	// MarriagePlaceLatitude Latitude in GEDCOM form (e.g., "N39.7817"): N or S, then decimal degrees within 90. Give it with marriage_place_longitude: one half of the pair alone, the wrong axis letter, a value out of range or a pair without a marriage_place is rejected with 400. Stored trimmed, with an upper-case letter.
 	MarriagePlaceLatitude *string `json:"marriage_place_latitude,omitempty"`
 
@@ -4338,6 +4401,9 @@ type FamilyDetail struct {
 	// MarriageNotes NOTEs recorded on the marriage event; omitted when it has none
 	MarriageNotes *string `json:"marriage_notes,omitempty"`
 	MarriagePlace *string `json:"marriage_place,omitempty"`
+
+	// MarriagePlaceCoordinatesOrigin Where the marriage place coordinates came from; present whenever they are.
+	MarriagePlaceCoordinatesOrigin *CoordinateOrigin `json:"marriage_place_coordinates_origin,omitempty"`
 
 	// MarriagePlaceLatitude Latitude in GEDCOM format (e.g., "N39.7817")
 	MarriagePlaceLatitude nullable.Nullable[string] `json:"marriage_place_latitude,omitempty"`
@@ -4413,6 +4479,9 @@ type FamilyUpdate struct {
 	ClearPartner2 *bool                        `json:"clear_partner2,omitempty"`
 	MarriageDate  nullable.Nullable[DateInput] `json:"marriage_date,omitempty"`
 	MarriagePlace nullable.Nullable[string]    `json:"marriage_place,omitempty"`
+
+	// MarriagePlaceCoordinatesOrigin How the marriage place coordinates were obtained, given only with both halves set (400 otherwise). Left out, a pair that changes is manual and one left as it is keeps its origin. geocoded without a provider or precision, or a provider or precision on any other source, is rejected with 400.
+	MarriagePlaceCoordinatesOrigin *CoordinateOrigin `json:"marriage_place_coordinates_origin,omitempty"`
 
 	// MarriagePlaceLatitude Latitude in GEDCOM form (e.g., "N39.7817"): N or S, then decimal degrees within 90. Give it with marriage_place_longitude: one half of the pair alone, the wrong axis letter, a value out of range or a pair without a marriage_place is rejected with 400. Stored trimmed, with an upper-case letter. Send both as null to clear the pair; omit both to leave it unchanged, as changing the place name does.
 	MarriagePlaceLatitude nullable.Nullable[string] `json:"marriage_place_latitude,omitempty"`
@@ -4809,6 +4878,9 @@ type MapLocation struct {
 	// Longitude Longitude in decimal degrees
 	Longitude float64 `json:"longitude"`
 
+	// Origins The distinct sources of the coordinate pairs this location groups (every person with the same place name and event type), in the order imported, manual, copied, geocoded.
+	Origins []CoordinateSource `json:"origins"`
+
 	// PersonIds IDs of the persons at this location, in the same order as `persons`. Kept for existing clients; `persons[].id` carries the same IDs.
 	// Deprecated: Use `persons[].id`, which carries the same IDs in the same order.
 	PersonIds []openapi_types.UUID `json:"person_ids"`
@@ -4830,6 +4902,9 @@ type MapLocationsResponse struct {
 	// Total Total number of locations with coordinates
 	Total int `json:"total"`
 }
+
+// MatchPrecision How much of the place name a geocoder matched: the whole name (full), or only a broader part of it (partial).
+type MatchPrecision string
 
 // Media defines model for Media.
 type Media struct {
@@ -5621,6 +5696,9 @@ type Person struct {
 	BirthDate  *GenDate `json:"birth_date,omitempty"`
 	BirthPlace *string  `json:"birth_place,omitempty"`
 
+	// BirthPlaceCoordinatesOrigin Where the birth place coordinates came from; present whenever they are.
+	BirthPlaceCoordinatesOrigin *CoordinateOrigin `json:"birth_place_coordinates_origin,omitempty"`
+
 	// BirthPlaceLatitude Latitude in GEDCOM format (e.g., "N42.3601")
 	BirthPlaceLatitude nullable.Nullable[string] `json:"birth_place_latitude,omitempty"`
 
@@ -5633,6 +5711,9 @@ type Person struct {
 	// DeathDate Genealogical date with flexible precision
 	DeathDate  *GenDate `json:"death_date,omitempty"`
 	DeathPlace *string  `json:"death_place,omitempty"`
+
+	// DeathPlaceCoordinatesOrigin Where the death place coordinates came from; present whenever they are.
+	DeathPlaceCoordinatesOrigin *CoordinateOrigin `json:"death_place_coordinates_origin,omitempty"`
 
 	// DeathPlaceLatitude Latitude in GEDCOM format (e.g., "N42.3601")
 	DeathPlaceLatitude nullable.Nullable[string] `json:"death_place_latitude,omitempty"`
@@ -5701,6 +5782,9 @@ type PersonCreate struct {
 	BirthDate  *DateInput `json:"birth_date,omitempty"`
 	BirthPlace *string    `json:"birth_place,omitempty"`
 
+	// BirthPlaceCoordinatesOrigin How the birth place coordinates were obtained, given only with both halves set (400 otherwise). Left out, a pair that changes is manual and one left as it is keeps its origin. geocoded without a provider or precision, or a provider or precision on any other source, is rejected with 400.
+	BirthPlaceCoordinatesOrigin *CoordinateOrigin `json:"birth_place_coordinates_origin,omitempty"`
+
 	// BirthPlaceLatitude Latitude in GEDCOM form (e.g., "N42.3601"): N or S, then decimal degrees within 90. Give it with birth_place_longitude: one half of the pair alone, the wrong axis letter, a value out of range or a pair without a birth_place is rejected with 400. Stored trimmed, with an upper-case letter.
 	BirthPlaceLatitude *string `json:"birth_place_latitude,omitempty"`
 
@@ -5740,6 +5824,9 @@ type PersonCreate struct {
 	DeathDate  *DateInput `json:"death_date,omitempty"`
 	DeathPlace *string    `json:"death_place,omitempty"`
 
+	// DeathPlaceCoordinatesOrigin How the death place coordinates were obtained, given only with both halves set (400 otherwise). Left out, a pair that changes is manual and one left as it is keeps its origin. geocoded without a provider or precision, or a provider or precision on any other source, is rejected with 400.
+	DeathPlaceCoordinatesOrigin *CoordinateOrigin `json:"death_place_coordinates_origin,omitempty"`
+
 	// DeathPlaceLatitude Latitude in GEDCOM form (e.g., "N42.3601"): N or S, then decimal degrees within 90. Give it with death_place_longitude: one half of the pair alone, the wrong axis letter, a value out of range or a pair without a death_place is rejected with 400. Stored trimmed, with an upper-case letter.
 	DeathPlaceLatitude *string `json:"death_place_latitude,omitempty"`
 
@@ -5762,6 +5849,9 @@ type PersonDetail struct {
 	BirthDate  *GenDate `json:"birth_date,omitempty"`
 	BirthPlace *string  `json:"birth_place,omitempty"`
 
+	// BirthPlaceCoordinatesOrigin Where the birth place coordinates came from; present whenever they are.
+	BirthPlaceCoordinatesOrigin *CoordinateOrigin `json:"birth_place_coordinates_origin,omitempty"`
+
 	// BirthPlaceLatitude Latitude in GEDCOM format (e.g., "N42.3601")
 	BirthPlaceLatitude nullable.Nullable[string] `json:"birth_place_latitude,omitempty"`
 
@@ -5774,6 +5864,9 @@ type PersonDetail struct {
 	// DeathDate Genealogical date with flexible precision
 	DeathDate  *GenDate `json:"death_date,omitempty"`
 	DeathPlace *string  `json:"death_place,omitempty"`
+
+	// DeathPlaceCoordinatesOrigin Where the death place coordinates came from; present whenever they are.
+	DeathPlaceCoordinatesOrigin *CoordinateOrigin `json:"death_place_coordinates_origin,omitempty"`
 
 	// DeathPlaceLatitude Latitude in GEDCOM format (e.g., "N42.3601")
 	DeathPlaceLatitude nullable.Nullable[string] `json:"death_place_latitude,omitempty"`
@@ -5940,6 +6033,9 @@ type PersonUpdate struct {
 	BirthDate  nullable.Nullable[DateInput] `json:"birth_date,omitempty"`
 	BirthPlace nullable.Nullable[string]    `json:"birth_place,omitempty"`
 
+	// BirthPlaceCoordinatesOrigin How the birth place coordinates were obtained, given only with both halves set (400 otherwise). Left out, a pair that changes is manual and one left as it is keeps its origin. geocoded without a provider or precision, or a provider or precision on any other source, is rejected with 400.
+	BirthPlaceCoordinatesOrigin *CoordinateOrigin `json:"birth_place_coordinates_origin,omitempty"`
+
 	// BirthPlaceLatitude Latitude in GEDCOM form (e.g., "N42.3601"): N or S, then decimal degrees within 90. Give it with birth_place_longitude: one half of the pair alone, the wrong axis letter, a value out of range or a pair without a birth_place is rejected with 400. Stored trimmed, with an upper-case letter. Send both as null to clear the pair; omit both to leave it unchanged, as changing the place name does.
 	BirthPlaceLatitude nullable.Nullable[string] `json:"birth_place_latitude,omitempty"`
 
@@ -5947,6 +6043,9 @@ type PersonUpdate struct {
 	BirthPlaceLongitude nullable.Nullable[string]    `json:"birth_place_longitude,omitempty"`
 	DeathDate           nullable.Nullable[DateInput] `json:"death_date,omitempty"`
 	DeathPlace          nullable.Nullable[string]    `json:"death_place,omitempty"`
+
+	// DeathPlaceCoordinatesOrigin How the death place coordinates were obtained, given only with both halves set (400 otherwise). Left out, a pair that changes is manual and one left as it is keeps its origin. geocoded without a provider or precision, or a provider or precision on any other source, is rejected with 400.
+	DeathPlaceCoordinatesOrigin *CoordinateOrigin `json:"death_place_coordinates_origin,omitempty"`
 
 	// DeathPlaceLatitude Latitude in GEDCOM form (e.g., "N42.3601"): N or S, then decimal degrees within 90. Give it with death_place_longitude: one half of the pair alone, the wrong axis letter, a value out of range or a pair without a death_place is rejected with 400. Stored trimmed, with an upper-case letter. Send both as null to clear the pair; omit both to leave it unchanged, as changing the place name does.
 	DeathPlaceLatitude nullable.Nullable[string] `json:"death_place_latitude,omitempty"`

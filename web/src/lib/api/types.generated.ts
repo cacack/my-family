@@ -4242,6 +4242,23 @@ export interface components {
          * @enum {string}
          */
         LivingOverride: "auto" | "living" | "deceased";
+        /**
+         * @description How a coordinate pair was obtained: read from a GEDCOM file (imported), typed in (manual), copied from another event's place (copied), or guessed by a geocoder from the place name (geocoded). A pair stored before origins were recorded reads as imported.
+         * @enum {string}
+         */
+        CoordinateSource: "imported" | "manual" | "copied" | "geocoded";
+        /**
+         * @description How much of the place name a geocoder matched: the whole name (full), or only a broader part of it (partial).
+         * @enum {string}
+         */
+        MatchPrecision: "full" | "partial";
+        /** @description Where a coordinate pair came from. A geocoded origin carries its provider and match precision; no other origin has either. */
+        CoordinateOrigin: {
+            source: components["schemas"]["CoordinateSource"];
+            /** @description The geocoder that matched the place name. Required with geocoded. */
+            provider?: string;
+            precision?: components["schemas"]["MatchPrecision"];
+        };
         Person: {
             /** Format: uuid */
             id: string;
@@ -4254,12 +4271,16 @@ export interface components {
             birth_place_latitude?: string | null;
             /** @description Longitude in GEDCOM format (e.g., "W71.0589") */
             birth_place_longitude?: string | null;
+            /** @description Where the birth place coordinates came from; present whenever they are. */
+            birth_place_coordinates_origin?: components["schemas"]["CoordinateOrigin"];
             death_date?: components["schemas"]["GenDate"];
             death_place?: string;
             /** @description Latitude in GEDCOM format (e.g., "N42.3601") */
             death_place_latitude?: string | null;
             /** @description Longitude in GEDCOM format (e.g., "W71.0589") */
             death_place_longitude?: string | null;
+            /** @description Where the death place coordinates came from; present whenever they are. */
+            death_place_coordinates_origin?: components["schemas"]["CoordinateOrigin"];
             notes?: string;
             research_status?: components["schemas"]["ResearchStatus"];
             brick_wall_note?: string | null;
@@ -4291,12 +4312,16 @@ export interface components {
             birth_place_latitude?: string;
             /** @description Longitude in GEDCOM form (e.g., "W71.0589"): E or W, then decimal degrees within 180. Given with birth_place_latitude. */
             birth_place_longitude?: string;
+            /** @description How the birth place coordinates were obtained, given only with both halves set (400 otherwise). Left out, a pair that changes is manual and one left as it is keeps its origin. geocoded without a provider or precision, or a provider or precision on any other source, is rejected with 400. */
+            birth_place_coordinates_origin?: components["schemas"]["CoordinateOrigin"];
             death_date?: components["schemas"]["DateInput"];
             death_place?: string;
             /** @description Latitude in GEDCOM form (e.g., "N42.3601"): N or S, then decimal degrees within 90. Give it with death_place_longitude: one half of the pair alone, the wrong axis letter, a value out of range or a pair without a death_place is rejected with 400. Stored trimmed, with an upper-case letter. */
             death_place_latitude?: string;
             /** @description Longitude in GEDCOM form (e.g., "W71.0589"): E or W, then decimal degrees within 180. Given with death_place_latitude. */
             death_place_longitude?: string;
+            /** @description How the death place coordinates were obtained, given only with both halves set (400 otherwise). Left out, a pair that changes is manual and one left as it is keeps its origin. geocoded without a provider or precision, or a provider or precision on any other source, is rejected with 400. */
+            death_place_coordinates_origin?: components["schemas"]["CoordinateOrigin"];
             notes?: string;
             research_status?: components["schemas"]["ResearchStatus"];
         };
@@ -4311,12 +4336,16 @@ export interface components {
             birth_place_latitude?: string | null;
             /** @description Longitude in GEDCOM form (e.g., "W71.0589"): E or W, then decimal degrees within 180. Given with birth_place_latitude. */
             birth_place_longitude?: string | null;
+            /** @description How the birth place coordinates were obtained, given only with both halves set (400 otherwise). Left out, a pair that changes is manual and one left as it is keeps its origin. geocoded without a provider or precision, or a provider or precision on any other source, is rejected with 400. */
+            birth_place_coordinates_origin?: components["schemas"]["CoordinateOrigin"];
             death_date?: components["schemas"]["DateInput"] | null;
             death_place?: string | null;
             /** @description Latitude in GEDCOM form (e.g., "N42.3601"): N or S, then decimal degrees within 90. Give it with death_place_longitude: one half of the pair alone, the wrong axis letter, a value out of range or a pair without a death_place is rejected with 400. Stored trimmed, with an upper-case letter. Send both as null to clear the pair; omit both to leave it unchanged, as changing the place name does. */
             death_place_latitude?: string | null;
             /** @description Longitude in GEDCOM form (e.g., "W71.0589"): E or W, then decimal degrees within 180. Given with death_place_latitude. */
             death_place_longitude?: string | null;
+            /** @description How the death place coordinates were obtained, given only with both halves set (400 otherwise). Left out, a pair that changes is manual and one left as it is keeps its origin. geocoded without a provider or precision, or a provider or precision on any other source, is rejected with 400. */
+            death_place_coordinates_origin?: components["schemas"]["CoordinateOrigin"];
             notes?: string | null;
             research_status?: components["schemas"]["ResearchStatus"] | null;
             /** @description Override the living rule for this person; auto or null resets it to the rule. Omit it to leave the override unchanged. */
@@ -4404,6 +4433,8 @@ export interface components {
             marriage_place_latitude?: string | null;
             /** @description Longitude in GEDCOM format (e.g., "W89.6501") */
             marriage_place_longitude?: string | null;
+            /** @description Where the marriage place coordinates came from; present whenever they are. */
+            marriage_place_coordinates_origin?: components["schemas"]["CoordinateOrigin"];
             /** @description The marriage event's GEDCOM TYPE (e.g. "Civil"); omitted when it has none */
             marriage_type_detail?: string;
             /** @description NOTEs recorded on the marriage event; omitted when it has none */
@@ -4427,6 +4458,8 @@ export interface components {
             marriage_place_latitude?: string;
             /** @description Longitude in GEDCOM form (e.g., "W89.6501"): E or W, then decimal degrees within 180. Given with marriage_place_latitude. */
             marriage_place_longitude?: string;
+            /** @description How the marriage place coordinates were obtained, given only with both halves set (400 otherwise). Left out, a pair that changes is manual and one left as it is keeps its origin. geocoded without a provider or precision, or a provider or precision on any other source, is rejected with 400. */
+            marriage_place_coordinates_origin?: components["schemas"]["CoordinateOrigin"];
         };
         /** @description Partial update. A field left out stays unchanged; an optional (nullable) field sent as null is cleared. Required fields reject null. */
         FamilyUpdate: {
@@ -4459,6 +4492,8 @@ export interface components {
             marriage_place_latitude?: string | null;
             /** @description Longitude in GEDCOM form (e.g., "W89.6501"): E or W, then decimal degrees within 180. Given with marriage_place_latitude. */
             marriage_place_longitude?: string | null;
+            /** @description How the marriage place coordinates were obtained, given only with both halves set (400 otherwise). Left out, a pair that changes is manual and one left as it is keeps its origin. geocoded without a provider or precision, or a provider or precision on any other source, is rejected with 400. */
+            marriage_place_coordinates_origin?: components["schemas"]["CoordinateOrigin"];
             /** @description Mark the record private, which adds confidential to its GEDCOM restriction notice (RESN), or not, which removes confidential and privacy. Other RESN values, such as locked, are kept. Omit it to leave the mark unchanged. */
             private?: boolean;
             /** Format: int64 */
@@ -5163,6 +5198,8 @@ export interface components {
             person_ids: string[];
             /** @description Persons at this location, named so a client can list them without a lookup each */
             persons: components["schemas"]["PersonSummary"][];
+            /** @description The distinct sources of the coordinate pairs this location groups (every person with the same place name and event type), in the order imported, manual, copied, geocoded. */
+            origins: components["schemas"]["CoordinateSource"][];
         };
         BrickWallsResponse: {
             items: components["schemas"]["BrickWallEntry"][];

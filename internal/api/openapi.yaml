@@ -8257,6 +8257,34 @@ components:
         An editor's override of the living rule (ADR-008): auto lets the rule
         decide; living or deceased decides for it.
 
+    CoordinateSource:
+      type: string
+      enum: [imported, manual, copied, geocoded]
+      description: >-
+        How a coordinate pair was obtained: read from a GEDCOM file (imported), typed in
+        (manual), copied from another event's place (copied), or guessed by a geocoder
+        from the place name (geocoded). A pair stored before origins were recorded
+        reads as imported.
+    MatchPrecision:
+      type: string
+      enum: [full, partial]
+      description: >-
+        How much of the place name a geocoder matched: the whole name (full), or only a
+        broader part of it (partial).
+    CoordinateOrigin:
+      type: object
+      required: [source]
+      description: >-
+        Where a coordinate pair came from. A geocoded origin carries its provider and
+        match precision; no other origin has either.
+      properties:
+        source:
+          $ref: '#/components/schemas/CoordinateSource'
+        provider:
+          type: string
+          description: The geocoder that matched the place name. Required with geocoded.
+        precision:
+          $ref: '#/components/schemas/MatchPrecision'
     Person:
       type: object
       required: [id, given_name, surname, version]
@@ -8284,6 +8312,10 @@ components:
           type: string
           nullable: true
           description: Longitude in GEDCOM format (e.g., "W71.0589")
+        birth_place_coordinates_origin:
+          allOf:
+            - $ref: '#/components/schemas/CoordinateOrigin'
+          description: Where the birth place coordinates came from; present whenever they are.
         death_date:
           $ref: '#/components/schemas/GenDate'
         death_place:
@@ -8296,6 +8328,10 @@ components:
           type: string
           nullable: true
           description: Longitude in GEDCOM format (e.g., "W71.0589")
+        death_place_coordinates_origin:
+          allOf:
+            - $ref: '#/components/schemas/CoordinateOrigin'
+          description: Where the death place coordinates came from; present whenever they are.
         notes:
           type: string
         research_status:
@@ -8368,6 +8404,14 @@ components:
           description: >-
             Longitude in GEDCOM form (e.g., "W71.0589"): E or W, then decimal degrees
             within 180. Given with birth_place_latitude.
+        birth_place_coordinates_origin:
+          allOf:
+            - $ref: '#/components/schemas/CoordinateOrigin'
+          description: >-
+            How the birth place coordinates were obtained, given only with both halves set
+            (400 otherwise). Left out, a pair that changes is manual and one left as it
+            is keeps its origin. geocoded without a provider or precision, or a provider
+            or precision on any other source, is rejected with 400.
         death_date:
           $ref: '#/components/schemas/DateInput'
         death_place:
@@ -8384,6 +8428,14 @@ components:
           description: >-
             Longitude in GEDCOM form (e.g., "W71.0589"): E or W, then decimal degrees
             within 180. Given with death_place_latitude.
+        death_place_coordinates_origin:
+          allOf:
+            - $ref: '#/components/schemas/CoordinateOrigin'
+          description: >-
+            How the death place coordinates were obtained, given only with both halves set
+            (400 otherwise). Left out, a pair that changes is manual and one left as it
+            is keeps its origin. geocoded without a provider or precision, or a provider
+            or precision on any other source, is rejected with 400.
         notes:
           type: string
         research_status:
@@ -8434,6 +8486,14 @@ components:
           description: >-
             Longitude in GEDCOM form (e.g., "W71.0589"): E or W, then decimal degrees
             within 180. Given with birth_place_latitude.
+        birth_place_coordinates_origin:
+          allOf:
+            - $ref: '#/components/schemas/CoordinateOrigin'
+          description: >-
+            How the birth place coordinates were obtained, given only with both halves set
+            (400 otherwise). Left out, a pair that changes is manual and one left as it
+            is keeps its origin. geocoded without a provider or precision, or a provider
+            or precision on any other source, is rejected with 400.
         death_date:
           allOf:
             - $ref: '#/components/schemas/DateInput'
@@ -8457,6 +8517,14 @@ components:
           description: >-
             Longitude in GEDCOM form (e.g., "W71.0589"): E or W, then decimal degrees
             within 180. Given with death_place_latitude.
+        death_place_coordinates_origin:
+          allOf:
+            - $ref: '#/components/schemas/CoordinateOrigin'
+          description: >-
+            How the death place coordinates were obtained, given only with both halves set
+            (400 otherwise). Left out, a pair that changes is manual and one left as it
+            is keeps its origin. geocoded without a provider or precision, or a provider
+            or precision on any other source, is rejected with 400.
         notes:
           nullable: true
           type: string
@@ -8636,6 +8704,10 @@ components:
           type: string
           nullable: true
           description: Longitude in GEDCOM format (e.g., "W89.6501")
+        marriage_place_coordinates_origin:
+          allOf:
+            - $ref: '#/components/schemas/CoordinateOrigin'
+          description: Where the marriage place coordinates came from; present whenever they are.
         marriage_type_detail:
           type: string
           description: The marriage event's GEDCOM TYPE (e.g. "Civil"); omitted when it has none
@@ -8681,6 +8753,14 @@ components:
           description: >-
             Longitude in GEDCOM form (e.g., "W89.6501"): E or W, then decimal degrees
             within 180. Given with marriage_place_latitude.
+        marriage_place_coordinates_origin:
+          allOf:
+            - $ref: '#/components/schemas/CoordinateOrigin'
+          description: >-
+            How the marriage place coordinates were obtained, given only with both halves set
+            (400 otherwise). Left out, a pair that changes is manual and one left as it
+            is keeps its origin. geocoded without a provider or precision, or a provider
+            or precision on any other source, is rejected with 400.
 
     FamilyUpdate:
       description: >-
@@ -8744,6 +8824,14 @@ components:
           description: >-
             Longitude in GEDCOM form (e.g., "W89.6501"): E or W, then decimal degrees
             within 180. Given with marriage_place_latitude.
+        marriage_place_coordinates_origin:
+          allOf:
+            - $ref: '#/components/schemas/CoordinateOrigin'
+          description: >-
+            How the marriage place coordinates were obtained, given only with both halves set
+            (400 otherwise). Left out, a pair that changes is manual and one left as it
+            is keeps its origin. geocoded without a provider or precision, or a provider
+            or precision on any other source, is rejected with 400.
         private:
           type: boolean
           description: >-
@@ -9876,7 +9964,7 @@ components:
 
     MapLocation:
       type: object
-      required: [place, latitude, longitude, event_type, count, person_ids, persons]
+      required: [place, latitude, longitude, event_type, count, person_ids, persons, origins]
       properties:
         place:
           type: string
@@ -9909,6 +9997,14 @@ components:
           items:
             $ref: '#/components/schemas/PersonSummary'
           description: Persons at this location, named so a client can list them without a lookup each
+        origins:
+          type: array
+          items:
+            $ref: '#/components/schemas/CoordinateSource'
+          description: >-
+            The distinct sources of the coordinate pairs this location groups (every person
+            with the same place name and event type), in the order imported, manual, copied,
+            geocoded.
 
     BrickWallsResponse:
       type: object
