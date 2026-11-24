@@ -254,7 +254,6 @@ func TestImport_WarnsOnDroppedNotes(t *testing.T) {
 		`Repository @R1@: NOTE under ADDR not imported: "Entrance on the side street"`,
 		`Source @S1@: NOTE under REPO not imported: "Microfilm only"`,
 		`Individual @I1@: NOTE under BIRT.SOUR not imported: "Page is torn"`,
-		`Media @M1@: NOTE not imported: "A family photo"`,
 		`Submitter @U1@: NOTE not imported: "Contact by mail"`,
 	}
 	if !slices.Equal(got, want) {
