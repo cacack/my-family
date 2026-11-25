@@ -190,6 +190,8 @@ type ReadModelStore struct {
 	duplicateDismissals   map[branchKey]*repository.DuplicateDismissalReadModel // branch-scoped (#1036)
 	places                map[uuid.UUID]*repository.PlaceFactsReadModel         // main-only (ADR-009, PL-005)
 	placeAliases          []repository.PlaceAliasReadModel                      // main-only (ADR-009 §3, PL-005)
+	placeForms            map[uuid.UUID][]repository.PlaceFormReadModel         // main-only (ADR-009 §8, PL-005)
+	placeExternalIDs      map[uuid.UUID][]repository.PlaceExternalIDReadModel   // main-only (ADR-009 §8, PL-005)
 	projectionFailures    []repository.ProjectionFailure                        // #845
 	rebuildState          []byte                                                // #845; outlives ResetReadModel
 	schemaVersion         int                                                   // #680; outlives ResetReadModel
@@ -232,6 +234,8 @@ func (s *ReadModelStore) clear() {
 	s.duplicateDismissals = make(map[branchKey]*repository.DuplicateDismissalReadModel)
 	s.places = make(map[uuid.UUID]*repository.PlaceFactsReadModel)
 	s.placeAliases = nil
+	s.placeForms = make(map[uuid.UUID][]repository.PlaceFormReadModel)
+	s.placeExternalIDs = make(map[uuid.UUID][]repository.PlaceExternalIDReadModel)
 	s.projectionFailures = nil
 }
 
@@ -2523,6 +2527,60 @@ func (s *ReadModelStore) ReplacePlaceAliases(ctx context.Context, aliases []repo
 	s.placeAliases = slices.Clone(aliases)
 	sort.Slice(s.placeAliases, func(i, j int) bool { return s.placeAliases[i].Key < s.placeAliases[j].Key })
 	return nil
+}
+
+// ReplacePlaceForms replaces a place's forms (main-only, PL-005).
+func (s *ReadModelStore) ReplacePlaceForms(ctx context.Context, placeID uuid.UUID, forms []repository.PlaceFormReadModel) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(forms) == 0 {
+		delete(s.placeForms, placeID)
+		return nil
+	}
+	stored := slices.Clone(forms)
+	for i := range stored {
+		stored[i].PlaceID = placeID
+	}
+	slices.SortFunc(stored, func(a, b repository.PlaceFormReadModel) int { return strings.Compare(a.PositionalKey, b.PositionalKey) })
+	s.placeForms[placeID] = stored
+	return nil
+}
+
+// ListPlaceForms returns every place's forms, keyed by place ID.
+func (s *ReadModelStore) ListPlaceForms(ctx context.Context) (map[uuid.UUID][]repository.PlaceFormReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make(map[uuid.UUID][]repository.PlaceFormReadModel, len(s.placeForms))
+	for id, forms := range s.placeForms {
+		out[id] = slices.Clone(forms)
+	}
+	return out, nil
+}
+
+// ReplacePlaceExternalIDs replaces a place's external IDs (main-only, PL-005).
+func (s *ReadModelStore) ReplacePlaceExternalIDs(ctx context.Context, placeID uuid.UUID, ids []repository.PlaceExternalIDReadModel) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	stored := stampExternalIDs(ids, func(id *repository.PlaceExternalIDReadModel, seq int) {
+		id.PlaceID, id.Sequence = placeID, seq
+	})
+	if stored == nil {
+		delete(s.placeExternalIDs, placeID)
+		return nil
+	}
+	s.placeExternalIDs[placeID] = stored
+	return nil
+}
+
+// ListPlaceExternalIDs returns every place's external IDs, keyed by place ID.
+func (s *ReadModelStore) ListPlaceExternalIDs(ctx context.Context) (map[uuid.UUID][]repository.PlaceExternalIDReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make(map[uuid.UUID][]repository.PlaceExternalIDReadModel, len(s.placeExternalIDs))
+	for id, ids := range s.placeExternalIDs {
+		out[id] = slices.Clone(ids)
+	}
+	return out, nil
 }
 
 // GetPersonsByCemetery returns persons with burial/cremation events at the given

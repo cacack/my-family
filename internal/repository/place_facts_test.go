@@ -131,3 +131,34 @@ func TestMapLocations_NameFromSpellings(t *testing.T) {
 		t.Errorf("kiel location = %+v, want Kiel with 3 persons", got[0])
 	}
 }
+
+// TestChangePlaceFormsAndExternalIDs reads the "forms" and "external_ids"
+// changes of a PlaceUpdated as the log decodes them: nil clears, an empty
+// form is no form, and a value of the wrong shape is ignored.
+func TestChangePlaceFormsAndExternalIDs(t *testing.T) {
+	forms, ok := changePlaceForms(map[string]any{"b,c": "Town, State", "a": "City", "x,,y": ""})
+	if want := []PlaceFormReadModel{{PositionalKey: "a", Form: "City"}, {PositionalKey: "b,c", Form: "Town, State"}}; !ok || !reflect.DeepEqual(forms, want) {
+		t.Errorf("changePlaceForms = %+v, %v; want %+v", forms, ok, want)
+	}
+	for _, bad := range []any{"City", map[string]any{"a": 1}} {
+		if _, ok := changePlaceForms(bad); ok {
+			t.Errorf("changePlaceForms(%v) ok, want ignored", bad)
+		}
+	}
+	if forms, ok := changePlaceForms(nil); !ok || forms != nil {
+		t.Errorf("changePlaceForms(nil) = %v, %v; want a clear", forms, ok)
+	}
+
+	ids, ok := changePlaceExternalIDs([]any{map[string]any{"value": "Q1", "type": "https://www.wikidata.org/entity"}, map[string]any{"value": "7"}})
+	if want := []PlaceExternalIDReadModel{{Value: "Q1", Type: "https://www.wikidata.org/entity"}, {Value: "7"}}; !ok || !reflect.DeepEqual(ids, want) {
+		t.Errorf("changePlaceExternalIDs = %+v, %v; want %+v", ids, ok, want)
+	}
+	for _, bad := range []any{"Q1", []any{"Q1"}} {
+		if _, ok := changePlaceExternalIDs(bad); ok {
+			t.Errorf("changePlaceExternalIDs(%v) ok, want ignored", bad)
+		}
+	}
+	if ids, ok := changePlaceExternalIDs(nil); !ok || ids != nil {
+		t.Errorf("changePlaceExternalIDs(nil) = %v, %v; want a clear", ids, ok)
+	}
+}

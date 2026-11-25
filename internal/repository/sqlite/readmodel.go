@@ -474,6 +474,24 @@ func (s *ReadModelStore) createTables() error {
 			resolved_key TEXT NOT NULL
 		);
 
+		-- Place forms and external IDs (ADR-009 §2, §8), projected from
+		-- PlaceUpdated: a form per part layout (positional key) of a place's
+		-- texts, and its GEDCOM 7.0 EXIDs in order. Main-only (PL-005).
+		CREATE TABLE IF NOT EXISTS place_forms (
+			place_id TEXT NOT NULL,
+			positional_key TEXT NOT NULL,
+			form TEXT NOT NULL,
+			PRIMARY KEY (place_id, positional_key)
+		);
+
+		CREATE TABLE IF NOT EXISTS place_external_ids (
+			place_id TEXT NOT NULL,
+			sequence INTEGER NOT NULL,
+			value TEXT NOT NULL,
+			type TEXT NOT NULL DEFAULT '',
+			PRIMARY KEY (place_id, sequence)
+		);
+
 		-- Family external identifiers (GEDCOM 7.0 EXID)
 		CREATE TABLE IF NOT EXISTS family_external_ids (
 			family_id TEXT NOT NULL,
@@ -5498,6 +5516,84 @@ func (s *ReadModelStore) ReplacePlaceAliases(ctx context.Context, aliases []repo
 		}
 	}
 	return tx.Commit()
+}
+
+// ReplacePlaceForms replaces a place's forms in one transaction (main-only,
+// PL-005).
+func (s *ReadModelStore) ReplacePlaceForms(ctx context.Context, placeID uuid.UUID, forms []repository.PlaceFormReadModel) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin replace place forms: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `DELETE FROM place_forms WHERE place_id = ?`, placeID.String()); err != nil {
+		return fmt.Errorf("clear place forms: %w", err)
+	}
+	for _, f := range forms {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO place_forms (place_id, positional_key, form) VALUES (?, ?, ?)`,
+			placeID.String(), f.PositionalKey, f.Form); err != nil {
+			return fmt.Errorf("save place form: %w", err)
+		}
+	}
+	return tx.Commit()
+}
+
+// ListPlaceForms returns every place's forms, keyed by place ID, each place's
+// by positional key.
+func (s *ReadModelStore) ListPlaceForms(ctx context.Context) (map[uuid.UUID][]repository.PlaceFormReadModel, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT place_id, positional_key, form FROM place_forms ORDER BY place_id, positional_key`)
+	if err != nil {
+		return nil, fmt.Errorf("list place forms: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	out := make(map[uuid.UUID][]repository.PlaceFormReadModel)
+	for rows.Next() {
+		var (
+			idStr string
+			f     repository.PlaceFormReadModel
+		)
+		if err := rows.Scan(&idStr, &f.PositionalKey, &f.Form); err != nil {
+			return nil, fmt.Errorf("scan place form: %w", err)
+		}
+		id, err := uuid.Parse(idStr)
+		if err != nil {
+			return nil, fmt.Errorf("parse place form place id: %w", err)
+		}
+		f.PlaceID = id
+		out[id] = append(out[id], f)
+	}
+	return out, rows.Err()
+}
+
+// ReplacePlaceExternalIDs replaces a place's external IDs (GEDCOM 7.0 EXID)
+// in one transaction (main-only, PL-005).
+func (s *ReadModelStore) ReplacePlaceExternalIDs(ctx context.Context, placeID uuid.UUID, ids []repository.PlaceExternalIDReadModel) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin replace place external ids: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `DELETE FROM place_external_ids WHERE place_id = ?`, placeID.String()); err != nil {
+		return fmt.Errorf("clear place external ids: %w", err)
+	}
+	for i, id := range ids {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO place_external_ids (place_id, sequence, value, type) VALUES (?, ?, ?, ?)`,
+			placeID.String(), i, id.Value, id.Type); err != nil {
+			return fmt.Errorf("save place external id: %w", err)
+		}
+	}
+	return tx.Commit()
+}
+
+// ListPlaceExternalIDs returns every place's external IDs, keyed by place
+// ID, in one query.
+func (s *ReadModelStore) ListPlaceExternalIDs(ctx context.Context) (map[uuid.UUID][]repository.PlaceExternalIDReadModel, error) {
+	return queryExternalIDs(ctx, s.db, "place_external_ids", `
+		SELECT place_id, sequence, value, type FROM place_external_ids
+		ORDER BY place_id, sequence
+	`, nil, func(placeID uuid.UUID, seq int, value, typ string) repository.PlaceExternalIDReadModel {
+		return repository.PlaceExternalIDReadModel{PlaceID: placeID, Sequence: seq, Value: value, Type: typ}
+	})
 }
 
 // placeKeysJSON is a set of place keys as the one JSON-array parameter that

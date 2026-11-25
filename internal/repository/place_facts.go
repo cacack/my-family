@@ -28,6 +28,25 @@ type PlaceFactsReadModel struct {
 	UpdatedAt time.Time
 }
 
+// PlaceFormReadModel is a row of place_forms (ADR-009 §2, §8): the PLAC.FORM
+// labels of a place's recorded texts whose positional key
+// (PositionalPlaceKey) is PositionalKey. A form belongs to a part layout, not
+// to the place, as texts of one key can have different numbers of parts.
+type PlaceFormReadModel struct {
+	PlaceID       uuid.UUID
+	PositionalKey string
+	Form          string
+}
+
+// PlaceExternalIDReadModel is a row of place_external_ids: one GEDCOM 7.0
+// EXID of a place, such as a gazetteer entry. Sequence keeps their order.
+type PlaceExternalIDReadModel struct {
+	PlaceID  uuid.UUID
+	Sequence int
+	Value    string
+	Type     string
+}
+
 // HasCoordinates reports whether the place has a coordinate pair.
 func (f *PlaceFactsReadModel) HasCoordinates() bool {
 	return f != nil && pairSet(f.Latitude, f.Longitude)

@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -1860,6 +1861,18 @@ func (p *Projector) projectPlaceUpdated(ctx context.Context, e domain.PlaceUpdat
 					facts.ParentKey = v
 				}
 			}
+		case "forms":
+			if forms, ok := changePlaceForms(value); ok {
+				if err := p.readStore.ReplacePlaceForms(ctx, e.PlaceID, forms); err != nil {
+					return err
+				}
+			}
+		case "external_ids":
+			if ids, ok := changePlaceExternalIDs(value); ok {
+				if err := p.readStore.ReplacePlaceExternalIDs(ctx, e.PlaceID, ids); err != nil {
+					return err
+				}
+			}
 		default:
 			slog.Warn("projection: ignoring unknown change key", "event", "PlaceUpdated", "key", key)
 		}
@@ -1867,6 +1880,54 @@ func (p *Projector) projectPlaceUpdated(ctx context.Context, e domain.PlaceUpdat
 	facts.Version = version
 	facts.UpdatedAt = e.OccurredAt()
 	return p.readStore.SavePlaceFacts(ctx, facts)
+}
+
+// changePlaceForms reads a place's "forms" change (ADR-009 §8): the whole
+// set, an object of form by positional key, or nil to clear them all. An
+// empty form is no form.
+func changePlaceForms(value any) ([]PlaceFormReadModel, bool) {
+	if value == nil {
+		return nil, true
+	}
+	byKey, ok := value.(map[string]any)
+	if !ok {
+		return nil, false
+	}
+	forms := make([]PlaceFormReadModel, 0, len(byKey))
+	for positional, v := range byKey {
+		form, ok := v.(string)
+		if !ok {
+			return nil, false
+		}
+		if form != "" {
+			forms = append(forms, PlaceFormReadModel{PositionalKey: positional, Form: form})
+		}
+	}
+	slices.SortFunc(forms, func(a, b PlaceFormReadModel) int { return cmp.Compare(a.PositionalKey, b.PositionalKey) })
+	return forms, true
+}
+
+// changePlaceExternalIDs reads a place's "external_ids" change: the whole
+// list in order, each a {value, type} object, or nil to clear them.
+func changePlaceExternalIDs(value any) ([]PlaceExternalIDReadModel, bool) {
+	if value == nil {
+		return nil, true
+	}
+	list, ok := value.([]any)
+	if !ok {
+		return nil, false
+	}
+	ids := make([]PlaceExternalIDReadModel, 0, len(list))
+	for _, item := range list {
+		m, ok := item.(map[string]any)
+		if !ok {
+			return nil, false
+		}
+		v, _ := m["value"].(string)
+		t, _ := m["type"].(string)
+		ids = append(ids, PlaceExternalIDReadModel{Value: v, Type: t})
+	}
+	return ids, true
 }
 
 // placeParentClosesCycle reports whether stating parent as the explicit parent

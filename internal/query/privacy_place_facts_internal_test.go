@@ -85,3 +85,54 @@ func TestPrivacyStore_PlaceFacts(t *testing.T) {
 		t.Errorf("Resolve(blank) = %+v, want nil", got)
 	}
 }
+
+// TestPrivacyStore_PlaceFormsAndExternalIDs is PL-006 for a place's forms and
+// EXIDs: a principal gets them only for a place a record they may see names.
+func TestPrivacyStore_PlaceFormsAndExternalIDs(t *testing.T) {
+	ctx := context.Background()
+	raw := memory.NewReadModelStore()
+	now := time.Now().UTC()
+	for _, p := range []*repository.PersonReadModel{
+		{ID: uuid.New(), GivenName: "Dora", BirthPlace: "Boston, MA", DeathEvidence: true, Version: 1, UpdatedAt: now},
+		{ID: uuid.New(), GivenName: "Lena", BirthPlace: "Livingston, MA", Version: 1, UpdatedAt: now},
+	} {
+		if err := raw.SavePerson(ctx, domain.MainBranchID, p); err != nil {
+			t.Fatal(err)
+		}
+	}
+	store := NewPrivacyStore(raw)
+	boston, livingston := repository.PlaceID("boston,ma"), repository.PlaceID("livingston,ma")
+	for _, id := range []uuid.UUID{boston, livingston} {
+		if err := store.ReplacePlaceForms(ctx, id, []repository.PlaceFormReadModel{{PositionalKey: "x,y", Form: "City, State"}}); err != nil {
+			t.Fatal(err)
+		}
+		if err := store.ReplacePlaceExternalIDs(ctx, id, []repository.PlaceExternalIDReadModel{{Value: "Q1"}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	places := func(ctx context.Context) (forms, ids []uuid.UUID) {
+		t.Helper()
+		f, err := store.ListPlaceForms(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		x, err := store.ListPlaceExternalIDs(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for id := range f {
+			forms = append(forms, id)
+		}
+		for id := range x {
+			ids = append(ids, id)
+		}
+		return forms, ids
+	}
+	owner := repository.ContextWithPrincipal(ctx, repository.Principal{Role: repository.RoleOwner})
+	if forms, ids := places(owner); len(forms) != 2 || len(ids) != 2 {
+		t.Errorf("owner reads forms of %v and EXIDs of %v, want both places", forms, ids)
+	}
+	if forms, ids := places(strictViewerCtx(false)); len(forms) != 1 || forms[0] != boston || len(ids) != 1 || ids[0] != boston {
+		t.Errorf("viewer reads forms of %v and EXIDs of %v, want Boston's only", forms, ids)
+	}
+}
