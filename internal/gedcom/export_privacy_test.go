@@ -125,3 +125,64 @@ func TestExport_MediaHiddenFromThePrincipalIsLeftOut(t *testing.T) {
 		}
 	}
 }
+
+// A place's form, EXIDs and pair are written only under events the export's
+// privacy filter lets through: under the visible person's birth, and nowhere
+// for the place only a hidden person names (ADR-009 §10).
+func TestExport_PlaceFactsOnlyUnderVisibleEvents(t *testing.T) {
+	ctx := context.Background()
+	store := memory.NewReadModelStore()
+	main := domain.MainBranchID
+	now := time.Now().UTC()
+	for _, p := range []struct {
+		given, place string
+		dead         bool
+	}{{"Dorian", "Darmstadt,,,Germany", true}, {"Lumi", "Kiel, Germany", false}, {"Kai", "Darmstadt,,,Germany", false}} {
+		if err := store.SavePerson(ctx, main, &repository.PersonReadModel{ID: uuid.New(), GivenName: p.given, Surname: "Hollis",
+			FullName: p.given + " Hollis", BirthDateRaw: "1990", BirthPlace: p.place, DeathEvidence: p.dead, Version: 1, UpdatedAt: now}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	projector := repository.NewProjector(store, nil)
+	for _, place := range []struct{ key, text, positional, form, exid, lat, long string }{
+		{"darmstadt,germany", "Darmstadt,,,Germany", "darmstadt,,,germany", "City, County, State, Country", "Q2973", "N49.87", "E8.65"},
+		{"kiel,germany", "Kiel, Germany", "kiel,germany", "Town, Country", "Q1707", "N54.32", "E10.14"},
+	} {
+		event, err := repository.CanonicalizeChanges(domain.NewPlaceUpdated(repository.PlaceID(place.key), place.key, place.text, map[string]any{
+			"latitude": place.lat, "longitude": place.long, "forms": map[string]string{place.positional: place.form},
+			"external_ids": []domain.ExternalIdentifier{{Value: place.exid}},
+		}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := projector.Project(ctx, event, 1, main); err != nil {
+			t.Fatal(err)
+		}
+	}
+	export := func(principal repository.Principal) string {
+		t.Helper()
+		var buf bytes.Buffer
+		if _, err := gedcom.NewExporter(query.NewPrivacyStore(store)).Export(repository.ContextWithPrincipal(ctx, principal), &buf); err != nil {
+			t.Fatalf("export: %v", err)
+		}
+		return buf.String()
+	}
+
+	out := export(repository.Principal{Role: repository.RoleViewer, Anonymous: true})
+	darmstadt := "2 PLAC Darmstadt,,,Germany\n3 FORM City, County, State, Country\n3 MAP\n4 LATI N49.87\n4 LONG E8.65\n3 EXID Q2973\n"
+	if got := strings.Count(out, darmstadt); got != 1 {
+		t.Errorf("visitor export writes Darmstadt's facts %d times, want once, under Dorian's birth:\n%s", got, out)
+	}
+	for _, hidden := range []string{"Kiel", "Town, Country", "Q1707", "N54.32"} {
+		if strings.Contains(out, hidden) {
+			t.Errorf("visitor export holds %q:\n%s", hidden, out)
+		}
+	}
+	out = export(repository.Principal{Role: repository.RoleOwner})
+	if got := strings.Count(out, darmstadt); got != 2 {
+		t.Errorf("owner export writes Darmstadt's facts %d times, want twice:\n%s", got, out)
+	}
+	if !strings.Contains(out, "2 PLAC Kiel, Germany\n3 FORM Town, Country\n3 MAP\n4 LATI N54.32\n4 LONG E10.14\n3 EXID Q1707\n") {
+		t.Errorf("owner export lacks Kiel's facts:\n%s", out)
+	}
+}

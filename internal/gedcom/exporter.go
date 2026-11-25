@@ -179,6 +179,10 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 	if err != nil {
 		return nil, err
 	}
+	places, err := loadExportPlaces(ctx, exp.readStore)
+	if err != nil {
+		return nil, err
+	}
 
 	// Calculate total items for progress tracking
 	// Weight persons more heavily since they have the most processing
@@ -526,6 +530,7 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 
 	doc.Records = append(doc.Records, mediaRecords...)
 	result.MediaExported = len(mediaRecords)
+	places.addTo(doc)
 
 	// Resolve the target GEDCOM version. An explicit caller choice always wins.
 	// Otherwise default to 5.5 and upgrade to 7.0 if the document uses any

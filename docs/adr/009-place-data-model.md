@@ -437,7 +437,9 @@ or in spacing around commas become one entry, on every store.
   with (section 1): the `PLAC`'s own `FORM`, otherwise the file's `HEAD.PLAC.FORM`. A form is set
   for a part layout that has none; a different form for a layout that already has one is reported
   as an import warning and not applied. Within one import the first form in file order wins:
-  records in the order the file lists them, and a record's `PLAC` lines in order. The importer
+  records in the order the file lists them, and within a record its events' `PLAC` lines in order,
+  then its attributes'. (gedcom-go decodes a record's events and attributes into separate lists
+  with no position across them, so an event's form wins over an earlier attribute's.) The importer
   reads individuals before families, so it sorts by file position rather than relying on the order
   it reads them, and the same file into the same database always gives the same forms. Export
   writes `PLAC.FORM` under each event whose key's place, before alias resolution, holds a form for

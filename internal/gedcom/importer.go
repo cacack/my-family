@@ -50,6 +50,11 @@ type ImportResult struct {
 	// used to interpret vendor extension tags. Empty when the file has no SCHMA.
 	SchemaMappings map[string]string
 
+	// Places are the forms and EXIDs the file states on its records' PLAC
+	// lines, in file order (placeFacts), for the caller to store on each
+	// place (ADR-009 §8).
+	Places []PlaceData
+
 	// Mappings from GEDCOM XREFs to internal UUIDs
 	PersonXrefToID     map[string]uuid.UUID
 	FamilyXrefToID     map[string]uuid.UUID
@@ -582,6 +587,8 @@ func (imp *Importer) ImportWithOptions(ctx context.Context, reader io.Reader, im
 		result.MediaXrefToID[media.XRef] = mediaData.ID
 	}
 	mediaObjects = append(mediaObjects, inline...)
+
+	result.Places = placeFacts(doc)
 
 	result.PersonsImported = len(persons)
 	result.FamiliesImported = len(families)
