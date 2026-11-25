@@ -368,8 +368,9 @@ the event log lacks (coordinates, EXIDs, brick walls or snapshots an older relea
 there) or predates the read model's version stamp, which needs `myfamily rebuild` first; one whose
 tables an older release last shaped, which needs this release's `myfamily serve` started once; or
 one a newer release migrated, which needs that release. The owner can download the same
-file from the Settings page (`GET /api/v1/backup`), which shows each of these refusals with
-its fix (a 409 response; the codes are in the API spec).
+file from the Settings page (`GET /api/v1/backup`), which first asks the server whether it can
+(`GET /api/v1/backup/check`), shows each of these refusals with its fix (a 409 response; the
+codes are in the API spec), and otherwise streams the archive straight to disk.
 
 The archive holds the event log, which includes every media file, and the accounts and settings
 that live outside it: users with their password hashes, tree memberships, site, tree and account
@@ -503,6 +504,7 @@ installed, then start the new one.
 - `GET /api/v1/export/tree` - Export complete tree as JSON, with each coordinate pair's origin (`birth_place_origin`, `marriage_place_origin`, and `place_origin` on life events and attributes)
 - `GET /api/v1/export/{persons,families,sources,citations,events,attributes}` - Export one entity type as JSON (default) or CSV (`?format=csv`); for CSV, `?fields=id,given_name,...` picks the columns. Unknown formats or fields return 400. CSV cells beginning with `=`, `+`, `-`, `@`, tab or carriage return are prefixed with `'` so spreadsheets show them as text rather than evaluating a formula
 - `GET /api/v1/backup` - Download a backup archive of the whole instance (owner only; see [Backups](#backups))
+- `GET /api/v1/backup/check` - Check that a backup can be made, without writing one: 204, or the 409 refusal the download would give (owner only)
 
 API documentation: http://localhost:8080/api/v1/docs
 

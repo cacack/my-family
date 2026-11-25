@@ -27,10 +27,13 @@ func tempBackups(t *testing.T) string {
 	return dir
 }
 
+// passCheck is a backup check that finds nothing to refuse.
+func passCheck(context.Context) error { return nil }
+
 func TestDownloadBackup_Owner(t *testing.T) {
 	dir := tempBackups(t)
 	const archive = "PK fake archive"
-	f := newAuthFixtureWith(t, accountsConfig, api.WithBackup(func(_ context.Context, w io.Writer) error {
+	f := newAuthFixtureWith(t, accountsConfig, api.WithBackup(passCheck, func(_ context.Context, w io.Writer) error {
 		_, err := io.WriteString(w, archive)
 		return err
 	}))
@@ -56,33 +59,77 @@ func TestDownloadBackup_Owner(t *testing.T) {
 	}
 }
 
-func TestDownloadBackup_OwnerOnly(t *testing.T) {
+// TestCheckBackup_Owner: the check answers 204 and writes no archive (#1833).
+func TestCheckBackup_Owner(t *testing.T) {
+	checked, written := false, false
+	f := newAuthFixtureWith(t, accountsConfig, api.WithBackup(func(context.Context) error {
+		checked = true
+		return nil
+	}, func(context.Context, io.Writer) error {
+		written = true
+		return nil
+	}))
+	f.createOwner(t)
+	rec := f.do(t, request{method: http.MethodGet, path: "/api/v1/backup/check", cookie: f.signIn(t)})
+	if rec.Code != http.StatusNoContent || rec.Body.Len() != 0 {
+		t.Errorf("status = %d, body %q, want 204 and no body", rec.Code, rec.Body)
+	}
+	if !checked || written {
+		t.Errorf("checked = %v, written = %v; want the check run and no archive written", checked, written)
+	}
+}
+
+func TestBackup_OwnerOnly(t *testing.T) {
 	called := false
-	f := newAuthFixtureWith(t, accountsConfig, api.WithBackup(func(context.Context, io.Writer) error {
+	f := newAuthFixtureWith(t, accountsConfig, api.WithBackup(func(context.Context) error {
+		called = true
+		return nil
+	}, func(context.Context, io.Writer) error {
 		called = true
 		return nil
 	}))
 	f.createOwner(t)
+	members := map[repository.Role]*http.Cookie{}
 	for _, role := range []repository.Role{repository.RoleEditor, repository.RoleViewer} {
-		rec := f.do(t, request{method: http.MethodGet, path: "/api/v1/backup", cookie: f.addMember(t, role)})
-		if !forbidden(rec) {
-			t.Errorf("as %s: %d %s, want forbidden", role, rec.Code, rec.Body)
+		members[role] = f.addMember(t, role)
+	}
+	for _, path := range []string{"/api/v1/backup", "/api/v1/backup/check"} {
+		for role, cookie := range members {
+			rec := f.do(t, request{method: http.MethodGet, path: path, cookie: cookie})
+			if !forbidden(rec) {
+				t.Errorf("%s as %s: %d %s, want forbidden", path, role, rec.Code, rec.Body)
+			}
+		}
+		if rec := f.do(t, request{method: http.MethodGet, path: path}); rec.Code != http.StatusUnauthorized {
+			t.Errorf("%s signed out: status = %d, want 401", path, rec.Code)
 		}
 	}
-	if rec := f.do(t, request{method: http.MethodGet, path: "/api/v1/backup"}); rec.Code != http.StatusUnauthorized {
-		t.Errorf("signed out: status = %d, want 401", rec.Code)
-	}
 	if called {
-		t.Error("a backup was written for someone who is not the owner")
+		t.Error("a backup was checked or written for someone who is not the owner")
 	}
 }
 
-func TestDownloadBackup_Unavailable(t *testing.T) {
+func TestBackup_Unavailable(t *testing.T) {
 	f := newAuthFixture(t)
 	f.createOwner(t)
-	rec := f.do(t, request{method: http.MethodGet, path: "/api/v1/backup", cookie: f.signIn(t)})
-	if rec.Code != http.StatusConflict || errorCodeOf(rec) != "backup_unavailable" {
-		t.Errorf("without a backup writer: %d %s, want 409 backup_unavailable", rec.Code, rec.Body)
+	for _, path := range []string{"/api/v1/backup", "/api/v1/backup/check"} {
+		rec := f.do(t, request{method: http.MethodGet, path: path, cookie: f.signIn(t)})
+		if rec.Code != http.StatusConflict || errorCodeOf(rec) != "backup_unavailable" {
+			t.Errorf("%s without a backup: %d %s, want 409 backup_unavailable", path, rec.Code, rec.Body)
+		}
+	}
+}
+
+// TestCheckBackup_Failure: a check that fails for any reason but a refusal
+// the owner can fix is a server error.
+func TestCheckBackup_Failure(t *testing.T) {
+	f := newAuthFixtureWith(t, accountsConfig, api.WithBackup(func(context.Context) error {
+		return errors.New("disk on fire")
+	}, func(context.Context, io.Writer) error { return nil }))
+	f.createOwner(t)
+	rec := f.do(t, request{method: http.MethodGet, path: "/api/v1/backup/check", cookie: f.signIn(t)})
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want 500", rec.Code)
 	}
 }
 
@@ -99,7 +146,7 @@ func TestDownloadBackup_Failure(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := tempBackups(t)
-			f := newAuthFixtureWith(t, accountsConfig, api.WithBackup(func(_ context.Context, w io.Writer) error {
+			f := newAuthFixtureWith(t, accountsConfig, api.WithBackup(passCheck, func(_ context.Context, w io.Writer) error {
 				_, _ = io.WriteString(w, "partial")
 				return tc.err
 			}))
@@ -118,10 +165,11 @@ func TestDownloadBackup_Failure(t *testing.T) {
 	}
 }
 
-// TestDownloadBackup_Refused: each reason storage refuses a backup for is a
-// 409 naming the fix, matched by sentinel however it is wrapped, not a failed
-// download (#1830, #1834).
-func TestDownloadBackup_Refused(t *testing.T) {
+// TestBackup_Refused: each reason storage refuses a backup for is a 409
+// naming the fix, matched by sentinel however it is wrapped, not a failed
+// download (#1830, #1834), and the check answers it with the same code and
+// message (#1833).
+func TestBackup_Refused(t *testing.T) {
 	for _, tc := range []struct {
 		name, code, fix string
 		err             error
@@ -134,21 +182,32 @@ func TestDownloadBackup_Refused(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := tempBackups(t)
-			f := newAuthFixtureWith(t, accountsConfig, api.WithBackup(func(_ context.Context, w io.Writer) error {
+			refused := fmt.Errorf("back up SQLite database %q: %w: detail", "/secret/path.db", tc.err)
+			f := newAuthFixtureWith(t, accountsConfig, api.WithBackup(func(context.Context) error {
+				return refused
+			}, func(_ context.Context, w io.Writer) error {
 				_, _ = io.WriteString(w, "partial")
-				return fmt.Errorf("back up SQLite database %q: %w: detail", "/secret/path.db", tc.err)
+				return refused
 			}))
 			f.createOwner(t)
-			rec := f.do(t, request{method: http.MethodGet, path: "/api/v1/backup", cookie: f.signIn(t)})
-			if rec.Code != http.StatusConflict || errorCodeOf(rec) != tc.code {
-				t.Fatalf("%d %s, want 409 %s", rec.Code, rec.Body, tc.code)
+			cookie := f.signIn(t)
+			var bodies []string
+			for _, path := range []string{"/api/v1/backup", "/api/v1/backup/check"} {
+				rec := f.do(t, request{method: http.MethodGet, path: path, cookie: cookie})
+				if rec.Code != http.StatusConflict || errorCodeOf(rec) != tc.code {
+					t.Fatalf("%s: %d %s, want 409 %s", path, rec.Code, rec.Body, tc.code)
+				}
+				body := rec.Body.String()
+				if !strings.Contains(body, tc.fix) {
+					t.Errorf("%s: message does not name the fix %q: %s", path, tc.fix, body)
+				}
+				if strings.Contains(body, "partial") || strings.Contains(body, "/secret/path.db") {
+					t.Errorf("%s: refusal leaks the archive or the database path: %s", path, body)
+				}
+				bodies = append(bodies, body)
 			}
-			body := rec.Body.String()
-			if !strings.Contains(body, tc.fix) {
-				t.Errorf("message does not name the fix %q: %s", tc.fix, body)
-			}
-			if strings.Contains(body, "partial") || strings.Contains(body, "/secret/path.db") {
-				t.Errorf("refusal leaks the archive or the database path: %s", body)
+			if bodies[0] != bodies[1] {
+				t.Errorf("the check's refusal %s differs from the download's %s", bodies[1], bodies[0])
 			}
 			if left, _ := filepath.Glob(filepath.Join(dir, "myfamily-backup-*")); len(left) != 0 {
 				t.Errorf("temporary backup files left behind: %v", left)
