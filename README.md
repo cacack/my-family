@@ -370,7 +370,9 @@ tables an older release last shaped, which needs this release's `myfamily serve`
 one a newer release migrated, which needs that release. The owner can download the same
 file from the Settings page (`GET /api/v1/backup`), which first asks the server whether it can
 (`GET /api/v1/backup/check`), shows each of these refusals with its fix (a 409 response; the
-codes are in the API spec), and otherwise streams the archive straight to disk.
+codes are in the API spec), and otherwise streams the archive straight to disk. A failure
+while the archive is written, such as a full temp disk, comes after that check, so it shows as a
+failed download in the browser rather than on the page.
 
 The archive holds the event log, which includes every media file, and the accounts and settings
 that live outside it: users with their password hashes, tree memberships, site, tree and account

@@ -114,7 +114,10 @@
 	 * through a plain link, so the browser streams it to disk rather than
 	 * holding it in memory (#1833). A refusal, such as a database that needs
 	 * `myfamily rebuild` first, is shown here instead of a silently failed
-	 * download (#1830).
+	 * download (#1830). The check cannot foresee a failure while the archive
+	 * is written (a full temp disk, an I/O error) or a database that changes
+	 * between the two requests; those reach the link, so the browser's
+	 * download list shows them, not this page.
 	 */
 	async function downloadBackup() {
 		downloading = true;
