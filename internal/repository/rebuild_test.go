@@ -317,6 +317,67 @@ func TestRebuildReadModel_BackfillKeepsVersionsIfTheRebuildStops(t *testing.T) {
 	}
 }
 
+// TestPendingBackfills finds each kind of value only the read model holds,
+// logs nothing, and finds none once a rebuild has logged them: it is the rule
+// the backup refuses by (ADR-010 §6).
+func TestPendingBackfills(t *testing.T) {
+	ctx := context.Background()
+	s := newRebuildStores()
+	h := command.NewHandlerWithBranches(s.events, s.read, s.branches, s.snapshots)
+	person, err := h.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ada", Surname: "Example"})
+	if err != nil {
+		t.Fatalf("create person: %v", err)
+	}
+	pending := func() *repository.Backfills {
+		t.Helper()
+		b, err := repository.PendingBackfills(ctx, s.events, s.read, s.branches, s.snapshots)
+		if err != nil {
+			t.Fatalf("PendingBackfills: %v", err)
+		}
+		return b
+	}
+	if b := pending(); b.Len() != 0 {
+		t.Fatalf("pending on a logged database = %+v, want none", b)
+	}
+
+	// One person with both a coordinate and a brick wall: the rebuild appends
+	// two events to its stream, each at the version the one before left.
+	lat := "N1.5"
+	p, _ := s.read.GetPerson(ctx, domain.MainBranchID, person.ID)
+	p.BirthPlaceLat = &lat
+	version := p.Version
+	mustRebuildSetup(t, s.read.SavePerson(ctx, domain.MainBranchID, p))
+	setLegacyBrickWall(t, s.read, person.ID, "stuck", time.Date(2020, 3, 1, 12, 0, 0, 0, time.UTC), nil)
+	legacy, err := domain.NewSnapshot("before #624", "", 1)
+	if err != nil {
+		t.Fatalf("new snapshot: %v", err)
+	}
+	mustRebuildSetup(t, s.snapshots.Create(ctx, legacy))
+
+	logged := loggedEventTypes(t, s.events)
+	b := pending()
+	if len(b.ImportedValues) != 1 || len(b.BrickWalls) != 1 || len(b.Snapshots) != 1 || b.Len() != 3 {
+		t.Fatalf("pending = %+v, want one of each", b)
+	}
+	if got := loggedEventTypes(t, s.events); !reflect.DeepEqual(got, logged) {
+		t.Errorf("PendingBackfills logged %v, the log held %v; want it to only read", got, logged)
+	}
+
+	result, err := s.rebuild(t, s.read)
+	if err != nil {
+		t.Fatalf("rebuild: %v", err)
+	}
+	if result.Backfilled != 1 || result.BackfilledBrickWalls != 1 || result.BackfilledSnapshots != 1 {
+		t.Errorf("rebuild = %+v, want one of each backfilled", result)
+	}
+	if b := pending(); b.Len() != 0 {
+		t.Errorf("pending after the rebuild = %+v, want none", b)
+	}
+	if p, _ := s.read.GetPerson(ctx, domain.MainBranchID, person.ID); p == nil || p.BirthPlaceLat == nil || p.BrickWallSince == nil || p.Version != version+2 {
+		t.Errorf("person after rebuild = %+v, want both values kept, two versions on from %d", p, version)
+	}
+}
+
 // TestRebuildReadModel_ReportsRowsWithoutAStream proves a row whose values no
 // stream can carry is not backfilled; the replay drops it and the recount
 // reports what it held (#1251).
