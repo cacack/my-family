@@ -190,6 +190,16 @@ func openWithReadModelOnly(t *testing.T, cfg *config.Config, write func(context.
 	return stores
 }
 
+// backupServer is a server on stores whose backup download is the stores'.
+func backupServer(stores *Stores) *api.Server {
+	return api.NewServer(&config.Config{Port: 8080, LogFormat: "text", AuthMode: config.AuthModeOpen},
+		stores.Events, stores.ReadModel, stores.Snapshots, nil, api.WithBranchStore(stores.Branches),
+		api.WithSettingsStore(stores.Settings), api.WithBackup(func(ctx context.Context, w io.Writer) error {
+			_, err := stores.Backup(ctx, w, "test")
+			return err
+		}))
+}
+
 // assertBackupRefusesReadModelOnly expects both the command's backup and the
 // server's (GET /api/v1/backup) to refuse each read-model-only value of a
 // stamped database for holding it, not for a failed read, naming the rebuild;
@@ -209,12 +219,7 @@ func assertBackupRefusesReadModelOnly(t *testing.T, newConfig func(*testing.T) *
 			if _, err := Backup(ctx, cfg, &bytes.Buffer{}, "test"); !refused(err) {
 				t.Errorf("Backup = %v, want ErrReadModelOnlyValues naming myfamily rebuild", err)
 			}
-			server := api.NewServer(&config.Config{Port: 8080, LogFormat: "text", AuthMode: config.AuthModeOpen},
-				stores.Events, stores.ReadModel, stores.Snapshots, nil, api.WithBranchStore(stores.Branches),
-				api.WithSettingsStore(stores.Settings), api.WithBackup(func(ctx context.Context, w io.Writer) error {
-					_, err := stores.Backup(ctx, w, "test")
-					return err
-				}))
+			server := backupServer(stores)
 			resp := mustDo(t, server, http.MethodGet, "/api/v1/backup", "", http.StatusConflict)
 			if msg, _ := resp["message"].(string); resp["code"] != "backup_needs_rebuild" || !strings.Contains(msg, "myfamily rebuild") {
 				t.Errorf("GET /api/v1/backup = %v, want backup_needs_rebuild naming myfamily rebuild", resp)
@@ -317,5 +322,28 @@ func TestBackup_SQLiteStoreSchemaStamp(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestBackup_SQLiteServerRefusesNewerStoreSchema: a newer release that serves
+// the same database beside this server migrates it, since `serve` shares the
+// lock; this server's backup then answers 409 backup_schema_newer naming the
+// fix, not a failed download (#1834).
+func TestBackup_SQLiteServerRefusesNewerStoreSchema(t *testing.T) {
+	cfg := &config.Config{SQLitePath: filepath.Join(t.TempDir(), "myfamily.db")}
+	stores := openWithReadModelOnly(t, cfg, func(context.Context, *Stores, uuid.UUID) error { return nil })
+	db, err := sqlite.OpenDB(cfg.SQLitePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE store_schema SET version = 99, name = 'from_the_future'`); err != nil {
+		t.Fatal(err)
+	}
+	_ = db.Close()
+
+	server := backupServer(stores)
+	resp := mustDo(t, server, http.MethodGet, "/api/v1/backup", "", http.StatusConflict)
+	if msg, _ := resp["message"].(string); resp["code"] != "backup_schema_newer" || !strings.Contains(msg, "newer release") {
+		t.Errorf("GET /api/v1/backup = %v, want backup_schema_newer naming the newer release", resp)
 	}
 }

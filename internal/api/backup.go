@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/cacack/my-family/internal/backup"
+	"github.com/cacack/my-family/internal/repository"
 )
 
 // BackupWriter writes a backup archive of the instance to w (ADR-010), as
@@ -41,18 +42,13 @@ func (ss *StrictServer) DownloadBackup(ctx context.Context, _ DownloadBackupRequ
 		return nil, errors.Join(err, f.Close(), os.Remove(f.Name()))
 	}
 	if err := ss.server.backup(ctx, f); err != nil {
-		if errors.Is(err, backup.ErrReadModelOnlyValues) {
-			// The owner can fix this one, so it is a refusal naming the fix
-			// (#1830), not a failed download.
+		if refusal, ok := backupRefusal(err); ok {
+			// The owner can fix it, so it is a refusal naming the fix (#1830,
+			// #1834), not a failed download.
 			if err := errors.Join(f.Close(), os.Remove(f.Name())); err != nil {
 				return nil, err
 			}
-			return DownloadBackup409JSONResponse{
-				Code: "backup_needs_rebuild",
-				Message: "This database holds coordinates, external IDs, brick walls or snapshots that its history " +
-					"does not record, so a backup would lose them. Stop every server and run \"myfamily rebuild\", " +
-					"which records them, then back up again.",
-			}, nil
+			return refusal, nil
 		}
 		return discard(fmt.Errorf("write backup: %w", err))
 	}
@@ -69,6 +65,53 @@ func (ss *StrictServer) DownloadBackup(ctx context.Context, _ DownloadBackupRequ
 		ContentLength: size,
 		Headers:       DownloadBackup200ResponseHeaders{ContentDisposition: strPtr(`attachment; filename="` + name + `"`)},
 	}, nil
+}
+
+// backupRefusals are the reasons storage refuses to back up a database
+// (checkBackupSource), each answered with the fix. The messages name no path
+// or version, which the log has.
+var backupRefusals = []struct {
+	err      error
+	response DownloadBackup409JSONResponse
+}{
+	{repository.ErrStoreSchemaNewer, DownloadBackup409JSONResponse{
+		Code: "backup_schema_newer",
+		Message: "A newer release of myfamily has upgraded this database, so this server cannot back it up. " +
+			"Back it up with the newer release.",
+	}},
+	{repository.ErrStoreSchemaOlder, backupNeedsRestart},
+	{backup.ErrSourceShape, backupNeedsRestart},
+	{backup.ErrReadModelUnstamped, DownloadBackup409JSONResponse{
+		Code: "backup_needs_rebuild",
+		Message: "This database predates the read model's version stamp, so it may hold coordinates, external IDs, " +
+			"brick walls or snapshots that its history does not record, which a backup would lose. Stop every " +
+			"server and run \"myfamily rebuild\", which records them, then back up again.",
+	}},
+	{backup.ErrReadModelOnlyValues, DownloadBackup409JSONResponse{
+		Code: "backup_needs_rebuild",
+		Message: "This database holds coordinates, external IDs, brick walls or snapshots that its history " +
+			"does not record, so a backup would lose them. Stop every server and run \"myfamily rebuild\", " +
+			"which records them, then back up again.",
+	}},
+}
+
+// backupNeedsRestart answers a database an older release last shaped: the
+// stores this server constructs at start-up bring it to this release's.
+var backupNeedsRestart = DownloadBackup409JSONResponse{
+	Code: "backup_needs_restart",
+	Message: "This database is in an older release's shape, which this server's backup cannot read. " +
+		"Restart the server, which upgrades it, then back up again.",
+}
+
+// backupRefusal returns the response for a backup refused for a reason the
+// owner can fix, matched by sentinel.
+func backupRefusal(err error) (DownloadBackup409JSONResponse, bool) {
+	for _, r := range backupRefusals {
+		if errors.Is(err, r.err) {
+			return r.response, true
+		}
+	}
+	return DownloadBackup409JSONResponse{}, false
 }
 
 // removeOnClose is a temporary file that is deleted when it is closed.

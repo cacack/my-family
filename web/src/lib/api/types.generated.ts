@@ -15649,12 +15649,21 @@ export interface operations {
             };
             401: components["responses"]["Unauthenticated"];
             /**
-             * @description The backup is refused. Either the server runs in memory
-             *     (`DEMO_MODE`), which keeps nothing to back up
-             *     (`backup_unavailable`), or the read model holds values that no
-             *     event records, which the archive would lose; the message says to
-             *     run `myfamily rebuild`, which logs them (`backup_needs_rebuild`,
-             *     [#1830](https://github.com/cacack/my-family/issues/1830))
+             * @description The backup is refused, and the message names the fix
+             *     ([#1830](https://github.com/cacack/my-family/issues/1830),
+             *     [#1834](https://github.com/cacack/my-family/issues/1834)):
+             *
+             *     - `backup_unavailable`: the server runs in memory (`DEMO_MODE`),
+             *       which keeps nothing to back up.
+             *     - `backup_needs_rebuild`: the read model holds, or may hold
+             *       (it predates its version stamp), values that no event records,
+             *       which the archive would lose; run `myfamily rebuild`, which
+             *       logs them.
+             *     - `backup_needs_restart`: the database is in an older release's
+             *       shape (store schema stamp or table columns); restarting the
+             *       server upgrades it.
+             *     - `backup_schema_newer`: a newer release has upgraded the
+             *       database; back it up with that release.
              */
             409: {
                 headers: {

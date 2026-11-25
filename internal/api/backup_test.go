@@ -87,7 +87,7 @@ func TestDownloadBackup_Unavailable(t *testing.T) {
 }
 
 // TestDownloadBackup_Failure: a backup that fails for any reason but a
-// read-model-only value is a server error, and nothing partial is sent.
+// refusal the owner can fix is a server error, and nothing partial is sent.
 func TestDownloadBackup_Failure(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -118,27 +118,41 @@ func TestDownloadBackup_Failure(t *testing.T) {
 	}
 }
 
-// TestDownloadBackup_NeedsRebuild: a database whose read model holds values no
-// event records is refused with the fix, not a failed download (#1830).
-func TestDownloadBackup_NeedsRebuild(t *testing.T) {
-	dir := tempBackups(t)
-	f := newAuthFixtureWith(t, accountsConfig, api.WithBackup(func(_ context.Context, w io.Writer) error {
-		_, _ = io.WriteString(w, "partial")
-		return fmt.Errorf("back up SQLite database %q: %w: 1 snapshot", "/secret/path.db", backup.ErrReadModelOnlyValues)
-	}))
-	f.createOwner(t)
-	rec := f.do(t, request{method: http.MethodGet, path: "/api/v1/backup", cookie: f.signIn(t)})
-	if rec.Code != http.StatusConflict || errorCodeOf(rec) != "backup_needs_rebuild" {
-		t.Fatalf("%d %s, want 409 backup_needs_rebuild", rec.Code, rec.Body)
-	}
-	body := rec.Body.String()
-	if !strings.Contains(body, "myfamily rebuild") {
-		t.Errorf("message does not name myfamily rebuild: %s", body)
-	}
-	if strings.Contains(body, "partial") || strings.Contains(body, "/secret/path.db") {
-		t.Errorf("refusal leaks the archive or the database path: %s", body)
-	}
-	if left, _ := filepath.Glob(filepath.Join(dir, "myfamily-backup-*")); len(left) != 0 {
-		t.Errorf("temporary backup files left behind: %v", left)
+// TestDownloadBackup_Refused: each reason storage refuses a backup for is a
+// 409 naming the fix, matched by sentinel however it is wrapped, not a failed
+// download (#1830, #1834).
+func TestDownloadBackup_Refused(t *testing.T) {
+	for _, tc := range []struct {
+		name, code, fix string
+		err             error
+	}{
+		{"store schema newer", "backup_schema_newer", "newer release", repository.ErrStoreSchemaNewer},
+		{"store schema older", "backup_needs_restart", "Restart the server", repository.ErrStoreSchemaOlder},
+		{"older table shape", "backup_needs_restart", "Restart the server", backup.ErrSourceShape},
+		{"unstamped read model", "backup_needs_rebuild", "myfamily rebuild", backup.ErrReadModelUnstamped},
+		{"read-model-only values", "backup_needs_rebuild", "myfamily rebuild", backup.ErrReadModelOnlyValues},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := tempBackups(t)
+			f := newAuthFixtureWith(t, accountsConfig, api.WithBackup(func(_ context.Context, w io.Writer) error {
+				_, _ = io.WriteString(w, "partial")
+				return fmt.Errorf("back up SQLite database %q: %w: detail", "/secret/path.db", tc.err)
+			}))
+			f.createOwner(t)
+			rec := f.do(t, request{method: http.MethodGet, path: "/api/v1/backup", cookie: f.signIn(t)})
+			if rec.Code != http.StatusConflict || errorCodeOf(rec) != tc.code {
+				t.Fatalf("%d %s, want 409 %s", rec.Code, rec.Body, tc.code)
+			}
+			body := rec.Body.String()
+			if !strings.Contains(body, tc.fix) {
+				t.Errorf("message does not name the fix %q: %s", tc.fix, body)
+			}
+			if strings.Contains(body, "partial") || strings.Contains(body, "/secret/path.db") {
+				t.Errorf("refusal leaks the archive or the database path: %s", body)
+			}
+			if left, _ := filepath.Glob(filepath.Join(dir, "myfamily-backup-*")); len(left) != 0 {
+				t.Errorf("temporary backup files left behind: %v", left)
+			}
+		})
 	}
 }

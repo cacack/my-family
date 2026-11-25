@@ -14,6 +14,8 @@ import (
 	"io"
 	"strings"
 	"time"
+
+	"github.com/lib/pq"
 )
 
 // Dialect names the database a backup reads, which decides how its read
@@ -31,6 +33,16 @@ const (
 // caller finds them (storage's checkBackupSource); it lives here so the server
 // can tell this refusal from a failed backup without importing storage.
 var ErrReadModelOnlyValues = errors.New("the read model holds values that no event records, where a backup would lose them")
+
+// ErrSourceShape refuses a backup of a database with a table that lacks a
+// column this release reads, as when an older release last opened it and the
+// stores have not been constructed on it since (ADR-010 §6).
+var ErrSourceShape = errors.New("a table is not in this release's shape")
+
+// ErrReadModelUnstamped refuses a backup of a database with events but no
+// read-model version stamp: it predates #680, so its read model may hold
+// values no event records, which the archive would lose (ADR-010 §6).
+var ErrReadModelUnstamped = errors.New("the database predates the read model's version stamp (#680)")
 
 // Write writes a backup archive of db to w and returns its manifest.
 //
@@ -142,9 +154,12 @@ func checkSource(ctx context.Context, tx *sql.Tx, dialect Dialect) error {
 		// #nosec G202 -- table and column names are package constants, not input.
 		// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 		rows, err := tx.QueryContext(ctx, "SELECT "+strings.Join(names, ", ")+" FROM "+t.name+" WHERE 1 = 0")
+		if err != nil && !missingTableOrColumn(err) {
+			return fmt.Errorf("read the database's %s table: %w", t.name, err)
+		}
 		if err != nil {
-			return fmt.Errorf("the database's %s table is not in this release's shape, as when an older release "+
-				"last opened it; start `myfamily serve` with this release once, then back up: %w", t.name, err)
+			return fmt.Errorf("%w: the database's %s table, as when an older release last opened it; "+
+				"start `myfamily serve` with this release once, then back up: %w", ErrSourceShape, t.name, err)
 		}
 		_ = rows.Close()
 	}
@@ -170,11 +185,23 @@ func checkSource(ctx context.Context, tx *sql.Tx, dialect Dialect) error {
 		return fmt.Errorf("read events: %w", err)
 	}
 	if events > 0 {
-		return errors.New("the database predates the read model's version stamp (#680), so it may hold coordinates, " +
-			"EXIDs, brick walls or snapshots only in its read model, where a backup would lose them; " +
-			"stop every server and run `myfamily rebuild`, which logs them, then back up")
+		return fmt.Errorf("%w, so it may hold coordinates, EXIDs, brick walls or snapshots only in its read model, "+
+			"where a backup would lose them; stop every server and run `myfamily rebuild`, which logs them, then back up",
+			ErrReadModelUnstamped)
 	}
 	return nil
+}
+
+// missingTableOrColumn reports whether err names a table or column the
+// database lacks, which a restart's store construction adds; any other error
+// (a canceled read, a dropped connection, a busy database) is no refusal.
+func missingTableOrColumn(err error) bool {
+	var pqErr *pq.Error
+	if errors.As(err, &pqErr) {
+		return pqErr.Code == "42P01" || pqErr.Code == "42703" // undefined_table, undefined_column
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "no such table") || strings.Contains(msg, "no such column")
 }
 
 // writeEntry adds a deflated entry named name, filled by fill, and returns the
