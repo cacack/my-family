@@ -15,7 +15,7 @@ import (
 )
 
 // legacyEventLogDDL is the event log's pre-ADR-005 schema: no branch_id, and the
-// per-stream UNIQUE(stream_id, version) that createTables must swap for the
+// per-stream UNIQUE(stream_id, version) that the baseline migration must swap for the
 // composite unique index.
 const legacyEventLogDDL = `
 	CREATE TABLE streams (
@@ -75,7 +75,7 @@ func seedLegacyReadModelEvents(t *testing.T, db *sql.DB) uuid.UUID {
 }
 
 // TestEventStore_RefusesLegacyReadModelEventsTable is the regression test for the
-// guard at the top of createTables (issue #733). Opening the event store against
+// guard at the top of the baseline migration (issue #733). Opening the event store against
 // a pre-#733 read model table used to add a branch_id column to it before failing
 // on the missing stream_id; it must now refuse without touching anything.
 func TestEventStore_RefusesLegacyReadModelEventsTable(t *testing.T) {

@@ -15,9 +15,16 @@ import (
 )
 
 // logOwnedTables are the tables in the shared database that ResetReadModel
-// keeps: the event log, the branch registry, the snapshot registry and the
-// rebuild state and the schema version, which must outlive the reset.
-var logOwnedTables = map[string]bool{"events": true, "streams": true, "branches": true, "snapshots": true, "rebuild_state": true, "read_model_schema": true}
+// keeps: the event log, the branch registry, the snapshot registry, the
+// rebuild state and the schema version, which must outlive the reset, and the
+// account and settings tables the store migrations own.
+var logOwnedTables = map[string]bool{
+	"events": true, "streams": true, "branches": true, "snapshots": true, "rebuild_state": true, "read_model_schema": true,
+	// The migrated tables and their stamp (ADR-011).
+	"users": true, "tree_memberships": true, "sessions": true, "api_tokens": true, "invites": true,
+	"password_resets": true, "auth_audit": true, "site_settings": true, "tree_settings": true,
+	"account_settings": true, "store_schema": true,
+}
 
 // TestResetReadModel_CoversEveryReadModelTable fails when a read-model table is
 // added without being added to the reset list, which would let a rebuild

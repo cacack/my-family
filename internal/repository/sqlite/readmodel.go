@@ -1065,7 +1065,7 @@ func (s *ReadModelStore) migrateBranchColumns() {
 // column. Without the check this would rename the event log's source of truth out
 // from under it. Do not remove it, and do not treat a failed probe as "not legacy".
 func (s *ReadModelStore) renameLegacyEventsTable() error {
-	legacy, err := eventsTableBelongsToReadModel(s.db)
+	legacy, err := eventsTableBelongsToReadModel(context.Background(), s.db)
 	if err != nil {
 		return fmt.Errorf("check whether the events table belongs to the read model: %w", err)
 	}

@@ -437,6 +437,18 @@ refuses to start and asks for `myfamily rebuild`; it never rebuilds on its own. 
 created by a version from before this check has no recorded version, so the first `serve` of a
 newer version asks for one rebuild.
 
+#### Upgrading
+
+The tables a rebuild does not re-create (the event log, accounts and settings) change shape
+through numbered migrations. The database records the last one applied, and `serve`, `rebuild`
+and `user` apply any newer ones at startup, logging each by name. A migration that fails changes
+nothing and stops startup with an error naming it. A database written by a newer release is
+refused with a message naming both versions; there is no downgrade, so restore the backup taken
+before the upgrade or run the newer release.
+
+To upgrade: stop every server using the database, back it up with the old release still
+installed, then start the new one.
+
 ## API Endpoints
 
 - `GET /api/v1/persons` - List persons

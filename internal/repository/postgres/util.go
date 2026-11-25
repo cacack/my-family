@@ -1,9 +1,12 @@
 package postgres
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"time"
+
+	"github.com/cacack/my-family/internal/repository"
 )
 
 // OpenDB opens a PostgreSQL database connection.
@@ -30,7 +33,7 @@ func OpenDB(connStr string) (*sql.DB, error) {
 // eventsTableBelongsToReadModel reports whether an existing `events` table is the
 // read model's pre-#733 life-fact table rather than the event log's. Only the read
 // model's table carries an owner_type column, so that column is the discriminator —
-// and this function is its single home, shared by EventStore.createTables (which
+// and this function is its single home, shared by the store schema baseline (which
 // refuses such a database) and ReadModelStore.renameLegacyEventsTable (which renames
 // it). Both stores must agree on who owns the name, so the probe must not be
 // duplicated.
@@ -41,9 +44,9 @@ func OpenDB(connStr string) (*sql.DB, error) {
 // rows for a table that does not exist, so a database with no `events` table at all
 // reports (false, nil). A query error is returned, never swallowed: a failed probe
 // must not be read as "not the read model's table".
-func eventsTableBelongsToReadModel(db *sql.DB) (bool, error) {
+func eventsTableBelongsToReadModel(ctx context.Context, q repository.RowQuerier) (bool, error) {
 	var ownedByReadModel bool
-	if err := db.QueryRow(`
+	if err := q.QueryRowContext(ctx, `
 		SELECT EXISTS (
 			SELECT 1 FROM information_schema.columns
 			WHERE table_schema = CURRENT_SCHEMA()

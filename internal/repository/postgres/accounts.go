@@ -27,90 +27,17 @@ type AccountStore struct {
 	db *sql.DB
 }
 
-// NewAccountStore creates the account tables if needed and returns the store.
+// NewAccountStore returns the store, first bringing the store schema, which
+// owns the account tables, up to date (ADR-011). That runs every store
+// migration, the event log's included, so it fails as NewEventStore does: with
+// repository.ErrStoreSchemaNewer on a database stamped newer than this binary,
+// and with ErrReadModelEventsTable on a pre-#733 database whose read model
+// store has not been constructed first (DB-007).
 func NewAccountStore(db *sql.DB) (*AccountStore, error) {
-	store := &AccountStore{db: db}
-	if _, err := db.Exec(`
-		CREATE TABLE IF NOT EXISTS users (
-			id UUID PRIMARY KEY,
-			username TEXT NOT NULL UNIQUE,
-			display_name TEXT NOT NULL,
-			password_hash TEXT NOT NULL,
-			created_at TIMESTAMPTZ NOT NULL,
-			disabled BOOLEAN NOT NULL DEFAULT FALSE
-		);
-
-		CREATE TABLE IF NOT EXISTS tree_memberships (
-			user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-			tree_id UUID NOT NULL,
-			role TEXT NOT NULL,
-			PRIMARY KEY (user_id, tree_id)
-		);
-
-		CREATE TABLE IF NOT EXISTS sessions (
-			token_hash TEXT PRIMARY KEY,
-			user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-			created_at TIMESTAMPTZ NOT NULL,
-			last_seen_at TIMESTAMPTZ NOT NULL
-		);
-
-		CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
-		-- DeleteExpiredSessions filters on either time.
-		CREATE INDEX IF NOT EXISTS idx_sessions_last_seen_at ON sessions(last_seen_at);
-		CREATE INDEX IF NOT EXISTS idx_sessions_created_at ON sessions(created_at);
-
-		CREATE TABLE IF NOT EXISTS api_tokens (
-			id UUID PRIMARY KEY,
-			token_hash TEXT NOT NULL UNIQUE,
-			user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-			name TEXT NOT NULL,
-			created_at TIMESTAMPTZ NOT NULL,
-			last_used_at TIMESTAMPTZ
-		);
-
-		CREATE INDEX IF NOT EXISTS idx_api_tokens_user_id ON api_tokens(user_id);
-
-		CREATE TABLE IF NOT EXISTS invites (
-			token_hash TEXT PRIMARY KEY,
-			tree_id UUID NOT NULL,
-			role TEXT NOT NULL,
-			created_by UUID NOT NULL,
-			created_at TIMESTAMPTZ NOT NULL,
-			expires_at TIMESTAMPTZ NOT NULL
-		);
-
-		CREATE TABLE IF NOT EXISTS password_resets (
-			token_hash TEXT PRIMARY KEY,
-			user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-			created_by UUID,
-			created_at TIMESTAMPTZ NOT NULL,
-			expires_at TIMESTAMPTZ NOT NULL
-		);
-
-		CREATE TABLE IF NOT EXISTS auth_audit (
-			id BIGSERIAL PRIMARY KEY,
-			at TIMESTAMPTZ NOT NULL,
-			action TEXT NOT NULL,
-			actor_id UUID,
-			subject_id UUID,
-			username TEXT NOT NULL,
-			detail TEXT NOT NULL,
-			client_ip TEXT NOT NULL
-		);
-
-		-- DeleteAuthAuditBefore filters on it.
-		CREATE INDEX IF NOT EXISTS idx_auth_audit_at ON auth_audit(at);
-
-		CREATE TABLE IF NOT EXISTS tree_settings (
-			tree_id UUID PRIMARY KEY,
-			living_threshold_years INTEGER NOT NULL,
-			viewers_see_living BOOLEAN NOT NULL,
-			anonymous_access TEXT NOT NULL
-		);
-	`); err != nil {
-		return nil, fmt.Errorf("create account tables: %w", err)
+	if err := migrateStoreSchema(db); err != nil {
+		return nil, fmt.Errorf("migrate store schema: %w", err)
 	}
-	return store, nil
+	return &AccountStore{db: db}, nil
 }
 
 // CreateUser stores user and its membership of treeID with role in one

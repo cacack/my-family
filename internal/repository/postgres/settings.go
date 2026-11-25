@@ -22,21 +22,15 @@ type SettingsStore struct {
 	db *sql.DB
 }
 
-// NewSettingsStore creates a new PostgreSQL settings store.
+// NewSettingsStore returns the store, first bringing the store schema, which
+// owns the settings tables, up to date (ADR-011). That runs every store
+// migration, the event log's included, so it fails as NewEventStore does: with
+// repository.ErrStoreSchemaNewer on a database stamped newer than this binary,
+// and with ErrReadModelEventsTable on a pre-#733 database whose read model
+// store has not been constructed first (DB-007).
 func NewSettingsStore(db *sql.DB) (*SettingsStore, error) {
-	if _, err := db.Exec(`
-		CREATE TABLE IF NOT EXISTS site_settings (
-			key TEXT PRIMARY KEY,
-			value TEXT NOT NULL
-		);
-		CREATE TABLE IF NOT EXISTS account_settings (
-			user_id TEXT NOT NULL,
-			key TEXT NOT NULL,
-			value TEXT NOT NULL,
-			PRIMARY KEY (user_id, key)
-		);
-	`); err != nil {
-		return nil, fmt.Errorf("failed to create tables: %w", err)
+	if err := migrateStoreSchema(db); err != nil {
+		return nil, fmt.Errorf("migrate store schema: %w", err)
 	}
 	return &SettingsStore{db: db}, nil
 }

@@ -333,8 +333,8 @@ func columnExists(t *testing.T, db *sql.DB, table, column string) bool {
 // TestEventStoreRefusesReadModelEventsTable is the mirror of the read model's
 // owner_type guard (#733): on a pre-#733 database opened event-store-first, the
 // event log must refuse rather than mutate a table it does not own. Without the
-// guard, migrateBranchID silently ALTERs branch_id onto the read model's table and
-// the composite-key rebuild then dies on "copy events: no such column: stream_id".
+// guard, the baseline migration ALTERs branch_id onto the read model's table
+// and its composite-key copy then dies on "copy events: no such column: stream_id".
 func TestEventStoreRefusesReadModelEventsTable(t *testing.T) {
 	eventID, ownerID := uuid.New(), uuid.New()
 	db, cleanup := setupLegacyLifeEventsDB(t, eventID, ownerID)
