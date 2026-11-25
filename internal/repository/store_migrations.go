@@ -80,6 +80,37 @@ func (m *StoreMigrator) Check(ctx context.Context) error {
 	return m.checkNotNewer(stamp)
 }
 
+// CheckCurrent refuses a database whose stamp is not the last migration this
+// binary knows, naming both versions; a newer one wraps ErrStoreSchemaNewer.
+// An unstamped database passes while the list holds only the baseline, which
+// changes nothing on it. It only reads. The backup asks for it, since its
+// archive describes this binary's shapes (ADR-011 §4).
+func (m *StoreMigrator) CheckCurrent(ctx context.Context) error {
+	stamp, err := m.Backend.ReadStamp(ctx, m.DB)
+	if err != nil {
+		return fmt.Errorf("read the store schema version: %w", err)
+	}
+	if err := m.checkNotNewer(stamp); err != nil {
+		return err
+	}
+	known := len(m.Migrations)
+	if stamp.Version == known || (stamp.Version == 0 && known == 1) {
+		return nil
+	}
+	return fmt.Errorf("the database is at store schema version %d (%s) and this binary's is %d (%s); "+
+		"back it up with the release that last opened it, or start `myfamily serve` with this release once, then back up",
+		stamp.Version, stampName(stamp), known, m.Migrations[known-1].Name)
+}
+
+// stampName is the stamp's migration name, or "none" for an unstamped
+// database.
+func stampName(stamp StoreSchemaStamp) string {
+	if stamp.Version == 0 {
+		return "none"
+	}
+	return stamp.Name
+}
+
 // Run applies, in order, every migration after the database's stamp, each in
 // its own transaction with its stamp update. A migration that fails is rolled
 // back, leaving the stamp and the tables at the last good version, and Run
