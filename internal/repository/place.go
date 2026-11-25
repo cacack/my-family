@@ -289,17 +289,21 @@ func countUses(uses []PlaceUse, up map[string]string, aliases PlaceAliases) map[
 }
 
 // listAliases lists each absorbed place that has a use among the aliases of
-// the place it resolves to, in the order of places. Its target is in places:
-// the use made it so.
+// the place it resolves to, in the order of places. A target is absent when
+// every use naming the absorbed place has an explicit parent that bypasses
+// it; the absorbed place is then listed on no other place.
 func listAliases(places []PlaceReadModel, aliases PlaceAliases) {
 	index := make(map[string]int, len(places))
 	for i := range places {
 		index[places[i].Key] = i
 	}
 	for _, p := range places {
-		if target, ok := aliases[p.Key]; ok && p.Count > 0 {
-			t := &places[index[target]]
-			t.Aliases = append(t.Aliases, PlaceAlias{ID: p.ID, Key: p.Key, Name: p.Name})
+		target, ok := aliases[p.Key]
+		if !ok || p.Count == 0 {
+			continue
+		}
+		if i, listed := index[target]; listed {
+			places[i].Aliases = append(places[i].Aliases, PlaceAlias{ID: p.ID, Key: p.Key, Name: p.Name})
 		}
 	}
 }

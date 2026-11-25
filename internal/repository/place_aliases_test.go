@@ -107,3 +107,23 @@ func TestPlaces_Aliases(t *testing.T) {
 		t.Errorf("Places with an unnamed target = %+v", only)
 	}
 }
+
+// TestPlaces_AliasTargetBypassed shows that an absorbed place whose target no
+// use reaches, because an explicit parent bypasses it, is listed on no place
+// rather than on an unrelated one.
+func TestPlaces_AliasTargetBypassed(t *testing.T) {
+	uses := []PlaceUse{
+		{Key: "darmstadt,hesse,germany", Text: "Darmstadt, Hesse, Germany", Count: 1},
+		{Key: "aachen", Text: "Aachen", Count: 1},
+	}
+	facts := []PlaceFactsReadModel{{Key: "darmstadt,hesse,germany", ParentKey: "bavaria"}}
+	aliases := PlaceAliases{"hesse,germany": "hessen,germany"}
+	for _, p := range Places(uses, facts, aliases, Privacy{HidePrivate: true}) {
+		if p.Key == "hessen,germany" {
+			t.Errorf("hessen,germany is listed: no use reaches it")
+		}
+		if len(p.Aliases) != 0 {
+			t.Errorf("%s lists aliases %v, want none", p.Key, p.Aliases)
+		}
+	}
+}

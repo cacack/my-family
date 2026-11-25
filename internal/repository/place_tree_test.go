@@ -205,7 +205,7 @@ func TestPlaces_FollowsExplicitParents(t *testing.T) {
 		{Key: "x", ParentKey: "y"}, {Key: "y", ParentKey: "x"},
 	}
 	var uses []PlaceUse
-	for _, p := range people {
+	for _, p := range people { // each person has a birth or a death place, not both
 		uses = append(uses, PlaceUse{Key: p.BirthKey + p.DeathKey, Text: p.BirthText + p.DeathText, Count: p.Count})
 	}
 	got := map[string]int{}
@@ -236,10 +236,17 @@ func TestPlaces_FollowsExplicitParents(t *testing.T) {
 			parent = level.Path[n-2].ID
 		}
 		siblings, _ := tree.Level(parent)
+		found := false
 		for _, e := range siblings.Places {
-			if e.ID == PlaceID(key) && e.Count != count {
-				t.Errorf("tree count of %s = %d, list count %d", key, e.Count, count)
+			if e.ID == PlaceID(key) {
+				found = true
+				if e.Count != count {
+					t.Errorf("tree count of %s = %d, list count %d", key, e.Count, count)
+				}
 			}
+		}
+		if !found {
+			t.Errorf("%s is not among its parent's places in the tree", key)
 		}
 	}
 }
