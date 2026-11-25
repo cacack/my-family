@@ -378,6 +378,36 @@ func TestPendingBackfills(t *testing.T) {
 	}
 }
 
+// TestPendingBackfills_MergeResolvedCoordinates covers a survivor whose only
+// coordinates a person merge resolved onto it: the PersonMerged event on its
+// stream carries them, so nothing is pending and a backup is not refused.
+func TestPendingBackfills_MergeResolvedCoordinates(t *testing.T) {
+	ctx := context.Background()
+	s := newRebuildStores()
+	h := command.NewHandlerWithBranches(s.events, s.read, s.branches, s.snapshots)
+	survivor, err := h.CreatePerson(ctx, command.CreatePersonInput{GivenName: "John", Surname: "Doe", BirthPlace: "Boston"})
+	mustRebuildSetup(t, err)
+	merged, err := h.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Johnny", Surname: "Doe", BirthPlace: "Salem",
+		BirthPlaceCoordinates: coords("N42.5195", "W70.8967")})
+	mustRebuildSetup(t, err)
+	_, err = h.MergePersons(ctx, command.MergePersonsInput{
+		SurvivorID: survivor.ID, MergedID: merged.ID, SurvivorVersion: survivor.Version, MergedVersion: merged.Version,
+		FieldResolution: map[string]string{"birth_place": "merged"},
+	})
+	mustRebuildSetup(t, err)
+	if p, _ := s.read.GetPerson(ctx, domain.MainBranchID, survivor.ID); p == nil || ptrValue(p.BirthPlaceLat) != "N42.5195" {
+		t.Fatalf("survivor = %+v, want the merged birth coordinates", p)
+	}
+
+	b, err := repository.PendingBackfills(ctx, s.events, s.read, s.branches, s.snapshots)
+	if err != nil {
+		t.Fatalf("PendingBackfills: %v", err)
+	}
+	if b.Len() != 0 {
+		t.Errorf("pending = %+v, want none: the merge logged the survivor's coordinates", b)
+	}
+}
+
 // TestRebuildReadModel_ReportsRowsWithoutAStream proves a row whose values no
 // stream can carry is not backfilled; the replay drops it and the recount
 // reports what it held (#1251).

@@ -879,13 +879,17 @@ func branchSetCoordinates(ctx context.Context, events EventStore, id uuid.UUID) 
 }
 
 // updatedCoordinateKeys returns the coordinate change keys a person or family
-// update sets or clears (#1604).
+// update sets or clears (#1604), or a person merge resolves onto its survivor,
+// whose stream it lands on (#1799).
 func updatedCoordinateKeys(event domain.Event) []string {
+	personKeys := []string{"birth_place_lat", "birth_place_long", "death_place_lat", "death_place_long"}
 	var changes map[string]any
 	var keys []string
 	switch e := event.(type) {
 	case domain.PersonUpdated:
-		changes, keys = e.Changes, []string{"birth_place_lat", "birth_place_long", "death_place_lat", "death_place_long"}
+		changes, keys = e.Changes, personKeys
+	case domain.PersonMerged:
+		changes, keys = e.ResolvedFields, personKeys
 	case domain.FamilyUpdated:
 		changes, keys = e.Changes, []string{"marriage_place_lat", "marriage_place_long"}
 	}
