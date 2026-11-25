@@ -1736,7 +1736,8 @@ func (s *PrivacyStore) ListPlaceFacts(ctx context.Context, branchID domain.Branc
 }
 
 // visiblePlaceKeys returns the keys of the places the principal may see in
-// branchID: those a visible record names (ListPlaces).
+// branchID (ListPlaces): those a visible record resolves to or sits beneath,
+// explicit parents included.
 func (s *PrivacyStore) visiblePlaceKeys(ctx context.Context, branchID domain.BranchID) (map[string]bool, error) {
 	places, err := s.inner.ListPlaces(ctx, branchID, s.privacy(ctx))
 	if err != nil {

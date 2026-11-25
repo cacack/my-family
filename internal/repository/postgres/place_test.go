@@ -90,3 +90,14 @@ func TestPlaceTree(t *testing.T) {
 	defer cleanup()
 	placetest.RunPlaceTree(t, store)
 }
+
+// TestPlaceReadsAgree runs the shared #1812 suite against the postgres
+// backend; the memory and sqlite packages run the same body (DB-001).
+func TestPlaceReadsAgree(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	store, cleanup := setupReadModelStore(t)
+	defer cleanup()
+	placetest.RunPlaceReadsAgree(t, store)
+}

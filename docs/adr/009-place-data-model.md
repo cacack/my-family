@@ -305,8 +305,10 @@ undoes it.
   IDs are resolved at read time and nothing stored is re-pointed, so an explicit parent that names
   an absorbed place means its target.
 - **Only the whole key matches.** Aliasing `Hesse, Germany` to `Hessen, Germany` does not rewrite
-  `Darmstadt, Hesse, Germany`. That place moves under Hessen in the browser, beside
-  `Darmstadt, Hessen, Germany`, where the user can join the two.
+  `Darmstadt, Hesse, Germany`. That place moves under Hessen in the browser and the list, beside
+  `Darmstadt, Hessen, Germany`, where the user can join the two. An absorbed place sits outside
+  the hierarchy of section 4; on the list it keeps its own count, of the records whose key is its
+  key or ends with `,` and its key.
 
 ### 4. Hierarchy
 
@@ -332,12 +334,14 @@ A place has at most one parent place.
   3). A level with no label shows none, and so does a level that two of those forms name
   differently.
 
-The browser walks parents, in Go, over places resolved by key. A parent that no record names
+The browser and the list of places walk parents, in Go, over places resolved by key: one walk
+(`PlaceParents.Above`), so both hold the same places under the same parents (#1812). A parent that no record names
 directly (`Hessen, Germany` when only its towns were recorded) is a place like any other. A place's
 count is of people, not records: the people whose birth or death place resolves to it or to a
 place beneath it, each counted once, so a person born and died beneath the same place counts there
 once (#1811). The list of people behind a place is those same people, so the count and the list
-always agree. The
+always agree. The list counts records instead: the place-bearing records that resolve to a place or
+to a place beneath it, each once. The
 right-to-left SQL in the two SQL stores and the flat list in the memory store are replaced by this
 one walk.
 
@@ -473,8 +477,8 @@ implement the pairing itself; labels wait for it.
 
 The *use* view reads through the privacy overlay of [ADR-008](./008-privacy-model.md), as the place
 browser does. A place is visible to a principal when a record that principal may see, in the scope
-being read, resolves to it or to a place beneath it. A principal the overlay hides nothing from
-sees every place.
+being read, resolves to it or to a place beneath it (section 4, explicit parents included). A
+principal the overlay hides nothing from sees every place.
 
 A place that is not visible is absent, facts included, so a name or a pair cannot leak through the
 fact tables. Everything derived is computed from visible uses only:
@@ -483,6 +487,12 @@ fact tables. Everything derived is computed from visible uses only:
   records the principal may see.
 - **Aliases.** An absorbed key is listed under its target only when a visible record uses it. The
   merge screen needs both places visible.
+- **Explicit parents.** A place stated as the explicit parent of a visible place has a visible place
+  beneath it, so it is visible even when no visible record names it, as an alias target is: the
+  fact stated on the visible place names it, not a hidden record. With no visible spelling it shows
+  its display name, otherwise its key; its count is of visible records only. Hiding it would make
+  the hierarchy differ per principal, so a visible place would sit at another level, and was
+  rejected (#1812).
 - **Lookup by ID.** A place's ID can be computed from guessed text, so a `GET` of a place that is
   not visible answers exactly as one for an ID that was never in use.
 - **History.** Place events carry the key and the text. The event-output redactor of ADR-008 drops
@@ -589,7 +599,8 @@ PRs that make each one enforceable:
   `ErrEventTypeNotBranchAware`, and a schema test in both SQL stores that no place fact table has a
   `branch_id` column.
 - **PL-006** No place read returns a name, a pair, a count, an alias or a history entry derived
-  only from records hidden from the principal.
+  only from records hidden from the principal. An explicit parent of a visible place is visible,
+  shown by its key when no visible record spells it (section 10).
 
 ## Implementation Plan
 

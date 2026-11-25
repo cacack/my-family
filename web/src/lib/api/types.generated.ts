@@ -450,8 +450,9 @@ export interface paths {
          * List the places in use
          * @description Returns the places named by the records the caller may see (ADR-009
          *     §2): every place a person's birth or death, a family's marriage, a life
-         *     event or an attribute names, and every place above one of those. Each
-         *     place has an ID derived from its place matching key, so it is the same
+         *     event or an attribute names, and every place above one of those,
+         *     explicit parents included, so it holds every place `GET /browse/places`
+         *     shows (ADR-009 §4). Each place has an ID derived from its place matching key, so it is the same
          *     on every install and every branch. Places sort by name. An absorbed
          *     place is not an entry of its own: it is listed in its target's
          *     `aliases` (ADR-009 §3). With
@@ -512,9 +513,10 @@ export interface paths {
         };
         /**
          * Get a place in use by ID
-         * @description Returns the place with this ID when a record the caller may see names
-         *     it or a place under it. A place only hidden records name answers 404,
-         *     exactly as an ID that was never in use (ADR-009 §10). An absorbed place
+         * @description Returns the place with this ID when a record the caller may see
+         *     resolves to it or to a place beneath it, explicit parents included, so
+         *     every ID `GET /browse/places` returns opens. Any other place answers
+         *     404, exactly as an ID that was never in use (ADR-009 §10). An absorbed place
          *     (`PUT /places/{id}/alias`) is returned as itself, with its own facts
          *     and `resolves_to`, not redirected to its target. With `?branch=`
          *     the place is read from that branch's isolated view; omit it for the
@@ -5294,7 +5296,7 @@ export interface components {
             name: string;
             /** @description The place's display name when one is set, otherwise its most-used spelling, or its key when no record spells it */
             full_name: string;
-            /** @description Number of people whose birth or death place resolves to this place or to a place beneath it, each counted once: the `total` of `GET /browse/places/{id}/persons` for this place. Spellings whose place matching key is the same (differing only in letter case, spacing around commas or empty parts) are one place, and so are spellings joined by an alias. This is a count of people, not of uses like `Place.count` from `GET /places`, which counts every birth, death, marriage, life event and attribute place use. */
+            /** @description Number of people whose birth or death place resolves to this place or to a place beneath it, each counted once: the `total` of `GET /browse/places/{id}/persons` for this place. Spellings whose place matching key is the same (differing only in letter case, spacing around commas or empty parts) are one place, and so are spellings joined by an alias. Beneath follows explicit parents, as `Place.count` from `GET /places` does. This is a count of people, not of uses like `Place.count`, which counts every birth, death, marriage, life event and attribute place use. */
             count: number;
             /** @description Whether this place has sub-locations */
             has_children: boolean;
@@ -5309,7 +5311,7 @@ export interface components {
             key: string;
             /** @description The place's display name when one is set (PUT /places/{id}); otherwise its most-used recorded spelling among the records the caller may see, its parts joined with ", " (ties broken bytewise). */
             name: string;
-            /** @description Number of place uses (birth, death, marriage, life event and attribute places) the caller may see at or under this place, under meaning by key: a use counts toward its own place and each place its key names with leading parts removed, never toward an explicit parent. It can differ from `PlaceEntry.count` from `GET /browse/places`, which counts people by their birth and death places, each once, and follows explicit parents. */
+            /** @description Number of place uses (birth, death, marriage, life event and attribute places) the caller may see that resolve to this place or to a place beneath it, each counted once. Beneath follows the hierarchy of `GET /browse/places`: a place's explicit parent (`parent_id`) when one is set, otherwise the place its key names with the leftmost part removed (ADR-009 §4). An absorbed place sits outside that hierarchy and counts the uses whose key is its key or ends with it. This is a count of uses, not of people like `PlaceEntry.count`, which counts people by their birth and death places, each once, over the same hierarchy. */
             count: number;
             /**
              * Format: uuid
