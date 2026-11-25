@@ -51,7 +51,7 @@ func TestRoundTrip_NamelessPlaceCoordinates(t *testing.T) {
 				if len(nameless) != 0 {
 					t.Errorf("warnings = %q, want none about a missing place name", nameless)
 				}
-			} else if want := tt.wantWarning + " have no place name; kept on the record, not shown on the map"; !slices.Equal(nameless, []string{want}) {
+			} else if want := tt.wantWarning + " have no place name; kept on the record"; !slices.Equal(nameless, []string{want}) {
 				t.Errorf("warnings = %q, want [%q]", nameless, want)
 			}
 

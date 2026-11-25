@@ -151,7 +151,7 @@ func TestNamelessPair_ImportAndMap(t *testing.T) {
 	result := importGEDCOMText(t, server, strings.TrimSuffix(originTestGedcom, "0 TRLR\n")+
 		"0 @I2@ INDI\n1 NAME Ada /Nameless/\n1 BIRT\n2 DATE 1815\n2 PLAC\n3 MAP\n4 LATI N51.5074\n4 LONG W0.1278\n0 TRLR\n")
 
-	want := "Individual @I2@: BIRT coordinates have no place name; kept on the record, not shown on the map"
+	want := "Individual @I2@: BIRT coordinates have no place name; kept on the record"
 	warnings, _ := result["warnings"].([]any)
 	if !slices.ContainsFunc(warnings, func(w any) bool { return w.(map[string]any)["message"] == want }) {
 		t.Errorf("import warnings = %v, want %q", warnings, want)
