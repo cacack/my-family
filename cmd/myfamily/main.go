@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
@@ -158,12 +159,31 @@ func runServer() error {
 		log.Printf("Frontend: Not available (API only)")
 	}
 
-	authService := auth.NewService(stores.Accounts, auth.WithSettings(stores.Settings),
-		auth.WithAuditRetention(cfg.AuthAuditRetention()))
-	if err := logAuthMode(cfg, authService, log.Default()); err != nil {
+	server, err := newAPIServer(cfg, stores, frontendFS, log.Default())
+	if err != nil {
 		return err
 	}
-	carryOverHomePerson(cfg, authService, log.Default())
+
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(sigChan)
+
+	// Serve until a signal, then drain in-flight requests before returning,
+	// so the deferred Close never runs under a handler that is still writing.
+	return serveUntilSignal(server, sigChan, shutdownTimeout)
+}
+
+// newAPIServer builds the server `serve` runs on stores: the account service
+// and its start-up checks, then the API with every store wired in, seeded
+// with sample data in demo mode. It is everything `serve` does to the
+// database before the first request.
+func newAPIServer(cfg *config.Config, stores *storage.Stores, frontendFS fs.FS, logger *log.Logger) (*api.Server, error) {
+	authService := auth.NewService(stores.Accounts, auth.WithSettings(stores.Settings),
+		auth.WithAuditRetention(cfg.AuthAuditRetention()))
+	if err := logAuthMode(cfg, authService, logger); err != nil {
+		return nil, err
+	}
+	carryOverHomePerson(cfg, authService, logger)
 
 	// Build server options
 	serverOpts := []api.ServerOption{api.WithBranchStore(stores.Branches), api.WithSettingsStore(stores.Settings), api.WithAuth(authService), api.WithTreeSettings(stores.Accounts)}
@@ -183,18 +203,11 @@ func runServer() error {
 	// Seed demo data if demo mode is enabled
 	if cfg.DemoMode {
 		if err := demo.SeedDemoData(context.Background(), server.CommandHandler(), stores.ReadModel); err != nil {
-			return fmt.Errorf("failed to seed demo data: %w", err)
+			return nil, fmt.Errorf("failed to seed demo data: %w", err)
 		}
-		log.Printf("Demo data loaded: sample family tree ready")
+		logger.Printf("Demo data loaded: sample family tree ready")
 	}
-
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-	defer signal.Stop(sigChan)
-
-	// Serve until a signal, then drain in-flight requests before returning,
-	// so the deferred Close never runs under a handler that is still writing.
-	return serveUntilSignal(server, sigChan, shutdownTimeout)
+	return server, nil
 }
 
 // runRebuild opens the configured store, empties its read model and replays the

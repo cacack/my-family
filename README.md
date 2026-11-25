@@ -404,7 +404,9 @@ included, and every account's password hash, so store it as carefully as the dat
 
 Restore refuses, and leaves the database as it was, when the archive is damaged or from a newer
 release, when a server holds the database, and when the database already holds events,
-accounts or settings: it never merges a backup into an instance that has data. An archive from an
+accounts or settings: it never merges a backup into an instance that has data. So a database
+that has completed setup (it holds the owner's account) or holds any tree data is refused, but one
+a server has only started on, with nothing set up or entered, is still empty. An archive from an
 older release restores into a newer one. If the replay in step 3 fails, the log is already
 restored, so a second `restore` refuses; fix the cause and run `myfamily rebuild`, which finishes
 it.
