@@ -380,8 +380,36 @@ complete and intact, and otherwise non-zero with a message naming the damaged en
 
 The archive is not encrypted. It holds the whole tree, living people and private records
 included, and every account's password hash, so store it as carefully as the database itself.
-Restoring from a backup is not available yet
-([#1642](https://github.com/cacack/my-family/issues/1642)).
+
+#### Restoring
+
+`myfamily restore PATH` turns a backup archive back into a working instance:
+
+1. Stop every server on the target database. Restore refuses while one runs, as `rebuild` does.
+2. Point `DATABASE_URL` or `SQLITE_PATH` at an empty database: a new SQLite path (the file is
+   created) or a new PostgreSQL database (`CREATE DATABASE myfamily_restored`).
+3. Run `myfamily restore backup.zip`. It verifies the archive first, as `verify-backup` does,
+   loads the event log (every position kept) and the accounts and settings in one transaction,
+   then replays the log into the read model, as `myfamily rebuild` does, and reports the event
+   count and last log position, which match the archive's.
+4. Start `myfamily serve` on the same database.
+
+Restore refuses, and leaves the database as it was, when the archive is damaged or from a newer
+release, when a server holds the database, and when the database already holds events,
+accounts or settings: it never merges a backup into an instance that has data. An archive from an
+older release restores into a newer one. If the replay in step 3 fails, the log is already
+restored, so a second `restore` refuses; fix the cause and run `myfamily rebuild`, which finishes
+it.
+
+After a restore every account keeps its password and API tokens keep working, but nobody is signed
+in, and pending invites and password-reset links are gone and must be issued again.
+
+**Moving between SQLite and PostgreSQL.** The archive is the same on both, so a backup taken from
+one restores into the other. To move a SQLite instance to PostgreSQL, run
+`SQLITE_PATH=myfamily.db myfamily backup move.zip`, then
+`DATABASE_URL=postgres://... myfamily restore move.zip` against an empty PostgreSQL database, and
+start the server with that `DATABASE_URL`. The reverse works the same way. Times keep
+microseconds on PostgreSQL, so a time SQLite stored to the nanosecond is rounded on the way.
 
 #### Repairing the read model
 
