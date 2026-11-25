@@ -1111,8 +1111,7 @@ describe('unauthorized handler (#1408)', () => {
 		['uploadPersonMedia', () => api.uploadPersonMedia('p1', file, 'Portrait')],
 		['uploadFamilyMedia', () => api.uploadFamilyMedia('f1', file, 'Certificate')],
 		['uploadSourceMedia', () => api.uploadSourceMedia('s1', file, 'Scan')],
-		['getAhnentafelText', () => api.getAhnentafelText('p1')],
-		['downloadBackup', () => api.downloadBackup()]
+		['getAhnentafelText', () => api.getAhnentafelText('p1')]
 	];
 
 	it.each(rawFetchCalls)('fires when %s finds the session gone', async (_name, call) => {
@@ -1124,21 +1123,15 @@ describe('unauthorized handler (#1408)', () => {
 	});
 });
 
-describe('downloadBackup (#1830)', () => {
+describe('checkBackup (#1833)', () => {
 	afterEach(() => vi.unstubAllGlobals());
 
-	it('returns the archive under the name the server gives it', async () => {
-		const fetchMock = vi.fn().mockResolvedValue(
-			new Response('PK', {
-				status: 200,
-				headers: { 'Content-Disposition': 'attachment; filename="myfamily-backup-20261124T120000Z.zip"' }
-			})
-		);
+	it('resolves when a backup can be made, fetching no archive', async () => {
+		const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
 		vi.stubGlobal('fetch', fetchMock);
-		const { blob, filename } = await api.downloadBackup();
-		expect(fetchMock).toHaveBeenCalledWith('/api/v1/backup');
-		expect(filename).toBe('myfamily-backup-20261124T120000Z.zip');
-		expect(await blob.text()).toBe('PK');
+		await expect(api.checkBackup()).resolves.toBeUndefined();
+		expect(fetchMock).toHaveBeenCalledOnce();
+		expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/backup/check');
 	});
 
 	it('rejects a refused backup with its reason', async () => {
@@ -1150,10 +1143,14 @@ describe('downloadBackup (#1830)', () => {
 				json: async () => ({ code: 'backup_needs_rebuild', message: 'Run "myfamily rebuild" first' })
 			})
 		);
-		await expect(api.downloadBackup()).rejects.toMatchObject({
+		await expect(api.checkBackup()).rejects.toMatchObject({
 			status: 409,
 			code: 'backup_needs_rebuild',
 			message: 'Run "myfamily rebuild" first'
 		});
+	});
+
+	it('links the archive itself', () => {
+		expect(api.backupUrl()).toBe('/api/v1/backup');
 	});
 });
