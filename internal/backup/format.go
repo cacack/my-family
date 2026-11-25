@@ -1,6 +1,6 @@
-// Package backup writes and verifies the backup archive of ADR-010: one zip
-// holding the event log and the tables the log cannot rebuild, with a manifest
-// that records a SHA-256 for every other entry. Restore is #1642.
+// Package backup writes, verifies and loads the backup archive of ADR-010: one
+// zip holding the event log and the tables the log cannot rebuild, with a
+// manifest that records a SHA-256 for every other entry.
 //
 // Values are logical, not backend-native, so an archive written from SQLite
 // reads the same as one written from PostgreSQL: times are RFC 3339 strings in
@@ -54,9 +54,24 @@ const (
 	kindText kind = iota
 	kindInt
 	kindBool
+	// kindTime is a time SQLite holds in the fixed-width timeLayout, as the
+	// account tables do, so that it sorts as text.
 	kindTime
+	// kindLogTime is a time SQLite holds as the stores' formatTimestamp
+	// writes it.
+	kindLogTime
+	// kindDatetime is a time SQLite holds in its own datetime('now') form.
+	kindDatetime
 	kindJSON
 )
+
+// sqliteTimeLayouts is how SQLite holds each kind of time, so a restore
+// writes a time as the store that owns the column would (ADR-010 §5).
+var sqliteTimeLayouts = map[kind]string{
+	kindTime:     timeLayout,
+	kindLogTime:  "2006-01-02T15:04:05.999999999Z07:00",
+	kindDatetime: "2006-01-02 15:04:05.999999999",
+}
 
 type column struct {
 	name string
@@ -89,20 +104,21 @@ var (
 	eventsTable = table{name: "events", entry: EventsEntry, format: ndjson, orderBy: "position", columns: []column{
 		{"id", kindText}, {"stream_id", kindText}, {"stream_type", kindText}, {"branch_id", kindText},
 		{"version", kindInt}, {"event_type", kindText}, {"data", kindJSON}, {"metadata", kindJSON},
-		{"timestamp", kindTime}, {"position", kindInt},
+		{"timestamp", kindLogTime}, {"position", kindInt},
 	}}
 	streamsTable = table{name: "streams", entry: StreamsEntry, format: ndjson, orderBy: "id", columns: []column{
-		{"id", kindText}, {"type", kindText}, {"created_at", kindTime}, {"metadata", kindJSON},
+		{"id", kindText}, {"type", kindText}, {"created_at", kindDatetime}, {"metadata", kindJSON},
 	}}
 )
 
 // carriedTables are the tables outside the log that the archive carries, each
-// as tables/<name>.json (ADR-010 §2). A new table outside the log must be
+// as tables/<name>.json (ADR-010 §2), in an order a restore can insert them
+// in: users before the tables that reference them. A new table outside the log must be
 // added here or to leftOutTables in the test, as the ADR's table says.
 var carriedTables = []table{
 	carried("users", "id", []column{
 		{"id", kindText}, {"username", kindText}, {"display_name", kindText}, {"password_hash", kindText},
-		{"created_at", kindTime}, {"disabled", kindBool},
+		{"created_at", kindLogTime}, {"disabled", kindBool},
 	}),
 	carried("tree_memberships", "user_id, tree_id", []column{
 		{"user_id", kindText}, {"tree_id", kindText}, {"role", kindText},

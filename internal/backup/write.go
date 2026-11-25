@@ -293,7 +293,7 @@ func logical(k kind, v any) (any, error) {
 				return b == 1, nil
 			}
 		}
-	case kindTime:
+	case kindTime, kindLogTime, kindDatetime:
 		if t, ok := v.(time.Time); ok {
 			return formatTime(t), nil
 		}

@@ -51,6 +51,10 @@ func main() {
 		if err := runVerifyBackup(os.Args[2:], os.Stdout); err != nil {
 			log.Fatal(err)
 		}
+	case "restore":
+		if err := runRestore(os.Args[2:], os.Stdout); err != nil {
+			log.Fatal(err)
+		}
 	case "user":
 		if err := runUser(os.Args[2:]); err != nil {
 			log.Fatal(err)
@@ -79,6 +83,8 @@ Commands:
             Write a backup archive of the database to PATH; the server may keep running
   verify-backup PATH
             Check that the backup archive at PATH is intact
+  restore PATH
+            Restore the backup archive at PATH into an empty database (refused while the server runs)
   user create [--username NAME] [--display-name NAME]
             Create an owner account; asks for the password, or reads it from stdin
   user reset-password --username NAME [--url URL]
