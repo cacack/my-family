@@ -1111,7 +1111,8 @@ describe('unauthorized handler (#1408)', () => {
 		['uploadPersonMedia', () => api.uploadPersonMedia('p1', file, 'Portrait')],
 		['uploadFamilyMedia', () => api.uploadFamilyMedia('f1', file, 'Certificate')],
 		['uploadSourceMedia', () => api.uploadSourceMedia('s1', file, 'Scan')],
-		['getAhnentafelText', () => api.getAhnentafelText('p1')]
+		['getAhnentafelText', () => api.getAhnentafelText('p1')],
+		['downloadBackup', () => api.downloadBackup()]
 	];
 
 	it.each(rawFetchCalls)('fires when %s finds the session gone', async (_name, call) => {
@@ -1120,5 +1121,39 @@ describe('unauthorized handler (#1408)', () => {
 		respond(401, { code: 'UNAUTHENTICATED', message: 'Sign in to continue' });
 		await expect(call()).rejects.toMatchObject({ status: 401, code: 'UNAUTHENTICATED' });
 		expect(handler).toHaveBeenCalledOnce();
+	});
+});
+
+describe('downloadBackup (#1830)', () => {
+	afterEach(() => vi.unstubAllGlobals());
+
+	it('returns the archive under the name the server gives it', async () => {
+		const fetchMock = vi.fn().mockResolvedValue(
+			new Response('PK', {
+				status: 200,
+				headers: { 'Content-Disposition': 'attachment; filename="myfamily-backup-20261124T120000Z.zip"' }
+			})
+		);
+		vi.stubGlobal('fetch', fetchMock);
+		const { blob, filename } = await api.downloadBackup();
+		expect(fetchMock).toHaveBeenCalledWith('/api/v1/backup');
+		expect(filename).toBe('myfamily-backup-20261124T120000Z.zip');
+		expect(await blob.text()).toBe('PK');
+	});
+
+	it('rejects a refused backup with its reason', async () => {
+		vi.stubGlobal(
+			'fetch',
+			vi.fn().mockResolvedValue({
+				ok: false,
+				status: 409,
+				json: async () => ({ code: 'backup_needs_rebuild', message: 'Run "myfamily rebuild" first' })
+			})
+		);
+		await expect(api.downloadBackup()).rejects.toMatchObject({
+			status: 409,
+			code: 'backup_needs_rebuild',
+			message: 'Run "myfamily rebuild" first'
+		});
 	});
 });

@@ -763,6 +763,21 @@ class ApiClient {
 		return this.request<PrivacySettings>('PUT', '/settings/privacy', settings);
 	}
 
+	/**
+	 * The owner's backup archive (#15). Fetched rather than linked, so a refused
+	 * backup, such as one that needs `myfamily rebuild`, reaches the page with
+	 * its reason (#1830). Mainline only: the operation takes no branch scope.
+	 */
+	async downloadBackup(): Promise<{ blob: Blob; filename: string }> {
+		const response = await fetch(`${API_BASE}/backup`);
+		if (!response.ok) {
+			throw await responseError(response);
+		}
+		const disposition = response.headers.get('Content-Disposition') ?? '';
+		const filename = /filename="([^"]+)"/.exec(disposition)?.[1] ?? 'myfamily-backup.zip';
+		return { blob: await response.blob(), filename };
+	}
+
 	async createInvite(role: User['role']): Promise<AccountLink> {
 		return this.request<AccountLink>('POST', '/invites', { role });
 	}

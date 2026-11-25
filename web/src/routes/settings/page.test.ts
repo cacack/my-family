@@ -14,7 +14,8 @@ vi.mock('#lib/api/client.js', async (importOriginal) => {
 		...actual,
 		api: {
 			getPrivacySettings: vi.fn(),
-			updatePrivacySettings: vi.fn()
+			updatePrivacySettings: vi.fn(),
+			downloadBackup: vi.fn()
 		}
 	};
 });
@@ -168,18 +169,55 @@ describe('Settings page', () => {
 		render(SettingsPage);
 		expect(screen.getByTestId('role-notice').textContent).toContain('needs the owner role');
 		expect(api.getPrivacySettings).not.toHaveBeenCalled();
-		expect(screen.queryByRole('link', { name: 'Download backup' })).toBeNull();
+		expect(screen.queryByRole('button', { name: 'Download backup' })).toBeNull();
 	});
 
 	it('offers the owner a backup download, saying what it holds (#15)', async () => {
 		render(SettingsPage);
-		const link = (await screen.findByRole('link', { name: 'Download backup' })) as HTMLAnchorElement;
-		expect(link.getAttribute('href')).toBe('/api/v1/backup');
-		expect(link.hasAttribute('download')).toBe(true);
-		const hint = document.getElementById(link.getAttribute('aria-describedby') ?? '')?.textContent ?? '';
+		const button = await screen.findByRole('button', { name: 'Download backup' });
+		const hint = document.getElementById(button.getAttribute('aria-describedby') ?? '')?.textContent ?? '';
 		expect(hint).toMatch(/not encrypted/);
 		expect(hint).toMatch(/password hash/);
 		expect(hint).toMatch(/myfamily verify-backup/);
+	});
+
+	it('saves the backup under the name the server gives it (#15)', async () => {
+		api.downloadBackup.mockResolvedValue({ blob: new Blob(['PK']), filename: 'myfamily-backup-20261124T120000Z.zip' });
+		// jsdom has no object URLs, so the test supplies them and puts them back.
+		const original = { createObjectURL: URL.createObjectURL, revokeObjectURL: URL.revokeObjectURL };
+		const revokeObjectURL = vi.fn();
+		Object.assign(URL, { createObjectURL: () => 'blob:backup', revokeObjectURL });
+		const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+			expect(this.download).toBe('myfamily-backup-20261124T120000Z.zip');
+			expect(this.href).toBe('blob:backup');
+		});
+		try {
+			render(SettingsPage);
+			await fireEvent.click(await screen.findByRole('button', { name: 'Download backup' }));
+			await waitFor(() => expect(click).toHaveBeenCalledOnce());
+			expect(revokeObjectURL).toHaveBeenCalledWith('blob:backup');
+			expect(screen.queryByRole('alert')).toBeNull();
+		} finally {
+			click.mockRestore();
+			Object.assign(URL, original);
+		}
+	});
+
+	it('shows why a backup was refused instead of a failed download (#1830)', async () => {
+		const reason = 'This database holds coordinates ... Stop every server and run "myfamily rebuild", which records them, then back up again.';
+		api.downloadBackup.mockRejectedValue({ status: 409, code: 'backup_needs_rebuild', message: reason });
+		render(SettingsPage);
+		const button = (await screen.findByRole('button', { name: 'Download backup' })) as HTMLButtonElement;
+		await fireEvent.click(button);
+		expect((await screen.findByRole('alert')).textContent).toContain('myfamily rebuild');
+		expect(button.disabled).toBe(false);
+	});
+
+	it('says a failed backup can be tried again, without the server error (#1830)', async () => {
+		api.downloadBackup.mockRejectedValue({ status: 500, code: 'INTERNAL_ERROR', message: 'An internal error occurred' });
+		render(SettingsPage);
+		await fireEvent.click(await screen.findByRole('button', { name: 'Download backup' }));
+		expect((await screen.findByRole('alert')).textContent).toContain('Could not make the backup. Try again.');
 	});
 
 	it.each([
