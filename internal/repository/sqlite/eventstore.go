@@ -48,7 +48,7 @@ type EventStore struct {
 // or already-migrated database the construction order does not matter.
 func NewEventStore(db *sql.DB) (*EventStore, error) {
 	if err := migrateStoreSchema(db); err != nil {
-		return nil, fmt.Errorf("failed to create tables: %w", err)
+		return nil, fmt.Errorf("migrate store schema: %w", err)
 	}
 	return &EventStore{db: db}, nil
 }

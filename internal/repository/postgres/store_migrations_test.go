@@ -340,3 +340,45 @@ func TestStoreMigrations_ConcurrentStartsApplyOnce(t *testing.T) {
 		}
 	}
 }
+
+// TestStoreMigrations_ReadsStampOfCurrentSchemaOnly pins the stamp lookup to
+// CURRENT_SCHEMA(). With search_path=app,other and another install stamped in
+// other, a lookup over the whole search_path would skip migrating app (its
+// stores would then use other's event log and accounts) or refuse app because
+// other is newer.
+func TestStoreMigrations_ReadsStampOfCurrentSchemaOnly(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	db, cleanup := setupPostgres(t)
+	defer cleanup()
+	// SET search_path is session state, so the pool must hand out one connection.
+	db.SetMaxOpenConns(1)
+	ctx := context.Background()
+
+	if _, err := db.Exec(`CREATE SCHEMA other; SET search_path = other`); err != nil {
+		t.Fatalf("set up other: %v", err)
+	}
+	if err := pgstore.NewStoreMigrator(db).Run(ctx); err != nil {
+		t.Fatalf("migrate other: %v", err)
+	}
+
+	if _, err := db.Exec(`CREATE SCHEMA app; SET search_path = app, other`); err != nil {
+		t.Fatalf("set up app: %v", err)
+	}
+	if _, err := pgstore.NewEventStore(db); err != nil {
+		t.Fatalf("NewEventStore in app: %v", err)
+	}
+	for _, table := range []string{"app.store_schema", "app.events", "app.streams", "app.users", "app.site_settings"} {
+		if !tableExists(t, db, table) {
+			t.Errorf("%s was not created; app's stamp was read from other", table)
+		}
+	}
+
+	if _, err := db.Exec(`UPDATE other.store_schema SET version = 99; CREATE SCHEMA fresh; SET search_path = fresh, other`); err != nil {
+		t.Fatalf("stamp other newer: %v", err)
+	}
+	if err := pgstore.NewStoreMigrator(db).Check(ctx); err != nil {
+		t.Errorf("Check of unstamped fresh beside a newer other: %v", err)
+	}
+}

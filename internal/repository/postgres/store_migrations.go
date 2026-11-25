@@ -66,9 +66,20 @@ func (storeSchemaBackend) BeginLocked(ctx context.Context, conn *sql.Conn) (*sql
 	return tx, nil
 }
 
+// ReadStamp looks for the stamp table in CURRENT_SCHEMA() only, the schema the
+// unqualified DDL of BeginLocked and the migrations lands in. to_regclass would
+// search the whole search_path: with search_path=app,public it would find
+// public's stamp and skip migrating app (the same mismatch
+// renameLegacyEventsTable documents). Once the table exists in the current
+// schema, the unqualified SELECT resolves to it, because that schema is first
+// on the path.
 func (storeSchemaBackend) ReadStamp(ctx context.Context, q repository.RowQuerier) (repository.StoreSchemaStamp, error) {
 	var exists bool
-	if err := q.QueryRowContext(ctx, `SELECT to_regclass('store_schema') IS NOT NULL`).Scan(&exists); err != nil {
+	if err := q.QueryRowContext(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM information_schema.tables
+			WHERE table_schema = CURRENT_SCHEMA() AND table_name = 'store_schema'
+		)`).Scan(&exists); err != nil {
 		return repository.StoreSchemaStamp{}, err
 	}
 	if !exists {
