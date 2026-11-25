@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/cacack/my-family/internal/api"
@@ -141,7 +143,31 @@ func TestCoordinateOrigin_ImportedAndMap(t *testing.T) {
 }
 
 // importGEDCOMText imports content through the API.
-func importGEDCOMText(t *testing.T, server *api.Server, content string) {
+// TestNamelessPair_ImportAndMap: a MAP under an empty PLAC is kept on the
+// record and reported as an import warning naming the record and event, and
+// the map shows no location without a place name (#1807).
+func TestNamelessPair_ImportAndMap(t *testing.T) {
+	server := setupBranchTestServer()
+	result := importGEDCOMText(t, server, strings.TrimSuffix(originTestGedcom, "0 TRLR\n")+
+		"0 @I2@ INDI\n1 NAME Ada /Nameless/\n1 BIRT\n2 DATE 1815\n2 PLAC\n3 MAP\n4 LATI N51.5074\n4 LONG W0.1278\n0 TRLR\n")
+
+	want := "Individual @I2@: BIRT coordinates have no place name; kept on the record, not shown on the map"
+	warnings, _ := result["warnings"].([]any)
+	if !slices.ContainsFunc(warnings, func(w any) bool { return w.(map[string]any)["message"] == want }) {
+		t.Errorf("import warnings = %v, want %q", warnings, want)
+	}
+	for _, item := range readRecord(t, server, "/api/v1/persons")["items"].([]any) {
+		if p := item.(map[string]any); p["given_name"] == "Ada" && p["birth_place_latitude"] != "N51.5074" {
+			t.Errorf("Ada's birth latitude = %v, want the imported N51.5074 kept", p["birth_place_latitude"])
+		}
+	}
+	items := readRecord(t, server, "/api/v1/map/locations")["items"].([]any)
+	if len(items) != 1 || items[0].(map[string]any)["place"] != "Boston" {
+		t.Errorf("map items = %v, want only the Boston location", items)
+	}
+}
+
+func importGEDCOMText(t *testing.T, server *api.Server, content string) map[string]any {
 	t.Helper()
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
@@ -156,4 +182,5 @@ func importGEDCOMText(t *testing.T, server *api.Server, content string) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("import: status %d: %s", rec.Code, rec.Body.String())
 	}
+	return decodeJSON(t, rec)
 }

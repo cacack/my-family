@@ -2602,11 +2602,11 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 			ID: p.ID, GivenName: p.GivenName, Surname: p.Surname,
 			Restriction: p.Restriction, LivingFacts: p.LivingFacts(),
 		}
-		if key := aliases.Resolve(repository.PlaceKey(p.BirthPlace)); key != "" || p.BirthPlaceLat != nil {
+		if key := aliases.Resolve(repository.PlaceKey(p.BirthPlace)); key != "" {
 			births = append(births, repository.MapUse{Person: person, EventType: "birth", Text: p.BirthPlace, Key: key,
 				Latitude: p.BirthPlaceLat, Longitude: p.BirthPlaceLong, Origin: p.BirthPlaceOrigin, Place: facts[key]})
 		}
-		if key := aliases.Resolve(repository.PlaceKey(p.DeathPlace)); key != "" || p.DeathPlaceLat != nil {
+		if key := aliases.Resolve(repository.PlaceKey(p.DeathPlace)); key != "" {
 			deaths = append(deaths, repository.MapUse{Person: person, EventType: "death", Text: p.DeathPlace, Key: key,
 				Latitude: p.DeathPlaceLat, Longitude: p.DeathPlaceLong, Origin: p.DeathPlaceOrigin, Place: facts[key]})
 		}

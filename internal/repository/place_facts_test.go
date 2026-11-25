@@ -116,20 +116,18 @@ func TestMapLocations(t *testing.T) {
 }
 
 // TestMapLocations_NameFromSpellings names a place with no display name by
-// its most-used spelling, and gives a text with no key the zero place ID.
+// its most-used spelling, and leaves out a text with no key, which has no name
+// to show (#1807).
 func TestMapLocations_NameFromSpellings(t *testing.T) {
 	pair := func(p MapPerson, text, key string) MapUse {
 		return MapUse{Person: p, EventType: "birth", Text: text, Key: key, Latitude: strPtr("N1"), Longitude: strPtr("E1")}
 	}
-	a, b, c, d := MapPerson{ID: uuid.New()}, MapPerson{ID: uuid.New()}, MapPerson{ID: uuid.New()}, MapPerson{ID: uuid.New()}
-	got := MapLocations([]MapUse{pair(a, "kiel", "kiel"), pair(b, "Kiel", "kiel"), pair(c, "Kiel", "kiel"), pair(d, "", "")})
-	if len(got) != 2 {
-		t.Fatalf("MapLocations = %+v, want 2 locations", got)
+	a, b, c, d, e := MapPerson{ID: uuid.New()}, MapPerson{ID: uuid.New()}, MapPerson{ID: uuid.New()}, MapPerson{ID: uuid.New()}, MapPerson{ID: uuid.New()}
+	got := MapLocations([]MapUse{pair(a, "kiel", "kiel"), pair(b, "Kiel", "kiel"), pair(c, "Kiel", "kiel"), pair(d, "", ""), pair(e, ", ,", "")})
+	if len(got) != 1 {
+		t.Fatalf("MapLocations = %+v, want only the Kiel location", got)
 	}
-	if got[0].Place != "" || got[0].PlaceID != uuid.Nil {
-		t.Errorf("keyless location = %q %s, want no name and the zero ID", got[0].Place, got[0].PlaceID)
-	}
-	if got[1].Place != "Kiel" || got[1].PlaceID != PlaceID("kiel") || got[1].Count != 3 {
-		t.Errorf("kiel location = %+v, want Kiel with 3 persons", got[1])
+	if got[0].Place != "Kiel" || got[0].PlaceID != PlaceID("kiel") || got[0].Count != 3 {
+		t.Errorf("kiel location = %+v, want Kiel with 3 persons", got[0])
 	}
 }
