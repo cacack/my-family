@@ -101,7 +101,8 @@ func (n *Nominatim) Search(ctx context.Context, query string, limit int) ([]Cand
 		}
 		lat, latErr := strconv.ParseFloat(p.Lat, 64)
 		lon, lonErr := strconv.ParseFloat(p.Lon, 64)
-		if latErr != nil || lonErr != nil || lat < -90 || lat > 90 || lon < -180 || lon > 180 {
+		// Written as in-range tests so that NaN, which compares false, fails.
+		if latErr != nil || lonErr != nil || !(lat >= -90 && lat <= 90) || !(lon >= -180 && lon <= 180) {
 			continue
 		}
 		attribution := p.Licence

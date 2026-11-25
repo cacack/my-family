@@ -7,7 +7,9 @@ package geocode
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -59,7 +61,7 @@ var (
 	ErrTimeout  = errors.New("geocoder timed out")
 	ErrProvider = errors.New("geocoder failed")
 	// ErrQuery is a place name that is empty or longer than MaxQueryLength.
-	ErrQuery = errors.New("place name must be 1 to 255 characters")
+	ErrQuery = fmt.Errorf("place name must be 1 to %d characters", MaxQueryLength)
 )
 
 // Lookup fronts a Provider with an in-memory cache and a rate limit, so that a
@@ -69,9 +71,11 @@ type Lookup struct {
 	provider Provider
 	timeout  time.Duration
 	limiter  *rate.Limiter
-	// turn admits one lookup at a time, so a repeat of a name in flight is
-	// answered from the cache rather than sent again.
-	turn  chan struct{}
+	// turn admits one provider lookup at a time, so a repeat of a name in
+	// flight is answered from the cache rather than sent again.
+	turn chan struct{}
+	// mu guards cache, so a cached name is answered without waiting for turn.
+	mu    sync.RWMutex
 	cache map[string][]Candidate
 }
 
@@ -110,6 +114,9 @@ func (l *Lookup) Search(ctx context.Context, name string) ([]Candidate, error) {
 		return nil, ErrQuery
 	}
 	key := strings.ToLower(query)
+	if candidates, ok := l.cached(key); ok {
+		return candidates, nil
+	}
 
 	lookupCtx, cancel := context.WithTimeout(ctx, l.timeout)
 	defer cancel()
@@ -127,7 +134,9 @@ func (l *Lookup) Search(ctx context.Context, name string) ([]Candidate, error) {
 	}
 	defer func() { <-l.turn }()
 
-	if candidates, ok := l.cache[key]; ok {
+	// A lookup of the same name may have filled the cache while this one
+	// waited for its turn.
+	if candidates, ok := l.cached(key); ok {
 		return candidates, nil
 	}
 	if err := l.limiter.Wait(lookupCtx); err != nil {
@@ -145,6 +154,7 @@ func (l *Lookup) Search(ctx context.Context, name string) ([]Candidate, error) {
 	if len(candidates) > MaxCandidates {
 		candidates = candidates[:MaxCandidates]
 	}
+	l.mu.Lock()
 	if len(l.cache) >= maxCacheEntries {
 		for k := range l.cache {
 			delete(l.cache, k)
@@ -152,5 +162,14 @@ func (l *Lookup) Search(ctx context.Context, name string) ([]Candidate, error) {
 		}
 	}
 	l.cache[key] = candidates
+	l.mu.Unlock()
 	return candidates, nil
+}
+
+// cached returns the cached candidates for key, if any.
+func (l *Lookup) cached(key string) ([]Candidate, bool) {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+	candidates, ok := l.cache[key]
+	return candidates, ok
 }

@@ -33,7 +33,7 @@ func (ss *StrictServer) GeocodePlace(ctx context.Context, request GeocodePlaceRe
 	case errors.Is(err, geocode.ErrQuery):
 		return GeocodePlace400JSONResponse{BadRequestJSONResponse{Code: CodeValidation, Message: "q " + geocode.ErrQuery.Error()}}, nil
 	case errors.Is(err, geocode.ErrTimeout):
-		return GeocodePlace504JSONResponse{Code: "geocoder_timeout", Message: "The geocoder did not answer in time"}, nil
+		return GeocodePlace504JSONResponse{Code: "geocoder_timeout", Message: "The geocoder is busy or did not answer in time"}, nil
 	case errors.Is(err, geocode.ErrProvider):
 		return GeocodePlace502JSONResponse{Code: "geocoder_error", Message: "The geocoder failed"}, nil
 	case err != nil:

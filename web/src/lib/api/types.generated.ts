@@ -521,13 +521,14 @@ export interface paths {
          *     A name is sent once per server process: a repeat, compared ignoring
          *     case and runs of spaces, is answered from an in-memory cache, an empty
          *     answer included. Outbound requests are spaced at no more than one per
-         *     second, so a lookup may wait for its turn; one that cannot be answered
-         *     within 10 seconds answers 504.
+         *     second, so a lookup may wait behind others; one that cannot be answered
+         *     within 10 seconds, waiting included, answers 504.
          *
          *     - `200` with no `items`: the provider matched nothing.
          *     - `409` `geocoder_disabled`: the server has no geocoder enabled.
          *     - `502` `geocoder_error`: the provider failed or refused the request.
-         *     - `504` `geocoder_timeout`: the provider did not answer in time.
+         *     - `504` `geocoder_timeout`: the lookup queue was busy or the provider did
+         *       not answer in time.
          */
         get: operations["geocodePlace"];
         put?: never;
@@ -9289,7 +9290,7 @@ export interface operations {
                 };
             };
             503: components["responses"]["SetupRequired"];
-            /** @description `geocoder_timeout`: the provider did not answer in time */
+            /** @description `geocoder_timeout`: the lookup queue was busy or the provider did not answer in time */
             504: {
                 headers: {
                     [name: string]: unknown;

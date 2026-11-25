@@ -119,6 +119,50 @@ func TestNominatim_LimitsCandidates(t *testing.T) {
 	}
 }
 
+func TestNominatim_SkipsNonFiniteCoordinates(t *testing.T) {
+	s := newStub(t, answer(`[{"display_name":"NaN","lat":"NaN","lon":"0"},{"display_name":"Inf","lat":"0","lon":"+Inf"},`+
+		`{"display_name":"X","lat":"1","lon":"2"}]`))
+	got, err := newLookup(s).Search(context.Background(), "X")
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if len(got) != 1 || got[0].DisplayName != "X" {
+		t.Errorf("candidates = %+v, want only X", got)
+	}
+}
+
+func TestLookup_CacheHitDoesNotWaitForALookupInFlight(t *testing.T) {
+	block := make(chan struct{})
+	s := newStub(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("q") == "Slow" {
+			select {
+			case <-block:
+			case <-r.Context().Done():
+			}
+		}
+		answer(`[]`)(w, r)
+	})
+	l := newLookup(s, geocode.WithInterval(time.Millisecond))
+	if _, err := l.Search(context.Background(), "Fast"); err != nil {
+		t.Fatalf("Search(Fast): %v", err)
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, _ = l.Search(context.Background(), "Slow")
+	}()
+	for s.count() < 2 {
+		time.Sleep(time.Millisecond)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if _, err := l.Search(ctx, "fast"); err != nil {
+		t.Errorf("Search(fast) while Slow is in flight: %v", err)
+	}
+	close(block)
+	<-done
+}
+
 func TestLookup_CachesByName(t *testing.T) {
 	s := newStub(t, answer(bostonJSON))
 	l := newLookup(s)

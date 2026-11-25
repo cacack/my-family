@@ -154,7 +154,7 @@ func TestGeocode_Responses(t *testing.T) {
 		{name: "blank name", handler: func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, `[]`) },
 			q: "   ", wantStatus: http.StatusBadRequest, wantCode: api.CodeValidation},
 		{name: "long name", handler: func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, `[]`) },
-			q: strings.Repeat("é", geocode.MaxQueryLength+1), wantStatus: http.StatusBadRequest},
+			q: strings.Repeat("é", geocode.MaxQueryLength+1), wantStatus: http.StatusBadRequest, wantCode: api.CodeValidation},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
