@@ -477,8 +477,10 @@ func (s *BrowseService) ListUnmappedPlaces(ctx context.Context, branchID domain.
 }
 
 // GetPlace returns the place in use with ID id within the branch overlay, or
-// nil when there is none. A place only hidden records name is not in use for
-// the principal, so it is nil exactly as an ID never in use is (ADR-009 §10).
+// nil when there is none. It reads ListPlaces, which holds every place the
+// place browser shows. A place no visible record resolves to or sits beneath
+// is not in use for the principal, so it is nil exactly as an ID never in use
+// is (ADR-009 §10).
 // An absorbed place is returned as itself, with its own facts and the ID it
 // resolves to, not as its target (ADR-009 §3).
 func (s *BrowseService) GetPlace(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.PlaceReadModel, error) {

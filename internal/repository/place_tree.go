@@ -73,6 +73,66 @@ func PlaceAliasClosesParentCycle(parents PlaceParents, aliases PlaceAliases, tar
 	return parents.leadsBack(aliases.Resolve(target), aliases)
 }
 
+// Above returns the parent of each of the resolved keys and of every place
+// above one of them, walking parents through aliases (ADR-009 §4): a key maps
+// to its parent, or to "" at the top level. It is the one hierarchy of the
+// place browser and the list of places. A parent that closes a cycle, which
+// only an alias or unalias stated after it can cause, is dropped at the
+// cycle's bytewise smallest key, so the result never depends on map order.
+func (p PlaceParents) Above(keys []string, aliases PlaceAliases) map[string]string {
+	up := make(map[string]string, len(keys))
+	pending := slices.Clone(keys)
+	for len(pending) > 0 {
+		key := pending[len(pending)-1]
+		pending = pending[:len(pending)-1]
+		if _, ok := up[key]; ok {
+			continue
+		}
+		parent := p.Parent(key, aliases)
+		up[key] = parent
+		if _, ok := up[parent]; parent != "" && !ok {
+			pending = append(pending, parent)
+		}
+	}
+	breakCycles(up)
+	return up
+}
+
+// breakCycles makes the bytewise smallest key of every cycle in up a
+// top-level place.
+func breakCycles(up map[string]string) {
+	keys := make([]string, 0, len(up))
+	for key := range up {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	const (
+		unvisited = iota
+		onPath
+		done
+	)
+	state := make(map[string]int, len(keys))
+	for _, start := range keys {
+		var path []string
+		k := start
+		for k != "" && state[k] == unvisited {
+			state[k] = onPath
+			path = append(path, k)
+			k = up[k]
+		}
+		if k != "" && state[k] == onPath {
+			smallest := k
+			for c := up[k]; c != k; c = up[c] {
+				smallest = min(smallest, c)
+			}
+			up[smallest] = ""
+		}
+		for _, p := range path {
+			state[p] = done
+		}
+	}
+}
+
 // PlaceLevel is one level of the place browser: the places directly under a
 // place, and the path from the top level down to that place (empty at the top
 // level).
@@ -118,9 +178,7 @@ type placeNode struct {
 // place is shown by its display name when facts set one, otherwise by its
 // most-used spelling (ties broken bytewise, each birth and death a use), or
 // its key when no use spells it; at its level it shows that name's first part.
-// A parent that closes a cycle, which only an alias or unalias stated after it
-// can cause, is dropped at the cycle's bytewise smallest key, so the tree
-// never depends on map order.
+// The parents are those of PlaceParents.Above, as on the list of places.
 func BuildPlaceTree(people []PersonPlaces, facts []PlaceFactsReadModel, aliases PlaceAliases) *PlaceTree {
 	parents := PlaceParentsByKey(facts)
 	t := &PlaceTree{nodes: make(map[string]*placeNode), ids: make(map[uuid.UUID]string)}
@@ -147,24 +205,13 @@ func BuildPlaceTree(people []PersonPlaces, facts []PlaceFactsReadModel, aliases 
 		}
 	}
 
-	// Add every parent, then drop the parent that closes each cycle.
-	pending := make([]string, 0, len(t.nodes))
+	keys := make([]string, 0, len(t.nodes))
 	for key := range t.nodes {
-		pending = append(pending, key)
+		keys = append(keys, key)
 	}
-	for len(pending) > 0 {
-		n := t.nodes[pending[len(pending)-1]]
-		pending = pending[:len(pending)-1]
-		n.parent = parents.Parent(n.key, aliases)
-		if n.parent == "" {
-			continue
-		}
-		if _, ok := t.nodes[n.parent]; !ok {
-			node(n.parent)
-			pending = append(pending, n.parent)
-		}
+	for key, parent := range parents.Above(keys, aliases) {
+		node(key).parent = parent
 	}
-	t.breakCycles()
 
 	factsByKey := PlaceFactsByKey(facts)
 	for key, n := range t.nodes {
@@ -224,41 +271,6 @@ func (t *PlaceTree) countPeople(people []PersonPlaces, aliases PlaceAliases) {
 				under[k] = true
 				t.nodes[k].count += p.Count
 			}
-		}
-	}
-}
-
-// breakCycles makes the bytewise smallest key of every parent cycle a top-level
-// place.
-func (t *PlaceTree) breakCycles() {
-	keys := make([]string, 0, len(t.nodes))
-	for key := range t.nodes {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	const (
-		unvisited = iota
-		onPath
-		done
-	)
-	state := make(map[string]int, len(keys))
-	for _, start := range keys {
-		var path []string
-		k := start
-		for k != "" && state[k] == unvisited {
-			state[k] = onPath
-			path = append(path, k)
-			k = t.nodes[k].parent
-		}
-		if k != "" && state[k] == onPath {
-			smallest := k
-			for c := t.nodes[k].parent; c != k; c = t.nodes[c].parent {
-				smallest = min(smallest, c)
-			}
-			t.nodes[smallest].parent = ""
-		}
-		for _, p := range path {
-			state[p] = done
 		}
 	}
 }

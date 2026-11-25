@@ -187,3 +187,66 @@ func TestPlaceAliases_KeysOf(t *testing.T) {
 		t.Errorf("KeysOf(bonn) = %q", got)
 	}
 }
+
+// TestPlaces_FollowsExplicitParents shows that the list of places walks the
+// place browser's hierarchy (ADR-009 §4): a use counts toward an explicit
+// parent and every place above it, not toward the default parents its key
+// would give, a parent no use names is listed by its key, and every place the
+// tree holds is on the list with the same count when each person has one place.
+func TestPlaces_FollowsExplicitParents(t *testing.T) {
+	people := []PersonPlaces{
+		{BirthKey: "springfield,sangamon", BirthText: "Springfield, Sangamon", Count: 2},
+		{BirthKey: "chicago,illinois", BirthText: "Chicago, Illinois", Count: 1},
+		{DeathKey: "x", DeathText: "X", Count: 1},
+		{DeathKey: "y", DeathText: "Y", Count: 1},
+	}
+	facts := []PlaceFactsReadModel{
+		{Key: "springfield,sangamon", ParentKey: "illinois,usa"},
+		{Key: "x", ParentKey: "y"}, {Key: "y", ParentKey: "x"},
+	}
+	var uses []PlaceUse
+	for _, p := range people { // each person has a birth or a death place, not both
+		uses = append(uses, PlaceUse{Key: p.BirthKey + p.DeathKey, Text: p.BirthText + p.DeathText, Count: p.Count})
+	}
+	got := map[string]int{}
+	for _, p := range Places(uses, facts, nil, Privacy{HidePrivate: true}) {
+		got[p.Key] = p.Count
+		if p.Key == "usa" && p.Name != "usa" {
+			t.Errorf("usa is named %q, want its key: no use spells it", p.Name)
+		}
+	}
+	want := map[string]int{
+		"springfield,sangamon": 2, "illinois,usa": 2, "usa": 2,
+		"chicago,illinois": 1, "illinois": 1,
+		"x": 2, "y": 1, // the cycle is broken at x, as in the tree
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("Places counts = %v, want %v", got, want)
+	}
+
+	tree := BuildPlaceTree(people, facts, nil)
+	for key, count := range want {
+		level, ok := tree.Level(PlaceID(key))
+		if !ok {
+			t.Errorf("%s is listed but not in the tree", key)
+			continue
+		}
+		parent := uuid.Nil
+		if n := len(level.Path); n > 1 {
+			parent = level.Path[n-2].ID
+		}
+		siblings, _ := tree.Level(parent)
+		found := false
+		for _, e := range siblings.Places {
+			if e.ID == PlaceID(key) {
+				found = true
+				if e.Count != count {
+					t.Errorf("tree count of %s = %d, list count %d", key, e.Count, count)
+				}
+			}
+		}
+		if !found {
+			t.Errorf("%s is not among its parent's places in the tree", key)
+		}
+	}
+}

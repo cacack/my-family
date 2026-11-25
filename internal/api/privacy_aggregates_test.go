@@ -238,6 +238,73 @@ func TestPrivacyRedaction_Places(t *testing.T) {
 	}
 }
 
+// TestPrivacyRedaction_PlaceBrowserOpens drives browsePlaces, listPlaces and
+// getPlace as every principal (#1812): every place the browser shows at any
+// level opens with getPlace, and an explicit parent that only a hidden record
+// names is shown by the browser and the list alike, above the visible place
+// stated under it (ADR-009 §4, §10). Petra, whom only the owner and editor
+// see, is the one record that names Sangamon; Dora's birthplace is put under
+// it.
+func TestPrivacyRedaction_PlaceBrowserOpens(t *testing.T) {
+	for _, viewersSeeLiving := range []bool{true, false} {
+		t.Run(fmt.Sprintf("viewers see living %v", viewersSeeLiving), func(t *testing.T) {
+			f, tr, principals := redactionFixture(t, viewersSeeLiving)
+			owner := principals[0].cookie
+			placeTree(t, f, owner, tr)
+			petra, err := f.read.GetPerson(context.Background(), domain.MainBranchID, uuid.MustParse(tr.private))
+			if err != nil || petra == nil {
+				t.Fatalf("GetPerson Petra: %v", err)
+			}
+			petra.DeathPlace = "Sangamon, Illinois"
+			if err := f.read.SavePerson(context.Background(), domain.MainBranchID, petra); err != nil {
+				t.Fatalf("SavePerson: %v", err)
+			}
+			sangamon := repository.PlaceID("sangamon,illinois").String()
+			if rec := f.do(t, request{method: http.MethodPut, cookie: owner,
+				path: "/api/v1/places/" + repository.PlaceID("doraville,springfield").String(),
+				body: `{"version":0,"parent_id":"` + sangamon + `"}`}); rec.Code != http.StatusOK {
+				t.Fatalf("updatePlace parent: %d %s", rec.Code, rec.Body)
+			}
+
+			for _, p := range principals {
+				t.Run(p.name, func(t *testing.T) {
+					browsed := map[string]bool{}
+					var walk func(query string)
+					walk = func(query string) {
+						for _, item := range p.getJSON(t, f, "/api/v1/browse/places"+query)["items"].([]any) {
+							e := item.(map[string]any)
+							id := e["id"].(string)
+							browsed[id] = true
+							if rec := p.get(t, f, "/api/v1/places/"+id); rec.Code != http.StatusOK {
+								t.Errorf("getPlace of browsed %s (%s): %d %s", e["full_name"], id, rec.Code, rec.Body)
+							}
+							if e["has_children"] == true {
+								walk("?parent=" + id)
+							}
+						}
+					}
+					walk("")
+					if !browsed[sangamon] {
+						t.Errorf("the browser does not show Sangamon: %v", browsed)
+					}
+
+					name, uses := "sangamon,illinois", 1.0 // by its key, counting Dora alone
+					if p.seesPrivate {
+						name, uses = "Sangamon, Illinois", 2
+					}
+					place := p.getJSON(t, f, "/api/v1/places/"+sangamon)
+					if place["name"] != name || place["count"] != uses {
+						t.Errorf("getPlace(Sangamon) = %v, want %q counting %v", place, name, uses)
+					}
+					if got := countOf(p.getJSON(t, f, "/api/v1/places?limit=100"), "items", "id", sangamon); got != uses {
+						t.Errorf("listPlaces: Sangamon counts %v, want %v", got, uses)
+					}
+				})
+			}
+		})
+	}
+}
+
 // TestPrivacyRedaction_UnmappedPlaces drives listUnmappedPlaces as every
 // principal (ADR-009 §10): an entry, its count and its suggestions come only
 // from the records the principal may see. Each person dies in Shared Town;
