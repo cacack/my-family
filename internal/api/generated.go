@@ -4607,6 +4607,41 @@ type GenderDistribution struct {
 	Unknown int `json:"unknown"`
 }
 
+// GeocodeCandidate defines model for GeocodeCandidate.
+type GeocodeCandidate struct {
+	// Attribution The credit the provider's data license requires wherever the candidate is shown
+	//
+	// Example: Data © OpenStreetMap contributors, ODbL 1.0. https://osm.org/copyright
+	Attribution string `json:"attribution"`
+
+	// DisplayName The provider's full name for the location
+	//
+	// Example: Boston, Suffolk County, Massachusetts, United States
+	DisplayName string `json:"display_name"`
+
+	// Latitude Latitude in decimal degrees
+	Latitude float64 `json:"latitude"`
+
+	// Longitude Longitude in decimal degrees
+	Longitude float64 `json:"longitude"`
+
+	// Provider The provider's name
+	//
+	// Example: Nominatim
+	Provider string `json:"provider"`
+
+	// Query The text that matched. Today it is always the place name looked up, with spaces normalized; a later fallback to a shorter form of the name would return that form here (#1563).
+	Query string `json:"query"`
+}
+
+// GeocodeCandidateList defines model for GeocodeCandidateList.
+type GeocodeCandidateList struct {
+	Items []GeocodeCandidate `json:"items"`
+
+	// Total Number of candidates
+	Total int `json:"total"`
+}
+
 // GroupSheetChild Child entry in family group sheet
 type GroupSheetChild struct {
 	// Birth Event details for group sheet display
@@ -8150,6 +8185,12 @@ type ImportGedcomMultipartBody struct {
 	File openapi_types.File `json:"file"`
 }
 
+// GeocodePlaceParams defines parameters for GeocodePlace.
+type GeocodePlaceParams struct {
+	// Q The place name, 1 to 255 characters once leading, trailing and repeated spaces are removed.
+	Q string `form:"q" json:"q"`
+}
+
 // ListHistoryParams defines parameters for ListHistory.
 type ListHistoryParams struct {
 	// EntityType Filter by entity type - the `ChangeEntry.entity_type` vocabulary.
@@ -9807,6 +9848,9 @@ type ServerInterface interface {
 	// ImportGedcom Import a GEDCOM file
 	// (POST /gedcom/import)
 	ImportGedcom(ctx echo.Context) error
+	// GeocodePlace Look up candidate coordinates for a place name
+	// (GET /geocode)
+	GeocodePlace(ctx echo.Context, params GeocodePlaceParams) error
 	// GetHealth Report that the server is up
 	// (GET /health)
 	GetHealth(ctx echo.Context) error
@@ -12111,6 +12155,24 @@ func (w *ServerInterfaceWrapper) ImportGedcom(ctx echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.ImportGedcom(ctx)
+	return err
+}
+
+// GeocodePlace converts echo context to params.
+func (w *ServerInterfaceWrapper) GeocodePlace(ctx echo.Context) error {
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GeocodePlaceParams
+	// ------------- Required query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "q", ctx.QueryParams(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter q: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.GeocodePlace(ctx, params)
 	return err
 }
 
@@ -14994,6 +15056,7 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 	router.GET(options.BaseURL+"/browse/cemeteries/:place/persons", wrapper.GetPersonsByCemetery, options.OperationMiddlewares["getPersonsByCemetery"]...)
 	router.GET(options.BaseURL+"/places", wrapper.ListPlaces, options.OperationMiddlewares["listPlaces"]...)
 	router.GET(options.BaseURL+"/places/unmapped", wrapper.ListUnmappedPlaces, options.OperationMiddlewares["listUnmappedPlaces"]...)
+	router.GET(options.BaseURL+"/geocode", wrapper.GeocodePlace, options.OperationMiddlewares["geocodePlace"]...)
 	router.GET(options.BaseURL+"/places/:id", wrapper.GetPlace, options.OperationMiddlewares["getPlace"]...)
 	router.PUT(options.BaseURL+"/places/:id", wrapper.UpdatePlace, options.OperationMiddlewares["updatePlace"]...)
 	router.DELETE(options.BaseURL+"/places/:id/alias", wrapper.UnaliasPlace, options.OperationMiddlewares["unaliasPlace"]...)
@@ -21676,6 +21739,112 @@ func (response ImportGedcom503JSONResponse) VisitImportGedcomResponse(w http.Res
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GeocodePlaceRequestObject struct {
+	Params GeocodePlaceParams
+}
+
+type GeocodePlaceResponseObject interface {
+	VisitGeocodePlaceResponse(w http.ResponseWriter) error
+}
+
+type GeocodePlace200JSONResponse GeocodeCandidateList
+
+func (response GeocodePlace200JSONResponse) VisitGeocodePlaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GeocodePlace400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response GeocodePlace400JSONResponse) VisitGeocodePlaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GeocodePlace401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GeocodePlace401JSONResponse) VisitGeocodePlaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GeocodePlace409JSONResponse Error
+
+func (response GeocodePlace409JSONResponse) VisitGeocodePlaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GeocodePlace502JSONResponse Error
+
+func (response GeocodePlace502JSONResponse) VisitGeocodePlaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GeocodePlace503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response GeocodePlace503JSONResponse) VisitGeocodePlaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GeocodePlace504JSONResponse Error
+
+func (response GeocodePlace504JSONResponse) VisitGeocodePlaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(504)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -30096,6 +30265,9 @@ type StrictServerInterface interface {
 	// ImportGedcom Import a GEDCOM file
 	// (POST /gedcom/import)
 	ImportGedcom(ctx context.Context, request ImportGedcomRequestObject) (ImportGedcomResponseObject, error)
+	// GeocodePlace Look up candidate coordinates for a place name
+	// (GET /geocode)
+	GeocodePlace(ctx context.Context, request GeocodePlaceRequestObject) (GeocodePlaceResponseObject, error)
 	// GetHealth Report that the server is up
 	// (GET /health)
 	GetHealth(ctx context.Context, request GetHealthRequestObject) (GetHealthResponseObject, error)
@@ -33287,6 +33459,31 @@ func (sh *strictHandler) ImportGedcom(ctx echo.Context) error {
 		return err
 	} else if validResponse, ok := response.(ImportGedcomResponseObject); ok {
 		return validResponse.VisitImportGedcomResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// GeocodePlace operation middleware
+func (sh *strictHandler) GeocodePlace(ctx echo.Context, params GeocodePlaceParams) error {
+	var request GeocodePlaceRequestObject
+
+	request.Params = params
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.GeocodePlace(ctx.Request().Context(), request.(GeocodePlaceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GeocodePlace")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(GeocodePlaceResponseObject); ok {
+		return validResponse.VisitGeocodePlaceResponse(ctx.Response())
 	} else if response != nil {
 		return fmt.Errorf("unexpected response type: %T", response)
 	}

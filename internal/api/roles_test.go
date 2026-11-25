@@ -68,6 +68,8 @@ var (
 		"GET /api/v1/export/events",
 		"GET /api/v1/export/attributes",
 		"GET /api/v1/export/estimate",
+		// A lookup sends the place name to an outside service (#1562).
+		"GET /api/v1/geocode",
 	)
 	// Posts that change nothing in the tree, and a user's own account.
 	viewerWrites = routeSet(

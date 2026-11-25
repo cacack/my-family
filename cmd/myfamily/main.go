@@ -18,6 +18,7 @@ import (
 	"github.com/cacack/my-family/internal/auth"
 	"github.com/cacack/my-family/internal/config"
 	"github.com/cacack/my-family/internal/demo"
+	"github.com/cacack/my-family/internal/geocode"
 	"github.com/cacack/my-family/internal/storage"
 	"github.com/cacack/my-family/internal/web"
 )
@@ -195,6 +196,12 @@ func newAPIServer(cfg *config.Config, stores *storage.Stores, frontendFS fs.FS, 
 			_, err := stores.Backup(ctx, w, version)
 			return err
 		}))
+	}
+
+	if cfg.GeocoderEnabled {
+		provider := geocode.NewNominatim(cfg.GeocoderURL, cfg.GeocoderContact, version, nil)
+		serverOpts = append(serverOpts, api.WithGeocoder(geocode.NewLookup(provider)))
+		logger.Printf("Geocoder enabled: place names looked up are sent to %s", cfg.GeocoderURL)
 	}
 
 	// Create server

@@ -396,6 +396,7 @@ decorator, b = event-output redactor, — = no tree data. "Protected" means a pl
 | updatePlace | PUT /places/{id} | The place after the update | RM agg | a | Editor write; the place it returns is read as getPlace. A person's, family's, life event's or attribute's resolved place carries a place's name and pair only when the place is visible: the decorator returns the facts of visible places only (ADR-009 §10, PL-006) |
 | aliasPlace | PUT /places/{id}/alias | The absorbed place after the alias | RM agg | a | Editor write; the place it returns is read as getPlace. The target lists an absorbed place among its aliases only when a visible record uses it, and a history entry of an alias is dropped unless both places are visible (ADR-009 §10, PL-006) |
 | unaliasPlace | DELETE /places/{id}/alias | The place after the alias is undone | RM agg | a | As aliasPlace |
+| geocodePlace | GET /geocode | Candidate locations for the caller's own place name | geocoder | — | No tree data: it reads nothing in the tree and sends only the name the caller typed to the provider. Editor role, so a viewer or visitor cannot use the server to reach the provider (#1562) |
 | getMapLocations | GET /map/locations | Pins with counts and people | RM agg | a | Protected removed from pins, counts recomputed, empty pins dropped; a place's pair places only the shown records that resolve to it |
 | getBrickWalls | GET /browse/brick-walls | Brick-wall people | RM agg | a | Protected excluded |
 

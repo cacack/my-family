@@ -1034,6 +1034,75 @@ paths:
         '503':
           $ref: '#/components/responses/SetupRequired'
 
+  /geocode:
+    get:
+      operationId: geocodePlace
+      x-min-role: editor
+      summary: Look up candidate coordinates for a place name
+      description: |
+        Asks the configured geocoding provider for locations matching a place
+        name ([#1562](https://github.com/cacack/my-family/issues/1562)) and
+        returns at most 5 candidates, best match first. It is off unless the
+        server sets `GEOCODER_ENABLED`, because it sends the place name to an
+        outside service; `GET /config` reports `geocoder_enabled`. The request
+        to the provider carries the place name and nothing else from the tree.
+        Nothing is written: set a place's pair with `PUT /places/{id}`.
+
+        A name is sent once per server process: a repeat, compared ignoring
+        case and runs of spaces, is answered from an in-memory cache, an empty
+        answer included. Outbound requests are spaced at no more than one per
+        second, so a lookup may wait for its turn; one that cannot be answered
+        within 10 seconds answers 504.
+
+        - `200` with no `items`: the provider matched nothing.
+        - `409` `geocoder_disabled`: the server has no geocoder enabled.
+        - `502` `geocoder_error`: the provider failed or refused the request.
+        - `504` `geocoder_timeout`: the provider did not answer in time.
+      tags: [places]
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: >-
+            The place name, 1 to 255 characters once leading, trailing and repeated
+            spaces are removed.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 255
+          example: Boston, Suffolk, Massachusetts, USA
+      responses:
+        '200':
+          description: The candidates, best match first; none when nothing matched
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GeocodeCandidateList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '409':
+          description: '`geocoder_disabled`: the server has no geocoder enabled (`GEOCODER_ENABLED`)'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '502':
+          description: '`geocoder_error`: the provider failed or refused the request'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
+        '504':
+          description: '`geocoder_timeout`: the provider did not answer in time'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /places/{id}:
     parameters:
       - $ref: '#/components/parameters/placeId'
@@ -10370,6 +10439,56 @@ components:
           type: integer
         offset:
           type: integer
+
+    GeocodeCandidateList:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          maxItems: 5
+          items:
+            $ref: '#/components/schemas/GeocodeCandidate'
+        total:
+          type: integer
+          description: Number of candidates
+
+    GeocodeCandidate:
+      type: object
+      required: [display_name, latitude, longitude, query, provider, attribution]
+      properties:
+        display_name:
+          type: string
+          description: The provider's full name for the location
+          example: Boston, Suffolk County, Massachusetts, United States
+        latitude:
+          type: number
+          format: double
+          minimum: -90
+          maximum: 90
+          description: Latitude in decimal degrees
+        longitude:
+          type: number
+          format: double
+          minimum: -180
+          maximum: 180
+          description: Longitude in decimal degrees
+        query:
+          type: string
+          description: >-
+            The text that matched. Today it is always the place name looked
+            up, with spaces normalized; a later fallback to a shorter form of
+            the name would return that form here (#1563).
+        provider:
+          type: string
+          description: The provider's name
+          example: Nominatim
+        attribution:
+          type: string
+          description: >-
+            The credit the provider's data license requires wherever the
+            candidate is shown
+          example: Data © OpenStreetMap contributors, ODbL 1.0. https://osm.org/copyright
 
     UnmappedPlaceList:
       type: object
