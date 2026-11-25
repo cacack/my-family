@@ -427,6 +427,11 @@ or in spacing around commas become one entry, on every store.
   record's *effective* pair. GEDCOM has no shared place record, so a pair set once on a place is
   written under every event that inherits it; leaving it out would lose it. Re-importing that file
   gives each record its own pair and the same map.
+- **`MAP` under a `PLAC` that names no place** (an empty text, or one of only empty parts, which has
+  no key). Import keeps it as the record's own pair and reports an import warning naming the record
+  and the event or attribute tag. Export writes it back under the same `PLAC`, valueless when the
+  text is empty, so it is never dropped
+  ([#1807](https://github.com/cacack/my-family/issues/1807)). The map leaves it out (section 9).
 - **`PLAC.FORM`.** A form describes a text's parts by position, so import stores it on the place
   its key names, before alias resolution (section 3), under the positional key of the text it came
   with (section 1): the `PLAC`'s own `FORM`, otherwise the file's `HEAD.PLAC.FORM`. A form is set
@@ -458,8 +463,10 @@ implement the pairing itself; labels wait for it.
 
 - **`GET /map/locations`** reads every place-bearing record that has effective coordinates,
   through the branch and privacy overlay it uses today, and groups by resolved place, event type
-  and effective pair. Each location carries the place ID and name. Two spellings of one place
-  become one pin, and a record with its own, more exact pair gets its own. Aliases are resolved in
+  and effective pair, leaving out a record whose text names no place, which has no name to show
+  ([#1807](https://github.com/cacack/my-family/issues/1807)). Each location carries the place ID
+  and name. Two spellings of one place become one pin, and a record with its own, more exact pair
+  gets its own. Aliases are resolved in
   the same SQL statement: each row's key column joins `place_aliases` on the alias key, the
   resolved key is the matched alias's resolved key or else the row's own key, and `places` joins
   on the resolved key for the place's pair. No Go call is made per row; the ID of each location is

@@ -1031,8 +1031,8 @@ type CemeteryEntry struct {
 
 // MapLocation represents an aggregated geographic location for map display.
 type MapLocation struct {
-	// PlaceID is the ID of the place the location groups (ADR-009 §9), the
-	// zero UUID when its text names no place; Place is that place's name.
+	// PlaceID is the ID of the place the location groups (ADR-009 §9);
+	// Place is that place's name.
 	PlaceID   uuid.UUID   `json:"place_id"`
 	Place     string      `json:"place"`
 	Latitude  float64     `json:"latitude"`

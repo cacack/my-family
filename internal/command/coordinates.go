@@ -7,6 +7,7 @@ import (
 	"github.com/cacack/gedcom-go/v3/gedcom"
 
 	"github.com/cacack/my-family/internal/domain"
+	"github.com/cacack/my-family/internal/repository"
 )
 
 // InvalidCoordinateError is a newly entered place coordinate that was
@@ -55,7 +56,9 @@ func eventPlaceNames(prefix string) coordinateNames {
 // validate checks the pair named by n: both halves left out, both cleared,
 // or both set to a value on the right axis and in range, as the map reads
 // them (gedcom.ParseLatitude, gedcom.ParseLongitude), for a place that has a
-// name: export and the map both key coordinates by it. A stated origin needs
+// name (repository.PlaceKey is not ""): export and the map both key
+// coordinates by it, and the map leaves out a pair under text that names no
+// place, such as ", ," (#1807). A stated origin needs
 // a set pair and must be valid (CoordinateOrigin.Validate). It returns the
 // pair with each set value in canonical GEDCOM form: trimmed, with an
 // upper-case direction letter, and the origin's provider trimmed.
@@ -83,7 +86,7 @@ func (p CoordinatesPatch) validate(n coordinateNames, place string) (Coordinates
 	if _, err := gedcom.ParseLongitude(long); err != nil {
 		return p, &InvalidCoordinateError{Field: longField, Reason: err.Error()}
 	}
-	if strings.TrimSpace(place) == "" {
+	if repository.PlaceKey(place) == "" {
 		return p, &InvalidCoordinateError{Field: n.place, Reason: fmt.Sprintf("%s and %s need a %s", latField, longField, n.place)}
 	}
 	valid := CoordinatesPatch{Latitude: Set(canonicalCoordinate(lat)), Longitude: Set(canonicalCoordinate(long))}
@@ -142,9 +145,10 @@ func (c placeCoordinates) equal(o placeCoordinates) bool {
 // now named place (see recordPair). A pair left out beside a place this
 // update clears is cleared with it (#1798), so a pair does not outlive its
 // name. A pair already stored without a name, as an import can leave one, is
-// kept: only clearing the name clears it.
+// kept: only clearing the name clears it. A text that names no place
+// (repository.PlaceKey is "") counts as no name.
 func recordCoordinates(changes map[string]any, prefix, before, place string, input CoordinatesPatch, current placeCoordinates) error {
-	cleared := strings.TrimSpace(before) != "" && strings.TrimSpace(place) == ""
+	cleared := repository.PlaceKey(before) != "" && repository.PlaceKey(place) == ""
 	if cleared && input.Latitude.Omitted() && input.Longitude.Omitted() && input.Origin == nil {
 		input.Latitude, input.Longitude = Clear[string](), Clear[string]()
 	}

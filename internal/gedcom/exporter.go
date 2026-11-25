@@ -1239,19 +1239,7 @@ func toGedcomIndividual(p repository.PersonReadModel, names []repository.PersonN
 		if p.BirthDateRaw != "" {
 			birthEvent.Date = p.BirthDateRaw
 		}
-		if p.BirthPlace != "" {
-			birthEvent.SetPlaceName(p.BirthPlace)
-			// Add coordinates if present
-			if p.BirthPlaceLat != nil && p.BirthPlaceLong != nil && *p.BirthPlaceLat != "" && *p.BirthPlaceLong != "" {
-				birthEvent.PlaceDetail = &gedcom.PlaceDetail{
-					Name: p.BirthPlace,
-					Coordinates: &gedcom.Coordinates{
-						Latitude:  *p.BirthPlaceLat,
-						Longitude: *p.BirthPlaceLong,
-					},
-				}
-			}
-		}
+		birthEvent.PlaceDetail = toGedcomPlace(p.BirthPlace, p.BirthPlaceLat, p.BirthPlaceLong)
 		// Citations for birth
 		birthEvent.SourceCitations = toGedcomSourceCitations(fieldCitations(birthCitations, events), sourceXrefs, citationAPIDs)
 		merged, rest := mergeableBirthEvents(events)
@@ -1278,19 +1266,7 @@ func toGedcomIndividual(p repository.PersonReadModel, names []repository.PersonN
 		if p.DeathDateRaw != "" {
 			deathEvent.Date = p.DeathDateRaw
 		}
-		if p.DeathPlace != "" {
-			deathEvent.SetPlaceName(p.DeathPlace)
-			// Add coordinates if present
-			if p.DeathPlaceLat != nil && p.DeathPlaceLong != nil && *p.DeathPlaceLat != "" && *p.DeathPlaceLong != "" {
-				deathEvent.PlaceDetail = &gedcom.PlaceDetail{
-					Name: p.DeathPlace,
-					Coordinates: &gedcom.Coordinates{
-						Latitude:  *p.DeathPlaceLat,
-						Longitude: *p.DeathPlaceLong,
-					},
-				}
-			}
-		}
+		deathEvent.PlaceDetail = toGedcomPlace(p.DeathPlace, p.DeathPlaceLat, p.DeathPlaceLong)
 		// Citations for death
 		deathEvent.SourceCitations = toGedcomSourceCitations(fieldCitations(deathCitations, events), sourceXrefs, citationAPIDs)
 		merged, rest := mergeableDeathDetails(events)
@@ -1521,15 +1497,31 @@ func toGedcomSourceCitations(citations []repository.CitationReadModel, sourceXre
 // person's birth or death, or the family's marriage, held on the record itself
 // rather than as a life event, is exported.
 func hasBirthField(p repository.PersonReadModel) bool {
-	return p.BirthDateRaw != "" || p.BirthPlace != "" || p.BirthNotes != "" || p.BirthTypeDetail != ""
+	return p.BirthDateRaw != "" || toGedcomPlace(p.BirthPlace, p.BirthPlaceLat, p.BirthPlaceLong) != nil || p.BirthNotes != "" || p.BirthTypeDetail != ""
 }
 
 func hasDeathField(p repository.PersonReadModel) bool {
-	return p.DeathDateRaw != "" || p.DeathPlace != "" || p.DeathNotes != "" || p.DeathTypeDetail != ""
+	return p.DeathDateRaw != "" || toGedcomPlace(p.DeathPlace, p.DeathPlaceLat, p.DeathPlaceLong) != nil || p.DeathNotes != "" || p.DeathTypeDetail != ""
 }
 
 func hasMarriageField(f repository.FamilyReadModel) bool {
-	return f.RelationshipType == domain.RelationMarriage || f.MarriageDateRaw != "" || f.MarriagePlace != "" || f.MarriageNotes != "" || f.MarriageTypeDetail != ""
+	return f.RelationshipType == domain.RelationMarriage || f.MarriageDateRaw != "" ||
+		toGedcomPlace(f.MarriagePlace, f.MarriagePlaceLat, f.MarriagePlaceLong) != nil || f.MarriageNotes != "" || f.MarriageTypeDetail != ""
+}
+
+// toGedcomPlace returns the PLAC of a record's place text and own pair, nil
+// when it has neither. A pair with no text is written under a valueless PLAC,
+// the shape it was imported from, rather than dropped (#1807).
+func toGedcomPlace(place string, lat, long *string) *gedcom.PlaceDetail {
+	hasPair := lat != nil && long != nil && *lat != "" && *long != ""
+	if place == "" && !hasPair {
+		return nil
+	}
+	detail := &gedcom.PlaceDetail{Name: place}
+	if hasPair {
+		detail.Coordinates = &gedcom.Coordinates{Latitude: *lat, Longitude: *long}
+	}
+	return detail
 }
 
 // namesRecord reports whether one of the citations names the birth, death or
@@ -1641,18 +1633,7 @@ func toGedcomEvent(event repository.EventReadModel, fieldOwnsUnlinked bool, sour
 		ge.Date = event.DateRaw
 	}
 
-	if event.Place != "" {
-		// SetPlaceName allocates PlaceDetail, so the name is kept whether or not
-		// coordinates are present.
-		ge.SetPlaceName(event.Place)
-		// Add coordinates if present
-		if event.PlaceLat != nil && event.PlaceLong != nil && *event.PlaceLat != "" && *event.PlaceLong != "" {
-			ge.PlaceDetail.Coordinates = &gedcom.Coordinates{
-				Latitude:  *event.PlaceLat,
-				Longitude: *event.PlaceLong,
-			}
-		}
-	}
+	ge.PlaceDetail = toGedcomPlace(event.Place, event.PlaceLat, event.PlaceLong)
 
 	// Add structured address if available
 	if event.Address != nil && !event.Address.IsEmpty() {
@@ -1742,15 +1723,7 @@ func toGedcomAttribute(attr repository.AttributeReadModel, sourceXrefs map[uuid.
 		ga.Date = attr.DateRaw
 	}
 
-	if attr.Place != "" {
-		ga.SetPlaceName(attr.Place)
-		if attr.PlaceLat != nil && attr.PlaceLong != nil && *attr.PlaceLat != "" && *attr.PlaceLong != "" {
-			ga.PlaceDetail.Coordinates = &gedcom.Coordinates{
-				Latitude:  *attr.PlaceLat,
-				Longitude: *attr.PlaceLong,
-			}
-		}
-	}
+	ga.PlaceDetail = toGedcomPlace(attr.Place, attr.PlaceLat, attr.PlaceLong)
 
 	ga.NoteXRefs, ga.InlineNotes = splitNotes(attr.Notes, noteJoin)
 
@@ -1792,19 +1765,7 @@ func toGedcomFamily(f repository.FamilyReadModel, personXrefs, sourceXrefs map[u
 		if f.MarriageDateRaw != "" {
 			marriageEvent.Date = f.MarriageDateRaw
 		}
-		if f.MarriagePlace != "" {
-			marriageEvent.SetPlaceName(f.MarriagePlace)
-			// Add coordinates if present
-			if f.MarriagePlaceLat != nil && f.MarriagePlaceLong != nil && *f.MarriagePlaceLat != "" && *f.MarriagePlaceLong != "" {
-				marriageEvent.PlaceDetail = &gedcom.PlaceDetail{
-					Name: f.MarriagePlace,
-					Coordinates: &gedcom.Coordinates{
-						Latitude:  *f.MarriagePlaceLat,
-						Longitude: *f.MarriagePlaceLong,
-					},
-				}
-			}
-		}
+		marriageEvent.PlaceDetail = toGedcomPlace(f.MarriagePlace, f.MarriagePlaceLat, f.MarriagePlaceLong)
 		// Citations for marriage
 		marriageEvent.SourceCitations = toGedcomSourceCitations(fieldCitations(marriageCitations, events), sourceXrefs, citationAPIDs)
 		fam.Events = append(fam.Events, marriageEvent)
