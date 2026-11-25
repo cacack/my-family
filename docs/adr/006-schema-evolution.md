@@ -5,6 +5,9 @@
 **Decision Makers:** Project maintainer
 **Related Features:** [#680](https://github.com/cacack/my-family/issues/680)
 
+> The tables `myfamily rebuild` leaves alone (the event log, accounts and settings) change shape by
+> numbered migration instead: [ADR-011](./011-store-schema-migrations.md).
+
 ## Context
 
 Each backend creates its read-model schema at startup with `CREATE TABLE IF NOT EXISTS` and a
@@ -128,5 +131,6 @@ history, so nothing would read the difference.
 - [ADR-001](./001-event-sourcing-cqrs.md) — event sourcing; ES-002, ES-004, ES-007
 - [ADR-002](./002-dual-database-strategy.md) — both backends, one database (DB-006)
 - [ADR-005](./005-research-branch-data-model.md) — composite keys (#669) and snapshots (#624)
+- [ADR-011](./011-store-schema-migrations.md) — schema migrations for the tables outside the rebuild
 - `internal/repository/schema.go`, `internal/repository/rebuild.go`, `DecodeEvent` in
   `internal/repository/eventstore.go`

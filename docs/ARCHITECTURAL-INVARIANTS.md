@@ -42,6 +42,7 @@ Rules that must hold true in the my-family codebase. Violations break architectu
 | **DB-007** | On a database predating the `life_events` rename, the read model store must be constructed before the event store; the event store refuses (`ErrReadModelEventsTable`) rather than mutating a read-model table | Per-backend legacy-migration tests in `internal/repository/{sqlite,postgres}/` |
 | **DB-008** | `serve` runs on the backend its config selects — `DEMO_MODE` → memory, `DATABASE_URL` → PostgreSQL, otherwise SQLite at `SQLITE_PATH` — and refuses to start if that backend cannot be opened; it never silently falls back to memory | `internal/storage/storage_test.go` (selection per config, restart-persistence on SQLite and PostgreSQL, unreachable-database refusals); `make check-release-sqlite` (a cgo-less, release-style binary serves from SQLite) |
 | **DB-009** | `serve` refuses a read model whose stamped schema version is not `repository.ReadModelSchemaVersion` and names `myfamily rebuild`; it never rebuilds on its own. The rebuild re-creates the read-model tables and stamps the version ([ADR-006](./adr/006-schema-evolution.md)) | `TestReadModelSchema_*` in `internal/integration/` (all backends), `TestSQLite_ServeRefusesReadModelOfAnotherSchema` (`internal/storage`) |
+| **DB-010** | A change to the shape of a migrated table (the event log, account and settings tables listed in ADR-011 §1) is a new numbered migration at the end of both backends' lists, under the same name, with a test that runs it against the previous shape; a released migration is never edited. Every command that opens the store applies pending migrations, each in its own transaction, logged before it runs; a failure rolls back and stops start-up, and a database stamped newer than the binary is refused ([ADR-011](./adr/011-store-schema-migrations.md)) | Code review of every diff that touches these tables' DDL. Until [#1816](https://github.com/cacack/my-family/issues/1816) lands the runner, its per-backend tests and the test that the two backends' migration lists match, only the first sentence holds |
 
 ### Projection Invariants (PR) - Source: [ADR-003](./adr/003-synchronous-projections.md)
 
@@ -293,7 +294,7 @@ Rules that must hold true in the my-family codebase. Violations break architectu
 | Source Document | Invariant IDs | Count |
 |-----------------|---------------|-------|
 | ADR-001 (Event Sourcing) | ES-001 through ES-007 | 7 |
-| ADR-002 (Dual Database) | DB-001 through DB-009 | 9 |
+| ADR-002 (Dual Database) | DB-001 through DB-010 | 10 |
 | ADR-003 (Sync Projections) | PR-001 through PR-005 | 5 |
 | ADR-004 (Single Binary) | DP-001 through DP-003 | 3 |
 | ADR-005 (Research Branches) | BR-001 through BR-006 | 6 |
@@ -303,7 +304,7 @@ Rules that must hold true in the my-family codebase. Violations break architectu
 | ETHOS.md | DM-001 through DM-006, DI-001 through DI-005, QA-001 through QA-003 | 14 |
 | CONVENTIONS.md | API-001 through API-005 | 5 |
 | CONTRIBUTING.md | TS-001 through TS-003 | 3 |
-| **Total** | | **66** |
+| **Total** | | **67** |
 
 ---
 
