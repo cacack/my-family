@@ -565,6 +565,31 @@ func TestCarriedColumnsMatchSchema(t *testing.T) {
 	}
 }
 
+// TestSerialColumnsMatchSchema keeps each loaded table's serial column equal
+// to PostgreSQL's, so a restore moves every sequence it wrote explicit values
+// into past them.
+func TestSerialColumnsMatchSchema(t *testing.T) {
+	for _, b := range backends {
+		t.Run(b.name, func(t *testing.T) {
+			f := b.open(t)
+			if f.dialect != Postgres {
+				t.Skip("only PostgreSQL has serial columns")
+			}
+			for _, tbl := range append([]table{eventsTable, streamsTable}, carriedTables...) {
+				got := queryStrings(t, f.db, `SELECT column_name FROM information_schema.columns
+					WHERE table_schema = 'public' AND table_name = $1 AND column_default LIKE 'nextval(%'`, tbl.name)
+				var want []string
+				if tbl.serial != "" {
+					want = []string{tbl.serial}
+				}
+				if !slices.Equal(got, want) {
+					t.Errorf("%s serial columns = %v, the archive declares %v", tbl.name, got, want)
+				}
+			}
+		})
+	}
+}
+
 func queryStrings(t *testing.T, db *sql.DB, query string, args ...any) []string {
 	t.Helper()
 	rows, err := db.Query(query, args...)
