@@ -34,8 +34,8 @@ func restoreBackup(ctx context.Context, cfg *config.Config, path string, out io.
 		return err
 	}
 	m := result.Manifest
-	fmt.Fprintf(out, "Restored %s, written by my-family %s at %s: %d events, last log position %d.\n",
-		path, m.AppVersion, m.CreatedAt, m.EventCount, m.LastPosition)
+	fmt.Fprintf(out, "Restored %s into %s, written by my-family %s at %s: %d events, last log position %d.\n",
+		path, result.Target, m.AppVersion, m.CreatedAt, m.EventCount, m.LastPosition)
 	fmt.Fprintln(out, "Everyone signs in again; pending invites and password reset links were not kept and must be issued again.")
 	return nil
 }

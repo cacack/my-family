@@ -24,7 +24,8 @@ func TestRestoreBackup(t *testing.T) {
 	if err := restoreBackup(context.Background(), target, archive, &out); err != nil {
 		t.Fatalf("restoreBackup: %v", err)
 	}
-	if !strings.Contains(out.String(), "1 events") || !strings.Contains(out.String(), "Everyone signs in again") {
+	if !strings.Contains(out.String(), "into SQLite ("+target.SQLitePath+")") ||
+		!strings.Contains(out.String(), ": 1 events,") || !strings.Contains(out.String(), "Everyone signs in again") {
 		t.Errorf("output = %q", out.String())
 	}
 

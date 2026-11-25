@@ -390,8 +390,10 @@ included, and every account's password hash, so store it as carefully as the dat
    created) or a new PostgreSQL database (`CREATE DATABASE myfamily_restored`).
 3. Run `myfamily restore backup.zip`. It verifies the archive first, as `verify-backup` does,
    loads the event log (every position kept) and the accounts and settings in one transaction,
-   then replays the log into the read model, as `myfamily rebuild` does, and reports the event
-   count and last log position, which match the archive's.
+   then replays the log into the read model, as `myfamily rebuild` does, and reports the
+   database it restored into and the event count and last log position, which match the
+   archive's. Check the database is the one you meant: with neither variable set, restore uses
+   `./myfamily.db`.
 4. Start `myfamily serve` on the same database.
 
 Restore refuses, and leaves the database as it was, when the archive is damaged or from a newer

@@ -16,6 +16,8 @@ var ErrRestoreMemory = errors.New("the in-memory backend has nothing to restore 
 
 // RestoreResult is what Restore loaded and replayed.
 type RestoreResult struct {
+	// Target describes the database restored into, as Stores.Describe does.
+	Target string
 	// Manifest is the restored archive's manifest; its event count and last
 	// position are the restored log's.
 	Manifest *backup.Manifest
@@ -49,13 +51,14 @@ func Restore(ctx context.Context, cfg *config.Config, path string) (RestoreResul
 		return result, err
 	}
 	defer func() { _ = stores.Close() }()
+	result.Target = stores.Describe()
 
 	dialect := backup.SQLite
 	if backend == BackendPostgres {
 		dialect = backup.Postgres
 	}
 	if err := archive.Load(ctx, stores.db, dialect); err != nil {
-		return result, fmt.Errorf("restore into %s: %w", stores.Describe(), err)
+		return result, fmt.Errorf("restore into %s: %w", result.Target, err)
 	}
 	if result.Rebuild, err = stores.RebuildReadModel(ctx); err != nil {
 		return result, fmt.Errorf("the event log and accounts are restored, but replaying the log into the read model failed; "+

@@ -99,13 +99,16 @@ func (a *Archive) Load(ctx context.Context, db *sql.DB, dialect Dialect) error {
 	if dialect == Postgres {
 		// The serial columns the load wrote explicit values into would
 		// otherwise hand out values already taken (ADR-010 restore step 4).
-		for _, serial := range [][2]string{{"events", "position"}, {"auth_audit", "id"}} {
+		for _, t := range tables {
+			if t.serial == "" {
+				continue
+			}
 			// #nosec G202 -- table and column names are package constants, not input.
 			// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
-			query := "SELECT setval(pg_get_serial_sequence('" + serial[0] + "', '" + serial[1] + "'), " +
-				"COALESCE(MAX(" + serial[1] + "), 0) + 1, false) FROM " + serial[0]
+			query := "SELECT setval(pg_get_serial_sequence('" + t.name + "', '" + t.serial + "'), " +
+				"COALESCE(MAX(" + t.serial + "), 0) + 1, false) FROM " + t.name
 			if _, err := tx.ExecContext(ctx, query); err != nil {
-				return fmt.Errorf("reset the %s.%s sequence: %w", serial[0], serial[1], err)
+				return fmt.Errorf("reset the %s.%s sequence: %w", t.name, t.serial, err)
 			}
 		}
 	}

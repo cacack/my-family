@@ -54,19 +54,28 @@ const (
 	kindText kind = iota
 	kindInt
 	kindBool
-	// kindTime is a time SQLite holds in the fixed-width timeLayout, as the
-	// account tables do, so that it sorts as text.
+	// The three time kinds differ only in how SQLite holds them, so choose a
+	// time column's kind by how the SQLite store writes that column, not by
+	// which table it is in.
+	//
+	// kindTime is a time the SQLite store writes in the fixed-width
+	// sessionTimeLayout (equal to timeLayout), so that it sorts as text:
+	// auth_audit.at and the api_tokens times.
 	kindTime
-	// kindLogTime is a time SQLite holds as the stores' formatTimestamp
-	// writes it.
+	// kindLogTime is a time the SQLite store writes with formatTimestamp:
+	// events.timestamp, and users.created_at although users is an account
+	// table.
 	kindLogTime
-	// kindDatetime is a time SQLite holds in its own datetime('now') form.
+	// kindDatetime is a time SQLite fills with its own datetime('now')
+	// default: streams.created_at.
 	kindDatetime
 	kindJSON
 )
 
 // sqliteTimeLayouts is how SQLite holds each kind of time, so a restore
-// writes a time as the store that owns the column would (ADR-010 §5).
+// writes a time as the store that owns the column would (ADR-010 §5). The
+// kindLogTime layout must stay equal to formatTimestamp's in
+// internal/repository/sqlite/util.go.
 var sqliteTimeLayouts = map[kind]string{
 	kindTime:     timeLayout,
 	kindLogTime:  "2006-01-02T15:04:05.999999999Z07:00",
@@ -87,6 +96,10 @@ type table struct {
 	format  rowFormat
 	orderBy string
 	columns []column
+	// serial is the column PostgreSQL declares BIGSERIAL, if any. A restore
+	// writes explicit values into it and then moves its sequence past them;
+	// TestSerialColumnsMatchSchema keeps it in step with the schema.
+	serial string
 }
 
 // rowFormat is how an entry lays out its rows.
@@ -101,7 +114,7 @@ const (
 
 // eventsTable and streamsTable are the event log (ADR-010 §5).
 var (
-	eventsTable = table{name: "events", entry: EventsEntry, format: ndjson, orderBy: "position", columns: []column{
+	eventsTable = table{name: "events", entry: EventsEntry, format: ndjson, orderBy: "position", serial: "position", columns: []column{
 		{"id", kindText}, {"stream_id", kindText}, {"stream_type", kindText}, {"branch_id", kindText},
 		{"version", kindInt}, {"event_type", kindText}, {"data", kindJSON}, {"metadata", kindJSON},
 		{"timestamp", kindLogTime}, {"position", kindInt},
@@ -136,7 +149,7 @@ var carriedTables = []table{
 	carried("auth_audit", "id", []column{
 		{"id", kindInt}, {"at", kindTime}, {"action", kindText}, {"actor_id", kindText},
 		{"subject_id", kindText}, {"username", kindText}, {"detail", kindText}, {"client_ip", kindText},
-	}),
+	}).withSerial("id"),
 	carried("api_tokens", "id", []column{
 		{"id", kindText}, {"token_hash", kindText}, {"user_id", kindText}, {"name", kindText},
 		{"created_at", kindTime}, {"last_used_at", kindTime},
@@ -145,6 +158,12 @@ var carriedTables = []table{
 
 func carried(name, orderBy string, columns []column) table {
 	return table{name: name, entry: TableEntry(name), format: jsonArray, orderBy: orderBy, columns: columns}
+}
+
+// withSerial returns t with its PostgreSQL serial column set.
+func (t table) withSerial(column string) table {
+	t.serial = column
+	return t
 }
 
 // TableEntry is the archive entry of a carried table.
