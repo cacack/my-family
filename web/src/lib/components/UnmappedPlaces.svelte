@@ -35,14 +35,16 @@
 
 	/** A pair in GEDCOM form, as the API stores it. */
 	type Pair = { latitude: string; longitude: string };
-	/** The place as the apply saves against: its version and own pair. */
-	type PlaceBase = Pick<Place, 'version' | 'latitude' | 'longitude'>;
+	/** The place as the apply saves against: its version, own pair, and alias target if absorbed. */
+	type PlaceBase = Pick<Place, 'version' | 'latitude' | 'longitude' | 'resolves_to'>;
 
 	let entries: UnmappedPlace[] = $state([]);
 	let loading = $state(true);
 	let error: string | null = $state(null);
 
 	const mayApply = $derived(can('editor') && !activeBranch.id);
+	/** An editor on a branch, where the controls are withdrawn (place facts are main-only). */
+	const withheld = $derived(can('editor') && !!activeBranch.id);
 
 	/** The apply being saved, or refused for a stale version. */
 	let pending: { entry: UnmappedPlace; base: PlaceBase; pair: Pair; source: CoordinateSource } | null =
@@ -50,6 +52,8 @@
 	let saving = $state(false);
 	let applyError: { id: string; message: string } | null = $state(null);
 	let notice: string | null = $state(null);
+	/** A refusal for an entry that is no longer on the list as read. */
+	let listNotice: string | null = $state(null);
 
 	/** The entry whose pair is being typed, with the pair as typed. */
 	let typing: { id: string; latitude: string; longitude: string; error: CoordinateError | null } | null =
@@ -103,6 +107,7 @@
 		saving = true;
 		applyError = null;
 		notice = null;
+		listNotice = null;
 		try {
 			const saved = await api.updatePlace(entry.id, { version: base.version, ...pair, coordinates_origin: { source } });
 			entries = entries.filter((e) => e.id !== entry.id);
@@ -111,7 +116,20 @@
 			if (typing?.id === entry.id) typing = null;
 		} catch (e) {
 			// Only a stale version is compared with the latest; any other refusal is shown as it came.
-			if (isVersionConflict(e) && (await conflict.load(() => api.getPlace(entry.id)))) return;
+			// `pending` stays set while the conflict is open: `adopt` rebases it for "Save my edits".
+			if (isVersionConflict(e)) {
+				const latest = await api.getPlace(entry.id).catch(() => null);
+				// Joined to another place since the list was read: its own pair is ignored while the
+				// alias stands, so saving it would map nothing. Re-read the list, which shows the target.
+				if (latest?.resolves_to) {
+					pending = null;
+					if (typing?.id === entry.id) typing = null;
+					listNotice = `${entry.name} was joined to another place since this list was read, so its coordinates were not saved. The list now shows the place it was joined to.`;
+					load();
+					return;
+				}
+				if (latest && (await conflict.load(async () => latest))) return;
+			}
 			applyError = { id: entry.id, message: (e as { message?: string }).message || 'Saving the coordinates failed.' };
 			pending = null;
 		} finally {
@@ -156,6 +174,9 @@
 	{#if notice}
 		<div class="notice" role="status">{notice} <a href="/map">Open the map</a></div>
 	{/if}
+	{#if listNotice}
+		<ActionError message={listNotice} />
+	{/if}
 	{#if entries.length === 0}
 		<EmptyState
 			message="Every place has coordinates."
@@ -163,7 +184,7 @@
 		/>
 	{:else}
 		<p class="summary">{entries.length} {entries.length === 1 ? 'place' : 'places'} without coordinates</p>
-		{#if can('editor') && activeBranch.id}
+		{#if withheld}
 			<p class="withheld" role="note">
 				Place coordinates are shared across all branches. Return to the mainline to set them.
 			</p>

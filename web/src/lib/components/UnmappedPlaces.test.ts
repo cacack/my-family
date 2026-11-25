@@ -175,6 +175,23 @@ describe('UnmappedPlaces', () => {
 		expect(apiModule.api.updatePlace).toHaveBeenCalledTimes(1);
 	});
 
+	it('does not save onto a place joined to another since the list was read', async () => {
+		vi.mocked(apiModule.api.updatePlace).mockRejectedValueOnce(versionConflict);
+		vi.mocked(apiModule.api.getPlace).mockResolvedValue(
+			placeOf(boston, { version: 5, resolves_to: salem.id })
+		);
+		render(UnmappedPlaces);
+		await fireEvent.click(await screen.findByRole('button', { name: 'Use these coordinates, N42.36, W71.06, for Boston' }));
+
+		vi.mocked(apiModule.api.listUnmappedPlaces).mockResolvedValue({ items: [salem], total: 1 });
+		const alert = await screen.findByRole('alert');
+		expect(alert.textContent).toContain('Boston was joined to another place since this list was read');
+		expect(screen.queryByRole('button', { name: 'Save my edits' })).toBeNull();
+		await waitFor(() => expect(apiModule.api.listUnmappedPlaces).toHaveBeenCalledTimes(2));
+		expect(apiModule.api.updatePlace).toHaveBeenCalledTimes(1);
+		expect(screen.queryByRole('status')).toBeNull();
+	});
+
 	it('shows any other refusal as it came and keeps the entry', async () => {
 		vi.mocked(apiModule.api.updatePlace).mockRejectedValueOnce({ status: 400, message: 'latitude out of range' });
 		render(UnmappedPlaces);
