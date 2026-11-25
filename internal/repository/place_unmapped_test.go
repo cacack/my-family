@@ -69,10 +69,10 @@ func TestUnmappedPlaces(t *testing.T) {
 			want:    []UnmappedPlace{entry("köln", "Köln", 1, CoordinateSuggestion{"N50.9", "E6.9", 1})},
 		},
 		{
-			name:  "a display name names the entry; the spelling stays recorded",
+			name:  "a display name names the entry; the spelling stays recorded; the version is the place's",
 			uses:  []PlaceUse{use("  Worcester ,MA", 2), use("worcester, ma", 1)},
-			facts: []PlaceFactsReadModel{{Key: "worcester,ma", Name: "Worcester"}},
-			want:  []UnmappedPlace{{ID: PlaceID("worcester,ma"), Key: "worcester,ma", Name: "Worcester", Spelling: "Worcester, MA", Count: 3}},
+			facts: []PlaceFactsReadModel{{Key: "worcester,ma", Name: "Worcester", Version: 2}},
+			want:  []UnmappedPlace{{ID: PlaceID("worcester,ma"), Key: "worcester,ma", Name: "Worcester", Spelling: "Worcester, MA", Count: 3, Version: 2}},
 		},
 		{
 			name: "entries sort by count, then name; a parent is its own entry",

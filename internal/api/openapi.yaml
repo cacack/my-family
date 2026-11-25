@@ -10385,7 +10385,7 @@ components:
 
     UnmappedPlace:
       type: object
-      required: [id, key, name, spelling, count, suggestions]
+      required: [id, key, name, spelling, count, version, suggestions]
       properties:
         id:
           type: string
@@ -10413,6 +10413,12 @@ components:
         count:
           type: integer
           description: Number of records the caller may see at the place that have no effective coordinates.
+        version:
+          type: integer
+          format: int64
+          description: >-
+            Version of the place's own stream, as `Place.version` gives it:
+            send it with `PUT /places/{id}` to set the place's pair.
         suggestions:
           type: array
           description: >-

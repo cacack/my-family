@@ -5423,6 +5423,11 @@ export interface components {
             spelling: string;
             /** @description Number of records the caller may see at the place that have no effective coordinates. */
             count: number;
+            /**
+             * Format: int64
+             * @description Version of the place's own stream, as `Place.version` gives it: send it with `PUT /places/{id}` to set the place's pair.
+             */
+            version: number;
             /** @description Every distinct pair, as recorded, that other records at the place carry as their own, most-used first, then by latitude and longitude; empty when no record there has one. */
             suggestions: components["schemas"]["CoordinateSuggestion"][];
         };

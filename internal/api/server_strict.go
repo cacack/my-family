@@ -471,7 +471,7 @@ func (ss *StrictServer) ListUnmappedPlaces(ctx context.Context, request ListUnma
 		for j, c := range p.Suggestions {
 			suggestions[j] = CoordinateSuggestion{Latitude: c.Latitude, Longitude: c.Longitude, Count: c.Count}
 		}
-		items[i] = UnmappedPlace{Id: p.ID, Key: p.Key, Name: p.Name, Spelling: p.Spelling, Count: p.Count, Suggestions: suggestions}
+		items[i] = UnmappedPlace{Id: p.ID, Key: p.Key, Name: p.Name, Spelling: p.Spelling, Count: p.Count, Version: p.Version, Suggestions: suggestions}
 	}
 	return ListUnmappedPlaces200JSONResponse{Items: items, Total: len(items)}, nil
 }

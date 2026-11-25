@@ -7194,6 +7194,9 @@ type UnmappedPlace struct {
 
 	// Suggestions Every distinct pair, as recorded, that other records at the place carry as their own, most-used first, then by latitude and longitude; empty when no record there has one.
 	Suggestions []CoordinateSuggestion `json:"suggestions"`
+
+	// Version Version of the place's own stream, as `Place.version` gives it: send it with `PUT /places/{id}` to set the place's pair.
+	Version int64 `json:"version"`
 }
 
 // UnmappedPlaceList defines model for UnmappedPlaceList.

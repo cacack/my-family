@@ -13,13 +13,15 @@ import (
 // place's display name when one is set, otherwise Spelling: the most-used
 // spelling among those records (ties broken bytewise), its parts joined with
 // ", ". Suggestions are the distinct pairs that other records at the place
-// carry as their own.
+// carry as their own. Version is the place's stream version, for setting its
+// pair with optimistic locking (0 before any fact about it is stated).
 type UnmappedPlace struct {
 	ID          uuid.UUID
 	Key         string
 	Name        string
 	Spelling    string
 	Count       int
+	Version     int64
 	Suggestions []CoordinateSuggestion
 }
 
@@ -78,8 +80,11 @@ func UnmappedPlaces(uses []PlaceUse, facts []PlaceFactsReadModel, aliases PlaceA
 		}
 		spelling := mostUsed(p.spellings)
 		e := UnmappedPlace{ID: PlaceID(key), Key: key, Name: spelling, Spelling: spelling, Count: p.missing}
-		if f := factsByKey[key]; f != nil && f.Name != "" {
-			e.Name = f.Name
+		if f := factsByKey[key]; f != nil {
+			e.Version = f.Version
+			if f.Name != "" {
+				e.Name = f.Name
+			}
 		}
 		for pr, n := range p.pairs {
 			e.Suggestions = append(e.Suggestions, CoordinateSuggestion{Latitude: pr.lat, Longitude: pr.long, Count: n})
