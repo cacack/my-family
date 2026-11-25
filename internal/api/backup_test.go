@@ -3,6 +3,7 @@ package api_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/cacack/my-family/internal/api"
+	"github.com/cacack/my-family/internal/backup"
 	"github.com/cacack/my-family/internal/config"
 	"github.com/cacack/my-family/internal/repository"
 )
@@ -84,19 +86,57 @@ func TestDownloadBackup_Unavailable(t *testing.T) {
 	}
 }
 
+// TestDownloadBackup_Failure: a backup that fails for any reason but a
+// read-model-only value is a server error, and nothing partial is sent.
 func TestDownloadBackup_Failure(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		err  error
+	}{
+		{"io", errors.New("disk on fire")},
+		{"canceled", fmt.Errorf("check the read model for values no event records: %w", context.Canceled)},
+		{"failed check", errors.New("check the read model for values no event records (if it awaits `myfamily rebuild`, run that first): boom")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := tempBackups(t)
+			f := newAuthFixtureWith(t, accountsConfig, api.WithBackup(func(_ context.Context, w io.Writer) error {
+				_, _ = io.WriteString(w, "partial")
+				return tc.err
+			}))
+			f.createOwner(t)
+			rec := f.do(t, request{method: http.MethodGet, path: "/api/v1/backup", cookie: f.signIn(t)})
+			if rec.Code != http.StatusInternalServerError {
+				t.Errorf("status = %d, want 500", rec.Code)
+			}
+			if strings.Contains(rec.Body.String(), "partial") {
+				t.Errorf("a failed backup was sent: %s", rec.Body)
+			}
+			if left, _ := filepath.Glob(filepath.Join(dir, "myfamily-backup-*")); len(left) != 0 {
+				t.Errorf("temporary backup files left behind: %v", left)
+			}
+		})
+	}
+}
+
+// TestDownloadBackup_NeedsRebuild: a database whose read model holds values no
+// event records is refused with the fix, not a failed download (#1830).
+func TestDownloadBackup_NeedsRebuild(t *testing.T) {
 	dir := tempBackups(t)
 	f := newAuthFixtureWith(t, accountsConfig, api.WithBackup(func(_ context.Context, w io.Writer) error {
 		_, _ = io.WriteString(w, "partial")
-		return errors.New("disk on fire")
+		return fmt.Errorf("back up SQLite database %q: %w: 1 snapshot", "/secret/path.db", backup.ErrReadModelOnlyValues)
 	}))
 	f.createOwner(t)
 	rec := f.do(t, request{method: http.MethodGet, path: "/api/v1/backup", cookie: f.signIn(t)})
-	if rec.Code != http.StatusInternalServerError {
-		t.Errorf("status = %d, want 500", rec.Code)
+	if rec.Code != http.StatusConflict || errorCodeOf(rec) != "backup_needs_rebuild" {
+		t.Fatalf("%d %s, want 409 backup_needs_rebuild", rec.Code, rec.Body)
 	}
-	if strings.Contains(rec.Body.String(), "partial") {
-		t.Errorf("a failed backup was sent: %s", rec.Body)
+	body := rec.Body.String()
+	if !strings.Contains(body, "myfamily rebuild") {
+		t.Errorf("message does not name myfamily rebuild: %s", body)
+	}
+	if strings.Contains(body, "partial") || strings.Contains(body, "/secret/path.db") {
+		t.Errorf("refusal leaks the archive or the database path: %s", body)
 	}
 	if left, _ := filepath.Glob(filepath.Join(dir, "myfamily-backup-*")); len(left) != 0 {
 		t.Errorf("temporary backup files left behind: %v", left)

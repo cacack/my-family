@@ -19,10 +19,6 @@ import (
 // does not outlive the process.
 var ErrBackupMemory = errors.New("the in-memory backend has nothing to back up; unset DEMO_MODE")
 
-// ErrReadModelOnlyValues refuses a backup of a database whose read model holds
-// values no event records, which the archive would lose (ADR-010 §6).
-var ErrReadModelOnlyValues = errors.New("the read model holds values that no event records, where a backup would lose them")
-
 // Backup writes a backup archive (ADR-010) of the database cfg selects to w
 // and returns its manifest. A server may keep running on the database: Backup
 // takes the lock `serve` shares, so it waits on no server but refuses while a
@@ -139,7 +135,7 @@ func checkBackupSource(ctx context.Context, db *sql.DB, backend Backend) error {
 	if pending.Len() > 0 {
 		return fmt.Errorf("%w: coordinates or EXIDs of %d entities, %d brick walls and %d snapshots; "+
 			"stop every server and run `myfamily rebuild`, which logs them, then back up",
-			ErrReadModelOnlyValues, len(pending.ImportedValues), len(pending.BrickWalls), len(pending.Snapshots))
+			backup.ErrReadModelOnlyValues, len(pending.ImportedValues), len(pending.BrickWalls), len(pending.Snapshots))
 	}
 	return nil
 }
