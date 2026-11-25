@@ -27,8 +27,8 @@ import (
 // (#1802, ADR-006). Each directory under testdata/eventlogs holds the log one
 // release recorded (scripts/record-event-log.sh), as a backup archive, with
 // the read-model values that release's replay built from it. Replaying the
-// log on this version must rebuild every one of those values; values this
-// version adds pass.
+// log on this version must rebuild every one of those values and no row the
+// release had removed; fields and sections this version adds pass.
 
 // eventLogsDir holds one directory per recorded release, named by its tag.
 const eventLogsDir = "../../testdata/eventlogs"
@@ -66,7 +66,11 @@ func TestRecordedEventLogs_Replay(t *testing.T) {
 				if backend.name != "SQLite" {
 					precision = time.Microsecond
 				}
-				for _, diff := range subsetDiffs("", want, replayDump(t, ctx, st), precision) {
+				got := replayDump(t, ctx, st)
+				for _, diff := range subsetDiffs("", want, got, precision) {
+					t.Error(diff)
+				}
+				for _, diff := range extraRows(want, got) {
 					t.Error(diff)
 				}
 			})
@@ -109,6 +113,25 @@ func TestMissingEventTypes(t *testing.T) {
 	}
 }
 
+func TestExtraRows(t *testing.T) {
+	recorded := map[string]any{
+		"persons": map[string]any{"p1": map[string]any{"given_name": "Ada"}},
+		"notes":   map[string]any{},
+	}
+	got := map[string]any{
+		"persons": map[string]any{"p1": map[string]any{"given_name": "Ada"}, "p2": map[string]any{"given_name": "Gone"}},
+		"notes":   map[string]any{"n1": map[string]any{}},
+		"places":  map[string]any{"pl1": map[string]any{}},
+	}
+	want := []string{"notes.n1: not in the recording", "persons.p2: not in the recording"}
+	if diffs := extraRows(recorded, got); !reflect.DeepEqual(diffs, want) {
+		t.Errorf("diffs = %q, want %q", diffs, want)
+	}
+	if diffs := extraRows(recorded, recorded); diffs != nil {
+		t.Errorf("identical dumps differ: %q", diffs)
+	}
+}
+
 func TestSubsetDiffs(t *testing.T) {
 	recorded := map[string]any{"persons": map[string]any{"p1": map[string]any{
 		"given_name": "Ada", "version": json.Number("2"), "citation_ids": []any{"c1", "c2"},
@@ -121,7 +144,7 @@ func TestSubsetDiffs(t *testing.T) {
 		wantDiffs []string
 	}{
 		{"identical", recorded, time.Nanosecond, nil},
-		{"a field, row and section this version adds", map[string]any{
+		{"a field, row and section only got has", map[string]any{
 			"persons": map[string]any{
 				"p1": map[string]any{"given_name": "Ada", "version": json.Number("2"), "citation_ids": []any{"c1", "c2"},
 					"updated_at": "2026-11-23T10:00:00.123456789Z", "nickname": "Addie"},
@@ -272,8 +295,8 @@ func missingEventTypes(handled []string, logged map[string]bool) []string {
 // subsetDiffs describes how got fails to hold want: every key of every
 // object in want must be in got with an equal value, and a list must hold
 // the same entries in the same order. A key only got has passes, as does a
-// key want holds as null and got leaves out. Two times are equal at
-// precision.
+// key want holds as null and got leaves out; extraRows checks for rows.
+// Two times are equal at precision.
 func subsetDiffs(path string, want, got any, precision time.Duration) []string {
 	switch w := want.(type) {
 	case map[string]any:
@@ -325,6 +348,27 @@ func subsetDiffs(path string, want, got any, precision time.Duration) []string {
 		}
 		return []string{fmt.Sprintf("%s: got %s, want %s", path, describe(got), describe(want))}
 	}
+}
+
+// extraRows names each row got holds in a section want recorded but want
+// lacks: a row the release had removed (a delete, unlink or merge) that the
+// replay brought back. A section only got has passes.
+func extraRows(want, got map[string]any) []string {
+	var diffs []string
+	for section, w := range want {
+		wRows, ok1 := w.(map[string]any)
+		gRows, ok2 := got[section].(map[string]any)
+		if !ok1 || !ok2 {
+			continue // subsetDiffs reports a missing or misshapen section
+		}
+		for key := range gRows {
+			if _, ok := wRows[key]; !ok {
+				diffs = append(diffs, section+"."+key+": not in the recording")
+			}
+		}
+	}
+	sort.Strings(diffs)
+	return diffs
 }
 
 func sameValue(want, got any, precision time.Duration) bool {

@@ -291,10 +291,15 @@ database with synthetic data only (the demo seeder and the GEDCOM files above), 
 recorded log is never re-recorded. If the release's code no longer compiles the recorder, change it
 to the new API; if the release added an event type, make the recorder write one.
 
+A deliberate read-model change (a renamed or removed field, or a new row an old event now builds)
+also fails the replay, though no event is lost. In the same PR, edit only the affected keys in every
+release's `expected.json` and give the reason in the commit message. Never edit a `backup.zip`.
+
 `TestRecordedEventLogs_Replay` (`internal/integration`) restores each log into an empty SQLite and
 PostgreSQL database, which runs `repository.RebuildReadModel`. It fails on a rebuild error, a
-recorded projection failure, or an expected value that is missing or different. Values this
-version adds (a new field, row or section) pass. `TestRecordedEventLogs_NewestCoversDecodedTypes`
+recorded projection failure, an expected value that is missing or different, or a row in a
+recorded section that the recording lacks (a delete, unlink or merge that stopped applying). Fields
+and sections this version adds pass. `TestRecordedEventLogs_NewestCoversDecodedTypes`
 fails, naming the type, when the newest log lacks an event type its release's `DecodeEvent`
 handled.
 
