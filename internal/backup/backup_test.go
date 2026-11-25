@@ -120,7 +120,7 @@ func seed(t *testing.T, f fixture) {
 			return f.events.Append(ctx, p.ID, "Person", []domain.Event{domain.NewPersonCreated(p)}, -1, repository.MainScope)
 		})
 	}
-	now := time.Date(2026, 11, 24, 12, 30, 45, 123456789, time.UTC)
+	now := time.Date(2026, 11, 24, 12, 30, 45, 123456000, time.UTC) // microseconds: PostgreSQL rounds finer values
 	owner := &repository.User{ID: uuid.New(), Username: "owner", DisplayName: "Owner", PasswordHash: "$argon2id$hash", CreatedAt: now}
 	must(t, func() error { return f.accounts.CreateUser(ctx, owner, repository.DefaultTreeID, repository.RoleOwner) })
 	must(t, func() error {
@@ -224,7 +224,7 @@ func TestWrite(t *testing.T) {
 			if err := json.Unmarshal(readEntry(t, archive, TableEntry("users")), &users); err != nil {
 				t.Fatal(err)
 			}
-			if len(users) != 1 || users[0]["created_at"] != "2026-11-24T12:30:45.123456789Z" || users[0]["disabled"] != false {
+			if len(users) != 1 || users[0]["created_at"] != "2026-11-24T12:30:45.123456000Z" || users[0]["disabled"] != false {
 				t.Errorf("users = %v", users)
 			}
 			var trees []map[string]any
