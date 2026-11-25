@@ -7,6 +7,8 @@ import (
 	"io"
 	"os"
 	"time"
+
+	"github.com/cacack/my-family/internal/backup"
 )
 
 // BackupWriter writes a backup archive of the instance to w (ADR-010), as
@@ -39,6 +41,19 @@ func (ss *StrictServer) DownloadBackup(ctx context.Context, _ DownloadBackupRequ
 		return nil, errors.Join(err, f.Close(), os.Remove(f.Name()))
 	}
 	if err := ss.server.backup(ctx, f); err != nil {
+		if errors.Is(err, backup.ErrReadModelOnlyValues) {
+			// The owner can fix this one, so it is a refusal naming the fix
+			// (#1830), not a failed download.
+			if err := errors.Join(f.Close(), os.Remove(f.Name())); err != nil {
+				return nil, err
+			}
+			return DownloadBackup409JSONResponse{
+				Code: "backup_needs_rebuild",
+				Message: "This database holds coordinates, external IDs, brick walls or snapshots that its history " +
+					"does not record, so a backup would lose them. Stop every server and run \"myfamily rebuild\", " +
+					"which records them, then back up again.",
+			}, nil
+		}
 		return discard(fmt.Errorf("write backup: %w", err))
 	}
 	size, err := f.Seek(0, io.SeekCurrent)

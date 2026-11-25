@@ -15649,8 +15649,12 @@ export interface operations {
             };
             401: components["responses"]["Unauthenticated"];
             /**
-             * @description The server runs in memory (`DEMO_MODE`), which keeps nothing to back
-             *     up (`backup_unavailable`)
+             * @description The backup is refused. Either the server runs in memory
+             *     (`DEMO_MODE`), which keeps nothing to back up
+             *     (`backup_unavailable`), or the read model holds values that no
+             *     event records, which the archive would lose; the message says to
+             *     run `myfamily rebuild`, which logs them (`backup_needs_rebuild`,
+             *     [#1830](https://github.com/cacack/my-family/issues/1830))
              */
             409: {
                 headers: {

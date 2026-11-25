@@ -5,6 +5,8 @@ import (
 	"context"
 	"crypto/sha256"
 	"errors"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,6 +15,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/cacack/my-family/internal/api"
 	"github.com/cacack/my-family/internal/backup"
 	"github.com/cacack/my-family/internal/config"
 	"github.com/cacack/my-family/internal/domain"
@@ -189,7 +192,8 @@ func openWithReadModelOnly(t *testing.T, cfg *config.Config, write func(context.
 
 // assertBackupRefusesReadModelOnly expects both the command's backup and the
 // server's (GET /api/v1/backup) to refuse each read-model-only value of a
-// stamped database for holding it, not for a failed read, naming the rebuild.
+// stamped database for holding it, not for a failed read, naming the rebuild;
+// the server answers 409 backup_needs_rebuild (#1830).
 func assertBackupRefusesReadModelOnly(t *testing.T, newConfig func(*testing.T) *config.Config) {
 	for _, v := range readModelOnlyValues {
 		t.Run(v.name, func(t *testing.T) {
@@ -197,13 +201,23 @@ func assertBackupRefusesReadModelOnly(t *testing.T, newConfig func(*testing.T) *
 			stores := openWithReadModelOnly(t, cfg, v.write)
 			ctx := context.Background()
 			refused := func(err error) bool {
-				return errors.Is(err, ErrReadModelOnlyValues) && strings.Contains(err.Error(), "myfamily rebuild")
+				return errors.Is(err, backup.ErrReadModelOnlyValues) && strings.Contains(err.Error(), "myfamily rebuild")
 			}
 			if _, err := stores.Backup(ctx, &bytes.Buffer{}, "test"); !refused(err) {
 				t.Errorf("Stores.Backup = %v, want ErrReadModelOnlyValues naming myfamily rebuild", err)
 			}
 			if _, err := Backup(ctx, cfg, &bytes.Buffer{}, "test"); !refused(err) {
 				t.Errorf("Backup = %v, want ErrReadModelOnlyValues naming myfamily rebuild", err)
+			}
+			server := api.NewServer(&config.Config{Port: 8080, LogFormat: "text", AuthMode: config.AuthModeOpen},
+				stores.Events, stores.ReadModel, stores.Snapshots, nil, api.WithBranchStore(stores.Branches),
+				api.WithSettingsStore(stores.Settings), api.WithBackup(func(ctx context.Context, w io.Writer) error {
+					_, err := stores.Backup(ctx, w, "test")
+					return err
+				}))
+			resp := mustDo(t, server, http.MethodGet, "/api/v1/backup", "", http.StatusConflict)
+			if msg, _ := resp["message"].(string); resp["code"] != "backup_needs_rebuild" || !strings.Contains(msg, "myfamily rebuild") {
+				t.Errorf("GET /api/v1/backup = %v, want backup_needs_rebuild naming myfamily rebuild", resp)
 			}
 		})
 	}

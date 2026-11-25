@@ -7355,8 +7355,12 @@ paths:
           $ref: '#/components/responses/Unauthenticated'
         '409':
           description: |
-            The server runs in memory (`DEMO_MODE`), which keeps nothing to back
-            up (`backup_unavailable`)
+            The backup is refused. Either the server runs in memory
+            (`DEMO_MODE`), which keeps nothing to back up
+            (`backup_unavailable`), or the read model holds values that no
+            event records, which the archive would lose; the message says to
+            run `myfamily rebuild`, which logs them (`backup_needs_rebuild`,
+            [#1830](https://github.com/cacack/my-family/issues/1830))
           content:
             application/json:
               schema:

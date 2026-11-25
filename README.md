@@ -368,7 +368,8 @@ the event log lacks (coordinates, EXIDs, brick walls or snapshots an older relea
 there) or predates the read model's version stamp, which needs `myfamily rebuild` first; one whose
 tables an older release last shaped, which needs this release's `myfamily serve` started once; or
 one a newer release migrated, which needs that release. The owner can download the same
-file from the Settings page (`GET /api/v1/backup`).
+file from the Settings page (`GET /api/v1/backup`), which shows the refusal naming
+`myfamily rebuild` when the read model holds such values.
 
 The archive holds the event log, which includes every media file, and the accounts and settings
 that live outside it: users with their password hashes, tree memberships, site, tree and account

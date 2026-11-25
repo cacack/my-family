@@ -26,6 +26,12 @@ const (
 	Postgres
 )
 
+// ErrReadModelOnlyValues refuses a backup of a database whose read model holds
+// values no event records, which the archive would lose (ADR-010 §6). The
+// caller finds them (storage's checkBackupSource); it lives here so the server
+// can tell this refusal from a failed backup without importing storage.
+var ErrReadModelOnlyValues = errors.New("the read model holds values that no event records, where a backup would lose them")
+
 // Write writes a backup archive of db to w and returns its manifest.
 //
 // Everything is read in one read transaction (ADR-010 §6): PostgreSQL's

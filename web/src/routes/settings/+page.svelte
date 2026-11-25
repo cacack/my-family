@@ -37,6 +37,8 @@
 	let loadError: string | null = $state(null);
 	let saving = $state(false);
 	let saveError: string | null = $state(null);
+	let downloading = $state(false);
+	let backupError: string | null = $state(null);
 
 	const owner = $derived(can('owner'));
 	const changed = $derived(
@@ -104,6 +106,34 @@
 			saveError = (e as ApiError).message || 'Could not save the settings. Try again.';
 		} finally {
 			saving = false;
+		}
+	}
+
+	/**
+	 * Fetch the archive and hand it to the browser to save. A refusal, such as
+	 * a database that needs `myfamily rebuild` first, is shown here instead of
+	 * a silently failed download (#1830).
+	 */
+	async function downloadBackup() {
+		downloading = true;
+		backupError = null;
+		try {
+			const { blob, filename } = await api.downloadBackup();
+			const url = URL.createObjectURL(blob);
+			const a = document.createElement('a');
+			a.href = url;
+			a.download = filename;
+			a.click();
+			URL.revokeObjectURL(url);
+		} catch (e) {
+			const apiError = e as ApiError;
+			// A proxy's 4xx can carry no message (an HTML body over HTTP/2), so
+			// fall back to the generic text rather than showing nothing.
+			backupError =
+				(apiError.status && apiError.status < 500 && apiError.message) ||
+				'Could not make the backup. Try again.';
+		} finally {
+			downloading = false;
 		}
 	}
 </script>
@@ -239,9 +269,19 @@
 				password hash, so keep it as safe as the database.
 				<code>myfamily verify-backup</code> checks that a saved file is intact.
 			</p>
-			<!-- A plain download, so the browser streams the archive to disk instead of holding it in memory. -->
-			<Button variant="outline" href="/api/v1/backup" download aria-describedby="backup-hint" class="backup-action">
-				Download backup
+			{#if backupError}
+				<div class="backup-error">
+					<ActionError message={backupError} />
+				</div>
+			{/if}
+			<Button
+				variant="outline"
+				disabled={downloading}
+				aria-describedby="backup-hint"
+				class="backup-action"
+				onclick={downloadBackup}
+			>
+				{downloading ? 'Preparing backup...' : 'Download backup'}
 			</Button>
 		</section>
 	{/if}
@@ -337,6 +377,11 @@
 
 	.backup-intro {
 		max-width: 32rem;
+	}
+
+	.backup-error {
+		max-width: 32rem;
+		margin-top: 0.75rem;
 	}
 
 	.settings-page :global(.backup-action) {
