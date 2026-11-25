@@ -45,20 +45,29 @@ func placeFacts(doc *gedcom.Document) []PlaceData {
 		}
 		places = append(places, PlaceData{Record: record, Tag: tag, Text: detail.Name, Form: form, ExternalIDs: ids})
 	}
+	forEachPlaceDetail(doc, add)
+	return places
+}
+
+// forEachPlaceDetail calls visit with the PLAC of every person's event and
+// attribute and every family's event, in the order placeFacts documents, and
+// the record and tag it was read under. Import and export both walk the
+// document with it, so export writes place facts under exactly the PLACs
+// import reads them from.
+func forEachPlaceDetail(doc *gedcom.Document, visit func(record, tag string, detail *gedcom.PlaceDetail)) {
 	for _, rec := range doc.Records {
 		if indi, ok := rec.GetIndividual(); ok {
 			for _, e := range indi.Events {
-				add("Individual "+indi.XRef, string(e.Type), e.PlaceDetail)
+				visit("Individual "+indi.XRef, string(e.Type), e.PlaceDetail)
 			}
 			for _, a := range indi.Attributes {
-				add("Individual "+indi.XRef, string(a.Type), a.PlaceDetail)
+				visit("Individual "+indi.XRef, string(a.Type), a.PlaceDetail)
 			}
 		}
 		if fam, ok := rec.GetFamily(); ok {
 			for _, e := range fam.Events {
-				add("Family "+fam.XRef, string(e.Type), e.PlaceDetail)
+				visit("Family "+fam.XRef, string(e.Type), e.PlaceDetail)
 			}
 		}
 	}
-	return places
 }

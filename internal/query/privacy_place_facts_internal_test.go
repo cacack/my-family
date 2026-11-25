@@ -87,7 +87,8 @@ func TestPrivacyStore_PlaceFacts(t *testing.T) {
 }
 
 // TestPrivacyStore_PlaceFormsAndExternalIDs is PL-006 for a place's forms and
-// EXIDs: a principal gets them only for a place a record they may see names.
+// EXIDs: a principal gets them only for a place a record they may see names,
+// an absorbed place included, since export reads them by the text's own key.
 func TestPrivacyStore_PlaceFormsAndExternalIDs(t *testing.T) {
 	ctx := context.Background()
 	raw := memory.NewReadModelStore()
@@ -95,14 +96,20 @@ func TestPrivacyStore_PlaceFormsAndExternalIDs(t *testing.T) {
 	for _, p := range []*repository.PersonReadModel{
 		{ID: uuid.New(), GivenName: "Dora", BirthPlace: "Boston, MA", DeathEvidence: true, Version: 1, UpdatedAt: now},
 		{ID: uuid.New(), GivenName: "Lena", BirthPlace: "Livingston, MA", Version: 1, UpdatedAt: now},
+		{ID: uuid.New(), GivenName: "Karl", BirthPlace: "Köln, Germany", DeathEvidence: true, Version: 1, UpdatedAt: now},
 	} {
 		if err := raw.SavePerson(ctx, domain.MainBranchID, p); err != nil {
 			t.Fatal(err)
 		}
 	}
+	if err := raw.ReplacePlaceAliases(ctx, []repository.PlaceAliasReadModel{
+		{Key: "köln,germany", TargetKey: "cologne,germany", ResolvedKey: "cologne,germany"},
+	}); err != nil {
+		t.Fatal(err)
+	}
 	store := NewPrivacyStore(raw)
-	boston, livingston := repository.PlaceID("boston,ma"), repository.PlaceID("livingston,ma")
-	for _, id := range []uuid.UUID{boston, livingston} {
+	boston, livingston, koln := repository.PlaceID("boston,ma"), repository.PlaceID("livingston,ma"), repository.PlaceID("köln,germany")
+	for _, id := range []uuid.UUID{boston, livingston, koln} {
 		if err := store.ReplacePlaceForms(ctx, id, []repository.PlaceFormReadModel{{PositionalKey: "x,y", Form: "City, State"}}); err != nil {
 			t.Fatal(err)
 		}
@@ -129,10 +136,12 @@ func TestPrivacyStore_PlaceFormsAndExternalIDs(t *testing.T) {
 		return forms, ids
 	}
 	owner := repository.ContextWithPrincipal(ctx, repository.Principal{Role: repository.RoleOwner})
-	if forms, ids := places(owner); len(forms) != 2 || len(ids) != 2 {
-		t.Errorf("owner reads forms of %v and EXIDs of %v, want both places", forms, ids)
+	if forms, ids := places(owner); len(forms) != 3 || len(ids) != 3 {
+		t.Errorf("owner reads forms of %v and EXIDs of %v, want all three places", forms, ids)
 	}
-	if forms, ids := places(strictViewerCtx(false)); len(forms) != 1 || forms[0] != boston || len(ids) != 1 || ids[0] != boston {
-		t.Errorf("viewer reads forms of %v and EXIDs of %v, want Boston's only", forms, ids)
+	want := map[uuid.UUID]bool{boston: true, koln: true}
+	if forms, ids := places(strictViewerCtx(false)); len(forms) != 2 || !want[forms[0]] || !want[forms[1]] ||
+		len(ids) != 2 || !want[ids[0]] || !want[ids[1]] {
+		t.Errorf("viewer reads forms of %v and EXIDs of %v, want Boston's and Köln's only", forms, ids)
 	}
 }

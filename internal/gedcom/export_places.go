@@ -54,21 +54,9 @@ func loadExportPlaces(ctx context.Context, rs repository.ReadModelStore) (*expor
 // export's privacy filter let through, so nothing is written under a record
 // it left out.
 func (p *exportPlaces) addTo(doc *gedcom.Document) {
-	for _, rec := range doc.Records {
-		if indi, ok := rec.GetIndividual(); ok {
-			for _, e := range indi.Events {
-				p.write(e.PlaceDetail)
-			}
-			for _, a := range indi.Attributes {
-				p.write(a.PlaceDetail)
-			}
-		}
-		if fam, ok := rec.GetFamily(); ok {
-			for _, e := range fam.Events {
-				p.write(e.PlaceDetail)
-			}
-		}
-	}
+	forEachPlaceDetail(doc, func(_, _ string, detail *gedcom.PlaceDetail) {
+		p.write(detail)
+	})
 }
 
 // write adds to a PLAC whose text names a place the form its place holds

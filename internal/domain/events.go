@@ -2060,9 +2060,9 @@ func NewDuplicateRestored(pair DuplicatePair) DuplicateRestored {
 // "coordinates_origin", the three always recorded together; its GEDCOM
 // PLAC.FORM labels under "forms", the whole set as a form by positional key;
 // and its GEDCOM 7.0 EXIDs under "external_ids", the whole list as {value,
-// type} objects (ADR-009 §8). There is no PlaceCreated: a place exists once its key is in use. Key and Text are the
-// place's matching key and the text it was computed from, so the log reads
-// without the ID's hash.
+// type} objects (ADR-009 §8). There is no PlaceCreated: a place exists once
+// its key is in use. Key and Text are the place's matching key and the text
+// it was computed from, so the log reads without the ID's hash.
 type PlaceUpdated struct {
 	BaseEvent
 	PlaceID uuid.UUID      `json:"place_id"`

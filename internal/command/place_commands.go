@@ -294,7 +294,8 @@ func (h *Handler) importPlaceFacts(ctx context.Context, places []gedcom.PlaceDat
 
 	byID := make(map[uuid.UUID]*importedPlace)
 	var order []uuid.UUID
-	warned := make(map[string]bool)
+	type conflict struct{ positional, form string }
+	warned := make(map[conflict]bool)
 	for _, pd := range places {
 		key := repository.PlaceKey(pd.Text)
 		id := repository.PlaceID(key)
@@ -316,8 +317,8 @@ func (h *Handler) importPlaceFacts(ctx context.Context, places []gedcom.PlaceDat
 			case !ok:
 				p.forms[positional] = pd.Form
 				p.formsChanged = true
-			case current != pd.Form && !warned[positional+"\x00"+pd.Form]:
-				warned[positional+"\x00"+pd.Form] = true
+			case current != pd.Form && !warned[conflict{positional, pd.Form}]:
+				warned[conflict{positional, pd.Form}] = true
 				result.Warnings = append(result.Warnings, fmt.Sprintf(
 					"%s: %s place %q has the form %q, but %q is already the form of places written that way; not applied",
 					pd.Record, pd.Tag, pd.Text, pd.Form, current))
