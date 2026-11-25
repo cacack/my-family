@@ -127,10 +127,11 @@
 			URL.revokeObjectURL(url);
 		} catch (e) {
 			const apiError = e as ApiError;
+			// A proxy's 4xx can carry no message (an HTML body over HTTP/2), so
+			// fall back to the generic text rather than showing nothing.
 			backupError =
-				apiError.status && apiError.status < 500
-					? apiError.message
-					: 'Could not make the backup. Try again.';
+				(apiError.status && apiError.status < 500 && apiError.message) ||
+				'Could not make the backup. Try again.';
 		} finally {
 			downloading = false;
 		}

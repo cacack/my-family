@@ -766,7 +766,9 @@ class ApiClient {
 	/**
 	 * The owner's backup archive (#15). Fetched rather than linked, so a refused
 	 * backup, such as one that needs `myfamily rebuild`, reaches the page with
-	 * its reason (#1830). Mainline only: the operation takes no branch scope.
+	 * its reason (#1830). The trade-off: the browser holds the whole archive
+	 * as a Blob before saving it, rather than streaming it to disk. Mainline
+	 * only: the operation takes no branch scope.
 	 */
 	async downloadBackup(): Promise<{ blob: Blob; filename: string }> {
 		const response = await fetch(`${API_BASE}/backup`);

@@ -220,6 +220,13 @@ describe('Settings page', () => {
 		expect((await screen.findByRole('alert')).textContent).toContain('Could not make the backup. Try again.');
 	});
 
+	it('still says something when a refusal carries no message (#1830)', async () => {
+		api.downloadBackup.mockRejectedValue({ status: 413, code: 'UNKNOWN_ERROR', message: '' });
+		render(SettingsPage);
+		await fireEvent.click(await screen.findByRole('button', { name: 'Download backup' }));
+		expect((await screen.findByRole('alert')).textContent).toContain('Could not make the backup. Try again.');
+	});
+
 	it.each([
 		['Preview as a visitor', 'visitor'],
 		['Preview as a viewer', 'viewer']
