@@ -60,6 +60,11 @@ type StoreSchemaBackend interface {
 // with a migration this binary does not know: a newer release wrote it.
 var ErrStoreSchemaNewer = errors.New("the database's store schema is newer than this version of myfamily")
 
+// ErrStoreSchemaOlder is returned by CheckCurrent when a database's store
+// schema is stamped below the last migration this binary knows: an older
+// release last opened it, and no command of this one has migrated it yet.
+var ErrStoreSchemaOlder = errors.New("the database's store schema is older than this version of myfamily")
+
 // StoreMigrator applies a backend's migrations to one database (ADR-011 §2).
 type StoreMigrator struct {
 	DB         *sql.DB
@@ -81,7 +86,8 @@ func (m *StoreMigrator) Check(ctx context.Context) error {
 }
 
 // CheckCurrent refuses a database whose stamp is not the last migration this
-// binary knows, naming both versions; a newer one wraps ErrStoreSchemaNewer.
+// binary knows, naming both versions; a newer one wraps ErrStoreSchemaNewer,
+// an older one ErrStoreSchemaOlder.
 // An unstamped database passes while the list holds only the baseline, which
 // changes nothing on it. It only reads. The backup asks for it, since its
 // archive describes this binary's shapes (ADR-011 §4).
@@ -97,9 +103,9 @@ func (m *StoreMigrator) CheckCurrent(ctx context.Context) error {
 	if stamp.Version == known || (stamp.Version == 0 && known == 1) {
 		return nil
 	}
-	return fmt.Errorf("the database is at store schema version %d (%s) and this binary's is %d (%s); "+
+	return fmt.Errorf("%w: the database is at store schema version %d (%s) and this binary's is %d (%s); "+
 		"back it up with the release that last opened it, or start `myfamily serve` with this release once, then back up",
-		stamp.Version, stampName(stamp), known, m.Migrations[known-1].Name)
+		ErrStoreSchemaOlder, stamp.Version, stampName(stamp), known, m.Migrations[known-1].Name)
 }
 
 // stampName is the stamp's migration name, or "none" for an unstamped

@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"io"
 	"path/filepath"
 	"slices"
@@ -311,8 +312,8 @@ func TestWrite_RefusesAnUnstampedLog(t *testing.T) {
 				}
 				var buf bytes.Buffer
 				_, err := Write(context.Background(), f.db, f.dialect, &buf, "test-version")
-				if err == nil || !strings.Contains(err.Error(), "myfamily rebuild") {
-					t.Errorf("Write = %v, want a refusal naming myfamily rebuild", err)
+				if !errors.Is(err, ErrReadModelUnstamped) || !strings.Contains(err.Error(), "myfamily rebuild") {
+					t.Errorf("Write = %v, want ErrReadModelUnstamped naming myfamily rebuild", err)
 				}
 			})
 		}
@@ -332,8 +333,8 @@ func TestCheckSource(t *testing.T) {
 			if _, err := f.db.Exec("DELETE FROM read_model_schema"); err != nil {
 				t.Fatal(err)
 			}
-			if err := CheckSource(ctx, f.db, f.dialect); err == nil || !strings.Contains(err.Error(), "myfamily rebuild") {
-				t.Errorf("CheckSource = %v, want a refusal naming myfamily rebuild", err)
+			if err := CheckSource(ctx, f.db, f.dialect); !errors.Is(err, ErrReadModelUnstamped) || !strings.Contains(err.Error(), "myfamily rebuild") {
+				t.Errorf("CheckSource = %v, want ErrReadModelUnstamped naming myfamily rebuild", err)
 			}
 			if err := f.db.Close(); err != nil {
 				t.Fatal(err)
@@ -369,8 +370,8 @@ func TestWrite_RefusesAnOlderShape(t *testing.T) {
 				}
 				var buf bytes.Buffer
 				_, err := Write(context.Background(), f.db, f.dialect, &buf, "test-version")
-				if err == nil || !strings.Contains(err.Error(), tt.table) || !strings.Contains(err.Error(), "myfamily serve") {
-					t.Errorf("Write = %v, want a refusal naming %s and myfamily serve", err, tt.table)
+				if !errors.Is(err, ErrSourceShape) || !strings.Contains(err.Error(), tt.table) || !strings.Contains(err.Error(), "myfamily serve") {
+					t.Errorf("Write = %v, want ErrSourceShape naming %s and myfamily serve", err, tt.table)
 				}
 			})
 		}

@@ -336,6 +336,9 @@ func TestStoreMigrations_CheckCurrent(t *testing.T) {
 				if errors.Is(err, repository.ErrStoreSchemaNewer) != tt.newer {
 					t.Errorf("errors.Is(%v, ErrStoreSchemaNewer) = %v, want %v", err, !tt.newer, tt.newer)
 				}
+				if errors.Is(err, repository.ErrStoreSchemaOlder) == tt.newer {
+					t.Errorf("errors.Is(%v, ErrStoreSchemaOlder) = %v, want %v", err, tt.newer, !tt.newer)
+				}
 			}
 			if after := dumpDatabase(t, db); after != before {
 				t.Errorf("CheckCurrent changed the database:\n before: %s\n after:  %s", before, after)
