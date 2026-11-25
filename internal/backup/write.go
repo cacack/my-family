@@ -14,6 +14,8 @@ import (
 	"io"
 	"strings"
 	"time"
+
+	"github.com/lib/pq"
 )
 
 // Dialect names the database a backup reads, which decides how its read
@@ -152,6 +154,9 @@ func checkSource(ctx context.Context, tx *sql.Tx, dialect Dialect) error {
 		// #nosec G202 -- table and column names are package constants, not input.
 		// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 		rows, err := tx.QueryContext(ctx, "SELECT "+strings.Join(names, ", ")+" FROM "+t.name+" WHERE 1 = 0")
+		if err != nil && !missingTableOrColumn(err) {
+			return fmt.Errorf("read the database's %s table: %w", t.name, err)
+		}
 		if err != nil {
 			return fmt.Errorf("%w: the database's %s table, as when an older release last opened it; "+
 				"start `myfamily serve` with this release once, then back up: %w", ErrSourceShape, t.name, err)
@@ -185,6 +190,18 @@ func checkSource(ctx context.Context, tx *sql.Tx, dialect Dialect) error {
 			ErrReadModelUnstamped)
 	}
 	return nil
+}
+
+// missingTableOrColumn reports whether err names a table or column the
+// database lacks, which a restart's store construction adds; any other error
+// (a canceled read, a dropped connection, a busy database) is no refusal.
+func missingTableOrColumn(err error) bool {
+	var pqErr *pq.Error
+	if errors.As(err, &pqErr) {
+		return pqErr.Code == "42P01" || pqErr.Code == "42703" // undefined_table, undefined_column
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "no such table") || strings.Contains(msg, "no such column")
 }
 
 // writeEntry adds a deflated entry named name, filled by fill, and returns the

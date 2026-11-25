@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 
 	"github.com/cacack/my-family/internal/domain"
 	"github.com/cacack/my-family/internal/repository"
@@ -374,6 +375,46 @@ func TestWrite_RefusesAnOlderShape(t *testing.T) {
 					t.Errorf("Write = %v, want ErrSourceShape naming %s and myfamily serve", err, tt.table)
 				}
 			})
+		}
+	}
+}
+
+// TestCheckSource_FailedReadIsNoShapeRefusal: a probe that fails for a reason
+// other than a missing table or column, here a canceled read, is a plain
+// error, not a refusal a restart would fix.
+func TestCheckSource_FailedReadIsNoShapeRefusal(t *testing.T) {
+	for _, b := range backends {
+		t.Run(b.name, func(t *testing.T) {
+			f := b.open(t)
+			tx, err := f.db.BeginTx(context.Background(), &sql.TxOptions{ReadOnly: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = tx.Rollback() }()
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+			if err := checkSource(ctx, tx, f.dialect); err == nil || errors.Is(err, ErrSourceShape) {
+				t.Errorf("checkSource with a canceled read = %v, want an error that is not ErrSourceShape", err)
+			}
+		})
+	}
+}
+
+func TestMissingTableOrColumn(t *testing.T) {
+	for _, tt := range []struct {
+		err  error
+		want bool
+	}{
+		{&pq.Error{Code: "42P01"}, true},
+		{&pq.Error{Code: "42703"}, true},
+		{&pq.Error{Code: "57014"}, false}, // query_canceled
+		{errors.New("SQL logic error: no such column: anonymous_access (1)"), true},
+		{errors.New("SQL logic error: no such table: api_tokens (1)"), true},
+		{errors.New("database is locked (5) (SQLITE_BUSY)"), false},
+		{context.Canceled, false},
+	} {
+		if got := missingTableOrColumn(tt.err); got != tt.want {
+			t.Errorf("missingTableOrColumn(%v) = %v, want %v", tt.err, got, tt.want)
 		}
 	}
 }
