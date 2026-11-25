@@ -97,6 +97,7 @@ type Server struct {
 	settingsStore       repository.SettingsStore     // nil unless WithSettingsStore supplied
 	auth                *auth.Service                // nil only in open mode
 	settings            repository.TreeSettingsStore // nil unless WithTreeSettings supplied
+	backup              BackupWriter                 // nil unless WithBackup supplied
 	routes              map[string]bool              // every registered route, by routeKey
 	// visitorsProtected is repository.AnonymousViewingProtected; a test of
 	// that kill switch clears it (export_test.go).

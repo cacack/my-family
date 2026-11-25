@@ -53,6 +53,7 @@ var (
 		"GET /api/v1/auth-audit",
 		"GET /api/v1/settings/privacy",
 		"PUT /api/v1/settings/privacy",
+		"GET /api/v1/backup",
 	)
 	// Exports are reads an editor needs: a viewer may not take the tree away.
 	editorReads = routeSet(

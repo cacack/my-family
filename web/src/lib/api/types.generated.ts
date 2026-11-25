@@ -3841,6 +3841,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/backup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download a backup archive of the whole instance
+         * @description Writes a backup archive, as `myfamily backup` does, and returns it
+         *     ([#15](https://github.com/cacack/my-family/issues/15), ADR-010): a zip
+         *     holding the event log, the accounts and the settings, with a manifest
+         *     that records a SHA-256 for every entry. The server keeps serving while
+         *     it is written. The archive is not encrypted: it holds the whole tree,
+         *     living people and private records included, and every account's
+         *     password hash. `myfamily verify-backup` checks a downloaded file.
+         */
+        get: operations["downloadBackup"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -15599,6 +15625,41 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthenticated"];
             409: components["responses"]["AccountsOnly"];
+            503: components["responses"]["SetupRequired"];
+        };
+    };
+    downloadBackup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The backup archive */
+            200: {
+                headers: {
+                    "Content-Disposition"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/zip": string;
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            /**
+             * @description The server runs in memory (`DEMO_MODE`), which keeps nothing to back
+             *     up (`backup_unavailable`)
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
             503: components["responses"]["SetupRequired"];
         };
     };

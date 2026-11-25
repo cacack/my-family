@@ -9591,6 +9591,9 @@ type ServerInterface interface {
 	// GetAuthStatus How this server signs people in, and who is signed in
 	// (GET /auth/status)
 	GetAuthStatus(ctx echo.Context) error
+	// DownloadBackup Download a backup archive of the whole instance
+	// (GET /backup)
+	DownloadBackup(ctx echo.Context) error
 	// ListBranches List all branches
 	// (GET /branches)
 	ListBranches(ctx echo.Context, params ListBranchesParams) error
@@ -10469,6 +10472,15 @@ func (w *ServerInterfaceWrapper) GetAuthStatus(ctx echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.GetAuthStatus(ctx)
+	return err
+}
+
+// DownloadBackup converts echo context to params.
+func (w *ServerInterfaceWrapper) DownloadBackup(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.DownloadBackup(ctx)
 	return err
 }
 
@@ -15137,6 +15149,7 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 	router.GET(options.BaseURL+"/settings/privacy", wrapper.GetPrivacySettings, options.OperationMiddlewares["getPrivacySettings"]...)
 	router.PUT(options.BaseURL+"/settings/privacy", wrapper.UpdatePrivacySettings, options.OperationMiddlewares["updatePrivacySettings"]...)
 	router.GET(options.BaseURL+"/auth-audit", wrapper.ListAuthAudit, options.OperationMiddlewares["listAuthAudit"]...)
+	router.GET(options.BaseURL+"/backup", wrapper.DownloadBackup, options.OperationMiddlewares["downloadBackup"]...)
 
 }
 
@@ -16511,6 +16524,83 @@ func (response GetAuthStatus200JSONResponse) VisitGetAuthStatusResponse(w http.R
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DownloadBackupRequestObject struct {
+}
+
+type DownloadBackupResponseObject interface {
+	VisitDownloadBackupResponse(w http.ResponseWriter) error
+}
+
+type DownloadBackup200ResponseHeaders struct {
+	ContentDisposition *string
+}
+
+type DownloadBackup200ApplicationzipResponse struct {
+	Body          io.Reader
+	Headers       DownloadBackup200ResponseHeaders
+	ContentLength int64
+}
+
+func (response DownloadBackup200ApplicationzipResponse) VisitDownloadBackupResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "application/zip")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	if response.Headers.ContentDisposition != nil {
+		w.Header().Set("Content-Disposition", fmt.Sprint(*response.Headers.ContentDisposition))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type DownloadBackup401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response DownloadBackup401JSONResponse) VisitDownloadBackupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DownloadBackup409JSONResponse Error
+
+func (response DownloadBackup409JSONResponse) VisitDownloadBackupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DownloadBackup503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response DownloadBackup503JSONResponse) VisitDownloadBackupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -29718,6 +29808,9 @@ type StrictServerInterface interface {
 	// GetAuthStatus How this server signs people in, and who is signed in
 	// (GET /auth/status)
 	GetAuthStatus(ctx context.Context, request GetAuthStatusRequestObject) (GetAuthStatusResponseObject, error)
+	// DownloadBackup Download a backup archive of the whole instance
+	// (GET /backup)
+	DownloadBackup(ctx context.Context, request DownloadBackupRequestObject) (DownloadBackupResponseObject, error)
 	// ListBranches List all branches
 	// (GET /branches)
 	ListBranches(ctx context.Context, request ListBranchesRequestObject) (ListBranchesResponseObject, error)
@@ -30909,6 +31002,29 @@ func (sh *strictHandler) GetAuthStatus(ctx echo.Context) error {
 		return err
 	} else if validResponse, ok := response.(GetAuthStatusResponseObject); ok {
 		return validResponse.VisitGetAuthStatusResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// DownloadBackup operation middleware
+func (sh *strictHandler) DownloadBackup(ctx echo.Context) error {
+	var request DownloadBackupRequestObject
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.DownloadBackup(ctx.Request().Context(), request.(DownloadBackupRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DownloadBackup")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(DownloadBackupResponseObject); ok {
+		return validResponse.VisitDownloadBackupResponse(ctx.Response())
 	} else if response != nil {
 		return fmt.Errorf("unexpected response type: %T", response)
 	}

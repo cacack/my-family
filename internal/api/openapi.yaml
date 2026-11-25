@@ -70,7 +70,8 @@ tags:
   - name: settings
     description: |
       Site and tree settings: the home person, and the tree's privacy
-      settings (ADR-008 §6), which only an owner may read or change.
+      settings (ADR-008 §6), which only an owner may read or change, and the
+      owner's backup download.
   - name: notes
     description: GEDCOM NOTE record management
   - name: submitters
@@ -7320,6 +7321,46 @@ paths:
           $ref: '#/components/responses/Unauthenticated'
         '409':
           $ref: '#/components/responses/AccountsOnly'
+        '503':
+          $ref: '#/components/responses/SetupRequired'
+
+  /backup:
+    get:
+      operationId: downloadBackup
+      x-min-role: owner
+      summary: Download a backup archive of the whole instance
+      description: |
+        Writes a backup archive, as `myfamily backup` does, and returns it
+        ([#15](https://github.com/cacack/my-family/issues/15), ADR-010): a zip
+        holding the event log, the accounts and the settings, with a manifest
+        that records a SHA-256 for every entry. The server keeps serving while
+        it is written. The archive is not encrypted: it holds the whole tree,
+        living people and private records included, and every account's
+        password hash. `myfamily verify-backup` checks a downloaded file.
+      tags: [settings]
+      responses:
+        '200':
+          description: The backup archive
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+                example: attachment; filename="myfamily-backup-20261124T120000Z.zip"
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '409':
+          description: |
+            The server runs in memory (`DEMO_MODE`), which keeps nothing to back
+            up (`backup_unavailable`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '503':
           $ref: '#/components/responses/SetupRequired'
 

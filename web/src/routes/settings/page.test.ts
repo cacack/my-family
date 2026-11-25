@@ -168,6 +168,18 @@ describe('Settings page', () => {
 		render(SettingsPage);
 		expect(screen.getByTestId('role-notice').textContent).toContain('needs the owner role');
 		expect(api.getPrivacySettings).not.toHaveBeenCalled();
+		expect(screen.queryByRole('link', { name: 'Download backup' })).toBeNull();
+	});
+
+	it('offers the owner a backup download, saying what it holds (#15)', async () => {
+		render(SettingsPage);
+		const link = (await screen.findByRole('link', { name: 'Download backup' })) as HTMLAnchorElement;
+		expect(link.getAttribute('href')).toBe('/api/v1/backup');
+		expect(link.hasAttribute('download')).toBe(true);
+		const hint = document.getElementById(link.getAttribute('aria-describedby') ?? '')?.textContent ?? '';
+		expect(hint).toMatch(/not encrypted/);
+		expect(hint).toMatch(/password hash/);
+		expect(hint).toMatch(/myfamily verify-backup/);
 	});
 
 	it.each([

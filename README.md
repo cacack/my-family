@@ -454,6 +454,7 @@ newer version asks for one rebuild.
 - `GET /api/v1/gedcom/export/preview` - Preview an export conversion (optional `?version=`); reports data loss without producing a file
 - `GET /api/v1/export/tree` - Export complete tree as JSON, with each coordinate pair's origin (`birth_place_origin`, `marriage_place_origin`, and `place_origin` on life events and attributes)
 - `GET /api/v1/export/{persons,families,sources,citations,events,attributes}` - Export one entity type as JSON (default) or CSV (`?format=csv`); for CSV, `?fields=id,given_name,...` picks the columns. Unknown formats or fields return 400. CSV cells beginning with `=`, `+`, `-`, `@`, tab or carriage return are prefixed with `'` so spreadsheets show them as text rather than evaluating a formula
+- `GET /api/v1/backup` - Download a backup archive of the whole instance (owner only; see [Backups](#backups))
 
 API documentation: http://localhost:8080/api/v1/docs
 
