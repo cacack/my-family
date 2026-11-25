@@ -387,7 +387,7 @@ decorator, b = event-output redactor, — = no tree data. "Protected" means a pl
 | browseSurnames | GET /browse/surnames | Surname index with counts | RM agg | a | Counts exclude protected; a surname with only protected people is absent |
 | getPersonsBySurname | GET /browse/surnames/{surname}/persons | People | RM | a | Protected excluded in the query |
 | browsePlaces | GET /browse/places | Place hierarchy with counts | RM agg | a | Counts exclude protected |
-| getPersonsByPlace | GET /browse/places/{place}/persons | People | RM | a | Protected excluded in the query |
+| getPersonsByPlace | GET /browse/places/{id}/persons | People | RM | a | Protected excluded in the query |
 | browseCemeteries | GET /browse/cemeteries | Cemetery index with counts | RM agg | a | Counts exclude protected |
 | getPersonsByCemetery | GET /browse/cemeteries/{place}/persons | People | RM | a | Protected excluded in the query |
 | listPlaces | GET /places | Places in use with IDs, names and counts | RM agg | a | A place, its name and its count come only from records shown: protected people and what they own, private families and families with a protected partner are left out in the query (ADR-009 §10) |

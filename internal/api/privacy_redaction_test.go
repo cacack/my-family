@@ -33,6 +33,10 @@ type privacyPrincipal struct {
 	seesLiving, seesPrivate bool
 }
 
+// springfieldPlaceID is the ID of the place Springfield, under which the
+// redaction fixture records its people's places.
+var springfieldPlaceID = repository.PlaceID("springfield").String()
+
 func buildRedactionTree(t *testing.T, f *authFixture, owner *http.Cookie) redactionTree {
 	t.Helper()
 	create := func(path, body string) string {
@@ -162,11 +166,11 @@ func TestPrivacyRedaction_PersonSurfaces(t *testing.T) {
 				t.Run(p.name, func(t *testing.T) {
 					want := p.shownPeople()
 					for _, path := range []string{
-						"/api/v1/persons",                           // listPersons
-						"/api/v1/search?q=Smith",                    // searchPersons
-						"/api/v1/search?q=Smith&fuzzy=true",         // searchPersons, fuzzy
-						"/api/v1/browse/surnames/Smith/persons",     // getPersonsBySurname
-						"/api/v1/browse/places/Springfield/persons", // getPersonsByPlace
+						"/api/v1/persons",                                          // listPersons
+						"/api/v1/search?q=Smith",                                   // searchPersons
+						"/api/v1/search?q=Smith&fuzzy=true",                        // searchPersons, fuzzy
+						"/api/v1/browse/surnames/Smith/persons",                    // getPersonsBySurname
+						"/api/v1/browse/places/" + springfieldPlaceID + "/persons", // getPersonsByPlace
 					} {
 						names, total := itemNames(p.getJSON(t, f, path))
 						if !slices.Equal(names, want) || int(total) != len(want) {

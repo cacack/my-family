@@ -457,6 +457,7 @@ func (s *ReadModelStore) createTables() error {
 			id TEXT PRIMARY KEY,
 			key TEXT NOT NULL UNIQUE,
 			name TEXT,
+			parent_key TEXT,
 			latitude TEXT,
 			longitude TEXT,
 			coordinates_origin TEXT,
@@ -906,6 +907,9 @@ func (s *ReadModelStore) runMigrations() {
 
 	// Add repository_id to sources for ID-based source→repository linkage (issue #525).
 	_, _ = s.db.Exec(`ALTER TABLE sources ADD COLUMN repository_id TEXT`)
+
+	// A place's explicit parent (ADR-009 §4, #1737).
+	_, _ = s.db.Exec(`ALTER TABLE places ADD COLUMN parent_key TEXT`)
 
 	// Branch scoping for the slice entities (ADR-005 / #669), the person/family
 	// facts (#757) and the evidence (#758). Add branch_id + deleted to each table in branchScopedTables. SQLite ALTER TABLE ADD COLUMN has no
@@ -5246,13 +5250,25 @@ func (s *ReadModelStore) GetPersonsBySurname(ctx context.Context, surname string
 	return persons, total, rows.Err()
 }
 
-// GetPlaceHierarchy returns the places directly under parent. Each birth and
-// death place is counted per distinct key and spelling here, and
-// repository.PlaceLevels builds the levels from those counts, as on every store.
-// Scoped to the branch overlay (ADR-005 / #756): the birth-place and death-place
-// legs of each UNION both read the overlay, so a branch sees its own places and
+// GetPlaceHierarchy returns the places directly under parent in the
+// repository.PlaceTree of the birth and death places within the branch
+// overlay (ADR-005, ADR-009 §4), as on every store.
+func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, branchID domain.BranchID, parent uuid.UUID, privacy repository.Privacy) (*repository.PlaceLevel, error) {
+	tree, err := s.placeTree(ctx, branchID, privacy)
+	if err != nil {
+		return nil, err
+	}
+	level, _ := tree.Level(parent)
+	return &level, nil
+}
+
+// placeTree builds the repository.PlaceTree of the birth and death places
+// within the branch overlay that privacy shows, in three queries: use is
+// counted per distinct key and spelling, and explicit parents and aliases are
+// each loaded whole. The birth-place and death-place legs of the UNION both
+// read the overlay (ADR-005 / #756), so a branch sees its own places and
 // tombstoned persons contribute none.
-func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, branchID domain.BranchID, parent string, privacy repository.Privacy) ([]repository.PlaceEntry, error) {
+func (s *ReadModelStore) placeTree(ctx context.Context, branchID domain.BranchID, privacy repository.Privacy) (*repository.PlaceTree, error) {
 	withClause, src, cteArgs, legArgs := personOverlayCTE(branchID, privacy)
 
 	// Args in statement order: the CTE's binds (off main), then each leg's own
@@ -5284,7 +5300,15 @@ func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, branchID domain.
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	return repository.PlaceLevels(uses, parent), nil
+	facts, err := s.ListPlaceFacts(ctx, branchID)
+	if err != nil {
+		return nil, err
+	}
+	aliases, err := s.ListPlaceAliases(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return repository.BuildPlaceTree(uses, facts, repository.PlaceAliasesByKey(aliases)), nil
 }
 
 // ListPlaces returns the places in use within the branch overlay, built by
@@ -5391,17 +5415,18 @@ func (s *ReadModelStore) placeUses(ctx context.Context, branchID domain.BranchID
 // SavePlaceFacts inserts or replaces a place's facts (main-only, PL-005).
 func (s *ReadModelStore) SavePlaceFacts(ctx context.Context, facts *repository.PlaceFactsReadModel) error {
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO places (id, key, name, latitude, longitude, coordinates_origin, version, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO places (id, key, name, parent_key, latitude, longitude, coordinates_origin, version, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (id) DO UPDATE SET
 			key = excluded.key,
 			name = excluded.name,
+			parent_key = excluded.parent_key,
 			latitude = excluded.latitude,
 			longitude = excluded.longitude,
 			coordinates_origin = excluded.coordinates_origin,
 			version = excluded.version,
 			updated_at = excluded.updated_at
-	`, facts.ID.String(), facts.Key, nullableString(facts.Name),
+	`, facts.ID.String(), facts.Key, nullableString(facts.Name), nullableString(facts.ParentKey),
 		nullableStringPtr(facts.Latitude), nullableStringPtr(facts.Longitude),
 		nullableString(repository.MarshalCoordinateOrigin(facts.Origin)),
 		facts.Version, formatTimestamp(facts.UpdatedAt))
@@ -5412,22 +5437,22 @@ func (s *ReadModelStore) SavePlaceFacts(ctx context.Context, facts *repository.P
 }
 
 // placeFactsColumns are the columns scanPlaceFacts reads, in order.
-const placeFactsColumns = `id, key, name, latitude, longitude, coordinates_origin, version, updated_at`
+const placeFactsColumns = `id, key, name, parent_key, latitude, longitude, coordinates_origin, version, updated_at`
 
 // scanPlaceFacts scans one places row.
 func scanPlaceFacts(row interface{ Scan(...any) error }) (*repository.PlaceFactsReadModel, error) {
 	var id, updatedAt string
-	var name, lat, long sql.NullString
+	var name, parentKey, lat, long sql.NullString
 	var originJSON []byte
 	f := &repository.PlaceFactsReadModel{}
-	if err := row.Scan(&id, &f.Key, &name, &lat, &long, &originJSON, &f.Version, &updatedAt); err != nil {
+	if err := row.Scan(&id, &f.Key, &name, &parentKey, &lat, &long, &originJSON, &f.Version, &updatedAt); err != nil {
 		return nil, err
 	}
 	var err error
 	if f.ID, err = uuid.Parse(id); err != nil {
 		return nil, fmt.Errorf("parse place id: %w", err)
 	}
-	f.Name = name.String
+	f.Name, f.ParentKey = name.String, parentKey.String
 	f.Latitude, f.Longitude = nonEmptyStringPtr(lat), nonEmptyStringPtr(long)
 	f.Origin = repository.UnmarshalCoordinateOrigin(originJSON, "places", "coordinates_origin", f.ID)
 	f.UpdatedAt, _ = parseTimestamp(updatedAt)
@@ -5503,34 +5528,44 @@ func (s *ReadModelStore) ReplacePlaceAliases(ctx context.Context, aliases []repo
 	return tx.Commit()
 }
 
-// placeUnderSQL is the SQL form of repository.PlaceUnder for a key column: it
-// binds the place's key, then "," and that key. It compares stored keys and
-// computes none (PL-002).
-func placeUnderSQL(column string) string {
-	return "(" + column + " = ? OR SUBSTR(" + column + ", -LENGTH(?)) = ?)"
+// placeKeysJSON is a set of place keys as the one JSON-array parameter that
+// placeKeyIn unpacks.
+func placeKeysJSON(keys []string) (string, error) {
+	b, err := json.Marshal(keys)
+	return string(b), err
 }
 
-// placeUnderArgs are placeUnderSQL's binds for the place with key.
-func placeUnderArgs(key string) []any {
-	return []any{key, "," + key, "," + key}
+// placeKeyIn is the condition that a key column holds one of the keys bound
+// as placeKeysJSON. It compares stored keys and computes none (PL-002).
+func placeKeyIn(column string) string {
+	return column + " IN (SELECT value FROM json_each(?))"
 }
 
-// GetPersonsByPlace returns persons whose birth or death place is at or under
-// place (repository.PlaceUnder), within the branch overlay carried on
-// opts.BranchID (ADR-005 / #756).
-func (s *ReadModelStore) GetPersonsByPlace(ctx context.Context, place string, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
-	key := repository.PlaceKey(place)
-	if key == "" {
+// GetPersonsByPlace returns the persons within the branch overlay carried on
+// opts.BranchID (ADR-005 / #756) whose birth or death place has one of the
+// keys at or beneath the place in the same repository.PlaceTree
+// GetPlaceHierarchy reads.
+func (s *ReadModelStore) GetPersonsByPlace(ctx context.Context, place uuid.UUID, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
+	tree, err := s.placeTree(ctx, opts.BranchID, opts.Privacy)
+	if err != nil {
+		return nil, 0, err
+	}
+	keys := tree.KeysUnder(place)
+	if len(keys) == 0 {
 		return nil, 0, nil
 	}
+	keysJSON, err := placeKeysJSON(keys)
+	if err != nil {
+		return nil, 0, fmt.Errorf("encode place keys: %w", err)
+	}
 	overlay, overlayArgs := personOverlaySubquery(opts.BranchID, opts.Privacy)
-	where := placeUnderSQL("birth_place_key") + " OR " + placeUnderSQL("death_place_key")
-	whereArgs := append(placeUnderArgs(key), placeUnderArgs(key)...)
+	where := placeKeyIn("birth_place_key") + " OR " + placeKeyIn("death_place_key")
+	whereArgs := []any{keysJSON, keysJSON}
 
 	var total int
 	countArgs := append(append([]any{}, overlayArgs...), whereArgs...)
 	// #nosec G202 -- overlay and where are built from package constants; every value is a bound ? placeholder
-	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM `+overlay+` WHERE `+where, countArgs...).Scan(&total)
+	err = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM `+overlay+` WHERE `+where, countArgs...).Scan(&total)
 	if err != nil {
 		return nil, 0, fmt.Errorf("count persons by place: %w", err)
 	}
@@ -5566,8 +5601,8 @@ func (s *ReadModelStore) GetPersonsByPlace(ctx context.Context, place string, op
 	return persons, total, rows.Err()
 }
 
-// GetCemeteryIndex returns burial/cremation places, one per place key
-// (repository.CemeteryIndex), with person counts, counted over branchID's overlay of life events (ADR-005, #757). A branch that
+// GetCemeteryIndex returns burial/cremation places, one per resolved place
+// key (repository.CemeteryIndex), with person counts, counted over branchID's overlay of life events (ADR-005, #757). A branch that
 // tombstoned a person also tombstoned that person's life events (DeletePerson's
 // cascade), so the counts agree with GetPersonsByCemetery on the same scope.
 // When privacy protects anyone, the events join the people it shows, so a
@@ -5608,11 +5643,16 @@ func (s *ReadModelStore) GetCemeteryIndex(ctx context.Context, branchID domain.B
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	return repository.CemeteryIndex(uses), nil
+	aliases, err := s.ListPlaceAliases(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return repository.CemeteryIndex(uses, repository.PlaceAliasesByKey(aliases)), nil
 }
 
 // GetPersonsByCemetery returns persons with burial/cremation events whose place
-// has the given place's key. Both sides of the join resolve through opts.BranchID's overlay
+// resolves, through place aliases, to the place the given place's key does
+// (ADR-009 §3). Both sides of the join resolve through opts.BranchID's overlay
 // (ADR-005): the branch-visible life events select the owners, and the persons
 // returned are the branch's view of them.
 func (s *ReadModelStore) GetPersonsByCemetery(ctx context.Context, place string, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
@@ -5621,15 +5661,23 @@ func (s *ReadModelStore) GetPersonsByCemetery(ctx context.Context, place string,
 	if key == "" {
 		return nil, 0, nil
 	}
-	events, eventArgs := factOverlaySubquery("life_events", "fact_type IN (?, ?) AND place_key = ?",
-		[]any{string(domain.FactPersonBurial), string(domain.FactPersonCremation), key}, opts.BranchID)
+	aliases, err := s.ListPlaceAliases(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+	keysJSON, err := placeKeysJSON(repository.PlaceAliasesByKey(aliases).KeysOf(key))
+	if err != nil {
+		return nil, 0, fmt.Errorf("encode place keys: %w", err)
+	}
+	events, eventArgs := factOverlaySubquery("life_events", "fact_type IN (?, ?) AND "+placeKeyIn("place_key"),
+		[]any{string(domain.FactPersonBurial), string(domain.FactPersonCremation), keysJSON}, opts.BranchID)
 	joinArgs := append(append([]any{}, overlayArgs...), eventArgs...)
 
 	// Count total distinct persons
 	var total int
 	// #nosec G202 -- overlay/events are built from package constants; every value is a bound ? placeholder
 	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
-	err := s.db.QueryRowContext(ctx, `
+	err = s.db.QueryRowContext(ctx, `
 		SELECT COUNT(DISTINCT p.id)
 		FROM `+overlay+` p
 		INNER JOIN `+events+` e ON e.owner_id = p.id
@@ -5727,12 +5775,12 @@ func scanMapUse(rows *sql.Rows) (use repository.MapUse, ok bool, err error) {
 	var originJSON []byte
 	var restriction, livingOverride, livingRefDate sql.NullString
 	var deathEvidence bool
-	var placeID, placeKey, placeName, placeLat, placeLong, placeUpdated sql.NullString
+	var placeID, placeKey, placeName, placeParent, placeLat, placeLong, placeUpdated sql.NullString
 	var placeOrigin []byte
 	var placeVersion sql.NullInt64
 	if err := rows.Scan(&idStr, &givenName, &surname, &use.Text, &use.Key, &lat, &long, &originJSON,
 		&restriction, &livingOverride, &deathEvidence, &livingRefDate,
-		&placeID, &placeKey, &placeName, &placeLat, &placeLong, &placeOrigin, &placeVersion, &placeUpdated); err != nil {
+		&placeID, &placeKey, &placeName, &placeParent, &placeLat, &placeLong, &placeOrigin, &placeVersion, &placeUpdated); err != nil {
 		return repository.MapUse{}, false, err
 	}
 	personID, err := uuid.Parse(idStr)
@@ -5744,7 +5792,7 @@ func scanMapUse(rows *sql.Rows) (use repository.MapUse, ok bool, err error) {
 	if placeID.Valid {
 		id, _ := uuid.Parse(placeID.String)
 		use.Place = &repository.PlaceFactsReadModel{
-			ID: id, Key: placeKey.String, Name: placeName.String,
+			ID: id, Key: placeKey.String, Name: placeName.String, ParentKey: placeParent.String,
 			Latitude: nonEmptyStringPtr(placeLat), Longitude: nonEmptyStringPtr(placeLong),
 			Origin:  repository.UnmarshalCoordinateOrigin(placeOrigin, "places", "coordinates_origin", id),
 			Version: placeVersion.Int64,

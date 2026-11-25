@@ -1653,11 +1653,11 @@ func (s *PrivacyStore) GetPersonsBySurname(ctx context.Context, surname string, 
 	return s.inner.GetPersonsBySurname(ctx, surname, opts)
 }
 
-func (s *PrivacyStore) GetPlaceHierarchy(ctx context.Context, branchID domain.BranchID, parent string, _ repository.Privacy) ([]repository.PlaceEntry, error) {
+func (s *PrivacyStore) GetPlaceHierarchy(ctx context.Context, branchID domain.BranchID, parent uuid.UUID, _ repository.Privacy) (*repository.PlaceLevel, error) {
 	return s.inner.GetPlaceHierarchy(ctx, branchID, parent, s.privacy(ctx))
 }
 
-func (s *PrivacyStore) GetPersonsByPlace(ctx context.Context, place string, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
+func (s *PrivacyStore) GetPersonsByPlace(ctx context.Context, place uuid.UUID, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
 	opts.Privacy = s.privacy(ctx)
 	return s.inner.GetPersonsByPlace(ctx, place, opts)
 }

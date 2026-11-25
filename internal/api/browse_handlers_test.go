@@ -252,14 +252,34 @@ func TestBrowsePlaces_WithParent(t *testing.T) {
 
 	createBrowseTestPerson(t, server, "John", "Doe", "New York, USA", "")
 
-	// URL encode the parent
-	encoded := url.QueryEscape("USA")
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/browse/places?parent="+encoded, http.NoBody)
+	usa := repository.PlaceID("usa")
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/browse/places?parent="+usa.String(), http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("Status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	var resp api.PlaceIndexResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	newYork := repository.PlaceID("new york,usa")
+	if len(resp.Items) != 1 || resp.Items[0].Id != newYork || resp.Items[0].Name != "New York" {
+		t.Errorf("Items = %+v, want New York", resp.Items)
+	}
+	if resp.Breadcrumb == nil || len(*resp.Breadcrumb) != 1 || (*resp.Breadcrumb)[0].Id != usa {
+		t.Errorf("Breadcrumb = %+v, want USA", resp.Breadcrumb)
+	}
+}
+
+func TestBrowsePlaces_InvalidParent(t *testing.T) {
+	server := setupBrowseTestServer()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/browse/places?parent=USA", http.NoBody)
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("Status = %d, want %d: a parent is a place ID", rec.Code, http.StatusBadRequest)
 	}
 }
 
@@ -270,8 +290,7 @@ func TestGetPersonsByPlace(t *testing.T) {
 	createBrowseTestPerson(t, server, "Jane", "Doe", "Boston, USA", "")
 	createBrowseTestPerson(t, server, "Bob", "Smith", "London, UK", "")
 
-	// URL encode the place
-	encoded := url.PathEscape("USA")
+	encoded := repository.PlaceID("usa").String()
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/browse/places/"+encoded+"/persons", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
@@ -296,7 +315,7 @@ func TestGetPersonsByPlace_DeathPlace(t *testing.T) {
 
 	createBrowseTestPerson(t, server, "John", "Doe", "", "Paris, France")
 
-	encoded := url.PathEscape("France")
+	encoded := repository.PlaceID("france").String()
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/browse/places/"+encoded+"/persons", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
@@ -316,7 +335,7 @@ func TestGetPersonsByPlace_Pagination(t *testing.T) {
 		createBrowseTestPerson(t, server, "Person", "Test", "New York, USA", "")
 	}
 
-	encoded := url.PathEscape("USA")
+	encoded := repository.PlaceID("usa").String()
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/browse/places/"+encoded+"/persons?limit=2&offset=0", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
@@ -637,7 +656,7 @@ func browseBranchScopePaths(branchID string) []struct {
 		{"browseSurnames", "/api/v1/browse/surnames?branch=" + branchID},
 		{"getPersonsBySurname", "/api/v1/browse/surnames/Hopper/persons?branch=" + branchID},
 		{"browsePlaces", "/api/v1/browse/places?branch=" + branchID},
-		{"getPersonsByPlace", "/api/v1/browse/places/Ohio/persons?branch=" + branchID},
+		{"getPersonsByPlace", "/api/v1/browse/places/" + repository.PlaceID("ohio").String() + "/persons?branch=" + branchID},
 		{"browseCemeteries", "/api/v1/browse/cemeteries?branch=" + branchID},
 		{"getPersonsByCemetery", "/api/v1/browse/cemeteries/Oak%20Grove/persons?branch=" + branchID},
 		{"getMapLocations", "/api/v1/map/locations?branch=" + branchID},

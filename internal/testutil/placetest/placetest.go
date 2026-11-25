@@ -40,8 +40,8 @@ var matchingPeople = []matchingPerson{
 }
 
 // listCase is a place and the given names of the persons listed under it.
-type listCase struct {
-	place string
+type listCase[P any] struct {
+	place P
 	want  []string
 }
 
@@ -54,46 +54,46 @@ func RunMatching(t *testing.T, store repository.ReadModelStore) {
 	burials := seedMatching(t, store)
 
 	// The place browser: each spelling family is one entry, counting records.
+	id := repository.PlaceID
+	entry := func(key, name, fullName string, count int, children bool) repository.PlaceEntry {
+		return repository.PlaceEntry{ID: id(key), Name: name, FullName: fullName, Count: count, HasChildren: children}
+	}
 	browser := []struct {
-		parent string
+		parent uuid.UUID
 		want   []repository.PlaceEntry
 	}{
-		{"", []repository.PlaceEntry{
-			{Name: "Germany", FullName: "Germany", Count: 2, HasChildren: true},
-			{Name: "MA", FullName: "MA", Count: 3, HasChildren: true},
-			{Name: "NY", FullName: "NY", Count: 1, HasChildren: true},
-			{Name: "York", FullName: "York", Count: 1},
+		{uuid.Nil, []repository.PlaceEntry{
+			entry("germany", "Germany", "Germany", 2, true),
+			entry("ma", "MA", "MA", 3, true),
+			entry("ny", "NY", "NY", 1, true),
+			entry("york", "York", "York", 1, false),
 		}},
-		{"MA", []repository.PlaceEntry{{Name: "Boston", FullName: "Boston, MA", Count: 3}}},
-		{" ma ", []repository.PlaceEntry{{Name: "Boston", FullName: "Boston,  ma ", Count: 3}}},
-		{"Germany", []repository.PlaceEntry{{Name: "Darmstadt", FullName: "Darmstadt, Germany", Count: 2}}},
+		{id("ma"), []repository.PlaceEntry{entry("boston,ma", "Boston", "Boston, MA", 3, false)}},
+		{id("germany"), []repository.PlaceEntry{entry("darmstadt,germany", "Darmstadt", "Darmstadt, Germany", 2, false)}},
 	}
 	for _, tt := range browser {
 		got, err := store.GetPlaceHierarchy(ctx, domain.MainBranchID, tt.parent, repository.Privacy{})
 		if err != nil {
-			t.Fatalf("GetPlaceHierarchy(%q): %v", tt.parent, err)
+			t.Fatalf("GetPlaceHierarchy(%s): %v", tt.parent, err)
 		}
-		if !reflect.DeepEqual(got, tt.want) {
-			t.Errorf("GetPlaceHierarchy(%q) =\n  %+v\nwant\n  %+v", tt.parent, got, tt.want)
+		if !reflect.DeepEqual(got.Places, tt.want) {
+			t.Errorf("GetPlaceHierarchy(%s) =\n  %+v\nwant\n  %+v", tt.parent, got.Places, tt.want)
 		}
 	}
 
-	// The per-place person list: every spelling finds the same persons, and a
-	// place lists only records at or under it ("York" is not "New York, NY").
+	// The per-place person list: every spelling is one place, and a place
+	// lists only records at or under it ("York" is not "New York, NY").
 	boston := []string{"Ann", "Bob", "Cat"}
 	darmstadt := []string{"Eve", "Fay"}
-	checkLists(t, "GetPersonsByPlace", store.GetPersonsByPlace, []listCase{
-		{"Boston, MA", boston},
-		{" BOSTON ,ma ", boston},
-		{"Boston,MA", boston},
-		{"MA", boston},
-		{"Darmstadt,,,Germany", darmstadt},
-		{"Darmstadt, Germany", darmstadt},
-		{"germany", darmstadt},
-		{"York", []string{"Hal"}},
-		{"New York, NY", []string{"Gus"}},
-		{"Boston", []string{}},
-		{" , ", []string{}},
+	checkLists(t, "GetPersonsByPlace", store.GetPersonsByPlace, []listCase[uuid.UUID]{
+		{id("boston,ma"), boston},
+		{id("ma"), boston},
+		{id("darmstadt,germany"), darmstadt},
+		{id("germany"), darmstadt},
+		{id("york"), []string{"Hal"}},
+		{id("new york,ny"), []string{"Gus"}},
+		{id("boston"), []string{}},
+		{uuid.Nil, []string{}},
 	})
 
 	// The cemetery index: one entry per key, named by the spelling the most
@@ -114,7 +114,7 @@ func RunMatching(t *testing.T, store repository.ReadModelStore) {
 
 	// The per-cemetery list: every spelling finds the same persons.
 	buried := []string{"Ann", "Bob", "Cat", "Dan"}
-	checkLists(t, "GetPersonsByCemetery", store.GetPersonsByCemetery, []listCase{
+	checkLists(t, "GetPersonsByCemetery", store.GetPersonsByCemetery, []listCase[string]{
 		{"Boston, MA", buried},
 		{" BOSTON ,ma ", buried},
 		{"Boston,MA", buried},
@@ -176,8 +176,8 @@ func seedMatching(t *testing.T, store repository.ReadModelStore) map[uuid.UUID]s
 // checkLists runs list for each case and compares the given names it returns.
 // Each person must come back with its places exactly as recorded: the key is
 // stored beside the text, never in place of it (PL-001).
-func checkLists(t *testing.T, name string,
-	list func(context.Context, string, repository.ListOptions) ([]repository.PersonReadModel, int, error), cases []listCase) {
+func checkLists[P any](t *testing.T, name string,
+	list func(context.Context, P, repository.ListOptions) ([]repository.PersonReadModel, int, error), cases []listCase[P]) {
 	t.Helper()
 	recorded := make(map[string]matchingPerson)
 	for _, p := range matchingPeople {
@@ -186,7 +186,7 @@ func checkLists(t *testing.T, name string,
 	for _, tt := range cases {
 		persons, total, err := list(context.Background(), tt.place, repository.ListOptions{Limit: 100})
 		if err != nil {
-			t.Fatalf("%s(%q): %v", name, tt.place, err)
+			t.Fatalf("%s(%v): %v", name, tt.place, err)
 		}
 		got := make([]string, len(persons))
 		for i, p := range persons {
@@ -197,7 +197,7 @@ func checkLists(t *testing.T, name string,
 		}
 		sort.Strings(got)
 		if !reflect.DeepEqual(got, tt.want) || total != len(tt.want) {
-			t.Errorf("%s(%q) = %v (total %d), want %v", name, tt.place, got, total, tt.want)
+			t.Errorf("%s(%v) = %v (total %d), want %v", name, tt.place, got, total, tt.want)
 		}
 	}
 }
@@ -254,62 +254,60 @@ func RunHierarchy(t *testing.T, store repository.ReadModelStore) {
 		save("", p)
 	}
 
+	id := repository.PlaceID
+	entry := func(key, name, fullName string, count int, children bool) repository.PlaceEntry {
+		return repository.PlaceEntry{ID: id(key), Name: name, FullName: fullName, Count: count, HasChildren: children}
+	}
 	tests := []struct {
-		parent string
+		parent string // the parent's key, "" for the top level
 		want   []repository.PlaceEntry
 	}{
 		{"", []repository.PlaceEntry{
-			{Name: "England", FullName: "England", Count: 6, HasChildren: true},
-			{Name: "Germany", FullName: "Germany", Count: 2, HasChildren: true},
-			{Name: "IL", FullName: "IL", Count: 1, HasChildren: true},
-			{Name: "New England", FullName: "New England", Count: 1, HasChildren: false},
-			{Name: "Poland", FullName: "Poland", Count: 1, HasChildren: true},
-			{Name: "en-Provence", FullName: "en-Provence", Count: 1, HasChildren: true},
+			entry("england", "England", "England", 6, true),
+			entry("germany", "Germany", "Germany", 2, true),
+			entry("il", "IL", "IL", 1, true),
+			entry("new england", "New England", "New England", 1, false),
+			entry("poland", "Poland", "Poland", 1, true),
+			entry("en-provence", "en-Provence", "en-Provence", 1, true),
 		}},
-		{"England", []repository.PlaceEntry{
-			{Name: ". James", FullName: ". James, England", Count: 1, HasChildren: false},
-			{Name: "Berkshire", FullName: "Berkshire, England", Count: 1, HasChildren: true},
-			{Name: "Leeds", FullName: "Leeds, England", Count: 1, HasChildren: false},
-			{Name: "London", FullName: "London, England", Count: 2, HasChildren: true},
+		{"england", []repository.PlaceEntry{
+			entry(". james,england", ". James", ". James, England", 1, false),
+			entry("berkshire,england", "Berkshire", "Berkshire, England", 1, true),
+			entry("leeds,england", "Leeds", "Leeds, England", 1, false),
+			entry("london,england", "London", "London, England", 2, true),
 		}},
-		{"Germany", []repository.PlaceEntry{
-			{Name: "Bonn", FullName: "Bonn, Germany", Count: 1, HasChildren: false},
-			{Name: "Darmstadt", FullName: "Darmstadt, Germany", Count: 1, HasChildren: false},
+		{"germany", []repository.PlaceEntry{
+			entry("bonn,germany", "Bonn", "Bonn, Germany", 1, false),
+			entry("darmstadt,germany", "Darmstadt", "Darmstadt, Germany", 1, false),
 		}},
-		{"London, England", []repository.PlaceEntry{
-			{Name: "Kensington Palace", FullName: "Kensington Palace, London, England", Count: 1, HasChildren: false},
-			{Name: "St. James Park", FullName: "St. James Park, London, England", Count: 1, HasChildren: true},
+		{"london,england", []repository.PlaceEntry{
+			entry("kensington palace,london,england", "Kensington Palace", "Kensington Palace, London, England", 1, false),
+			entry("st. james park,london,england", "St. James Park", "St. James Park, London, England", 1, true),
 		}},
-		{"St. James Park, London, England", []repository.PlaceEntry{
-			{Name: "Buckingham House", FullName: "Buckingham House, St. James Park, London, England", Count: 1, HasChildren: false},
+		{"st. james park,london,england", []repository.PlaceEntry{
+			entry("buckingham house,st. james park,london,england", "Buckingham House", "Buckingham House, St. James Park, London, England", 1, false),
 		}},
-		{"IL", []repository.PlaceEntry{
-			{Name: "Springfield", FullName: "Springfield, IL", Count: 1, HasChildren: false},
-		}},
-		{"Poland", []repository.PlaceEntry{
-			{Name: "Warsaw", FullName: "Warsaw, Poland", Count: 1, HasChildren: false},
-		}},
-		{"New England", nil},
-		{"Nowhere", nil},
+		{"il", []repository.PlaceEntry{entry("springfield,il", "Springfield", "Springfield, IL", 1, false)}},
+		{"poland", []repository.PlaceEntry{entry("warsaw,poland", "Warsaw", "Warsaw, Poland", 1, false)}},
+		{"new england", []repository.PlaceEntry{}},
+		{"nowhere", []repository.PlaceEntry{}},
 	}
 	for _, tt := range tests {
-		got, err := store.GetPlaceHierarchy(ctx, domain.MainBranchID, tt.parent, repository.Privacy{})
+		parent := uuid.Nil
+		if tt.parent != "" {
+			parent = id(tt.parent)
+		}
+		got, err := store.GetPlaceHierarchy(ctx, domain.MainBranchID, parent, repository.Privacy{})
 		if err != nil {
 			t.Fatalf("GetPlaceHierarchy(%q): %v", tt.parent, err)
 		}
-		if len(got) == 0 && len(tt.want) == 0 {
-			continue
+		if !reflect.DeepEqual(got.Places, tt.want) {
+			t.Errorf("GetPlaceHierarchy(%q) =\n  %+v\nwant\n  %+v", tt.parent, got.Places, tt.want)
 		}
-		if !reflect.DeepEqual(got, tt.want) {
-			t.Errorf("GetPlaceHierarchy(%q) =\n  %+v\nwant\n  %+v", tt.parent, got, tt.want)
-		}
-		// Each child's full_name must find its persons, including places stored
-		// without a space after the commas (every place here is one person).
-		for _, e := range got {
-			if tt.parent == "" {
-				continue
-			}
-			_, total, err := store.GetPersonsByPlace(ctx, e.FullName, repository.ListOptions{Limit: 100})
+		// Each place's ID finds its persons, including places stored without
+		// a space after the commas (every place here is one person).
+		for _, e := range got.Places {
+			_, total, err := store.GetPersonsByPlace(ctx, e.ID, repository.ListOptions{Limit: 100})
 			if err != nil {
 				t.Fatalf("GetPersonsByPlace(%q): %v", e.FullName, err)
 			}
@@ -320,29 +318,33 @@ func RunHierarchy(t *testing.T, store repository.ReadModelStore) {
 	}
 
 	// Walk the whole tree: no level is blank, and every node that reports
-	// children returns some when asked for them by its full_name.
-	var walk func(parent string)
-	walk = func(parent string) {
+	// children returns some when asked for them by its ID, with a path that
+	// ends at it.
+	var walk func(parent uuid.UUID)
+	walk = func(parent uuid.UUID) {
 		got, err := store.GetPlaceHierarchy(ctx, domain.MainBranchID, parent, repository.Privacy{})
 		if err != nil {
-			t.Fatalf("GetPlaceHierarchy(%q): %v", parent, err)
+			t.Fatalf("GetPlaceHierarchy(%s): %v", parent, err)
 		}
-		for _, e := range got {
+		for _, e := range got.Places {
 			if strings.TrimSpace(e.Name) == "" {
-				t.Errorf("GetPlaceHierarchy(%q) returned a blank level %+v", parent, e)
+				t.Errorf("GetPlaceHierarchy(%s) returned a blank level %+v", parent, e)
 			}
 			if !e.HasChildren {
 				continue
 			}
-			children, err := store.GetPlaceHierarchy(ctx, domain.MainBranchID, e.FullName, repository.Privacy{})
+			children, err := store.GetPlaceHierarchy(ctx, domain.MainBranchID, e.ID, repository.Privacy{})
 			if err != nil {
 				t.Fatalf("GetPlaceHierarchy(%q): %v", e.FullName, err)
 			}
-			if len(children) == 0 {
-				t.Errorf("%q reports has_children but GetPlaceHierarchy(%q) is empty", e.FullName, e.FullName)
+			if len(children.Places) == 0 {
+				t.Errorf("%q reports has_children but GetPlaceHierarchy is empty", e.FullName)
 			}
-			walk(e.FullName)
+			if n := len(children.Path); n != len(got.Path)+1 || children.Path[n-1] != e {
+				t.Errorf("GetPlaceHierarchy(%q) path = %+v, want %+v then %+v", e.FullName, children.Path, got.Path, e)
+			}
+			walk(e.ID)
 		}
 	}
-	walk("")
+	walk(uuid.Nil)
 }

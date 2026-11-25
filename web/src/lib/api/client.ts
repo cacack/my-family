@@ -272,7 +272,7 @@ const BRANCH_SCOPED_OPERATIONS: ReadonlyArray<{
 	{ methods: ['GET'], pattern: new RegExp('^/browse/surnames$') },
 	{ methods: ['GET'], pattern: new RegExp(`^/browse/surnames/${TEXT_SEGMENT}/persons$`) },
 	{ methods: ['GET'], pattern: new RegExp('^/browse/places$') },
-	{ methods: ['GET'], pattern: new RegExp(`^/browse/places/${TEXT_SEGMENT}/persons$`) },
+	{ methods: ['GET'], pattern: new RegExp(`^/browse/places/${UUID_SEGMENT}/persons$`) },
 	{ methods: ['GET'], pattern: new RegExp('^/browse/cemeteries$') },
 	{ methods: ['GET'], pattern: new RegExp(`^/browse/cemeteries/${TEXT_SEGMENT}/persons$`) },
 	{ methods: ['GET'], pattern: new RegExp('^/map/locations$') },
@@ -1534,13 +1534,15 @@ class ApiClient {
 		);
 	}
 
-	async getPlaceHierarchy(parent?: string): Promise<PlaceIndexResponse> {
-		const params = parent ? `?parent=${encodeURIComponent(parent)}` : '';
+	/** The places directly under the place with ID `parentId`, or the top level. */
+	async getPlaceHierarchy(parentId?: string): Promise<PlaceIndexResponse> {
+		const params = parentId ? `?parent=${encodeURIComponent(parentId)}` : '';
 		return this.request<PlaceIndexResponse>('GET', `/browse/places${params}`);
 	}
 
+	/** The people whose birth or death place is the place with ID `placeId` or beneath it. */
 	async getPersonsByPlace(
-		place: string,
+		placeId: string,
 		params?: { limit?: number; offset?: number }
 	): Promise<PersonList> {
 		const searchParams = new URLSearchParams();
@@ -1550,7 +1552,7 @@ class ApiClient {
 		const query = searchParams.toString();
 		return this.request<PersonList>(
 			'GET',
-			`/browse/places/${encodeURIComponent(place)}/persons${query ? `?${query}` : ''}`
+			`/browse/places/${encodeURIComponent(placeId)}/persons${query ? `?${query}` : ''}`
 		);
 	}
 

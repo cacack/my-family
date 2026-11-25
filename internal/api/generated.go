@@ -6140,7 +6140,7 @@ type Place struct {
 	// CoordinatesOrigin Where the place's pair came from; present whenever the pair is.
 	CoordinatesOrigin *CoordinateOrigin `json:"coordinates_origin,omitempty"`
 
-	// Count Number of place uses (birth, death, marriage, life event and attribute places) the caller may see at or under this place. It can be larger than `PlaceEntry.count` from `GET /browse/places`, which counts birth and death places only.
+	// Count Number of place uses (birth, death, marriage, life event and attribute places) the caller may see at or under this place, under meaning by key: a use counts toward its own place and each place its key names with leading parts removed, never toward an explicit parent. It can differ from `PlaceEntry.count` from `GET /browse/places`, which counts birth and death places only and follows explicit parents.
 	Count int `json:"count"`
 
 	// Id UUIDv5 of the place matching key, the same on every install and every branch.
@@ -6157,6 +6157,9 @@ type Place struct {
 
 	// Name The place's display name when one is set (PUT /places/{id}); otherwise its most-used recorded spelling among the records the caller may see, its parts joined with ", " (ties broken bytewise).
 	Name string `json:"name"`
+
+	// ParentId The ID of the explicit parent set with PUT /places/{id}, as stated; omitted when none is set, in which case the place sits under the place its key names with the leftmost part removed (ADR-009 §4).
+	ParentId *openapi_types.UUID `json:"parent_id,omitempty"`
 
 	// ResolvesTo Present only on an absorbed place (PUT /places/{id}/alias): the ID of the place its key resolves to, which every record, map location and resolved place carries instead of this one. The place's own name, pair and version above are its own, kept and ignored while the alias stands.
 	ResolvesTo *openapi_types.UUID `json:"resolves_to,omitempty"`
@@ -6188,24 +6191,27 @@ type PlaceAliasRequest struct {
 
 // PlaceEntry defines model for PlaceEntry.
 type PlaceEntry struct {
-	// Count Number of birth and death records at or under this place. Spellings whose place matching key is the same (differing only in letter case, spacing around commas or empty parts) are one place. This counts fewer uses than `Place.count` from `GET /places`, which also counts marriage, life event and attribute places.
+	// Count Number of birth and death records whose place resolves to this place or to a place beneath it. Spellings whose place matching key is the same (differing only in letter case, spacing around commas or empty parts) are one place, and so are spellings joined by an alias. This counts fewer uses than `Place.count` from `GET /places`, which also counts marriage, life event and attribute places.
 	Count int `json:"count"`
 
-	// FullName Full place path
+	// FullName The place's display name when one is set, otherwise its most-used spelling, or its key when no record spells it
 	FullName string `json:"full_name"`
 
 	// HasChildren Whether this place has sub-locations
 	HasChildren bool `json:"has_children"`
 
-	// Name Place name at this level
+	// Id The place's ID (GET /places/{id}), never an absorbed one
+	Id openapi_types.UUID `json:"id"`
+
+	// Name The place's display name when one is set, otherwise the first part of its most-used spelling
 	Name string `json:"name"`
 }
 
 // PlaceIndexResponse defines model for PlaceIndexResponse.
 type PlaceIndexResponse struct {
-	// Breadcrumb Path from root to current level
-	Breadcrumb *[]string    `json:"breadcrumb,omitempty"`
-	Items      []PlaceEntry `json:"items"`
+	// Breadcrumb The places from the top level down to the parent, ending with the parent itself; omitted at the top level
+	Breadcrumb *[]PlaceEntry `json:"breadcrumb,omitempty"`
+	Items      []PlaceEntry  `json:"items"`
 
 	// Total Total number of unique places at this level
 	Total int `json:"total"`
@@ -6234,6 +6240,9 @@ type PlaceUpdate struct {
 
 	// Name Display name. Null or a blank value clears it, so the place shows its most-used recorded spelling again. No record's place text changes (PL-001).
 	Name nullable.Nullable[string] `json:"name,omitempty"`
+
+	// ParentId The place to put this one under in the place hierarchy (ADR-009 §4), in place of the place its key names. Null clears it, so the place sits under that default parent again. A place that is not in use, and one that would put this place beneath itself, answer 400.
+	ParentId nullable.Nullable[openapi_types.UUID] `json:"parent_id,omitempty"`
 
 	// Version The place's version as last read (0 before any fact is stated)
 	Version int64 `json:"version"`
@@ -7542,8 +7551,8 @@ type BrowsePlacesParams struct {
 	// only (ADR-008 §4).
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 
-	// Parent Parent place to get children for (empty for top-level)
-	Parent *string `form:"parent,omitempty" json:"parent,omitempty"`
+	// Parent ID of the place to get the places under; omit it for the top level. An absorbed place's ID names the place it resolves to. An ID no place in the hierarchy has gives no places.
+	Parent *openapi_types.UUID `form:"parent,omitempty" json:"parent,omitempty"`
 }
 
 // GetPersonsByPlaceParams defines parameters for GetPersonsByPlace.
@@ -9640,8 +9649,8 @@ type ServerInterface interface {
 	// (GET /browse/places)
 	BrowsePlaces(ctx echo.Context, params BrowsePlacesParams) error
 	// GetPersonsByPlace Get persons associated with a place
-	// (GET /browse/places/{place}/persons)
-	GetPersonsByPlace(ctx echo.Context, place string, params GetPersonsByPlaceParams) error
+	// (GET /browse/places/{id}/persons)
+	GetPersonsByPlace(ctx echo.Context, id PlaceId, params GetPersonsByPlaceParams) error
 	// BrowseSurnames Get surname index with counts
 	// (GET /browse/surnames)
 	BrowseSurnames(ctx echo.Context, params BrowseSurnamesParams) error
@@ -9948,7 +9957,7 @@ type ServerInterface interface {
 	// GetPlace Get a place in use by ID
 	// (GET /places/{id})
 	GetPlace(ctx echo.Context, id PlaceId, params GetPlaceParams) error
-	// UpdatePlace Set or clear a place's name and coordinates
+	// UpdatePlace Set or clear a place's name, coordinates and parent
 	// (PUT /places/{id})
 	UpdatePlace(ctx echo.Context, id PlaceId) error
 	// UnaliasPlace Separate a place from the place it is an alias of
@@ -10788,7 +10797,7 @@ func (w *ServerInterfaceWrapper) BrowsePlaces(ctx echo.Context) error {
 
 	// ------------- Optional query parameter "parent" -------------
 
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "parent", ctx.QueryParams(), &params.Parent, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "parent", ctx.QueryParams(), &params.Parent, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter parent: %s", err))
 	}
@@ -10801,12 +10810,12 @@ func (w *ServerInterfaceWrapper) BrowsePlaces(ctx echo.Context) error {
 // GetPersonsByPlace converts echo context to params.
 func (w *ServerInterfaceWrapper) GetPersonsByPlace(ctx echo.Context) error {
 	var err error
-	// ------------- Path parameter "place" -------------
-	var place string
+	// ------------- Path parameter "id" -------------
+	var id PlaceId
 
-	err = runtime.BindStyledParameterWithOptions("simple", "place", ctx.Param("place"), &place, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: ctx.Request().URL.RawPath == ""})
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: ctx.Request().URL.RawPath == ""})
 	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter place: %s", err))
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
 	}
 
 	// Parameter object where we will unmarshal all parameters from the context
@@ -10833,7 +10842,7 @@ func (w *ServerInterfaceWrapper) GetPersonsByPlace(ctx echo.Context) error {
 	}
 
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.GetPersonsByPlace(ctx, place, params)
+	err = w.Handler.GetPersonsByPlace(ctx, id, params)
 	return err
 }
 
@@ -14950,7 +14959,7 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 	router.GET(options.BaseURL+"/browse/surnames", wrapper.BrowseSurnames, options.OperationMiddlewares["browseSurnames"]...)
 	router.GET(options.BaseURL+"/browse/surnames/:surname/persons", wrapper.GetPersonsBySurname, options.OperationMiddlewares["getPersonsBySurname"]...)
 	router.GET(options.BaseURL+"/browse/places", wrapper.BrowsePlaces, options.OperationMiddlewares["browsePlaces"]...)
-	router.GET(options.BaseURL+"/browse/places/:place/persons", wrapper.GetPersonsByPlace, options.OperationMiddlewares["getPersonsByPlace"]...)
+	router.GET(options.BaseURL+"/browse/places/:id/persons", wrapper.GetPersonsByPlace, options.OperationMiddlewares["getPersonsByPlace"]...)
 	router.GET(options.BaseURL+"/browse/cemeteries", wrapper.BrowseCemeteries, options.OperationMiddlewares["browseCemeteries"]...)
 	router.GET(options.BaseURL+"/browse/cemeteries/:place/persons", wrapper.GetPersonsByCemetery, options.OperationMiddlewares["getPersonsByCemetery"]...)
 	router.GET(options.BaseURL+"/places", wrapper.ListPlaces, options.OperationMiddlewares["listPlaces"]...)
@@ -17894,7 +17903,7 @@ func (response BrowsePlaces503JSONResponse) VisitBrowsePlacesResponse(w http.Res
 }
 
 type GetPersonsByPlaceRequestObject struct {
-	Place  string `json:"place"`
+	Id     PlaceId `json:"id"`
 	Params GetPersonsByPlaceParams
 }
 
@@ -29767,7 +29776,7 @@ type StrictServerInterface interface {
 	// (GET /browse/places)
 	BrowsePlaces(ctx context.Context, request BrowsePlacesRequestObject) (BrowsePlacesResponseObject, error)
 	// GetPersonsByPlace Get persons associated with a place
-	// (GET /browse/places/{place}/persons)
+	// (GET /browse/places/{id}/persons)
 	GetPersonsByPlace(ctx context.Context, request GetPersonsByPlaceRequestObject) (GetPersonsByPlaceResponseObject, error)
 	// BrowseSurnames Get surname index with counts
 	// (GET /browse/surnames)
@@ -30075,7 +30084,7 @@ type StrictServerInterface interface {
 	// GetPlace Get a place in use by ID
 	// (GET /places/{id})
 	GetPlace(ctx context.Context, request GetPlaceRequestObject) (GetPlaceResponseObject, error)
-	// UpdatePlace Set or clear a place's name and coordinates
+	// UpdatePlace Set or clear a place's name, coordinates and parent
 	// (PUT /places/{id})
 	UpdatePlace(ctx context.Context, request UpdatePlaceRequestObject) (UpdatePlaceResponseObject, error)
 	// UnaliasPlace Separate a place from the place it is an alias of
@@ -31554,10 +31563,10 @@ func (sh *strictHandler) BrowsePlaces(ctx echo.Context, params BrowsePlacesParam
 }
 
 // GetPersonsByPlace operation middleware
-func (sh *strictHandler) GetPersonsByPlace(ctx echo.Context, place string, params GetPersonsByPlaceParams) error {
+func (sh *strictHandler) GetPersonsByPlace(ctx echo.Context, id PlaceId, params GetPersonsByPlaceParams) error {
 	var request GetPersonsByPlaceRequestObject
 
-	request.Place = place
+	request.Id = id
 	request.Params = params
 
 	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {

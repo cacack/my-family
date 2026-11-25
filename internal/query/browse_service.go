@@ -3,7 +3,6 @@ package query
 import (
 	"context"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -49,15 +48,18 @@ type LetterCount struct {
 type PlaceIndexResult struct {
 	Items      []PlaceEntry `json:"items"`
 	Total      int          `json:"total"`
-	Breadcrumb []string     `json:"breadcrumb,omitempty"`
+	Breadcrumb []PlaceEntry `json:"breadcrumb,omitempty"`
 }
 
-// PlaceEntry represents a place with count and hierarchy info.
+// PlaceEntry is a place in the place browser (ADR-009 §4): its ID, the name
+// it shows at its level, its full name, its count and whether places sit
+// under it.
 type PlaceEntry struct {
-	Name        string `json:"name"`
-	FullName    string `json:"full_name"`
-	Count       int    `json:"count"`
-	HasChildren bool   `json:"has_children"`
+	ID          uuid.UUID `json:"id"`
+	Name        string    `json:"name"`
+	FullName    string    `json:"full_name"`
+	Count       int       `json:"count"`
+	HasChildren bool      `json:"has_children"`
 }
 
 // GetSurnameIndexInput contains the input for GetSurnameIndex.
@@ -167,53 +169,45 @@ func (s *BrowseService) GetPersonsBySurname(ctx context.Context, input GetPerson
 
 // GetPlaceHierarchyInput contains the input for GetPlaceHierarchy.
 type GetPlaceHierarchyInput struct {
-	Parent   string          // Empty for top-level places
+	Parent   uuid.UUID       // uuid.Nil for the top-level places
 	BranchID domain.BranchID // Branch to read; domain.MainBranchID for the mainline
 }
 
-// GetPlaceHierarchy returns places at a given level in the hierarchy.
+// GetPlaceHierarchy returns the places directly under a place in the place
+// hierarchy, and the breadcrumb: the path from the top level down to that
+// place.
 func (s *BrowseService) GetPlaceHierarchy(ctx context.Context, input GetPlaceHierarchyInput) (*PlaceIndexResult, error) {
-	entries, err := s.readStore.GetPlaceHierarchy(ctx, input.BranchID, input.Parent, repository.Privacy{})
+	level, err := s.readStore.GetPlaceHierarchy(ctx, input.BranchID, input.Parent, repository.Privacy{})
 	if err != nil {
 		return nil, err
 	}
+	return &PlaceIndexResult{
+		Items:      convertPlaceEntries(level.Places),
+		Total:      len(level.Places),
+		Breadcrumb: convertPlaceEntries(level.Path),
+	}, nil
+}
 
+// convertPlaceEntries converts the store's place browser entries.
+func convertPlaceEntries(entries []repository.PlaceEntry) []PlaceEntry {
 	items := make([]PlaceEntry, len(entries))
 	for i, e := range entries {
-		items[i] = PlaceEntry{
-			Name:        e.Name,
-			FullName:    e.FullName,
-			Count:       e.Count,
-			HasChildren: e.HasChildren,
-		}
+		items[i] = PlaceEntry{ID: e.ID, Name: e.Name, FullName: e.FullName, Count: e.Count, HasChildren: e.HasChildren}
 	}
-
-	// Build breadcrumb from parent
-	var breadcrumb []string
-	if input.Parent != "" {
-		// Parse parent path (comma-separated, rightmost is most general)
-		parts := strings.Split(input.Parent, ",")
-		for i := len(parts) - 1; i >= 0; i-- {
-			breadcrumb = append(breadcrumb, strings.TrimSpace(parts[i]))
-		}
-	}
-
-	return &PlaceIndexResult{
-		Items:      items,
-		Total:      len(items),
-		Breadcrumb: breadcrumb,
-	}, nil
+	return items
 }
 
 // GetPersonsByPlaceInput contains the input for GetPersonsByPlace.
 type GetPersonsByPlaceInput struct {
-	Place    string
+	Place    uuid.UUID // the place's ID; an absorbed place's ID names the place it resolves to
 	Limit    int
 	Offset   int
 	BranchID domain.BranchID // Branch to read; domain.MainBranchID for the mainline
 }
 
-// GetPersonsByPlace returns persons associated with a place.
+// GetPersonsByPlace returns the people whose birth or death place is the place
+// or a place beneath it in the place hierarchy: the people of the records
+// that the place's count in GetPlaceHierarchy counts.
 func (s *BrowseService) GetPersonsByPlace(ctx context.Context, input GetPersonsByPlaceInput) (*PersonListResult, error) {
 	// Apply defaults
 	limit := input.Limit
@@ -226,12 +220,6 @@ func (s *BrowseService) GetPersonsByPlace(ctx context.Context, input GetPersonsB
 	offset := input.Offset
 	if offset < 0 {
 		offset = 0
-	}
-
-	// A place with no non-blank parts (e.g. "," or " ") has no key and names
-	// no place, so it matches nobody.
-	if repository.PlaceKey(input.Place) == "" {
-		return &PersonListResult{Items: []Person{}, Limit: limit, Offset: offset}, nil
 	}
 
 	opts := repository.ListOptions{

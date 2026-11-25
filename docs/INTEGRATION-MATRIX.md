@@ -262,7 +262,7 @@ that slice's overlay and own no `branch_id` column of their own:
 | `browseSurnames` | GET | `/browse/surnames` |
 | `getPersonsBySurname` | GET | `/browse/surnames/{surname}/persons` |
 | `browsePlaces` | GET | `/browse/places` |
-| `getPersonsByPlace` | GET | `/browse/places/{place}/persons` |
+| `getPersonsByPlace` | GET | `/browse/places/{id}/persons` |
 | `getPersonsByCemetery` | GET | `/browse/cemeteries/{place}/persons` |
 | `getMapLocations` | GET | `/map/locations` |
 

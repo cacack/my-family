@@ -50,9 +50,9 @@ const mockSearchResults: apiModule.SearchResults = {
 
 const mockPlaces: apiModule.PlaceIndexResponse = {
 	items: [
-		{ name: 'Springfield', full_name: 'Springfield, IL', count: 5, has_children: false },
-		{ name: 'Springfield', full_name: 'Springfield, MO', count: 3, has_children: false },
-		{ name: 'Chicago', full_name: 'Chicago, IL', count: 10, has_children: true }
+		{ id: 'p-springfield-il', name: 'Springfield', full_name: 'Springfield, IL', count: 5, has_children: false },
+		{ id: 'p-springfield-mo', name: 'Springfield', full_name: 'Springfield, MO', count: 3, has_children: false },
+		{ id: 'p-chicago-il', name: 'Chicago', full_name: 'Chicago, IL', count: 10, has_children: true }
 	],
 	total: 3
 };

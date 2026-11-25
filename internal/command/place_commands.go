@@ -29,12 +29,15 @@ var placeCoordinateNames = coordinateNames{
 // is the place's stream version as last read, 0 before any fact is stated.
 // Name is its display name, which a clear or a blank value removes, so the
 // place shows its most-used spelling again; Coordinates is its pair, with
-// the origin vocabulary of #1563.
+// the origin vocabulary of #1563. Parent is the ID of its explicit parent
+// (ADR-009 §4), which a clear removes, so the place sits under its default
+// parent again.
 type UpdatePlaceInput struct {
 	ID          uuid.UUID
 	Version     int64
 	Name        Patch[string]
 	Coordinates CoordinatesPatch
+	Parent      Patch[uuid.UUID]
 }
 
 // UpdatePlaceResult is the place's stream version after the update.
@@ -74,6 +77,9 @@ func (h *Handler) UpdatePlace(ctx context.Context, input UpdatePlaceInput) (*Upd
 		placeCoordinates{Lat: current.Latitude, Long: current.Longitude, Origin: current.Origin}); err != nil {
 		return nil, err
 	}
+	if err := h.recordPlaceParent(ctx, changes, key, current.ParentKey, input.Parent); err != nil {
+		return nil, err
+	}
 	if len(changes) == 0 {
 		return &UpdatePlaceResult{Version: current.Version}, nil
 	}
@@ -84,6 +90,54 @@ func (h *Handler) UpdatePlace(ctx context.Context, input UpdatePlaceInput) (*Upd
 		return nil, fmt.Errorf("executing update place command: %w", err)
 	}
 	return &UpdatePlaceResult{Version: version}, nil
+}
+
+// recordPlaceParent records a change of the place with key's explicit parent
+// under "parent", as the parent's key ("" to clear), when parent changes it
+// from current. A parent that is not a place in use on main, and one that
+// would close a cycle counted through aliases and default parents, the place
+// itself included, are ErrInvalidInput (ADR-009 §4). Two concurrent commands
+// can both pass; the projector then decides, in log order (PL-004).
+func (h *Handler) recordPlaceParent(ctx context.Context, changes map[string]any, key, current string, parent Patch[uuid.UUID]) error {
+	if parent.Omitted() {
+		return nil
+	}
+	parentKey := ""
+	if id, ok := parent.Value(); ok {
+		p, err := h.mainPlace(ctx, id)
+		if errors.Is(err, ErrPlaceNotFound) {
+			return fmt.Errorf("%w: parent place %s not found", ErrInvalidInput, id)
+		}
+		if err != nil {
+			return err
+		}
+		parentKey = p.Key
+		parents, aliases, err := h.placeGraph(ctx)
+		if err != nil {
+			return err
+		}
+		if repository.PlaceParentClosesCycle(parents, aliases, key, parentKey) {
+			return fmt.Errorf("%w: putting this place under %s would place it beneath itself", ErrInvalidInput, p.Spelling)
+		}
+	}
+	if parentKey != current {
+		changes["parent"] = parentKey
+	}
+	return nil
+}
+
+// placeGraph returns main's explicit place parents and place aliases, what a
+// place's parent is read from (ADR-009 §4).
+func (h *Handler) placeGraph(ctx context.Context) (repository.PlaceParents, repository.PlaceAliases, error) {
+	facts, err := h.readStore.ListPlaceFacts(ctx, domain.MainBranchID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("listing place facts: %w", err)
+	}
+	aliases, err := h.readStore.ListPlaceAliases(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("listing place aliases: %w", err)
+	}
+	return repository.PlaceParentsByKey(facts), repository.PlaceAliasesByKey(aliases), nil
 }
 
 // placeKeyAndText finds the key of the place with id and the text a place
@@ -125,7 +179,8 @@ type AliasPlaceInput struct {
 // absorbed, and to no other stream; no record's text changes (PL-001). It
 // rejects, with ErrInvalidInput, a place that is already an alias, a target
 // that is itself an alias, a target that is not a place, and an alias that
-// would close a cycle, the place itself included. Places already aliased to
+// would close a cycle, the place itself included, or would put the target
+// beneath itself in the place hierarchy (ADR-009 §4). Places already aliased to
 // this one follow it to the target. Two concurrent commands
 // can both pass these checks; the projector then decides, in log order
 // (PL-004). Main-only (PL-005).
@@ -156,6 +211,14 @@ func (h *Handler) AliasPlace(ctx context.Context, input AliasPlaceInput) (*Updat
 	}
 	if repository.PlaceAliasClosesCycle(aliases, place.Key, target.Key) {
 		return nil, fmt.Errorf("%w: aliasing %s to %s would close a cycle", ErrInvalidInput, place.Spelling, target.Spelling)
+	}
+	parents, _, err := h.placeGraph(ctx)
+	if err != nil {
+		return nil, err
+	}
+	stated, _ := repository.StatePlaceAlias(aliases, place.Key, target.Key)
+	if repository.PlaceAliasClosesParentCycle(parents, repository.PlaceAliasesByKey(stated), target.Key) {
+		return nil, fmt.Errorf("%w: aliasing %s to %s would place %s beneath itself", ErrInvalidInput, place.Spelling, target.Spelling, target.Spelling)
 	}
 
 	event := domain.NewPlaceAliased(place.Key, place.Spelling, target.Key, target.Spelling, place.ID, target.ID)

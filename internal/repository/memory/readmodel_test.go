@@ -2871,12 +2871,12 @@ func TestReadModelStore_GetPlaceHierarchy(t *testing.T) {
 	}
 
 	// Get top-level places
-	entries, err := store.GetPlaceHierarchy(ctx, domain.MainBranchID, "", repository.Privacy{})
+	level, err := store.GetPlaceHierarchy(ctx, domain.MainBranchID, uuid.Nil, repository.Privacy{})
 	if err != nil {
 		t.Fatalf("GetPlaceHierarchy() failed: %v", err)
 	}
 
-	if len(entries) == 0 {
+	if len(level.Places) == 0 {
 		t.Error("entries should not be empty")
 	}
 }
@@ -2916,7 +2916,7 @@ func TestReadModelStore_GetPersonsByPlace(t *testing.T) {
 
 	// Get persons from USA
 	opts := repository.ListOptions{Limit: 10}
-	persons, total, err := store.GetPersonsByPlace(ctx, "USA", opts)
+	persons, total, err := store.GetPersonsByPlace(ctx, repository.PlaceID("usa"), opts)
 	if err != nil {
 		t.Fatalf("GetPersonsByPlace() failed: %v", err)
 	}

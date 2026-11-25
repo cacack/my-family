@@ -130,7 +130,7 @@ test.describe('card names and titles at 375px with the Larger font setting', () 
 			'/families',
 			`/families/${seed.merge.familyId}`,
 			`/browse/surnames/${encodeURIComponent(seed.detail.surname)}`,
-			`/browse/places/${encodeURIComponent(seed.detail.place)}`,
+			`/browse/places/${seed.detail.placeId}`,
 			'/sources'
 		];
 		for (const route of routes) {

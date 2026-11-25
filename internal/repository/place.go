@@ -36,14 +36,6 @@ func PositionalPlaceKey(text string) string {
 	return strings.Join(foldParts(placeParts(text, false)), ",")
 }
 
-// PlaceUnder reports whether a record whose place has key is at or under the
-// place with key place: its key is that key or ends with "," and that key
-// (ADR-009 §4, default parents). So "york" is not under "new york,ny", and
-// nothing is under "".
-func PlaceUnder(key, place string) bool {
-	return place != "" && (key == place || strings.HasSuffix(key, ","+place))
-}
-
 // placeParts splits text on "," and trims each part of white space, dropping
 // the empty ones when dropEmpty is set. The parts keep their recorded case.
 func placeParts(text string, dropEmpty bool) []string {
@@ -94,63 +86,6 @@ type PlaceUse struct {
 	Count     int
 }
 
-// PlaceLevels builds the place browser's level directly under parent from the
-// uses of the records it browses; parent "" is the top level. A level is one
-// more part of the key than parent, and a record counts toward the level it is
-// under (PlaceUnder), so a level's count is its records and its persons are
-// GetPersonsByPlace of its FullName. A level shows the most-used spelling of
-// its part (ties broken bytewise), and levels sort by that name bytewise. It is
-// shared by every store so the browser is the same on each (DB-001).
-func PlaceLevels(uses []PlaceUse, parent string) []PlaceEntry {
-	parentKey := PlaceKey(parent)
-	if parent != "" && parentKey == "" {
-		return nil
-	}
-	depth := 0
-	if parentKey != "" {
-		depth = strings.Count(parentKey, ",") + 1
-	}
-
-	type level struct {
-		spellings   map[string]int
-		count       int
-		hasChildren bool
-	}
-	levels := make(map[string]*level)
-	for _, u := range uses {
-		if u.Key == "" || u.Key == parentKey || parentKey != "" && !PlaceUnder(u.Key, parentKey) {
-			continue
-		}
-		keyParts := strings.Split(u.Key, ",")
-		i := len(keyParts) - depth - 1
-		levelKey := strings.Join(keyParts[i:], ",")
-		name := keyParts[i]
-		if textParts := placeParts(u.Text, true); len(textParts) == len(keyParts) {
-			name = textParts[i]
-		}
-		l, ok := levels[levelKey]
-		if !ok {
-			l = &level{spellings: make(map[string]int)}
-			levels[levelKey] = l
-		}
-		l.spellings[name] += u.Count
-		l.count += u.Count
-		l.hasChildren = l.hasChildren || i > 0
-	}
-
-	entries := make([]PlaceEntry, 0, len(levels))
-	for _, l := range levels {
-		name := mostUsed(l.spellings)
-		fullName := name
-		if parent != "" {
-			fullName = name + ", " + parent
-		}
-		entries = append(entries, PlaceEntry{Name: name, FullName: fullName, Count: l.count, HasChildren: l.hasChildren})
-	}
-	sort.Slice(entries, func(i, j int) bool { return entries[i].Name < entries[j].Name })
-	return entries
-}
-
 // CemeteryUse is a person buried or cremated at a place recorded as Text, whose
 // stored PlaceKey is Key. Repeats of one (Key, Text, OwnerID) count once, so a
 // store may pass one use per record or per distinct triple.
@@ -160,11 +95,11 @@ type CemeteryUse struct {
 	OwnerID uuid.UUID
 }
 
-// CemeteryIndex groups burial and cremation uses by place key: one entry per
-// key, named by the spelling the most distinct owners used (ties broken
-// bytewise) and counting its distinct owners, sorted by name bytewise. Shared by
-// every store (DB-001).
-func CemeteryIndex(uses []CemeteryUse) []CemeteryEntry {
+// CemeteryIndex groups burial and cremation uses by the key each resolves to
+// through aliases (ADR-009 §3): one entry per place, named by the spelling the
+// most distinct owners used (ties broken bytewise) and counting its distinct
+// owners, sorted by name bytewise. Shared by every store (DB-001).
+func CemeteryIndex(uses []CemeteryUse, aliases PlaceAliases) []CemeteryEntry {
 	type cemetery struct {
 		spellings map[string]int
 		owners    map[uuid.UUID]struct{}
@@ -176,10 +111,11 @@ func CemeteryIndex(uses []CemeteryUse) []CemeteryEntry {
 			continue
 		}
 		seen[u] = struct{}{}
-		c, ok := byKey[u.Key]
+		key := aliases.Resolve(u.Key)
+		c, ok := byKey[key]
 		if !ok {
 			c = &cemetery{spellings: make(map[string]int), owners: make(map[uuid.UUID]struct{})}
-			byKey[u.Key] = c
+			byKey[key] = c
 		}
 		c.spellings[u.Text]++
 		c.owners[u.OwnerID] = struct{}{}
@@ -225,7 +161,8 @@ func PlaceID(key string) uuid.UUID {
 // An absorbed place (ADR-009 §3) has ResolvesTo, the ID of the place its key
 // resolves to; its facts are its own, kept and ignored while the alias
 // stands. A place that absorbs others lists in Aliases those a visible record
-// uses.
+// uses. ParentID is the ID of the explicit parent its facts state, nil when
+// they state none (ADR-009 §4).
 type PlaceReadModel struct {
 	ID         uuid.UUID
 	Key        string
@@ -238,6 +175,7 @@ type PlaceReadModel struct {
 	Version    int64
 	ResolvesTo *uuid.UUID
 	Aliases    []PlaceAlias
+	ParentID   *uuid.UUID
 }
 
 // PlaceAlias is an absorbed place listed under the place it resolves to: its
@@ -250,8 +188,9 @@ type PlaceAlias struct {
 
 // Places builds the list of places from the uses of the records a principal
 // may see, the facts stated about places and the place aliases. A use names
-// its own place and every place its key is under (PlaceUnder): "Boston, MA"
-// makes both "boston,ma" and "ma" in use, and counts toward both. A place
+// its own place and every place its key names with leading parts removed:
+// "Boston, MA" makes both "boston,ma" and "ma" in use, and counts toward both,
+// but never toward an explicit parent (GetPlaceHierarchy follows those). A place
 // whose key is absorbed is in use too, with its own count. A use also counts,
 // once, toward the target of every absorbed key at or above it, but no key is
 // rewritten: when "hesse,germany" is absorbed into "hessen,germany", a
@@ -323,6 +262,10 @@ func Places(uses []PlaceUse, facts []PlaceFactsReadModel, aliases PlaceAliases, 
 				pl.Name = f.Name
 			}
 			pl.Latitude, pl.Longitude, pl.Origin, pl.Version = f.Latitude, f.Longitude, f.Origin, f.Version
+			if f.ParentKey != "" {
+				id := PlaceID(f.ParentKey)
+				pl.ParentID = &id
+			}
 		}
 		if target, ok := aliases[key]; ok {
 			id := PlaceID(target)

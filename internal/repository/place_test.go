@@ -97,64 +97,6 @@ func TestPlaceKeyFoldTable_MatchesRule(t *testing.T) {
 	}
 }
 
-func TestPlaceUnder(t *testing.T) {
-	tests := []struct {
-		key, place string
-		want       bool
-	}{
-		{"boston,ma", "boston,ma", true},
-		{"boston,ma", "ma", true},
-		{"back bay,boston,ma", "boston,ma", true},
-		{"new york,ny", "york", false},
-		{"new york,ny", "york,ny", false},
-		{"new england", "england", false},
-		{"boston,ma", "", false},
-		{"", "", false},
-	}
-	for _, tt := range tests {
-		if got := PlaceUnder(tt.key, tt.place); got != tt.want {
-			t.Errorf("PlaceUnder(%q, %q) = %v, want %v", tt.key, tt.place, got, tt.want)
-		}
-	}
-}
-
-func TestPlaceLevels(t *testing.T) {
-	uses := []PlaceUse{
-		{Key: "boston,ma", Text: "Boston, MA", Count: 2},
-		{Key: "boston,ma", Text: " BOSTON ,ma ", Count: 1},
-		{Key: "boston,ma", Text: "Boston,MA", Count: 1},
-		{Key: "ma", Text: "MA", Count: 1},
-		{Key: "new york,ny", Text: "New York, NY", Count: 1},
-		{Key: "york", Text: "York", Count: 1},
-		{Key: "zzz", Text: "zzz", Count: 1},
-		// A use whose text and key disagree on the number of parts names its
-		// level by the key part.
-		{Key: "a,b", Text: "x", Count: 1},
-		{Key: "", Text: " , ", Count: 9},
-	}
-	tests := []struct {
-		parent string
-		want   []PlaceEntry
-	}{
-		{"", []PlaceEntry{
-			{Name: "MA", FullName: "MA", Count: 5, HasChildren: true},
-			{Name: "NY", FullName: "NY", Count: 1, HasChildren: true},
-			{Name: "York", FullName: "York", Count: 1},
-			{Name: "b", FullName: "b", Count: 1, HasChildren: true},
-			{Name: "zzz", FullName: "zzz", Count: 1},
-		}},
-		{"ma", []PlaceEntry{{Name: "Boston", FullName: "Boston, ma", Count: 4}}},
-		{"b", []PlaceEntry{{Name: "a", FullName: "a, b", Count: 1}}},
-		{"York", []PlaceEntry{}},
-		{" , ", nil},
-	}
-	for _, tt := range tests {
-		if got := PlaceLevels(uses, tt.parent); !reflect.DeepEqual(got, tt.want) {
-			t.Errorf("PlaceLevels(%q) =\n  %+v\nwant\n  %+v", tt.parent, got, tt.want)
-		}
-	}
-}
-
 func TestCemeteryIndex(t *testing.T) {
 	a, b, c := uuid.New(), uuid.New(), uuid.New()
 	uses := []CemeteryUse{
@@ -169,9 +111,11 @@ func TestCemeteryIndex(t *testing.T) {
 		{Key: "oak hill,boston", Text: "oak hill,boston", OwnerID: b},
 		{Key: "elm", Text: "Elm", OwnerID: a},
 		{Key: "", Text: " ", OwnerID: b},
+		// An absorbed spelling is its target's: Elm Street's owner is at Elm.
+		{Key: "elm street", Text: "Elm Street", OwnerID: c},
 	}
-	want := []CemeteryEntry{{Place: "Elm", Count: 1}, {Place: "Oak Hill, Boston", Count: 3}}
-	if got := CemeteryIndex(uses); !reflect.DeepEqual(got, want) {
+	want := []CemeteryEntry{{Place: "Elm", Count: 2}, {Place: "Oak Hill, Boston", Count: 3}}
+	if got := CemeteryIndex(uses, PlaceAliases{"elm street": "elm"}); !reflect.DeepEqual(got, want) {
 		t.Errorf("CemeteryIndex = %+v, want %+v", got, want)
 	}
 }

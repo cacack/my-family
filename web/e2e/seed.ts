@@ -76,12 +76,12 @@ export interface SeedData {
 	 * Mainline records that exist only so the whole-app guards have a detail
 	 * page of every remaining kind to visit: a source, and a person imported by
 	 * GEDCOM (burial places only arrive that way) whose birth place, burial
-	 * place and surname are the keys of the place, cemetery and surname pages.
+	 * place and surname address the place, cemetery and surname pages.
 	 */
 	detail: {
 		sourceId: string;
-		/** A `/browse/places` key: the person's birth place. */
-		place: string;
+		/** The ID of the person's birth place, which `/browse/places/{id}` shows. */
+		placeId: string;
 		/** A `/browse/cemeteries` key: the person's burial place. */
 		cemetery: string;
 		surname: string;
@@ -162,7 +162,7 @@ export function writeSeed(seed: SeedData): void {
 		},
 		detail: {
 			sourceId: asId(seed.detail.sourceId, 'detail.sourceId'),
-			place: asText(seed.detail.place, 'detail.place'),
+			placeId: asId(seed.detail.placeId, 'detail.placeId'),
 			cemetery: asText(seed.detail.cemetery, 'detail.cemetery'),
 			surname: asText(seed.detail.surname, 'detail.surname')
 		},

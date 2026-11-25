@@ -286,3 +286,112 @@ func TestAliasPlace_Rejects(t *testing.T) {
 		t.Errorf("log grew from %d to %d events, want nothing appended", len(before), len(after))
 	}
 }
+
+// TestUpdatePlace_Parent sets and clears a place's explicit parent (ADR-009
+// §4): the event records the parent's key, the same parent again appends
+// nothing, and a clear records "".
+func TestUpdatePlace_Parent(t *testing.T) {
+	f := newBranchFixture()
+	ctx := context.Background()
+	for _, place := range []string{"Springfield", "Chicago, Illinois, USA"} {
+		if _, err := f.handler.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ann", BirthPlace: place}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	springfield, illinois := repository.PlaceID("springfield"), repository.PlaceID("illinois,usa")
+
+	lastParent := func() any {
+		t.Helper()
+		events, _ := f.eventStore.ReadAll(ctx, 0, 1000)
+		event, err := events[len(events)-1].DecodeEvent()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return event.(domain.PlaceUpdated).Changes["parent"]
+	}
+
+	result, err := f.handler.UpdatePlace(ctx, command.UpdatePlaceInput{ID: springfield, Parent: command.Set(illinois)})
+	if err != nil {
+		t.Fatalf("set parent: %v", err)
+	}
+	if got := lastParent(); got != "illinois,usa" || result.Version != 1 {
+		t.Errorf("set parent recorded %v at version %d, want illinois,usa at 1", got, result.Version)
+	}
+	if facts, _ := f.readStore.GetPlaceFacts(ctx, springfield); facts == nil || facts.ParentKey != "illinois,usa" {
+		t.Errorf("facts = %+v, want parent illinois,usa", facts)
+	}
+
+	same, err := f.handler.UpdatePlace(ctx, command.UpdatePlaceInput{ID: springfield, Version: 1, Parent: command.Set(illinois)})
+	if err != nil || same.Version != 1 {
+		t.Errorf("same parent again = %+v, %v; want version 1 and nothing appended", same, err)
+	}
+
+	cleared, err := f.handler.UpdatePlace(ctx, command.UpdatePlaceInput{ID: springfield, Version: 1, Parent: command.Clear[uuid.UUID]()})
+	if err != nil {
+		t.Fatalf("clear parent: %v", err)
+	}
+	if got := lastParent(); got != "" || cleared.Version != 2 {
+		t.Errorf("clear parent recorded %v at version %d, want \"\" at 2", got, cleared.Version)
+	}
+	if facts, _ := f.readStore.GetPlaceFacts(ctx, springfield); facts == nil || facts.ParentKey != "" {
+		t.Errorf("facts after clear = %+v, want no parent", facts)
+	}
+}
+
+// TestUpdatePlace_RejectsParent covers the parent checks (ADR-009 §4): a
+// parent that is not a place in use, the place itself, and a parent that
+// would put the place beneath itself, counted through default parents and
+// aliases. None appends anything.
+func TestUpdatePlace_RejectsParent(t *testing.T) {
+	f := newBranchFixture()
+	ctx := context.Background()
+	for _, place := range []string{"Springfield", "Chicago, Illinois, USA", "IL"} {
+		if _, err := f.handler.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ann", BirthPlace: place}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	id := repository.PlaceID
+	if _, err := f.handler.AliasPlace(ctx, command.AliasPlaceInput{ID: id("il"), TargetID: id("illinois,usa")}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.handler.UpdatePlace(ctx, command.UpdatePlaceInput{ID: id("springfield"), Parent: command.Set(id("il"))}); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := f.eventStore.ReadAll(ctx, 0, 1000)
+
+	for name, tc := range map[string]struct {
+		place, parent uuid.UUID
+		version       int64
+	}{
+		"unknown parent":              {id("springfield"), uuid.New(), 1},
+		"the place itself":            {id("usa"), id("usa"), 0},
+		"its own alias":               {id("illinois,usa"), id("il"), 0},
+		"under its default child":     {id("usa"), id("chicago,illinois,usa"), 0},
+		"under its explicit child":    {id("illinois,usa"), id("springfield"), 0},
+		"under a child through alias": {id("usa"), id("springfield"), 0},
+	} {
+		_, err := f.handler.UpdatePlace(ctx, command.UpdatePlaceInput{ID: tc.place, Version: tc.version, Parent: command.Set(tc.parent)})
+		if !errors.Is(err, command.ErrInvalidInput) {
+			t.Errorf("%s: error = %v, want ErrInvalidInput", name, err)
+		}
+	}
+	if after, _ := f.eventStore.ReadAll(ctx, 0, 1000); len(after) != len(before) {
+		t.Errorf("log grew from %d to %d events, want nothing appended", len(before), len(after))
+	}
+}
+
+// TestAliasPlace_RejectsParentCycle: an alias that would put its target
+// beneath itself in the place hierarchy is rejected (ADR-009 §4).
+func TestAliasPlace_RejectsParentCycle(t *testing.T) {
+	f := newBranchFixture()
+	ctx := context.Background()
+	for _, place := range []string{"Berlin, Germany", "Germany"} {
+		if _, err := f.handler.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ann", BirthPlace: place}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_, err := f.handler.AliasPlace(ctx, command.AliasPlaceInput{ID: repository.PlaceID("germany"), TargetID: repository.PlaceID("berlin,germany")})
+	if !errors.Is(err, command.ErrInvalidInput) {
+		t.Errorf("aliasing Germany to Berlin: error = %v, want ErrInvalidInput", err)
+	}
+}

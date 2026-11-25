@@ -192,7 +192,7 @@ func TestPrivacyStore_Persons(t *testing.T) {
 					return tr.store.GetPersonsBySurname(ctx, "Smith", list)
 				},
 				"GetPersonsByPlace": func() ([]repository.PersonReadModel, int, error) {
-					return tr.store.GetPersonsByPlace(ctx, "Springfield", list)
+					return tr.store.GetPersonsByPlace(ctx, repository.PlaceID("springfield"), list)
 				},
 			} {
 				people, total, err := call()
