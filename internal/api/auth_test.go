@@ -36,16 +36,16 @@ func newAuthFixture(t *testing.T) *authFixture {
 	return newAuthFixtureWith(t, &config.Config{Port: 8080, LogFormat: "text", AuthMode: config.AuthModeAccounts})
 }
 
-func newAuthFixtureWith(t *testing.T, cfg *config.Config) *authFixture {
+func newAuthFixtureWith(t *testing.T, cfg *config.Config, opts ...api.ServerOption) *authFixture {
 	t.Helper()
 	events := memory.NewEventStore()
 	accounts := memory.NewAccountStore()
 	settings := memory.NewSettingsStore()
 	svc := auth.NewService(accounts, auth.WithSettings(settings))
 	read := memory.NewReadModelStore()
-	server := api.NewServer(cfg, events, read, memory.NewSnapshotStore(events), nil,
-		api.WithAuth(svc), api.WithBranchStore(memory.NewBranchStore()), api.WithTreeSettings(accounts),
-		api.WithSettingsStore(settings))
+	opts = append([]api.ServerOption{api.WithAuth(svc), api.WithBranchStore(memory.NewBranchStore()), api.WithTreeSettings(accounts),
+		api.WithSettingsStore(settings)}, opts...)
+	server := api.NewServer(cfg, events, read, memory.NewSnapshotStore(events), nil, opts...)
 	return &authFixture{server: server, auth: svc, accounts: accounts, settings: settings, events: events, read: read}
 }
 

@@ -4,7 +4,8 @@
 	 * threshold, whether viewers see living people in full, and whether
 	 * visitors may browse without signing in (ADR-007). The server keeps them
 	 * beside the accounts, so they survive restarts. From here the owner also
-	 * previews the tree as a viewer or a visitor sees it (#1413).
+	 * previews the tree as a viewer or a visitor sees it (#1413), and downloads
+	 * a backup of the whole instance (#15).
 	 */
 	import { goto } from '$app/navigation';
 	import PageHeader from '#lib/components/PageHeader.svelte';
@@ -114,7 +115,10 @@
 <LiveRegion bind:this={liveRegion} />
 
 <div class="settings-page">
-	<PageHeader title="Settings" description="Who counts as living, what viewers may see of them, and whether visitors may look." />
+	<PageHeader
+		title="Settings"
+		description="Who counts as living, what viewers may see of them, whether visitors may look, and backups."
+	/>
 
 	{#if !owner}
 		<RoleNotice action="Changing the tree's settings" required="owner" />
@@ -227,6 +231,19 @@
 				</Button>
 			</div>
 		</section>
+		<section class="panel" aria-labelledby="backup-heading">
+			<h2 id="backup-heading">Backup</h2>
+			<p id="backup-hint" class="hint backup-intro">
+				One file with the whole instance: every person, source and media file, the history of every change, the
+				accounts and the settings. It is not encrypted and holds living people, private records and every account's
+				password hash, so keep it as safe as the database.
+				<code>myfamily verify-backup</code> checks that a saved file is intact.
+			</p>
+			<!-- A plain download, so the browser streams the archive to disk instead of holding it in memory. -->
+			<Button variant="outline" href="/api/v1/backup" download aria-describedby="backup-hint" class="backup-action">
+				Download backup
+			</Button>
+		</section>
 	{/if}
 </div>
 
@@ -316,6 +333,14 @@
 		max-width: 32rem;
 		margin-top: 0.75rem;
 		color: var(--color-text);
+	}
+
+	.backup-intro {
+		max-width: 32rem;
+	}
+
+	.settings-page :global(.backup-action) {
+		margin-top: 0.75rem;
 	}
 
 	.preview-actions {
