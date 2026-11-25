@@ -148,7 +148,10 @@ log, so they follow ADR-006, not this ADR. They are not in the reset today, so:
 - **Migration 1 is the baseline**: the DDL the stores run for the migrated tables today, including
   the existing `events` upgrades (the `branch_id` column and the composite version key). It runs
   against unstamped databases whose shape varies by release, so it alone must be idempotent; on a
-  database already at the current shape it changes nothing and only stamps. Every later migration
+  database already at the current shape it changes nothing and only stamps. Before it touches
+  `events` it runs the #733 ownership check that guards those upgrades today and returns
+  `ErrReadModelEventsTable` when the table is the read model's, so the guard (DB-007) moves with
+  them and does not depend on the order `storage.Open` calls things in. Every later migration
   runs exactly once, against the shape the one before it left, and need not be idempotent.
 - The stores stop creating or altering the migrated tables in their constructors; the runner owns
   that DDL. `storage.Open` runs it after constructing the read-model store and before the others,
@@ -186,7 +189,10 @@ existing one-off migrations move into the baseline and stop running on their own
   way back is to restore the backup taken before the upgrade, or to run the newer release. The
   backup command, which reads without constructing the stores (ADR-010 §6), reads the stamp and
   refuses any version but its own, since its archive's `format_version` describes the binary's
-  shapes.
+  shapes. One exception: it accepts an unstamped database (version 0) while the binary's list
+  holds only the baseline, because there the baseline changes nothing. Without it, the first
+  release with the runner could not back up a database before its first `serve`, and no older
+  release has a backup command.
 - The in-memory backend has no stamp and is never checked, as in ADR-006.
 
 ### 5. A failed migration is never ignored
