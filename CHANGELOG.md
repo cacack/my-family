@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.0](https://github.com/cacack/my-family/compare/v0.17.0...v0.18.0) (2026-11-25)
+
+
+### Features
+
+* **release:** publish a container image to GHCR with each release ([fed8418](https://github.com/cacack/my-family/commit/fed8418d2237227488e5dcf2225b2990d3d1fd8a))
+
 ## [0.17.0](https://github.com/cacack/my-family/compare/v0.16.0...v0.17.0) (2026-11-25)
 
 
