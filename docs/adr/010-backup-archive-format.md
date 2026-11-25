@@ -138,7 +138,7 @@ Every table a backend creates falls in one of these groups. The read-model table
 | `invites` | No | Left out: a pending invite must be sent again |
 | `rebuild_state` | Bookkeeping | Left out; the restore's replay writes and clears it |
 | `read_model_schema` | Bookkeeping | Left out; the restore's replay stamps it (ADR-006) |
-| The migration version stamp of ADR-011 ([#1803](https://github.com/cacack/my-family/issues/1803), [#1816](https://github.com/cacack/my-family/issues/1816)) | Bookkeeping | Left out; restore stamps the binary's version |
+| `store_schema`, the migration version stamp of ADR-011 ([#1803](https://github.com/cacack/my-family/issues/1803), [#1816](https://github.com/cacack/my-family/issues/1816)) | Bookkeeping | Left out; restore stamps the binary's version |
 
 A new table must be added to this table, in this ADR, in the same change that creates it. A new
 serial column on a carried table must also be added to restore step 4's sequence reset.

@@ -39,9 +39,10 @@ Rules that must hold true in the my-family codebase. Violations break architectu
 | **DB-004** | No PostgreSQL-specific features without SQLite fallback or graceful degradation | Feature parity checklist |
 | **DB-005** | For the same plain or fuzzy query, name search finds the same set of people on both databases, except the known differences in ADR-002 "Name Search" (PostgreSQL's tsvector arm also matches reordered, stemmed or punctuation-wrapped words; case folding and fuzzy word splitting under a non-UTF-8 PostgreSQL ctype; Soundex; which matches fill `limit` on plain search). PostgreSQL: tsvector + `ILIKE` substring, pg_trgm. SQLite: the `ILIKE` substring rules in Go (`ilike_contains`), pg_trgm similarity ported to Go — no FTS5 | `internal/integration/search_parity_test.go` (every backend), `internal/repository/like_test.go` (Go `ILIKE` vs PostgreSQL), `internal/repository/trigram_test.go` (Go similarity vs pg_trgm) |
 | **DB-006** | Event store and read model table names are disjoint — both stores may share one database | Integration harness builds both stores on a single database per backend |
-| **DB-007** | On a database predating the `life_events` rename, the read model store must be constructed before the event store; the event store refuses (`ErrReadModelEventsTable`) rather than mutating a read-model table | Per-backend legacy-migration tests in `internal/repository/{sqlite,postgres}/` |
+| **DB-007** | On a database predating the `life_events` rename, the read model store must be constructed before the event store; the event store (from [#1816](https://github.com/cacack/my-family/issues/1816), the baseline migration) refuses (`ErrReadModelEventsTable`) rather than mutating a read-model table | Per-backend legacy-migration tests in `internal/repository/{sqlite,postgres}/` |
 | **DB-008** | `serve` runs on the backend its config selects — `DEMO_MODE` → memory, `DATABASE_URL` → PostgreSQL, otherwise SQLite at `SQLITE_PATH` — and refuses to start if that backend cannot be opened; it never silently falls back to memory | `internal/storage/storage_test.go` (selection per config, restart-persistence on SQLite and PostgreSQL, unreachable-database refusals); `make check-release-sqlite` (a cgo-less, release-style binary serves from SQLite) |
 | **DB-009** | `serve` refuses a read model whose stamped schema version is not `repository.ReadModelSchemaVersion` and names `myfamily rebuild`; it never rebuilds on its own. The rebuild re-creates the read-model tables and stamps the version ([ADR-006](./adr/006-schema-evolution.md)) | `TestReadModelSchema_*` in `internal/integration/` (all backends), `TestSQLite_ServeRefusesReadModelOfAnotherSchema` (`internal/storage`) |
+| **DB-010** | A change to the shape of a migrated table (the event log, account and settings tables listed in ADR-011 §1) is a new numbered migration at the end of both backends' lists, under the same name, with a test that runs it against the previous shape; a released migration is never edited. Every command that opens the store applies pending migrations, each in its own transaction, logged before it runs; a failure rolls back and stops start-up, and a database stamped newer than the binary is refused ([ADR-011](./adr/011-store-schema-migrations.md)) | Code review of every diff that touches these tables' DDL. Until [#1816](https://github.com/cacack/my-family/issues/1816) lands the runner, its per-backend tests and the test that the two backends' migration lists match, there are no lists to append to: a change to the shape of a migrated table does not merge before #1816, and lands with it or after it |
 
 ### Projection Invariants (PR) - Source: [ADR-003](./adr/003-synchronous-projections.md)
 
@@ -293,7 +294,7 @@ Rules that must hold true in the my-family codebase. Violations break architectu
 | Source Document | Invariant IDs | Count |
 |-----------------|---------------|-------|
 | ADR-001 (Event Sourcing) | ES-001 through ES-007 | 7 |
-| ADR-002 (Dual Database) | DB-001 through DB-009 | 9 |
+| ADR-002 (Dual Database) | DB-001 through DB-010 | 10 |
 | ADR-003 (Sync Projections) | PR-001 through PR-005 | 5 |
 | ADR-004 (Single Binary) | DP-001 through DP-003 | 3 |
 | ADR-005 (Research Branches) | BR-001 through BR-006 | 6 |
@@ -303,7 +304,7 @@ Rules that must hold true in the my-family codebase. Violations break architectu
 | ETHOS.md | DM-001 through DM-006, DI-001 through DI-005, QA-001 through QA-003 | 14 |
 | CONVENTIONS.md | API-001 through API-005 | 5 |
 | CONTRIBUTING.md | TS-001 through TS-003 | 3 |
-| **Total** | | **66** |
+| **Total** | | **67** |
 
 ---
 
