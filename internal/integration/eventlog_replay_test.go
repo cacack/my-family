@@ -132,6 +132,27 @@ func TestExtraRows(t *testing.T) {
 	}
 }
 
+func TestSameValue(t *testing.T) {
+	cases := []struct {
+		name      string
+		want, got string
+		same      bool
+	}{
+		{"whole-second recording of a microsecond time", "2026-11-25T05:24:53Z", "2026-11-25T05:24:53.289999Z", true},
+		{"a different second", "2026-11-25T05:24:53Z", "2026-11-25T05:24:54.289999Z", false},
+		{"JSON that differs in spacing", `["a","b"]`, `["a", "b"]`, true},
+		{"JSON that differs in content", `["a","b"]`, `["a", "c"]`, false},
+		{"plain text", "Ada", "Adah", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := sameValue(tc.want, tc.got, time.Microsecond); got != tc.same {
+				t.Errorf("sameValue(%q, %q) = %v, want %v", tc.want, tc.got, got, tc.same)
+			}
+		})
+	}
+}
+
 func TestSubsetDiffs(t *testing.T) {
 	recorded := map[string]any{"persons": map[string]any{"p1": map[string]any{
 		"given_name": "Ada", "version": json.Number("2"), "citation_ids": []any{"c1", "c2"},
@@ -382,7 +403,33 @@ func sameValue(want, got any, precision time.Duration) bool {
 	}
 	wt, err1 := time.Parse(time.RFC3339Nano, ws)
 	gt, err2 := time.Parse(time.RFC3339Nano, gs)
-	return err1 == nil && err2 == nil && wt.Round(precision).Equal(gt.Round(precision))
+	if err1 == nil && err2 == nil {
+		// A recording may keep a time at whole seconds where PostgreSQL
+		// keeps microseconds, so compare at the coarser of the two.
+		if wt.Equal(gt) || wt.Round(precision).Equal(gt.Round(precision)) {
+			return true
+		}
+		if wt.Nanosecond() == 0 {
+			return wt.Equal(gt.Truncate(time.Second)) || wt.Equal(gt.Round(time.Second))
+		}
+		return false
+	}
+	return sameJSONText(ws, gs)
+}
+
+// sameJSONText reports whether two strings hold the same JSON document,
+// whatever their whitespace: PostgreSQL's jsonb spaces what SQLite keeps as
+// written.
+func sameJSONText(a, b string) bool {
+	var av, bv any
+	if decodeNumbers([]byte(a), &av) != nil || decodeNumbers([]byte(b), &bv) != nil {
+		return false
+	}
+	switch av.(type) {
+	case map[string]any, []any:
+		return reflect.DeepEqual(av, bv)
+	}
+	return false
 }
 
 func describe(v any) string {

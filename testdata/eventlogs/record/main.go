@@ -216,7 +216,7 @@ func fill(ctx context.Context, st *storage.Stores, gedcoms []string) error {
 		return fmt.Errorf("seed: %w", err)
 	}
 	for _, path := range gedcoms {
-		f, err := os.Open(path)
+		f, err := os.Open(path) // #nosec G304 G703 -- path is a GEDCOM file the operator named.
 		if err != nil {
 			return err
 		}
@@ -792,5 +792,5 @@ func writeJSON(path string, v any) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, append(data, '\n'), 0o600)
+	return os.WriteFile(path, append(data, '\n'), 0o600) // #nosec G703 -- path is the output the operator named.
 }
