@@ -966,6 +966,23 @@ type ReadModelStore interface {
 	// ReplacePlaceAliases replaces every row of place_aliases with aliases.
 	ReplacePlaceAliases(ctx context.Context, aliases []PlaceAliasReadModel) error
 
+	// Place forms and external IDs (ADR-009 §2, §8): the place_forms and
+	// place_external_ids tables, projected from PlaceUpdated. MAIN-ONLY
+	// (PL-005) like the facts; these reads apply no privacy, and the
+	// query.PrivacyStore returns only the rows of visible places (PL-006).
+
+	// ReplacePlaceForms replaces the forms of the place with placeID.
+	ReplacePlaceForms(ctx context.Context, placeID uuid.UUID, forms []PlaceFormReadModel) error
+	// ListPlaceForms returns every place's forms, keyed by place ID, each
+	// place's by positional key.
+	ListPlaceForms(ctx context.Context) (map[uuid.UUID][]PlaceFormReadModel, error)
+	// ReplacePlaceExternalIDs replaces the external IDs of the place with
+	// placeID, keeping their order.
+	ReplacePlaceExternalIDs(ctx context.Context, placeID uuid.UUID, ids []PlaceExternalIDReadModel) error
+	// ListPlaceExternalIDs returns every place's external IDs, keyed by place
+	// ID, each place's in sequence order.
+	ListPlaceExternalIDs(ctx context.Context) (map[uuid.UUID][]PlaceExternalIDReadModel, error)
+
 	// Map operations
 
 	// GetMapLocations aggregates person birth/death coordinates within the branch

@@ -74,3 +74,11 @@ func TestPlaceReadsAgree(t *testing.T) {
 	defer cleanup()
 	placetest.RunPlaceReadsAgree(t, store)
 }
+
+// TestPlaceFormsAndExternalIDs runs the shared #1738 suite against the sqlite
+// backend; the memory and postgres packages run the same body (DB-001).
+func TestPlaceFormsAndExternalIDs(t *testing.T) {
+	store, cleanup := setupTestReadModelDB(t)
+	defer cleanup()
+	placetest.RunPlaceFormsAndExternalIDs(t, store)
+}

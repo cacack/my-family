@@ -2057,10 +2057,12 @@ func NewDuplicateRestored(pair DuplicatePair) DuplicateRestored {
 // PlaceUpdated sets or clears facts about a place on the place's own stream
 // (ADR-009 §2): its display name under "name", and its coordinate pair under
 // "latitude" and "longitude" with the pair's origin under
-// "coordinates_origin", the three always recorded together. There is no
-// PlaceCreated: a place exists once its key is in use. Key and Text are the
-// place's matching key and the text it was computed from, so the log reads
-// without the ID's hash.
+// "coordinates_origin", the three always recorded together; its GEDCOM
+// PLAC.FORM labels under "forms", the whole set as a form by positional key;
+// and its GEDCOM 7.0 EXIDs under "external_ids", the whole list as {value,
+// type} objects (ADR-009 §8). There is no PlaceCreated: a place exists once
+// its key is in use. Key and Text are the place's matching key and the text
+// it was computed from, so the log reads without the ID's hash.
 type PlaceUpdated struct {
 	BaseEvent
 	PlaceID uuid.UUID      `json:"place_id"`

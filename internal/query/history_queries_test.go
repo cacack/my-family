@@ -430,6 +430,18 @@ func (m *mockReadModelStore) ListPlaceAliases(ctx context.Context) ([]repository
 func (m *mockReadModelStore) ReplacePlaceAliases(ctx context.Context, _ []repository.PlaceAliasReadModel) error {
 	return nil
 }
+func (m *mockReadModelStore) ReplacePlaceForms(ctx context.Context, _ uuid.UUID, _ []repository.PlaceFormReadModel) error {
+	return nil
+}
+func (m *mockReadModelStore) ListPlaceForms(ctx context.Context) (map[uuid.UUID][]repository.PlaceFormReadModel, error) {
+	return nil, nil
+}
+func (m *mockReadModelStore) ReplacePlaceExternalIDs(ctx context.Context, _ uuid.UUID, _ []repository.PlaceExternalIDReadModel) error {
+	return nil
+}
+func (m *mockReadModelStore) ListPlaceExternalIDs(ctx context.Context) (map[uuid.UUID][]repository.PlaceExternalIDReadModel, error) {
+	return nil, nil
+}
 func (m *mockReadModelStore) GetMapLocations(ctx context.Context, branchID domain.BranchID, _ repository.Privacy) ([]repository.MapLocation, error) {
 	return nil, nil
 }
