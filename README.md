@@ -352,12 +352,33 @@ status) answer 409 `CONFLICT`.
 
 Everything — the event log, the read model, snapshots and research branches — lives in that one
 database, and the schema is created or migrated automatically at startup. If the chosen database
-cannot be opened, the server exits with an error instead of falling back to memory. Back up a
-SQLite deployment by copying the database file while the server is stopped (it also keeps
-`-wal`/`-shm` sidecar files while running). See
+cannot be opened, the server exits with an error instead of falling back to memory. See
 [ADR-002](./docs/adr/002-dual-database-strategy.md) for the design. The SQLite driver is pure Go,
 so the Docker image, the prebuilt release archives and a plain `go build` all run on SQLite with
 no C toolchain.
+
+#### Backups
+
+`myfamily backup PATH` writes the whole instance to one zip file at `PATH`, with the same
+`DATABASE_URL` / `SQLITE_PATH` as the server, on SQLite or PostgreSQL. The server keeps running
+while it is written: the backup reads one consistent snapshot of the database and changes
+nothing. It refuses only while `myfamily rebuild` runs, and never overwrites an existing file. The
+owner can download the same file from the Settings page (`GET /api/v1/backup`).
+
+The archive holds the event log, which includes every media file, and the accounts and settings
+that live outside it: users with their password hashes, tree memberships, site, tree and account
+settings, the auth audit log and the API tokens' hashes. It leaves out the read model, which is
+rebuilt from the log, and sessions, pending invites and password-reset links. A `manifest.json`
+records the event count, the last log position and a SHA-256 for every other entry; the layout
+is in [ADR-010](./docs/adr/010-backup-archive-format.md).
+
+`myfamily verify-backup PATH` checks a backup without a database: it exits 0 if the archive is
+intact, and otherwise non-zero with a message naming the damaged entry.
+
+The archive is not encrypted. It holds the whole tree, living people and private records
+included, and every account's password hash, so store it as carefully as the database itself.
+Restoring from a backup is not available yet
+([#1642](https://github.com/cacack/my-family/issues/1642)).
 
 #### Repairing the read model
 

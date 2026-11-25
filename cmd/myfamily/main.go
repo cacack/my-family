@@ -42,6 +42,14 @@ func main() {
 		if err := runRebuild(); err != nil {
 			log.Fatal(err)
 		}
+	case "backup":
+		if err := runBackup(os.Args[2:], os.Stdout); err != nil {
+			log.Fatal(err)
+		}
+	case "verify-backup":
+		if err := runVerifyBackup(os.Args[2:], os.Stdout); err != nil {
+			log.Fatal(err)
+		}
 	case "user":
 		if err := runUser(os.Args[2:]); err != nil {
 			log.Fatal(err)
@@ -66,6 +74,10 @@ Usage:
 Commands:
   serve     Start the HTTP server
   rebuild   Rebuild the read model from the event log (refused while the server runs)
+  backup PATH
+            Write a backup archive of the database to PATH; the server may keep running
+  verify-backup PATH
+            Check that the backup archive at PATH is intact
   user create [--username NAME] [--display-name NAME]
             Create an owner account; asks for the password, or reads it from stdin
   user reset-password --username NAME [--url URL]
