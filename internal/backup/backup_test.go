@@ -41,11 +41,21 @@ var leftOutTables = []string{
 
 // fixture is an opened database with every store constructed.
 type fixture struct {
-	db       *sql.DB
-	dialect  Dialect
-	events   repository.EventStore
-	accounts repository.AccountStore
-	settings repository.SettingsStore
+	db        *sql.DB
+	dialect   Dialect
+	events    repository.EventStore
+	readModel repository.ReadModelStore
+	accounts  repository.AccountStore
+	settings  repository.SettingsStore
+}
+
+// stamp stamps the read model's version, as storage.Open does for a new
+// database.
+func stamp(t *testing.T, f fixture) {
+	t.Helper()
+	must(t, func() error {
+		return f.readModel.SetSchemaVersion(context.Background(), repository.ReadModelSchemaVersion)
+	})
 }
 
 func openSQLite(t *testing.T) fixture {
@@ -56,12 +66,13 @@ func openSQLite(t *testing.T) fixture {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 	f := fixture{db: db, dialect: SQLite}
-	must(t, func() (err error) { _, err = sqlite.NewReadModelStore(db); return })
+	must(t, func() (err error) { f.readModel, err = sqlite.NewReadModelStore(db); return })
 	must(t, func() (err error) { f.events, err = sqlite.NewEventStore(db); return })
 	must(t, func() (err error) { _, err = sqlite.NewSnapshotStore(db); return })
 	must(t, func() (err error) { _, err = sqlite.NewBranchStore(db); return })
 	must(t, func() (err error) { f.settings, err = sqlite.NewSettingsStore(db); return })
 	must(t, func() (err error) { f.accounts, err = sqlite.NewAccountStore(db); return })
+	stamp(t, f)
 	return f
 }
 
@@ -73,12 +84,13 @@ func openPostgres(t *testing.T) fixture {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 	f := fixture{db: db, dialect: Postgres}
-	must(t, func() (err error) { _, err = postgres.NewReadModelStore(db); return })
+	must(t, func() (err error) { f.readModel, err = postgres.NewReadModelStore(db); return })
 	must(t, func() (err error) { f.events, err = postgres.NewEventStore(db); return })
 	must(t, func() (err error) { _, err = postgres.NewSnapshotStore(db); return })
 	must(t, func() (err error) { _, err = postgres.NewBranchStore(db); return })
 	must(t, func() (err error) { f.settings, err = postgres.NewSettingsStore(db); return })
 	must(t, func() (err error) { f.accounts, err = postgres.NewAccountStore(db); return })
+	stamp(t, f)
 	return f
 }
 
@@ -262,8 +274,9 @@ func TestWrite_EmptyDatabase(t *testing.T) {
 	}
 }
 
-// TestWrite_ConcurrentAppend appends while the backup reads: the archive is a
-// consistent snapshot either way.
+// TestWrite_ConcurrentAppend appends while the backup reads: the backup and
+// the append both succeed and the archive verifies. Whether the append lands
+// inside the read is not controlled, so this does not prove the snapshot.
 func TestWrite_ConcurrentAppend(t *testing.T) {
 	for _, b := range backends {
 		t.Run(b.name, func(t *testing.T) {
@@ -282,6 +295,59 @@ func TestWrite_ConcurrentAppend(t *testing.T) {
 				t.Errorf("Verify: %v", err)
 			}
 		})
+	}
+}
+
+// TestWrite_RefusesAnUnstampedLog: a database with events but no read-model
+// version stamp may hold values only in its read model (ADR-010 §6).
+func TestWrite_RefusesAnUnstampedLog(t *testing.T) {
+	for _, b := range backends {
+		for _, unstamp := range []string{"DELETE FROM read_model_schema", "DROP TABLE read_model_schema"} {
+			t.Run(b.name+"/"+unstamp, func(t *testing.T) {
+				f := b.open(t)
+				seed(t, f)
+				if _, err := f.db.Exec(unstamp); err != nil {
+					t.Fatal(err)
+				}
+				var buf bytes.Buffer
+				_, err := Write(context.Background(), f.db, f.dialect, &buf, "test-version")
+				if err == nil || !strings.Contains(err.Error(), "myfamily rebuild") {
+					t.Errorf("Write = %v, want a refusal naming myfamily rebuild", err)
+				}
+			})
+		}
+	}
+}
+
+// TestWrite_UnstampedEmptyLog: with no events there is nothing to lose.
+func TestWrite_UnstampedEmptyLog(t *testing.T) {
+	f := openSQLite(t)
+	if _, err := f.db.Exec("DELETE FROM read_model_schema"); err != nil {
+		t.Fatal(err)
+	}
+	writeBackup(t, f)
+}
+
+// TestWrite_RefusesAnOlderShape: a database an older release last opened may
+// lack a table or column; the refusal names it and the fix.
+func TestWrite_RefusesAnOlderShape(t *testing.T) {
+	for _, b := range backends {
+		for _, tt := range []struct{ change, table string }{
+			{"DROP TABLE api_tokens", "api_tokens"},
+			{"ALTER TABLE tree_settings DROP COLUMN anonymous_access", "tree_settings"},
+		} {
+			t.Run(b.name+"/"+tt.table, func(t *testing.T) {
+				f := b.open(t)
+				if _, err := f.db.Exec(tt.change); err != nil {
+					t.Fatal(err)
+				}
+				var buf bytes.Buffer
+				_, err := Write(context.Background(), f.db, f.dialect, &buf, "test-version")
+				if err == nil || !strings.Contains(err.Error(), tt.table) || !strings.Contains(err.Error(), "myfamily serve") {
+					t.Errorf("Write = %v, want a refusal naming %s and myfamily serve", err, tt.table)
+				}
+			})
+		}
 	}
 }
 
@@ -384,6 +450,27 @@ func TestVerify_Refusals(t *testing.T) {
 				m.Entries = slices.DeleteFunc(m.Entries, func(e Entry) bool { return e.Name == EventsEntry })
 			})(name, data)
 		}), EventsEntry + " is missing from the manifest"},
+		{"entry missing from manifest and zip", rezip(t, archive, func(name string, data []byte) ([]byte, bool) {
+			if name == users {
+				return data, false
+			}
+			return editManifest(t, func(m *Manifest) {
+				m.Entries = slices.DeleteFunc(m.Entries, func(e Entry) bool { return e.Name == users })
+			})(name, data)
+		}), users + " is missing from the manifest"},
+		// rezip writes valid CRC-32s, so only the manifest's SHA-256 catches these.
+		{"table content changed", rezip(t, archive, func(name string, data []byte) ([]byte, bool) {
+			if name == users {
+				return bytes.Replace(data, []byte("owner"), []byte("admin"), 1), true
+			}
+			return data, true
+		}), users + " is damaged: its SHA-256 does not match"},
+		{"event content changed", rezip(t, archive, func(name string, data []byte) ([]byte, bool) {
+			if name == EventsEntry {
+				return bytes.Replace(data, []byte("Ada"), []byte("Ida"), 1), true
+			}
+			return data, true
+		}), EventsEntry + " is damaged: its SHA-256 does not match"},
 		{"newer format", rezip(t, archive, editManifest(t, func(m *Manifest) { m.FormatVersion = FormatVersion + 1 })), "newer than this release reads"},
 		{"no format", rezip(t, archive, editManifest(t, func(m *Manifest) { m.FormatVersion = 0 })), "format_version 0"},
 		{"wrong count", rezip(t, archive, editManifest(t, func(m *Manifest) { m.EventCount++ })), "the manifest says"},

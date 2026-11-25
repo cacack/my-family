@@ -18,9 +18,11 @@ var ErrBackupMemory = errors.New("the in-memory backend has nothing to back up; 
 
 // Backup writes a backup archive (ADR-010) of the database cfg selects to w
 // and returns its manifest. A server may keep running on the database: Backup
-// takes the lock `serve` shares, so it refuses only while a rebuild runs. It
-// does not construct the stores as Open does, so it runs no schema DDL and
-// no read-model version check: it writes nothing (ADR-010 §6).
+// takes the lock `serve` shares, so it waits on no server but refuses while a
+// rebuild runs. It does not construct the stores as Open does, so it runs no
+// schema DDL and no read-model version check (ADR-010 §6). backup.Write also
+// refuses a database it could not copy whole, such as one that predates the
+// read-model version stamp and needs `myfamily rebuild` first.
 func Backup(ctx context.Context, cfg *config.Config, w io.Writer, appVersion string) (*backup.Manifest, error) {
 	switch Select(cfg) {
 	case BackendMemory:

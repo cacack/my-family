@@ -362,8 +362,11 @@ no C toolchain.
 `myfamily backup PATH` writes the whole instance to one zip file at `PATH`, with the same
 `DATABASE_URL` / `SQLITE_PATH` as the server, on SQLite or PostgreSQL. The server keeps running
 while it is written: the backup reads one consistent snapshot of the database and changes
-nothing. It refuses only while `myfamily rebuild` runs, and never overwrites an existing file. The
-owner can download the same file from the Settings page (`GET /api/v1/backup`).
+nothing. It never overwrites an existing file. It refuses while `myfamily rebuild` runs, and
+refuses a database it could not copy whole, naming the fix: one from before the read model's
+version stamp, which needs `myfamily rebuild` first, or one whose tables an older release last
+shaped, which needs this release's `myfamily serve` started once. The owner can download the same
+file from the Settings page (`GET /api/v1/backup`).
 
 The archive holds the event log, which includes every media file, and the accounts and settings
 that live outside it: users with their password hashes, tree memberships, site, tree and account
@@ -373,7 +376,7 @@ records the event count, the last log position and a SHA-256 for every other ent
 is in [ADR-010](./docs/adr/010-backup-archive-format.md).
 
 `myfamily verify-backup PATH` checks a backup without a database: it exits 0 if the archive is
-intact, and otherwise non-zero with a message naming the damaged entry.
+complete and intact, and otherwise non-zero with a message naming the damaged entry.
 
 The archive is not encrypted. It holds the whole tree, living people and private records
 included, and every account's password hash, so store it as carefully as the database itself.

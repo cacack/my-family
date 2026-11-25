@@ -33,6 +33,10 @@ const (
 // snapshot that does not block writers. A server may keep writing meanwhile;
 // the archive holds the log as that snapshot saw it, and LastPosition is the
 // highest position the snapshot holds. Write only reads: it runs no DDL.
+//
+// Write refuses a database it cannot copy whole (checkSource): one whose
+// tables an older release last shaped, or one that may hold values only in
+// its read model.
 func Write(ctx context.Context, db *sql.DB, dialect Dialect, w io.Writer, appVersion string) (*Manifest, error) {
 	opts := &sql.TxOptions{ReadOnly: true}
 	if dialect == Postgres {
@@ -43,6 +47,9 @@ func Write(ctx context.Context, db *sql.DB, dialect Dialect, w io.Writer, appVer
 		return nil, fmt.Errorf("begin backup read: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	if err := checkSource(ctx, tx, dialect); err != nil {
+		return nil, err
+	}
 
 	manifest := &Manifest{
 		FormatVersion: FormatVersion,
@@ -52,7 +59,7 @@ func Write(ctx context.Context, db *sql.DB, dialect Dialect, w io.Writer, appVer
 	}
 	zw := zip.NewWriter(w)
 
-	// The log first, so the snapshot starts at the events read.
+	// The log first, then the tables beside it, all in the one snapshot.
 	sum, err := writeEntry(zw, EventsEntry, func(out io.Writer) error {
 		return copyRows(ctx, tx, eventsTable, out, func(row []any) {
 			manifest.EventCount++
@@ -92,6 +99,62 @@ func Write(ctx context.Context, db *sql.DB, dialect Dialect, w io.Writer, appVer
 		return nil, fmt.Errorf("finish archive: %w", err)
 	}
 	return manifest, nil
+}
+
+// checkSource refuses a database the archive could not copy whole.
+//
+// Every table must have the columns this release reads. A database an older
+// release last opened may lack one, since the stores create and alter their
+// tables only when constructed, which a backup does not do (ADR-010 §6).
+//
+// A database with events but no read-model version stamp predates #680, and
+// may hold values only in its read model: coordinates and EXIDs imported
+// before #1225, brick walls marked before #802, snapshots created before #624
+// (ADR-010 §6). Every release that stamps the read model logs them, and its
+// rebuild logs those left from before, so a stamped database holds them all
+// in its log.
+func checkSource(ctx context.Context, tx *sql.Tx, dialect Dialect) error {
+	for _, t := range append([]table{eventsTable, streamsTable}, carriedTables...) {
+		names := make([]string, len(t.columns))
+		for i, c := range t.columns {
+			names[i] = c.name
+		}
+		// #nosec G202 -- table and column names are package constants, not input.
+		// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+		rows, err := tx.QueryContext(ctx, "SELECT "+strings.Join(names, ", ")+" FROM "+t.name+" WHERE 1 = 0")
+		if err != nil {
+			return fmt.Errorf("the database's %s table is not in this release's shape, as when an older release "+
+				"last opened it; start `myfamily serve` with this release once, then back up: %w", t.name, err)
+		}
+		_ = rows.Close()
+	}
+
+	exists := `SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'read_model_schema'`
+	if dialect == Postgres {
+		exists = `SELECT CASE WHEN to_regclass('read_model_schema') IS NULL THEN 0 ELSE 1 END`
+	}
+	var stamped, version, events int
+	if err := tx.QueryRowContext(ctx, exists).Scan(&stamped); err != nil {
+		return fmt.Errorf("read the read model's schema version: %w", err)
+	}
+	if stamped > 0 {
+		err := tx.QueryRowContext(ctx, `SELECT version FROM read_model_schema WHERE id = 1`).Scan(&version)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("read the read model's schema version: %w", err)
+		}
+	}
+	if version > 0 {
+		return nil
+	}
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM (SELECT 1 FROM events LIMIT 1) head`).Scan(&events); err != nil {
+		return fmt.Errorf("read events: %w", err)
+	}
+	if events > 0 {
+		return errors.New("the database predates the read model's version stamp (#680), so it may hold coordinates, " +
+			"EXIDs, brick walls or snapshots only in its read model, where a backup would lose them; " +
+			"stop every server and run `myfamily rebuild`, which logs them, then back up")
+	}
+	return nil
 }
 
 // writeEntry adds a deflated entry named name, filled by fill, and returns the

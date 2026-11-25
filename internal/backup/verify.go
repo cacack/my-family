@@ -32,7 +32,8 @@ func VerifyFile(path string) (*Manifest, error) {
 
 // Verify checks an archive without a database (ADR-010 §5): every entry's
 // SHA-256 matches the manifest, the manifest lists every entry and the zip
-// holds every listed one, and events.ndjson holds event_count events ending at
+// holds every listed one, every entry of the format (EntryNames) is there, and
+// events.ndjson holds event_count events ending at
 // last_position. An error names the entry at fault. The zip's own CRC-32 is
 // not relied on.
 func Verify(r io.ReaderAt, size int64) (*Manifest, error) {
@@ -72,8 +73,12 @@ func Verify(r io.ReaderAt, size int64) (*Manifest, error) {
 			return nil, fmt.Errorf("entry %s is not listed in the manifest", f.Name)
 		}
 	}
-	if !listed[EventsEntry] {
-		return nil, fmt.Errorf("entry %s is missing from the manifest", EventsEntry)
+	// Every entry this format holds must be there, or a restore would load
+	// an instance without, say, its accounts.
+	for _, name := range EntryNames() {
+		if !listed[name] {
+			return nil, fmt.Errorf("entry %s is missing from the manifest", name)
+		}
 	}
 	return manifest, nil
 }
