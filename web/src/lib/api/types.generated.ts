@@ -501,6 +501,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/geocode": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Look up candidate coordinates for a place name
+         * @description Asks the configured geocoding provider for locations matching a place
+         *     name ([#1562](https://github.com/cacack/my-family/issues/1562)) and
+         *     returns at most 5 candidates, best match first. It is off unless the
+         *     server sets `GEOCODER_ENABLED`, because it sends the place name to an
+         *     outside service; `GET /config` reports `geocoder_enabled`. The request
+         *     to the provider carries the place name and nothing else from the tree.
+         *     Nothing is written: set a place's pair with `PUT /places/{id}`.
+         *
+         *     A name is sent once per server process: a repeat, compared ignoring
+         *     case and runs of spaces, is answered from an in-memory cache, an empty
+         *     answer included. Outbound requests are spaced at no more than one per
+         *     second, so a lookup may wait behind others; one that cannot be answered
+         *     within 10 seconds, waiting included, answers 504.
+         *
+         *     - `200` with no `items`: the provider matched nothing.
+         *     - `409` `geocoder_disabled`: the server has no geocoder enabled.
+         *     - `502` `geocoder_error`: the provider failed or refused the request.
+         *     - `504` `geocoder_timeout`: the lookup queue was busy or the provider did
+         *       not answer in time.
+         */
+        get: operations["geocodePlace"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/places/{id}": {
         parameters: {
             query?: never;
@@ -5404,6 +5442,40 @@ export interface components {
             limit?: number;
             offset?: number;
         };
+        GeocodeCandidateList: {
+            items: components["schemas"]["GeocodeCandidate"][];
+            /** @description Number of candidates */
+            total: number;
+        };
+        GeocodeCandidate: {
+            /**
+             * @description The provider's full name for the location
+             * @example Boston, Suffolk County, Massachusetts, United States
+             */
+            display_name: string;
+            /**
+             * Format: double
+             * @description Latitude in decimal degrees
+             */
+            latitude: number;
+            /**
+             * Format: double
+             * @description Longitude in decimal degrees
+             */
+            longitude: number;
+            /** @description The text that matched. Today it is always the place name looked up, with spaces normalized; a later fallback to a shorter form of the name would return that form here (#1563). */
+            query: string;
+            /**
+             * @description The provider's name
+             * @example Nominatim
+             */
+            provider: string;
+            /**
+             * @description The credit the provider's data license requires wherever the candidate is shown
+             * @example Data © OpenStreetMap contributors, ODbL 1.0. https://osm.org/copyright
+             */
+            attribution: string;
+        };
         UnmappedPlaceList: {
             items: components["schemas"]["UnmappedPlace"][];
             /** @description Number of entries */
@@ -9171,6 +9243,62 @@ export interface operations {
             };
             401: components["responses"]["Unauthenticated"];
             503: components["responses"]["SetupRequired"];
+        };
+    };
+    geocodePlace: {
+        parameters: {
+            query: {
+                /**
+                 * @description The place name, 1 to 255 characters once leading, trailing and repeated spaces are removed.
+                 * @example Boston, Suffolk, Massachusetts, USA
+                 */
+                q: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The candidates, best match first; none when nothing matched */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeocodeCandidateList"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            /** @description `geocoder_disabled`: the server has no geocoder enabled (`GEOCODER_ENABLED`) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `geocoder_error`: the provider failed or refused the request */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            503: components["responses"]["SetupRequired"];
+            /** @description `geocoder_timeout`: the lookup queue was busy or the provider did not answer in time */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     getPlace: {

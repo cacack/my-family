@@ -99,6 +99,7 @@ type Server struct {
 	settings            repository.TreeSettingsStore // nil unless WithTreeSettings supplied
 	backupCheck         BackupChecker                // nil unless WithBackup supplied
 	backup              BackupWriter                 // nil unless WithBackup supplied
+	geocoder            Geocoder                     // nil unless WithGeocoder supplied
 	routes              map[string]bool              // every registered route, by routeKey
 	// visitorsProtected is repository.AnonymousViewingProtected; a test of
 	// that kill switch clears it (export_test.go).
