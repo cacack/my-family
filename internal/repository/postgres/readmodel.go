@@ -750,7 +750,7 @@ func (s *ReadModelStore) createTables() error {
 //     stranded its rows. The ALTER statements are schema-qualified for the same
 //     reason: unqualified, they could resolve to another schema's events.
 func (s *ReadModelStore) renameLegacyEventsTable() error {
-	legacy, err := eventsTableBelongsToReadModel(s.db)
+	legacy, err := eventsTableBelongsToReadModel(context.Background(), s.db)
 	if err != nil {
 		return fmt.Errorf("check whether the events table belongs to the read model: %w", err)
 	}

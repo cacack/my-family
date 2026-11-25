@@ -19,6 +19,7 @@ import (
 	"github.com/cacack/my-family/internal/api"
 	"github.com/cacack/my-family/internal/config"
 	"github.com/cacack/my-family/internal/repository"
+	"github.com/cacack/my-family/internal/repository/sqlite"
 	"github.com/cacack/my-family/internal/testutil/pgtest"
 )
 
@@ -348,6 +349,7 @@ func TestBuild_ClosesDatabaseOnEachFailure(t *testing.T) {
 				return nil
 			}
 			_, err = build(BackendSQLite, "x.db", db, nil, AccessServe,
+				sqlite.NewStoreMigrator,
 				func(*sql.DB) (repository.ReadModelStore, error) { return nil, failAt(0) },
 				func(*sql.DB) (repository.EventStore, error) { return nil, failAt(1) },
 				func(*sql.DB) (repository.SnapshotStore, error) { return nil, failAt(2) },

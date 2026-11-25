@@ -43,7 +43,13 @@ func TestResetReadModel_CoversEveryReadModelTable(t *testing.T) {
 	}
 	defer rows.Close()
 	// Tables ResetReadModel keeps; rebuild_state and read_model_schema must outlive the reset.
-	logOwned := map[string]bool{"events": true, "streams": true, "branches": true, "snapshots": true, "rebuild_state": true, "read_model_schema": true}
+	logOwned := map[string]bool{
+		"events": true, "streams": true, "branches": true, "snapshots": true, "rebuild_state": true, "read_model_schema": true,
+		// The migrated tables and their stamp (ADR-011).
+		"users": true, "tree_memberships": true, "sessions": true, "api_tokens": true, "invites": true,
+		"password_resets": true, "auth_audit": true, "site_settings": true, "tree_settings": true,
+		"account_settings": true, "store_schema": true,
+	}
 	var schema []string
 	for rows.Next() {
 		var name string

@@ -55,49 +55,37 @@ func (s *BranchStore) createTables() error {
 	if err != nil {
 		return err
 	}
-	s.migrateMergeColumns()
-	s.migrateResearchColumns()
-	return s.migrateCloseColumns()
+	return s.addColumns()
 }
 
-// migrateCloseColumns adds the close-record columns (#836) to a branches table
-// created before they existed. As in migrateMergeColumns, the duplicate-column
-// error on an already-migrated database is the only failure and is
-// intentionally ignored. A branch archived before #836 keeps NULLs; one still
-// reading "open" is backfilled as abandoned, matching MarkClosed for a close
-// that recorded no outcome.
-func (s *BranchStore) migrateCloseColumns() error {
-	_, _ = s.db.Exec(`ALTER TABLE branches ADD COLUMN closed_at TEXT`)
-	_, _ = s.db.Exec(`ALTER TABLE branches ADD COLUMN close_reason TEXT`)
+// addColumns adds the columns added after the table's first release to a
+// branches table created before them, returning any error (ADR-011 §1):
+// merge records (#55), research records (#835) and close records (#836).
+// Existing rows read as an open branch with no hypothesis, subjects or proof
+// summaries, which is what their BranchCreated events replay to. A branch
+// archived before #836 keeps NULL close columns; one still reading "open" is
+// backfilled as abandoned, matching MarkClosed for a close that recorded no
+// outcome.
+func (s *BranchStore) addColumns() error {
+	for _, c := range []struct{ name, definition string }{
+		{"merged_at", "TEXT"},
+		{"merge_note", "TEXT"},
+		{"hypothesis", "TEXT"},
+		{"subjects", "TEXT"},
+		{"outcome", "TEXT NOT NULL DEFAULT 'open'"},
+		{"proof_summary_ids", "TEXT"},
+		{"closed_at", "TEXT"},
+		{"close_reason", "TEXT"},
+	} {
+		if err := addColumn(s.db, "branches", c.name, c.definition); err != nil {
+			return err
+		}
+	}
 	if _, err := s.db.Exec(`UPDATE branches SET outcome = ? WHERE status = ? AND outcome IN ('', ?)`,
 		string(domain.BranchOutcomeAbandoned), string(domain.BranchStatusArchived), string(domain.BranchOutcomeOpen)); err != nil {
 		return fmt.Errorf("backfill abandoned outcome: %w", err)
 	}
 	return nil
-}
-
-// migrateMergeColumns adds the merge-record columns (issue #55) to a branches
-// table created before they existed, so a pre-#55 database gains them on open.
-// SQLite lacks ADD COLUMN IF NOT EXISTS, so the duplicate-column error on an
-// already-migrated database is intentionally swallowed — the same approach as
-// EventStore.migrateBranchID. A plain ADD COLUMN is all that is needed here;
-// no table rebuild.
-func (s *BranchStore) migrateMergeColumns() {
-	_, _ = s.db.Exec(`ALTER TABLE branches ADD COLUMN merged_at TEXT`)
-	_, _ = s.db.Exec(`ALTER TABLE branches ADD COLUMN merge_note TEXT`)
-}
-
-// migrateResearchColumns adds the research-record columns (#835) to a
-// branches table created before they existed. As in migrateMergeColumns, the
-// duplicate-column error on an already-migrated database is the only failure
-// and is intentionally ignored. Existing rows read as an open branch with no
-// hypothesis, subjects or proof summaries — exactly what their pre-#835
-// BranchCreated events replay to.
-func (s *BranchStore) migrateResearchColumns() {
-	_, _ = s.db.Exec(`ALTER TABLE branches ADD COLUMN hypothesis TEXT`)
-	_, _ = s.db.Exec(`ALTER TABLE branches ADD COLUMN subjects TEXT`)
-	_, _ = s.db.Exec(`ALTER TABLE branches ADD COLUMN outcome TEXT NOT NULL DEFAULT 'open'`)
-	_, _ = s.db.Exec(`ALTER TABLE branches ADD COLUMN proof_summary_ids TEXT`)
 }
 
 // branchScanner is the Scan method shared by *sql.Row and *sql.Rows.

@@ -22,20 +22,10 @@ type SettingsStore struct {
 	db *sql.DB
 }
 
-// NewSettingsStore creates a new PostgreSQL settings store.
+// NewSettingsStore returns the store, first bringing the store schema, which
+// owns the settings tables, up to date (ADR-011).
 func NewSettingsStore(db *sql.DB) (*SettingsStore, error) {
-	if _, err := db.Exec(`
-		CREATE TABLE IF NOT EXISTS site_settings (
-			key TEXT PRIMARY KEY,
-			value TEXT NOT NULL
-		);
-		CREATE TABLE IF NOT EXISTS account_settings (
-			user_id TEXT NOT NULL,
-			key TEXT NOT NULL,
-			value TEXT NOT NULL,
-			PRIMARY KEY (user_id, key)
-		);
-	`); err != nil {
+	if err := migrateStoreSchema(db); err != nil {
 		return nil, fmt.Errorf("failed to create tables: %w", err)
 	}
 	return &SettingsStore{db: db}, nil

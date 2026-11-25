@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log/slog"
 	"sort"
 	"strings"
 	"sync"
@@ -38,7 +37,9 @@ type EventStore struct {
 	mu sync.Mutex // serialize writes for SQLite
 }
 
-// NewEventStore creates a new SQLite event store.
+// NewEventStore creates a new SQLite event store, first bringing the store
+// schema up to date (ADR-011): the event log's tables are migrated, not created
+// here.
 //
 // It can fail at construction. On a pre-#733 database — one whose `events` table is
 // still the read model's life-fact table — it returns ErrReadModelEventsTable without
@@ -46,207 +47,10 @@ type EventStore struct {
 // (NewReadModelStore renames its table to `life_events`), then call this. On a fresh
 // or already-migrated database the construction order does not matter.
 func NewEventStore(db *sql.DB) (*EventStore, error) {
-	store := &EventStore{db: db}
-	if err := store.createTables(); err != nil {
+	if err := migrateStoreSchema(db); err != nil {
 		return nil, fmt.Errorf("failed to create tables: %w", err)
 	}
-	return store, nil
-}
-
-// createTables creates the event store schema if it doesn't exist.
-// The events table carries a branch_id envelope column and versions events per
-// (stream_id, branch_id) (ADR-005). Fresh databases get both from the CREATE
-// below; existing databases are upgraded first — migrateBranchID adds the
-// column, migrateCompositeVersionKey rebuilds the table for the composite
-// UNIQUE. Both run BEFORE the schema batch because that batch indexes branch_id,
-// which an un-migrated table doesn't have yet — and both run AFTER the #733
-// ownership guard, which refuses a database whose `events` table is the read
-// model's so neither migration can mutate it.
-func (s *EventStore) createTables() error {
-	mainBranch := domain.MainBranchID.String()
-
-	// #733 guard: refuse a database whose `events` table is the read model's, BEFORE
-	// either migration touches it. migrateBranchID would happily ALTER a branch_id
-	// column onto the read model's table, and migrateCompositeVersionKey would read
-	// its DDL, conclude the event log is legacy, and abort mid-rebuild with the
-	// opaque "copy events: no such column: stream_id". This is NOT dead code just
-	// because both stores now use distinct table names — pre-#733 databases in the
-	// wild still carry the old name, and the read model only renames itself when it
-	// is opened. Do not remove it.
-	ownedByReadModel, err := eventsTableBelongsToReadModel(s.db)
-	if err != nil {
-		return err
-	}
-	if ownedByReadModel {
-		return ErrReadModelEventsTable
-	}
-
-	s.migrateBranchID(mainBranch)
-	if err := s.migrateCompositeVersionKey(mainBranch); err != nil {
-		return err
-	}
-
-	// #nosec G201 -- mainBranch is a constant UUID literal, not user input.
-	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
-	_, err = s.db.Exec(fmt.Sprintf(`
-		CREATE TABLE IF NOT EXISTS streams (
-			id TEXT PRIMARY KEY,
-			type TEXT NOT NULL,
-			created_at TEXT NOT NULL DEFAULT (datetime('now')),
-			metadata TEXT
-		);
-
-		%[1]s;
-
-		%[2]s
-	`, eventsTableDDL("IF NOT EXISTS events", mainBranch), eventsIndexDDL))
-	return err
-}
-
-// eventsTableDDL returns the CREATE TABLE statement for the events table.
-// target is the name clause — "IF NOT EXISTS events" for the fresh create,
-// "events_new" for the legacy rebuild — so both paths share one definition and
-// cannot drift.
-func eventsTableDDL(target, mainBranch string) string {
-	// #nosec G201 -- target is a package-internal literal and mainBranch is a
-	// constant UUID literal; neither is user input.
-	return fmt.Sprintf(`
-		CREATE TABLE %[1]s (
-			id TEXT PRIMARY KEY,
-			stream_id TEXT NOT NULL,
-			stream_type TEXT NOT NULL,
-			branch_id TEXT NOT NULL DEFAULT '%[2]s',
-			version INTEGER NOT NULL,
-			event_type TEXT NOT NULL,
-			data TEXT NOT NULL,
-			metadata TEXT,
-			timestamp TEXT NOT NULL,
-			position INTEGER NOT NULL,
-			FOREIGN KEY (stream_id) REFERENCES streams(id),
-			UNIQUE(stream_id, branch_id, version)
-		)`, target, mainBranch)
-}
-
-// eventsIndexDDL is the full index set for the events table. The rebuild
-// recreates it verbatim because DROP TABLE takes the original indexes with it.
-const eventsIndexDDL = `
-	CREATE INDEX IF NOT EXISTS idx_events_stream_branch_version ON events(stream_id, branch_id, version);
-	CREATE INDEX IF NOT EXISTS idx_events_position ON events(position);
-	CREATE INDEX IF NOT EXISTS idx_events_event_type ON events(event_type, timestamp);
-	CREATE INDEX IF NOT EXISTS idx_events_timestamp_position ON events(timestamp, position);
-	CREATE INDEX IF NOT EXISTS idx_events_branch_julian_position ON events(branch_id, julianday(timestamp), position, event_type);
-	CREATE INDEX IF NOT EXISTS idx_events_julian_position_branch ON events(julianday(timestamp), position, branch_id, event_type);
-	CREATE INDEX IF NOT EXISTS idx_events_branch ON events(branch_id);
-	CREATE INDEX IF NOT EXISTS idx_events_stream_branch ON events(stream_id, branch_id);
-`
-
-// migrateBranchID adds the branch_id column to a pre-existing events table.
-// SQLite lacks ADD COLUMN IF NOT EXISTS, so the duplicate-column error on
-// already-migrated databases is intentionally swallowed.
-func (s *EventStore) migrateBranchID(mainBranch string) {
-	// #nosec G201 -- mainBranch is a constant UUID literal, not user input.
-	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
-	_, _ = s.db.Exec(fmt.Sprintf(
-		"ALTER TABLE events ADD COLUMN branch_id TEXT NOT NULL DEFAULT '%s'", mainBranch))
-}
-
-// migrateCompositeVersionKey upgrades a legacy events table whose UNIQUE
-// constraint is (stream_id, version) to (stream_id, branch_id, version), so
-// optimistic versioning is per-branch (ADR-005). SQLite cannot alter a table
-// constraint, so this runs the standard 12-step rebuild. Fresh databases (no
-// events table) and already-composite ones are left untouched. This is a
-// one-time in-place migration of the source of truth: it verifies the row count
-// and preserves every position and id, and any failure rolls back and surfaces
-// as an error from NewEventStore rather than leaving a half-migrated database.
-func (s *EventStore) migrateCompositeVersionKey(mainBranch string) error {
-	legacy, err := s.hasLegacyVersionKey()
-	if err != nil {
-		return err
-	}
-	if !legacy {
-		return nil
-	}
-
-	slog.Info("rebuilding sqlite events table for per-branch versioning (ADR-005): UNIQUE(stream_id, version) -> UNIQUE(stream_id, branch_id, version)")
-
-	// PRAGMA foreign_keys is a no-op inside a transaction, so it is toggled on the
-	// connection first. OpenDB caps the pool at one connection, so this reaches the
-	// same connection the rebuild transaction runs on.
-	if _, err := s.db.Exec("PRAGMA foreign_keys = OFF"); err != nil {
-		return fmt.Errorf("disable foreign keys for events rebuild: %w", err)
-	}
-	defer func() { _, _ = s.db.Exec("PRAGMA foreign_keys = ON") }()
-
-	if err := s.rebuildEventsTable(mainBranch); err != nil {
-		return fmt.Errorf("rebuild events table for per-branch versioning: %w", err)
-	}
-	return nil
-}
-
-// hasLegacyVersionKey reports whether the stored events DDL predates the
-// composite UNIQUE(stream_id, branch_id, version) constraint. sqlite_master
-// holds the CREATE statement verbatim, so the match is made against a
-// whitespace- and case-normalized copy. A missing events table (fresh database)
-// is not legacy.
-func (s *EventStore) hasLegacyVersionKey() (bool, error) {
-	var ddl string
-	err := s.db.QueryRow(
-		"SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'events'").Scan(&ddl)
-	if errors.Is(err, sql.ErrNoRows) {
-		return false, nil
-	}
-	if err != nil {
-		return false, fmt.Errorf("inspect events schema: %w", err)
-	}
-
-	normalized := strings.ToLower(strings.Join(strings.Fields(ddl), ""))
-	return !strings.Contains(normalized, "unique(stream_id,branch_id,version)"), nil
-}
-
-// rebuildEventsTable performs the copy/drop/rename rebuild in one transaction.
-func (s *EventStore) rebuildEventsTable(mainBranch string) error {
-	tx, err := s.db.Begin()
-	if err != nil {
-		return fmt.Errorf("begin transaction: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	var before int64
-	if err := tx.QueryRow("SELECT COUNT(*) FROM events").Scan(&before); err != nil {
-		return fmt.Errorf("count events: %w", err)
-	}
-
-	if _, err := tx.Exec(eventsTableDDL("events_new", mainBranch)); err != nil {
-		return fmt.Errorf("create events_new: %w", err)
-	}
-
-	// Explicit column lists: every position and id value is carried over as-is.
-	if _, err := tx.Exec(`
-		INSERT INTO events_new (id, stream_id, stream_type, branch_id, version, event_type, data, metadata, timestamp, position)
-		SELECT id, stream_id, stream_type, branch_id, version, event_type, data, metadata, timestamp, position FROM events
-	`); err != nil {
-		return fmt.Errorf("copy events: %w", err)
-	}
-
-	var after int64
-	if err := tx.QueryRow("SELECT COUNT(*) FROM events_new").Scan(&after); err != nil {
-		return fmt.Errorf("count copied events: %w", err)
-	}
-	if after != before {
-		return fmt.Errorf("copied %d of %d events", after, before)
-	}
-
-	if _, err := tx.Exec("DROP TABLE events"); err != nil {
-		return fmt.Errorf("drop legacy events: %w", err)
-	}
-	if _, err := tx.Exec("ALTER TABLE events_new RENAME TO events"); err != nil {
-		return fmt.Errorf("rename events_new: %w", err)
-	}
-	if _, err := tx.Exec(eventsIndexDDL); err != nil {
-		return fmt.Errorf("recreate indexes: %w", err)
-	}
-
-	return tx.Commit()
+	return &EventStore{db: db}, nil
 }
 
 // Append adds events to a stream with optimistic concurrency control.

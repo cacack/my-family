@@ -10,9 +10,12 @@
 //
 // Every SQL backend keeps all six stores (event log, read model, snapshots,
 // branch registry, settings, accounts) in ONE database, which is the only topology the config
-// surface can express (DB-006). Each store runs its own DDL/migrations when it
-// is constructed, so opening the stores also brings the schema up to date. A
-// server's Open then refuses a read model stamped with another schema version
+// surface can express (DB-006). Opening the stores also brings the schema up to
+// date: the tables a rebuild does not re-create (event log, accounts,
+// settings) by numbered migrations, applied automatically, and a database a
+// newer release migrated is refused before anything is touched (ADR-011); the
+// read model and registries by the DDL each store runs when it is constructed.
+// A server's Open then refuses a read model stamped with another schema version
 // than this binary's, and asks for `myfamily rebuild` (#680, ADR-006).
 //
 // There is deliberately no silent fallback: if the selected backend cannot be
@@ -223,6 +226,7 @@ func OpenSQLite(path string, access Access) (*Stores, error) {
 	// its old `events` table to `life_events`, which the event store otherwise
 	// refuses to touch (sqlite.ErrReadModelEventsTable).
 	return build(BackendSQLite, path, db, lock, access,
+		sqlite.NewStoreMigrator,
 		func(db *sql.DB) (repository.ReadModelStore, error) { return sqlite.NewReadModelStore(db) },
 		func(db *sql.DB) (repository.EventStore, error) { return sqlite.NewEventStore(db) },
 		func(db *sql.DB) (repository.SnapshotStore, error) { return sqlite.NewSnapshotStore(db) },
@@ -278,6 +282,7 @@ func OpenPostgres(connStr string, access Access) (*Stores, error) {
 	}
 	// Read model first, for the same pre-#733 reason as SQLite.
 	return build(BackendPostgres, location, db, lock, access,
+		postgres.NewStoreMigrator,
 		func(db *sql.DB) (repository.ReadModelStore, error) { return postgres.NewReadModelStore(db) },
 		func(db *sql.DB) (repository.EventStore, error) { return postgres.NewEventStore(db) },
 		func(db *sql.DB) (repository.SnapshotStore, error) { return postgres.NewSnapshotStore(db) },
@@ -315,16 +320,21 @@ func lockPostgres(connStr string, access Access) (*sql.DB, dbLock, string, error
 	return db, lock, location, nil
 }
 
-// build constructs the five stores over db in a fixed order (read model first)
-// and closes db and releases lock if any construction fails, so a failed Open
-// leaks nothing. For AccessServe it then refuses a read model whose schema
-// version is not this binary's (repository.CheckReadModelSchema).
+// build constructs the stores over db in a fixed order and closes db and
+// releases lock if any step fails, so a failed Open leaks nothing. It first
+// refuses a store schema newer than this binary's (repository.ErrStoreSchemaNewer),
+// for every access, before anything is constructed. The read model comes next,
+// because on a pre-#733 database it renames its old `events` table out of the
+// event log's way (DB-007); then the store migrations run, and the other
+// stores are constructed. For AccessServe it then refuses a read model whose
+// schema version is not this binary's (repository.CheckReadModelSchema).
 func build(
 	backend Backend,
 	location string,
 	db *sql.DB,
 	lock dbLock,
 	access Access,
+	newMigrator func(*sql.DB) *repository.StoreMigrator,
 	newReadModel func(*sql.DB) (repository.ReadModelStore, error),
 	newEvents func(*sql.DB) (repository.EventStore, error),
 	newSnapshots func(*sql.DB) (repository.SnapshotStore, error),
@@ -339,9 +349,17 @@ func build(
 			s.Close(),
 		)
 	}
+	ctx := context.Background()
+	migrator := newMigrator(db)
+	if err := migrator.Check(ctx); err != nil {
+		return nil, errors.Join(err, s.Close())
+	}
 	var err error
 	if s.ReadModel, err = newReadModel(db); err != nil {
 		return fail("read model", err)
+	}
+	if err := migrator.Run(ctx); err != nil {
+		return nil, errors.Join(fmt.Errorf("migrate %s store schema: %w", backend, err), s.Close())
 	}
 	if s.Events, err = newEvents(db); err != nil {
 		return fail("event", err)
@@ -362,7 +380,7 @@ func build(
 	// might not be able to read or write; the rebuild is what fixes that, so
 	// it is not checked (#680).
 	if access == AccessServe {
-		if err := repository.CheckReadModelSchema(context.Background(), s.Events, s.ReadModel); err != nil {
+		if err := repository.CheckReadModelSchema(ctx, s.Events, s.ReadModel); err != nil {
 			return nil, errors.Join(err, s.Close())
 		}
 	}

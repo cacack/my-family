@@ -1,6 +1,7 @@
 package sqlite
 
 import (
+	"context"
 	"database/sql"
 	"database/sql/driver"
 	"fmt"
@@ -100,7 +101,7 @@ func OpenDB(path string) (*sql.DB, error) {
 // eventsTableBelongsToReadModel reports whether an existing `events` table is the
 // read model's pre-#733 life-fact table rather than the event log's. Only the read
 // model's table carries an owner_type column, so that column is the discriminator —
-// and this function is its single home, shared by EventStore.createTables (which
+// and this function is its single home, shared by the store schema baseline (which
 // refuses such a database) and ReadModelStore.renameLegacyEventsTable (which renames
 // it). Both stores must agree on who owns the name, so the probe must not be
 // duplicated.
@@ -108,14 +109,36 @@ func OpenDB(path string) (*sql.DB, error) {
 // pragma_table_info yields no rows for a table that does not exist, so a database
 // with no `events` table at all reports (false, nil). A query error is returned, never
 // swallowed: a failed probe must not be read as "not the read model's table".
-func eventsTableBelongsToReadModel(db *sql.DB) (bool, error) {
+func eventsTableBelongsToReadModel(ctx context.Context, q repository.RowQuerier) (bool, error) {
 	var ownerTypeCols int
-	if err := db.QueryRow(
+	if err := q.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM pragma_table_info('events') WHERE name = 'owner_type'`,
 	).Scan(&ownerTypeCols); err != nil {
 		return false, fmt.Errorf("inspect events table ownership: %w", err)
 	}
 	return ownerTypeCols > 0, nil
+}
+
+// addColumn adds a column, given as "name type ...", to table unless the
+// table already has it. SQLite has no ADD COLUMN IF NOT EXISTS, so the column
+// is looked up first instead of discarding a failed ALTER: a locked database
+// or a typo fails the same way a duplicate column does (ADR-011 §5).
+func addColumn(db *sql.DB, table, column, definition string) error {
+	var present int
+	if err := db.QueryRow(
+		`SELECT COUNT(*) FROM pragma_table_info(?) WHERE name = ?`, table, column,
+	).Scan(&present); err != nil {
+		return fmt.Errorf("inspect %s table: %w", table, err)
+	}
+	if present > 0 {
+		return nil
+	}
+	// #nosec G202 -- table, column and definition are package-internal literals.
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	if _, err := db.Exec(`ALTER TABLE ` + table + ` ADD COLUMN ` + column + ` ` + definition); err != nil {
+		return fmt.Errorf("add %s.%s: %w", table, column, err)
+	}
+	return nil
 }
 
 // parseTimestamp parses an ISO 8601 timestamp string.

@@ -49,32 +49,12 @@ func (s *SnapshotStore) createTables() error {
 	`); err != nil {
 		return err
 	}
-	if err := s.migrateBranchID(); err != nil {
+	// Added by #839.
+	if err := addColumn(s.db, "snapshots", "branch_id", "TEXT NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000'"); err != nil {
 		return err
 	}
 	_, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_snapshots_branch_created_at ON snapshots(branch_id, created_at DESC)`)
 	return err
-}
-
-// migrateBranchID adds the branch_id column to a snapshots table created before
-// #839. SQLite has no ADD COLUMN IF NOT EXISTS, so the column's presence is
-// checked first rather than swallowing a duplicate-column error.
-func (s *SnapshotStore) migrateBranchID() error {
-	var present int
-	if err := s.db.QueryRow(
-		`SELECT COUNT(*) FROM pragma_table_info('snapshots') WHERE name = 'branch_id'`,
-	).Scan(&present); err != nil {
-		return fmt.Errorf("inspect snapshots table: %w", err)
-	}
-	if present > 0 {
-		return nil
-	}
-	if _, err := s.db.Exec(
-		`ALTER TABLE snapshots ADD COLUMN branch_id TEXT NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000'`,
-	); err != nil {
-		return fmt.Errorf("add snapshots.branch_id: %w", err)
-	}
-	return nil
 }
 
 // Create stores a new snapshot.

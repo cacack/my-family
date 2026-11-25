@@ -38,7 +38,9 @@ var ErrReadModelEventsTable = errors.New(
 	`the "events" table in this database belongs to the read model (pre-#733 schema), not the event log; ` +
 		`open the read model store first so it renames itself to "life_events", then reopen the event store (see issue #733)`)
 
-// NewEventStore creates a new PostgreSQL event store.
+// NewEventStore creates a new PostgreSQL event store, first bringing the store
+// schema up to date (ADR-011): the event log's tables are migrated, not created
+// here.
 //
 // It can fail at construction. On a pre-#733 database — one whose `events` table is
 // still the read model's life-fact table — it returns ErrReadModelEventsTable without
@@ -46,88 +48,10 @@ var ErrReadModelEventsTable = errors.New(
 // (NewReadModelStore renames its table to `life_events`), then call this. On a fresh
 // or already-migrated database the construction order does not matter.
 func NewEventStore(db *sql.DB) (*EventStore, error) {
-	store := &EventStore{db: db}
-	if err := store.createTables(); err != nil {
+	if err := migrateStoreSchema(db); err != nil {
 		return nil, fmt.Errorf("failed to create tables: %w", err)
 	}
-	return store, nil
-}
-
-// createTables creates the event store schema if it doesn't exist.
-// The events table carries a branch_id envelope column and versions events per
-// (stream_id, branch_id) (ADR-005); existing databases are migrated in place —
-// an idempotent ADD COLUMN backfills rows to MainBranchID through the column
-// default, and the per-stream UNIQUE constraint/index is swapped for the
-// composite one. Uniqueness lives in idx_events_stream_branch_version rather
-// than a table constraint so the fresh and upgraded paths converge on exactly
-// one mechanism.
-func (s *EventStore) createTables() error {
-	// DO NOT REMOVE: this guard looks like dead code on a current database, but it
-	// is what keeps a pre-#733 database from being handled blind. Before #733 the
-	// read model also owned a table named events, and ADR-002 puts both stores in
-	// one database. Against that table every statement below aims at the wrong
-	// relation: CREATE TABLE IF NOT EXISTS no-ops, ALTER TABLE ... ADD COLUMN
-	// branch_id would land on the read model's table, and the composite index
-	// finally fails on the missing stream_id with an unreadable "column stream_id
-	// does not exist". Only the implicit transaction around a multi-statement Exec
-	// rolls the ADD COLUMN back — split this batch and the read model's table is
-	// mutated for real. The event log must not migrate a table it does not own, so
-	// refuse with a diagnosable error instead;
-	// ReadModelStore.renameLegacyEventsTable is the mirror of this check and owns
-	// the actual rename; both sides share one discriminator probe
-	// (eventsTableBelongsToReadModel) so they can never disagree about who owns
-	// the name — or about which schema they are asking about.
-	ownedByReadModel, err := eventsTableBelongsToReadModel(s.db)
-	if err != nil {
-		return err
-	}
-	if ownedByReadModel {
-		return ErrReadModelEventsTable
-	}
-
-	// #nosec G201 -- mainBranch is a constant UUID literal, not user input.
-	mainBranch := domain.MainBranchID.String()
-	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
-	_, err = s.db.Exec(fmt.Sprintf(`
-		CREATE TABLE IF NOT EXISTS streams (
-			id UUID PRIMARY KEY,
-			type VARCHAR(50) NOT NULL,
-			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-			metadata JSONB
-		);
-
-		CREATE TABLE IF NOT EXISTS events (
-			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-			stream_id UUID NOT NULL REFERENCES streams(id),
-			stream_type VARCHAR(50) NOT NULL,
-			branch_id UUID NOT NULL DEFAULT '%[1]s',
-			version BIGINT NOT NULL,
-			event_type VARCHAR(100) NOT NULL,
-			data JSONB NOT NULL,
-			metadata JSONB,
-			timestamp TIMESTAMPTZ NOT NULL,
-			position BIGSERIAL UNIQUE
-		);
-
-		ALTER TABLE events ADD COLUMN IF NOT EXISTS branch_id UUID NOT NULL DEFAULT '%[1]s';
-
-		-- Per-branch versioning (ADR-005): drop the pre-branch per-stream uniqueness.
-		-- events_stream_id_version_key is the name Postgres auto-generated for the
-		-- table-level UNIQUE(stream_id, version); idx_events_stream_version was its
-		-- companion lookup index. Both are superseded by the composite unique index
-		-- below. CREATE INDEX IF NOT EXISTS cannot redefine an existing index, hence
-		-- the explicit DROP of the old one plus a new name; both are no-ops once done.
-		ALTER TABLE events DROP CONSTRAINT IF EXISTS events_stream_id_version_key;
-		DROP INDEX IF EXISTS idx_events_stream_version;
-		CREATE UNIQUE INDEX IF NOT EXISTS idx_events_stream_branch_version ON events(stream_id, branch_id, version);
-
-		CREATE INDEX IF NOT EXISTS idx_events_position ON events(position);
-		CREATE INDEX IF NOT EXISTS idx_events_event_type ON events(event_type, timestamp);
-		CREATE INDEX IF NOT EXISTS idx_events_timestamp_position ON events(timestamp, position);
-		CREATE INDEX IF NOT EXISTS idx_events_branch ON events(branch_id);
-		CREATE INDEX IF NOT EXISTS idx_events_stream_branch ON events(stream_id, branch_id);
-	`, mainBranch))
-	return err
+	return &EventStore{db: db}, nil
 }
 
 // Append adds events to a stream with optimistic concurrency control.
