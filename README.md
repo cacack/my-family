@@ -363,9 +363,11 @@ no C toolchain.
 `DATABASE_URL` / `SQLITE_PATH` as the server, on SQLite or PostgreSQL. The server keeps running
 while it is written: the backup reads one consistent snapshot of the database and changes
 nothing. It never overwrites an existing file. It refuses while `myfamily rebuild` runs, and
-refuses a database it could not copy whole, naming the fix: one from before the read model's
-version stamp, which needs `myfamily rebuild` first, or one whose tables an older release last
-shaped, which needs this release's `myfamily serve` started once. The owner can download the same
+refuses a database it could not copy whole, naming the fix: one whose read model holds values
+the event log lacks (coordinates, EXIDs, brick walls or snapshots an older release kept only
+there) or predates the read model's version stamp, which needs `myfamily rebuild` first; one whose
+tables an older release last shaped, which needs this release's `myfamily serve` started once; or
+one a newer release migrated, which needs that release. The owner can download the same
 file from the Settings page (`GET /api/v1/backup`).
 
 The archive holds the event log, which includes every media file, and the accounts and settings

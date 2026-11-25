@@ -149,3 +149,13 @@ func (s *ReadModelStore) ClearRebuildState(ctx context.Context) error {
 	}
 	return nil
 }
+
+// ReadOnlyStores returns the event, read-model, branch and snapshot stores
+// over db without the DDL and migrations their constructors run, for a reader
+// that must write nothing: the backup, which checks with
+// repository.PendingBackfills for values only the read model holds (ADR-010
+// §6). Only their reads may be used: writes are unsupported, since no DDL
+// has checked the tables they would write to.
+func ReadOnlyStores(db *sql.DB) (*EventStore, *ReadModelStore, *BranchStore, *SnapshotStore) {
+	return &EventStore{db: db}, &ReadModelStore{db: db}, &BranchStore{db: db}, &SnapshotStore{db: db}
+}

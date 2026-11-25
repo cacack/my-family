@@ -233,14 +233,20 @@ An archive from an older release restores into a newer one:
 Option 3B: one read snapshot. The backup takes the shared lock (`storage.AccessServe`, as `serve`
 does, not the exclusive lock of `rebuild`) but does not construct the stores as `storage.Open`
 does: it runs none of their schema DDL and not the read-model version check, so it writes nothing
-and still works on a database whose read model awaits a `rebuild`. It reads the log and every
+and still works on a database whose read model awaits a `rebuild`, as long as this release can
+read the values below from that read model. It reads the log and every
 carried table inside one read transaction, and records the highest position that snapshot holds as `last_position`. The log is
 append-only, so nothing the snapshot sees changes underneath it.
 
 Older databases hold a few values only in the read model, which `rebuild` logs before it replays:
 coordinates and EXIDs imported before #1225, brick walls marked before #802, snapshots created
 before #624. A backup of such a database would lose them, so the backup checks for them and refuses,
-naming `myfamily rebuild` (which logs them once, for good). The backup itself stays read-only.
+naming `myfamily rebuild` (which logs them once, for good). The check is the rebuild's own rule
+(`repository.PendingBackfills`), read through stores built without their DDL, and runs just before
+the read transaction (#1822). It looks for the values themselves rather than trusting the
+read-model version stamp, since a release from before the stamp can write to a stamped database
+after a downgrade. A read model this release cannot read fails the check, with an error that
+suggests `myfamily rebuild` if the read model awaits one. The backup itself stays read-only.
 
 ### 7. The app does not encrypt the archive
 

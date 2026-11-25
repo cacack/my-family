@@ -282,6 +282,68 @@ func TestStoreMigrations_RefusesNewerDatabase(t *testing.T) {
 	}
 }
 
+// TestStoreMigrations_CheckCurrent: the backup accepts only this binary's
+// last migration, and an unstamped database only while the list holds just
+// the baseline (ADR-011 §4). It only reads.
+func TestStoreMigrations_CheckCurrent(t *testing.T) {
+	ctx := context.Background()
+	extra := repository.StoreMigration{Name: "extra", Apply: func(context.Context, *sql.Tx) error { return nil }}
+	for _, tt := range []struct {
+		name    string
+		stamp   string // run on a database at the baseline; "" keeps it there
+		extra   bool   // the binary knows one migration after the baseline
+		refused []string
+		newer   bool
+	}{
+		{name: "current"},
+		{name: "unstamped, baseline only", stamp: `DROP TABLE store_schema`},
+		{name: "unstamped row, baseline only", stamp: `UPDATE store_schema SET version = 0, name = ''`},
+		{name: "older", extra: true, refused: []string{"version 1 (baseline)", "this binary's is 2 (extra)", "myfamily serve"}},
+		{name: "unstamped, later migrations", stamp: `DROP TABLE store_schema`, extra: true,
+			refused: []string{"version 0 (none)", "this binary's is 2 (extra)"}},
+		{name: "newer", stamp: `UPDATE store_schema SET version = 7, name = 'from_the_future'`,
+			refused: []string{"version 7 (from_the_future)", "up to 1 (baseline)"}, newer: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			db, _ := openStoreSchemaDB(t)
+			if err := sqlite.NewStoreMigrator(db).Run(ctx); err != nil {
+				t.Fatalf("baseline: %v", err)
+			}
+			if tt.stamp != "" {
+				if _, err := db.Exec(tt.stamp); err != nil {
+					t.Fatalf("stamp: %v", err)
+				}
+			}
+			before := dumpDatabase(t, db)
+			m := sqlite.NewStoreMigrator(db)
+			if tt.extra {
+				m, _ = migratorWith(db, extra)
+			}
+			err := m.CheckCurrent(ctx)
+			if tt.refused == nil {
+				if err != nil {
+					t.Fatalf("CheckCurrent: %v", err)
+				}
+			} else {
+				if err == nil {
+					t.Fatal("CheckCurrent: want a refusal")
+				}
+				for _, want := range tt.refused {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("error %q does not say %q", err, want)
+					}
+				}
+				if errors.Is(err, repository.ErrStoreSchemaNewer) != tt.newer {
+					t.Errorf("errors.Is(%v, ErrStoreSchemaNewer) = %v, want %v", err, !tt.newer, tt.newer)
+				}
+			}
+			if after := dumpDatabase(t, db); after != before {
+				t.Errorf("CheckCurrent changed the database:\n before: %s\n after:  %s", before, after)
+			}
+		})
+	}
+}
+
 func TestStoreMigrations_NoStampTableIsVersionZero(t *testing.T) {
 	db, _ := openStoreSchemaDB(t)
 	if err := sqlite.NewStoreMigrator(db).Check(context.Background()); err != nil {

@@ -126,30 +126,18 @@ func RebuildReadModel(ctx context.Context, events EventStore, rs ReadModelStore,
 	if err := checkLogDecodes(ctx, events); err != nil {
 		return result, err
 	}
-	backfilled, err := backfillImportedValues(ctx, events, rs, branches)
-	result.Backfilled = backfilled
-	if err != nil {
-		return result, fmt.Errorf("log imported coordinates and EXIDs: %w", err)
-	}
-	kept, err := loadBrickWalls(ctx, rs)
+	pending, err := PendingBackfills(ctx, events, rs, branches, snapshots)
 	if err != nil {
 		return result, err
 	}
-	walls, err := backfillBrickWalls(ctx, events, rs, kept)
-	result.BackfilledBrickWalls = walls
-	if err != nil {
-		return result, fmt.Errorf("log brick walls: %w", err)
-	}
-	snaps, err := backfillSnapshots(ctx, events, snapshots)
-	result.BackfilledSnapshots = snaps
-	if err != nil {
-		return result, fmt.Errorf("log snapshots: %w", err)
+	if err := appendBackfills(ctx, events, rs, branches, pending, &result); err != nil {
+		return result, err
 	}
 	importedBefore, err := countImportedValues(ctx, rs)
 	if err != nil {
 		return result, fmt.Errorf("count coordinates and EXIDs: %w", err)
 	}
-	state, err := json.Marshal(kept)
+	state, err := json.Marshal(pending.kept)
 	if err != nil {
 		return result, fmt.Errorf("encode rebuild state: %w", err)
 	}
@@ -283,78 +271,174 @@ func loadBrickWalls(ctx context.Context, rs ReadModelStore) (*rebuildState, erro
 	return kept, nil
 }
 
-// backfillBrickWalls appends a BrickWallBackfilled event to the main stream of
-// each person whose kept brick wall that
-// stream does not carry, and returns how many it appended (#802). A stream
-// that carries any brick-wall event already states the person's status, as
-// each such event states it whole. A person with no main stream is skipped.
-// Every append is durable on its own, so an interrupted backfill is finished
-// by the next rebuild.
-func backfillBrickWalls(ctx context.Context, events EventStore, rs ReadModelStore, kept *rebuildState) (int, error) {
-	projector := NewProjector(rs, nil)
-	appended := 0
-	for id, bw := range kept.BrickWalls {
-		version, carried, err := mainStreamCarriesBrickWall(ctx, events, id)
-		if err != nil {
-			return appended, err
-		}
-		if carried || version == 0 {
-			continue
-		}
-		event := domain.BrickWallBackfilled{BaseEvent: domain.NewBaseEvent(), PersonID: id, Note: bw.Note, Since: *bw.Since, ResolvedAt: bw.ResolvedAt}
-		if err := events.Append(ctx, id, "Person", []domain.Event{event}, version, MainScope); err != nil {
-			return appended, fmt.Errorf("append brick wall for person %s: %w", id, err)
-		}
-		appended++
-		if err := projector.Project(ctx, event, version+1, domain.MainBranchID); err != nil {
-			ReportProjectionFailure(ctx, rs, event, version+1, domain.MainBranchID, err)
-		}
-	}
-	if appended > 0 {
-		slog.Info("logged brick walls that were set before brick walls were kept in the event log", "persons", appended)
-	}
-	return appended, nil
-}
-
 // snapshotStreamType is the stream type of a snapshot's own stream; it matches
 // the command package's.
 const snapshotStreamType = "snapshot"
 
-// backfillSnapshots appends a SnapshotCreated event to the stream of each
-// mainline snapshot whose stream is empty, and returns how many it appended
-// (#680). Only a snapshot created before #624 has no event, and every snapshot
-// was a mainline one until #839. The event keeps the snapshot's original
-// creation time, so the replay re-projects the same registry row. Every append
-// is durable on its own, so an interrupted backfill is finished by the next
-// rebuild.
-func backfillSnapshots(ctx context.Context, events EventStore, snapshots SnapshotStore) (int, error) {
-	if snapshots == nil {
-		return 0, nil
+// Backfills is what only the read model and the snapshot registry hold, so
+// that a rebuild must log it before its reset and a backup, which carries the
+// log, would lose it (ADR-010 §6): coordinates and EXIDs imported before
+// #1225, brick walls marked before #802, snapshots created before #624.
+// PendingBackfills decides it; RebuildReadModel logs it, and the backup
+// refuses a database that holds any.
+type Backfills struct {
+	// ImportedValues holds one event per entity whose coordinates or EXIDs its
+	// main stream does not carry (#1251, #1255).
+	ImportedValues []domain.ImportedValuesBackfilled
+	// BrickWalls holds one event per person whose brick wall its main stream
+	// does not carry (#802).
+	BrickWalls []domain.BrickWallBackfilled
+	// Snapshots holds the mainline snapshots with no event behind them (#680).
+	Snapshots []*domain.Snapshot
+	// kept is the brick walls a rebuild saves as its state before the reset.
+	kept *rebuildState
+}
+
+// Len is how many events logging the backfills would append.
+func (b *Backfills) Len() int {
+	return len(b.ImportedValues) + len(b.BrickWalls) + len(b.Snapshots)
+}
+
+// PendingBackfills returns what the read model and the snapshot registry hold
+// that no event records. It only reads. The events it returns have no
+// BaseEvent yet: logging them gives each its own.
+func PendingBackfills(ctx context.Context, events EventStore, rs ReadModelStore, branches BranchStore, snapshots SnapshotStore) (*Backfills, error) {
+	var b Backfills
+	var err error
+	if b.ImportedValues, err = pendingImportedValues(ctx, events, rs, branches); err != nil {
+		return nil, fmt.Errorf("find imported coordinates and EXIDs to log: %w", err)
 	}
-	list, err := snapshots.List(ctx, domain.MainBranchID)
-	if err != nil {
-		return 0, fmt.Errorf("list snapshots: %w", err)
+	if b.kept, err = loadBrickWalls(ctx, rs); err != nil {
+		return nil, err
 	}
-	appended := 0
-	for _, snap := range list {
-		stored, err := events.ReadStream(ctx, snap.ID)
-		if err != nil {
-			return appended, fmt.Errorf("read stream %s: %w", snap.ID, err)
+	if b.BrickWalls, err = pendingBrickWalls(ctx, events, b.kept); err != nil {
+		return nil, fmt.Errorf("find brick walls to log: %w", err)
+	}
+	if b.Snapshots, err = pendingSnapshots(ctx, events, snapshots); err != nil {
+		return nil, fmt.Errorf("find snapshots to log: %w", err)
+	}
+	return &b, nil
+}
+
+// appendBackfills logs pending and counts what it appends in result. Each
+// backfill on an entity's stream is projected as soon as it is appended, so
+// the row's version follows its stream even if the rebuild stops before its
+// reset. Every append is durable on its own, so an interrupted backfill is
+// finished by the next rebuild.
+func appendBackfills(ctx context.Context, events EventStore, rs ReadModelStore, branches BranchStore, pending *Backfills, result *RebuildResult) error {
+	projector := NewProjector(rs, branches)
+	for _, backfill := range pending.ImportedValues {
+		backfill.BaseEvent = domain.NewBaseEvent()
+		if err := appendProjected(ctx, events, rs, projector, backfill.EntityID, backfillStreamType(backfill.EntityType), backfill); err != nil {
+			return fmt.Errorf("log imported coordinates and EXIDs: append backfill for %s %s: %w", backfill.EntityType, backfill.EntityID, err)
 		}
-		if len(stored) > 0 {
-			continue
+		result.Backfilled++
+	}
+	if result.Backfilled > 0 {
+		slog.Info("logged place coordinates and EXIDs that an import before #1225 left only in the read model",
+			"entities", result.Backfilled)
+	}
+
+	for _, wall := range pending.BrickWalls {
+		wall.BaseEvent = domain.NewBaseEvent()
+		if err := appendProjected(ctx, events, rs, projector, wall.PersonID, "Person", wall); err != nil {
+			return fmt.Errorf("log brick walls: append brick wall for person %s: %w", wall.PersonID, err)
 		}
+		result.BackfilledBrickWalls++
+	}
+	if result.BackfilledBrickWalls > 0 {
+		slog.Info("logged brick walls that were set before brick walls were kept in the event log", "persons", result.BackfilledBrickWalls)
+	}
+
+	// The registry is not reset, so a snapshot's event is not projected here.
+	for _, snap := range pending.Snapshots {
 		event := domain.NewSnapshotCreated(snap)
 		event.Timestamp = snap.CreatedAt
 		if err := events.Append(ctx, snap.ID, snapshotStreamType, []domain.Event{event}, -1, MainScope); err != nil {
-			return appended, fmt.Errorf("append snapshot %s: %w", snap.ID, err)
+			return fmt.Errorf("log snapshots: append snapshot %s: %w", snap.ID, err)
 		}
-		appended++
+		result.BackfilledSnapshots++
 	}
-	if appended > 0 {
-		slog.Info("logged snapshots that were created before snapshots were kept in the event log", "snapshots", appended)
+	if result.BackfilledSnapshots > 0 {
+		slog.Info("logged snapshots that were created before snapshots were kept in the event log", "snapshots", result.BackfilledSnapshots)
 	}
-	return appended, nil
+	return nil
+}
+
+// appendProjected appends event to the end of id's main stream and projects
+// it. The version is read when appending, as an earlier backfill may have
+// appended to the same stream.
+func appendProjected(ctx context.Context, events EventStore, rs ReadModelStore, projector *Projector, id uuid.UUID, streamType string, event domain.Event) error {
+	version, err := mainStreamVersion(ctx, events, id)
+	if err != nil {
+		return err
+	}
+	if err := events.Append(ctx, id, streamType, []domain.Event{event}, version, MainScope); err != nil {
+		return err
+	}
+	if err := projector.Project(ctx, event, version+1, domain.MainBranchID); err != nil {
+		ReportProjectionFailure(ctx, rs, event, version+1, domain.MainBranchID, err)
+	}
+	return nil
+}
+
+// mainStreamVersion returns the version of id's main stream.
+func mainStreamVersion(ctx context.Context, events EventStore, id uuid.UUID) (int64, error) {
+	stored, err := events.ReadStream(ctx, id)
+	if err != nil {
+		return 0, fmt.Errorf("read stream %s: %w", id, err)
+	}
+	var version int64
+	for i := range stored {
+		if stored[i].BranchID.IsMain() {
+			version = max(version, stored[i].Version)
+		}
+	}
+	return version, nil
+}
+
+// pendingBrickWalls returns a BrickWallBackfilled for each person whose kept
+// brick wall their main stream does not carry (#802). A stream that carries
+// any brick-wall event already states the person's status, as each such event
+// states it whole. A person with no main stream is skipped.
+func pendingBrickWalls(ctx context.Context, events EventStore, kept *rebuildState) ([]domain.BrickWallBackfilled, error) {
+	var pending []domain.BrickWallBackfilled
+	for id, bw := range kept.BrickWalls {
+		version, carried, err := mainStreamCarriesBrickWall(ctx, events, id)
+		if err != nil {
+			return nil, err
+		}
+		if carried || version == 0 {
+			continue
+		}
+		pending = append(pending, domain.BrickWallBackfilled{PersonID: id, Note: bw.Note, Since: *bw.Since, ResolvedAt: bw.ResolvedAt})
+	}
+	return pending, nil
+}
+
+// pendingSnapshots returns each mainline snapshot whose stream is empty
+// (#680). Only a snapshot created before #624 has no event, and every
+// snapshot was a mainline one until #839. Its event keeps the snapshot's
+// original creation time, so the replay re-projects the same registry row.
+func pendingSnapshots(ctx context.Context, events EventStore, snapshots SnapshotStore) ([]*domain.Snapshot, error) {
+	if snapshots == nil {
+		return nil, nil
+	}
+	list, err := snapshots.List(ctx, domain.MainBranchID)
+	if err != nil {
+		return nil, fmt.Errorf("list snapshots: %w", err)
+	}
+	var pending []*domain.Snapshot
+	for _, snap := range list {
+		stored, err := events.ReadStream(ctx, snap.ID)
+		if err != nil {
+			return nil, fmt.Errorf("read stream %s: %w", snap.ID, err)
+		}
+		if len(stored) == 0 {
+			pending = append(pending, snap)
+		}
+	}
+	return pending, nil
 }
 
 // mainStreamCarriesBrickWall reads a person's main stream and reports its
@@ -464,62 +548,45 @@ func reportDroppedImported(ctx context.Context, rs ReadModelStore, before int, r
 		"dropped", result.DroppedImported)
 }
 
-// backfillImportedValues appends an ImportedValuesBackfilled event to each
-// main-branch entity whose read model holds coordinates or EXIDs that its
-// main stream does not carry, and to each entity main has deleted whose
-// branch copy holds such coordinates, and returns how many it appended
-// (#1251, #1255).
-// Every append is durable on its own, so an interrupted backfill is finished
-// by the next rebuild.
-func backfillImportedValues(ctx context.Context, events EventStore, rs ReadModelStore, branches BranchStore) (int, error) {
-	pending, err := coordinatesInReadModel(ctx, rs)
+// pendingImportedValues returns an ImportedValuesBackfilled for each
+// main-branch entity whose read model holds coordinates or EXIDs that its main
+// stream does not carry, and for each entity main has deleted whose branch
+// copy holds such coordinates (#1251, #1255). A row with no main stream behind
+// it has nothing to append to; the replay drops it and the recount reports
+// what it held.
+func pendingImportedValues(ctx context.Context, events EventStore, rs ReadModelStore, branches BranchStore) ([]domain.ImportedValuesBackfilled, error) {
+	found, err := coordinatesInReadModel(ctx, rs)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	exids, err := exidsInReadModel(ctx, rs)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-	pending = append(pending, exids...)
+	found = append(found, exids...)
 	deleted, err := coordinatesMainDeleted(ctx, events, rs, branches)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-	pending = append(pending, deleted...)
+	found = append(found, deleted...)
 
-	// Each backfill is projected as soon as it is appended, so the row's
-	// version follows its stream even if the rebuild stops before its reset.
-	projector := NewProjector(rs, branches)
-	appended := 0
-	for _, backfill := range pending {
+	var pending []domain.ImportedValuesBackfilled
+	for _, backfill := range found {
 		version, carried, err := mainStreamCarriesImportedValues(ctx, events, backfill)
 		if err != nil {
-			return appended, err
+			return nil, err
 		}
-		// A row with no main stream behind it has nothing to append to; the
-		// replay drops it and the recount reports what it held.
 		if carried || version == 0 {
 			continue
 		}
 		if backfill.EntityType == domain.BackfillPerson {
 			if backfill.BranchSetCoordinates, err = branchSetCoordinates(ctx, events, backfill.EntityID); err != nil {
-				return appended, err
+				return nil, err
 			}
 		}
-		backfill.BaseEvent = domain.NewBaseEvent()
-		if err := events.Append(ctx, backfill.EntityID, backfillStreamType(backfill.EntityType), []domain.Event{backfill}, version, MainScope); err != nil {
-			return appended, fmt.Errorf("append backfill for %s %s: %w", backfill.EntityType, backfill.EntityID, err)
-		}
-		appended++
-		if err := projector.Project(ctx, backfill, version+1, domain.MainBranchID); err != nil {
-			ReportProjectionFailure(ctx, rs, backfill, version+1, domain.MainBranchID, err)
-		}
+		pending = append(pending, backfill)
 	}
-	if appended > 0 {
-		slog.Info("logged place coordinates and EXIDs that an import before #1225 left only in the read model",
-			"entities", appended)
-	}
-	return appended, nil
+	return pending, nil
 }
 
 // backfillStreamType is the stream type GEDCOM import gave the entity's stream:
@@ -812,13 +879,17 @@ func branchSetCoordinates(ctx context.Context, events EventStore, id uuid.UUID) 
 }
 
 // updatedCoordinateKeys returns the coordinate change keys a person or family
-// update sets or clears (#1604).
+// update sets or clears (#1604), or a person merge resolves onto its survivor,
+// whose stream it lands on (#1799).
 func updatedCoordinateKeys(event domain.Event) []string {
+	personKeys := []string{"birth_place_lat", "birth_place_long", "death_place_lat", "death_place_long"}
 	var changes map[string]any
 	var keys []string
 	switch e := event.(type) {
 	case domain.PersonUpdated:
-		changes, keys = e.Changes, []string{"birth_place_lat", "birth_place_long", "death_place_lat", "death_place_long"}
+		changes, keys = e.Changes, personKeys
+	case domain.PersonMerged:
+		changes, keys = e.ResolvedFields, personKeys
 	case domain.FamilyUpdated:
 		changes, keys = e.Changes, []string{"marriage_place_lat", "marriage_place_long"}
 	}

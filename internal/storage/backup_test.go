@@ -3,13 +3,21 @@ package storage
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/cacack/my-family/internal/backup"
 	"github.com/cacack/my-family/internal/config"
+	"github.com/cacack/my-family/internal/domain"
+	"github.com/cacack/my-family/internal/repository"
+	"github.com/cacack/my-family/internal/repository/sqlite"
 	"github.com/cacack/my-family/internal/testutil/pgtest"
 )
 
@@ -122,5 +130,178 @@ func TestBackup_Memory(t *testing.T) {
 	}
 	if _, err := OpenMemory().Backup(context.Background(), &bytes.Buffer{}, "test"); !errors.Is(err, ErrBackupMemory) {
 		t.Errorf("Stores.Backup = %v, want ErrBackupMemory", err)
+	}
+}
+
+// readModelOnlyValues write, straight to the read model or the snapshot
+// registry, a value no event records, as releases before #680 did (ADR-010
+// §6). Each is given a person created through the server.
+var readModelOnlyValues = []struct {
+	name  string
+	write func(ctx context.Context, s *Stores, person uuid.UUID) error
+}{
+	{"coordinate", func(ctx context.Context, s *Stores, person uuid.UUID) error {
+		p, err := s.ReadModel.GetPerson(ctx, domain.MainBranchID, person)
+		if err != nil {
+			return err
+		}
+		lat := "N1.5"
+		p.BirthPlaceLat = &lat
+		return s.ReadModel.SavePerson(ctx, domain.MainBranchID, p)
+	}},
+	{"exid", func(ctx context.Context, s *Stores, person uuid.UUID) error {
+		return s.ReadModel.ReplacePersonExternalIDs(ctx, domain.MainBranchID, person,
+			[]repository.PersonExternalIDReadModel{{PersonID: person, Value: "P-1"}})
+	}},
+	{"brick wall", func(ctx context.Context, s *Stores, person uuid.UUID) error {
+		p, err := s.ReadModel.GetPerson(ctx, domain.MainBranchID, person)
+		if err != nil {
+			return err
+		}
+		since := time.Date(2020, 3, 1, 12, 0, 0, 0, time.UTC)
+		p.BrickWallNote, p.BrickWallSince = "stuck", &since
+		return s.ReadModel.SavePerson(ctx, domain.MainBranchID, p)
+	}},
+	{"snapshot", func(ctx context.Context, s *Stores, _ uuid.UUID) error {
+		snap, err := domain.NewSnapshot("before #624", "", 1)
+		if err != nil {
+			return err
+		}
+		return s.Snapshots.Create(ctx, snap)
+	}},
+}
+
+// openWithReadModelOnly opens cfg's stamped database, as a server does, and
+// gives it one value only the read model holds.
+func openWithReadModelOnly(t *testing.T, cfg *config.Config, write func(context.Context, *Stores, uuid.UUID) error) *Stores {
+	t.Helper()
+	stores, err := Open(cfg, AccessServe)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	t.Cleanup(func() { _ = stores.Close() })
+	person := uuid.MustParse(createPerson(t, newServer(stores), "Ada", "Legacy"))
+	if err := write(context.Background(), stores, person); err != nil {
+		t.Fatalf("write the read-model-only value: %v", err)
+	}
+	return stores
+}
+
+// assertBackupRefusesReadModelOnly expects both the command's backup and the
+// server's (GET /api/v1/backup) to refuse each read-model-only value of a
+// stamped database for holding it, not for a failed read, naming the rebuild.
+func assertBackupRefusesReadModelOnly(t *testing.T, newConfig func(*testing.T) *config.Config) {
+	for _, v := range readModelOnlyValues {
+		t.Run(v.name, func(t *testing.T) {
+			cfg := newConfig(t)
+			stores := openWithReadModelOnly(t, cfg, v.write)
+			ctx := context.Background()
+			refused := func(err error) bool {
+				return errors.Is(err, ErrReadModelOnlyValues) && strings.Contains(err.Error(), "myfamily rebuild")
+			}
+			if _, err := stores.Backup(ctx, &bytes.Buffer{}, "test"); !refused(err) {
+				t.Errorf("Stores.Backup = %v, want ErrReadModelOnlyValues naming myfamily rebuild", err)
+			}
+			if _, err := Backup(ctx, cfg, &bytes.Buffer{}, "test"); !refused(err) {
+				t.Errorf("Backup = %v, want ErrReadModelOnlyValues naming myfamily rebuild", err)
+			}
+		})
+	}
+}
+
+func TestBackup_SQLiteRefusesReadModelOnlyValues(t *testing.T) {
+	assertBackupRefusesReadModelOnly(t, func(t *testing.T) *config.Config {
+		return &config.Config{SQLitePath: filepath.Join(t.TempDir(), "myfamily.db")}
+	})
+}
+
+func TestBackup_PostgresRefusesReadModelOnlyValues(t *testing.T) {
+	assertBackupRefusesReadModelOnly(t, func(t *testing.T) *config.Config {
+		return &config.Config{DatabaseURL: pgtest.NewDatabase(t)}
+	})
+}
+
+// TestBackup_SQLiteCheckWritesNothing: the backup's checks run no DDL and
+// write nothing, whether they refuse or pass. Closing the last connection
+// checkpoints the WAL, so any write would reach the database file.
+func TestBackup_SQLiteCheckWritesNothing(t *testing.T) {
+	fileSum := func(t *testing.T, path string) [sha256.Size]byte {
+		t.Helper()
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return sha256.Sum256(data)
+	}
+	for _, tt := range []struct {
+		name    string
+		write   func(context.Context, *Stores, uuid.UUID) error
+		refused bool
+	}{
+		{"refused", readModelOnlyValues[0].write, true},
+		{"passed", func(context.Context, *Stores, uuid.UUID) error { return nil }, false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Config{SQLitePath: filepath.Join(t.TempDir(), "myfamily.db")}
+			stores := openWithReadModelOnly(t, cfg, tt.write)
+			if err := stores.Close(); err != nil {
+				t.Fatal(err)
+			}
+			before := fileSum(t, cfg.SQLitePath)
+			_, err := Backup(context.Background(), cfg, &bytes.Buffer{}, "test")
+			if (err != nil) != tt.refused {
+				t.Fatalf("Backup = %v, want refused = %v", err, tt.refused)
+			}
+			if fileSum(t, cfg.SQLitePath) != before {
+				t.Error("the backup changed the database file")
+			}
+		})
+	}
+}
+
+// TestBackup_SQLiteStoreSchemaStamp: the backup refuses a store schema newer
+// than this binary's, naming both versions, and accepts an unstamped database
+// while the binary knows only the baseline (ADR-011 §4). An older stamp is
+// covered by StoreMigrator.CheckCurrent's own test, as this binary has no
+// migration after the baseline yet.
+func TestBackup_SQLiteStoreSchemaStamp(t *testing.T) {
+	for _, tt := range []struct {
+		name, stamp string
+		newer       bool
+	}{
+		{"newer", `UPDATE store_schema SET version = 99, name = 'from_the_future'`, true},
+		{"unstamped", `DROP TABLE store_schema`, false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Config{SQLitePath: filepath.Join(t.TempDir(), "myfamily.db")}
+			stores := openWithReadModelOnly(t, cfg, func(context.Context, *Stores, uuid.UUID) error { return nil })
+			if err := stores.Close(); err != nil {
+				t.Fatal(err)
+			}
+			db, err := sqlite.OpenDB(cfg.SQLitePath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := db.Exec(tt.stamp); err != nil {
+				t.Fatal(err)
+			}
+			_ = db.Close()
+
+			_, err = Backup(context.Background(), cfg, &bytes.Buffer{}, "test")
+			if !tt.newer {
+				if err != nil {
+					t.Errorf("Backup of an unstamped database = %v, want it accepted", err)
+				}
+				return
+			}
+			if !errors.Is(err, repository.ErrStoreSchemaNewer) {
+				t.Fatalf("Backup = %v, want ErrStoreSchemaNewer", err)
+			}
+			for _, want := range []string{"version 99 (from_the_future)", "up to 1 (baseline)"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error %q does not say %q", err, want)
+				}
+			}
+		})
 	}
 }

@@ -101,6 +101,18 @@ func Write(ctx context.Context, db *sql.DB, dialect Dialect, w io.Writer, appVer
 	return manifest, nil
 }
 
+// CheckSource refuses, in a read transaction of its own, a database Write
+// would refuse (checkSource). It lets a caller run those checks before its
+// own, which read tables checkSource has already found in shape.
+func CheckSource(ctx context.Context, db *sql.DB, dialect Dialect) error {
+	tx, err := db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return fmt.Errorf("begin backup read: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	return checkSource(ctx, tx, dialect)
+}
+
 // checkSource refuses a database the archive could not copy whole.
 //
 // Every table must have the columns this release reads. A database an older
@@ -111,8 +123,10 @@ func Write(ctx context.Context, db *sql.DB, dialect Dialect, w io.Writer, appVer
 // may hold values only in its read model: coordinates and EXIDs imported
 // before #1225, brick walls marked before #802, snapshots created before #624
 // (ADR-010 §6). Every release that stamps the read model logs them, and its
-// rebuild logs those left from before, so a stamped database holds them all
-// in its log.
+// rebuild logs those left from before. A stamped database can still hold some,
+// if a release before #680 wrote to it after a downgrade; the storage package
+// checks for them directly (repository.PendingBackfills) before it calls
+// Write.
 func checkSource(ctx context.Context, tx *sql.Tx, dialect Dialect) error {
 	for _, t := range append([]table{eventsTable, streamsTable}, carriedTables...) {
 		names := make([]string, len(t.columns))

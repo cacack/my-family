@@ -319,6 +319,32 @@ func TestWrite_RefusesAnUnstampedLog(t *testing.T) {
 	}
 }
 
+// TestCheckSource: the caller's check before Write refuses what Write would.
+func TestCheckSource(t *testing.T) {
+	for _, b := range backends {
+		t.Run(b.name, func(t *testing.T) {
+			f := b.open(t)
+			seed(t, f)
+			ctx := context.Background()
+			if err := CheckSource(ctx, f.db, f.dialect); err != nil {
+				t.Fatalf("CheckSource on a stamped database: %v", err)
+			}
+			if _, err := f.db.Exec("DELETE FROM read_model_schema"); err != nil {
+				t.Fatal(err)
+			}
+			if err := CheckSource(ctx, f.db, f.dialect); err == nil || !strings.Contains(err.Error(), "myfamily rebuild") {
+				t.Errorf("CheckSource = %v, want a refusal naming myfamily rebuild", err)
+			}
+			if err := f.db.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err := CheckSource(ctx, f.db, f.dialect); err == nil {
+				t.Error("CheckSource on a closed database: want error")
+			}
+		})
+	}
+}
+
 // TestWrite_UnstampedEmptyLog: with no events there is nothing to lose.
 func TestWrite_UnstampedEmptyLog(t *testing.T) {
 	f := openSQLite(t)
