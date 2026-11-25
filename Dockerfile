@@ -35,7 +35,15 @@ COPY --from=frontend-builder /app/web/build ./internal/web/dist
 # The SQLite driver is pure Go, so the image builds without cgo, exactly like
 # the release archives (.goreleaser.yaml); see ADR-002.
 ENV CGO_ENABLED=0
-RUN go build -o myfamily -ldflags="-s -w" ./cmd/myfamily
+# Stamped by the release workflow (release-please.yml publish-image) so a
+# container reports, and records in its backups, the version it runs. A plain
+# `docker compose build` keeps the source-build defaults.
+ARG VERSION=dev
+ARG COMMIT=none
+ARG DATE=unknown
+RUN go build -o myfamily \
+    -ldflags="-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.date=${DATE}" \
+    ./cmd/myfamily
 
 # Runtime stage
 FROM alpine:3.24.4@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf
