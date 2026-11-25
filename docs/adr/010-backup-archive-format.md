@@ -140,7 +140,8 @@ Every table a backend creates falls in one of these groups. The read-model table
 | `read_model_schema` | Bookkeeping | Left out; the restore's replay stamps it (ADR-006) |
 | The migration version stamp of ADR-011 ([#1803](https://github.com/cacack/my-family/issues/1803), [#1816](https://github.com/cacack/my-family/issues/1816)) | Bookkeeping | Left out; restore stamps the binary's version |
 
-A new table must be added to this table, in this ADR, in the same change that creates it.
+A new table must be added to this table, in this ADR, in the same change that creates it. A new
+serial column on a carried table must also be added to restore step 4's sequence reset.
 
 **Secrets.** Nothing outside the database is needed to use what the archive carries. Checked
 against the code:
@@ -165,6 +166,12 @@ owner and starts in setup mode, as an upgraded instance without accounts does to
 
 Because the export is the log, the record fields #1573 documents are the fields of each event
 type, not of read-model rows.
+
+The export is unredacted: it is the raw log, living people and `RESN`-restricted records
+included, and neither redaction choke point of [ADR-008](./008-privacy-model.md) applies to it.
+Producing it is therefore an owner-only operation (`x-min-role: owner`). Opening it to other roles
+needs a redacted variant ([#1528](https://github.com/cacack/my-family/issues/1528)) and is not
+part of this decision.
 
 ### 4. Restore accepts only an empty database
 
@@ -198,8 +205,12 @@ tables/api_tokens.json
 - **`tables/<table>.json`**: one JSON array per carried table, each row an object keyed by column
   name.
 
-Values are logical, not backend-native: times are RFC 3339 strings in UTC, booleans are JSON
-booleans, UUIDs are strings, so a file from SQLite loads into PostgreSQL and the reverse.
+Values are logical, not backend-native: times are RFC 3339 strings in UTC with nanosecond
+precision, booleans are JSON booleans, UUIDs are strings, so a file from SQLite loads into
+PostgreSQL and the reverse. Restore parses each value and writes it through the target backend's
+own encoding, not as a raw column copy: SQLite compares account times as fixed-width text
+(`sessionTimeLayout`, `internal/repository/sqlite/accounts.go`), so a time written there in any
+other form would sort wrongly in the expiry and audit-retention sweeps.
 
 **Integrity.** Verification reads every entry and checks its SHA-256 against the manifest, that
 the manifest lists every entry and the zip holds every listed one, and that `events.ndjson` holds
@@ -219,9 +230,11 @@ An archive from an older release restores into a newer one:
 
 ### 6. A consistent copy while the server writes
 
-Option 3B: one read snapshot. The backup opens the store with shared access (as `serve` does, not
-the exclusive lock of `rebuild`), reads the log and every carried table inside one read
-transaction, and records the highest position that snapshot holds as `last_position`. The log is
+Option 3B: one read snapshot. The backup takes the shared lock (`storage.AccessServe`, as `serve`
+does, not the exclusive lock of `rebuild`) but does not construct the stores as `storage.Open`
+does: it runs none of their schema DDL and not the read-model version check, so it writes nothing
+and still works on a database whose read model awaits a `rebuild`. It reads the log and every
+carried table inside one read transaction, and records the highest position that snapshot holds as `last_position`. The log is
 append-only, so nothing the snapshot sees changes underneath it.
 
 Older databases hold a few values only in the read model, which `rebuild` logs before it replays:
@@ -244,11 +257,16 @@ it as they protect the database. Passphrase encryption is a later option
    refuses while a server holds the database.
 3. Refuse a target that is not empty (Decision 4).
 4. In one transaction, insert `streams`, then `events` with every column as archived, positions
-   included, then the carried tables. On PostgreSQL, set the `events.position` sequence past
-   `last_position`. A failure rolls back and leaves the target empty.
+   included, then the carried tables. On PostgreSQL, set every serial sequence the restore
+   inserted explicit values into past its highest value: `events.position` past `last_position`
+   and `auth_audit.id` past the highest restored id. Without the second, later audit writes
+   collide on the primary key and are dropped, since the audit log is best-effort
+   (`internal/auth/manage.go`). A failure rolls back and leaves the target empty.
 5. Replay the log with `RebuildReadModel`, which re-creates the read model and the branch and
    snapshot registries and stamps the read-model schema version; stamp the ADR-011 migration
-   version.
+   version. If the replay fails, the log is already committed and the target is no longer empty,
+   so restore will not run again; the operator fixes the cause and runs `myfamily rebuild`, which
+   finishes the same replay.
 6. Report the event count and the final position, which equal the manifest's.
 
 The in-memory backend (`DEMO_MODE`) has nothing to back up or restore into; both commands refuse
