@@ -271,6 +271,33 @@ Location: `testdata/`
 
 GEDCOM 7.0 fixtures are tracked in [#622](https://github.com/cacack/my-family/issues/622).
 
+### Recorded event logs
+
+Every event a release wrote must stay readable by every later version (#1802). `testdata/eventlogs/`
+holds one directory per recorded release, named by its tag:
+
+| File | Content |
+|------|---------|
+| `backup.zip` | The release's event log, as a backup archive (ADR-010) |
+| `expected.json` | The read-model values the release's own rebuild built from that log |
+| `event-types.json` | Every event type the release's `DecodeEvent` handled |
+
+`scripts/record-event-log.sh TAG` records one. It checks the tag out in a temporary worktree and
+runs `testdata/eventlogs/record/main.go` there, so the release's own code fills an empty SQLite
+database with synthetic data only (the demo seeder and the GEDCOM files above), reaching every type
+`DecodeEvent` handles, and rebuilds it. Then this checkout's `myfamily backup` writes the log.
+
+**Record a new log at each minor release**, right after tagging it, and commit the directory. A
+recorded log is never re-recorded. If the release's code no longer compiles the recorder, change it
+to the new API; if the release added an event type, make the recorder write one.
+
+`TestRecordedEventLogs_Replay` (`internal/integration`) restores each log into an empty SQLite and
+PostgreSQL database, which runs `repository.RebuildReadModel`. It fails on a rebuild error, a
+recorded projection failure, or an expected value that is missing or different. Values this
+version adds (a new field, row or section) pass. `TestRecordedEventLogs_NewestCoversDecodedTypes`
+fails, naming the type, when the newest log lacks an event type its release's `DecodeEvent`
+handled.
+
 ---
 
 ## Coverage Requirements

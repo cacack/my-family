@@ -120,6 +120,10 @@ history, so nothing would read the difference.
   - Mitigation: the refusal says exactly what to run; the README documents it.
 - An upcaster that misreads a shape corrupts every replay of that type.
   - Mitigation: upcasters are unit-tested on both shapes; an envelope version is the fallback.
+  - Check: `TestRecordedEventLogs_Replay` (#1802) replays the log each minor release recorded, as
+    that release wrote it, and fails if any value the release's rebuild produced is lost or
+    changed. A shape change without an upcaster, or an upcaster that misreads the old shape, fails
+    it. See [Recorded event logs](../TESTING-STRATEGY.md#recorded-event-logs).
 
 ### Neutral
 
