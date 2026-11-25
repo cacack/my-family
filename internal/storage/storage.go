@@ -215,19 +215,9 @@ func OpenMemory() *Stores {
 // constructs all six stores over it, holding the lock for access on the file
 // lockPath(path) until Close.
 func OpenSQLite(path string, access Access) (*Stores, error) {
-	if strings.TrimSpace(path) == "" {
-		return nil, errors.New("SQLite storage selected but SQLITE_PATH is empty")
-	}
-	lock, err := openFileLock(lockPath(path))
+	db, lock, err := lockSQLite(path, access)
 	if err != nil {
-		return nil, fmt.Errorf("open SQLite database %q: lock file: %w", path, err)
-	}
-	if err := acquire(lock, access); err != nil {
-		return nil, errors.Join(fmt.Errorf("open SQLite database %q: %w", path, err), lock.close())
-	}
-	db, err := sqlite.OpenDB(path)
-	if err != nil {
-		return nil, errors.Join(fmt.Errorf("open SQLite database %q: %w", path, err), lock.close())
+		return nil, err
 	}
 	// The read model is constructed FIRST: on a pre-#733 database it renames
 	// its old `events` table to `life_events`, which the event store otherwise
@@ -240,6 +230,25 @@ func OpenSQLite(path string, access Access) (*Stores, error) {
 		func(db *sql.DB) (repository.SettingsStore, error) { return sqlite.NewSettingsStore(db) },
 		func(db *sql.DB) (repository.AccountStore, error) { return sqlite.NewAccountStore(db) },
 	)
+}
+
+// lockSQLite locks the SQLite database at path for access, then opens it.
+func lockSQLite(path string, access Access) (*sql.DB, dbLock, error) {
+	if strings.TrimSpace(path) == "" {
+		return nil, nil, errors.New("SQLite storage selected but SQLITE_PATH is empty")
+	}
+	lock, err := openFileLock(lockPath(path))
+	if err != nil {
+		return nil, nil, fmt.Errorf("open SQLite database %q: lock file: %w", path, err)
+	}
+	if err := acquire(lock, access); err != nil {
+		return nil, nil, errors.Join(fmt.Errorf("open SQLite database %q: %w", path, err), lock.close())
+	}
+	db, err := sqlite.OpenDB(path)
+	if err != nil {
+		return nil, nil, errors.Join(fmt.Errorf("open SQLite database %q: %w", path, err), lock.close())
+	}
+	return db, lock, nil
 }
 
 // lockPath returns the lock file for the SQLite database at path: the
@@ -263,27 +272,9 @@ func lockPath(path string) string {
 // errors are scrubbed before they are wrapped, and a URL-shaped string that
 // does not parse is rejected before it reaches the driver at all.
 func OpenPostgres(connStr string, access Access) (*Stores, error) {
-	if strings.Contains(connStr, "://") {
-		if !validURL(connStr) {
-			// Deliberately not wrapping err: url.Error quotes the whole input,
-			// and even its fragment (e.g. an invalid escape) is part of the
-			// password.
-			return nil, errors.New("DATABASE_URL is not a valid URL; " +
-				"check that special characters in the password (such as %, @, / or spaces) are percent-encoded")
-		}
-	}
-	location := redactPostgres(connStr)
-	db, err := postgres.OpenDB(connStr)
+	db, lock, location, err := lockPostgres(connStr, access)
 	if err != nil {
-		return nil, fmt.Errorf("open PostgreSQL database %s: %w", location, scrubError(err, connStr))
-	}
-	conn, err := db.Conn(context.Background())
-	if err != nil {
-		return nil, errors.Join(fmt.Errorf("open PostgreSQL database %s: lock connection: %w", location, scrubError(err, connStr)), db.Close())
-	}
-	lock := &advisoryLock{conn: conn}
-	if err := acquire(lock, access); err != nil {
-		return nil, errors.Join(fmt.Errorf("open PostgreSQL database %s: %w", location, err), lock.close(), db.Close())
+		return nil, err
 	}
 	// Read model first, for the same pre-#733 reason as SQLite.
 	return build(BackendPostgres, location, db, lock, access,
@@ -294,6 +285,34 @@ func OpenPostgres(connStr string, access Access) (*Stores, error) {
 		func(db *sql.DB) (repository.SettingsStore, error) { return postgres.NewSettingsStore(db) },
 		func(db *sql.DB) (repository.AccountStore, error) { return postgres.NewAccountStore(db) },
 	)
+}
+
+// lockPostgres connects to the PostgreSQL database at connStr and locks it
+// for access, returning the log-safe location as well.
+func lockPostgres(connStr string, access Access) (*sql.DB, dbLock, string, error) {
+	if strings.Contains(connStr, "://") {
+		if !validURL(connStr) {
+			// Deliberately not wrapping err: url.Error quotes the whole input,
+			// and even its fragment (e.g. an invalid escape) is part of the
+			// password.
+			return nil, nil, "", errors.New("DATABASE_URL is not a valid URL; " +
+				"check that special characters in the password (such as %, @, / or spaces) are percent-encoded")
+		}
+	}
+	location := redactPostgres(connStr)
+	db, err := postgres.OpenDB(connStr)
+	if err != nil {
+		return nil, nil, "", fmt.Errorf("open PostgreSQL database %s: %w", location, scrubError(err, connStr))
+	}
+	conn, err := db.Conn(context.Background())
+	if err != nil {
+		return nil, nil, "", errors.Join(fmt.Errorf("open PostgreSQL database %s: lock connection: %w", location, scrubError(err, connStr)), db.Close())
+	}
+	lock := &advisoryLock{conn: conn}
+	if err := acquire(lock, access); err != nil {
+		return nil, nil, "", errors.Join(fmt.Errorf("open PostgreSQL database %s: %w", location, err), lock.close(), db.Close())
+	}
+	return db, lock, location, nil
 }
 
 // build constructs the five stores over db in a fixed order (read model first)
