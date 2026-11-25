@@ -19,6 +19,10 @@ import (
 // does not outlive the process.
 var ErrBackupMemory = errors.New("the in-memory backend has nothing to back up; unset DEMO_MODE")
 
+// ErrReadModelOnlyValues refuses a backup of a database whose read model holds
+// values no event records, which the archive would lose (ADR-010 §6).
+var ErrReadModelOnlyValues = errors.New("the read model holds values that no event records, where a backup would lose them")
+
 // Backup writes a backup archive (ADR-010) of the database cfg selects to w
 // and returns its manifest. A server may keep running on the database: Backup
 // takes the lock `serve` shares, so it waits on no server but refuses while a
@@ -79,23 +83,23 @@ func (s *Stores) Backup(ctx context.Context, w io.Writer, appVersion string) (*b
 		}
 		return backup.Write(ctx, s.db, backup.Postgres, w, appVersion)
 	default:
-		if err := checkBackupSource(ctx, s.db, s.Backend); err != nil {
-			return nil, fmt.Errorf("back up SQLite database %q: %w", s.Location, err)
-		}
 		// A connection of its own: the stores' pool has a single connection,
-		// which the backup's long read would hold from every request.
+		// which the check's many reads and the backup's long one would take
+		// from every request.
 		db, err := sqlite.OpenDB(s.Location)
 		if err != nil {
 			return nil, fmt.Errorf("back up SQLite database %q: %w", s.Location, err)
 		}
 		defer func() { _ = db.Close() }()
+		if err := checkBackupSource(ctx, db, s.Backend); err != nil {
+			return nil, fmt.Errorf("back up SQLite database %q: %w", s.Location, err)
+		}
 		return backup.Write(ctx, db, backup.SQLite, w, appVersion)
 	}
 }
 
 // checkBackupSource refuses a database the archive could not copy whole. It
-// only reads, and runs before backup.Write's read transaction, which on SQLite
-// holds the pool's one connection.
+// only reads, and runs before backup.Write's read transaction.
 //
 // The store schema must be this binary's (ADR-011 §4). Then backup.CheckSource
 // refuses tables an older release last shaped and a read model that predates
@@ -124,15 +128,18 @@ func checkBackupSource(ctx context.Context, db *sql.DB, backend Backend) error {
 		return err
 	}
 	pending, err := repository.PendingBackfills(ctx, events, readModel, branches, snapshots)
+	if ctx.Err() != nil {
+		// Canceled or timed out, not a read model the rebuild would fix.
+		return fmt.Errorf("check the read model for values no event records: %w", ctx.Err())
+	}
 	if err != nil {
 		return fmt.Errorf("check the read model for values no event records (if it awaits `myfamily rebuild`, "+
 			"run that first): %w", err)
 	}
 	if pending.Len() > 0 {
-		return fmt.Errorf("the read model holds coordinates or EXIDs of %d entities, %d brick walls and %d snapshots "+
-			"that no event records, where a backup would lose them; stop every server and run `myfamily rebuild`, "+
-			"which logs them, then back up",
-			len(pending.ImportedValues), len(pending.BrickWalls), len(pending.Snapshots))
+		return fmt.Errorf("%w: coordinates or EXIDs of %d entities, %d brick walls and %d snapshots; "+
+			"stop every server and run `myfamily rebuild`, which logs them, then back up",
+			ErrReadModelOnlyValues, len(pending.ImportedValues), len(pending.BrickWalls), len(pending.Snapshots))
 	}
 	return nil
 }

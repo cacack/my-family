@@ -189,18 +189,21 @@ func openWithReadModelOnly(t *testing.T, cfg *config.Config, write func(context.
 
 // assertBackupRefusesReadModelOnly expects both the command's backup and the
 // server's (GET /api/v1/backup) to refuse each read-model-only value of a
-// stamped database, naming the rebuild.
+// stamped database for holding it, not for a failed read, naming the rebuild.
 func assertBackupRefusesReadModelOnly(t *testing.T, newConfig func(*testing.T) *config.Config) {
 	for _, v := range readModelOnlyValues {
 		t.Run(v.name, func(t *testing.T) {
 			cfg := newConfig(t)
 			stores := openWithReadModelOnly(t, cfg, v.write)
 			ctx := context.Background()
-			if _, err := stores.Backup(ctx, &bytes.Buffer{}, "test"); err == nil || !strings.Contains(err.Error(), "myfamily rebuild") {
-				t.Errorf("Stores.Backup = %v, want a refusal naming myfamily rebuild", err)
+			refused := func(err error) bool {
+				return errors.Is(err, ErrReadModelOnlyValues) && strings.Contains(err.Error(), "myfamily rebuild")
 			}
-			if _, err := Backup(ctx, cfg, &bytes.Buffer{}, "test"); err == nil || !strings.Contains(err.Error(), "myfamily rebuild") {
-				t.Errorf("Backup = %v, want a refusal naming myfamily rebuild", err)
+			if _, err := stores.Backup(ctx, &bytes.Buffer{}, "test"); !refused(err) {
+				t.Errorf("Stores.Backup = %v, want ErrReadModelOnlyValues naming myfamily rebuild", err)
+			}
+			if _, err := Backup(ctx, cfg, &bytes.Buffer{}, "test"); !refused(err) {
+				t.Errorf("Backup = %v, want ErrReadModelOnlyValues naming myfamily rebuild", err)
 			}
 		})
 	}

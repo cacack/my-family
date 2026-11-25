@@ -245,8 +245,8 @@ naming `myfamily rebuild` (which logs them once, for good). The check is the reb
 (`repository.PendingBackfills`), read through stores built without their DDL, and runs just before
 the read transaction (#1822). It looks for the values themselves rather than trusting the
 read-model version stamp, since a release from before the stamp can write to a stamped database
-after a downgrade. A read model this release cannot read is refused the same way. The backup
-itself stays read-only.
+after a downgrade. A read model this release cannot read fails the check, with an error that
+suggests `myfamily rebuild` if the read model awaits one. The backup itself stays read-only.
 
 ### 7. The app does not encrypt the archive
 
