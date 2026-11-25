@@ -7359,6 +7359,9 @@ type VersionParam = int64
 // AccountsOnly defines model for AccountsOnly.
 type AccountsOnly = Error
 
+// BackupRefused defines model for BackupRefused.
+type BackupRefused = Error
+
 // BadRequest defines model for BadRequest.
 type BadRequest = Error
 
@@ -9594,6 +9597,9 @@ type ServerInterface interface {
 	// DownloadBackup Download a backup archive of the whole instance
 	// (GET /backup)
 	DownloadBackup(ctx echo.Context) error
+	// CheckBackup Check that a backup archive can be made
+	// (GET /backup/check)
+	CheckBackup(ctx echo.Context) error
 	// ListBranches List all branches
 	// (GET /branches)
 	ListBranches(ctx echo.Context, params ListBranchesParams) error
@@ -10481,6 +10487,15 @@ func (w *ServerInterfaceWrapper) DownloadBackup(ctx echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.DownloadBackup(ctx)
+	return err
+}
+
+// CheckBackup converts echo context to params.
+func (w *ServerInterfaceWrapper) CheckBackup(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.CheckBackup(ctx)
 	return err
 }
 
@@ -15150,10 +15165,13 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 	router.PUT(options.BaseURL+"/settings/privacy", wrapper.UpdatePrivacySettings, options.OperationMiddlewares["updatePrivacySettings"]...)
 	router.GET(options.BaseURL+"/auth-audit", wrapper.ListAuthAudit, options.OperationMiddlewares["listAuthAudit"]...)
 	router.GET(options.BaseURL+"/backup", wrapper.DownloadBackup, options.OperationMiddlewares["downloadBackup"]...)
+	router.GET(options.BaseURL+"/backup/check", wrapper.CheckBackup, options.OperationMiddlewares["checkBackup"]...)
 
 }
 
 type AccountsOnlyJSONResponse Error
+
+type BackupRefusedJSONResponse Error
 
 type BadRequestJSONResponse Error
 
@@ -16577,7 +16595,7 @@ func (response DownloadBackup401JSONResponse) VisitDownloadBackupResponse(w http
 	return err
 }
 
-type DownloadBackup409JSONResponse Error
+type DownloadBackup409JSONResponse struct{ BackupRefusedJSONResponse }
 
 func (response DownloadBackup409JSONResponse) VisitDownloadBackupResponse(w http.ResponseWriter) error {
 
@@ -16594,6 +16612,63 @@ func (response DownloadBackup409JSONResponse) VisitDownloadBackupResponse(w http
 type DownloadBackup503JSONResponse struct{ SetupRequiredJSONResponse }
 
 func (response DownloadBackup503JSONResponse) VisitDownloadBackupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CheckBackupRequestObject struct {
+}
+
+type CheckBackupResponseObject interface {
+	VisitCheckBackupResponse(w http.ResponseWriter) error
+}
+
+type CheckBackup204Response struct {
+}
+
+func (response CheckBackup204Response) VisitCheckBackupResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type CheckBackup401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response CheckBackup401JSONResponse) VisitCheckBackupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CheckBackup409JSONResponse struct{ BackupRefusedJSONResponse }
+
+func (response CheckBackup409JSONResponse) VisitCheckBackupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CheckBackup503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response CheckBackup503JSONResponse) VisitCheckBackupResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -29811,6 +29886,9 @@ type StrictServerInterface interface {
 	// DownloadBackup Download a backup archive of the whole instance
 	// (GET /backup)
 	DownloadBackup(ctx context.Context, request DownloadBackupRequestObject) (DownloadBackupResponseObject, error)
+	// CheckBackup Check that a backup archive can be made
+	// (GET /backup/check)
+	CheckBackup(ctx context.Context, request CheckBackupRequestObject) (CheckBackupResponseObject, error)
 	// ListBranches List all branches
 	// (GET /branches)
 	ListBranches(ctx context.Context, request ListBranchesRequestObject) (ListBranchesResponseObject, error)
@@ -31025,6 +31103,29 @@ func (sh *strictHandler) DownloadBackup(ctx echo.Context) error {
 		return err
 	} else if validResponse, ok := response.(DownloadBackupResponseObject); ok {
 		return validResponse.VisitDownloadBackupResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// CheckBackup operation middleware
+func (sh *strictHandler) CheckBackup(ctx echo.Context) error {
+	var request CheckBackupRequestObject
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.CheckBackup(ctx.Request().Context(), request.(CheckBackupRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CheckBackup")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(CheckBackupResponseObject); ok {
+		return validResponse.VisitCheckBackupResponse(ctx.Response())
 	} else if response != nil {
 		return fmt.Errorf("unexpected response type: %T", response)
 	}

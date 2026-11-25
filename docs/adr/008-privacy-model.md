@@ -557,6 +557,7 @@ Added after this ADR's date, when #1412 made the table a test (§7).
 | Every create, update, delete, add, remove, merge, dismiss, restore, brick-wall, close, promote, resolve and batch operation | POST, PUT, PATCH, DELETE | The written record or an empty body | RM | a | Editor or owner only, so nothing is redacted; still wired through the decorator |
 | importGedcom | POST /gedcom/import | Import counts and warnings | — | — | Owner-only |
 | downloadBackup | GET /backup | Backup archive: the raw event log and the tables outside it | EL + accounts | — | Owner-only; unredacted by design, as the whole instance (ADR-010 §7) |
+| checkBackup | GET /backup/check | Whether a backup can be made, and the refusal's fix | — | — | Owner-only; returns no tree data |
 | (not in spec) | POST /gedcom/import/stream | Import progress | — | — | Owner-only; must get a role declaration under ADR-007 |
 | (not in spec) | GET /config, GET /openapi.yaml, GET /docs | Config flags, API description | none | — | No tree data |
 | (not in spec) | POST /demo/reset | Re-seeds demo data | — | — | Demo mode is open mode |

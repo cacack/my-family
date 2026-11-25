@@ -70,27 +70,46 @@ func Backup(ctx context.Context, cfg *config.Config, w io.Writer, appVersion str
 // Backup writes a backup archive of the opened stores' database to w, as
 // the package-level Backup does, for a server that already holds the lock.
 func (s *Stores) Backup(ctx context.Context, w io.Writer, appVersion string) (*backup.Manifest, error) {
+	var m *backup.Manifest
+	err := s.backupSource(ctx, func(db *sql.DB, dialect backup.Dialect) error {
+		var err error
+		m, err = backup.Write(ctx, db, dialect, w, appVersion)
+		return err
+	})
+	return m, err
+}
+
+// CheckBackup refuses the opened stores' database as Backup would, and
+// writes no archive, so a server can name the fix before it starts a
+// download (#1833).
+func (s *Stores) CheckBackup(ctx context.Context) error {
+	return s.backupSource(ctx, func(*sql.DB, backup.Dialect) error { return nil })
+}
+
+// backupSource refuses the opened stores' database as checkBackupSource
+// does, then runs write on it.
+func (s *Stores) backupSource(ctx context.Context, write func(*sql.DB, backup.Dialect) error) error {
 	switch s.Backend {
 	case BackendMemory:
-		return nil, ErrBackupMemory
+		return ErrBackupMemory
 	case BackendPostgres:
 		if err := checkBackupSource(ctx, s.db, s.Backend); err != nil {
-			return nil, err
+			return err
 		}
-		return backup.Write(ctx, s.db, backup.Postgres, w, appVersion)
+		return write(s.db, backup.Postgres)
 	default:
 		// A connection of its own: the stores' pool has a single connection,
 		// which the check's many reads and the backup's long one would take
 		// from every request.
 		db, err := sqlite.OpenDB(s.Location)
 		if err != nil {
-			return nil, fmt.Errorf("back up SQLite database %q: %w", s.Location, err)
+			return fmt.Errorf("back up SQLite database %q: %w", s.Location, err)
 		}
 		defer func() { _ = db.Close() }()
 		if err := checkBackupSource(ctx, db, s.Backend); err != nil {
-			return nil, fmt.Errorf("back up SQLite database %q: %w", s.Location, err)
+			return fmt.Errorf("back up SQLite database %q: %w", s.Location, err)
 		}
-		return backup.Write(ctx, db, backup.SQLite, w, appVersion)
+		return write(db, backup.SQLite)
 	}
 }
 

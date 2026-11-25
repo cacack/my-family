@@ -110,21 +110,20 @@
 	}
 
 	/**
-	 * Fetch the archive and hand it to the browser to save. A refusal, such as
-	 * a database that needs `myfamily rebuild` first, is shown here instead of
-	 * a silently failed download (#1830).
+	 * Ask the server whether it can make a backup, then download the archive
+	 * through a plain link, so the browser streams it to disk rather than
+	 * holding it in memory (#1833). A refusal, such as a database that needs
+	 * `myfamily rebuild` first, is shown here instead of a silently failed
+	 * download (#1830). The check cannot foresee a failure while the archive
+	 * is written (a full temp disk, an I/O error) or a database that changes
+	 * between the two requests; those reach the link, so the browser's
+	 * download list shows them, not this page.
 	 */
 	async function downloadBackup() {
 		downloading = true;
 		backupError = null;
 		try {
-			const { blob, filename } = await api.downloadBackup();
-			const url = URL.createObjectURL(blob);
-			const a = document.createElement('a');
-			a.href = url;
-			a.download = filename;
-			a.click();
-			URL.revokeObjectURL(url);
+			await api.checkBackup();
 		} catch (e) {
 			const apiError = e as ApiError;
 			// A proxy's 4xx can carry no message (an HTML body over HTTP/2), so
@@ -132,9 +131,15 @@
 			backupError =
 				(apiError.status && apiError.status < 500 && apiError.message) ||
 				'Could not make the backup. Try again.';
+			return;
 		} finally {
 			downloading = false;
 		}
+		const a = document.createElement('a');
+		a.href = api.backupUrl();
+		// The server names the file; `download` keeps the page in place.
+		a.download = '';
+		a.click();
 	}
 </script>
 

@@ -171,7 +171,7 @@ func runServer() error {
 		mem := stores.Memory
 		serverOpts = append(serverOpts, api.WithDemoReset(mem.Events, mem.ReadModel, mem.Snapshots, mem.Branches, mem.Settings))
 	} else {
-		serverOpts = append(serverOpts, api.WithBackup(func(ctx context.Context, w io.Writer) error {
+		serverOpts = append(serverOpts, api.WithBackup(stores.CheckBackup, func(ctx context.Context, w io.Writer) error {
 			_, err := stores.Backup(ctx, w, version)
 			return err
 		}))

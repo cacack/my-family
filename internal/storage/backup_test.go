@@ -134,6 +134,9 @@ func TestBackup_Memory(t *testing.T) {
 	if _, err := OpenMemory().Backup(context.Background(), &bytes.Buffer{}, "test"); !errors.Is(err, ErrBackupMemory) {
 		t.Errorf("Stores.Backup = %v, want ErrBackupMemory", err)
 	}
+	if err := OpenMemory().CheckBackup(context.Background()); !errors.Is(err, ErrBackupMemory) {
+		t.Errorf("Stores.CheckBackup = %v, want ErrBackupMemory", err)
+	}
 }
 
 // readModelOnlyValues write, straight to the read model or the snapshot
@@ -194,14 +197,15 @@ func openWithReadModelOnly(t *testing.T, cfg *config.Config, write func(context.
 func backupServer(stores *Stores) *api.Server {
 	return api.NewServer(&config.Config{Port: 8080, LogFormat: "text", AuthMode: config.AuthModeOpen},
 		stores.Events, stores.ReadModel, stores.Snapshots, nil, api.WithBranchStore(stores.Branches),
-		api.WithSettingsStore(stores.Settings), api.WithBackup(func(ctx context.Context, w io.Writer) error {
+		api.WithSettingsStore(stores.Settings), api.WithBackup(stores.CheckBackup, func(ctx context.Context, w io.Writer) error {
 			_, err := stores.Backup(ctx, w, "test")
 			return err
 		}))
 }
 
-// assertBackupRefusesReadModelOnly expects both the command's backup and the
-// server's (GET /api/v1/backup) to refuse each read-model-only value of a
+// assertBackupRefusesReadModelOnly expects the command's backup, the
+// server's (GET /api/v1/backup) and the server's check (GET
+// /api/v1/backup/check, #1833) to refuse each read-model-only value of a
 // stamped database for holding it, not for a failed read, naming the rebuild;
 // the server answers 409 backup_needs_rebuild (#1830).
 func assertBackupRefusesReadModelOnly(t *testing.T, newConfig func(*testing.T) *config.Config) {
@@ -216,16 +220,39 @@ func assertBackupRefusesReadModelOnly(t *testing.T, newConfig func(*testing.T) *
 			if _, err := stores.Backup(ctx, &bytes.Buffer{}, "test"); !refused(err) {
 				t.Errorf("Stores.Backup = %v, want ErrReadModelOnlyValues naming myfamily rebuild", err)
 			}
+			if err := stores.CheckBackup(ctx); !refused(err) {
+				t.Errorf("Stores.CheckBackup = %v, want ErrReadModelOnlyValues naming myfamily rebuild", err)
+			}
 			if _, err := Backup(ctx, cfg, &bytes.Buffer{}, "test"); !refused(err) {
 				t.Errorf("Backup = %v, want ErrReadModelOnlyValues naming myfamily rebuild", err)
 			}
 			server := backupServer(stores)
-			resp := mustDo(t, server, http.MethodGet, "/api/v1/backup", "", http.StatusConflict)
-			if msg, _ := resp["message"].(string); resp["code"] != "backup_needs_rebuild" || !strings.Contains(msg, "myfamily rebuild") {
-				t.Errorf("GET /api/v1/backup = %v, want backup_needs_rebuild naming myfamily rebuild", resp)
+			for _, path := range []string{"/api/v1/backup", "/api/v1/backup/check"} {
+				resp := mustDo(t, server, http.MethodGet, path, "", http.StatusConflict)
+				if msg, _ := resp["message"].(string); resp["code"] != "backup_needs_rebuild" || !strings.Contains(msg, "myfamily rebuild") {
+					t.Errorf("GET %s = %v, want backup_needs_rebuild naming myfamily rebuild", path, resp)
+				}
 			}
 		})
 	}
+}
+
+// assertBackupCheckPasses expects the server's check of a database a backup
+// accepts to answer 204, as Stores.CheckBackup passes it (#1833).
+func assertBackupCheckPasses(t *testing.T, cfg *config.Config) {
+	stores := openWithReadModelOnly(t, cfg, func(context.Context, *Stores, uuid.UUID) error { return nil })
+	if err := stores.CheckBackup(context.Background()); err != nil {
+		t.Fatalf("Stores.CheckBackup = %v, want it accepted", err)
+	}
+	mustDo(t, backupServer(stores), http.MethodGet, "/api/v1/backup/check", "", http.StatusNoContent)
+}
+
+func TestBackup_SQLiteCheckPasses(t *testing.T) {
+	assertBackupCheckPasses(t, &config.Config{SQLitePath: filepath.Join(t.TempDir(), "myfamily.db")})
+}
+
+func TestBackup_PostgresCheckPasses(t *testing.T) {
+	assertBackupCheckPasses(t, &config.Config{DatabaseURL: pgtest.NewDatabase(t)})
 }
 
 func TestBackup_SQLiteRefusesReadModelOnlyValues(t *testing.T) {

@@ -764,20 +764,19 @@ class ApiClient {
 	}
 
 	/**
-	 * The owner's backup archive (#15). Fetched rather than linked, so a refused
-	 * backup, such as one that needs `myfamily rebuild`, reaches the page with
-	 * its reason (#1830). The trade-off: the browser holds the whole archive
-	 * as a Blob before saving it, rather than streaming it to disk. Mainline
-	 * only: the operation takes no branch scope.
+	 * Whether the owner's backup archive (#15) can be made: resolves when it
+	 * can, and rejects with the refusal's reason, such as a database that needs
+	 * `myfamily rebuild`, when it cannot (#1833). The archive itself is a plain
+	 * link (backupUrl), so the browser streams it to disk. Mainline only: the
+	 * operation takes no branch scope.
 	 */
-	async downloadBackup(): Promise<{ blob: Blob; filename: string }> {
-		const response = await fetch(`${API_BASE}/backup`);
-		if (!response.ok) {
-			throw await responseError(response);
-		}
-		const disposition = response.headers.get('Content-Disposition') ?? '';
-		const filename = /filename="([^"]+)"/.exec(disposition)?.[1] ?? 'myfamily-backup.zip';
-		return { blob: await response.blob(), filename };
+	async checkBackup(): Promise<void> {
+		return this.request<void>('GET', '/backup/check');
+	}
+
+	/** The owner's backup archive, for a download link (#1833). */
+	backupUrl(): string {
+		return `${API_BASE}/backup`;
 	}
 
 	async createInvite(role: User['role']): Promise<AccountLink> {

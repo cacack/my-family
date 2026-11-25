@@ -15,7 +15,8 @@ vi.mock('#lib/api/client.js', async (importOriginal) => {
 		api: {
 			getPrivacySettings: vi.fn(),
 			updatePrivacySettings: vi.fn(),
-			downloadBackup: vi.fn()
+			checkBackup: vi.fn(),
+			backupUrl: vi.fn(() => '/api/v1/backup')
 		}
 	};
 });
@@ -181,47 +182,51 @@ describe('Settings page', () => {
 		expect(hint).toMatch(/myfamily verify-backup/);
 	});
 
-	it('saves the backup under the name the server gives it (#15)', async () => {
-		api.downloadBackup.mockResolvedValue({ blob: new Blob(['PK']), filename: 'myfamily-backup-20261124T120000Z.zip' });
-		// jsdom has no object URLs, so the test supplies them and puts them back.
-		const original = { createObjectURL: URL.createObjectURL, revokeObjectURL: URL.revokeObjectURL };
-		const revokeObjectURL = vi.fn();
-		Object.assign(URL, { createObjectURL: () => 'blob:backup', revokeObjectURL });
+	it('checks the backup, then streams the archive through a link without fetching it (#1833)', async () => {
+		api.checkBackup.mockResolvedValue(undefined);
+		const fetchSpy = vi.spyOn(globalThis, 'fetch');
 		const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
-			expect(this.download).toBe('myfamily-backup-20261124T120000Z.zip');
-			expect(this.href).toBe('blob:backup');
+			expect(api.checkBackup).toHaveBeenCalledOnce();
+			expect(this.getAttribute('href')).toBe('/api/v1/backup');
+			expect(this.hasAttribute('download')).toBe(true);
 		});
 		try {
 			render(SettingsPage);
 			await fireEvent.click(await screen.findByRole('button', { name: 'Download backup' }));
 			await waitFor(() => expect(click).toHaveBeenCalledOnce());
-			expect(revokeObjectURL).toHaveBeenCalledWith('blob:backup');
+			expect(fetchSpy).not.toHaveBeenCalled();
 			expect(screen.queryByRole('alert')).toBeNull();
 		} finally {
 			click.mockRestore();
-			Object.assign(URL, original);
+			fetchSpy.mockRestore();
 		}
 	});
 
 	it('shows why a backup was refused instead of a failed download (#1830)', async () => {
 		const reason = 'This database holds coordinates ... Stop every server and run "myfamily rebuild", which records them, then back up again.';
-		api.downloadBackup.mockRejectedValue({ status: 409, code: 'backup_needs_rebuild', message: reason });
-		render(SettingsPage);
-		const button = (await screen.findByRole('button', { name: 'Download backup' })) as HTMLButtonElement;
-		await fireEvent.click(button);
-		expect((await screen.findByRole('alert')).textContent).toContain('myfamily rebuild');
-		expect(button.disabled).toBe(false);
+		api.checkBackup.mockRejectedValue({ status: 409, code: 'backup_needs_rebuild', message: reason });
+		const click = vi.spyOn(HTMLAnchorElement.prototype, 'click');
+		try {
+			render(SettingsPage);
+			const button = (await screen.findByRole('button', { name: 'Download backup' })) as HTMLButtonElement;
+			await fireEvent.click(button);
+			expect((await screen.findByRole('alert')).textContent).toContain('myfamily rebuild');
+			expect(button.disabled).toBe(false);
+			expect(click).not.toHaveBeenCalled();
+		} finally {
+			click.mockRestore();
+		}
 	});
 
 	it('says a failed backup can be tried again, without the server error (#1830)', async () => {
-		api.downloadBackup.mockRejectedValue({ status: 500, code: 'INTERNAL_ERROR', message: 'An internal error occurred' });
+		api.checkBackup.mockRejectedValue({ status: 500, code: 'INTERNAL_ERROR', message: 'An internal error occurred' });
 		render(SettingsPage);
 		await fireEvent.click(await screen.findByRole('button', { name: 'Download backup' }));
 		expect((await screen.findByRole('alert')).textContent).toContain('Could not make the backup. Try again.');
 	});
 
 	it('still says something when a refusal carries no message (#1830)', async () => {
-		api.downloadBackup.mockRejectedValue({ status: 413, code: 'UNKNOWN_ERROR', message: '' });
+		api.checkBackup.mockRejectedValue({ status: 413, code: 'UNKNOWN_ERROR', message: '' });
 		render(SettingsPage);
 		await fireEvent.click(await screen.findByRole('button', { name: 'Download backup' }));
 		expect((await screen.findByRole('alert')).textContent).toContain('Could not make the backup. Try again.');
