@@ -6140,7 +6140,7 @@ type Place struct {
 	// CoordinatesOrigin Where the place's pair came from; present whenever the pair is.
 	CoordinatesOrigin *CoordinateOrigin `json:"coordinates_origin,omitempty"`
 
-	// Count Number of place uses (birth, death, marriage, life event and attribute places) the caller may see at or under this place, under meaning by key: a use counts toward its own place and each place its key names with leading parts removed, never toward an explicit parent. It can differ from `PlaceEntry.count` from `GET /browse/places`, which counts birth and death places only and follows explicit parents.
+	// Count Number of place uses (birth, death, marriage, life event and attribute places) the caller may see at or under this place, under meaning by key: a use counts toward its own place and each place its key names with leading parts removed, never toward an explicit parent. It can differ from `PlaceEntry.count` from `GET /browse/places`, which counts people by their birth and death places, each once, and follows explicit parents.
 	Count int `json:"count"`
 
 	// Id UUIDv5 of the place matching key, the same on every install and every branch.
@@ -6191,7 +6191,7 @@ type PlaceAliasRequest struct {
 
 // PlaceEntry defines model for PlaceEntry.
 type PlaceEntry struct {
-	// Count Number of birth and death records whose place resolves to this place or to a place beneath it. Spellings whose place matching key is the same (differing only in letter case, spacing around commas or empty parts) are one place, and so are spellings joined by an alias. This counts fewer uses than `Place.count` from `GET /places`, which also counts marriage, life event and attribute places.
+	// Count Number of people whose birth or death place resolves to this place or to a place beneath it, each counted once: the `total` of `GET /browse/places/{id}/persons` for this place. Spellings whose place matching key is the same (differing only in letter case, spacing around commas or empty parts) are one place, and so are spellings joined by an alias. This is a count of people, not of uses like `Place.count` from `GET /places`, which counts every birth, death, marriage, life event and attribute place use.
 	Count int `json:"count"`
 
 	// FullName The place's display name when one is set, otherwise its most-used spelling, or its key when no record spells it

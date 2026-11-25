@@ -334,14 +334,17 @@ A place has at most one parent place.
 
 The browser walks parents, in Go, over places resolved by key. A parent that no record names
 directly (`Hessen, Germany` when only its towns were recorded) is a place like any other. A place's
-count is the records that resolve to it or to a place beneath it, and the list of people behind a
-place is the people of those same records, so the count and the list always agree. The
+count is of people, not records: the people whose birth or death place resolves to it or to a
+place beneath it, each counted once, so a person born and died beneath the same place counts there
+once (#1811). The list of people behind a place is those same people, so the count and the list
+always agree. The
 right-to-left SQL in the two SQL stores and the flat list in the memory store are replaced by this
 one walk.
 
-The walk runs over places, not records. Each store counts use per distinct key in SQL (grouping
-on the stored key column computes nothing), aliases and explicit parents are each loaded in one
-query, and counts roll up in one pass. Nothing is queried per record or per place.
+The walk runs over places, not records. Each store counts people per distinct pair of birth and
+death key in SQL (grouping on the stored key columns computes nothing), aliases and explicit
+parents are each loaded in one query, and counts roll up in one pass. Nothing is queried per
+record or per place.
 
 The count and the list change together in each step of the plan. From step 1 both use default
 parents only: a record is under a place when its key is the place's key or ends with `,` and that

@@ -20,9 +20,9 @@ import (
 // an explicit parent overrides the default one and clearing it restores it;
 // the projector ignores a parent or an alias that would close a cycle, in log
 // order (PL-004); a place's count is the length of the list of people behind
-// it; and a branch sees a place recorded only there. The tree includes a
-// multibyte name and two spellings that differ only in letter case. Each
-// person has one place, so a count of records is a count of people. store
+// it, so a person born and died at or beneath a place counts there once
+// (#1811); and a branch sees a place recorded only there. The tree includes a
+// multibyte name and two spellings that differ only in letter case. store
 // must start empty.
 func RunPlaceTree(t *testing.T, store repository.ReadModelStore) {
 	t.Helper()
@@ -34,22 +34,28 @@ func RunPlaceTree(t *testing.T, store repository.ReadModelStore) {
 	id := repository.PlaceID
 
 	people := []struct {
-		branch      domain.BranchID
-		name, birth string
+		branch             domain.BranchID
+		name, birth, death string
 	}{
-		{main, "Ann", "Darmstadt, Hessen, Germany"},
-		{main, "Ben", "Kassel, Hesse, Germany"},
-		{main, "Cid", "Zürich, Schweiz"},
-		{main, "Dee", "Boston, MA"},
-		{main, "Eli", "boston, ma"},
-		{main, "Fox", "Springfield"},
-		{main, "Gil", "Chicago, Illinois, USA"},
-		{branch, "Hal", "Lyon, France"},
+		{main, "Ann", "Darmstadt, Hessen, Germany", ""},
+		{main, "Ben", "Kassel, Hesse, Germany", ""},
+		{main, "Cid", "Zürich, Schweiz", ""},
+		{main, "Dee", "Boston, MA", ""},
+		{main, "Eli", "boston, ma", ""},
+		{main, "Fox", "Springfield", ""},
+		{main, "Gil", "Chicago, Illinois, USA", ""},
+		{branch, "Hal", "Lyon, France", ""},
+		// Born and died beneath Hessen, at two places.
+		{main, "Ivy", "Darmstadt, Hessen, Germany", "Kassel, Hesse, Germany"},
+		// Born and died at one place.
+		{main, "Jo", "Zürich, Schweiz", "Zürich, Schweiz"},
+		// Only a death place.
+		{main, "Kit", "", "Springfield"},
 	}
 	for _, p := range people {
 		if err := store.SavePerson(ctx, p.branch, &repository.PersonReadModel{
 			ID: uuid.New(), GivenName: p.name, Surname: "Tree", FullName: p.name + " Tree",
-			BirthPlace: p.birth, Version: 1, UpdatedAt: now,
+			BirthPlace: p.birth, DeathPlace: p.death, Version: 1, UpdatedAt: now,
 		}); err != nil {
 			t.Fatalf("SavePerson(%s): %v", p.name, err)
 		}
@@ -82,18 +88,18 @@ func RunPlaceTree(t *testing.T, store repository.ReadModelStore) {
 	})
 
 	mainTree := []string{
-		"Germany | Germany | 2",
-		"  Hessen | Hessen, Germany | 2",
-		"    Darmstadt | Darmstadt, Hessen, Germany | 1",
-		"    Kassel | Kassel, Hesse, Germany | 1",
+		"Germany | Germany | 3",
+		"  Hessen | Hessen, Germany | 3",
+		"    Darmstadt | Darmstadt, Hessen, Germany | 2",
+		"    Kassel | Kassel, Hesse, Germany | 2",
 		"MA | MA | 2",
 		"  Boston | Boston, MA | 2",
-		"Schweiz | Schweiz | 1",
-		"  Zürich | Zürich, Schweiz | 1",
-		"USA | USA | 2",
-		"  Illinois | Illinois, USA | 2",
+		"Schweiz | Schweiz | 2",
+		"  Zürich | Zürich, Schweiz | 2",
+		"USA | USA | 3",
+		"  Illinois | Illinois, USA | 3",
 		"    Chicago | Chicago, Illinois, USA | 1",
-		"    Springfield | Springfield | 1",
+		"    Springfield | Springfield | 2",
 	}
 	checkTree(t, store, main, "main", mainTree)
 	checkTree(t, store, branch, "a branch", append([]string{
@@ -102,12 +108,13 @@ func RunPlaceTree(t *testing.T, store repository.ReadModelStore) {
 	}, mainTree...))
 
 	// The people behind a place, its children's included.
-	checkPeopleAt(t, store, main, id("germany"), "Ann", "Ben")
-	checkPeopleAt(t, store, main, id("hesse,germany"), "Ann", "Ben")
-	checkPeopleAt(t, store, main, id("usa"), "Fox", "Gil")
-	checkPeopleAt(t, store, main, id("illinois,usa"), "Fox", "Gil")
+	checkPeopleAt(t, store, main, id("germany"), "Ann", "Ben", "Ivy")
+	checkPeopleAt(t, store, main, id("hesse,germany"), "Ann", "Ben", "Ivy")
+	checkPeopleAt(t, store, main, id("kassel,hesse,germany"), "Ben", "Ivy")
+	checkPeopleAt(t, store, main, id("usa"), "Fox", "Gil", "Kit")
+	checkPeopleAt(t, store, main, id("illinois,usa"), "Fox", "Gil", "Kit")
 	checkPeopleAt(t, store, main, id("boston,ma"), "Dee", "Eli")
-	checkPeopleAt(t, store, main, id("zürich,schweiz"), "Cid")
+	checkPeopleAt(t, store, main, id("zürich,schweiz"), "Cid", "Jo")
 	checkPeopleAt(t, store, main, id("france"))
 	checkPeopleAt(t, store, branch, id("france"), "Hal")
 
@@ -123,15 +130,15 @@ func RunPlaceTree(t *testing.T, store repository.ReadModelStore) {
 	// Clearing Springfield's parent puts it back at the top level.
 	parent("springfield", "Springfield", "", 2)
 	checkTree(t, store, main, "after clearing a parent", []string{
-		"Germany | Germany | 2",
-		"  Hessen | Hessen, Germany | 2",
-		"    Darmstadt | Darmstadt, Hessen, Germany | 1",
-		"    Kassel | Kassel, Hesse, Germany | 1",
+		"Germany | Germany | 3",
+		"  Hessen | Hessen, Germany | 3",
+		"    Darmstadt | Darmstadt, Hessen, Germany | 2",
+		"    Kassel | Kassel, Hesse, Germany | 2",
 		"MA | MA | 2",
 		"  Boston | Boston, MA | 2",
-		"Schweiz | Schweiz | 1",
-		"  Zürich | Zürich, Schweiz | 1",
-		"Springfield | Springfield | 1",
+		"Schweiz | Schweiz | 2",
+		"  Zürich | Zürich, Schweiz | 2",
+		"Springfield | Springfield | 2",
 		"USA | USA | 1",
 		"  Illinois | Illinois, USA | 1",
 		"    Chicago | Chicago, Illinois, USA | 1",

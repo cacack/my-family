@@ -1266,28 +1266,6 @@ func personOverlaySubquery(branchID domain.BranchID, privacy repository.Privacy)
 	return sub, []any{branchID.String(), branchID.String(), mainBranchID}
 }
 
-// personOverlayCTE is personOverlaySubquery for a statement that reads the overlay
-// more than once (the birth-place and death-place legs of GetPlaceHierarchy's UNION).
-// Off main it hoists the overlay into a `resolved` CTE, which SQLite materializes
-// because it is referenced more than once, so the ROW_NUMBER pass over the branch's
-// rows plus all of main's runs once per call instead of once per leg.
-//
-// Main keeps the inline subquery (the #669 fast path): its plain indexed branch_id
-// filter flattens into each leg and touches only that leg's column, so a mainline call
-// must not start materializing a CTE it did not before.
-//
-// Returns the WITH head to prefix to the statement's own CTE list, the source to read
-// FROM, the args bound once for the CTE, and the args bound at each FROM reference.
-// Exactly one of cteArgs/legArgs is non-empty, so callers interleave both in
-// statement order.
-func personOverlayCTE(branchID domain.BranchID, privacy repository.Privacy) (withClause, src string, cteArgs, legArgs []any) {
-	sub, args := personOverlaySubquery(branchID, privacy)
-	if branchID.IsMain() {
-		return "WITH ", sub, nil, args
-	}
-	return "WITH resolved AS " + sub + ",\n\t\t\t", "resolved", args, nil
-}
-
 // GetPerson retrieves a person by ID within the branch overlay.
 func (s *ReadModelStore) GetPerson(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.PersonReadModel, error) {
 	// #nosec G202 -- the query is built by factGetQuery from package constants; every value is a bound placeholder
@@ -5263,39 +5241,33 @@ func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, branchID domain.
 }
 
 // placeTree builds the repository.PlaceTree of the birth and death places
-// within the branch overlay that privacy shows, in three queries: use is
-// counted per distinct key and spelling, and explicit parents and aliases are
-// each loaded whole. The birth-place and death-place legs of the UNION both
-// read the overlay (ADR-005 / #756), so a branch sees its own places and
-// tombstoned persons contribute none.
+// within the branch overlay that privacy shows, in three queries: people are
+// counted per distinct pair of birth and death key and spelling, and explicit
+// parents and aliases are each loaded whole. The people read the overlay
+// (ADR-005 / #756), so a branch sees its own places and tombstoned persons
+// contribute none.
 func (s *ReadModelStore) placeTree(ctx context.Context, branchID domain.BranchID, privacy repository.Privacy) (*repository.PlaceTree, error) {
-	withClause, src, cteArgs, legArgs := personOverlayCTE(branchID, privacy)
-
-	// Args in statement order: the CTE's binds (off main), then each leg's own
-	// overlay binds (main only, where the subquery is still inlined per leg).
-	args := append(append([]any{}, cteArgs...), legArgs...)
-	args = append(args, legArgs...)
-	// #nosec G202 -- withClause/src are built from the constant literals returned by personOverlayCTE; every value is a bound ? placeholder
+	overlay, args := personOverlaySubquery(branchID, privacy)
+	// #nosec G202 -- overlay is built from package constants; every value is a bound ? placeholder
 	rows, err := s.db.QueryContext(ctx, `
-		`+withClause+`uses AS (
-			SELECT birth_place_key AS place_key, birth_place AS place FROM `+src+` WHERE birth_place_key IS NOT NULL
-			UNION ALL
-			SELECT death_place_key AS place_key, death_place AS place FROM `+src+` WHERE death_place_key IS NOT NULL
-		)
-		SELECT place_key, place, COUNT(*) FROM uses GROUP BY place_key, place
+		SELECT COALESCE(birth_place_key, ''), COALESCE(birth_place, ''),
+			   COALESCE(death_place_key, ''), COALESCE(death_place, ''), COUNT(*)
+		FROM `+overlay+`
+		WHERE birth_place_key IS NOT NULL OR death_place_key IS NOT NULL
+		GROUP BY 1, 2, 3, 4
 	`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query place hierarchy: %w", err)
 	}
 	defer rows.Close()
 
-	var uses []repository.PlaceUse
+	var people []repository.PersonPlaces
 	for rows.Next() {
-		var u repository.PlaceUse
-		if err := rows.Scan(&u.Key, &u.Text, &u.Count); err != nil {
-			return nil, fmt.Errorf("scan place use: %w", err)
+		var p repository.PersonPlaces
+		if err := rows.Scan(&p.BirthKey, &p.BirthText, &p.DeathKey, &p.DeathText, &p.Count); err != nil {
+			return nil, fmt.Errorf("scan person places: %w", err)
 		}
-		uses = append(uses, u)
+		people = append(people, p)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -5308,7 +5280,7 @@ func (s *ReadModelStore) placeTree(ctx context.Context, branchID domain.BranchID
 	if err != nil {
 		return nil, err
 	}
-	return repository.BuildPlaceTree(uses, facts, repository.PlaceAliasesByKey(aliases)), nil
+	return repository.BuildPlaceTree(people, facts, repository.PlaceAliasesByKey(aliases)), nil
 }
 
 // ListPlaces returns the places in use within the branch overlay, built by
