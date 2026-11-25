@@ -33,6 +33,7 @@ See [TEMPLATE.md](./TEMPLATE.md) for the ADR structure.
 - [007-access-model.md](./007-access-model.md) - Mandatory sign-in with anonymous as a configurable principal, owner/editor/viewer roles as tree memberships, and accounts outside the event log
 - [008-privacy-model.md](./008-privacy-model.md) - Living-person rule, private flag (GEDCOM `RESN`), "Living" placeholder, and redaction at two choke points
 - [009-place-data-model.md](./009-place-data-model.md) - Place records resolved from each event's own text by one matching key, with aliases, a parent hierarchy, and coordinates on the place that an event may override
+- [010-backup-archive-format.md](./010-backup-archive-format.md) - Backups as a zip of the event log plus the tables held nowhere else, verified by a SHA-256 manifest, restored into an empty database on either backend by replay
 
 ## Related
 
