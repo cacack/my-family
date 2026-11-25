@@ -5294,7 +5294,7 @@ export interface components {
             name: string;
             /** @description The place's display name when one is set, otherwise its most-used spelling, or its key when no record spells it */
             full_name: string;
-            /** @description Number of birth and death records whose place resolves to this place or to a place beneath it. Spellings whose place matching key is the same (differing only in letter case, spacing around commas or empty parts) are one place, and so are spellings joined by an alias. This counts fewer uses than `Place.count` from `GET /places`, which also counts marriage, life event and attribute places. */
+            /** @description Number of people whose birth or death place resolves to this place or to a place beneath it, each counted once: the `total` of `GET /browse/places/{id}/persons` for this place. Spellings whose place matching key is the same (differing only in letter case, spacing around commas or empty parts) are one place, and so are spellings joined by an alias. This is a count of people, not of uses like `Place.count` from `GET /places`, which counts every birth, death, marriage, life event and attribute place use. */
             count: number;
             /** @description Whether this place has sub-locations */
             has_children: boolean;
@@ -5309,7 +5309,7 @@ export interface components {
             key: string;
             /** @description The place's display name when one is set (PUT /places/{id}); otherwise its most-used recorded spelling among the records the caller may see, its parts joined with ", " (ties broken bytewise). */
             name: string;
-            /** @description Number of place uses (birth, death, marriage, life event and attribute places) the caller may see at or under this place, under meaning by key: a use counts toward its own place and each place its key names with leading parts removed, never toward an explicit parent. It can differ from `PlaceEntry.count` from `GET /browse/places`, which counts birth and death places only and follows explicit parents. */
+            /** @description Number of place uses (birth, death, marriage, life event and attribute places) the caller may see at or under this place, under meaning by key: a use counts toward its own place and each place its key names with leading parts removed, never toward an explicit parent. It can differ from `PlaceEntry.count` from `GET /browse/places`, which counts people by their birth and death places, each once, and follows explicit parents. */
             count: number;
             /**
              * Format: uuid

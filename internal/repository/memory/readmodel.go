@@ -2291,22 +2291,21 @@ func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, branchID domain.
 // placeTree builds the repository.PlaceTree of the birth and death places of
 // branchID's overlay of persons that privacy shows. The caller holds s.mu.
 func (s *ReadModelStore) placeTree(branchID domain.BranchID, privacy repository.Privacy) *repository.PlaceTree {
-	counts := make(map[string]int)
+	counts := make(map[[2]string]int)
 	for _, p := range resolveAllRows(s.persons, branchID) {
-		if privacy.Protects(p) {
-			continue
-		}
-		for _, place := range []string{p.BirthPlace, p.DeathPlace} {
-			if place != "" {
-				counts[place]++
-			}
+		if !privacy.Protects(p) && (p.BirthPlace != "" || p.DeathPlace != "") {
+			counts[[2]string{p.BirthPlace, p.DeathPlace}]++
 		}
 	}
-	uses := make([]repository.PlaceUse, 0, len(counts))
-	for text, n := range counts {
-		uses = append(uses, repository.PlaceUse{Key: repository.PlaceKey(text), Text: text, Count: n})
+	people := make([]repository.PersonPlaces, 0, len(counts))
+	for places, n := range counts {
+		people = append(people, repository.PersonPlaces{
+			BirthKey: repository.PlaceKey(places[0]), BirthText: places[0],
+			DeathKey: repository.PlaceKey(places[1]), DeathText: places[1],
+			Count: n,
+		})
 	}
-	return repository.BuildPlaceTree(uses, s.placeFacts(), repository.PlaceAliasesByKey(s.placeAliases))
+	return repository.BuildPlaceTree(people, s.placeFacts(), repository.PlaceAliasesByKey(s.placeAliases))
 }
 
 // GetPersonsByPlace returns the persons of opts.BranchID's overlay (ADR-005)
