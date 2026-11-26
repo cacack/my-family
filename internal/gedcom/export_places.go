@@ -50,13 +50,50 @@ func loadExportPlaces(ctx context.Context, rs repository.ReadModelStore) (*expor
 }
 
 // addTo writes the place facts under every PLAC of the document's persons'
-// and families' events and attributes. The document holds only what the
+// and families' events and attributes, then moves the most common form into
+// the header (see writeHeaderForm). The document holds only what the
 // export's privacy filter let through, so nothing is written under a record
 // it left out.
 func (p *exportPlaces) addTo(doc *gedcom.Document) {
+	var details []*gedcom.PlaceDetail
 	forEachPlaceDetail(doc, func(_, _ string, detail *gedcom.PlaceDetail) {
 		p.write(detail)
+		if detail != nil && repository.PlaceKey(detail.Name) != "" {
+			details = append(details, detail)
+		}
 	})
+	writeHeaderForm(doc.Header, details)
+}
+
+// writeHeaderForm writes the form most PLACs carry as HEAD.PLAC.FORM and
+// clears it from those PLACs, so a per-place FORM is left only where it
+// differs (ADR-009 §8). A tie goes to the form that sorts first. Import gives
+// the header form to every PLAC that names a place and has no FORM of its
+// own, so no default is written while any such PLAC has no form: re-importing
+// would give that place a form it never had.
+func writeHeaderForm(header *gedcom.Header, details []*gedcom.PlaceDetail) {
+	counts := make(map[string]int)
+	for _, d := range details {
+		if d.Form == "" {
+			return
+		}
+		counts[d.Form]++
+	}
+	def := ""
+	for form, n := range counts {
+		if n > counts[def] || (n == counts[def] && form < def) {
+			def = form
+		}
+	}
+	if def == "" {
+		return
+	}
+	header.PlaceForm = def
+	for _, d := range details {
+		if d.Form == def {
+			d.Form = ""
+		}
+	}
 }
 
 // write adds to a PLAC whose text names a place the form its place holds
