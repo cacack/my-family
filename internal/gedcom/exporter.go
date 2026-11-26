@@ -1516,17 +1516,27 @@ func hasMarriageField(f repository.FamilyReadModel) bool {
 
 // toGedcomPlace returns the PLAC of a record's place text and own pair, nil
 // when it has neither. A pair with no text is written under a valueless PLAC,
-// the shape it was imported from, rather than dropped (#1807).
+// the shape it was imported from, rather than dropped (#1807). A half pair
+// (only a latitude or only a longitude) is written as held, under a MAP with
+// that half alone (#1862).
 func toGedcomPlace(place string, lat, long *string) *gedcom.PlaceDetail {
-	hasPair := lat != nil && long != nil && *lat != "" && *long != ""
-	if place == "" && !hasPair {
+	latitude, longitude := derefString(lat), derefString(long)
+	if place == "" && latitude == "" && longitude == "" {
 		return nil
 	}
 	detail := &gedcom.PlaceDetail{Name: place}
-	if hasPair {
-		detail.Coordinates = &gedcom.Coordinates{Latitude: *lat, Longitude: *long}
+	if latitude != "" || longitude != "" {
+		detail.Coordinates = &gedcom.Coordinates{Latitude: latitude, Longitude: longitude}
 	}
 	return detail
+}
+
+// derefString returns *s, or "" when s is nil.
+func derefString(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
 
 // namesRecord reports whether one of the citations names the birth, death or

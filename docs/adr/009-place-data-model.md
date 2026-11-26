@@ -432,6 +432,12 @@ or in spacing around commas become one entry, on every store.
   and the event or attribute tag. Export writes it back under the same `PLAC`, valueless when the
   text is empty, so it is never dropped
   ([#1807](https://github.com/cacack/my-family/issues/1807)). The map leaves it out (section 9).
+- **Half a pair** (a `MAP` with only `LATI` or only `LONG`). Import keeps that half as the record's
+  own. Export writes it back under `MAP`, that half alone, rather than dropping it or listing it as
+  data loss. It counts as the record's own coordinate, so the place's pair is not written in its
+  stead, and the other half is never filled from the place: that would write a pair nobody
+  recorded. Half a pair is not an effective pair, so the map still shows the place's pair, if any
+  ([#1862](https://github.com/cacack/my-family/issues/1862)).
 - **`PLAC.FORM`.** A form describes a text's parts by position, so import stores it on the place
   its key names, before alias resolution (section 3), under the positional key of the text it came
   with (section 1): the `PLAC`'s own `FORM`, otherwise the file's `HEAD.PLAC.FORM`. A form is set
