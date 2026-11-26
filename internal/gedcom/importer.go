@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 
+	gedcomgo "github.com/cacack/gedcom-go/v3"
 	"github.com/cacack/gedcom-go/v3/decoder"
 	"github.com/cacack/gedcom-go/v3/gedcom"
 	"github.com/cacack/gedcom-go/v3/validator"
@@ -437,12 +438,12 @@ func (imp *Importer) ImportWithOptions(ctx context.Context, reader io.Reader, im
 		}
 	}
 
-	// Run gedcom-go validation to catch structural issues
-	v := validator.New()
-	validationErrors := v.Validate(doc)
-	for _, verr := range validationErrors {
-		// Add validation errors as warnings (don't fail import)
-		result.Warnings = append(result.Warnings, verr.Error())
+	// Run gedcom-go validation to catch structural issues, leaving out the
+	// findings the decoder already reported (a redefined xref) so each
+	// appears once. Validation issues are warnings; they don't fail import.
+	issues := gedcomgo.WithoutDiagnosed(validator.New().ValidateAll(doc), decodeResult.Diagnostics)
+	for _, issue := range issues {
+		result.Warnings = append(result.Warnings, issue.Error())
 	}
 
 	// Extract vendor information from the document
