@@ -2,6 +2,7 @@ package query
 
 import (
 	"context"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -94,7 +95,7 @@ func (s *ValidationService) GetQualityReportOn(ctx context.Context, branchID dom
 	// Generate quality report with strict mode to get all severity levels
 	qr := strictValidator().QualityReport(view.doc)
 	errs := view.withoutDismissedIssues(qr.Errors, dismissed)
-	warnings := view.withoutDismissedIssues(qr.Warnings, dismissed)
+	warnings := append(view.withoutDismissedIssues(qr.Warnings, dismissed), view.nameStyleIssues()...)
 	info := view.withoutDismissedIssues(qr.Info, dismissed)
 
 	// Count issues by code for top issues
@@ -306,6 +307,7 @@ func (s *ValidationService) GetValidationIssuesOn(ctx context.Context, branchID 
 	// Get all validation issues (unfiltered) so we can compute global counts
 	// even when a severity filter is applied.
 	allIssues := view.withoutDismissedIssues(strictValidator().ValidateAll(view.doc), dismissed)
+	allIssues = append(allIssues, view.nameStyleIssues()...)
 
 	page := &ValidationIssuesPage{
 		Issues: []ValidationIssueResult{},
@@ -375,6 +377,54 @@ type gedcomView struct {
 type recordLabel struct {
 	kind string
 	name string
+}
+
+// nameStyleChecks are the gedcom-go personal-name style checks the quality
+// page lists (#1881): those that read only the NAME value, which the view
+// builds as "<given> /<surname>/". The others read what the view does not
+// hold: text after the surname, or the raw NSFX, NICK, GIVN, SURN and
+// extension lines under NAME.
+var nameStyleChecks = []string{
+	validator.CodeNameAllCaps,
+	validator.CodeNameSpacing,
+	validator.CodeNameQuotesOrParens,
+	validator.CodeNameUncertainMark,
+}
+
+// nameStyleIssues runs nameStyleChecks over the view's person names, as
+// warnings on each person.
+//
+// gedcom-go runs its style checks over raw NAME lines only, and other checks
+// read a record's raw lines in place of its typed fields once it has any
+// (dates, for one). So the names go into a document of their own, holding
+// only each person's NAME line, and only the style codes are kept from it.
+func (v *gedcomView) nameStyleIssues() []validator.Issue {
+	names := &gedcom.Document{XRefMap: make(map[string]*gedcom.Record)}
+	for _, record := range v.doc.Records {
+		individual, ok := record.Entity.(*gedcom.Individual)
+		if !ok || len(individual.Names) == 0 {
+			continue
+		}
+		nameRecord := &gedcom.Record{
+			XRef: record.XRef,
+			Type: gedcom.RecordTypeIndividual,
+			Tags: []*gedcom.Tag{{Level: 1, Tag: "NAME", Value: individual.Names[0].Full}},
+		}
+		names.Records = append(names.Records, nameRecord)
+		names.XRefMap[record.XRef] = nameRecord
+	}
+	style := validator.NewWithOptions(&validator.ValidateOptions{
+		Strictness:             validator.StrictnessStrict,
+		SkipDuplicateDetection: true,
+		StyleChecks:            nameStyleChecks,
+	})
+	var issues []validator.Issue
+	for _, issue := range style.ValidateAll(names) {
+		if slices.Contains(nameStyleChecks, issue.Code) {
+			issues = append(issues, issue)
+		}
+	}
+	return issues
 }
 
 // issueResult maps a validator issue back onto record ids, kinds and names.
@@ -667,11 +717,15 @@ func (s *ValidationService) personToIndividual(person repository.PersonReadModel
 			Given:   person.GivenName,
 			Surname: person.Surname,
 		}
-		// Build full name in GEDCOM format
-		if person.Surname != "" {
-			name.Full = person.GivenName + " /" + person.Surname + "/"
-		} else {
+		// Build full name in GEDCOM format. A surname alone is "/Surname/",
+		// with no leading space for the name style checks to flag.
+		switch {
+		case person.Surname == "":
 			name.Full = person.GivenName
+		case person.GivenName == "":
+			name.Full = "/" + person.Surname + "/"
+		default:
+			name.Full = person.GivenName + " /" + person.Surname + "/"
 		}
 		individual.Names = []*gedcom.PersonalName{name}
 	}
