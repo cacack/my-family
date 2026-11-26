@@ -787,11 +787,12 @@ func parseFamily(fam *gedcom.Family, doc *gedcom.Document, result *ImportResult)
 		Restriction:      fam.Restriction,
 	}
 
-	// Link husband/wife (partner1/partner2) using gedcom-go's nil-safe
-	// relationship traversal, which resolves the XRef against the document
-	// and returns nil for missing/broken references.
-	family.Partner1ID = resolvePartner(fam.Husband, fam.HusbandIndividual(doc), fam.XRef, "husband", result)
-	family.Partner2ID = resolvePartner(fam.Wife, fam.WifeIndividual(doc), fam.XRef, "wife", result)
+	// Link husband/wife (partner1/partner2). The family record is the
+	// authority, so HUSB/WIFE resolve by xref alone: gedcom-go's
+	// HusbandIndividual/WifeIndividual also demand the individual's FAMS and
+	// would drop one-way links, which the validator reports instead.
+	family.Partner1ID = resolvePartner(fam.Husband, doc.GetIndividual(fam.Husband), fam.XRef, "husband", result)
+	family.Partner2ID = resolvePartner(fam.Wife, doc.GetIndividual(fam.Wife), fam.XRef, "wife", result)
 
 	// Parse events for marriage with date validation. The record holds one
 	// MARR (recordMarriage); negated and other marriages are handled as
@@ -812,29 +813,20 @@ func parseFamily(fam *gedcom.Family, doc *gedcom.Document, result *ImportResult)
 		}
 	}
 
-	// Link children using gedcom-go's nil-safe relationship traversal.
-	// ChildrenIndividuals resolves each child XRef against the document and
-	// silently drops broken references; we detect and warn about those below.
-	resolvedChildren := fam.ChildrenIndividuals(doc)
-	for _, child := range resolvedChildren {
-		id := result.PersonXrefToID[child.XRef]
-		family.ChildIDs = append(family.ChildIDs, id)
+	// Link children by xref, for the same reason as the partners (CHIL is
+	// the authority; a missing FAMC is the validator's to report). A CHIL
+	// pointing to no individual record is warned about and left off.
+	for _, childXRef := range fam.Children {
+		child := doc.GetIndividual(childXRef)
+		if child == nil {
+			result.Warnings = append(result.Warnings,
+				fmt.Sprintf("Family %s: child %s not found", fam.XRef, childXRef))
+			continue
+		}
+		family.ChildIDs = append(family.ChildIDs, result.PersonXrefToID[child.XRef])
 
 		// Look up the child's PEDI for this family
 		family.ChildRelTypes = append(family.ChildRelTypes, childPedigreeType(child, fam.XRef))
-	}
-	// Warn about child references that could not be resolved.
-	if len(resolvedChildren) < len(fam.Children) {
-		resolved := make(map[string]bool, len(resolvedChildren))
-		for _, child := range resolvedChildren {
-			resolved[child.XRef] = true
-		}
-		for _, childXRef := range fam.Children {
-			if !resolved[childXRef] {
-				result.Warnings = append(result.Warnings,
-					fmt.Sprintf("Family %s: child %s not found", fam.XRef, childXRef))
-			}
-		}
 	}
 
 	// Extract GEDCOM 7.0 external identifiers (EXID)
