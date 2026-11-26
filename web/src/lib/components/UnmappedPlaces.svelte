@@ -26,7 +26,7 @@
 		type Place,
 		type UnmappedPlace
 	} from '#lib/api/client.js';
-	import { onDestroy } from 'svelte';
+	import { onDestroy, untrack } from 'svelte';
 	import { can } from '#lib/stores/access.svelte.js';
 	import { getAppConfig } from '#lib/stores/appConfig.svelte.js';
 	import { activeBranch } from '#lib/stores/activeBranch.svelte.js';
@@ -58,10 +58,13 @@
 	/** Each entry's lookup, for "Look up all" to drive. */
 	const lookups: Record<string, ReturnType<typeof GeocodeLookup> | null> = {};
 	const mayLookUpAll = $derived(mayApply && getAppConfig().geocoder_enabled);
-	/** The "Look up all" run: places done out of those queued when it began. */
-	let run: { done: number; total: number; state: 'running' | 'stopped' | 'finished' } | null = $state(null);
-	// A run checks this before each lookup; stopping or leaving the page bumps it.
+	/** The "Look up all" run: places done (and how many of those failed) out of those queued when it began. */
+	let run: { done: number; failed: number; total: number; state: 'running' | 'stopped' | 'finished' } | null =
+		$state(null);
+	// A run checks this before each lookup; stopping, re-reading the list or leaving the page bumps it.
 	let runId = 0;
+	/** A run's lookup is in flight; a new run waits for it, so there is never more than one. */
+	let awaiting = $state(false);
 
 	/** The apply being saved, or refused for a stale version. */
 	let pending: { entry: UnmappedPlace; base: PlaceBase; pair: Pair; origin: CoordinateOrigin } | null =
@@ -92,6 +95,9 @@
 	];
 
 	async function load() {
+		// Re-reading unmounts every entry's lookup, and the candidates with it.
+		// Untracked: the effect that first calls this must not re-run as the run moves.
+		if (untrack(() => run?.state) === 'running') stopRun();
 		loading = true;
 		error = null;
 		try {
@@ -110,19 +116,28 @@
 
 	/**
 	 * Look up each entry in turn, waiting for one answer before the next
-	 * request (the server spaces and caches them, #1562). An entry saved or
-	 * re-read away meanwhile is skipped, and counted as done.
+	 * request (the server spaces and caches them, #1562). An entry saved away
+	 * meanwhile is skipped, and counted as done; a failed lookup is counted as
+	 * done and as failed. Re-reading the list stops the run.
 	 */
 	async function lookUpAll() {
+		if (awaiting) return;
 		const queue = entries.filter((e) => lookupName(e.name));
 		const n = ++runId;
-		run = { done: 0, total: queue.length, state: 'running' };
+		run = { done: 0, failed: 0, total: queue.length, state: 'running' };
 		for (const entry of queue) {
-			await lookups[entry.id]?.look({ focus: false });
+			awaiting = true;
+			const outcome = await lookups[entry.id]?.look({ focus: false });
+			awaiting = false;
 			if (n !== runId) return;
 			run.done++;
+			if (outcome === 'failed') run.failed++;
 		}
 		run.state = 'finished';
+	}
+
+	function failures(n: number): string {
+		return n ? `, ${n} failed` : '';
 	}
 
 	/** Send no further lookup; the one in flight still shows its answer. */
@@ -253,18 +268,18 @@
 					{#if run?.state === 'running'}
 						<Button variant="outline" size="sm" onclick={stopRun}>Stop looking up</Button>
 					{:else}
-						<Button variant="outline" size="sm" onclick={lookUpAll}>Look up all places</Button>
+						<Button variant="outline" size="sm" disabled={awaiting} onclick={lookUpAll}>Look up all places</Button>
 					{/if}
 				</div>
 				{#if run}
 					<progress max={run.total} value={run.done} aria-label="Places looked up"></progress>
 					<p class="run-status" role="status">
 						{#if run.state === 'running'}
-							Looking up places: {run.done} of {run.total} done.
+							Looking up places: {run.done} of {run.total} done{failures(run.failed)}.
 						{:else if run.state === 'stopped'}
-							Stopped after {run.done} of {run.total} places.
+							Stopped after {run.done} of {run.total} places{failures(run.failed)}.
 						{:else}
-							Looked up {run.done} of {run.total} places. Review each place's locations below.
+							Looked up {run.done} of {run.total} places{failures(run.failed)}. Review each place's locations below.
 						{/if}
 					</p>
 				{/if}

@@ -444,6 +444,70 @@ describe('UnmappedPlaces look up all (#1609)', () => {
 		expect(screen.getByRole('button', { name: 'Look up all places' })).toBeTruthy();
 	});
 
+	it('counts the lookups that failed, and says so when the run ends', async () => {
+		render(UnmappedPlaces);
+		await fireEvent.click(await lookUpAll());
+		await waitFor(() => expect(held.length).toBe(1));
+		// Salem's lookup, sent next, fails.
+		vi.mocked(apiModule.api.geocodePlace).mockRejectedValueOnce({ status: 502, code: 'geocoder_error', message: 'x' });
+		await answerNext();
+		await waitFor(() => expect(status()).toBe('Looking up places: 2 of 3 done, 1 failed.'));
+		await answerNext();
+		await waitFor(() =>
+			expect(status()).toBe("Looked up 3 of 3 places, 1 failed. Review each place's locations below.")
+		);
+	});
+
+	it('starts no new run until the lookup in flight after a stop has settled', async () => {
+		render(UnmappedPlaces);
+		await fireEvent.click(await lookUpAll());
+		await waitFor(() => expect(apiModule.api.geocodePlace).toHaveBeenCalledTimes(1));
+		await fireEvent.click(screen.getByRole('button', { name: 'Stop looking up' }));
+		const again = screen.getByRole('button', { name: 'Look up all places' }) as HTMLButtonElement;
+		expect(again.disabled).toBe(true);
+		await answerNext();
+		await waitFor(() => expect(again.disabled).toBe(false));
+		await fireEvent.click(again);
+		await answerNext();
+		await answerNext();
+		await answerNext();
+		await waitFor(() => expect(status()).toMatch(/^Looked up 3 of 3 places/));
+		expect(maxInFlight).toBe(1);
+	});
+
+	it('skips a place saved away during the run, and counts it as done', async () => {
+		vi.mocked(apiModule.api.updatePlace).mockResolvedValue(placeOf(boston, { version: 5 }));
+		render(UnmappedPlaces);
+		await fireEvent.click(await lookUpAll());
+		await waitFor(() => expect(held.length).toBe(1));
+		// Salem is saved by its own control before the run reaches it.
+		await fireEvent.click(screen.getByRole('button', { name: 'Enter coordinates for Salem, MA' }));
+		await fireEvent.input(screen.getByLabelText('Latitude'), { target: { value: '42.5' } });
+		await fireEvent.input(screen.getByLabelText('Longitude'), { target: { value: '-70.9' } });
+		await fireEvent.click(screen.getByRole('button', { name: 'Save coordinates' }));
+		await waitFor(() => expect(screen.queryByText('Salem, MA')).toBeNull());
+		await answerNext();
+		await answerNext();
+		await waitFor(() => expect(status()).toMatch(/^Looked up 3 of 3 places/));
+		expect(vi.mocked(apiModule.api.geocodePlace).mock.calls.map(([name]) => name)).toEqual(['Boston', 'Plymouth']);
+	});
+
+	it('stops when the list is re-read, which drops the candidates shown', async () => {
+		vi.mocked(apiModule.api.updatePlace).mockRejectedValue(versionConflict);
+		vi.mocked(apiModule.api.getPlace).mockResolvedValue(placeOf(boston, { version: 5, resolves_to: salem.id }));
+		render(UnmappedPlaces);
+		await fireEvent.click(await lookUpAll());
+		await answerNext();
+		await fireEvent.click(await screen.findByRole('button', { name: /^Use this, Boston, found, .* for Boston$/ }));
+		await waitFor(() => expect(apiModule.api.listUnmappedPlaces).toHaveBeenCalledTimes(2));
+		await screen.findByText('Boston');
+		expect(status()).toBe('Stopped after 1 of 3 places.');
+		await answerNext();
+		await new Promise((r) => setTimeout(r, 0));
+		expect(apiModule.api.geocodePlace).toHaveBeenCalledTimes(2);
+		expect(status()).toBe('Stopped after 1 of 3 places.');
+	});
+
 	it('stops when the page is left', async () => {
 		const { unmount } = render(UnmappedPlaces);
 		await fireEvent.click(await lookUpAll());
