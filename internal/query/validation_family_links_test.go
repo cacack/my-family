@@ -26,7 +26,10 @@ func TestValidationService_FamilyLinksBothSides(t *testing.T) {
 	// A married couple and a child, all consistent.
 	husband := addPersonWithGender(store, "John", "Doe", domain.GenderMale, "1920")
 	wife := addPersonWithGender(store, "Jane", "Doe", domain.GenderFemale, "1925")
-	addChild(addFamily(store, &husband, &wife, "1945"), addPersonWithGender(store, "Kid", "Doe", domain.GenderMale, "1950"))
+	kid := addPersonWithGender(store, "Kid", "Doe", domain.GenderMale, "1950")
+	consistentFamily := addFamily(store, &husband, &wife, "1945")
+	addChild(consistentFamily, kid)
+	consistent := map[uuid.UUID]bool{husband: true, wife: true, kid: true, consistentFamily: true}
 
 	// A child born before its father, and a marriage before the father's birth.
 	father := addPersonWithGender(store, "Early", "Smith", domain.GenderMale, "1920")
@@ -39,6 +42,11 @@ func TestValidationService_FamilyLinksBothSides(t *testing.T) {
 	counts := map[string]int{}
 	for _, issue := range page.Issues {
 		counts[issue.Code]++
+		for _, id := range []*uuid.UUID{issue.RecordID, issue.RelatedRecordID} {
+			if id != nil && consistent[*id] {
+				t.Errorf("issue on the consistent family: %s %s", issue.Code, issue.Message)
+			}
+		}
 		if strings.HasPrefix(issue.Code, "UNRECIPROCATED_") {
 			t.Errorf("unexpected one-way link issue: %s %s", issue.Code, issue.Message)
 		}

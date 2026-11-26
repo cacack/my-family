@@ -595,6 +595,8 @@ func (s *ValidationService) gedcomViewOf(records *scopeRecords) *gedcomView {
 
 	// Add families, and give each listed member the FAMS or FAMC that points
 	// back: gedcom-go counts a family link only when both sides record it.
+	// This must agree with memberXRef: a withheld member is not in individuals,
+	// so the family names the null pointer and no back-link is added.
 	for i := range families {
 		family := &families[i]
 		children := childrenByFamily[family.ID]
