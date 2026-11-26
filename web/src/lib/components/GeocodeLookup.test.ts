@@ -132,8 +132,10 @@ describe('GeocodeLookup', () => {
 		vi.mocked(apiModule.api.geocodePlace).mockReturnValue(new Promise((r) => (answer = r)));
 		renderLookup();
 		await fireEvent.click(lookUp());
-		expect(lookUp().textContent?.trim()).toBe('Looking up...');
-		await fireEvent.keyDown(lookUp(), { key: 'Escape' });
+		// Its name says what its label shows while the lookup runs.
+		const looking = screen.getByRole('button', { name: 'Looking up coordinates for Birth Place' });
+		expect(looking.textContent?.trim()).toBe('Looking up...');
+		await fireEvent.keyDown(looking, { key: 'Escape' });
 		answer({ items: candidates, total: 2 });
 		await waitFor(() => expect(lookUp().textContent?.trim()).toBe('Look up'));
 		expect(screen.queryByRole('region')).toBeNull();

@@ -49,20 +49,29 @@
 	let button: HTMLElement | null = $state(null);
 	let title: HTMLElement | null = $state(null);
 
-	async function look() {
-		if (!name) return;
+	/**
+	 * Ask for candidates and show them when they come. Resolves once the
+	 * answer is settled, so the worklist's "look up all" can wait for each in
+	 * turn (#1609); it passes `focus: false` so a queued answer does not take
+	 * the focus. Resolves to 'found' when candidates (or none) are shown,
+	 * 'failed' when the failure is shown, and 'skipped' when nothing is shown:
+	 * no name to look up, or a later lookup or Close superseded this one.
+	 */
+	export async function look({ focus = true }: { focus?: boolean } = {}): Promise<'found' | 'failed' | 'skipped'> {
+		if (!name) return 'skipped';
 		const asked = name;
 		const n = ++sent;
 		lookup = { state: 'loading', name: asked };
 		try {
 			const { items } = await api.geocodePlace(asked);
-			if (n !== sent) return;
+			if (n !== sent) return 'skipped';
 			lookup = { state: 'found', name: asked, candidates: items };
 		} catch (e) {
-			if (n !== sent) return;
+			if (n !== sent) return 'skipped';
 			lookup = { state: 'failed', name: asked, message: geocodeErrorMessage(e) };
 		}
-		title?.focus();
+		if (focus) title?.focus();
+		return lookup.state;
 	}
 
 	function close() {
@@ -98,10 +107,10 @@
 			variant="outline"
 			size="sm"
 			disabled={!name}
-			aria-label="Look up coordinates for {label}"
+			aria-label="{lookup?.state === 'loading' ? 'Looking up' : 'Look up'} coordinates for {label}"
 			aria-expanded={!!lookup && lookup.state !== 'loading'}
 			aria-controls="{id}-geocode"
-			onclick={look}
+			onclick={() => look()}
 		>
 			{lookup?.state === 'loading' ? 'Looking up...' : 'Look up'}
 		</Button>
