@@ -134,6 +134,41 @@ describe('Quality landing page', () => {
 		expect(document.body.textContent).not.toContain('11111111');
 	});
 
+	it('lists name style warnings like any other warning, each with a readable title (#1881)', async () => {
+		const person = (n: number) => `${n}${n}${n}${n}${n}${n}${n}${n}-0000-0000-0000-000000000000`;
+		// The messages gedcom-go gives each code, as the validation endpoint returns them.
+		const styles = [
+			['NAME_ALL_CAPS', 'Name style: a given name or surname with a word of two or more letters all in capitals', 'John SMITH'],
+			['NAME_SPACING', 'Name style: a leading, trailing or doubled space, or a space just inside the surname slashes', 'Paul Smith'],
+			['NAME_QUOTES_OR_PARENS', 'Name style: a double quote or parenthesis in the NAME value', 'John "Jack" Smith'],
+			['NAME_UNCERTAIN_MARK', 'Name style: "?", "*", a digit, or "or" between two alternatives in the NAME value', 'Mary Smith or Smyth']
+		] as const;
+		vi.mocked(apiModule.api.getValidationIssues).mockResolvedValue({
+			issues: styles.map(([code, message, name], i) => ({
+				severity: 'warning' as const,
+				code,
+				message,
+				record_id: person(i + 1),
+				record_type: 'person' as const,
+				record_name: name
+			})),
+			total: 4,
+			error_count: 0,
+			warning_count: 4,
+			info_count: 0
+		});
+		render(Page);
+
+		expect(await screen.findByRole('button', { name: 'Warnings (4)' })).toBeDefined();
+		for (const [i, [code, message, name]] of styles.entries()) {
+			const row = screen.getByText(code).closest('tr')!;
+			expect(row.textContent).toContain('Warning');
+			expect(row.textContent).toContain(message);
+			const link = screen.getByRole('link', { name });
+			expect(link.getAttribute('href')).toBe(`/persons/${person(i + 1)}`);
+		}
+	});
+
 	it('shows no severity counts and a friendly sentence when validation fails to load (#1096)', async () => {
 		vi.mocked(apiModule.api.getValidationIssues).mockRejectedValue({ status: 500, message: 'boom' });
 		render(Page);
