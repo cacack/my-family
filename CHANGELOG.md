@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.19.0](https://github.com/cacack/my-family/compare/v0.18.0...v0.19.0) (2026-11-26)
+
+
+### Features
+
+* **api:** add an opt-in geocoder lookup endpoint ([48c1f5a](https://github.com/cacack/my-family/commit/48c1f5a5c17a6ce2eadd25122707c26ad3798ca4)), closes [#1562](https://github.com/cacack/my-family/issues/1562)
+* **config:** add opt-in geocoder settings ([303b809](https://github.com/cacack/my-family/commit/303b809d84f2aa78e3a68ccacb04d68b463dbdd8)), closes [#1562](https://github.com/cacack/my-family/issues/1562)
+* **gedcom:** round-trip place forms, external IDs and effective pairs ([dc4f8a0](https://github.com/cacack/my-family/commit/dc4f8a04489eb32205b606046597372939cd6966)), closes [#1738](https://github.com/cacack/my-family/issues/1738)
+* **gedcom:** write the most common place form as HEAD.PLAC.FORM on export ([efd7079](https://github.com/cacack/my-family/commit/efd7079121b0b29b092b94db591e72af17c7fb13)), closes [#1739](https://github.com/cacack/my-family/issues/1739)
+* **geocode:** add a cached, rate-limited Nominatim lookup ([fc8f9b9](https://github.com/cacack/my-family/commit/fc8f9b92457ab3f8023eedd797f816fa672aed69)), closes [#1562](https://github.com/cacack/my-family/issues/1562)
+* **places:** apply or type a place's coordinates on the worklist ([6b91520](https://github.com/cacack/my-family/commit/6b9152082cf6682846bde71e679c9c79cca28deb)), closes [#1815](https://github.com/cacack/my-family/issues/1815)
+* **places:** give each no-coordinates entry its place's version ([e3a9836](https://github.com/cacack/my-family/commit/e3a983648305d03fed39afddad614f85ca896da0))
+* **repository:** store place forms and external IDs ([617586a](https://github.com/cacack/my-family/commit/617586a6dff957f0334207b4a2a38fb524dbd175)), closes [#1738](https://github.com/cacack/my-family/issues/1738)
+* **web:** add a geocoder lookup that lists candidates with a map ([1d5af72](https://github.com/cacack/my-family/commit/1d5af726a06aa7ab837280807b50ac35bb0befde)), closes [#1607](https://github.com/cacack/my-family/issues/1607)
+* **web:** look up every place on the worklist in turn ([e4382ba](https://github.com/cacack/my-family/commit/e4382ba7fa1481c19472f3d90034cf5eab4b0760)), closes [#1609](https://github.com/cacack/my-family/issues/1609)
+* **web:** offer geocoder candidates in the place forms and the worklist ([8d61535](https://github.com/cacack/my-family/commit/8d61535e9e74608f5a5adf288f307553118df629)), closes [#1607](https://github.com/cacack/my-family/issues/1607)
+
+
+### Bug Fixes
+
+* **gedcom:** report and export coordinates under an empty place ([598314d](https://github.com/cacack/my-family/commit/598314d41a1a049559d36e0f83b0edaa493d8142))
+* **gedcom:** write a half coordinate pair back on export ([e2262bf](https://github.com/cacack/my-family/commit/e2262bf831cd5b66178d06adbe8cde983e5e0460)), closes [#1862](https://github.com/cacack/my-family/issues/1862)
+* **geocode:** answer cached names without queueing and skip NaN coordinates ([31bf1c0](https://github.com/cacack/my-family/commit/31bf1c0898b3ea6c682388e9d8fb803ab3b213e5))
+* **map:** leave out locations whose place text names no place ([8f7310b](https://github.com/cacack/my-family/commit/8f7310be4219317f40a980ff0bbbddc8dd25d705))
+* **places:** count people, not records, in the place browser ([a5f6054](https://github.com/cacack/my-family/commit/a5f60549059fc547e542663c252409a727c9b04a)), closes [#1811](https://github.com/cacack/my-family/issues/1811)
+* **places:** don't save coordinates onto a place joined to another ([9bc960b](https://github.com/cacack/my-family/commit/9bc960bc60df5aa3ff3fbb535643d8e8f9646fc1))
+* **places:** make the place list and place reads follow explicit parents ([518fde2](https://github.com/cacack/my-family/commit/518fde201a4b8daca9874b3c65e392ffcb136e0d)), closes [#1812](https://github.com/cacack/my-family/issues/1812)
+* **places:** never list an alias on a place its target is not ([e52ba51](https://github.com/cacack/my-family/commit/e52ba512f7b2b6ee41344d8affd0ff9de5f12418))
+* **places:** reject coordinates under place text that names no place ([06d8adb](https://github.com/cacack/my-family/commit/06d8adb2bc577dad9746b9c6fd5d2bb332226b2d)), closes [#1807](https://github.com/cacack/my-family/issues/1807)
+* **web:** count failed lookups and keep one in flight in "Look up all" ([a1b9d76](https://github.com/cacack/my-family/commit/a1b9d76337141c0ec7e79de18cc194bd39b3c236))
+* **web:** drop a geocoded origin once the place name no longer holds the match ([9715510](https://github.com/cacack/my-family/commit/97155102ecb1c627298c3dc24d5cc2ff662bf9f9))
+
 ## [0.18.0](https://github.com/cacack/my-family/compare/v0.17.0...v0.18.0) (2026-11-25)
 
 
