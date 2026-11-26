@@ -11,6 +11,7 @@ import { goto } from '$app/navigation';
 import { signInAs } from '#lib/test/roles.js';
 import { homePerson, loadHomePerson } from '#lib/stores/homePerson.svelte.js';
 import { auth } from '#lib/stores/access.svelte.js';
+import { bostonCandidate, pickFirstCandidate, setGeocoderEnabled } from '#lib/test/geocode.js';
 
 const PERSON_ID = '11111111-1111-1111-1111-111111111111';
 const BRANCH_ID = '44444444-4444-4444-4444-444444444444';
@@ -28,6 +29,7 @@ const {
 	getPersonNames,
 	updatePersonName,
 	getHomePerson,
+	geocodePlace,
 	pageState
 } = vi.hoisted(() => ({
 	// The real store exposes a read-only view, so the active branch is injected.
@@ -43,6 +45,7 @@ const {
 	getPersonNames: vi.fn(async () => ({ items: [] as apiModule.PersonName[], total: 0 })),
 	updatePersonName: vi.fn(),
 	getHomePerson: vi.fn(),
+	geocodePlace: vi.fn(),
 	// The history state a navigation left, e.g. a create's converted dates.
 	pageState: {} as App.PageState
 }));
@@ -79,6 +82,7 @@ vi.mock('#lib/api/client.js', async (importOriginal) => {
 		getPersonNames,
 		updatePersonName,
 		getHomePerson,
+		geocodePlace,
 		// These two answer with a bare array rather than a wrapper object.
 		getConflictsBySubject: vi.fn(async () => []),
 		getResearchLogsBySubject: vi.fn(async () => [])
@@ -978,6 +982,52 @@ describe('Person detail edit form', () => {
 			expect(await screen.findByRole('img', { name: 'Living person' })).toBeDefined();
 			expect(screen.getByRole('img', { name: 'Private person' })).toBeDefined();
 		});
+	});
+});
+
+// Geocoder candidates fill a place's inputs, saved only with the form (#1607).
+describe('Person detail edit form geocoder lookup (#1607)', () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		branchState.id = null;
+		setGeocoderEnabled(true);
+		getPerson.mockResolvedValue(person({ birth_place: 'Boston', version: 3 }));
+		updatePerson.mockImplementation(async () => person({ version: 4 }));
+		geocodePlace.mockResolvedValue({ items: [bostonCandidate], total: 1 });
+	});
+
+	async function openEdit() {
+		render(Page);
+		await fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+	}
+
+	it('offers no lookup when the geocoder is disabled', async () => {
+		setGeocoderEnabled(false);
+		await openEdit();
+		expect(screen.getByLabelText('Birth Place')).toBeTruthy();
+		expect(screen.queryByRole('button', { name: /^Look up/ })).toBeNull();
+	});
+
+	it('saves a pick only with the form, as geocoded', async () => {
+		await openEdit();
+		await pickFirstCandidate('Birth Place');
+		expect(updatePerson).not.toHaveBeenCalled();
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+		await waitFor(() => expect(updatePerson).toHaveBeenCalled());
+		expect(updatePerson.mock.calls[0][1]).toMatchObject({
+			birth_place_latitude: 'N42.3554334',
+			birth_place_longitude: 'W71.060511',
+			birth_place_coordinates_origin: { source: 'geocoded', provider: 'Nominatim', precision: 'full' }
+		});
+		expect(updatePerson.mock.calls[0][1]).not.toHaveProperty('death_place_coordinates_origin');
+	});
+
+	it('sends no write for a pick abandoned by cancelling the edit', async () => {
+		await openEdit();
+		await pickFirstCandidate('Birth Place');
+		await fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+		expect(updatePerson).not.toHaveBeenCalled();
 	});
 });
 

@@ -48,6 +48,7 @@
 		type SavedAs
 	} from '#lib/utils/dateInput.js';
 	import { coordinateChange, coordinatePairError, toDecimalDegrees, type CoordinateError } from '#lib/utils/coordinates.js';
+	import { pickedOrigin, type CoordinatePick } from '#lib/utils/geocode.js';
 	
 	const DATE_FIELDS = ['birth_date', 'death_date'] as const;
 	type DateField = (typeof DATE_FIELDS)[number];
@@ -90,6 +91,8 @@
 	let savedAs: Partial<Record<DateField, SavedAs>> = $state({});
 	// The coordinate input a save was stopped for, by place (#1033).
 	let coordinateErrors: Partial<Record<PlaceField, CoordinateError>> = $state({});
+	// The geocoder candidate picked into each place's inputs (#1607).
+	let picks: Record<PlaceField, CoordinatePick | null> = $state({ birth_place: null, death_place: null });
 	let editing = $state(false);
 	let saving = $state(false);
 	let deleteOpen = $state(false);
@@ -342,6 +345,7 @@
 		saveError = null;
 		dateError = null;
 		coordinateErrors = {};
+		picks = { birth_place: null, death_place: null };
 		if (person) {
 			formData = formFrom(person);
 		}
@@ -407,10 +411,19 @@
 		return { latitude: saved[`${field}_latitude`], longitude: saved[`${field}_longitude`] };
 	}
 
-	/** A place's pair as the update sends it: left out when it is as stored. */
+	/**
+	 * A place's pair as the update sends it: left out when it is as stored,
+	 * with a geocoded origin while it is the candidate picked (#1607).
+	 */
 	function coordinatesUpdate(saved: PersonDetail, field: PlaceField) {
 		const change = coordinateChange(coordinatePair(field), savedPair(saved, field));
-		return change ? { [`${field}_latitude`]: change.latitude, [`${field}_longitude`]: change.longitude } : {};
+		if (!change) return {};
+		const origin = change.latitude ? pickedOrigin(coordinatePair(field), picks[field], formData[field]) : undefined;
+		return {
+			[`${field}_latitude`]: change.latitude,
+			[`${field}_longitude`]: change.longitude,
+			...(origin && { [`${field}_coordinates_origin`]: origin })
+		};
 	}
 
 	async function savePerson() {
@@ -639,6 +652,8 @@
 							bind:latitude={formData.birth_place_latitude}
 							bind:longitude={formData.birth_place_longitude}
 							error={coordinateErrors.birth_place}
+							lookup={formData.birth_place}
+							bind:picked={picks.birth_place}
 							saved={{
 								latitude: person.birth_place_latitude,
 								longitude: person.birth_place_longitude,
@@ -668,6 +683,8 @@
 							bind:latitude={formData.death_place_latitude}
 							bind:longitude={formData.death_place_longitude}
 							error={coordinateErrors.death_place}
+							lookup={formData.death_place}
+							bind:picked={picks.death_place}
 							saved={{
 								latitude: person.death_place_latitude,
 								longitude: person.death_place_longitude,

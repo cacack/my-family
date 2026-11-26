@@ -3,9 +3,11 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/sve
 import AddFamilyPage from './+page.svelte';
 import type * as apiModule from '#lib/api/client.js';
 import { goto } from '$app/navigation';
+import { bostonCandidate, pickFirstCandidate, setGeocoderEnabled } from '#lib/test/geocode.js';
 
-const { createFamily, addChildToFamily, getPerson, searchPersons, pageState } = vi.hoisted(() => ({
+const { createFamily, addChildToFamily, getPerson, searchPersons, geocodePlace, pageState } = vi.hoisted(() => ({
 	createFamily: vi.fn(),
+	geocodePlace: vi.fn(),
 	addChildToFamily: vi.fn(),
 	getPerson: vi.fn(),
 	searchPersons: vi.fn(),
@@ -14,7 +16,7 @@ const { createFamily, addChildToFamily, getPerson, searchPersons, pageState } = 
 
 vi.mock('#lib/api/client.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof apiModule>();
-	return { ...actual, api: { createFamily, addChildToFamily, getPerson, searchPersons } };
+	return { ...actual, api: { createFamily, addChildToFamily, getPerson, searchPersons, geocodePlace } };
 });
 
 vi.mock('$app/state', () => ({
@@ -284,5 +286,41 @@ describe('Add Family page coordinates (#1033)', () => {
 			'Latitude must be a number of degrees, such as 42.3601.'
 		);
 		expect(createFamily).not.toHaveBeenCalled();
+	});
+});
+
+// Geocoder candidates fill the marriage place's inputs, saved only with the form (#1607).
+describe('Add Family page geocoder lookup (#1607)', () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		pageState.search = '';
+		setGeocoderEnabled(true);
+		createFamily.mockResolvedValue({ id: 'new-fam', version: 1 });
+		searchPersons.mockResolvedValue({ items: [john], total: 1 });
+		geocodePlace.mockResolvedValue({ items: [bostonCandidate], total: 1 });
+	});
+
+	it('offers no lookup when the geocoder is disabled', () => {
+		setGeocoderEnabled(false);
+		render(AddFamilyPage);
+		expect(screen.getByLabelText('Marriage Place')).toBeTruthy();
+		expect(screen.queryByRole('button', { name: /^Look up/ })).toBeNull();
+	});
+
+	it('saves a pick only with the form, as geocoded', async () => {
+		render(AddFamilyPage);
+		await pick('Partner 1', 'Smith', /John Smith/);
+		await fireEvent.input(screen.getByLabelText('Marriage Place'), { target: { value: 'Boston' } });
+		await pickFirstCandidate('Marriage Place');
+		expect(createFamily).not.toHaveBeenCalled();
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Create Family' }));
+		await waitFor(() => expect(createFamily).toHaveBeenCalled());
+		expect(createFamily.mock.calls[0][0]).toMatchObject({
+			marriage_place: 'Boston',
+			marriage_place_latitude: 'N42.3554334',
+			marriage_place_longitude: 'W71.060511',
+			marriage_place_coordinates_origin: { source: 'geocoded', provider: 'Nominatim', precision: 'full' }
+		});
 	});
 });

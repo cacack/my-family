@@ -19,6 +19,7 @@
 		type DateFieldError
 	} from '#lib/utils/dateInput.js';
 	import { coordinateChange, coordinatePairError, type CoordinateError, type CoordinateInput } from '#lib/utils/coordinates.js';
+	import { pickedOrigin, type CoordinatePick } from '#lib/utils/geocode.js';
 
 	const DATE_FIELDS = ['birth_date', 'death_date'] as const;
 	type DateField = (typeof DATE_FIELDS)[number];
@@ -38,6 +39,8 @@
 		death_place: { latitude: '', longitude: '' }
 	});
 	let coordinateErrors: Partial<Record<PlaceField, CoordinateError>> = $state({});
+	// The geocoder candidate picked into each place's inputs (#1607).
+	let picks: Record<PlaceField, CoordinatePick | null> = $state({ birth_place: null, death_place: null });
 
 	// Form state
 	let formData = $state<PersonCreate>({
@@ -92,11 +95,13 @@
 			if (birth?.latitude && birth.longitude) {
 				payload.birth_place_latitude = birth.latitude;
 				payload.birth_place_longitude = birth.longitude;
+				payload.birth_place_coordinates_origin = pickedOrigin(coordinates.birth_place, picks.birth_place, formData.birth_place ?? '');
 			}
 			const death = coordinateChange(coordinates.death_place);
 			if (death?.latitude && death.longitude) {
 				payload.death_place_latitude = death.latitude;
 				payload.death_place_longitude = death.longitude;
+				payload.death_place_coordinates_origin = pickedOrigin(coordinates.death_place, picks.death_place, formData.death_place ?? '');
 			}
 			if (formData.notes) {
 				payload.notes = formData.notes;
@@ -203,6 +208,8 @@
 					bind:latitude={coordinates.birth_place.latitude}
 					bind:longitude={coordinates.birth_place.longitude}
 					error={coordinateErrors.birth_place}
+					lookup={formData.birth_place ?? ''}
+					bind:picked={picks.birth_place}
 				/>
 			</div>
 		</FormRow>
@@ -226,6 +233,8 @@
 					bind:latitude={coordinates.death_place.latitude}
 					bind:longitude={coordinates.death_place.longitude}
 					error={coordinateErrors.death_place}
+					lookup={formData.death_place ?? ''}
+					bind:picked={picks.death_place}
 				/>
 			</div>
 		</FormRow>

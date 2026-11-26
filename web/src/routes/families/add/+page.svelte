@@ -26,6 +26,7 @@
 		type DateFieldError
 	} from '#lib/utils/dateInput.js';
 	import { coordinateChange, coordinatePairError, type CoordinateError, type CoordinateInput } from '#lib/utils/coordinates.js';
+	import { pickedOrigin, type CoordinatePick } from '#lib/utils/geocode.js';
 
 	let saving = $state(false);
 	let error: string | null = $state(null);
@@ -37,6 +38,8 @@
 	// create was stopped for (#1033).
 	let coordinates: CoordinateInput = $state({ latitude: '', longitude: '' });
 	let coordinateError: CoordinateError | null = $state(null);
+	// The geocoder candidate picked into the inputs (#1607).
+	let picked: CoordinatePick | null = $state(null);
 
 	// Form state
 	let formData = $state<FamilyCreate>({
@@ -121,7 +124,10 @@
 				marriage_date: formData.marriage_date || undefined,
 				marriage_place: formData.marriage_place || undefined,
 				marriage_place_latitude: pair?.latitude ?? undefined,
-				marriage_place_longitude: pair?.longitude ?? undefined
+				marriage_place_longitude: pair?.longitude ?? undefined,
+				marriage_place_coordinates_origin: pair?.latitude
+					? pickedOrigin(coordinates, picked, formData.marriage_place ?? '')
+					: undefined
 			};
 			const family = await api.createFamily(payload);
 			if (child) {
@@ -242,6 +248,8 @@
 					bind:latitude={coordinates.latitude}
 					bind:longitude={coordinates.longitude}
 					error={coordinateError}
+					lookup={formData.marriage_place ?? ''}
+					bind:picked
 				/>
 			</div>
 		</FormRow>

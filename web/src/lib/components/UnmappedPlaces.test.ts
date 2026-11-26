@@ -3,10 +3,11 @@ import { render, screen, within, fireEvent, waitFor } from '@testing-library/sve
 import UnmappedPlaces from './UnmappedPlaces.svelte';
 import * as apiModule from '#lib/api/client.js';
 import { signInAs } from '#lib/test/roles.js';
+import { bostonCandidate, setGeocoderEnabled } from '#lib/test/geocode.js';
 
 vi.mock('#lib/api/client.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof apiModule>();
-	return { ...actual, api: { listUnmappedPlaces: vi.fn(), updatePlace: vi.fn(), getPlace: vi.fn() } };
+	return { ...actual, api: { listUnmappedPlaces: vi.fn(), updatePlace: vi.fn(), getPlace: vi.fn(), geocodePlace: vi.fn() } };
 });
 
 const { branchState } = vi.hoisted(() => ({ branchState: { id: null as string | null } }));
@@ -243,5 +244,87 @@ describe('UnmappedPlaces', () => {
 		await fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
 		expect(screen.queryByLabelText('Latitude')).toBeNull();
 		expect(apiModule.api.updatePlace).not.toHaveBeenCalled();
+	});
+});
+
+// A geocoder candidate is saved on the place, as geocoded (#1607, ADR-009).
+describe('UnmappedPlaces geocoder lookup (#1607)', () => {
+	const lookUp = (name: string) => screen.findByRole('button', { name: `Look up coordinates for ${name}` });
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		branchState.id = null;
+		signInAs('editor');
+		setGeocoderEnabled(true);
+		vi.mocked(apiModule.api.listUnmappedPlaces).mockResolvedValue({ items: [boston, salem], total: 2 });
+		vi.mocked(apiModule.api.updatePlace).mockImplementation(async (id) =>
+			placeOf(id === boston.id ? boston : salem, { version: 5 })
+		);
+		vi.mocked(apiModule.api.geocodePlace).mockResolvedValue({
+			items: [bostonCandidate, { ...bostonCandidate, display_name: 'Boston, Lincolnshire', latitude: 52.97, longitude: -0.02, query: 'Boston, MA' }],
+			total: 2
+		});
+	});
+
+	it('offers no lookup when the geocoder is disabled', async () => {
+		setGeocoderEnabled(false);
+		render(UnmappedPlaces);
+		await screen.findByText('Boston');
+		expect(screen.queryByRole('button', { name: /^Look up/ })).toBeNull();
+	});
+
+	it('offers no lookup on a research branch, where place facts cannot be set', async () => {
+		branchState.id = 'branch-1';
+		render(UnmappedPlaces);
+		await screen.findByText('Boston');
+		expect(screen.queryByRole('button', { name: /^Look up/ })).toBeNull();
+	});
+
+	it('looks up every entry, with or without suggestions, by its name', async () => {
+		render(UnmappedPlaces);
+		await lookUp('Boston');
+		expect(screen.getByRole('button', { name: 'Look up coordinates for Salem, MA' })).toBeTruthy();
+		await fireEvent.click(await lookUp('Salem, MA'));
+		expect(apiModule.api.geocodePlace).toHaveBeenCalledWith('Salem, MA');
+		expect(apiModule.api.updatePlace).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		['the whole name', 0, 'N42.3554334', 'W71.060511', 'full'],
+		['other text than the name', 1, 'N52.97', 'W0.02', 'partial']
+	] as const)('saves a candidate that matched %s on the place, as geocoded', async (_n, index, latitude, longitude, precision) => {
+		render(UnmappedPlaces);
+		await fireEvent.click(await lookUp('Boston'));
+		const uses = await screen.findAllByRole('button', { name: /^Use this, .* for Boston$/ });
+		await fireEvent.click(uses[index]);
+
+		await waitFor(() =>
+			expect(apiModule.api.updatePlace).toHaveBeenCalledWith(boston.id, {
+				version: 4,
+				latitude,
+				longitude,
+				coordinates_origin: { source: 'geocoded', provider: 'Nominatim', precision }
+			})
+		);
+		await waitFor(() => expect(screen.queryByText('3 records without coordinates')).toBeNull());
+	});
+
+	it('sends no write when the list is closed without a pick', async () => {
+		render(UnmappedPlaces);
+		await fireEvent.click(await lookUp('Boston'));
+		await screen.findByRole('region', { name: 'Locations matching “Boston”' });
+		expect(screen.getByTestId('geocode-attribution').textContent).toBe(bostonCandidate.attribution);
+		await fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+		expect(screen.queryByRole('region')).toBeNull();
+		expect(apiModule.api.updatePlace).not.toHaveBeenCalled();
+	});
+
+	it('says when the geocoder failed, and keeps the other controls usable', async () => {
+		vi.mocked(apiModule.api.geocodePlace).mockRejectedValue({ status: 502, code: 'geocoder_error', message: 'x' });
+		render(UnmappedPlaces);
+		await fireEvent.click(await lookUp('Salem, MA'));
+		expect((await screen.findByRole('alert')).textContent).toContain('The geocoder failed to answer.');
+		await fireEvent.click(screen.getByRole('button', { name: 'Enter coordinates for Salem, MA' }));
+		expect(screen.getByLabelText('Latitude')).toBeTruthy();
 	});
 });
