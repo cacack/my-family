@@ -1,6 +1,9 @@
 package gedcom
 
 import (
+	"cmp"
+	"slices"
+
 	"github.com/cacack/gedcom-go/v3/gedcom"
 
 	"github.com/cacack/my-family/internal/domain"
@@ -22,9 +25,9 @@ type PlaceData struct {
 // placeFacts returns the PlaceData of every PLAC under a person's or family's
 // event or attribute that names a place and states a form or an EXID, in file
 // order: records in the order the file lists them; within a record, its
-// events, then its attributes, each in file order. gedcom-go keeps no
-// position across a record's events and attributes, so that order is the
-// closest the decoded document gives to the file's.
+// events and attributes by the line of their own tag. Structures built in
+// code have no line, so for them it is the record's events, then its
+// attributes.
 func placeFacts(doc *gedcom.Document) []PlaceData {
 	headerForm := ""
 	if doc.Header != nil {
@@ -57,11 +60,8 @@ func placeFacts(doc *gedcom.Document) []PlaceData {
 func forEachPlaceDetail(doc *gedcom.Document, visit func(record, tag string, detail *gedcom.PlaceDetail)) {
 	for _, rec := range doc.Records {
 		if indi, ok := rec.GetIndividual(); ok {
-			for _, e := range indi.Events {
-				visit("Individual "+indi.XRef, string(e.Type), e.PlaceDetail)
-			}
-			for _, a := range indi.Attributes {
-				visit("Individual "+indi.XRef, string(a.Type), a.PlaceDetail)
+			for _, f := range individualFacts(indi) {
+				visit("Individual "+indi.XRef, f.tag, f.detail)
 			}
 		}
 		if fam, ok := rec.GetFamily(); ok {
@@ -70,4 +70,28 @@ func forEachPlaceDetail(doc *gedcom.Document, visit func(record, tag string, det
 			}
 		}
 	}
+}
+
+// individualFact is the tag, PLAC and source line of a person's event or
+// attribute.
+type individualFact struct {
+	tag    string
+	detail *gedcom.PlaceDetail
+	line   int
+}
+
+// individualFacts returns a person's events and attributes in file order:
+// gedcom-go decodes them into two slices, so they are merged by the line of
+// their own tag. The sort is stable, so where lines are 0, as for structures
+// built in code, the events come first, then the attributes.
+func individualFacts(indi *gedcom.Individual) []individualFact {
+	facts := make([]individualFact, 0, len(indi.Events)+len(indi.Attributes))
+	for _, e := range indi.Events {
+		facts = append(facts, individualFact{string(e.Type), e.PlaceDetail, e.LineNumber})
+	}
+	for _, a := range indi.Attributes {
+		facts = append(facts, individualFact{string(a.Type), a.PlaceDetail, a.LineNumber})
+	}
+	slices.SortStableFunc(facts, func(a, b individualFact) int { return cmp.Compare(a.line, b.line) })
+	return facts
 }
