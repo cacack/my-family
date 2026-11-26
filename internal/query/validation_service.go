@@ -585,16 +585,37 @@ func (s *ValidationService) gedcomViewOf(records *scopeRecords) *gedcomView {
 	}
 
 	// Add persons as individuals
+	individuals := make(map[uuid.UUID]*gedcom.Individual, len(persons))
 	for _, person := range persons {
-		add(person.ID, gedcom.RecordTypeIndividual, s.personToIndividual(person),
+		individual := s.personToIndividual(person)
+		individuals[person.ID] = individual
+		add(person.ID, gedcom.RecordTypeIndividual, individual,
 			recordLabel{kind: entityTypePerson, name: person.FullName})
 	}
 
-	// Add families
+	// Add families, and give each listed member the FAMS or FAMC that points
+	// back: gedcom-go counts a family link only when both sides record it.
+	// This must agree with memberXRef: a withheld member is not in individuals,
+	// so the family names the null pointer and no back-link is added.
 	for i := range families {
 		family := &families[i]
-		add(family.ID, gedcom.RecordTypeFamily, s.familyToGedcomFamily(*family, childrenByFamily[family.ID], records.memberXRef),
+		children := childrenByFamily[family.ID]
+		add(family.ID, gedcom.RecordTypeFamily, s.familyToGedcomFamily(*family, children, records.memberXRef),
 			recordLabel{kind: entityTypeFamily, name: familyReadModelName(family)})
+		link := gedcom.FamilyLink{FamilyXRef: familyXRef(family.ID)}
+		for _, partnerID := range []*uuid.UUID{family.Partner1ID, family.Partner2ID} {
+			if partnerID == nil {
+				continue
+			}
+			if individual := individuals[*partnerID]; individual != nil {
+				individual.SpouseInFamilies = append(individual.SpouseInFamilies, link)
+			}
+		}
+		for _, child := range children {
+			if individual := individuals[child.PersonID]; individual != nil {
+				individual.ChildInFamilies = append(individual.ChildInFamilies, link)
+			}
+		}
 	}
 
 	// Add sources
