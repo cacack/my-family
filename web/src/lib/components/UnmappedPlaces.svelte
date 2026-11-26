@@ -9,7 +9,9 @@
 	 *
 	 * An editor on the mainline can set the place's pair (#1815): apply a
 	 * suggestion as stored (origin copied), or type one for an entry with none
-	 * (origin manual), at the version the entry was read at. The entry then
+	 * (origin manual), or pick a geocoder candidate when the server has one
+	 * enabled (#1607; origin geocoded, saved on the place per ADR-009), at the
+	 * version the entry was read at. The entry then
 	 * leaves the list, as every record there is mapped at the place's pair. A
 	 * stale version opens the save-conflict flow. Place facts are main-only, so
 	 * on a research branch the controls are withdrawn.
@@ -17,7 +19,8 @@
 	import {
 		api,
 		isVersionConflict,
-		type CoordinateSource,
+		type CoordinateOrigin,
+		type GeocodeCandidate,
 		type Place,
 		type UnmappedPlace
 	} from '#lib/api/client.js';
@@ -25,9 +28,11 @@
 	import { activeBranch } from '#lib/stores/activeBranch.svelte.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { coordinatePairError, toGedcomCoordinate, type CoordinateError } from '#lib/utils/coordinates.js';
+	import { candidateInput, geocodedOrigin } from '#lib/utils/geocode.js';
 	import { SaveConflictFlow, type ConflictRow } from '#lib/utils/saveConflict.svelte.js';
 	import ActionError from './ActionError.svelte';
 	import CoordinateFields from './CoordinateFields.svelte';
+	import GeocodeLookup from './GeocodeLookup.svelte';
 	import SaveConflict from './SaveConflict.svelte';
 	import ErrorState from './ErrorState.svelte';
 	import LoadingState from './LoadingState.svelte';
@@ -47,7 +52,7 @@
 	const withheld = $derived(can('editor') && !!activeBranch.id);
 
 	/** The apply being saved, or refused for a stale version. */
-	let pending: { entry: UnmappedPlace; base: PlaceBase; pair: Pair; source: CoordinateSource } | null =
+	let pending: { entry: UnmappedPlace; base: PlaceBase; pair: Pair; origin: CoordinateOrigin } | null =
 		$state(null);
 	let saving = $state(false);
 	let applyError: { id: string; message: string } | null = $state(null);
@@ -95,21 +100,21 @@
 		return `${n} ${n === 1 ? 'record' : 'records'}`;
 	}
 
-	function apply(entry: UnmappedPlace, pair: Pair, source: CoordinateSource) {
+	function apply(entry: UnmappedPlace, pair: Pair, origin: CoordinateOrigin) {
 		conflict.clear();
-		pending = { entry, base: { version: entry.version }, pair, source };
+		pending = { entry, base: { version: entry.version }, pair, origin };
 		save();
 	}
 
 	async function save() {
 		if (!pending) return;
-		const { entry, base, pair, source } = pending;
+		const { entry, base, pair, origin } = pending;
 		saving = true;
 		applyError = null;
 		notice = null;
 		listNotice = null;
 		try {
-			const saved = await api.updatePlace(entry.id, { version: base.version, ...pair, coordinates_origin: { source } });
+			const saved = await api.updatePlace(entry.id, { version: base.version, ...pair, coordinates_origin: origin });
 			entries = entries.filter((e) => e.id !== entry.id);
 			notice = `${saved.name} is now on the map at ${pair.latitude}, ${pair.longitude}.`;
 			pending = null;
@@ -161,7 +166,23 @@
 				latitude: toGedcomCoordinate(pair.latitude, 'latitude'),
 				longitude: toGedcomCoordinate(pair.longitude, 'longitude')
 			},
-			'manual'
+			{ source: 'manual' }
+		);
+	}
+
+	/**
+	 * Save a geocoder candidate as the place's pair, matched against its name;
+	 * one that matched other text is saved as entered by hand, as in the forms.
+	 */
+	function applyCandidate(entry: UnmappedPlace, candidate: GeocodeCandidate) {
+		const typed = candidateInput(candidate);
+		apply(
+			entry,
+			{
+				latitude: toGedcomCoordinate(typed.latitude, 'latitude'),
+				longitude: toGedcomCoordinate(typed.longitude, 'longitude')
+			},
+			geocodedOrigin(candidate, entry.name) ?? { source: 'manual' }
 		);
 	}
 </script>
@@ -212,7 +233,7 @@
 												size="sm"
 												disabled={saving}
 												aria-label="Use these coordinates, {s.latitude}, {s.longitude}, for {entry.name}"
-												onclick={() => apply(entry, { latitude: s.latitude, longitude: s.longitude }, 'copied')}
+												onclick={() => apply(entry, { latitude: s.latitude, longitude: s.longitude }, { source: 'copied' })}
 											>
 												Use these coordinates
 											</Button>
@@ -262,6 +283,15 @@
 								</div>
 							{/if}
 						{/if}
+					{/if}
+					{#if mayApply}
+						<GeocodeLookup
+							id="unmapped-{entry.id}"
+							place={entry.name}
+							label={entry.name}
+							busy={saving}
+							onPick={(c) => applyCandidate(entry, c)}
+						/>
 					{/if}
 					{#if applyError?.id === entry.id}
 						<ActionError message={applyError.message} />

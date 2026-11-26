@@ -7,6 +7,7 @@ import AccessibilityPanel from '#lib/components/AccessibilityPanel.svelte';
 import * as apiModule from '#lib/api/client.js';
 import { auth } from '#lib/stores/access.svelte.js';
 import { signInAs } from '#lib/test/roles.js';
+import { bostonCandidate, pickFirstCandidate, setGeocoderEnabled } from '#lib/test/geocode.js';
 
 const { branchState, pageState } = vi.hoisted(() => ({
 	// The real store exposes a read-only view, so the active branch is injected.
@@ -34,7 +35,8 @@ vi.mock('#lib/api/client.js', async (importOriginal) => {
 			removeChildFromFamily: vi.fn(),
 			searchPersons: vi.fn(),
 			listFamilyMedia: vi.fn(async () => ({ items: [], total: 0 })),
-			uploadFamilyMedia: vi.fn()
+			uploadFamilyMedia: vi.fn(),
+			geocodePlace: vi.fn()
 		}
 	};
 });
@@ -867,6 +869,60 @@ describe('Family Detail Page: partners and children (#826)', () => {
 		render(FamilyPage);
 		expect(await screen.findByRole('button', { name: 'Add child' })).toBeDefined();
 		expect(screen.getByRole('button', { name: 'Remove Alice Smith from this family' })).toBeDefined();
+	});
+});
+
+// A geocoder candidate fills the marriage place's inputs, saved only with the form (#1607).
+describe('Family Detail Page: geocoder lookup (#1607)', () => {
+	const api = apiModule.api;
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		branchState.id = null;
+		setGeocoderEnabled(true);
+		vi.mocked(api.getFamilyHistory).mockResolvedValue(mockEmptyHistory);
+		vi.mocked(api.getFamily).mockResolvedValue({ ...mockFamilyWithChildren, marriage_place: 'Boston' });
+		vi.mocked(api.updateFamily).mockResolvedValue({ id: 'test-family-id', version: 2 });
+		vi.mocked(api.geocodePlace).mockResolvedValue({ items: [bostonCandidate], total: 1 });
+	});
+
+	async function openEdit() {
+		render(FamilyPage);
+		await screen.findByText('John Smith & Jane Smith');
+		await fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+	}
+
+	it('offers no lookup when the geocoder is disabled', async () => {
+		setGeocoderEnabled(false);
+		await openEdit();
+		expect(screen.getByLabelText('Marriage Place')).toBeTruthy();
+		expect(screen.queryByRole('button', { name: /^Look up/ })).toBeNull();
+	});
+
+	it('saves a pick only with the form, as geocoded', async () => {
+		await openEdit();
+		await pickFirstCandidate('Marriage Place');
+		expect(api.updateFamily).not.toHaveBeenCalled();
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+		await waitFor(() => expect(api.updateFamily).toHaveBeenCalled());
+		expect(vi.mocked(api.updateFamily).mock.calls[0][1]).toMatchObject({
+			marriage_place_latitude: 'N42.3554334',
+			marriage_place_longitude: 'W71.060511',
+			marriage_place_coordinates_origin: { source: 'geocoded', provider: 'Nominatim', precision: 'full' }
+		});
+	});
+
+	it('sends no origin for a pick typed over, so it is saved as entered by hand', async () => {
+		await openEdit();
+		await pickFirstCandidate('Marriage Place');
+		await fireEvent.input(screen.getByLabelText('Latitude'), { target: { value: '42.36' } });
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+		await waitFor(() => expect(api.updateFamily).toHaveBeenCalled());
+		const sent = vi.mocked(api.updateFamily).mock.calls[0][1];
+		expect(sent.marriage_place_latitude).toBe('N42.36');
+		expect(sent.marriage_place_coordinates_origin).toBeUndefined();
 	});
 });
 

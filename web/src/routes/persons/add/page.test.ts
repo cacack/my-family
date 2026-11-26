@@ -3,13 +3,15 @@ import { render, screen, fireEvent, waitFor, within } from '@testing-library/sve
 import Page from './+page.svelte';
 import * as apiModule from '#lib/api/client.js';
 import { goto } from '$app/navigation';
+import { bostonCandidate, pickFirstCandidate, setGeocoderEnabled } from '#lib/test/geocode.js';
 
 vi.mock('#lib/api/client.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof apiModule>();
 	return {
 		...actual,
 		api: {
-			createPerson: vi.fn()
+			createPerson: vi.fn(),
+			geocodePlace: vi.fn()
 		}
 	};
 });
@@ -218,5 +220,114 @@ describe('Add Person form coordinates (#1033)', () => {
 		);
 		await waitFor(() => expect(document.activeElement).toBe(latitude));
 		expect(createPerson).not.toHaveBeenCalled();
+	});
+});
+
+// Geocoder candidates fill a place's inputs, saved only with the form (#1607).
+describe('Add Person form geocoder lookup (#1607)', () => {
+	const createPerson = vi.mocked(apiModule.api.createPerson);
+	const geocodePlace = vi.mocked(apiModule.api.geocodePlace);
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		setGeocoderEnabled(true);
+		createPerson.mockResolvedValue({ id: 'p1', given_name: 'Ada', surname: '', version: 1 } as apiModule.Person);
+		geocodePlace.mockResolvedValue({ items: [bostonCandidate], total: 1 });
+	});
+
+	function coordinates(place: string) {
+		const group = within(screen.getByRole('group', { name: `${place} coordinates` }));
+		return {
+			latitude: group.getByLabelText('Latitude') as HTMLInputElement,
+			longitude: group.getByLabelText('Longitude') as HTMLInputElement
+		};
+	}
+
+	it('offers no lookup when the geocoder is disabled', () => {
+		setGeocoderEnabled(false);
+		render(Page);
+		expect(screen.queryByRole('button', { name: /^Look up/ })).toBeNull();
+	});
+
+	it('fills the inputs from a pick and saves it only with the form, as geocoded', async () => {
+		render(Page);
+		await fireEvent.input(screen.getByLabelText('Given Name'), { target: { value: 'Ada' } });
+		await fireEvent.input(screen.getByLabelText('Birth Place'), { target: { value: 'Boston' } });
+		await pickFirstCandidate('Birth Place');
+
+		const { latitude, longitude } = coordinates('Birth Place');
+		expect(latitude.value).toBe('42.3554334');
+		expect(longitude.value).toBe('-71.060511');
+		expect(screen.getByTestId('coordinates-origin').textContent).toBe(
+			'Geocoded by Nominatim, full match. Saved when the form is saved.'
+		);
+		expect(createPerson).not.toHaveBeenCalled();
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Create Person' }));
+		await waitFor(() => expect(createPerson).toHaveBeenCalled());
+		expect(createPerson.mock.calls[0][0]).toMatchObject({
+			birth_place: 'Boston',
+			birth_place_latitude: 'N42.3554334',
+			birth_place_longitude: 'W71.060511',
+			birth_place_coordinates_origin: { source: 'geocoded', provider: 'Nominatim', precision: 'full' }
+		});
+		expect(createPerson.mock.calls[0][0].death_place_coordinates_origin).toBeUndefined();
+	});
+
+	it('is a partial match when the place name is not what the geocoder matched', async () => {
+		render(Page);
+		await fireEvent.input(screen.getByLabelText('Given Name'), { target: { value: 'Ada' } });
+		await fireEvent.input(screen.getByLabelText('Death Place'), { target: { value: 'Boston' } });
+		await pickFirstCandidate('Death Place');
+		// The name is made longer after the pick, so the geocoder matched only part of it.
+		await fireEvent.input(screen.getByLabelText('Death Place'), { target: { value: 'Boston, Suffolk' } });
+		await fireEvent.click(screen.getByRole('button', { name: 'Create Person' }));
+
+		await waitFor(() => expect(createPerson).toHaveBeenCalled());
+		expect(createPerson.mock.calls[0][0].death_place_coordinates_origin).toEqual({
+			source: 'geocoded',
+			provider: 'Nominatim',
+			precision: 'partial'
+		});
+	});
+
+	it('sends no origin once the place is renamed to text the geocoder did not match', async () => {
+		render(Page);
+		await fireEvent.input(screen.getByLabelText('Given Name'), { target: { value: 'Ada' } });
+		await fireEvent.input(screen.getByLabelText('Death Place'), { target: { value: 'Boston' } });
+		await pickFirstCandidate('Death Place');
+		await fireEvent.input(screen.getByLabelText('Death Place'), { target: { value: 'Salem, Essex' } });
+		expect(screen.queryByTestId('coordinates-origin')).toBeNull();
+		await fireEvent.click(screen.getByRole('button', { name: 'Create Person' }));
+
+		await waitFor(() => expect(createPerson).toHaveBeenCalled());
+		expect(createPerson.mock.calls[0][0].death_place_latitude).toBe('N42.3554334');
+		expect(createPerson.mock.calls[0][0].death_place_coordinates_origin).toBeUndefined();
+	});
+
+	it('sends no origin for a pick typed over, so it is saved as entered by hand', async () => {
+		render(Page);
+		await fireEvent.input(screen.getByLabelText('Given Name'), { target: { value: 'Ada' } });
+		await fireEvent.input(screen.getByLabelText('Birth Place'), { target: { value: 'Boston' } });
+		await pickFirstCandidate('Birth Place');
+		await fireEvent.input(coordinates('Birth Place').latitude, { target: { value: '42.36' } });
+		await fireEvent.click(screen.getByRole('button', { name: 'Create Person' }));
+
+		await waitFor(() => expect(createPerson).toHaveBeenCalled());
+		expect(createPerson.mock.calls[0][0]).toMatchObject({ birth_place_latitude: 'N42.36' });
+		expect(createPerson.mock.calls[0][0].birth_place_coordinates_origin).toBeUndefined();
+	});
+
+	it('keeps the inputs usable after a failed lookup', async () => {
+		geocodePlace.mockRejectedValue({ status: 504, code: 'geocoder_timeout', message: 'busy' });
+		render(Page);
+		await fireEvent.input(screen.getByLabelText('Birth Place'), { target: { value: 'Boston' } });
+		await fireEvent.click(screen.getByRole('button', { name: 'Look up coordinates for Birth Place' }));
+		expect((await screen.findByRole('alert')).textContent).toContain('did not answer in time');
+
+		const { latitude } = coordinates('Birth Place');
+		expect(latitude.disabled).toBe(false);
+		await fireEvent.input(latitude, { target: { value: '42.3601' } });
+		expect(latitude.value).toBe('42.3601');
 	});
 });
