@@ -12,7 +12,8 @@ import (
 // getAppConfig returns application configuration visible to the frontend.
 func (s *Server) getAppConfig(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]any{
-		"demo_mode": s.config.DemoMode,
+		"demo_mode":        s.config.DemoMode,
+		"geocoder_enabled": s.geocoder != nil,
 	})
 }
 

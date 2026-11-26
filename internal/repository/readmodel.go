@@ -933,9 +933,9 @@ type ReadModelStore interface {
 	// family's marriage place, life events and attributes count only where
 	// their owner's own facts are shown: a person shown in full, a family that
 	// is not private and has no protected partner (ADR-008 §3, ADR-009 §10).
-	// A use counts under its key's suffixes, never an explicit parent;
-	// GetPlaceHierarchy counts birth and death places only and follows
-	// explicit parents, so its counts can differ.
+	// It walks the hierarchy GetPlaceHierarchy walks, explicit parents
+	// included, so it holds every place the browser shows; it counts uses,
+	// where GetPlaceHierarchy counts people by birth and death place.
 	ListPlaces(ctx context.Context, branchID domain.BranchID, privacy Privacy) ([]PlaceReadModel, error)
 	// ListUnmappedPlaces returns the no-coordinates worklist (ADR-009 §9),
 	// built by UnmappedPlaces from the same records, with their own pairs, as
@@ -965,6 +965,23 @@ type ReadModelStore interface {
 	ListPlaceAliases(ctx context.Context) ([]PlaceAliasReadModel, error)
 	// ReplacePlaceAliases replaces every row of place_aliases with aliases.
 	ReplacePlaceAliases(ctx context.Context, aliases []PlaceAliasReadModel) error
+
+	// Place forms and external IDs (ADR-009 §2, §8): the place_forms and
+	// place_external_ids tables, projected from PlaceUpdated. MAIN-ONLY
+	// (PL-005) like the facts; these reads apply no privacy, and the
+	// query.PrivacyStore returns only the rows of visible places (PL-006).
+
+	// ReplacePlaceForms replaces the forms of the place with placeID.
+	ReplacePlaceForms(ctx context.Context, placeID uuid.UUID, forms []PlaceFormReadModel) error
+	// ListPlaceForms returns every place's forms, keyed by place ID, each
+	// place's by positional key.
+	ListPlaceForms(ctx context.Context) (map[uuid.UUID][]PlaceFormReadModel, error)
+	// ReplacePlaceExternalIDs replaces the external IDs of the place with
+	// placeID, keeping their order.
+	ReplacePlaceExternalIDs(ctx context.Context, placeID uuid.UUID, ids []PlaceExternalIDReadModel) error
+	// ListPlaceExternalIDs returns every place's external IDs, keyed by place
+	// ID, each place's in sequence order.
+	ListPlaceExternalIDs(ctx context.Context) (map[uuid.UUID][]PlaceExternalIDReadModel, error)
 
 	// Map operations
 
@@ -1031,8 +1048,8 @@ type CemeteryEntry struct {
 
 // MapLocation represents an aggregated geographic location for map display.
 type MapLocation struct {
-	// PlaceID is the ID of the place the location groups (ADR-009 §9), the
-	// zero UUID when its text names no place; Place is that place's name.
+	// PlaceID is the ID of the place the location groups (ADR-009 §9);
+	// Place is that place's name.
 	PlaceID   uuid.UUID   `json:"place_id"`
 	Place     string      `json:"place"`
 	Latitude  float64     `json:"latitude"`

@@ -4607,6 +4607,41 @@ type GenderDistribution struct {
 	Unknown int `json:"unknown"`
 }
 
+// GeocodeCandidate defines model for GeocodeCandidate.
+type GeocodeCandidate struct {
+	// Attribution The credit the provider's data license requires wherever the candidate is shown
+	//
+	// Example: Data © OpenStreetMap contributors, ODbL 1.0. https://osm.org/copyright
+	Attribution string `json:"attribution"`
+
+	// DisplayName The provider's full name for the location
+	//
+	// Example: Boston, Suffolk County, Massachusetts, United States
+	DisplayName string `json:"display_name"`
+
+	// Latitude Latitude in decimal degrees
+	Latitude float64 `json:"latitude"`
+
+	// Longitude Longitude in decimal degrees
+	Longitude float64 `json:"longitude"`
+
+	// Provider The provider's name
+	//
+	// Example: Nominatim
+	Provider string `json:"provider"`
+
+	// Query The text that matched. Today it is always the place name looked up, with spaces normalized; a later fallback to a shorter form of the name would return that form here (#1563).
+	Query string `json:"query"`
+}
+
+// GeocodeCandidateList defines model for GeocodeCandidateList.
+type GeocodeCandidateList struct {
+	Items []GeocodeCandidate `json:"items"`
+
+	// Total Number of candidates
+	Total int `json:"total"`
+}
+
 // GroupSheetChild Child entry in family group sheet
 type GroupSheetChild struct {
 	// Birth Event details for group sheet display
@@ -6140,7 +6175,7 @@ type Place struct {
 	// CoordinatesOrigin Where the place's pair came from; present whenever the pair is.
 	CoordinatesOrigin *CoordinateOrigin `json:"coordinates_origin,omitempty"`
 
-	// Count Number of place uses (birth, death, marriage, life event and attribute places) the caller may see at or under this place, under meaning by key: a use counts toward its own place and each place its key names with leading parts removed, never toward an explicit parent. It can differ from `PlaceEntry.count` from `GET /browse/places`, which counts birth and death places only and follows explicit parents.
+	// Count Number of place uses (birth, death, marriage, life event and attribute places) the caller may see that resolve to this place or to a place beneath it, each counted once. Beneath follows the hierarchy of `GET /browse/places`: a place's explicit parent (`parent_id`) when one is set, otherwise the place its key names with the leftmost part removed (ADR-009 §4). An absorbed place sits outside that hierarchy and counts the uses whose key is its key or ends with it. This is a count of uses, not of people like `PlaceEntry.count`, which counts people by their birth and death places, each once, over the same hierarchy.
 	Count int `json:"count"`
 
 	// Id UUIDv5 of the place matching key, the same on every install and every branch.
@@ -6191,7 +6226,7 @@ type PlaceAliasRequest struct {
 
 // PlaceEntry defines model for PlaceEntry.
 type PlaceEntry struct {
-	// Count Number of birth and death records whose place resolves to this place or to a place beneath it. Spellings whose place matching key is the same (differing only in letter case, spacing around commas or empty parts) are one place, and so are spellings joined by an alias. This counts fewer uses than `Place.count` from `GET /places`, which also counts marriage, life event and attribute places.
+	// Count Number of people whose birth or death place resolves to this place or to a place beneath it, each counted once: the `total` of `GET /browse/places/{id}/persons` for this place. Spellings whose place matching key is the same (differing only in letter case, spacing around commas or empty parts) are one place, and so are spellings joined by an alias. Beneath follows explicit parents, as `Place.count` from `GET /places` does. This is a count of people, not of uses like `Place.count`, which counts every birth, death, marriage, life event and attribute place use.
 	Count int `json:"count"`
 
 	// FullName The place's display name when one is set, otherwise its most-used spelling, or its key when no record spells it
@@ -7194,6 +7229,9 @@ type UnmappedPlace struct {
 
 	// Suggestions Every distinct pair, as recorded, that other records at the place carry as their own, most-used first, then by latitude and longitude; empty when no record there has one.
 	Suggestions []CoordinateSuggestion `json:"suggestions"`
+
+	// Version Version of the place's own stream, as `Place.version` gives it: send it with `PUT /places/{id}` to set the place's pair.
+	Version int64 `json:"version"`
 }
 
 // UnmappedPlaceList defines model for UnmappedPlaceList.
@@ -8145,6 +8183,12 @@ type PreviewGedcomExportParamsVersion string
 type ImportGedcomMultipartBody struct {
 	// File GEDCOM file to import
 	File openapi_types.File `json:"file"`
+}
+
+// GeocodePlaceParams defines parameters for GeocodePlace.
+type GeocodePlaceParams struct {
+	// Q The place name, 1 to 255 characters once leading, trailing and repeated spaces are removed.
+	Q string `form:"q" json:"q"`
 }
 
 // ListHistoryParams defines parameters for ListHistory.
@@ -9804,6 +9848,9 @@ type ServerInterface interface {
 	// ImportGedcom Import a GEDCOM file
 	// (POST /gedcom/import)
 	ImportGedcom(ctx echo.Context) error
+	// GeocodePlace Look up candidate coordinates for a place name
+	// (GET /geocode)
+	GeocodePlace(ctx echo.Context, params GeocodePlaceParams) error
 	// GetHealth Report that the server is up
 	// (GET /health)
 	GetHealth(ctx echo.Context) error
@@ -12108,6 +12155,24 @@ func (w *ServerInterfaceWrapper) ImportGedcom(ctx echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.ImportGedcom(ctx)
+	return err
+}
+
+// GeocodePlace converts echo context to params.
+func (w *ServerInterfaceWrapper) GeocodePlace(ctx echo.Context) error {
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GeocodePlaceParams
+	// ------------- Required query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "q", ctx.QueryParams(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter q: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.GeocodePlace(ctx, params)
 	return err
 }
 
@@ -14991,6 +15056,7 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 	router.GET(options.BaseURL+"/browse/cemeteries/:place/persons", wrapper.GetPersonsByCemetery, options.OperationMiddlewares["getPersonsByCemetery"]...)
 	router.GET(options.BaseURL+"/places", wrapper.ListPlaces, options.OperationMiddlewares["listPlaces"]...)
 	router.GET(options.BaseURL+"/places/unmapped", wrapper.ListUnmappedPlaces, options.OperationMiddlewares["listUnmappedPlaces"]...)
+	router.GET(options.BaseURL+"/geocode", wrapper.GeocodePlace, options.OperationMiddlewares["geocodePlace"]...)
 	router.GET(options.BaseURL+"/places/:id", wrapper.GetPlace, options.OperationMiddlewares["getPlace"]...)
 	router.PUT(options.BaseURL+"/places/:id", wrapper.UpdatePlace, options.OperationMiddlewares["updatePlace"]...)
 	router.DELETE(options.BaseURL+"/places/:id/alias", wrapper.UnaliasPlace, options.OperationMiddlewares["unaliasPlace"]...)
@@ -21673,6 +21739,112 @@ func (response ImportGedcom503JSONResponse) VisitImportGedcomResponse(w http.Res
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GeocodePlaceRequestObject struct {
+	Params GeocodePlaceParams
+}
+
+type GeocodePlaceResponseObject interface {
+	VisitGeocodePlaceResponse(w http.ResponseWriter) error
+}
+
+type GeocodePlace200JSONResponse GeocodeCandidateList
+
+func (response GeocodePlace200JSONResponse) VisitGeocodePlaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GeocodePlace400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response GeocodePlace400JSONResponse) VisitGeocodePlaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GeocodePlace401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GeocodePlace401JSONResponse) VisitGeocodePlaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GeocodePlace409JSONResponse Error
+
+func (response GeocodePlace409JSONResponse) VisitGeocodePlaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GeocodePlace502JSONResponse Error
+
+func (response GeocodePlace502JSONResponse) VisitGeocodePlaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GeocodePlace503JSONResponse struct{ SetupRequiredJSONResponse }
+
+func (response GeocodePlace503JSONResponse) VisitGeocodePlaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GeocodePlace504JSONResponse Error
+
+func (response GeocodePlace504JSONResponse) VisitGeocodePlaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(504)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -30093,6 +30265,9 @@ type StrictServerInterface interface {
 	// ImportGedcom Import a GEDCOM file
 	// (POST /gedcom/import)
 	ImportGedcom(ctx context.Context, request ImportGedcomRequestObject) (ImportGedcomResponseObject, error)
+	// GeocodePlace Look up candidate coordinates for a place name
+	// (GET /geocode)
+	GeocodePlace(ctx context.Context, request GeocodePlaceRequestObject) (GeocodePlaceResponseObject, error)
 	// GetHealth Report that the server is up
 	// (GET /health)
 	GetHealth(ctx context.Context, request GetHealthRequestObject) (GetHealthResponseObject, error)
@@ -33284,6 +33459,31 @@ func (sh *strictHandler) ImportGedcom(ctx echo.Context) error {
 		return err
 	} else if validResponse, ok := response.(ImportGedcomResponseObject); ok {
 		return validResponse.VisitImportGedcomResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// GeocodePlace operation middleware
+func (sh *strictHandler) GeocodePlace(ctx echo.Context, params GeocodePlaceParams) error {
+	var request GeocodePlaceRequestObject
+
+	request.Params = params
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.GeocodePlace(ctx.Request().Context(), request.(GeocodePlaceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GeocodePlace")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(GeocodePlaceResponseObject); ok {
+		return validResponse.VisitGeocodePlaceResponse(ctx.Response())
 	} else if response != nil {
 		return fmt.Errorf("unexpected response type: %T", response)
 	}

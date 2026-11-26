@@ -308,3 +308,38 @@ func TestAuthAuditRetention(t *testing.T) {
 		})
 	}
 }
+
+func TestGeocoder(t *testing.T) {
+	tests := []struct {
+		name                  string
+		enabled, url, contact string
+		wantEnabled           bool
+		wantURL               string
+		wantErr               bool
+	}{
+		{name: "unset is off at the public endpoint", wantURL: DefaultGeocoderURL},
+		{name: "off ignores a bad URL", url: "not a url", wantURL: "not a url"},
+		{name: "on with a contact", enabled: "true", contact: "ada@example.com", wantEnabled: true, wantURL: DefaultGeocoderURL},
+		{name: "on with a custom URL", enabled: "1", url: "http://nominatim.local:8080", contact: "ada@example.com",
+			wantEnabled: true, wantURL: "http://nominatim.local:8080"},
+		{name: "on without a contact is refused", enabled: "true", wantEnabled: true, wantURL: DefaultGeocoderURL, wantErr: true},
+		{name: "on with a relative URL is refused", enabled: "true", url: "nominatim", contact: "ada@example.com",
+			wantEnabled: true, wantURL: "nominatim", wantErr: true},
+		{name: "on with another scheme is refused", enabled: "true", url: "ftp://example.com", contact: "ada@example.com",
+			wantEnabled: true, wantURL: "ftp://example.com", wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("GEOCODER_ENABLED", tt.enabled)
+			t.Setenv("GEOCODER_URL", tt.url)
+			t.Setenv("GEOCODER_CONTACT", tt.contact)
+			cfg := Load()
+			if cfg.GeocoderEnabled != tt.wantEnabled || cfg.GeocoderURL != tt.wantURL || cfg.GeocoderContact != tt.contact {
+				t.Errorf("Load() = enabled %v, URL %q, contact %q", cfg.GeocoderEnabled, cfg.GeocoderURL, cfg.GeocoderContact)
+			}
+			if err := cfg.Validate(); (err != nil) != tt.wantErr {
+				t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}

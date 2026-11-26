@@ -1735,8 +1735,58 @@ func (s *PrivacyStore) ListPlaceFacts(ctx context.Context, branchID domain.Branc
 	return shown, nil
 }
 
+// ReplacePlaceForms is a projection write and passes through.
+func (s *PrivacyStore) ReplacePlaceForms(ctx context.Context, placeID uuid.UUID, forms []repository.PlaceFormReadModel) error {
+	return s.inner.ReplacePlaceForms(ctx, placeID, forms)
+}
+
+// ListPlaceForms returns the forms of the places visible to the principal on
+// main (ADR-009 §10, PL-006).
+func (s *PrivacyStore) ListPlaceForms(ctx context.Context) (map[uuid.UUID][]repository.PlaceFormReadModel, error) {
+	forms, err := s.inner.ListPlaceForms(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return visiblePlaceRows(ctx, s, forms)
+}
+
+// ReplacePlaceExternalIDs is a projection write and passes through.
+func (s *PrivacyStore) ReplacePlaceExternalIDs(ctx context.Context, placeID uuid.UUID, ids []repository.PlaceExternalIDReadModel) error {
+	return s.inner.ReplacePlaceExternalIDs(ctx, placeID, ids)
+}
+
+// ListPlaceExternalIDs returns the external IDs of the places visible to the
+// principal on main (ADR-009 §10, PL-006).
+func (s *PrivacyStore) ListPlaceExternalIDs(ctx context.Context) (map[uuid.UUID][]repository.PlaceExternalIDReadModel, error) {
+	ids, err := s.inner.ListPlaceExternalIDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return visiblePlaceRows(ctx, s, ids)
+}
+
+// visiblePlaceRows keeps the rows, keyed by place ID, of the places visible
+// to the principal on main.
+func visiblePlaceRows[T any](ctx context.Context, s *PrivacyStore, byPlace map[uuid.UUID][]T) (map[uuid.UUID][]T, error) {
+	if len(byPlace) == 0 || s.privacy(ctx).SeesAll() {
+		return byPlace, nil
+	}
+	visible, err := s.visiblePlaceKeys(ctx, domain.MainBranchID)
+	if err != nil {
+		return nil, err
+	}
+	shown := make(map[uuid.UUID][]T, len(byPlace))
+	for key := range visible {
+		if rows, ok := byPlace[repository.PlaceID(key)]; ok {
+			shown[repository.PlaceID(key)] = rows
+		}
+	}
+	return shown, nil
+}
+
 // visiblePlaceKeys returns the keys of the places the principal may see in
-// branchID: those a visible record names (ListPlaces).
+// branchID (ListPlaces): those a visible record resolves to or sits beneath,
+// explicit parents included.
 func (s *PrivacyStore) visiblePlaceKeys(ctx context.Context, branchID domain.BranchID) (map[string]bool, error) {
 	places, err := s.inner.ListPlaces(ctx, branchID, s.privacy(ctx))
 	if err != nil {

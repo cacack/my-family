@@ -28,6 +28,25 @@ type PlaceFactsReadModel struct {
 	UpdatedAt time.Time
 }
 
+// PlaceFormReadModel is a row of place_forms (ADR-009 §2, §8): the PLAC.FORM
+// labels of a place's recorded texts whose positional key
+// (PositionalPlaceKey) is PositionalKey. A form belongs to a part layout, not
+// to the place, as texts of one key can have different numbers of parts.
+type PlaceFormReadModel struct {
+	PlaceID       uuid.UUID
+	PositionalKey string
+	Form          string
+}
+
+// PlaceExternalIDReadModel is a row of place_external_ids: one GEDCOM 7.0
+// EXID of a place, such as a gazetteer entry. Sequence keeps their order.
+type PlaceExternalIDReadModel struct {
+	PlaceID  uuid.UUID
+	Sequence int
+	Value    string
+	Type     string
+}
+
 // HasCoordinates reports whether the place has a coordinate pair.
 func (f *PlaceFactsReadModel) HasCoordinates() bool {
 	return f != nil && pairSet(f.Latitude, f.Longitude)
@@ -97,8 +116,9 @@ type MapUse struct {
 // §9): two spellings of one place are one pin, and a record with a pair of its
 // own, different from its place's, gets a pin of its own. A location is named
 // by its place's display name, or else the spelling most of its uses give
-// (ties broken bytewise), and carries the place's ID. A pair the map cannot
-// parse is skipped (ParseMapCoordinates). Locations sort by place, event type,
+// (ties broken bytewise), and carries the place's ID. A use whose text names
+// no place (an empty key) is skipped, as the map has no name to show it by
+// (#1807), and so is a pair the map cannot parse (ParseMapCoordinates). Locations sort by place, event type,
 // latitude and longitude; each keeps its persons in the order of uses. It is
 // shared by every store so the map is the same on each (DB-001).
 func MapLocations(uses []MapUse) []MapLocation {
@@ -115,6 +135,9 @@ func MapLocations(uses []MapUse) []MapLocation {
 	agg := make(map[locKey]*locData)
 	var order []locKey
 	for _, u := range uses {
+		if u.Key == "" {
+			continue
+		}
 		eff, ok := ResolveCoordinates(u.Latitude, u.Longitude, u.Origin, u.Place)
 		if !ok {
 			continue
@@ -142,12 +165,8 @@ func MapLocations(uses []MapUse) []MapLocation {
 		if d.place != nil && d.place.Name != "" {
 			name = d.place.Name
 		}
-		var id uuid.UUID
-		if k.key != "" {
-			id = PlaceID(k.key)
-		}
 		results = append(results, MapLocation{
-			PlaceID:   id,
+			PlaceID:   PlaceID(k.key),
 			Place:     name,
 			Latitude:  k.lat,
 			Longitude: k.lon,

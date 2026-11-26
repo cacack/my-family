@@ -190,6 +190,8 @@ type ReadModelStore struct {
 	duplicateDismissals   map[branchKey]*repository.DuplicateDismissalReadModel // branch-scoped (#1036)
 	places                map[uuid.UUID]*repository.PlaceFactsReadModel         // main-only (ADR-009, PL-005)
 	placeAliases          []repository.PlaceAliasReadModel                      // main-only (ADR-009 §3, PL-005)
+	placeForms            map[uuid.UUID][]repository.PlaceFormReadModel         // main-only (ADR-009 §8, PL-005)
+	placeExternalIDs      map[uuid.UUID][]repository.PlaceExternalIDReadModel   // main-only (ADR-009 §8, PL-005)
 	projectionFailures    []repository.ProjectionFailure                        // #845
 	rebuildState          []byte                                                // #845; outlives ResetReadModel
 	schemaVersion         int                                                   // #680; outlives ResetReadModel
@@ -232,6 +234,8 @@ func (s *ReadModelStore) clear() {
 	s.duplicateDismissals = make(map[branchKey]*repository.DuplicateDismissalReadModel)
 	s.places = make(map[uuid.UUID]*repository.PlaceFactsReadModel)
 	s.placeAliases = nil
+	s.placeForms = make(map[uuid.UUID][]repository.PlaceFormReadModel)
+	s.placeExternalIDs = make(map[uuid.UUID][]repository.PlaceExternalIDReadModel)
 	s.projectionFailures = nil
 }
 
@@ -2291,22 +2295,21 @@ func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, branchID domain.
 // placeTree builds the repository.PlaceTree of the birth and death places of
 // branchID's overlay of persons that privacy shows. The caller holds s.mu.
 func (s *ReadModelStore) placeTree(branchID domain.BranchID, privacy repository.Privacy) *repository.PlaceTree {
-	counts := make(map[string]int)
+	counts := make(map[[2]string]int)
 	for _, p := range resolveAllRows(s.persons, branchID) {
-		if privacy.Protects(p) {
-			continue
-		}
-		for _, place := range []string{p.BirthPlace, p.DeathPlace} {
-			if place != "" {
-				counts[place]++
-			}
+		if !privacy.Protects(p) && (p.BirthPlace != "" || p.DeathPlace != "") {
+			counts[[2]string{p.BirthPlace, p.DeathPlace}]++
 		}
 	}
-	uses := make([]repository.PlaceUse, 0, len(counts))
-	for text, n := range counts {
-		uses = append(uses, repository.PlaceUse{Key: repository.PlaceKey(text), Text: text, Count: n})
+	people := make([]repository.PersonPlaces, 0, len(counts))
+	for places, n := range counts {
+		people = append(people, repository.PersonPlaces{
+			BirthKey: repository.PlaceKey(places[0]), BirthText: places[0],
+			DeathKey: repository.PlaceKey(places[1]), DeathText: places[1],
+			Count: n,
+		})
 	}
-	return repository.BuildPlaceTree(uses, s.placeFacts(), repository.PlaceAliasesByKey(s.placeAliases))
+	return repository.BuildPlaceTree(people, s.placeFacts(), repository.PlaceAliasesByKey(s.placeAliases))
 }
 
 // GetPersonsByPlace returns the persons of opts.BranchID's overlay (ADR-005)
@@ -2526,6 +2529,60 @@ func (s *ReadModelStore) ReplacePlaceAliases(ctx context.Context, aliases []repo
 	return nil
 }
 
+// ReplacePlaceForms replaces a place's forms (main-only, PL-005).
+func (s *ReadModelStore) ReplacePlaceForms(ctx context.Context, placeID uuid.UUID, forms []repository.PlaceFormReadModel) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(forms) == 0 {
+		delete(s.placeForms, placeID)
+		return nil
+	}
+	stored := slices.Clone(forms)
+	for i := range stored {
+		stored[i].PlaceID = placeID
+	}
+	slices.SortFunc(stored, func(a, b repository.PlaceFormReadModel) int { return strings.Compare(a.PositionalKey, b.PositionalKey) })
+	s.placeForms[placeID] = stored
+	return nil
+}
+
+// ListPlaceForms returns every place's forms, keyed by place ID.
+func (s *ReadModelStore) ListPlaceForms(ctx context.Context) (map[uuid.UUID][]repository.PlaceFormReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make(map[uuid.UUID][]repository.PlaceFormReadModel, len(s.placeForms))
+	for id, forms := range s.placeForms {
+		out[id] = slices.Clone(forms)
+	}
+	return out, nil
+}
+
+// ReplacePlaceExternalIDs replaces a place's external IDs (main-only, PL-005).
+func (s *ReadModelStore) ReplacePlaceExternalIDs(ctx context.Context, placeID uuid.UUID, ids []repository.PlaceExternalIDReadModel) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	stored := stampExternalIDs(ids, func(id *repository.PlaceExternalIDReadModel, seq int) {
+		id.PlaceID, id.Sequence = placeID, seq
+	})
+	if stored == nil {
+		delete(s.placeExternalIDs, placeID)
+		return nil
+	}
+	s.placeExternalIDs[placeID] = stored
+	return nil
+}
+
+// ListPlaceExternalIDs returns every place's external IDs, keyed by place ID.
+func (s *ReadModelStore) ListPlaceExternalIDs(ctx context.Context) (map[uuid.UUID][]repository.PlaceExternalIDReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make(map[uuid.UUID][]repository.PlaceExternalIDReadModel, len(s.placeExternalIDs))
+	for id, ids := range s.placeExternalIDs {
+		out[id] = slices.Clone(ids)
+	}
+	return out, nil
+}
+
 // GetPersonsByCemetery returns persons with burial/cremation events at the given
 // place. Both sides of the join resolve through opts.BranchID's overlay (ADR-005):
 // the branch-visible life events pick the owners, the branch-visible persons are
@@ -2603,11 +2660,11 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 			ID: p.ID, GivenName: p.GivenName, Surname: p.Surname,
 			Restriction: p.Restriction, LivingFacts: p.LivingFacts(),
 		}
-		if key := aliases.Resolve(repository.PlaceKey(p.BirthPlace)); key != "" || p.BirthPlaceLat != nil {
+		if key := aliases.Resolve(repository.PlaceKey(p.BirthPlace)); key != "" {
 			births = append(births, repository.MapUse{Person: person, EventType: "birth", Text: p.BirthPlace, Key: key,
 				Latitude: p.BirthPlaceLat, Longitude: p.BirthPlaceLong, Origin: p.BirthPlaceOrigin, Place: facts[key]})
 		}
-		if key := aliases.Resolve(repository.PlaceKey(p.DeathPlace)); key != "" || p.DeathPlaceLat != nil {
+		if key := aliases.Resolve(repository.PlaceKey(p.DeathPlace)); key != "" {
 			deaths = append(deaths, repository.MapUse{Person: person, EventType: "death", Text: p.DeathPlace, Key: key,
 				Latitude: p.DeathPlaceLat, Longitude: p.DeathPlaceLong, Origin: p.DeathPlaceOrigin, Place: facts[key]})
 		}

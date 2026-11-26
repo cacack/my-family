@@ -123,7 +123,7 @@ Every table a backend creates falls in one of these groups. The read-model table
 | Table | Rebuilt from the log | In the archive |
 |---|---|---|
 | `events`, `streams` | They are the log | **Carried**, as the log |
-| Every read-model table: `persons`, `families`, `family_children`, `pedigree_edges`, `person_names`, `person_external_ids`, `family_external_ids`, `life_events`, `attributes`, `associations`, `sources`, `source_external_ids`, `citations`, `citation_external_ids`, `notes`, `media`, `evidence_analyses`, `evidence_conflicts`, `research_logs`, `proof_summaries`, `duplicate_dismissals`, `submitters`, `repositories`, `repository_external_ids`, `lds_ordinances`, `places`, `place_aliases`, `projection_failures` | Yes, by the replay | Left out |
+| Every read-model table: `persons`, `families`, `family_children`, `pedigree_edges`, `person_names`, `person_external_ids`, `family_external_ids`, `life_events`, `attributes`, `associations`, `sources`, `source_external_ids`, `citations`, `citation_external_ids`, `notes`, `media`, `evidence_analyses`, `evidence_conflicts`, `research_logs`, `proof_summaries`, `duplicate_dismissals`, `submitters`, `repositories`, `repository_external_ids`, `lds_ordinances`, `places`, `place_aliases`, `place_forms`, `place_external_ids`, `projection_failures` | Yes, by the replay | Left out |
 | `branches` (branch registry) | Yes, from the branch lifecycle events | Left out |
 | `snapshots` (snapshot registry) | Yes, from `SnapshotCreated`/`SnapshotDeleted` | Left out |
 | `users` | No | **Carried**, with the argon2id password hashes |

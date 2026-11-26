@@ -51,3 +51,15 @@ func TestUnmappedPlaces(t *testing.T) {
 func TestPlaceTree(t *testing.T) {
 	placetest.RunPlaceTree(t, memory.NewReadModelStore())
 }
+
+// TestPlaceReadsAgree runs the shared #1812 suite against the memory backend;
+// the sqlite and postgres packages run the same body (DB-001).
+func TestPlaceReadsAgree(t *testing.T) {
+	placetest.RunPlaceReadsAgree(t, memory.NewReadModelStore())
+}
+
+// TestPlaceFormsAndExternalIDs runs the shared #1738 suite against the memory
+// backend; the sqlite and postgres packages run the same body (DB-001).
+func TestPlaceFormsAndExternalIDs(t *testing.T) {
+	placetest.RunPlaceFormsAndExternalIDs(t, memory.NewReadModelStore())
+}

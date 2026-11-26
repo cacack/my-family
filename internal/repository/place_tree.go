@@ -73,6 +73,66 @@ func PlaceAliasClosesParentCycle(parents PlaceParents, aliases PlaceAliases, tar
 	return parents.leadsBack(aliases.Resolve(target), aliases)
 }
 
+// Above returns the parent of each of the resolved keys and of every place
+// above one of them, walking parents through aliases (ADR-009 §4): a key maps
+// to its parent, or to "" at the top level. It is the one hierarchy of the
+// place browser and the list of places. A parent that closes a cycle, which
+// only an alias or unalias stated after it can cause, is dropped at the
+// cycle's bytewise smallest key, so the result never depends on map order.
+func (p PlaceParents) Above(keys []string, aliases PlaceAliases) map[string]string {
+	up := make(map[string]string, len(keys))
+	pending := slices.Clone(keys)
+	for len(pending) > 0 {
+		key := pending[len(pending)-1]
+		pending = pending[:len(pending)-1]
+		if _, ok := up[key]; ok {
+			continue
+		}
+		parent := p.Parent(key, aliases)
+		up[key] = parent
+		if _, ok := up[parent]; parent != "" && !ok {
+			pending = append(pending, parent)
+		}
+	}
+	breakCycles(up)
+	return up
+}
+
+// breakCycles makes the bytewise smallest key of every cycle in up a
+// top-level place.
+func breakCycles(up map[string]string) {
+	keys := make([]string, 0, len(up))
+	for key := range up {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	const (
+		unvisited = iota
+		onPath
+		done
+	)
+	state := make(map[string]int, len(keys))
+	for _, start := range keys {
+		var path []string
+		k := start
+		for k != "" && state[k] == unvisited {
+			state[k] = onPath
+			path = append(path, k)
+			k = up[k]
+		}
+		if k != "" && state[k] == onPath {
+			smallest := k
+			for c := up[k]; c != k; c = up[c] {
+				smallest = min(smallest, c)
+			}
+			up[smallest] = ""
+		}
+		for _, p := range path {
+			state[p] = done
+		}
+	}
+}
+
 // PlaceLevel is one level of the place browser: the places directly under a
 // place, and the path from the top level down to that place (empty at the top
 // level).
@@ -81,9 +141,18 @@ type PlaceLevel struct {
 	Path   []PlaceEntry
 }
 
-// PlaceTree is the place hierarchy of a set of records (ADR-009 §4): the
-// places their keys resolve to and every place above one of those, each under
-// its parent. It is built in Go from the uses of the records, the explicit
+// PersonPlaces is Count people born at the place recorded as BirthText, whose
+// stored PlaceKey is BirthKey, and died at the one recorded as DeathText, whose
+// stored PlaceKey is DeathKey. A key is "" for a place not recorded.
+type PersonPlaces struct {
+	BirthKey, BirthText string
+	DeathKey, DeathText string
+	Count               int
+}
+
+// PlaceTree is the place hierarchy of a set of people (ADR-009 §4): the places
+// their birth and death keys resolve to and every place above one of those,
+// each under its parent. It is built in Go from those places, the explicit
 // parents and the aliases, so it is the same on every store (DB-001).
 type PlaceTree struct {
 	nodes map[string]*placeNode
@@ -96,25 +165,24 @@ type placeNode struct {
 	parent   string
 	children []string
 	keys     []string // the stored keys that resolve to this place
-	count    int      // records that resolve to it or to a place beneath it
+	count    int      // people with a place that resolves to it or to a place beneath it
 	name     string
 	fullName string
 }
 
-// BuildPlaceTree walks parents over the places the uses resolve to. A use
-// counts toward the place its key resolves to and every place above it, so a
-// place's count is the records that resolve to it or to a place beneath it. A
-// parent no use names directly is a place like any other. A place is shown by
-// its display name when facts set one, otherwise by its most-used spelling
-// (ties broken bytewise), or its key when no use spells it; at its level it
-// shows that name's first part. A parent that closes a cycle, which only an
-// alias or unalias stated after it can cause, is dropped at the cycle's
-// bytewise smallest key, so the tree never depends on map order.
-func BuildPlaceTree(uses []PlaceUse, facts []PlaceFactsReadModel, aliases PlaceAliases) *PlaceTree {
+// BuildPlaceTree walks parents over the places the people's birth and death
+// keys resolve to. A person counts once toward each place at or above either
+// of their places, so a place's count is the people whose birth or death place
+// resolves to it or to a place beneath it: the people GetPersonsByPlace lists
+// behind it. A parent no person names directly is a place like any other. A
+// place is shown by its display name when facts set one, otherwise by its
+// most-used spelling (ties broken bytewise, each birth and death a use), or
+// its key when no use spells it; at its level it shows that name's first part.
+// The parents are those of PlaceParents.Above, as on the list of places.
+func BuildPlaceTree(people []PersonPlaces, facts []PlaceFactsReadModel, aliases PlaceAliases) *PlaceTree {
 	parents := PlaceParentsByKey(facts)
 	t := &PlaceTree{nodes: make(map[string]*placeNode), ids: make(map[uuid.UUID]string)}
 	spellings := make(map[string]map[string]int)
-	own := make(map[string]int)
 	node := func(key string) *placeNode {
 		n, ok := t.nodes[key]
 		if !ok {
@@ -123,47 +191,27 @@ func BuildPlaceTree(uses []PlaceUse, facts []PlaceFactsReadModel, aliases PlaceA
 		}
 		return n
 	}
-	for _, u := range uses {
-		if u.Key == "" {
-			continue
-		}
-		n := node(aliases.Resolve(u.Key))
-		if !slices.Contains(n.keys, u.Key) {
-			n.keys = append(n.keys, u.Key)
-		}
-		own[n.key] += u.Count
-		keyParts := strings.Split(u.Key, ",")
-		nameParts := placeParts(u.Text, true)
-		if len(nameParts) != len(keyParts) {
-			nameParts = keyParts
-		}
-		for i := range keyParts {
-			suffix := strings.Join(keyParts[i:], ",")
-			if spellings[suffix] == nil {
-				spellings[suffix] = make(map[string]int)
+	for _, p := range people {
+		for _, u := range [][2]string{{p.BirthKey, p.BirthText}, {p.DeathKey, p.DeathText}} {
+			key, text := u[0], u[1]
+			if key == "" {
+				continue
 			}
-			spellings[suffix][strings.Join(nameParts[i:], ", ")] += u.Count
+			n := node(aliases.Resolve(key))
+			if !slices.Contains(n.keys, key) {
+				n.keys = append(n.keys, key)
+			}
+			addSpellings(spellings, key, text, p.Count)
 		}
 	}
 
-	// Add every parent, then drop the parent that closes each cycle.
-	pending := make([]string, 0, len(t.nodes))
+	keys := make([]string, 0, len(t.nodes))
 	for key := range t.nodes {
-		pending = append(pending, key)
+		keys = append(keys, key)
 	}
-	for len(pending) > 0 {
-		n := t.nodes[pending[len(pending)-1]]
-		pending = pending[:len(pending)-1]
-		n.parent = parents.Parent(n.key, aliases)
-		if n.parent == "" {
-			continue
-		}
-		if _, ok := t.nodes[n.parent]; !ok {
-			node(n.parent)
-			pending = append(pending, n.parent)
-		}
+	for key, parent := range parents.Above(keys, aliases) {
+		node(key).parent = parent
 	}
-	t.breakCycles()
 
 	factsByKey := PlaceFactsByKey(facts)
 	for key, n := range t.nodes {
@@ -182,10 +230,8 @@ func BuildPlaceTree(uses []PlaceUse, facts []PlaceFactsReadModel, aliases PlaceA
 			p := t.nodes[n.parent]
 			p.children = append(p.children, key)
 		}
-		for k := key; k != ""; k = t.nodes[k].parent {
-			t.nodes[k].count += own[key]
-		}
 	}
+	t.countPeople(people, aliases)
 	for absorbed, target := range aliases {
 		if _, ok := t.nodes[target]; ok {
 			t.ids[PlaceID(absorbed)] = target
@@ -194,37 +240,37 @@ func BuildPlaceTree(uses []PlaceUse, facts []PlaceFactsReadModel, aliases PlaceA
 	return t
 }
 
-// breakCycles makes the bytewise smallest key of every parent cycle a top-level
-// place.
-func (t *PlaceTree) breakCycles() {
-	keys := make([]string, 0, len(t.nodes))
-	for key := range t.nodes {
-		keys = append(keys, key)
+// addSpellings counts count uses of text, whose key is key, as the spelling of
+// its place and, part by part, of each place its key names with leading parts
+// removed. A text whose parts do not match its key's is spelled by the key.
+func addSpellings(spellings map[string]map[string]int, key, text string, count int) {
+	keyParts := strings.Split(key, ",")
+	nameParts := placeParts(text, true)
+	if len(nameParts) != len(keyParts) {
+		nameParts = keyParts
 	}
-	sort.Strings(keys)
-	const (
-		unvisited = iota
-		onPath
-		done
-	)
-	state := make(map[string]int, len(keys))
-	for _, start := range keys {
-		var path []string
-		k := start
-		for k != "" && state[k] == unvisited {
-			state[k] = onPath
-			path = append(path, k)
-			k = t.nodes[k].parent
+	for i := range keyParts {
+		suffix := strings.Join(keyParts[i:], ",")
+		if spellings[suffix] == nil {
+			spellings[suffix] = make(map[string]int)
 		}
-		if k != "" && state[k] == onPath {
-			smallest := k
-			for c := t.nodes[k].parent; c != k; c = t.nodes[c].parent {
-				smallest = min(smallest, c)
+		spellings[suffix][strings.Join(nameParts[i:], ", ")] += count
+	}
+}
+
+// countPeople counts each person once at every place at or above either of
+// their places, so a person born and died beneath one place counts there once.
+func (t *PlaceTree) countPeople(people []PersonPlaces, aliases PlaceAliases) {
+	for _, p := range people {
+		under := make(map[string]bool)
+		for _, k := range []string{p.BirthKey, p.DeathKey} {
+			if k == "" {
+				continue
 			}
-			t.nodes[smallest].parent = ""
-		}
-		for _, p := range path {
-			state[p] = done
+			for k = aliases.Resolve(k); k != "" && !under[k]; k = t.nodes[k].parent {
+				under[k] = true
+				t.nodes[k].count += p.Count
+			}
 		}
 	}
 }
@@ -266,8 +312,8 @@ func (t *PlaceTree) Level(parent uuid.UUID) (level PlaceLevel, ok bool) {
 }
 
 // KeysUnder returns, sorted, the stored keys whose place is the place with ID
-// id or a place beneath it: the records whose place has one of these keys are
-// the records its count counts. An absorbed place's ID names the place it
+// id or a place beneath it: the people whose birth or death place has one of
+// these keys are the people its count counts. An absorbed place's ID names the place it
 // resolves to; an ID not in the tree has no keys.
 func (t *PlaceTree) KeysUnder(id uuid.UUID) []string {
 	key, ok := t.ids[id]

@@ -116,20 +116,49 @@ func TestMapLocations(t *testing.T) {
 }
 
 // TestMapLocations_NameFromSpellings names a place with no display name by
-// its most-used spelling, and gives a text with no key the zero place ID.
+// its most-used spelling, and leaves out a text with no key, which has no name
+// to show (#1807).
 func TestMapLocations_NameFromSpellings(t *testing.T) {
 	pair := func(p MapPerson, text, key string) MapUse {
 		return MapUse{Person: p, EventType: "birth", Text: text, Key: key, Latitude: strPtr("N1"), Longitude: strPtr("E1")}
 	}
-	a, b, c, d := MapPerson{ID: uuid.New()}, MapPerson{ID: uuid.New()}, MapPerson{ID: uuid.New()}, MapPerson{ID: uuid.New()}
-	got := MapLocations([]MapUse{pair(a, "kiel", "kiel"), pair(b, "Kiel", "kiel"), pair(c, "Kiel", "kiel"), pair(d, "", "")})
-	if len(got) != 2 {
-		t.Fatalf("MapLocations = %+v, want 2 locations", got)
+	a, b, c, d, e := MapPerson{ID: uuid.New()}, MapPerson{ID: uuid.New()}, MapPerson{ID: uuid.New()}, MapPerson{ID: uuid.New()}, MapPerson{ID: uuid.New()}
+	got := MapLocations([]MapUse{pair(a, "kiel", "kiel"), pair(b, "Kiel", "kiel"), pair(c, "Kiel", "kiel"), pair(d, "", ""), pair(e, ", ,", "")})
+	if len(got) != 1 {
+		t.Fatalf("MapLocations = %+v, want only the Kiel location", got)
 	}
-	if got[0].Place != "" || got[0].PlaceID != uuid.Nil {
-		t.Errorf("keyless location = %q %s, want no name and the zero ID", got[0].Place, got[0].PlaceID)
+	if got[0].Place != "Kiel" || got[0].PlaceID != PlaceID("kiel") || got[0].Count != 3 {
+		t.Errorf("kiel location = %+v, want Kiel with 3 persons", got[0])
 	}
-	if got[1].Place != "Kiel" || got[1].PlaceID != PlaceID("kiel") || got[1].Count != 3 {
-		t.Errorf("kiel location = %+v, want Kiel with 3 persons", got[1])
+}
+
+// TestChangePlaceFormsAndExternalIDs reads the "forms" and "external_ids"
+// changes of a PlaceUpdated as the log decodes them: nil clears, an empty
+// form is no form, and a value of the wrong shape is ignored.
+func TestChangePlaceFormsAndExternalIDs(t *testing.T) {
+	forms, ok := changePlaceForms(map[string]any{"b,c": "Town, State", "a": "City", "x,,y": ""})
+	if want := []PlaceFormReadModel{{PositionalKey: "a", Form: "City"}, {PositionalKey: "b,c", Form: "Town, State"}}; !ok || !reflect.DeepEqual(forms, want) {
+		t.Errorf("changePlaceForms = %+v, %v; want %+v", forms, ok, want)
+	}
+	for _, bad := range []any{"City", map[string]any{"a": 1}} {
+		if _, ok := changePlaceForms(bad); ok {
+			t.Errorf("changePlaceForms(%v) ok, want ignored", bad)
+		}
+	}
+	if forms, ok := changePlaceForms(nil); !ok || forms != nil {
+		t.Errorf("changePlaceForms(nil) = %v, %v; want a clear", forms, ok)
+	}
+
+	ids, ok := changePlaceExternalIDs([]any{map[string]any{"value": "Q1", "type": "https://www.wikidata.org/entity"}, map[string]any{"value": "7"}})
+	if want := []PlaceExternalIDReadModel{{Value: "Q1", Type: "https://www.wikidata.org/entity"}, {Value: "7"}}; !ok || !reflect.DeepEqual(ids, want) {
+		t.Errorf("changePlaceExternalIDs = %+v, %v; want %+v", ids, ok, want)
+	}
+	for _, bad := range []any{"Q1", []any{"Q1"}} {
+		if _, ok := changePlaceExternalIDs(bad); ok {
+			t.Errorf("changePlaceExternalIDs(%v) ok, want ignored", bad)
+		}
+	}
+	if ids, ok := changePlaceExternalIDs(nil); !ok || ids != nil {
+		t.Errorf("changePlaceExternalIDs(nil) = %v, %v; want a clear", ids, ok)
 	}
 }

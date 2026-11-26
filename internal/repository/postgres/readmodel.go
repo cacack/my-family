@@ -419,6 +419,24 @@ func (s *ReadModelStore) createTables() error {
 			resolved_key TEXT NOT NULL
 		);
 
+		-- Place forms and external IDs (ADR-009 §2, §8), projected from
+		-- PlaceUpdated: a form per part layout (positional key) of a place's
+		-- texts, and its GEDCOM 7.0 EXIDs in order. Main-only (PL-005).
+		CREATE TABLE IF NOT EXISTS place_forms (
+			place_id UUID NOT NULL,
+			positional_key TEXT NOT NULL,
+			form TEXT NOT NULL,
+			PRIMARY KEY (place_id, positional_key)
+		);
+
+		CREATE TABLE IF NOT EXISTS place_external_ids (
+			place_id UUID NOT NULL,
+			sequence INTEGER NOT NULL,
+			value TEXT NOT NULL,
+			type TEXT NOT NULL DEFAULT '',
+			PRIMARY KEY (place_id, sequence)
+		);
+
 		-- Family external identifiers (GEDCOM 7.0 EXID)
 		-- Branch-aware (ADR-005): bucket-scoped by (family_id, branch_id); an empty
 		-- branch bucket is a single deleted marker row. FK to families dropped.
@@ -4748,29 +4766,6 @@ func resolvedPersonsSrc(cols string, branchID domain.BranchID, privacy repositor
 		)`, []any{branchID.UUID(), domain.MainBranchID.UUID()}, 3
 }
 
-// resolvedPersonsCTE is resolvedPersonsSrc for a statement that reads the overlay
-// more than once (the birth-place and death-place legs of GetPlaceHierarchy's UNION).
-// Off main it hoists the overlay into a `resolved` CTE and returns the WITH head the
-// caller prefixes to its own CTE list, so the DISTINCT ON pass over the branch's rows
-// plus all of main's is planned and executed once per call instead of once per leg.
-// A CTE referenced more than once is materialized by default in PG12+, which is the
-// behavior wanted here.
-//
-// Main keeps the inline subquery and gets a bare "WITH " head: its plain branch_id
-// filter is index-driven and flattens into each leg, touching only that leg's column,
-// so a mainline call must not start materializing a CTE it did not before (#669).
-//
-// Returns the WITH head, the source to read FROM, the leading query args, and the next
-// free $-placeholder number. The args are the same either way -- $-placeholders are
-// reused, not repeated, so hoisting does not change the arg list.
-func resolvedPersonsCTE(cols string, branchID domain.BranchID, privacy repository.Privacy) (string, string, []any, int) {
-	src, args, n := resolvedPersonsSrc(cols, branchID, privacy)
-	if branchID.IsMain() {
-		return "WITH ", src, args, n
-	}
-	return "WITH resolved AS " + src + ",\n\t\t\t", "resolved", args, n
-}
-
 // GetSurnameIndex returns all unique surnames with counts and letter counts,
 // resolved through the branch overlay (ADR-005).
 func (s *ReadModelStore) GetSurnameIndex(ctx context.Context, branchID domain.BranchID, privacy repository.Privacy) ([]repository.SurnameEntry, []repository.LetterCount, error) {
@@ -4919,37 +4914,34 @@ func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, branchID domain.
 }
 
 // placeTree builds the repository.PlaceTree of the birth and death places
-// within the branch overlay that privacy shows, in three queries: use is
-// counted per distinct key and spelling, and explicit parents and aliases are
-// each loaded whole.
+// within the branch overlay that privacy shows, in three queries: people are
+// counted per distinct pair of birth and death key and spelling, and explicit
+// parents and aliases are each loaded whole. The people read the overlay
+// (ADR-005), so a branch sees its own places.
 func (s *ReadModelStore) placeTree(ctx context.Context, branchID domain.BranchID, privacy repository.Privacy) (*repository.PlaceTree, error) {
-	// Both legs read persons (birth + death). Off main the overlay is hoisted into a
-	// `resolved` CTE so both UNION legs share one resolution pass; main keeps the
-	// inline indexed filter. Either way the UNION is branch-scoped end to end (ADR-005).
-	withClause, src, args, _ := resolvedPersonsCTE("birth_place, birth_place_key, death_place, death_place_key", branchID, privacy)
+	src, args, _ := resolvedPersonsSrc("birth_place, birth_place_key, death_place, death_place_key", branchID, privacy)
 
-	// #nosec G202 -- withClause/src are internal SQL fragments carrying only $-placeholders, not user input
+	// #nosec G202 -- src is an internal SQL fragment carrying only $-placeholders, not user input
 	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 	rows, err := s.db.QueryContext(ctx, `
-		`+withClause+`uses AS (
-			SELECT birth_place_key AS place_key, birth_place AS place FROM `+src+` p WHERE birth_place_key IS NOT NULL
-			UNION ALL
-			SELECT death_place_key AS place_key, death_place AS place FROM `+src+` p WHERE death_place_key IS NOT NULL
-		)
-		SELECT place_key, place, COUNT(*) FROM uses GROUP BY place_key, place
+		SELECT COALESCE(birth_place_key, ''), COALESCE(birth_place, ''),
+			   COALESCE(death_place_key, ''), COALESCE(death_place, ''), COUNT(*)
+		FROM `+src+` p
+		WHERE birth_place_key IS NOT NULL OR death_place_key IS NOT NULL
+		GROUP BY 1, 2, 3, 4
 	`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query place hierarchy: %w", err)
 	}
 	defer rows.Close()
 
-	var uses []repository.PlaceUse
+	var people []repository.PersonPlaces
 	for rows.Next() {
-		var u repository.PlaceUse
-		if err := rows.Scan(&u.Key, &u.Text, &u.Count); err != nil {
-			return nil, fmt.Errorf("scan place use: %w", err)
+		var p repository.PersonPlaces
+		if err := rows.Scan(&p.BirthKey, &p.BirthText, &p.DeathKey, &p.DeathText, &p.Count); err != nil {
+			return nil, fmt.Errorf("scan person places: %w", err)
 		}
-		uses = append(uses, u)
+		people = append(people, p)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -4962,7 +4954,7 @@ func (s *ReadModelStore) placeTree(ctx context.Context, branchID domain.BranchID
 	if err != nil {
 		return nil, err
 	}
-	return repository.BuildPlaceTree(uses, facts, repository.PlaceAliasesByKey(aliases)), nil
+	return repository.BuildPlaceTree(people, facts, repository.PlaceAliasesByKey(aliases)), nil
 }
 
 // ListPlaces returns the places in use within the branch overlay, built by
@@ -5177,6 +5169,77 @@ func (s *ReadModelStore) ReplacePlaceAliases(ctx context.Context, aliases []repo
 		}
 	}
 	return tx.Commit()
+}
+
+// ReplacePlaceForms replaces a place's forms in one transaction (main-only,
+// PL-005).
+func (s *ReadModelStore) ReplacePlaceForms(ctx context.Context, placeID uuid.UUID, forms []repository.PlaceFormReadModel) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin replace place forms: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `DELETE FROM place_forms WHERE place_id = $1`, placeID); err != nil {
+		return fmt.Errorf("clear place forms: %w", err)
+	}
+	for _, f := range forms {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO place_forms (place_id, positional_key, form) VALUES ($1, $2, $3)`,
+			placeID, f.PositionalKey, f.Form); err != nil {
+			return fmt.Errorf("save place form: %w", err)
+		}
+	}
+	return tx.Commit()
+}
+
+// ListPlaceForms returns every place's forms, keyed by place ID, each place's
+// by positional key.
+func (s *ReadModelStore) ListPlaceForms(ctx context.Context) (map[uuid.UUID][]repository.PlaceFormReadModel, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT place_id, positional_key, form FROM place_forms ORDER BY place_id, positional_key`)
+	if err != nil {
+		return nil, fmt.Errorf("list place forms: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	out := make(map[uuid.UUID][]repository.PlaceFormReadModel)
+	for rows.Next() {
+		var f repository.PlaceFormReadModel
+		if err := rows.Scan(&f.PlaceID, &f.PositionalKey, &f.Form); err != nil {
+			return nil, fmt.Errorf("scan place form: %w", err)
+		}
+		id := f.PlaceID
+		out[id] = append(out[id], f)
+	}
+	return out, rows.Err()
+}
+
+// ReplacePlaceExternalIDs replaces a place's external IDs (GEDCOM 7.0 EXID)
+// in one transaction (main-only, PL-005).
+func (s *ReadModelStore) ReplacePlaceExternalIDs(ctx context.Context, placeID uuid.UUID, ids []repository.PlaceExternalIDReadModel) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin replace place external ids: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `DELETE FROM place_external_ids WHERE place_id = $1`, placeID); err != nil {
+		return fmt.Errorf("clear place external ids: %w", err)
+	}
+	for i, id := range ids {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO place_external_ids (place_id, sequence, value, type) VALUES ($1, $2, $3, $4)`,
+			placeID, i, id.Value, id.Type); err != nil {
+			return fmt.Errorf("save place external id: %w", err)
+		}
+	}
+	return tx.Commit()
+}
+
+// ListPlaceExternalIDs returns every place's external IDs, keyed by place
+// ID, in one query.
+func (s *ReadModelStore) ListPlaceExternalIDs(ctx context.Context) (map[uuid.UUID][]repository.PlaceExternalIDReadModel, error) {
+	return queryExternalIDs(ctx, s.db, "place_external_ids", `
+		SELECT place_id, sequence, value, type FROM place_external_ids
+		ORDER BY place_id, sequence
+	`, nil, func(placeID uuid.UUID, seq int, value, typ string) repository.PlaceExternalIDReadModel {
+		return repository.PlaceExternalIDReadModel{PlaceID: placeID, Sequence: seq, Value: value, Type: typ}
+	})
 }
 
 // placeKeyIn is the condition that a key column holds one of the keys bound

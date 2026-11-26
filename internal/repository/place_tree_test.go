@@ -31,15 +31,18 @@ func treeLines(t *testing.T, tree *PlaceTree) []string {
 }
 
 func TestBuildPlaceTree(t *testing.T) {
-	uses := []PlaceUse{
-		{Key: "boston,ma", Text: "Boston, MA", Count: 2},
-		{Key: "boston,ma", Text: "boston,ma", Count: 1},
-		{Key: "darmstadt,hessen,germany", Text: "Darmstadt, Hessen, Germany", Count: 1},
-		{Key: "kassel,hesse,germany", Text: "Kassel, Hesse, Germany", Count: 1},
-		{Key: "springfield", Text: "Springfield", Count: 1},
-		{Key: "chicago,illinois", Text: "Chicago, Illinois", Count: 1},
-		{Key: "a,b", Text: "x", Count: 1},
-		{Key: "", Text: " , ", Count: 9},
+	people := []PersonPlaces{
+		{BirthKey: "boston,ma", BirthText: "Boston, MA", Count: 2},
+		{DeathKey: "boston,ma", DeathText: "boston,ma", Count: 1},
+		// Born and died under Hessen: one person at Hessen and Germany.
+		{BirthKey: "darmstadt,hessen,germany", BirthText: "Darmstadt, Hessen, Germany",
+			DeathKey: "kassel,hesse,germany", DeathText: "Kassel, Hesse, Germany", Count: 1},
+		// Born and died at Springfield: one person there.
+		{BirthKey: "springfield", BirthText: "Springfield", DeathKey: "springfield", DeathText: "Springfield", Count: 1},
+		// Born in Illinois and died in Boston: one person at each.
+		{BirthKey: "chicago,illinois", BirthText: "Chicago, Illinois", DeathKey: "boston,ma", DeathText: "Boston, MA", Count: 1},
+		{BirthKey: "a,b", BirthText: "x", Count: 1},
+		{BirthKey: "", BirthText: " , ", Count: 9},
 	}
 	facts := []PlaceFactsReadModel{
 		// Springfield, a one-part key, is put under Illinois by hand.
@@ -50,15 +53,15 @@ func TestBuildPlaceTree(t *testing.T) {
 		{Key: "hesse,germany", ParentKey: "boston,ma"},
 	}
 	aliases := PlaceAliases{"hesse,germany": "hessen,germany"}
-	tree := BuildPlaceTree(uses, facts, aliases)
+	tree := BuildPlaceTree(people, facts, aliases)
 
 	want := []string{
-		"Germany | Germany | 2",
-		"  Hessen | Hessen, Germany | 2",
+		"Germany | Germany | 1",
+		"  Hessen | Hessen, Germany | 1",
 		"    Darmstadt | Darmstadt, Hessen, Germany | 1",
 		"    Kassel | Kassel, Hesse, Germany | 1",
-		"MA | MA | 3",
-		"  Boston | Boston, MA | 3",
+		"MA | MA | 4",
+		"  Boston | Boston, MA | 4",
 		"State of Illinois | State of Illinois | 2",
 		"  Chicago | Chicago, Illinois | 1",
 		"  Springfield | Springfield | 1",
@@ -99,12 +102,12 @@ func TestBuildPlaceTree(t *testing.T) {
 }
 
 // A cycle that only an alias stated after a parent can close is broken at
-// its smallest key, whatever the order of the uses.
+// its smallest key, whatever the order of the people.
 func TestBuildPlaceTree_BreaksCycles(t *testing.T) {
-	uses := []PlaceUse{
-		{Key: "x", Text: "X", Count: 1},
-		{Key: "y", Text: "Y", Count: 1},
-		{Key: "berlin,germany", Text: "Berlin, Germany", Count: 1},
+	people := []PersonPlaces{
+		{BirthKey: "x", BirthText: "X", Count: 1},
+		{BirthKey: "y", BirthText: "Y", Count: 1},
+		{DeathKey: "berlin,germany", DeathText: "Berlin, Germany", Count: 1},
 	}
 	facts := []PlaceFactsReadModel{{Key: "x", ParentKey: "y"}, {Key: "y", ParentKey: "x"}}
 	// Germany as an alias of Berlin puts Berlin under itself.
@@ -115,7 +118,7 @@ func TestBuildPlaceTree_BreaksCycles(t *testing.T) {
 		"  Y | Y | 1",
 	}
 	for range 5 {
-		if got := treeLines(t, BuildPlaceTree(uses, facts, aliases)); !reflect.DeepEqual(got, want) {
+		if got := treeLines(t, BuildPlaceTree(people, facts, aliases)); !reflect.DeepEqual(got, want) {
 			t.Fatalf("tree =\n  %q\nwant\n  %q", got, want)
 		}
 	}
@@ -182,5 +185,68 @@ func TestPlaceAliases_KeysOf(t *testing.T) {
 	}
 	if got := aliases.KeysOf("bonn"); !reflect.DeepEqual(got, []string{"bonn"}) {
 		t.Errorf("KeysOf(bonn) = %q", got)
+	}
+}
+
+// TestPlaces_FollowsExplicitParents shows that the list of places walks the
+// place browser's hierarchy (ADR-009 §4): a use counts toward an explicit
+// parent and every place above it, not toward the default parents its key
+// would give, a parent no use names is listed by its key, and every place the
+// tree holds is on the list with the same count when each person has one place.
+func TestPlaces_FollowsExplicitParents(t *testing.T) {
+	people := []PersonPlaces{
+		{BirthKey: "springfield,sangamon", BirthText: "Springfield, Sangamon", Count: 2},
+		{BirthKey: "chicago,illinois", BirthText: "Chicago, Illinois", Count: 1},
+		{DeathKey: "x", DeathText: "X", Count: 1},
+		{DeathKey: "y", DeathText: "Y", Count: 1},
+	}
+	facts := []PlaceFactsReadModel{
+		{Key: "springfield,sangamon", ParentKey: "illinois,usa"},
+		{Key: "x", ParentKey: "y"}, {Key: "y", ParentKey: "x"},
+	}
+	var uses []PlaceUse
+	for _, p := range people { // each person has a birth or a death place, not both
+		uses = append(uses, PlaceUse{Key: p.BirthKey + p.DeathKey, Text: p.BirthText + p.DeathText, Count: p.Count})
+	}
+	got := map[string]int{}
+	for _, p := range Places(uses, facts, nil, Privacy{HidePrivate: true}) {
+		got[p.Key] = p.Count
+		if p.Key == "usa" && p.Name != "usa" {
+			t.Errorf("usa is named %q, want its key: no use spells it", p.Name)
+		}
+	}
+	want := map[string]int{
+		"springfield,sangamon": 2, "illinois,usa": 2, "usa": 2,
+		"chicago,illinois": 1, "illinois": 1,
+		"x": 2, "y": 1, // the cycle is broken at x, as in the tree
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("Places counts = %v, want %v", got, want)
+	}
+
+	tree := BuildPlaceTree(people, facts, nil)
+	for key, count := range want {
+		level, ok := tree.Level(PlaceID(key))
+		if !ok {
+			t.Errorf("%s is listed but not in the tree", key)
+			continue
+		}
+		parent := uuid.Nil
+		if n := len(level.Path); n > 1 {
+			parent = level.Path[n-2].ID
+		}
+		siblings, _ := tree.Level(parent)
+		found := false
+		for _, e := range siblings.Places {
+			if e.ID == PlaceID(key) {
+				found = true
+				if e.Count != count {
+					t.Errorf("tree count of %s = %d, list count %d", key, e.Count, count)
+				}
+			}
+		}
+		if !found {
+			t.Errorf("%s is not among its parent's places in the tree", key)
+		}
 	}
 }

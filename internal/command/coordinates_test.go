@@ -283,6 +283,10 @@ func TestPlaceCoordinates_NeedAPlace(t *testing.T) {
 
 	_, err := h.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ada", BirthPlaceCoordinates: pair("N1", "E1")})
 	assertCoordinateError(t, "CreatePerson", err, "birth_place")
+	// Text whose parts are all empty names no place, so the map would drop
+	// its pair (#1807).
+	_, err = h.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ada", BirthPlace: ", ,", BirthPlaceCoordinates: pair("N1", "E1")})
+	assertCoordinateError(t, "CreatePerson under a nameless text", err, "birth_place")
 
 	created, err := h.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ada", DeathPlace: "Sydney"})
 	if err != nil {
@@ -381,6 +385,31 @@ func TestPlaceCoordinates_NamelessPairKept(t *testing.T) {
 	if err != nil || res.Version != p.Version {
 		t.Errorf("update leaving the place empty = %v, %v; want no change at version %d", res, err, p.Version)
 	}
+	if _, err := h.UpdatePerson(ctx, command.UpdatePersonInput{ID: p.ID, Version: p.Version, Notes: command.Set("note")}); err != nil {
+		t.Fatalf("UpdatePerson notes: %v", err)
+	}
+	got, _ := rs.GetPerson(ctx, domain.MainBranchID, p.ID)
+	if derefOr(got.BirthPlaceLat) != "N51.5074" || derefOr(got.BirthPlaceLong) != "W0.1278" {
+		t.Errorf("pair after a notes update = %s %s, want N51.5074 W0.1278", derefOr(got.BirthPlaceLat), derefOr(got.BirthPlaceLong))
+	}
+}
+
+// A pair imported under text that names no place, such as ", ,", is kept by
+// an update that leaves that text as it is (#1807).
+func TestPlaceCoordinates_NamelessTextPairKept(t *testing.T) {
+	ctx := context.Background()
+	rs := memory.NewReadModelStore()
+	h := command.NewHandler(memory.NewEventStore(), rs)
+	ged := "0 HEAD\n1 GEDC\n2 VERS 5.5.1\n1 CHAR UTF-8\n0 @I1@ INDI\n1 NAME Ada /Lovelace/\n" +
+		"1 BIRT\n2 DATE 1815\n2 PLAC , ,\n3 MAP\n4 LATI N51.5074\n4 LONG W0.1278\n0 TRLR\n"
+	if _, err := h.ImportGedcom(ctx, command.ImportGedcomInput{Filename: "t.ged", FileSize: int64(len(ged)), Reader: strings.NewReader(ged)}); err != nil {
+		t.Fatalf("ImportGedcom: %v", err)
+	}
+	persons, _, _ := rs.ListPersons(ctx, repository.ListOptions{Limit: 10})
+	if len(persons) != 1 || persons[0].BirthPlaceLat == nil {
+		t.Fatalf("imported persons = %+v, want one with a birth pair", persons)
+	}
+	p := persons[0]
 	if _, err := h.UpdatePerson(ctx, command.UpdatePersonInput{ID: p.ID, Version: p.Version, Notes: command.Set("note")}); err != nil {
 		t.Fatalf("UpdatePerson notes: %v", err)
 	}

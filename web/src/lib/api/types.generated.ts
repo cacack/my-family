@@ -450,8 +450,9 @@ export interface paths {
          * List the places in use
          * @description Returns the places named by the records the caller may see (ADR-009
          *     §2): every place a person's birth or death, a family's marriage, a life
-         *     event or an attribute names, and every place above one of those. Each
-         *     place has an ID derived from its place matching key, so it is the same
+         *     event or an attribute names, and every place above one of those,
+         *     explicit parents included, so it holds every place `GET /browse/places`
+         *     shows (ADR-009 §4). Each place has an ID derived from its place matching key, so it is the same
          *     on every install and every branch. Places sort by name. An absorbed
          *     place is not an entry of its own: it is listed in its target's
          *     `aliases` (ADR-009 §3). With
@@ -500,6 +501,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/geocode": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Look up candidate coordinates for a place name
+         * @description Asks the configured geocoding provider for locations matching a place
+         *     name ([#1562](https://github.com/cacack/my-family/issues/1562)) and
+         *     returns at most 5 candidates, best match first. It is off unless the
+         *     server sets `GEOCODER_ENABLED`, because it sends the place name to an
+         *     outside service; `GET /config` reports `geocoder_enabled`. The request
+         *     to the provider carries the place name and nothing else from the tree.
+         *     Nothing is written: set a place's pair with `PUT /places/{id}`.
+         *
+         *     A name is sent once per server process: a repeat, compared ignoring
+         *     case and runs of spaces, is answered from an in-memory cache, an empty
+         *     answer included. Outbound requests are spaced at no more than one per
+         *     second, so a lookup may wait behind others; one that cannot be answered
+         *     within 10 seconds, waiting included, answers 504.
+         *
+         *     - `200` with no `items`: the provider matched nothing.
+         *     - `409` `geocoder_disabled`: the server has no geocoder enabled.
+         *     - `502` `geocoder_error`: the provider failed or refused the request.
+         *     - `504` `geocoder_timeout`: the lookup queue was busy or the provider did
+         *       not answer in time.
+         */
+        get: operations["geocodePlace"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/places/{id}": {
         parameters: {
             query?: never;
@@ -512,9 +551,10 @@ export interface paths {
         };
         /**
          * Get a place in use by ID
-         * @description Returns the place with this ID when a record the caller may see names
-         *     it or a place under it. A place only hidden records name answers 404,
-         *     exactly as an ID that was never in use (ADR-009 §10). An absorbed place
+         * @description Returns the place with this ID when a record the caller may see
+         *     resolves to it or to a place beneath it, explicit parents included, so
+         *     every ID `GET /browse/places` returns opens. Any other place answers
+         *     404, exactly as an ID that was never in use (ADR-009 §10). An absorbed place
          *     (`PUT /places/{id}/alias`) is returned as itself, with its own facts
          *     and `resolves_to`, not redirected to its target. With `?branch=`
          *     the place is read from that branch's isolated view; omit it for the
@@ -5294,7 +5334,7 @@ export interface components {
             name: string;
             /** @description The place's display name when one is set, otherwise its most-used spelling, or its key when no record spells it */
             full_name: string;
-            /** @description Number of birth and death records whose place resolves to this place or to a place beneath it. Spellings whose place matching key is the same (differing only in letter case, spacing around commas or empty parts) are one place, and so are spellings joined by an alias. This counts fewer uses than `Place.count` from `GET /places`, which also counts marriage, life event and attribute places. */
+            /** @description Number of people whose birth or death place resolves to this place or to a place beneath it, each counted once: the `total` of `GET /browse/places/{id}/persons` for this place. Spellings whose place matching key is the same (differing only in letter case, spacing around commas or empty parts) are one place, and so are spellings joined by an alias. Beneath follows explicit parents, as `Place.count` from `GET /places` does. This is a count of people, not of uses like `Place.count`, which counts every birth, death, marriage, life event and attribute place use. */
             count: number;
             /** @description Whether this place has sub-locations */
             has_children: boolean;
@@ -5309,7 +5349,7 @@ export interface components {
             key: string;
             /** @description The place's display name when one is set (PUT /places/{id}); otherwise its most-used recorded spelling among the records the caller may see, its parts joined with ", " (ties broken bytewise). */
             name: string;
-            /** @description Number of place uses (birth, death, marriage, life event and attribute places) the caller may see at or under this place, under meaning by key: a use counts toward its own place and each place its key names with leading parts removed, never toward an explicit parent. It can differ from `PlaceEntry.count` from `GET /browse/places`, which counts birth and death places only and follows explicit parents. */
+            /** @description Number of place uses (birth, death, marriage, life event and attribute places) the caller may see that resolve to this place or to a place beneath it, each counted once. Beneath follows the hierarchy of `GET /browse/places`: a place's explicit parent (`parent_id`) when one is set, otherwise the place its key names with the leftmost part removed (ADR-009 §4). An absorbed place sits outside that hierarchy and counts the uses whose key is its key or ends with it. This is a count of uses, not of people like `PlaceEntry.count`, which counts people by their birth and death places, each once, over the same hierarchy. */
             count: number;
             /**
              * Format: uuid
@@ -5402,6 +5442,40 @@ export interface components {
             limit?: number;
             offset?: number;
         };
+        GeocodeCandidateList: {
+            items: components["schemas"]["GeocodeCandidate"][];
+            /** @description Number of candidates */
+            total: number;
+        };
+        GeocodeCandidate: {
+            /**
+             * @description The provider's full name for the location
+             * @example Boston, Suffolk County, Massachusetts, United States
+             */
+            display_name: string;
+            /**
+             * Format: double
+             * @description Latitude in decimal degrees
+             */
+            latitude: number;
+            /**
+             * Format: double
+             * @description Longitude in decimal degrees
+             */
+            longitude: number;
+            /** @description The text that matched. Today it is always the place name looked up, with spaces normalized; a later fallback to a shorter form of the name would return that form here (#1563). */
+            query: string;
+            /**
+             * @description The provider's name
+             * @example Nominatim
+             */
+            provider: string;
+            /**
+             * @description The credit the provider's data license requires wherever the candidate is shown
+             * @example Data © OpenStreetMap contributors, ODbL 1.0. https://osm.org/copyright
+             */
+            attribution: string;
+        };
         UnmappedPlaceList: {
             items: components["schemas"]["UnmappedPlace"][];
             /** @description Number of entries */
@@ -5421,6 +5495,11 @@ export interface components {
             spelling: string;
             /** @description Number of records the caller may see at the place that have no effective coordinates. */
             count: number;
+            /**
+             * Format: int64
+             * @description Version of the place's own stream, as `Place.version` gives it: send it with `PUT /places/{id}` to set the place's pair.
+             */
+            version: number;
             /** @description Every distinct pair, as recorded, that other records at the place carry as their own, most-used first, then by latitude and longitude; empty when no record there has one. */
             suggestions: components["schemas"]["CoordinateSuggestion"][];
         };
@@ -9164,6 +9243,62 @@ export interface operations {
             };
             401: components["responses"]["Unauthenticated"];
             503: components["responses"]["SetupRequired"];
+        };
+    };
+    geocodePlace: {
+        parameters: {
+            query: {
+                /**
+                 * @description The place name, 1 to 255 characters once leading, trailing and repeated spaces are removed.
+                 * @example Boston, Suffolk, Massachusetts, USA
+                 */
+                q: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The candidates, best match first; none when nothing matched */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeocodeCandidateList"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            /** @description `geocoder_disabled`: the server has no geocoder enabled (`GEOCODER_ENABLED`) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `geocoder_error`: the provider failed or refused the request */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            503: components["responses"]["SetupRequired"];
+            /** @description `geocoder_timeout`: the lookup queue was busy or the provider did not answer in time */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     getPlace: {

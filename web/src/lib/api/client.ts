@@ -590,6 +590,7 @@ export type PlaceEntry = Schemas['PlaceEntry'];
 export type Place = Schemas['Place'];
 export type PlaceList = Schemas['PlaceList'];
 export type PlaceAliasEntry = Schemas['PlaceAliasEntry'];
+export type PlaceUpdate = Schemas['PlaceUpdate'];
 export type UnmappedPlace = Schemas['UnmappedPlace'];
 export type UnmappedPlaceList = Schemas['UnmappedPlaceList'];
 export type CemeteryIndexResponse = Schemas['CemeteryIndexResponse'];
@@ -1592,6 +1593,14 @@ class ApiClient {
 	/** Branch-scoped: honors the active branch (see `BRANCH_SCOPED_OPERATIONS`). */
 	async getPlace(id: string): Promise<Place> {
 		return this.request<Place>('GET', `/places/${encodeURIComponent(id)}`);
+	}
+
+	/**
+	 * Set or clear a place's name, pair or parent (ADR-009 §2). Mainline only.
+	 * Not retried on a stale version: the caller shows what changed (#1815).
+	 */
+	async updatePlace(id: string, update: PlaceUpdate): Promise<Place> {
+		return this.request<Place>('PUT', `/places/${encodeURIComponent(id)}`, update);
 	}
 
 	/** Join a place to `targetId` as its alias (ADR-009 §3). Mainline only. */

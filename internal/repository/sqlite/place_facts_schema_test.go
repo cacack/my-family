@@ -24,8 +24,8 @@ func TestPlaceFactTables_NoBranchID(t *testing.T) {
 	if _, err := sqlite.NewReadModelStore(db); err != nil {
 		t.Fatal(err)
 	}
-	for _, table := range []string{"places", "place_aliases"} {
-		if !columnExists(t, db, table, "key") {
+	for table, column := range map[string]string{"places": "key", "place_aliases": "key", "place_forms": "positional_key", "place_external_ids": "place_id"} {
+		if !columnExists(t, db, table, column) {
 			t.Fatalf("place fact table %s does not exist", table)
 		}
 		if columnExists(t, db, table, "branch_id") {

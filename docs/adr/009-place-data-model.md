@@ -305,8 +305,10 @@ undoes it.
   IDs are resolved at read time and nothing stored is re-pointed, so an explicit parent that names
   an absorbed place means its target.
 - **Only the whole key matches.** Aliasing `Hesse, Germany` to `Hessen, Germany` does not rewrite
-  `Darmstadt, Hesse, Germany`. That place moves under Hessen in the browser, beside
-  `Darmstadt, Hessen, Germany`, where the user can join the two.
+  `Darmstadt, Hesse, Germany`. That place moves under Hessen in the browser and the list, beside
+  `Darmstadt, Hessen, Germany`, where the user can join the two. An absorbed place sits outside
+  the hierarchy of section 4; on the list it keeps its own count, of the records whose key is its
+  key or ends with `,` and its key.
 
 ### 4. Hierarchy
 
@@ -332,16 +334,21 @@ A place has at most one parent place.
   3). A level with no label shows none, and so does a level that two of those forms name
   differently.
 
-The browser walks parents, in Go, over places resolved by key. A parent that no record names
+The browser and the list of places walk parents, in Go, over places resolved by key: one walk
+(`PlaceParents.Above`), so both hold the same places under the same parents (#1812). A parent that no record names
 directly (`Hessen, Germany` when only its towns were recorded) is a place like any other. A place's
-count is the records that resolve to it or to a place beneath it, and the list of people behind a
-place is the people of those same records, so the count and the list always agree. The
+count is of people, not records: the people whose birth or death place resolves to it or to a
+place beneath it, each counted once, so a person born and died beneath the same place counts there
+once (#1811). The list of people behind a place is those same people, so the count and the list
+always agree. The list counts records instead: the place-bearing records that resolve to a place or
+to a place beneath it, each once. The
 right-to-left SQL in the two SQL stores and the flat list in the memory store are replaced by this
 one walk.
 
-The walk runs over places, not records. Each store counts use per distinct key in SQL (grouping
-on the stored key column computes nothing), aliases and explicit parents are each loaded in one
-query, and counts roll up in one pass. Nothing is queried per record or per place.
+The walk runs over places, not records. Each store counts people per distinct pair of birth and
+death key in SQL (grouping on the stored key columns computes nothing), aliases and explicit
+parents are each loaded in one query, and counts roll up in one pass. Nothing is queried per
+record or per place.
 
 The count and the list change together in each step of the plan. From step 1 both use default
 parents only: a record is under a place when its key is the place's key or ends with `,` and that
@@ -420,12 +427,19 @@ or in spacing around commas become one entry, on every store.
   record's *effective* pair. GEDCOM has no shared place record, so a pair set once on a place is
   written under every event that inherits it; leaving it out would lose it. Re-importing that file
   gives each record its own pair and the same map.
+- **`MAP` under a `PLAC` that names no place** (an empty text, or one of only empty parts, which has
+  no key). Import keeps it as the record's own pair and reports an import warning naming the record
+  and the event or attribute tag. Export writes it back under the same `PLAC`, valueless when the
+  text is empty, so it is never dropped
+  ([#1807](https://github.com/cacack/my-family/issues/1807)). The map leaves it out (section 9).
 - **`PLAC.FORM`.** A form describes a text's parts by position, so import stores it on the place
   its key names, before alias resolution (section 3), under the positional key of the text it came
   with (section 1): the `PLAC`'s own `FORM`, otherwise the file's `HEAD.PLAC.FORM`. A form is set
   for a part layout that has none; a different form for a layout that already has one is reported
   as an import warning and not applied. Within one import the first form in file order wins:
-  records in the order the file lists them, and a record's `PLAC` lines in order. The importer
+  records in the order the file lists them, and within a record its events' `PLAC` lines in order,
+  then its attributes'. (gedcom-go decodes a record's events and attributes into separate lists
+  with no position across them, so an event's form wins over an earlier attribute's.) The importer
   reads individuals before families, so it sorts by file position rather than relying on the order
   it reads them, and the same file into the same database always gives the same forms. Export
   writes `PLAC.FORM` under each event whose key's place, before alias resolution, holds a form for
@@ -451,8 +465,10 @@ implement the pairing itself; labels wait for it.
 
 - **`GET /map/locations`** reads every place-bearing record that has effective coordinates,
   through the branch and privacy overlay it uses today, and groups by resolved place, event type
-  and effective pair. Each location carries the place ID and name. Two spellings of one place
-  become one pin, and a record with its own, more exact pair gets its own. Aliases are resolved in
+  and effective pair, leaving out a record whose text names no place, which has no name to show
+  ([#1807](https://github.com/cacack/my-family/issues/1807)). Each location carries the place ID
+  and name. Two spellings of one place become one pin, and a record with its own, more exact pair
+  gets its own. Aliases are resolved in
   the same SQL statement: each row's key column joins `place_aliases` on the alias key, the
   resolved key is the matched alias's resolved key or else the row's own key, and `places` joins
   on the resolved key for the place's pair. No Go call is made per row; the ID of each location is
@@ -470,8 +486,8 @@ implement the pairing itself; labels wait for it.
 
 The *use* view reads through the privacy overlay of [ADR-008](./008-privacy-model.md), as the place
 browser does. A place is visible to a principal when a record that principal may see, in the scope
-being read, resolves to it or to a place beneath it. A principal the overlay hides nothing from
-sees every place.
+being read, resolves to it or to a place beneath it (section 4, explicit parents included). A
+principal the overlay hides nothing from sees every place.
 
 A place that is not visible is absent, facts included, so a name or a pair cannot leak through the
 fact tables. Everything derived is computed from visible uses only:
@@ -480,6 +496,12 @@ fact tables. Everything derived is computed from visible uses only:
   records the principal may see.
 - **Aliases.** An absorbed key is listed under its target only when a visible record uses it. The
   merge screen needs both places visible.
+- **Explicit parents.** A place stated as the explicit parent of a visible place has a visible place
+  beneath it, so it is visible even when no visible record names it, as an alias target is: the
+  fact stated on the visible place names it, not a hidden record. With no visible spelling it shows
+  its display name, otherwise its key; its count is of visible records only. Hiding it would make
+  the hierarchy differ per principal, so a visible place would sit at another level, and was
+  rejected (#1812).
 - **Lookup by ID.** A place's ID can be computed from guessed text, so a `GET` of a place that is
   not visible answers exactly as one for an ID that was never in use.
 - **History.** Place events carry the key and the text. The event-output redactor of ADR-008 drops
@@ -586,7 +608,8 @@ PRs that make each one enforceable:
   `ErrEventTypeNotBranchAware`, and a schema test in both SQL stores that no place fact table has a
   `branch_id` column.
 - **PL-006** No place read returns a name, a pair, a count, an alias or a history entry derived
-  only from records hidden from the principal.
+  only from records hidden from the principal. An explicit parent of a visible place is visible,
+  shown by its key when no visible record spells it (section 10).
 
 ## Implementation Plan
 

@@ -50,6 +50,11 @@ type ImportResult struct {
 	// used to interpret vendor extension tags. Empty when the file has no SCHMA.
 	SchemaMappings map[string]string
 
+	// Places are the forms and EXIDs the file states on its records' PLAC
+	// lines, in file order (placeFacts), for the caller to store on each
+	// place (ADR-009 §8).
+	Places []PlaceData
+
 	// Mappings from GEDCOM XREFs to internal UUIDs
 	PersonXrefToID     map[string]uuid.UUID
 	FamilyXrefToID     map[string]uuid.UUID
@@ -479,7 +484,7 @@ func (imp *Importer) ImportWithOptions(ctx context.Context, reader io.Reader, im
 		result.PersonXrefToID[indi.XRef] = person.ID
 
 		// Extract life events from individual
-		personEvents, eventIDs := extractEventsFromIndividual(indi, person.ID)
+		personEvents, eventIDs := extractEventsFromIndividual(indi, person.ID, result)
 		events = append(events, personEvents...)
 
 		// Extract attributes from individual
@@ -501,7 +506,7 @@ func (imp *Importer) ImportWithOptions(ctx context.Context, reader io.Reader, im
 		result.FamilyXrefToID[fam.XRef] = family.ID
 
 		// Extract life events from family
-		familyEvents, eventIDs := extractEventsFromFamily(fam, family.ID)
+		familyEvents, eventIDs := extractEventsFromFamily(fam, family.ID, result)
 		events = append(events, familyEvents...)
 
 		// Extract citations from family events, each linked to the life event
@@ -582,6 +587,8 @@ func (imp *Importer) ImportWithOptions(ctx context.Context, reader io.Reader, im
 		result.MediaXrefToID[media.XRef] = mediaData.ID
 	}
 	mediaObjects = append(mediaObjects, inline...)
+
+	result.Places = placeFacts(doc)
 
 	result.PersonsImported = len(persons)
 	result.FamiliesImported = len(families)
@@ -671,17 +678,7 @@ func parseIndividual(indi *gedcom.Individual, _ *gedcom.Document, result *Import
 			// writes as the DEAT's last NOTE, so both end up as a note.
 			person.BirthNotes = joinNotes(eventNotes(event), event.Description)
 			person.BirthTypeDetail = event.EventTypeDetail
-			// Extract coordinates from PlaceDetail if available
-			if event.PlaceDetail != nil && event.PlaceDetail.Coordinates != nil {
-				if event.PlaceDetail.Coordinates.Latitude != "" {
-					lat := event.PlaceDetail.Coordinates.Latitude
-					person.BirthPlaceLat = &lat
-				}
-				if event.PlaceDetail.Coordinates.Longitude != "" {
-					long := event.PlaceDetail.Coordinates.Longitude
-					person.BirthPlaceLong = &long
-				}
-			}
+			person.BirthPlaceLat, person.BirthPlaceLong = placeCoordinates(event.PlaceDetail, "Individual "+indi.XRef, "BIRT", result)
 			// Validate the date if parsed
 			if event.ParsedDate != nil {
 				if err := event.ParsedDate.Validate(); err != nil {
@@ -694,17 +691,7 @@ func parseIndividual(indi *gedcom.Individual, _ *gedcom.Document, result *Import
 			person.DeathPlace = event.PlaceName()
 			person.DeathNotes = eventNotes(event)
 			person.DeathTypeDetail = event.EventTypeDetail
-			// Extract coordinates from PlaceDetail if available
-			if event.PlaceDetail != nil && event.PlaceDetail.Coordinates != nil {
-				if event.PlaceDetail.Coordinates.Latitude != "" {
-					lat := event.PlaceDetail.Coordinates.Latitude
-					person.DeathPlaceLat = &lat
-				}
-				if event.PlaceDetail.Coordinates.Longitude != "" {
-					long := event.PlaceDetail.Coordinates.Longitude
-					person.DeathPlaceLong = &long
-				}
-			}
+			person.DeathPlaceLat, person.DeathPlaceLong = placeCoordinates(event.PlaceDetail, "Individual "+indi.XRef, "DEAT", result)
 			// Validate the date if parsed
 			if event.ParsedDate != nil {
 				if err := event.ParsedDate.Validate(); err != nil {
@@ -815,17 +802,7 @@ func parseFamily(fam *gedcom.Family, doc *gedcom.Document, result *ImportResult)
 		family.MarriagePlace = event.PlaceName()
 		family.MarriageNotes = eventNotes(event)
 		family.MarriageTypeDetail = event.EventTypeDetail
-		// Extract coordinates from PlaceDetail if available
-		if event.PlaceDetail != nil && event.PlaceDetail.Coordinates != nil {
-			if event.PlaceDetail.Coordinates.Latitude != "" {
-				lat := event.PlaceDetail.Coordinates.Latitude
-				family.MarriagePlaceLat = &lat
-			}
-			if event.PlaceDetail.Coordinates.Longitude != "" {
-				long := event.PlaceDetail.Coordinates.Longitude
-				family.MarriagePlaceLong = &long
-			}
-		}
+		family.MarriagePlaceLat, family.MarriagePlaceLong = placeCoordinates(event.PlaceDetail, "Family "+fam.XRef, "MARR", result)
 		// Validate the date if parsed
 		if event.ParsedDate != nil {
 			if err := event.ParsedDate.Validate(); err != nil {
@@ -1855,8 +1832,9 @@ func mergeDeathDetail(into *EventData, event *gedcom.Event) bool {
 // and must be stored as LifeEvents, or are a bare death (see bareDeath), or
 // a bare birth of a person with no record birth (see bareBirth), or are not
 // the one the record holds (see recordEvent).
-func extractEventsFromIndividual(indi *gedcom.Individual, personID uuid.UUID) ([]EventData, map[*gedcom.Event]uuid.UUID) {
+func extractEventsFromIndividual(indi *gedcom.Individual, personID uuid.UUID, result *ImportResult) ([]EventData, map[*gedcom.Event]uuid.UUID) {
 	var events []EventData
+	owner := "Individual " + indi.XRef
 	deaths, ids := deathLifeEvents(indi, personID)
 	recordBirth, recordDeath := recordEvent(indi, gedcom.EventBirth), recordEvent(indi, gedcom.EventDeath)
 
@@ -1886,16 +1864,7 @@ func extractEventsFromIndividual(indi *gedcom.Individual, personID uuid.UUID) ([
 				IsNegated:   true,
 				Notes:       eventNotes(event),
 			}
-			if event.PlaceDetail != nil && event.PlaceDetail.Coordinates != nil {
-				if event.PlaceDetail.Coordinates.Latitude != "" {
-					lat := event.PlaceDetail.Coordinates.Latitude
-					eventData.PlaceLat = &lat
-				}
-				if event.PlaceDetail.Coordinates.Longitude != "" {
-					long := event.PlaceDetail.Coordinates.Longitude
-					eventData.PlaceLong = &long
-				}
-			}
+			eventData.PlaceLat, eventData.PlaceLong = placeCoordinates(event.PlaceDetail, owner, string(event.Type), result)
 			if event.Address != nil {
 				eventData.Address = convertGedcomAddress(event.Address)
 			}
@@ -1947,17 +1916,7 @@ func extractEventsFromIndividual(indi *gedcom.Individual, personID uuid.UUID) ([
 			IsNegated:   event.IsNegative,
 			Notes:       eventNotes(event),
 		}
-		// Extract coordinates from PlaceDetail if available
-		if event.PlaceDetail != nil && event.PlaceDetail.Coordinates != nil {
-			if event.PlaceDetail.Coordinates.Latitude != "" {
-				lat := event.PlaceDetail.Coordinates.Latitude
-				eventData.PlaceLat = &lat
-			}
-			if event.PlaceDetail.Coordinates.Longitude != "" {
-				long := event.PlaceDetail.Coordinates.Longitude
-				eventData.PlaceLong = &long
-			}
-		}
+		eventData.PlaceLat, eventData.PlaceLong = placeCoordinates(event.PlaceDetail, owner, string(event.Type), result)
 		// Extract structured address if available
 		if event.Address != nil {
 			eventData.Address = convertGedcomAddress(event.Address)
@@ -2060,16 +2019,7 @@ func extractAttributesFromIndividual(indi *gedcom.Individual, personID uuid.UUID
 			TypeDetail: ga.TypeDetail,
 			Notes:      joinNotes(append(slices.Clone(ga.NoteXRefs), ga.InlineNotes...)...),
 		}
-		if ga.PlaceDetail != nil && ga.PlaceDetail.Coordinates != nil {
-			if ga.PlaceDetail.Coordinates.Latitude != "" {
-				lat := ga.PlaceDetail.Coordinates.Latitude
-				attr.PlaceLat = &lat
-			}
-			if ga.PlaceDetail.Coordinates.Longitude != "" {
-				long := ga.PlaceDetail.Coordinates.Longitude
-				attr.PlaceLong = &long
-			}
-		}
+		attr.PlaceLat, attr.PlaceLong = placeCoordinates(ga.PlaceDetail, "Individual "+indi.XRef, string(ga.Type), result)
 
 		attributes = append(attributes, attr)
 		ids[ga] = attr.ID
@@ -2178,9 +2128,10 @@ func mapAssociationRole(gedcomRole string) string {
 // whose citations go to the record. A negated marriage (NO MARR), which
 // represents a negative assertion, and every other marriage are stored as
 // LifeEvents.
-func extractEventsFromFamily(fam *gedcom.Family, familyID uuid.UUID) ([]EventData, map[*gedcom.Event]uuid.UUID) {
+func extractEventsFromFamily(fam *gedcom.Family, familyID uuid.UUID, result *ImportResult) ([]EventData, map[*gedcom.Event]uuid.UUID) {
 	var events []EventData
 	ids := make(map[*gedcom.Event]uuid.UUID)
+	owner := "Family " + fam.XRef
 	marriage := recordMarriage(fam)
 
 	for _, event := range fam.Events {
@@ -2199,16 +2150,7 @@ func extractEventsFromFamily(fam *gedcom.Family, familyID uuid.UUID) ([]EventDat
 				IsNegated:   true,
 				Notes:       eventNotes(event),
 			}
-			if event.PlaceDetail != nil && event.PlaceDetail.Coordinates != nil {
-				if event.PlaceDetail.Coordinates.Latitude != "" {
-					lat := event.PlaceDetail.Coordinates.Latitude
-					eventData.PlaceLat = &lat
-				}
-				if event.PlaceDetail.Coordinates.Longitude != "" {
-					long := event.PlaceDetail.Coordinates.Longitude
-					eventData.PlaceLong = &long
-				}
-			}
+			eventData.PlaceLat, eventData.PlaceLong = placeCoordinates(event.PlaceDetail, owner, string(event.Type), result)
 			if event.Address != nil {
 				eventData.Address = convertGedcomAddress(event.Address)
 			}
@@ -2238,17 +2180,7 @@ func extractEventsFromFamily(fam *gedcom.Family, familyID uuid.UUID) ([]EventDat
 			IsNegated:   event.IsNegative,
 			Notes:       eventNotes(event),
 		}
-		// Extract coordinates from PlaceDetail if available
-		if event.PlaceDetail != nil && event.PlaceDetail.Coordinates != nil {
-			if event.PlaceDetail.Coordinates.Latitude != "" {
-				lat := event.PlaceDetail.Coordinates.Latitude
-				eventData.PlaceLat = &lat
-			}
-			if event.PlaceDetail.Coordinates.Longitude != "" {
-				long := event.PlaceDetail.Coordinates.Longitude
-				eventData.PlaceLong = &long
-			}
-		}
+		eventData.PlaceLat, eventData.PlaceLong = placeCoordinates(event.PlaceDetail, owner, string(event.Type), result)
 		// Extract structured address if available
 		if event.Address != nil {
 			eventData.Address = convertGedcomAddress(event.Address)

@@ -4,6 +4,7 @@ package config
 import (
 	"fmt"
 	"net"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -49,7 +50,23 @@ type Config struct {
 	// Validate rejects anything but a whole number from 1 to
 	// MaxAuthAuditRetentionDays.
 	AuthAuditRetentionDays string
+
+	// GeocoderEnabled is GEOCODER_ENABLED: whether the server may send place
+	// names to the geocoding provider at GeocoderURL (#1562). Off by
+	// default, since it sends the tree's place names to an outside service.
+	GeocoderEnabled bool
+	// GeocoderURL is GEOCODER_URL: the base URL of the Nominatim-compatible
+	// provider. Validate rejects a value that is not an absolute http(s) URL.
+	GeocoderURL string
+	// GeocoderContact is GEOCODER_CONTACT: an email address or URL that
+	// identifies this install in the User-Agent, as the Nominatim usage
+	// policy requires. Validate requires it when GeocoderEnabled.
+	GeocoderContact string
 }
+
+// DefaultGeocoderURL is the public Nominatim endpoint, used when GEOCODER_URL
+// is unset.
+const DefaultGeocoderURL = "https://nominatim.openstreetmap.org"
 
 // AuthMode says whether requests must sign in (ADR-007).
 type AuthMode string
@@ -132,8 +149,27 @@ func (c *Config) Validate() error {
 	if _, err := c.authAuditRetentionDays(); err != nil {
 		return err
 	}
+	if err := c.validateGeocoder(); err != nil {
+		return err
+	}
 	_, err := c.TrustedProxyRanges()
 	return err
+}
+
+// validateGeocoder checks the geocoder settings, which matter only when it is
+// enabled.
+func (c *Config) validateGeocoder() error {
+	if !c.GeocoderEnabled {
+		return nil
+	}
+	if strings.TrimSpace(c.GeocoderContact) == "" {
+		return fmt.Errorf("GEOCODER_CONTACT must name an email address or URL when GEOCODER_ENABLED is set")
+	}
+	u, err := url.Parse(c.GeocoderURL)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return fmt.Errorf("GEOCODER_URL must be an absolute http or https URL, got %q", c.GeocoderURL)
+	}
+	return nil
 }
 
 // Load reads configuration from environment variables.
@@ -149,6 +185,10 @@ func Load() *Config {
 
 		TrustedProxies:         os.Getenv("TRUSTED_PROXIES"),
 		AuthAuditRetentionDays: os.Getenv("AUTH_AUDIT_RETENTION_DAYS"),
+
+		GeocoderEnabled: getEnvBoolOrDefault("GEOCODER_ENABLED", false),
+		GeocoderURL:     getEnvOrDefault("GEOCODER_URL", DefaultGeocoderURL),
+		GeocoderContact: strings.TrimSpace(os.Getenv("GEOCODER_CONTACT")),
 	}
 	return cfg
 }

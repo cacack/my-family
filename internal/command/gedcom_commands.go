@@ -185,6 +185,11 @@ func (h *Handler) ImportGedcom(ctx context.Context, input ImportGedcomInput) (*I
 		result.AttributesImported++
 	}
 
+	// Store the forms and EXIDs of the places the records name (ADR-009 §8).
+	if err := h.importPlaceFacts(ctx, importResult.Places, result); err != nil {
+		result.Warnings = append(result.Warnings, fmt.Sprintf("Failed to import place forms and external IDs: %v", err))
+	}
+
 	// Import shared notes
 	for _, n := range notes {
 		err := h.importNote(ctx, n)
