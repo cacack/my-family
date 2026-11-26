@@ -49,7 +49,12 @@
 	let button: HTMLElement | null = $state(null);
 	let title: HTMLElement | null = $state(null);
 
-	async function look() {
+	/**
+	 * Ask for candidates and show them when they come. Resolves once they are
+	 * shown, so the worklist's "look up all" can wait for each in turn (#1609);
+	 * it passes `focus: false` so a queued answer does not take the focus.
+	 */
+	export async function look({ focus = true }: { focus?: boolean } = {}) {
 		if (!name) return;
 		const asked = name;
 		const n = ++sent;
@@ -62,7 +67,7 @@
 			if (n !== sent) return;
 			lookup = { state: 'failed', name: asked, message: geocodeErrorMessage(e) };
 		}
-		title?.focus();
+		if (focus) title?.focus();
 	}
 
 	function close() {
@@ -98,10 +103,10 @@
 			variant="outline"
 			size="sm"
 			disabled={!name}
-			aria-label="Look up coordinates for {label}"
+			aria-label="{lookup?.state === 'loading' ? 'Looking up' : 'Look up'} coordinates for {label}"
 			aria-expanded={!!lookup && lookup.state !== 'loading'}
 			aria-controls="{id}-geocode"
-			onclick={look}
+			onclick={() => look()}
 		>
 			{lookup?.state === 'loading' ? 'Looking up...' : 'Look up'}
 		</Button>

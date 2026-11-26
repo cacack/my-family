@@ -11,7 +11,9 @@
 	 * suggestion as stored (origin copied), or type one for an entry with none
 	 * (origin manual), or pick a geocoder candidate when the server has one
 	 * enabled (#1607; origin geocoded, saved on the place per ADR-009), at the
-	 * version the entry was read at. The entry then
+	 * version the entry was read at. "Look up all" (#1609) runs each entry's
+	 * lookup in turn, one request at a time, and leaves each entry's candidates
+	 * to be reviewed; nothing is saved until one is picked. The entry then
 	 * leaves the list, as every record there is mapped at the place's pair. A
 	 * stale version opens the save-conflict flow. Place facts are main-only, so
 	 * on a research branch the controls are withdrawn.
@@ -24,11 +26,13 @@
 		type Place,
 		type UnmappedPlace
 	} from '#lib/api/client.js';
+	import { onDestroy } from 'svelte';
 	import { can } from '#lib/stores/access.svelte.js';
+	import { getAppConfig } from '#lib/stores/appConfig.svelte.js';
 	import { activeBranch } from '#lib/stores/activeBranch.svelte.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { coordinatePairError, toGedcomCoordinate, type CoordinateError } from '#lib/utils/coordinates.js';
-	import { candidateInput, geocodedOrigin } from '#lib/utils/geocode.js';
+	import { candidateInput, geocodedOrigin, lookupName } from '#lib/utils/geocode.js';
 	import { SaveConflictFlow, type ConflictRow } from '#lib/utils/saveConflict.svelte.js';
 	import ActionError from './ActionError.svelte';
 	import CoordinateFields from './CoordinateFields.svelte';
@@ -50,6 +54,14 @@
 	const mayApply = $derived(can('editor') && !activeBranch.id);
 	/** An editor on a branch, where the controls are withdrawn (place facts are main-only). */
 	const withheld = $derived(can('editor') && !!activeBranch.id);
+
+	/** Each entry's lookup, for "Look up all" to drive. */
+	const lookups: Record<string, ReturnType<typeof GeocodeLookup> | null> = {};
+	const mayLookUpAll = $derived(mayApply && getAppConfig().geocoder_enabled);
+	/** The "Look up all" run: places done out of those queued when it began. */
+	let run: { done: number; total: number; state: 'running' | 'stopped' | 'finished' } | null = $state(null);
+	// A run checks this before each lookup; stopping or leaving the page bumps it.
+	let runId = 0;
 
 	/** The apply being saved, or refused for a stale version. */
 	let pending: { entry: UnmappedPlace; base: PlaceBase; pair: Pair; origin: CoordinateOrigin } | null =
@@ -95,6 +107,31 @@
 	$effect(() => {
 		load();
 	});
+
+	/**
+	 * Look up each entry in turn, waiting for one answer before the next
+	 * request (the server spaces and caches them, #1562). An entry saved or
+	 * re-read away meanwhile is skipped, and counted as done.
+	 */
+	async function lookUpAll() {
+		const queue = entries.filter((e) => lookupName(e.name));
+		const n = ++runId;
+		run = { done: 0, total: queue.length, state: 'running' };
+		for (const entry of queue) {
+			await lookups[entry.id]?.look({ focus: false });
+			if (n !== runId) return;
+			run.done++;
+		}
+		run.state = 'finished';
+	}
+
+	/** Send no further lookup; the one in flight still shows its answer. */
+	function stopRun() {
+		runId++;
+		if (run) run.state = 'stopped';
+	}
+
+	onDestroy(() => runId++);
 
 	function records(n: number): string {
 		return `${n} ${n === 1 ? 'record' : 'records'}`;
@@ -210,6 +247,33 @@
 				Place coordinates are shared across all branches. Return to the mainline to set them.
 			</p>
 		{/if}
+		{#if mayLookUpAll}
+			<div class="look-up-all">
+				<div class="actions">
+					{#if run?.state === 'running'}
+						<Button variant="outline" size="sm" onclick={stopRun}>Stop looking up</Button>
+					{:else}
+						<Button variant="outline" size="sm" onclick={lookUpAll}>Look up all places</Button>
+					{/if}
+				</div>
+				{#if run}
+					<progress max={run.total} value={run.done} aria-label="Places looked up"></progress>
+					<p class="run-status" role="status">
+						{#if run.state === 'running'}
+							Looking up places: {run.done} of {run.total} done.
+						{:else if run.state === 'stopped'}
+							Stopped after {run.done} of {run.total} places.
+						{:else}
+							Looked up {run.done} of {run.total} places. Review each place's locations below.
+						{/if}
+					</p>
+				{/if}
+				<p class="hint">
+					Asks the geocoder about each place in turn, one at a time. Nothing is saved until you choose a
+					location for a place.
+				</p>
+			</div>
+		{/if}
 		<ul class="unmapped-list">
 			{#each entries as entry (entry.id)}
 				<li class="unmapped-item">
@@ -286,6 +350,7 @@
 					{/if}
 					{#if mayApply}
 						<GeocodeLookup
+							bind:this={lookups[entry.id]}
 							id="unmapped-{entry.id}"
 							place={entry.name}
 							label={entry.name}
@@ -385,6 +450,28 @@
 		flex-wrap: wrap;
 		align-items: center;
 		gap: 0.25rem 0.75rem;
+	}
+
+	.look-up-all {
+		margin: 0 0 1rem;
+		font-size: 0.875rem;
+		color: var(--color-text-muted);
+	}
+
+	.look-up-all .actions {
+		margin-top: 0;
+	}
+
+	.look-up-all progress {
+		display: block;
+		width: 100%;
+		max-width: 24rem;
+		margin-top: 0.5rem;
+	}
+
+	.run-status,
+	.hint {
+		margin: 0.5rem 0 0;
 	}
 
 	.type-pair {

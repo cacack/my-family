@@ -328,3 +328,129 @@ describe('UnmappedPlaces geocoder lookup (#1607)', () => {
 		expect(screen.getByLabelText('Latitude')).toBeTruthy();
 	});
 });
+
+// "Look up all" queues each entry's lookup, one request at a time (#1609).
+describe('UnmappedPlaces look up all (#1609)', () => {
+	const plymouth: apiModule.UnmappedPlace = {
+		...salem,
+		id: '91e00000-0000-5000-8000-000000000000',
+		key: 'plymouth,ma',
+		name: 'Plymouth',
+		spelling: 'Plymouth'
+	};
+	const lookUpAll = () => screen.findByRole('button', { name: 'Look up all places' });
+	// The run's own status line; a save adds a status of its own.
+	const status = () =>
+		screen.getAllByRole('status').find((el) => el.classList.contains('run-status'))?.textContent?.trim();
+
+	/** Lookups held open until answered, with the most ever in flight at once. */
+	let held: { name: string; answer: () => void }[];
+	let inFlight: number;
+	let maxInFlight: number;
+	/** Answer the oldest held lookup with a candidate named after it. */
+	async function answerNext() {
+		await waitFor(() => expect(held.length).toBeGreaterThan(0));
+		held.shift()!.answer();
+	}
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		branchState.id = null;
+		signInAs('editor');
+		setGeocoderEnabled(true);
+		held = [];
+		inFlight = 0;
+		maxInFlight = 0;
+		vi.mocked(apiModule.api.listUnmappedPlaces).mockResolvedValue({ items: [boston, salem, plymouth], total: 3 });
+		vi.mocked(apiModule.api.geocodePlace).mockImplementation(
+			(name) =>
+				new Promise((resolve) => {
+					inFlight++;
+					maxInFlight = Math.max(maxInFlight, inFlight);
+					held.push({
+						name,
+						answer: () => {
+							inFlight--;
+							resolve({ items: [{ ...bostonCandidate, display_name: `${name}, found`, query: name }], total: 1 });
+						}
+					});
+				})
+		);
+	});
+
+	it.each([
+		['a viewer', () => signInAs('viewer')],
+		['anyone, with the geocoder disabled', () => setGeocoderEnabled(false)],
+		['an editor on a research branch', () => (branchState.id = 'branch-1')]
+	])('is not offered to %s', async (_who, arrange) => {
+		arrange();
+		render(UnmappedPlaces);
+		await screen.findByText('Boston');
+		expect(screen.queryByRole('button', { name: 'Look up all places' })).toBeNull();
+	});
+
+	it('looks up each place once, one request at a time, and shows each one’s candidates without saving', async () => {
+		render(UnmappedPlaces);
+		await fireEvent.click(await lookUpAll());
+		expect(status()).toBe('Looking up places: 0 of 3 done.');
+		expect(screen.getByRole('progressbar', { name: 'Places looked up' }).getAttribute('max')).toBe('3');
+
+		await answerNext();
+		await screen.findByText('Boston, found');
+		await waitFor(() => expect(status()).toBe('Looking up places: 1 of 3 done.'));
+		await answerNext();
+		await screen.findByText('Salem, MA, found');
+		await answerNext();
+		await screen.findByText('Plymouth, found');
+
+		await waitFor(() => expect(status()).toBe("Looked up 3 of 3 places. Review each place's locations below."));
+		expect(vi.mocked(apiModule.api.geocodePlace).mock.calls.map(([name]) => name)).toEqual([
+			'Boston',
+			'Salem, MA',
+			'Plymouth'
+		]);
+		expect(maxInFlight).toBe(1);
+		expect(apiModule.api.updatePlace).not.toHaveBeenCalled();
+		// The focus stays where the editor left it, not on each answer as it comes.
+		expect(document.activeElement?.closest('.candidates')).toBeNull();
+	});
+
+	it('saves a candidate only when the editor picks one, while the run goes on', async () => {
+		vi.mocked(apiModule.api.updatePlace).mockResolvedValue(placeOf(boston, { version: 5 }));
+		render(UnmappedPlaces);
+		await fireEvent.click(await lookUpAll());
+		await answerNext();
+		await fireEvent.click(await screen.findByRole('button', { name: /^Use this, Boston, found, .* for Boston$/ }));
+		await waitFor(() => expect(apiModule.api.updatePlace).toHaveBeenCalledTimes(1));
+		expect(vi.mocked(apiModule.api.updatePlace).mock.calls[0][0]).toBe(boston.id);
+		await answerNext();
+		await answerNext();
+		await waitFor(() => expect(status()).toMatch(/^Looked up 3 of 3 places/));
+		expect(apiModule.api.updatePlace).toHaveBeenCalledTimes(1);
+	});
+
+	it('stops when cancelled, after the lookup in flight', async () => {
+		render(UnmappedPlaces);
+		await fireEvent.click(await lookUpAll());
+		await answerNext();
+		await waitFor(() => expect(apiModule.api.geocodePlace).toHaveBeenCalledTimes(2));
+		await fireEvent.click(screen.getByRole('button', { name: 'Stop looking up' }));
+		expect(status()).toBe('Stopped after 1 of 3 places.');
+		await answerNext();
+		await screen.findByText('Salem, MA, found');
+		await new Promise((r) => setTimeout(r, 0));
+		expect(apiModule.api.geocodePlace).toHaveBeenCalledTimes(2);
+		expect(status()).toBe('Stopped after 1 of 3 places.');
+		expect(screen.getByRole('button', { name: 'Look up all places' })).toBeTruthy();
+	});
+
+	it('stops when the page is left', async () => {
+		const { unmount } = render(UnmappedPlaces);
+		await fireEvent.click(await lookUpAll());
+		await waitFor(() => expect(apiModule.api.geocodePlace).toHaveBeenCalledTimes(1));
+		unmount();
+		held.shift()!.answer();
+		await new Promise((r) => setTimeout(r, 0));
+		expect(apiModule.api.geocodePlace).toHaveBeenCalledTimes(1);
+	});
+});
