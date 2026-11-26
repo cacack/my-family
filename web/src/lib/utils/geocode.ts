@@ -14,9 +14,14 @@ export interface CoordinatePick extends CoordinateInput {
 	provider: string;
 }
 
-/** Spaces trimmed and collapsed, as the server normalizes a lookup. */
-function normalized(name: string): string {
+/** A place name with spaces trimmed and collapsed, as the server normalizes a lookup. */
+export function lookupName(name: string): string {
 	return name.trim().split(/\s+/).join(' ');
+}
+
+/** A name's comma-separated parts, normalized and compared without case. */
+function nameParts(name: string): string[] {
+	return name.split(',').map((part) => lookupName(part).toLowerCase());
 }
 
 /** A coordinate in signed decimal degrees, without an exponent or trailing zeros. */
@@ -31,15 +36,32 @@ export function candidateInput(candidate: GeocodeCandidate): CoordinateInput {
 
 /**
  * Full when the geocoder matched the whole place name, ignoring case and
- * runs of spaces as its cache does; partial when it matched other text.
+ * runs of spaces as its cache does; partial when it matched only some of the
+ * name's comma-separated parts, in order; undefined when it matched text the
+ * name does not hold, so the pair is not a match for this place at all.
  */
-export function matchPrecision(query: string, place: string): MatchPrecision {
-	return normalized(query).toLowerCase() === normalized(place).toLowerCase() ? 'full' : 'partial';
+export function matchPrecision(query: string, place: string): MatchPrecision | undefined {
+	if (lookupName(query).toLowerCase() === lookupName(place).toLowerCase()) return 'full';
+	// Each matched part found in the name, after the one before it.
+	const parts = nameParts(place);
+	let next = 0;
+	for (const part of nameParts(query)) {
+		next = parts.indexOf(part, next) + 1;
+		if (next === 0) return undefined;
+	}
+	return 'partial';
 }
 
-/** The origin a candidate's pair is saved with, for a place named `place`. */
-export function geocodedOrigin(pick: Pick<CoordinatePick, 'query' | 'provider'>, place: string): CoordinateOrigin {
-	return { source: 'geocoded', provider: pick.provider, precision: matchPrecision(pick.query, place) };
+/**
+ * The origin a candidate's pair is saved with, for a place named `place`;
+ * undefined when the candidate matched other text than the name holds.
+ */
+export function geocodedOrigin(
+	pick: Pick<CoordinatePick, 'query' | 'provider'>,
+	place: string
+): CoordinateOrigin | undefined {
+	const precision = matchPrecision(pick.query, place);
+	return precision ? { source: 'geocoded', provider: pick.provider, precision } : undefined;
 }
 
 /** A candidate as a form keeps it until saved. */
@@ -50,7 +72,8 @@ export function candidatePick(candidate: GeocodeCandidate): CoordinatePick {
 /**
  * The origin to send with a form's pair: geocoded while the pair is still the
  * one picked, for the place name as it is at save time; undefined once it was
- * typed over, so the server records it as entered by hand.
+ * typed over, cleared, or the name no longer holds the text matched, so the
+ * server records it as entered by hand.
  */
 export function pickedOrigin(
 	pair: CoordinateInput,

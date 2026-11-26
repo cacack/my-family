@@ -290,9 +290,9 @@ describe('UnmappedPlaces geocoder lookup (#1607)', () => {
 	});
 
 	it.each([
-		['the whole name', 0, 'N42.3554334', 'W71.060511', 'full'],
-		['other text than the name', 1, 'N52.97', 'W0.02', 'partial']
-	] as const)('saves a candidate that matched %s on the place, as geocoded', async (_n, index, latitude, longitude, precision) => {
+		['the whole name, as geocoded', 0, 'N42.3554334', 'W71.060511', { source: 'geocoded', provider: 'Nominatim', precision: 'full' }],
+		['text the name does not hold, as entered by hand', 1, 'N52.97', 'W0.02', { source: 'manual' }]
+	] as const)('saves a candidate that matched %s', async (_n, index, latitude, longitude, origin) => {
 		render(UnmappedPlaces);
 		await fireEvent.click(await lookUp('Boston'));
 		const uses = await screen.findAllByRole('button', { name: /^Use this, .* for Boston$/ });
@@ -303,7 +303,7 @@ describe('UnmappedPlaces geocoder lookup (#1607)', () => {
 				version: 4,
 				latitude,
 				longitude,
-				coordinates_origin: { source: 'geocoded', provider: 'Nominatim', precision }
+				coordinates_origin: origin
 			})
 		);
 		await waitFor(() => expect(screen.queryByText('3 records without coordinates')).toBeNull());

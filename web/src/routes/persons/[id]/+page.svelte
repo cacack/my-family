@@ -418,7 +418,7 @@
 	function coordinatesUpdate(saved: PersonDetail, field: PlaceField) {
 		const change = coordinateChange(coordinatePair(field), savedPair(saved, field));
 		if (!change) return {};
-		const origin = change.latitude ? pickedOrigin(coordinatePair(field), picks[field], formData[field]) : undefined;
+		const origin = pickedOrigin(coordinatePair(field), picks[field], formData[field]);
 		return {
 			[`${field}_latitude`]: change.latitude,
 			[`${field}_longitude`]: change.longitude,

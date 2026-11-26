@@ -390,9 +390,7 @@
 				...(coordinates && {
 					marriage_place_latitude: coordinates.latitude,
 					marriage_place_longitude: coordinates.longitude,
-					marriage_place_coordinates_origin: coordinates.latitude
-						? pickedOrigin(pair, picked, formData.marriage_place)
-						: undefined
+					marriage_place_coordinates_origin: pickedOrigin(pair, picked, formData.marriage_place)
 				}),
 				// Sent only when changed, like the relationship type.
 				private: formData.private !== (family.private === true) ? formData.private : undefined,

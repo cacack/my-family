@@ -125,9 +125,7 @@
 				marriage_place: formData.marriage_place || undefined,
 				marriage_place_latitude: pair?.latitude ?? undefined,
 				marriage_place_longitude: pair?.longitude ?? undefined,
-				marriage_place_coordinates_origin: pair?.latitude
-					? pickedOrigin(coordinates, picked, formData.marriage_place ?? '')
-					: undefined
+				marriage_place_coordinates_origin: pickedOrigin(coordinates, picked, formData.marriage_place ?? '')
 			};
 			const family = await api.createFamily(payload);
 			if (child) {

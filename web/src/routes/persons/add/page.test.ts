@@ -291,6 +291,20 @@ describe('Add Person form geocoder lookup (#1607)', () => {
 		});
 	});
 
+	it('sends no origin once the place is renamed to text the geocoder did not match', async () => {
+		render(Page);
+		await fireEvent.input(screen.getByLabelText('Given Name'), { target: { value: 'Ada' } });
+		await fireEvent.input(screen.getByLabelText('Death Place'), { target: { value: 'Boston' } });
+		await pickFirstCandidate('Death Place');
+		await fireEvent.input(screen.getByLabelText('Death Place'), { target: { value: 'Salem, Essex' } });
+		expect(screen.queryByTestId('coordinates-origin')).toBeNull();
+		await fireEvent.click(screen.getByRole('button', { name: 'Create Person' }));
+
+		await waitFor(() => expect(createPerson).toHaveBeenCalled());
+		expect(createPerson.mock.calls[0][0].death_place_latitude).toBe('N42.3554334');
+		expect(createPerson.mock.calls[0][0].death_place_coordinates_origin).toBeUndefined();
+	});
+
 	it('sends no origin for a pick typed over, so it is saved as entered by hand', async () => {
 		render(Page);
 		await fireEvent.input(screen.getByLabelText('Given Name'), { target: { value: 'Ada' } });

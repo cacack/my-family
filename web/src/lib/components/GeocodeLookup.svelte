@@ -13,7 +13,7 @@
 	import { can } from '#lib/stores/access.svelte.js';
 	import { getAppConfig } from '#lib/stores/appConfig.svelte.js';
 	import { Button } from '#lib/components/ui/button/index.js';
-	import { candidateInput, geocodeErrorMessage } from '#lib/utils/geocode.js';
+	import { candidateInput, geocodeErrorMessage, lookupName } from '#lib/utils/geocode.js';
 	import ActionError from './ActionError.svelte';
 	import GeocodeCandidateMap from './GeocodeCandidateMap.svelte';
 
@@ -37,7 +37,7 @@
 	} = $props();
 
 	const shown = $derived(getAppConfig().geocoder_enabled && can('editor'));
-	const name = $derived(place.trim().split(/\s+/).join(' '));
+	const name = $derived(lookupName(place));
 
 	type Lookup =
 		| { state: 'loading'; name: string }

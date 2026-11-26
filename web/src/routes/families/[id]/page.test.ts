@@ -912,6 +912,18 @@ describe('Family Detail Page: geocoder lookup (#1607)', () => {
 			marriage_place_coordinates_origin: { source: 'geocoded', provider: 'Nominatim', precision: 'full' }
 		});
 	});
+
+	it('sends no origin for a pick typed over, so it is saved as entered by hand', async () => {
+		await openEdit();
+		await pickFirstCandidate('Marriage Place');
+		await fireEvent.input(screen.getByLabelText('Latitude'), { target: { value: '42.36' } });
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+		await waitFor(() => expect(api.updateFamily).toHaveBeenCalled());
+		const sent = vi.mocked(api.updateFamily).mock.calls[0][1];
+		expect(sent.marriage_place_latitude).toBe('N42.36');
+		expect(sent.marriage_place_coordinates_origin).toBeUndefined();
+	});
 });
 
 describe('Family Detail Page: failed actions (#899)', () => {

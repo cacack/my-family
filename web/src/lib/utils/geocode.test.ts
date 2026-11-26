@@ -34,7 +34,13 @@ describe('matchPrecision', () => {
 		['Boston, Massachusetts', 'Boston, Massachusetts', 'full'],
 		['Boston, Massachusetts', '  boston,   Massachusetts ', 'full'],
 		['Massachusetts', 'Boston, Massachusetts', 'partial'],
-		['Boston', 'Boston, Massachusetts', 'partial']
+		['Boston', 'Boston, Massachusetts', 'partial'],
+		['suffolk,  massachusetts', 'Boston, Suffolk, Massachusetts', 'partial'],
+		['Boston, Massachusetts', 'Boston', undefined],
+		['Boston', 'Salem, Essex, Massachusetts', undefined],
+		['Boston, Massachusetts', 'Boston, Suffolk, Massachusetts', 'partial'],
+		['Massachusetts, Boston', 'Boston, Suffolk, Massachusetts', undefined],
+		['Bost', 'Boston, Massachusetts', undefined]
 	] as const)('matched %j for place %j is %s', (query, place, want) => {
 		expect(matchPrecision(query, place)).toBe(want);
 	});
@@ -52,6 +58,7 @@ describe('geocodedOrigin', () => {
 			provider: 'Nominatim',
 			precision: 'partial'
 		});
+		expect(geocodedOrigin(boston, 'Salem, Massachusetts')).toBeUndefined();
 	});
 });
 
@@ -64,9 +71,14 @@ describe('pickedOrigin', () => {
 			provider: 'Nominatim',
 			precision: 'full'
 		});
-		expect(pickedOrigin({ latitude: ' 42.3554334', longitude: '-71.060511 ' }, pick, 'Boston')?.precision).toBe(
-			'partial'
-		);
+		expect(
+			pickedOrigin({ latitude: ' 42.3554334', longitude: '-71.060511 ' }, pick, 'Back Bay, Boston, Massachusetts')
+				?.precision
+		).toBe('partial');
+	});
+
+	it('is undefined once the place name no longer holds the text matched', () => {
+		expect(pickedOrigin({ latitude: '42.3554334', longitude: '-71.060511' }, pick, 'Salem, Essex, Massachusetts')).toBeUndefined();
 	});
 
 	it.each([

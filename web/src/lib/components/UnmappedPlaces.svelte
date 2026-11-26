@@ -170,7 +170,10 @@
 		);
 	}
 
-	/** Save a geocoder candidate as the place's pair, matched against its name. */
+	/**
+	 * Save a geocoder candidate as the place's pair, matched against its name;
+	 * one that matched other text is saved as entered by hand, as in the forms.
+	 */
 	function applyCandidate(entry: UnmappedPlace, candidate: GeocodeCandidate) {
 		const typed = candidateInput(candidate);
 		apply(
@@ -179,7 +182,7 @@
 				latitude: toGedcomCoordinate(typed.latitude, 'latitude'),
 				longitude: toGedcomCoordinate(typed.longitude, 'longitude')
 			},
-			geocodedOrigin(candidate, entry.name)
+			geocodedOrigin(candidate, entry.name) ?? { source: 'manual' }
 		);
 	}
 </script>
