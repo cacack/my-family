@@ -61,8 +61,9 @@ func (p *exportPlaces) addTo(doc *gedcom.Document) {
 
 // write adds to a PLAC whose text names a place the form its place holds
 // for the text's positional key, the place's EXIDs, and, when the record has
-// no pair of its own, the pair of the place it resolves to (ADR-009 §5). A
-// form is never written against a text with a different number of parts.
+// no coordinate of its own (not even half a pair), the pair of the place it
+// resolves to (ADR-009 §5, §8). A form is never written against a text with a
+// different number of parts.
 func (p *exportPlaces) write(detail *gedcom.PlaceDetail) {
 	if detail == nil {
 		return
