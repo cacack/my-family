@@ -17,7 +17,7 @@ import (
 const NominatimName = "Nominatim"
 
 // nominatimAttribution is the credit a candidate carries when the response
-// names no licence of its own: Nominatim serves OpenStreetMap data, under the
+// names no license of its own: Nominatim serves OpenStreetMap data, under the
 // ODbL.
 const nominatimAttribution = "Data © OpenStreetMap contributors, ODbL 1.0. https://osm.org/copyright"
 
@@ -54,7 +54,7 @@ type nominatimPlace struct {
 	DisplayName string `json:"display_name"`
 	Lat         string `json:"lat"`
 	Lon         string `json:"lon"`
-	Licence     string `json:"licence"`
+	License     string `json:"licence"` // Nominatim's British spelling
 }
 
 // Search implements Provider.
@@ -105,7 +105,7 @@ func (n *Nominatim) Search(ctx context.Context, query string, limit int) ([]Cand
 		if latErr != nil || lonErr != nil || !(lat >= -90 && lat <= 90) || !(lon >= -180 && lon <= 180) {
 			continue
 		}
-		attribution := p.Licence
+		attribution := p.License
 		if attribution == "" {
 			attribution = nominatimAttribution
 		}
