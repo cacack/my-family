@@ -95,7 +95,7 @@ func (s *ValidationService) GetQualityReportOn(ctx context.Context, branchID dom
 	// Generate quality report with strict mode to get all severity levels
 	qr := strictValidator().QualityReport(view.doc)
 	errs := view.withoutDismissedIssues(qr.Errors, dismissed)
-	warnings := view.withoutDismissedIssues(qr.Warnings, dismissed)
+	warnings := append(view.withoutDismissedIssues(qr.Warnings, dismissed), view.nameStyleIssues()...)
 	info := view.withoutDismissedIssues(qr.Info, dismissed)
 
 	// Count issues by code for top issues

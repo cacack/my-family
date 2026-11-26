@@ -56,3 +56,32 @@ func TestValidationService_GetValidationIssues_NameStyle(t *testing.T) {
 		})
 	}
 }
+
+// TestValidationService_GetQualityReport_NameStyle checks that the quality
+// report counts the same name style warnings as the issues list.
+func TestValidationService_GetQualityReport_NameStyle(t *testing.T) {
+	service, store := setupValidationService()
+	addPerson(store, "John", "SMITH", "1 JAN 1900")
+	ctx := context.Background()
+
+	page, err := service.GetValidationIssues(ctx, "", 0, 0)
+	if err != nil {
+		t.Fatalf("GetValidationIssues returned error: %v", err)
+	}
+	report, err := service.GetQualityReport(ctx)
+	if err != nil {
+		t.Fatalf("GetQualityReport returned error: %v", err)
+	}
+	if report.WarningCount != page.WarningCount {
+		t.Errorf("report warning count = %d, issues page = %d", report.WarningCount, page.WarningCount)
+	}
+	found := false
+	for _, top := range report.TopIssues {
+		if top.Code == "NAME_ALL_CAPS" && top.Count == 1 {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("top issues %v lack NAME_ALL_CAPS x1", report.TopIssues)
+	}
+}
