@@ -4968,8 +4968,8 @@ type MapLocation struct {
 	// Place The place's display name when one is set, otherwise the spelling most of the location's records give (ties broken bytewise).
 	Place string `json:"place"`
 
-	// PlaceId The ID of the place the location groups (GET /places/{id}); omitted when the records' place text names no place.
-	PlaceId *openapi_types.UUID `json:"place_id,omitempty"`
+	// PlaceId The ID of the place the location groups (GET /places/{id}).
+	PlaceId openapi_types.UUID `json:"place_id"`
 }
 
 // MapLocationEventType Type of life event at this location
