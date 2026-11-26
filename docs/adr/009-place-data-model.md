@@ -451,11 +451,14 @@ or in spacing around commas become one entry, on every store.
   writes `PLAC.FORM` under each event whose key's place, before alias resolution, holds a form for
   that event's positional key, so an alias never drops a form and a form is never written against
   a text with a different number of parts.
-- **`HEAD.PLAC.FORM`.** Not written yet. The file default comes back as a `FORM` under each place,
-  which means the same and is not the same bytes. Writing the most common form once in the header,
-  and a per-place `FORM` only where it differs, needs
-  [cacack/gedcom-go#875](https://github.com/cacack/gedcom-go/issues/875): the encoder does not
-  write `Header.PlaceForm` for a document assembled in memory.
+- **`HEAD.PLAC.FORM`.** Export writes the form most exported `PLAC` lines carry once as the
+  header default (a tie goes to the form that sorts first), and a `PLAC.FORM` only where a place's
+  form differs from it, so a file imported with a header default comes back with the same line
+  ([#1739](https://github.com/cacack/my-family/issues/1739)). Import gives the header form to
+  every `PLAC` that names a place and has no `FORM` of its own, so no default is written while any
+  such `PLAC` has no form: re-importing would give that place a form it never had. The default is
+  computed from the `PLAC`s the privacy filter let through, so it never reveals a hidden place's
+  form.
 - **`PLAC.EXID`** (GEDCOM 7.0). Import stores them on the place; export writes them under each of
   its events when the file being written is a version that has `EXID`.
 

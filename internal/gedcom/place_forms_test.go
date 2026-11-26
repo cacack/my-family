@@ -193,3 +193,115 @@ func TestExport_RecordsInheritTheirPlacesPair(t *testing.T) {
 		}
 	}
 }
+
+// Export writes the form most PLACs carry once as HEAD.PLAC.FORM and a
+// PLAC.FORM only where a place's form differs from it, as long as every PLAC
+// that names a place has a form; otherwise the header default would give a
+// formless place a form on re-import (ADR-009 §8). A tie goes to the form
+// that sorts first.
+func TestExport_HeaderPlaceFormIsTheMostCommonForm(t *testing.T) {
+	const head = "0 HEAD\n1 GEDC\n2 VERS 5.5.1\n1 CHAR UTF-8\n"
+	tests := []struct {
+		name       string
+		version    gcgedcom.Version
+		body       string
+		wantHeader string // "" means no HEAD.PLAC.FORM
+		wantPlace  []string
+		wantForms  int // FORM lines under a PLAC
+	}{
+		{
+			name: "most common form goes to the header",
+			body: "0 @I1@ INDI\n1 NAME Ada /L/\n" +
+				"1 BIRT\n2 PLAC Kiel, Holstein, Germany\n3 FORM City, State, Country\n" +
+				"1 DEAT\n2 PLAC Bonn, Rhineland, Germany\n3 FORM City, State, Country\n" +
+				"1 RESI\n2 PLAC Hamburg\n3 FORM City\n" +
+				"0 @I2@ INDI\n1 NAME Bea /L/\n1 BIRT\n2 PLAC Kiel, Holstein, Germany\n",
+			wantHeader: "City, State, Country",
+			wantPlace:  []string{"2 PLAC Hamburg\n3 FORM City\n"},
+			wantForms:  1,
+		},
+		{
+			name:    "7.0 export keeps the header default",
+			version: gcgedcom.Version70,
+			body: "0 @I1@ INDI\n1 NAME Ada /L/\n" +
+				"1 BIRT\n2 PLAC Kiel, Germany\n3 FORM City, Country\n" +
+				"1 DEAT\n2 PLAC Bonn, Germany\n3 FORM City, Country\n",
+			wantHeader: "City, Country",
+		},
+		{
+			name: "tie goes to the form that sorts first",
+			body: "0 @I1@ INDI\n1 NAME Ada /L/\n" +
+				"1 BIRT\n2 PLAC Kiel, Germany\n3 FORM Town, Country\n" +
+				"1 DEAT\n2 PLAC Bonn, Germany\n3 FORM City, Country\n",
+			wantHeader: "City, Country",
+			wantPlace:  []string{"2 PLAC Kiel, Germany\n3 FORM Town, Country\n"},
+			wantForms:  1,
+		},
+		{
+			name: "a formless place keeps forms per place",
+			body: "0 @I1@ INDI\n1 NAME Ada /L/\n" +
+				"1 BIRT\n2 PLAC Kiel, Germany\n3 FORM City, Country\n" +
+				"1 DEAT\n2 PLAC Bonn, Germany\n3 FORM City, Country\n" +
+				"1 BURI\n2 PLAC Hamburg\n",
+			wantPlace: []string{"2 PLAC Kiel, Germany\n3 FORM City, Country\n", "2 PLAC Bonn, Germany\n3 FORM City, Country\n"},
+			wantForms: 2,
+		},
+		{
+			name: "a PLAC that names no place does not block the default",
+			body: "0 @I1@ INDI\n1 NAME Ada /L/\n" +
+				"1 BIRT\n2 PLAC Kiel, Germany\n3 FORM City, Country\n" +
+				"1 DEAT\n2 PLAC ,\n",
+			wantHeader: "City, Country",
+		},
+		{
+			name: "no forms, no default",
+			body: "0 @I1@ INDI\n1 NAME Ada /L/\n1 BIRT\n2 PLAC Kiel, Germany\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, store, _ := importPlaces(t, head+tt.body+"0 TRLR\n")
+			out := exportStore(t, store, tt.version)
+			header := out[:strings.Index(out, "\n0 @")+1]
+			if tt.wantHeader == "" {
+				if strings.Contains(header, "1 PLAC") {
+					t.Errorf("header has a place form, want none:\n%s", out)
+				}
+			} else if !strings.Contains(header, "1 PLAC\n2 FORM "+tt.wantHeader+"\n") {
+				t.Errorf("header lacks HEAD.PLAC.FORM %q:\n%s", tt.wantHeader, out)
+			}
+			for _, want := range tt.wantPlace {
+				if !strings.Contains(out, want) {
+					t.Errorf("export lacks %q:\n%s", want, out)
+				}
+			}
+			if got := strings.Count(out, "\n3 FORM"); got != tt.wantForms {
+				t.Errorf("export writes %d PLAC.FORM lines, want %d:\n%s", got, tt.wantForms, out)
+			}
+		})
+	}
+}
+
+// A file with a header default and no per-place forms exports with the same
+// HEAD.PLAC.FORM line and no PLAC.FORM lines, and re-importing that export
+// files the same forms.
+func TestRoundTrip_HeaderPlaceForm(t *testing.T) {
+	const data = "0 HEAD\n1 GEDC\n2 VERS 5.5.1\n1 CHAR UTF-8\n1 PLAC\n2 FORM City, County, State, Country\n" +
+		"0 @I1@ INDI\n1 NAME Ada /L/\n1 BIRT\n2 PLAC Darmstadt,,,Germany\n1 DEAT\n2 PLAC Kiel, Germany\n" +
+		"0 @I2@ INDI\n1 NAME Bea /L/\n1 RESI\n2 PLAC Hamburg, Hamburg, Hamburg, Germany\n" +
+		"0 TRLR\n"
+	_, store, _ := importPlaces(t, data)
+	out := exportStore(t, store, "")
+	if !strings.Contains(out, "1 PLAC\n2 FORM City, County, State, Country\n") {
+		t.Errorf("export lacks the header default:\n%s", out)
+	}
+	if got := strings.Count(out, "\n3 FORM"); got != 0 {
+		t.Errorf("export writes %d PLAC.FORM lines, want 0:\n%s", got, out)
+	}
+	_, again, _ := importPlaces(t, out)
+	want, _ := store.ListPlaceForms(context.Background())
+	got, _ := again.ListPlaceForms(context.Background())
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("re-imported forms = %v, want %v", got, want)
+	}
+}

@@ -169,7 +169,12 @@ func TestExport_PlaceFactsOnlyUnderVisibleEvents(t *testing.T) {
 	}
 
 	out := export(repository.Principal{Role: repository.RoleViewer, Anonymous: true})
-	darmstadt := "2 PLAC Darmstadt,,,Germany\n3 FORM City, County, State, Country\n3 MAP\n4 LATI N49.87\n4 LONG E8.65\n3 EXID Q2973\n"
+	// Darmstadt's form is the most common, so it is the header default.
+	headerForm := "1 PLAC\n2 FORM City, County, State, Country\n"
+	darmstadt := "2 PLAC Darmstadt,,,Germany\n3 MAP\n4 LATI N49.87\n4 LONG E8.65\n3 EXID Q2973\n"
+	if !strings.Contains(out, headerForm) {
+		t.Errorf("visitor export lacks Darmstadt's form as the header default:\n%s", out)
+	}
 	if got := strings.Count(out, darmstadt); got != 1 {
 		t.Errorf("visitor export writes Darmstadt's facts %d times, want once, under Dorian's birth:\n%s", got, out)
 	}
@@ -179,8 +184,8 @@ func TestExport_PlaceFactsOnlyUnderVisibleEvents(t *testing.T) {
 		}
 	}
 	out = export(repository.Principal{Role: repository.RoleOwner})
-	if got := strings.Count(out, darmstadt); got != 2 {
-		t.Errorf("owner export writes Darmstadt's facts %d times, want twice:\n%s", got, out)
+	if got := strings.Count(out, darmstadt); got != 2 || !strings.Contains(out, headerForm) {
+		t.Errorf("owner export writes Darmstadt's facts %d times, want twice, or lacks its header form:\n%s", got, out)
 	}
 	if !strings.Contains(out, "2 PLAC Kiel, Germany\n3 FORM Town, Country\n3 MAP\n4 LATI N54.32\n4 LONG E10.14\n3 EXID Q1707\n") {
 		t.Errorf("owner export lacks Kiel's facts:\n%s", out)
