@@ -90,6 +90,39 @@ func TestImport_PlaceFormsAreFiledByPartLayout(t *testing.T) {
 	}
 }
 
+// Within a person, the first form in file order wins across events and
+// attributes alike: an attribute (OCCU; gedcom-go decodes RESI as an event)
+// before an event keeps its form (#1879).
+func TestImport_PlaceFormFollowsFileOrderAcrossEventsAndAttributes(t *testing.T) {
+	const (
+		occu = "1 OCCU Smith\n2 PLAC Kiel, Germany\n3 FORM City, Country\n"
+		birt = "1 BIRT\n2 PLAC Kiel, Germany\n3 FORM Town, Land\n"
+	)
+	kiel := repository.PlaceID("kiel,germany")
+	for _, tc := range []struct {
+		name, facts, want string
+	}{
+		{"attribute first", occu + birt, "City, Country"},
+		{"event first", birt + occu, "Town, Land"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			data := "0 HEAD\n1 GEDC\n2 VERS 5.5.1\n1 CHAR UTF-8\n0 @I1@ INDI\n1 NAME Ada /L/\n" + tc.facts + "0 TRLR\n"
+			_, store, warnings := importPlaces(t, data)
+			got, err := store.ListPlaceForms(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := []repository.PlaceFormReadModel{{PlaceID: kiel, PositionalKey: "kiel,germany", Form: tc.want}}
+			if !reflect.DeepEqual(got[kiel], want) {
+				t.Errorf("forms = %+v, want %+v", got[kiel], want)
+			}
+			if w := formWarnings(warnings[0]); len(w) != 1 {
+				t.Errorf("form warnings = %q, want one for the later form", w)
+			}
+		})
+	}
+}
+
 // Import adds a PLAC's EXIDs to its place once each, in file order; export
 // writes them under every event of the place in a 7.0 file, and a 5.5 export,
 // which has no EXID, leaves them out.
