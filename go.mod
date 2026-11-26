@@ -5,7 +5,7 @@ go 1.26.0
 toolchain go1.26.10
 
 require (
-	github.com/cacack/gedcom-go/v3 v3.10.0
+	github.com/cacack/gedcom-go/v3 v3.11.0
 	github.com/getkin/kin-openapi v0.153.0
 	github.com/google/uuid v1.6.0
 	github.com/labstack/echo/v4 v4.16.5

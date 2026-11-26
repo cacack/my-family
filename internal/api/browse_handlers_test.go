@@ -808,6 +808,56 @@ func TestGetMapLocations_NamesPersons(t *testing.T) {
 	}
 }
 
+// TestGetMapLocations_EveryLocationHasPlaceID checks place_id is always set
+// (#1863): each location carries the ID of the place it groups, and a pair whose
+// place text is empty yields no location rather than one with a zero ID.
+func TestGetMapLocations_EveryLocationHasPlaceID(t *testing.T) {
+	cfg := &config.Config{Port: 8080, LogFormat: "text", AuthMode: config.AuthModeOpen}
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	server := api.NewServer(cfg, eventStore, readStore, memory.NewSnapshotStore(eventStore), nil)
+
+	lat, lon := "N42.3601", "W71.0589"
+	for _, p := range []struct{ birth, death string }{
+		{"Boston, MA", "Salem, MA"},
+		{"", "Boston, MA"},
+		{"Salem, MA", ""},
+	} {
+		if err := readStore.SavePerson(context.Background(), domain.MainBranchID, &repository.PersonReadModel{
+			ID: uuid.New(), GivenName: "Ann", Surname: "Hale", FullName: "Ann Hale",
+			BirthPlace: p.birth, BirthPlaceLat: &lat, BirthPlaceLong: &lon,
+			DeathPlace: p.death, DeathPlaceLat: &lat, DeathPlaceLong: &lon,
+			Version: 1, UpdatedAt: time.Now(),
+		}); err != nil {
+			t.Fatalf("SavePerson: %v", err)
+		}
+	}
+
+	rec := do(t, server, http.MethodGet, "/api/v1/map/locations", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Status = %d, want %d: %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	var resp api.MapLocationsResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	want := map[string]uuid.UUID{
+		"Boston, MA": repository.PlaceID(repository.PlaceKey("Boston, MA")),
+		"Salem, MA":  repository.PlaceID(repository.PlaceKey("Salem, MA")),
+	}
+	if len(resp.Items) != 4 {
+		t.Fatalf("len(items) = %d, want 4 (two places x birth/death): %+v", len(resp.Items), resp.Items)
+	}
+	for _, item := range resp.Items {
+		if item.PlaceId == uuid.Nil {
+			t.Errorf("%s %s: place_id is the zero UUID", item.Place, item.EventType)
+		}
+		if item.PlaceId != want[item.Place] {
+			t.Errorf("%s %s: place_id = %v, want %v", item.Place, item.EventType, item.PlaceId, want[item.Place])
+		}
+	}
+}
+
 // TestBrickWallEndpoints_AreLogged drives the brick-wall writes end to end: a
 // mark and its resolution are logged on the person's stream (#802) and the
 // listing reports them; an unknown person is a 404.

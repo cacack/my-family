@@ -339,8 +339,7 @@ type MapLocationsResult struct {
 
 // MapLocation represents a geographic location for map display.
 type MapLocation struct {
-	// PlaceID is the ID of the place it groups, the zero UUID when its text
-	// names no place (ADR-009 §9).
+	// PlaceID is the ID of the place it groups (ADR-009 §9).
 	PlaceID   uuid.UUID   `json:"place_id"`
 	Place     string      `json:"place"`
 	Latitude  float64     `json:"latitude"`

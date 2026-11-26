@@ -9,7 +9,11 @@
 	 *
 	 * An editor on the mainline can set the place's pair (#1815): apply a
 	 * suggestion as stored (origin copied), or type one for an entry with none
-	 * (origin manual), at the version the entry was read at. The entry then
+	 * (origin manual), or pick a geocoder candidate when the server has one
+	 * enabled (#1607; origin geocoded, saved on the place per ADR-009), at the
+	 * version the entry was read at. "Look up all" (#1609) runs each entry's
+	 * lookup in turn, one request at a time, and leaves each entry's candidates
+	 * to be reviewed; nothing is saved until one is picked. The entry then
 	 * leaves the list, as every record there is mapped at the place's pair. A
 	 * stale version opens the save-conflict flow. Place facts are main-only, so
 	 * on a research branch the controls are withdrawn.
@@ -17,17 +21,22 @@
 	import {
 		api,
 		isVersionConflict,
-		type CoordinateSource,
+		type CoordinateOrigin,
+		type GeocodeCandidate,
 		type Place,
 		type UnmappedPlace
 	} from '#lib/api/client.js';
+	import { onDestroy, untrack } from 'svelte';
 	import { can } from '#lib/stores/access.svelte.js';
+	import { getAppConfig } from '#lib/stores/appConfig.svelte.js';
 	import { activeBranch } from '#lib/stores/activeBranch.svelte.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { coordinatePairError, toGedcomCoordinate, type CoordinateError } from '#lib/utils/coordinates.js';
+	import { candidateInput, geocodedOrigin, lookupName } from '#lib/utils/geocode.js';
 	import { SaveConflictFlow, type ConflictRow } from '#lib/utils/saveConflict.svelte.js';
 	import ActionError from './ActionError.svelte';
 	import CoordinateFields from './CoordinateFields.svelte';
+	import GeocodeLookup from './GeocodeLookup.svelte';
 	import SaveConflict from './SaveConflict.svelte';
 	import ErrorState from './ErrorState.svelte';
 	import LoadingState from './LoadingState.svelte';
@@ -46,8 +55,19 @@
 	/** An editor on a branch, where the controls are withdrawn (place facts are main-only). */
 	const withheld = $derived(can('editor') && !!activeBranch.id);
 
+	/** Each entry's lookup, for "Look up all" to drive. */
+	const lookups: Record<string, ReturnType<typeof GeocodeLookup> | null> = {};
+	const mayLookUpAll = $derived(mayApply && getAppConfig().geocoder_enabled);
+	/** The "Look up all" run: places done (and how many of those failed) out of those queued when it began. */
+	let run: { done: number; failed: number; total: number; state: 'running' | 'stopped' | 'finished' } | null =
+		$state(null);
+	// A run checks this before each lookup; stopping, re-reading the list or leaving the page bumps it.
+	let runId = 0;
+	/** A run's lookup is in flight; a new run waits for it, so there is never more than one. */
+	let awaiting = $state(false);
+
 	/** The apply being saved, or refused for a stale version. */
-	let pending: { entry: UnmappedPlace; base: PlaceBase; pair: Pair; source: CoordinateSource } | null =
+	let pending: { entry: UnmappedPlace; base: PlaceBase; pair: Pair; origin: CoordinateOrigin } | null =
 		$state(null);
 	let saving = $state(false);
 	let applyError: { id: string; message: string } | null = $state(null);
@@ -75,6 +95,9 @@
 	];
 
 	async function load() {
+		// Re-reading unmounts every entry's lookup, and the candidates with it.
+		// Untracked: the effect that first calls this must not re-run as the run moves.
+		if (untrack(() => run?.state) === 'running') stopRun();
 		loading = true;
 		error = null;
 		try {
@@ -91,25 +114,59 @@
 		load();
 	});
 
+	/**
+	 * Look up each entry in turn, waiting for one answer before the next
+	 * request (the server spaces and caches them, #1562). An entry saved away
+	 * meanwhile is skipped, and counted as done; a failed lookup is counted as
+	 * done and as failed. Re-reading the list stops the run.
+	 */
+	async function lookUpAll() {
+		if (awaiting) return;
+		const queue = entries.filter((e) => lookupName(e.name));
+		const n = ++runId;
+		run = { done: 0, failed: 0, total: queue.length, state: 'running' };
+		for (const entry of queue) {
+			awaiting = true;
+			const outcome = await lookups[entry.id]?.look({ focus: false });
+			awaiting = false;
+			if (n !== runId) return;
+			run.done++;
+			if (outcome === 'failed') run.failed++;
+		}
+		run.state = 'finished';
+	}
+
+	function failures(n: number): string {
+		return n ? `, ${n} failed` : '';
+	}
+
+	/** Send no further lookup; the one in flight still shows its answer. */
+	function stopRun() {
+		runId++;
+		if (run) run.state = 'stopped';
+	}
+
+	onDestroy(() => runId++);
+
 	function records(n: number): string {
 		return `${n} ${n === 1 ? 'record' : 'records'}`;
 	}
 
-	function apply(entry: UnmappedPlace, pair: Pair, source: CoordinateSource) {
+	function apply(entry: UnmappedPlace, pair: Pair, origin: CoordinateOrigin) {
 		conflict.clear();
-		pending = { entry, base: { version: entry.version }, pair, source };
+		pending = { entry, base: { version: entry.version }, pair, origin };
 		save();
 	}
 
 	async function save() {
 		if (!pending) return;
-		const { entry, base, pair, source } = pending;
+		const { entry, base, pair, origin } = pending;
 		saving = true;
 		applyError = null;
 		notice = null;
 		listNotice = null;
 		try {
-			const saved = await api.updatePlace(entry.id, { version: base.version, ...pair, coordinates_origin: { source } });
+			const saved = await api.updatePlace(entry.id, { version: base.version, ...pair, coordinates_origin: origin });
 			entries = entries.filter((e) => e.id !== entry.id);
 			notice = `${saved.name} is now on the map at ${pair.latitude}, ${pair.longitude}.`;
 			pending = null;
@@ -161,7 +218,23 @@
 				latitude: toGedcomCoordinate(pair.latitude, 'latitude'),
 				longitude: toGedcomCoordinate(pair.longitude, 'longitude')
 			},
-			'manual'
+			{ source: 'manual' }
+		);
+	}
+
+	/**
+	 * Save a geocoder candidate as the place's pair, matched against its name;
+	 * one that matched other text is saved as entered by hand, as in the forms.
+	 */
+	function applyCandidate(entry: UnmappedPlace, candidate: GeocodeCandidate) {
+		const typed = candidateInput(candidate);
+		apply(
+			entry,
+			{
+				latitude: toGedcomCoordinate(typed.latitude, 'latitude'),
+				longitude: toGedcomCoordinate(typed.longitude, 'longitude')
+			},
+			geocodedOrigin(candidate, entry.name) ?? { source: 'manual' }
 		);
 	}
 </script>
@@ -189,6 +262,33 @@
 				Place coordinates are shared across all branches. Return to the mainline to set them.
 			</p>
 		{/if}
+		{#if mayLookUpAll}
+			<div class="look-up-all">
+				<div class="actions">
+					{#if run?.state === 'running'}
+						<Button variant="outline" size="sm" onclick={stopRun}>Stop looking up</Button>
+					{:else}
+						<Button variant="outline" size="sm" disabled={awaiting} onclick={lookUpAll}>Look up all places</Button>
+					{/if}
+				</div>
+				{#if run}
+					<progress max={run.total} value={run.done} aria-label="Places looked up"></progress>
+					<p class="run-status" role="status">
+						{#if run.state === 'running'}
+							Looking up places: {run.done} of {run.total} done{failures(run.failed)}.
+						{:else if run.state === 'stopped'}
+							Stopped after {run.done} of {run.total} places{failures(run.failed)}.
+						{:else}
+							Looked up {run.done} of {run.total} places{failures(run.failed)}. Review each place's locations below.
+						{/if}
+					</p>
+				{/if}
+				<p class="hint">
+					Asks the geocoder about each place in turn, one at a time. Nothing is saved until you choose a
+					location for a place.
+				</p>
+			</div>
+		{/if}
 		<ul class="unmapped-list">
 			{#each entries as entry (entry.id)}
 				<li class="unmapped-item">
@@ -212,7 +312,7 @@
 												size="sm"
 												disabled={saving}
 												aria-label="Use these coordinates, {s.latitude}, {s.longitude}, for {entry.name}"
-												onclick={() => apply(entry, { latitude: s.latitude, longitude: s.longitude }, 'copied')}
+												onclick={() => apply(entry, { latitude: s.latitude, longitude: s.longitude }, { source: 'copied' })}
 											>
 												Use these coordinates
 											</Button>
@@ -262,6 +362,16 @@
 								</div>
 							{/if}
 						{/if}
+					{/if}
+					{#if mayApply}
+						<GeocodeLookup
+							bind:this={lookups[entry.id]}
+							id="unmapped-{entry.id}"
+							place={entry.name}
+							label={entry.name}
+							busy={saving}
+							onPick={(c) => applyCandidate(entry, c)}
+						/>
 					{/if}
 					{#if applyError?.id === entry.id}
 						<ActionError message={applyError.message} />
@@ -355,6 +465,28 @@
 		flex-wrap: wrap;
 		align-items: center;
 		gap: 0.25rem 0.75rem;
+	}
+
+	.look-up-all {
+		margin: 0 0 1rem;
+		font-size: 0.875rem;
+		color: var(--color-text-muted);
+	}
+
+	.look-up-all .actions {
+		margin-top: 0;
+	}
+
+	.look-up-all progress {
+		display: block;
+		width: 100%;
+		max-width: 24rem;
+		margin-top: 0.5rem;
+	}
+
+	.run-status,
+	.hint {
+		margin: 0.5rem 0 0;
 	}
 
 	.type-pair {

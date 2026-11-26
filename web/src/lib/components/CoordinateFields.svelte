@@ -6,9 +6,15 @@
 	 * where the stored pair came from (#1563) while it is left as stored. The
 	 * pair is the record's own: while it has none, the place's own pair (#1736)
 	 * is shown as a hint, so typing one isn't mistaken for filling a gap.
+	 *
+	 * Given `lookup`, the place name, it offers geocoder candidates (#1607): a
+	 * pick fills the inputs and sets `picked`, which the page sends as the
+	 * pair's geocoded origin (`pickedOrigin`) when the form is saved.
 	 */
 	import type { CoordinateOrigin } from '#lib/api/client.js';
 	import ActionError from '#lib/components/ActionError.svelte';
+	import GeocodeLookup from '#lib/components/GeocodeLookup.svelte';
+	import { candidatePick, pickedOrigin, type CoordinatePick } from '#lib/utils/geocode.js';
 	import { coordinateOriginText } from '#lib/utils/coordinateOrigin.js';
 	import {
 		coordinatesChanged,
@@ -25,7 +31,9 @@
 		longitude = $bindable(''),
 		error = null,
 		saved,
-		placePair
+		placePair,
+		lookup,
+		picked = $bindable(null)
 	}: {
 		/** Prefix of the ids of the refusal and hint text, e.g. `'birth-place'`. */
 		id: string;
@@ -38,11 +46,24 @@
 		saved?: GedcomCoordinates & { origin?: CoordinateOrigin };
 		/** The place's own pair, which the map uses while the record has none. */
 		placePair?: GedcomCoordinates;
+		/** The place name, to offer geocoder candidates for; left out, none are offered. */
+		lookup?: string;
+		/** The candidate last picked into the inputs. */
+		picked?: CoordinatePick | null;
 	} = $props();
+
+	// A pick still in the inputs, with the origin it will be saved with.
+	const pickOrigin = $derived(
+		lookup === undefined || !coordinatesChanged({ latitude, longitude }, saved)
+			? undefined
+			: pickedOrigin({ latitude, longitude }, picked, lookup)
+	);
 
 	const originId = $derived(`${id}-coordinates-origin`);
 	const origin = $derived(
-		saved?.origin && saved.latitude && saved.longitude && !coordinatesChanged({ latitude, longitude }, saved)
+		pickOrigin
+			? `${coordinateOriginText(pickOrigin)}. Saved when the form is saved.`
+			: saved?.origin && saved.latitude && saved.longitude && !coordinatesChanged({ latitude, longitude }, saved)
 			? coordinateOriginText(saved.origin)
 			: null
 	);
@@ -85,6 +106,18 @@
 			{/if}
 		</div>
 	</div>
+	{#if lookup !== undefined}
+		<GeocodeLookup
+			{id}
+			place={lookup}
+			label={place}
+			onPick={(c) => {
+				picked = candidatePick(c);
+				latitude = picked.latitude;
+				longitude = picked.longitude;
+			}}
+		/>
+	{/if}
 	{#if origin}
 		<p class="origin" id={originId} data-testid="coordinates-origin">{origin}</p>
 	{:else if placeHint}

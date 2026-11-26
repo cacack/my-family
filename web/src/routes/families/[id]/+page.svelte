@@ -58,6 +58,7 @@
 		type SavedAs
 	} from '#lib/utils/dateInput.js';
 	import { coordinateChange, coordinatePairError, toDecimalDegrees, type CoordinateError } from '#lib/utils/coordinates.js';
+	import { pickedOrigin, type CoordinatePick } from '#lib/utils/geocode.js';
 
 	let family: FamilyDetail | null = $state(null);
 	let loading = $state(true);
@@ -103,6 +104,8 @@
 	let dateError: DateFieldError<'marriage_date'> | null = $state(null);
 	// The coordinate input a save was stopped for (#1033).
 	let coordinateError: CoordinateError | null = $state(null);
+	// The geocoder candidate picked into the inputs (#1607).
+	let picked: CoordinatePick | null = $state(null);
 	// The marriage date, when the last save stored it in another form than
 	// typed (#978).
 	let savedAs: SavedAs | undefined = $state();
@@ -283,6 +286,7 @@
 			partner2 = partnerSummary(family.partner2_id, family.partner2);
 			formData = formFrom(family);
 		}
+		picked = null;
 	}
 
 	function partnerName(partner: PersonSummary | null): string {
@@ -385,7 +389,8 @@
 				marriage_place: formData.marriage_place,
 				...(coordinates && {
 					marriage_place_latitude: coordinates.latitude,
-					marriage_place_longitude: coordinates.longitude
+					marriage_place_longitude: coordinates.longitude,
+					marriage_place_coordinates_origin: pickedOrigin(pair, picked, formData.marriage_place)
 				}),
 				// Sent only when changed, like the relationship type.
 				private: formData.private !== (family.private === true) ? formData.private : undefined,
@@ -579,6 +584,8 @@
 							bind:latitude={formData.marriage_place_latitude}
 							bind:longitude={formData.marriage_place_longitude}
 							error={coordinateError}
+							lookup={formData.marriage_place}
+							bind:picked
 							saved={{
 								latitude: family.marriage_place_latitude,
 								longitude: family.marriage_place_longitude,

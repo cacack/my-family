@@ -599,6 +599,9 @@ export type MapLocationsResponse = Schemas['MapLocationsResponse'];
 export type MapLocation = Schemas['MapLocation'];
 export type CoordinateOrigin = Schemas['CoordinateOrigin'];
 export type CoordinateSource = Schemas['CoordinateSource'];
+export type MatchPrecision = Schemas['MatchPrecision'];
+export type GeocodeCandidate = Schemas['GeocodeCandidate'];
+export type GeocodeCandidateList = Schemas['GeocodeCandidateList'];
 export type BrickWallEntry = Schemas['BrickWallEntry'];
 export type BrickWallsResponse = Schemas['BrickWallsResponse'];
 
@@ -1593,6 +1596,17 @@ class ApiClient {
 	/** Branch-scoped: honors the active branch (see `BRANCH_SCOPED_OPERATIONS`). */
 	async getPlace(id: string): Promise<Place> {
 		return this.request<Place>('GET', `/places/${encodeURIComponent(id)}`);
+	}
+
+	/**
+	 * Candidate coordinates for a place name from the server's geocoder
+	 * (#1562), best match first. Writes nothing. Off unless the server enables
+	 * it (`geocoder_enabled` in `GET /config`): then it fails with
+	 * `geocoder_disabled`; a provider failure is `geocoder_error` (502) and a
+	 * busy or slow one `geocoder_timeout` (504).
+	 */
+	async geocodePlace(name: string): Promise<GeocodeCandidateList> {
+		return this.request<GeocodeCandidateList>('GET', `/geocode?q=${encodeURIComponent(name)}`);
 	}
 
 	/**

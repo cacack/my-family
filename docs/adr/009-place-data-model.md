@@ -432,6 +432,12 @@ or in spacing around commas become one entry, on every store.
   and the event or attribute tag. Export writes it back under the same `PLAC`, valueless when the
   text is empty, so it is never dropped
   ([#1807](https://github.com/cacack/my-family/issues/1807)). The map leaves it out (section 9).
+- **Half a pair** (a `MAP` with only `LATI` or only `LONG`). Import keeps that half as the record's
+  own. Export writes it back under `MAP`, that half alone, rather than dropping it or listing it as
+  data loss. It counts as the record's own coordinate, so the place's pair is not written in its
+  stead, and the other half is never filled from the place: that would write a pair nobody
+  recorded. Half a pair is not an effective pair, so the map still shows the place's pair, if any
+  ([#1862](https://github.com/cacack/my-family/issues/1862)).
 - **`PLAC.FORM`.** A form describes a text's parts by position, so import stores it on the place
   its key names, before alias resolution (section 3), under the positional key of the text it came
   with (section 1): the `PLAC`'s own `FORM`, otherwise the file's `HEAD.PLAC.FORM`. A form is set
@@ -445,11 +451,14 @@ or in spacing around commas become one entry, on every store.
   writes `PLAC.FORM` under each event whose key's place, before alias resolution, holds a form for
   that event's positional key, so an alias never drops a form and a form is never written against
   a text with a different number of parts.
-- **`HEAD.PLAC.FORM`.** Not written yet. The file default comes back as a `FORM` under each place,
-  which means the same and is not the same bytes. Writing the most common form once in the header,
-  and a per-place `FORM` only where it differs, needs
-  [cacack/gedcom-go#875](https://github.com/cacack/gedcom-go/issues/875): the encoder does not
-  write `Header.PlaceForm` for a document assembled in memory.
+- **`HEAD.PLAC.FORM`.** Export writes the form most exported `PLAC` lines carry once as the
+  header default (a tie goes to the form that sorts first), and a `PLAC.FORM` only where a place's
+  form differs from it, so a file imported with a header default comes back with the same line
+  ([#1739](https://github.com/cacack/my-family/issues/1739)). Import gives the header form to
+  every `PLAC` that names a place and has no `FORM` of its own, so no default is written while any
+  such `PLAC` has no form: re-importing would give that place a form it never had. The default is
+  computed from the `PLAC`s the privacy filter let through, so it never reveals a hidden place's
+  form.
 - **`PLAC.EXID`** (GEDCOM 7.0). Import stores them on the place; export writes them under each of
   its events when the file being written is a version that has `EXID`.
 

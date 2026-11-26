@@ -5530,9 +5530,9 @@ export interface components {
         MapLocation: {
             /**
              * Format: uuid
-             * @description The ID of the place the location groups (GET /places/{id}); omitted when the records' place text names no place.
+             * @description The ID of the place the location groups (GET /places/{id}).
              */
-            place_id?: string;
+            place_id: string;
             /** @description The place's display name when one is set, otherwise the spelling most of the location's records give (ties broken bytewise). */
             place: string;
             /**
