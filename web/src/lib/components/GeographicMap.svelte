@@ -87,7 +87,7 @@
 	// A place can have several pins for one event type: records with a pair of
 	// their own keep it, apart from the place's pair (ADR-009 §9).
 	const locationKey = (l: MapLocation) =>
-		`${l.place_id ?? l.place}|${l.event_type}|${l.latitude}|${l.longitude}`;
+		`${l.place_id}|${l.event_type}|${l.latitude}|${l.longitude}`;
 
 	async function select(items: MapLocation[], from: HTMLElement | SVGElement | null) {
 		const same =

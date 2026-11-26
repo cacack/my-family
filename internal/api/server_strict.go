@@ -606,15 +606,6 @@ func convertReadModelPlaceToGenerated(p repository.PlaceReadModel) Place {
 	return place
 }
 
-// placeIDOrNil is a map location's place ID, or nil for the zero UUID of a
-// text that names no place.
-func placeIDOrNil(id uuid.UUID) *openapi_types.UUID {
-	if id == uuid.Nil {
-		return nil
-	}
-	return &id
-}
-
 // resolvedPlaceToGenerated converts a resolved place to its API form.
 func resolvedPlaceToGenerated(p *query.ResolvedPlace) *ResolvedPlace {
 	if p == nil {
@@ -655,7 +646,7 @@ func (ss *StrictServer) GetMapLocations(ctx context.Context, request GetMapLocat
 			}
 		}
 		response.Items[i] = MapLocation{
-			PlaceId:   placeIDOrNil(item.PlaceID),
+			PlaceId:   item.PlaceID,
 			Place:     item.Place,
 			Latitude:  item.Latitude,
 			Longitude: item.Longitude,
