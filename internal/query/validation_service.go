@@ -130,10 +130,15 @@ func (s *ValidationService) GetQualityReportOn(ctx context.Context, branchID dom
 	}, nil
 }
 
-// strictValidator returns a validator reporting every severity level.
+// strictValidator returns a validator reporting every severity level. Its
+// duplicate detection also weighs shared spouses and children (#1880), so a
+// woman recorded under her maiden and her married name is still paired; every
+// duplicate check (FindDuplicatesOn, validation issues, the quality report and
+// branch health) goes through it, so they agree.
 func strictValidator() *validator.Validator {
 	return validator.NewWithOptions(&validator.ValidateOptions{
 		Strictness: validator.StrictnessStrict,
+		Duplicates: &validator.DuplicateConfig{CompareRelatives: true},
 	})
 }
 
@@ -422,7 +427,7 @@ func (v *gedcomView) withoutDismissedIssues(issues []validator.Issue, dismissed 
 // duplicates returns every potential duplicate pair in the view, in the
 // validator's order, mapped back onto person ids.
 func (v *gedcomView) duplicates() []DuplicateResult {
-	pairs := validator.New().FindPotentialDuplicates(v.doc)
+	pairs := strictValidator().FindPotentialDuplicates(v.doc)
 	results := make([]DuplicateResult, 0, len(pairs))
 	for _, pair := range pairs {
 		result := DuplicateResult{
