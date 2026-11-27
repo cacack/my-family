@@ -1,17 +1,23 @@
 # Codecov configuration
 # https://docs.codecov.com/docs/codecovyml-reference
 #
-# Aligned with local checks:
-# - Local: 85% per-package, 75% total (make check-coverage)
-# - Codecov: Same targets, informational only
+# Aligned with local checks (make check-coverage, .testcoverage.yml):
+# - The ignore list below mirrors .testcoverage.yml's exclude list, so both
+#   measure the same files. Keep the two in sync.
+# - Local gates statements: 85% per package, 75% total.
+# - Codecov counts lines, and a line only partly run counts as uncovered, so
+#   the same tests read a few points lower here (87.6% local vs about 83%
+#   on Codecov in Nov 2026). The project target sits at 80% to allow for that.
+# - Informational only: the local check is the gate.
 
 coverage:
   status:
     # Project coverage - overall repository coverage
     project:
       default:
-        # Target 85% to match local per-package threshold
-        target: 85%
+        # 80%: Codecov's line count runs a few points under the local
+        # statement count (see the note at the top)
+        target: 80%
         # Allow 2% drop to accommodate new features with complex setup
         threshold: 2%
         # Only check coverage on code that can be tested
@@ -33,7 +39,8 @@ coverage:
         # Don't block PRs - informational only
         informational: true
 
-# Ignore files that don't need test coverage
+# Ignore files that don't need test coverage.
+# Mirrors the exclude list in .testcoverage.yml.
 ignore:
   - "cmd/**/*"
   - "web/**/*"
@@ -41,6 +48,10 @@ ignore:
   - "**/testdata/**"
   - "internal/repository/postgres/**"  # Requires live DB
   - "internal/repository/sqlite/**"    # Integration tests cover this
+  - "internal/web/**"                  # Static file embedding (build-tag dependent)
+  - "internal/integration/**"          # Test-only package, runs in its own CI job
+  - "internal/testutil/**"             # Test support; PostgreSQL paths need Docker
+  - "**/generated.go"                  # oapi-codegen output (internal/api/generated.go)
 
 # Comment configuration for PRs
 comment:
