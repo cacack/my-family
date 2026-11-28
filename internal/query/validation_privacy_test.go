@@ -76,6 +76,9 @@ func TestValidation_WithheldFamilyMembers(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			for _, issue := range issuesAs(t, tt.ctx) {
+				if strings.HasPrefix(issue.Code, "UNRECIPROCATED_") {
+					t.Errorf("unexpected one-way link issue: %s %s", issue.Code, issue.Message)
+				}
 				if strings.Contains(issue.Message, "@VOID@") {
 					t.Errorf("issue %s shows the null pointer: %s", issue.Code, issue.Message)
 				}
